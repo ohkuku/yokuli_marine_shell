@@ -368,3 +368,16 @@ The Android story compiled and reached System before failing on the absent `them
 - The real API 34 `ShellActivity` suite is 6/6 PASS. Its new story selects magenta and light, returns Home, and verifies that all five default tiles expose the same accent plus the Start canvas exposes the selected mode.
 - Visual inspection completed for the dark/cyan Start and System → Display palette. Static screenshots cannot prove animation frames; the geometry/timing policy and interaction end states are the automated evidence.
 - Cold-launch persistence, physical Samsung square hardware, and vessel behavior remain outside this slice: `UNVERIFIED_HARDWARE`, `UNVERIFIED_VESSEL`.
+
+### Remote Green — theme and tile refinement
+
+Implementation commit `df69fcbce1b85a268afcd83c3ddc259d612ddd25` completed [GitHub Actions run #33764978254](https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33764978254) successfully:
+
+```text
+TDD contract, unit, lint, and dual APKs                  PASS
+WP8 shell stories on API 34                             PASS
+Android 16 / API 36 reduced-motion smoke                PASS
+Publish fully verified debug APKs                       PASS
+```
+
+The run published final artifact `VERIFIED-yokuli-os-debug-df69fcb...` (artifact ID `9897363683`) only after both emulator jobs passed. It also retained build/API 34/API 36 reports and the pre-device candidate. No `UNVERIFIED-*` or `FAILURE-*` artifact was emitted.

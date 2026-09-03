@@ -51,7 +51,7 @@
 - HOME APK: PASS.
 - Android lint: PASS.
 - Release signing plumbing: PASS locally for both APKs and both AABs with a disposable test key; GitHub secrets not exercised.
-- GitHub-hosted API 34/API 36 workflows: NOT RUN until this commit is pushed.
+- GitHub-hosted API 34/API 36 workflows: PASS in Actions run `33764978254`; final verified artifact `9897363683` published.
 - Device: VERIFIED_DEVICE_EMULATOR; Samsung square hardware remains UNVERIFIED_HARDWARE.
 - Vessel: UNVERIFIED_VESSEL.
 
