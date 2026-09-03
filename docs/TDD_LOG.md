@@ -268,3 +268,21 @@ bash .github/scripts/test-resolve-release-metadata.sh
 ```
 
 All three local contracts pass and the updated workflow YAML parses. The correction is not considered remotely green until its pushed Actions run identifies and clears every required gate.
+
+### Remote Red — isolated by run #2
+
+GitHub Actions run [#2](https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33760552231) named the exact failed outcome:
+
+```text
+RELEASE_METADATA_RESULT failed
+```
+
+Actions predefines `GITHUB_OUTPUT` for every step. The release resolver therefore wrote its correct metadata to that file, while the shell test expected stdout and read an empty string. The failure was in the test harness boundary, not in tag parsing or version-code calculation.
+
+### Green correction
+
+- Stdout-mode cases explicitly set `GITHUB_OUTPUT=`.
+- A dedicated case supplies a temporary Actions output file and asserts `tag`, `version_name`, `version_code`, and `channel` there.
+- The test is executed locally with an outer non-empty `GITHUB_OUTPUT` to reproduce the hosted-run environment.
+
+Remote status remains red until the corrected commit completes all build and device jobs.
