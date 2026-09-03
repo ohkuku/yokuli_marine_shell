@@ -285,4 +285,17 @@ Actions predefines `GITHUB_OUTPUT` for every step. The release resolver therefor
 - A dedicated case supplies a temporary Actions output file and asserts `tag`, `version_name`, `version_code`, and `channel` there.
 - The test is executed locally with an outer non-empty `GITHUB_OUTPUT` to reproduce the hosted-run environment.
 
-Remote status remains red until the corrected commit completes all build and device jobs.
+At this point the remote status remained red until the corrected commit completed all build and device jobs.
+
+### Remote Green — run #3
+
+Corrected commit `0a023aaf214a9664856898c5deb422422bd9b927` completed [GitHub Actions run #3](https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33761042952) successfully:
+
+```text
+TDD contract, unit, lint, and dual APKs                  PASS
+WP8 shell stories on API 34                             PASS
+Android 16 / API 36 reduced-motion smoke                PASS
+Publish fully verified debug APKs                       PASS
+```
+
+The run retained build/API 34/API 36 reports, the pre-device-test candidate, and the final `VERIFIED-yokuli-os-debug-0a023aaf...` artifact. No `UNVERIFIED-*` or `FAILURE-*` artifact was emitted by the green run.
