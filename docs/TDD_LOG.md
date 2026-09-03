@@ -427,7 +427,7 @@ python3 -m unittest discover .github/scripts 'test_*.py'        PASS (11/11)
 ./gradlew :app-shell:connectedStandaloneDebugAndroidTest        PASS (7/7, API 34)
 ```
 
-中文首页、中文 System 列表、中文 Display/语言设置和 English 首页已在 1080×2400 API 34 模拟器视觉检查，无文字裁切或布局溢出。静态图不能证明动效帧；动效由现有策略单测和 Activity 终态故事覆盖。API 34/36 hosted stories 要等本提交 push 后由 GitHub Actions 给出最终反馈。真实 Samsung 方屏与实船仍为 `UNVERIFIED_HARDWARE`、`UNVERIFIED_VESSEL`。
+中文首页、中文 System 列表、中文 Display/语言设置和 English 首页已在 1080×2400 API 34 模拟器视觉检查，无文字裁切或布局溢出。静态图不能证明动效帧；动效由现有策略单测和 Activity 终态故事覆盖。此时 API 34/36 hosted stories 仍在等待 push，结果记录在下方远端 Green；真实 Samsung 方屏与实船仍为 `UNVERIFIED_HARDWARE`、`UNVERIFIED_VESSEL`。
 
 ### Refactor
 
@@ -437,4 +437,19 @@ python3 -m unittest discover .github/scripts 'test_*.py'        PASS (11/11)
 
 The Red architecture test found ten initial contract gaps: seven missing Chinese/English resource pairs, visual title/glyph leakage into the launcher domain descriptor, a missing launcher state/action contract, and five hardcoded visible text sites. Device Red then exposed a stripped `zh-rCN` resource configuration, and visual update testing exposed drift between an empty framework locale and a stale one-time marker. Green introduced key-complete resources, an exact locale filter, a persisted explicit choice synchronized with platform locales, stateless feature workspaces, UI-owned launcher visuals, stable locale-independent tests, and a real-Activity bilingual story. A separate safety Red prevents missing marine values from rendering as zero and gives critical states an alarm tone.
 
-The legacy app's explicit language choice, persistence, and read-only Flow publication were retained conceptually; manual bilingual literals were not. The long-term architecture is a functional core with port-isolated side effects and Kotlin Flow UDF, not an app-wide procedural call graph, RxJava dependency, or global event bus. Local API 34 stories pass 7/7 and both Chinese and English layouts were visually inspected; hosted API 34/36 evidence remains pending until push, while hardware and vessel checks remain unverified.
+The legacy app's explicit language choice, persistence, and read-only Flow publication were retained conceptually; manual bilingual literals were not. The long-term architecture is a functional core with port-isolated side effects and Kotlin Flow UDF, not an app-wide procedural call graph, RxJava dependency, or global event bus. Local API 34 stories pass 7/7 and both Chinese and English layouts were visually inspected. Hosted evidence was still pending at this point in the sequence and is recorded in the Remote Green section below; hardware and vessel checks remain unverified.
+
+### 远端 Green — 双语响应式 UI
+
+实现提交 `cf94f94b4df1591bbf49e3cce796992ce9b7d225` 的 [GitHub Actions run #33815853153](https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33815853153) 全部成功：
+
+```text
+TDD contract, unit, lint, and dual APKs                  PASS
+WP8 shell stories on API 34                             PASS
+Android 16 / API 36 reduced-motion smoke                PASS
+Publish fully verified debug APKs                       PASS
+```
+
+最终测试包是 [`VERIFIED-yokuli-os-debug-cf94f94...`](https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33815853153/artifacts/9916738048)（artifact ID `9916738048`，约 18.1 MB）。该 run 还保留 build、API 34、API 36 报告和设备测试前 candidate；没有生成 `UNVERIFIED-*` 或 `FAILURE-*` artifact。
+
+> English: Commit `cf94f94b4df1591bbf49e3cce796992ce9b7d225` passed all four hosted gates in run #33815853153. The final downloadable artifact is `VERIFIED-yokuli-os-debug-cf94f94...` (ID `9916738048`, about 18.1 MB); build and both device reports plus the pre-device candidate were retained, with no unverified or failure artifact.
