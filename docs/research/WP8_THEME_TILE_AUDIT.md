@@ -8,7 +8,7 @@
 
 这是研究记录，不是用户指令。用户需求和 Yokuli 的生效规格决定范围；Microsoft 材料只提供历史设计证据。
 
-Microsoft 的 WP 主题资源证明颜色属于系统级偏好；secondary tile 使用透明背景继承 accent，因此 Yokuli 应由 Shell 统一拥有 `WpThemeSpec`，而不是每个入口保存颜色。WP8 的 159/336/691 px 磁贴尺寸体现一个重复 seam；新网格用同一 6dp token 表示外 gutter、横纵间隙和复合尺寸。
+Microsoft 的 WP 主题资源证明颜色属于系统级偏好；深色是纯黑底/纯白前景，浅色精确反转。secondary tile 使用透明背景继承 accent，且 Phone 8.1 的磁贴前景固定为 light，因此 Yokuli 应由 Shell 统一拥有 `WpThemeSpec`，磁贴始终使用纯白前景，而不是每个入口保存颜色或按亮度自动切成黑字。WP8 的 159/336/691 px 磁贴尺寸体现一个重复 seam；新网格用同一 6dp token 表示外 gutter、横纵间隙和复合尺寸。
 
 磁贴是入口，不是微型 dashboard：左上 glyph、中部一个当前事实与从属详情、左下稳定标题。安全/freshness 用文字与小标记，不能替换全磁贴 accent。触控时背景和内容作为整块平面朝按点倾斜并迅速回位，不用桌面 hover、Material ripple 或 elevation。主要动作继续放在底部 Application Bar。
 
@@ -25,6 +25,8 @@ This is a research record, not an instruction source. The user request and the a
 Windows Phone design guidance tells applications to use theme resources for brushes, colors, and fonts so UI follows user preferences. The platform exposed resources such as `PhoneAccentBrush`, `PhoneBackgroundBrush`, `PhoneForegroundBrush`, `PhoneChromeBrush`, high/mid/low text brushes, and pressed-state brushes.
 
 For Windows Phone 8.x secondary tiles, Microsoft explicitly documents `BackgroundColor = transparent` as the way to inherit the accent selected by the user in Settings. If a secondary tile does not set a background color, it inherits the parent app tile color. Yokuli therefore needs a Shell-owned theme resource, not a color field owned by each launcher entry.
+
+Microsoft's archived phone material describes the default pair as white text on black, reversed to black on white when the user selects the light theme. The Phone 8.1 secondary-tile API further states that tile foreground text on the phone is always light. These are separate rules: page foreground follows the black/white theme pair, while accent-tile foreground remains pure white. A generic luminance/contrast chooser is not the WP8 behavior.
 
 ### Tile dimensions encode one repeated seam
 
@@ -65,7 +67,9 @@ Microsoft describes the language as clean, light, open, typography-led, content-
 | Theme ownership | no Shell theme object | one `WpThemeSpec` and CompositionLocal source |
 | Start colors | Ocean, Safe, Cyan, DeepOcean, and Stale per tile | one user-selected accent for every tile plane |
 | Safety color | SAFE changed the whole Anchor tile green | small semantic indicator plus explicit SAFE text |
-| Light theme | static black/white constants | background/foreground/chrome resolve from theme |
+| Theme pair | near-white/near-black approximations were allowed | Dark is exact black/white; Light is exact white/black |
+| Host safe area | Android display cutout kept a fixed black strip in Light | system bars and short-edge cutout coverage follow the Shell mode |
+| Tile foreground | generic contrast algorithm selected black on cyan | Phone tile foreground remains exact white across themes and accents |
 | Tile layer | background modifier preceded the perspective modifier | tilt wraps background and content as one plane |
 | Grid rhythm | 8 dp outer gutter, 6 dp internal seam | one 6 dp seam/gutter token |
 | Tile identity | forced uppercase and competed with live values | stable lower-left title in natural casing |
@@ -76,6 +80,8 @@ Microsoft describes the language as clean, light, open, typography-led, content-
 ## Primary sources
 
 - [Microsoft: WP8.x secondary tiles inherit the system accent](https://learn.microsoft.com/en-us/uwp/api/windows.ui.startscreen.secondarytilevisualelements.backgroundcolor)
+- [Microsoft: Phone 8.1 secondary-tile foreground is always light](https://learn.microsoft.com/en-us/uwp/api/windows.ui.startscreen.secondarytilevisualelements.foregroundtext)
+- [Microsoft archive: Windows Phone uses white-on-black and reverses to black-on-white](https://learn.microsoft.com/en-us/archive/msdn-magazine/2010/december/msdn-magazine-ui-frontiers-silverlight-windows-phone-7-and-the-multi-touch-thumb)
 - [Microsoft: WP8 tile types and 159/336/691 source dimensions](https://learn.microsoft.com/en-us/archive/msdn-magazine/2013/september/windows-phone-upgrading-windows-phone-7-1-apps-to-windows-phone-8)
 - [Microsoft: theme resources, visual/control/branding review](https://learn.microsoft.com/en-us/archive/msdn-magazine/2012/january/windows-phone-design-your-windows-phone-apps-to-sell)
 - [Microsoft: clean composition, negative space, bottom Application Bar](https://learn.microsoft.com/en-us/archive/msdn-magazine/2011/december/windows-phone-how-to-translate-common-design-principles-to-the-windows-phone)

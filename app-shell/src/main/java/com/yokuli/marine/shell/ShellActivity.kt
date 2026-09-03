@@ -1,6 +1,8 @@
 package com.yokuli.marine.shell
 
+import android.app.Activity
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
@@ -11,8 +13,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -37,6 +42,10 @@ class ShellActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         bootstrapLegacyLocale()
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
@@ -82,7 +91,9 @@ private fun YokuliShell() {
     BackHandler(navigation.surface != ShellSurface.Start) { dispatch(ShellCommand.Back) }
 
     YokuliTheme(themeSpec) {
-        Column(Modifier.fillMaxSize().background(LocalWpTheme.current.background)) {
+        val colors = LocalWpTheme.current
+        SyncHostWindowChrome(colors.background, themeSpec.mode == WpThemeMode.LIGHT)
+        Column(Modifier.fillMaxSize().background(colors.background)) {
             WpStatusStrip { dispatch(ShellCommand.Open(LaunchTarget.System())) }
             WpSurfaceTransitionHost(
                 targetState = navigation.surface,
@@ -169,6 +180,23 @@ private fun YokuliShell() {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SyncHostWindowChrome(background: Color, useDarkSystemIcons: Boolean) {
+    val view = LocalView.current
+    SideEffect {
+        val window = (view.context as? Activity)?.window ?: return@SideEffect
+        @Suppress("DEPRECATION")
+        run {
+            window.statusBarColor = background.toArgb()
+            window.navigationBarColor = background.toArgb()
+        }
+        WindowInsetsControllerCompat(window, view).apply {
+            isAppearanceLightStatusBars = useDarkSystemIcons
+            isAppearanceLightNavigationBars = useDarkSystemIcons
         }
     }
 }

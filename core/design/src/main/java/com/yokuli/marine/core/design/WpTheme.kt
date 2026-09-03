@@ -1,7 +1,6 @@
 package com.yokuli.marine.core.design
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -40,28 +39,23 @@ data class WpColorScheme(
 object WpThemePolicy {
     fun resolve(spec: WpThemeSpec): WpColorScheme {
         val accent = Color(spec.accent.argb)
-        val black = YokuliColors.Black
-        val white = Color(0xFFF7F7F7)
-        val onAccent = listOf(black, white).maxBy { contrast(accent, it) }
+        val background = if (spec.mode == WpThemeMode.DARK) Color.Black else Color.White
+        val foreground = if (spec.mode == WpThemeMode.DARK) Color.White else Color.Black
         return WpColorScheme(
             spec = spec,
-            background = if (spec.mode == WpThemeMode.DARK) YokuliColors.Black else Color(0xFFF4F4F4),
-            foreground = if (spec.mode == WpThemeMode.DARK) white else Color(0xFF101010),
+            background = background,
+            foreground = foreground,
             muted = if (spec.mode == WpThemeMode.DARK) Color(0xFFA8ADB2) else Color(0xFF5C6064),
-            chrome = if (spec.mode == WpThemeMode.DARK) YokuliColors.Black else Color(0xFFE9E9E9),
+            chrome = background,
             accent = accent,
-            onAccent = onAccent,
+            // 中文：WP8.1 手机上的磁贴前景固定为 light，不跟随页面黑白主题反转。
+            // English: WP8.1 phone tiles keep a light foreground independent of the page theme.
+            onAccent = Color.White,
             safe = YokuliColors.Safe,
             warning = YokuliColors.Warning,
             alarm = YokuliColors.Alarm,
             stale = YokuliColors.Stale,
         )
-    }
-
-    private fun contrast(first: Color, second: Color): Float {
-        val light = maxOf(first.luminance(), second.luminance())
-        val dark = minOf(first.luminance(), second.luminance())
-        return (light + .05f) / (dark + .05f)
     }
 }
 

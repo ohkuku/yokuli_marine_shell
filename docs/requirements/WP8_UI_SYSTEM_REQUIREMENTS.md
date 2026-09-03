@@ -19,7 +19,7 @@ Yokuli OS 把 WP8 作为系统设计语言，而非表面装饰。它仍是海�
 - `UI-008`：动效策略必须能用纯 JVM 测试方向、时长、角度、clamp 和 release。
 - `UI-009`：真实 Activity 故事覆盖核心导航、320×320、主题、语言和 API 兼容；静态截图不算动效证明。
 - `UI-010`：发布只能在测试、lint、设备 gate、签名和 checksum 全部通过后产生；未签名或失败制品必须明确标记。
-- `UI-011`：一个 `WpThemeSpec` 驱动全 Shell，功能模块不得创建私有 Shell 主题。
+- `UI-011`：一个 `WpThemeSpec` 驱动全 Shell；深色严格为黑底白字，浅色严格为白底黑字；Android 宿主系统栏和异形屏区域同步主题；accent 磁贴固定白色前景；功能模块不得创建私有 Shell 主题。
 - `UI-012`：Start 使用四列和一个 6dp seam；磁贴只有一个主要事实，安全色仅作从属标记。
 - `UI-013`：所有磁贴、列表、跳转和设置选项至少 48dp，并共享 position-aware tilt。
 
@@ -41,6 +41,7 @@ The canonical implementation pattern is documented in [`docs/WP8_UI_PATTERN.md`]
 - Current Microsoft motion guidance requires transitions to communicate hierarchy and remain fast and informative: [Page transitions](https://learn.microsoft.com/en-us/windows/apps/design/motion/page-transitions) and [XAML animation](https://learn.microsoft.com/en-us/windows/apps/develop/motion/xaml-animation).
 - Android recommends `AnimatedContent` for swapped content, `Transition` for coordinated values, `Animatable` for sequenced motion, and draw-layer `graphicsLayer` transforms for efficient animation: [Choose an animation API](https://developer.android.com/develop/ui/compose/animation/choose-api) and [Animation quick guide](https://developer.android.com/develop/ui/compose/animation/quick-guide).
 - Microsoft documents that a Windows Phone 8.x secondary tile with a transparent background inherits the system accent selected by the user, and that an unset secondary-tile color inherits its parent tile: [SecondaryTileVisualElements.BackgroundColor](https://learn.microsoft.com/en-us/uwp/api/windows.ui.startscreen.secondarytilevisualelements.backgroundcolor).
+- Microsoft describes the phone's default theme as white text on black and the alternate theme as black on white; Microsoft also states that Phone 8.1 secondary-tile foreground is always light: [theme pair](https://learn.microsoft.com/en-us/archive/msdn-magazine/2010/december/msdn-magazine-ui-frontiers-silverlight-windows-phone-7-and-the-multi-touch-thumb) and [phone tile foreground](https://learn.microsoft.com/en-us/uwp/api/windows.ui.startscreen.secondarytilevisualelements.foregroundtext).
 - Microsoft documents WP8 tile assets at 159×159, 336×336, and 691×336 pixels. The 18/19-pixel differences between adjacent source sizes establish a narrow, repeated seam rather than card spacing: [Upgrading Windows Phone 7.1 Apps to Windows Phone 8](https://learn.microsoft.com/en-us/archive/msdn-magazine/2013/september/windows-phone-upgrading-windows-phone-7-1-apps-to-windows-phone-8).
 
 ## Required behavior
@@ -95,7 +96,7 @@ And semantic click/long-click behavior remains available to accessibility servic
 
 Given a page exposes primary actions
 When the page is visible
-Then actions use a fixed bottom black bar, outlined circular icons, short labels, and a minimum 48 dp touch target
+Then actions use a fixed bottom theme-resolved bar, outlined circular icons, short labels, and a minimum 48 dp touch target
 And destructive/safety actions are not hidden behind unexplained gesture-only affordances
 And overflow is represented by an ellipsis when secondary actions exist.
 
@@ -137,7 +138,10 @@ And no release is published from a dirty tree, a mutable existing tag, or a disa
 Given the Shell has a selected background mode and accent
 When Start, All Apps, application chrome, or settings is composed
 Then those surfaces resolve color through one immutable `WpThemeSpec`
-And every Start tile uses the same selected accent and matching contrast foreground
+And Dark resolves to exact black background with exact white primary foreground
+And Light resolves to exact white background with exact black primary foreground
+And host system-bar colors, icon appearance, and display-cutout coverage resolve with that same mode
+And every Start tile uses the same selected accent with exact white foreground independent of page theme
 And changing the setting updates the whole visible Shell without recreating feature-owned palettes.
 
 Given a tile represents SAFE, WARNING, ALARM, STALE, or OFF

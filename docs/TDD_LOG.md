@@ -327,9 +327,11 @@ safetyPaletteDoesNotReplaceTheSelectedAccent PASSED
 
 This captures the actual pre-change defects: hard-coded cyan ignored the selected accent, no light canvas existed, contrast was not chosen per accent, and the Start outer gutter differed from its tile seam.
 
+> 纠正 / Correction (Slice 10): “按 accent 自动选择对比前景”是把现代通用可读性算法误当成 WP Phone 行为。页面主前景应随黑/白主题反转，但 Phone 8.1 磁贴前景始终为 light（纯白）。后续结论以 Slice 10 为准。
+
 ### Green target
 
-- One Shell-owned `WpThemeSpec` drives background, foreground, chrome, accent, and contrast text.
+- One Shell-owned `WpThemeSpec` drives background, foreground, chrome, accent, and tile foreground. The original contrast-selection target is superseded by Slice 10's fixed Phone tile foreground.
 - Every Start tile plane inherits the same accent; safety/freshness color is a subordinate indicator only.
 - System → Display changes background and accent across the current Shell.
 - The 6 dp Start seam is reused at the canvas edge and in every compound tile calculation.
@@ -366,7 +368,7 @@ The Android story compiled and reached System before failing on the absent `them
 ./gradlew :app-shell:connectedStandaloneDebugAndroidTest
 ```
 
-- Theme policy and motion policy tests pass, including seven accent selections, light/dark inversion, contrast selection, one repeated seam token, center/corner press geometry, clamping, and exact release-to-rest.
+- Theme policy and motion policy tests pass, including seven accent selections, light/dark inversion, one repeated seam token, center/corner press geometry, clamping, and exact release-to-rest. The contrast-selection assertion recorded at that time is superseded by Slice 10.
 - Settings now deep-links to System → Display; System rows are real 64dp touch targets rather than inert decoration.
 - The real API 34 `ShellActivity` suite is 6/6 PASS. Its new story selects magenta and light, returns Home, and verifies that all five default tiles expose the same accent plus the Start canvas exposes the selected mode.
 - Visual inspection completed for the dark/cyan Start and System → Display palette. Static screenshots cannot prove animation frames; the geometry/timing policy and interaction end states are the automated evidence.
@@ -453,3 +455,62 @@ Publish fully verified debug APKs                       PASS
 最终测试包是 [`VERIFIED-yokuli-os-debug-cf94f94...`](https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33815853153/artifacts/9916738048)（artifact ID `9916738048`，约 18.1 MB）。该 run 还保留 build、API 34、API 36 报告和设备测试前 candidate；没有生成 `UNVERIFIED-*` 或 `FAILURE-*` artifact。
 
 > English: Commit `cf94f94b4df1591bbf49e3cce796992ce9b7d225` passed all four hosted gates in run #33815853153. The final downloadable artifact is `VERIFIED-yokuli-os-debug-cf94f94...` (ID `9916738048`, about 18.1 MB); build and both device reports plus the pre-device candidate were retained, with no unverified or failure artifact.
+
+## Slice 10 — WP Phone 精确黑白主题与磁贴前景纠正
+
+需求来源：用户对当前视觉结果的复核、`UI-011`，以及 [`research/WP8_THEME_TILE_AUDIT.md`](research/WP8_THEME_TILE_AUDIT.md)。本切片只纠正 UI 主题真值，不实现海事功能，也不以流水线状态代替本地 TDD 与视觉验收。
+
+### Research correction
+
+Microsoft 的归档 Phone 文档明确说明默认主题为白字黑底，用户选择浅色主题后反转为黑字白底；`PhoneForegroundBrush`／`PhoneBackgroundBrush` 是应用应使用的系统资源。Microsoft 的 `SecondaryTileVisualElements.ForegroundText` 文档另行规定：Windows Phone 8.1 忽略该选择，手机 secondary tile 的前景始终为 light。
+
+因此必须区分两层规则：
+
+- 页面 canvas、主文字和 chrome：Dark = `#000000` / `#FFFFFF`，Light = `#FFFFFF` / `#000000`；
+- Start accent 磁贴：背景继承所选 accent，glyph 与文字始终为 `#FFFFFF`。
+
+此前使用亮度/WCAG 算法在青色磁贴上自动选择黑字，是错误地把现代通用对比策略套进 WP Phone 视觉语义；不是 WP8 复刻规则。
+
+### Red
+
+先把主题策略测试改成精确颜色合同，再运行：
+
+```text
+./gradlew :core:design:testDebugUnitTest --tests '*WpThemePolicyTest'
+```
+
+结果为 5 条测试、2 条失败：
+
+```text
+darkIsPureBlackWithWhiteTextAndLightIsPureWhiteWithBlackText FAILED
+phoneTilesKeepPureWhiteForegroundAcrossThemesAndAccents FAILED
+```
+
+失败准确暴露两处实现偏差：canvas 使用近黑/近白值，accent 磁贴按亮度选择了黑色前景。
+
+### Green
+
+- `WpThemePolicy` 改为精确 `Color.Black` / `Color.White` 主题对；
+- `onAccent` 固定为 `Color.White`，覆盖 Dark/Light 与全部七种 accent；
+- 删除亮度对比选择器，避免后续回归；
+- `YokuliColors.White` 与启动 glyph 统一为纯白；
+- 需求、研究、范式和 Changelog 同步记录中英文结论。
+
+同一条定向命令随后为 5/5 PASS。完整构建、真实 Activity 回归和深浅色截图验收记录在本切片后续验证结果中。
+
+第一次浅色截图又暴露 Android 宿主窗口在显示挖孔安全区仍保留固定黑带。先增加真实 Activity 合同，要求 Dark/Light 同步 status/navigation bar 颜色、浅色系统图标模式和 short-edge cutout 布局。测试依次产生两个有效 Red：先得到 `expected white but was black`，同步宿主颜色后又得到 `expected SHORT_EDGES but was DEFAULT`。Green 用同一主题背景同步宿主 chrome，并让页面背景覆盖显示挖孔短边；最终浅色截图从屏幕顶边到底部均为白底黑字，accent 磁贴和色板勾选仍为白色前景。
+
+### 最终本地 Green
+
+```text
+python3 -m unittest discover .github/scripts 'test_*.py'        PASS (11/11)
+./gradlew testDebugUnitTest lintDebug assembleStandaloneDebug assembleHomeDebug
+          :app-shell:compileStandaloneDebugAndroidTestKotlin    PASS
+./gradlew :app-shell:connectedStandaloneDebugAndroidTest        PASS (8/8, API 34)
+```
+
+API 34 Pixel 7 模拟器完成 Dark Start、Light Display 与 Light Start 目视验收：Dark 是整屏纯黑与白色主前景；Light 是整屏纯白与黑色主前景；两种模式的 cyan 磁贴均保持白色 glyph、数值与入口名。颜色精确值由 JVM 合同断言，截图用于验证组合、覆盖范围和视觉方向。按用户要求，本切片不监控上一轮远端流水线。
+
+### English translation
+
+The user review exposed a real fidelity error. Microsoft documents the Phone page theme as white-on-black by default and black-on-white in Light, while the Windows Phone 8.1 secondary-tile API says tile foreground is always light. The Red contract failed 2 of 5 tests against the former near-black/near-white canvas and luminance-selected black tile text. Green now uses exact black/white page pairs and an exact white foreground for every accent tile in both modes; the generic contrast chooser was removed. A subsequent real-device Red found that the Android host window still left a fixed black display-cutout strip in Light. Host bar colors, dark-icon appearance, and short-edge cutout coverage now follow the same Shell mode.

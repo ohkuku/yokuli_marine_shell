@@ -11,7 +11,7 @@
 
 ### 0. 主题与 Start 不变量
 
-主题是 Shell 状态。唯一输入 `WpThemeSpec` 解析背景、前景、弱化文字、chrome、accent、accent 对比色和安全语义色。功能页面不得私自定义 Shell 黑/白/青色。所有 Start 磁贴使用同一 accent 平面；SAFE、WARNING、ALARM、STALE、OFF 只能用文字和小型状态标记，不能给整块磁贴重新染色。海水、陆地、航线、声呐和照片是领域内容，可以保留独立调色板。
+主题是 Shell 状态。唯一输入 `WpThemeSpec` 解析背景、前景、弱化文字、chrome、accent、磁贴前景和安全语义色。深色主题必须是纯黑 `#000000` 背景配纯白 `#FFFFFF` 主前景；浅色主题必须精确反转为纯白背景配纯黑主前景；Android 宿主系统栏和异形屏安全区域也必须同步该背景与图标明暗，不能留下固定黑边。功能页面不得私自定义 Shell 黑/白/青色。所有 Start 磁贴使用同一 accent 平面，并固定使用 WP Phone 的 light（纯白）磁贴前景，不跟随页面主题反转，也不按 Material/WCAG 算法自动改成黑字；SAFE、WARNING、ALARM、STALE、OFF 只能用文字和小型状态标记，不能给整块磁贴重新染色。海水、陆地、航线、声呐和照片是领域内容，可以保留独立调色板。
 
 Start 使用四等分网格和唯一的 `6dp` seam；左右 gutter、横纵间隙和复合尺寸计算都复用它。磁贴无圆角、描边、阴影和 elevation。内容固定为左上 glyph、中部一个主要事实和次要详情、左下稳定入口名。small 收起实时详情但不缩小触控面。快捷磁贴是核心 App 的 deep link，不是假 App。
 
@@ -51,10 +51,11 @@ This is the reusable design and review baseline for every new Yokuli OS feature.
 
 ## 0. Theme and Start invariants
 
-Theme is Shell state, not a collection of feature colors. `WpThemeSpec` is the single input and `LocalWpTheme` resolves background, foreground, muted text, chrome, accent, contrast-on-accent, and the semantic safety palette. A feature must not hard-code black, white, or cyan for Shell chrome.
+Theme is Shell state, not a collection of feature colors. `WpThemeSpec` is the single input and `LocalWpTheme` resolves background, foreground, muted text, chrome, accent, tile foreground, and the semantic safety palette. Dark is exactly black with a pure-white primary foreground; Light is exactly white with a pure-black primary foreground. A feature must not hard-code black, white, or cyan for Shell chrome.
 
-- Background is `dark` or `light`; accent is one of the Shell palette choices.
-- Every default and user-pinned Start tile uses exactly the selected accent plane and its resolved contrast foreground.
+- Dark is `#000000` canvas / `#FFFFFF` primary text; Light is `#FFFFFF` canvas / `#000000` primary text. Accent is independent of this pair.
+- Host system-bar colors, icon appearance, and display-cutout coverage follow the same canvas mode so a fixed black strip cannot survive in Light.
+- Every default and user-pinned Start tile uses exactly the selected accent plane and the Phone tile's fixed light (`#FFFFFF`) foreground, independent of page theme. Do not substitute Material-style luminance selection.
 - SAFE, WARNING, ALARM, STALE, and OFF never recolor the whole Start tile. Use explicit text and, when useful, one small semantic indicator.
 - Chart water, land, routes, sonar imagery, photographs, and other domain visualizations keep feature-owned palettes; these are content, not Shell chrome.
 - Theme changes recompose Start, All Apps, page headers, controls, and Application Bar immediately. Durable cold-start persistence belongs to the Shell-state storage slice and must be added behind the same `WpThemeSpec` boundary.

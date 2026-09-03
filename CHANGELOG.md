@@ -6,6 +6,7 @@
 
 - UI 与功能改为明确的 `UiState`／`UiAction` 边界；后续 runtime 采用 Kotlin Flow 响应式单向数据流，不使用全局 EventBus。
 - 应用以简体中文为默认资源，提供完整英文翻译；System → Display 可以切换并持久化应用级语言。
+- 修正 WP Phone 主题真值：深色严格黑底白字、浅色严格白底黑字，宿主系统栏与异形屏区域同步主题，accent 磁贴固定纯白前景，不再按亮度自动改成黑字。
 - Launcher 标题、glyph 和拼音分组从领域 descriptor 移入 `feature:desktop` 视觉目录。
 - 放弃把所有功能平铺为默认磁贴的 Launcher 原型，改为 WP8 Shell 与成熟海图功能架构结合。
 - 应用仍然启动到 WP8 Start Screen，默认只显示 Chart、Anchor、Cockpit、Library、System 五个磁贴。
@@ -70,6 +71,7 @@
 
 - Established immutable `UiState`/sealed `UiAction` boundaries for every current feature; future runtime integration uses Kotlin Flow UDF without a global event bus.
 - Made Simplified Chinese the unqualified default resource and added key-complete English resources plus an AndroidX-backed per-app language selector in System → Display.
+- Corrected the WP Phone color contract to exact black/white theme pairs, theme-synchronized host/cutout chrome, and a fixed pure-white foreground on accent tiles instead of luminance-selected black text.
 - Moved launcher title/glyph/index metadata out of the domain descriptor and into the desktop UI catalog.
 - Added architecture contracts, automated bilingual-resource and UI-boundary checks, and a real-Activity Chinese/English switching story.
 - GPS, NMEA, Anchor, Trip, Survey, chart SDKs, and foreground runtimes remain deliberately unimplemented in this UI slice.

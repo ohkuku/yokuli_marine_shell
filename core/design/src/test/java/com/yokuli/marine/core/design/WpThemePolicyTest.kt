@@ -1,10 +1,8 @@
 package com.yokuli.marine.core.design
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WpThemePolicyTest {
@@ -17,20 +15,26 @@ class WpThemePolicyTest {
     }
 
     @Test
-    fun lightAndDarkModesInvertCanvasButKeepTheSelectedAccent() {
+    fun darkIsPureBlackWithWhiteTextAndLightIsPureWhiteWithBlackText() {
         val dark = WpThemePolicy.resolve(WpThemeSpec(WpThemeMode.DARK, WpAccent.MAGENTA))
         val light = WpThemePolicy.resolve(WpThemeSpec(WpThemeMode.LIGHT, WpAccent.MAGENTA))
 
-        assertNotEquals(dark.background, light.background)
-        assertNotEquals(dark.foreground, light.foreground)
+        assertEquals(Color.Black, dark.background)
+        assertEquals(Color.White, dark.foreground)
+        assertEquals(Color.Black, dark.chrome)
+        assertEquals(Color.White, light.background)
+        assertEquals(Color.Black, light.foreground)
+        assertEquals(Color.White, light.chrome)
         assertEquals(dark.accent, light.accent)
     }
 
     @Test
-    fun everyAccentChoosesReadableTileForeground() {
-        WpAccent.entries.forEach { accent ->
-            val colors = WpThemePolicy.resolve(WpThemeSpec(accent = accent))
-            assertTrue("insufficient ${accent.displayName} contrast", contrast(colors.accent, colors.onAccent) >= 4.5f)
+    fun phoneTilesKeepPureWhiteForegroundAcrossThemesAndAccents() {
+        WpThemeMode.entries.forEach { mode ->
+            WpAccent.entries.forEach { accent ->
+                val colors = WpThemePolicy.resolve(WpThemeSpec(mode, accent))
+                assertEquals("wrong tile foreground for $mode/${accent.displayName}", Color.White, colors.onAccent)
+            }
         }
     }
 
@@ -46,11 +50,5 @@ class WpThemePolicyTest {
     @Test
     fun startCanvasUsesOneRepeatedSeamToken() {
         assertEquals(YokuliMetrics.TileGap, YokuliMetrics.OuterMargin)
-    }
-
-    private fun contrast(first: Color, second: Color): Float {
-        val light = maxOf(first.luminance(), second.luminance())
-        val dark = minOf(first.luminance(), second.luminance())
-        return (light + .05f) / (dark + .05f)
     }
 }

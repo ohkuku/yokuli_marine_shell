@@ -4,8 +4,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 object YokuliColors {
-    val Black = Color(0xFF000000)
-    val White = Color(0xFFF7F7F7)
+    val Black = Color.Black
+    val White = Color.White
     val Muted = Color(0xFFA8ADB2)
     val Cyan = Color(0xFF007F9B)
     val Ocean = Color(0xFF07577C)

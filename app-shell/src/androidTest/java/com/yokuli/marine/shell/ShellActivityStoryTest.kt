@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell
 
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
@@ -18,12 +19,14 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.core.design.WpThemeModeNameKey
 import com.yokuli.marine.core.design.WpTileAccentNameKey
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.runner.RunWith
 
@@ -72,6 +75,33 @@ class ShellActivityStoryTest {
         listOf("chart", "anchor", "cockpit", "library", "system").forEach { id ->
             compose.onNodeWithTag("tile-$id").performScrollTo().assert(
                 SemanticsMatcher.expectValue(WpTileAccentNameKey, "magenta"),
+            )
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun lightThemeUpdatesHostWindowChromeOutsideTheComposeCanvas() {
+        compose.activityRule.scenario.onActivity { activity ->
+            assertEquals(android.graphics.Color.BLACK, activity.window.statusBarColor)
+            assertEquals(android.graphics.Color.BLACK, activity.window.navigationBarColor)
+            assertEquals(
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES,
+                activity.window.attributes.layoutInDisplayCutoutMode,
+            )
+        }
+
+        compose.onNodeWithTag("tile-system").performScrollTo().performClick()
+        compose.onNodeWithTag("system-section-display").performClick()
+        compose.onNodeWithTag("theme-mode-light").performClick()
+        compose.waitForIdle()
+
+        compose.activityRule.scenario.onActivity { activity ->
+            assertEquals(android.graphics.Color.WHITE, activity.window.statusBarColor)
+            assertEquals(android.graphics.Color.WHITE, activity.window.navigationBarColor)
+            assertTrue(
+                WindowInsetsControllerCompat(activity.window, activity.window.decorView)
+                    .isAppearanceLightStatusBars,
             )
         }
     }
