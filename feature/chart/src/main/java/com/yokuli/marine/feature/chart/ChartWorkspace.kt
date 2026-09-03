@@ -17,6 +17,7 @@ import com.yokuli.marine.core.model.ChartMode
 
 @Composable
 fun ChartWorkspace(initialMode: ChartMode, onHome: () -> Unit) {
+    val colors = LocalWpTheme.current
     var mode by remember(initialMode) { mutableStateOf(initialMode) }
     Box(Modifier.fillMaxSize().background(YokuliColors.ChartWater).testTag("chart-workspace-${mode.name.lowercase()}")) {
         MarineChartSurface(Modifier.fillMaxSize())
@@ -25,7 +26,7 @@ fun ChartWorkspace(initialMode: ChartMode, onHome: () -> Unit) {
                 appName = "chart",
                 contextLine = mode.name,
                 trailing = "36°50.9′S  174°45.8′E",
-                modifier = Modifier.background(YokuliColors.Black.copy(alpha = .92f)),
+                modifier = Modifier.background(colors.background.copy(alpha = .92f)),
             )
             Spacer(Modifier.weight(1f))
             ModeReadout(mode, Modifier.wpEntrance(motionKey = mode, order = 1))
@@ -71,15 +72,16 @@ private fun MarineChartSurface(modifier: Modifier = Modifier) {
 
 @Composable
 private fun ModeReadout(mode: ChartMode, modifier: Modifier = Modifier) {
+    val colors = LocalWpTheme.current
     val (headline, detail) = when (mode) {
         ChartMode.BROWSE -> "FOLLOWING" to "COG 184°  ·  SOG 6.2 kn"
         ChartMode.NAVIGATE -> "MOTUIHE" to "DTW 3.4 NM  ·  BRG 071°T"
         ChartMode.ANCHOR -> "NOT ARMED" to "Set the anchor when position is ready"
         ChartMode.SURVEY -> "SURVEY READY" to "DEPTH —  ·  POSITION PHONE"
     }
-    Column(modifier.fillMaxWidth().background(YokuliColors.Black.copy(alpha = .88f)).padding(14.dp)) {
+    Column(modifier.fillMaxWidth().background(colors.background.copy(alpha = .88f)).padding(14.dp)) {
         WpText(headline, 22, weight = androidx.compose.ui.text.font.FontWeight.Light)
-        WpText(detail, 13, color = YokuliColors.Muted, modifier = Modifier.padding(top = 3.dp))
+        WpText(detail, 13, color = colors.muted, modifier = Modifier.padding(top = 3.dp))
     }
 }
 

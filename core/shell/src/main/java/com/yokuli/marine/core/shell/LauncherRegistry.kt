@@ -16,7 +16,7 @@ object LauncherRegistry {
         shortcut("data_sources", "Data Sources", "◎", MarineAppId.SYSTEM, LaunchTarget.System(SystemSection.DATA_SOURCES), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
         shortcut("nmea_input", "NMEA Input", "⇥", MarineAppId.SYSTEM, LaunchTarget.System(SystemSection.CONNECTIONS), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
         shortcut("diagnostics", "Diagnostics", "!", MarineAppId.SYSTEM, LaunchTarget.System(SystemSection.STORAGE_DIAGNOSTICS), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-        shortcut("settings", "Settings", "⋯", MarineAppId.SYSTEM, LaunchTarget.System(), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
+        shortcut("settings", "Settings", "⋯", MarineAppId.SYSTEM, LaunchTarget.System(SystemSection.DISPLAY), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
     )
 
     val defaultLayout = DesktopLayout(

@@ -52,4 +52,37 @@ class WpMotionPolicyTest {
         assertEquals(WpMotionFamily.NONE, plan.family)
         assertEquals(0, plan.durationMillis)
     }
+
+    @Test
+    fun centeredPressDepressesWithoutTilting() {
+        val plan = WpPressPolicy.resolve(.5f, .5f, pressProgress = 1f)
+
+        assertEquals(0f, plan.rotationXDegrees, 0f)
+        assertEquals(0f, plan.rotationYDegrees, 0f)
+        assertEquals(.975f, plan.scale, 0f)
+    }
+
+    @Test
+    fun cornerPressTiltsTowardTheFingerWithinFiveDegrees() {
+        val plan = WpPressPolicy.resolve(0f, 0f, pressProgress = 1f)
+
+        assertEquals(5f, plan.rotationXDegrees, 0f)
+        assertEquals(-5f, plan.rotationYDegrees, 0f)
+    }
+
+    @Test
+    fun pressCoordinatesAndProgressAreClamped() {
+        val plan = WpPressPolicy.resolve(-4f, 7f, pressProgress = 3f)
+
+        assertTrue(plan.rotationXDegrees in -5f..5f)
+        assertTrue(plan.rotationYDegrees in -5f..5f)
+        assertTrue(plan.scale >= .975f)
+    }
+
+    @Test
+    fun releasedPlaneReturnsExactlyToRest() {
+        val plan = WpPressPolicy.resolve(0f, 1f, pressProgress = 0f)
+
+        assertEquals(WpPressPlan(0f, 0f, 1f), plan)
+    }
 }

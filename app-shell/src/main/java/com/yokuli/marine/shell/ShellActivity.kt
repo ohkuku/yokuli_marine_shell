@@ -8,14 +8,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.yokuli.marine.core.design.YokuliColors
+import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.WpAccent
 import com.yokuli.marine.core.design.WpNavigationIntent
 import com.yokuli.marine.core.design.WpSurfaceTransitionHost
+import com.yokuli.marine.core.design.WpThemeMode
+import com.yokuli.marine.core.design.WpThemeSpec
+import com.yokuli.marine.core.design.YokuliTheme
 import com.yokuli.marine.core.model.*
 import com.yokuli.marine.core.shell.ShellNavigator
 import com.yokuli.marine.core.shell.DesktopLayoutEditor
@@ -46,6 +51,12 @@ private fun YokuliShell() {
     var navigation by remember { mutableStateOf(ShellNavigationState()) }
     var desktopLayout by remember { mutableStateOf(LauncherRegistry.defaultLayout) }
     var transitionIntent by remember { mutableStateOf(WpNavigationIntent.SIBLING_FORWARD) }
+    var themeModeName by rememberSaveable { mutableStateOf(WpThemeMode.DARK.name) }
+    var accentName by rememberSaveable { mutableStateOf(WpAccent.CYAN.name) }
+    val themeSpec = WpThemeSpec(
+        mode = WpThemeMode.valueOf(themeModeName),
+        accent = WpAccent.valueOf(accentName),
+    )
     val dispatch: (ShellCommand) -> Unit = { command ->
         transitionIntent = when (command) {
             ShellCommand.ShowAllApps -> WpNavigationIntent.SIBLING_FORWARD
@@ -65,45 +76,55 @@ private fun YokuliShell() {
     }
     BackHandler(navigation.surface != ShellSurface.Start) { dispatch(ShellCommand.Back) }
 
-    Column(Modifier.fillMaxSize().background(YokuliColors.Black)) {
-        WpStatusStrip { dispatch(ShellCommand.Open(LaunchTarget.System())) }
-        WpSurfaceTransitionHost(
-            targetState = navigation.surface,
-            intent = transitionIntent,
-            modifier = Modifier.weight(1f),
-        ) { surface ->
-            when (surface) {
-                ShellSurface.Start -> SwipeSurface(onSwipeLeft = { dispatch(ShellCommand.ShowAllApps) }) {
-                    YokuliStartScreen(
-                        onOpen = { dispatch(ShellCommand.Open(it)) },
-                        onAllApps = { dispatch(ShellCommand.ShowAllApps) },
-                        layout = desktopLayout,
-                        onLayoutChange = { desktopLayout = it },
-                    )
-                }
-                ShellSurface.AllApps -> SwipeSurface(onSwipeRight = { dispatch(ShellCommand.Back) }) {
-                    WpAppList(
-                        onOpen = { dispatch(ShellCommand.Open(it)) },
-                        pinnedEntries = desktopLayout.placements.map { it.entryId }.toSet(),
-                        onPinToggle = { entryId ->
-                            val pinned = desktopLayout.placements.firstOrNull { it.entryId == entryId }
-                            desktopLayout = if (pinned == null) {
-                                DesktopLayoutEditor.pin(desktopLayout, entryId)
-                            } else {
-                                DesktopLayoutEditor.unpin(desktopLayout, pinned.tileId)
-                            }
-                        },
-                    )
-                }
-                is ShellSurface.App -> {
-                    val task = navigation.tasks.first { it.id == surface.taskId }
-                    val home = { dispatch(ShellCommand.Home) }
-                    when (val target = task.target) {
-                        is LaunchTarget.Chart -> ChartWorkspace(target.mode, home)
-                        is LaunchTarget.Cockpit -> CockpitWorkspace(target.page, home)
-                        is LaunchTarget.Library -> LibraryWorkspace(target.section, home)
-                        is LaunchTarget.System -> SystemWorkspace(target.section, home)
-                        LaunchTarget.AllApps, LaunchTarget.Desktop -> Unit
+    YokuliTheme(themeSpec) {
+        Column(Modifier.fillMaxSize().background(LocalWpTheme.current.background)) {
+            WpStatusStrip { dispatch(ShellCommand.Open(LaunchTarget.System())) }
+            WpSurfaceTransitionHost(
+                targetState = navigation.surface,
+                intent = transitionIntent,
+                modifier = Modifier.weight(1f),
+            ) { surface ->
+                when (surface) {
+                    ShellSurface.Start -> SwipeSurface(onSwipeLeft = { dispatch(ShellCommand.ShowAllApps) }) {
+                        YokuliStartScreen(
+                            onOpen = { dispatch(ShellCommand.Open(it)) },
+                            onAllApps = { dispatch(ShellCommand.ShowAllApps) },
+                            layout = desktopLayout,
+                            onLayoutChange = { desktopLayout = it },
+                        )
+                    }
+                    ShellSurface.AllApps -> SwipeSurface(onSwipeRight = { dispatch(ShellCommand.Back) }) {
+                        WpAppList(
+                            onOpen = { dispatch(ShellCommand.Open(it)) },
+                            pinnedEntries = desktopLayout.placements.map { it.entryId }.toSet(),
+                            onPinToggle = { entryId ->
+                                val pinned = desktopLayout.placements.firstOrNull { it.entryId == entryId }
+                                desktopLayout = if (pinned == null) {
+                                    DesktopLayoutEditor.pin(desktopLayout, entryId)
+                                } else {
+                                    DesktopLayoutEditor.unpin(desktopLayout, pinned.tileId)
+                                }
+                            },
+                        )
+                    }
+                    is ShellSurface.App -> {
+                        val task = navigation.tasks.first { it.id == surface.taskId }
+                        val home = { dispatch(ShellCommand.Home) }
+                        when (val target = task.target) {
+                            is LaunchTarget.Chart -> ChartWorkspace(target.mode, home)
+                            is LaunchTarget.Cockpit -> CockpitWorkspace(target.page, home)
+                            is LaunchTarget.Library -> LibraryWorkspace(target.section, home)
+                            is LaunchTarget.System -> SystemWorkspace(
+                                initialSection = target.section,
+                                theme = themeSpec,
+                                onThemeChange = {
+                                    themeModeName = it.mode.name
+                                    accentName = it.accent.name
+                                },
+                                onHome = home,
+                            )
+                            LaunchTarget.AllApps, LaunchTarget.Desktop -> Unit
+                        }
                     }
                 }
             }

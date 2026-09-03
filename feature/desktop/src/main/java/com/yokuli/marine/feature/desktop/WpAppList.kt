@@ -26,6 +26,7 @@ fun WpAppList(
     pinnedEntries: Set<LauncherEntryId> = emptySet(),
     onPinToggle: (LauncherEntryId) -> Unit = {},
 ) {
+    val colors = LocalWpTheme.current
     val entries = remember { LauncherRegistry.entries.sortedBy { it.title } }
     val groups = remember(entries) { entries.groupBy { it.title.first().uppercaseChar() } }
     val letters = groups.keys.sorted()
@@ -39,7 +40,7 @@ fun WpAppList(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(YokuliColors.Black).testTag("all-apps-list")) {
+    Box(Modifier.fillMaxSize().background(colors.background).testTag("all-apps-list")) {
         LazyColumn(
             Modifier.fillMaxSize(),
             state = listState,
@@ -48,16 +49,24 @@ fun WpAppList(
             item { WpText("apps", 44, weight = FontWeight.Light, modifier = Modifier.padding(top = 10.dp, bottom = 18.dp)) }
             groups.forEach { (letter, items) ->
                 item {
+                    val interactions = remember(letter) { MutableInteractionSource() }
                     Box(
-                        Modifier.padding(vertical = 7.dp).size(42.dp).background(YokuliColors.Cyan).wpClick { jumpVisible = true },
+                        Modifier.padding(vertical = 6.dp).size(YokuliMetrics.MinTouch)
+                            .wpTilt(interactions, maximumDegrees = 4f)
+                            .background(colors.accent)
+                            .combinedClickable(
+                                interactionSource = interactions,
+                                indication = null,
+                                onClick = { jumpVisible = true },
+                            ),
                         contentAlignment = Alignment.Center,
-                    ) { WpText(letter.lowercase(), 24, weight = FontWeight.Light) }
+                    ) { WpText(letter.lowercase(), 24, color = colors.onAccent, weight = FontWeight.Light) }
                 }
                 items(items.size) { itemIndex ->
                     val entry = items[itemIndex]
                     val interactions = remember(entry.id) { MutableInteractionSource() }
                     Row(
-                        Modifier.fillMaxWidth().height(58.dp).wpTilt(interactions).combinedClickable(
+                        Modifier.fillMaxWidth().height(64.dp).wpTilt(interactions).combinedClickable(
                             interactionSource = interactions,
                             indication = null,
                             onClick = { onOpen(entry.launchTarget) },
@@ -65,14 +74,14 @@ fun WpAppList(
                         ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(Modifier.size(42.dp).background(if (entry.kind == LauncherEntryKind.CORE_APP) YokuliColors.Cyan else YokuliColors.DeepOcean), contentAlignment = Alignment.Center) {
-                            WpText(entry.symbol, 23)
+                        Box(Modifier.size(48.dp).background(colors.accent), contentAlignment = Alignment.Center) {
+                            WpText(entry.symbol, 23, color = colors.onAccent)
                         }
                         Column(Modifier.padding(start = 14.dp)) {
                             WpText(entry.title, 20, weight = FontWeight.Light)
                             val kind = if (entry.kind == LauncherEntryKind.CORE_APP) "core app" else "shortcut"
                             val pinned = if (entry.id in pinnedEntries) " · pinned" else " · hold to pin"
-                            WpText(kind + pinned, 10, color = YokuliColors.Muted)
+                            WpText(kind + pinned, 10, color = colors.muted)
                         }
                     }
                 }
@@ -93,18 +102,33 @@ fun WpAppList(
 
 @Composable
 fun WpAlphabetJumpOverlay(available: Set<Char>, onDismiss: () -> Unit, onLetter: (Char) -> Unit) {
+    val colors = LocalWpTheme.current
     val letters = ('A'..'Z').toList() + '#'
-    Box(Modifier.fillMaxSize().background(YokuliColors.Black.copy(alpha = .96f)).wpClick(onDismiss), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(colors.background.copy(alpha = .97f)).wpClick(onDismiss), contentAlignment = Alignment.Center) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             letters.chunked(5).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEach { letter ->
                         val active = letter in available
+                        val interactions = remember(letter) { MutableInteractionSource() }
                         Box(
-                            Modifier.size(46.dp).background(if (active) YokuliColors.Cyan else YokuliColors.Stale.copy(alpha = .35f))
-                                .wpClick { if (active) onLetter(letter) },
+                            Modifier.size(YokuliMetrics.MinTouch)
+                                .wpTilt(interactions, enabled = active, maximumDegrees = 4f)
+                                .background(if (active) colors.accent else colors.muted.copy(alpha = .24f))
+                                .combinedClickable(
+                                    enabled = active,
+                                    interactionSource = interactions,
+                                    indication = null,
+                                    onClick = { onLetter(letter) },
+                                ),
                             contentAlignment = Alignment.Center,
-                        ) { WpText(letter.lowercase(), 22, color = if (active) YokuliColors.White else YokuliColors.Muted.copy(alpha = .45f)) }
+                        ) {
+                            WpText(
+                                letter.lowercase(),
+                                22,
+                                color = if (active) colors.onAccent else colors.muted.copy(alpha = .55f),
+                            )
+                        }
                     }
                 }
             }

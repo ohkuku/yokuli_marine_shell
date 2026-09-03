@@ -13,8 +13,9 @@ import com.yokuli.marine.core.design.*
 
 @Composable
 fun WpStatusStrip(onOpenSystem: () -> Unit) {
+    val colors = LocalWpTheme.current
     Row(
-        Modifier.fillMaxWidth().height(YokuliMetrics.StatusHeight).background(YokuliColors.Black)
+        Modifier.fillMaxWidth().height(YokuliMetrics.StatusHeight).background(colors.background)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onOpenSystem)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -22,10 +23,10 @@ fun WpStatusStrip(onOpenSystem: () -> Unit) {
     ) {
         WpText("23:21", 12)
         Spacer(Modifier.weight(1f))
-        WpText("GPS", 10, color = YokuliColors.White)
-        Box(Modifier.size(5.dp).background(YokuliColors.Safe, androidx.compose.foundation.shape.CircleShape))
-        WpText("NMEA", 10, color = YokuliColors.Muted)
-        Box(Modifier.size(5.dp).background(YokuliColors.Stale, androidx.compose.foundation.shape.CircleShape))
+        WpText("GPS", 10, color = colors.foreground)
+        Box(Modifier.size(5.dp).background(colors.safe, androidx.compose.foundation.shape.CircleShape))
+        WpText("NMEA", 10, color = colors.muted)
+        Box(Modifier.size(5.dp).background(colors.stale, androidx.compose.foundation.shape.CircleShape))
         WpText("72%", 11)
     }
 }

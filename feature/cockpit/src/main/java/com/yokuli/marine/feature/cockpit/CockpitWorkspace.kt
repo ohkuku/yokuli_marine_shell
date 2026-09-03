@@ -12,7 +12,8 @@ import com.yokuli.marine.core.model.CockpitPage
 
 @Composable
 fun CockpitWorkspace(page: CockpitPage, onHome: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(YokuliColors.Black)) {
+    val colors = LocalWpTheme.current
+    Column(Modifier.fillMaxSize().background(colors.background)) {
         WpPageHeader(appName = "cockpit", contextLine = page.name)
         Column(Modifier.weight(1f).padding(horizontal = YokuliMetrics.PageMargin).wpEntrance(page, order = 1)) {
             Row(Modifier.fillMaxWidth()) {
@@ -31,11 +32,12 @@ fun CockpitWorkspace(page: CockpitPage, onHome: () -> Unit) {
 
 @Composable
 private fun Instrument(label: String, value: String, unit: String, modifier: Modifier = Modifier) {
+    val colors = LocalWpTheme.current
     Column(modifier) {
-        WpText(label, 13, color = YokuliColors.Cyan)
+        WpText(label, 13, color = colors.accent)
         Row(verticalAlignment = Alignment.Bottom) {
             WpText(value, 54, weight = FontWeight.Light)
-            WpText(unit, 15, color = YokuliColors.Muted, modifier = Modifier.padding(start = 5.dp, bottom = 8.dp))
+            WpText(unit, 15, color = colors.muted, modifier = Modifier.padding(start = 5.dp, bottom = 8.dp))
         }
     }
 }

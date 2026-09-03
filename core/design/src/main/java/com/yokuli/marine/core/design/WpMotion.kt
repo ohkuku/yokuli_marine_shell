@@ -180,12 +180,16 @@ fun Modifier.wpTilt(
         }
         .graphicsLayer {
             if (measuredSize.width > 0 && measuredSize.height > 0) {
-                val horizontal = (pointerPosition.x / measuredSize.width).coerceIn(0f, 1f) - .5f
-                val vertical = (pointerPosition.y / measuredSize.height).coerceIn(0f, 1f) - .5f
-                rotationY = horizontal * maximumDegrees * 2f * pressProgress
-                rotationX = -vertical * maximumDegrees * 2f * pressProgress
-                scaleX = 1f - .025f * pressProgress
-                scaleY = 1f - .025f * pressProgress
+                val plan = WpPressPolicy.resolve(
+                    normalizedX = pointerPosition.x / measuredSize.width,
+                    normalizedY = pointerPosition.y / measuredSize.height,
+                    pressProgress = pressProgress,
+                    maximumDegrees = maximumDegrees,
+                )
+                rotationX = plan.rotationXDegrees
+                rotationY = plan.rotationYDegrees
+                scaleX = plan.scale
+                scaleY = plan.scale
                 cameraDistance = 12f * density
             }
         }

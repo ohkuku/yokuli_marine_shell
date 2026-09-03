@@ -16,6 +16,8 @@ The canonical implementation pattern is documented in [`docs/WP8_UI_PATTERN.md`]
 - Microsoft’s navigation guidance names Turnstile for movement between spaces, Continuum for carrying context, and Swivel for transient surfaces: [Windows Phone Navigation, Part 2](https://learn.microsoft.com/en-us/archive/msdn-magazine/2011/april/msdn-magazine-mobile-matters-windows-phone-navigation-part-2-advanced-recipes).
 - Current Microsoft motion guidance requires transitions to communicate hierarchy and remain fast and informative: [Page transitions](https://learn.microsoft.com/en-us/windows/apps/design/motion/page-transitions) and [XAML animation](https://learn.microsoft.com/en-us/windows/apps/develop/motion/xaml-animation).
 - Android recommends `AnimatedContent` for swapped content, `Transition` for coordinated values, `Animatable` for sequenced motion, and draw-layer `graphicsLayer` transforms for efficient animation: [Choose an animation API](https://developer.android.com/develop/ui/compose/animation/choose-api) and [Animation quick guide](https://developer.android.com/develop/ui/compose/animation/quick-guide).
+- Microsoft documents that a Windows Phone 8.x secondary tile with a transparent background inherits the system accent selected by the user, and that an unset secondary-tile color inherits its parent tile: [SecondaryTileVisualElements.BackgroundColor](https://learn.microsoft.com/en-us/uwp/api/windows.ui.startscreen.secondarytilevisualelements.backgroundcolor).
+- Microsoft documents WP8 tile assets at 159×159, 336×336, and 691×336 pixels. The 18/19-pixel differences between adjacent source sizes establish a narrow, repeated seam rather than card spacing: [Upgrading Windows Phone 7.1 Apps to Windows Phone 8](https://learn.microsoft.com/en-us/archive/msdn-magazine/2013/september/windows-phone-upgrading-windows-phone-7-1-apps-to-windows-phone-8).
 
 ## Required behavior
 
@@ -105,6 +107,46 @@ Given a valid semantic release tag or manual release input
 When all quality, emulator, signing, and metadata checks pass
 Then signed standalone and HOME APK/AAB artifacts are created, signatures and checksums are verified, and a GitHub Release is published
 And no release is published from a dirty tree, a mutable existing tag, or a disallowed channel branch.
+
+### UI-011 — shell theme resources
+
+Given the Shell has a selected background mode and accent
+When Start, All Apps, application chrome, or settings is composed
+Then those surfaces resolve color through one immutable `WpThemeSpec`
+And every Start tile uses the same selected accent and matching contrast foreground
+And changing the setting updates the whole visible Shell without recreating feature-owned palettes.
+
+Given a tile represents SAFE, WARNING, ALARM, STALE, or OFF
+When the tile is shown on Start
+Then the semantic state may use a small explicit indicator and text
+But it does not replace the selected accent across the tile surface
+And state remains understandable without color.
+
+### UI-012 — tile geometry and content zones
+
+Given a four-unit Start grid
+When adjacent tiles are laid out
+Then a single narrow 6 dp seam token is used horizontally, vertically, and at the Start canvas edge
+And tile planes have zero elevation, zero border, and square corners
+And wide/medium/hero dimensions are calculated only from the same cell and seam tokens.
+
+Given a tile has enough room for live content
+When its front is rendered
+Then identity stays at the lower-left edge, its glyph stays upper-left, and one primary fact occupies the optical middle
+And supporting detail is subordinate rather than competing with identity
+And small tiles collapse detail before reducing touchability or legibility.
+
+### UI-013 — authentic touch response
+
+Given a tile receives touch input
+When the pointer presses a position on its plane
+Then the entire colored plane, content, and clipping layer depress together toward that position
+And the response begins within 80 ms, scales no lower than 0.97, tilts no more than 5 degrees, and restores within 120 ms on release or cancellation
+And no Material ripple, shadow, bounce, or desktop-hover-only affordance is introduced.
+
+Given edit controls, alphabet jump cells, or launcher list identities are interactive
+When they are rendered
+Then their semantic touch target is at least 48 dp even when the visible glyph is smaller.
 
 ## Non-goals for this slice
 

@@ -30,6 +30,7 @@ class LauncherArchitectureTest {
         assertEquals(LaunchTarget.Chart(ChartMode.SURVEY), entry("survey").launchTarget)
         assertEquals(LaunchTarget.Library(LibrarySection.TRIPS), entry("trips").launchTarget)
         assertEquals(LaunchTarget.System(SystemSection.DATA_SOURCES), entry("data_sources").launchTarget)
+        assertEquals(LaunchTarget.System(SystemSection.DISPLAY), entry("settings").launchTarget)
     }
 
     @Test fun defaultLayoutRejectsOverlap() {

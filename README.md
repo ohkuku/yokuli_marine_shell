@@ -8,7 +8,7 @@ Yokuli OS combines a faithful Windows Phone 8-style shell with the functional ar
 
 The previous launcher-first prototype is preserved on `codex/launcher-foundation` for comparison, but is not the product baseline.
 
-Current first pass includes the WP8 Start/All Apps shell, editable four-column Live Tiles, typed deep links, four workspace hosts, phone and square-screen checks, and standalone/HOME debug APKs. The shared design engine now provides depth-aware Turnstile/Slide/Swivel plans, staggered page entrances, pointer-position tilt, large upper-left app titles, and the classic bottom Application Bar. Marine data is fake by design in this slice.
+Current first pass includes the WP8 Start/All Apps shell, editable four-column Live Tiles, typed deep links, four workspace hosts, phone and square-screen checks, and standalone/HOME debug APKs. The shared design engine now provides one Shell-wide dark/light and accent theme, one-color Start tiles on a repeated 6dp seam, depth-aware Turnstile/Slide/Swivel plans, whole-plane pointer-position tilt, large upper-left app titles, and the classic bottom Application Bar. Marine data is fake by design in this slice.
 
 ```text
 ./gradlew test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug
@@ -26,6 +26,7 @@ Documents:
 - [TDD execution log](docs/TDD_LOG.md)
 - [WP8 UI requirement contract](docs/requirements/WP8_UI_SYSTEM_REQUIREMENTS.md)
 - [Canonical WP8 UI pattern](docs/WP8_UI_PATTERN.md)
+- [WP8 theme and tile detail audit](docs/research/WP8_THEME_TILE_AUDIT.md)
 - [Compose motion engine decision](docs/decisions/0001-compose-wp8-motion-engine.md)
 - [GitHub delivery and release operations](docs/GITHUB_DELIVERY.md)
 - [Changelog](CHANGELOG.md)

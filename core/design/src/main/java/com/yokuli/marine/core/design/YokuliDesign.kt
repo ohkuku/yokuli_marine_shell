@@ -22,8 +22,10 @@ object YokuliColors {
 }
 
 object YokuliMetrics {
-    val OuterMargin = 8.dp
+    val OuterMargin = 6.dp
     val TileGap = 6.dp
+    val TileContentInset = 10.dp
+    val TileSmallContentInset = 8.dp
     val StatusHeight = 27.dp
     val AppBarHeight = 70.dp
     val MinTouch = 48.dp

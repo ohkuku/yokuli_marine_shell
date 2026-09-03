@@ -38,15 +38,16 @@ fun WpText(
     text: String,
     size: Int,
     modifier: Modifier = Modifier,
-    color: Color = YokuliColors.White,
+    color: Color? = null,
     weight: FontWeight = FontWeight.Normal,
     maxLines: Int = Int.MAX_VALUE,
 ) {
+    val resolvedColor = color ?: LocalWpTheme.current.foreground
     BasicText(
         text = text,
         modifier = modifier,
         style = TextStyle(
-            color = color,
+            color = resolvedColor,
             fontSize = size.sp,
             fontWeight = weight,
             fontFamily = FontFamily.SansSerif,
@@ -65,6 +66,7 @@ fun WpPageHeader(
     trailing: String? = null,
     modifier: Modifier = Modifier,
 ) {
+    val colors = LocalWpTheme.current
     Row(
         modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 10.dp, bottom = 12.dp),
         verticalAlignment = Alignment.Bottom,
@@ -81,14 +83,14 @@ fun WpPageHeader(
                 WpText(
                     text = contextLine.uppercase(),
                     size = 11,
-                    color = YokuliColors.Cyan,
+                    color = colors.accent,
                     maxLines = 1,
                     modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }
         if (trailing != null) {
-            WpText(trailing, 11, color = YokuliColors.Muted, maxLines = 1)
+            WpText(trailing, 11, color = colors.muted, maxLines = 1)
         }
     }
 }
@@ -108,9 +110,10 @@ fun WpApplicationBar(
     modifier: Modifier = Modifier,
     onOverflow: (() -> Unit)? = null,
 ) {
+    val colors = LocalWpTheme.current
     Row(
         modifier.fillMaxWidth().height(YokuliMetrics.AppBarHeight)
-            .background(YokuliColors.Black).padding(horizontal = 10.dp),
+            .background(colors.chrome).padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -126,7 +129,7 @@ fun WpApplicationBar(
                 WpText(
                     text = action.label.lowercase(),
                     size = 9,
-                    color = if (action.selected) YokuliColors.White else YokuliColors.Muted,
+                    color = if (action.selected) colors.foreground else colors.muted,
                     maxLines = 1,
                 )
             }
@@ -146,6 +149,7 @@ fun WpCircleButton(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
 ) {
+    val colors = LocalWpTheme.current
     val interactions = remember { MutableInteractionSource() }
     Box(
         modifier
@@ -164,11 +168,11 @@ fun WpCircleButton(
     ) {
         Box(
             Modifier.size(36.dp)
-                .background(if (selected) YokuliColors.Cyan else Color.Transparent, CircleShape)
-                .border(2.dp, YokuliColors.White, CircleShape),
+                .background(if (selected) colors.accent else Color.Transparent, CircleShape)
+                .border(2.dp, colors.foreground, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            WpText(symbol, 20, color = YokuliColors.White, maxLines = 1)
+            WpText(symbol, 20, color = if (selected) colors.onAccent else colors.foreground, maxLines = 1)
         }
     }
 }

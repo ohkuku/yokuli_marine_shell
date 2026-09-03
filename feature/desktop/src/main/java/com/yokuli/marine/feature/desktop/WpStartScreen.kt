@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -33,7 +35,13 @@ import com.yokuli.marine.core.shell.DesktopLayoutEditor
 import com.yokuli.marine.core.shell.LauncherRegistry
 import kotlin.math.roundToInt
 
-private data class TilePresentation(val color: Color, val headline: String, val detail: String)
+private enum class TileStatusTone { SAFE, WARNING, ALARM, STALE }
+
+private data class TilePresentation(
+    val headline: String,
+    val detail: String,
+    val statusTone: TileStatusTone? = null,
+)
 
 @Composable
 fun YokuliStartScreen(
@@ -42,13 +50,19 @@ fun YokuliStartScreen(
     layout: DesktopLayout = LauncherRegistry.defaultLayout,
     onLayoutChange: (DesktopLayout) -> Unit = {},
 ) {
+    val colors = LocalWpTheme.current
     val entries = remember { LauncherRegistry.entries.associateBy { it.id.value } }
     var editing by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<String?>(null) }
     val scroll = rememberScrollState()
     val density = LocalDensity.current
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(YokuliColors.Black).testTag("start-screen")) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize()
+            .background(colors.background)
+            .testTag("start-screen")
+            .semantics { wpThemeModeName = colors.spec.mode.name.lowercase() },
+    ) {
         val width = maxWidth.coerceAtMost(560.dp)
         val gridWidth = width - YokuliMetrics.OuterMargin * 2
         val cell = (gridWidth - YokuliMetrics.TileGap * (layout.columns - 1)) / layout.columns
@@ -117,19 +131,19 @@ fun YokuliStartScreen(
 }
 
 private fun presentationFor(entryId: String): TilePresentation = when (entryId) {
-    "chart" -> TilePresentation(YokuliColors.Ocean, "FOLLOWING", "COG 184° · 6.2 kn")
-    "anchor" -> TilePresentation(YokuliColors.Safe, "SAFE", "32 / 60 m")
-    "cockpit" -> TilePresentation(YokuliColors.Cyan, "6.2", "kn · HDG 184°T")
-    "library" -> TilePresentation(YokuliColors.DeepOcean, "27 TRIPS", "12 PLACES")
-    "system" -> TilePresentation(YokuliColors.Stale, "NMEA OFF", "0 CRITICAL")
-    "navigation" -> TilePresentation(YokuliColors.Ocean, "MOTUIHE", "DTW 3.4 NM")
-    "survey" -> TilePresentation(YokuliColors.Cyan, "READY", "DEPTH —")
-    "trips" -> TilePresentation(YokuliColors.DeepOcean, "27 TRIPS", "LAST · TODAY")
-    "anchorages" -> TilePresentation(YokuliColors.DeepOcean, "12 PLACES", "3 FAVORITES")
-    "data_sources" -> TilePresentation(YokuliColors.Cyan, "PHONE GPS", "FRESH")
-    "nmea_input" -> TilePresentation(YokuliColors.Stale, "NMEA OFF", "NO DATA")
-    "diagnostics" -> TilePresentation(YokuliColors.Stale, "0 CRITICAL", "READY")
-    else -> TilePresentation(YokuliColors.Cyan, "DARK", "DISPLAY")
+    "chart" -> TilePresentation("FOLLOWING", "COG 184° · 6.2 kn")
+    "anchor" -> TilePresentation("SAFE", "32 / 60 m", TileStatusTone.SAFE)
+    "cockpit" -> TilePresentation("6.2", "kn · HDG 184°T")
+    "library" -> TilePresentation("27 TRIPS", "12 PLACES")
+    "system" -> TilePresentation("NMEA OFF", "0 CRITICAL", TileStatusTone.STALE)
+    "navigation" -> TilePresentation("MOTUIHE", "DTW 3.4 NM")
+    "survey" -> TilePresentation("READY", "DEPTH —", TileStatusTone.STALE)
+    "trips" -> TilePresentation("27 TRIPS", "LAST · TODAY")
+    "anchorages" -> TilePresentation("12 PLACES", "3 FAVORITES")
+    "data_sources" -> TilePresentation("PHONE GPS", "FRESH", TileStatusTone.SAFE)
+    "nmea_input" -> TilePresentation("NMEA OFF", "NO DATA", TileStatusTone.STALE)
+    "diagnostics" -> TilePresentation("0 CRITICAL", "READY", TileStatusTone.SAFE)
+    else -> TilePresentation("DARK", "DISPLAY")
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -149,6 +163,7 @@ private fun WpTile(
     chartPreview: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val colors = LocalWpTheme.current
     val interactions = remember { MutableInteractionSource() }
     val scale by animateFloatAsState(if (selected) 1.025f else 1f, tween(95), label = "wp-tile-selected")
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
@@ -161,61 +176,102 @@ private fun WpTile(
             )
         }
     } else Modifier
+    val isSmall = width < 100.dp && height < 100.dp
+    val tileInset = if (isSmall) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset
+    val statusColor = when (presentation.statusTone) {
+        TileStatusTone.SAFE -> colors.safe
+        TileStatusTone.WARNING -> colors.warning
+        TileStatusTone.ALARM -> colors.alarm
+        TileStatusTone.STALE -> colors.stale
+        null -> null
+    }
     Box(
         modifier.offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
             .width(width).height(height).scale(scale).alpha(if (editing && !selected) .55f else 1f)
             .testTag("tile-${entry.id.value}")
-            .background(presentation.color)
+            .semantics {
+                wpTileAccentName = colors.spec.accent.displayName
+                stateDescription = buildString {
+                    append(presentation.headline)
+                    if (presentation.detail.isNotBlank()) append(" · ${presentation.detail}")
+                }
+            }
             .wpTilt(interactions, enabled = !(editing && selected))
+            .background(colors.accent)
             .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick, onLongClick = onLongClick)
             .then(dragModifier)
-            .padding(10.dp),
+            .padding(tileInset),
     ) {
-        if (chartPreview) ChartTilePreview()
-        WpText(entry.symbol, if (height < 100.dp) 20 else 28, modifier = Modifier.align(Alignment.TopStart))
-        Column(Modifier.align(Alignment.CenterStart).padding(top = if (chartPreview) 16.dp else 0.dp)) {
-            WpText(presentation.headline, if (height < 100.dp) 18 else 31, weight = FontWeight.Light)
-            WpText(presentation.detail, if (height < 100.dp) 10 else 13, color = YokuliColors.White.copy(alpha = .86f))
+        if (chartPreview) ChartTilePreview(colors.onAccent)
+        WpText(
+            entry.symbol,
+            if (height < 100.dp) 20 else 28,
+            color = colors.onAccent,
+            modifier = Modifier.align(Alignment.TopStart),
+        )
+        if (!isSmall) {
+            Column(Modifier.align(Alignment.CenterStart).padding(top = if (chartPreview) 16.dp else 0.dp)) {
+                WpText(
+                    presentation.headline,
+                    if (height < 100.dp) 18 else 31,
+                    color = colors.onAccent,
+                    weight = FontWeight.Light,
+                )
+                WpText(presentation.detail, if (height < 100.dp) 10 else 13, color = colors.onAccent.copy(alpha = .82f))
+            }
         }
-        WpText(entry.title.uppercase(), if (height < 100.dp) 11 else 13, modifier = Modifier.align(Alignment.BottomStart))
+        WpText(
+            entry.title,
+            if (height < 100.dp) 11 else 13,
+            color = colors.onAccent,
+            modifier = Modifier.align(Alignment.BottomStart),
+        )
+        if (statusColor != null) {
+            Box(Modifier.align(Alignment.TopEnd).size(7.dp).background(statusColor))
+        }
         if (editing && selected) WpTileEditOverlay(onUnpin, onResize)
     }
 }
 
 @Composable
-private fun ChartTilePreview() {
+private fun ChartTilePreview(color: Color) {
     Canvas(Modifier.fillMaxSize().alpha(.32f)) {
         repeat(3) { index ->
             val y = size.height * (.25f + index * .22f)
-            drawLine(Color.White, Offset(size.width * .36f, y), Offset(size.width, y - 20f), 2f)
+            drawLine(color, Offset(size.width * .36f, y), Offset(size.width, y - 20f), 2f)
         }
         val track = Path().apply {
             moveTo(size.width * .52f, size.height * .76f)
             cubicTo(size.width * .62f, size.height * .65f, size.width * .64f, size.height * .44f, size.width * .84f, size.height * .28f)
         }
-        drawPath(track, Color.White, style = Stroke(5f))
-        drawCircle(Color.White, 8f, Offset(size.width * .84f, size.height * .28f), style = Stroke(3f))
+        drawPath(track, color, style = Stroke(5f))
+        drawCircle(color, 8f, Offset(size.width * .84f, size.height * .28f), style = Stroke(3f))
     }
 }
 
 @Composable
 fun WpTileEditOverlay(onUnpin: () -> Unit, onResize: () -> Unit) {
+    val colors = LocalWpTheme.current
     Box(Modifier.fillMaxSize()) {
         Box(
-            Modifier.align(Alignment.TopEnd).size(30.dp)
-                .background(YokuliColors.Black, androidx.compose.foundation.shape.CircleShape)
+            Modifier.align(Alignment.TopEnd).size(YokuliMetrics.MinTouch)
                 .testTag("unpin-selected-tile").combinedNoRipple(onUnpin),
             contentAlignment = Alignment.Center,
         ) {
-            WpText("−", 20)
+            Box(
+                Modifier.size(28.dp).background(colors.background, androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { WpText("−", 20, color = colors.foreground) }
         }
         Box(
-            Modifier.align(Alignment.BottomEnd).size(30.dp)
-                .background(YokuliColors.Black, androidx.compose.foundation.shape.CircleShape)
+            Modifier.align(Alignment.BottomEnd).size(YokuliMetrics.MinTouch)
                 .testTag("resize-selected-tile").combinedNoRipple(onResize),
             contentAlignment = Alignment.Center,
         ) {
-            WpText("↔", 15)
+            Box(
+                Modifier.size(28.dp).background(colors.background, androidx.compose.foundation.shape.CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { WpText("↔", 15, color = colors.foreground) }
         }
     }
 }

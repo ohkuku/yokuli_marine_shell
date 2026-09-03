@@ -299,3 +299,72 @@ Publish fully verified debug APKs                       PASS
 ```
 
 The run retained build/API 34/API 36 reports, the pre-device-test candidate, and the final `VERIFIED-yokuli-os-debug-0a023aaf...` artifact. No `UNVERIFIED-*` or `FAILURE-*` artifact was emitted by the green run.
+
+## Slice 8 — WP8 Shell theme and tile-detail fidelity
+
+Requirement source: `UI-011` through `UI-013` and [`research/WP8_THEME_TILE_AUDIT.md`](research/WP8_THEME_TILE_AUDIT.md).
+
+### Red — pure theme contract
+
+Command:
+
+```text
+./gradlew :core:design:testDebugUnitTest --tests '*WpThemePolicyTest'
+```
+
+Five tests compiled and ran against an inert theme seam. Four failed at assertions:
+
+```text
+everyAccentResolvesToTheUserSelectedShellColor FAILED
+lightAndDarkModesInvertCanvasButKeepTheSelectedAccent FAILED
+everyAccentChoosesReadableTileForeground FAILED
+startCanvasUsesOneRepeatedSeamToken FAILED
+safetyPaletteDoesNotReplaceTheSelectedAccent PASSED
+```
+
+This captures the actual pre-change defects: hard-coded cyan ignored the selected accent, no light canvas existed, contrast was not chosen per accent, and the Start outer gutter differed from its tile seam.
+
+### Green target
+
+- One Shell-owned `WpThemeSpec` drives background, foreground, chrome, accent, and contrast text.
+- Every Start tile plane inherits the same accent; safety/freshness color is a subordinate indicator only.
+- System → Display changes background and accent across the current Shell.
+- The 6 dp Start seam is reused at the canvas edge and in every compound tile calculation.
+- Perspective press feedback transforms background and content as one plane.
+- Edit, app-list, and alphabet-jump actions expose at least 48 dp touch targets.
+- A real-Activity story changes the theme and verifies all five default tiles expose the same selected accent.
+
+### Red — press geometry and Settings deep link
+
+Commands:
+
+```text
+./gradlew :core:design:testDebugUnitTest --tests '*WpMotionPolicyTest'
+./gradlew :core:shell:testDebugUnitTest --tests '*LauncherArchitectureTest'
+./gradlew :app-shell:connectedStandaloneDebugAndroidTest
+```
+
+Observed assertion-level failures:
+
+```text
+centeredPressDepressesWithoutTilting FAILED
+cornerPressTiltsTowardTheFingerWithinFiveDegrees FAILED
+shortcutsOpenTheirOwningWorkspace FAILED (Settings opened System overview)
+systemDisplayThemePropagatesOneAccentToEveryDefaultTile FAILED (Display had no theme controls)
+```
+
+The Android story compiled and reached System before failing on the absent `theme-accent-magenta` semantic node; this was a product behavior failure, not an emulator or dependency failure.
+
+### Green result
+
+```text
+./gradlew :core:design:testDebugUnitTest --tests '*WpMotionPolicyTest'
+./gradlew :core:shell:testDebugUnitTest --tests '*LauncherArchitectureTest'
+./gradlew :app-shell:connectedStandaloneDebugAndroidTest
+```
+
+- Theme policy and motion policy tests pass, including seven accent selections, light/dark inversion, contrast selection, one repeated seam token, center/corner press geometry, clamping, and exact release-to-rest.
+- Settings now deep-links to System → Display; System rows are real 64dp touch targets rather than inert decoration.
+- The real API 34 `ShellActivity` suite is 6/6 PASS. Its new story selects magenta and light, returns Home, and verifies that all five default tiles expose the same accent plus the Start canvas exposes the selected mode.
+- Visual inspection completed for the dark/cyan Start and System → Display palette. Static screenshots cannot prove animation frames; the geometry/timing policy and interaction end states are the automated evidence.
+- Cold-launch persistence, physical Samsung square hardware, and vessel behavior remain outside this slice: `UNVERIFIED_HARDWARE`, `UNVERIFIED_VESSEL`.

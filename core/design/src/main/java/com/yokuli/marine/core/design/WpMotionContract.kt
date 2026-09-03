@@ -20,6 +20,31 @@ data class WpMotionPlan(
     val transformOriginX: Float = .5f,
 )
 
+data class WpPressPlan(
+    val rotationXDegrees: Float,
+    val rotationYDegrees: Float,
+    val scale: Float,
+)
+
+object WpPressPolicy {
+    fun resolve(
+        normalizedX: Float,
+        normalizedY: Float,
+        pressProgress: Float,
+        maximumDegrees: Float = 5f,
+    ): WpPressPlan {
+        val progress = pressProgress.coerceIn(0f, 1f)
+        if (progress == 0f) return WpPressPlan(0f, 0f, 1f)
+        val horizontal = normalizedX.coerceIn(0f, 1f) - .5f
+        val vertical = normalizedY.coerceIn(0f, 1f) - .5f
+        return WpPressPlan(
+            rotationXDegrees = -vertical * maximumDegrees * 2f * progress,
+            rotationYDegrees = horizontal * maximumDegrees * 2f * progress,
+            scale = 1f - .025f * progress,
+        )
+    }
+}
+
 object WpMotionPolicy {
     fun resolve(intent: WpNavigationIntent, reducedMotion: Boolean = false): WpMotionPlan {
         if (intent == WpNavigationIntent.SAFETY_CRITICAL) {
