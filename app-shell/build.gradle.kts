@@ -37,6 +37,10 @@ android {
         }
     }
     buildFeatures { compose = true }
+    androidResources {
+        generateLocaleConfig = true
+        localeFilters += listOf("zh-rCN", "en")
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
@@ -52,6 +56,7 @@ dependencies {
     implementation(project(":feature:system"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)

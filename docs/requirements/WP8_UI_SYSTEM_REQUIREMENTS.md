@@ -1,7 +1,31 @@
 # Yokuli OS WP8 UI System — Requirement Contract
 
-Status: `ACTIVE`
-Scope: Shell navigation, every core application page, motion, touch feedback, accessibility, and delivery evidence.
+状态：`ACTIVE`
+范围：Shell 导航、所有核心 App 页面、动效、触控反馈、无障碍与交付证据。
+
+## 中文（主文）
+
+Yokuli OS 把 WP8 作为系统设计语言，而非表面装饰。它仍是海图产品：WP8 定义层级、排版、导航、动效和反馈；Chart、Anchor、Trip、NMEA、Sonar、Anchorages 与 Navigation 保留各自安全语义。
+
+历史依据来自 Microsoft Design Language、Windows Phone 8 Start/App list/Application Bar/Turnstile/Swivel/tilt 的官方或归档材料。实现使用 Compose 重建可验证的交互语法，不分发来源不明的 Segoe 字体或受限资产。
+
+- `UI-001`：每个核心 App 使用左上稳定大标题；mode/section 位于第二行；不得把深链伪装成独立 App。
+- `UI-002`：排版和留白建立层级；禁止 Material card 墙、圆角/elevation/shadow 和无意义 chrome。
+- `UI-003`：同级 Slide、深入/返回相反 Turnstile、临时界面 Swivel；Home/Back 语义与 runtime 生命周期分离。
+- `UI-004`：标题和内容组采用短、错峰、左侧透视进场；安全状态不等待装饰动效。
+- `UI-005`：整块触控平面按触点倾斜并精确归零；禁用 ripple、hover 和只动 glyph。
+- `UI-006`：全局主要动作放固定底部 Application Bar，最多四个常驻按钮，均有本地化描述。
+- `UI-007`：reduced-motion 下保留状态/导航语义并移除非必要空间动效；告警立即可见。
+- `UI-008`：动效策略必须能用纯 JVM 测试方向、时长、角度、clamp 和 release。
+- `UI-009`：真实 Activity 故事覆盖核心导航、320×320、主题、语言和 API 兼容；静态截图不算动效证明。
+- `UI-010`：发布只能在测试、lint、设备 gate、签名和 checksum 全部通过后产生；未签名或失败制品必须明确标记。
+- `UI-011`：一个 `WpThemeSpec` 驱动全 Shell，功能模块不得创建私有 Shell 主题。
+- `UI-012`：Start 使用四列和一个 6dp seam；磁贴只有一个主要事实，安全色仅作从属标记。
+- `UI-013`：所有磁贴、列表、跳转和设置选项至少 48dp，并共享 position-aware tilt。
+
+本阶段不接入真实海图 SDK、NMEA/GPS、后台 runtime、固件或硬件验证；这些非目标不能被 UI fixture 冒充为已实现。
+
+## English translation
 
 ## Product intent
 

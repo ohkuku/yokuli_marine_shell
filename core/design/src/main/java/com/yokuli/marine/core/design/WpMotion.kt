@@ -34,8 +34,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 
 /**
- * Shell-level WP motion host. AnimatedContent owns outgoing content lifetime while a draw-layer
- * entrance adds the perspective that the stock slide/fade transitions cannot express.
+ * 中文：Shell 级 WP 动效宿主；AnimatedContent 保留离场内容，绘制层补充透视进场。
+ * English: Shell-level WP motion host with retained exit content and perspective entrance.
  */
 @Composable
 fun <T> WpSurfaceTransitionHost(
@@ -118,7 +118,7 @@ private fun WpPerspectiveEntrance(
     ) { content() }
 }
 
-/** Short, staggerable WP content entrance for a page title or content group. */
+/** 中文：可错峰的 WP 短进场动效。 English: Short, staggerable WP content entrance. */
 @Composable
 fun Modifier.wpEntrance(motionKey: Any, order: Int = 0): Modifier {
     val progress = remember(motionKey, order) { Animatable(0f) }
@@ -143,8 +143,8 @@ fun Modifier.wpEntrance(motionKey: Any, order: Int = 0): Modifier {
 }
 
 /**
- * Position-aware WP press tilt. Pair this modifier with the same interaction source passed to
- * clickable/combinedClickable so accessibility semantics remain owned by the high-level action.
+ * 中文：按触点位置倾斜；必须与点击动作共用 interactionSource，以保留无障碍语义。
+ * English: Position-aware tilt sharing the clickable interaction source for accessibility.
  */
 @Composable
 fun Modifier.wpTilt(

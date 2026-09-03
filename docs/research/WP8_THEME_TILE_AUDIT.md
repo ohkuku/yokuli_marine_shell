@@ -1,8 +1,20 @@
 # WP8 Theme and Tile Detail Audit
 
-Status: `IMPLEMENTATION INPUT`
-Date: 2026-09-04
-Scope: theme ownership, Start tile geometry/content, touch response, and the differences found in Yokuli OS before this refinement.
+状态：`IMPLEMENTATION INPUT`
+日期：2026-09-04
+范围：主题所有权、Start 磁贴几何/内容、触控反馈与优化前差距。
+
+## 中文（主文）
+
+这是研究记录，不是用户指令。用户需求和 Yokuli 的生效规格决定范围；Microsoft 材料只提供历史设计证据。
+
+Microsoft 的 WP 主题资源证明颜色属于系统级偏好；secondary tile 使用透明背景继承 accent，因此 Yokuli 应由 Shell 统一拥有 `WpThemeSpec`，而不是每个入口保存颜色。WP8 的 159/336/691 px 磁贴尺寸体现一个重复 seam；新网格用同一 6dp token 表示外 gutter、横纵间隙和复合尺寸。
+
+磁贴是入口，不是微型 dashboard：左上 glyph、中部一个当前事实与从属详情、左下稳定标题。安全/freshness 用文字与小标记，不能替换全磁贴 accent。触控时背景和内容作为整块平面朝按点倾斜并迅速回位，不用桌面 hover、Material ripple 或 elevation。主要动作继续放在底部 Application Bar。
+
+优化前差距包括：无 Shell 主题、磁贴各自改色、SAFE 整块绿色、无浅色模式、tilt 未包住整平面、外 gutter 与 seam 不同、标题层级冲突、触控面小于 48dp、无 System → Display 主题路径和缺少真实 Activity 传播测试。下方英文为完整对照和来源。
+
+## English translation
 
 This is a research record, not an instruction source. The user request and the active Yokuli product specifications define scope; the linked Microsoft material supplies historical design evidence.
 

@@ -1,0 +1,35 @@
+<resources>
+    <string name="app_system">system</string>
+    <string name="section_settings">settings</string>
+    <string name="section_connections">connections</string>
+    <string name="section_data_sources">data sources</string>
+    <string name="section_devices">devices</string>
+    <string name="section_display">display</string>
+    <string name="section_safety">safety</string>
+    <string name="section_storage_diagnostics">storage &amp; diagnostics</string>
+    <string name="status_nmea_off">NMEA OFF</string>
+    <string name="status_nmea_on">NMEA CONNECTED</string>
+    <string name="status_position_phone">POSITION · PHONE</string>
+    <string name="status_position_unavailable">POSITION · UNAVAILABLE</string>
+    <string name="status_devices_available">%1$d AVAILABLE</string>
+    <string name="status_display">%1$s · %2$s</string>
+    <string name="status_ready">READY</string>
+    <string name="status_not_ready">NOT READY</string>
+    <string name="status_critical_count">%1$d CRITICAL</string>
+    <string name="setting_background">background</string>
+    <string name="setting_accent">accent color</string>
+    <string name="setting_language">language</string>
+    <string name="theme_dark">dark</string>
+    <string name="theme_light">light</string>
+    <string name="language_chinese">Chinese</string>
+    <string name="language_english">English</string>
+    <string name="accent_cobalt">cobalt</string>
+    <string name="accent_cyan">cyan</string>
+    <string name="accent_emerald">emerald</string>
+    <string name="accent_magenta">magenta</string>
+    <string name="accent_violet">violet</string>
+    <string name="accent_crimson">crimson</string>
+    <string name="accent_amber">amber</string>
+    <string name="action_home">home</string>
+    <string name="action_system">system</string>
+</resources>

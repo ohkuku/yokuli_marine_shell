@@ -10,25 +10,45 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.*
-import com.yokuli.marine.core.model.LaunchTarget
-import com.yokuli.marine.core.model.LauncherEntryId
+import com.yokuli.marine.core.model.LauncherEntryDescriptor
 import com.yokuli.marine.core.model.LauncherEntryKind
 import com.yokuli.marine.core.shell.LauncherRegistry
+import java.text.Collator
 import kotlinx.coroutines.launch
+
+private data class LocalizedLauncherEntry(
+    val descriptor: LauncherEntryDescriptor,
+    val visual: LauncherEntryVisual,
+    val title: String,
+    val index: Char,
+)
 
 @Composable
 fun WpAppList(
-    onOpen: (LaunchTarget) -> Unit,
-    pinnedEntries: Set<LauncherEntryId> = emptySet(),
-    onPinToggle: (LauncherEntryId) -> Unit = {},
+    state: LauncherUiState = LauncherUiFixtures.state(),
+    onAction: (LauncherUiAction) -> Unit = {},
 ) {
     val colors = LocalWpTheme.current
-    val entries = remember { LauncherRegistry.entries.sortedBy { it.title } }
-    val groups = remember(entries) { entries.groupBy { it.title.first().uppercaseChar() } }
+    val locale = LocalConfiguration.current.locales[0]
+    val localizedEntries = LauncherRegistry.entries.map { descriptor ->
+        val visual = LauncherVisualCatalog.get(descriptor.id)
+        val title = stringResource(visual.titleRes)
+        LocalizedLauncherEntry(
+            descriptor = descriptor,
+            visual = visual,
+            title = title,
+            index = if (locale.language == "zh") visual.chineseIndex else title.firstOrNull()?.uppercaseChar() ?: '#',
+        )
+    }
+    val collator = remember(locale) { Collator.getInstance(locale) }
+    val entries = localizedEntries.sortedWith { left, right -> collator.compare(left.title, right.title) }
+    val groups = entries.groupBy { it.index }
     val letters = groups.keys.sorted()
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -46,7 +66,7 @@ fun WpAppList(
             state = listState,
             contentPadding = PaddingValues(start = 20.dp, end = 14.dp, bottom = 36.dp),
         ) {
-            item { WpText("apps", 44, weight = FontWeight.Light, modifier = Modifier.padding(top = 10.dp, bottom = 18.dp)) }
+            item { WpText(stringResource(R.string.page_apps), 44, weight = FontWeight.Light, modifier = Modifier.padding(top = 10.dp, bottom = 18.dp)) }
             groups.forEach { (letter, items) ->
                 item {
                     val interactions = remember(letter) { MutableInteractionSource() }
@@ -63,25 +83,34 @@ fun WpAppList(
                     ) { WpText(letter.lowercase(), 24, color = colors.onAccent, weight = FontWeight.Light) }
                 }
                 items(items.size) { itemIndex ->
-                    val entry = items[itemIndex]
+                    val item = items[itemIndex]
+                    val entry = item.descriptor
                     val interactions = remember(entry.id) { MutableInteractionSource() }
                     Row(
-                        Modifier.fillMaxWidth().height(64.dp).wpTilt(interactions).combinedClickable(
-                            interactionSource = interactions,
-                            indication = null,
-                            onClick = { onOpen(entry.launchTarget) },
-                            onLongClick = { onPinToggle(entry.id) },
-                        ),
+                        Modifier.fillMaxWidth().height(64.dp)
+                            .testTag("launcher-entry-${entry.id.value}")
+                            .wpTilt(interactions)
+                            .combinedClickable(
+                                interactionSource = interactions,
+                                indication = null,
+                                onClick = { onAction(LauncherUiAction.Open(entry.launchTarget)) },
+                                onLongClick = { onAction(LauncherUiAction.TogglePin(entry.id)) },
+                            ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.size(48.dp).background(colors.accent), contentAlignment = Alignment.Center) {
-                            WpText(entry.symbol, 23, color = colors.onAccent)
+                            WpText(item.visual.glyph, 23, color = colors.onAccent)
                         }
                         Column(Modifier.padding(start = 14.dp)) {
-                            WpText(entry.title, 20, weight = FontWeight.Light)
-                            val kind = if (entry.kind == LauncherEntryKind.CORE_APP) "core app" else "shortcut"
-                            val pinned = if (entry.id in pinnedEntries) " · pinned" else " · hold to pin"
-                            WpText(kind + pinned, 10, color = colors.muted)
+                            WpText(item.title, 20, weight = FontWeight.Light)
+                            val kind = stringResource(
+                                if (entry.kind == LauncherEntryKind.CORE_APP) R.string.launcher_kind_core else R.string.launcher_kind_shortcut,
+                            )
+                            val metadata = stringResource(
+                                if (entry.id in state.pinnedEntries) R.string.launcher_meta_pinned else R.string.launcher_meta_hold_to_pin,
+                                kind,
+                            )
+                            WpText(metadata, 10, color = colors.muted)
                         }
                     }
                 }

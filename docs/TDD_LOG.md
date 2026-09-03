@@ -1,5 +1,8 @@
 # Yokuli OS TDD Log
 
+文档规则：新切片使用中文主文＋英文翻译；早期英文证据保持原样，避免改写历史命令和失败输出。
+> English: New slices are Chinese-first with English translation. Earlier evidence stays unchanged so historical commands and failures remain exact.
+
 ## Slice 1 — Simplified launcher architecture
 
 ### Red
@@ -381,3 +384,57 @@ Publish fully verified debug APKs                       PASS
 ```
 
 The run published final artifact `VERIFIED-yokuli-os-debug-df69fcb...` (artifact ID `9897363683`) only after both emulator jobs passed. It also retained build/API 34/API 36 reports and the pre-device candidate. No `UNVERIFIED-*` or `FAILURE-*` artifact was emitted.
+
+## Slice 9 — 中文优先、多语言与响应式 UI 边界
+
+需求来源：[`requirements/UI_FUNCTION_I18N_REQUIREMENTS.md`](requirements/UI_FUNCTION_I18N_REQUIREMENTS.md) 与 [`UI_REACTIVE_ARCHITECTURE.md`](UI_REACTIVE_ARCHITECTURE.md)。本切片只建立 UI，不接入海事 runtime。
+
+### Red
+
+先添加 `.github/scripts/test_ui_architecture.py`，再运行：
+
+```text
+python3 .github/scripts/test_ui_architecture.py
+```
+
+得到 10 个合同失败：7 个 UI 模块没有中文默认/英文资源对；Launcher descriptor 仍包含 `title`/`symbol`；Launcher 缺少 `UiState`/`UiAction` 合同；5 处用户可见 `WpText` 仍硬编码。失败来自缺失产品边界，不是测试环境或编译错误。
+
+### Green
+
+- 给 app-shell、core:design 和五个 feature 建立 key 完全相同的 `values`／`values-en`。
+- `AppLanguage` 成为跨模块值；显式选择持久化并与 Android/AndroidX per-app locale 同步，中文是默认 locale。
+- 所有 workspace 改为只接收不可变 `UiState` 并发布封闭 `UiAction`；fixture 明确标注不是实时船舶数据。
+- Launcher 的展示标题、glyph、拼音索引和磁贴样例进入 UI catalog，`core:model` 只保留 typed launch metadata。
+- 导航故事使用稳定 tag；新增真实 Activity 中 English/中文往返切换故事。
+
+### 设备 Red 与安全 Red
+
+API 34 首次运行语言故事时是 6/7 PASS：English 成功，但切回中文超时。把语言标签统一成 `zh-CN` 后，framework 已报告 `[zh-CN]`，界面仍显示英文。`aapt2 dump resources` 证明 APK 只有默认资源和 `(en)`，Gradle 的 `localeFilters = ["zh", "en"]` 错误裁掉了 `(zh-rCN)`。改为精确的 `zh-rCN`，并把该过滤器加入架构合同后，APK 同时含 `()`、`(en)`、`(zh-rCN)`。
+
+视觉验收又复现了覆盖安装边界：framework app-locale 为空，而旧的一次性初始化标记仍存在，系统英文因此接管界面。新的 Red 合同要求持久化 `selected_language_tag`；实现改为保存显式选择、同步非空 platform locale，并在 platform 为空时恢复保存值（首次缺省为中文）。覆盖安装实测从 `[]` 恢复为 `[zh-CN]`。第一次抽取统一入口后，完整设备门禁又发现 API 34 仪器进程经 AppCompatDelegate 没有触发重建；最终边界明确为 Android 13+ 直接调用 `LocaleManager`、Android 12 及以下调用 AndroidX，定向故事和完整 7 条故事随后都通过。
+
+海图样例还会把缺失 COG/SOG/航路数值替换成 `0`，严重诊断只能使用 stale 色。安全 UI 合同先失败，再改为明确“数据不可用 / DATA UNAVAILABLE”，并增加独立 alarm tone；没有把业务 runtime 偷渡进本切片。
+
+### 本地 Green 证据
+
+```text
+python3 .github/scripts/test_ui_architecture.py                 PASS (8/8)
+python3 -m unittest discover .github/scripts 'test_*.py'        PASS (11/11)
+./gradlew testDebugUnitTest lintDebug assembleStandaloneDebug assembleHomeDebug
+                                                               PASS
+./gradlew :app-shell:compileStandaloneDebugAndroidTestKotlin test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug
+                                                               PASS
+./gradlew :app-shell:connectedStandaloneDebugAndroidTest        PASS (7/7, API 34)
+```
+
+中文首页、中文 System 列表、中文 Display/语言设置和 English 首页已在 1080×2400 API 34 模拟器视觉检查，无文字裁切或布局溢出。静态图不能证明动效帧；动效由现有策略单测和 Activity 终态故事覆盖。API 34/36 hosted stories 要等本提交 push 后由 GitHub Actions 给出最终反馈。真实 Samsung 方屏与实船仍为 `UNVERIFIED_HARDWARE`、`UNVERIFIED_VESSEL`。
+
+### Refactor
+
+参考旧 Boat Watch 的显式语言枚举、选择持久化和只读 Flow 发布方式；没有迁移页面内 `localized()`／`tr()` 双语硬编码。架构确定为函数式核心＋端口化副作用＋Kotlin Flow 发布/订阅；不采用纯面向过程的全局组织，也不增加 RxJava 或无所有者 EventBus。
+
+### English translation
+
+The Red architecture test found ten initial contract gaps: seven missing Chinese/English resource pairs, visual title/glyph leakage into the launcher domain descriptor, a missing launcher state/action contract, and five hardcoded visible text sites. Device Red then exposed a stripped `zh-rCN` resource configuration, and visual update testing exposed drift between an empty framework locale and a stale one-time marker. Green introduced key-complete resources, an exact locale filter, a persisted explicit choice synchronized with platform locales, stateless feature workspaces, UI-owned launcher visuals, stable locale-independent tests, and a real-Activity bilingual story. A separate safety Red prevents missing marine values from rendering as zero and gives critical states an alarm tone.
+
+The legacy app's explicit language choice, persistence, and read-only Flow publication were retained conceptually; manual bilingual literals were not. The long-term architecture is a functional core with port-isolated side effects and Kotlin Flow UDF, not an app-wide procedural call graph, RxJava dependency, or global event bus. Local API 34 stories pass 7/7 and both Chinese and English layouts were visually inspected; hosted API 34/36 evidence remains pending until push, while hardware and vessel checks remain unverified.

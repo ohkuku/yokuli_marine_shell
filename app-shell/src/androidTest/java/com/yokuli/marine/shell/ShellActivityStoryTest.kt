@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
@@ -37,7 +38,7 @@ class ShellActivityStoryTest {
 
         compose.onNodeWithTag("chart-workspace-anchor").assertIsDisplayed()
         compose.onNodeWithTag("wp-page-title-chart").assertIsDisplayed()
-        compose.onNodeWithText("NOT ARMED").assertIsDisplayed()
+        compose.onNodeWithTag("chart-primary-state").assertIsDisplayed()
 
         compose.onNodeWithTag("chart-home").performClick()
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
@@ -60,7 +61,7 @@ class ShellActivityStoryTest {
     @Test
     fun systemDisplayThemePropagatesOneAccentToEveryDefaultTile() {
         compose.onNodeWithTag("tile-system").performScrollTo().performClick()
-        compose.onNodeWithText("display").performClick()
+        compose.onNodeWithTag("system-section-display").performClick()
         compose.onNodeWithTag("theme-accent-magenta").performClick()
         compose.onNodeWithTag("theme-mode-light").performClick()
         compose.onNodeWithTag("system-home").performClick()
@@ -80,8 +81,8 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("all-apps-entry").assertIsDisplayed().performClick()
 
         compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
-        compose.onNodeWithText("Chart").assertIsDisplayed()
-        compose.onNodeWithText("Anchorages").assertIsDisplayed().performTouchInput { longClick() }
+        compose.onNodeWithTag("launcher-entry-chart").assertIsDisplayed()
+        compose.onNodeWithTag("launcher-entry-anchorages").assertIsDisplayed().performTouchInput { longClick() }
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithTag("tile-anchorages").assertExists()
@@ -92,7 +93,7 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent {
                 Box(Modifier.requiredSize(320.dp)) {
-                    YokuliStartScreen(onOpen = {}, onAllApps = {})
+                    YokuliStartScreen()
                 }
             }
         }
@@ -115,5 +116,27 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.onNodeWithTag("unpin-selected-tile").performClick()
         compose.onNodeWithTag("tile-system").assertDoesNotExist()
+    }
+
+    @Test
+    fun languageSelectionRecreatesTheRealActivityInEnglishAndChinese() {
+        selectLanguage("en")
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithText("Chart").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Chart").assertIsDisplayed()
+
+        selectLanguage("zh")
+        compose.waitUntil(timeoutMillis = 5_000) {
+            compose.onAllNodesWithText("海图").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("海图").assertIsDisplayed()
+    }
+
+    private fun selectLanguage(tag: String) {
+        compose.onNodeWithTag("tile-system").performScrollTo().performClick()
+        compose.onNodeWithTag("system-section-display").performClick()
+        compose.onNodeWithTag("language-$tag").performClick()
+        compose.waitForIdle()
     }
 }

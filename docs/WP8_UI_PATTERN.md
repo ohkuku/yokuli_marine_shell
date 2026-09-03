@@ -1,8 +1,51 @@
 # Yokuli OS — Canonical WP8 UI Pattern
 
-Status: `MANDATORY FOR NEW UI`
-Owner: `core:design`
-Requirement contract: [`requirements/WP8_UI_SYSTEM_REQUIREMENTS.md`](requirements/WP8_UI_SYSTEM_REQUIREMENTS.md)
+状态：`MANDATORY FOR NEW UI`
+所有者：`core:design`
+需求合同：[`requirements/WP8_UI_SYSTEM_REQUIREMENTS.md`](requirements/WP8_UI_SYSTEM_REQUIREMENTS.md)
+响应式边界：[`UI_REACTIVE_ARCHITECTURE.md`](UI_REACTIVE_ARCHITECTURE.md)
+
+## 中文（主文）
+
+这是每个 Yokuli OS 新功能必须复用的设计与评审基线。WP8 负责层级、排版、导航、动效与触控反馈；海图产品语义仍由 Chart、Anchor、Trip、NMEA、Sonar、Anchorages 和 Navigation 的领域合同定义。它既不是普通磁贴 Demo，也不复制第三方海图产品的外观。
+
+### 0. 主题与 Start 不变量
+
+主题是 Shell 状态。唯一输入 `WpThemeSpec` 解析背景、前景、弱化文字、chrome、accent、accent 对比色和安全语义色。功能页面不得私自定义 Shell 黑/白/青色。所有 Start 磁贴使用同一 accent 平面；SAFE、WARNING、ALARM、STALE、OFF 只能用文字和小型状态标记，不能给整块磁贴重新染色。海水、陆地、航线、声呐和照片是领域内容，可以保留独立调色板。
+
+Start 使用四等分网格和唯一的 `6dp` seam；左右 gutter、横纵间隙和复合尺寸计算都复用它。磁贴无圆角、描边、阴影和 elevation。内容固定为左上 glyph、中部一个主要事实和次要详情、左下稳定入口名。small 收起实时详情但不缩小触控面。快捷磁贴是核心 App 的 deep link，不是假 App。
+
+### 1. 页面骨架与信息层级
+
+每个核心 App 依次为：Shell 状态条、左上 44sp 轻字重应用名、accent 模式/section 行、一个主要任务、稀疏的支持信息、固定底部 Application Bar。应用名跨页面稳定；模式放第二行，例如“海图／锚泊”。海事值必须同时呈现 freshness/source/conflict；无数据用 `—`、陈旧、保持或关闭，动效不能暗示数据仍然实时。
+
+### 2. 排版与构图
+
+使用平台 sans-serif，不分发授权不明的 Segoe 字体。应用标题 44sp、单行；英文资源可以使用 WP 式小写，中文保持自然字形。主要数值 48–64sp，单位相邻但弱化；列表 20–24sp；metadata 9–13sp。默认页面边距 18dp。留白承担分组，禁止用 Material card、分割线墙或装饰容器填满界面。
+
+### 3. 导航与手势
+
+Start 左滑进入 All Apps；All Apps 右滑/Back 返回 Start。点击磁贴进入目标；长按只进入编辑，不得同时打开。拖动吸附网格，resize 只遍历入口支持的尺寸，unpin 不卸载 App。Home 返回 Start 但不能停止仍由 runtime owner 持有的 Anchor/Trip/Survey。所有导航必须使用 typed `LaunchTarget`／`ShellCommand`，不能使用字符串 route。
+
+### 4. 动效与触控
+
+同级使用 Slide；深入/返回使用方向相反的 Turnstile；临时覆盖层使用 Swivel；后台刷新使用克制 Fade；安全告警零延迟出现。Shell 转场只由 `WpMotionPolicy` 和 `WpSurfaceTransitionHost` 控制，页面内容用 `wpEntrance` 错峰。动效时长通常 120–300ms，不能阻挡输入、改变语义顺序或隐藏安全状态。
+
+可点击的整块平面与内容一起按触点位置倾斜，中心近似下压、角落朝触点倾斜、释放精确归零；禁止 ripple、hover、高亮阴影、弹跳和只缩放内部图标。最小触控面 48dp。
+
+### 5. Application Bar
+
+全局主要动作放底部，使用圆形线框 glyph 和短标签；最多四个常驻动作，其余进入 overflow。选中状态可使用 accent 填充，但不能改变按钮位置。必须提供本地化 content description 和稳定测试 tag。
+
+### 6. 所有权
+
+`core:design` 独占视觉 token、动效和共用控件；`feature:*` 只拥有内容构图、`UiState`、`UiAction` 和 UI projector；`core:model`/domain/runtime 不得包含资源 ID、展示文字、图标、颜色或 Compose 类型。Composable 只接收 state 并发 action，功能接入不能修改统一页面骨架。
+
+### 7. 新功能流程与检查
+
+先写中英双语需求和 `UiState`／`UiAction`，再用 fixture 完成布局，按 Red→Green 实现真实 Activity 故事，最后才能接入 Flow publisher。评审逐项检查：大标题/section 层级、唯一主任务、freshness/source、固定 App Bar、导航深度动效、整平面 tilt、48dp、主题传播、中英文资源 key 对齐、稳定 tag、无 feature 私有设计系统、无真实功能伪装。
+
+## English translation
 
 This is the reusable design and review baseline for every new Yokuli OS feature. It uses the Windows Phone 8 language to shape a marine product; it does not turn marine features into a generic tile demo and it does not copy third-party chart products.
 
@@ -79,7 +122,7 @@ For marine data, a value is incomplete without state. Show `—`, `STALE`, `HELD
 ## 2. Typography and composition
 
 - Use one platform sans-serif family and express hierarchy with size, weight, case, and space. Do not ship Segoe assets without a verified redistribution right.
-- App title: 44sp light, lowercase, one line, semantic tag `wp-page-title-<app>`.
+- App title: 44sp light and one line; English resources may use WP-style lowercase while Chinese keeps natural casing. Semantic tag: `wp-page-title-<app>`.
 - Primary numeric value: 48–64sp light; its unit is visually secondary but remains adjacent.
 - Section/list label: 20–24sp light.
 - Metadata/status: 9–13sp regular; accent for active context, muted for supporting context.

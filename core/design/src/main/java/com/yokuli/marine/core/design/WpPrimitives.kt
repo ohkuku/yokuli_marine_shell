@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -61,6 +62,7 @@ fun WpText(
 
 @Composable
 fun WpPageHeader(
+    appKey: String,
     appName: String,
     contextLine: String? = null,
     trailing: String? = null,
@@ -71,13 +73,13 @@ fun WpPageHeader(
         modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp, top = 10.dp, bottom = 12.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
-        Column(Modifier.weight(1f).wpEntrance(motionKey = "header-$appName", order = 0)) {
+        Column(Modifier.weight(1f).wpEntrance(motionKey = "header-$appKey", order = 0)) {
             WpText(
-                text = appName.lowercase(),
+                text = appName,
                 size = 44,
                 weight = FontWeight.Light,
                 maxLines = 1,
-                modifier = Modifier.testTag("wp-page-title-${appName.lowercase()}"),
+                modifier = Modifier.testTag("wp-page-title-$appKey"),
             )
             if (contextLine != null) {
                 WpText(
@@ -136,7 +138,7 @@ fun WpApplicationBar(
         }
         if (onOverflow != null) {
             Spacer(Modifier.weight(1f))
-            WpCircleButton("…", "More actions", onClick = onOverflow)
+            WpCircleButton("…", stringResource(R.string.action_more), onClick = onOverflow)
         }
     }
 }

@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_chart">海图</string>
+    <string name="mode_browse">浏览</string>
+    <string name="mode_navigate">导航</string>
+    <string name="mode_anchor">锚泊</string>
+    <string name="mode_survey">测深</string>
+    <string name="chart_following">跟随</string>
+    <string name="chart_following_detail">COG %1$d° · SOG %2$.1f 节</string>
+    <string name="chart_data_unavailable">数据不可用</string>
+    <string name="chart_navigation_detail">到达距离 %1$.1f 海里 · 方位 %2$d°T</string>
+    <string name="chart_navigation_no_destination">未选择目的地</string>
+    <string name="chart_anchor_armed">警戒中</string>
+    <string name="chart_anchor_active_detail">正在监测锚点距离</string>
+    <string name="chart_anchor_not_armed">尚未启用</string>
+    <string name="chart_anchor_instruction">定位准备好后设置锚点</string>
+    <string name="chart_survey_ready">测深就绪</string>
+    <string name="chart_survey_detail">深度 — · 定位源 手机</string>
+    <string name="chart_survey_depth_detail">深度 %1$.1f 米 · 定位源 手机</string>
+    <string name="action_home">主页</string>
+    <string name="action_open_mode">打开%1$s模式</string>
+</resources>

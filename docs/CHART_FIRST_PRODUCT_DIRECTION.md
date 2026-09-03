@@ -231,3 +231,11 @@ desktop_stub_does_not_request_location_or_start_nmea
 - 自动航线规划。
 
 这些工作不会消失，但不应抢在核心海图交互验证之前。
+
+## English translation
+
+Yokuli OS keeps the WP8 Shell but replaces the flat “one tile per feature” prototype with a chart-first marine information architecture. Start contains only five default entry points: Chart, Anchor, Cockpit, Library, and System. Browse, Navigate, Anchor, and Survey are typed modes of one shared chart viewport, while shortcuts in All Apps deep-link into those owners.
+
+The first milestone validates Shell structure and UI behavior with explicit fixture data. It does not claim working GNSS, NMEA, anchoring, trip recording, sonar, chart SDK integration, firmware, or automatic routing. Those runtimes enter one at a time only after their state/action and safety contracts are tested. Closing or navigating away from UI must not implicitly stop an independently owned safety runtime.
+
+The Chinese sections above are the normative detailed product rationale, market-feature synthesis, module map, screen grammar, typed destinations, safety invariants, TDD story list, and deferred-scope record.

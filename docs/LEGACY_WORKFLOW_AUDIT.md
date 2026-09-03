@@ -128,3 +128,11 @@ Yokuli OS 是 clean-slate 工程，但不是 clean-slate 产品行为。本文�
 - `VERIFIED_VESSEL`：经过实船验证。
 
 禁止仅因页面已经存在就写“已迁移”。
+
+## English translation
+
+This audit preserves proven intent and safety semantics from the previous Boat Watch codebase without carrying its UI, routing, database compatibility, or giant ViewModel into Yokuli OS. Candidate workflows include Anchor lifecycle and alarms, Trip recording and recovery, source arbitration, NMEA transport/diagnostics, map and sonar ownership, saved anchorages, navigation approaches, backup/support evidence, and CI/device verification.
+
+Legacy tests are migration evidence, not files to copy blindly. Pure geometry, parsers, policies, and state machines are rewritten against new contracts; repository/service/Compose tests become module or real-Activity stories; obsolete migration/backup compatibility tests are not inherited. Status must be explicit: `CONTRACT_CAPTURED`, `TEST_RED`, `IMPLEMENTED_GREEN`, `VERIFIED_DEVICE`, or `VERIFIED_VESSEL`. A visible page alone never counts as a migrated workflow.
+
+The Chinese sections above remain the normative detailed inventory and safety record.

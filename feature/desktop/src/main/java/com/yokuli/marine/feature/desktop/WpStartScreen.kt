@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -35,20 +36,10 @@ import com.yokuli.marine.core.shell.DesktopLayoutEditor
 import com.yokuli.marine.core.shell.LauncherRegistry
 import kotlin.math.roundToInt
 
-private enum class TileStatusTone { SAFE, WARNING, ALARM, STALE }
-
-private data class TilePresentation(
-    val headline: String,
-    val detail: String,
-    val statusTone: TileStatusTone? = null,
-)
-
 @Composable
 fun YokuliStartScreen(
-    onOpen: (LaunchTarget) -> Unit,
-    onAllApps: () -> Unit,
-    layout: DesktopLayout = LauncherRegistry.defaultLayout,
-    onLayoutChange: (DesktopLayout) -> Unit = {},
+    state: LauncherUiState = LauncherUiFixtures.state(),
+    onAction: (LauncherUiAction) -> Unit = {},
 ) {
     val colors = LocalWpTheme.current
     val entries = remember { LauncherRegistry.entries.associateBy { it.id.value } }
@@ -65,6 +56,7 @@ fun YokuliStartScreen(
     ) {
         val width = maxWidth.coerceAtMost(560.dp)
         val gridWidth = width - YokuliMetrics.OuterMargin * 2
+        val layout = state.layout
         val cell = (gridWidth - YokuliMetrics.TileGap * (layout.columns - 1)) / layout.columns
         val pitch = cell + YokuliMetrics.TileGap
         val rows = layout.placements.maxOfOrNull { it.row + it.size.rows } ?: 0
@@ -80,21 +72,22 @@ fun YokuliStartScreen(
                         val entry = entries.getValue(placement.entryId.value)
                         WpTile(
                             entry = entry,
+                            visual = LauncherVisualCatalog.get(entry.id),
                             width = cell * placement.size.columns + YokuliMetrics.TileGap * (placement.size.columns - 1),
                             height = cell * placement.size.rows + YokuliMetrics.TileGap * (placement.size.rows - 1),
-                            presentation = presentationFor(entry.id.value),
+                            presentation = state.tiles.getValue(entry.id),
                             editing = editing,
                             selected = selected == placement.tileId.value,
                             onClick = {
-                                if (editing) selected = placement.tileId.value else onOpen(entry.launchTarget)
+                                if (editing) selected = placement.tileId.value else onAction(LauncherUiAction.Open(entry.launchTarget))
                             },
                             onLongClick = { editing = true; selected = placement.tileId.value },
                             onUnpin = {
-                                onLayoutChange(DesktopLayoutEditor.unpin(layout, placement.tileId))
+                                onAction(LauncherUiAction.ChangeLayout(DesktopLayoutEditor.unpin(layout, placement.tileId)))
                                 selected = null
                                 editing = false
                             },
-                            onResize = { onLayoutChange(DesktopLayoutEditor.resize(layout, placement.tileId)) },
+                            onResize = { onAction(LauncherUiAction.ChangeLayout(DesktopLayoutEditor.resize(layout, placement.tileId))) },
                             onMove = { delta ->
                                 val pitchPx = with(density) { pitch.toPx() }
                                 val targetColumn = (placement.column + delta.x / pitchPx).roundToInt().coerceIn(0, layout.columns - 1)
@@ -109,7 +102,7 @@ fun YokuliStartScreen(
                                 } else {
                                     DesktopLayoutEditor.moveBefore(layout, placement.tileId, before.tileId)
                                 }
-                                onLayoutChange(moved)
+                                onAction(LauncherUiAction.ChangeLayout(moved))
                             },
                             chartPreview = entry.id.value == "chart",
                             modifier = Modifier.offset(x = pitch * placement.column, y = pitch * placement.row),
@@ -120,7 +113,9 @@ fun YokuliStartScreen(
             Row(Modifier.fillMaxWidth().padding(top = 3.dp), horizontalArrangement = Arrangement.End) {
                 Box(
                     Modifier.size(48.dp).testTag("all-apps-entry")
-                        .combinedNoRipple(onClick = if (editing) ({ editing = false; selected = null }) else onAllApps),
+                        .combinedNoRipple(
+                            onClick = if (editing) ({ editing = false; selected = null }) else ({ onAction(LauncherUiAction.ShowAllApps) }),
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     WpText(if (editing) "✓" else "→", 28, weight = FontWeight.Light)
@@ -130,29 +125,14 @@ fun YokuliStartScreen(
     }
 }
 
-private fun presentationFor(entryId: String): TilePresentation = when (entryId) {
-    "chart" -> TilePresentation("FOLLOWING", "COG 184° · 6.2 kn")
-    "anchor" -> TilePresentation("SAFE", "32 / 60 m", TileStatusTone.SAFE)
-    "cockpit" -> TilePresentation("6.2", "kn · HDG 184°T")
-    "library" -> TilePresentation("27 TRIPS", "12 PLACES")
-    "system" -> TilePresentation("NMEA OFF", "0 CRITICAL", TileStatusTone.STALE)
-    "navigation" -> TilePresentation("MOTUIHE", "DTW 3.4 NM")
-    "survey" -> TilePresentation("READY", "DEPTH —", TileStatusTone.STALE)
-    "trips" -> TilePresentation("27 TRIPS", "LAST · TODAY")
-    "anchorages" -> TilePresentation("12 PLACES", "3 FAVORITES")
-    "data_sources" -> TilePresentation("PHONE GPS", "FRESH", TileStatusTone.SAFE)
-    "nmea_input" -> TilePresentation("NMEA OFF", "NO DATA", TileStatusTone.STALE)
-    "diagnostics" -> TilePresentation("0 CRITICAL", "READY", TileStatusTone.SAFE)
-    else -> TilePresentation("DARK", "DISPLAY")
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun WpTile(
     entry: LauncherEntryDescriptor,
+    visual: LauncherEntryVisual,
     width: Dp,
     height: Dp,
-    presentation: TilePresentation,
+    presentation: LauncherTileUiState,
     editing: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
@@ -164,6 +144,9 @@ private fun WpTile(
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalWpTheme.current
+    val headline = stringResource(presentation.headlineRes)
+    val detail = stringResource(presentation.detailRes)
+    val title = stringResource(visual.titleRes)
     val interactions = remember { MutableInteractionSource() }
     val scale by animateFloatAsState(if (selected) 1.025f else 1f, tween(95), label = "wp-tile-selected")
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
@@ -178,11 +161,11 @@ private fun WpTile(
     } else Modifier
     val isSmall = width < 100.dp && height < 100.dp
     val tileInset = if (isSmall) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset
-    val statusColor = when (presentation.statusTone) {
-        TileStatusTone.SAFE -> colors.safe
-        TileStatusTone.WARNING -> colors.warning
-        TileStatusTone.ALARM -> colors.alarm
-        TileStatusTone.STALE -> colors.stale
+    val statusColor = when (presentation.tone) {
+        LauncherTileTone.SAFE -> colors.safe
+        LauncherTileTone.WARNING -> colors.warning
+        LauncherTileTone.ALARM -> colors.alarm
+        LauncherTileTone.STALE -> colors.stale
         null -> null
     }
     Box(
@@ -192,8 +175,8 @@ private fun WpTile(
             .semantics {
                 wpTileAccentName = colors.spec.accent.displayName
                 stateDescription = buildString {
-                    append(presentation.headline)
-                    if (presentation.detail.isNotBlank()) append(" · ${presentation.detail}")
+                    append(headline)
+                    if (detail.isNotBlank()) append(" · $detail")
                 }
             }
             .wpTilt(interactions, enabled = !(editing && selected))
@@ -204,7 +187,7 @@ private fun WpTile(
     ) {
         if (chartPreview) ChartTilePreview(colors.onAccent)
         WpText(
-            entry.symbol,
+            visual.glyph,
             if (height < 100.dp) 20 else 28,
             color = colors.onAccent,
             modifier = Modifier.align(Alignment.TopStart),
@@ -212,16 +195,16 @@ private fun WpTile(
         if (!isSmall) {
             Column(Modifier.align(Alignment.CenterStart).padding(top = if (chartPreview) 16.dp else 0.dp)) {
                 WpText(
-                    presentation.headline,
+                    headline,
                     if (height < 100.dp) 18 else 31,
                     color = colors.onAccent,
                     weight = FontWeight.Light,
                 )
-                WpText(presentation.detail, if (height < 100.dp) 10 else 13, color = colors.onAccent.copy(alpha = .82f))
+                WpText(detail, if (height < 100.dp) 10 else 13, color = colors.onAccent.copy(alpha = .82f))
             }
         }
         WpText(
-            entry.title,
+            title,
             if (height < 100.dp) 11 else 13,
             color = colors.onAccent,
             modifier = Modifier.align(Alignment.BottomStart),

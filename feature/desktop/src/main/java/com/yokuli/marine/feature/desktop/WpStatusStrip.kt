@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.*
 
@@ -23,9 +24,9 @@ fun WpStatusStrip(onOpenSystem: () -> Unit) {
     ) {
         WpText("23:21", 12)
         Spacer(Modifier.weight(1f))
-        WpText("GPS", 10, color = colors.foreground)
+        WpText(stringResource(R.string.status_gps), 10, color = colors.foreground)
         Box(Modifier.size(5.dp).background(colors.safe, androidx.compose.foundation.shape.CircleShape))
-        WpText("NMEA", 10, color = colors.muted)
+        WpText(stringResource(R.string.status_nmea), 10, color = colors.muted)
         Box(Modifier.size(5.dp).background(colors.stale, androidx.compose.foundation.shape.CircleShape))
         WpText("72%", 11)
     }

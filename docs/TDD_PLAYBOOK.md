@@ -173,3 +173,20 @@ Chart-first Shell Foundation 的第一批测试顺序：
 10. `critical_alarm_outranks_every_other_overlay`
 
 这些测试先红后，才创建对应生产实现。
+
+## English translation
+
+Yokuli OS uses auditable test-driven development. Each increment first defines observable behavior and forbidden side effects, then runs a meaningful failing test, implements the smallest Green change, refactors while affected gates stay green, and records evidence. Screenshots and manual taps cannot replace automated contracts for safety behavior.
+
+The test pyramid has four levels:
+
+1. Pure JVM tests cover registries, layout, navigation, projections, freshness/source arbitration, state machines, geometry, parsing, reducers, and localized model contracts.
+2. Module integration tests use fake clocks, runtime ports, in-memory storage, and test dispatchers to verify collaboration and side effects. A Live Tile subscription, for example, must not start GNSS or NMEA.
+3. Instrumented Compose stories start the real `ShellActivity` and exercise Start/All Apps, gestures, pin/edit/resize, Back/Home, theme, language, process/rotation behavior, overlays, and supported form factors.
+4. Physical-device and vessel checks cover GNSS, fragile NMEA gateways, sound/vibration, lock screen/power saving, Wi-Fi transitions, square hardware performance, and real alarms. These remain explicitly `UNVERIFIED_HARDWARE` or `UNVERIFIED_VESSEL` until executed.
+
+Each feature is divided into short Red→Green slices. Time is injected, randomness uses fixed seeds, runtime tests do not read Compose state, UI tests do not reimplement domain algorithms, and networks/sensors/files use fakes by default. Tests cannot depend on execution order. A flaky test must be diagnosed; retry alone is not proof.
+
+Every PR runs compilation, JVM tests, lint/static analysis, instrumented integration, API compatibility smoke, and debug artifact upload. Failed jobs retain reports, logcat, screenshots, and reproduction evidence. A build that did not clear every gate is labeled `UNVERIFIED`.
+
+The PR evidence records the Given/When/Then contract, the exact Red failure and command, the Green implementation/result, boundary changes during refactoring, automated verification, hardware/vessel status, and documentation updates. The Chinese section above is the normative detailed procedure and milestone list.

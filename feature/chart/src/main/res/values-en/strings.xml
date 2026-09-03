@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_chart">chart</string>
+    <string name="mode_browse">browse</string>
+    <string name="mode_navigate">navigate</string>
+    <string name="mode_anchor">anchor</string>
+    <string name="mode_survey">survey</string>
+    <string name="chart_following">FOLLOWING</string>
+    <string name="chart_following_detail">COG %1$d° · SOG %2$.1f kn</string>
+    <string name="chart_data_unavailable">DATA UNAVAILABLE</string>
+    <string name="chart_navigation_detail">DTW %1$.1f NM · BRG %2$d°T</string>
+    <string name="chart_navigation_no_destination">NO DESTINATION</string>
+    <string name="chart_anchor_armed">ARMED</string>
+    <string name="chart_anchor_active_detail">Monitoring distance from anchor</string>
+    <string name="chart_anchor_not_armed">NOT ARMED</string>
+    <string name="chart_anchor_instruction">Set the anchor when position is ready</string>
+    <string name="chart_survey_ready">SURVEY READY</string>
+    <string name="chart_survey_detail">DEPTH — · POSITION PHONE</string>
+    <string name="chart_survey_depth_detail">DEPTH %1$.1f m · POSITION PHONE</string>
+    <string name="action_home">home</string>
+    <string name="action_open_mode">Open %1$s mode</string>
+</resources>

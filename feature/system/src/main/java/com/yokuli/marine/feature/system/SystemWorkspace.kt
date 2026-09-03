@@ -8,10 +8,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -19,6 +21,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.*
+import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.core.model.SystemSection
 
 private data class SystemDestination(
@@ -28,31 +31,43 @@ private data class SystemDestination(
     val tone: SystemTone,
 )
 
-private enum class SystemTone { ACCENT, SAFE, STALE }
+private enum class SystemTone { ACCENT, SAFE, STALE, ALARM }
 
 @Composable
-fun SystemWorkspace(
-    initialSection: SystemSection,
-    theme: WpThemeSpec,
-    onThemeChange: (WpThemeSpec) -> Unit,
-    onHome: () -> Unit,
-) {
+fun SystemWorkspace(state: SystemUiState, onAction: (SystemUiAction) -> Unit) {
     val colors = LocalWpTheme.current
-    var section by remember(initialSection) { mutableStateOf(initialSection) }
     Column(Modifier.fillMaxSize().background(colors.background)) {
-        WpPageHeader(appName = "system", contextLine = section.label())
+        WpPageHeader(
+            appKey = "system",
+            appName = stringResource(R.string.app_system),
+            contextLine = sectionLabel(state.section),
+        )
         Box(Modifier.weight(1f)) {
-            if (section == SystemSection.DISPLAY) {
-                WpDisplaySettings(theme = theme, onThemeChange = onThemeChange)
+            if (state.section == SystemSection.DISPLAY) {
+                WpDisplaySettings(state = state, onAction = onAction)
             } else {
-                SystemDestinationList(onOpen = { section = it })
+                SystemDestinationList(state = state, onOpen = { onAction(SystemUiAction.OpenSection(it)) })
             }
         }
         WpApplicationBar(
             buildList {
-                add(WpAppBarAction("⌂", "home", testTag = "system-home", onClick = onHome))
-                if (section != SystemSection.OVERVIEW) {
-                    add(WpAppBarAction("≡", "system", testTag = "system-overview", onClick = { section = SystemSection.OVERVIEW }))
+                add(
+                    WpAppBarAction(
+                        "⌂",
+                        stringResource(R.string.action_home),
+                        testTag = "system-home",
+                        onClick = { onAction(SystemUiAction.Home) },
+                    ),
+                )
+                if (state.section != SystemSection.OVERVIEW) {
+                    add(
+                        WpAppBarAction(
+                            "≡",
+                            stringResource(R.string.action_system),
+                            testTag = "system-overview",
+                            onClick = { onAction(SystemUiAction.OpenSection(SystemSection.OVERVIEW)) },
+                        ),
+                    )
                 }
             },
         )
@@ -60,15 +75,45 @@ fun SystemWorkspace(
 }
 
 @Composable
-private fun SystemDestinationList(onOpen: (SystemSection) -> Unit) {
+private fun SystemDestinationList(state: SystemUiState, onOpen: (SystemSection) -> Unit) {
     val colors = LocalWpTheme.current
     val items = listOf(
-        SystemDestination(SystemSection.CONNECTIONS, "connections", "NMEA OFF", SystemTone.STALE),
-        SystemDestination(SystemSection.DATA_SOURCES, "data sources", "POSITION · PHONE", SystemTone.ACCENT),
-        SystemDestination(SystemSection.DEVICES, "devices", "2 AVAILABLE", SystemTone.ACCENT),
-        SystemDestination(SystemSection.DISPLAY, "display", "${colors.spec.mode.name} · ${colors.spec.accent.displayName.uppercase()}", SystemTone.ACCENT),
-        SystemDestination(SystemSection.SAFETY, "safety", "READY", SystemTone.SAFE),
-        SystemDestination(SystemSection.STORAGE_DIAGNOSTICS, "storage & diagnostics", "0 CRITICAL", SystemTone.ACCENT),
+        SystemDestination(
+            SystemSection.CONNECTIONS,
+            sectionLabel(SystemSection.CONNECTIONS),
+            stringResource(if (state.nmeaConnected) R.string.status_nmea_on else R.string.status_nmea_off),
+            if (state.nmeaConnected) SystemTone.SAFE else SystemTone.STALE,
+        ),
+        SystemDestination(
+            SystemSection.DATA_SOURCES,
+            sectionLabel(SystemSection.DATA_SOURCES),
+            stringResource(if (state.positionSourcePhone) R.string.status_position_phone else R.string.status_position_unavailable),
+            if (state.positionSourcePhone) SystemTone.ACCENT else SystemTone.STALE,
+        ),
+        SystemDestination(
+            SystemSection.DEVICES,
+            sectionLabel(SystemSection.DEVICES),
+            stringResource(R.string.status_devices_available, state.availableDeviceCount),
+            SystemTone.ACCENT,
+        ),
+        SystemDestination(
+            SystemSection.DISPLAY,
+            sectionLabel(SystemSection.DISPLAY),
+            stringResource(R.string.status_display, themeModeLabel(state.theme.mode), accentLabel(state.theme.accent)),
+            SystemTone.ACCENT,
+        ),
+        SystemDestination(
+            SystemSection.SAFETY,
+            sectionLabel(SystemSection.SAFETY),
+            stringResource(if (state.safetyReady) R.string.status_ready else R.string.status_not_ready),
+            if (state.safetyReady) SystemTone.SAFE else SystemTone.ALARM,
+        ),
+        SystemDestination(
+            SystemSection.STORAGE_DIAGNOSTICS,
+            sectionLabel(SystemSection.STORAGE_DIAGNOSTICS),
+            stringResource(R.string.status_critical_count, state.criticalIssueCount),
+            if (state.criticalIssueCount == 0) SystemTone.ACCENT else SystemTone.ALARM,
+        ),
     )
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -89,9 +134,12 @@ private fun SystemDestinationRow(item: SystemDestination, order: Int, onClick: (
         SystemTone.ACCENT -> colors.accent
         SystemTone.SAFE -> colors.safe
         SystemTone.STALE -> colors.stale
+        SystemTone.ALARM -> colors.alarm
     }
     Row(
-        Modifier.fillMaxWidth().height(64.dp).wpEntrance(item.section, order)
+        Modifier.fillMaxWidth().height(64.dp)
+            .testTag("system-section-${item.section.name.lowercase()}")
+            .wpEntrance(item.section, order)
             .wpTilt(interactions)
             .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
@@ -105,22 +153,23 @@ private fun SystemDestinationRow(item: SystemDestination, order: Int, onClick: (
 }
 
 @Composable
-private fun WpDisplaySettings(theme: WpThemeSpec, onThemeChange: (WpThemeSpec) -> Unit) {
+private fun WpDisplaySettings(state: SystemUiState, onAction: (SystemUiAction) -> Unit) {
     val colors = LocalWpTheme.current
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(horizontal = YokuliMetrics.PageMargin),
     ) {
-        WpText("background", 20, weight = FontWeight.Light, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
+        WpText(stringResource(R.string.setting_background), 20, weight = FontWeight.Light, modifier = Modifier.padding(top = 4.dp, bottom = 6.dp))
         WpThemeMode.entries.forEachIndexed { index, mode ->
-            ThemeModeRow(
-                mode = mode,
-                selected = theme.mode == mode,
+            SelectionRow(
+                label = themeModeLabel(mode),
+                selected = state.theme.mode == mode,
+                testTag = "theme-mode-${mode.name.lowercase()}",
                 order = index,
-                onClick = { onThemeChange(theme.copy(mode = mode)) },
+                onClick = { onAction(SystemUiAction.ChangeTheme(state.theme.copy(mode = mode))) },
             )
         }
-        WpText("accent color", 20, weight = FontWeight.Light, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
+        WpText(stringResource(R.string.setting_accent), 20, weight = FontWeight.Light, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
         WpAccent.entries.chunked(4).forEachIndexed { rowIndex, row ->
             Row(
                 Modifier.fillMaxWidth().wpEntrance("accent-$rowIndex", rowIndex + 2),
@@ -129,8 +178,8 @@ private fun WpDisplaySettings(theme: WpThemeSpec, onThemeChange: (WpThemeSpec) -
                 row.forEach { accent ->
                     AccentChoice(
                         accent = accent,
-                        selected = accent == theme.accent,
-                        onClick = { onThemeChange(theme.copy(accent = accent)) },
+                        selected = accent == state.theme.accent,
+                        onClick = { onAction(SystemUiAction.ChangeTheme(state.theme.copy(accent = accent))) },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -138,20 +187,31 @@ private fun WpDisplaySettings(theme: WpThemeSpec, onThemeChange: (WpThemeSpec) -
             }
             Spacer(Modifier.height(YokuliMetrics.TileGap))
         }
-        WpText(theme.accent.displayName, 14, color = colors.muted, modifier = Modifier.padding(top = 4.dp))
+        WpText(accentLabel(state.theme.accent), 14, color = colors.muted, modifier = Modifier.padding(top = 4.dp))
+        WpText(stringResource(R.string.setting_language), 20, weight = FontWeight.Light, modifier = Modifier.padding(top = 24.dp, bottom = 6.dp))
+        AppLanguage.entries.forEachIndexed { index, language ->
+            SelectionRow(
+                label = stringResource(if (language == AppLanguage.CHINESE) R.string.language_chinese else R.string.language_english),
+                selected = state.language == language,
+                testTag = "language-${if (language == AppLanguage.CHINESE) "zh" else "en"}",
+                order = index + 5,
+                onClick = { onAction(SystemUiAction.ChangeLanguage(language)) },
+            )
+        }
+        Spacer(Modifier.height(20.dp))
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ThemeModeRow(mode: WpThemeMode, selected: Boolean, order: Int, onClick: () -> Unit) {
+private fun SelectionRow(label: String, selected: Boolean, testTag: String, order: Int, onClick: () -> Unit) {
     val colors = LocalWpTheme.current
     val interactions = remember { MutableInteractionSource() }
     Row(
         Modifier.fillMaxWidth().height(YokuliMetrics.MinTouch)
-            .testTag("theme-mode-${mode.name.lowercase()}")
+            .testTag(testTag)
             .semantics { this.selected = selected; role = Role.RadioButton }
-            .wpEntrance(mode, order)
+            .wpEntrance(testTag, order)
             .wpTilt(interactions)
             .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
@@ -162,7 +222,7 @@ private fun ThemeModeRow(mode: WpThemeMode, selected: Boolean, order: Int, onCli
         ) {
             if (selected) Box(Modifier.size(10.dp).background(colors.accent))
         }
-        WpText(mode.name.lowercase(), 18, modifier = Modifier.padding(start = 12.dp))
+        WpText(label, 18, modifier = Modifier.padding(start = 12.dp))
     }
 }
 
@@ -190,12 +250,33 @@ private fun AccentChoice(
     }
 }
 
-private fun SystemSection.label(): String = when (this) {
-    SystemSection.OVERVIEW -> "SETTINGS"
-    SystemSection.CONNECTIONS -> "CONNECTIONS"
-    SystemSection.DATA_SOURCES -> "DATA SOURCES"
-    SystemSection.DEVICES -> "DEVICES"
-    SystemSection.DISPLAY -> "DISPLAY"
-    SystemSection.SAFETY -> "SAFETY"
-    SystemSection.STORAGE_DIAGNOSTICS -> "STORAGE & DIAGNOSTICS"
-}
+@Composable
+private fun sectionLabel(section: SystemSection): String = stringResource(
+    when (section) {
+        SystemSection.OVERVIEW -> R.string.section_settings
+        SystemSection.CONNECTIONS -> R.string.section_connections
+        SystemSection.DATA_SOURCES -> R.string.section_data_sources
+        SystemSection.DEVICES -> R.string.section_devices
+        SystemSection.DISPLAY -> R.string.section_display
+        SystemSection.SAFETY -> R.string.section_safety
+        SystemSection.STORAGE_DIAGNOSTICS -> R.string.section_storage_diagnostics
+    },
+)
+
+@Composable
+private fun themeModeLabel(mode: WpThemeMode): String = stringResource(
+    if (mode == WpThemeMode.DARK) R.string.theme_dark else R.string.theme_light,
+)
+
+@Composable
+private fun accentLabel(accent: WpAccent): String = stringResource(
+    when (accent) {
+        WpAccent.COBALT -> R.string.accent_cobalt
+        WpAccent.CYAN -> R.string.accent_cyan
+        WpAccent.EMERALD -> R.string.accent_emerald
+        WpAccent.MAGENTA -> R.string.accent_magenta
+        WpAccent.VIOLET -> R.string.accent_violet
+        WpAccent.CRIMSON -> R.string.accent_crimson
+        WpAccent.AMBER -> R.string.accent_amber
+    },
+)

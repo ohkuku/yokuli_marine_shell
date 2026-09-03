@@ -4,6 +4,9 @@
 
 ### Changed
 
+- UI 与功能改为明确的 `UiState`／`UiAction` 边界；后续 runtime 采用 Kotlin Flow 响应式单向数据流，不使用全局 EventBus。
+- 应用以简体中文为默认资源，提供完整英文翻译；System → Display 可以切换并持久化应用级语言。
+- Launcher 标题、glyph 和拼音分组从领域 descriptor 移入 `feature:desktop` 视觉目录。
 - 放弃把所有功能平铺为默认磁贴的 Launcher 原型，改为 WP8 Shell 与成熟海图功能架构结合。
 - 应用仍然启动到 WP8 Start Screen，默认只显示 Chart、Anchor、Cockpit、Library、System 五个磁贴。
 - Anchor、Navigate 和 Survey 定义为共享海图的工作模式，而不是平级应用或独立地图。
@@ -17,6 +20,8 @@
 
 ### Added
 
+- 新增 UI／功能隔离、多语言和响应式模块需求合同，以及自动检查资源 key、模型纯净度和 feature UI 契约的 TDD gate。
+- 新增真实 `ShellActivity` 中英切换故事；导航故事改用语言无关语义 tag。
 - 新增成熟海图产品共性和 Yokuli Chart-first 信息架构文档。
 - 新建 clean-slate Android 多模块工程与 `standalone` / `home` 两种可并排安装的构建变体。
 - 新增四个核心 App host：Chart、Cockpit、Library、System。
@@ -60,3 +65,11 @@
 - Desktop edits currently live for the process lifetime; Proto DataStore persistence and Reset/Lock/Safe Mode come in the next Shell Runtime slice.
 - Theme selection currently survives Activity saved-state restoration but is not yet persisted as durable Shell storage across an explicit data clear/reinstall; global Safety Overlay, Recents UI and runtime task ownership are not implemented yet.
 - GPS, NMEA, Anchor Watch, Trip, Survey, map SDKs and foreground services are deliberately not connected in this pass.
+
+## English translation — current UI/i18n slice
+
+- Established immutable `UiState`/sealed `UiAction` boundaries for every current feature; future runtime integration uses Kotlin Flow UDF without a global event bus.
+- Made Simplified Chinese the unqualified default resource and added key-complete English resources plus an AndroidX-backed per-app language selector in System → Display.
+- Moved launcher title/glyph/index metadata out of the domain descriptor and into the desktop UI catalog.
+- Added architecture contracts, automated bilingual-resource and UI-boundary checks, and a real-Activity Chinese/English switching story.
+- GPS, NMEA, Anchor, Trip, Survey, chart SDKs, and foreground runtimes remain deliberately unimplemented in this UI slice.

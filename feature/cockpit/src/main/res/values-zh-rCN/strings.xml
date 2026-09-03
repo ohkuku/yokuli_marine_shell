@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_cockpit">仪表</string>
+    <string name="page_overview">总览</string>
+    <string name="page_sailing">航行</string>
+    <string name="page_navigation">导航</string>
+    <string name="page_motion">运动</string>
+    <string name="page_weather">天气</string>
+    <string name="instrument_sog">航速</string>
+    <string name="instrument_heading">艏向</string>
+    <string name="instrument_tws">真风速</string>
+    <string name="instrument_depth">深度</string>
+    <string name="unit_knots">节</string>
+    <string name="unit_true_degrees">°T</string>
+    <string name="unit_meters">米</string>
+    <string name="state_stale">陈旧</string>
+    <string name="action_home">主页</string>
+</resources>

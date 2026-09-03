@@ -1,5 +1,46 @@
 # Yokuli OS GitHub Delivery
 
+## 中文（主文）
+
+本文是 PR、CI 制品、失败诊断和发布的操作合同。工作流借鉴成熟的旧 Boat Watch 仓库，但只声明 Yokuli OS 当前实际存在的能力。
+
+### 工作流
+
+| 工作流 | 触发 | 必须证明 | 输出 |
+|---|---|---|---|
+| `android.yml` | PR、`main`／`codex/**` push、手动 | CI helper、版本/拓扑合同、JVM 测试、lint、双 debug APK、API 34 完整故事、API 36 reduced-motion smoke | 报告、candidate／`UNVERIFIED`、全部门禁后的 `VERIFIED` APK |
+| `nightly.yml` | 周二/周五、手动 | JVM 回归及 API 34/36 全 UI 故事 | 30 天兼容性报告或失败证据 |
+| `release.yml` | 语义 tag、手动 | metadata、签名预检、API 36 UI 合同、测试、lint、APK/AAB 签名校验 | 90 天签名制品和不可覆盖 GitHub Release |
+
+旧 runtime soak 在 Anchor/NMEA/backup runtime 尚未迁入前不得复制并冒充覆盖；届时再恢复逻辑时钟、故障注入和 wall-clock soak。
+
+### GitHub 反馈与制品可信度
+
+每个质量边界必须是独立命名 job；job summary 汇总结果；失败以 `::error` 注解；HTML/XML、Gradle 设备日志和有限范围 `FAILURE-*` 包可下载。build 中的 `continue-on-error` 只用于收集全部证据，最后的 enforce step 必须使任一失败门禁导致 job 失败。
+
+- `yokuli-os-debug-candidate-*`：JVM/lint/build 已过，设备门禁未完。
+- `UNVERIFIED-yokuli-os-debug-*`：仅供诊断，至少一个质量门禁失败。
+- `VERIFIED-yokuli-os-debug-*`：build、API 34 和 API 36 均通过。
+- `VERIFIED-yokuli-os-vX.Y.Z-signed`：已校验签名的 APK/AAB 与 checksums。
+
+`main` 分支应要求 build、API 34 stories、API 36 smoke 三个 check；不要在 PR 要求只对 push/manual 运行的 verified artifact job。
+
+### 发布
+
+签名发布需要同一签名库产生的四个 secret：`ANDROID_SIGNING_KEY_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。preflight 必须先实际打开 keystore 并恢复私钥。诊断收集使用窄 allow-list，不能包含构建配置、环境转储或签名材料。
+
+支持 `v1.2.3-alpha.1`、`v1.2.3-beta.1`、`v1.2.3`。alpha 可以来自 `codex/*` 或 `main`，beta 来自 `codex/release/*` 或 `main`，stable 只能来自 `main`。已有 tag 必须指向当前提交；已有 Release 不覆盖，必须使用新版本。
+
+本地更改 CI 前运行：
+
+```text
+python3 -m unittest discover .github/scripts 'test_*.py'
+bash .github/scripts/test-resolve-release-metadata.sh
+bash .github/scripts/test-ci-contract.sh
+```
+
+## English translation
+
 This document is the operating contract for pull requests, CI artifacts, diagnostics, and releases. The workflows are adapted from the mature Boat Watch repository, but their claims match the code that exists in Yokuli OS today.
 
 ## Workflow map

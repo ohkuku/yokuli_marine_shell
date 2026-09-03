@@ -6,6 +6,15 @@ enum class CockpitPage { OVERVIEW, SAILING, NAVIGATION, MOTION, WEATHER }
 enum class LibrarySection { PLACES, ROUTES, TRIPS, ANCHORS, SURVEYS }
 enum class SystemSection { OVERVIEW, CONNECTIONS, DATA_SOURCES, DEVICES, DISPLAY, SAFETY, STORAGE_DIAGNOSTICS }
 
+/**
+ * 中文：应用语言是跨模块状态，不属于任何页面或视觉主题。
+ * English: App language is cross-module state, not page or visual-theme state.
+ */
+enum class AppLanguage(val languageTag: String) {
+    CHINESE("zh-CN"),
+    ENGLISH("en"),
+}
+
 @JvmInline value class LauncherEntryId(val value: String)
 @JvmInline value class TileId(val value: String)
 @JvmInline value class ShellTaskId(val value: String)
@@ -23,8 +32,6 @@ enum class LauncherEntryKind { CORE_APP, SHORTCUT }
 
 data class LauncherEntryDescriptor(
     val id: LauncherEntryId,
-    val title: String,
-    val symbol: String,
     val kind: LauncherEntryKind,
     val coreAppId: MarineAppId,
     val launchTarget: LaunchTarget,
