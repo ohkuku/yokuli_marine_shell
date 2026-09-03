@@ -1,0 +1,267 @@
+name: Publish Yokuli OS Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-alpha.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Semantic tag; channel and Android version are derived from it
+        required: true
+        type: string
+
+concurrency:
+  group: android-release
+  cancel-in-progress: true
+
+jobs:
+  validate-release:
+    name: Validate tag and release topology
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release_tag: ${{ steps.metadata.outputs.tag }}
+      version_name: ${{ steps.metadata.outputs.version_name }}
+      version_code: ${{ steps.metadata.outputs.version_code }}
+      release_channel: ${{ steps.metadata.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Resolve deterministic release metadata
+        id: metadata
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG_INPUT: ${{ inputs.tag }}
+        run: bash .github/scripts/resolve_release_metadata.sh
+      - name: Enforce channel branch topology and immutable target
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+          RELEASE_CHANNEL: ${{ steps.metadata.outputs.channel }}
+        run: |
+          if git rev-parse "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$RELEASE_SHA" || { echo '::error::Existing tag points at another commit.'; exit 1; }
+          fi
+          if [ "$RELEASE_EVENT" = workflow_dispatch ]; then
+            case "$RELEASE_CHANNEL:$RELEASE_REF" in
+              alpha:refs/heads/codex/*|alpha:refs/heads/main|beta:refs/heads/codex/release/*|beta:refs/heads/main|stable:refs/heads/main) exit 0 ;;
+              *) echo '::error::Selected branch is not allowed for this release channel.'; exit 1 ;;
+            esac
+          fi
+          git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          on_branch() { git merge-base --is-ancestor "$RELEASE_SHA" "refs/remotes/origin/$1" 2>/dev/null; }
+          on_pattern() {
+            while IFS= read -r branch; do git merge-base --is-ancestor "$RELEASE_SHA" "$branch" && return 0; done < <(git for-each-ref --format='%(refname)' "refs/remotes/origin/$1")
+            return 1
+          }
+          case "$RELEASE_CHANNEL" in
+            alpha) on_pattern 'codex/*' || on_branch main ;;
+            beta) on_pattern 'codex/release/*' || on_branch main ;;
+            stable) on_branch main ;;
+          esac
+      - name: Validation summary
+        if: always()
+        run: python3 .github/scripts/write_job_summary.py "Release metadata" "Tag and topology=${{ job.status }}"
+      - name: Collect release validation failure diagnostics
+        if: failure()
+        run: bash .github/scripts/collect_failure_bundle.sh release-validation
+      - name: Upload downloadable release validation failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: FAILURE-release-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .github-failure-bundle/release-validation
+          if-no-files-found: error
+          retention-days: 30
+
+  signing-preflight:
+    name: Validate release signing material
+    needs: validate-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Require signing secrets
+        env:
+          ANDROID_SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          failed=0
+          for name in ANDROID_SIGNING_KEY_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then echo "::error::Missing required Actions secret: $name"; failed=1; fi
+          done
+          exit "$failed"
+      - name: Restore and validate signing key
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/yokuli-os-release.jks"
+          bash .github/scripts/validate_release_signing.sh "$RUNNER_TEMP/yokuli-os-release.jks"
+      - name: Collect signing failure diagnostics
+        if: failure()
+        run: bash .github/scripts/collect_failure_bundle.sh signing-preflight
+      - name: Upload downloadable signing failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: FAILURE-signing-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .github-failure-bundle/signing-preflight
+          if-no-files-found: error
+          retention-days: 30
+
+  release-smoke:
+    name: Release API 36 UI smoke
+    needs: validate-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Enable KVM hardware acceleration
+        run: bash .github/scripts/enable_kvm.sh
+      - name: API 36 release-path smoke
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: false
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb wait-for-device
+            bash .github/scripts/run_device_tests.sh ui-contract
+      - name: Expose release smoke failures
+        if: failure()
+        run: python3 .github/scripts/report_android_test_failures.py
+      - name: Release smoke summary
+        if: always()
+        run: python3 .github/scripts/write_job_summary.py "Release API 36 UI smoke" "WP8 page contract=${{ job.status }}"
+      - name: Collect release smoke failure diagnostics
+        if: failure()
+        run: bash .github/scripts/collect_failure_bundle.sh release-smoke
+      - name: Upload downloadable release smoke failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: FAILURE-release-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .github-failure-bundle/release-smoke
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Build, verify, and publish signed assets
+    needs: [validate-release, signing-preflight, release-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Restore and validate signing key
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/yokuli-os-release.jks"
+          bash .github/scripts/validate_release_signing.sh "$RUNNER_TEMP/yokuli-os-release.jks"
+      - name: Test, lint, and build signed standalone and HOME assets
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/yokuli-os-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          YOKULI_VERSION_NAME: ${{ needs.validate-release.outputs.version_name }}
+          YOKULI_VERSION_CODE: ${{ needs.validate-release.outputs.version_code }}
+        run: >-
+          ./gradlew --no-daemon test lintStandaloneRelease
+          assembleStandaloneRelease assembleHomeRelease
+          bundleStandaloneRelease bundleHomeRelease --stacktrace
+      - name: Verify signatures and generate checksums
+        run: |
+          apksigner_path="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f -print | sort -V | tail -n 1)"
+          test -x "$apksigner_path"
+          mkdir -p verified-release
+          while IFS= read -r apk; do
+            "$apksigner_path" verify --verbose "$apk"
+            cp "$apk" verified-release/
+          done < <(find app-shell/build/outputs/apk -type f -name '*-release.apk' -print)
+          while IFS= read -r bundle; do
+            jarsigner -verify "$bundle"
+            cp "$bundle" verified-release/
+          done < <(find app-shell/build/outputs/bundle -type f -name '*.aab' -print)
+          test "$(find verified-release -type f \( -name '*.apk' -o -name '*.aab' \) | wc -l)" -eq 4
+          (cd verified-release && sha256sum *.apk *.aab > SHA256SUMS.txt)
+      - name: Upload signed release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: VERIFIED-yokuli-os-${{ needs.validate-release.outputs.release_tag }}-signed
+          path: verified-release/*
+          if-no-files-found: error
+          retention-days: 90
+      - name: Publish immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate-release.outputs.release_tag }}
+          RELEASE_CHANNEL: ${{ needs.validate-release.outputs.release_channel }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo '::error::A GitHub Release already exists for this immutable tag.'
+            exit 1
+          fi
+          prerelease=()
+          if [ "$RELEASE_CHANNEL" != stable ]; then prerelease+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" \
+            verified-release/*.apk verified-release/*.aab verified-release/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --title "Yokuli OS $RELEASE_TAG" --generate-notes "${prerelease[@]}"
+      - name: Release summary
+        if: always()
+        run: >-
+          python3 .github/scripts/write_job_summary.py "Signed Yokuli OS release"
+          "Tests, lint, dual signed APK/AAB, signatures, checksums, publication=${{ job.status }}"
+      - name: Collect release publication failure diagnostics
+        if: failure()
+        run: bash .github/scripts/collect_failure_bundle.sh release-publish
+      - name: Upload downloadable release publication failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: FAILURE-release-publish-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .github-failure-bundle/release-publish
+          if-no-files-found: error
+          retention-days: 30

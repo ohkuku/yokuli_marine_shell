@@ -55,9 +55,10 @@ fun WpAppList(
                 }
                 items(items.size) { itemIndex ->
                     val entry = items[itemIndex]
+                    val interactions = remember(entry.id) { MutableInteractionSource() }
                     Row(
-                        Modifier.fillMaxWidth().height(58.dp).combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
+                        Modifier.fillMaxWidth().height(58.dp).wpTilt(interactions).combinedClickable(
+                            interactionSource = interactions,
                             indication = null,
                             onClick = { onOpen(entry.launchTarget) },
                             onLongClick = { onPinToggle(entry.id) },

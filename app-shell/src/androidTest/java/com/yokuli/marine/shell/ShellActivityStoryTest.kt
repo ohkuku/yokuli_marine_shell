@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.swipeUp
@@ -31,10 +32,25 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("tile-anchor").assertIsDisplayed().performClick()
 
         compose.onNodeWithTag("chart-workspace-anchor").assertIsDisplayed()
+        compose.onNodeWithTag("wp-page-title-chart").assertIsDisplayed()
         compose.onNodeWithText("NOT ARMED").assertIsDisplayed()
 
         compose.onNodeWithTag("chart-home").performClick()
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun everyCoreAppUsesTheReusableLargeTopLeftTitleContract() {
+        listOf(
+            Triple("tile-cockpit", "wp-page-title-cockpit", "cockpit-home"),
+            Triple("tile-library", "wp-page-title-library", "library-home"),
+            Triple("tile-system", "wp-page-title-system", "system-home"),
+        ).forEach { (tile, title, home) ->
+            compose.onNodeWithTag(tile).performScrollTo().assertIsDisplayed().performClick()
+            compose.onNodeWithTag(title).assertIsDisplayed()
+            compose.onNodeWithTag(home).performClick()
+            compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        }
     }
 
     @Test

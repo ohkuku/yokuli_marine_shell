@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -151,8 +150,7 @@ private fun WpTile(
     modifier: Modifier = Modifier,
 ) {
     val interactions = remember { MutableInteractionSource() }
-    val pressed by interactions.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (selected) 1.025f else if (pressed) .97f else 1f, tween(95), label = "wp-tile-press")
+    val scale by animateFloatAsState(if (selected) 1.025f else 1f, tween(95), label = "wp-tile-selected")
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     val dragModifier = if (editing && selected) {
         Modifier.pointerInput(Unit) {
@@ -168,6 +166,7 @@ private fun WpTile(
             .width(width).height(height).scale(scale).alpha(if (editing && !selected) .55f else 1f)
             .testTag("tile-${entry.id.value}")
             .background(presentation.color)
+            .wpTilt(interactions, enabled = !(editing && selected))
             .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick, onLongClick = onLongClick)
             .then(dragModifier)
             .padding(10.dp),

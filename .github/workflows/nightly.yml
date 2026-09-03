@@ -1,0 +1,79 @@
+name: Yokuli OS Nightly Compatibility
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "37 11 * * 2,5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-nightly-compatibility
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    name: Full shell stories on API ${{ matrix.api-level }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [34, 36]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+      - name: JVM regression gate
+        run: ./gradlew --no-daemon test lintStandaloneDebug --stacktrace
+      - name: Enable KVM hardware acceleration
+        run: bash .github/scripts/enable_kvm.sh
+      - name: Full UI contract matrix
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: false
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb wait-for-device
+            bash .github/scripts/run_device_tests.sh all
+      - name: Expose nightly failures
+        if: failure()
+        run: python3 .github/scripts/report_android_test_failures.py
+      - name: Nightly summary
+        if: always()
+        run: python3 .github/scripts/write_job_summary.py "Nightly API ${{ matrix.api-level }}" "Full regression=${{ job.status }}"
+      - name: Upload nightly reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: yokuli-os-nightly-api${{ matrix.api-level }}-${{ github.sha }}
+          path: |
+            **/build/reports/tests/**
+            app-shell/build/reports/androidTests/**
+            app-shell/build/outputs/androidTest-results/**
+            build/ci-device-tests.log
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Collect nightly failure diagnostics
+        if: failure()
+        run: bash .github/scripts/collect_failure_bundle.sh nightly-api${{ matrix.api-level }}
+      - name: Upload downloadable nightly failure bundle
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: FAILURE-nightly-api${{ matrix.api-level }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .github-failure-bundle/nightly-api${{ matrix.api-level }}
+          if-no-files-found: error
+          retention-days: 30

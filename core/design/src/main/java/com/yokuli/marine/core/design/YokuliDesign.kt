@@ -25,6 +25,7 @@ object YokuliMetrics {
     val OuterMargin = 8.dp
     val TileGap = 6.dp
     val StatusHeight = 27.dp
-    val AppBarHeight = 72.dp
+    val AppBarHeight = 70.dp
     val MinTouch = 48.dp
+    val PageMargin = 18.dp
 }

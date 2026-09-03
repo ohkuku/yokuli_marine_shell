@@ -12,28 +12,26 @@ import com.yokuli.marine.core.model.CockpitPage
 
 @Composable
 fun CockpitWorkspace(page: CockpitPage, onHome: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(YokuliColors.Black).padding(horizontal = 18.dp)) {
-        WpText("cockpit", 42, weight = FontWeight.Light, modifier = Modifier.padding(top = 12.dp, bottom = 18.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Instrument("SOG", "6.2", "kn")
-            Instrument("HDG", "184", "°T")
+    Column(Modifier.fillMaxSize().background(YokuliColors.Black)) {
+        WpPageHeader(appName = "cockpit", contextLine = page.name)
+        Column(Modifier.weight(1f).padding(horizontal = YokuliMetrics.PageMargin).wpEntrance(page, order = 1)) {
+            Row(Modifier.fillMaxWidth()) {
+                Instrument("SOG", "6.2", "kn", Modifier.weight(1f))
+                Instrument("HDG", "184", "°T", Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(24.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Instrument("TWS", "12.4", "kn", Modifier.weight(1f))
+                Instrument("DEPTH", "—", "STALE", Modifier.weight(1f))
+            }
         }
-        Spacer(Modifier.height(24.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Instrument("TWS", "12.4", "kn")
-            Instrument("DEPTH", "—", "STALE")
-        }
-        Spacer(Modifier.weight(1f))
-        Row(Modifier.fillMaxWidth().height(YokuliMetrics.AppBarHeight), verticalAlignment = Alignment.CenterVertically) {
-            WpCircleButton("⌂", "Home", onHome)
-            WpText(page.name.lowercase(), 13, color = YokuliColors.Muted, modifier = Modifier.padding(start = 14.dp))
-        }
+        WpApplicationBar(listOf(WpAppBarAction("⌂", "home", testTag = "cockpit-home", onClick = onHome)))
     }
 }
 
 @Composable
-private fun Instrument(label: String, value: String, unit: String) {
-    Column(Modifier.width(145.dp)) {
+private fun Instrument(label: String, value: String, unit: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
         WpText(label, 13, color = YokuliColors.Cyan)
         Row(verticalAlignment = Alignment.Bottom) {
             WpText(value, 54, weight = FontWeight.Light)

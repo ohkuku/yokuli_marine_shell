@@ -4,8 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
@@ -16,6 +14,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.yokuli.marine.core.design.YokuliColors
+import com.yokuli.marine.core.design.WpNavigationIntent
+import com.yokuli.marine.core.design.WpSurfaceTransitionHost
 import com.yokuli.marine.core.model.*
 import com.yokuli.marine.core.shell.ShellNavigator
 import com.yokuli.marine.core.shell.DesktopLayoutEditor
@@ -45,24 +45,32 @@ private fun YokuliShell() {
     val navigator = remember { ShellNavigator() }
     var navigation by remember { mutableStateOf(ShellNavigationState()) }
     var desktopLayout by remember { mutableStateOf(LauncherRegistry.defaultLayout) }
-    val dispatch: (ShellCommand) -> Unit = { navigation = navigator.reduce(navigation, it) }
+    var transitionIntent by remember { mutableStateOf(WpNavigationIntent.SIBLING_FORWARD) }
+    val dispatch: (ShellCommand) -> Unit = { command ->
+        transitionIntent = when (command) {
+            ShellCommand.ShowAllApps -> WpNavigationIntent.SIBLING_FORWARD
+            ShellCommand.Back -> if (navigation.surface == ShellSurface.AllApps) {
+                WpNavigationIntent.SIBLING_BACK
+            } else {
+                WpNavigationIntent.DEEPER_BACK
+            }
+            ShellCommand.Home -> WpNavigationIntent.DEEPER_BACK
+            is ShellCommand.Open -> when (command.target) {
+                LaunchTarget.AllApps -> WpNavigationIntent.SIBLING_FORWARD
+                LaunchTarget.Desktop -> WpNavigationIntent.DEEPER_BACK
+                else -> WpNavigationIntent.DEEPER_FORWARD
+            }
+        }
+        navigation = navigator.reduce(navigation, command)
+    }
     BackHandler(navigation.surface != ShellSurface.Start) { dispatch(ShellCommand.Back) }
 
     Column(Modifier.fillMaxSize().background(YokuliColors.Black)) {
         WpStatusStrip { dispatch(ShellCommand.Open(LaunchTarget.System())) }
-        AnimatedContent(
+        WpSurfaceTransitionHost(
             targetState = navigation.surface,
+            intent = transitionIntent,
             modifier = Modifier.weight(1f),
-            transitionSpec = {
-                when {
-                    initialState == ShellSurface.Start && targetState == ShellSurface.AllApps ->
-                        slideInHorizontally(tween(245)) { it } togetherWith slideOutHorizontally(tween(245)) { -it }
-                    initialState == ShellSurface.AllApps && targetState == ShellSurface.Start ->
-                        slideInHorizontally(tween(245)) { -it } togetherWith slideOutHorizontally(tween(245)) { it }
-                    else -> fadeIn(tween(210)) togetherWith fadeOut(tween(150))
-                }
-            },
-            label = "wp-shell-surface",
         ) { surface ->
             when (surface) {
                 ShellSurface.Start -> SwipeSurface(onSwipeLeft = { dispatch(ShellCommand.ShowAllApps) }) {

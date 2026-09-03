@@ -20,21 +20,22 @@ fun SystemWorkspace(section: SystemSection, onHome: () -> Unit) {
         Triple("safety", "READY", YokuliColors.Safe),
         Triple("storage & diagnostics", "0 CRITICAL", YokuliColors.Ocean),
     )
-    Column(Modifier.fillMaxSize().background(YokuliColors.Black).padding(horizontal = 18.dp)) {
-        WpText("system", 42, weight = FontWeight.Light, modifier = Modifier.padding(top = 12.dp, bottom = 8.dp))
-        items.forEach { (title, value, color) ->
-            Row(Modifier.fillMaxWidth().height(58.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(11.dp).background(color))
-                Column(Modifier.padding(start = 13.dp)) {
-                    WpText(title, 20, weight = FontWeight.Light)
-                    WpText(value, 10, color = YokuliColors.Muted)
+    Column(Modifier.fillMaxSize().background(YokuliColors.Black)) {
+        WpPageHeader(appName = "system", contextLine = section.name.replace('_', ' '))
+        Column(Modifier.weight(1f).padding(horizontal = YokuliMetrics.PageMargin)) {
+            items.forEachIndexed { index, (title, value, color) ->
+                Row(
+                    Modifier.fillMaxWidth().height(58.dp).wpEntrance(section, order = index + 1),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(11.dp).background(color))
+                    Column(Modifier.padding(start = 13.dp)) {
+                        WpText(title, 20, weight = FontWeight.Light)
+                        WpText(value, 10, color = YokuliColors.Muted)
+                    }
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
-        Row(Modifier.height(YokuliMetrics.AppBarHeight), verticalAlignment = Alignment.CenterVertically) {
-            WpCircleButton("⌂", "Home", onHome)
-            WpText(section.name.lowercase().replace('_', ' '), 13, color = YokuliColors.Muted, modifier = Modifier.padding(start = 14.dp))
-        }
+        WpApplicationBar(listOf(WpAppBarAction("⌂", "home", testTag = "system-home", onClick = onHome)))
     }
 }

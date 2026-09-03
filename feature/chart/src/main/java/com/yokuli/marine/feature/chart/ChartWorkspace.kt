@@ -2,11 +2,7 @@ package com.yokuli.marine.feature.chart
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -15,7 +11,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.*
 import com.yokuli.marine.core.model.ChartMode
@@ -26,16 +21,14 @@ fun ChartWorkspace(initialMode: ChartMode, onHome: () -> Unit) {
     Box(Modifier.fillMaxSize().background(YokuliColors.ChartWater).testTag("chart-workspace-${mode.name.lowercase()}")) {
         MarineChartSurface(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().background(YokuliColors.Black.copy(alpha = 0.9f)).padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                WpText(mode.name.lowercase(), 34, weight = FontWeight.Light)
-                Spacer(Modifier.weight(1f))
-                WpText("36°50.9′S  174°45.8′E", 12, color = YokuliColors.Muted)
-            }
+            WpPageHeader(
+                appName = "chart",
+                contextLine = mode.name,
+                trailing = "36°50.9′S  174°45.8′E",
+                modifier = Modifier.background(YokuliColors.Black.copy(alpha = .92f)),
+            )
             Spacer(Modifier.weight(1f))
-            ModeReadout(mode)
+            ModeReadout(mode, Modifier.wpEntrance(motionKey = mode, order = 1))
             ChartAppBar(mode, onMode = { mode = it }, onHome = onHome)
         }
     }
@@ -77,36 +70,38 @@ private fun MarineChartSurface(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ModeReadout(mode: ChartMode) {
+private fun ModeReadout(mode: ChartMode, modifier: Modifier = Modifier) {
     val (headline, detail) = when (mode) {
         ChartMode.BROWSE -> "FOLLOWING" to "COG 184°  ·  SOG 6.2 kn"
         ChartMode.NAVIGATE -> "MOTUIHE" to "DTW 3.4 NM  ·  BRG 071°T"
         ChartMode.ANCHOR -> "NOT ARMED" to "Set the anchor when position is ready"
         ChartMode.SURVEY -> "SURVEY READY" to "DEPTH —  ·  POSITION PHONE"
     }
-    Column(Modifier.fillMaxWidth().background(YokuliColors.Black.copy(alpha = .88f)).padding(14.dp)) {
-        WpText(headline, 22, weight = FontWeight.Light)
+    Column(modifier.fillMaxWidth().background(YokuliColors.Black.copy(alpha = .88f)).padding(14.dp)) {
+        WpText(headline, 22, weight = androidx.compose.ui.text.font.FontWeight.Light)
         WpText(detail, 13, color = YokuliColors.Muted, modifier = Modifier.padding(top = 3.dp))
     }
 }
 
 @Composable
 private fun ChartAppBar(mode: ChartMode, onMode: (ChartMode) -> Unit, onHome: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().height(YokuliMetrics.AppBarHeight).background(YokuliColors.Black).padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        WpCircleButton("⌂", "Home", onHome, Modifier.testTag("chart-home"))
-        listOf(ChartMode.BROWSE to "⌖", ChartMode.NAVIGATE to "➤", ChartMode.ANCHOR to "⚓︎", ChartMode.SURVEY to "≋").forEach { (item, symbol) ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier.size(42.dp).background(if (item == mode) YokuliColors.Cyan else YokuliColors.White, androidx.compose.foundation.shape.CircleShape)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onMode(item) },
-                    contentAlignment = Alignment.Center,
-                ) { WpText(symbol, 20, color = YokuliColors.Black) }
-                WpText(item.name.lowercase(), 9, color = if (item == mode) YokuliColors.White else YokuliColors.Muted)
-            }
-        }
-    }
+    val modes = listOf(
+        ChartMode.BROWSE to "⌖",
+        ChartMode.NAVIGATE to "➤",
+        ChartMode.ANCHOR to "⚓︎",
+        ChartMode.SURVEY to "≋",
+    )
+    WpApplicationBar(
+        actions = listOf(
+            WpAppBarAction("⌂", "home", testTag = "chart-home", onClick = onHome),
+        ) + modes.map { (item, symbol) ->
+            WpAppBarAction(
+                symbol = symbol,
+                label = item.name,
+                description = "Open ${item.name.lowercase()} mode",
+                selected = item == mode,
+                onClick = { onMode(item) },
+            )
+        },
+    )
 }

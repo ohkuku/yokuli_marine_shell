@@ -1,5 +1,9 @@
 plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.android); alias(libs.plugins.kotlin.compose) }
 
+val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_FILE").orNull
+val releaseVersionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 1
+val releaseVersionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.1.0-dev"
+
 android {
     namespace = "com.yokuli.marine.shell"
     compileSdk = 36
@@ -7,14 +11,30 @@ android {
         applicationId = "com.yokuli.marine"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-dev"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     flavorDimensions += "shellMode"
     productFlavors {
         create("standalone") { dimension = "shellMode" }
         create("home") { dimension = "shellMode"; applicationIdSuffix = ".home"; versionNameSuffix = "-home" }
+    }
+    signingConfigs {
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (releaseKeystorePath != null) signingConfig = signingConfigs.getByName("release")
+        }
     }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

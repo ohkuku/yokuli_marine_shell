@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:name=".ShellApplication" android:allowBackup="false" android:label="Yokuli OS" android:supportsRtl="true" android:theme="@style/Theme.YokuliOS">
+    <application android:name=".ShellApplication" android:allowBackup="false" android:icon="@drawable/ic_yokuli_os" android:label="Yokuli OS" android:supportsRtl="true" android:theme="@style/Theme.YokuliOS">
         <activity android:name=".ShellActivity" android:exported="true" android:screenOrientation="fullSensor">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
