@@ -240,3 +240,31 @@ bash .github/scripts/test-ci-contract.sh
 - GitHub-hosted API 34/API 36 jobs: NOT RUN until push.
 - Samsung square hardware: `UNVERIFIED_HARDWARE`.
 - Vessel/GNSS/NMEA/Anchor runtime: `UNVERIFIED_VESSEL` and deliberately not connected.
+
+## Slice 7 — Remote CI feedback correction
+
+### Red
+
+GitHub Actions run [#1](https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33759444919) correctly refused to publish a verified artifact: the combined CI self-test step had a failed outcome while unit, lint, and both debug builds passed. It published only `UNVERIFIED-*`, build reports, and `FAILURE-build-*` evidence.
+
+The old combined step did not expose which of its three commands had failed. A new workflow-contract assertion was added first:
+
+```text
+CI contract failed: build feedback must expose the ci_helpers gate independently
+```
+
+### Green target
+
+- CI helper unit tests, release metadata, and workflow topology have independent step IDs.
+- Candidate and verified artifacts require all three outcomes.
+- Job summary, failure-bundle decision, and final enforcement name every outcome.
+
+### Green result
+
+```text
+bash .github/scripts/test-ci-contract.sh
+python3 -m unittest discover .github/scripts 'test_*.py'
+bash .github/scripts/test-resolve-release-metadata.sh
+```
+
+All three local contracts pass and the updated workflow YAML parses. The correction is not considered remotely green until its pushed Actions run identifies and clears every required gate.

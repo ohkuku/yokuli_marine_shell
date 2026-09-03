@@ -28,6 +28,9 @@ grep -Fq 'actions/download-artifact@v8' "$android" || fail 'verified artifact mu
 for job in 'build:' 'integration:' 'api-compatibility:' 'verified-debug:'; do
   grep -Fq "  $job" "$android" || fail "Android CI missing job $job"
 done
+for check_id in 'ci_helpers' 'release_metadata' 'ci_contract'; do
+  grep -Fq "id: $check_id" "$android" || fail "build feedback must expose the $check_id gate independently"
+done
 grep -Fq 'needs: [build, integration, api-compatibility]' "$android" || fail 'verified artifact must wait for every required gate'
 grep -Fq 'UNVERIFIED-' "$android" || fail 'partial build artifacts must be visibly unverified'
 grep -Fq 'VERIFIED-' "$android" || fail 'post-gate artifact must be visibly verified'

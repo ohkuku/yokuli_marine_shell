@@ -6,7 +6,7 @@ This document is the operating contract for pull requests, CI artifacts, diagnos
 
 | Workflow | Trigger | Required proof | Output |
 |---|---|---|---|
-| `android.yml` | PR, `main`/`codex/**` push, manual | CI helper tests, JVM tests, lint, two debug variants, API 34 full stories, API 36 reduced-motion smoke | reports; candidate/`UNVERIFIED`; post-gate `VERIFIED` APKs |
+| `android.yml` | PR, `main`/`codex/**` push, manual | CI helper, release-metadata and workflow contracts; JVM tests; lint; two debug variants; API 34 full stories; API 36 reduced-motion smoke | reports; candidate/`UNVERIFIED`; post-gate `VERIFIED` APKs |
 | `nightly.yml` | Tue/Fri schedule, manual | JVM regression plus all UI stories on API 34 and 36 | 30-day compatibility reports/failure evidence |
 | `release.yml` | semantic tag, manual | metadata/topology, signing preflight, API 36 UI contract, tests, lint, signed APK/AAB verification | 90-day signed artifact and immutable GitHub Release |
 
@@ -21,7 +21,7 @@ The workflows provide feedback at four levels:
 3. Annotation: failed gates and parsed instrumented failures emit `::error` annotations visible in the run and PR checks.
 4. Evidence: HTML/XML reports, captured Gradle device log, and a bounded `FAILURE-*` bundle remain downloadable.
 
-The build job uses `continue-on-error` only to gather all independent results and publish evidence. Its final `Enforce build quality gate` step fails the job if any required result is not `success`.
+The build job uses `continue-on-error` only to gather all independent results and publish evidence. CI helper tests, release metadata, workflow topology, JVM tests, lint, and assembly have separate step IDs and summary rows. Its final `Enforce build quality gate` step fails the job if any required result is not `success`.
 
 Artifacts carry trust in their name:
 
