@@ -720,3 +720,72 @@ env GOOGLE_MAPS_ANDROID_API_KEY=TEST_ONLY_NOT_A_REAL_KEY
 ### English translation
 
 The owner initialized and uploaded the encrypted personal vault. Structural `doctor` checks passed, while the agent deliberately did not decrypt, list, or print any real value. Red 1 failed three tests because no isolated Google provider, environment-to-manifest key path, or explicit no-key fallback existed. Green added a Maps SDK 20.0.0 adapter that owns `MapView` lifecycle, camera restoration, gestures, theme synchronization, and attribution-safe padding while keeping `feature:chart` provider-agnostic. Red 2 then failed because GitHub workflows did not consume the Actions secret. Green propagated `GOOGLE_MAPS_ANDROID_API_KEY` to build/emulator jobs and made it a release preflight requirement; secret-less PRs retain an explicit fixture fallback. A review-driven Red 3 caught that a newly composed map would miss lifecycle events already delivered to the Activity; Green now synchronizes the driver's initial state before observing future transitions. All 19 Python contracts, Bash gates, full Gradle test/lint/dual-APK build, and eight API 34 device stories through the configured Google surface path pass with an explicit non-secret test value. Real-key device acceptance remains an owner action because the vault passphrase is intentionally unavailable to the agent.
+
+## Slice 14 — Phase 0A 产品面收敛与 Shell Engine S0/S1/S2 基础
+
+需求来源：`Yokuli_Phase0A_Product_Surface_Reduction_Spec.md` 与 `Yokuli_Shell_Engine_Phase0_WP8_Fidelity_Spec.md`。两份外部文档作为产品规格读取；本仓库的可执行需求落在 [`requirements/PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md`](requirements/PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md) 与 [`requirements/SHELL_ENGINE_REQUIREMENTS.md`](requirements/SHELL_ENGINE_REQUIREMENTS.md)。
+
+### Red 1 — 生产表面和引擎边界不存在
+
+先增加 `.github/scripts/test_phase0_surface_contract.py`，同时锁定模块图、贡献式 Registry、两项生产入口、标准尺寸、生产 fixture 禁令、Browse-only Chart、真实 Settings、显式 desktop state、Shell Engine 符号、debug-only Lab 与双语需求。首次运行：
+
+```text
+python3 .github/scripts/test_phase0_surface_contract.py
+Ran 10 tests
+FAILED (failures=6, errors=4)
+```
+
+错误与失败来自尚不存在的 `core:shell-engine`、`feature:settings`、`feature:shell-lab`、生产 contribution graph，以及旧 enum/fixture/假功能仍在生产面；不是环境错误。
+
+### Green 1 — 先删除假承诺，再建立可扩展骨架
+
+- 生产 contribution graph 只安装 Chart 与 Settings；默认空间文档固定 Wide Chart `(0,0)` 和 Small Settings `(0,2)`，不压缩空白。
+- 删除 Cockpit、Library、旧 System 和所有假 shortcut/fact；Chart 只剩 Browse，缺 key 时永久标记 `DEMO MAP` 且不绘制船或路线。
+- Settings 只呈现真实主题、桌面、地图配置、语言和构建信息。
+- `MarineAppId/DestinationId` 改为值类型，feature 自带 `ShellFeatureContribution`。
+- 新 Shell Engine 提供像素几何、显式 cell 文档、验证/修复、事务、单一交互状态类型与响应式 store 端口。
+- Launcher UI 使用显式 state；All Apps 只显示安装项并提供可见 context menu；状态栏使用系统时间与电量；图标改为受控 Canvas。
+- 30 项压力数据只进入 debug-only Shell Lab 并永久标记 `DEMO`。
+
+定向 Green：
+
+```text
+python3 .github/scripts/test_phase0_surface_contract.py
+Ran 10 tests
+OK
+```
+
+### Red 2 — Kotlin 编译通过但 D8 拒绝生成字节码
+
+第一次完整 APK gate 在 `feature:desktop` 的 `key { return@key }` 上失败：
+
+```text
+D8: Method name '<anonymous>' in class '$$$$$NON_LOCAL_RETURN$$$$$'
+cannot be represented in dex format
+```
+
+这是打包层才出现的 Compose/Kotlin non-local-return 产物。改为显式 nullable 分支后，debug 与 release D8 都恢复 Green；这条失败保留为“只跑 compileKotlin 不足以证明可交付”的证据。
+
+### Red 3 — 返回栈故事缺少重组同步
+
+Settings 子页采用两级返回：第一次回 Settings Overview，第二次回 Start。测试最初在同一主线程帧连续注入两次 Back，第二次仍读取旧的 Compose handler，得到 8 条故事中 1 条失败。测试现在在两次系统 Back 之间等待 Compose idle，验证真实的两级状态变化；没有放宽 Start 或主题断言。
+
+### 最终 Green 与人工检查
+
+```text
+python3 -m unittest discover .github/scripts 'test_*.py'    PASS (29/29)
+bash .github/scripts/test-ci-contract.sh                    PASS
+./gradlew test                                               PASS
+./gradlew lintStandaloneDebug                                PASS
+./gradlew assembleStandaloneDebug assembleHomeDebug          PASS
+./gradlew :app-shell:assembleStandaloneRelease                PASS
+./gradlew :app-shell:connectedStandaloneDebugAndroidTest      PASS (8/8, API 34)
+```
+
+模拟器截图人工检查覆盖 Start、Chart 无 key 页面和 Settings→Map：黑底白字、同一 cyan accent、Wide/Small 标准尺寸、有意留白、`DEMO MAP` 与无虚构船位/路线均符合合同。证据级别为 `VERIFIED_DEVICE_EMULATOR`；Samsung 方屏硬件与实船保持 `UNVERIFIED_HARDWARE`、`UNVERIFIED_VESSEL`。
+
+本轮只声明 Phase 0A 与 Shell Engine S0/S1/S2 基础完成。S3 逐帧 pager、完整碰撞/自动滚动/撤销、持久化实现、Macrobenchmark/Baseline Profile 和 HOME 硬化继续保持 Red/待实现，不能从本次 8 条 Activity story 推断为完成。
+
+### English translation
+
+Two external product specs were translated into executable repository requirements. The first ten-test Phase 0 contract failed with six assertion failures and four missing-file errors. Green reduced production to Chart and Settings, removed fake modules and marine facts, introduced feature contributions, a truthful Browse-only Chart, implemented Settings, explicit launcher state, a debug-only 30-entry DEMO lab, and the S0/S1/S2 Shell Engine foundation for pixel geometry, spatial documents, repair, transactions, interaction states, and reactive ports. A packaging-level Red then caught invalid D8 bytecode generated by a Compose non-local return even though Kotlin compilation passed; an explicit nullable branch fixed both debug and release packaging. A final instrumentation Red exposed two Back events injected in one Compose frame; waiting for idle between the Settings-subpage and Settings-overview transitions made the test model the real two-step back stack without weakening assertions. All 29 Python contracts, Kotlin tests, lint, three APK builds, and eight API 34 real-Activity stories pass. This does not claim S3–S8, physical square hardware, or vessel validation.

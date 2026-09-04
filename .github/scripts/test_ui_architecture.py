@@ -10,9 +10,8 @@ LOCALIZED_MODULES = (
     "core/design",
     "feature/desktop",
     "feature/chart",
-    "feature/cockpit",
-    "feature/library",
-    "feature/system",
+    "feature/settings",
+    "feature/shell-lab",
 )
 
 
@@ -49,9 +48,7 @@ class UiArchitectureContractTest(unittest.TestCase):
         contracts = {
             "feature/desktop": "LauncherUiContract.kt",
             "feature/chart": "ChartUiContract.kt",
-            "feature/cockpit": "CockpitUiContract.kt",
-            "feature/library": "LibraryUiContract.kt",
-            "feature/system": "SystemUiContract.kt",
+            "feature/settings": "SettingsUiContract.kt",
         }
         for module, filename in contracts.items():
             matches = list((ROOT / module / "src/main/java").rglob(filename))
@@ -63,7 +60,7 @@ class UiArchitectureContractTest(unittest.TestCase):
     def test_wp_text_has_no_hardcoded_alphabetic_user_copy(self):
         offenders = []
         pattern = re.compile(r'WpText\(\s*"[^"\n]*[A-Za-z\u4e00-\u9fff]')
-        for module in ("feature/desktop", "feature/chart", "feature/cockpit", "feature/library", "feature/system"):
+        for module in ("feature/desktop", "feature/chart", "feature/settings", "feature/shell-lab"):
             for path in (ROOT / module / "src/main/java").rglob("*.kt"):
                 for number, line in enumerate(path.read_text().splitlines(), start=1):
                     if pattern.search(line):
@@ -73,9 +70,7 @@ class UiArchitectureContractTest(unittest.TestCase):
     def test_feature_workspaces_render_state_and_emit_actions(self):
         workspaces = {
             "feature/chart": ("ChartWorkspace.kt", "ChartUiState", "ChartUiAction"),
-            "feature/cockpit": ("CockpitWorkspace.kt", "CockpitUiState", "CockpitUiAction"),
-            "feature/library": ("LibraryWorkspace.kt", "LibraryUiState", "LibraryUiAction"),
-            "feature/system": ("SystemWorkspace.kt", "SystemUiState", "SystemUiAction"),
+            "feature/settings": ("SettingsWorkspace.kt", "SettingsUiState", "SettingsUiAction"),
         }
         for module, (filename, state, action) in workspaces.items():
             path = next((ROOT / module / "src/main/java").rglob(filename))
@@ -98,11 +93,12 @@ class UiArchitectureContractTest(unittest.TestCase):
         self.assertIn('CHINESE_LANGUAGE_TAG = "zh-CN"', application)
         self.assertIn("LocaleManager", application)
 
-    def test_safety_ui_never_turns_missing_values_into_zero_or_critical_into_stale(self):
+    def test_phase_zero_ui_does_not_render_unimplemented_marine_runtime_values(self):
         chart = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
-        system = (ROOT / "feature/system/src/main/java/com/yokuli/marine/feature/system/SystemWorkspace.kt").read_text()
         self.assertNotRegex(chart, r"\?:\s*0(?:\.0)?")
-        self.assertIn("SystemTone.ALARM", system)
+        self.assertNotIn("vesselPosition", chart)
+        self.assertNotIn("activeRoute", chart)
+        self.assertIn("MarineChartDemoSurface", chart)
 
     def test_public_documents_are_chinese_first_with_english_translation(self):
         paths = [ROOT / "README.md", ROOT / "CONTRIBUTING.md", ROOT / "CHANGELOG.md"]

@@ -8,9 +8,9 @@
 
 ## 前提
 
-当前阶段只完善 UI/UX，不实现 GPS、NMEA、Anchor、Trip、Navigation、Sonar 或海图运行时。现在出现的航海数据都是明确的 UI 样例状态。后续功能只能把不可变状态交给 UI，并接收 UI 事件；不能在功能实现中重新定义颜色、间距、动效、页面骨架或用户文案。
+当前阶段只完善 UI/UX，不实现 GPS、NMEA、Anchor、Trip、Navigation、Sonar 或完整海图运行时。生产 UI 不显示航海样例数字；Google 底图可浏览，缺少 key 时显示永久标记的非导航 DEMO 背景。后续功能只能把不可变状态交给 UI，并接收 UI 事件；不能在功能实现中重新定义颜色、间距、动效、页面骨架或用户文案。
 
-> English: This phase completes UI/UX only. Marine values are explicit preview state. Future runtime code may provide immutable state and receive UI events, but must not redefine color, spacing, motion, page anatomy, or user-facing copy.
+> English: This phase completes UI/UX only. Production displays no sample marine numbers; the Google base map is browseable and the keyless fallback is a permanently labeled non-navigational demo. Future runtime code may provide immutable state and receive UI events, but must not redefine color, spacing, motion, page anatomy, or user-facing copy.
 
 ## UI-I18N-001 — 中文为默认资源
 
@@ -20,9 +20,9 @@
 
 ## UI-I18N-002 — 应用级语言选择
 
-System → Display 必须提供中文和 English 两个至少 48dp 的选项。选择后，应用偏好、Android 应用级 locale、Compose `stringResource` 和系统“应用语言”设置保持一致；覆盖安装或 framework locale 为空时从应用偏好恢复，首次安装默认中文；Android 12 及以下通过 AndroidX 应用 locale。
+Settings → Language 必须提供中文和 English 两个至少 48dp 的选项。选择后，应用偏好、Android 应用级 locale、Compose `stringResource` 和系统“应用语言”设置保持一致；覆盖安装或 framework locale 为空时从应用偏好恢复，首次安装默认中文；Android 12 及以下通过 AndroidX 应用 locale。
 
-> English: System → Display exposes 48dp Chinese and English choices. The persisted app preference, Android per-app locale APIs, Compose resources, and system app-language settings remain synchronized. A missing framework locale is restored after an update and first install defaults to Chinese; AndroidX provides app locales on Android 12 and lower.
+> English: Settings → Language exposes 48dp Chinese and English choices. The persisted app preference, Android per-app locale APIs, Compose resources, and system app-language settings remain synchronized. A missing framework locale is restored after an update and first install defaults to Chinese; AndroidX provides app locales on Android 12 and lower.
 
 ## UI-I18N-003 — 禁止硬编码用户文案
 
@@ -32,15 +32,15 @@ System → Display 必须提供中文和 English 两个至少 48dp 的选项。�
 
 ## UI-I18N-004 — 功能模型不拥有视觉元数据
 
-`core:model` 和未来 runtime/domain 模块不得保存 launcher 标题、glyph、颜色、字符串资源 ID 或 Compose/Android UI 类型。Launcher 的标题、glyph 与样例磁贴内容由 `feature:desktop` 的视觉目录拥有。
+`core:model` 和未来 runtime/domain 模块不得保存 launcher 标题、图标、颜色、字符串资源 ID 或 Compose/Android UI 类型。Launcher 的标题、受控 Canvas 图标与展示状态由 `feature:desktop` 拥有。
 
-> English: Domain and runtime models contain no launcher title, glyph, color, resource ID, or UI framework type. `feature:desktop` owns launcher visuals and preview tile copy.
+> English: Domain and runtime models contain no launcher title, icon, color, resource ID, or UI framework type. `feature:desktop` owns launcher copy, controlled Canvas icons, and presentation state.
 
 ## UI-I18N-005 — UiState／UiAction 边界
 
-每个 UI feature 必须公开不可变 `*UiState` 与封闭 `*UiAction`。Composable 只渲染 UiState 并发出 UiAction；样例数据集中在明确命名的 `*UiFixtures`，不得伪装成已连接的实时数据。
+每个 UI feature 必须公开不可变 `*UiState` 与封闭 `*UiAction`。Composable 只渲染 UiState 并发出 UiAction；生产 main 禁止共享 fixture 对象。压力/边界样例只允许进入 debug-only Shell Lab，并且可见内容必须永久标记 `DEMO`。
 
-> English: Every UI feature exposes immutable `*UiState` and closed `*UiAction`. Composables render state and emit actions. Preview values live in named `*UiFixtures` and never imply a connected runtime.
+> English: Every UI feature exposes immutable `*UiState` and closed `*UiAction`. Composables render state and emit actions. Production main forbids shared fixture objects; stress and boundary samples are debug-only Shell Lab content permanently labeled `DEMO`.
 
 ## UI-I18N-006 — UI 一致性所有权
 

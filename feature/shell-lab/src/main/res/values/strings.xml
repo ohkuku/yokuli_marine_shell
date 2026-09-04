@@ -1,0 +1,8 @@
+<resources>
+    <string name="lab_title">Shell 实验室</string>
+    <string name="lab_context">仅限调试 · 演示数据</string>
+    <string name="lab_entry_title">演示应用 %02d</string>
+    <string name="lab_demo_label">演示</string>
+    <string name="lab_short_detail">边界验证</string>
+    <string name="lab_long_detail">超长标题与磁贴空间碰撞验证</string>
+</resources>

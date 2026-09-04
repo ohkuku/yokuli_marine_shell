@@ -1,7 +1,7 @@
 # Yokuli OS WP8 UI System — Requirement Contract
 
 状态：`ACTIVE`
-范围：Shell 导航、所有核心 App 页面、动效、触控反馈、无障碍与交付证据。
+范围：Shell 导航、Chart、Settings、动效、触控反馈、无障碍与交付证据。Phase 0A 生产面以 `PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md` 为准。
 
 ## 中文（主文）
 
@@ -20,10 +20,10 @@ Yokuli OS 把 WP8 作为系统设计语言，而非表面装饰。它仍是海�
 - `UI-009`：真实 Activity 故事覆盖核心导航、320×320、主题、语言和 API 兼容；静态截图不算动效证明。
 - `UI-010`：发布只能在测试、lint、设备 gate、签名和 checksum 全部通过后产生；未签名或失败制品必须明确标记。
 - `UI-011`：一个 `WpThemeSpec` 驱动全 Shell；深色严格为黑底白字，浅色严格为白底黑字；Android 宿主系统栏和异形屏区域同步主题；accent 磁贴固定白色前景；功能模块不得创建私有 Shell 主题。
-- `UI-012`：Start 使用四列和一个 6dp seam；磁贴只有一个主要事实，安全色仅作从属标记。
+- `UI-012`：Start 使用四列；外边距约为可用宽度 5%，seam 约为 2.0%–2.6%，计算结果必须像素对齐。磁贴只有一个主要事实。
 - `UI-013`：所有磁贴、列表、跳转和设置选项至少 48dp，并共享 position-aware tilt。
 
-本阶段不接入真实海图 SDK、NMEA/GPS、后台 runtime、固件或硬件验证；这些非目标不能被 UI fixture 冒充为已实现。
+本阶段只接入可浏览的 Google 底图 adapter，不接入 NMEA/GPS、后台 runtime、固件或硬件验证；这些非目标不能被 UI fixture 冒充为已实现。生产 main 不使用 fixture；debug-only Shell Lab 的压力数据永久标记 `DEMO`。
 
 ## English translation
 
@@ -48,7 +48,7 @@ The canonical implementation pattern is documented in [`docs/WP8_UI_PATTERN.md`]
 
 ### UI-001 — Application identity
 
-Given a user opens Chart, Cockpit, Library, or System
+Given a user opens Chart or Settings
 When the destination first becomes visible
 Then a large, light-weight, lowercase application title is visible at the upper-left edge
 And mode/section state is secondary to the application name
@@ -154,9 +154,10 @@ And state remains understandable without color.
 
 Given a four-unit Start grid
 When adjacent tiles are laid out
-Then a single narrow 6 dp seam token is used horizontally, vertically, and at the Start canvas edge
+Then outer margins calibrate near 5% of available width and the internal seam near 2.0%–2.6%
+And all cells, seams, and margins are snapped to physical pixels while exactly consuming the available width
 And tile planes have zero elevation, zero border, and square corners
-And wide/medium/hero dimensions are calculated only from the same cell and seam tokens.
+And wide/medium dimensions are calculated only from the same cell and seam tokens.
 
 Given a tile has enough room for live content
 When its front is rendered

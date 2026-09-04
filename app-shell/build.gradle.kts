@@ -8,6 +8,7 @@ val googleMapsApiKey = providers.environmentVariable("GOOGLE_MAPS_ANDROID_API_KE
     .map { value -> value.trim().ifEmpty { unavailableMapsApiKey } }
     .orElse(unavailableMapsApiKey)
 val googleMapsConfigured = googleMapsApiKey.map { value -> value != unavailableMapsApiKey }
+val gitSha = providers.environmentVariable("GITHUB_SHA").orElse("local")
 
 android {
     namespace = "com.yokuli.marine.shell"
@@ -21,6 +22,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = googleMapsApiKey.get()
         buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", googleMapsConfigured.get().toString())
+        buildConfigField("String", "GIT_SHA", "\"${gitSha.get().replace("\"", "")}\"")
     }
     flavorDimensions += "shellMode"
     productFlavors {
@@ -56,12 +58,11 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:design"))
     implementation(project(":core:shell"))
+    implementation(project(":core:shell-engine"))
     implementation(project(":adapter:chart-google"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))
-    implementation(project(":feature:cockpit"))
-    implementation(project(":feature:library"))
-    implementation(project(":feature:system"))
+    implementation(project(":feature:settings"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.appcompat)
@@ -74,4 +75,5 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(project(":feature:shell-lab"))
 }

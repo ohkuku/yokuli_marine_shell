@@ -1,24 +1,11 @@
 <resources>
     <string name="app_chart">海图</string>
-    <string name="mode_browse">浏览</string>
-    <string name="mode_navigate">导航</string>
-    <string name="mode_anchor">锚泊</string>
-    <string name="mode_survey">测深</string>
-    <string name="chart_header_context">%1$s · %2$s</string>
-    <string name="chart_source_fixture">演示海图</string>
-    <string name="chart_source_google_maps">Google 地图</string>
-    <string name="chart_following">跟随</string>
-    <string name="chart_following_detail">COG %1$d° · SOG %2$.1f 节</string>
-    <string name="chart_data_unavailable">数据不可用</string>
-    <string name="chart_navigation_detail">到达距离 %1$.1f 海里 · 方位 %2$d°T</string>
-    <string name="chart_navigation_no_destination">未选择目的地</string>
-    <string name="chart_anchor_armed">警戒中</string>
-    <string name="chart_anchor_active_detail">正在监测锚点距离</string>
-    <string name="chart_anchor_not_armed">尚未启用</string>
-    <string name="chart_anchor_instruction">定位准备好后设置锚点</string>
-    <string name="chart_survey_ready">测深就绪</string>
-    <string name="chart_survey_detail">深度 — · 定位源 手机</string>
-    <string name="chart_survey_depth_detail">深度 %1$.1f 米 · 定位源 手机</string>
-    <string name="action_home">主页</string>
-    <string name="action_open_mode">打开%1$s模式</string>
+    <string name="chart_context_google">浏览 · Google 地图</string>
+    <string name="chart_context_demo">浏览 · 演示地图</string>
+    <string name="chart_demo_label">演示地图</string>
+    <string name="chart_map_unconfigured">地图未配置</string>
+    <string name="chart_map_unconfigured_detail">当前仅显示无船位、无路线的演示背景。</string>
+    <string name="chart_open_settings">打开地图设置</string>
+    <string name="chart_map_ready">地图已就绪</string>
+    <string name="chart_position_not_enabled">船位尚未启用</string>
 </resources>

@@ -1,0 +1,8 @@
+<resources>
+    <string name="lab_title">Shell Lab</string>
+    <string name="lab_context">debug only · demo data</string>
+    <string name="lab_entry_title">DEMO APP %02d</string>
+    <string name="lab_demo_label">DEMO</string>
+    <string name="lab_short_detail">boundary check</string>
+    <string name="lab_long_detail">very long title and spatial collision check</string>
+</resources>

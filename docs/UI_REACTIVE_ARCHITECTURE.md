@@ -42,9 +42,9 @@ Composable(state, onAction)
        └──────── UiAction ────────► feature action sink
 ```
 
-Composable 不能读取 repository、传感器、数据库或协议连接。它只渲染完整的不可变 `UiState`，并发布 `UiAction`。当前 UI 阶段使用 `*UiFixtures` 驱动预览；接入真实功能时替换状态生产者，不改页面结构、文案所有权或动效。
+Composable 不能读取 repository、传感器、数据库或协议连接。它只渲染完整的不可变 `UiState`，并发布 `UiAction`。生产 main 不允许共享 `*UiFixtures`；当前配置由 production projector 生成真实 UI 状态，布局压力数据只允许出现在 debug-only Shell Lab 并永久标记 `DEMO`。接入真实功能时替换状态生产者，不改页面结构、文案所有权或动效。
 
-> English: Composables never read repositories, sensors, storage, or protocol connections. They render immutable `UiState` and publish `UiAction`. UI fixtures are temporary publishers; runtime integration replaces the publisher, not the visual contract.
+> English: Composables render complete immutable state and emit actions. Production main contains no shared fixture objects; current configuration is projected into truthful UI state, while layout stress data is confined to the debug-only Shell Lab and permanently labeled `DEMO`. Runtime integration replaces state producers without redefining page anatomy, copy ownership, or motion.
 
 ## 3. 三类流不能混用
 
@@ -111,6 +111,6 @@ fun FeatureWorkspace(
 
 ## 8. 当前阶段边界
 
-这次提交建立 UI state/action、双语资源和平台语言选择；尚未引入 feature store 或海事 runtime。Shell 内的临时 `remember` 只用于 UI 样例编排和瞬时编辑状态，不是最终业务状态容器。真实功能进入前，先为对应 feature 按本合同写 Red 测试，再引入 Flow publisher。
+这次提交建立 UI state/action、双语资源、平台语言选择与 Shell store 端口；尚未引入持久化 store 实现或海事 runtime。Shell 内的临时 `remember` 只用于真实配置投影和瞬时编辑状态，不是最终业务状态容器。真实功能进入前，先为对应 feature 按本合同写 Red 测试，再引入 Flow publisher。
 
-> English: This slice establishes UI contracts, bilingual resources, and platform locale selection. It intentionally does not add marine runtimes or feature stores. Temporary Shell `remember` values orchestrate fixtures and ephemeral editing only; each runtime feature begins with a Red stream contract before a Flow publisher is introduced.
+> English: This slice establishes UI contracts, bilingual resources, platform locale selection, and Shell store ports, but not durable store implementations or marine runtimes. Temporary Shell `remember` values project real configuration and hold ephemeral editing state only; each runtime feature begins with a Red stream contract before a Flow publisher is introduced.

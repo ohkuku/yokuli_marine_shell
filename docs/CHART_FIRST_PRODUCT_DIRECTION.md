@@ -1,6 +1,8 @@
 # Yokuli OS — WP8 Shell + Chart-first 产品方向
 
-状态：产品结构基线；M1/M2 第一版与 Google Maps 底图 adapter 已实现，真实 key 设备验收、OpenSeaMap、导入和航海 runtime 仍未接入。
+状态：`SUPERSEDED`。本文件保留早期市场信息架构研究，不再定义当前生产产品面；当前规范是 [`requirements/PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md`](requirements/PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md) 与 [`requirements/SHELL_ENGINE_REQUIREMENTS.md`](requirements/SHELL_ENGINE_REQUIREMENTS.md)。
+
+> English: `SUPERSEDED`. This file preserves earlier market-architecture research but no longer defines the production surface. The linked Phase 0A and Shell Engine requirements are current.
 
 ## 1. 为什么重新开始
 

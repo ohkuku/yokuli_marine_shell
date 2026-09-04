@@ -1,51 +1,29 @@
 package com.yokuli.marine.core.shell
 
-import com.yokuli.marine.core.model.*
+import com.yokuli.marine.core.model.LauncherEntryDescriptor
+import com.yokuli.marine.core.model.LauncherEntryId
+import com.yokuli.marine.core.model.MarineAppDescriptor
+import com.yokuli.marine.core.model.MarineAppId
+import com.yokuli.marine.core.model.ShellFeatureContribution
 
-object LauncherRegistry {
-    val entries: List<LauncherEntryDescriptor> = listOf(
-        core("chart", MarineAppId.CHART, LaunchTarget.Chart(), TileSize.HERO_4X2, TileSize.MEDIUM_2X2, TileSize.WIDE_2X1),
-        shortcut("anchor", MarineAppId.CHART, LaunchTarget.Chart(ChartMode.ANCHOR), TileSize.MEDIUM_2X2, TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-        core("cockpit", MarineAppId.COCKPIT, LaunchTarget.Cockpit(), TileSize.MEDIUM_2X2, TileSize.WIDE_2X1),
-        core("library", MarineAppId.LIBRARY, LaunchTarget.Library(), TileSize.WIDE_2X1, TileSize.MEDIUM_2X2, TileSize.SMALL_1X1),
-        core("system", MarineAppId.SYSTEM, LaunchTarget.System(), TileSize.WIDE_2X1, TileSize.MEDIUM_2X2, TileSize.SMALL_1X1),
-        shortcut("navigation", MarineAppId.CHART, LaunchTarget.Chart(ChartMode.NAVIGATE), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-        shortcut("survey", MarineAppId.CHART, LaunchTarget.Chart(ChartMode.SURVEY), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-        shortcut("trips", MarineAppId.LIBRARY, LaunchTarget.Library(LibrarySection.TRIPS), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-        shortcut("anchorages", MarineAppId.LIBRARY, LaunchTarget.Library(LibrarySection.PLACES), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-        shortcut("data_sources", MarineAppId.SYSTEM, LaunchTarget.System(SystemSection.DATA_SOURCES), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-        shortcut("nmea_input", MarineAppId.SYSTEM, LaunchTarget.System(SystemSection.CONNECTIONS), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-        shortcut("diagnostics", MarineAppId.SYSTEM, LaunchTarget.System(SystemSection.STORAGE_DIAGNOSTICS), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-        shortcut("settings", MarineAppId.SYSTEM, LaunchTarget.System(SystemSection.DISPLAY), TileSize.WIDE_2X1, TileSize.SMALL_1X1),
-    )
+/** Compile-time registry assembled by app-shell from installed feature contributions. */
+class LauncherRegistry(contributions: List<ShellFeatureContribution>) {
+    val apps: List<MarineAppDescriptor> = contributions.map { it.app }
+    val entries: List<LauncherEntryDescriptor> = contributions.flatMap { it.launcherEntries }
 
-    val defaultLayout = DesktopLayout(
-        columns = 4,
-        placements = listOf(
-            placement("chart", TileSize.HERO_4X2, 0, 0),
-            placement("anchor", TileSize.MEDIUM_2X2, 0, 2),
-            placement("cockpit", TileSize.MEDIUM_2X2, 2, 2),
-            placement("library", TileSize.WIDE_2X1, 0, 4),
-            placement("system", TileSize.WIDE_2X1, 2, 4),
-        ),
-    )
+    init {
+        require(apps.map { it.id }.distinct().size == apps.size) { "Duplicate MarineAppId" }
+        require(entries.map { it.id }.distinct().size == entries.size) { "Duplicate LauncherEntryId" }
+        require(entries.all { entry -> apps.any { it.id == entry.appId } }) {
+            "Every launcher entry must belong to an installed app"
+        }
+        require(entries.all { entry ->
+            entry.defaultSize in entry.supportedSizesInCycleOrder &&
+                entry.supportedSizesInCycleOrder.isNotEmpty() &&
+                entry.supportedSizesInCycleOrder.distinct().size == entry.supportedSizesInCycleOrder.size
+        }) { "Launcher entry sizes must declare a valid deterministic cycle" }
+    }
 
     fun entry(id: LauncherEntryId): LauncherEntryDescriptor? = entries.firstOrNull { it.id == id }
-
-    private fun core(
-        id: String,
-        appId: MarineAppId,
-        target: LaunchTarget,
-        vararg sizes: TileSize,
-    ) = LauncherEntryDescriptor(LauncherEntryId(id), LauncherEntryKind.CORE_APP, appId, target, sizes.toSet())
-
-    private fun shortcut(
-        id: String,
-        appId: MarineAppId,
-        target: LaunchTarget,
-        vararg sizes: TileSize,
-    ) = LauncherEntryDescriptor(LauncherEntryId(id), LauncherEntryKind.SHORTCUT, appId, target, sizes.toSet())
-
-    private fun placement(id: String, size: TileSize, column: Int, row: Int) =
-        DesktopPlacement(TileId("tile-$id"), LauncherEntryId(id), size, column, row)
+    fun app(id: MarineAppId): MarineAppDescriptor? = apps.firstOrNull { it.id == id }
 }

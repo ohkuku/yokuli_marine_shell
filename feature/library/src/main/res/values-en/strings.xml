@@ -1,9 +1,0 @@
-<resources>
-    <string name="app_library">library</string>
-    <string name="section_places">places</string>
-    <string name="section_routes">routes</string>
-    <string name="section_trips">trips</string>
-    <string name="section_anchors">anchors</string>
-    <string name="section_surveys">surveys</string>
-    <string name="action_home">home</string>
-</resources>

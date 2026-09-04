@@ -1,8 +1,12 @@
 package com.yokuli.marine.shell
 
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -10,9 +14,17 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -31,15 +43,29 @@ import com.yokuli.marine.core.design.WpSurfaceTransitionHost
 import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
-import com.yokuli.marine.core.model.*
+import com.yokuli.marine.core.model.AppLanguage
+import com.yokuli.marine.core.model.ShellCommand
+import com.yokuli.marine.core.model.ShellNavigationState
+import com.yokuli.marine.core.model.ShellSurface
 import com.yokuli.marine.core.shell.ShellNavigator
-import com.yokuli.marine.core.shell.DesktopLayoutEditor
-import com.yokuli.marine.core.shell.LauncherRegistry
-import com.yokuli.marine.feature.chart.*
-import com.yokuli.marine.feature.cockpit.*
-import com.yokuli.marine.feature.desktop.*
-import com.yokuli.marine.feature.library.*
-import com.yokuli.marine.feature.system.*
+import com.yokuli.marine.core.shell.engine.layout.DesktopLayoutEditor
+import com.yokuli.marine.feature.chart.ChartDestinations
+import com.yokuli.marine.feature.chart.ChartSurfaceKind
+import com.yokuli.marine.feature.chart.ChartUiAction
+import com.yokuli.marine.feature.chart.ChartUiState
+import com.yokuli.marine.feature.chart.ChartWorkspace
+import com.yokuli.marine.feature.chart.MarineChartDemoSurface
+import com.yokuli.marine.feature.chart.MarineChartSurface
+import com.yokuli.marine.feature.desktop.LauncherUiAction
+import com.yokuli.marine.feature.desktop.WpAppList
+import com.yokuli.marine.feature.desktop.WpStatusStrip
+import com.yokuli.marine.feature.desktop.YokuliStartScreen
+import com.yokuli.marine.feature.desktop.productionLauncherUiState
+import com.yokuli.marine.feature.settings.SettingsDestinations
+import com.yokuli.marine.feature.settings.SettingsSection
+import com.yokuli.marine.feature.settings.SettingsUiAction
+import com.yokuli.marine.feature.settings.SettingsUiState
+import com.yokuli.marine.feature.settings.SettingsWorkspace
 
 class ShellActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,8 +73,7 @@ class ShellActivity : AppCompatActivity() {
         bootstrapLegacyLocale()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -63,20 +88,21 @@ class ShellActivity : AppCompatActivity() {
 @Composable
 private fun YokuliShell() {
     val context = LocalContext.current
-    val navigator = remember { ShellNavigator() }
+    val navigator = remember { ShellNavigator(productionRegistry) }
     var navigation by remember { mutableStateOf(ShellNavigationState()) }
-    var desktopLayout by remember { mutableStateOf(LauncherRegistry.defaultLayout) }
+    var desktopDocument by remember { mutableStateOf(defaultDesktopDocument) }
     var transitionIntent by remember { mutableStateOf(WpNavigationIntent.SIBLING_FORWARD) }
     var themeModeName by rememberSaveable { mutableStateOf(WpThemeMode.DARK.name) }
     var accentName by rememberSaveable { mutableStateOf(WpAccent.CYAN.name) }
-    val themeSpec = WpThemeSpec(
-        mode = WpThemeMode.valueOf(themeModeName),
-        accent = WpAccent.valueOf(accentName),
-    )
+    var settingsSectionName by rememberSaveable { mutableStateOf(SettingsSection.OVERVIEW.name) }
+    val themeSpec = WpThemeSpec(WpThemeMode.valueOf(themeModeName), WpAccent.valueOf(accentName))
     val language = AppCompatDelegate.getApplicationLocales()[0]?.language.let {
         if (it == "en") AppLanguage.ENGLISH else AppLanguage.CHINESE
     }
     val dispatch: (ShellCommand) -> Unit = { command ->
+        if (command is ShellCommand.Open && command.target.appId == SettingsDestinations.AppId) {
+            settingsSectionName = SettingsDestinations.section(command.target.destination).name
+        }
         transitionIntent = when (command) {
             ShellCommand.ShowAllApps -> WpNavigationIntent.SIBLING_FORWARD
             ShellCommand.Back -> if (navigation.surface == ShellSurface.AllApps) {
@@ -84,74 +110,66 @@ private fun YokuliShell() {
             } else {
                 WpNavigationIntent.DEEPER_BACK
             }
-            ShellCommand.Home -> WpNavigationIntent.DEEPER_BACK
-            is ShellCommand.Open -> when (command.target) {
-                LaunchTarget.AllApps -> WpNavigationIntent.SIBLING_FORWARD
-                LaunchTarget.Desktop -> WpNavigationIntent.DEEPER_BACK
-                else -> WpNavigationIntent.DEEPER_FORWARD
-            }
+            is ShellCommand.Open -> WpNavigationIntent.DEEPER_FORWARD
         }
         navigation = navigator.reduce(navigation, command)
     }
-    BackHandler(navigation.surface != ShellSurface.Start) { dispatch(ShellCommand.Back) }
+    val settingsSubpageVisible = (navigation.surface as? ShellSurface.App)?.let { surface ->
+        navigation.tasks.firstOrNull { it.id == surface.taskId }?.appId == SettingsDestinations.AppId &&
+            SettingsSection.valueOf(settingsSectionName) != SettingsSection.OVERVIEW
+    } == true
+    BackHandler(navigation.surface != ShellSurface.Start) {
+        if (settingsSubpageVisible) {
+            settingsSectionName = SettingsSection.OVERVIEW.name
+        } else {
+            dispatch(ShellCommand.Back)
+        }
+    }
 
     YokuliTheme(themeSpec) {
         val colors = LocalWpTheme.current
         SyncHostWindowChrome(colors.background, themeSpec.mode == WpThemeMode.LIGHT)
         Column(Modifier.fillMaxSize().background(colors.background)) {
-            WpStatusStrip { dispatch(ShellCommand.Open(LaunchTarget.System())) }
+            WpStatusStrip { dispatch(ShellCommand.Open(SettingsDestinations.Target)) }
             WpSurfaceTransitionHost(
                 targetState = navigation.surface,
                 intent = transitionIntent,
                 modifier = Modifier.weight(1f),
             ) { surface ->
+                val launcherState = productionLauncherUiState(
+                    registry = productionRegistry,
+                    document = desktopDocument,
+                    mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
+                    theme = themeSpec,
+                )
+                val launcherAction: (LauncherUiAction) -> Unit = { action ->
+                    when (action) {
+                        is LauncherUiAction.Open -> dispatch(ShellCommand.Open(action.target))
+                        LauncherUiAction.ShowAllApps -> dispatch(ShellCommand.ShowAllApps)
+                        is LauncherUiAction.ChangeDocument -> desktopDocument = action.document
+                        is LauncherUiAction.TogglePin -> {
+                            val pinned = desktopDocument.placements.firstOrNull { it.entryId == action.entryId }
+                            val transaction = if (pinned == null) {
+                                DesktopLayoutEditor.pin(desktopDocument, action.entryId, productionRegistry.entries)
+                            } else {
+                                DesktopLayoutEditor.unpin(desktopDocument, pinned.tileId)
+                            }
+                            transaction?.let { desktopDocument = it.after }
+                        }
+                        is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
+                    }
+                }
                 when (surface) {
                     ShellSurface.Start -> SwipeSurface(onSwipeLeft = { dispatch(ShellCommand.ShowAllApps) }) {
-                        val launcherState = LauncherUiFixtures.state(desktopLayout)
-                        YokuliStartScreen(
-                            state = launcherState,
-                            onAction = { action ->
-                                when (action) {
-                                    is LauncherUiAction.Open -> dispatch(ShellCommand.Open(action.target))
-                                    LauncherUiAction.ShowAllApps -> dispatch(ShellCommand.ShowAllApps)
-                                    is LauncherUiAction.ChangeLayout -> desktopLayout = action.layout
-                                    is LauncherUiAction.TogglePin -> Unit
-                                }
-                            },
-                        )
+                        YokuliStartScreen(launcherState, launcherAction)
                     }
                     ShellSurface.AllApps -> SwipeSurface(onSwipeRight = { dispatch(ShellCommand.Back) }) {
-                        val launcherState = LauncherUiFixtures.state(desktopLayout)
-                        WpAppList(
-                            state = launcherState,
-                            onAction = { action ->
-                                when (action) {
-                                    is LauncherUiAction.Open -> dispatch(ShellCommand.Open(action.target))
-                                    LauncherUiAction.ShowAllApps -> Unit
-                                    is LauncherUiAction.ChangeLayout -> desktopLayout = action.layout
-                                    is LauncherUiAction.TogglePin -> {
-                                        val pinned = desktopLayout.placements.firstOrNull { it.entryId == action.entryId }
-                                        desktopLayout = if (pinned == null) {
-                                            DesktopLayoutEditor.pin(desktopLayout, action.entryId)
-                                        } else {
-                                            DesktopLayoutEditor.unpin(desktopLayout, pinned.tileId)
-                                        }
-                                    }
-                                }
-                            },
-                        )
+                        WpAppList(launcherState, launcherAction)
                     }
                     is ShellSurface.App -> {
                         val task = navigation.tasks.first { it.id == surface.taskId }
-                        val home = { dispatch(ShellCommand.Home) }
-                        when (val target = task.target) {
-                            is LaunchTarget.Chart -> {
-                                var mode by remember(task.id) { mutableStateOf(target.mode) }
-                                val surfaceKind = if (BuildConfig.GOOGLE_MAPS_CONFIGURED) {
-                                    ChartSurfaceKind.GOOGLE_MAPS
-                                } else {
-                                    ChartSurfaceKind.FIXTURE
-                                }
+                        when (task.target.appId) {
+                            ChartDestinations.AppId -> {
                                 val chartSurface: MarineChartSurface = if (BuildConfig.GOOGLE_MAPS_CONFIGURED) {
                                     { modifier ->
                                         GoogleMarineChartSurface(
@@ -160,56 +178,69 @@ private fun YokuliShell() {
                                         )
                                     }
                                 } else {
-                                    { modifier ->
-                                        MarineChartFixtureSurface(
-                                            modifier.testTag("chart-surface-fixture"),
-                                        )
-                                    }
+                                    { modifier -> MarineChartDemoSurface(modifier.testTag("chart-surface-demo")) }
                                 }
                                 ChartWorkspace(
-                                    state = ChartUiFixtures.state(mode, surfaceKind),
+                                    state = ChartUiState(
+                                        surfaceKind = if (BuildConfig.GOOGLE_MAPS_CONFIGURED) {
+                                            ChartSurfaceKind.GOOGLE_MAPS
+                                        } else {
+                                            ChartSurfaceKind.DEMO
+                                        },
+                                        mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
+                                    ),
                                     onAction = { action ->
-                                        when (action) {
-                                            is ChartUiAction.SelectMode -> mode = action.mode
-                                            ChartUiAction.Home -> home()
+                                        if (action == ChartUiAction.OpenMapSettings) {
+                                            dispatch(ShellCommand.Open(SettingsDestinations.target(SettingsSection.MAP)))
                                         }
                                     },
                                     chartSurface = chartSurface,
                                 )
                             }
-                            is LaunchTarget.Cockpit -> CockpitWorkspace(CockpitUiFixtures.state(target.page)) { action ->
-                                if (action == CockpitUiAction.Home) home()
-                            }
-                            is LaunchTarget.Library -> {
-                                var section by remember(task.id) { mutableStateOf(target.section) }
-                                LibraryWorkspace(LibraryUiFixtures.state(section)) { action ->
-                                    when (action) {
-                                        is LibraryUiAction.SelectSection -> section = action.section
-                                        LibraryUiAction.Home -> home()
-                                    }
-                                }
-                            }
-                            is LaunchTarget.System -> {
-                                var section by remember(task.id) { mutableStateOf(target.section) }
-                                SystemWorkspace(SystemUiFixtures.state(section, themeSpec, language)) { action ->
-                                    when (action) {
-                                        is SystemUiAction.OpenSection -> section = action.section
-                                        is SystemUiAction.ChangeTheme -> {
-                                            themeModeName = action.theme.mode.name
-                                            accentName = action.theme.accent.name
+                            SettingsDestinations.AppId -> {
+                                val section = SettingsSection.valueOf(settingsSectionName)
+                                SettingsWorkspace(
+                                    state = SettingsUiState(
+                                        section = section,
+                                        theme = themeSpec,
+                                        language = language,
+                                        mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
+                                        pinnedTileCount = desktopDocument.placements.size,
+                                        desktopDocumentVersion = desktopDocument.version,
+                                        versionName = BuildConfig.VERSION_NAME,
+                                        buildVariant = "${BuildConfig.FLAVOR}/${BuildConfig.BUILD_TYPE}",
+                                        gitSha = BuildConfig.GIT_SHA,
+                                        debugShellLabAvailable = BuildConfig.DEBUG,
+                                    ),
+                                    onAction = { action ->
+                                        when (action) {
+                                            is SettingsUiAction.OpenSection -> settingsSectionName = action.section.name
+                                            is SettingsUiAction.ChangeTheme -> {
+                                                themeModeName = action.theme.mode.name
+                                                accentName = action.theme.accent.name
+                                            }
+                                            is SettingsUiAction.ChangeLanguage -> context.persistAppLanguage(action.language)
+                                            SettingsUiAction.ResetStartScreen -> desktopDocument = defaultDesktopDocument
+                                            SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
                                         }
-                                        is SystemUiAction.ChangeLanguage -> context.persistAppLanguage(action.language)
-                                        SystemUiAction.Home -> home()
-                                    }
-                                }
+                                    },
+                                )
                             }
-                            LaunchTarget.AllApps, LaunchTarget.Desktop -> Unit
+                            else -> Unit
                         }
                     }
                 }
             }
         }
     }
+}
+
+private fun Context.openHostAppInfo() {
+    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+}
+
+private fun Context.openShellLab() {
+    startActivity(Intent().setClassName(packageName, "com.yokuli.marine.feature.shell.lab.ShellLabActivity"))
 }
 
 @Composable
@@ -229,6 +260,10 @@ private fun SyncHostWindowChrome(background: Color, useDarkSystemIcons: Boolean)
     }
 }
 
+/**
+ * 中文：Phase 0A 保留基础左右入口；带进度、速度与取消规则的统一 pager 属于 S3。
+ * English: Phase 0A keeps basic edge navigation; the progress/velocity/cancel pager belongs to S3.
+ */
 @Composable
 private fun SwipeSurface(
     onSwipeLeft: (() -> Unit)? = null,
@@ -240,8 +275,9 @@ private fun SwipeSurface(
         Modifier.fillMaxSize().pointerInput(onSwipeLeft, onSwipeRight) {
             detectHorizontalDragGestures(
                 onDragEnd = {
-                    if (drag < -90f) onSwipeLeft?.invoke()
-                    if (drag > 90f) onSwipeRight?.invoke()
+                    val threshold = size.width * .18f
+                    if (drag < -threshold) onSwipeLeft?.invoke()
+                    if (drag > threshold) onSwipeRight?.invoke()
                     drag = 0f
                 },
                 onHorizontalDrag = { change, amount -> change.consume(); drag += amount },

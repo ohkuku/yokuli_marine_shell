@@ -43,7 +43,7 @@ class GoogleMapsAdapterContractTest(unittest.TestCase):
         self.assertIn('android:name="com.google.android.geo.API_KEY"', manifest)
         self.assertIn('android:value="${GOOGLE_MAPS_ANDROID_API_KEY}"', manifest)
 
-    def test_missing_ci_key_uses_an_explicit_non_network_fixture(self):
+    def test_missing_ci_key_uses_an_explicit_non_network_demo(self):
         gradle = (ROOT / "app-shell/build.gradle.kts").read_text()
         shell = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt").read_text()
         chart = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
@@ -51,9 +51,9 @@ class GoogleMapsAdapterContractTest(unittest.TestCase):
         self.assertIn("MAPS_API_KEY_NOT_CONFIGURED", gradle)
         self.assertIn("BuildConfig.GOOGLE_MAPS_CONFIGURED", shell)
         self.assertIn("GoogleMarineChartSurface", shell)
-        self.assertIn("MarineChartFixtureSurface", shell)
+        self.assertIn("MarineChartDemoSurface", shell)
         self.assertIn('testTag("chart-surface-google")', shell)
-        self.assertIn('testTag("chart-surface-fixture")', shell)
+        self.assertIn('testTag("chart-surface-demo")', shell)
         self.assertNotIn("GoogleMap", chart)
 
     def test_tracked_text_contains_no_google_api_key_value(self):

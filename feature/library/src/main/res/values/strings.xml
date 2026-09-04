@@ -1,9 +1,0 @@
-<resources>
-    <string name="app_library">资料库</string>
-    <string name="section_places">地点</string>
-    <string name="section_routes">航线</string>
-    <string name="section_trips">航次</string>
-    <string name="section_anchors">锚泊记录</string>
-    <string name="section_surveys">测深记录</string>
-    <string name="action_home">主页</string>
-</resources>

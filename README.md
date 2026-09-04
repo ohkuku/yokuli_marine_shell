@@ -6,15 +6,17 @@
 
 ## 中文（主文）
 
-Yokuli OS 把 Windows Phone 8 的完整交互语言用于成熟海图产品架构。应用启动到克制的五磁贴 Start Screen；浏览、导航、锚泊和测深共享同一个海图工作区，不被伪装成互不相关的地图应用。
+Yokuli OS 正在以 Windows Phone 8 的 Shell 交互语言构建一个诚实、可扩展的海图产品。当前 Phase 0A 不是功能演示墙：生产构建只安装已经具备真实入口和明确状态的 `Chart` 与 `Settings`。
 
-当前阶段仍以 UI/UX 和大的功能边界为主，不接入 GPS、NMEA、Anchor、Trip 或 Sonar runtime。Google Maps 已通过独立 adapter 接入共享 Chart surface，但航海数字仍全部来自明确的 `*UiFixtures`；OpenSeaMap、用户海图导入和安全 runtime 尚未接入。每个 feature 只渲染不可变 `UiState` 并发布封闭 `UiAction`；未来以 Kotlin Flow 的 `StateFlow`/`SharedFlow` 接入功能，不允许功能模块重新定义主题、文案、间距或动效。
+默认 Start 是四列空间文档：`Chart` 使用标准 `WIDE_4X2` 并位于 `(0,0)`，`Settings` 使用 `SMALL_1X1` 并位于 `(0,2)`；其余位置是有意保留的留白。所有主题色磁贴共享同一 accent，深色页面为黑底白字，浅色页面为白底黑字，磁贴前景始终为白色。图标由受控 Canvas 绘制，不依赖 Unicode 字体。
 
-中文是未限定资源中的默认语言，英文位于 `values-en`。System → Display 可以在中文和 English 之间切换；显式选择会写入应用偏好，并与 Android 应用级 locale 同步。Launcher 的标题、glyph 和磁贴展示内容归 `feature:desktop` 所有，不进入领域模型。
+Chart 当前只有 Browse。配置 Google Maps Android key 时显示真实 Google 底图；未配置时永久显示 `DEMO MAP / 地图未配置` 的非导航背景，绝不伪造船位、路线、航速或安全状态。Settings 当前只包含外观、开始屏幕、地图、语言、关于与诊断，并且只呈现真实配置和构建事实。
 
-上一版 launcher-first 原型保留在 `codex/launcher-foundation` 供对照，不是当前产品基线。
+Anchor、Trip、NMEA、Navigation、Sonar、Anchorages、Data Sources 等领域语义没有被否定，但在对应真实垂直切片达到安装门禁前，不进入 Registry、All Apps、Start 或生产依赖图。用于布局压力测试的 30 项 `DEMO` 数据只存在于 debug-only `Shell Lab`，release manifest 与依赖不包含它。
 
-本地门禁：
+架构采用功能贡献注册表、不可变 `UiState`／封闭 `UiAction`、函数式 reducer 和响应式端口。`core:shell-engine` 已落下像素对齐几何、显式空间桌面文档、修复策略、事务、交互状态机类型与 `StateFlow` store 端口。完整交互式 pager、拖动自动滚动、碰撞预览、撤销和持久化实现属于后续 S3–S8，不在本轮完成声明中。
+
+本地质量门禁：
 
 ```text
 python3 -m unittest discover .github/scripts 'test_*.py'
@@ -25,36 +27,31 @@ bash .github/scripts/test-secrets-manager.sh
 ./gradlew :app-shell:connectedStandaloneDebugAndroidTest
 ```
 
-从个人加密 vault 注入真实 Google Maps key 并安装本地 debug 包：
+从个人加密 vault 注入 Google Maps key：
 
 ```text
 ./scripts/secrets/yokuli-secrets.sh run -- ./gradlew installStandaloneDebug
 ```
 
-该命令只在交互终端请求 vault 主口令，不创建明文 `.env`。Android Studio 的普通 Run 不会自动解锁 vault。
+该命令只在交互终端请求主口令，不创建明文 `.env`。个人 vault 密文不会自动变成 GitHub Actions Secret。
 
 核心文档：
 
-- [UI／功能隔离与双语需求](docs/requirements/UI_FUNCTION_I18N_REQUIREMENTS.md)
+- [Phase 0A 产品面收敛需求](docs/requirements/PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md)
+- [Shell Engine 本轮需求与阶段边界](docs/requirements/SHELL_ENGINE_REQUIREMENTS.md)
 - [UI／响应式模块架构](docs/UI_REACTIVE_ARCHITECTURE.md)
-- [Chart-first 产品方向](docs/CHART_FIRST_PRODUCT_DIRECTION.md)
+- [WP8 UI 强制范式](docs/WP8_UI_PATTERN.md)
+- [UI／功能隔离与双语需求](docs/requirements/UI_FUNCTION_I18N_REQUIREMENTS.md)
 - [海图来源、单 key 与导入需求](docs/requirements/CHART_SOURCE_IMPORT_REQUIREMENTS.md)
-- [旧工作流审计](docs/LEGACY_WORKFLOW_AUDIT.md)
 - [TDD 开发规范](docs/TDD_PLAYBOOK.md)
 - [TDD 执行日志](docs/TDD_LOG.md)
-- [WP8 UI 需求合同](docs/requirements/WP8_UI_SYSTEM_REQUIREMENTS.md)
-- [WP8 UI 强制范式](docs/WP8_UI_PATTERN.md)
 - [GitHub 交付与发布](docs/GITHUB_DELIVERY.md)
 - [本地密钥保险库](docs/SECRETS_MANAGEMENT.md)
-- [密钥保险库需求合同](docs/requirements/SECRETS_MANAGEMENT_REQUIREMENTS.md)
-- [变更记录](CHANGELOG.md)
 
 ## English translation
 
-Yokuli OS applies the full Windows Phone 8 interaction language to a mature chartplotter architecture. It opens on a focused five-tile Start Screen; Browse, Navigate, Anchor, and Survey remain modes of one shared chart workspace.
+Yokuli OS is building a truthful, extensible marine chart product with the Windows Phone 8 Shell interaction language. Phase 0A installs only Chart and Settings in production. The four-column spatial Start document places a standard `WIDE_4X2` Chart at `(0,0)` and a `SMALL_1X1` Settings tile at `(0,2)`, preserving intentional whitespace.
 
-This phase still prioritizes UI/UX and module boundaries. Google Maps is now wired through an isolated adapter into the shared Chart surface, while marine values remain explicit fixtures and OpenSeaMap, local-chart import, GPS, NMEA, Anchor, Trip, and Sonar runtimes remain disconnected. Features render immutable `UiState` and publish sealed `UiAction`; later runtime work will use Kotlin Flow UDF without allowing runtime modules to redefine theme, copy, spacing, or motion.
+Chart exposes Browse only. With a configured Android Maps key it renders the real Google base map; without one it permanently labels a non-navigational fallback `DEMO MAP` and never invents vessel position, route, speed, or safety state. Settings exposes only implemented Appearance, Start Screen, Map, Language, and truthful About/Diagnostics facts. Future marine domains remain outside the production contribution graph until complete vertical slices pass the installation gate. Thirty stress entries live exclusively in the debug-only Shell Lab.
 
-Simplified Chinese is the default unqualified resource and English lives in `values-en`. System → Display persists the explicit choice and keeps it synchronized with Android per-app locales. Launcher copy and glyphs are UI-owned rather than domain-owned. The commands and document links above are the normative development and delivery entry points.
-
-Phase 1 chart scope is Google Maps plus keyless OpenSeaMap seamarks and user-imported raster MBTiles. It uses one Android-restricted Google key across both app variants without a dev/prod key split; LINZ is not part of this version.
+`core:shell-engine` now defines pixel-snapped Start geometry, an explicit spatial desktop document, validation/repair, layout transactions, interaction-state types, and reactive store ports. The fully interactive pager, drag auto-scroll, collision previews, undo, and durable storage are later S3–S8 work and are not claimed complete here. The commands and linked Chinese-first documents above are the normative development entry points.
