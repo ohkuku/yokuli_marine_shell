@@ -1,0 +1,745 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "identifier": "TechnoBuffalo_269",
+      "detailsUrl": "https://archive.org/details/TechnoBuffalo_269",
+      "title": "TechnoBuffalo 269: Windows Phone 8 - Shortcomings &amp; Irritations",
+      "creator": "Revision 3",
+      "date": "2012-11-14",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "sourceVideo": {
+        "name": "technobuffalo--0269--rettingers-rants-269-windows-phone-8--hd720p30.h264.ogv",
+        "format": "Ogg Video",
+        "size": 24867686,
+        "source": "derivative",
+        "md5": "72d100514315f10824dc82fa6f2e378b",
+        "sha1": "cd89b3fc829e5d8bc6724e2c63958f42ebe0f8d7",
+        "downloadUrl": "https://archive.org/download/TechnoBuffalo_269/technobuffalo--0269--rettingers-rants-269-windows-phone-8--hd720p30.h264.ogv?download=1",
+        "downloadedSha256": "7179b1710f3c620070288cd80a9e9910774efd4f474d8d94fcacff40d569ab84",
+        "downloadedByteSize": 24867686
+      },
+      "durationSeconds": 324.928004,
+      "selectionMethod": "1 fps automatic saturation/rectangle ranking with 3-second temporal suppression; requires human review",
+      "candidates": [
+        {
+          "timestampSeconds": 4.0,
+          "score": 69.9939,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.87045,
+          "darkFraction": 0.07162,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/00-0004.00s.jpg",
+          "sha256": "d54238f9525d69a03c4e5d7265d1059bfcaaa2f421547901ccadc01c7248ad7b",
+          "byteSize": 4808
+        },
+        {
+          "timestampSeconds": 39.0,
+          "score": 36.0601,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.41755,
+          "darkFraction": 0.53128,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/01-0039.00s.jpg",
+          "sha256": "6abeaec41b272199257b4a0cea4ec01613b3d4cc789df0db76408b0694fa5579",
+          "byteSize": 4766
+        },
+        {
+          "timestampSeconds": 50.0,
+          "score": 49.2213,
+          "tileLikeCount": 1,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.51059,
+          "darkFraction": 0.07475,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/02-0050.00s.jpg",
+          "sha256": "6bca6935cfcad2d840374ce6f85c1333975fae104c54558f514d18c0859c8482",
+          "byteSize": 7390
+        },
+        {
+          "timestampSeconds": 54.0,
+          "score": 58.6822,
+          "tileLikeCount": 2,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.52937,
+          "darkFraction": 0.06657,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/03-0054.00s.jpg",
+          "sha256": "05affbd35f41a03b3e14e6eb600b7961c592e0c4b15150978938fc76dec417f9",
+          "byteSize": 7429
+        },
+        {
+          "timestampSeconds": 75.0,
+          "score": 55.3669,
+          "tileLikeCount": 1,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.59042,
+          "darkFraction": 0.02671,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/04-0075.00s.jpg",
+          "sha256": "7ae835a528ad62110640cbe20649ac3a98a7b7bbda7fccc7d96dd8c78c06cd35",
+          "byteSize": 5303
+        },
+        {
+          "timestampSeconds": 113.0,
+          "score": 56.3533,
+          "tileLikeCount": 1,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.60323,
+          "darkFraction": 0.01905,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/05-0113.00s.jpg",
+          "sha256": "345e31cead9166d35c208e0ffef48614740c6adf105d0d8c38b9711254e55872",
+          "byteSize": 4251
+        },
+        {
+          "timestampSeconds": 116.0,
+          "score": 56.9461,
+          "tileLikeCount": 1,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.61158,
+          "darkFraction": 0.0039,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/06-0116.00s.jpg",
+          "sha256": "6dd16b8a2d6512b435a95b4f75895125fe4c039ce2ad3836fb2ceb8ee270314c",
+          "byteSize": 5204
+        },
+        {
+          "timestampSeconds": 121.0,
+          "score": 64.4423,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.80372,
+          "darkFraction": 0.02895,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/07-0121.00s.jpg",
+          "sha256": "aeca351ddcd94a5605f9a5264b5528bbc2814339b26185c82bc0c0e61a189133",
+          "byteSize": 6421
+        },
+        {
+          "timestampSeconds": 144.0,
+          "score": 56.8914,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.71073,
+          "darkFraction": 0.00654,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/08-0144.00s.jpg",
+          "sha256": "ac5f31c05cb685f9c12b2364f57d11d9f5bb174ce5de567dbe04a5c930c65441",
+          "byteSize": 6088
+        },
+        {
+          "timestampSeconds": 147.0,
+          "score": 56.9127,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.711,
+          "darkFraction": 0.00662,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/09-0147.00s.jpg",
+          "sha256": "a26b4dc61fa9a3cb0145d762b8d6e7ec96801962fefddd53f4961954b5e2ae68",
+          "byteSize": 6110
+        },
+        {
+          "timestampSeconds": 150.0,
+          "score": 63.9641,
+          "tileLikeCount": 1,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.66098,
+          "darkFraction": 0.11714,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/10-0150.00s.jpg",
+          "sha256": "03960c434977dbc6be87be6c03bde8dbcfd60e46ce006a06b953b9a085d41745",
+          "byteSize": 8860
+        },
+        {
+          "timestampSeconds": 154.0,
+          "score": 64.4302,
+          "tileLikeCount": 1,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.66686,
+          "darkFraction": 0.11629,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/11-0154.00s.jpg",
+          "sha256": "148fcc7a00ae514f9854261d7d96f7899ca020e87283e5919137cafbacd58689",
+          "byteSize": 8755
+        },
+        {
+          "timestampSeconds": 172.0,
+          "score": 72.7713,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.90898,
+          "darkFraction": 0.01056,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/12-0172.00s.jpg",
+          "sha256": "14a1f9724b2e94a6a43223d825f2c112ec253895ac16a8d16517a7b54bf0de00",
+          "byteSize": 6345
+        },
+        {
+          "timestampSeconds": 175.0,
+          "score": 72.146,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.9011,
+          "darkFraction": 0.01154,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/13-0175.00s.jpg",
+          "sha256": "517cdad5dea4ffb29b656bca0f340bf03d188fcc68bc84530de1bdd18f911770",
+          "byteSize": 6441
+        },
+        {
+          "timestampSeconds": 178.0,
+          "score": 71.5703,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.89385,
+          "darkFraction": 0.01245,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/14-0178.00s.jpg",
+          "sha256": "883d281ad48b42287a11645ac257d7231b332a974def60e39343da266cd334ae",
+          "byteSize": 6565
+        },
+        {
+          "timestampSeconds": 203.0,
+          "score": 52.27,
+          "tileLikeCount": 0,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.61746,
+          "darkFraction": 0.07461,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/15-0203.00s.jpg",
+          "sha256": "8e2fda0bb99ffdc355d87f22c07f7d1bba6b0599c52f4804befac67783d7f732",
+          "byteSize": 7765
+        },
+        {
+          "timestampSeconds": 206.0,
+          "score": 52.9044,
+          "tileLikeCount": 0,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.62573,
+          "darkFraction": 0.06915,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/16-0206.00s.jpg",
+          "sha256": "ff8091803d7e688489405da11c80033b1533965756bcc87c16069e59f48da8f5",
+          "byteSize": 7778
+        },
+        {
+          "timestampSeconds": 223.0,
+          "score": 49.8769,
+          "tileLikeCount": 1,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.52095,
+          "darkFraction": 0.04019,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/17-0223.00s.jpg",
+          "sha256": "891345b7cf7b71380af6a00b236688e4f13cb372d8aa07c61c22df0c47be7bf9",
+          "byteSize": 6835
+        },
+        {
+          "timestampSeconds": 226.0,
+          "score": 42.4249,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.52794,
+          "darkFraction": 0.03795,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/18-0226.00s.jpg",
+          "sha256": "b83c836fb3185fce510ecdf356e96720715a62f34d5fa280c6e6877ed843e8c6",
+          "byteSize": 7326
+        },
+        {
+          "timestampSeconds": 230.0,
+          "score": 45.0391,
+          "tileLikeCount": 0,
+          "portraitRectCount": 2,
+          "saturatedFraction": 0.49865,
+          "darkFraction": 0.02942,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/19-0230.00s.jpg",
+          "sha256": "a709b2ef942ad32a910fe0b710f8319d431b71831c8f7af4a023fbce70f57c3f",
+          "byteSize": 6286
+        },
+        {
+          "timestampSeconds": 244.0,
+          "score": 70.7539,
+          "tileLikeCount": 2,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.67981,
+          "darkFraction": 0.07373,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/20-0244.00s.jpg",
+          "sha256": "d21b9deb5a629aa2eee7b8f648e186295bcfebe6c11edacc5a6c5704252b8cc0",
+          "byteSize": 7441
+        },
+        {
+          "timestampSeconds": 247.0,
+          "score": 49.7819,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.61795,
+          "darkFraction": 0.06923,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/21-0247.00s.jpg",
+          "sha256": "5a33adaa7dd0664ce858af11a869c48fde68980d2851901b9fda6599c27d7596",
+          "byteSize": 7534
+        },
+        {
+          "timestampSeconds": 254.0,
+          "score": 70.4061,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.87578,
+          "darkFraction": 0.06874,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/22-0254.00s.jpg",
+          "sha256": "5e277eff9c6305ef9a7a164724a98342680826c5d29832b659772601f3b7e696",
+          "byteSize": 4735
+        },
+        {
+          "timestampSeconds": 257.0,
+          "score": 68.0333,
+          "tileLikeCount": 6,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.21728,
+          "darkFraction": 0.03012,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/23-0257.00s.jpg",
+          "sha256": "7449755d7125e92de4ebc554edbce6166d40a7023d23e539efd86b7731df2a8a",
+          "byteSize": 7518
+        },
+        {
+          "timestampSeconds": 260.0,
+          "score": 45.8593,
+          "tileLikeCount": 5,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.04645,
+          "darkFraction": 0.42866,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/24-0260.00s.jpg",
+          "sha256": "cda034228bd2959eed3c0c6ef0f84e73718bc23f864acc1001dad23773a28ec3",
+          "byteSize": 11215
+        },
+        {
+          "timestampSeconds": 271.0,
+          "score": 41.548,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.51564,
+          "darkFraction": 0.05934,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/25-0271.00s.jpg",
+          "sha256": "d5ea709de448dda64d1c6e0b603b493b95eba65ffe05465f020ea46ca05235b0",
+          "byteSize": 7589
+        },
+        {
+          "timestampSeconds": 277.0,
+          "score": 38.3336,
+          "tileLikeCount": 2,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.2287,
+          "darkFraction": 0.30746,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/26-0277.00s.jpg",
+          "sha256": "8b760db6f8306932ff0fa3b0076186fe149d5b25be3eb01e8248e18b4a5791b9",
+          "byteSize": 8444
+        },
+        {
+          "timestampSeconds": 303.0,
+          "score": 32.5213,
+          "tileLikeCount": 3,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.07293,
+          "darkFraction": 0.03734,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/27-0303.00s.jpg",
+          "sha256": "e950dbed0e76e236d755805be45c90a3610078ff25bf290e5f8ec2a52bc9301e",
+          "byteSize": 6534
+        },
+        {
+          "timestampSeconds": 308.0,
+          "score": 36.9326,
+          "tileLikeCount": 4,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.05851,
+          "darkFraction": 0.05035,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/28-0308.00s.jpg",
+          "sha256": "5cf3471469f275452b728cd6cab2b72181750cf957c4ed1f24b4bcb37e60d496",
+          "byteSize": 6908
+        },
+        {
+          "timestampSeconds": 324.0,
+          "score": 42.2355,
+          "tileLikeCount": 5,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.02679,
+          "darkFraction": 0.01846,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/29-0324.00s.jpg",
+          "sha256": "00f7b67b6cd1291dd126928530e3794fdfa3ba5ae87ec095670827c19187d0d9",
+          "byteSize": 7507
+        }
+      ],
+      "contactPages": [
+        {
+          "path": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/contact-page-1.jpg",
+          "sha256": "e7d45f0f871dc1efa12898a894620a677646220318b75f4189fb622f82d8af9a",
+          "byteSize": 78619
+        },
+        {
+          "path": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/contact-page-2.jpg",
+          "sha256": "ef646c819d47fa9ed1fbbded663b4db66b1f3ccf313b800f6bda81c841444174",
+          "byteSize": 85674
+        },
+        {
+          "path": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_269/contact-page-3.jpg",
+          "sha256": "7ba967c31b03a844e7dbe2f58171795c1e22d5624f9dbd2d2a0b5e62db07ee35",
+          "byteSize": 48607
+        }
+      ]
+    },
+    {
+      "identifier": "TechnoBuffalo_299",
+      "detailsUrl": "https://archive.org/details/TechnoBuffalo_299",
+      "title": "TechnoBuffalo 299: Samsung ATIV Odyssey Hands-On - CES 2013",
+      "creator": "Revision 3",
+      "date": "2013-01-08",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "sourceVideo": {
+        "name": "technobuffalo--0299--samsung-ativ-odyssey-hands-on-ces-2013--hd720p30.h264.ogv",
+        "format": "Ogg Video",
+        "size": 11509299,
+        "source": "derivative",
+        "md5": "947987410ea05df13f08b8a0192ff779",
+        "sha1": "fcbdea1dfa48580ec14a87876844965c8b92e450",
+        "downloadUrl": "https://archive.org/download/TechnoBuffalo_299/technobuffalo--0299--samsung-ativ-odyssey-hands-on-ces-2013--hd720p30.h264.ogv?download=1",
+        "downloadedSha256": "c4631bca8b2cf8f1547a093ff96c8637ae16800871915f051a1a31feb4c52722",
+        "downloadedByteSize": 11509299
+      },
+      "durationSeconds": 155.264149,
+      "selectionMethod": "1 fps automatic saturation/rectangle ranking with 3-second temporal suppression; requires human review",
+      "candidates": [
+        {
+          "timestampSeconds": 9.0,
+          "score": 74.1902,
+          "tileLikeCount": 7,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.2132,
+          "darkFraction": 0.22681,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/00-0009.00s.jpg",
+          "sha256": "a6b290353ef5bc567aa3a3ca08484a00cc711a6488d8701f8fd1ead6b3b6d9ba",
+          "byteSize": 8378
+        },
+        {
+          "timestampSeconds": 14.0,
+          "score": 87.8549,
+          "tileLikeCount": 8,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.28635,
+          "darkFraction": 0.18937,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/01-0014.00s.jpg",
+          "sha256": "defea4e12c3ec23d2b86e0fcf57cd3d7a15b897d5fdabb2bd8afc3302f2b3c9a",
+          "byteSize": 9269
+        },
+        {
+          "timestampSeconds": 22.0,
+          "score": 28.1944,
+          "tileLikeCount": 1,
+          "portraitRectCount": 2,
+          "saturatedFraction": 0.16106,
+          "darkFraction": 0.46184,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/02-0022.00s.jpg",
+          "sha256": "d77075db1f1efb1d68739de68e124964b520def9d43a06ab8bb9c04a65db025e",
+          "byteSize": 6372
+        },
+        {
+          "timestampSeconds": 29.0,
+          "score": 43.7056,
+          "tileLikeCount": 3,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.22983,
+          "darkFraction": 0.26383,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/03-0029.00s.jpg",
+          "sha256": "1e21a432cb60f909150ff8f07585e1183c127717647fb962e24e1976da87f3a0",
+          "byteSize": 7899
+        },
+        {
+          "timestampSeconds": 33.0,
+          "score": 55.1052,
+          "tileLikeCount": 5,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.17218,
+          "darkFraction": 0.2661,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/04-0033.00s.jpg",
+          "sha256": "c60e566f64e05ad5eeade11b02fd38ee1d27de4fbb8c8fb1b2fdf97b2e97ec7d",
+          "byteSize": 8249
+        },
+        {
+          "timestampSeconds": 37.0,
+          "score": 44.4281,
+          "tileLikeCount": 3,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.23673,
+          "darkFraction": 0.29797,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/05-0037.00s.jpg",
+          "sha256": "871c614b4a045a01307376523456ce45c044b62d990e27f96517f796f36d56eb",
+          "byteSize": 8747
+        },
+        {
+          "timestampSeconds": 40.0,
+          "score": 60.97,
+          "tileLikeCount": 5,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.24351,
+          "darkFraction": 0.29783,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/06-0040.00s.jpg",
+          "sha256": "7b8932f25339ffbe03ccbf32dddd6005969b39aacdab752b281492ba559f8a7c",
+          "byteSize": 8644
+        },
+        {
+          "timestampSeconds": 45.0,
+          "score": 55.1132,
+          "tileLikeCount": 1,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.57326,
+          "darkFraction": 0.25055,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/07-0045.00s.jpg",
+          "sha256": "70e9634087a924fa7f147abdb20cc2c015f8af33b6f59f0157a361a9ddc70291",
+          "byteSize": 4680
+        },
+        {
+          "timestampSeconds": 50.0,
+          "score": 46.5961,
+          "tileLikeCount": 3,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.25863,
+          "darkFraction": 0.3812,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/08-0050.00s.jpg",
+          "sha256": "3ebcb517ca5636d19198d74fc14de893ff7a1b7ed1fe5720ab728d2e400b4b44",
+          "byteSize": 7092
+        },
+        {
+          "timestampSeconds": 57.0,
+          "score": 53.8185,
+          "tileLikeCount": 5,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.11604,
+          "darkFraction": 0.40703,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/09-0057.00s.jpg",
+          "sha256": "d800b64512f2cba991845e6a1385ac13b1853d11ee42a4d83801fc679add26b4",
+          "byteSize": 8383
+        },
+        {
+          "timestampSeconds": 61.0,
+          "score": 47.8858,
+          "tileLikeCount": 4,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.16904,
+          "darkFraction": 0.47259,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/10-0061.00s.jpg",
+          "sha256": "a2bb4ab77b4573d50114d353004aa9bffe4c537e2cd525ae9d174cc7e01d6c8a",
+          "byteSize": 6641
+        },
+        {
+          "timestampSeconds": 64.0,
+          "score": 43.751,
+          "tileLikeCount": 4,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.11959,
+          "darkFraction": 0.43675,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/11-0064.00s.jpg",
+          "sha256": "36faae0f31b181bb8c3e8ec1b7930db84489fd255d092557123d9a880e8d265e",
+          "byteSize": 7163
+        },
+        {
+          "timestampSeconds": 68.0,
+          "score": 39.5105,
+          "tileLikeCount": 3,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.16025,
+          "darkFraction": 0.53802,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/12-0068.00s.jpg",
+          "sha256": "ade5e87bd81e8eafa323ed13b05cf05cc47b08f2c03cba91f2a6baa8b210a640",
+          "byteSize": 6340
+        },
+        {
+          "timestampSeconds": 71.0,
+          "score": 45.3495,
+          "tileLikeCount": 4,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.13821,
+          "darkFraction": 0.45854,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/13-0071.00s.jpg",
+          "sha256": "5b2d5ffa37d506ea77f7fbb03d22451257f8c3a6198452f79f704c60f0659962",
+          "byteSize": 7435
+        },
+        {
+          "timestampSeconds": 75.0,
+          "score": 42.4598,
+          "tileLikeCount": 3,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.19549,
+          "darkFraction": 0.56419,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/14-0075.00s.jpg",
+          "sha256": "d0a127aa59cab5df8667049180e7a8cf9332d62f4bab137e8efa938541d7408f",
+          "byteSize": 6412
+        },
+        {
+          "timestampSeconds": 80.0,
+          "score": 49.7986,
+          "tileLikeCount": 3,
+          "portraitRectCount": 2,
+          "saturatedFraction": 0.21806,
+          "darkFraction": 0.67072,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/15-0080.00s.jpg",
+          "sha256": "4516de70068ca1c7358386bc2143fb9cbfffd0bee0d63d3bc36122409d97c733",
+          "byteSize": 5461
+        },
+        {
+          "timestampSeconds": 84.0,
+          "score": 37.7755,
+          "tileLikeCount": 2,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.22968,
+          "darkFraction": 0.68017,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/16-0084.00s.jpg",
+          "sha256": "b71497031f6ccb265c807bf53e51da431e7db0d038da4eb079e24b89dfe493eb",
+          "byteSize": 5532
+        },
+        {
+          "timestampSeconds": 88.0,
+          "score": 41.1096,
+          "tileLikeCount": 4,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.0968,
+          "darkFraction": 0.27315,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/17-0088.00s.jpg",
+          "sha256": "4f56451307f25aaef57bc8e7f951223e35f3296ea7ea6fb791ae172915d4b83d",
+          "byteSize": 8854
+        },
+        {
+          "timestampSeconds": 91.0,
+          "score": 57.106,
+          "tileLikeCount": 5,
+          "portraitRectCount": 2,
+          "saturatedFraction": 0.13429,
+          "darkFraction": 0.27255,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/18-0091.00s.jpg",
+          "sha256": "5d937cdd1651253d105ac76e22d534b720ee46edcf216d8b3cf28c406a63dd81",
+          "byteSize": 8178
+        },
+        {
+          "timestampSeconds": 101.0,
+          "score": 38.528,
+          "tileLikeCount": 2,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.26268,
+          "darkFraction": 0.30276,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/19-0101.00s.jpg",
+          "sha256": "4bfc6f14552238fb46705c7ff874a6a4e53ac0ade7c161b7e08a8d78b761226c",
+          "byteSize": 6031
+        },
+        {
+          "timestampSeconds": 105.0,
+          "score": 35.3948,
+          "tileLikeCount": 3,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.13908,
+          "darkFraction": 0.05366,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/20-0105.00s.jpg",
+          "sha256": "74306136be54a51e8177aac5ffe5f30f45b7148887ca66bda8aa1daea7c8de35",
+          "byteSize": 6534
+        },
+        {
+          "timestampSeconds": 115.0,
+          "score": 34.3919,
+          "tileLikeCount": 2,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.19953,
+          "darkFraction": 0.48592,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/21-0115.00s.jpg",
+          "sha256": "047b2c53db406c29e3b9f16b86dbbfb29877bb7a941d6fa36d00b092ace7604c",
+          "byteSize": 8737
+        },
+        {
+          "timestampSeconds": 118.0,
+          "score": 37.0632,
+          "tileLikeCount": 2,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.23507,
+          "darkFraction": 0.45152,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/22-0118.00s.jpg",
+          "sha256": "fb6cf9e9bf691ad70b925cd29558e25c70be1997f04d069acbf19a0b35b3983e",
+          "byteSize": 7964
+        },
+        {
+          "timestampSeconds": 121.0,
+          "score": 57.0211,
+          "tileLikeCount": 6,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.09441,
+          "darkFraction": 0.2936,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/23-0121.00s.jpg",
+          "sha256": "31eeb4dc660ba16c96ff6f12a997cc24e97f408a9b8a1d6299f47b1e8335a9c8",
+          "byteSize": 9410
+        },
+        {
+          "timestampSeconds": 124.0,
+          "score": 43.4828,
+          "tileLikeCount": 4,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.09735,
+          "darkFraction": 0.23904,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/24-0124.00s.jpg",
+          "sha256": "83bc0720fddd558bb6d0e5ba3cc47dda8c3685c4332e56220a359f33ad8f2bcf",
+          "byteSize": 8655
+        },
+        {
+          "timestampSeconds": 140.0,
+          "score": 87.4709,
+          "tileLikeCount": 5,
+          "portraitRectCount": 1,
+          "saturatedFraction": 0.54667,
+          "darkFraction": 0.24738,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/25-0140.00s.jpg",
+          "sha256": "cf550b8a17a2d3c193e922a8932d59b81f5fb709b3854a3879926d36b7ebe174",
+          "byteSize": 7986
+        },
+        {
+          "timestampSeconds": 144.0,
+          "score": 39.4346,
+          "tileLikeCount": 1,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.38321,
+          "darkFraction": 0.15556,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/26-0144.00s.jpg",
+          "sha256": "08f7c1b3f67aba4680e8a761a9b505c609671a7e9ca9323e4581a203542de55f",
+          "byteSize": 7647
+        },
+        {
+          "timestampSeconds": 147.0,
+          "score": 52.6919,
+          "tileLikeCount": 5,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.1234,
+          "darkFraction": 0.56394,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/27-0147.00s.jpg",
+          "sha256": "4df121510339b4ea2192377bf40b211c85536fd44689262f138e6c2a343fe93f",
+          "byteSize": 7547
+        },
+        {
+          "timestampSeconds": 150.0,
+          "score": 65.2231,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.81216,
+          "darkFraction": 0.05006,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/28-0150.00s.jpg",
+          "sha256": "57e51b4e54090334f331ec115c57ecd1dc7429730c252950a8952dd9b4dec780",
+          "byteSize": 7970
+        },
+        {
+          "timestampSeconds": 153.0,
+          "score": 53.9161,
+          "tileLikeCount": 0,
+          "portraitRectCount": 0,
+          "saturatedFraction": 0.66564,
+          "darkFraction": 0.13298,
+          "repositoryPath": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/29-0153.00s.jpg",
+          "sha256": "12ac9a5c5350c5e912d03c2a5b5c4aa2162cc5dd0d95ff3905ab3cdcbc383578",
+          "byteSize": 7944
+        }
+      ],
+      "contactPages": [
+        {
+          "path": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/contact-page-1.jpg",
+          "sha256": "3d7abed9652b706c95058c751f491a09bd56cb9bd83617f7b034e2d19cc79864",
+          "byteSize": 91183
+        },
+        {
+          "path": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/contact-page-2.jpg",
+          "sha256": "be766baebfa00a8a6b0ee97aa2371f45b8484779e15acb4c53776296a99351f7",
+          "byteSize": 86365
+        },
+        {
+          "path": "docs/reference/wp8/artifacts/motion-candidates/TechnoBuffalo_299/contact-page-3.jpg",
+          "sha256": "d008caa03cd62d151a8b41418a6fdad2d2fde542347d445a9495ffa6087d4cef",
+          "byteSize": 48593
+        }
+      ]
+    }
+  ]
+}
