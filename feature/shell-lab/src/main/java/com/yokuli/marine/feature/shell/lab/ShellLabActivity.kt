@@ -30,8 +30,9 @@ import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.WpTileSize
-import com.yokuli.shell.engine.layout.DesktopDocument
+import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 
 class ShellLabActivity : AppCompatActivity() {
@@ -82,7 +83,7 @@ private fun demoDescriptors(count: Int) = List(count) { index ->
     )
 }
 
-private fun demoDocument(entries: List<LauncherEntryDescriptor>): DesktopDocument {
+private fun demoDocument(entries: List<LauncherEntryDescriptor>): StartDocument {
     var row = 0
     val placements = entries.mapIndexed { index, entry ->
         val size = entry.defaultSize
@@ -97,5 +98,10 @@ private fun demoDocument(entries: List<LauncherEntryDescriptor>): DesktopDocumen
         if (size == WpTileSize.WIDE_4X2) row += 2 else if (column == 3) row += 1
         placement
     }
-    return DesktopDocument(version = 1, columns = 4, placements = placements)
+    return StartDocument(
+        schemaVersion = 1,
+        profileId = WpReferenceProfiles.PHONE_PORTRAIT_4COL.id,
+        defaultLayoutVersion = 1,
+        placements = placements,
+    )
 }

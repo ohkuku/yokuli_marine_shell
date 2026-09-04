@@ -3,7 +3,7 @@ package com.yokuli.shell.engine.interaction
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.WpTileSize
-import com.yokuli.shell.engine.layout.DesktopDocument
+import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.LayoutTransaction
 
 enum class LauncherPage { START, ALL_APPS }
@@ -22,13 +22,13 @@ sealed interface StartInteractionState {
         val pointerId: Long,
         val grabOffsetPx: ShellOffset,
         val visualOffsetPx: ShellOffset,
-        val proposedLayout: DesktopDocument,
+        val proposedLayout: StartDocument,
         val autoScrollPxPerSecond: Float,
     ) : StartInteractionState
     data class Resizing(
         val tileId: TileInstanceId,
         val proposedSize: WpTileSize,
-        val proposedLayout: DesktopDocument,
+        val proposedLayout: StartDocument,
     ) : StartInteractionState
     data class Settling(val transaction: LayoutTransaction) : StartInteractionState
     data class Launching(

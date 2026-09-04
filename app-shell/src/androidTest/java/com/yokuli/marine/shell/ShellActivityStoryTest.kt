@@ -146,7 +146,7 @@ class ShellActivityStoryTest {
                         YokuliStartScreen(
                             state = productionLauncherUiState(
                                 productionCatalog.snapshot,
-                                defaultDesktopDocument,
+                                defaultStartDocument,
                                 mapConfigured = false,
                                 theme = WpThemeSpec(),
                                 visualContributions = productionVisualContributions,

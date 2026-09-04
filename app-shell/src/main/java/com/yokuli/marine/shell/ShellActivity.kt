@@ -52,7 +52,7 @@ import com.yokuli.marine.feature.desktop.productionLauncherUiState
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
-import com.yokuli.shell.engine.layout.DesktopLayoutEditor
+import com.yokuli.shell.engine.layout.StartLayoutEditor
 import com.yokuli.shell.engine.navigation.ShellCommand
 import com.yokuli.shell.engine.navigation.ShellNavigationState
 import com.yokuli.shell.engine.navigation.ShellNavigator
@@ -83,7 +83,7 @@ private fun YokuliShell() {
     val navigator = remember { ShellNavigator(productionHostPort) }
     val scope = rememberCoroutineScope()
     var navigation by remember { mutableStateOf(ShellNavigationState()) }
-    var desktopDocument by remember { mutableStateOf(defaultDesktopDocument) }
+    var startDocument by remember { mutableStateOf(defaultStartDocument) }
     var transitionIntent by remember { mutableStateOf(WpNavigationIntent.SIBLING_FORWARD) }
     var themeModeName by rememberSaveable { mutableStateOf(WpThemeMode.DARK.name) }
     var accentName by rememberSaveable { mutableStateOf(WpAccent.CYAN.name) }
@@ -127,8 +127,8 @@ private fun YokuliShell() {
             theme = themeSpec,
             language = language,
             settingsSection = SettingsSection.valueOf(settingsSectionName),
-            pinnedTileCount = desktopDocument.placements.size,
-            desktopDocumentVersion = desktopDocument.version,
+            pinnedTileCount = startDocument.placements.size,
+            startDocumentVersion = startDocument.defaultLayoutVersion,
             versionName = BuildConfig.VERSION_NAME,
             buildVariant = "${BuildConfig.FLAVOR}/${BuildConfig.BUILD_TYPE}",
             gitSha = BuildConfig.GIT_SHA,
@@ -142,7 +142,7 @@ private fun YokuliShell() {
                         accentName = action.theme.accent.name
                     }
                     is SettingsUiAction.ChangeLanguage -> context.persistAppLanguage(action.language)
-                    SettingsUiAction.ResetStartScreen -> desktopDocument = defaultDesktopDocument
+                    SettingsUiAction.ResetStartScreen -> startDocument = defaultStartDocument
                     SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
                 }
             },
@@ -157,7 +157,7 @@ private fun YokuliShell() {
                 ) { surface ->
                     val launcherState = productionLauncherUiState(
                         catalog = productionCatalog.snapshot,
-                        document = desktopDocument,
+                        document = startDocument,
                         mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
                         theme = themeSpec,
                         visualContributions = productionVisualContributions,
@@ -166,15 +166,15 @@ private fun YokuliShell() {
                         when (action) {
                             is LauncherUiAction.Open -> dispatch(ShellCommand.Open(action.token))
                             LauncherUiAction.ShowAllApps -> dispatch(ShellCommand.ShowAllApps)
-                            is LauncherUiAction.ChangeDocument -> desktopDocument = action.document
+                            is LauncherUiAction.ChangeDocument -> startDocument = action.document
                             is LauncherUiAction.TogglePin -> {
-                                val pinned = desktopDocument.placements.firstOrNull { it.entryId == action.entryId }
+                                val pinned = startDocument.placements.firstOrNull { it.entryId == action.entryId }
                                 val transaction = if (pinned == null) {
-                                    DesktopLayoutEditor.pin(desktopDocument, action.entryId, productionCatalog.entries)
+                                    StartLayoutEditor.pin(startDocument, action.entryId, productionCatalog.entries)
                                 } else {
-                                    DesktopLayoutEditor.unpin(desktopDocument, pinned.tileId)
+                                    StartLayoutEditor.unpin(startDocument, pinned.tileId)
                                 }
-                                transaction?.let { desktopDocument = it.after }
+                                transaction?.let { startDocument = it.after }
                             }
                             is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
                         }

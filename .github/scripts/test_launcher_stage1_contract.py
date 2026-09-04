@@ -84,7 +84,7 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
         for fact in (
             "mapConfigured",
             "pinnedTileCount",
-            "desktopDocumentVersion",
+            "startDocumentVersion",
             "versionName",
             "buildVariant",
             "gitSha",

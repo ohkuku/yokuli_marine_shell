@@ -49,8 +49,9 @@ import com.yokuli.marine.core.design.wpThemeModeName
 import com.yokuli.marine.core.design.wpTileAccentName
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.engine.geometry.WpStartGeometryCalculator
+import com.yokuli.shell.engine.geometry.StartViewport
 import com.yokuli.shell.engine.interaction.StartInteractionState
-import com.yokuli.shell.engine.layout.DesktopLayoutEditor
+import com.yokuli.shell.engine.layout.StartLayoutEditor
 import com.yokuli.shell.engine.layout.GridCell
 import kotlin.math.roundToInt
 
@@ -72,8 +73,20 @@ fun YokuliStartScreen(
             .semantics { wpThemeModeName = colors.spec.mode.name.lowercase() },
     ) {
         val availableWidthPx = with(density) { maxWidth.toPx().roundToInt() }
-        val geometry = remember(availableWidthPx) { WpStartGeometryCalculator.calculate(availableWidthPx) }
-        val cell = with(density) { geometry.cellPx.toDp() }
+        val availableHeightPx = with(density) { maxHeight.toPx().roundToInt() }
+        val geometry = remember(availableWidthPx, availableHeightPx, density.density, density.fontScale) {
+            WpStartGeometryCalculator.calculate(
+                StartViewport(
+                    widthPx = availableWidthPx,
+                    heightPx = availableHeightPx,
+                    density = density.density,
+                    topInsetPx = 0,
+                    bottomInsetPx = 0,
+                    fontScale = density.fontScale,
+                ),
+            )
+        }
+        val cell = with(density) { geometry.smallCellPx.toDp() }
         val seam = with(density) { geometry.seamPx.toDp() }
         val pitch = cell + seam
         val rows = state.document.placements.maxOfOrNull { it.cell.row + it.size.rows } ?: 0
@@ -81,9 +94,11 @@ fun YokuliStartScreen(
         Column(
             Modifier.fillMaxHeight().verticalScroll(scroll)
                 .padding(
-                    start = with(density) { geometry.outerStartPx.toDp() },
-                    end = with(density) { geometry.outerEndPx.toDp() },
-                    top = with(density) { geometry.outerTopPx.toDp() },
+                    start = with(density) { geometry.outerInsetsPx.left.toDp() },
+                    end = with(density) { geometry.outerInsetsPx.right.toDp() },
+                    top = with(density) {
+                        (geometry.outerInsetsPx.top - geometry.statusStripHeightPx).coerceAtLeast(0).toDp()
+                    },
                 ).testTag("start-grid"),
         ) {
             Box(Modifier.fillMaxWidth().height(gridHeight)) {
@@ -107,13 +122,13 @@ fun YokuliStartScreen(
                                 },
                                 onLongClick = { interaction = StartInteractionState.EditIdle(placement.tileId) },
                                 onUnpin = {
-                                    DesktopLayoutEditor.unpin(state.document, placement.tileId)?.let {
+                                    StartLayoutEditor.unpin(state.document, placement.tileId)?.let {
                                         onAction(LauncherUiAction.ChangeDocument(it.after))
                                     }
                                     interaction = StartInteractionState.Idle
                                 },
                                 onResize = {
-                                    DesktopLayoutEditor.resize(
+                                    StartLayoutEditor.resize(
                                         state.document,
                                         placement.tileId,
                                         state.entries.map { it.descriptor },
@@ -125,7 +140,7 @@ fun YokuliStartScreen(
                                         column = (placement.cell.column + delta.x / pitchPx).roundToInt(),
                                         row = (placement.cell.row + delta.y / pitchPx).roundToInt(),
                                     )
-                                    DesktopLayoutEditor.move(
+                                    StartLayoutEditor.move(
                                         state.document,
                                         placement.tileId,
                                         target,

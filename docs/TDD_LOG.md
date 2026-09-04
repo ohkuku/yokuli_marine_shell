@@ -351,3 +351,32 @@ Stage 2.5 semantic validator                   PASS (HUMAN_REVIEWED)
 ### English translation — Batch A foundation
 
 Before Stage 3, one small owner-requested foundation commit consolidates each installed app's catalog contribution, launch registrations, visual contribution, and internal Compose host into one composition-root binding. A four-test Red first proves the registries were distributed. Green derives every registry from the two Chart/Settings bindings, removes product-ID visual branching and Activity-owned host tables, and preserves all Stage 0–2.5 behavior and boundaries. This is not a Stage and therefore has no Stage report or baseline lock.
+
+## Stage 3 — WP Geometry & Start Document
+
+### Baseline and contract
+
+Stage 3 从 `launcher-engine-stage2.5-approved-v1`、人工批准 measurement hash `af4ed6d…` 及独立 foundation commit `53a239c…` 开始。合同要求 measured profile、整数像素 viewport geometry、标准三尺寸、二维 `StartDocument`、确定性 validator/repair、320/360 方屏 bounds、有意留白和 Chart Wide + Settings Small 默认布局；不得进入 reducer、pager、gesture、persistence 或实体键实现。
+
+### Red
+
+先新增 `.github/scripts/test_launcher_stage3_contract.py`：
+
+```text
+Ran 6 tests
+FAILED (failures=2, errors=4)
+```
+
+缺口精确对应 baseline/report、reference profile、viewport geometry、StartDocument、默认文档和命名 CI Gate 尚不存在。
+
+### Green and refactor
+
+实现 `WpReferenceProfile` 时只带入录屏测得值；`longPressMillis`、`pressScale`、`fastFlingThreshold` 保持 `null / NOT_OBSERVED`。480×800 精确还原 24/12/99/210/432 与状态条 32；320/360 通过相同比例、整数 snapping 和尾端 remainder 分配完整消费宽度。`SQUARE_4COL` 明确为派生 profile，不冒充三星真机证据。
+
+`StartDocument` 以 schema/profile/default-layout 三个版本字段和 explicit cell 为真值；重排 placement 列表不改变位置。修复流程可确定性移除未知/重复 Entry、替换不支持尺寸、重定位越界/重叠项，并在 profile/文档损坏时回到默认文档。旧 UI 的离散编辑入口只迁移类型，transaction identity/Undo 仍留给 Stage 4。
+
+### English translation — Stage 3
+
+Stage 3 is driven by the human-approved Stage 2.5 hash rather than guessed ratios. It adds revisioned reference profiles, integer-pixel viewport geometry, standard WP tile formulae, and a versioned spatial Start document with explicit cells and deterministic validation/repair. Phone geometry is measured; square profiles are derived and remain hardware-unverified. Unseen interaction parameters remain null. Reducer, effects, serialized dispatch, persistence, pager, gestures, and shell key routing are outside this commit.
+
+最终回归：Stage 0 `10/10`、Stage 1 `9/9`、Stage 2 `10/10`、Stage 2.5 `9/9`、Stage 3 `6/6`、全部 Python `74/74`、完整 Gradle `954 tasks`、双 Release 二进制产品面审计和 Reference semantic validator 全部通过。Stage 3 Gate 通过后才允许创建 Stage 3 commit；Stage 4 尚未写入该 commit。

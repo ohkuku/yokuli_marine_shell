@@ -34,8 +34,9 @@ import com.yokuli.shell.contract.LauncherCatalogContribution
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.WpTileSize
 import com.yokuli.shell.engine.catalog.LauncherCatalog
-import com.yokuli.shell.engine.layout.DesktopDocument
+import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 
 data class InstalledAppBinding(
@@ -51,7 +52,7 @@ data class ProductionShellRuntime(
     val language: AppLanguage,
     val settingsSection: SettingsSection,
     val pinnedTileCount: Int,
-    val desktopDocumentVersion: Int,
+    val startDocumentVersion: Int,
     val versionName: String,
     val buildVariant: String,
     val gitSha: String,
@@ -149,7 +150,7 @@ val productionInstalledApps = listOf(
                     language = runtime.language,
                     mapConfigured = runtime.mapConfigured,
                     pinnedTileCount = runtime.pinnedTileCount,
-                    desktopDocumentVersion = runtime.desktopDocumentVersion,
+                    startDocumentVersion = runtime.startDocumentVersion,
                     versionName = runtime.versionName,
                     buildVariant = runtime.buildVariant,
                     gitSha = runtime.gitSha,
@@ -178,9 +179,10 @@ val productionHostPort = StaticLauncherHostPort(
     launches = productionLaunchRegistrations,
 )
 
-val defaultDesktopDocument = DesktopDocument(
-    version = 1,
-    columns = 4,
+val defaultStartDocument = StartDocument(
+    schemaVersion = 1,
+    profileId = WpReferenceProfiles.PHONE_PORTRAIT_4COL.id,
+    defaultLayoutVersion = 1,
     placements = listOf(
         TilePlacement(
             tileId = TileInstanceId("tile-chart"),

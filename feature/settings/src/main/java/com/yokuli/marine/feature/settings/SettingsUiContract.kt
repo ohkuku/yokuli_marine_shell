@@ -11,7 +11,7 @@ data class SettingsUiState(
     val language: AppLanguage,
     val mapConfigured: Boolean,
     val pinnedTileCount: Int,
-    val desktopDocumentVersion: Int,
+    val startDocumentVersion: Int,
     val versionName: String,
     val buildVariant: String,
     val gitSha: String,

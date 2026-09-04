@@ -3,11 +3,16 @@ package com.yokuli.shell.engine.layout
 import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileInstanceId
+import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import java.util.UUID
 
-object DesktopLayoutEditor {
+/**
+ * 中文：这是 Stage 3 对旧 UI 的兼容编辑入口；Stage 4 会把提交、取消和 Undo 收入 Reducer。
+ * English: This keeps the existing UI working in Stage 3; Stage 4 moves commit, cancel, and undo into the reducer.
+ */
+object StartLayoutEditor {
     fun resize(
-        document: DesktopDocument,
+        document: StartDocument,
         tileId: TileInstanceId,
         entries: Collection<LauncherEntryDescriptor>,
     ): LayoutTransaction? {
@@ -18,11 +23,12 @@ object DesktopLayoutEditor {
         val proposed = document.copy(
             placements = document.placements.map { if (it.tileId == tileId) it.copy(size = next) else it },
         )
-        val repaired = DesktopDocumentRepair.repair(proposed, entries, document).document
+        val profile = WpReferenceProfiles.require(document.profileId)
+        val repaired = StartDocumentRepair.repair(proposed, entries, document, profile).document
         return transaction(document, repaired, LayoutChangeReason.RESIZE)
     }
 
-    fun unpin(document: DesktopDocument, tileId: TileInstanceId): LayoutTransaction? {
+    fun unpin(document: StartDocument, tileId: TileInstanceId): LayoutTransaction? {
         if (document.placements.none { it.tileId == tileId }) return null
         return transaction(
             document,
@@ -32,7 +38,7 @@ object DesktopLayoutEditor {
     }
 
     fun pin(
-        document: DesktopDocument,
+        document: StartDocument,
         entryId: LauncherEntryId,
         entries: Collection<LauncherEntryDescriptor>,
     ): LayoutTransaction? {
@@ -44,32 +50,37 @@ object DesktopLayoutEditor {
             size = entry.defaultSize,
             cell = GridCell(0, document.placements.maxOfOrNull { it.cell.row + it.size.rows } ?: 0),
         )
-        val repaired = DesktopDocumentRepair.repair(
+        val profile = WpReferenceProfiles.require(document.profileId)
+        val repaired = StartDocumentRepair.repair(
             document.copy(placements = document.placements + candidate),
             entries,
             document,
+            profile,
         ).document
         return transaction(document, repaired, LayoutChangeReason.PIN)
     }
 
     fun move(
-        document: DesktopDocument,
+        document: StartDocument,
         tileId: TileInstanceId,
         target: GridCell,
         entries: Collection<LauncherEntryDescriptor>,
     ): LayoutTransaction? {
         val moving = document.placements.firstOrNull { it.tileId == tileId } ?: return null
-        if (target.column < 0 || target.row < 0 || target.column + moving.size.columns > document.columns) return null
+        val profile = WpReferenceProfiles.require(document.profileId)
+        if (target.column < 0 || target.row < 0 || target.column + moving.size.columns > profile.columnCount) {
+            return null
+        }
         val proposed = document.copy(
             placements = listOf(moving.copy(cell = target)) + document.placements.filterNot { it.tileId == tileId },
         )
-        val repaired = DesktopDocumentRepair.repair(proposed, entries, document).document
+        val repaired = StartDocumentRepair.repair(proposed, entries, document, profile).document
         val ordered = document.placements.mapNotNull { original ->
             repaired.placements.firstOrNull { it.tileId == original.tileId }
         }
         return transaction(document, repaired.copy(placements = ordered), LayoutChangeReason.MOVE)
     }
 
-    private fun transaction(before: DesktopDocument, after: DesktopDocument, reason: LayoutChangeReason) =
+    private fun transaction(before: StartDocument, after: StartDocument, reason: LayoutChangeReason) =
         LayoutTransaction(UUID.randomUUID().toString(), before, after, reason)
 }

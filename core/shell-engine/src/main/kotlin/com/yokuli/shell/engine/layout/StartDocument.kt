@@ -3,6 +3,7 @@ package com.yokuli.shell.engine.layout
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.engine.geometry.ProfileId
 
 data class GridCell(val column: Int, val row: Int)
 
@@ -13,9 +14,10 @@ data class TilePlacement(
     val cell: GridCell,
 )
 
-data class DesktopDocument(
-    val version: Int,
-    val columns: Int,
+data class StartDocument(
+    val schemaVersion: Int,
+    val profileId: ProfileId,
+    val defaultLayoutVersion: Int,
     val placements: List<TilePlacement>,
 )
 
@@ -23,8 +25,8 @@ enum class LayoutChangeReason { MOVE, RESIZE, PIN, UNPIN, RESET, REPAIR }
 
 data class LayoutTransaction(
     val id: String,
-    val before: DesktopDocument,
-    val after: DesktopDocument,
+    val before: StartDocument,
+    val after: StartDocument,
     val reason: LayoutChangeReason,
 )
 

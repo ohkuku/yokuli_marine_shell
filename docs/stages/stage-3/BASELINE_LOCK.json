@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "stage": 3,
+  "name": "WP Geometry & Start Document",
+  "branch": "codex/launcher-engine-batch-a",
+  "approvedStage25Tag": "launcher-engine-stage2.5-approved-v1",
+  "approvedStage25Commit": "b5f935f6e2e0a6e98e1ee9013ef561b1676e71e2",
+  "reviewedMeasurementHash": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+  "referenceStatus": "HUMAN_REVIEWED",
+  "foundationCommit": "53a239cd735a5db9c9727b047e67d605f46045a4",
+  "startingSha": "53a239cd735a5db9c9727b047e67d605f46045a4",
+  "scope": "WP Geometry & Start Document",
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

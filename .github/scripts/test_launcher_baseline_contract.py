@@ -99,8 +99,8 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
     def test_shell_engine_foundation_is_explicit_and_spatial(self):
         sources = "\n".join(path.read_text() for path in (ROOT / "core/shell-engine/src/main").rglob("*.kt"))
         for symbol in (
-            "data class WpStartGeometry",
-            "data class DesktopDocument",
+            "data class ResolvedStartGeometry",
+            "data class StartDocument",
             "data class GridCell",
             "sealed interface StartInteractionState",
             "data class LayoutTransaction",
@@ -108,7 +108,7 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
             "class ShellNavigator",
         ):
             self.assertIn(symbol, sources)
-        self.assertIn("version:", sources)
+        self.assertIn("schemaVersion:", sources)
         self.assertIn("cell:", sources)
 
     def test_shell_lab_is_debug_only_and_release_manifest_free(self):

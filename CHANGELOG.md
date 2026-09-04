@@ -4,6 +4,14 @@
 
 ### 中文（主文）
 
+#### Stage 3 — WP Geometry & Start Document
+
+- 用 Stage 2.5 人工批准的 revision 1/hash 建立 `WpReferenceProfile`；480×800 Phone profile 固定测得的 24px 外边距、12px seam、99px Small、210px Medium、432px Wide、32px 状态条和 57px 首磁贴顶边。
+- 新增 `StartViewport`、整数像素 `ResolvedStartGeometry` 与 Small/Medium/Wide 公式；320×320、360×360 方屏可完整落界，但 `SQUARE_4COL` 明确保持 `DERIVED_UNVERIFIED_HARDWARE`。
+- 将候选 `DesktopDocument` 正式替换为带 schema/profile/default-layout 版本的二维 `StartDocument`，位置由 `GridCell` 显式定义；validator/repair 保留空白、拒绝重叠、移除未知/重复条目并确定性恢复。
+- 默认 Start 仍严格为 Chart Wide + Settings Small；Renderer 不再使用未批准的 0.05/0.023 猜测比例。未在参考视频出现的长按、按压缩放和快速 fling 参数保持未知。
+- 新增 6 项 Stage 3 Red/Green 合同、12 项几何/文档 JVM 场景和命名 CI Gate；Stage 4 reducer/effects/queue 未在本提交启动。
+
 #### Batch A foundation — Installed app composition binding
 
 - 新增单点 `InstalledAppBinding`，Chart 与 Settings 的目录贡献、LaunchToken 注册、视觉贡献和内部 Compose 宿主均从同一组 binding 派生；新增第三个应用时不再维护四张分散表。

@@ -159,7 +159,7 @@ private fun AppearanceSettings(state: SettingsUiState, onAction: (SettingsUiActi
 @Composable
 private fun StartScreenSettings(state: SettingsUiState, onAction: (SettingsUiAction) -> Unit) {
     SettingsBody {
-        WpText(stringResource(R.string.start_document, state.desktopDocumentVersion, state.pinnedTileCount), 18)
+        WpText(stringResource(R.string.start_document, state.startDocumentVersion, state.pinnedTileCount), 18)
         WpText(stringResource(R.string.start_reset_explanation), 12, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 8.dp))
         SettingsCommand(stringResource(R.string.start_reset), "settings-reset-start") {
             onAction(SettingsUiAction.ResetStartScreen)
@@ -214,7 +214,7 @@ private fun AboutSettings(state: SettingsUiState) {
         AboutRow(stringResource(R.string.about_variant), state.buildVariant)
         AboutRow(stringResource(R.string.about_revision), state.gitSha.take(12))
         AboutRow(stringResource(R.string.about_map), stringResource(if (state.mapConfigured) R.string.map_configured else R.string.map_not_configured))
-        AboutRow(stringResource(R.string.about_shell_document), "v${state.desktopDocumentVersion}")
+        AboutRow(stringResource(R.string.about_shell_document), "v${state.startDocumentVersion}")
         WpText(stringResource(R.string.about_scope), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 22.dp))
     }
 }

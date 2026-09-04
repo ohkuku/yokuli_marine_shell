@@ -3,10 +3,16 @@ package com.yokuli.shell.engine.layout
 import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileInstanceId
+import com.yokuli.shell.engine.geometry.WpReferenceProfile
 
-object DesktopDocumentValidator {
-    fun isValid(document: DesktopDocument, entries: Collection<LauncherEntryDescriptor>): Boolean {
-        if (document.version <= 0 || document.columns != 4) return false
+object StartDocumentValidator {
+    fun isValid(
+        document: StartDocument,
+        entries: Collection<LauncherEntryDescriptor>,
+        profile: WpReferenceProfile,
+    ): Boolean {
+        if (document.schemaVersion <= 0 || document.defaultLayoutVersion <= 0) return false
+        if (document.profileId != profile.id) return false
         if (document.placements.map { it.tileId }.distinct().size != document.placements.size) return false
         if (document.placements.map { it.entryId }.distinct().size != document.placements.size) return false
         val byId = entries.associateBy { it.entryId }
@@ -15,14 +21,15 @@ object DesktopDocumentValidator {
             val entry = byId[placement.entryId] ?: return@all false
             if (placement.size !in entry.supportedSizes) return@all false
             placement.cell.column >= 0 && placement.cell.row >= 0 &&
-                placement.cell.column + placement.size.columns <= document.columns &&
+                placement.cell.column + placement.size.columns <= profile.columnCount &&
                 placement.occupiedCells().all(occupied::add)
         }
     }
 }
 
-enum class DesktopRepairIncident {
+enum class StartRepairIncident {
     INVALID_DOCUMENT,
+    PROFILE_MISMATCH,
     UNKNOWN_ENTRY_REMOVED,
     DUPLICATE_ENTRY_REMOVED,
     UNSUPPORTED_SIZE_REPLACED,
@@ -31,23 +38,27 @@ enum class DesktopRepairIncident {
     FALLBACK_TO_DEFAULT,
 }
 
-data class DesktopRepairResult(
-    val document: DesktopDocument,
-    val incidents: List<DesktopRepairIncident>,
+data class StartRepairResult(
+    val document: StartDocument,
+    val incidents: List<StartRepairIncident>,
     val usedFallback: Boolean,
 )
 
-object DesktopDocumentRepair {
+object StartDocumentRepair {
     fun repair(
-        source: DesktopDocument,
+        source: StartDocument,
         entries: Collection<LauncherEntryDescriptor>,
-        defaultDocument: DesktopDocument,
-    ): DesktopRepairResult {
-        if (source.version <= 0 || source.columns != 4) {
-            return fallback(defaultDocument, DesktopRepairIncident.INVALID_DOCUMENT)
+        defaultDocument: StartDocument,
+        profile: WpReferenceProfile,
+    ): StartRepairResult {
+        if (source.schemaVersion <= 0 || source.defaultLayoutVersion <= 0) {
+            return fallback(defaultDocument, StartRepairIncident.INVALID_DOCUMENT)
+        }
+        if (source.profileId != profile.id || defaultDocument.profileId != profile.id) {
+            return fallback(defaultDocument, StartRepairIncident.PROFILE_MISMATCH)
         }
         val byId = entries.associateBy { it.entryId }
-        val incidents = mutableListOf<DesktopRepairIncident>()
+        val incidents = mutableListOf<StartRepairIncident>()
         val occupied = mutableSetOf<GridCell>()
         val seenEntries = mutableSetOf<LauncherEntryId>()
         val seenTiles = mutableSetOf<TileInstanceId>()
@@ -55,39 +66,39 @@ object DesktopDocumentRepair {
             source.placements.forEach { original ->
                 val descriptor = byId[original.entryId]
                 if (descriptor == null) {
-                    incidents += DesktopRepairIncident.UNKNOWN_ENTRY_REMOVED
+                    incidents += StartRepairIncident.UNKNOWN_ENTRY_REMOVED
                     return@forEach
                 }
                 if (!seenEntries.add(original.entryId) || !seenTiles.add(original.tileId)) {
-                    incidents += DesktopRepairIncident.DUPLICATE_ENTRY_REMOVED
+                    incidents += StartRepairIncident.DUPLICATE_ENTRY_REMOVED
                     return@forEach
                 }
                 val sized = if (original.size in descriptor.supportedSizes) {
                     original
                 } else {
-                    incidents += DesktopRepairIncident.UNSUPPORTED_SIZE_REPLACED
+                    incidents += StartRepairIncident.UNSUPPORTED_SIZE_REPLACED
                     original.copy(size = descriptor.defaultSize)
                 }
                 val inBounds = sized.cell.column >= 0 && sized.cell.row >= 0 &&
-                    sized.cell.column + sized.size.columns <= source.columns
+                    sized.cell.column + sized.size.columns <= profile.columnCount
                 val overlaps = sized.occupiedCells().any { it in occupied }
                 val resolved = if (inBounds && !overlaps) {
                     sized
                 } else {
                     incidents += if (!inBounds) {
-                        DesktopRepairIncident.OUT_OF_BOUNDS_RELOCATED
+                        StartRepairIncident.OUT_OF_BOUNDS_RELOCATED
                     } else {
-                        DesktopRepairIncident.OVERLAP_RELOCATED
+                        StartRepairIncident.OVERLAP_RELOCATED
                     }
-                    sized.copy(cell = nearestFreeCell(sized, source.columns, occupied))
+                    sized.copy(cell = nearestFreeCell(sized, profile.columnCount, occupied))
                 }
                 occupied += resolved.occupiedCells()
                 add(resolved)
             }
         }
         val document = source.copy(placements = repaired)
-        return if (DesktopDocumentValidator.isValid(document, entries)) {
-            DesktopRepairResult(document, incidents, usedFallback = false)
+        return if (StartDocumentValidator.isValid(document, entries, profile)) {
+            StartRepairResult(document, incidents, usedFallback = false)
         } else {
             fallback(defaultDocument, existing = incidents)
         }
@@ -112,12 +123,12 @@ object DesktopDocumentRepair {
     }
 
     private fun fallback(
-        defaultDocument: DesktopDocument,
-        reason: DesktopRepairIncident? = null,
-        existing: List<DesktopRepairIncident> = emptyList(),
-    ) = DesktopRepairResult(
+        defaultDocument: StartDocument,
+        reason: StartRepairIncident? = null,
+        existing: List<StartRepairIncident> = emptyList(),
+    ) = StartRepairResult(
         document = defaultDocument,
-        incidents = existing + listOfNotNull(reason) + DesktopRepairIncident.FALLBACK_TO_DEFAULT,
+        incidents = existing + listOfNotNull(reason) + StartRepairIncident.FALLBACK_TO_DEFAULT,
         usedFallback = true,
     )
 }

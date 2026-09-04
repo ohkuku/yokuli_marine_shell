@@ -7,13 +7,14 @@ import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.WpTileSize
-import com.yokuli.shell.engine.layout.DesktopDocument
-import com.yokuli.shell.engine.layout.DesktopDocumentRepair
-import com.yokuli.shell.engine.layout.DesktopDocumentValidator
-import com.yokuli.shell.engine.layout.DesktopLayoutEditor
-import com.yokuli.shell.engine.layout.DesktopRepairIncident
+import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.LayoutChangeReason
+import com.yokuli.shell.engine.layout.StartDocument
+import com.yokuli.shell.engine.layout.StartDocumentRepair
+import com.yokuli.shell.engine.layout.StartDocumentValidator
+import com.yokuli.shell.engine.layout.StartLayoutEditor
+import com.yokuli.shell.engine.layout.StartRepairIncident
 import com.yokuli.shell.engine.layout.TilePlacement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,7 +22,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class DesktopDocumentTest {
+class StartDocumentTest {
+    private val profile = WpReferenceProfiles.PHONE_PORTRAIT_4COL
     private val chart = descriptor("chart", WpTileSize.WIDE_4X2, WpTileSize.entries)
     private val settings = descriptor(
         "settings",
@@ -29,9 +31,10 @@ class DesktopDocumentTest {
         listOf(WpTileSize.SMALL_1X1, WpTileSize.MEDIUM_2X2),
     )
     private val entries = listOf(chart, settings)
-    private val default = DesktopDocument(
-        version = 1,
-        columns = 4,
+    private val default = StartDocument(
+        schemaVersion = 1,
+        profileId = profile.id,
+        defaultLayoutVersion = 1,
         placements = listOf(
             TilePlacement(TileInstanceId("tile-chart"), chart.entryId, WpTileSize.WIDE_4X2, GridCell(0, 0)),
             TilePlacement(TileInstanceId("tile-settings"), settings.entryId, WpTileSize.SMALL_1X1, GridCell(0, 2)),
@@ -40,33 +43,44 @@ class DesktopDocumentTest {
 
     @Test
     fun intentionalWhitespaceIsAValidPartOfTheDocument() {
-        assertTrue(DesktopDocumentValidator.isValid(default, entries))
+        assertTrue(StartDocumentValidator.isValid(default, entries, profile))
         assertEquals(GridCell(0, 2), default.placements.last().cell)
         assertFalse(default.placements.any { it.cell == GridCell(1, 2) })
     }
 
     @Test
+    fun placementOrderDoesNotDefinePosition() {
+        val reversed = default.copy(placements = default.placements.reversed())
+
+        assertTrue(StartDocumentValidator.isValid(reversed, entries, profile))
+        assertEquals(
+            default.placements.associate { it.tileId to it.cell },
+            reversed.placements.associate { it.tileId to it.cell },
+        )
+    }
+
+    @Test
     fun resizeReturnsAnAuditableTransactionWithoutPackingOtherTiles() {
-        val transaction = DesktopLayoutEditor.resize(default, TileInstanceId("tile-settings"), entries)!!
+        val transaction = StartLayoutEditor.resize(default, TileInstanceId("tile-settings"), entries)!!
         assertEquals(LayoutChangeReason.RESIZE, transaction.reason)
         assertEquals(default, transaction.before)
         assertEquals(GridCell(0, 0), transaction.after.placements.first().cell)
         assertEquals(WpTileSize.MEDIUM_2X2, transaction.after.placements.last().size)
-        assertTrue(DesktopDocumentValidator.isValid(transaction.after, entries))
+        assertTrue(StartDocumentValidator.isValid(transaction.after, entries, profile))
     }
 
     @Test
     fun unpinAndPinChangeOnlyTheRequestedEntry() {
-        val withoutSettings = DesktopLayoutEditor.unpin(default, TileInstanceId("tile-settings"))!!.after
+        val withoutSettings = StartLayoutEditor.unpin(default, TileInstanceId("tile-settings"))!!.after
         assertEquals(listOf(chart.entryId), withoutSettings.placements.map { it.entryId })
-        val restored = DesktopLayoutEditor.pin(withoutSettings, settings.entryId, entries)!!.after
+        val restored = StartLayoutEditor.pin(withoutSettings, settings.entryId, entries)!!.after
         assertEquals(setOf(chart.entryId, settings.entryId), restored.placements.map { it.entryId }.toSet())
-        assertTrue(DesktopDocumentValidator.isValid(restored, entries))
+        assertTrue(StartDocumentValidator.isValid(restored, entries, profile))
     }
 
     @Test
     fun invalidMoveIsRejectedInsteadOfClampedOrGloballyReflowed() {
-        assertNull(DesktopLayoutEditor.move(default, TileInstanceId("tile-chart"), GridCell(1, 0), entries))
+        assertNull(StartLayoutEditor.move(default, TileInstanceId("tile-chart"), GridCell(1, 0), entries))
         assertEquals(default, default.copy())
     }
 
@@ -88,10 +102,26 @@ class DesktopDocumentTest {
                 ),
             ),
         )
-        val result = DesktopDocumentRepair.repair(broken, entries, default)
-        assertTrue(DesktopRepairIncident.UNKNOWN_ENTRY_REMOVED in result.incidents)
-        assertTrue(DesktopRepairIncident.DUPLICATE_ENTRY_REMOVED in result.incidents)
-        assertTrue(DesktopDocumentValidator.isValid(result.document, entries))
+        val first = StartDocumentRepair.repair(broken, entries, default, profile)
+        val second = StartDocumentRepair.repair(broken, entries, default, profile)
+
+        assertEquals(first, second)
+        assertTrue(StartRepairIncident.UNKNOWN_ENTRY_REMOVED in first.incidents)
+        assertTrue(StartRepairIncident.DUPLICATE_ENTRY_REMOVED in first.incidents)
+        assertTrue(StartDocumentValidator.isValid(first.document, entries, profile))
+    }
+
+    @Test
+    fun profileMismatchFallsBackDeterministically() {
+        val squareSource = default.copy(profileId = WpReferenceProfiles.SQUARE_4COL.id)
+        val result = StartDocumentRepair.repair(squareSource, entries, default, profile)
+
+        assertTrue(result.usedFallback)
+        assertEquals(default, result.document)
+        assertEquals(
+            listOf(StartRepairIncident.PROFILE_MISMATCH, StartRepairIncident.FALLBACK_TO_DEFAULT),
+            result.incidents,
+        )
     }
 
     private fun descriptor(

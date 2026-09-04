@@ -6,7 +6,7 @@ import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherCatalogSnapshot
 import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
-import com.yokuli.shell.engine.layout.DesktopDocument
+import com.yokuli.shell.engine.layout.StartDocument
 
 enum class MarineIconKind { CHART, SETTINGS, APPS, DONE, UNPIN, RESIZE, PIN, INFO, GENERIC }
 
@@ -34,7 +34,7 @@ data class LauncherVisualContext(
 )
 
 data class LauncherUiState(
-    val document: DesktopDocument,
+    val document: StartDocument,
     val entries: List<LauncherEntryUiState>,
 ) {
     val pinnedEntries: Set<LauncherEntryId> = document.placements.map { it.entryId }.toSet()
@@ -43,7 +43,7 @@ data class LauncherUiState(
 sealed interface LauncherUiAction {
     data class Open(val token: LaunchToken) : LauncherUiAction
     data object ShowAllApps : LauncherUiAction
-    data class ChangeDocument(val document: DesktopDocument) : LauncherUiAction
+    data class ChangeDocument(val document: StartDocument) : LauncherUiAction
     data class TogglePin(val entryId: LauncherEntryId) : LauncherUiAction
     data class ShowAppInfo(val entryId: LauncherEntryId) : LauncherUiAction
 }
@@ -55,7 +55,7 @@ sealed interface LauncherUiAction {
 @Composable
 fun productionLauncherUiState(
     catalog: LauncherCatalogSnapshot,
-    document: DesktopDocument,
+    document: StartDocument,
     mapConfigured: Boolean,
     theme: WpThemeSpec,
     visualContributions: List<LauncherEntryVisualContribution>,

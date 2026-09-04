@@ -23,7 +23,7 @@
     <string name="accent_amber">琥珀</string>
     <string name="appearance_summary">%1$s · %2$s</string>
     <string name="start_summary">%1$d 块已固定磁贴</string>
-    <string name="start_document">桌面文档 v%1$d · %2$d 块磁贴</string>
+    <string name="start_document">开始屏幕文档 v%1$d · %2$d 块磁贴</string>
     <string name="start_reset_explanation">恢复海图与设置的默认空间布局；这不会清除地图密钥或主题。</string>
     <string name="start_reset">恢复默认开始屏幕</string>
     <string name="debug_tools">调试工具</string>
@@ -43,6 +43,6 @@
     <string name="about_variant">构建变体</string>
     <string name="about_revision">代码版本</string>
     <string name="about_map">地图</string>
-    <string name="about_shell_document">桌面文档</string>
+    <string name="about_shell_document">开始屏幕文档</string>
     <string name="about_scope">显示当前构建、地图配置和桌面文档信息。</string>
 </resources>
