@@ -66,11 +66,11 @@ jobs:
             -vf 'fps=5,scale=480:-2' -q:v 3 -y \
             /tmp/wp8-review/sequences/269-120-225/frames/%04d.jpg
 
-          cat > /tmp/wp8-review/sequences/README.txt <<'EOF'
-TechnoBuffalo_299 clip starts at source t=40.000s; frame N at 5 fps represents 40 + (N-1)/5 seconds.
-TechnoBuffalo_269 clip starts at source t=120.000s; frame N at 5 fps represents 120 + (N-1)/5 seconds.
-Both source items are licensed CC BY-NC-SA 3.0 according to Internet Archive metadata.
-EOF
+          printf '%s\n' \
+            'TechnoBuffalo_299 clip starts at source t=40.000s; frame N at 5 fps represents 40 + (N-1)/5 seconds.' \
+            'TechnoBuffalo_269 clip starts at source t=120.000s; frame N at 5 fps represents 120 + (N-1)/5 seconds.' \
+            'Both source items are licensed CC BY-NC-SA 3.0 according to Internet Archive metadata.' \
+            > /tmp/wp8-review/sequences/README.txt
 
       - uses: actions/upload-artifact@v7
         with:
