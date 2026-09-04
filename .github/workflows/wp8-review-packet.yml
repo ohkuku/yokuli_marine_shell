@@ -42,35 +42,35 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/wp8-source /tmp/wp8-review/sequences/299-40-95/frames /tmp/wp8-review/sequences/269-130-235/frames
+          mkdir -p /tmp/wp8-source /tmp/wp8-review/sequences/299-40-95/frames /tmp/wp8-review/sequences/269-120-225/frames
           curl --fail --location --retry 3 \
-            'https://archive.org/download/TechnoBuffalo_299/technobuffalo--0052--nokias-3d-printed-phone-cover--hd720p30.h264.mp4' \
-            -o /tmp/wp8-source/TechnoBuffalo_299.mp4
+            'https://archive.org/download/TechnoBuffalo_299/technobuffalo--0299--samsung-ativ-odyssey-hands-on-ces-2013--hd720p30.h264.ogv?download=1' \
+            -o /tmp/wp8-source/TechnoBuffalo_299.ogv
           curl --fail --location --retry 3 \
-            'https://archive.org/download/TechnoBuffalo_269/technobuffalo--0022--windows-phone-8-shortcomings-irritations--large.h264.History.jsonp' \
-            -o /tmp/wp8-source/TechnoBuffalo_269.mp4
+            'https://archive.org/download/TechnoBuffalo_269/technobuffalo--0269--rettingers-rants-269-windows-phone-8--hd720p30.h264.ogv?download=1' \
+            -o /tmp/wp8-source/TechnoBuffalo_269.ogv
 
           ffmpeg -hide_banner -loglevel error -ss 40 -t 55 \
-            -i /tmp/wp8-source/TechnoBuffalo_299.mp4 \
+            -i /tmp/wp8-source/TechnoBuffalo_299.ogv \
             -vf 'scale=480:-2' -an -c:v libx264 -preset fast -crf 25 -y \
             /tmp/wp8-review/sequences/299-40-95/clip.mp4
           ffmpeg -hide_banner -loglevel error -i /tmp/wp8-review/sequences/299-40-95/clip.mp4 \
             -vf 'fps=5,scale=480:-2' -q:v 3 -y \
             /tmp/wp8-review/sequences/299-40-95/frames/%04d.jpg
 
-          ffmpeg -hide_banner -loglevel error -ss 130 -t 105 \
-            -i /tmp/wp8-source/TechnoBuffalo_269.mp4 \
+          ffmpeg -hide_banner -loglevel error -ss 120 -t 105 \
+            -i /tmp/wp8-source/TechnoBuffalo_269.ogv \
             -vf 'scale=480:-2' -an -c:v libx264 -preset fast -crf 25 -y \
-            /tmp/wp8-review/sequences/269-130-235/clip.mp4
-          ffmpeg -hide_banner -loglevel error -i /tmp/wp8-review/sequences/269-130-235/clip.mp4 \
+            /tmp/wp8-review/sequences/269-120-225/clip.mp4
+          ffmpeg -hide_banner -loglevel error -i /tmp/wp8-review/sequences/269-120-225/clip.mp4 \
             -vf 'fps=5,scale=480:-2' -q:v 3 -y \
-            /tmp/wp8-review/sequences/269-130-235/frames/%04d.jpg
+            /tmp/wp8-review/sequences/269-120-225/frames/%04d.jpg
 
           cat > /tmp/wp8-review/sequences/README.txt <<'EOF'
-          TechnoBuffalo_299 clip starts at source t=40.000s; frame N at 5 fps represents 40 + (N-1)/5 seconds.
-          TechnoBuffalo_269 clip starts at source t=130.000s; frame N at 5 fps represents 130 + (N-1)/5 seconds.
-          Both source items are licensed CC BY-NC-SA 3.0 according to Internet Archive metadata.
-          EOF
+TechnoBuffalo_299 clip starts at source t=40.000s; frame N at 5 fps represents 40 + (N-1)/5 seconds.
+TechnoBuffalo_269 clip starts at source t=120.000s; frame N at 5 fps represents 120 + (N-1)/5 seconds.
+Both source items are licensed CC BY-NC-SA 3.0 according to Internet Archive metadata.
+EOF
 
       - uses: actions/upload-artifact@v7
         with:
