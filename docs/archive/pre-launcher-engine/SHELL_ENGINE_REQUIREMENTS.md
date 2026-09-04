@@ -1,6 +1,8 @@
 # Yokuli Shell Engine Phase 0 基础需求合同
 
-状态：本轮实施 S0、S1 与 S2 基础；S3–S8 保持明确未完成。中文为主文。
+归档状态：`SUPERSEDED_BY_MASTER`。其中实现证据属于 `ca84ef9` 基线，旧 S0–S8 编号不再是当前施工顺序。
+
+> English: `SUPERSEDED_BY_MASTER`. Its implementation evidence belongs to baseline `ca84ef9`; the old S0–S8 numbering is no longer the active construction order.
 
 ## 1. 技术与所有权
 

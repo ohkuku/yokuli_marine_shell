@@ -4,6 +4,15 @@
 
 ### 中文（主文）
 
+#### Stage 0 — Freeze & Reference Contract
+
+- 以仓库所有者指定的最新提交 `ca84ef9` 冻结 `codex/launcher-engine` 起点；Master 附件中的旧 reviewed SHA 只作为文档历史，不再作为分支基线。
+- 逐字纳入 Launcher Shell Engine Master Spec，并用 SHA-256 静态合同保证来源可追踪。
+- 建立 WP8 Reference Lab、measurement JSON schema，以及 screenshots、Golden、比较 artifact 的独立目录合同；当前全部为 `NOT_YET_MEASURED`。
+- 把旧 Phase 0A/S0–S2、Chart-source、WP8/UI requirement 和 Slice 1–14 TDD 日志移入历史归档；当前 requirements 只保留 Master 与独立的 secrets supporting contract。
+- GitHub Actions 新增命名的 `launcher_stage0_contract` Gate，并把结果纳入候选 APK、失败诊断、Job Summary 和最终质量判定。
+- Stage 0 没有修改 UI、Registry、Google Map、Feature 或 Android 运行行为。
+
 #### Added
 
 - 新增 `core:shell-engine`，包含按屏宽比例计算并像素对齐的 WP8 Start 几何、显式 `DesktopDocument/GridCell/TilePlacement`、布局校验与确定性修复、`LayoutTransaction`、Start 交互状态类型，以及 `ShellStore/DesktopLayoutStore/ShellPreferencesStore` 响应式端口。
@@ -40,15 +49,17 @@
 - 截图人工检查：Start、未配置 Chart 和 Settings→Map 已检查；黑底白字、统一 cyan 磁贴、永久 DEMO 标签和有意留白符合本轮合同。
 - 设备状态：`VERIFIED_DEVICE_EMULATOR`；方屏 Samsung 硬件与实船仍为 `UNVERIFIED_HARDWARE`、`UNVERIFIED_VESSEL`。
 
-#### Known boundaries
+#### Frozen implementation boundaries at `ca84ef9`
 
-- 本轮实现文档定义的 Phase 0A，以及 Shell Engine 的 S0/S1/S2 基础。S3 交互式 pager、S4 完整编辑/碰撞/自动滚动、S5 Continuum、S6 持久化恢复、S7 性能基准与 S8 HOME 硬化尚未完成。
+- `ca84ef9` 的 Phase 0A 与旧 S0/S1/S2 结果只作为冻结实现基线；是否满足新 Master 的 Stage 1–11 必须逐阶段重新验证，Stage 0 不继承“后续阶段已完成”结论。
 - 主题与桌面修改当前只在进程/Activity 状态中存在；store 是端口合同，不是持久化实现。
 - Google Maps 真实 key 的设备加载仍由所有者通过加密 vault 交互解锁验收；agent 未解密、列出或打印任何真实 secret。
 - GPS、NMEA、Anchor、Navigation、Trip、Survey、Sonar、OpenSeaMap 和本地海图导入仍未接入生产 runtime。
 
 ### English translation
 
+Stage 0 starts `codex/launcher-engine` from owner-selected latest commit `ca84ef9`, imports the Master Spec verbatim with a SHA-256 contract, establishes the unmeasured WP8 Reference/schema/screenshots/golden/artifact boundaries, archives superseded requirements and Slice 1–14 evidence, and adds a separately reported CI gate. It changes no UI, Registry, Google Maps, feature, or Android runtime behavior. Existing Phase 0A/S0–S2 code is a frozen baseline, not automatic proof that any later Master stage passed.
+
 Phase 0A reduces production to Chart and Settings. The default spatial document preserves whitespace around a standard wide Chart and small Settings tile. Chart is Browse-only and the keyless fallback is permanently labeled `DEMO MAP`, with no fictional marine state. Settings exposes only implemented configuration and build facts. Cockpit, Library, the old System module, fake shortcuts, fake marine values, and non-standard tile sizes were removed.
 
-The new contribution registry and `core:shell-engine` provide extensible identifiers, exact tile sizes, pixel-snapped geometry, an explicit spatial document, validation/repair, transactions, interaction-state types, and reactive storage ports. A 30-entry Shell Lab is debug-only. All 29 Python contracts, Kotlin unit tests, lint, both debug variants, standalone release packaging, and eight API 34 real-Activity stories pass. This delivery claims Phase 0A plus the S0/S1/S2 foundation only; S3–S8 remain explicit future work, and physical square-device and vessel verification remain unverified.
+The new contribution registry and `core:shell-engine` provide extensible identifiers, exact tile sizes, pixel-snapped geometry, an explicit spatial document, validation/repair, transactions, interaction-state types, and reactive storage ports. A 30-entry Shell Lab is debug-only. The earlier 29 Python contracts, Kotlin unit tests, lint, both debug variants, standalone release packaging, and eight API 34 real-Activity stories describe frozen baseline `ca84ef9`. That evidence does not pre-approve any later Master stage; physical square-device and vessel verification remain unverified.

@@ -107,7 +107,10 @@ class UiArchitectureContractTest(unittest.TestCase):
             text = path.read_text()
             with self.subTest(path=path.relative_to(ROOT)):
                 self.assertRegex(text, r"[\u4e00-\u9fff]", "missing Chinese primary text")
-                self.assertRegex(text, r"(?i)English translation|> English:", "missing English translation")
+                if path.name == "LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md":
+                    self.assertIn("NORMATIVE / 施工主文档", text)
+                else:
+                    self.assertRegex(text, r"(?i)English translation|> English:", "missing English translation")
 
 
 if __name__ == "__main__":

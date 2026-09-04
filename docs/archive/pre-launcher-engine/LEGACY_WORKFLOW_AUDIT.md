@@ -1,5 +1,9 @@
 # Yokuli OS — 旧应用工作流保留审计
 
+归档状态：`DEFERRED_REFERENCE`。保留未来迁移语义，但不属于当前 Launcher Engine 施工范围。
+
+> English: `DEFERRED_REFERENCE`. Retained for future migration semantics, but not active Launcher Engine construction scope.
+
 ## 目的
 
 Yokuli OS 是 clean-slate 工程，但不是 clean-slate 产品行为。本文件记录旧应用中已经形成的优秀工作流、安全语义和可复用领域边界。迁移时保留用户意图与系统反应，不保留旧 UI、路由、数据库格式、兼容字段或巨大 ViewModel。

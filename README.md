@@ -6,52 +6,44 @@
 
 ## 中文（主文）
 
-Yokuli OS 正在以 Windows Phone 8 的 Shell 交互语言构建一个诚实、可扩展的海图产品。当前 Phase 0A 不是功能演示墙：生产构建只安装已经具备真实入口和明确状态的 `Chart` 与 `Settings`。
+Yokuli OS 当前只施工一个与应用解耦、可验证、可持久化并能高帧率运行的 Windows Phone 8 Classic 风格 Launcher Shell。唯一施工规范是 [Launcher Shell Engine Master Construction Spec](docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md)。必须按 Stage 0–11 逐阶段完成；每个 Stage 通过 Gate、提交、报告后立即停止，等待人工审核。
 
-默认 Start 是四列空间文档：`Chart` 使用标准 `WIDE_4X2` 并位于 `(0,0)`，`Settings` 使用 `SMALL_1X1` 并位于 `(0,2)`；其余位置是有意保留的留白。所有主题色磁贴共享同一 accent，深色页面为黑底白字，浅色页面为白底黑字，磁贴前景始终为白色。图标由受控 Canvas 绘制，不依赖 Unicode 字体。
-
-Chart 当前只有 Browse。配置 Google Maps Android key 时显示真实 Google 底图；未配置时永久显示 `DEMO MAP / 地图未配置` 的非导航背景，绝不伪造船位、路线、航速或安全状态。Settings 当前只包含外观、开始屏幕、地图、语言、关于与诊断，并且只呈现真实配置和构建事实。
-
-Anchor、Trip、NMEA、Navigation、Sonar、Anchorages、Data Sources 等领域语义没有被否定，但在对应真实垂直切片达到安装门禁前，不进入 Registry、All Apps、Start 或生产依赖图。用于布局压力测试的 30 项 `DEMO` 数据只存在于 debug-only `Shell Lab`，release manifest 与依赖不包含它。
-
-架构采用功能贡献注册表、不可变 `UiState`／封闭 `UiAction`、函数式 reducer 和响应式端口。`core:shell-engine` 已落下像素对齐几何、显式空间桌面文档、修复策略、事务、交互状态机类型与 `StateFlow` store 端口。完整交互式 pager、拖动自动滚动、碰撞预览、撤销和持久化实现属于后续 S3–S8，不在本轮完成声明中。
-
-本地质量门禁：
+当前分支：
 
 ```text
-python3 -m unittest discover .github/scripts 'test_*.py'
-bash .github/scripts/test-resolve-release-metadata.sh
-bash .github/scripts/test-ci-contract.sh
-bash .github/scripts/test-secrets-manager.sh
-./gradlew test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug
-./gradlew :app-shell:connectedStandaloneDebugAndroidTest
+branch: codex/launcher-engine
+stage: 0 — Freeze & Reference Contract
+starting SHA: ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7
 ```
 
-从个人加密 vault 注入 Google Maps key：
+仓库所有者明确要求从最新提交 `ca84ef9` 开始，覆盖 Master 附件中的旧 reviewed SHA。Master 文件保持逐字导入，覆盖关系记录在 [WP8 Reference Lab](docs/reference/wp8/README.md) 和 [TDD 日志](docs/TDD_LOG.md)。
 
-```text
-./scripts/secrets/yokuli-secrets.sh run -- ./gradlew installStandaloneDebug
-```
+`ca84ef9` 已经是冻结实现基线：生产面只有 Chart 与 Settings；Google Maps Adapter、双语资源、standalone/home 构建、CI，以及第一版空间文档/几何代码均保留。但这些既有实现不自动等于 Master 后续 Stage 已通过。Stage 0 不修改 UI、Registry、Google Map 或 Feature 行为，只锁定规范、Reference schema、截图/Golden/Artifact 所有权和 CI 合同。
 
-该命令只在交互终端请求主口令，不创建明文 `.env`。个人 vault 密文不会自动变成 GitHub Actions Secret。
+在 Shell Engine 全部完成人工验收前，禁止继续接入 GPS、NMEA、Anchor、Trip、Navigation、Survey、OpenSeaMap、MBTiles、AIS、Weather、Tide 或海事前台 Runtime。
 
-核心文档：
+当前文档入口：
 
-- [Phase 0A 产品面收敛需求](docs/requirements/PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md)
-- [Shell Engine 本轮需求与阶段边界](docs/requirements/SHELL_ENGINE_REQUIREMENTS.md)
-- [UI／响应式模块架构](docs/UI_REACTIVE_ARCHITECTURE.md)
-- [WP8 UI 强制范式](docs/WP8_UI_PATTERN.md)
-- [UI／功能隔离与双语需求](docs/requirements/UI_FUNCTION_I18N_REQUIREMENTS.md)
-- [海图来源、单 key 与导入需求](docs/requirements/CHART_SOURCE_IMPORT_REQUIREMENTS.md)
-- [TDD 开发规范](docs/TDD_PLAYBOOK.md)
-- [TDD 执行日志](docs/TDD_LOG.md)
-- [GitHub 交付与发布](docs/GITHUB_DELIVERY.md)
+- [施工主文档](docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md)
+- [WP8 Reference Lab](docs/reference/wp8/README.md)
+- [Launcher Engine TDD 规范](docs/TDD_PLAYBOOK.md)
+- [当前 Stage TDD 日志](docs/TDD_LOG.md)
+- [历史需求与 Slice 归档](docs/archive/pre-launcher-engine/README.md)
+- [GitHub 交付](docs/GITHUB_DELIVERY.md)
 - [本地密钥保险库](docs/SECRETS_MANAGEMENT.md)
+
+Stage 0 本地合同：
+
+```text
+python3 .github/scripts/test_launcher_stage0_contract.py
+python3 -m unittest discover .github/scripts 'test_*.py'
+bash .github/scripts/test-ci-contract.sh
+```
+
+完整构建 Gate 仍由现有 Android CI 执行。未运行的 Golden、Macrobenchmark、刷新率、Samsung 方屏和实船项目必须写 `NOT_YET_MEASURED` 或 `UNVERIFIED_HARDWARE`。
 
 ## English translation
 
-Yokuli OS is building a truthful, extensible marine chart product with the Windows Phone 8 Shell interaction language. Phase 0A installs only Chart and Settings in production. The four-column spatial Start document places a standard `WIDE_4X2` Chart at `(0,0)` and a `SMALL_1X1` Settings tile at `(0,2)`, preserving intentional whitespace.
+Yokuli OS is currently constructing only an app-agnostic, verifiable, durable, high-frame-rate WP8 Classic-style Launcher Shell. The linked Master Construction Spec is the sole stage authority. The owner explicitly selected latest commit `ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7` as the starting baseline, overriding the attachment's older repository snapshot without modifying the imported Master text.
 
-Chart exposes Browse only. With a configured Android Maps key it renders the real Google base map; without one it permanently labels a non-navigational fallback `DEMO MAP` and never invents vessel position, route, speed, or safety state. Settings exposes only implemented Appearance, Start Screen, Map, Language, and truthful About/Diagnostics facts. Future marine domains remain outside the production contribution graph until complete vertical slices pass the installation gate. Thirty stress entries live exclusively in the debug-only Shell Lab.
-
-`core:shell-engine` now defines pixel-snapped Start geometry, an explicit spatial desktop document, validation/repair, layout transactions, interaction-state types, and reactive store ports. The fully interactive pager, drag auto-scroll, collision previews, undo, and durable storage are later S3–S8 work and are not claimed complete here. The commands and linked Chinese-first documents above are the normative development entry points.
+The frozen baseline already contains the Chart-and-Settings production reduction, Google Maps adapter, bilingual resources, standalone/home variants, CI, and an initial spatial-document foundation. Existing code is not treated as proof that later Master stages passed. Stage 0 changes documentation and reference/CI contracts only. No marine capability may be added until the full Launcher Engine passes human review, and all unrun golden, benchmark, refresh-rate, square-device, and vessel checks remain explicitly unmeasured or unverified.

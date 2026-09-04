@@ -1,33 +1,56 @@
-### Requirement contract
+### Master Stage / 主施工阶段
+
+- Stage:
+- Starting SHA:
+- Ending SHA:
+- Master section:
+
+### Contract / 合同
 
 Given ...
 When ...
 Then ...
 And must not ...
 
-Requirement/issue:
+### Scope / 范围
 
-### WP8 UI pattern
+- Implemented:
+- Explicitly not implemented:
+- Later-stage work introduced: NO
 
-- Owning core app:
-- Large page title / secondary mode:
-- Navigation depth and `WpNavigationIntent`:
-- Primary Application Bar action:
-- Safety/stale/off/conflict state:
+### TDD evidence / TDD 证据
 
-### TDD evidence
-
-- Red test and expected assertion failure:
+- Red test and exact failure:
 - Green implementation:
 - Refactor:
 - `docs/TDD_LOG.md` updated: YES/NO
 - `CHANGELOG.md` updated: YES/NO
 
-### Verification
+### Architecture / 架构
+
+- Modules changed:
+- Dependency direction:
+- Engine forbidden imports:
+
+### Verification / 验证
 
 - Unit: PASS/FAIL/NOT RUN
+- Renderer/Compose: PASS/FAIL/NOT RUN
+- Golden: PASS/FAIL/NOT_YET_MEASURED
+- Benchmark: PASS/FAIL/NOT_YET_MEASURED
 - Lint: PASS/FAIL/NOT RUN
-- Real-Activity integration: PASS/FAIL/NOT RUN
-- Device: VERIFIED_DEVICE/UNVERIFIED_HARDWARE
-- Vessel: VERIFIED_VESSEL/UNVERIFIED_VESSEL
-- Downloadable failure/artifact link, if applicable:
+- Standalone assemble: PASS/FAIL/NOT RUN
+- HOME assemble: PASS/FAIL/NOT RUN
+- API 34: PASS/FAIL/NOT RUN
+- API 36: PASS/FAIL/NOT RUN
+- Samsung square: VERIFIED_HARDWARE/UNVERIFIED_HARDWARE
+- Refresh rate: value/NOT_YET_MEASURED
+
+### Human review stop / 人工审核停止点
+
+```text
+STOPPED AT STAGE GATE.
+AWAITING HUMAN REVIEW BEFORE NEXT STAGE.
+```
+
+> English: Complete exactly one Master stage, report every unrun or unmeasured gate, and stop for human review before starting the next stage.

@@ -1,6 +1,8 @@
 # Yokuli OS UI／功能隔离与双语需求合同
 
-状态：`ACTIVE`
+归档状态：`SUPERSEDED_PRE_LAUNCHER_ENGINE`。中英文资源基线继续保留，但当前施工合同以 Master Spec 为准。
+
+> English: `SUPERSEDED_PRE_LAUNCHER_ENGINE`. The bilingual resource baseline remains, while construction is now governed by the Master Spec.
 文档语言：中文主文；每条合同附英文翻译。
 范围：Shell、所有 `feature:*` UI、展示状态、交互事件、Android 文本资源、可访问性文案、测试与后续功能接入。
 

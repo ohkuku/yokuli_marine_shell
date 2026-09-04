@@ -1,6 +1,8 @@
 # WP8 Theme and Tile Detail Audit
 
-状态：`IMPLEMENTATION INPUT`
+归档状态：`QUALITATIVE_INPUT_ONLY`。没有 Reference Lab provenance 和测量数据，不能作为 pixel-perfect 验收证据。
+
+> English: `QUALITATIVE_INPUT_ONLY`. Without Reference Lab provenance and measurements, this document is not pixel-perfect acceptance evidence.
 日期：2026-09-04
 范围：主题所有权、Start 磁贴几何/内容、触控反馈与优化前差距。
 

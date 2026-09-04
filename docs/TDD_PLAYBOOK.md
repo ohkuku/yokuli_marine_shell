@@ -1,192 +1,76 @@
-# Yokuli OS — TDD 开发规范
+# Yokuli OS — Launcher Engine TDD 施工规范
 
-## 目标
+状态：`ACTIVE`。当前阶段顺序以 [`LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md`](requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md) 为唯一规范；旧 Slice 日志和旧需求已归档。
 
-Yokuli OS 使用严格、可审计的 Test-Driven Development。每个功能增量必须先定义行为，再提交失败测试，最后实现最小代码并重构。安全关键行为不得用截图或手工点击代替自动合同。
+## 1. 一次只做一个 Stage
 
-## Red → Green → Refactor → Record
-
-### 1. Red：先描述用户行为
-
-每个工作项先写一个短合同：
+每个 Stage 必须独立经历：
 
 ```text
-Given  初始状态与数据来源
-When   用户动作或系统事件
-Then   可观察结果
-And    不允许发生的副作用
+Freeze baseline
+→ Red
+→ Green
+→ Refactor
+→ Stage Gate
+→ Commit
+→ Report
+→ Stop for human review
 ```
 
-然后创建最小失败测试并运行，确认失败原因正是缺失行为，而不是测试环境、编译错误或错误断言。
+不能把下一 Stage 的模型、UI 或“顺手优化”混进当前提交。用户对起始 SHA 或范围的直接修正优先于附件中的旧仓库快照，但必须写入 TDD 日志和最终报告，不能静默改写 Master 正文。
 
-### 2. Green：只实现当前行为
+## 2. Red 必须证明合同缺失
 
-实现使当前测试通过的最小生产代码。不提前迁移无关旧代码，不为了未来假设增加兼容层，也不弱化断言来换取绿色。
+先写 Given／When／Then／禁止副作用，再运行最小测试。有效 Red 必须因为当前 Stage 的合同尚未满足而失败，不得来自拼写错误、错误路径、环境缺失或故意破坏既有代码。
 
-### 3. Refactor：在全绿状态整理设计
+Stage 0 使用文档与静态合同；后续 Engine Stage 优先使用纯 JVM reducer、几何、布局、事务与恢复测试。Renderer、Android Adapter、Pager、设备和性能测试只能在 Master 指定的 Stage 进入 Gate。
 
-允许提取模型、接口和 fake，消除重复并改善命名。重构前后必须运行受影响模块测试；涉及 Shell、Runtime 或 Safety 边界时运行完整 gate。
+## 3. Green 只覆盖当前 Stage
 
-### 4. Record：留下可追踪证据
+- 实现当前失败合同的最小闭环；
+- 不弱化断言，不用 retry 掩盖 flaky；
+- 不把 fixture、模拟器或视觉印象冒充真实数据或硬件证据；
+- 未测量的 Golden、帧耗时、输入延迟和方屏硬件统一写 `NOT_YET_MEASURED` 或 `UNVERIFIED_HARDWARE`；
+- Launcher Engine 完成前禁止接入 GPS、NMEA、Anchor、Trip、Navigation、Survey、OpenSeaMap 等海事能力。
 
-每个完成增量必须：
+## 4. Refactor 与边界检查
 
-- 更新 `CHANGELOG.md` 的 `Unreleased`；
-- 更新行为合同或 ADR（若边界改变）；
-- 在提交/PR 中记录 Red 测试名、Green 实现与实际执行命令；
-- 明确 `UNVERIFIED_DEVICE` 或 `UNVERIFIED_HARDWARE`，不能把未执行验证写成通过。
+Refactor 只能在当前 Gate 全绿后进行。Engine 施工必须持续验证依赖方向：Core Engine 不引用 Android、Compose、Feature、Google Maps 或 Marine Domain；Renderer 不拥有布局事实或持久化；Adapter 执行平台 effect；`app-shell` 只负责组合。
 
-## 测试金字塔
+## 5. Record
 
-### Level 1 — 纯 JVM 单元测试
+每个 Stage 更新：
 
-覆盖无 Android 依赖的模型和算法，运行最快，是主要 TDD 回路：
+- `docs/TDD_LOG.md`：starting SHA、Red 原始结果、Green 命令与边界；
+- `CHANGELOG.md`：本阶段用户/工程可见变化；
+- 需求或 ADR：只在合同确实变化时更新；
+- Stage 报告：implemented、explicitly not implemented、测试、硬件和停止语句。
 
-- App Registry 唯一性与 target resolution
-- StartGridLayoutEngine 占位、碰撞、resize、恢复
-- Shell Navigator 的 Home/Back/Recents 语义
-- Live Tile 的无副作用状态投影
-- freshness、来源仲裁与冲突策略
-- Anchor、Trip、Navigation、Sonar 状态机
-- 几何、NMEA parsing 和数据转换
+旧的 Slice 1–14 记录只保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，不能继续作为当前完成证明。
 
-命名采用行为而不是方法，例如：
+## 6. 测试层级
+
+1. 静态合同：规范、目录、模块依赖和禁止项。
+2. 纯 JVM：Reducer、geometry、二维文档、collision、transaction、repair、Home/Back priority。
+3. Renderer/component：render model、semantics、Golden 与可控 motion clock。
+4. 真实 Activity：Android 生命周期、手势竞争、恢复、HOME intent、API 兼容。
+5. Macrobenchmark/真机：帧预算、输入延迟、刷新率和方屏；模拟器只看趋势。
+
+测试进入顺序由 Master Stage 决定，不提前用空壳测试制造“未来功能已覆盖”的印象。
+
+## 7. Stage Gate 报告
+
+报告必须包含 Master §40 的 Baseline、Scope、Architecture、Interaction、Tests、Hardware 和 Stop。未执行项写 `NOT RUN`，未验证设备写 `UNVERIFIED_HARDWARE`，不得写“应该可以”或“看起来流畅”。
+
+每个 Stage 最后一行固定为：
 
 ```text
-home_returns_to_desktop_without_stopping_anchor_runtime
-stale_depth_is_never_projected_as_live
-resize_reflows_tiles_without_overlap
+STOPPED AT STAGE GATE.
+AWAITING HUMAN REVIEW BEFORE NEXT STAGE.
 ```
-
-### Level 2 — 模块集成测试
-
-使用 fake clock、fake runtime gateway、内存数据库或测试 dispatcher，验证模块协作：
-
-- ShellNavigator + RuntimeTaskManager
-- DataBus + LiveTileProjection
-- ResourceArbiter + 多 runtime owner
-- repository + Room v1
-- process-state serialization + restore
-
-集成测试必须验证副作用，例如磁贴订阅不能启动 GNSS 或 NMEA。
-
-### Level 3 — Android instrumented / Compose 故事测试
-
-通过真实 `ShellActivity` 和导航链验证用户故事，不优先测试孤立 composable：
-
-- 320×320、360×360、手机竖屏与宽屏布局
-- Start ↔ All Apps 手势与字母跳转
-- 长按、拖动、resize、pin/unpin
-- App → Back/Home → Desktop
-- Recents 恢复 UI task，不停止 domain task
-- 全局告警覆盖 Desktop、App 与 Recents
-- permission request 只由显式能力动作触发
-- rotation、process recreation 与状态恢复
-
-### Level 4 — 设备与实船门禁
-
-自动化不能证明以下项目：真实 GNSS、脆弱单客户端 NMEA 网关、音量/振动、锁屏/省电、Wi-Fi 切换、方屏硬件性能和实船告警。它们使用人工 checklist，结果分别记录为 `VERIFIED_DEVICE` 或 `VERIFIED_VESSEL`。
-
-## 每个功能的 TDD 切片
-
-一个切片必须可以在一次短迭代内闭环。以 Desktop 为例：
-
-1. Registry 返回唯一 App ID。
-2. 默认布局只引用 Registry 中存在的目标。
-3. 4 列网格可以放置 Small/Medium/Wide tile。
-4. 重叠布局被拒绝。
-5. 点击 tile 打开正确 target。
-6. Home 返回桌面但 runtime 不变。
-7. 长按进入 edit mode。
-8. Resize 重排且不重叠。
-9. 保存后重建进程仍恢复布局。
-
-每一步单独经历 Red、Green、Refactor，避免一次写完整桌面后再补测试。
-
-## 测试隔离规则
-
-- 时间必须来自注入的 monotonic clock；测试不得依赖真实等待。
-- 随机 ID 和采样数据使用固定 seed。
-- Runtime 测试不得直接访问 Compose 状态。
-- UI 测试不得重新实现领域算法作为 expected value。
-- 网络、GNSS、传感器和文件选择默认使用 fake；真实硬件属于明确的额外 gate。
-- 测试禁止依赖执行顺序和前一个测试遗留状态。
-- flaky test 不能简单 retry 后当作通过；需记录并修复根因。
-
-## CI 门禁
-
-每个 PR 至少执行：
-
-```text
-compile
-unit tests
-lint/static analysis
-instrumented integration tests
-API compatibility launch smoke
-debug artifact upload
-```
-
-合并条件：所有必需 gate 成功。失败时上传测试报告、logcat、截图和可复现信息；失败构建生成的 APK 必须标记 `UNVERIFIED`。
-
-## PR 证据模板
-
-```markdown
-### Contract
-Given ... When ... Then ...
-
-### Red
-- Test: `...`
-- Expected failure: `...`
-- Command: `...`
-
-### Green
-- Minimal implementation: `...`
-- Command/result: `...`
-
-### Refactor
-- Boundary/name changes: `...`
-
-### Verification
-- Unit: PASS/FAIL/NOT RUN
-- Integration: PASS/FAIL/NOT RUN
-- Device: VERIFIED_DEVICE/UNVERIFIED_DEVICE
-- Vessel: VERIFIED_VESSEL/UNVERIFIED_HARDWARE
-
-### Documentation
-- CHANGELOG updated: YES/NO
-- Contract/ADR updated: YES/NO/N/A
-```
-
-## 首个 TDD 里程碑
-
-Chart-first Shell Foundation 的第一批测试顺序：
-
-1. `registry_contains_unique_app_ids`
-2. `every_default_tile_target_resolves`
-3. `layout_rejects_overlap`
-4. `resize_reflows_tiles_without_overlap`
-5. `all_apps_pins_a_typed_shortcut`
-6. `anchor_tile_opens_chart_anchor_mode`
-7. `square_start_keeps_system_reachable`
-8. `home_does_not_stop_runtime_task`
-9. `tile_projection_has_no_resource_side_effects`
-10. `critical_alarm_outranks_every_other_overlay`
-
-这些测试先红后，才创建对应生产实现。
 
 ## English translation
 
-Yokuli OS uses auditable test-driven development. Each increment first defines observable behavior and forbidden side effects, then runs a meaningful failing test, implements the smallest Green change, refactors while affected gates stay green, and records evidence. Screenshots and manual taps cannot replace automated contracts for safety behavior.
+Status is `ACTIVE`. The Launcher Shell Engine Master Spec is the sole stage-order authority; older requirements and Slice 1–14 evidence are archived. Work proceeds one stage at a time through baseline freeze, meaningful Red, minimum Green, refactor, complete gate, commit, report, and mandatory stop for human review. Direct owner corrections such as the starting SHA are recorded separately without editing the imported Master text.
 
-The test pyramid has four levels:
-
-1. Pure JVM tests cover registries, layout, navigation, projections, freshness/source arbitration, state machines, geometry, parsing, reducers, and localized model contracts.
-2. Module integration tests use fake clocks, runtime ports, in-memory storage, and test dispatchers to verify collaboration and side effects. A Live Tile subscription, for example, must not start GNSS or NMEA.
-3. Instrumented Compose stories start the real `ShellActivity` and exercise Start/All Apps, gestures, pin/edit/resize, Back/Home, theme, language, process/rotation behavior, overlays, and supported form factors.
-4. Physical-device and vessel checks cover GNSS, fragile NMEA gateways, sound/vibration, lock screen/power saving, Wi-Fi transitions, square hardware performance, and real alarms. These remain explicitly `UNVERIFIED_HARDWARE` or `UNVERIFIED_VESSEL` until executed.
-
-Each feature is divided into short Red→Green slices. Time is injected, randomness uses fixed seeds, runtime tests do not read Compose state, UI tests do not reimplement domain algorithms, and networks/sensors/files use fakes by default. Tests cannot depend on execution order. A flaky test must be diagnosed; retry alone is not proof.
-
-Every PR runs compilation, JVM tests, lint/static analysis, instrumented integration, API compatibility smoke, and debug artifact upload. Failed jobs retain reports, logcat, screenshots, and reproduction evidence. A build that did not clear every gate is labeled `UNVERIFIED`.
-
-The PR evidence records the Given/When/Then contract, the exact Red failure and command, the Green implementation/result, boundary changes during refactoring, automated verification, hardware/vessel status, and documentation updates. The Chinese section above is the normative detailed procedure and milestone list.
+Tests enter only in the stage that owns them: static contracts, pure JVM engine behavior, renderer components, real-Activity platform behavior, and finally macrobenchmark/physical hardware. Missing measurements remain `NOT_YET_MEASURED`; emulator evidence never becomes square-device proof. Marine capabilities remain prohibited until the Launcher Engine definition of done is reviewed. Every report ends with `STOPPED AT STAGE GATE.` and `AWAITING HUMAN REVIEW BEFORE NEXT STAGE.`

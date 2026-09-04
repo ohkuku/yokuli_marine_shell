@@ -1,6 +1,6 @@
 # ADR 0001 — Native Compose engine for WP8 motion
 
-状态：已接受
+状态：`SUPERSEDED_BY_MASTER`。本 ADR 仅保留早期 Compose 动效选择的历史理由；当前 Renderer 可替换性、Motion Runtime 与依赖边界以 [`LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md`](../requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md) 为准。
 日期：2026-09-04
 
 ## 中文（主文）
@@ -18,6 +18,8 @@ Yokuli OS 需要 WP8 的深度转场、错峰排版进场和按触点倾斜；�
 结果是动效意图可做 JVM 测试，真实帧仍需 instrumented/视觉检查，所有 feature 共用一个时长与导航语义来源；不宣称与已退役 WP compositor 像素级相同。
 
 ## English translation
+
+Status: `SUPERSEDED_BY_MASTER`. This ADR preserves the earlier Compose rationale only; the Master Spec now governs renderer replaceability, Motion Runtime, and dependency boundaries.
 
 ## Context
 

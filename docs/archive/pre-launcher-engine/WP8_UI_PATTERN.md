@@ -1,9 +1,11 @@
 # Yokuli OS — Canonical WP8 UI Pattern
 
-状态：`MANDATORY FOR NEW UI`
+归档状态：`SUPERSEDED_PRE_LAUNCHER_ENGINE`。不再是强制范式；当前规范为 [`LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md`](../../requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md)。
 所有者：`core:design`
-需求合同：[`requirements/WP8_UI_SYSTEM_REQUIREMENTS.md`](requirements/WP8_UI_SYSTEM_REQUIREMENTS.md)
-响应式边界：[`UI_REACTIVE_ARCHITECTURE.md`](UI_REACTIVE_ARCHITECTURE.md)
+原需求合同：[`WP8_UI_SYSTEM_REQUIREMENTS.md`](WP8_UI_SYSTEM_REQUIREMENTS.md)
+原响应式边界：[`UI_REACTIVE_ARCHITECTURE.md`](UI_REACTIVE_ARCHITECTURE.md)
+
+> English: `SUPERSEDED_PRE_LAUNCHER_ENGINE`. This is no longer mandatory; the linked Master Spec is normative.
 
 ## 中文（主文）
 

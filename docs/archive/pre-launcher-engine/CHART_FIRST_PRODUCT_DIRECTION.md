@@ -1,8 +1,8 @@
 # Yokuli OS — WP8 Shell + Chart-first 产品方向
 
-状态：`SUPERSEDED`。本文件保留早期市场信息架构研究，不再定义当前生产产品面；当前规范是 [`requirements/PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md`](requirements/PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md) 与 [`requirements/SHELL_ENGINE_REQUIREMENTS.md`](requirements/SHELL_ENGINE_REQUIREMENTS.md)。
+归档状态：`SUPERSEDED_PRE_LAUNCHER_ENGINE`。仅保留历史研究；当前唯一施工主文档是 [`LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md`](../../requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md)。
 
-> English: `SUPERSEDED`. This file preserves earlier market-architecture research but no longer defines the production surface. The linked Phase 0A and Shell Engine requirements are current.
+> English: `SUPERSEDED_PRE_LAUNCHER_ENGINE`. This is historical research only; the linked Launcher Shell Engine Master Spec is the sole current construction contract.
 
 ## 1. 为什么重新开始
 

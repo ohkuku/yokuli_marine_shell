@@ -1,33 +1,28 @@
-# 参与 Yokuli OS 开发
+# 参与 Yokuli OS Launcher Engine 开发
 
 ## 中文（主文）
 
-所有产品工作必须遵守 [TDD 规范](docs/TDD_PLAYBOOK.md)、[UI／响应式架构](docs/UI_REACTIVE_ARCHITECTURE.md) 和 [WP8 UI 范式](docs/WP8_UI_PATTERN.md)。
+所有施工以 [Launcher Shell Engine Master Spec](docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md) 为唯一阶段合同，并遵守 [TDD 规范](docs/TDD_PLAYBOOK.md)。旧需求和 Slice 记录位于归档目录，只能作为历史证据，不能越过当前 Stage。
 
-固定顺序：
+固定流程：
 
-1. 用 Given／When／Then 定义行为和禁止副作用。
-2. 先加入能因缺失行为而失败的最小测试并运行 Red。
-3. 实现最小 Green。
-4. 仅在相关门禁保持绿色时重构。
-5. 在 `docs/TDD_LOG.md` 记录命令/结果，在 `CHANGELOG.md` 记录用户可见变化。
+1. 记录当前 Stage、starting SHA 和明确不做的范围。
+2. 用 Given／When／Then 和禁止副作用定义合同。
+3. 先运行因合同缺失而失败的最小 Red。
+4. 实现当前 Stage 的最小 Green，不夹带下一 Stage。
+5. 运行 Master 指定的完整 Gate，记录所有 `NOT RUN`／`NOT_YET_MEASURED`。
+6. 更新 `docs/TDD_LOG.md` 与 `CHANGELOG.md`，提交并输出 §40 格式报告。
+7. 写出停止语句，等待人工审核后才能进入下一 Stage。
 
-新页面必须接收不可变 `UiState` 并只发出封闭 `UiAction`，使用适合页面的 `WpPageHeader`、`WpText`、受控图标和经过测试的 `WpNavigationIntent`；有全局动作时才使用 `WpApplicationBar`。用户文案必须来自中文默认资源和完整 `values-en` 翻译。生产 main 禁止 fixture；调试样例必须隔离并永久标记 `DEMO`。例外需要 ADR，装饰动效不得延迟安全状态。
+Stage 0 不允许修改 UI、Registry、Google Map 或 Feature 行为。后续 Engine 代码必须维持 Core Engine → Contract 的单向依赖，禁止 Android、Compose、Feature、Google Maps 和 Marine Domain import。任何例外都需要当前 Stage 明确授权与 ADR。
 
-新增生产入口必须实现 `ShellFeatureContribution`，并同时具备真实入口、目标页面、恢复路径、双语资源、测试与明确所有者；不能先把占位磁贴加入 Registry。空间布局变更通过 `LayoutTransaction` 表达，不得把磁贴按列表顺序全局回流打包。
-
-不得把模拟器结果写成 Samsung 方屏硬件或实船验证；未实际执行时使用 `UNVERIFIED_HARDWARE` 和 `UNVERIFIED_VESSEL`。
+中文仍是默认资源，英文翻译必须 key 完整；生产不得加入未标注 fixture。模拟器结果不能写成 Samsung 方屏、刷新率或实船结论。
 
 ```text
-python3 -m unittest discover .github/scripts 'test_*.py'
-bash .github/scripts/test-resolve-release-metadata.sh
-bash .github/scripts/test-ci-contract.sh
-./gradlew test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug
-./gradlew :app-shell:connectedStandaloneDebugAndroidTest
+STOPPED AT STAGE GATE.
+AWAITING HUMAN REVIEW BEFORE NEXT STAGE.
 ```
 
 ## English translation
 
-All product work follows the linked TDD, reactive UI architecture, and WP8 pattern contracts. Define behavior and forbidden side effects, run a meaningful Red test, implement the minimum Green, refactor while gates remain green, and record evidence in the TDD log and changelog.
-
-New pages accept immutable `UiState`, emit sealed `UiAction`, use shared WP8 primitives and controlled icons, and source visible copy from Chinese default resources with complete `values-en` translations. Production main forbids fixtures; debug samples are isolated and permanently labeled `DEMO`. A production entry requires a complete `ShellFeatureContribution` vertical slice, and spatial edits use `LayoutTransaction` without global list reflow. Exceptions require an ADR; decorative motion cannot delay safety state. Emulator evidence must never be reported as physical square-device or vessel verification. Run the local gate above before delivery.
+All work follows the Launcher Shell Engine Master Spec and the TDD playbook. Record the stage and starting SHA, create a meaningful Red, implement only the minimum current-stage Green, run the entire named gate, record every unrun or unmeasured item, commit, report in the Master §40 format, and stop for human review. Archived requirements and Slice logs are evidence only. Stage 0 must not alter UI, Registry, Google Maps, or feature behavior. Emulator results never count as square-device, refresh-rate, or vessel proof.

@@ -1,6 +1,8 @@
 # Yokuli OS Phase 0A 生产表面需求合同
 
-状态：`IMPLEMENTED`。本合同把产品表面缩减规格转成可执行边界；中文为主文。
+归档状态：`IMPLEMENTED_BASELINE_SUPERSEDED`。实现结果保留在起始提交 `ca84ef9`；阶段与后续施工由 Master Spec 统一定义。
+
+> English: `IMPLEMENTED_BASELINE_SUPERSEDED`. The implementation remains in starting commit `ca84ef9`; the Master Spec now owns staging and future construction.
 
 ## 1. 生产 Registry
 

@@ -1,0 +1,281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ohkuku/yokuli_marine_shell/docs/reference/wp8/WP8_REFERENCE_MEASUREMENTS.schema.json",
+  "title": "Yokuli WP8 Classic Phone Reference Measurements",
+  "description": "Machine-readable provenance and geometry/motion measurements for WP8_CLASSIC_PHONE_4COL.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "profileId",
+    "status",
+    "provenance",
+    "viewport",
+    "measurements"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "profileId": {
+      "const": "WP8_CLASSIC_PHONE_4COL"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "NOT_YET_MEASURED",
+        "MEASURED",
+        "HUMAN_REVIEWED"
+      ]
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "viewport": {
+      "$ref": "#/$defs/viewport"
+    },
+    "measurements": {
+      "$ref": "#/$defs/measurements"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "MEASURED",
+              "HUMAN_REVIEWED"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "measurements": {
+            "required": [
+              "outerInsetsPx",
+              "smallTileBoundsPx",
+              "mediumTileBoundsPx",
+              "wideTileBoundsPx",
+              "seamPx",
+              "statusStripHeightPx",
+              "titleBaselinePx",
+              "glyphOpticalBoxPx",
+              "longPressMillis",
+              "pageSettleMillis",
+              "appOpenMillis",
+              "pressScale",
+              "pressTiltDegrees"
+            ]
+          },
+          "provenance": {
+            "properties": {
+              "captureFiles": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "pixelRect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "left",
+        "top",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "left": {
+          "type": "integer"
+        },
+        "top": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceType",
+        "deviceModel",
+        "osBuild",
+        "captureFiles",
+        "measuredBy",
+        "measuredAtUtc",
+        "method",
+        "licenseOrOwnershipNote"
+      ],
+      "properties": {
+        "sourceType": {
+          "type": "string",
+          "enum": [
+            "PHYSICAL_DEVICE",
+            "EMULATOR",
+            "VIDEO",
+            "SCREENSHOT_SET"
+          ]
+        },
+        "deviceModel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "osBuild": {
+          "type": "string",
+          "minLength": 1
+        },
+        "captureFiles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "measuredBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "measuredAtUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "licenseOrOwnershipNote": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "viewport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "widthPx",
+        "heightPx",
+        "densityDpi",
+        "orientation"
+      ],
+      "properties": {
+        "widthPx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "heightPx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "densityDpi": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "PORTRAIT",
+            "SQUARE"
+          ]
+        }
+      }
+    },
+    "measurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "outerInsetsPx": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "properties": {
+            "left": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "top": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "right": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "bottom": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "smallTileBoundsPx": {
+          "$ref": "#/$defs/pixelRect"
+        },
+        "mediumTileBoundsPx": {
+          "$ref": "#/$defs/pixelRect"
+        },
+        "wideTileBoundsPx": {
+          "$ref": "#/$defs/pixelRect"
+        },
+        "seamPx": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "statusStripHeightPx": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "titleBaselinePx": {
+          "type": "number"
+        },
+        "glyphOpticalBoxPx": {
+          "$ref": "#/$defs/pixelRect"
+        },
+        "longPressMillis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pageSettleMillis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "appOpenMillis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pressScale": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "pressTiltDegrees": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        }
+      }
+    }
+  }
+}

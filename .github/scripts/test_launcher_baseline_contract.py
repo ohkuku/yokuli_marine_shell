@@ -6,7 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-class Phase0SurfaceContractTest(unittest.TestCase):
+class LauncherFrozenBaselineContractTest(unittest.TestCase):
     def test_module_graph_removes_fake_features_and_isolates_shell_lab(self):
         settings = (ROOT / "settings.gradle.kts").read_text()
         app = (ROOT / "app-shell/build.gradle.kts").read_text()
@@ -122,14 +122,17 @@ class Phase0SurfaceContractTest(unittest.TestCase):
         self.assertIn("30", lab_source)
         self.assertIn("DEMO", lab_source)
 
-    def test_bilingual_phase0_requirements_exist(self):
-        for relative in (
-            "docs/requirements/PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md",
-            "docs/requirements/SHELL_ENGINE_REQUIREMENTS.md",
+    def test_master_is_current_and_phase0_evidence_is_archived(self):
+        master = (ROOT / "docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md").read_text()
+        self.assertIn("NORMATIVE / 施工主文档", master)
+        self.assertIn("Stage 0 — Freeze & Reference Contract", master)
+        for filename in (
+            "PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md",
+            "SHELL_ENGINE_REQUIREMENTS.md",
         ):
-            text = (ROOT / relative).read_text()
+            text = (ROOT / "docs/archive/pre-launcher-engine" / filename).read_text()
             self.assertRegex(text, r"[\u4e00-\u9fff]")
-            self.assertIn("English translation", text)
+            self.assertIn("English", text)
 
 
 if __name__ == "__main__":

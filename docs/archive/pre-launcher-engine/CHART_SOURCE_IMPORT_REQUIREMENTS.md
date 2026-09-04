@@ -1,6 +1,8 @@
 # Yokuli OS 海图来源与导入需求合同
 
-状态：Phase 1 范围基线；Google Maps 底图 adapter 已接入，真实 key 设备验收、OpenSeaMap 与本地导入仍待后续切片。
+归档状态：`DEFERRED_PRE_LAUNCHER_ENGINE`。Google Maps Adapter 作为冻结基线保留；OpenSeaMap、本地导入和其他海事功能在 Launcher Engine 完成人工验收前不施工。
+
+> English: `DEFERRED_PRE_LAUNCHER_ENGINE`. The Google Maps adapter remains frozen; OpenSeaMap, local import, and other marine work are not active until the Launcher Engine passes human review.
 
 ## 1. 本版本结论
 

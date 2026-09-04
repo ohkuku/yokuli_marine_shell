@@ -32,6 +32,9 @@ for check_id in 'ci_helpers' 'release_metadata' 'ci_contract' 'secrets_contract'
   grep -Fq "id: $check_id" "$android" || fail "build feedback must expose the $check_id gate independently"
 done
 grep -Fq 'bash .github/scripts/test-secrets-manager.sh' "$android" || fail 'encrypted secrets workflow contract must run in CI'
+grep -Fq 'id: launcher_stage0_contract' "$android" || fail 'Launcher Stage 0 needs an independent named CI gate'
+grep -Fq 'python3 .github/scripts/test_launcher_stage0_contract.py' "$android" || fail 'Launcher Stage 0 contract must run in CI'
+grep -Fq 'LAUNCHER_STAGE0_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 0 result must participate in final enforcement'
 grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$android" || fail 'debug artifacts must consume the repository Maps key when configured'
 grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$release" || fail 'release artifacts must consume the repository Maps key'
 grep -Fq 'ANDROID_KEY_PASSWORD GOOGLE_MAPS_ANDROID_API_KEY' "$release" || fail 'release preflight must reject a missing Maps key'

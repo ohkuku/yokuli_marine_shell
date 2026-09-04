@@ -1,6 +1,8 @@
 # Yokuli OS WP8 UI System — Requirement Contract
 
-状态：`ACTIVE`
+归档状态：`SUPERSEDED_BY_MASTER`。旧 UI 编号保留用于追溯，但不再定义当前 Stage Gate。
+
+> English: `SUPERSEDED_BY_MASTER`. Legacy UI identifiers remain traceable but no longer define current stage gates.
 范围：Shell 导航、Chart、Settings、动效、触控反馈、无障碍与交付证据。Phase 0A 生产面以 `PHASE0_PRODUCT_SURFACE_REQUIREMENTS.md` 为准。
 
 ## 中文（主文）

@@ -1,0 +1,69 @@
+name: Yokuli Launcher Engine stage
+description: Define one Master Construction Spec stage without crossing its gate.
+title: "[Launcher Stage N] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        中文为主。先阅读 `docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md`；一个 issue 只能属于一个 Stage，必须在 Gate 后停止等待人工审核。
+
+        English: Read the Master Spec first. One issue belongs to one stage and stops at its human-review gate.
+  - type: input
+    id: stage
+    attributes:
+      label: Master Stage
+      description: Exact Stage number and title.
+      placeholder: Stage 3 — WP Geometry & Start Document
+    validations:
+      required: true
+  - type: input
+    id: baseline
+    attributes:
+      label: Starting SHA
+      description: Immutable baseline for this stage.
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Given / When / Then / Must not
+      placeholder: |
+        Given ...
+        When ...
+        Then ...
+        Must not ...
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope boundary
+      description: List implemented and explicitly not implemented items.
+    validations:
+      required: true
+  - type: textarea
+    id: red
+    attributes:
+      label: First Red and expected failure
+      description: Name the smallest stage-owned test and its exact expected failure.
+    validations:
+      required: true
+  - type: textarea
+    id: gates
+    attributes:
+      label: Stage Gate and evidence
+      description: Include unit, renderer/Compose, golden, benchmark, lint, assemblies, emulators, and hardware as PASS/NOT RUN/NOT YET MEASURED.
+    validations:
+      required: true
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Construction acknowledgement
+      options:
+        - label: I will not implement work owned by a later Master Stage.
+          required: true
+        - label: I will archive or supersede conflicting old requirements instead of treating them as active.
+          required: true
+        - label: I will stop for human review after the Stage Gate.
+          required: true

@@ -1,10 +1,10 @@
 # Yokuli OS UI／响应式模块架构
 
-状态：`ACTIVE`，后续功能实现必须遵守
+归档状态：`SUPERSEDED_PRE_LAUNCHER_ENGINE`。其中可复用原则保留为历史输入，不再覆盖 Master 的 Engine/Renderer/Adapter 依赖方向。
 主文：中文；英文翻译位于每节后方。
 范围：Shell、语言、主题、Chart、Anchor、Trip、NMEA、Map、Sonar、Anchorages、Navigation 与未来数据源。
 
-> English: Active architecture contract for the Shell and every current or future feature. Chinese is normative; each section includes an English translation.
+> English: `SUPERSEDED_PRE_LAUNCHER_ENGINE`. Reusable principles remain historical input, but this file no longer overrides the Master Engine/Renderer/Adapter dependency direction.
 
 ## 1. 结论：不选“纯面向过程”，也不堆对象
 

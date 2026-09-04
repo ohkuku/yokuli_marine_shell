@@ -1,6 +1,6 @@
 # Yokuli OS 本地密钥保险库需求 / Local Secrets Vault Requirements
 
-状态：Phase 1 安全基础设施合同。中文为主，英文为对照。
+状态：`SUPPORTING_NON_CONSTRUCTION_CONTRACT`。这是冻结的安全基础设施边界，不定义 Launcher Stage，也不授权海事功能施工。中文为主，英文为对照。
 
 ## 中文（主文）
 
