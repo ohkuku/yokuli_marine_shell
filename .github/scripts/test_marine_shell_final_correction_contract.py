@@ -68,6 +68,25 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertIn("rank", packer)
         self.assertIn("Spacer", packer)
 
+    def test_direct_editing_keeps_pointer_frames_out_of_engine(self):
+        engine = self.text("core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherEngine.kt")
+        reducer = self.text("core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherReducer.kt")
+        interaction = self.text(
+            "core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/interaction/StartInteractionState.kt"
+        )
+        screen = self.text("feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt")
+        self.assertNotIn("Channel.UNLIMITED", engine)
+        self.assertIn("MAX_PENDING_ACTIONS", engine)
+        self.assertIn("InsertionTargetChanged", reducer)
+        self.assertNotIn("UpdateTileDrag", reducer)
+        self.assertNotIn("visualOffsetPx", interaction)
+        self.assertIn("LocalTileDrag", screen)
+        self.assertIn("tile-insertion-marker", self.text(
+            "feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSpatialStartLayout.kt"
+        ))
+        self.assertIn("YokuliMetrics.MinTouch", screen)
+        self.assertNotRegex(screen, r"withFrameNanos\s*\{\s*\}\s*\n\s*latestAction\(LauncherUiAction.CommitTileResize")
+
     def test_settings_avoids_accent_bullets_and_blanket_tilt(self):
         settings = self.text("feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsWorkspace.kt")
         self.assertNotIn("AccentBullet", settings)

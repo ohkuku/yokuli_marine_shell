@@ -176,32 +176,54 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun chartResizeCyclesWideSmallMediumWide() {
-        val wideWidth = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width
+    fun chartResizeRequiresExplicitCommitAndCanCancel() {
+        val wideBounds = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("tile-chart").performTouchInput { longClick() }
         awaitDisplayed("resize-selected-tile")
 
         compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.waitUntil(5_000) {
-            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width < wideWidth
+            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height > wideBounds.height
         }
-        val smallWidth = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width
+        val largePreviewHeight = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height
+        awaitDisplayed("cancel-tile-resize")
+        awaitDisplayed("commit-tile-resize")
+
+        compose.onNodeWithTag("cancel-tile-resize").performClick()
+        awaitDisplayed("resize-selected-tile")
+        compose.activityRule.scenario.onActivity { activity ->
+            val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
+            assertEquals(
+                com.yokuli.shell.contract.MarineTileSize.WIDE_4X2,
+                state.start.document.placements.single { it.entryId.value == "chart" }.size,
+            )
+        }
+        compose.waitUntil(5_000) {
+            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height < largePreviewHeight
+        }
 
         compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.waitUntil(5_000) {
-            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width > smallWidth
+            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height > wideBounds.height
         }
-        val mediumWidth = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width
+        compose.onNodeWithTag("commit-tile-resize").performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("commit-tile-resize").fetchSemanticsNodes().isEmpty()
+        }
+        assertTrue(compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height > wideBounds.height)
+    }
 
-        compose.onNodeWithTag("resize-selected-tile").performClick()
-        compose.waitUntil(5_000) {
-            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width > mediumWidth
-        }
-        compose.onNodeWithTag("all-apps-entry").performClick()
-        compose.waitUntil(5_000) {
-            abs(compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width - wideWidth) < 1f
-        }
-        assertEquals(wideWidth, compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width, 1f)
+    @Test
+    fun smallTileEditControlsHaveAtLeast44DpHitTargets() {
+        compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        awaitDisplayed("resize-selected-tile")
+        var density = 1f
+        compose.activityRule.scenario.onActivity { density = it.resources.displayMetrics.density }
+
+        val unpin = compose.onNodeWithTag("unpin-selected-tile").fetchSemanticsNode().boundsInRoot
+        val resize = compose.onNodeWithTag("resize-selected-tile").fetchSemanticsNode().boundsInRoot
+        assertTrue(unpin.width >= 44f * density && unpin.height >= 44f * density)
+        assertTrue(resize.width >= 44f * density && resize.height >= 44f * density)
     }
 
     @Test
@@ -534,7 +556,6 @@ class ShellActivityStoryTest {
     fun activityRecreationRetainsTheEngineDocument() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
         awaitDisplayed("resize-selected-tile")
-        compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.onNodeWithTag("wp-page-title-settings").assertDoesNotExist()
         compose.onNodeWithTag("unpin-selected-tile").performClick()
         awaitGone("tile-settings")

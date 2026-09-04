@@ -14,9 +14,8 @@ import com.yokuli.shell.engine.interaction.StartInteractionState
 import com.yokuli.shell.engine.LauncherTransient
 import com.yokuli.shell.engine.StartReveal
 import com.yokuli.shell.engine.InternalAppTaskId
-import com.yokuli.shell.engine.layout.GridCell
 
-enum class MarineIconKind { CHART, SETTINGS, APPS, DONE, UNPIN, RESIZE, PIN, INFO, GENERIC }
+enum class MarineIconKind { CHART, SETTINGS, APPS, DONE, CANCEL, UNPIN, RESIZE, PIN, INFO, GENERIC }
 
 data class LauncherEntryUiState(
     val descriptor: LauncherEntryDescriptor,
@@ -59,13 +58,7 @@ sealed interface LauncherUiAction {
     data class SelectStartTile(val tileId: TileInstanceId) : LauncherUiAction
     data object ExitStartEdit : LauncherUiAction
     data class BeginTileDrag(val tileId: TileInstanceId, val pointerId: Long, val grabOffset: ShellOffset) : LauncherUiAction
-    data class UpdateTileDrag(
-        val tileId: TileInstanceId,
-        val visualOffset: ShellOffset,
-        val targetCell: GridCell,
-        val autoScrollPxPerSecond: Float,
-    ) : LauncherUiAction
-    data class AutoScrollTileDrag(val tileId: TileInstanceId, val consumedPx: Float, val targetCell: GridCell) : LauncherUiAction
+    data class InsertionTargetChanged(val tileId: TileInstanceId, val insertionIndex: Int) : LauncherUiAction
     data class DropTile(val tileId: TileInstanceId) : LauncherUiAction
     data object CancelTileOperation : LauncherUiAction
     data class ResizeTile(val tileId: TileInstanceId) : LauncherUiAction

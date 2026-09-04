@@ -18,7 +18,6 @@ import com.yokuli.shell.engine.layout.StartDocumentRepair
 import com.yokuli.shell.engine.layout.StartDocumentValidator
 import com.yokuli.shell.engine.layout.StartLayoutEditor
 import com.yokuli.shell.engine.layout.StartRepairIncident
-import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.AdaptiveTilePacker
 import com.yokuli.shell.engine.interaction.ShellOffset
 import com.yokuli.shell.engine.interaction.StartInteractionState
@@ -62,17 +61,7 @@ sealed interface LauncherAction {
         val pointerId: Long,
         val grabOffsetPx: ShellOffset,
     ) : LauncherAction
-    data class UpdateTileDrag(
-        val tileId: TileInstanceId,
-        val visualOffsetPx: ShellOffset,
-        val targetCell: GridCell,
-        val autoScrollPxPerSecond: Float,
-    ) : LauncherAction
-    data class AutoScrollTileDrag(
-        val tileId: TileInstanceId,
-        val consumedScrollPx: Float,
-        val targetCell: GridCell,
-    ) : LauncherAction
+    data class InsertionTargetChanged(val tileId: TileInstanceId, val insertionIndex: Int) : LauncherAction
     data class DropTile(val tileId: TileInstanceId) : LauncherAction
     data object CancelTileOperation : LauncherAction
     data class ResizeTile(val tileId: TileInstanceId) : LauncherAction
@@ -201,8 +190,7 @@ class DefaultLauncherReducer : LauncherReducer {
         is LauncherAction.SelectStartTile -> selectTile(state, action.tileId)
         LauncherAction.ExitStartEdit -> exitEdit(state)
         is LauncherAction.BeginTileDrag -> beginDrag(state, action)
-        is LauncherAction.UpdateTileDrag -> updateDrag(state, action)
-        is LauncherAction.AutoScrollTileDrag -> autoScrollDrag(state, action)
+        is LauncherAction.InsertionTargetChanged -> updateInsertionTarget(state, action)
         is LauncherAction.DropTile -> dropTile(state, action.tileId)
         LauncherAction.CancelTileOperation -> cancelTileOperation(state)
         is LauncherAction.ResizeTile -> resizeTile(state, action.tileId)
@@ -513,8 +501,7 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun beginDrag(state: LauncherEngineState, action: LauncherAction.BeginTileDrag): LauncherReduction {
         val placement = state.start.document.placements.firstOrNull { it.tileId == action.tileId }
             ?: return LauncherReduction(state)
-        val cell = AdaptiveTilePacker.pack(state.start.document, contextColumns(state.start.document))
-            .tile(action.tileId)?.cell ?: GridCell(0, 0)
+        val insertionIndex = AdaptiveTilePacker.insertionIndexOf(state.start.document, action.tileId)
         return LauncherReduction(
             state.copy(
                 start = state.start.copy(
@@ -522,54 +509,32 @@ class DefaultLauncherReducer : LauncherReducer {
                         tileId = action.tileId,
                         pointerId = action.pointerId,
                         grabOffsetPx = action.grabOffsetPx,
-                        visualOffsetPx = ShellOffset(0f, 0f),
-                        targetCell = cell,
+                        insertionIndex = insertionIndex,
                         proposedLayout = state.start.document,
-                        autoScrollPxPerSecond = 0f,
                     ),
                 ),
             ),
         )
     }
 
-    private fun updateDrag(state: LauncherEngineState, action: LauncherAction.UpdateTileDrag): LauncherReduction {
+    private fun updateInsertionTarget(
+        state: LauncherEngineState,
+        action: LauncherAction.InsertionTargetChanged,
+    ): LauncherReduction {
         val dragging = state.start.interaction as? StartInteractionState.Dragging ?: return LauncherReduction(state)
         if (dragging.tileId != action.tileId) return LauncherReduction(state)
-        val proposed = StartLayoutEditor.move(
-            state.start.document,
-            action.tileId,
-            action.targetCell,
-            state.catalog.entries,
-        )?.after ?: state.start.document
+        val maximumIndex = (state.start.document.placements.size + state.start.document.spacers.size - 1).coerceAtLeast(0)
+        val insertionIndex = action.insertionIndex.coerceIn(0, maximumIndex)
+        if (dragging.insertionIndex == insertionIndex) return LauncherReduction(state)
+        val proposed = AdaptiveTilePacker.insert(state.start.document, action.tileId, insertionIndex)
         return LauncherReduction(
             state.copy(
                 start = state.start.copy(
                     interaction = dragging.copy(
-                        visualOffsetPx = action.visualOffsetPx,
-                        targetCell = action.targetCell,
+                        insertionIndex = insertionIndex,
                         proposedLayout = proposed,
-                        autoScrollPxPerSecond = action.autoScrollPxPerSecond,
                     ),
                 ),
-            ),
-        )
-    }
-
-    private fun autoScrollDrag(
-        state: LauncherEngineState,
-        action: LauncherAction.AutoScrollTileDrag,
-    ): LauncherReduction {
-        val dragging = state.start.interaction as? StartInteractionState.Dragging ?: return LauncherReduction(state)
-        if (dragging.tileId != action.tileId) return LauncherReduction(state)
-        return updateDrag(
-            state,
-            LauncherAction.UpdateTileDrag(
-                tileId = action.tileId,
-                visualOffsetPx = dragging.visualOffsetPx.copy(
-                    y = dragging.visualOffsetPx.y + action.consumedScrollPx,
-                ),
-                targetCell = action.targetCell,
-                autoScrollPxPerSecond = dragging.autoScrollPxPerSecond,
             ),
         )
     }
@@ -678,8 +643,6 @@ class DefaultLauncherReducer : LauncherReducer {
         )
     }
 
-    private fun contextColumns(document: StartDocument): Int =
-        runCatching { WpReferenceProfiles.require(document.profileId).columnCount }.getOrDefault(4)
 
     private fun begin(state: LauncherEngineState, proposal: LayoutProposal): LauncherReduction {
         validateProposal(state, proposal)?.let { return it }

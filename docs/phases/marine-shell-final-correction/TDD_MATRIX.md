@@ -10,7 +10,7 @@
 | Safe chrome | rounded/cutout/IME/system-gesture metrics 有纯模型与 Android adapter | viewport unit + API 34/36 stories |
 | Marine tiles | 六种尺寸、size-specific content、presentation kind | `MarineTileContractTest` + renderer branch contract；Green |
 | Adaptive packing | rank/insertion/spacer；混合尺寸无重叠、确定性、跨 viewport | `AdaptiveTilePackerTest` 100 seeded documents × 4/6 columns + Proto round trip；Green |
-| Direct editing | local pointer offset、semantic target changes、44dp hit target、cancelable resize | reducer + Compose Activity stories |
+| Direct editing | local pointer offset、semantic target changes、44dp hit target、cancelable resize | Reducer tests + API 34 `chartResizeRequiresExplicitCommitAndCanCancel` / `smallTileEditControlsHaveAtLeast44DpHitTargets`；Green |
 | Settings | 无逐行 accent bullet/tilt；紧凑 swatch | static contract + Compose story |
 | Quality | 单测、lint、Debug/Release、APK surface、benchmark/profile/golden | cumulative local and hosted gates |
 

@@ -30,8 +30,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +74,15 @@ import kotlin.math.roundToInt
 // DERIVED_UNVERIFIED: Stage 2.5 did not observe Pin highlight motion; this is product feedback, not a WP8 measurement.
 private const val DERIVED_REVEAL_SCALE = .06f
 
+private data class LocalTileDrag(
+    val tileId: TileInstanceId,
+    val visualOffset: Offset,
+    val grabOffset: Offset,
+    val targetCell: com.yokuli.shell.engine.layout.GridCell,
+    val insertionIndex: Int,
+    val autoScrollPxPerSecond: Float,
+)
+
 @Composable
 fun YokuliStartScreen(
     state: LauncherUiState,
@@ -97,15 +108,15 @@ fun YokuliStartScreen(
     val resizing = interaction as? StartInteractionState.Resizing
     val reveal = state.reveal
     val revealPulse = remember { Animatable(0f) }
+    var localTileDrag by remember { mutableStateOf<LocalTileDrag?>(null) }
+    val latestLocalTileDrag by rememberUpdatedState(localTileDrag)
 
     LaunchedEffect(editing) {
         onEditModeChanged(editing)
     }
 
-    LaunchedEffect(resizing?.tileId, resizing?.proposedSize) {
-        if (resizing == null) return@LaunchedEffect
-        withFrameNanos { }
-        latestAction(LauncherUiAction.CommitTileResize)
+    LaunchedEffect(dragging?.tileId) {
+        if (dragging == null) localTileDrag = null
     }
 
     BoxWithConstraints(
@@ -116,6 +127,7 @@ fun YokuliStartScreen(
         val availableHeightPx = with(density) { maxHeight.toPx().roundToInt() }
         LaunchedEffect(availableWidthPx, availableHeightPx) {
             if (latestInteraction is StartInteractionState.Dragging) {
+                localTileDrag = null
                 latestAction(LauncherUiAction.CancelTileOperation)
             }
         }
@@ -172,7 +184,7 @@ fun YokuliStartScreen(
             if (dragging == null) return@LaunchedEffect
             var lastFrame = withFrameNanos { it }
             while (true) {
-                val current = latestInteraction as? StartInteractionState.Dragging ?: break
+                val current = latestLocalTileDrag ?: break
                 val frame = withFrameNanos { it }
                 val elapsedSeconds = (frame - lastFrame).coerceAtMost(50_000_000L) / 1_000_000_000f
                 lastFrame = frame
@@ -181,9 +193,23 @@ fun YokuliStartScreen(
                 val consumed = scroll.scrollBy(requested)
                 if (consumed == 0f) continue
                 val placement = AdaptiveTilePacker.pack(latestDocument, geometry.columns).tile(current.tileId) ?: break
-                val nextOffset = current.visualOffsetPx.copy(y = current.visualOffsetPx.y + consumed)
-                val target = hysteresis.resolve(placement.cell, nextOffset, pitchPx, current.targetCell)
-                latestAction(LauncherUiAction.AutoScrollTileDrag(current.tileId, consumed, target))
+                val nextOffset = current.visualOffset.copy(y = current.visualOffset.y + consumed)
+                val target = hysteresis.resolve(
+                    placement.cell,
+                    ShellOffset(nextOffset.x, nextOffset.y),
+                    pitchPx,
+                    current.targetCell,
+                )
+                val insertionIndex = AdaptiveTilePacker.insertionIndexForCell(
+                    latestDocument,
+                    geometry.columns,
+                    target,
+                    current.tileId,
+                )
+                localTileDrag = current.copy(visualOffset = nextOffset, targetCell = target, insertionIndex = insertionIndex)
+                if (insertionIndex != current.insertionIndex) {
+                    latestAction(LauncherUiAction.InsertionTargetChanged(current.tileId, insertionIndex))
+                }
             }
         }
 
@@ -209,8 +235,7 @@ fun YokuliStartScreen(
                 val entry = byId[placement.entryId]
                 if (entry != null) {
                     val baseCell = packedByTileId[placement.tileId]?.cell ?: return@WpSpatialStartLayout
-                    val tileDragging = dragging?.takeIf { it.tileId == placement.tileId }
-                    var previousTarget = remember(placement.tileId, baseCell) { baseCell }
+                    val tileDragging = localTileDrag?.takeIf { it.tileId == placement.tileId }
                     WpTile(
                         entry = entry,
                         tileSize = placement.size,
@@ -220,18 +245,29 @@ fun YokuliStartScreen(
                         selected = selectedTile == placement.tileId,
                         revealing = reveal?.tileId == placement.tileId,
                         revealProgress = if (reveal?.tileId == placement.tileId) revealPulse.value else 0f,
-                        dragOffset = tileDragging?.visualOffsetPx ?: ShellOffset(0f, 0f),
+                        dragOffset = tileDragging?.visualOffset?.let { ShellOffset(it.x, it.y) } ?: ShellOffset(0f, 0f),
+                        resizing = resizing?.tileId == placement.tileId,
                         onClick = {
                             if (editing) onAction(LauncherUiAction.SelectStartTile(placement.tileId))
                             else onAction(LauncherUiAction.Open(entry.descriptor.launchToken))
                         },
                         onLongClick = { onAction(LauncherUiAction.EnterStartEdit(placement.tileId)) },
-                        onUnpin = {
-                            onAction(LauncherUiAction.UnpinTile(placement.tileId))
+                        onUnpin = { onAction(LauncherUiAction.UnpinTile(placement.tileId)) },
+                        onResize = {
+                            if (resizing?.tileId == placement.tileId) onAction(LauncherUiAction.CommitTileResize)
+                            else onAction(LauncherUiAction.ResizeTile(placement.tileId))
                         },
-                        onResize = { onAction(LauncherUiAction.ResizeTile(placement.tileId)) },
+                        onResizeCancel = { onAction(LauncherUiAction.CancelTileOperation) },
                         onMoveStart = { pointerId, grabOffset ->
-                            previousTarget = baseCell
+                            val insertionIndex = AdaptiveTilePacker.insertionIndexOf(state.document, placement.tileId)
+                            localTileDrag = LocalTileDrag(
+                                tileId = placement.tileId,
+                                visualOffset = Offset.Zero,
+                                grabOffset = grabOffset,
+                                targetCell = baseCell,
+                                insertionIndex = insertionIndex,
+                                autoScrollPxPerSecond = 0f,
+                            )
                             onAction(
                                 LauncherUiAction.BeginTileDrag(
                                     placement.tileId,
@@ -242,20 +278,31 @@ fun YokuliStartScreen(
                         },
                         onMove = { visualOffset, grabOffset ->
                             val offset = ShellOffset(visualOffset.x, visualOffset.y)
-                            val target = hysteresis.resolve(baseCell, offset, pitchPx, previousTarget)
-                            previousTarget = target
-                            val pointerY = baseCell.row * pitchPx + grabOffset.y + visualOffset.y - scroll.value
-                            onAction(
-                                LauncherUiAction.UpdateTileDrag(
-                                    tileId = placement.tileId,
-                                    visualOffset = offset,
-                                    targetCell = target,
-                                    autoScrollPxPerSecond = autoScroll.velocity(pointerY, availableHeightPx.toFloat()),
-                                ),
+                            val current = localTileDrag ?: return@WpTile
+                            val target = hysteresis.resolve(baseCell, offset, pitchPx, current.targetCell)
+                            val insertionIndex = AdaptiveTilePacker.insertionIndexForCell(
+                                state.document,
+                                geometry.columns,
+                                target,
+                                placement.tileId,
                             )
+                            val pointerY = baseCell.row * pitchPx + grabOffset.y + visualOffset.y - scroll.value
+                            localTileDrag = current.copy(
+                                visualOffset = visualOffset,
+                                grabOffset = grabOffset,
+                                targetCell = target,
+                                insertionIndex = insertionIndex,
+                                autoScrollPxPerSecond = autoScroll.velocity(pointerY, availableHeightPx.toFloat()),
+                            )
+                            if (insertionIndex != current.insertionIndex) {
+                                onAction(LauncherUiAction.InsertionTargetChanged(placement.tileId, insertionIndex))
+                            }
                         },
                         onMoveCommit = { onAction(LauncherUiAction.DropTile(placement.tileId)) },
-                        onMoveCancel = { onAction(LauncherUiAction.CancelTileOperation) },
+                        onMoveCancel = {
+                            localTileDrag = null
+                            onAction(LauncherUiAction.CancelTileOperation)
+                        },
                         onMoveBy = { columns, rows ->
                             onAction(LauncherUiAction.MoveTileBy(placement.tileId, columns, rows))
                         },
@@ -291,6 +338,7 @@ private fun WpTile(
     height: Dp,
     editing: Boolean,
     selected: Boolean,
+    resizing: Boolean,
     revealing: Boolean,
     revealProgress: Float,
     dragOffset: ShellOffset,
@@ -298,6 +346,7 @@ private fun WpTile(
     onLongClick: () -> Unit,
     onUnpin: () -> Unit,
     onResize: () -> Unit,
+    onResizeCancel: () -> Unit,
     onMoveStart: (Long, Offset) -> Unit,
     onMove: (Offset, Offset) -> Unit,
     onMoveCommit: () -> Unit,
@@ -314,9 +363,7 @@ private fun WpTile(
         Modifier.pointerInput(entry.descriptor.entryId) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
-                val editControlPx = with(density) {
-                    (if (isSmall) 18.dp else YokuliMetrics.MinTouch).toPx()
-                }
+                val editControlPx = with(density) { YokuliMetrics.MinTouch.toPx() }
                 val inEditControls = if (isSmall) {
                     (down.position.x <= editControlPx && down.position.y <= editControlPx) ||
                         (down.position.x >= size.width - editControlPx &&
@@ -379,7 +426,15 @@ private fun WpTile(
             .then(dragModifier).padding(tileInset),
     ) {
         MarineTileContent(entry, tileSize)
-        if (editing && selected) WpTileEditOverlay(compact = isSmall, onUnpin, onResize)
+        if (editing && selected) {
+            WpTileEditOverlay(
+                compact = isSmall,
+                resizing = resizing,
+                onUnpin = onUnpin,
+                onResize = onResize,
+                onResizeCancel = onResizeCancel,
+            )
+        }
         if (revealing) {
             Box(
                 Modifier.fillMaxSize().border(3.dp, colors.onAccent)
@@ -463,32 +518,52 @@ private fun StartInteractionState.isEditing(): Boolean = when (this) {
 }
 
 @Composable
-private fun WpTileEditOverlay(compact: Boolean, onUnpin: () -> Unit, onResize: () -> Unit) {
+private fun WpTileEditOverlay(
+    compact: Boolean,
+    resizing: Boolean,
+    onUnpin: () -> Unit,
+    onResize: () -> Unit,
+    onResizeCancel: () -> Unit,
+) {
     val colors = LocalWpTheme.current
-    // DERIVED_UNVERIFIED: edit controls were not visible in Stage 2.5. Compact controls avoid
-    // overlap inside a reference-pixel Small tile; equivalent actions remain available to TalkBack.
-    val controlSize = if (compact) 18.dp else YokuliMetrics.MinTouch
+    // DERIVED_UNVERIFIED: edit controls were not visible in Stage 2.5. Visual disks remain
+    // compact, while every pointer target is the platform-safe 48dp minimum.
+    val controlSize = YokuliMetrics.MinTouch
     val diskSize = if (compact) 17.dp else 30.dp
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.align(if (compact) Alignment.TopStart else Alignment.TopEnd).size(controlSize)
-                .testTag("unpin-selected-tile").combinedNoRipple(onUnpin),
+                .testTag(if (resizing) "cancel-tile-resize" else "unpin-selected-tile")
+                .combinedNoRipple(if (resizing) onResizeCancel else onUnpin),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 Modifier.size(diskSize).background(colors.background, androidx.compose.foundation.shape.CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { MarineIcon(MarineIconKind.UNPIN, colors.foreground, Modifier.size(if (compact) 13.dp else 22.dp)) }
+            ) {
+                MarineIcon(
+                    if (resizing) MarineIconKind.CANCEL else MarineIconKind.UNPIN,
+                    colors.foreground,
+                    Modifier.size(if (compact) 13.dp else 22.dp),
+                )
+            }
         }
         Box(
             Modifier.align(Alignment.BottomEnd).size(controlSize)
-                .testTag("resize-selected-tile").combinedNoRipple(onResize),
+                .testTag(if (resizing) "commit-tile-resize" else "resize-selected-tile")
+                .combinedNoRipple(onResize),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 Modifier.size(diskSize).background(colors.background, androidx.compose.foundation.shape.CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { MarineIcon(MarineIconKind.RESIZE, colors.foreground, Modifier.size(if (compact) 12.dp else 20.dp)) }
+            ) {
+                MarineIcon(
+                    if (resizing) MarineIconKind.DONE else MarineIconKind.RESIZE,
+                    colors.foreground,
+                    Modifier.size(if (compact) 12.dp else 20.dp),
+                )
+            }
         }
     }
 }

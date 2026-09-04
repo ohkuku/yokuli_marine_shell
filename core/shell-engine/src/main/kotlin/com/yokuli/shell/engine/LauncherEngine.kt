@@ -31,7 +31,9 @@ class DefaultLauncherEngine(
     private val reducer: LauncherReducer = DefaultLauncherReducer(),
 ) : LauncherEngine {
     private val startsRestoring = !persistence.loaded.value
-    private val actions = Channel<LauncherAction>(Channel.UNLIMITED)
+    private val actionSignal = Channel<Unit>(Channel.CONFLATED)
+    private val actionQueue = ArrayDeque<LauncherAction>()
+    private val actionQueueLock = Any()
     private val mutableState = MutableStateFlow(initialState())
     private val mutableEffects = MutableSharedFlow<LauncherEffect>(extraBufferCapacity = 32)
 
@@ -40,8 +42,11 @@ class DefaultLauncherEngine(
 
     init {
         scope.launch {
-            for (action in actions) {
-                process(action)
+            for (ignored in actionSignal) {
+                while (true) {
+                    val action = synchronized(actionQueueLock) { actionQueue.removeFirstOrNull() } ?: break
+                    process(action)
+                }
             }
         }
         scope.launch {
@@ -63,7 +68,11 @@ class DefaultLauncherEngine(
     }
 
     override fun dispatch(action: LauncherAction) {
-        check(actions.trySend(action).isSuccess) { "LauncherEngine action queue is closed" }
+        synchronized(actionQueueLock) {
+            check(actionQueue.size < MAX_PENDING_ACTIONS) { "LauncherEngine action queue capacity exceeded" }
+            actionQueue.addLast(action)
+        }
+        check(actionSignal.trySend(Unit).isSuccess) { "LauncherEngine action queue is closed" }
     }
 
     private suspend fun process(action: LauncherAction) {
@@ -124,5 +133,6 @@ class DefaultLauncherEngine(
 
     private companion object {
         const val MAX_RETAINED_INCIDENTS = 32
+        const val MAX_PENDING_ACTIONS = 256
     }
 }

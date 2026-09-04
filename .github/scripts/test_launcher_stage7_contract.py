@@ -23,8 +23,7 @@ class LauncherStage7EditDragResizeContractTest(unittest.TestCase):
             "EnterStartEdit",
             "ExitStartEdit",
             "BeginTileDrag",
-            "UpdateTileDrag",
-            "AutoScrollTileDrag",
+            "InsertionTargetChanged",
             "DropTile",
             "CancelTileOperation",
             "ResizeTile",
@@ -47,6 +46,7 @@ class LauncherStage7EditDragResizeContractTest(unittest.TestCase):
         self.assertIn("CustomAccessibilityAction", screen)
         self.assertIn("customActions", screen)
         self.assertNotIn("remember { mutableStateOf(StartInteractionState.Idle) }", screen)
+        self.assertIn("LocalTileDrag", screen)
 
     def test_jvm_tests_lock_complete_edit_interaction_contract(self):
         tests = "\n".join(path.read_text() for path in (ROOT / "core/shell-engine/src/test").rglob("*.kt"))
@@ -54,11 +54,12 @@ class LauncherStage7EditDragResizeContractTest(unittest.TestCase):
             "grabOffsetIsPreserved",
             "neighborMovesBeforeDrop",
             "cellHysteresisPreventsThrash",
-            "autoScrollKeepsTileUnderFinger",
+            "edgeAutoScrollPolicyRemainsRendererInputOnly",
             "invalidDropReturnsOrigin",
             "pointerCancelRestoresCommittedDocument",
             "catalogChangeCancelsDragSafely",
             "sixSizeResizeCycleIsExact",
+            "resizeCanBeCancelledBeforeCommit",
         ):
             self.assertIn(scenario, tests)
 

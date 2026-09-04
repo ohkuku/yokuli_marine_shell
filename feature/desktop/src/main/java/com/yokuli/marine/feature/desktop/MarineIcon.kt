@@ -48,6 +48,10 @@ fun MarineIcon(kind: MarineIconKind, color: Color, modifier: Modifier = Modifier
                 }
                 drawPath(path, color, style = Stroke(stroke))
             }
+            MarineIconKind.CANCEL -> {
+                drawLine(color, Offset(unit * .22f, unit * .22f), Offset(unit * .78f, unit * .78f), stroke)
+                drawLine(color, Offset(unit * .78f, unit * .22f), Offset(unit * .22f, unit * .78f), stroke)
+            }
             MarineIconKind.UNPIN -> {
                 drawCircle(color, unit * .38f, center, style = Stroke(stroke))
                 drawLine(color, Offset(unit * .27f, center.y), Offset(unit * .73f, center.y), stroke)

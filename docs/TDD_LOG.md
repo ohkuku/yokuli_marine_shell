@@ -599,3 +599,19 @@ The Stage 11 contract first fails on absent benchmark/profile modules, 60-tile a
 ### English translation — adaptive packing
 
 The Red fails on absent ranked document, adaptive packer, and explicit spacer types. Green removes durable cells and the downward-only collision solver, derives cells per viewport, persists rank/size/group at schema 2, and connects the production renderer to deterministic reflow. Seeded mixed-size properties, four/six-column repacking, insertion, explicit whitespace, and Proto round-trip are machine-tested. High-frequency pointer dispatch and cancelable resize remain the next direct-editing slice.
+
+## Marine Shell Final Correction — Desktop Direct Editing
+
+### Red
+
+Reducer 测试先引用 `InsertionTargetChanged` 并因该语义 Action 不存在而编译失败；同时加入 unchanged target 不产生新 state 和 Resize 可取消测试。Activity stories 将原先的一帧自动 Resize 改为显式预览/取消/确认，并新增小磁贴实际 hit bounds 至少 44dp。
+
+### Green and correction
+
+`LocalTileDrag` 在 Compose Renderer 本地持有逐帧 visual offset、grab offset、edge auto-scroll velocity 与 hysteresis target。只有 insertion index 改变时才派发 Engine Action，Reducer 只计算 proposed rank document；相同 insertion target 原样返回 state。Engine 的 `Channel.UNLIMITED` 改为 256 项有界顺序队列加 conflated wake signal，不丢语义顺序，也不再允许 pointer delta 制造无限 backlog。
+
+Resize 不再通过 `withFrameNanos` 自动提交。第一次点击建立 provisional transaction，桌面显示 48dp 的取消/确认触控面；取消恢复 before，确认才持久化。拖拽时显示 insertion marker，邻居按 proposed document reflow。第一次 API 34 story 在用初始像素高度判断取消恢复时超时；分层断言证明 Engine 已恢复 `WIDE_4X2`，测试遂改为比较 large preview 前后高度，避免把测试启动时的异步视觉采样误当模型事实。随后 Resize story 与 44dp hit-target story 均通过。
+
+### English translation — direct editing
+
+Pointer-frame state now stays local to Compose, while the serialized Engine receives only begin, insertion-target, drop, cancel, and resize semantics. Repeated insertion indices are no-ops, the action queue is bounded, resize requires explicit confirmation and can be cancelled, and 48dp invisible hit areas preserve compact WP-like visual disks. Two API 34 stories verify the real transaction and small-tile touch bounds.

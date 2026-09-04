@@ -275,16 +275,8 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     is LauncherUiAction.BeginTileDrag -> dispatch(
                         LauncherAction.BeginTileDrag(action.tileId, action.pointerId, action.grabOffset),
                     )
-                    is LauncherUiAction.UpdateTileDrag -> dispatch(
-                        LauncherAction.UpdateTileDrag(
-                            action.tileId,
-                            action.visualOffset,
-                            action.targetCell,
-                            action.autoScrollPxPerSecond,
-                        ),
-                    )
-                    is LauncherUiAction.AutoScrollTileDrag -> dispatch(
-                        LauncherAction.AutoScrollTileDrag(action.tileId, action.consumedPx, action.targetCell),
+                    is LauncherUiAction.InsertionTargetChanged -> dispatch(
+                        LauncherAction.InsertionTargetChanged(action.tileId, action.insertionIndex),
                     )
                     is LauncherUiAction.DropTile -> dispatch(LauncherAction.DropTile(action.tileId))
                     LauncherUiAction.CancelTileOperation -> dispatch(LauncherAction.CancelTileOperation)

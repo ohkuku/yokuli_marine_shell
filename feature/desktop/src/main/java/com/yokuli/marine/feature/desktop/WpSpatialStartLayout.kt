@@ -3,6 +3,7 @@ package com.yokuli.marine.feature.desktop
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -12,10 +13,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.engine.geometry.ResolvedStartGeometry
 import com.yokuli.shell.engine.layout.AdaptiveTilePacker
-import com.yokuli.shell.engine.layout.PackedTilePlacement
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TileDocumentEntry
 import com.yokuli.marine.core.design.LocalWpTheme
@@ -42,7 +43,8 @@ fun WpSpatialStartLayout(
         if (placement.entry.tileId == floatingTileId) placement else proposedById[placement.entry.tileId] ?: placement
     }
     val floatingPlacement = packed.tiles.firstOrNull { it.entry.tileId == floatingTileId }
-    val measurementPlacements = listOfNotNull(floatingPlacement) + visualPlacements
+    val insertionMarker = proposedPacked?.tiles?.firstOrNull { it.entry.tileId == floatingTileId }
+    val measurementPlacements = listOfNotNull(floatingPlacement, insertionMarker) + visualPlacements
     Layout(
         modifier = modifier,
         content = {
@@ -52,6 +54,14 @@ fun WpSpatialStartLayout(
                         translationX = placement.cell.column * pitchPx.toFloat()
                         translationY = placement.cell.row * pitchPx.toFloat()
                     }.background(colors.accent.copy(alpha = .24f)).testTag("tile-origin-placeholder"),
+                )
+            }
+            insertionMarker?.let { placement ->
+                Box(
+                    Modifier.graphicsLayer {
+                        translationX = placement.cell.column * pitchPx.toFloat()
+                        translationY = placement.cell.row * pitchPx.toFloat()
+                    }.border(2.dp, colors.accent).testTag("tile-insertion-marker"),
                 )
             }
             visualPlacements.forEach { placement ->

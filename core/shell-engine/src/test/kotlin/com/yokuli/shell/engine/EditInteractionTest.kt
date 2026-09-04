@@ -54,7 +54,7 @@ class EditInteractionTest {
         val dragging = started.start.interaction as StartInteractionState.Dragging
         assertEquals(42, dragging.pointerId)
         assertEquals(grab, dragging.grabOffsetPx)
-        assertEquals(ShellOffset(0f, 0f), dragging.visualOffsetPx)
+        assertEquals(0, dragging.insertionIndex)
     }
 
     @Test
@@ -62,18 +62,23 @@ class EditInteractionTest {
         val started = startDrag()
         val preview = reduce(
             started,
-            LauncherAction.UpdateTileDrag(
-                TileInstanceId("tile-a"),
-                ShellOffset(111f, 0f),
-                GridCell(1, 0),
-                autoScrollPxPerSecond = 0f,
-            ),
+            LauncherAction.InsertionTargetChanged(TileInstanceId("tile-a"), insertionIndex = 1),
         )
 
         val dragging = preview.start.interaction as StartInteractionState.Dragging
         assertEquals(document, preview.start.document)
         assertEquals(listOf("b", "a", "c"), dragging.proposedLayout.placements.map { it.entryId.value })
         assertEquals(GridCell(1, 0), dragging.proposedLayout.cell("a"))
+    }
+
+    @Test
+    fun unchangedInsertionTargetDoesNotPublishNewEngineState() {
+        val started = startDrag()
+        val dragging = started.start.interaction as StartInteractionState.Dragging
+
+        val unchanged = reduce(started, LauncherAction.InsertionTargetChanged(dragging.tileId, dragging.insertionIndex))
+
+        assertTrue(unchanged === started)
     }
 
     @Test
@@ -89,32 +94,17 @@ class EditInteractionTest {
     }
 
     @Test
-    fun autoScrollKeepsTileUnderFinger() {
+    fun edgeAutoScrollPolicyRemainsRendererInputOnly() {
         val policy = EdgeAutoScrollPolicy(activationZonePx = 48f, maximumSpeedPxPerSecond = 300f)
         assertEquals(0f, policy.velocity(200f, 400f))
         assertTrue(policy.velocity(390f, 400f) > 0f)
-
-        val updated = reduce(
-            startDrag(),
-            LauncherAction.UpdateTileDrag(
-                TileInstanceId("tile-a"), ShellOffset(0f, 80f), GridCell(0, 1), 200f,
-            ),
-        )
-        val scrolled = reduce(
-            updated,
-            LauncherAction.AutoScrollTileDrag(TileInstanceId("tile-a"), 25f, GridCell(0, 1)),
-        )
-        val dragging = scrolled.start.interaction as StartInteractionState.Dragging
-        assertEquals(105f, dragging.visualOffsetPx.y)
     }
 
     @Test
     fun invalidDropReturnsOrigin() {
         val preview = reduce(
             startDrag(),
-            LauncherAction.UpdateTileDrag(
-                TileInstanceId("tile-a"), ShellOffset(-500f, 0f), GridCell(-5, 0), 0f,
-            ),
+            LauncherAction.InsertionTargetChanged(TileInstanceId("tile-a"), insertionIndex = 0),
         )
         val dropped = reduce(preview, LauncherAction.DropTile(TileInstanceId("tile-a")))
 
@@ -127,9 +117,7 @@ class EditInteractionTest {
     fun pointerCancelRestoresCommittedDocument() {
         val preview = reduce(
             startDrag(),
-            LauncherAction.UpdateTileDrag(
-                TileInstanceId("tile-a"), ShellOffset(111f, 0f), GridCell(1, 0), 0f,
-            ),
+            LauncherAction.InsertionTargetChanged(TileInstanceId("tile-a"), insertionIndex = 1),
         )
         val cancelled = reduce(preview, LauncherAction.CancelTileOperation)
 
@@ -160,6 +148,17 @@ class EditInteractionTest {
         assertEquals(MarineTileSize.TALL_2X4, fourth.start.document.size("a"))
         assertEquals(MarineTileSize.LARGE_4X4, fifth.start.document.size("a"))
         assertEquals(MarineTileSize.ICON_1X1, sixth.start.document.size("a"))
+    }
+
+    @Test
+    fun resizeCanBeCancelledBeforeCommit() {
+        val resizing = reduce(initial(), LauncherAction.ResizeTile(TileInstanceId("tile-a")))
+        assertTrue(resizing.start.interaction is StartInteractionState.Resizing)
+        assertEquals(document, resizing.start.document)
+
+        val cancelled = reduce(resizing, LauncherAction.CancelTileOperation)
+        assertEquals(document, cancelled.start.document)
+        assertEquals(StartInteractionState.EditIdle(TileInstanceId("tile-a")), cancelled.start.interaction)
     }
 
     private fun startDrag() = reduce(

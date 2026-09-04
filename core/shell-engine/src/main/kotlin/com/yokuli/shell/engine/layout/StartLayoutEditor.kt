@@ -67,7 +67,7 @@ object StartLayoutEditor {
         document.placements.firstOrNull { it.tileId == tileId } ?: return null
         val profile = WpReferenceProfiles.require(document.profileId)
         if (target.column < 0 || target.row < 0 || target.column >= profile.columnCount) return null
-        val insertionIndex = AdaptiveTilePacker.insertionIndexForCell(document, profile.columnCount, target)
+        val insertionIndex = AdaptiveTilePacker.insertionIndexForCell(document, profile.columnCount, target, tileId)
         val after = AdaptiveTilePacker.insert(document, tileId, insertionIndex)
         return transaction(document, after, LayoutChangeReason.MOVE)
     }

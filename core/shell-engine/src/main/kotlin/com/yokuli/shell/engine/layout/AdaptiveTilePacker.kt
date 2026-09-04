@@ -82,10 +82,16 @@ object AdaptiveTilePacker {
         )
     }
 
-    fun insertionIndexForCell(document: StartDocument, columns: Int, target: GridCell): Int {
+    fun insertionIndexForCell(
+        document: StartDocument,
+        columns: Int,
+        target: GridCell,
+        movingTileId: TileInstanceId? = null,
+    ): Int {
         val packed = pack(document, columns)
         val ordered = buildList {
-            packed.tiles.forEach { add(PositionedItem(it.entry.rank, it.entry.tileId.value, it.cell)) }
+            packed.tiles.filterNot { it.entry.tileId == movingTileId }
+                .forEach { add(PositionedItem(it.entry.rank, it.entry.tileId.value, it.cell)) }
             packed.spacers.forEach { add(PositionedItem(it.spacer.rank, it.spacer.spacerId.value, it.cell)) }
         }.sortedWith(compareBy({ it.cell.row }, { it.cell.column }, { it.rank }, { it.id }))
         val before = ordered.indexOfFirst { candidate ->
@@ -94,6 +100,11 @@ object AdaptiveTilePacker {
         }
         return if (before < 0) ordered.size else before
     }
+
+    fun insertionIndexOf(document: StartDocument, tileId: TileInstanceId): Int =
+        orderedItems(document).indexOfFirst { item ->
+            item is RankedItem.Tile && item.entry.tileId == tileId
+        }
 
     private data class PositionedItem(val rank: Long, val id: String, val cell: GridCell)
 
