@@ -2,7 +2,7 @@
     <application>
         <activity
             android:name=".ShellLabActivity"
-            android:exported="false"
+            android:exported="true"
             android:screenOrientation="fullSensor" />
     </application>
 </manifest>

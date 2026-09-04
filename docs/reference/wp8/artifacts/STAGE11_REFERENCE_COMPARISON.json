@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "status": "CANDIDATE_PENDING_HUMAN_REVIEW",
+  "reviewedMeasurementHash": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+  "candidateSceneIds": [
+    "wp8_start_360_dark",
+    "wp8_start_360_light",
+    "wp8_start_320_square",
+    "wp8_all_apps_360",
+    "wp8_edit_medium",
+    "wp8_context_menu",
+    "wp8_alphabet_jump",
+    "wp8_tile_launch_plane",
+    "wp8_start_360_square"
+  ],
+  "referenceProfile": {
+    "id": "WP8_CLASSIC_PHONE_4COL",
+    "revision": 1,
+    "measuredViewportPx": { "width": 480, "height": 800 },
+    "measuredGeometryPx": {
+      "leftInset": 24,
+      "rightInset": 24,
+      "seam": 12,
+      "small": 99,
+      "medium": 210,
+      "wideWidth": 432,
+      "wideHeight": 210,
+      "statusStripHeight": 32
+    }
+  },
+  "automatedChecks": {
+    "integerViewportGeometry": "PASS",
+    "explicitStartDocumentAt320Square": "PASS",
+    "explicitStartDocumentAt360Square": "PASS",
+    "virtualKeyBarOnStartAndAllApps": "PASS",
+    "virtualBackDismissesAlphabetJumpFirst": "PASS",
+    "virtualKeyBarVisibleOverTransientPlanes": "PASS",
+    "candidateSignatureHashBytesDimensions": "PASS"
+  },
+  "keyBoundary": {
+    "recordingEvidence": "VISUAL_ONLY glyph family",
+    "virtualKeyGeometryAndHaptics": "DERIVED_UNVERIFIED",
+    "serializedEngineInputPath": "AUTOMATED_TESTED",
+    "androidPhysicalHome": "OS_RESERVED; HOME flavor intent is the truthful integration path",
+    "wp8KeyLightHapticsAndLatency": "NOT_OBSERVED"
+  },
+  "physicalDeviceClaim": "UNVERIFIED_HARDWARE",
+  "limitations": [
+    "Candidate images are Yokuli Android emulator output, not source WP8 frames.",
+    "No candidate is an approved pixel Golden until repository-owner review.",
+    "320x320 and 360x360 are simulated viewports and do not verify Samsung square hardware.",
+    "Emulator screenshots cannot verify physical display refresh, touch latency, haptics or key lighting."
+  ]
+}

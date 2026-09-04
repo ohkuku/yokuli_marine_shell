@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -39,6 +40,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
@@ -57,7 +59,7 @@ private val DerivedVirtualKeyBarHeight = 54.dp
 @Composable
 fun WpSystemKeyBar(onInput: (LauncherInput) -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier.fillMaxWidth().height(DerivedVirtualKeyBarHeight)
+        modifier.zIndex(1f).graphicsLayer().fillMaxWidth().height(DerivedVirtualKeyBarHeight)
             .background(Color.Black).testTag("wp-system-key-bar"),
         verticalAlignment = Alignment.CenterVertically,
     ) {

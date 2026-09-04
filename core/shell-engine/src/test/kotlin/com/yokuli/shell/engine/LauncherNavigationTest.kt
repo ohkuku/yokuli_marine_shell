@@ -73,6 +73,19 @@ class LauncherNavigationTest {
     }
 
     @Test
+    fun alphabetJumpIsAnEngineTransientAndBackClosesItBeforeLeavingAllApps() {
+        val allApps = reduce(initial(), LauncherAction.ShowAllApps).state
+        val jump = reduce(allApps, LauncherAction.OpenAlphabetJump).state
+
+        assertEquals(LauncherSurface.AllApps, jump.surface)
+        assertEquals(LauncherTransient.AlphabetJump, jump.transient)
+
+        val dismissed = reduce(jump, LauncherAction.Back).state
+        assertEquals(LauncherSurface.AllApps, dismissed.surface)
+        assertEquals(null, dismissed.transient)
+    }
+
+    @Test
     fun recentsCanResumeAnExistingTask() {
         val chartOpen = open(initial(), chart.appId, chart.launchToken)
         val settingsOpen = open(chartOpen.copy(surface = LauncherSurface.Start), settings.appId, settings.launchToken)

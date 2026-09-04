@@ -14,6 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpThemeSpec
@@ -42,10 +44,15 @@ class ShellLabActivity : AppCompatActivity() {
     }
 }
 
-/** 中文：30 个 DEMO 项只存在于调试构建。 English: All 30 DEMO entries exist only in debug builds. */
+/** 中文：60 个压测项只存在于 Debug/Benchmark。 English: 60 stress entries are debug/benchmark-only. */
+private enum class ShellLabDataset(val tileCount: Int) {
+    DEMO(30),
+    PERFORMANCE(60),
+}
+
 @Composable
 private fun ShellLab() {
-    val descriptors = remember { demoDescriptors(30) }
+    val descriptors = remember { demoDescriptors(ShellLabDataset.PERFORMANCE.tileCount) }
     var document by remember { mutableStateOf(demoDocument(descriptors)) }
     val colors = LocalWpTheme.current
     val titlePattern = stringResource(R.string.lab_entry_title)
@@ -59,7 +66,10 @@ private fun ShellLab() {
             detail = stringResource(if (index % 2 == 0) R.string.lab_short_detail else R.string.lab_long_detail),
         )
     }
-    Column(Modifier.fillMaxSize().background(colors.background)) {
+    Column(
+        Modifier.fillMaxSize().background(colors.background)
+            .semantics { testTagsAsResourceId = true },
+    ) {
         WpPageHeader("shell-lab", stringResource(R.string.lab_title), stringResource(R.string.lab_context))
         Box(Modifier.weight(1f)) {
             YokuliStartScreen(
@@ -70,7 +80,7 @@ private fun ShellLab() {
     }
 }
 
-private fun demoDescriptors(count: Int) = List(count) { index ->
+internal fun demoDescriptors(count: Int) = List(count) { index ->
     val id = LauncherEntryId("demo-${index + 1}")
     val appId = LauncherAppId("demo-${index + 1}")
     LauncherEntryDescriptor(
@@ -83,7 +93,7 @@ private fun demoDescriptors(count: Int) = List(count) { index ->
     )
 }
 
-private fun demoDocument(entries: List<LauncherEntryDescriptor>): StartDocument {
+internal fun demoDocument(entries: List<LauncherEntryDescriptor>): StartDocument {
     var row = 0
     val placements = entries.mapIndexed { index, entry ->
         val size = entry.defaultSize

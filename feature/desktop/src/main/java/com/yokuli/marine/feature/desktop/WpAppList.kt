@@ -18,11 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -59,7 +56,6 @@ fun WpAppList(
     val letters = groups.keys.sorted()
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    var jumpVisible by remember { mutableStateOf(false) }
     val groupIndexes = remember(groups) {
         var index = 1
         buildMap {
@@ -86,8 +82,13 @@ fun WpAppList(
                     val interactions = remember(letter) { MutableInteractionSource() }
                     Box(
                         Modifier.padding(vertical = 6.dp).size(YokuliMetrics.MinTouch)
+                            .testTag("alphabet-group-${letter.lowercaseChar()}")
                             .wpTilt(interactions, maximumDegrees = 4f).background(colors.accent)
-                            .combinedClickable(interactionSource = interactions, indication = null, onClick = { jumpVisible = true }),
+                            .combinedClickable(
+                                interactionSource = interactions,
+                                indication = null,
+                                onClick = { onAction(LauncherUiAction.OpenAlphabetJump) },
+                            ),
                         contentAlignment = Alignment.Center,
                     ) { WpText(letter.lowercase(), 24, color = colors.onAccent, weight = FontWeight.Light) }
                 }
@@ -116,12 +117,12 @@ fun WpAppList(
                 }
             }
         }
-        if (jumpVisible) {
+        if (state.transient == LauncherTransient.AlphabetJump) {
             WpAlphabetJumpOverlay(
                 available = letters.toSet(),
-                onDismiss = { jumpVisible = false },
+                onDismiss = { onAction(LauncherUiAction.DismissTransient) },
                 onLetter = { letter ->
-                    jumpVisible = false
+                    onAction(LauncherUiAction.DismissTransient)
                     groupIndexes[letter]?.let { index -> scope.launch { listState.animateScrollToItem(index) } }
                 },
             )
@@ -207,7 +208,8 @@ fun WpAlphabetJumpOverlay(available: Set<Char>, onDismiss: () -> Unit, onLetter:
     val colors = LocalWpTheme.current
     val letters = ('A'..'Z').toList() + '#'
     Box(
-        Modifier.fillMaxSize().background(colors.background.copy(alpha = .97f)).contextClick(onDismiss),
+        Modifier.fillMaxSize().background(colors.background.copy(alpha = .97f))
+            .testTag("alphabet-jump-overlay").contextClick(onDismiss),
         contentAlignment = Alignment.Center,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

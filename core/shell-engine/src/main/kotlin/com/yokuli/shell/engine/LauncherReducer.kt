@@ -78,6 +78,7 @@ sealed interface LauncherAction {
     data object CommitTileResize : LauncherAction
     data class MoveTileBy(val tileId: TileInstanceId, val columns: Int, val rows: Int) : LauncherAction
     data class OpenEntryContextMenu(val entryId: LauncherEntryId) : LauncherAction
+    data object OpenAlphabetJump : LauncherAction
     data object DismissTransient : LauncherAction
     data class PinEntry(val entryId: LauncherEntryId) : LauncherAction
     data class UnpinTile(val tileId: TileInstanceId) : LauncherAction
@@ -214,6 +215,9 @@ class DefaultLauncherReducer : LauncherReducer {
         LauncherAction.CommitTileResize -> commitTileResize(state)
         is LauncherAction.MoveTileBy -> moveTileBy(state, action)
         is LauncherAction.OpenEntryContextMenu -> openEntryContextMenu(state, action.entryId)
+        LauncherAction.OpenAlphabetJump -> LauncherReduction(
+            state.copy(transient = LauncherTransient.AlphabetJump),
+        )
         LauncherAction.DismissTransient -> LauncherReduction(state.copy(transient = null))
         is LauncherAction.PinEntry -> pinEntry(state, action.entryId)
         is LauncherAction.UnpinTile -> unpinTile(state, action.tileId)

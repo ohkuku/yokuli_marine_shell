@@ -8,18 +8,21 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -383,6 +386,73 @@ class ShellActivityStoryTest {
 
         compose.onNodeWithTag("tile-chart").assertIsDisplayed()
         compose.onNodeWithTag("tile-settings").assertIsDisplayed()
+    }
+
+    @Test
+    fun square360UsesTheSameExplicitSpatialDocument() {
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                YokuliTheme(WpThemeSpec()) {
+                    Box(Modifier.requiredSize(360.dp)) {
+                        YokuliStartScreen(
+                            state = productionLauncherUiState(
+                                productionCatalog.snapshot,
+                                defaultStartDocument,
+                                mapConfigured = false,
+                                theme = WpThemeSpec(),
+                                visualContributions = productionVisualContributions,
+                            ),
+                            onAction = {},
+                        )
+                    }
+                }
+            }
+        }
+
+        compose.onNodeWithTag("tile-chart").assertIsDisplayed()
+        compose.onNodeWithTag("tile-settings").assertIsDisplayed()
+    }
+
+    @Test
+    fun virtualSystemKeysRemainAvailableOnAllApps() {
+        compose.onNodeWithTag("all-apps-entry").performClick()
+
+        compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
+        compose.onNodeWithTag("wp-system-key-bar").assertIsDisplayed()
+        compose.onNodeWithTag("virtual-key-back").assertIsDisplayed()
+        compose.onNodeWithTag("virtual-key-start").assertIsDisplayed()
+        compose.onNodeWithTag("virtual-key-search").assertIsDisplayed()
+        val pixels = compose.onRoot().captureToImage().toPixelMap()
+        val keyTop = (pixels.height - 54).coerceAtLeast(0)
+        listOf("back", "start", "search").forEachIndexed { index, key ->
+            val left = pixels.width * index / 3
+            val right = pixels.width * (index + 1) / 3
+            val visibleGlyphPixels = (left until right).sumOf { x ->
+                (keyTop until pixels.height).count { y ->
+                    pixels[x, y].let { color ->
+                        color.red > .8f && color.green > .8f && color.blue > .8f
+                    }
+                }
+            }
+            assertTrue("virtual $key has no visible white glyph pixels on All Apps", visibleGlyphPixels > 8)
+        }
+    }
+
+    @Test
+    fun virtualBackDismissesAlphabetJumpBeforeLeavingAllApps() {
+        compose.onNodeWithTag("all-apps-entry").performClick()
+        compose.onAllNodes(
+            SemanticsMatcher("alphabet group") { node ->
+                node.config.contains(SemanticsProperties.TestTag) &&
+                    node.config[SemanticsProperties.TestTag].startsWith("alphabet-group-")
+            },
+        )[0].performClick()
+
+        compose.onNodeWithTag("alphabet-jump-overlay").assertIsDisplayed()
+        compose.onNodeWithTag("virtual-key-back").performClick()
+
+        compose.onNodeWithTag("alphabet-jump-overlay").assertDoesNotExist()
+        compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
     }
 
     @Test

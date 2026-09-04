@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "stage": 11,
+  "name": "Performance, Baseline Profiles, and Fidelity Candidates",
+  "branch": "codex/launcher-engine-stage11",
+  "startingSha": "1192d0bf9cee42266fe8430fd7ba59c424c03c56",
+  "requiredCompletedStage": "Durable Storage and HOME Recovery",
+  "reviewedMeasurementHash": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+  "scope": "Macrobenchmark, Baseline and Startup Profiles, emulator trend evidence, content-addressed Golden candidates, and final launcher-engine gate",
+  "nextStageStarted": false,
+  "approvalStatus": "COMPLETE_PROVISIONAL",
+  "physicalWp8Fidelity": "PENDING_HUMAN_REVIEW",
+  "samsungSquare": "UNVERIFIED_HARDWARE"
+}

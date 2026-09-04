@@ -1,6 +1,6 @@
 # WP8 Reference Lab
 
-状态：`HUMAN_REVIEWED`／`APPROVED`。Stage 2.5 已从仓库所有者提供的 WP8.1 模拟器录屏建立内容寻址的真实测量包，并由仓库所有者 kuku 批准；Stage 3 尚未开始。Stage 0 的历史状态是 `NOT_YET_MEASURED`。
+状态：`HUMAN_REVIEWED`／`APPROVED`。Stage 2.5 已从仓库所有者提供的 WP8.1 模拟器录屏建立内容寻址的真实测量包，并由仓库所有者 kuku 批准；Stage 11 已生成待人工审核的 Yokuli Renderer 候选。Stage 0 的历史状态是 `NOT_YET_MEASURED`。
 
 ## 冻结基线
 
@@ -44,8 +44,8 @@ Stage 0 只建立了 `NOT_YET_MEASURED` 合同。Stage 2.5 现已验证 MP4/PNG 
 af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5
 ```
 
-仓库所有者 kuku 已在 `2026-09-04T13:41:36Z` 批准 profile revision 1 与上方 hash；reviewer、UTC review time、`APPROVED` decision、notes 和 reviewed hash 均已写入。Golden、Macrobenchmark、方屏真机、物理 WP8 设备、输入 latency 和刷新率仍为 `NOT_YET_MEASURED` 或 `UNVERIFIED_HARDWARE`。
+仓库所有者 kuku 已在 `2026-09-04T13:41:36Z` 批准 profile revision 1 与上方 hash；reviewer、UTC review time、`APPROVED` decision、notes 和 reviewed hash 均已写入。Stage 11 的 Golden 输出为 `CANDIDATE_PENDING_HUMAN_REVIEW`，Macrobenchmark 仅有模拟器趋势；方屏真机、物理 WP8 设备、输入 latency 和刷新率仍为 `UNVERIFIED_HARDWARE` 或 `PENDING_HUMAN_REVIEW`。
 
 ## English translation
 
-Status is `HUMAN_REVIEWED` / `APPROVED`; the Stage 0 historical state was `NOT_YET_MEASURED`. Stage 2.5 uses only the repository-owner-supplied WP8.1 emulator recording as visual evidence. Sixteen uncropped exact frames and five scenario measurement sets are content-addressed and checked by a semantic validator for signatures, hashes, byte sizes, dimensions, references, viewport, timeline deltas, geometry, coverage, and hash-bound review. Repository owner kuku approved profile revision 1 and canonical hash `af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5` at `2026-09-04T13:41:36Z`. Stage 3 has not started. Golden output, benchmarks, physical WP8 and Samsung-square hardware, refresh rate, and input latency remain unmeasured or unverified.
+Status is `HUMAN_REVIEWED` / `APPROVED`; the Stage 0 historical state was `NOT_YET_MEASURED`. Stage 2.5 uses only the repository-owner-supplied WP8.1 emulator recording as visual evidence. Sixteen uncropped exact frames and five scenario measurement sets are content-addressed and checked by a semantic validator. Repository owner kuku approved profile revision 1 and canonical hash `af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5` at `2026-09-04T13:41:36Z`. Stage 11 now provides renderer candidates and emulator benchmark trends; Golden acceptance, physical WP8 and Samsung-square hardware, refresh rate, and input latency remain pending or unverified.

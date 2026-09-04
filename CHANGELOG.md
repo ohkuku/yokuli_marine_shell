@@ -1,5 +1,14 @@
 # Changelog
 
+## Stage 11 — Performance & Fidelity Gate
+
+- 新增独立 Macrobenchmark 与 Baseline Profile 模块，版本化保存只包含 Yokuli 产品 descriptor 的 Baseline/Startup Profile；CI 归档 AndroidX 原始 metrics 与 trace，并明确模拟器只用于趋势。
+- Shell Lab 压测目录增至 60 Tile，新增 320×320、360×360 与 All Apps 三键常驻回归；Release 仍不包含 Shell Lab。
+- 新增 Master 八场景加 360×360 方屏共九张 API 34 renderer 候选、content-addressed manifest、Reference comparison 和精确场景语义 validator；Golden、三星方屏与 60/90/120 Hz 真机保持人工／硬件待验证。
+- 将字母跳转提升为 Engine transient；虚拟／Android Back 先关闭该层再离开 All Apps。为虚拟 Back/Start/Search 增加独立合成层，避免动态 overlay 使真实设备截图丢失 glyph。
+- 虚拟 Back/Start/Search 与可投递平台键继续进入同一个串行 Engine；Android 系统保留的物理 HOME 仍通过 Home flavor intent 接入，不伪造硬件权限、灯效、触感或 latency。
+- Profile harness 使用 3 轮上限／2 轮稳定收敛，并与生产 crash-loop 记账隔离；最终规则在双 Release APK 中编译打包。封口自审修正了 Alphabet 测试 matcher，API 34 Activity stories 达到 26/26。
+
 ## Stage 10 — Durable Storage & Recovery
 
 - 使用单一 Proto DataStore 原子保存 Start document、主题、主题色、语言、布局锁、上次页面/前台 token 和启动健康状态；支持 schema migration、损坏数据回退与进程重建。

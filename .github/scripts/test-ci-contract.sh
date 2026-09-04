@@ -26,7 +26,7 @@ for action in \
 done
 grep -Fq 'actions/download-artifact@v8' "$android" || fail 'verified artifact must be transferred with digest checking'
 
-for job in 'build:' 'integration:' 'api-compatibility:' 'verified-debug:'; do
+for job in 'build:' 'integration:' 'api-compatibility:' 'stage11-performance:' 'verified-debug:'; do
   grep -Fq "  $job" "$android" || fail "Android CI missing job $job"
 done
 for check_id in 'ci_helpers' 'release_metadata' 'ci_contract' 'secrets_contract'; do
@@ -53,10 +53,17 @@ grep -Fq 'LAUNCHER_STAGE25_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 2
 grep -Fq 'id: launcher_stage10_contract' "$android" || fail 'Launcher Stage 10 needs an independent named CI gate'
 grep -Fq 'python3 .github/scripts/test_launcher_stage10_contract.py' "$android" || fail 'Launcher Stage 10 durable recovery contract must run in CI'
 grep -Fq 'LAUNCHER_STAGE10_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 10 result must participate in final enforcement'
+grep -Fq 'id: launcher_stage11_contract' "$android" || fail 'Launcher Stage 11 needs an independent named CI gate'
+grep -Fq 'python3 .github/scripts/test_launcher_stage11_contract.py' "$android" || fail 'Launcher Stage 11 contract must run in CI'
+grep -Fq 'python3 .github/scripts/validate_stage11_fidelity.py' "$android" || fail 'Stage 11 candidate Goldens need semantic validation'
+grep -Fq 'LAUNCHER_STAGE11_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 11 result must participate in final enforcement'
+grep -Fq 'bash .github/scripts/run_device_tests.sh performance' "$android" || fail 'Stage 11 Macrobenchmark must use the diagnostic wrapper'
+grep -Fq ':benchmark:shell:connectedStandaloneBenchmarkAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Stage 11 wrapper must run the real benchmark task'
+grep -Fq 'stage11-performance-reports' "$android" || fail 'Stage 11 measurements and traces must be downloadable'
 grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$android" || fail 'debug artifacts must consume the repository Maps key when configured'
 grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$release" || fail 'release artifacts must consume the repository Maps key'
 grep -Fq 'ANDROID_KEY_PASSWORD GOOGLE_MAPS_ANDROID_API_KEY' "$release" || fail 'release preflight must reject a missing Maps key'
-grep -Fq 'needs: [build, integration, api-compatibility]' "$android" || fail 'verified artifact must wait for every required gate'
+grep -Fq 'needs: [build, integration, api-compatibility, stage11-performance]' "$android" || fail 'verified artifact must wait for every required gate'
 grep -Fq 'UNVERIFIED-' "$android" || fail 'partial build artifacts must be visibly unverified'
 grep -Fq 'VERIFIED-' "$android" || fail 'post-gate artifact must be visibly verified'
 

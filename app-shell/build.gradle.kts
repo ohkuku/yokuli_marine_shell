@@ -1,4 +1,9 @@
-plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.android); alias(libs.plugins.kotlin.compose) }
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.androidx.baselineprofile)
+}
 
 val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_FILE").orNull
 val releaseVersionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 1
@@ -52,6 +57,11 @@ android {
             isMinifyEnabled = false
             if (releaseKeystorePath != null) signingConfig = signingConfigs.getByName("release")
         }
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
     buildFeatures { compose = true; buildConfig = true }
     androidResources {
@@ -79,6 +89,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.profileinstaller)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
@@ -89,4 +100,12 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(project(":feature:shell-lab"))
+    "benchmarkImplementation"(project(":feature:shell-lab"))
+    baselineProfile(project(":baselineprofile:shell"))
+}
+
+baselineProfile {
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
+    mergeIntoMain = true
 }

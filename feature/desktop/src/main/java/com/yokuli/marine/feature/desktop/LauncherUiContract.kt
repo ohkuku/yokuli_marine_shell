@@ -72,6 +72,7 @@ sealed interface LauncherUiAction {
     data object CommitTileResize : LauncherUiAction
     data class MoveTileBy(val tileId: TileInstanceId, val columns: Int, val rows: Int) : LauncherUiAction
     data class OpenEntryContextMenu(val entryId: LauncherEntryId) : LauncherUiAction
+    data object OpenAlphabetJump : LauncherUiAction
     data object DismissTransient : LauncherUiAction
     data class PinEntry(val entryId: LauncherEntryId) : LauncherUiAction
     data class UnpinTile(val tileId: TileInstanceId) : LauncherUiAction

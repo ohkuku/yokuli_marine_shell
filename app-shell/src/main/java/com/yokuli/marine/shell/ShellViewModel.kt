@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 class ShellViewModel(application: Application) : AndroidViewModel(application) {
     private val defaults = LauncherPersistedState(document = defaultStartDocument)
     private val persistence = (application as ShellApplication).launcherPersistence
+    private val recoveryTrackingEnabled = BuildConfig.BUILD_TYPE !in HARNESS_BUILD_TYPES
     private var healthyTimer: Job? = null
     private val startupJob: Job
 
@@ -43,11 +44,19 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     init {
         startupJob = viewModelScope.launch {
             val persisted = persistence.load() ?: defaults
-            val decision = persistence.beginLaunch(System.currentTimeMillis())
             application.synchronizePersistedLanguage(persisted.languageTag)
             engine.state.first { it.recoveryMode != LauncherRecoveryMode.RESTORING }
-            if (decision.enterSafeMode) {
-                engine.dispatch(LauncherAction.EnterSafeMode)
+            if (recoveryTrackingEnabled) {
+                val decision = persistence.beginLaunch(System.currentTimeMillis())
+                if (decision.enterSafeMode) {
+                    engine.dispatch(LauncherAction.EnterSafeMode)
+                }
+            } else {
+                // Macrobenchmark and Baseline Profile generation deliberately force-stop the target.
+                // Treating harness lifecycle control as a production crash would corrupt later journeys.
+                persistence.markLaunchHealthy()
+                engine.dispatch(LauncherAction.ExitSafeMode)
+                engine.dispatch(LauncherAction.Home)
             }
         }
     }
@@ -82,6 +91,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onHostResumed() {
+        if (!recoveryTrackingEnabled) return
         healthyTimer?.cancel()
         healthyTimer = viewModelScope.launch {
             startupJob.join()
@@ -93,6 +103,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onHostStopped() {
+        if (!recoveryTrackingEnabled) return
         healthyTimer?.cancel()
         healthyTimer = null
         if (engine.state.value.recoveryMode != LauncherRecoveryMode.SAFE_MODE) {
@@ -105,5 +116,6 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val HEALTHY_STARTUP_MILLIS = 10_000L
+        val HARNESS_BUILD_TYPES = setOf("benchmark", "nonMinifiedRelease")
     }
 }

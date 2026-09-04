@@ -448,3 +448,31 @@ Seven static contracts begin with four failures and three errors, while JVM and 
 ### English translation — Stage 10
 
 Stage 10 makes the committed launcher snapshot durable through one atomic Proto DataStore, with migration, corruption fallback, deterministic document repair, crash-loop recovery, a non-destructive Safe Mode, reset, and Android Home-settings escape. Self-review fixed a duplicate-DataStore lifecycle error, a startup-health race, lost catalog updates during restore, missing incident recording, and destructive Safe Mode behavior. Android physical HOME remains OS-reserved; HOME intent reuse and the recovery surface are the truthful integration path.
+
+## Stage 11 — Performance & Fidelity Gate
+
+### Red
+
+Stage 11 初始静态合同在 benchmark/profile 模块、60 Tile、320/360 方屏、Golden candidate、CI performance job、BASELINE_LOCK 与 REPORT 均不存在时得到 `3 failures / 3 errors`。实现中自审再加入生成产物合同，部分 Green 状态重新得到 `1 failure / 2 errors`：`baseline-prof.txt` 尚未生成，Stage 文档也未完成。这样避免“generator 能编译”被误报成“Profile 已交付”。
+
+### Green 与逐轮纠错
+
+建立 `:benchmark:shell`、`:baselineprofile:shell`、release-like benchmark target、AndroidX Macrobenchmark、Baseline/Startup Profile、60 Tile Shell Lab、模拟方屏 story、候选图语义 validator、趋势汇总器和独立 CI job。第一次 cold-start benchmark 通过前，依次修正了未签名 test APK、self-instrumenting 配置和 Compose test-tag 查询方式。
+
+Baseline Profile 的 Red 更有价值：`targetContext` 在 self-instrumenting 模式下指向测试包，第一次生成器把自己 force-stop；修成显式 flavor applicationId 后又发现 HOME 不能依赖隐式 launcher 解析；后续测试暴露持久 All Apps、已 Unpin 文档和 Stage 10 crash-loop Recovery 都会破坏固定前置状态。最终每轮只清理目标测试包数据，用显式 component 启动，并执行真实 Start、Edit、Unpin、All Apps、Context Pin、Chart 和 Back 路径。启动 profile 首次只等待 package，得到 0 行；改为等待真实 `start-screen` 后才生成非空规则。动态 context 菜单上的物理 tap 偶发丢失，最终使用 accessibility `ACTION_CLICK`，同时用 Start／Tile 结果断言，避免“脚本跑完但旅程没发生”。自审还把 product filter 从 `startsWith("Lcom/yokuli/")` 改为 `contains`，保留带 H/S/P flag 的热方法规则。
+
+九张候选覆盖 Master 的八个固定场景和额外 360×360 方屏。稳定场景使用 API 34 模拟器 `adb screencap`；启动平面从正常动画比例下的 Android `screenrecord` 提取真实透视帧。第一次 All Apps 截图在 accessibility hierarchy 已有三键时仍未画出 glyph；等待五秒也没有修复，证明不是简单采样时序。最终为按键栏建立独立 graphics layer，并在 surface/transient 变化时重新建立绘制层，`adb screencap` 才稳定显示三枚 glyph。Compose root capture 不会复现这个 SurfaceFlinger 现象，因此保留 Activity 像素故事作为附加保护，同时把真实 Red 明确记录为设备截图。
+
+继续用虚拟 Back 检查字母跳转时，又发现该层原先只存在于 Compose 局部状态：Back 会直接离开 All Apps。新增 reducer Red 后，将字母层提升为 `LauncherTransient.AlphabetJump`；现在 group tap、overlay dismiss 和虚拟／Android Back 都经过同一串行 Engine 通道，Back 会先关闭字母层并保持 All Apps。候选 manifest 和 comparison 明确不把模拟方屏、物理刷新率、WP8 key-light/haptic/latency 或 Android 系统保留 HOME 编造成通过。
+
+封口 Gate 又产生三次有效 Red。第一，60 Tile Macrobenchmark 无法从 UiAutomator 发现 Compose 根节点，Shell Lab 增加 `testTagsAsResourceId` 后通过。第二，连续 journey 的 harness force-stop 被 Stage 10 当作生产崩溃并进入 Safe Mode；先隔离 `benchmark` 后，Baseline Profile 的 `nonMinifiedRelease` 也复现同一问题，因此最终仅对两个 harness build type 中和健康状态，Debug/Release 恢复合同保持原样。第三，新增 Alphabet Activity story 的自定义 matcher 直接读取缺失的 `TestTag` 导致测试自身异常；改为先 `contains` 后读取，单测复现和完整 `26/26` 设备故事均通过。
+
+Profile 生成最初使用 AndroidX 默认最多 15 轮，在两个 flavor 上耗时过长。新增 Red 固定最多 3 轮、连续 2 轮稳定收敛；它只负责收集热规则，不取代 5-repeat Macrobenchmark 或真机门。最终源码重新生成 Baseline `1824` 条、Startup `1464` 条产品规则，模拟器动画倍率随后恢复到原值 `0`。
+
+### Green Gate
+
+最终本地 Gate 包括 Stage 0–11 Python/helper contracts、Golden validator、版本化 Baseline/Startup Profile、5/5 Macrobenchmark 代表性 emulator journeys、完整 Gradle test/lint/双 flavor Debug+Release+androidTest、API 34 Activity stories `26/26`、双 Release 产品面、CI/release/secrets 合同与 Stage 2.5 approved hash。模拟器 metrics 只写 `EMULATOR_TREND_ONLY`；本机只有 API 34，API 36 reduced-motion smoke 留给 hosted CI。
+
+### English translation — Stage 11
+
+The Stage 11 contract first fails on absent benchmark/profile modules, 60-tile and square coverage, candidate Goldens, CI integration, and stage evidence. A self-review Red additionally requires generated, non-empty, product-scoped Baseline and Startup Profile files. Green adds real AndroidX Macrobenchmark and Baseline Profile infrastructure, nine content-addressed emulator candidates, a non-gating trend summary, and a dedicated CI job. Iterative failures corrected self-process force-stop, flavor IDs, implicit HOME launch resolution, persistent/recovery state contamination, empty startup profiles, unreliable dynamic-menu taps, and an overly narrow profile-rule filter. A real adb screenshot—not Compose capture—exposed missing key glyph layers over dynamic launcher planes; an isolated graphics layer and re-key fix made them visible. A second Red moved Alphabet Jump out of local Compose state into an Engine transient so Back dismisses it before leaving All Apps. Physical refresh rates, Samsung square hardware, Golden approval, WP8 key behavior, and Android's OS-reserved HOME remain truthful human/hardware gates.

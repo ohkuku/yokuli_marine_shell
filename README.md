@@ -6,21 +6,22 @@
 
 ## 中文（主文）
 
-Yokuli OS 当前只施工一个与应用解耦、可验证、可持久化并能高帧率运行的 Windows Phone 8 Classic 风格 Launcher Shell。唯一施工规范是 [Launcher Shell Engine Master Construction Spec](docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md)。必须按 Stage 0–11 逐阶段完成；每个 Stage 通过 Gate、提交、报告后立即停止，等待人工审核。
+Yokuli OS 当前只施工一个与应用解耦、可验证、可持久化的 Windows Phone 8 Classic 风格 Launcher Shell。唯一施工规范是 [Launcher Shell Engine Master Construction Spec](docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md)。Stage 0–10 已按独立 Gate 和 commit 完成；Stage 11 自动化部分正在最终收口，真机性能与视觉结论仍必须人工批准。
 
 当前分支：
 
 ```text
-branch: codex/launcher-engine-stage2.5-rebuild
-stage: 2.5 — WP8 Reference Acquisition & Human Approval
-starting tag: launcher-engine-stage2-approved-v1
-starting SHA: 5386da0575046f1f9a59742a4a0f5c78523fa5e6
-approval: HUMAN_REVIEWED / APPROVED
+branch: codex/launcher-engine-stage11
+stage: 11 — Performance & Fidelity Gate
+starting SHA: 1192d0bf9cee42266fe8430fd7ba59c424c03c56
+status: COMPLETE_PROVISIONAL
 ```
 
-Stage 2 已由仓库所有者批准：annotated tag `launcher-engine-stage2-approved-v1` 指向 `5386da0…`，批准 evidence 是 GitHub Actions run `33864829489`。Stage 2.5 从这个不可混淆的批准点开始，只执行 WP8 Reference 获取、测量与人工审批 Gate。
+Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化／HOME Recovery。生产目录仍严格只有 Chart + Settings；Shell Lab 只在 debug/benchmark classpath。
 
-本阶段只使用仓库所有者提供的 `kuku.mp4` WP8.1 模拟器录屏作为视觉来源，保存完整时间戳帧并建立内容哈希、几何／运动测量和缺口清单。仓库所有者 kuku 已批准 canonical measurement hash，状态为 `HUMAN_REVIEWED`；Stage 3 尚未开始。Yokuli OS 后续默认沉浸式全屏并使用壳内虚拟 Back／Start／Search 的决定已经记录，但本阶段不改生产 runtime。
+Stage 11 提供 Macrobenchmark、Baseline/Startup Profile、60 Tile 压测、API 34/36 回归路径、320×320／360×360 模拟方屏以及内容寻址的 Golden 候选。模拟器结果只用于趋势；`Golden`、真实三星方屏、物理 60/90/120 Hz、WP8 视觉手感和输入延迟均不得由 Codex 宣称通过。
+
+Yokuli OS 默认沉浸式全屏。壳内虚拟 Back／Start／Search，以及 Activity 实际收到的 Android Back 和可交付键盘／硬件事件，统一进入串行 Launcher Engine；Android 保留的物理 HOME 不能由普通应用可靠拦截，Home flavor 通过 HOME/DEFAULT intent 承接启动语义。
 
 在 Shell Engine 全部完成人工验收前，禁止继续接入 GPS、NMEA、Anchor、Trip、Navigation、Survey、OpenSeaMap、MBTiles、AIS、Weather、Tide 或海事前台 Runtime。
 
@@ -36,6 +37,7 @@ Stage 2 已由仓库所有者批准：annotated tag `launcher-engine-stage2-appr
 - [Stage 2 架构边界审计](docs/stages/stage-2/ARCHITECTURE_AUDIT.md)
 - [Stage 2 正式报告](docs/stages/stage-2/REPORT.md)
 - [Stage 2.5 正式报告](docs/stages/stage-2.5/REPORT.md)
+- [Stage 11 自动化与人工待验报告](docs/stages/stage-11/REPORT.md)
 - [沉浸式全屏与虚拟实体键决定](docs/stages/stage-2.5/FULLSCREEN_NAVIGATION_DECISION.md)
 - [历史需求与 Slice 归档](docs/archive/pre-launcher-engine/README.md)
 - [GitHub 交付](docs/GITHUB_DELIVERY.md)
@@ -49,16 +51,18 @@ python3 .github/scripts/test_launcher_stage0_contract.py
 python3 .github/scripts/test_launcher_stage1_contract.py
 python3 .github/scripts/test_launcher_stage2_contract.py
 python3 .github/scripts/test_launcher_stage25_contract.py
+python3 .github/scripts/test_launcher_stage11_contract.py
 python3 .github/scripts/validate_wp8_reference.py --require-human-review
+python3 .github/scripts/validate_stage11_fidelity.py
 python3 -m unittest discover .github/scripts 'test_*.py'
 bash .github/scripts/test-ci-contract.sh
 bash .github/scripts/test-release-product-surface.sh
 ```
 
-完整构建 Gate 仍由现有 Android CI 执行。未运行的 Golden、Macrobenchmark、刷新率、Samsung 方屏和实船项目必须写 `NOT_YET_MEASURED` 或 `UNVERIFIED_HARDWARE`。
+完整构建 Gate 仍由 Android CI 执行。Golden 候选是 `CANDIDATE_PENDING_HUMAN_REVIEW`；刷新率、Samsung 方屏和物理 WP8 设备保持 `UNVERIFIED_HARDWARE`／`PENDING_HUMAN_REVIEW`。
 
 ## English translation
 
-Yokuli OS is currently constructing only an app-agnostic, verifiable, durable, high-frame-rate WP8 Classic-style Launcher Shell. The owner approved Stage 2 commit `5386da0…` with evidence run `33864829489`; annotated tag `launcher-engine-stage2-approved-v1` is the exact Stage 2.5 starting point.
+Yokuli OS is constructing an app-agnostic, verifiable, durable WP8 Classic-style Launcher Shell. Stages 0–10 are separated by commits and gates. Stage 11 is `COMPLETE_PROVISIONAL`: automated profiles, emulator trends, simulated-square coverage, and content-addressed visual candidates are delivered, while Golden acceptance, physical refresh-rate performance, WP8 feel, and Samsung-square hardware remain human/device gates.
 
-Stage 2.5 uses only the owner-supplied WP8.1 emulator recording as visual evidence, with exact full frames, content hashes, geometry and observable-motion measurements, and explicit evidence gaps. Repository owner kuku approved the canonical measurement hash, so it is `HUMAN_REVIEWED`; Stage 3 has not started. The future game-like immersive host and shell-owned virtual Back/Start/Search requirement is recorded without changing production runtime.
+The immersive shell routes virtual Back/Start/Search and deliverable Android or keyboard input through the serialized Launcher Engine. Android's reserved physical HOME key is not falsely claimed as interceptable; the Home flavor integrates through the platform HOME/DEFAULT intent contract.

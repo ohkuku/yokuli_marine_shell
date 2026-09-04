@@ -24,4 +24,6 @@ include(
     ":feature:chart",
     ":feature:settings",
     ":feature:shell-lab",
+    ":benchmark:shell",
+    ":baselineprofile:shell",
 )

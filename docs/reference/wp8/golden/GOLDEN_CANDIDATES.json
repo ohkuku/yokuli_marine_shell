@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "status": "CANDIDATE_PENDING_HUMAN_REVIEW",
+  "reviewedMeasurementHash": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+  "rendererSourceCommit": "1192d0bf9cee42266fe8430fd7ba59c424c03c56",
+  "rendererState": "Stage 11 candidate worktree based on rendererSourceCommit; approval must bind the eventual Stage 11 commit",
+  "capturedAtUtc": "2026-09-04T20:07:46Z",
+  "captureEnvironment": {
+    "device": "Android Emulator pixel_7_api_34",
+    "apiLevel": 34,
+    "hardwareClass": "EMULATOR",
+    "buildVariant": "standaloneDebug",
+    "densityDpi": 160,
+    "fontScale": 1.0,
+    "locale": "zh-CN",
+    "captureMethod": "adb screencap for settled scenes; Android screenrecord plus deterministic frame extraction for the transition plane",
+    "physicalFrameRateVerified": false
+  },
+  "captures": [
+    {
+      "sceneId": "wp8_start_360_dark",
+      "path": "docs/reference/wp8/golden/candidates/wp8_start_360_dark.png",
+      "sha256": "5e4f39f24df3e68fe3e37b60c514b9727ee6f2755e84570886efdadc73a6c1fa",
+      "byteSize": 15629,
+      "dimensions": { "widthPx": 360, "heightPx": 640 },
+      "viewport": { "widthDp": 360, "heightDp": 640 },
+      "theme": "DARK",
+      "locale": "zh-CN",
+      "captureMethod": "adb screencap after settled Start",
+      "approvalStatus": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "sceneId": "wp8_start_360_light",
+      "path": "docs/reference/wp8/golden/candidates/wp8_start_360_light.png",
+      "sha256": "23b72d8c8b8ad4544a62ed2e1e10e808a057f6c85ab5a6cb0998d20cb0075362",
+      "byteSize": 15514,
+      "dimensions": { "widthPx": 360, "heightPx": 640 },
+      "viewport": { "widthDp": 360, "heightDp": 640 },
+      "theme": "LIGHT",
+      "locale": "zh-CN",
+      "captureMethod": "adb screencap after settled Start",
+      "approvalStatus": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "sceneId": "wp8_start_320_square",
+      "path": "docs/reference/wp8/golden/candidates/wp8_start_320_square.png",
+      "sha256": "52bff40b5a5facef399e69b0965c880a200a384ad70e295962a01802853efc74",
+      "byteSize": 13314,
+      "dimensions": { "widthPx": 320, "heightPx": 320 },
+      "viewport": { "widthDp": 320, "heightDp": 320 },
+      "theme": "DARK",
+      "locale": "zh-CN",
+      "captureMethod": "adb screencap after settled Start with wm size 320x320",
+      "approvalStatus": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "sceneId": "wp8_all_apps_360",
+      "path": "docs/reference/wp8/golden/candidates/wp8_all_apps_360.png",
+      "sha256": "0dcca70efb3f0c04868670fd9880b4bdccc0d314ec39a58cbf86031b1271c9f5",
+      "byteSize": 13355,
+      "dimensions": { "widthPx": 360, "heightPx": 640 },
+      "viewport": { "widthDp": 360, "heightDp": 640 },
+      "theme": "DARK",
+      "locale": "zh-CN",
+      "captureMethod": "adb screencap after settled All Apps",
+      "approvalStatus": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "sceneId": "wp8_edit_medium",
+      "path": "docs/reference/wp8/golden/candidates/wp8_edit_medium.png",
+      "sha256": "800a901608e2b15cbf60246a685db1179258073cdf3b8de86a58f71f098bc81d",
+      "byteSize": 17620,
+      "dimensions": { "widthPx": 360, "heightPx": 640 },
+      "viewport": { "widthDp": 360, "heightDp": 640 },
+      "theme": "DARK",
+      "locale": "zh-CN",
+      "captureMethod": "adb screencap after long-press and medium resize",
+      "approvalStatus": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "sceneId": "wp8_context_menu",
+      "path": "docs/reference/wp8/golden/candidates/wp8_context_menu.png",
+      "sha256": "c9bb5139003ed969329012fe7190d7c3faa9a3a6d3d0bfa4d7fb6dffb67de13f",
+      "byteSize": 20793,
+      "dimensions": { "widthPx": 360, "heightPx": 640 },
+      "viewport": { "widthDp": 360, "heightDp": 640 },
+      "theme": "DARK",
+      "locale": "zh-CN",
+      "captureMethod": "adb long-press plus screencap after settled context menu",
+      "approvalStatus": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "sceneId": "wp8_alphabet_jump",
+      "path": "docs/reference/wp8/golden/candidates/wp8_alphabet_jump.png",
+      "sha256": "8741fefa3a7631e19f427cd23cf6462d5ef1a698371e8810ceda3b034921ae35",
+      "byteSize": 17660,
+      "dimensions": { "widthPx": 360, "heightPx": 640 },
+      "viewport": { "widthDp": 360, "heightDp": 640 },
+      "theme": "DARK",
+      "locale": "zh-CN",
+      "captureMethod": "adb group-tile tap plus screencap after settled jump overlay",
+      "approvalStatus": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "sceneId": "wp8_tile_launch_plane",
+      "path": "docs/reference/wp8/golden/candidates/wp8_tile_launch_plane.png",
+      "sha256": "580454fdddd9927eb6347525b468e7e522e6c86ca3ad8c36c5c4dabe3a2b91f0",
+      "byteSize": 31209,
+      "dimensions": { "widthPx": 360, "heightPx": 640 },
+      "viewport": { "widthDp": 360, "heightDp": 640 },
+      "theme": "DARK",
+      "locale": "zh-CN",
+      "captureMethod": "720x1280 Android screenrecord; outgoing perspective frame extracted from transition window and resampled without cropping",
+      "approvalStatus": "PENDING_HUMAN_REVIEW"
+    },
+    {
+      "sceneId": "wp8_start_360_square",
+      "path": "docs/reference/wp8/golden/candidates/wp8_start_360_square.png",
+      "sha256": "371abaa54bdc1a50fa7c2f0bcb806b0c6e397b3edb3aea91388855986e5ea0bd",
+      "byteSize": 13724,
+      "dimensions": { "widthPx": 360, "heightPx": 360 },
+      "viewport": { "widthDp": 360, "heightDp": 360 },
+      "theme": "DARK",
+      "locale": "zh-CN",
+      "captureMethod": "adb screencap after settled Start with wm size 360x360",
+      "approvalStatus": "PENDING_HUMAN_REVIEW"
+    }
+  ]
+}

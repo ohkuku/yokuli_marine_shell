@@ -57,6 +57,7 @@ data class InternalTaskState(val tasks: List<InternalAppTask> = emptyList()) {
 
 sealed interface LauncherTransient {
     data class ContextMenu(val entryId: LauncherEntryId) : LauncherTransient
+    data object AlphabetJump : LauncherTransient
     data class Search(val query: String = "") : LauncherTransient
     data class UndoLayout(
         val transactionId: String,

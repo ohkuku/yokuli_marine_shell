@@ -19,8 +19,11 @@ case "$mode" in
       '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#productionShellExposesOnlyChartAndSettingsWithReusableLargeTitles'
     )
     ;;
+  performance)
+    gradle_args=(--no-daemon :benchmark:shell:connectedStandaloneBenchmarkAndroidTest --stacktrace)
+    ;;
   *)
-    printf 'Usage: %s all | smoke | ui-contract\n' "$0" >&2
+    printf 'Usage: %s all | smoke | ui-contract | performance\n' "$0" >&2
     exit 2
     ;;
 esac

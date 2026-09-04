@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -38,6 +39,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -288,6 +291,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     is LauncherUiAction.OpenEntryContextMenu -> dispatch(
                         LauncherAction.OpenEntryContextMenu(action.entryId),
                     )
+                    LauncherUiAction.OpenAlphabetJump -> dispatch(LauncherAction.OpenAlphabetJump)
                     LauncherUiAction.DismissTransient -> dispatch(LauncherAction.DismissTransient)
                     is LauncherUiAction.PinEntry -> dispatch(LauncherAction.PinEntry(action.entryId))
                     is LauncherUiAction.UnpinTile -> dispatch(LauncherAction.UnpinTile(action.tileId))
@@ -301,7 +305,10 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 }
             }
             val transitionTarget = engineState.motionTarget()
-            Column(Modifier.fillMaxSize().background(colors.background)) {
+            Column(
+                Modifier.fillMaxSize().background(colors.background)
+                    .semantics { testTagsAsResourceId = true },
+            ) {
                 Box(Modifier.weight(1f)) {
                     val recoveryAtStart = engineState.surface == LauncherSurface.Start &&
                         engineState.recoveryMode != LauncherRecoveryMode.NORMAL
@@ -379,7 +386,12 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                         WpSearchOverlay(launcherState, launcherAction)
                     }
                 }
-                WpSystemKeyBar(onInput = dispatchInput)
+                // Canvas-backed launcher overlays can otherwise retain a stale draw layer above
+                // the virtual hardware strip. Re-key the strip for both page and transient-plane
+                // changes so Back / Start / Search remain the final visible input surface.
+                key(engineState.surface, engineState.transient) {
+                    WpSystemKeyBar(onInput = dispatchInput)
+                }
             }
         }
     }
