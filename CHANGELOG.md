@@ -8,6 +8,7 @@
 - 将字母跳转提升为 Engine transient；虚拟／Android Back 先关闭该层再离开 All Apps。为虚拟 Back/Start/Search 增加独立合成层，避免动态 overlay 使真实设备截图丢失 glyph。
 - 虚拟 Back/Start/Search 与可投递平台键继续进入同一个串行 Engine；Android 系统保留的物理 HOME 仍通过 Home flavor intent 接入，不伪造硬件权限、灯效、触感或 latency。
 - Profile harness 使用 3 轮上限／2 轮稳定收敛，并与生产 crash-loop 记账隔离；最终规则在双 Release APK 中编译打包。封口自审修正了 Alphabet 测试 matcher，API 34 Activity stories 达到 26/26。
+- Hosted 自审修正 Activity reset 前置状态竞态，Macrobenchmark 使用显式 Activity intent 和更宽的 emulator tag 等待；performance XML 与 benchmark/profile 诊断现可直接形成 Actions annotation/artifact。
 
 ## Stage 10 — Durable Storage & Recovery
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import html
+import argparse
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -62,7 +63,10 @@ def log_failure_excerpt() -> str:
 
 
 def main() -> int:
-    failures = xml_failures()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--result-root", type=Path, default=RESULT_ROOT)
+    args = parser.parse_args()
+    failures = xml_failures(args.result_root)
     if failures:
         for title, details in failures:
             print(f"::error title={github_escape(title)}::{github_escape(details)}")

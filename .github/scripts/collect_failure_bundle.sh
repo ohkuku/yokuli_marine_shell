@@ -50,7 +50,7 @@ copy_path() {
   fi
 }
 
-for module in app-shell core/design core/model core/shell feature/chart feature/cockpit feature/desktop feature/library feature/system; do
+for module in app-shell benchmark/shell baselineprofile/shell core/design core/model core/shell feature/chart feature/cockpit feature/desktop feature/library feature/system; do
   copy_path "$module/build/reports"
   copy_path "$module/build/test-results"
   copy_path "$module/build/outputs/androidTest-results"

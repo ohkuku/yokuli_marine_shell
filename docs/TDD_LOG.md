@@ -469,6 +469,8 @@ Baseline Profile 的 Red 更有价值：`targetContext` 在 self-instrumenting �
 
 Profile 生成最初使用 AndroidX 默认最多 15 轮，在两个 flavor 上耗时过长。新增 Red 固定最多 3 轮、连续 2 轮稳定收敛；它只负责收集热规则，不取代 5-repeat Macrobenchmark 或真机门。最终源码重新生成 Baseline `1824` 条、Startup `1464` 条产品规则，模拟器动画倍率随后恢复到原值 `0`。
 
+第一次 hosted Stage 11 run `33919498098` 的主门与 API 36 通过，但 API 34 暴露 `@Before` 的异步 reset 竞态：旧 Chart Tile 使单条件等待提前返回，Settings 尚未恢复便开始 Pin/Undo。修正后 reset 明确回到 Home，测试等待 Start + Chart + Settings 完整前置状态；本地失败 case 与完整 26 条故事通过。该 run 的性能 job 也失败，但原 workflow 没把 benchmark XML 转成 annotation；failure reporter 现接受显式 result root，诊断 bundle纳入 benchmark/profile 模块。启动 benchmark 改用显式 ShellActivity intent并给 hosted emulator 20 秒 tag 窗口。Red 复现又发现 warm-start setup 提前启动目标 Activity 会和 AndroidX 控制的启动生命周期竞争，产生 `Target package ... is not running`；setup 现只执行 `pressHome()`，唯一被计时的启动留在 measure block。最终本地五条 journey 全部通过后，第二次 hosted run 才作为 correction 接受证据。
+
 ### Green Gate
 
 最终本地 Gate 包括 Stage 0–11 Python/helper contracts、Golden validator、版本化 Baseline/Startup Profile、5/5 Macrobenchmark 代表性 emulator journeys、完整 Gradle test/lint/双 flavor Debug+Release+androidTest、API 34 Activity stories `26/26`、双 Release 产品面、CI/release/secrets 合同与 Stage 2.5 approved hash。模拟器 metrics 只写 `EMULATOR_TREND_ONLY`；本机只有 API 34，API 36 reduced-motion smoke 留给 hosted CI。

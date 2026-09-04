@@ -10,11 +10,9 @@ import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject
 import androidx.test.uiautomator.UiSelector
-import androidx.test.uiautomator.Until
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,7 +20,7 @@ import org.junit.runner.RunWith
 private const val TARGET_PACKAGE = "com.yokuli.marine"
 private const val SHELL_ACTIVITY = "com.yokuli.marine.shell.ShellActivity"
 private const val SHELL_LAB_ACTIVITY = "com.yokuli.marine.feature.shell.lab.ShellLabActivity"
-private const val WAIT_MILLIS = 10_000L
+private const val WAIT_MILLIS = 20_000L
 
 /**
  * 中文：CI 模拟器结果只用于发现趋势；真机 60/90/120 Hz 与三星方屏仍需人工验证。
@@ -44,10 +42,10 @@ class ShellMacrobenchmark {
         compilationMode = CompilationMode.Partial(),
         startupMode = StartupMode.COLD,
         iterations = 5,
-        setupBlock = { normalizeStartAndPressHome() },
+        setupBlock = { pressHome() },
     ) {
-        startActivityAndWait()
-        device.awaitApp()
+        startActivityAndWait(shellIntent())
+        device.awaitTag("start-screen")
     }
 
     @Test
@@ -57,10 +55,10 @@ class ShellMacrobenchmark {
         compilationMode = CompilationMode.Partial(),
         startupMode = StartupMode.WARM,
         iterations = 5,
-        setupBlock = { normalizeStartAndPressHome() },
+        setupBlock = { pressHome() },
     ) {
-        startActivityAndWait()
-        device.awaitApp()
+        startActivityAndWait(shellIntent())
+        device.awaitTag("start-screen")
     }
 
     @Test
@@ -118,20 +116,6 @@ class ShellMacrobenchmark {
             device.swipe(device.displayWidth / 2, device.displayHeight - 80, device.displayWidth / 2, 120, 20)
             device.waitForIdle()
         }
-    }
-
-    private fun UiDevice.awaitApp() {
-        require(wait(Until.hasObject(By.pkg(TARGET_PACKAGE)), WAIT_MILLIS)) {
-            "Timed out waiting for target package: $TARGET_PACKAGE"
-        }
-    }
-
-    private fun androidx.benchmark.macro.MacrobenchmarkScope.normalizeStartAndPressHome() {
-        pressHome()
-        startActivityAndWait(shellIntent())
-        device.awaitTag("start-screen")
-        pressHome()
-        device.waitForIdle()
     }
 
     private fun shellIntent() = Intent(Intent.ACTION_MAIN).apply {

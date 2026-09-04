@@ -56,6 +56,8 @@ WP8 Stage 2.5 approved-reference validation           PASS
 
 本地 API 34 设备门为 `26/26`。五类模拟器趋势为：cold Start TTID median `961.36 ms`、warm Start TTID median `366.03 ms`、Start→All Apps CPU frame P50/P90 `26.43/51.45 ms`、Chart→Back `62.15/82.16 ms`、60 Tile scroll `22.72/45.47 ms`。这些数值只用于同环境回归趋势，尤其 Chart 动画数字不能冒充 60/90/120 Hz 真机通过。当前本机没有 API 36 AVD；API 36 reduced-motion smoke 由 hosted CI Gate 执行。
 
+第一次 hosted run `33919498098` 的 build/API 36 已通过；API 34 捕获了测试 reset 竞态，performance 失败却只有通用 process annotation。Stage 11 correction 将 reset 后的 Home 与完整 Start 前置条件锁定，并让 performance job 直接上报 benchmark XML、把 benchmark/profile 报告纳入受限诊断包；cold/warm 启动改用显式 Activity intent，慢速 hosted emulator 等待窗口扩为 20 秒。Red 复现同时证明 setup 中预启动 Activity 会与 AndroidX cold/warm 生命周期控制竞争，因此 startup setup 只回 Android Home，目标 Activity 只在 measure block 启动。修正后的本地失败 story、26/26 全故事和 5/5 Macrobenchmark 均通过，最终接受以 correction commit 对应的 hosted run 为准。
+
 CI 新增 `stage11-performance` job。它执行真实 `connectedStandaloneBenchmarkAndroidTest`，上传 `stage11-performance-reports`，并把 emulator 结果标为 `EMULATOR_TREND_ONLY`；verified debug APK 必须等待该 job、API 34 stories 和 API 36 smoke 全部成功。两个 Release flavor 继续只有 Chart + Settings，Shell Lab 仅进入 debug/benchmark classpath。
 
 ## 人工最终审核清单

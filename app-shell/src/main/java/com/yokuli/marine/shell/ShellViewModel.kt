@@ -79,6 +79,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             persistence.reset()
             engine.dispatch(LauncherAction.RestorePersistedDocument(defaultStartDocument))
+            engine.dispatch(LauncherAction.Home)
         }
     }
 

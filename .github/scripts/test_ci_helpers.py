@@ -1,6 +1,9 @@
 import importlib.util
+import io
+import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 
@@ -40,6 +43,16 @@ class CiHelpersTest(unittest.TestCase):
 
     def test_github_command_escaping(self):
         self.assertEqual("a%25b%0Ac", reporter.github_escape("a%b\nc"))
+
+    def test_failure_reporter_accepts_a_benchmark_result_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            original_argv = sys.argv
+            try:
+                sys.argv = ["report_android_test_failures.py", "--result-root", directory]
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(0, reporter.main())
+            finally:
+                sys.argv = original_argv
 
 
 if __name__ == "__main__":

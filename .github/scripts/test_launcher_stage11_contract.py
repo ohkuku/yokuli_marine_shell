@@ -58,6 +58,10 @@ class LauncherStage11PerformanceContractTest(unittest.TestCase):
         self.assertIn('setOf("benchmark", "nonMinifiedRelease")', view_model)
         self.assertIn("persistence.markLaunchHealthy()", view_model)
         self.assertIn("LauncherAction.ExitSafeMode", view_model)
+        self.assertIn("WAIT_MILLIS = 20_000L", benchmark)
+        self.assertIn('startActivityAndWait(shellIntent())', benchmark)
+        self.assertIn("setupBlock = { pressHome() }", benchmark)
+        self.assertNotIn("normalizeStartAndPressHome", benchmark)
 
     def test_golden_candidates_are_content_addressed_and_reference_bound(self):
         manifest = json.loads((ROOT / "docs/reference/wp8/golden/GOLDEN_CANDIDATES.json").read_text())
@@ -86,6 +90,7 @@ class LauncherStage11PerformanceContractTest(unittest.TestCase):
         self.assertIn("launcher_stage11_contract", workflow)
         self.assertIn("stage11-performance", workflow)
         self.assertIn("run_device_tests.sh performance", workflow)
+        self.assertIn("--result-root benchmark/shell/build/outputs/androidTest-results", workflow)
         wrapper = (ROOT / ".github/scripts/run_device_tests.sh").read_text()
         self.assertIn("connectedStandaloneBenchmarkAndroidTest", wrapper)
         self.assertIn("validate_stage11_fidelity.py", workflow)

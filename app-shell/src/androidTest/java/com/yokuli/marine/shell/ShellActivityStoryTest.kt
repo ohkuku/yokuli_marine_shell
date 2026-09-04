@@ -57,7 +57,9 @@ class ShellActivityStoryTest {
             ViewModelProvider(activity)[ShellViewModel::class.java].resetLauncher()
         }
         compose.waitUntil(5_000) {
-            compose.onAllNodesWithTag("tile-chart").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithTag("start-screen").fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodesWithTag("tile-chart").fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isNotEmpty()
         }
     }
 

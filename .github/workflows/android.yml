@@ -376,6 +376,11 @@ jobs:
           script: |
             adb wait-for-device
             bash .github/scripts/run_device_tests.sh performance
+      - name: Expose Macrobenchmark failures
+        if: failure()
+        run: >-
+          python3 .github/scripts/report_android_test_failures.py
+          --result-root benchmark/shell/build/outputs/androidTest-results
       - name: Summarize AndroidX measurements without inventing a physical-device pass
         if: always()
         run: >-
