@@ -42,6 +42,20 @@ standalone Release Chart + Settings / no HOME audit   PASS
 
 生成的旧 Baseline Profile 仍包含已删除 home variant 的符号并产生 D8 warning；它不是运行时 HOME 注册，但必须在最终性能 Slice 重新生成，不得作为最终候选遗留。
 
+### Slice 2 — First-class Surfaces & Atomic Transitions
+
+Red 先加入 `ShellTransitionResolverTest` 和 Search Surface reducer 测试，编译因缺少 `ShellVisualSurface`、`ShellTransitionRequest`、resolver 与 state 字段失败。Green 将 Desktop、Module List、Search、Recents、Module 设为一等 Engine Surface；Search 不再是 `LauncherTransient`，并在 `WpSurfaceTransitionHost` 内作为保留的离场 plane 渲染。
+
+`ShellTransitionResolver` 现在以 `from + to + trigger` 唯一解析 Pager、Module、Search 和 Recents 动画族。Search 点击 Chart 产生单个 `Search → Module` request；Activity story 在点击后拒绝中间 Start/Module List 节点。
+
+```text
+Shell transition unit tests                           PASS
+core:shell-engine full tests                          PASS
+Stage 9 navigation contract                           PASS (7/7)
+./gradlew test lintStandaloneDebug
+  assembleStandaloneDebug                            PASS (795 tasks)
+```
+
 状态：`STAGE_2_5_HUMAN_REVIEWED_APPROVED`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
 
 ## Stage 0 — Freeze & Reference Contract

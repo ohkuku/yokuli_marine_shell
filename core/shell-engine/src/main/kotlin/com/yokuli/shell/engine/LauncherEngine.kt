@@ -113,7 +113,7 @@ class DefaultLauncherEngine(
         val fallback = defaultDocument.copy(profileId = profile.id)
         val repaired = StartDocumentRepair.repair(source, catalog.entries, fallback, profile).document
         return LauncherEngineState(
-            surface = LauncherSurface.Start,
+            surface = ShellVisualSurface.Desktop,
             start = StartScreenState(document = repaired),
             allApps = AllAppsState(catalog.revision),
             tasks = InternalTaskState(),

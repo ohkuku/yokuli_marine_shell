@@ -55,7 +55,7 @@ class LauncherDurableRestoreTest {
         withTimeout(2_000) {
             while (engine.state.value.recoveryMode != LauncherRecoveryMode.NORMAL) delay(10)
         }
-        assertEquals(LauncherSurface.Start, engine.state.value.surface)
+        assertEquals(ShellVisualSurface.Desktop, engine.state.value.surface)
         assertEquals(listOf(chart.entryId), engine.state.value.start.document.placements.map { it.entryId })
         scope.cancel()
     }

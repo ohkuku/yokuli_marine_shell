@@ -63,13 +63,14 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
         for scenario in (
             "internalBackPopsOpaqueRouteBeforeReturningToStart",
             "homePreservesInternalTasks",
-            "searchIsATransientAndBackClosesItFirst",
+            "searchIsAFirstClassSurfaceAndBackReturnsToItsSource",
+            "searchResultLaunchTransitionsDirectlyFromSearchToModule",
             "recentsCanResumeAnExistingTask",
         ):
             self.assertIn(scenario, jvm)
         for scenario in (
             "virtualStartReturnsFromSettingsWithoutDestroyingItsTask",
-            "virtualSearchFindsAndLaunchesInstalledEntry",
+            "searchResultLaunchHasNoIntermediateSurface",
             "virtualBackLongPressOpensRecents",
             "androidBackAndDeliveredHardwareKeysUseTheUnifiedInputPath",
             "appRelaunchDoesNotForceDesktopOrRecreateActivity",

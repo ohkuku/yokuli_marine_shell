@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -62,7 +63,7 @@ import com.yokuli.marine.feature.desktop.LauncherPagerPage
 import com.yokuli.marine.feature.desktop.LauncherRecoverySurface
 import com.yokuli.marine.feature.desktop.WpAppList
 import com.yokuli.marine.feature.desktop.WpRecentsSurface
-import com.yokuli.marine.feature.desktop.WpSearchOverlay
+import com.yokuli.marine.feature.desktop.WpSearchSurface
 import com.yokuli.marine.feature.desktop.WpStatusStrip
 import com.yokuli.marine.feature.desktop.WpSystemKeyBar
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
@@ -73,7 +74,7 @@ import com.yokuli.marine.feature.settings.SettingsUiAction
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEffect
 import com.yokuli.shell.engine.LauncherRecoveryMode
-import com.yokuli.shell.engine.LauncherSurface
+import com.yokuli.shell.engine.ShellVisualSurface
 import com.yokuli.shell.engine.LauncherTransitionIntent
 import com.yokuli.shell.engine.InternalAppTaskId
 import com.yokuli.shell.engine.interaction.StartInteractionState
@@ -253,6 +254,11 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 visualContributions = productionVisualContributions,
             )
             val startEditing = engineState.start.interaction !is StartInteractionState.Idle
+            var retainedSearchQuery by remember { mutableStateOf("") }
+            val activeSearchQuery = (engineState.surface as? ShellVisualSurface.Search)?.query
+            LaunchedEffect(activeSearchQuery) {
+                if (activeSearchQuery != null) retainedSearchQuery = activeSearchQuery
+            }
             val launcherAction: (LauncherUiAction) -> Unit = { action ->
                 when (action) {
                     is LauncherUiAction.Open -> dispatch(LauncherAction.Open(action.token))
@@ -304,7 +310,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     .semantics { testTagsAsResourceId = true },
             ) {
                 Box(Modifier.weight(1f)) {
-                    val recoveryAtStart = engineState.surface == LauncherSurface.Start &&
+                    val recoveryAtStart = engineState.surface == ShellVisualSurface.Desktop &&
                         engineState.recoveryMode != LauncherRecoveryMode.NORMAL
                     if (recoveryAtStart) {
                         LauncherRecoverySurface(
@@ -326,7 +332,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                             ) { target, heavyContentReady ->
                                 when (target) {
                                 ShellMotionTarget.Launcher -> InteractiveLauncherPager(
-                                    requestedPage = if (engineState.surface == LauncherSurface.AllApps) {
+                                    requestedPage = if (engineState.surface == ShellVisualSurface.ModuleList) {
                                         LauncherPagerPage.ALL_APPS
                                     } else {
                                         LauncherPagerPage.START
@@ -343,7 +349,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                         LauncherPagerPage.START -> YokuliStartScreen(
                                             launcherState.copy(
                                                 transient = engineState.transient.takeIf {
-                                                    engineState.surface == LauncherSurface.Start
+                                                    engineState.surface == ShellVisualSurface.Desktop
                                                 },
                                             ),
                                             launcherAction,
@@ -351,7 +357,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                         LauncherPagerPage.ALL_APPS -> WpAppList(
                                             launcherState.copy(
                                                 transient = engineState.transient.takeIf {
-                                                    engineState.surface == LauncherSurface.AllApps
+                                                    engineState.surface == ShellVisualSurface.ModuleList
                                                 },
                                             ),
                                             launcherAction,
@@ -374,10 +380,14 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                     entries = launcherState.entries,
                                     onActivate = { dispatch(LauncherAction.ActivateTask(it.taskId)) },
                                 )
+                                ShellMotionTarget.Search -> WpSearchSurface(
+                                    state = launcherState,
+                                    searchQuery = retainedSearchQuery,
+                                    onAction = launcherAction,
+                                )
                                 }
                             }
                         }
-                        WpSearchOverlay(launcherState, launcherAction)
                     }
                 }
                 // Canvas-backed launcher overlays can otherwise retain a stale draw layer above
@@ -402,6 +412,7 @@ private fun LauncherTransitionIntent.toWpIntent(): WpNavigationIntent = when (th
 
 private sealed interface ShellMotionTarget {
     data object Launcher : ShellMotionTarget
+    data object Search : ShellMotionTarget
     data object Recents : ShellMotionTarget
     data class App(
         val taskId: InternalAppTaskId,
@@ -411,10 +422,11 @@ private sealed interface ShellMotionTarget {
 }
 
 private fun com.yokuli.shell.engine.LauncherEngineState.motionTarget(): ShellMotionTarget = when (val current = surface) {
-    LauncherSurface.Start,
-    LauncherSurface.AllApps -> ShellMotionTarget.Launcher
-    LauncherSurface.Recents -> ShellMotionTarget.Recents
-    is LauncherSurface.InternalApp -> {
+    ShellVisualSurface.Desktop,
+    ShellVisualSurface.ModuleList -> ShellMotionTarget.Launcher
+    is ShellVisualSurface.Search -> ShellMotionTarget.Search
+    ShellVisualSurface.Recents -> ShellMotionTarget.Recents
+    is ShellVisualSurface.Module -> {
         val task = requireNotNull(tasks.task(current.taskId))
         ShellMotionTarget.App(task.taskId, task.appId, task.lastLaunchToken)
     }

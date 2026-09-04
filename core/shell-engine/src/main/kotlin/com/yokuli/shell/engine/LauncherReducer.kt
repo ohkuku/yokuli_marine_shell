@@ -156,20 +156,14 @@ class DefaultLauncherReducer : LauncherReducer {
         }
         return when (action) {
         LauncherAction.ShowStart -> LauncherReduction(
-            state.copy(
-                surface = LauncherSurface.Start,
-                transient = null,
-                transitionIntent = LauncherTransitionIntent.SIBLING_BACK,
+            state.copy(transient = null).navigateTo(
+                ShellVisualSurface.Desktop,
+                ShellTransitionTrigger.PAGE_SETTLED,
             ),
         )
 
         LauncherAction.Home -> home(state)
-        LauncherAction.OpenSearch -> LauncherReduction(
-            cancelForShellNavigation(state).copy(
-                transient = LauncherTransient.Search(),
-                transitionIntent = LauncherTransitionIntent.TRANSIENT,
-            ),
-        )
+        LauncherAction.OpenSearch -> openSearch(state)
         is LauncherAction.UpdateSearchQuery -> updateSearchQuery(state, action.query)
         LauncherAction.ShowRecents -> showRecents(state)
         is LauncherAction.ActivateTask -> activateTask(state, action.taskId)
@@ -188,10 +182,9 @@ class DefaultLauncherReducer : LauncherReducer {
         )
 
         LauncherAction.ShowAllApps -> LauncherReduction(
-            state.copy(
-                surface = LauncherSurface.AllApps,
-                transient = null,
-                transitionIntent = LauncherTransitionIntent.SIBLING_FORWARD,
+            state.copy(transient = null).navigateTo(
+                ShellVisualSurface.ModuleList,
+                ShellTransitionTrigger.PAGE_SETTLED,
             ),
         )
 
@@ -250,7 +243,7 @@ class DefaultLauncherReducer : LauncherReducer {
         }
         return LauncherReduction(
             state.copy(
-                surface = LauncherSurface.Start,
+                surface = ShellVisualSurface.Desktop,
                 start = StartScreenState(repaired.document),
                 transient = null,
                 tasks = InternalTaskState(),
@@ -266,7 +259,7 @@ class DefaultLauncherReducer : LauncherReducer {
         context: LauncherReducerContext,
     ): LauncherReduction = LauncherReduction(
         state.copy(
-            surface = LauncherSurface.Start,
+            surface = ShellVisualSurface.Desktop,
             start = StartScreenState(context.defaultDocument),
             tasks = InternalTaskState(),
             transient = null,
@@ -287,30 +280,34 @@ class DefaultLauncherReducer : LauncherReducer {
         }
         state.start.activeTransaction?.let { return cancel(state) }
         return when (val surface = state.surface) {
-            LauncherSurface.Start -> LauncherReduction(state, listOf(LauncherEffect.RequestHostExit))
-            LauncherSurface.AllApps -> LauncherReduction(
-                state.copy(surface = LauncherSurface.Start, transitionIntent = LauncherTransitionIntent.SIBLING_BACK),
+            ShellVisualSurface.Desktop -> LauncherReduction(state, listOf(LauncherEffect.RequestHostExit))
+            ShellVisualSurface.ModuleList -> LauncherReduction(
+                state.navigateTo(ShellVisualSurface.Desktop, ShellTransitionTrigger.BACK),
             )
-            LauncherSurface.Recents -> LauncherReduction(
-                state.copy(
-                    surface = state.recentsReturnSurface ?: LauncherSurface.Start,
+            is ShellVisualSurface.Search -> LauncherReduction(
+                state.navigateTo(surface.returnSurface, ShellTransitionTrigger.BACK),
+            )
+            ShellVisualSurface.Recents -> LauncherReduction(
+                state.navigateTo(
+                    state.recentsReturnSurface ?: ShellVisualSurface.Desktop,
+                    ShellTransitionTrigger.BACK,
+                ).copy(
                     recentsReturnSurface = null,
-                    transitionIntent = LauncherTransitionIntent.DEEPER_BACK,
                 ),
             )
-            is LauncherSurface.InternalApp -> backWithinTask(state, surface.taskId)
+            is ShellVisualSurface.Module -> backWithinTask(state, surface.taskId)
         }
     }
 
     private fun backWithinTask(state: LauncherEngineState, taskId: InternalAppTaskId): LauncherReduction {
         val task = state.tasks.task(taskId)
             ?: return LauncherReduction(
-                state.copy(surface = LauncherSurface.Start, transitionIntent = LauncherTransitionIntent.DEEPER_BACK),
+                state.navigateTo(ShellVisualSurface.Desktop, ShellTransitionTrigger.BACK),
             )
         val previous = task.backStack.lastOrNull()
         if (previous == null) {
             return LauncherReduction(
-                state.copy(surface = LauncherSurface.Start, transitionIntent = LauncherTransitionIntent.DEEPER_BACK),
+                state.navigateTo(ShellVisualSurface.Desktop, ShellTransitionTrigger.BACK),
             )
         }
         val restored = task.copy(lastLaunchToken = previous, backStack = task.backStack.dropLast(1))
@@ -325,29 +322,40 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun home(state: LauncherEngineState): LauncherReduction {
         val cancelled = cancelForShellNavigation(state)
         return LauncherReduction(
-            cancelled.copy(
-                surface = LauncherSurface.Start,
+            cancelled.navigateTo(
+                ShellVisualSurface.Desktop,
+                ShellTransitionTrigger.BRIDGE,
+            ).copy(
                 transient = null,
                 recentsReturnSurface = null,
-                transitionIntent = LauncherTransitionIntent.DEEPER_BACK,
             ),
         )
     }
 
+    private fun openSearch(state: LauncherEngineState): LauncherReduction {
+        if (state.surface is ShellVisualSurface.Search) return LauncherReduction(state)
+        val cancelled = cancelForShellNavigation(state)
+        val search = ShellVisualSurface.Search(returnSurface = cancelled.surface)
+        return LauncherReduction(
+            cancelled.copy(transient = null).navigateTo(search, ShellTransitionTrigger.SEARCH_KEY),
+        )
+    }
+
     private fun updateSearchQuery(state: LauncherEngineState, query: String): LauncherReduction {
-        if (state.transient !is LauncherTransient.Search) return LauncherReduction(state)
-        return LauncherReduction(state.copy(transient = LauncherTransient.Search(query)))
+        val search = state.surface as? ShellVisualSurface.Search ?: return LauncherReduction(state)
+        return LauncherReduction(state.copy(surface = search.copy(query = query)))
     }
 
     private fun showRecents(state: LauncherEngineState): LauncherReduction {
-        if (state.surface == LauncherSurface.Recents) return LauncherReduction(state)
+        if (state.surface == ShellVisualSurface.Recents) return LauncherReduction(state)
         val cancelled = cancelForShellNavigation(state)
         return LauncherReduction(
-            cancelled.copy(
-                surface = LauncherSurface.Recents,
+            cancelled.navigateTo(
+                ShellVisualSurface.Recents,
+                ShellTransitionTrigger.RECENTS_KEY,
+            ).copy(
                 transient = null,
                 recentsReturnSurface = state.surface,
-                transitionIntent = LauncherTransitionIntent.TRANSIENT,
             ),
         )
     }
@@ -368,11 +376,12 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun activateTask(state: LauncherEngineState, taskId: InternalAppTaskId): LauncherReduction {
         if (state.tasks.task(taskId) == null) return LauncherReduction(state)
         return LauncherReduction(
-            state.copy(
-                surface = LauncherSurface.InternalApp(taskId),
+            state.navigateTo(
+                ShellVisualSurface.Module(taskId),
+                ShellTransitionTrigger.RECENT_TASK,
+            ).copy(
                 transient = null,
                 recentsReturnSurface = null,
-                transitionIntent = LauncherTransitionIntent.DEEPER_FORWARD,
             ),
         )
     }
@@ -393,14 +402,19 @@ class DefaultLauncherReducer : LauncherReducer {
                     backStack = existing.backStack + existing.lastLaunchToken,
                 )
             }
+            val target = ShellVisualSurface.Module(taskId)
+            val trigger = when (state.surface) {
+                is ShellVisualSurface.Search -> ShellTransitionTrigger.SEARCH_RESULT
+                ShellVisualSurface.ModuleList -> ShellTransitionTrigger.MODULE_LIST_ENTRY
+                ShellVisualSurface.Recents -> ShellTransitionTrigger.RECENT_TASK
+                else -> ShellTransitionTrigger.TILE
+            }
             LauncherReduction(
-                state = state.copy(
-                    surface = LauncherSurface.InternalApp(taskId),
+                state = state.navigateTo(target, trigger).copy(
                     tasks = InternalTaskState(
                         state.tasks.tasks.filterNot { it.appId == resolution.appId } + task,
                     ),
                     transient = null,
-                    transitionIntent = LauncherTransitionIntent.DEEPER_FORWARD,
                 ),
                 effects = listOf(LauncherEffect.Launch(resolution.token)),
             )
@@ -428,15 +442,15 @@ class DefaultLauncherReducer : LauncherReducer {
         val repair = StartDocumentRepair.repair(sourceDocument, catalog.entries, fallback, profile)
         val installedApps = catalog.apps.map { it.appId }.toSet()
         val tasks = state.tasks.tasks.filter { it.appId in installedApps }
-        val currentTaskInstalled = (state.surface as? LauncherSurface.InternalApp)
+        val currentTaskInstalled = (state.surface as? ShellVisualSurface.Module)
             ?.let { current -> tasks.any { it.taskId == current.taskId } } ?: true
         val recentsReturnSurface = state.recentsReturnSurface?.let { returnSurface ->
-            if (returnSurface is LauncherSurface.InternalApp && tasks.none { it.taskId == returnSurface.taskId }) {
-                LauncherSurface.Start
+            if (returnSurface is ShellVisualSurface.Module && tasks.none { it.taskId == returnSurface.taskId }) {
+                ShellVisualSurface.Desktop
             } else returnSurface
         }
         val repairedState = state.copy(
-            surface = if (currentTaskInstalled) state.surface else LauncherSurface.Start,
+            surface = if (currentTaskInstalled) state.surface else ShellVisualSurface.Desktop,
             start = state.start.copy(
                 document = repair.document,
                 interaction = if (catalogChanged) {
@@ -746,14 +760,15 @@ class DefaultLauncherReducer : LauncherReducer {
             transaction.before.placements.none { it.tileId == placement.tileId }
         }.tileId
         return committed.copy(
-            state = committed.state.copy(
-                surface = LauncherSurface.Start,
+            state = committed.state.navigateTo(
+                ShellVisualSurface.Desktop,
+                ShellTransitionTrigger.PAGE_SETTLED,
+            ).copy(
                 start = committed.state.start.copy(
                     interaction = StartInteractionState.Idle,
                     reveal = StartReveal(tileId, transaction.id),
                 ),
                 transient = LauncherTransient.UndoLayout(transaction.id, LayoutChangeReason.PIN, entryId),
-                transitionIntent = LauncherTransitionIntent.SIBLING_BACK,
             ),
             effects = committed.effects + LauncherEffect.ScrollStartToReveal(tileId),
         )
@@ -810,5 +825,17 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun invalidProposal(state: LauncherEngineState, reason: String) = LauncherReduction(
         state,
         listOf(LauncherEffect.LogIncident(LauncherIncident.InvalidLayoutProposal(reason))),
+    )
+}
+
+private fun LauncherEngineState.navigateTo(
+    target: ShellVisualSurface,
+    trigger: ShellTransitionTrigger,
+): LauncherEngineState {
+    val request = ShellTransitionResolver.resolve(surface, target, trigger)
+    return copy(
+        surface = target,
+        transitionRequest = request,
+        transitionIntent = request.toLegacyIntent(),
     )
 }

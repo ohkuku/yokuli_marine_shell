@@ -58,7 +58,7 @@ class LauncherEngineTest {
         engine.dispatch(LauncherAction.Open(LaunchToken("removed.root")))
 
         assertTrue(incident.await() is LauncherEffect.LogIncident)
-        assertEquals(LauncherSurface.Start, engine.state.value.surface)
+        assertEquals(ShellVisualSurface.Desktop, engine.state.value.surface)
         scope.cancel()
     }
 
@@ -73,7 +73,7 @@ class LauncherEngineTest {
         engine.dispatch(LauncherAction.Open(settings.launchToken))
         engine.dispatch(LauncherAction.Home)
 
-        await { host.resolvedTokens.size == 2 && engine.state.value.surface == LauncherSurface.Start }
+        await { host.resolvedTokens.size == 2 && engine.state.value.surface == ShellVisualSurface.Desktop }
         assertEquals(listOf(chart.launchToken, settings.launchToken), host.resolvedTokens)
         assertEquals(2, engine.state.value.tasks.tasks.size)
         scope.cancel()
@@ -136,7 +136,7 @@ class LauncherEngineTest {
     }
 
     private fun initialState() = LauncherEngineState(
-        surface = LauncherSurface.Start,
+        surface = ShellVisualSurface.Desktop,
         start = StartScreenState(defaultDocument),
         allApps = AllAppsState(catalog.revision),
         tasks = InternalTaskState(),

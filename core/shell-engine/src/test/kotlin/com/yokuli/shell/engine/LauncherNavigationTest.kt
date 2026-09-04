@@ -46,10 +46,10 @@ class LauncherNavigationTest {
 
         val popped = reduce(drilledIn, LauncherAction.Back)
         assertEquals(settings.launchToken, popped.state.tasks.tasks.single().lastLaunchToken)
-        assertTrue(popped.state.surface is LauncherSurface.InternalApp)
+        assertTrue(popped.state.surface is ShellVisualSurface.Module)
 
         val start = reduce(popped.state, LauncherAction.Back)
-        assertEquals(LauncherSurface.Start, start.state.surface)
+        assertEquals(ShellVisualSurface.Desktop, start.state.surface)
         assertEquals(1, start.state.tasks.tasks.size)
     }
 
@@ -58,18 +58,34 @@ class LauncherNavigationTest {
         val opened = open(initial(), chart.appId, chart.launchToken)
         val result = reduce(opened, LauncherAction.Home)
 
-        assertEquals(LauncherSurface.Start, result.state.surface)
+        assertEquals(ShellVisualSurface.Desktop, result.state.surface)
         assertEquals(opened.tasks, result.state.tasks)
     }
 
     @Test
-    fun searchIsATransientAndBackClosesItFirst() {
+    fun searchIsAFirstClassSurfaceAndBackReturnsToItsSource() {
         val searched = reduce(initial(), LauncherAction.OpenSearch).state
         val queried = reduce(searched, LauncherAction.UpdateSearchQuery("set")).state
 
-        assertEquals(LauncherSurface.Start, queried.surface)
-        assertEquals("set", (queried.transient as LauncherTransient.Search).query)
-        assertEquals(null, reduce(queried, LauncherAction.Back).state.transient)
+        assertEquals(
+            ShellVisualSurface.Search("set", ShellVisualSurface.Desktop),
+            queried.surface,
+        )
+        assertEquals(ShellVisualSurface.Desktop, reduce(queried, LauncherAction.Back).state.surface)
+    }
+
+    @Test
+    fun searchResultLaunchTransitionsDirectlyFromSearchToModule() {
+        val search = reduce(initial(), LauncherAction.OpenSearch).state
+        val opened = reducer.reduce(
+            search,
+            LauncherAction.Open(chart.launchToken),
+            context(LaunchResolution.Internal(chart.appId, chart.launchToken)),
+        ).state
+
+        assertEquals(ShellVisualSurface.Module(InternalAppTaskId("chart")), opened.surface)
+        assertEquals(ShellTransitionKind.SEARCH_TO_MODULE, opened.transitionRequest?.kind)
+        assertEquals(ShellVisualSurface.Search("", ShellVisualSurface.Desktop), opened.transitionRequest?.from)
     }
 
     @Test
@@ -77,23 +93,23 @@ class LauncherNavigationTest {
         val allApps = reduce(initial(), LauncherAction.ShowAllApps).state
         val jump = reduce(allApps, LauncherAction.OpenAlphabetJump).state
 
-        assertEquals(LauncherSurface.AllApps, jump.surface)
+        assertEquals(ShellVisualSurface.ModuleList, jump.surface)
         assertEquals(LauncherTransient.AlphabetJump, jump.transient)
 
         val dismissed = reduce(jump, LauncherAction.Back).state
-        assertEquals(LauncherSurface.AllApps, dismissed.surface)
+        assertEquals(ShellVisualSurface.ModuleList, dismissed.surface)
         assertEquals(null, dismissed.transient)
     }
 
     @Test
     fun recentsCanResumeAnExistingTask() {
         val chartOpen = open(initial(), chart.appId, chart.launchToken)
-        val settingsOpen = open(chartOpen.copy(surface = LauncherSurface.Start), settings.appId, settings.launchToken)
+        val settingsOpen = open(chartOpen.copy(surface = ShellVisualSurface.Desktop), settings.appId, settings.launchToken)
         val recents = reduce(settingsOpen, LauncherAction.ShowRecents).state
         val chartTask = recents.tasks.tasks.first { it.appId == chart.appId }
 
         val resumed = reduce(recents, LauncherAction.ActivateTask(chartTask.taskId)).state
-        assertEquals(LauncherSurface.InternalApp(chartTask.taskId), resumed.surface)
+        assertEquals(ShellVisualSurface.Module(chartTask.taskId), resumed.surface)
         assertEquals(2, resumed.tasks.tasks.size)
     }
 
@@ -146,7 +162,7 @@ class LauncherNavigationTest {
     )
 
     private fun initial() = LauncherEngineState(
-        surface = LauncherSurface.Start,
+        surface = ShellVisualSurface.Desktop,
         start = StartScreenState(document),
         allApps = AllAppsState(1),
         tasks = InternalTaskState(),

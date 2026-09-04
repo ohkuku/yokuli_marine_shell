@@ -13,11 +13,15 @@ import com.yokuli.shell.engine.layout.StartDocument
 @JvmInline
 value class InternalAppTaskId(val value: String)
 
-sealed interface LauncherSurface {
-    data object Start : LauncherSurface
-    data object AllApps : LauncherSurface
-    data class InternalApp(val taskId: InternalAppTaskId) : LauncherSurface
-    data object Recents : LauncherSurface
+sealed interface ShellVisualSurface {
+    data object Desktop : ShellVisualSurface
+    data object ModuleList : ShellVisualSurface
+    data class Search(
+        val query: String = "",
+        val returnSurface: ShellVisualSurface = Desktop,
+    ) : ShellVisualSurface
+    data object Recents : ShellVisualSurface
+    data class Module(val taskId: InternalAppTaskId) : ShellVisualSurface
 }
 
 enum class LauncherTransitionIntent {
@@ -58,7 +62,6 @@ data class InternalTaskState(val tasks: List<InternalAppTask> = emptyList()) {
 sealed interface LauncherTransient {
     data class ContextMenu(val entryId: LauncherEntryId) : LauncherTransient
     data object AlphabetJump : LauncherTransient
-    data class Search(val query: String = "") : LauncherTransient
     data class UndoLayout(
         val transactionId: String,
         val reason: LayoutChangeReason,
@@ -72,16 +75,17 @@ enum class LauncherNotice { ALREADY_PINNED, PIN_UNAVAILABLE, LAYOUT_UNAVAILABLE 
 sealed interface LauncherSystemOverlay
 
 data class LauncherEngineState(
-    val surface: LauncherSurface,
+    val surface: ShellVisualSurface,
     val start: StartScreenState,
     val allApps: AllAppsState,
     val tasks: InternalTaskState,
     val catalog: LauncherCatalogSnapshot,
     val transient: LauncherTransient? = null,
     val systemOverlay: LauncherSystemOverlay? = null,
-    val recentsReturnSurface: LauncherSurface? = null,
+    val recentsReturnSurface: ShellVisualSurface? = null,
     val recoveryMode: LauncherRecoveryMode = LauncherRecoveryMode.NORMAL,
     val incidentLog: List<LauncherIncident> = emptyList(),
     val transitionIntent: LauncherTransitionIntent = LauncherTransitionIntent.NONE,
+    val transitionRequest: ShellTransitionRequest? = null,
     val nextTransactionId: Long = 1,
 )

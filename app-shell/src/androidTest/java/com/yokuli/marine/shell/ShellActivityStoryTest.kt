@@ -40,7 +40,7 @@ import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherRecoveryMode
-import com.yokuli.shell.engine.LauncherSurface
+import com.yokuli.shell.engine.ShellVisualSurface
 import com.yokuli.shell.engine.LauncherEngine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
@@ -75,7 +75,7 @@ class ShellActivityStoryTest {
         engine.dispatch(LauncherAction.Home)
         compose.waitUntil(10_000) {
             engine.state.value.recoveryMode == LauncherRecoveryMode.NORMAL &&
-                engine.state.value.surface == LauncherSurface.Start
+                engine.state.value.surface == ShellVisualSurface.Desktop
         }
         awaitDisplayed("start-screen")
         awaitDisplayed("tile-chart")
@@ -342,13 +342,15 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun virtualSearchFindsAndLaunchesInstalledEntry() {
+    fun searchResultLaunchHasNoIntermediateSurface() {
         compose.onNodeWithTag("virtual-key-search").performClick()
-        awaitDisplayed("launcher-search-overlay")
-        compose.onNodeWithTag("launcher-search-overlay").assertIsDisplayed()
+        awaitDisplayed("shell-search-surface")
+        compose.onNodeWithTag("shell-search-surface").assertIsDisplayed()
         compose.onNodeWithTag("launcher-search-field").assertIsDisplayed()
 
         compose.onNodeWithTag("search-result-chart").performClick()
+        compose.onNodeWithTag("start-screen").assertDoesNotExist()
+        compose.onNodeWithTag("all-apps-list").assertDoesNotExist()
         awaitDisplayed("chart-workspace-browse")
         compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
     }
@@ -377,11 +379,11 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
 
         dispatchHardwareKey(KeyEvent.KEYCODE_SEARCH)
-        awaitDisplayed("launcher-search-overlay")
-        compose.onNodeWithTag("launcher-search-overlay").assertIsDisplayed()
+        awaitDisplayed("shell-search-surface")
+        compose.onNodeWithTag("shell-search-surface").assertIsDisplayed()
         dispatchHardwareKey(KeyEvent.KEYCODE_BACK)
-        awaitGone("launcher-search-overlay")
-        compose.onNodeWithTag("launcher-search-overlay").assertDoesNotExist()
+        awaitGone("shell-search-surface")
+        compose.onNodeWithTag("shell-search-surface").assertDoesNotExist()
 
         compose.onNodeWithTag("tile-settings").performClick()
         awaitDisplayed("settings-workspace")

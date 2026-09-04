@@ -38,7 +38,7 @@ class PinUnpinInteractionTest {
 
     @Test
     fun pinOpensContextMenuFirst() {
-        val initial = state(surface = LauncherSurface.AllApps)
+        val initial = state(surface = ShellVisualSurface.ModuleList)
         val result = reduce(initial, LauncherAction.OpenEntryContextMenu(extra.entryId))
 
         assertEquals(document, result.state.start.document)
@@ -48,10 +48,10 @@ class PinUnpinInteractionTest {
 
     @Test
     fun pinReturnsToStartAndRequestsReveal() {
-        val result = reduce(state(surface = LauncherSurface.AllApps), LauncherAction.PinEntry(extra.entryId))
+        val result = reduce(state(surface = ShellVisualSurface.ModuleList), LauncherAction.PinEntry(extra.entryId))
         val tile = result.state.start.document.placements.single { it.entryId == extra.entryId }
 
-        assertEquals(LauncherSurface.Start, result.state.surface)
+        assertEquals(ShellVisualSurface.Desktop, result.state.surface)
         assertEquals(GridCell(0, 3), tile.cell)
         assertEquals(tile.tileId, result.state.start.reveal?.tileId)
         assertTrue(result.effects.any { it == LauncherEffect.ScrollStartToReveal(tile.tileId) })
@@ -134,7 +134,7 @@ class PinUnpinInteractionTest {
     )
 
     private fun state(
-        surface: LauncherSurface = LauncherSurface.Start,
+        surface: ShellVisualSurface = ShellVisualSurface.Desktop,
         catalog: LauncherCatalogSnapshot = this.catalog,
     ) = LauncherEngineState(
         surface = surface,

@@ -47,7 +47,6 @@ import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.contract.LauncherInput
 import com.yokuli.shell.engine.InternalAppTask
-import com.yokuli.shell.engine.LauncherTransient
 
 private val DerivedVirtualKeyBarHeight = 54.dp
 
@@ -169,11 +168,14 @@ private fun SearchGlyph() {
 }
 
 @Composable
-fun WpSearchOverlay(state: LauncherUiState, onAction: (LauncherUiAction) -> Unit) {
-    val search = state.transient as? LauncherTransient.Search ?: return
+fun WpSearchSurface(
+    state: LauncherUiState,
+    searchQuery: String,
+    onAction: (LauncherUiAction) -> Unit,
+) {
     val colors = LocalWpTheme.current
     val focusRequester = remember { FocusRequester() }
-    val query = search.query.trim()
+    val query = searchQuery.trim()
     val results = state.entries.filter { entry ->
         query.isEmpty() || entry.title.contains(query, ignoreCase = true) ||
             entry.headline.contains(query, ignoreCase = true)
@@ -181,7 +183,7 @@ fun WpSearchOverlay(state: LauncherUiState, onAction: (LauncherUiAction) -> Unit
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column(
-        Modifier.fillMaxSize().background(colors.background).testTag("launcher-search-overlay"),
+        Modifier.fillMaxSize().background(colors.background).testTag("shell-search-surface"),
     ) {
         WpPageHeader(
             appKey = "search",
@@ -189,7 +191,7 @@ fun WpSearchOverlay(state: LauncherUiState, onAction: (LauncherUiAction) -> Unit
             contextLine = stringResource(R.string.search_installed_apps),
         )
         BasicTextField(
-            value = search.query,
+            value = searchQuery,
             onValueChange = { onAction(LauncherUiAction.UpdateSearchQuery(it)) },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)
                 .height(52.dp).background(colors.foreground.copy(alpha = .1f))
@@ -200,7 +202,7 @@ fun WpSearchOverlay(state: LauncherUiState, onAction: (LauncherUiAction) -> Unit
             singleLine = true,
             decorationBox = { field ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                    if (search.query.isEmpty()) WpText(stringResource(R.string.search_hint), 18, color = colors.muted)
+                    if (searchQuery.isEmpty()) WpText(stringResource(R.string.search_hint), 18, color = colors.muted)
                     field()
                 }
             },

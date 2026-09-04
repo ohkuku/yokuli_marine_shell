@@ -169,7 +169,7 @@ class EditInteractionTest {
         reducer.reduce(state, action, context).state
 
     private fun initial() = LauncherEngineState(
-        surface = LauncherSurface.Start,
+        surface = ShellVisualSurface.Desktop,
         start = StartScreenState(document, interaction = StartInteractionState.EditIdle(TileInstanceId("tile-a"))),
         allApps = AllAppsState(catalog.revision),
         tasks = InternalTaskState(),
