@@ -4,6 +4,16 @@
 
 ### 中文（主文）
 
+#### Stage 2.5 — WP8 Reference Acquisition & Human Approval
+
+- 从 Stage 2 批准 tag `launcher-engine-stage2-approved-v1`／`5386da0…` 重建 Stage 2.5；拒绝旧候选的手持／倾斜手机图，唯一视觉来源改为仓库所有者提供的 `kuku.mp4` WP8.1 模拟器录屏。
+- 保存原始 MP4 与 16 张完整无变换时间戳 PNG；source/capture 均记录 SHA-256、字节数、尺寸、格式、来源引用和权利边界。
+- 建立 480×800 逻辑 viewport 的几何测量：左右 inset 24、seam 12、Small 99×99、Medium 210×210、Wide 432×210 logical px；物理 DPI 未知，保持 `null`。
+- 建立 Start→All Apps、app open、app→Start 与 Live Tile 可见运动时间线；没有 pointer/key overlay 的输入时序及 edit/drag/resize/pin/unpin/fast-fling/press feedback 均不伪造。
+- 新增固定取帧依赖与工具、source manifest、测量方法、第三方 notices、语义 validator、Stage 2.5 TDD contract 和命名 CI Gate；Gate 校验文件 signature/hash/bytes/dimensions/reference/timeline/geometry/coverage 与人工 review hash。
+- 记录 Yokuli OS 后续默认沉浸式全屏和壳内虚拟 Back/Start/Search 决定；全部系统、虚拟和未来物理输入必须汇入同一串行 Engine action 路径。本 Stage 不改生产 UI/runtime，Stage 3 未开始。
+- 仓库所有者 kuku 已批准 profile revision 1 与 canonical hash `af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5`；measurement 为 `HUMAN_REVIEWED`，Stage 3 尚未开始。
+
 #### Stage 2 — Engine Contract Extraction
 
 - 从 Stage 1 批准 tag `launcher-engine-stage1-approved-v1`／`df371fb…` 开始，把 Launcher 合同与 Engine 抽成 Kotlin/JVM 模块；Engine 不再具有 Android manifest 或依赖 Compose、Feature、Google Maps、`core:model` 和 Marine 类型。
@@ -90,6 +100,8 @@
 - GPS、NMEA、Anchor、Navigation、Trip、Survey、Sonar、OpenSeaMap 和本地海图导入仍未接入生产 runtime。
 
 ### English translation
+
+Stage 2.5 is rebuilt from the approved Stage 2 tag using only the repository-owner-supplied WP8.1 emulator recording as visual evidence. The source MP4 and sixteen uncropped exact frames are content-addressed. Five scenario measurement sets capture normalized 480×800 Start geometry and visible page, app-open, Back-return, and Live Tile motion without inventing unseen input timing or edit/direct-manipulation behavior. A deterministic extractor, source and rights manifests, measurement method, semantic validator, TDD contract, and named CI gate enforce signatures, hashes, dimensions, references, timelines, coverage, and hash-bound human review. The future immersive-fullscreen and shell-owned virtual Back/Start/Search requirement is recorded without changing production runtime. Repository owner kuku approved profile revision 1 and the canonical hash; the package is `HUMAN_REVIEWED`, and Stage 3 has not started.
 
 Stage 2 starts from the immutable Stage 1 approval tag and extracts pure Kotlin launcher contract/engine modules, opaque IDs and launch tokens, validated feature contributions, a Compose internal-host boundary, and an Android host adapter. Only `app-shell` wires Chart and Settings. The engine has no Android, Compose, Feature, Google Maps, core-model, or marine-domain dependencies. Existing UI and interaction behavior is preserved, and Stage 2.5 is not started.
 

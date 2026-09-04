@@ -1,6 +1,6 @@
 # Yokuli Launcher Engine TDD Log
 
-状态：`STAGE_1_PRODUCT_SURFACE_PENDING_HUMAN_REVIEW`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
+状态：`STAGE_2_5_HUMAN_REVIEWED_APPROVED`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
 
 ## Stage 0 — Freeze & Reference Contract
 
@@ -257,3 +257,63 @@ bash .github/scripts/run_device_tests.sh all                                    
 ## English translation — Stage 2
 
 Stage 2 starts exactly from the approved Stage 1 tag. All nine initial architecture tests fail meaningfully before implementation because every Stage 2 boundary is absent; the final Green suite adds one current-device-story guard. Green is limited to pure contract/engine extraction, opaque identifiers and tokens, contribution/catalog composition, host ports/adapters, and rewiring the existing Chart/Settings UI. Stage 0/1/2 static gates, all 55 Python contracts, Bash gates, 954 Gradle tasks, both Release APK inspections, and eight local API 34 real-Activity stories pass. Existing UI, gestures, animations, and candidate layout behavior are not expanded. Stage 2.5 remains unstarted.
+
+## Stage 2.5 — WP8 Reference Acquisition & Human Approval
+
+### Baseline
+
+```text
+approved Stage 2 tag: launcher-engine-stage2-approved-v1
+starting SHA: 5386da0575046f1f9a59742a4a0f5c78523fa5e6
+Stage 2 approval evidence run: 33864829489
+branch: codex/launcher-engine-stage2.5-rebuild
+scope: WP8 Reference Acquisition & Human Approval only
+approval: APPROVED by kuku at 2026-09-04T13:41:36Z
+```
+
+### Contract
+
+Given 仓库所有者拒绝先前 Stage 2.5 候选中手持／倾斜手机图片并提供 `kuku.mp4` 作为模拟器真机录屏，When 重建 Stage 2.5，Then 所有视觉像素与运动证据必须只来自该视频的完整无变换帧，并由 SHA-256、字节数、尺寸、时间戳和引用关系锁定；And 文档搜索只用于语义佐证；And 未出现的 edit、fast fling、pin、long-press drag、resize、unpin、press/key activation 必须保留 `NOT_OBSERVED`／`VISUAL_ONLY`；And 人工批准前不得开始 Stage 3。
+
+新增产品决定同样进入合同：Yokuli OS 未来默认沉浸式全屏，使用壳内虚拟 Back／Start／Search；所有虚拟、Android 和未来物理输入必须汇入同一串行 `LauncherEngine.dispatch(action)`，但 Stage 2.5 只记录边界，不修改 runtime。
+
+### Red
+
+先新增 `.github/scripts/test_launcher_stage25_contract.py`，第一次运行：
+
+```text
+Ran 8 tests
+FAILED (failures=9, errors=3)
+```
+
+失败精确来自 Stage 2.5 baseline、source manifest、measurements、measurement method、rights notice、fullscreen decision、semantic validator、named CI gate 与 report 尚不存在。它不是 Android、网络、拼写或错误路径造成的假 Red。
+
+### Green preparation
+
+- 用户提供的 408044 ms、1920×1080、nominal 60 fps H.264 视频成为唯一视觉 source；
+- 固定 PyAV/Pillow acquisition 环境，按 16 个时间戳解码完整 PNG，不裁剪、缩放、标注或调色；
+- `SOURCE_MANIFEST.json` 锁定视频及逐帧 hash/bytes/dimensions/reference/coverage/rights；
+- 以 Microsoft 公开资料的 480×800 逻辑基准，将录屏内 `(706,62,506,844)` 显示矩形独立归一化；
+- 测得 side inset 24、seam 12、Small 99×99、Medium 210×210、Wide 432×210 logical px；
+- 记录 Start→All Apps、app open、app→Start 和 Live Tile visible windows，同时明确输入不可见与数值语义边界；
+- 新增语义 validator，验证 schema、signature、path containment、hash、bytes、dimensions、references、timeline、geometry、coverage 与 review hash；
+- schema 只向后兼容地允许未知 physical DPI 为 `null`，并为 Back/Live Tile 增加真实 interaction 名称；Stage 0 fixtures 继续回归；
+- Stage 2.5 CI Gate 使用 `--require-human-review`，因此在所有者批准前有意保持关闭。
+
+准备态验证：
+
+```text
+python3 .github/scripts/validate_wp8_reference.py
+WP8_REFERENCE_VALIDATION=PASS status=MEASURED captures=16 measurementSets=5
+canonicalMeasurementHash=af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5
+```
+
+准备态完整回归结果：Stage 0 `10/10`、Stage 1 `9/9`、Stage 2 `10/10`、Bash CI/release/secrets、双 Release APK 产品面审计及 954 个 Gradle tasks 全部通过。批准前 Stage 2.5 为 `8/9`、全部 Python 为 `63/64`；唯一失败都是语义 validator 正确拒绝尚未签署的 `HUMAN_REVIEWED`。仓库所有者 kuku 随后批准 profile revision 1 与 canonical hash；review record 不是 Codex 自签。
+
+批准后最终 Green：Stage 2.5 `9/9`、全部 Python `64/64`、Stage 0–2、Bash CI/release/secrets、双 Release APK 审计和 954-task Gradle Gate 全部通过。Production module diff 为空，Stage 3 未开始。
+
+### English translation — Stage 2.5
+
+Stage 2.5 starts from the approved Stage 2 tag and discards the rejected handheld/angled candidate imagery. The repository-owner-supplied `kuku.mp4` is the only visual source. Sixteen exact, uncropped frames and five scenario measurement sets are content-addressed; official Microsoft documents corroborate semantics but contribute no pixel or timing values. Unseen edit, fling, pin, drag, resize, unpin, press, and key-activation behavior remains `NOT_OBSERVED` or `VISUAL_ONLY`.
+
+The meaningful Red failed because all Stage 2.5 artifacts and its CI gate were absent. Green adds deterministic frame extraction, source and rights manifests, normalized 480×800 geometry, observable-motion timelines, a semantic validator, and the bilingual report. The owner's immersive-fullscreen and virtual Back/Start/Search requirement is recorded as a later-stage input boundary, with one serialized engine action path. Production code is unchanged. Repository owner kuku approved profile revision 1 and the canonical measurement hash, so the package is `HUMAN_REVIEWED`; Stage 3 has not started.

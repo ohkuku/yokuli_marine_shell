@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 1,
+  "profileId": "WP8_CLASSIC_PHONE_4COL",
+  "recordings": [
+    {
+      "id": "owner-wp81-emulator-recording",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/wp81-emulator-reference.mp4",
+      "originalFileName": "kuku.mp4",
+      "sha256": "114d8acdb2ae4b8f9e35e5a84bd3077ec52ba7e647ed7e4fc54fd159ea62b94c",
+      "byteSize": 28760248,
+      "mediaType": "video/mp4",
+      "dimensions": {
+        "widthPx": 1920,
+        "heightPx": 1080
+      },
+      "durationMillis": 408044,
+      "nominalFrameRateFps": 60,
+      "codec": "h264",
+      "pixelFormat": "yuv420p",
+      "timeBase": "1/15360",
+      "acquisitionKind": "EMULATOR_SCREEN_RECORDING",
+      "systemFamily": "Windows Phone 8.1",
+      "exactOsBuild": null,
+      "exactEmulatorImage": null,
+      "suppliedBy": "Repository owner (kuku)",
+      "suppliedAtUtc": "2026-09-04T13:06:00Z",
+      "ownerStatement": "The repository owner supplied this emulator recording and directed that Stage 2.5 visual evidence use it.",
+      "rightsBoundary": "Authorized by the repository owner for use as Yokuli project reference evidence. Microsoft UI, names, icons and trademarks visible in the recording remain the property of their respective owners. This evidence is not relicensed under the repository MIT license."
+    }
+  ],
+  "extractions": [
+    {
+      "captureId": "back-return-start",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 15000,
+      "frameTimestampMillis": 15000,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "back-return-mid",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 15500,
+      "frameTimestampMillis": 15500,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "back-return-settled",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 15750,
+      "frameTimestampMillis": 15750,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "start-primary-stable",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 16000,
+      "frameTimestampMillis": 16000,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "live-cycle-b",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 16750,
+      "frameTimestampMillis": 16750,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "live-cycle-c",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 17250,
+      "frameTimestampMillis": 17250,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "settings-title-stable",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 80000,
+      "frameTimestampMillis": 80000,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "page-swipe-start",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 175700,
+      "frameTimestampMillis": 175700,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "page-swipe-mid",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 176000,
+      "frameTimestampMillis": 176000,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "page-swipe-settled",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 176400,
+      "frameTimestampMillis": 176400,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "all-apps-stable",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 177000,
+      "frameTimestampMillis": 177000,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "app-open-start",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 314300,
+      "frameTimestampMillis": 314300,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "app-open-focused",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 314500,
+      "frameTimestampMillis": 314500,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "app-open-plane",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 315100,
+      "frameTimestampMillis": 315100,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "app-open-settled",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 315300,
+      "frameTimestampMillis": 315300,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    },
+    {
+      "captureId": "wide-layout-stable",
+      "sourceRecordingId": "owner-wp81-emulator-recording",
+      "requestedTimestampMillis": 352000,
+      "frameTimestampMillis": 352000,
+      "visualTransform": "NONE",
+      "extractionTool": ".github/scripts/extract_wp8_reference_frames.py",
+      "decoder": "PyAV 16.0.1"
+    }
+  ],
+  "coverage": [
+    {
+      "scenario": "START",
+      "status": "OBSERVED",
+      "notes": "Primary and alternate Start layouts are visible as direct emulator output."
+    },
+    {
+      "scenario": "ALL_APPS",
+      "status": "OBSERVED",
+      "notes": "The alphabetical All Apps surface and its settled state are visible."
+    },
+    {
+      "scenario": "EDIT_MODE",
+      "status": "NOT_OBSERVED",
+      "notes": "No selected-tile handles or edit state appear in this recording."
+    },
+    {
+      "scenario": "SLOW_PAGE_SWIPE",
+      "status": "PARTIALLY_OBSERVED",
+      "notes": "Start-to-All-Apps motion is visible, but the pointer and physical input speed are not recorded."
+    },
+    {
+      "scenario": "FAST_FLING",
+      "status": "NOT_OBSERVED",
+      "notes": "The recording does not expose a distinguishable fast-fling input."
+    },
+    {
+      "scenario": "PIN",
+      "status": "NOT_OBSERVED",
+      "notes": "No pin-to-Start workflow appears."
+    },
+    {
+      "scenario": "LONG_PRESS_DRAG",
+      "status": "NOT_OBSERVED",
+      "notes": "No long-press edit entry or spatial drag appears."
+    },
+    {
+      "scenario": "RESIZE",
+      "status": "NOT_OBSERVED",
+      "notes": "No resize handle activation appears."
+    },
+    {
+      "scenario": "UNPIN",
+      "status": "NOT_OBSERVED",
+      "notes": "No unpin action appears."
+    },
+    {
+      "scenario": "APP_OPEN_AND_BACK",
+      "status": "OBSERVED",
+      "notes": "Both Start-to-app and app-to-Start transition planes are visible; the triggering input itself is not overlaid."
+    },
+    {
+      "scenario": "LIVE_TILE_CYCLE",
+      "status": "OBSERVED",
+      "notes": "The People tile changes through stable, intermediate and next-content states while neighbouring tiles stay fixed."
+    },
+    {
+      "scenario": "TILE_PRESS_FEEDBACK",
+      "status": "NOT_OBSERVED",
+      "notes": "The transition begins after an invisible input; a distinct pre-launch press scale or tilt cannot be isolated."
+    },
+    {
+      "scenario": "VIRTUAL_HARDWARE_KEYS",
+      "status": "VISUAL_ONLY",
+      "notes": "Back, Start and Search glyphs are continuously visible in emulator chrome; activation feedback is not recorded."
+    }
+  ],
+  "documents": [
+    {
+      "id": "microsoft-start-story-2012",
+      "title": "The story behind the Windows Phone 8 Start screen",
+      "publisher": "Microsoft Windows Experience Blog",
+      "publishedDate": "2012-11-02",
+      "url": "https://blogs.windows.com/windowsexperience/2012/11/02/the-story-behind-the-windows-phone-8-start-screen/",
+      "evidenceRole": "Confirms four-across Start, resizable Live Tiles, content-first negative space, accent colour, and left swipe to App list."
+    },
+    {
+      "id": "microsoft-wp8-screen-scaling-2013",
+      "title": "Taking Advantage of Large-Screen Windows Phones",
+      "publisher": "Microsoft Windows Developer Blog",
+      "publishedDate": "2013-11-22",
+      "url": "https://blogs.windows.com/windowsdeveloper/2013/11/22/taking-advantage-of-large-screen-windows-phones/",
+      "evidenceRole": "Confirms the 480x800 logical layout base and platform scaling for WP8 resolutions."
+    },
+    {
+      "id": "microsoft-wp8-upgrade-2013",
+      "title": "Upgrading Windows Phone 7.1 Apps to Windows Phone 8",
+      "publisher": "Microsoft Learn archive / MSDN Magazine",
+      "publishedDate": "2013-09-01",
+      "url": "https://learn.microsoft.com/en-us/archive/msdn-magazine/2013/september/windows-phone-upgrading-windows-phone-7-1-apps-to-windows-phone-8",
+      "evidenceRole": "Confirms WP8 emulator viewport families and the small, medium and wide tile asset families; asset pixels are not substituted for measured on-screen bounds."
+    },
+    {
+      "id": "microsoft-wp7-ui-guide-2010",
+      "title": "Windows Phone 7 Series UI Design & Interaction Guide",
+      "publisher": "Microsoft Windows Developer Blog",
+      "publishedDate": "2010-03-18",
+      "url": "https://blogs.windows.com/windowsdeveloper/2010/03/18/windows-phone-7-series-ui-design-interaction-guide/",
+      "evidenceRole": "Lineage evidence for Metro content-first design, tap feedback, touch-and-hold, and hardware Back/Start semantics; not used as a WP8 pixel source."
+    },
+    {
+      "id": "microsoft-motion-toolkit-2013",
+      "title": "Inside Windows Phone - Motion design using the Windows Phone Toolkit",
+      "publisher": "Microsoft Windows Developer Blog",
+      "publishedDate": "2013-07-11",
+      "url": "https://blogs.windows.com/windowsdeveloper/2013/07/11/inside-windows-phone-motion-design-using-the-windows-phone-toolkit/",
+      "evidenceRole": "Confirms that transition and tilt motion are ecosystem-level behavior; numeric timing still comes only from the supplied recording."
+    }
+  ]
+}

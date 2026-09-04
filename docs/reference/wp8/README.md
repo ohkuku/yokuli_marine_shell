@@ -1,6 +1,6 @@
 # WP8 Reference Lab
 
-状态：`NOT_YET_MEASURED`。本目录只建立证据合同与目录边界；Stage 0 没有采集、批准或伪造任何 WP8 测量值，也不声明 pixel-perfect。
+状态：`HUMAN_REVIEWED`／`APPROVED`。Stage 2.5 已从仓库所有者提供的 WP8.1 模拟器录屏建立内容寻址的真实测量包，并由仓库所有者 kuku 批准；Stage 3 尚未开始。Stage 0 的历史状态是 `NOT_YET_MEASURED`。
 
 ## 冻结基线
 
@@ -22,6 +22,10 @@ Master 文档中的旧 reviewed SHA 被仓库所有者明确覆盖；Stage 0 从
 - [`golden/`](golden/README.md)：经人工 Reference Review 批准后才可写入的渲染基线。
 - [`artifacts/`](artifacts/README.md)：CI 或本地比较输出；是可再生证据，不是规范输入。
 - [`WP8_REFERENCE_MEASUREMENTS.schema.json`](WP8_REFERENCE_MEASUREMENTS.schema.json)：测量文件的机器可读合同。
+- [`WP8_REFERENCE_MEASUREMENTS.json`](WP8_REFERENCE_MEASUREMENTS.json)：16 个 capture 与 5 个场景 measurement set；当前为 `MEASURED`。
+- [`SOURCE_MANIFEST.json`](SOURCE_MANIFEST.json)：唯一视觉录屏、逐帧 extraction、覆盖缺口和 Microsoft 文档来源链。
+- [`MEASUREMENT_METHOD.md`](MEASUREMENT_METHOD.md)：取帧、坐标归一化、误差、时序与未观察项。
+- [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)：仓库所有者授权边界与第三方权利说明。
 - [`fixtures/`](fixtures/README.md)：由真实 Draft 2020-12 validator 执行的三份有效与四份无效 schema fixture；fixture 数值不构成 WP8 测量证据。
 
 未来测量输出文件固定命名为 `WP8_REFERENCE_MEASUREMENTS.json`。状态合同为：
@@ -32,10 +36,16 @@ Master 文档中的旧 reviewed SHA 被仓库所有者明确覆盖；Stage 0 从
 
 每个 capture 记录路径、SHA-256、字节数、MIME、像素尺寸、来源、原图/裁剪状态和权利说明。每个 measurement set 关联 scenario、capture IDs、viewport、测量者/时间/方法，并携带 geometry 和/或 motion evidence。直接操控 motion 必须同时保留 input timeline 与 visual samples。`reviewedMeasurementHash` 的输入是仅对 `measurementSets` 数组执行 UTF-8 JSON canonicalization：key 排序、无多余空格、保留 Unicode，然后计算 SHA-256。
 
-## Stage 0 Gate
+## Stage 2.5 Gate
 
-Stage 0 只验证目录、schema、来源追踪、正反 fixtures 和 CI 机器合同。截图采集、数值测量、Golden 审批、Macrobenchmark、方屏真机与刷新率数据均为 `NOT_YET_MEASURED`。Stage 2.5 必须使测量文件达到 `HUMAN_REVIEWED` 且哈希一致；否则 Stage 3 不得开始。
+Stage 0 只建立了 `NOT_YET_MEASURED` 合同。Stage 2.5 现已验证 MP4/PNG signature、路径边界、字节数、尺寸、SHA-256、capture 引用、timeline delta、核心 geometry/motion coverage 与 canonical measurement hash。当前 hash 是：
+
+```text
+af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5
+```
+
+仓库所有者 kuku 已在 `2026-09-04T13:41:36Z` 批准 profile revision 1 与上方 hash；reviewer、UTC review time、`APPROVED` decision、notes 和 reviewed hash 均已写入。Golden、Macrobenchmark、方屏真机、物理 WP8 设备、输入 latency 和刷新率仍为 `NOT_YET_MEASURED` 或 `UNVERIFIED_HARDWARE`。
 
 ## English translation
 
-Status is `NOT_YET_MEASURED`. Stage 0 creates only the evidence contract and directory boundaries; it captures no WP8 measurement and makes no pixel-perfect claim. The owner selected `ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7` as the starting implementation. Before Stage 0 approval, Master v1.1 added a mandatory Stage 2.5 acquisition and human-approval gate while retaining the previous Master hash. The state-aware schema allows an honest empty unmeasured record, requires content-addressed captures and scenario measurement sets for `MEASURED`, and additionally requires an approved signed review for `HUMAN_REVIEWED`. Direct-manipulation evidence contains both input timelines and visual samples. Real Draft 2020-12 validation runs against positive and negative fixtures in CI. Stage 3 cannot start until Stage 2.5 reaches the reviewed state.
+Status is `HUMAN_REVIEWED` / `APPROVED`; the Stage 0 historical state was `NOT_YET_MEASURED`. Stage 2.5 uses only the repository-owner-supplied WP8.1 emulator recording as visual evidence. Sixteen uncropped exact frames and five scenario measurement sets are content-addressed and checked by a semantic validator for signatures, hashes, byte sizes, dimensions, references, viewport, timeline deltas, geometry, coverage, and hash-bound review. Repository owner kuku approved profile revision 1 and canonical hash `af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5` at `2026-09-04T13:41:36Z`. Stage 3 has not started. Golden output, benchmarks, physical WP8 and Samsung-square hardware, refresh rate, and input latency remain unmeasured or unverified.

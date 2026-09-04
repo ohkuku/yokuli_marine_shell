@@ -11,16 +11,16 @@ Yokuli OS 当前只施工一个与应用解耦、可验证、可持久化并能�
 当前分支：
 
 ```text
-branch: codex/launcher-engine
-stage: 2 — Engine Contract Extraction
-starting tag: launcher-engine-stage1-approved-v1
-starting SHA: df371fbfcb4cd467bccc43dd850e23d9bd7d0e85
-approval: PENDING_HUMAN_REVIEW
+branch: codex/launcher-engine-stage2.5-rebuild
+stage: 2.5 — WP8 Reference Acquisition & Human Approval
+starting tag: launcher-engine-stage2-approved-v1
+starting SHA: 5386da0575046f1f9a59742a4a0f5c78523fa5e6
+approval: HUMAN_REVIEWED / APPROVED
 ```
 
-Stage 1 已由仓库所有者批准：annotated tag `launcher-engine-stage1-approved-v1` 指向 `df371fb…`，批准 evidence 是 GitHub Actions run `33861223067`。Stage 2 必须且已经从这个不可混淆的批准点开始，只执行 Engine Contract Extraction。
+Stage 2 已由仓库所有者批准：annotated tag `launcher-engine-stage2-approved-v1` 指向 `5386da0…`，批准 evidence 是 GitHub Actions run `33864829489`。Stage 2.5 从这个不可混淆的批准点开始，只执行 WP8 Reference 获取、测量与人工审批 Gate。
 
-本阶段把 Launcher 从 Android、Compose 与 Marine 应用模型中抽离：`shell-contract` 和 `shell-engine` 是 Kotlin/JVM 边界，Feature 只贡献 opaque ID/token catalog，Compose host 与 Android adapter 位于外层，`app-shell` 只组合 Chart + Settings。现有 UI、手势与产品面保持不变；Stage 2.5 WP8 Reference 获取尚未开始。
+本阶段只使用仓库所有者提供的 `kuku.mp4` WP8.1 模拟器录屏作为视觉来源，保存完整时间戳帧并建立内容哈希、几何／运动测量和缺口清单。仓库所有者 kuku 已批准 canonical measurement hash，状态为 `HUMAN_REVIEWED`；Stage 3 尚未开始。Yokuli OS 后续默认沉浸式全屏并使用壳内虚拟 Back／Start／Search 的决定已经记录，但本阶段不改生产 runtime。
 
 在 Shell Engine 全部完成人工验收前，禁止继续接入 GPS、NMEA、Anchor、Trip、Navigation、Survey、OpenSeaMap、MBTiles、AIS、Weather、Tide 或海事前台 Runtime。
 
@@ -35,6 +35,8 @@ Stage 1 已由仓库所有者批准：annotated tag `launcher-engine-stage1-appr
 - [Stage 1 正式报告](docs/stages/stage-1/REPORT.md)
 - [Stage 2 架构边界审计](docs/stages/stage-2/ARCHITECTURE_AUDIT.md)
 - [Stage 2 正式报告](docs/stages/stage-2/REPORT.md)
+- [Stage 2.5 正式报告](docs/stages/stage-2.5/REPORT.md)
+- [沉浸式全屏与虚拟实体键决定](docs/stages/stage-2.5/FULLSCREEN_NAVIGATION_DECISION.md)
 - [历史需求与 Slice 归档](docs/archive/pre-launcher-engine/README.md)
 - [GitHub 交付](docs/GITHUB_DELIVERY.md)
 - [本地密钥保险库](docs/SECRETS_MANAGEMENT.md)
@@ -46,6 +48,8 @@ python3 -m pip install --requirement .github/requirements/stage0-schema.txt
 python3 .github/scripts/test_launcher_stage0_contract.py
 python3 .github/scripts/test_launcher_stage1_contract.py
 python3 .github/scripts/test_launcher_stage2_contract.py
+python3 .github/scripts/test_launcher_stage25_contract.py
+python3 .github/scripts/validate_wp8_reference.py --require-human-review
 python3 -m unittest discover .github/scripts 'test_*.py'
 bash .github/scripts/test-ci-contract.sh
 bash .github/scripts/test-release-product-surface.sh
@@ -55,6 +59,6 @@ bash .github/scripts/test-release-product-surface.sh
 
 ## English translation
 
-Yokuli OS is currently constructing only an app-agnostic, verifiable, durable, high-frame-rate WP8 Classic-style Launcher Shell. The owner approved Stage 1 commit `df371fb…` with evidence run `33861223067`; annotated tag `launcher-engine-stage1-approved-v1` is the exact Stage 2 starting point.
+Yokuli OS is currently constructing only an app-agnostic, verifiable, durable, high-frame-rate WP8 Classic-style Launcher Shell. The owner approved Stage 2 commit `5386da0…` with evidence run `33864829489`; annotated tag `launcher-engine-stage2-approved-v1` is the exact Stage 2.5 starting point.
 
-Stage 2 extracts pure Kotlin contract and engine modules, opaque IDs/tokens, feature catalog contributions, a Compose internal-host boundary, and an Android host adapter. Only `app-shell` composes Chart and Settings. Existing UI and interactions remain unchanged; Stage 2.5 reference acquisition is not started.
+Stage 2.5 uses only the owner-supplied WP8.1 emulator recording as visual evidence, with exact full frames, content hashes, geometry and observable-motion measurements, and explicit evidence gaps. Repository owner kuku approved the canonical measurement hash, so it is `HUMAN_REVIEWED`; Stage 3 has not started. The future game-like immersive host and shell-owned virtual Back/Start/Search requirement is recorded without changing production runtime.

@@ -1,0 +1,478 @@
+{
+  "schemaVersion": 2,
+  "profileId": "WP8_CLASSIC_PHONE_4COL",
+  "status": "HUMAN_REVIEWED",
+  "captures": [
+    {
+      "id": "back-return-start",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/back-return-start.png",
+      "sha256": "d102ba2f14a7e58bd5974355b22b4c8fbe9e77a4d6d51cdbdb03da552cc2b9b8",
+      "byteSize": 38645,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 15000,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "back-return-mid",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/back-return-mid.png",
+      "sha256": "6530ae8f0139c2a6bc866fc5c65ac23b1f784eba07eda6a51fc56f725b898e89",
+      "byteSize": 206954,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 15500,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "back-return-settled",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/back-return-settled.png",
+      "sha256": "208b26d03dc3a7e0e89ab1ffdace59d6679e4c4c17c19f136289a685310db34c",
+      "byteSize": 180301,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 15750,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "start-primary-stable",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/start-primary-stable.png",
+      "sha256": "34530a3f712071d0df7ff2fe33fc26f2f9a50c5ee692eb913994ddb546fb997e",
+      "byteSize": 178765,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 16000,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "live-cycle-b",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/live-cycle-b.png",
+      "sha256": "f257545813e501d862fc8a0c125fe612050c8fd2a98d59aa1d959268f8511057",
+      "byteSize": 174679,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 16750,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "live-cycle-c",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/live-cycle-c.png",
+      "sha256": "5899e12a33cb358d36161f1c8d155a5781542331c2eed945b9c2e973ee2d2239",
+      "byteSize": 174294,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 17250,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "settings-title-stable",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/settings-title-stable.png",
+      "sha256": "546117c883f4923ed40d656584aa5f9ab06ec51870fd3bff2488269d0cfbc91d",
+      "byteSize": 150260,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 80000,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "page-swipe-start",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/page-swipe-start.png",
+      "sha256": "cf0c23c0276dcec98e059f88f0a6df10dee1c97b578235c2b4c937c0f3c0e32a",
+      "byteSize": 151305,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 175700,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "page-swipe-mid",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/page-swipe-mid.png",
+      "sha256": "aa16218ed2c7f7e69228f36b38225161165628c6452f3a5a753a319cee2695d2",
+      "byteSize": 164261,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 176000,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "page-swipe-settled",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/page-swipe-settled.png",
+      "sha256": "adc8217f4a091a077a419e63afc5693250bf9781ff5512865686acd5584c9580",
+      "byteSize": 126127,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 176400,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "all-apps-stable",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/all-apps-stable.png",
+      "sha256": "812b4acea82e84da906819c5e8389a241f43a17792580da9f73aec043a0de35d",
+      "byteSize": 123981,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 177000,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "app-open-start",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/app-open-start.png",
+      "sha256": "2f546cbd95c672bd8bbdc376e634ebbb856fa7e827b939e83f6b37edd2702171",
+      "byteSize": 135322,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 314300,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "app-open-focused",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/app-open-focused.png",
+      "sha256": "88fad2a582b7d56e3a64a2b721bfef58b3d322844228de40d73ad24a187e38f4",
+      "byteSize": 55577,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 314500,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "app-open-plane",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/app-open-plane.png",
+      "sha256": "ad7e24d8048a332553fd868e5fcedb6780ef9e67b341d762ee97febd546e3aaf",
+      "byteSize": 70951,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 315100,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "app-open-settled",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/app-open-settled.png",
+      "sha256": "539ce0bdda296e301bb65fe5fad57826a349750bb8809f5635fb83fb96346c49",
+      "byteSize": 94383,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 315300,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    },
+    {
+      "id": "wide-layout-stable",
+      "path": "docs/reference/wp8/screenshots/owner-emulator-recording/frames/wide-layout-stable.png",
+      "sha256": "07f62af515f2c3d6c4e0683a1e50c901dc50b64a3739109fa6a413fc9c2bdbd0",
+      "byteSize": 202481,
+      "mediaType": "image/png",
+      "dimensions": { "widthPx": 1920, "heightPx": 1080 },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Windows Phone emulator; exact image not exposed by recording",
+      "osBuild": "Windows Phone 8.1 family; exact build not exposed",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 352000,
+      "ownershipLicenseNote": "Lossless full-frame extraction from the repository-owner-supplied emulator recording; Microsoft UI and trademarks remain with their owners."
+    }
+  ],
+  "measurementSets": [
+    {
+      "id": "set-start-primary-geometry-v1",
+      "scenarioId": "START_PRIMARY_GEOMETRY",
+      "captureIds": [
+        "start-primary-stable",
+        "wide-layout-stable",
+        "settings-title-stable"
+      ],
+      "viewport": {
+        "widthPx": 480,
+        "heightPx": 800,
+        "densityDpi": null,
+        "orientation": "PORTRAIT"
+      },
+      "measuredBy": "Codex pixel-coordinate analysis",
+      "measuredAtUtc": "2026-09-04T14:00:00Z",
+      "measurementMethod": "The uncropped 1920x1080 frames contain an emulator display rectangle at raw x=706, y=62, width=506, height=844. Raw boundaries were mapped independently on each axis to Microsoft's documented 480x800 WP8 logical viewport. Dominant-colour runs locate tile edges; a connected-component threshold locates the white Phone glyph; the large Settings title baseline was inspected separately.",
+      "uncertaintyNotes": "Tile edges are within about 1 logical pixel and the large-title baseline within about 3 logical pixels after video scaling and H.264 chroma subsampling. Physical DPI is unknown and therefore null. Start is vertically unbounded, so bottom=0 means no fixed bottom outer inset, not a measured content end. The wide tile comes from a later vertical scroll position.",
+      "geometryEvidence": {
+        "outerInsetsPx": {
+          "left": 24,
+          "top": 57,
+          "right": 24,
+          "bottom": 0
+        },
+        "smallTileBoundsPx": {
+          "left": 246,
+          "top": 57,
+          "width": 99,
+          "height": 99
+        },
+        "mediumTileBoundsPx": {
+          "left": 24,
+          "top": 57,
+          "width": 210,
+          "height": 210
+        },
+        "wideTileBoundsPx": {
+          "left": 24,
+          "top": 153,
+          "width": 432,
+          "height": 210
+        },
+        "seamPx": 12,
+        "statusStripHeightPx": 32,
+        "titleBaselinePx": 158,
+        "glyphOpticalBoxPx": {
+          "left": 104,
+          "top": 123,
+          "width": 47,
+          "height": 79
+        }
+      }
+    },
+    {
+      "id": "set-start-to-all-apps-v1",
+      "scenarioId": "START_TO_ALL_APPS",
+      "captureIds": [
+        "page-swipe-start",
+        "page-swipe-mid",
+        "page-swipe-settled",
+        "all-apps-stable"
+      ],
+      "viewport": {
+        "widthPx": 480,
+        "heightPx": 800,
+        "densityDpi": null,
+        "orientation": "PORTRAIT"
+      },
+      "measuredBy": "Codex frame timeline analysis",
+      "measuredAtUtc": "2026-09-04T14:05:00Z",
+      "measurementMethod": "Four exact 60 fps source timestamps bracket the Start-to-All-Apps transition. Page offset is measured from the Start tile plane in the normalized 480x800 viewport. Input events are logical brackets inferred from the first visible motion because the recording contains no pointer overlay.",
+      "uncertaintyNotes": "Visual timestamps are accurate to one source frame (about 16.7 ms). Pointer-down, move and up times are not directly visible and must not be treated as measured touch latency. The measured 700 ms is the visual settle window from the pre-motion sample to the first stable All Apps sample.",
+      "motionEvidence": {
+        "interaction": "PAGE_SWIPE",
+        "settleMillis": 700,
+        "inputTimeline": [
+          { "timeMillis": 0, "event": "POINTER_DOWN" },
+          { "timeMillis": 300, "event": "POINTER_MOVE" },
+          { "timeMillis": 400, "event": "POINTER_UP" }
+        ],
+        "visualSamples": [
+          {
+            "captureId": "page-swipe-start",
+            "timeMillis": 0,
+            "pageOffsetPx": { "x": 0, "y": 0 }
+          },
+          {
+            "captureId": "page-swipe-mid",
+            "timeMillis": 300,
+            "pageOffsetPx": { "x": -103, "y": 0 }
+          },
+          {
+            "captureId": "page-swipe-settled",
+            "timeMillis": 700,
+            "pageOffsetPx": { "x": -480, "y": 0 }
+          },
+          {
+            "captureId": "all-apps-stable",
+            "timeMillis": 1300,
+            "pageOffsetPx": { "x": -480, "y": 0 }
+          }
+        ]
+      }
+    },
+    {
+      "id": "set-app-open-transition-v1",
+      "scenarioId": "APP_OPEN_TRANSITION",
+      "captureIds": [
+        "app-open-start",
+        "app-open-focused",
+        "app-open-plane",
+        "app-open-settled"
+      ],
+      "viewport": {
+        "widthPx": 480,
+        "heightPx": 800,
+        "densityDpi": null,
+        "orientation": "PORTRAIT"
+      },
+      "measuredBy": "Codex frame timeline analysis",
+      "measuredAtUtc": "2026-09-04T14:10:00Z",
+      "measurementMethod": "The transition is bracketed from the first visible Start tile-plane departure through the isolated source tile, black interstitial and first stable app splash plane. Input events are logical trigger markers because the pointer is not visible.",
+      "uncertaintyNotes": "App-open duration is a 1000 ms visual interval with about 100 ms selection granularity. It includes Start exit, interstitial and splash-plane entrance; it is not process startup time. A distinct pre-launch press scale or tilt cannot be isolated and is intentionally not claimed.",
+      "motionEvidence": {
+        "interaction": "APP_OPEN",
+        "appOpenMillis": 1000,
+        "inputTimeline": [
+          { "timeMillis": 0, "event": "POINTER_DOWN" },
+          { "timeMillis": 100, "event": "POINTER_UP" }
+        ],
+        "visualSamples": [
+          { "captureId": "app-open-start", "timeMillis": 0 },
+          { "captureId": "app-open-focused", "timeMillis": 200 },
+          { "captureId": "app-open-plane", "timeMillis": 800 },
+          { "captureId": "app-open-settled", "timeMillis": 1000 }
+        ]
+      }
+    },
+    {
+      "id": "set-back-return-v1",
+      "scenarioId": "BACK_TO_START_TRANSITION",
+      "captureIds": [
+        "back-return-start",
+        "back-return-mid",
+        "back-return-settled"
+      ],
+      "viewport": {
+        "widthPx": 480,
+        "heightPx": 800,
+        "densityDpi": null,
+        "orientation": "PORTRAIT"
+      },
+      "measuredBy": "Codex frame timeline analysis",
+      "measuredAtUtc": "2026-09-04T14:15:00Z",
+      "measurementMethod": "Three exact timestamps bracket the departing app plane, incoming Start tile planes and stable Start state. The recording does not show hardware-key illumination, so input markers express only the inferred Back trigger boundary.",
+      "uncertaintyNotes": "The 750 ms interval is visual settle time, not hardware input latency. Trigger timing is inferred; only the rendered planes are directly observed.",
+      "motionEvidence": {
+        "interaction": "BACK_RETURN",
+        "settleMillis": 750,
+        "inputTimeline": [
+          { "timeMillis": 0, "event": "POINTER_DOWN" },
+          { "timeMillis": 50, "event": "POINTER_UP" }
+        ],
+        "visualSamples": [
+          { "captureId": "back-return-start", "timeMillis": 0 },
+          { "captureId": "back-return-mid", "timeMillis": 500 },
+          { "captureId": "back-return-settled", "timeMillis": 750 }
+        ]
+      }
+    },
+    {
+      "id": "set-live-tile-cycle-v1",
+      "scenarioId": "LIVE_TILE_CYCLE",
+      "captureIds": [
+        "start-primary-stable",
+        "live-cycle-b",
+        "live-cycle-c"
+      ],
+      "viewport": {
+        "widthPx": 480,
+        "heightPx": 800,
+        "densityDpi": null,
+        "orientation": "PORTRAIT"
+      },
+      "measuredBy": "Codex frame timeline analysis",
+      "measuredAtUtc": "2026-09-04T14:20:00Z",
+      "measurementMethod": "The same People medium-tile rectangle is sampled in a stable content state, an intermediate slice/occlusion state and the next stable content state while neighbouring tiles retain their positions. The cycle is autonomous and therefore has no pointer input.",
+      "uncertaintyNotes": "The 1250 ms interval measures one visible content-transition window, not the data refresh cadence or repeat interval. Exact animation onset may fall between selected frames; timing uncertainty is about 250 ms.",
+      "motionEvidence": {
+        "interaction": "LIVE_TILE_CYCLE",
+        "settleMillis": 1250,
+        "inputTimeline": [
+          { "timeMillis": 0, "event": "AUTONOMOUS_CYCLE_START" },
+          { "timeMillis": 1250, "event": "AUTONOMOUS_CYCLE_END" }
+        ],
+        "visualSamples": [
+          {
+            "captureId": "start-primary-stable",
+            "timeMillis": 0,
+            "tileBoundsPx": { "left": 24, "top": 280, "width": 210, "height": 210 },
+            "scale": 1,
+            "tiltDegrees": 0
+          },
+          {
+            "captureId": "live-cycle-b",
+            "timeMillis": 750,
+            "tileBoundsPx": { "left": 24, "top": 280, "width": 210, "height": 210 },
+            "scale": 1,
+            "tiltDegrees": 0
+          },
+          {
+            "captureId": "live-cycle-c",
+            "timeMillis": 1250,
+            "tileBoundsPx": { "left": 24, "top": 280, "width": 210, "height": 210 },
+            "scale": 1,
+            "tiltDegrees": 0
+          }
+        ]
+      }
+    }
+  ],
+  "review": {
+    "reviewedBy": "kuku",
+    "reviewedAtUtc": "2026-09-04T13:41:36Z",
+    "decision": "APPROVED",
+    "notes": "Repository owner approved the Stage 2.5 source package, measured geometry and observable motion, documented uncertainty, and explicit NOT_OBSERVED/VISUAL_ONLY gaps at the supplied canonical measurement hash.",
+    "reviewedMeasurementHash": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+    "approvedProfileRevision": 1
+  }
+}

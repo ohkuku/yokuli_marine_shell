@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "stage": "2.5",
+  "name": "WP8 Reference Acquisition & Human Approval",
+  "branch": "codex/launcher-engine-stage2.5-rebuild",
+  "approvedStage2Tag": "launcher-engine-stage2-approved-v1",
+  "startingSha": "5386da0575046f1f9a59742a4a0f5c78523fa5e6",
+  "stage2EvidenceRun": 33864829489,
+  "scope": "WP8 Reference Acquisition & Human Approval",
+  "visualSourceSha256": "114d8acdb2ae4b8f9e35e5a84bd3077ec52ba7e647ed7e4fc54fd159ea62b94c",
+  "canonicalMeasurementHash": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+  "approvalStatus": "APPROVED",
+  "reviewedBy": "kuku",
+  "reviewedAtUtc": "2026-09-04T13:41:36Z",
+  "decision": "APPROVED",
+  "approvedProfileRevision": 1,
+  "reviewedMeasurementHash": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+  "nextStageStarted": false
+}

@@ -257,7 +257,11 @@
           "minimum": 1
         },
         "densityDpi": {
-          "type": "integer",
+          "description": "Physical density when the source proves it; null for an emulator recording that exposes only logical pixels.",
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 1
         },
         "orientation": {
@@ -359,7 +363,9 @@
             "POINTER_MOVE",
             "LONG_PRESS_RECOGNIZED",
             "POINTER_UP",
-            "CANCEL"
+            "CANCEL",
+            "AUTONOMOUS_CYCLE_START",
+            "AUTONOMOUS_CYCLE_END"
           ]
         },
         "pointerPositionPx": {
@@ -417,7 +423,9 @@
             "PAGE_SWIPE",
             "RESIZE",
             "UNPIN",
-            "APP_OPEN"
+            "APP_OPEN",
+            "BACK_RETURN",
+            "LIVE_TILE_CYCLE"
           ]
         },
         "longPressMillis": {
