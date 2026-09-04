@@ -4,6 +4,15 @@
 
 ### 中文（主文）
 
+#### Stage 0 correction — Reference & Baseline Contracts
+
+- 新增机器可读 `BASELINE_LOCK.json` 与逐文件 `BASELINE_RECONCILIATION.md`，锁定 reviewed/actual/ending SHA、Master 新旧哈希、覆盖理由和 `PENDING_HUMAN_REVIEW`；明确 Android Library engine、Marine 耦合、猜测比例、随机 UUID 与临时 stores 不通过后续 Gate。
+- Master 升级为 v1.1，在 Stage 2 和 Stage 3 之间加入强制 `Stage 2.5 — WP8 Reference Acquisition & Human Approval`；测量状态未达到 `HUMAN_REVIEWED` 时禁止开始 Geometry。
+- WP8 schema 改为状态相关的 `captures[]`、场景化 `measurementSets[]` 和 hash-bound human `review`；`NOT_YET_MEASURED` 不再需要伪造 provenance，direct manipulation 同时记录 input timeline 与 visual samples。
+- 新增三份有效、四份无效 fixture；Android CI 安装固定版本 `jsonschema` 并用真正的 Draft 2020-12 validator 执行，而非只用 `json.loads` 检查字段名。
+- 新增完整 Stage 0 report，记录 hosted run `33850770612` 通过 Build、API 34 与 API 36；Reference 仍是 `NOT_YET_MEASURED`，Samsung 方屏仍是 `UNVERIFIED_HARDWARE`。
+- 本纠偏不修改生产 UI、Registry、Google Maps Adapter、Feature、Shell Engine 生产代码或海事功能，也不进入 Stage 1。
+
 #### Stage 0 — Freeze & Reference Contract
 
 - 以仓库所有者指定的最新提交 `ca84ef9` 冻结 `codex/launcher-engine` 起点；Master 附件中的旧 reviewed SHA 只作为文档历史，不再作为分支基线。
@@ -57,6 +66,8 @@
 - GPS、NMEA、Anchor、Navigation、Trip、Survey、Sonar、OpenSeaMap 和本地海图导入仍未接入生产 runtime。
 
 ### English translation
+
+Stage 0 correction locks the reviewed, selected, and ending baselines; reconciles every pre-existing shell-engine artifact without pre-approving later work; versions Master v1.1 with mandatory Stage 2.5 reference approval; and replaces the flattened measurement contract with state-aware, content-addressed captures, scenario measurement sets, direct-manipulation timelines, and hash-bound human review. CI runs three valid and four invalid fixtures through pinned real Draft 2020-12 validation. Hosted run `33850770612` passed build, API 34, and API 36, while reference measurements and Samsung square hardware remain unmeasured or unverified. No production behavior or Stage 1 work is included.
 
 Stage 0 starts `codex/launcher-engine` from owner-selected latest commit `ca84ef9`, imports the Master Spec verbatim with a SHA-256 contract, establishes the unmeasured WP8 Reference/schema/screenshots/golden/artifact boundaries, archives superseded requirements and Slice 1–14 evidence, and adds a separately reported CI gate. It changes no UI, Registry, Google Maps, feature, or Android runtime behavior. Existing Phase 0A/S0–S2 code is a frozen baseline, not automatic proof that any later Master stage passed.
 

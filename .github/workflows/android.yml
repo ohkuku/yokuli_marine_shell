@@ -24,10 +24,17 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/requirements/stage0-schema.txt
       - uses: android-actions/setup-android@v4
       - uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: Install pinned Draft 2020-12 schema validator
+        run: python3 -m pip install --requirement .github/requirements/stage0-schema.txt
       - name: CI helper unit tests
         id: ci_helpers
         continue-on-error: true

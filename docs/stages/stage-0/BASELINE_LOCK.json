@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "stage": "STAGE_0_CORRECTION",
+  "branch": "codex/launcher-engine",
+  "masterReviewedSha": "943d85276e4a042092f87090aa0d23da9a7cbbc6",
+  "actualSelectedStartingSha": "ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7",
+  "stage0EndingSha": "98121412893d5331b22d4327463794993a4a4eff",
+  "correctionStartingSha": "98121412893d5331b22d4327463794993a4a4eff",
+  "masterSpecSha256": "b0aeb000012283d56cf7e8eb343e2a026366e150b2f9e3d9969f45ed12f4bb40",
+  "previousMasterSpecSha256": "f2a13be01ea836652d82f64a3f6b492df87dea4ad0f3d1c36c9faf84f869a4f0",
+  "baselineOverrideReason": "The repository owner explicitly corrected the original reviewed snapshot and selected the then-latest implementation commit ca84ef9 as the Stage 0 starting baseline; no history was reset or discarded.",
+  "preExistingImplementationCommit": "ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7",
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

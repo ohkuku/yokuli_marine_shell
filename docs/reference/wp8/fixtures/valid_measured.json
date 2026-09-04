@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 2,
+  "profileId": "WP8_CLASSIC_PHONE_4COL",
+  "status": "MEASURED",
+  "captures": [
+    {
+      "id": "capture-start-001",
+      "path": "docs/reference/wp8/screenshots/reference-start-001.png",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "byteSize": 24816,
+      "mediaType": "image/png",
+      "dimensions": {
+        "widthPx": 480,
+        "heightPx": 800
+      },
+      "sourceType": "PHYSICAL_DEVICE_SCREENSHOT",
+      "deviceModel": "Schema fixture device",
+      "osBuild": "Schema fixture build",
+      "capturedAtUtc": "2026-01-02T03:04:05Z",
+      "isOriginal": true,
+      "isCropped": false,
+      "ownershipLicenseNote": "Synthetic schema-contract fixture only; not admissible WP8 reference evidence."
+    }
+  ],
+  "measurementSets": [
+    {
+      "id": "set-start-geometry-001",
+      "scenarioId": "START_DEFAULT_PORTRAIT",
+      "captureIds": [
+        "capture-start-001"
+      ],
+      "viewport": {
+        "widthPx": 480,
+        "heightPx": 800,
+        "densityDpi": 233,
+        "orientation": "PORTRAIT"
+      },
+      "measuredBy": "Schema Fixture Generator",
+      "measuredAtUtc": "2026-01-02T04:05:06Z",
+      "measurementMethod": "Synthetic values exercise the schema; they are not product measurements.",
+      "geometryEvidence": {
+        "outerInsetsPx": {
+          "left": 24,
+          "top": 24,
+          "right": 24,
+          "bottom": 24
+        },
+        "smallTileBoundsPx": {
+          "left": 24,
+          "top": 84,
+          "width": 96,
+          "height": 96
+        },
+        "mediumTileBoundsPx": {
+          "left": 24,
+          "top": 84,
+          "width": 200,
+          "height": 200
+        },
+        "wideTileBoundsPx": {
+          "left": 24,
+          "top": 84,
+          "width": 408,
+          "height": 200
+        },
+        "seamPx": 8,
+        "statusStripHeightPx": 32,
+        "titleBaselinePx": 72,
+        "glyphOpticalBoxPx": {
+          "left": 48,
+          "top": 108,
+          "width": 48,
+          "height": 48
+        }
+      }
+    }
+  ]
+}

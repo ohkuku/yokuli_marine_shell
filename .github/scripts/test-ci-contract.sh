@@ -19,6 +19,7 @@ workflows=("$android" "$release" "$nightly")
 for action in \
   'actions/checkout@v6' \
   'actions/setup-java@v5' \
+  'actions/setup-python@v6' \
   'gradle/actions/setup-gradle@v6' \
   'actions/upload-artifact@v7'; do
   grep -Fq "$action" "${workflows[@]}" || fail "current action major not found: $action"
@@ -33,6 +34,8 @@ for check_id in 'ci_helpers' 'release_metadata' 'ci_contract' 'secrets_contract'
 done
 grep -Fq 'bash .github/scripts/test-secrets-manager.sh' "$android" || fail 'encrypted secrets workflow contract must run in CI'
 grep -Fq 'id: launcher_stage0_contract' "$android" || fail 'Launcher Stage 0 needs an independent named CI gate'
+grep -Fq 'python3 -m pip install --requirement .github/requirements/stage0-schema.txt' "$android" || fail 'Stage 0 must install its pinned Draft 2020-12 validator'
+grep -Fq 'jsonschema==' "$repo_root/.github/requirements/stage0-schema.txt" || fail 'Stage 0 schema validator must be version-pinned'
 grep -Fq 'python3 .github/scripts/test_launcher_stage0_contract.py' "$android" || fail 'Launcher Stage 0 contract must run in CI'
 grep -Fq 'LAUNCHER_STAGE0_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 0 result must participate in final enforcement'
 grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$android" || fail 'debug artifacts must consume the repository Maps key when configured'

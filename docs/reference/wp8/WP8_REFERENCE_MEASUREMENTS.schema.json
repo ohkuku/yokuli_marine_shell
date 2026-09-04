@@ -1,21 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/ohkuku/yokuli_marine_shell/docs/reference/wp8/WP8_REFERENCE_MEASUREMENTS.schema.json",
-  "title": "Yokuli WP8 Classic Phone Reference Measurements",
-  "description": "Machine-readable provenance and geometry/motion measurements for WP8_CLASSIC_PHONE_4COL.",
+  "title": "Yokuli WP8 Classic Phone Reference Evidence",
+  "description": "State-aware, content-addressed capture and scenario measurement contract for WP8_CLASSIC_PHONE_4COL.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schemaVersion",
     "profileId",
-    "status",
-    "provenance",
-    "viewport",
-    "measurements"
+    "status"
   ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "const": 2
     },
     "profileId": {
       "const": "WP8_CLASSIC_PHONE_4COL"
@@ -28,14 +25,20 @@
         "HUMAN_REVIEWED"
       ]
     },
-    "provenance": {
-      "$ref": "#/$defs/provenance"
+    "captures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capture"
+      }
     },
-    "viewport": {
-      "$ref": "#/$defs/viewport"
+    "measurementSets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/measurementSet"
+      }
     },
-    "measurements": {
-      "$ref": "#/$defs/measurements"
+    "review": {
+      "$ref": "#/$defs/review"
     }
   },
   "allOf": [
@@ -54,28 +57,40 @@
         ]
       },
       "then": {
+        "required": [
+          "captures",
+          "measurementSets"
+        ],
         "properties": {
-          "measurements": {
-            "required": [
-              "outerInsetsPx",
-              "smallTileBoundsPx",
-              "mediumTileBoundsPx",
-              "wideTileBoundsPx",
-              "seamPx",
-              "statusStripHeightPx",
-              "titleBaselinePx",
-              "glyphOpticalBoxPx",
-              "longPressMillis",
-              "pageSettleMillis",
-              "appOpenMillis",
-              "pressScale",
-              "pressTiltDegrees"
-            ]
+          "captures": {
+            "minItems": 1
           },
-          "provenance": {
+          "measurementSets": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "HUMAN_REVIEWED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "review"
+        ],
+        "properties": {
+          "review": {
             "properties": {
-              "captureFiles": {
-                "minItems": 1
+              "decision": {
+                "const": "APPROVED"
               }
             }
           }
@@ -84,6 +99,44 @@
     }
   ],
   "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "widthPx",
+        "heightPx"
+      ],
+      "properties": {
+        "widthPx": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "heightPx": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      }
+    },
     "pixelRect": {
       "type": "object",
       "additionalProperties": false,
@@ -95,42 +148,66 @@
       ],
       "properties": {
         "left": {
-          "type": "integer"
+          "type": "number"
         },
         "top": {
-          "type": "integer"
+          "type": "number"
         },
         "width": {
-          "type": "integer",
-          "minimum": 1
+          "type": "number",
+          "exclusiveMinimum": 0
         },
         "height": {
-          "type": "integer",
-          "minimum": 1
+          "type": "number",
+          "exclusiveMinimum": 0
         }
       }
     },
-    "provenance": {
+    "capture": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "id",
+        "path",
+        "sha256",
+        "byteSize",
+        "mediaType",
+        "dimensions",
         "sourceType",
-        "deviceModel",
-        "osBuild",
-        "captureFiles",
-        "measuredBy",
-        "measuredAtUtc",
-        "method",
-        "licenseOrOwnershipNote"
+        "isOriginal",
+        "isCropped",
+        "ownershipLicenseNote"
       ],
       "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mediaType": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$"
+        },
+        "dimensions": {
+          "$ref": "#/$defs/dimensions"
+        },
         "sourceType": {
           "type": "string",
           "enum": [
-            "PHYSICAL_DEVICE",
-            "EMULATOR",
-            "VIDEO",
-            "SCREENSHOT_SET"
+            "PHYSICAL_DEVICE_SCREENSHOT",
+            "EMULATOR_SCREENSHOT",
+            "VIDEO_FRAME",
+            "LICENSED_REFERENCE_IMAGE"
           ]
         },
         "deviceModel": {
@@ -141,27 +218,21 @@
           "type": "string",
           "minLength": 1
         },
-        "captureFiles": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "measuredBy": {
-          "type": "string",
-          "minLength": 1
-        },
-        "measuredAtUtc": {
+        "capturedAtUtc": {
           "type": "string",
           "format": "date-time"
         },
-        "method": {
-          "type": "string",
-          "minLength": 1
+        "isOriginal": {
+          "type": "boolean"
         },
-        "licenseOrOwnershipNote": {
+        "isCropped": {
+          "type": "boolean"
+        },
+        "frameTimestampMillis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ownershipLicenseNote": {
           "type": "string",
           "minLength": 1
         }
@@ -193,42 +264,56 @@
           "type": "string",
           "enum": [
             "PORTRAIT",
+            "LANDSCAPE",
             "SQUARE"
           ]
         }
       }
     },
-    "measurements": {
+    "insets": {
       "type": "object",
       "additionalProperties": false,
+      "required": [
+        "left",
+        "top",
+        "right",
+        "bottom"
+      ],
+      "properties": {
+        "left": {
+          "type": "number",
+          "minimum": 0
+        },
+        "top": {
+          "type": "number",
+          "minimum": 0
+        },
+        "right": {
+          "type": "number",
+          "minimum": 0
+        },
+        "bottom": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "geometryEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outerInsetsPx",
+        "smallTileBoundsPx",
+        "mediumTileBoundsPx",
+        "wideTileBoundsPx",
+        "seamPx",
+        "statusStripHeightPx",
+        "titleBaselinePx",
+        "glyphOpticalBoxPx"
+      ],
       "properties": {
         "outerInsetsPx": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "left",
-            "top",
-            "right",
-            "bottom"
-          ],
-          "properties": {
-            "left": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "top": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "right": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "bottom": {
-              "type": "integer",
-              "minimum": 0
-            }
-          }
+          "$ref": "#/$defs/insets"
         },
         "smallTileBoundsPx": {
           "$ref": "#/$defs/pixelRect"
@@ -240,11 +325,11 @@
           "$ref": "#/$defs/pixelRect"
         },
         "seamPx": {
-          "type": "integer",
+          "type": "number",
           "minimum": 0
         },
         "statusStripHeightPx": {
-          "type": "integer",
+          "type": "number",
           "minimum": 0
         },
         "titleBaselinePx": {
@@ -252,12 +337,94 @@
         },
         "glyphOpticalBoxPx": {
           "$ref": "#/$defs/pixelRect"
+        }
+      }
+    },
+    "inputSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timeMillis",
+        "event"
+      ],
+      "properties": {
+        "timeMillis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "event": {
+          "type": "string",
+          "enum": [
+            "POINTER_DOWN",
+            "POINTER_MOVE",
+            "LONG_PRESS_RECOGNIZED",
+            "POINTER_UP",
+            "CANCEL"
+          ]
+        },
+        "pointerPositionPx": {
+          "$ref": "#/$defs/point"
+        }
+      }
+    },
+    "visualSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "captureId",
+        "timeMillis"
+      ],
+      "properties": {
+        "captureId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeMillis": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tileBoundsPx": {
+          "$ref": "#/$defs/pixelRect"
+        },
+        "pageOffsetPx": {
+          "$ref": "#/$defs/point"
+        },
+        "scale": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "tiltDegrees": {
+          "type": "number",
+          "minimum": -15,
+          "maximum": 15
+        }
+      }
+    },
+    "motionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "interaction",
+        "inputTimeline",
+        "visualSamples"
+      ],
+      "properties": {
+        "interaction": {
+          "type": "string",
+          "enum": [
+            "TILE_PRESS",
+            "LONG_PRESS_DRAG",
+            "PAGE_SWIPE",
+            "RESIZE",
+            "UNPIN",
+            "APP_OPEN"
+          ]
         },
         "longPressMillis": {
           "type": "integer",
           "minimum": 0
         },
-        "pageSettleMillis": {
+        "settleMillis": {
           "type": "integer",
           "minimum": 0
         },
@@ -273,7 +440,131 @@
         "pressTiltDegrees": {
           "type": "number",
           "minimum": 0,
-          "maximum": 10
+          "maximum": 15
+        },
+        "inputTimeline": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/inputSample"
+          }
+        },
+        "visualSamples": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/visualSample"
+          }
+        }
+      }
+    },
+    "measurementSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "scenarioId",
+        "captureIds",
+        "viewport",
+        "measuredBy",
+        "measuredAtUtc",
+        "measurementMethod"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "scenarioId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "captureIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "viewport": {
+          "$ref": "#/$defs/viewport"
+        },
+        "measuredBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "measuredAtUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "measurementMethod": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uncertaintyNotes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "geometryEvidence": {
+          "$ref": "#/$defs/geometryEvidence"
+        },
+        "motionEvidence": {
+          "$ref": "#/$defs/motionEvidence"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "geometryEvidence"
+          ]
+        },
+        {
+          "required": [
+            "motionEvidence"
+          ]
+        }
+      ]
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewedBy",
+        "reviewedAtUtc",
+        "decision",
+        "notes",
+        "reviewedMeasurementHash",
+        "approvedProfileRevision"
+      ],
+      "properties": {
+        "reviewedBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewedAtUtc": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "APPROVED",
+            "REJECTED",
+            "NEEDS_MORE_EVIDENCE"
+          ]
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewedMeasurementHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "approvedProfileRevision": {
+          "type": "integer",
+          "minimum": 1
         }
       }
     }

@@ -36,6 +36,7 @@
 本地更改 CI 前运行：
 
 ```text
+python3 -m pip install --requirement .github/requirements/stage0-schema.txt
 python3 -m unittest discover .github/scripts 'test_*.py'
 bash .github/scripts/test-resolve-release-metadata.sh
 bash .github/scripts/test-ci-contract.sh
@@ -137,11 +138,12 @@ Existing tags must resolve to the current commit. Existing GitHub Releases are n
 Run this before changing CI or release files:
 
 ```text
+python3 -m pip install --requirement .github/requirements/stage0-schema.txt
 python3 -m unittest discover .github/scripts 'test_*.py'
 bash .github/scripts/test-resolve-release-metadata.sh
 bash .github/scripts/test-ci-contract.sh
 ```
 
-The contract verifies current action majors, gate dependencies, emulator/KVM wrappers, explicit verified/unverified labels, summaries, failure annotations, bounded diagnostic upload pairs, release signature/checksum commands, and the nightly schedule.
+The contract uses the pinned `jsonschema` package as a real Draft 2020-12 validator for Stage 0 fixtures. It also verifies current action majors, gate dependencies, emulator/KVM wrappers, explicit verified/unverified labels, summaries, failure annotations, bounded diagnostic upload pairs, release signature/checksum commands, and the nightly schedule.
 
 Current upstream choices follow the official projects: [Gradle setup action v6](https://github.com/gradle/actions/blob/main/docs/setup-gradle.md), [checkout v6](https://github.com/actions/checkout), [setup-java v5](https://github.com/actions/setup-java), [upload-artifact v7](https://github.com/actions/upload-artifact), [download-artifact v8](https://github.com/actions/download-artifact), and [Android Emulator Runner v2.38.0](https://github.com/ReactiveCircus/android-emulator-runner/releases/tag/v2.38.0).

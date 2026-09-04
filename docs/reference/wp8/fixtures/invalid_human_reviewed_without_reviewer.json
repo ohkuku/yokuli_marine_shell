@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 2,
+  "profileId": "WP8_CLASSIC_PHONE_4COL",
+  "status": "HUMAN_REVIEWED",
+  "captures": [
+    {
+      "id": "capture-review-invalid-001",
+      "path": "docs/reference/wp8/screenshots/review-invalid.png",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "byteSize": 2048,
+      "mediaType": "image/png",
+      "dimensions": {
+        "widthPx": 480,
+        "heightPx": 800
+      },
+      "sourceType": "PHYSICAL_DEVICE_SCREENSHOT",
+      "isOriginal": true,
+      "isCropped": false,
+      "ownershipLicenseNote": "Synthetic invalid fixture."
+    }
+  ],
+  "measurementSets": [
+    {
+      "id": "set-review-invalid-001",
+      "scenarioId": "INVALID_REVIEW",
+      "captureIds": [
+        "capture-review-invalid-001"
+      ],
+      "viewport": {
+        "widthPx": 480,
+        "heightPx": 800,
+        "densityDpi": 233,
+        "orientation": "PORTRAIT"
+      },
+      "measuredBy": "Schema Fixture Generator",
+      "measuredAtUtc": "2026-01-02T04:05:06Z",
+      "measurementMethod": "Negative schema fixture.",
+      "motionEvidence": {
+        "interaction": "TILE_PRESS",
+        "inputTimeline": [
+          {
+            "timeMillis": 0,
+            "event": "POINTER_DOWN"
+          },
+          {
+            "timeMillis": 100,
+            "event": "POINTER_UP"
+          }
+        ],
+        "visualSamples": [
+          {
+            "captureId": "capture-review-invalid-001",
+            "timeMillis": 0
+          },
+          {
+            "captureId": "capture-review-invalid-001",
+            "timeMillis": 100
+          }
+        ]
+      }
+    }
+  ],
+  "review": {
+    "reviewedAtUtc": "2026-01-03T04:05:06Z",
+    "decision": "APPROVED",
+    "notes": "Reviewer identity is intentionally missing.",
+    "reviewedMeasurementHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "approvedProfileRevision": 1
+  }
+}

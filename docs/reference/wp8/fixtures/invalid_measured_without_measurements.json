@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 2,
+  "profileId": "WP8_CLASSIC_PHONE_4COL",
+  "status": "MEASURED",
+  "captures": [
+    {
+      "id": "capture-without-set-001",
+      "path": "docs/reference/wp8/screenshots/without-set.png",
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "byteSize": 2048,
+      "mediaType": "image/png",
+      "dimensions": {
+        "widthPx": 480,
+        "heightPx": 800
+      },
+      "sourceType": "PHYSICAL_DEVICE_SCREENSHOT",
+      "isOriginal": true,
+      "isCropped": false,
+      "ownershipLicenseNote": "Synthetic invalid fixture."
+    }
+  ]
+}

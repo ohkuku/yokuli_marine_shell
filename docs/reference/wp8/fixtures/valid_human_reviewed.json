@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 2,
+  "profileId": "WP8_CLASSIC_PHONE_4COL",
+  "status": "HUMAN_REVIEWED",
+  "captures": [
+    {
+      "id": "capture-drag-001",
+      "path": "docs/reference/wp8/screenshots/reference-drag-001.png",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "byteSize": 31104,
+      "mediaType": "image/png",
+      "dimensions": {
+        "widthPx": 480,
+        "heightPx": 800
+      },
+      "sourceType": "VIDEO_FRAME",
+      "deviceModel": "Schema fixture device",
+      "osBuild": "Schema fixture build",
+      "capturedAtUtc": "2026-02-03T04:05:06Z",
+      "isOriginal": false,
+      "isCropped": false,
+      "frameTimestampMillis": 900,
+      "ownershipLicenseNote": "Synthetic schema-contract fixture only; not admissible WP8 reference evidence."
+    }
+  ],
+  "measurementSets": [
+    {
+      "id": "set-drag-motion-001",
+      "scenarioId": "START_LONG_PRESS_DRAG",
+      "captureIds": [
+        "capture-drag-001"
+      ],
+      "viewport": {
+        "widthPx": 480,
+        "heightPx": 800,
+        "densityDpi": 233,
+        "orientation": "PORTRAIT"
+      },
+      "measuredBy": "Schema Fixture Generator",
+      "measuredAtUtc": "2026-02-03T05:06:07Z",
+      "measurementMethod": "Synthetic timeline exercises direct-manipulation validation only.",
+      "motionEvidence": {
+        "interaction": "LONG_PRESS_DRAG",
+        "longPressMillis": 800,
+        "settleMillis": 220,
+        "pressScale": 0.94,
+        "pressTiltDegrees": 3,
+        "inputTimeline": [
+          {
+            "timeMillis": 0,
+            "event": "POINTER_DOWN",
+            "pointerPositionPx": {
+              "x": 120,
+              "y": 220
+            }
+          },
+          {
+            "timeMillis": 800,
+            "event": "LONG_PRESS_RECOGNIZED",
+            "pointerPositionPx": {
+              "x": 120,
+              "y": 220
+            }
+          },
+          {
+            "timeMillis": 900,
+            "event": "POINTER_MOVE",
+            "pointerPositionPx": {
+              "x": 160,
+              "y": 260
+            }
+          }
+        ],
+        "visualSamples": [
+          {
+            "captureId": "capture-drag-001",
+            "timeMillis": 800,
+            "tileBoundsPx": {
+              "left": 24,
+              "top": 84,
+              "width": 200,
+              "height": 200
+            },
+            "scale": 0.94,
+            "tiltDegrees": 3
+          },
+          {
+            "captureId": "capture-drag-001",
+            "timeMillis": 900,
+            "tileBoundsPx": {
+              "left": 64,
+              "top": 124,
+              "width": 200,
+              "height": 200
+            },
+            "scale": 0.94,
+            "tiltDegrees": 2
+          }
+        ]
+      }
+    }
+  ],
+  "review": {
+    "reviewedBy": "Schema Fixture Reviewer",
+    "reviewedAtUtc": "2026-02-04T06:07:08Z",
+    "decision": "APPROVED",
+    "notes": "Approval validates the schema fixture, not WP8 fidelity evidence.",
+    "reviewedMeasurementHash": "e69222cdea2f9d152214ccd2dd7a663b0fe5959abebf827cb7323e7943660790",
+    "approvedProfileRevision": 1
+  }
+}

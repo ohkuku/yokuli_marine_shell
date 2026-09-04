@@ -17,13 +17,15 @@ Freeze baseline
 → Stop for human review
 ```
 
-不能把下一 Stage 的模型、UI 或“顺手优化”混进当前提交。用户对起始 SHA 或范围的直接修正优先于附件中的旧仓库快照，但必须写入 TDD 日志和最终报告，不能静默改写 Master 正文。
+不能把下一 Stage 的模型、UI 或“顺手优化”混进当前提交。用户对起始 SHA 或范围的直接修正优先于附件中的旧仓库快照，必须同时写入 Master 版本记录、`BASELINE_LOCK.json`、TDD 日志和最终报告；规范变化要保留前一版哈希，不能用互相矛盾的 side document 静默覆盖。
 
 ## 2. Red 必须证明合同缺失
 
 先写 Given／When／Then／禁止副作用，再运行最小测试。有效 Red 必须因为当前 Stage 的合同尚未满足而失败，不得来自拼写错误、错误路径、环境缺失或故意破坏既有代码。
 
 Stage 0 使用文档与静态合同；后续 Engine Stage 优先使用纯 JVM reducer、几何、布局、事务与恢复测试。Renderer、Android Adapter、Pager、设备和性能测试只能在 Master 指定的 Stage 进入 Gate。
+
+Stage 2.5 是 Stage 3 的强制前置：先取得合法 capture、完成 scenario-specific geometry/motion measurement sets，并把状态经人工审核提升到 `HUMAN_REVIEWED`。缺少 `APPROVED` review 或 measurement hash 不得进入 geometry 实现。
 
 ## 3. Green 只覆盖当前 Stage
 
@@ -71,6 +73,6 @@ AWAITING HUMAN REVIEW BEFORE NEXT STAGE.
 
 ## English translation
 
-Status is `ACTIVE`. The Launcher Shell Engine Master Spec is the sole stage-order authority; older requirements and Slice 1–14 evidence are archived. Work proceeds one stage at a time through baseline freeze, meaningful Red, minimum Green, refactor, complete gate, commit, report, and mandatory stop for human review. Direct owner corrections such as the starting SHA are recorded separately without editing the imported Master text.
+Status is `ACTIVE`. The Launcher Shell Engine Master Spec is the sole stage-order authority; older requirements and Slice 1–14 evidence are archived. Work proceeds one stage at a time through baseline freeze, meaningful Red, minimum Green, refactor, complete gate, commit, report, and mandatory stop for human review. Direct owner corrections are versioned in the Master and baseline lock while retaining the previous specification hash. Stage 2.5 must acquire lawful evidence and reach a hash-bound `HUMAN_REVIEWED` approval before Stage 3 geometry can begin.
 
 Tests enter only in the stage that owns them: static contracts, pure JVM engine behavior, renderer components, real-Activity platform behavior, and finally macrobenchmark/physical hardware. Missing measurements remain `NOT_YET_MEASURED`; emulator evidence never becomes square-device proof. Marine capabilities remain prohibited until the Launcher Engine definition of done is reviewed. Every report ends with `STOPPED AT STAGE GATE.` and `AWAITING HUMAN REVIEW BEFORE NEXT STAGE.`

@@ -5,7 +5,11 @@
 
 ```text
 NORMATIVE / 施工主文档
+version: 1.1
+previous master SHA-256: f2a13be01ea836652d82f64a3f6b492df87dea4ad0f3d1c36c9faf84f869a4f0
 ```
+
+v1.1 在 Stage 0 尚未人工批准时修正基线与 Reference 合同：实际施工起点使用仓库所有者明确指定的最新实现提交，并在 Stage 2 与 Stage 3 之间加入强制 WP8 Reference Acquisition & Human Approval Gate。此前 v1.0 字节哈希保留在上方和 Stage 0 `BASELINE_LOCK.json`，不得静默丢失来源链。
 
 本文件取代此前分散的：
 
@@ -25,9 +29,13 @@ Codex 后续必须按本文件的阶段顺序施工，不得一次跨越多个�
 
 ```text
 https://github.com/ohkuku/yokuli_marine_shell
-branch: codex/chart-first-foundation
-reviewed HEAD: 943d85276e4a042092f87090aa0d23da9a7cbbc6
+master reviewed HEAD: 943d85276e4a042092f87090aa0d23da9a7cbbc6
+execution branch: codex/launcher-engine
+owner-selected Stage 0 starting HEAD: ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7
+initial Stage 0 ending HEAD: 98121412893d5331b22d4327463794993a4a4eff
 ```
+
+`943d852…` 是原 Master 审阅快照；仓库所有者随后明确要求从当时最新提交 `ca84ef9…` 开始。该覆盖及其原因必须由 Stage 0 baseline lock 与 reconciliation 共同记录，提前存在的实现不得自动算作后续 Stage Gate 已通过。
 
 ## 当前已经存在且可以保留的基础
 
@@ -2292,6 +2300,9 @@ Codex 必须一阶段一阶段执行。
 建立 docs/reference/wp8
 建立 measurement schema
 建立 golden screenshot 输出目录
+建立 baseline lock 与 pre-existing implementation reconciliation
+使用真实 Draft 2020-12 validator 验证正反 fixtures
+输出完整 Stage 0 report
 ```
 
 ### 不改
@@ -2307,13 +2318,15 @@ Google Map
 ```text
 文档可追踪
 reference schema 可验证
+baseline reconciliation 完整
+Stage 0 report 明确停止并等待人工审核
 CI 仍绿
 ```
 
 ### 提交
 
 ```text
-docs(shell): lock launcher-engine and wp8 reference contract
+docs(shell): correct stage0 reference and baseline contracts
 ```
 
 ---
@@ -2391,6 +2404,44 @@ refactor(shell): extract app-agnostic launcher engine contracts
 
 ---
 
+## Stage 2.5 — WP8 Reference Acquisition & Human Approval
+
+### 目标
+
+在任何 WP8 几何、拖拽、分页或转场实现成为规范前，取得合法、可追溯且由人工批准的真实 Reference 证据。
+
+### 施工
+
+```text
+采集合法 WP8 截图与视频
+为每个 capture 记录路径、SHA-256、字节数、MIME、尺寸、来源与所有权/许可
+按 scenario 建立 geometry 与 motion measurementSets
+直接操控场景同时记录 input timeline 与 visual samples
+计算 measurementSets canonical JSON SHA-256
+完成 reviewer、review time、decision、notes 与 approved profile revision
+```
+
+### Gate
+
+```text
+WP8_REFERENCE_MEASUREMENTS.json 通过 Draft 2020-12 schema
+所有 capture 内容哈希与仓库文件一致
+核心 geometry 和 motion scenario 均有真实证据
+review decision = APPROVED
+measurement status = HUMAN_REVIEWED
+reviewedMeasurementHash 与 measurementSets canonical JSON 一致
+```
+
+没有上述人工审核结果，必须停止；不得进入 Stage 3，也不得用当前渲染器、fixture、估算比例或视觉印象补位。
+
+### 提交
+
+```text
+docs(shell): approve wp8 reference evidence for geometry
+```
+
+---
+
 ## Stage 3 — WP Geometry & Start Document
 
 ### 目标
@@ -2412,6 +2463,9 @@ refactor(shell): extract app-agnostic launcher engine contracts
 ### Gate
 
 ```text
+WP8 reference measurement status = HUMAN_REVIEWED
+review decision = APPROVED
+reviewed measurement hash 已验证
 几何公式 Unit 通过
 320×320 / 360×360 bounds 通过
 布局可表示空白
@@ -2904,20 +2958,19 @@ Stage 0
 
 不得自动执行 Stage 1。
 
-具体任务：
+v1.1 的首次执行指令已由仓库所有者修正；Stage 0 correction 只执行：
 
 ```text
-1. 从 943d85276e4a042092f87090aa0d23da9a7cbbc6 创建 codex/launcher-engine。
-2. 将本文件保存为 docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md。
-3. 建立 docs/reference/wp8/README.md。
-4. 建立 WP8_REFERENCE_MEASUREMENTS.schema.json。
-5. 建立 screenshot/golden artifact 目录合同。
-6. 增加 CI 检查，确保主规格和 reference schema 存在。
-7. 不修改当前 UI、Registry、Google Maps 或 Feature 行为。
-8. 提交：
-   docs(shell): lock launcher-engine and wp8 reference contract
-9. 运行 CI。
-10. 输出 Stage 0 报告并停止。
+1. 从当前 codex/launcher-engine HEAD 98121412893d5331b22d4327463794993a4a4eff 纠正 Stage 0。
+2. 记录 master reviewed SHA、实际 starting SHA、initial Stage 0 ending SHA、Master 新旧哈希与覆盖理由。
+3. 对账所有提前存在的 Shell Engine 候选实现，不得提前批准后续 Stage。
+4. 重建状态相关、内容寻址、可人工签核的 WP8 measurement schema 与正反 fixtures。
+5. 在 CI 使用真实 Draft 2020-12 validator。
+6. 插入 Stage 2.5 人工 Reference Gate；只在 Stage 2 完成人工审核后执行，未批准不得进入 Stage 3。
+7. 不修改当前 UI、Registry、Google Maps、Feature、Shell Engine 生产代码或海事行为。
+8. 提交：docs(shell): correct stage0 reference and baseline contracts
+9. 运行全部 CI。
+10. 输出完整 Stage 0 报告并停止，不得执行 Stage 1。
 ```
 
 ---
