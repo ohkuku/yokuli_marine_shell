@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "stage": 6,
+  "name": "Custom Spatial Grid",
+  "branch": "codex/launcher-engine-batch-b",
+  "startingSha": "0b39797a1cffb387e78f1ee4fbf0b5607d90af2a",
+  "requiredCompletedStage": "Interactive Start / All Apps Pager",
+  "scope": "Custom Spatial Grid, Occupancy, and Local Collision",
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

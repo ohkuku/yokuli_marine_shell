@@ -396,3 +396,13 @@ Seven contract tests first failed on the absent Stage 4 architecture and evidenc
 ### English translation — Stage 5
 
 Six contracts first fail on the fixed-distance swipe implementation and missing evidence. Green installs a Foundation-backed direct-manipulation pager, synchronizes settled pages with the Engine, and disables paging during edit mode. Two compile-time API mistakes were corrected by narrow reruns. No unobserved WP8 fling or press constants are introduced.
+
+## Stage 6 — Custom Spatial Grid
+
+6 项合同先在缺少 occupancy/solver/custom Layout/JVM stories/report/CI gate 时进入 Red。Green 新增显式占用索引、只处理直接冲突的确定性 solver，以及从 Engine `StartDocument` 渲染的像素对齐 Layout。提案通过独立 `proposedDocument` 驱动，浮动项仍直接跟手，邻居只在 graphics layer 移动，提交仍由 Stage 4 transaction 完成。
+
+窄回归第一次找出错误的 Compose Constraints API，并证明 60 项测试原先对“释放出的原位置”写了错误预期；分别修正实现 API 和测试期望后，引擎测试与 desktop 编译通过。测试同时锁定未受影响项坐标、用户空白、文档顺序和重复求解一致性。
+
+### English translation — Stage 6
+
+Six contracts begin red while occupancy, collision solving, the custom renderer, JVM stories, evidence, and CI gate are absent. Green adds explicit cell lookup, deterministic local collision resolution, and a pixel-snapped Compose Layout driven by StartDocument plus a transient proposed document. Narrow tests caught one invalid Constraints API call and corrected a mistaken test assumption about the moving tile's newly freed cell. Unrelated coordinates, intentional whitespace, placement order, and repeatability are now locked.

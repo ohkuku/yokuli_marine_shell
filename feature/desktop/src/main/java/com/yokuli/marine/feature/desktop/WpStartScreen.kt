@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,7 +24,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -41,7 +40,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpText
@@ -54,6 +52,8 @@ import com.yokuli.shell.engine.geometry.StartViewport
 import com.yokuli.shell.engine.interaction.StartInteractionState
 import com.yokuli.shell.engine.layout.StartLayoutEditor
 import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.StartDocument
+import com.yokuli.shell.contract.TileInstanceId
 import kotlin.math.roundToInt
 
 @Composable
@@ -65,9 +65,14 @@ fun YokuliStartScreen(
     val colors = LocalWpTheme.current
     val byId = remember(state.entries) { state.entries.associateBy { it.descriptor.entryId } }
     var interaction: StartInteractionState by remember { mutableStateOf(StartInteractionState.Idle) }
+    var proposedDocument: StartDocument? by remember { mutableStateOf(null) }
+    var floatingTileId: TileInstanceId? by remember { mutableStateOf(null) }
     val selectedTile = (interaction as? StartInteractionState.EditIdle)?.selectedTile
     val editing = interaction is StartInteractionState.EditIdle
     LaunchedEffect(editing) { onEditModeChanged(editing) }
+    LaunchedEffect(state.document) {
+        if (proposedDocument != null) proposedDocument = null
+    }
     val scroll = rememberScrollState()
     val density = LocalDensity.current
 
@@ -92,7 +97,7 @@ fun YokuliStartScreen(
         val cell = with(density) { geometry.smallCellPx.toDp() }
         val seam = with(density) { geometry.seamPx.toDp() }
         val pitch = cell + seam
-        val rows = state.document.placements.maxOfOrNull { it.cell.row + it.size.rows } ?: 0
+        val rows = (proposedDocument ?: state.document).placements.maxOfOrNull { it.cell.row + it.size.rows } ?: 0
         val gridHeight = if (rows == 0) 0.dp else cell * rows + seam * (rows - 1)
         Column(
             Modifier.fillMaxHeight().verticalScroll(scroll)
@@ -104,56 +109,58 @@ fun YokuliStartScreen(
                     },
                 ).testTag("start-grid"),
         ) {
-            Box(Modifier.fillMaxWidth().height(gridHeight)) {
-                state.document.placements.forEach { placement ->
-                    key(placement.tileId.value) {
-                        val entry = byId[placement.entryId]
-                        if (entry != null) {
-                            WpTile(
-                                entry = entry,
-                                width = cell * placement.size.columns + seam * (placement.size.columns - 1),
-                                height = cell * placement.size.rows + seam * (placement.size.rows - 1),
-                                editing = editing,
-                                selected = selectedTile == placement.tileId,
-                                onClick = {
-                                    if (editing) {
-                                        interaction = StartInteractionState.EditIdle(placement.tileId)
-                                    } else {
-                                        interaction = StartInteractionState.Launching(placement.tileId, entry.descriptor.launchToken, 0f)
-                                        onAction(LauncherUiAction.Open(entry.descriptor.launchToken))
-                                    }
-                                },
-                                onLongClick = { interaction = StartInteractionState.EditIdle(placement.tileId) },
-                                onUnpin = {
-                                    StartLayoutEditor.unpin(state.document, placement.tileId)?.let {
-                                        onAction(LauncherUiAction.ProposeLayout(it))
-                                    }
-                                    interaction = StartInteractionState.Idle
-                                },
-                                onResize = {
-                                    StartLayoutEditor.resize(
-                                        state.document,
-                                        placement.tileId,
-                                        state.entries.map { it.descriptor },
-                                    )?.let { onAction(LauncherUiAction.ProposeLayout(it)) }
-                                },
-                                onMove = { delta ->
-                                    val pitchPx = with(density) { pitch.toPx() }
-                                    val target = GridCell(
-                                        column = (placement.cell.column + delta.x / pitchPx).roundToInt(),
-                                        row = (placement.cell.row + delta.y / pitchPx).roundToInt(),
-                                    )
-                                    StartLayoutEditor.move(
-                                        state.document,
-                                        placement.tileId,
-                                        target,
-                                        state.entries.map { it.descriptor },
-                                    )?.let { onAction(LauncherUiAction.ProposeLayout(it)) }
-                                },
-                                modifier = Modifier.offset(x = pitch * placement.cell.column, y = pitch * placement.cell.row),
-                            )
-                        }
-                    }
+            WpSpatialStartLayout(
+                document = state.document,
+                proposedDocument = proposedDocument,
+                geometry = geometry,
+                floatingTileId = floatingTileId,
+                modifier = Modifier.fillMaxWidth().height(gridHeight),
+            ) { placement ->
+                val entry = byId[placement.entryId]
+                if (entry != null) {
+                    WpTile(
+                        entry = entry,
+                        width = cell * placement.size.columns + seam * (placement.size.columns - 1),
+                        height = cell * placement.size.rows + seam * (placement.size.rows - 1),
+                        editing = editing,
+                        selected = selectedTile == placement.tileId,
+                        onClick = {
+                            if (editing) {
+                                interaction = StartInteractionState.EditIdle(placement.tileId)
+                            } else {
+                                interaction = StartInteractionState.Launching(placement.tileId, entry.descriptor.launchToken, 0f)
+                                onAction(LauncherUiAction.Open(entry.descriptor.launchToken))
+                            }
+                        },
+                        onLongClick = { interaction = StartInteractionState.EditIdle(placement.tileId) },
+                        onUnpin = {
+                            StartLayoutEditor.unpin(state.document, placement.tileId)?.let {
+                                onAction(LauncherUiAction.ProposeLayout(it))
+                            }
+                            interaction = StartInteractionState.Idle
+                        },
+                        onResize = {
+                            StartLayoutEditor.resize(
+                                state.document,
+                                placement.tileId,
+                                state.entries.map { it.descriptor },
+                            )?.let { onAction(LauncherUiAction.ProposeLayout(it)) }
+                        },
+                        onMoveStart = { floatingTileId = placement.tileId },
+                        onMovePreview = { delta ->
+                            proposedDocument = moveProposal(state, placement, delta, pitch, density)?.after
+                        },
+                        onMoveCommit = { delta ->
+                            val proposal = moveProposal(state, placement, delta, pitch, density)
+                            proposedDocument = proposal?.after
+                            floatingTileId = null
+                            proposal?.let { onAction(LauncherUiAction.ProposeLayout(it)) }
+                        },
+                        onMoveCancel = {
+                            floatingTileId = null
+                            proposedDocument = null
+                        },
+                    )
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 3.dp), horizontalArrangement = Arrangement.End) {
@@ -183,7 +190,10 @@ private fun WpTile(
     onLongClick: () -> Unit,
     onUnpin: () -> Unit,
     onResize: () -> Unit,
-    onMove: (Offset) -> Unit,
+    onMoveStart: () -> Unit,
+    onMovePreview: (Offset) -> Unit,
+    onMoveCommit: (Offset) -> Unit,
+    onMoveCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalWpTheme.current
@@ -193,16 +203,24 @@ private fun WpTile(
     val dragModifier = if (editing && selected) {
         Modifier.pointerInput(Unit) {
             detectDragGestures(
-                onDragEnd = { onMove(dragOffset); dragOffset = Offset.Zero },
-                onDragCancel = { dragOffset = Offset.Zero },
-                onDrag = { change, amount -> change.consume(); dragOffset += amount },
+                onDragStart = { onMoveStart() },
+                onDragEnd = { onMoveCommit(dragOffset); dragOffset = Offset.Zero },
+                onDragCancel = { onMoveCancel(); dragOffset = Offset.Zero },
+                onDrag = { change, amount ->
+                    change.consume()
+                    dragOffset += amount
+                    onMovePreview(dragOffset)
+                },
             )
         }
     } else Modifier
     val isSmall = width < 100.dp && height < 100.dp
     val tileInset = if (isSmall) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset
     Box(
-        modifier.offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
+        modifier.graphicsLayer {
+            translationX = dragOffset.x
+            translationY = dragOffset.y
+        }
             .width(width).height(height).scale(scale).alpha(if (editing && !selected) .55f else 1f)
             .testTag("tile-${entry.descriptor.entryId.value}")
             .semantics {
@@ -228,6 +246,22 @@ private fun WpTile(
         if (editing && selected) WpTileEditOverlay(onUnpin, onResize)
     }
 }
+
+private fun moveProposal(
+    state: LauncherUiState,
+    placement: com.yokuli.shell.engine.layout.TilePlacement,
+    delta: Offset,
+    pitch: Dp,
+    density: androidx.compose.ui.unit.Density,
+) = StartLayoutEditor.move(
+    state.document,
+    placement.tileId,
+    GridCell(
+        column = (placement.cell.column + delta.x / with(density) { pitch.toPx() }).roundToInt(),
+        row = (placement.cell.row + delta.y / with(density) { pitch.toPx() }).roundToInt(),
+    ),
+    state.entries.map { it.descriptor },
+)
 
 @Composable
 private fun WpTileEditOverlay(onUnpin: () -> Unit, onResize: () -> Unit) {

@@ -4,6 +4,12 @@
 
 ### 中文（主文）
 
+#### Stage 6 — Custom Spatial Grid
+
+- 新增显式 cell 占用索引和局部确定性碰撞求解；移动/缩放只影响直接碰撞项，不压缩空白、不改无关坐标。
+- Start 改用像素对齐的自定义 Compose `Layout`，提交前以独立 `proposedDocument` 预览，邻居只做视觉层平移。
+- 新增占用、局部性、空白保持和 60 个合成磁贴稳定性测试；越界提案明确拒绝，不隐式 clamp。
+
 #### Stage 5 — Interactive Start / All Apps Pager
 
 - 删除固定距离、松手后才换页的 `SwipeSurface`，改为 Foundation `HorizontalPager` 支撑的 `InteractiveLauncherPager`。

@@ -10,6 +10,8 @@ import com.yokuli.shell.engine.geometry.WpReferenceProfiles
  * English: This keeps the existing UI working in Stage 3; Stage 4 moves commit, cancel, and undo into the reducer.
  */
 object StartLayoutEditor {
+    private val solver: TileCollisionSolver = LocalTileCollisionSolver()
+
     fun resize(
         document: StartDocument,
         tileId: TileInstanceId,
@@ -19,12 +21,11 @@ object StartLayoutEditor {
         val entry = entries.firstOrNull { it.entryId == current.entryId } ?: return null
         val cycle = entry.supportedSizes
         val next = cycle[(cycle.indexOf(current.size) + 1).mod(cycle.size)]
-        val proposed = document.copy(
-            placements = document.placements.map { if (it.tileId == tileId) it.copy(size = next) else it },
-        )
         val profile = WpReferenceProfiles.require(document.profileId)
-        val repaired = StartDocumentRepair.repair(proposed, entries, document, profile).document
-        return transaction(document, repaired, LayoutChangeReason.RESIZE)
+        return when (val result = solver.propose(document, tileId, current.cell, next, profile.layoutPolicy)) {
+            is SpatialLayoutProposal.Accepted -> result.proposal
+            is SpatialLayoutProposal.Rejected -> null
+        }
     }
 
     fun unpin(document: StartDocument, tileId: TileInstanceId): LayoutProposal? {
@@ -70,14 +71,10 @@ object StartLayoutEditor {
         if (target.column < 0 || target.row < 0 || target.column + moving.size.columns > profile.columnCount) {
             return null
         }
-        val proposed = document.copy(
-            placements = listOf(moving.copy(cell = target)) + document.placements.filterNot { it.tileId == tileId },
-        )
-        val repaired = StartDocumentRepair.repair(proposed, entries, document, profile).document
-        val ordered = document.placements.mapNotNull { original ->
-            repaired.placements.firstOrNull { it.tileId == original.tileId }
+        return when (val result = solver.propose(document, tileId, target, moving.size, profile.layoutPolicy)) {
+            is SpatialLayoutProposal.Accepted -> result.proposal
+            is SpatialLayoutProposal.Rejected -> null
         }
-        return transaction(document, repaired.copy(placements = ordered), LayoutChangeReason.MOVE)
     }
 
     private fun transaction(before: StartDocument, after: StartDocument, reason: LayoutChangeReason) =
