@@ -57,8 +57,8 @@ fun productionLauncherUiState(
                 title = stringResource(R.string.launcher_chart),
                 chineseIndex = 'H',
                 icon = MarineIconKind.CHART,
-                headline = stringResource(if (mapConfigured) R.string.tile_chart_ready else R.string.tile_chart_demo),
-                detail = stringResource(if (mapConfigured) R.string.tile_chart_browse else R.string.tile_chart_unconfigured),
+                headline = stringResource(if (mapConfigured) R.string.tile_chart_configured else R.string.tile_chart_demo),
+                detail = stringResource(if (mapConfigured) R.string.tile_chart_browse_only else R.string.tile_chart_unconfigured),
             ),
             LauncherEntryUiState(
                 descriptor = settings,

@@ -41,6 +41,7 @@ grep -Fq 'LAUNCHER_STAGE0_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 0 
 grep -Fq 'id: launcher_stage1_contract' "$android" || fail 'Launcher Stage 1 needs an independent named CI gate'
 grep -Fq 'python3 .github/scripts/test_launcher_stage1_contract.py' "$android" || fail 'Launcher Stage 1 static product-surface contract must run in CI'
 grep -Fq 'bash .github/scripts/test-release-product-surface.sh' "$android" || fail 'Launcher Stage 1 must inspect the assembled release APK'
+grep -Fq 'assembleStandaloneRelease assembleHomeRelease' "$android" || fail 'Launcher Stage 1 must assemble both Release flavors for inspection'
 grep -Fq 'LAUNCHER_STAGE1_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 1 result must participate in final enforcement'
 grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$android" || fail 'debug artifacts must consume the repository Maps key when configured'
 grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$release" || fail 'release artifacts must consume the repository Maps key'

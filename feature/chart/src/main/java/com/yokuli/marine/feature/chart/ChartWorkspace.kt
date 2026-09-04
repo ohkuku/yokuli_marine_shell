@@ -52,9 +52,9 @@ fun ChartWorkspace(
             Spacer(Modifier.weight(1f))
             if (state.mapConfigured) {
                 ChartTruthBanner(
-                    headline = stringResource(R.string.chart_map_ready),
-                    detail = stringResource(R.string.chart_position_not_enabled),
-                    modifier = Modifier.testTag("chart-map-ready"),
+                    headline = stringResource(R.string.chart_map_configured),
+                    detail = stringResource(R.string.chart_browse_only),
+                    modifier = Modifier.testTag("chart-map-configured"),
                 )
             } else {
                 Column(

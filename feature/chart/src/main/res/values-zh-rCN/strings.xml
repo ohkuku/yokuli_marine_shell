@@ -4,8 +4,8 @@
     <string name="chart_context_demo">浏览 · 演示地图</string>
     <string name="chart_demo_label">演示地图</string>
     <string name="chart_map_unconfigured">地图未配置</string>
-    <string name="chart_map_unconfigured_detail">当前仅显示无船位、无路线的演示背景。</string>
+    <string name="chart_map_unconfigured_detail">当前显示演示背景。</string>
     <string name="chart_open_settings">打开地图设置</string>
-    <string name="chart_map_ready">地图已就绪</string>
-    <string name="chart_position_not_enabled">船位尚未启用</string>
+    <string name="chart_map_configured">地图已配置</string>
+    <string name="chart_browse_only">仅浏览</string>
 </resources>

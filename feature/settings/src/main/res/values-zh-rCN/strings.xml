@@ -5,7 +5,7 @@
     <string name="section_start_screen">开始屏幕</string>
     <string name="section_map">地图</string>
     <string name="section_language">语言</string>
-    <string name="section_about">关于与诊断</string>
+    <string name="section_about">关于</string>
     <string name="setting_background">背景</string>
     <string name="setting_accent">主题色</string>
     <string name="setting_language">应用语言</string>
@@ -31,11 +31,11 @@
     <string name="open_shell_lab">打开 Shell Lab</string>
     <string name="map_provider">地图来源</string>
     <string name="map_google_normal">Google 地图 · 标准图层</string>
-    <string name="map_ready">已配置</string>
+    <string name="map_configured">已配置</string>
     <string name="map_not_configured">地图未配置</string>
-    <string name="map_ready_detail">Android 地图密钥可用。当前阶段只提供地图浏览，不生成船位或路线。</string>
-    <string name="map_not_configured_detail">缺少 Android 地图密钥。海图页会永久标记为演示地图，并且不显示虚构船位。</string>
-    <string name="map_attribution">地图内容与商标归其提供方所有；离线海图导入将在后续阶段实现。</string>
+    <string name="map_configured_detail">已配置 Android 地图密钥。此状态仅表示提供了非占位密钥，不表示 API 授权、网络、账单、应用限制或图块加载已经验证。</string>
+    <string name="map_not_configured_detail">未配置 Android 地图密钥。海图页显示演示背景。</string>
+    <string name="map_attribution">地图内容与商标归其提供方所有。</string>
     <string name="about_summary">Yokuli OS %1$s</string>
     <string name="about_product">产品</string>
     <string name="product_name">Yokuli OS</string>
@@ -44,5 +44,5 @@
     <string name="about_revision">代码版本</string>
     <string name="about_map">地图</string>
     <string name="about_shell_document">桌面文档</string>
-    <string name="about_diagnostics_scope">这里只呈现真实构建与配置状态。连接、NMEA、设备与安全诊断尚未实现，因此不会显示模拟结果。</string>
+    <string name="about_scope">显示当前构建、地图配置和桌面文档信息。</string>
 </resources>

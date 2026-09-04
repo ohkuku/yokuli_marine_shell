@@ -160,3 +160,45 @@ Compose/API 34 与 API 36 等待本 Stage 提交后的 hosted CI；Golden、benc
 ## English translation — Stage 1
 
 Stage 1 starts exactly from the annotated Stage 0 approval tag and is limited to Product Surface Reduction. Its eight-test Red immediately passed five candidate product checks and failed three missing audit/report, release-binary, and CI-gate contracts. Green passes all 8 Stage 1 contracts, all 44 Python contracts, the Bash gates, release-APK inspection, unit tests, lint, both debug APKs, the standalone release audit APK, and AndroidTest APK assembly. Hosted emulator results remain pending until push. No compliant production behavior is rewritten, and Stage 2 is not started.
+
+## Stage 1 correction — Release truthfulness
+
+### Contract
+
+Given `GOOGLE_MAPS_CONFIGURED` 只表示提供了非占位密钥，When 修正 Stage 1，Then Release UI 只能报告“地图已配置 / MAP CONFIGURED”和“仅浏览 / BROWSE ONLY”，不得出现船位状态、未来功能或不存在的诊断暗示；And standalone/HOME 两个 Release APK 都必须包含 ShellActivity、Chart、Settings，并排除 Shell Lab 与旧 feature；And 不得修改 Engine、手势、持久化、reducer、海事能力或 Stage 2。
+
+### Red
+
+从 `8914fc81034de250ba7870a019549d9521c581a3` 先扩充 Stage 1 contract，第一次运行：
+
+```text
+Ran 9 tests
+FAILED (failures=3)
+```
+
+失败精确来自 production 用户可见资源仍含 readiness/position/roadmap 文案、CI 未构建和检查 Home Release、Stage 1 报告未记录 correction scope。
+
+### Green
+
+Green 仅修正文案及资源标识、双 Release APK 审计和对应文档。实际本地 Gate：
+
+```text
+/private/tmp/yokuli-stage0-schema-venv/bin/python .github/scripts/test_launcher_stage0_contract.py
+                                                                                PASS (10/10)
+/private/tmp/yokuli-stage0-schema-venv/bin/python .github/scripts/test_launcher_stage1_contract.py
+                                                                                PASS (9/9)
+/private/tmp/yokuli-stage0-schema-venv/bin/python -m unittest discover .github/scripts 'test_*.py'
+                                                                                PASS (45/45)
+bash .github/scripts/test-ci-contract.sh                                         PASS
+bash .github/scripts/test-resolve-release-metadata.sh                            PASS
+bash .github/scripts/test-secrets-manager.sh                                     PASS
+bash .github/scripts/test-release-product-surface.sh                             PASS (standalone + HOME)
+./gradlew --no-daemon test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug assembleStandaloneRelease assembleHomeRelease assembleStandaloneDebugAndroidTest
+                                                                                PASS (BUILD SUCCESSFUL; 952 tasks)
+```
+
+提交后的 API 34/API 36 hosted 结果在最终人工交付中记录；报告保持 `PENDING_HUMAN_REVIEW`，不自行批准 Stage 1。
+
+## English translation — Stage 1 correction
+
+The correction starts from `8914fc8…`. Its nine-test Red fails exactly three missing truthfulness-copy, HOME release-audit, and correction-report contracts. Green passes Stage 0 (10/10), Stage 1 (9/9), all Python contracts (45/45), all Bash gates, unit/lint/assemblies (952 Gradle tasks), and binary inspection of both Release flavors. Stage 2 remains stopped.

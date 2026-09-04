@@ -4,6 +4,13 @@
 
 ### 中文（主文）
 
+#### Stage 1 correction — Release truthfulness
+
+- 把 `GOOGLE_MAPS_CONFIGURED` 的用户文案从“地图已就绪”收紧为“地图已配置”，明确它只表示提供了非占位密钥，不证明授权、网络、账单、应用限制或图块加载。
+- Release UI 统一使用“仅浏览”，移除船位状态、离线导入路线图、未实现诊断清单，并把“关于与诊断”改为“关于”。
+- Stage 1 contract 只扫描 production `strings.xml` 的用户可见值，拒绝 readiness、position 与 future-feature 文案。
+- CI 同时构建、检查 standalone/HOME 两个 Release APK；二者包含 Chart + Settings 并排除 Shell Lab 与旧 feature，HOME 只额外要求 HOME/DEFAULT 启动类别。
+
 #### Stage 1 — Product Surface Reduction
 
 - 从 annotated approval tag `launcher-engine-stage0-approved-v1.1`／`16b0e5c…` 开始，重新审计 `ca84ef9…` 已存在的候选结果，不继承其完成结论。
@@ -74,6 +81,8 @@
 - GPS、NMEA、Anchor、Navigation、Trip、Survey、Sonar、OpenSeaMap 和本地海图导入仍未接入生产 runtime。
 
 ### English translation
+
+The Stage 1 correction replaces map-readiness claims with configuration-only wording, removes vessel-position state and future-feature/diagnostics copy, and renames the section to About. The resource contract scans only production user-visible strings. CI now assembles and inspects both standalone and HOME release APKs, with HOME adding only its expected HOME/DEFAULT launch categories. No engine, gesture, persistence, reducer, marine capability, or Stage 2 contract changes are included.
 
 Stage 1 starts from the immutable Stage 0 approval tag and revalidates the earlier candidate rather than inheriting its status. New contracts lock production catalog, Start, and All Apps to exactly Chart and Settings, keep Chart Browse-only, reject known placeholder marine claims, and confirm removed modules have no active source or dependency. API 34 checks exactly two All Apps entries. CI assembles a standalone release audit APK and uses `apkanalyzer` to prove that Chart and Settings are present while `ShellLabActivity` is absent. Production behavior is unchanged because the candidate already passes the product-surface gate; Stage 2 is not started.
 

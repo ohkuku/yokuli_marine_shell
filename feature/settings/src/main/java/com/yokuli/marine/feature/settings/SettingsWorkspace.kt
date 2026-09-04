@@ -80,7 +80,7 @@ private fun SettingsOverview(state: SettingsUiState, onOpen: (SettingsSection) -
         SettingsDestination(
             SettingsSection.MAP,
             sectionLabel(SettingsSection.MAP),
-            stringResource(if (state.mapConfigured) R.string.map_ready else R.string.map_not_configured),
+            stringResource(if (state.mapConfigured) R.string.map_configured else R.string.map_not_configured),
         ),
         SettingsDestination(
             SettingsSection.LANGUAGE,
@@ -180,7 +180,7 @@ private fun MapSettings(state: SettingsUiState) {
         SettingsLabel(stringResource(R.string.map_provider))
         WpText(stringResource(R.string.map_google_normal), 21, weight = FontWeight.Light)
         WpText(
-            stringResource(if (state.mapConfigured) R.string.map_ready_detail else R.string.map_not_configured_detail),
+            stringResource(if (state.mapConfigured) R.string.map_configured_detail else R.string.map_not_configured_detail),
             12,
             color = LocalWpTheme.current.muted,
             modifier = Modifier.padding(top = 6.dp),
@@ -213,9 +213,9 @@ private fun AboutSettings(state: SettingsUiState) {
         AboutRow(stringResource(R.string.about_version), state.versionName)
         AboutRow(stringResource(R.string.about_variant), state.buildVariant)
         AboutRow(stringResource(R.string.about_revision), state.gitSha.take(12))
-        AboutRow(stringResource(R.string.about_map), stringResource(if (state.mapConfigured) R.string.map_ready else R.string.map_not_configured))
+        AboutRow(stringResource(R.string.about_map), stringResource(if (state.mapConfigured) R.string.map_configured else R.string.map_not_configured))
         AboutRow(stringResource(R.string.about_shell_document), "v${state.desktopDocumentVersion}")
-        WpText(stringResource(R.string.about_diagnostics_scope), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 22.dp))
+        WpText(stringResource(R.string.about_scope), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 22.dp))
     }
 }
 

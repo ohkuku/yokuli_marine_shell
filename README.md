@@ -20,7 +20,7 @@ approval: PENDING_HUMAN_REVIEW
 
 Stage 0 已由仓库所有者批准：annotated tag `launcher-engine-stage0-approved-v1.1` 指向 `16b0e5c…`，批准 evidence 是 GitHub Actions run `33854599910`。Stage 1 必须且已经从这个不可混淆的批准点开始，只审计 Product Surface Reduction。
 
-`ca84ef9` 已提前包含 Chart + Settings 候选产品面，但不继承为 Stage 1 批准。本阶段重新用静态合同、API 34 精确节点数和 standalone release APK 二进制检查证明：Release Start 与 All Apps 恰好只有 Chart + Settings，Chart 只开放 Browse，没有 Coming Soon 或假海事值，Shell Lab 只在 debug。候选 UI 已满足 Gate，因此不为制造 diff 重写生产行为。
+`ca84ef9` 已提前包含 Chart + Settings 候选产品面，但不继承为 Stage 1 批准。本阶段重新用静态合同、API 34 精确节点数和 standalone/HOME 两个 release APK 二进制检查证明：Release Start 与 All Apps 恰好只有 Chart + Settings，Chart 只开放 Browse，没有 Coming Soon、未来路线图、船位状态或假海事值，Shell Lab 只在 debug。地图只报告是否配置了非占位密钥，不宣称服务已验证或就绪。
 
 在 Shell Engine 全部完成人工验收前，禁止继续接入 GPS、NMEA、Anchor、Trip、Navigation、Survey、OpenSeaMap、MBTiles、AIS、Weather、Tide 或海事前台 Runtime。
 
@@ -54,4 +54,4 @@ bash .github/scripts/test-release-product-surface.sh
 
 Yokuli OS is currently constructing only an app-agnostic, verifiable, durable, high-frame-rate WP8 Classic-style Launcher Shell. The owner approved Stage 0 commit `16b0e5c…` with evidence run `33854599910`; annotated tag `launcher-engine-stage0-approved-v1.1` is the exact Stage 1 starting point.
 
-Stage 1 revalidates the pre-existing product-surface candidate instead of inheriting its result. Static contracts, the exact API 34 All Apps count, and release-APK binary inspection prove that release contains exactly Chart and Settings, Chart is Browse-only, placeholder marine values are absent, and Shell Lab remains debug-only. Stage 2 is not started. No marine capability may be added until the full Launcher Engine passes human review.
+Stage 1 revalidates the pre-existing product-surface candidate instead of inheriting its result. Static contracts, the exact API 34 All Apps count, and binary inspection of both standalone and HOME release APKs prove that release contains exactly Chart and Settings, Chart is Browse-only, placeholder and roadmap copy are absent, and Shell Lab remains debug-only. Map state reports key configuration only, not operational readiness. Stage 2 is not started.

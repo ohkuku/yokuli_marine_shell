@@ -4,8 +4,8 @@
     <string name="chart_context_demo">browse · demo map</string>
     <string name="chart_demo_label">DEMO MAP</string>
     <string name="chart_map_unconfigured">MAP NOT CONFIGURED</string>
-    <string name="chart_map_unconfigured_detail">Only a demo background is shown; it contains no vessel or route.</string>
+    <string name="chart_map_unconfigured_detail">A demo background is shown.</string>
     <string name="chart_open_settings">open map settings</string>
-    <string name="chart_map_ready">MAP READY</string>
-    <string name="chart_position_not_enabled">VESSEL POSITION NOT ENABLED</string>
+    <string name="chart_map_configured">MAP CONFIGURED</string>
+    <string name="chart_browse_only">BROWSE ONLY</string>
 </resources>

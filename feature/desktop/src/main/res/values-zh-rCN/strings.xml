@@ -2,9 +2,9 @@
     <string name="launcher_chart">海图</string>
     <string name="launcher_settings">设置</string>
     <string name="page_apps">应用</string>
-    <string name="tile_chart_ready">地图已就绪</string>
+    <string name="tile_chart_configured">地图已配置</string>
     <string name="tile_chart_demo">演示地图</string>
-    <string name="tile_chart_browse">浏览 · 船位未启用</string>
+    <string name="tile_chart_browse_only">仅浏览</string>
     <string name="tile_chart_unconfigured">地图未配置</string>
     <string name="tile_settings_dark">深色</string>
     <string name="tile_settings_light">浅色</string>

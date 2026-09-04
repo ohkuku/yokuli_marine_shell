@@ -5,7 +5,7 @@
     <string name="section_start_screen">start screen</string>
     <string name="section_map">map</string>
     <string name="section_language">language</string>
-    <string name="section_about">about &amp; diagnostics</string>
+    <string name="section_about">about</string>
     <string name="setting_background">background</string>
     <string name="setting_accent">accent colour</string>
     <string name="setting_language">app language</string>
@@ -31,11 +31,11 @@
     <string name="open_shell_lab">open Shell Lab</string>
     <string name="map_provider">map source</string>
     <string name="map_google_normal">Google Maps · normal layer</string>
-    <string name="map_ready">configured</string>
+    <string name="map_configured">configured</string>
     <string name="map_not_configured">map not configured</string>
-    <string name="map_ready_detail">The Android Maps key is available. This phase provides browsing only; no vessel position or route is generated.</string>
-    <string name="map_not_configured_detail">The Android Maps key is missing. Chart stays labeled DEMO MAP and never shows a fictional vessel position.</string>
-    <string name="map_attribution">Map content and trademarks belong to their providers. Offline chart import is a later phase.</string>
+    <string name="map_configured_detail">An Android Maps key is configured. This only means a non-placeholder key was supplied; API authorization, network access, billing, app restrictions, and tile loading are not validated.</string>
+    <string name="map_not_configured_detail">No Android Maps key is configured. Chart shows a demo background.</string>
+    <string name="map_attribution">Map content and trademarks belong to their providers.</string>
     <string name="about_summary">Yokuli OS %1$s</string>
     <string name="about_product">product</string>
     <string name="product_name">Yokuli OS</string>
@@ -44,5 +44,5 @@
     <string name="about_revision">revision</string>
     <string name="about_map">map</string>
     <string name="about_shell_document">desktop document</string>
-    <string name="about_diagnostics_scope">Only real build and configuration state appears here. Connection, NMEA, device, and safety diagnostics are not implemented, so no simulated results are shown.</string>
+    <string name="about_scope">Shows current build, map configuration, and Start document facts.</string>
 </resources>

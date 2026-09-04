@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import re
 import unittest
+import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -129,6 +130,67 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
             self.assertNotIn(forbidden, text)
         self.assertNotRegex(text, r"\b(?:SOG|COG)\s*[:=]?\s*\d")
 
+    def test_release_user_visible_resources_are_current_and_truthful(self):
+        release_modules = (
+            "app-shell",
+            "feature/desktop",
+            "feature/chart",
+            "feature/settings",
+        )
+        visible_strings = []
+        for module in release_modules:
+            resource_root = ROOT / module / "src/main/res"
+            for path in resource_root.glob("values*/strings.xml"):
+                resources = ET.parse(path).getroot()
+                visible_strings.extend(
+                    "".join(entry.itertext())
+                    for entry in resources
+                    if entry.tag in {"string", "plurals", "string-array"}
+                )
+        text = "\n".join(visible_strings)
+        for forbidden in (
+            "MAP READY",
+            "地图已就绪",
+            "position disabled",
+            "VESSEL POSITION NOT ENABLED",
+            "船位未启用",
+            "船位尚未启用",
+            "将在后续阶段实现",
+            "尚未实现",
+            "later phase",
+            "not implemented",
+            "About & diagnostics",
+            "about & diagnostics",
+            "关于与诊断",
+        ):
+            self.assertNotIn(forbidden, text)
+        for required in (
+            "MAP CONFIGURED",
+            "地图已配置",
+            "BROWSE ONLY",
+            "仅浏览",
+            "Map content and trademarks belong to their providers.",
+            "地图内容与商标归其提供方所有。",
+            "Shows current build, map configuration, and Start document facts.",
+            "显示当前构建、地图配置和桌面文档信息。",
+        ):
+            self.assertIn(required, text)
+
+        settings_zh = ET.parse(
+            ROOT / "feature/settings/src/main/res/values/strings.xml"
+        ).getroot()
+        settings_en = ET.parse(
+            ROOT / "feature/settings/src/main/res/values-en/strings.xml"
+        ).getroot()
+        zh_detail = settings_zh.find("string[@name='map_configured_detail']")
+        en_detail = settings_en.find("string[@name='map_configured_detail']")
+        self.assertIsNotNone(zh_detail)
+        self.assertIsNotNone(en_detail)
+        self.assertIn("已配置 Android 地图密钥", zh_detail.text)
+        self.assertIn("不表示", zh_detail.text)
+        self.assertIn("An Android Maps key is configured", en_detail.text)
+        self.assertIn("not validated", en_detail.text)
+
     def test_shell_lab_is_debug_only_in_source_and_release_apk_gate(self):
         app = (ROOT / "app-shell/build.gradle.kts").read_text()
         workflow = (ROOT / ".github/workflows/android.yml").read_text()
@@ -138,6 +200,13 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
         self.assertNotIn('releaseImplementation(project(":feature:shell-lab"))', app)
         self.assertNotRegex(app, r"(?m)^\s*implementation\(project\(\":feature:shell-lab\"\)\)")
         self.assertTrue(apk_contract.is_file(), "missing release APK binary surface inspection")
+        apk_contract_text = apk_contract.read_text()
+        self.assertIn("assembleHomeRelease", workflow)
+        self.assertIn("app-shell-standalone-release-unsigned.apk", apk_contract_text)
+        self.assertIn("app-shell-home-release-unsigned.apk", apk_contract_text)
+        self.assertIn("android.intent.category.LAUNCHER", apk_contract_text)
+        self.assertIn("android.intent.category.HOME", apk_contract_text)
+        self.assertIn("android.intent.category.DEFAULT", apk_contract_text)
         self.assertIn("id: launcher_stage1_contract", workflow)
         self.assertIn("test_launcher_stage1_contract.py", workflow)
         self.assertIn("test-release-product-surface.sh", workflow)
@@ -163,6 +232,8 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
         for section in ("Baseline", "Scope", "Architecture", "Interaction", "Tests", "Hardware", "Stop"):
             self.assertIn(f"## {section}", report)
         self.assertIn("Stage 2: NOT STARTED", report)
+        self.assertIn("Stage 1 correction", report)
+        self.assertIn("both Release flavors", report)
         self.assertIn("PENDING_HUMAN_REVIEW", report)
         self.assertTrue(
             report.endswith(
