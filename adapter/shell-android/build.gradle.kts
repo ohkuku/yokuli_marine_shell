@@ -17,6 +17,7 @@ android {
 dependencies {
     api(project(":core:shell-contract"))
     api(project(":ui:shell-compose"))
+    implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
 }

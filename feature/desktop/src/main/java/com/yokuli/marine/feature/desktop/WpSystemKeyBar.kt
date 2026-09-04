@@ -46,6 +46,8 @@ import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.contract.ShellInput
+import com.yokuli.shell.contract.ShellSafeBands
+import com.yokuli.shell.contract.ShellWindowMetrics
 import com.yokuli.shell.engine.InternalAppTask
 
 private val DerivedVirtualKeyBarHeight = 54.dp
@@ -56,10 +58,24 @@ private val DerivedVirtualKeyBarHeight = 54.dp
  * there is deliberately no invented WP key-light or press animation.
  */
 @Composable
-fun WpSystemKeyBar(onInput: (ShellInput) -> Unit, modifier: Modifier = Modifier) {
+fun WpSystemKeyBar(
+    windowMetrics: ShellWindowMetrics,
+    onInput: (ShellInput) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val bands = ShellSafeBands.resolve(windowMetrics)
+    val density = windowMetrics.density.coerceAtLeast(1f)
+    val navigation = bands.navigation
     Row(
-        modifier.zIndex(1f).graphicsLayer().fillMaxWidth().height(DerivedVirtualKeyBarHeight)
-            .background(Color.Black).testTag("wp-system-key-bar"),
+        modifier.zIndex(1f).graphicsLayer().fillMaxWidth()
+            .padding(bottom = (bands.imeLiftPx / density).dp)
+            .height(DerivedVirtualKeyBarHeight + (navigation.bottom / density).dp)
+            .background(Color.Black).testTag("wp-system-key-bar")
+            .padding(
+                start = (navigation.left / density).dp,
+                end = (navigation.right / density).dp,
+                bottom = (navigation.bottom / density).dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SystemKey(

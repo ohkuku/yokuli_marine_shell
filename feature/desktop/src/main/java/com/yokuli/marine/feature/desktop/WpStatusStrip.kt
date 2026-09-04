@@ -36,7 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpText
-import com.yokuli.marine.core.design.YokuliMetrics
+import com.yokuli.shell.contract.ShellSafeBands
+import com.yokuli.shell.contract.ShellWindowMetrics
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
@@ -44,7 +45,7 @@ import kotlinx.coroutines.delay
 private data class BatteryUiState(val percent: Int = -1, val charging: Boolean = false)
 
 @Composable
-fun WpStatusStrip(onOpenSettings: () -> Unit) {
+fun WpStatusStrip(windowMetrics: ShellWindowMetrics, onOpenSettings: () -> Unit) {
     val colors = LocalWpTheme.current
     val context = LocalContext.current
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -81,10 +82,15 @@ fun WpStatusStrip(onOpenSettings: () -> Unit) {
 
     val battery = BatteryUiState(batteryPercent, chargingValue == 1)
     val time = remember(nowTick) { LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")) }
+    val safe = ShellSafeBands.resolve(windowMetrics).status
+    val density = windowMetrics.density.coerceAtLeast(1f)
+    val safeTop = (safe.top / density).dp
+    val safeLeft = (safe.left / density).dp
+    val safeRight = (safe.right / density).dp
     Row(
-        Modifier.fillMaxWidth().height(YokuliMetrics.StatusHeight).background(colors.background)
+        Modifier.fillMaxWidth().height(27.dp + safeTop).background(colors.background)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onOpenSettings)
-            .padding(horizontal = 10.dp),
+            .padding(start = safeLeft, top = safeTop, end = safeRight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {

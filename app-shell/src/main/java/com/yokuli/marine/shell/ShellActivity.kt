@@ -12,6 +12,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -42,6 +43,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.view.WindowCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
@@ -83,7 +85,9 @@ import com.yokuli.shell.engine.toShellAction
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.ShellInput
+import com.yokuli.shell.contract.ShellWindowMetrics
 import com.yokuli.shell.android.AndroidShellKeyAdapter
+import com.yokuli.shell.android.AndroidShellWindowMetrics
 
 class ShellActivity : AppCompatActivity() {
     private val shellViewModel by viewModels<ShellViewModel>()
@@ -199,6 +203,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
 
     YokuliTheme(themeSpec) {
         val colors = LocalWpTheme.current
+        val windowMetrics = rememberShellWindowMetrics()
         SyncHostWindowChrome(colors.background, themeSpec.mode == WpThemeMode.LIGHT)
         val reducedMotion = rememberPlatformReducedMotion() || engineState.recoveryMode != LauncherRecoveryMode.NORMAL
         val motionProfile = WpReferenceProfiles.require(engineState.start.document.profileId).motion
@@ -322,7 +327,9 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                         )
                     } else {
                         Column(Modifier.fillMaxSize()) {
-                            WpStatusStrip { dispatch(LauncherAction.Open(SettingsDestinations.Overview)) }
+                            WpStatusStrip(windowMetrics) {
+                                dispatch(LauncherAction.Open(SettingsDestinations.Overview))
+                            }
                             WpSurfaceTransitionHost(
                                 targetState = transitionTarget,
                                 intent = engineState.transitionIntent.toWpIntent(),
@@ -394,11 +401,35 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 // the virtual hardware strip. Re-key the strip for both page and transient-plane
                 // changes so Back / Start / Search remain the final visible input surface.
                 key(engineState.surface, engineState.transient) {
-                    WpSystemKeyBar(onInput = dispatchInput)
+                    WpSystemKeyBar(windowMetrics = windowMetrics, onInput = dispatchInput)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun rememberShellWindowMetrics(): ShellWindowMetrics {
+    val view = LocalView.current
+    var metrics by remember(view) { mutableStateOf(AndroidShellWindowMetrics.read(view)) }
+    DisposableEffect(view) {
+        var latestInsets = ViewCompat.getRootWindowInsets(view) ?: WindowInsetsCompat.Builder().build()
+        ViewCompat.setOnApplyWindowInsetsListener(view) { target, windowInsets ->
+            latestInsets = windowInsets
+            metrics = AndroidShellWindowMetrics.read(target, windowInsets)
+            windowInsets
+        }
+        val layoutListener = View.OnLayoutChangeListener { target, _, _, _, _, _, _, _, _ ->
+            metrics = AndroidShellWindowMetrics.read(target, latestInsets)
+        }
+        view.addOnLayoutChangeListener(layoutListener)
+        ViewCompat.requestApplyInsets(view)
+        onDispose {
+            view.removeOnLayoutChangeListener(layoutListener)
+            ViewCompat.setOnApplyWindowInsetsListener(view, null)
+        }
+    }
+    return metrics
 }
 
 private fun LauncherTransitionIntent.toWpIntent(): WpNavigationIntent = when (this) {

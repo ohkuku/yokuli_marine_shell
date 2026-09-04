@@ -44,10 +44,14 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertIn("Compass", key_bar)
 
     def test_safe_window_metrics_are_real_inputs(self):
-        self.assertTrue((ROOT / "adapter/shell-android/src/main/java/com/yokuli/marine/adapter/shell/android/ShellWindowMetrics.kt").is_file())
+        adapter_path = "adapter/shell-android/src/main/java/com/yokuli/marine/adapter/shell/android/ShellWindowMetrics.kt"
+        self.assertTrue((ROOT / adapter_path).is_file())
+        adapter = self.text(adapter_path)
         activity = self.text("app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt")
         for token in ("safeDrawing", "displayCutout", "systemGestures", "ime"):
-            self.assertIn(token, activity)
+            self.assertIn(token, activity + adapter)
+        self.assertIn("roundedCorners", adapter)
+        self.assertIn("rememberShellWindowMetrics", activity)
 
     def test_marine_tile_contract_has_all_six_sizes(self):
         tile_contract = self.text("core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/layout/MarineTile.kt")

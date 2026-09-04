@@ -70,6 +70,20 @@ Marine correction contract                            Bridge slice PASS
   :app-shell:compileStandaloneDebugKotlin              PASS (192 tasks)
 ```
 
+### Slice 4 — Safe Window Chrome
+
+Red 先加入纯 JVM viewport 合同，缺少 `ShellWindowMetrics` / `ShellSafeBands` 时编译失败。合同覆盖 320×320/36px 与 360×360/44px 圆角、左右系统手势、边缘 cutout 和 IME 独立抬升。
+
+Green 把宽高、density、safe drawing、display cutout、Android 12+ rounded corners、IME 与 system gestures 从 Android adapter 映射到平台无关合同。Activity 监听真实 WindowInsets 和布局变化；状态条按顶部/左右安全带动态增高，底部 Bridge 条把视觉 glyph 保持在圆角与手势区内，并在 IME 显示时整体抬升而不把键盘高度混入导航安全 padding。
+
+```text
+ShellWindowMetrics JVM contract                         PASS (4/4)
+Marine correction contract                              Safe chrome slice PASS
+./gradlew :core:shell-contract:test
+  :adapter:shell-android:test
+  :app-shell:compileStandaloneDebugKotlin                PASS (192 tasks)
+```
+
 状态：`STAGE_2_5_HUMAN_REVIEWED_APPROVED`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
 
 ## Stage 0 — Freeze & Reference Contract
