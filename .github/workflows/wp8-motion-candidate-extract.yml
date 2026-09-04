@@ -1,0 +1,221 @@
+name: WP8 motion candidate extraction
+
+on:
+  push:
+    branches:
+      - codex/launcher-engine-stage2.5
+    paths:
+      - .github/workflows/wp8-motion-candidate-extract.yml
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/launcher-engine-stage2.5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install analysis dependencies
+        run: |
+          command -v ffmpeg >/dev/null || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
+          python -m pip install --disable-pip-version-check requests pillow opencv-python-headless numpy
+
+      - name: Extract and rank Windows Phone UI frames
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import math
+          import subprocess
+          from pathlib import Path
+
+          import cv2
+          import numpy as np
+          import requests
+          from PIL import Image, ImageDraw
+
+          MANIFEST = Path('docs/reference/wp8/artifacts/motion-scout/manifest.json')
+          OUT = Path('docs/reference/wp8/artifacts/motion-candidates')
+          TMP = Path('/tmp/wp8-motion-candidates')
+          OUT.mkdir(parents=True, exist_ok=True)
+          TMP.mkdir(parents=True, exist_ok=True)
+          selected_ids = {'TechnoBuffalo_269', 'TechnoBuffalo_299'}
+          manifest = json.loads(MANIFEST.read_text(encoding='utf-8'))
+          session = requests.Session()
+          session.headers['User-Agent'] = 'Yokuli-WP8-Motion-Candidate-Extractor/1.0'
+
+          def download(url: str, path: Path) -> None:
+              with session.get(url, stream=True, timeout=300) as response:
+                  response.raise_for_status()
+                  with path.open('wb') as handle:
+                      for chunk in response.iter_content(1024 * 1024):
+                          if chunk:
+                              handle.write(chunk)
+
+          def frame_score(image: np.ndarray) -> tuple[float, dict]:
+              h, w = image.shape[:2]
+              scale = 480 / max(w, 1)
+              small = cv2.resize(image, (480, max(1, round(h * scale))))
+              hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+              sat = hsv[:, :, 1]
+              val = hsv[:, :, 2]
+              saturated = ((sat > 105) & (val > 55)).astype(np.uint8) * 255
+              kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+              saturated = cv2.morphologyEx(saturated, cv2.MORPH_CLOSE, kernel)
+              contours, _ = cv2.findContours(saturated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+              tile_like = []
+              for contour in contours:
+                  x, y, cw, ch = cv2.boundingRect(contour)
+                  area = cw * ch
+                  ratio = cw / max(ch, 1)
+                  if 120 <= area <= small.shape[0] * small.shape[1] * .18 and .55 <= ratio <= 2.4:
+                      fill = cv2.contourArea(contour) / max(area, 1)
+                      if fill > .48:
+                          tile_like.append((x, y, cw, ch, fill))
+
+              gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+              edges = cv2.Canny(gray, 70, 160)
+              contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+              portrait_candidates = []
+              for contour in contours:
+                  peri = cv2.arcLength(contour, True)
+                  approx = cv2.approxPolyDP(contour, .025 * peri, True)
+                  if len(approx) != 4:
+                      continue
+                  x, y, cw, ch = cv2.boundingRect(approx)
+                  area = cw * ch
+                  ratio = cw / max(ch, 1)
+                  if small.shape[0] * small.shape[1] * .025 <= area <= small.shape[0] * small.shape[1] * .65 and .42 <= ratio <= .78:
+                      portrait_candidates.append((x, y, cw, ch, area))
+
+              sat_fraction = float(np.mean((sat > 105) & (val > 55)))
+              dark_fraction = float(np.mean(val < 55))
+              tile_count = len(tile_like)
+              portrait_count = min(len(portrait_candidates), 10)
+              score = tile_count * 8.0 + portrait_count * 2.5 + sat_fraction * 80 + dark_fraction * 5
+              return score, {
+                  'tileLikeCount': tile_count,
+                  'portraitRectCount': len(portrait_candidates),
+                  'saturatedFraction': round(sat_fraction, 5),
+                  'darkFraction': round(dark_fraction, 5),
+              }
+
+          all_records = []
+          for item in manifest['selectedItems']:
+              identifier = item['identifier']
+              if identifier not in selected_ids:
+                  continue
+              video = TMP / f'{identifier}.video'
+              download(item['selectedFile']['downloadUrl'], video)
+              duration = float(item['durationSeconds'])
+              frame_dir = TMP / identifier
+              frame_dir.mkdir(exist_ok=True)
+              subprocess.run([
+                  'ffmpeg', '-hide_banner', '-loglevel', 'error', '-i', str(video),
+                  '-vf', 'fps=1,scale=640:-2', '-q:v', '3', '-y', str(frame_dir / '%05d.jpg'),
+              ], check=True)
+
+              candidates = []
+              for index, path in enumerate(sorted(frame_dir.glob('*.jpg'))):
+                  timestamp = float(index)
+                  image = cv2.imread(str(path))
+                  score, details = frame_score(image)
+                  candidates.append({
+                      'timestampSeconds': timestamp,
+                      'sourceFrame': path,
+                      'score': round(score, 4),
+                      **details,
+                  })
+              candidates.sort(key=lambda record: record['score'], reverse=True)
+
+              chosen = []
+              for candidate in candidates:
+                  if all(abs(candidate['timestampSeconds'] - prior['timestampSeconds']) >= 3.0 for prior in chosen):
+                      chosen.append(candidate)
+                  if len(chosen) >= 30:
+                      break
+              chosen.sort(key=lambda record: record['timestampSeconds'])
+
+              item_out = OUT / identifier
+              item_out.mkdir(parents=True, exist_ok=True)
+              for rank, candidate in enumerate(chosen):
+                  with Image.open(candidate['sourceFrame']) as image:
+                      image = image.convert('RGB')
+                      width = 320
+                      height = max(1, round(image.height * width / image.width))
+                      image = image.resize((width, height), Image.Resampling.LANCZOS)
+                      output = item_out / f"{rank:02d}-{candidate['timestampSeconds']:07.2f}s.jpg"
+                      image.save(output, quality=70, optimize=True, progressive=True)
+                  candidate['repositoryPath'] = str(output)
+                  candidate['sha256'] = hashlib.sha256(output.read_bytes()).hexdigest()
+                  candidate['byteSize'] = output.stat().st_size
+                  candidate.pop('sourceFrame', None)
+
+              columns = 3
+              cell_w = 320
+              pages = []
+              for page_index in range(math.ceil(len(chosen) / 12)):
+                  page_items = chosen[page_index * 12:(page_index + 1) * 12]
+                  images = []
+                  for candidate in page_items:
+                      image = Image.open(candidate['repositoryPath']).convert('RGB')
+                      images.append((candidate, image.copy()))
+                      image.close()
+                  cell_h = max(image.height for _, image in images) + 28
+                  rows = math.ceil(len(images) / columns)
+                  sheet = Image.new('RGB', (columns * cell_w, rows * cell_h), 'black')
+                  draw = ImageDraw.Draw(sheet)
+                  for idx, (candidate, image) in enumerate(images):
+                      x = (idx % columns) * cell_w
+                      y = (idx // columns) * cell_h
+                      sheet.paste(image, (x, y + 24))
+                      draw.text((x + 4, y + 4), f"{candidate['timestampSeconds']:7.2f}s score={candidate['score']:6.1f}", fill='white')
+                  page = item_out / f'contact-page-{page_index + 1}.jpg'
+                  sheet.save(page, quality=65, optimize=True, progressive=True)
+                  pages.append({
+                      'path': str(page),
+                      'sha256': hashlib.sha256(page.read_bytes()).hexdigest(),
+                      'byteSize': page.stat().st_size,
+                  })
+              all_records.append({
+                  'identifier': identifier,
+                  'detailsUrl': item['detailsUrl'],
+                  'title': item['title'],
+                  'creator': item['creator'],
+                  'date': item['date'],
+                  'licenseurl': item['licenseurl'],
+                  'sourceVideo': item['selectedFile'],
+                  'durationSeconds': duration,
+                  'selectionMethod': '1 fps automatic saturation/rectangle ranking with 3-second temporal suppression; requires human review',
+                  'candidates': chosen,
+                  'contactPages': pages,
+              })
+
+          (OUT / 'manifest.json').write_text(
+              json.dumps({'version': 1, 'items': all_records}, indent=2, ensure_ascii=False) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Commit candidate frames
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/reference/wp8/artifacts/motion-candidates
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "docs(shell): extract wp8 motion candidate frames"
+          git push origin HEAD:codex/launcher-engine-stage2.5
