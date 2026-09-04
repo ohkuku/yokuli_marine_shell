@@ -13,8 +13,6 @@ import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -22,7 +20,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -30,7 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -46,6 +42,8 @@ import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.feature.desktop.LauncherUiAction
+import com.yokuli.marine.feature.desktop.InteractiveLauncherPager
+import com.yokuli.marine.feature.desktop.LauncherPagerPage
 import com.yokuli.marine.feature.desktop.WpAppList
 import com.yokuli.marine.feature.desktop.WpStatusStrip
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
@@ -135,42 +133,61 @@ private fun YokuliShell() {
             },
         )
         CompositionLocalProvider(LocalProductionShellRuntime provides runtime) {
+            val launcherState = productionLauncherUiState(
+                catalog = engineState.catalog,
+                document = engineState.start.document,
+                mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
+                theme = themeSpec,
+                visualContributions = productionVisualContributions,
+            )
+            var startEditing by remember { mutableStateOf(false) }
+            val launcherAction: (LauncherUiAction) -> Unit = { action ->
+                when (action) {
+                    is LauncherUiAction.Open -> dispatch(LauncherAction.Open(action.token))
+                    LauncherUiAction.ShowAllApps -> dispatch(LauncherAction.ShowAllApps)
+                    is LauncherUiAction.ProposeLayout -> dispatch(LauncherAction.ApplyLayoutProposal(action.proposal))
+                    is LauncherUiAction.TogglePin -> dispatch(LauncherAction.TogglePin(action.entryId))
+                    is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
+                }
+            }
             Column(Modifier.fillMaxSize().background(colors.background)) {
                 WpStatusStrip { dispatch(LauncherAction.Open(SettingsDestinations.Overview)) }
                 WpSurfaceTransitionHost(
-                    targetState = engineState.surface,
+                    targetState = engineState.surface is LauncherSurface.InternalApp,
                     intent = engineState.transitionIntent.toWpIntent(),
                     modifier = Modifier.weight(1f),
-                ) { surface ->
-                    val launcherState = productionLauncherUiState(
-                        catalog = engineState.catalog,
-                        document = engineState.start.document,
-                        mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
-                        theme = themeSpec,
-                        visualContributions = productionVisualContributions,
-                    )
-                    val launcherAction: (LauncherUiAction) -> Unit = { action ->
-                        when (action) {
-                            is LauncherUiAction.Open -> dispatch(LauncherAction.Open(action.token))
-                            LauncherUiAction.ShowAllApps -> dispatch(LauncherAction.ShowAllApps)
-                            is LauncherUiAction.ProposeLayout -> dispatch(LauncherAction.ApplyLayoutProposal(action.proposal))
-                            is LauncherUiAction.TogglePin -> dispatch(LauncherAction.TogglePin(action.entryId))
-                            is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
-                        }
-                    }
-                    when (surface) {
-                        LauncherSurface.Start -> SwipeSurface(onSwipeLeft = { dispatch(LauncherAction.ShowAllApps) }) {
-                            YokuliStartScreen(launcherState, launcherAction)
-                        }
-                        LauncherSurface.AllApps -> SwipeSurface(onSwipeRight = { dispatch(LauncherAction.Back) }) {
-                            WpAppList(launcherState, launcherAction)
-                        }
-                        is LauncherSurface.InternalApp -> {
+                ) { internalAppVisible ->
+                    if (internalAppVisible) {
+                        val surface = engineState.surface
+                        if (surface is LauncherSurface.InternalApp) {
                             val task = requireNotNull(engineState.tasks.task(surface.taskId))
                             productionInternalAppHostResolver.hostFor(task.appId)?.Render(task.lastLaunchToken)
                                 ?: error("No internal host for installed app: ${task.appId.value}")
                         }
-                        LauncherSurface.Recents -> Unit
+                    } else {
+                        InteractiveLauncherPager(
+                            requestedPage = if (engineState.surface == LauncherSurface.AllApps) {
+                                LauncherPagerPage.ALL_APPS
+                            } else {
+                                LauncherPagerPage.START
+                            },
+                            userScrollEnabled = !startEditing,
+                            onPageSettled = { page ->
+                                dispatch(
+                                    if (page == LauncherPagerPage.START) LauncherAction.ShowStart
+                                    else LauncherAction.ShowAllApps,
+                                )
+                            },
+                        ) { page ->
+                            when (page) {
+                                LauncherPagerPage.START -> YokuliStartScreen(
+                                    launcherState,
+                                    launcherAction,
+                                    onEditModeChanged = { startEditing = it },
+                                )
+                                LauncherPagerPage.ALL_APPS -> WpAppList(launcherState, launcherAction)
+                            }
+                        }
                     }
                 }
             }
@@ -209,30 +226,4 @@ private fun SyncHostWindowChrome(background: Color, useDarkSystemIcons: Boolean)
             isAppearanceLightNavigationBars = useDarkSystemIcons
         }
     }
-}
-
-/**
- * 中文：Phase 0A 保留基础左右入口；带进度、速度与取消规则的统一 pager 属于 S3。
- * English: Phase 0A keeps basic edge navigation; the progress/velocity/cancel pager belongs to S3.
- */
-@Composable
-private fun SwipeSurface(
-    onSwipeLeft: (() -> Unit)? = null,
-    onSwipeRight: (() -> Unit)? = null,
-    content: @Composable () -> Unit,
-) {
-    var drag by remember { mutableFloatStateOf(0f) }
-    Box(
-        Modifier.fillMaxSize().pointerInput(onSwipeLeft, onSwipeRight) {
-            detectHorizontalDragGestures(
-                onDragEnd = {
-                    val threshold = size.width * .18f
-                    if (drag < -threshold) onSwipeLeft?.invoke()
-                    if (drag > threshold) onSwipeRight?.invoke()
-                    drag = 0f
-                },
-                onHorizontalDrag = { change, amount -> change.consume(); drag += amount },
-            )
-        },
-    ) { content() }
 }

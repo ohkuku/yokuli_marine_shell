@@ -388,3 +388,11 @@ Stage 3 is driven by the human-approved Stage 2.5 hash rather than guessed ratio
 ### English translation — Stage 4
 
 Seven contract tests first failed on the absent Stage 4 architecture and evidence. Green introduces a pure reducer, serialized controller, state/effects, deterministic transactions, cancel/undo, persistence port, and ViewModel ownership. Unresolved launch tokens no longer crash, and the HostPort catalog flow is the only runtime catalog rendered by the UI. The Activity recreation story locks the lifecycle boundary; process-death durability remains Stage 10.
+
+## Stage 5 — Interactive Start / All Apps Pager
+
+6 项静态合同先以 2 failures/4 errors 证明旧 `SwipeSurface`、缺失 pager、缺失 stories 和 stage evidence。Green 用 Foundation `HorizontalPager` 建立 direct manipulation，并将 settled page 与 Engine 双向连接；edit mode 关闭 page user scroll。第一次窄编译找出 `snapshotFlow` import 错误，第二次找出 AndroidTest touch scope API 错误，均修正后通过。首次 13-story 模拟器 Gate 又发现旧语言 story 错误假设 Activity 重建会回 Start；Stage 4 已正确保留 Engine task，测试改为先验证当前语言页再按确定性 Back 层级返回。修正期间还处理了双页并存导致的重复文本语义，最终单测复跑和全部 13 条 API 34 stories 均通过。没有用自定常数填补 Stage 2.5 未观察到的 fling/press 数据。
+
+### English translation — Stage 5
+
+Six contracts first fail on the fixed-distance swipe implementation and missing evidence. Green installs a Foundation-backed direct-manipulation pager, synchronizes settled pages with the Engine, and disables paging during edit mode. Two compile-time API mistakes were corrected by narrow reruns. No unobserved WP8 fling or press constants are introduced.

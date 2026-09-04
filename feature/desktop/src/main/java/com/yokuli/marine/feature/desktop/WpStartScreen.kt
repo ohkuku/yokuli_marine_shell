@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -59,12 +60,14 @@ import kotlin.math.roundToInt
 fun YokuliStartScreen(
     state: LauncherUiState,
     onAction: (LauncherUiAction) -> Unit,
+    onEditModeChanged: (Boolean) -> Unit = {},
 ) {
     val colors = LocalWpTheme.current
     val byId = remember(state.entries) { state.entries.associateBy { it.descriptor.entryId } }
     var interaction: StartInteractionState by remember { mutableStateOf(StartInteractionState.Idle) }
     val selectedTile = (interaction as? StartInteractionState.EditIdle)?.selectedTile
     val editing = interaction is StartInteractionState.EditIdle
+    LaunchedEffect(editing) { onEditModeChanged(editing) }
     val scroll = rememberScrollState()
     val density = LocalDensity.current
 

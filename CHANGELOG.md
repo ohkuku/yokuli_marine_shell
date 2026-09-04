@@ -4,6 +4,13 @@
 
 ### 中文（主文）
 
+#### Stage 5 — Interactive Start / All Apps Pager
+
+- 删除固定距离、松手后才换页的 `SwipeSurface`，改为 Foundation `HorizontalPager` 支撑的 `InteractiveLauncherPager`。
+- Start 与 All Apps 逐帧随手指移动，使用基础库的轴锁、位置/速度 settle、边界和可中断动画；settled page 与串行 Engine 双向同步。
+- Edit mode 禁用横向分页但保留 Start 纵向滚动；不新增参考视频未观察到的自定义阈值或灯效。
+- 新增 6 项 Stage 5 合同与慢短拖、长拖、纵向意图、编辑禁用和 Back 的真实 Activity stories。
+
 #### Stage 4 — Engine State, Effects & Persistence Ports
 
 - 新增纯 `LauncherReducer`、`LauncherEngineState/Action/Effect` 与唯一串行 action queue；异步 token 解析不再允许旧结果越过后续 Back/Home。

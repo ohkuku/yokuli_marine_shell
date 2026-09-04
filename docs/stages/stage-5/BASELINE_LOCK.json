@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "stage": 5,
+  "name": "Interactive Start / All Apps Pager",
+  "branch": "codex/launcher-engine-batch-b",
+  "startingSha": "4b7522dce88c633a9c49025b14b75861e8ee9f46",
+  "requiredCompletedStage": "Engine State, Effects & Persistence Ports",
+  "scope": "Interactive Start / All Apps Pager",
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

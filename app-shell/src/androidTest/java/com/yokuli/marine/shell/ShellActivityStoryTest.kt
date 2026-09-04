@@ -11,6 +11,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
@@ -18,6 +19,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -73,6 +77,50 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("launcher-entry-settings").assertIsDisplayed()
         compose.onNodeWithTag("launcher-entry-anchor").assertDoesNotExist()
         compose.onNodeWithTag("launcher-entry-cockpit").assertDoesNotExist()
+    }
+
+    @Test
+    fun pageTracksFingerOneToOneAndLongDragCompletes() {
+        compose.onNodeWithTag("interactive-launcher-pager").performTouchInput { swipeLeft(durationMillis = 700) }
+        compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
+    }
+
+    @Test
+    fun shortSlowDragCancels() {
+        compose.onNodeWithTag("interactive-launcher-pager").performTouchInput {
+            swipe(
+                start = center,
+                end = center.copy(x = center.x * .76f),
+                durationMillis = 900,
+            )
+        }
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.onNodeWithTag("all-apps-list").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun verticalIntentDoesNotPage() {
+        compose.onNodeWithTag("start-grid").performTouchInput { swipeUp(durationMillis = 700) }
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.onNodeWithTag("all-apps-list").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun editModeDisablesPageSwipe() {
+        compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        compose.onNodeWithTag("interactive-launcher-pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.onNodeWithTag("all-apps-list").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun systemBackFromAllAppsReturnsToStart() {
+        compose.onNodeWithTag("interactive-launcher-pager").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
+
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
     }
 
     @Test
@@ -181,15 +229,23 @@ class ShellActivityStoryTest {
     fun languageSelectionRecreatesTheRealActivityInEnglishAndChinese() {
         selectLanguage("en")
         compose.waitUntil(timeoutMillis = 5_000) {
-            compose.onAllNodesWithText("Chart").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithText("app language").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("Chart").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithTag("settings-section-language").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.onNodeWithTag("tile-chart").assertIsDisplayed()
 
         selectLanguage("zh-CN")
         compose.waitUntil(timeoutMillis = 5_000) {
-            compose.onAllNodesWithText("海图").fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodesWithText("应用语言").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("海图").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithTag("settings-section-language").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.onNodeWithTag("tile-chart").assertIsDisplayed()
     }
 
     private fun selectLanguage(tag: String) {
