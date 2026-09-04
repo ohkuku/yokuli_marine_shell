@@ -469,7 +469,11 @@ Baseline Profile 的 Red 更有价值：`targetContext` 在 self-instrumenting �
 
 Profile 生成最初使用 AndroidX 默认最多 15 轮，在两个 flavor 上耗时过长。新增 Red 固定最多 3 轮、连续 2 轮稳定收敛；它只负责收集热规则，不取代 5-repeat Macrobenchmark 或真机门。最终源码重新生成 Baseline `1824` 条、Startup `1464` 条产品规则，模拟器动画倍率随后恢复到原值 `0`。
 
-第一次 hosted Stage 11 run `33919498098` 的主门与 API 36 通过，但 API 34 暴露 `@Before` 的异步 reset 竞态：旧 Chart Tile 使单条件等待提前返回，Settings 尚未恢复便开始 Pin/Undo。修正后 reset 明确回到 Home，测试等待 Start + Chart + Settings 完整前置状态；本地失败 case 与完整 26 条故事通过。该 run 的性能 job 也失败，但原 workflow 没把 benchmark XML 转成 annotation；failure reporter 现接受显式 result root，诊断 bundle纳入 benchmark/profile 模块。启动 benchmark 改用显式 ShellActivity intent并给 hosted emulator 20 秒 tag 窗口。Red 复现又发现 warm-start setup 提前启动目标 Activity 会和 AndroidX 控制的启动生命周期竞争，产生 `Target package ... is not running`；setup 现只执行 `pressHome()`，唯一被计时的启动留在 measure block。最终本地五条 journey 全部通过后，第二次 hosted run 才作为 correction 接受证据。
+第一次 hosted Stage 11 run `33919498098` 的主门与 API 36 通过，但 API 34 暴露 `@Before` 的异步 reset 竞态：旧 Chart Tile 使单条件等待提前返回，Settings 尚未恢复便开始 Pin/Undo。修正后 reset 明确回到 Home，测试等待 Start + Chart + Settings 完整前置状态；本地失败 case 与完整 26 条故事通过。该 run 的性能 job 也失败，但原 workflow 没把 benchmark XML 转成 annotation；failure reporter 现接受显式 result root，诊断 bundle 纳入 benchmark/profile 模块。启动 benchmark 改用显式 ShellActivity intent 并给 hosted emulator 20 秒 tag 窗口。Red 复现又发现 warm-start setup 提前启动目标 Activity 会和 AndroidX 控制的启动生命周期竞争，产生 `Target package ... is not running`；setup 现只执行 `pressHome()`，唯一被计时的启动留在 measure block。最终本地五条 journey 全部通过，后续全绿 hosted run 才能作为 correction 接受证据。
+
+第二次 hosted run `33922516174` 证明 reset 前置状态已稳定且 API 36 继续通过，但首条 API 34 story 在点击 Chart 后立即断言目标页面，快于串行 Engine queue 完成，暴露 `chart-workspace-browse` 尚未显示。Red 不是通过关闭动画或增加 sleep 掩盖：真实 Activity stories 对每个跨 Engine Surface/Transient 的动作等待目标语义节点实际可见（消失路径等待节点实际移除），仍保留最终可见性断言和完整 WP 动画。接受条件保持完整 26/26，而不是只重跑失败 case。
+
+同一 hosted run 的五个性能 case 都提供了明确 annotation：四个生产 journey 未观察到 Start tag，60 Tile trace 则报告没有 RenderThread slice。三个 emulator job 当时强制使用 `swiftshader_indirect`；该后端已被当前 Android Emulator 官方弃用，且与启用动画／FrameTiming 的失败形态一致。CI 改为官方推荐的 `-gpu auto`，让 runner 根据宿主能力选择硬件或软件后端；没有移除 `FrameTimingMetric`、没有关闭 API 34 动画、也没有把失败改成 continue-on-error。
 
 ### Green Gate
 

@@ -58,6 +58,10 @@ WP8 Stage 2.5 approved-reference validation           PASS
 
 第一次 hosted run `33919498098` 的 build/API 36 已通过；API 34 捕获了测试 reset 竞态，performance 失败却只有通用 process annotation。Stage 11 correction 将 reset 后的 Home 与完整 Start 前置条件锁定，并让 performance job 直接上报 benchmark XML、把 benchmark/profile 报告纳入受限诊断包；cold/warm 启动改用显式 Activity intent，慢速 hosted emulator 等待窗口扩为 20 秒。Red 复现同时证明 setup 中预启动 Activity 会与 AndroidX cold/warm 生命周期控制竞争，因此 startup setup 只回 Android Home，目标 Activity 只在 measure block 启动。修正后的本地失败 story、26/26 全故事和 5/5 Macrobenchmark 均通过，最终接受以 correction commit 对应的 hosted run 为准。
 
+第二次 hosted run `33922516174` 的 API 34 首条 story 进一步暴露 Compose 点击与串行 Engine queue 的边界：点击完成不等于异步 Surface 已完成转场。Activity stories 现等待目标页面／Transient 的语义节点真实可见或移除后再断言，不改变生产动画、不添加固定 sleep，也不把 Engine 改回同步；下一轮 hosted 仍须执行完整故事集。
+
+该 run 的 performance annotation 同时记录四个 Start tag timeout 与 60 Tile `no renderthread slices`。CI 原先强制使用已被当前 Android Emulator 弃用的 `swiftshader_indirect`；三个 emulator job 现统一使用官方推荐的 `-gpu auto`，但 API 34 仍启用动画、性能 job 仍执行 AndroidX `FrameTimingMetric`，并继续明确禁止把 emulator 数字当作物理设备结论。
+
 CI 新增 `stage11-performance` job。它执行真实 `connectedStandaloneBenchmarkAndroidTest`，上传 `stage11-performance-reports`，并把 emulator 结果标为 `EMULATOR_TREND_ONLY`；verified debug APK 必须等待该 job、API 34 stories 和 API 36 smoke 全部成功。两个 Release flavor 继续只有 Chart + Settings，Shell Lab 仅进入 debug/benchmark classpath。
 
 ## 人工最终审核清单

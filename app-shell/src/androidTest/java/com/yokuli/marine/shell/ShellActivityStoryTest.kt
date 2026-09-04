@@ -56,17 +56,16 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { activity ->
             ViewModelProvider(activity)[ShellViewModel::class.java].resetLauncher()
         }
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithTag("start-screen").fetchSemanticsNodes().isNotEmpty() &&
-                compose.onAllNodesWithTag("tile-chart").fetchSemanticsNodes().isNotEmpty() &&
-                compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isNotEmpty()
-        }
+        awaitDisplayed("start-screen")
+        awaitDisplayed("tile-chart")
+        awaitDisplayed("tile-settings")
     }
 
     @Test
     fun chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart() {
         compose.onNodeWithTag("tile-chart").assertIsDisplayed().performClick()
 
+        awaitDisplayed("chart-workspace-browse")
         compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
         compose.onNodeWithTag("wp-page-title-chart").assertIsDisplayed()
         compose.onNodeWithTag(
@@ -74,20 +73,26 @@ class ShellActivityStoryTest {
         ).assertIsDisplayed()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
     }
 
     @Test
     fun productionShellExposesOnlyChartAndSettingsWithReusableLargeTitles() {
         compose.onNodeWithTag("tile-chart").performClick()
+        awaitDisplayed("wp-page-title-chart")
         compose.onNodeWithTag("wp-page-title-chart").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("tile-settings")
 
         compose.onNodeWithTag("tile-settings").performClick()
+        awaitDisplayed("wp-page-title-settings")
         compose.onNodeWithTag("wp-page-title-settings").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("all-apps-entry")
 
         compose.onNodeWithTag("all-apps-entry").performClick()
+        awaitDisplayed("all-apps-list")
         compose.onAllNodes(
             SemanticsMatcher("exact production launcher entries") { node ->
                 node.config.contains(SemanticsProperties.TestTag) &&
@@ -103,6 +108,7 @@ class ShellActivityStoryTest {
     @Test
     fun pageTracksFingerOneToOneAndLongDragCompletes() {
         compose.onNodeWithTag("interactive-launcher-pager").performTouchInput { swipeLeft(durationMillis = 700) }
+        awaitDisplayed("all-apps-list")
         compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
     }
 
@@ -129,6 +135,7 @@ class ShellActivityStoryTest {
     @Test
     fun editModeDisablesPageSwipe() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        awaitDisplayed("unpin-selected-tile")
         compose.onNodeWithTag("interactive-launcher-pager").performTouchInput { swipeLeft() }
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("all-apps-list").assertIsNotDisplayed()
@@ -137,10 +144,12 @@ class ShellActivityStoryTest {
     @Test
     fun systemBackExitsEditModeBeforeLeavingStart() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        awaitDisplayed("unpin-selected-tile")
         compose.onNodeWithTag("unpin-selected-tile").assertIsDisplayed()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
+        awaitGone("unpin-selected-tile")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("unpin-selected-tile").assertDoesNotExist()
     }
@@ -149,6 +158,7 @@ class ShellActivityStoryTest {
     fun chartResizeCyclesWideSmallMediumWide() {
         val wideWidth = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width
         compose.onNodeWithTag("tile-chart").performTouchInput { longClick() }
+        awaitDisplayed("resize-selected-tile")
 
         compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.waitUntil(5_000) {
@@ -176,23 +186,27 @@ class ShellActivityStoryTest {
     @Test
     fun systemBackFromAllAppsReturnsToStart() {
         compose.onNodeWithTag("interactive-launcher-pager").performTouchInput { swipeLeft() }
+        awaitDisplayed("all-apps-list")
         compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
     }
 
     @Test
     fun appearanceUsesOneAccentAndCorrectBlackWhitePageForegroundPolicy() {
         compose.onNodeWithTag("tile-settings").performClick()
+        awaitDisplayed("settings-section-appearance")
         compose.onNodeWithTag("settings-section-appearance").performClick()
+        awaitDisplayed("theme-accent-magenta")
         compose.onNodeWithTag("theme-accent-magenta").performClick()
         compose.onNodeWithTag("theme-mode-light").performClick()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        compose.waitForIdle()
+        awaitDisplayed("settings-section-appearance")
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        compose.waitForIdle()
+        awaitDisplayed("start-screen")
 
         compose.onNodeWithTag("start-screen").assert(
             SemanticsMatcher.expectValue(WpThemeModeNameKey, "light"),
@@ -217,7 +231,9 @@ class ShellActivityStoryTest {
         }
 
         compose.onNodeWithTag("tile-settings").performClick()
+        awaitDisplayed("settings-section-appearance")
         compose.onNodeWithTag("settings-section-appearance").performClick()
+        awaitDisplayed("theme-mode-light")
         compose.onNodeWithTag("theme-mode-light").performClick()
         compose.waitForIdle()
 
@@ -234,13 +250,17 @@ class ShellActivityStoryTest {
     @Test
     fun allAppsLongPressOpensContextWithoutChangingStart() {
         compose.onNodeWithTag("all-apps-entry").performClick()
+        awaitDisplayed("all-apps-list")
         compose.onNodeWithTag("launcher-entry-settings").performTouchInput { longClick() }
+        awaitDisplayed("launcher-context-menu")
         compose.onNodeWithTag("launcher-context-menu").assertIsDisplayed()
         compose.onNodeWithTag("launcher-context-app-info").assertIsDisplayed()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitGone("launcher-context-menu")
         compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("tile-settings").assertIsDisplayed()
         compose.onNodeWithTag("tile-chart").assertIsDisplayed()
@@ -249,13 +269,18 @@ class ShellActivityStoryTest {
     @Test
     fun pinReturnsToStartRevealsTileAndCanUndo() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        awaitDisplayed("unpin-selected-tile")
         compose.onNodeWithTag("unpin-selected-tile").performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
 
         compose.onNodeWithTag("all-apps-entry").performClick()
+        awaitDisplayed("all-apps-list")
         compose.onNodeWithTag("launcher-entry-settings").performTouchInput { longClick() }
+        awaitDisplayed("launcher-context-pin")
         compose.onNodeWithTag("launcher-context-pin").performClick()
 
+        awaitDisplayed("tile-settings")
+        awaitDisplayed("launcher-undo")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("tile-settings").assertIsDisplayed()
         compose.onNodeWithTag("launcher-undo").assertIsDisplayed()
@@ -266,25 +291,31 @@ class ShellActivityStoryTest {
     @Test
     fun unpinKeepsEntryInstalledAndCanUndo() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        awaitDisplayed("unpin-selected-tile")
         compose.onNodeWithTag("unpin-selected-tile").performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("launcher-undo").assertIsDisplayed()
 
         compose.onNodeWithTag("launcher-undo-action").performClick()
+        awaitDisplayed("tile-settings")
         compose.onNodeWithTag("tile-settings").assertIsDisplayed()
         compose.onNodeWithTag("all-apps-entry").performClick()
+        awaitDisplayed("launcher-entry-settings")
         compose.onNodeWithTag("launcher-entry-settings").assertIsDisplayed()
     }
 
     @Test
     fun virtualStartReturnsFromSettingsWithoutDestroyingItsTask() {
         compose.onNodeWithTag("tile-settings").performClick()
+        awaitDisplayed("settings-workspace")
         compose.onNodeWithTag("settings-workspace").assertIsDisplayed()
 
         compose.onNodeWithTag("virtual-key-start").performClick()
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("virtual-key-back").performTouchInput { longClick() }
 
+        awaitDisplayed("launcher-recents")
         compose.onNodeWithTag("launcher-recents").assertIsDisplayed()
         compose.onNodeWithTag("recent-task-settings").assertIsDisplayed()
     }
@@ -292,43 +323,56 @@ class ShellActivityStoryTest {
     @Test
     fun virtualSearchFindsAndLaunchesInstalledEntry() {
         compose.onNodeWithTag("virtual-key-search").performClick()
+        awaitDisplayed("launcher-search-overlay")
         compose.onNodeWithTag("launcher-search-overlay").assertIsDisplayed()
         compose.onNodeWithTag("launcher-search-field").assertIsDisplayed()
 
         compose.onNodeWithTag("search-result-chart").performClick()
+        awaitDisplayed("chart-workspace-browse")
         compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
     }
 
     @Test
     fun virtualBackLongPressOpensRecents() {
         compose.onNodeWithTag("tile-chart").performClick()
+        awaitDisplayed("chart-workspace-browse")
         compose.onNodeWithTag("virtual-key-start").performClick()
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("virtual-key-back").performTouchInput { longClick() }
 
+        awaitDisplayed("launcher-recents")
         compose.onNodeWithTag("launcher-recents").assertIsDisplayed()
         compose.onNodeWithTag("recent-task-chart").performClick()
+        awaitDisplayed("chart-workspace-browse")
         compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
     }
 
     @Test
     fun androidBackAndDeliveredHardwareKeysUseTheUnifiedInputPath() {
         compose.onNodeWithTag("all-apps-entry").performClick()
+        awaitDisplayed("all-apps-list")
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
 
         dispatchHardwareKey(KeyEvent.KEYCODE_SEARCH)
+        awaitDisplayed("launcher-search-overlay")
         compose.onNodeWithTag("launcher-search-overlay").assertIsDisplayed()
         dispatchHardwareKey(KeyEvent.KEYCODE_BACK)
+        awaitGone("launcher-search-overlay")
         compose.onNodeWithTag("launcher-search-overlay").assertDoesNotExist()
 
         compose.onNodeWithTag("tile-settings").performClick()
+        awaitDisplayed("settings-workspace")
         dispatchHardwareKey(KeyEvent.KEYCODE_HOME)
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
     }
 
     @Test
     fun homeIntentReturnsToStartWithoutRecreatingActivity() {
         compose.onNodeWithTag("tile-settings").performClick()
+        awaitDisplayed("settings-workspace")
         var before = 0
         compose.activityRule.scenario.onActivity { activity ->
             before = System.identityHashCode(activity)
@@ -340,6 +384,7 @@ class ShellActivityStoryTest {
             )
         }
 
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { activity ->
             assertEquals(before, System.identityHashCode(activity))
@@ -354,6 +399,7 @@ class ShellActivityStoryTest {
                 com.yokuli.shell.engine.LauncherAction.EnterSafeMode,
             )
         }
+        awaitDisplayed("launcher-recovery")
         compose.onNodeWithTag("launcher-recovery").assertIsDisplayed()
 
         var launchedAction: String? = null
@@ -419,6 +465,7 @@ class ShellActivityStoryTest {
     fun virtualSystemKeysRemainAvailableOnAllApps() {
         compose.onNodeWithTag("all-apps-entry").performClick()
 
+        awaitDisplayed("all-apps-list")
         compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
         compose.onNodeWithTag("wp-system-key-bar").assertIsDisplayed()
         compose.onNodeWithTag("virtual-key-back").assertIsDisplayed()
@@ -443,6 +490,7 @@ class ShellActivityStoryTest {
     @Test
     fun virtualBackDismissesAlphabetJumpBeforeLeavingAllApps() {
         compose.onNodeWithTag("all-apps-entry").performClick()
+        awaitDisplayed("all-apps-list")
         compose.onAllNodes(
             SemanticsMatcher("alphabet group") { node ->
                 node.config.contains(SemanticsProperties.TestTag) &&
@@ -450,9 +498,11 @@ class ShellActivityStoryTest {
             },
         )[0].performClick()
 
+        awaitDisplayed("alphabet-jump-overlay")
         compose.onNodeWithTag("alphabet-jump-overlay").assertIsDisplayed()
         compose.onNodeWithTag("virtual-key-back").performClick()
 
+        awaitGone("alphabet-jump-overlay")
         compose.onNodeWithTag("alphabet-jump-overlay").assertDoesNotExist()
         compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
     }
@@ -460,13 +510,16 @@ class ShellActivityStoryTest {
     @Test
     fun activityRecreationRetainsTheEngineDocument() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        awaitDisplayed("resize-selected-tile")
         compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.onNodeWithTag("wp-page-title-settings").assertDoesNotExist()
         compose.onNodeWithTag("unpin-selected-tile").performClick()
+        awaitGone("tile-settings")
         compose.onNodeWithTag("tile-settings").assertDoesNotExist()
 
         compose.activityRule.scenario.recreate()
 
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("tile-settings").assertDoesNotExist()
         compose.onNodeWithTag("tile-chart").assertIsDisplayed()
@@ -479,8 +532,10 @@ class ShellActivityStoryTest {
             compose.onAllNodesWithText("app language").fetchSemanticsNodes().isNotEmpty()
         }
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("settings-section-language")
         compose.onNodeWithTag("settings-section-language").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("tile-chart").assertIsDisplayed()
 
@@ -489,17 +544,33 @@ class ShellActivityStoryTest {
             compose.onAllNodesWithText("应用语言").fetchSemanticsNodes().isNotEmpty()
         }
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("settings-section-language")
         compose.onNodeWithTag("settings-section-language").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("tile-chart").assertIsDisplayed()
     }
 
     private fun selectLanguage(tag: String) {
         compose.onNodeWithTag("tile-settings").performClick()
+        awaitDisplayed("settings-section-language")
         compose.onNodeWithTag("settings-section-language").performClick()
+        awaitDisplayed("language-$tag")
         compose.onNodeWithTag("language-$tag").performClick()
         compose.waitForIdle()
+    }
+
+    private fun awaitDisplayed(tag: String) {
+        compose.waitUntil(timeoutMillis = 10_000) {
+            runCatching { compose.onNodeWithTag(tag).assertIsDisplayed() }.isSuccess
+        }
+    }
+
+    private fun awaitGone(tag: String) {
+        compose.waitUntil(timeoutMillis = 10_000) {
+            compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty()
+        }
     }
 
     private fun dispatchHardwareKey(keyCode: Int) {

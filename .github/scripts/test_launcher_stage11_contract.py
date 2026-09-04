@@ -91,6 +91,8 @@ class LauncherStage11PerformanceContractTest(unittest.TestCase):
         self.assertIn("stage11-performance", workflow)
         self.assertIn("run_device_tests.sh performance", workflow)
         self.assertIn("--result-root benchmark/shell/build/outputs/androidTest-results", workflow)
+        self.assertIn("emulator-options: -no-window -gpu auto", workflow)
+        self.assertNotIn("swiftshader_indirect", workflow)
         wrapper = (ROOT / ".github/scripts/run_device_tests.sh").read_text()
         self.assertIn("connectedStandaloneBenchmarkAndroidTest", wrapper)
         self.assertIn("validate_stage11_fidelity.py", workflow)
@@ -101,6 +103,8 @@ class LauncherStage11PerformanceContractTest(unittest.TestCase):
         self.assertIn("sixtyTileLayoutRemainsDeterministic", tests)
         self.assertIn("virtualSystemKeysRemainAvailableOnAllApps", tests)
         self.assertIn("virtualBackDismissesAlphabetJumpBeforeLeavingAllApps", tests)
+        self.assertIn('awaitDisplayed("chart-workspace-browse")', tests)
+        self.assertIn("timeoutMillis = 10_000", tests)
 
     def test_hardware_and_human_limits_remain_explicit(self):
         report = (STAGE / "REPORT.md").read_text()

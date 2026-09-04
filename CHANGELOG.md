@@ -9,6 +9,8 @@
 - 虚拟 Back/Start/Search 与可投递平台键继续进入同一个串行 Engine；Android 系统保留的物理 HOME 仍通过 Home flavor intent 接入，不伪造硬件权限、灯效、触感或 latency。
 - Profile harness 使用 3 轮上限／2 轮稳定收敛，并与生产 crash-loop 记账隔离；最终规则在双 Release APK 中编译打包。封口自审修正了 Alphabet 测试 matcher，API 34 Activity stories 达到 26/26。
 - Hosted 自审修正 Activity reset 前置状态竞态，Macrobenchmark 使用显式 Activity intent 和更宽的 emulator tag 等待；performance XML 与 benchmark/profile 诊断现可直接形成 Actions annotation/artifact。
+- Hosted Compose 故事门不再把串行 Engine 的异步 action 当作同步 Compose 点击：跨 Surface 的断言会等待真实目标可见，消除快慢 runner 对转场测试的偶发性。
+- GitHub emulator 从已弃用的 `swiftshader_indirect` 切换为官方推荐的自动图形后端选择，保留启用动画的 Activity story 和真实 FrameTimingMetric trace。
 
 ## Stage 10 — Durable Storage & Recovery
 
