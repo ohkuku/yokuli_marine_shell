@@ -4,7 +4,6 @@ import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
-import java.util.UUID
 
 /**
  * 中文：这是 Stage 3 对旧 UI 的兼容编辑入口；Stage 4 会把提交、取消和 Undo 收入 Reducer。
@@ -15,7 +14,7 @@ object StartLayoutEditor {
         document: StartDocument,
         tileId: TileInstanceId,
         entries: Collection<LauncherEntryDescriptor>,
-    ): LayoutTransaction? {
+    ): LayoutProposal? {
         val current = document.placements.firstOrNull { it.tileId == tileId } ?: return null
         val entry = entries.firstOrNull { it.entryId == current.entryId } ?: return null
         val cycle = entry.supportedSizes
@@ -28,7 +27,7 @@ object StartLayoutEditor {
         return transaction(document, repaired, LayoutChangeReason.RESIZE)
     }
 
-    fun unpin(document: StartDocument, tileId: TileInstanceId): LayoutTransaction? {
+    fun unpin(document: StartDocument, tileId: TileInstanceId): LayoutProposal? {
         if (document.placements.none { it.tileId == tileId }) return null
         return transaction(
             document,
@@ -41,7 +40,7 @@ object StartLayoutEditor {
         document: StartDocument,
         entryId: LauncherEntryId,
         entries: Collection<LauncherEntryDescriptor>,
-    ): LayoutTransaction? {
+    ): LayoutProposal? {
         if (document.placements.any { it.entryId == entryId }) return null
         val entry = entries.firstOrNull { it.entryId == entryId } ?: return null
         val candidate = TilePlacement(
@@ -65,7 +64,7 @@ object StartLayoutEditor {
         tileId: TileInstanceId,
         target: GridCell,
         entries: Collection<LauncherEntryDescriptor>,
-    ): LayoutTransaction? {
+    ): LayoutProposal? {
         val moving = document.placements.firstOrNull { it.tileId == tileId } ?: return null
         val profile = WpReferenceProfiles.require(document.profileId)
         if (target.column < 0 || target.row < 0 || target.column + moving.size.columns > profile.columnCount) {
@@ -82,5 +81,5 @@ object StartLayoutEditor {
     }
 
     private fun transaction(before: StartDocument, after: StartDocument, reason: LayoutChangeReason) =
-        LayoutTransaction(UUID.randomUUID().toString(), before, after, reason)
+        LayoutProposal(before, after, reason)
 }

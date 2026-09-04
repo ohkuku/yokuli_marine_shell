@@ -64,7 +64,7 @@ private fun ShellLab() {
         Box(Modifier.weight(1f)) {
             YokuliStartScreen(
                 state = LauncherUiState(document, entries),
-                onAction = { action -> if (action is LauncherUiAction.ChangeDocument) document = action.document },
+                onAction = { action -> if (action is LauncherUiAction.ProposeLayout) document = action.proposal.after },
             )
         }
     }

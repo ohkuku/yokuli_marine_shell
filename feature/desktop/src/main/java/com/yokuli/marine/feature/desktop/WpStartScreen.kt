@@ -123,7 +123,7 @@ fun YokuliStartScreen(
                                 onLongClick = { interaction = StartInteractionState.EditIdle(placement.tileId) },
                                 onUnpin = {
                                     StartLayoutEditor.unpin(state.document, placement.tileId)?.let {
-                                        onAction(LauncherUiAction.ChangeDocument(it.after))
+                                        onAction(LauncherUiAction.ProposeLayout(it))
                                     }
                                     interaction = StartInteractionState.Idle
                                 },
@@ -132,7 +132,7 @@ fun YokuliStartScreen(
                                         state.document,
                                         placement.tileId,
                                         state.entries.map { it.descriptor },
-                                    )?.let { onAction(LauncherUiAction.ChangeDocument(it.after)) }
+                                    )?.let { onAction(LauncherUiAction.ProposeLayout(it)) }
                                 },
                                 onMove = { delta ->
                                     val pitchPx = with(density) { pitch.toPx() }
@@ -145,7 +145,7 @@ fun YokuliStartScreen(
                                         placement.tileId,
                                         target,
                                         state.entries.map { it.descriptor },
-                                    )?.let { onAction(LauncherUiAction.ChangeDocument(it.after)) }
+                                    )?.let { onAction(LauncherUiAction.ProposeLayout(it)) }
                                 },
                                 modifier = Modifier.offset(x = pitch * placement.cell.column, y = pitch * placement.cell.row),
                             )

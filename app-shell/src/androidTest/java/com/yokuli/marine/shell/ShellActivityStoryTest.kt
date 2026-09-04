@@ -163,12 +163,18 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun editModeResizesAndUnpinsWithoutOpeningSettings() {
+    fun activityRecreationRetainsTheEngineDocument() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
         compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.onNodeWithTag("wp-page-title-settings").assertDoesNotExist()
         compose.onNodeWithTag("unpin-selected-tile").performClick()
         compose.onNodeWithTag("tile-settings").assertDoesNotExist()
+
+        compose.activityRule.scenario.recreate()
+
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.onNodeWithTag("tile-settings").assertDoesNotExist()
+        compose.onNodeWithTag("tile-chart").assertIsDisplayed()
     }
 
     @Test

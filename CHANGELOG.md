@@ -4,6 +4,14 @@
 
 ### 中文（主文）
 
+#### Stage 4 — Engine State, Effects & Persistence Ports
+
+- 新增纯 `LauncherReducer`、`LauncherEngineState/Action/Effect` 与唯一串行 action queue；异步 token 解析不再允许旧结果越过后续 Back/Home。
+- 失效或已卸载 token 保持当前界面并产生结构化 incident，不再抛异常；HostPort catalog flow 成为 Engine 与 Renderer 的唯一 runtime catalog 来源。
+- 布局变更使用确定性 transaction id，支持 commit/cancel/undo 与 persistence effect；损坏内存文档确定性恢复默认布局。
+- `ShellViewModel` 在 Activity 配置重建期间保留 Engine；`ShellActivity` 不再用 Compose `remember` 持有导航或 Start document 真值。
+- 新增 7 项 Stage 4 Red/Green 合同、6 项 reducer/controller JVM 场景与 Activity recreation story；DataStore 进程恢复、pager、拖拽和系统键仍属于后续 Stage。
+
 #### Stage 3 — WP Geometry & Start Document
 
 - 用 Stage 2.5 人工批准的 revision 1/hash 建立 `WpReferenceProfile`；480×800 Phone profile 固定测得的 24px 外边距、12px seam、99px Small、210px Medium、432px Wide、32px 状态条和 57px 首磁贴顶边。

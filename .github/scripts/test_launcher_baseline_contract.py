@@ -105,7 +105,7 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
             "sealed interface StartInteractionState",
             "data class LayoutTransaction",
             "class LauncherCatalog",
-            "class ShellNavigator",
+            "class DefaultLauncherEngine",
         ):
             self.assertIn(symbol, sources)
         self.assertIn("schemaVersion:", sources)

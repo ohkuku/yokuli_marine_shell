@@ -30,6 +30,12 @@ data class LayoutTransaction(
     val reason: LayoutChangeReason,
 )
 
+data class LayoutProposal(
+    val before: StartDocument,
+    val after: StartDocument,
+    val reason: LayoutChangeReason,
+)
+
 internal fun TilePlacement.occupiedCells(): Set<GridCell> = buildSet {
     repeat(this@occupiedCells.size.rows) { y ->
         repeat(this@occupiedCells.size.columns) { x ->

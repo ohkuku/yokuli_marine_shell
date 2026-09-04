@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "stage": 4,
+  "name": "Engine State, Effects & Persistence Ports",
+  "branch": "codex/launcher-engine-batch-a",
+  "startingSha": "f0315cf1336991ebaaf7ba15f1f81ef9956d3b18",
+  "requiredCompletedStage": "WP Geometry & Start Document",
+  "scope": "Reducer + Engine State + Effects + Transactions",
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

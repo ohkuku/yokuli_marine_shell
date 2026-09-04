@@ -380,3 +380,11 @@ FAILED (failures=2, errors=4)
 Stage 3 is driven by the human-approved Stage 2.5 hash rather than guessed ratios. It adds revisioned reference profiles, integer-pixel viewport geometry, standard WP tile formulae, and a versioned spatial Start document with explicit cells and deterministic validation/repair. Phone geometry is measured; square profiles are derived and remain hardware-unverified. Unseen interaction parameters remain null. Reducer, effects, serialized dispatch, persistence, pager, gestures, and shell key routing are outside this commit.
 
 最终回归：Stage 0 `10/10`、Stage 1 `9/9`、Stage 2 `10/10`、Stage 2.5 `9/9`、Stage 3 `6/6`、全部 Python `74/74`、完整 Gradle `954 tasks`、双 Release 二进制产品面审计和 Reference semantic validator 全部通过。Stage 3 Gate 通过后才允许创建 Stage 3 commit；Stage 4 尚未写入该 commit。
+
+## Stage 4 — Engine State, Effects & Persistence Ports
+
+先写 7 项 Stage 4 合同并得到真实 Red（3 failures、4 errors），随后建立纯 Reducer、串行 Channel controller、Engine state/effects、确定性 layout transaction、cancel/undo、persistence port 与 ViewModel。失效 LaunchToken 保持当前 surface 并产生 `LogIncident`；HostPort catalog flow 成为 Engine 和 UI 的唯一 runtime catalog 真值。Activity 不再以 `remember` 持有 navigation 或 StartDocument，配置重建 story 验证同一 ViewModel 的文档保持。完整结果记录于 `docs/stages/stage-4/REPORT.md`。
+
+### English translation — Stage 4
+
+Seven contract tests first failed on the absent Stage 4 architecture and evidence. Green introduces a pure reducer, serialized controller, state/effects, deterministic transactions, cancel/undo, persistence port, and ViewModel ownership. Unresolved launch tokens no longer crash, and the HostPort catalog flow is the only runtime catalog rendered by the UI. The Activity recreation story locks the lifecycle boundary; process-death durability remains Stage 10.

@@ -20,11 +20,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpAccent
 import com.yokuli.marine.core.design.WpNavigationIntent
@@ -52,12 +53,9 @@ import com.yokuli.marine.feature.desktop.productionLauncherUiState
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
-import com.yokuli.shell.engine.layout.StartLayoutEditor
-import com.yokuli.shell.engine.navigation.ShellCommand
-import com.yokuli.shell.engine.navigation.ShellNavigationState
-import com.yokuli.shell.engine.navigation.ShellNavigator
-import com.yokuli.shell.engine.navigation.ShellSurface
-import kotlinx.coroutines.launch
+import com.yokuli.shell.engine.LauncherAction
+import com.yokuli.shell.engine.LauncherSurface
+import com.yokuli.shell.engine.LauncherTransitionIntent
 
 class ShellActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,11 +78,9 @@ class ShellActivity : AppCompatActivity() {
 @Composable
 private fun YokuliShell() {
     val context = LocalContext.current
-    val navigator = remember { ShellNavigator(productionHostPort) }
-    val scope = rememberCoroutineScope()
-    var navigation by remember { mutableStateOf(ShellNavigationState()) }
-    var startDocument by remember { mutableStateOf(defaultStartDocument) }
-    var transitionIntent by remember { mutableStateOf(WpNavigationIntent.SIBLING_FORWARD) }
+    val shellViewModel = viewModel<ShellViewModel>()
+    val engine = shellViewModel.engine
+    val engineState by engine.state.collectAsState()
     var themeModeName by rememberSaveable { mutableStateOf(WpThemeMode.DARK.name) }
     var accentName by rememberSaveable { mutableStateOf(WpAccent.CYAN.name) }
     var settingsSectionName by rememberSaveable { mutableStateOf(SettingsSection.OVERVIEW.name) }
@@ -92,30 +88,21 @@ private fun YokuliShell() {
     val language = AppCompatDelegate.getApplicationLocales()[0]?.language.let {
         if (it == "en") AppLanguage.ENGLISH else AppLanguage.CHINESE
     }
-    val dispatch: (ShellCommand) -> Unit = { command ->
-        if (command is ShellCommand.Open) {
-            SettingsDestinations.section(command.token)?.let { settingsSectionName = it.name }
+    val dispatch: (LauncherAction) -> Unit = { action ->
+        if (action is LauncherAction.Open) {
+            SettingsDestinations.section(action.token)?.let { settingsSectionName = it.name }
         }
-        transitionIntent = when (command) {
-            ShellCommand.ShowAllApps -> WpNavigationIntent.SIBLING_FORWARD
-            ShellCommand.Back -> if (navigation.surface == ShellSurface.AllApps) {
-                WpNavigationIntent.SIBLING_BACK
-            } else {
-                WpNavigationIntent.DEEPER_BACK
-            }
-            is ShellCommand.Open -> WpNavigationIntent.DEEPER_FORWARD
-        }
-        scope.launch { navigation = navigator.reduce(navigation, command) }
+        engine.dispatch(action)
     }
-    val settingsSubpageVisible = (navigation.surface as? ShellSurface.App)?.let { surface ->
-        navigation.tasks.firstOrNull { it.id == surface.taskId }?.appId == SettingsDestinations.AppId &&
+    val settingsSubpageVisible = (engineState.surface as? LauncherSurface.InternalApp)?.let { surface ->
+        engineState.tasks.task(surface.taskId)?.appId == SettingsDestinations.AppId &&
             SettingsSection.valueOf(settingsSectionName) != SettingsSection.OVERVIEW
     } == true
-    BackHandler(navigation.surface != ShellSurface.Start) {
+    BackHandler(engineState.surface != LauncherSurface.Start) {
         if (settingsSubpageVisible) {
             settingsSectionName = SettingsSection.OVERVIEW.name
         } else {
-            dispatch(ShellCommand.Back)
+            dispatch(LauncherAction.Back)
         }
     }
 
@@ -127,13 +114,13 @@ private fun YokuliShell() {
             theme = themeSpec,
             language = language,
             settingsSection = SettingsSection.valueOf(settingsSectionName),
-            pinnedTileCount = startDocument.placements.size,
-            startDocumentVersion = startDocument.defaultLayoutVersion,
+            pinnedTileCount = engineState.start.document.placements.size,
+            startDocumentVersion = engineState.start.document.defaultLayoutVersion,
             versionName = BuildConfig.VERSION_NAME,
             buildVariant = "${BuildConfig.FLAVOR}/${BuildConfig.BUILD_TYPE}",
             gitSha = BuildConfig.GIT_SHA,
             debugShellLabAvailable = BuildConfig.DEBUG,
-            openMapSettings = { dispatch(ShellCommand.Open(SettingsDestinations.Map)) },
+            openMapSettings = { dispatch(LauncherAction.Open(SettingsDestinations.Map)) },
             onSettingsAction = { action ->
                 when (action) {
                     is SettingsUiAction.OpenSection -> settingsSectionName = action.section.name
@@ -142,60 +129,61 @@ private fun YokuliShell() {
                         accentName = action.theme.accent.name
                     }
                     is SettingsUiAction.ChangeLanguage -> context.persistAppLanguage(action.language)
-                    SettingsUiAction.ResetStartScreen -> startDocument = defaultStartDocument
+                    SettingsUiAction.ResetStartScreen -> dispatch(LauncherAction.ResetStartDocument)
                     SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
                 }
             },
         )
         CompositionLocalProvider(LocalProductionShellRuntime provides runtime) {
             Column(Modifier.fillMaxSize().background(colors.background)) {
-                WpStatusStrip { dispatch(ShellCommand.Open(SettingsDestinations.Overview)) }
+                WpStatusStrip { dispatch(LauncherAction.Open(SettingsDestinations.Overview)) }
                 WpSurfaceTransitionHost(
-                    targetState = navigation.surface,
-                    intent = transitionIntent,
+                    targetState = engineState.surface,
+                    intent = engineState.transitionIntent.toWpIntent(),
                     modifier = Modifier.weight(1f),
                 ) { surface ->
                     val launcherState = productionLauncherUiState(
-                        catalog = productionCatalog.snapshot,
-                        document = startDocument,
+                        catalog = engineState.catalog,
+                        document = engineState.start.document,
                         mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
                         theme = themeSpec,
                         visualContributions = productionVisualContributions,
                     )
                     val launcherAction: (LauncherUiAction) -> Unit = { action ->
                         when (action) {
-                            is LauncherUiAction.Open -> dispatch(ShellCommand.Open(action.token))
-                            LauncherUiAction.ShowAllApps -> dispatch(ShellCommand.ShowAllApps)
-                            is LauncherUiAction.ChangeDocument -> startDocument = action.document
-                            is LauncherUiAction.TogglePin -> {
-                                val pinned = startDocument.placements.firstOrNull { it.entryId == action.entryId }
-                                val transaction = if (pinned == null) {
-                                    StartLayoutEditor.pin(startDocument, action.entryId, productionCatalog.entries)
-                                } else {
-                                    StartLayoutEditor.unpin(startDocument, pinned.tileId)
-                                }
-                                transaction?.let { startDocument = it.after }
-                            }
+                            is LauncherUiAction.Open -> dispatch(LauncherAction.Open(action.token))
+                            LauncherUiAction.ShowAllApps -> dispatch(LauncherAction.ShowAllApps)
+                            is LauncherUiAction.ProposeLayout -> dispatch(LauncherAction.ApplyLayoutProposal(action.proposal))
+                            is LauncherUiAction.TogglePin -> dispatch(LauncherAction.TogglePin(action.entryId))
                             is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
                         }
                     }
                     when (surface) {
-                        ShellSurface.Start -> SwipeSurface(onSwipeLeft = { dispatch(ShellCommand.ShowAllApps) }) {
+                        LauncherSurface.Start -> SwipeSurface(onSwipeLeft = { dispatch(LauncherAction.ShowAllApps) }) {
                             YokuliStartScreen(launcherState, launcherAction)
                         }
-                        ShellSurface.AllApps -> SwipeSurface(onSwipeRight = { dispatch(ShellCommand.Back) }) {
+                        LauncherSurface.AllApps -> SwipeSurface(onSwipeRight = { dispatch(LauncherAction.Back) }) {
                             WpAppList(launcherState, launcherAction)
                         }
-                        is ShellSurface.App -> {
-                            val task = navigation.tasks.first { it.id == surface.taskId }
-                            productionInternalAppHostResolver.hostFor(task.appId)?.Render(task.token)
+                        is LauncherSurface.InternalApp -> {
+                            val task = requireNotNull(engineState.tasks.task(surface.taskId))
+                            productionInternalAppHostResolver.hostFor(task.appId)?.Render(task.lastLaunchToken)
                                 ?: error("No internal host for installed app: ${task.appId.value}")
                         }
+                        LauncherSurface.Recents -> Unit
                     }
                 }
             }
         }
     }
+}
+
+private fun LauncherTransitionIntent.toWpIntent(): WpNavigationIntent = when (this) {
+    LauncherTransitionIntent.NONE -> WpNavigationIntent.SIBLING_FORWARD
+    LauncherTransitionIntent.SIBLING_FORWARD -> WpNavigationIntent.SIBLING_FORWARD
+    LauncherTransitionIntent.SIBLING_BACK -> WpNavigationIntent.SIBLING_BACK
+    LauncherTransitionIntent.DEEPER_FORWARD -> WpNavigationIntent.DEEPER_FORWARD
+    LauncherTransitionIntent.DEEPER_BACK -> WpNavigationIntent.DEEPER_BACK
 }
 
 private fun Context.openHostAppInfo() {
