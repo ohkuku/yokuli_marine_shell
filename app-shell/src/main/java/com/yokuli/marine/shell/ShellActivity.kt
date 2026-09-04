@@ -79,11 +79,11 @@ import com.yokuli.shell.engine.LauncherTransitionIntent
 import com.yokuli.shell.engine.InternalAppTaskId
 import com.yokuli.shell.engine.interaction.StartInteractionState
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
-import com.yokuli.shell.engine.toLauncherAction
+import com.yokuli.shell.engine.toShellAction
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherAppId
-import com.yokuli.shell.contract.LauncherInput
-import com.yokuli.shell.android.AndroidLauncherKeyAdapter
+import com.yokuli.shell.contract.ShellInput
+import com.yokuli.shell.android.AndroidShellKeyAdapter
 
 class ShellActivity : AppCompatActivity() {
     private val shellViewModel by viewModels<ShellViewModel>()
@@ -125,16 +125,16 @@ class ShellActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val input = AndroidLauncherKeyAdapter.mapKeyCode(event.keyCode) ?: return super.dispatchKeyEvent(event)
+        val input = AndroidShellKeyAdapter.mapKeyCode(event.keyCode) ?: return super.dispatchKeyEvent(event)
         if (event.action == KeyEvent.ACTION_DOWN) {
-            if (input == LauncherInput.BACK && event.repeatCount > 0 && !longBackConsumed) {
+            if (input == ShellInput.BACK && event.repeatCount > 0 && !longBackConsumed) {
                 longBackConsumed = true
-                dispatchInput(LauncherInput.RECENTS)
+                dispatchInput(ShellInput.RECENTS)
             }
             return true
         }
         if (event.action == KeyEvent.ACTION_UP) {
-            if (input == LauncherInput.BACK && longBackConsumed) {
+            if (input == ShellInput.BACK && longBackConsumed) {
                 longBackConsumed = false
             } else {
                 dispatchInput(input)
@@ -144,8 +144,8 @@ class ShellActivity : AppCompatActivity() {
         return true
     }
 
-    private fun dispatchInput(input: LauncherInput) {
-        shellViewModel.engine.dispatch(input.toLauncherAction())
+    private fun dispatchInput(input: ShellInput) {
+        shellViewModel.engine.dispatch(input.toShellAction())
     }
 
     internal fun openAndroidSettings() {
@@ -186,8 +186,8 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     )
     val language = if (persistedPreferences.languageTag == "en") AppLanguage.ENGLISH else AppLanguage.CHINESE
     val dispatch: (LauncherAction) -> Unit = engine::dispatch
-    val dispatchInput: (LauncherInput) -> Unit = { input -> dispatch(input.toLauncherAction()) }
-    BackHandler(enabled = true) { dispatchInput(LauncherInput.BACK) }
+    val dispatchInput: (ShellInput) -> Unit = { input -> dispatch(input.toShellAction()) }
+    BackHandler(enabled = true) { dispatchInput(ShellInput.BACK) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, engine) {
         val observer = LifecycleEventObserver { _, event ->

@@ -24,7 +24,7 @@
     <string name="pin_unavailable">此入口不能固定到开始屏幕</string>
     <string name="layout_unavailable">无法更改开始屏幕布局</string>
     <string name="system_back">返回</string>
-    <string name="system_start">开始</string>
+    <string name="system_bridge">船桥</string>
     <string name="system_search">搜索</string>
     <string name="search_title">搜索</string>
     <string name="search_installed_apps">已安装应用</string>
@@ -39,7 +39,7 @@
     <string name="recovery_context">启动恢复</string>
     <string name="recovery_explanation">检测到连续启动失败。当前使用默认布局和精简动效；海图、设置与 Android 设置仍可使用。</string>
     <string name="recovery_reset">重置并退出安全模式</string>
-    <string name="recovery_android_settings">打开 Android 桌面设置</string>
+    <string name="recovery_android_settings">打开 Android 设置</string>
     <string name="status_charging">充电中</string>
     <string name="status_battery">%1$d%%</string>
 </resources>

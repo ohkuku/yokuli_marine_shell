@@ -54,9 +54,9 @@ class LauncherNavigationTest {
     }
 
     @Test
-    fun homePreservesInternalTasks() {
+    fun desktopCommandPreservesInternalTasks() {
         val opened = open(initial(), chart.appId, chart.launchToken)
-        val result = reduce(opened, LauncherAction.Home)
+        val result = reduce(opened, LauncherAction.ShowDesktop)
 
         assertEquals(ShellVisualSurface.Desktop, result.state.surface)
         assertEquals(opened.tasks, result.state.tasks)

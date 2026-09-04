@@ -24,7 +24,7 @@
     <string name="pin_unavailable">this entry cannot be pinned to Start</string>
     <string name="layout_unavailable">Start layout could not be changed</string>
     <string name="system_back">back</string>
-    <string name="system_start">start</string>
+    <string name="system_bridge">bridge</string>
     <string name="system_search">search</string>
     <string name="search_title">search</string>
     <string name="search_installed_apps">installed apps</string>
@@ -39,7 +39,7 @@
     <string name="recovery_context">startup recovery</string>
     <string name="recovery_explanation">Repeated startup failures were detected. The default layout and reduced motion are active; Chart, Settings, and Android Settings remain available.</string>
     <string name="recovery_reset">reset and leave safe mode</string>
-    <string name="recovery_android_settings">open Android Home settings</string>
+    <string name="recovery_android_settings">open Android settings</string>
     <string name="status_charging">charging</string>
     <string name="status_battery">%1$d%%</string>
 </resources>

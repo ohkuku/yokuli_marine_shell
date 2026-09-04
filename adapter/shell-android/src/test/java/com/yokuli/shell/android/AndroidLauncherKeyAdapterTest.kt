@@ -1,18 +1,18 @@
 package com.yokuli.shell.android
 
 import android.view.KeyEvent
-import com.yokuli.shell.contract.LauncherInput
+import com.yokuli.shell.contract.ShellInput
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class AndroidLauncherKeyAdapterTest {
+class AndroidShellKeyAdapterTest {
     @Test
     fun mapsOnlyDeliverableNavigationKeys() {
-        assertEquals(LauncherInput.BACK, AndroidLauncherKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_BACK))
-        assertEquals(LauncherInput.BACK, AndroidLauncherKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_ESCAPE))
-        assertEquals(LauncherInput.START, AndroidLauncherKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_HOME))
-        assertEquals(LauncherInput.SEARCH, AndroidLauncherKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_SEARCH))
-        assertNull(AndroidLauncherKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_VOLUME_UP))
+        assertEquals(ShellInput.BACK, AndroidShellKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_BACK))
+        assertEquals(ShellInput.BACK, AndroidShellKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_ESCAPE))
+        assertEquals(ShellInput.DESKTOP, AndroidShellKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_HOME))
+        assertEquals(ShellInput.SEARCH, AndroidShellKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_SEARCH))
+        assertNull(AndroidShellKeyAdapter.mapKeyCode(KeyEvent.KEYCODE_VOLUME_UP))
     }
 }

@@ -46,7 +46,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
             // A performance/profile harness must render a deterministic Start immediately;
             // its repeated process control is not a production recovery event.
             engine.dispatch(LauncherAction.RestorePersistedDocument(defaultStartDocument))
-            engine.dispatch(LauncherAction.Home)
+            engine.dispatch(LauncherAction.ShowDesktop)
         }
         startupJob = viewModelScope.launch {
             val persisted = persistence.load() ?: defaults
@@ -64,7 +64,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
                 // Treating harness lifecycle control as a production crash would corrupt later journeys.
                 persistence.markLaunchHealthy()
                 engine.dispatch(LauncherAction.ExitSafeMode)
-                engine.dispatch(LauncherAction.Home)
+                engine.dispatch(LauncherAction.ShowDesktop)
             }
         }
     }
@@ -86,7 +86,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     fun resetLauncher(): Job = viewModelScope.launch {
         persistence.reset()
         engine.dispatch(LauncherAction.RestorePersistedDocument(defaultStartDocument))
-        engine.dispatch(LauncherAction.Home)
+        engine.dispatch(LauncherAction.ShowDesktop)
     }
 
     fun resetStartDocument() {

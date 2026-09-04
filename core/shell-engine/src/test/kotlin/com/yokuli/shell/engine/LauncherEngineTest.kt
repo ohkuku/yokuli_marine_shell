@@ -71,7 +71,7 @@ class LauncherEngineTest {
         engine.dispatch(LauncherAction.Open(chart.launchToken))
         engine.dispatch(LauncherAction.Back)
         engine.dispatch(LauncherAction.Open(settings.launchToken))
-        engine.dispatch(LauncherAction.Home)
+        engine.dispatch(LauncherAction.ShowDesktop)
 
         await { host.resolvedTokens.size == 2 && engine.state.value.surface == ShellVisualSurface.Desktop }
         assertEquals(listOf(chart.launchToken, settings.launchToken), host.resolvedTokens)

@@ -24,17 +24,17 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
         self.assertIn("RequestHostExit", reducer)
 
     def test_virtual_and_android_keys_share_one_typed_input_path(self):
-        contract = (ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/LauncherInput.kt").read_text()
-        adapter = (ROOT / "adapter/shell-android/src/main/java/com/yokuli/shell/android/AndroidLauncherKeyAdapter.kt").read_text()
+        contract = (ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/ShellInput.kt").read_text()
+        adapter = (ROOT / "adapter/shell-android/src/main/java/com/yokuli/shell/android/AndroidShellKeyAdapter.kt").read_text()
         activity = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt").read_text()
         key_bar = (ROOT / "feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSystemKeyBar.kt").read_text()
-        for key in ("BACK", "START", "SEARCH", "RECENTS"):
+        for key in ("BACK", "DESKTOP", "SEARCH", "RECENTS"):
             self.assertIn(key, contract)
-        self.assertIn("AndroidLauncherKeyAdapter", activity)
-        self.assertIn("LauncherInput", key_bar)
+        self.assertIn("AndroidShellKeyAdapter", activity)
+        self.assertIn("ShellInput", key_bar)
         self.assertIn("BackHandler(enabled = true)", activity)
         self.assertIn("onNewIntent", activity)
-        self.assertNotIn("LauncherInput.START", activity)
+        self.assertNotRegex(activity, r"onNewIntent[\s\S]{0,300}ShellInput\.DESKTOP")
 
     def test_fullscreen_is_reasserted_and_platform_home_boundary_is_documented(self):
         activity = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt").read_text()
@@ -62,14 +62,14 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
         activity = (ROOT / "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt").read_text()
         for scenario in (
             "internalBackPopsOpaqueRouteBeforeReturningToStart",
-            "homePreservesInternalTasks",
+            "desktopCommandPreservesInternalTasks",
             "searchIsAFirstClassSurfaceAndBackReturnsToItsSource",
             "searchResultLaunchTransitionsDirectlyFromSearchToModule",
             "recentsCanResumeAnExistingTask",
         ):
             self.assertIn(scenario, jvm)
         for scenario in (
-            "virtualStartReturnsFromSettingsWithoutDestroyingItsTask",
+            "virtualBridgeReturnsFromSettingsWithoutDestroyingItsTask",
             "searchResultLaunchHasNoIntermediateSurface",
             "virtualBackLongPressOpensRecents",
             "androidBackAndDeliveredHardwareKeysUseTheUnifiedInputPath",
@@ -83,7 +83,7 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
         self.assertIn("python3 .github/scripts/test_launcher_stage9_contract.py", workflow)
         for locale in ("values", "values-en", "values-zh-rCN"):
             strings = (ROOT / f"feature/desktop/src/main/res/{locale}/strings.xml").read_text()
-            for name in ("system_back", "system_start", "system_search", "recents_title", "search_title"):
+            for name in ("system_back", "system_bridge", "system_search", "recents_title", "search_title"):
                 self.assertIn(f'name="{name}"', strings)
 
 

@@ -4,7 +4,7 @@ import com.yokuli.shell.contract.LaunchResolution
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherCatalogSnapshot
 import com.yokuli.shell.contract.LauncherEntryId
-import com.yokuli.shell.contract.LauncherInput
+import com.yokuli.shell.contract.ShellInput
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.UiText
@@ -37,7 +37,7 @@ sealed interface LauncherAction {
     data object ShowStart : LauncherAction
     data object ShowAllApps : LauncherAction
     data object Back : LauncherAction
-    data object Home : LauncherAction
+    data object ShowDesktop : LauncherAction
     data object OpenSearch : LauncherAction
     data class UpdateSearchQuery(val query: String) : LauncherAction
     data object ShowRecents : LauncherAction
@@ -109,11 +109,11 @@ sealed interface LauncherEffect {
     data object RequestHostExit : LauncherEffect
 }
 
-fun LauncherInput.toLauncherAction(): LauncherAction = when (this) {
-    LauncherInput.BACK -> LauncherAction.Back
-    LauncherInput.START -> LauncherAction.Home
-    LauncherInput.SEARCH -> LauncherAction.OpenSearch
-    LauncherInput.RECENTS -> LauncherAction.ShowRecents
+fun ShellInput.toShellAction(): LauncherAction = when (this) {
+    ShellInput.BACK -> LauncherAction.Back
+    ShellInput.DESKTOP -> LauncherAction.ShowDesktop
+    ShellInput.SEARCH -> LauncherAction.OpenSearch
+    ShellInput.RECENTS -> LauncherAction.ShowRecents
 }
 
 interface LauncherReducer {
@@ -146,7 +146,7 @@ class DefaultLauncherReducer : LauncherReducer {
             action !is LauncherAction.CatalogChanged &&
             action !is LauncherAction.RestorePersistedDocument &&
             action !is LauncherAction.Back &&
-            action != LauncherAction.Home &&
+            action != LauncherAction.ShowDesktop &&
             action != LauncherAction.EnterSafeMode &&
             action != LauncherAction.ExitSafeMode &&
             action != LauncherAction.ResetStartDocument &&
@@ -162,7 +162,7 @@ class DefaultLauncherReducer : LauncherReducer {
             ),
         )
 
-        LauncherAction.Home -> home(state)
+        LauncherAction.ShowDesktop -> showDesktop(state)
         LauncherAction.OpenSearch -> openSearch(state)
         is LauncherAction.UpdateSearchQuery -> updateSearchQuery(state, action.query)
         LauncherAction.ShowRecents -> showRecents(state)
@@ -319,7 +319,7 @@ class DefaultLauncherReducer : LauncherReducer {
         )
     }
 
-    private fun home(state: LauncherEngineState): LauncherReduction {
+    private fun showDesktop(state: LauncherEngineState): LauncherReduction {
         val cancelled = cancelForShellNavigation(state)
         return LauncherReduction(
             cancelled.navigateTo(

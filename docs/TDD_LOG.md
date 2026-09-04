@@ -56,6 +56,20 @@ Stage 9 navigation contract                           PASS (7/7)
   assembleStandaloneDebug                            PASS (795 tasks)
 ```
 
+### Slice 3 — Marine Bridge Navigation
+
+Red/contract 将旧 `LauncherInput.START`、Windows 四窗格 glyph 和 Android Home-launcher 文案标为非法，并锁定两个来源相关的 Bridge 过渡：Module List 返回 Desktop 必须是 `PAGER_BACK`，Module 返回 Desktop 必须是 `MODULE_TO_DESKTOP`。
+
+Green 将统一输入重命名为 `ShellInput`，中键语义改为仅限应用内部的 `DESKTOP`，Android adapter 明确说明系统物理 Home 仍归 Android；虚拟中键现在绘制四向罗经花并使用“船桥 / bridge”无障碍标签。Android Back、虚拟键和可投递键盘按键仍进入同一个串行 Engine 队列。
+
+```text
+Stage 9 navigation contract                           PASS (7/7)
+Marine correction contract                            Bridge slice PASS
+./gradlew :core:shell-engine:test
+  :adapter:shell-android:test
+  :app-shell:compileStandaloneDebugKotlin              PASS (192 tasks)
+```
+
 状态：`STAGE_2_5_HUMAN_REVIEWED_APPROVED`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
 
 ## Stage 0 — Freeze & Reference Contract

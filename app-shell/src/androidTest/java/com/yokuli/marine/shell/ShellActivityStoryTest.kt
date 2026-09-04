@@ -72,7 +72,7 @@ class ShellActivityStoryTest {
             engine.state.value.recoveryMode == LauncherRecoveryMode.SAFE_MODE
         }
         engine.dispatch(LauncherAction.ExitSafeMode)
-        engine.dispatch(LauncherAction.Home)
+        engine.dispatch(LauncherAction.ShowDesktop)
         compose.waitUntil(10_000) {
             engine.state.value.recoveryMode == LauncherRecoveryMode.NORMAL &&
                 engine.state.value.surface == ShellVisualSurface.Desktop
@@ -326,12 +326,12 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun virtualStartReturnsFromSettingsWithoutDestroyingItsTask() {
+    fun virtualBridgeReturnsFromSettingsWithoutDestroyingItsTask() {
         compose.onNodeWithTag("tile-settings").performClick()
         awaitDisplayed("settings-workspace")
         compose.onNodeWithTag("settings-workspace").assertIsDisplayed()
 
-        compose.onNodeWithTag("virtual-key-start").performClick()
+        compose.onNodeWithTag("virtual-key-bridge").performClick()
         awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("virtual-key-back").performTouchInput { longClick() }
@@ -359,7 +359,7 @@ class ShellActivityStoryTest {
     fun virtualBackLongPressOpensRecents() {
         compose.onNodeWithTag("tile-chart").performClick()
         awaitDisplayed("chart-workspace-browse")
-        compose.onNodeWithTag("virtual-key-start").performClick()
+        compose.onNodeWithTag("virtual-key-bridge").performClick()
         awaitDisplayed("start-screen")
         compose.onNodeWithTag("virtual-key-back").performTouchInput { longClick() }
 
@@ -492,7 +492,7 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
         compose.onNodeWithTag("wp-system-key-bar").assertIsDisplayed()
         compose.onNodeWithTag("virtual-key-back").assertIsDisplayed()
-        compose.onNodeWithTag("virtual-key-start").assertIsDisplayed()
+        compose.onNodeWithTag("virtual-key-bridge").assertIsDisplayed()
         compose.onNodeWithTag("virtual-key-search").assertIsDisplayed()
         val pixels = compose.onRoot().captureToImage().toPixelMap()
         val keyTop = (pixels.height - 54).coerceAtLeast(0)

@@ -27,7 +27,7 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
 
     def test_existing_task_is_not_forced_to_desktop(self):
         activity = self.text("app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt")
-        self.assertNotRegex(activity, r"onNewIntent[\s\S]{0,300}LauncherInput\.START")
+        self.assertNotRegex(activity, r"onNewIntent[\s\S]{0,300}ShellInput\.DESKTOP")
         self.assertNotIn("Settings.ACTION_HOME_SETTINGS", activity)
 
     def test_search_is_a_visual_surface_and_has_atomic_transition_model(self):
@@ -37,7 +37,7 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertTrue((ROOT / "core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/ShellTransitionResolver.kt").is_file())
 
     def test_center_key_is_bridge_not_windows_start(self):
-        contract = self.text("core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/LauncherInput.kt")
+        contract = self.text("core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/ShellInput.kt")
         key_bar = self.text("feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSystemKeyBar.kt")
         self.assertIn("DESKTOP", contract)
         self.assertNotRegex(key_bar, r"Windows|StartGlyph|four-pane")

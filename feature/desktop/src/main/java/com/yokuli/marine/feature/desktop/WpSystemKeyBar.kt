@@ -45,7 +45,7 @@ import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.wpTilt
-import com.yokuli.shell.contract.LauncherInput
+import com.yokuli.shell.contract.ShellInput
 import com.yokuli.shell.engine.InternalAppTask
 
 private val DerivedVirtualKeyBarHeight = 54.dp
@@ -56,7 +56,7 @@ private val DerivedVirtualKeyBarHeight = 54.dp
  * there is deliberately no invented WP key-light or press animation.
  */
 @Composable
-fun WpSystemKeyBar(onInput: (LauncherInput) -> Unit, modifier: Modifier = Modifier) {
+fun WpSystemKeyBar(onInput: (ShellInput) -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier.zIndex(1f).graphicsLayer().fillMaxWidth().height(DerivedVirtualKeyBarHeight)
             .background(Color.Black).testTag("wp-system-key-bar"),
@@ -65,18 +65,18 @@ fun WpSystemKeyBar(onInput: (LauncherInput) -> Unit, modifier: Modifier = Modifi
         SystemKey(
             label = stringResource(R.string.system_back),
             tag = "virtual-key-back",
-            onClick = { onInput(LauncherInput.BACK) },
-            onLongClick = { onInput(LauncherInput.RECENTS) },
+            onClick = { onInput(ShellInput.BACK) },
+            onLongClick = { onInput(ShellInput.RECENTS) },
         ) { BackGlyph() }
         SystemKey(
-            label = stringResource(R.string.system_start),
-            tag = "virtual-key-start",
-            onClick = { onInput(LauncherInput.START) },
-        ) { StartGlyph() }
+            label = stringResource(R.string.system_bridge),
+            tag = "virtual-key-bridge",
+            onClick = { onInput(ShellInput.DESKTOP) },
+        ) { CompassBridgeGlyph() }
         SystemKey(
             label = stringResource(R.string.system_search),
             tag = "virtual-key-search",
-            onClick = { onInput(LauncherInput.SEARCH) },
+            onClick = { onInput(ShellInput.SEARCH) },
         ) { SearchGlyph() }
     }
 }
@@ -133,18 +133,26 @@ private fun BackGlyph() {
 }
 
 @Composable
-private fun StartGlyph() {
-    Canvas(Modifier.size(27.dp)) {
-        val gap = size.width * .08f
-        val pane = (size.width - gap) / 2f
-        drawRect(Color.White, topLeft = Offset.Zero, size = androidx.compose.ui.geometry.Size(pane, pane))
-        drawRect(Color.White, topLeft = Offset(pane + gap, 0f), size = androidx.compose.ui.geometry.Size(pane, pane))
-        drawRect(Color.White, topLeft = Offset(0f, pane + gap), size = androidx.compose.ui.geometry.Size(pane, pane))
-        drawRect(
-            Color.White,
-            topLeft = Offset(pane + gap, pane + gap),
-            size = androidx.compose.ui.geometry.Size(pane, pane),
-        )
+private fun CompassBridgeGlyph() {
+    Canvas(Modifier.size(29.dp)) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension * .39f
+        val stroke = size.minDimension * .055f
+        drawCircle(Color.White, radius, center, style = Stroke(stroke))
+        val rose = Path().apply {
+            moveTo(center.x, center.y - radius * .82f)
+            lineTo(center.x + radius * .23f, center.y)
+            lineTo(center.x, center.y + radius * .82f)
+            lineTo(center.x - radius * .23f, center.y)
+            close()
+            moveTo(center.x - radius * .82f, center.y)
+            lineTo(center.x, center.y - radius * .23f)
+            lineTo(center.x + radius * .82f, center.y)
+            lineTo(center.x, center.y + radius * .23f)
+            close()
+        }
+        drawPath(rose, Color.White, style = Stroke(stroke))
+        drawCircle(Color.White, radius = stroke * .9f, center = center)
     }
 }
 
