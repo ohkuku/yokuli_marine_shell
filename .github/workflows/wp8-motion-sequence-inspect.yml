@@ -1,0 +1,67 @@
+name: WP8 motion sequence inspection
+
+on:
+  push:
+    branches:
+      - codex/launcher-engine-stage2.5
+    paths:
+      - .github/workflows/wp8-motion-sequence-inspect.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/launcher-engine-stage2.5
+      - name: Install ffmpeg
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+      - name: Download selected CC-licensed motion sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/wp8-sequences/source /tmp/wp8-sequences/output
+          curl --fail --location --retry 3 \
+            'https://archive.org/download/TechnoBuffalo_299/technobuffalo--0052--nokias-3d-printed-phone-cover--hd720p30.h264.mp4' \
+            -o /tmp/wp8-sequences/source/TechnoBuffalo_299.mp4
+          curl --fail --location --retry 3 \
+            'https://archive.org/download/TechnoBuffalo_269/technobuffalo--0022--windows-phone-8-shortcomings-irritations--large.h264.History.jsonp' \
+            -o /tmp/wp8-sequences/source/TechnoBuffalo_269.mp4
+      - name: Extract inspection clips and 5 fps frames
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/wp8-sequences/output/299-40-95/frames
+          mkdir -p /tmp/wp8-sequences/output/269-130-235/frames
+          ffmpeg -hide_banner -loglevel error -ss 40 -t 55 \
+            -i /tmp/wp8-sequences/source/TechnoBuffalo_299.mp4 \
+            -vf 'scale=480:-2' -an -c:v libx264 -preset fast -crf 25 -y \
+            /tmp/wp8-sequences/output/299-40-95/clip.mp4
+          ffmpeg -hide_banner -loglevel error -i /tmp/wp8-sequences/output/299-40-95/clip.mp4 \
+            -vf 'fps=5,scale=480:-2' -q:v 3 -y \
+            /tmp/wp8-sequences/output/299-40-95/frames/%04d.jpg
+          ffmpeg -hide_banner -loglevel error -ss 130 -t 105 \
+            -i /tmp/wp8-sequences/source/TechnoBuffalo_269.mp4 \
+            -vf 'scale=480:-2' -an -c:v libx264 -preset fast -crf 25 -y \
+            /tmp/wp8-sequences/output/269-130-235/clip.mp4
+          ffmpeg -hide_banner -loglevel error -i /tmp/wp8-sequences/output/269-130-235/clip.mp4 \
+            -vf 'fps=5,scale=480:-2' -q:v 3 -y \
+            /tmp/wp8-sequences/output/269-130-235/frames/%04d.jpg
+          cat > /tmp/wp8-sequences/output/README.txt <<'EOF'
+TechnoBuffalo_299 clip starts at source t=40.000s; frame N at 5 fps represents 40 + (N-1)/5 seconds.
+TechnoBuffalo_269 clip starts at source t=130.000s; frame N at 5 fps represents 130 + (N-1)/5 seconds.
+Both source items are licensed CC BY-NC-SA 3.0 according to Internet Archive metadata.
+EOF
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wp8-motion-sequence-inspection
+          path: /tmp/wp8-sequences/output
+          if-no-files-found: error
+          retention-days: 7
