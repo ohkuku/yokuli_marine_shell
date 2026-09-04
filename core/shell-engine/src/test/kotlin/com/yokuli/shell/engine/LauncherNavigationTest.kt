@@ -32,8 +32,8 @@ class LauncherNavigationTest {
         profileId = WpReferenceProfiles.PHONE_PORTRAIT_4COL.id,
         defaultLayoutVersion = 1,
         placements = listOf(
-            TilePlacement(TileInstanceId("tile-chart"), chart.entryId, chart.defaultSize, GridCell(0, 0)),
-            TilePlacement(TileInstanceId("tile-settings"), settings.entryId, settings.defaultSize, GridCell(0, 2)),
+            TilePlacement(TileInstanceId("tile-chart"), chart.entryId, chart.defaultSize, 0L),
+            TilePlacement(TileInstanceId("tile-settings"), settings.entryId, settings.defaultSize, 1024L),
         ),
     )
     private val reducer = DefaultLauncherReducer()

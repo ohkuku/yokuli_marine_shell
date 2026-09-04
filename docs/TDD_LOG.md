@@ -583,3 +583,19 @@ Profile 生成最初使用 AndroidX 默认最多 15 轮，在两个 flavor 上�
 ### English translation — Stage 11
 
 The Stage 11 contract first fails on absent benchmark/profile modules, 60-tile and square coverage, candidate Goldens, CI integration, and stage evidence. A self-review Red additionally requires generated, non-empty, product-scoped Baseline and Startup Profile files. Green adds real AndroidX Macrobenchmark and Baseline Profile infrastructure, nine content-addressed emulator candidates, a non-gating trend summary, and a dedicated CI job. Iterative failures corrected self-process force-stop, flavor IDs, implicit HOME launch resolution, persistent/recovery state contamination, empty startup profiles, unreliable dynamic-menu taps, and an overly narrow profile-rule filter. A real adb screenshot—not Compose capture—exposed missing key glyph layers over dynamic launcher planes; an isolated graphics layer and re-key fix made them visible. A second Red moved Alphabet Jump out of local Compose state into an Engine transient so Back dismisses it before leaving All Apps. Physical refresh rates, Samsung square hardware, Golden approval, WP8 key behavior, and Android's OS-reserved HOME remain truthful human/hardware gates.
+
+## Marine Shell Final Correction — Adaptive Tile Packer
+
+### Red
+
+先加入 `AdaptiveTilePackerTest`，编译因 `AdaptiveTilePacker`、`TileDocumentEntry`、`Spacer` 和 rank 文档不存在而失败。测试覆盖混合六尺寸确定性、4/6 列复用同一持久文档、insertion 重排、显式 Spacer、释放空间回填，以及固定随机种子的 100 组 × 30 Tile 性质检查。
+
+### Green and self-review
+
+持久模型由绝对 row/column 改为 rank/size/group；cell 只存在于 `AdaptivePackedLayout` 的 viewport 结果。旧的 local downward collision solver 与其测试已删除，生产 `WpSpatialStartLayout` 直接消费 packer 结果并动画邻居 reflow。Proto 外层 schema 升到 2，保留的文档只写 rank/group 和显式 Spacer，不再写 column/row。
+
+第一次窄 Gate 让 core/storage 旧测试因 `GridCell` 构造失败，相关测试被改为验证 rank 与 packed cell 的边界，而不是通过兼容字段把绝对坐标偷偷带回 durable model。自审又补上 Spacer 参与 insertion index、Spacer/tile ID 冲突验证和 schema 升版。最终 core engine、storage、desktop 与 app compile 共 197 tasks 全绿；Stage 0–11 历史合同仅在被本轮规范明确覆盖的空间模型断言上更新。
+
+### English translation — adaptive packing
+
+The Red fails on absent ranked document, adaptive packer, and explicit spacer types. Green removes durable cells and the downward-only collision solver, derives cells per viewport, persists rank/size/group at schema 2, and connects the production renderer to deterministic reflow. Seeded mixed-size properties, four/six-column repacking, insertion, explicit whitespace, and Proto round-trip are machine-tested. High-frequency pointer dispatch and cancelable resize remain the next direct-editing slice.

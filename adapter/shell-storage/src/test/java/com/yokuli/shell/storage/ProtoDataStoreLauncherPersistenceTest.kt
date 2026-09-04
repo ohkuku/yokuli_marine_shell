@@ -8,7 +8,7 @@ import com.yokuli.shell.engine.LauncherPersistenceIncident
 import com.yokuli.shell.engine.LauncherStartupHealth
 import com.yokuli.shell.engine.PersistedLauncherPage
 import com.yokuli.shell.engine.geometry.ProfileId
-import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.Spacer
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 import com.yokuli.shell.storage.proto.LauncherStateProto
@@ -26,17 +26,18 @@ import org.junit.Test
 
 class ProtoDataStoreLauncherPersistenceTest {
     private val document = StartDocument(
-        schemaVersion = 1,
+        schemaVersion = 2,
         profileId = ProfileId("phone-portrait-4col"),
-        defaultLayoutVersion = 1,
+        defaultLayoutVersion = 2,
         placements = listOf(
             TilePlacement(
                 TileInstanceId("tile-chart"),
                 LauncherEntryId("chart"),
                 MarineTileSize.WIDE_4X2,
-                GridCell(0, 0),
+                0L,
             ),
         ),
+        spacers = listOf(Spacer(TileInstanceId("spacer-one"), MarineTileSize.COMPACT_2X1, 1024L, "weather")),
     )
     private val defaults = LauncherPersistedState(document = document)
 
@@ -94,7 +95,7 @@ class ProtoDataStoreLauncherPersistenceTest {
         val restored = withTimeout(2_000) { store.load() }
         val incident = withTimeout(2_000) { store.incidents.first() }
         withTimeout(2_000) {
-            while (LauncherStateProto.parseFrom(Files.readAllBytes(path)).schemaVersion != 1) {
+            while (LauncherStateProto.parseFrom(Files.readAllBytes(path)).schemaVersion != 2) {
                 kotlinx.coroutines.delay(10)
             }
         }

@@ -9,6 +9,7 @@ import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.AdaptiveTilePacker
 import com.yokuli.shell.engine.layout.LayoutChangeReason
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.StartDocumentRepair
@@ -36,26 +37,26 @@ class StartDocumentTest {
         profileId = profile.id,
         defaultLayoutVersion = 1,
         placements = listOf(
-            TilePlacement(TileInstanceId("tile-chart"), chart.entryId, MarineTileSize.WIDE_4X2, GridCell(0, 0)),
-            TilePlacement(TileInstanceId("tile-settings"), settings.entryId, MarineTileSize.ICON_1X1, GridCell(0, 2)),
+            TilePlacement(TileInstanceId("tile-chart"), chart.entryId, MarineTileSize.WIDE_4X2, 0L),
+            TilePlacement(TileInstanceId("tile-settings"), settings.entryId, MarineTileSize.ICON_1X1, 1024L),
         ),
     )
 
     @Test
-    fun intentionalWhitespaceIsAValidPartOfTheDocument() {
+    fun coordinateFreeRankDocumentIsValid() {
         assertTrue(StartDocumentValidator.isValid(default, entries, profile))
-        assertEquals(GridCell(0, 2), default.placements.last().cell)
-        assertFalse(default.placements.any { it.cell == GridCell(1, 2) })
+        assertEquals(listOf(0L, 1024L), default.placements.map { it.rank })
+        assertEquals(GridCell(0, 2), AdaptiveTilePacker.pack(default, 4).tiles.last().cell)
     }
 
     @Test
-    fun placementOrderDoesNotDefinePosition() {
+    fun listOrderDoesNotOverrideRank() {
         val reversed = default.copy(placements = default.placements.reversed())
 
         assertTrue(StartDocumentValidator.isValid(reversed, entries, profile))
         assertEquals(
-            default.placements.associate { it.tileId to it.cell },
-            reversed.placements.associate { it.tileId to it.cell },
+            AdaptiveTilePacker.pack(default, 4),
+            AdaptiveTilePacker.pack(reversed, 4),
         )
     }
 
@@ -64,7 +65,7 @@ class StartDocumentTest {
         val transaction = StartLayoutEditor.resize(default, TileInstanceId("tile-settings"), entries)!!
         assertEquals(LayoutChangeReason.RESIZE, transaction.reason)
         assertEquals(default, transaction.before)
-        assertEquals(GridCell(0, 0), transaction.after.placements.first().cell)
+        assertEquals(0L, transaction.after.placements.first().rank)
         assertEquals(MarineTileSize.STANDARD_2X2, transaction.after.placements.last().size)
         assertTrue(StartDocumentValidator.isValid(transaction.after, entries, profile))
     }
@@ -79,9 +80,10 @@ class StartDocumentTest {
     }
 
     @Test
-    fun invalidMoveIsRejectedInsteadOfClampedOrGloballyReflowed() {
-        assertNull(StartLayoutEditor.move(default, TileInstanceId("tile-chart"), GridCell(1, 0), entries))
-        assertEquals(default, default.copy())
+    fun moveSelectsInsertionOrderRatherThanPersistingCell() {
+        val moved = StartLayoutEditor.move(default, TileInstanceId("tile-settings"), GridCell(0, 0), entries)!!.after
+        assertEquals(listOf("tile-settings", "tile-chart"), moved.placements.map { it.tileId.value })
+        assertEquals(listOf(0L, 1024L), moved.placements.map { it.rank })
     }
 
     @Test
@@ -92,13 +94,13 @@ class StartDocumentTest {
                     TileInstanceId("unknown"),
                     LauncherEntryId("unknown"),
                     MarineTileSize.ICON_1X1,
-                    GridCell(2, 2),
+                    2048L,
                 ),
                 TilePlacement(
                     TileInstanceId("duplicate-settings"),
                     settings.entryId,
                     MarineTileSize.ICON_1X1,
-                    GridCell(0, 2),
+                    3072L,
                 ),
             ),
         )

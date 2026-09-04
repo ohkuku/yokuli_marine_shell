@@ -67,7 +67,7 @@ class LauncherStage8PinUnpinContractTest(unittest.TestCase):
             "undoPinRestoresDocument",
             "undoUnpinRestoresDocument",
             "catalogAdditionDoesNotAutoPin",
-            "catalogRemovalPreservesUnrelatedCoordinates",
+            "catalogRemovalPreservesUnrelatedRank",
         ):
             self.assertIn(scenario, tests)
 

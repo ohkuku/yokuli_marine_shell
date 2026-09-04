@@ -19,6 +19,7 @@ import com.yokuli.shell.engine.layout.StartDocumentValidator
 import com.yokuli.shell.engine.layout.StartLayoutEditor
 import com.yokuli.shell.engine.layout.StartRepairIncident
 import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.AdaptiveTilePacker
 import com.yokuli.shell.engine.interaction.ShellOffset
 import com.yokuli.shell.engine.interaction.StartInteractionState
 
@@ -512,6 +513,8 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun beginDrag(state: LauncherEngineState, action: LauncherAction.BeginTileDrag): LauncherReduction {
         val placement = state.start.document.placements.firstOrNull { it.tileId == action.tileId }
             ?: return LauncherReduction(state)
+        val cell = AdaptiveTilePacker.pack(state.start.document, contextColumns(state.start.document))
+            .tile(action.tileId)?.cell ?: GridCell(0, 0)
         return LauncherReduction(
             state.copy(
                 start = state.start.copy(
@@ -520,7 +523,7 @@ class DefaultLauncherReducer : LauncherReducer {
                         pointerId = action.pointerId,
                         grabOffsetPx = action.grabOffsetPx,
                         visualOffsetPx = ShellOffset(0f, 0f),
-                        targetCell = placement.cell,
+                        targetCell = cell,
                         proposedLayout = state.start.document,
                         autoScrollPxPerSecond = 0f,
                     ),
@@ -652,12 +655,20 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun moveTileBy(state: LauncherEngineState, action: LauncherAction.MoveTileBy): LauncherReduction {
         val placement = state.start.document.placements.firstOrNull { it.tileId == action.tileId }
             ?: return LauncherReduction(state)
-        val proposal = StartLayoutEditor.move(
+        val ordered = state.start.document.placements.sortedWith(compareBy({ it.rank }, { it.tileId.value }))
+        val currentIndex = ordered.indexOfFirst { it.tileId == placement.tileId }
+        val delta = when {
+            action.columns < 0 || action.rows < 0 -> -1
+            action.columns > 0 || action.rows > 0 -> 1
+            else -> 0
+        }
+        val after = AdaptiveTilePacker.insert(
             state.start.document,
             action.tileId,
-            GridCell(placement.cell.column + action.columns, placement.cell.row + action.rows),
-            state.catalog.entries,
-        ) ?: return LauncherReduction(state)
+            (currentIndex + delta).coerceIn(0, ordered.lastIndex),
+        )
+        if (after == state.start.document) return LauncherReduction(state)
+        val proposal = LayoutProposal(state.start.document, after, LayoutChangeReason.MOVE)
         val applied = applyCommitted(state, proposal)
         return applied.copy(
             state = applied.state.copy(
@@ -666,6 +677,9 @@ class DefaultLauncherReducer : LauncherReducer {
             effects = applied.effects + LauncherEffect.Haptic(LauncherHaptic.SELECTION),
         )
     }
+
+    private fun contextColumns(document: StartDocument): Int =
+        runCatching { WpReferenceProfiles.require(document.profileId).columnCount }.getOrDefault(4)
 
     private fun begin(state: LauncherEngineState, proposal: LayoutProposal): LauncherReduction {
         validateProposal(state, proposal)?.let { return it }

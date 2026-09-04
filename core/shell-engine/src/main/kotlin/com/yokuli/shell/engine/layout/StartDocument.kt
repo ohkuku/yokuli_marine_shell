@@ -7,19 +7,38 @@ import com.yokuli.shell.engine.geometry.ProfileId
 
 data class GridCell(val column: Int, val row: Int)
 
-data class TilePlacement(
+data class TileDocumentEntry(
     val tileId: TileInstanceId,
     val entryId: LauncherEntryId,
     val size: MarineTileSize,
-    val cell: GridCell,
+    val rank: Long,
+    val groupId: String? = null,
+)
+
+typealias TilePlacement = TileDocumentEntry
+
+data class Spacer(
+    val spacerId: TileInstanceId,
+    val size: MarineTileSize,
+    val rank: Long,
+    val groupId: String? = null,
+)
+
+data class TileDocument(
+    val entries: List<TileDocumentEntry>,
+    val spacers: List<Spacer> = emptyList(),
 )
 
 data class StartDocument(
     val schemaVersion: Int,
     val profileId: ProfileId,
     val defaultLayoutVersion: Int,
-    val placements: List<TilePlacement>,
+    val placements: List<TileDocumentEntry>,
+    val spacers: List<Spacer> = emptyList(),
 )
+
+val StartDocument.tileDocument: TileDocument
+    get() = TileDocument(placements, spacers)
 
 enum class LayoutChangeReason { MOVE, RESIZE, PIN, UNPIN, RESET, REPAIR }
 
@@ -35,11 +54,3 @@ data class LayoutProposal(
     val after: StartDocument,
     val reason: LayoutChangeReason,
 )
-
-internal fun TilePlacement.occupiedCells(): Set<GridCell> = buildSet {
-    repeat(this@occupiedCells.size.rows) { y ->
-        repeat(this@occupiedCells.size.columns) { x ->
-            add(GridCell(this@occupiedCells.cell.column + x, this@occupiedCells.cell.row + y))
-        }
-    }
-}

@@ -10,7 +10,6 @@ import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
-import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.LayoutChangeReason
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
@@ -30,8 +29,8 @@ class PinUnpinInteractionTest {
         profileId = WpReferenceProfiles.PHONE_PORTRAIT_4COL.id,
         defaultLayoutVersion = 1,
         placements = listOf(
-            TilePlacement(TileInstanceId("tile-chart"), chart.entryId, chart.defaultSize, GridCell(0, 0)),
-            TilePlacement(TileInstanceId("tile-settings"), settings.entryId, settings.defaultSize, GridCell(0, 2)),
+            TilePlacement(TileInstanceId("tile-chart"), chart.entryId, chart.defaultSize, 0L),
+            TilePlacement(TileInstanceId("tile-settings"), settings.entryId, settings.defaultSize, 1024L),
         ),
     )
     private val reducer = DefaultLauncherReducer()
@@ -52,7 +51,7 @@ class PinUnpinInteractionTest {
         val tile = result.state.start.document.placements.single { it.entryId == extra.entryId }
 
         assertEquals(ShellVisualSurface.Desktop, result.state.surface)
-        assertEquals(GridCell(0, 3), tile.cell)
+        assertEquals(2048L, tile.rank)
         assertEquals(tile.tileId, result.state.start.reveal?.tileId)
         assertTrue(result.effects.any { it == LauncherEffect.ScrollStartToReveal(tile.tileId) })
         assertEquals(LayoutChangeReason.PIN, (result.state.transient as LauncherTransient.UndoLayout).reason)
@@ -104,12 +103,12 @@ class PinUnpinInteractionTest {
     }
 
     @Test
-    fun catalogRemovalPreservesUnrelatedCoordinates() {
+    fun catalogRemovalPreservesUnrelatedRank() {
         val removed = snapshot(2, listOf(settings, extra))
         val result = reduce(state(), LauncherAction.CatalogChanged(removed))
 
         assertFalse(result.state.start.document.placements.any { it.entryId == chart.entryId })
-        assertEquals(GridCell(0, 2), result.state.start.document.placements.single().cell)
+        assertEquals(1024L, result.state.start.document.placements.single().rank)
     }
 
     @Test

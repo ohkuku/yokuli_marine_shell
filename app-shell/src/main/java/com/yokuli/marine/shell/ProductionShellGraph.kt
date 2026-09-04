@@ -36,7 +36,6 @@ import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.catalog.LauncherCatalog
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
-import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 
@@ -180,21 +179,21 @@ val productionHostPort = StaticLauncherHostPort(
 )
 
 val defaultStartDocument = StartDocument(
-    schemaVersion = 1,
+    schemaVersion = 2,
     profileId = WpReferenceProfiles.PHONE_PORTRAIT_4COL.id,
-    defaultLayoutVersion = 1,
+    defaultLayoutVersion = 2,
     placements = listOf(
         TilePlacement(
             tileId = TileInstanceId("tile-chart"),
             entryId = ChartDestinations.EntryId,
             size = MarineTileSize.WIDE_4X2,
-            cell = GridCell(column = 0, row = 0),
+            rank = 0L,
         ),
         TilePlacement(
             tileId = TileInstanceId("tile-settings"),
             entryId = SettingsDestinations.EntryId,
             size = MarineTileSize.ICON_1X1,
-            cell = GridCell(column = 0, row = 2),
+            rank = 1024L,
         ),
     ),
 )

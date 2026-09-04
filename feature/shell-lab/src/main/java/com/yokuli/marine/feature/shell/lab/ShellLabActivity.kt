@@ -33,7 +33,6 @@ import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
-import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 
@@ -103,15 +102,15 @@ internal fun demoDocument(entries: List<LauncherEntryDescriptor>): StartDocument
             TileInstanceId("tile-${entry.entryId.value}"),
             entry.entryId,
             size,
-            GridCell(column, row),
+            rank = (row * 4L + column) * 1024L,
         )
         if (size == MarineTileSize.WIDE_4X2) row += 2 else if (column == 3) row += 1
         placement
     }
     return StartDocument(
-        schemaVersion = 1,
+        schemaVersion = 2,
         profileId = WpReferenceProfiles.PHONE_PORTRAIT_4COL.id,
-        defaultLayoutVersion = 1,
+        defaultLayoutVersion = 2,
         placements = placements,
     )
 }

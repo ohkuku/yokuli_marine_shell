@@ -15,6 +15,7 @@ import com.yokuli.shell.engine.interaction.EdgeAutoScrollPolicy
 import com.yokuli.shell.engine.interaction.ShellOffset
 import com.yokuli.shell.engine.interaction.StartInteractionState
 import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.AdaptiveTilePacker
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 import org.junit.Assert.assertEquals
@@ -71,8 +72,8 @@ class EditInteractionTest {
 
         val dragging = preview.start.interaction as StartInteractionState.Dragging
         assertEquals(document, preview.start.document)
+        assertEquals(listOf("b", "a", "c"), dragging.proposedLayout.placements.map { it.entryId.value })
         assertEquals(GridCell(1, 0), dragging.proposedLayout.cell("a"))
-        assertEquals(GridCell(0, 0), dragging.proposedLayout.cell("b"))
     }
 
     @Test
@@ -195,9 +196,10 @@ class EditInteractionTest {
     }
 
     private fun placement(id: String, cell: GridCell) = TilePlacement(
-        TileInstanceId("tile-$id"), LauncherEntryId(id), MarineTileSize.ICON_1X1, cell,
+        TileInstanceId("tile-$id"), LauncherEntryId(id), MarineTileSize.ICON_1X1,
+        (cell.row * 4L + cell.column) * 1024L,
     )
 
-    private fun StartDocument.cell(id: String) = placements.single { it.entryId.value == id }.cell
+    private fun StartDocument.cell(id: String) = AdaptiveTilePacker.pack(this, 4).tiles.single { it.entry.entryId.value == id }.cell
     private fun StartDocument.size(id: String) = placements.single { it.entryId.value == id }.size
 }

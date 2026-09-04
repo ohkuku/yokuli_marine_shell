@@ -20,14 +20,23 @@ message StartDocumentProto {
   string profile_id = 2;
   int32 default_layout_version = 3;
   repeated TilePlacementProto placements = 4;
+  repeated SpacerProto spacers = 5;
 }
 
 message TilePlacementProto {
   string tile_id = 1;
   string entry_id = 2;
   string size = 3;
-  int32 column = 4;
-  int32 row = 5;
+  reserved 4, 5;
+  int64 rank = 6;
+  string group_id = 7;
+}
+
+message SpacerProto {
+  string spacer_id = 1;
+  string size = 2;
+  int64 rank = 3;
+  string group_id = 4;
 }
 
 message LauncherRecoveryProto {

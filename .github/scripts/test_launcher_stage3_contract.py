@@ -56,7 +56,7 @@ class LauncherStage3GeometryContractTest(unittest.TestCase):
         self.assertNotIn("OuterRatio = 0.05f", source)
         self.assertNotIn("SeamRatio = 0.023f", source)
 
-    def test_start_document_is_spatial_versioned_and_repairable(self):
+    def test_start_document_is_ranked_versioned_and_repairable(self):
         sources = "\n".join(path.read_text() for path in (ENGINE / "layout").glob("*.kt"))
         tests = (ROOT / "core/shell-engine/src/test/kotlin/com/yokuli/shell/engine/StartDocumentTest.kt").read_text()
         for symbol in (
@@ -64,15 +64,16 @@ class LauncherStage3GeometryContractTest(unittest.TestCase):
             "schemaVersion:",
             "profileId:",
             "defaultLayoutVersion:",
-            "data class TilePlacement",
+            "data class TileDocumentEntry",
+            "typealias TilePlacement",
             "data class GridCell",
             "object StartDocumentValidator",
             "object StartDocumentRepair",
         ):
             self.assertIn(symbol, sources)
         self.assertNotIn("data class DesktopDocument", sources)
-        self.assertIn("intentionalWhitespaceIsAValidPartOfTheDocument", tests)
-        self.assertIn("placementOrderDoesNotDefinePosition", tests)
+        self.assertIn("coordinateFreeRankDocumentIsValid", tests)
+        self.assertIn("listOrderDoesNotOverrideRank", tests)
         self.assertIn("repairDropsUnknownAndDuplicateEntriesDeterministically", tests)
 
     def test_default_start_is_exactly_chart_wide_and_settings_small(self):

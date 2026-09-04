@@ -10,8 +10,6 @@ import com.yokuli.shell.engine.geometry.WpReferenceProfiles
  * English: This keeps the existing UI working in Stage 3; Stage 4 moves commit, cancel, and undo into the reducer.
  */
 object StartLayoutEditor {
-    private val solver: TileCollisionSolver = LocalTileCollisionSolver()
-
     fun resize(
         document: StartDocument,
         tileId: TileInstanceId,
@@ -21,11 +19,11 @@ object StartLayoutEditor {
         val entry = entries.firstOrNull { it.entryId == current.entryId } ?: return null
         val cycle = entry.supportedSizes
         val next = cycle[(cycle.indexOf(current.size) + 1).mod(cycle.size)]
-        val profile = WpReferenceProfiles.require(document.profileId)
-        return when (val result = solver.propose(document, tileId, current.cell, next, profile.layoutPolicy)) {
-            is SpatialLayoutProposal.Accepted -> result.proposal
-            is SpatialLayoutProposal.Rejected -> null
-        }
+        return transaction(
+            document,
+            document.copy(placements = document.placements.map { if (it.tileId == tileId) it.copy(size = next) else it }),
+            LayoutChangeReason.RESIZE,
+        )
     }
 
     fun unpin(document: StartDocument, tileId: TileInstanceId): LayoutProposal? {
@@ -48,7 +46,7 @@ object StartLayoutEditor {
             tileId = TileInstanceId("tile-${entryId.value}"),
             entryId = entryId,
             size = entry.defaultSize,
-            cell = GridCell(0, document.placements.maxOfOrNull { it.cell.row + it.size.rows } ?: 0),
+            rank = (document.placements.map { it.rank } + document.spacers.map { it.rank }).maxOrNull()?.plus(1024L) ?: 0L,
         )
         val profile = WpReferenceProfiles.require(document.profileId)
         val repaired = StartDocumentRepair.repair(
@@ -66,15 +64,12 @@ object StartLayoutEditor {
         target: GridCell,
         entries: Collection<LauncherEntryDescriptor>,
     ): LayoutProposal? {
-        val moving = document.placements.firstOrNull { it.tileId == tileId } ?: return null
+        document.placements.firstOrNull { it.tileId == tileId } ?: return null
         val profile = WpReferenceProfiles.require(document.profileId)
-        if (target.column < 0 || target.row < 0 || target.column + moving.size.columns > profile.columnCount) {
-            return null
-        }
-        return when (val result = solver.propose(document, tileId, target, moving.size, profile.layoutPolicy)) {
-            is SpatialLayoutProposal.Accepted -> result.proposal
-            is SpatialLayoutProposal.Rejected -> null
-        }
+        if (target.column < 0 || target.row < 0 || target.column >= profile.columnCount) return null
+        val insertionIndex = AdaptiveTilePacker.insertionIndexForCell(document, profile.columnCount, target)
+        val after = AdaptiveTilePacker.insert(document, tileId, insertionIndex)
+        return transaction(document, after, LayoutChangeReason.MOVE)
     }
 
     private fun transaction(before: StartDocument, after: StartDocument, reason: LayoutChangeReason) =

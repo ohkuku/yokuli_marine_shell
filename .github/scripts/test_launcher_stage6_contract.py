@@ -9,32 +9,31 @@ ENGINE_LAYOUT = ROOT / "core/shell-engine/src/main/kotlin/com/yokuli/shell/engin
 STARTING_SHA = "0b39797a1cffb387e78f1ee4fbf0b5607d90af2a"
 
 
-class LauncherStage6SpatialGridContractTest(unittest.TestCase):
+class LauncherStage6AdaptiveGridContractTest(unittest.TestCase):
     def test_stage_baseline_is_locked_to_stage_five_commit(self):
         lock = json.loads((STAGE / "BASELINE_LOCK.json").read_text())
         self.assertEqual(6, lock["stage"])
         self.assertEqual(STARTING_SHA, lock["startingSha"])
         self.assertEqual("Interactive Start / All Apps Pager", lock["requiredCompletedStage"])
 
-    def test_engine_has_occupancy_and_local_deterministic_collision_solver(self):
+    def test_engine_has_ranked_adaptive_packer(self):
         sources = "\n".join(path.read_text() for path in ENGINE_LAYOUT.rglob("*.kt"))
         for symbol in (
-            "class StartOccupancyIndex",
-            "interface TileCollisionSolver",
-            "class LocalTileCollisionSolver",
-            "sealed interface SpatialLayoutProposal",
-            "data class Accepted",
-            "data class Rejected",
+            "data class TileDocumentEntry",
+            "data class Spacer",
+            "object AdaptiveTilePacker",
+            "fun insert(",
+            "insertionIndex",
+            "rank",
         ):
             self.assertIn(symbol, sources)
-        self.assertNotIn("globalReflow", sources)
-        self.assertNotIn("topLeftPack", sources)
+        self.assertNotIn("LocalTileCollisionSolver", sources)
 
-    def test_move_and_resize_use_the_spatial_solver(self):
+    def test_move_and_resize_use_rank_and_reflow(self):
         editor = (ENGINE_LAYOUT / "StartLayoutEditor.kt").read_text()
-        self.assertIn("LocalTileCollisionSolver", editor)
-        self.assertIn("solver.propose", editor)
-        self.assertNotIn("StartDocumentRepair.repair(proposed", editor)
+        self.assertIn("AdaptiveTilePacker.insertionIndexForCell", editor)
+        self.assertIn("AdaptiveTilePacker.insert", editor)
+        self.assertNotIn("solver.propose", editor)
 
     def test_renderer_uses_custom_layout_and_proposed_graphics_translation(self):
         renderer = (ROOT / "feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSpatialStartLayout.kt").read_text()
@@ -46,13 +45,13 @@ class LauncherStage6SpatialGridContractTest(unittest.TestCase):
         self.assertIn("WpSpatialStartLayout(", screen)
         self.assertIn("proposedDocument", screen)
 
-    def test_jvm_tests_lock_locality_whitespace_and_sixty_tile_stability(self):
+    def test_jvm_tests_lock_repacking_spacers_and_mixed_tile_stability(self):
         tests = "\n".join(path.read_text() for path in (ROOT / "core/shell-engine/src/test").rglob("*.kt"))
         for scenario in (
-            "movingOneTilePreservesEveryUnaffectedCoordinate",
-            "proposalIsDeterministicAndPreservesWhitespace",
-            "sixtySyntheticTilesRemainValidAndStable",
-            "occupancyIndexAnswersExplicitCells",
+            "mixed marine tiles pack deterministically without overlap",
+            "one durable document repacks for four and six columns",
+            "only explicit spacer reserves intentional whitespace",
+            "seeded mixed documents always remain bounded and collision free",
         ):
             self.assertIn(scenario, tests)
 

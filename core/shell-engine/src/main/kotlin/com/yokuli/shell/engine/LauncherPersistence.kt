@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 
-const val CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 1
+const val CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 2
 
 enum class PersistedLauncherPage { START, ALL_APPS }
 

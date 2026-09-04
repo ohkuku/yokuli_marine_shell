@@ -14,13 +14,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Constraints
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.engine.geometry.ResolvedStartGeometry
+import com.yokuli.shell.engine.layout.AdaptiveTilePacker
+import com.yokuli.shell.engine.layout.PackedTilePlacement
 import com.yokuli.shell.engine.layout.StartDocument
-import com.yokuli.shell.engine.layout.TilePlacement
+import com.yokuli.shell.engine.layout.TileDocumentEntry
 import com.yokuli.marine.core.design.LocalWpTheme
 
 /**
- * Pixel-snapped Start grid. The document owns coordinates; transient proposals only animate
- * affected visual positions and never rewrite unrelated whitespace.
+ * Pixel-snapped Start grid. The durable document owns only semantic rank and tile size;
+ * [AdaptiveTilePacker] derives viewport cells and transient proposals animate reflow.
  */
 @Composable
 fun WpSpatialStartLayout(
@@ -29,15 +31,17 @@ fun WpSpatialStartLayout(
     geometry: ResolvedStartGeometry,
     floatingTileId: TileInstanceId?,
     modifier: Modifier = Modifier,
-    tileContent: @Composable (TilePlacement) -> Unit,
+    tileContent: @Composable (TileDocumentEntry) -> Unit,
 ) {
     val colors = LocalWpTheme.current
-    val proposedById = proposedDocument?.placements?.associateBy { it.tileId }.orEmpty()
+    val packed = AdaptiveTilePacker.pack(document, geometry.columns)
+    val proposedPacked = proposedDocument?.let { AdaptiveTilePacker.pack(it, geometry.columns) }
+    val proposedById = proposedPacked?.tiles?.associateBy { it.entry.tileId }.orEmpty()
     val pitchPx = geometry.smallCellPx + geometry.seamPx
-    val visualPlacements = document.placements.map { placement ->
-        if (placement.tileId == floatingTileId) placement else proposedById[placement.tileId] ?: placement
+    val visualPlacements = packed.tiles.map { placement ->
+        if (placement.entry.tileId == floatingTileId) placement else proposedById[placement.entry.tileId] ?: placement
     }
-    val floatingPlacement = document.placements.firstOrNull { it.tileId == floatingTileId }
+    val floatingPlacement = packed.tiles.firstOrNull { it.entry.tileId == floatingTileId }
     val measurementPlacements = listOfNotNull(floatingPlacement) + visualPlacements
     Layout(
         modifier = modifier,
@@ -51,7 +55,7 @@ fun WpSpatialStartLayout(
                 )
             }
             visualPlacements.forEach { placement ->
-                key(placement.tileId.value) {
+                key(placement.entry.tileId.value) {
                     val targetX = placement.cell.column * pitchPx.toFloat()
                     val targetY = placement.cell.row * pitchPx.toFloat()
                     val animatedX by animateFloatAsState(targetX, spring(), label = "wp-spatial-x")
@@ -61,7 +65,7 @@ fun WpSpatialStartLayout(
                             translationX = animatedX
                             translationY = animatedY
                         },
-                    ) { tileContent(placement) }
+                    ) { tileContent(placement.entry) }
                 }
             }
         },
@@ -70,14 +74,14 @@ fun WpSpatialStartLayout(
             val placement = measurementPlacements[index]
             measurable.measure(
                 Constraints.fixed(
-                    width = geometry.tileWidthPx(placement.size.columns),
-                    height = geometry.tileHeightPx(placement.size.rows),
+                    width = geometry.tileWidthPx(placement.entry.size.columns),
+                    height = geometry.tileHeightPx(placement.entry.size.rows),
                 ),
             )
         }
-        val spatialDocument = proposedDocument ?: document
-        val desiredHeight = spatialDocument.placements.maxOfOrNull { placement ->
-            placement.cell.row * pitchPx + geometry.tileHeightPx(placement.size.rows)
+        val spatialLayout = proposedPacked ?: packed
+        val desiredHeight = spatialLayout.tiles.maxOfOrNull { placement ->
+            placement.cell.row * pitchPx + geometry.tileHeightPx(placement.entry.size.rows)
         } ?: 0
         layout(constraints.maxWidth, desiredHeight.coerceIn(constraints.minHeight, constraints.maxHeight)) {
             placeables.forEach { it.place(0, 0) }

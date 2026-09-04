@@ -65,6 +65,7 @@ import com.yokuli.shell.engine.interaction.DragCellHysteresis
 import com.yokuli.shell.engine.interaction.EdgeAutoScrollPolicy
 import com.yokuli.shell.engine.interaction.ShellOffset
 import com.yokuli.shell.engine.interaction.StartInteractionState
+import com.yokuli.shell.engine.layout.AdaptiveTilePacker
 import com.yokuli.shell.engine.layout.StartDocument
 import kotlin.math.roundToInt
 
@@ -140,18 +141,25 @@ fun YokuliStartScreen(
                 maximumSpeedPxPerSecond = pitchPx * 3f,
             )
         }
-        val rows = (proposedDocument ?: state.document).placements.maxOfOrNull { it.cell.row + it.size.rows } ?: 0
+        val packedDocument = remember(state.document, geometry.columns) {
+            AdaptiveTilePacker.pack(state.document, geometry.columns)
+        }
+        val visualPackedDocument = remember(proposedDocument, packedDocument, geometry.columns) {
+            proposedDocument?.let { AdaptiveTilePacker.pack(it, geometry.columns) } ?: packedDocument
+        }
+        val packedByTileId = packedDocument.tiles.associateBy { it.entry.tileId }
+        val rows = visualPackedDocument.documentHeightRows
         val gridHeight = if (rows == 0) 0.dp else cell * rows + seam * (rows - 1)
 
         LaunchedEffect(reveal?.transactionId, pitchPx, availableHeightPx) {
             if (reveal == null) return@LaunchedEffect
             withFrameNanos { }
-            val placement = latestDocument.placements.firstOrNull { it.tileId == reveal.tileId }
+            val placement = AdaptiveTilePacker.pack(latestDocument, geometry.columns).tile(reveal.tileId)
             if (placement == null) {
                 latestAction(LauncherUiAction.AcknowledgeStartReveal(reveal.tileId))
                 return@LaunchedEffect
             }
-            val tileBottom = (placement.cell.row + placement.size.rows) * pitchPx
+            val tileBottom = (placement.cell.row + placement.entry.size.rows) * pitchPx
             val revealTarget = (tileBottom - availableHeightPx + geometry.outerInsetsPx.bottom)
                 .roundToInt().coerceIn(0, scroll.maxValue)
             scroll.animateScrollTo(revealTarget)
@@ -172,7 +180,7 @@ fun YokuliStartScreen(
                 if (requested == 0f) continue
                 val consumed = scroll.scrollBy(requested)
                 if (consumed == 0f) continue
-                val placement = latestDocument.placements.firstOrNull { it.tileId == current.tileId } ?: break
+                val placement = AdaptiveTilePacker.pack(latestDocument, geometry.columns).tile(current.tileId) ?: break
                 val nextOffset = current.visualOffsetPx.copy(y = current.visualOffsetPx.y + consumed)
                 val target = hysteresis.resolve(placement.cell, nextOffset, pitchPx, current.targetCell)
                 latestAction(LauncherUiAction.AutoScrollTileDrag(current.tileId, consumed, target))
@@ -200,8 +208,9 @@ fun YokuliStartScreen(
             ) { placement ->
                 val entry = byId[placement.entryId]
                 if (entry != null) {
+                    val baseCell = packedByTileId[placement.tileId]?.cell ?: return@WpSpatialStartLayout
                     val tileDragging = dragging?.takeIf { it.tileId == placement.tileId }
-                    var previousTarget = remember(placement.tileId) { placement.cell }
+                    var previousTarget = remember(placement.tileId, baseCell) { baseCell }
                     WpTile(
                         entry = entry,
                         tileSize = placement.size,
@@ -222,7 +231,7 @@ fun YokuliStartScreen(
                         },
                         onResize = { onAction(LauncherUiAction.ResizeTile(placement.tileId)) },
                         onMoveStart = { pointerId, grabOffset ->
-                            previousTarget = placement.cell
+                            previousTarget = baseCell
                             onAction(
                                 LauncherUiAction.BeginTileDrag(
                                     placement.tileId,
@@ -233,9 +242,9 @@ fun YokuliStartScreen(
                         },
                         onMove = { visualOffset, grabOffset ->
                             val offset = ShellOffset(visualOffset.x, visualOffset.y)
-                            val target = hysteresis.resolve(placement.cell, offset, pitchPx, previousTarget)
+                            val target = hysteresis.resolve(baseCell, offset, pitchPx, previousTarget)
                             previousTarget = target
-                            val pointerY = placement.cell.row * pitchPx + grabOffset.y + visualOffset.y - scroll.value
+                            val pointerY = baseCell.row * pitchPx + grabOffset.y + visualOffset.y - scroll.value
                             onAction(
                                 LauncherUiAction.UpdateTileDrag(
                                     tileId = placement.tileId,

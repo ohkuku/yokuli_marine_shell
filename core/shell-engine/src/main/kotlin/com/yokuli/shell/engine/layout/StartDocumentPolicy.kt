@@ -15,14 +15,16 @@ object StartDocumentValidator {
         if (document.profileId != profile.id) return false
         if (document.placements.map { it.tileId }.distinct().size != document.placements.size) return false
         if (document.placements.map { it.entryId }.distinct().size != document.placements.size) return false
+        if (document.spacers.map { it.spacerId }.distinct().size != document.spacers.size) return false
+        if (document.spacers.any { spacer -> document.placements.any { it.tileId == spacer.spacerId } }) return false
         val byId = entries.associateBy { it.entryId }
-        val occupied = mutableSetOf<GridCell>()
+        if (document.placements.any { it.rank < 0 } || document.spacers.any { it.rank < 0 }) return false
+        val ranks = document.placements.map { it.rank } + document.spacers.map { it.rank }
+        if (ranks.distinct().size != ranks.size) return false
         return document.placements.all { placement ->
             val entry = byId[placement.entryId] ?: return@all false
             if (placement.size !in entry.supportedSizes) return@all false
-            placement.cell.column >= 0 && placement.cell.row >= 0 &&
-                placement.cell.column + placement.size.columns <= profile.columnCount &&
-                placement.occupiedCells().all(occupied::add)
+            placement.size.columns <= profile.columnCount
         }
     }
 }
@@ -33,8 +35,7 @@ enum class StartRepairIncident {
     UNKNOWN_ENTRY_REMOVED,
     DUPLICATE_ENTRY_REMOVED,
     UNSUPPORTED_SIZE_REPLACED,
-    OUT_OF_BOUNDS_RELOCATED,
-    OVERLAP_RELOCATED,
+    INVALID_RANK_NORMALIZED,
     FALLBACK_TO_DEFAULT,
 }
 
@@ -59,10 +60,9 @@ object StartDocumentRepair {
         }
         val byId = entries.associateBy { it.entryId }
         val incidents = mutableListOf<StartRepairIncident>()
-        val occupied = mutableSetOf<GridCell>()
         val seenEntries = mutableSetOf<LauncherEntryId>()
         val seenTiles = mutableSetOf<TileInstanceId>()
-        val repaired = buildList {
+        val repairedUnranked = buildList {
             source.placements.forEach { original ->
                 val descriptor = byId[original.entryId]
                 if (descriptor == null) {
@@ -79,46 +79,31 @@ object StartDocumentRepair {
                     incidents += StartRepairIncident.UNSUPPORTED_SIZE_REPLACED
                     original.copy(size = descriptor.defaultSize)
                 }
-                val inBounds = sized.cell.column >= 0 && sized.cell.row >= 0 &&
-                    sized.cell.column + sized.size.columns <= profile.columnCount
-                val overlaps = sized.occupiedCells().any { it in occupied }
-                val resolved = if (inBounds && !overlaps) {
-                    sized
-                } else {
-                    incidents += if (!inBounds) {
-                        StartRepairIncident.OUT_OF_BOUNDS_RELOCATED
-                    } else {
-                        StartRepairIncident.OVERLAP_RELOCATED
-                    }
-                    sized.copy(cell = nearestFreeCell(sized, profile.columnCount, occupied))
-                }
-                occupied += resolved.occupiedCells()
-                add(resolved)
+                add(sized)
             }
         }
-        val document = source.copy(placements = repaired)
+        val seenSpacerIds = mutableSetOf<TileInstanceId>()
+        val repairedSpacers = source.spacers.filter { spacer ->
+            seenSpacerIds.add(spacer.spacerId) && spacer.spacerId !in seenTiles && spacer.size.columns <= profile.columnCount
+        }
+        val sourceRanks = repairedUnranked.map { it.rank } + repairedSpacers.map { it.rank }
+        val normalizeRanks = sourceRanks.any { it < 0 } || sourceRanks.distinct().size != sourceRanks.size
+        if (normalizeRanks) incidents += StartRepairIncident.INVALID_RANK_NORMALIZED
+        val ordered = (repairedUnranked.map { it.rank to it.tileId.value } +
+            repairedSpacers.map { it.rank to it.spacerId.value }).sortedWith(compareBy({ it.first }, { it.second }))
+        val normalizedRanks = ordered.mapIndexed { index, (_, id) -> id to index * 1024L }.toMap()
+        val document = source.copy(
+            placements = repairedUnranked
+                .sortedWith(compareBy({ it.rank }, { it.tileId.value }))
+                .map { entry -> entry.copy(rank = if (normalizeRanks) normalizedRanks.getValue(entry.tileId.value) else entry.rank) },
+            spacers = repairedSpacers
+                .sortedWith(compareBy({ it.rank }, { it.spacerId.value }))
+                .map { spacer -> spacer.copy(rank = if (normalizeRanks) normalizedRanks.getValue(spacer.spacerId.value) else spacer.rank) },
+        )
         return if (StartDocumentValidator.isValid(document, entries, profile)) {
             StartRepairResult(document, incidents, usedFallback = false)
         } else {
             fallback(defaultDocument, existing = incidents)
-        }
-    }
-
-    private fun nearestFreeCell(
-        placement: TilePlacement,
-        columns: Int,
-        occupied: Set<GridCell>,
-    ): GridCell {
-        val maxColumn = columns - placement.size.columns
-        var row = placement.cell.row.coerceAtLeast(0)
-        while (true) {
-            val candidates = (0..maxColumn).sortedWith(
-                compareBy<Int> { kotlin.math.abs(it - placement.cell.column) }.thenBy { it },
-            )
-            candidates.firstOrNull { column ->
-                placement.copy(cell = GridCell(column, row)).occupiedCells().none { it in occupied }
-            }?.let { return GridCell(it, row) }
-            row++
         }
     }
 

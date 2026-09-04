@@ -8,13 +8,14 @@ import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.engine.LauncherStartupHealth
 import com.yokuli.shell.engine.PersistedLauncherPage
 import com.yokuli.shell.engine.geometry.ProfileId
-import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.Spacer
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 import com.yokuli.shell.storage.proto.LauncherRecoveryProto
 import com.yokuli.shell.storage.proto.LauncherStateProto
 import com.yokuli.shell.storage.proto.StartDocumentProto
 import com.yokuli.shell.storage.proto.TilePlacementProto
+import com.yokuli.shell.storage.proto.SpacerProto
 
 object LauncherProtoMapper {
     fun encode(state: LauncherPersistedState): LauncherStateProto = LauncherStateProto.newBuilder()
@@ -66,8 +67,18 @@ object LauncherProtoMapper {
                     .setTileId(placement.tileId.value)
                     .setEntryId(placement.entryId.value)
                     .setSize(placement.size.name)
-                    .setColumn(placement.cell.column)
-                    .setRow(placement.cell.row)
+                    .setRank(placement.rank)
+                    .setGroupId(placement.groupId.orEmpty())
+                    .build()
+            },
+        )
+        .addAllSpacers(
+            document.spacers.map { spacer ->
+                SpacerProto.newBuilder()
+                    .setSpacerId(spacer.spacerId.value)
+                    .setSize(spacer.size.name)
+                    .setRank(spacer.rank)
+                    .setGroupId(spacer.groupId.orEmpty())
                     .build()
             },
         )
@@ -82,7 +93,18 @@ object LauncherProtoMapper {
                 tileId = TileInstanceId(placement.tileId),
                 entryId = LauncherEntryId(placement.entryId),
                 size = size ?: MarineTileSize.ICON_1X1,
-                cell = GridCell(placement.column, placement.row),
+                rank = placement.rank,
+                groupId = placement.groupId.ifBlank { null },
+            )
+        }
+        val spacers = proto.spacersList.map { spacer ->
+            val size = MarineTileSize.entries.firstOrNull { it.name == spacer.size }
+            if (size == null) structurallyValid = false
+            Spacer(
+                spacerId = TileInstanceId(spacer.spacerId),
+                size = size ?: MarineTileSize.ICON_1X1,
+                rank = spacer.rank,
+                groupId = spacer.groupId.ifBlank { null },
             )
         }
         return StartDocument(
@@ -90,6 +112,7 @@ object LauncherProtoMapper {
             profileId = ProfileId(proto.profileId),
             defaultLayoutVersion = proto.defaultLayoutVersion,
             placements = placements,
+            spacers = spacers,
         )
     }
 

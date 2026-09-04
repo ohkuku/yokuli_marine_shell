@@ -116,7 +116,7 @@ class LauncherDurableRestoreTest {
         profileId = WpReferenceProfiles.PHONE_PORTRAIT_4COL.id,
         defaultLayoutVersion = 1,
         placements = entries.mapIndexed { index, entry ->
-            TilePlacement(TileInstanceId("tile-${entry.entryId.value}"), entry.entryId, entry.defaultSize, GridCell(0, index * 2))
+            TilePlacement(TileInstanceId("tile-${entry.entryId.value}"), entry.entryId, entry.defaultSize, index * 1024L)
         },
     )
 }
