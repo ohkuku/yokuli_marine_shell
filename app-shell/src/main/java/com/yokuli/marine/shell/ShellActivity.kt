@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -32,11 +33,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.testTag
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.yokuli.marine.adapter.chart.google.GoogleMarineChartSurface
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpAccent
 import com.yokuli.marine.core.design.WpNavigationIntent
@@ -45,13 +44,6 @@ import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
 import com.yokuli.marine.core.model.AppLanguage
-import com.yokuli.marine.feature.chart.ChartDestinations
-import com.yokuli.marine.feature.chart.ChartSurfaceKind
-import com.yokuli.marine.feature.chart.ChartUiAction
-import com.yokuli.marine.feature.chart.ChartUiState
-import com.yokuli.marine.feature.chart.ChartWorkspace
-import com.yokuli.marine.feature.chart.MarineChartDemoSurface
-import com.yokuli.marine.feature.chart.MarineChartSurface
 import com.yokuli.marine.feature.desktop.LauncherUiAction
 import com.yokuli.marine.feature.desktop.WpAppList
 import com.yokuli.marine.feature.desktop.WpStatusStrip
@@ -60,10 +52,6 @@ import com.yokuli.marine.feature.desktop.productionLauncherUiState
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
-import com.yokuli.marine.feature.settings.SettingsUiState
-import com.yokuli.marine.feature.settings.SettingsWorkspace
-import com.yokuli.shell.android.DefaultInternalAppHostResolver
-import com.yokuli.shell.compose.InternalAppHost
 import com.yokuli.shell.engine.layout.DesktopLayoutEditor
 import com.yokuli.shell.engine.navigation.ShellCommand
 import com.yokuli.shell.engine.navigation.ShellNavigationState
@@ -134,113 +122,75 @@ private fun YokuliShell() {
     YokuliTheme(themeSpec) {
         val colors = LocalWpTheme.current
         SyncHostWindowChrome(colors.background, themeSpec.mode == WpThemeMode.LIGHT)
-        Column(Modifier.fillMaxSize().background(colors.background)) {
-            WpStatusStrip { dispatch(ShellCommand.Open(SettingsDestinations.Overview)) }
-            WpSurfaceTransitionHost(
-                targetState = navigation.surface,
-                intent = transitionIntent,
-                modifier = Modifier.weight(1f),
-            ) { surface ->
-                val launcherState = productionLauncherUiState(
-                    catalog = productionCatalog.snapshot,
-                    document = desktopDocument,
-                    mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
-                    theme = themeSpec,
-                )
-                val launcherAction: (LauncherUiAction) -> Unit = { action ->
-                    when (action) {
-                        is LauncherUiAction.Open -> dispatch(ShellCommand.Open(action.token))
-                        LauncherUiAction.ShowAllApps -> dispatch(ShellCommand.ShowAllApps)
-                        is LauncherUiAction.ChangeDocument -> desktopDocument = action.document
-                        is LauncherUiAction.TogglePin -> {
-                            val pinned = desktopDocument.placements.firstOrNull { it.entryId == action.entryId }
-                            val transaction = if (pinned == null) {
-                                DesktopLayoutEditor.pin(desktopDocument, action.entryId, productionCatalog.entries)
-                            } else {
-                                DesktopLayoutEditor.unpin(desktopDocument, pinned.tileId)
-                            }
-                            transaction?.let { desktopDocument = it.after }
-                        }
-                        is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
+        val runtime = ProductionShellRuntime(
+            mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
+            theme = themeSpec,
+            language = language,
+            settingsSection = SettingsSection.valueOf(settingsSectionName),
+            pinnedTileCount = desktopDocument.placements.size,
+            desktopDocumentVersion = desktopDocument.version,
+            versionName = BuildConfig.VERSION_NAME,
+            buildVariant = "${BuildConfig.FLAVOR}/${BuildConfig.BUILD_TYPE}",
+            gitSha = BuildConfig.GIT_SHA,
+            debugShellLabAvailable = BuildConfig.DEBUG,
+            openMapSettings = { dispatch(ShellCommand.Open(SettingsDestinations.Map)) },
+            onSettingsAction = { action ->
+                when (action) {
+                    is SettingsUiAction.OpenSection -> settingsSectionName = action.section.name
+                    is SettingsUiAction.ChangeTheme -> {
+                        themeModeName = action.theme.mode.name
+                        accentName = action.theme.accent.name
                     }
+                    is SettingsUiAction.ChangeLanguage -> context.persistAppLanguage(action.language)
+                    SettingsUiAction.ResetStartScreen -> desktopDocument = defaultDesktopDocument
+                    SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
                 }
-                when (surface) {
-                    ShellSurface.Start -> SwipeSurface(onSwipeLeft = { dispatch(ShellCommand.ShowAllApps) }) {
-                        YokuliStartScreen(launcherState, launcherAction)
+            },
+        )
+        CompositionLocalProvider(LocalProductionShellRuntime provides runtime) {
+            Column(Modifier.fillMaxSize().background(colors.background)) {
+                WpStatusStrip { dispatch(ShellCommand.Open(SettingsDestinations.Overview)) }
+                WpSurfaceTransitionHost(
+                    targetState = navigation.surface,
+                    intent = transitionIntent,
+                    modifier = Modifier.weight(1f),
+                ) { surface ->
+                    val launcherState = productionLauncherUiState(
+                        catalog = productionCatalog.snapshot,
+                        document = desktopDocument,
+                        mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
+                        theme = themeSpec,
+                        visualContributions = productionVisualContributions,
+                    )
+                    val launcherAction: (LauncherUiAction) -> Unit = { action ->
+                        when (action) {
+                            is LauncherUiAction.Open -> dispatch(ShellCommand.Open(action.token))
+                            LauncherUiAction.ShowAllApps -> dispatch(ShellCommand.ShowAllApps)
+                            is LauncherUiAction.ChangeDocument -> desktopDocument = action.document
+                            is LauncherUiAction.TogglePin -> {
+                                val pinned = desktopDocument.placements.firstOrNull { it.entryId == action.entryId }
+                                val transaction = if (pinned == null) {
+                                    DesktopLayoutEditor.pin(desktopDocument, action.entryId, productionCatalog.entries)
+                                } else {
+                                    DesktopLayoutEditor.unpin(desktopDocument, pinned.tileId)
+                                }
+                                transaction?.let { desktopDocument = it.after }
+                            }
+                            is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
+                        }
                     }
-                    ShellSurface.AllApps -> SwipeSurface(onSwipeRight = { dispatch(ShellCommand.Back) }) {
-                        WpAppList(launcherState, launcherAction)
-                    }
-                    is ShellSurface.App -> {
-                        val task = navigation.tasks.first { it.id == surface.taskId }
-                        val internalAppHostResolver = DefaultInternalAppHostResolver(
-                            listOf(
-                                InternalAppHost(ChartDestinations.AppId) { token ->
-                                    check(token == ChartDestinations.Browse)
-                                    val chartSurface: MarineChartSurface = if (BuildConfig.GOOGLE_MAPS_CONFIGURED) {
-                                        { modifier ->
-                                            GoogleMarineChartSurface(
-                                                darkMode = themeSpec.mode == WpThemeMode.DARK,
-                                                modifier = modifier.testTag("chart-surface-google"),
-                                            )
-                                        }
-                                    } else {
-                                        { modifier -> MarineChartDemoSurface(modifier.testTag("chart-surface-demo")) }
-                                    }
-                                    ChartWorkspace(
-                                        state = ChartUiState(
-                                            surfaceKind = if (BuildConfig.GOOGLE_MAPS_CONFIGURED) {
-                                                ChartSurfaceKind.GOOGLE_MAPS
-                                            } else {
-                                                ChartSurfaceKind.DEMO
-                                            },
-                                            mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
-                                        ),
-                                        onAction = { action ->
-                                            if (action == ChartUiAction.OpenMapSettings) {
-                                                dispatch(ShellCommand.Open(SettingsDestinations.Map))
-                                            }
-                                        },
-                                        chartSurface = chartSurface,
-                                    )
-                                },
-                                InternalAppHost(SettingsDestinations.AppId) { token ->
-                                    val tokenSection = SettingsDestinations.section(token)
-                                        ?: error("Unknown Settings launch token: ${token.value}")
-                                    val section = SettingsSection.valueOf(settingsSectionName).let { remembered ->
-                                        if (remembered == SettingsSection.OVERVIEW) tokenSection else remembered
-                                    }
-                                    SettingsWorkspace(
-                                        state = SettingsUiState(
-                                            section = section,
-                                            theme = themeSpec,
-                                            language = language,
-                                            mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
-                                            pinnedTileCount = desktopDocument.placements.size,
-                                            desktopDocumentVersion = desktopDocument.version,
-                                            versionName = BuildConfig.VERSION_NAME,
-                                            buildVariant = "${BuildConfig.FLAVOR}/${BuildConfig.BUILD_TYPE}",
-                                            gitSha = BuildConfig.GIT_SHA,
-                                            debugShellLabAvailable = BuildConfig.DEBUG,
-                                        ),
-                                        onAction = { action ->
-                                            when (action) {
-                                                is SettingsUiAction.OpenSection -> settingsSectionName = action.section.name
-                                                is SettingsUiAction.ChangeTheme -> {
-                                                    themeModeName = action.theme.mode.name
-                                                    accentName = action.theme.accent.name
-                                                }
-                                                is SettingsUiAction.ChangeLanguage -> context.persistAppLanguage(action.language)
-                                                SettingsUiAction.ResetStartScreen -> desktopDocument = defaultDesktopDocument
-                                                SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
-                                            }
-                                        },
-                                    )
-                                },
-                            ),
-                        )
-                        internalAppHostResolver.hostFor(task.appId)?.Render(task.token)
-                            ?: error("No internal host for installed app: ${task.appId.value}")
+                    when (surface) {
+                        ShellSurface.Start -> SwipeSurface(onSwipeLeft = { dispatch(ShellCommand.ShowAllApps) }) {
+                            YokuliStartScreen(launcherState, launcherAction)
+                        }
+                        ShellSurface.AllApps -> SwipeSurface(onSwipeRight = { dispatch(ShellCommand.Back) }) {
+                            WpAppList(launcherState, launcherAction)
+                        }
+                        is ShellSurface.App -> {
+                            val task = navigation.tasks.first { it.id == surface.taskId }
+                            productionInternalAppHostResolver.hostFor(task.appId)?.Render(task.token)
+                                ?: error("No internal host for installed app: ${task.appId.value}")
+                        }
                     }
                 }
             }

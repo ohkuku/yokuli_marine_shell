@@ -317,3 +317,37 @@ canonicalMeasurementHash=af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e
 Stage 2.5 starts from the approved Stage 2 tag and discards the rejected handheld/angled candidate imagery. The repository-owner-supplied `kuku.mp4` is the only visual source. Sixteen exact, uncropped frames and five scenario measurement sets are content-addressed; official Microsoft documents corroborate semantics but contribute no pixel or timing values. Unseen edit, fling, pin, drag, resize, unpin, press, and key-activation behavior remains `NOT_OBSERVED` or `VISUAL_ONLY`.
 
 The meaningful Red failed because all Stage 2.5 artifacts and its CI gate were absent. Green adds deterministic frame extraction, source and rights manifests, normalized 480×800 geometry, observable-motion timelines, a semantic validator, and the bilingual report. The owner's immersive-fullscreen and virtual Back/Start/Search requirement is recorded as a later-stage input boundary, with one serialized engine action path. Production code is unchanged. Repository owner kuku approved profile revision 1 and the canonical measurement hash, so the package is `HUMAN_REVIEWED`; Stage 3 has not started.
+
+## Batch A foundation — Installed app composition binding
+
+### Contract and Red
+
+在 Stage 3 之前执行仓库所有者要求的无额外人工 Gate 基础提交。新增 `.github/scripts/test_installed_app_binding_contract.py`，要求一个 `InstalledAppBinding` 同时拥有 catalog contribution、token registrations、visual contributions 与 internal host，并要求所有 runtime registry 均由唯一 binding 列表派生。第一次运行四项全部失败，因为原实现仍维护分散的 catalog/token/host 表并按产品 ID 构造视觉状态。
+
+```text
+Ran 4 tests
+FAILED (failures=4)
+```
+
+### Green
+
+Green 将 Chart/Settings 各注册一次，从 `productionInstalledApps` 派生 Catalog、HostPort、视觉 Registry 和 `InternalAppHostResolver`；动态主题、语言、地图配置和设置回调通过 composition-local runtime 注入，Engine 不获得任何产品或 Compose 依赖。原 Stage 1/2 静态 Gate 只调整结构识别方式，仍精确要求 Chart + Settings 且保持全部旧拒绝项。
+
+```text
+installed-app binding contract                  PASS (4/4)
+all Python contracts with pinned jsonschema    PASS (68/68)
+CI/release metadata/secrets Bash contracts     PASS
+Standalone/Home debug Kotlin compilation       PASS
+feature desktop JVM tests                      PASS
+full Gradle test/lint/debug/release/androidTest PASS (954 tasks)
+dual Release binary product-surface audit      PASS
+Stage 2.5 semantic validator                   PASS (HUMAN_REVIEWED)
+```
+
+第一次完整 Gradle 回归在 AndroidTest 编译处发现方屏 story 仍调用旧视觉函数签名；没有忽略该失败。修正为显式注入由安装 binding 派生的 `productionVisualContributions` 后，先重跑失败目标，再重跑全部 954-task Gate 通过。
+
+本基础提交不新增 Stage、REPORT 或 BASELINE_LOCK，不改变几何、Reducer、手势、持久化、产品表面或 Stage 2.5 证据；Stage 3 必须在其独立 commit 中开始。
+
+### English translation — Batch A foundation
+
+Before Stage 3, one small owner-requested foundation commit consolidates each installed app's catalog contribution, launch registrations, visual contribution, and internal Compose host into one composition-root binding. A four-test Red first proves the registries were distributed. Green derives every registry from the two Chart/Settings bindings, removes product-ID visual branching and Activity-owned host tables, and preserves all Stage 0–2.5 behavior and boundaries. This is not a Stage and therefore has no Stage report or baseline lock.

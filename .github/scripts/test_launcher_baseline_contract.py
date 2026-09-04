@@ -31,7 +31,10 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         self.assertIn("interface LauncherCatalogContribution", catalog)
         self.assertIn("ChartShellContribution", graph)
         self.assertIn("SettingsShellContribution", graph)
-        self.assertRegex(graph, r"productionContributions\s*=\s*listOf\([^)]*ChartShellContribution[^)]*SettingsShellContribution[^)]*\)")
+        self.assertIn("productionInstalledApps = listOf(", graph)
+        self.assertIn("catalogContribution = ChartShellContribution", graph)
+        self.assertIn("catalogContribution = SettingsShellContribution", graph)
+        self.assertIn("productionInstalledApps.map { it.catalogContribution }", graph)
         for removed in ("CockpitShellContribution", "LibraryShellContribution", "AnchorShortcutContribution"):
             self.assertNotIn(removed, graph)
 

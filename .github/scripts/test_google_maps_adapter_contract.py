@@ -45,7 +45,10 @@ class GoogleMapsAdapterContractTest(unittest.TestCase):
 
     def test_missing_ci_key_uses_an_explicit_non_network_demo(self):
         gradle = (ROOT / "app-shell/build.gradle.kts").read_text()
-        shell = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt").read_text()
+        shell = "\n".join(
+            path.read_text()
+            for path in (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell").glob("*.kt")
+        )
         chart = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
 
         self.assertIn("MAPS_API_KEY_NOT_CONFIGURED", gradle)

@@ -24,16 +24,11 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
 
     def test_release_catalog_and_start_document_are_exactly_chart_and_settings(self):
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
-        contributions = re.search(
-            r"productionContributions\s*=\s*listOf\((.*?)\)",
-            graph,
-            flags=re.DOTALL,
-        )
-        self.assertIsNotNone(contributions)
         self.assertEqual(
             ["ChartShellContribution", "SettingsShellContribution"],
-            re.findall(r"\b[A-Z][A-Za-z]+ShellContribution\b", contributions.group(1)),
+            re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
         )
+        self.assertIn("productionInstalledApps.map { it.catalogContribution }", graph)
         self.assertEqual(2, graph.count("TilePlacement("))
         self.assertEqual(
             ["ChartDestinations.EntryId", "SettingsDestinations.EntryId"],

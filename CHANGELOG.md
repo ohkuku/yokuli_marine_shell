@@ -4,6 +4,12 @@
 
 ### 中文（主文）
 
+#### Batch A foundation — Installed app composition binding
+
+- 新增单点 `InstalledAppBinding`，Chart 与 Settings 的目录贡献、LaunchToken 注册、视觉贡献和内部 Compose 宿主均从同一组 binding 派生；新增第三个应用时不再维护四张分散表。
+- Desktop 视觉状态不再按 `"chart"`／`"settings"` 字符串分支；`ShellActivity` 不再现场创建内部宿主表。本提交只收口 composition root，不改变 Stage 0–2.5 产品与交互合同。
+- 先加入四项 Red 合同，再更新旧 Stage 1/2 回归断言以验证相同语义的新派生结构；完整前置 Gate 结果记录于 TDD 日志。
+
 #### Stage 2.5 — WP8 Reference Acquisition & Human Approval
 
 - 从 Stage 2 批准 tag `launcher-engine-stage2-approved-v1`／`5386da0…` 重建 Stage 2.5；拒绝旧候选的手持／倾斜手机图，唯一视觉来源改为仓库所有者提供的 `kuku.mp4` WP8.1 模拟器录屏。

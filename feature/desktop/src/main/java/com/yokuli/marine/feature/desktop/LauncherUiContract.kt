@@ -1,8 +1,6 @@
 package com.yokuli.marine.feature.desktop
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.stringResource
-import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherCatalogSnapshot
@@ -19,6 +17,20 @@ data class LauncherEntryUiState(
     val icon: MarineIconKind,
     val headline: String,
     val detail: String,
+)
+
+/**
+ * 中文：视觉贡献属于 composition root；Engine 和目录都不认识产品图标或文案。
+ * English: Visual contributions belong to the composition root; neither Engine nor catalog knows product copy.
+ */
+data class LauncherEntryVisualContribution(
+    val entryId: LauncherEntryId,
+    val createState: @Composable (LauncherEntryDescriptor, LauncherVisualContext) -> LauncherEntryUiState,
+)
+
+data class LauncherVisualContext(
+    val mapConfigured: Boolean,
+    val theme: WpThemeSpec,
 )
 
 data class LauncherUiState(
@@ -46,30 +58,20 @@ fun productionLauncherUiState(
     document: DesktopDocument,
     mapConfigured: Boolean,
     theme: WpThemeSpec,
+    visualContributions: List<LauncherEntryVisualContribution>,
 ): LauncherUiState {
-    val chart = catalog.entries.single { it.entryId.value == "chart" }
-    val settings = catalog.entries.single { it.entryId.value == "settings" }
+    val visualsByEntry = visualContributions.associateBy { it.entryId }
+    require(visualsByEntry.size == visualContributions.size) { "Duplicate launcher visual contribution" }
+    require(visualsByEntry.keys == catalog.entries.map { it.entryId }.toSet()) {
+        "Launcher visual contributions must exactly match the runtime catalog"
+    }
+    val visualContext = LauncherVisualContext(mapConfigured = mapConfigured, theme = theme)
     return LauncherUiState(
         document = document,
-        entries = listOf(
-            LauncherEntryUiState(
-                descriptor = chart,
-                title = stringResource(R.string.launcher_chart),
-                chineseIndex = 'H',
-                icon = MarineIconKind.CHART,
-                headline = stringResource(if (mapConfigured) R.string.tile_chart_configured else R.string.tile_chart_demo),
-                detail = stringResource(if (mapConfigured) R.string.tile_chart_browse_only else R.string.tile_chart_unconfigured),
-            ),
-            LauncherEntryUiState(
-                descriptor = settings,
-                title = stringResource(R.string.launcher_settings),
-                chineseIndex = 'S',
-                icon = MarineIconKind.SETTINGS,
-                headline = stringResource(
-                    if (theme.mode == WpThemeMode.DARK) R.string.tile_settings_dark else R.string.tile_settings_light,
-                ),
-                detail = stringResource(R.string.tile_settings_accent, theme.accent.displayName),
-            ),
-        ),
+        entries = catalog.entries.map { descriptor ->
+            requireNotNull(visualsByEntry[descriptor.entryId]) {
+                "Missing launcher visual contribution for ${descriptor.entryId.value}"
+            }.createState(descriptor, visualContext)
+        },
     )
 }

@@ -149,6 +149,7 @@ class ShellActivityStoryTest {
                                 defaultDesktopDocument,
                                 mapConfigured = false,
                                 theme = WpThemeSpec(),
+                                visualContributions = productionVisualContributions,
                             ),
                             onAction = {},
                         )
