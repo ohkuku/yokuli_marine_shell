@@ -59,6 +59,8 @@ class LauncherStage11PerformanceContractTest(unittest.TestCase):
         application = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellApplication.kt").read_text()
         self.assertIn('BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")', application)
         self.assertIn("if (recoveryTrackingEnabled)", view_model)
+        self.assertIn("if (!recoveryTrackingEnabled)", view_model)
+        self.assertIn("engine.dispatch(LauncherAction.RestorePersistedDocument(defaultStartDocument))", view_model)
         self.assertIn("persistence.markLaunchHealthy()", view_model)
         self.assertIn("LauncherAction.ExitSafeMode", view_model)
         self.assertIn("WAIT_MILLIS = 20_000L", benchmark)
@@ -110,6 +112,8 @@ class LauncherStage11PerformanceContractTest(unittest.TestCase):
         self.assertIn("virtualBackDismissesAlphabetJumpBeforeLeavingAllApps", tests)
         self.assertIn('awaitDisplayed("chart-workspace-browse")', tests)
         self.assertIn("timeoutMillis = 10_000", tests)
+        self.assertIn("resetJob.join()", tests)
+        self.assertIn("LauncherRecoveryMode.SAFE_MODE", tests)
 
     def test_hardware_and_human_limits_remain_explicit(self):
         report = (STAGE / "REPORT.md").read_text()

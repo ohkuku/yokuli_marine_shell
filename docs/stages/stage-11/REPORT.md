@@ -64,6 +64,8 @@ WP8 Stage 2.5 approved-reference validation           PASS
 
 第三次 hosted run `33923989525` 已使 API 34 完整 stories 与 API 36 smoke 通过；performance 进一步确认 fresh-install 语言重建与软件 renderer trace 是独立问题。Harness 现跳过首次 `LocaleManager` 重建，避免把平台重启记作启动性能；emulator 交互帧改由 AndroidX gfxinfo metric 观测，物理设备的 Perfetto frame metric 保持不变。最终 hosted 接受仍须五条 journey 全部执行成功。
 
+第四次 hosted run `33925469495` 证明 emulator gfxinfo 已解决 60 Tile 帧采样，但 fresh target 的异步 DataStore 恢复仍可能让生产 journey 留在 Recovery。Harness 现在立即排队默认 Start 恢复，不把 benchmark 强制进程生命周期混入生产 crash-loop。该 run 的 API 34 stories 同时揭示测试 reset 本身缺少 queue barrier；测试现等待 reset `Job` 完成，并用 Engine `SAFE_MODE → NORMAL/Start` 往返证明此前 action 已串行处理，再执行真实手势。生产 reducer、动画与输入路径未更改。
+
 CI 新增 `stage11-performance` job。它执行真实 `connectedStandaloneBenchmarkAndroidTest`，上传 `stage11-performance-reports`，并把 emulator 结果标为 `EMULATOR_TREND_ONLY`；verified debug APK 必须等待该 job、API 34 stories 和 API 36 smoke 全部成功。两个 Release flavor 继续只有 Chart + Settings，Shell Lab 仅进入 debug/benchmark classpath。
 
 ## 人工最终审核清单

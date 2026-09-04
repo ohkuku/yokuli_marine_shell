@@ -477,6 +477,8 @@ Profile 生成最初使用 AndroidX 默认最多 15 轮，在两个 flavor 上�
 
 第三次 hosted run `33923989525` 让 API 34 完整 stories 与 API 36 smoke 都通过，证明图形后端和 Engine transition 等待修正有效；performance 仍精确复现 fresh-install Start timeout 与软件 renderer 无 RenderThread slice。最终修正把 harness 强制 stop/reinstall 与用户语言生命周期隔离，避免首次 `LocaleManager` 重建污染被测启动。交互帧指标按执行环境选择：emulator 使用 AndroidX `FrameTimingGfxInfoMetric` 读取目标进程 `dumpsys gfxinfo`，物理设备仍使用 Perfetto `FrameTimingMetric`。两者都采集真实帧；emulator 仍只作为趋势，物理 60/90/120 Hz Gate 仍未被替代。
 
+第四次 hosted run `33925469495` 证明 gfxinfo 分支已消除 60 Tile 的 RenderThread trace 失败，但 fresh target 仍可能在持久化冷加载窗口显示 Recovery；harness 现于 ViewModel 建立后立即排队默认文档恢复与 Home，不等待会被 benchmark process control 干扰的生产 crash-loop 时序。该 run 还捕获到四条 Activity story 的随机操作丢失；上一轮相同代码 26/26 表明它是 `resetLauncher()` coroutine 尚未入队／出队便开始下一条手势。reset 现返回 `Job`，测试等待其完成，再通过 `SAFE_MODE → NORMAL/Start` 状态往返作为串行 action queue barrier；没有使用固定 sleep，也没有改变生产用户流程。
+
 ### Green Gate
 
 最终本地 Gate 包括 Stage 0–11 Python/helper contracts、Golden validator、版本化 Baseline/Startup Profile、5/5 Macrobenchmark 代表性 emulator journeys、完整 Gradle test/lint/双 flavor Debug+Release+androidTest、API 34 Activity stories `26/26`、双 Release 产品面、CI/release/secrets 合同与 Stage 2.5 approved hash。模拟器 metrics 只写 `EMULATOR_TREND_ONLY`；本机只有 API 34，API 36 reduced-motion smoke 留给 hosted CI。

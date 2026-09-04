@@ -12,6 +12,7 @@
 - Hosted Compose 故事门不再把串行 Engine 的异步 action 当作同步 Compose 点击：跨 Surface 的断言会等待真实目标可见，消除快慢 runner 对转场测试的偶发性。
 - GitHub emulator 从已弃用的 `swiftshader_indirect` 切换为官方推荐的自动图形后端选择，保留启用动画的 Activity story 和真实 FrameTimingMetric trace。
 - 自动化 harness 不再把首次语言重建算进 Shell 启动；emulator 使用 AndroidX gfxinfo 帧采样以兼容无 RenderThread slice 的软件渲染器，物理设备继续使用精确 Perfetto FrameTimingMetric。
+- Benchmark/Profile harness 在 DataStore 冷恢复前显式进入确定性 Start；Activity stories 使用 Engine 安全模式往返作为 reset queue barrier，避免上一条测试的异步 reset 覆盖下一条手势。
 
 ## Stage 10 — Durable Storage & Recovery
 

@@ -38,6 +38,12 @@ import com.yokuli.marine.core.design.WpTileAccentNameKey
 import com.yokuli.marine.core.design.YokuliTheme
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
+import com.yokuli.shell.engine.LauncherAction
+import com.yokuli.shell.engine.LauncherRecoveryMode
+import com.yokuli.shell.engine.LauncherSurface
+import com.yokuli.shell.engine.LauncherEngine
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import kotlin.math.abs
@@ -53,8 +59,23 @@ class ShellActivityStoryTest {
 
     @Before
     fun resetDurableLauncherState() {
+        lateinit var resetJob: Job
+        lateinit var engine: LauncherEngine
         compose.activityRule.scenario.onActivity { activity ->
-            ViewModelProvider(activity)[ShellViewModel::class.java].resetLauncher()
+            val viewModel = ViewModelProvider(activity)[ShellViewModel::class.java]
+            engine = viewModel.engine
+            resetJob = viewModel.resetLauncher()
+        }
+        runBlocking { resetJob.join() }
+        engine.dispatch(LauncherAction.EnterSafeMode)
+        compose.waitUntil(10_000) {
+            engine.state.value.recoveryMode == LauncherRecoveryMode.SAFE_MODE
+        }
+        engine.dispatch(LauncherAction.ExitSafeMode)
+        engine.dispatch(LauncherAction.Home)
+        compose.waitUntil(10_000) {
+            engine.state.value.recoveryMode == LauncherRecoveryMode.NORMAL &&
+                engine.state.value.surface == LauncherSurface.Start
         }
         awaitDisplayed("start-screen")
         awaitDisplayed("tile-chart")
@@ -396,7 +417,7 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { activity ->
             ViewModelProvider(activity)[ShellViewModel::class.java].engine.dispatch(
-                com.yokuli.shell.engine.LauncherAction.EnterSafeMode,
+                LauncherAction.EnterSafeMode,
             )
         }
         awaitDisplayed("launcher-recovery")
