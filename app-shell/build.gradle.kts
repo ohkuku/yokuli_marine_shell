@@ -33,13 +33,6 @@ android {
     productFlavors {
         create("standalone") {
             dimension = "shellMode"
-            buildConfigField("boolean", "SHELL_HOME_MODE", "false")
-        }
-        create("home") {
-            dimension = "shellMode"
-            applicationIdSuffix = ".home"
-            versionNameSuffix = "-home"
-            buildConfigField("boolean", "SHELL_HOME_MODE", "true")
         }
     }
     signingConfigs {

@@ -3,7 +3,6 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 standalone_apk="$repo_root/app-shell/build/outputs/apk/standalone/release/app-shell-standalone-release-unsigned.apk"
-home_apk="$repo_root/app-shell/build/outputs/apk/home/release/app-shell-home-release-unsigned.apk"
 
 fail() {
   printf 'Release product-surface contract failed: %s\n' "$*" >&2
@@ -72,17 +71,10 @@ inspect_apk() {
     grep -Fq "$forbidden" <<<"$manifest" && fail "$flavor release manifest contains $forbidden"
   done
 
-  if [[ "$flavor" == "home" ]]; then
-    grep -Fq 'android.intent.category.HOME' <<<"$manifest" ||
-      fail "home release manifest is missing the HOME category"
-    grep -Fq 'android.intent.category.DEFAULT' <<<"$manifest" ||
-      fail "home release manifest is missing the DEFAULT category"
-  else
-    grep -Fq 'android.intent.category.HOME' <<<"$manifest" &&
-      fail "standalone release manifest unexpectedly contains the HOME category"
-    grep -Fq 'android.intent.category.DEFAULT' <<<"$manifest" &&
-      fail "standalone release manifest unexpectedly contains the DEFAULT category"
-  fi
+  grep -Fq 'android.intent.category.HOME' <<<"$manifest" &&
+    fail "standalone release manifest unexpectedly contains the HOME category"
+  grep -Fq 'android.intent.category.DEFAULT' <<<"$manifest" &&
+    fail "standalone release manifest unexpectedly contains the DEFAULT category"
 
   require_class "$apk" 'com.yokuli.marine.shell.ProductionShellGraphKt'
   require_class "$apk" 'com.yokuli.marine.feature.chart.ChartWorkspaceKt'
@@ -96,26 +88,7 @@ inspect_apk() {
 }
 
 [[ -f "$standalone_apk" ]] || fail "missing standalone release APK: ${standalone_apk#"$repo_root/"}"
-[[ -f "$home_apk" ]] || fail "missing home release APK: ${home_apk#"$repo_root/"}"
 standalone_manifest="$($apkanalyzer_bin manifest print "$standalone_apk")"
-home_manifest="$($apkanalyzer_bin manifest print "$home_apk")"
 
 inspect_apk standalone "$standalone_apk" "$standalone_manifest"
-inspect_apk home "$home_apk" "$home_manifest"
-
-standalone_components="$(extract_manifest_names "$standalone_manifest" 'activity|service|receiver|provider')"
-home_components="$(extract_manifest_names "$home_manifest" 'activity|service|receiver|provider')"
-[[ "$standalone_components" == "$home_components" ]] ||
-  fail "standalone and home release component sets differ"
-
-standalone_actions="$(extract_manifest_names "$standalone_manifest" 'action')"
-home_actions="$(extract_manifest_names "$home_manifest" 'action')"
-[[ "$standalone_actions" == "$home_actions" ]] ||
-  fail "standalone and home release intent actions differ"
-
-standalone_categories="$(extract_manifest_names "$standalone_manifest" 'category')"
-home_base_categories="$(extract_manifest_names "$home_manifest" 'category' | sed '/^android\.intent\.category\.HOME$/d; /^android\.intent\.category\.DEFAULT$/d')"
-[[ "$standalone_categories" == "$home_base_categories" ]] ||
-  fail "home release has an unexpected category difference beyond HOME/DEFAULT"
-
-printf 'Both Release flavors passed product-surface inspection; HOME adds only HOME/DEFAULT launch categories\n'
+printf 'Standalone in-app Shell Release passed product-surface and no-HOME inspection\n'

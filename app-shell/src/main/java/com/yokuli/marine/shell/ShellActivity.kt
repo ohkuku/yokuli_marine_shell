@@ -1,7 +1,6 @@
 package com.yokuli.marine.shell
 
 import android.app.Activity
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
@@ -105,7 +104,8 @@ class ShellActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == Intent.ACTION_MAIN) dispatchInput(LauncherInput.START)
+        // Bringing the existing Android task forward preserves its in-app Shell surface.
+        // Only explicit deep links may request a different internal destination.
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -148,11 +148,7 @@ class ShellActivity : AppCompatActivity() {
     }
 
     internal fun openAndroidSettings() {
-        try {
-            platformIntentLauncher(Intent(Settings.ACTION_HOME_SETTINGS))
-        } catch (_: ActivityNotFoundException) {
-            platformIntentLauncher(Intent(Settings.ACTION_SETTINGS))
-        }
+        platformIntentLauncher(Intent(Settings.ACTION_SETTINGS))
     }
 
     private fun enterImmersiveMode() {
@@ -174,9 +170,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         engine.effects.collect { effect ->
             when (effect) {
                 is LauncherEffect.Haptic -> hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                LauncherEffect.RequestHostExit -> if (!BuildConfig.SHELL_HOME_MODE) {
-                    (context as? Activity)?.finishAfterTransition()
-                }
+                LauncherEffect.RequestHostExit -> (context as? Activity)?.finishAfterTransition()
                 LauncherEffect.OpenAndroidSettings -> (context as? ShellActivity)?.openAndroidSettings()
                     ?: context.startActivity(Intent(Settings.ACTION_SETTINGS))
                 is LauncherEffect.LogIncident -> Log.w("YokuliLauncher", effect.incident.toString())

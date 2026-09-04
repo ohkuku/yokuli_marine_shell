@@ -34,7 +34,7 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
         self.assertIn("LauncherInput", key_bar)
         self.assertIn("BackHandler(enabled = true)", activity)
         self.assertIn("onNewIntent", activity)
-        self.assertIn("LauncherInput.START", activity)
+        self.assertNotIn("LauncherInput.START", activity)
 
     def test_fullscreen_is_reasserted_and_platform_home_boundary_is_documented(self):
         activity = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt").read_text()
@@ -72,7 +72,7 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
             "virtualSearchFindsAndLaunchesInstalledEntry",
             "virtualBackLongPressOpensRecents",
             "androidBackAndDeliveredHardwareKeysUseTheUnifiedInputPath",
-            "homeIntentReturnsToStartWithoutRecreatingActivity",
+            "appRelaunchDoesNotForceDesktopOrRecreateActivity",
         ):
             self.assertIn(scenario, activity)
 

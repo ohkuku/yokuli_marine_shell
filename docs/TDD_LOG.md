@@ -24,6 +24,24 @@ FAILED (failures=6, errors=2)
 
 8 项未满足合同精确对应现存 HOME flavor、恢复 task 强制回 Desktop、Search overlay、Windows 中键、缺少 WindowMetrics、Marine Tile 六尺寸、自适应 packer 和旧 Settings 表面；2 项立即通过，证明基线文档和 Chart + Settings-only 产品面已经成立。这批失败是后续可审查 Slice 的施工清单，不是构建或环境错误。
 
+### Slice 1 — Product Identity Correction
+
+删除 `home` flavor、HOME/DEFAULT manifest overlay、`SHELL_HOME_MODE` 和 `ACTION_HOME_SETTINGS`。`onNewIntent(ACTION_MAIN)` 只更新 Android task intent，不再强制内部 Desktop；Recovery 保留普通 `ACTION_SETTINGS`。Release/CI 只构建、审计和发布 standalone in-app Shell APK/AAB。
+
+Green：
+
+```text
+Stage 1 contract                                      PASS (9/9)
+Stage 9 contract                                      PASS (7/7)
+Stage 10 contract                                     PASS (8/8)
+CI/release topology contract                          PASS
+./gradlew test lintStandaloneDebug
+  assembleStandaloneDebug assembleStandaloneRelease  PASS (994 tasks)
+standalone Release Chart + Settings / no HOME audit   PASS
+```
+
+生成的旧 Baseline Profile 仍包含已删除 home variant 的符号并产生 D8 warning；它不是运行时 HOME 注册，但必须在最终性能 Slice 重新生成，不得作为最终候选遗留。
+
 状态：`STAGE_2_5_HUMAN_REVIEWED_APPROVED`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
 
 ## Stage 0 — Freeze & Reference Contract

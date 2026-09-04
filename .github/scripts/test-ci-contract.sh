@@ -41,7 +41,10 @@ grep -Fq 'LAUNCHER_STAGE0_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 0 
 grep -Fq 'id: launcher_stage1_contract' "$android" || fail 'Launcher Stage 1 needs an independent named CI gate'
 grep -Fq 'python3 .github/scripts/test_launcher_stage1_contract.py' "$android" || fail 'Launcher Stage 1 static product-surface contract must run in CI'
 grep -Fq 'bash .github/scripts/test-release-product-surface.sh' "$android" || fail 'Launcher Stage 1 must inspect the assembled release APK'
-grep -Fq 'assembleStandaloneRelease assembleHomeRelease' "$android" || fail 'Launcher Stage 1 must assemble both Release flavors for inspection'
+grep -Fq 'assembleStandaloneDebug assembleStandaloneRelease' "$android" || fail 'Marine Shell CI must assemble standalone Debug and Release for inspection'
+if grep -Eq 'assembleHome|bundleHome|app-shell/build/outputs/apk/home' "$android" "$release"; then
+  fail 'in-app Marine Shell workflows must not build or publish a HOME flavor'
+fi
 grep -Fq 'LAUNCHER_STAGE1_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 1 result must participate in final enforcement'
 grep -Fq 'id: launcher_stage2_contract' "$android" || fail 'Launcher Stage 2 needs an independent named CI gate'
 grep -Fq 'python3 .github/scripts/test_launcher_stage2_contract.py' "$android" || fail 'Launcher Stage 2 architecture boundary contract must run in CI'

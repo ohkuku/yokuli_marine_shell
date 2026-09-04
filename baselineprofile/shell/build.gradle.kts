@@ -23,10 +23,6 @@ android {
             dimension = "shellMode"
             buildConfigField("String", "TARGET_APP_ID", "\"com.yokuli.marine\"")
         }
-        create("home") {
-            dimension = "shellMode"
-            buildConfigField("String", "TARGET_APP_ID", "\"com.yokuli.marine.home\"")
-        }
     }
 
     buildFeatures { buildConfig = true }

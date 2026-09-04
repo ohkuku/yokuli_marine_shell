@@ -69,7 +69,7 @@ class LauncherStage10DurabilityContractTest(unittest.TestCase):
         self.assertIn("LauncherRecoveryMode.SAFE_MODE", engine)
         self.assertIn("LauncherEffect.OpenAndroidSettings", engine + activity)
         self.assertIn("Settings.ACTION_SETTINGS", activity)
-        self.assertIn("Settings.ACTION_HOME_SETTINGS", activity)
+        self.assertNotIn("Settings.ACTION_HOME_SETTINGS", activity)
         self.assertIn("recovery-open-android-settings", recovery)
         self.assertIn("recovery-reset-start", recovery)
 
@@ -91,7 +91,7 @@ class LauncherStage10DurabilityContractTest(unittest.TestCase):
             self.assertIn(scenario, tests)
         for scenario in (
             "activityRecreationRetainsTheEngineDocument",
-            "homeRecoverySurfaceCanOpenAndroidSettings",
+            "recoverySurfaceCanOpenAndroidSettings",
         ):
             self.assertIn(scenario, stories)
 

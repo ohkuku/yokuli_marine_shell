@@ -19,7 +19,6 @@ android {
     flavorDimensions += "shellMode"
     productFlavors {
         create("standalone") { dimension = "shellMode" }
-        create("home") { dimension = "shellMode" }
     }
 
     buildTypes {

@@ -203,7 +203,7 @@ jobs:
         run: |
           printf '%s' "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/yokuli-os-release.jks"
           bash .github/scripts/validate_release_signing.sh "$RUNNER_TEMP/yokuli-os-release.jks"
-      - name: Test, lint, and build signed standalone and HOME assets
+      - name: Test, lint, and build signed standalone in-app Shell assets
         env:
           ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/yokuli-os-release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -214,8 +214,7 @@ jobs:
           YOKULI_VERSION_CODE: ${{ needs.validate-release.outputs.version_code }}
         run: >-
           ./gradlew --no-daemon test lintStandaloneRelease
-          assembleStandaloneRelease assembleHomeRelease
-          bundleStandaloneRelease bundleHomeRelease --stacktrace
+          assembleStandaloneRelease bundleStandaloneRelease --stacktrace
       - name: Verify signatures and generate checksums
         run: |
           apksigner_path="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f -print | sort -V | tail -n 1)"
@@ -229,7 +228,7 @@ jobs:
             jarsigner -verify "$bundle"
             cp "$bundle" verified-release/
           done < <(find app-shell/build/outputs/bundle -type f -name '*.aab' -print)
-          test "$(find verified-release -type f \( -name '*.apk' -o -name '*.aab' \) | wc -l)" -eq 4
+          test "$(find verified-release -type f \( -name '*.apk' -o -name '*.aab' \) | wc -l)" -eq 2
           (cd verified-release && sha256sum *.apk *.aab > SHA256SUMS.txt)
       - name: Upload signed release assets
         uses: actions/upload-artifact@v7
@@ -257,7 +256,7 @@ jobs:
         if: always()
         run: >-
           python3 .github/scripts/write_job_summary.py "Signed Yokuli OS release"
-          "Tests, lint, dual signed APK/AAB, signatures, checksums, publication=${{ job.status }}"
+          "Tests, lint, standalone signed APK/AAB, signatures, checksums, publication=${{ job.status }}"
       - name: Collect release publication failure diagnostics
         if: failure()
         run: bash .github/scripts/collect_failure_bundle.sh release-publish

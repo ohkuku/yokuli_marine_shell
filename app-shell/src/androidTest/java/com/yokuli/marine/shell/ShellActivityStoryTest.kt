@@ -391,7 +391,7 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun homeIntentReturnsToStartWithoutRecreatingActivity() {
+    fun appRelaunchDoesNotForceDesktopOrRecreateActivity() {
         compose.onNodeWithTag("tile-settings").performClick()
         awaitDisplayed("settings-workspace")
         var before = 0
@@ -400,20 +400,20 @@ class ShellActivityStoryTest {
             activity.startActivity(
                 Intent(Intent.ACTION_MAIN)
                     .setClass(activity, ShellActivity::class.java)
-                    .addCategory(Intent.CATEGORY_HOME)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }
 
-        awaitDisplayed("start-screen")
-        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        awaitDisplayed("settings-workspace")
+        compose.onNodeWithTag("settings-workspace").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { activity ->
             assertEquals(before, System.identityHashCode(activity))
         }
     }
 
     @Test
-    fun homeRecoverySurfaceCanOpenAndroidSettings() {
+    fun recoverySurfaceCanOpenAndroidSettings() {
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { activity ->
             ViewModelProvider(activity)[ShellViewModel::class.java].engine.dispatch(
@@ -429,7 +429,7 @@ class ShellActivityStoryTest {
         }
         compose.onNodeWithTag("recovery-open-android-settings").performClick()
         compose.waitForIdle()
-        assertEquals(android.provider.Settings.ACTION_HOME_SETTINGS, launchedAction)
+        assertEquals(android.provider.Settings.ACTION_SETTINGS, launchedAction)
     }
 
     @Test

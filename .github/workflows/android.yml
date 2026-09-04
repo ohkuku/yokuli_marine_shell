@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    name: TDD contract, unit, lint, and dual APKs
+    name: TDD contract, unit, lint, and in-app Shell APKs
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -65,13 +65,13 @@ jobs:
         continue-on-error: true
         timeout-minutes: 15
         run: ./gradlew --no-daemon lintStandaloneDebug --stacktrace
-      - name: Assemble standalone and HOME debug plus both release-audit APKs
+      - name: Assemble standalone debug and release-audit APKs
         id: assemble
         continue-on-error: true
         timeout-minutes: 15
         env:
           GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
-        run: ./gradlew --no-daemon assembleStandaloneDebug assembleHomeDebug assembleStandaloneRelease assembleHomeRelease --stacktrace
+        run: ./gradlew --no-daemon assembleStandaloneDebug assembleStandaloneRelease --stacktrace
       - name: Launcher Stage 1 product-surface contract
         id: launcher_stage1_contract
         continue-on-error: true
@@ -116,7 +116,7 @@ jobs:
         id: launcher_stage9_contract
         continue-on-error: true
         run: python3 .github/scripts/test_launcher_stage9_contract.py
-      - name: Launcher Stage 10 durable-restore and HOME-recovery contract
+      - name: Launcher Stage 10 durable-restore and recovery contract
         id: launcher_stage10_contract
         continue-on-error: true
         run: python3 .github/scripts/test_launcher_stage10_contract.py
@@ -133,7 +133,6 @@ jobs:
           name: yokuli-os-debug-candidate-${{ github.sha }}
           path: |
             app-shell/build/outputs/apk/standalone/debug/*.apk
-            app-shell/build/outputs/apk/home/debug/*.apk
           if-no-files-found: error
           retention-days: 30
       - name: Upload explicitly unverified diagnostic APKs
@@ -143,7 +142,6 @@ jobs:
           name: UNVERIFIED-yokuli-os-debug-${{ github.sha }}
           path: |
             app-shell/build/outputs/apk/standalone/debug/*.apk
-            app-shell/build/outputs/apk/home/debug/*.apk
           if-no-files-found: error
           retention-days: 7
       - name: Upload unit-test and lint reports
@@ -173,14 +171,14 @@ jobs:
           "Launcher Stage 7 complete edit=${{ steps.launcher_stage7_contract.outcome }}"
           "Launcher Stage 8 pin and unpin=${{ steps.launcher_stage8_contract.outcome }}"
           "Launcher Stage 9 navigation and virtual keys=${{ steps.launcher_stage9_contract.outcome }}"
-          "Launcher Stage 10 durable restore and HOME recovery=${{ steps.launcher_stage10_contract.outcome }}"
+          "Launcher Stage 10 durable restore and recovery=${{ steps.launcher_stage10_contract.outcome }}"
           "Launcher Stage 11 performance and fidelity candidates=${{ steps.launcher_stage11_contract.outcome }}"
           "Release metadata=${{ steps.release_metadata.outcome }}"
           "Workflow contract=${{ steps.ci_contract.outcome }}"
           "Encrypted secrets contract=${{ steps.secrets_contract.outcome }}"
           "Unit tests=${{ steps.unit_tests.outcome }}"
           "Android lint=${{ steps.lint.outcome }}"
-          "Debug plus dual release-audit APK compile=${{ steps.assemble.outcome }}"
+          "Debug plus release-audit APK compile=${{ steps.assemble.outcome }}"
       - name: Collect build failure diagnostics
         if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
         run: bash .github/scripts/collect_failure_bundle.sh build
@@ -441,7 +439,7 @@ jobs:
         run: |
           {
             echo '## Fully verified Yokuli OS debug APKs'
-            echo 'TDD contract, unit tests, lint, dual builds, API 34 stories, API 36 smoke, and Stage 11 emulator trend journeys all passed.'
+            echo 'TDD contract, unit tests, lint, standalone in-app Shell builds, API 34 stories, API 36 smoke, and Stage 11 emulator trend journeys all passed.'
             echo 'Download: **VERIFIED-yokuli-os-debug-${{ github.sha }}**'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Collect verified-artifact failure diagnostics
