@@ -3,7 +3,10 @@ package com.yokuli.shell.engine
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.LauncherCatalogSnapshot
+import com.yokuli.shell.contract.LauncherEntryId
+import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.engine.interaction.StartInteractionState
+import com.yokuli.shell.engine.layout.LayoutChangeReason
 import com.yokuli.shell.engine.layout.LayoutTransaction
 import com.yokuli.shell.engine.layout.StartDocument
 
@@ -30,7 +33,10 @@ data class StartScreenState(
     val interaction: StartInteractionState = StartInteractionState.Idle,
     val activeTransaction: LayoutTransaction? = null,
     val undoStack: List<LayoutTransaction> = emptyList(),
+    val reveal: StartReveal? = null,
 )
+
+data class StartReveal(val tileId: TileInstanceId, val transactionId: String)
 
 data class AllAppsState(val catalogRevision: Long)
 
@@ -46,8 +52,16 @@ data class InternalTaskState(val tasks: List<InternalAppTask> = emptyList()) {
 }
 
 sealed interface LauncherTransient {
-    data class ContextMenu(val key: String) : LauncherTransient
+    data class ContextMenu(val entryId: LauncherEntryId) : LauncherTransient
+    data class UndoLayout(
+        val transactionId: String,
+        val reason: LayoutChangeReason,
+        val entryId: LauncherEntryId,
+    ) : LauncherTransient
+    data class Notice(val notice: LauncherNotice) : LauncherTransient
 }
+
+enum class LauncherNotice { ALREADY_PINNED, PIN_UNAVAILABLE, LAYOUT_UNAVAILABLE }
 
 sealed interface LauncherSystemOverlay
 

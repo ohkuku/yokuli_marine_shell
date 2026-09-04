@@ -113,7 +113,7 @@ private fun YokuliShell() {
             SettingsSection.valueOf(settingsSectionName) != SettingsSection.OVERVIEW
     } == true
     val launcherEditing = engineState.start.interaction !is StartInteractionState.Idle
-    BackHandler(engineState.surface != LauncherSurface.Start || launcherEditing) {
+    BackHandler(engineState.surface != LauncherSurface.Start || launcherEditing || engineState.transient != null) {
         if (settingsSubpageVisible) {
             settingsSectionName = SettingsSection.OVERVIEW.name
         } else {
@@ -162,6 +162,8 @@ private fun YokuliShell() {
                 catalog = engineState.catalog,
                 document = engineState.start.document,
                 interaction = engineState.start.interaction,
+                transient = engineState.transient,
+                reveal = engineState.start.reveal,
                 mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
                 theme = themeSpec,
                 visualContributions = productionVisualContributions,
@@ -196,7 +198,16 @@ private fun YokuliShell() {
                     is LauncherUiAction.MoveTileBy -> dispatch(
                         LauncherAction.MoveTileBy(action.tileId, action.columns, action.rows),
                     )
-                    is LauncherUiAction.TogglePin -> dispatch(LauncherAction.TogglePin(action.entryId))
+                    is LauncherUiAction.OpenEntryContextMenu -> dispatch(
+                        LauncherAction.OpenEntryContextMenu(action.entryId),
+                    )
+                    LauncherUiAction.DismissTransient -> dispatch(LauncherAction.DismissTransient)
+                    is LauncherUiAction.PinEntry -> dispatch(LauncherAction.PinEntry(action.entryId))
+                    is LauncherUiAction.UnpinTile -> dispatch(LauncherAction.UnpinTile(action.tileId))
+                    is LauncherUiAction.AcknowledgeStartReveal -> dispatch(
+                        LauncherAction.AcknowledgeStartReveal(action.tileId),
+                    )
+                    LauncherUiAction.UndoLayout -> dispatch(LauncherAction.UndoLayout)
                     is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
                 }
             }
@@ -231,10 +242,21 @@ private fun YokuliShell() {
                         ) { page ->
                             when (page) {
                                 LauncherPagerPage.START -> YokuliStartScreen(
-                                    launcherState,
+                                    launcherState.copy(
+                                        transient = engineState.transient.takeIf {
+                                            engineState.surface == LauncherSurface.Start
+                                        },
+                                    ),
                                     launcherAction,
                                 )
-                                LauncherPagerPage.ALL_APPS -> WpAppList(launcherState, launcherAction)
+                                LauncherPagerPage.ALL_APPS -> WpAppList(
+                                    launcherState.copy(
+                                        transient = engineState.transient.takeIf {
+                                            engineState.surface == LauncherSurface.AllApps
+                                        },
+                                    ),
+                                    launcherAction,
+                                )
                             }
                         }
                     }

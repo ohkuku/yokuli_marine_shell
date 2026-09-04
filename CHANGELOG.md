@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 8 — Pin / Unpin / Context Menu
+
+- All Apps context menus, Pin, Unpin, reveal and Undo are now serialized Engine actions and state.
+- Pin returns to Start and reveals the committed tile; Unpin never removes the installed app.
+- Catalog additions do not auto-pin, removals preserve unrelated coordinates, and failures are visible in Chinese and English.
+
 ## [Unreleased]
 
 ### 中文（主文）

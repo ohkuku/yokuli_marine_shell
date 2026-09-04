@@ -416,3 +416,13 @@ Six contracts begin red while occupancy, collision solving, the custom renderer,
 ### English translation — Stage 7
 
 Seven contracts begin with four failures and three errors. Green moves edit and document-affecting pointer actions into the serialized Engine while retaining only pointer-plane collection in the renderer. Narrow validation also removes a race from the Stage 4 effect test and preserves Shell Lab constructor compatibility. Provisional resize, origin placeholder, cancellation boundaries, derived hysteresis/edge scrolling, host haptics, and bilingual accessibility movement actions are covered by JVM and real-Activity stories. Unobserved tuning is never presented as WP8 reference evidence.
+
+## Stage 8 — Pin / Unpin / Context Menu
+
+静态合同先以 `5 failures / 2 errors` 进入 Red；JVM Red 随后因 typed context、Pin/Unpin、reveal 与反馈状态不存在而编译失败。Green 将 All Apps 长按菜单从 Compose 本地状态迁入串行 Engine，并建立显式 `PinEntry` / `UnpinTile` transaction、返回 Start、定位高亮、双向 Undo、重复/不可用反馈和 catalog revision 失效规则。
+
+Stage 2.5 未观察 Pin/Unpin 动效，因此实现不填写 WP8 时间常数。Reveal 使用默认 spring，在动画收敛后由 Renderer 派发确认；轻微视觉幅度标为 `DERIVED_UNVERIFIED`。Unpin 只改变 StartDocument；Catalog 新增不自动 Pin，删除 Entry 不移动其余 placement。
+
+### English translation — Stage 8
+
+The meaningful Red failed on the absent Engine-owned context, explicit Pin/Unpin actions, reveal state, feedback, evidence, and CI gate. Green makes Pin/Unpin deterministic transactions with exact Undo, returns successful Pin to Start, reveals the new tile, preserves installed entries during Unpin, and prevents catalog additions or removals from silently rebuilding the desktop. Unobserved Pin motion remains explicitly derived rather than WP8 evidence.

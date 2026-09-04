@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -212,17 +213,48 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun allAppsLongPressUsesVisibleContextMenuToUnpin() {
+    fun allAppsLongPressOpensContextWithoutChangingStart() {
         compose.onNodeWithTag("all-apps-entry").performClick()
         compose.onNodeWithTag("launcher-entry-settings").performTouchInput { longClick() }
         compose.onNodeWithTag("launcher-context-menu").assertIsDisplayed()
         compose.onNodeWithTag("launcher-context-app-info").assertIsDisplayed()
-        compose.onNodeWithTag("launcher-context-pin").performClick()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithTag("all-apps-list").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
-        compose.onNodeWithTag("tile-settings").assertDoesNotExist()
+        compose.onNodeWithTag("tile-settings").assertIsDisplayed()
         compose.onNodeWithTag("tile-chart").assertIsDisplayed()
+    }
+
+    @Test
+    fun pinReturnsToStartRevealsTileAndCanUndo() {
+        compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        compose.onNodeWithTag("unpin-selected-tile").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
+
+        compose.onNodeWithTag("all-apps-entry").performClick()
+        compose.onNodeWithTag("launcher-entry-settings").performTouchInput { longClick() }
+        compose.onNodeWithTag("launcher-context-pin").performClick()
+
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.onNodeWithTag("tile-settings").assertIsDisplayed()
+        compose.onNodeWithTag("launcher-undo").assertIsDisplayed()
+        compose.onNodeWithTag("launcher-undo-action").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test
+    fun unpinKeepsEntryInstalledAndCanUndo() {
+        compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        compose.onNodeWithTag("unpin-selected-tile").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("launcher-undo").assertIsDisplayed()
+
+        compose.onNodeWithTag("launcher-undo-action").performClick()
+        compose.onNodeWithTag("tile-settings").assertIsDisplayed()
+        compose.onNodeWithTag("all-apps-entry").performClick()
+        compose.onNodeWithTag("launcher-entry-settings").assertIsDisplayed()
     }
 
     @Test

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "stage": 8,
+  "name": "Pin / Unpin / Context Menu",
+  "branch": "codex/launcher-engine-batch-b",
+  "startingSha": "f5d59ba81267f7c3ce9f2120bda20c09a0386a14",
+  "requiredCompletedStage": "Complete Edit / Drag / Resize",
+  "scope": "Launcher-grade Context Menu, Pin, Unpin, Reveal, Undo, and Catalog Reconciliation",
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

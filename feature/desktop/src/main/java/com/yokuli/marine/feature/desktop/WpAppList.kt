@@ -34,6 +34,8 @@ import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.design.wpTilt
+import com.yokuli.shell.contract.PinPolicy
+import com.yokuli.shell.engine.LauncherTransient
 import java.text.Collator
 import kotlinx.coroutines.launch
 
@@ -58,7 +60,6 @@ fun WpAppList(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var jumpVisible by remember { mutableStateOf(false) }
-    var contextEntry by remember { mutableStateOf<LauncherEntryUiState?>(null) }
     val groupIndexes = remember(groups) {
         var index = 1
         buildMap {
@@ -101,7 +102,9 @@ fun WpAppList(
                                 interactionSource = interactions,
                                 indication = null,
                                 onClick = { onAction(LauncherUiAction.Open(entry.descriptor.launchToken)) },
-                                onLongClick = { contextEntry = entry },
+                                onLongClick = {
+                                    onAction(LauncherUiAction.OpenEntryContextMenu(entry.descriptor.entryId))
+                                },
                             ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -123,21 +126,30 @@ fun WpAppList(
                 },
             )
         }
+        val contextEntry = (state.transient as? LauncherTransient.ContextMenu)?.entryId?.let { entryId ->
+            state.entries.firstOrNull { it.descriptor.entryId == entryId }
+        }
         contextEntry?.let { entry ->
+            val placement = state.document.placements.firstOrNull { it.entryId == entry.descriptor.entryId }
             WpLauncherContextMenu(
                 entry = entry,
-                pinned = entry.descriptor.entryId in state.pinnedEntries,
-                onDismiss = { contextEntry = null },
-                onTogglePin = {
-                    contextEntry = null
-                    onAction(LauncherUiAction.TogglePin(entry.descriptor.entryId))
+                pinned = placement != null,
+                pinActionAvailable = entry.descriptor.pinPolicy == PinPolicy.PINNABLE,
+                onDismiss = { onAction(LauncherUiAction.DismissTransient) },
+                onPinAction = {
+                    if (placement == null) {
+                        onAction(LauncherUiAction.PinEntry(entry.descriptor.entryId))
+                    } else {
+                        onAction(LauncherUiAction.UnpinTile(placement.tileId))
+                    }
                 },
                 onAppInfo = {
-                    contextEntry = null
+                    onAction(LauncherUiAction.DismissTransient)
                     onAction(LauncherUiAction.ShowAppInfo(entry.descriptor.entryId))
                 },
             )
         }
+        WpLauncherFeedback(state.transient, onAction)
     }
 }
 
@@ -145,8 +157,9 @@ fun WpAppList(
 private fun WpLauncherContextMenu(
     entry: LauncherEntryUiState,
     pinned: Boolean,
+    pinActionAvailable: Boolean,
     onDismiss: () -> Unit,
-    onTogglePin: () -> Unit,
+    onPinAction: () -> Unit,
     onAppInfo: () -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -157,12 +170,14 @@ private fun WpLauncherContextMenu(
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp)) {
             WpText(entry.title, 34, weight = FontWeight.Light, modifier = Modifier.padding(bottom = 20.dp))
-            ContextAction(
-                title = stringResource(if (pinned) R.string.context_unpin else R.string.context_pin),
-                icon = if (pinned) MarineIconKind.UNPIN else MarineIconKind.PIN,
-                tag = "launcher-context-pin",
-                onClick = onTogglePin,
-            )
+            if (pinActionAvailable) {
+                ContextAction(
+                    title = stringResource(if (pinned) R.string.context_unpin else R.string.context_pin),
+                    icon = if (pinned) MarineIconKind.UNPIN else MarineIconKind.PIN,
+                    tag = "launcher-context-pin",
+                    onClick = onPinAction,
+                )
+            }
             ContextAction(
                 title = stringResource(R.string.context_app_info),
                 icon = MarineIconKind.INFO,

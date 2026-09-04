@@ -16,6 +16,13 @@
     <string name="move_tile_right">move tile right</string>
     <string name="move_tile_up">move tile up</string>
     <string name="move_tile_down">move tile down</string>
+    <string name="resize_tile">resize tile</string>
+    <string name="undo">undo</string>
+    <string name="tile_pinned">pinned to Start</string>
+    <string name="tile_unpinned">unpinned from Start</string>
+    <string name="already_pinned">this entry is already pinned to Start</string>
+    <string name="pin_unavailable">this entry cannot be pinned to Start</string>
+    <string name="layout_unavailable">Start layout could not be changed</string>
     <string name="status_charging">charging</string>
     <string name="status_battery">%1$d%%</string>
 </resources>

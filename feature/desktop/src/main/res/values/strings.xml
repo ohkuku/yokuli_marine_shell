@@ -16,6 +16,13 @@
     <string name="move_tile_right">向右移动磁贴</string>
     <string name="move_tile_up">向上移动磁贴</string>
     <string name="move_tile_down">向下移动磁贴</string>
+    <string name="resize_tile">调整磁贴大小</string>
+    <string name="undo">撤销</string>
+    <string name="tile_pinned">已固定到开始屏幕</string>
+    <string name="tile_unpinned">已从开始屏幕取消固定</string>
+    <string name="already_pinned">此入口已固定到开始屏幕</string>
+    <string name="pin_unavailable">此入口不能固定到开始屏幕</string>
+    <string name="layout_unavailable">无法更改开始屏幕布局</string>
     <string name="status_charging">充电中</string>
     <string name="status_battery">%1$d%%</string>
 </resources>

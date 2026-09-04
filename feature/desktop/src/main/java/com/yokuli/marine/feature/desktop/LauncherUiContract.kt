@@ -11,6 +11,8 @@ import com.yokuli.shell.engine.layout.LayoutProposal
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.engine.interaction.ShellOffset
 import com.yokuli.shell.engine.interaction.StartInteractionState
+import com.yokuli.shell.engine.LauncherTransient
+import com.yokuli.shell.engine.StartReveal
 import com.yokuli.shell.engine.layout.GridCell
 
 enum class MarineIconKind { CHART, SETTINGS, APPS, DONE, UNPIN, RESIZE, PIN, INFO, GENERIC }
@@ -42,6 +44,8 @@ data class LauncherUiState(
     val document: StartDocument,
     val entries: List<LauncherEntryUiState>,
     val interaction: StartInteractionState = StartInteractionState.Idle,
+    val transient: LauncherTransient? = null,
+    val reveal: StartReveal? = null,
 ) {
     val pinnedEntries: Set<LauncherEntryId> = document.placements.map { it.entryId }.toSet()
 }
@@ -66,7 +70,12 @@ sealed interface LauncherUiAction {
     data class ResizeTile(val tileId: TileInstanceId) : LauncherUiAction
     data object CommitTileResize : LauncherUiAction
     data class MoveTileBy(val tileId: TileInstanceId, val columns: Int, val rows: Int) : LauncherUiAction
-    data class TogglePin(val entryId: LauncherEntryId) : LauncherUiAction
+    data class OpenEntryContextMenu(val entryId: LauncherEntryId) : LauncherUiAction
+    data object DismissTransient : LauncherUiAction
+    data class PinEntry(val entryId: LauncherEntryId) : LauncherUiAction
+    data class UnpinTile(val tileId: TileInstanceId) : LauncherUiAction
+    data class AcknowledgeStartReveal(val tileId: TileInstanceId) : LauncherUiAction
+    data object UndoLayout : LauncherUiAction
     data class ShowAppInfo(val entryId: LauncherEntryId) : LauncherUiAction
 }
 
@@ -79,6 +88,8 @@ fun productionLauncherUiState(
     catalog: LauncherCatalogSnapshot,
     document: StartDocument,
     interaction: StartInteractionState = StartInteractionState.Idle,
+    transient: LauncherTransient? = null,
+    reveal: StartReveal? = null,
     mapConfigured: Boolean,
     theme: WpThemeSpec,
     visualContributions: List<LauncherEntryVisualContribution>,
@@ -92,6 +103,8 @@ fun productionLauncherUiState(
     return LauncherUiState(
         document = document,
         interaction = interaction,
+        transient = transient,
+        reveal = reveal,
         entries = catalog.entries.map { descriptor ->
             requireNotNull(visualsByEntry[descriptor.entryId]) {
                 "Missing launcher visual contribution for ${descriptor.entryId.value}"
