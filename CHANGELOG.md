@@ -4,6 +4,9 @@
 
 ### Changed
 
+- Phase 1 海图来源收敛为 Google Maps Android SDK、OpenSeaMap 默认航标叠加和用户本地海图导入；明确移除 LINZ provider、key 与 URL override。
+- 基础地图不按 dev/prod 拆 key：两个 Android applicationId 及其 debug/release 证书共享一个仅允许 Maps SDK for Android 的受限 key；OpenSeaMap 和本地导入不新增 key。
+- OpenCPN-like 导入先限定为 raster MBTiles MVP；BSB/KAP、S-57、S-63 和专有格式分别记录为后续或不支持，避免宣称全格式兼容。
 - 为 WP Phone 全屏 cutout 布局增加 Android 9／API 28 版本保护，保留 minSdk 26 兼容性并恢复 lint gate。
 - UI 与功能改为明确的 `UiState`／`UiAction` 边界；后续 runtime 采用 Kotlin Flow 响应式单向数据流，不使用全局 EventBus。
 - 应用以简体中文为默认资源，提供完整英文翻译；System → Display 可以切换并持久化应用级语言。
@@ -22,6 +25,7 @@
 
 ### Added
 
+- 新增海图来源／导入双语需求合同和自动化 gate，固定单一运行期地图凭据、provider 退化语义、MBTiles 输入验证与安全 runtime 隔离。
 - 新增基于 `age` 的本地加密密钥保险库：随机 identity 由个人强口令保护，API key 作为整体加密 JSON 提交；提供 `doctor/init/set/remove/list/get/copy/run/rotate` Bash 命令、双语安全手册和独立 CI 合同测试。
 - 新增常见明文凭据、签名文件和 vault 临时文件的 Git 忽略规则；CI 只使用假加密器验证流程，不接触个人主口令或真实 secret。
 - 新增 UI／功能隔离、多语言和响应式模块需求合同，以及自动检查资源 key、模型纯净度和 feature UI 契约的 TDD gate。
@@ -83,3 +87,4 @@
 - Added architecture contracts, automated bilingual-resource and UI-boundary checks, and a real-Activity Chinese/English switching story.
 - GPS, NMEA, Anchor, Trip, Survey, chart SDKs, and foreground runtimes remain deliberately unimplemented in this UI slice.
 - Added an age-based local encrypted vault, bilingual runbook, plaintext-ignore policy, and fake-crypto CI contract. The owner must initialize it locally with a brand-new passphrase that has never been shared; no personal vault or real credential is committed by this change.
+- Reduced Phase 1 chart sources to Google Maps, keyless OpenSeaMap seamarks, and local chart import. One Android-restricted Google key covers both app variants without a dev/prod split; LINZ is excluded and raster MBTiles is the only import MVP.

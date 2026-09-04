@@ -1,6 +1,6 @@
 # Yokuli OS — WP8 Shell + Chart-first 产品方向
 
-状态：产品结构基线；M1/M2 第一版已经实现，真实海图与运行时仍未接入。
+状态：产品结构基线；M1/M2 第一版已经实现，海图来源范围已固定，真实海图与运行时仍未接入。
 
 ## 1. 为什么重新开始
 
@@ -219,7 +219,13 @@ desktop_stub_does_not_request_location_or_start_nmea
 
 首轮已经完成 Registry、导航、桌面编辑和真实 Activity 故事测试的 Red/Green；Runtime 与 Safety Overlay 合同留在后续切片。
 
-## 11. 暂停实现的内容
+## 11. 海图来源基线
+
+Phase 1 已选择 Google Maps Android SDK 联网底图、无需 key 的 OpenSeaMap seamark 默认海图叠加，以及用户本地导入的 raster MBTiles。它们共享同一个 Chart surface 与 viewport，不按供应商拆页面。
+
+本版本明确不接 LINZ，也不保留 LINZ key 或 URL override。OpenCPN-like 指海图库、扫描、启停和来源管理工作流；首版不声称兼容 OpenCPN 的全部格式。精确凭据、格式矩阵、导入安全和 TDD fixtures 见 [`requirements/CHART_SOURCE_IMPORT_REQUIREMENTS.md`](requirements/CHART_SOURCE_IMPORT_REQUIREMENTS.md)。
+
+## 12. 暂停实现的内容
 
 在产品结构通过之前，不做：
 
@@ -227,14 +233,14 @@ desktop_stub_does_not_request_location_or_start_nmea
 - Room schema；
 - 真实 NMEA/GNSS；
 - Anchor/Trip/Survey 算法迁移；
-- Google Maps 或其他商业海图 SDK 绑定；
+- 已选 Google Maps／OpenSeaMap provider 的真实 SDK 与网络绑定；
 - 自动航线规划。
 
 这些工作不会消失，但不应抢在核心海图交互验证之前。
 
 ## English translation
 
-Yokuli OS keeps the WP8 Shell but replaces the flat “one tile per feature” prototype with a chart-first marine information architecture. Start contains only five default entry points: Chart, Anchor, Cockpit, Library, and System. Browse, Navigate, Anchor, and Survey are typed modes of one shared chart viewport, while shortcuts in All Apps deep-link into those owners.
+Yokuli OS keeps the WP8 Shell but replaces the flat “one tile per feature” prototype with a chart-first marine information architecture. Start contains only five default entry points: Chart, Anchor, Cockpit, Library, and System. Browse, Navigate, Anchor, and Survey are typed modes of one shared chart viewport, while shortcuts in All Apps deep-link into those owners. Phase 1 selects Google Maps as the connected base, keyless OpenSeaMap seamarks as the default nautical overlay, and user-imported raster MBTiles; LINZ is explicitly excluded.
 
 The first milestone validates Shell structure and UI behavior with explicit fixture data. It does not claim working GNSS, NMEA, anchoring, trip recording, sonar, chart SDK integration, firmware, or automatic routing. Those runtimes enter one at a time only after their state/action and safety contracts are tested. Closing or navigating away from UI must not implicitly stop an independently owned safety runtime.
 

@@ -33,10 +33,12 @@ git diff --cached
 
 ## 日常操作
 
+当前 Phase 1 产品运行期凭据精确为一个 `GOOGLE_MAPS_ANDROID_API_KEY`。不按 dev/prod 拆分；OpenSeaMap 与本地海图导入不需要供应商 key，LINZ 不在本版本范围。Android 发布签名材料仍是独立的发布凭据。完整边界见 [`requirements/CHART_SOURCE_IMPORT_REQUIREMENTS.md`](requirements/CHART_SOURCE_IMPORT_REQUIREMENTS.md)。
+
 新增或替换一个 key。value 在终端中隐藏，并通过标准输入进入工具：
 
 ```bash
-./scripts/secrets/yokuli-secrets.sh set MAP_API_KEY
+./scripts/secrets/yokuli-secrets.sh set GOOGLE_MAPS_ANDROID_API_KEY
 ```
 
 只列出名称，不显示 value：
@@ -48,19 +50,19 @@ git diff --cached
 把一个 value 复制到剪贴板，不回显：
 
 ```bash
-./scripts/secrets/yokuli-secrets.sh copy MAP_API_KEY
+./scripts/secrets/yokuli-secrets.sh copy GOOGLE_MAPS_ANDROID_API_KEY
 ```
 
 明确输出一个 value。它会进入终端滚动区，谨慎使用：
 
 ```bash
-./scripts/secrets/yokuli-secrets.sh get MAP_API_KEY
+./scripts/secrets/yokuli-secrets.sh get GOOGLE_MAPS_ANDROID_API_KEY
 ```
 
 删除一个 key：
 
 ```bash
-./scripts/secrets/yokuli-secrets.sh remove MAP_API_KEY
+./scripts/secrets/yokuli-secrets.sh remove GOOGLE_MAPS_ANDROID_API_KEY
 ```
 
 只给一个受信任的子进程注入 vault 中的全部变量，不落地 `.env`：
@@ -109,4 +111,4 @@ git commit
 
 ## English translation — quick guide
 
-Install `age` and `jq`, run `doctor`, then `init`, and choose a brand-new strong passphrase only at age's interactive prompt. Commit only `identity.age`, `recipient.txt`, and `vault.json.age`. Use `set NAME`, `list`, `copy NAME`, `get NAME`, `remove NAME`, and `run -- command`; `get` prints a value and `run` exposes all values to a trusted child environment. `rotate` rewraps the identity but cannot invalidate ciphertext already in Git history. After exposure, revoke and rotate provider credentials first. CI uses a fake-crypto contract test and must use GitHub-managed secrets or OIDC for real automation credentials.
+Install `age` and `jq`, run `doctor`, then `init`, and choose a brand-new strong passphrase only at age's interactive prompt. Commit only `identity.age`, `recipient.txt`, and `vault.json.age`. Phase 1 has one runtime credential, `GOOGLE_MAPS_ANDROID_API_KEY`; OpenSeaMap and local chart imports are keyless, while release signing remains separate. Use `set NAME`, `list`, `copy NAME`, `get NAME`, `remove NAME`, and `run -- command`; `get` prints a value and `run` exposes all values to a trusted child environment. `rotate` rewraps the identity but cannot invalidate ciphertext already in Git history. After exposure, revoke and rotate provider credentials first. CI uses a fake-crypto contract test and must use GitHub-managed secrets or OIDC for real automation credentials.

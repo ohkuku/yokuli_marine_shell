@@ -592,3 +592,59 @@ age 1.3.2 recipient encrypt/decrypt smoke                    PASS
 ### English translation
 
 The first Red proved the requested executable did not exist. Green added an age-backed encrypted identity and JSON vault with doctor, init, hidden-input set, remove, key-only list, explicit-output get, clipboard copy, trusted-child run, and passphrase-wrapper rotation. A second threat-model Red proved that process-control names such as `PATH` were accepted; Green now rejects control variables before storage or injection. Existing bilingual-document and Android lint gates also caught a heading-contract issue and an unguarded API 28 cutout call on minSdk 26, both fixed. Fake-crypto workflow tests, the real age CLI smoke, all Python and Bash contracts, unit tests, lint, and both debug APK assemblies pass. The personal vault remains intentionally uninitialized until the owner chooses a brand-new unshared passphrase interactively.
+
+## Slice 12 — 单 key 海图来源与 OpenCPN-like 导入边界
+
+需求来源：用户取消 Phase 1 LINZ，希望基础地图不按环境拆 key，只保留 Google Maps、默认开放海图与用户自行导入的贴图能力。
+
+### 调研结论
+
+Google 当前价目表将原生 `Maps SDK` 基础地图加载列为 unlimited/no charge，但 Android SDK 文档仍要求项目绑定 billing；因此记录成“当前基础加载不收费”，不承诺永久免费。一个 Android-restricted key 可以登记多个相同平台的 package/SHA-1 对，本版本用一把 `GOOGLE_MAPS_ANDROID_API_KEY` 覆盖 standalone/home 的 debug/release 身份，并把 API restriction 限制为 Maps SDK for Android。
+
+OpenSeaMap 的公开 seamark tile 不要求 API key，但必须保留 OpenSeaMap/OpenStreetMap attribution，也不能被描述为官方海图替代品。用户本地导入不产生供应商凭据。
+
+OpenCPN 官方资料表明其格式横跨 MBTiles、BSB/KAP、S-57、S-63 和插件／专有格式。为了避免“类似工作流”变成“宣称完整兼容”，首个格式只选择 raster MBTiles；其余能力逐项立需求和 fixtures。
+
+### Red — 范围不可执行
+
+先新增 `.github/scripts/test_chart_source_contract.py`，要求精确凭据清单、三个来源、LINZ 排除和格式状态矩阵。首次运行得到 3 个失败：
+
+```text
+python3 -m unittest discover .github/scripts 'test_chart_source_contract.py'
+FAILED (failures=3)
+missing chart source/import requirements
+```
+
+### Green — 双语需求合同
+
+新增 [`requirements/CHART_SOURCE_IMPORT_REQUIREMENTS.md`](requirements/CHART_SOURCE_IMPORT_REQUIREMENTS.md)，固定：
+
+- 运行期只有 `GOOGLE_MAPS_ANDROID_API_KEY`，不按 dev/prod 拆分；
+- Google 底图、OpenSeaMap seamark 与本地海图共享一个 Chart surface；
+- LINZ provider、key 和 URL override 不进入 Phase 1；
+- raster MBTiles 是 MVP，BSB/KAP、S-57、S-63 与专有格式不得被提前标为支持；
+- 导入采用 SAF、bounded staging、内容/schema 校验、只读 SQLite、hash 与原子激活；
+- 地图或 tile 故障不能停止 Anchor、Navigation、Trip、Survey 或 NMEA runtime。
+
+定向 Green：
+
+```text
+python3 -m unittest discover .github/scripts 'test_chart_source_contract.py'
+Ran 3 tests
+OK
+```
+
+完整本地 Green：
+
+```text
+python3 -m unittest discover .github/scripts 'test_*.py'     PASS (14/14)
+bash .github/scripts/test-secrets-manager.sh                 PASS
+bash .github/scripts/test-ci-contract.sh                     PASS
+bash .github/scripts/test-resolve-release-metadata.sh        PASS
+./gradlew test lintStandaloneDebug
+          assembleStandaloneDebug assembleHomeDebug          PASS
+```
+
+### English translation
+
+The scope was reduced to one Android-restricted `GOOGLE_MAPS_ANDROID_API_KEY` shared by the standalone/home package and signing-certificate pairs, with no dev/prod key split. Google Maps is the connected base map, OpenSeaMap seamarks are the keyless default nautical overlay, and local imports are keyless. LINZ is explicitly excluded. A Red contract first failed three tests because no executable requirements existed; Green added the bilingual provider, credential, safety, and format matrix. Raster MBTiles is the only import MVP, while BSB/KAP and vector/encrypted/proprietary formats remain separately scoped future or unsupported work.

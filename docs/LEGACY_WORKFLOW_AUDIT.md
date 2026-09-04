@@ -80,7 +80,7 @@ Yokuli OS 是 clean-slate 工程，但不是 clean-slate 产品行为。本文�
 
 ### Map
 
-保留浏览、跟随/解锁、回中、测距、地图样式、海图、LINZ、MBTiles、个人声呐、锚地/航点/轨迹展示。
+保留浏览、跟随/解锁、回中、测距、地图样式、海图、MBTiles、个人声呐、锚地/航点/轨迹展示。旧应用的 LINZ 集成只作为 provider adapter、来源标识、失败退化和缓存边界的历史参考；Phase 1 不保留 LINZ provider、key 或 URL override。
 
 - Map 是表现层，不拥有 GPS 来源。
 - 地图瓦片或网络失败不能停止数值与后台锚警。

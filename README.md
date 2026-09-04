@@ -30,6 +30,7 @@ bash .github/scripts/test-secrets-manager.sh
 - [UI／功能隔离与双语需求](docs/requirements/UI_FUNCTION_I18N_REQUIREMENTS.md)
 - [UI／响应式模块架构](docs/UI_REACTIVE_ARCHITECTURE.md)
 - [Chart-first 产品方向](docs/CHART_FIRST_PRODUCT_DIRECTION.md)
+- [海图来源、单 key 与导入需求](docs/requirements/CHART_SOURCE_IMPORT_REQUIREMENTS.md)
 - [旧工作流审计](docs/LEGACY_WORKFLOW_AUDIT.md)
 - [TDD 开发规范](docs/TDD_PLAYBOOK.md)
 - [TDD 执行日志](docs/TDD_LOG.md)
@@ -47,3 +48,5 @@ Yokuli OS applies the full Windows Phone 8 interaction language to a mature char
 This phase completes UI/UX and module boundaries only. Marine values are explicit fixtures, not connected data. Features render immutable `UiState` and publish sealed `UiAction`; later runtime work will use Kotlin Flow UDF without allowing runtime modules to redefine theme, copy, spacing, or motion.
 
 Simplified Chinese is the default unqualified resource and English lives in `values-en`. System → Display persists the explicit choice and keeps it synchronized with Android per-app locales. Launcher copy and glyphs are UI-owned rather than domain-owned. The commands and document links above are the normative development and delivery entry points.
+
+Phase 1 chart scope is Google Maps plus keyless OpenSeaMap seamarks and user-imported raster MBTiles. It uses one Android-restricted Google key across both app variants without a dev/prod key split; LINZ is not part of this version.
