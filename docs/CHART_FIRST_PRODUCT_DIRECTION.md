@@ -1,6 +1,6 @@
 # Yokuli OS — WP8 Shell + Chart-first 产品方向
 
-状态：产品结构基线；M1/M2 第一版已经实现，海图来源范围已固定，真实海图与运行时仍未接入。
+状态：产品结构基线；M1/M2 第一版与 Google Maps 底图 adapter 已实现，真实 key 设备验收、OpenSeaMap、导入和航海 runtime 仍未接入。
 
 ## 1. 为什么重新开始
 
@@ -233,7 +233,7 @@ Phase 1 已选择 Google Maps Android SDK 联网底图、无需 key 的 OpenSeaM
 - Room schema；
 - 真实 NMEA/GNSS；
 - Anchor/Trip/Survey 算法迁移；
-- 已选 Google Maps／OpenSeaMap provider 的真实 SDK 与网络绑定；
+- OpenSeaMap provider 与本地导入的真实读取／网络绑定；
 - 自动航线规划。
 
 这些工作不会消失，但不应抢在核心海图交互验证之前。
@@ -242,6 +242,6 @@ Phase 1 已选择 Google Maps Android SDK 联网底图、无需 key 的 OpenSeaM
 
 Yokuli OS keeps the WP8 Shell but replaces the flat “one tile per feature” prototype with a chart-first marine information architecture. Start contains only five default entry points: Chart, Anchor, Cockpit, Library, and System. Browse, Navigate, Anchor, and Survey are typed modes of one shared chart viewport, while shortcuts in All Apps deep-link into those owners. Phase 1 selects Google Maps as the connected base, keyless OpenSeaMap seamarks as the default nautical overlay, and user-imported raster MBTiles; LINZ is explicitly excluded.
 
-The first milestone validates Shell structure and UI behavior with explicit fixture data. It does not claim working GNSS, NMEA, anchoring, trip recording, sonar, chart SDK integration, firmware, or automatic routing. Those runtimes enter one at a time only after their state/action and safety contracts are tested. Closing or navigating away from UI must not implicitly stop an independently owned safety runtime.
+The first milestone validates Shell structure and UI behavior with explicit fixture data. An isolated Google Maps base-map adapter is now wired, with environment-to-manifest key injection and an explicit fixture fallback; real-key device acceptance remains separate. It does not claim working OpenSeaMap, local-chart import, GNSS, NMEA, anchoring, trip recording, sonar, firmware, or automatic routing. Those runtimes enter one at a time only after their state/action and safety contracts are tested. Closing or navigating away from UI must not implicitly stop an independently owned safety runtime.
 
 The Chinese sections above are the normative detailed product rationale, market-feature synthesis, module map, screen grammar, typed destinations, safety invariants, TDD story list, and deferred-scope record.

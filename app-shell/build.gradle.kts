@@ -3,6 +3,11 @@ plugins { alias(libs.plugins.android.application); alias(libs.plugins.kotlin.and
 val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_FILE").orNull
 val releaseVersionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 1
 val releaseVersionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.1.0-dev"
+val unavailableMapsApiKey = "MAPS_API_KEY_NOT_CONFIGURED"
+val googleMapsApiKey = providers.environmentVariable("GOOGLE_MAPS_ANDROID_API_KEY")
+    .map { value -> value.trim().ifEmpty { unavailableMapsApiKey } }
+    .orElse(unavailableMapsApiKey)
+val googleMapsConfigured = googleMapsApiKey.map { value -> value != unavailableMapsApiKey }
 
 android {
     namespace = "com.yokuli.marine.shell"
@@ -14,6 +19,8 @@ android {
         versionCode = releaseVersionCode
         versionName = releaseVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = googleMapsApiKey.get()
+        buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", googleMapsConfigured.get().toString())
     }
     flavorDimensions += "shellMode"
     productFlavors {
@@ -36,7 +43,7 @@ android {
             if (releaseKeystorePath != null) signingConfig = signingConfigs.getByName("release")
         }
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     androidResources {
         generateLocaleConfig = true
         localeFilters += listOf("zh-rCN", "en")
@@ -49,6 +56,7 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:design"))
     implementation(project(":core:shell"))
+    implementation(project(":adapter:chart-google"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))
     implementation(project(":feature:cockpit"))

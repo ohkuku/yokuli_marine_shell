@@ -37,6 +37,8 @@ jobs:
         run: bash .github/scripts/enable_kvm.sh
       - name: Full UI contract matrix
         uses: reactivecircus/android-emulator-runner@v2.38.0
+        env:
+          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64

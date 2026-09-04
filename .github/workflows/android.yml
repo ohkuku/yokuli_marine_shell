@@ -58,6 +58,8 @@ jobs:
         id: assemble
         continue-on-error: true
         timeout-minutes: 15
+        env:
+          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         run: ./gradlew --no-daemon assembleStandaloneDebug assembleHomeDebug --stacktrace
       - name: Upload quality-gate candidate APKs
         if: steps.ci_helpers.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -144,6 +146,8 @@ jobs:
         run: bash .github/scripts/enable_kvm.sh
       - name: Run real-Activity stories with motion enabled
         uses: reactivecircus/android-emulator-runner@v2.38.0
+        env:
+          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         with:
           api-level: 34
           arch: x86_64
@@ -203,6 +207,8 @@ jobs:
         run: bash .github/scripts/enable_kvm.sh
       - name: API 36 launch smoke with platform animation scale disabled
         uses: reactivecircus/android-emulator-runner@v2.38.0
+        env:
+          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         with:
           api-level: 36
           arch: x86_64

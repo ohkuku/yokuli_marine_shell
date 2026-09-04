@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Android 与 GitHub Actions 统一从 `GOOGLE_MAPS_ANDROID_API_KEY` 环境变量向 manifest 注入地图 key；普通 PR／本地无 key 构建使用明确 fixture fallback，release preflight 要求地图 key 与四项签名 secret 同时存在。
 - Phase 1 海图来源收敛为 Google Maps Android SDK、OpenSeaMap 默认航标叠加和用户本地海图导入；明确移除 LINZ provider、key 与 URL override。
 - 基础地图不按 dev/prod 拆 key：两个 Android applicationId 及其 debug/release 证书共享一个仅允许 Maps SDK for Android 的受限 key；OpenSeaMap 和本地导入不新增 key。
 - OpenCPN-like 导入先限定为 raster MBTiles MVP；BSB/KAP、S-57、S-63 和专有格式分别记录为后续或不支持，避免宣称全格式兼容。
@@ -25,6 +26,8 @@
 
 ### Added
 
+- 新增隔离的 `adapter:chart-google`：用 Google Maps Android SDK 20.0.0 承载共享 Chart surface，管理 `MapView` 生命周期、camera 保存恢复、缩放/平移手势、Auckland Harbour 初始视区及深浅主题同步；`feature:chart` 不依赖供应商 SDK。
+- 新增 Google Maps adapter TDD 合同，覆盖模块边界、环境变量到 manifest 的安全注入、无 key fallback、Chart 插槽以及 Actions secret 传递。
 - 新增海图来源／导入双语需求合同和自动化 gate，固定单一运行期地图凭据、provider 退化语义、MBTiles 输入验证与安全 runtime 隔离。
 - 新增基于 `age` 的本地加密密钥保险库：随机 identity 由个人强口令保护，API key 作为整体加密 JSON 提交；提供 `doctor/init/set/remove/list/get/copy/run/rotate` Bash 命令、双语安全手册和独立 CI 合同测试。
 - 新增常见明文凭据、签名文件和 vault 临时文件的 Git 忽略规则；CI 只使用假加密器验证流程，不接触个人主口令或真实 secret。
@@ -64,7 +67,11 @@
 - HOME APK: PASS.
 - Android lint: PASS.
 - Encrypted secrets Bash contract: PASS, including malformed artifact, tracked plaintext, unsafe environment-name, metacharacter, clipboard, rotation, and child-process cases.
-- Local age 1.3.2 recipient encryption/decryption smoke: PASS; personal vault remains intentionally UNINITIALIZED.
+- Local age 1.3.2 and jq 1.7.1 vault structural doctor: PASS; encrypted personal vault is initialized without decrypting or printing its contents.
+- Google Maps adapter contract: PASS (5/5); all Python contracts: PASS (19/19).
+- Configured-path compile with a non-secret test value: PASS; merged manifest and BuildConfig fallback were then verified without that value.
+- Full `test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug`: PASS (714 actionable tasks).
+- Compose integration stories: 8/8 PASS on API 34 through the configured Google surface path using an explicit non-secret test value.
 - Release signing plumbing: PASS locally for both APKs and both AABs with a disposable test key; GitHub secrets not exercised.
 - GitHub-hosted API 34/API 36 workflows: PASS in Actions run `33764978254`; final verified artifact `9897363683` published.
 - Device: VERIFIED_DEVICE_EMULATOR; Samsung square hardware remains UNVERIFIED_HARDWARE.
@@ -72,10 +79,11 @@
 
 ### Known boundaries
 
-- 个人加密 vault 尚未初始化；必须由仓库所有者在本机使用一个从未公开过的新强口令交互创建。当前聊天中出现过的口令不得使用。
+- 个人加密 vault 已由仓库所有者初始化并通过结构检查；agent 没有解密、列出或打印真实值。真实 Google key 的地图加载仍需所有者在交互终端解锁后做设备验收。
+- GitHub 中提交的 vault 密文不会自动成为 Actions Secret；要让 GitHub 测试 APK 使用真实地图，仓库所有者仍需另行设置 `GOOGLE_MAPS_ANDROID_API_KEY`。无 secret 的 PR 使用 fixture fallback，release 会在 preflight 失败。
 - Desktop edits currently live for the process lifetime; Proto DataStore persistence and Reset/Lock/Safe Mode come in the next Shell Runtime slice.
 - Theme selection currently survives Activity saved-state restoration but is not yet persisted as durable Shell storage across an explicit data clear/reinstall; global Safety Overlay, Recents UI and runtime task ownership are not implemented yet.
-- GPS, NMEA, Anchor Watch, Trip, Survey, map SDKs and foreground services are deliberately not connected in this pass.
+- GPS, NMEA, Anchor Watch, Trip, Survey, OpenSeaMap, local chart import, and foreground services remain disconnected. The Google base-map adapter is connected, but real-key device behavior is not agent-verified.
 
 ## English translation — current UI/i18n slice
 
@@ -85,6 +93,7 @@
 - Guarded the API 28 display-cutout call so the minSdk 26 build remains lint-clean.
 - Moved launcher title/glyph/index metadata out of the domain descriptor and into the desktop UI catalog.
 - Added architecture contracts, automated bilingual-resource and UI-boundary checks, and a real-Activity Chinese/English switching story.
-- GPS, NMEA, Anchor, Trip, Survey, chart SDKs, and foreground runtimes remain deliberately unimplemented in this UI slice.
-- Added an age-based local encrypted vault, bilingual runbook, plaintext-ignore policy, and fake-crypto CI contract. The owner must initialize it locally with a brand-new passphrase that has never been shared; no personal vault or real credential is committed by this change.
+- GPS, NMEA, Anchor, Trip, Survey, OpenSeaMap, local-chart import, and foreground runtimes remain deliberately unimplemented in this UI slice. The isolated Google Maps base adapter is now wired, but real-key device acceptance is still pending.
+- Added an age-based local encrypted vault, bilingual runbook, plaintext-ignore policy, and fake-crypto CI contract. The owner initialized the encrypted vault; the agent validated only its structure and never decrypted or printed a real credential.
 - Reduced Phase 1 chart sources to Google Maps, keyless OpenSeaMap seamarks, and local chart import. One Android-restricted Google key covers both app variants without a dev/prod split; LINZ is excluded and raster MBTiles is the only import MVP.
+- Added environment-to-manifest Maps key injection, explicit fixture fallback, lifecycle/theme/camera-safe Google Maps adapter behavior, and GitHub Actions secret propagation. Encrypted vault files remain independent from GitHub-managed Actions secrets.

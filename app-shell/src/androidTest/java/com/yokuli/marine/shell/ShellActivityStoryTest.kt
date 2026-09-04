@@ -42,6 +42,9 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("chart-workspace-anchor").assertIsDisplayed()
         compose.onNodeWithTag("wp-page-title-chart").assertIsDisplayed()
         compose.onNodeWithTag("chart-primary-state").assertIsDisplayed()
+        compose.onNodeWithTag(
+            if (BuildConfig.GOOGLE_MAPS_CONFIGURED) "chart-surface-google" else "chart-surface-fixture",
+        ).assertIsDisplayed()
 
         compose.onNodeWithTag("chart-home").performClick()
         compose.onNodeWithTag("start-screen").assertIsDisplayed()

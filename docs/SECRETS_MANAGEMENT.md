@@ -71,6 +71,14 @@ git diff --cached
 ./scripts/secrets/yokuli-secrets.sh run -- ./gradlew assembleStandaloneDebug
 ```
 
+要用真实 Google Maps key 安装本地 standalone debug 包，直接运行：
+
+```bash
+./scripts/secrets/yokuli-secrets.sh run -- ./gradlew installStandaloneDebug
+```
+
+Android Studio 的普通 Run 配置不会自动解锁 vault；需要真实地图时从上述受信任的终端子进程构建/安装。没有 key 的普通 Gradle 构建会使用明确的 fixture surface，而不会把占位值当作有效凭据。
+
 环境变量可能被子进程、调试器、崩溃报告或同用户权限的进程读取，所以不要用 `run` 启动不受信任的程序。客户端 APK 内的长期 API key 仍可被提取；能放服务端的 secret 应放服务端，并限制权限、来源、额度和有效期。
 
 工具拒绝 `PATH`、动态加载器变量、语言运行时启动选项等会改变子进程执行方式的名称。这不是完整的沙箱：Git 提交和脚本改动仍需审查，密文保密也不能替代仓库写权限、分支保护或提交来源控制。
@@ -107,8 +115,8 @@ git commit
 
 ## GitHub Actions 边界
 
-仓库 CI 只运行假加密器合同测试，不包含也不解锁个人 vault。未来 Actions 需要部署或签名凭据时，应使用 GitHub Actions Secrets、protected environments，或支持时使用 OIDC 短期凭据。不要把个人主口令新增为普通仓库文件，也不要为了 CI 把它硬编码到 workflow。
+仓库 CI 只运行假加密器合同测试，不包含也不解锁个人 vault。要让 GitHub 构建真实 Google Maps 包，必须在仓库 **Settings → Secrets and variables → Actions** 中另行创建同名 repository secret `GOOGLE_MAPS_ANDROID_API_KEY`。工作流只把它传给 Gradle 进程；PR 未提供 secret 时使用 fixture fallback，release 则把地图 key 缺失视为 preflight 失败。不要把个人主口令新增为仓库或 Actions secret，也不要为了 CI 把它硬编码到 workflow。
 
 ## English translation — quick guide
 
-Install `age` and `jq`, run `doctor`, then `init`, and choose a brand-new strong passphrase only at age's interactive prompt. Commit only `identity.age`, `recipient.txt`, and `vault.json.age`. Phase 1 has one runtime credential, `GOOGLE_MAPS_ANDROID_API_KEY`; OpenSeaMap and local chart imports are keyless, while release signing remains separate. Use `set NAME`, `list`, `copy NAME`, `get NAME`, `remove NAME`, and `run -- command`; `get` prints a value and `run` exposes all values to a trusted child environment. `rotate` rewraps the identity but cannot invalidate ciphertext already in Git history. After exposure, revoke and rotate provider credentials first. CI uses a fake-crypto contract test and must use GitHub-managed secrets or OIDC for real automation credentials.
+Install `age` and `jq`, run `doctor`, then `init`, and choose a brand-new strong passphrase only at age's interactive prompt. Commit only `identity.age`, `recipient.txt`, and `vault.json.age`. Phase 1 has one runtime credential, `GOOGLE_MAPS_ANDROID_API_KEY`; OpenSeaMap and local chart imports are keyless, while release signing remains separate. Use `set NAME`, `list`, `copy NAME`, `get NAME`, `remove NAME`, and `run -- command`; `get` prints a value and `run` exposes all values to a trusted child environment. Run `./scripts/secrets/yokuli-secrets.sh run -- ./gradlew installStandaloneDebug` for a local real-map install; a normal Android Studio Run does not unlock the vault. `rotate` rewraps the identity but cannot invalidate ciphertext already in Git history. After exposure, revoke and rotate provider credentials first. CI never decrypts the personal vault: configure `GOOGLE_MAPS_ANDROID_API_KEY` separately as a GitHub Actions repository secret. Secret-less PRs use the fixture fallback, while releases require the Actions secret.

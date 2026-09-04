@@ -648,3 +648,75 @@ bash .github/scripts/test-resolve-release-metadata.sh        PASS
 ### English translation
 
 The scope was reduced to one Android-restricted `GOOGLE_MAPS_ANDROID_API_KEY` shared by the standalone/home package and signing-certificate pairs, with no dev/prod key split. Google Maps is the connected base map, OpenSeaMap seamarks are the keyless default nautical overlay, and local imports are keyless. LINZ is explicitly excluded. A Red contract first failed three tests because no executable requirements existed; Green added the bilingual provider, credential, safety, and format matrix. Raster MBTiles is the only import MVP, while BSB/KAP and vector/encrypted/proprietary formats remain separately scoped future or unsupported work.
+
+## Slice 13 — 隔离 Google Maps adapter 与 CI 密钥边界
+
+需求来源：仓库所有者已经在本机初始化并上传加密 vault，希望继续把唯一的 Google Maps key 接入应用，同时保持 UI／功能分层、无明文凭据和 TDD 过程。
+
+### 所有者边界与 SDK 选择
+
+先运行 `doctor`，确认 `age` 1.3.2、`jq` 1.7.1、加密文件形状、权限及 Git 明文检查全部通过。agent 没有运行 `get`、`list` 或任何解密命令，也没有请求主口令。个人 vault 密文进入 GitHub 不代表 Actions 能解开它；CI 真实地图凭据必须由所有者单独配置成 repository Actions secret。
+
+根据 Google 官方 Android 配置与版本文档，本切片使用直接 Maps SDK 依赖 `com.google.android.gms:play-services-maps:20.0.0`。SDK 被限制在 `adapter:chart-google`，纯 `feature:chart` 只声明可组合的 `MarineChartSurface` 插槽，不感知 `GoogleMap`／`MapView` 类型。
+
+### Red 1 — provider、注入与 fallback 缺失
+
+先添加 `.github/scripts/test_google_maps_adapter_contract.py`，要求隔离模块、环境变量注入和无 key 的显式 fallback。首次运行得到：
+
+```text
+python3 -m unittest discover .github/scripts 'test_google_maps_adapter_contract.py'
+FAILED (failures=3)
+```
+
+失败准确说明仓库还没有 Google adapter、manifest key 通道或 surface 选择逻辑。
+
+### Green 1 — 独立海图表面
+
+- 新建 `adapter:chart-google`，以 Compose `AndroidView` 承载 `MapView`；
+- adapter 管理 create/start/resume/pause/stop/destroy、low-memory 回调和 camera save/restore；
+- 默认相机落在 Auckland Harbour，保留地图缩放和平移手势；
+- 深浅 Shell theme 映射为 Google Map color scheme；
+- 关闭 Google 内建 UI controls，并给顶部标题与底部 attribution/logo 保留 padding；
+- `app-shell` 从 `GOOGLE_MAPS_ANDROID_API_KEY` 环境变量写入 manifest placeholder，只把配置是否存在的布尔值写入 BuildConfig；
+- key 缺失或为空时使用 `MAPS_API_KEY_NOT_CONFIGURED` manifest 占位符和 fixture surface，不把占位符误认为真实 provider；
+- `feature:chart` 继续只拥有不可变 UI state/action 与 provider-agnostic surface slot。
+
+定向合同恢复为 4/4 后，增加 CI 要求继续推进。
+
+### Red 2 — GitHub Actions 没有消费地图 secret
+
+合同新增 workflow 断言后得到 1 条失败：代码能在本机接收 key，但 `android.yml`、`nightly.yml` 和 `release.yml` 没有向 Gradle 传递 repository secret。
+
+### Green 2 — Actions 与 release preflight
+
+- build、API 34/API 36 emulator 和 nightly Gradle 进程接收 `${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}`；
+- 无 secret 的 PR 仍完整编译、测试并生成 fixture APK；
+- release preflight 把地图 key 与四项签名 secret 一起列为强制项；
+- 交付与密钥手册明确说明：个人 vault 不由 CI 解密，Actions secret 必须单独配置。
+
+### Red 3 — 首次组合时遗漏当前 lifecycle 状态
+
+提交前审阅发现，Compose 在 Activity 已经 `RESUMED` 后才创建 Chart 时，单纯注册 observer 不会重放过去的 `ON_START`／`ON_RESUME`。合同增加当前 lifecycle 同步要求后，定向测试得到 1 条失败。Green 在注册 observer 后立即调用 `syncTo(lifecycle.currentState)`，同时保留后续事件驱动和幂等保护，避免首次进入真实 Chart 时 `MapView` 只收到 `onCreate`。
+
+最终定向与完整 Green：
+
+```text
+python3 -m unittest discover .github/scripts 'test_google_maps_adapter_contract.py'  PASS (5/5)
+python3 -m unittest discover .github/scripts 'test_*.py'                            PASS (19/19)
+bash .github/scripts/test-secrets-manager.sh                                        PASS
+bash .github/scripts/test-ci-contract.sh                                            PASS
+bash .github/scripts/test-resolve-release-metadata.sh                               PASS
+env GOOGLE_MAPS_ANDROID_API_KEY=TEST_ONLY_NOT_A_REAL_KEY
+  ./gradlew :app-shell:compileStandaloneDebugKotlin
+            :app-shell:processStandaloneDebugMainManifest                           PASS
+./gradlew test lintStandaloneDebug
+          assembleStandaloneDebug assembleHomeDebug                                 PASS
+env GOOGLE_MAPS_ANDROID_API_KEY=TEST_ONLY_NOT_A_REAL_KEY
+  ./gradlew :app-shell:connectedStandaloneDebugAndroidTest                           PASS (8/8, API 34)
+```
+
+配置路径使用明确的非真实测试值验证后，又执行无 key 完整构建；最终 merged manifest 为 `MAPS_API_KEY_NOT_CONFIGURED`，BuildConfig 只有 `GOOGLE_MAPS_CONFIGURED = false`，构建产物不保留测试值。由于主口令按设计只由所有者掌握，agent 没有用真实 key 启动地图；所有者通过 `./scripts/secrets/yokuli-secrets.sh run -- ./gradlew installStandaloneDebug` 完成最终真实地图设备验收。
+
+### English translation
+
+The owner initialized and uploaded the encrypted personal vault. Structural `doctor` checks passed, while the agent deliberately did not decrypt, list, or print any real value. Red 1 failed three tests because no isolated Google provider, environment-to-manifest key path, or explicit no-key fallback existed. Green added a Maps SDK 20.0.0 adapter that owns `MapView` lifecycle, camera restoration, gestures, theme synchronization, and attribution-safe padding while keeping `feature:chart` provider-agnostic. Red 2 then failed because GitHub workflows did not consume the Actions secret. Green propagated `GOOGLE_MAPS_ANDROID_API_KEY` to build/emulator jobs and made it a release preflight requirement; secret-less PRs retain an explicit fixture fallback. A review-driven Red 3 caught that a newly composed map would miss lifecycle events already delivered to the Activity; Green now synchronizes the driver's initial state before observing future transitions. All 19 Python contracts, Bash gates, full Gradle test/lint/dual-APK build, and eight API 34 device stories through the configured Google surface path pass with an explicit non-secret test value. Real-key device acceptance remains an owner action because the vault passphrase is intentionally unavailable to the agent.

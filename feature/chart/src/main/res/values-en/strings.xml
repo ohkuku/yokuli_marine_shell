@@ -4,6 +4,9 @@
     <string name="mode_navigate">navigate</string>
     <string name="mode_anchor">anchor</string>
     <string name="mode_survey">survey</string>
+    <string name="chart_header_context">%1$s · %2$s</string>
+    <string name="chart_source_fixture">demo chart</string>
+    <string name="chart_source_google_maps">Google map</string>
     <string name="chart_following">FOLLOWING</string>
     <string name="chart_following_detail">COG %1$d° · SOG %2$.1f kn</string>
     <string name="chart_data_unavailable">DATA UNAVAILABLE</string>

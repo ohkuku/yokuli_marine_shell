@@ -8,7 +8,7 @@
 
 Yokuli OS 把 Windows Phone 8 的完整交互语言用于成熟海图产品架构。应用启动到克制的五磁贴 Start Screen；浏览、导航、锚泊和测深共享同一个海图工作区，不被伪装成互不相关的地图应用。
 
-当前阶段只完善 UI/UX 和大的功能边界，不接入 GPS、NMEA、Anchor、Trip、Sonar 或真实海图运行时。所有航海数字都是明确的 `*UiFixtures`。每个 feature 只渲染不可变 `UiState` 并发布封闭 `UiAction`；未来以 Kotlin Flow 的 `StateFlow`/`SharedFlow` 接入功能，不允许功能模块重新定义主题、文案、间距或动效。
+当前阶段仍以 UI/UX 和大的功能边界为主，不接入 GPS、NMEA、Anchor、Trip 或 Sonar runtime。Google Maps 已通过独立 adapter 接入共享 Chart surface，但航海数字仍全部来自明确的 `*UiFixtures`；OpenSeaMap、用户海图导入和安全 runtime 尚未接入。每个 feature 只渲染不可变 `UiState` 并发布封闭 `UiAction`；未来以 Kotlin Flow 的 `StateFlow`/`SharedFlow` 接入功能，不允许功能模块重新定义主题、文案、间距或动效。
 
 中文是未限定资源中的默认语言，英文位于 `values-en`。System → Display 可以在中文和 English 之间切换；显式选择会写入应用偏好，并与 Android 应用级 locale 同步。Launcher 的标题、glyph 和磁贴展示内容归 `feature:desktop` 所有，不进入领域模型。
 
@@ -24,6 +24,14 @@ bash .github/scripts/test-secrets-manager.sh
 ./gradlew test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug
 ./gradlew :app-shell:connectedStandaloneDebugAndroidTest
 ```
+
+从个人加密 vault 注入真实 Google Maps key 并安装本地 debug 包：
+
+```text
+./scripts/secrets/yokuli-secrets.sh run -- ./gradlew installStandaloneDebug
+```
+
+该命令只在交互终端请求 vault 主口令，不创建明文 `.env`。Android Studio 的普通 Run 不会自动解锁 vault。
 
 核心文档：
 
@@ -45,7 +53,7 @@ bash .github/scripts/test-secrets-manager.sh
 
 Yokuli OS applies the full Windows Phone 8 interaction language to a mature chartplotter architecture. It opens on a focused five-tile Start Screen; Browse, Navigate, Anchor, and Survey remain modes of one shared chart workspace.
 
-This phase completes UI/UX and module boundaries only. Marine values are explicit fixtures, not connected data. Features render immutable `UiState` and publish sealed `UiAction`; later runtime work will use Kotlin Flow UDF without allowing runtime modules to redefine theme, copy, spacing, or motion.
+This phase still prioritizes UI/UX and module boundaries. Google Maps is now wired through an isolated adapter into the shared Chart surface, while marine values remain explicit fixtures and OpenSeaMap, local-chart import, GPS, NMEA, Anchor, Trip, and Sonar runtimes remain disconnected. Features render immutable `UiState` and publish sealed `UiAction`; later runtime work will use Kotlin Flow UDF without allowing runtime modules to redefine theme, copy, spacing, or motion.
 
 Simplified Chinese is the default unqualified resource and English lives in `values-en`. System → Display persists the explicit choice and keeps it synchronized with Android per-app locales. Launcher copy and glyphs are UI-owned rather than domain-owned. The commands and document links above are the normative development and delivery entry points.
 

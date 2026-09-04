@@ -19,9 +19,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.yokuli.marine.adapter.chart.google.GoogleMarineChartSurface
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpAccent
 import com.yokuli.marine.core.design.WpNavigationIntent
@@ -145,12 +147,35 @@ private fun YokuliShell() {
                         when (val target = task.target) {
                             is LaunchTarget.Chart -> {
                                 var mode by remember(task.id) { mutableStateOf(target.mode) }
-                                ChartWorkspace(ChartUiFixtures.state(mode)) { action ->
-                                    when (action) {
-                                        is ChartUiAction.SelectMode -> mode = action.mode
-                                        ChartUiAction.Home -> home()
+                                val surfaceKind = if (BuildConfig.GOOGLE_MAPS_CONFIGURED) {
+                                    ChartSurfaceKind.GOOGLE_MAPS
+                                } else {
+                                    ChartSurfaceKind.FIXTURE
+                                }
+                                val chartSurface: MarineChartSurface = if (BuildConfig.GOOGLE_MAPS_CONFIGURED) {
+                                    { modifier ->
+                                        GoogleMarineChartSurface(
+                                            darkMode = themeSpec.mode == WpThemeMode.DARK,
+                                            modifier = modifier.testTag("chart-surface-google"),
+                                        )
+                                    }
+                                } else {
+                                    { modifier ->
+                                        MarineChartFixtureSurface(
+                                            modifier.testTag("chart-surface-fixture"),
+                                        )
                                     }
                                 }
+                                ChartWorkspace(
+                                    state = ChartUiFixtures.state(mode, surfaceKind),
+                                    onAction = { action ->
+                                        when (action) {
+                                            is ChartUiAction.SelectMode -> mode = action.mode
+                                            ChartUiAction.Home -> home()
+                                        }
+                                    },
+                                    chartSurface = chartSurface,
+                                )
                             }
                             is LaunchTarget.Cockpit -> CockpitWorkspace(CockpitUiFixtures.state(target.page)) { action ->
                                 if (action == CockpitUiAction.Home) home()

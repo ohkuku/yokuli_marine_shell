@@ -16,16 +16,26 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.*
 import com.yokuli.marine.core.model.ChartMode
 
+typealias MarineChartSurface = @Composable (Modifier) -> Unit
+
 @Composable
-fun ChartWorkspace(state: ChartUiState, onAction: (ChartUiAction) -> Unit) {
+fun ChartWorkspace(
+    state: ChartUiState,
+    onAction: (ChartUiAction) -> Unit,
+    chartSurface: MarineChartSurface = { modifier -> MarineChartFixtureSurface(modifier) },
+) {
     val colors = LocalWpTheme.current
     Box(Modifier.fillMaxSize().background(YokuliColors.ChartWater).testTag("chart-workspace-${state.mode.name.lowercase()}")) {
-        MarineChartSurface(Modifier.fillMaxSize())
+        chartSurface(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize()) {
             WpPageHeader(
                 appKey = "chart",
                 appName = stringResource(R.string.app_chart),
-                contextLine = modeLabel(state.mode),
+                contextLine = stringResource(
+                    R.string.chart_header_context,
+                    modeLabel(state.mode),
+                    surfaceLabel(state.surfaceKind),
+                ),
                 trailing = state.positionText,
                 modifier = Modifier.background(colors.background.copy(alpha = .92f)),
             )
@@ -37,7 +47,7 @@ fun ChartWorkspace(state: ChartUiState, onAction: (ChartUiAction) -> Unit) {
 }
 
 @Composable
-private fun MarineChartSurface(modifier: Modifier = Modifier) {
+fun MarineChartFixtureSurface(modifier: Modifier = Modifier) {
     Canvas(modifier) {
         drawRect(YokuliColors.ChartWater)
         val land = Path().apply {
@@ -144,5 +154,13 @@ private fun modeLabel(mode: ChartMode): String = stringResource(
         ChartMode.NAVIGATE -> R.string.mode_navigate
         ChartMode.ANCHOR -> R.string.mode_anchor
         ChartMode.SURVEY -> R.string.mode_survey
+    },
+)
+
+@Composable
+private fun surfaceLabel(kind: ChartSurfaceKind): String = stringResource(
+    when (kind) {
+        ChartSurfaceKind.FIXTURE -> R.string.chart_source_fixture
+        ChartSurfaceKind.GOOGLE_MAPS -> R.string.chart_source_google_maps
     },
 )

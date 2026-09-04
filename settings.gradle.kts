@@ -15,6 +15,7 @@ include(
     ":core:design",
     ":core:shell",
     ":core:testing",
+    ":adapter:chart-google",
     ":feature:desktop",
     ":feature:chart",
     ":feature:cockpit",

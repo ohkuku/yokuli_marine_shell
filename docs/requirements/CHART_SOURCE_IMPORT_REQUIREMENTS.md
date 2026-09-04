@@ -1,6 +1,6 @@
 # Yokuli OS 海图来源与导入需求合同
 
-状态：Phase 1 范围基线；先固定产品与安全边界，真实地图运行时尚未接入。
+状态：Phase 1 范围基线；Google Maps 底图 adapter 已接入，真实 key 设备验收、OpenSeaMap 与本地导入仍待后续切片。
 
 ## 1. 本版本结论
 
@@ -99,7 +99,7 @@ Chart 的 layer/source 面板至少区分：
 ## 6. 实现顺序
 
 1. 先完成 source/layer selector 的纯 UI state/action 与中英资源；
-2. 接入受限 Google Maps Android SDK key，并用 fake provider 测试无 key／被拒绝／离线退化；
+2. **已完成基础接入**：隔离 Google Maps Android SDK adapter，以环境变量注入受限 key，并对无 key 使用明确 fixture fallback；真实 key、拒绝和离线设备验收仍需补齐；
 3. 接入 OpenSeaMap overlay、署名、来源与故障退化；
 4. 用 fixtures TDD 实现 raster MBTiles 预检、导入、索引和显示；
 5. 真实设备验证触控、内存、存储中断、后台 runtime 隔离和离线恢复；
@@ -120,6 +120,8 @@ Chart 的 layer/source 面板至少区分：
 ## English translation
 
 Phase 1 has exactly three chart sources: Google Maps Android SDK as the connected base map, the keyless OpenSeaMap seamark overlay as the default nautical overlay, and user-imported local charts. LINZ and its credential/URL configuration are explicitly out of scope. Both Android application IDs and their debug/release signing certificates may share one Android-restricted `GOOGLE_MAPS_ANDROID_API_KEY`; the key is restricted to Maps SDK for Android and is not split by dev/prod until quota, revocation, or ownership boundaries justify that split.
+
+The isolated Google Maps adapter and environment-to-manifest injection are now implemented. A missing key selects an explicit fixture surface. Real-key device acceptance plus denied/offline behavior remain pending; OpenSeaMap and local import are not implemented by this slice.
 
 Google currently lists native Maps SDK base-map loads as unlimited/no charge, but a billing-enabled project is still required and this document does not promise permanent free pricing. OpenSeaMap requires attribution and provides neither an official-chart substitute nor an application SLA. Local imports require no provider key.
 

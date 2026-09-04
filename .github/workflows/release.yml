@@ -95,15 +95,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Require signing secrets
+      - name: Require release secrets
         env:
           ANDROID_SIGNING_KEY_BASE64: ${{ secrets.ANDROID_SIGNING_KEY_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         run: |
           failed=0
-          for name in ANDROID_SIGNING_KEY_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+          for name in ANDROID_SIGNING_KEY_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD GOOGLE_MAPS_ANDROID_API_KEY; do
             if [ -z "${!name:-}" ]; then echo "::error::Missing required Actions secret: $name"; failed=1; fi
           done
           exit "$failed"
@@ -147,6 +148,8 @@ jobs:
         run: bash .github/scripts/enable_kvm.sh
       - name: API 36 release-path smoke
         uses: reactivecircus/android-emulator-runner@v2.38.0
+        env:
+          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         with:
           api-level: 36
           arch: x86_64
@@ -206,6 +209,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
           YOKULI_VERSION_NAME: ${{ needs.validate-release.outputs.version_name }}
           YOKULI_VERSION_CODE: ${{ needs.validate-release.outputs.version_code }}
         run: >-

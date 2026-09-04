@@ -32,6 +32,9 @@ for check_id in 'ci_helpers' 'release_metadata' 'ci_contract' 'secrets_contract'
   grep -Fq "id: $check_id" "$android" || fail "build feedback must expose the $check_id gate independently"
 done
 grep -Fq 'bash .github/scripts/test-secrets-manager.sh' "$android" || fail 'encrypted secrets workflow contract must run in CI'
+grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$android" || fail 'debug artifacts must consume the repository Maps key when configured'
+grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$release" || fail 'release artifacts must consume the repository Maps key'
+grep -Fq 'ANDROID_KEY_PASSWORD GOOGLE_MAPS_ANDROID_API_KEY' "$release" || fail 'release preflight must reject a missing Maps key'
 grep -Fq 'needs: [build, integration, api-compatibility]' "$android" || fail 'verified artifact must wait for every required gate'
 grep -Fq 'UNVERIFIED-' "$android" || fail 'partial build artifacts must be visibly unverified'
 grep -Fq 'VERIFIED-' "$android" || fail 'post-gate artifact must be visibly verified'
