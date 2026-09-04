@@ -5,3 +5,22 @@ local.properties
 *.iml
 captures/
 .DS_Store
+
+# Local plaintext credentials and signing material. Encrypted age artifacts in
+# secrets/ are intentionally not ignored.
+.env
+.env.*
+!.env.example
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+google-services.json
+secrets/*.json
+secrets/*.env
+secrets/*.plain*
+secrets/*.decrypted*
+secrets/identity.txt
+secrets/.write.*
+secrets/.yokuli-secrets.lock/

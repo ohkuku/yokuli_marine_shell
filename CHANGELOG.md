@@ -4,6 +4,7 @@
 
 ### Changed
 
+- 为 WP Phone 全屏 cutout 布局增加 Android 9／API 28 版本保护，保留 minSdk 26 兼容性并恢复 lint gate。
 - UI 与功能改为明确的 `UiState`／`UiAction` 边界；后续 runtime 采用 Kotlin Flow 响应式单向数据流，不使用全局 EventBus。
 - 应用以简体中文为默认资源，提供完整英文翻译；System → Display 可以切换并持久化应用级语言。
 - 修正 WP Phone 主题真值：深色严格黑底白字、浅色严格白底黑字，宿主系统栏与异形屏区域同步主题，accent 磁贴固定纯白前景，不再按亮度自动改成黑字。
@@ -21,6 +22,8 @@
 
 ### Added
 
+- 新增基于 `age` 的本地加密密钥保险库：随机 identity 由个人强口令保护，API key 作为整体加密 JSON 提交；提供 `doctor/init/set/remove/list/get/copy/run/rotate` Bash 命令、双语安全手册和独立 CI 合同测试。
+- 新增常见明文凭据、签名文件和 vault 临时文件的 Git 忽略规则；CI 只使用假加密器验证流程，不接触个人主口令或真实 secret。
 - 新增 UI／功能隔离、多语言和响应式模块需求合同，以及自动检查资源 key、模型纯净度和 feature UI 契约的 TDD gate。
 - 新增真实 `ShellActivity` 中英切换故事；导航故事改用语言无关语义 tag。
 - 新增成熟海图产品共性和 Yokuli Chart-first 信息架构文档。
@@ -56,6 +59,8 @@
 - Standalone APK: PASS.
 - HOME APK: PASS.
 - Android lint: PASS.
+- Encrypted secrets Bash contract: PASS, including malformed artifact, tracked plaintext, unsafe environment-name, metacharacter, clipboard, rotation, and child-process cases.
+- Local age 1.3.2 recipient encryption/decryption smoke: PASS; personal vault remains intentionally UNINITIALIZED.
 - Release signing plumbing: PASS locally for both APKs and both AABs with a disposable test key; GitHub secrets not exercised.
 - GitHub-hosted API 34/API 36 workflows: PASS in Actions run `33764978254`; final verified artifact `9897363683` published.
 - Device: VERIFIED_DEVICE_EMULATOR; Samsung square hardware remains UNVERIFIED_HARDWARE.
@@ -63,6 +68,7 @@
 
 ### Known boundaries
 
+- 个人加密 vault 尚未初始化；必须由仓库所有者在本机使用一个从未公开过的新强口令交互创建。当前聊天中出现过的口令不得使用。
 - Desktop edits currently live for the process lifetime; Proto DataStore persistence and Reset/Lock/Safe Mode come in the next Shell Runtime slice.
 - Theme selection currently survives Activity saved-state restoration but is not yet persisted as durable Shell storage across an explicit data clear/reinstall; global Safety Overlay, Recents UI and runtime task ownership are not implemented yet.
 - GPS, NMEA, Anchor Watch, Trip, Survey, map SDKs and foreground services are deliberately not connected in this pass.
@@ -72,6 +78,8 @@
 - Established immutable `UiState`/sealed `UiAction` boundaries for every current feature; future runtime integration uses Kotlin Flow UDF without a global event bus.
 - Made Simplified Chinese the unqualified default resource and added key-complete English resources plus an AndroidX-backed per-app language selector in System → Display.
 - Corrected the WP Phone color contract to exact black/white theme pairs, theme-synchronized host/cutout chrome, and a fixed pure-white foreground on accent tiles instead of luminance-selected black text.
+- Guarded the API 28 display-cutout call so the minSdk 26 build remains lint-clean.
 - Moved launcher title/glyph/index metadata out of the domain descriptor and into the desktop UI catalog.
 - Added architecture contracts, automated bilingual-resource and UI-boundary checks, and a real-Activity Chinese/English switching story.
 - GPS, NMEA, Anchor, Trip, Survey, chart SDKs, and foreground runtimes remain deliberately unimplemented in this UI slice.
+- Added an age-based local encrypted vault, bilingual runbook, plaintext-ignore policy, and fake-crypto CI contract. The owner must initialize it locally with a brand-new passphrase that has never been shared; no personal vault or real credential is committed by this change.

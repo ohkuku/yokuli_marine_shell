@@ -20,6 +20,7 @@ Yokuli OS 把 Windows Phone 8 的完整交互语言用于成熟海图产品架�
 python3 -m unittest discover .github/scripts 'test_*.py'
 bash .github/scripts/test-resolve-release-metadata.sh
 bash .github/scripts/test-ci-contract.sh
+bash .github/scripts/test-secrets-manager.sh
 ./gradlew test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug
 ./gradlew :app-shell:connectedStandaloneDebugAndroidTest
 ```
@@ -35,6 +36,8 @@ bash .github/scripts/test-ci-contract.sh
 - [WP8 UI 需求合同](docs/requirements/WP8_UI_SYSTEM_REQUIREMENTS.md)
 - [WP8 UI 强制范式](docs/WP8_UI_PATTERN.md)
 - [GitHub 交付与发布](docs/GITHUB_DELIVERY.md)
+- [本地密钥保险库](docs/SECRETS_MANAGEMENT.md)
+- [密钥保险库需求合同](docs/requirements/SECRETS_MANAGEMENT_REQUIREMENTS.md)
 - [变更记录](CHANGELOG.md)
 
 ## English translation

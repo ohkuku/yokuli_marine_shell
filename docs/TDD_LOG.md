@@ -514,3 +514,81 @@ API 34 Pixel 7 模拟器完成 Dark Start、Light Display 与 Light Start 目视
 ### English translation
 
 The user review exposed a real fidelity error. Microsoft documents the Phone page theme as white-on-black by default and black-on-white in Light, while the Windows Phone 8.1 secondary-tile API says tile foreground is always light. The Red contract failed 2 of 5 tests against the former near-black/near-white canvas and luminance-selected black tile text. Green now uses exact black/white page pairs and an exact white foreground for every accent tile in both modes; the generic contrast chooser was removed. A subsequent real-device Red found that the Android host window still left a fixed black display-cutout strip in Light. Host bar colors, dark-icon appearance, and short-edge cutout coverage now follow the same Shell mode.
+
+## Slice 11 — 可提交的本地加密密钥保险库
+
+需求来源：用户需要用一个只由本人掌握的主口令维护未来的多组 API key，同时让维护脚本和密文可以进入 GitHub。安全合同见 [`requirements/SECRETS_MANAGEMENT_REQUIREMENTS.md`](requirements/SECRETS_MANAGEMENT_REQUIREMENTS.md)，操作手册见 [`SECRETS_MANAGEMENT.md`](SECRETS_MANAGEMENT.md)。
+
+### 安全判断
+
+整体方向合理，但用户在当前对话中给出的示例口令已经进入共享介质，而且长度和可预测性都不足，因此被明确判定为不可使用。本切片没有把它复制到代码、命令、测试、日志或 vault。个人 vault 必须由仓库所有者稍后在本机用一个全新的强口令交互初始化。
+
+实现不自创密码学：`age -p` 保护随机 identity，identity 对应的 recipient 加密整个 JSON vault。仓库只允许提交 `identity.age`、`recipient.txt` 和 `vault.json.age`；CI 永远不拿个人主口令解锁它们。
+
+### Red 1 — 缺失工作流
+
+先添加 `.github/scripts/test-secrets-manager.sh`，再运行：
+
+```text
+bash .github/scripts/test-secrets-manager.sh
+Secrets manager contract failed: missing executable scripts/secrets/yokuli-secrets.sh
+```
+
+这是预期的需求 Red。测试使用临时目录、假 `age`／`age-keygen` 和演示值，不测试或记录真实凭据。
+
+### Green 1 — 保险库命令
+
+新增 `scripts/secrets/yokuli-secrets.sh`，覆盖：
+
+- `doctor/init/set/remove/list/get/copy/run/rotate`；
+- 隐藏 stdin 写入、严格 key/value schema、无 `.env` 默认落盘；
+- 权限受限临时目录、退出清理、密文后写替换和并发锁；
+- 三件套残缺状态、Git 已跟踪明文文件和过宽权限检查；
+- 子进程环境注入前清理临时明文；
+- 主口令包装轮换与上游 API key 撤销边界。
+
+原合同随即通过。
+
+### Red 2 — 子进程控制变量
+
+威胁复核发现，虽然 key 满足 POSIX 名称格式，但恶意或误写的 `PATH`、动态加载器和语言运行时选项可以改变 `run` 启动的进程。先增加拒绝 `PATH` 的测试，得到：
+
+```text
+Secrets manager contract failed: set accepted a process-control environment variable
+```
+
+Green 将名称验证拆为语法检查与注入安全检查；`set` 和 `run` 拒绝进程控制变量，同时保留 `remove` 清理异常 key 的能力。
+
+### Red 3 — 密文形状与 placeholder 例外
+
+`doctor` 起初只检查文件是否存在，测试把 `vault.json.age` 换成普通文本后仍然成功：
+
+```text
+Secrets manager contract failed: command unexpectedly succeeded: ... doctor
+```
+
+Green 增加 armored age header 和完整 recipient 格式检查，并在每次解密前复用。另一条先失败的合同证明 `.env.*` 检查会误伤允许提交的 `.env.example`；Git pathspec 现在明确排除该 placeholder，但仍阻断真实 dotenv、明文 vault、identity 和签名材料。
+
+### 门禁发现与 Green
+
+双语公开文档合同先发现操作手册缺少规范的 `English translation` 标题，修正后 Python 合同恢复 11/11。完整 Android lint 又发现上一 UI 切片的 cutout 调用无条件引用 API 28，而工程 minSdk 是 26；增加 `Build.VERSION.SDK_INT >= P` 保护后 lint 恢复。
+
+最终本地证据：
+
+```text
+bash -n scripts/secrets/yokuli-secrets.sh                    PASS
+bash .github/scripts/test-secrets-manager.sh                 PASS
+bash .github/scripts/test-ci-contract.sh                     PASS
+bash .github/scripts/test-resolve-release-metadata.sh        PASS
+python3 -m unittest discover .github/scripts 'test_*.py'     PASS (11/11)
+age 1.3.2 recipient encrypt/decrypt smoke                    PASS
+./gradlew test lintStandaloneDebug
+          assembleStandaloneDebug assembleHomeDebug          PASS
+./scripts/secrets/yokuli-secrets.sh doctor                   PASS (UNINITIALIZED)
+```
+
+本机已安装官方 `age` 1.3.2；`jq` 为 1.7.1。`UNINITIALIZED` 是刻意保留的用户控制点，不是假 Green：测试证明系统行为，个人主口令和真实 vault 则只能由所有者亲自在交互终端创建。
+
+### English translation
+
+The first Red proved the requested executable did not exist. Green added an age-backed encrypted identity and JSON vault with doctor, init, hidden-input set, remove, key-only list, explicit-output get, clipboard copy, trusted-child run, and passphrase-wrapper rotation. A second threat-model Red proved that process-control names such as `PATH` were accepted; Green now rejects control variables before storage or injection. Existing bilingual-document and Android lint gates also caught a heading-contract issue and an unguarded API 28 cutout call on minSdk 26, both fixed. Fake-crypto workflow tests, the real age CLI smoke, all Python and Bash contracts, unit tests, lint, and both debug APK assemblies pass. The personal vault remains intentionally uninitialized until the owner chooses a brand-new unshared passphrase interactively.
