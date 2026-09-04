@@ -1,0 +1,192 @@
+name: WP8 reference discovery
+
+on:
+  push:
+    branches:
+      - codex/launcher-engine-stage2.5
+    paths:
+      - .github/workflows/wp8-reference-discovery.yml
+
+permissions:
+  contents: write
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/launcher-engine-stage2.5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install acquisition dependencies
+        run: python -m pip install --disable-pip-version-check requests pillow
+
+      - name: Acquire licensed static references and discover motion candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          from pathlib import Path
+          from urllib.parse import quote
+          import xml.etree.ElementTree as ET
+
+          import requests
+          from PIL import Image
+
+          ROOT = Path('docs/reference/wp8')
+          OUT = ROOT / 'screenshots'
+          ART = ROOT / 'artifacts'
+          OUT.mkdir(parents=True, exist_ok=True)
+          ART.mkdir(parents=True, exist_ok=True)
+
+          session = requests.Session()
+          session.headers['User-Agent'] = 'Yokuli-WP8-Reference-Acquisition/1.0 (+https://github.com/ohkuku/yokuli_marine_shell)'
+
+          files = [
+              {
+                  'title': 'File:Windows Phone 8 en.svg',
+                  'name': 'windows-phone-8-en-start-reference.svg',
+              },
+              {
+                  'title': 'File:Lumia 620 by mikosoft.jpg',
+                  'name': 'lumia-620-wp8-device-reference.jpg',
+              },
+          ]
+
+          captures = []
+          for item in files:
+              params = {
+                  'action': 'query',
+                  'format': 'json',
+                  'formatversion': '2',
+                  'prop': 'imageinfo',
+                  'titles': item['title'],
+                  'iiprop': 'url|size|mime|sha1|extmetadata',
+              }
+              response = session.get('https://commons.wikimedia.org/w/api.php', params=params, timeout=60)
+              response.raise_for_status()
+              page = response.json()['query']['pages'][0]
+              info = page['imageinfo'][0]
+              media = session.get(info['url'], timeout=120)
+              media.raise_for_status()
+              path = OUT / item['name']
+              path.write_bytes(media.content)
+
+              if path.suffix.lower() == '.svg':
+                  root = ET.fromstring(media.content)
+                  width = root.attrib.get('width', '')
+                  height = root.attrib.get('height', '')
+                  view_box = root.attrib.get('viewBox', '')
+                  dimensions = {
+                      'widthAttribute': width,
+                      'heightAttribute': height,
+                      'viewBox': view_box,
+                      'apiWidthPx': info.get('width'),
+                      'apiHeightPx': info.get('height'),
+                  }
+              else:
+                  with Image.open(path) as image:
+                      dimensions = {
+                          'widthPx': image.width,
+                          'heightPx': image.height,
+                          'mode': image.mode,
+                          'format': image.format,
+                      }
+
+              metadata = info.get('extmetadata', {})
+              simplified = {
+                  key: value.get('value')
+                  for key, value in metadata.items()
+                  if key in {
+                      'Artist', 'Credit', 'DateTimeOriginal', 'ImageDescription',
+                      'LicenseShortName', 'LicenseUrl', 'UsageTerms',
+                      'Attribution', 'Copyrighted', 'Restrictions', 'Categories',
+                  }
+              }
+              captures.append({
+                  'sourceTitle': item['title'],
+                  'sourcePage': info.get('descriptionurl'),
+                  'originalUrl': info['url'],
+                  'repositoryPath': str(path),
+                  'sha256': hashlib.sha256(media.content).hexdigest(),
+                  'byteSize': len(media.content),
+                  'mime': info.get('mime'),
+                  'commonsSha1': info.get('sha1'),
+                  'dimensions': dimensions,
+                  'metadata': simplified,
+              })
+
+          (ART / 'static-reference-provenance.json').write_text(
+              json.dumps(captures, indent=2, ensure_ascii=False) + '\n',
+              encoding='utf-8',
+          )
+
+          fields = [
+              'identifier', 'title', 'creator', 'licenseurl', 'rights',
+              'description', 'date', 'downloads', 'subject', 'collection',
+          ]
+          queries = [
+              '"Windows Phone 8" AND mediatype:movies',
+              '("Lumia 920" OR "Lumia 820" OR "Lumia 620") AND mediatype:movies AND ("Windows Phone" OR WP8)',
+          ]
+          discovered = []
+          seen = set()
+          for query in queries:
+              params = [('q', query), ('rows', '200'), ('page', '1'), ('output', 'json')]
+              params.extend(('fl[]', field) for field in fields)
+              response = session.get('https://archive.org/advancedsearch.php', params=params, timeout=120)
+              response.raise_for_status()
+              for doc in response.json().get('response', {}).get('docs', []):
+                  identifier = doc.get('identifier')
+                  if not identifier or identifier in seen:
+                      continue
+                  seen.add(identifier)
+                  discovered.append(doc)
+
+          def has_open_license(doc: dict) -> bool:
+              value = str(doc.get('licenseurl', '')).lower()
+              return 'creativecommons.org' in value or 'publicdomain' in value
+
+          discovered.sort(
+              key=lambda doc: (
+                  not has_open_license(doc),
+                  -int(doc.get('downloads') or 0),
+                  str(doc.get('title') or '').lower(),
+              )
+          )
+          (ART / 'ia-motion-candidates.json').write_text(
+              json.dumps(
+                  {
+                      'queries': queries,
+                      'count': len(discovered),
+                      'openLicensedCount': sum(has_open_license(doc) for doc in discovered),
+                      'items': discovered[:200],
+                  },
+                  indent=2,
+                  ensure_ascii=False,
+              ) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Commit acquired evidence and discovery results
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/reference/wp8/screenshots docs/reference/wp8/artifacts
+          if git diff --cached --quiet; then
+            echo "No acquisition changes"
+            exit 0
+          fi
+          git commit -m "docs(shell): acquire licensed wp8 reference evidence"
+          git push origin HEAD:codex/launcher-engine-stage2.5
