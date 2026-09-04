@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "stage": 10,
+  "name": "Durable Storage and HOME Recovery",
+  "branch": "codex/launcher-engine-batch-c",
+  "startingSha": "abca537bea55ac67c33a3383adfadcee6345c45a",
+  "requiredCompletedStage": "Navigation / Motion / Immersive / Virtual Keys",
+  "scope": "Proto DataStore, migration, deterministic restore, Safe Mode, crash-loop recovery, and Android Settings escape",
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

@@ -18,6 +18,7 @@ include(
     ":core:testing",
     ":adapter:chart-google",
     ":adapter:shell-android",
+    ":adapter:shell-storage",
     ":ui:shell-compose",
     ":feature:desktop",
     ":feature:chart",

@@ -42,6 +42,10 @@ sealed interface LauncherAction {
     data class UpdateSearchQuery(val query: String) : LauncherAction
     data object ShowRecents : LauncherAction
     data class ActivateTask(val taskId: InternalAppTaskId) : LauncherAction
+    data class RestorePersistedDocument(val document: StartDocument?) : LauncherAction
+    data object EnterSafeMode : LauncherAction
+    data object ExitSafeMode : LauncherAction
+    data object RequestAndroidSettings : LauncherAction
     data class Open(val token: LaunchToken) : LauncherAction
     data class CatalogChanged(val catalog: LauncherCatalogSnapshot) : LauncherAction
     data class ApplyLayoutProposal(val proposal: LayoutProposal) : LauncherAction
@@ -80,6 +84,7 @@ sealed interface LauncherAction {
     data class AcknowledgeStartReveal(val tileId: TileInstanceId) : LauncherAction
     data class TogglePin(val entryId: LauncherEntryId) : LauncherAction
     data object ResetStartDocument : LauncherAction
+    data class PersistenceIncidentObserved(val incident: LauncherPersistenceIncident) : LauncherAction
 }
 
 enum class LauncherHaptic { SELECTION, LONG_PRESS, DROP }
@@ -88,6 +93,7 @@ sealed interface LauncherIncident {
     data class UnresolvedLaunchToken(val token: LaunchToken) : LauncherIncident
     data class InvalidLayoutProposal(val reason: String) : LauncherIncident
     data class CatalogRepair(val incident: StartRepairIncident) : LauncherIncident
+    data class PersistenceMigration(val incident: LauncherPersistenceIncident) : LauncherIncident
     data class PersistenceFailure(val message: String) : LauncherIncident
 }
 
@@ -122,7 +128,32 @@ class DefaultLauncherReducer : LauncherReducer {
         state: LauncherEngineState,
         action: LauncherAction,
         context: LauncherReducerContext,
-    ): LauncherReduction = when (action) {
+    ): LauncherReduction {
+        if (
+            state.recoveryMode == LauncherRecoveryMode.RESTORING &&
+            action !is LauncherAction.RestorePersistedDocument &&
+            action !is LauncherAction.CatalogChanged &&
+            action !is LauncherAction.PersistenceIncidentObserved &&
+            action != LauncherAction.EnterSafeMode &&
+            action != LauncherAction.RequestAndroidSettings
+        ) {
+            return LauncherReduction(state)
+        }
+        if (
+            state.recoveryMode == LauncherRecoveryMode.SAFE_MODE &&
+            action !is LauncherAction.Open &&
+            action !is LauncherAction.CatalogChanged &&
+            action !is LauncherAction.RestorePersistedDocument &&
+            action !is LauncherAction.Back &&
+            action != LauncherAction.Home &&
+            action != LauncherAction.EnterSafeMode &&
+            action != LauncherAction.ExitSafeMode &&
+            action != LauncherAction.ResetStartDocument &&
+            action != LauncherAction.RequestAndroidSettings
+        ) {
+            return LauncherReduction(state)
+        }
+        return when (action) {
         LauncherAction.ShowStart -> LauncherReduction(
             state.copy(
                 surface = LauncherSurface.Start,
@@ -141,6 +172,19 @@ class DefaultLauncherReducer : LauncherReducer {
         is LauncherAction.UpdateSearchQuery -> updateSearchQuery(state, action.query)
         LauncherAction.ShowRecents -> showRecents(state)
         is LauncherAction.ActivateTask -> activateTask(state, action.taskId)
+        is LauncherAction.RestorePersistedDocument -> restorePersistedDocument(state, action.document, context)
+        LauncherAction.EnterSafeMode -> enterSafeMode(state, context)
+        LauncherAction.ExitSafeMode -> LauncherReduction(
+            state.copy(recoveryMode = LauncherRecoveryMode.NORMAL, transitionIntent = LauncherTransitionIntent.NONE),
+        )
+        LauncherAction.RequestAndroidSettings -> LauncherReduction(
+            state,
+            listOf(LauncherEffect.OpenAndroidSettings),
+        )
+        is LauncherAction.PersistenceIncidentObserved -> LauncherReduction(
+            state,
+            listOf(LauncherEffect.LogIncident(LauncherIncident.PersistenceMigration(action.incident))),
+        )
 
         LauncherAction.ShowAllApps -> LauncherReduction(
             state.copy(
@@ -179,7 +223,54 @@ class DefaultLauncherReducer : LauncherReducer {
             state,
             LayoutProposal(state.start.document, context.defaultDocument, LayoutChangeReason.RESET),
         )
+        }
     }
+
+    private fun restorePersistedDocument(
+        state: LauncherEngineState,
+        source: StartDocument?,
+        context: LauncherReducerContext,
+    ): LauncherReduction {
+        val candidate = source ?: context.defaultDocument
+        val repaired = StartDocumentRepair.repair(
+            candidate,
+            state.catalog.entries,
+            context.defaultDocument,
+            context.profile,
+        )
+        val effects = buildList {
+            repaired.incidents.forEach { incident ->
+                add(LauncherEffect.LogIncident(LauncherIncident.CatalogRepair(incident)))
+            }
+            if (candidate != repaired.document) add(LauncherEffect.PersistDocument(repaired.document))
+        }
+        return LauncherReduction(
+            state.copy(
+                surface = LauncherSurface.Start,
+                start = StartScreenState(repaired.document),
+                transient = null,
+                tasks = InternalTaskState(),
+                recoveryMode = LauncherRecoveryMode.NORMAL,
+                transitionIntent = LauncherTransitionIntent.NONE,
+            ),
+            effects,
+        )
+    }
+
+    private fun enterSafeMode(
+        state: LauncherEngineState,
+        context: LauncherReducerContext,
+    ): LauncherReduction = LauncherReduction(
+        state.copy(
+            surface = LauncherSurface.Start,
+            start = StartScreenState(context.defaultDocument),
+            tasks = InternalTaskState(),
+            transient = null,
+            recentsReturnSurface = null,
+            recoveryMode = LauncherRecoveryMode.SAFE_MODE,
+            transitionIntent = LauncherTransitionIntent.NONE,
+        ),
+    )
 
     private fun back(state: LauncherEngineState): LauncherReduction {
         state.transient?.let { return LauncherReduction(state.copy(transient = null)) }

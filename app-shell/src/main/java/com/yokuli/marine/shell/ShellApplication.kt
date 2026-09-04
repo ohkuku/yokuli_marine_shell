@@ -9,8 +9,22 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import com.yokuli.marine.core.model.AppLanguage
+import com.yokuli.shell.engine.LauncherPersistedState
+import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class ShellApplication : Application() {
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val launcherPersistence by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProtoDataStoreLauncherPersistence.create(
+            context = this,
+            scope = applicationScope,
+            defaults = LauncherPersistedState(document = defaultStartDocument),
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -49,6 +63,16 @@ fun Context.persistAppLanguage(language: AppLanguage) {
             LocaleList.forLanguageTags(language.languageTag)
     } else {
         AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(language.languageTag))
+    }
+}
+
+fun Context.synchronizePersistedLanguage(languageTag: String) {
+    if (selectedLanguageTag() == languageTag) return
+    saveLanguageTag(languageTag)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        getSystemService(LocaleManager::class.java).applicationLocales = LocaleList.forLanguageTags(languageTag)
+    } else {
+        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(languageTag))
     }
 }
 

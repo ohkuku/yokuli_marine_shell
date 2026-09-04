@@ -29,6 +29,8 @@ enum class LauncherTransitionIntent {
     TRANSIENT,
 }
 
+enum class LauncherRecoveryMode { NORMAL, RESTORING, SAFE_MODE }
+
 data class StartScreenState(
     val document: StartDocument,
     val interaction: StartInteractionState = StartInteractionState.Idle,
@@ -77,6 +79,8 @@ data class LauncherEngineState(
     val transient: LauncherTransient? = null,
     val systemOverlay: LauncherSystemOverlay? = null,
     val recentsReturnSurface: LauncherSurface? = null,
+    val recoveryMode: LauncherRecoveryMode = LauncherRecoveryMode.NORMAL,
+    val incidentLog: List<LauncherIncident> = emptyList(),
     val transitionIntent: LauncherTransitionIntent = LauncherTransitionIntent.NONE,
     val nextTransactionId: Long = 1,
 )

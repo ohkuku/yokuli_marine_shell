@@ -69,6 +69,7 @@ dependencies {
     implementation(project(":core:shell-engine"))
     implementation(project(":ui:shell-compose"))
     implementation(project(":adapter:shell-android"))
+    implementation(project(":adapter:shell-storage"))
     implementation(project(":adapter:chart-google"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))

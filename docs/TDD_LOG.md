@@ -436,3 +436,15 @@ The meaningful Red failed on the absent Engine-owned context, explicit Pin/Unpin
 ### English translation — Stage 9
 
 Seven static contracts begin with four failures and three errors, while JVM and Android adapter Reds fail on absent typed input, Search, Recents, opaque route history, and host-exit semantics. Green routes every virtual and deliverable platform key through the serialized Engine, reuses the HOME Activity task, provides real catalog search and internal-task recents, binds motion to approved visible intervals, supports reduced motion, and delays MapView mounting. Self-review adds and fixes a provisional-layout cancellation regression and stale Recents return target.
+
+## Stage 10 — Durable Storage & Recovery
+
+8 项 Stage 10 静态合同先以 `FEFF.E.F`（4 failures / 2 errors / 2 pass）进入 Red；Core Red 同时因 durable state、migration、recovery policy 与 restore action 尚不存在而无法编译。Green 新增单一 Proto DataStore snapshot、原子 document/preferences/health 写入、schema migration、corruption fallback、确定性 Start repair、三次短窗口启动失败 Safe Mode、Reset Start 和 Android 默认桌面设置出口。
+
+第一次 API 34 targeted story 暴露了 Activity 重建期间可能同时创建两个同文件 DataStore 的真实错误，修正为 Application-scope 单例。原先尝试用外部 Activity monitor 验证 Settings intent 在现代系统上不可观测，测试改为注入平台 intent boundary 并精确断言 `ACTION_HOME_SETTINGS`。自审继续以 Red 锁定：恢复等待期间 Catalog 变化不得丢失；migration/repair/failure 必须进入串行 Engine Incident；Safe Mode 只能忽略自定义布局，不能偷偷覆盖布局或主题；启动健康计数不能被慢恢复定时器提前清零。所有问题均在累计 Gate 前修正。
+
+最终本地 Gate：Stage 0–10 Python 合同 `122/122`；Gradle `test`、`lintStandaloneDebug`、双 flavor Debug/Release 和 instrumentation APK 共 1052 tasks；API 34 Activity stories `23/23`；双 Release APK 仍严格为 Chart + Settings 且只有 Home 增加 HOME/DEFAULT；release metadata、CI、secrets、WP8 approved hash 和 `git diff --check` 全部通过。Stage 11 尚未开始。
+
+### English translation — Stage 10
+
+Stage 10 makes the committed launcher snapshot durable through one atomic Proto DataStore, with migration, corruption fallback, deterministic document repair, crash-loop recovery, a non-destructive Safe Mode, reset, and Android Home-settings escape. Self-review fixed a duplicate-DataStore lifecycle error, a startup-health race, lost catalog updates during restore, missing incident recording, and destructive Safe Mode behavior. Android physical HOME remains OS-reserved; HOME intent reuse and the recovery surface are the truthful integration path.

@@ -1,6 +1,7 @@
 package com.yokuli.marine.shell
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
@@ -10,13 +11,13 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
@@ -30,8 +31,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -58,6 +57,7 @@ import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.feature.desktop.LauncherUiAction
 import com.yokuli.marine.feature.desktop.InteractiveLauncherPager
 import com.yokuli.marine.feature.desktop.LauncherPagerPage
+import com.yokuli.marine.feature.desktop.LauncherRecoverySurface
 import com.yokuli.marine.feature.desktop.WpAppList
 import com.yokuli.marine.feature.desktop.WpRecentsSurface
 import com.yokuli.marine.feature.desktop.WpSearchOverlay
@@ -70,6 +70,7 @@ import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEffect
+import com.yokuli.shell.engine.LauncherRecoveryMode
 import com.yokuli.shell.engine.LauncherSurface
 import com.yokuli.shell.engine.LauncherTransitionIntent
 import com.yokuli.shell.engine.InternalAppTaskId
@@ -84,6 +85,7 @@ import com.yokuli.shell.android.AndroidLauncherKeyAdapter
 class ShellActivity : AppCompatActivity() {
     private val shellViewModel by viewModels<ShellViewModel>()
     private var longBackConsumed = false
+    internal var platformIntentLauncher: (Intent) -> Unit = { intent -> startActivity(intent) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,7 +96,7 @@ class ShellActivity : AppCompatActivity() {
             }
         }
         enterImmersiveMode()
-        setContent { YokuliShell() }
+        setContent { YokuliShell(shellViewModel) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -106,6 +108,16 @@ class ShellActivity : AppCompatActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) enterImmersiveMode()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        shellViewModel.onHostResumed()
+    }
+
+    override fun onStop() {
+        shellViewModel.onHostStopped()
+        super.onStop()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -132,6 +144,14 @@ class ShellActivity : AppCompatActivity() {
         shellViewModel.engine.dispatch(input.toLauncherAction())
     }
 
+    internal fun openAndroidSettings() {
+        try {
+            platformIntentLauncher(Intent(Settings.ACTION_HOME_SETTINGS))
+        } catch (_: ActivityNotFoundException) {
+            platformIntentLauncher(Intent(Settings.ACTION_SETTINGS))
+        }
+    }
+
     private fun enterImmersiveMode() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -154,16 +174,19 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 LauncherEffect.RequestHostExit -> if (!BuildConfig.SHELL_HOME_MODE) {
                     (context as? Activity)?.finishAfterTransition()
                 }
+                LauncherEffect.OpenAndroidSettings -> (context as? ShellActivity)?.openAndroidSettings()
+                    ?: context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                is LauncherEffect.LogIncident -> Log.w("YokuliLauncher", effect.incident.toString())
                 else -> Unit
             }
         }
     }
-    var themeModeName by rememberSaveable { mutableStateOf(WpThemeMode.DARK.name) }
-    var accentName by rememberSaveable { mutableStateOf(WpAccent.CYAN.name) }
-    val themeSpec = WpThemeSpec(WpThemeMode.valueOf(themeModeName), WpAccent.valueOf(accentName))
-    val language = AppCompatDelegate.getApplicationLocales()[0]?.language.let {
-        if (it == "en") AppLanguage.ENGLISH else AppLanguage.CHINESE
-    }
+    val persistedPreferences by shellViewModel.persistedPreferences.collectAsState()
+    val themeSpec = WpThemeSpec(
+        WpThemeMode.valueOf(persistedPreferences.themeModeName),
+        WpAccent.valueOf(persistedPreferences.accentName),
+    )
+    val language = if (persistedPreferences.languageTag == "en") AppLanguage.ENGLISH else AppLanguage.CHINESE
     val dispatch: (LauncherAction) -> Unit = engine::dispatch
     val dispatchInput: (LauncherInput) -> Unit = { input -> dispatch(input.toLauncherAction()) }
     BackHandler(enabled = true) { dispatchInput(LauncherInput.BACK) }
@@ -179,7 +202,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     YokuliTheme(themeSpec) {
         val colors = LocalWpTheme.current
         SyncHostWindowChrome(colors.background, themeSpec.mode == WpThemeMode.LIGHT)
-        val reducedMotion = rememberPlatformReducedMotion()
+        val reducedMotion = rememberPlatformReducedMotion() || engineState.recoveryMode != LauncherRecoveryMode.NORMAL
         val motionProfile = WpReferenceProfiles.require(engineState.start.document.profileId).motion
         val motionTimings = remember(motionProfile) {
             WpMotionTimings(
@@ -209,11 +232,14 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                         LauncherAction.Open(SettingsDestinations.token(action.section)),
                     )
                     is SettingsUiAction.ChangeTheme -> {
-                        themeModeName = action.theme.mode.name
-                        accentName = action.theme.accent.name
+                        shellViewModel.saveTheme(action.theme)
                     }
-                    is SettingsUiAction.ChangeLanguage -> context.persistAppLanguage(action.language)
-                    SettingsUiAction.ResetStartScreen -> dispatch(LauncherAction.ResetStartDocument)
+                    is SettingsUiAction.ChangeLanguage -> {
+                        shellViewModel.saveLanguage(action.language)
+                        context.persistAppLanguage(action.language)
+                    }
+                    SettingsUiAction.ResetStartScreen -> shellViewModel.resetStartDocument()
+                    SettingsUiAction.OpenAndroidSettings -> shellViewModel.requestAndroidSettings()
                     SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
                 }
             },
@@ -277,16 +303,27 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             val transitionTarget = engineState.motionTarget()
             Column(Modifier.fillMaxSize().background(colors.background)) {
                 Box(Modifier.weight(1f)) {
-                    Column(Modifier.fillMaxSize()) {
-                        WpStatusStrip { dispatch(LauncherAction.Open(SettingsDestinations.Overview)) }
-                        WpSurfaceTransitionHost(
-                            targetState = transitionTarget,
-                            intent = engineState.transitionIntent.toWpIntent(),
-                            reducedMotion = reducedMotion,
-                            timings = motionTimings,
-                            modifier = Modifier.weight(1f),
-                        ) { target, heavyContentReady ->
-                            when (target) {
+                    val recoveryAtStart = engineState.surface == LauncherSurface.Start &&
+                        engineState.recoveryMode != LauncherRecoveryMode.NORMAL
+                    if (recoveryAtStart) {
+                        LauncherRecoverySurface(
+                            restoring = engineState.recoveryMode == LauncherRecoveryMode.RESTORING,
+                            onOpenChart = { dispatch(LauncherAction.Open(com.yokuli.marine.feature.chart.ChartDestinations.Browse)) },
+                            onOpenSettings = { dispatch(LauncherAction.Open(SettingsDestinations.Overview)) },
+                            onResetStart = shellViewModel::resetLauncher,
+                            onOpenAndroidSettings = shellViewModel::requestAndroidSettings,
+                        )
+                    } else {
+                        Column(Modifier.fillMaxSize()) {
+                            WpStatusStrip { dispatch(LauncherAction.Open(SettingsDestinations.Overview)) }
+                            WpSurfaceTransitionHost(
+                                targetState = transitionTarget,
+                                intent = engineState.transitionIntent.toWpIntent(),
+                                reducedMotion = reducedMotion,
+                                timings = motionTimings,
+                                modifier = Modifier.weight(1f),
+                            ) { target, heavyContentReady ->
+                                when (target) {
                                 ShellMotionTarget.Launcher -> InteractiveLauncherPager(
                                     requestedPage = if (engineState.surface == LauncherSurface.AllApps) {
                                         LauncherPagerPage.ALL_APPS
@@ -336,10 +373,11 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                     entries = launcherState.entries,
                                     onActivate = { dispatch(LauncherAction.ActivateTask(it.taskId)) },
                                 )
+                                }
                             }
                         }
+                        WpSearchOverlay(launcherState, launcherAction)
                     }
-                    WpSearchOverlay(launcherState, launcherAction)
                 }
                 WpSystemKeyBar(onInput = dispatchInput)
             }

@@ -1,5 +1,12 @@
 # Changelog
 
+## Stage 10 — Durable Storage & Recovery
+
+- 使用单一 Proto DataStore 原子保存 Start document、主题、主题色、语言、布局锁、上次页面/前台 token 和启动健康状态；支持 schema migration、损坏数据回退与进程重建。
+- 启动恢复期间禁止用户修改但继续串行 Catalog 变化；布局修复、迁移和存储失败进入 Engine Incident 记录，未提交的 pointer/drag/transition 状态不落盘。
+- 连续三次短窗口启动失败进入非破坏性 Safe Mode，保留 Chart、Settings、重置和 Android 默认桌面设置出口；默认布局只临时使用，不静默覆盖用户布局。
+- HOME flavor 继续依靠 `singleTask/onNewIntent` 接收系统 HOME intent；Android 保留的实体 HOME 不被虚假描述为普通 Activity 可截获。
+
 ## Stage 9 — Navigation / Motion / Immersive / Virtual Keys
 
 - 壳内 Back/Start/Search、Android Back 与可投递硬件键统一为串行 Engine 输入；HOME flavor 通过 singleTask HOME intent 回 Start。

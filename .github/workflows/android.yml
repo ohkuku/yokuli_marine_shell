@@ -116,8 +116,12 @@ jobs:
         id: launcher_stage9_contract
         continue-on-error: true
         run: python3 .github/scripts/test_launcher_stage9_contract.py
+      - name: Launcher Stage 10 durable-restore and HOME-recovery contract
+        id: launcher_stage10_contract
+        continue-on-error: true
+        run: python3 .github/scripts/test_launcher_stage10_contract.py
       - name: Upload quality-gate candidate APKs
-        if: steps.ci_helpers.outcome == 'success' && steps.launcher_stage0_contract.outcome == 'success' && steps.launcher_stage1_contract.outcome == 'success' && steps.launcher_stage2_contract.outcome == 'success' && steps.launcher_stage25_contract.outcome == 'success' && steps.launcher_stage3_contract.outcome == 'success' && steps.launcher_stage4_contract.outcome == 'success' && steps.launcher_stage5_contract.outcome == 'success' && steps.launcher_stage6_contract.outcome == 'success' && steps.launcher_stage7_contract.outcome == 'success' && steps.launcher_stage8_contract.outcome == 'success' && steps.launcher_stage9_contract.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.ci_helpers.outcome == 'success' && steps.launcher_stage0_contract.outcome == 'success' && steps.launcher_stage1_contract.outcome == 'success' && steps.launcher_stage2_contract.outcome == 'success' && steps.launcher_stage25_contract.outcome == 'success' && steps.launcher_stage3_contract.outcome == 'success' && steps.launcher_stage4_contract.outcome == 'success' && steps.launcher_stage5_contract.outcome == 'success' && steps.launcher_stage6_contract.outcome == 'success' && steps.launcher_stage7_contract.outcome == 'success' && steps.launcher_stage8_contract.outcome == 'success' && steps.launcher_stage9_contract.outcome == 'success' && steps.launcher_stage10_contract.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: yokuli-os-debug-candidate-${{ github.sha }}
@@ -127,7 +131,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload explicitly unverified diagnostic APKs
-        if: steps.assemble.outcome == 'success' && (steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.assemble.outcome == 'success' && (steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-yokuli-os-debug-${{ github.sha }}
@@ -163,6 +167,7 @@ jobs:
           "Launcher Stage 7 complete edit=${{ steps.launcher_stage7_contract.outcome }}"
           "Launcher Stage 8 pin and unpin=${{ steps.launcher_stage8_contract.outcome }}"
           "Launcher Stage 9 navigation and virtual keys=${{ steps.launcher_stage9_contract.outcome }}"
+          "Launcher Stage 10 durable restore and HOME recovery=${{ steps.launcher_stage10_contract.outcome }}"
           "Release metadata=${{ steps.release_metadata.outcome }}"
           "Workflow contract=${{ steps.ci_contract.outcome }}"
           "Encrypted secrets contract=${{ steps.secrets_contract.outcome }}"
@@ -170,10 +175,10 @@ jobs:
           "Android lint=${{ steps.lint.outcome }}"
           "Debug plus dual release-audit APK compile=${{ steps.assemble.outcome }}"
       - name: Collect build failure diagnostics
-        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
+        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
         run: bash .github/scripts/collect_failure_bundle.sh build
       - name: Upload downloadable build failure bundle
-        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
+        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
         uses: actions/upload-artifact@v7
         with:
           name: FAILURE-build-${{ github.run_id }}-${{ github.run_attempt }}
@@ -195,6 +200,7 @@ jobs:
           LAUNCHER_STAGE7_CONTRACT_RESULT: ${{ steps.launcher_stage7_contract.outcome }}
           LAUNCHER_STAGE8_CONTRACT_RESULT: ${{ steps.launcher_stage8_contract.outcome }}
           LAUNCHER_STAGE9_CONTRACT_RESULT: ${{ steps.launcher_stage9_contract.outcome }}
+          LAUNCHER_STAGE10_CONTRACT_RESULT: ${{ steps.launcher_stage10_contract.outcome }}
           RELEASE_METADATA_RESULT: ${{ steps.release_metadata.outcome }}
           CI_CONTRACT_RESULT: ${{ steps.ci_contract.outcome }}
           SECRETS_CONTRACT_RESULT: ${{ steps.secrets_contract.outcome }}
@@ -203,7 +209,7 @@ jobs:
           ASSEMBLE_RESULT: ${{ steps.assemble.outcome }}
         run: |
           failed=0
-          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT LAUNCHER_STAGE1_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT LAUNCHER_STAGE5_CONTRACT_RESULT LAUNCHER_STAGE6_CONTRACT_RESULT LAUNCHER_STAGE7_CONTRACT_RESULT LAUNCHER_STAGE8_CONTRACT_RESULT LAUNCHER_STAGE9_CONTRACT_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
+          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT LAUNCHER_STAGE1_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT LAUNCHER_STAGE5_CONTRACT_RESULT LAUNCHER_STAGE6_CONTRACT_RESULT LAUNCHER_STAGE7_CONTRACT_RESULT LAUNCHER_STAGE8_CONTRACT_RESULT LAUNCHER_STAGE9_CONTRACT_RESULT LAUNCHER_STAGE10_CONTRACT_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
             if [ "${!result}" != success ]; then echo "::error title=$result failed::Open the job summary and FAILURE artifact."; failed=1; fi
           done
           exit "$failed"

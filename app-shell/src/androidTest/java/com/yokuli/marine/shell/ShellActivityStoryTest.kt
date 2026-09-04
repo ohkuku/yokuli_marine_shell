@@ -28,6 +28,7 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.lifecycle.ViewModelProvider
 import com.yokuli.marine.core.design.WpThemeModeNameKey
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.WpTileAccentNameKey
@@ -38,6 +39,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import kotlin.math.abs
 import org.junit.Rule
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -45,6 +47,16 @@ import org.junit.runner.RunWith
 class ShellActivityStoryTest {
     @get:Rule
     val compose = createAndroidComposeRule<ShellActivity>()
+
+    @Before
+    fun resetDurableLauncherState() {
+        compose.activityRule.scenario.onActivity { activity ->
+            ViewModelProvider(activity)[ShellViewModel::class.java].resetLauncher()
+        }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("tile-chart").fetchSemanticsNodes().isNotEmpty()
+        }
+    }
 
     @Test
     fun chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart() {
@@ -327,6 +339,25 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { activity ->
             assertEquals(before, System.identityHashCode(activity))
         }
+    }
+
+    @Test
+    fun homeRecoverySurfaceCanOpenAndroidSettings() {
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { activity ->
+            ViewModelProvider(activity)[ShellViewModel::class.java].engine.dispatch(
+                com.yokuli.shell.engine.LauncherAction.EnterSafeMode,
+            )
+        }
+        compose.onNodeWithTag("launcher-recovery").assertIsDisplayed()
+
+        var launchedAction: String? = null
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.platformIntentLauncher = { intent -> launchedAction = intent.action }
+        }
+        compose.onNodeWithTag("recovery-open-android-settings").performClick()
+        compose.waitForIdle()
+        assertEquals(android.provider.Settings.ACTION_HOME_SETTINGS, launchedAction)
     }
 
     @Test

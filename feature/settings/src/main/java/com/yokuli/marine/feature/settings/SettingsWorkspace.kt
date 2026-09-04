@@ -164,6 +164,9 @@ private fun StartScreenSettings(state: SettingsUiState, onAction: (SettingsUiAct
         SettingsCommand(stringResource(R.string.start_reset), "settings-reset-start") {
             onAction(SettingsUiAction.ResetStartScreen)
         }
+        SettingsCommand(stringResource(R.string.open_android_settings), "settings-open-android-settings") {
+            onAction(SettingsUiAction.OpenAndroidSettings)
+        }
         if (state.debugShellLabAvailable) {
             SettingsLabel(stringResource(R.string.debug_tools), top = 28)
             WpText(stringResource(R.string.shell_lab_explanation), 12, color = LocalWpTheme.current.muted)

@@ -105,6 +105,18 @@ class LauncherNavigationTest {
         assertEquals(null, recents.start.activeTransaction)
     }
 
+    @Test
+    fun safeModeUsesDefaultDocumentWithoutSilentlyOverwritingTheSavedLayout() {
+        val custom = document.copy(placements = listOf(document.placements.first()))
+        val state = initial().copy(start = StartScreenState(custom))
+
+        val safe = reduce(state, LauncherAction.EnterSafeMode)
+
+        assertEquals(LauncherRecoveryMode.SAFE_MODE, safe.state.recoveryMode)
+        assertEquals(document, safe.state.start.document)
+        assertTrue(safe.effects.none { it is LauncherEffect.PersistDocument })
+    }
+
     private fun open(state: LauncherEngineState, appId: LauncherAppId, token: LaunchToken): LauncherEngineState =
         reducer.reduce(
             state,

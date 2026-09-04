@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+option java_package = "com.yokuli.shell.storage.proto";
+option java_multiple_files = true;
+
+message LauncherStateProto {
+  int32 schema_version = 1;
+  StartDocumentProto start_document = 2;
+  string theme_mode = 3;
+  string accent = 4;
+  string language_tag = 5;
+  bool layout_locked = 6;
+  string last_launcher_page = 7;
+  string last_foreground_token = 8;
+  LauncherRecoveryProto recovery = 9;
+}
+
+message StartDocumentProto {
+  int32 schema_version = 1;
+  string profile_id = 2;
+  int32 default_layout_version = 3;
+  repeated TilePlacementProto placements = 4;
+}
+
+message TilePlacementProto {
+  string tile_id = 1;
+  string entry_id = 2;
+  string size = 3;
+  int32 column = 4;
+  int32 row = 5;
+}
+
+message LauncherRecoveryProto {
+  int32 startup_attempt_count = 1;
+  bool launch_pending = 2;
+  int64 last_launch_epoch_millis = 3;
+  bool safe_mode = 4;
+}

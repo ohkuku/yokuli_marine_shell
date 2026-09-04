@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 interface LauncherEngine {
@@ -29,6 +30,7 @@ class DefaultLauncherEngine(
     private val scope: CoroutineScope,
     private val reducer: LauncherReducer = DefaultLauncherReducer(),
 ) : LauncherEngine {
+    private val startsRestoring = !persistence.loaded.value
     private val actions = Channel<LauncherAction>(Channel.UNLIMITED)
     private val mutableState = MutableStateFlow(initialState())
     private val mutableEffects = MutableSharedFlow<LauncherEffect>(extraBufferCapacity = 32)
@@ -45,6 +47,17 @@ class DefaultLauncherEngine(
         scope.launch {
             hostPort.catalog.collect { catalog ->
                 dispatch(LauncherAction.CatalogChanged(catalog))
+            }
+        }
+        scope.launch {
+            persistence.incidents.collect { incident ->
+                dispatch(LauncherAction.PersistenceIncidentObserved(incident))
+            }
+        }
+        if (startsRestoring) {
+            scope.launch {
+                persistence.loaded.first { it }
+                dispatch(LauncherAction.RestorePersistedDocument(persistence.document.value))
             }
         }
     }
@@ -72,15 +85,24 @@ class DefaultLauncherEngine(
                 try {
                     persistence.saveDocument(effect.document)
                 } catch (error: Throwable) {
-                    mutableEffects.emit(
+                    publishEffect(
                         LauncherEffect.LogIncident(
                             LauncherIncident.PersistenceFailure(error.message ?: error.javaClass.simpleName),
                         ),
                     )
                 }
             }
-            mutableEffects.emit(effect)
+            publishEffect(effect)
         }
+    }
+
+    private suspend fun publishEffect(effect: LauncherEffect) {
+        if (effect is LauncherEffect.LogIncident) {
+            mutableState.value = mutableState.value.copy(
+                incidentLog = (mutableState.value.incidentLog + effect.incident).takeLast(MAX_RETAINED_INCIDENTS),
+            )
+        }
+        mutableEffects.emit(effect)
     }
 
     private fun initialState(): LauncherEngineState {
@@ -96,6 +118,11 @@ class DefaultLauncherEngine(
             allApps = AllAppsState(catalog.revision),
             tasks = InternalTaskState(),
             catalog = catalog,
+            recoveryMode = if (startsRestoring) LauncherRecoveryMode.RESTORING else LauncherRecoveryMode.NORMAL,
         )
+    }
+
+    private companion object {
+        const val MAX_RETAINED_INCIDENTS = 32
     }
 }
