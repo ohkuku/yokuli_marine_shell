@@ -26,8 +26,16 @@ android {
     }
     flavorDimensions += "shellMode"
     productFlavors {
-        create("standalone") { dimension = "shellMode" }
-        create("home") { dimension = "shellMode"; applicationIdSuffix = ".home"; versionNameSuffix = "-home" }
+        create("standalone") {
+            dimension = "shellMode"
+            buildConfigField("boolean", "SHELL_HOME_MODE", "false")
+        }
+        create("home") {
+            dimension = "shellMode"
+            applicationIdSuffix = ".home"
+            versionNameSuffix = "-home"
+            buildConfigField("boolean", "SHELL_HOME_MODE", "true")
+        }
     }
     signingConfigs {
         if (releaseKeystorePath != null) {

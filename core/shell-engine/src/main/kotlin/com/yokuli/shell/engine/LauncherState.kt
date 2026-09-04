@@ -26,6 +26,7 @@ enum class LauncherTransitionIntent {
     SIBLING_BACK,
     DEEPER_FORWARD,
     DEEPER_BACK,
+    TRANSIENT,
 }
 
 data class StartScreenState(
@@ -44,6 +45,7 @@ data class InternalAppTask(
     val taskId: InternalAppTaskId,
     val appId: LauncherAppId,
     val lastLaunchToken: LaunchToken,
+    val backStack: List<LaunchToken> = emptyList(),
     val savedUiStateKey: String? = null,
 )
 
@@ -53,6 +55,7 @@ data class InternalTaskState(val tasks: List<InternalAppTask> = emptyList()) {
 
 sealed interface LauncherTransient {
     data class ContextMenu(val entryId: LauncherEntryId) : LauncherTransient
+    data class Search(val query: String = "") : LauncherTransient
     data class UndoLayout(
         val transactionId: String,
         val reason: LayoutChangeReason,
@@ -73,6 +76,7 @@ data class LauncherEngineState(
     val catalog: LauncherCatalogSnapshot,
     val transient: LauncherTransient? = null,
     val systemOverlay: LauncherSystemOverlay? = null,
+    val recentsReturnSurface: LauncherSurface? = null,
     val transitionIntent: LauncherTransitionIntent = LauncherTransitionIntent.NONE,
     val nextTransactionId: Long = 1,
 )

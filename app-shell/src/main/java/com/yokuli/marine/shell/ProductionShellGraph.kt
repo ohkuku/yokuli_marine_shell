@@ -15,6 +15,7 @@ import com.yokuli.marine.feature.chart.ChartUiState
 import com.yokuli.marine.feature.chart.ChartWorkspace
 import com.yokuli.marine.feature.chart.MarineChartDemoSurface
 import com.yokuli.marine.feature.chart.MarineChartSurface
+import com.yokuli.marine.feature.chart.MarineChartTransitionSurface
 import com.yokuli.marine.feature.desktop.LauncherEntryUiState
 import com.yokuli.marine.feature.desktop.LauncherEntryVisualContribution
 import com.yokuli.marine.feature.desktop.MarineIconKind
@@ -50,7 +51,7 @@ data class ProductionShellRuntime(
     val mapConfigured: Boolean,
     val theme: WpThemeSpec,
     val language: AppLanguage,
-    val settingsSection: SettingsSection,
+    val heavyContentReady: Boolean,
     val pinnedTileCount: Int,
     val startDocumentVersion: Int,
     val versionName: String,
@@ -94,13 +95,15 @@ val productionInstalledApps = listOf(
         internalAppHost = InternalAppHost(ChartDestinations.AppId) { token ->
             check(token == ChartDestinations.Browse)
             val runtime = LocalProductionShellRuntime.current
-            val chartSurface: MarineChartSurface = if (runtime.mapConfigured) {
+            val chartSurface: MarineChartSurface = if (runtime.mapConfigured && runtime.heavyContentReady) {
                 { modifier ->
                     GoogleMarineChartSurface(
                         darkMode = runtime.theme.mode == WpThemeMode.DARK,
                         modifier = modifier.testTag("chart-surface-google"),
                     )
                 }
+            } else if (runtime.mapConfigured) {
+                { modifier -> MarineChartTransitionSurface(modifier) }
             } else {
                 { modifier -> MarineChartDemoSurface(modifier.testTag("chart-surface-demo")) }
             }
@@ -140,12 +143,9 @@ val productionInstalledApps = listOf(
             val runtime = LocalProductionShellRuntime.current
             val tokenSection = SettingsDestinations.section(token)
                 ?: error("Unknown Settings launch token: ${token.value}")
-            val section = runtime.settingsSection.let { remembered ->
-                if (remembered == SettingsSection.OVERVIEW) tokenSection else remembered
-            }
             SettingsWorkspace(
                 state = SettingsUiState(
-                    section = section,
+                    section = tokenSection,
                     theme = runtime.theme,
                     language = runtime.language,
                     mapConfigured = runtime.mapConfigured,

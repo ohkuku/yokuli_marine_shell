@@ -426,3 +426,13 @@ Stage 2.5 未观察 Pin/Unpin 动效，因此实现不填写 WP8 时间常数。
 ### English translation — Stage 8
 
 The meaningful Red failed on the absent Engine-owned context, explicit Pin/Unpin actions, reveal state, feedback, evidence, and CI gate. Green makes Pin/Unpin deterministic transactions with exact Undo, returns successful Pin to Start, reveals the new tile, preserves installed entries during Unpin, and prevents catalog additions or removals from silently rebuilding the desktop. Unobserved Pin motion remains explicitly derived rather than WP8 evidence.
+
+## Stage 9 — Navigation / Motion / Immersive / Virtual Keys
+
+7 项静态合同先以 `4 failures / 3 errors` 进入 Red，JVM/Android adapter Red 同时因统一 Input、Search、Recents、内部 route stack 和 host-exit effect 不存在而编译失败。Green 把虚拟键、Android Back 与 Activity 实际收到的键事件统一为 typed `LauncherInput -> LauncherAction -> serialized Engine`；HOME flavor 使用 `singleTask/onNewIntent`，没有谎称普通 App 能截获系统保留的实体 HOME。
+
+22 条真实 Activity story 第一次即通过虚拟 Start、Catalog Search、长按 Back Recents、Android Back/硬件键和 HOME intent。自审再增加 provisional layout Red，修复 Search/Recents 离开 Start 时的取消边界，并修复 catalog 更新后的悬空 Recents return surface。动效取自 Stage 2.5 已批准可见区间，MapView 延迟到轻量 plane settle 后挂载；虚拟键 54dp 区域和平台默认触感标为 `DERIVED_UNVERIFIED`，不伪造 WP8 灯效或输入 latency。
+
+### English translation — Stage 9
+
+Seven static contracts begin with four failures and three errors, while JVM and Android adapter Reds fail on absent typed input, Search, Recents, opaque route history, and host-exit semantics. Green routes every virtual and deliverable platform key through the serialized Engine, reuses the HOME Activity task, provides real catalog search and internal-task recents, binds motion to approved visible intervals, supports reduced motion, and delays MapView mounting. Self-review adds and fixes a provisional-layout cancellation regression and stale Recents return target.

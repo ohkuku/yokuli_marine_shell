@@ -13,6 +13,7 @@ class WpMotionPolicyTest {
         assertEquals(WpMotionFamily.SLIDE, forward.family)
         assertTrue(forward.initialTranslationXFraction > 0f)
         assertEquals(-forward.initialTranslationXFraction, back.initialTranslationXFraction, 0f)
+        assertEquals(700, forward.durationMillis)
     }
 
     @Test
@@ -25,6 +26,8 @@ class WpMotionPolicyTest {
         assertEquals(-forward.initialRotationYDegrees, back.initialRotationYDegrees, 0f)
         assertEquals(0f, forward.transformOriginX, 0f)
         assertEquals(1f, back.transformOriginX, 0f)
+        assertEquals(1_000, forward.durationMillis)
+        assertEquals(750, back.durationMillis)
     }
 
     @Test

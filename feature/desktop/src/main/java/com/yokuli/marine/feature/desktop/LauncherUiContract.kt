@@ -13,6 +13,7 @@ import com.yokuli.shell.engine.interaction.ShellOffset
 import com.yokuli.shell.engine.interaction.StartInteractionState
 import com.yokuli.shell.engine.LauncherTransient
 import com.yokuli.shell.engine.StartReveal
+import com.yokuli.shell.engine.InternalAppTaskId
 import com.yokuli.shell.engine.layout.GridCell
 
 enum class MarineIconKind { CHART, SETTINGS, APPS, DONE, UNPIN, RESIZE, PIN, INFO, GENERIC }
@@ -76,6 +77,8 @@ sealed interface LauncherUiAction {
     data class UnpinTile(val tileId: TileInstanceId) : LauncherUiAction
     data class AcknowledgeStartReveal(val tileId: TileInstanceId) : LauncherUiAction
     data object UndoLayout : LauncherUiAction
+    data class UpdateSearchQuery(val query: String) : LauncherUiAction
+    data class ActivateTask(val taskId: InternalAppTaskId) : LauncherUiAction
     data class ShowAppInfo(val entryId: LauncherEntryId) : LauncherUiAction
 }
 

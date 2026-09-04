@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "stage": 9,
+  "name": "App Navigation, Motion, Immersive Host, and Virtual Keys",
+  "branch": "codex/launcher-engine-batch-c",
+  "startingSha": "8aa88557e16ca3c2848df94ed8faf076e5678ea8",
+  "requiredCompletedStage": "Pin / Unpin / Context Menu",
+  "reviewedMeasurementHash": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+  "scope": "Launcher navigation, internal tasks, reviewed motion, immersive host, virtual and deliverable hardware key routing",
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

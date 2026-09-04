@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 9 — Navigation / Motion / Immersive / Virtual Keys
+
+- 壳内 Back/Start/Search、Android Back 与可投递硬件键统一为串行 Engine 输入；HOME flavor 通过 singleTask HOME intent 回 Start。
+- 新增真实 Catalog 搜索与内部任务 Recents；Settings 子页改用 opaque token 返回栈，Home 保留任务。
+- 默认沉浸式全屏，使用批准的可见动效区间、Reduced Motion 和 MapView 延迟挂载；未观察的虚拟键尺寸/触感明确为派生适配。
+
 ## Stage 8 — Pin / Unpin / Context Menu
 
 - All Apps context menus, Pin, Unpin, reveal and Undo are now serialized Engine actions and state.

@@ -14,6 +14,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -31,6 +32,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 
 /**
@@ -41,25 +43,29 @@ import androidx.compose.ui.unit.IntSize
 fun <T> WpSurfaceTransitionHost(
     targetState: T,
     intent: WpNavigationIntent,
+    reducedMotion: Boolean,
+    timings: WpMotionTimings,
     modifier: Modifier = Modifier,
-    content: @Composable (T) -> Unit,
+    content: @Composable (surface: T, heavyContentReady: Boolean) -> Unit,
 ) {
-    val plan = WpMotionPolicy.resolve(intent)
+    val plan = WpMotionPolicy.resolve(intent, reducedMotion, timings)
     var hasRenderedInitialSurface by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { hasRenderedInitialSurface = true }
+    val transition = updateTransition(targetState, label = "wp-surface-transition-state")
 
-    AnimatedContent(
-        targetState = targetState,
+    transition.AnimatedContent(
         modifier = modifier,
         transitionSpec = { plan.contentTransform() },
-        label = "wp-surface-transition",
     ) { surface ->
+        val heavyContentReady = surface == transition.targetState && !transition.isRunning
         WpPerspectiveEntrance(
             motionKey = surface as Any,
             plan = plan,
             animate = hasRenderedInitialSurface,
         ) {
-            content(surface)
+            Box(Modifier.testTag("shell-transition-plane")) {
+                content(surface, heavyContentReady)
+            }
         }
     }
 }

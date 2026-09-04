@@ -109,3 +109,9 @@ fun MarineChartDemoSurface(modifier: Modifier = Modifier) {
         drawPath(abstractLand, YokuliColors.ChartLand)
     }
 }
+
+/** Lightweight transition plane used until the shell navigation motion settles. */
+@Composable
+fun MarineChartTransitionSurface(modifier: Modifier = Modifier) {
+    Box(modifier.background(YokuliColors.ChartWater).testTag("chart-map-transition-plane"))
+}

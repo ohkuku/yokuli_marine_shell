@@ -20,6 +20,14 @@ data class WpMotionPlan(
     val transformOriginX: Float = .5f,
 )
 
+/** Timings copied from the human-reviewed Stage 2.5 emulator recording. */
+data class WpMotionTimings(
+    val pageSettleMillis: Int = 700,
+    val appOpenMillis: Int = 1_000,
+    val backReturnMillis: Int = 750,
+    val transientMillis: Int = 220,
+)
+
 data class WpPressPlan(
     val rotationXDegrees: Float,
     val rotationYDegrees: Float,
@@ -46,7 +54,11 @@ object WpPressPolicy {
 }
 
 object WpMotionPolicy {
-    fun resolve(intent: WpNavigationIntent, reducedMotion: Boolean = false): WpMotionPlan {
+    fun resolve(
+        intent: WpNavigationIntent,
+        reducedMotion: Boolean = false,
+        timings: WpMotionTimings = WpMotionTimings(),
+    ): WpMotionPlan {
         if (intent == WpNavigationIntent.SAFETY_CRITICAL) {
             return WpMotionPlan(family = WpMotionFamily.NONE, durationMillis = 0)
         }
@@ -56,31 +68,31 @@ object WpMotionPolicy {
         return when (intent) {
             WpNavigationIntent.SIBLING_FORWARD -> WpMotionPlan(
                 family = WpMotionFamily.SLIDE,
-                durationMillis = 245,
+                durationMillis = timings.pageSettleMillis,
                 initialTranslationXFraction = 1f,
             )
             WpNavigationIntent.SIBLING_BACK -> WpMotionPlan(
                 family = WpMotionFamily.SLIDE,
-                durationMillis = 245,
+                durationMillis = timings.pageSettleMillis,
                 initialTranslationXFraction = -1f,
             )
             WpNavigationIntent.DEEPER_FORWARD -> WpMotionPlan(
                 family = WpMotionFamily.TURNSTILE,
-                durationMillis = 260,
+                durationMillis = timings.appOpenMillis,
                 initialRotationYDegrees = -22f,
                 initialTranslationXFraction = .12f,
                 transformOriginX = 0f,
             )
             WpNavigationIntent.DEEPER_BACK -> WpMotionPlan(
                 family = WpMotionFamily.TURNSTILE,
-                durationMillis = 235,
+                durationMillis = timings.backReturnMillis,
                 initialRotationYDegrees = 22f,
                 initialTranslationXFraction = -.12f,
                 transformOriginX = 1f,
             )
             WpNavigationIntent.TRANSIENT -> WpMotionPlan(
                 family = WpMotionFamily.SWIVEL,
-                durationMillis = 220,
+                durationMillis = timings.transientMillis,
                 initialRotationXDegrees = 14f,
             )
             WpNavigationIntent.SAFETY_CRITICAL -> error("Handled above")

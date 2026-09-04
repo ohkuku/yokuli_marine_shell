@@ -4,6 +4,7 @@ import com.yokuli.shell.contract.LaunchResolution
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherCatalogSnapshot
 import com.yokuli.shell.contract.LauncherEntryId
+import com.yokuli.shell.contract.LauncherInput
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.UiText
@@ -37,6 +38,10 @@ sealed interface LauncherAction {
     data object ShowAllApps : LauncherAction
     data object Back : LauncherAction
     data object Home : LauncherAction
+    data object OpenSearch : LauncherAction
+    data class UpdateSearchQuery(val query: String) : LauncherAction
+    data object ShowRecents : LauncherAction
+    data class ActivateTask(val taskId: InternalAppTaskId) : LauncherAction
     data class Open(val token: LaunchToken) : LauncherAction
     data class CatalogChanged(val catalog: LauncherCatalogSnapshot) : LauncherAction
     data class ApplyLayoutProposal(val proposal: LayoutProposal) : LauncherAction
@@ -94,6 +99,14 @@ sealed interface LauncherEffect {
     data class LogIncident(val incident: LauncherIncident) : LauncherEffect
     data class ScrollStartToReveal(val tileId: TileInstanceId) : LauncherEffect
     data object OpenAndroidSettings : LauncherEffect
+    data object RequestHostExit : LauncherEffect
+}
+
+fun LauncherInput.toLauncherAction(): LauncherAction = when (this) {
+    LauncherInput.BACK -> LauncherAction.Back
+    LauncherInput.START -> LauncherAction.Home
+    LauncherInput.SEARCH -> LauncherAction.OpenSearch
+    LauncherInput.RECENTS -> LauncherAction.ShowRecents
 }
 
 interface LauncherReducer {
@@ -110,14 +123,24 @@ class DefaultLauncherReducer : LauncherReducer {
         action: LauncherAction,
         context: LauncherReducerContext,
     ): LauncherReduction = when (action) {
-        LauncherAction.ShowStart,
-        LauncherAction.Home -> LauncherReduction(
+        LauncherAction.ShowStart -> LauncherReduction(
             state.copy(
                 surface = LauncherSurface.Start,
                 transient = null,
-                transitionIntent = LauncherTransitionIntent.DEEPER_BACK,
+                transitionIntent = LauncherTransitionIntent.SIBLING_BACK,
             ),
         )
+
+        LauncherAction.Home -> home(state)
+        LauncherAction.OpenSearch -> LauncherReduction(
+            cancelForShellNavigation(state).copy(
+                transient = LauncherTransient.Search(),
+                transitionIntent = LauncherTransitionIntent.TRANSIENT,
+            ),
+        )
+        is LauncherAction.UpdateSearchQuery -> updateSearchQuery(state, action.query)
+        LauncherAction.ShowRecents -> showRecents(state)
+        is LauncherAction.ActivateTask -> activateTask(state, action.taskId)
 
         LauncherAction.ShowAllApps -> LauncherReduction(
             state.copy(
@@ -168,12 +191,95 @@ class DefaultLauncherReducer : LauncherReducer {
             else -> Unit
         }
         state.start.activeTransaction?.let { return cancel(state) }
-        val intent = if (state.surface == LauncherSurface.AllApps) {
-            LauncherTransitionIntent.SIBLING_BACK
-        } else {
-            LauncherTransitionIntent.DEEPER_BACK
+        return when (val surface = state.surface) {
+            LauncherSurface.Start -> LauncherReduction(state, listOf(LauncherEffect.RequestHostExit))
+            LauncherSurface.AllApps -> LauncherReduction(
+                state.copy(surface = LauncherSurface.Start, transitionIntent = LauncherTransitionIntent.SIBLING_BACK),
+            )
+            LauncherSurface.Recents -> LauncherReduction(
+                state.copy(
+                    surface = state.recentsReturnSurface ?: LauncherSurface.Start,
+                    recentsReturnSurface = null,
+                    transitionIntent = LauncherTransitionIntent.DEEPER_BACK,
+                ),
+            )
+            is LauncherSurface.InternalApp -> backWithinTask(state, surface.taskId)
         }
-        return LauncherReduction(state.copy(surface = LauncherSurface.Start, transitionIntent = intent))
+    }
+
+    private fun backWithinTask(state: LauncherEngineState, taskId: InternalAppTaskId): LauncherReduction {
+        val task = state.tasks.task(taskId)
+            ?: return LauncherReduction(
+                state.copy(surface = LauncherSurface.Start, transitionIntent = LauncherTransitionIntent.DEEPER_BACK),
+            )
+        val previous = task.backStack.lastOrNull()
+        if (previous == null) {
+            return LauncherReduction(
+                state.copy(surface = LauncherSurface.Start, transitionIntent = LauncherTransitionIntent.DEEPER_BACK),
+            )
+        }
+        val restored = task.copy(lastLaunchToken = previous, backStack = task.backStack.dropLast(1))
+        return LauncherReduction(
+            state.copy(
+                tasks = InternalTaskState(state.tasks.tasks.map { if (it.taskId == taskId) restored else it }),
+                transitionIntent = LauncherTransitionIntent.DEEPER_BACK,
+            ),
+        )
+    }
+
+    private fun home(state: LauncherEngineState): LauncherReduction {
+        val cancelled = cancelForShellNavigation(state)
+        return LauncherReduction(
+            cancelled.copy(
+                surface = LauncherSurface.Start,
+                transient = null,
+                recentsReturnSurface = null,
+                transitionIntent = LauncherTransitionIntent.DEEPER_BACK,
+            ),
+        )
+    }
+
+    private fun updateSearchQuery(state: LauncherEngineState, query: String): LauncherReduction {
+        if (state.transient !is LauncherTransient.Search) return LauncherReduction(state)
+        return LauncherReduction(state.copy(transient = LauncherTransient.Search(query)))
+    }
+
+    private fun showRecents(state: LauncherEngineState): LauncherReduction {
+        if (state.surface == LauncherSurface.Recents) return LauncherReduction(state)
+        val cancelled = cancelForShellNavigation(state)
+        return LauncherReduction(
+            cancelled.copy(
+                surface = LauncherSurface.Recents,
+                transient = null,
+                recentsReturnSurface = state.surface,
+                transitionIntent = LauncherTransitionIntent.TRANSIENT,
+            ),
+        )
+    }
+
+    private fun cancelForShellNavigation(state: LauncherEngineState): LauncherEngineState {
+        val cancelled = when {
+            state.start.interaction is StartInteractionState.Dragging ||
+                state.start.interaction is StartInteractionState.Resizing ||
+                state.start.interaction is StartInteractionState.Settling -> cancelTileOperation(state).state
+            state.start.activeTransaction != null -> cancel(state).state
+            else -> state
+        }
+        return cancelled.copy(
+            start = cancelled.start.copy(interaction = StartInteractionState.Idle, reveal = null),
+        )
+    }
+
+    private fun activateTask(state: LauncherEngineState, taskId: InternalAppTaskId): LauncherReduction {
+        if (state.tasks.task(taskId) == null) return LauncherReduction(state)
+        return LauncherReduction(
+            state.copy(
+                surface = LauncherSurface.InternalApp(taskId),
+                transient = null,
+                recentsReturnSurface = null,
+                transitionIntent = LauncherTransitionIntent.DEEPER_FORWARD,
+            ),
+        )
     }
 
     private fun open(
@@ -183,7 +289,15 @@ class DefaultLauncherReducer : LauncherReducer {
     ): LauncherReduction = when (resolution) {
         is LaunchResolution.Internal -> {
             val taskId = InternalAppTaskId(resolution.appId.value)
-            val task = InternalAppTask(taskId, resolution.appId, resolution.token)
+            val existing = state.tasks.tasks.firstOrNull { it.appId == resolution.appId }
+            val task = when {
+                existing == null -> InternalAppTask(taskId, resolution.appId, resolution.token)
+                existing.lastLaunchToken == resolution.token -> existing
+                else -> existing.copy(
+                    lastLaunchToken = resolution.token,
+                    backStack = existing.backStack + existing.lastLaunchToken,
+                )
+            }
             LauncherReduction(
                 state = state.copy(
                     surface = LauncherSurface.InternalApp(taskId),
@@ -221,6 +335,11 @@ class DefaultLauncherReducer : LauncherReducer {
         val tasks = state.tasks.tasks.filter { it.appId in installedApps }
         val currentTaskInstalled = (state.surface as? LauncherSurface.InternalApp)
             ?.let { current -> tasks.any { it.taskId == current.taskId } } ?: true
+        val recentsReturnSurface = state.recentsReturnSurface?.let { returnSurface ->
+            if (returnSurface is LauncherSurface.InternalApp && tasks.none { it.taskId == returnSurface.taskId }) {
+                LauncherSurface.Start
+            } else returnSurface
+        }
         val repairedState = state.copy(
             surface = if (currentTaskInstalled) state.surface else LauncherSurface.Start,
             start = state.start.copy(
@@ -238,6 +357,7 @@ class DefaultLauncherReducer : LauncherReducer {
             tasks = InternalTaskState(tasks),
             catalog = catalog,
             transient = if (catalogChanged) null else state.transient,
+            recentsReturnSurface = recentsReturnSurface,
         )
         val effects = buildList {
             repair.incidents.forEach { add(LauncherEffect.LogIncident(LauncherIncident.CatalogRepair(it))) }

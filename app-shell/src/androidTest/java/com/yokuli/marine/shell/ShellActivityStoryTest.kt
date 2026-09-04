@@ -1,6 +1,8 @@
 package com.yokuli.marine.shell
 
 import android.graphics.Color
+import android.content.Intent
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -258,6 +260,76 @@ class ShellActivityStoryTest {
     }
 
     @Test
+    fun virtualStartReturnsFromSettingsWithoutDestroyingItsTask() {
+        compose.onNodeWithTag("tile-settings").performClick()
+        compose.onNodeWithTag("settings-workspace").assertIsDisplayed()
+
+        compose.onNodeWithTag("virtual-key-start").performClick()
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.onNodeWithTag("virtual-key-back").performTouchInput { longClick() }
+
+        compose.onNodeWithTag("launcher-recents").assertIsDisplayed()
+        compose.onNodeWithTag("recent-task-settings").assertIsDisplayed()
+    }
+
+    @Test
+    fun virtualSearchFindsAndLaunchesInstalledEntry() {
+        compose.onNodeWithTag("virtual-key-search").performClick()
+        compose.onNodeWithTag("launcher-search-overlay").assertIsDisplayed()
+        compose.onNodeWithTag("launcher-search-field").assertIsDisplayed()
+
+        compose.onNodeWithTag("search-result-chart").performClick()
+        compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
+    }
+
+    @Test
+    fun virtualBackLongPressOpensRecents() {
+        compose.onNodeWithTag("tile-chart").performClick()
+        compose.onNodeWithTag("virtual-key-start").performClick()
+        compose.onNodeWithTag("virtual-key-back").performTouchInput { longClick() }
+
+        compose.onNodeWithTag("launcher-recents").assertIsDisplayed()
+        compose.onNodeWithTag("recent-task-chart").performClick()
+        compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
+    }
+
+    @Test
+    fun androidBackAndDeliveredHardwareKeysUseTheUnifiedInputPath() {
+        compose.onNodeWithTag("all-apps-entry").performClick()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+
+        dispatchHardwareKey(KeyEvent.KEYCODE_SEARCH)
+        compose.onNodeWithTag("launcher-search-overlay").assertIsDisplayed()
+        dispatchHardwareKey(KeyEvent.KEYCODE_BACK)
+        compose.onNodeWithTag("launcher-search-overlay").assertDoesNotExist()
+
+        compose.onNodeWithTag("tile-settings").performClick()
+        dispatchHardwareKey(KeyEvent.KEYCODE_HOME)
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun homeIntentReturnsToStartWithoutRecreatingActivity() {
+        compose.onNodeWithTag("tile-settings").performClick()
+        var before = 0
+        compose.activityRule.scenario.onActivity { activity ->
+            before = System.identityHashCode(activity)
+            activity.startActivity(
+                Intent(Intent.ACTION_MAIN)
+                    .setClass(activity, ShellActivity::class.java)
+                    .addCategory(Intent.CATEGORY_HOME)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { activity ->
+            assertEquals(before, System.identityHashCode(activity))
+        }
+    }
+
+    @Test
     fun square320UsesTheSameExplicitSpatialDocument() {
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent {
@@ -324,6 +396,14 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("tile-settings").performClick()
         compose.onNodeWithTag("settings-section-language").performClick()
         compose.onNodeWithTag("language-$tag").performClick()
+        compose.waitForIdle()
+    }
+
+    private fun dispatchHardwareKey(keyCode: Int) {
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+            activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        }
         compose.waitForIdle()
     }
 }

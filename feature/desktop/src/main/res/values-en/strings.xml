@@ -23,6 +23,16 @@
     <string name="already_pinned">this entry is already pinned to Start</string>
     <string name="pin_unavailable">this entry cannot be pinned to Start</string>
     <string name="layout_unavailable">Start layout could not be changed</string>
+    <string name="system_back">back</string>
+    <string name="system_start">start</string>
+    <string name="system_search">search</string>
+    <string name="search_title">search</string>
+    <string name="search_installed_apps">installed apps</string>
+    <string name="search_hint">type an app name</string>
+    <string name="search_no_results">no matching apps</string>
+    <string name="recents_title">recent</string>
+    <string name="recents_context">internal app tasks</string>
+    <string name="recents_empty">no internal app tasks yet</string>
     <string name="status_charging">charging</string>
     <string name="status_battery">%1$d%%</string>
 </resources>
