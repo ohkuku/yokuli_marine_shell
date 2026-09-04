@@ -2,7 +2,7 @@ package com.yokuli.shell.storage
 
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.engine.LauncherPersistenceIncident
 import com.yokuli.shell.engine.LauncherStartupHealth
@@ -33,7 +33,7 @@ class ProtoDataStoreLauncherPersistenceTest {
             TilePlacement(
                 TileInstanceId("tile-chart"),
                 LauncherEntryId("chart"),
-                WpTileSize.WIDE_4X2,
+                MarineTileSize.WIDE_4X2,
                 GridCell(0, 0),
             ),
         ),

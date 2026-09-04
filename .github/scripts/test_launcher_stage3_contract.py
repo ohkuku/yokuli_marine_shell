@@ -81,9 +81,9 @@ class LauncherStage3GeometryContractTest(unittest.TestCase):
         self.assertIn("profileId = WpReferenceProfiles.PHONE_PORTRAIT_4COL.id", graph)
         self.assertEqual(2, graph.count("TilePlacement("))
         self.assertIn("entryId = ChartDestinations.EntryId", graph)
-        self.assertIn("size = WpTileSize.WIDE_4X2", graph)
+        self.assertIn("size = MarineTileSize.WIDE_4X2", graph)
         self.assertIn("entryId = SettingsDestinations.EntryId", graph)
-        self.assertIn("size = WpTileSize.SMALL_1X1", graph)
+        self.assertIn("size = MarineTileSize.ICON_1X1", graph)
 
     def test_stage_report_and_named_ci_gate_exist(self):
         report = (STAGE / "REPORT.md").read_text()

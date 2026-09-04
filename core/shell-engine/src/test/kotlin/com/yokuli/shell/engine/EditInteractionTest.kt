@@ -8,7 +8,7 @@ import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.interaction.DragCellHysteresis
 import com.yokuli.shell.engine.interaction.EdgeAutoScrollPolicy
@@ -145,14 +145,20 @@ class EditInteractionTest {
     }
 
     @Test
-    fun smallMediumWideResizeCycleIsExact() {
+    fun sixSizeResizeCycleIsExact() {
         val first = resizeAndCommit(initial())
         val second = resizeAndCommit(first)
         val third = resizeAndCommit(second)
+        val fourth = resizeAndCommit(third)
+        val fifth = resizeAndCommit(fourth)
+        val sixth = resizeAndCommit(fifth)
 
-        assertEquals(WpTileSize.MEDIUM_2X2, first.start.document.size("a"))
-        assertEquals(WpTileSize.WIDE_4X2, second.start.document.size("a"))
-        assertEquals(WpTileSize.SMALL_1X1, third.start.document.size("a"))
+        assertEquals(MarineTileSize.COMPACT_2X1, first.start.document.size("a"))
+        assertEquals(MarineTileSize.STANDARD_2X2, second.start.document.size("a"))
+        assertEquals(MarineTileSize.WIDE_4X2, third.start.document.size("a"))
+        assertEquals(MarineTileSize.TALL_2X4, fourth.start.document.size("a"))
+        assertEquals(MarineTileSize.LARGE_4X4, fifth.start.document.size("a"))
+        assertEquals(MarineTileSize.ICON_1X1, sixth.start.document.size("a"))
     }
 
     private fun startDrag() = reduce(
@@ -182,14 +188,14 @@ class EditInteractionTest {
             entryId = LauncherEntryId(id),
             appId = appId,
             launchToken = LaunchToken("$id.root"),
-            defaultSize = WpTileSize.SMALL_1X1,
-            supportedSizes = WpTileSize.entries,
+            defaultSize = MarineTileSize.ICON_1X1,
+            supportedSizes = MarineTileSize.entries,
             pinPolicy = PinPolicy.PINNABLE,
         )
     }
 
     private fun placement(id: String, cell: GridCell) = TilePlacement(
-        TileInstanceId("tile-$id"), LauncherEntryId(id), WpTileSize.SMALL_1X1, cell,
+        TileInstanceId("tile-$id"), LauncherEntryId(id), MarineTileSize.ICON_1X1, cell,
     )
 
     private fun StartDocument.cell(id: String) = placements.single { it.entryId.value == id }.cell

@@ -7,7 +7,7 @@ import com.yokuli.shell.contract.LauncherCatalogContribution
 import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -39,8 +39,8 @@ class LauncherCatalogTest {
                     entryId = entryId,
                     appId = appId,
                     launchToken = LaunchToken("$id.root"),
-                    defaultSize = WpTileSize.SMALL_1X1,
-                    supportedSizes = listOf(WpTileSize.SMALL_1X1),
+                    defaultSize = MarineTileSize.ICON_1X1,
+                    supportedSizes = listOf(MarineTileSize.ICON_1X1),
                     pinPolicy = PinPolicy.PINNABLE,
                 ),
             )

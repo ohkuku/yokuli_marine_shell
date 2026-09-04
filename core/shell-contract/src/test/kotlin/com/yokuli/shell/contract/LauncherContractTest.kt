@@ -21,8 +21,8 @@ class LauncherContractTest {
             entryId = entryId,
             appId = appId,
             launchToken = LaunchToken("sample.open"),
-            defaultSize = WpTileSize.SMALL_1X1,
-            supportedSizes = listOf(WpTileSize.SMALL_1X1),
+            defaultSize = MarineTileSize.ICON_1X1,
+            supportedSizes = listOf(MarineTileSize.ICON_1X1),
             pinPolicy = PinPolicy.PINNABLE,
         )
         val snapshot = LauncherCatalogSnapshot(

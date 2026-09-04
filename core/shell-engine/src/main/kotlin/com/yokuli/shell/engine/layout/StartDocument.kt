@@ -2,7 +2,7 @@ package com.yokuli.shell.engine.layout
 
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.ProfileId
 
 data class GridCell(val column: Int, val row: Int)
@@ -10,7 +10,7 @@ data class GridCell(val column: Int, val row: Int)
 data class TilePlacement(
     val tileId: TileInstanceId,
     val entryId: LauncherEntryId,
-    val size: WpTileSize,
+    val size: MarineTileSize,
     val cell: GridCell,
 )
 

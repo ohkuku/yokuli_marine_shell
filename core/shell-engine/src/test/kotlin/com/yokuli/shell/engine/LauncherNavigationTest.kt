@@ -9,7 +9,7 @@ import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.StartDocument
@@ -20,8 +20,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherNavigationTest {
-    private val chart = entry("chart", "chart.browse", WpTileSize.WIDE_4X2)
-    private val settings = entry("settings", "settings.root", WpTileSize.SMALL_1X1)
+    private val chart = entry("chart", "chart.browse", MarineTileSize.WIDE_4X2)
+    private val settings = entry("settings", "settings.root", MarineTileSize.ICON_1X1)
     private val catalog = LauncherCatalogSnapshot(
         revision = 1,
         apps = listOf(chart, settings).map { LauncherAppDescriptor(it.appId, it.entryId) },
@@ -169,7 +169,7 @@ class LauncherNavigationTest {
         catalog = catalog,
     )
 
-    private fun entry(id: String, token: String, size: WpTileSize): LauncherEntryDescriptor {
+    private fun entry(id: String, token: String, size: MarineTileSize): LauncherEntryDescriptor {
         val appId = LauncherAppId(id)
         return LauncherEntryDescriptor(
             entryId = LauncherEntryId(id),

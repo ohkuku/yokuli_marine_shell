@@ -7,7 +7,8 @@ import com.yokuli.shell.contract.LauncherCatalogContribution
 import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
+import com.yokuli.shell.contract.TilePresentationKind
 
 object SettingsDestinations {
     val AppId = LauncherAppId("settings")
@@ -39,9 +40,14 @@ object SettingsShellContribution : LauncherCatalogContribution {
             entryId = SettingsDestinations.EntryId,
             appId = SettingsDestinations.AppId,
             launchToken = SettingsDestinations.Overview,
-            defaultSize = WpTileSize.SMALL_1X1,
-            supportedSizes = listOf(WpTileSize.SMALL_1X1, WpTileSize.MEDIUM_2X2),
+            defaultSize = MarineTileSize.ICON_1X1,
+            supportedSizes = listOf(
+                MarineTileSize.ICON_1X1,
+                MarineTileSize.COMPACT_2X1,
+                MarineTileSize.STANDARD_2X2,
+            ),
             pinPolicy = PinPolicy.PINNABLE,
+            presentationKind = TilePresentationKind.STATIC,
         ),
     )
 }

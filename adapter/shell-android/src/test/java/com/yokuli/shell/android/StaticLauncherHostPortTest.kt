@@ -8,7 +8,7 @@ import com.yokuli.shell.contract.LauncherCatalogSnapshot
 import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -28,8 +28,8 @@ class StaticLauncherHostPortTest {
                     entryId = entryId,
                     appId = appId,
                     launchToken = token,
-                    defaultSize = WpTileSize.WIDE_4X2,
-                    supportedSizes = listOf(WpTileSize.WIDE_4X2),
+                    defaultSize = MarineTileSize.WIDE_4X2,
+                    supportedSizes = listOf(MarineTileSize.WIDE_4X2),
                     pinPolicy = PinPolicy.PINNABLE,
                 ),
             ),
@@ -57,8 +57,8 @@ class StaticLauncherHostPortTest {
                     entryId = entryId,
                     appId = appId,
                     launchToken = token,
-                    defaultSize = WpTileSize.WIDE_4X2,
-                    supportedSizes = listOf(WpTileSize.WIDE_4X2),
+                    defaultSize = MarineTileSize.WIDE_4X2,
+                    supportedSizes = listOf(MarineTileSize.WIDE_4X2),
                     pinPolicy = PinPolicy.PINNABLE,
                 ),
             ),

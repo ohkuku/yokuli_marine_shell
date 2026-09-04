@@ -33,7 +33,7 @@ import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.LauncherCatalogContribution
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.catalog.LauncherCatalog
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
@@ -187,13 +187,13 @@ val defaultStartDocument = StartDocument(
         TilePlacement(
             tileId = TileInstanceId("tile-chart"),
             entryId = ChartDestinations.EntryId,
-            size = WpTileSize.WIDE_4X2,
+            size = MarineTileSize.WIDE_4X2,
             cell = GridCell(column = 0, row = 0),
         ),
         TilePlacement(
             tileId = TileInstanceId("tile-settings"),
             entryId = SettingsDestinations.EntryId,
-            size = WpTileSize.SMALL_1X1,
+            size = MarineTileSize.ICON_1X1,
             cell = GridCell(column = 0, row = 2),
         ),
     ),

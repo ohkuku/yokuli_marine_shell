@@ -54,9 +54,13 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertIn("rememberShellWindowMetrics", activity)
 
     def test_marine_tile_contract_has_all_six_sizes(self):
-        tile_contract = self.text("core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/layout/MarineTile.kt")
+        tile_contract = self.text("core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineTile.kt")
         for token in ("ICON_1X1", "COMPACT_2X1", "STANDARD_2X2", "WIDE_4X2", "TALL_2X4", "LARGE_4X4"):
             self.assertIn(token, tile_contract)
+        self.assertIn("TilePresentationKind", tile_contract)
+        renderer = self.text("feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt")
+        for token in ("ICON_1X1", "COMPACT_2X1", "STANDARD_2X2", "WIDE_4X2", "TALL_2X4", "LARGE_4X4"):
+            self.assertIn(token, renderer)
 
     def test_adaptive_packer_is_rank_and_insertion_based(self):
         packer = self.text("core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/layout/AdaptiveTilePacker.kt")

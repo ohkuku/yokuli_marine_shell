@@ -6,7 +6,7 @@ import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.LayoutChangeReason
@@ -24,11 +24,11 @@ import org.junit.Test
 
 class StartDocumentTest {
     private val profile = WpReferenceProfiles.PHONE_PORTRAIT_4COL
-    private val chart = descriptor("chart", WpTileSize.WIDE_4X2, WpTileSize.entries)
+    private val chart = descriptor("chart", MarineTileSize.WIDE_4X2, MarineTileSize.entries)
     private val settings = descriptor(
         "settings",
-        WpTileSize.SMALL_1X1,
-        listOf(WpTileSize.SMALL_1X1, WpTileSize.MEDIUM_2X2),
+        MarineTileSize.ICON_1X1,
+        listOf(MarineTileSize.ICON_1X1, MarineTileSize.STANDARD_2X2),
     )
     private val entries = listOf(chart, settings)
     private val default = StartDocument(
@@ -36,8 +36,8 @@ class StartDocumentTest {
         profileId = profile.id,
         defaultLayoutVersion = 1,
         placements = listOf(
-            TilePlacement(TileInstanceId("tile-chart"), chart.entryId, WpTileSize.WIDE_4X2, GridCell(0, 0)),
-            TilePlacement(TileInstanceId("tile-settings"), settings.entryId, WpTileSize.SMALL_1X1, GridCell(0, 2)),
+            TilePlacement(TileInstanceId("tile-chart"), chart.entryId, MarineTileSize.WIDE_4X2, GridCell(0, 0)),
+            TilePlacement(TileInstanceId("tile-settings"), settings.entryId, MarineTileSize.ICON_1X1, GridCell(0, 2)),
         ),
     )
 
@@ -65,7 +65,7 @@ class StartDocumentTest {
         assertEquals(LayoutChangeReason.RESIZE, transaction.reason)
         assertEquals(default, transaction.before)
         assertEquals(GridCell(0, 0), transaction.after.placements.first().cell)
-        assertEquals(WpTileSize.MEDIUM_2X2, transaction.after.placements.last().size)
+        assertEquals(MarineTileSize.STANDARD_2X2, transaction.after.placements.last().size)
         assertTrue(StartDocumentValidator.isValid(transaction.after, entries, profile))
     }
 
@@ -91,13 +91,13 @@ class StartDocumentTest {
                 TilePlacement(
                     TileInstanceId("unknown"),
                     LauncherEntryId("unknown"),
-                    WpTileSize.SMALL_1X1,
+                    MarineTileSize.ICON_1X1,
                     GridCell(2, 2),
                 ),
                 TilePlacement(
                     TileInstanceId("duplicate-settings"),
                     settings.entryId,
-                    WpTileSize.SMALL_1X1,
+                    MarineTileSize.ICON_1X1,
                     GridCell(0, 2),
                 ),
             ),
@@ -126,8 +126,8 @@ class StartDocumentTest {
 
     private fun descriptor(
         id: String,
-        defaultSize: WpTileSize,
-        sizes: List<WpTileSize>,
+        defaultSize: MarineTileSize,
+        sizes: List<MarineTileSize>,
     ): LauncherEntryDescriptor {
         val app = LauncherAppId(id)
         return LauncherEntryDescriptor(

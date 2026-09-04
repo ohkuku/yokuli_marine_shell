@@ -28,12 +28,6 @@ value class TileInstanceId(val value: String) {
     }
 }
 
-enum class WpTileSize(val columns: Int, val rows: Int) {
-    SMALL_1X1(1, 1),
-    MEDIUM_2X2(2, 2),
-    WIDE_4X2(4, 2),
-}
-
 enum class PinPolicy {
     PINNABLE,
     FIXED,

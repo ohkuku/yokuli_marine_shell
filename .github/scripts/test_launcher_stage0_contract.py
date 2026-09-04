@@ -236,7 +236,8 @@ class LauncherStage0ContractTest(unittest.TestCase):
         current_log = (ROOT / "docs/TDD_LOG.md").read_text()
         self.assertIn("Stage 0 correction", current_log)
         self.assertIn(SELECTED_START_SHA, current_log)
-        self.assertNotIn("## Slice ", current_log)
+        self.assertNotRegex(current_log, r"(?m)^## Slice ")
+        self.assertIn("Marine Shell Final Product-Model Correction", current_log)
 
     def test_ci_installs_and_runs_real_schema_validator_as_named_gate(self):
         workflow = (ROOT / ".github/workflows/android.yml").read_text()

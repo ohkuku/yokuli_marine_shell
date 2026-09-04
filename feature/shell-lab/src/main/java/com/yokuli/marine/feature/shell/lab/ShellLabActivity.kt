@@ -31,7 +31,7 @@ import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.StartDocument
@@ -87,8 +87,8 @@ internal fun demoDescriptors(count: Int) = List(count) { index ->
         entryId = id,
         appId = appId,
         launchToken = LaunchToken("demo.${index + 1}"),
-        defaultSize = if (index % 7 == 0) WpTileSize.WIDE_4X2 else WpTileSize.SMALL_1X1,
-        supportedSizes = WpTileSize.entries,
+        defaultSize = if (index % 7 == 0) MarineTileSize.WIDE_4X2 else MarineTileSize.ICON_1X1,
+        supportedSizes = MarineTileSize.entries,
         pinPolicy = PinPolicy.PINNABLE,
     )
 }
@@ -97,15 +97,15 @@ internal fun demoDocument(entries: List<LauncherEntryDescriptor>): StartDocument
     var row = 0
     val placements = entries.mapIndexed { index, entry ->
         val size = entry.defaultSize
-        val column = if (size == WpTileSize.WIDE_4X2) 0 else index % 4
-        if (size == WpTileSize.WIDE_4X2 && index > 0) row += 1
+        val column = if (size == MarineTileSize.WIDE_4X2) 0 else index % 4
+        if (size == MarineTileSize.WIDE_4X2 && index > 0) row += 1
         val placement = TilePlacement(
             TileInstanceId("tile-${entry.entryId.value}"),
             entry.entryId,
             size,
             GridCell(column, row),
         )
-        if (size == WpTileSize.WIDE_4X2) row += 2 else if (column == 3) row += 1
+        if (size == MarineTileSize.WIDE_4X2) row += 2 else if (column == 3) row += 1
         placement
     }
     return StartDocument(

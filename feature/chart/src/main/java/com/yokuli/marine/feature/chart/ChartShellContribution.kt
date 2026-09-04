@@ -7,7 +7,8 @@ import com.yokuli.shell.contract.LauncherCatalogContribution
 import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
+import com.yokuli.shell.contract.TilePresentationKind
 
 object ChartDestinations {
     val AppId = LauncherAppId("chart")
@@ -22,9 +23,14 @@ object ChartShellContribution : LauncherCatalogContribution {
             entryId = ChartDestinations.EntryId,
             appId = ChartDestinations.AppId,
             launchToken = ChartDestinations.Browse,
-            defaultSize = WpTileSize.WIDE_4X2,
-            supportedSizes = listOf(WpTileSize.SMALL_1X1, WpTileSize.MEDIUM_2X2, WpTileSize.WIDE_4X2),
+            defaultSize = MarineTileSize.WIDE_4X2,
+            supportedSizes = listOf(
+                MarineTileSize.STANDARD_2X2,
+                MarineTileSize.WIDE_4X2,
+                MarineTileSize.LARGE_4X4,
+            ),
             pinPolicy = PinPolicy.PINNABLE,
+            presentationKind = TilePresentationKind.STATUS,
         ),
     )
 }

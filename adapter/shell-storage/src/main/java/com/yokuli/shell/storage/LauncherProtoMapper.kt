@@ -2,7 +2,7 @@ package com.yokuli.shell.storage
 
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.CURRENT_LAUNCHER_PERSISTENCE_SCHEMA
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.engine.LauncherStartupHealth
@@ -76,12 +76,12 @@ object LauncherProtoMapper {
     private fun decodeDocument(proto: StartDocumentProto): StartDocument {
         var structurallyValid = true
         val placements = proto.placementsList.map { placement ->
-            val size = WpTileSize.entries.firstOrNull { it.name == placement.size }
+            val size = MarineTileSize.entries.firstOrNull { it.name == placement.size }
             if (size == null) structurallyValid = false
             TilePlacement(
                 tileId = TileInstanceId(placement.tileId),
                 entryId = LauncherEntryId(placement.entryId),
-                size = size ?: WpTileSize.SMALL_1X1,
+                size = size ?: MarineTileSize.ICON_1X1,
                 cell = GridCell(placement.column, placement.row),
             )
         }

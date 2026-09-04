@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,6 +58,7 @@ import com.yokuli.marine.core.design.wpThemeModeName
 import com.yokuli.marine.core.design.wpTileAccentName
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.contract.TileInstanceId
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.StartViewport
 import com.yokuli.shell.engine.geometry.WpStartGeometryCalculator
 import com.yokuli.shell.engine.interaction.DragCellHysteresis
@@ -202,6 +204,7 @@ fun YokuliStartScreen(
                     var previousTarget = remember(placement.tileId) { placement.cell }
                     WpTile(
                         entry = entry,
+                        tileSize = placement.size,
                         width = cell * placement.size.columns + seam * (placement.size.columns - 1),
                         height = cell * placement.size.rows + seam * (placement.size.rows - 1),
                         editing = editing,
@@ -274,6 +277,7 @@ fun YokuliStartScreen(
 @Composable
 private fun WpTile(
     entry: LauncherEntryUiState,
+    tileSize: MarineTileSize,
     width: Dp,
     height: Dp,
     editing: Boolean,
@@ -365,20 +369,71 @@ private fun WpTile(
             )
             .then(dragModifier).padding(tileInset),
     ) {
-        MarineIcon(entry.icon, colors.onAccent, Modifier.align(Alignment.TopStart).size(if (isSmall) 22.dp else 30.dp))
-        if (!isSmall) {
-            Column(Modifier.align(Alignment.CenterStart)) {
-                WpText(entry.headline, if (height < 100.dp) 18 else 31, color = colors.onAccent, weight = FontWeight.Light)
-                WpText(entry.detail, if (height < 100.dp) 10 else 13, color = colors.onAccent.copy(alpha = .82f))
-            }
-        }
-        WpText(entry.title, if (isSmall) 11 else 13, color = colors.onAccent, modifier = Modifier.align(Alignment.BottomStart))
+        MarineTileContent(entry, tileSize)
         if (editing && selected) WpTileEditOverlay(compact = isSmall, onUnpin, onResize)
         if (revealing) {
             Box(
                 Modifier.fillMaxSize().border(3.dp, colors.onAccent)
                     .alpha(revealProgress.coerceIn(0f, 1f)).testTag("tile-reveal-highlight"),
             )
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.MarineTileContent(entry: LauncherEntryUiState, size: MarineTileSize) {
+    val onAccent = LocalWpTheme.current.onAccent
+    when (size) {
+        MarineTileSize.ICON_1X1 ->
+            MarineIcon(entry.icon, onAccent, Modifier.align(Alignment.Center).size(25.dp))
+
+        MarineTileSize.COMPACT_2X1 -> Row(
+            Modifier.align(Alignment.CenterStart).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MarineIcon(entry.icon, onAccent, Modifier.size(23.dp))
+            Column(Modifier.padding(start = 8.dp)) {
+                WpText(entry.headline, 17, color = onAccent, weight = FontWeight.Light)
+                WpText(entry.title, 10, color = onAccent.copy(alpha = .82f))
+            }
+        }
+
+        MarineTileSize.STANDARD_2X2 -> {
+            MarineIcon(entry.icon, onAccent, Modifier.align(Alignment.TopStart).size(28.dp))
+            Column(Modifier.align(Alignment.CenterStart)) {
+                WpText(entry.headline, 25, color = onAccent, weight = FontWeight.Light)
+                WpText(entry.detail, 11, color = onAccent.copy(alpha = .82f))
+            }
+            WpText(entry.title, 12, color = onAccent, modifier = Modifier.align(Alignment.BottomStart))
+        }
+
+        MarineTileSize.WIDE_4X2 -> {
+            MarineIcon(entry.icon, onAccent, Modifier.align(Alignment.TopStart).size(30.dp))
+            Column(Modifier.align(Alignment.CenterStart)) {
+                WpText(entry.headline, 31, color = onAccent, weight = FontWeight.Light)
+                WpText(entry.detail, 13, color = onAccent.copy(alpha = .82f))
+            }
+            WpText(entry.title, 13, color = onAccent, modifier = Modifier.align(Alignment.BottomStart))
+        }
+
+        MarineTileSize.TALL_2X4 -> {
+            MarineIcon(entry.icon, onAccent, Modifier.align(Alignment.TopStart).size(34.dp))
+            Column(Modifier.align(Alignment.CenterStart)) {
+                WpText(entry.headline, 34, color = onAccent, weight = FontWeight.Light)
+                WpText(entry.detail, 14, color = onAccent.copy(alpha = .82f), modifier = Modifier.padding(top = 8.dp))
+            }
+            WpText(entry.title, 14, color = onAccent, modifier = Modifier.align(Alignment.BottomStart))
+        }
+
+        MarineTileSize.LARGE_4X4 -> {
+            Row(Modifier.align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
+                MarineIcon(entry.icon, onAccent, Modifier.size(36.dp))
+                WpText(entry.title, 16, color = onAccent, modifier = Modifier.padding(start = 10.dp))
+            }
+            Column(Modifier.align(Alignment.CenterStart)) {
+                WpText(entry.headline, 42, color = onAccent, weight = FontWeight.Light)
+                WpText(entry.detail, 16, color = onAccent.copy(alpha = .82f), modifier = Modifier.padding(top = 10.dp))
+            }
         }
     }
 }

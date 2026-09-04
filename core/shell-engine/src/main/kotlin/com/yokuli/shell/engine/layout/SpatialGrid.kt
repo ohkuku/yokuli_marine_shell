@@ -1,7 +1,7 @@
 package com.yokuli.shell.engine.layout
 
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpLayoutPolicy
 import kotlin.math.abs
 
@@ -46,7 +46,7 @@ interface TileCollisionSolver {
         document: StartDocument,
         movingTile: TileInstanceId,
         target: GridCell,
-        size: WpTileSize,
+        size: MarineTileSize,
         policy: WpLayoutPolicy,
     ): SpatialLayoutProposal
 }
@@ -62,7 +62,7 @@ class LocalTileCollisionSolver(
         document: StartDocument,
         movingTile: TileInstanceId,
         target: GridCell,
-        size: WpTileSize,
+        size: MarineTileSize,
         policy: WpLayoutPolicy,
     ): SpatialLayoutProposal {
         if (!policy.allowIntentionalWhitespace) {

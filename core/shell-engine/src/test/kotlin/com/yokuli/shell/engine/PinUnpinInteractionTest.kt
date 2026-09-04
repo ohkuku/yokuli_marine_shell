@@ -8,7 +8,7 @@ import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.LayoutChangeReason
@@ -21,9 +21,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PinUnpinInteractionTest {
-    private val chart = descriptor("chart", WpTileSize.WIDE_4X2)
-    private val settings = descriptor("settings", WpTileSize.SMALL_1X1)
-    private val extra = descriptor("extra", WpTileSize.MEDIUM_2X2)
+    private val chart = descriptor("chart", MarineTileSize.WIDE_4X2)
+    private val settings = descriptor("settings", MarineTileSize.ICON_1X1)
+    private val extra = descriptor("extra", MarineTileSize.STANDARD_2X2)
     private val catalog = snapshot(1, listOf(chart, settings, extra))
     private val document = StartDocument(
         schemaVersion = 1,
@@ -144,12 +144,12 @@ class PinUnpinInteractionTest {
         catalog = catalog,
     )
 
-    private fun descriptor(id: String, size: WpTileSize) = LauncherEntryDescriptor(
+    private fun descriptor(id: String, size: MarineTileSize) = LauncherEntryDescriptor(
         entryId = LauncherEntryId(id),
         appId = LauncherAppId(id),
         launchToken = LaunchToken("$id.root"),
         defaultSize = size,
-        supportedSizes = WpTileSize.entries,
+        supportedSizes = MarineTileSize.entries,
         pinPolicy = PinPolicy.PINNABLE,
     )
 

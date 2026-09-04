@@ -84,6 +84,19 @@ Marine correction contract                              Safe chrome slice PASS
   :app-shell:compileStandaloneDebugKotlin                PASS (192 tasks)
 ```
 
+### Slice 5 — Marine Tile Contract
+
+Red 先加入尺寸、内容布局和 Safety cycle 合同；由于 `MarineTileSize`、`TilePresentationKind` 和六个独立 layout 尚不存在而编译失败。
+
+Green 用 `MarineTileSize` 替代三尺寸 WP 类型，支持 1×1、2×1、2×2、4×2、2×4、4×4，并为每一尺寸绑定不同内容布局。Chart 只声明 2×2/4×2/4×4，Settings 只声明 1×1/2×1/2×2；Catalog 同时声明 presentation kind，Safety 明确不可自动翻走。Desktop Renderer 对六种尺寸分别排版，不再把同一内容单纯缩放裁切。
+
+```text
+MarineTile contract tests                               PASS (3/3)
+core:shell-engine tests                                 PASS
+adapter:shell-storage tests                             PASS
+app-shell standalone Debug Kotlin compile               PASS (193 tasks)
+```
+
 状态：`STAGE_2_5_HUMAN_REVIEWED_APPROVED`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
 
 ## Stage 0 — Freeze & Reference Contract

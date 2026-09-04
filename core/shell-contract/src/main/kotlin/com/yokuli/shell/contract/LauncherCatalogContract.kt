@@ -15,9 +15,10 @@ data class LauncherEntryDescriptor(
     val entryId: LauncherEntryId,
     val appId: LauncherAppId,
     val launchToken: LaunchToken,
-    val defaultSize: WpTileSize,
-    val supportedSizes: List<WpTileSize>,
+    val defaultSize: MarineTileSize,
+    val supportedSizes: List<MarineTileSize>,
     val pinPolicy: PinPolicy,
+    val presentationKind: TilePresentationKind = TilePresentationKind.STATIC,
 )
 
 interface LauncherCatalogContribution {

@@ -58,7 +58,7 @@ class LauncherStage7EditDragResizeContractTest(unittest.TestCase):
             "invalidDropReturnsOrigin",
             "pointerCancelRestoresCommittedDocument",
             "catalogChangeCancelsDragSafely",
-            "smallMediumWideResizeCycleIsExact",
+            "sixSizeResizeCycleIsExact",
         ):
             self.assertIn(scenario, tests)
 

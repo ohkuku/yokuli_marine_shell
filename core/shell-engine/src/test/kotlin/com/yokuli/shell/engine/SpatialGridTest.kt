@@ -6,7 +6,7 @@ import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.LocalTileCollisionSolver
@@ -27,8 +27,8 @@ class SpatialGridTest {
     @Test
     fun occupancyIndexAnswersExplicitCells() {
         val document = documentOf(
-            placement("a", GridCell(0, 0), WpTileSize.MEDIUM_2X2),
-            placement("b", GridCell(3, 3), WpTileSize.SMALL_1X1),
+            placement("a", GridCell(0, 0), MarineTileSize.STANDARD_2X2),
+            placement("b", GridCell(3, 3), MarineTileSize.ICON_1X1),
         )
 
         val index = StartOccupancyIndex(document)
@@ -42,16 +42,16 @@ class SpatialGridTest {
     @Test
     fun movingOneTilePreservesEveryUnaffectedCoordinate() {
         val original = documentOf(
-            placement("moving", GridCell(0, 0), WpTileSize.SMALL_1X1),
-            placement("collision", GridCell(1, 0), WpTileSize.SMALL_1X1),
-            placement("unrelated", GridCell(3, 4), WpTileSize.SMALL_1X1),
+            placement("moving", GridCell(0, 0), MarineTileSize.ICON_1X1),
+            placement("collision", GridCell(1, 0), MarineTileSize.ICON_1X1),
+            placement("unrelated", GridCell(3, 4), MarineTileSize.ICON_1X1),
         )
 
         val accepted = solver.propose(
             original,
             TileInstanceId("tile-moving"),
             GridCell(1, 0),
-            WpTileSize.SMALL_1X1,
+            MarineTileSize.ICON_1X1,
             profile.layoutPolicy,
         ) as SpatialLayoutProposal.Accepted
 
@@ -63,23 +63,23 @@ class SpatialGridTest {
     @Test
     fun proposalIsDeterministicAndPreservesWhitespace() {
         val original = documentOf(
-            placement("moving", GridCell(0, 0), WpTileSize.SMALL_1X1),
-            placement("collision", GridCell(2, 0), WpTileSize.SMALL_1X1),
-            placement("after-gap", GridCell(0, 5), WpTileSize.SMALL_1X1),
+            placement("moving", GridCell(0, 0), MarineTileSize.ICON_1X1),
+            placement("collision", GridCell(2, 0), MarineTileSize.ICON_1X1),
+            placement("after-gap", GridCell(0, 5), MarineTileSize.ICON_1X1),
         )
 
         val first = solver.propose(
             original,
             TileInstanceId("tile-moving"),
             GridCell(2, 0),
-            WpTileSize.SMALL_1X1,
+            MarineTileSize.ICON_1X1,
             profile.layoutPolicy,
         )
         val second = solver.propose(
             original,
             TileInstanceId("tile-moving"),
             GridCell(2, 0),
-            WpTileSize.SMALL_1X1,
+            MarineTileSize.ICON_1X1,
             profile.layoutPolicy,
         )
 
@@ -92,7 +92,7 @@ class SpatialGridTest {
     @Test
     fun sixtySyntheticTilesRemainValidAndStable() {
         val placements = (0 until 60).map { index ->
-            placement("entry-$index", GridCell(index % 4, index / 4), WpTileSize.SMALL_1X1)
+            placement("entry-$index", GridCell(index % 4, index / 4), MarineTileSize.ICON_1X1)
         }
         val entries = placements.map { descriptor(it.entryId.value) }
         val original = documentOf(*placements.toTypedArray())
@@ -101,7 +101,7 @@ class SpatialGridTest {
             original,
             placements.first().tileId,
             GridCell(1, 0),
-            WpTileSize.SMALL_1X1,
+            MarineTileSize.ICON_1X1,
             profile.layoutPolicy,
         ) as SpatialLayoutProposal.Accepted
 
@@ -115,7 +115,7 @@ class SpatialGridTest {
                 original,
                 placements.first().tileId,
                 GridCell(1, 0),
-                WpTileSize.SMALL_1X1,
+                MarineTileSize.ICON_1X1,
                 profile.layoutPolicy,
             ),
         )
@@ -128,7 +128,7 @@ class SpatialGridTest {
         placements = placements.toList(),
     )
 
-    private fun placement(id: String, cell: GridCell, size: WpTileSize) = TilePlacement(
+    private fun placement(id: String, cell: GridCell, size: MarineTileSize) = TilePlacement(
         tileId = TileInstanceId("tile-$id"),
         entryId = LauncherEntryId(id),
         size = size,
@@ -141,8 +141,8 @@ class SpatialGridTest {
             entryId = LauncherEntryId(id),
             appId = appId,
             launchToken = LaunchToken("$id.root"),
-            defaultSize = WpTileSize.SMALL_1X1,
-            supportedSizes = listOf(WpTileSize.SMALL_1X1),
+            defaultSize = MarineTileSize.ICON_1X1,
+            supportedSizes = listOf(MarineTileSize.ICON_1X1),
             pinPolicy = PinPolicy.PINNABLE,
         )
     }

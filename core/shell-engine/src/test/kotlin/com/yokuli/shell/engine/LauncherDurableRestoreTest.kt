@@ -12,7 +12,7 @@ import com.yokuli.shell.contract.LauncherSystemStatus
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileContentSnapshot
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.StartDocument
@@ -32,8 +32,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherDurableRestoreTest {
-    private val chart = descriptor("chart", WpTileSize.WIDE_4X2)
-    private val settings = descriptor("settings", WpTileSize.SMALL_1X1)
+    private val chart = descriptor("chart", MarineTileSize.WIDE_4X2)
+    private val settings = descriptor("settings", MarineTileSize.ICON_1X1)
     private val catalog = LauncherCatalogSnapshot(
         revision = 1,
         apps = listOf(chart, settings).map { LauncherAppDescriptor(it.appId, it.entryId) },
@@ -99,14 +99,14 @@ class LauncherDurableRestoreTest {
         scope.cancel()
     }
 
-    private fun descriptor(id: String, size: WpTileSize): LauncherEntryDescriptor {
+    private fun descriptor(id: String, size: MarineTileSize): LauncherEntryDescriptor {
         val appId = LauncherAppId(id)
         return LauncherEntryDescriptor(
             entryId = LauncherEntryId(id),
             appId = appId,
             launchToken = LaunchToken("$id.root"),
             defaultSize = size,
-            supportedSizes = WpTileSize.entries,
+            supportedSizes = MarineTileSize.entries,
             pinPolicy = PinPolicy.PINNABLE,
         )
     }
