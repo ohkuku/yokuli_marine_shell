@@ -12,15 +12,15 @@ Yokuli OS 当前只施工一个与应用解耦、可验证、可持久化并能�
 
 ```text
 branch: codex/launcher-engine
-stage: 0 correction — Reference & Baseline Contracts
-starting SHA: ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7
-correction starting SHA: 98121412893d5331b22d4327463794993a4a4eff
+stage: 1 — Product Surface Reduction
+starting tag: launcher-engine-stage0-approved-v1.1
+starting SHA: 16b0e5cd1c8fa2e5f4b78aefadf3fa7c012698b2
 approval: PENDING_HUMAN_REVIEW
 ```
 
-仓库所有者明确要求从最新提交 `ca84ef9` 开始，覆盖 Master 附件中的旧 reviewed SHA。人工审查后，Master 在 Stage 0 获批前升级为 v1.1：保留 v1.0 哈希，并在 Stage 2 与 Geometry 之间加入必须达到 `HUMAN_REVIEWED` 的 Stage 2.5 Reference Gate。覆盖关系记录在 [Stage 0 baseline lock](docs/stages/stage-0/BASELINE_LOCK.json)、[实现对账](docs/stages/stage-0/BASELINE_RECONCILIATION.md)、[WP8 Reference Lab](docs/reference/wp8/README.md) 和 [TDD 日志](docs/TDD_LOG.md)。
+Stage 0 已由仓库所有者批准：annotated tag `launcher-engine-stage0-approved-v1.1` 指向 `16b0e5c…`，批准 evidence 是 GitHub Actions run `33854599910`。Stage 1 必须且已经从这个不可混淆的批准点开始，只审计 Product Surface Reduction。
 
-`ca84ef9` 已经是冻结实现基线：生产面只有 Chart 与 Settings；Google Maps Adapter、双语资源、standalone/home 构建、CI，以及第一版空间文档/几何代码均保留。但这些既有实现不自动等于 Master 后续 Stage 已通过。Stage 0 不修改 UI、Registry、Google Map 或 Feature 行为，只锁定规范、Reference schema、截图/Golden/Artifact 所有权和 CI 合同。
+`ca84ef9` 已提前包含 Chart + Settings 候选产品面，但不继承为 Stage 1 批准。本阶段重新用静态合同、API 34 精确节点数和 standalone release APK 二进制检查证明：Release Start 与 All Apps 恰好只有 Chart + Settings，Chart 只开放 Browse，没有 Coming Soon 或假海事值，Shell Lab 只在 debug。候选 UI 已满足 Gate，因此不为制造 diff 重写生产行为。
 
 在 Shell Engine 全部完成人工验收前，禁止继续接入 GPS、NMEA、Anchor、Trip、Navigation、Survey、OpenSeaMap、MBTiles、AIS、Weather、Tide 或海事前台 Runtime。
 
@@ -31,23 +31,27 @@ approval: PENDING_HUMAN_REVIEW
 - [Launcher Engine TDD 规范](docs/TDD_PLAYBOOK.md)
 - [当前 Stage TDD 日志](docs/TDD_LOG.md)
 - [Stage 0 正式报告](docs/stages/stage-0/REPORT.md)
+- [Stage 1 产品表面审计](docs/stages/stage-1/PRODUCT_SURFACE_AUDIT.md)
+- [Stage 1 正式报告](docs/stages/stage-1/REPORT.md)
 - [历史需求与 Slice 归档](docs/archive/pre-launcher-engine/README.md)
 - [GitHub 交付](docs/GITHUB_DELIVERY.md)
 - [本地密钥保险库](docs/SECRETS_MANAGEMENT.md)
 
-Stage 0 本地合同：
+当前本地合同：
 
 ```text
 python3 -m pip install --requirement .github/requirements/stage0-schema.txt
 python3 .github/scripts/test_launcher_stage0_contract.py
+python3 .github/scripts/test_launcher_stage1_contract.py
 python3 -m unittest discover .github/scripts 'test_*.py'
 bash .github/scripts/test-ci-contract.sh
+bash .github/scripts/test-release-product-surface.sh
 ```
 
 完整构建 Gate 仍由现有 Android CI 执行。未运行的 Golden、Macrobenchmark、刷新率、Samsung 方屏和实船项目必须写 `NOT_YET_MEASURED` 或 `UNVERIFIED_HARDWARE`。
 
 ## English translation
 
-Yokuli OS is currently constructing only an app-agnostic, verifiable, durable, high-frame-rate WP8 Classic-style Launcher Shell. The linked Master Construction Spec is the sole stage authority. The owner selected commit `ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7` as the starting baseline. Before Stage 0 approval, Master v1.1 retained the v1.0 hash and added mandatory Stage 2.5 acquisition and human approval before geometry.
+Yokuli OS is currently constructing only an app-agnostic, verifiable, durable, high-frame-rate WP8 Classic-style Launcher Shell. The owner approved Stage 0 commit `16b0e5c…` with evidence run `33854599910`; annotated tag `launcher-engine-stage0-approved-v1.1` is the exact Stage 1 starting point.
 
-The frozen baseline already contains the Chart-and-Settings production reduction, Google Maps adapter, bilingual resources, standalone/home variants, CI, and an initial spatial-document foundation. Existing code is not treated as proof that later Master stages passed. Stage 0 correction changes documentation and reference/CI contracts only, and remains `PENDING_HUMAN_REVIEW`. No marine capability may be added until the full Launcher Engine passes human review, and all unrun reference, golden, benchmark, refresh-rate, square-device, and vessel checks remain explicitly unmeasured or unverified.
+Stage 1 revalidates the pre-existing product-surface candidate instead of inheriting its result. Static contracts, the exact API 34 All Apps count, and release-APK binary inspection prove that release contains exactly Chart and Settings, Chart is Browse-only, placeholder marine values are absent, and Shell Lab remains debug-only. Stage 2 is not started. No marine capability may be added until the full Launcher Engine passes human review.

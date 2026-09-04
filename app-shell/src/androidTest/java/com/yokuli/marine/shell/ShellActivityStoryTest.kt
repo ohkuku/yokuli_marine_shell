@@ -6,8 +6,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -61,6 +63,12 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
         compose.onNodeWithTag("all-apps-entry").performClick()
+        compose.onAllNodes(
+            SemanticsMatcher("exact production launcher entries") { node ->
+                node.config.contains(SemanticsProperties.TestTag) &&
+                    node.config[SemanticsProperties.TestTag].startsWith("launcher-entry-")
+            },
+        ).assertCountEquals(2)
         compose.onNodeWithTag("launcher-entry-chart").assertIsDisplayed()
         compose.onNodeWithTag("launcher-entry-settings").assertIsDisplayed()
         compose.onNodeWithTag("launcher-entry-anchor").assertDoesNotExist()

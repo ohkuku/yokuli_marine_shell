@@ -1,6 +1,6 @@
 # Yokuli Launcher Engine TDD Log
 
-状态：`STAGE_0_CORRECTION_PENDING_HUMAN_REVIEW`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
+状态：`STAGE_1_PRODUCT_SURFACE_PENDING_HUMAN_REVIEW`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
 
 ## Stage 0 — Freeze & Reference Contract
 
@@ -108,3 +108,55 @@ Hosted run `33850770612` 的 Build、API 34 与 API 36 均为 PASS；纠偏提�
 ## English translation
 
 Status is `STAGE_0_CORRECTION_PENDING_HUMAN_REVIEW`. The initial Stage 0 started from owner-selected commit `ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7`; hosted run `33850770612` passed build, API 34, and API 36. Human review then required a correction from `98121412893d5331b22d4327463794993a4a4eff`. The correction versions Master v1.1 while retaining the v1.0 hash, adds the mandatory Stage 2.5 reference approval gate, locks and reconciles the baseline, and replaces shallow field inspection with real Draft 2020-12 validation of positive and negative fixtures. No production source or module graph changes. Measurements, Goldens, refresh-rate data, and Samsung square hardware remain unmeasured or unverified; no later Stage has begun.
+
+## Stage 1 — Product Surface Reduction
+
+### Baseline
+
+```text
+approved Stage 0 tag: launcher-engine-stage0-approved-v1.1
+starting SHA: 16b0e5cd1c8fa2e5f4b78aefadf3fa7c012698b2
+Stage 0 approval evidence run: 33854599910
+scope: Product Surface Reduction only
+approval: PENDING_HUMAN_REVIEW
+```
+
+Stage 0 只通过 annotated tag 封口，没有 Correction 2 或文件修改。`ca84ef9…` 已有的 Chart + Settings 实现只作为候选，Stage 1 重新跑 Gate。
+
+### Contract
+
+Given Stage 0 已获批准，When 执行 Stage 1，Then release Start、All Apps、catalog 和 APK 必须恰好只有 Chart + Settings，Chart 只开放 Browse，Coming Soon 与假 SAFE/SOG/COG/Trip/NMEA 值必须缺席，Shell Lab 必须只在 debug；And 不得进入 Stage 2。
+
+### Red
+
+先新增 `.github/scripts/test_launcher_stage1_contract.py`：
+
+```text
+Ran 8 tests
+FAILED (failures=3)
+```
+
+其中 5 项立即通过，重新证明现有 candidate 的 catalog、Start、模块移除、Browse-only、真实 Settings 与无假值合同；3 项只因缺少 Stage 1 baseline/audit/report、release APK 二进制检查和命名 CI Gate 而失败。
+
+### Green
+
+Green 只补审计证据、release binary guard 和精确 All Apps 节点数测试，不重写已经满足产品面 Gate 的 UI。实际本地 Gate：
+
+```text
+/private/tmp/yokuli-stage0-schema-venv/bin/python .github/scripts/test_launcher_stage1_contract.py
+                                                                                PASS (8/8)
+/private/tmp/yokuli-stage0-schema-venv/bin/python -m unittest discover .github/scripts 'test_*.py'
+                                                                                PASS (44/44)
+bash .github/scripts/test-ci-contract.sh                                         PASS
+bash .github/scripts/test-resolve-release-metadata.sh                            PASS
+bash .github/scripts/test-secrets-manager.sh                                     PASS
+bash .github/scripts/test-release-product-surface.sh                             PASS
+./gradlew --no-daemon test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug assembleStandaloneRelease assembleStandaloneDebugAndroidTest
+                                                                                PASS (BUILD SUCCESSFUL; 923 tasks)
+```
+
+Compose/API 34 与 API 36 等待本 Stage 提交后的 hosted CI；Golden、benchmark、刷新率、Samsung 方屏与实船仍分别保持 `NOT_YET_MEASURED` 或 `UNVERIFIED_HARDWARE`。
+
+## English translation — Stage 1
+
+Stage 1 starts exactly from the annotated Stage 0 approval tag and is limited to Product Surface Reduction. Its eight-test Red immediately passed five candidate product checks and failed three missing audit/report, release-binary, and CI-gate contracts. Green passes all 8 Stage 1 contracts, all 44 Python contracts, the Bash gates, release-APK inspection, unit tests, lint, both debug APKs, the standalone release audit APK, and AndroidTest APK assembly. Hosted emulator results remain pending until push. No compliant production behavior is rewritten, and Stage 2 is not started.

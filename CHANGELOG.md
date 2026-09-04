@@ -4,6 +4,14 @@
 
 ### 中文（主文）
 
+#### Stage 1 — Product Surface Reduction
+
+- 从 annotated approval tag `launcher-engine-stage0-approved-v1.1`／`16b0e5c…` 开始，重新审计 `ca84ef9…` 已存在的候选结果，不继承其完成结论。
+- 新增 Stage 1 静态合同，精确锁定 production catalog、Start placements 与 All Apps 为 Chart + Settings；Chart 只有 Browse destination，旧 cockpit/library/system 没有 active source 或依赖。
+- API 34 story 增加 All Apps 条目数恰为 2 的断言；已知 Coming Soon 与假 SAFE/SOG/COG/Trip/NMEA 数值进入拒绝清单。
+- CI 增加独立 Stage 1 Gate，额外构建 standalone release audit APK，并用 `apkanalyzer` 确认 Chart/Settings classes 存在、`ShellLabActivity` 不在 release manifest 或 Dex。
+- 候选生产 UI 已满足 Stage 1 Gate，因此不为制造变更重写行为；Shell Engine contract extraction 与 Stage 2 未开始。
+
 #### Stage 0 correction — Reference & Baseline Contracts
 
 - 新增机器可读 `BASELINE_LOCK.json` 与逐文件 `BASELINE_RECONCILIATION.md`，锁定 reviewed/actual/ending SHA、Master 新旧哈希、覆盖理由和 `PENDING_HUMAN_REVIEW`；明确 Android Library engine、Marine 耦合、猜测比例、随机 UUID 与临时 stores 不通过后续 Gate。
@@ -66,6 +74,8 @@
 - GPS、NMEA、Anchor、Navigation、Trip、Survey、Sonar、OpenSeaMap 和本地海图导入仍未接入生产 runtime。
 
 ### English translation
+
+Stage 1 starts from the immutable Stage 0 approval tag and revalidates the earlier candidate rather than inheriting its status. New contracts lock production catalog, Start, and All Apps to exactly Chart and Settings, keep Chart Browse-only, reject known placeholder marine claims, and confirm removed modules have no active source or dependency. API 34 checks exactly two All Apps entries. CI assembles a standalone release audit APK and uses `apkanalyzer` to prove that Chart and Settings are present while `ShellLabActivity` is absent. Production behavior is unchanged because the candidate already passes the product-surface gate; Stage 2 is not started.
 
 Stage 0 correction locks the reviewed, selected, and ending baselines; reconciles every pre-existing shell-engine artifact without pre-approving later work; versions Master v1.1 with mandatory Stage 2.5 reference approval; and replaces the flattened measurement contract with state-aware, content-addressed captures, scenario measurement sets, direct-manipulation timelines, and hash-bound human review. CI runs three valid and four invalid fixtures through pinned real Draft 2020-12 validation. Hosted run `33850770612` passed build, API 34, and API 36, while reference measurements and Samsung square hardware remain unmeasured or unverified. No production behavior or Stage 1 work is included.
 

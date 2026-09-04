@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "stage": 1,
+  "name": "Product Surface Reduction",
+  "branch": "codex/launcher-engine",
+  "approvedStage0Tag": "launcher-engine-stage0-approved-v1.1",
+  "startingSha": "16b0e5cd1c8fa2e5f4b78aefadf3fa7c012698b2",
+  "stage0EvidenceRun": 33854599910,
+  "scope": "Product Surface Reduction",
+  "preExistingCandidateCommit": "ca84ef9c155f1a479ecdeee4da250cc8d9dd85a7",
+  "candidateResultsAreInheritedAsApproval": false,
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}
