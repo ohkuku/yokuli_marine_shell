@@ -1,0 +1,35 @@
+name: WP8 evidence review packet
+
+on:
+  push:
+    branches:
+      - codex/launcher-engine-stage2.5
+    paths:
+      - .github/workflows/wp8-review-packet.yml
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/launcher-engine-stage2.5
+      - name: Build review packet
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/wp8-review
+          cp docs/reference/wp8/artifacts/motion-scout/*-small.jpg /tmp/wp8-review/ || true
+          cp docs/reference/wp8/artifacts/motion-scout/manifest.json /tmp/wp8-review/
+          cp -R docs/reference/wp8/artifacts/motion-candidates /tmp/wp8-review/
+          cp docs/reference/wp8/screenshots/lumia-620-wp8-device-reference.jpg /tmp/wp8-review/
+          cp docs/reference/wp8/screenshots/windows-phone-8-en-start-reference.svg /tmp/wp8-review/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wp8-reference-review-packet
+          path: /tmp/wp8-review
+          if-no-files-found: error
+          retention-days: 7
