@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "phase": "marine-shell-product-model-correction",
+  "repository": "ohkuku/yokuli_marine_shell",
+  "startingBranch": "codex/launcher-engine-stage11",
+  "workingBranch": "codex/marine-shell-final-correction",
+  "startingCommit": "6555153ae193a75187cd1207ab31adc5aba3291f",
+  "documentedReviewCommit": "85d968a4df5265b0006bf7567faeaa006864f4a2",
+  "documentedReviewCommitIsHistorical": true,
+  "finalLauncherAttachmentSha256": "947f06421ac439cd9c02cdaea4b514759a651fcde6cf68e56eda8c7f5125d82d",
+  "productCorrectionAttachmentSha256": "036245e7192c1fdb5c38e3afe80ff25584cda0ba1e6105ff13fbe875d0f1e958",
+  "normativeConflictPolicy": "Product Model Correction overrides Final Launcher Shell for product identity, HOME flavor, navigation semantics, tile model, and Shell UI; non-conflicting quality requirements remain active.",
+  "referenceMeasurementPath": "docs/reference/wp8/WP8_REFERENCE_MEASUREMENTS.json",
+  "reviewedMeasurementHash": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+  "referenceApprovalVerifiedInCurrentContext": true,
+  "referenceApprovalDecision": "APPROVED",
+  "releaseCatalogConstraint": ["chart", "settings"],
+  "marineDomainWorkPermitted": false,
+  "humanFidelityStatus": "PENDING",
+  "physicalDeviceStatus": "PENDING"
+}

@@ -1,5 +1,29 @@
 # Yokuli Launcher Engine TDD Log
 
+## Marine Shell Final Product-Model Correction
+
+### Baseline
+
+```text
+working branch: codex/marine-shell-final-correction
+starting SHA: 6555153ae193a75187cd1207ab31adc5aba3291f
+Final Launcher attachment SHA-256: 947f06421ac439cd9c02cdaea4b514759a651fcde6cf68e56eda8c7f5125d82d
+Product Correction attachment SHA-256: 036245e7192c1fdb5c38e3afe80ff25584cda0ba1e6105ff13fbe875d0f1e958
+```
+
+第二份附件对默认 Android Launcher、HOME flavor、导航语义、磁贴模型和 Shell UI 的冲突要求具有覆盖力；第一份附件中不冲突的 Engine 边界、持久化、TDD、性能与机器验证要求继续有效。文档里的审查点 `85d968a…` 已被测试串行化修正 `6555153…` 超越，实际基线不得倒退。
+
+### Red
+
+先建立 `.github/scripts/test_marine_shell_final_correction_contract.py`：
+
+```text
+Ran 10 tests
+FAILED (failures=6, errors=2)
+```
+
+8 项未满足合同精确对应现存 HOME flavor、恢复 task 强制回 Desktop、Search overlay、Windows 中键、缺少 WindowMetrics、Marine Tile 六尺寸、自适应 packer 和旧 Settings 表面；2 项立即通过，证明基线文档和 Chart + Settings-only 产品面已经成立。这批失败是后续可审查 Slice 的施工清单，不是构建或环境错误。
+
 状态：`STAGE_2_5_HUMAN_REVIEWED_APPROVED`。当前日志从 Master Construction Spec 重新编号；旧 Slice 1–14 已保存在 [`archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md`](archive/pre-launcher-engine/TDD_LOG_PRE_LAUNCHER_ENGINE.md)，只作历史证据。
 
 ## Stage 0 — Freeze & Reference Contract
