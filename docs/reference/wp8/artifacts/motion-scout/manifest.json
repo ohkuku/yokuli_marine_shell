@@ -1,0 +1,778 @@
+{
+  "scoutVersion": 2,
+  "attemptedItems": [
+    {
+      "identifier": "Rev3_Mobile_Geeks_Reviews_100",
+      "fileAttempts": [],
+      "skipReason": "No publicly downloadable video derivative"
+    },
+    {
+      "identifier": "TechnoBuffalo_269",
+      "fileAttempts": [
+        {
+          "name": "technobuffalo--0269--rettingers-rants-269-windows-phone-8--hd720p30.h264.ogv",
+          "size": 24867686,
+          "format": "Ogg Video",
+          "source": "derivative",
+          "private": null,
+          "available": true,
+          "probeError": null
+        }
+      ],
+      "selected": true
+    },
+    {
+      "identifier": "youtube-jqRyK19xOgM",
+      "fileAttempts": [
+        {
+          "name": "jqRyK19xOgM.mp4",
+          "size": 25985796,
+          "format": "h.264",
+          "source": "derivative",
+          "private": null,
+          "available": true,
+          "probeError": null
+        }
+      ],
+      "selected": true
+    },
+    {
+      "identifier": "Rev3_Mobile_Geeks_Reviews_244",
+      "fileAttempts": [],
+      "skipReason": "No publicly downloadable video derivative"
+    },
+    {
+      "identifier": "Rev3_Mobile_Geeks_Reviews_274",
+      "fileAttempts": [],
+      "skipReason": "No publicly downloadable video derivative"
+    },
+    {
+      "identifier": "TechnoBuffalo_299",
+      "fileAttempts": [
+        {
+          "name": "technobuffalo--0299--samsung-ativ-odyssey-hands-on-ces-2013--hd720p30.h264.ogv",
+          "size": 11509299,
+          "format": "Ogg Video",
+          "source": "derivative",
+          "private": null,
+          "available": true,
+          "probeError": null
+        }
+      ],
+      "selected": true
+    },
+    {
+      "identifier": "Tekzilla_366",
+      "fileAttempts": [
+        {
+          "name": "tekzilla--0366--cloning-ssds--hd720p30.h264.ogv",
+          "size": 138659259,
+          "format": "Ogg Video",
+          "source": "derivative",
+          "private": null,
+          "available": true,
+          "probeError": null
+        }
+      ],
+      "selected": true
+    }
+  ],
+  "selectedItems": [
+    {
+      "identifier": "TechnoBuffalo_269",
+      "detailsUrl": "https://archive.org/details/TechnoBuffalo_269",
+      "title": "TechnoBuffalo 269: Windows Phone 8 - Shortcomings &amp; Irritations",
+      "creator": "Revision 3",
+      "date": "2012-11-14",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "rights": null,
+      "description": "On this week's episode, Jon R. discusses Windows Phone 8. He recently switched back into the mobile Microsoft ecosystem, using various Windows Phone 8 powered devices as his daily drivers. Although he loves the OS, there are a few shortcomings that are really annoying. See what they are!",
+      "selectedFile": {
+        "name": "technobuffalo--0269--rettingers-rants-269-windows-phone-8--hd720p30.h264.ogv",
+        "format": "Ogg Video",
+        "size": 24867686,
+        "source": "derivative",
+        "md5": "72d100514315f10824dc82fa6f2e378b",
+        "sha1": "cd89b3fc829e5d8bc6724e2c63958f42ebe0f8d7",
+        "downloadUrl": "https://archive.org/download/TechnoBuffalo_269/technobuffalo--0269--rettingers-rants-269-windows-phone-8--hd720p30.h264.ogv?download=1",
+        "downloadedSha256": "7179b1710f3c620070288cd80a9e9910774efd4f474d8d94fcacff40d569ab84",
+        "downloadedByteSize": 24867686
+      },
+      "durationSeconds": 324.928004,
+      "contactSheet": "docs/reference/wp8/artifacts/motion-scout/TechnoBuffalo_269-contact-sheet.jpg",
+      "contactSheetSha256": "368af64a882023424f8155868bbd81621c7b91318d95981ca792b7c94aaef90d",
+      "samples": [
+        {
+          "index": 0,
+          "timestampSeconds": 5.802
+        },
+        {
+          "index": 1,
+          "timestampSeconds": 17.407
+        },
+        {
+          "index": 2,
+          "timestampSeconds": 29.011
+        },
+        {
+          "index": 3,
+          "timestampSeconds": 40.616
+        },
+        {
+          "index": 4,
+          "timestampSeconds": 52.221
+        },
+        {
+          "index": 5,
+          "timestampSeconds": 63.825
+        },
+        {
+          "index": 6,
+          "timestampSeconds": 75.43
+        },
+        {
+          "index": 7,
+          "timestampSeconds": 87.034
+        },
+        {
+          "index": 8,
+          "timestampSeconds": 98.639
+        },
+        {
+          "index": 9,
+          "timestampSeconds": 110.243
+        },
+        {
+          "index": 10,
+          "timestampSeconds": 121.848
+        },
+        {
+          "index": 11,
+          "timestampSeconds": 133.453
+        },
+        {
+          "index": 12,
+          "timestampSeconds": 145.057
+        },
+        {
+          "index": 13,
+          "timestampSeconds": 156.662
+        },
+        {
+          "index": 14,
+          "timestampSeconds": 168.266
+        },
+        {
+          "index": 15,
+          "timestampSeconds": 179.871
+        },
+        {
+          "index": 16,
+          "timestampSeconds": 191.475
+        },
+        {
+          "index": 17,
+          "timestampSeconds": 203.08
+        },
+        {
+          "index": 18,
+          "timestampSeconds": 214.685
+        },
+        {
+          "index": 19,
+          "timestampSeconds": 226.289
+        },
+        {
+          "index": 20,
+          "timestampSeconds": 237.894
+        },
+        {
+          "index": 21,
+          "timestampSeconds": 249.498
+        },
+        {
+          "index": 22,
+          "timestampSeconds": 261.103
+        },
+        {
+          "index": 23,
+          "timestampSeconds": 272.707
+        },
+        {
+          "index": 24,
+          "timestampSeconds": 284.312
+        },
+        {
+          "index": 25,
+          "timestampSeconds": 295.917
+        },
+        {
+          "index": 26,
+          "timestampSeconds": 307.521
+        },
+        {
+          "index": 27,
+          "timestampSeconds": 319.126
+        }
+      ]
+    },
+    {
+      "identifier": "youtube-jqRyK19xOgM",
+      "detailsUrl": "https://archive.org/details/youtube-jqRyK19xOgM",
+      "title": "L'Appéro #3 - Snapchat, Waze, Cinémur, Angry Birds Go",
+      "creator": "Léo Duff",
+      "date": "2014-01-04",
+      "licenseurl": "https://creativecommons.org/licenses/by/3.0/",
+      "rights": null,
+      "description": "Tweeter cette vidéo:  http://ctt.ec/6g7wh<br /><br />Pour une description plus complète, voir l'article sur Macinpoche.fr : <br /><br /><br />-----Liens-----<br /><br />►S'ABONNER: http://www.youtube.com/subscription_center?add_user=Striker79210<br />►TWITTER: http://bit.ly/15V4qZh<br />►FACEBOOK: http://on.fb.me/XeVHle<br />►CHAINE SECONDAIRE: http://bit.ly/YfCgZ5<br />►Musique: http://www.youtube.com/watch?v=b7oo7sRf80M <br /><br />Source: <a href=\"https://www.youtube.com/watch?v=jqRyK19xOgM\" rel=\"ugc nofollow\">https://www.youtube.com/watch?v=jqRyK19xOgM</a><br />Uploader: <a href=\"http://www.youtube.com/user/Striker79210\" rel=\"ugc nofollow\">Léo Duff</a>",
+      "selectedFile": {
+        "name": "jqRyK19xOgM.mp4",
+        "format": "h.264",
+        "size": 25985796,
+        "source": "derivative",
+        "md5": "b0964b663cfb78089f308537b1d2319c",
+        "sha1": "cdfc820db77c6d8ccb6c310d7933b6a2ddfb826d",
+        "downloadUrl": "https://archive.org/download/youtube-jqRyK19xOgM/jqRyK19xOgM.mp4?download=1",
+        "downloadedSha256": "fdc6f11906135739df722c41b2e88e4d084d9599b343669c192caaae26f80930",
+        "downloadedByteSize": 25985796
+      },
+      "durationSeconds": 271.603991,
+      "contactSheet": "docs/reference/wp8/artifacts/motion-scout/youtube-jqRyK19xOgM-contact-sheet.jpg",
+      "contactSheetSha256": "e8f7ebfa6a868063ceeb30caeaf6f677fac6b9f59a8bd40d9f92c2633bbd4e9e",
+      "samples": [
+        {
+          "index": 0,
+          "timestampSeconds": 5.658
+        },
+        {
+          "index": 1,
+          "timestampSeconds": 16.975
+        },
+        {
+          "index": 2,
+          "timestampSeconds": 28.292
+        },
+        {
+          "index": 3,
+          "timestampSeconds": 39.609
+        },
+        {
+          "index": 4,
+          "timestampSeconds": 50.926
+        },
+        {
+          "index": 5,
+          "timestampSeconds": 62.243
+        },
+        {
+          "index": 6,
+          "timestampSeconds": 73.559
+        },
+        {
+          "index": 7,
+          "timestampSeconds": 84.876
+        },
+        {
+          "index": 8,
+          "timestampSeconds": 96.193
+        },
+        {
+          "index": 9,
+          "timestampSeconds": 107.51
+        },
+        {
+          "index": 10,
+          "timestampSeconds": 118.827
+        },
+        {
+          "index": 11,
+          "timestampSeconds": 130.144
+        },
+        {
+          "index": 12,
+          "timestampSeconds": 141.46
+        },
+        {
+          "index": 13,
+          "timestampSeconds": 152.777
+        },
+        {
+          "index": 14,
+          "timestampSeconds": 164.094
+        },
+        {
+          "index": 15,
+          "timestampSeconds": 175.411
+        },
+        {
+          "index": 16,
+          "timestampSeconds": 186.728
+        },
+        {
+          "index": 17,
+          "timestampSeconds": 198.045
+        },
+        {
+          "index": 18,
+          "timestampSeconds": 209.361
+        },
+        {
+          "index": 19,
+          "timestampSeconds": 220.678
+        },
+        {
+          "index": 20,
+          "timestampSeconds": 231.995
+        },
+        {
+          "index": 21,
+          "timestampSeconds": 243.312
+        },
+        {
+          "index": 22,
+          "timestampSeconds": 254.629
+        },
+        {
+          "index": 23,
+          "timestampSeconds": 265.946
+        }
+      ]
+    },
+    {
+      "identifier": "TechnoBuffalo_299",
+      "detailsUrl": "https://archive.org/details/TechnoBuffalo_299",
+      "title": "TechnoBuffalo 299: Samsung ATIV Odyssey Hands-On - CES 2013",
+      "creator": "Revision 3",
+      "date": "2013-01-08",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "rights": null,
+      "description": "Until recently, Windows Phone devices have been few and far between on Verizon.  With the launch of Windows Phone 8, we've seen the mobile OS return to Verizon shelves, and the most recent newcomer is the Samsung ATIV Odyssey.",
+      "selectedFile": {
+        "name": "technobuffalo--0299--samsung-ativ-odyssey-hands-on-ces-2013--hd720p30.h264.ogv",
+        "format": "Ogg Video",
+        "size": 11509299,
+        "source": "derivative",
+        "md5": "947987410ea05df13f08b8a0192ff779",
+        "sha1": "fcbdea1dfa48580ec14a87876844965c8b92e450",
+        "downloadUrl": "https://archive.org/download/TechnoBuffalo_299/technobuffalo--0299--samsung-ativ-odyssey-hands-on-ces-2013--hd720p30.h264.ogv?download=1",
+        "downloadedSha256": "c4631bca8b2cf8f1547a093ff96c8637ae16800871915f051a1a31feb4c52722",
+        "downloadedByteSize": 11509299
+      },
+      "durationSeconds": 155.264149,
+      "contactSheet": "docs/reference/wp8/artifacts/motion-scout/TechnoBuffalo_299-contact-sheet.jpg",
+      "contactSheetSha256": "11792f129d0d82e2847585fe3b84df7e94b48d2b1fc5efda216cffdf2ea8dc6c",
+      "samples": [
+        {
+          "index": 0,
+          "timestampSeconds": 3.235
+        },
+        {
+          "index": 1,
+          "timestampSeconds": 9.704
+        },
+        {
+          "index": 2,
+          "timestampSeconds": 16.173
+        },
+        {
+          "index": 3,
+          "timestampSeconds": 22.643
+        },
+        {
+          "index": 4,
+          "timestampSeconds": 29.112
+        },
+        {
+          "index": 5,
+          "timestampSeconds": 35.581
+        },
+        {
+          "index": 6,
+          "timestampSeconds": 42.051
+        },
+        {
+          "index": 7,
+          "timestampSeconds": 48.52
+        },
+        {
+          "index": 8,
+          "timestampSeconds": 54.989
+        },
+        {
+          "index": 9,
+          "timestampSeconds": 61.459
+        },
+        {
+          "index": 10,
+          "timestampSeconds": 67.928
+        },
+        {
+          "index": 11,
+          "timestampSeconds": 74.397
+        },
+        {
+          "index": 12,
+          "timestampSeconds": 80.867
+        },
+        {
+          "index": 13,
+          "timestampSeconds": 87.336
+        },
+        {
+          "index": 14,
+          "timestampSeconds": 93.805
+        },
+        {
+          "index": 15,
+          "timestampSeconds": 100.275
+        },
+        {
+          "index": 16,
+          "timestampSeconds": 106.744
+        },
+        {
+          "index": 17,
+          "timestampSeconds": 113.213
+        },
+        {
+          "index": 18,
+          "timestampSeconds": 119.683
+        },
+        {
+          "index": 19,
+          "timestampSeconds": 126.152
+        },
+        {
+          "index": 20,
+          "timestampSeconds": 132.621
+        },
+        {
+          "index": 21,
+          "timestampSeconds": 139.091
+        },
+        {
+          "index": 22,
+          "timestampSeconds": 145.56
+        },
+        {
+          "index": 23,
+          "timestampSeconds": 152.029
+        }
+      ]
+    },
+    {
+      "identifier": "Tekzilla_366",
+      "detailsUrl": "https://archive.org/details/Tekzilla_366",
+      "title": "Tekzilla 366: Painless SSD Upgrade. Xbox 720 Vs. Gaming PC! Mini Galaxy SIII &amp; Windows Phone 8 Coming. Plasma Beats LCD: Samsung E8000 Review. Hard Drive Reccos.",
+      "creator": "Revision 3",
+      "date": "2012-10-11",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "rights": null,
+      "description": "Dumping your hard drive for an SSD? We can make the move pain free! Gaming PC now, or wait for the next gen Playstation and Xbox? HTPC Hard drive: Green, Black or Red? Windows 8 Phone Pre-Orders and Samsung Mini Galaxy SIII are coming!",
+      "selectedFile": {
+        "name": "tekzilla--0366--cloning-ssds--hd720p30.h264.ogv",
+        "format": "Ogg Video",
+        "size": 138659259,
+        "source": "derivative",
+        "md5": "af86e195456cb82bf2023a069e17f38e",
+        "sha1": "6b75a2afaec658bf310b2aa6930e38dee33a10fb",
+        "downloadUrl": "https://archive.org/download/Tekzilla_366/tekzilla--0366--cloning-ssds--hd720p30.h264.ogv?download=1",
+        "downloadedSha256": "89e729181328ecb268b889586fe40807641b0a64e1d8f17df83f77ad3b1e16ec",
+        "downloadedByteSize": 138659259
+      },
+      "durationSeconds": 1831.723106,
+      "contactSheet": "docs/reference/wp8/artifacts/motion-scout/Tekzilla_366-contact-sheet.jpg",
+      "contactSheetSha256": "2741d8cc602d07306326bd5fb45dbf20c0a9a4eebc9ede64962158dea48891ec",
+      "samples": [
+        {
+          "index": 0,
+          "timestampSeconds": 12.72
+        },
+        {
+          "index": 1,
+          "timestampSeconds": 38.161
+        },
+        {
+          "index": 2,
+          "timestampSeconds": 63.601
+        },
+        {
+          "index": 3,
+          "timestampSeconds": 89.042
+        },
+        {
+          "index": 4,
+          "timestampSeconds": 114.483
+        },
+        {
+          "index": 5,
+          "timestampSeconds": 139.923
+        },
+        {
+          "index": 6,
+          "timestampSeconds": 165.364
+        },
+        {
+          "index": 7,
+          "timestampSeconds": 190.804
+        },
+        {
+          "index": 8,
+          "timestampSeconds": 216.245
+        },
+        {
+          "index": 9,
+          "timestampSeconds": 241.686
+        },
+        {
+          "index": 10,
+          "timestampSeconds": 267.126
+        },
+        {
+          "index": 11,
+          "timestampSeconds": 292.567
+        },
+        {
+          "index": 12,
+          "timestampSeconds": 318.007
+        },
+        {
+          "index": 13,
+          "timestampSeconds": 343.448
+        },
+        {
+          "index": 14,
+          "timestampSeconds": 368.889
+        },
+        {
+          "index": 15,
+          "timestampSeconds": 394.329
+        },
+        {
+          "index": 16,
+          "timestampSeconds": 419.77
+        },
+        {
+          "index": 17,
+          "timestampSeconds": 445.21
+        },
+        {
+          "index": 18,
+          "timestampSeconds": 470.651
+        },
+        {
+          "index": 19,
+          "timestampSeconds": 496.092
+        },
+        {
+          "index": 20,
+          "timestampSeconds": 521.532
+        },
+        {
+          "index": 21,
+          "timestampSeconds": 546.973
+        },
+        {
+          "index": 22,
+          "timestampSeconds": 572.413
+        },
+        {
+          "index": 23,
+          "timestampSeconds": 597.854
+        },
+        {
+          "index": 24,
+          "timestampSeconds": 623.295
+        },
+        {
+          "index": 25,
+          "timestampSeconds": 648.735
+        },
+        {
+          "index": 26,
+          "timestampSeconds": 674.176
+        },
+        {
+          "index": 27,
+          "timestampSeconds": 699.616
+        },
+        {
+          "index": 28,
+          "timestampSeconds": 725.057
+        },
+        {
+          "index": 29,
+          "timestampSeconds": 750.498
+        },
+        {
+          "index": 30,
+          "timestampSeconds": 775.938
+        },
+        {
+          "index": 31,
+          "timestampSeconds": 801.379
+        },
+        {
+          "index": 32,
+          "timestampSeconds": 826.819
+        },
+        {
+          "index": 33,
+          "timestampSeconds": 852.26
+        },
+        {
+          "index": 34,
+          "timestampSeconds": 877.701
+        },
+        {
+          "index": 35,
+          "timestampSeconds": 903.141
+        },
+        {
+          "index": 36,
+          "timestampSeconds": 928.582
+        },
+        {
+          "index": 37,
+          "timestampSeconds": 954.022
+        },
+        {
+          "index": 38,
+          "timestampSeconds": 979.463
+        },
+        {
+          "index": 39,
+          "timestampSeconds": 1004.904
+        },
+        {
+          "index": 40,
+          "timestampSeconds": 1030.344
+        },
+        {
+          "index": 41,
+          "timestampSeconds": 1055.785
+        },
+        {
+          "index": 42,
+          "timestampSeconds": 1081.225
+        },
+        {
+          "index": 43,
+          "timestampSeconds": 1106.666
+        },
+        {
+          "index": 44,
+          "timestampSeconds": 1132.107
+        },
+        {
+          "index": 45,
+          "timestampSeconds": 1157.547
+        },
+        {
+          "index": 46,
+          "timestampSeconds": 1182.988
+        },
+        {
+          "index": 47,
+          "timestampSeconds": 1208.428
+        },
+        {
+          "index": 48,
+          "timestampSeconds": 1233.869
+        },
+        {
+          "index": 49,
+          "timestampSeconds": 1259.31
+        },
+        {
+          "index": 50,
+          "timestampSeconds": 1284.75
+        },
+        {
+          "index": 51,
+          "timestampSeconds": 1310.191
+        },
+        {
+          "index": 52,
+          "timestampSeconds": 1335.631
+        },
+        {
+          "index": 53,
+          "timestampSeconds": 1361.072
+        },
+        {
+          "index": 54,
+          "timestampSeconds": 1386.513
+        },
+        {
+          "index": 55,
+          "timestampSeconds": 1411.953
+        },
+        {
+          "index": 56,
+          "timestampSeconds": 1437.394
+        },
+        {
+          "index": 57,
+          "timestampSeconds": 1462.834
+        },
+        {
+          "index": 58,
+          "timestampSeconds": 1488.275
+        },
+        {
+          "index": 59,
+          "timestampSeconds": 1513.716
+        },
+        {
+          "index": 60,
+          "timestampSeconds": 1539.156
+        },
+        {
+          "index": 61,
+          "timestampSeconds": 1564.597
+        },
+        {
+          "index": 62,
+          "timestampSeconds": 1590.037
+        },
+        {
+          "index": 63,
+          "timestampSeconds": 1615.478
+        },
+        {
+          "index": 64,
+          "timestampSeconds": 1640.919
+        },
+        {
+          "index": 65,
+          "timestampSeconds": 1666.359
+        },
+        {
+          "index": 66,
+          "timestampSeconds": 1691.8
+        },
+        {
+          "index": 67,
+          "timestampSeconds": 1717.24
+        },
+        {
+          "index": 68,
+          "timestampSeconds": 1742.681
+        },
+        {
+          "index": 69,
+          "timestampSeconds": 1768.122
+        },
+        {
+          "index": 70,
+          "timestampSeconds": 1793.562
+        },
+        {
+          "index": 71,
+          "timestampSeconds": 1819.003
+        }
+      ]
+    }
+  ]
+}
