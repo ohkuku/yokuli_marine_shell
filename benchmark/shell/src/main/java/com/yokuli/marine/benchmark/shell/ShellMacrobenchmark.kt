@@ -2,8 +2,12 @@ package com.yokuli.marine.benchmark.shell
 
 import android.content.ComponentName
 import android.content.Intent
+import android.os.Build
 import androidx.benchmark.macro.CompilationMode
+import androidx.benchmark.macro.ExperimentalMetricApi
+import androidx.benchmark.macro.FrameTimingGfxInfoMetric
 import androidx.benchmark.macro.FrameTimingMetric
+import androidx.benchmark.macro.Metric
 import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
@@ -28,6 +32,7 @@ private const val WAIT_MILLIS = 20_000L
  */
 @RunWith(AndroidJUnit4::class)
 @LargeTest
+@OptIn(ExperimentalMetricApi::class)
 class ShellMacrobenchmark {
     @get:Rule
     val benchmarkRule = MacrobenchmarkRule()
@@ -64,7 +69,7 @@ class ShellMacrobenchmark {
     @Test
     fun startToAllApps() = benchmarkRule.measureRepeated(
         packageName = TARGET_PACKAGE,
-        metrics = listOf(FrameTimingMetric()),
+        metrics = interactionFrameMetrics(),
         compilationMode = CompilationMode.Partial(),
         iterations = 5,
         setupBlock = {
@@ -80,7 +85,7 @@ class ShellMacrobenchmark {
     @Test
     fun openChartAndReturn() = benchmarkRule.measureRepeated(
         packageName = TARGET_PACKAGE,
-        metrics = listOf(FrameTimingMetric()),
+        metrics = interactionFrameMetrics(),
         compilationMode = CompilationMode.Partial(),
         iterations = 5,
         setupBlock = {
@@ -98,7 +103,7 @@ class ShellMacrobenchmark {
     @Test
     fun startVerticalScroll60Tiles() = benchmarkRule.measureRepeated(
         packageName = TARGET_PACKAGE,
-        metrics = listOf(FrameTimingMetric()),
+        metrics = interactionFrameMetrics(),
         compilationMode = CompilationMode.Partial(),
         iterations = 5,
         setupBlock = {
@@ -122,6 +127,20 @@ class ShellMacrobenchmark {
         component = ComponentName(TARGET_PACKAGE, SHELL_ACTIVITY)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
     }
+
+    private fun interactionFrameMetrics(): List<Metric> = if (isEmulator()) {
+        // Hosted software renderers do not always publish Perfetto RenderThread slices.
+        // gfxinfo still samples actual target frames; physical devices retain precise traces.
+        listOf(FrameTimingGfxInfoMetric())
+    } else {
+        listOf(FrameTimingMetric())
+    }
+
+    private fun isEmulator(): Boolean =
+        Build.FINGERPRINT.contains("generic", ignoreCase = true) ||
+            Build.FINGERPRINT.contains("emulator", ignoreCase = true) ||
+            Build.MODEL.contains("emulator", ignoreCase = true) ||
+            Build.PRODUCT.contains("sdk", ignoreCase = true)
 
     private fun UiDevice.awaitTag(tag: String): UiObject {
         val tagged = findObject(UiSelector().resourceId(tag))

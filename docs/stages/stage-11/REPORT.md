@@ -21,7 +21,7 @@ reviewed measurement hash: af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d
 
 Stage 11 静态合同最初在缺失 benchmark 模块、profile、候选图、报告和 CI job 时进入 Red。自审又增加“生成的 baseline/startup profile 必须实际存在、非空且只包含 Yokuli 产品规则”的 Red，防止只提交一个 generator 壳子。
 
-Green 新增独立 `:benchmark:shell` 与 `:baselineprofile:shell`。Macrobenchmark 使用 release-like、profileable、不可调试的目标 APK，记录 cold/warm Start、Start→All Apps、Chart→Back、以及 Debug/Benchmark-only Shell Lab 的 60 Tile 垂直滚动；AndroidX 原始 JSON 和 trace 由 CI 原样上传。趋势汇总器保留原始 metric，不设置模拟器硬阈值。
+Green 新增独立 `:benchmark:shell` 与 `:baselineprofile:shell`。Macrobenchmark 使用 release-like、profileable、不可调试的目标 APK，记录 cold/warm Start、Start→All Apps、Chart→Back、以及 Debug/Benchmark-only Shell Lab 的 60 Tile 垂直滚动；AndroidX 原始 JSON 和 trace 由 CI 原样上传。物理设备使用精确 Perfetto `FrameTimingMetric`，没有 RenderThread slice 的 emulator 使用 AndroidX `FrameTimingGfxInfoMetric` 采集真实目标帧。趋势汇总器保留原始 metric，不设置模拟器硬阈值。
 
 Baseline/Startup Profile 覆盖 Start、All Apps、Edit、Unpin、Context Pin、Chart launch 和 Back to Start。生成器在每个采样循环清理的只有目标测试包数据，以免 Stage 10 的持久页、用户 Pin 状态或 crash-loop Recovery 污染下一轮；它不会清理仓库、密钥或外部设备数据。自审修正了误 force-stop instrumentation、错误 applicationId、HOME 隐式解析、持久状态污染、startup profile 只等 package 导致 0 行，以及动态菜单物理 tap 偶发丢失。最终启动路径等待真实 `start-screen`，Context Pin 使用 accessibility action 并断言最终页面与磁贴。规则过滤也从错误的 `startsWith` 改为包含产品 descriptor，因此不会漏掉带 H/S/P flag 的热方法。
 
@@ -54,13 +54,15 @@ Release metadata / CI / secrets contracts            PASS
 WP8 Stage 2.5 approved-reference validation           PASS
 ```
 
-本地 API 34 设备门为 `26/26`。五类模拟器趋势为：cold Start TTID median `961.36 ms`、warm Start TTID median `366.03 ms`、Start→All Apps CPU frame P50/P90 `26.43/51.45 ms`、Chart→Back `62.15/82.16 ms`、60 Tile scroll `22.72/45.47 ms`。这些数值只用于同环境回归趋势，尤其 Chart 动画数字不能冒充 60/90/120 Hz 真机通过。当前本机没有 API 36 AVD；API 36 reduced-motion smoke 由 hosted CI Gate 执行。
+本地 API 34 设备门为 `26/26`。最终五类模拟器趋势为：cold Start TTID median `670.31 ms`、warm Start TTID median `282.05 ms`、Start→All Apps gfx frame P50/P90 `29/53 ms`、Chart→Back `57/65 ms`、60 Tile scroll `25/40 ms`。这些数值只用于同环境回归趋势，尤其 Chart 动画数字不能冒充 60/90/120 Hz 真机通过。当前本机没有 API 36 AVD；API 36 reduced-motion smoke 由 hosted CI Gate 执行。
 
 第一次 hosted run `33919498098` 的 build/API 36 已通过；API 34 捕获了测试 reset 竞态，performance 失败却只有通用 process annotation。Stage 11 correction 将 reset 后的 Home 与完整 Start 前置条件锁定，并让 performance job 直接上报 benchmark XML、把 benchmark/profile 报告纳入受限诊断包；cold/warm 启动改用显式 Activity intent，慢速 hosted emulator 等待窗口扩为 20 秒。Red 复现同时证明 setup 中预启动 Activity 会与 AndroidX cold/warm 生命周期控制竞争，因此 startup setup 只回 Android Home，目标 Activity 只在 measure block 启动。修正后的本地失败 story、26/26 全故事和 5/5 Macrobenchmark 均通过，最终接受以 correction commit 对应的 hosted run 为准。
 
 第二次 hosted run `33922516174` 的 API 34 首条 story 进一步暴露 Compose 点击与串行 Engine queue 的边界：点击完成不等于异步 Surface 已完成转场。Activity stories 现等待目标页面／Transient 的语义节点真实可见或移除后再断言，不改变生产动画、不添加固定 sleep，也不把 Engine 改回同步；下一轮 hosted 仍须执行完整故事集。
 
-该 run 的 performance annotation 同时记录四个 Start tag timeout 与 60 Tile `no renderthread slices`。CI 原先强制使用已被当前 Android Emulator 弃用的 `swiftshader_indirect`；三个 emulator job 现统一使用官方推荐的 `-gpu auto`，但 API 34 仍启用动画、性能 job 仍执行 AndroidX `FrameTimingMetric`，并继续明确禁止把 emulator 数字当作物理设备结论。
+该 run 的 performance annotation 同时记录四个 Start tag timeout 与 60 Tile `no renderthread slices`。CI 原先强制使用已被当前 Android Emulator 弃用的 `swiftshader_indirect`；三个 emulator job 现统一使用官方推荐的 `-gpu auto`，但 API 34 仍启用动画、performance job 仍采集 AndroidX 帧指标，并继续明确禁止把 emulator 数字当作物理设备结论。
+
+第三次 hosted run `33923989525` 已使 API 34 完整 stories 与 API 36 smoke 通过；performance 进一步确认 fresh-install 语言重建与软件 renderer trace 是独立问题。Harness 现跳过首次 `LocaleManager` 重建，避免把平台重启记作启动性能；emulator 交互帧改由 AndroidX gfxinfo metric 观测，物理设备的 Perfetto frame metric 保持不变。最终 hosted 接受仍须五条 journey 全部执行成功。
 
 CI 新增 `stage11-performance` job。它执行真实 `connectedStandaloneBenchmarkAndroidTest`，上传 `stage11-performance-reports`，并把 emulator 结果标为 `EMULATOR_TREND_ONLY`；verified debug APK 必须等待该 job、API 34 stories 和 API 36 smoke 全部成功。两个 Release flavor 继续只有 Chart + Settings，Shell Lab 仅进入 debug/benchmark classpath。
 

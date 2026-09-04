@@ -56,12 +56,17 @@ class LauncherStage11PerformanceContractTest(unittest.TestCase):
         self.assertIn("PERFORMANCE(60)", lab)
         view_model = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellViewModel.kt").read_text()
         self.assertIn('setOf("benchmark", "nonMinifiedRelease")', view_model)
+        application = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellApplication.kt").read_text()
+        self.assertIn('BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")', application)
+        self.assertIn("if (recoveryTrackingEnabled)", view_model)
         self.assertIn("persistence.markLaunchHealthy()", view_model)
         self.assertIn("LauncherAction.ExitSafeMode", view_model)
         self.assertIn("WAIT_MILLIS = 20_000L", benchmark)
         self.assertIn('startActivityAndWait(shellIntent())', benchmark)
         self.assertIn("setupBlock = { pressHome() }", benchmark)
         self.assertNotIn("normalizeStartAndPressHome", benchmark)
+        self.assertIn("FrameTimingGfxInfoMetric()", benchmark)
+        self.assertIn("FrameTimingMetric()", benchmark)
 
     def test_golden_candidates_are_content_addressed_and_reference_bound(self):
         manifest = json.loads((ROOT / "docs/reference/wp8/golden/GOLDEN_CANDIDATES.json").read_text())

@@ -44,7 +44,9 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     init {
         startupJob = viewModelScope.launch {
             val persisted = persistence.load() ?: defaults
-            application.synchronizePersistedLanguage(persisted.languageTag)
+            if (recoveryTrackingEnabled) {
+                application.synchronizePersistedLanguage(persisted.languageTag)
+            }
             engine.state.first { it.recoveryMode != LauncherRecoveryMode.RESTORING }
             if (recoveryTrackingEnabled) {
                 val decision = persistence.beginLaunch(System.currentTimeMillis())

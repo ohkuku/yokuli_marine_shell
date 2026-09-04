@@ -475,6 +475,8 @@ Profile 生成最初使用 AndroidX 默认最多 15 轮，在两个 flavor 上�
 
 同一 hosted run 的五个性能 case 都提供了明确 annotation：四个生产 journey 未观察到 Start tag，60 Tile trace 则报告没有 RenderThread slice。三个 emulator job 当时强制使用 `swiftshader_indirect`；该后端已被当前 Android Emulator 官方弃用，且与启用动画／FrameTiming 的失败形态一致。CI 改为官方推荐的 `-gpu auto`，让 runner 根据宿主能力选择硬件或软件后端；没有移除 `FrameTimingMetric`、没有关闭 API 34 动画、也没有把失败改成 continue-on-error。
 
+第三次 hosted run `33923989525` 让 API 34 完整 stories 与 API 36 smoke 都通过，证明图形后端和 Engine transition 等待修正有效；performance 仍精确复现 fresh-install Start timeout 与软件 renderer 无 RenderThread slice。最终修正把 harness 强制 stop/reinstall 与用户语言生命周期隔离，避免首次 `LocaleManager` 重建污染被测启动。交互帧指标按执行环境选择：emulator 使用 AndroidX `FrameTimingGfxInfoMetric` 读取目标进程 `dumpsys gfxinfo`，物理设备仍使用 Perfetto `FrameTimingMetric`。两者都采集真实帧；emulator 仍只作为趋势，物理 60/90/120 Hz Gate 仍未被替代。
+
 ### Green Gate
 
 最终本地 Gate 包括 Stage 0–11 Python/helper contracts、Golden validator、版本化 Baseline/Startup Profile、5/5 Macrobenchmark 代表性 emulator journeys、完整 Gradle test/lint/双 flavor Debug+Release+androidTest、API 34 Activity stories `26/26`、双 Release 产品面、CI/release/secrets 合同与 Stage 2.5 approved hash。模拟器 metrics 只写 `EMULATOR_TREND_ONLY`；本机只有 API 34，API 36 reduced-motion smoke 留给 hosted CI。

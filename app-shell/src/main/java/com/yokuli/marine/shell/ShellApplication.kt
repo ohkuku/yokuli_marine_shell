@@ -27,6 +27,11 @@ class ShellApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        if (BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")) {
+            // Harnesses repeatedly force-stop/reinstall the target. A first-run LocaleManager
+            // recreation would measure platform setup instead of the launcher journey.
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val localeManager = getSystemService(LocaleManager::class.java)
             val frameworkTag = localeManager.applicationLocales.toLanguageTags()

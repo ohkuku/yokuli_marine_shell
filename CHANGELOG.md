@@ -11,6 +11,7 @@
 - Hosted 自审修正 Activity reset 前置状态竞态，Macrobenchmark 使用显式 Activity intent 和更宽的 emulator tag 等待；performance XML 与 benchmark/profile 诊断现可直接形成 Actions annotation/artifact。
 - Hosted Compose 故事门不再把串行 Engine 的异步 action 当作同步 Compose 点击：跨 Surface 的断言会等待真实目标可见，消除快慢 runner 对转场测试的偶发性。
 - GitHub emulator 从已弃用的 `swiftshader_indirect` 切换为官方推荐的自动图形后端选择，保留启用动画的 Activity story 和真实 FrameTimingMetric trace。
+- 自动化 harness 不再把首次语言重建算进 Shell 启动；emulator 使用 AndroidX gfxinfo 帧采样以兼容无 RenderThread slice 的软件渲染器，物理设备继续使用精确 Perfetto FrameTimingMetric。
 
 ## Stage 10 — Durable Storage & Recovery
 
