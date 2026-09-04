@@ -1,0 +1,58 @@
+[
+  {
+    "sourceTitle": "File:Windows Phone 8 en.svg",
+    "sourcePage": "https://commons.wikimedia.org/wiki/File:Windows_Phone_8_en.svg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/4/4a/Windows_Phone_8_en.svg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "repositoryPath": "docs/reference/wp8/screenshots/windows-phone-8-en-start-reference.svg",
+    "sha256": "2f713c9b384a26c05831ef845e6a9ed231ed67ec840fd3fa4a1200e91955f481",
+    "byteSize": 168375,
+    "mime": "image/svg+xml",
+    "commonsSha1": "dd876e54572136e15e94dbd8e0646016597ed971",
+    "dimensions": {
+      "widthAttribute": "480",
+      "heightAttribute": "800",
+      "viewBox": "",
+      "apiWidthPx": 480,
+      "apiHeightPx": 800
+    },
+    "metadata": {
+      "Categories": "PD shape|PD text|Free screenshots|Windows Phone software",
+      "ImageDescription": "Windows Phone 8 main screen",
+      "DateTimeOriginal": "2013-06-25 14:45:17",
+      "Credit": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+      "Artist": "<a href=\"//commons.wikimedia.org/wiki/User:House\" title=\"User:House\">User:House</a>",
+      "LicenseShortName": "Public domain",
+      "UsageTerms": "Public domain",
+      "Copyrighted": "False",
+      "Restrictions": ""
+    }
+  },
+  {
+    "sourceTitle": "File:Lumia 620 by mikosoft.jpg",
+    "sourcePage": "https://commons.wikimedia.org/wiki/File:Lumia_620_by_mikosoft.jpg",
+    "originalUrl": "https://upload.wikimedia.org/wikipedia/commons/7/71/Lumia_620_by_mikosoft.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+    "repositoryPath": "docs/reference/wp8/screenshots/lumia-620-wp8-device-reference.jpg",
+    "sha256": "8de050fc643ac014dd4ab4aebaec2f8ffa43168d9a5a0c733c1ae73915108402",
+    "byteSize": 142745,
+    "mime": "image/jpeg",
+    "commonsSha1": "4d2e181d3da5e822aa69b0a337b71072633e5f60",
+    "dimensions": {
+      "widthPx": 800,
+      "heightPx": 533,
+      "mode": "RGB",
+      "format": "JPEG"
+    },
+    "metadata": {
+      "Categories": "Taken with Canon PowerShot SX40 HS|Nokia Lumia 620|Self-published work|Blue mobile phones",
+      "ImageDescription": "Nokia Lumia 620 cyan showing main screen of Windows Phone 8 operating system.",
+      "DateTimeOriginal": "2013-10-25 16:04:44",
+      "Credit": "<span class=\"int-own-work\" lang=\"en\">Own work</span>",
+      "Artist": "<a href=\"//commons.wikimedia.org/w/index.php?title=User:Mikosoft&amp;action=edit&amp;redlink=1\" class=\"new\" title=\"User:Mikosoft (page does not exist)\">Mikosoft</a>",
+      "LicenseShortName": "CC BY-SA 3.0",
+      "UsageTerms": "Creative Commons Attribution-Share Alike 3.0",
+      "LicenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "Copyrighted": "True",
+      "Restrictions": ""
+    }
+  }
+]

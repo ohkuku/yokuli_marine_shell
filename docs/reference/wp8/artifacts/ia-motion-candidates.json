@@ -1,0 +1,1752 @@
+{
+  "queries": [
+    "\"Windows Phone 8\" AND mediatype:movies",
+    "(\"Lumia 920\" OR \"Lumia 820\" OR \"Lumia 620\") AND mediatype:movies AND (\"Windows Phone\" OR WP8)"
+  ],
+  "count": 80,
+  "openLicensedCount": 25,
+  "items": [
+    {
+      "collection": [
+        "tekzilla",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-09-06T00:00:00Z",
+      "description": "Thinking about a new laptop? Loyd Case shows off four Ultrabooks! What's going on with the theft of 12 million iPhone and iPad UDIDs? Is Apple's iPhone 5 coming September 12th? Nokia's new 820 and 920 Windows Phone 8 smartphones, and more!",
+      "downloads": 140,
+      "identifier": "Tekzilla_355",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "tekzilla",
+        "revision3",
+        "rev3",
+        "Patrick Norton",
+        "Robert Heron",
+        "Loyd Case"
+      ],
+      "title": "Tekzilla 355: iPhone 5 Coming September 12th! 4 Ultrabook Laptops. UDID Stolen? Don't Panic! Nokia Windows Phone 8. HDMI Switches. Your DIY Home Automation."
+    },
+    {
+      "collection": [
+        "tekzilla",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-10-11T00:00:00Z",
+      "description": "Dumping your hard drive for an SSD? We can make the move pain free! Gaming PC now, or wait for the next gen Playstation and Xbox? HTPC Hard drive: Green, Black or Red? Windows 8 Phone Pre-Orders and Samsung Mini Galaxy SIII are coming!",
+      "downloads": 83,
+      "identifier": "Tekzilla_366",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "tekzilla",
+        "revision3",
+        "rev3",
+        "Patrick Norton",
+        "Robert Heron"
+      ],
+      "title": "Tekzilla 366: Painless SSD Upgrade. Xbox 720 Vs. Gaming PC! Mini Galaxy SIII & Windows Phone 8 Coming. Plasma Beats LCD: Samsung E8000 Review. Hard Drive Reccos."
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2013-06-28T00:00:00Z",
+      "description": "Jon R is away on vacation, so Ashley is filling in! Today she talks about Facebook prepping its own mobile RSS reader that is reminiscent of Flipboard, HTC replicating its beautiful hardware on Windows by releasing a One look-a-like that'll run Windows Phone 8, the super secret Motorola X phone revealing itself in another leaked photo that points to a Sprint partnership and more!",
+      "downloads": 64,
+      "identifier": "TechnoBuffalo_394",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 394: Nokia Lumia 1020, Motorola X and a Facebook RSS Reader!"
+    },
+    {
+      "collection": [
+        "tech-news-today",
+        "computersandtechvideos"
+      ],
+      "creator": "TWiT",
+      "date": "2012-08-30T00:00:00Z",
+      "description": "Windows Phone 8 launch date, new iPhone's leaking everywhere, Amazon's sold out of Kindle Fires, and more.",
+      "downloads": 52,
+      "identifier": "Tech_News_Today_576",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "twit",
+        "tech-news-today",
+        "tnt",
+        "Sarah Lane",
+        "Iyaz Akhtar",
+        "Christopher Null"
+      ],
+      "title": "Tech News Today 576: It's Getting a Little Leaky"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-10-15T00:00:00Z",
+      "description": "In this episode, Jon shares his thoughts on the recently leaked LG Nexus 4 device - LG's contribution to the next generation of Google Nexus phones. Jon also provides helpful advice on whether or not buying unlocked would be a wise decision, and whether or not to pick up a Windows Phone 8 device or an iPhone 5!",
+      "downloads": 50,
+      "identifier": "TechnoBuffalo_256",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 256: LG Nexus 4, Buying Unlocked and Windows Phone 8 Vs. iPhone 5!"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-07-27T00:00:00Z",
+      "description": "Nokia to debut Windows Phone 8 in September, HTC and Facebook prepping a phone for 2013 and Apple's got a ton of toys for your Christmas stockings.",
+      "downloads": 45,
+      "identifier": "TechnoBuffalo_221",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 221: Nokia's WinPhone 8, Facebook Phone (Again!) and New iPods!"
+    },
+    {
+      "collection": [
+        "tech-news-today",
+        "computersandtechvideos"
+      ],
+      "creator": "TWiT",
+      "date": "2012-10-29T00:00:00Z",
+      "description": "Windows Phone 8 gets real, hurricane unites the Internet, Google unveils more Nexus hardware, and more.",
+      "downloads": 44,
+      "identifier": "Tech_News_Today_617",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "twit",
+        "tech-news-today",
+        "tnt",
+        "Tom Merritt",
+        "Sarah Lane",
+        "Iyaz Akhtar",
+        "Nate Lanxon",
+        "Alex Gumpel"
+      ],
+      "title": "Tech News Today 617: Windows Phone Gr8?"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-11-14T00:00:00Z",
+      "description": "On this week's episode, Jon R. discusses Windows Phone 8. He recently switched back into the mobile Microsoft ecosystem, using various Windows Phone 8 powered devices as his daily drivers. Although he loves the OS, there are a few shortcomings that are really annoying. See what they are!",
+      "downloads": 41,
+      "identifier": "TechnoBuffalo_269",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 269: Windows Phone 8 - Shortcomings & Irritations"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-07-02T00:00:00Z",
+      "description": "In this episode, Jon compares the newly released Google Nexus 7 against the iPad and the Kindle Fire. Jon also compares Windows Phone 8 vs. BlackBerry 10, the Samsung Galaxy S III vs. the Samsung Galaxy Note, and more.",
+      "downloads": 38,
+      "identifier": "TechnoBuffalo_210",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 210: Ask the Buffalo: Nexus 7, Windows Phone 8, and the MacBook Air"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-11-16T00:00:00Z",
+      "description": "The iPhone 5 was just released, but the rumor mill is churning about the production of the iPhone 5S! Plus, the super sleek iMac that's set to launch this month might be delayed until 2013, Verizon will be offering free Windows Phone 8 Devices and more!",
+      "downloads": 38,
+      "identifier": "TechnoBuffalo_270",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 270: iPhone 5S Possibly in the Works, Apple's New iMac Is Likely Delayed & More!"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2011-10-28T00:00:00Z",
+      "description": "Noah K tackles the biggest tech rumors of this week! Our own Mike P is headed to NYC for a trio of phone launches next week - is one of them the HTC Rezound? Nokia just launched Windows Phone Mango devices, so why are they talking about Apollo already? And Logitech is shipping Google TV Revue units with \"Upgraded!\" stickers on them - but why?",
+      "downloads": 35,
+      "identifier": "TechnoBuffalo_70",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 70: Rumor Roundup: HTC Rezound Launching, Windows Phone 8 Coming, and Google TV Update Just Days Away?"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "deemphasize"
+      ],
+      "creator": "Léo Duff",
+      "date": "2014-01-04T00:00:00Z",
+      "description": "Tweeter cette vidéo: http://ctt.ec/6g7wh Pour une description plus complète, voir l'article sur Macinpoche.fr : -----Liens----- ►S'ABONNER: http://www.youtube.com/subscription_center?add_user=Striker79210 ►TWITTER: http://bit.ly/15V4qZh ►FACEBOOK: http://on.fb.me/XeVHle ►CHAINE SECONDAIRE: http://bit.ly/YfCgZ5 ►Musique: http://www.youtube.com/watch?v=b7oo7sRf80M Source: https://www.youtube.com/watch?v=jqRyK19xOgM Uploader: Léo Duff",
+      "downloads": 31,
+      "identifier": "youtube-jqRyK19xOgM",
+      "licenseurl": "https://creativecommons.org/licenses/by/3.0/",
+      "subject": [
+        "Youtube",
+        "video",
+        "Science & Technology",
+        "appéro",
+        "Angry Birds (Video Game)",
+        "go",
+        "iphone",
+        "top",
+        "application",
+        "applications",
+        "apps",
+        "app",
+        "ipod",
+        "léo duff",
+        "apple",
+        "snapchat",
+        "pirate",
+        "hack",
+        "waze",
+        "gps",
+        "social",
+        "google",
+        "ios",
+        "android",
+        "blackberry",
+        "meilleures",
+        "2013",
+        "2014",
+        "cinémur",
+        "films",
+        "gestion",
+        "télé",
+        "cinéma",
+        "jeu",
+        "course",
+        "voiture",
+        "mobile",
+        "macinpoche",
+        "Phone",
+        "Review",
+        "Touch",
+        "Android (Software)",
+        "windows phone",
+        "Windows Phone 8 (Operating System)",
+        "Windows Phone 7 (Operating System)",
+        "Angry Birds Go!",
+        "Ipod Touch",
+        "Nokia",
+        "Samsung",
+        "Store",
+        "Cell Phone"
+      ],
+      "title": "L'Appéro #3 - Snapchat, Waze, Cinémur, Angry Birds Go"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2013-02-08T00:00:00Z",
+      "description": "Today Jon talks about the iPad Miini's refresh and what new feature the small tablet might pack, a new Nokia smartphone that will feature the impressive 41 megapixel PureView sensor and run Windows Phone 8, Facebook's new rumored app that tracks you and alerts you when your friends are near and much more.",
+      "downloads": 30,
+      "identifier": "TechnoBuffalo_331",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 331: iPad Mini 2 Coming Soon, Apple's Music Streaming Service is Imminent, Nokia's Windows Phone with PureView and More!"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-08-17T00:00:00Z",
+      "description": "Has Apple been working on a set-top cable box for years now? And Nokia's first Windows Phone 8 device leaks ... maybe.",
+      "downloads": 26,
+      "identifier": "TechnoBuffalo_230",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 230: Is Apple TV Coming To Cable Companies & Nokia's Windows Phone 8 Possibly Leaked!"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-11-09T00:00:00Z",
+      "description": "The iPad Mini just launched, but there are already rumors that an iPad Mini 2 is on the way with a retina display! Plus, Windows Phone and phablet fans rejoice because apparently the ZTE's got a 5.9 inch device up their sleeve, Twitter is working on their own Instagram and more.",
+      "downloads": 25,
+      "identifier": "TechnoBuffalo_267",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 267: iPad Mini 2 Retina May Be Coming, Windows Phone 8 Phablet, Twitter's Own Instagram & More!"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-11-05T00:00:00Z",
+      "description": "In this episode, Jon discusses how the recently announced Google Nexus 4 stacks up to it's competitors. Jon also provides his thoughts and opinions on Windows Phone 8, as well as the recent departure of Scott Forstall from the Apple exec team.",
+      "downloads": 24,
+      "identifier": "TechnoBuffalo_265",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 265: Nexus 4, Windows Phone 8, Scott Forstall Leaving Apple and More!"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-08-10T00:00:00Z",
+      "description": "Samsung's prepping a back to school tablet bundle, Sony's prepping a new tablet, and HTC might be launching three Windows Phone 8 phones.",
+      "downloads": 23,
+      "identifier": "TechnoBuffalo_227",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 227: Rumor Roundup: HTC Windows Phone 8, Xperia Tablet and More!"
+    },
+    {
+      "collection": [
+        "podcasts_mirror_godane_misc",
+        "podcasts_mirror_godane",
+        "podcasts_mirror"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-06-25T00:00:00Z",
+      "description": "This week we're taking a look at Microsoft Surface and the new features in Windows Phone 8, plus a surprising technology from Ford. We're also answering questions about getting started with web design and making your older television set work with devices it doesn't support.",
+      "downloads": 21,
+      "identifier": "Lifehacker_Extra_15",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "lifehacker",
+        "lifehackerextra",
+        "Adam Dachis",
+        "Whitson Gordon",
+        "Adam Pash"
+      ],
+      "title": "Lifehacker Extra 15: Microsoft Surface, Getting Started with Web Design and Forcing Your Older TV into the Future"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-06-15T00:00:00Z",
+      "description": "Noah K tackles the biggest tech rumors of this week! In this episode: Amazon's Android Appstore may be heading to Europe, screenshots of Windows Phone 8 leak and Zelda faces two options for her next quest.",
+      "downloads": 21,
+      "identifier": "TechnoBuffalo_203",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 203: Rumor Roundup: Amazon's Android Appstore, Windows Phone 8 and Zelda's Next Quest!"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2013-01-08T00:00:00Z",
+      "description": "Until recently, Windows Phone devices have been few and far between on Verizon. With the launch of Windows Phone 8, we've seen the mobile OS return to Verizon shelves, and the most recent newcomer is the Samsung ATIV Odyssey.",
+      "downloads": 21,
+      "identifier": "TechnoBuffalo_299",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 299: Samsung ATIV Odyssey Hands-On - CES 2013"
+    },
+    {
+      "collection": [
+        "technobuffalo",
+        "computersandtechvideos"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-10-26T00:00:00Z",
+      "description": "Rumors abound this week! The recently announced Asia-only HTC J Butterfly Superphone appears to be making its way to the US - specifically to Verizon. Microsoft is apparently gearing up to produce their own devices loaded with Windows Phone 8. And does the release of the iPad Mini mean the death of the iPod Touch?",
+      "downloads": 20,
+      "identifier": "TechnoBuffalo_261",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "technobuffalo",
+        "Jon Quach",
+        "Jon Rettinger"
+      ],
+      "title": "TechnoBuffalo 261: HTC J Butterfly Superphone Headed to US, Windows Phone 8 News and Find Out if the iPad Mini Means the Death of the iPod Touch!"
+    },
+    {
+      "collection": [
+        "This_Week_in_Tech",
+        "podcasts_mirror",
+        "podcasts_mirror_godane"
+      ],
+      "creator": "TWiT",
+      "date": "2012-06-24T00:00:00Z",
+      "description": "Surface, RT, Windows Phone 8 and Microsoft's mojo, going Retina, tapping into NFC, Facebook kids, Nike tweet trouble, iPhone port problems, and more.",
+      "downloads": 13,
+      "identifier": "This_Week_in_Tech_359",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "twit",
+        "This Week in Tech",
+        "Leo Laporte",
+        "Ryan Block",
+        "Larry Magid",
+        "Robert Ballecer"
+      ],
+      "title": "This Week in Tech 359: Ellison's Island"
+    },
+    {
+      "collection": [
+        "rev3mobile",
+        "revision3",
+        "podcasts_mirror",
+        "podcasts_mirror_godane"
+      ],
+      "creator": "Revision 3",
+      "date": "2013-06-17T00:00:00Z",
+      "description": "We're quickly unboxing the new Nokia Lumia 925 with Windows Phone 8 GDR2 and compare it with it's older brother the Lumia 920",
+      "downloads": 9,
+      "identifier": "Rev3_Mobile_Geeks_Reviews_274",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "mobilegeeksreviews",
+        "mobilegeeks daily"
+      ],
+      "title": "Mobile Geeks Reviews 274: Nokia Lumia 925 unboxing and comparison with Lumia 920"
+    },
+    {
+      "collection": [
+        "rev3mobile",
+        "revision3",
+        "podcasts_mirror",
+        "podcasts_mirror_godane"
+      ],
+      "creator": "Revision 3",
+      "date": "2013-05-14T00:00:00Z",
+      "description": "We're checking out the new Nokia Lumia 925 flagship smartphone running Windows Phone 8 with aluminum frame and six-lense PureView.",
+      "downloads": 7,
+      "identifier": "Rev3_Mobile_Geeks_Reviews_244",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "mobilegeeksreviews",
+        "mobilegeeks daily"
+      ],
+      "title": "Mobile Geeks Reviews 244: Nokia Lumia 925 Hands On and Comparison with Nokia Lumia 920"
+    },
+    {
+      "collection": [
+        "rev3mobile",
+        "revision3",
+        "podcasts_mirror",
+        "podcasts_mirror_godane"
+      ],
+      "creator": "Revision 3",
+      "date": "2012-10-30T00:00:00Z",
+      "description": "The Nokia Lumia 920 is shaping up to the flagship device for Windows Phone 8, and for good reason. We unbox the white version and put it up against the Samsung Galaxy S3, Note II and the Pure View 808.",
+      "downloads": 4,
+      "identifier": "Rev3_Mobile_Geeks_Reviews_100",
+      "licenseurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/",
+      "subject": [
+        "revision3",
+        "rev3",
+        "mobilegeeksreviews",
+        "mobilegeeks daily"
+      ],
+      "title": "Mobile Geeks Reviews 100: Nokia Lumia 920 Unboxing, Comparison & Walkthrough"
+    },
+    {
+      "collection": [
+        "gfqnetwork",
+        "podcasts"
+      ],
+      "description": "Andrew addresses an article criticizing one of Paul Thurrott's articles about Windows 8. Is Paul a flip flopper? New info leaks about the Windows Phone 8.1 update. Will it feel more like Windows 8? Asus plans to launch a $179 Chromebox. Will Chromebox catch on? Paul gives his thoughts on market viability for Chromebox. And rumors swirl regarding Verizon throttling Netflix data. Is there any truth to Verizon throttling Netflix?",
+      "downloads": 1481,
+      "identifier": "WhatTheTechEp201MicrosoftFanPaul",
+      "subject": [
+        "technology",
+        "verizon",
+        "netflix",
+        "windows 8",
+        "microsoft",
+        "windows phone 8",
+        "chromebox",
+        "throttling",
+        "google",
+        "net neutrality"
+      ],
+      "title": "What The Tech Ep. 201 - Microsoft Fan Paul 2-11-14"
+    },
+    {
+      "collection": [
+        "manuals_philips",
+        "manuals"
+      ],
+      "creator": "Philips",
+      "date": "2016-01-01T00:00:00Z",
+      "description": "Philips BT 5580/5880 Bluetooth Speaker User Guide Flyer Documentation User Manual Product Description Wireless speaker Pleasant sound quality in any environment Integrated aptX and AAC support for high-quality Bluetooth® wireless music streaming, with simple NFC pairing. Advanced tweeters and drivers create a balanced sound that can be played anywhere thanks to the integrated battery. Product Especifications Output power (RMS) 10W System of Mono Speakers Speaker Drivers 1 x 3 inch woofer, 1 x 3/4 inch tweeter Connectivity NFC Bluetooth for one-touch pairing; works with Android 4.0 or later and Windows phone 8 or later Bluetooth profiles A2DP AVRCP HFP Bluetooth range Line of sight, 10 M or 30FT Audio input (3.5 mm) Yes Comfort Built-in microphone for conference via speaker USB port to charge mobile device (5V, 1A) On / Off Battery type Lithium ion (x2) Battery operating time 8 h Power supply 100-240 VAC, 50/60 Hz Accessories Included accessories Worldwide Warranty Leaflet Quick installation guide AC-DC adapter Dimensions Product dimensions (WxDxH) 210 x 55 x 201 mm Package dimensions (L x W x H) 298 x 88 x 235 mm Product weight 1,232 kg Weight, including packaging 1,924 kg Product dimensions Depth 5.5 cm Height 21 cm Weight 1,375 kg Width 20 cm",
+      "downloads": 1348,
+      "identifier": "philips-bt-5580-speaker",
+      "subject": [
+        "Documentation.Philips",
+        "Bluetooh Speaker",
+        "User Manual",
+        "Manual"
+      ],
+      "title": "Philips BT 5580/5880 Bluetooth Speaker"
+    },
+    {
+      "collection": [
+        "social-media-video-unsorted",
+        "social-media-video",
+        "additional_collections_video",
+        "deemphasize"
+      ],
+      "downloads": 540,
+      "identifier": "anandtech_youtube_channel",
+      "title": "anandtech_youtube_channel"
+    },
+    {
+      "collection": [
+        "gfqnetwork",
+        "podcasts"
+      ],
+      "creator": "GFQ Network",
+      "date": "2013-10-18T00:00:00Z",
+      "description": "Apple officially it has a lot to cover at it's October 22 event. Andrew and John discuss what to expect from the event including the new iPad, iPad Mini and Mavericks. But what about pricing for the new Mac Pro and could there also be a new Apple TV? Google's Nexus 5 briefly leaks on eBay. Andrew tries to explain why the Nexus 5 and Android 4.4 is a big deal to John. Microsoft releases Windows Phone GDR3 update. What are the improvements to Windows Phone 8? Twitter may launch a stand alone private messaging app. Would anyone use a Twitter message app? And our Picks of the Week.",
+      "downloads": 362,
+      "identifier": "TechNewsWeeklyEp121AppleHasALotToCover101813",
+      "subject": [
+        "technology",
+        "apple",
+        "ipad",
+        "mac pro",
+        "mavericks",
+        "os x",
+        "google",
+        "android",
+        "nexus 5",
+        "twitter"
+      ],
+      "title": "Tech News Weekly Ep. 121 - Apple Has A Lot To Cover 10-18-13"
+    },
+    {
+      "collection": [
+        "tweakers",
+        "computersandtechvideos"
+      ],
+      "date": "2012-06-21T11:06:00Z",
+      "description": [
+        "&lt;p&gt;Microsoft heeft tijdens een eigen evenement Windows Phone 8 aangekondigd, een nieuwe versie van zijn mobiele OS. Deze is gebaseerd op de Windows 8-kernel voor pc's, die ondersteuning voor multi-core en schermen met hd-resolutie biedt.&lt;/p&gt;",
+        "Original url: http://tweakers.net/video/5765/windows-phone-8.html"
+      ],
+      "downloads": 142,
+      "identifier": "tweakers005765",
+      "subject": [
+        "tweakers",
+        "5765",
+        "&lt",
+        "p&gt",
+        "Microsoft heeft tijdens een eigen evenement Windows Phone 8 aangekondigd, een nieuwe versie van zijn mobiele OS. Deze is gebaseerd op de Windows 8-kernel voor pc's, die ondersteuning voor multi-core en schermen met hd-resolutie biedt.&lt",
+        "/p&gt"
+      ],
+      "title": "tweakers / 5765 / Windows Phone 8"
+    },
+    {
+      "collection": [
+        "tweakers",
+        "computersandtechvideos"
+      ],
+      "date": "2012-10-24T17:18:00Z",
+      "description": "&lt;p&gt;Mede-oprichter en tegenwoordig voorzitter en adviseur van Microsoft, Bill Gates, spreekt over Windows 8, Windows Phone 8 en de aankomende tablet Microsoft Surface.&lt;/p&gt;",
+      "downloads": 141,
+      "identifier": "tweakers006525",
+      "subject": [
+        "6525",
+        "tweakers"
+      ],
+      "title": "tweakers / 006525 / Bill Gates spreekt over de toekomst van Microsoft"
+    },
+    {
+      "collection": [
+        "tweakers",
+        "computersandtechvideos"
+      ],
+      "date": "2013-06-04T15:46:00Z",
+      "description": [
+        "&lt;p&gt;Microsoft kondigt Halo: Spartan Assault aan, een topdown-shooter die gemaakt wordt door het Nederlandse Vanguard Games. De studio werkt samen met 343 Industries, de studio van Microsoft die Halo 4 afleverde.&nbsp;Halo: Spartan Assault&nbsp;komt al in juli uit en gaat ongeveer 8 euro kosten.&lt;/p&gt;",
+        "Original url: http://tweakers.net/video/7769/vanguard-games-maakt-halo-spartan-assault-voor-windows-8-en-windows-phone-8.html"
+      ],
+      "downloads": 110,
+      "identifier": "tweakers007769",
+      "subject": [
+        "tweakers",
+        "7769"
+      ],
+      "title": "tweakers / 7769 / Vanguard Games maakt Halo: Spartan Assault voor Windows 8 en Windows Phone 8"
+    },
+    {
+      "collection": [
+        "audio_islamic",
+        "audio_religion"
+      ],
+      "description": "شبكة انوار البصيرة",
+      "downloads": 87,
+      "identifier": "TuitionWindows_201409",
+      "subject": "Tuition Windows",
+      "title": "Tuition Windows Phone 8 14 Media Player , Media Element تكوين مشغل صوت ‏"
+    },
+    {
+      "collection": [
+        "g4video-web",
+        "computersandtechvideos"
+      ],
+      "creator": "G4TV.com",
+      "date": "2012-04-11T00:00:00Z",
+      "description": "Sara Underwood has the top stories for Wednesday on The Feed. Watch and learn more about the antitrust lawsuit against Apple, Hachette and other ebook publishers, how Kinect technology may be coming to Windows Phone 8 and more.",
+      "downloads": 79,
+      "identifier": "g4tv.com-video58130-flvhd",
+      "subject": [
+        "G4TV.com videos",
+        "G4TV.com unpublic video ids",
+        "flvhd"
+      ],
+      "title": "g4tv.com-video58130-flvhd: The Daily Feed with Sara Underwood 4.11.12"
+    },
+    {
+      "collection": [
+        "tweakers",
+        "computersandtechvideos"
+      ],
+      "date": "2012-09-06T09:56:00Z",
+      "description": [
+        "&lt;p&gt;Nokia heeft op een eigen evenement in New York de Lumia 920 met Windows Phone 8 gepresenteerd. Het toestel heeft onder meer ondersteuning voor draadloos laden en beschikt over een lcd, door Nokia PureMotion HD+ genoemd.&lt;/p&gt;",
+        "Original url: http://tweakers.net/video/6206/nokia-lumia-920.html"
+      ],
+      "downloads": 77,
+      "identifier": "tweakers006206",
+      "subject": [
+        "tweakers",
+        "6206",
+        "&lt",
+        "p&gt",
+        "Nokia heeft op een eigen evenement in New York de Lumia 920 met Windows Phone 8 gepresenteerd. Het toestel heeft onder meer ondersteuning voor draadloos laden en beschikt over een lcd, door Nokia PureMotion HD+ genoemd.&lt",
+        "/p&gt"
+      ],
+      "title": "tweakers / 6206 / Nokia Lumia 920"
+    },
+    {
+      "collection": [
+        "audio_islamic",
+        "audio_religion"
+      ],
+      "description": "دورة و وروشة  ويندوز فون 8.1 شبكة أنوار البصيرة",
+      "downloads": 74,
+      "identifier": "TuitionWindows",
+      "subject": "شبكة أنوار البصيرة",
+      "title": "Tuition Windows Phone 8 14 Media Player , Media Element تكوين مشغل صوت ‏"
+    },
+    {
+      "collection": [
+        "opensource_movies"
+      ],
+      "creator": "Recovery96",
+      "date": "2022-01-09T00:00:00Z",
+      "description": "The sci-fi horror masterpiece DEAD SPACE has finally arrived on Android! This stunning vision of the Dead Space franchise is truly a landmark in mobile gaming. Featuring hardcore gameplay and a rich audio experience, immerse yourself in bloodcurdling events that unleash the Necromorph horde. Once you’ve played, this sci-fi horror masterpiece will truly change the way you think about Android games. A CHARGED SENSORY EXPERIENCE Survive one of the most gripping, bone-chilling experiences on mobile. Cutting-edge visuals – rich in effects and atmospheric lighting – reproduce the cinematic horror of the console game. Featuring a fully voice-acted stereo soundtrack, plus a movie-quality score and sound effects, find yourself fully immersed in the dread of Dead Space. SHOCKINGLY EASY TO CONTROL Intuitive controls focus you on the action. The on-screen HUD is seamlessly integrated into the game. Navigate 6 varied environments and battle Necromorphs with simple swipe and tap controls. FEATURING 2 EXCLUSIVE WEAPONS & CLASSIC MODULES Access the new Plasma Saw and Core Extractor, plus 3 more weapons from the Dead Space universe. Also utilize Kinesis and Stasis Modules well-known to players of the console game – and get on with the business of strategic dismemberment. Dare to step into DEAD SPACE? Get this critically-acclaimed horror experience on Android NOW!! Dead Space is a 2011 science fiction survival horror mobile game developed by Australian company IronMonkey Studios and published by Electronic Arts for iOS, BlackBerry Tablet OS, Xperia Play, Android and BlackBerry 10 devices. The game was also scheduled for release on Windows Phone 8 as part of a deal with Nokia that saw several EA games released exclusively on Nokia branded Windows Phones, but it was cancelled prior to release. Within the Dead Space series, the game is set after the events of original Dead Space and prior to the events of Dead Space 2 and shows how the Necromorph outbreak spread from the government to public sectors. Source:  https://en.m.wikipedia.org/wiki/Dead_Space_(mobile_game) Link to download dead space mobile (Audio Bug Fixed & support Android 11) https://only4gamers.xyz/dead-space-apk/ #DeadSpaceMobile #EA",
+      "downloads": 63,
+      "identifier": "dead-space-mobile-chapter-4-4-k-android-i-os-gameplay-walkthrough",
+      "subject": [
+        "Recovery96",
+        "Dead Space mobile",
+        "Horror",
+        "Gaming"
+      ],
+      "title": "Dead Space Mobile Chapter # 4 ● 4 K Android I OS Gameplay Walkthrough"
+    },
+    {
+      "collection": [
+        "g4video-web",
+        "computersandtechvideos"
+      ],
+      "creator": "G4TV.com",
+      "date": "2012-04-11T00:00:00Z",
+      "description": "Sara Underwood has the top stories for Wednesday on The Feed. Watch and learn more about the antitrust lawsuit against Apple, Hachette and other ebook publishers, how Kinect technology may be coming to Windows Phone 8 and more.",
+      "downloads": 59,
+      "identifier": "g4tv.com-video58130",
+      "subject": [
+        "G4TV.com videos",
+        "G4TV.com unpublic video ids"
+      ],
+      "title": "g4tv.com-video58130: The Daily Feed with Sara Underwood 4.11.12"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on What The Tech: Andrew and Paul discuss their meet up last week in New York City. How wild did it get? Windows 8 and Windows RT officially launches. Paul discusses Microsoft's Windows RT device. What short comings, if any, does Windows RT have? Also, where does Microsoft's new OS leave developers? Microsoft announces a slew of features in Windows Phone 8. What's new? Also Google announces Android 4.2 Who really benefits from Android? And what if Windows 8 did not have Metro?",
+      "downloads": 57,
+      "identifier": "bliptv-20131012-202755-Andranic-WhatTheTechEp139WindowsRTIsTheFuture103012926",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "windows surface",
+        "windows 8",
+        "windows metro",
+        "windows rt",
+        "microsoft",
+        "android",
+        "google",
+        "windows phone 8",
+        "ipad",
+        "android 4.2",
+        "technology",
+        "paul thurrott"
+      ],
+      "title": "What The Tech Ep. 139 - Windows RT is the Future 10-30-12"
+    },
+    {
+      "collection": [
+        "gdcextras",
+        "gamevideos"
+      ],
+      "description": "In-App purchase is the critical monetization mechanism for developers today on mobile devices, and in Windows Phone 8, we've added comprehensive support that open a new world of opportunity to developers. We'll discuss this feature in depth in this session.",
+      "downloads": 56,
+      "identifier": "GDC2013Bourne",
+      "subject": "GDC",
+      "title": "GDC 2013: Joe Bourne - \"Using In-Application Purchase for Windows Phone Games (Presented by Microsoft)\""
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "The Nokia Lumia 920 with Windows Phone 8 was built for amazing clarity, power and speed that lets you capture, share and relive moments as if you were still there. You’ll enjoy a rich user-experience in almost any conditions with the stunning 4.5-inch PureMotion HD and ClearBlack display. Learn more about the Lumia 920 at http://www.nokia.com/us-en/products/phone/lumia920/",
+      "downloads": 55,
+      "identifier": "bliptv-20131012-074708-Andranic-PickOfTheWeekNokiaLumia920837",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "nokia",
+        "lumia 920",
+        "smartphone",
+        "windows phone"
+      ],
+      "title": "Pick of the Week: Nokia Lumia 920"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "deemphasize"
+      ],
+      "creator": "Mobile Gazette",
+      "date": "2012-09-20T00:00:00Z",
+      "description": "The name is kind of odd, but the Windows Phone 8X by HTC ticks all the boxes for a smartphone. Will consumers be drawn to Windows Phone 8? Source: https://www.youtube.com/watch?v=PL4kjfnhKxg Uploader: Mobile Gazette",
+      "downloads": 54,
+      "identifier": "youtube-PL4kjfnhKxg",
+      "subject": [
+        "Youtube",
+        "video",
+        "Science & Technology",
+        "Windows Phone 8X by HTC",
+        "HTC 8X",
+        "HTC WP 8X",
+        "Windows Phone 8",
+        "Mobile Phone News",
+        "Mobile Gazette"
+      ],
+      "title": "Windows Phone 8X by HTC"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "deemphasize"
+      ],
+      "creator": "Mobile Gazette",
+      "date": "2013-02-25T00:00:00Z",
+      "description": "The Nokia Lumia 520 is an attempt to bring Windows Phone 8 devices downrange and closer to the price of feature phones. But what do you get for your money? Source: https://www.youtube.com/watch?v=uEvW-ZFyjUg Uploader: Mobile Gazette",
+      "downloads": 52,
+      "identifier": "youtube-uEvW-ZFyjUg",
+      "subject": [
+        "Youtube",
+        "video",
+        "Science & Technology",
+        "Mobile Gazette",
+        "Mobile Phone News",
+        "Nokia Lumia 520",
+        "lumia 520",
+        "nokia 520"
+      ],
+      "title": "Nokia Lumia 520"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on What The Tech: Andrew Zarian and Paul Thurrott discuss Nokia's newest pair of Windows Phone 8 devices, the Lumia 920 and Lumia 820. Are all criticisms of Windows Phone 8 valid? Andrew and Paul look ahead to the Apple event. Will we see an iPad mini? Paul gives us his thoughts on the new Amazon Kindle Fire tablets. Where do they stand among PCs and the iPad? Paul also brings up Windows RT. Andrew rants about journalist commenting on technology when they have no clue what they are talking about. And what if Microsoft moves to a yearly release cycle of Windows?",
+      "downloads": 50,
+      "identifier": "bliptv-20131011-141826-Andranic-WhatTheTechEp132WindowsHippo91112186",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "paul thurrott",
+        "technology",
+        "nokia",
+        "lumia 920",
+        "microsoft",
+        "windows phone",
+        "windows 8",
+        "amazon",
+        "kindle fire",
+        "ipad",
+        "iphone",
+        "google",
+        "android",
+        "windows rt",
+        "ipad mini"
+      ],
+      "title": "What The Tech Ep 132 - Windows Hippo 9-11-12"
+    },
+    {
+      "collection": [
+        "opensource_movies"
+      ],
+      "creator": "Recovery96",
+      "date": "2022-01-08T00:00:00Z",
+      "description": "The sci-fi horror masterpiece DEAD SPACE has finally arrived on Android! This stunning vision of the Dead Space franchise is truly a landmark in mobile gaming. Featuring hardcore gameplay and a rich audio experience, immerse yourself in bloodcurdling events that unleash the Necromorph horde. Once you’ve played, this sci-fi horror masterpiece will truly change the way you think about Android games. A CHARGED SENSORY EXPERIENCE Survive one of the most gripping, bone-chilling experiences on mobile. Cutting-edge visuals – rich in effects and atmospheric lighting – reproduce the cinematic horror of the console game. Featuring a fully voice-acted stereo soundtrack, plus a movie-quality score and sound effects, find yourself fully immersed in the dread of Dead Space. SHOCKINGLY EASY TO CONTROL Intuitive controls focus you on the action. The on-screen HUD is seamlessly integrated into the game. Navigate 6 varied environments and battle Necromorphs with simple swipe and tap controls. FEATURING 2 EXCLUSIVE WEAPONS & CLASSIC MODULES Access the new Plasma Saw and Core Extractor, plus 3 more weapons from the Dead Space universe. Also utilize Kinesis and Stasis Modules well-known to players of the console game – and get on with the business of strategic dismemberment. Dare to step into DEAD SPACE? Get this critically-acclaimed horror experience on Android NOW!! Dead Space is a 2011 science fiction survival horror mobile game developed by Australian company IronMonkey Studios and published by Electronic Arts for iOS, BlackBerry Tablet OS, Xperia Play, Android and BlackBerry 10 devices. The game was also scheduled for release on Windows Phone 8 as part of a deal with Nokia that saw several EA games released exclusively on Nokia branded Windows Phones, but it was cancelled prior to release. Within the Dead Space series, the game is set after the events of original Dead Space and prior to the events of Dead Space 2 and shows how the Necromorph outbreak spread from the government to public sectors. Source:  https://en.m.wikipedia.org/wiki/Dead_Space_(mobile_game) Link to download dead space mobile (Audio Bug Fixed & support Android 11) https://only4gamers.xyz/dead-space-apk/ #DeadSpaceMobile #EA",
+      "downloads": 45,
+      "identifier": "dead-space-mobile-chapter-3-4-k-android-i-os-gameplay-walkthrough",
+      "subject": [
+        "Recovery96",
+        "Dead Space mobile",
+        "Horror",
+        "Gaming"
+      ],
+      "title": "Dead Space Mobile Chapter # 3 ● 4 K Android I OS Gameplay Walkthrough"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "additional_collections_video",
+        "deemphasize"
+      ],
+      "creator": "The Escapist",
+      "date": "2014-03-04T00:00:00Z",
+      "description": "Subscribe to Escapist News! http://bit.ly/1cA7xt8 Escapist News Now with Andrea Rene Follow Andrea on Twitter @andrearene CORTANA COMING IN WINDOWS PHONE 8.1 UPDATE (Escapist News Now) According to sources from The Verge, Cortana is replace the built-in Bing search functionality and take the form of a circular animated icon instead of the busty blue babe we all know. She'll animate while speaking or thinking and will have her own unique personality. Users will be able to change Cortana's settings to have her call them by a nickname. Access to a variety of information including contacts, location data, calendars and more will help Cortana be your own personal assistant. Tracking information in emails will work similar to Google Now such as alerting you to flight delays during travel. Cortana will work with popular apps like Foursquare as well. However it is worth noting that even though the software is referred to as Cortana during the testing phase of the 8.1 update, it is not certain if Microsoft will choose to keep her name when the build finally launches. We should hopefully learn more at the upcoming Build conference where Microsoft is expected to unveil the final version along with a developer preview. Source link: http://www.theverge.com/2014/2/20/5430188/microsoft-cortana-personal-digital-assistant-windows-phone-8-1 -------------------------------------- Like us on Facebook: http://www.facebook.com/EscapistMag Follow us on Twitter: http://twitter.com/TheEscapistMag Find us Google+: http://bit.ly/EscapistGoogle Follow us on Pinterest: http://bit.ly/EscapistPins Check out our Merch: http://www.splitreason.com/theescapist",
+      "downloads": 43,
+      "identifier": "youtube-5BlKGI_TFw4",
+      "subject": [
+        "Youtube",
+        "video",
+        "Gaming",
+        "Cortana",
+        "windows phone",
+        "8.1 update",
+        "Windows 8",
+        "Siri",
+        "Apple",
+        "Microsoft",
+        "digital assistant",
+        "windows phone 8.1",
+        "cortana digital assistant",
+        "mobile",
+        "cell phones",
+        "Andrea Rene",
+        "ENN",
+        "The Escapist",
+        "Escapist News Now",
+        "The Escapist Magazine",
+        "escapistmagazine"
+      ],
+      "title": "CORTANA COMING IN WINDOWS PHONE 8.1 UPDATE (Escapist News Now)"
+    },
+    {
+      "collection": [
+        "opensource_movies"
+      ],
+      "creator": "Recovery96",
+      "date": "2022-01-02T00:00:00Z",
+      "description": "The sci-fi horror masterpiece DEAD SPACE has finally arrived on Android! This stunning vision of the Dead Space franchise is truly a landmark in mobile gaming. Featuring hardcore gameplay and a rich audio experience, immerse yourself in bloodcurdling events that unleash the Necromorph horde. Once you’ve played, this sci-fi horror masterpiece will truly change the way you think about Android games. A CHARGED SENSORY EXPERIENCE Survive one of the most gripping, bone-chilling experiences on mobile. Cutting-edge visuals – rich in effects and atmospheric lighting – reproduce the cinematic horror of the console game. Featuring a fully voice-acted stereo soundtrack, plus a movie-quality score and sound effects, find yourself fully immersed in the dread of Dead Space. SHOCKINGLY EASY TO CONTROL Intuitive controls focus you on the action. The on-screen HUD is seamlessly integrated into the game. Navigate 6 varied environments and battle Necromorphs with simple swipe and tap controls. FEATURING 2 EXCLUSIVE WEAPONS & CLASSIC MODULES Access the new Plasma Saw and Core Extractor, plus 3 more weapons from the Dead Space universe. Also utilize Kinesis and Stasis Modules well-known to players of the console game – and get on with the business of strategic dismemberment. Dare to step into DEAD SPACE? Get this critically-acclaimed horror experience on Android NOW!! ------------------------------------------------------------------------- Dead Space is a 2011 science fiction survival horror mobile game developed by Australian company IronMonkey Studios and published by Electronic Arts for iOS, BlackBerry Tablet OS, Xperia Play, Android and BlackBerry 10 devices. The game was also scheduled for release on Windows Phone 8 as part of a deal with Nokia that saw several EA games released exclusively on Nokia branded Windows Phones, but it was cancelled prior to release. Within the Dead Space series, the game is set after the events of original Dead Space and prior to the events of Dead Space 2 and shows how the Necromorph outbreak spread from the government to public sectors. Link to download Dead Space mobile (Audio Bug Fixed & support Android 11) https://only4gamers.xyz/dead-space-apk/ #DeadSpaceMobile #EA",
+      "downloads": 41,
+      "identifier": "dead-space-mobile-chapter-2-4-k-android-i-os-gameplay-walkthrough",
+      "subject": [
+        "Recovery96",
+        "Dead Space Mobile",
+        "Horror",
+        "Gaming"
+      ],
+      "title": "Dead Space Mobile Chapter # 2 ● 4 K Android I OS Gameplay Walkthrough"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "additional_collections_video",
+        "deemphasize"
+      ],
+      "creator": "Mobile Gazette",
+      "date": "2012-09-20T00:00:00Z",
+      "description": "A cheaper sibling to the powerful 8X, the Windows Phone 8S by HTC is a decidedly midrange device. But is there any market at all for it? Source: https://www.youtube.com/watch?v=j1_NYqp5eu8 Uploader: Mobile Gazette",
+      "downloads": 41,
+      "identifier": "youtube-j1_NYqp5eu8",
+      "subject": [
+        "Youtube",
+        "video",
+        "Science & Technology",
+        "Windows Phone 8S by HTC",
+        "HTC 8S",
+        "HTC WP 8S",
+        "Windows Phone 8",
+        "Mobile Phone News",
+        "Mobile Gazette"
+      ],
+      "title": "Windows Phone 8S by HTC"
+    },
+    {
+      "collection": [
+        "tweakers",
+        "computersandtechvideos"
+      ],
+      "date": "2013-04-19T08:00:00Z",
+      "description": [
+        "&lt;p&gt;&lt;span&gt;Windows Phone 8 is een relatief nieuw platform, maar desondanks zijn er in Nederland al drie telefoons verkrijgbaar voor maximaal 230 euro die Windows Phone 8 draaien. In de videoreview zie je deze drie telefoons, die gemaakt zijn door Nokia, HTC en nieuwkomer Huawei. Krijg je waar voor je geld met deze telefoons?&lt;/span&gt;&lt;/p&gt;",
+        "Original url: http://tweakers.net/video/7574/goedkope-windows-phones.html"
+      ],
+      "downloads": 39,
+      "identifier": "tweakers007574",
+      "subject": [
+        "tweakers",
+        "7574"
+      ],
+      "title": "tweakers / 7574 / Goedkope Windows Phones"
+    },
+    {
+      "collection": [
+        "opensource_movies"
+      ],
+      "creator": "Recovery96",
+      "date": "2022-01-01T00:00:00Z",
+      "description": "The sci-fi horror masterpiece DEAD SPACE has finally arrived on Android! This stunning vision of the Dead Space franchise is truly a landmark in mobile gaming. Featuring hardcore gameplay and a rich audio experience, immerse yourself in bloodcurdling events that unleash the Necromorph horde. Once you’ve played, this sci-fi horror masterpiece will truly change the way you think about Android games. A CHARGED SENSORY EXPERIENCE Survive one of the most gripping, bone-chilling experiences on mobile. Cutting-edge visuals – rich in effects and atmospheric lighting – reproduce the cinematic horror of the console game. Featuring a fully voice-acted stereo soundtrack, plus a movie-quality score and sound effects, find yourself fully immersed in the dread of Dead Space. SHOCKINGLY EASY TO CONTROL Intuitive controls focus you on the action. The on-screen HUD is seamlessly integrated into the game. Navigate 6 varied environments and battle Necromorphs with simple swipe and tap controls. FEATURING 2 EXCLUSIVE WEAPONS & CLASSIC MODULES Access the new Plasma Saw and Core Extractor, plus 3 more weapons from the Dead Space universe. Also utilize Kinesis and Stasis Modules well-known to players of the console game – and get on with the business of strategic dismemberment. Dare to step into DEAD SPACE? Get this critically-acclaimed horror experience on Android NOW!! ------------------------------------------------------------------------- Dead Space is a 2011 science fiction survival horror mobile game developed by Australian company IronMonkey Studios and published by Electronic Arts for iOS, BlackBerry Tablet OS, Xperia Play, Android and BlackBerry 10 devices. The game was also scheduled for release on Windows Phone 8 as part of a deal with Nokia that saw several EA games released exclusively on Nokia branded Windows Phones, but it was cancelled prior to release. Within the Dead Space series, the game is set after the events of original Dead Space and prior to the events of Dead Space 2 and shows how the Necromorph outbreak spread from the government to public sectors. Note:  To watch this video, it's recommended to use headphones for a more horror viewing experience throughout the chapter & turn on subtitles Link to download dead space mobile (Sound available & support Android 11) https://only4gamers.xyz/dead-space-apk/ Recovery96 now has a Tik Tok account, follow it to find out the content on this Youtube Channel! https://vt.tiktok.com/ZSdo6Dqf6/?k=1 #DeadSpaceMobile #EA",
+      "downloads": 37,
+      "identifier": "dead-space-mobile-chapter-1-4-k-android-i-os-gameplay-walkthrough",
+      "subject": [
+        "Recovery96",
+        "Dead Space Mobile",
+        "Horror",
+        "Gaming"
+      ],
+      "title": "Dead Space Mobile Chapter # 1 ● 4 K Android I OS Gameplay Walkthrough"
+    },
+    {
+      "collection": [
+        "twist_show",
+        "computersandtechvideos"
+      ],
+      "creator": "ThisWeekIn Network",
+      "date": "2012-06-23T00:00:00Z",
+      "description": "Today on This Week in Startups, the News Panel took a decidedly gadget-heavy turn with panelists Ryan Block of GDGT and Erik Rannala of Mucker Lab discussing Microsoft’s new tablet, the Windows Phone 8, the video of bullied bus monitor Karen Klein and more.",
+      "downloads": 36,
+      "identifier": "TWiST-E268",
+      "subject": [
+        "TWiST",
+        "thisweekin",
+        "This Week In Startups",
+        "Jason Calacanis"
+      ],
+      "title": "This Week in Startups 268"
+    },
+    {
+      "collection": [
+        "tweakers",
+        "computersandtechvideos"
+      ],
+      "date": "2012-09-20T10:02:00Z",
+      "description": [
+        "&lt;p&gt;HTC heeft op een eigen evenement de 8X en 8S gepresenteerd. De smartphones zijn uitgerust met Windows Phone 8. De 8X heeft een 720p-scherm met een diagonaal van 4,3\" en draait op een Qualcomm Snapdragon S4-soc.&lt;/p&gt;",
+        "Original url: http://tweakers.net/video/6264/windows-phone-8x-en-8s.html"
+      ],
+      "downloads": 36,
+      "identifier": "tweakers006264",
+      "subject": [
+        "tweakers",
+        "6264",
+        "&lt",
+        "p&gt",
+        "HTC heeft op een eigen evenement de 8X en 8S gepresenteerd. De smartphones zijn uitgerust met Windows Phone 8. De 8X heeft een 720p-scherm met een diagonaal van 4,3\" en draait op een Qualcomm Snapdragon S4-soc.&lt",
+        "/p&gt"
+      ],
+      "title": "tweakers / 6264 / Windows Phone 8X en 8S"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "additional_collections_video",
+        "deemphasize"
+      ],
+      "creator": "Mobile Gazette",
+      "date": "2012-09-05T00:00:00Z",
+      "description": "Nokia's new flagship smartphone boasts some very impressive features, but will customers flock to the Nokia Lumia 920 and its new Windows Phone 8 operating system? Source: https://www.youtube.com/watch?v=iREwbbCg0xE Uploader: Mobile Gazette",
+      "downloads": 34,
+      "identifier": "youtube-iREwbbCg0xE",
+      "subject": [
+        "Youtube",
+        "video",
+        "Science & Technology",
+        "Nokia Lumia 920",
+        "Lumia 920",
+        "Windows Phone 8",
+        "Mobile Phone News",
+        "Mobile Gazette"
+      ],
+      "title": "Nokia Lumia 920"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "Designed for your vibrant life. With the incredible PureView camera and stunning PureMotion display, you can easily capture, share, and relive the best moments of your life. The advanced Qualcomm® processor that powers Windows® Phone 8 and Live Tiles connects you with people at 4G LTE speeds. Plus, with optional wireless charging, you can recharge without having to physically plug in. To learn more or to purchase go to http://www.att.com/shop/wireless/devices/nokia/lumia-920-matte-black.html",
+      "downloads": 34,
+      "identifier": "bliptv-20131011-183824-Andranic-PickOfTheWeekNokiaLumia720Review220",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "nokia",
+        "lumia 920",
+        "windows phone",
+        "lumia 920 review",
+        "pureview"
+      ],
+      "title": "Pick of the Week: Nokia Lumia 920 Review"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on What The Tech: Paul Thurrott discusses a frustrating problem he encountered while using Windows 8 and offers a work around for it. Is this problem affecting other users? Andrew and Paul revisit their initial discussion of the new Windows Surface tablets. Paul runs down his thoughts on Microsoft announcing Windows Phone 8. Is it a slam dunk? Paul provides a little insight into developing for both Windows 8 and Windows Phone 8. Andrew and Paul dive into virus and malware on Mac. And we play the 10 year game. How will communication change in 10 years?",
+      "downloads": 34,
+      "identifier": "bliptv-20131011-210143-Andranic-WhatTheTechEp122StateOfTheArt62612107",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "windows 8",
+        "microsoft",
+        "windows surface",
+        "surface tablet",
+        "windows rt",
+        "windows on arm",
+        "android",
+        "google",
+        "windows phone",
+        "windows phone 8",
+        "nokia",
+        "visual studio",
+        "windows vista",
+        "paul thurrott",
+        "technology"
+      ],
+      "title": "What The Tech Ep. 122 - State Of The Art 6-26-12"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on What The Tech: Microsoft's Steven Sinofsky leaves Microsoft. Paul Thurrott explains why it may not be such a bad thing. But ultimately, where does this leave the future for Windows? Paul also rants about a little issue he's had recently with Microsoft and their PR team. Does Paul get no respect? Halo 4 and Call of Duty: Black Ops II have officially been released. Is there any room left to improve video game graphics on Xbox? Andrew and Paul also look at what Windows Phone 8 devices Verizon will be getting. And for the first time, text messaging is declining. Has text messaging reached it's peak?",
+      "downloads": 34,
+      "identifier": "bliptv-20131012-030252-Andranic-WhatTheTechEp141SayonaraSinofsky111312420",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "bill gates",
+        "steven sinofsky",
+        "steve ballmer",
+        "microsoft",
+        "windows 8",
+        "windows phone 8",
+        "windows surface",
+        "windows rt",
+        "technology",
+        "windows metro",
+        "call of duty",
+        "halo4"
+      ],
+      "title": "What The Tech Ep. 141 - Sayonara Sinofsky 11-13-12"
+    },
+    {
+      "collection": [
+        "gdcextras",
+        "gamevideos"
+      ],
+      "description": "There is a wide variety of game engines, middleware and libraries you may already know and use to build your games across platforms. This session will offer a panorama of the options available to expand your opportunities to the Windows Phone 8 and Windows 8 stores. We will drill down on a few of the options to demonstrate the approaches to port from iOS or Android and show some of the great games already built.",
+      "downloads": 33,
+      "identifier": "GDC2013Cimetiere",
+      "subject": "GDC",
+      "title": "GDC 2013: Jean-Christophe Cimetiere - \"Expand Your Opportunities to Windows 8 and Windows Phone 8 with Cross Platform Engines and Libraries (Presented by Microsoft)\""
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on Tech News Weekly: The Apple iPhone 5 officially launches. Andrew and Sunkast give their take on the new iPhone. Does it measure up to the hype? Apple's iOS 6 takes some hits. Will they be able to straight out it's new Maps app? HTC announces two new Windows Phones. How do they stack up against the Samsung Ativ, and Nokia Lumia 920? Kickstarter makes changes to their rules. Are they for the better? And Microsoft announces pricing for Office 365. Is Office in the cloud the future?",
+      "downloads": 32,
+      "identifier": "bliptv-20131011-195913-Andranic-TechNewsWeeklyEp90FallingOffACliff92112136",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "tech news",
+        "microsoft",
+        "windows phone 8",
+        "htc",
+        "iphone 5",
+        "kickstarter",
+        "nokia",
+        "lumia 920",
+        "samsung",
+        "office 365",
+        "verizon"
+      ],
+      "title": "Tech News Weekly Ep 90 - Falling Off A Cliff 9-21-12"
+    },
+    {
+      "collection": [
+        "tweakers",
+        "computersandtechvideos"
+      ],
+      "date": "2013-02-25T10:50:00Z",
+      "description": [
+        "&lt;p&gt;&lt;span&gt;De Lumia 520&lt;/span&gt;&lt;span&gt;&nbsp;is de goedkoopste Windows Phone 8-telefoon van Nokia en wordt uitgebracht in vijf kleuren: zwart, geel, cyaan, wit en rood. Als je later toch een andere kleur wil, is dat mogelijk, omdat de covers van het toestel te verwisselen zijn. Het toestel heeft een 4\"-scherm, met een resolutie van 800x480 pixels, die ook gebruikt kan worden als de gebruiker handschoenen aanheeft.&lt;/span&gt;&lt;/p&gt;",
+        "Original url: http://tweakers.net/video/7303/lumia-520-wordt-nokias-goedkoopste-windows-phone-8-toestel.html"
+      ],
+      "downloads": 32,
+      "identifier": "tweakers007303",
+      "subject": [
+        "tweakers",
+        "7303"
+      ],
+      "title": "tweakers / 7303 / Lumia 520 wordt Nokia's goedkoopste Windows Phone 8-toestel"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on Tech News Weekly: Microsoft unveils the Windows RT and Windows 8 Pro tablets. Who will they appeal to and will Microsoft price them competitively? Microsoft also announces Windows Phone 8. What changes have they made and will current Windows Phone users be able to upgrade? Andrew and Sunkast also speculate on the next generation of the Xbox. Apple gets fined more than million over '4G iPad' claims in Australia. Latest iPhone rumors say that it could have a separate podcast app, and smaller dock connector. Could either of them be true? Plus our Picks of the Week.",
+      "downloads": 31,
+      "identifier": "bliptv-20131012-160914-Andranic-TechNewsWeeklyEp81SkimmingTheSurface62212570",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "microsoft",
+        "tablet",
+        "windows rt",
+        "windows 8 pro",
+        "windows 8",
+        "windows phone",
+        "android",
+        "google",
+        "surface tablet",
+        "windows surface",
+        "ipad",
+        "iphone",
+        "riaa",
+        "ios",
+        "ios6",
+        "podcasting",
+        "nokia",
+        "technology",
+        "tech news"
+      ],
+      "title": "Tech News Weekly Ep. 81 - Skimming The Surface 6-22-12"
+    },
+    {
+      "collection": [
+        "tweakers",
+        "computersandtechvideos"
+      ],
+      "date": "2012-11-02T08:00:00Z",
+      "description": [
+        "&lt;p class=\"p1\"&gt;Na jaren van testen en ontwikkeling is het eindelijk zover: Microsoft heeft Windows Phone 8 uitgebracht, de eerste Windows Phone-versie met de kernel van de 'gewone' desktop-versie van Windows. HTC mag als eerste een telefoon uitbrengen met dit gloednieuwe besturingssysteem: de HTC Windows Phone 8X. Met een gewaagd design in felle kleuren valt hij in elk geval op tussen de grijze, witte en zwarte telefoons in de winkel, maar is het ook een goede telefoon?&lt;/p&gt;",
+        "Original url: http://tweakers.net/video/6578/htc-8x.html"
+      ],
+      "downloads": 31,
+      "identifier": "tweakers006578",
+      "subject": [
+        "tweakers",
+        "6578",
+        "&lt",
+        "p class=\"p1\"&gt",
+        "Na jaren van testen en ontwikkeling is het eindelijk zover: Microsoft heeft Windows Phone 8 uitgebracht, de eerste Windows Phone-versie met de kernel van de 'gewone' desktop-versie van Windows. HTC mag als eerste een telefoon uitbrengen met dit gloednieuwe besturingssysteem: de HTC Windows Phone 8X. Met een gewaagd design in felle kleuren valt hij in elk geval op tussen de grijze, witte en zwarte telefoons in de winkel, maar is het ook een goede telefoon?&lt",
+        "/p&gt"
+      ],
+      "title": "tweakers / 6578 / HTC 8X"
+    },
+    {
+      "collection": [
+        "opensource_movies"
+      ],
+      "creator": "Recovery96",
+      "date": "2022-01-16T00:00:00Z",
+      "description": "The sci-fi horror masterpiece DEAD SPACE has finally arrived on Android! This stunning vision of the Dead Space franchise is truly a landmark in mobile gaming. Featuring hardcore gameplay and a rich audio experience, immerse yourself in bloodcurdling events that unleash the Necromorph horde. Once you’ve played, this sci-fi horror masterpiece will truly change the way you think about Android games. A CHARGED SENSORY EXPERIENCE Survive one of the most gripping, bone-chilling experiences on mobile. Cutting-edge visuals – rich in effects and atmospheric lighting – reproduce the cinematic horror of the console game. Featuring a fully voice-acted stereo soundtrack, plus a movie-quality score and sound effects, find yourself fully immersed in the dread of Dead Space. SHOCKINGLY EASY TO CONTROL Intuitive controls focus you on the action. The on-screen HUD is seamlessly integrated into the game. Navigate 6 varied environments and battle Necromorphs with simple swipe and tap controls. FEATURING 2 EXCLUSIVE WEAPONS & CLASSIC MODULES Access the new Plasma Saw and Core Extractor, plus 3 more weapons from the Dead Space universe. Also utilize Kinesis and Stasis Modules well-known to players of the console game – and get on with the business of strategic dismemberment. Dare to step into DEAD SPACE? Get this critically-acclaimed horror experience on Android NOW!! ------------------------------------------------------------------------- Dead Space is a 2011 science fiction survival horror mobile game developed by Australian company IronMonkey Studios and published by Electronic Arts for iOS, BlackBerry Tablet OS, Xperia Play, Android and BlackBerry 10 devices. The game was also scheduled for release on Windows Phone 8 as part of a deal with Nokia that saw several EA games released exclusively on Nokia branded Windows Phones, but it was cancelled prior to release. Within the Dead Space series, the game is set after the events of original Dead Space and prior to the events of Dead Space 2 and shows how the Necromorph outbreak spread from the government to public sectors. Link to download dead space mobile (Audio Bug Fixed & support Android 11) https://only4gamers.xyz/dead-space-apk/ #DeadSpaceMobile #EA",
+      "downloads": 29,
+      "identifier": "dead-space-mobile-chapter-6-4-k-android-i-os-gameplay-walkthrough",
+      "subject": [
+        "Recovery96",
+        "Dead Space mobile",
+        "Horror",
+        "Gaming"
+      ],
+      "title": "Dead Space Mobile Chapter # 6 ● 4 K Android I OS Gameplay Walkthrough"
+    },
+    {
+      "collection": [
+        "gdcextras",
+        "gamevideos"
+      ],
+      "description": "Learn why you should consider building a game for Windows Phone 8! This overview talk will provide you with key platform concepts such as the application life cycle, programming models, and support for monetizing your app. In addition, you'll learn about development tools, middleware libraries, and platform API capabilities that are available.",
+      "downloads": 29,
+      "identifier": "GDC2013Paley",
+      "subject": "GDC",
+      "title": "GDC 2013: Mark Paley - \"Basic Game Building for Windows Phone (Presented by Microsoft)\""
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on Tech News Weekly: The jury in the Samsung v. Apple patent case reach a verdict against Apple. Were they wrong to rule against Apple, or did they infringe on Samsung's patents? Several new Windows 8 devices were announced at IFA including the new Samsung Ativ Tab, and Dell XPS Duo. Are hybrid tablets the future of mobile devices? Samsung also unveiled the first Windows Phone 8 device, Ativ S. Amazon announces an event for September 6. Will it be a new Kindle Fire? And our Picks of the Week.",
+      "downloads": 29,
+      "identifier": "bliptv-20131011-090755-Andranic-TechNewsWeeklyEp87ItsRainingNexus7s83112585",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "erik lanigan",
+        "technology",
+        "tech news",
+        "asus",
+        "ativ",
+        "samsung",
+        "apple",
+        "iphone",
+        "windows phone",
+        "windows 8",
+        "microsoft",
+        "ipad",
+        "kindle fire",
+        "amazon",
+        "amazon prime",
+        "patents",
+        "patent litigation",
+        "ipad mini",
+        "windows rt",
+        "android"
+      ],
+      "title": "Tech News Weekly Ep. 87 - It's Raining Nexus 7's 8-31-12"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on What The Tech: Paul updates us on Sinofsky leaving Microsoft. Why did he leave Microsoft? This leads Paul into discussing Microsoft blaming OEMs on lackluster Windows 8 sales. Are they the only ones that should get the blame for the poor sales? Paul explains one of his recent articles about buying into an ecosystem, rather than a device. Do iPhone users spend more on apps than Android users? Andrew recently tried out 2 Windows Phone 8 devices. Which one did he like best? Also Andrew and Paul discuss the next gen Xbox and Black Friday.",
+      "downloads": 29,
+      "identifier": "bliptv-20131011-194453-Andranic-WhatTheTechEp142BuyIntoEcosystemsNotDevices112012585",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "microsoft",
+        "windows 8",
+        "windows surface",
+        "google",
+        "android",
+        "sinofsky",
+        "xbox",
+        "black friday",
+        "amazon",
+        "amazon prime",
+        "htc 8x",
+        "windows phone 8"
+      ],
+      "title": "What The Tech Ep. 142 - Buy Into Ecosystems, Not Devices 11-20-12"
+    },
+    {
+      "collection": [
+        "opensource_movies"
+      ],
+      "creator": "Recovery96",
+      "date": "2022-01-15T00:00:00Z",
+      "description": "The sci-fi horror masterpiece DEAD SPACE has finally arrived on Android! This stunning vision of the Dead Space franchise is truly a landmark in mobile gaming. Featuring hardcore gameplay and a rich audio experience, immerse yourself in bloodcurdling events that unleash the Necromorph horde. Once you’ve played, this sci-fi horror masterpiece will truly change the way you think about Android games. A CHARGED SENSORY EXPERIENCE Survive one of the most gripping, bone-chilling experiences on mobile. Cutting-edge visuals – rich in effects and atmospheric lighting – reproduce the cinematic horror of the console game. Featuring a fully voice-acted stereo soundtrack, plus a movie-quality score and sound effects, find yourself fully immersed in the dread of Dead Space. SHOCKINGLY EASY TO CONTROL Intuitive controls focus you on the action. The on-screen HUD is seamlessly integrated into the game. Navigate 6 varied environments and battle Necromorphs with simple swipe and tap controls. FEATURING 2 EXCLUSIVE WEAPONS & CLASSIC MODULES Access the new Plasma Saw and Core Extractor, plus 3 more weapons from the Dead Space universe. Also utilize Kinesis and Stasis Modules well-known to players of the console game – and get on with the business of strategic dismemberment. Dare to step into DEAD SPACE? Get this critically-acclaimed horror experience on Android NOW!! Dead Space is a 2011 science fiction survival horror mobile game developed by Australian company IronMonkey Studios and published by Electronic Arts for iOS, BlackBerry Tablet OS, Xperia Play, Android and BlackBerry 10 devices. The game was also scheduled for release on Windows Phone 8 as part of a deal with Nokia that saw several EA games released exclusively on Nokia branded Windows Phones, but it was cancelled prior to release. Within the Dead Space series, the game is set after the events of original Dead Space and prior to the events of Dead Space 2 and shows how the Necromorph outbreak spread from the government to public sectors. Source:  https://en.m.wikipedia.org/wiki/Dead_Space_(mobile_game) Link to download dead space mobile (Audio Bug Fixed & support Android 11) https://only4gamers.xyz/dead-space-apk/ #DeadSpaceMobile #EA",
+      "downloads": 25,
+      "identifier": "dead-space-mobile-chapter-5-4-k-android-i-os-gameplay-walkthrough",
+      "subject": [
+        "Recovery96",
+        "Dead Space mobile",
+        "Horror",
+        "Gaming"
+      ],
+      "title": "Dead Space Mobile Chapter # 5 ● 4 K Android I OS Gameplay Walkthrough"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "additional_collections_video",
+        "deemphasize"
+      ],
+      "creator": "GameSpot",
+      "date": "2014-08-25T00:00:00Z",
+      "description": "Age of Empires: Castle Siege has been announced for Windows 8 and Windows Phone 8 Stores. Visit all of our channels: Features & Reviews - http://www.youtube.com/user/gamespot Gameplay & Guides - http://www.youtube.com/user/gamespotgameplay Trailers - http://www.youtube.com/user/gamespottrailers Mobile Gaming - http://www.youtube.com/user/gamespotmobile Like - http://www.facebook.com/GameSpot Follow - http://www.twitter.com/GameSpot Stream Live - http://twitch.tv/GameSpot http://www.gamespot.com",
+      "downloads": 24,
+      "identifier": "youtube-at2uNoEaynI",
+      "subject": [
+        "Youtube",
+        "video",
+        "Gaming",
+        "Age of Empires",
+        "Castle Siege",
+        "AoE",
+        "digital download",
+        "announcement",
+        "windows 8",
+        "windows phone 8",
+        "mobile",
+        "pc",
+        "game",
+        "games",
+        "video game",
+        "gaming",
+        "gameplay",
+        "juego",
+        "gamespot",
+        "gamespot.com"
+      ],
+      "title": "Age of Empires: Castle Siege - Announcement Trailer"
+    },
+    {
+      "collection": [
+        "opensource_movies"
+      ],
+      "creator": "Recovery96",
+      "date": "2022-01-30T00:00:00Z",
+      "description": "The sci-fi horror masterpiece DEAD SPACE has finally arrived on Android! This stunning vision of the Dead Space franchise is truly a landmark in mobile gaming. Featuring hardcore gameplay and a rich audio experience, immerse yourself in bloodcurdling events that unleash the Necromorph horde. Once you’ve played, this sci-fi horror masterpiece will truly change the way you think about Android games. A CHARGED SENSORY EXPERIENCE Survive one of the most gripping, bone-chilling experiences on mobile. Cutting-edge visuals – rich in effects and atmospheric lighting – reproduce the cinematic horror of the console game. Featuring a fully voice-acted stereo soundtrack, plus a movie-quality score and sound effects, find yourself fully immersed in the dread of Dead Space. SHOCKINGLY EASY TO CONTROL Intuitive controls focus you on the action. The on-screen HUD is seamlessly integrated into the game. Navigate 6 varied environments and battle Necromorphs with simple swipe and tap controls. FEATURING 2 EXCLUSIVE WEAPONS & CLASSIC MODULES Access the new Plasma Saw and Core Extractor, plus 3 more weapons from the Dead Space universe. Also utilize Kinesis and Stasis Modules well-known to players of the console game – and get on with the business of strategic dismemberment. Dare to step into DEAD SPACE? Get this critically-acclaimed horror experience on Android NOW!! ------------------------------------------------------------------------- Dead Space is a 2011 science fiction survival horror mobile game developed by Australian company IronMonkey Studios and published by Electronic Arts for iOS, BlackBerry Tablet OS, Xperia Play, Android and BlackBerry 10 devices. The game was also scheduled for release on Windows Phone 8 as part of a deal with Nokia that saw several EA games released exclusively on Nokia branded Windows Phones, but it was cancelled prior to release. Within the Dead Space series, the game is set after the events of original Dead Space and prior to the events of Dead Space 2 and shows how the Necromorph outbreak spread from the government to public sectors. Note:  To watch this video, it's recommended to use headphones for a more horror viewing experience throughout the chapter & turn on subtitles Link to download dead space mobile (Sound available & support Android 11) https://only4gamers.xyz/dead-space-apk/ #DeadSpaceMobile #EA",
+      "downloads": 23,
+      "identifier": "dead-space-mobile-chapter-10-4-k-android-i-os-gameplay-walkthrough",
+      "subject": [
+        "Recovery96",
+        "Dead Space mobile",
+        "Horror",
+        "Gaming"
+      ],
+      "title": "Dead Space Mobile Chapter # 10 ● 4 K Android I OS Gameplay Walkthrough"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on What The Tech: HTC announces Windows Phone 8x. Paul Thurrott was at the announcement and gives us his take. Apple iPhone 5 sales hit record high, but falls short of analyst estimates. Paul explains why. Andrew and Paul also poke fun at people who waited in line for the new iPhone 5. Plus our Audible picks of the week. And what if the Zune software was available on any platform?",
+      "downloads": 23,
+      "identifier": "bliptv-20131012-013323-Andranic-WhatTheTechEp134OhTheHumanity92512308",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "nokia",
+        "samsung",
+        "lumia 920",
+        "htc",
+        "windows phone",
+        "windows 8",
+        "iphone 5",
+        "android",
+        "beats audio",
+        "technology",
+        "zune",
+        "smartphones"
+      ],
+      "title": "What The Tech Ep. 134 - Oh The Humanity 9-25-12"
+    },
+    {
+      "collection": [
+        "opensource_movies"
+      ],
+      "creator": "Recovery96",
+      "date": "2022-01-22T00:00:00Z",
+      "description": "The sci-fi horror masterpiece DEAD SPACE has finally arrived on Android! This stunning vision of the Dead Space franchise is truly a landmark in mobile gaming. Featuring hardcore gameplay and a rich audio experience, immerse yourself in bloodcurdling events that unleash the Necromorph horde. Once you’ve played, this sci-fi horror masterpiece will truly change the way you think about Android games. A CHARGED SENSORY EXPERIENCE Survive one of the most gripping, bone-chilling experiences on mobile. Cutting-edge visuals – rich in effects and atmospheric lighting – reproduce the cinematic horror of the console game. Featuring a fully voice-acted stereo soundtrack, plus a movie-quality score and sound effects, find yourself fully immersed in the dread of Dead Space. SHOCKINGLY EASY TO CONTROL Intuitive controls focus you on the action. The on-screen HUD is seamlessly integrated into the game. Navigate 6 varied environments and battle Necromorphs with simple swipe and tap controls. FEATURING 2 EXCLUSIVE WEAPONS & CLASSIC MODULES Access the new Plasma Saw and Core Extractor, plus 3 more weapons from the Dead Space universe. Also utilize Kinesis and Stasis Modules well-known to players of the console game – and get on with the business of strategic dismemberment. Dare to step into DEAD SPACE? Get this critically-acclaimed horror experience on Android NOW!! ------------------------------------------------------------------------- Dead Space is a 2011 science fiction survival horror mobile game developed by Australian company IronMonkey Studios and published by Electronic Arts for iOS, BlackBerry Tablet OS, Xperia Play, Android and BlackBerry 10 devices. The game was also scheduled for release on Windows Phone 8 as part of a deal with Nokia that saw several EA games released exclusively on Nokia branded Windows Phones, but it was cancelled prior to release. Within the Dead Space series, the game is set after the events of original Dead Space and prior to the events of Dead Space 2 and shows how the Necromorph outbreak spread from the government to public sectors. Link to download dead space mobile (Audio Bug Fixed & support Android 11) https://only4gamers.xyz/dead-space-apk/ #DeadSpaceMobile #EA",
+      "downloads": 21,
+      "identifier": "dead-space-mobile-chapter-7-4-k-android-i-os-gameplay-walkthrough",
+      "subject": [
+        "Recovery96",
+        "Dead Space mobile",
+        "Horror",
+        "Gaming"
+      ],
+      "title": "Dead Space Mobile Chapter # 7 ● 4 K Android I OS Gameplay Walkthrough"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on What The Tech: Andrew and Paul complain about camera quality on other smartphones. Why can't anyone beat Apple's camera quality? iPhone 5 owners complain of a purple halo on photos. Did Apple screw up again? Andrew and Paul also discuss Windows Phone 8, Windows RT, and Windows 8 ahead of their launch this month. Paul address comments made by Paul Allen calling Windows 8 innovative and puzzling. Andrew brings up the Nintendo Wii U. Will it be successful?",
+      "downloads": 21,
+      "identifier": "bliptv-20131012-100919-Andranic-WhatTheTechEp135InnovativeAndPuzzling10212473",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "paul thurrott",
+        "technology",
+        "nintendo",
+        "wii u",
+        "iphone",
+        "ipad",
+        "android",
+        "paul allen",
+        "nokia",
+        "htc",
+        "windows 8",
+        "windows phone 8",
+        "windows rt",
+        "windows surface",
+        "microsoft"
+      ],
+      "title": "What The Tech Ep. 135 - Innovative and Puzzling 10-2-12"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on What The Tech: Andrew picked up a Nokia Lumia 920 Windows Phone this week. How does he like it compared to Android? This brings up the question of how much does the eco system matter, especially in the case of a user switching devices? Apple CEO Tim Cook makes some very bold statements. Paul Thurrott weighs in on the current state of Apple. Andrew and Paul also discuss the next gen Xbox and a few things they want to see happen this year in technology.",
+      "downloads": 20,
+      "identifier": "bliptv-20131012-081039-Andranic-WhatTheTechEp152DoesTheEcoSystemMatter21213327",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "technology",
+        "android",
+        "microsoft",
+        "tim cook",
+        "windows phone",
+        "google",
+        "samsung",
+        "xbox",
+        "iphone",
+        "ipad",
+        "nokia",
+        "ios"
+      ],
+      "title": "What The Tech Ep. 152 - Does The Eco System Matter 2-12-13"
+    },
+    {
+      "collection": [
+        "gdcextras",
+        "gamevideos"
+      ],
+      "description": "Networking in Windows Phone 8 has taken dramatic leaps and bounds forward; developers can now access Bluetooth and leverage NFC to build compelling new game scenarios and have full access to winsock as well as new WinRT sockets. Tim will give an overview of the networking technologies available and talk about their use in game.",
+      "downloads": 18,
+      "identifier": "GDC2013Laverty_201612",
+      "subject": "GDC",
+      "title": "GDC 2013: Tim Laverty - \"Building Connected Game Experiences on Windows Phone (Presented by Microsoft)\""
+    },
+    {
+      "collection": [
+        "opensource_movies"
+      ],
+      "creator": "Recovery96",
+      "date": "2022-01-23T00:00:00Z",
+      "description": "The sci-fi horror masterpiece DEAD SPACE has finally arrived on Android! This stunning vision of the Dead Space franchise is truly a landmark in mobile gaming. Featuring hardcore gameplay and a rich audio experience, immerse yourself in bloodcurdling events that unleash the Necromorph horde. Once you’ve played, this sci-fi horror masterpiece will truly change the way you think about Android games. A CHARGED SENSORY EXPERIENCE Survive one of the most gripping, bone-chilling experiences on mobile. Cutting-edge visuals – rich in effects and atmospheric lighting – reproduce the cinematic horror of the console game. Featuring a fully voice-acted stereo soundtrack, plus a movie-quality score and sound effects, find yourself fully immersed in the dread of Dead Space. SHOCKINGLY EASY TO CONTROL Intuitive controls focus you on the action. The on-screen HUD is seamlessly integrated into the game. Navigate 6 varied environments and battle Necromorphs with simple swipe and tap controls. FEATURING 2 EXCLUSIVE WEAPONS & CLASSIC MODULES Access the new Plasma Saw and Core Extractor, plus 3 more weapons from the Dead Space universe. Also utilize Kinesis and Stasis Modules well-known to players of the console game – and get on with the business of strategic dismemberment. Dare to step into DEAD SPACE? Get this critically-acclaimed horror experience on Android NOW!! ------------------------------------------------------------------------- Dead Space is a 2011 science fiction survival horror mobile game developed by Australian company IronMonkey Studios and published by Electronic Arts for iOS, BlackBerry Tablet OS, Xperia Play, Android and BlackBerry 10 devices. The game was also scheduled for release on Windows Phone 8 as part of a deal with Nokia that saw several EA games released exclusively on Nokia branded Windows Phones, but it was cancelled prior to release. Within the Dead Space series, the game is set after the events of original Dead Space and prior to the events of Dead Space 2 and shows how the Necromorph outbreak spread from the government to public sectors. Link to download dead space mobile (Audio Bug Fixed & support Android 11) https://only4gamers.xyz/dead-space-apk/ #DeadSpaceMobile #EA",
+      "downloads": 17,
+      "identifier": "dead-space-mobile-chapter-8-4-k-android-i-os-gameplay-walkthrough",
+      "subject": [
+        "Recovery96",
+        "Dead Space mobile",
+        "Horror",
+        "Gaming"
+      ],
+      "title": "Dead Space Mobile Chapter # 8 ● 4 K Android I OS Gameplay Walkthrough"
+    },
+    {
+      "collection": [
+        "bliptv",
+        "vlogs"
+      ],
+      "description": "This week on Tech News Weekly: Several companies made new device announcements this week including Nokia, Motorola, and Amazon. Nokia announced the new Lumia 920, and 820. What happens if neither Windows Phone 8 are successful? Motorola announced the the same day three new RAZR handsets. Why aren't they running the latest version of Android? Amazon announces their new Kindle Fire's and an 8.9 inch Kindle Fire HD. How do they stack up against the iPad and Nexus 7? Apple sends out invitations to an event for September 12, presumably to announce the new iPhone. And our Picks of the Week.",
+      "downloads": 17,
+      "identifier": "bliptv-20131011-152359-Andranic-TechNewsWeeklyEp88CallItHD9712646",
+      "subject": [
+        "news&information",
+        "talk&interview",
+        "nokia",
+        "microsoft",
+        "verizon",
+        "windows phone",
+        "motorola",
+        "razr",
+        "amazon",
+        "kindle fire",
+        "kindle fire hd",
+        "nexus 7",
+        "ipad",
+        "iphone",
+        "lumia 920",
+        "blackberry",
+        "cellphone malware",
+        "cellphone privacy",
+        "android",
+        "google"
+      ],
+      "title": "Tech News Weekly Ep. 88 - Call It HD 9-7-12"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "additional_collections_video",
+        "deemphasize"
+      ],
+      "creator": "Peres",
+      "date": "2013-12-25T00:00:00Z",
+      "description": "נשיא המדינה שמעון פרס ביקר בחברת מייקרוסופט ישראל רעננה, במהלכו סקר תחנות חווייתיות שהציגו חידושים ייחודיים של החברה. במרכז הביקור הוצגה לנשיא קונסולת המשחקים והבידור החדשה Xbox One מבית מיקרוסופט, שהושקה לאחרונה וזוכה להצלחה ברחבי העולם. זו הייתה הפעם הראשונה בה הציגה חברת מייקרוסופט את ה-Xbox one בישראל. במהלכה 'נפגש' הנשיא עם דמות האוואטר שלו, הפתעה שהכינו עבורו עובדי מיקרוסופט. הנשיא נחשף ליכולות הטכנולוגיות החדשניות של הקונסולה ביניהן מצלמת הקינקט המזהה קול ותנועה. חידוש נוסף שהוצג היום לנשיא היה פרויקט המחקר החדשני ממעבדות המחקר של מייקרוסופט, ה-Ilumiroom. ד\"ר אייל אופק, חוקר בכיר ממעבדות המחקר של מיקרוסופט העולמית, הציג בפני הנשיא, לראשונה בישראל את ה- IlumiRoom, פרוייקט המחקר מאפשר להרחיב ולהעשיר את השטח הסובב את הטלוויזיה באמצעות הדמיות מוקרנות -- שמעצימות את החוויה הרגילה של צפייה ומשחק. ה- IlumiRoom משתמש במצלמת הקינקט על מנת ללמוד את מבנה החדר והריהוט הנמצא בו. בהתאם לתוכן המוקרן על מסך הטלוויזיה, משתמשים במקרן על מנת לשנות ולהעשיר את מראה החדר, לחולל תנועה נראית, להרחיב את מרחב הראייה ההיקפי ולאפשר חווית משחק וצפייה חדשה. מנכ\"ל מיקרוסופט ישראל דני ימין הדגיש כי מדובר בפיתוחים שהגיעו ארצה במיוחד לכבוד ביקורו של הנשיא:\"חשפנו בפניך טכנולוגיות חדשניות שהיום מוצגות בפעם הראשונה מחוץ לארה\"ב\". בהמשך הביקור התנסה הנשיא במחשב שולחן Pixelsense עם טכנולוגיית מגע, הכולל אפליקציה אינטראקטיבית לניווט ידני בין גלקסיות וכוכבים, המאפשרת חקר ולימוד תחום החלל. לצד השולחן הציגו לנשיא פיתוחים טכנולוגיים של בני-נוער הלוקחים חלק בתכנית Innovate for good המשלבת קידום טכנולוגי של בני-נוער לצד קידום מטרות של עמותות חברתיות, באמצעות פיתוח אפליקציות המבוססות על פלטפורמת Windows phone 8.",
+      "downloads": 12,
+      "identifier": "youtube-q4RkQQy7JcU",
+      "subject": [
+        "Youtube",
+        "video",
+        "Science & Technology",
+        "שמעון פרס",
+        "נשיא המדינה",
+        "shimon peres",
+        "president of israel",
+        "Ilumiroom",
+        "Pixelsense",
+        "eyal ofek",
+        "xbox one",
+        "microsoft israel",
+        "microsoft",
+        "מיקרוסופט"
+      ],
+      "title": "נשיא המדינה בביקור בחברת מיקרוסופט ישראל"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "deemphasize"
+      ],
+      "creator": "Zara Fan 2015",
+      "date": "2021-07-06T00:00:00Z",
+      "description": "2020, May 3rd Found in Windows Phone 8, then recorded it, and this sounds like Windows 8 with 10 Background vs their original Proximity Notification Sounds. Source: https://www.youtube.com/watch?v=8KbuoYXi4Mk Uploader: Zara Fan 2015",
+      "downloads": 11,
+      "identifier": "youtube-8KbuoYXi4Mk",
+      "subject": [
+        "Youtube",
+        "video",
+        "Entertainment"
+      ],
+      "title": "Windows 8/8.1/10 Unusual Proximity Notification Sound"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "additional_collections_video",
+        "deemphasize"
+      ],
+      "creator": "Mobile Gazette",
+      "date": "2013-01-09T00:00:00Z",
+      "description": "A promotional video for the Huawei Ascend W1 Windows Phone 8 smartphone Source: https://www.youtube.com/watch?v=m4CWag8zMMg Uploader: Mobile Gazette",
+      "downloads": 10,
+      "identifier": "youtube-m4CWag8zMMg",
+      "subject": [
+        "Youtube",
+        "video",
+        "Science & Technology",
+        "Huawei Ascend W1",
+        "Huawei",
+        "Mobile Phone News",
+        "Mobile Gazette"
+      ],
+      "title": "Huawei Ascend W1 Promotional Video"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "additional_collections_video",
+        "deemphasize"
+      ],
+      "creator": "Kyivstar",
+      "date": "2014-05-07T00:00:00Z",
+      "description": "Український історик і публіцист Ярослав Грицак дає високу оцінку інтерактивному проекту Vkraina, створеному національним оператором Київстар. В рамках проекту оцифровано 45 оригінальних історичних мап України XVI-XVIII ст., які дозволяють прослідкувати процес формування державності і національної ідентичності України. Розглянути карти можна за посиланням vkraina.com або завантаживши додаток Vkraina в магазині Windows 8 та Windows Phone 8. Ресурс доступний трьома мовами - EN, UA, RU.",
+      "downloads": 9,
+      "identifier": "youtube-io9_k-S1aeY",
+      "subject": [
+        "Youtube",
+        "video",
+        "Science & Technology",
+        "vkraina",
+        "kyivstar",
+        "київстар",
+        "киевстар",
+        "windows",
+        "microsoft",
+        "windows phone",
+        "шимків",
+        "шуранов",
+        "ярослав грицак",
+        "партас"
+      ],
+      "title": "Vkraina: Ярослав Грицак про проект Vkraina"
+    },
+    {
+      "collection": [
+        "mirrortube",
+        "social-media-video",
+        "additional_collections_video",
+        "deemphasize"
+      ],
+      "creator": "Kyivstar",
+      "date": "2014-05-19T00:00:00Z",
+      "description": "Мобільні технології стали невід'ємною частиною освітнього процесу. Україна пасе задніх на фоні бурхливого розвитку освітніх технологій, які практикуються в інших країнах. Все це через застарілий стандарт зв'язку 2G. Українські оператори досі так і не тримали ліцензії на 3G через недалекоглядну політику держави. Але навіть в таких умовах з'являються мобільні проекти, які дають можливості для самоосвіти. Наприклад, електронна бібліотека smart.kyivstar.ua, яка надає доступ до 2000 видань. Проект Vkraina, створений за підтримки \"Київстар\", також буде корисним для вивчення історії і міжнародних відносин України. Деталі на сайті vkraina.com",
+      "downloads": 6,
+      "identifier": "youtube-W2RYBoBT6JQ",
+      "subject": [
+        "Youtube",
+        "video",
+        "Science & Technology",
+        "vkraina",
+        "kyivstar",
+        "smart.kyivstar.ua",
+        "smart kyivstar",
+        "київстар",
+        "киевстар",
+        "україна",
+        "історія україни",
+        "microsoft",
+        "майкрософт",
+        "windows",
+        "windows 8",
+        "windows phone 8"
+      ],
+      "title": "Мобільне навчання"
+    }
+  ]
+}
