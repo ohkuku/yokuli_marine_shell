@@ -38,6 +38,7 @@
 ```text
 python3 -m pip install --requirement .github/requirements/stage0-schema.txt
 python3 -m unittest discover .github/scripts 'test_*.py'
+python3 .github/scripts/test_launcher_stage2_contract.py
 bash .github/scripts/test-resolve-release-metadata.sh
 bash .github/scripts/test-ci-contract.sh
 ./gradlew assembleStandaloneRelease assembleHomeRelease
@@ -142,12 +143,13 @@ Run this before changing CI or release files:
 ```text
 python3 -m pip install --requirement .github/requirements/stage0-schema.txt
 python3 -m unittest discover .github/scripts 'test_*.py'
+python3 .github/scripts/test_launcher_stage2_contract.py
 bash .github/scripts/test-resolve-release-metadata.sh
 bash .github/scripts/test-ci-contract.sh
 ./gradlew assembleStandaloneRelease assembleHomeRelease
 bash .github/scripts/test-release-product-surface.sh
 ```
 
-The contract uses the pinned `jsonschema` package as a real Draft 2020-12 validator for Stage 0 fixtures. Stage 1 additionally assembles both standalone and HOME release APKs and uses `apkanalyzer` to require Chart/Settings code while rejecting Shell Lab from both release binaries. The HOME manifest must add the expected HOME/DEFAULT categories while standalone must not contain them. It also verifies current action majors, gate dependencies, emulator/KVM wrappers, explicit verified/unverified labels, summaries, failure annotations, bounded diagnostic upload pairs, release signature/checksum commands, and the nightly schedule.
+The contract uses the pinned `jsonschema` package as a real Draft 2020-12 validator for Stage 0 fixtures. Stage 1 additionally assembles both standalone and HOME release APKs and uses `apkanalyzer` to require Chart/Settings code while rejecting Shell Lab from both release binaries. Stage 2 independently enforces the pure Kotlin engine boundary, opaque contracts, contribution composition, and host adapters. The HOME manifest must add the expected HOME/DEFAULT categories while standalone must not contain them. It also verifies current action majors, gate dependencies, emulator/KVM wrappers, explicit verified/unverified labels, summaries, failure annotations, bounded diagnostic upload pairs, release signature/checksum commands, and the nightly schedule.
 
 Current upstream choices follow the official projects: [Gradle setup action v6](https://github.com/gradle/actions/blob/main/docs/setup-gradle.md), [checkout v6](https://github.com/actions/checkout), [setup-java v5](https://github.com/actions/setup-java), [upload-artifact v7](https://github.com/actions/upload-artifact), [download-artifact v8](https://github.com/actions/download-artifact), and [Android Emulator Runner v2.38.0](https://github.com/ReactiveCircus/android-emulator-runner/releases/tag/v2.38.0).

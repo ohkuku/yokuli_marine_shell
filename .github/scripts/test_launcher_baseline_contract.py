@@ -21,13 +21,14 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         self.assertNotIn('implementation(project(":feature:shell-lab"))', app)
 
     def test_registry_is_contribution_based_and_production_has_two_entries(self):
-        model = (ROOT / "core/model/src/main/java/com/yokuli/marine/core/model/ShellModels.kt").read_text()
+        identifiers = (ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/LauncherIdentifiers.kt").read_text()
+        catalog = (ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/LauncherCatalogContract.kt").read_text()
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
 
-        self.assertIn("value class MarineAppId", model)
-        self.assertNotIn("enum class MarineAppId", model)
-        self.assertIn("value class DestinationId", model)
-        self.assertIn("interface ShellFeatureContribution", model)
+        self.assertIn("value class LauncherAppId", identifiers)
+        self.assertNotIn("enum class LauncherAppId", identifiers)
+        self.assertIn("value class LaunchToken", identifiers)
+        self.assertIn("interface LauncherCatalogContribution", catalog)
         self.assertIn("ChartShellContribution", graph)
         self.assertIn("SettingsShellContribution", graph)
         self.assertRegex(graph, r"productionContributions\s*=\s*listOf\([^)]*ChartShellContribution[^)]*SettingsShellContribution[^)]*\)")
@@ -35,15 +36,15 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
             self.assertNotIn(removed, graph)
 
     def test_only_wp8_standard_tile_sizes_remain(self):
-        model = (ROOT / "core/model/src/main/java/com/yokuli/marine/core/model/ShellModels.kt").read_text()
-        block = model.split("enum class TileSize", 1)[1].split("}", 1)[0]
+        model = (ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/LauncherIdentifiers.kt").read_text()
+        block = model.split("enum class WpTileSize", 1)[1].split("}", 1)[0]
         names = re.findall(r"^\s*([A-Z][A-Z0-9_]*)\(", block, flags=re.MULTILINE)
         self.assertEqual(["SMALL_1X1", "MEDIUM_2X2", "WIDE_4X2"], names)
         self.assertNotIn("WIDE_2X1", model)
         self.assertNotIn("HERO_4X2", model)
 
     def test_production_main_contains_no_fixture_objects_or_fake_marine_facts(self):
-        production_modules = ("app-shell", "core/model", "core/shell", "core/shell-engine", "feature/desktop", "feature/chart", "feature/settings")
+        production_modules = ("app-shell", "core/model", "core/shell-contract", "core/shell-engine", "feature/desktop", "feature/chart", "feature/settings")
         text = "\n".join(
             path.read_text()
             for module in production_modules
@@ -93,19 +94,15 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         self.assertNotIn("hold to pin", resources)
 
     def test_shell_engine_foundation_is_explicit_and_spatial(self):
-        sources = "\n".join(
-            path.read_text()
-            for path in (ROOT / "core/shell-engine/src/main/java").rglob("*.kt")
-        )
+        sources = "\n".join(path.read_text() for path in (ROOT / "core/shell-engine/src/main").rglob("*.kt"))
         for symbol in (
             "data class WpStartGeometry",
             "data class DesktopDocument",
             "data class GridCell",
             "sealed interface StartInteractionState",
             "data class LayoutTransaction",
-            "interface ShellStore",
-            "interface DesktopLayoutStore",
-            "interface ShellPreferencesStore",
+            "class LauncherCatalog",
+            "class ShellNavigator",
         ):
             self.assertIn(symbol, sources)
         self.assertIn("version:", sources)

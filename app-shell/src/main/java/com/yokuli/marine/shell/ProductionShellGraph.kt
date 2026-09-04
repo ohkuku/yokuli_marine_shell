@@ -1,15 +1,16 @@
 package com.yokuli.marine.shell
 
-import com.yokuli.marine.core.model.TileId
-import com.yokuli.marine.core.model.TileSize
-import com.yokuli.marine.core.shell.LauncherRegistry
-import com.yokuli.marine.core.shell.engine.layout.DesktopDocument
-import com.yokuli.marine.core.shell.engine.layout.GridCell
-import com.yokuli.marine.core.shell.engine.layout.TilePlacement
 import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.chart.ChartShellContribution
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsShellContribution
+import com.yokuli.shell.android.StaticLauncherHostPort
+import com.yokuli.shell.contract.TileInstanceId
+import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.engine.catalog.LauncherCatalog
+import com.yokuli.shell.engine.layout.DesktopDocument
+import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.TilePlacement
 
 /**
  * 中文：生产入口只安装已经实现且能讲真话的功能。
@@ -17,22 +18,39 @@ import com.yokuli.marine.feature.settings.SettingsShellContribution
  */
 val productionContributions = listOf(ChartShellContribution, SettingsShellContribution)
 
-val productionRegistry = LauncherRegistry(productionContributions)
+val productionCatalog = LauncherCatalog.compose(revision = 1, contributions = productionContributions)
+
+private val SettingsSectionTokens = listOf(
+    SettingsDestinations.Overview,
+    SettingsDestinations.Appearance,
+    SettingsDestinations.StartScreen,
+    SettingsDestinations.Map,
+    SettingsDestinations.Language,
+    SettingsDestinations.About,
+)
+
+val productionHostPort = StaticLauncherHostPort(
+    catalog = productionCatalog.snapshot,
+    launches = buildMap {
+        put(ChartDestinations.Browse, ChartDestinations.AppId)
+        SettingsSectionTokens.forEach { put(it, SettingsDestinations.AppId) }
+    },
+)
 
 val defaultDesktopDocument = DesktopDocument(
     version = 1,
     columns = 4,
     placements = listOf(
         TilePlacement(
-            tileId = TileId("tile-chart"),
+            tileId = TileInstanceId("tile-chart"),
             entryId = ChartDestinations.EntryId,
-            size = TileSize.WIDE_4X2,
+            size = WpTileSize.WIDE_4X2,
             cell = GridCell(column = 0, row = 0),
         ),
         TilePlacement(
-            tileId = TileId("tile-settings"),
+            tileId = TileInstanceId("tile-settings"),
             entryId = SettingsDestinations.EntryId,
-            size = TileSize.SMALL_1X1,
+            size = WpTileSize.SMALL_1X1,
             cell = GridCell(column = 0, row = 2),
         ),
     ),

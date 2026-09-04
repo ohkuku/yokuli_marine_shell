@@ -202,3 +202,58 @@ bash .github/scripts/test-release-product-surface.sh                            
 ## English translation — Stage 1 correction
 
 The correction starts from `8914fc8…`. Its nine-test Red fails exactly three missing truthfulness-copy, HOME release-audit, and correction-report contracts. Green passes Stage 0 (10/10), Stage 1 (9/9), all Python contracts (45/45), all Bash gates, unit/lint/assemblies (952 Gradle tasks), and binary inspection of both Release flavors. Stage 2 remains stopped.
+
+## Stage 2 — Engine Contract Extraction
+
+### Baseline
+
+```text
+approved Stage 1 tag: launcher-engine-stage1-approved-v1
+starting SHA: df371fbfcb4cd467bccc43dd850e23d9bd7d0e85
+Stage 1 approval evidence run: 33861223067
+scope: Engine Contract Extraction only
+approval: PENDING_HUMAN_REVIEW
+```
+
+### Contract
+
+Given Stage 1 已获人工批准，When 执行 Stage 2，Then 必须建立 `shell-contract`、纯 Kotlin `shell-engine`、`shell-compose`、`shell-android`，以 opaque ID/token、contribution/catalog、`LauncherHostPort` 和 `InternalAppHostResolver` 解耦 Engine；And Release catalog 仍只由 Chart/Settings 组合且两者可打开；And 不得修改手势、动画、布局语义、持久化或海事能力，不得进入 Stage 2.5。
+
+### Red
+
+先新增 `.github/scripts/test_launcher_stage2_contract.py`，第一次运行：
+
+```text
+Ran 9 tests
+FAILED (failures=9)
+```
+
+九项失败分别来自 Stage 2 baseline/report、四模块边界、opaque contract、Engine 禁止依赖、contribution catalog、Compose/Android host adapter、旧 Marine 路由类型和命名 CI Gate 均尚未满足；不是拼写、错误路径或环境故障。
+
+### Green
+
+Green 只抽取合同、迁移类型/依赖和重新接线现有 Chart/Settings。冻结候选中的 geometry/layout/interaction 仅迁移到新的纯 Engine 边界，不扩展行为、不作为后续 Stage 证据。实际本地 Gate：
+
+```text
+/private/tmp/yokuli-stage0-schema-venv/bin/python .github/scripts/test_launcher_stage0_contract.py
+                                                                                PASS (10/10)
+/private/tmp/yokuli-stage0-schema-venv/bin/python .github/scripts/test_launcher_stage1_contract.py
+                                                                                PASS (9/9)
+/private/tmp/yokuli-stage0-schema-venv/bin/python .github/scripts/test_launcher_stage2_contract.py
+                                                                                PASS (10/10)
+/private/tmp/yokuli-stage0-schema-venv/bin/python -m unittest discover .github/scripts 'test_*.py'
+                                                                                PASS (55/55)
+bash .github/scripts/test-ci-contract.sh                                         PASS
+bash .github/scripts/test-resolve-release-metadata.sh                            PASS
+bash .github/scripts/test-secrets-manager.sh                                     PASS
+bash .github/scripts/test-release-product-surface.sh                             PASS (standalone + HOME)
+./gradlew --no-daemon test lintStandaloneDebug assembleStandaloneDebug assembleHomeDebug assembleStandaloneRelease assembleHomeRelease assembleStandaloneDebugAndroidTest
+                                                                                PASS (BUILD SUCCESSFUL; 954 tasks)
+bash .github/scripts/run_device_tests.sh all                                     PASS (API 34; 8/8)
+```
+
+提交后的 hosted API 34/API 36 结果在最终交付中记录；Samsung 方屏、Golden、benchmark、刷新率、输入延迟和真实 WP8 Reference 保持未验证或未测量。
+
+## English translation — Stage 2
+
+Stage 2 starts exactly from the approved Stage 1 tag. All nine initial architecture tests fail meaningfully before implementation because every Stage 2 boundary is absent; the final Green suite adds one current-device-story guard. Green is limited to pure contract/engine extraction, opaque identifiers and tokens, contribution/catalog composition, host ports/adapters, and rewiring the existing Chart/Settings UI. Stage 0/1/2 static gates, all 55 Python contracts, Bash gates, 954 Gradle tasks, both Release APK inspections, and eight local API 34 real-Activity stories pass. Existing UI, gestures, animations, and candidate layout behavior are not expanded. Stage 2.5 remains unstarted.

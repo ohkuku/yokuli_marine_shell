@@ -57,8 +57,8 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
         ).read_text()
         contract = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartUiContract.kt").read_text()
         workspace = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
-        self.assertEqual(["Browse"], re.findall(r"val\s+(\w+)\s*=\s*DestinationId\(", contribution))
-        self.assertIn('DestinationId("chart.browse")', contribution)
+        self.assertEqual(["Browse"], re.findall(r"val\s+(\w+)\s*=\s*LaunchToken\(", contribution))
+        self.assertIn('LaunchToken("chart.browse")', contribution)
         self.assertIn('testTag("chart-workspace-browse")', workspace)
         for forbidden in (
             "ChartMode",

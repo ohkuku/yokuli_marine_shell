@@ -57,8 +57,10 @@ android {
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:design"))
-    implementation(project(":core:shell"))
+    implementation(project(":core:shell-contract"))
     implementation(project(":core:shell-engine"))
+    implementation(project(":ui:shell-compose"))
+    implementation(project(":adapter:shell-android"))
     implementation(project(":adapter:chart-google"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))

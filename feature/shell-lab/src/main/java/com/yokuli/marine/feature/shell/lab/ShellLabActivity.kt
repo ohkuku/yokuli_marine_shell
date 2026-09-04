@@ -18,21 +18,21 @@ import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
-import com.yokuli.marine.core.model.DestinationId
-import com.yokuli.marine.core.model.LaunchTarget
-import com.yokuli.marine.core.model.LauncherEntryDescriptor
-import com.yokuli.marine.core.model.LauncherEntryId
-import com.yokuli.marine.core.model.MarineAppId
-import com.yokuli.marine.core.model.TileId
-import com.yokuli.marine.core.model.TileSize
-import com.yokuli.marine.core.shell.engine.layout.DesktopDocument
-import com.yokuli.marine.core.shell.engine.layout.GridCell
-import com.yokuli.marine.core.shell.engine.layout.TilePlacement
 import com.yokuli.marine.feature.desktop.LauncherEntryUiState
 import com.yokuli.marine.feature.desktop.LauncherUiAction
 import com.yokuli.marine.feature.desktop.LauncherUiState
 import com.yokuli.marine.feature.desktop.MarineIconKind
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
+import com.yokuli.shell.contract.LaunchToken
+import com.yokuli.shell.contract.LauncherAppId
+import com.yokuli.shell.contract.LauncherEntryDescriptor
+import com.yokuli.shell.contract.LauncherEntryId
+import com.yokuli.shell.contract.PinPolicy
+import com.yokuli.shell.contract.TileInstanceId
+import com.yokuli.shell.contract.WpTileSize
+import com.yokuli.shell.engine.layout.DesktopDocument
+import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.layout.TilePlacement
 
 class ShellLabActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,13 +71,14 @@ private fun ShellLab() {
 
 private fun demoDescriptors(count: Int) = List(count) { index ->
     val id = LauncherEntryId("demo-${index + 1}")
-    val appId = MarineAppId("demo-${index + 1}")
+    val appId = LauncherAppId("demo-${index + 1}")
     LauncherEntryDescriptor(
-        id = id,
+        entryId = id,
         appId = appId,
-        launchTarget = LaunchTarget(appId, DestinationId("demo.${index + 1}")),
-        defaultSize = if (index % 7 == 0) TileSize.WIDE_4X2 else TileSize.SMALL_1X1,
-        supportedSizesInCycleOrder = TileSize.entries,
+        launchToken = LaunchToken("demo.${index + 1}"),
+        defaultSize = if (index % 7 == 0) WpTileSize.WIDE_4X2 else WpTileSize.SMALL_1X1,
+        supportedSizes = WpTileSize.entries,
+        pinPolicy = PinPolicy.PINNABLE,
     )
 }
 
@@ -85,10 +86,15 @@ private fun demoDocument(entries: List<LauncherEntryDescriptor>): DesktopDocumen
     var row = 0
     val placements = entries.mapIndexed { index, entry ->
         val size = entry.defaultSize
-        val column = if (size == TileSize.WIDE_4X2) 0 else index % 4
-        if (size == TileSize.WIDE_4X2 && index > 0) row += 1
-        val placement = TilePlacement(TileId("tile-${entry.id.value}"), entry.id, size, GridCell(column, row))
-        if (size == TileSize.WIDE_4X2) row += 2 else if (column == 3) row += 1
+        val column = if (size == WpTileSize.WIDE_4X2) 0 else index % 4
+        if (size == WpTileSize.WIDE_4X2 && index > 0) row += 1
+        val placement = TilePlacement(
+            TileInstanceId("tile-${entry.entryId.value}"),
+            entry.entryId,
+            size,
+            GridCell(column, row),
+        )
+        if (size == WpTileSize.WIDE_4X2) row += 2 else if (column == 3) row += 1
         placement
     }
     return DesktopDocument(version = 1, columns = 4, placements = placements)

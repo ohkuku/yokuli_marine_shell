@@ -90,17 +90,17 @@ fun WpAppList(
                         contentAlignment = Alignment.Center,
                     ) { WpText(letter.lowercase(), 24, color = colors.onAccent, weight = FontWeight.Light) }
                 }
-                items(groupEntries, key = { it.entry.descriptor.id.value }) { indexedEntry ->
+                items(groupEntries, key = { it.entry.descriptor.entryId.value }) { indexedEntry ->
                     val entry = indexedEntry.entry
-                    val interactions = remember(entry.descriptor.id) { MutableInteractionSource() }
+                    val interactions = remember(entry.descriptor.entryId) { MutableInteractionSource() }
                     Row(
                         Modifier.fillMaxWidth().height(64.dp)
-                            .testTag("launcher-entry-${entry.descriptor.id.value}")
+                            .testTag("launcher-entry-${entry.descriptor.entryId.value}")
                             .wpTilt(interactions)
                             .combinedClickable(
                                 interactionSource = interactions,
                                 indication = null,
-                                onClick = { onAction(LauncherUiAction.Open(entry.descriptor.launchTarget)) },
+                                onClick = { onAction(LauncherUiAction.Open(entry.descriptor.launchToken)) },
                                 onLongClick = { contextEntry = entry },
                             ),
                         verticalAlignment = Alignment.CenterVertically,
@@ -126,15 +126,15 @@ fun WpAppList(
         contextEntry?.let { entry ->
             WpLauncherContextMenu(
                 entry = entry,
-                pinned = entry.descriptor.id in state.pinnedEntries,
+                pinned = entry.descriptor.entryId in state.pinnedEntries,
                 onDismiss = { contextEntry = null },
                 onTogglePin = {
                     contextEntry = null
-                    onAction(LauncherUiAction.TogglePin(entry.descriptor.id))
+                    onAction(LauncherUiAction.TogglePin(entry.descriptor.entryId))
                 },
                 onAppInfo = {
                     contextEntry = null
-                    onAction(LauncherUiAction.ShowAppInfo(entry.descriptor.id))
+                    onAction(LauncherUiAction.ShowAppInfo(entry.descriptor.entryId))
                 },
             )
         }

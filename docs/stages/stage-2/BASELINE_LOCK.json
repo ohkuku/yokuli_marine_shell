@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "stage": 2,
+  "name": "Engine Contract Extraction",
+  "branch": "codex/launcher-engine",
+  "approvedStage1Tag": "launcher-engine-stage1-approved-v1",
+  "startingSha": "df371fbfcb4cd467bccc43dd850e23d9bd7d0e85",
+  "stage1EvidenceRun": 33861223067,
+  "scope": "Engine Contract Extraction",
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

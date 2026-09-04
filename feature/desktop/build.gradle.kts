@@ -8,9 +8,8 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
-    implementation(project(":core:model"))
     implementation(project(":core:design"))
-    implementation(project(":core:shell"))
+    implementation(project(":core:shell-contract"))
     implementation(project(":core:shell-engine"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)

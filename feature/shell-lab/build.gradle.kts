@@ -10,8 +10,8 @@ android {
 }
 
 dependencies {
-    implementation(project(":core:model"))
     implementation(project(":core:design"))
+    implementation(project(":core:shell-contract"))
     implementation(project(":core:shell-engine"))
     implementation(project(":feature:desktop"))
     implementation(libs.androidx.activity.compose)

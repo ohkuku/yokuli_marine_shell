@@ -48,10 +48,10 @@ import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.design.wpThemeModeName
 import com.yokuli.marine.core.design.wpTileAccentName
 import com.yokuli.marine.core.design.wpTilt
-import com.yokuli.marine.core.shell.engine.geometry.WpStartGeometryCalculator
-import com.yokuli.marine.core.shell.engine.interaction.StartInteractionState
-import com.yokuli.marine.core.shell.engine.layout.DesktopLayoutEditor
-import com.yokuli.marine.core.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.geometry.WpStartGeometryCalculator
+import com.yokuli.shell.engine.interaction.StartInteractionState
+import com.yokuli.shell.engine.layout.DesktopLayoutEditor
+import com.yokuli.shell.engine.layout.GridCell
 import kotlin.math.roundToInt
 
 @Composable
@@ -60,7 +60,7 @@ fun YokuliStartScreen(
     onAction: (LauncherUiAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
-    val byId = remember(state.entries) { state.entries.associateBy { it.descriptor.id } }
+    val byId = remember(state.entries) { state.entries.associateBy { it.descriptor.entryId } }
     var interaction: StartInteractionState by remember { mutableStateOf(StartInteractionState.Idle) }
     val selectedTile = (interaction as? StartInteractionState.EditIdle)?.selectedTile
     val editing = interaction is StartInteractionState.EditIdle
@@ -101,8 +101,8 @@ fun YokuliStartScreen(
                                     if (editing) {
                                         interaction = StartInteractionState.EditIdle(placement.tileId)
                                     } else {
-                                        interaction = StartInteractionState.Launching(placement.tileId, entry.descriptor.launchTarget, 0f)
-                                        onAction(LauncherUiAction.Open(entry.descriptor.launchTarget))
+                                        interaction = StartInteractionState.Launching(placement.tileId, entry.descriptor.launchToken, 0f)
+                                        onAction(LauncherUiAction.Open(entry.descriptor.launchToken))
                                     }
                                 },
                                 onLongClick = { interaction = StartInteractionState.EditIdle(placement.tileId) },
@@ -186,7 +186,7 @@ private fun WpTile(
     Box(
         modifier.offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
             .width(width).height(height).scale(scale).alpha(if (editing && !selected) .55f else 1f)
-            .testTag("tile-${entry.descriptor.id.value}")
+            .testTag("tile-${entry.descriptor.entryId.value}")
             .semantics {
                 wpTileAccentName = colors.spec.accent.displayName
                 stateDescription = buildString {

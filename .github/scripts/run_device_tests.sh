@@ -11,12 +11,12 @@ case "$mode" in
     ;;
   smoke)
     gradle_args+=(
-      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#anchorTileOpensSharedChartInAnchorModeAndHomeReturnsToStart'
+      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart'
     )
     ;;
   ui-contract)
     gradle_args+=(
-      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#everyCoreAppUsesTheReusableLargeTopLeftTitleContract'
+      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#productionShellExposesOnlyChartAndSettingsWithReusableLargeTitles'
     )
     ;;
   *)

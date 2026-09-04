@@ -4,11 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.design.WpThemeSpec
-import com.yokuli.marine.core.model.LaunchTarget
-import com.yokuli.marine.core.model.LauncherEntryDescriptor
-import com.yokuli.marine.core.model.LauncherEntryId
-import com.yokuli.marine.core.shell.LauncherRegistry
-import com.yokuli.marine.core.shell.engine.layout.DesktopDocument
+import com.yokuli.shell.contract.LaunchToken
+import com.yokuli.shell.contract.LauncherCatalogSnapshot
+import com.yokuli.shell.contract.LauncherEntryDescriptor
+import com.yokuli.shell.contract.LauncherEntryId
+import com.yokuli.shell.engine.layout.DesktopDocument
 
 enum class MarineIconKind { CHART, SETTINGS, APPS, DONE, UNPIN, RESIZE, PIN, INFO, GENERIC }
 
@@ -29,7 +29,7 @@ data class LauncherUiState(
 }
 
 sealed interface LauncherUiAction {
-    data class Open(val target: LaunchTarget) : LauncherUiAction
+    data class Open(val token: LaunchToken) : LauncherUiAction
     data object ShowAllApps : LauncherUiAction
     data class ChangeDocument(val document: DesktopDocument) : LauncherUiAction
     data class TogglePin(val entryId: LauncherEntryId) : LauncherUiAction
@@ -42,13 +42,13 @@ sealed interface LauncherUiAction {
  */
 @Composable
 fun productionLauncherUiState(
-    registry: LauncherRegistry,
+    catalog: LauncherCatalogSnapshot,
     document: DesktopDocument,
     mapConfigured: Boolean,
     theme: WpThemeSpec,
 ): LauncherUiState {
-    val chart = registry.entries.single { it.id.value == "chart" }
-    val settings = registry.entries.single { it.id.value == "settings" }
+    val chart = catalog.entries.single { it.entryId.value == "chart" }
+    val settings = catalog.entries.single { it.entryId.value == "settings" }
     return LauncherUiState(
         document = document,
         entries = listOf(

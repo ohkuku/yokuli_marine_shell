@@ -39,7 +39,9 @@ class UiArchitectureContractTest(unittest.TestCase):
                 self.assertEqual(string_values(default), string_values(chinese), f"{module} Chinese fallback drifted")
 
     def test_launcher_domain_descriptor_contains_no_visual_copy_or_glyph(self):
-        model = (ROOT / "core/model/src/main/java/com/yokuli/marine/core/model/ShellModels.kt").read_text()
+        model = (
+            ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/LauncherCatalogContract.kt"
+        ).read_text()
         descriptor = model.split("data class LauncherEntryDescriptor(", 1)[1].split(")", 1)[0]
         self.assertNotIn("title", descriptor)
         self.assertNotIn("symbol", descriptor)

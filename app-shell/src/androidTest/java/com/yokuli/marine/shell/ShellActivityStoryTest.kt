@@ -145,7 +145,7 @@ class ShellActivityStoryTest {
                     Box(Modifier.requiredSize(320.dp)) {
                         YokuliStartScreen(
                             state = productionLauncherUiState(
-                                productionRegistry,
+                                productionCatalog.snapshot,
                                 defaultDesktopDocument,
                                 mapConfigured = false,
                                 theme = WpThemeSpec(),

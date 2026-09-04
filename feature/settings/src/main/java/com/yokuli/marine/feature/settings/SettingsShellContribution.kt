@@ -1,56 +1,47 @@
 package com.yokuli.marine.feature.settings
 
-import com.yokuli.marine.core.model.DestinationId
-import com.yokuli.marine.core.model.LaunchTarget
-import com.yokuli.marine.core.model.LauncherEntryDescriptor
-import com.yokuli.marine.core.model.LauncherEntryId
-import com.yokuli.marine.core.model.MarineAppDescriptor
-import com.yokuli.marine.core.model.MarineAppId
-import com.yokuli.marine.core.model.ShellFeatureContribution
-import com.yokuli.marine.core.model.TileSize
+import com.yokuli.shell.contract.LaunchToken
+import com.yokuli.shell.contract.LauncherAppDescriptor
+import com.yokuli.shell.contract.LauncherAppId
+import com.yokuli.shell.contract.LauncherCatalogContribution
+import com.yokuli.shell.contract.LauncherEntryDescriptor
+import com.yokuli.shell.contract.LauncherEntryId
+import com.yokuli.shell.contract.PinPolicy
+import com.yokuli.shell.contract.WpTileSize
 
 object SettingsDestinations {
-    val AppId = MarineAppId("settings")
-    val Overview = DestinationId("settings.overview")
-    val Appearance = DestinationId("settings.appearance")
-    val StartScreen = DestinationId("settings.start")
-    val Map = DestinationId("settings.map")
-    val Language = DestinationId("settings.language")
-    val About = DestinationId("settings.about")
-    val Target = LaunchTarget(AppId, Overview)
+    val AppId = LauncherAppId("settings")
+    val Overview = LaunchToken("settings.overview")
+    val Appearance = LaunchToken("settings.appearance")
+    val StartScreen = LaunchToken("settings.start")
+    val Map = LaunchToken("settings.map")
+    val Language = LaunchToken("settings.language")
+    val About = LaunchToken("settings.about")
     val EntryId = LauncherEntryId("settings")
 
-    fun target(section: SettingsSection) = LaunchTarget(
-        appId = AppId,
-        destination = when (section) {
-            SettingsSection.OVERVIEW -> Overview
-            SettingsSection.APPEARANCE -> Appearance
-            SettingsSection.START_SCREEN -> StartScreen
-            SettingsSection.MAP -> Map
-            SettingsSection.LANGUAGE -> Language
-            SettingsSection.ABOUT -> About
-        },
-    )
-
-    fun section(destination: DestinationId): SettingsSection = when (destination) {
-        Appearance -> SettingsSection.APPEARANCE
-        StartScreen -> SettingsSection.START_SCREEN
-        Map -> SettingsSection.MAP
-        Language -> SettingsSection.LANGUAGE
-        About -> SettingsSection.ABOUT
-        else -> SettingsSection.OVERVIEW
+    fun token(section: SettingsSection): LaunchToken = when (section) {
+        SettingsSection.OVERVIEW -> Overview
+        SettingsSection.APPEARANCE -> Appearance
+        SettingsSection.START_SCREEN -> StartScreen
+        SettingsSection.MAP -> Map
+        SettingsSection.LANGUAGE -> Language
+        SettingsSection.ABOUT -> About
     }
+
+    fun section(launchToken: LaunchToken): SettingsSection? =
+        SettingsSection.entries.firstOrNull { token(it) == launchToken }
 }
 
-object SettingsShellContribution : ShellFeatureContribution {
-    override val app = MarineAppDescriptor(SettingsDestinations.AppId, SettingsDestinations.Overview)
-    override val launcherEntries = listOf(
+object SettingsShellContribution : LauncherCatalogContribution {
+    override val app = LauncherAppDescriptor(SettingsDestinations.AppId, SettingsDestinations.EntryId)
+    override val entries = listOf(
         LauncherEntryDescriptor(
-            id = SettingsDestinations.EntryId,
+            entryId = SettingsDestinations.EntryId,
             appId = SettingsDestinations.AppId,
-            launchTarget = SettingsDestinations.Target,
-            defaultSize = TileSize.SMALL_1X1,
-            supportedSizesInCycleOrder = listOf(TileSize.SMALL_1X1, TileSize.MEDIUM_2X2),
+            launchToken = SettingsDestinations.Overview,
+            defaultSize = WpTileSize.SMALL_1X1,
+            supportedSizes = listOf(WpTileSize.SMALL_1X1, WpTileSize.MEDIUM_2X2),
+            pinPolicy = PinPolicy.PINNABLE,
         ),
     )
 }

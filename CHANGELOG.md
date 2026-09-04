@@ -4,6 +4,15 @@
 
 ### 中文（主文）
 
+#### Stage 2 — Engine Contract Extraction
+
+- 从 Stage 1 批准 tag `launcher-engine-stage1-approved-v1`／`df371fb…` 开始，把 Launcher 合同与 Engine 抽成 Kotlin/JVM 模块；Engine 不再具有 Android manifest 或依赖 Compose、Feature、Google Maps、`core:model` 和 Marine 类型。
+- 用 opaque `LauncherAppId`、`LauncherEntryId`、`LaunchToken`、`TileInstanceId` 替换 `MarineAppId`、`DestinationId`、`LaunchTarget` 与 `TileId`；固定 Registry 改为 Feature contribution + validated catalog composition。
+- 新增 `LauncherHostPort`、Compose `InternalAppHostResolver`、Android 静态 host adapter，并把 Chart/Settings token 与 UI host 的组合限制在 `app-shell`；`ShellActivity` 不再按 app id 的 `when` 引用 Feature。
+- 清除未接入调用方、也没有持久化实现的临时 `ShellStore/DesktopLayoutStore/ShellPreferencesStore` 空接口；正式响应式 Store、reducer 与恢复仍留在后续 Stage。
+- 新增 Stage 2 Red/Green 架构合同、JVM catalog/navigation/adapter 测试和独立 GitHub Actions Gate；Stage 0/1 contracts 与双 Release 产品面审计继续作为回归门禁。
+- 保留现有 UI、手势、动画、地图适配器、Chart + Settings 产品面和 debug-only Shell Lab；不启动 Stage 2.5，也不把冻结候选 geometry/layout/interaction 认定为后续 Stage 完成。
+
 #### Stage 1 correction — Release truthfulness
 
 - 把 `GOOGLE_MAPS_CONFIGURED` 的用户文案从“地图已就绪”收紧为“地图已配置”，明确它只表示提供了非占位密钥，不证明授权、网络、账单、应用限制或图块加载。
@@ -81,6 +90,9 @@
 - GPS、NMEA、Anchor、Navigation、Trip、Survey、Sonar、OpenSeaMap 和本地海图导入仍未接入生产 runtime。
 
 ### English translation
+
+Stage 2 starts from the immutable Stage 1 approval tag and extracts pure Kotlin launcher contract/engine modules, opaque IDs and launch tokens, validated feature contributions, a Compose internal-host boundary, and an Android host adapter. Only `app-shell` wires Chart and Settings. The engine has no Android, Compose, Feature, Google Maps, core-model, or marine-domain dependencies. Existing UI and interaction behavior is preserved, and Stage 2.5 is not started.
+
 
 The Stage 1 correction replaces map-readiness claims with configuration-only wording, removes vessel-position state and future-feature/diagnostics copy, and renames the section to About. The resource contract scans only production user-visible strings. CI now assembles and inspects both standalone and HOME release APKs, with HOME adding only its expected HOME/DEFAULT launch categories. No engine, gesture, persistence, reducer, marine capability, or Stage 2 contract changes are included.
 
