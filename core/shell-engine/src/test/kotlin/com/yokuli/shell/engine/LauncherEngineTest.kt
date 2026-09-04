@@ -19,6 +19,7 @@ import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.StartLayoutEditor
 import com.yokuli.shell.engine.layout.TilePlacement
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -50,7 +51,9 @@ class LauncherEngineTest {
     fun unresolvedTokenKeepsCurrentSurfaceAndLogsIncident() = runBlocking {
         val scope = testScope()
         val engine = engine(FakeHostPort(catalog), InMemoryLauncherPersistence(), scope)
-        val incident = async { withTimeout(2_000) { engine.effects.first() } }
+        val incident = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(2_000) { engine.effects.first() }
+        }
 
         engine.dispatch(LauncherAction.Open(LaunchToken("removed.root")))
 

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "stage": 7,
+  "name": "Complete Edit / Drag / Resize",
+  "branch": "codex/launcher-engine-batch-b",
+  "startingSha": "f1652ee6f10b833cec9220ade5ef98ab86739749",
+  "requiredCompletedStage": "Custom Spatial Grid",
+  "scope": "Complete Edit, Drag, Resize, Cancel, and Accessibility Movement",
+  "nextStageStarted": false,
+  "approvalStatus": "PENDING_HUMAN_REVIEW"
+}

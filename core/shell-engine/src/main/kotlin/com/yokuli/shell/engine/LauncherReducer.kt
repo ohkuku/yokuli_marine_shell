@@ -16,6 +16,9 @@ import com.yokuli.shell.engine.layout.StartDocumentRepair
 import com.yokuli.shell.engine.layout.StartDocumentValidator
 import com.yokuli.shell.engine.layout.StartLayoutEditor
 import com.yokuli.shell.engine.layout.StartRepairIncident
+import com.yokuli.shell.engine.layout.GridCell
+import com.yokuli.shell.engine.interaction.ShellOffset
+import com.yokuli.shell.engine.interaction.StartInteractionState
 
 data class LauncherReducerContext(
     val defaultDocument: StartDocument,
@@ -40,6 +43,30 @@ sealed interface LauncherAction {
     data object CommitLayoutTransaction : LauncherAction
     data object CancelLayoutTransaction : LauncherAction
     data object UndoLayout : LauncherAction
+    data class EnterStartEdit(val tileId: TileInstanceId) : LauncherAction
+    data class SelectStartTile(val tileId: TileInstanceId) : LauncherAction
+    data object ExitStartEdit : LauncherAction
+    data class BeginTileDrag(
+        val tileId: TileInstanceId,
+        val pointerId: Long,
+        val grabOffsetPx: ShellOffset,
+    ) : LauncherAction
+    data class UpdateTileDrag(
+        val tileId: TileInstanceId,
+        val visualOffsetPx: ShellOffset,
+        val targetCell: GridCell,
+        val autoScrollPxPerSecond: Float,
+    ) : LauncherAction
+    data class AutoScrollTileDrag(
+        val tileId: TileInstanceId,
+        val consumedScrollPx: Float,
+        val targetCell: GridCell,
+    ) : LauncherAction
+    data class DropTile(val tileId: TileInstanceId) : LauncherAction
+    data object CancelTileOperation : LauncherAction
+    data class ResizeTile(val tileId: TileInstanceId) : LauncherAction
+    data object CommitTileResize : LauncherAction
+    data class MoveTileBy(val tileId: TileInstanceId, val columns: Int, val rows: Int) : LauncherAction
     data class TogglePin(val entryId: LauncherEntryId) : LauncherAction
     data object ResetStartDocument : LauncherAction
 }
@@ -102,6 +129,17 @@ class DefaultLauncherReducer : LauncherReducer {
         LauncherAction.CommitLayoutTransaction -> commit(state)
         LauncherAction.CancelLayoutTransaction -> cancel(state)
         LauncherAction.UndoLayout -> undo(state)
+        is LauncherAction.EnterStartEdit -> enterEdit(state, action.tileId)
+        is LauncherAction.SelectStartTile -> selectTile(state, action.tileId)
+        LauncherAction.ExitStartEdit -> exitEdit(state)
+        is LauncherAction.BeginTileDrag -> beginDrag(state, action)
+        is LauncherAction.UpdateTileDrag -> updateDrag(state, action)
+        is LauncherAction.AutoScrollTileDrag -> autoScrollDrag(state, action)
+        is LauncherAction.DropTile -> dropTile(state, action.tileId)
+        LauncherAction.CancelTileOperation -> cancelTileOperation(state)
+        is LauncherAction.ResizeTile -> resizeTile(state, action.tileId)
+        LauncherAction.CommitTileResize -> commitTileResize(state)
+        is LauncherAction.MoveTileBy -> moveTileBy(state, action)
         is LauncherAction.TogglePin -> togglePin(state, action.entryId)
         LauncherAction.ResetStartDocument -> applyCommitted(
             state,
@@ -111,6 +149,13 @@ class DefaultLauncherReducer : LauncherReducer {
 
     private fun back(state: LauncherEngineState): LauncherReduction {
         state.transient?.let { return LauncherReduction(state.copy(transient = null)) }
+        when (state.start.interaction) {
+            is StartInteractionState.Dragging,
+            is StartInteractionState.Resizing,
+            is StartInteractionState.Settling -> return cancelTileOperation(state)
+            is StartInteractionState.EditIdle -> return exitEdit(state)
+            else -> Unit
+        }
         state.start.activeTransaction?.let { return cancel(state) }
         val intent = if (state.surface == LauncherSurface.AllApps) {
             LauncherTransitionIntent.SIBLING_BACK
@@ -163,7 +208,14 @@ class DefaultLauncherReducer : LauncherReducer {
             ?.let { current -> tasks.any { it.taskId == current.taskId } } ?: true
         val repairedState = state.copy(
             surface = if (currentTaskInstalled) state.surface else LauncherSurface.Start,
-            start = state.start.copy(document = repair.document),
+            start = state.start.copy(
+                document = repair.document,
+                interaction = if (state.start.interaction is StartInteractionState.Dragging) {
+                    StartInteractionState.Idle
+                } else {
+                    state.start.interaction
+                },
+            ),
             allApps = AllAppsState(catalog.revision),
             tasks = InternalTaskState(tasks),
             catalog = catalog,
@@ -173,6 +225,185 @@ class DefaultLauncherReducer : LauncherReducer {
             if (repair.document != state.start.document) add(LauncherEffect.PersistDocument(repair.document))
         }
         return LauncherReduction(repairedState, effects)
+    }
+
+    private fun enterEdit(state: LauncherEngineState, tileId: TileInstanceId): LauncherReduction {
+        if (state.start.document.placements.none { it.tileId == tileId }) return LauncherReduction(state)
+        return LauncherReduction(
+            state.copy(start = state.start.copy(interaction = StartInteractionState.EditIdle(tileId))),
+            listOf(LauncherEffect.Haptic(LauncherHaptic.LONG_PRESS)),
+        )
+    }
+
+    private fun selectTile(state: LauncherEngineState, tileId: TileInstanceId): LauncherReduction {
+        if (state.start.interaction !is StartInteractionState.EditIdle) return LauncherReduction(state)
+        if (state.start.document.placements.none { it.tileId == tileId }) return LauncherReduction(state)
+        return LauncherReduction(
+            state.copy(start = state.start.copy(interaction = StartInteractionState.EditIdle(tileId))),
+        )
+    }
+
+    private fun exitEdit(state: LauncherEngineState): LauncherReduction {
+        val cancelled = if (state.start.activeTransaction != null) cancel(state).state else state
+        return LauncherReduction(cancelled.copy(start = cancelled.start.copy(interaction = StartInteractionState.Idle)))
+    }
+
+    private fun beginDrag(state: LauncherEngineState, action: LauncherAction.BeginTileDrag): LauncherReduction {
+        val placement = state.start.document.placements.firstOrNull { it.tileId == action.tileId }
+            ?: return LauncherReduction(state)
+        return LauncherReduction(
+            state.copy(
+                start = state.start.copy(
+                    interaction = StartInteractionState.Dragging(
+                        tileId = action.tileId,
+                        pointerId = action.pointerId,
+                        grabOffsetPx = action.grabOffsetPx,
+                        visualOffsetPx = ShellOffset(0f, 0f),
+                        targetCell = placement.cell,
+                        proposedLayout = state.start.document,
+                        autoScrollPxPerSecond = 0f,
+                    ),
+                ),
+            ),
+        )
+    }
+
+    private fun updateDrag(state: LauncherEngineState, action: LauncherAction.UpdateTileDrag): LauncherReduction {
+        val dragging = state.start.interaction as? StartInteractionState.Dragging ?: return LauncherReduction(state)
+        if (dragging.tileId != action.tileId) return LauncherReduction(state)
+        val proposed = StartLayoutEditor.move(
+            state.start.document,
+            action.tileId,
+            action.targetCell,
+            state.catalog.entries,
+        )?.after ?: state.start.document
+        return LauncherReduction(
+            state.copy(
+                start = state.start.copy(
+                    interaction = dragging.copy(
+                        visualOffsetPx = action.visualOffsetPx,
+                        targetCell = action.targetCell,
+                        proposedLayout = proposed,
+                        autoScrollPxPerSecond = action.autoScrollPxPerSecond,
+                    ),
+                ),
+            ),
+        )
+    }
+
+    private fun autoScrollDrag(
+        state: LauncherEngineState,
+        action: LauncherAction.AutoScrollTileDrag,
+    ): LauncherReduction {
+        val dragging = state.start.interaction as? StartInteractionState.Dragging ?: return LauncherReduction(state)
+        if (dragging.tileId != action.tileId) return LauncherReduction(state)
+        return updateDrag(
+            state,
+            LauncherAction.UpdateTileDrag(
+                tileId = action.tileId,
+                visualOffsetPx = dragging.visualOffsetPx.copy(
+                    y = dragging.visualOffsetPx.y + action.consumedScrollPx,
+                ),
+                targetCell = action.targetCell,
+                autoScrollPxPerSecond = dragging.autoScrollPxPerSecond,
+            ),
+        )
+    }
+
+    private fun dropTile(state: LauncherEngineState, tileId: TileInstanceId): LauncherReduction {
+        val dragging = state.start.interaction as? StartInteractionState.Dragging ?: return LauncherReduction(state)
+        if (dragging.tileId != tileId) return LauncherReduction(state)
+        if (dragging.proposedLayout == state.start.document) {
+            return LauncherReduction(
+                state.copy(start = state.start.copy(interaction = StartInteractionState.EditIdle(tileId))),
+            )
+        }
+        val applied = applyCommitted(
+            state,
+            LayoutProposal(state.start.document, dragging.proposedLayout, LayoutChangeReason.MOVE),
+        )
+        return applied.copy(
+            state = applied.state.copy(
+                start = applied.state.start.copy(interaction = StartInteractionState.EditIdle(tileId)),
+            ),
+            effects = applied.effects + LauncherEffect.Haptic(LauncherHaptic.DROP),
+        )
+    }
+
+    private fun cancelTileOperation(state: LauncherEngineState): LauncherReduction {
+        val selected = when (val interaction = state.start.interaction) {
+            is StartInteractionState.Dragging -> interaction.tileId
+            is StartInteractionState.Resizing -> interaction.tileId
+            is StartInteractionState.Settling -> null
+            else -> null
+        }
+        if (
+            state.start.interaction !is StartInteractionState.Dragging &&
+            state.start.interaction !is StartInteractionState.Resizing &&
+            state.start.interaction !is StartInteractionState.Settling
+        ) {
+            return LauncherReduction(state)
+        }
+        val cancelled = if (state.start.activeTransaction != null) cancel(state).state else state
+        return LauncherReduction(
+            cancelled.copy(
+                start = cancelled.start.copy(interaction = StartInteractionState.EditIdle(selected)),
+            ),
+        )
+    }
+
+    private fun resizeTile(state: LauncherEngineState, tileId: TileInstanceId): LauncherReduction {
+        val proposal = StartLayoutEditor.resize(state.start.document, tileId, state.catalog.entries)
+            ?: return LauncherReduction(state)
+        validateProposal(state, proposal)?.let { return it }
+        val transaction = LayoutTransaction(
+            id = "layout-${state.nextTransactionId}",
+            before = proposal.before,
+            after = proposal.after,
+            reason = LayoutChangeReason.RESIZE,
+        )
+        return LauncherReduction(
+            state = state.copy(
+                start = state.start.copy(
+                    activeTransaction = transaction,
+                    interaction = StartInteractionState.Resizing(
+                        tileId,
+                        proposal.after.placements.single { it.tileId == tileId }.size,
+                        proposal.after,
+                    ),
+                ),
+                nextTransactionId = state.nextTransactionId + 1,
+            ),
+            effects = listOf(LauncherEffect.Haptic(LauncherHaptic.SELECTION)),
+        )
+    }
+
+    private fun commitTileResize(state: LauncherEngineState): LauncherReduction {
+        val resizing = state.start.interaction as? StartInteractionState.Resizing ?: return LauncherReduction(state)
+        val committed = commit(state)
+        return committed.copy(
+            state = committed.state.copy(
+                start = committed.state.start.copy(interaction = StartInteractionState.EditIdle(resizing.tileId)),
+            ),
+        )
+    }
+
+    private fun moveTileBy(state: LauncherEngineState, action: LauncherAction.MoveTileBy): LauncherReduction {
+        val placement = state.start.document.placements.firstOrNull { it.tileId == action.tileId }
+            ?: return LauncherReduction(state)
+        val proposal = StartLayoutEditor.move(
+            state.start.document,
+            action.tileId,
+            GridCell(placement.cell.column + action.columns, placement.cell.row + action.rows),
+            state.catalog.entries,
+        ) ?: return LauncherReduction(state)
+        val applied = applyCommitted(state, proposal)
+        return applied.copy(
+            state = applied.state.copy(
+                start = applied.state.start.copy(interaction = StartInteractionState.EditIdle(action.tileId)),
+            ),
+            effects = applied.effects + LauncherEffect.Haptic(LauncherHaptic.SELECTION),
+        )
     }
 
     private fun begin(state: LauncherEngineState, proposal: LayoutProposal): LauncherReduction {
@@ -196,6 +427,7 @@ class DefaultLauncherReducer : LauncherReducer {
         return LauncherReduction(
             state.copy(
                 start = state.start.copy(
+                    document = transaction.after,
                     activeTransaction = null,
                     undoStack = state.start.undoStack + transaction,
                 ),

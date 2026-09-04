@@ -8,6 +8,10 @@ import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.LayoutProposal
+import com.yokuli.shell.contract.TileInstanceId
+import com.yokuli.shell.engine.interaction.ShellOffset
+import com.yokuli.shell.engine.interaction.StartInteractionState
+import com.yokuli.shell.engine.layout.GridCell
 
 enum class MarineIconKind { CHART, SETTINGS, APPS, DONE, UNPIN, RESIZE, PIN, INFO, GENERIC }
 
@@ -37,6 +41,7 @@ data class LauncherVisualContext(
 data class LauncherUiState(
     val document: StartDocument,
     val entries: List<LauncherEntryUiState>,
+    val interaction: StartInteractionState = StartInteractionState.Idle,
 ) {
     val pinnedEntries: Set<LauncherEntryId> = document.placements.map { it.entryId }.toSet()
 }
@@ -45,6 +50,22 @@ sealed interface LauncherUiAction {
     data class Open(val token: LaunchToken) : LauncherUiAction
     data object ShowAllApps : LauncherUiAction
     data class ProposeLayout(val proposal: LayoutProposal) : LauncherUiAction
+    data class EnterStartEdit(val tileId: TileInstanceId) : LauncherUiAction
+    data class SelectStartTile(val tileId: TileInstanceId) : LauncherUiAction
+    data object ExitStartEdit : LauncherUiAction
+    data class BeginTileDrag(val tileId: TileInstanceId, val pointerId: Long, val grabOffset: ShellOffset) : LauncherUiAction
+    data class UpdateTileDrag(
+        val tileId: TileInstanceId,
+        val visualOffset: ShellOffset,
+        val targetCell: GridCell,
+        val autoScrollPxPerSecond: Float,
+    ) : LauncherUiAction
+    data class AutoScrollTileDrag(val tileId: TileInstanceId, val consumedPx: Float, val targetCell: GridCell) : LauncherUiAction
+    data class DropTile(val tileId: TileInstanceId) : LauncherUiAction
+    data object CancelTileOperation : LauncherUiAction
+    data class ResizeTile(val tileId: TileInstanceId) : LauncherUiAction
+    data object CommitTileResize : LauncherUiAction
+    data class MoveTileBy(val tileId: TileInstanceId, val columns: Int, val rows: Int) : LauncherUiAction
     data class TogglePin(val entryId: LauncherEntryId) : LauncherUiAction
     data class ShowAppInfo(val entryId: LauncherEntryId) : LauncherUiAction
 }
@@ -57,6 +78,7 @@ sealed interface LauncherUiAction {
 fun productionLauncherUiState(
     catalog: LauncherCatalogSnapshot,
     document: StartDocument,
+    interaction: StartInteractionState = StartInteractionState.Idle,
     mapConfigured: Boolean,
     theme: WpThemeSpec,
     visualContributions: List<LauncherEntryVisualContribution>,
@@ -69,6 +91,7 @@ fun productionLauncherUiState(
     val visualContext = LauncherVisualContext(mapConfigured = mapConfigured, theme = theme)
     return LauncherUiState(
         document = document,
+        interaction = interaction,
         entries = catalog.entries.map { descriptor ->
             requireNotNull(visualsByEntry[descriptor.entryId]) {
                 "Missing launcher visual contribution for ${descriptor.entryId.value}"

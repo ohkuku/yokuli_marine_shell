@@ -4,6 +4,13 @@
 
 ### 中文（主文）
 
+#### Stage 7 — Complete Edit / Drag / Resize
+
+- 编辑、拖动、边缘自动滚动、Drop/Cancel、Resize 与无障碍方向移动统一进入串行 Launcher Engine。
+- 拖动保留真实 pointer/grab offset，原位 placeholder 与邻居 proposed layout 在提交前可见；Back、pause、pointer/viewport/catalog 取消不污染文档。
+- Resize 以 provisional transaction 渲染后提交，Chart 严格循环 Small/Medium/Wide；新增中英文无障碍移动标签。
+- Stage 2.5 未观察的滞回、自动滚动速度和触感均明确为派生运行策略，不冒充 WP8 测量值。
+
 #### Stage 6 — Custom Spatial Grid
 
 - 新增显式 cell 占用索引和局部确定性碰撞求解；移动/缩放只影响直接碰撞项，不压缩空白、不改无关坐标。

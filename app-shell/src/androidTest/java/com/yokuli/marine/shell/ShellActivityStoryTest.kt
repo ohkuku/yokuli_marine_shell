@@ -33,6 +33,7 @@ import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import kotlin.math.abs
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -111,6 +112,45 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("interactive-launcher-pager").performTouchInput { swipeLeft() }
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.onNodeWithTag("all-apps-list").assertIsNotDisplayed()
+    }
+
+    @Test
+    fun systemBackExitsEditModeBeforeLeavingStart() {
+        compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        compose.onNodeWithTag("unpin-selected-tile").assertIsDisplayed()
+
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.onNodeWithTag("unpin-selected-tile").assertDoesNotExist()
+    }
+
+    @Test
+    fun chartResizeCyclesWideSmallMediumWide() {
+        val wideWidth = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width
+        compose.onNodeWithTag("tile-chart").performTouchInput { longClick() }
+
+        compose.onNodeWithTag("resize-selected-tile").performClick()
+        compose.waitUntil(5_000) {
+            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width < wideWidth
+        }
+        val smallWidth = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width
+
+        compose.onNodeWithTag("resize-selected-tile").performClick()
+        compose.waitUntil(5_000) {
+            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width > smallWidth
+        }
+        val mediumWidth = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width
+
+        compose.onNodeWithTag("resize-selected-tile").performClick()
+        compose.waitUntil(5_000) {
+            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width > mediumWidth
+        }
+        compose.onNodeWithTag("all-apps-entry").performClick()
+        compose.waitUntil(5_000) {
+            abs(compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width - wideWidth) < 1f
+        }
+        assertEquals(wideWidth, compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width, 1f)
     }
 
     @Test

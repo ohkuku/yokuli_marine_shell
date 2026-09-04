@@ -5,6 +5,7 @@ import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.WpTileSize
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.LayoutTransaction
+import com.yokuli.shell.engine.layout.GridCell
 
 enum class LauncherPage { START, ALL_APPS }
 data class ShellOffset(val x: Float, val y: Float)
@@ -22,6 +23,7 @@ sealed interface StartInteractionState {
         val pointerId: Long,
         val grabOffsetPx: ShellOffset,
         val visualOffsetPx: ShellOffset,
+        val targetCell: GridCell,
         val proposedLayout: StartDocument,
         val autoScrollPxPerSecond: Float,
     ) : StartInteractionState

@@ -406,3 +406,13 @@ Six contracts first fail on the fixed-distance swipe implementation and missing 
 ### English translation — Stage 6
 
 Six contracts begin red while occupancy, collision solving, the custom renderer, JVM stories, evidence, and CI gate are absent. Green adds explicit cell lookup, deterministic local collision resolution, and a pixel-snapped Compose Layout driven by StartDocument plus a transient proposed document. Narrow tests caught one invalid Constraints API call and corrected a mistaken test assumption about the moving tile's newly freed cell. Unrelated coordinates, intentional whitespace, placement order, and repeatability are now locked.
+
+## Stage 7 — Complete Edit / Drag / Resize
+
+7 项合同先得到 4 failures / 3 errors。Green 把编辑状态和所有文档相关输入迁入串行 Engine；Renderer 只保留 pointer plane 的输入采集。第一次窄回归暴露 Stage 4 effect 测试订阅 race 和 Shell Lab positional constructor 兼容问题：前者改为 `CoroutineStart.UNDISPATCHED` 确保先订阅再派发，后者通过有默认值的尾参数保持 debug-only Lab API。两者均没有改变 Stage 4 行为合同。
+
+随后加入 provisional resize transaction、原位 placeholder、Back/pause/viewport/catalog cancel、派生的 hysteresis/edge-scroll policy、Android 标准 haptic effect host 与中英文无障碍方向动作。JVM tests 锁定 grab offset、pre-drop neighbor proposal、hysteresis、auto-scroll compensation、invalid/cancel safety、catalog cancellation 和 Small/Medium/Wide 循环；真实 Activity stories 锁定 Back 优先级和 Resize 视觉尺寸循环。
+
+### English translation — Stage 7
+
+Seven contracts begin with four failures and three errors. Green moves edit and document-affecting pointer actions into the serialized Engine while retaining only pointer-plane collection in the renderer. Narrow validation also removes a race from the Stage 4 effect test and preserves Shell Lab constructor compatibility. Provisional resize, origin placeholder, cancellation boundaries, derived hysteresis/edge scrolling, host haptics, and bilingual accessibility movement actions are covered by JVM and real-Activity stories. Unobserved tuning is never presented as WP8 reference evidence.

@@ -12,6 +12,10 @@
     <string name="context_pin">pin to start</string>
     <string name="context_unpin">unpin from start</string>
     <string name="context_app_info">app info</string>
+    <string name="move_tile_left">move tile left</string>
+    <string name="move_tile_right">move tile right</string>
+    <string name="move_tile_up">move tile up</string>
+    <string name="move_tile_down">move tile down</string>
     <string name="status_charging">charging</string>
     <string name="status_battery">%1$d%%</string>
 </resources>

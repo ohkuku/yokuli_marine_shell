@@ -17,22 +17,28 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpAccent
 import com.yokuli.marine.core.design.WpNavigationIntent
@@ -52,8 +58,10 @@ import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
 import com.yokuli.shell.engine.LauncherAction
+import com.yokuli.shell.engine.LauncherEffect
 import com.yokuli.shell.engine.LauncherSurface
 import com.yokuli.shell.engine.LauncherTransitionIntent
+import com.yokuli.shell.engine.interaction.StartInteractionState
 
 class ShellActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,6 +87,14 @@ private fun YokuliShell() {
     val shellViewModel = viewModel<ShellViewModel>()
     val engine = shellViewModel.engine
     val engineState by engine.state.collectAsState()
+    val hapticFeedback = LocalHapticFeedback.current
+    LaunchedEffect(engine, hapticFeedback) {
+        engine.effects.collect { effect ->
+            if (effect is LauncherEffect.Haptic) {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+        }
+    }
     var themeModeName by rememberSaveable { mutableStateOf(WpThemeMode.DARK.name) }
     var accentName by rememberSaveable { mutableStateOf(WpAccent.CYAN.name) }
     var settingsSectionName by rememberSaveable { mutableStateOf(SettingsSection.OVERVIEW.name) }
@@ -96,12 +112,21 @@ private fun YokuliShell() {
         engineState.tasks.task(surface.taskId)?.appId == SettingsDestinations.AppId &&
             SettingsSection.valueOf(settingsSectionName) != SettingsSection.OVERVIEW
     } == true
-    BackHandler(engineState.surface != LauncherSurface.Start) {
+    val launcherEditing = engineState.start.interaction !is StartInteractionState.Idle
+    BackHandler(engineState.surface != LauncherSurface.Start || launcherEditing) {
         if (settingsSubpageVisible) {
             settingsSectionName = SettingsSection.OVERVIEW.name
         } else {
             dispatch(LauncherAction.Back)
         }
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, engine) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) engine.dispatch(LauncherAction.CancelTileOperation)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     YokuliTheme(themeSpec) {
@@ -136,16 +161,41 @@ private fun YokuliShell() {
             val launcherState = productionLauncherUiState(
                 catalog = engineState.catalog,
                 document = engineState.start.document,
+                interaction = engineState.start.interaction,
                 mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
                 theme = themeSpec,
                 visualContributions = productionVisualContributions,
             )
-            var startEditing by remember { mutableStateOf(false) }
+            val startEditing = engineState.start.interaction !is StartInteractionState.Idle
             val launcherAction: (LauncherUiAction) -> Unit = { action ->
                 when (action) {
                     is LauncherUiAction.Open -> dispatch(LauncherAction.Open(action.token))
                     LauncherUiAction.ShowAllApps -> dispatch(LauncherAction.ShowAllApps)
                     is LauncherUiAction.ProposeLayout -> dispatch(LauncherAction.ApplyLayoutProposal(action.proposal))
+                    is LauncherUiAction.EnterStartEdit -> dispatch(LauncherAction.EnterStartEdit(action.tileId))
+                    is LauncherUiAction.SelectStartTile -> dispatch(LauncherAction.SelectStartTile(action.tileId))
+                    LauncherUiAction.ExitStartEdit -> dispatch(LauncherAction.ExitStartEdit)
+                    is LauncherUiAction.BeginTileDrag -> dispatch(
+                        LauncherAction.BeginTileDrag(action.tileId, action.pointerId, action.grabOffset),
+                    )
+                    is LauncherUiAction.UpdateTileDrag -> dispatch(
+                        LauncherAction.UpdateTileDrag(
+                            action.tileId,
+                            action.visualOffset,
+                            action.targetCell,
+                            action.autoScrollPxPerSecond,
+                        ),
+                    )
+                    is LauncherUiAction.AutoScrollTileDrag -> dispatch(
+                        LauncherAction.AutoScrollTileDrag(action.tileId, action.consumedPx, action.targetCell),
+                    )
+                    is LauncherUiAction.DropTile -> dispatch(LauncherAction.DropTile(action.tileId))
+                    LauncherUiAction.CancelTileOperation -> dispatch(LauncherAction.CancelTileOperation)
+                    is LauncherUiAction.ResizeTile -> dispatch(LauncherAction.ResizeTile(action.tileId))
+                    LauncherUiAction.CommitTileResize -> dispatch(LauncherAction.CommitTileResize)
+                    is LauncherUiAction.MoveTileBy -> dispatch(
+                        LauncherAction.MoveTileBy(action.tileId, action.columns, action.rows),
+                    )
                     is LauncherUiAction.TogglePin -> dispatch(LauncherAction.TogglePin(action.entryId))
                     is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
                 }
@@ -183,7 +233,6 @@ private fun YokuliShell() {
                                 LauncherPagerPage.START -> YokuliStartScreen(
                                     launcherState,
                                     launcherAction,
-                                    onEditModeChanged = { startEditing = it },
                                 )
                                 LauncherPagerPage.ALL_APPS -> WpAppList(launcherState, launcherAction)
                             }
