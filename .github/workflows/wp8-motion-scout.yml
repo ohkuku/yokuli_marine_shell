@@ -1,0 +1,180 @@
+name: WP8 motion evidence scout
+
+on:
+  push:
+    branches:
+      - codex/launcher-engine-stage2.5
+    paths:
+      - .github/workflows/wp8-motion-scout.yml
+
+permissions:
+  contents: write
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/launcher-engine-stage2.5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install scout dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --disable-pip-version-check requests pillow
+
+      - name: Download candidate videos and build contact sheets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import math
+          import subprocess
+          from pathlib import Path
+          from urllib.parse import quote
+
+          import requests
+          from PIL import Image, ImageDraw
+
+          IDENTIFIERS = [
+              'Rev3_Mobile_Geeks_Reviews_100',
+              'TechnoBuffalo_269',
+          ]
+          ROOT = Path('docs/reference/wp8/artifacts/motion-scout')
+          ROOT.mkdir(parents=True, exist_ok=True)
+          TMP = Path('/tmp/wp8-motion-scout')
+          TMP.mkdir(parents=True, exist_ok=True)
+          session = requests.Session()
+          session.headers['User-Agent'] = 'Yokuli-WP8-Motion-Scout/1.0 (+https://github.com/ohkuku/yokuli_marine_shell)'
+
+          def choose_video(files: list[dict]) -> dict:
+              candidates = []
+              for file in files:
+                  name = str(file.get('name') or '')
+                  fmt = str(file.get('format') or '').lower()
+                  if name.lower().endswith(('.mp4', '.m4v', '.ogv', '.webm', '.avi', '.mov')):
+                      size = int(file.get('size') or 0)
+                      if size <= 0:
+                          continue
+                      score = 0
+                      if name.lower().endswith('.mp4'):
+                          score -= 100
+                      if 'h.264' in fmt or 'mpeg4' in fmt or 'mpeg-4' in fmt:
+                          score -= 50
+                      if '512kb' in name.lower() or '512kb' in fmt:
+                          score += 20
+                      if 'sample' in name.lower() or 'trailer' in name.lower():
+                          score += 1000
+                      if size > 1_000_000_000:
+                          score += 500
+                      candidates.append((score, size, file))
+              if not candidates:
+                  raise RuntimeError('No downloadable video candidate')
+              candidates.sort(key=lambda item: (item[0], item[1]))
+              return candidates[0][2]
+
+          manifest = []
+          for identifier in IDENTIFIERS:
+              meta_response = session.get(f'https://archive.org/metadata/{identifier}', timeout=120)
+              meta_response.raise_for_status()
+              meta = meta_response.json()
+              selected = choose_video(meta.get('files', []))
+              name = selected['name']
+              url = f'https://archive.org/download/{identifier}/{quote(name)}'
+              video_path = TMP / f'{identifier}{Path(name).suffix.lower()}'
+              with session.get(url, stream=True, timeout=300) as response:
+                  response.raise_for_status()
+                  with video_path.open('wb') as handle:
+                      for chunk in response.iter_content(chunk_size=1024 * 1024):
+                          if chunk:
+                              handle.write(chunk)
+
+              duration_text = subprocess.check_output([
+                  'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                  '-of', 'default=noprint_wrappers=1:nokey=1', str(video_path),
+              ], text=True).strip()
+              duration = float(duration_text)
+              sample_count = min(48, max(16, math.ceil(duration / 25.0)))
+              times = [duration * (index + 0.5) / sample_count for index in range(sample_count)]
+              frame_dir = TMP / f'{identifier}-frames'
+              frame_dir.mkdir(exist_ok=True)
+              frames = []
+              for index, timestamp in enumerate(times):
+                  frame_path = frame_dir / f'{index:03d}.jpg'
+                  subprocess.run([
+                      'ffmpeg', '-hide_banner', '-loglevel', 'error', '-ss', f'{timestamp:.3f}',
+                      '-i', str(video_path), '-frames:v', '1', '-vf', 'scale=320:-2',
+                      '-q:v', '3', '-y', str(frame_path),
+                  ], check=True)
+                  image = Image.open(frame_path).convert('RGB')
+                  frames.append((timestamp, image.copy()))
+
+              columns = 4
+              cell_w = 320
+              cell_h = max(image.height for _, image in frames) + 30
+              rows = math.ceil(len(frames) / columns)
+              sheet = Image.new('RGB', (columns * cell_w, rows * cell_h), 'black')
+              draw = ImageDraw.Draw(sheet)
+              for index, (timestamp, image) in enumerate(frames):
+                  x = (index % columns) * cell_w
+                  y = (index // columns) * cell_h
+                  sheet.paste(image, (x, y + 22))
+                  draw.text((x + 4, y + 4), f'{index:02d}  {timestamp:8.2f}s', fill='white')
+              sheet_path = ROOT / f'{identifier}-contact-sheet.jpg'
+              sheet.save(sheet_path, quality=88, optimize=True)
+
+              metadata = meta.get('metadata', {})
+              record = {
+                  'identifier': identifier,
+                  'detailsUrl': f'https://archive.org/details/{identifier}',
+                  'title': metadata.get('title'),
+                  'creator': metadata.get('creator'),
+                  'date': metadata.get('date'),
+                  'licenseurl': metadata.get('licenseurl'),
+                  'rights': metadata.get('rights'),
+                  'description': metadata.get('description'),
+                  'selectedFile': {
+                      'name': name,
+                      'format': selected.get('format'),
+                      'size': int(selected.get('size') or 0),
+                      'source': selected.get('source'),
+                      'md5': selected.get('md5'),
+                      'sha1': selected.get('sha1'),
+                      'url': url,
+                  },
+                  'durationSeconds': duration,
+                  'contactSheet': str(sheet_path),
+                  'samples': [
+                      {'index': index, 'timestampSeconds': round(timestamp, 3)}
+                      for index, (timestamp, _) in enumerate(frames)
+                  ],
+              }
+              manifest.append(record)
+
+          (ROOT / 'manifest.json').write_text(
+              json.dumps(manifest, indent=2, ensure_ascii=False) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Commit motion scouting artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/reference/wp8/artifacts/motion-scout
+          if git diff --cached --quiet; then
+            echo "No motion scouting changes"
+            exit 0
+          fi
+          git commit -m "docs(shell): scout licensed wp8 motion sources"
+          git push origin HEAD:codex/launcher-engine-stage2.5
