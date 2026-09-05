@@ -5,8 +5,8 @@
 ## 状态
 
 - package：C09
-- baseline：`438c317a750cb3a4318100635167951a18332d38`
-- implementation candidate / cumulative verified SHA：`968e1b8e2cf958a9361258378529134b29f1bfc1`
+- baseline：`438c31752ecdd939d204c3867b6e190371025b6e`
+- implementation candidate / cumulative verified SHA：`968e1b804d293ba5d25c573c1ee66b52e6f319b9`
 - status：`VERIFIED_LOCAL`
 - hosted CI：最终同 SHA 证据留给 C12；本报告不把本地 Gate 写成托管结果
 - source delivery：`BLOCKED_EXTERNAL`（真实来源和许可已核对；生产只提供外部下载后的系统文档导入，不伪造下载能力）

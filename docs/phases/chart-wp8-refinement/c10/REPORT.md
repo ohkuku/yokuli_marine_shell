@@ -5,7 +5,7 @@
 ## 状态
 
 - package：C10
-- baseline：`c3bf7557fb6275ef4f3a4cac52d20be51629817b`
+- baseline：`c3bf755ce69b28c3b83d43fabe4d0929ed8c62ef`
 - implementation candidate / cumulative verified SHA：`260a343940c49bfa1564de544dea5881b9d8bf3a`
 - status：`VERIFIED_LOCAL`
 - production port：`NoSourcePositionPort`

@@ -408,7 +408,7 @@
         "C09-T09",
         "C09-T10"
       ],
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": [
         "docs/phases/chart-wp8-refinement/c09/REPORT.md",
         "docs/phases/chart-wp8-refinement/c09/BASELINE_LOCK.json"
@@ -1382,7 +1382,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidChartCoverageIndexTest.kt",
       "command": "./gradlew :core:map-domain:test :adapter:map-offline:connectedDebugAndroidTest",
       "result": "PASS",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["A route segment crossing a real MBTiles hole yields missing exact keys even when its endpoints are covered"]
     },
     {
@@ -1394,7 +1394,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt",
       "command": "./gradlew :core:map-domain:test",
       "result": "PASS",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["Coverage queries exact requested zoom-level tile keys and does not substitute lower zoom imagery"]
     },
     {
@@ -1406,7 +1406,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/OfflineCoverageWorkspaceStoryTest.kt",
       "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
       "result": "PASS",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["Tile availability, content verification and navigation suitability remain separate facts in domain and visible UI"]
     },
     {
@@ -1418,7 +1418,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt",
       "command": "./gradlew :core:map-domain:test",
       "result": "PASS",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["Dateline, endpoints, turns and alternate-place circles are conservatively sampled under explicit key and approximation budgets"]
     },
     {
@@ -1430,7 +1430,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/OfflineCoverageCoordinatorTest.kt",
       "command": "./gradlew :core:map-domain:test :feature:chart:testDebugUnitTest",
       "result": "PASS",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["Material route, width, zoom and package inputs form the fingerprint; changed inputs immediately invalidate and reject late results"]
     },
     {
@@ -1442,7 +1442,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/OfflineCoverageCoordinatorTest.kt",
       "command": "./gradlew :core:map-domain:test :feature:chart:testDebugUnitTest",
       "result": "PASS",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["Over-budget is typed and cancellation rejects late completion; neither path truncates work and reports Complete"]
     },
     {
@@ -1454,7 +1454,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/OfflineCoverageWorkspaceStoryTest.kt",
       "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
       "result": "PASS_IMPORT_ONLY",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["The production source catalog exposes ImportOnly with a working local import route and no unavailable download action"]
     },
     {
@@ -1466,7 +1466,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt",
       "command": "./gradlew :core:map-domain:test",
       "result": "BLOCKED_EXTERNAL",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["No verified licensed provider endpoint exists; production capability is explicitly IMPORT_ONLY/BLOCKED_EXTERNAL, so no Range or ETag download implementation is claimed"]
     },
     {
@@ -1478,7 +1478,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartPackageCoordinatorTest.kt",
       "command": "./gradlew :core:map-domain:test :feature:chart:testDebugUnitTest",
       "result": "BLOCKED_EXTERNAL",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["Download lifecycle is not exposed without a verified endpoint; completed local package tests preserve the old active version across cancellation, storage failure and restart"]
     },
     {
@@ -1490,7 +1490,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/OfflineCoverageWorkspaceStoryTest.kt",
       "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
       "result": "PASS_TRUTH_BOUNDARY",
-      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "verifiedSha": "968e1b804d293ba5d25c573c1ee66b52e6f319b9",
       "evidence": ["Coverage must be recomputed from installed tile keys; source status never asserts official licensing, chart content validation or navigation safety"]
     },
     {

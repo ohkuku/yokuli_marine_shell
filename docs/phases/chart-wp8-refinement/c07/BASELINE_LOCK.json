@@ -3,7 +3,7 @@
   "phase": "WP8_CHART_COMPLETION",
   "package": "C07",
   "branch": "codex/shell-map-contract",
-  "baselineSha": "37241c9d2cb9cb84e00ea90b598757b8fd95f811",
+  "baselineSha": "37241c9b5dc0ee7cbe7cec89dafc136e9bf60e8a",
   "implementationCandidateSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
   "cumulativeVerifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
   "status": "VERIFIED_LOCAL",

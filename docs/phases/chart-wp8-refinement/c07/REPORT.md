@@ -5,7 +5,7 @@
 ## 状态
 
 - package：C07
-- baseline：`37241c9d2cb9cb84e00ea90b598757b8fd95f811`
+- baseline：`37241c9b5dc0ee7cbe7cec89dafc136e9bf60e8a`
 - implementation candidate / cumulative verified SHA：`cc1b598343b3dd9cd4ed43c43d43ae76b276c90b`
 - status：`VERIFIED_LOCAL`
 - hosted CI：最终同 SHA 证据留给 C12；本报告不把本地 Gate 写成托管结果
