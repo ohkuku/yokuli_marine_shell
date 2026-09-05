@@ -54,3 +54,19 @@
 - API 34 模拟器 `:app-shell:connectedStandaloneDebugAndroidTest`：37 tests，0 failure。
 
 自查没有发现生产六档入口、确认勾中间态或未知尺寸导致整桌回退。C00 状态为 `VERIFIED_LOCAL`；它只关闭三档磁贴与当前基线，不代表地图 V1 完成。GitHub CLI 在本机不可用，托管 CI 状态不伪造；C12 仍必须给出最终同 SHA 托管证据。
+
+## C01｜Red：恢复失败会清空语义，慢写会阻塞交互
+
+反向测试先固定四类旧风险：用户库读取失败后任何相机/包/工具动作都不得把默认空库写回；慢资料写入不得阻塞地图动作；旧 revision 的 ack/失败不能覆盖更新编辑；队列满、异常 action、异常 effect observer 和 close 后输入都只能产生 typed 结果，不能杀死消费者或向 UI 抛异常。
+
+真实 Android 仓储测试另外覆盖损坏 session、未来 schema、单条非法 Room 记录、事务资料 round-trip，以及关闭数据库再重开后相同 ID/revision 的恢复。首次设备测试确实暴露了 Kotlin expression-body 测试返回 Boolean 导致 JUnit 拒绝加载，修正后不把初始化失败误记为产品通过。
+
+## C01｜实现候选与产品边界
+
+- 用户地点、路线草稿和正式路线改由 Room 事务仓储持有；DataStore 只保留相机、测量和活动对象引用等 session。生产没有 `fallbackToDestructiveMigration` 或 `ReplaceFileCorruptionHandler`。
+- 加载明确区分 NotLoaded、Loading、ReadyEmpty、Ready、ReadFailed、Corrupt。加载失败保持只读，不允许资料动作覆盖未知原库；合法单条坏记录局部隔离并报告，不清空其他记录。
+- Store 使用串行动作 actor 与独立持久 writer；相机事件可合并，可靠动作有有界背压和 typed rejection。资料使用注入式稳定 ID 与 revision，迟到回调按 revision 淘汰，undo/redo 上限为 50。
+- UI 只有 durable revision ack 后才显示 Saved；失败保留内存编辑并给出重试。用户还可以通过系统 Create Document 显式导出 `yokuli-map-recovery.json`，取消选择不会伪报成功；该 JSON 是 C01 的恢复逃生口，不冒充 C08 的 GPX 交换能力。
+- 默认 incident 仅记录分类，不记录精确位置、备注、源 URI、token 或异常 message。恢复文件包含私人资料是用户主动选择的导出结果，不进入日志或自动上传。
+
+当前实现已提交并通过 30 个相关 JVM 测试与 API 34 上 4 个 Room 设备测试；状态仍为 `IMPLEMENTED_UNVERIFIED`，等待累计 C00-C01 Gate 后才能封口。

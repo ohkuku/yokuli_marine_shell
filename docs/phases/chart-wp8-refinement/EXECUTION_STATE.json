@@ -9,7 +9,7 @@
   "currentTask": "C01",
   "taskStatus": {
     "C00": "VERIFIED_LOCAL",
-    "C01": "TODO",
+    "C01": "IMPLEMENTED_UNVERIFIED",
     "C02": "TODO",
     "C03": "TODO",
     "C04": "TODO",
@@ -30,5 +30,5 @@
   ],
   "sourceDelivery": "NOT_VERIFIED",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Start C01 with storage/read-failure/action-queue Red tests; do not start C02 until C01 is green"
+  "nextAction": "Run the cumulative C00-C01 gate on the committed candidate; do not start C02 until C01 is green"
 }
