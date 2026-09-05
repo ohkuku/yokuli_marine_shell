@@ -148,30 +148,58 @@ class GpxReader(private val limits: GpxLimits = GpxLimits()) {
         val digest = MessageDigest.getInstance("SHA-256")
         val bounded = BoundedInputStream(input, limits.maxFileBytes)
         val digested = DigestInputStream(bounded, digest)
+        val declarationChecked = ForbiddenXmlDeclarationInputStream(digested)
         val handler = GpxHandler(limits)
         try {
             val factory = SAXParserFactory.newInstance().apply {
                 isNamespaceAware = true
-                isXIncludeAware = false
-                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-                setFeature("http://xml.org/sax/features/external-general-entities", false)
-                setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-                setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+                isValidating = false
+                runCatching { isXIncludeAware = false }
+                runCatching { setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true) }
             }
             factory.newSAXParser().xmlReader.apply {
+                // Android and desktop parsers expose different subsets. The streaming declaration
+                // guard below is mandatory; these parser flags are defence in depth.
+                runCatching { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+                runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
+                runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
+                runCatching { setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false) }
                 entityResolver = org.xml.sax.EntityResolver { _, _ ->
                     throw SAXException("External XML entities are disabled")
                 }
                 contentHandler = handler
                 errorHandler = handler
-            }.parse(InputSource(digested))
+            }.parse(InputSource(declarationChecked))
         } catch (error: Exception) {
             if (error is GpxReadException) throw error
             throw GpxReadException(error.message ?: "Invalid GPX document", error)
         }
         val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
         return handler.preview(sha256, sha256 in existingDigests)
+    }
+}
+
+/** Mandatory streaming guard independent of optional SAX feature support on Android. */
+private class ForbiddenXmlDeclarationInputStream(input: InputStream) : FilterInputStream(input) {
+    private val recent = ArrayDeque<Byte>()
+
+    override fun read(): Int = super.read().also { value -> if (value >= 0) inspect(value.toByte()) }
+
+    override fun read(bytes: ByteArray, offset: Int, length: Int): Int =
+        super.read(bytes, offset, length).also { count ->
+            if (count > 0) for (index in offset until offset + count) inspect(bytes[index])
+        }
+
+    private fun inspect(byte: Byte) {
+        recent.addLast(byte)
+        if (recent.size > FORBIDDEN.size) recent.removeFirst()
+        if (recent.size == FORBIDDEN.size && recent.indices.all { recent[it] == FORBIDDEN[it] }) {
+            throw GpxReadException("DTD declarations are disabled")
+        }
+    }
+
+    private companion object {
+        val FORBIDDEN = "<!DOCTYPE".encodeToByteArray()
     }
 }
 
