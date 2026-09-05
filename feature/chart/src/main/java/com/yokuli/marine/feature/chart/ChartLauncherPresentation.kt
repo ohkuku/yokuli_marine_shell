@@ -117,6 +117,10 @@ private fun chartLauncherCopy(snapshot: ChartLauncherSnapshot): ChartLauncherCop
             ChartLauncherStatus.TILES_MISSING -> R.string.map_launcher_tiles_missing
             ChartLauncherStatus.TILES_UNKNOWN -> R.string.map_launcher_tiles_unknown
             ChartLauncherStatus.LOCAL_CHART_SELECTED -> R.string.map_launcher_local_chart
+            ChartLauncherStatus.LOCAL_CHART_CHECKING -> R.string.map_launcher_local_chart_checking
+            ChartLauncherStatus.LOCAL_CHART_MISSING -> R.string.map_launcher_local_chart_missing
+            ChartLauncherStatus.LOCAL_CHART_DEGRADED -> R.string.map_launcher_local_chart_degraded
+            ChartLauncherStatus.RENDERER_ERROR -> R.string.map_launcher_renderer_error
             ChartLauncherStatus.NO_LOCAL_CHART -> R.string.map_launcher_no_local_chart
             ChartLauncherStatus.READY_TO_BROWSE -> R.string.map_launcher_browse
         },
@@ -130,11 +134,9 @@ private fun chartLauncherCopy(snapshot: ChartLauncherSnapshot): ChartLauncherCop
 
 @Composable
 private fun rememberVisibleChartSnapshot(snapshot: ChartLauncherSnapshot, liveContentEnabled: Boolean): ChartLauncherSnapshot {
-    val updateKey: Any = if (liveContentEnabled || snapshot.critical) snapshot else FrozenDecorativeContent
-    return remember(liveContentEnabled, updateKey) { snapshot }
+    val slot = remember { ChartLauncherDisplaySlot(snapshot) }
+    return slot.resolve(snapshot, liveContentEnabled)
 }
-
-private data object FrozenDecorativeContent
 
 @Composable
 private fun ChartSmallTile(context: LauncherTileRenderContext, snapshot: ChartLauncherSnapshot) {

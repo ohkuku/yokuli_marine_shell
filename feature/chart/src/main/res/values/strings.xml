@@ -228,6 +228,10 @@
     <string name="map_launcher_tiles_missing">缺少部分离线图块</string>
     <string name="map_launcher_tiles_unknown">离线图块状态未知</string>
     <string name="map_launcher_local_chart">上次视图 · 已选本地海图</string>
+    <string name="map_launcher_local_chart_checking">上次视图 · 正在挂载本地海图</string>
+    <string name="map_launcher_local_chart_missing">上次视图 · 本地海图已丢失</string>
+    <string name="map_launcher_local_chart_degraded">上次视图 · 部分图块不可用</string>
+    <string name="map_launcher_renderer_error">上次视图 · 地图渲染错误</string>
     <string name="map_launcher_no_local_chart">上次视图 · 无本地海图</string>
     <string name="map_launcher_browse">浏览与本地规划</string>
     <string name="map_launcher_unnamed_draft">未命名草稿</string>

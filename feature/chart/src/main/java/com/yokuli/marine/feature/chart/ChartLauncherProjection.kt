@@ -10,6 +10,8 @@ import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapSurface
 import com.yokuli.marine.map.domain.MapTransient
+import com.yokuli.marine.map.domain.MapRendererReadiness
+import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.PlaceSearch
 import com.yokuli.marine.map.domain.TileAvailability
 import com.yokuli.shell.contract.LaunchToken
@@ -34,6 +36,10 @@ enum class ChartLauncherStatus {
     TILES_MISSING,
     TILES_UNKNOWN,
     LOCAL_CHART_SELECTED,
+    LOCAL_CHART_CHECKING,
+    LOCAL_CHART_MISSING,
+    LOCAL_CHART_DEGRADED,
+    RENDERER_ERROR,
     NO_LOCAL_CHART,
     READY_TO_BROWSE,
 }
@@ -110,15 +116,22 @@ object ChartLauncherProjection {
 
         if (state.renderer.generation != null) return ChartLauncherSnapshot(
             ChartLauncherPriority.LAST_VIEW,
-            if (state.activeChartPackageId != null && state.chartPackages.any { it.id == state.activeChartPackageId }) {
-                ChartLauncherStatus.LOCAL_CHART_SELECTED
-            } else {
-                ChartLauncherStatus.NO_LOCAL_CHART
-            },
+            lastViewStatus(state),
             camera = state.camera,
         )
 
         return ChartLauncherSnapshot(ChartLauncherPriority.ENTRY, ChartLauncherStatus.READY_TO_BROWSE)
+    }
+
+    private fun lastViewStatus(state: MapState): ChartLauncherStatus = when {
+        state.renderer.readiness == MapRendererReadiness.ERROR || state.renderer.tileCoverage == MapTileCoverageStatus.ERROR ->
+            ChartLauncherStatus.RENDERER_ERROR
+        state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_MISSING -> ChartLauncherStatus.LOCAL_CHART_MISSING
+        state.renderer.tileCoverage == MapTileCoverageStatus.DEGRADED -> ChartLauncherStatus.LOCAL_CHART_DEGRADED
+        state.renderer.tileCoverage == MapTileCoverageStatus.CHECKING -> ChartLauncherStatus.LOCAL_CHART_CHECKING
+        state.activeChartPackageId != null && state.chartPackages.any { it.id == state.activeChartPackageId } ->
+            ChartLauncherStatus.LOCAL_CHART_SELECTED
+        else -> ChartLauncherStatus.NO_LOCAL_CHART
     }
 
     private fun selectedPlanStatus(
@@ -265,4 +278,15 @@ class ChartTilePreviewCache<Value : Any>(private val maximumEntries: Int) {
 
     @Synchronized
     fun current(): Value? = currentRequest?.second?.let(entries::get)
+}
+
+/** Stable per-renderer slot: decorative facts freeze during Start editing; critical facts never do. */
+class ChartLauncherDisplaySlot(initial: ChartLauncherSnapshot) {
+    var shown: ChartLauncherSnapshot = initial
+        private set
+
+    fun resolve(incoming: ChartLauncherSnapshot, liveContentEnabled: Boolean): ChartLauncherSnapshot {
+        if (liveContentEnabled || incoming.critical || shown.critical != incoming.critical) shown = incoming
+        return shown
+    }
 }

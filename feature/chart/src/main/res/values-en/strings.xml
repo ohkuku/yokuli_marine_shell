@@ -228,6 +228,10 @@
     <string name="map_launcher_tiles_missing">OFFLINE TILES ARE MISSING</string>
     <string name="map_launcher_tiles_unknown">OFFLINE TILE STATE UNKNOWN</string>
     <string name="map_launcher_local_chart">LAST VIEW · LOCAL CHART SELECTED</string>
+    <string name="map_launcher_local_chart_checking">LAST VIEW · MOUNTING LOCAL CHART</string>
+    <string name="map_launcher_local_chart_missing">LAST VIEW · LOCAL CHART MISSING</string>
+    <string name="map_launcher_local_chart_degraded">LAST VIEW · SOME TILES UNAVAILABLE</string>
+    <string name="map_launcher_renderer_error">LAST VIEW · MAP RENDER ERROR</string>
     <string name="map_launcher_no_local_chart">LAST VIEW · NO LOCAL CHART</string>
     <string name="map_launcher_browse">BROWSE AND PLAN LOCALLY</string>
     <string name="map_launcher_unnamed_draft">unnamed draft</string>

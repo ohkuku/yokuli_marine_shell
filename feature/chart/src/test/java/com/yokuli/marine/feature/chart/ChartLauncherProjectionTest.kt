@@ -9,6 +9,8 @@ import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapLibraryLoadState
 import com.yokuli.marine.map.domain.MapRendererGeneration
 import com.yokuli.marine.map.domain.MapRendererState
+import com.yokuli.marine.map.domain.MapRendererReadiness
+import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.OfflineCoverageRequest
@@ -156,6 +158,61 @@ class ChartLauncherProjectionTest {
         assertEquals(ChartLauncherPriority.LAST_VIEW, visited.priority)
         assertEquals(ChartLauncherStatus.LOCAL_CHART_SELECTED, visited.status)
         assertEquals(-41.2865, visited.camera?.center?.latitude ?: 0.0, 0.0)
+    }
+
+    @Test
+    fun `changed package versions invalidate an otherwise available coverage result`() {
+        val request = OfflineCoverageRequest(
+            route.id, route.revision, route.waypoints,
+            listOf(com.yokuli.marine.map.domain.ChartPackageVersionId("a".repeat(64))), 10, 1.0,
+        )
+        val ready = OfflineCoverageUiState.Ready(
+            request,
+            OfflineCoverageResult(
+                com.yokuli.marine.map.domain.OfflineCoverageFingerprint.of(request),
+                TileAvailability.AVAILABLE, ContentFootprint.VERIFIED_VISIBLE, requiredKeyCount = 1, missingKeys = emptySet(),
+            ),
+        )
+        val changed = chartPackage().copy(
+            sha256 = "b".repeat(64),
+            versionId = com.yokuli.marine.map.domain.ChartPackageVersionId("b".repeat(64)),
+        )
+        val result = ChartLauncherProjection.project(
+            MapState(savedRoutes = listOf(route), activeRoutePlanId = route.id, chartPackages = listOf(changed)),
+            ready,
+        )
+        assertEquals(ChartLauncherStatus.COVERAGE_STALE, result.status)
+    }
+
+    @Test
+    fun `last view reports renderer degradation rather than generic local chart`() {
+        val result = ChartLauncherProjection.project(
+            MapState(
+                renderer = MapRendererState(
+                    generation = MapRendererGeneration(1),
+                    readiness = MapRendererReadiness.ERROR,
+                    tileCoverage = MapTileCoverageStatus.ERROR,
+                ),
+            ),
+            OfflineCoverageUiState.Idle,
+        )
+        assertEquals(ChartLauncherStatus.RENDERER_ERROR, result.status)
+    }
+
+    @Test
+    fun `edit freeze holds decoration but accepts and clears critical truth`() {
+        val initial = ChartLauncherSnapshot(ChartLauncherPriority.ENTRY, ChartLauncherStatus.READY_TO_BROWSE)
+        val slot = ChartLauncherDisplaySlot(initial)
+        val decorative = initial.copy(priority = ChartLauncherPriority.LAST_VIEW, status = ChartLauncherStatus.NO_LOCAL_CHART)
+        assertEquals(initial, slot.resolve(decorative, liveContentEnabled = false))
+
+        val failure = ChartLauncherSnapshot(
+            ChartLauncherPriority.WRITE_FAILURE, ChartLauncherStatus.WRITE_FAILED, critical = true,
+        )
+        assertEquals(failure, slot.resolve(failure, liveContentEnabled = false))
+        assertEquals(decorative, slot.resolve(decorative, liveContentEnabled = false))
+        assertEquals(decorative.copy(status = ChartLauncherStatus.LOCAL_CHART_SELECTED),
+            slot.resolve(decorative.copy(status = ChartLauncherStatus.LOCAL_CHART_SELECTED), liveContentEnabled = true))
     }
 
     private fun chartPackage() = ChartPackage(
