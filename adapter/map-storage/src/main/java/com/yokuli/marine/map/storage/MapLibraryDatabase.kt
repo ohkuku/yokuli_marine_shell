@@ -8,6 +8,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "library_metadata")
 internal data class LibraryMetadataEntity(
@@ -22,6 +24,16 @@ internal data class PlaceEntity(
     val name: String,
     val latitude: Double,
     val longitude: Double,
+    @androidx.room.ColumnInfo(defaultValue = "''") val notes: String,
+    @androidx.room.ColumnInfo(defaultValue = "'personal'") val category: String,
+    @androidx.room.ColumnInfo(defaultValue = "0") val createdAtMillis: Long,
+    @androidx.room.ColumnInfo(defaultValue = "0") val updatedAtMillis: Long,
+)
+
+@Entity(tableName = "place_tags", primaryKeys = ["placeId", "tag"])
+internal data class PlaceTagEntity(
+    val placeId: String,
+    val tag: String,
 )
 
 @Entity(tableName = "route_drafts")
@@ -56,11 +68,14 @@ internal data class SavedRoutePointEntity(
     val position: Int,
     val latitude: Double,
     val longitude: Double,
+    val sourcePlaceId: String? = null,
+    val sourcePlaceRevision: Long? = null,
 )
 
 internal data class MapLibraryRecords(
     val revision: Long,
     val places: List<PlaceEntity>,
+    val placeTags: List<PlaceTagEntity>,
     val drafts: List<RouteDraftEntity>,
     val draftPoints: List<RouteDraftPointEntity>,
     val routes: List<SavedRouteEntity>,
@@ -74,6 +89,9 @@ internal abstract class MapLibraryDao {
 
     @Query("SELECT * FROM places ORDER BY id")
     abstract suspend fun places(): List<PlaceEntity>
+
+    @Query("SELECT * FROM place_tags ORDER BY placeId, tag")
+    abstract suspend fun placeTags(): List<PlaceTagEntity>
 
     @Query("SELECT * FROM route_drafts ORDER BY id")
     abstract suspend fun drafts(): List<RouteDraftEntity>
@@ -92,6 +110,9 @@ internal abstract class MapLibraryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun putPlaces(values: List<PlaceEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun putPlaceTags(values: List<PlaceTagEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun putDrafts(values: List<RouteDraftEntity>)
@@ -120,10 +141,14 @@ internal abstract class MapLibraryDao {
     @Query("DELETE FROM places")
     protected abstract suspend fun clearPlaces()
 
+    @Query("DELETE FROM place_tags")
+    protected abstract suspend fun clearPlaceTags()
+
     @Transaction
     open suspend fun readAll(): MapLibraryRecords = MapLibraryRecords(
         revision = revision() ?: 0L,
         places = places(),
+        placeTags = placeTags(),
         drafts = drafts(),
         draftPoints = draftPoints(),
         routes = routes(),
@@ -136,9 +161,11 @@ internal abstract class MapLibraryDao {
         clearDrafts()
         clearRoutePoints()
         clearRoutes()
+        clearPlaceTags()
         clearPlaces()
         putMetadata(LibraryMetadataEntity(revision = records.revision))
         if (records.places.isNotEmpty()) putPlaces(records.places)
+        if (records.placeTags.isNotEmpty()) putPlaceTags(records.placeTags)
         if (records.drafts.isNotEmpty()) putDrafts(records.drafts)
         if (records.draftPoints.isNotEmpty()) putDraftPoints(records.draftPoints)
         if (records.routes.isNotEmpty()) putRoutes(records.routes)
@@ -150,14 +177,35 @@ internal abstract class MapLibraryDao {
     entities = [
         LibraryMetadataEntity::class,
         PlaceEntity::class,
+        PlaceTagEntity::class,
         RouteDraftEntity::class,
         RouteDraftPointEntity::class,
         SavedRouteEntity::class,
         SavedRoutePointEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 internal abstract class MapLibraryDatabase : RoomDatabase() {
     abstract fun libraryDao(): MapLibraryDao
+}
+
+internal val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE `places` ADD COLUMN `notes` TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE `places` ADD COLUMN `category` TEXT NOT NULL DEFAULT 'personal'")
+        database.execSQL("ALTER TABLE `places` ADD COLUMN `createdAtMillis` INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE `places` ADD COLUMN `updatedAtMillis` INTEGER NOT NULL DEFAULT 0")
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `place_tags` (
+                `placeId` TEXT NOT NULL,
+                `tag` TEXT NOT NULL,
+                PRIMARY KEY(`placeId`, `tag`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL("ALTER TABLE `saved_route_points` ADD COLUMN `sourcePlaceId` TEXT")
+        database.execSQL("ALTER TABLE `saved_route_points` ADD COLUMN `sourcePlaceRevision` INTEGER")
+    }
 }

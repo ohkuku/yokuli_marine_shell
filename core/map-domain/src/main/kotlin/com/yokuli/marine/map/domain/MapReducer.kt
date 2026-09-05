@@ -34,6 +34,31 @@ sealed interface MapAction {
     data class AddPoint(val point: GeoPoint) : MapAction
     data class SaveSelectionAsPlace(val name: String) : MapAction
     data class SavePointCandidateAsPlace(val name: String) : MapAction
+    data class CreatePlace(
+        val point: GeoPoint,
+        val name: String,
+        val notes: String,
+        val category: PlaceCategory,
+        val tags: List<String>,
+    ) : MapAction
+    data class UpdatePlace(
+        val placeId: String,
+        val expectedRevision: Long,
+        val name: String,
+        val notes: String,
+        val category: PlaceCategory,
+        val tags: List<String>,
+    ) : MapAction
+    data class BeginPlaceMove(val placeId: String) : MapAction
+    data class PreviewPlaceMove(val point: GeoPoint) : MapAction
+    data object ConfirmPlaceMove : MapAction
+    data object CancelPlaceMove : MapAction
+    data class RequestDeletePlace(val placeId: String) : MapAction
+    data object ConfirmDeletePlace : MapAction
+    data object CancelDeletePlace : MapAction
+    data object UndoDeletePlace : MapAction
+    data class SetPlaceQuery(val query: String) : MapAction
+    data class SetPlaceSort(val sort: PlaceSort) : MapAction
     data class ConvertMeasurementToManualRoute(val name: String) : MapAction
     data object UndoRouteEdit : MapAction
     data object RedoRouteEdit : MapAction
@@ -100,6 +125,7 @@ data class MapReduction(val state: MapState, val effects: List<MapEffect> = empt
 class DefaultMapReducer(
     private val idGenerator: MapIdGenerator = RandomMapIdGenerator,
     private val historyLimit: Int = DEFAULT_HISTORY_LIMIT,
+    private val clock: MapClock = SystemMapClock,
 ) {
     init {
         require(historyLimit > 0)
@@ -169,6 +195,18 @@ class DefaultMapReducer(
         is MapAction.AddPoint -> addPoint(state, action.point)
         is MapAction.SaveSelectionAsPlace -> savePlace(state, action.name)
         is MapAction.SavePointCandidateAsPlace -> savePointCandidate(state, action.name)
+        is MapAction.CreatePlace -> createPlace(state, action)
+        is MapAction.UpdatePlace -> updatePlace(state, action)
+        is MapAction.BeginPlaceMove -> beginPlaceMove(state, action.placeId)
+        is MapAction.PreviewPlaceMove -> previewPlaceMove(state, action.point)
+        MapAction.ConfirmPlaceMove -> confirmPlaceMove(state)
+        MapAction.CancelPlaceMove -> MapReduction(state.copy(placeMove = null))
+        is MapAction.RequestDeletePlace -> requestDeletePlace(state, action.placeId)
+        MapAction.ConfirmDeletePlace -> confirmDeletePlace(state)
+        MapAction.CancelDeletePlace -> MapReduction(state.copy(placeDeleteRequest = null))
+        MapAction.UndoDeletePlace -> undoDeletePlace(state)
+        is MapAction.SetPlaceQuery -> MapReduction(state.copy(placeQuery = action.query))
+        is MapAction.SetPlaceSort -> MapReduction(state.copy(placeSort = action.sort))
         is MapAction.ConvertMeasurementToManualRoute -> convertMeasurement(state, action.name)
         MapAction.UndoRouteEdit -> editRoute(state) { draft ->
             val previous = draft.undo.lastOrNull() ?: return@editRoute null
@@ -235,6 +273,10 @@ class DefaultMapReducer(
                     libraryRevision = library.revision,
                     durableLibraryRevision = library.revision,
                     saveState = MapSaveState.SAVED,
+                    placeMove = null,
+                    placeDeleteRequest = null,
+                    placeDeleteUndo = null,
+                    placeSaveStatus = null,
                     persistenceFailure = null,
                 ).withCameraCommand(
                     target = MapCameraTarget.Exact(result.session.camera),
@@ -559,15 +601,14 @@ class DefaultMapReducer(
 
     private fun savePlace(state: MapState, name: String): MapReduction = ifWritable(state) {
         val selection = state.selection ?: return@ifWritable incident(state, MapIncident.MissingSelection)
-        val displayName = name.trim().ifEmpty { "Place ${state.places.size + 1}" }
-        persistLibrary(
-            state.copy(
-                places = state.places + SavedPlace(
-                    id = idGenerator.nextId("place"),
-                    name = displayName,
-                    point = selection.point,
-                ),
-                selection = null,
+        createPlace(
+            state.copy(selection = null),
+            MapAction.CreatePlace(
+                point = selection.point,
+                name = name.trim().ifEmpty { "Place" },
+                notes = "",
+                category = PlaceCategory.PERSONAL_MARKER,
+                tags = emptyList(),
             ),
         )
     }
@@ -575,15 +616,144 @@ class DefaultMapReducer(
     private fun savePointCandidate(state: MapState, name: String): MapReduction = ifWritable(state) {
         val candidate = state.transient as? MapTransient.PointCandidate
             ?: return@ifWritable incident(state, MapIncident.MissingSelection)
-        val displayName = name.trim().ifEmpty { "Place ${state.places.size + 1}" }
+        createPlace(
+            state.copy(transient = null),
+            MapAction.CreatePlace(
+                point = candidate.point,
+                name = name.trim().ifEmpty { "Place" },
+                notes = "",
+                category = PlaceCategory.PERSONAL_MARKER,
+                tags = emptyList(),
+            ),
+        )
+    }
+
+    private fun createPlace(state: MapState, action: MapAction.CreatePlace): MapReduction = ifWritable(state) {
+        val now = clock.nowMillis().coerceAtLeast(0L)
+        val place = SavedPlace(
+            id = idGenerator.nextId("place"),
+            name = action.name.trim().ifEmpty { "Place" },
+            point = action.point,
+            revision = 1L,
+            notes = action.notes.trim(),
+            category = action.category,
+            tags = action.tags.normalizedTags(),
+            createdAtMillis = now,
+            updatedAtMillis = now,
+        )
         persistLibrary(
             state.copy(
-                places = state.places + SavedPlace(
-                    id = idGenerator.nextId("place"),
-                    name = displayName,
-                    point = candidate.point,
-                ),
+                places = state.places + place,
+                selection = null,
                 transient = null,
+                placeSaveStatus = PlaceSaveStatus(place.id, place.revision, MapSaveState.PENDING),
+                placeDeleteUndo = null,
+            ),
+        )
+    }
+
+    private fun updatePlace(state: MapState, action: MapAction.UpdatePlace): MapReduction = ifWritable(state) {
+        val existing = state.places.firstOrNull { it.id == action.placeId }
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        if (existing.revision != action.expectedRevision) return@ifWritable incident(state, MapIncident.ActionRejected)
+        val updated = existing.copy(
+            name = action.name.trim().ifEmpty { existing.name },
+            notes = action.notes.trim(),
+            category = action.category,
+            tags = action.tags.normalizedTags(),
+            revision = existing.revision + 1L,
+            updatedAtMillis = clock.nowMillis().coerceAtLeast(existing.updatedAtMillis),
+        )
+        persistLibrary(
+            state.copy(
+                places = state.places.map { if (it.id == updated.id) updated else it },
+                placeSaveStatus = PlaceSaveStatus(updated.id, updated.revision, MapSaveState.PENDING),
+                placeDeleteUndo = null,
+            ),
+        )
+    }
+
+    private fun beginPlaceMove(state: MapState, placeId: String): MapReduction {
+        val place = state.places.firstOrNull { it.id == placeId }
+            ?: return incident(state, MapIncident.ActionRejected)
+        return MapReduction(
+            state.copy(
+                placeMove = PlaceMoveDraft(place.id, place.revision, place.point),
+                placeDeleteRequest = null,
+                transient = null,
+            ),
+        )
+    }
+
+    private fun previewPlaceMove(state: MapState, point: GeoPoint): MapReduction {
+        val move = state.placeMove ?: return incident(state, MapIncident.ActionRejected)
+        return MapReduction(state.copy(placeMove = move.copy(candidatePoint = point)))
+    }
+
+    private fun confirmPlaceMove(state: MapState): MapReduction = ifWritable(state) {
+        val move = state.placeMove ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val place = state.places.firstOrNull { it.id == move.placeId }
+            ?.takeIf { it.revision == move.expectedRevision }
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        if (move.candidatePoint == place.point) return@ifWritable MapReduction(state.copy(placeMove = null))
+        val updated = place.copy(
+            point = move.candidatePoint,
+            revision = place.revision + 1L,
+            updatedAtMillis = clock.nowMillis().coerceAtLeast(place.updatedAtMillis),
+        )
+        persistLibrary(
+            state.copy(
+                places = state.places.map { if (it.id == updated.id) updated else it },
+                placeMove = null,
+                placeSaveStatus = PlaceSaveStatus(updated.id, updated.revision, MapSaveState.PENDING),
+                placeDeleteUndo = null,
+            ),
+        )
+    }
+
+    private fun requestDeletePlace(state: MapState, placeId: String): MapReduction {
+        val place = state.places.firstOrNull { it.id == placeId }
+            ?: return incident(state, MapIncident.ActionRejected)
+        val routeCount = state.savedRoutes.count { route ->
+            route.waypointPlaceReferences.values.any { it.placeId == place.id }
+        }
+        return MapReduction(
+            state.copy(
+                placeDeleteRequest = PlaceDeleteRequest(place.id, place.revision, place.name, routeCount),
+                placeMove = null,
+            ),
+        )
+    }
+
+    private fun confirmDeletePlace(state: MapState): MapReduction = ifWritable(state) {
+        val request = state.placeDeleteRequest ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val place = state.places.firstOrNull { it.id == request.placeId }
+            ?.takeIf { it.revision == request.expectedRevision }
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        persistLibrary(
+            state.copy(
+                places = state.places.filterNot { it.id == place.id },
+                placeDeleteRequest = null,
+                placeDeleteUndo = PlaceDeleteUndo(place, state.libraryRevision + 1L),
+                placeSaveStatus = null,
+            ),
+        )
+    }
+
+    private fun undoDeletePlace(state: MapState): MapReduction = ifWritable(state) {
+        val undo = state.placeDeleteUndo ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        if (state.libraryRevision != undo.compatibleLibraryRevision || state.places.any { it.id == undo.place.id }) {
+            return@ifWritable incident(state, MapIncident.ActionRejected)
+        }
+        val restored = undo.place.copy(
+            revision = undo.place.revision + 1L,
+            updatedAtMillis = clock.nowMillis().coerceAtLeast(undo.place.updatedAtMillis),
+        )
+        persistLibrary(
+            state.copy(
+                places = state.places + restored,
+                placeDeleteUndo = null,
+                placeSaveStatus = PlaceSaveStatus(restored.id, restored.revision, MapSaveState.PENDING),
             ),
         )
     }
@@ -667,7 +837,11 @@ class DefaultMapReducer(
     private fun retryPersistence(state: MapState): MapReduction =
         if (state.saveState == MapSaveState.FAILED && state.isWritable) {
             MapReduction(
-                state.copy(saveState = MapSaveState.PENDING, persistenceFailure = null),
+                state.copy(
+                    saveState = MapSaveState.PENDING,
+                    placeSaveStatus = state.placeSaveStatus?.copy(state = MapSaveState.PENDING),
+                    persistenceFailure = null,
+                ),
                 listOf(MapEffect.PersistLibrary(state.librarySnapshot())),
             )
         } else {
@@ -681,6 +855,7 @@ class DefaultMapReducer(
             state.copy(
                 durableLibraryRevision = revision,
                 saveState = MapSaveState.SAVED,
+                placeSaveStatus = state.placeSaveStatus?.copy(state = MapSaveState.SAVED),
                 persistenceFailure = null,
             ),
         )
@@ -691,7 +866,11 @@ class DefaultMapReducer(
             MapReduction(state)
         } else {
             MapReduction(
-                state.copy(saveState = MapSaveState.FAILED, persistenceFailure = failure),
+                state.copy(
+                    saveState = MapSaveState.FAILED,
+                    placeSaveStatus = state.placeSaveStatus?.copy(state = MapSaveState.FAILED),
+                    persistenceFailure = failure,
+                ),
                 listOf(MapEffect.LogIncident(MapIncident.PersistenceFailure("save", failure))),
             )
         }
@@ -727,6 +906,8 @@ class DefaultMapReducer(
     )
 
     private fun bounded(history: List<List<GeoPoint>>): List<List<GeoPoint>> = history.takeLast(historyLimit)
+
+    private fun List<String>.normalizedTags(): List<String> = map(String::trim).filter(String::isNotEmpty).distinct()
 
     private fun persistSession(state: MapState): MapReduction = MapReduction(
         state = state,

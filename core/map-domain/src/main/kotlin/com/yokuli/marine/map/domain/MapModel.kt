@@ -56,17 +56,79 @@ data class PositionState(
 )
 
 data class MapSelection(val point: GeoPoint)
+
+enum class PlaceCategory(val wireValue: String) {
+    ANCHORAGE("anchorage"),
+    MARINA("marina"),
+    LANDING("landing"),
+    WATER("water"),
+    PERSONAL_MARKER("personal"),
+    ;
+
+    companion object {
+        fun fromWireValue(value: String): PlaceCategory? = entries.firstOrNull { it.wireValue == value }
+    }
+}
+
 data class SavedPlace(
     val id: String,
     val name: String,
     val point: GeoPoint,
     val revision: Long = 1L,
+    val notes: String = "",
+    val category: PlaceCategory = PlaceCategory.PERSONAL_MARKER,
+    val tags: List<String> = emptyList(),
+    val createdAtMillis: Long = 0L,
+    val updatedAtMillis: Long = createdAtMillis,
 ) {
     init {
         require(id.isNotBlank())
+        require(name.isNotBlank())
+        require(revision > 0L)
+        require(createdAtMillis >= 0L)
+        require(updatedAtMillis >= createdAtMillis)
+        require(tags.none { it.isBlank() })
+        require(tags.distinct().size == tags.size)
+    }
+}
+
+fun interface MapClock {
+    fun nowMillis(): Long
+}
+
+object SystemMapClock : MapClock {
+    override fun nowMillis(): Long = System.currentTimeMillis()
+}
+
+data class PlaceSaveStatus(
+    val placeId: String,
+    val revision: Long,
+    val state: MapSaveState,
+) {
+    init {
+        require(placeId.isNotBlank())
         require(revision > 0L)
     }
 }
+
+data class PlaceMoveDraft(
+    val placeId: String,
+    val expectedRevision: Long,
+    val originalPoint: GeoPoint,
+    val candidatePoint: GeoPoint = originalPoint,
+)
+
+data class PlaceDeleteRequest(
+    val placeId: String,
+    val expectedRevision: Long,
+    val name: String,
+    val referencingRouteCount: Int,
+)
+
+data class PlaceDeleteUndo(
+    val place: SavedPlace,
+    val compatibleLibraryRevision: Long,
+)
 data class MeasurementDraft(
     val points: List<GeoPoint> = emptyList(),
     val undo: List<List<GeoPoint>> = emptyList(),
@@ -139,13 +201,34 @@ data class SavedRoute(
     val revision: Long = 1L,
     val sourceDraftId: String? = null,
     val sourceDraftRevision: Long? = null,
+    val waypointPlaceReferences: Map<Int, PlaceRevisionReference> = emptyMap(),
 ) {
     init {
         require(id.isNotBlank())
         require(revision > 0L)
         require(sourceDraftRevision == null || sourceDraftRevision > 0L)
+        require(waypointPlaceReferences.keys.all { it in waypoints.indices })
+    }
+
+    fun placeSourceState(index: Int, places: List<SavedPlace>): RoutePlaceSourceState {
+        val reference = waypointPlaceReferences[index] ?: return RoutePlaceSourceState.NONE
+        val place = places.firstOrNull { it.id == reference.placeId } ?: return RoutePlaceSourceState.MISSING
+        return if (place.revision == reference.revision && place.point == waypoints[index]) {
+            RoutePlaceSourceState.CURRENT
+        } else {
+            RoutePlaceSourceState.CHANGED
+        }
     }
 }
+
+data class PlaceRevisionReference(val placeId: String, val revision: Long) {
+    init {
+        require(placeId.isNotBlank())
+        require(revision > 0L)
+    }
+}
+
+enum class RoutePlaceSourceState { NONE, CURRENT, CHANGED, MISSING }
 
 data class RouteSummary(
     val distanceNauticalMiles: Double,
@@ -273,6 +356,12 @@ data class MapState(
     val viewport: MapViewport? = null,
     val crosshairEnabled: Boolean = false,
     val places: List<SavedPlace> = emptyList(),
+    val placeMove: PlaceMoveDraft? = null,
+    val placeDeleteRequest: PlaceDeleteRequest? = null,
+    val placeDeleteUndo: PlaceDeleteUndo? = null,
+    val placeSaveStatus: PlaceSaveStatus? = null,
+    val placeQuery: String = "",
+    val placeSort: PlaceSort = PlaceSort.NAME,
     val measurementDraft: MeasurementDraft? = null,
     val routeDrafts: List<ManualRouteDraft> = emptyList(),
     val activeRouteDraftId: String? = null,

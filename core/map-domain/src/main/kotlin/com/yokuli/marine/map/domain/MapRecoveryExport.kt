@@ -13,13 +13,17 @@ object MapRecoveryExport {
     fun encode(snapshot: MapLibrarySnapshot): ByteArray = buildString {
         append("{\n")
         append("  \"format\": \"yokuli-map-recovery\",\n")
-        append("  \"version\": 1,\n")
+        append("  \"version\": 2,\n")
         append("  \"libraryRevision\": ${snapshot.revision},\n")
         append("  \"places\": [")
         snapshot.places.forEachIndexed { index, place ->
             if (index > 0) append(',')
             append("\n    {\"id\":${place.id.json()},\"revision\":${place.revision},")
-            append("\"name\":${place.name.json()},\"point\":${place.point.json()}}")
+            append("\"name\":${place.name.json()},\"notes\":${place.notes.json()},")
+            append("\"category\":${place.category.wireValue.json()},")
+            append("\"tags\":${place.tags.sorted().jsonStrings()},")
+            append("\"createdAtMillis\":${place.createdAtMillis},\"updatedAtMillis\":${place.updatedAtMillis},")
+            append("\"point\":${place.point.json()}}")
         }
         if (snapshot.places.isNotEmpty()) append('\n').append("  ")
         append("],\n")
@@ -39,6 +43,7 @@ object MapRecoveryExport {
             append("\"name\":${route.name.json()},\"plannedSpeedKnots\":${route.plannedSpeedKnots},")
             append("\"sourceDraftId\":${route.sourceDraftId.jsonOrNull()},")
             append("\"sourceDraftRevision\":${route.sourceDraftRevision ?: "null"},")
+            append("\"waypointPlaceReferences\":${route.waypointPlaceReferences.jsonReferences()},")
             append("\"points\":${route.waypoints.json()}}")
         }
         if (snapshot.savedRoutes.isNotEmpty()) append('\n').append("  ")
@@ -49,6 +54,13 @@ object MapRecoveryExport {
     private fun GeoPoint.json(): String = "{\"latitude\":$latitude,\"longitude\":$longitude}"
 
     private fun List<GeoPoint>.json(): String = joinToString(prefix = "[", postfix = "]") { it.json() }
+
+    private fun List<String>.jsonStrings(): String = joinToString(prefix = "[", postfix = "]") { it.json() }
+
+    private fun Map<Int, PlaceRevisionReference>.jsonReferences(): String = entries.sortedBy { it.key }
+        .joinToString(prefix = "[", postfix = "]") { (index, reference) ->
+            "{\"index\":$index,\"placeId\":${reference.placeId.json()},\"revision\":${reference.revision}}"
+        }
 
     private fun String?.jsonOrNull(): String = this?.json() ?: "null"
 

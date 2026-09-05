@@ -15,6 +15,8 @@ import com.yokuli.marine.map.domain.MapPersistenceAck
 import com.yokuli.marine.map.domain.MapPersistencePort
 import com.yokuli.marine.map.domain.MapReadFailure
 import com.yokuli.marine.map.domain.MapSessionSnapshot
+import com.yokuli.marine.map.domain.PlaceCategory
+import com.yokuli.marine.map.domain.PlaceRevisionReference
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
 import com.yokuli.marine.map.storage.proto.MapStateProto
@@ -73,6 +75,7 @@ class RoomMapPersistence private constructor(
 
         fun create(context: Context, scope: CoroutineScope): RoomMapPersistence {
             val database = Room.databaseBuilder(context, MapLibraryDatabase::class.java, DATABASE_FILE_NAME)
+                .addMigrations(MIGRATION_1_2)
                 .build()
             return create(context.dataStoreFile(SESSION_FILE_NAME), scope, database)
         }
@@ -100,7 +103,20 @@ private data class DecodedLibrary(
 private fun encode(snapshot: MapLibrarySnapshot): MapLibraryRecords = MapLibraryRecords(
     revision = snapshot.revision,
     places = snapshot.places.map { place ->
-        PlaceEntity(place.id, place.revision, place.name, place.point.latitude, place.point.longitude)
+        PlaceEntity(
+            id = place.id,
+            revision = place.revision,
+            name = place.name,
+            latitude = place.point.latitude,
+            longitude = place.point.longitude,
+            notes = place.notes,
+            category = place.category.wireValue,
+            createdAtMillis = place.createdAtMillis,
+            updatedAtMillis = place.updatedAtMillis,
+        )
+    },
+    placeTags = snapshot.places.flatMap { place ->
+        place.tags.sorted().map { tag -> PlaceTagEntity(place.id, tag) }
     },
     drafts = snapshot.routeDrafts.map { draft ->
         RouteDraftEntity(draft.id, draft.revision, draft.name, draft.plannedSpeedKnots)
@@ -122,7 +138,15 @@ private fun encode(snapshot: MapLibrarySnapshot): MapLibraryRecords = MapLibrary
     },
     routePoints = snapshot.savedRoutes.flatMap { route ->
         route.waypoints.mapIndexed { index, point ->
-            SavedRoutePointEntity(route.id, index, point.latitude, point.longitude)
+            val source = route.waypointPlaceReferences[index]
+            SavedRoutePointEntity(
+                routeId = route.id,
+                position = index,
+                latitude = point.latitude,
+                longitude = point.longitude,
+                sourcePlaceId = source?.placeId,
+                sourcePlaceRevision = source?.revision,
+            )
         }
     },
 )
@@ -130,9 +154,22 @@ private fun encode(snapshot: MapLibrarySnapshot): MapLibraryRecords = MapLibrary
 private fun decode(records: MapLibraryRecords): DecodedLibrary {
     var quarantined = 0
 
+    val rawPlaceIds = records.places.map { it.id }.toSet()
+    quarantined += records.placeTags.count { it.placeId !in rawPlaceIds }
     val places = records.places.mapNotNull { entity ->
         runCatching {
-            SavedPlace(entity.id, entity.name, GeoPoint(entity.latitude, entity.longitude), entity.revision)
+            val tags = records.placeTags.filter { it.placeId == entity.id }.map { it.tag }
+            SavedPlace(
+                id = entity.id,
+                name = entity.name,
+                point = GeoPoint(entity.latitude, entity.longitude),
+                revision = entity.revision,
+                notes = entity.notes,
+                category = requireNotNull(PlaceCategory.fromWireValue(entity.category)) { "Unknown place category" },
+                tags = tags,
+                createdAtMillis = entity.createdAtMillis,
+                updatedAtMillis = entity.updatedAtMillis,
+            )
         }.getOrElse {
             quarantined += 1
             null
@@ -162,6 +199,15 @@ private fun decode(records: MapLibraryRecords): DecodedLibrary {
     val routes = records.routes.mapNotNull { entity ->
         val points = records.routePoints.filter { it.routeId == entity.id }
         runCatching {
+            val references = points.mapIndexedNotNull { index, point ->
+                when {
+                    point.sourcePlaceId == null && point.sourcePlaceRevision == null -> null
+                    point.sourcePlaceId != null && point.sourcePlaceRevision != null -> {
+                        index to PlaceRevisionReference(point.sourcePlaceId, point.sourcePlaceRevision)
+                    }
+                    else -> error("Incomplete route place reference")
+                }
+            }.toMap()
             SavedRoute(
                 id = entity.id,
                 name = entity.name,
@@ -170,6 +216,7 @@ private fun decode(records: MapLibraryRecords): DecodedLibrary {
                 revision = entity.revision,
                 sourceDraftId = entity.sourceDraftId,
                 sourceDraftRevision = entity.sourceDraftRevision,
+                waypointPlaceReferences = references,
             )
         }.getOrElse {
             quarantined += 1
