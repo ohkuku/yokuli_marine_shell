@@ -18,71 +18,41 @@ object MapRecoveryExport {
         append("  \"places\": [")
         snapshot.places.forEachIndexed { index, place ->
             if (index > 0) append(',')
-            append("\n    {\"id\":${place.id.json()},\"revision\":${place.revision},")
-            append("\"name\":${place.name.json()},\"notes\":${place.notes.json()},")
-            append("\"category\":${place.category.wireValue.json()},")
-            append("\"tags\":${place.tags.sorted().jsonStrings()},")
+            append("\n    {\"id\":${place.id.toJsonString()},\"revision\":${place.revision},")
+            append("\"name\":${place.name.toJsonString()},\"notes\":${place.notes.toJsonString()},")
+            append("\"category\":${place.category.wireValue.toJsonString()},")
+            append("\"tags\":${place.tags.sorted().toJsonStrings()},")
             append("\"createdAtMillis\":${place.createdAtMillis},\"updatedAtMillis\":${place.updatedAtMillis},")
-            append("\"point\":${place.point.json()}}")
+            append("\"point\":${place.point.toJsonPoint()}}")
         }
         if (snapshot.places.isNotEmpty()) append('\n').append("  ")
         append("],\n")
         append("  \"routeDrafts\": [")
         snapshot.routeDrafts.forEachIndexed { index, draft ->
             if (index > 0) append(',')
-            append("\n    {\"id\":${draft.id.json()},\"revision\":${draft.revision},")
-            append("\"name\":${draft.name.json()},\"plannedSpeedKnots\":${draft.plannedSpeedKnots},")
-            append("\"points\":${draft.waypoints.json()}}")
+            append("\n    {\"id\":${draft.id.toJsonString()},\"revision\":${draft.revision},")
+            append("\"name\":${draft.name.toJsonString()},\"plannedSpeedKnots\":${draft.plannedSpeedKnots},")
+            append("\"points\":${draft.waypoints.toJsonPoints()}}")
         }
         if (snapshot.routeDrafts.isNotEmpty()) append('\n').append("  ")
         append("],\n")
         append("  \"savedRoutes\": [")
         snapshot.savedRoutes.forEachIndexed { index, route ->
             if (index > 0) append(',')
-            append("\n    {\"id\":${route.id.json()},\"revision\":${route.revision},")
-            append("\"name\":${route.name.json()},\"plannedSpeedKnots\":${route.plannedSpeedKnots},")
-            append("\"sourceDraftId\":${route.sourceDraftId.jsonOrNull()},")
+            append("\n    {\"id\":${route.id.toJsonString()},\"revision\":${route.revision},")
+            append("\"name\":${route.name.toJsonString()},\"plannedSpeedKnots\":${route.plannedSpeedKnots},")
+            append("\"sourceDraftId\":${route.sourceDraftId.toJsonStringOrNull()},")
             append("\"sourceDraftRevision\":${route.sourceDraftRevision ?: "null"},")
             append("\"waypointPlaceReferences\":${route.waypointPlaceReferences.jsonReferences()},")
-            append("\"points\":${route.waypoints.json()}}")
+            append("\"points\":${route.waypoints.toJsonPoints()}}")
         }
         if (snapshot.savedRoutes.isNotEmpty()) append('\n').append("  ")
         append("]\n")
         append("}\n")
     }.toByteArray(Charsets.UTF_8)
 
-    private fun GeoPoint.json(): String = "{\"latitude\":$latitude,\"longitude\":$longitude}"
-
-    private fun List<GeoPoint>.json(): String = joinToString(prefix = "[", postfix = "]") { it.json() }
-
-    private fun List<String>.jsonStrings(): String = joinToString(prefix = "[", postfix = "]") { it.json() }
-
     private fun Map<Int, PlaceRevisionReference>.jsonReferences(): String = entries.sortedBy { it.key }
         .joinToString(prefix = "[", postfix = "]") { (index, reference) ->
-            "{\"index\":$index,\"placeId\":${reference.placeId.json()},\"revision\":${reference.revision}}"
+            "{\"index\":$index,\"placeId\":${reference.placeId.toJsonString()},\"revision\":${reference.revision}}"
         }
-
-    private fun String?.jsonOrNull(): String = this?.json() ?: "null"
-
-    private fun String.json(): String = buildString(length + 2) {
-        append('"')
-        this@json.forEach { character ->
-            when (character) {
-                '"' -> append("\\\"")
-                '\\' -> append("\\\\")
-                '\b' -> append("\\b")
-                '\u000C' -> append("\\f")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> if (character.code < 0x20) {
-                    append("\\u")
-                    append(character.code.toString(16).padStart(4, '0'))
-                } else {
-                    append(character)
-                }
-            }
-        }
-        append('"')
-    }
 }

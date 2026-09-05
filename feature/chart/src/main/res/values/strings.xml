@@ -69,6 +69,10 @@
     <string name="map_place_save_failed">此地点保存失败；当前编辑仍保留。</string>
     <string name="map_place_edit">编辑</string>
     <string name="map_place_move">移动</string>
+    <string name="map_place_export">导出地点</string>
+    <string name="map_place_export_writing">正在写入地点文件…</string>
+    <string name="map_place_export_succeeded">地点文件已写入所选位置。</string>
+    <string name="map_place_export_failed">地点文件写入失败；本机地点未改变。</string>
     <string name="map_place_delete">删除</string>
     <string name="map_measure_title">距离测量</string>
     <string name="map_measure_context">WGS84 椭球距离与起始真方位</string>

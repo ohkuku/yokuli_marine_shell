@@ -69,6 +69,10 @@
     <string name="map_place_save_failed">This place could not be saved; the current edit is retained.</string>
     <string name="map_place_edit">edit</string>
     <string name="map_place_move">move</string>
+    <string name="map_place_export">export place</string>
+    <string name="map_place_export_writing">writing place file…</string>
+    <string name="map_place_export_succeeded">Place file written to the selected location.</string>
+    <string name="map_place_export_failed">Place file could not be written; the local place is unchanged.</string>
     <string name="map_place_delete">delete</string>
     <string name="map_measure_title">distance measurement</string>
     <string name="map_measure_context">WGS84 ellipsoid distance and initial true bearing</string>

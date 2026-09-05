@@ -103,6 +103,13 @@ typealias MarineChartSurface = @Composable (
 
 enum class MapRecoveryExportUiState { IDLE, WRITING, SUCCEEDED, FAILED }
 
+sealed interface MapPlaceExportUiState {
+    data object Idle : MapPlaceExportUiState
+    data class Writing(val placeId: String) : MapPlaceExportUiState
+    data class Succeeded(val placeId: String) : MapPlaceExportUiState
+    data class Failed(val placeId: String) : MapPlaceExportUiState
+}
+
 /**
  * Map is one installed app. Its map surface, active editing tool and transient interaction plane
  * are independent; Shell navigation never needs to understand places, routes, packages or gestures.
@@ -117,6 +124,8 @@ fun ChartWorkspace(
     onImportAction: (ChartImportUiAction) -> Unit,
     recoveryExportState: MapRecoveryExportUiState,
     onExportRecovery: () -> Unit,
+    placeExportState: MapPlaceExportUiState = MapPlaceExportUiState.Idle,
+    onExportPlace: (SavedPlace) -> Unit = {},
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -185,7 +194,7 @@ fun ChartWorkspace(
                 onExportRecovery,
             )
         } else {
-            MapPageSurface(state, importState, onImportAction, onAction)
+            MapPageSurface(state, importState, onImportAction, placeExportState, onExportPlace, onAction)
         }
     }
 }
@@ -616,6 +625,8 @@ private fun MapPageSurface(
     state: MapState,
     importState: ChartImportUiState,
     onImportAction: (ChartImportUiAction) -> Unit,
+    placeExportState: MapPlaceExportUiState,
+    onExportPlace: (SavedPlace) -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -641,7 +652,13 @@ private fun MapPageSurface(
                 MapSurface.Places -> PlacesPage(state, onAction)
                 MapSurface.Routes -> RoutesPage(state, onAction)
                 MapSurface.ChartPackages -> ChartPackagesPage(state, importState, onImportAction, onAction)
-                is MapSurface.PlaceDetail -> PlaceDetailPage(state, surface.placeId, onAction)
+                is MapSurface.PlaceDetail -> PlaceDetailPage(
+                    state,
+                    surface.placeId,
+                    placeExportState,
+                    onExportPlace,
+                    onAction,
+                )
                 is MapSurface.NewPlace -> PlaceEditorPage(state, surface.point, null, onAction)
                 is MapSurface.EditPlace -> state.places.firstOrNull { it.id == surface.placeId }?.let { place ->
                     PlaceEditorPage(state, place.point, place, onAction)
@@ -878,7 +895,13 @@ private fun PlaceDeletePage(state: MapState, id: String, onAction: (MapAction) -
 }
 
 @Composable
-private fun PlaceDetailPage(state: MapState, id: String, onAction: (MapAction) -> Unit) {
+private fun PlaceDetailPage(
+    state: MapState,
+    id: String,
+    exportState: MapPlaceExportUiState,
+    onExportPlace: (SavedPlace) -> Unit,
+    onAction: (MapAction) -> Unit,
+) {
     val place = state.places.firstOrNull { it.id == id } ?: return
     val colors = LocalWpTheme.current
     Column(Modifier.fillMaxWidth().testTag("map-place-detail-$id"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -923,6 +946,21 @@ private fun PlaceDetailPage(state: MapState, id: String, onAction: (MapAction) -
         }
         MapTextButton(stringResource(R.string.map_place_move), "map-place-move-$id", modifier = Modifier.fillMaxWidth()) {
             onAction(MapAction.BeginPlaceMove(id))
+        }
+        MapTextButton(stringResource(R.string.map_place_export), "map-place-export-$id", modifier = Modifier.fillMaxWidth()) {
+            onExportPlace(place)
+        }
+        when (exportState) {
+            is MapPlaceExportUiState.Writing -> if (exportState.placeId == id) {
+                WpText(stringResource(R.string.map_place_export_writing), 10, color = colors.muted)
+            }
+            is MapPlaceExportUiState.Succeeded -> if (exportState.placeId == id) {
+                WpText(stringResource(R.string.map_place_export_succeeded), 10, color = colors.muted)
+            }
+            is MapPlaceExportUiState.Failed -> if (exportState.placeId == id) {
+                WpText(stringResource(R.string.map_place_export_failed), 10, color = colors.accent)
+            }
+            MapPlaceExportUiState.Idle -> Unit
         }
         MapTextButton(stringResource(R.string.map_place_delete), "map-place-delete-$id", modifier = Modifier.fillMaxWidth()) {
             onAction(MapAction.RequestDeletePlace(id))

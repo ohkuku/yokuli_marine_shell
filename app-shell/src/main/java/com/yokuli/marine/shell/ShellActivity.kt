@@ -73,9 +73,12 @@ import com.yokuli.marine.feature.desktop.WpSystemKeyBar
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
 import com.yokuli.marine.feature.chart.ChartImportUiAction
+import com.yokuli.marine.feature.chart.MapPlaceExportUiState
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
+import com.yokuli.marine.map.domain.MapPlaceExport
 import com.yokuli.marine.map.domain.MapRecoveryExport
 import com.yokuli.marine.map.domain.MapViewportInsets
+import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
@@ -204,6 +207,8 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val chartImportState by shellViewModel.chartImportState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var recoveryExportState by remember { mutableStateOf(MapRecoveryExportUiState.IDLE) }
+    var placeExportState by remember { mutableStateOf<MapPlaceExportUiState>(MapPlaceExportUiState.Idle) }
+    var pendingPlaceExport by remember { mutableStateOf<SavedPlace?>(null) }
     val chartDocumentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
@@ -229,6 +234,31 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     MapRecoveryExportUiState.SUCCEEDED
                 } else {
                     MapRecoveryExportUiState.FAILED
+                }
+            }
+        }
+    }
+    val placeDocumentCreator = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(MapPlaceExport.MIME_TYPE),
+    ) { uri ->
+        val place = pendingPlaceExport
+        if (uri == null || place == null) {
+            pendingPlaceExport = null
+            placeExportState = MapPlaceExportUiState.Idle
+        } else {
+            placeExportState = MapPlaceExportUiState.Writing(place.id)
+            coroutineScope.launch {
+                val written = withContext(Dispatchers.IO) {
+                    runCatching {
+                        checkNotNull(context.contentResolver.openOutputStream(uri, "w"))
+                            .use { output -> output.write(MapPlaceExport.encode(place)) }
+                    }.isSuccess
+                }
+                pendingPlaceExport = null
+                placeExportState = if (written) {
+                    MapPlaceExportUiState.Succeeded(place.id)
+                } else {
+                    MapPlaceExportUiState.Failed(place.id)
                 }
             }
         }
@@ -311,6 +341,12 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             onExportMapRecovery = {
                 recoveryExportState = MapRecoveryExportUiState.IDLE
                 recoveryDocumentCreator.launch(MapRecoveryExport.SUGGESTED_FILE_NAME)
+            },
+            placeExportState = placeExportState,
+            onExportPlace = { place ->
+                pendingPlaceExport = place
+                placeExportState = MapPlaceExportUiState.Idle
+                placeDocumentCreator.launch(MapPlaceExport.suggestedFileName(place))
             },
             onSettingsAction = { action ->
                 when (action) {
