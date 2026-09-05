@@ -25,6 +25,18 @@ reference: codex/develop@a845d3d734d3b573a2b53952e66e5f800e944205 (read-only)
 
 P0 begins from the real clean Shell SHA and the owner-selected read-only `codex/develop` reference. A meaningful six-error Red proved that the versioned baseline did not yet exist. The Green candidate records exact integration symbols, reuse/rewrite/non-migration decisions, the minimum four-module plan, Android 36 lifecycle constraints, and the P0–P7/E01–E26 evidence matrix; full gate results remain pending until actually run.
 
+## NMEA_SOURCES — P1 Pure Marine Data Contracts
+
+### Red
+
+起点：`32602b7…`。先加入 P1 静态合同，要求纯 JVM 模块、typed identity/provenance、严格且有界的 NMEA framing/parser、Sentence/Observation catalog、单调老化、统一选源和 13 项具名行为测试。首次运行结果为 `4 FAIL / 1 ERROR / 1 PASS`：模块、实现和测试尚不存在，失败与 P1 缺口精确对应。
+
+随后只建立 `core:marine-data` scaffold、公共 `ConnectionId`／`SessionGeneration`／`SourceIdentity`／`ObservationOrigin`／`DataKey`／`MarineObservation` 与 `MonotonicClock`，并用 6 项 identifier/semantic reference tests 固定 talker 不是设备、UDP sender 分离和数据参考系不可合并。协议、catalog、freshness 和 selection 的 Red/Green 继续在独立文件中完成；本提交不包含 Socket、Android 或 UI。
+
+## English translation
+
+P1 starts with a static contract that fails for the missing pure module, protocol, catalog, freshness, selection, and named behavioral tests. The first scaffold adds only platform-neutral identifiers, provenance, semantic data keys, observations, an injected monotonic clock, and their tests. Transport, Android and UI remain outside this stage.
+
 ## Marine Shell Final Product-Model Correction
 
 ### Baseline

@@ -13,6 +13,7 @@ include(
     ":app-shell",
     ":core:model",
     ":core:map-domain",
+    ":core:marine-data",
     ":core:design",
     ":core:shell-contract",
     ":core:shell-engine",
