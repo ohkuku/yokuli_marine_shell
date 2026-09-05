@@ -434,6 +434,7 @@ private fun importFailureLabel(reason: ChartPackageImportFailure): String = stri
     when (reason) {
         ChartPackageImportFailure.CANNOT_OPEN -> R.string.map_import_error_open
         ChartPackageImportFailure.INVALID_DATABASE -> R.string.map_import_error_database
+        ChartPackageImportFailure.CORRUPT_TILE -> R.string.map_import_error_format
         ChartPackageImportFailure.EMPTY_PACKAGE -> R.string.map_import_error_empty
         ChartPackageImportFailure.UNSUPPORTED_FORMAT -> R.string.map_import_error_format
         ChartPackageImportFailure.INVALID_METADATA -> R.string.map_import_error_metadata
