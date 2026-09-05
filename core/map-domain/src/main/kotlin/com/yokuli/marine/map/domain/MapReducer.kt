@@ -24,6 +24,7 @@ sealed interface MapIncident {
     data object MissingSelection : MapIncident
     data object InsufficientMeasurement : MapIncident
     data object InsufficientRoute : MapIncident
+    data class PersistenceFailure(val operation: String, val detail: String) : MapIncident
 }
 
 sealed interface MapEffect {

@@ -18,6 +18,7 @@ include(
     ":core:shell-engine",
     ":core:testing",
     ":adapter:chart-google",
+    ":adapter:map-storage",
     ":adapter:shell-android",
     ":adapter:shell-storage",
     ":ui:shell-compose",

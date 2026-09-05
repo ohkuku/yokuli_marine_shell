@@ -13,29 +13,82 @@ interface MapStore : AutoCloseable {
     fun dispatch(action: MapAction)
 }
 
+interface MapPersistencePort {
+    suspend fun load(): MapPersistedState?
+    suspend fun save(snapshot: MapPersistedState)
+}
+
 class DefaultMapStore(
     initialState: MapState,
     scope: CoroutineScope,
+    private val persistence: MapPersistencePort? = null,
     private val effectHandler: suspend (MapEffect) -> Unit = {},
 ) : MapStore {
-    private val actions = Channel<MapAction>(Channel.UNLIMITED)
+    private val actionSignal = Channel<Unit>(Channel.CONFLATED)
+    private val actionQueue = ArrayDeque<MapAction>()
+    private val actionQueueLock = Any()
     private val mutableState = MutableStateFlow(initialState)
     private val processor: Job = scope.launch {
-        for (action in actions) {
-            val reduction = MapReducer.reduce(mutableState.value, action)
-            mutableState.value = reduction.state
-            reduction.effects.forEach { effectHandler(it) }
+        restoreBeforeUserActions()
+        for (ignored in actionSignal) {
+            while (true) {
+                val action = synchronized(actionQueueLock) { actionQueue.removeFirstOrNull() } ?: break
+                process(action)
+            }
         }
     }
 
     override val state: StateFlow<MapState> = mutableState.asStateFlow()
 
     override fun dispatch(action: MapAction) {
-        check(actions.trySend(action).isSuccess) { "MapStore is closed" }
+        synchronized(actionQueueLock) {
+            check(actionQueue.size < MAX_PENDING_ACTIONS) { "MapStore action queue capacity exceeded" }
+            actionQueue.addLast(action)
+        }
+        check(actionSignal.trySend(Unit).isSuccess) { "MapStore action queue is closed" }
     }
 
     override fun close() {
-        actions.close()
+        actionSignal.close()
         processor.cancel()
+    }
+
+    private suspend fun restoreBeforeUserActions() {
+        val snapshot = try {
+            persistence?.load()
+        } catch (error: Throwable) {
+            effectHandler(
+                MapEffect.LogIncident(
+                    MapIncident.PersistenceFailure("load", error.message ?: error.javaClass.simpleName),
+                ),
+            )
+            null
+        }
+        if (snapshot != null) {
+            mutableState.value = MapReducer.reduce(mutableState.value, MapAction.Restore(snapshot)).state
+        }
+    }
+
+    private suspend fun process(action: MapAction) {
+        val reduction = MapReducer.reduce(mutableState.value, action)
+        mutableState.value = reduction.state
+        reduction.effects.forEach { effect ->
+            if (effect is MapEffect.Persist) {
+                try {
+                    persistence?.save(effect.snapshot)
+                } catch (error: Throwable) {
+                    effectHandler(
+                        MapEffect.LogIncident(
+                            MapIncident.PersistenceFailure("save", error.message ?: error.javaClass.simpleName),
+                        ),
+                    )
+                }
+            }
+            effectHandler(effect)
+        }
+    }
+
+    private companion object {
+        const val MAX_PENDING_ACTIONS = 256
     }
 }

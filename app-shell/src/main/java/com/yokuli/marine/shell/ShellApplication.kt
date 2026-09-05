@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import com.yokuli.marine.core.model.AppLanguage
+import com.yokuli.marine.map.storage.ProtoDataStoreMapPersistence
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,9 @@ class ShellApplication : Application() {
             scope = applicationScope,
             defaults = LauncherPersistedState(document = defaultStartDocument),
         )
+    }
+    val mapPersistence by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProtoDataStoreMapPersistence.create(this, applicationScope)
     }
 
     override fun onCreate() {

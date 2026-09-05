@@ -56,10 +56,11 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     val mapStore: MapStore = DefaultMapStore(
         initialState = MapState(),
         scope = viewModelScope,
+        persistence = (application as ShellApplication).mapPersistence,
         effectHandler = { effect ->
             when (effect) {
                 is MapEffect.LogIncident -> android.util.Log.w("YokuliMap", effect.incident.toString())
-                is MapEffect.Persist -> Unit // Replaced by the durable map repository in the next TDD slice.
+                is MapEffect.Persist -> Unit
             }
         },
     )

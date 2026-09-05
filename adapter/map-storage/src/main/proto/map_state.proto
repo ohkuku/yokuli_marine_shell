@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+option java_package = "com.yokuli.marine.map.storage.proto";
+option java_multiple_files = true;
+
+message MapStateProto {
+  int32 schema_version = 1;
+  MapCameraProto camera = 2;
+  repeated SavedPlaceProto places = 3;
+  MeasurementDraftProto measurement_draft = 4;
+  ManualRouteDraftProto route_draft = 5;
+  repeated SavedRouteProto saved_routes = 6;
+  repeated ChartPackageProto chart_packages = 7;
+}
+
+message GeoPointProto { double latitude = 1; double longitude = 2; }
+message GeoBoundsProto { double south = 1; double west = 2; double north = 3; double east = 4; }
+message MapCameraProto { GeoPointProto center = 1; double zoom = 2; double bearing = 3; }
+message SavedPlaceProto { string id = 1; string name = 2; GeoPointProto point = 3; }
+message MeasurementDraftProto { repeated GeoPointProto points = 1; }
+message PointListProto { repeated GeoPointProto points = 1; }
+message ManualRouteDraftProto {
+  string name = 1;
+  repeated GeoPointProto waypoints = 2;
+  double planned_speed_knots = 3;
+  repeated PointListProto undo = 4;
+  repeated PointListProto redo = 5;
+}
+message SavedRouteProto {
+  string id = 1;
+  string name = 2;
+  repeated GeoPointProto waypoints = 3;
+  double planned_speed_knots = 4;
+}
+message ChartPackageProto {
+  string id = 1;
+  string display_name = 2;
+  string source = 3;
+  string license = 4;
+  string attribution = 5;
+  string sha256 = 6;
+  string local_uri = 7;
+  GeoBoundsProto coverage = 8;
+  int32 min_zoom = 9;
+  int32 max_zoom = 10;
+  string version = 11;
+}
