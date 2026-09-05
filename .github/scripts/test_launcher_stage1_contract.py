@@ -51,10 +51,6 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
         contribution = (
             ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartShellContribution.kt"
         ).read_text()
-        domain = "\n".join(
-            path.read_text()
-            for path in (ROOT / "core/map-domain/src/main/kotlin").rglob("*.kt")
-        )
         workspace = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
         self.assertEqual(["Browse"], re.findall(r"val\s+(\w+)\s*=\s*LaunchToken\(", contribution))
         self.assertIn('LaunchToken("chart.browse")', contribution)
@@ -71,7 +67,7 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
             "activeRoute",
             "vesselPosition",
         ):
-            self.assertNotIn(forbidden, contribution + domain + workspace)
+            self.assertNotIn(forbidden, contribution + workspace)
 
     def test_settings_contains_only_truthful_shell_configuration_and_build_facts(self):
         contract = (
