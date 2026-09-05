@@ -15,13 +15,13 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
         self.assertEqual(STARTING_SHA, lock["startingSha"])
         self.assertEqual("Pin / Unpin / Context Menu", lock["requiredCompletedStage"])
 
-    def test_engine_owns_search_recents_home_and_internal_back_stack(self):
+    def test_engine_owns_search_recents_desktop_and_internal_back_stack(self):
         state = (ROOT / "core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherState.kt").read_text()
         reducer = (ROOT / "core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherReducer.kt").read_text()
         for symbol in ("Search", "OpenSearch", "UpdateSearchQuery", "ShowRecents", "ActivateTask"):
             self.assertIn(symbol, state + reducer)
         self.assertIn("backStack: List<LaunchToken>", state)
-        self.assertIn("RequestHostExit", reducer)
+        self.assertNotIn("RequestHostExit", reducer)
 
     def test_virtual_and_android_keys_share_one_typed_input_path(self):
         contract = (ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/ShellInput.kt").read_text()
@@ -67,6 +67,7 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
             "searchIsAFirstClassSurfaceAndBackReturnsToItsSource",
             "searchResultLaunchTransitionsDirectlyFromSearchToModule",
             "recentsCanResumeAnExistingTask",
+            "backAtStartStaysInsideShellWithoutEffect",
         ):
             self.assertIn(scenario, jvm)
         for scenario in (

@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell
 
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.content.Intent
 import android.view.KeyEvent
@@ -73,6 +74,7 @@ import com.yokuli.shell.engine.LauncherEngine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import kotlin.math.abs
 import org.junit.Rule
@@ -891,7 +893,7 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun recoverySurfaceCanOpenAndroidSettings() {
+    fun recoverySurfaceStaysInsideYokuliShell() {
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { activity ->
             ViewModelProvider(activity)[ShellViewModel::class.java].engine.dispatch(
@@ -900,14 +902,33 @@ class ShellActivityStoryTest {
         }
         awaitDisplayed("launcher-recovery")
         compose.onNodeWithTag("launcher-recovery").assertIsDisplayed()
+        compose.onNodeWithTag("recovery-open-chart").assertIsDisplayed()
+        compose.onNodeWithTag("recovery-open-settings").assertIsDisplayed()
+        compose.onNodeWithTag("recovery-reset-start").assertIsDisplayed()
+        compose.onNodeWithTag("recovery-open-android-settings").assertDoesNotExist()
+    }
 
-        var launchedAction: String? = null
-        compose.activityRule.scenario.onActivity { activity ->
-            activity.platformIntentLauncher = { intent -> launchedAction = intent.action }
-        }
-        compose.onNodeWithTag("recovery-open-android-settings").performClick()
+    @Test
+    fun backAtShellDesktopNeverFinishesHost() {
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
-        assertEquals(android.provider.Settings.ACTION_SETTINGS, launchedAction)
+        compose.onNodeWithTag("start-screen").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { activity ->
+            assertFalse(activity.isFinishing)
+            assertEquals(
+                com.yokuli.shell.engine.ShellVisualSurface.Desktop,
+                ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value.surface,
+            )
+        }
+    }
+
+    @Test
+    fun shellActivityIsPortraitOnly() {
+        compose.activityRule.scenario.onActivity { activity ->
+            val info = activity.packageManager.getActivityInfo(activity.componentName, 0)
+            assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, info.screenOrientation)
+        }
     }
 
     @Test

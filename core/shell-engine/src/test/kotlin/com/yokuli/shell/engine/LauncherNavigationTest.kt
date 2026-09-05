@@ -134,10 +134,10 @@ class LauncherNavigationTest {
     }
 
     @Test
-    fun backAtStartRequestsHostExitWithoutMutatingState() {
+    fun backAtStartStaysInsideShellWithoutEffect() {
         val result = reduce(initial(), LauncherAction.Back)
         assertEquals(initial(), result.state)
-        assertTrue(result.effects.single() is LauncherEffect.RequestHostExit)
+        assertTrue(result.effects.isEmpty())
     }
 
     @Test

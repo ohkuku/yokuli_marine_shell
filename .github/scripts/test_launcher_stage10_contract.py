@@ -57,7 +57,7 @@ class LauncherStage10DurabilityContractTest(unittest.TestCase):
         ):
             self.assertIn(symbol, persistence)
 
-    def test_safe_mode_is_policy_driven_and_has_a_real_settings_escape(self):
+    def test_safe_mode_is_policy_driven_and_stays_inside_yokuli(self):
         engine = "\n".join(
             path.read_text() for path in (ROOT / "core/shell-engine/src/main").rglob("*.kt")
         )
@@ -67,10 +67,12 @@ class LauncherStage10DurabilityContractTest(unittest.TestCase):
         ).read_text()
         self.assertIn("object LauncherRecoveryPolicy", engine)
         self.assertIn("LauncherRecoveryMode.SAFE_MODE", engine)
-        self.assertIn("LauncherEffect.OpenAndroidSettings", engine + activity)
-        self.assertIn("Settings.ACTION_SETTINGS", activity)
+        self.assertNotIn("LauncherEffect.OpenAndroidSettings", engine + activity)
+        self.assertNotIn("Settings.ACTION_SETTINGS", activity)
         self.assertNotIn("Settings.ACTION_HOME_SETTINGS", activity)
-        self.assertIn("recovery-open-android-settings", recovery)
+        self.assertNotIn("recovery-open-android-settings", recovery)
+        self.assertIn("recovery-open-chart", recovery)
+        self.assertIn("recovery-open-settings", recovery)
         self.assertIn("recovery-reset-start", recovery)
 
     def test_process_restore_corruption_and_crash_loop_are_covered(self):
@@ -91,7 +93,7 @@ class LauncherStage10DurabilityContractTest(unittest.TestCase):
             self.assertIn(scenario, tests)
         for scenario in (
             "activityRecreationRetainsTheEngineDocument",
-            "recoverySurfaceCanOpenAndroidSettings",
+            "recoverySurfaceStaysInsideYokuliShell",
         ):
             self.assertIn(scenario, stories)
 
@@ -110,8 +112,9 @@ class LauncherStage10DurabilityContractTest(unittest.TestCase):
         self.assertIn("python3 .github/scripts/test_launcher_stage10_contract.py", workflow)
         for locale in ("values", "values-en", "values-zh-rCN"):
             strings = (ROOT / f"feature/desktop/src/main/res/{locale}/strings.xml").read_text()
-            for name in ("recovery_title", "recovery_explanation", "recovery_reset", "recovery_android_settings"):
+            for name in ("recovery_title", "recovery_explanation", "recovery_reset"):
                 self.assertIn(f'name="{name}"', strings)
+            self.assertNotIn('name="recovery_android_settings"', strings)
 
     def test_report_records_scope_platform_boundary_and_complete_gate(self):
         report = (STAGE / "REPORT.md").read_text()

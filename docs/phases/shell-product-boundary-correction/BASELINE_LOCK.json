@@ -1,0 +1,12 @@
+{
+  "phase": "shell-product-boundary-correction",
+  "startingSha": "0bd086fc4923730207e75e8047655b6695b08c5c",
+  "branch": "codex/shell-map-contract",
+  "status": "RED_CONTRACT",
+  "scope": [
+    "remove Android desktop settings escape",
+    "make Shell Desktop the terminal Back destination",
+    "lock production and Shell Lab activities to portrait"
+  ],
+  "supersedesConflictingHistoricalClauses": true
+}
