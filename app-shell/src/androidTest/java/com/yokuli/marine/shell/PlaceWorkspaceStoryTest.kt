@@ -7,11 +7,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import com.yokuli.marine.core.design.WpThemeSpec
@@ -57,8 +57,8 @@ class PlaceWorkspaceStoryTest {
         compose.onNodeWithTag("map-place-name-field").performTextInput("西港 Marina")
         compose.onNodeWithTag("map-place-notes-field").performTextInput("Gate B 夜间")
         compose.onNodeWithTag("map-place-tags-field").performTextInput("fuel, 补水")
-        compose.onNodeWithTag("map-place-category-MARINA").performClick()
-        compose.onNodeWithTag("map-place-save").performClick()
+        compose.onNodeWithTag("map-place-category-MARINA").performScrollTo().performClick()
+        compose.onNodeWithTag("map-place-save").performScrollTo().performClick()
 
         compose.onNodeWithTag("map-place-detail-place-ui").assertIsDisplayed()
         compose.runOnIdle {
@@ -108,7 +108,7 @@ class PlaceWorkspaceStoryTest {
             ),
         )
 
-        compose.onNodeWithTag("map-place-move-place-a").performClick()
+        compose.onNodeWithTag("map-place-move-place-a").performScrollTo().performClick()
         compose.onNodeWithTag("map-place-move-editor").assertIsDisplayed()
         compose.onNodeWithTag("map-place-move-latitude").performTextClearance()
         compose.onNodeWithTag("map-place-move-latitude").performTextInput("36.84 S")
@@ -121,7 +121,7 @@ class PlaceWorkspaceStoryTest {
             assertEquals(listOf(original, routePoint), harness.state().savedRoutes.single().waypoints)
         }
 
-        compose.onNodeWithTag("map-place-delete-place-a").performClick()
+        compose.onNodeWithTag("map-place-delete-place-a").performScrollTo().performClick()
         compose.onNodeWithTag("map-place-delete-confirmation").assertIsDisplayed()
         compose.onNodeWithTag("map-place-delete-confirm").performClick()
         compose.onNodeWithTag("map-place-delete-undo-strip").assertIsDisplayed()
