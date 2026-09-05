@@ -405,7 +405,7 @@ private fun GeoBounds.toLatLngBounds() = LatLngBounds.from(
     south.coerceAtLeast(-WEB_MERCATOR_MAX_LATITUDE),
     west,
 )
-private fun GeoPoint.toGeoJsonPoint() = Point.fromLngLat(longitude, latitude)
+internal fun GeoPoint.toGeoJsonPoint() = Point.fromLngLat(longitude, latitude)
 private fun GeoPoint.toFeature(id: String) = Feature.fromGeometry(toGeoJsonPoint(), null, id)
 private fun GeoPoint?.toFeatureCollection(id: String) = FeatureCollection.fromFeatures(
     if (this == null) emptyList() else listOf(toFeature(id)),
