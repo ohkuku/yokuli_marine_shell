@@ -139,7 +139,8 @@ class ShellAppTileContractTest(unittest.TestCase):
             self.assertIn(required, repository)
         for legal_field in ("source", "license", "attribution", "version"):
             self.assertIn(legal_field, repository)
-        self.assertIn('setOf("png", "jpg", "jpeg", "webp")', metadata)
+        self.assertIn('setOf("png", "jpg", "jpeg")', metadata)
+        self.assertNotIn('"webp"', metadata)
         self.assertIn("UNSUPPORTED_FORMAT", metadata)
         self.assertIn("SQLiteException", repository)
         self.assertIn("INVALID_DATABASE", repository)
