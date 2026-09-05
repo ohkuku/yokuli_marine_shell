@@ -47,6 +47,7 @@ class AndroidMbTilesRepository(
     private val contentResolver: ContentResolver,
     private val root: File,
     private val installCheckpoint: (InstallCheckpoint) -> Unit = {},
+    private val copyCheckpoint: (Long) -> Unit = {},
 ) : ChartPackageRepository {
     private val mutex = Mutex()
     private val candidates = mutableMapOf<String, ChartPackageCandidate>()
@@ -163,6 +164,7 @@ class AndroidMbTilesRepository(
                 validationLevel = candidate.validationLevel,
             )
             if (!destination.isDirectory) {
+                currentCoroutineContext().ensureActive()
                 writeManifest(staging, installed)
                 writeJournal(JournalPhase.PREPARED, staging.name, destination.name, logicalId, previousVersion)
                 installCheckpoint(InstallCheckpoint.AFTER_PREPARE)
@@ -170,6 +172,7 @@ class AndroidMbTilesRepository(
                     ChartPackageImportFailure.INSTALL_FAILED,
                     "Could not atomically publish the chart package version",
                 )
+                currentCoroutineContext().ensureActive()
             } else {
                 staging.deleteRecursively()
             }
@@ -200,8 +203,8 @@ class AndroidMbTilesRepository(
             root.mkdirsChecked()
             reconcileLocked()
             if (readActiveIndex().isEmpty()) migrateLegacyPackages()
-            readActiveIndex().values.distinct().mapNotNull { version ->
-                runCatching { readManifest(versionDirectory(ChartPackageVersionId(version))) }.getOrNull()
+            readActiveIndex().values.distinct().map { version ->
+                readManifest(versionDirectory(ChartPackageVersionId(version)))
             }.sortedBy { it.displayName.lowercase() }
         }
     }
@@ -301,6 +304,7 @@ class AndroidMbTilesRepository(
                     "The selected package exceeds the supported import size",
                 )
                 output.write(buffer, 0, count)
+                copyCheckpoint(completed)
                 onProgress(ChartPackageInspectProgress.Copying(completed, totalBytes))
             }
             output.fd.sync()

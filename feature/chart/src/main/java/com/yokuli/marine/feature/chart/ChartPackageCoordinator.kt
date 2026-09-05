@@ -155,7 +155,7 @@ class ChartPackageCoordinator(
                 repository.reconcile()
                 mapStore.dispatch(MapAction.ChartPackagesChanged(repository.listInstalled()))
             } catch (error: Throwable) {
-                incidentLogger(error)
+                mutableState.value = failure(error)
             }
         }
     }

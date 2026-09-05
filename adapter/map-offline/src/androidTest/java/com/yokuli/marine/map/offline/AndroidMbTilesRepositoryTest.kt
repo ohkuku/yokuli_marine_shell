@@ -167,6 +167,154 @@ class AndroidMbTilesRepositoryTest {
         testRoot.deleteRecursively()
         Unit
     }
+
+    @Test
+    fun everyInstallJournalBoundaryRecoversOneCompleteLogicalPackage() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        InstallCheckpoint.entries.forEach { crashPoint ->
+            val testRoot = File(context.cacheDir, "mbtiles-boundary-${crashPoint.name}")
+                .also { it.deleteRecursively(); it.mkdirs() }
+            val packages = File(testRoot, "packages")
+            val sourceV1 = File(testRoot, "v1.mbtiles").also { createRasterMbTiles(it) }
+            val initial = AndroidMbTilesRepository(context.contentResolver, packages)
+            val first = initial.inspect(sourceV1.toURI().toString())
+            val old = initial.commit(
+                ChartPackageImportRequest(first.stagedImportId, "Harbour", "Unknown", "Unknown", "Unknown", "1"),
+            )
+            val sourceV2 = File(testRoot, "v2.mbtiles")
+            createRasterMbTiles(sourceV2, tileData = asymmetricTile(512, Bitmap.CompressFormat.PNG))
+            val crashing = AndroidMbTilesRepository(
+                context.contentResolver,
+                packages,
+                installCheckpoint = { if (it == crashPoint) error("simulated process death") },
+            )
+            val second = crashing.inspect(sourceV2.toURI().toString())
+            runCatching {
+                crashing.commit(
+                    ChartPackageImportRequest(
+                        second.stagedImportId, "Harbour", "Unknown", "Unknown", "Unknown", "2",
+                        replaceLogicalPackageId = old.logicalId,
+                    ),
+                )
+            }
+
+            val recovered = AndroidMbTilesRepository(context.contentResolver, packages).listInstalled()
+            assertEquals(1, recovered.size)
+            assertEquals(old.logicalId, recovered.single().logicalId)
+            assertTrue(File(android.net.Uri.parse(recovered.single().localUri).path!!).isFile)
+            assertFalse(File(packages, ".install-journal.properties").exists())
+            testRoot.deleteRecursively()
+        }
+        Unit
+    }
+
+    @Test
+    fun copyFailureKeepsOldPackageAndLeavesNoStagingDirectory() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-copy-failure-test").also { it.deleteRecursively(); it.mkdirs() }
+        val packages = File(testRoot, "packages")
+        val oldSource = File(testRoot, "old.mbtiles").also { createRasterMbTiles(it) }
+        val repository = AndroidMbTilesRepository(context.contentResolver, packages)
+        val oldCandidate = repository.inspect(oldSource.toURI().toString())
+        val old = repository.commit(
+            ChartPackageImportRequest(oldCandidate.stagedImportId, "Old", "Unknown", "Unknown", "Unknown", "1"),
+        )
+        val newSource = File(testRoot, "new.mbtiles")
+        createRasterMbTiles(newSource, tileData = asymmetricTile(512, Bitmap.CompressFormat.PNG))
+        val failing = AndroidMbTilesRepository(
+            context.contentResolver,
+            packages,
+            copyCheckpoint = { error("simulated storage exhaustion") },
+        )
+
+        val failure = runCatching { failing.inspect(newSource.toURI().toString()) }.exceptionOrNull()
+        assertEquals(ChartPackageImportFailure.IO_FAILURE, (failure as ChartPackageImportException).reason)
+        assertEquals(old.id, failing.listInstalled().single().id)
+        assertFalse(packages.listFiles().orEmpty().any { it.name.startsWith(".staging-") })
+        testRoot.deleteRecursively()
+        Unit
+    }
+
+    @Test
+    fun contentIdentityDeduplicatesBytesButDoesNotMergeSameNamedPackages() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-identity-test").also { it.deleteRecursively(); it.mkdirs() }
+        val packages = File(testRoot, "packages")
+        val repository = AndroidMbTilesRepository(context.contentResolver, packages)
+        val sourceA = File(testRoot, "a.mbtiles").also { createRasterMbTiles(it) }
+        val first = repository.inspect(sourceA.toURI().toString())
+        val installedA = repository.commit(
+            ChartPackageImportRequest(first.stagedImportId, "Same name", "Unknown", "Unknown", "Unknown", "1"),
+        )
+        val duplicate = repository.inspect(sourceA.toURI().toString())
+        val installedDuplicate = repository.commit(
+            ChartPackageImportRequest(duplicate.stagedImportId, "Renamed", "Unknown", "Unknown", "Unknown", "1"),
+        )
+        assertEquals(installedA.id, installedDuplicate.id)
+
+        val sourceB = File(testRoot, "b.mbtiles")
+        createRasterMbTiles(sourceB, tileData = asymmetricTile(512, Bitmap.CompressFormat.PNG))
+        val second = repository.inspect(sourceB.toURI().toString())
+        val installedB = repository.commit(
+            ChartPackageImportRequest(second.stagedImportId, "Same name", "Unknown", "Unknown", "Unknown", "1"),
+        )
+        assertTrue(installedA.id != installedB.id)
+        assertTrue(installedA.logicalId != installedB.logicalId)
+        assertEquals(2, repository.listInstalled().size)
+        testRoot.deleteRecursively()
+        Unit
+    }
+
+    @Test
+    fun emptyDuplicateMetadataOversizeAndEncodingMismatchFailExplicitly() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-bounded-validation-test").also { it.deleteRecursively(); it.mkdirs() }
+
+        suspend fun failure(name: String, mutate: (SQLiteDatabase) -> Unit): ChartPackageImportFailure {
+            val source = File(testRoot, "$name.mbtiles")
+            createRasterMbTiles(source)
+            SQLiteDatabase.openDatabase(source.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use(mutate)
+            val repository = AndroidMbTilesRepository(context.contentResolver, File(testRoot, "packages-$name"))
+            return (runCatching { repository.inspect(source.toURI().toString()) }.exceptionOrNull() as ChartPackageImportException).reason
+        }
+
+        assertEquals(ChartPackageImportFailure.EMPTY_PACKAGE, failure("empty") { it.execSQL("DELETE FROM tiles") })
+        assertEquals(
+            ChartPackageImportFailure.INVALID_METADATA,
+            failure("duplicate-metadata") { it.execSQL("INSERT INTO metadata(name,value) VALUES('format','png')") },
+        )
+        assertEquals(
+            ChartPackageImportFailure.RESOURCE_LIMIT,
+            failure("oversize-metadata") { it.execSQL("UPDATE metadata SET value=? WHERE name='name'", arrayOf("x".repeat(17_000))) },
+        )
+        assertEquals(
+            ChartPackageImportFailure.CORRUPT_TILE,
+            failure("encoding-mismatch") {
+                it.execSQL("UPDATE tiles SET tile_data=?", arrayOf(asymmetricTile(256, Bitmap.CompressFormat.JPEG)))
+            },
+        )
+        testRoot.deleteRecursively()
+        Unit
+    }
+
+    @Test
+    fun corruptActiveManifestIsReportedInsteadOfSilentlyDisappearing() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-corrupt-manifest-test").also { it.deleteRecursively(); it.mkdirs() }
+        val packages = File(testRoot, "packages")
+        val source = File(testRoot, "source.mbtiles").also { createRasterMbTiles(it) }
+        val repository = AndroidMbTilesRepository(context.contentResolver, packages)
+        val candidate = repository.inspect(source.toURI().toString())
+        val installed = repository.commit(
+            ChartPackageImportRequest(candidate.stagedImportId, "Harbour", "Unknown", "Unknown", "Unknown", "1"),
+        )
+        File(packages, "package-${installed.versionId.value}/manifest.properties").writeText("broken=true")
+
+        val failure = runCatching { repository.listInstalled() }.exceptionOrNull() as ChartPackageImportException
+        assertEquals(ChartPackageImportFailure.INVALID_DATABASE, failure.reason)
+        testRoot.deleteRecursively()
+        Unit
+    }
     @Test
     fun importIsValidatedAndAtomicAndDeleteKeepsUnrelatedUserFiles() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
