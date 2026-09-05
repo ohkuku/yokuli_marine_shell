@@ -42,6 +42,10 @@ internal data class RouteDraftEntity(
     val revision: Long,
     val name: String,
     val plannedSpeedKnots: Double,
+    @androidx.room.ColumnInfo(defaultValue = "''") val notes: String,
+    val basePlanId: String?,
+    val basePlanRevision: Long?,
+    @androidx.room.ColumnInfo(defaultValue = "1") val nextWaypointOrdinal: Int,
 )
 
 @Entity(tableName = "route_draft_points", primaryKeys = ["draftId", "position"])
@@ -50,6 +54,9 @@ internal data class RouteDraftPointEntity(
     val position: Int,
     val latitude: Double,
     val longitude: Double,
+    @androidx.room.ColumnInfo(defaultValue = "''") val waypointId: String,
+    val sourcePlaceId: String?,
+    val sourcePlaceRevision: Long?,
 )
 
 @Entity(tableName = "saved_routes")
@@ -60,6 +67,7 @@ internal data class SavedRouteEntity(
     val plannedSpeedKnots: Double,
     val sourceDraftId: String?,
     val sourceDraftRevision: Long?,
+    @androidx.room.ColumnInfo(defaultValue = "''") val notes: String,
 )
 
 @Entity(tableName = "saved_route_points", primaryKeys = ["routeId", "position"])
@@ -70,6 +78,7 @@ internal data class SavedRoutePointEntity(
     val longitude: Double,
     val sourcePlaceId: String? = null,
     val sourcePlaceRevision: Long? = null,
+    @androidx.room.ColumnInfo(defaultValue = "''") val waypointId: String,
 )
 
 internal data class MapLibraryRecords(
@@ -183,7 +192,7 @@ internal abstract class MapLibraryDao {
         SavedRouteEntity::class,
         SavedRoutePointEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 internal abstract class MapLibraryDatabase : RoomDatabase() {
@@ -207,5 +216,28 @@ internal val MIGRATION_1_2 = object : Migration(1, 2) {
         )
         database.execSQL("ALTER TABLE `saved_route_points` ADD COLUMN `sourcePlaceId` TEXT")
         database.execSQL("ALTER TABLE `saved_route_points` ADD COLUMN `sourcePlaceRevision` INTEGER")
+    }
+}
+
+internal val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE `route_drafts` ADD COLUMN `notes` TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE `route_drafts` ADD COLUMN `basePlanId` TEXT")
+        database.execSQL("ALTER TABLE `route_drafts` ADD COLUMN `basePlanRevision` INTEGER")
+        database.execSQL("ALTER TABLE `route_drafts` ADD COLUMN `nextWaypointOrdinal` INTEGER NOT NULL DEFAULT 1")
+        database.execSQL("ALTER TABLE `route_draft_points` ADD COLUMN `waypointId` TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE `route_draft_points` ADD COLUMN `sourcePlaceId` TEXT")
+        database.execSQL("ALTER TABLE `route_draft_points` ADD COLUMN `sourcePlaceRevision` INTEGER")
+        database.execSQL("ALTER TABLE `saved_routes` ADD COLUMN `notes` TEXT NOT NULL DEFAULT ''")
+        database.execSQL("ALTER TABLE `saved_route_points` ADD COLUMN `waypointId` TEXT NOT NULL DEFAULT ''")
+        database.execSQL(
+            "UPDATE `route_draft_points` SET `waypointId` = `draftId` || '-waypoint-' || (`position` + 1)",
+        )
+        database.execSQL(
+            "UPDATE `saved_route_points` SET `waypointId` = `routeId` || '-waypoint-' || (`position` + 1)",
+        )
+        database.execSQL(
+            "UPDATE `route_drafts` SET `nextWaypointOrdinal` = (SELECT COUNT(*) + 1 FROM `route_draft_points` WHERE `draftId` = `route_drafts`.`id`)",
+        )
     }
 }

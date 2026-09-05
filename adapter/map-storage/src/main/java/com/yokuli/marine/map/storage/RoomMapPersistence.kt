@@ -75,7 +75,7 @@ class RoomMapPersistence private constructor(
 
         fun create(context: Context, scope: CoroutineScope): RoomMapPersistence {
             val database = Room.databaseBuilder(context, MapLibraryDatabase::class.java, DATABASE_FILE_NAME)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
             return create(context.dataStoreFile(SESSION_FILE_NAME), scope, database)
         }
@@ -119,11 +119,29 @@ private fun encode(snapshot: MapLibrarySnapshot): MapLibraryRecords = MapLibrary
         place.tags.sorted().map { tag -> PlaceTagEntity(place.id, tag) }
     },
     drafts = snapshot.routeDrafts.map { draft ->
-        RouteDraftEntity(draft.id, draft.revision, draft.name, draft.plannedSpeedKnots)
+        RouteDraftEntity(
+            id = draft.id,
+            revision = draft.revision,
+            name = draft.name,
+            plannedSpeedKnots = draft.plannedSpeedKnots ?: 0.0,
+            notes = draft.notes,
+            basePlanId = draft.basePlanId,
+            basePlanRevision = draft.basePlanRevision,
+            nextWaypointOrdinal = draft.nextWaypointOrdinal,
+        )
     },
     draftPoints = snapshot.routeDrafts.flatMap { draft ->
         draft.waypoints.mapIndexed { index, point ->
-            RouteDraftPointEntity(draft.id, index, point.latitude, point.longitude)
+            val source = draft.waypointPlaceReferences[index]
+            RouteDraftPointEntity(
+                draftId = draft.id,
+                position = index,
+                latitude = point.latitude,
+                longitude = point.longitude,
+                waypointId = draft.waypointIds[index],
+                sourcePlaceId = source?.placeId,
+                sourcePlaceRevision = source?.revision,
+            )
         }
     },
     routes = snapshot.savedRoutes.map { route ->
@@ -131,9 +149,10 @@ private fun encode(snapshot: MapLibrarySnapshot): MapLibraryRecords = MapLibrary
             route.id,
             route.revision,
             route.name,
-            route.plannedSpeedKnots,
+            route.plannedSpeedKnots ?: 0.0,
             route.sourceDraftId,
             route.sourceDraftRevision,
+            route.notes,
         )
     },
     routePoints = snapshot.savedRoutes.flatMap { route ->
@@ -146,6 +165,7 @@ private fun encode(snapshot: MapLibrarySnapshot): MapLibraryRecords = MapLibrary
                 longitude = point.longitude,
                 sourcePlaceId = source?.placeId,
                 sourcePlaceRevision = source?.revision,
+                waypointId = route.waypointIds[index],
             )
         }
     },
@@ -181,12 +201,29 @@ private fun decode(records: MapLibraryRecords): DecodedLibrary {
     val drafts = records.drafts.mapNotNull { entity ->
         val points = records.draftPoints.filter { it.draftId == entity.id }
         runCatching {
+            val references = points.mapIndexedNotNull { index, point ->
+                when {
+                    point.sourcePlaceId == null && point.sourcePlaceRevision == null -> null
+                    point.sourcePlaceId != null && point.sourcePlaceRevision != null -> {
+                        index to PlaceRevisionReference(point.sourcePlaceId, point.sourcePlaceRevision)
+                    }
+                    else -> error("Incomplete draft place reference")
+                }
+            }.toMap()
             ManualRouteDraft(
                 id = entity.id,
                 revision = entity.revision,
                 name = entity.name,
-                plannedSpeedKnots = entity.plannedSpeedKnots,
+                plannedSpeedKnots = entity.plannedSpeedKnots.takeIf { it > 0.0 },
                 waypoints = points.map { GeoPoint(it.latitude, it.longitude) },
+                notes = entity.notes,
+                waypointIds = points.mapIndexed { index, point ->
+                    point.waypointId.ifBlank { "${entity.id}-waypoint-${index + 1}" }
+                },
+                waypointPlaceReferences = references,
+                basePlanId = entity.basePlanId,
+                basePlanRevision = entity.basePlanRevision,
+                nextWaypointOrdinal = entity.nextWaypointOrdinal.coerceAtLeast(points.size + 1),
             )
         }.getOrElse {
             quarantined += 1
@@ -212,11 +249,15 @@ private fun decode(records: MapLibraryRecords): DecodedLibrary {
                 id = entity.id,
                 name = entity.name,
                 waypoints = points.map { GeoPoint(it.latitude, it.longitude) },
-                plannedSpeedKnots = entity.plannedSpeedKnots,
+                plannedSpeedKnots = entity.plannedSpeedKnots.takeIf { it > 0.0 },
                 revision = entity.revision,
                 sourceDraftId = entity.sourceDraftId,
                 sourceDraftRevision = entity.sourceDraftRevision,
                 waypointPlaceReferences = references,
+                notes = entity.notes,
+                waypointIds = points.mapIndexed { index, point ->
+                    point.waypointId.ifBlank { "${entity.id}-waypoint-${index + 1}" }
+                },
             )
         }.getOrElse {
             quarantined += 1

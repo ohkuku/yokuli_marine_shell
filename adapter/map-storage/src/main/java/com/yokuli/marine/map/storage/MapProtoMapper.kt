@@ -24,7 +24,7 @@ import com.yokuli.marine.map.storage.proto.SavedPlaceProto
 import com.yokuli.marine.map.storage.proto.SavedRouteProto
 
 internal object MapProtoMapper {
-    const val SCHEMA_VERSION = 2
+    const val SCHEMA_VERSION = 3
 
     fun encodeSession(state: MapSessionSnapshot): MapStateProto = MapStateProto.newBuilder()
         .setSchemaVersion(SCHEMA_VERSION)
@@ -32,6 +32,7 @@ internal object MapProtoMapper {
         .also { builder ->
             state.measurementDraft?.let { builder.measurementDraft = it.toProto() }
             state.activeRouteDraftId?.let { builder.activeRouteDraftId = it }
+            state.activeRoutePlanId?.let { builder.activeRoutePlanId = it }
             state.activeChartPackageId?.let { builder.activeChartPackageId = it.value }
         }
         .build()
@@ -42,6 +43,7 @@ internal object MapProtoMapper {
             camera = if (proto.hasCamera()) proto.camera.toDomain() else MapCamera(),
             measurementDraft = if (proto.hasMeasurementDraft()) proto.measurementDraft.toDomain() else null,
             activeRouteDraftId = proto.activeRouteDraftId.takeIf { it.isNotBlank() },
+            activeRoutePlanId = proto.activeRoutePlanId.takeIf { it.isNotBlank() },
             activeChartPackageId = proto.activeChartPackageId.takeIf { it.isNotBlank() }?.let(::ChartPackageId),
         )
     } catch (error: IllegalArgumentException) {
@@ -89,22 +91,46 @@ internal object MapProtoMapper {
     private fun MeasurementDraft.toProto() = MeasurementDraftProto.newBuilder().addAllPoints(points.map { it.toProto() }).build()
     private fun MeasurementDraftProto.toDomain() = MeasurementDraft(pointsList.map { it.toDomain() })
     private fun ManualRouteDraft.toProto() = ManualRouteDraftProto.newBuilder()
-        .setName(name).addAllWaypoints(waypoints.map { it.toProto() }).setPlannedSpeedKnots(plannedSpeedKnots)
-        .addAllUndo(undo.map { points -> PointListProto.newBuilder().addAllPoints(points.map { it.toProto() }).build() })
-        .addAllRedo(redo.map { points -> PointListProto.newBuilder().addAllPoints(points.map { it.toProto() }).build() })
+        .setName(name).addAllWaypoints(waypoints.map { it.toProto() })
+        .also { builder -> plannedSpeedKnots?.let { builder.plannedSpeedKnots = it } }
+        .addAllUndo(undo.map { frame -> PointListProto.newBuilder().addAllPoints(frame.waypoints.map { it.toProto() }).build() })
+        .addAllRedo(redo.map { frame -> PointListProto.newBuilder().addAllPoints(frame.waypoints.map { it.toProto() }).build() })
         .build()
     private fun ManualRouteDraftProto.toDomain() = ManualRouteDraft(
         id = "legacy-draft",
         revision = 1L,
         name = name,
         waypoints = waypointsList.map { it.toDomain() },
-        plannedSpeedKnots = plannedSpeedKnots.takeIf { it > 0.0 } ?: 5.0,
-        undo = undoList.map { list -> list.pointsList.map { it.toDomain() } },
-        redo = redoList.map { list -> list.pointsList.map { it.toDomain() } },
+        plannedSpeedKnots = plannedSpeedKnots.takeIf { it > 0.0 },
+        undo = undoList.mapIndexed { historyIndex, list ->
+            val points = list.pointsList.map { it.toDomain() }
+            com.yokuli.marine.map.domain.RouteGeometrySnapshot(
+                points,
+                points.indices.map { "legacy-draft-undo-$historyIndex-${it + 1}" },
+                emptyMap(),
+                points.size + 1,
+            )
+        },
+        redo = redoList.mapIndexed { historyIndex, list ->
+            val points = list.pointsList.map { it.toDomain() }
+            com.yokuli.marine.map.domain.RouteGeometrySnapshot(
+                points,
+                points.indices.map { "legacy-draft-redo-$historyIndex-${it + 1}" },
+                emptyMap(),
+                points.size + 1,
+            )
+        },
     )
     private fun SavedRoute.toProto() = SavedRouteProto.newBuilder().setId(id).setName(name)
-        .addAllWaypoints(waypoints.map { it.toProto() }).setPlannedSpeedKnots(plannedSpeedKnots).build()
-    private fun SavedRouteProto.toDomain() = SavedRoute(id, name, waypointsList.map { it.toDomain() }, plannedSpeedKnots)
+        .addAllWaypoints(waypoints.map { it.toProto() })
+        .also { builder -> plannedSpeedKnots?.let { builder.plannedSpeedKnots = it } }
+        .build()
+    private fun SavedRouteProto.toDomain() = SavedRoute(
+        id,
+        name,
+        waypointsList.map { it.toDomain() },
+        plannedSpeedKnots.takeIf { it > 0.0 },
+    )
     private fun ChartPackage.toProto() = ChartPackageProto.newBuilder().setId(id.value).setDisplayName(displayName)
         .setSource(source).setLicense(license).setAttribution(attribution).setSha256(sha256).setLocalUri(localUri)
         .setCoverage(coverage.toProto()).setMinZoom(minZoom).setMaxZoom(maxZoom).setVersion(version)

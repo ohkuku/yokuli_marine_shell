@@ -13,6 +13,7 @@ message MapStateProto {
   repeated ChartPackageProto chart_packages = 7;
   string active_chart_package_id = 8;
   string active_route_draft_id = 9;
+  string active_route_plan_id = 10;
 }
 
 message GeoPointProto { double latitude = 1; double longitude = 2; }
