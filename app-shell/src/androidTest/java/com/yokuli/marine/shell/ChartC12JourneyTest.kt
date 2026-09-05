@@ -133,7 +133,9 @@ class ChartC12JourneyTest {
         awaitDisplayed("launcher-search-field")
         compose.onNodeWithTag("launcher-search-field").performTextInput("离线锚地")
         val token = ChartDestinations.place(placeId).value.removePrefix("chart.")
-        compose.onNodeWithTag("search-result-chart-$token").assertIsDisplayed().performClick()
+        val resultTag = "search-result-chart-$token"
+        awaitDisplayed(resultTag)
+        compose.onNodeWithTag(resultTag).performClick()
         awaitDisplayed("map-place-detail-$placeId")
 
         val restored = currentMapState().places.single { it.id == placeId }
