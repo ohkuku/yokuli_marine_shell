@@ -4,6 +4,8 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yokuli.marine.map.domain.ChartPackageImportRequest
+import com.yokuli.marine.map.domain.ChartPackageImportException
+import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -36,6 +38,16 @@ class AndroidMbTilesRepositoryTest {
         repository.delete(installed.id)
         assertTrue(repository.listInstalled().isEmpty())
         assertTrue(unrelated.isFile)
+        assertFalse(packagesRoot.listFiles().orEmpty().any { it.name.startsWith(".staging-") })
+
+        val invalid = File(testRoot, "invalid.mbtiles").also { it.writeText("not sqlite") }
+        val failure = try {
+            repository.inspect(invalid.toURI().toString())
+            null
+        } catch (error: ChartPackageImportException) {
+            error
+        }
+        assertEquals(ChartPackageImportFailure.INVALID_DATABASE, failure?.reason)
         assertFalse(packagesRoot.listFiles().orEmpty().any { it.name.startsWith(".staging-") })
         testRoot.deleteRecursively()
         Unit

@@ -1,6 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- MapLibre declares optional location permissions. Yokuli Map has no position runtime yet. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
 
     <application android:name=".ShellApplication" android:allowBackup="false" android:icon="@drawable/ic_yokuli_os" android:label="@string/app_name" android:supportsRtl="true" android:theme="@style/Theme.YokuliOS">
         <uses-library android:name="org.apache.http.legacy" android:required="false" />

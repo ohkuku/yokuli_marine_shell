@@ -15,7 +15,6 @@ import com.yokuli.marine.feature.chart.ChartShellContribution
 import com.yokuli.marine.feature.chart.ChartWorkspace
 import com.yokuli.marine.feature.chart.ChartImportUiAction
 import com.yokuli.marine.feature.chart.ChartImportUiState
-import com.yokuli.marine.feature.chart.MarineChartDemoSurface
 import com.yokuli.marine.feature.chart.MarineChartSurface
 import com.yokuli.marine.feature.chart.MarineChartTransitionSurface
 import com.yokuli.marine.feature.chart.chartLauncherVisualContribution
@@ -116,7 +115,15 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             } else if (runtime.mapConfigured || hasOfflineChart) {
                 { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }
             } else {
-                { _, _, _, modifier -> MarineChartDemoSurface(modifier.testTag("chart-surface-demo")) }
+                // The provider-free state is an empty coordinate workbench, never invented chart data.
+                { state, onCameraChanged, onLongPress, modifier ->
+                    OfflineMarineChartSurface(
+                        state = state,
+                        onCameraChanged = onCameraChanged,
+                        onLongPress = onLongPress,
+                        modifier = modifier.testTag("chart-surface-offline-empty"),
+                    )
+                }
             }
             ChartWorkspace(
                 state = runtime.mapState,

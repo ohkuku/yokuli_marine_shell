@@ -133,6 +133,12 @@ class ShellAppTileContractTest(unittest.TestCase):
             self.assertIn(legal_field, repository)
         self.assertIn('setOf("png", "jpg", "jpeg", "webp")', metadata)
         self.assertIn("UNSUPPORTED_FORMAT", metadata)
+        self.assertIn("SQLiteException", repository)
+        self.assertIn("INVALID_DATABASE", repository)
+
+        model = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapModel.kt").read_text()
+        self.assertIn('Regex("[A-Za-z0-9._-]+")', model)
+        self.assertIn("filesystem-safe token", model)
 
     def test_map_runtime_is_truthful_persisted_and_has_device_stories(self):
         model = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapModel.kt").read_text()
@@ -147,6 +153,15 @@ class ShellAppTileContractTest(unittest.TestCase):
         self.assertIn("UnknownChartPackage", reducer)
         self.assertIn("OfflineMarineChartSurface", graph)
         self.assertIn("mapAppKeepsPlanningToolsInternalAndPositionTruthExplicit", activity_tests)
+
+    def test_map_dependency_cannot_silently_add_location_permissions_or_fake_chart_data(self):
+        manifest = (ROOT / "app-shell/src/main/AndroidManifest.xml").read_text()
+        graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
+        workspace = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
+        for permission in ("ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"):
+            self.assertIn(permission, manifest)
+        self.assertGreaterEqual(manifest.count('tools:node="remove"'), 2)
+        self.assertNotIn("MarineChartDemoSurface", graph + workspace)
 
 
 if __name__ == "__main__":

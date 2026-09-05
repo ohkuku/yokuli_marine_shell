@@ -23,6 +23,8 @@
     <string name="map_measure_title">distance measurement</string>
     <string name="map_points_count">%1$d points</string>
     <string name="map_convert_to_route">convert to manual route</string>
+    <string name="map_default_place_name">Saved place %1$d</string>
+    <string name="map_default_route_name">Manual route %1$d</string>
     <string name="map_browse_title">browse map</string>
     <string name="map_browse_hint">No boat network or position required. Long-press to select.</string>
     <string name="map_selected_point">selected coordinate</string>

@@ -3,6 +3,7 @@ package com.yokuli.marine.map.offline
 import android.content.ContentResolver
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import android.net.Uri
 import com.yokuli.marine.map.domain.ChartPackage
 import com.yokuli.marine.map.domain.ChartPackageCandidate
@@ -47,7 +48,15 @@ class AndroidMbTilesRepository(
                         FileOutputStream(database).use { output -> input.copyTo(output) }
                     }
                 }
-                val metadata = inspectDatabase(database)
+                val metadata = try {
+                    inspectDatabase(database)
+                } catch (error: SQLiteException) {
+                    throw ChartPackageImportException(
+                        ChartPackageImportFailure.INVALID_DATABASE,
+                        "The selected document is not a readable SQLite MBTiles database",
+                        error,
+                    )
+                }
                 val candidate = ChartPackageCandidate(
                     stagedImportId = stagedId,
                     suggestedDisplayName = metadata.name,

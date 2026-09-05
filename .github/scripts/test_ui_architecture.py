@@ -71,14 +71,15 @@ class UiArchitectureContractTest(unittest.TestCase):
 
     def test_feature_workspaces_render_state_and_emit_actions(self):
         workspaces = {
-            "feature/chart": ("ChartWorkspace.kt", "ChartUiState", "ChartUiAction"),
+            "feature/chart": ("ChartWorkspace.kt", "MapState", "MapAction"),
             "feature/settings": ("SettingsWorkspace.kt", "SettingsUiState", "SettingsUiAction"),
         }
         for module, (filename, state, action) in workspaces.items():
             path = next((ROOT / module / "src/main/java").rglob(filename))
             source = path.read_text()
             with self.subTest(module=module):
-                self.assertRegex(source, rf"fun \w+Workspace\(\s*state: {state},\s*onAction: \({action}\) -> Unit")
+                self.assertRegex(source, rf"fun \w+Workspace\([\s\S]*?state: {state},")
+                self.assertIn(f"onAction: ({action}) -> Unit", source)
                 self.assertNotIn("initialSection:", source)
                 self.assertNotIn("onHome: () -> Unit", source)
 
@@ -95,12 +96,17 @@ class UiArchitectureContractTest(unittest.TestCase):
         self.assertIn('CHINESE_LANGUAGE_TAG = "zh-CN"', application)
         self.assertIn("LocaleManager", application)
 
-    def test_phase_zero_ui_does_not_render_unimplemented_marine_runtime_values(self):
+    def test_map_ui_does_not_render_invented_marine_runtime_values(self):
         chart = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
-        self.assertNotRegex(chart, r"\?:\s*0(?:\.0)?")
         self.assertNotIn("vesselPosition", chart)
         self.assertNotIn("activeRoute", chart)
-        self.assertIn("MarineChartDemoSurface", chart)
+        self.assertNotIn("MarineChartDemoSurface", chart)
+        self.assertNotRegex(chart, r"\b(?:SOG|COG|HDG)\s*[:=]?\s*\d")
+        self.assertNotIn('"Saved place"', chart)
+        self.assertNotIn('"Manual route', chart)
+        self.assertIn("PositionAvailability.UNAVAILABLE", chart)
+        self.assertIn("PositionAvailability.STALE", chart)
+        self.assertIn("PositionAvailability.FRESH", chart)
 
     def test_public_documents_are_chinese_first_with_english_translation(self):
         paths = [ROOT / "README.md", ROOT / "CONTRIBUTING.md", ROOT / "CHANGELOG.md"]

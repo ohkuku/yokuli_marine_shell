@@ -88,7 +88,12 @@ data class RouteSummary(
 
 @JvmInline
 value class ChartPackageId(val value: String) {
-    init { require(value.isNotBlank()) { "Chart package ID is required" } }
+    init {
+        require(value.isNotBlank()) { "Chart package ID is required" }
+        require(value.length <= 128 && value.matches(Regex("[A-Za-z0-9._-]+"))) {
+            "Chart package ID must be a bounded filesystem-safe token"
+        }
+    }
 }
 
 data class ChartPackage(

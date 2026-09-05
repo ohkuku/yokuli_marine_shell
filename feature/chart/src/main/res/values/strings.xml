@@ -23,6 +23,8 @@
     <string name="map_measure_title">距离测量</string>
     <string name="map_points_count">%1$d 个点</string>
     <string name="map_convert_to_route">转为手工航线</string>
+    <string name="map_default_place_name">保存地点 %1$d</string>
+    <string name="map_default_route_name">手工航线 %1$d</string>
     <string name="map_browse_title">浏览地图</string>
     <string name="map_browse_hint">无需船网或定位。长按地图可选点。</string>
     <string name="map_selected_point">已选择坐标</string>

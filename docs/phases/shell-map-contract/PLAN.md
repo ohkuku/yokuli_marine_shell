@@ -13,7 +13,7 @@
 3. App 不依赖 Shell 的桌面实现，Shell 不通过 `chart`、`settings` 等字符串分支认识 App；
 4. 地图离线时仍可浏览、选点、管理本地资料、测量和规划，不伪造 GPS、NMEA、在线授权或导航状态。
 
-English: first correct the Launcher edit and installation contracts, then install an offline-first Map app through that same boundary. The app owns supported sizes and size-specific tile content; the Shell owns layout, interaction, persistence, theme chrome, and accessibility.
+> English translation: first correct the Launcher edit and installation contracts, then install an offline-first Map app through that same boundary. The app owns supported sizes and size-specific tile content; the Shell owns layout, interaction, persistence, theme chrome, and accessibility.
 
 ## 2. 证据边界 / Evidence boundary
 

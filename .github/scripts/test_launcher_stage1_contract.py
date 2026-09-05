@@ -28,7 +28,8 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
             ["ChartShellContribution", "SettingsShellContribution"],
             re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
         )
-        self.assertIn("productionInstalledApps.map { it.catalogContribution }", graph)
+        self.assertIn("InstalledAppRegistry(productionInstalledApps)", graph)
+        self.assertIn("productionInstalledAppRegistry.catalogContributions", graph)
         self.assertEqual(2, graph.count("TilePlacement("))
         self.assertEqual(
             ["ChartDestinations.EntryId", "SettingsDestinations.EntryId"],

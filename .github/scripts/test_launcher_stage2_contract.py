@@ -102,12 +102,13 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
         settings = (
             ROOT / "feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsShellContribution.kt"
         ).read_text()
-        self.assertIn("productionInstalledApps = listOf(", graph)
+        self.assertRegex(graph, r"productionInstalledApps\s*:[^=]+?=\s*listOf\(")
         self.assertEqual(
             ["ChartShellContribution", "SettingsShellContribution"],
             re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
         )
-        self.assertIn("productionInstalledApps.map { it.catalogContribution }", graph)
+        self.assertIn("InstalledAppRegistry(productionInstalledApps)", graph)
+        self.assertIn("productionInstalledAppRegistry.catalogContributions", graph)
         self.assertIn("LauncherCatalog.compose", graph)
         for feature in (chart, settings):
             self.assertIn("LauncherCatalogContribution", feature)

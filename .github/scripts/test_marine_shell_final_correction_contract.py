@@ -70,9 +70,13 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         for token in ("ICON_1X1", "COMPACT_2X1", "STANDARD_2X2", "WIDE_4X2", "TALL_2X4", "LARGE_4X4"):
             self.assertIn(token, tile_contract)
         self.assertIn("TilePresentationKind", tile_contract)
-        renderer = self.text("feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt")
-        for token in ("ICON_1X1", "COMPACT_2X1", "STANDARD_2X2", "WIDE_4X2", "TALL_2X4", "LARGE_4X4"):
+        chart = self.text("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartLauncherPresentation.kt")
+        settings = self.text("feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsLauncherPresentation.kt")
+        renderer = chart + settings
+        for token in ("ICON_1X1", "COMPACT_2X1", "STANDARD_2X2", "WIDE_4X2", "LARGE_4X4"):
             self.assertIn(token, renderer)
+        desktop = self.text("feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt")
+        self.assertNotIn("MarineTileSize.", desktop)
 
     def test_adaptive_packer_is_rank_and_insertion_based(self):
         packer = self.text("core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/layout/AdaptiveTilePacker.kt")

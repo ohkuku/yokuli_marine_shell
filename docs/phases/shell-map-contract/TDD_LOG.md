@@ -1,5 +1,9 @@
 # Shell–App / Map TDD Log
 
+中文说明：本日志按 Red、Green、自审和纠错顺序记录 Shell 磁贴合同与离线地图工作台的可复现实证。
+
+> English translation: this log records reproducible Red, Green, self-review, and correction evidence for the Shell tile contract and offline Map workbench.
+
 ## 2026-09-05 — Intake and audit
 
 ### User-visible failures reproduced from code
@@ -63,5 +67,13 @@
 ## 2026-09-05 — Map domain M1 Red → Green
 
 - Added a dependency-free `:core:map-domain` test suite first. The Red run failed at compile time because every intended Map type was absent.
-- Green adds validated coordinates/camera/bounds, explicit unavailable/stale/fresh position semantics, saved places, independent measurement and manual-route drafts, undo/redo/reverse/copy, planned-speed ETA, offline chart package facts, durable snapshots, pure reductions, and a Channel-serialized StateFlow store.
+- Green adds validated coordinates/camera/bounds, explicit unavailable/stale/fresh position semantics, saved places, independent measurement and manual-route drafts, undo/redo/reverse/copy, planned-speed ETA, offline chart package facts, durable snapshots, pure reductions, and a bounded serial action queue exposed as StateFlow.
 - Eight tests pass. Position observations and `navigationActive` are deliberately excluded from persistence; a repeated observation ID cannot refresh an old fix; chart package removal preserves camera and user content.
+
+## 2026-09-05 — 地图集成自审与真实性纠错
+
+- 自审 merged manifest 发现 MapLibre 依赖会传递声明粗略和精确定位权限；当前产品没有位置 Runtime，因此宿主清单显式以 `tools:node="remove"` 删除两项权限，并增加源码合同与最终 APK 清单 Gate。
+- 删除启动过渡期绘制的抽象陆地图形；没有在线 Provider 或离线包时只显示可操作的空坐标工作台，不把装饰轮廓冒充地图数据。
+- MBTiles 非 SQLite 输入原本被笼统归类为 I/O 失败；现在稳定映射为 `INVALID_DATABASE`，并验证失败后不残留 staging 目录。
+- `ChartPackageId` 增加长度与安全字符约束，阻止损坏的持久化数据把删除目标导向包根目录之外。
+- 旧 Stage Gate 的注册表断言同步到通用 `InstalledAppRegistry`，只调整已经迁移的实现定位，不削弱“两个生产 App、单点注册、派生四类 Registry”的语义。

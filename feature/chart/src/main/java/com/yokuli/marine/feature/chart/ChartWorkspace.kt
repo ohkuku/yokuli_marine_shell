@@ -23,7 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -205,11 +204,12 @@ private fun MapToolPanel(
             }
             MapTool.MEASURE -> {
                 val count = state.measurementDraft?.points?.size ?: 0
+                val defaultRouteName = stringResource(R.string.map_default_route_name, state.savedRoutes.size + 1)
                 WpText(stringResource(R.string.map_measure_title), 22, weight = FontWeight.Light)
                 WpText(stringResource(R.string.map_points_count, count), 12, color = colors.muted)
                 if (count >= 2) {
                     MapActionText(R.string.map_convert_to_route, "map-measure-convert") {
-                        onAction(MapAction.ConvertMeasurementToManualRoute("Manual route"))
+                        onAction(MapAction.ConvertMeasurementToManualRoute(defaultRouteName))
                     }
                 }
             }
@@ -227,6 +227,7 @@ private fun BrowsePanel(state: MapState, onAction: (MapAction) -> Unit) {
         WpText(stringResource(R.string.map_browse_title), 22, weight = FontWeight.Light)
         WpText(stringResource(R.string.map_browse_hint), 12, color = colors.muted)
     } else {
+        val defaultPlaceName = stringResource(R.string.map_default_place_name, state.places.size + 1)
         WpText(stringResource(R.string.map_selected_point), 22, weight = FontWeight.Light)
         WpText(
             String.format(Locale.US, "%.5f, %.5f", selection.point.latitude, selection.point.longitude),
@@ -234,7 +235,7 @@ private fun BrowsePanel(state: MapState, onAction: (MapAction) -> Unit) {
             color = colors.muted,
         )
         MapActionText(R.string.map_save_place, "map-save-place") {
-            onAction(MapAction.SaveSelectionAsPlace("Saved place"))
+            onAction(MapAction.SaveSelectionAsPlace(defaultPlaceName))
         }
     }
 }
@@ -244,6 +245,7 @@ private fun RoutePanel(state: MapState, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
     val draft = state.routeDraft
     val count = draft?.waypoints?.size ?: 0
+    val defaultRouteName = stringResource(R.string.map_default_route_name, state.savedRoutes.size + 1)
     WpText(stringResource(R.string.map_manual_route_title), 22, weight = FontWeight.Light)
     WpText(stringResource(R.string.map_manual_route_truth), 11, color = colors.accent)
     val summary = state.routeSummary
@@ -265,7 +267,7 @@ private fun RoutePanel(state: MapState, onAction: (MapAction) -> Unit) {
             if (count >= 2) {
                 MapActionText(R.string.map_reverse, "map-route-reverse") { onAction(MapAction.ReverseRoute) }
                 MapActionText(R.string.map_save_copy, "map-route-save") {
-                    onAction(MapAction.SaveRouteCopy("Manual route ${state.savedRoutes.size + 1}"))
+                    onAction(MapAction.SaveRouteCopy(defaultRouteName))
                 }
             }
         }
@@ -409,21 +411,6 @@ private fun Modifier.clickNoRipple(action: () -> Unit): Modifier = clickable(
     indication = null,
     onClick = action,
 )
-
-/** Offline empty canvas: truthful workbench chrome, not a chart or vessel-position simulation. */
-@Composable
-fun MarineChartDemoSurface(modifier: Modifier = Modifier) {
-    Canvas(modifier.testTag("chart-demo-canvas")) {
-        drawRect(YokuliColors.ChartWater)
-        val abstractLand = Path().apply {
-            moveTo(0f, 0f)
-            lineTo(size.width * .72f, 0f)
-            cubicTo(size.width * .56f, size.height * .10f, size.width * .45f, size.height * .18f, 0f, size.height * .28f)
-            close()
-        }
-        drawPath(abstractLand, YokuliColors.ChartLand)
-    }
-}
 
 @Composable
 fun MarineChartTransitionSurface(modifier: Modifier = Modifier) {

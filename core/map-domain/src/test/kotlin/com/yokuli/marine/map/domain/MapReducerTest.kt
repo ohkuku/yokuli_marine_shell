@@ -4,12 +4,21 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class MapReducerTest {
     private val auckland = GeoPoint(-36.8485, 174.7633)
     private val rangitoto = GeoPoint(-36.7867, 174.8600)
     private val waiheke = GeoPoint(-36.7950, 175.0900)
+
+    @Test
+    fun `chart package identifiers cannot escape adapter storage`() {
+        assertThrows(IllegalArgumentException::class.java) { ChartPackageId("../../routes") }
+        assertThrows(IllegalArgumentException::class.java) { ChartPackageId("bad/package") }
+        assertThrows(IllegalArgumentException::class.java) { ChartPackageId("x".repeat(129)) }
+        assertEquals("nz-chart_1.0", ChartPackageId("nz-chart_1.0").value)
+    }
 
     @Test
     fun `no position still permits browse selection and saved place`() {
