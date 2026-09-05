@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.Modifier
 import com.yokuli.marine.map.offline.OfflineMarineChartSurface
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
