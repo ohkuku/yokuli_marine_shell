@@ -1,0 +1,40 @@
+name: Refinement source snapshot
+on:
+  push:
+    branches: [codex/shell-map-contract]
+    paths: [.github/workflows/refinement-source-snapshot.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive committed source only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess, zipfile
+          suffixes = {'.kt', '.kts', '.xml', '.toml', '.properties', '.proto', '.py', '.md', '.yml', '.yaml', '.json', '.jar', '.sh', '.txt', '.csv', '.gradle'}
+          paths = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          with zipfile.ZipFile('/tmp/refinement-source.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+              archive.writestr('SOURCE_SHA', subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode())
+              for name in paths:
+                  path = pathlib.Path(name)
+                  if not name or path.is_symlink() or not path.is_file():
+                      continue
+                  if path.name in {'local.properties', '.env'} or path.stat().st_size > 2_000_000:
+                      continue
+                  if path.suffix in suffixes or path.name in {'gradlew', '.gitignore', 'LICENSE'}:
+                      archive.write(path, name)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: refinement-source-${{ github.sha }}
+          path: /tmp/refinement-source.zip
+          retention-days: 1
+          if-no-files-found: error
