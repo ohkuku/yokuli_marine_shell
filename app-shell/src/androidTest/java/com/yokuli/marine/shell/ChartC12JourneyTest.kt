@@ -80,7 +80,7 @@ class ChartC12JourneyTest {
     fun journeyJ01OfflinePackagePlaceBridgeAndSearchDetail() = runBlocking {
         awaitMapReady()
         val viewModel = currentViewModel()
-        val application = compose.activityRule.activity.application as ShellApplication
+        val application = currentApplication()
         assertTrue(application.positionPort === NoSourcePositionPort)
 
         val source = File(application.cacheDir, "c12-j01.mbtiles")
@@ -240,7 +240,7 @@ class ChartC12JourneyTest {
 
     @Test
     fun journeyJ05VersionInstallCrashRecoveryRollbackAndCoverageInvalidation() = runBlocking {
-        val application = compose.activityRule.activity.application as ShellApplication
+        val application = currentApplication()
         val root = File(application.cacheDir, "c12-j05").also { it.deleteRecursively(); it.mkdirs() }
         val packages = File(root, "packages")
         val v1Source = File(root, "v1.mbtiles")
@@ -337,6 +337,12 @@ class ChartC12JourneyTest {
     private fun currentViewModel(): ShellViewModel {
         lateinit var value: ShellViewModel
         compose.activityRule.scenario.onActivity { value = ViewModelProvider(it)[ShellViewModel::class.java] }
+        return value
+    }
+
+    private fun currentApplication(): ShellApplication {
+        lateinit var value: ShellApplication
+        compose.activityRule.scenario.onActivity { value = it.application as ShellApplication }
         return value
     }
 

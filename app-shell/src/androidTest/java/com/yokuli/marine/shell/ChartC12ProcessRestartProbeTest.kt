@@ -45,9 +45,9 @@ class ChartC12ProcessRestartProbeTest {
             val state = viewModel.mapStore.state.value
             state.places.any { it.name == PROCESS_PLACE_NAME } && state.saveState == MapSaveState.SAVED
         }
-        val disk = runBlocking {
-            (compose.activityRule.activity.application as ShellApplication).mapPersistence.load()
-        }
+        lateinit var application: ShellApplication
+        compose.activityRule.scenario.onActivity { application = it.application as ShellApplication }
+        val disk = runBlocking { application.mapPersistence.load() }
         assertTrue(disk is com.yokuli.marine.map.domain.MapLoadResult.Ready)
         disk as com.yokuli.marine.map.domain.MapLoadResult.Ready
         assertEquals(camera, disk.session.camera)
