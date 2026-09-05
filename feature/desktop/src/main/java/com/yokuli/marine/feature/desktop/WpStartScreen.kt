@@ -11,9 +11,9 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -363,6 +363,8 @@ private fun WpTile(
     val latestEditing by rememberUpdatedState(editing)
     val latestSelected by rememberUpdatedState(selected)
     val latestLongClick by rememberUpdatedState(onLongClick)
+    val latestUnpin by rememberUpdatedState(onUnpin)
+    val latestResize by rememberUpdatedState(onResize)
     val latestMoveStart by rememberUpdatedState(onMoveStart)
     val latestMove by rememberUpdatedState(onMove)
     val latestMoveCommit by rememberUpdatedState(onMoveCommit)
@@ -376,18 +378,26 @@ private fun WpTile(
             }
             val tileWidthPx = with(density) { width.toPx() }
             val tileHeightPx = with(density) { height.toPx() }
-            val inEditControls = if (latestEditing && latestSelected) {
+            val inUnpinControl = if (latestEditing && latestSelected) {
                 if (isSmall) {
-                    (down.position.x <= editExclusionPx && down.position.y <= editExclusionPx) ||
-                        (canResize && down.position.x >= tileWidthPx - editExclusionPx &&
-                            down.position.y >= tileHeightPx - editExclusionPx)
+                    down.position.x <= editExclusionPx && down.position.y <= editExclusionPx
                 } else {
                     down.position.x >= tileWidthPx - editExclusionPx &&
-                        (down.position.y <= editExclusionPx ||
-                            (canResize && down.position.y >= tileHeightPx - editExclusionPx))
+                        down.position.y <= editExclusionPx
                 }
             } else false
-            if (inEditControls) return@awaitEachGesture
+            val inResizeControl = latestEditing && latestSelected && canResize &&
+                down.position.x >= tileWidthPx - editExclusionPx &&
+                down.position.y >= tileHeightPx - editExclusionPx
+            if (inUnpinControl || inResizeControl) {
+                down.consume()
+                val up = waitForUpOrCancellation()
+                if (up != null) {
+                    up.consume()
+                    if (inUnpinControl) latestUnpin() else latestResize()
+                }
+                return@awaitEachGesture
+            }
 
             val dragStart = if (latestEditing && latestSelected) {
                 down
@@ -555,10 +565,4 @@ private fun Modifier.editControlInput(action: () -> Unit): Modifier =
             action()
             true
         }
-    }.pointerInput(action) {
-        detectTapGestures(
-            onTap = {
-                action()
-            },
-        )
     }
