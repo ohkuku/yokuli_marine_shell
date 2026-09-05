@@ -38,7 +38,7 @@ class ChartC07ContractTest(unittest.TestCase):
         tests = (ROOT / "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt").read_text()
         self.assertIn("type IN ('table','view')", implementation)
         self.assertIn("deriveTileFacts", implementation)
-        self.assertEqual('{"png", "jpg", "jpeg"}', metadata.split("rasterFormats = ", 1)[1].splitlines()[0].strip())
+        self.assertEqual('setOf("png", "jpg", "jpeg")', metadata.split("rasterFormats = ", 1)[1].splitlines()[0].strip())
         for phrase in (
             "viewsSchemaAndMissingRecommendedMetadataAreDerived",
             "invalidCoordinatesDuplicatesAndCorruptPayloadsAreRejected",

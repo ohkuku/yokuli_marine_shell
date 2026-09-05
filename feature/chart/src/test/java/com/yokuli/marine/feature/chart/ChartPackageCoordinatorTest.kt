@@ -28,28 +28,26 @@ import org.junit.Test
 
 class ChartPackageCoordinatorTest {
     @Test
-    fun `required legal facts gate install then installed package becomes active`() = runBlocking {
+    fun `display name gates install while unknown legal facts remain truthful`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val mapStore = ImmediateMapStore()
         val repository = FakeRepository()
         val coordinator = ChartPackageCoordinator(repository, mapStore, scope)
 
         coordinator.inspectDocument("content://fixture")
-        withTimeout(2_000L) { coordinator.state.first { it is ChartImportUiState.Editing } }
+        withTimeout(2_000L) { coordinator.state.first { it is ChartImportUiState.ReadyToInstall } }
         coordinator.dispatch(ChartImportUiAction.Install)
-        assertTrue((coordinator.state.value as ChartImportUiState.Editing).validationFailure != null)
+        assertTrue((coordinator.state.value as ChartImportUiState.ReadyToInstall).validationFailure != null)
 
-        mapOf(
-            ChartImportField.DISPLAY_NAME to "Harbour",
-            ChartImportField.SOURCE to "Survey office",
-            ChartImportField.LICENSE to "Test license",
-            ChartImportField.ATTRIBUTION to "Survey office",
-            ChartImportField.VERSION to "1",
-        ).forEach { (field, value) -> coordinator.dispatch(ChartImportUiAction.UpdateField(field, value)) }
+        coordinator.dispatch(ChartImportUiAction.UpdateField(ChartImportField.DISPLAY_NAME, "Harbour"))
         coordinator.dispatch(ChartImportUiAction.Install)
         withTimeout(2_000L) { coordinator.state.first { it == ChartImportUiState.Idle } }
 
         assertEquals(repository.installed.single().id, mapStore.state.value.activeChartPackageId)
+        assertEquals("Unknown", repository.installed.single().source)
+        assertEquals("Unknown", repository.installed.single().license)
+        assertEquals("Unknown", repository.installed.single().attribution)
+        assertEquals("Unknown", repository.installed.single().version)
         scope.cancel()
     }
 

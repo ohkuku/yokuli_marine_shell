@@ -1581,15 +1581,25 @@ private fun ChartPackagesPage(
         ChartImportUiState.Idle -> MapActionText(R.string.map_import_mbtiles, "map-import-chart") {
             onImportAction(ChartImportUiAction.ChooseDocument)
         }
-        ChartImportUiState.Inspecting -> WpText(stringResource(R.string.map_import_inspecting), 12)
-        ChartImportUiState.Installing -> WpText(stringResource(R.string.map_import_installing), 12)
+        is ChartImportUiState.Copying -> {
+            WpText(stringResource(R.string.map_import_copying), 12)
+            MapActionText(R.string.map_import_cancel, "map-import-cancel") { onImportAction(ChartImportUiAction.Cancel) }
+        }
+        is ChartImportUiState.Inspecting -> {
+            WpText(stringResource(R.string.map_import_inspecting), 12)
+            MapActionText(R.string.map_import_cancel, "map-import-cancel") { onImportAction(ChartImportUiAction.Cancel) }
+        }
+        is ChartImportUiState.Installing -> WpText(stringResource(R.string.map_import_installing), 12)
+        is ChartImportUiState.Cancelled -> MapActionText(R.string.map_import_try_again, "map-import-retry") {
+            onImportAction(ChartImportUiAction.ChooseDocument)
+        }
         is ChartImportUiState.Failed -> {
             WpText(importFailureLabel(importState.reason), 12, color = colors.accent)
             MapActionText(R.string.map_import_try_again, "map-import-retry") {
                 onImportAction(ChartImportUiAction.ChooseDocument)
             }
         }
-        is ChartImportUiState.Editing -> ChartImportEditor(importState, onImportAction)
+        is ChartImportUiState.ReadyToInstall -> ChartImportEditor(importState, onImportAction)
     }
 }
 
@@ -1712,11 +1722,13 @@ internal fun MapCamera.scaleNauticalMilesForPixels(pixelCount: Double): Double {
 }
 
 @Composable
-private fun ChartImportEditor(state: ChartImportUiState.Editing, onAction: (ChartImportUiAction) -> Unit) {
+private fun ChartImportEditor(state: ChartImportUiState.ReadyToInstall, onAction: (ChartImportUiAction) -> Unit) {
     WpText(
         stringResource(R.string.map_import_candidate, state.candidate.rasterFormat.uppercase(Locale.US), state.candidate.minZoom, state.candidate.maxZoom),
         11,
     )
+    WpText(stringResource(R.string.map_import_validation_full), 10, color = LocalWpTheme.current.muted)
+    WpText(stringResource(R.string.map_import_unknown_facts), 10, color = LocalWpTheme.current.muted)
     state.validationFailure?.let { WpText(importFailureLabel(it), 11, color = LocalWpTheme.current.accent) }
     ImportTextField(R.string.map_import_name, state.displayName, ChartImportField.DISPLAY_NAME, onAction)
     ImportTextField(R.string.map_import_source, state.source, ChartImportField.SOURCE, onAction)
@@ -1753,10 +1765,14 @@ private fun importFailureLabel(reason: ChartPackageImportFailure): String = stri
         ChartPackageImportFailure.EMPTY_PACKAGE -> R.string.map_import_error_empty
         ChartPackageImportFailure.UNSUPPORTED_FORMAT -> R.string.map_import_error_format
         ChartPackageImportFailure.INVALID_METADATA -> R.string.map_import_error_metadata
+        ChartPackageImportFailure.INVALID_TILE_INDEX -> R.string.map_import_error_metadata
+        ChartPackageImportFailure.DUPLICATE_TILE -> R.string.map_import_error_metadata
+        ChartPackageImportFailure.RESOURCE_LIMIT -> R.string.map_import_error_io
         ChartPackageImportFailure.REQUIRED_FIELD_MISSING -> R.string.map_import_error_required
         ChartPackageImportFailure.STAGING_EXPIRED -> R.string.map_import_error_expired
         ChartPackageImportFailure.INSTALL_FAILED -> R.string.map_import_error_install
         ChartPackageImportFailure.IO_FAILURE -> R.string.map_import_error_io
+        ChartPackageImportFailure.PACKAGE_IN_USE -> R.string.map_import_error_in_use
     },
 )
 

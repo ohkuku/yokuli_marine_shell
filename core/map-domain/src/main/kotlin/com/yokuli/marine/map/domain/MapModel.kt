@@ -320,6 +320,9 @@ data class ChartPackage(
     val rasterFormat: String = "png",
     val tileSize: Int = 256,
     val tileScheme: MapTileScheme = MapTileScheme.MBTILES_TMS,
+    val logicalId: ChartPackageLogicalId = ChartPackageLogicalId(id.value),
+    val versionId: ChartPackageVersionId = ChartPackageVersionId(sha256.lowercase()),
+    val validationLevel: ChartPackageValidationLevel = ChartPackageValidationLevel.FULL_TILE_DECODED,
 ) {
     init {
         require(displayName.isNotBlank())
@@ -330,7 +333,7 @@ data class ChartPackage(
         require(localUri.isNotBlank())
         require(minZoom in 0..24 && maxZoom in minZoom..24)
         require(version.isNotBlank())
-        require(rasterFormat in setOf("png", "jpg", "jpeg", "webp"))
+        require(rasterFormat in setOf("png", "jpg", "jpeg"))
         require(tileSize in setOf(128, 256, 512, 1024))
     }
 }
