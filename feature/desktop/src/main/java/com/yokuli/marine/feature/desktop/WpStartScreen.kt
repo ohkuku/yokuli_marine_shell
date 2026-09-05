@@ -505,8 +505,8 @@ private fun WpTileEditOverlay(
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.align(if (compact) Alignment.TopStart else Alignment.TopEnd).size(controlSize)
-                .testTag("unpin-selected-tile")
-                .editControlInput(onUnpin),
+                .editControlInput(onUnpin)
+                .testTag("unpin-selected-tile"),
             contentAlignment = Alignment.Center,
         ) {
             Box(
@@ -523,8 +523,8 @@ private fun WpTileEditOverlay(
         if (canResize) {
             Box(
                 Modifier.align(Alignment.BottomEnd).size(controlSize)
-                    .testTag("resize-selected-tile")
-                    .editControlInput(onResize),
+                    .editControlInput(onResize)
+                    .testTag("resize-selected-tile"),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -550,7 +550,7 @@ private fun Modifier.combinedNoRipple(onClick: () -> Unit): Modifier = combinedC
 )
 
 private fun Modifier.editControlInput(action: () -> Unit): Modifier =
-    semantics {
+    semantics(mergeDescendants = true) {
         onClick {
             action()
             true
