@@ -78,7 +78,7 @@ fun OfflineMarineChartSurface(
             }
             readyMap.cameraPosition = state.camera.toCameraPosition()
             cameraListener = MapLibreMap.OnCameraIdleListener {
-                currentCameraChanged(readyMap.cameraPosition.toDomainCamera())
+                readyMap.cameraPosition.toDomainCameraOrNull()?.let(currentCameraChanged)
             }.also(readyMap::addOnCameraIdleListener)
             longPressListener = MapLibreMap.OnMapLongClickListener { point ->
                 currentLongPress(point.toDomainPoint())
@@ -131,7 +131,7 @@ fun OfflineMarineChartSurface(
 
 private fun MapCamera.toCameraPosition() = CameraPosition.Builder()
     .target(center.toLatLng()).zoom(zoom).bearing(bearing).tilt(0.0).build()
-private fun CameraPosition.toDomainCamera() = MapCamera(target.toDomainPoint(), zoom, bearing)
+private fun CameraPosition.toDomainCameraOrNull() = target?.let { MapCamera(it.toDomainPoint(), zoom, bearing) }
 private fun LatLng.toDomainPoint() = GeoPoint(latitude, longitude)
 private fun GeoPoint.toLatLng() = LatLng(latitude, longitude)
 
