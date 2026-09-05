@@ -40,7 +40,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-internal enum class InstallCheckpoint { AFTER_PREPARE, AFTER_PUBLISH, AFTER_ACTIVATE }
+enum class InstallCheckpoint { AFTER_PREPARE, AFTER_PUBLISH, AFTER_ACTIVATE }
 
 /** App-private, versioned and recoverable MBTiles store. */
 class AndroidMbTilesRepository(
@@ -513,7 +513,9 @@ class AndroidMbTilesRepository(
         val phase = runCatching { JournalPhase.valueOf(journal.getProperty("phase")) }.getOrNull()
         val staging = journal.getProperty("staging")?.let { File(root, it) }
         val destination = journal.getProperty("destination")?.let { File(root, it) }
-        val logical = journal.getProperty("logicalId")?.let { runCatching(::ChartPackageLogicalId).getOrNull() }
+        val logical: ChartPackageLogicalId? = journal.getProperty("logicalId")?.let { raw ->
+            runCatching { ChartPackageLogicalId(raw) }.getOrNull()
+        }
         val previous = journal.getProperty("previousVersion")?.takeIf(String::isNotBlank)
         when (phase) {
             JournalPhase.PREPARED -> staging?.deleteRecursively()
@@ -535,20 +537,22 @@ class AndroidMbTilesRepository(
         logicalId: ChartPackageLogicalId,
         previousVersion: String?,
     ) {
-        Properties().apply {
+        val properties = Properties().apply {
             setProperty("phase", phase.name)
             setProperty("staging", staging)
             setProperty("destination", destination)
             setProperty("logicalId", logicalId.value)
             setProperty("previousVersion", previousVersion.orEmpty())
-        }.also(journalFile::storeAtomically)
+        }
+        journalFile.storeAtomically(properties)
     }
 
     private fun readActiveIndex(): MutableMap<String, String> = readProperties(activeIndexFile)
         .entries.associateTo(linkedMapOf()) { it.key.toString() to it.value.toString() }
 
     private fun writeActiveIndex(index: Map<String, String>) {
-        Properties().apply { index.forEach(::setProperty) }.also(activeIndexFile::storeAtomically)
+        val properties = Properties().apply { index.forEach { (key, value) -> setProperty(key, value) } }
+        activeIndexFile.storeAtomically(properties)
     }
 
     private fun readHistory(): MutableMap<String, MutableList<String>> = readProperties(historyFile)
@@ -557,8 +561,10 @@ class AndroidMbTilesRepository(
         }
 
     private fun writeHistory(history: Map<String, List<String>>) {
-        Properties().apply { history.forEach { (key, versions) -> setProperty(key, versions.joinToString(",")) } }
-            .also(historyFile::storeAtomically)
+        val properties = Properties().apply {
+            history.forEach { (key, versions) -> setProperty(key, versions.joinToString(",")) }
+        }
+        historyFile.storeAtomically(properties)
     }
 
     private fun readProperties(file: File): Properties = Properties().apply {
