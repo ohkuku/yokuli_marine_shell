@@ -28,7 +28,14 @@ class MapRecoveryExportTest {
                     revision = 7L,
                     name = "draft",
                     waypoints = listOf(GeoPoint(-36.8, 174.7), GeoPoint(-36.9, 174.8)),
-                    undo = listOf(listOf(GeoPoint(0.0, 0.0))),
+                    undo = listOf(
+                        RouteGeometrySnapshot(
+                            waypoints = listOf(GeoPoint(0.0, 0.0)),
+                            waypointIds = listOf("draft-stable-waypoint-old"),
+                            waypointPlaceReferences = emptyMap(),
+                            nextWaypointOrdinal = 2,
+                        ),
+                    ),
                 ),
             ),
             savedRoutes = listOf(

@@ -100,7 +100,8 @@ class RoutePlanningContractTest {
         val undone = reducer.reduce(state, MapAction.UndoRouteEdit).state
         val redone = reducer.reduce(undone, MapAction.RedoRouteEdit).state
         val reversed = reducer.reduce(redone, MapAction.ReverseRoute).state
-        assertEquals(edited, redone.routeDraft)
+        assertEquals(edited.waypointIds, redone.routeDraft?.waypointIds)
+        assertEquals(edited.waypoints, redone.routeDraft?.waypoints)
         assertEquals(edited.waypointIds.reversed(), reversed.routeDraft?.waypointIds)
     }
 

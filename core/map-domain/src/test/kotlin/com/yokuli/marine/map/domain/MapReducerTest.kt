@@ -115,7 +115,7 @@ class MapReducerTest {
         assertEquals(2, undone.routeDraft?.waypoints?.size)
         assertEquals(original.waypoints, redone.routeDraft?.waypoints)
         assertEquals(original.waypoints.reversed(), reversed.routeDraft?.waypoints)
-        assertTrue(requireNotNull(planned.routeSummary).estimatedDurationMillis > 0L)
+        assertTrue(requireNotNull(requireNotNull(planned.routeSummary).estimatedDurationMillis) > 0L)
         assertEquals("返航计划", copied.savedRoutes.single().name)
         assertFalse(copied.navigationActive)
     }
