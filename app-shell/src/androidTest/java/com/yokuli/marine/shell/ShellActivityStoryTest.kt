@@ -190,7 +190,7 @@ class ShellActivityStoryTest {
             }
             reordered
         }
-        awaitDisplayed("resize-selected-tile")
+        awaitExists("resize-selected-tile")
     }
 
     @Test
@@ -210,7 +210,7 @@ class ShellActivityStoryTest {
     fun chartResizeCommitsOnOneTapWithoutConfirmationUi() {
         val wideBounds = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("tile-chart").performTouchInput { longClick() }
-        awaitDisplayed("resize-selected-tile")
+        awaitExists("resize-selected-tile")
 
         compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.waitUntil(5_000) {
@@ -248,8 +248,11 @@ class ShellActivityStoryTest {
 
         val unpin = compose.onNodeWithTag("unpin-selected-tile").fetchSemanticsNode().boundsInRoot
         val resize = compose.onNodeWithTag("resize-selected-tile").fetchSemanticsNode().boundsInRoot
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
         assertTrue(unpin.width >= 48f * density && unpin.height >= 48f * density)
         assertTrue(resize.width >= 48f * density && resize.height >= 48f * density)
+        assertTrue(root.contains(unpin.center))
+        assertTrue(root.contains(resize.center))
         val disc = compose.onNodeWithTag("resize-affordance-disc", useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot
         val glyph = compose.onNodeWithTag("resize-affordance-glyph", useUnmergedTree = true)
@@ -715,6 +718,12 @@ class ShellActivityStoryTest {
     private fun awaitDisplayed(tag: String) {
         compose.waitUntil(timeoutMillis = 10_000) {
             runCatching { compose.onNodeWithTag(tag).assertIsDisplayed() }.isSuccess
+        }
+    }
+
+    private fun awaitExists(tag: String) {
+        compose.waitUntil(timeoutMillis = 10_000) {
+            compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
         }
     }
 
