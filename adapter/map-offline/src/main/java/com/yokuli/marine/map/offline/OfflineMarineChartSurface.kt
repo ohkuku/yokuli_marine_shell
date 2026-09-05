@@ -43,6 +43,7 @@ import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.ImportedTrackDisplayLod
+import com.yokuli.marine.map.domain.ImportedTrack
 import com.yokuli.marine.map.domain.Wgs84Polyline
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -368,19 +369,7 @@ fun OfflineMarineChartSurface(
         val measurementPoints = state.measurementPointsWithPreview()
         val routePoints = state.routePointsWithPreview()
         val trackFeatures = withContext(Dispatchers.Default) {
-            FeatureCollection.fromFeatures(
-                state.importedTracks.flatMap { track ->
-                    ImportedTrackDisplayLod.sample(track, state.camera.zoom).mapIndexedNotNull { segmentIndex, segment ->
-                        segment.points.takeIf { it.size >= 2 }?.let { points ->
-                            Feature.fromGeometry(
-                                LineString.fromLngLats(points.map { it.point.toGeoJsonPoint() }),
-                                null,
-                                "track:${track.id}:segment:$segmentIndex",
-                            )
-                        }
-                    }
-                },
-            )
+            state.importedTracks.toDisplayFeatureCollection(state.camera.zoom)
         }
         style.source(MapOverlayId.SAVED_PLACES)?.setGeoJson(
             FeatureCollection.fromFeatures(state.places.map { place -> place.point.toFeature("place:${place.id}") }),
@@ -461,6 +450,21 @@ private fun List<GeoPoint>.toGeodesicFeatureCollection(
         Feature.fromGeometry(LineString.fromLngLats(part.map(GeoPoint::toGeoJsonPoint)), null, "$id:$index")
     }.orEmpty(),
 )
+
+internal fun List<ImportedTrack>.toDisplayFeatureCollection(zoom: Double): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        flatMap { track ->
+            ImportedTrackDisplayLod.sample(track, zoom).mapIndexedNotNull { segmentIndex, segment ->
+                segment.points.takeIf { it.size >= 2 }?.let { points ->
+                    Feature.fromGeometry(
+                        LineString.fromLngLats(points.map { it.point.toGeoJsonPoint() }),
+                        null,
+                        "track:${track.id}:segment:$segmentIndex",
+                    )
+                }
+            }
+        },
+    )
 
 private fun MapState.measurementPointsWithPreview(): List<GeoPoint> {
     val points = measurementDraft?.points.orEmpty()

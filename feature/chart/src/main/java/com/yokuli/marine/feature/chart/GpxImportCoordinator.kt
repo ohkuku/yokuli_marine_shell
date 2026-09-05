@@ -190,6 +190,7 @@ class GpxImportCoordinator(
     }
 
     private fun cancel() {
+        if (mutableState.value is GpxImportUiState.Writing) return
         val operationId = when (val current = mutableState.value) {
             is GpxImportUiState.Inspecting -> current.operationId
             is GpxImportUiState.Preview -> current.operationId

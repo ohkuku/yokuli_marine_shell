@@ -6,6 +6,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import javax.xml.parsers.DocumentBuilderFactory
 
 class GpxInterchangeTest {
     @Test
@@ -105,6 +106,51 @@ class GpxInterchangeTest {
         assertEquals(source.first(), sampled.first().points.first())
         assertEquals(source.last(), sampled.first().points.last())
         assertEquals(100_001, track.segments.first().points.size)
+    }
+
+    @Test
+    fun `track output is independently readable XML with the GPX 1_1 namespace`() {
+        val original = GpxReader().inspect(mixedGpx().byteInputStream()).tracks.single()
+        val output = ByteArrayOutputStream()
+        GpxWriter.writeTrack(original, output)
+        val parser = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder()
+
+        val document = parser.parse(ByteArrayInputStream(output.toByteArray()))
+
+        assertEquals("http://www.topografix.com/GPX/1/1", document.documentElement.namespaceURI)
+        assertEquals("1.1", document.documentElement.getAttribute("version"))
+        assertEquals(1, document.getElementsByTagNameNS("*", "trk").length)
+        assertEquals(2, document.getElementsByTagNameNS("*", "trkseg").length)
+        assertEquals(4, document.getElementsByTagNameNS("*", "trkpt").length)
+        assertEquals(0, document.getElementsByTagNameNS("*", "rte").length)
+    }
+
+    @Test
+    fun `confirmed GPX batch is one persistence effect and duplicate IDs cannot partially append`() {
+        val preview = GpxReader().inspect(mixedGpx().byteInputStream())
+        var ordinal = 0
+        val batch = GpxImportPlanner.materialize(
+            preview,
+            GpxDuplicateDecision.NEW_IMPORT,
+            MapIdGenerator { namespace -> "$namespace-${++ordinal}" },
+            100L,
+        )
+        val reducer = DefaultMapReducer()
+        val initial = MapState(libraryLoadState = MapLibraryLoadState.READY_EMPTY, libraryRevision = 4L)
+
+        val imported = reducer.reduce(initial, MapAction.ImportGpxBatch(batch))
+
+        assertEquals(5L, imported.state.libraryRevision)
+        assertEquals(MapSaveState.PENDING, imported.state.saveState)
+        assertEquals(batch.places, imported.state.places)
+        assertEquals(batch.routes, imported.state.savedRoutes)
+        assertEquals(batch.tracks, imported.state.importedTracks)
+        assertEquals(batch.importRecord, imported.state.gpxImportRecords.single())
+        assertEquals(1, imported.effects.filterIsInstance<MapEffect.PersistLibrary>().size)
+
+        val collision = reducer.reduce(imported.state, MapAction.ImportGpxBatch(batch))
+        assertEquals(imported.state, collision.state)
+        assertTrue(collision.effects.single() is MapEffect.LogIncident)
     }
 
     private fun mixedGpx() = gpx(

@@ -90,6 +90,40 @@ class GpxImportCoordinatorTest {
         scope.cancel()
     }
 
+    @Test
+    fun `cancelled preview never dispatches a library mutation`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = RecordingMapStore()
+        val coordinator = coordinator(store, scope)
+        coordinator.inspectDocument("content://fixture")
+        withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Preview } }
+
+        coordinator.dispatch(GpxImportUiAction.Cancel)
+
+        assertTrue(coordinator.state.value is GpxImportUiState.Cancelled)
+        assertEquals(0, store.importDispatches)
+        assertTrue(store.state.value.places.isEmpty())
+        scope.cancel()
+    }
+
+    @Test
+    fun `persistence failure remains visible and never becomes success`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = RecordingMapStore(autoAck = false)
+        val coordinator = coordinator(store, scope)
+        coordinator.inspectDocument("content://fixture")
+        withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Preview } }
+        coordinator.dispatch(GpxImportUiAction.ConfirmImport)
+        withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Writing } }
+
+        store.failWrite()
+
+        val failed = withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Failed } }
+            as GpxImportUiState.Failed
+        assertEquals(GpxImportFailure.WRITE_FAILED, failed.reason)
+        scope.cancel()
+    }
+
     private fun coordinator(store: MapStore, scope: CoroutineScope) = GpxImportCoordinator(
         documentSource = GpxDocumentSource { ByteArrayInputStream(GPX.toByteArray()) },
         mapStore = store,
@@ -118,6 +152,14 @@ class GpxImportCoordinatorTest {
         fun ack() {
             val revision = mutable.value.libraryRevision
             mutable.value = reducer.reduce(mutable.value, MapAction.PersistenceAck(revision)).state
+        }
+
+        fun failWrite() {
+            val revision = mutable.value.libraryRevision
+            mutable.value = reducer.reduce(
+                mutable.value,
+                MapAction.PersistenceFailed(revision, com.yokuli.marine.map.domain.MapReadFailure.IO),
+            ).state
         }
 
         override fun close() = Unit
