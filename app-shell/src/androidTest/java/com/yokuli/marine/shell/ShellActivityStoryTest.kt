@@ -93,12 +93,33 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
         compose.onNodeWithTag("wp-page-title-chart").assertIsDisplayed()
         compose.onNodeWithTag(
-            if (BuildConfig.GOOGLE_MAPS_CONFIGURED) "chart-surface-google" else "chart-surface-demo",
+            if (BuildConfig.GOOGLE_MAPS_CONFIGURED) "chart-surface-google" else "chart-surface-offline-empty",
         ).assertIsDisplayed()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun mapAppKeepsPlanningToolsInternalAndPositionTruthExplicit() {
+        compose.onNodeWithTag("tile-chart").performClick()
+        awaitDisplayed("map-tool-bar")
+        compose.onNodeWithTag("map-position-truth").assertIsDisplayed()
+
+        compose.onNodeWithTag("map-tool-manual_route").performClick()
+        compose.activityRule.scenario.onActivity { activity ->
+            val mapState = ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.state.value
+            assertEquals(com.yokuli.marine.map.domain.MapTool.MANUAL_ROUTE, mapState.tool)
+            assertEquals(com.yokuli.marine.map.domain.PositionAvailability.UNAVAILABLE, mapState.position.availability)
+        }
+        compose.onNodeWithTag("map-tool-charts").performClick()
+        compose.activityRule.scenario.onActivity { activity ->
+            val mapState = ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.state.value
+            assertEquals(com.yokuli.marine.map.domain.MapTool.CHARTS, mapState.tool)
+        }
+        compose.onNodeWithTag("launcher-entry-routes").assertDoesNotExist()
+        compose.onNodeWithTag("launcher-entry-charts").assertDoesNotExist()
     }
 
     @Test

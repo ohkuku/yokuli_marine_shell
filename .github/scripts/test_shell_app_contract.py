@@ -106,6 +106,47 @@ class ShellAppTileContractTest(unittest.TestCase):
         ):
             self.assertIn(scenario, engine_tests + activity_tests)
 
+    def test_map_domain_and_app_workflow_stay_out_of_shell_contracts(self):
+        domain_files = list((ROOT / "core/map-domain/src/main").rglob("*.kt"))
+        domain = "\n".join(path.read_text() for path in domain_files)
+        for forbidden in ("android.", "androidx.", "compose", "LauncherAction", "ShellVisualSurface"):
+            self.assertNotIn(forbidden, domain)
+        coordinator = (
+            ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartPackageCoordinator.kt"
+        ).read_text()
+        self.assertIn("ChartPackageRepository", coordinator)
+        self.assertIn("MapAction.ChartPackagesChanged", coordinator)
+        self.assertIn("MapAction.SelectChartPackage", coordinator)
+        self.assertNotIn("ContentResolver", coordinator)
+
+    def test_offline_package_install_is_validated_atomic_and_legally_described(self):
+        repository = (
+            ROOT / "adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/AndroidMbTilesRepository.kt"
+        ).read_text()
+        metadata = (
+            ROOT / "adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/MbTilesMetadata.kt"
+        ).read_text()
+        for required in ('"metadata"', '"tiles"', "MessageDigest.getInstance(\"SHA-256\")", "renameTo(destination)"):
+            self.assertIn(required, repository)
+        for legal_field in ("source", "license", "attribution", "version"):
+            self.assertIn(legal_field, repository)
+        self.assertIn('setOf("png", "jpg", "jpeg", "webp")', metadata)
+        self.assertIn("UNSUPPORTED_FORMAT", metadata)
+
+    def test_map_runtime_is_truthful_persisted_and_has_device_stories(self):
+        model = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapModel.kt").read_text()
+        reducer = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapReducer.kt").read_text()
+        graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
+        activity_tests = (
+            ROOT / "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt"
+        ).read_text()
+        self.assertIn("positionObservation = null", model)
+        self.assertIn("navigationActive = false", model)
+        self.assertIn("PositionAvailability.UNAVAILABLE", model)
+        self.assertIn("UnknownChartPackage", reducer)
+        self.assertIn("OfflineMarineChartSurface", graph)
+        self.assertIn("mapAppKeepsPlanningToolsInternalAndPositionTruthExplicit", activity_tests)
+
 
 if __name__ == "__main__":
     unittest.main()

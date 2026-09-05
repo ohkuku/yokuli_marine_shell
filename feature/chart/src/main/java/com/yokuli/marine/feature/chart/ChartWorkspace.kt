@@ -16,13 +16,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
@@ -62,6 +65,7 @@ fun ChartWorkspace(
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
+    val configuration = LocalConfiguration.current
     Box(
         Modifier.fillMaxSize().background(YokuliColors.ChartWater).testTag("chart-workspace-browse"),
     ) {
@@ -79,9 +83,18 @@ fun ChartWorkspace(
             },
             Modifier.fillMaxSize(),
         )
+        if (kotlin.math.abs(configuration.screenWidthDp - configuration.screenHeightDp) <= 80) {
+            Canvas(Modifier.align(Alignment.Center).size(30.dp).testTag("map-square-crosshair")) {
+                val stroke = 1.5.dp.toPx()
+                drawLine(colors.foreground.copy(alpha = .9f), center.copy(x = 0f), center.copy(x = size.width), stroke)
+                drawLine(colors.foreground.copy(alpha = .9f), center.copy(y = 0f), center.copy(y = size.height), stroke)
+                drawCircle(colors.foreground.copy(alpha = .9f), radius = 3.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+            }
+        }
         Column(Modifier.fillMaxSize()) {
             WpPageHeader(
-                appKey = "map",
+                // Stable technical key preserves the approved launch/test contract; the visible App name is Map.
+                appKey = "chart",
                 appName = stringResource(R.string.app_chart),
                 contextLine = stringResource(R.string.map_context_offline_first),
                 modifier = Modifier.background(colors.background.copy(alpha = .90f)),
