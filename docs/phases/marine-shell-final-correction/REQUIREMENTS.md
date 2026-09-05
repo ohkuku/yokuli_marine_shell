@@ -35,3 +35,13 @@ Yokuli 是沉浸式全屏 Android 航海应用，内部拥有 WP 风格 Shell。
 ## 真实性边界
 
 模拟器指标只作为趋势。三星方屏、普通真机、60/90/120 Hz 和主观 WP 手感保持 `PENDING`，只能由 owner 最终批准。
+
+## English translation
+
+This phase corrects Yokuli's product model. Yokuli is an immersive full-screen Android marine application with an internal WP-inspired shell; it is not an Android default launcher, third-party app launcher, kiosk, or SystemUI replacement. Android Home leaves Yokuli, while the in-app compass Bridge returns to the Yokuli Desktop. Release continues to expose only Chart and Settings.
+
+The normal app manifest must not register `HOME` or `DEFAULT`. Desktop, Module List, Search, Recents, and Module are first-class visual surfaces with one atomic transition per action. Bridge behavior depends on its source surface. Search launches a Module directly without an intermediate launcher frame. Window chrome derives from actual safe-drawing, cutout, rounded-corner, IME, and gesture insets.
+
+Settings uses restrained black/white typography and limits accent to interactive or necessary emphasis. Marine tiles support six responsive sizes. Durable layout stores rank, size, and group; viewport cells are derived by an adaptive packer, and only an explicit Spacer preserves whitespace. Pointer-frame offsets remain local to the renderer, while the serialized Engine receives semantic edit actions. Editing occurs directly on Desktop with reflow, at least 44dp hit targets, and cancelable resize.
+
+Chinese-first and English resources, accessibility labels, unit tests, Activity stories, performance trends, and Release binary audits must evolve together. Emulator measurements are trends only. Samsung square hardware, ordinary physical devices, 60/90/120 Hz behavior, and subjective WP fidelity remain `PENDING` until the owner reviews them.

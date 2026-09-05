@@ -39,7 +39,6 @@ import com.yokuli.marine.core.design.WpThemePolicy
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.design.wpEntrance
-import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.marine.core.model.AppLanguage
 
 private data class SettingsDestination(
@@ -93,7 +92,7 @@ private fun SettingsOverview(state: SettingsUiState, onOpen: (SettingsSection) -
             stringResource(R.string.about_summary, state.versionName),
         ),
     )
-    SettingsBody {
+    SettingsBody(Modifier.testTag("settings-overview-list")) {
         destinations.forEachIndexed { index, destination ->
             SettingsDestinationRow(destination, index) { onOpen(destination.section) }
         }
@@ -109,15 +108,14 @@ private fun SettingsDestinationRow(item: SettingsDestination, order: Int, onClic
         Modifier.fillMaxWidth().height(66.dp)
             .testTag("settings-section-${item.section.name.lowercase()}")
             .wpEntrance(item.section, order)
-            .wpTilt(interactions)
             .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(11.dp).background(colors.accent))
-        Column(Modifier.padding(start = 14.dp)) {
+        Column(Modifier.weight(1f)) {
             WpText(item.title, 21, weight = FontWeight.Light)
             WpText(item.value, 11, color = colors.muted)
         }
+        WpText("›", 24, color = colors.muted, modifier = Modifier.padding(start = 8.dp))
     }
 }
 
@@ -135,22 +133,22 @@ private fun AppearanceSettings(state: SettingsUiState, onAction: (SettingsUiActi
             ) { onAction(SettingsUiAction.ChangeTheme(state.theme.copy(mode = mode))) }
         }
         SettingsLabel(stringResource(R.string.setting_accent), top = 24)
-        WpAccent.entries.chunked(4).forEachIndexed { rowIndex, row ->
-            Row(
-                Modifier.fillMaxWidth().wpEntrance("accent-$rowIndex", rowIndex + 2),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                row.forEach { accent ->
-                    AccentChoice(
-                        accent = accent,
-                        selected = accent == state.theme.accent,
-                        onClick = { onAction(SettingsUiAction.ChangeTheme(state.theme.copy(accent = accent))) },
-                        modifier = Modifier.weight(1f),
-                    )
+        Column(Modifier.testTag("settings-accent-grid")) {
+            WpAccent.entries.chunked(4).forEachIndexed { rowIndex, row ->
+                Row(
+                    Modifier.fillMaxWidth().wpEntrance("accent-$rowIndex", rowIndex + 2),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    row.forEach { accent ->
+                        CompactAccentSwatch(
+                            accent = accent,
+                            selected = accent == state.theme.accent,
+                            onClick = { onAction(SettingsUiAction.ChangeTheme(state.theme.copy(accent = accent))) },
+                        )
+                    }
                 }
-                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                Spacer(Modifier.height(6.dp))
             }
-            Spacer(Modifier.height(6.dp))
         }
         WpText(accentLabel(state.theme.accent), 14, color = colors.muted, modifier = Modifier.padding(top = 4.dp))
     }
@@ -223,9 +221,12 @@ private fun AboutSettings(state: SettingsUiState) {
 }
 
 @Composable
-private fun SettingsBody(content: @Composable ColumnScope.() -> Unit) {
+private fun SettingsBody(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+        modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(horizontal = YokuliMetrics.PageMargin, vertical = 4.dp),
         content = content,
     )
@@ -246,7 +247,6 @@ private fun SelectionRow(label: String, selected: Boolean, testTag: String, orde
             .testTag(testTag)
             .semantics { this.selected = selected; role = Role.RadioButton }
             .wpEntrance(testTag, order)
-            .wpTilt(interactions)
             .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -259,20 +259,24 @@ private fun SelectionRow(label: String, selected: Boolean, testTag: String, orde
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AccentChoice(accent: WpAccent, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun CompactAccentSwatch(accent: WpAccent, selected: Boolean, onClick: () -> Unit) {
     val scheme = WpThemePolicy.resolve(WpThemeSpec(accent = accent))
     val interactions = remember { MutableInteractionSource() }
     Box(
-        modifier.height(58.dp)
+        Modifier.size(YokuliMetrics.MinTouch)
             .testTag("theme-accent-${accent.displayName}")
             .semantics { this.selected = selected; role = Role.RadioButton }
-            .wpTilt(interactions)
-            .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick)
-            .background(scheme.accent)
-            .then(if (selected) Modifier.border(3.dp, scheme.onAccent) else Modifier),
+            .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        if (selected) Box(Modifier.size(13.dp).background(scheme.onAccent))
+        Box(
+            Modifier.size(30.dp)
+                .background(scheme.accent)
+                .then(if (selected) Modifier.border(2.dp, scheme.onAccent) else Modifier),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (selected) WpText("✓", 18, color = scheme.onAccent)
+        }
     }
 }
 
@@ -282,7 +286,7 @@ private fun SettingsCommand(label: String, tag: String, onClick: () -> Unit) {
     val interactions = remember { MutableInteractionSource() }
     Box(
         Modifier.padding(top = 16.dp).height(YokuliMetrics.MinTouch).fillMaxWidth()
-            .testTag(tag).wpTilt(interactions)
+            .testTag(tag)
             .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick),
         contentAlignment = Alignment.CenterStart,
     ) { WpText(label, 18, color = colors.accent) }

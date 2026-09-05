@@ -615,3 +615,19 @@ Resize 不再通过 `withFrameNanos` 自动提交。第一次点击建立 provis
 ### English translation — direct editing
 
 Pointer-frame state now stays local to Compose, while the serialized Engine receives only begin, insertion-target, drop, cancel, and resize semantics. Repeated insertion indices are no-ops, the action queue is bounded, resize requires explicit confirmation and can be cancelled, and 48dp invisible hit areas preserve compact WP-like visual disks. Two API 34 stories verify the real transaction and small-tile touch bounds.
+
+## Marine Shell Final Correction — Typographic Settings
+
+### Red
+
+最终修正合同先锁定 Settings 不得使用逐行 accent bullet、大色卡或 `.wpTilt(...)`，并要求紧凑 `CompactAccentSwatch`。在旧实现中该检查有意失败：普通设置行、命令和色卡都还套用了 3D 倾斜，accent 选择器也是撑满整行的大色块。
+
+### Green and device story
+
+总览收紧为黑/白底上的大标题文字列表，仅保留稀疏副文字和最小化 chevron；普通选择行与命令只使用平面入场，不再逐行倾斜。Accent 区使用 4×N 的 30dp 方形色块，外层保持 48dp 触控面，选中态只用细边框与对勾。
+
+API 34 真实 Activity story 验证了排版型总览存在、无 accent bullet、首行四色块对齐、每个触控面为 44–48dp，且只有一个 accent 具有 selected 语义。最终修正静态合同 `11/11` 通过。
+
+### English translation — typographic Settings
+
+The Red rejects per-row accent bullets, oversized color cards, and 3D tilt on ordinary Settings rows. Green restores a sparse black/white typographic overview, limits accent to actionable controls, and renders a four-column grid of 30dp square swatches inside 48dp semantic touch targets. An API 34 Activity story verifies four-column alignment, 44–48dp hit bounds, the absence of decorative bullets, and exactly one selected accent.

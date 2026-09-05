@@ -261,6 +261,41 @@ class ShellActivityStoryTest {
         }
     }
 
+    @Test
+    fun settingsUsesTypographicOverviewAndCompactFourColumnAccentSwatches() {
+        compose.onNodeWithTag("tile-settings").performClick()
+        awaitDisplayed("settings-overview-list")
+        compose.onNodeWithTag("settings-overview-list").assertIsDisplayed()
+        compose.onNodeWithTag("settings-accent-bullet").assertDoesNotExist()
+
+        compose.onNodeWithTag("settings-section-appearance").performClick()
+        awaitDisplayed("settings-accent-grid")
+        val swatches = compose.onAllNodes(
+            SemanticsMatcher("accent swatch") { node ->
+                node.config.contains(SemanticsProperties.TestTag) &&
+                    node.config[SemanticsProperties.TestTag].startsWith("theme-accent-")
+            },
+        ).fetchSemanticsNodes()
+        assertTrue(swatches.size >= 4)
+
+        var density = 1f
+        compose.activityRule.scenario.onActivity { density = it.resources.displayMetrics.density }
+        swatches.forEach { swatch ->
+            assertTrue(swatch.boundsInRoot.width in 44f * density..48f * density + 1f)
+            assertTrue(swatch.boundsInRoot.height in 44f * density..48f * density + 1f)
+        }
+        val firstRowTop = swatches.take(4).map { it.boundsInRoot.top }
+        assertTrue(firstRowTop.all { abs(it - firstRowTop.first()) <= 1f })
+        compose.onAllNodes(
+            SemanticsMatcher("selected accent swatch") { node ->
+                node.config.contains(SemanticsProperties.TestTag) &&
+                    node.config[SemanticsProperties.TestTag].startsWith("theme-accent-") &&
+                    node.config.contains(SemanticsProperties.Selected) &&
+                    node.config[SemanticsProperties.Selected]
+            },
+        ).assertCountEquals(1)
+    }
+
     @Suppress("DEPRECATION")
     @Test
     fun lightThemeUpdatesHostWindowChromeOutsideCompose() {
