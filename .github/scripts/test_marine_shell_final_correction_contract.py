@@ -128,6 +128,13 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertIn("EXTRA_VIEWPORT_DP", lab)
         self.assertIn("shell-lab-rounded-viewport-$viewportDp", lab)
 
+    def test_sixty_tile_scroll_gesture_is_anchored_inside_the_real_grid(self):
+        benchmark = self.text(
+            "benchmark/shell/src/main/java/com/yokuli/marine/benchmark/shell/ShellMacrobenchmark.kt"
+        )
+        self.assertIn('val grid = device.awaitTag("start-grid").bounds', benchmark)
+        self.assertIn("device.swipe(grid.centerX(), grid.bottom - 24", benchmark)
+
     def test_benchmark_start_reset_is_explicit_and_cannot_change_release_resume_semantics(self):
         benchmark = self.text(
             "benchmark/shell/src/main/java/com/yokuli/marine/benchmark/shell/ShellMacrobenchmark.kt"

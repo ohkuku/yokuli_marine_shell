@@ -143,8 +143,9 @@ class ShellMacrobenchmark {
             device.awaitTag("start-screen")
         },
     ) {
+        val grid = device.awaitTag("start-grid").bounds
         repeat(3) {
-            device.swipe(device.displayWidth / 2, device.displayHeight - 80, device.displayWidth / 2, 120, 20)
+            device.swipe(grid.centerX(), grid.bottom - 24, grid.centerX(), grid.top + 24, 20)
             device.waitForIdle()
         }
     }
