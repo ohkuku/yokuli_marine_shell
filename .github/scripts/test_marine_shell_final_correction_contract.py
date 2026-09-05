@@ -124,11 +124,13 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
             "desktopModuleListRoundTrip",
             "searchToChart",
             "dragAcrossThirtyMixedTiles",
-            "resizeStandardTileToLarge",
+            "resizeStandardTileToWide",
             "rounded320Viewport",
             "settingsScroll",
         ):
             self.assertIn(f"fun {journey}()", benchmark)
+        self.assertNotIn("resizeStandardTileToLarge", benchmark)
+        self.assertNotIn("size-large_4x4", benchmark)
         lab = self.text("feature/shell-lab/src/main/java/com/yokuli/marine/feature/shell/lab/ShellLabActivity.kt")
         self.assertIn("EXTRA_TILE_COUNT", lab)
         self.assertIn("EXTRA_VIEWPORT_DP", lab)

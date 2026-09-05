@@ -174,7 +174,11 @@ class ShellMacrobenchmark {
     ) {
         device.awaitTag("virtual-key-search").click()
         device.awaitTag("launcher-search-field").setText("chart")
-        device.awaitTag("search-result-chart").click()
+        device.awaitTagWithText("launcher-search-field", "chart")
+        // Stabilize the IME-resized viewport before using the result's screen coordinates.
+        device.pressBack()
+        device.awaitTag("shell-search-surface")
+        check(device.awaitTag("search-result-chart").click()) { "Unable to click Chart search result" }
         device.awaitTag("chart-workspace-browse")
     }
 
@@ -198,7 +202,7 @@ class ShellMacrobenchmark {
     }
 
     @Test
-    fun resizeStandardTileToLarge() = benchmarkRule.measureRepeated(
+    fun resizeStandardTileToWide() = benchmarkRule.measureRepeated(
         packageName = TARGET_PACKAGE,
         metrics = interactionFrameMetrics(),
         compilationMode = CompilationMode.Partial(),
@@ -207,10 +211,8 @@ class ShellMacrobenchmark {
     ) {
         device.awaitTag("tile-demo-1").longPress()
         device.awaitTag("resize-selected-tile")
-        repeat(3) {
-            device.awaitTag("resize-selected-tile").click()
-        }
-        device.awaitTag("shell-lab-demo-1-size-large_4x4")
+        check(device.awaitTag("resize-selected-tile").click()) { "Unable to click tile resize control" }
+        device.awaitTag("shell-lab-demo-1-size-wide_4x2")
     }
 
     @Test
@@ -327,6 +329,16 @@ class ShellMacrobenchmark {
             )
         }
         return tagged
+    }
+
+    private fun UiDevice.awaitTagWithText(tag: String, expectedText: String): UiObject {
+        val deadline = SystemClock.uptimeMillis() + WAIT_MILLIS
+        while (SystemClock.uptimeMillis() < deadline) {
+            val tagged = findObject(UiSelector().resourceId(tag))
+            if (tagged.exists() && tagged.text == expectedText) return tagged
+            SystemClock.sleep(100L)
+        }
+        throw IllegalArgumentException("Timed out waiting for Compose tag text: $tag=$expectedText")
     }
 
     private fun UiDevice.dismissPlatformOverlayIfTargetRemainsResumed(): Boolean {

@@ -18,7 +18,7 @@ EXPECTED_JOURNEYS = {
     "desktopModuleListRoundTrip",
     "searchToChart",
     "dragAcrossThirtyMixedTiles",
-    "resizeStandardTileToLarge",
+    "resizeStandardTileToWide",
     "rounded320Viewport",
     "settingsScroll",
 }
