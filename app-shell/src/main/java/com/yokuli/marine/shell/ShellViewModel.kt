@@ -7,6 +7,7 @@ import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.map.domain.DefaultMapStore
 import com.yokuli.marine.map.domain.MapEffect
+import com.yokuli.marine.map.domain.MapLibraryLoadState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapStore
 import com.yokuli.marine.feature.chart.ChartImportUiAction
@@ -58,13 +59,16 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     val mapStore: MapStore = DefaultMapStore(
-        initialState = MapState(),
+        initialState = MapState(libraryLoadState = MapLibraryLoadState.NOT_LOADED),
         scope = viewModelScope,
         persistence = (application as ShellApplication).mapPersistence,
         effectHandler = { effect ->
             when (effect) {
                 is MapEffect.LogIncident -> android.util.Log.w("YokuliMap", effect.incident.toString())
-                is MapEffect.Persist -> Unit
+                is MapEffect.PersistLibrary,
+                is MapEffect.PersistSession,
+                MapEffect.Reload,
+                -> Unit
             }
         },
     )

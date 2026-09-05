@@ -67,4 +67,11 @@
     <string name="map_import_error_io">读取或保存海图包失败。</string>
     <string name="map_tile_offline_first">离线规划</string>
     <string name="map_tile_local_facts">地点 %1$d · 航线 %2$d · 海图包 %3$d</string>
+    <string name="map_library_loading">正在读取本地资料…</string>
+    <string name="map_library_read_failed">资料读取失败；原库未改，地点和航线暂不可写。</string>
+    <string name="map_library_corrupt">资料库可能损坏；原文件保留，地点和航线暂不可写。</string>
+    <string name="map_library_saving">正在保存本地资料…</string>
+    <string name="map_library_save_failed">保存失败；当前编辑仍保留，可重试。</string>
+    <string name="map_library_retry_load">重试读取</string>
+    <string name="map_library_retry_save">重试保存</string>
 </resources>

@@ -62,6 +62,43 @@ class MapReducerTest {
     }
 
     @Test
+    fun `measurement conversion creates a second stable draft without overwriting the first`() {
+        val ids = ArrayDeque(listOf("draft-a", "draft-b"))
+        val reducer = DefaultMapReducer(MapIdGenerator { ids.removeFirst() })
+        var state = reducer.reduce(MapState(), MapAction.SelectTool(MapTool.MANUAL_ROUTE)).state
+        state = reducer.reduce(state, MapAction.AddPoint(auckland)).state
+        state = reducer.reduce(state, MapAction.AddPoint(rangitoto)).state
+        val original = requireNotNull(state.routeDraft)
+        state = reducer.reduce(state, MapAction.SelectTool(MapTool.MEASURE)).state
+        state = reducer.reduce(state, MapAction.AddPoint(rangitoto)).state
+        state = reducer.reduce(state, MapAction.AddPoint(waiheke)).state
+
+        val converted = reducer.reduce(state, MapAction.ConvertMeasurementToManualRoute("second")).state
+
+        assertEquals(listOf("draft-a", "draft-b"), converted.routeDrafts.map { it.id })
+        assertEquals(original, converted.routeDrafts.first())
+        assertEquals("draft-b", converted.activeRouteDraftId)
+        assertTrue(converted.savedRoutes.isEmpty())
+    }
+
+    @Test
+    fun `duplicate save of one draft revision commits only once and edit history is bounded`() {
+        val ids = ArrayDeque(listOf("draft-a", "route-a"))
+        val reducer = DefaultMapReducer(MapIdGenerator { ids.removeFirst() }, historyLimit = 50)
+        var state = reducer.reduce(MapState(), MapAction.SelectTool(MapTool.MANUAL_ROUTE)).state
+        repeat(75) { index ->
+            state = reducer.reduce(state, MapAction.AddPoint(GeoPoint(-36.0, 174.0 + index / 1000.0))).state
+        }
+        val firstSave = reducer.reduce(state, MapAction.SaveRouteCopy("saved")).state
+        val duplicate = reducer.reduce(firstSave, MapAction.SaveRouteCopy("saved")).state
+
+        assertEquals(50, requireNotNull(state.routeDraft).undo.size)
+        assertEquals(1, duplicate.savedRoutes.size)
+        assertEquals(state.routeDraft?.id, duplicate.savedRoutes.single().sourceDraftId)
+        assertEquals(state.routeDraft?.revision, duplicate.savedRoutes.single().sourceDraftRevision)
+    }
+
+    @Test
     fun `manual route editing supports undo redo reverse copy and planned eta`() {
         var state = reduce(MapState(), MapAction.SelectTool(MapTool.MANUAL_ROUTE)).state
         state = reduce(state, MapAction.AddPoint(auckland)).state
@@ -147,11 +184,10 @@ class MapReducerTest {
     @Test
     fun `persist effect contains only durable map facts`() {
         val changed = reduce(MapState(), MapAction.CameraChanged(MapCamera(rangitoto, 9.5)))
-        val persisted = (changed.effects.single() as MapEffect.Persist).snapshot
+        val persisted = (changed.effects.single() as MapEffect.PersistSession).snapshot
 
         assertEquals(rangitoto, persisted.camera.center)
-        assertFalse(persisted.navigationActive)
-        assertNull(persisted.positionObservation)
+        assertNull(persisted.activeRouteDraftId)
     }
 
     private fun reduce(state: MapState, action: MapAction): MapReduction = MapReducer.reduce(state, action)

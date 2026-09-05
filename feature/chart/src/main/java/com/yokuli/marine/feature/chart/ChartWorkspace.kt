@@ -36,6 +36,8 @@ import com.yokuli.marine.core.design.YokuliColors
 import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapCamera
+import com.yokuli.marine.map.domain.MapLibraryLoadState
+import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.PositionAvailability
@@ -99,6 +101,7 @@ fun ChartWorkspace(
                 modifier = Modifier.background(colors.background.copy(alpha = .90f)),
             )
             PositionTruthBadge(state.position.availability)
+            MapPersistenceTruth(state, onAction)
             Spacer(Modifier.weight(1f))
             state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.let { chartPackage ->
                 Box(
@@ -126,6 +129,40 @@ fun ChartWorkspace(
                 onImportAction = onImportAction,
             )
             MapToolBar(state.tool, onAction)
+        }
+    }
+}
+
+@Composable
+private fun MapPersistenceTruth(state: MapState, onAction: (MapAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    val message = when {
+        state.libraryLoadState == MapLibraryLoadState.LOADING -> R.string.map_library_loading
+        state.libraryLoadState == MapLibraryLoadState.READ_FAILED -> R.string.map_library_read_failed
+        state.libraryLoadState == MapLibraryLoadState.CORRUPT -> R.string.map_library_corrupt
+        state.saveState == MapSaveState.PENDING -> R.string.map_library_saving
+        state.saveState == MapSaveState.FAILED -> R.string.map_library_save_failed
+        else -> null
+    } ?: return
+    Row(
+        Modifier.padding(start = 18.dp, top = 6.dp).background(colors.background.copy(alpha = .92f))
+            .padding(horizontal = 9.dp, vertical = 7.dp).testTag("map-persistence-truth"),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WpText(stringResource(message), 11, color = colors.foreground, modifier = Modifier.weight(1f))
+        when {
+            state.libraryLoadState == MapLibraryLoadState.READ_FAILED ||
+                state.libraryLoadState == MapLibraryLoadState.CORRUPT -> {
+                MapActionText(R.string.map_library_retry_load, "map-library-retry-load") {
+                    onAction(MapAction.RetryLoad)
+                }
+            }
+            state.saveState == MapSaveState.FAILED -> {
+                MapActionText(R.string.map_library_retry_save, "map-library-retry-save") {
+                    onAction(MapAction.RetryPersistence)
+                }
+            }
         }
     }
 }

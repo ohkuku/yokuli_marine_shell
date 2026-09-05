@@ -16,12 +16,12 @@ class MapStoreTest {
     @Test
     fun `dispatch serializes rapid route edits`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val persisted = CompletableDeferred<MapPersistedState>()
+        val persisted = CompletableDeferred<MapLibrarySnapshot>()
         val store = DefaultMapStore(
             initialState = MapState(),
             scope = scope,
             effectHandler = { effect ->
-                if (effect is MapEffect.Persist && effect.snapshot.routeDraft?.waypoints?.size == 3) {
+                if (effect is MapEffect.PersistLibrary && effect.snapshot.routeDrafts.singleOrNull()?.waypoints?.size == 3) {
                     persisted.complete(effect.snapshot)
                 }
             },
@@ -42,10 +42,11 @@ class MapStoreTest {
     @Test
     fun `restore is an ordering barrier before queued user actions`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val saved = MapState(camera = MapCamera(GeoPoint(1.0, 2.0), 5.0)).persisted()
+        val saved = MapSessionSnapshot(camera = MapCamera(GeoPoint(1.0, 2.0), 5.0))
         val persistence = object : MapPersistencePort {
-            override suspend fun load(): MapPersistedState = saved
-            override suspend fun save(snapshot: MapPersistedState) = Unit
+            override suspend fun load(): MapLoadResult = MapLoadResult.Ready(saved, MapLibrarySnapshot())
+            override suspend fun saveSession(snapshot: MapSessionSnapshot) = Unit
+            override suspend fun saveLibrary(snapshot: MapLibrarySnapshot) = MapPersistenceAck(snapshot.revision)
         }
         val store = DefaultMapStore(MapState(), scope, persistence)
 
@@ -62,12 +63,13 @@ class MapStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val failure = CompletableDeferred<MapEffect.LogIncident>()
         val persistence = object : MapPersistencePort {
-            override suspend fun load(): MapPersistedState? = null
-            override suspend fun save(snapshot: MapPersistedState): Unit = error("disk unavailable")
+            override suspend fun load(): MapLoadResult = MapLoadResult.Ready(MapSessionSnapshot(), MapLibrarySnapshot())
+            override suspend fun saveSession(snapshot: MapSessionSnapshot): Unit = error("disk unavailable")
+            override suspend fun saveLibrary(snapshot: MapLibrarySnapshot) = MapPersistenceAck(snapshot.revision)
         }
-        val store = DefaultMapStore(MapState(), scope, persistence) { effect ->
+        val store = DefaultMapStore(MapState(), scope, persistence, effectHandler = { effect ->
             if (effect is MapEffect.LogIncident) failure.complete(effect)
-        }
+        })
 
         store.dispatch(MapAction.CameraChanged(MapCamera(GeoPoint(3.0, 4.0), 6.0)))
         val incident = withTimeout(2_000L) { failure.await() }

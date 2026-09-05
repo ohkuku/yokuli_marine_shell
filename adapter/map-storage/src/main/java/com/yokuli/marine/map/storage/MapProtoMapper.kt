@@ -8,6 +8,7 @@ import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.ManualRouteDraft
 import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapPersistedState
+import com.yokuli.marine.map.domain.MapSessionSnapshot
 import com.yokuli.marine.map.domain.MeasurementDraft
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
@@ -23,7 +24,29 @@ import com.yokuli.marine.map.storage.proto.SavedPlaceProto
 import com.yokuli.marine.map.storage.proto.SavedRouteProto
 
 internal object MapProtoMapper {
-    const val SCHEMA_VERSION = 1
+    const val SCHEMA_VERSION = 2
+
+    fun encodeSession(state: MapSessionSnapshot): MapStateProto = MapStateProto.newBuilder()
+        .setSchemaVersion(SCHEMA_VERSION)
+        .setCamera(state.camera.toProto())
+        .also { builder ->
+            state.measurementDraft?.let { builder.measurementDraft = it.toProto() }
+            state.activeRouteDraftId?.let { builder.activeRouteDraftId = it }
+            state.activeChartPackageId?.let { builder.activeChartPackageId = it.value }
+        }
+        .build()
+
+    fun decodeSession(proto: MapStateProto): MapSessionSnapshot = try {
+        require(proto.schemaVersion in 0..SCHEMA_VERSION) { "Unsupported map schema ${proto.schemaVersion}" }
+        MapSessionSnapshot(
+            camera = if (proto.hasCamera()) proto.camera.toDomain() else MapCamera(),
+            measurementDraft = if (proto.hasMeasurementDraft()) proto.measurementDraft.toDomain() else null,
+            activeRouteDraftId = proto.activeRouteDraftId.takeIf { it.isNotBlank() },
+            activeChartPackageId = proto.activeChartPackageId.takeIf { it.isNotBlank() }?.let(::ChartPackageId),
+        )
+    } catch (error: IllegalArgumentException) {
+        throw CorruptionException("Invalid map session", error)
+    }
 
     fun encode(state: MapPersistedState): MapStateProto = MapStateProto.newBuilder()
         .setSchemaVersion(SCHEMA_VERSION)
@@ -71,6 +94,8 @@ internal object MapProtoMapper {
         .addAllRedo(redo.map { points -> PointListProto.newBuilder().addAllPoints(points.map { it.toProto() }).build() })
         .build()
     private fun ManualRouteDraftProto.toDomain() = ManualRouteDraft(
+        id = "legacy-draft",
+        revision = 1L,
         name = name,
         waypoints = waypointsList.map { it.toDomain() },
         plannedSpeedKnots = plannedSpeedKnots.takeIf { it > 0.0 } ?: 5.0,

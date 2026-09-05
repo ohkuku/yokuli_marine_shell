@@ -67,4 +67,11 @@
     <string name="map_import_error_io">The chart package could not be read or saved.</string>
     <string name="map_tile_offline_first">OFFLINE PLANNING</string>
     <string name="map_tile_local_facts">%1$d places · %2$d routes · %3$d chart packs</string>
+    <string name="map_library_loading">Reading local library…</string>
+    <string name="map_library_read_failed">Library read failed. The original is unchanged; places and routes are read-only.</string>
+    <string name="map_library_corrupt">The library may be corrupt. The original is preserved; places and routes are read-only.</string>
+    <string name="map_library_saving">Saving local library…</string>
+    <string name="map_library_save_failed">Save failed. Your current edits are retained and can be retried.</string>
+    <string name="map_library_retry_load">retry read</string>
+    <string name="map_library_retry_save">retry save</string>
 </resources>
