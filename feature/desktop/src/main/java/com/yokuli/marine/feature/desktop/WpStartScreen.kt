@@ -433,6 +433,15 @@ private fun WpTile(
         )
     } else emptyList()
     val tileInset = if (isSmall) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset
+    val tileClickModifier = if (editing && selected) {
+        Modifier
+    } else {
+        Modifier.clickable(
+            interactionSource = interactions,
+            indication = null,
+            onClick = onClick,
+        )
+    }
     Box(
         modifier.graphicsLayer {
             translationX = dragOffset.x
@@ -455,11 +464,7 @@ private fun WpTile(
             }
             .wpTilt(interactions, enabled = !(editing && selected))
             .background(colors.accent)
-            .clickable(
-                interactionSource = interactions,
-                indication = null,
-                onClick = onClick,
-            )
+            .then(tileClickModifier)
             .then(dragModifier).padding(tileInset),
     ) {
         entry.tileRenderer(tileSize).Render(
