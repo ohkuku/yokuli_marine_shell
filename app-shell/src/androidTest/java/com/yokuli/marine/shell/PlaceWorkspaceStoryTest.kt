@@ -61,6 +61,7 @@ class PlaceWorkspaceStoryTest {
         compose.onNodeWithTag("map-place-save").performScrollTo().performClick()
 
         compose.onNodeWithTag("map-place-detail-place-ui").assertIsDisplayed()
+        compose.onNodeWithTag("map-place-export-place-ui").performScrollTo().performClick()
         compose.runOnIdle {
             val place = harness.state().places.single()
             assertEquals("西港 Marina", place.name)
@@ -68,6 +69,7 @@ class PlaceWorkspaceStoryTest {
             assertEquals(PlaceCategory.MARINA, place.category)
             assertEquals(listOf("fuel", "补水"), place.tags)
             assertEquals(point, place.point)
+            assertEquals(place, harness.exportedPlace())
         }
 
         compose.runOnIdle { harness.dispatch(MapAction.CloseSurface) }
@@ -142,6 +144,7 @@ class PlaceWorkspaceStoryTest {
         )
         var stateAccessor: () -> MapState = { initial }
         var dispatcher: (MapAction) -> Unit = {}
+        var exportedPlace: SavedPlace? = null
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent {
                 YokuliTheme(WpThemeSpec()) {
@@ -156,17 +159,19 @@ class PlaceWorkspaceStoryTest {
                         onImportAction = {},
                         recoveryExportState = MapRecoveryExportUiState.IDLE,
                         onExportRecovery = {},
+                        onExportPlace = { exportedPlace = it },
                         chartSurface = { _, _, _, modifier -> Box(modifier) },
                     )
                 }
             }
         }
         compose.waitForIdle()
-        return Harness({ stateAccessor() }, { dispatcher(it) })
+        return Harness({ stateAccessor() }, { dispatcher(it) }, { exportedPlace })
     }
 
     private data class Harness(
         val state: () -> MapState,
         val dispatch: (MapAction) -> Unit,
+        val exportedPlace: () -> SavedPlace?,
     )
 }
