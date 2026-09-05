@@ -28,9 +28,9 @@ internal object MapProtoMapper {
     fun encode(state: MapPersistedState): MapStateProto = MapStateProto.newBuilder()
         .setSchemaVersion(SCHEMA_VERSION)
         .setCamera(state.camera.toProto())
-        .addAllPlaces(state.places.map(SavedPlace::toProto))
-        .addAllSavedRoutes(state.savedRoutes.map(SavedRoute::toProto))
-        .addAllChartPackages(state.chartPackages.map(ChartPackage::toProto))
+        .addAllPlaces(state.places.map { it.toProto() })
+        .addAllSavedRoutes(state.savedRoutes.map { it.toProto() })
+        .addAllChartPackages(state.chartPackages.map { it.toProto() })
         .also { builder ->
             state.measurementDraft?.let { builder.measurementDraft = it.toProto() }
             state.routeDraft?.let { builder.routeDraft = it.toProto() }
@@ -61,12 +61,12 @@ internal object MapProtoMapper {
     private fun MapCameraProto.toDomain() = MapCamera(center.toDomain(), zoom, bearing)
     private fun SavedPlace.toProto() = SavedPlaceProto.newBuilder().setId(id).setName(name).setPoint(point.toProto()).build()
     private fun SavedPlaceProto.toDomain() = SavedPlace(id, name, point.toDomain())
-    private fun MeasurementDraft.toProto() = MeasurementDraftProto.newBuilder().addAllPoints(points.map(GeoPoint::toProto)).build()
+    private fun MeasurementDraft.toProto() = MeasurementDraftProto.newBuilder().addAllPoints(points.map { it.toProto() }).build()
     private fun MeasurementDraftProto.toDomain() = MeasurementDraft(pointsList.map { it.toDomain() })
     private fun ManualRouteDraft.toProto() = ManualRouteDraftProto.newBuilder()
-        .setName(name).addAllWaypoints(waypoints.map(GeoPoint::toProto)).setPlannedSpeedKnots(plannedSpeedKnots)
-        .addAllUndo(undo.map { PointListProto.newBuilder().addAllPoints(it.map(GeoPoint::toProto)).build() })
-        .addAllRedo(redo.map { PointListProto.newBuilder().addAllPoints(it.map(GeoPoint::toProto)).build() })
+        .setName(name).addAllWaypoints(waypoints.map { it.toProto() }).setPlannedSpeedKnots(plannedSpeedKnots)
+        .addAllUndo(undo.map { points -> PointListProto.newBuilder().addAllPoints(points.map { it.toProto() }).build() })
+        .addAllRedo(redo.map { points -> PointListProto.newBuilder().addAllPoints(points.map { it.toProto() }).build() })
         .build()
     private fun ManualRouteDraftProto.toDomain() = ManualRouteDraft(
         name = name,
@@ -76,7 +76,7 @@ internal object MapProtoMapper {
         redo = redoList.map { list -> list.pointsList.map { it.toDomain() } },
     )
     private fun SavedRoute.toProto() = SavedRouteProto.newBuilder().setId(id).setName(name)
-        .addAllWaypoints(waypoints.map(GeoPoint::toProto)).setPlannedSpeedKnots(plannedSpeedKnots).build()
+        .addAllWaypoints(waypoints.map { it.toProto() }).setPlannedSpeedKnots(plannedSpeedKnots).build()
     private fun SavedRouteProto.toDomain() = SavedRoute(id, name, waypointsList.map { it.toDomain() }, plannedSpeedKnots)
     private fun ChartPackage.toProto() = ChartPackageProto.newBuilder().setId(id.value).setDisplayName(displayName)
         .setSource(source).setLicense(license).setAttribution(attribution).setSha256(sha256).setLocalUri(localUri)
