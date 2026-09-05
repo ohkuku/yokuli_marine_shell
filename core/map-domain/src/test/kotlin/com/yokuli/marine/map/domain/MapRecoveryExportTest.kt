@@ -10,7 +10,17 @@ class MapRecoveryExportTest {
         val snapshot = MapLibrarySnapshot(
             revision = 12L,
             places = listOf(
-                SavedPlace("place-stable", "Harbour \"A\"\nprivate", GeoPoint(-36.8, 174.7), revision = 4L),
+                SavedPlace(
+                    "place-stable",
+                    "Harbour \"A\"\nprivate",
+                    GeoPoint(-36.8, 174.7),
+                    revision = 4L,
+                    notes = "gate B",
+                    category = PlaceCategory.MARINA,
+                    tags = listOf("fuel", "water"),
+                    createdAtMillis = 100L,
+                    updatedAtMillis = 200L,
+                ),
             ),
             routeDrafts = listOf(
                 ManualRouteDraft(
@@ -41,6 +51,11 @@ class MapRecoveryExportTest {
         assertTrue(document.contains("\"libraryRevision\": 12"))
         assertTrue(document.contains("\"id\":\"place-stable\""))
         assertTrue(document.contains("Harbour \\\"A\\\"\\nprivate"))
+        assertTrue(document.contains("\"notes\":\"gate B\""))
+        assertTrue(document.contains("\"category\":\"marina\""))
+        assertTrue(document.contains("\"tags\":[\"fuel\", \"water\"]"))
+        assertTrue(document.contains("\"createdAtMillis\":100"))
+        assertTrue(document.contains("\"updatedAtMillis\":200"))
         assertTrue(document.contains("\"sourceDraftRevision\":7"))
         assertTrue(document.contains("\"latitude\":-36.8,\"longitude\":174.7"))
         assertFalse(document.contains("\"undo\""))

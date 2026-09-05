@@ -1,6 +1,7 @@
 package com.yokuli.marine.map.storage
 
 import androidx.room.Room
+import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yokuli.marine.map.domain.GeoPoint
@@ -9,6 +10,7 @@ import com.yokuli.marine.map.domain.MapLibrarySnapshot
 import com.yokuli.marine.map.domain.MapLoadResult
 import com.yokuli.marine.map.domain.MapReadFailure
 import com.yokuli.marine.map.domain.MapSessionSnapshot
+import com.yokuli.marine.map.domain.PlaceCategory
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
 import java.io.File
@@ -19,12 +21,19 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RoomMapPersistenceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @get:Rule
+    val migrationHelper = MigrationTestHelper(
+        InstrumentationRegistry.getInstrumentation(),
+        MapLibraryDatabase::class.java.canonicalName,
+    )
 
     @Test
     fun transactionalLibraryAndSessionRoundTripWithStableRevisions() = runBlocking {
@@ -38,7 +47,19 @@ class RoomMapPersistenceTest {
         val second = GeoPoint(-36.7, 174.8)
         val library = MapLibrarySnapshot(
             revision = 7L,
-            places = listOf(SavedPlace("place-stable", "码头", first, revision = 3L)),
+            places = listOf(
+                SavedPlace(
+                    "place-stable",
+                    "码头",
+                    first,
+                    revision = 3L,
+                    notes = "夜间入口",
+                    category = PlaceCategory.MARINA,
+                    tags = listOf("fuel", "补水"),
+                    createdAtMillis = 100L,
+                    updatedAtMillis = 200L,
+                ),
+            ),
             routeDrafts = listOf(
                 ManualRouteDraft("draft-stable", 4L, "草稿", listOf(first, second)),
             ),
@@ -152,5 +173,30 @@ class RoomMapPersistenceTest {
         firstSessionFile.delete()
         secondSessionFile.delete()
         Unit
+    }
+
+    @Test
+    fun versionOnePlacesMigrateWithoutDestructiveFallback() {
+        val databaseName = "map-library-migration-${System.nanoTime()}.db"
+        migrationHelper.createDatabase(databaseName, 1).apply {
+            execSQL("INSERT INTO library_metadata(`key`, revision) VALUES (0, 9)")
+            execSQL(
+                "INSERT INTO places(id, revision, name, latitude, longitude) VALUES (?, ?, ?, ?, ?)",
+                arrayOf<Any?>("legacy-place", 4L, "Legacy", -36.8, 174.7),
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(databaseName, 2, true, MIGRATION_1_2).use { migrated ->
+            migrated.query(
+                "SELECT notes, category, createdAtMillis, updatedAtMillis FROM places WHERE id = 'legacy-place'",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("", cursor.getString(0))
+                assertEquals("personal", cursor.getString(1))
+                assertEquals(0L, cursor.getLong(2))
+                assertEquals(0L, cursor.getLong(3))
+            }
+        }
     }
 }
