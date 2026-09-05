@@ -108,7 +108,7 @@
         "MAP-R19",
         "MAP-R20"
       ],
-      "status": "TODO",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C00",
       "acceptanceScenarioIds": [
         "C00-T01",
@@ -118,8 +118,13 @@
         "C00-T05",
         "C00-T06"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "7971250384e064752ab870b6ea55a805eb736ab8",
+      "evidence": [
+        "149 Python contract tests passed with repository-pinned jsonschema environment",
+        "C00 focused Gradle gate passed: shell contract, engine, storage, compose and Chart",
+        "Full test/lint/standalone Debug+Release build passed: 1233 tasks",
+        "API 34 app-shell instrumentation passed: 37 tests"
+      ]
     },
     {
       "id": "C01",

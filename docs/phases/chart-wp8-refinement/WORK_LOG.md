@@ -39,4 +39,18 @@
 - Adaptive packer 随机覆盖真实三档集合以及 4/6/8 列，继续验证边界和无碰撞。
 - Python 合同按 app-owned renderer 注册能力检查 Chart 三档，不依赖私有 Composable 函数名。
 
-状态：`IN_PROGRESS`。以上是已提交前候选，不宣称 Gate、APK、设备或最终地图能力已经通过；重放完成后必须在同一提交上执行 C00 累积 Gate。
+## C00｜Gate 与自查结论
+
+第一次运行聚焦 Gate 暴露两个真实回归，而不是把失败藏在 job 状态后面：
+
+- `TileEditingRegressionTest` 仍用旧六档常数 `nextInt(6)`，三档后越界；已改为从 `MarineTileSize.entries.size` 取值。
+- 旧 Stage 6 Python gate 仍绑定“四、六列”测试名；已改为明确要求 4/6/8 列场景。
+
+修正提交 `7971250384e064752ab870b6ea55a805eb736ab8` 上的本地同 SHA 证据：
+
+- 仓库锁定 `jsonschema` 环境中的 Python 合同：149 tests，0 failure。
+- 聚焦 Gradle：shell contract、engine、storage、compose、Chart 全部通过。
+- 全仓 `test`、`lint`、Standalone Debug/Release：1233 tasks，build successful。
+- API 34 模拟器 `:app-shell:connectedStandaloneDebugAndroidTest`：37 tests，0 failure。
+
+自查没有发现生产六档入口、确认勾中间态或未知尺寸导致整桌回退。C00 状态为 `VERIFIED_LOCAL`；它只关闭三档磁贴与当前基线，不代表地图 V1 完成。GitHub CLI 在本机不可用，托管 CI 状态不伪造；C12 仍必须给出最终同 SHA 托管证据。

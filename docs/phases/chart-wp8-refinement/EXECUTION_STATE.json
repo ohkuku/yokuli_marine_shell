@@ -6,9 +6,9 @@
   "auditedSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "workingBaseSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "auditedShaIsAncestorOfWorkingBase": true,
-  "currentTask": "C00",
+  "currentTask": "C01",
   "taskStatus": {
-    "C00": "IMPLEMENTED_UNVERIFIED",
+    "C00": "VERIFIED_LOCAL",
     "C01": "TODO",
     "C02": "TODO",
     "C03": "TODO",
@@ -22,13 +22,13 @@
     "C11": "TODO",
     "C12": "TODO"
   },
-  "lastVerifiedSha": null,
+  "lastVerifiedSha": "7971250384e064752ab870b6ea55a805eb736ab8",
   "ciRun": null,
   "openFindings": [
-    "C00 device pointer and cumulative CI gates remain to be executed on its committed SHA",
+    "Hosted CI status for C00 could not be queried locally because GitHub CLI is unavailable; final same-SHA hosted evidence remains a C12 gate",
     "Samsung square-screen and physical refresh-rate review remain owner-only"
   ],
   "sourceDelivery": "NOT_VERIFIED",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Commit C00, run static/JVM/APK/device gates, then start C01 only if green"
+  "nextAction": "Start C01 with storage/read-failure/action-queue Red tests; do not start C02 until C01 is green"
 }
