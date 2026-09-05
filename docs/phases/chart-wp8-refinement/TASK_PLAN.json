@@ -428,7 +428,7 @@
         "MAP-R16",
         "MAP-R18"
       ],
-      "status": "TODO",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C10",
       "acceptanceScenarioIds": [
         "C10-T01",
@@ -442,8 +442,11 @@
         "C10-T09",
         "C10-T10"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": [
+        "docs/phases/chart-wp8-refinement/c10/REPORT.md",
+        "docs/phases/chart-wp8-refinement/c10/BASELINE_LOCK.json"
+      ]
     },
     {
       "id": "C11",
@@ -1489,11 +1492,11 @@
       "given": "NoSource生产入口",
       "when": "浏览、测量、规划、GPX",
       "then": "无红故障墙、无假船位、无高频空闲timer",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/PositionObservationCoordinatorTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["NoSource starts no collector/timer; production Chart shows the truthful state and no unusable Follow action"]
     },
     {
       "id": "C10-T02",
@@ -1501,11 +1504,11 @@
       "given": "相同坐标的新样本与同ID旧缓存",
       "when": "消费两种输入",
       "then": "前者更新新鲜度，后者不刷新年龄",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PositionObservationContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["A new identity at identical coordinates refreshes age; cached identity is rejected without replacing the fix"]
     },
     {
       "id": "C10-T03",
@@ -1513,11 +1516,11 @@
       "given": "source epoch变化或切源",
       "when": "接收重复ID与乱序样本",
       "then": "不会永久误丢新epoch，也不会混源拼装fix",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PositionObservationContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["A new source epoch accepts reused IDs; source switching never combines a new fix with old-source heading"]
     },
     {
       "id": "C10-T04",
@@ -1525,11 +1528,11 @@
       "given": "未来/负年龄或UTC调整",
       "when": "新鲜度判定",
       "then": "质量受控，单调时钟不被wall clock伪更新",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PositionObservationContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["Future and out-of-order monotonic samples are rejected; a backward UTC sample cannot falsify monotonic freshness"]
     },
     {
       "id": "C10-T05",
@@ -1537,11 +1540,11 @@
       "given": "没有新消息",
       "when": "推进可测试时钟超过策略阈值",
       "then": "样本主动转stale并更新图形，不等下一包",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PositionObservationContractTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/PositionObservationCoordinatorTest.kt",
+      "command": "./gradlew :core:map-domain:test :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["Injectable monotonic clock actions expire position, heading and COG independently without waiting for another packet"]
     },
     {
       "id": "C10-T06",
@@ -1549,11 +1552,11 @@
       "given": "position fresh而heading stale/只有COG",
       "when": "绘制船位和方向",
       "then": "局部降级；COG不叫HDG；未知精度不造圈",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PositionObservationContractTest.kt; adapter/map-offline/src/test/java/com/yokuli/marine/map/offline/PositionOverlayFrameTest.kt",
+      "command": "./gradlew :core:map-domain:test :adapter:map-offline:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["True heading, dashed COG, neutral position and optional accuracy use independent quality planes; low-speed/unknown facts draw nothing invented"]
     },
     {
       "id": "C10-T07",
@@ -1561,11 +1564,11 @@
       "given": "链路断开但样本未超时",
       "when": "随后过期",
       "then": "断开和新鲜度并存，过期后保留明示历史点",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PositionObservationContractTest.kt; adapter/map-offline/src/test/java/com/yokuli/marine/map/offline/PositionOverlayFrameTest.kt",
+      "command": "./gradlew :core:map-domain:test :adapter:map-offline:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["Disconnect retains the last point and freshness fact while renderer immediately moves it to the historical plane and removes live vectors"]
     },
     {
       "id": "C10-T08",
@@ -1573,11 +1576,11 @@
       "given": "保存最后已知位置并设备重启",
       "when": "恢复历史",
       "then": "不同boot elapsed不比较成fresh，无推航",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PositionObservationContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["Different boot IDs can only be stale and live position is deliberately excluded from persisted snapshots; no dead reckoning exists"]
     },
     {
       "id": "C10-T09",
@@ -1585,11 +1588,11 @@
       "given": "用户Browse/pan过或此前Follow",
       "when": "数据恢复",
       "then": "Browse不抢相机；Follow仅按用户保留意图恢复",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PositionObservationContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["Follow is an explicit user intent; renderer user-camera idle returns to Browse and later data cannot steal Browse camera"]
     },
     {
       "id": "C10-T10",
@@ -1597,11 +1600,11 @@
       "given": "预览/保存/磁贴/观测恢复",
       "when": "检查输出spy与发布产物",
       "then": "无NMEA/自动舵输出，无生产Fake或GPS采集权限",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": ".github/scripts/test_chart_c10_contract.py; app-shell/src/main/AndroidManifest.xml",
+      "command": "python3 .github/scripts/test_chart_c10_contract.py; bash .github/scripts/test-release-product-surface.sh",
+      "result": "PASS",
+      "verifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
+      "evidence": ["Release has no location permission, production Fake/Replay, NMEA writer, autopilot output or HOME intent"]
     },
     {
       "id": "C11-T01",

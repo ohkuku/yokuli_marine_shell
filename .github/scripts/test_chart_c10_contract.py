@@ -1,3 +1,4 @@
+import json
 import pathlib
 import unittest
 
@@ -6,6 +7,17 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 class ChartC10ContractTest(unittest.TestCase):
+    def test_c10_report_and_baseline_lock_are_sealed(self):
+        report = (ROOT / "docs/phases/chart-wp8-refinement/c10/REPORT.md").read_text()
+        lock = json.loads((ROOT / "docs/phases/chart-wp8-refinement/c10/BASELINE_LOCK.json").read_text())
+        self.assertEqual("C10", lock["package"])
+        self.assertEqual("VERIFIED_LOCAL", lock["status"])
+        self.assertEqual("NoSourcePositionPort", lock["productionPositionPort"])
+        self.assertEqual("READ_ONLY_OBSERVATION", lock["capabilityBoundary"])
+        self.assertIn("C10 NoSource", report)
+        self.assertIn("English translation", report)
+        self.assertIn("C11", report)
+
     def test_production_uses_read_only_no_source_port(self):
         contract = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/PositionObservation.kt").read_text()
         app = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellApplication.kt").read_text()

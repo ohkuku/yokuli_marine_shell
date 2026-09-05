@@ -6,7 +6,7 @@
   "auditedSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "workingBaseSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "auditedShaIsAncestorOfWorkingBase": true,
-  "currentTask": "C10",
+  "currentTask": "C11",
   "taskStatus": {
     "C00": "VERIFIED_LOCAL",
     "C01": "VERIFIED_LOCAL",
@@ -18,11 +18,11 @@
     "C07": "VERIFIED_LOCAL",
     "C08": "VERIFIED_LOCAL",
     "C09": "VERIFIED_LOCAL",
-    "C10": "TODO",
+    "C10": "VERIFIED_LOCAL",
     "C11": "TODO",
     "C12": "TODO"
   },
-  "lastVerifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+  "lastVerifiedSha": "260a343940c49bfa1564de544dea5881b9d8bf3a",
   "ciRun": null,
   "openFindings": [
     "Hosted CI status for C00 could not be queried locally because GitHub CLI is unavailable; final same-SHA hosted evidence remains a C12 gate",
@@ -30,5 +30,5 @@
   ],
   "sourceDelivery": "BLOCKED_EXTERNAL",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Begin C10 with Red tests for explicit NoSource, read-only phone position observations, quality and freshness degradation, permission-denial truth and non-navigation boundaries"
+  "nextAction": "Begin C11 with Red tests for useful three-size Chart tile projections, stale snapshot rejection, session restoration and truthful missing-object handling"
 }

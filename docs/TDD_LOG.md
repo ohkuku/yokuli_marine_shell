@@ -649,3 +649,13 @@ Renderer 现在直接消费 `ShellTransitionRequest.kind`，不再通过 legacy 
 The Red removes the lossy depth-only navigation intent and requires exact Engine transition kinds, decomposed timing phases, evidence labels, reduced-motion behavior, distinct internal-route transitions, duplicate Search-launch suppression, Android haptic mapping, and keyboard-safe virtual controls. Green makes the exact transition request the renderer's sole input. Approved Stage 2.5 values remain visible recording windows rather than input latency or universal constants; unobserved product motion and haptics are explicitly `DERIVED_UNVERIFIED`. Foundation Pager exclusively owns Desktop/Module List movement, while Search enters a Module atomically without an intermediate surface or duplicate launch effect.
 
 Full API 34 review then found overlapping 48dp edit controls on a 1×1 tile and a pixel test that ignored the newly modeled bottom safe inset. Compact controls now use the allowed 44dp bound, and the glyph story samples each real semantic key bound. The focused Search stories, affected edit stories, and the complete `29/29` Activity suite pass without fixed sleeps. Physical-device feel and subjective WP fidelity remain pending.
+
+## Chart C10 — NoSource 与只读观测质量
+
+Red 测试先要求 source epoch、观测 identity、boot-scoped monotonic clock、独立 Position/Heading/COG-SOG/accuracy、断流历史样式和显式 Follow；旧简单位置模型无法编译。Green 建立只读 port，并让生产装配固定为 `NoSourcePositionPort`，因此没有 GPS 权限、Fake/Replay、NMEA writer、自动舵输出或空闲 freshness timer。
+
+自审增加同坐标新样本、缓存重复、source 切换、UTC 回拨、不同 boot、历史快照、低速 COG、未知精度、MapLibre 五种 feature plane 与生产无源 UI 测试。累计 Gate 还捕获并修正两条过时的合法 COG 字面禁令和一个隔离 adapter 的旧字段引用。冻结点 `260a343940c49bfa1564de544dea5881b9d8bf3a` 本地通过 206 Python、357 JVM、17 MapLibre、52 Shell 和 7 Room tests；托管同 SHA 证据仍留给 C12。
+
+### English translation — Chart C10
+
+The Red required epoch-aware identities, a boot-scoped monotonic clock, independent position/heading/COG-SOG/accuracy quality, historical disconnect rendering, and explicit Follow intent. Green adds a read-only port while production remains NoSource with no collection permission, fake provider, vessel output, or idle timer. Adversarial tests cover dedupe, source changes, clock changes, rendering planes, camera ownership, and historical persistence boundaries.

@@ -194,3 +194,11 @@ Red 先冻结 route/package/zoom/宽度/备用区域 fingerprint、保守走廊�
 自查将规划中状态改为可见且可取消，把所有结果绑定 route ID，避免跨路线串状态；SQLite 从整级扫描改为 400-key 参数化批次；最后复用来源哈希锁定的 NOAA NCDS fixture 验证真实 TMS→XYZ 命中及 bounds 内洞。NOAA 只登记 `IMPORT_ONLY/BLOCKED_EXTERNAL`，UI 不显示不存在的下载能力。
 
 冻结点 `968e1b8e2cf958a9361258378529134b29f1bfc1` 的累计 Host Gate 通过 201 条 Python 合同、338 个 JVM XML tests 和 1207 个 Gradle tasks；API 34 上离线 package/renderer/index 17、Shell 52、Room 7 全部通过。Debug/unsigned Release hash 分别为 `6e3f2fd052693d27958769a0328c4983fde1dda679a45a10e6f42a802d1053ca` 与 `52f7f83997ffb6ba4afafdf83082b37c3b71e23068e22f6f29a961cb17b72326`。C09 标记 `VERIFIED_LOCAL`，只允许进入 C10；来源交付仍单列 `BLOCKED_EXTERNAL`，位置观测和动态 Shell 磁贴未提前宣称。
+
+## C10｜NoSource、单调质量与只读观测边界
+
+Red 固定 source/epoch/identity、boot-scoped monotonic age、独立 Position/Heading/COG-SOG/accuracy 质量、断流历史样式以及显式 Browse/Follow。实现用 `NoSourcePositionPort` 作为生产默认，不启动空闲 collector/timer；未来 provider 只能通过只读事件进入现有串行 MapStore。
+
+MapLibre 使用实时点、历史点、真航向、虚线 COG 和精度圈五个独立 plane。同 ID 缓存、乱序和未来样本不覆盖好 fix；同坐标新身份和新 epoch 可用；不同 boot 与持久历史不恢复为 fresh。无磁差的 magnetic heading、低速 COG 和未知精度不会被画成确定事实。
+
+累计 Gate 先准确发现历史字面测试与新合法观测模型冲突，以及隔离 Google adapter 的旧字段访问；均以窄纠错提交修正，没有把 adapter 接回 Release。冻结点 `260a343940c49bfa1564de544dea5881b9d8bf3a` 通过 206 条 Python 合同、357 个 JVM XML tests、1178 个 Gradle tasks；API 34 的 MapLibre 17、Shell 52、Room 7 全绿。C10 标记 `VERIFIED_LOCAL`，只允许进入 C11。
