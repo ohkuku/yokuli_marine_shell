@@ -20,6 +20,11 @@ class ChartC12DeliveryContract(unittest.TestCase):
             self.assertIn(task, runner)
         self.assertIn('all_device_tasks=(', runner)
         self.assertIn('gradle_args+=("${all_device_tasks[@]}")', runner)
+        self.assertIn(
+            "android.testInstrumentationRunnerArguments.notClass="
+            "com.yokuli.marine.shell.ChartC12ProcessRestartProbeTest",
+            runner,
+        )
 
     def test_ci_names_the_c12_gate_and_uploads_all_device_reports(self):
         workflow = self.text(".github/workflows/android.yml")

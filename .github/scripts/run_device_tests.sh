@@ -14,6 +14,10 @@ gradle_args=(--no-daemon --stacktrace)
 case "$mode" in
   all)
     gradle_args+=("${all_device_tasks[@]}")
+    # This two-process probe is driven separately so a real force-stop occurs between methods.
+    gradle_args+=(
+      '-Pandroid.testInstrumentationRunnerArguments.notClass=com.yokuli.marine.shell.ChartC12ProcessRestartProbeTest'
+    )
     ;;
   smoke)
     gradle_args+=(
