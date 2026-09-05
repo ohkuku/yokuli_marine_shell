@@ -44,14 +44,17 @@ class ChartC12DeliveryContract(unittest.TestCase):
             "app-shell/src/androidTest/java/com/yokuli/marine/shell/ChartC12JourneyTest.kt"
         )
         for journey_id in ("J01", "J02", "J03", "J04", "J05", "J06"):
-            self.assertIn(f'@DisplayName("{journey_id}', journey)
+            self.assertIn(f"fun journey{journey_id}", journey)
         for boundary in (
-            "force-stop",
-            "ActivityScenario.recreate() is not process death",
             "navigationActive",
             "OfflineMapInstanceMetrics",
         ):
             self.assertIn(boundary, journey)
+        process_driver = self.text(".github/scripts/run_c12_process_restore.sh")
+        self.assertIn("am force-stop com.yokuli.marine", process_driver)
+        self.assertNotIn("ActivityScenario.recreate", process_driver)
+        self.assertIn("seedDurableStateForExternalProcessRestart", process_driver)
+        self.assertIn("verifyDurableStateAfterExternalProcessRestart", process_driver)
 
     def test_final_gate_records_process_restart_and_release_manifest_audit(self):
         gate = self.text(".github/scripts/run_marine_shell_final_gate.sh")
