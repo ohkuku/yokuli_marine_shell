@@ -20,6 +20,7 @@ import com.yokuli.marine.feature.chart.MarineChartSurface
 import com.yokuli.marine.feature.chart.MarineChartTransitionSurface
 import com.yokuli.marine.feature.chart.MapPlaceExportUiState
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
+import com.yokuli.marine.feature.chart.OfflineCoverageUiState
 import com.yokuli.marine.feature.chart.GpxExportTarget
 import com.yokuli.marine.feature.chart.GpxExportUiState
 import com.yokuli.marine.feature.chart.GpxImportUiAction
@@ -81,6 +82,9 @@ data class ProductionShellRuntime(
     val gpxExportState: GpxExportUiState,
     val onSaveGpx: (GpxExportTarget) -> Unit,
     val onShareGpx: (GpxExportTarget) -> Unit,
+    val offlineCoverageState: OfflineCoverageUiState,
+    val onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
+    val onCancelOfflineCoverage: () -> Unit,
     val onSettingsAction: (SettingsUiAction) -> Unit,
 )
 
@@ -132,6 +136,9 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 gpxExportState = runtime.gpxExportState,
                 onSaveGpx = runtime.onSaveGpx,
                 onShareGpx = runtime.onShareGpx,
+                offlineCoverageState = runtime.offlineCoverageState,
+                onStartOfflineCoverage = runtime.onStartOfflineCoverage,
+                onCancelOfflineCoverage = runtime.onCancelOfflineCoverage,
                 chartSurface = chartSurface,
             )
         },

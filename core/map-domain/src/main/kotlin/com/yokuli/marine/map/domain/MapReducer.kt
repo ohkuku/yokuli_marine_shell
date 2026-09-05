@@ -519,6 +519,11 @@ class DefaultMapReducer(
         } else {
             state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.routeId))
         }
+        is MapSurface.OfflineCoverage -> if (state.savedRoutes.any { it.id == surface.routeId }) {
+            state.pushSurface(surface)
+        } else {
+            state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.routeId))
+        }
         is MapSurface.DeleteRoutePlan -> if (state.savedRoutes.any { it.id == surface.routeId }) {
             state.pushSurface(surface)
         } else {

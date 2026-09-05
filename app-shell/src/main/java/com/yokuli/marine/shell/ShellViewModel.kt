@@ -19,6 +19,8 @@ import com.yokuli.marine.feature.chart.GpxDocumentSource
 import com.yokuli.marine.feature.chart.GpxImportCoordinator
 import com.yokuli.marine.feature.chart.GpxImportUiAction
 import com.yokuli.marine.feature.chart.GpxImportUiState
+import com.yokuli.marine.feature.chart.OfflineCoverageCoordinator
+import com.yokuli.marine.feature.chart.OfflineCoverageUiState
 import android.net.Uri
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
@@ -31,6 +33,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -101,8 +104,22 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         },
     )
     val gpxImportState: StateFlow<GpxImportUiState> = gpxImportCoordinator.state
+    private val offlineCoverageCoordinator = OfflineCoverageCoordinator(
+        tileIndex = (application as ShellApplication).chartCoverageIndex,
+        scope = viewModelScope,
+        incidentLogger = {
+            // Package paths and route geometry are private and intentionally excluded.
+            android.util.Log.w("YokuliMap", "Offline coverage check failed: ${it.javaClass.simpleName}")
+        },
+    )
+    val offlineCoverageState: StateFlow<OfflineCoverageUiState> = offlineCoverageCoordinator.state
 
     init {
+        viewModelScope.launch {
+            mapStore.state.collect { state ->
+                offlineCoverageCoordinator.invalidateIfInputsChanged(state.savedRoutes, state.chartPackages)
+            }
+        }
         if (!recoveryTrackingEnabled) {
             // A performance/profile harness must render a deterministic Start immediately;
             // its repeated process control is not a production recovery event.
@@ -155,6 +172,19 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     fun acquireChartPackageLease(packageId: ChartPackageId): ChartPackageLease =
         chartPackages.acquireLease(packageId)
+
+    fun startOfflineCoverage(routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) {
+        val state = mapStore.state.value
+        val route = state.savedRoutes.firstOrNull { it.id == routeId } ?: return
+        offlineCoverageCoordinator.start(
+            route = route,
+            packages = state.chartPackages,
+            targetZoom = targetZoom,
+            halfWidthNauticalMiles = halfWidthNauticalMiles,
+        )
+    }
+
+    fun cancelOfflineCoverage() = offlineCoverageCoordinator.cancel()
 
     fun saveLanguage(language: AppLanguage) {
         viewModelScope.launch {

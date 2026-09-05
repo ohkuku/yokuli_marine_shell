@@ -51,6 +51,7 @@ import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliColors
 import com.yokuli.marine.map.domain.ChartPackageId
+import com.yokuli.marine.map.domain.ContentFootprint
 import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import com.yokuli.marine.map.domain.CoordinateCodec
 import com.yokuli.marine.map.domain.CoordinateError
@@ -82,6 +83,7 @@ import com.yokuli.marine.map.domain.MapViewport
 import com.yokuli.marine.map.domain.MapViewportInsets
 import com.yokuli.marine.map.domain.MeasurementMath
 import com.yokuli.marine.map.domain.MeasurementPrompt
+import com.yokuli.marine.map.domain.NavigationSuitability
 import com.yokuli.marine.map.domain.PlaceCategory
 import com.yokuli.marine.map.domain.PlaceSearch
 import com.yokuli.marine.map.domain.PlaceSort
@@ -89,6 +91,8 @@ import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
 import com.yokuli.marine.map.domain.RoutePlaceSourceState
 import com.yokuli.marine.map.domain.RouteEditNotice
+import com.yokuli.marine.map.domain.SlippyTileKey
+import com.yokuli.marine.map.domain.TileAvailability
 import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
@@ -134,6 +138,9 @@ fun ChartWorkspace(
     gpxExportState: GpxExportUiState = GpxExportUiState.Idle,
     onSaveGpx: (GpxExportTarget) -> Unit = {},
     onShareGpx: (GpxExportTarget) -> Unit = {},
+    offlineCoverageState: OfflineCoverageUiState = OfflineCoverageUiState.Idle,
+    onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit = { _, _, _ -> },
+    onCancelOfflineCoverage: () -> Unit = {},
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -213,6 +220,9 @@ fun ChartWorkspace(
                 gpxExportState,
                 onSaveGpx,
                 onShareGpx,
+                offlineCoverageState,
+                onStartOfflineCoverage,
+                onCancelOfflineCoverage,
                 onAction,
             )
         }
@@ -684,6 +694,9 @@ private fun MapPageSurface(
     gpxExportState: GpxExportUiState,
     onSaveGpx: (GpxExportTarget) -> Unit,
     onShareGpx: (GpxExportTarget) -> Unit,
+    offlineCoverageState: OfflineCoverageUiState,
+    onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
+    onCancelOfflineCoverage: () -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -699,6 +712,7 @@ private fun MapPageSurface(
             is MapSurface.DeletePlace -> R.string.map_place_delete_title to R.string.map_places_context
             MapSurface.Routes, is MapSurface.RouteDetail, is MapSurface.DeleteRoutePlan ->
                 R.string.map_routes_title to R.string.map_routes_context
+            is MapSurface.OfflineCoverage -> R.string.map_coverage_title to R.string.map_coverage_context
             MapSurface.ChartPackages, is MapSurface.ChartPackageDetail -> R.string.map_charts_title to R.string.map_charts_context
             MapSurface.GpxExchange -> R.string.map_gpx_title to R.string.map_gpx_context
             MapSurface.ImportedTracks, is MapSurface.ImportedTrackDetail ->
@@ -740,6 +754,14 @@ private fun MapPageSurface(
                     onAction,
                 )
                 is MapSurface.DeleteRoutePlan -> RouteDeletePage(state, surface.routeId, onAction)
+                is MapSurface.OfflineCoverage -> OfflineCoveragePage(
+                    state = state,
+                    routeId = surface.routeId,
+                    coverageState = offlineCoverageState,
+                    onStart = onStartOfflineCoverage,
+                    onCancel = onCancelOfflineCoverage,
+                    onImportAction = onImportAction,
+                )
                 is MapSurface.ChartPackageDetail -> ChartPackageDetailPage(state, surface.packageId, onAction)
                 is MapSurface.ImportedTrackDetail -> ImportedTrackDetailPage(
                     state,
@@ -1427,9 +1449,168 @@ private fun RoutePreviewPage(
                 ),
             )
         }
+        MapTextButton(
+            stringResource(R.string.map_coverage_open),
+            "map-route-offline-coverage-${plan.id}",
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(MapAction.OpenSurface(MapSurface.OfflineCoverage(plan.id)))
+        }
         GpxExportActions(GpxExportTarget.Route(plan), gpxExportState, onSaveGpx, onShareGpx)
         MapTextButton(stringResource(R.string.map_route_delete), "map-route-delete-${plan.id}", mutable, Modifier.fillMaxWidth()) {
             onAction(MapAction.RequestDeleteRoutePlan(plan.id))
+        }
+    }
+}
+
+@Composable
+private fun OfflineCoveragePage(
+    state: MapState,
+    routeId: String,
+    coverageState: OfflineCoverageUiState,
+    onStart: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
+    onCancel: () -> Unit,
+    onImportAction: (ChartImportUiAction) -> Unit,
+) {
+    val colors = LocalWpTheme.current
+    val route = state.savedRoutes.firstOrNull { it.id == routeId } ?: return
+    val suggestedZoom = state.chartPackages
+        .firstOrNull { it.id == state.activeChartPackageId }
+        ?.maxZoom
+        ?: state.chartPackages.maxOfOrNull { it.maxZoom }
+        ?: 14
+    var zoomText by remember(routeId, suggestedZoom) { mutableStateOf(suggestedZoom.toString()) }
+    var widthText by remember(routeId) { mutableStateOf("2") }
+    val zoom = zoomText.trim().toIntOrNull()?.takeIf { it in 0..24 }
+    val width = widthText.trim().toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
+    val visibleCoverage = when (coverageState) {
+        is OfflineCoverageUiState.Ready -> coverageState.takeIf { it.request.routeId == routeId }
+            ?: OfflineCoverageUiState.Idle
+        else -> coverageState
+    }
+
+    Column(
+        Modifier.fillMaxWidth().testTag("map-offline-coverage-$routeId"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        WpText(route.name, 22, weight = FontWeight.Light)
+        WpText(stringResource(R.string.map_coverage_truth), 11, color = colors.muted)
+        MapFormTextField(R.string.map_coverage_zoom, zoomText, "map-coverage-zoom") { zoomText = it }
+        MapFormTextField(R.string.map_coverage_width, widthText, "map-coverage-width") { widthText = it }
+        if (zoom == null || width == null) {
+            WpText(stringResource(R.string.map_coverage_invalid_input), 11, color = colors.accent)
+        }
+        MapTextButton(
+            stringResource(R.string.map_coverage_check),
+            "map-coverage-check",
+            enabled = zoom != null && width != null && visibleCoverage !is OfflineCoverageUiState.Checking,
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.accent),
+        ) {
+            onStart(routeId, checkNotNull(zoom), checkNotNull(width))
+        }
+        if (visibleCoverage is OfflineCoverageUiState.Checking) {
+            WpText(
+                stringResource(R.string.map_coverage_checking, visibleCoverage.requiredKeyCount),
+                11,
+                modifier = Modifier.testTag("map-coverage-checking"),
+            )
+            MapTextButton(
+                stringResource(R.string.map_coverage_cancel),
+                "map-coverage-cancel",
+                modifier = Modifier.fillMaxWidth(),
+                action = onCancel,
+            )
+        }
+        when (visibleCoverage) {
+            is OfflineCoverageUiState.Ready -> CoverageResult(visibleCoverage)
+            is OfflineCoverageUiState.TooLarge -> WpText(
+                stringResource(R.string.map_coverage_too_large, visibleCoverage.maximumKeys),
+                11,
+                color = colors.accent,
+                modifier = Modifier.testTag("map-coverage-too-large"),
+            )
+            OfflineCoverageUiState.Cancelled -> WpText(
+                stringResource(R.string.map_coverage_cancelled),
+                11,
+                modifier = Modifier.testTag("map-coverage-cancelled"),
+            )
+            is OfflineCoverageUiState.Stale -> WpText(
+                stringResource(R.string.map_coverage_stale),
+                11,
+                color = colors.accent,
+                modifier = Modifier.testTag("map-coverage-stale"),
+            )
+            is OfflineCoverageUiState.Failed -> WpText(
+                stringResource(
+                    if (visibleCoverage.reason == OfflineCoverageFailure.NO_ELIGIBLE_PACKAGE) {
+                        R.string.map_coverage_no_package
+                    } else {
+                        R.string.map_coverage_index_failed
+                    },
+                ),
+                11,
+                color = colors.accent,
+                modifier = Modifier.testTag("map-coverage-failed"),
+            )
+            OfflineCoverageUiState.Idle, is OfflineCoverageUiState.Checking -> Unit
+        }
+        WpText(stringResource(R.string.map_coverage_source_title), 16, weight = FontWeight.Light)
+        WpText(stringResource(R.string.map_coverage_source_noaa), 11, color = colors.muted)
+        MapTextButton(
+            stringResource(R.string.map_coverage_import),
+            "map-coverage-import",
+            modifier = Modifier.fillMaxWidth(),
+        ) { onImportAction(ChartImportUiAction.ChooseDocument) }
+    }
+}
+
+@Composable
+private fun CoverageResult(state: OfflineCoverageUiState.Ready) {
+    val colors = LocalWpTheme.current
+    val result = state.result
+    Column(
+        Modifier.fillMaxWidth().testTag("map-coverage-result"),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        WpText(
+            stringResource(
+                when (result.tileAvailability) {
+                    TileAvailability.AVAILABLE -> R.string.map_coverage_tiles_available
+                    TileAvailability.MISSING -> R.string.map_coverage_tiles_missing
+                    TileAvailability.UNKNOWN -> R.string.map_coverage_tiles_unknown
+                },
+                result.requiredKeyCount,
+                result.missingKeys.size,
+            ),
+            12,
+            modifier = Modifier.testTag("map-coverage-tile-availability"),
+        )
+        check(result.contentFootprint == ContentFootprint.NOT_VERIFIED)
+        WpText(
+            stringResource(R.string.map_coverage_content_unverified),
+            11,
+            color = colors.muted,
+            modifier = Modifier.testTag("map-coverage-content-footprint"),
+        )
+        check(result.navigationSuitability == NavigationSuitability.NOT_ASSESSED)
+        WpText(
+            stringResource(R.string.map_coverage_navigation_not_assessed),
+            11,
+            color = colors.accent,
+            modifier = Modifier.testTag("map-coverage-navigation-suitability"),
+        )
+        result.missingKeys.sortedWith(compareBy<SlippyTileKey> { it.zoom }.thenBy { it.x }.thenBy { it.y })
+            .take(24)
+            .forEach { key ->
+                WpText(
+                    stringResource(R.string.map_coverage_missing_key, key.zoom, key.x, key.y),
+                    10,
+                    color = colors.muted,
+                    modifier = Modifier.testTag("map-coverage-missing-${key.zoom}-${key.x}-${key.y}"),
+                )
+            }
+        if (result.missingKeys.size > 24) {
+            WpText(stringResource(R.string.map_coverage_missing_more, result.missingKeys.size - 24), 10, color = colors.muted)
         }
     }
 }

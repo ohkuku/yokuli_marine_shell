@@ -15,6 +15,7 @@ sealed interface MapSurface {
     data class DeletePlace(val placeId: String) : MapSurface
     data class PlaceDetail(val placeId: String) : MapSurface
     data class RouteDetail(val routeId: String) : MapSurface
+    data class OfflineCoverage(val routeId: String) : MapSurface
     data class DeleteRoutePlan(val routeId: String) : MapSurface
     data class ChartPackageDetail(val packageId: ChartPackageId) : MapSurface
     data class ImportedTrackDetail(val trackId: String) : MapSurface

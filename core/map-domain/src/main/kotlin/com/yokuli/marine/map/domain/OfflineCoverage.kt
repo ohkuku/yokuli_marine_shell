@@ -5,10 +5,8 @@ import kotlin.math.PI
 import kotlin.math.asinh
 import kotlin.math.cos
 import kotlin.math.floor
-import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sinh
 import kotlin.math.tan
 
 data class SlippyTileKey(val zoom: Int, val x: Int, val y: Int) {

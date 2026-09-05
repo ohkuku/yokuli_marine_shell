@@ -11,6 +11,7 @@ import androidx.core.os.LocaleListCompat
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.map.storage.RoomMapPersistence
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
+import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,9 @@ class ShellApplication : Application() {
     }
     val chartPackageRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         AndroidMbTilesRepository(this)
+    }
+    val chartCoverageIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AndroidChartCoverageIndex(chartPackageRepository::acquireLease)
     }
 
     override fun onCreate() {
