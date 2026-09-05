@@ -21,15 +21,26 @@ import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapState
 import org.maplibre.android.MapLibre
-import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.RasterLayer
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.PropertyFactory.circleColor
+import org.maplibre.android.style.layers.PropertyFactory.circleRadius
+import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
+import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
+import org.maplibre.android.style.layers.PropertyFactory.lineColor
+import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.sources.RasterSource
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
+import org.maplibre.geojson.Point
 
 /** Renders an installed raster MBTiles package without network or a provider API key. */
 @Composable
@@ -47,6 +58,7 @@ fun OfflineMarineChartSurface(
     val mapView = remember(context) { MapView(context) }
     val lifecycleDriver = remember(mapView) { OfflineMapLifecycleDriver(mapView) }
     var map by remember(mapView) { mutableStateOf<MapLibreMap?>(null) }
+    var activeStyle by remember(mapView) { mutableStateOf<Style?>(null) }
 
     DisposableEffect(mapView, lifecycle, context.applicationContext) {
         lifecycleDriver.create()
@@ -99,31 +111,42 @@ fun OfflineMarineChartSurface(
                 style.addSource(RasterSource(CHART_SOURCE, chartPackage.localUri, 256))
                 style.addLayer(RasterLayer(CHART_LAYER, CHART_SOURCE))
             }
+            style.addPointOverlay(PLACES_SOURCE, PLACES_LAYER, 0xfff7b500.toInt(), 5f)
+            style.addPointOverlay(SELECTION_SOURCE, SELECTION_LAYER, 0xffffffff.toInt(), 7f)
+            style.addLineOverlay(MEASUREMENT_SOURCE, MEASUREMENT_LAYER, 0xfff7b500.toInt(), 3f)
+            style.addLineOverlay(ROUTE_SOURCE, ROUTE_LAYER, 0xff00a4ef.toInt(), 5f)
+            style.addPointOverlay(ROUTE_POINTS_SOURCE, ROUTE_POINTS_LAYER, 0xff00a4ef.toInt(), 5f)
+            style.addPointOverlay(POSITION_SOURCE, POSITION_LAYER, 0xff00d084.toInt(), 7f)
+            activeStyle = style
         }
     }
 
     LaunchedEffect(
-        map,
+        activeStyle,
         state.selection,
         state.places,
         state.measurementDraft,
         state.routeDraft,
         state.position.observation,
     ) {
-        map?.apply {
-            clear()
-            state.places.forEach { place -> addMarker(MarkerOptions().position(place.point.toLatLng()).title(place.name)) }
-            state.selection?.let { addMarker(MarkerOptions().position(it.point.toLatLng())) }
-            state.measurementDraft?.points?.takeIf { it.isNotEmpty() }?.let { points ->
-                addPolyline(PolylineOptions().addAll(points.map { it.toLatLng() }).color(0xfff7b500.toInt()).width(5f))
-            }
-            state.routeDraft?.waypoints?.takeIf { it.isNotEmpty() }?.let { points ->
-                addPolyline(PolylineOptions().addAll(points.map { it.toLatLng() }).color(0xff00a4ef.toInt()).width(7f))
-            }
-            state.position.observation?.let { observation ->
-                addMarker(MarkerOptions().position(observation.point.toLatLng()).title(observation.source))
-            }
-        }
+        activeStyle?.getSourceAs<GeoJsonSource>(PLACES_SOURCE)?.setGeoJson(
+            FeatureCollection.fromFeatures(state.places.map { it.point.toFeature() }),
+        )
+        activeStyle?.getSourceAs<GeoJsonSource>(SELECTION_SOURCE)?.setGeoJson(
+            state.selection?.point.toFeatureCollection(),
+        )
+        activeStyle?.getSourceAs<GeoJsonSource>(MEASUREMENT_SOURCE)?.setGeoJson(
+            state.measurementDraft?.points.toLineFeatureCollection(),
+        )
+        activeStyle?.getSourceAs<GeoJsonSource>(ROUTE_SOURCE)?.setGeoJson(
+            state.routeDraft?.waypoints.toLineFeatureCollection(),
+        )
+        activeStyle?.getSourceAs<GeoJsonSource>(ROUTE_POINTS_SOURCE)?.setGeoJson(
+            FeatureCollection.fromFeatures(state.routeDraft?.waypoints.orEmpty().map { it.toFeature() }),
+        )
+        activeStyle?.getSourceAs<GeoJsonSource>(POSITION_SOURCE)?.setGeoJson(
+            state.position.observation?.point.toFeatureCollection(),
+        )
     }
 
     AndroidView(factory = { mapView }, modifier = modifier)
@@ -134,6 +157,34 @@ private fun MapCamera.toCameraPosition() = CameraPosition.Builder()
 private fun CameraPosition.toDomainCameraOrNull() = target?.let { MapCamera(it.toDomainPoint(), zoom, bearing) }
 private fun LatLng.toDomainPoint() = GeoPoint(latitude, longitude)
 private fun GeoPoint.toLatLng() = LatLng(latitude, longitude)
+private fun GeoPoint.toGeoJsonPoint() = Point.fromLngLat(longitude, latitude)
+private fun GeoPoint.toFeature() = Feature.fromGeometry(toGeoJsonPoint())
+private fun GeoPoint?.toFeatureCollection() = FeatureCollection.fromFeatures(
+    if (this == null) emptyList() else listOf(toFeature()),
+)
+private fun List<GeoPoint>?.toLineFeatureCollection() = FeatureCollection.fromFeatures(
+    this?.takeIf { it.size >= 2 }?.let { points ->
+        listOf(Feature.fromGeometry(LineString.fromLngLats(points.map { it.toGeoJsonPoint() })))
+    }
+        .orEmpty(),
+)
+
+private fun Style.addPointOverlay(sourceId: String, layerId: String, color: Int, radius: Float) {
+    addSource(GeoJsonSource(sourceId, FeatureCollection.fromFeatures(emptyList<Feature>())))
+    addLayer(
+        CircleLayer(layerId, sourceId).withProperties(
+            circleColor(color),
+            circleRadius(radius),
+            circleStrokeColor(0xffffffff.toInt()),
+            circleStrokeWidth(1.5f),
+        ),
+    )
+}
+
+private fun Style.addLineOverlay(sourceId: String, layerId: String, color: Int, width: Float) {
+    addSource(GeoJsonSource(sourceId, FeatureCollection.fromFeatures(emptyList<Feature>())))
+    addLayer(LineLayer(layerId, sourceId).withProperties(lineColor(color), lineWidth(width)))
+}
 
 private class OfflineMapLifecycleDriver(private val mapView: MapView) {
     private var created = false
@@ -174,6 +225,18 @@ private class OfflineMapMemoryCallbacks(private val mapView: MapView) : Componen
 
 private const val CHART_SOURCE = "installed-raster-chart"
 private const val CHART_LAYER = "installed-raster-chart-layer"
+private const val PLACES_SOURCE = "saved-places"
+private const val PLACES_LAYER = "saved-places-layer"
+private const val SELECTION_SOURCE = "map-selection"
+private const val SELECTION_LAYER = "map-selection-layer"
+private const val MEASUREMENT_SOURCE = "measurement-draft"
+private const val MEASUREMENT_LAYER = "measurement-draft-layer"
+private const val ROUTE_SOURCE = "manual-route-draft"
+private const val ROUTE_LAYER = "manual-route-draft-layer"
+private const val ROUTE_POINTS_SOURCE = "manual-route-points"
+private const val ROUTE_POINTS_LAYER = "manual-route-points-layer"
+private const val POSITION_SOURCE = "position-observation"
+private const val POSITION_LAYER = "position-observation-layer"
 private const val EMPTY_STYLE = """{
   "version": 8,
   "name": "Yokuli offline chart",

@@ -39,6 +39,7 @@
     <string name="map_charts_count">%1$d local chart packages installed</string>
     <string name="map_import_mbtiles">import MBTiles</string>
     <string name="map_chart_package_detail">%1$s · version %2$s</string>
+    <string name="map_chart_attribution">%1$s · license: %2$s</string>
     <string name="map_chart_active">in use</string>
     <string name="map_chart_use">use</string>
     <string name="map_chart_delete">delete chart package</string>

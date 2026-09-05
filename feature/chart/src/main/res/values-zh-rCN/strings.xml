@@ -39,6 +39,7 @@
     <string name="map_charts_count">已安装 %1$d 个本地海图包</string>
     <string name="map_import_mbtiles">导入 MBTiles</string>
     <string name="map_chart_package_detail">%1$s · 版本 %2$s</string>
+    <string name="map_chart_attribution">%1$s · 许可：%2$s</string>
     <string name="map_chart_active">正在使用</string>
     <string name="map_chart_use">使用</string>
     <string name="map_chart_delete">删除海图包</string>

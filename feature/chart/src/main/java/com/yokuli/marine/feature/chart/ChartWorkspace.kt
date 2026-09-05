@@ -88,6 +88,23 @@ fun ChartWorkspace(
             )
             PositionTruthBadge(state.position.availability)
             Spacer(Modifier.weight(1f))
+            state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.let { chartPackage ->
+                Box(
+                    Modifier.fillMaxWidth().background(colors.background.copy(alpha = .90f))
+                        .padding(horizontal = 18.dp, vertical = 5.dp).testTag("map-chart-attribution"),
+                ) {
+                    WpText(
+                        stringResource(
+                            R.string.map_chart_attribution,
+                            chartPackage.attribution,
+                            chartPackage.license,
+                        ),
+                        10,
+                        color = colors.muted,
+                        maxLines = 2,
+                    )
+                }
+            }
             MapToolPanel(
                 state = state,
                 mapConfigured = mapConfigured,
