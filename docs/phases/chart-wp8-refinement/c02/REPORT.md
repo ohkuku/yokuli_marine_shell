@@ -1,6 +1,6 @@
 # C02 单一真实地图 Renderer 报告
 
-> English summary: C02 replaces the production key-dependent renderer fork with one local MapLibre raster path, proves real MBTiles pixels and a traced NOAA subset, and defines an SDK-free camera/query/lifecycle contract. It is not an online-chart or bundled-navigation-data claim.
+> English translation: C02 replaces the production key-dependent renderer fork with one local MapLibre raster path, proves real MBTiles pixels and a traced NOAA subset, and defines an SDK-free camera/query/lifecycle contract. It is not an online-chart or bundled-navigation-data claim.
 
 ## 状态
 
