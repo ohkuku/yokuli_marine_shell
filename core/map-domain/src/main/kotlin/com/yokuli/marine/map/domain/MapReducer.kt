@@ -136,12 +136,7 @@ class DefaultMapReducer(
         is MapAction.CameraChanged -> persistSession(state.copy(camera = action.camera))
         is MapAction.SelectTool -> MapReduction(selectTool(state, action.tool))
         is MapAction.OpenSurface -> MapReduction(openSurface(state, action.surface))
-        MapAction.CloseSurface -> MapReduction(
-            state.copy(
-                surface = MapSurface.Root,
-                precisePointEdit = if (state.surface == MapSurface.CoordinateInput) null else state.precisePointEdit,
-            ),
-        )
+        MapAction.CloseSurface -> MapReduction(closeSurface(state))
         MapAction.DismissTransient -> MapReduction(state.copy(transient = null))
         MapAction.ClearSelection -> MapReduction(state.copy(selection = null))
         is MapAction.SetCrosshairEnabled -> MapReduction(state.copy(crosshairEnabled = action.enabled))
@@ -399,24 +394,64 @@ class DefaultMapReducer(
     }
 
     private fun openSurface(state: MapState, surface: MapSurface): MapState = when (surface) {
+        MapSurface.Root -> state.copy(
+            surface = MapSurface.Root,
+            surfaceHistory = emptyList(),
+            transient = null,
+            placeMove = null,
+            placeDeleteRequest = null,
+        )
+        is MapSurface.NewPlace -> state.pushSurface(surface)
+        is MapSurface.EditPlace -> if (state.places.any { it.id == surface.placeId }) {
+            state.pushSurface(surface)
+        } else {
+            state.copy(surface = MapSurface.Root, surfaceHistory = emptyList(), transient = MapTransient.UnavailableObject(surface.placeId))
+        }
+        is MapSurface.MovePlace -> if (state.places.any { it.id == surface.placeId }) {
+            state.pushSurface(surface)
+        } else {
+            state.copy(surface = MapSurface.Root, surfaceHistory = emptyList(), transient = MapTransient.UnavailableObject(surface.placeId))
+        }
+        is MapSurface.DeletePlace -> if (state.places.any { it.id == surface.placeId }) {
+            state.pushSurface(surface)
+        } else {
+            state.copy(surface = MapSurface.Root, surfaceHistory = emptyList(), transient = MapTransient.UnavailableObject(surface.placeId))
+        }
         is MapSurface.PlaceDetail -> if (state.places.any { it.id == surface.placeId }) {
-            state.copy(surface = surface, transient = null)
+            state.pushSurface(surface)
         } else {
             state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.placeId))
         }
         is MapSurface.RouteDetail -> if (state.savedRoutes.any { it.id == surface.routeId } ||
             state.routeDrafts.any { it.id == surface.routeId }
         ) {
-            state.copy(surface = surface, transient = null)
+            state.pushSurface(surface)
         } else {
             state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.routeId))
         }
         is MapSurface.ChartPackageDetail -> if (state.chartPackages.any { it.id == surface.packageId }) {
-            state.copy(surface = surface, transient = null)
+            state.pushSurface(surface)
         } else {
             state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.packageId.value))
         }
-        else -> state.copy(surface = surface, transient = null)
+        else -> state.pushSurface(surface)
+    }
+
+    private fun MapState.pushSurface(next: MapSurface): MapState = if (surface == next) {
+        copy(transient = null)
+    } else {
+        copy(surface = next, surfaceHistory = surfaceHistory + surface, transient = null)
+    }
+
+    private fun closeSurface(state: MapState): MapState {
+        val previous = state.surfaceHistory.lastOrNull() ?: MapSurface.Root
+        return state.copy(
+            surface = previous,
+            surfaceHistory = state.surfaceHistory.dropLast(1),
+            precisePointEdit = if (state.surface == MapSurface.CoordinateInput) null else state.precisePointEdit,
+            placeMove = if (state.surface is MapSurface.MovePlace) null else state.placeMove,
+            placeDeleteRequest = if (state.surface is MapSurface.DeletePlace) null else state.placeDeleteRequest,
+        )
     }
 
     private fun mapInteraction(
@@ -648,6 +683,8 @@ class DefaultMapReducer(
                 transient = null,
                 placeSaveStatus = PlaceSaveStatus(place.id, place.revision, MapSaveState.PENDING),
                 placeDeleteUndo = null,
+                surface = MapSurface.PlaceDetail(place.id),
+                surfaceHistory = listOf(MapSurface.Root, MapSurface.Places),
             ),
         )
     }
@@ -669,6 +706,12 @@ class DefaultMapReducer(
                 places = state.places.map { if (it.id == updated.id) updated else it },
                 placeSaveStatus = PlaceSaveStatus(updated.id, updated.revision, MapSaveState.PENDING),
                 placeDeleteUndo = null,
+                surface = MapSurface.PlaceDetail(updated.id),
+                surfaceHistory = if (state.surface is MapSurface.EditPlace) {
+                    state.surfaceHistory.dropLast(1)
+                } else {
+                    state.surfaceHistory
+                },
             ),
         )
     }
@@ -681,7 +724,7 @@ class DefaultMapReducer(
                 placeMove = PlaceMoveDraft(place.id, place.revision, place.point),
                 placeDeleteRequest = null,
                 transient = null,
-            ),
+            ).pushSurface(MapSurface.MovePlace(place.id)),
         )
     }
 
@@ -707,6 +750,12 @@ class DefaultMapReducer(
                 placeMove = null,
                 placeSaveStatus = PlaceSaveStatus(updated.id, updated.revision, MapSaveState.PENDING),
                 placeDeleteUndo = null,
+                surface = MapSurface.PlaceDetail(updated.id),
+                surfaceHistory = if (state.surface is MapSurface.MovePlace) {
+                    state.surfaceHistory.dropLast(1)
+                } else {
+                    state.surfaceHistory
+                },
             ),
         )
     }
@@ -721,7 +770,7 @@ class DefaultMapReducer(
             state.copy(
                 placeDeleteRequest = PlaceDeleteRequest(place.id, place.revision, place.name, routeCount),
                 placeMove = null,
-            ),
+            ).pushSurface(MapSurface.DeletePlace(place.id)),
         )
     }
 
@@ -736,6 +785,8 @@ class DefaultMapReducer(
                 placeDeleteRequest = null,
                 placeDeleteUndo = PlaceDeleteUndo(place, state.libraryRevision + 1L),
                 placeSaveStatus = null,
+                surface = MapSurface.Places,
+                surfaceHistory = listOf(MapSurface.Root),
             ),
         )
     }

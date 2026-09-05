@@ -348,6 +348,7 @@ object RandomMapIdGenerator : MapIdGenerator {
 data class MapState(
     val camera: MapCamera = MapCamera(),
     val surface: MapSurface = MapSurface.Root,
+    val surfaceHistory: List<MapSurface> = emptyList(),
     val tool: MapTool = MapTool.BROWSE,
     val transient: MapTransient? = null,
     val selection: MapSelection? = null,
