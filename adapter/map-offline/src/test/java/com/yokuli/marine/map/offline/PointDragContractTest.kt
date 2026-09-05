@@ -1,6 +1,7 @@
 package com.yokuli.marine.map.offline
 
 import com.yokuli.marine.map.domain.MapEditTarget
+import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapHitResult
 import com.yokuli.marine.map.domain.MapOverlayId
 import com.yokuli.marine.map.domain.MapScreenPoint
@@ -21,5 +22,14 @@ class PointDragContractTest {
     fun `route handle identity keeps draft tokens containing separators`() {
         val hit = MapHitResult(MapOverlayId.MANUAL_ROUTE_POINTS, "route-point:draft:imported:3")
         assertEquals(MapEditTarget.RoutePoint("draft:imported", 3), hit.toEditTargetOrNull())
+    }
+
+    @Test
+    fun `GeoJSON conversion preserves longitude latitude axis order`() {
+        val source = GeoPoint(-36.8485, 174.7633)
+        val rendered = source.toGeoJsonPoint()
+
+        assertEquals(source.longitude, rendered.longitude(), 0.0)
+        assertEquals(source.latitude, rendered.latitude(), 0.0)
     }
 }
