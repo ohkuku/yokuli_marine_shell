@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "task": "C12",
+  "machineStatus": "CORE_MACHINE_READY",
+  "baselineSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+  "implementationCandidateSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+  "sealPolicy": "Run the complete local gate and hosted CI on the commit containing this lock; any failure requires a correction commit",
+  "gate": {
+    "host": "REQUIRED_ON_SEAL_COMMIT",
+    "api34": {
+      "mapOffline": 17,
+      "mapStorage": 7,
+      "appShellOrdinary": 59,
+      "cumulativeJourneys": 6,
+      "externalProcessProbe": "1+1",
+      "failures": 0,
+      "skipped": 0
+    },
+    "performance": {
+      "journeys": 11,
+      "missing": 0,
+      "status": "EMULATOR_TREND_ONLY",
+      "physicalFrameTargetVerified": false
+    },
+    "hostedCi": "REQUIRED_ON_SEAL_COMMIT"
+  },
+  "baselineProfiles": {
+    "baselineRules": 3520,
+    "startupRules": 2645,
+    "generatedFromCurrentProductionJourneys": true
+  },
+  "artifacts": {
+    "alphaConfiguration": "standaloneDebug",
+    "debugApkSha256": "RESOLVE_AFTER_SEAL_BUILD",
+    "unsignedReleaseApkSha256": "RESOLVE_AFTER_SEAL_BUILD",
+    "ciArtifactName": "VERIFIED-yokuli-os-alpha-<seal-sha>"
+  },
+  "sourceDelivery": "BLOCKED_EXTERNAL",
+  "routeSecondaryPin": "NOT_APPLICABLE_CURRENT_SHELL",
+  "humanAccepted": "PENDING",
+  "samsungSquareDevice": "PENDING_OWNER",
+  "unresolvedP0P1": []
+}

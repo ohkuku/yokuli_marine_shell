@@ -502,7 +502,7 @@
         "MAP-R19",
         "MAP-R20"
       ],
-      "status": "TODO",
+      "status": "CORE_MACHINE_READY",
       "specSection": "C12",
       "acceptanceScenarioIds": [
         "C12-T01",
@@ -512,8 +512,12 @@
         "C12-T05",
         "C12-T06"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "evidence": [
+        "docs/phases/chart-wp8-refinement/c12/REPORT.md",
+        "docs/phases/chart-wp8-refinement/c12/BASELINE_LOCK.json",
+        "docs/phases/chart-wp8-refinement/ACCEPTANCE.md"
+      ]
     }
   ],
   "acceptanceScenarios": [
@@ -1699,11 +1703,11 @@
       "given": "冻结候选同SHA",
       "when": "检查CI任务、test report、APK和digest",
       "then": "全部绑定同版本；adapter真机测试不是未运行",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": ".github/scripts/test_chart_c12_contract.py",
+      "command": "bash .github/scripts/run_marine_shell_final_gate.sh --with-device",
+      "result": "SEALED_FOR_SAME_SHA_CI",
+      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "evidence": ["docs/phases/chart-wp8-refinement/c12/REPORT.md"]
     },
     {
       "id": "C12-T02",
@@ -1711,11 +1715,11 @@
       "given": "完整生产入口与真实图面",
       "when": "连续J01至J06旅程",
       "then": "成功/取消/失败/返回都有可见正确结果",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "app-shell/src/androidTest/java/com/yokuli/marine/shell/ChartC12JourneyTest.kt",
+      "command": "bash .github/scripts/run_device_tests.sh all",
+      "result": "PASS_LOCAL",
+      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "evidence": ["docs/phases/chart-wp8-refinement/c12/REPORT.md"]
     },
     {
       "id": "C12-T03",
@@ -1723,11 +1727,11 @@
       "given": "320/360方屏及其他尺寸、大字体、圆角、IME",
       "when": "真实触控布局回归",
       "then": "关键按钮可达，无层级/手势/中间帧穿透",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "bash .github/scripts/run_device_tests.sh all",
+      "result": "PASS_AUTOMATED_OWNER_DEVICE_PENDING",
+      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "evidence": ["docs/phases/chart-wp8-refinement/c12/REPORT.md"]
     },
     {
       "id": "C12-T04",
@@ -1735,11 +1739,11 @@
       "given": "大型导入/保存/包更新并行地图操作",
       "when": "release-like性能与50次资源循环",
       "then": "有界内存/响应；模拟器只记录趋势，不冒称三星达标",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "benchmark/shell/src/androidTest/java/com/yokuli/marine/benchmark/shell/ShellMacrobenchmark.kt",
+      "command": "bash .github/scripts/run_device_tests.sh performance",
+      "result": "PASS_EMULATOR_TREND_ONLY",
+      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "evidence": ["build/stage11-performance/summary.json"]
     },
     {
       "id": "C12-T05",
@@ -1747,11 +1751,11 @@
       "given": "已ack资料和安装边界",
       "when": "外部驱动终止重启进程",
       "then": "证明进程级恢复，不能只用Activity.recreate",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "app-shell/src/androidTest/java/com/yokuli/marine/shell/ChartC12ProcessRestartProbeTest.kt",
+      "command": "bash .github/scripts/run_c12_process_restore.sh",
+      "result": "PASS_LOCAL_EXTERNAL_FORCE_STOP",
+      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "evidence": ["build/ci-c12-process-restore.log"]
     },
     {
       "id": "C12-T06",
@@ -1759,11 +1763,14 @@
       "given": "Release APK和两轮反证审阅",
       "when": "检查入口、权限、日志、来源、未修缺陷",
       "then": "无Lab/Fake/HOME/无关权限，P0/P1为空才机器ready，人工状态独立",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": ".github/scripts/test-release-product-surface.sh",
+      "command": "bash .github/scripts/run_marine_shell_final_gate.sh --with-device",
+      "result": "PASS_LOCAL_HUMAN_PENDING",
+      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "evidence": [
+        "docs/phases/chart-wp8-refinement/c12/REPORT.md",
+        "docs/phases/chart-wp8-refinement/ACCEPTANCE.md"
+      ]
     }
   ]
 }

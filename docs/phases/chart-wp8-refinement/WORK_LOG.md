@@ -212,3 +212,13 @@ Red 先固定三档磁贴职责、真实状态优先级、Start 编辑冻结、�
 自查发现 `ChartLaunchTarget` 命名触发 Stage 2 对应用目标耦合的冻结合同，因而改为 `ChartDestination`，未回改旧合同。现有 Shell 没有动态 secondary entry 生命周期，路线二级固定结论为 `NOT_APPLICABLE_CURRENT_SHELL`，没有添加假按钮。
 
 冻结点 `5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110` 的 Host Gate 通过 212 条 Python 合同、387 个 JVM XML 测试和 1207 个 Gradle tasks；API 34 的 MapLibre 17、Room 7、Shell 53 全绿。Debug/unsigned Release hash 分别为 `ae263807d2f19df1525edfe833c71ae69d3a792efbcb11b34db27f3153073731` 与 `181ac2786c648406021b4c74301228c607fb53f64b8d6e534fc16956a7013315`。C11 标记 `VERIFIED_LOCAL`，进入最终 C12。
+
+## C12｜累计旅程、反证纠错与交付封口
+
+Red 先锁定三模块 instrumentation 必须真实进入 CI、Verified Alpha 必须依赖 Host/API34/API36/性能全部 job、J01–J06 必须走生产入口、进程恢复必须由外部 force-stop 驱动、临时 refinement 旁路必须清理，以及机器/人工/三星方屏状态必须分开。实现随后加入六条累计旅程和独立 seed/verify runner。
+
+第一轮数据/异步/资源反证连续发现并修正 Android 缺少 `javax.xml.stream` 的 GPX 运行时崩溃、J01 投影等待与稳定搜索 tag、JUnit4 返回类型、两进程探针被普通 suite 误收、进程证据日志缺失和多模块失败注解遗漏。第二轮用户旅程/布局/性能反证发现性能脚本仍期待第四种旧磁贴、英文查询依赖 locale、baseline profile 沿用旧路径；均先保留失败证据再纠正，没有恢复六档或降低断言。
+
+修正后的独立实跑结果为：J01–J06 6/6；双进程 probe 1+1，中间真实 `am force-stop`；API 34 MapLibre/MBTiles 17、Room 7、Shell 普通 suite 59；release-like benchmark 11/11 且无缺失旅程；当前路径 baseline/startup profile 为 3520/2645 条。性能只标 `EMULATOR_TREND_ONLY`，三星方屏和物理刷新率仍为 `PENDING_OWNER`。
+
+C12 封口提交将从头执行 Host、三模块 API 34、双进程恢复、性能、Release manifest 与 digest，并要求同一 SHA 的 GitHub Actions 全绿后才交付 Verified Alpha。未解决 P0/P1 为空；来源在线交付保持 `BLOCKED_EXTERNAL`，生产 GNSS/NMEA/活动导航/船网输出未实现，人工状态保持 `PENDING`。

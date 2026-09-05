@@ -20,15 +20,14 @@
     "C09": "VERIFIED_LOCAL",
     "C10": "VERIFIED_LOCAL",
     "C11": "VERIFIED_LOCAL",
-    "C12": "TODO"
+    "C12": "CORE_MACHINE_READY"
   },
-  "lastVerifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
-  "ciRun": null,
+  "lastVerifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+  "ciRun": "REQUIRED_ON_C12_SEAL_COMMIT",
   "openFindings": [
-    "Hosted CI status for C00 could not be queried locally because GitHub CLI is unavailable; final same-SHA hosted evidence remains a C12 gate",
     "Samsung square-screen and physical refresh-rate review remain owner-only"
   ],
   "sourceDelivery": "BLOCKED_EXTERNAL",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Begin C12 with Red contracts for explicit three-module device CI, J01-J06 cumulative journeys, baseline profile hygiene and final Release delivery"
+  "nextAction": "Run the complete gate on the C12 seal commit, require its hosted CI to pass, then hand the verified Alpha to the owner for physical-device review"
 }
