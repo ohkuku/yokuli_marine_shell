@@ -70,9 +70,11 @@ class MapLibreMbTilesRenderTest {
             bearing = 90.0,
             prepare = { _, file -> createFixture(file) },
         )
-        val before = bitmap.getPixel(bitmap.width / 4, bitmap.height / 4)
-        val after = rotated.getPixel(rotated.width / 4, rotated.height / 4)
-        assertTrue("a 90 degree bearing must rotate known raster content", !before.near(after, tolerance = 18))
+        val rotationDifference = bitmap.differenceRatio(rotated)
+        assertTrue(
+            "a 90 degree bearing must rotate enough known raster pixels; difference=$rotationDifference",
+            rotationDifference > 0.15,
+        )
         assertTrue("rotation must not lose the known raster palette", fixtureColors.count { rotated.contains(it) } >= 3)
     }
 
@@ -195,6 +197,19 @@ class MapLibreMbTilesRenderTest {
         }
     }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(8).map { (rgb, count) ->
         "#%06x:%d".format(rgb, count)
+    }
+
+    private fun Bitmap.differenceRatio(other: Bitmap): Double {
+        require(width == other.width && height == other.height)
+        var compared = 0
+        var different = 0
+        for (x in 0 until width step 4) {
+            for (y in 0 until height step 4) {
+                compared += 1
+                if (!getPixel(x, y).near(other.getPixel(x, y), tolerance = 18)) different += 1
+            }
+        }
+        return different.toDouble() / compared
     }
 
     private fun createFixture(file: File) {
