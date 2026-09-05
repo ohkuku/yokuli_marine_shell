@@ -6,10 +6,10 @@
   "auditedSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "workingBaseSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "auditedShaIsAncestorOfWorkingBase": true,
-  "currentTask": "C01",
+  "currentTask": "C02",
   "taskStatus": {
     "C00": "VERIFIED_LOCAL",
-    "C01": "IMPLEMENTED_UNVERIFIED",
+    "C01": "VERIFIED_LOCAL",
     "C02": "TODO",
     "C03": "TODO",
     "C04": "TODO",
@@ -22,7 +22,7 @@
     "C11": "TODO",
     "C12": "TODO"
   },
-  "lastVerifiedSha": "7971250384e064752ab870b6ea55a805eb736ab8",
+  "lastVerifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
   "ciRun": null,
   "openFindings": [
     "Hosted CI status for C00 could not be queried locally because GitHub CLI is unavailable; final same-SHA hosted evidence remains a C12 gate",
@@ -30,5 +30,5 @@
   ],
   "sourceDelivery": "NOT_VERIFIED",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Run the cumulative C00-C01 gate on the committed candidate; do not start C02 until C01 is green"
+  "nextAction": "Start C02 with a renderer protocol Red test and replace the production Google/MapLibre branch with one MapLibre path"
 }

@@ -70,3 +70,14 @@
 - 默认 incident 仅记录分类，不记录精确位置、备注、源 URI、token 或异常 message。恢复文件包含私人资料是用户主动选择的导出结果，不进入日志或自动上传。
 
 当前实现已提交并通过 30 个相关 JVM 测试与 API 34 上 4 个 Room 设备测试；状态仍为 `IMPLEMENTED_UNVERIFIED`，等待累计 C00-C01 Gate 后才能封口。
+
+## C01｜Gate 与自查结论
+
+冻结候选 `5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0` 的累计结果：
+
+- Python 合同 164 项，全部通过。
+- 全仓测试、`lintStandaloneDebug`、Standalone Debug/Release 构建通过：1176 tasks；XML 汇总为 226 个 JVM 测试、0 failure/error/skipped。
+- API 34：Room 4 项、离线适配器 1 项、Shell Activity/Compose 37 项，全部实际执行并通过。
+- Debug APK SHA-256：`cdc3dde9fd9bfbacf784b980a7b2a14323515dfa26ff902097569bc6937b8853`；unsigned Release APK SHA-256：`ce28afa7b2dd6de0351b3799bcbbaa5f2c1bc380981986cd95353e39d442d540`。
+
+独立数据/异步复查确认相机 session 不再整库重写，迟到 revision 不改变新编辑，损坏文件无静默替换。资源/安全复查确认 Release 合并清单无位置权限，代码无 destructive migration/corruption fallback，异常日志不含 URI/message/坐标。C01 标记为 `VERIFIED_LOCAL`；托管同 SHA 证据仍统一留给 C12。

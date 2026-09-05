@@ -138,7 +138,7 @@
         "MAP-R17",
         "MAP-R18"
       ],
-      "status": "IMPLEMENTED_UNVERIFIED",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C01",
       "acceptanceScenarioIds": [
         "C01-T01",
@@ -152,8 +152,13 @@
         "C01-T09",
         "C01-T10"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": [
+        "164 Python contract tests passed",
+        "226 JVM tests passed; full test/lint/Standalone Debug+Release gate passed in 1176 tasks",
+        "API 34: 4 Room persistence, 1 offline adapter and 37 app-shell device tests passed",
+        "Release merged manifest contains no location permission; no destructive Room/DataStore recovery path"
+      ]
     },
     {
       "id": "C02",
@@ -552,10 +557,10 @@
       "when": "测量转换为新路线",
       "then": "A仍可重开；新draft有独立ID；正式资料未变化",
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReducerTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["MapReducerTest measurement conversion preserves the original draft and creates a stable second ID"]
     },
     {
       "id": "C01-T02",
@@ -564,10 +569,10 @@
       "when": "发生相机、包刷新、切工具事件",
       "then": "原库不被默认空数据覆盖；UI显示可恢复错误",
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReliabilityContractTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["Read failure remains read-only while camera and tool actions continue; production UI exposes retry"]
     },
     {
       "id": "C01-T03",
@@ -576,10 +581,10 @@
       "when": "加载用户资料",
       "then": "不静默整库重置；保留原文件并局部隔离或报错",
       "implementationTestPath": "adapter/map-storage/src/androidTest/java/com/yokuli/marine/map/storage/RoomMapPersistenceTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :adapter:map-storage:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["Corrupt and future session bytes remain unchanged; one malformed Room row is quarantined without clearing valid rows"]
     },
     {
       "id": "C01-T04",
@@ -588,10 +593,10 @@
       "when": "pan、切工具、Bridge、最终drop",
       "then": "交互不等待写入；控制可靠；中间相机可合并；无溢出崩溃",
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReliabilityContractTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["Slow writer is independent from serialized interaction; camera updates coalesce and reliable overflow is a typed result"]
     },
     {
       "id": "C01-T05",
@@ -600,10 +605,10 @@
       "when": "A的ack/失败迟到",
       "then": "B仍Pending或对应错误；旧ack不宣称B已保存",
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReliabilityContractTest.kt; core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReducerTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["Late ack and failure for revision A cannot mark revision B durable or failed"]
     },
     {
       "id": "C01-T06",
@@ -612,10 +617,10 @@
       "when": "提交正式计划",
       "then": "相同command/revision只提交一次",
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReducerTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["Repeated save of the same draft revision creates exactly one formal route"]
     },
     {
       "id": "C01-T07",
@@ -624,10 +629,10 @@
       "when": "用户返回、重试、导出",
       "then": "内存编辑保留、Failed可见、不假报Saved",
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReliabilityContractTest.kt; core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapRecoveryExportTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["I/O failure retains IDs and revisions, stays Failed until retry ack, and offers an explicit JSON recovery export"]
     },
     {
       "id": "C01-T08",
@@ -636,10 +641,10 @@
       "when": "后续合法动作/迟到回调进入",
       "then": "动作消费者仍健康或安全拒绝；UI不崩溃",
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReliabilityContractTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["Malformed action and effect observer failures do not kill the consumer; close returns REJECTED_CLOSED"]
     },
     {
       "id": "C01-T09",
@@ -648,10 +653,10 @@
       "when": "协程取消传播",
       "then": "CancellationException不转为普通IO失败、不产生迟到成功",
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReliabilityContractTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["CancellationException leaves the revision Pending and produces neither ordinary failure nor late durable ack"]
     },
     {
       "id": "C01-T10",
@@ -660,10 +665,10 @@
       "when": "外部驱动终止并重启进程",
       "then": "恢复同ID/revision；ack前另测并明确不保证",
       "implementationTestPath": "adapter/map-storage/src/androidTest/java/com/yokuli/marine/map/storage/RoomMapPersistenceTest.kt",
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "command": "./gradlew --no-daemon :adapter:map-storage:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "5c63d5df2c2fd8a1ac51c0cdba01ff1c583d2ec0",
+      "evidence": ["A closed and reopened on-disk Room database restores the durable library with identical IDs and revisions"]
     },
     {
       "id": "C02-T01",
