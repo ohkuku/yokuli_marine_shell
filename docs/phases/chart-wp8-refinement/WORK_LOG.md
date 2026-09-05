@@ -186,3 +186,11 @@ Red 先固定受限流式解析、预览后确认、重复摘要显式副本、w
 两轮反证补齐 DTD/外部实体防护、独立 XML parser 往返、200k 点预算、日期线 bounds、中立 fallback 名称、分段 GeoJSON 和原始点不被 LOD 修改。累计设备 Gate 还真实暴露后台轨迹抽稀后 MapLibre mutation 可能留在测试工作线程；先加失败合同，再把所有 source mutation 显式切回 Main，并在 style 失效时丢弃旧结果。
 
 冻结点 `d711ac843391622e26a3b2077e124f206c9f90dd` 的累计 Host Gate 通过 196 条 Python 合同、323 个 JVM XML tests 和 1207 个 Gradle tasks；API 34 上离线 renderer/包 15、Room 7、Shell 51 全部通过。Debug/unsigned Release hash 分别为 `396ac0dc8299974828be79e90401da36a1ca06fab688c5da746777fe94e55886` 与 `668d56587bf95a0a46b2ce3995e73c38e57cbac26fe2c06431a902379fea0b3f`。C08 标记 `VERIFIED_LOCAL`，只允许进入 C09；来源下载、沿线覆盖、只读位置观测和动态 Shell 磁贴尚未提前宣称。
+
+## C09｜沿线离线资料检查、精确索引与来源边界
+
+Red 先冻结 route/package/zoom/宽度/备用区域 fingerprint、保守走廊、日期线、200k 预算、精确 target-zoom key、事实维度拆分、唯一可取消 job 和 capability-gated 来源。实现从正式路线进入检查页，扫描真实 MBTiles row 并列出缺失 key；结果永远把 tile availability、有效图面和适航性分开。
+
+自查将规划中状态改为可见且可取消，把所有结果绑定 route ID，避免跨路线串状态；SQLite 从整级扫描改为 400-key 参数化批次；最后复用来源哈希锁定的 NOAA NCDS fixture 验证真实 TMS→XYZ 命中及 bounds 内洞。NOAA 只登记 `IMPORT_ONLY/BLOCKED_EXTERNAL`，UI 不显示不存在的下载能力。
+
+冻结点 `968e1b8e2cf958a9361258378529134b29f1bfc1` 的累计 Host Gate 通过 201 条 Python 合同、338 个 JVM XML tests 和 1207 个 Gradle tasks；API 34 上离线 package/renderer/index 17、Shell 52、Room 7 全部通过。Debug/unsigned Release hash 分别为 `6e3f2fd052693d27958769a0328c4983fde1dda679a45a10e6f42a802d1053ca` 与 `52f7f83997ffb6ba4afafdf83082b37c3b71e23068e22f6f29a961cb17b72326`。C09 标记 `VERIFIED_LOCAL`，只允许进入 C10；来源交付仍单列 `BLOCKED_EXTERNAL`，位置观测和动态 Shell 磁贴未提前宣称。

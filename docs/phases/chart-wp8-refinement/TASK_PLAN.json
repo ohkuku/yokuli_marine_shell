@@ -394,7 +394,7 @@
         "MAP-R12",
         "MAP-R13"
       ],
-      "status": "TODO",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C09",
       "acceptanceScenarioIds": [
         "C09-T01",
@@ -408,8 +408,11 @@
         "C09-T09",
         "C09-T10"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": [
+        "docs/phases/chart-wp8-refinement/c09/REPORT.md",
+        "docs/phases/chart-wp8-refinement/c09/BASELINE_LOCK.json"
+      ]
     },
     {
       "id": "C10",
