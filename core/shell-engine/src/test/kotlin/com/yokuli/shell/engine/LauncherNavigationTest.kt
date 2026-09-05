@@ -43,10 +43,12 @@ class LauncherNavigationTest {
         val opened = open(initial(), settings.appId, settings.launchToken)
         val detail = LaunchToken("settings.appearance")
         val drilledIn = open(opened, settings.appId, detail)
+        assertEquals(ShellTransitionKind.MODULE_ROUTE_FORWARD, drilledIn.transitionRequest?.kind)
 
         val popped = reduce(drilledIn, LauncherAction.Back)
         assertEquals(settings.launchToken, popped.state.tasks.tasks.single().lastLaunchToken)
         assertTrue(popped.state.surface is ShellVisualSurface.Module)
+        assertEquals(ShellTransitionKind.MODULE_ROUTE_BACK, popped.state.transitionRequest?.kind)
 
         val start = reduce(popped.state, LauncherAction.Back)
         assertEquals(ShellVisualSurface.Desktop, start.state.surface)
@@ -86,6 +88,24 @@ class LauncherNavigationTest {
         assertEquals(ShellVisualSurface.Module(InternalAppTaskId("chart")), opened.surface)
         assertEquals(ShellTransitionKind.SEARCH_TO_MODULE, opened.transitionRequest?.kind)
         assertEquals(ShellVisualSurface.Search("", ShellVisualSurface.Desktop), opened.transitionRequest?.from)
+    }
+
+    @Test
+    fun duplicateSearchResultLaunchAfterAtomicTransitionHasNoSecondEffect() {
+        val search = reduce(initial(), LauncherAction.OpenSearch).state
+        val first = reducer.reduce(
+            search,
+            LauncherAction.Open(chart.launchToken),
+            context(LaunchResolution.Internal(chart.appId, chart.launchToken)),
+        )
+        val duplicate = reducer.reduce(
+            first.state,
+            LauncherAction.Open(chart.launchToken),
+            context(LaunchResolution.Internal(chart.appId, chart.launchToken)),
+        )
+
+        assertEquals(first.state, duplicate.state)
+        assertTrue(duplicate.effects.isEmpty())
     }
 
     @Test

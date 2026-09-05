@@ -526,9 +526,9 @@ private fun WpTileEditOverlay(
     onResizeCancel: () -> Unit,
 ) {
     val colors = LocalWpTheme.current
-    // DERIVED_UNVERIFIED: edit controls were not visible in Stage 2.5. Visual disks remain
-    // compact, while every pointer target is the platform-safe 48dp minimum.
-    val controlSize = YokuliMetrics.MinTouch
+    // DERIVED_UNVERIFIED: edit controls were not visible in Stage 2.5. Compact 1x1 tiles use
+    // the owner's 44dp minimum so the two diagonal targets do not steal each other's centers.
+    val controlSize = if (compact) 44.dp else YokuliMetrics.MinTouch
     val diskSize = if (compact) 17.dp else 30.dp
     Box(Modifier.fillMaxSize()) {
         Box(

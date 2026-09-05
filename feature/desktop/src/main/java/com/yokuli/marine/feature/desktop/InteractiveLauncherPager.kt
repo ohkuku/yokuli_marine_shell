@@ -1,6 +1,7 @@
 package com.yokuli.marine.feature.desktop
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -36,6 +37,8 @@ enum class LauncherPagerPage(val index: Int) {
 fun InteractiveLauncherPager(
     requestedPage: LauncherPagerPage,
     userScrollEnabled: Boolean,
+    programmaticSettleMillis: Int,
+    reducedMotion: Boolean,
     onPageSettled: (LauncherPagerPage) -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable (LauncherPagerPage) -> Unit,
@@ -44,9 +47,12 @@ fun InteractiveLauncherPager(
     val latestRequested by rememberUpdatedState(requestedPage)
     val latestOnPageSettled by rememberUpdatedState(onPageSettled)
 
-    LaunchedEffect(requestedPage) {
+    LaunchedEffect(requestedPage, programmaticSettleMillis, reducedMotion) {
         if (pagerState.settledPage != requestedPage.index) {
-            pagerState.animateScrollToPage(requestedPage.index)
+            pagerState.animateScrollToPage(
+                page = requestedPage.index,
+                animationSpec = tween(if (reducedMotion) 120 else programmaticSettleMillis),
+            )
         }
     }
     LaunchedEffect(pagerState) {

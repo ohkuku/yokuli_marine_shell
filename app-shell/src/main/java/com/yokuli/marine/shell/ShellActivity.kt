@@ -36,9 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -52,8 +50,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpAccent
-import com.yokuli.marine.core.design.WpNavigationIntent
 import com.yokuli.marine.core.design.WpMotionTimings
+import com.yokuli.marine.core.design.WpSurfaceTransitionKind
 import com.yokuli.marine.core.design.WpSurfaceTransitionHost
 import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.design.WpThemeSpec
@@ -77,8 +75,8 @@ import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEffect
 import com.yokuli.shell.engine.LauncherRecoveryMode
 import com.yokuli.shell.engine.ShellVisualSurface
-import com.yokuli.shell.engine.LauncherTransitionIntent
 import com.yokuli.shell.engine.InternalAppTaskId
+import com.yokuli.shell.engine.ShellTransitionKind
 import com.yokuli.shell.engine.interaction.StartInteractionState
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.toShellAction
@@ -170,11 +168,13 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val context = LocalContext.current
     val engine = shellViewModel.engine
     val engineState by engine.state.collectAsState()
-    val hapticFeedback = LocalHapticFeedback.current
-    LaunchedEffect(engine, hapticFeedback) {
+    val hostView = LocalView.current
+    LaunchedEffect(engine, hostView) {
         engine.effects.collect { effect ->
             when (effect) {
-                is LauncherEffect.Haptic -> hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                is LauncherEffect.Haptic -> hostView.performHapticFeedback(
+                    AndroidLauncherHapticMapper.constantFor(effect.kind),
+                )
                 LauncherEffect.RequestHostExit -> (context as? Activity)?.finishAfterTransition()
                 LauncherEffect.OpenAndroidSettings -> (context as? ShellActivity)?.openAndroidSettings()
                     ?: context.startActivity(Intent(Settings.ACTION_SETTINGS))
@@ -209,9 +209,9 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         val motionProfile = WpReferenceProfiles.require(engineState.start.document.profileId).motion
         val motionTimings = remember(motionProfile) {
             WpMotionTimings(
-                pageSettleMillis = motionProfile.measuredPageSettleMillis ?: 700,
-                appOpenMillis = motionProfile.measuredAppOpenMillis ?: 1_000,
-                backReturnMillis = motionProfile.measuredBackReturnMillis ?: 750,
+                pageSettleVisibleWindowMillis = motionProfile.measuredPageSettleMillis ?: 700,
+                appOpenVisibleWindowMillis = motionProfile.measuredAppOpenMillis ?: 1_000,
+                backReturnVisibleWindowMillis = motionProfile.measuredBackReturnMillis ?: 750,
             )
         }
         val runtime = ProductionShellRuntime(
@@ -324,7 +324,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                             }
                             WpSurfaceTransitionHost(
                                 targetState = transitionTarget,
-                                intent = engineState.transitionIntent.toWpIntent(),
+                                transitionKind = engineState.transitionRequest?.kind.toWpSurfaceTransitionKind(),
                                 reducedMotion = reducedMotion,
                                 timings = motionTimings,
                                 modifier = Modifier.weight(1f),
@@ -337,6 +337,8 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                         LauncherPagerPage.START
                                     },
                                     userScrollEnabled = !startEditing,
+                                    programmaticSettleMillis = motionTimings.pageSettleVisibleWindowMillis,
+                                    reducedMotion = reducedMotion,
                                     onPageSettled = { page ->
                                         dispatch(
                                             if (page == LauncherPagerPage.START) LauncherAction.ShowStart
@@ -424,13 +426,21 @@ private fun rememberShellWindowMetrics(): ShellWindowMetrics {
     return metrics
 }
 
-private fun LauncherTransitionIntent.toWpIntent(): WpNavigationIntent = when (this) {
-    LauncherTransitionIntent.NONE -> WpNavigationIntent.SIBLING_FORWARD
-    LauncherTransitionIntent.SIBLING_FORWARD -> WpNavigationIntent.SIBLING_FORWARD
-    LauncherTransitionIntent.SIBLING_BACK -> WpNavigationIntent.SIBLING_BACK
-    LauncherTransitionIntent.DEEPER_FORWARD -> WpNavigationIntent.DEEPER_FORWARD
-    LauncherTransitionIntent.DEEPER_BACK -> WpNavigationIntent.DEEPER_BACK
-    LauncherTransitionIntent.TRANSIENT -> WpNavigationIntent.TRANSIENT
+private fun ShellTransitionKind?.toWpSurfaceTransitionKind(): WpSurfaceTransitionKind = when (this) {
+    null, ShellTransitionKind.NONE -> WpSurfaceTransitionKind.NONE
+    ShellTransitionKind.PAGER_FORWARD -> WpSurfaceTransitionKind.PAGER_FORWARD
+    ShellTransitionKind.PAGER_BACK -> WpSurfaceTransitionKind.PAGER_BACK
+    ShellTransitionKind.DESKTOP_TO_MODULE -> WpSurfaceTransitionKind.DESKTOP_TO_MODULE
+    ShellTransitionKind.MODULE_LIST_TO_MODULE -> WpSurfaceTransitionKind.MODULE_LIST_TO_MODULE
+    ShellTransitionKind.SEARCH_TO_MODULE -> WpSurfaceTransitionKind.SEARCH_TO_MODULE
+    ShellTransitionKind.MODULE_ROUTE_FORWARD -> WpSurfaceTransitionKind.MODULE_ROUTE_FORWARD
+    ShellTransitionKind.MODULE_ROUTE_BACK -> WpSurfaceTransitionKind.MODULE_ROUTE_BACK
+    ShellTransitionKind.MODULE_TO_DESKTOP -> WpSurfaceTransitionKind.MODULE_TO_DESKTOP
+    ShellTransitionKind.SEARCH_PRESENT -> WpSurfaceTransitionKind.SEARCH_PRESENT
+    ShellTransitionKind.SEARCH_DISMISS -> WpSurfaceTransitionKind.SEARCH_DISMISS
+    ShellTransitionKind.RECENTS_PRESENT -> WpSurfaceTransitionKind.RECENTS_PRESENT
+    ShellTransitionKind.RECENTS_DISMISS -> WpSurfaceTransitionKind.RECENTS_DISMISS
+    ShellTransitionKind.TASK_ACTIVATE -> WpSurfaceTransitionKind.TASK_ACTIVATE
 }
 
 private sealed interface ShellMotionTarget {

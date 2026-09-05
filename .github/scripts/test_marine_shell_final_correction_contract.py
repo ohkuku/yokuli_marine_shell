@@ -36,6 +36,15 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertRegex(state, r"data class Search\(")
         self.assertTrue((ROOT / "core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/ShellTransitionResolver.kt").is_file())
 
+    def test_motion_consumes_exact_transition_kind_and_visible_windows_are_not_generic_intents(self):
+        activity = self.text("app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt")
+        motion = self.text("core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt")
+        resolver = self.text("core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/ShellTransitionResolver.kt")
+        self.assertIn("transitionRequest?.kind", activity)
+        self.assertIn("WpSurfaceTransitionKind", motion)
+        self.assertIn("appOpenVisibleWindowMillis", motion)
+        self.assertNotIn("toLegacyIntent", resolver)
+
     def test_center_key_is_bridge_not_windows_start(self):
         contract = self.text("core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/ShellInput.kt")
         key_bar = self.text("feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSystemKeyBar.kt")

@@ -36,4 +36,18 @@ class ShellTransitionResolverTest {
         assertEquals(module, request.to)
         assertEquals(ShellTransitionKind.SEARCH_TO_MODULE, request.kind)
     }
+
+    @Test
+    fun internalModuleRoutesHaveExplicitForwardAndBackMotionKinds() {
+        val module = ShellVisualSurface.Module(InternalAppTaskId("settings"))
+
+        assertEquals(
+            ShellTransitionKind.MODULE_ROUTE_FORWARD,
+            ShellTransitionResolver.resolve(module, module, ShellTransitionTrigger.MODULE_ROUTE_FORWARD).kind,
+        )
+        assertEquals(
+            ShellTransitionKind.MODULE_ROUTE_BACK,
+            ShellTransitionResolver.resolve(module, module, ShellTransitionTrigger.MODULE_ROUTE_BACK).kind,
+        )
+    }
 }

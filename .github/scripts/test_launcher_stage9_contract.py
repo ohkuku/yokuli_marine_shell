@@ -53,9 +53,10 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
         self.assertIn("reducedMotion", motion)
         self.assertIn("heavyContentReady", graph)
         self.assertIn("WpMotionTimings", policy)
-        self.assertIn("appOpenMillis", policy)
-        self.assertIn("backReturnMillis", policy)
-        self.assertIn("pageSettleMillis", policy)
+        self.assertIn("appOpenVisibleWindowMillis", policy)
+        self.assertIn("backReturnVisibleWindowMillis", policy)
+        self.assertIn("pageSettleVisibleWindowMillis", policy)
+        self.assertIn("DERIVED_FROM_REVIEWED_SAMPLES", policy)
 
     def test_jvm_and_activity_stories_cover_navigation_and_keys(self):
         jvm = "\n".join(path.read_text() for path in (ROOT / "core/shell-engine/src/test").rglob("*.kt"))

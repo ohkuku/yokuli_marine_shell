@@ -631,3 +631,21 @@ API 34 真实 Activity story 验证了排版型总览存在、无 accent bullet�
 ### English translation — typographic Settings
 
 The Red rejects per-row accent bullets, oversized color cards, and 3D tilt on ordinary Settings rows. Green restores a sparse black/white typographic overview, limits accent to actionable controls, and renders a four-column grid of 30dp square swatches inside 48dp semantic touch targets. An API 34 Activity story verifies four-column alignment, 44–48dp hit bounds, the absence of decorative bullets, and exactly one selected accent.
+
+## Marine Shell Final Correction — Motion, Search 与虚拟实体键
+
+### Red
+
+先把动效测试改成只接受 Engine 的精确过渡类型、分解后的离场/进场/稳定阶段、证据等级和 reduced-motion 计划；旧的 `WpNavigationIntent` 深浅层抽象因无法表达 Desktop、Module List、Search、Module route、Recents 的不同语义而编译失败。Reducer Red 同时要求同一 Module 内 forward/back route 有独立过渡，并要求 Search 结果的重复 dispatch 不再启动第二次 Launch transaction。Android Red 要求 Engine 实际发出的三种触感映射不同，Search 聚焦后仍可操作虚拟 Back/Bridge。
+
+### Green 与自审纠错
+
+Renderer 现在直接消费 `ShellTransitionRequest.kind`，不再通过 legacy deeper/sibling intent 二次猜测。Stage 2.5 的 `700/1000/750ms` 只命名为录屏中的可见区间，并分解为 content exit、target delay、target entrance 与 settle；没有录屏证据的 Search、内部 route、Recents 和触感明确标为 `DERIVED_UNVERIFIED`。Desktop 与 Module List 的横向移动继续由 Foundation Pager 独占，外层 transition 对 Pager 返回 `NONE`，避免叠加两套位移。Search result 原子进入 Module，同 token 的队列重复动作原样返回 state，不产生第二个 Launch effect。Engine haptic 通过 Android 边界分别映射 selection、long-press 和 drop；虚拟按键为了即时反馈只在控件本地发送一次 platform virtual-key 触感，不进入 Engine 队列。
+
+第一次完整 API 34 story 回归暴露两类有效问题。1×1 Tile 上两个 48dp 对角控件实际重叠，Unpin 点击会命中后绘制的 Resize；compact 控件收紧到 44dp 后，Unpin、Resize 与重建保持测试全部通过。虚拟键像素故事仍按屏幕底部固定 54dp 采样，与新 bottom safe inset 冲突；测试改为逐个读取 Back/Bridge/Search 的真实语义边界后，单例故事和完整 `29/29` Activity stories 均通过。修正没有加入固定 sleep，也没有把模拟器结果冒充真机手感批准。
+
+### English translation — Motion, Search, and virtual hardware keys
+
+The Red removes the lossy depth-only navigation intent and requires exact Engine transition kinds, decomposed timing phases, evidence labels, reduced-motion behavior, distinct internal-route transitions, duplicate Search-launch suppression, Android haptic mapping, and keyboard-safe virtual controls. Green makes the exact transition request the renderer's sole input. Approved Stage 2.5 values remain visible recording windows rather than input latency or universal constants; unobserved product motion and haptics are explicitly `DERIVED_UNVERIFIED`. Foundation Pager exclusively owns Desktop/Module List movement, while Search enters a Module atomically without an intermediate surface or duplicate launch effect.
+
+Full API 34 review then found overlapping 48dp edit controls on a 1×1 tile and a pixel test that ignored the newly modeled bottom safe inset. Compact controls now use the allowed 44dp bound, and the glyph story samples each real semantic key bound. The focused Search stories, affected edit stories, and the complete `29/29` Activity suite pass without fixed sleeps. Physical-device feel and subjective WP fidelity remain pending.

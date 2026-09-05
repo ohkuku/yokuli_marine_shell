@@ -6,8 +6,6 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -42,13 +40,13 @@ import androidx.compose.ui.unit.IntSize
 @Composable
 fun <T> WpSurfaceTransitionHost(
     targetState: T,
-    intent: WpNavigationIntent,
+    transitionKind: WpSurfaceTransitionKind,
     reducedMotion: Boolean,
     timings: WpMotionTimings,
     modifier: Modifier = Modifier,
     content: @Composable (surface: T, heavyContentReady: Boolean) -> Unit,
 ) {
-    val plan = WpMotionPolicy.resolve(intent, reducedMotion, timings)
+    val plan = WpMotionPolicy.resolve(transitionKind, reducedMotion, timings)
     var hasRenderedInitialSurface by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { hasRenderedInitialSurface = true }
     val transition = updateTransition(targetState, label = "wp-surface-transition-state")
@@ -71,17 +69,18 @@ fun <T> WpSurfaceTransitionHost(
 }
 
 private fun WpMotionPlan.contentTransform(): ContentTransform = when (family) {
-    WpMotionFamily.SLIDE -> {
-        val direction = if (initialTranslationXFraction >= 0f) 1 else -1
-        slideInHorizontally(tween(durationMillis, easing = FastOutSlowInEasing)) { it * direction } togetherWith
-            slideOutHorizontally(tween(durationMillis, easing = FastOutSlowInEasing)) { -it * direction }
-    }
     WpMotionFamily.TURNSTILE ->
-        fadeIn(tween(durationMillis, delayMillis = 28, easing = LinearOutSlowInEasing)) togetherWith
-            fadeOut(tween(145))
+        fadeIn(
+            tween(
+                targetEntranceMillis + settleMillis,
+                delayMillis = targetEntranceDelayMillis,
+                easing = LinearOutSlowInEasing,
+            ),
+        ) togetherWith fadeOut(tween(contentExitMillis))
     WpMotionFamily.SWIVEL ->
-        fadeIn(tween(durationMillis, easing = LinearOutSlowInEasing)) togetherWith fadeOut(tween(120))
-    WpMotionFamily.FADE -> fadeIn(tween(durationMillis)) togetherWith fadeOut(tween(durationMillis))
+        fadeIn(tween(targetEntranceMillis, easing = LinearOutSlowInEasing)) togetherWith
+            fadeOut(tween(contentExitMillis))
+    WpMotionFamily.FADE -> fadeIn(tween(targetEntranceMillis)) togetherWith fadeOut(tween(contentExitMillis))
     WpMotionFamily.NONE -> EnterTransition.None togetherWith ExitTransition.None
 }
 

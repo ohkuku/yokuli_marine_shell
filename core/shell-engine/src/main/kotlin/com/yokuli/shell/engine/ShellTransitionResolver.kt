@@ -5,6 +5,8 @@ enum class ShellTransitionTrigger {
     TILE,
     MODULE_LIST_ENTRY,
     SEARCH_RESULT,
+    MODULE_ROUTE_FORWARD,
+    MODULE_ROUTE_BACK,
     BACK,
     BRIDGE,
     SEARCH_KEY,
@@ -20,6 +22,8 @@ enum class ShellTransitionKind {
     DESKTOP_TO_MODULE,
     MODULE_LIST_TO_MODULE,
     SEARCH_TO_MODULE,
+    MODULE_ROUTE_FORWARD,
+    MODULE_ROUTE_BACK,
     MODULE_TO_DESKTOP,
     SEARCH_PRESENT,
     SEARCH_DISMISS,
@@ -48,6 +52,10 @@ object ShellTransitionResolver {
         to: ShellVisualSurface,
         trigger: ShellTransitionTrigger,
     ): ShellTransitionKind = when {
+        trigger == ShellTransitionTrigger.MODULE_ROUTE_FORWARD &&
+            from is ShellVisualSurface.Module && to == from -> ShellTransitionKind.MODULE_ROUTE_FORWARD
+        trigger == ShellTransitionTrigger.MODULE_ROUTE_BACK &&
+            from is ShellVisualSurface.Module && to == from -> ShellTransitionKind.MODULE_ROUTE_BACK
         from == to -> ShellTransitionKind.NONE
         from == ShellVisualSurface.Desktop && to == ShellVisualSurface.ModuleList ->
             ShellTransitionKind.PAGER_FORWARD
@@ -72,19 +80,4 @@ object ShellTransitionResolver {
             ShellTransitionKind.MODULE_TO_DESKTOP
         else -> ShellTransitionKind.NONE
     }
-}
-
-fun ShellTransitionRequest.toLegacyIntent(): LauncherTransitionIntent = when (kind) {
-    ShellTransitionKind.PAGER_FORWARD -> LauncherTransitionIntent.SIBLING_FORWARD
-    ShellTransitionKind.PAGER_BACK -> LauncherTransitionIntent.SIBLING_BACK
-    ShellTransitionKind.DESKTOP_TO_MODULE,
-    ShellTransitionKind.MODULE_LIST_TO_MODULE,
-    ShellTransitionKind.SEARCH_TO_MODULE,
-    ShellTransitionKind.TASK_ACTIVATE -> LauncherTransitionIntent.DEEPER_FORWARD
-    ShellTransitionKind.MODULE_TO_DESKTOP -> LauncherTransitionIntent.DEEPER_BACK
-    ShellTransitionKind.SEARCH_PRESENT,
-    ShellTransitionKind.SEARCH_DISMISS,
-    ShellTransitionKind.RECENTS_PRESENT,
-    ShellTransitionKind.RECENTS_DISMISS -> LauncherTransitionIntent.TRANSIENT
-    ShellTransitionKind.NONE -> LauncherTransitionIntent.NONE
 }

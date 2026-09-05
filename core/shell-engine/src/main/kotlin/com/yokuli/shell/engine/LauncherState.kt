@@ -24,15 +24,6 @@ sealed interface ShellVisualSurface {
     data class Module(val taskId: InternalAppTaskId) : ShellVisualSurface
 }
 
-enum class LauncherTransitionIntent {
-    NONE,
-    SIBLING_FORWARD,
-    SIBLING_BACK,
-    DEEPER_FORWARD,
-    DEEPER_BACK,
-    TRANSIENT,
-}
-
 enum class LauncherRecoveryMode { NORMAL, RESTORING, SAFE_MODE }
 
 data class StartScreenState(
@@ -85,7 +76,6 @@ data class LauncherEngineState(
     val recentsReturnSurface: ShellVisualSurface? = null,
     val recoveryMode: LauncherRecoveryMode = LauncherRecoveryMode.NORMAL,
     val incidentLog: List<LauncherIncident> = emptyList(),
-    val transitionIntent: LauncherTransitionIntent = LauncherTransitionIntent.NONE,
     val transitionRequest: ShellTransitionRequest? = null,
     val nextTransactionId: Long = 1,
 )

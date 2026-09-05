@@ -199,6 +199,7 @@ fun WpSearchSurface(
 ) {
     val colors = LocalWpTheme.current
     val focusRequester = remember { FocusRequester() }
+    val searchFieldLabel = stringResource(R.string.search_hint)
     val query = searchQuery.trim()
     val results = state.entries.filter { entry ->
         query.isEmpty() || entry.title.contains(query, ignoreCase = true) ||
@@ -220,6 +221,7 @@ fun WpSearchSurface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)
                 .height(52.dp).background(colors.foreground.copy(alpha = .1f))
                 .padding(horizontal = 12.dp).focusRequester(focusRequester)
+                .semantics { contentDescription = searchFieldLabel }
                 .testTag("launcher-search-field"),
             textStyle = androidx.compose.ui.text.TextStyle(color = colors.foreground),
             cursorBrush = SolidColor(colors.accent),

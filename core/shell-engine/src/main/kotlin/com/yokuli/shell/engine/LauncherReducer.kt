@@ -160,7 +160,7 @@ class DefaultLauncherReducer : LauncherReducer {
         is LauncherAction.RestorePersistedDocument -> restorePersistedDocument(state, action.document, context)
         LauncherAction.EnterSafeMode -> enterSafeMode(state, context)
         LauncherAction.ExitSafeMode -> LauncherReduction(
-            state.copy(recoveryMode = LauncherRecoveryMode.NORMAL, transitionIntent = LauncherTransitionIntent.NONE),
+            state.copy(recoveryMode = LauncherRecoveryMode.NORMAL, transitionRequest = null),
         )
         LauncherAction.RequestAndroidSettings -> LauncherReduction(
             state,
@@ -237,7 +237,7 @@ class DefaultLauncherReducer : LauncherReducer {
                 transient = null,
                 tasks = InternalTaskState(),
                 recoveryMode = LauncherRecoveryMode.NORMAL,
-                transitionIntent = LauncherTransitionIntent.NONE,
+                transitionRequest = null,
             ),
             effects,
         )
@@ -254,7 +254,7 @@ class DefaultLauncherReducer : LauncherReducer {
             transient = null,
             recentsReturnSurface = null,
             recoveryMode = LauncherRecoveryMode.SAFE_MODE,
-            transitionIntent = LauncherTransitionIntent.NONE,
+            transitionRequest = null,
         ),
     )
 
@@ -300,10 +300,15 @@ class DefaultLauncherReducer : LauncherReducer {
             )
         }
         val restored = task.copy(lastLaunchToken = previous, backStack = task.backStack.dropLast(1))
+        val request = ShellTransitionResolver.resolve(
+            state.surface,
+            state.surface,
+            ShellTransitionTrigger.MODULE_ROUTE_BACK,
+        )
         return LauncherReduction(
             state.copy(
                 tasks = InternalTaskState(state.tasks.tasks.map { if (it.taskId == taskId) restored else it }),
-                transitionIntent = LauncherTransitionIntent.DEEPER_BACK,
+                transitionRequest = request,
             ),
         )
     }
@@ -392,21 +397,26 @@ class DefaultLauncherReducer : LauncherReducer {
                 )
             }
             val target = ShellVisualSurface.Module(taskId)
-            val trigger = when (state.surface) {
-                is ShellVisualSurface.Search -> ShellTransitionTrigger.SEARCH_RESULT
-                ShellVisualSurface.ModuleList -> ShellTransitionTrigger.MODULE_LIST_ENTRY
-                ShellVisualSurface.Recents -> ShellTransitionTrigger.RECENT_TASK
-                else -> ShellTransitionTrigger.TILE
-            }
-            LauncherReduction(
-                state = state.navigateTo(target, trigger).copy(
-                    tasks = InternalTaskState(
-                        state.tasks.tasks.filterNot { it.appId == resolution.appId } + task,
+            if (state.surface == target && existing?.lastLaunchToken == resolution.token) {
+                LauncherReduction(state)
+            } else {
+                val trigger = when (state.surface) {
+                    is ShellVisualSurface.Search -> ShellTransitionTrigger.SEARCH_RESULT
+                    ShellVisualSurface.ModuleList -> ShellTransitionTrigger.MODULE_LIST_ENTRY
+                    ShellVisualSurface.Recents -> ShellTransitionTrigger.RECENT_TASK
+                    target -> ShellTransitionTrigger.MODULE_ROUTE_FORWARD
+                    else -> ShellTransitionTrigger.TILE
+                }
+                LauncherReduction(
+                    state = state.navigateTo(target, trigger).copy(
+                        tasks = InternalTaskState(
+                            state.tasks.tasks.filterNot { it.appId == resolution.appId } + task,
+                        ),
+                        transient = null,
                     ),
-                    transient = null,
-                ),
-                effects = listOf(LauncherEffect.Launch(resolution.token)),
-            )
+                    effects = listOf(LauncherEffect.Launch(resolution.token)),
+                )
+            }
         }
 
         is LaunchResolution.Unresolved,
@@ -813,6 +823,5 @@ private fun LauncherEngineState.navigateTo(
     return copy(
         surface = target,
         transitionRequest = request,
-        transitionIntent = request.toLegacyIntent(),
     )
 }

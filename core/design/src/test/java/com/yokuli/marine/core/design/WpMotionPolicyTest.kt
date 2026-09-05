@@ -6,41 +6,43 @@ import org.junit.Test
 
 class WpMotionPolicyTest {
     @Test
-    fun siblingSurfacesUseDirectionalHorizontalSlides() {
-        val forward = WpMotionPolicy.resolve(WpNavigationIntent.SIBLING_FORWARD)
-        val back = WpMotionPolicy.resolve(WpNavigationIntent.SIBLING_BACK)
+    fun pagerTransitionsAreOwnedByThePagerNotTheOuterSurfaceHost() {
+        val forward = WpMotionPolicy.resolve(WpSurfaceTransitionKind.PAGER_FORWARD)
+        val back = WpMotionPolicy.resolve(WpSurfaceTransitionKind.PAGER_BACK)
 
-        assertEquals(WpMotionFamily.SLIDE, forward.family)
-        assertTrue(forward.initialTranslationXFraction > 0f)
-        assertEquals(-forward.initialTranslationXFraction, back.initialTranslationXFraction, 0f)
-        assertEquals(700, forward.durationMillis)
+        assertEquals(WpMotionFamily.NONE, forward.family)
+        assertEquals(WpMotionFamily.NONE, back.family)
+        assertEquals(0, forward.durationMillis)
     }
 
     @Test
-    fun deeperNavigationUsesPerspectiveTurnstileWithInverseBackMotion() {
-        val forward = WpMotionPolicy.resolve(WpNavigationIntent.DEEPER_FORWARD)
-        val back = WpMotionPolicy.resolve(WpNavigationIntent.DEEPER_BACK)
+    fun desktopModuleMotionDecomposesOnlyItsApplicableReviewedVisualWindows() {
+        val forward = WpMotionPolicy.resolve(WpSurfaceTransitionKind.DESKTOP_TO_MODULE)
+        val back = WpMotionPolicy.resolve(WpSurfaceTransitionKind.MODULE_TO_DESKTOP)
 
         assertEquals(WpMotionFamily.TURNSTILE, forward.family)
         assertTrue(forward.initialRotationYDegrees < 0f)
         assertEquals(-forward.initialRotationYDegrees, back.initialRotationYDegrees, 0f)
-        assertEquals(0f, forward.transformOriginX, 0f)
-        assertEquals(1f, back.transformOriginX, 0f)
+        assertTrue(forward.contentExitMillis < forward.durationMillis)
+        assertTrue(forward.targetEntranceMillis < forward.durationMillis)
+        assertTrue(forward.settleMillis < forward.durationMillis)
         assertEquals(1_000, forward.durationMillis)
         assertEquals(750, back.durationMillis)
+        assertEquals(WpMotionEvidence.DERIVED_FROM_REVIEWED_SAMPLES, forward.evidence)
     }
 
     @Test
-    fun transientUiUsesSwivel() {
-        val plan = WpMotionPolicy.resolve(WpNavigationIntent.TRANSIENT)
+    fun unobservedSearchToModuleUsesASeparateDerivedPlan() {
+        val plan = WpMotionPolicy.resolve(WpSurfaceTransitionKind.SEARCH_TO_MODULE)
 
-        assertEquals(WpMotionFamily.SWIVEL, plan.family)
-        assertTrue(plan.initialRotationXDegrees > 0f)
+        assertEquals(WpMotionFamily.TURNSTILE, plan.family)
+        assertTrue(plan.durationMillis < 1_000)
+        assertEquals(WpMotionEvidence.DERIVED_UNVERIFIED, plan.evidence)
     }
 
     @Test
     fun reducedMotionPreservesContextWithoutPerspective() {
-        val plan = WpMotionPolicy.resolve(WpNavigationIntent.DEEPER_FORWARD, reducedMotion = true)
+        val plan = WpMotionPolicy.resolve(WpSurfaceTransitionKind.DESKTOP_TO_MODULE, reducedMotion = true)
 
         assertEquals(WpMotionFamily.FADE, plan.family)
         assertEquals(0f, plan.initialRotationXDegrees, 0f)
@@ -50,7 +52,7 @@ class WpMotionPolicyTest {
 
     @Test
     fun safetyCriticalPresentationIsImmediate() {
-        val plan = WpMotionPolicy.resolve(WpNavigationIntent.SAFETY_CRITICAL)
+        val plan = WpMotionPolicy.resolve(WpSurfaceTransitionKind.SAFETY_CRITICAL)
 
         assertEquals(WpMotionFamily.NONE, plan.family)
         assertEquals(0, plan.durationMillis)

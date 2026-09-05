@@ -24,6 +24,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeLeft
@@ -224,6 +225,17 @@ class ShellActivityStoryTest {
         val resize = compose.onNodeWithTag("resize-selected-tile").fetchSemanticsNode().boundsInRoot
         assertTrue(unpin.width >= 44f * density && unpin.height >= 44f * density)
         assertTrue(resize.width >= 44f * density && resize.height >= 44f * density)
+
+        compose.onNodeWithTag("resize-selected-tile").performClick()
+        awaitDisplayed("cancel-tile-resize")
+        compose.activityRule.scenario.onActivity { activity ->
+            val interaction = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value.start.interaction
+            assertTrue(interaction is com.yokuli.shell.engine.interaction.StartInteractionState.Resizing)
+        }
+        compose.onNodeWithTag("cancel-tile-resize").performClick()
+        awaitDisplayed("unpin-selected-tile")
+        compose.onNodeWithTag("unpin-selected-tile").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
     }
 
     @Test
@@ -349,6 +361,14 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
         awaitDisplayed("unpin-selected-tile")
         compose.onNodeWithTag("unpin-selected-tile").performClick()
+        compose.waitForIdle()
+        compose.activityRule.scenario.onActivity { activity ->
+            val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
+            assertTrue(
+                "unpin click did not leave the serialized Engine document: ${state.start.interaction}",
+                state.start.document.placements.none { it.entryId.value == "settings" },
+            )
+        }
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
 
         compose.onNodeWithTag("all-apps-entry").performClick()
@@ -410,6 +430,22 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("all-apps-list").assertDoesNotExist()
         awaitDisplayed("chart-workspace-browse")
         compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
+    }
+
+    @Test
+    fun focusedSearchKeepsVirtualBackAndBridgeEscapePathsReachable() {
+        compose.onNodeWithTag("virtual-key-search").performClick()
+        awaitDisplayed("launcher-search-field")
+        compose.onNodeWithTag("launcher-search-field").performTextInput("chart")
+        compose.onNodeWithTag("wp-system-key-bar").assertIsDisplayed()
+        compose.onNodeWithTag("virtual-key-back").assertIsDisplayed().performClick()
+        awaitDisplayed("start-screen")
+
+        compose.onNodeWithTag("virtual-key-search").performClick()
+        awaitDisplayed("launcher-search-field")
+        compose.onNodeWithTag("launcher-search-field").performTextInput("settings")
+        compose.onNodeWithTag("virtual-key-bridge").assertIsDisplayed().performClick()
+        awaitDisplayed("start-screen")
     }
 
     @Test
@@ -552,12 +588,18 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("virtual-key-bridge").assertIsDisplayed()
         compose.onNodeWithTag("virtual-key-search").assertIsDisplayed()
         val pixels = compose.onRoot().captureToImage().toPixelMap()
-        val keyTop = (pixels.height - 54).coerceAtLeast(0)
-        listOf("back", "start", "search").forEachIndexed { index, key ->
-            val left = pixels.width * index / 3
-            val right = pixels.width * (index + 1) / 3
+        listOf(
+            "back" to "virtual-key-back",
+            "bridge" to "virtual-key-bridge",
+            "search" to "virtual-key-search",
+        ).forEach { (key, tag) ->
+            val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            val left = bounds.left.toInt().coerceIn(0, pixels.width)
+            val right = bounds.right.toInt().coerceIn(left, pixels.width)
+            val top = bounds.top.toInt().coerceIn(0, pixels.height)
+            val bottom = bounds.bottom.toInt().coerceIn(top, pixels.height)
             val visibleGlyphPixels = (left until right).sumOf { x ->
-                (keyTop until pixels.height).count { y ->
+                (top until bottom).count { y ->
                     pixels[x, y].let { color ->
                         color.red > .8f && color.green > .8f && color.blue > .8f
                     }
