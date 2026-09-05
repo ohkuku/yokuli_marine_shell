@@ -21,6 +21,27 @@ sealed interface MapAction {
     data object RetryPersistence : MapAction
     data object RetryLoad : MapAction
 
+    data class RendererHostReady(val generation: MapRendererGeneration) : MapAction
+    data class RendererReady(val generation: MapRendererGeneration) : MapAction
+    data class RendererFailed(
+        val generation: MapRendererGeneration,
+        val failure: MapRendererFailure,
+    ) : MapAction
+    data class RendererCoverageChanged(
+        val generation: MapRendererGeneration,
+        val coverage: MapTileCoverageStatus,
+    ) : MapAction
+    data class RendererCameraIdle(
+        val generation: MapRendererGeneration,
+        val camera: MapCamera,
+        val commandId: MapCameraCommandId? = null,
+    ) : MapAction
+    data class RequestCamera(
+        val target: MapCameraTarget,
+        val intent: MapCameraIntent,
+        val viewportInsets: MapViewportInsets = MapViewportInsets(),
+    ) : MapAction
+
     /** Internal writer callbacks. Revisions make stale callbacks harmless. */
     data class PersistenceAck(val revision: Long) : MapAction
     data class PersistenceFailed(val revision: Long, val failure: MapReadFailure) : MapAction
@@ -36,6 +57,7 @@ sealed interface MapIncident {
     data object ActionRejected : MapIncident
     data class UnknownChartPackage(val packageId: ChartPackageId) : MapIncident
     data class PersistenceFailure(val operation: String, val failure: MapReadFailure) : MapIncident
+    data class RendererFailure(val failure: MapRendererFailure) : MapIncident
 }
 
 sealed interface MapEffect {
@@ -98,6 +120,14 @@ class DefaultMapReducer(
         )
         is MapAction.PersistenceAck -> persistenceAck(state, action.revision)
         is MapAction.PersistenceFailed -> persistenceFailed(state, action.revision, action.failure)
+        is MapAction.RendererHostReady -> rendererHostReady(state, action.generation)
+        is MapAction.RendererReady -> rendererReady(state, action.generation)
+        is MapAction.RendererFailed -> rendererFailed(state, action.generation, action.failure)
+        is MapAction.RendererCoverageChanged -> rendererCoverage(state, action.generation, action.coverage)
+        is MapAction.RendererCameraIdle -> rendererCameraIdle(state, action)
+        is MapAction.RequestCamera -> MapReduction(
+            state.withCameraCommand(action.target, action.intent, action.viewportInsets),
+        )
     }
 
     private fun restore(state: MapState, result: MapLoadResult): MapReduction = when (result) {
@@ -120,6 +150,9 @@ class DefaultMapReducer(
                     durableLibraryRevision = library.revision,
                     saveState = MapSaveState.SAVED,
                     persistenceFailure = null,
+                ).withCameraCommand(
+                    target = MapCameraTarget.Exact(result.session.camera),
+                    intent = MapCameraIntent.RESTORE,
                 ),
                 if (result.quarantinedRecordCount > 0) {
                     listOf(MapEffect.LogIncident(MapIncident.PersistenceFailure("load-record", MapReadFailure.CORRUPT)))
@@ -136,6 +169,78 @@ class DefaultMapReducer(
             state.copy(libraryLoadState = MapLibraryLoadState.CORRUPT, persistenceFailure = result.failure),
             listOf(MapEffect.LogIncident(MapIncident.PersistenceFailure("load", result.failure))),
         )
+    }
+
+    private fun rendererHostReady(state: MapState, generation: MapRendererGeneration): MapReduction {
+        val current = state.renderer.generation
+        if (current != null && generation.value < current.value) return MapReduction(state)
+        if (current == generation && state.renderer.readiness != MapRendererReadiness.DETACHED) return MapReduction(state)
+        val coverage = if (state.activeChartPackageId == null) {
+            MapTileCoverageStatus.NO_PACKAGE
+        } else {
+            MapTileCoverageStatus.CHECKING
+        }
+        return MapReduction(
+            state.copy(
+                renderer = state.renderer.copy(
+                    generation = generation,
+                    readiness = MapRendererReadiness.HOST_READY,
+                    tileCoverage = coverage,
+                    failure = null,
+                ),
+            ),
+        )
+    }
+
+    private fun rendererReady(state: MapState, generation: MapRendererGeneration): MapReduction =
+        if (state.renderer.generation != generation) MapReduction(state) else MapReduction(
+            state.copy(renderer = state.renderer.copy(readiness = MapRendererReadiness.RENDERER_READY, failure = null)),
+        )
+
+    private fun rendererFailed(
+        state: MapState,
+        generation: MapRendererGeneration,
+        failure: MapRendererFailure,
+    ): MapReduction = if (state.renderer.generation != generation) {
+        MapReduction(state)
+    } else {
+        MapReduction(
+            state.copy(
+                renderer = state.renderer.copy(readiness = MapRendererReadiness.ERROR, failure = failure),
+            ),
+            listOf(MapEffect.LogIncident(MapIncident.RendererFailure(failure))),
+        )
+    }
+
+    private fun rendererCoverage(
+        state: MapState,
+        generation: MapRendererGeneration,
+        coverage: MapTileCoverageStatus,
+    ): MapReduction = if (state.renderer.generation != generation) {
+        MapReduction(state)
+    } else {
+        MapReduction(state.copy(renderer = state.renderer.copy(tileCoverage = coverage)))
+    }
+
+    private fun rendererCameraIdle(state: MapState, action: MapAction.RendererCameraIdle): MapReduction {
+        if (state.renderer.generation != action.generation) return MapReduction(state)
+        val pending = state.renderer.pendingCameraCommand
+        if (action.commandId != null) {
+            if (pending?.id != action.commandId) return MapReduction(state)
+            return MapReduction(
+                state.copy(
+                    camera = action.camera,
+                    renderer = state.renderer.copy(
+                        pendingCameraCommand = null,
+                        lastAcknowledgedCameraCommandId = action.commandId,
+                    ),
+                ),
+            )
+        }
+        if (state.renderer.readiness != MapRendererReadiness.RENDERER_READY || pending != null) {
+            return MapReduction(state)
+        }
+        return if (state.camera == action.camera) MapReduction(state) else persistSession(state.copy(camera = action.camera))
     }
 
     private fun selectTool(state: MapState, tool: MapTool): MapState = when (tool) {
@@ -338,6 +443,20 @@ class DefaultMapReducer(
             },
         )
         return MapReduction(updated, listOf(MapEffect.PersistLibrary(updated.librarySnapshot())))
+    }
+
+    private fun MapState.withCameraCommand(
+        target: MapCameraTarget,
+        intent: MapCameraIntent,
+        viewportInsets: MapViewportInsets = MapViewportInsets(),
+    ): MapState {
+        val commandId = MapCameraCommandId(renderer.nextCameraCommandId)
+        return copy(
+            renderer = renderer.copy(
+                pendingCameraCommand = MapCameraCommand(commandId, target, intent, viewportInsets),
+                nextCameraCommandId = renderer.nextCameraCommandId + 1L,
+            ),
+        )
     }
 
     private inline fun ifWritable(state: MapState, block: () -> MapReduction): MapReduction =

@@ -234,6 +234,7 @@ data class MapState(
     val durableLibraryRevision: Long = 0L,
     val saveState: MapSaveState = MapSaveState.SAVED,
     val persistenceFailure: MapReadFailure? = null,
+    val renderer: MapRendererState = MapRendererState(),
 ) {
     val routeDraft: ManualRouteDraft?
         get() = activeRouteDraftId?.let { active -> routeDrafts.firstOrNull { it.id == active } }
