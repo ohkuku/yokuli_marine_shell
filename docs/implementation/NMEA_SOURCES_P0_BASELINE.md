@@ -1,6 +1,6 @@
 # NMEA_SOURCES P0 实施基线 / P0 Implementation Baseline
 
-状态：`BASELINE_RECORDED`。此文件记录开始施工前的事实与决定；构建证据在 P0 Gate 完成后追加，不预先声称通过。
+状态：`P0_PASS`。此文件记录开始施工前的事实、决定与实际执行的封口证据。
 
 ## 1. 真实工作树与覆盖决定
 
@@ -119,14 +119,21 @@ feature:desktop      ─X─> NMEA domain types
 - 明确旧仓保持只读，没有 checkout/reset/clean，也没有碰用户未提交内容。
 - 锁定单一 OS source selection；不恢复 Anchor GPS manager 加 Vessel/Instrument source manager。
 
-待 P0 封口命令：
+P0 封口命令与结果：
 
 ```text
-python3 .github/scripts/test_nmea_sources_p0_contract.py
-python3 -m unittest discover .github/scripts 'test_*.py'
-./gradlew test lintStandaloneDebug assembleStandaloneDebug assembleStandaloneRelease
-git diff --check
+python3 .github/scripts/test_nmea_sources_p0_contract.py                  PASS 6/6
+/tmp/yokuli-nmea-p0-python/bin/python -m unittest discover ...          PASS 230/230
+./gradlew test lintStandaloneDebug assembleStandaloneDebug
+  assembleStandaloneRelease                                             PASS 1151 tasks
+bash .github/scripts/test-ci-contract.sh                                PASS
+bash .github/scripts/test-release-product-surface.sh                    PASS
+bash .github/scripts/test-resolve-release-metadata.sh                   PASS
+bash .github/scripts/test-secrets-manager.sh                            PASS
+git diff --check                                                        PASS
 ```
+
+首轮 Python 使用系统解释器时因未安装 `jsonschema` 失败，不计作产品 Red/Green。随后在 `/tmp` 隔离环境安装仓库锁定的 `jsonschema==4.25.1` 后重跑。完整合同发现一项真正的文档回归：TDD Playbook 的历史 Master 追溯链接被新 Phase 首段替换；已在独立纠错中恢复，并再次得到 230/230。
 
 ## English translation
 

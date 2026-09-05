@@ -1,6 +1,6 @@
 # Yokuli OS — Launcher Engine TDD 施工规范
 
-状态：`ACTIVE`。Shell 与 Map 的历史阶段继续保留作追溯；当前施工以 [`NMEA_SOURCES` 产品合同](phases/nmea-sources/REQUIREMENTS.md)和[P0–P7 TDD 矩阵](implementation/NMEA_SOURCES_TDD_MATRIX.md)为准。它们覆盖旧文档中“只允许 Chart + Settings／禁止生产 NMEA/GNSS”的冲突范围，同时保留普通 Android 应用、默认竖屏、应用内 bounded Back、三档磁贴和单点 `InstalledAppBinding` 合同。
+状态：`ACTIVE`。Shell 历史阶段继续以 [`LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md`](requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md) 追溯，Map C00–C12 证据保持原样；当前施工以 [`NMEA_SOURCES` 产品合同](phases/nmea-sources/REQUIREMENTS.md)和[P0–P7 TDD 矩阵](implementation/NMEA_SOURCES_TDD_MATRIX.md)为准。它们覆盖旧文档中“只允许 Chart + Settings／禁止生产 NMEA/GNSS”的冲突范围，同时保留普通 Android 应用、默认竖屏、应用内 bounded Back、三档磁贴和单点 `InstalledAppBinding` 合同。
 
 ## 1. 当前 Phase 一次只写一个工作包
 

@@ -19,7 +19,7 @@ reference: codex/develop@a845d3d734d3b573a2b53952e66e5f800e944205 (read-only)
 
 新增 `docs/phases/nmea-sources` 与 `docs/implementation/NMEA_SOURCES_*`，把附件中的过期分支、旧仓 `main` 和 `assembleHomeDebug` 与当前事实分开。旧仓只读审计确认单连接 manager、跨 sender UDP framing、generation-free line flow、旧 AUTO 来源策略和 blank heartbeat retention 均不能迁移；纯 parser 语义和测试 fixture 只作为重写依据。
 
-P0 完整 Gate 尚待在本候选提交后执行并回填退出码；不得把本段当作 Green 已通过。
+提交后首轮完整 Gate 发现一个真实回归：旧 Stage 0 合同要求 TDD Playbook 继续包含 `LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md` 的历史追溯入口，新首段误删了该链接。Gradle 全量基线已成功；Python 在安装仓库锁定的 `jsonschema==4.25.1` 后为 `229 PASS / 1 FAIL`。独立纠错恢复历史入口且不削弱新 Phase 覆盖关系，最终证据为：P0 `6/6`、全仓 Python `230/230`、Gradle `BUILD SUCCESSFUL`（1151 tasks）、CI topology、Release surface、release metadata、secrets contract 与 `git diff --check` 全部 PASS。
 
 ## English translation
 

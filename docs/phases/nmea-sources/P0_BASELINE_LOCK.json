@@ -1,7 +1,7 @@
 {
   "phase": "NMEA_SOURCES",
   "stage": "P0",
-  "status": "BASELINE_RECORDED",
+  "status": "PASS",
   "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
   "shell": {
     "path": "/Users/kuku/Documents/ChatGPT/yokuli_marine_shell",
@@ -25,5 +25,14 @@
   },
   "supersedesConflictingHistoricalClauses": true,
   "preservesHistoricalEvidenceFiles": true,
-  "physicalDeviceStatus": "UNVERIFIED_PHYSICAL_DEVICE"
+  "physicalDeviceStatus": "UNVERIFIED_PHYSICAL_DEVICE",
+  "candidateCommit": "aa5acd17f1f8025da603a04586d6d18eb44c849f",
+  "evidence": {
+    "p0Contract": "6/6 PASS",
+    "pythonContracts": "230/230 PASS",
+    "gradle": "BUILD SUCCESSFUL; 1151 tasks",
+    "releaseSurface": "PASS",
+    "ciTopology": "PASS",
+    "gitDiffCheck": "PASS"
+  }
 }
