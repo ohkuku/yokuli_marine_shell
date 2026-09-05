@@ -184,9 +184,11 @@ class ShellActivityStoryTest {
             var reordered = false
             compose.activityRule.scenario.onActivity { activity ->
                 val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
+                val selected = state.start.interaction as?
+                    com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle
                 reordered = state.start.document.placements.sortedBy { it.rank }
                     .map { it.entryId.value } == listOf("settings", "chart") &&
-                    state.start.interaction is com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle
+                    selected?.selectedTile?.value == "settings-primary"
             }
             reordered
         }
@@ -242,7 +244,17 @@ class ShellActivityStoryTest {
                 .single { it.entryId.value == "settings" }.tileId
             engine.dispatch(LauncherAction.EnterStartEdit(tileId))
         }
-        awaitDisplayed("resize-selected-tile")
+        compose.waitUntil(5_000) {
+            var selected = false
+            compose.activityRule.scenario.onActivity { activity ->
+                val interaction = ViewModelProvider(activity)[ShellViewModel::class.java]
+                    .engine.state.value.start.interaction as?
+                    com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle
+                selected = interaction?.selectedTile?.value == "settings-primary"
+            }
+            selected
+        }
+        awaitExists("resize-selected-tile")
         var density = 1f
         compose.activityRule.scenario.onActivity { density = it.resources.displayMetrics.density }
 
