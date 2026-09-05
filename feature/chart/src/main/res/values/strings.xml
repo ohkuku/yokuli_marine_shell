@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_chart">海图</string>
+    <string name="app_chart">地图</string>
     <string name="chart_context_google">浏览 · Google 地图</string>
     <string name="chart_context_demo">浏览 · 演示地图</string>
     <string name="chart_demo_label">演示地图</string>
@@ -8,4 +8,36 @@
     <string name="chart_open_settings">打开地图设置</string>
     <string name="chart_map_configured">地图已配置</string>
     <string name="chart_browse_only">仅浏览</string>
+    <string name="map_context_offline_first">离线优先 · 规划工作台</string>
+    <string name="map_position_unavailable">位置不可用</string>
+    <string name="map_position_stale">位置数据已过期</string>
+    <string name="map_position_fresh">位置数据为最新</string>
+    <string name="map_tool_browse">浏览</string>
+    <string name="map_tool_places">地点</string>
+    <string name="map_tool_measure">测量</string>
+    <string name="map_tool_routes">航线</string>
+    <string name="map_tool_charts">海图</string>
+    <string name="map_places_title">地点</string>
+    <string name="map_places_empty">尚未保存地点。长按地图选点后可保存。</string>
+    <string name="map_places_count">已保存 %1$d 个地点</string>
+    <string name="map_measure_title">距离测量</string>
+    <string name="map_points_count">%1$d 个点</string>
+    <string name="map_convert_to_route">转为手工航线</string>
+    <string name="map_browse_title">浏览地图</string>
+    <string name="map_browse_hint">无需船网或定位。长按地图可选点。</string>
+    <string name="map_selected_point">已选择坐标</string>
+    <string name="map_save_place">保存为地点</string>
+    <string name="map_manual_route_title">手工航线规划</string>
+    <string name="map_manual_route_truth">仅绘制与估算，不是自动航路或导航。</string>
+    <string name="map_route_summary">%1$.1f 海里 · %2$.1f 节 · 约 %3$d 分钟</string>
+    <string name="map_undo">撤销</string>
+    <string name="map_redo">重做</string>
+    <string name="map_reverse">反转</string>
+    <string name="map_save_copy">另存副本</string>
+    <string name="map_charts_title">海图与离线包</string>
+    <string name="map_charts_empty">尚未导入本地海图包。</string>
+    <string name="map_charts_count">已安装 %1$d 个本地海图包</string>
+    <string name="map_import_mbtiles">导入 MBTiles</string>
+    <string name="map_tile_offline_first">离线规划</string>
+    <string name="map_tile_local_facts">地点 %1$d · 航线 %2$d · 海图包 %3$d</string>
 </resources>

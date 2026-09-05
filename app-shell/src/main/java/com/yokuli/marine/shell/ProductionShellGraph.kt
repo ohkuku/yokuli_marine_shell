@@ -7,11 +7,10 @@ import com.yokuli.marine.adapter.chart.google.GoogleMarineChartSurface
 import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
+import com.yokuli.marine.map.domain.MapAction
+import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.chart.ChartShellContribution
-import com.yokuli.marine.feature.chart.ChartSurfaceKind
-import com.yokuli.marine.feature.chart.ChartUiAction
-import com.yokuli.marine.feature.chart.ChartUiState
 import com.yokuli.marine.feature.chart.ChartWorkspace
 import com.yokuli.marine.feature.chart.MarineChartDemoSurface
 import com.yokuli.marine.feature.chart.MarineChartSurface
@@ -43,6 +42,7 @@ import com.yokuli.shell.engine.layout.TilePlacement
 data class ProductionShellVisualEnvironment(
     val mapConfigured: Boolean,
     val theme: WpThemeSpec,
+    val mapState: MapState,
 )
 
 data class ProductionShellRuntime(
@@ -56,6 +56,9 @@ data class ProductionShellRuntime(
     val buildVariant: String,
     val gitSha: String,
     val debugShellLabAvailable: Boolean,
+    val mapState: MapState,
+    val onMapAction: (MapAction) -> Unit,
+    val onImportChart: () -> Unit,
     val openMapSettings: () -> Unit,
     val onSettingsAction: (SettingsUiAction) -> Unit,
 )
@@ -72,31 +75,32 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
     InstalledAppBinding(
         catalogContribution = ChartShellContribution,
         visualContributions = { environment ->
-            listOf(chartLauncherVisualContribution(environment.mapConfigured))
+            listOf(chartLauncherVisualContribution(environment.mapConfigured, environment.mapState))
         },
         internalAppHost = InternalAppHost(ChartDestinations.AppId) { token ->
             check(token == ChartDestinations.Browse)
             val runtime = LocalProductionShellRuntime.current
             val chartSurface: MarineChartSurface = if (runtime.mapConfigured && runtime.heavyContentReady) {
-                { modifier ->
+                { state, onCameraChanged, onLongPress, modifier ->
                     GoogleMarineChartSurface(
+                        state = state,
+                        onCameraChanged = onCameraChanged,
+                        onLongPress = onLongPress,
                         darkMode = runtime.theme.mode == WpThemeMode.DARK,
                         modifier = modifier.testTag("chart-surface-google"),
                     )
                 }
             } else if (runtime.mapConfigured) {
-                { modifier -> MarineChartTransitionSurface(modifier) }
+                { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }
             } else {
-                { modifier -> MarineChartDemoSurface(modifier.testTag("chart-surface-demo")) }
+                { _, _, _, modifier -> MarineChartDemoSurface(modifier.testTag("chart-surface-demo")) }
             }
             ChartWorkspace(
-                state = ChartUiState(
-                    surfaceKind = if (runtime.mapConfigured) ChartSurfaceKind.GOOGLE_MAPS else ChartSurfaceKind.DEMO,
-                    mapConfigured = runtime.mapConfigured,
-                ),
-                onAction = { action ->
-                    if (action == ChartUiAction.OpenMapSettings) runtime.openMapSettings()
-                },
+                state = runtime.mapState,
+                mapConfigured = runtime.mapConfigured,
+                onAction = runtime.onMapAction,
+                onOpenMapSettings = runtime.openMapSettings,
+                onImportChart = runtime.onImportChart,
                 chartSurface = chartSurface,
             )
         },
@@ -138,8 +142,9 @@ val productionLaunchRegistrations = productionInstalledAppRegistry.launchRegistr
 fun productionVisualContributions(
     mapConfigured: Boolean,
     theme: WpThemeSpec,
+    mapState: MapState = MapState(),
 ): List<LauncherEntryVisualContribution> {
-    val environment = ProductionShellVisualEnvironment(mapConfigured, theme)
+    val environment = ProductionShellVisualEnvironment(mapConfigured, theme, mapState)
     return productionInstalledAppRegistry.visualContributions(environment)
 }
 val productionInternalAppHostResolver = DefaultInternalAppHostResolver(

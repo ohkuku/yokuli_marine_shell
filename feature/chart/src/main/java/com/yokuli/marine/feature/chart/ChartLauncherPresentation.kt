@@ -23,17 +23,22 @@ import com.yokuli.shell.compose.LauncherIconRenderer
 import com.yokuli.shell.compose.LauncherTileRenderContext
 import com.yokuli.shell.compose.LauncherTileRenderer
 import com.yokuli.shell.contract.MarineTileSize
+import com.yokuli.marine.map.domain.MapState
 import kotlin.math.min
 
-/** App-owned Chart presentation. Shell supplies the accent surface and edit chrome only. */
+/** App-owned Map presentation. Shell supplies the accent surface and edit chrome only. */
 @Composable
-fun chartLauncherVisualContribution(mapConfigured: Boolean): LauncherEntryVisualContribution {
+fun chartLauncherVisualContribution(
+    mapConfigured: Boolean,
+    mapState: MapState,
+): LauncherEntryVisualContribution {
     val title = stringResource(R.string.app_chart)
-    val headline = stringResource(
-        if (mapConfigured) R.string.chart_map_configured else R.string.chart_demo_label,
-    )
+    val headline = stringResource(R.string.map_tile_offline_first)
     val detail = stringResource(
-        if (mapConfigured) R.string.chart_browse_only else R.string.chart_map_unconfigured,
+        R.string.map_tile_local_facts,
+        mapState.places.size,
+        mapState.savedRoutes.size,
+        mapState.chartPackages.size,
     )
     return LauncherEntryVisualContribution(
         entryId = ChartDestinations.EntryId,

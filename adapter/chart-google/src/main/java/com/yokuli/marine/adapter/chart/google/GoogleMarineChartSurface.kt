@@ -10,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -28,6 +29,11 @@ import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapColorScheme
+import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.PolylineOptions
+import com.yokuli.marine.map.domain.GeoPoint
+import com.yokuli.marine.map.domain.MapCamera
+import com.yokuli.marine.map.domain.MapState
 
 private data class CameraSnapshot(
     val latitude: Double,
@@ -74,6 +80,9 @@ private val AucklandHarbour = CameraSnapshot(
  */
 @Composable
 fun GoogleMarineChartSurface(
+    state: MapState,
+    onCameraChanged: (MapCamera) -> Unit,
+    onLongPress: (GeoPoint) -> Unit,
     darkMode: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -83,8 +92,10 @@ fun GoogleMarineChartSurface(
     val topInsetPx = with(density) { 96.dp.roundToPx() }
     val bottomInsetPx = with(density) { 150.dp.roundToPx() }
     var camera by rememberSaveable(stateSaver = CameraSnapshotSaver) {
-        mutableStateOf(AucklandHarbour)
+        mutableStateOf(state.camera.toSnapshot())
     }
+    val currentOnCameraChanged by rememberUpdatedState(onCameraChanged)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
     val mapView = remember(context) {
         MapView(
             context,
@@ -141,16 +152,49 @@ fun GoogleMarineChartSurface(
                 moveCamera(CameraUpdateFactory.newCameraPosition(camera.toCameraPosition()))
                 setOnCameraIdleListener {
                     camera = cameraPosition.toSnapshot()
+                    currentOnCameraChanged(cameraPosition.toDomainCamera())
                 }
+                setOnMapLongClickListener { point -> currentOnLongPress(point.toDomainPoint()) }
             }
         }
-        onDispose { disposed = true }
+        onDispose {
+            disposed = true
+            googleMap?.setOnMapLongClickListener(null)
+        }
     }
 
     LaunchedEffect(googleMap, darkMode, topInsetPx, bottomInsetPx) {
         googleMap?.apply {
             setMapColorScheme(if (darkMode) MapColorScheme.DARK else MapColorScheme.LIGHT)
             setPadding(0, topInsetPx, 0, bottomInsetPx)
+        }
+    }
+
+    LaunchedEffect(
+        googleMap,
+        state.selection,
+        state.places,
+        state.measurementDraft,
+        state.routeDraft,
+        state.position.observation,
+    ) {
+        googleMap?.apply {
+            clear()
+            state.places.forEach { place ->
+                addMarker(MarkerOptions().position(place.point.toLatLng()).title(place.name))
+            }
+            state.selection?.let { selection ->
+                addMarker(MarkerOptions().position(selection.point.toLatLng()))
+            }
+            state.measurementDraft?.points?.takeIf { it.isNotEmpty() }?.let { points ->
+                addPolyline(PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xfff7b500.toInt()).width(5f))
+            }
+            state.routeDraft?.waypoints?.takeIf { it.isNotEmpty() }?.let { points ->
+                addPolyline(PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xff00a4ef.toInt()).width(7f))
+            }
+            state.position.observation?.let { observation ->
+                addMarker(MarkerOptions().position(observation.point.toLatLng()).title(observation.source))
+            }
         }
     }
 
@@ -166,6 +210,23 @@ private fun CameraSnapshot.toCameraPosition(): CameraPosition = CameraPosition.B
     .bearing(bearing)
     .tilt(tilt)
     .build()
+
+private fun MapCamera.toSnapshot(): CameraSnapshot = CameraSnapshot(
+    latitude = center.latitude,
+    longitude = center.longitude,
+    zoom = zoom.toFloat(),
+    bearing = bearing.toFloat(),
+    tilt = 0f,
+)
+
+private fun CameraPosition.toDomainCamera(): MapCamera = MapCamera(
+    center = target.toDomainPoint(),
+    zoom = zoom.toDouble(),
+    bearing = bearing.toDouble(),
+)
+
+private fun LatLng.toDomainPoint(): GeoPoint = GeoPoint(latitude, longitude)
+private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 
 private fun CameraPosition.toSnapshot(): CameraSnapshot = CameraSnapshot(
     latitude = target.latitude,

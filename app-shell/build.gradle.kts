@@ -67,6 +67,7 @@ android {
 
 dependencies {
     implementation(project(":core:model"))
+    implementation(project(":core:map-domain"))
     implementation(project(":core:design"))
     implementation(project(":core:shell-contract"))
     implementation(project(":core:shell-engine"))

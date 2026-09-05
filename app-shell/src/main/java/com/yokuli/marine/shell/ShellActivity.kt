@@ -184,6 +184,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val context = LocalContext.current
     val engine = shellViewModel.engine
     val engineState by engine.state.collectAsState()
+    val mapState by shellViewModel.mapStore.state.collectAsState()
     val hostView = LocalView.current
     LaunchedEffect(engine, hostView) {
         engine.effects.collect { effect ->
@@ -241,6 +242,11 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             buildVariant = "${BuildConfig.FLAVOR}/${BuildConfig.BUILD_TYPE}",
             gitSha = BuildConfig.GIT_SHA,
             debugShellLabAvailable = BuildConfig.DEBUG,
+            mapState = mapState,
+            onMapAction = shellViewModel.mapStore::dispatch,
+            onImportChart = {
+                Log.i("YokuliMap", "MBTiles import requested before the package importer is installed")
+            },
             openMapSettings = {
                 dispatch(LauncherAction.Open(SettingsDestinations.Overview))
                 dispatch(LauncherAction.Open(SettingsDestinations.Map))
@@ -273,6 +279,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 visualContributions = productionVisualContributions(
                     mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
                     theme = themeSpec,
+                    mapState = mapState,
                 ),
             )
             val startEditing = engineState.start.interaction !is StartInteractionState.Idle

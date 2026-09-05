@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_chart">chart</string>
+    <string name="app_chart">map</string>
     <string name="chart_context_google">browse · Google map</string>
     <string name="chart_context_demo">browse · demo map</string>
     <string name="chart_demo_label">DEMO MAP</string>
@@ -8,4 +8,36 @@
     <string name="chart_open_settings">open map settings</string>
     <string name="chart_map_configured">MAP CONFIGURED</string>
     <string name="chart_browse_only">BROWSE ONLY</string>
+    <string name="map_context_offline_first">offline first · planning workbench</string>
+    <string name="map_position_unavailable">POSITION UNAVAILABLE</string>
+    <string name="map_position_stale">POSITION DATA STALE</string>
+    <string name="map_position_fresh">POSITION DATA FRESH</string>
+    <string name="map_tool_browse">browse</string>
+    <string name="map_tool_places">places</string>
+    <string name="map_tool_measure">measure</string>
+    <string name="map_tool_routes">routes</string>
+    <string name="map_tool_charts">charts</string>
+    <string name="map_places_title">places</string>
+    <string name="map_places_empty">No saved places. Long-press the map to select a point.</string>
+    <string name="map_places_count">%1$d saved places</string>
+    <string name="map_measure_title">distance measurement</string>
+    <string name="map_points_count">%1$d points</string>
+    <string name="map_convert_to_route">convert to manual route</string>
+    <string name="map_browse_title">browse map</string>
+    <string name="map_browse_hint">No boat network or position required. Long-press to select.</string>
+    <string name="map_selected_point">selected coordinate</string>
+    <string name="map_save_place">save as place</string>
+    <string name="map_manual_route_title">manual route planning</string>
+    <string name="map_manual_route_truth">Drawing and estimates only; not autorouting or navigation.</string>
+    <string name="map_route_summary">%1$.1f NM · %2$.1f kn · about %3$d min</string>
+    <string name="map_undo">undo</string>
+    <string name="map_redo">redo</string>
+    <string name="map_reverse">reverse</string>
+    <string name="map_save_copy">save copy</string>
+    <string name="map_charts_title">charts &amp; offline packages</string>
+    <string name="map_charts_empty">No local chart packages imported.</string>
+    <string name="map_charts_count">%1$d local chart packages installed</string>
+    <string name="map_import_mbtiles">import MBTiles</string>
+    <string name="map_tile_offline_first">OFFLINE PLANNING</string>
+    <string name="map_tile_local_facts">%1$d places · %2$d routes · %3$d chart packs</string>
 </resources>

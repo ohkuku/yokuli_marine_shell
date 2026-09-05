@@ -5,6 +5,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
+import com.yokuli.marine.map.domain.DefaultMapStore
+import com.yokuli.marine.map.domain.MapEffect
+import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.domain.MapStore
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
 import com.yokuli.shell.engine.LauncherAction
@@ -47,6 +51,17 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         persistence = enginePersistence,
         defaultDocument = defaultStartDocument,
         scope = viewModelScope,
+    )
+
+    val mapStore: MapStore = DefaultMapStore(
+        initialState = MapState(),
+        scope = viewModelScope,
+        effectHandler = { effect ->
+            when (effect) {
+                is MapEffect.LogIncident -> android.util.Log.w("YokuliMap", effect.incident.toString())
+                is MapEffect.Persist -> Unit // Replaced by the durable map repository in the next TDD slice.
+            }
+        },
     )
 
     init {
@@ -137,6 +152,11 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
                 persistence.markLaunchHealthy()
             }
         }
+    }
+
+    override fun onCleared() {
+        mapStore.close()
+        super.onCleared()
     }
 
     private companion object {
