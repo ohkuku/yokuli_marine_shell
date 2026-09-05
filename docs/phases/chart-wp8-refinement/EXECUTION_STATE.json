@@ -6,11 +6,11 @@
   "auditedSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "workingBaseSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "auditedShaIsAncestorOfWorkingBase": true,
-  "currentTask": "C02",
+  "currentTask": "C03",
   "taskStatus": {
     "C00": "VERIFIED_LOCAL",
     "C01": "VERIFIED_LOCAL",
-    "C02": "IMPLEMENTED_UNVERIFIED",
+    "C02": "VERIFIED_LOCAL",
     "C03": "TODO",
     "C04": "TODO",
     "C05": "TODO",
@@ -22,7 +22,7 @@
     "C11": "TODO",
     "C12": "TODO"
   },
-  "lastVerifiedSha": "11d10156c4b1ad26a55694219bcc9ce00fd97a80",
+  "lastVerifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
   "ciRun": null,
   "openFindings": [
     "Hosted CI status for C00 could not be queried locally because GitHub CLI is unavailable; final same-SHA hosted evidence remains a C12 gate",
@@ -30,5 +30,5 @@
   ],
   "sourceDelivery": "NOT_VERIFIED",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Commit the C02 self-review tests, rerun focused real-renderer evidence and the complete cumulative C00-C02 gate, then advance only if green"
+  "nextAction": "Begin C03 with Red tests for map hierarchy, feature-first Back, query-driven square-screen crosshair and gesture cancellation"
 }

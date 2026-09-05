@@ -4,9 +4,9 @@
   "package": "C02",
   "branch": "codex/shell-map-contract",
   "baselineSha": "038f1b4e87e1fb7db79bb10178ff10b0c7644c82",
-  "implementationCandidateSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
-  "cumulativeVerifiedSha": "11d10156c4b1ad26a55694219bcc9ce00fd97a80",
-  "status": "IMPLEMENTED_UNVERIFIED",
+  "implementationCandidateSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
+  "cumulativeVerifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
+  "status": "VERIFIED_LOCAL",
   "productionRenderer": "MapLibre Native 13.4.1 local raster MBTiles",
   "productionRendererCount": 1,
   "requiresGoogleMapsKey": false,
@@ -17,7 +17,7 @@
   "rendererContractSdkFree": true,
   "focusedGate": {
     "pythonTests": 165,
-    "offlineAdapterDeviceTests": 5,
+    "offlineAdapterDeviceTests": 6,
     "lifecycleStoryTests": 1,
     "lifecycleMapVisits": 50,
     "maxCommittedInstances": 100,
@@ -25,15 +25,15 @@
     "finalLiveInstances": 0
   },
   "cumulativeGate": {
-    "status": "PENDING_RERUN_AFTER_SELF_REVIEW",
+    "status": "PASSED",
     "pythonTests": 165,
-    "jvmTests": 231,
+    "jvmTests": 235,
     "gradleTasks": 1151,
-    "offlineRendererDeviceTests": 5,
+    "offlineRendererDeviceTests": 6,
     "appShellDeviceTests": 39,
     "roomDeviceTests": 4,
-    "debugApkSha256": "db20d98875953d52046aa613afa6f0a03d4ed88c47fd51be9aadb4a46f115662",
-    "unsignedReleaseApkSha256": "613337922f1f22ddf23417021d2796cf47a4a0dc8c823605069491efd7a4b655"
+    "debugApkSha256": "f36d7c8c57458b1f23d8f23b2801e20ee15fe8988e017fbe49e959b0cca0309d",
+    "unsignedReleaseApkSha256": "210b5da8dc469ff8752a1948ff2c92e77df51e6f6a68d3fa7b78da72ea822615"
   },
   "nextPermittedPackageAfterGate": "C03"
 }

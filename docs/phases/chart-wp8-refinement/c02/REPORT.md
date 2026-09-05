@@ -6,9 +6,9 @@
 
 - package：C02
 - baseline：`038f1b4e87e1fb7db79bb10178ff10b0c7644c82`
-- implementation candidate：`32e13b991ed2274296c1b6a0083a3ee63b055e39`
-- cumulative verified SHA：`11d10156c4b1ad26a55694219bcc9ce00fd97a80`
-- status：`IMPLEMENTED_UNVERIFIED`（封口自审补测后等待累计重跑）
+- implementation candidate：`8bb791209ec8753340444f629e8f9f04fc232fef`
+- cumulative verified SHA：`8bb791209ec8753340444f629e8f9f04fc232fef`
+- status：`VERIFIED_LOCAL`
 - hosted CI：留给 C12 的最终同 SHA Gate；本报告不伪造远端结果
 
 ## 交付
@@ -33,21 +33,21 @@
 - repository Python contracts：165 passed
 - `.github/scripts/test-ci-contract.sh`：passed
 - renderer/domain JVM 与编译：passed
-- API 34 `:adapter:map-offline:connectedDebugAndroidTest`：5 passed
+- API 34 `:adapter:map-offline:connectedDebugAndroidTest`：6 passed
 - API 34 50 次 map/Search/Bridge 生命周期故事：1 passed，peak live=1，final live=0
 
 ## 累计 Gate
 
 - Python contracts：165 passed；CI/release workflow contract passed
 - Gradle：1151 tasks；全仓 test、lint、Standalone Debug/Release passed
-- JVM XML：231 tests，0 failure/error
-- API 34：offline renderer 5、app-shell 39、Room 4，0 failure
-- Debug APK SHA-256：`db20d98875953d52046aa613afa6f0a03d4ed88c47fd51be9aadb4a46f115662`
-- unsigned Release APK SHA-256：`613337922f1f22ddf23417021d2796cf47a4a0dc8c823605069491efd7a4b655`
+- JVM XML：235 tests，0 failure/error
+- API 34：offline renderer 6、app-shell 39、Room 4，0 failure
+- Debug APK SHA-256：`f36d7c8c57458b1f23d8f23b2801e20ee15fe8988e017fbe49e959b0cca0309d`
+- unsigned Release APK SHA-256：`210b5da8dc469ff8752a1948ff2c92e77df51e6f6a68d3fa7b78da72ea822615`
 
 Release manifest 无位置权限和 Google Maps metadata。MapLibre 库仍声明网络/网络状态/Wi-Fi 状态权限；本 C02 只证明当前生产 renderer/style/source 无 HTTP URL，并由 API 34 的本地 `mbtiles://` 像素测试证明无需 Google key 的离线浏览路径。
 
-封口自审随后补入多 zoom、90 度旋转、透明边、动态比例尺、单调 command ID、viewport inset 和“切包不自动 fit-all”断言。上面的累计结果仍保留为上一验证点事实，但新增断言必须在新候选上重跑后才能恢复 `VERIFIED_LOCAL`。
+封口自审补入的多 zoom、90 度旋转、透明边、动态比例尺、单调 command ID、viewport inset 和“切包不自动 fit-all”断言已在同一候选上累计重跑。高密度 API 34 视口会裁掉原 fixture 的外圈透明边，因此 fixture 改为视口内透明窗口；旋转则比较整帧采样差异，避免单点恰好同色造成假失败。这两项修正都收紧证据，没有改变生产 renderer。
 
 ## 未宣称完成
 

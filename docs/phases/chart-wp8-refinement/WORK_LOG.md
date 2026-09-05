@@ -114,3 +114,17 @@
 ## C02｜封口前自审补测
 
 在写入机器场景证据时发现，原真实 renderer 测试虽然验证了色板存在，却没有直接断言高 zoom 取代 overview、90 度旋转改变已知图面方位、透明边露出本地空 style；相机范围场景也只有实现调用，没有独立断言 command ID、viewport inset 和切包不自动 fit-all。为避免把“代码看起来存在”写成已验证，C02 暂时退回 `IMPLEMENTED_UNVERIFIED`，新增真实 MapLibre 多 zoom/旋转/透明边测试、纯 reducer 相机命令测试和纬度/zoom 相关比例尺测试。新增 Gate 未通过前不开始 C03。
+
+## C02｜自审纠错与最终封口
+
+新增断言第一次运行没有被“为了过测试”弱化。透明边断言在 API 34 高密度视口上发现 zoom 0 会裁掉原 fixture 外圈；失败快照的采样色板包含图面颜色但没有测试背景色，证明问题是证据区域不可见，而不是 alpha 合成成功。fixture 因此增加视口内透明窗口。旋转断言随后暴露单点采样可能在旋转前后恰好同色，改为比较整帧规则采样，要求显著差异。生产 renderer 代码未因这两个测试失败改变。
+
+冻结验证点 `8bb791209ec8753340444f629e8f9f04fc232fef` 的最终累计证据：
+
+- Python 合同 165 项与 CI/release workflow contract 全部通过。
+- 全仓 `test`、`lintStandaloneDebug`、Standalone Debug/Release：1151 tasks，build successful；XML 汇总 235 个 JVM tests。
+- API 34：离线 renderer/导入 6 项、app-shell 39 项、Room 4 项，全部通过。
+- Debug APK SHA-256：`f36d7c8c57458b1f23d8f23b2801e20ee15fe8988e017fbe49e959b0cca0309d`；unsigned Release APK SHA-256：`210b5da8dc469ff8752a1948ff2c92e77df51e6f6a68d3fa7b78da72ea822615`。
+- Release 合并清单仍只有 MapLibre 依赖带来的网络、网络状态和 Wi-Fi 状态权限，没有位置权限或 Google Maps metadata。
+
+C02 恢复为 `VERIFIED_LOCAL`。它证明单一离线 renderer、相机协议和相关资源生命周期；不提前宣称 C03 的地图层级、方屏交互或 feature-first Back。

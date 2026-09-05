@@ -175,7 +175,7 @@
         "MAP-R17",
         "MAP-R19"
       ],
-      "status": "IMPLEMENTED_UNVERIFIED",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C02",
       "acceptanceScenarioIds": [
         "C02-T01",
@@ -187,13 +187,13 @@
         "C02-T07",
         "C02-T08"
       ],
-      "verifiedSha": null,
+      "verifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
       "evidence": [
         "165 Python repository contracts and the CI/release shell contract passed",
-        "231 JVM tests; full test/lint/Standalone Debug+Release gate passed in 1151 tasks",
-        "API 34: 5 offline renderer, 39 app-shell and 4 Room device tests passed",
+        "235 JVM tests; full test/lint/Standalone Debug+Release gate passed in 1151 tasks",
+        "API 34: 6 offline renderer, 39 app-shell and 4 Room device tests passed",
         "Release manifest has no location permission or Google Maps metadata; local MapLibre renderer requires no Google key",
-        "Self-review added executable multi-zoom, rotation, transparent-edge, scale and viewport-inset assertions; cumulative rerun pending"
+        "Self-review multi-zoom, rotation, transparent-edge, scale and viewport-inset assertions passed on the cumulative verified SHA"
       ]
     },
     {
@@ -685,7 +685,7 @@
       "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/MapLibreMbTilesRenderTest.kt",
       "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
       "result": "PASSED",
-      "verifiedSha": "11d10156c4b1ad26a55694219bcc9ce00fd97a80",
+      "verifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
       "evidence": ["API 34 rendered and sampled distinct directional PNG regions from a local mbtiles:// source"]
     },
     {
@@ -696,9 +696,9 @@
       "then": "TMS/XYZ、方向、经纬度顺序、比例尺与overlay正确",
       "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt; adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/MapLibreMbTilesRenderTest.kt",
       "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
-      "result": "PENDING_RERUN",
-      "verifiedSha": null,
-      "evidence": ["New real-renderer assertions cover overview/detail zoom selection, 90-degree rotation, transparent edge, PNG 128, JPEG 512 and XYZ-to-TMS normalisation"]
+      "result": "PASSED",
+      "verifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
+      "evidence": ["API 34 real-renderer assertions passed for overview/detail zoom selection, whole-frame 90-degree rotation, an in-viewport transparent window, PNG 128, JPEG 512 and XYZ-to-TMS normalisation"]
     },
     {
       "id": "C02-T03",
@@ -709,7 +709,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapRendererContractTest.kt",
       "command": "./gradlew :core:map-domain:test",
       "result": "PASSED",
-      "verifiedSha": "11d10156c4b1ad26a55694219bcc9ce00fd97a80",
+      "verifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
       "evidence": ["Renderer-ready-before-restore ignores default idle and emits one restored-camera command"]
     },
     {
@@ -721,7 +721,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapRendererContractTest.kt",
       "command": "./gradlew :core:map-domain:test",
       "result": "PASSED",
-      "verifiedSha": "11d10156c4b1ad26a55694219bcc9ce00fd97a80",
+      "verifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
       "evidence": ["Restore-before-renderer-ready preserves one command and consumes its echo without a persistence loop"]
     },
     {
@@ -733,7 +733,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapRendererContractTest.kt",
       "command": "./gradlew :core:map-domain:test",
       "result": "PASSED",
-      "verifiedSha": "11d10156c4b1ad26a55694219bcc9ce00fd97a80",
+      "verifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
       "evidence": ["Stale renderer generations, stale command IDs and late failures cannot mutate the current renderer session"]
     },
     {
@@ -745,7 +745,7 @@
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReducerTest.kt; adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt",
       "command": "./gradlew :core:map-domain:test :adapter:map-offline:connectedDebugAndroidTest",
       "result": "PASSED",
-      "verifiedSha": "11d10156c4b1ad26a55694219bcc9ce00fd97a80",
+      "verifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
       "evidence": ["Missing/removed packages preserve camera and user objects; corrupt tiles are rejected without partial install"]
     },
     {
@@ -756,9 +756,9 @@
       "then": "目标处于可见地图，普通切图不自动fit-all",
       "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapRendererContractTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/MapScaleTest.kt",
       "command": "./gradlew :core:map-domain:test :feature:chart:test",
-      "result": "PENDING_RERUN",
-      "verifiedSha": null,
-      "evidence": ["New tests require monotonic exact/bounds camera commands, retained viewport insets, no implicit fit-on-package-switch and a latitude/zoom-aware scale"]
+      "result": "PASSED",
+      "verifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
+      "evidence": ["JVM tests passed for monotonic exact/bounds camera commands, retained viewport insets, no implicit fit-on-package-switch and a latitude/zoom-aware scale"]
     },
     {
       "id": "C02-T08",
@@ -769,7 +769,7 @@
       "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/MapLibreMbTilesRenderTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
       "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest; ./gradlew :app-shell:connectedStandaloneDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#fiftyMapSearchBridgeTransitionsDoNotAccumulateNativeMapViews",
       "result": "PASSED",
-      "verifiedSha": "11d10156c4b1ad26a55694219bcc9ce00fd97a80",
+      "verifiedSha": "8bb791209ec8753340444f629e8f9f04fc232fef",
       "evidence": ["Hash-bound NOAA subset rendered locally; 50 map visits ended with 0 live MapViews and peak concurrency 1"]
     },
     {
