@@ -444,15 +444,6 @@ private fun WpTile(
             CustomAccessibilityAction(stringResource(R.string.move_tile_down)) { onMoveBy(0, 1); true },
         )
     } else emptyList()
-    val tileClickModifier = if (editing && selected) {
-        Modifier
-    } else {
-        Modifier.clickable(
-            interactionSource = interactions,
-            indication = null,
-            onClick = onClick,
-        )
-    }
     Box(
         modifier.graphicsLayer {
             translationX = dragOffset.x
@@ -475,7 +466,11 @@ private fun WpTile(
             }
             .wpTilt(interactions, enabled = !(editing && selected))
             .background(colors.accent)
-            .then(tileClickModifier)
+            .clickable(
+                interactionSource = interactions,
+                indication = null,
+                onClick = onClick,
+            )
             .then(dragModifier),
     ) {
         Box(Modifier.fillMaxSize().padding(tileInset)) {
