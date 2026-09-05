@@ -4,6 +4,7 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -132,6 +133,80 @@ class MapReliabilityContractTest {
         withTimeout(2_000) {
             while (calls.get() < 2) delay(10)
         }
+        store.close()
+        scope.cancel()
+    }
+
+    @Test
+    fun `one malformed action cannot kill the serialized consumer`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = DefaultMapStore(
+            MapState(),
+            scope,
+            RecordingPersistence(MapLoadResult.Ready(MapSessionSnapshot(), MapLibrarySnapshot())),
+            reducer = DefaultMapReducer(MapIdGenerator { error("broken id provider") }),
+        )
+        withTimeout(2_000) { store.state.first { it.libraryLoadState == MapLibraryLoadState.READY_EMPTY } }
+
+        store.dispatch(MapAction.SelectTool(MapTool.MANUAL_ROUTE))
+        store.dispatch(MapAction.AddPoint(first))
+        store.dispatch(MapAction.CameraChanged(MapCamera(second, 7.0)))
+
+        withTimeout(2_000) { store.state.first { it.camera.center == second } }
+        assertTrue(store.state.value.routeDrafts.isEmpty())
+        store.close()
+        scope.cancel()
+    }
+
+    @Test
+    fun `reliable queue pressure is typed and bounded instead of throwing`() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val persistence = RecordingPersistence(MapLoadResult.Ready(MapSessionSnapshot(), MapLibrarySnapshot()))
+        persistence.beforeLoad = { gate.await() }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val incidents = AtomicInteger()
+        val store = DefaultMapStore(
+            MapState(),
+            scope,
+            persistence,
+            maxPendingActions = 4,
+            effectHandler = { if (it == MapEffect.LogIncident(MapIncident.QueueBackpressure)) incidents.incrementAndGet() },
+        )
+
+        repeat(4) { assertEquals(MapDispatchResult.ACCEPTED, store.dispatch(MapAction.SelectTool(MapTool.entries[it]))) }
+        assertEquals(
+            MapDispatchResult.REJECTED_BACKPRESSURE,
+            store.dispatch(MapAction.SelectTool(MapTool.CHARTS)),
+        )
+        withTimeout(2_000) {
+            while (incidents.get() == 0) delay(10)
+        }
+
+        gate.complete(Unit)
+        store.close()
+        scope.cancel()
+    }
+
+    @Test
+    fun `cancellation is not converted into a failed save or late success`() = runBlocking {
+        val persistence = RecordingPersistence(MapLoadResult.Ready(MapSessionSnapshot(), MapLibrarySnapshot()))
+        persistence.libraryFailure = CancellationException("host stopped")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = DefaultMapStore(
+            MapState(),
+            scope,
+            persistence,
+            reducer = DefaultMapReducer(SequenceMapIdGenerator("draft-cancelled")),
+        )
+        withTimeout(2_000) { store.state.first { it.libraryLoadState == MapLibraryLoadState.READY_EMPTY } }
+
+        store.dispatch(MapAction.SelectTool(MapTool.MANUAL_ROUTE))
+        store.dispatch(MapAction.AddPoint(first))
+        withTimeout(2_000) { store.state.first { it.saveState == MapSaveState.PENDING } }
+        delay(100)
+
+        assertEquals(MapSaveState.PENDING, store.state.value.saveState)
+        assertEquals(0L, store.state.value.durableLibraryRevision)
         store.close()
         scope.cancel()
     }

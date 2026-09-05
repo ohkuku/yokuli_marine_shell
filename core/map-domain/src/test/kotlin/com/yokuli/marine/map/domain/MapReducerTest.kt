@@ -190,5 +190,22 @@ class MapReducerTest {
         assertNull(persisted.activeRouteDraftId)
     }
 
+    @Test
+    fun `stale persistence callbacks cannot overwrite a newer optimistic revision`() {
+        val pending = MapState(
+            libraryLoadState = MapLibraryLoadState.READY,
+            libraryRevision = 8L,
+            durableLibraryRevision = 6L,
+            saveState = MapSaveState.PENDING,
+        )
+
+        val oldAck = reduce(pending, MapAction.PersistenceAck(7L)).state
+        val oldFailure = reduce(oldAck, MapAction.PersistenceFailed(7L, MapReadFailure.IO)).state
+
+        assertEquals(8L, oldFailure.libraryRevision)
+        assertEquals(6L, oldFailure.durableLibraryRevision)
+        assertEquals(MapSaveState.PENDING, oldFailure.saveState)
+    }
+
     private fun reduce(state: MapState, action: MapAction): MapReduction = MapReducer.reduce(state, action)
 }

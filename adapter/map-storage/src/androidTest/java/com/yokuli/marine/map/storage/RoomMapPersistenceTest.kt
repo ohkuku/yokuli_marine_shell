@@ -78,7 +78,7 @@ class RoomMapPersistenceTest {
         val loaded = persistence.load() as MapLoadResult.Ready
 
         assertEquals(listOf(valid), loaded.library.places)
-        assertEquals(1, loaded.quarantinedRecordCount)
+        assertTrue(loaded.quarantinedRecordCount == 1)
         assertEquals(2L, loaded.library.revision)
         database.close()
         scope.cancel()
