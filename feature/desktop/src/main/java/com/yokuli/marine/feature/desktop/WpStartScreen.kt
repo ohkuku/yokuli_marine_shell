@@ -365,6 +365,7 @@ private fun WpTile(
     val interactions = remember { MutableInteractionSource() }
     val scale by animateFloatAsState(if (selected) 1.025f else 1f, spring(), label = "wp-tile-selected")
     val isSmall = width < 100.dp && height < 100.dp
+    val tileInset = if (isSmall) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset
     val latestEditing by rememberUpdatedState(editing)
     val latestSelected by rememberUpdatedState(selected)
     val latestLongClick by rememberUpdatedState(onLongClick)
@@ -378,22 +379,28 @@ private fun WpTile(
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             val editControlPx = with(density) { YokuliMetrics.MinTouch.toPx() }
-            val editExclusionPx = editControlPx + with(density) {
-                (if (isSmall) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset).toPx()
-            }
             val tileWidthPx = with(density) { width.toPx() }
             val tileHeightPx = with(density) { height.toPx() }
-            val inUnpinControl = if (latestEditing && latestSelected) {
+            val unpinCandidate = if (latestEditing && latestSelected) {
                 if (isSmall) {
-                    down.position.x <= editExclusionPx && down.position.y <= editExclusionPx
+                    down.position.x <= editControlPx && down.position.y <= editControlPx
                 } else {
-                    down.position.x >= tileWidthPx - editExclusionPx &&
-                        down.position.y <= editExclusionPx
+                    down.position.x >= tileWidthPx - editControlPx &&
+                        down.position.y <= editControlPx
                 }
             } else false
-            val inResizeControl = latestEditing && latestSelected && canResize &&
-                down.position.x >= tileWidthPx - editExclusionPx &&
-                down.position.y >= tileHeightPx - editExclusionPx
+            val resizeCandidate = latestEditing && latestSelected && canResize &&
+                down.position.x >= tileWidthPx - editControlPx &&
+                down.position.y >= tileHeightPx - editControlPx
+            val inUnpinControl = unpinCandidate && (!resizeCandidate || if (isSmall) {
+                val unpinCenter = Offset(editControlPx / 2f, editControlPx / 2f)
+                val resizeCenter = Offset(tileWidthPx - editControlPx / 2f, tileHeightPx - editControlPx / 2f)
+                (down.position - unpinCenter).getDistanceSquared() <=
+                    (down.position - resizeCenter).getDistanceSquared()
+            } else {
+                down.position.y <= tileHeightPx / 2f
+            })
+            val inResizeControl = resizeCandidate && !inUnpinControl
             if (inUnpinControl || inResizeControl) {
                 down.consume()
                 val up = waitForUpOrCancellation()
@@ -437,7 +444,6 @@ private fun WpTile(
             CustomAccessibilityAction(stringResource(R.string.move_tile_down)) { onMoveBy(0, 1); true },
         )
     } else emptyList()
-    val tileInset = if (isSmall) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset
     val tileClickModifier = if (editing && selected) {
         Modifier
     } else {
@@ -470,16 +476,18 @@ private fun WpTile(
             .wpTilt(interactions, enabled = !(editing && selected))
             .background(colors.accent)
             .then(tileClickModifier)
-            .then(dragModifier).padding(tileInset),
+            .then(dragModifier),
     ) {
-        entry.tileRenderer(tileSize).Render(
-            LauncherTileRenderContext(
-                size = tileSize,
-                contentColor = colors.onAccent,
-                modifier = Modifier.fillMaxSize(),
-                liveContentEnabled = !editing,
-            ),
-        )
+        Box(Modifier.fillMaxSize().padding(tileInset)) {
+            entry.tileRenderer(tileSize).Render(
+                LauncherTileRenderContext(
+                    size = tileSize,
+                    contentColor = colors.onAccent,
+                    modifier = Modifier.fillMaxSize(),
+                    liveContentEnabled = !editing,
+                ),
+            )
+        }
         if (editing && selected) {
             WpTileEditOverlay(
                 compact = isSmall,
