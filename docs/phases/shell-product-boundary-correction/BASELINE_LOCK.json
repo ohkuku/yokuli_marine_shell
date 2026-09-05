@@ -2,7 +2,10 @@
   "phase": "shell-product-boundary-correction",
   "startingSha": "0bd086fc4923730207e75e8047655b6695b08c5c",
   "branch": "codex/shell-map-contract",
-  "status": "RED_CONTRACT",
+  "status": "VERIFIED_LOCAL",
+  "redCommit": "fa565696a239d5275104dd986dcdd81be68624f7",
+  "implementationCommit": "53b52a817f90496b68afd38101cb16f4fa0ef17a",
+  "verifiedHead": "eaad0703575528339a5bfc0affb5f977880c2823",
   "scope": [
     "remove Android desktop settings escape",
     "make Shell Desktop the terminal Back destination",
