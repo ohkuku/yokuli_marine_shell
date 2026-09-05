@@ -38,6 +38,7 @@ class AndroidMbTilesRepositoryTest {
         assertTrue(unrelated.isFile)
         assertFalse(packagesRoot.listFiles().orEmpty().any { it.name.startsWith(".staging-") })
         testRoot.deleteRecursively()
+        Unit
     }
 
     private fun createRasterMbTiles(file: File) {
