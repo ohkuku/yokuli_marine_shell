@@ -226,17 +226,21 @@ fun YokuliStartScreen(
                     },
                 ).testTag("start-grid"),
         ) {
-            WpSpatialStartLayout(
-                document = state.document,
-                proposedDocument = proposedDocument,
-                geometry = geometry,
-                floatingTileId = dragging?.tileId,
-                modifier = Modifier.fillMaxWidth().height(gridHeight).combinedNoRipple {
-                    if (editing) onAction(LauncherUiAction.ExitStartEdit)
-                },
-            ) { placement ->
-                val entry = byId[placement.entryId]
-                if (entry != null) {
+            Box(Modifier.fillMaxWidth().height(gridHeight)) {
+                Box(
+                    Modifier.fillMaxSize().combinedNoRipple {
+                        if (editing) onAction(LauncherUiAction.ExitStartEdit)
+                    },
+                )
+                WpSpatialStartLayout(
+                    document = state.document,
+                    proposedDocument = proposedDocument,
+                    geometry = geometry,
+                    floatingTileId = dragging?.tileId,
+                    modifier = Modifier.fillMaxSize(),
+                ) { placement ->
+                    val entry = byId[placement.entryId]
+                    if (entry != null) {
                     val baseCell = packedByTileId[placement.tileId]?.cell ?: return@WpSpatialStartLayout
                     val tileDragging = localTileDrag?.takeIf { it.tileId == placement.tileId }
                     WpTile(
@@ -308,7 +312,8 @@ fun YokuliStartScreen(
                         onMoveBy = { columns, rows ->
                             onAction(LauncherUiAction.MoveTileBy(placement.tileId, columns, rows))
                         },
-                    )
+                        )
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 3.dp), horizontalArrangement = Arrangement.End) {
