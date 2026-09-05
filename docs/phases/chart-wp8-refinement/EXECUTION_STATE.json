@@ -6,14 +6,14 @@
   "auditedSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "workingBaseSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "auditedShaIsAncestorOfWorkingBase": true,
-  "currentTask": "C05",
+  "currentTask": "C06",
   "taskStatus": {
     "C00": "VERIFIED_LOCAL",
     "C01": "VERIFIED_LOCAL",
     "C02": "VERIFIED_LOCAL",
     "C03": "VERIFIED_LOCAL",
     "C04": "VERIFIED_LOCAL",
-    "C05": "TODO",
+    "C05": "VERIFIED_LOCAL",
     "C06": "TODO",
     "C07": "TODO",
     "C08": "TODO",
@@ -22,7 +22,7 @@
     "C11": "TODO",
     "C12": "TODO"
   },
-  "lastVerifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+  "lastVerifiedSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
   "ciRun": null,
   "openFindings": [
     "Hosted CI status for C00 could not be queried locally because GitHub CLI is unavailable; final same-SHA hosted evidence remains a C12 gate",
@@ -30,5 +30,5 @@
   ],
   "sourceDelivery": "NOT_VERIFIED",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Begin C05 with Red tests for complete Place fields, durable CRUD, revision-safe delete undo, local search and process restart recovery"
+  "nextAction": "Begin C06 with Red tests for route draft state, saved-plan identity, ordered waypoint editing, current-versus-saved separation and route-to-place provenance"
 }

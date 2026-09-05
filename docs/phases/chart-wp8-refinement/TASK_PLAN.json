@@ -266,7 +266,7 @@
         "MAP-R06",
         "MAP-R08"
       ],
-      "status": "TODO",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C05",
       "acceptanceScenarioIds": [
         "C05-T01",
@@ -276,8 +276,12 @@
         "C05-T05",
         "C05-T06"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
+      "evidence": [
+        "C05 Red and Green contracts cover complete place fields, stable identity, local multilingual search, explicit move, referenced delete, revision-safe undo and single-place export",
+        "Room v1-to-v2 migration, normalized tags, durable reopen and partial-corruption quarantine passed on API 34 without destructive fallback",
+        "Cumulative C00-C05 gate passed: 180 Python contracts, 280 JVM XML tests, 1207 Gradle tasks and 59 API 34 device tests"
+      ]
     },
     {
       "id": "C06",
@@ -966,11 +970,11 @@
       "given": "地图临时选点",
       "when": "填写名称备注分类并保存",
       "then": "ack后列表/详情可找，同坐标同内容可核对",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "app-shell/src/androidTest/java/com/yokuli/marine/shell/PlaceWorkspaceStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
+      "evidence": ["Candidate save opens a complete editor; durable ack exposes the same place by stable ID in list/detail with name, notes, category and tags"]
     },
     {
       "id": "C05-T02",
@@ -978,11 +982,11 @@
       "given": "一个现有地点",
       "when": "普通pan与显式位置编辑确认/取消",
       "then": "普通pan不改坐标；编辑可准确确认或取消",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PlaceLibraryContractTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
+      "evidence": ["Ordinary camera changes cannot mutate a place; explicit preview can cancel or confirm exactly one revisioned move"]
     },
     {
       "id": "C05-T03",
@@ -990,11 +994,11 @@
       "given": "路线使用了地点坐标快照",
       "when": "移动/删除该地点",
       "then": "路线位置顺序不被静默更新；来源状态可解释",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PlaceLibraryContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASSED",
+      "verifiedSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
+      "evidence": ["Saved routes retain ordered coordinate snapshots while source references report current, changed or missing place revisions"]
     },
     {
       "id": "C05-T04",
@@ -1002,11 +1006,11 @@
       "given": "删除后又新建/编辑/导入资料",
       "when": "撤销删除",
       "then": "不复用ID、不覆盖较新revision",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PlaceLibraryContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASSED",
+      "verifiedSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
+      "evidence": ["Undo restores only its captured revision; a deleted or route-provenance place ID cannot be reused by subsequent creation"]
     },
     {
       "id": "C05-T05",
@@ -1014,11 +1018,11 @@
       "given": "重复名字/中文/长备注/空库",
       "when": "搜索、排序、打开详情再返回",
       "then": "列表与焦点稳定；无结果不偷偷外网查询",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/PlaceSearchTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
+      "evidence": ["Unicode-normalized local-only search covers Chinese/English names, notes, category aliases, tags and coordinates with deterministic sort and stable detail return"]
     },
     {
       "id": "C05-T06",
@@ -1026,11 +1030,11 @@
       "given": "已ack地点与未ack修改",
       "when": "进程终止重启和写失败重试",
       "then": "已ack恢复，未ack诚实；错误不会清整个库",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-storage/src/androidTest/java/com/yokuli/marine/map/storage/RoomMapPersistenceTest.kt",
+      "command": "./gradlew :adapter:map-storage:connectedDebugAndroidTest :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
+      "evidence": ["Database close/reopen restores acknowledged IDs, revisions and complete metadata; malformed records are quarantined without clearing valid rows, while unacknowledged edits are never labelled saved"]
     },
     {
       "id": "C06-T01",

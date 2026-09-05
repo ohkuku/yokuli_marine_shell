@@ -150,3 +150,11 @@ Red 先冻结独立 WGS84 参考值、同点/多解对跖语义、日期线/高�
 自查逐项修复了测量模式保存候选污染测量、最后 `UP` 坐标漏提交、含冒号 route ID、方屏英文按钮溢出、恢复回调迁移以及固定 25km 加密缺少显式屏幕误差预算。最终绘制密度按 zoom/纬度计算约 0.75px 弓高目标并限制 500m–25km，只影响显示采样，不降低 WGS84 数学精度。
 
 冻结点 `c15d3d17f832608b328d8722f475ff5fed694e59` 的完整 Host Gate 通过 175 条 Python 合同、271 个 JVM XML 测试与 1207 个 Gradle tasks；API 34 上 MapLibre 6、Room 4、Shell 45 全部通过。Debug/unsigned Release hash 分别为 `32e091c2a27810cfd053305ada2e3bf3edb0c7973e3e1cf3a9ec2e2c40ea4850` 与 `01aaa18ad1adb890171ebfdecea0a8f4e6d0ed08cb4637f73e725d399935fb49`。C04 标记 `VERIFIED_LOCAL`，只允许进入 C05；地点库、正式路线及后续能力没有提前宣称。
+
+## C05｜地点库、身份语义与本地搜索
+
+Red 先锁定完整地点字段、稳定 ID/revision、显式移动、被路线引用时的删除语义、可恢复撤销、中文/英文/坐标本地搜索、单地点完整导出和 Room v1→v2 迁移。实现将候选保存改为完整编辑器，把地点列表、详情、搜索、排序、移动预览/确认/取消、引用计数删除与撤销连成真实 UI；所有保存状态仍以持久层 ack 为准。
+
+自查发现初版中文分类词不完整，以及删除后随机 ID 生成器可能重用刚删除或仍存在路线来源中的 ID；两项先加失败测试，再修正实现。设备测试准备阶段还发现 schema 文件虽已导出却没有打包进 androidTest assets、Compose harness 会记住上一轮输入；分别补上显式 schema source set 和每场景唯一 store key。单地点导出静态合同的字符串转义写错、历史 Stage 1 合同把合法内部 `ANCHORAGE` 分类误判成生产第三入口，也分别收窄到正确的产品边界，没有放宽 Chart + Settings 的 Launcher 发布面。
+
+冻结点 `76341a6a5d7fdc5c10160769cb093e6ab646d1f1` 的累计 Host Gate 通过 180 条 Python 合同、280 个 JVM XML 测试和 1207 个 Gradle tasks；API 34 上离线 renderer 6、Room 5、Shell 48 全部通过。Debug/unsigned Release hash 分别为 `456a51a14c87c8875134b17162ebdc805805983ace7d5215800d5837ea02dc9e` 与 `44e11239c0c5eef993c80b1db401570a2956d8ff17d8ccf7a202eed983311b2c`。C05 标记 `VERIFIED_LOCAL`，只允许进入 C06；正式路线编辑、海图包作业、GPX、覆盖和位置观测没有提前宣称。

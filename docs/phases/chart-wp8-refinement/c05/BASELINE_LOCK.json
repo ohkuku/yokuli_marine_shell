@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "phase": "WP8_CHART_COMPLETION",
+  "package": "C05",
+  "branch": "codex/shell-map-contract",
+  "baselineSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+  "implementationCandidateSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
+  "cumulativeVerifiedSha": "76341a6a5d7fdc5c10160769cb093e6ab646d1f1",
+  "status": "VERIFIED_LOCAL",
+  "completePlaceFields": true,
+  "localMultilingualSearch": true,
+  "explicitRevisionedMove": true,
+  "routeCoordinateSnapshotsPreserved": true,
+  "routePlaceSourceStateExplained": true,
+  "revisionSafeDeleteUndo": true,
+  "deletedAndReferencedIdsNotReused": true,
+  "singlePlaceExport": true,
+  "roomSchemaVersion": 2,
+  "explicitRoomMigration": "MIGRATION_1_2",
+  "focusedGate": {
+    "pythonTests": 5,
+    "mapDomainStorageAndChartJvm": "PASSED",
+    "appShellC05DeviceStories": 3,
+    "roomDeviceTests": 5,
+    "deviceApi": 34
+  },
+  "cumulativeGate": {
+    "status": "PASSED",
+    "pythonTests": 180,
+    "jvmXmlTests": 280,
+    "gradleTasks": 1207,
+    "offlineRendererDeviceTests": 6,
+    "appShellDeviceTests": 48,
+    "roomDeviceTests": 5,
+    "debugApkSha256": "456a51a14c87c8875134b17162ebdc805805983ace7d5215800d5837ea02dc9e",
+    "unsignedReleaseApkSha256": "44e11239c0c5eef993c80b1db401570a2956d8ff17d8ccf7a202eed983311b2c"
+  },
+  "nextPermittedPackageAfterGate": "C06"
+}
