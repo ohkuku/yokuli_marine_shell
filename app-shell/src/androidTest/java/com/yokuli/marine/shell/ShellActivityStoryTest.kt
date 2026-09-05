@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsActions
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -26,6 +27,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -236,11 +238,7 @@ class ShellActivityStoryTest {
 
     @Test
     fun smallTileEditControlsAreVisiblyUsableAndHave48DpHitTargets() {
-        compose.onNodeWithTag("tile-settings").performTouchInput {
-            down(center)
-            advanceEventTime(650)
-            up()
-        }
+        compose.onNodeWithTag("tile-settings").performSemanticsAction(SemanticsActions.OnLongClick)
         awaitDisplayed("resize-selected-tile")
         var density = 1f
         compose.activityRule.scenario.onActivity { density = it.resources.displayMetrics.density }

@@ -297,7 +297,10 @@ fun YokuliStartScreen(
                                 onAction(LauncherUiAction.InsertionTargetChanged(placement.tileId, insertionIndex))
                             }
                         },
-                        onMoveCommit = { onAction(LauncherUiAction.DropTile(placement.tileId)) },
+                        onMoveCommit = {
+                            localTileDrag = null
+                            onAction(LauncherUiAction.DropTile(placement.tileId))
+                        },
                         onMoveCancel = {
                             localTileDrag = null
                             onAction(LauncherUiAction.CancelTileOperation)
