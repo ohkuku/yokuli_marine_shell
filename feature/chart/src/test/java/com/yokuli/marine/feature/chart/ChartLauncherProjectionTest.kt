@@ -80,7 +80,7 @@ class ChartLauncherProjectionTest {
         assertEquals(ChartLauncherPriority.EDITING_DRAFT, result.priority)
         assertEquals("harbour draft", result.subjectName)
         assertEquals(draft.waypoints, result.routePreview?.points)
-        assertEquals(7, result.routePreview?.revision)
+        assertEquals(7L, result.routePreview?.revision)
         assertFalse(result.critical)
     }
 
@@ -96,7 +96,16 @@ class ChartLauncherProjectionTest {
                 halfWidthNauticalMiles = 1.0,
             ),
             result = OfflineCoverageResult(
-                fingerprint = com.yokuli.marine.map.domain.OfflineCoverageFingerprint("a".repeat(64)),
+                fingerprint = com.yokuli.marine.map.domain.OfflineCoverageFingerprint.of(
+                    OfflineCoverageRequest(
+                        routeId = route.id,
+                        routeRevision = route.revision,
+                        routePoints = route.waypoints,
+                        packageVersionIds = listOf(com.yokuli.marine.map.domain.ChartPackageVersionId("a".repeat(64))),
+                        targetZoom = 10,
+                        halfWidthNauticalMiles = 1.0,
+                    ),
+                ),
                 tileAvailability = TileAvailability.AVAILABLE,
                 contentFootprint = ContentFootprint.NOT_VERIFIED,
                 requiredKeyCount = 2,
