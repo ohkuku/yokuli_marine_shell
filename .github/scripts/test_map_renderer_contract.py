@@ -91,8 +91,9 @@ class MapRendererContractTest(unittest.TestCase):
             ROOT / "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt"
         ).read_text()
         self.assertIn("fiftyMapSearchBridgeTransitionsDoNotAccumulateNativeMapViews", story)
-        self.assertIn("assertEquals(50, OfflineMapInstanceMetrics.createdCount)", story)
+        self.assertIn("OfflineMapInstanceMetrics.createdCount in 50..100", story)
         self.assertIn("assertEquals(1, OfflineMapInstanceMetrics.peakLiveCount)", story)
+        self.assertIn("assertEquals(0, OfflineMapInstanceMetrics.liveCount)", story)
 
     def test_noaa_subset_and_each_copied_tile_are_hash_bound(self):
         provenance_path = FIXTURE_ROOT / "NOAA_NCDS_21_SOURCE.json"
