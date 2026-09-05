@@ -62,6 +62,8 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
             self.assertIn(token, activity + adapter)
         self.assertIn("roundedCorners", adapter)
         self.assertIn("rememberShellWindowMetrics", activity)
+        stories = self.text("app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt")
+        self.assertIn("awaitHostWindowChrome(Color.WHITE)", stories)
 
     def test_marine_tile_contract_has_all_six_sizes(self):
         tile_contract = self.text("core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineTile.kt")

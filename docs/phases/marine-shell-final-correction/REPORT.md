@@ -55,6 +55,8 @@ ordinary physical phone:  PHYSICAL_DEVICE_PENDING
 
 首个 Hosted run `33934748331` 的 build、API 34 stories 与 API 36 smoke 通过，但 Macrobenchmark 暴露 benchmark task 复用没有显式 Desktop reset。后续纠错只为 `benchmark` build 增加 intent handshake，并经串行 Engine queue 恢复默认测试起点；普通 Release 的 task resume 继续保留当前 Surface。最终接受以纠错提交的新 run 为准。
 
+纠错 run `33936328836` 随后暴露 Light Theme story 只等待 Compose idle、没有等待异步持久化后的 window `SideEffect`。测试改为等待真实 status/navigation bar 变白后再断言；生产主题、动画和导航代码未为测试放宽。最终接受继续以后续提交的新 run 为准。
+
 ## English translation
 
 This correction is `MACHINE_VERIFIED`, while subjective fidelity and physical devices remain explicitly pending. Yokuli is now a normal immersive Android marine application with an internal WP-inspired shell, not an Android HOME provider. System Home leaves Yokuli; the in-app compass Bridge navigates within Yokuli. Release remains limited to Chart and Settings and does not claim unimplemented marine capabilities or operational map readiness.
@@ -64,3 +66,5 @@ Desktop, Module List, Search, Recents, and Module are atomic visual surfaces dri
 The final TDD audit rejected a zero-frame Settings benchmark false positive, regenerated current Baseline/Startup Profiles, and covers eleven five-iteration emulator journeys. Emulator values are trend evidence only, not calibrated frame gates. Golden acceptance, subjective WP feel, Samsung-square hardware, ordinary phones, and physical 60/90/120 Hz verification remain `PENDING`. The old release pipeline is outside this task; owner approval is still required before an Alpha is declared final.
 
 Hosted run `33934748331` passed build, API 34 stories, and API 36 smoke, but exposed that reused benchmark tasks had no explicit Desktop reset. The correction adds a build-type-guarded benchmark intent handshake that restores the deterministic start point through the serialized Engine queue. Normal Release task resume still preserves its current surface. Final hosted acceptance belongs to the correction commit's new run.
+
+Correction run `33936328836` then exposed that the Light Theme story waited only for Compose idleness, not the window `SideEffect` following asynchronous preference persistence. The test now waits for the real status/navigation colors before asserting; production theme, motion, and navigation behavior were not relaxed. Final hosted acceptance remains assigned to the next correction run.

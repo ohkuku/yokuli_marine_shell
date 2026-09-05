@@ -325,7 +325,7 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("settings-section-appearance").performClick()
         awaitDisplayed("theme-mode-light")
         compose.onNodeWithTag("theme-mode-light").performClick()
-        compose.waitForIdle()
+        awaitHostWindowChrome(Color.WHITE)
 
         compose.activityRule.scenario.onActivity { activity ->
             assertEquals(Color.WHITE, activity.window.statusBarColor)
@@ -691,6 +691,18 @@ class ShellActivityStoryTest {
     private fun awaitGone(tag: String) {
         compose.waitUntil(timeoutMillis = 10_000) {
             compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun awaitHostWindowChrome(color: Int) {
+        compose.waitUntil(timeoutMillis = 10_000) {
+            var matches = false
+            compose.activityRule.scenario.onActivity { activity ->
+                matches = activity.window.statusBarColor == color &&
+                    activity.window.navigationBarColor == color
+            }
+            matches
         }
     }
 
