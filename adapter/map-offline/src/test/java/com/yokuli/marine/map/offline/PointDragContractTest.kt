@@ -32,4 +32,18 @@ class PointDragContractTest {
         assertEquals(source.longitude, rendered.longitude(), 0.0)
         assertEquals(source.latitude, rendered.latitude(), 0.0)
     }
+
+    @Test
+    fun `geodesic renderer budget tightens with zoom and high latitude but remains bounded`() {
+        val overview = GeodesicRenderBudget.maxSegmentMeters(zoom = 3.0, maxAbsoluteLatitude = 0.0)
+        val local = GeodesicRenderBudget.maxSegmentMeters(zoom = 14.0, maxAbsoluteLatitude = 0.0)
+        val detailed = GeodesicRenderBudget.maxSegmentMeters(zoom = 20.0, maxAbsoluteLatitude = 0.0)
+        val polar = GeodesicRenderBudget.maxSegmentMeters(zoom = 20.0, maxAbsoluteLatitude = 85.0)
+
+        assertEquals(GeodesicRenderBudget.MAX_SEGMENT_METERS, overview, 0.0)
+        assertTrue(local < overview)
+        assertTrue(detailed < local)
+        assertTrue(polar <= detailed)
+        assertTrue(polar >= GeodesicRenderBudget.MIN_SEGMENT_METERS)
+    }
 }
