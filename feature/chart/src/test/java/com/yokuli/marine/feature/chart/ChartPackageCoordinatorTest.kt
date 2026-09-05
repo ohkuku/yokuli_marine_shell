@@ -86,6 +86,22 @@ class ChartPackageCoordinatorTest {
         scope.cancel()
     }
 
+    @Test
+    fun refreshFailureIsVisibleInsteadOfSilentlyHidingInstalledPackages() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val repository = object : FakeRepository() {
+            override suspend fun listInstalled(): List<ChartPackage> = throw ChartPackageImportException(
+                ChartPackageImportFailure.INVALID_DATABASE,
+                "corrupt manifest",
+            )
+        }
+        val coordinator = ChartPackageCoordinator(repository, ImmediateMapStore(), scope)
+
+        val failed = withTimeout(2_000L) { coordinator.state.first { it is ChartImportUiState.Failed } }
+        assertEquals(ChartPackageImportFailure.INVALID_DATABASE, (failed as ChartImportUiState.Failed).reason)
+        scope.cancel()
+    }
+
     private class ImmediateMapStore : MapStore {
         private val mutable = MutableStateFlow(MapState())
         override val state: StateFlow<MapState> = mutable
