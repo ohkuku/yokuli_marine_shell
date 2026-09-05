@@ -104,6 +104,15 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                         modifier = modifier.testTag("chart-surface-google"),
                     )
                 }
+            } else if (!runtime.mapConfigured && runtime.heavyContentReady) {
+                { state, onCameraChanged, onLongPress, modifier ->
+                    OfflineMarineChartSurface(
+                        state = state,
+                        onCameraChanged = onCameraChanged,
+                        onLongPress = onLongPress,
+                        modifier = modifier.testTag("chart-surface-offline-empty"),
+                    )
+                }
             } else if (runtime.mapConfigured || hasOfflineChart) {
                 { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }
             } else {
