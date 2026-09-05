@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
@@ -34,13 +35,20 @@ import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliColors
 import com.yokuli.marine.map.domain.MapAction
+import com.yokuli.marine.map.domain.GeoBounds
+import com.yokuli.marine.map.domain.MapCameraIntent
+import com.yokuli.marine.map.domain.MapCameraTarget
 import com.yokuli.marine.map.domain.MapLibraryLoadState
+import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.MapTool
+import com.yokuli.marine.map.domain.MapViewportInsets
 import com.yokuli.marine.map.domain.PositionAvailability
 import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import java.util.Locale
+import kotlin.math.pow
 
 typealias MarineChartSurface = @Composable (
     state: MapState,
@@ -93,6 +101,7 @@ fun ChartWorkspace(
                 modifier = Modifier.background(colors.background.copy(alpha = .90f)),
             )
             PositionTruthBadge(state.position.availability)
+            MapRendererTruth(state)
             MapPersistenceTruth(state, recoveryExportState, onAction, onExportRecovery)
             Spacer(Modifier.weight(1f))
             state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.let { chartPackage ->
@@ -197,6 +206,29 @@ private fun PositionTruthBadge(availability: PositionAvailability) {
 }
 
 @Composable
+private fun MapRendererTruth(state: MapState) {
+    val colors = LocalWpTheme.current
+    val status = when {
+        state.renderer.readiness == MapRendererReadiness.ERROR -> R.string.map_renderer_error
+        state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_MISSING -> R.string.map_package_missing
+        state.renderer.tileCoverage == MapTileCoverageStatus.DEGRADED -> R.string.map_package_degraded
+        state.renderer.tileCoverage == MapTileCoverageStatus.CHECKING -> R.string.map_package_checking
+        state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_ATTACHED -> R.string.map_package_attached
+        else -> R.string.map_no_package
+    }
+    val metersPer100Px = 15_654_303.392 * kotlin.math.cos(Math.toRadians(state.camera.center.latitude)) /
+        2.0.pow(state.camera.zoom)
+    Row(
+        Modifier.padding(start = 18.dp, top = 5.dp).background(colors.background.copy(alpha = .86f))
+            .padding(horizontal = 9.dp, vertical = 5.dp).testTag("map-renderer-truth"),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        WpText(stringResource(status), 10, color = colors.foreground)
+        WpText(stringResource(R.string.map_scale_100px, metersPer100Px / 1_852.0), 10, color = colors.muted)
+    }
+}
+
+@Composable
 private fun MapToolBar(selected: MapTool, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
     Row(
@@ -243,15 +275,7 @@ private fun MapToolPanel(
     ) {
         when (state.tool) {
             MapTool.BROWSE -> BrowsePanel(state, onAction)
-            MapTool.PLACES -> {
-                WpText(stringResource(R.string.map_places_title), 22, weight = FontWeight.Light)
-                WpText(
-                    if (state.places.isEmpty()) stringResource(R.string.map_places_empty)
-                    else stringResource(R.string.map_places_count, state.places.size),
-                    12,
-                    color = colors.muted,
-                )
-            }
+            MapTool.PLACES -> PlacesPanel(state, onAction)
             MapTool.MEASURE -> {
                 val count = state.measurementDraft?.points?.size ?: 0
                 val defaultRouteName = stringResource(R.string.map_default_route_name, state.savedRoutes.size + 1)
@@ -264,7 +288,14 @@ private fun MapToolPanel(
                 }
             }
             MapTool.MANUAL_ROUTE -> RoutePanel(state, onAction)
-            MapTool.CHARTS -> ChartPackagesPanel(state, mapConfigured, onOpenMapSettings, importState, onImportAction)
+            MapTool.CHARTS -> ChartPackagesPanel(
+                state,
+                mapConfigured,
+                onOpenMapSettings,
+                importState,
+                onImportAction,
+                onAction,
+            )
         }
     }
 }
@@ -272,6 +303,7 @@ private fun MapToolPanel(
 @Composable
 private fun BrowsePanel(state: MapState, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
+    val viewportInsets = mapViewportInsets()
     val selection = state.selection
     if (selection == null) {
         WpText(stringResource(R.string.map_browse_title), 22, weight = FontWeight.Light)
@@ -287,12 +319,60 @@ private fun BrowsePanel(state: MapState, onAction: (MapAction) -> Unit) {
         MapActionText(R.string.map_save_place, "map-save-place") {
             onAction(MapAction.SaveSelectionAsPlace(defaultPlaceName))
         }
+        MapActionText(R.string.map_view_point, "map-view-selection") {
+            onAction(
+                MapAction.RequestCamera(
+                    MapCameraTarget.Exact(state.camera.copy(center = selection.point)),
+                    MapCameraIntent.VIEW_PLACE,
+                    viewportInsets,
+                ),
+            )
+        }
+    }
+    if (kotlin.math.abs(state.camera.bearing) > 0.1) {
+        MapActionText(R.string.map_north_reset, "map-north-reset") {
+            onAction(
+                MapAction.RequestCamera(
+                    MapCameraTarget.Exact(state.camera.copy(bearing = 0.0)),
+                    MapCameraIntent.NORTH_RESET,
+                    viewportInsets,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlacesPanel(state: MapState, onAction: (MapAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    val viewportInsets = mapViewportInsets()
+    WpText(stringResource(R.string.map_places_title), 22, weight = FontWeight.Light)
+    WpText(
+        if (state.places.isEmpty()) stringResource(R.string.map_places_empty)
+        else stringResource(R.string.map_places_count, state.places.size),
+        12,
+        color = colors.muted,
+    )
+    state.places.take(4).forEach { place ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            WpText(place.name, 13, color = colors.foreground, maxLines = 1, modifier = Modifier.weight(1f))
+            MapActionText(R.string.map_view, "map-view-place-${place.id.take(8)}") {
+                onAction(
+                    MapAction.RequestCamera(
+                        MapCameraTarget.Exact(state.camera.copy(center = place.point)),
+                        MapCameraIntent.VIEW_PLACE,
+                        viewportInsets,
+                    ),
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun RoutePanel(state: MapState, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
+    val viewportInsets = mapViewportInsets()
     val draft = state.routeDraft
     val count = draft?.waypoints?.size ?: 0
     val defaultRouteName = stringResource(R.string.map_default_route_name, state.savedRoutes.size + 1)
@@ -315,6 +395,15 @@ private fun RoutePanel(state: MapState, onAction: (MapAction) -> Unit) {
             MapActionText(R.string.map_undo, "map-route-undo") { onAction(MapAction.UndoRouteEdit) }
             MapActionText(R.string.map_redo, "map-route-redo") { onAction(MapAction.RedoRouteEdit) }
             if (count >= 2) {
+                MapActionText(R.string.map_view_route, "map-route-view") {
+                    onAction(
+                        MapAction.RequestCamera(
+                            MapCameraTarget.Bounds(requireNotNull(draft).waypoints.toBounds()),
+                            MapCameraIntent.VIEW_ROUTE,
+                            viewportInsets,
+                        ),
+                    )
+                }
                 MapActionText(R.string.map_reverse, "map-route-reverse") { onAction(MapAction.ReverseRoute) }
                 MapActionText(R.string.map_save_copy, "map-route-save") {
                     onAction(MapAction.SaveRouteCopy(defaultRouteName))
@@ -331,8 +420,10 @@ private fun ChartPackagesPanel(
     onOpenMapSettings: () -> Unit,
     importState: ChartImportUiState,
     onImportAction: (ChartImportUiAction) -> Unit,
+    onMapAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
+    val viewportInsets = mapViewportInsets()
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
         WpText(stringResource(R.string.map_charts_title), 22, weight = FontWeight.Light)
         WpText(
@@ -356,6 +447,15 @@ private fun ChartPackagesPanel(
                         MapActionText(R.string.map_chart_use, "map-use-${chartPackage.id.value.take(8)}") {
                             onImportAction(ChartImportUiAction.Activate(chartPackage.id))
                         }
+                    }
+                    MapActionText(R.string.map_view_package, "map-view-package-${chartPackage.id.value.take(8)}") {
+                        onMapAction(
+                            MapAction.RequestCamera(
+                                MapCameraTarget.Bounds(chartPackage.coverage),
+                                MapCameraIntent.VIEW_PACKAGE,
+                                viewportInsets,
+                            ),
+                        )
                     }
                     MapActionText(R.string.map_chart_delete, "map-delete-${chartPackage.id.value.take(8)}") {
                         onImportAction(ChartImportUiAction.Delete(chartPackage.id))
@@ -382,6 +482,24 @@ private fun ChartPackagesPanel(
         }
     }
 }
+
+@Composable
+private fun mapViewportInsets(): MapViewportInsets {
+    val density = LocalDensity.current
+    return MapViewportInsets(
+        leftPx = with(density) { 12.dp.roundToPx() },
+        topPx = with(density) { 96.dp.roundToPx() },
+        rightPx = with(density) { 12.dp.roundToPx() },
+        bottomPx = with(density) { 292.dp.roundToPx() },
+    )
+}
+
+private fun List<com.yokuli.marine.map.domain.GeoPoint>.toBounds(): GeoBounds = GeoBounds(
+    south = minOf { it.latitude },
+    west = minOf { it.longitude },
+    north = maxOf { it.latitude },
+    east = maxOf { it.longitude },
+)
 
 @Composable
 private fun ChartImportEditor(

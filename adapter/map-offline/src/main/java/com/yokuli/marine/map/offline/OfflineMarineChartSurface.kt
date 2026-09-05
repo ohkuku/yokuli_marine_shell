@@ -231,6 +231,16 @@ fun OfflineMarineChartSurface(
         }
         submittedCameraCommand.set(command.id)
         activeCameraCommand.set(command.id)
+        if (command.target is MapCameraTarget.Exact) {
+            readyMap.setPadding(
+                command.viewportInsets.leftPx,
+                command.viewportInsets.topPx,
+                command.viewportInsets.rightPx,
+                command.viewportInsets.bottomPx,
+            )
+        } else {
+            readyMap.setPadding(0, 0, 0, 0)
+        }
         readyMap.moveCamera(command.toCameraUpdate(), object : MapLibreMap.CancelableCallback {
             override fun onFinish() {
                 if (disposed.get() || activeCameraCommand.getAndSet(null) != command.id) return
