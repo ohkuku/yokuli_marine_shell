@@ -391,6 +391,11 @@ object GpxImportPlanner {
             "Duplicate GPX requires explicit import-as-copy confirmation"
         }
         validateSelection(preview, selection)
+        require(
+            selection.waypointIndices.isNotEmpty() ||
+                selection.routeIndices.any { preview.routes[it].points.size >= 2 } ||
+                selection.trackIndices.isNotEmpty(),
+        ) { "At least one importable GPX item must be selected" }
         val places = selection.waypointIndices.sorted().map { index ->
             val item = preview.waypoints[index]
             SavedPlace(
