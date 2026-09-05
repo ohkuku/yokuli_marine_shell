@@ -145,7 +145,10 @@ class ShellAppTileContractTest(unittest.TestCase):
         self.assertIn("SQLiteException", repository)
         self.assertIn("INVALID_DATABASE", repository)
 
-        model = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapModel.kt").read_text()
+        model = "\n".join(
+            path.read_text()
+            for path in (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain").glob("*.kt")
+        )
         self.assertIn('Regex("[A-Za-z0-9._-]+")', model)
         self.assertIn("filesystem-safe token", model)
 

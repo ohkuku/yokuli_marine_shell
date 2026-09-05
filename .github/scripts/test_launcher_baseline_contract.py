@@ -72,8 +72,13 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         default_strings = (ROOT / "feature/chart/src/main/res/values/strings.xml").read_text()
         english_strings = (ROOT / "feature/chart/src/main/res/values-en/strings.xml").read_text()
 
-        for removed in ("ChartMode", "courseOverGround", "speedOverGround", "destination", "anchorArmed", "surveyDepth"):
+        # Legitimate C10 read-only observations may model COG/SOG and geodesic destinations.
+        # The frozen product-surface gate rejects invented values and output runtimes instead.
+        for removed in ("ChartMode", "anchorArmed", "surveyDepth"):
             self.assertNotIn(removed, contribution + domain + workspace)
+        self.assertIn("interface ReadOnlyPositionPort", domain)
+        self.assertNotIn("NmeaWriter", contribution + domain + workspace)
+        self.assertNotIn("Autopilot", contribution + domain + workspace)
         self.assertNotIn("WpApplicationBar", workspace)
         self.assertNotIn("Home", contribution)
         self.assertIn('LaunchToken("chart.browse")', contribution)
