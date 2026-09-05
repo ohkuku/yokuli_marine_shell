@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.graphics.PointF
 import android.net.Uri
 import android.os.Bundle
+import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -76,6 +77,7 @@ fun OfflineMarineChartSurface(
     val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentAction by rememberUpdatedState(onAction)
+    val currentState by rememberUpdatedState(state)
     val currentQueryPortChanged by rememberUpdatedState(onQueryPortChanged)
     remember(context.applicationContext) { MapLibre.getInstance(context.applicationContext) }
 
@@ -129,6 +131,14 @@ fun OfflineMarineChartSurface(
         }
         mapView.addOnDidFailLoadingMapListener(loadFailureListener)
         mapView.addOnRenderErrorListener(renderErrorListener)
+        mapView.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+                currentState.editGesture?.let { gesture ->
+                    currentAction(MapAction.CancelPointDrag(gesture.id))
+                }
+            }
+            false
+        }
         mapView.getMapAsync { readyMap ->
             if (disposed.get()) return@getMapAsync
             map = readyMap
@@ -168,6 +178,7 @@ fun OfflineMarineChartSurface(
             }.also(readyMap::addOnMapLongClickListener)
         }
         onDispose {
+            mapView.setOnTouchListener(null)
             cameraListener?.let { listener -> map?.removeOnCameraIdleListener(listener) }
             clickListener?.let { listener -> map?.removeOnMapClickListener(listener) }
             longPressListener?.let { listener -> map?.removeOnMapLongClickListener(listener) }

@@ -96,6 +96,7 @@ fun ChartWorkspace(
     state: MapState,
     onAction: (MapAction) -> Unit,
     currentState: () -> MapState = { state },
+    shellSafeInsets: MapViewportInsets = MapViewportInsets(),
     importState: ChartImportUiState,
     onImportAction: (ChartImportUiAction) -> Unit,
     recoveryExportState: MapRecoveryExportUiState,
@@ -112,8 +113,10 @@ fun ChartWorkspace(
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var queryPort by remember { mutableStateOf<MapRendererQueryPort?>(null) }
     val rootInsets = MapViewportInsets(
-        topPx = with(density) { 42.dp.roundToPx() },
-        bottomPx = with(density) { 60.dp.roundToPx() },
+        leftPx = shellSafeInsets.leftPx,
+        topPx = maxOf(shellSafeInsets.topPx, with(density) { 42.dp.roundToPx() }),
+        rightPx = shellSafeInsets.rightPx,
+        bottomPx = maxOf(shellSafeInsets.bottomPx, with(density) { 60.dp.roundToPx() }),
     )
 
     BindInternalAppInputHandler { input ->
@@ -133,6 +136,9 @@ fun ChartWorkspace(
 
     LaunchedEffect(isSquare) {
         if (isSquare && !state.crosshairEnabled) onAction(MapAction.SetCrosshairEnabled(true))
+    }
+    LaunchedEffect(configuration.orientation, imeVisible) {
+        state.editGesture?.let { gesture -> onAction(MapAction.CancelPointDrag(gesture.id)) }
     }
     LaunchedEffect(viewportSize, rootInsets) {
         if (viewportSize.width > 0 && viewportSize.height > 0) {
@@ -205,7 +211,7 @@ private fun MapRootChrome(
             }
             MapRootSummary(state, onAction)
             if (state.crosshairEnabled) CrosshairAction(queryPort, viewportSize, viewportInsets, onAction)
-            MapRootCommandBar(state, onAction)
+            MapRootCommandBar(state, viewportInsets, onAction)
         }
     }
 }
@@ -405,10 +411,20 @@ private fun CrosshairAction(
 }
 
 @Composable
-private fun MapRootCommandBar(state: MapState, onAction: (MapAction) -> Unit) {
+private fun MapRootCommandBar(
+    state: MapState,
+    viewportInsets: MapViewportInsets,
+    onAction: (MapAction) -> Unit,
+) {
+    val density = LocalDensity.current
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp).background(LocalWpTheme.current.background.copy(alpha = .98f))
-            .padding(horizontal = 4.dp, vertical = 4.dp).testTag("map-root-command-bar"),
+            .padding(
+                start = with(density) { viewportInsets.leftPx.toDp() } + 4.dp,
+                end = with(density) { viewportInsets.rightPx.toDp() } + 4.dp,
+                top = 4.dp,
+                bottom = 4.dp,
+            ).testTag("map-root-command-bar"),
     ) {
         MapCommandButton(R.string.map_tool_measure, "map-tool-measure", state.tool == MapTool.MEASURE, Modifier.weight(1f)) {
             onAction(MapAction.SelectTool(if (state.tool == MapTool.MEASURE) MapTool.BROWSE else MapTool.MEASURE))
@@ -630,8 +646,10 @@ internal object MapCrosshairResolver {
 }
 
 private fun viewportRevision(size: IntSize, insets: MapViewportInsets): Long =
-    ((size.width.toLong() shl 32) xor size.height.toLong() xor
-        (insets.topPx.toLong() shl 16) xor insets.bottomPx.toLong()).and(Long.MAX_VALUE).coerceAtLeast(1L)
+    listOf(size.width, size.height, insets.leftPx, insets.topPx, insets.rightPx, insets.bottomPx)
+        .fold(17L) { hash, value -> hash * 31L + value }
+        .and(Long.MAX_VALUE)
+        .coerceAtLeast(1L)
 
 private fun MapState.viewportInsets(): MapViewportInsets = viewport?.obscuredInsets ?: MapViewportInsets()
 

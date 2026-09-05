@@ -5,6 +5,7 @@ import com.yokuli.marine.map.domain.MapHitResult
 import com.yokuli.marine.map.domain.MapOverlayId
 import com.yokuli.marine.map.domain.MapRendererQueryPort
 import com.yokuli.marine.map.domain.MapScreenPoint
+import com.yokuli.marine.map.domain.MapViewportInsets
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -38,5 +39,17 @@ class MapCrosshairResolverTest {
         assertNull(MapCrosshairResolver.resolve(null, 360, 360))
         assertNull(MapCrosshairResolver.resolve(port, 0, 360))
         assertNull(MapCrosshairResolver.resolve(port, 360, 0))
+    }
+
+    @Test
+    fun `crosshair resolves centre after each real obscured edge is deducted once`() {
+        assertEquals(
+            MapScreenPoint(170.0, 145.0),
+            MapCrosshairResolver.screenPoint(
+                widthPx = 360,
+                heightPx = 320,
+                insets = MapViewportInsets(leftPx = 20, topPx = 40, rightPx = 40, bottomPx = 70),
+            ),
+        )
     }
 }

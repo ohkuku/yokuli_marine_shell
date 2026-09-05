@@ -75,6 +75,7 @@ import com.yokuli.marine.feature.desktop.productionLauncherUiState
 import com.yokuli.marine.feature.chart.ChartImportUiAction
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
 import com.yokuli.marine.map.domain.MapRecoveryExport
+import com.yokuli.marine.map.domain.MapViewportInsets
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
@@ -90,6 +91,7 @@ import com.yokuli.shell.engine.toShellAction
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.ShellInput
+import com.yokuli.shell.contract.ShellSafeBands
 import com.yokuli.shell.contract.ShellWindowMetrics
 import com.yokuli.shell.android.AndroidShellKeyAdapter
 import com.yokuli.shell.android.AndroidShellWindowMetrics
@@ -269,6 +271,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     YokuliTheme(themeSpec) {
         val colors = LocalWpTheme.current
         val windowMetrics = rememberShellWindowMetrics()
+        val shellSafeBands = ShellSafeBands.resolve(windowMetrics)
         SyncHostWindowChrome(colors.background, themeSpec.mode == WpThemeMode.LIGHT)
         val reducedMotion = rememberPlatformReducedMotion() || engineState.recoveryMode != LauncherRecoveryMode.NORMAL
         val motionProfile = WpReferenceProfiles.require(engineState.start.document.profileId).motion
@@ -291,6 +294,10 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             debugShellLabAvailable = BuildConfig.DEBUG,
             mapState = mapState,
             currentMapState = { shellViewModel.mapStore.state.value },
+            mapShellSafeInsets = MapViewportInsets(
+                leftPx = maxOf(shellSafeBands.status.left, shellSafeBands.navigation.left),
+                rightPx = maxOf(shellSafeBands.status.right, shellSafeBands.navigation.right),
+            ),
             onMapAction = shellViewModel.mapStore::dispatch,
             chartImportState = chartImportState,
             onChartImportAction = { action ->

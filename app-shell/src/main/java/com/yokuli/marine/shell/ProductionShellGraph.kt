@@ -9,6 +9,7 @@ import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.domain.MapViewportInsets
 import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.chart.ChartShellContribution
 import com.yokuli.marine.feature.chart.ChartWorkspace
@@ -58,6 +59,7 @@ data class ProductionShellRuntime(
     val debugShellLabAvailable: Boolean,
     val mapState: MapState,
     val currentMapState: () -> MapState,
+    val mapShellSafeInsets: MapViewportInsets,
     val onMapAction: (MapAction) -> Unit,
     val chartImportState: ChartImportUiState,
     val onChartImportAction: (ChartImportUiAction) -> Unit,
@@ -101,6 +103,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 state = runtime.mapState,
                 onAction = runtime.onMapAction,
                 currentState = runtime.currentMapState,
+                shellSafeInsets = runtime.mapShellSafeInsets,
                 importState = runtime.chartImportState,
                 onImportAction = runtime.onChartImportAction,
                 recoveryExportState = runtime.recoveryExportState,

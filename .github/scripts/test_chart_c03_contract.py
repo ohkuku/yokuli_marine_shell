@@ -28,6 +28,8 @@ class ChartC03ContractTest(unittest.TestCase):
         self.assertIn('testTag("map-root-command-bar")', workspace)
         self.assertIn("MapCrosshairResolver.screenPoint", workspace)
         self.assertIn("port.unproject(target)", workspace)
+        self.assertIn("shellSafeInsets.leftPx", workspace)
+        self.assertIn("insets.leftPx, insets.topPx, insets.rightPx, insets.bottomPx", workspace)
         self.assertIn("onQueryPortChanged", workspace)
         self.assertIn("onQueryPortChanged", graph)
 
@@ -39,11 +41,13 @@ class ChartC03ContractTest(unittest.TestCase):
 
     def test_android_compose_and_virtual_input_share_feature_first_router(self):
         activity = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt").read_text()
+        graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
         router = (ROOT / "ui/shell-compose/src/main/java/com/yokuli/shell/compose/InternalAppInputRouter.kt").read_text()
         self.assertIn("internalAppInputRouter.dispatch(input)", activity)
         self.assertIn("dispatchInput(ShellInput.BACK)", activity)
         self.assertIn("class InternalAppInputRouter", router)
         self.assertIn("BindInternalAppInputHandler", router)
+        self.assertIn("currentState = runtime.currentMapState", graph)
 
     def test_gesture_and_feature_back_have_executable_contracts(self):
         test = (ROOT / "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapInteractionContractTest.kt").read_text()
