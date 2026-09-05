@@ -222,3 +222,5 @@ Red 先锁定三模块 instrumentation 必须真实进入 CI、Verified Alpha �
 修正后的独立实跑结果为：J01–J06 6/6；双进程 probe 1+1，中间真实 `am force-stop`；API 34 MapLibre/MBTiles 17、Room 7、Shell 普通 suite 59；release-like benchmark 11/11 且无缺失旅程；当前路径 baseline/startup profile 为 3520/2645 条。性能只标 `EMULATOR_TREND_ONLY`，三星方屏和物理刷新率仍为 `PENDING_OWNER`。
 
 C12 封口提交将从头执行 Host、三模块 API 34、双进程恢复、性能、Release manifest 与 digest，并要求同一 SHA 的 GitHub Actions 全绿后才交付 Verified Alpha。未解决 P0/P1 为空；来源在线交付保持 `BLOCKED_EXTERNAL`，生产 GNSS/NMEA/活动导航/船网输出未实现，人工状态保持 `PENDING`。
+
+第一次封口 Host Gate 在静态阶段停止：系统 Python 没有仓库锁定的 `jsonschema`，同时全局双语合同发现 C11 REPORT 漏了 `English translation` 标记。前者改用既有规则要求的隔离 pinned 环境重跑；后者只补英文边界摘要，不更改 C11 的实现、合同或验证结论。

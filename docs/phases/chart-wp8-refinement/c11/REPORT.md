@@ -35,3 +35,5 @@
 - 处理或重新生成因 API 演进而产生的 baseline profile stale-rule 警告。
 - 执行 J01–J06、性能/内存、50 次切换、最终 Release 清单和同 SHA 托管 CI 审计。
 - 三星方屏与实体刷新率仍为所有者实机验收，不得用模拟器结果替代。
+
+English translation: C11 delivers the Chart application's three app-defined tile presentations, durable session restoration, and opaque local Search destinations through the existing Shell contribution boundary. It does not add a second renderer, hidden network or location work, active navigation, or a fake secondary-pin capability.
