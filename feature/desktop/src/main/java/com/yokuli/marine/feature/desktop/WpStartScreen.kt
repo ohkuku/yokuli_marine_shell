@@ -11,6 +11,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -501,7 +503,7 @@ private fun WpTileEditOverlay(
         Box(
             Modifier.align(if (compact) Alignment.TopStart else Alignment.TopEnd).size(controlSize)
                 .testTag("unpin-selected-tile")
-                .combinedNoRipple(onUnpin),
+                .editControlInput(onUnpin),
             contentAlignment = Alignment.Center,
         ) {
             Box(
@@ -519,7 +521,7 @@ private fun WpTileEditOverlay(
             Box(
                 Modifier.align(Alignment.BottomEnd).size(controlSize)
                     .testTag("resize-selected-tile")
-                    .combinedNoRipple(onResize),
+                    .editControlInput(onResize),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -543,3 +545,17 @@ private fun WpTileEditOverlay(
 private fun Modifier.combinedNoRipple(onClick: () -> Unit): Modifier = combinedClickable(
     interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick,
 )
+
+private fun Modifier.editControlInput(action: () -> Unit): Modifier =
+    semantics {
+        onClick {
+            action()
+            true
+        }
+    }.pointerInput(action) {
+        detectTapGestures(
+            onTap = {
+                action()
+            },
+        )
+    }

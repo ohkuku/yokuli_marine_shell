@@ -39,3 +39,4 @@
 - The corrected API 34 run passed same-gesture long-press reorder and direct one-tap resize.
 - It exposed one real remaining defect: after resizing Settings from 1x1 to 2x1, the visible 48dp unpin control did not receive an injected pointer click even though its semantics action existed.
 - The selected-tile drag detector had inferred edit-control bounds from its modifier-local `size`, while the controls are laid out from the tile's declared WP geometry inside a content inset. It now excludes the exact declared tile edge plus its inset from drag capture.
+- The bounds-only correction stayed Red on API 34. Edit controls therefore own their pointer consumption and explicit accessibility click semantics; the selected tile owns only its move gesture. This removes pointer arbitration between resize/unpin and drag instead of relying on inferred geometry alone.
