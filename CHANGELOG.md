@@ -1,5 +1,13 @@
 # Changelog
 
+## NMEA_SOURCES — P0 baseline
+
+- 锁定两个新 Shell App 的产品边界：NMEA 输入管理真实 TCP／UDP 输入，数据来源管理统一目录与 OS 采用来源；不是两个 APK，也不复用旧 Anchor／Trip 业务组织。
+- 定点审计 `codex/develop@a845d3d…` 的 parser、单连接 runtime、freshness、source 和诊断测试，明确可抽取语义、必须重写项及禁止迁移项。
+- 建立 `core:marine-data`、`adapter:marine-data-android`、两个独立 Feature 和现有 `InstalledAppBinding` 的依赖计划；保留 portrait-only、bounded Back、非 Android HOME 及默认 Start 不自动加磁贴。
+
+English: hash-bound the NMEA_SOURCES P0 baseline, audited the old repository as read-only technical input, and fixed the dependency, Android 36, Shell-installation, TDD and physical-evidence boundaries before implementation.
+
 ## Shell Product Boundary Correction
 
 - 明确 Yokuli OS 是带应用内 Shell 的普通 Android 应用：设置、恢复 UI 与 Engine 删除 Android 桌面设置入口；普通“应用信息”入口不受影响。

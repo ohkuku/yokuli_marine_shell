@@ -1,6 +1,6 @@
 # Yokuli OS — Launcher Engine TDD 施工规范
 
-状态：`ACTIVE`。Shell 历史阶段仍以 [`LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md`](requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md) 追溯；当前 Map V1 施工以 [`CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md`](phases/chart-wp8-refinement/CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md) 的 C00–C12 为产品合同。后者明确覆盖旧文档中的扩展磁贴尺寸、地图禁入和逐 Stage 等待要求。
+状态：`ACTIVE`。Shell 与 Map 的历史阶段继续保留作追溯；当前施工以 [`NMEA_SOURCES` 产品合同](phases/nmea-sources/REQUIREMENTS.md)和[P0–P7 TDD 矩阵](implementation/NMEA_SOURCES_TDD_MATRIX.md)为准。它们覆盖旧文档中“只允许 Chart + Settings／禁止生产 NMEA/GNSS”的冲突范围，同时保留普通 Android 应用、默认竖屏、应用内 bounded Back、三档磁贴和单点 `InstalledAppBinding` 合同。
 
 ## 1. 当前 Phase 一次只写一个工作包
 
@@ -33,7 +33,7 @@ Stage 2.5 是 Stage 3 的强制前置：先取得合法 capture、完成 scenari
 - 不弱化断言，不用 retry 掩盖 flaky；
 - 不把 fixture、模拟器或视觉印象冒充真实数据或硬件证据；
 - 未测量的 Golden、帧耗时、输入延迟和方屏硬件统一写 `NOT_YET_MEASURED` 或 `UNVERIFIED_HARDWARE`；
-- 当前允许实现规范内的 MBTiles、地点、测量、手工路线、GPX、离线覆盖和只读观测端口；生产 GPS/NMEA 采集、活动导航和船网输出继续禁止。
+- 当前 `NMEA_SOURCES` 允许实现规范内的 NMEA 0183 TCP／UDP 输入、手机系统定位候选、统一来源目录和选择、只读观测输出；NMEA 输出／转发、活动导航、Anchor/Trip/Survey、自动舵和船网控制继续禁止。
 
 ## 4. Refactor 与边界检查
 
@@ -73,6 +73,6 @@ AWAITING HUMAN REVIEW BEFORE NEXT STAGE.
 
 ## English translation
 
-Status is `ACTIVE`. The Launcher Shell Engine Master Spec is the sole stage-order authority; older requirements and Slice 1–14 evidence are archived. Work proceeds one stage at a time through baseline freeze, meaningful Red, minimum Green, refactor, complete gate, commit, report, and mandatory stop for human review. Direct owner corrections are versioned in the Master and baseline lock while retaining the previous specification hash. Stage 2.5 must acquire lawful evidence and reach a hash-bound `HUMAN_REVIEWED` approval before Stage 3 geometry can begin.
+Status is `ACTIVE`. The hash-bound `NMEA_SOURCES` P0–P7 contract now governs implementation and supersedes conflicting old product-surface prohibitions while preserving historical evidence. Work proceeds through baseline freeze, meaningful Red, minimum Green, refactor, complete gate, commit, and evidence. The current phase permits real NMEA input and phone-location candidates but continues to prohibit NMEA output, active navigation, Anchor/Trip/Survey runtime, autopilot and vessel-network control.
 
 Tests enter only in the stage that owns them: static contracts, pure JVM engine behavior, renderer components, real-Activity platform behavior, and finally macrobenchmark/physical hardware. Missing measurements remain `NOT_YET_MEASURED`; emulator evidence never becomes square-device proof. Marine capabilities remain prohibited until the Launcher Engine definition of done is reviewed. Every report ends with `STOPPED AT STAGE GATE.` and `AWAITING HUMAN REVIEW BEFORE NEXT STAGE.`

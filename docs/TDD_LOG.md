@@ -1,5 +1,30 @@
 # Yokuli Launcher Engine TDD Log
 
+## NMEA_SOURCES — P0 Repository Alignment
+
+### Baseline
+
+```text
+working branch: codex/shell-map-contract
+starting SHA: 69bfd4d0ed29f27450351df530b4a8b1e8e2c6a6
+source specification SHA-256: a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348
+reference: codex/develop@a845d3d734d3b573a2b53952e66e5f800e944205 (read-only)
+```
+
+### Red
+
+先加入 `.github/scripts/test_nmea_sources_p0_contract.py`，要求真实 branch/SHA、旧代码符号映射、四模块依赖方向、Android 36 foreground-service／定位方案、P0–P7/E01–E26 矩阵和最新 Shell 产品边界。首次运行 `6/6 ERROR`，全部因为版本化 baseline、requirements、lock 和 TDD matrix 尚不存在；不是环境或拼写失败。
+
+### Green candidate
+
+新增 `docs/phases/nmea-sources` 与 `docs/implementation/NMEA_SOURCES_*`，把附件中的过期分支、旧仓 `main` 和 `assembleHomeDebug` 与当前事实分开。旧仓只读审计确认单连接 manager、跨 sender UDP framing、generation-free line flow、旧 AUTO 来源策略和 blank heartbeat retention 均不能迁移；纯 parser 语义和测试 fixture 只作为重写依据。
+
+P0 完整 Gate 尚待在本候选提交后执行并回填退出码；不得把本段当作 Green 已通过。
+
+## English translation
+
+P0 begins from the real clean Shell SHA and the owner-selected read-only `codex/develop` reference. A meaningful six-error Red proved that the versioned baseline did not yet exist. The Green candidate records exact integration symbols, reuse/rewrite/non-migration decisions, the minimum four-module plan, Android 36 lifecycle constraints, and the P0–P7/E01–E26 evidence matrix; full gate results remain pending until actually run.
+
 ## Marine Shell Final Product-Model Correction
 
 ### Baseline

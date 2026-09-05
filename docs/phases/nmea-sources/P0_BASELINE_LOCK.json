@@ -1,0 +1,29 @@
+{
+  "phase": "NMEA_SOURCES",
+  "stage": "P0",
+  "status": "BASELINE_RECORDED",
+  "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
+  "shell": {
+    "path": "/Users/kuku/Documents/ChatGPT/yokuli_marine_shell",
+    "branch": "codex/shell-map-contract",
+    "startingSha": "69bfd4d0ed29f27450351df530b4a8b1e8e2c6a6",
+    "dirtyAtStart": false
+  },
+  "reference": {
+    "path": "/Users/kuku/Documents/ChatGPT/yokuli_nmea_anchor_system",
+    "remote": "git@github.com:ohkuku/yokuli_nmea_anchor_alarm.git",
+    "branch": "codex/develop",
+    "sha": "a845d3d734d3b573a2b53952e66e5f800e944205",
+    "readOnly": true
+  },
+  "android": {
+    "compileSdk": 36,
+    "targetSdk": 36,
+    "minSdk": 26,
+    "flavors": ["standalone"],
+    "orientation": "portrait"
+  },
+  "supersedesConflictingHistoricalClauses": true,
+  "preservesHistoricalEvidenceFiles": true,
+  "physicalDeviceStatus": "UNVERIFIED_PHYSICAL_DEVICE"
+}
