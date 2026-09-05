@@ -5,6 +5,8 @@ sealed interface MapSurface {
     data object Places : MapSurface
     data object Routes : MapSurface
     data object ChartPackages : MapSurface
+    data object Measurement : MapSurface
+    data object CoordinateInput : MapSurface
     data class PlaceDetail(val placeId: String) : MapSurface
     data class RouteDetail(val routeId: String) : MapSurface
     data class ChartPackageDetail(val packageId: ChartPackageId) : MapSurface
@@ -90,6 +92,7 @@ object MapFeatureBackPolicy {
     fun actionFor(state: MapState): MapAction? = when {
         state.transient != null -> MapAction.DismissTransient
         state.editGesture != null -> MapAction.CancelPointDrag(state.editGesture.id)
+        state.surface == MapSurface.CoordinateInput -> MapAction.CloseSurface
         state.precisePointEdit != null -> MapAction.CancelPrecisePointEdit
         state.tool != MapTool.BROWSE -> MapAction.SelectTool(MapTool.BROWSE)
         state.surface != MapSurface.Root -> MapAction.CloseSurface

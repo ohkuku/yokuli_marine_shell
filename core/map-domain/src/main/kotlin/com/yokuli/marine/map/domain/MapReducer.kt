@@ -12,6 +12,7 @@ sealed interface MapAction {
     data class MapTapped(val point: GeoPoint, val hits: List<MapHitResult>) : MapAction
     data class MapLongPressed(val point: GeoPoint, val hits: List<MapHitResult>) : MapAction
     data class CrosshairConfirmed(val point: GeoPoint, val hits: List<MapHitResult>) : MapAction
+    data class CoordinateEntered(val point: GeoPoint) : MapAction
     data class ChooseObjectCandidate(val hit: MapHitResult) : MapAction
     data object ConfirmPointCandidate : MapAction
     data class InsertMeasurementPoint(val index: Int, val point: GeoPoint) : MapAction
@@ -108,7 +109,12 @@ class DefaultMapReducer(
         is MapAction.CameraChanged -> persistSession(state.copy(camera = action.camera))
         is MapAction.SelectTool -> MapReduction(selectTool(state, action.tool))
         is MapAction.OpenSurface -> MapReduction(openSurface(state, action.surface))
-        MapAction.CloseSurface -> MapReduction(state.copy(surface = MapSurface.Root))
+        MapAction.CloseSurface -> MapReduction(
+            state.copy(
+                surface = MapSurface.Root,
+                precisePointEdit = if (state.surface == MapSurface.CoordinateInput) null else state.precisePointEdit,
+            ),
+        )
         MapAction.DismissTransient -> MapReduction(state.copy(transient = null))
         MapAction.ClearSelection -> MapReduction(state.copy(selection = null))
         is MapAction.SetCrosshairEnabled -> MapReduction(state.copy(crosshairEnabled = action.enabled))
@@ -119,6 +125,18 @@ class DefaultMapReducer(
         is MapAction.CrosshairConfirmed -> MapReduction(
             mapInteraction(state, action.point, action.hits, PointCandidateOrigin.CROSSHAIR),
         )
+        is MapAction.CoordinateEntered -> if (state.precisePointEdit == null) {
+            MapReduction(
+                mapInteraction(
+                    state.copy(surface = MapSurface.Root),
+                    action.point,
+                    emptyList(),
+                    PointCandidateOrigin.COORDINATE_INPUT,
+                ),
+            )
+        } else {
+            confirmPrecisePoint(state.copy(surface = MapSurface.Root), action.point)
+        }
         is MapAction.ChooseObjectCandidate -> chooseObjectCandidate(state, action.hit)
         MapAction.ConfirmPointCandidate -> confirmPointCandidate(state)
         is MapAction.InsertMeasurementPoint -> insertMeasurementPoint(state, action.index, action.point)

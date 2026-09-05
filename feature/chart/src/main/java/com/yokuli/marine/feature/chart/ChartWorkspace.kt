@@ -33,11 +33,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -50,6 +52,11 @@ import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliColors
 import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.ChartPackageImportFailure
+import com.yokuli.marine.map.domain.CoordinateCodec
+import com.yokuli.marine.map.domain.CoordinateError
+import com.yokuli.marine.map.domain.CoordinateField
+import com.yokuli.marine.map.domain.CoordinateFormat
+import com.yokuli.marine.map.domain.CoordinateParseResult
 import com.yokuli.marine.map.domain.GeoBounds
 import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapAction
@@ -57,6 +64,7 @@ import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapCameraIntent
 import com.yokuli.marine.map.domain.MapCameraTarget
 import com.yokuli.marine.map.domain.MapFeatureBackPolicy
+import com.yokuli.marine.map.domain.MapEditTarget
 import com.yokuli.marine.map.domain.MapHitResult
 import com.yokuli.marine.map.domain.MapLibraryLoadState
 import com.yokuli.marine.map.domain.MapOverlayId
@@ -69,8 +77,12 @@ import com.yokuli.marine.map.domain.MapSurface
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.MapTransient
+import com.yokuli.marine.map.domain.MapPrecisePointEdit
 import com.yokuli.marine.map.domain.MapViewport
 import com.yokuli.marine.map.domain.MapViewportInsets
+import com.yokuli.marine.map.domain.MeasurementMath
+import com.yokuli.marine.map.domain.MeasurementPrompt
+import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import java.util.Locale
@@ -210,7 +222,7 @@ private fun MapRootChrome(
                 MapAttribution(chartPackage.attribution, chartPackage.license)
             }
             MapRootSummary(state, onAction)
-            if (state.crosshairEnabled) CrosshairAction(queryPort, viewportSize, viewportInsets, onAction)
+            if (state.crosshairEnabled) CrosshairAction(state, queryPort, viewportSize, viewportInsets, onAction)
             MapRootCommandBar(state, viewportInsets, onAction)
         }
     }
@@ -301,27 +313,51 @@ private fun MapPersistenceTruth(
 @Composable
 private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
+    val clipboard = LocalClipboardManager.current
+    val defaultPlaceName = stringResource(R.string.map_default_place_name, state.places.size + 1)
+    state.precisePointEdit?.let {
+        Row(
+            Modifier.fillMaxWidth().background(colors.background.copy(alpha = .96f)).padding(horizontal = 12.dp)
+                .testTag("map-precise-point-edit"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            WpText(stringResource(R.string.map_precise_edit_hint), 11, modifier = Modifier.weight(1f))
+            MapActionText(R.string.map_coordinate_input, "map-precise-coordinate-input") {
+                onAction(MapAction.OpenSurface(MapSurface.CoordinateInput))
+            }
+            MapActionText(R.string.map_cancel, "map-precise-cancel") { onAction(MapAction.CancelPrecisePointEdit) }
+        }
+        return
+    }
     when (val transient = state.transient) {
         is MapTransient.PointCandidate -> {
-            Row(
+            Column(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
                     .testTag("map-point-candidate"),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                WpText(transient.point.coordinateText(), 11, modifier = Modifier.weight(1f))
-                MapActionText(R.string.map_add_point, "map-add-point") { onAction(MapAction.ConfirmPointCandidate) }
-                MapActionText(R.string.map_cancel, "map-candidate-cancel") { onAction(MapAction.DismissTransient) }
+                WpText(transient.point.coordinateText(), 11)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    MapActionText(R.string.map_save_place, "map-candidate-save") {
+                        onAction(MapAction.ConfirmPointCandidate)
+                        onAction(MapAction.SaveSelectionAsPlace(defaultPlaceName))
+                    }
+                    MapActionText(R.string.map_measure_from_here, "map-candidate-measure") {
+                        onAction(MapAction.SelectTool(MapTool.MEASURE))
+                        onAction(MapAction.AddPoint(transient.point))
+                    }
+                    MapActionText(R.string.map_route_from_here, "map-candidate-route") {
+                        onAction(MapAction.SelectTool(MapTool.MANUAL_ROUTE))
+                        onAction(MapAction.AddPoint(transient.point))
+                    }
+                    MapActionText(R.string.map_copy_coordinate, "map-candidate-copy") {
+                        clipboard.setText(AnnotatedString(transient.point.coordinateText()))
+                    }
+                    MapActionText(R.string.map_cancel, "map-candidate-cancel") { onAction(MapAction.DismissTransient) }
+                }
             }
         }
         is MapTransient.SelectedObject -> {
-            Row(
-                Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
-                    .testTag("map-object-summary"),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                WpText(transient.hit.objectId, 11, modifier = Modifier.weight(1f), maxLines = 1)
-                MapActionText(R.string.map_close, "map-object-close") { onAction(MapAction.DismissTransient) }
-            }
+            SelectedObjectSummary(state, transient.hit, onAction)
         }
         is MapTransient.ObjectCandidates -> {
             Column(
@@ -362,29 +398,103 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
             }
         }
     }
-    if (state.transient == null && state.selection == null && state.tool != MapTool.BROWSE) {
-        val count = when (state.tool) {
-            MapTool.MEASURE -> state.measurementDraft?.points?.size ?: 0
-            MapTool.MANUAL_ROUTE -> state.routeDraft?.waypoints?.size ?: 0
-            MapTool.BROWSE -> 0
+    if (state.transient == null && state.selection == null) {
+        when (state.tool) {
+            MapTool.MEASURE -> MeasurementRootSummary(state, onAction)
+            MapTool.MANUAL_ROUTE -> Row(
+                Modifier.fillMaxWidth().background(colors.background.copy(alpha = .90f))
+                    .padding(horizontal = 12.dp, vertical = 5.dp).testTag("map-active-tool-summary"),
+            ) {
+                WpText(stringResource(R.string.map_route_short, state.routeDraft?.waypoints?.size ?: 0), 11)
+            }
+            MapTool.BROWSE -> Unit
         }
-        Row(
-            Modifier.fillMaxWidth().background(colors.background.copy(alpha = .90f))
-                .padding(horizontal = 12.dp, vertical = 5.dp).testTag("map-active-tool-summary"),
-        ) {
-            WpText(
+    }
+}
+
+@Composable
+private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: (MapAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    val measurementIndex = hit.measurementPointIndexOrNull()
+    val routeTarget = hit.routePointTargetOrNull()
+    val point = measurementIndex?.let { state.measurementDraft?.points?.getOrNull(it) }
+        ?: routeTarget?.let { target -> state.routeDrafts.firstOrNull { it.id == target.draftId }?.waypoints?.getOrNull(target.index) }
+    Column(
+        Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
+            .testTag("map-object-summary"),
+    ) {
+        WpText(point?.coordinateText() ?: hit.objectId, 11, maxLines = 1)
+        Row(Modifier.fillMaxWidth()) {
+            val target = measurementIndex?.let(MapEditTarget::MeasurementPoint) ?: routeTarget
+            if (target != null) {
+                MapActionText(R.string.map_move_point, "map-object-move") {
+                    onAction(MapAction.BeginPrecisePointEdit(MapPrecisePointEdit.Move(target)))
+                }
+            }
+            if (measurementIndex != null) {
+                MapActionText(R.string.map_insert_after, "map-object-insert") {
+                    onAction(MapAction.BeginPrecisePointEdit(MapPrecisePointEdit.InsertMeasurement(measurementIndex + 1)))
+                }
+                MapActionText(R.string.map_delete_point, "map-object-delete") {
+                    onAction(MapAction.DeleteMeasurementPoint(measurementIndex))
+                    onAction(MapAction.DismissTransient)
+                }
+            }
+            MapActionText(R.string.map_close, "map-object-close") { onAction(MapAction.DismissTransient) }
+        }
+    }
+}
+
+@Composable
+private fun MeasurementRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    val draft = state.measurementDraft ?: return
+    val summary = MeasurementMath.summarize(draft)
+    val defaultRouteName = stringResource(R.string.map_default_route_name, state.routeDrafts.size + 1)
+    Column(
+        Modifier.fillMaxWidth().background(colors.background.copy(alpha = .92f))
+            .padding(horizontal = 12.dp, vertical = 4.dp).testTag("map-measurement-summary"),
+    ) {
+        val message = when (summary.prompt) {
+            MeasurementPrompt.PLACE_START -> stringResource(R.string.map_measure_place_start)
+            MeasurementPrompt.PLACE_END -> stringResource(R.string.map_measure_place_end)
+            MeasurementPrompt.RESULTS -> {
+                val last = requireNotNull(summary.segments.lastOrNull())
                 stringResource(
-                    if (state.tool == MapTool.MEASURE) R.string.map_measure_short else R.string.map_route_short,
-                    count,
-                ),
-                11,
-            )
+                    R.string.map_measure_result,
+                    last.distanceMeters.distanceText(),
+                    last.bearingText(),
+                    summary.totalDistanceMeters.distanceText(),
+                )
+            }
+        }
+        WpText(message, 11)
+        Row(Modifier.fillMaxWidth()) {
+            MapTextButton(stringResource(R.string.map_undo), "map-measure-undo", draft.undo.isNotEmpty()) {
+                onAction(MapAction.UndoMeasurementEdit)
+            }
+            MapTextButton(stringResource(R.string.map_redo), "map-measure-redo", draft.redo.isNotEmpty()) {
+                onAction(MapAction.RedoMeasurementEdit)
+            }
+            MapTextButton(stringResource(R.string.map_clear), "map-measure-clear", draft.points.isNotEmpty()) {
+                onAction(MapAction.ClearMeasurement)
+            }
+            MapTextButton(stringResource(R.string.map_measure_all_segments), "map-measure-details", draft.points.size >= 2) {
+                onAction(MapAction.OpenSurface(MapSurface.Measurement))
+            }
+            MapTextButton(stringResource(R.string.map_fit_all), "map-measure-fit", draft.points.size >= 2) {
+                onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(minimalBounds(draft.points)), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
+            }
+            MapTextButton(stringResource(R.string.map_convert_to_route), "map-measure-convert", draft.points.size >= 2) {
+                onAction(MapAction.ConvertMeasurementToManualRoute(defaultRouteName))
+            }
         }
     }
 }
 
 @Composable
 private fun CrosshairAction(
+    state: MapState,
     queryPort: MapRendererQueryPort?,
     viewportSize: IntSize,
     viewportInsets: MapViewportInsets,
@@ -405,7 +515,11 @@ private fun CrosshairAction(
             val port = queryPort ?: return@MapTextButton
             val target = requireNotNull(screenPoint)
             val coordinate = port.unproject(target) ?: return@MapTextButton
-            onAction(MapAction.CrosshairConfirmed(coordinate, port.query(target, INTERACTIVE_OVERLAYS)))
+            if (state.precisePointEdit == null) {
+                onAction(MapAction.CrosshairConfirmed(coordinate, port.query(target, INTERACTIVE_OVERLAYS)))
+            } else {
+                onAction(MapAction.ConfirmPrecisePoint(coordinate))
+            }
         }
     }
 }
@@ -443,6 +557,9 @@ private fun MapRootCommandBar(
         }
         MapCommandButton(R.string.map_crosshair, "map-crosshair-toggle", state.crosshairEnabled, Modifier.weight(1f)) {
             onAction(MapAction.SetCrosshairEnabled(!state.crosshairEnabled))
+        }
+        MapCommandButton(R.string.map_coordinate_input_short, "map-coordinate-input", false, Modifier.weight(1f)) {
+            onAction(MapAction.OpenSurface(MapSurface.CoordinateInput))
         }
     }
 }
@@ -486,6 +603,8 @@ private fun MapPageSurface(
             MapSurface.Places, is MapSurface.PlaceDetail -> R.string.map_places_title to R.string.map_places_context
             MapSurface.Routes, is MapSurface.RouteDetail -> R.string.map_routes_title to R.string.map_routes_context
             MapSurface.ChartPackages, is MapSurface.ChartPackageDetail -> R.string.map_charts_title to R.string.map_charts_context
+            MapSurface.Measurement -> R.string.map_measure_title to R.string.map_measure_context
+            MapSurface.CoordinateInput -> R.string.map_coordinate_input to R.string.map_coordinate_input_context
             MapSurface.Root -> R.string.app_chart to R.string.map_context_offline_first
         }
         WpPageHeader("map-section", stringResource(title), stringResource(context))
@@ -497,6 +616,8 @@ private fun MapPageSurface(
                 is MapSurface.PlaceDetail -> PlaceDetailPage(state, surface.placeId, onAction)
                 is MapSurface.RouteDetail -> RouteDetailPage(state, surface.routeId, onAction)
                 is MapSurface.ChartPackageDetail -> ChartPackageDetailPage(state, surface.packageId, onAction)
+                MapSurface.Measurement -> MeasurementPage(state, onAction)
+                MapSurface.CoordinateInput -> CoordinateInputPage(state, onAction)
                 MapSurface.Root -> Unit
             }
         }
@@ -556,6 +677,167 @@ private fun RouteDetailPage(state: MapState, id: String, onAction: (MapAction) -
         MapActionText(R.string.map_view_route, "map-route-view") {
             onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(points.toBounds()), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
             onAction(MapAction.CloseSurface)
+        }
+    }
+}
+
+@Composable
+private fun MeasurementPage(state: MapState, onAction: (MapAction) -> Unit) {
+    val draft = state.measurementDraft ?: return
+    val summary = MeasurementMath.summarize(draft)
+    val colors = LocalWpTheme.current
+    WpText(stringResource(R.string.map_measure_total, summary.totalDistanceMeters.distanceText()), 18, weight = FontWeight.Light)
+    if (summary.segments.isEmpty()) {
+        WpText(
+            stringResource(
+                if (summary.prompt == MeasurementPrompt.PLACE_START) {
+                    R.string.map_measure_place_start
+                } else {
+                    R.string.map_measure_place_end
+                },
+            ),
+            12,
+            color = colors.muted,
+        )
+    }
+    summary.segments.forEach { segment ->
+        Column(
+            Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f)).padding(8.dp)
+                .testTag("map-measure-segment-${segment.fromIndex}"),
+        ) {
+            WpText(
+                stringResource(
+                    R.string.map_measure_segment,
+                    segment.fromIndex + 1,
+                    segment.toIndex + 1,
+                    segment.distanceMeters.distanceText(),
+                    segment.bearingText(),
+                ),
+                12,
+            )
+        }
+    }
+    draft.points.forEachIndexed { index, point ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            WpText(stringResource(R.string.map_measure_point, index + 1, point.coordinateText()), 11, modifier = Modifier.weight(1f))
+            MapActionText(R.string.map_move_point, "map-measure-point-move-$index") {
+                onAction(MapAction.CloseSurface)
+                onAction(MapAction.BeginPrecisePointEdit(MapPrecisePointEdit.Move(MapEditTarget.MeasurementPoint(index))))
+            }
+            MapActionText(R.string.map_delete_point, "map-measure-point-delete-$index") {
+                onAction(MapAction.DeleteMeasurementPoint(index))
+            }
+        }
+    }
+    Row(Modifier.fillMaxWidth()) {
+        MapTextButton(stringResource(R.string.map_undo), "map-measure-page-undo", draft.undo.isNotEmpty()) {
+            onAction(MapAction.UndoMeasurementEdit)
+        }
+        MapTextButton(stringResource(R.string.map_redo), "map-measure-page-redo", draft.redo.isNotEmpty()) {
+            onAction(MapAction.RedoMeasurementEdit)
+        }
+        MapTextButton(stringResource(R.string.map_clear), "map-measure-page-clear", draft.points.isNotEmpty()) {
+            onAction(MapAction.ClearMeasurement)
+        }
+        MapActionText(R.string.map_close, "map-measure-page-close") { onAction(MapAction.CloseSurface) }
+    }
+}
+
+@Composable
+private fun CoordinateInputPage(state: MapState, onAction: (MapAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    val initial = state.coordinateInputSeed()
+    var format by remember(state.surface, state.precisePointEdit) { mutableStateOf(CoordinateFormat.DECIMAL_DEGREES) }
+    val initialText = remember(initial) { CoordinateCodec.format(initial, CoordinateFormat.DECIMAL_DEGREES) }
+    var latitude by remember(state.surface, state.precisePointEdit) { mutableStateOf(initialText.latitude) }
+    var longitude by remember(state.surface, state.precisePointEdit) { mutableStateOf(initialText.longitude) }
+    var failure by remember(state.surface, state.precisePointEdit) { mutableStateOf<CoordinateParseResult.Failure?>(null) }
+
+    WpText(
+        stringResource(
+            if (format == CoordinateFormat.DECIMAL_DEGREES) R.string.map_coordinate_format_dd
+            else R.string.map_coordinate_format_dmm,
+        ),
+        12,
+        color = colors.muted,
+    )
+    Row(Modifier.fillMaxWidth()) {
+        MapTextButton(
+            stringResource(R.string.map_coordinate_format_dd_short),
+            "map-coordinate-format-dd",
+            format != CoordinateFormat.DECIMAL_DEGREES,
+        ) {
+            val point = (CoordinateCodec.parse(latitude, longitude, format) as? CoordinateParseResult.Success)?.point ?: initial
+            format = CoordinateFormat.DECIMAL_DEGREES
+            CoordinateCodec.format(point, format).also {
+                latitude = it.latitude
+                longitude = it.longitude
+            }
+            failure = null
+        }
+        MapTextButton(
+            stringResource(R.string.map_coordinate_format_dmm_short),
+            "map-coordinate-format-dmm",
+            format != CoordinateFormat.DEGREES_DECIMAL_MINUTES,
+        ) {
+            val point = (CoordinateCodec.parse(latitude, longitude, format) as? CoordinateParseResult.Success)?.point ?: initial
+            format = CoordinateFormat.DEGREES_DECIMAL_MINUTES
+            CoordinateCodec.format(point, format).also {
+                latitude = it.latitude
+                longitude = it.longitude
+            }
+            failure = null
+        }
+    }
+    CoordinateTextField(
+        R.string.map_coordinate_latitude,
+        latitude,
+        failure?.takeIf { it.field == CoordinateField.LATITUDE },
+        "map-coordinate-latitude",
+    ) {
+        latitude = it
+        failure = null
+    }
+    CoordinateTextField(
+        R.string.map_coordinate_longitude,
+        longitude,
+        failure?.takeIf { it.field == CoordinateField.LONGITUDE },
+        "map-coordinate-longitude",
+    ) {
+        longitude = it
+        failure = null
+    }
+    Row(Modifier.fillMaxWidth()) {
+        MapActionText(R.string.map_coordinate_confirm, "map-coordinate-confirm") {
+            when (val result = CoordinateCodec.parse(latitude, longitude, format)) {
+                is CoordinateParseResult.Success -> onAction(MapAction.CoordinateEntered(result.point))
+                is CoordinateParseResult.Failure -> failure = result
+            }
+        }
+        MapActionText(R.string.map_cancel, "map-coordinate-cancel") { onAction(MapAction.CloseSurface) }
+    }
+}
+
+@Composable
+private fun CoordinateTextField(
+    label: Int,
+    value: String,
+    failure: CoordinateParseResult.Failure?,
+    tag: String,
+    onValueChange: (String) -> Unit,
+) {
+    val colors = LocalWpTheme.current
+    Column {
+        WpText(stringResource(label), 10, color = colors.muted)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(color = colors.foreground, fontSize = 16.sp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).border(1.dp, colors.muted).padding(8.dp).testTag(tag),
+        )
+        failure?.let {
+            WpText(coordinateErrorText(it.error), 10, color = colors.accent, modifier = Modifier.testTag("$tag-error"))
         }
     }
 }
@@ -655,11 +937,58 @@ private fun MapState.viewportInsets(): MapViewportInsets = viewport?.obscuredIns
 
 private fun GeoPoint.coordinateText(): String = String.format(Locale.US, "%.5f, %.5f", latitude, longitude)
 
-private fun List<GeoPoint>.toBounds(): GeoBounds = GeoBounds(
-    south = minOf { it.latitude },
-    west = minOf { it.longitude },
-    north = maxOf { it.latitude },
-    east = maxOf { it.longitude },
+private fun List<GeoPoint>.toBounds(): GeoBounds = minimalBounds(this)
+
+private fun Double.distanceText(): String = if (this < 1_000.0) {
+    String.format(Locale.getDefault(), "%.0f m", this)
+} else {
+    String.format(Locale.getDefault(), "%.2f NM", this / 1_852.0)
+}
+
+private fun com.yokuli.marine.map.domain.MeasurementSegment.bearingText(): String =
+    if (initialBearingTrueDegrees == null || azimuthAmbiguous) {
+        "—"
+    } else {
+        String.format(Locale.getDefault(), "%.1f°T", initialBearingTrueDegrees)
+    }
+
+private fun MapHitResult.measurementPointIndexOrNull(): Int? =
+    takeIf { overlayId == MapOverlayId.MEASUREMENT_POINTS }
+        ?.objectId
+        ?.removePrefix("measurement-point:")
+        ?.toIntOrNull()
+
+private fun MapHitResult.routePointTargetOrNull(): MapEditTarget.RoutePoint? {
+    if (overlayId != MapOverlayId.MANUAL_ROUTE_POINTS) return null
+    val body = objectId.removePrefix("route-point:")
+    val separator = body.lastIndexOf(':')
+    if (separator <= 0 || separator == body.lastIndex) return null
+    val index = body.substring(separator + 1).toIntOrNull() ?: return null
+    return MapEditTarget.RoutePoint(body.substring(0, separator), index)
+}
+
+private fun MapState.coordinateInputSeed(): GeoPoint = when (val edit = precisePointEdit) {
+    is MapPrecisePointEdit.Move -> when (val target = edit.target) {
+        is MapEditTarget.MeasurementPoint -> measurementDraft?.points?.getOrNull(target.index)
+        is MapEditTarget.RoutePoint -> routeDrafts.firstOrNull { it.id == target.draftId }?.waypoints?.getOrNull(target.index)
+    }
+    is MapPrecisePointEdit.InsertMeasurement -> {
+        val points = measurementDraft?.points.orEmpty()
+        points.getOrNull(edit.index - 1) ?: points.getOrNull(edit.index)
+    }
+    null -> selection?.point
+} ?: camera.center
+
+@Composable
+private fun coordinateErrorText(error: CoordinateError): String = stringResource(
+    when (error) {
+        CoordinateError.EMPTY -> R.string.map_coordinate_error_empty
+        CoordinateError.INVALID_FORMAT -> R.string.map_coordinate_error_format
+        CoordinateError.NON_FINITE -> R.string.map_coordinate_error_nonfinite
+        CoordinateError.OUT_OF_RANGE -> R.string.map_coordinate_error_range
+        CoordinateError.MINUTES_OUT_OF_RANGE -> R.string.map_coordinate_error_minutes
+        CoordinateError.SIGN_HEMISPHERE_CONFLICT -> R.string.map_coordinate_error_conflict
+    },
 )
 
 internal fun MapCamera.scaleNauticalMilesForPixels(pixelCount: Double): Double {
@@ -750,6 +1079,7 @@ private val INTERACTIVE_OVERLAYS = setOf(
     MapOverlayId.SAVED_PLACES,
     MapOverlayId.SELECTION,
     MapOverlayId.MEASUREMENT,
+    MapOverlayId.MEASUREMENT_POINTS,
     MapOverlayId.MANUAL_ROUTE,
     MapOverlayId.MANUAL_ROUTE_POINTS,
 )

@@ -80,6 +80,7 @@ enum class MapOverlayId(val wireValue: String) {
     SAVED_PLACES("saved-places"),
     SELECTION("map-selection"),
     MEASUREMENT("measurement-draft"),
+    MEASUREMENT_POINTS("measurement-points"),
     MANUAL_ROUTE("manual-route-draft"),
     MANUAL_ROUTE_POINTS("manual-route-points"),
     POSITION_OBSERVATION("position-observation"),

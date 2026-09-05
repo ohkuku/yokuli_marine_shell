@@ -6,6 +6,7 @@ import android.graphics.PointF
 import android.net.Uri
 import android.os.Bundle
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -27,6 +28,9 @@ import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapCameraCommand
 import com.yokuli.marine.map.domain.MapCameraCommandId
 import com.yokuli.marine.map.domain.MapCameraTarget
+import com.yokuli.marine.map.domain.MapEditGesture
+import com.yokuli.marine.map.domain.MapEditTarget
+import com.yokuli.marine.map.domain.MapGestureId
 import com.yokuli.marine.map.domain.MapHitResult
 import com.yokuli.marine.map.domain.MapOverlayId
 import com.yokuli.marine.map.domain.MapRendererFailure
@@ -36,11 +40,13 @@ import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
+import com.yokuli.marine.map.domain.Wgs84Polyline
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.hypot
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdate
@@ -90,6 +96,8 @@ fun OfflineMarineChartSurface(
     val styleGeneration = remember(mapView) { AtomicLong(0L) }
     val activeCameraCommand = remember(mapView) { AtomicReference<MapCameraCommandId?>(null) }
     val submittedCameraCommand = remember(mapView) { AtomicReference<MapCameraCommandId?>(null) }
+    val activePointDrag = remember(mapView) { AtomicReference<ActivePointDrag?>(null) }
+    val touchSlop = remember(context) { ViewConfiguration.get(context).scaledTouchSlop.toDouble() }
     var map by remember(mapView) { mutableStateOf<MapLibreMap?>(null) }
     var activeStyle by remember(mapView) { mutableStateOf<Style?>(null) }
 
@@ -121,6 +129,7 @@ fun OfflineMarineChartSurface(
         var cameraListener: MapLibreMap.OnCameraIdleListener? = null
         var clickListener: MapLibreMap.OnMapClickListener? = null
         var longPressListener: MapLibreMap.OnMapLongClickListener? = null
+        var queryPort: MapRendererQueryPort? = null
         val loadFailureListener = MapView.OnDidFailLoadingMapListener {
             if (!disposed.get()) currentAction(MapAction.RendererFailed(generation, MapRendererFailure.STYLE))
         }
@@ -132,12 +141,55 @@ fun OfflineMarineChartSurface(
         mapView.addOnDidFailLoadingMapListener(loadFailureListener)
         mapView.addOnRenderErrorListener(renderErrorListener)
         mapView.setOnTouchListener { _, event ->
-            if (event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
-                currentState.editGesture?.let { gesture ->
-                    currentAction(MapAction.CancelPointDrag(gesture.id))
+            val screenPoint = MapScreenPoint(event.x.toDouble(), event.y.toDouble())
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val target = queryPort?.query(screenPoint, HANDLE_OVERLAYS)
+                        ?.asSequence()
+                        ?.mapNotNull(MapHitResult::toEditTargetOrNull)
+                        ?.firstOrNull()
+                    if (target == null) {
+                        false
+                    } else {
+                        val gestureId = MapGestureId(
+                            "renderer-${generation.value}-${nextPointGesture.incrementAndGet()}",
+                        )
+                        activePointDrag.set(ActivePointDrag(gestureId, target, screenPoint))
+                        currentAction(MapAction.BeginPointDrag(gestureId, target))
+                        true
+                    }
                 }
+                MotionEvent.ACTION_MOVE -> activePointDrag.get()?.let { drag ->
+                    val moved = drag.moved || hypot(
+                        screenPoint.xPx - drag.downPoint.xPx,
+                        screenPoint.yPx - drag.downPoint.yPx,
+                    ) >= touchSlop
+                    if (moved) {
+                        activePointDrag.set(drag.copy(moved = true))
+                        queryPort?.unproject(screenPoint)?.let { point ->
+                            currentAction(MapAction.PreviewPointDrag(drag.id, point))
+                        }
+                    }
+                    true
+                } ?: false
+                MotionEvent.ACTION_UP -> activePointDrag.getAndSet(null)?.let { drag ->
+                    val finalPoint = queryPort?.unproject(screenPoint)
+                    if (finalPoint == null) {
+                        currentAction(MapAction.CancelPointDrag(drag.id))
+                    } else if (!drag.moved) {
+                        currentAction(MapAction.CancelPointDrag(drag.id))
+                        currentAction(MapAction.MapTapped(finalPoint, listOf(drag.target.toHitResult())))
+                    } else {
+                        currentAction(MapAction.CommitPointDrag(drag.id, finalPoint))
+                    }
+                    true
+                } ?: false
+                MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> activePointDrag.getAndSet(null)?.let { drag ->
+                    currentAction(MapAction.CancelPointDrag(drag.id))
+                    true
+                } ?: false
+                else -> activePointDrag.get() != null
             }
-            false
         }
         mapView.getMapAsync { readyMap ->
             if (disposed.get()) return@getMapAsync
@@ -152,7 +204,7 @@ fun OfflineMarineChartSurface(
                 isZoomGesturesEnabled = true
                 isTiltGesturesEnabled = false
             }
-            val queryPort = MapLibreRendererQueryPort(readyMap) { !disposed.get() }
+            queryPort = MapLibreRendererQueryPort(readyMap) { !disposed.get() }
             currentQueryPortChanged(queryPort)
             cameraListener = MapLibreMap.OnCameraIdleListener {
                 if (activeCameraCommand.get() == null) {
@@ -163,7 +215,12 @@ fun OfflineMarineChartSurface(
             }.also(readyMap::addOnCameraIdleListener)
             clickListener = MapLibreMap.OnMapClickListener { point ->
                 val screenPoint = readyMap.projection.toScreenLocation(point).toDomainScreenPoint()
-                currentAction(MapAction.MapTapped(point.toDomainPoint(), queryPort.query(screenPoint, INTERACTIVE_OVERLAYS)))
+                currentAction(
+                    MapAction.MapTapped(
+                        point.toDomainPoint(),
+                        requireNotNull(queryPort).query(screenPoint, INTERACTIVE_OVERLAYS),
+                    ),
+                )
                 true
             }.also(readyMap::addOnMapClickListener)
             longPressListener = MapLibreMap.OnMapLongClickListener { point ->
@@ -171,13 +228,14 @@ fun OfflineMarineChartSurface(
                 currentAction(
                     MapAction.MapLongPressed(
                         point.toDomainPoint(),
-                        queryPort.query(screenPoint, INTERACTIVE_OVERLAYS),
+                        requireNotNull(queryPort).query(screenPoint, INTERACTIVE_OVERLAYS),
                     ),
                 )
                 true
             }.also(readyMap::addOnMapLongClickListener)
         }
         onDispose {
+            activePointDrag.getAndSet(null)?.let { drag -> currentAction(MapAction.CancelPointDrag(drag.id)) }
             mapView.setOnTouchListener(null)
             cameraListener?.let { listener -> map?.removeOnCameraIdleListener(listener) }
             clickListener?.let { listener -> map?.removeOnMapClickListener(listener) }
@@ -214,6 +272,7 @@ fun OfflineMarineChartSurface(
                 style.addPointOverlay(MapOverlayId.SAVED_PLACES, 0xfff7b500.toInt(), 5f)
                 style.addPointOverlay(MapOverlayId.SELECTION, 0xffffffff.toInt(), 7f)
                 style.addLineOverlay(MapOverlayId.MEASUREMENT, 0xfff7b500.toInt(), 3f)
+                style.addPointOverlay(MapOverlayId.MEASUREMENT_POINTS, 0xfff7b500.toInt(), 6f)
                 style.addLineOverlay(MapOverlayId.MANUAL_ROUTE, 0xff00a4ef.toInt(), 5f)
                 style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 5f)
                 style.addPointOverlay(MapOverlayId.POSITION_OBSERVATION, 0xff00d084.toInt(), 7f)
@@ -285,6 +344,7 @@ fun OfflineMarineChartSurface(
         state.places,
         state.measurementDraft,
         state.routeDraft,
+        state.editGesture,
         state.position.observation,
     ) {
         val style = activeStyle ?: return@LaunchedEffect
@@ -295,14 +355,21 @@ fun OfflineMarineChartSurface(
             state.selection?.point.toFeatureCollection("selection"),
         )
         style.source(MapOverlayId.MEASUREMENT)?.setGeoJson(
-            state.measurementDraft?.points.toLineFeatureCollection("measurement"),
+            state.measurementPointsWithPreview().toGeodesicFeatureCollection("measurement"),
+        )
+        style.source(MapOverlayId.MEASUREMENT_POINTS)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                state.measurementPointsWithPreview().mapIndexed { index, point ->
+                    point.toFeature("measurement-point:$index")
+                },
+            ),
         )
         style.source(MapOverlayId.MANUAL_ROUTE)?.setGeoJson(
-            state.routeDraft?.waypoints.toLineFeatureCollection("route:${state.routeDraft?.id.orEmpty()}"),
+            state.routePointsWithPreview().toGeodesicFeatureCollection("route:${state.routeDraft?.id.orEmpty()}"),
         )
         style.source(MapOverlayId.MANUAL_ROUTE_POINTS)?.setGeoJson(
             FeatureCollection.fromFeatures(
-                state.routeDraft?.waypoints.orEmpty().mapIndexed { index, point ->
+                state.routePointsWithPreview().mapIndexed { index, point ->
                     point.toFeature("route-point:${state.routeDraft?.id.orEmpty()}:$index")
                 },
             ),
@@ -332,19 +399,42 @@ private fun MapCamera.toCameraPosition() = CameraPosition.Builder()
     .target(center.toLatLng()).zoom(zoom).bearing(bearing).tilt(0.0).build()
 private fun CameraPosition.toDomainCameraOrNull() = target?.let { MapCamera(it.toDomainPoint(), zoom, bearing) }
 private fun LatLng.toDomainPoint() = GeoPoint(latitude.coerceIn(-90.0, 90.0), wrapLongitude(longitude))
-private fun GeoPoint.toLatLng() = LatLng(latitude, longitude)
+private fun GeoPoint.toLatLng() = LatLng(latitude.coerceIn(-WEB_MERCATOR_MAX_LATITUDE, WEB_MERCATOR_MAX_LATITUDE), longitude)
 private fun PointF.toDomainScreenPoint() = MapScreenPoint(x.toDouble(), y.toDouble())
-private fun GeoBounds.toLatLngBounds() = LatLngBounds.from(north, east, south, west)
+private fun GeoBounds.toLatLngBounds() = LatLngBounds.from(
+    north.coerceAtMost(WEB_MERCATOR_MAX_LATITUDE),
+    if (crossesAntimeridian) east + 360.0 else east,
+    south.coerceAtLeast(-WEB_MERCATOR_MAX_LATITUDE),
+    west,
+)
 private fun GeoPoint.toGeoJsonPoint() = Point.fromLngLat(longitude, latitude)
 private fun GeoPoint.toFeature(id: String) = Feature.fromGeometry(toGeoJsonPoint(), null, id)
 private fun GeoPoint?.toFeatureCollection(id: String) = FeatureCollection.fromFeatures(
     if (this == null) emptyList() else listOf(toFeature(id)),
 )
-private fun List<GeoPoint>?.toLineFeatureCollection(id: String) = FeatureCollection.fromFeatures(
-    this?.takeIf { it.size >= 2 }?.let { points ->
-        listOf(Feature.fromGeometry(LineString.fromLngLats(points.map { it.toGeoJsonPoint() }), null, id))
+private fun List<GeoPoint>.toGeodesicFeatureCollection(id: String) = FeatureCollection.fromFeatures(
+    takeIf { it.size >= 2 }?.let { Wgs84Polyline.build(it) }?.parts?.mapIndexed { index, part ->
+        Feature.fromGeometry(LineString.fromLngLats(part.map(GeoPoint::toGeoJsonPoint)), null, "$id:$index")
     }.orEmpty(),
 )
+
+private fun MapState.measurementPointsWithPreview(): List<GeoPoint> {
+    val points = measurementDraft?.points.orEmpty()
+    val gesture = editGesture ?: return points
+    val target = gesture.target as? MapEditTarget.MeasurementPoint ?: return points
+    return points.replaceAt(target.index, gesture.previewPoint)
+}
+
+private fun MapState.routePointsWithPreview(): List<GeoPoint> {
+    val draft = routeDraft ?: return emptyList()
+    val gesture = editGesture ?: return draft.waypoints
+    val target = gesture.target as? MapEditTarget.RoutePoint ?: return draft.waypoints
+    if (target.draftId != draft.id) return draft.waypoints
+    return draft.waypoints.replaceAt(target.index, gesture.previewPoint)
+}
+
+private fun List<GeoPoint>.replaceAt(index: Int, point: GeoPoint): List<GeoPoint> =
+    if (index !in indices) this else mapIndexed { itemIndex, item -> if (itemIndex == index) point else item }
 
 private fun Style.source(id: MapOverlayId) = getSourceAs<GeoJsonSource>(id.wireValue)
 
@@ -398,7 +488,8 @@ internal class MapLibreRendererQueryPort(
 private fun MapOverlayId.objectIdPrefix(): String = when (this) {
     MapOverlayId.SAVED_PLACES -> "place:"
     MapOverlayId.SELECTION -> "selection"
-    MapOverlayId.MEASUREMENT -> "measurement"
+    MapOverlayId.MEASUREMENT -> "measurement:"
+    MapOverlayId.MEASUREMENT_POINTS -> "measurement-point:"
     MapOverlayId.MANUAL_ROUTE -> "route:"
     MapOverlayId.MANUAL_ROUTE_POINTS -> "route-point:"
     MapOverlayId.POSITION_OBSERVATION -> "position:"
@@ -408,8 +499,41 @@ private val INTERACTIVE_OVERLAYS = setOf(
     MapOverlayId.SAVED_PLACES,
     MapOverlayId.SELECTION,
     MapOverlayId.MEASUREMENT,
+    MapOverlayId.MEASUREMENT_POINTS,
     MapOverlayId.MANUAL_ROUTE,
     MapOverlayId.MANUAL_ROUTE_POINTS,
+)
+
+private val HANDLE_OVERLAYS = setOf(
+    MapOverlayId.MEASUREMENT_POINTS,
+    MapOverlayId.MANUAL_ROUTE_POINTS,
+)
+
+private fun MapHitResult.toEditTargetOrNull(): MapEditTarget? = when (overlayId) {
+    MapOverlayId.MEASUREMENT_POINTS -> objectId.removePrefix("measurement-point:")
+        .toIntOrNull()
+        ?.let(MapEditTarget::MeasurementPoint)
+    MapOverlayId.MANUAL_ROUTE_POINTS -> objectId.removePrefix("route-point:").let { body ->
+        val separator = body.lastIndexOf(':')
+        if (separator <= 0 || separator == body.lastIndex) {
+            null
+        } else {
+            body.substring(separator + 1).toIntOrNull()?.let { MapEditTarget.RoutePoint(body.substring(0, separator), it) }
+        }
+    }
+    else -> null
+}
+
+private fun MapEditTarget.toHitResult(): MapHitResult = when (this) {
+    is MapEditTarget.MeasurementPoint -> MapHitResult(MapOverlayId.MEASUREMENT_POINTS, "measurement-point:$index")
+    is MapEditTarget.RoutePoint -> MapHitResult(MapOverlayId.MANUAL_ROUTE_POINTS, "route-point:$draftId:$index")
+}
+
+private data class ActivePointDrag(
+    val id: MapGestureId,
+    val target: MapEditTarget,
+    val downPoint: MapScreenPoint,
+    val moved: Boolean = false,
 )
 
 private class OfflineMapLifecycleDriver(private val mapView: MapView) {
@@ -453,7 +577,9 @@ private fun wrapLongitude(value: Double): Double = ((value + 180.0) % 360.0 + 36
 
 private const val CHART_SOURCE = "installed-raster-chart"
 private const val CHART_LAYER = "installed-raster-chart-layer"
+private const val WEB_MERCATOR_MAX_LATITUDE = 85.05112878
 private val nextRendererGeneration = AtomicLong(0L)
+private val nextPointGesture = AtomicLong(0L)
 
 /** Bounded process-local counters used by lifecycle gates and later diagnostics. */
 object OfflineMapInstanceMetrics {
