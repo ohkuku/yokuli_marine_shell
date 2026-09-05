@@ -25,6 +25,7 @@ class ChartLauncherIntegrationContractTest {
         }
         assertEquals(ChartLaunchTarget.Browse, ChartDestinations.parse(ChartDestinations.Browse))
         assertNull(ChartDestinations.parse(LaunchToken("chart.route.not-hex")))
+        assertNull(ChartDestinations.parse(LaunchToken("chart.place.ff")))
     }
 
     @Test
@@ -35,6 +36,8 @@ class ChartLauncherIntegrationContractTest {
             ChartLaunchProjector.action(ChartLaunchTarget.Route("deleted"), MapState()),
         )
         assertFalse(MapState(savedRoutes = listOf(route)).navigationActive)
+        assertTrue(ChartLaunchProjector.isSettled(ChartLaunchTarget.Browse, MapState()))
+        assertFalse(ChartLaunchProjector.isSettled(ChartLaunchTarget.Route(route.id), MapState()))
     }
 
     @Test

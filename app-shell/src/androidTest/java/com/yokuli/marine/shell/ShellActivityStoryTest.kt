@@ -49,6 +49,7 @@ import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
 import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.ChartWorkspace
+import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.GeoPoint
@@ -63,6 +64,7 @@ import com.yokuli.marine.map.domain.MapSurface
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.MapTransient
 import com.yokuli.marine.map.domain.PointCandidateOrigin
+import com.yokuli.marine.map.domain.PlaceCategory
 import com.yokuli.marine.map.offline.OfflineMapInstanceMetrics
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherRecoveryMode
@@ -792,6 +794,41 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("launcher-search-field").performTextInput("settings")
         compose.onNodeWithTag("virtual-key-bridge").assertIsDisplayed().performClick()
         awaitDisplayed("start-screen")
+    }
+
+    @Test
+    fun shellSearchOpensALocalPlaceThroughAnOpaqueChartToken() {
+        val name = "C11 quiet anchorage"
+        var placeId = ""
+        compose.waitUntil(10_000) {
+            currentMapState().libraryLoadState == MapLibraryLoadState.READY ||
+                currentMapState().libraryLoadState == MapLibraryLoadState.READY_EMPTY
+        }
+        compose.activityRule.scenario.onActivity { activity ->
+            ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.dispatch(
+                MapAction.CreatePlace(
+                    point = GeoPoint(-36.8123, 174.7456),
+                    name = name,
+                    notes = "search integration",
+                    category = PlaceCategory.ANCHORAGE,
+                    tags = listOf("c11"),
+                ),
+            )
+        }
+        compose.waitUntil(10_000) {
+            currentMapState().places.firstOrNull { it.name == name }?.also { placeId = it.id } != null
+        }
+
+        compose.onNodeWithTag("virtual-key-search").performClick()
+        awaitDisplayed("launcher-search-field")
+        compose.onNodeWithTag("launcher-search-field").performTextInput("quiet anchorage")
+        val resultTag = "search-result-chart-place-${ChartDestinations.place(placeId).value.removePrefix("chart.")}"
+        awaitDisplayed(resultTag)
+        compose.onNodeWithTag(resultTag).performClick()
+
+        awaitDisplayed("map-place-detail-$placeId")
+        assertEquals(MapSurface.PlaceDetail(placeId), currentMapState().surface)
+        assertEquals(false, currentMapState().navigationActive)
     }
 
     @Test

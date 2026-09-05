@@ -66,4 +66,29 @@ class StaticLauncherHostPortTest {
 
         assertThrows(IllegalArgumentException::class.java) { StaticLauncherHostPort(catalog, emptyMap()) }
     }
+
+    @Test
+    fun dynamicTokensResolveOnlyWhenExactlyOneInstalledAppClaimsThem() = runBlocking {
+        val chart = LauncherAppId("chart")
+        val entry = LauncherEntryId("chart")
+        val browse = LaunchToken("chart.browse")
+        val catalog = LauncherCatalogSnapshot(
+            1,
+            listOf(LauncherAppDescriptor(chart, entry)),
+            listOf(LauncherEntryDescriptor(entry, chart, browse, MarineTileSize.WIDE_4X2, listOf(MarineTileSize.WIDE_4X2), PinPolicy.PINNABLE)),
+        )
+        val route = LaunchToken("chart.route.abcd")
+        val port = StaticLauncherHostPort(catalog, mapOf(browse to chart), listOf(chart to { it.value.startsWith("chart.route.") }))
+        assertEquals(LaunchResolution.Internal(chart, route), port.resolveLaunch(route))
+
+        val ambiguous = StaticLauncherHostPort(
+            catalog,
+            mapOf(browse to chart),
+            listOf(chart to { true }, chart to { true }),
+        )
+        assertEquals(LaunchResolution.Unresolved(route), ambiguous.resolveLaunch(route))
+
+        val throwing = StaticLauncherHostPort(catalog, mapOf(browse to chart), listOf(chart to { error("bad matcher") }))
+        assertEquals(LaunchResolution.Unresolved(route), throwing.resolveLaunch(route))
+    }
 }

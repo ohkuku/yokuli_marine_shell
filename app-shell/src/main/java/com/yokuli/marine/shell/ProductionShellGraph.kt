@@ -3,6 +3,7 @@ package com.yokuli.marine.shell
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.testTag
 import com.yokuli.marine.map.offline.OfflineMarineChartSurface
@@ -130,6 +131,10 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 } else {
                     { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }
                 }
+            }
+            if (!ChartLaunchProjector.isSettled(target, runtime.mapState)) {
+                MarineChartTransitionSurface(Modifier.fillMaxSize())
+                return@InternalAppHost
             }
             ChartWorkspace(
                 state = runtime.mapState,

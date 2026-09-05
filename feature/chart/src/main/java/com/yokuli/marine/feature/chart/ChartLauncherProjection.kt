@@ -9,6 +9,7 @@ import com.yokuli.marine.map.domain.MapLibraryLoadState
 import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapSurface
+import com.yokuli.marine.map.domain.MapTransient
 import com.yokuli.marine.map.domain.PlaceSearch
 import com.yokuli.marine.map.domain.TileAvailability
 import com.yokuli.shell.contract.LaunchToken
@@ -175,6 +176,14 @@ object ChartLaunchProjector {
         } else {
             MapAction.OpenSurface(MapSurface.RouteDetail(target.id))
         }
+    }
+
+    fun isSettled(target: ChartLaunchTarget, state: MapState): Boolean = when (target) {
+        ChartLaunchTarget.Browse -> true
+        is ChartLaunchTarget.Place -> state.surface == MapSurface.PlaceDetail(target.id) ||
+            (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id
+        is ChartLaunchTarget.Route -> state.surface == MapSurface.RouteDetail(target.id) ||
+            (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id
     }
 }
 

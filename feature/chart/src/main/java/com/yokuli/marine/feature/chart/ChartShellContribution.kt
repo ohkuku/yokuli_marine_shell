@@ -40,9 +40,10 @@ object ChartDestinations {
             !hex.matches(Regex("[0-9a-f]+"))
         ) return null
         return runCatching {
-            ByteArray(hex.length / 2) { index -> hex.substring(index * 2, index * 2 + 2).toInt(16).toByte() }
-                .toString(Charsets.UTF_8)
-                .takeIf { it.isNotBlank() && it.toByteArray(Charsets.UTF_8).size <= MAX_OBJECT_ID_BYTES }
+            val bytes = ByteArray(hex.length / 2) { index -> hex.substring(index * 2, index * 2 + 2).toInt(16).toByte() }
+            bytes.toString(Charsets.UTF_8).takeIf {
+                it.isNotBlank() && it.toByteArray(Charsets.UTF_8).contentEquals(bytes)
+            }
         }.getOrNull()
     }
 

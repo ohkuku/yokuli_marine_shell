@@ -20,6 +20,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -150,7 +151,13 @@ private fun ChartSmallTile(context: LauncherTileRenderContext, snapshot: ChartLa
                     .testTag("chart-tile-badge"),
                 contentAlignment = Alignment.Center,
             ) {
-                WpText(it, 13, color = Color.Black, weight = FontWeight.Bold, maxLines = 1)
+                WpText(
+                    it,
+                    13,
+                    color = if (context.contentColor.luminance() > .5f) Color.Black else Color.White,
+                    weight = FontWeight.Bold,
+                    maxLines = 1,
+                )
             }
         }
     }
