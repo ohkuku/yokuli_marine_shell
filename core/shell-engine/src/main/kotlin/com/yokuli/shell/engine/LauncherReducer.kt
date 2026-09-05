@@ -485,7 +485,8 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun enterEdit(state: LauncherEngineState, tileId: TileInstanceId): LauncherReduction {
         if (state.start.document.placements.none { it.tileId == tileId }) return LauncherReduction(state)
         return LauncherReduction(
-            state.copy(start = state.start.copy(interaction = StartInteractionState.EditIdle(tileId))),
+            // A prior pin/reveal animation must not keep scrolling underneath editing input.
+            state.copy(start = state.start.copy(interaction = StartInteractionState.EditIdle(tileId), reveal = null)),
             listOf(LauncherEffect.Haptic(LauncherHaptic.LONG_PRESS)),
         )
     }
@@ -504,12 +505,14 @@ class DefaultLauncherReducer : LauncherReducer {
     }
 
     private fun beginDrag(state: LauncherEngineState, action: LauncherAction.BeginTileDrag): LauncherReduction {
-        val placement = state.start.document.placements.firstOrNull { it.tileId == action.tileId }
-            ?: return LauncherReduction(state)
+        if (state.start.document.placements.none { it.tileId == action.tileId }) return LauncherReduction(state)
         val insertionIndex = AdaptiveTilePacker.insertionIndexOf(state.start.document, action.tileId)
         return LauncherReduction(
             state.copy(
+                // Keep undo history, but dismiss its old notice so Back cancels this drag immediately.
+                transient = null,
                 start = state.start.copy(
+                    reveal = null,
                     interaction = StartInteractionState.Dragging(
                         tileId = action.tileId,
                         pointerId = action.pointerId,
@@ -603,19 +606,20 @@ class DefaultLauncherReducer : LauncherReducer {
     }
 
     private fun moveTileBy(state: LauncherEngineState, action: LauncherAction.MoveTileBy): LauncherReduction {
-        val placement = state.start.document.placements.firstOrNull { it.tileId == action.tileId }
-            ?: return LauncherReduction(state)
-        val ordered = state.start.document.placements.sortedWith(compareBy({ it.rank }, { it.tileId.value }))
-        val currentIndex = ordered.indexOfFirst { it.tileId == placement.tileId }
+        if (state.start.document.placements.none { it.tileId == action.tileId }) return LauncherReduction(state)
+        // Accessibility and touch insertion must index the same durable sequence, including spacers.
+        val currentIndex = AdaptiveTilePacker.insertionIndexOf(state.start.document, action.tileId)
         val delta = when {
             action.columns < 0 || action.rows < 0 -> -1
             action.columns > 0 || action.rows > 0 -> 1
             else -> 0
         }
+        if (delta == 0) return LauncherReduction(state)
+        val maximumIndex = (state.start.document.placements.size + state.start.document.spacers.size - 1).coerceAtLeast(0)
         val after = AdaptiveTilePacker.insert(
             state.start.document,
             action.tileId,
-            (currentIndex + delta).coerceIn(0, ordered.lastIndex),
+            (currentIndex + delta).coerceIn(0, maximumIndex),
         )
         if (after == state.start.document) return LauncherReduction(state)
         val proposal = LayoutProposal(state.start.document, after, LayoutChangeReason.MOVE)
