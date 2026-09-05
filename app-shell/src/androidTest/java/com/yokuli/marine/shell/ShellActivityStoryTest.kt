@@ -176,7 +176,8 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("tile-settings").performTouchInput {
             down(center)
             advanceEventTime(650)
-            moveTo(Offset(center.x, -height * 2f), delayMillis = 500)
+            moveTo(Offset(center.x, center.y - height), delayMillis = 250)
+            moveTo(Offset(center.x, -height * 3f), delayMillis = 500)
             up()
         }
 
