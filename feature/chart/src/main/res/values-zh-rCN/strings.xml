@@ -53,6 +53,8 @@
     <string name="map_measure_from_here">从此测量</string>
     <string name="map_route_from_here">从此规划</string>
     <string name="map_copy_coordinate">复制坐标</string>
+    <string name="map_point_source">当前图源：%1$s</string>
+    <string name="map_point_source_none">无海图包（坐标工作台）</string>
     <string name="map_coordinate_input">输入坐标</string>
     <string name="map_coordinate_input_short">坐标</string>
     <string name="map_coordinate_input_context">明确格式和半球；输入不会被静默修正</string>

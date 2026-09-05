@@ -53,6 +53,8 @@
     <string name="map_measure_from_here">measure from here</string>
     <string name="map_route_from_here">plan from here</string>
     <string name="map_copy_coordinate">copy coordinate</string>
+    <string name="map_point_source">current chart source: %1$s</string>
+    <string name="map_point_source_none">no chart package (coordinate workbench)</string>
     <string name="map_coordinate_input">enter coordinates</string>
     <string name="map_coordinate_input_short">coordinate</string>
     <string name="map_coordinate_input_context">explicit format and hemisphere; input is never silently corrected</string>

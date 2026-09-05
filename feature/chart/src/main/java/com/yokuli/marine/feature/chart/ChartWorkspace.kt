@@ -336,15 +336,25 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
                     .testTag("map-point-candidate"),
             ) {
                 WpText(transient.point.coordinateText(), 11)
+                WpText(
+                    stringResource(
+                        R.string.map_point_source,
+                        state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.displayName
+                            ?: stringResource(R.string.map_point_source_none),
+                    ),
+                    10,
+                    color = colors.muted,
+                    maxLines = 1,
+                )
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    MapActionText(R.string.map_save_place, "map-candidate-save") {
+                    MapActionText(R.string.map_save_place, "map-candidate-save", Modifier.weight(1f)) {
                         onAction(MapAction.SavePointCandidateAsPlace(defaultPlaceName))
                     }
-                    MapActionText(R.string.map_measure_from_here, "map-candidate-measure") {
+                    MapActionText(R.string.map_measure_from_here, "map-candidate-measure", Modifier.weight(1f)) {
                         onAction(MapAction.SelectTool(MapTool.MEASURE))
                         onAction(MapAction.AddPoint(transient.point))
                     }
-                    MapActionText(R.string.map_route_from_here, "map-candidate-route") {
+                    MapActionText(R.string.map_route_from_here, "map-candidate-route", Modifier.weight(1f)) {
                         onAction(MapAction.SelectTool(MapTool.MANUAL_ROUTE))
                         onAction(MapAction.AddPoint(transient.point))
                     }
@@ -1052,15 +1062,21 @@ private fun importFailureLabel(reason: ChartPackageImportFailure): String = stri
 )
 
 @Composable
-private fun MapActionText(label: Int, tag: String, action: () -> Unit) {
-    MapTextButton(stringResource(label), tag, true, action)
+private fun MapActionText(label: Int, tag: String, modifier: Modifier = Modifier, action: () -> Unit) {
+    MapTextButton(stringResource(label), tag, true, modifier, action)
 }
 
 @Composable
-private fun MapTextButton(label: String, tag: String, enabled: Boolean = true, action: () -> Unit) {
+private fun MapTextButton(
+    label: String,
+    tag: String,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    action: () -> Unit,
+) {
     val colors = LocalWpTheme.current
     Box(
-        Modifier.heightIn(min = 48.dp).clickNoRipple(enabled, action).padding(horizontal = 4.dp).testTag(tag),
+        modifier.heightIn(min = 48.dp).clickNoRipple(enabled, action).padding(horizontal = 4.dp).testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
         WpText(label, 12, color = if (enabled) colors.accent else colors.muted, maxLines = 1)
