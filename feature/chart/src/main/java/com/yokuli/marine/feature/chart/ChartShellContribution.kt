@@ -22,10 +22,10 @@ object ChartDestinations {
 
     fun accepts(token: LaunchToken): Boolean = parse(token) != null
 
-    fun parse(token: LaunchToken): ChartLaunchTarget? = when {
-        token == Browse -> ChartLaunchTarget.Browse
-        token.value.startsWith(PLACE_PREFIX) -> decodeId(token.value.removePrefix(PLACE_PREFIX))?.let(ChartLaunchTarget::Place)
-        token.value.startsWith(ROUTE_PREFIX) -> decodeId(token.value.removePrefix(ROUTE_PREFIX))?.let(ChartLaunchTarget::Route)
+    fun parse(token: LaunchToken): ChartDestination? = when {
+        token == Browse -> ChartDestination.Browse
+        token.value.startsWith(PLACE_PREFIX) -> decodeId(token.value.removePrefix(PLACE_PREFIX))?.let(ChartDestination::Place)
+        token.value.startsWith(ROUTE_PREFIX) -> decodeId(token.value.removePrefix(ROUTE_PREFIX))?.let(ChartDestination::Route)
         else -> null
     }
 

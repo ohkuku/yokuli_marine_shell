@@ -174,28 +174,28 @@ object ChartLauncherProjection {
     }
 }
 
-sealed interface ChartLaunchTarget {
-    data object Browse : ChartLaunchTarget
-    data class Place(val id: String) : ChartLaunchTarget
-    data class Route(val id: String) : ChartLaunchTarget
+sealed interface ChartDestination {
+    data object Browse : ChartDestination
+    data class Place(val id: String) : ChartDestination
+    data class Route(val id: String) : ChartDestination
 }
 
 object ChartLaunchProjector {
-    fun action(target: ChartLaunchTarget, state: MapState): MapAction? = when (target) {
-        ChartLaunchTarget.Browse -> null
-        is ChartLaunchTarget.Place -> MapAction.OpenSurface(MapSurface.PlaceDetail(target.id))
-        is ChartLaunchTarget.Route -> if (state.savedRoutes.any { it.id == target.id }) {
+    fun action(target: ChartDestination, state: MapState): MapAction? = when (target) {
+        ChartDestination.Browse -> null
+        is ChartDestination.Place -> MapAction.OpenSurface(MapSurface.PlaceDetail(target.id))
+        is ChartDestination.Route -> if (state.savedRoutes.any { it.id == target.id }) {
             MapAction.PreviewRoutePlan(target.id)
         } else {
             MapAction.OpenSurface(MapSurface.RouteDetail(target.id))
         }
     }
 
-    fun isSettled(target: ChartLaunchTarget, state: MapState): Boolean = when (target) {
-        ChartLaunchTarget.Browse -> true
-        is ChartLaunchTarget.Place -> state.surface == MapSurface.PlaceDetail(target.id) ||
+    fun isSettled(target: ChartDestination, state: MapState): Boolean = when (target) {
+        ChartDestination.Browse -> true
+        is ChartDestination.Place -> state.surface == MapSurface.PlaceDetail(target.id) ||
             (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id
-        is ChartLaunchTarget.Route -> state.surface == MapSurface.RouteDetail(target.id) ||
+        is ChartDestination.Route -> state.surface == MapSurface.RouteDetail(target.id) ||
             (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id
     }
 }

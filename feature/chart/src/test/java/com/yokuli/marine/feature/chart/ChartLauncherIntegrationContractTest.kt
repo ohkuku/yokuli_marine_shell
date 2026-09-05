@@ -20,24 +20,24 @@ class ChartLauncherIntegrationContractTest {
     @Test
     fun `deep links round trip bounded unicode ids`() {
         listOf("id-1", "锚地 A/1", "route:revision:4").forEach { id ->
-            assertEquals(ChartLaunchTarget.Place(id), ChartDestinations.parse(ChartDestinations.place(id)))
-            assertEquals(ChartLaunchTarget.Route(id), ChartDestinations.parse(ChartDestinations.route(id)))
+            assertEquals(ChartDestination.Place(id), ChartDestinations.parse(ChartDestinations.place(id)))
+            assertEquals(ChartDestination.Route(id), ChartDestinations.parse(ChartDestinations.route(id)))
         }
-        assertEquals(ChartLaunchTarget.Browse, ChartDestinations.parse(ChartDestinations.Browse))
+        assertEquals(ChartDestination.Browse, ChartDestinations.parse(ChartDestinations.Browse))
         assertNull(ChartDestinations.parse(LaunchToken("chart.route.not-hex")))
         assertNull(ChartDestinations.parse(LaunchToken("chart.place.ff")))
     }
 
     @Test
     fun `route link previews without starting navigation and missing link becomes operable unavailable state`() {
-        assertEquals(MapAction.PreviewRoutePlan(route.id), ChartLaunchProjector.action(ChartLaunchTarget.Route(route.id), MapState(savedRoutes = listOf(route))))
+        assertEquals(MapAction.PreviewRoutePlan(route.id), ChartLaunchProjector.action(ChartDestination.Route(route.id), MapState(savedRoutes = listOf(route))))
         assertEquals(
             MapAction.OpenSurface(com.yokuli.marine.map.domain.MapSurface.RouteDetail("deleted")),
-            ChartLaunchProjector.action(ChartLaunchTarget.Route("deleted"), MapState()),
+            ChartLaunchProjector.action(ChartDestination.Route("deleted"), MapState()),
         )
         assertFalse(MapState(savedRoutes = listOf(route)).navigationActive)
-        assertTrue(ChartLaunchProjector.isSettled(ChartLaunchTarget.Browse, MapState()))
-        assertFalse(ChartLaunchProjector.isSettled(ChartLaunchTarget.Route(route.id), MapState()))
+        assertTrue(ChartLaunchProjector.isSettled(ChartDestination.Browse, MapState()))
+        assertFalse(ChartLaunchProjector.isSettled(ChartDestination.Route(route.id), MapState()))
     }
 
     @Test
@@ -46,7 +46,7 @@ class ChartLauncherIntegrationContractTest {
         assertEquals(1, results.size)
         assertEquals(ChartSearchKind.ROUTE, results.single().kind)
         assertEquals(route.name, results.single().title)
-        assertEquals(ChartLaunchTarget.Route(route.id), ChartDestinations.parse(results.single().token))
+        assertEquals(ChartDestination.Route(route.id), ChartDestinations.parse(results.single().token))
 
         val chinese = ChartSearchProjection.search(MapState(places = listOf(place), savedRoutes = listOf(route)), "锚地")
         assertEquals(place.id, chinese.single().sourceId)
