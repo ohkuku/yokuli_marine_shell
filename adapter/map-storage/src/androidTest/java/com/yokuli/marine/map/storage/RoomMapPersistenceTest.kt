@@ -221,4 +221,61 @@ class RoomMapPersistenceTest {
             }
         }
     }
+
+    @Test
+    fun versionTwoRoutesMigrateWithoutInventingSpeedOrLosingIdentity() {
+        val databaseName = "map-library-route-migration-${System.nanoTime()}.db"
+        migrationHelper.createDatabase(databaseName, 2).apply {
+            execSQL("INSERT INTO library_metadata(`key`, revision) VALUES (0, 12)")
+            execSQL(
+                "INSERT INTO route_drafts(id, revision, name, plannedSpeedKnots) VALUES (?, ?, ?, ?)",
+                arrayOf<Any?>("legacy-draft", 4L, "旧草稿", 0.0),
+            )
+            execSQL(
+                "INSERT INTO route_draft_points(draftId, position, latitude, longitude) VALUES (?, ?, ?, ?)",
+                arrayOf<Any?>("legacy-draft", 0, -36.8, 174.7),
+            )
+            execSQL(
+                "INSERT INTO saved_routes(id, revision, name, plannedSpeedKnots, sourceDraftId, sourceDraftRevision) VALUES (?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>("legacy-route", 6L, "旧计划", 0.0, "legacy-draft", 4L),
+            )
+            execSQL(
+                "INSERT INTO saved_route_points(routeId, position, latitude, longitude, sourcePlaceId, sourcePlaceRevision) VALUES (?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>("legacy-route", 0, -36.8, 174.7, null, null),
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(databaseName, 3, true, MIGRATION_2_3).use { migrated ->
+            migrated.query(
+                "SELECT notes, basePlanId, basePlanRevision, nextWaypointOrdinal, plannedSpeedKnots FROM route_drafts WHERE id = 'legacy-draft'",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("", cursor.getString(0))
+                assertTrue(cursor.isNull(1))
+                assertTrue(cursor.isNull(2))
+                assertEquals(2, cursor.getInt(3))
+                assertEquals(0.0, cursor.getDouble(4), 0.0)
+            }
+            migrated.query(
+                "SELECT waypointId FROM route_draft_points WHERE draftId = 'legacy-draft' AND position = 0",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("legacy-draft-waypoint-1", cursor.getString(0))
+            }
+            migrated.query(
+                "SELECT notes, plannedSpeedKnots FROM saved_routes WHERE id = 'legacy-route'",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("", cursor.getString(0))
+                assertEquals(0.0, cursor.getDouble(1), 0.0)
+            }
+            migrated.query(
+                "SELECT waypointId FROM saved_route_points WHERE routeId = 'legacy-route' AND position = 0",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("legacy-route-waypoint-1", cursor.getString(0))
+            }
+        }
+    }
 }
