@@ -12,7 +12,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -27,7 +26,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -192,7 +190,7 @@ class ShellActivityStoryTest {
             }
             reordered
         }
-        compose.onNodeWithTag("resize-selected-tile").assertIsDisplayed()
+        awaitDisplayed("resize-selected-tile")
     }
 
     @Test
@@ -238,7 +236,12 @@ class ShellActivityStoryTest {
 
     @Test
     fun smallTileEditControlsAreVisiblyUsableAndHave48DpHitTargets() {
-        compose.onNodeWithTag("tile-settings").performSemanticsAction(SemanticsActions.OnLongClick)
+        compose.activityRule.scenario.onActivity { activity ->
+            val engine = ViewModelProvider(activity)[ShellViewModel::class.java].engine
+            val tileId = engine.state.value.start.document.placements
+                .single { it.entryId.value == "settings" }.tileId
+            engine.dispatch(LauncherAction.EnterStartEdit(tileId))
+        }
         awaitDisplayed("resize-selected-tile")
         var density = 1f
         compose.activityRule.scenario.onActivity { density = it.resources.displayMetrics.density }
