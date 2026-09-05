@@ -117,6 +117,8 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("wp-page-title-chart").assertDoesNotExist()
         compose.onNodeWithTag("map-root-command-bar").assertIsDisplayed()
         compose.onNodeWithTag("chart-surface-maplibre").assertIsDisplayed()
+        compose.onNodeWithTag("map-position-truth").assertIsDisplayed()
+        compose.onNodeWithTag("map-position-follow").assertDoesNotExist()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("start-screen")
