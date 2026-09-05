@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "phase": "WP8_CHART_COMPLETION",
+  "package": "C08",
+  "branch": "codex/shell-map-contract",
+  "baselineSha": "015b4798eb725afbdd55bf8e96e1175aaf51b590",
+  "implementationCandidateSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+  "cumulativeVerifiedSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+  "status": "VERIFIED_LOCAL",
+  "gpxVersion": "1.1",
+  "streamingAndBounded": true,
+  "previewBeforeMutation": true,
+  "duplicateRequiresExplicitCopy": true,
+  "segmentedTracksReadOnly": true,
+  "roomSchemaVersion": 4,
+  "unknownExtensionsPreserved": false,
+  "focusedGate": {
+    "pythonTests": 6,
+    "domainJvmTests": 11,
+    "coordinatorJvmTests": 5,
+    "rendererJvmTests": 1,
+    "gpxUiDeviceTests": 2,
+    "deviceApi": 34
+  },
+  "cumulativeGate": {
+    "status": "PASSED",
+    "pythonTests": 196,
+    "jvmXmlTests": 323,
+    "gradleTasks": 1207,
+    "offlinePackageAndRendererDeviceTests": 15,
+    "appShellDeviceTests": 51,
+    "roomDeviceTests": 7,
+    "debugApkSha256": "396ac0dc8299974828be79e90401da36a1ca06fab688c5da746777fe94e55886",
+    "unsignedReleaseApkSha256": "668d56587bf95a0a46b2ce3995e73c38e57cbac26fe2c06431a902379fea0b3f"
+  },
+  "hostedCi": "PENDING_FINAL_C12_SAME_SHA_GATE",
+  "nextPermittedPackageAfterGate": "C09"
+}

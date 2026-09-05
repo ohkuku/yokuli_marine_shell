@@ -178,3 +178,11 @@ Red 首先固定 raster PNG/JPEG 的 tables/views、缺推荐 metadata 推导、
 第一轮自查修正 Kotlin 编译问题、旧合同错误强制 WebP，以及 XYZ 归一化后仍沿用导入前摘要的身份错误。第二轮反证覆盖三个 journal checkpoint、复制写满、同字节去重、同名隔离、空包/重复 metadata/超限文本/编码矛盾、renderer lease、版本回退与损坏 manifest 可见性。Unknown 只表示事实未知或用户声明，不被写成官方核验。
 
 冻结点 `cc1b598343b3dd9cd4ed43c43d43ae76b276c90b` 的累计 Host Gate 通过 190 条 Python 合同、300 个 JVM XML 测试和 1151 个 Gradle tasks；API 34 上离线包/renderer 15、Room 6、Shell 49 全部通过。Debug/unsigned Release hash 分别为 `9a52af6c7c88627c600b3d5260466ea95095f69e93e36525c223bc0587f04238` 与 `63cd91ffd9c70c518061fe1598b0732ce84c1a572247f5768313acece833a24b`。C07 标记 `VERIFIED_LOCAL`，只允许进入 C08；GPX、覆盖/来源、实时观测和动态 Shell 摘要没有提前宣称。
+
+## C08｜GPX 1.1 互操作与只读分段轨迹
+
+Red 先固定受限流式解析、预览后确认、重复摘要显式副本、wpt/rte/trk 类型映射、分段身份、Room v4 和 SAF/FileProvider 真实状态。实现保留地点、正式路线和只读轨迹三种语义；单点路线、空批次、未知扩展和超过资源预算都不会被包装成成功。只有一个 durable batch ack 后才报告导入完成。
+
+两轮反证补齐 DTD/外部实体防护、独立 XML parser 往返、200k 点预算、日期线 bounds、中立 fallback 名称、分段 GeoJSON 和原始点不被 LOD 修改。累计设备 Gate 还真实暴露后台轨迹抽稀后 MapLibre mutation 可能留在测试工作线程；先加失败合同，再把所有 source mutation 显式切回 Main，并在 style 失效时丢弃旧结果。
+
+冻结点 `d711ac843391622e26a3b2077e124f206c9f90dd` 的累计 Host Gate 通过 196 条 Python 合同、323 个 JVM XML tests 和 1207 个 Gradle tasks；API 34 上离线 renderer/包 15、Room 7、Shell 51 全部通过。Debug/unsigned Release hash 分别为 `396ac0dc8299974828be79e90401da36a1ca06fab688c5da746777fe94e55886` 与 `668d56587bf95a0a46b2ce3995e73c38e57cbac26fe2c06431a902379fea0b3f`。C08 标记 `VERIFIED_LOCAL`，只允许进入 C09；来源下载、沿线覆盖、只读位置观测和动态 Shell 磁贴尚未提前宣称。

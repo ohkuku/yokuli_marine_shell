@@ -363,7 +363,7 @@
         "MAP-R09",
         "MAP-R18"
       ],
-      "status": "TODO",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C08",
       "acceptanceScenarioIds": [
         "C08-T01",
@@ -374,8 +374,12 @@
         "C08-T06",
         "C08-T07"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+      "evidence": [
+        "C08 Red/Green and adversarial audits cover bounded GPX 1.1 parsing, non-mutating preview, explicit duplicate copy, one durable batch and truthful SAF/share states",
+        "Segmented imported tracks retain source points and identities while display LOD runs off-main and all MapLibre mutations are main-thread confined",
+        "Cumulative C00-C08 gate passed: 196 Python contracts, 323 JVM XML tests, 1207 Gradle tasks and 73 API 34 device tests"
+      ]
     },
     {
       "id": "C09",
@@ -1278,11 +1282,11 @@
       "given": "含wpt/rte/trk/trkseg的GPX1.1",
       "when": "导入预览并选择确认",
       "then": "类型映射正确；未确认无写入",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/GpxInterchangeTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/GpxImportCoordinatorTest.kt",
+      "command": "./gradlew :core:map-domain:test :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+      "evidence": ["Mixed wpt/rte/trk input is previewed without mutation; selected supported objects enter one durable ImportGpxBatch only after explicit confirmation"]
     },
     {
       "id": "C08-T02",
@@ -1290,11 +1294,11 @@
       "given": "同GPX重复选择",
       "when": "取消或显式作为副本导入",
       "then": "取消零变更；重复提醒；副本有新稳定ID",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/GpxImportCoordinatorTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+      "evidence": ["Digest collision blocks ordinary confirm; cancel dispatches no mutation; ImportAsCopy creates fresh IDs and waits for durable revision acknowledgement"]
     },
     {
       "id": "C08-T03",
@@ -1302,11 +1306,11 @@
       "given": "至少两段轨迹且中间明显缺口",
       "when": "显示和导出",
       "then": "不跨缺口连线，仍为trk/trkseg而非rte",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/test/java/com/yokuli/marine/map/offline/ImportedTrackRenderingTest.kt; core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/GpxInterchangeTest.kt",
+      "command": "./gradlew :adapter:map-offline:testDebugUnitTest :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+      "evidence": ["Each trkseg becomes a separate GeoJSON feature and the independent writer/parser round-trip retains trk/trkseg without emitting rte"]
     },
     {
       "id": "C08-T04",
@@ -1314,11 +1318,11 @@
       "given": "中文/缺可选字段/时间时区/未知extensions",
       "when": "导入导出并独立解析",
       "then": "支持字段精度顺序保真；不承诺未知字段无损",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/GpxInterchangeTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/GpxWorkspaceStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+      "evidence": ["UTF-8 names, elevation, UTC time, coordinate order and segment order round-trip; UI explicitly says unknown extensions are not retained"]
     },
     {
       "id": "C08-T05",
@@ -1326,11 +1330,11 @@
       "given": "DTD/XXE/XML bomb/过深/巨大文本/非法坐标",
       "when": "流式解析",
       "then": "不外网、不读外部文件，有界明确失败",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/GpxInterchangeTest.kt; core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/GpxInterchange.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+      "evidence": ["DOCTYPE is rejected before SAX, external entity and DTD resolution are disabled, and depth/text/NaN/out-of-range fixtures fail explicitly"]
     },
     {
       "id": "C08-T06",
@@ -1338,11 +1342,11 @@
       "given": "大GPX或超过点数预算",
       "when": "导入/查看/取消",
       "then": "无OOM/主线程长卡；超限不静默截断成功",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/GpxInterchangeTest.kt; adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/OfflineMarineChartSurface.kt",
+      "command": "./gradlew :core:map-domain:test :adapter:map-offline:testDebugUnitTest :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+      "evidence": ["Point/file/route/text budgets reject rather than truncate; 100001-point source stays immutable while display LOD runs off-main and MapLibre mutation returns to main"]
     },
     {
       "id": "C08-T07",
@@ -1350,11 +1354,11 @@
       "given": "SAF导出取消/撤权/写满",
       "when": "生成并写目标或分享",
       "then": "生成、保存、分享状态区分；不假报成功",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/GpxWorkspaceStoryTest.kt",
+      "command": "./gradlew :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "d711ac843391622e26a3b2077e124f206c9f90dd",
+      "evidence": ["Null SAF target is Cancelled; any open/write exception is WriteFailed; success and ShareOffered are distinct, and ShareOffered claims only that the chooser opened"]
     },
     {
       "id": "C09-T01",
