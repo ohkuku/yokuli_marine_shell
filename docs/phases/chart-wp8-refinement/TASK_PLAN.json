@@ -237,7 +237,7 @@
         "MAP-R05",
         "MAP-R06"
       ],
-      "status": "TODO",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C04",
       "acceptanceScenarioIds": [
         "C04-T01",
@@ -249,8 +249,12 @@
         "C04-T07",
         "C04-T08"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+      "evidence": [
+        "C04 Red contracts cover independent WGS84 samples, ambiguity, coordinate parsing, dateline rendering, reversible editing, final-drop semantics and conversion isolation",
+        "C04 focused repository, JVM and API 34 journeys passed, including truthful point-candidate actions and square-safe coordinate entry",
+        "Cumulative C00-C04 gate passed: 175 Python contracts, 271 JVM XML tests, 1207 Gradle tasks and 55 API 34 device tests"
+      ]
     },
     {
       "id": "C05",
@@ -866,11 +870,11 @@
       "given": "独立参考坐标与已知WGS84距离",
       "when": "逆算短/长段、赤道一度",
       "then": "距离与起始真方位按容差匹配，非自己生成golden",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/Wgs84GeodesicTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASSED",
+      "verifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+      "evidence": ["GeographicLib WGS84 inverse matches the equatorial 1 degree official value and independent short/long samples within explicit tolerances"]
     },
     {
       "id": "C04-T02",
@@ -878,11 +882,11 @@
       "given": "相同点和近对跖点",
       "when": "计算距离/方向",
       "then": "零距方向为未定义；难例不NaN或伪装唯一方向",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/Wgs84GeodesicTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASSED",
+      "verifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+      "evidence": ["Coincident and multiply-directed antipodal samples return finite distance with undefined bearing instead of NaN or a steering claim"]
     },
     {
       "id": "C04-T03",
@@ -890,11 +894,11 @@
       "given": "跨日期线或高纬合法点",
       "when": "绘制和fit范围",
       "then": "短跨界不横穿世界；数据不被Mercator裁掉",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/DatelineGeometryTest.kt; adapter/map-offline/src/test/java/com/yokuli/marine/map/offline/PointDragContractTest.kt",
+      "command": "./gradlew :core:map-domain:test :adapter:map-offline:testDebugUnitTest",
+      "result": "PASSED",
+      "verifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+      "evidence": ["Dateline geometry splits into short parts, fit uses minimal longitude bounds, legal high-latitude model points survive, and rendering uses a bounded screen-error budget"]
     },
     {
       "id": "C04-T04",
@@ -902,11 +906,11 @@
       "given": "十进制度/度分小数/半球字符串",
       "when": "解析及格式往返",
       "then": "精度保留；分>=60、符号冲突、非有限数明确拒绝",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/CoordinateCodecTest.kt; adapter/map-offline/src/test/java/com/yokuli/marine/map/offline/PointDragContractTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :adapter:map-offline:testDebugUnitTest :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+      "evidence": ["DD/DMM round trips, field errors, negative zero, nonfinite/range/conflict rejection and GeoJSON longitude-latitude ordering are directly tested"]
     },
     {
       "id": "C04-T05",
@@ -914,11 +918,11 @@
       "given": "零/一/二/多测量点",
       "when": "逐步放点并移动任意点",
       "then": "下一步明确，实际距离/方位/累计正确",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MeasurementEditingTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+      "evidence": ["The UI journey verifies real segment and total results, true-bearing labeling, selected-point movement and precise coordinate replacement"]
     },
     {
       "id": "C04-T06",
@@ -926,11 +930,11 @@
       "given": "已确认测量编辑",
       "when": "插删移和undo/redo/clear",
       "then": "可逆语义正确，临时测量不污染地点或路线",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MeasurementEditingTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+      "evidence": ["Insert/delete/move/clear and undo/redo are reversible confirmed edits; point-candidate save does not pollute measurement state"]
     },
     {
       "id": "C04-T07",
@@ -938,11 +942,11 @@
       "given": "最后一帧handle坐标变化",
       "when": "立即drop/取消/切视口",
       "then": "drop使用最终合法坐标；取消不残留半提交",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MeasurementEditingTest.kt; adapter/map-offline/src/test/java/com/yokuli/marine/map/offline/PointDragContractTest.kt",
+      "command": "./gradlew :core:map-domain:test :adapter:map-offline:testDebugUnitTest",
+      "result": "PASSED",
+      "verifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+      "evidence": ["Gesture identity, last-UP coordinate, cancellation and viewport changes prevent stale or half-committed edits"]
     },
     {
       "id": "C04-T08",
@@ -950,11 +954,11 @@
       "given": "已有测量与不同草稿",
       "when": "转换路线后分别编辑",
       "then": "坐标值复制而非共享可变列表；原稿不丢",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MeasurementEditingTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASSED",
+      "verifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+      "evidence": ["Measurement-to-route conversion copies coordinate values into a distinct draft without mutating the original measurement"]
     },
     {
       "id": "C05-T01",

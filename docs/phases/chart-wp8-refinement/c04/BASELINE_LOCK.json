@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "phase": "WP8_CHART_COMPLETION",
+  "package": "C04",
+  "branch": "codex/shell-map-contract",
+  "baselineSha": "7cf15b3e53ae9229b98fe87d827428943cde651d",
+  "implementationCandidateSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+  "cumulativeVerifiedSha": "c15d3d17f832608b328d8722f475ff5fed694e59",
+  "status": "VERIFIED_LOCAL",
+  "geodesicLibrary": "net.sf.geographiclib:GeographicLib-Java:2.1",
+  "wgs84DistanceAndInitialTrueBearing": true,
+  "coincidentAndAntipodalAmbiguityHandled": true,
+  "sourceCoordinatesSeparateFromMercatorDisplayClamp": true,
+  "decimalDegreesAndDmmInput": true,
+  "datelineSafeGeodesicRendering": true,
+  "geoJsonLongitudeLatitudeBoundaryTested": true,
+  "zoomAwareScreenErrorBudget": true,
+  "measurementPointEditingAndHistory": true,
+  "measurementConversionCopiesCoordinates": true,
+  "focusedGate": {
+    "pythonTests": 4,
+    "mapDomainOfflineAdapterAndChartJvm": "PASSED",
+    "appShellC04DeviceStories": 3,
+    "deviceApi": 34
+  },
+  "cumulativeGate": {
+    "status": "PASSED",
+    "pythonTests": 175,
+    "jvmXmlTests": 271,
+    "gradleTasks": 1207,
+    "offlineRendererDeviceTests": 6,
+    "appShellDeviceTests": 45,
+    "roomDeviceTests": 4,
+    "debugApkSha256": "32e091c2a27810cfd053305ada2e3bf3edb0c7973e3e1cf3a9ec2e2c40ea4850",
+    "unsignedReleaseApkSha256": "01aaa18ad1adb890171ebfdecea0a8f4e6d0ed08cb4637f73e725d399935fb49"
+  },
+  "nextPermittedPackageAfterGate": "C05"
+}

@@ -142,3 +142,11 @@ C02 恢复为 `VERIFIED_LOCAL`。它证明单一离线 renderer、相机协议�
 第一次累计 Python Gate 有 5 条旧合同失败：两条读取已删除的 `ChartUiContract.kt`，一条仍要求旧 Activity story 名，两条把旧 UI 形态或内部路线草稿字段当成 Stage 1 发布表面。修正只迁移测试真值来源和 device runner 名称，没有恢复废弃文件，也没有删除 Map App 内部规划模型。171 条 Python 合同与 CI 拓扑随后全绿。
 
 冻结点 `56f2abb049a82b71f222548760f4b5511a793928` 的累计结果：全仓 test/lint/Standalone Debug+Release 共 1151 tasks；XML 汇总 248 JVM tests；API 34 的 Shell 43、真实 renderer 6、Room 4 全部通过。Debug APK hash 为 `a222156a38e3bf7fbbd80d4dd386c5507fb1eb14a8bc4e96a971c241115e53c3`，unsigned Release hash 为 `5223becdb806b7986cbef92b0b2d03e9adb380cf1f69743b40de84c3edfb68a7`。C03 标记 `VERIFIED_LOCAL`，只允许进入 C04。
+
+## C04｜WGS84 选点、测量与编辑
+
+Red 先冻结独立 WGS84 参考值、同点/多解对跖语义、日期线/高纬边界、DD/DMM 输入、三点任意编辑、最终 drop、转换隔离与 GeoJSON 轴序。实现使用 GeographicLib Java 2.1 统一距离、起始真方位和 renderer 大地线；合法 `±90°` 模型坐标不被 Web Mercator 相机裁剪写回。测量提供 0/1/2+ 真实反馈、任意点移动/插删、精确准星、坐标输入、undo/redo、clear、fit 和复制式转路线。
+
+自查逐项修复了测量模式保存候选污染测量、最后 `UP` 坐标漏提交、含冒号 route ID、方屏英文按钮溢出、恢复回调迁移以及固定 25km 加密缺少显式屏幕误差预算。最终绘制密度按 zoom/纬度计算约 0.75px 弓高目标并限制 500m–25km，只影响显示采样，不降低 WGS84 数学精度。
+
+冻结点 `c15d3d17f832608b328d8722f475ff5fed694e59` 的完整 Host Gate 通过 175 条 Python 合同、271 个 JVM XML 测试与 1207 个 Gradle tasks；API 34 上 MapLibre 6、Room 4、Shell 45 全部通过。Debug/unsigned Release hash 分别为 `32e091c2a27810cfd053305ada2e3bf3edb0c7973e3e1cf3a9ec2e2c40ea4850` 与 `01aaa18ad1adb890171ebfdecea0a8f4e6d0ed08cb4637f73e725d399935fb49`。C04 标记 `VERIFIED_LOCAL`，只允许进入 C05；地点库、正式路线及后续能力没有提前宣称。
