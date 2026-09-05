@@ -362,19 +362,24 @@ private fun WpTile(
     val latestMove by rememberUpdatedState(onMove)
     val latestMoveCommit by rememberUpdatedState(onMoveCommit)
     val latestMoveCancel by rememberUpdatedState(onMoveCancel)
-    val dragModifier = Modifier.pointerInput(entry.descriptor.entryId, isSmall, canResize) {
+    val dragModifier = Modifier.pointerInput(entry.descriptor.entryId, width, height, isSmall, canResize) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             val editControlPx = with(density) { YokuliMetrics.MinTouch.toPx() }
+            val editExclusionPx = editControlPx + with(density) {
+                (if (isSmall) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset).toPx()
+            }
+            val tileWidthPx = with(density) { width.toPx() }
+            val tileHeightPx = with(density) { height.toPx() }
             val inEditControls = if (latestEditing && latestSelected) {
                 if (isSmall) {
-                    (down.position.x <= editControlPx && down.position.y <= editControlPx) ||
-                        (canResize && down.position.x >= size.width - editControlPx &&
-                            down.position.y >= size.height - editControlPx)
+                    (down.position.x <= editExclusionPx && down.position.y <= editExclusionPx) ||
+                        (canResize && down.position.x >= tileWidthPx - editExclusionPx &&
+                            down.position.y >= tileHeightPx - editExclusionPx)
                 } else {
-                    down.position.x >= size.width - editControlPx &&
-                        (down.position.y <= editControlPx ||
-                            (canResize && down.position.y >= size.height - editControlPx))
+                    down.position.x >= tileWidthPx - editExclusionPx &&
+                        (down.position.y <= editExclusionPx ||
+                            (canResize && down.position.y >= tileHeightPx - editExclusionPx))
                 }
             } else false
             if (inEditControls) return@awaitEachGesture

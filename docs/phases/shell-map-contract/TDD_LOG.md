@@ -33,3 +33,9 @@
 - App-owned Compose SPI and installation registry unit tests pass; Chart and Settings now provide exact size-specific renderers from their own feature modules.
 - First API 34 Activity run intentionally failed all three new stories. Review found two incorrect test assumptions: wide and standard tiles share height, and the drag target crossed only one packed row. Assertions now compare width and cross two rows.
 - The compact-tile unpin path is being retested with an actual pointer click on the unmerged child target, not a direct semantics action. It remains unverified until that device run passes.
+
+## 2026-09-05 — Compact edit hit-test Red
+
+- The corrected API 34 run passed same-gesture long-press reorder and direct one-tap resize.
+- It exposed one real remaining defect: after resizing Settings from 1x1 to 2x1, the visible 48dp unpin control did not receive an injected pointer click even though its semantics action existed.
+- The selected-tile drag detector had inferred edit-control bounds from its modifier-local `size`, while the controls are laid out from the tile's declared WP geometry inside a content inset. It now excludes the exact declared tile edge plus its inset from drag capture.
