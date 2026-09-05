@@ -144,6 +144,17 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertIn("LauncherAction.ShowDesktop", view_model)
         self.assertIn("InMemoryLauncherPersistence(defaultStartDocument)", view_model)
 
+    def test_hosted_benchmark_timeout_reports_runtime_state_instead_of_only_a_missing_tag(self):
+        benchmark = self.text(
+            "benchmark/shell/src/main/java/com/yokuli/marine/benchmark/shell/ShellMacrobenchmark.kt"
+        )
+        activity = self.text("app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt")
+        self.assertIn('testTag("shell-host")', activity)
+        self.assertIn("currentPackageName", benchmark)
+        self.assertIn('executeShellCommand("dumpsys activity activities")', benchmark)
+        self.assertIn("visibleTags=", benchmark)
+        self.assertIn("androidRuntime=", benchmark)
+
     def test_generated_profiles_do_not_reference_removed_motion_contracts(self):
         for name in ("baseline-prof.txt", "startup-prof.txt"):
             profile = self.text(f"app-shell/src/main/generated/baselineProfiles/{name}")

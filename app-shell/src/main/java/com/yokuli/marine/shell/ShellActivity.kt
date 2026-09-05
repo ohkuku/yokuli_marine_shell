@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.view.WindowCompat
@@ -319,6 +320,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             val transitionTarget = engineState.motionTarget()
             Column(
                 Modifier.fillMaxSize().background(colors.background)
+                    .testTag("shell-host")
                     .semantics { testTagsAsResourceId = true },
             ) {
                 Box(Modifier.weight(1f)) {

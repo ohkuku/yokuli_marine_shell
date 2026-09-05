@@ -32,6 +32,17 @@ private const val EXTRA_TILE_COUNT = "com.yokuli.marine.shell.lab.TILE_COUNT"
 private const val EXTRA_VIEWPORT_DP = "com.yokuli.marine.shell.lab.VIEWPORT_DP"
 private const val EXTRA_PREPARE_BENCHMARK_START = "com.yokuli.marine.shell.PREPARE_BENCHMARK_START"
 private const val WAIT_MILLIS = 20_000L
+private val DIAGNOSTIC_TAGS = listOf(
+    "shell-host",
+    "start-screen",
+    "launcher-restoring",
+    "launcher-recovery",
+    "all-apps-list",
+    "shell-search-surface",
+    "launcher-recents",
+    "chart-workspace-browse",
+    "settings-overview-list",
+)
 
 /**
  * 中文：CI 模拟器结果只用于发现趋势；真机 60/90/120 Hz 与三星方屏仍需人工验证。
@@ -273,9 +284,36 @@ class ShellMacrobenchmark {
 
     private fun UiDevice.awaitTag(tag: String): UiObject {
         val tagged = findObject(UiSelector().resourceId(tag))
-        require(tagged.waitForExists(WAIT_MILLIS)) { "Timed out waiting for Compose tag: $tag" }
+        if (!tagged.waitForExists(WAIT_MILLIS)) {
+            val visibleTags = DIAGNOSTIC_TAGS.filter { candidate ->
+                findObject(UiSelector().resourceId(candidate)).exists()
+            }
+            val resumed = executeShellCommand("dumpsys activity activities")
+                .lineSequence()
+                .filter { line ->
+                    line.contains("mResumedActivity") || line.contains("topResumedActivity")
+                }
+                .take(3)
+                .joinToString(" | ")
+                .compactEvidence(500)
+            val targetPid = executeShellCommand("pidof $TARGET_PACKAGE").trim().ifEmpty { "none" }
+            val androidRuntime = executeShellCommand("logcat -d -t 80 AndroidRuntime:E '*:S'")
+                .lineSequence()
+                .toList()
+                .takeLast(12)
+                .joinToString(" | ")
+                .compactEvidence(900)
+            throw IllegalArgumentException(
+                "Timed out waiting for Compose tag: $tag; " +
+                    "currentPackage=$currentPackageName; targetPid=$targetPid; " +
+                    "visibleTags=$visibleTags; resumed=$resumed; androidRuntime=$androidRuntime",
+            )
+        }
         return tagged
     }
+
+    private fun String.compactEvidence(limit: Int): String =
+        replace(Regex("\\s+"), " ").trim().take(limit).ifEmpty { "none" }
 
     private fun UiObject.longPress() {
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
