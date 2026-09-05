@@ -260,6 +260,7 @@ jobs:
           script: |
             adb wait-for-device
             bash .github/scripts/run_device_tests.sh all
+            bash .github/scripts/run_c12_process_restore.sh
       - name: Expose instrumented test failures
         if: failure()
         run: python3 .github/scripts/report_android_test_failures.py

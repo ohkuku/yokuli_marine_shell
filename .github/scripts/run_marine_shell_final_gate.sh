@@ -35,12 +35,13 @@ bash .github/scripts/test-release-product-surface.sh
 
 if [[ "$mode" == "--with-device" ]]; then
   bash .github/scripts/run_device_tests.sh all
+  bash .github/scripts/run_c12_process_restore.sh
   bash .github/scripts/run_device_tests.sh performance
   "$python_bin" .github/scripts/summarize_stage11_performance.py \
     --search benchmark/shell/build \
     --output build/marine-shell-final-correction/performance-summary.json \
     --require-journeys
-  printf 'MARINE_SHELL_FINAL_GATE=MACHINE_VERIFIED\n'
+  printf 'MARINE_SHELL_FINAL_GATE=MACHINE_VERIFIED CHART_C12_GATE=CORE_MACHINE_READY\n'
 else
   printf 'MARINE_SHELL_FINAL_GATE=HOST_GATE_PASS device_stories=NOT_RUN_BY_THIS_INVOCATION\n'
 fi
