@@ -120,4 +120,37 @@ class RoomMapPersistenceTest {
         )
         assertTrue(futureBytes.contentEquals(future.second))
     }
+
+    @Test
+    fun durableLibraryReopensWithTheSameIdsAndRevisions() = runBlocking {
+        val databaseName = "map-library-reopen-${System.nanoTime()}.db"
+        val firstSessionFile = File(context.cacheDir, "map-session-reopen-a-${System.nanoTime()}.pb")
+        val secondSessionFile = File(context.cacheDir, "map-session-reopen-b-${System.nanoTime()}.pb")
+        val point = GeoPoint(-41.2866, 174.7756)
+        val expected = MapLibrarySnapshot(
+            revision = 19L,
+            places = listOf(SavedPlace("place-after-kill", "Wellington", point, revision = 8L)),
+            routeDrafts = listOf(ManualRouteDraft("draft-after-kill", 11L, "draft", listOf(point))),
+        )
+
+        val firstDatabase = Room.databaseBuilder(context, MapLibraryDatabase::class.java, databaseName).build()
+        val firstScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val firstPersistence = RoomMapPersistence.create(firstSessionFile, firstScope, firstDatabase)
+        assertEquals(19L, firstPersistence.saveLibrary(expected).revision)
+        firstDatabase.close()
+        firstScope.cancel()
+
+        val reopenedDatabase = Room.databaseBuilder(context, MapLibraryDatabase::class.java, databaseName).build()
+        val reopenedScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val reopened = RoomMapPersistence.create(secondSessionFile, reopenedScope, reopenedDatabase)
+        val loaded = reopened.load() as MapLoadResult.Ready
+
+        assertEquals(expected, loaded.library)
+        reopenedDatabase.close()
+        reopenedScope.cancel()
+        context.deleteDatabase(databaseName)
+        firstSessionFile.delete()
+        secondSessionFile.delete()
+        Unit
+    }
 }
