@@ -127,7 +127,7 @@
     <string name="map_redo">重做</string>
     <string name="map_reverse">反转</string>
     <string name="map_save_copy">另存副本</string>
-    <string name="map_charts_title">海图与离线包</string>
+    <string name="map_charts_title">海图与资料</string>
     <string name="map_charts_context">本地资料与来源事实</string>
     <string name="map_routes_title">路线</string>
     <string name="map_routes_context">草稿与已保存路线</string>

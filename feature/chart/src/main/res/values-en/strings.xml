@@ -127,7 +127,7 @@
     <string name="map_redo">redo</string>
     <string name="map_reverse">reverse</string>
     <string name="map_save_copy">save copy</string>
-    <string name="map_charts_title">charts &amp; offline packages</string>
+    <string name="map_charts_title">charts &amp; data</string>
     <string name="map_charts_context">local data and source facts</string>
     <string name="map_routes_title">routes</string>
     <string name="map_routes_context">drafts and saved routes</string>

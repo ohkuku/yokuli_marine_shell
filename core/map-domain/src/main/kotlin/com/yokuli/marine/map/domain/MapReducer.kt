@@ -1495,6 +1495,9 @@ class DefaultMapReducer(
         if (state.libraryLoadState !in setOf(MapLibraryLoadState.READY, MapLibraryLoadState.READY_EMPTY)) {
             return incident(state, MapIncident.LibraryUnavailable)
         }
+        if (batch.places.isEmpty() && batch.routes.isEmpty() && batch.tracks.isEmpty()) {
+            return incident(state, MapIncident.ActionRejected)
+        }
         val collides = batch.places.any { incoming -> state.places.any { it.id == incoming.id } } ||
             batch.routes.any { incoming -> state.savedRoutes.any { it.id == incoming.id } } ||
             batch.tracks.any { incoming -> state.importedTracks.any { it.id == incoming.id } } ||

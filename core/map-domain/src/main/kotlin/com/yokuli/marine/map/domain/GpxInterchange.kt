@@ -353,14 +353,7 @@ private class GpxHandler(private val limits: GpxLimits) : DefaultHandler() {
     }
 
     fun preview(sha256: String, duplicate: Boolean): GpxImportPreview {
-        val bounds = allPoints.takeIf(List<GeoPoint>::isNotEmpty)?.let { points ->
-            GeoBounds(
-                south = points.minOf { it.latitude },
-                west = points.minOf { it.longitude },
-                north = points.maxOf { it.latitude },
-                east = points.maxOf { it.longitude },
-            )
-        }
+        val bounds = allPoints.takeIf(List<GeoPoint>::isNotEmpty)?.let(::minimalBounds)
         return GpxImportPreview(
             sha256 = sha256,
             waypoints = waypoints.toList(),
@@ -423,7 +416,7 @@ object GpxImportPlanner {
             val item = preview.waypoints[index]
             SavedPlace(
                 id = idGenerator.nextId("gpx-place"),
-                name = item.name.ifBlank { "GPX waypoint ${index + 1}" },
+                name = item.name.ifBlank { "GPX WPT ${index + 1}" },
                 point = item.point,
                 notes = item.description,
                 createdAtMillis = nowMillis,
@@ -435,7 +428,7 @@ object GpxImportPlanner {
             item.takeIf { it.points.size >= 2 }?.let {
                 SavedRoute(
                     id = idGenerator.nextId("gpx-route"),
-                    name = it.name.ifBlank { "GPX route ${index + 1}" },
+                    name = it.name.ifBlank { "GPX RTE ${index + 1}" },
                     waypoints = it.points.map(GpxWaypoint::point),
                     notes = it.description,
                 )
@@ -445,7 +438,7 @@ object GpxImportPlanner {
             val item = preview.tracks[index]
             ImportedTrack(
                 id = idGenerator.nextId("gpx-track"),
-                name = item.name.ifBlank { "GPX track ${index + 1}" },
+                name = item.name.ifBlank { "GPX TRK ${index + 1}" },
                 description = item.description,
                 segments = item.segments,
                 sourceDigest = preview.sha256,
