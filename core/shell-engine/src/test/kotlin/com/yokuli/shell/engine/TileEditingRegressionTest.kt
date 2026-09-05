@@ -123,7 +123,13 @@ class TileEditingRegressionTest {
     @Test fun randomizedMixedSizesStayDeterministicAndNeverOverlapAfterAnchoredMoves() {
         val random = Random(82741)
         repeat(300) {
-            val entries = (0 until 18).map { tile("tile-$it", MarineTileSize.entries[random.nextInt(6)], it * 1009L) }
+            val entries = (0 until 18).map {
+                tile(
+                    "tile-$it",
+                    MarineTileSize.entries[random.nextInt(MarineTileSize.entries.size)],
+                    it * 1009L,
+                )
+            }
             val source = document(entries.shuffled(random))
             val moving = entries[random.nextInt(entries.size)].tileId
             val anchor = entries.filterNot { it.tileId == moving }.random(random).tileId

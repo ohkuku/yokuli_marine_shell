@@ -52,7 +52,7 @@ class LauncherStage6AdaptiveGridContractTest(unittest.TestCase):
         tests = "\n".join(path.read_text() for path in (ROOT / "core/shell-engine/src/test").rglob("*.kt"))
         for scenario in (
             "mixed marine tiles pack deterministically without overlap",
-            "one durable document repacks for four and six columns",
+            "one durable document repacks for four six and eight columns",
             "only explicit spacer reserves intentional whitespace",
             "seeded mixed documents always remain bounded and collision free",
         ):
