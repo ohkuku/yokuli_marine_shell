@@ -10,7 +10,7 @@
 
 真实资料 fixture 来自 NOAA Chart Display Service 的官方 `ncds_21.mbtiles`。NOAA 明确提供该格式给离线应用；仓库只保留四个未重新编码的 PNG tile 和最小 MBTiles 元数据。完整来源 URL、原包 SHA-256、tile 坐标及每块 SHA-256 见同目录 `NOAA_NCDS_21_SOURCE.json`。该派生样本仅用于渲染验证，不是 NOAA 官方产品，也不得用于满足法规或实际航行需求。
 
-## English
+## English translation
 
 - Production has one interactive map path: MapLibre Native Android `13.4.1`. The Google adapter remains isolated history; `app-shell` neither depends on nor selects it.
 - Local raster packages use MapLibre's implemented `mbtiles://` protocol. A device snapshot proves actual pixels; View existence and style callbacks are not accepted as rendering evidence.

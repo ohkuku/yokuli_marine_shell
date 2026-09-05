@@ -17,10 +17,10 @@
     "pixelTransformation": "none",
     "databaseTransformation": "Copied four tile_data blobs without image re-encoding; rebuilt minimal MBTiles metadata and unique tile index.",
     "tiles": [
-      {"z": 5, "x": 4, "tmsY": 21, "sha256": "f0829eb6363810ecd261ba0af840f883c47d8bc7027d88cb49306a6672f3203b"},
-      {"z": 7, "x": 17, "tmsY": 86, "sha256": "1d6b70fdef0ae4dc1f8c7ce4cb7ac63cf04249643aafc39b09789f8ccdad66a0"},
-      {"z": 10, "x": 139, "tmsY": 685, "sha256": "69482c126dff8338df6abeec6bbe94bcc1e91d9f5650679433f9a5ab9566d472"},
-      {"z": 12, "x": 557, "tmsY": 2741, "sha256": "68a9abb13d0169b3b59e6556c7d20ff207f33ed018394691227017ce0eee3475"}
+      {"z": 5, "x": 4, "tmsY": 21, "sha256": "308be7184abaf11730e156470acac68240d55975ee2701f3b0e8f0ea44d81289"},
+      {"z": 7, "x": 17, "tmsY": 86, "sha256": "11cefcf38db7fb3d6b3bb8fd013ff6c155c3ea8d6af6b7323088b88c31edb196"},
+      {"z": 10, "x": 139, "tmsY": 685, "sha256": "cf308cf3a9b04fbf813e398351f6e7fa540302d11deb969a907cedf72889e6e7"},
+      {"z": 12, "x": 557, "tmsY": 2741, "sha256": "b9bdafb0352254b7d394b991fde7336b4e3c43c402fb625e2d051362306f3469"}
     ]
   }
 }
