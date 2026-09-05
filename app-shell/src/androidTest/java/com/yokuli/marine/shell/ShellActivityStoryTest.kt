@@ -236,7 +236,11 @@ class ShellActivityStoryTest {
 
     @Test
     fun smallTileEditControlsAreVisiblyUsableAndHave48DpHitTargets() {
-        compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
+        compose.onNodeWithTag("tile-settings").performTouchInput {
+            down(center)
+            advanceEventTime(650)
+            up()
+        }
         awaitDisplayed("resize-selected-tile")
         var density = 1f
         compose.activityRule.scenario.onActivity { density = it.resources.displayMetrics.density }
