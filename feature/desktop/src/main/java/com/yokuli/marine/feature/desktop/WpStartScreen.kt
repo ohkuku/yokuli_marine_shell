@@ -51,6 +51,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -100,10 +101,13 @@ private data class LocalTileDrag(
     val targetCell: GridCell,
     val insertionIndex: Int,
     val sourceDocument: StartDocument,
+    val sessionId: Long,
+    val hasMoved: Boolean = false,
     val engineObserved: Boolean = false,
     val finishing: Boolean = false,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun YokuliStartScreen(
     state: LauncherUiState,
@@ -119,11 +123,13 @@ fun YokuliStartScreen(
     val editing = interaction.isEditing()
     val scroll = rememberScrollState()
     val density = LocalDensity.current
+    val touchSlop = LocalViewConfiguration.current.touchSlop
     val latestInteraction by rememberUpdatedState(interaction)
     val latestDocument by rememberUpdatedState(state.document)
     val latestAction by rememberUpdatedState(onAction)
     val revealPulse = remember { Animatable(0f) }
     var localTileDrag by remember { mutableStateOf<LocalTileDrag?>(null) }
+    var nextDragSessionId by remember { mutableStateOf(0L) }
     var viewportCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val tileBounds = remember { mutableStateMapOf<TileInstanceId, Rect>() }
     var feedbackBounds by remember { mutableStateOf<Rect?>(null) }
@@ -132,9 +138,21 @@ fun YokuliStartScreen(
     LaunchedEffect(editing) { onEditModeChanged(editing) }
     LaunchedEffect(interaction, state.document) {
         val local = localTileDrag ?: return@LaunchedEffect
-        if (dragging?.tileId == local.tileId) {
-            localTileDrag = local.copy(engineObserved = true)
-        } else if (local.engineObserved || local.finishing) {
+        when {
+            local.sourceDocument != state.document -> {
+                localTileDrag = null
+                if (!local.finishing && dragging?.tileId == local.tileId) latestAction(LauncherUiAction.CancelTileOperation)
+            }
+            dragging?.tileId == local.tileId && dragging.pointerId == local.pointerId ->
+                localTileDrag = local.copy(engineObserved = true)
+            local.engineObserved || local.finishing -> localTileDrag = null
+        }
+    }
+    LaunchedEffect(localTileDrag?.finishing) {
+        val local = localTileDrag ?: return@LaunchedEffect
+        // StateFlow can conflate a no-op Begin/Drop back into the same EditIdle state.
+        // No changed document needs acknowledgement in this case; do not leave a ghost drag.
+        if (local.finishing && local.insertionIndex == AdaptiveTilePacker.insertionIndexOf(local.sourceDocument, local.tileId)) {
             localTileDrag = null
         }
     }
@@ -157,9 +175,7 @@ fun YokuliStartScreen(
         val availableHeightPx = with(density) { maxHeight.toPx().roundToInt() }
         if (availableWidthPx <= 0 || availableHeightPx <= 0) return@BoxWithConstraints
         val geometry = remember(availableWidthPx, availableHeightPx, density.density, density.fontScale) {
-            WpStartGeometryCalculator.calculate(
-                StartViewport(availableWidthPx, availableHeightPx, density.density, 0, 0, density.fontScale),
-            )
+            WpStartGeometryCalculator.calculate(StartViewport(availableWidthPx, availableHeightPx, density.density, 0, 0, density.fontScale))
         }
         val cell = with(density) { geometry.smallCellPx.toDp() }
         val seam = with(density) { geometry.seamPx.toDp() }
@@ -174,14 +190,14 @@ fun YokuliStartScreen(
         val renderDrag = localTileDrag?.takeIf {
             it.sourceDocument == state.document && (dragging?.tileId == it.tileId || !it.engineObserved)
         }
-        // Keep the scroll extent stable while a preview briefly packs more tightly than the committed grid.
+        // A tighter preview cannot clamp away the scroll range under the accepted finger.
         val rows = if (renderDrag != null) max(packedDocument.documentHeightRows, visualPackedDocument.documentHeightRows)
             else visualPackedDocument.documentHeightRows
         val gridHeight = if (rows == 0) 0.dp else cell * rows + seam * (rows - 1)
         val selectedPlacement = packedDocument.tiles.firstOrNull { it.entry.tileId == selectedTile }
         val selectedEntry = selectedPlacement?.entry?.entryId?.let(byId::get)
         val selectedBounds = selectedTile?.let(tileBounds::get)
-        val compact = selectedPlacement?.entry?.size == MarineTileSize.ICON_1X1
+        val compact = selectedPlacement?.entry?.size?.let { it.columns == 1 && it.rows == 1 } == true
         val controls = if (editing && localTileDrag == null && selectedBounds != null) {
             TileEditControlGeometry.resolve(
                 selectedBounds.toEditRect(), availableWidthPx.toFloat(),
@@ -191,32 +207,37 @@ fun YokuliStartScreen(
         } else null
         val latestControls by rememberUpdatedState(controls)
 
-        fun updateDrag(position: Offset? = null) {
-            val current = localTileDrag ?: return
+        fun updateDrag(sessionId: Long, position: Offset? = null) {
+            val current = localTileDrag?.takeIf { it.sessionId == sessionId } ?: return
             if (current.finishing || current.sourceDocument != latestDocument) return
             val coordinates = position?.let { current.coordinates.movedTo(ShellOffset(it.x, it.y)) } ?: current.coordinates
+            val hasMoved = current.hasMoved || coordinates.hasMovedBeyond(touchSlop)
+            if (!hasMoved) {
+                localTileDrag = current.copy(coordinates = coordinates)
+                return
+            }
             val offset = coordinates.contentOffset(scroll.value.toFloat())
             val target = hysteresis.resolve(current.originCell, offset, pitchPx, current.targetCell)
             val index = AdaptiveTilePacker.insertionIndexForCell(current.sourceDocument, geometry.columns, target, current.tileId)
-            localTileDrag = current.copy(coordinates = coordinates, targetCell = target, insertionIndex = index)
+            localTileDrag = current.copy(coordinates = coordinates, hasMoved = true, targetCell = target, insertionIndex = index)
             if (index != current.insertionIndex) latestAction(LauncherUiAction.InsertionTargetChanged(current.tileId, index))
         }
-        val latestUpdateDrag by rememberUpdatedState<(Offset?) -> Unit>({ updateDrag(it) })
-
-        LaunchedEffect(localTileDrag?.tileId, pitchPx, availableHeightPx) {
-            if (localTileDrag == null) return@LaunchedEffect
+        val latestUpdateDrag by rememberUpdatedState<(Long, Offset?) -> Unit>({ session, point -> updateDrag(session, point) })
+        val scrollVelocity = localTileDrag?.takeIf { it.hasMoved && !it.finishing }
+            ?.let { autoScroll.velocity(it.coordinates.pointer.y, availableHeightPx.toFloat()) } ?: 0f
+        LaunchedEffect(localTileDrag?.sessionId, pitchPx, availableHeightPx, scrollVelocity, scroll.maxValue) {
+            if (scrollVelocity == 0f) return@LaunchedEffect
+            val session = localTileDrag?.sessionId ?: return@LaunchedEffect
             var lastFrame = withFrameNanos { it }
             while (true) {
                 val frame = withFrameNanos { it }
-                val current = localTileDrag ?: break
-                if (current.finishing) break
+                val current = localTileDrag?.takeIf { it.sessionId == session && !it.finishing } ?: break
                 val elapsed = (frame - lastFrame).coerceIn(0L, 50_000_000L) / 1_000_000_000f
                 lastFrame = frame
                 val requested = autoScroll.velocity(current.coordinates.pointer.y, availableHeightPx.toFloat()) * elapsed
-                if (requested != 0f && scroll.scrollBy(requested) != 0f) {
-                    // Re-read the latest pointer AFTER the suspension. Never write an old drag snapshot back.
-                    latestUpdateDrag(null)
-                }
+                if (requested == 0f || scroll.scrollBy(requested) == 0f) break
+                // Re-read after suspension; generation matching prevents resurrecting a cancelled gesture.
+                latestUpdateDrag(session, null)
             }
         }
         LaunchedEffect(state.reveal?.transactionId, pitchPx, availableHeightPx) {
@@ -237,9 +258,11 @@ fun YokuliStartScreen(
         Box(
             Modifier.fillMaxSize().onGloballyPositioned { viewportCoordinates = it }
                 .pointerInput(state.document, state.entries.map { it.descriptor }, geometry, density.density, density.fontScale) {
-                    // One stationary input plane owns the entire gesture, including after the tile lifts.
                     awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        // Main observes the down after the clickable child. Starting long-press
+                        // detection in Initial would see this SAME down consumed in Main and cancel.
+                        // Once accepted, movement wins Initial, before the scrolling child.
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
                         if (localTileDrag != null || latestControls?.contains(down.position.x, down.position.y) == true ||
                             latestFeedbackBounds?.contains(down.position) == true) return@awaitEachGesture
                         val selected = latestInteraction.selectedTile()
@@ -250,38 +273,44 @@ fun YokuliStartScreen(
                         val origin = AdaptiveTilePacker.pack(source, geometry.columns).tile(tileId) ?: return@awaitEachGesture
                         val direct = latestInteraction is StartInteractionState.EditIdle && selected == tileId
                         val dragStart = if (direct) awaitSelectedDragSlop(down) else awaitLongPressOrCancellation(down.id)
-                        if (dragStart == null || dragStart.id != down.id || currentEvent.changes.count { it.pressed } != 1) {
-                            return@awaitEachGesture
-                        }
+                        if (dragStart == null || dragStart.id != down.id || currentEvent.changes.count { it.pressed } != 1) return@awaitEachGesture
                         if (latestDocument != source) return@awaitEachGesture
                         dragStart.consume()
                         if (!direct) latestAction(LauncherUiAction.EnterStartEdit(tileId))
                         val startPointer = if (direct) down.position else dragStart.position
                         val grab = startPointer - hit.value.topLeft
+                        val session = ++nextDragSessionId
                         localTileDrag = LocalTileDrag(
                             tileId, down.id.value,
                             TileDragCoordinates(ShellOffset(startPointer.x, startPointer.y), startScrollPx = scroll.value.toFloat()),
                             origin.cell, origin.cell, AdaptiveTilePacker.insertionIndexOf(source, tileId), source,
+                            sessionId = session, hasMoved = direct,
                         )
                         latestAction(LauncherUiAction.BeginTileDrag(tileId, dragStart.id.value, ShellOffset(grab.x, grab.y)))
-                        latestUpdateDrag(dragStart.position)
+                        latestUpdateDrag(session, dragStart.position)
                         var completed = false
                         try {
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                if (event.changes.any { it.id != down.id && it.pressed } || change.isConsumed) break
-                                val active = localTileDrag ?: break
-                                if (active.tileId != tileId || active.pointerId != down.id.value) break
-                                latestUpdateDrag(change.position)
-                                change.consume()
-                                if (!change.pressed) { completed = true; break }
+                                val active = localTileDrag?.takeIf { it.sessionId == session }
+                                val cancelled = event.changes.any { it.id != down.id && it.pressed } || change.isConsumed
+                                if (cancelled && active != null) {
+                                    localTileDrag = null
+                                    latestAction(LauncherUiAction.CancelTileOperation)
+                                }
+                                // Drain accepted input even after Back/cancel: late up cannot click or commit.
+                                event.changes.forEach { it.consume() }
+                                if (!cancelled && localTileDrag?.sessionId == session) {
+                                    latestUpdateDrag(session, change.position)
+                                    if (!change.pressed) completed = true
+                                }
+                                if (!change.pressed) break
                             }
                         } finally {
-                            val active = localTileDrag
-                            if (active?.tileId == tileId && active.pointerId == down.id.value) {
+                            val active = localTileDrag?.takeIf { it.sessionId == session }
+                            if (active != null) {
                                 if (completed) {
-                                    // Keep the floating pixels until the serialized Engine acknowledges the commit.
                                     localTileDrag = active.copy(finishing = true)
                                     latestAction(LauncherUiAction.DropTile(tileId))
                                 } else {
@@ -294,7 +323,7 @@ fun YokuliStartScreen(
                 },
         ) {
             Column(
-                Modifier.fillMaxSize().verticalScroll(scroll)
+                Modifier.fillMaxSize().verticalScroll(scroll, enabled = localTileDrag == null)
                     .padding(
                         start = with(density) { geometry.outerInsetsPx.left.toDp() },
                         end = with(density) { geometry.outerInsetsPx.right.toDp() },
@@ -345,11 +374,9 @@ fun YokuliStartScreen(
                 }
             }
             if (controls != null && selectedTile != null) {
-                WpTileEditOverlay(
-                    controls, compact,
+                WpTileEditOverlay(controls, compact,
                     onUnpin = { onAction(LauncherUiAction.UnpinTile(selectedTile)) },
-                    onResize = { onAction(LauncherUiAction.ResizeTile(selectedTile)) },
-                )
+                    onResize = { onAction(LauncherUiAction.ResizeTile(selectedTile)) })
             }
             WpLauncherFeedback(
                 state.transient, onAction,
@@ -364,7 +391,6 @@ fun YokuliStartScreen(
     }
 }
 
-/** Selected tiles win slop before the scroll child; ordinary, unselected touches retain normal scrolling. */
 private suspend fun AwaitPointerEventScope.awaitSelectedDragSlop(down: PointerInputChange): PointerInputChange? {
     while (true) {
         val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -380,26 +406,15 @@ private suspend fun AwaitPointerEventScope.awaitSelectedDragSlop(down: PointerIn
 
 @Composable
 private fun WpTile(
-    entry: LauncherEntryUiState,
-    tileSize: MarineTileSize,
-    width: Dp,
-    height: Dp,
-    editing: Boolean,
-    selected: Boolean,
-    canResize: Boolean,
-    revealing: Boolean,
-    revealProgress: Float,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onUnpin: () -> Unit,
-    onResize: () -> Unit,
-    onMoveBy: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier,
+    entry: LauncherEntryUiState, tileSize: MarineTileSize, width: Dp, height: Dp,
+    editing: Boolean, selected: Boolean, canResize: Boolean, revealing: Boolean, revealProgress: Float,
+    onClick: () -> Unit, onLongClick: () -> Unit, onUnpin: () -> Unit, onResize: () -> Unit,
+    onMoveBy: (Int, Int) -> Unit, modifier: Modifier = Modifier,
 ) {
     val colors = LocalWpTheme.current
     val interactions = remember { MutableInteractionSource() }
     val scale by animateFloatAsState(if (selected) 1.025f else 1f, spring(), label = "wp-tile-selected")
-    val small = tileSize == MarineTileSize.ICON_1X1
+    val small = tileSize.columns == 1 && tileSize.rows == 1
     val accessibilityMoves = if (editing && selected) buildList {
         add(CustomAccessibilityAction(stringResource(R.string.context_unpin)) { onUnpin(); true })
         if (canResize) add(CustomAccessibilityAction(stringResource(R.string.resize_tile)) { onResize(); true })
@@ -410,8 +425,7 @@ private fun WpTile(
     } else emptyList()
     Box(
         modifier.width(width).height(height).scale(scale * (1f + revealProgress * DERIVED_REVEAL_SCALE))
-            .alpha(if (editing && !selected) .55f else 1f)
-            .testTag("tile-${entry.descriptor.entryId.value}")
+            .alpha(if (editing && !selected) .55f else 1f).testTag("tile-${entry.descriptor.entryId.value}")
             .semantics {
                 wpTileAccentName = colors.spec.accent.displayName
                 stateDescription = buildString {
@@ -420,9 +434,7 @@ private fun WpTile(
                 }
                 customActions = accessibilityMoves
                 onLongClick { onLongClick(); true }
-            }
-            .wpTilt(interactions, enabled = !editing)
-            .background(colors.accent)
+            }.wpTilt(interactions, enabled = !editing).background(colors.accent)
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
     ) {
         Box(Modifier.fillMaxSize().padding(if (small) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
@@ -430,9 +442,7 @@ private fun WpTile(
                 LauncherTileRenderContext(tileSize, colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = !editing),
             )
         }
-        if (revealing) {
-            Box(Modifier.fillMaxSize().border(3.dp, colors.onAccent).alpha(revealProgress.coerceIn(0f, 1f)).testTag("tile-reveal-highlight"))
-        }
+        if (revealing) Box(Modifier.fillMaxSize().border(3.dp, colors.onAccent).alpha(revealProgress.coerceIn(0f, 1f)).testTag("tile-reveal-highlight"))
     }
 }
 
@@ -449,10 +459,8 @@ private fun WpTileEditOverlay(controls: TileEditControls, compact: Boolean, onUn
                 .size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() })
                 .testTag(if (resize) "resize-selected-tile" else "unpin-selected-tile")
                 .semantics(mergeDescendants = true) { contentDescription = if (resize) resizeLabel else unpinLabel }
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() }, indication = null,
-                    role = Role.Button, onClick = action,
-                ), contentAlignment = Alignment.Center,
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = action),
+            contentAlignment = Alignment.Center,
         ) {
             Box(
                 Modifier.size(if (compact) 28.dp else 30.dp).background(colors.background, CircleShape)
@@ -460,11 +468,8 @@ private fun WpTileEditOverlay(controls: TileEditControls, compact: Boolean, onUn
                     .then(if (resize) Modifier.testTag("resize-affordance-disc") else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
-                MarineIcon(
-                    if (resize) MarineIconKind.RESIZE else MarineIconKind.UNPIN, colors.foreground,
-                    Modifier.size(if (compact) 20.dp else 22.dp)
-                        .then(if (resize) Modifier.testTag("resize-affordance-glyph") else Modifier),
-                )
+                MarineIcon(if (resize) MarineIconKind.RESIZE else MarineIconKind.UNPIN, colors.foreground,
+                    Modifier.size(if (compact) 20.dp else 22.dp).then(if (resize) Modifier.testTag("resize-affordance-glyph") else Modifier))
             }
         }
     }
