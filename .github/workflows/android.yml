@@ -128,8 +128,12 @@ jobs:
         id: shell_app_contract
         continue-on-error: true
         run: python3 .github/scripts/test_shell_app_contract.py
+      - name: Chart C12 cumulative delivery contract
+        id: chart_c12_contract
+        continue-on-error: true
+        run: python3 .github/scripts/test_chart_c12_contract.py
       - name: Upload quality-gate candidate APKs
-        if: steps.ci_helpers.outcome == 'success' && steps.launcher_stage0_contract.outcome == 'success' && steps.launcher_stage1_contract.outcome == 'success' && steps.launcher_stage2_contract.outcome == 'success' && steps.launcher_stage25_contract.outcome == 'success' && steps.launcher_stage3_contract.outcome == 'success' && steps.launcher_stage4_contract.outcome == 'success' && steps.launcher_stage5_contract.outcome == 'success' && steps.launcher_stage6_contract.outcome == 'success' && steps.launcher_stage7_contract.outcome == 'success' && steps.launcher_stage8_contract.outcome == 'success' && steps.launcher_stage9_contract.outcome == 'success' && steps.launcher_stage10_contract.outcome == 'success' && steps.launcher_stage11_contract.outcome == 'success' && steps.shell_app_contract.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.ci_helpers.outcome == 'success' && steps.launcher_stage0_contract.outcome == 'success' && steps.launcher_stage1_contract.outcome == 'success' && steps.launcher_stage2_contract.outcome == 'success' && steps.launcher_stage25_contract.outcome == 'success' && steps.launcher_stage3_contract.outcome == 'success' && steps.launcher_stage4_contract.outcome == 'success' && steps.launcher_stage5_contract.outcome == 'success' && steps.launcher_stage6_contract.outcome == 'success' && steps.launcher_stage7_contract.outcome == 'success' && steps.launcher_stage8_contract.outcome == 'success' && steps.launcher_stage9_contract.outcome == 'success' && steps.launcher_stage10_contract.outcome == 'success' && steps.launcher_stage11_contract.outcome == 'success' && steps.shell_app_contract.outcome == 'success' && steps.chart_c12_contract.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: yokuli-os-debug-candidate-${{ github.sha }}
@@ -138,7 +142,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload explicitly unverified diagnostic APKs
-        if: steps.assemble.outcome == 'success' && (steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.assemble.outcome == 'success' && (steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.chart_c12_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-yokuli-os-debug-${{ github.sha }}
@@ -176,6 +180,7 @@ jobs:
           "Launcher Stage 10 durable restore and recovery=${{ steps.launcher_stage10_contract.outcome }}"
           "Launcher Stage 11 performance and fidelity candidates=${{ steps.launcher_stage11_contract.outcome }}"
           "Shell-App tile installation contract=${{ steps.shell_app_contract.outcome }}"
+          "Chart C12 cumulative delivery=${{ steps.chart_c12_contract.outcome }}"
           "Release metadata=${{ steps.release_metadata.outcome }}"
           "Workflow contract=${{ steps.ci_contract.outcome }}"
           "Encrypted secrets contract=${{ steps.secrets_contract.outcome }}"
@@ -183,10 +188,10 @@ jobs:
           "Android lint=${{ steps.lint.outcome }}"
           "Debug plus release-audit APK compile=${{ steps.assemble.outcome }}"
       - name: Collect build failure diagnostics
-        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
+        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.chart_c12_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
         run: bash .github/scripts/collect_failure_bundle.sh build
       - name: Upload downloadable build failure bundle
-        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
+        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.chart_c12_contract.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
         uses: actions/upload-artifact@v7
         with:
           name: FAILURE-build-${{ github.run_id }}-${{ github.run_attempt }}
@@ -211,6 +216,7 @@ jobs:
           LAUNCHER_STAGE10_CONTRACT_RESULT: ${{ steps.launcher_stage10_contract.outcome }}
           LAUNCHER_STAGE11_CONTRACT_RESULT: ${{ steps.launcher_stage11_contract.outcome }}
           SHELL_APP_CONTRACT_RESULT: ${{ steps.shell_app_contract.outcome }}
+          CHART_C12_CONTRACT_RESULT: ${{ steps.chart_c12_contract.outcome }}
           RELEASE_METADATA_RESULT: ${{ steps.release_metadata.outcome }}
           CI_CONTRACT_RESULT: ${{ steps.ci_contract.outcome }}
           SECRETS_CONTRACT_RESULT: ${{ steps.secrets_contract.outcome }}
@@ -219,13 +225,13 @@ jobs:
           ASSEMBLE_RESULT: ${{ steps.assemble.outcome }}
         run: |
           failed=0
-          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT LAUNCHER_STAGE1_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT LAUNCHER_STAGE5_CONTRACT_RESULT LAUNCHER_STAGE6_CONTRACT_RESULT LAUNCHER_STAGE7_CONTRACT_RESULT LAUNCHER_STAGE8_CONTRACT_RESULT LAUNCHER_STAGE9_CONTRACT_RESULT LAUNCHER_STAGE10_CONTRACT_RESULT LAUNCHER_STAGE11_CONTRACT_RESULT SHELL_APP_CONTRACT_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
+          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT LAUNCHER_STAGE1_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT LAUNCHER_STAGE5_CONTRACT_RESULT LAUNCHER_STAGE6_CONTRACT_RESULT LAUNCHER_STAGE7_CONTRACT_RESULT LAUNCHER_STAGE8_CONTRACT_RESULT LAUNCHER_STAGE9_CONTRACT_RESULT LAUNCHER_STAGE10_CONTRACT_RESULT LAUNCHER_STAGE11_CONTRACT_RESULT SHELL_APP_CONTRACT_RESULT CHART_C12_CONTRACT_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
             if [ "${!result}" != success ]; then echo "::error title=$result failed::Open the job summary and FAILURE artifact."; failed=1; fi
           done
           exit "$failed"
 
   integration:
-    name: WP8 shell stories on API 34
+    name: Chart MBTiles, Room, and WP8 Shell on API 34
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -241,7 +247,7 @@ jobs:
           cache-read-only: true
       - name: Enable KVM hardware acceleration
         run: bash .github/scripts/enable_kvm.sh
-      - name: Run real-Activity stories with motion enabled
+      - name: Run MBTiles + Room + Shell device suites with motion enabled
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: 34
@@ -268,6 +274,10 @@ jobs:
           path: |
             app-shell/build/reports/androidTests/**
             app-shell/build/outputs/androidTest-results/**
+            adapter/map-offline/build/reports/androidTests/**
+            adapter/map-offline/build/outputs/androidTest-results/**
+            adapter/map-storage/build/reports/androidTests/**
+            adapter/map-storage/build/outputs/androidTest-results/**
             build/ci-device-tests.log
           if-no-files-found: warn
           retention-days: 14
@@ -415,7 +425,7 @@ jobs:
           retention-days: 30
 
   verified-debug:
-    name: Publish fully verified debug APKs
+    name: Publish fully verified alpha APK
     needs: [build, integration, api-compatibility, stage11-performance]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -426,19 +436,19 @@ jobs:
         with:
           name: yokuli-os-debug-candidate-${{ github.sha }}
           path: verified-apk
-      - name: Upload fully verified installable APKs
+      - name: Upload fully verified installable alpha APK
         uses: actions/upload-artifact@v7
         with:
-          name: VERIFIED-yokuli-os-debug-${{ github.sha }}
+          name: VERIFIED-yokuli-os-alpha-${{ github.sha }}
           path: verified-apk/**/*.apk
           if-no-files-found: error
           retention-days: 30
       - name: Verified artifact summary
         run: |
           {
-            echo '## Fully verified Yokuli OS debug APKs'
-            echo 'TDD contract, unit tests, lint, standalone in-app Shell builds, API 34 stories, API 36 smoke, and Stage 11 emulator trend journeys all passed.'
-            echo 'Download: **VERIFIED-yokuli-os-debug-${{ github.sha }}**'
+            echo '## Fully verified Yokuli OS alpha APK'
+            echo 'TDD contracts, unit tests, lint, Release audit, API 34 MBTiles + Room + Shell suites, API 36 smoke, and emulator performance journeys all passed.'
+            echo 'Download: **VERIFIED-yokuli-os-alpha-${{ github.sha }}**'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Collect verified-artifact failure diagnostics
         if: failure()
