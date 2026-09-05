@@ -57,6 +57,8 @@ ordinary physical phone:  PHYSICAL_DEVICE_PENDING
 
 纠错 run `33936328836` 随后暴露 Light Theme story 只等待 Compose idle、没有等待异步持久化后的 window `SideEffect`。测试改为等待真实 status/navigation bar 变白后再断言；生产主题、动画和导航代码未为测试放宽。最终接受继续以后续提交的新 run 为准。
 
+最新 run `33937077179` 的 build、API 34 stories 与 API 36 通过，但全新 Hosted 进程仍在 Proto restore 完成前等待不到 `start-screen`。最终 harness 隔离让 `benchmark/nonMinifiedRelease` Engine 从同步内存默认文档开始，避免把 CI 的 force-stop/reinstall 当作产品恢复；普通 Debug/Release 仍走真实 Proto DataStore、迁移、修复与 Recovery。最终接受继续以后续提交的新 run 为准。
+
 ## English translation
 
 This correction is `MACHINE_VERIFIED`, while subjective fidelity and physical devices remain explicitly pending. Yokuli is now a normal immersive Android marine application with an internal WP-inspired shell, not an Android HOME provider. System Home leaves Yokuli; the in-app compass Bridge navigates within Yokuli. Release remains limited to Chart and Settings and does not claim unimplemented marine capabilities or operational map readiness.
@@ -68,3 +70,5 @@ The final TDD audit rejected a zero-frame Settings benchmark false positive, reg
 Hosted run `33934748331` passed build, API 34 stories, and API 36 smoke, but exposed that reused benchmark tasks had no explicit Desktop reset. The correction adds a build-type-guarded benchmark intent handshake that restores the deterministic start point through the serialized Engine queue. Normal Release task resume still preserves its current surface. Final hosted acceptance belongs to the correction commit's new run.
 
 Correction run `33936328836` then exposed that the Light Theme story waited only for Compose idleness, not the window `SideEffect` following asynchronous preference persistence. The test now waits for the real status/navigation colors before asserting; production theme, motion, and navigation behavior were not relaxed. Final hosted acceptance remains assigned to the next correction run.
+
+The latest run `33937077179` passed build, API 34 stories, and API 36, but a fresh Hosted process still could not expose `start-screen` before Proto restore completed. Benchmark/non-minified profile Engines now start from a synchronous in-memory default document so CI force-stop/reinstall behavior is not treated as product recovery. Normal Debug/Release builds continue to use real Proto DataStore migration, repair, and Recovery. Final hosted acceptance remains assigned to the next run.

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.shell.engine.DefaultLauncherEngine
+import com.yokuli.shell.engine.InMemoryLauncherPersistence
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEngine
 import com.yokuli.shell.engine.LauncherPersistedState
@@ -27,6 +28,13 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     private val defaults = LauncherPersistedState(document = defaultStartDocument)
     private val persistence = (application as ShellApplication).launcherPersistence
     private val recoveryTrackingEnabled = BuildConfig.BUILD_TYPE !in HARNESS_BUILD_TYPES
+    private val enginePersistence = if (recoveryTrackingEnabled) {
+        persistence
+    } else {
+        // The performance/profile process is repeatedly killed and relaunched. Its Engine
+        // needs a synchronous default document; production builds retain Proto restore/recovery.
+        InMemoryLauncherPersistence(defaultStartDocument)
+    }
     private var healthyTimer: Job? = null
     private val startupJob: Job
 
@@ -36,7 +44,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     val engine: LauncherEngine = DefaultLauncherEngine(
         hostPort = productionHostPort,
-        persistence = persistence,
+        persistence = enginePersistence,
         defaultDocument = defaultStartDocument,
         scope = viewModelScope,
     )

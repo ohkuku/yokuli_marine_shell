@@ -142,6 +142,7 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         )
         self.assertIn("fun prepareBenchmarkStart()", view_model)
         self.assertIn("LauncherAction.ShowDesktop", view_model)
+        self.assertIn("InMemoryLauncherPersistence(defaultStartDocument)", view_model)
 
     def test_generated_profiles_do_not_reference_removed_motion_contracts(self):
         for name in ("baseline-prof.txt", "startup-prof.txt"):
