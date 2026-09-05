@@ -179,7 +179,26 @@ class AndroidMbTilesRepository(
     }
 
     private fun inspectDatabase(file: File): MbTilesMetadata {
-        val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        val (metadata, scheme) = inspectReadOnly(file)
+        if (scheme == "xyz") {
+            SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+                db.beginTransaction()
+                try {
+                    db.execSQL("UPDATE tiles SET tile_row = ((1 << zoom_level) - 1 - tile_row)")
+                    db.execSQL("DELETE FROM metadata WHERE name = 'scheme'")
+                    db.execSQL("INSERT INTO metadata(name,value) VALUES('scheme','tms')")
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
+            }
+            return inspectReadOnly(file).first
+        }
+        return metadata
+    }
+
+    private fun inspectReadOnly(file: File): Pair<MbTilesMetadata, String> {
+        val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
         return database.use { db ->
             val tables = db.rawQuery(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('metadata','tiles')",
@@ -204,19 +223,8 @@ class AndroidMbTilesRepository(
                 ChartPackageImportFailure.INVALID_METADATA,
                 "MBTiles scheme must be tms or xyz",
             )
-            if (scheme == "xyz") {
-                db.beginTransaction()
-                try {
-                    db.execSQL("UPDATE tiles SET tile_row = ((1 << zoom_level) - 1 - tile_row)")
-                    db.execSQL("DELETE FROM metadata WHERE name = 'scheme'")
-                    db.execSQL("INSERT INTO metadata(name,value) VALUES('scheme','tms')")
-                    db.setTransactionSuccessful()
-                } finally {
-                    db.endTransaction()
-                }
-            }
             val metadata = MbTilesMetadataParser.parse(values)
-            metadata.copy(tileSize = validateRasterTiles(db, metadata))
+            metadata.copy(tileSize = validateRasterTiles(db, metadata)) to scheme
         }
     }
 
