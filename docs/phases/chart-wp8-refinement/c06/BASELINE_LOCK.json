@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "phase": "WP8_CHART_COMPLETION",
+  "package": "C06",
+  "branch": "codex/shell-map-contract",
+  "baselineSha": "1c4aa7c6b155c75bd57f826ad8c93396f302059e",
+  "implementationCandidateSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+  "cumulativeVerifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+  "status": "VERIFIED_LOCAL",
+  "multipleIndependentDrafts": true,
+  "savedPlanPreviewAndSameIdEdit": true,
+  "stableOrderedWaypointIdentity": true,
+  "wgs84LegFacts": true,
+  "nullablePlanningSpeed": true,
+  "revisionConflictPreservesDraft": true,
+  "serializedRouteSaveTransactions": true,
+  "coalescedWriteRollback": true,
+  "navigationActivation": false,
+  "roomSchemaVersion": 3,
+  "explicitRoomMigration": "MIGRATION_2_3",
+  "focusedGate": {
+    "pythonTests": 5,
+    "mapDomainStorageAndChartJvm": "PASSED",
+    "routeWorkspaceDeviceStories": 1,
+    "roomDeviceTests": 6,
+    "deviceApi": 34
+  },
+  "cumulativeGate": {
+    "status": "PASSED",
+    "pythonTests": 185,
+    "jvmXmlTests": 294,
+    "gradleTasks": 1207,
+    "offlineRendererDeviceTests": 6,
+    "appShellDeviceTests": 49,
+    "roomDeviceTests": 6,
+    "debugApkSha256": "1c5df1c621993695a502e6a6108e4a05f0381f5d663a3eb846414ff3c205c71f",
+    "unsignedReleaseApkSha256": "8ca772e2d3c8052647d514fcc4e98dc5fd134b1ff34c2fc9a86191d9209f8a78"
+  },
+  "nextPermittedPackageAfterGate": "C07"
+}

@@ -158,3 +158,15 @@ Red 先锁定完整地点字段、稳定 ID/revision、显式移动、被路线�
 自查发现初版中文分类词不完整，以及删除后随机 ID 生成器可能重用刚删除或仍存在路线来源中的 ID；两项先加失败测试，再修正实现。设备测试准备阶段还发现 schema 文件虽已导出却没有打包进 androidTest assets、Compose harness 会记住上一轮输入；分别补上显式 schema source set 和每场景唯一 store key。单地点导出静态合同的字符串转义写错、历史 Stage 1 合同把合法内部 `ANCHORAGE` 分类误判成生产第三入口，也分别收窄到正确的产品边界，没有放宽 Chart + Settings 的 Launcher 发布面。
 
 冻结点 `76341a6a5d7fdc5c10160769cb093e6ab646d1f1` 的累计 Host Gate 通过 180 条 Python 合同、280 个 JVM XML 测试和 1207 个 Gradle tasks；API 34 上离线 renderer 6、Room 5、Shell 48 全部通过。Debug/unsigned Release hash 分别为 `456a51a14c87c8875134b17162ebdc805805983ace7d5215800d5837ea02dc9e` 与 `44e11239c0c5eef993c80b1db401570a2956d8ff17d8ccf7a202eed983311b2c`。C05 标记 `VERIFIED_LOCAL`，只允许进入 C06；正式路线编辑、海图包作业、GPX、覆盖和位置观测没有提前宣称。
+
+## C06｜路线草稿、正式计划与异步提交边界
+
+Red 先固定 RouteDraft 与 RoutePlan 的独立身份、可空计划船速、多个草稿切换、稳定航点 ID、插入/移动/删除/重排/反向/undo/redo、预览不产生 dirty draft、同 ID revision 更新、复制/另存、删除撤销和全流程不启动导航。Room schema v3 同时要求备注、base plan revision、航点 ID、地点来源 revision 以及活动草稿/计划会话引用在关闭重开后不丢。
+
+实现把 Routes 页面连成可操作的草稿组与正式计划组：可从地图或地点创建、继续在地图放点、精确坐标移动、查看 WGS84 每段距离与起始真方位、输入可留空的计划船速、保存后预览、再编辑并覆盖同一计划，或显式另存/复制/反向复制。正式计划预览只显示保存点线和计划估算，不出现“开始导航”、实时 ETA、NMEA 或自动舵语义。
+
+第一次实现后进行了两轮反证。第一轮发现相邻重复点只有 incident 没有用户反馈、路线腿事实没有直接暴露、旧 ack 在较新资料写入 pending 时不能结束路线 transaction；补了可见提示、WGS84 route legs 和 revision-aware ack。第二轮发现持久 mailbox 会合并连续资料写：若新写失败，未确认路线必须回滚并恢复原草稿；若旧路线已确认而更新的地点失败，路线不能被误标失败；并且第二条路线保存不能覆盖第一条 pending transaction。修正后正式路线提交被显式串行化，pending 计划的编辑/复制/删除入口禁用，其他资料仍可进入同一后续快照。
+
+累计 Gate 首轮准确暴露三项测试基础设施漂移：系统 Python 缺 pinned jsonschema、C05 静态断言把迁移调用锁死为单一 v1→v2，以及旧 UI 扫描禁止合法的 `activeRoute` 字样。使用临时 pinned Python 环境运行；迁移断言改为要求链中保留 MIGRATION_1_2；字面扫描按主规格改成“生产文案无开始导航 + reducer 行为保持 navigation false”。同时补齐显式 zh-CN 的 C06 资源键，没有把 Gate 设为 optional。
+
+冻结点 `15d0f1a91623cb4121e92cf82bf9dc01952eb982` 的累计 Host Gate 通过 185 条 Python 合同、294 个 JVM XML 测试和 1207 个 Gradle tasks；API 34 上离线 renderer 6、Room 6、Shell 49 全部通过。Debug/unsigned Release hash 分别为 `1c5df1c621993695a502e6a6108e4a05f0381f5d663a3eb846414ff3c205c71f` 与 `8ca772e2d3c8052647d514fcc4e98dc5fd134b1ff34c2fc9a86191d9209f8a78`。C06 标记为 `VERIFIED_LOCAL`，进入 C07；GPX、覆盖检查、实时观测与 Shell 地图磁贴摘要仍未提前宣称。

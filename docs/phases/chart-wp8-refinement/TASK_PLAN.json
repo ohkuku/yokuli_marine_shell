@@ -295,7 +295,7 @@
         "MAP-R08",
         "MAP-R16"
       ],
-      "status": "TODO",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C06",
       "acceptanceScenarioIds": [
         "C06-T01",
@@ -308,8 +308,12 @@
         "C06-T08",
         "C06-T09"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": [
+        "C06 Red/Green and two self-audit passes cover independent drafts/plans, stable waypoint identity, WGS84 leg facts, nullable planning speed, revision conflicts and non-navigation truth",
+        "Room v2-to-v3 migration and API 34 round-trip preserve route metadata, point IDs, place revision references and active plan/draft session identities",
+        "Cumulative C00-C06 gate passed: 185 Python contracts, 294 JVM XML tests, 1207 Gradle tasks and 61 API 34 device tests"
+      ]
     },
     {
       "id": "C07",
@@ -1042,11 +1046,11 @@
       "given": "新路线至少两个点",
       "when": "保存后从列表重开",
       "then": "同一正式ID，可预览实际保存点线而非仅draft",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/RouteWorkspaceStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": ["New plan save is ack-gated; Routes list reopens the same ID and the renderer consumes visibleRoutePoints from the active saved plan"]
     },
     {
       "id": "C06-T02",
@@ -1054,11 +1058,11 @@
       "given": "已保存计划",
       "when": "打开预览、再点编辑、保存",
       "then": "预览不变dirty；编辑独立draft；保存更新同ID新revision",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/RouteWorkspaceStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": ["Preview creates no dirty draft; edit creates a base-revision draft and save updates the same plan ID to the next revision"]
     },
     {
       "id": "C06-T03",
@@ -1066,11 +1070,11 @@
       "given": "草稿A、草稿B、测量转草稿C",
       "when": "依次切换再恢复",
       "then": "三份内容不覆盖、活动编辑只有一个",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": ["Draft A, draft B and measurement-derived draft C retain separate IDs and coordinate lists while one active draft ID selects the editor"]
     },
     {
       "id": "C06-T04",
@@ -1078,11 +1082,11 @@
       "given": "路线多个有ID的点",
       "when": "插入、删除、移动、重排、undo/redo",
       "then": "顺序几何和身份正确；最终输入不丢",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt; feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt",
+      "command": "./gradlew :core:map-domain:test :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": ["Stable waypoint IDs survive insert, move, reorder, delete, reverse, undo and redo; precise coordinate edits address draft ID plus point target"]
     },
     {
       "id": "C06-T05",
@@ -1090,11 +1094,11 @@
       "given": "未输入计划船速",
       "when": "保存并看汇总，再输入合法/非法值",
       "then": "未输入无虚构时长且可保存；非法拒绝，合法估时正确",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": ["Null speed saves without duration; non-finite/non-positive values are rejected, extreme finite input warns, and estimates use WGS84 distance divided by planning speed"]
     },
     {
       "id": "C06-T06",
@@ -1102,11 +1106,11 @@
       "given": "一个正式计划",
       "when": "复制、反向、另存",
       "then": "新ID/副本语义明确；原计划不被默改",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": ["Duplicate, reverse-copy and save-as-copy allocate new plan IDs and never mutate the source plan"]
     },
     {
       "id": "C06-T07",
@@ -1114,11 +1118,11 @@
       "given": "并发revision更新或快速重复Save",
       "when": "写入正式计划",
       "then": "冲突保留draft，重试去重，不silent last-write-wins",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": ["Base revision conflict retains the draft; a pending route transaction cannot be replaced; old ack advances only its durable revision while a newer write stays pending"]
     },
     {
       "id": "C06-T08",
@@ -1126,11 +1130,11 @@
       "given": "正在编辑草稿",
       "when": "丢弃/删除/撤销/写失败",
       "then": "只影响指定对象；原正式计划与其他稿保留",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": ["Discard/delete/revision-safe undo touch only their selected objects; failed or coalesced writes roll formal plans back and restore the exact draft"]
     },
     {
       "id": "C06-T09",
@@ -1138,11 +1142,11 @@
       "given": "计划预览中切图/恢复源/从搜索打开",
       "when": "观察route和输出spy",
       "then": "路线数据不变；没有活动导航或船网输出",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt; .github/scripts/test_ui_architecture.py",
+      "command": "./gradlew :core:map-domain:test && python3 .github/scripts/test_ui_architecture.py",
+      "result": "PASS",
+      "verifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+      "evidence": ["Package and position changes leave saved preview geometry unchanged; navigationActive remains false and production copy exposes no Start Navigation action"]
     },
     {
       "id": "C07-T01",
