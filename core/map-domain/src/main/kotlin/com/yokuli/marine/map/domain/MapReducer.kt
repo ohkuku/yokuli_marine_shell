@@ -186,6 +186,7 @@ class DefaultMapReducer(
                     generation = generation,
                     readiness = MapRendererReadiness.HOST_READY,
                     tileCoverage = coverage,
+                    cameraInputEnabled = false,
                     failure = null,
                 ),
             ),
@@ -233,11 +234,16 @@ class DefaultMapReducer(
                     renderer = state.renderer.copy(
                         pendingCameraCommand = null,
                         lastAcknowledgedCameraCommandId = action.commandId,
+                        cameraInputEnabled = true,
                     ),
                 ),
             )
         }
-        if (state.renderer.readiness != MapRendererReadiness.RENDERER_READY || pending != null) {
+        if (
+            state.renderer.readiness != MapRendererReadiness.RENDERER_READY ||
+            pending != null ||
+            !state.renderer.cameraInputEnabled
+        ) {
             return MapReduction(state)
         }
         return if (state.camera == action.camera) MapReduction(state) else persistSession(state.copy(camera = action.camera))

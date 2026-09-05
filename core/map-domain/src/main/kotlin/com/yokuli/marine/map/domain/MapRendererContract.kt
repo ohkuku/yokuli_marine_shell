@@ -66,6 +66,7 @@ data class MapRendererState(
     val tileCoverage: MapTileCoverageStatus = MapTileCoverageStatus.NO_PACKAGE,
     val pendingCameraCommand: MapCameraCommand? = null,
     val lastAcknowledgedCameraCommandId: MapCameraCommandId? = null,
+    val cameraInputEnabled: Boolean = false,
     val nextCameraCommandId: Long = 1L,
     val failure: MapRendererFailure? = null,
 ) {
