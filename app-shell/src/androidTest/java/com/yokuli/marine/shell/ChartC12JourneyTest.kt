@@ -277,6 +277,7 @@ class ChartC12JourneyTest {
         assertNotEquals(before, after)
         assertNotNull(reopened.rollback(v1.logicalId) ?: usable)
         root.deleteRecursively()
+        Unit
     }
 
     @Test
