@@ -211,7 +211,7 @@ object OfflineCoverageEvaluator {
     }
 }
 
-interface LocalChartTileIndex {
+fun interface LocalChartTileIndex {
     suspend fun availableKeys(chartPackage: ChartPackage, requiredKeys: Set<SlippyTileKey>): Set<SlippyTileKey>
 }
 
