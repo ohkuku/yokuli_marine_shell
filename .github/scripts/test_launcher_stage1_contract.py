@@ -47,7 +47,7 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
                 self.assertFalse((ROOT / f"feature/{name}/src").exists())
                 self.assertFalse((ROOT / f"feature/{name}/build.gradle.kts").exists())
 
-    def test_chart_exposes_one_browse_destination_and_no_runtime_navigation_modes(self):
+    def test_chart_exposes_one_browse_launcher_destination(self):
         contribution = (
             ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartShellContribution.kt"
         ).read_text()
@@ -55,6 +55,8 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
         self.assertEqual(["Browse"], re.findall(r"val\s+(\w+)\s*=\s*LaunchToken\(", contribution))
         self.assertIn('LaunchToken("chart.browse")', contribution)
         self.assertIn('testTag("chart-workspace-browse")', workspace)
+        # Stage 1 constrains Launcher destinations, not the later internal vocabulary of
+        # the one installed Map app (for example an ANCHORAGE place category).
         for forbidden in (
             "ChartMode",
             "TRACKING",
@@ -67,7 +69,7 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
             "activeRoute",
             "vesselPosition",
         ):
-            self.assertNotIn(forbidden, contribution + workspace)
+            self.assertNotIn(forbidden, contribution)
 
     def test_settings_contains_only_truthful_shell_configuration_and_build_facts(self):
         contract = (
