@@ -226,3 +226,9 @@ C12 封口提交将从头执行 Host、三模块 API 34、双进程恢复、性�
 第一次封口 Host Gate 在静态阶段停止：系统 Python 没有仓库锁定的 `jsonschema`，同时全局双语合同发现 C11 REPORT 漏了 `English translation` 标记。前者改用既有规则要求的隔离 pinned 环境重跑；后者只补英文边界摘要，不更改 C11 的实现、合同或验证结论。
 
 第二次封口运行的 Host 219 条合同、1207 tasks、Release 清单与三模块设备 17+7+59 均通过，随后在双进程 probe 启动前因本机 PATH 没有 `adb` 停止。脚本因此补成可移植解析：显式 `ADB_BIN` → PATH → Android SDK 环境 → `local.properties`；没有工具仍明确退出，不把 probe 跳过。
+
+最终候选 `c98c40d9dadaf8c3f4fd252da47383184411eb65` 从头通过同一完整 Gate：219 条 Python 合同、388 个 JVM tests、1207 个 Gradle tasks、双 Release 产品表面审计、API 34 MapLibre/MBTiles 17、Room 7、Shell 59、外部 force-stop 探针 1+1，以及 11/11 release-like 性能旅程。GitHub Actions run `33994467983` 在同一 SHA 上的 build、API 34 integration、performance、API 36 与 Verified Alpha 全部成功；托管 Alpha artifact ID 为 `9977914046`。
+
+交付前的独立证据审计又发现：实现和 CI 已完成，但 `EXECUTION_STATE`、C12 lock/report/acceptance 仍保留“待运行”占位文字，`TASK_PLAN` 的 C00、C09、C11 场景也仍写 `NOT_RUN`。本纠错不改生产实现：逐项回填已存在测试、命令、原始包验证 SHA 和条件性结论，并新增 C12 账本合同，禁止任何 `CORE_MACHINE_READY` 候选再次携带未决场景或制品占位符。在线来源下载仍是 `BLOCKED_EXTERNAL`，路线 secondary pin 仍是 `NOT_APPLICABLE_CURRENT_SHELL`，二者没有被伪写为完整功能。
+
+English translation: the final cumulative implementation candidate passed the complete local and same-SHA hosted gates. A final independent evidence audit corrected stale ledger placeholders and linked every logical scenario to its existing test, command, result, and verified commit. Conditional source download and route secondary-pin work remain explicitly blocked or not applicable rather than being reported as passed.

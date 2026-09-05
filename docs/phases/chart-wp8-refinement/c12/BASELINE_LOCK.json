@@ -3,10 +3,10 @@
   "task": "C12",
   "machineStatus": "CORE_MACHINE_READY",
   "baselineSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
-  "implementationCandidateSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
-  "sealPolicy": "Run the complete local gate and hosted CI on the commit containing this lock; any failure requires a correction commit",
+  "implementationCandidateSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
+  "sealPolicy": "The recorded implementation candidate passed the complete local gate and its own hosted CI; later documentation-only corrections must pass the same hosted check suite",
   "gate": {
-    "host": "REQUIRED_ON_SEAL_COMMIT",
+    "host": "PASS_LOCAL",
     "api34": {
       "mapOffline": 17,
       "mapStorage": 7,
@@ -22,7 +22,12 @@
       "status": "EMULATOR_TREND_ONLY",
       "physicalFrameTargetVerified": false
     },
-    "hostedCi": "REQUIRED_ON_SEAL_COMMIT"
+    "hostedCi": {
+      "runId": 33994467983,
+      "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
+      "status": "SUCCESS",
+      "url": "https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33994467983"
+    }
   },
   "baselineProfiles": {
     "baselineRules": 3520,
@@ -31,9 +36,12 @@
   },
   "artifacts": {
     "alphaConfiguration": "standaloneDebug",
-    "debugApkSha256": "RESOLVE_AFTER_SEAL_BUILD",
-    "unsignedReleaseApkSha256": "RESOLVE_AFTER_SEAL_BUILD",
-    "ciArtifactName": "VERIFIED-yokuli-os-alpha-<seal-sha>"
+    "debugApkSha256": "c3f9722f4a4d68bb6ce2ad07f45f0c45648a60b2c4f492125fcf161616414b4f",
+    "unsignedReleaseApkSha256": "b58b22f49bd8b79eda1c52252c493e6ffd2457358fe292618653ae7b34ac8858",
+    "ciArtifactId": 9977914046,
+    "ciArtifactName": "VERIFIED-yokuli-os-alpha-c98c40d9dadaf8c3f4fd252da47383184411eb65",
+    "ciArchiveSha256": "a9ee24788e01e0fa1071aa90f507c9ffe1d3e276002dd6d275d5fc1c7e3c6cc3",
+    "ciArtifactExpires": "2026-10-05"
   },
   "sourceDelivery": "BLOCKED_EXTERNAL",
   "routeSecondaryPin": "NOT_APPLICABLE_CURRENT_SHELL",

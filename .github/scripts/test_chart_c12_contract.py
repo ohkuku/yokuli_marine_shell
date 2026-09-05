@@ -99,6 +99,45 @@ class ChartC12DeliveryContract(unittest.TestCase):
         self.assertEqual("PENDING_OWNER", lock["samsungSquareDevice"])
         self.assertEqual([], lock["unresolvedP0P1"])
 
+    def test_machine_ready_ledger_contains_no_unresolved_scenario_or_placeholder(self):
+        plan = json.loads(
+            self.text("docs/phases/chart-wp8-refinement/TASK_PLAN.json")
+        )
+        self.assertEqual("CORE_MACHINE_READY", plan["planStatus"])
+        terminal_results = ("PASS", "NOT_APPLICABLE", "BLOCKED_EXTERNAL")
+        unresolved = [
+            scenario["id"]
+            for scenario in plan["acceptanceScenarios"]
+            if not str(scenario.get("result", "")).startswith(terminal_results)
+        ]
+        self.assertEqual([], unresolved)
+        for scenario in plan["acceptanceScenarios"]:
+            self.assertRegex(str(scenario.get("verifiedSha", "")), r"^[0-9a-f]{40}$")
+            self.assertTrue(scenario.get("implementationTestPath"), scenario["id"])
+            self.assertTrue(scenario.get("command"), scenario["id"])
+            self.assertTrue(scenario.get("evidence"), scenario["id"])
+
+        state = json.loads(
+            self.text("docs/phases/chart-wp8-refinement/EXECUTION_STATE.json")
+        )
+        self.assertRegex(state["lastVerifiedSha"], r"^[0-9a-f]{40}$")
+        self.assertEqual("SUCCESS", state["ciRun"]["status"])
+        self.assertEqual(state["lastVerifiedSha"], state["ciRun"]["verifiedSha"])
+        self.assertRegex(state["ciRun"]["url"], r"/actions/runs/[0-9]+$")
+
+        acceptance = self.text("docs/phases/chart-wp8-refinement/ACCEPTANCE.md")
+        self.assertNotIn("<ending-sha>", acceptance)
+        self.assertNotIn("以包含本文件", acceptance)
+        serialized_lock = self.text(
+            "docs/phases/chart-wp8-refinement/c12/BASELINE_LOCK.json"
+        )
+        lock = json.loads(serialized_lock)
+        for placeholder in ("REQUIRED_ON_SEAL_COMMIT", "RESOLVE_AFTER_SEAL_BUILD", "<seal-sha>"):
+            self.assertNotIn(placeholder, serialized_lock)
+        self.assertRegex(lock["artifacts"]["debugApkSha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(lock["artifacts"]["unsignedReleaseApkSha256"], r"^[0-9a-f]{64}$")
+        self.assertRegex(lock["artifacts"]["ciArchiveSha256"], r"^[0-9a-f]{64}$")
+
 
 if __name__ == "__main__":
     unittest.main()

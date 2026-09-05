@@ -8,10 +8,11 @@
 
 - Branch：`codex/shell-map-contract`
 - 审阅基线：`9579761a3c7c5cf13735dfecaeb38636b715b695`
-- C12 实现候选：`1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9`
-- 最终 ending SHA：以包含本文件、C12 REPORT 与 BASELINE_LOCK 的提交为准。
-- Alpha：`standaloneDebug`，CI artifact 名为 `VERIFIED-yokuli-os-alpha-<ending-sha>`；只有所有必要 job 成功才发布 artifact。
-- Hosted CI：以 ending SHA 的 GitHub check suite 为唯一同 SHA 证据，不复用旧 run。
+- 累计验证候选：`c98c40d9dadaf8c3f4fd252da47383184411eb65`
+- Alpha：`standaloneDebug`，artifact 为 `VERIFIED-yokuli-os-alpha-c98c40d9dadaf8c3f4fd252da47383184411eb65`（ID `9977914046`）。
+- Hosted CI：[run 33994467983](https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33994467983)，与候选同 SHA，所有必要 job 为 `success`。
+- 本地 Debug APK SHA-256：`c3f9722f4a4d68bb6ce2ad07f45f0c45648a60b2c4f492125fcf161616414b4f`；unsigned Release APK SHA-256：`b58b22f49bd8b79eda1c52252c493e6ffd2457358fe292618653ae7b34ac8858`。
+- 托管 artifact 归档 SHA-256：`a9ee24788e01e0fa1071aa90f507c9ffe1d3e276002dd6d275d5fc1c7e3c6cc3`；GitHub 当前保留期截至 `2026-10-05`。
 
 ## 请人工验收
 
@@ -32,7 +33,8 @@
 
 ## 自动证据
 
-- C00–C12 报告和基线锁位于本目录；C12 报告逐项记录 W1–W7、J01–J06、双进程恢复、性能和两轮冻结审阅。
+- `TASK_PLAN.json` 将 C00–C12 的 104 个逻辑验收场景逐项绑定到实现测试、命令、结果和验证 SHA；条件性交付保持 `BLOCKED_EXTERNAL` 或 `NOT_APPLICABLE_CURRENT_SHELL`，不伪装成 PASS。各包报告/锁及早期统一工作日志位于本目录。
+- C12 报告逐项记录 W1–W7、J01–J06、双进程恢复、性能、制品摘要和两轮冻结审阅。
 - Release 清单 gate 验证仅实际产品入口、无 HOME 默认桌面注册、无 Lab/Fake/Replay 和无位置权限。
 - 未解决 P0/P1：无。
 

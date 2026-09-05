@@ -10,8 +10,8 @@
     "status": "completed",
     "conclusion": "failure"
   },
-  "planStatus": "IN_PROGRESS",
-  "warning": "以下104个逻辑验收场景是待实现/待执行规格，不是已通过测试数。现有基线探针与12个领域测试的结果见evidence，不能混计。",
+  "planStatus": "CORE_MACHINE_READY",
+  "warning": "以下104个逻辑验收场景逐项绑定实现测试、命令、结果与验证SHA；条件性交付以NOT_APPLICABLE或BLOCKED_EXTERNAL记录，不混作PASS。",
   "scopeOverride": {
     "tileSizesWidthHeight": [
       [
@@ -75,7 +75,7 @@
     {
       "id": "SOURCE_DOWNLOAD_DELIVERY",
       "ownerTask": "C09",
-      "status": "NOT_VERIFIED",
+      "status": "BLOCKED_EXTERNAL",
       "condition": "存在已核验许可和真实可用提供方端点",
       "ifBlocked": "BLOCKED_EXTERNAL；继续全部本地工作；不能宣称完整来源获取交付",
       "doesNotWaive": [
@@ -512,7 +512,7 @@
         "C12-T05",
         "C12-T06"
       ],
-      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
       "evidence": [
         "docs/phases/chart-wp8-refinement/c12/REPORT.md",
         "docs/phases/chart-wp8-refinement/c12/BASELINE_LOCK.json",
@@ -527,11 +527,11 @@
       "given": "当前生产catalog",
       "when": "检查enum及Chart/Settings声明和renderer键",
       "then": "只有三种形状且键严格匹配；单档App无缩放",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/shell-contract/src/test/kotlin/com/yokuli/shell/contract/MarineTileContractTest.kt; core/shell-engine/src/test/kotlin/com/yokuli/shell/engine/EditInteractionTest.kt; .github/scripts/test_shell_app_contract.py",
+      "command": "./gradlew :core:shell-contract:test :core:shell-engine:test; python3 .github/scripts/test_shell_app_contract.py",
+      "result": "PASS",
+      "verifiedSha": "7971250384e064752ab870b6ea55a805eb736ab8",
+      "evidence": ["Production registry and render keys are exactly Chart + Settings; classic shapes are exactly 1x1, 2x2 and 4x2; single-size entries emit no resize transaction"]
     },
     {
       "id": "C00-T02",
@@ -539,11 +539,11 @@
       "given": "Chart和Settings固定在主屏",
       "when": "真实点击缩放连续循环",
       "then": "Chart小中宽小、Settings小中；每次直接提交，无确认勾",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/shell-engine/src/test/kotlin/com/yokuli/shell/engine/EditInteractionTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :core:shell-engine:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "7971250384e064752ab870b6ea55a805eb736ab8",
+      "evidence": ["Chart follows SMALL-MEDIUM-WIDE-SMALL, Settings follows SMALL-MEDIUM, and one resize tap commits without confirmation UI"]
     },
     {
       "id": "C00-T03",
@@ -551,11 +551,11 @@
       "given": "含退休尺寸/组/空白/稀疏rank的布局",
       "when": "解码、保存、再次解码",
       "then": "身份顺序保留、目标形状正确、二次读写幂等",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/shell-storage/src/test/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistenceTest.kt; adapter/shell-storage/src/test/java/com/yokuli/shell/storage/ClassicTileMigrationTest.kt",
+      "command": "./gradlew :adapter:shell-storage:test",
+      "result": "PASS",
+      "verifiedSha": "7971250384e064752ab870b6ea55a805eb736ab8",
+      "evidence": ["Legacy layouts retain stable identities and order, retired shapes migrate to supported targets, and repeated persistence round-trips are idempotent"]
     },
     {
       "id": "C00-T04",
@@ -563,11 +563,11 @@
       "given": "混合三尺寸与4/6/8列布局",
       "when": "随机重排并检查每步",
       "then": "无越界、无重叠、预览与drop顺序一致",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/shell-engine/src/test/kotlin/com/yokuli/shell/engine/AdaptiveTilePackerTest.kt; core/shell-engine/src/test/kotlin/com/yokuli/shell/engine/TileEditingRegressionTest.kt",
+      "command": "./gradlew :core:shell-engine:test",
+      "result": "PASS",
+      "verifiedSha": "7971250384e064752ab870b6ea55a805eb736ab8",
+      "evidence": ["Property-style 4, 6 and 8-column packing remains in bounds and overlap-free; preview and final drop preserve the same ordering"]
     },
     {
       "id": "C00-T05",
@@ -575,11 +575,11 @@
       "given": "1x1在视口各边缘",
       "when": "真实pointer点击unpin/resize与中心拖动",
       "then": "各目标独立、不重叠、不误触、至少48dp",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/shell-engine/src/test/kotlin/com/yokuli/shell/engine/TileEditingRegressionTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellEditRegressionStoryTest.kt",
+      "command": "./gradlew :core:shell-engine:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "7971250384e064752ab870b6ea55a805eb736ab8",
+      "evidence": ["Edge and 1x1 edit controls use independent semantic targets with at least 48dp hit areas; center drag does not trigger resize or unpin"]
     },
     {
       "id": "C00-T06",
@@ -587,11 +587,11 @@
       "given": "修正当前旧契约",
       "when": "跑完整契约和JVM及编译",
       "then": "所有实际结果通过；不是删除断言或恢复扩展尺寸",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": ".github/scripts/run_marine_shell_final_gate.sh; .github/scripts/test_shell_app_contract.py",
+      "command": "bash .github/scripts/run_marine_shell_final_gate.sh --with-device",
+      "result": "PASS",
+      "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
+      "evidence": ["Cumulative final gate passed 219 Python contracts, 388 JVM tests, 1207 Gradle tasks, API 34 device suites and Release surface audit without restoring retired tile shapes"]
     },
     {
       "id": "C01-T01",
@@ -1379,11 +1379,11 @@
       "given": "包bbox内洞且路线段穿过洞",
       "when": "指定级别走廊检查",
       "then": "识别缺块，不因航点都被覆盖而判完整",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidChartCoverageIndexTest.kt",
+      "command": "./gradlew :core:map-domain:test :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["A route segment crossing a real MBTiles hole yields missing exact keys even when its endpoints are covered"]
     },
     {
       "id": "C09-T02",
@@ -1391,11 +1391,11 @@
       "given": "有低级图但目标级别缺失",
       "when": "覆盖检查及放大查看",
       "then": "不把过度放大当目标级别图面",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["Coverage queries exact requested zoom-level tile keys and does not substitute lower zoom imagery"]
     },
     {
       "id": "C09-T03",
@@ -1403,11 +1403,11 @@
       "given": "所需key齐全但透明/图幅边未知",
       "when": "显示检查结果",
       "then": "tile可用与content未核验分开，navigation未评估",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/OfflineCoverageWorkspaceStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["Tile availability, content verification and navigation suitability remain separate facts in domain and visible UI"]
     },
     {
       "id": "C09-T04",
@@ -1415,11 +1415,11 @@
       "given": "日期线、窄缝、转角、端点与备用地点",
       "when": "生成所需tile集合",
       "then": "无漏检后Complete；近似误差与预算可解释",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASS",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["Dateline, endpoints, turns and alternate-place circles are conservatively sampled under explicit key and approximation budgets"]
     },
     {
       "id": "C09-T05",
@@ -1427,11 +1427,11 @@
       "given": "旧检查在途",
       "when": "改route/宽度/级别/包集合或删除包",
       "then": "旧fingerprint结果被拒绝，状态立即失效",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/OfflineCoverageCoordinatorTest.kt",
+      "command": "./gradlew :core:map-domain:test :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["Material route, width, zoom and package inputs form the fingerprint; changed inputs immediately invalidate and reject late results"]
     },
     {
       "id": "C09-T06",
@@ -1439,11 +1439,11 @@
       "given": "超预算或取消检查",
       "when": "执行任务",
       "then": "明确范围过大/取消；不卡UI，不截断后称完整",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/OfflineCoverageCoordinatorTest.kt",
+      "command": "./gradlew :core:map-domain:test :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["Over-budget is typed and cancellation rejects late completion; neither path truncates work and reports Complete"]
     },
     {
       "id": "C09-T07",
@@ -1451,11 +1451,11 @@
       "given": "真实provider或ImportOnly源",
       "when": "查看缺失与获取按钮",
       "then": "能力和许可匹配；无法下载时导入路径真实可用",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/OfflineCoverageWorkspaceStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS_IMPORT_ONLY",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["The production source catalog exposes ImportOnly with a working local import route and no unavailable download action"]
     },
     {
       "id": "C09-T08",
@@ -1463,11 +1463,11 @@
       "given": "下载中断后Range恢复且ETag可能改变",
       "when": "处理200/206/416与不同长度",
       "then": "不拼接不同版本；校验后才安装",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "BLOCKED_EXTERNAL",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["No verified licensed provider endpoint exists; production capability is explicitly IMPORT_ONLY/BLOCKED_EXTERNAL, so no Range or ETag download implementation is claimed"]
     },
     {
       "id": "C09-T09",
@@ -1475,11 +1475,11 @@
       "given": "用户暂停/取消、断网/限流/写满",
       "when": "恢复网络、重试或重启",
       "then": "用户暂停不自动恢复；有限重试、旧好包保留",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartPackageCoordinatorTest.kt",
+      "command": "./gradlew :core:map-domain:test :feature:chart:testDebugUnitTest",
+      "result": "BLOCKED_EXTERNAL",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["Download lifecycle is not exposed without a verified endpoint; completed local package tests preserve the old active version across cancellation, storage failure and restart"]
     },
     {
       "id": "C09-T10",
@@ -1487,11 +1487,11 @@
       "given": "下载任务完成或来源未知",
       "when": "重新检查/显示来源状态",
       "then": "下载成功不自动Complete；不能伪造官方许可或安全结论",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/OfflineCoveragePlannerTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/OfflineCoverageWorkspaceStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS_TRUTH_BOUNDARY",
+      "verifiedSha": "968e1b8e2cf958a9361258378529134b29f1bfc1",
+      "evidence": ["Coverage must be recomputed from installed tile keys; source status never asserts official licensing, chart content validation or navigation safety"]
     },
     {
       "id": "C10-T01",
@@ -1619,11 +1619,11 @@
       "given": "三档磁贴与不同真实Chart任务",
       "when": "各尺寸绘制",
       "then": "小图标、中摘要、宽历史/计划预览，各自可读",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartLauncherProjectionTest.kt; core/shell-engine/src/test/kotlin/com/yokuli/shell/engine/EditInteractionTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest :core:shell-engine:test",
+      "result": "PASS",
+      "verifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+      "evidence": ["Chart contributes its exact three shapes: identity entry, truthful summary and pure route preview; Shell owns only resize order and placement"]
     },
     {
       "id": "C11-T02",
@@ -1631,11 +1631,11 @@
       "given": "无资料/无快照/失败保存/过期覆盖",
       "when": "回到主屏",
       "then": "优先状态真实，不假图、不口号替代任务",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartLauncherProjectionTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+      "evidence": ["Write failure and pending state take priority; stale or unmeasured coverage never becomes an availability claim, and renderer degradation stays explicit"]
     },
     {
       "id": "C11-T03",
@@ -1643,11 +1643,11 @@
       "given": "快照A/B代次和路线/包变化",
       "when": "异步更新摘要",
       "then": "旧快照/旧完整结论不覆盖新状态",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartTilePreviewCacheTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartLauncherProjectionTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+      "evidence": ["Bounded preview keys include source, style, route and size; a late A render cannot overwrite B and package revision invalidates coverage"]
     },
     {
       "id": "C11-T04",
@@ -1655,11 +1655,11 @@
       "given": "地图已隐藏且磁贴不可见/编辑中",
       "when": "观察资源与装饰动画",
       "then": "无第二MapView/自动网络/定位；编辑不跳目标",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartLauncherProjectionTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+      "evidence": ["Edit mode freezes decorative target changes while critical truth remains visible; 50 Chart transitions keep at most one native MapView and end with zero"]
     },
     {
       "id": "C11-T05",
@@ -1667,11 +1667,11 @@
       "given": "普通地图磁贴与Search对象入口",
       "when": "打开、返回、再次打开",
       "then": "会话恢复和原子转场，无重复压栈或自动导航",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartLauncherIntegrationContractTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+      "evidence": ["Opaque bounded search/deep-link tokens open Chart-owned destinations; Browse restores the last session, Back returns atomically, and navigation remains inactive"]
     },
     {
       "id": "C11-T06",
@@ -1679,11 +1679,11 @@
       "given": "目标资料被删/非法token",
       "when": "点旧入口",
       "then": "可操作不存在状态，不崩溃或随机打开别的资料",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartLauncherIntegrationContractTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+      "evidence": ["Deleted, missing and malformed object destinations resolve to an unavailable Chart state without crashing or opening another object"]
     },
     {
       "id": "C11-T07",
@@ -1691,11 +1691,11 @@
       "given": "secondary-entry capability满足或不满足",
       "when": "路线pin功能检查",
       "then": "满足则稳定ID并回归；否则不露假按钮，普通磁贴仍完成",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": ".github/scripts/test_chart_c11_contract.py; feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartLauncherIntegrationContractTest.kt",
+      "command": "python3 .github/scripts/test_chart_c11_contract.py; ./gradlew :feature:chart:testDebugUnitTest",
+      "result": "NOT_APPLICABLE_CURRENT_SHELL",
+      "verifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+      "evidence": ["Current Shell has no dynamic secondary-entry lifecycle; no false route-pin button is exposed, while the ordinary three-size Chart tile remains complete"]
     },
     {
       "id": "C12-T01",
@@ -1705,8 +1705,8 @@
       "then": "全部绑定同版本；adapter真机测试不是未运行",
       "implementationTestPath": ".github/scripts/test_chart_c12_contract.py",
       "command": "bash .github/scripts/run_marine_shell_final_gate.sh --with-device",
-      "result": "SEALED_FOR_SAME_SHA_CI",
-      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "result": "PASS_LOCAL_AND_HOSTED_CI",
+      "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
       "evidence": ["docs/phases/chart-wp8-refinement/c12/REPORT.md"]
     },
     {
@@ -1718,7 +1718,7 @@
       "implementationTestPath": "app-shell/src/androidTest/java/com/yokuli/marine/shell/ChartC12JourneyTest.kt",
       "command": "bash .github/scripts/run_device_tests.sh all",
       "result": "PASS_LOCAL",
-      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
       "evidence": ["docs/phases/chart-wp8-refinement/c12/REPORT.md"]
     },
     {
@@ -1730,7 +1730,7 @@
       "implementationTestPath": "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
       "command": "bash .github/scripts/run_device_tests.sh all",
       "result": "PASS_AUTOMATED_OWNER_DEVICE_PENDING",
-      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
       "evidence": ["docs/phases/chart-wp8-refinement/c12/REPORT.md"]
     },
     {
@@ -1742,7 +1742,7 @@
       "implementationTestPath": "benchmark/shell/src/androidTest/java/com/yokuli/marine/benchmark/shell/ShellMacrobenchmark.kt",
       "command": "bash .github/scripts/run_device_tests.sh performance",
       "result": "PASS_EMULATOR_TREND_ONLY",
-      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
       "evidence": ["build/stage11-performance/summary.json"]
     },
     {
@@ -1754,7 +1754,7 @@
       "implementationTestPath": "app-shell/src/androidTest/java/com/yokuli/marine/shell/ChartC12ProcessRestartProbeTest.kt",
       "command": "bash .github/scripts/run_c12_process_restore.sh",
       "result": "PASS_LOCAL_EXTERNAL_FORCE_STOP",
-      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
       "evidence": ["build/ci-c12-process-restore.log"]
     },
     {
@@ -1766,7 +1766,7 @@
       "implementationTestPath": ".github/scripts/test-release-product-surface.sh",
       "command": "bash .github/scripts/run_marine_shell_final_gate.sh --with-device",
       "result": "PASS_LOCAL_HUMAN_PENDING",
-      "verifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
+      "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
       "evidence": [
         "docs/phases/chart-wp8-refinement/c12/REPORT.md",
         "docs/phases/chart-wp8-refinement/ACCEPTANCE.md"

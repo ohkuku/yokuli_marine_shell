@@ -22,12 +22,17 @@
     "C11": "VERIFIED_LOCAL",
     "C12": "CORE_MACHINE_READY"
   },
-  "lastVerifiedSha": "1dfb0e4d5b954bbdc3c01f2b621127be2eb958f9",
-  "ciRun": "REQUIRED_ON_C12_SEAL_COMMIT",
+  "lastVerifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
+  "ciRun": {
+    "id": 33994467983,
+    "verifiedSha": "c98c40d9dadaf8c3f4fd252da47383184411eb65",
+    "status": "SUCCESS",
+    "url": "https://github.com/ohkuku/yokuli_marine_shell/actions/runs/33994467983"
+  },
   "openFindings": [
     "Samsung square-screen and physical refresh-rate review remain owner-only"
   ],
   "sourceDelivery": "BLOCKED_EXTERNAL",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Run the complete gate on the C12 seal commit, require its hosted CI to pass, then hand the verified Alpha to the owner for physical-device review"
+  "nextAction": "Owner reviews the verified Alpha on the Samsung square device; lawful online source delivery remains a separate external prerequisite"
 }
