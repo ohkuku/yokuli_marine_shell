@@ -19,6 +19,7 @@ include(
     ":core:testing",
     ":adapter:chart-google",
     ":adapter:map-storage",
+    ":adapter:map-offline",
     ":adapter:shell-android",
     ":adapter:shell-storage",
     ":ui:shell-compose",
