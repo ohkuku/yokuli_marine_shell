@@ -27,6 +27,12 @@ STARTUP_JOURNEYS = {"coldStartToStart", "warmStartToStart"}
 INTERACTION_JOURNEYS = EXPECTED_JOURNEYS - STARTUP_JOURNEYS
 
 
+def abort_with_annotation(message: str) -> None:
+    escaped = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    print(f"::error title=Stage 11 performance summary::{escaped}")
+    raise SystemExit(message)
+
+
 def has_observed_frames(result: dict) -> bool:
     """Reject gfxinfo's empty-window sentinel while accepting physical frame samples."""
     metrics = result.get("metrics", {})
@@ -62,7 +68,7 @@ def main() -> int:
     args = parse_args()
     source_files = sorted(args.search.rglob("*-benchmarkData.json"))
     if not source_files:
-        raise SystemExit(f"No AndroidX benchmark data found below {args.search}")
+        abort_with_annotation(f"No AndroidX benchmark data found below {args.search}")
 
     results: list[dict] = []
     contexts: list[dict] = []
@@ -88,14 +94,14 @@ def main() -> int:
     present = {result["name"] for result in results}
     missing = sorted(EXPECTED_JOURNEYS - present)
     if args.require_journeys and missing:
-        raise SystemExit(f"Missing Stage 11 journeys: {', '.join(missing)}")
+        abort_with_annotation(f"Missing Stage 11 journeys: {', '.join(missing)}")
     empty_frame_journeys = sorted(
         result["name"]
         for result in results
         if result["name"] in INTERACTION_JOURNEYS and not has_observed_frames(result)
     )
     if args.require_journeys and empty_frame_journeys:
-        raise SystemExit(
+        abort_with_annotation(
             "Stage 11 interaction journeys observed no target frames: "
             + ", ".join(empty_frame_journeys)
         )
