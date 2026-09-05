@@ -57,12 +57,12 @@ data class PositionState(
 
 data class MapSelection(val point: GeoPoint)
 
-enum class PlaceCategory(val wireValue: String) {
-    ANCHORAGE("anchorage"),
-    MARINA("marina"),
-    LANDING("landing"),
-    WATER("water"),
-    PERSONAL_MARKER("personal"),
+enum class PlaceCategory(val wireValue: String, val searchAliases: Set<String>) {
+    ANCHORAGE("anchorage", setOf("锚地", "泊地")),
+    MARINA("marina", setOf("码头", "游艇港")),
+    LANDING("landing", setOf("上岸", "上岸点", "登陆点")),
+    WATER("water", setOf("补水", "取水")),
+    PERSONAL_MARKER("personal", setOf("个人标记", "标记")),
     ;
 
     companion object {

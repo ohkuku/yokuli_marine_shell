@@ -53,8 +53,8 @@
     <string name="map_place_category">类别</string>
     <string name="map_place_category_anchorage">锚地</string>
     <string name="map_place_category_marina">码头</string>
-    <string name="map_place_category_landing">登陆点</string>
-    <string name="map_place_category_water">水域</string>
+    <string name="map_place_category_landing">上岸点</string>
+    <string name="map_place_category_water">补水</string>
     <string name="map_place_category_personal">个人标记</string>
     <string name="map_place_save">保存地点</string>
     <string name="map_place_move_original">原坐标：%1$s</string>

@@ -665,8 +665,20 @@ class DefaultMapReducer(
 
     private fun createPlace(state: MapState, action: MapAction.CreatePlace): MapReduction = ifWritable(state) {
         val now = clock.nowMillis().coerceAtLeast(0L)
+        val unavailableIds = buildSet {
+            addAll(state.places.map { it.id })
+            state.placeDeleteUndo?.place?.id?.let(::add)
+            state.savedRoutes.flatMapTo(this) { route -> route.waypointPlaceReferences.values.map { it.placeId } }
+        }
+        var generatedId: String? = null
+        repeat(16) {
+            if (generatedId == null) {
+                generatedId = idGenerator.nextId("place").trim().takeIf { it.isNotEmpty() && it !in unavailableIds }
+            }
+        }
+        val placeId = generatedId ?: return@ifWritable incident(state, MapIncident.ActionRejected)
         val place = SavedPlace(
-            id = idGenerator.nextId("place"),
+            id = placeId,
             name = action.name.trim().ifEmpty { "Place" },
             point = action.point,
             revision = 1L,

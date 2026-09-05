@@ -36,6 +36,7 @@ object PlaceSearch {
         add(notes.normalized())
         add(category.wireValue.normalized())
         add(category.name.normalized())
+        addAll(category.searchAliases.map { it.normalized() })
         addAll(tags.map { it.normalized() })
         add(String.format(Locale.US, "%.6f, %.6f", point.latitude, point.longitude).normalized())
     }
