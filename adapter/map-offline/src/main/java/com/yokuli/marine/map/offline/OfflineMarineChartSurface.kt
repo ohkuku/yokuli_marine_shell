@@ -82,9 +82,9 @@ fun OfflineMarineChartSurface(
     remember(context.applicationContext) { MapLibre.getInstance(context.applicationContext) }
 
     val generation = remember { MapRendererGeneration(nextRendererGeneration.incrementAndGet()) }
-    val mapView = remember(context, generation) {
-        MapView(context).also { OfflineMapInstanceMetrics.onCreated() }
-    }
+    // The remember calculation may be evaluated by an abandoned composition. Only count a
+    // renderer after its lifecycle effect commits and MapView.onCreate has actually run.
+    val mapView = remember(context, generation) { MapView(context) }
     val lifecycleDriver = remember(mapView) { OfflineMapLifecycleDriver(mapView) }
     val disposed = remember(mapView) { AtomicBoolean(false) }
     val styleGeneration = remember(mapView) { AtomicLong(0L) }
@@ -99,6 +99,7 @@ fun OfflineMarineChartSurface(
 
     DisposableEffect(mapView, lifecycle, context.applicationContext) {
         lifecycleDriver.create()
+        OfflineMapInstanceMetrics.onCreated()
         val observer = LifecycleEventObserver { _, event -> lifecycleDriver.onEvent(event) }
         val memoryCallbacks = OfflineMapMemoryCallbacks(mapView)
         lifecycle.addObserver(observer)
