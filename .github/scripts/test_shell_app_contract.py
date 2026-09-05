@@ -153,7 +153,10 @@ class ShellAppTileContractTest(unittest.TestCase):
         self.assertIn("filesystem-safe token", model)
 
     def test_map_runtime_is_truthful_persisted_and_has_device_stories(self):
-        model = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapModel.kt").read_text()
+        model = "\n".join(
+            path.read_text()
+            for path in (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain").glob("*.kt")
+        )
         reducer = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapReducer.kt").read_text()
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
         activity_tests = (
