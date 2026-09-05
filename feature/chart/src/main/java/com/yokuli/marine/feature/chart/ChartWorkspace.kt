@@ -82,6 +82,10 @@ import com.yokuli.marine.map.domain.MapViewport
 import com.yokuli.marine.map.domain.MapViewportInsets
 import com.yokuli.marine.map.domain.MeasurementMath
 import com.yokuli.marine.map.domain.MeasurementPrompt
+import com.yokuli.marine.map.domain.PlaceCategory
+import com.yokuli.marine.map.domain.PlaceSearch
+import com.yokuli.marine.map.domain.PlaceSort
+import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
@@ -316,7 +320,6 @@ private fun MapPersistenceTruth(
 private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
     val clipboard = LocalClipboardManager.current
-    val defaultPlaceName = stringResource(R.string.map_default_place_name, state.places.size + 1)
     state.precisePointEdit?.let {
         Row(
             Modifier.fillMaxWidth().background(colors.background.copy(alpha = .96f)).padding(horizontal = 12.dp)
@@ -350,7 +353,7 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
                 )
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     MapActionText(R.string.map_save_place, "map-candidate-save", Modifier.weight(1f)) {
-                        onAction(MapAction.SavePointCandidateAsPlace(defaultPlaceName))
+                        onAction(MapAction.OpenSurface(MapSurface.NewPlace(transient.point)))
                     }
                     MapActionText(R.string.map_measure_from_here, "map-candidate-measure", Modifier.weight(1f)) {
                         onAction(MapAction.SelectTool(MapTool.MEASURE))
@@ -397,7 +400,6 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
             }
         }
         null -> state.selection?.let { selection ->
-            val defaultName = stringResource(R.string.map_default_place_name, state.places.size + 1)
             Row(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
                     .testTag("map-selection-summary"),
@@ -405,7 +407,7 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
             ) {
                 WpText(selection.point.coordinateText(), 11, modifier = Modifier.weight(1f))
                 MapActionText(R.string.map_save_place, "map-save-place") {
-                    onAction(MapAction.SaveSelectionAsPlace(defaultName))
+                    onAction(MapAction.OpenSurface(MapSurface.NewPlace(selection.point)))
                 }
                 MapActionText(R.string.map_close, "map-selection-close") { onAction(MapAction.ClearSelection) }
             }
@@ -430,13 +432,15 @@ private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: 
     val colors = LocalWpTheme.current
     val measurementIndex = hit.measurementPointIndexOrNull()
     val routeTarget = hit.routePointTargetOrNull()
+    val place = hit.savedPlaceIdOrNull()?.let { id -> state.places.firstOrNull { it.id == id } }
     val point = measurementIndex?.let { state.measurementDraft?.points?.getOrNull(it) }
         ?: routeTarget?.let { target -> state.routeDrafts.firstOrNull { it.id == target.draftId }?.waypoints?.getOrNull(target.index) }
+        ?: place?.point
     Column(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
             .testTag("map-object-summary"),
     ) {
-        WpText(point?.coordinateText() ?: hit.objectId, 11, maxLines = 1)
+        WpText(place?.name ?: point?.coordinateText() ?: hit.objectId, 11, maxLines = 1)
         Row(Modifier.fillMaxWidth()) {
             val target = measurementIndex?.let(MapEditTarget::MeasurementPoint) ?: routeTarget
             if (target != null) {
@@ -451,6 +455,11 @@ private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: 
                 MapActionText(R.string.map_delete_point, "map-object-delete") {
                     onAction(MapAction.DeleteMeasurementPoint(measurementIndex))
                     onAction(MapAction.DismissTransient)
+                }
+            }
+            if (place != null) {
+                MapActionText(R.string.map_details, "map-object-place-details-${place.id}") {
+                    onAction(MapAction.OpenSurface(MapSurface.PlaceDetail(place.id)))
                 }
             }
             MapActionText(R.string.map_close, "map-object-close") { onAction(MapAction.DismissTransient) }
@@ -616,6 +625,10 @@ private fun MapPageSurface(
     ) {
         val (title, context) = when (state.surface) {
             MapSurface.Places, is MapSurface.PlaceDetail -> R.string.map_places_title to R.string.map_places_context
+            is MapSurface.NewPlace -> R.string.map_place_new_title to R.string.map_places_context
+            is MapSurface.EditPlace -> R.string.map_place_edit_title to R.string.map_places_context
+            is MapSurface.MovePlace -> R.string.map_place_move_title to R.string.map_place_move_context
+            is MapSurface.DeletePlace -> R.string.map_place_delete_title to R.string.map_places_context
             MapSurface.Routes, is MapSurface.RouteDetail -> R.string.map_routes_title to R.string.map_routes_context
             MapSurface.ChartPackages, is MapSurface.ChartPackageDetail -> R.string.map_charts_title to R.string.map_charts_context
             MapSurface.Measurement -> R.string.map_measure_title to R.string.map_measure_context
@@ -629,6 +642,12 @@ private fun MapPageSurface(
                 MapSurface.Routes -> RoutesPage(state, onAction)
                 MapSurface.ChartPackages -> ChartPackagesPage(state, importState, onImportAction, onAction)
                 is MapSurface.PlaceDetail -> PlaceDetailPage(state, surface.placeId, onAction)
+                is MapSurface.NewPlace -> PlaceEditorPage(state, surface.point, null, onAction)
+                is MapSurface.EditPlace -> state.places.firstOrNull { it.id == surface.placeId }?.let { place ->
+                    PlaceEditorPage(state, place.point, place, onAction)
+                }
+                is MapSurface.MovePlace -> PlaceMovePage(state, surface.placeId, onAction)
+                is MapSurface.DeletePlace -> PlaceDeletePage(state, surface.placeId, onAction)
                 is MapSurface.RouteDetail -> RouteDetailPage(state, surface.routeId, onAction)
                 is MapSurface.ChartPackageDetail -> ChartPackageDetailPage(state, surface.packageId, onAction)
                 MapSurface.Measurement -> MeasurementPage(state, onAction)
@@ -642,17 +661,302 @@ private fun MapPageSurface(
 @Composable
 private fun PlacesPage(state: MapState, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
+    Column(Modifier.fillMaxWidth().testTag("map-places-page")) {
+        MapFormTextField(
+            label = R.string.map_places_search,
+            value = state.placeQuery,
+            tag = "map-places-search-field",
+            onValueChange = { onAction(MapAction.SetPlaceQuery(it)) },
+        )
+        WpText(stringResource(R.string.map_places_search_local_only), 10, color = colors.muted)
+        Row(Modifier.fillMaxWidth()) {
+            MapTextButton(
+                stringResource(R.string.map_places_sort_name),
+                "map-places-sort-name",
+                modifier = Modifier.weight(1f),
+            ) { onAction(MapAction.SetPlaceSort(PlaceSort.NAME)) }
+            MapTextButton(
+                stringResource(R.string.map_places_sort_updated),
+                "map-places-sort-updated",
+                modifier = Modifier.weight(1f),
+            ) { onAction(MapAction.SetPlaceSort(PlaceSort.UPDATED_DESC)) }
+        }
+    }
     WpText(
         if (state.places.isEmpty()) stringResource(R.string.map_places_empty)
         else stringResource(R.string.map_places_count, state.places.size),
         12,
         color = colors.muted,
+        modifier = if (state.places.isEmpty()) Modifier.testTag("map-places-empty") else Modifier,
     )
-    state.places.forEach { place ->
-        MapTextButton(place.name, "map-place-${place.id.take(8)}") {
-            onAction(MapAction.OpenSurface(MapSurface.PlaceDetail(place.id)))
+    state.placeDeleteUndo?.takeIf { it.compatibleLibraryRevision == state.libraryRevision }?.let { undo ->
+        Row(
+            Modifier.fillMaxWidth().border(1.dp, colors.accent).padding(horizontal = 8.dp)
+                .testTag("map-place-delete-undo-strip"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            WpText(stringResource(R.string.map_place_deleted, undo.place.name), 11, modifier = Modifier.weight(1f))
+            MapActionText(R.string.map_undo, "map-place-delete-undo") { onAction(MapAction.UndoDeletePlace) }
         }
     }
+    val visiblePlaces = PlaceSearch.filterAndSort(state.places, state.placeQuery, state.placeSort)
+    if (state.places.isNotEmpty() && visiblePlaces.isEmpty()) {
+        WpText(
+            stringResource(R.string.map_places_no_results),
+            12,
+            color = colors.muted,
+            modifier = Modifier.testTag("map-places-no-results"),
+        )
+    }
+    visiblePlaces.forEach { place ->
+        Column(
+            Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f))
+                .clickNoRipple { onAction(MapAction.OpenSurface(MapSurface.PlaceDetail(place.id))) }
+                .padding(horizontal = 8.dp)
+                .testTag("map-place-row-${place.id}"),
+        ) {
+            WpText(place.name, 15, modifier = Modifier.testTag("map-place-row-name-${place.id}"))
+            WpText(
+                stringResource(place.category.labelResource()),
+                10,
+                color = colors.muted,
+                modifier = Modifier.testTag("map-place-row-category-${place.id}"),
+            )
+            WpText(stringResource(R.string.map_details), 11, color = colors.accent)
+        }
+    }
+    if (state.places.isEmpty()) {
+        MapTextButton(
+            stringResource(R.string.map_places_choose_on_map),
+            "map-places-empty-map",
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(MapAction.OpenSurface(MapSurface.Root))
+            onAction(MapAction.SetCrosshairEnabled(true))
+        }
+        MapTextButton(
+            stringResource(R.string.map_places_enter_coordinate),
+            "map-places-empty-coordinate",
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(MapAction.OpenSurface(MapSurface.Root))
+            onAction(MapAction.OpenSurface(MapSurface.CoordinateInput))
+        }
+    }
+}
+
+@Composable
+private fun PlaceEditorPage(
+    state: MapState,
+    point: GeoPoint,
+    existing: SavedPlace?,
+    onAction: (MapAction) -> Unit,
+) {
+    val defaultName = stringResource(R.string.map_default_place_name, state.places.size + 1)
+    var name by remember(state.surface) { mutableStateOf(existing?.name ?: defaultName) }
+    var notes by remember(state.surface) { mutableStateOf(existing?.notes.orEmpty()) }
+    var tags by remember(state.surface) { mutableStateOf(existing?.tags?.joinToString(", ").orEmpty()) }
+    var category by remember(state.surface) { mutableStateOf(existing?.category ?: PlaceCategory.PERSONAL_MARKER) }
+    Column(Modifier.fillMaxWidth().testTag("map-place-editor"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        WpText(point.coordinateText(), 11, color = LocalWpTheme.current.muted)
+        MapFormTextField(R.string.map_place_name, name, "map-place-name-field", onValueChange = { name = it })
+        MapFormTextField(
+            R.string.map_place_notes,
+            notes,
+            "map-place-notes-field",
+            singleLine = false,
+            onValueChange = { notes = it },
+        )
+        MapFormTextField(R.string.map_place_tags, tags, "map-place-tags-field", onValueChange = { tags = it })
+        WpText(stringResource(R.string.map_place_category), 10, color = LocalWpTheme.current.muted)
+        PlaceCategory.entries.forEach { candidate ->
+            MapTextButton(
+                stringResource(candidate.labelResource()),
+                "map-place-category-${candidate.name}",
+                modifier = Modifier.fillMaxWidth().then(
+                    if (candidate == category) Modifier.border(1.dp, LocalWpTheme.current.accent) else Modifier,
+                ),
+            ) { category = candidate }
+        }
+        MapTextButton(stringResource(R.string.map_place_save), "map-place-save", modifier = Modifier.fillMaxWidth()) {
+            val parsedTags = tags.split(',').map(String::trim).filter(String::isNotEmpty)
+            if (existing == null) {
+                onAction(MapAction.CreatePlace(point, name.ifBlank { defaultName }, notes, category, parsedTags))
+            } else {
+                onAction(
+                    MapAction.UpdatePlace(
+                        existing.id,
+                        existing.revision,
+                        name.ifBlank { defaultName },
+                        notes,
+                        category,
+                        parsedTags,
+                    ),
+                )
+            }
+        }
+        MapTextButton(
+            stringResource(R.string.map_cancel),
+            "map-place-editor-cancel",
+            modifier = Modifier.fillMaxWidth(),
+        ) { onAction(MapAction.CloseSurface) }
+    }
+}
+
+@Composable
+private fun PlaceMovePage(state: MapState, id: String, onAction: (MapAction) -> Unit) {
+    val move = state.placeMove?.takeIf { it.placeId == id } ?: return
+    val initial = remember(move.placeId, move.expectedRevision) {
+        CoordinateCodec.format(move.candidatePoint, CoordinateFormat.DECIMAL_DEGREES)
+    }
+    var latitude by remember(move.placeId, move.expectedRevision) { mutableStateOf(initial.latitude) }
+    var longitude by remember(move.placeId, move.expectedRevision) { mutableStateOf(initial.longitude) }
+    var failure by remember(move.placeId, move.expectedRevision) { mutableStateOf<CoordinateParseResult.Failure?>(null) }
+    Column(Modifier.fillMaxWidth().testTag("map-place-move-editor"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        WpText(stringResource(R.string.map_place_move_original, move.originalPoint.coordinateText()), 11)
+        WpText(stringResource(R.string.map_place_move_candidate, move.candidatePoint.coordinateText()), 11)
+        CoordinateTextField(
+            R.string.map_coordinate_latitude,
+            latitude,
+            failure?.takeIf { it.field == CoordinateField.LATITUDE },
+            "map-place-move-latitude",
+        ) { latitude = it; failure = null }
+        CoordinateTextField(
+            R.string.map_coordinate_longitude,
+            longitude,
+            failure?.takeIf { it.field == CoordinateField.LONGITUDE },
+            "map-place-move-longitude",
+        ) { longitude = it; failure = null }
+        MapTextButton(
+            stringResource(R.string.map_place_move_preview),
+            "map-place-move-preview",
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            when (val parsed = CoordinateCodec.parse(latitude, longitude, CoordinateFormat.DECIMAL_DEGREES)) {
+                is CoordinateParseResult.Success -> onAction(MapAction.PreviewPlaceMove(parsed.point))
+                is CoordinateParseResult.Failure -> failure = parsed
+            }
+        }
+        MapTextButton(
+            stringResource(R.string.map_place_move_confirm),
+            "map-place-move-confirm",
+            modifier = Modifier.fillMaxWidth(),
+        ) { onAction(MapAction.ConfirmPlaceMove) }
+        MapTextButton(
+            stringResource(R.string.map_cancel),
+            "map-place-move-cancel",
+            modifier = Modifier.fillMaxWidth(),
+        ) { onAction(MapAction.CancelPlaceMove) }
+    }
+}
+
+@Composable
+private fun PlaceDeletePage(state: MapState, id: String, onAction: (MapAction) -> Unit) {
+    val request = state.placeDeleteRequest?.takeIf { it.placeId == id } ?: return
+    Column(
+        Modifier.fillMaxWidth().testTag("map-place-delete-confirmation"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        WpText(stringResource(R.string.map_place_delete_question, request.name), 20, weight = FontWeight.Light)
+        WpText(
+            stringResource(R.string.map_place_delete_impact, request.referencingRouteCount),
+            11,
+            color = LocalWpTheme.current.muted,
+            modifier = Modifier.testTag("map-place-delete-impact"),
+        )
+        MapTextButton(
+            stringResource(R.string.map_place_delete_confirm),
+            "map-place-delete-confirm",
+            modifier = Modifier.fillMaxWidth(),
+        ) { onAction(MapAction.ConfirmDeletePlace) }
+        MapTextButton(
+            stringResource(R.string.map_cancel),
+            "map-place-delete-cancel",
+            modifier = Modifier.fillMaxWidth(),
+        ) { onAction(MapAction.CancelDeletePlace) }
+    }
+}
+
+@Composable
+private fun PlaceDetailPage(state: MapState, id: String, onAction: (MapAction) -> Unit) {
+    val place = state.places.firstOrNull { it.id == id } ?: return
+    val colors = LocalWpTheme.current
+    Column(Modifier.fillMaxWidth().testTag("map-place-detail-$id"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        WpText(place.name, 22, weight = FontWeight.Light, modifier = Modifier.testTag("map-place-detail-name"))
+        WpText(
+            stringResource(place.category.labelResource()),
+            11,
+            color = colors.muted,
+            modifier = Modifier.testTag("map-place-detail-category"),
+        )
+        if (place.notes.isNotBlank()) WpText(place.notes, 12, modifier = Modifier.testTag("map-place-detail-notes"))
+        if (place.tags.isNotEmpty()) {
+            WpText(place.tags.joinToString(" · "), 11, color = colors.muted, modifier = Modifier.testTag("map-place-detail-tags"))
+        }
+        WpText(place.point.coordinateText(), 12, color = colors.muted, modifier = Modifier.testTag("map-place-detail-coordinate"))
+        state.placeSaveStatus?.takeIf { it.placeId == place.id && it.revision == place.revision }?.let { status ->
+            WpText(
+                stringResource(
+                    when (status.state) {
+                        MapSaveState.PENDING -> R.string.map_place_save_pending
+                        MapSaveState.SAVED -> R.string.map_place_save_saved
+                        MapSaveState.FAILED -> R.string.map_place_save_failed
+                    },
+                ),
+                10,
+                color = if (status.state == MapSaveState.FAILED) colors.accent else colors.muted,
+                modifier = Modifier.testTag("map-place-save-${status.state.name.lowercase(Locale.US)}"),
+            )
+        }
+        MapTextButton(stringResource(R.string.map_view), "map-place-view-$id", modifier = Modifier.fillMaxWidth()) {
+            onAction(
+                MapAction.RequestCamera(
+                    MapCameraTarget.Exact(state.camera.copy(center = place.point)),
+                    MapCameraIntent.VIEW_PLACE,
+                    state.viewportInsets(),
+                ),
+            )
+            onAction(MapAction.OpenSurface(MapSurface.Root))
+        }
+        MapTextButton(stringResource(R.string.map_place_edit), "map-place-edit-$id", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.OpenSurface(MapSurface.EditPlace(id)))
+        }
+        MapTextButton(stringResource(R.string.map_place_move), "map-place-move-$id", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.BeginPlaceMove(id))
+        }
+        MapTextButton(stringResource(R.string.map_place_delete), "map-place-delete-$id", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.RequestDeletePlace(id))
+        }
+    }
+}
+
+@Composable
+private fun MapFormTextField(
+    label: Int,
+    value: String,
+    tag: String,
+    singleLine: Boolean = true,
+    onValueChange: (String) -> Unit,
+) {
+    val colors = LocalWpTheme.current
+    Column {
+        WpText(stringResource(label), 10, color = colors.muted)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = singleLine,
+            textStyle = TextStyle(color = colors.foreground, fontSize = 16.sp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).border(1.dp, colors.muted).padding(8.dp).testTag(tag),
+        )
+    }
+}
+
+private fun PlaceCategory.labelResource(): Int = when (this) {
+    PlaceCategory.ANCHORAGE -> R.string.map_place_category_anchorage
+    PlaceCategory.MARINA -> R.string.map_place_category_marina
+    PlaceCategory.LANDING -> R.string.map_place_category_landing
+    PlaceCategory.WATER -> R.string.map_place_category_water
+    PlaceCategory.PERSONAL_MARKER -> R.string.map_place_category_personal
 }
 
 @Composable
@@ -672,17 +976,6 @@ private fun RoutesPage(state: MapState, onAction: (MapAction) -> Unit) {
 }
 
 @Composable
-private fun PlaceDetailPage(state: MapState, id: String, onAction: (MapAction) -> Unit) {
-    val place = state.places.firstOrNull { it.id == id } ?: return
-    WpText(place.name, 22, weight = FontWeight.Light)
-    WpText(place.point.coordinateText(), 12, color = LocalWpTheme.current.muted)
-    MapActionText(R.string.map_view, "map-view-place-${id.take(8)}") {
-        onAction(MapAction.RequestCamera(MapCameraTarget.Exact(state.camera.copy(center = place.point)), MapCameraIntent.VIEW_PLACE, state.viewportInsets()))
-        onAction(MapAction.CloseSurface)
-    }
-}
-
-@Composable
 private fun RouteDetailPage(state: MapState, id: String, onAction: (MapAction) -> Unit) {
     val points = state.routeDrafts.firstOrNull { it.id == id }?.waypoints
         ?: state.savedRoutes.firstOrNull { it.id == id }?.waypoints
@@ -691,7 +984,7 @@ private fun RouteDetailPage(state: MapState, id: String, onAction: (MapAction) -
     if (points.size >= 2) {
         MapActionText(R.string.map_view_route, "map-route-view") {
             onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(points.toBounds()), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
-            onAction(MapAction.CloseSurface)
+            onAction(MapAction.OpenSurface(MapSurface.Root))
         }
     }
 }
@@ -915,7 +1208,7 @@ private fun ChartPackageDetailPage(state: MapState, id: ChartPackageId, onAction
     WpText(stringResource(R.string.map_chart_package_detail, chartPackage.source, chartPackage.version), 11)
     MapActionText(R.string.map_view_package, "map-view-package-${id.value.take(8)}") {
         onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(chartPackage.coverage), MapCameraIntent.VIEW_PACKAGE, state.viewportInsets()))
-        onAction(MapAction.CloseSurface)
+        onAction(MapAction.OpenSurface(MapSurface.Root))
     }
 }
 
@@ -968,6 +1261,12 @@ private fun com.yokuli.marine.map.domain.MeasurementSegment.bearingText(): Strin
     } else {
         String.format(Locale.getDefault(), "%.1f°T", initialBearingTrueDegrees)
     }
+
+private fun MapHitResult.savedPlaceIdOrNull(): String? =
+    takeIf { overlayId == MapOverlayId.SAVED_PLACES }
+        ?.objectId
+        ?.removePrefix("place:")
+        ?.takeIf(String::isNotBlank)
 
 private fun MapHitResult.measurementPointIndexOrNull(): Int? =
     takeIf { overlayId == MapOverlayId.MEASUREMENT_POINTS }
