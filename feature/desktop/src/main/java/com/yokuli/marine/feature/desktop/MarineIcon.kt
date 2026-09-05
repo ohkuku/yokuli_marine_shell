@@ -6,7 +6,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import kotlin.math.min
@@ -22,14 +21,6 @@ fun MarineIcon(kind: MarineIconKind, color: Color, modifier: Modifier = Modifier
             MarineIconKind.APPS -> repeat(3) { row -> repeat(3) { column ->
                 drawCircle(color, unit * .055f, Offset(unit * (.27f + column * .23f), unit * (.27f + row * .23f)))
             } }
-            MarineIconKind.DONE -> {
-                val path = Path().apply {
-                    moveTo(unit * .17f, unit * .52f)
-                    lineTo(unit * .42f, unit * .75f)
-                    lineTo(unit * .85f, unit * .25f)
-                }
-                drawPath(path, color, style = Stroke(stroke))
-            }
             MarineIconKind.CANCEL -> {
                 drawLine(color, Offset(unit * .22f, unit * .22f), Offset(unit * .78f, unit * .78f), stroke)
                 drawLine(color, Offset(unit * .78f, unit * .22f), Offset(unit * .22f, unit * .78f), stroke)

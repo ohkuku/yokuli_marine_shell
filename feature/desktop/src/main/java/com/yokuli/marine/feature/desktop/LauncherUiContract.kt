@@ -17,7 +17,7 @@ import com.yokuli.shell.compose.LauncherEntryUiState
 import com.yokuli.shell.compose.LauncherEntryVisualContribution
 import com.yokuli.shell.compose.LauncherPresentationValidator
 
-enum class MarineIconKind { APPS, DONE, CANCEL, UNPIN, RESIZE, PIN, INFO, GENERIC }
+enum class MarineIconKind { APPS, CANCEL, UNPIN, RESIZE, PIN, INFO, GENERIC }
 
 data class LauncherUiState(
     val document: StartDocument,

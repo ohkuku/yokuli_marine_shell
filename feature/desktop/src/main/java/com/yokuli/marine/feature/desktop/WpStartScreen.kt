@@ -317,7 +317,6 @@ fun YokuliStartScreen(
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 3.dp), horizontalArrangement = Arrangement.End) {
-                val icon = if (editing) MarineIconKind.DONE else MarineIconKind.APPS
                 Box(
                     Modifier.size(YokuliMetrics.MinTouch).testTag("all-apps-entry")
                         .combinedNoRipple {
@@ -325,7 +324,7 @@ fun YokuliStartScreen(
                             else onAction(LauncherUiAction.ShowAllApps)
                         },
                     contentAlignment = Alignment.Center,
-                ) { MarineIcon(icon, colors.foreground, Modifier.size(28.dp)) }
+                ) { MarineIcon(MarineIconKind.APPS, colors.foreground, Modifier.size(28.dp)) }
             }
         }
         WpLauncherFeedback(

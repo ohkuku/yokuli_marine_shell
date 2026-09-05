@@ -84,6 +84,7 @@ class ShellAppTileContractTest(unittest.TestCase):
         self.assertNotIn("data class Resizing", interaction)
         self.assertNotIn("commit-tile-resize", screen)
         self.assertNotIn("cancel-tile-resize", screen)
+        self.assertNotIn("MarineIconKind.DONE", screen)
         self.assertIn("awaitLongPressOrCancellation", screen)
         self.assertIn("latestMoveStart(dragStart.id.value", screen)
 
