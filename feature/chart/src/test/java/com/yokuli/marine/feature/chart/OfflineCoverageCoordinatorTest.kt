@@ -60,7 +60,7 @@ class OfflineCoverageCoordinatorTest {
         release.complete(Unit)
         delay(50L)
 
-        assertEquals(OfflineCoverageUiState.Cancelled, coordinator.state.value)
+        assertEquals(OfflineCoverageUiState.Cancelled("route"), coordinator.state.value)
         scope.cancel()
     }
 
@@ -100,7 +100,7 @@ class OfflineCoverageCoordinatorTest {
         coordinator.start(huge, listOf(chart('a')), 18, 2.0, listOf(OfflineCoverageArea(GeoPoint(0.0, 0.0), 2.0)))
         withTimeout(2_000L) { coordinator.state.first { it is OfflineCoverageUiState.TooLarge } }
 
-        assertEquals(OfflineCoverageUiState.TooLarge(20), coordinator.state.value)
+        assertEquals(OfflineCoverageUiState.TooLarge("route", 20), coordinator.state.value)
         scope.cancel()
     }
 

@@ -1483,11 +1483,7 @@ private fun OfflineCoveragePage(
     var widthText by remember(routeId) { mutableStateOf("2") }
     val zoom = zoomText.trim().toIntOrNull()?.takeIf { it in 0..24 }
     val width = widthText.trim().toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }
-    val visibleCoverage = when (coverageState) {
-        is OfflineCoverageUiState.Ready -> coverageState.takeIf { it.request.routeId == routeId }
-            ?: OfflineCoverageUiState.Idle
-        else -> coverageState
-    }
+    val visibleCoverage = coverageState.takeIf { it.belongsTo(routeId) } ?: OfflineCoverageUiState.Idle
 
     Column(
         Modifier.fillMaxWidth().testTag("map-offline-coverage-$routeId"),
@@ -1503,14 +1499,20 @@ private fun OfflineCoveragePage(
         MapTextButton(
             stringResource(R.string.map_coverage_check),
             "map-coverage-check",
-            enabled = zoom != null && width != null && visibleCoverage !is OfflineCoverageUiState.Checking,
+            enabled = zoom != null && width != null &&
+                visibleCoverage !is OfflineCoverageUiState.Planning &&
+                visibleCoverage !is OfflineCoverageUiState.Checking,
             modifier = Modifier.fillMaxWidth().border(1.dp, colors.accent),
         ) {
             onStart(routeId, checkNotNull(zoom), checkNotNull(width))
         }
-        if (visibleCoverage is OfflineCoverageUiState.Checking) {
+        if (visibleCoverage is OfflineCoverageUiState.Planning || visibleCoverage is OfflineCoverageUiState.Checking) {
             WpText(
-                stringResource(R.string.map_coverage_checking, visibleCoverage.requiredKeyCount),
+                if (visibleCoverage is OfflineCoverageUiState.Checking) {
+                    stringResource(R.string.map_coverage_checking, visibleCoverage.requiredKeyCount)
+                } else {
+                    stringResource(R.string.map_coverage_planning)
+                },
                 11,
                 modifier = Modifier.testTag("map-coverage-checking"),
             )
@@ -1529,7 +1531,7 @@ private fun OfflineCoveragePage(
                 color = colors.accent,
                 modifier = Modifier.testTag("map-coverage-too-large"),
             )
-            OfflineCoverageUiState.Cancelled -> WpText(
+            is OfflineCoverageUiState.Cancelled -> WpText(
                 stringResource(R.string.map_coverage_cancelled),
                 11,
                 modifier = Modifier.testTag("map-coverage-cancelled"),
@@ -1552,7 +1554,10 @@ private fun OfflineCoveragePage(
                 color = colors.accent,
                 modifier = Modifier.testTag("map-coverage-failed"),
             )
-            OfflineCoverageUiState.Idle, is OfflineCoverageUiState.Checking -> Unit
+            OfflineCoverageUiState.Idle,
+            is OfflineCoverageUiState.Planning,
+            is OfflineCoverageUiState.Checking,
+            -> Unit
         }
         WpText(stringResource(R.string.map_coverage_source_title), 16, weight = FontWeight.Light)
         WpText(stringResource(R.string.map_coverage_source_noaa), 11, color = colors.muted)
@@ -1562,6 +1567,17 @@ private fun OfflineCoveragePage(
             modifier = Modifier.fillMaxWidth(),
         ) { onImportAction(ChartImportUiAction.ChooseDocument) }
     }
+}
+
+private fun OfflineCoverageUiState.belongsTo(routeId: String): Boolean = when (this) {
+    OfflineCoverageUiState.Idle -> true
+    is OfflineCoverageUiState.Planning -> this.routeId == routeId
+    is OfflineCoverageUiState.Checking -> this.routeId == routeId
+    is OfflineCoverageUiState.Ready -> request.routeId == routeId
+    is OfflineCoverageUiState.TooLarge -> this.routeId == routeId
+    is OfflineCoverageUiState.Cancelled -> this.routeId == routeId
+    is OfflineCoverageUiState.Stale -> this.routeId == routeId
+    is OfflineCoverageUiState.Failed -> this.routeId == routeId
 }
 
 @Composable

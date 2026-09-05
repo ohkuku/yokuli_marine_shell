@@ -25,7 +25,12 @@ enum class OfflineCoverageFailure { NO_ELIGIBLE_PACKAGE, INDEX_UNAVAILABLE }
 
 sealed interface OfflineCoverageUiState {
     data object Idle : OfflineCoverageUiState
+    data class Planning(
+        val routeId: String,
+        val fingerprint: OfflineCoverageFingerprint,
+    ) : OfflineCoverageUiState
     data class Checking(
+        val routeId: String,
         val fingerprint: OfflineCoverageFingerprint,
         val requiredKeyCount: Int,
     ) : OfflineCoverageUiState
@@ -35,10 +40,10 @@ sealed interface OfflineCoverageUiState {
         val result: OfflineCoverageResult,
     ) : OfflineCoverageUiState
 
-    data class TooLarge(val maximumKeys: Int) : OfflineCoverageUiState
-    data object Cancelled : OfflineCoverageUiState
-    data class Stale(val previous: OfflineCoverageResult?) : OfflineCoverageUiState
-    data class Failed(val reason: OfflineCoverageFailure) : OfflineCoverageUiState
+    data class TooLarge(val routeId: String, val maximumKeys: Int) : OfflineCoverageUiState
+    data class Cancelled(val routeId: String) : OfflineCoverageUiState
+    data class Stale(val routeId: String, val previous: OfflineCoverageResult?) : OfflineCoverageUiState
+    data class Failed(val routeId: String, val reason: OfflineCoverageFailure) : OfflineCoverageUiState
 }
 
 class OfflineCoverageCoordinator(
@@ -70,7 +75,7 @@ class OfflineCoverageCoordinator(
         if (eligible.isEmpty()) {
             activeRequest = null
             activeLogicalPackageIds = emptySet()
-            mutableState.value = OfflineCoverageUiState.Failed(OfflineCoverageFailure.NO_ELIGIBLE_PACKAGE)
+            mutableState.value = OfflineCoverageUiState.Failed(route.id, OfflineCoverageFailure.NO_ELIGIBLE_PACKAGE)
             return
         }
         val request = OfflineCoverageRequest(
@@ -85,10 +90,11 @@ class OfflineCoverageCoordinator(
         )
         activeRequest = request
         activeLogicalPackageIds = eligible.map { it.logicalId.value }.toSet()
+        mutableState.value = OfflineCoverageUiState.Planning(route.id, OfflineCoverageFingerprint.of(request))
         activeJob = scope.launch(workerDispatcher) {
             try {
                 val plan = OfflineCoveragePlanner.plan(request)
-                publish(currentGeneration, OfflineCoverageUiState.Checking(plan.fingerprint, plan.requiredKeys.size))
+                publish(currentGeneration, OfflineCoverageUiState.Checking(route.id, plan.fingerprint, plan.requiredKeys.size))
                 val available = eligible.associate { chartPackage ->
                     ensureActive()
                     chartPackage.versionId to tileIndex.availableKeys(chartPackage, plan.requiredKeys)
@@ -101,22 +107,23 @@ class OfflineCoverageCoordinator(
             } catch (_: CancellationException) {
                 // cancel()/invalidate() own their visible state; a late cancelled job cannot overwrite it.
             } catch (tooLarge: OfflineCoverageTooLargeException) {
-                publish(currentGeneration, OfflineCoverageUiState.TooLarge(tooLarge.maximumKeys))
+                publish(currentGeneration, OfflineCoverageUiState.TooLarge(route.id, tooLarge.maximumKeys))
             } catch (error: Throwable) {
                 incidentLogger(error)
-                publish(currentGeneration, OfflineCoverageUiState.Failed(OfflineCoverageFailure.INDEX_UNAVAILABLE))
+                publish(currentGeneration, OfflineCoverageUiState.Failed(route.id, OfflineCoverageFailure.INDEX_UNAVAILABLE))
             }
         }
     }
 
     @Synchronized
     fun cancel() {
+        val routeId = activeRequest?.routeId ?: return
         generation += 1L
         activeJob?.cancel()
         activeJob = null
         activeRequest = null
         activeLogicalPackageIds = emptySet()
-        mutableState.value = OfflineCoverageUiState.Cancelled
+        mutableState.value = OfflineCoverageUiState.Cancelled(routeId)
     }
 
     @Synchronized
@@ -140,7 +147,7 @@ class OfflineCoverageCoordinator(
         activeJob?.cancel()
         activeJob = null
         val previousResult = (mutableState.value as? OfflineCoverageUiState.Ready)?.result
-        mutableState.value = OfflineCoverageUiState.Stale(previousResult)
+        mutableState.value = OfflineCoverageUiState.Stale(previous.routeId, previousResult)
     }
 
     @Synchronized

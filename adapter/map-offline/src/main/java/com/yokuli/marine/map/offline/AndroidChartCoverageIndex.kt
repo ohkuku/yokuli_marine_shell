@@ -30,22 +30,30 @@ class AndroidChartCoverageIndex(
         require(file.isFile) { "Installed MBTiles file is missing" }
         acquireLease(chartPackage.id).use {
             SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { database ->
-                val remaining = requiredKeys.toHashSet()
                 val available = hashSetOf<SlippyTileKey>()
-                requiredKeys.map(SlippyTileKey::zoom).distinct().forEach { zoom ->
-                    database.rawQuery(
-                        "SELECT tile_column, tile_row FROM tiles WHERE zoom_level = ?",
-                        arrayOf(zoom.toString()),
-                    ).use { cursor ->
-                        val dimension = 1 shl zoom
-                        var rows = 0
-                        while (cursor.moveToNext() && remaining.isNotEmpty()) {
-                            if (++rows % CANCELLATION_CHECK_ROWS == 0) currentCoroutineContext().ensureActive()
-                            val x = cursor.getInt(0)
-                            val tmsY = cursor.getInt(1)
-                            val xyzY = dimension - 1 - tmsY
-                            val key = runCatching { SlippyTileKey(zoom, x, xyzY) }.getOrNull() ?: continue
-                            if (remaining.remove(key)) available += key
+                requiredKeys.groupBy(SlippyTileKey::zoom).forEach { (zoom, zoomKeys) ->
+                    val dimension = 1 shl zoom
+                    zoomKeys.chunked(KEYS_PER_QUERY).forEach { keys ->
+                        currentCoroutineContext().ensureActive()
+                        val predicates = keys.joinToString(" OR ") { "(tile_column = ? AND tile_row = ?)" }
+                        val arguments = ArrayList<String>(1 + keys.size * 2).apply {
+                            add(zoom.toString())
+                            keys.forEach { key ->
+                                add(key.x.toString())
+                                add((dimension - 1 - key.y).toString())
+                            }
+                        }
+                        database.rawQuery(
+                            "SELECT tile_column, tile_row FROM tiles WHERE zoom_level = ? AND ($predicates)",
+                            arguments.toTypedArray(),
+                        ).use { cursor ->
+                            while (cursor.moveToNext()) {
+                                currentCoroutineContext().ensureActive()
+                                val x = cursor.getInt(0)
+                                val tmsY = cursor.getInt(1)
+                                val xyzY = dimension - 1 - tmsY
+                                runCatching { SlippyTileKey(zoom, x, xyzY) }.getOrNull()?.let(available::add)
+                            }
                         }
                     }
                 }
@@ -56,6 +64,7 @@ class AndroidChartCoverageIndex(
 
     private companion object {
         const val MBTILES_URI_PREFIX = "mbtiles://"
-        const val CANCELLATION_CHECK_ROWS = 512
+        // 1 zoom argument + 2 per key remains below Android SQLite's common 999-variable limit.
+        const val KEYS_PER_QUERY = 400
     }
 }

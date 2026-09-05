@@ -268,6 +268,7 @@
     <string name="map_coverage_width">路线每侧准备宽度（海里）</string>
     <string name="map_coverage_invalid_input">请输入 0–24 的整数级别和大于 0 的有限宽度。</string>
     <string name="map_coverage_check">开始离线资料检查</string>
+    <string name="map_coverage_planning">正在计算需要核对的精确图块键…</string>
     <string name="map_coverage_checking">正在检查 %1$d 个精确图块键…</string>
     <string name="map_coverage_cancel">取消检查</string>
     <string name="map_coverage_cancelled">检查已取消；没有生成完整性结论。</string>
