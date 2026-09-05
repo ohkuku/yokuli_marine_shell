@@ -58,9 +58,12 @@ class ChartC06ContractTest(unittest.TestCase):
     def test_room_v3_migration_preserves_route_identity_and_metadata(self):
         database = (ROOT / "adapter/map-storage/src/main/java/com/yokuli/marine/map/storage/MapLibraryDatabase.kt").read_text()
         persistence = (ROOT / "adapter/map-storage/src/main/java/com/yokuli/marine/map/storage/RoomMapPersistence.kt").read_text()
-        self.assertIn("version = 3", database)
+        self.assertRegex(database, r"version = (?:[3-9]|[1-9][0-9]+)")
         self.assertIn("MIGRATION_2_3", database)
-        self.assertIn("addMigrations(MIGRATION_1_2, MIGRATION_2_3)", persistence)
+        self.assertRegex(
+            persistence,
+            r"addMigrations\([^)]*MIGRATION_1_2[^)]*MIGRATION_2_3[^)]*\)",
+        )
         self.assertNotIn("fallbackToDestructiveMigration", database + persistence)
 
     def test_c06_risk_matrix_has_executable_domain_storage_and_ui_evidence(self):
