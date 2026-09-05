@@ -42,6 +42,19 @@ class PositionObservationContractTest {
     }
 
     @Test
+    fun `a new identity at the same coordinate refreshes monotonic age`() {
+        val reducer = DefaultMapReducer()
+        var state = reducer.reduce(MapState(), MapAction.PositionSourceConnected(source)).state
+        state = reducer.reduce(state, MapAction.ObservePosition(fix("first", 1, 1_000L), MonotonicTime("boot-a", 31_001L))).state
+        assertEquals(PositionAvailability.STALE, state.position.availability)
+
+        state = reducer.reduce(state, MapAction.ObservePosition(fix("second", 2, 31_000L), MonotonicTime("boot-a", 31_001L))).state
+        assertEquals(point, state.position.observation?.point)
+        assertEquals("second", state.position.observation?.identity?.observationId)
+        assertEquals(PositionAvailability.FRESH, state.position.availability)
+    }
+
+    @Test
     fun `monotonic age controls freshness and a different boot is never fresh`() {
         val reducer = DefaultMapReducer()
         var state = reducer.reduce(MapState(), MapAction.PositionSourceConnected(source)).state
@@ -115,6 +128,50 @@ class PositionObservationContractTest {
         assertEquals(VesselMarkerStyle.LIVE_TRUE_HEADING, withTrue.markerStyle)
         assertEquals(45.0, withTrue.trueHeadingDegrees)
         assertFalse(withTrue.trueHeadingDegrees == withTrue.courseVector?.trueDegrees)
+    }
+
+    @Test
+    fun `source switching never combines the new fix with old-source heading`() {
+        val reducer = DefaultMapReducer()
+        var state = reducer.reduce(MapState(), MapAction.PositionSourceConnected(source)).state
+        state = reducer.reduce(state, MapAction.ObservePosition(fix("old-fix", 1, 9_000L), now)).state
+        state = reducer.reduce(state, MapAction.ObserveHeading(heading("old-heading", 2, 9_100L), now)).state
+        val secondSource = ObservationSource("usb", "session-1")
+        state = reducer.reduce(state, MapAction.PositionSourceConnected(secondSource)).state
+        state = reducer.reduce(
+            state,
+            MapAction.ObservePosition(fix("new-fix", 1, 9_500L, source = secondSource), now),
+        ).state
+
+        val render = PositionRenderPolicy.resolve(state.position)
+        assertEquals(VesselMarkerStyle.LIVE_NEUTRAL, render.markerStyle)
+        assertNull(render.trueHeadingDegrees)
+    }
+
+    @Test
+    fun `UTC changes do not alter monotonic freshness and historical snapshots are not persisted as live`() {
+        val earlyUtc = fix("utc-a", 1, 9_000L).copy(
+            identity = identity("utc-a", 1, 9_000L).copy(
+                sampledAtUtcMillis = 2_000_000L,
+                sampleTimeConfidence = SampleTimeConfidence.REPORTED_UTC,
+            ),
+        )
+        val lateUtc = earlyUtc.copy(
+            identity = earlyUtc.identity.copy(
+                observationId = "utc-b",
+                sequence = 2,
+                sampledAtUtcMillis = 1_000_000L,
+                receivedAt = MonotonicTime("boot-a", 9_500L),
+            ),
+        )
+        val reducer = DefaultMapReducer()
+        var state = reducer.reduce(MapState(), MapAction.PositionSourceConnected(source)).state
+        state = reducer.reduce(state, MapAction.ObservePosition(earlyUtc, now)).state
+        state = reducer.reduce(state, MapAction.ObservePosition(lateUtc, now)).state
+
+        assertEquals(PositionAvailability.FRESH, state.position.availability)
+        assertEquals("utc-b", state.position.observation?.identity?.observationId)
+        assertNull(state.persisted().positionObservation)
     }
 
     @Test
