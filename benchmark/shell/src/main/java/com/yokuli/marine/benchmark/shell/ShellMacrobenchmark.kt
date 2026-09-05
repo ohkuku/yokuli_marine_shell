@@ -173,12 +173,10 @@ class ShellMacrobenchmark {
         setupBlock = { openStart() },
     ) {
         device.awaitTag("virtual-key-search").click()
-        device.awaitTag("launcher-search-field").setText("chart")
-        device.awaitTagWithText("launcher-search-field", "chart")
-        // Stabilize the IME-resized viewport before using the result's screen coordinates.
-        device.pressBack()
-        device.awaitTag("shell-search-surface")
-        check(device.awaitTag("search-result-chart").click()) { "Unable to click Chart search result" }
+        // The installed-app result is locale independent. Text search itself is covered by J01;
+        // avoiding a translated query keeps this performance journey valid in zh and en.
+        device.awaitTag("launcher-search-field")
+        device.awaitTag("search-result-chart").click()
         device.awaitTag("chart-workspace-browse")
     }
 
@@ -211,7 +209,7 @@ class ShellMacrobenchmark {
     ) {
         device.awaitTag("tile-demo-1").longPress()
         device.awaitTag("resize-selected-tile")
-        check(device.awaitTag("resize-selected-tile").click()) { "Unable to click tile resize control" }
+        device.awaitTag("resize-selected-tile").click()
         device.awaitTag("shell-lab-demo-1-size-wide_4x2")
     }
 
@@ -329,16 +327,6 @@ class ShellMacrobenchmark {
             )
         }
         return tagged
-    }
-
-    private fun UiDevice.awaitTagWithText(tag: String, expectedText: String): UiObject {
-        val deadline = SystemClock.uptimeMillis() + WAIT_MILLIS
-        while (SystemClock.uptimeMillis() < deadline) {
-            val tagged = findObject(UiSelector().resourceId(tag))
-            if (tagged.exists() && tagged.text == expectedText) return tagged
-            SystemClock.sleep(100L)
-        }
-        throw IllegalArgumentException("Timed out waiting for Compose tag text: $tag=$expectedText")
     }
 
     private fun UiDevice.dismissPlatformOverlayIfTargetRemainsResumed(): Boolean {
