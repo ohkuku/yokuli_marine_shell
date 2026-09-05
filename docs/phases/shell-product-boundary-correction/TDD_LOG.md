@@ -12,3 +12,7 @@
 ## GREEN — pending implementation
 
 实现和完整门禁结果将在 Green commit 后补录。
+
+## English translation
+
+The Red contract captures the obsolete Android settings escape, host-exiting Desktop Back effect, and sensor-based orientation before implementation. Green evidence will be recorded after the fixed commit completes its gates.
