@@ -208,7 +208,10 @@ class MapLibreMbTilesRenderTest {
         paint.color = Color.rgb(25, 135, 220)
         canvas.drawRect(165f, 8f, 248f, 180f, paint)
         paint.color = Color.rgb(245, 205, 35)
-        canvas.drawRect(8f, 90f, 165f, 248f, paint)
+        // Keep a transparent window through the visible tile centre. On high-density Android
+        // devices zoom 0 crops the outer eight-pixel border, so an edge-only alpha assertion
+        // would never exercise raster composition.
+        canvas.drawRect(8f, 150f, 165f, 248f, paint)
         paint.color = Color.rgb(30, 165, 95)
         canvas.drawRect(165f, 180f, 248f, 248f, paint)
         val bytes = ByteArrayOutputStream().use { output ->
