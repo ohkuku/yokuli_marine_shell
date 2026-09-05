@@ -188,7 +188,7 @@ class ShellActivityStoryTest {
                     com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle
                 reordered = state.start.document.placements.sortedBy { it.rank }
                     .map { it.entryId.value } == listOf("settings", "chart") &&
-                    selected?.selectedTile?.value == "settings-primary"
+                    selected?.selectedTile?.value == "tile-settings"
             }
             reordered
         }
@@ -250,7 +250,7 @@ class ShellActivityStoryTest {
                 val interaction = ViewModelProvider(activity)[ShellViewModel::class.java]
                     .engine.state.value.start.interaction as?
                     com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle
-                selected = interaction?.selectedTile?.value == "settings-primary"
+                selected = interaction?.selectedTile?.value == "tile-settings"
             }
             selected
         }
