@@ -36,6 +36,7 @@ import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliColors
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.GeoBounds
+import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapCameraIntent
 import com.yokuli.marine.map.domain.MapCameraTarget
 import com.yokuli.marine.map.domain.MapLibraryLoadState
@@ -212,15 +213,14 @@ private fun MapRendererTruth(state: MapState) {
         state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_ATTACHED -> R.string.map_package_attached
         else -> R.string.map_no_package
     }
-    val metersPer100Px = 15_654_303.392 * kotlin.math.cos(Math.toRadians(state.camera.center.latitude)) /
-        2.0.pow(state.camera.zoom)
+    val nauticalMilesPer100Px = state.camera.scaleNauticalMilesForPixels(100.0)
     Row(
         Modifier.padding(start = 18.dp, top = 5.dp).background(colors.background.copy(alpha = .86f))
             .padding(horizontal = 9.dp, vertical = 5.dp).testTag("map-renderer-truth"),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         WpText(stringResource(status), 10, color = colors.foreground)
-        WpText(stringResource(R.string.map_scale_100px, metersPer100Px / 1_852.0), 10, color = colors.muted)
+        WpText(stringResource(R.string.map_scale_100px, nauticalMilesPer100Px), 10, color = colors.muted)
     }
 }
 
@@ -487,6 +487,12 @@ private fun List<com.yokuli.marine.map.domain.GeoPoint>.toBounds(): GeoBounds = 
     north = maxOf { it.latitude },
     east = maxOf { it.longitude },
 )
+
+internal fun MapCamera.scaleNauticalMilesForPixels(pixelCount: Double): Double {
+    require(pixelCount.isFinite() && pixelCount >= 0.0)
+    val metresPerPixel = 156_543.03392 * kotlin.math.cos(Math.toRadians(center.latitude)) / 2.0.pow(zoom)
+    return metresPerPixel * pixelCount / 1_852.0
+}
 
 @Composable
 private fun ChartImportEditor(

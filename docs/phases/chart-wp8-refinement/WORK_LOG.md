@@ -98,3 +98,19 @@
 - NOAA 子集只用于测试和可追溯性验证，不冒充官方 NOAA chart，也不作为 Release 内置海图。当前生产首屏不需要 Google key；用户仍需导入自己有权使用的本地资料。
 
 实现候选冻结在 `32e13b991ed2274296c1b6a0083a3ee63b055e39`。聚焦 JVM、MBTiles/真实像素 API 34 和 50 次生命周期故事已通过；状态暂为 `IMPLEMENTED_UNVERIFIED`，等待累计 C00–C02 Gate。
+
+## C02｜累计 Gate 与自查结论
+
+候选文档提交后的第一次累计 Gate 只因报告使用 `English summary` 而不是仓库规定的 `English translation` 标记失败；该失败已单独提交修正，随后从头重跑。冻结验证点 `11d10156c4b1ad26a55694219bcc9ce00fd97a80` 的结果：
+
+- Python 合同 165 项和 CI/release shell 合同全部通过。
+- 全仓 `test`、`lintStandaloneDebug`、Standalone Debug/Release：1151 tasks，build successful；XML 汇总 231 个 JVM tests。
+- API 34：离线 renderer/导入 5 项、app-shell 39 项、Room 4 项，全部通过。
+- Debug APK SHA-256：`db20d98875953d52046aa613afa6f0a03d4ed88c47fd51be9aadb4a46f115662`；unsigned Release APK SHA-256：`613337922f1f22ddf23417021d2796cf47a4a0dc8c823605069491efd7a4b655`。
+- Release 合并清单没有粗略/精确位置权限或 Google Maps metadata；MapLibre 依赖仍合并 INTERNET、NETWORK_STATE、WIFI_STATE 权限，但当前生产 renderer 的 style/source 没有 HTTP URL，真实离线像素测试无需外网 key。
+
+自查确认没有第二条生产 renderer、没有把 style loaded 写成 tile ready、没有旧 generation 回写、没有把测试 NOAA 子集宣称成内置官方海图。C02 标记为 `VERIFIED_LOCAL`，允许开始 C03；同 SHA 托管证据和所有者方屏实体机审核仍留给 C12。
+
+## C02｜封口前自审补测
+
+在写入机器场景证据时发现，原真实 renderer 测试虽然验证了色板存在，却没有直接断言高 zoom 取代 overview、90 度旋转改变已知图面方位、透明边露出本地空 style；相机范围场景也只有实现调用，没有独立断言 command ID、viewport inset 和切包不自动 fit-all。为避免把“代码看起来存在”写成已验证，C02 暂时退回 `IMPLEMENTED_UNVERIFIED`，新增真实 MapLibre 多 zoom/旋转/透明边测试、纯 reducer 相机命令测试和纬度/zoom 相关比例尺测试。新增 Gate 未通过前不开始 C03。

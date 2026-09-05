@@ -5,6 +5,7 @@
   "branch": "codex/shell-map-contract",
   "baselineSha": "038f1b4e87e1fb7db79bb10178ff10b0c7644c82",
   "implementationCandidateSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+  "cumulativeVerifiedSha": "11d10156c4b1ad26a55694219bcc9ce00fd97a80",
   "status": "IMPLEMENTED_UNVERIFIED",
   "productionRenderer": "MapLibre Native 13.4.1 local raster MBTiles",
   "productionRendererCount": 1,
@@ -23,6 +24,16 @@
     "peakLiveInstances": 1,
     "finalLiveInstances": 0
   },
-  "cumulativeGate": "PENDING",
+  "cumulativeGate": {
+    "status": "PENDING_RERUN_AFTER_SELF_REVIEW",
+    "pythonTests": 165,
+    "jvmTests": 231,
+    "gradleTasks": 1151,
+    "offlineRendererDeviceTests": 5,
+    "appShellDeviceTests": 39,
+    "roomDeviceTests": 4,
+    "debugApkSha256": "db20d98875953d52046aa613afa6f0a03d4ed88c47fd51be9aadb4a46f115662",
+    "unsignedReleaseApkSha256": "613337922f1f22ddf23417021d2796cf47a4a0dc8c823605069491efd7a4b655"
+  },
   "nextPermittedPackageAfterGate": "C03"
 }

@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MapRendererContractTest {
@@ -105,6 +106,54 @@ class MapRendererContractTest {
             MapAction.RendererFailed(MapRendererGeneration(11), MapRendererFailure.STYLE),
         )
         assertEquals(state, late.state)
+    }
+
+    @Test
+    fun explicitCameraTargetsUseMonotonicIdsAndPreserveViewportInsets() {
+        val firstInsets = MapViewportInsets(leftPx = 8, topPx = 64, rightPx = 12, bottomPx = 220)
+        val packageBounds = GeoBounds(-37.0, 174.0, -36.0, 176.0)
+
+        val place = reduce(
+            MapState(),
+            MapAction.RequestCamera(
+                MapCameraTarget.Exact(restoredCamera.copy(center = GeoPoint(-36.7, 174.9))),
+                MapCameraIntent.VIEW_PLACE,
+                firstInsets,
+            ),
+        ).state
+        val placeCommand = requireNotNull(place.renderer.pendingCameraCommand)
+        assertEquals(MapCameraCommandId(1), placeCommand.id)
+        assertEquals(firstInsets, placeCommand.viewportInsets)
+
+        val packageView = reduce(
+            place,
+            MapAction.RequestCamera(
+                MapCameraTarget.Bounds(packageBounds),
+                MapCameraIntent.VIEW_PACKAGE,
+                MapViewportInsets(bottomPx = 96),
+            ),
+        ).state
+        val packageCommand = requireNotNull(packageView.renderer.pendingCameraCommand)
+        assertEquals(MapCameraCommandId(2), packageCommand.id)
+        assertEquals(MapCameraTarget.Bounds(packageBounds), packageCommand.target)
+        assertEquals(96, packageCommand.viewportInsets.bottomPx)
+    }
+
+    @Test
+    fun selectingAChartPackageNeverImplicitlyFitsAllContent() {
+        fun chartPackage(id: String) = ChartPackage(
+            ChartPackageId(id), id, "source", "license", "attribution", id.first().toString().repeat(64),
+            "mbtiles:///charts/$id.mbtiles", GeoBounds(-37.0, 174.0, -36.0, 176.0), 4, 14, "1",
+        )
+        val first = chartPackage("aaaa")
+        val second = chartPackage("bbbb")
+        val loaded = reduce(MapState(), MapAction.ChartPackagesChanged(listOf(first, second))).state
+
+        val selected = reduce(loaded, MapAction.SelectChartPackage(first.id)).state
+
+        assertEquals(first.id, selected.activeChartPackageId)
+        assertNull(selected.renderer.pendingCameraCommand)
+        assertTrue(selected.camera == loaded.camera)
     }
 
     private fun restore(state: MapState): MapState = reduce(

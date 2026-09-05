@@ -7,7 +7,8 @@
 - package：C02
 - baseline：`038f1b4e87e1fb7db79bb10178ff10b0c7644c82`
 - implementation candidate：`32e13b991ed2274296c1b6a0083a3ee63b055e39`
-- status：`IMPLEMENTED_UNVERIFIED`
+- cumulative verified SHA：`11d10156c4b1ad26a55694219bcc9ce00fd97a80`
+- status：`IMPLEMENTED_UNVERIFIED`（封口自审补测后等待累计重跑）
 - hosted CI：留给 C12 的最终同 SHA Gate；本报告不伪造远端结果
 
 ## 交付
@@ -37,7 +38,16 @@
 
 ## 累计 Gate
 
-提交本报告后执行 C00–C02 的完整 Python、CI contract、JVM、lint、Standalone Debug/Release 和 API 34 device Gate。只有全部通过，才把 C02 改成 `VERIFIED_LOCAL` 并进入 C03。
+- Python contracts：165 passed；CI/release workflow contract passed
+- Gradle：1151 tasks；全仓 test、lint、Standalone Debug/Release passed
+- JVM XML：231 tests，0 failure/error
+- API 34：offline renderer 5、app-shell 39、Room 4，0 failure
+- Debug APK SHA-256：`db20d98875953d52046aa613afa6f0a03d4ed88c47fd51be9aadb4a46f115662`
+- unsigned Release APK SHA-256：`613337922f1f22ddf23417021d2796cf47a4a0dc8c823605069491efd7a4b655`
+
+Release manifest 无位置权限和 Google Maps metadata。MapLibre 库仍声明网络/网络状态/Wi-Fi 状态权限；本 C02 只证明当前生产 renderer/style/source 无 HTTP URL，并由 API 34 的本地 `mbtiles://` 像素测试证明无需 Google key 的离线浏览路径。
+
+封口自审随后补入多 zoom、90 度旋转、透明边、动态比例尺、单调 command ID、viewport inset 和“切包不自动 fit-all”断言。上面的累计结果仍保留为上一验证点事实，但新增断言必须在新候选上重跑后才能恢复 `VERIFIED_LOCAL`。
 
 ## 未宣称完成
 

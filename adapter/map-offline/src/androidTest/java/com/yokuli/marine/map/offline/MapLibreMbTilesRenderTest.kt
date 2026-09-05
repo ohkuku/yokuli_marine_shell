@@ -56,6 +56,31 @@ class MapLibreMbTilesRenderTest {
         }
         assertTrue("at least three asymmetric raster regions must be visible", renderedFixtureColors >= 3)
         assertTrue("stable overlay must be visibly bright", Color.red(center) > 220 && Color.green(center) > 220)
+        assertTrue("transparent fixture edge must expose the empty local style", bitmap.getPixel(3, 3).near(Color.rgb(8, 27, 39)))
+
+        val rotated = captureFixture(
+            name = "directional-rotated",
+            center = LatLng(0.0, 0.0),
+            zoom = 0.0,
+            bearing = 90.0,
+            prepare = { _, file -> createFixture(file) },
+        )
+        val before = bitmap.getPixel(bitmap.width / 4, bitmap.height / 4)
+        val after = rotated.getPixel(rotated.width / 4, rotated.height / 4)
+        assertTrue("a 90 degree bearing must rotate known raster content", !before.near(after, tolerance = 18))
+        assertTrue("rotation must not lose the known raster palette", fixtureColors.count { rotated.contains(it) } >= 3)
+    }
+
+    @Test
+    fun higherZoomTilesReplaceTheOverviewTileAtTheKnownLatLonTarget() {
+        val bitmap = captureFixture(
+            name = "multi-zoom",
+            center = LatLng(30.0, -120.0),
+            zoom = 1.0,
+            prepare = { _, file -> createMultiZoomFixture(file) },
+        )
+        val detail = Color.rgb(155, 45, 210)
+        assertTrue("z=1 detail tile was not selected for latitude/longitude target", bitmap.countNear(detail) > 1_000)
     }
 
     @Test
@@ -88,6 +113,7 @@ class MapLibreMbTilesRenderTest {
         name: String,
         center: LatLng,
         zoom: Double,
+        bearing: Double = 0.0,
         overlayPoint: LatLng? = null,
         prepare: (MapRendererTestActivity, File) -> Unit,
     ): Bitmap = ActivityScenario.launch(MapRendererTestActivity::class.java).use { scenario ->
@@ -108,7 +134,7 @@ class MapLibreMbTilesRenderTest {
                     },
                 )
                 map.cameraPosition = CameraPosition.Builder()
-                    .target(center).zoom(zoom).bearing(0.0).tilt(0.0).build()
+                    .target(center).zoom(zoom).bearing(bearing).tilt(0.0).build()
                 map.setStyle(Style.Builder().fromJson(EMPTY_TEST_STYLE)) { style ->
                     try {
                         style.addSource(RasterSource("fixture", "mbtiles://${fixture.absolutePath}", 256))
@@ -143,6 +169,12 @@ class MapLibreMbTilesRenderTest {
         kotlin.math.abs(Color.red(this) - Color.red(expected)) <= tolerance &&
             kotlin.math.abs(Color.green(this) - Color.green(expected)) <= tolerance &&
             kotlin.math.abs(Color.blue(this) - Color.blue(expected)) <= tolerance
+
+    private fun Bitmap.contains(expected: Int): Boolean = countNear(expected) > 80
+
+    private fun Bitmap.countNear(expected: Int): Int = (0 until width step 3).sumOf { x ->
+        (0 until height step 3).count { y -> getPixel(x, y).near(expected, tolerance = 24) }
+    }
 
     private fun createFixture(file: File) {
         file.delete()
@@ -180,6 +212,44 @@ class MapLibreMbTilesRenderTest {
                 "INSERT INTO tiles(zoom_level,tile_column,tile_row,tile_data) VALUES(0,0,0,?)",
                 arrayOf(bytes),
             )
+        }
+    }
+
+    private fun createMultiZoomFixture(file: File) {
+        file.delete()
+        val overview = solidTile(Color.rgb(30, 90, 120))
+        val detail = solidTile(Color.rgb(155, 45, 210))
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { database ->
+            database.execSQL("CREATE TABLE metadata (name TEXT, value TEXT)")
+            database.execSQL("CREATE TABLE tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB)")
+            mapOf(
+                "name" to "Multi zoom MapLibre fixture",
+                "bounds" to "-180,-85,180,85",
+                "minzoom" to "0",
+                "maxzoom" to "1",
+                "format" to "png",
+                "scheme" to "tms",
+            ).forEach { (name, value) ->
+                database.execSQL("INSERT INTO metadata(name,value) VALUES(?,?)", arrayOf(name, value))
+            }
+            database.execSQL(
+                "INSERT INTO tiles(zoom_level,tile_column,tile_row,tile_data) VALUES(0,0,0,?)",
+                arrayOf(overview),
+            )
+            database.execSQL(
+                "INSERT INTO tiles(zoom_level,tile_column,tile_row,tile_data) VALUES(1,0,1,?)",
+                arrayOf(detail),
+            )
+        }
+    }
+
+    private fun solidTile(color: Int): ByteArray {
+        val bitmap = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(color)
+        return ByteArrayOutputStream().use { output ->
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            bitmap.recycle()
+            output.toByteArray()
         }
     }
 

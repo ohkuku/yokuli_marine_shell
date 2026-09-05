@@ -79,7 +79,10 @@ class MapRendererContractTest(unittest.TestCase):
         for required in (
             "map.snapshot",
             "localMbTilesActuallyRendersDirectionalPixelsAndStableOverlayWithoutNetworkStyle",
+            "higherZoomTilesReplaceTheOverviewTileAtTheKnownLatLonTarget",
             "tracedNoaaSubsetRendersRecognisableChartPaletteFromLocalMbTiles",
+            "bearing = 90.0",
+            "transparent fixture edge",
             "bitmap.getPixel",
             "near(expected",
             "mbtiles://",
@@ -94,6 +97,16 @@ class MapRendererContractTest(unittest.TestCase):
         self.assertIn("OfflineMapInstanceMetrics.createdCount in 50..100", story)
         self.assertIn("assertEquals(1, OfflineMapInstanceMetrics.peakLiveCount)", story)
         self.assertIn("assertEquals(0, OfflineMapInstanceMetrics.liveCount)", story)
+
+        domain_test = (
+            ROOT / "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapRendererContractTest.kt"
+        ).read_text()
+        self.assertIn("explicitCameraTargetsUseMonotonicIdsAndPreserveViewportInsets", domain_test)
+        self.assertIn("selectingAChartPackageNeverImplicitlyFitsAllContent", domain_test)
+        scale_test = (
+            ROOT / "feature/chart/src/test/java/com/yokuli/marine/feature/chart/MapScaleTest.kt"
+        ).read_text()
+        self.assertIn("scaleUsesViewportPixelsZoomAndLatitudeInsteadOfAStaticLabel", scale_test)
 
     def test_noaa_subset_and_each_copied_tile_are_hash_bound(self):
         provenance_path = FIXTURE_ROOT / "NOAA_NCDS_21_SOURCE.json"
