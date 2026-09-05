@@ -23,6 +23,116 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AndroidMbTilesRepositoryTest {
     @Test
+    fun viewsSchemaAndMissingRecommendedMetadataAreDerived() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-view-derived-test").also { it.deleteRecursively(); it.mkdirs() }
+        val source = File(testRoot, "views.mbtiles")
+        SQLiteDatabase.openOrCreateDatabase(source, null).use { database ->
+            database.execSQL("CREATE TABLE raw_metadata (name TEXT, value TEXT)")
+            database.execSQL("CREATE TABLE raw_tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB)")
+            database.execSQL("CREATE VIEW metadata AS SELECT name, value FROM raw_metadata")
+            database.execSQL("CREATE VIEW tiles AS SELECT zoom_level, tile_column, tile_row, tile_data FROM raw_tiles")
+            database.execSQL("INSERT INTO raw_metadata(name,value) VALUES('format','png')")
+            database.execSQL(
+                "INSERT INTO raw_tiles(zoom_level,tile_column,tile_row,tile_data) VALUES(2,2,1,?)",
+                arrayOf(asymmetricTile(256, Bitmap.CompressFormat.PNG)),
+            )
+        }
+        val repository = AndroidMbTilesRepository(context.contentResolver, File(testRoot, "packages"))
+
+        val candidate = repository.inspect(source.toURI().toString())
+
+        assertEquals(2, candidate.minZoom)
+        assertEquals(2, candidate.maxZoom)
+        assertTrue(candidate.coverage.west < candidate.coverage.east)
+        assertEquals(com.yokuli.marine.map.domain.ChartPackageValidationLevel.FULL_TILE_DECODED, candidate.validationLevel)
+        testRoot.deleteRecursively()
+        Unit
+    }
+
+    @Test
+    fun invalidCoordinatesDuplicatesAndCorruptPayloadsAreRejected() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-invalid-index-test").also { it.deleteRecursively(); it.mkdirs() }
+
+        suspend fun failure(name: String, mutate: (SQLiteDatabase) -> Unit): ChartPackageImportFailure {
+            val source = File(testRoot, "$name.mbtiles")
+            createRasterMbTiles(source)
+            SQLiteDatabase.openDatabase(source.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use(mutate)
+            val repository = AndroidMbTilesRepository(context.contentResolver, File(testRoot, "packages-$name"))
+            return try {
+                repository.inspect(source.toURI().toString())
+                error("Expected $name to fail")
+            } catch (error: ChartPackageImportException) {
+                error.reason
+            }
+        }
+
+        assertEquals(
+            ChartPackageImportFailure.INVALID_TILE_INDEX,
+            failure("coordinate") { it.execSQL("UPDATE tiles SET tile_column=2 WHERE zoom_level=0") },
+        )
+        assertEquals(
+            ChartPackageImportFailure.DUPLICATE_TILE,
+            failure("duplicate") {
+                it.execSQL("INSERT INTO tiles SELECT zoom_level,tile_column,tile_row,tile_data FROM tiles")
+            },
+        )
+        assertEquals(
+            ChartPackageImportFailure.CORRUPT_TILE,
+            failure("payload") { it.execSQL("UPDATE tiles SET tile_data=X'01'") },
+        )
+        testRoot.deleteRecursively()
+        Unit
+    }
+
+    @Test
+    fun crashJournalReconciliationKeepsAnUsableVersion() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-journal-test").also { it.deleteRecursively(); it.mkdirs() }
+        val packages = File(testRoot, "packages")
+        val v1 = File(testRoot, "v1.mbtiles")
+        createRasterMbTiles(v1)
+        val initial = AndroidMbTilesRepository(context.contentResolver, packages)
+        val first = initial.inspect(v1.toURI().toString())
+        val installedV1 = initial.commit(
+            ChartPackageImportRequest(first.stagedImportId, "Harbour", "Unknown", "Unknown", "Unknown", "1"),
+        )
+        val v2 = File(testRoot, "v2.mbtiles")
+        createRasterMbTiles(v2, tileData = asymmetricTile(512, Bitmap.CompressFormat.PNG))
+        val crashing = AndroidMbTilesRepository(
+            context.contentResolver,
+            packages,
+            installCheckpoint = { checkpoint ->
+                if (checkpoint == InstallCheckpoint.AFTER_PUBLISH) error("simulated process death")
+            },
+        )
+        val second = crashing.inspect(v2.toURI().toString())
+        try {
+            crashing.commit(
+                ChartPackageImportRequest(
+                    second.stagedImportId,
+                    "Harbour",
+                    "Unknown",
+                    "Unknown",
+                    "Unknown",
+                    "2",
+                    replaceLogicalPackageId = installedV1.logicalId,
+                ),
+            )
+        } catch (_: Throwable) {
+            // A new process does not receive this exception; it only sees the journal and files.
+        }
+
+        val recovered = AndroidMbTilesRepository(context.contentResolver, packages).listInstalled()
+        assertEquals(1, recovered.size)
+        assertEquals(installedV1.logicalId, recovered.single().logicalId)
+        assertTrue(File(android.net.Uri.parse(recovered.single().localUri).path!!).isFile)
+        assertFalse(File(packages, ".install-journal.properties").exists())
+        testRoot.deleteRecursively()
+        Unit
+    }
+    @Test
     fun importIsValidatedAndAtomicAndDeleteKeepsUnrelatedUserFiles() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val testRoot = File(context.cacheDir, "mbtiles-repository-test").also { it.deleteRecursively(); it.mkdirs() }

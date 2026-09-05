@@ -13,8 +13,10 @@ import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -51,6 +53,41 @@ class ChartPackageCoordinatorTest {
         scope.cancel()
     }
 
+    @Test
+    fun lateInspectCompletionCannotReplaceNewerSelection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val mapStore = ImmediateMapStore()
+        val repository = RacingRepository()
+        val coordinator = ChartPackageCoordinator(repository, mapStore, scope)
+
+        coordinator.inspectDocument("content://old")
+        delay(20)
+        coordinator.inspectDocument("content://new")
+        withTimeout(2_000L) {
+            coordinator.state.first {
+                it is ChartImportUiState.ReadyToInstall && it.candidate.suggestedDisplayName == "new"
+            }
+        }
+        delay(250)
+
+        val current = coordinator.state.value as ChartImportUiState.ReadyToInstall
+        assertEquals("new", current.candidate.suggestedDisplayName)
+        scope.cancel()
+    }
+
+    @Test
+    fun cancelIsNotReportedAsFailure() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val coordinator = ChartPackageCoordinator(SlowRepository(), ImmediateMapStore(), scope)
+
+        coordinator.inspectDocument("content://slow")
+        withTimeout(2_000L) { coordinator.state.first { it is ChartImportUiState.Copying } }
+        coordinator.dispatch(ChartImportUiAction.Cancel)
+        withTimeout(2_000L) { coordinator.state.first { it is ChartImportUiState.Cancelled } }
+        assertTrue(coordinator.state.value !is ChartImportUiState.Failed)
+        scope.cancel()
+    }
+
     private class ImmediateMapStore : MapStore {
         private val mutable = MutableStateFlow(MapState())
         override val state: StateFlow<MapState> = mutable
@@ -61,7 +98,7 @@ class ChartPackageCoordinatorTest {
         override fun close() = Unit
     }
 
-    private class FakeRepository : ChartPackageRepository {
+    private open class FakeRepository : ChartPackageRepository {
         val installed = mutableListOf<ChartPackage>()
         override suspend fun inspect(sourceUri: String) = ChartPackageCandidate(
             "staged", "", "", "", "", "", "a".repeat(64),
@@ -75,5 +112,33 @@ class ChartPackageCoordinatorTest {
         override suspend fun discard(stagedImportId: String) = Unit
         override suspend fun listInstalled(): List<ChartPackage> = installed.toList()
         override suspend fun delete(packageId: ChartPackageId) { installed.removeAll { it.id == packageId } }
+    }
+
+    private open class SlowRepository : FakeRepository() {
+        override suspend fun inspect(
+            sourceUri: String,
+            operationId: com.yokuli.marine.map.domain.ChartPackageOperationId,
+            onProgress: (com.yokuli.marine.map.domain.ChartPackageInspectProgress) -> Unit,
+        ): ChartPackageCandidate {
+            onProgress(com.yokuli.marine.map.domain.ChartPackageInspectProgress.Copying(1L, null))
+            delay(5_000L)
+            return super.inspect(sourceUri)
+        }
+    }
+
+    private class RacingRepository : SlowRepository() {
+        override suspend fun inspect(
+            sourceUri: String,
+            operationId: com.yokuli.marine.map.domain.ChartPackageOperationId,
+            onProgress: (com.yokuli.marine.map.domain.ChartPackageInspectProgress) -> Unit,
+        ): ChartPackageCandidate {
+            onProgress(com.yokuli.marine.map.domain.ChartPackageInspectProgress.Copying(1L, 1L))
+            if (sourceUri.endsWith("old")) {
+                kotlinx.coroutines.withContext(NonCancellable) { delay(180L) }
+            } else {
+                delay(20L)
+            }
+            return super.inspect(sourceUri).copy(suggestedDisplayName = sourceUri.substringAfterLast('/'))
+        }
     }
 }
