@@ -11,6 +11,7 @@ dependencies {
     implementation(project(":core:design"))
     implementation(project(":core:shell-contract"))
     implementation(project(":core:shell-engine"))
+    implementation(project(":ui:shell-compose"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
     implementation(platform(libs.androidx.compose.bom))

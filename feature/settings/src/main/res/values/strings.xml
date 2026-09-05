@@ -1,5 +1,8 @@
 <resources>
     <string name="app_settings">设置</string>
+    <string name="launcher_tile_dark">深色</string>
+    <string name="launcher_tile_light">浅色</string>
+    <string name="launcher_tile_accent">主题色 · %1$s</string>
     <string name="section_overview">设置</string>
     <string name="section_appearance">外观</string>
     <string name="section_start_screen">开始屏幕</string>

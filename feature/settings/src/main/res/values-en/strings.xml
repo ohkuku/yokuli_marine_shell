@@ -1,5 +1,8 @@
 <resources>
     <string name="app_settings">settings</string>
+    <string name="launcher_tile_dark">DARK</string>
+    <string name="launcher_tile_light">LIGHT</string>
+    <string name="launcher_tile_accent">accent · %1$s</string>
     <string name="section_overview">settings</string>
     <string name="section_appearance">appearance</string>
     <string name="section_start_screen">start screen</string>

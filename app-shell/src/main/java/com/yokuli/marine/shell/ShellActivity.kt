@@ -270,9 +270,10 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 interaction = engineState.start.interaction,
                 transient = engineState.transient,
                 reveal = engineState.start.reveal,
-                mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
-                theme = themeSpec,
-                visualContributions = productionVisualContributions,
+                visualContributions = productionVisualContributions(
+                    mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
+                    theme = themeSpec,
+                ),
             )
             val startEditing = engineState.start.interaction !is StartInteractionState.Idle
             var retainedSearchQuery by remember { mutableStateOf("") }
@@ -297,7 +298,6 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     is LauncherUiAction.DropTile -> dispatch(LauncherAction.DropTile(action.tileId))
                     LauncherUiAction.CancelTileOperation -> dispatch(LauncherAction.CancelTileOperation)
                     is LauncherUiAction.ResizeTile -> dispatch(LauncherAction.ResizeTile(action.tileId))
-                    LauncherUiAction.CommitTileResize -> dispatch(LauncherAction.CommitTileResize)
                     is LauncherUiAction.MoveTileBy -> dispatch(
                         LauncherAction.MoveTileBy(action.tileId, action.columns, action.rows),
                     )

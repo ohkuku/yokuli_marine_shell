@@ -1,7 +1,6 @@
 package com.yokuli.marine.feature.desktop
 
 import androidx.compose.runtime.Composable
-import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherCatalogSnapshot
 import com.yokuli.shell.contract.LauncherEntryDescriptor
@@ -14,31 +13,11 @@ import com.yokuli.shell.engine.interaction.StartInteractionState
 import com.yokuli.shell.engine.LauncherTransient
 import com.yokuli.shell.engine.StartReveal
 import com.yokuli.shell.engine.InternalAppTaskId
+import com.yokuli.shell.compose.LauncherEntryUiState
+import com.yokuli.shell.compose.LauncherEntryVisualContribution
+import com.yokuli.shell.compose.LauncherPresentationValidator
 
-enum class MarineIconKind { CHART, SETTINGS, APPS, DONE, CANCEL, UNPIN, RESIZE, PIN, INFO, GENERIC }
-
-data class LauncherEntryUiState(
-    val descriptor: LauncherEntryDescriptor,
-    val title: String,
-    val chineseIndex: Char,
-    val icon: MarineIconKind,
-    val headline: String,
-    val detail: String,
-)
-
-/**
- * 中文：视觉贡献属于 composition root；Engine 和目录都不认识产品图标或文案。
- * English: Visual contributions belong to the composition root; neither Engine nor catalog knows product copy.
- */
-data class LauncherEntryVisualContribution(
-    val entryId: LauncherEntryId,
-    val createState: @Composable (LauncherEntryDescriptor, LauncherVisualContext) -> LauncherEntryUiState,
-)
-
-data class LauncherVisualContext(
-    val mapConfigured: Boolean,
-    val theme: WpThemeSpec,
-)
+enum class MarineIconKind { APPS, DONE, CANCEL, UNPIN, RESIZE, PIN, INFO, GENERIC }
 
 data class LauncherUiState(
     val document: StartDocument,
@@ -62,7 +41,6 @@ sealed interface LauncherUiAction {
     data class DropTile(val tileId: TileInstanceId) : LauncherUiAction
     data object CancelTileOperation : LauncherUiAction
     data class ResizeTile(val tileId: TileInstanceId) : LauncherUiAction
-    data object CommitTileResize : LauncherUiAction
     data class MoveTileBy(val tileId: TileInstanceId, val columns: Int, val rows: Int) : LauncherUiAction
     data class OpenEntryContextMenu(val entryId: LauncherEntryId) : LauncherUiAction
     data object OpenAlphabetJump : LauncherUiAction
@@ -87,25 +65,20 @@ fun productionLauncherUiState(
     interaction: StartInteractionState = StartInteractionState.Idle,
     transient: LauncherTransient? = null,
     reveal: StartReveal? = null,
-    mapConfigured: Boolean,
-    theme: WpThemeSpec,
     visualContributions: List<LauncherEntryVisualContribution>,
 ): LauncherUiState {
+    LauncherPresentationValidator.validate(catalog, visualContributions)
     val visualsByEntry = visualContributions.associateBy { it.entryId }
-    require(visualsByEntry.size == visualContributions.size) { "Duplicate launcher visual contribution" }
-    require(visualsByEntry.keys == catalog.entries.map { it.entryId }.toSet()) {
-        "Launcher visual contributions must exactly match the runtime catalog"
-    }
-    val visualContext = LauncherVisualContext(mapConfigured = mapConfigured, theme = theme)
     return LauncherUiState(
         document = document,
         interaction = interaction,
         transient = transient,
         reveal = reveal,
         entries = catalog.entries.map { descriptor ->
-            requireNotNull(visualsByEntry[descriptor.entryId]) {
-                "Missing launcher visual contribution for ${descriptor.entryId.value}"
-            }.createState(descriptor, visualContext)
+            LauncherEntryUiState(
+                descriptor = descriptor,
+                visual = requireNotNull(visualsByEntry[descriptor.entryId]),
+            )
         },
     )
 }

@@ -134,13 +134,29 @@ class EditInteractionTest {
     }
 
     @Test
-    fun sixSizeResizeCycleIsExact() {
-        val first = resizeAndCommit(initial())
-        val second = resizeAndCommit(first)
-        val third = resizeAndCommit(second)
-        val fourth = resizeAndCommit(third)
-        val fifth = resizeAndCommit(fourth)
-        val sixth = resizeAndCommit(fifth)
+    fun oneResizeActionCommitsAndPersistsWithoutConfirmationState() {
+        val reduction = reducer.reduce(
+            initial(),
+            LauncherAction.ResizeTile(TileInstanceId("tile-a")),
+            context,
+        )
+
+        assertEquals(MarineTileSize.COMPACT_2X1, reduction.state.start.document.size("a"))
+        assertEquals(StartInteractionState.EditIdle(TileInstanceId("tile-a")), reduction.state.start.interaction)
+        assertTrue(reduction.state.start.activeTransaction == null)
+        assertEquals(1, reduction.state.start.undoStack.size)
+        assertTrue(reduction.effects.any { it is LauncherEffect.PersistDocument })
+        assertTrue(reduction.effects.any { it == LauncherEffect.Haptic(LauncherHaptic.SELECTION) })
+    }
+
+    @Test
+    fun sixSizeResizeCycleIsExactAndEveryStepIsImmediate() {
+        val first = resize(initial())
+        val second = resize(first)
+        val third = resize(second)
+        val fourth = resize(third)
+        val fifth = resize(fourth)
+        val sixth = resize(fifth)
 
         assertEquals(MarineTileSize.COMPACT_2X1, first.start.document.size("a"))
         assertEquals(MarineTileSize.STANDARD_2X2, second.start.document.size("a"))
@@ -151,14 +167,35 @@ class EditInteractionTest {
     }
 
     @Test
-    fun resizeCanBeCancelledBeforeCommit() {
-        val resizing = reduce(initial(), LauncherAction.ResizeTile(TileInstanceId("tile-a")))
-        assertTrue(resizing.start.interaction is StartInteractionState.Resizing)
-        assertEquals(document, resizing.start.document)
+    fun resizeFollowsOnlyTheAppsDeclaredOrder() {
+        val appSizes = listOf(
+            MarineTileSize.ICON_1X1,
+            MarineTileSize.LARGE_4X4,
+            MarineTileSize.WIDE_4X2,
+        )
+        val appEntry = descriptor("a", appSizes)
+        val appCatalog = catalog.copy(entries = listOf(appEntry) + entries.drop(1))
+        val appContext = context.copy()
+        val appState = initial().copy(catalog = appCatalog)
 
-        val cancelled = reduce(resizing, LauncherAction.CancelTileOperation)
-        assertEquals(document, cancelled.start.document)
-        assertEquals(StartInteractionState.EditIdle(TileInstanceId("tile-a")), cancelled.start.interaction)
+        val large = reducer.reduce(appState, LauncherAction.ResizeTile(TileInstanceId("tile-a")), appContext).state
+        val wide = reducer.reduce(large, LauncherAction.ResizeTile(TileInstanceId("tile-a")), appContext).state
+        val icon = reducer.reduce(wide, LauncherAction.ResizeTile(TileInstanceId("tile-a")), appContext).state
+
+        assertEquals(MarineTileSize.LARGE_4X4, large.start.document.size("a"))
+        assertEquals(MarineTileSize.WIDE_4X2, wide.start.document.size("a"))
+        assertEquals(MarineTileSize.ICON_1X1, icon.start.document.size("a"))
+    }
+
+    @Test
+    fun singleSizeEntryDoesNotCreateAResizeTransaction() {
+        val onlySize = descriptor("a", listOf(MarineTileSize.ICON_1X1))
+        val state = initial().copy(catalog = catalog.copy(entries = listOf(onlySize) + entries.drop(1)))
+
+        val reduction = reducer.reduce(state, LauncherAction.ResizeTile(TileInstanceId("tile-a")), context)
+
+        assertTrue(reduction.state === state)
+        assertTrue(reduction.effects.isEmpty())
     }
 
     private fun startDrag() = reduce(
@@ -166,10 +203,8 @@ class EditInteractionTest {
         LauncherAction.BeginTileDrag(TileInstanceId("tile-a"), 7, ShellOffset(10f, 12f)),
     )
 
-    private fun resizeAndCommit(state: LauncherEngineState): LauncherEngineState = reduce(
-        reduce(state, LauncherAction.ResizeTile(TileInstanceId("tile-a"))),
-        LauncherAction.CommitTileResize,
-    )
+    private fun resize(state: LauncherEngineState): LauncherEngineState =
+        reduce(state, LauncherAction.ResizeTile(TileInstanceId("tile-a")))
 
     private fun reduce(state: LauncherEngineState, action: LauncherAction): LauncherEngineState =
         reducer.reduce(state, action, context).state
@@ -182,14 +217,17 @@ class EditInteractionTest {
         catalog = catalog,
     )
 
-    private fun descriptor(id: String): LauncherEntryDescriptor {
+    private fun descriptor(
+        id: String,
+        supportedSizes: List<MarineTileSize> = MarineTileSize.entries,
+    ): LauncherEntryDescriptor {
         val appId = LauncherAppId(id)
         return LauncherEntryDescriptor(
             entryId = LauncherEntryId(id),
             appId = appId,
             launchToken = LaunchToken("$id.root"),
             defaultSize = MarineTileSize.ICON_1X1,
-            supportedSizes = MarineTileSize.entries,
+            supportedSizes = supportedSizes,
             pinPolicy = PinPolicy.PINNABLE,
         )
     }

@@ -14,6 +14,7 @@ dependencies {
     implementation(project(":core:shell-contract"))
     implementation(project(":core:shell-engine"))
     implementation(project(":feature:desktop"))
+    implementation(project(":ui:shell-compose"))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.appcompat)
     implementation(platform(libs.androidx.compose.bom))

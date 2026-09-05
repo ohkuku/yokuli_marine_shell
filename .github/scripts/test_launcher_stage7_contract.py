@@ -58,10 +58,22 @@ class LauncherStage7EditDragResizeContractTest(unittest.TestCase):
             "invalidDropReturnsOrigin",
             "pointerCancelRestoresCommittedDocument",
             "catalogChangeCancelsDragSafely",
-            "sixSizeResizeCycleIsExact",
-            "resizeCanBeCancelledBeforeCommit",
+            "oneResizeActionCommitsAndPersistsWithoutConfirmationState",
+            "sixSizeResizeCycleIsExactAndEveryStepIsImmediate",
+            "resizeFollowsOnlyTheAppsDeclaredOrder",
+            "singleSizeEntryDoesNotCreateAResizeTransaction",
         ):
             self.assertIn(scenario, tests)
+
+    def test_resize_does_not_expose_a_second_confirmation_state(self):
+        reducer = (ENGINE / "LauncherReducer.kt").read_text()
+        interaction = (ENGINE / "interaction/StartInteractionState.kt").read_text()
+        screen = (DESKTOP / "WpStartScreen.kt").read_text()
+        self.assertNotIn("CommitTileResize", reducer)
+        self.assertNotIn("data class Resizing", interaction)
+        self.assertNotIn("commit-tile-resize", screen)
+        self.assertNotIn("cancel-tile-resize", screen)
+        self.assertIn("awaitLongPressOrCancellation", screen)
 
     def test_bilingual_accessibility_labels_exist(self):
         zh = (ROOT / "feature/desktop/src/main/res/values/strings.xml").read_text()

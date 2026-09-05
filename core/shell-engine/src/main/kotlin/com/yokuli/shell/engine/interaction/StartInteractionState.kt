@@ -2,7 +2,6 @@ package com.yokuli.shell.engine.interaction
 
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.TileInstanceId
-import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.LayoutTransaction
 
@@ -22,11 +21,6 @@ sealed interface StartInteractionState {
         val pointerId: Long,
         val grabOffsetPx: ShellOffset,
         val insertionIndex: Int,
-        val proposedLayout: StartDocument,
-    ) : StartInteractionState
-    data class Resizing(
-        val tileId: TileInstanceId,
-        val proposedSize: MarineTileSize,
         val proposedLayout: StartDocument,
     ) : StartInteractionState
     data class Settling(val transaction: LayoutTransaction) : StartInteractionState

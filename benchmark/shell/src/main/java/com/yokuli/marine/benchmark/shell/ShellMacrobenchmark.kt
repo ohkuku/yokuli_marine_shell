@@ -209,7 +209,6 @@ class ShellMacrobenchmark {
         device.awaitTag("resize-selected-tile")
         repeat(3) {
             device.awaitTag("resize-selected-tile").click()
-            device.awaitTag("commit-tile-resize").click()
         }
         device.awaitTag("shell-lab-demo-1-size-large_4x4")
     }

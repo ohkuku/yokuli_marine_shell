@@ -1,0 +1,10 @@
+{
+  "phase": "shell-map-contract",
+  "startingSha": "a144de02657b5dd778d329f26ee5f2443370af01",
+  "branch": "codex/shell-map-contract",
+  "approvedReferenceProfileRevision": 1,
+  "approvedReferenceMeasurementSha256": "af4ed6d799997ddb973d6795eec6905bf9757b22745d462f4313d9e2620d4ba5",
+  "requiredCompletedStage": 11,
+  "status": "IN_PROGRESS",
+  "shellMapGate": "NOT_RUN"
+}

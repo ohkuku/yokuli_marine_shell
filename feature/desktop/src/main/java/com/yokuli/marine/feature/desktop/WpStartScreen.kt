@@ -6,15 +6,16 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,9 +49,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.LocalWpTheme
@@ -69,6 +70,8 @@ import com.yokuli.shell.engine.interaction.ShellOffset
 import com.yokuli.shell.engine.interaction.StartInteractionState
 import com.yokuli.shell.engine.layout.AdaptiveTilePacker
 import com.yokuli.shell.engine.layout.StartDocument
+import com.yokuli.shell.compose.LauncherEntryUiState
+import com.yokuli.shell.compose.LauncherTileRenderContext
 import kotlin.math.roundToInt
 
 // DERIVED_UNVERIFIED: Stage 2.5 did not observe Pin highlight motion; this is product feedback, not a WP8 measurement.
@@ -95,7 +98,6 @@ fun YokuliStartScreen(
     val dragging = interaction as? StartInteractionState.Dragging
     val proposedDocument: StartDocument? = when (interaction) {
         is StartInteractionState.Dragging -> interaction.proposedLayout
-        is StartInteractionState.Resizing -> interaction.proposedLayout
         else -> null
     }
     val selectedTile = interaction.selectedTile()
@@ -105,7 +107,6 @@ fun YokuliStartScreen(
     val latestInteraction by rememberUpdatedState(interaction)
     val latestDocument by rememberUpdatedState(state.document)
     val latestAction by rememberUpdatedState(onAction)
-    val resizing = interaction as? StartInteractionState.Resizing
     val reveal = state.reveal
     val revealPulse = remember { Animatable(0f) }
     var localTileDrag by remember { mutableStateOf<LocalTileDrag?>(null) }
@@ -243,21 +244,17 @@ fun YokuliStartScreen(
                         height = cell * placement.size.rows + seam * (placement.size.rows - 1),
                         editing = editing,
                         selected = selectedTile == placement.tileId,
+                        canResize = entry.descriptor.supportedSizes.size > 1,
                         revealing = reveal?.tileId == placement.tileId,
                         revealProgress = if (reveal?.tileId == placement.tileId) revealPulse.value else 0f,
                         dragOffset = tileDragging?.visualOffset?.let { ShellOffset(it.x, it.y) } ?: ShellOffset(0f, 0f),
-                        resizing = resizing?.tileId == placement.tileId,
                         onClick = {
                             if (editing) onAction(LauncherUiAction.SelectStartTile(placement.tileId))
                             else onAction(LauncherUiAction.Open(entry.descriptor.launchToken))
                         },
                         onLongClick = { onAction(LauncherUiAction.EnterStartEdit(placement.tileId)) },
                         onUnpin = { onAction(LauncherUiAction.UnpinTile(placement.tileId)) },
-                        onResize = {
-                            if (resizing?.tileId == placement.tileId) onAction(LauncherUiAction.CommitTileResize)
-                            else onAction(LauncherUiAction.ResizeTile(placement.tileId))
-                        },
-                        onResizeCancel = { onAction(LauncherUiAction.CancelTileOperation) },
+                        onResize = { onAction(LauncherUiAction.ResizeTile(placement.tileId)) },
                         onMoveStart = { pointerId, grabOffset ->
                             val insertionIndex = AdaptiveTilePacker.insertionIndexOf(state.document, placement.tileId)
                             localTileDrag = LocalTileDrag(
@@ -338,7 +335,7 @@ private fun WpTile(
     height: Dp,
     editing: Boolean,
     selected: Boolean,
-    resizing: Boolean,
+    canResize: Boolean,
     revealing: Boolean,
     revealProgress: Float,
     dragOffset: ShellOffset,
@@ -346,7 +343,6 @@ private fun WpTile(
     onLongClick: () -> Unit,
     onUnpin: () -> Unit,
     onResize: () -> Unit,
-    onResizeCancel: () -> Unit,
     onMoveStart: (Long, Offset) -> Unit,
     onMove: (Offset, Offset) -> Unit,
     onMoveCommit: () -> Unit,
@@ -359,35 +355,53 @@ private fun WpTile(
     val interactions = remember { MutableInteractionSource() }
     val scale by animateFloatAsState(if (selected) 1.025f else 1f, spring(), label = "wp-tile-selected")
     val isSmall = width < 100.dp && height < 100.dp
-    val dragModifier = if (editing && selected) {
-        Modifier.pointerInput(entry.descriptor.entryId) {
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
-                val editControlPx = with(density) { YokuliMetrics.MinTouch.toPx() }
-                val inEditControls = if (isSmall) {
+    val latestEditing by rememberUpdatedState(editing)
+    val latestSelected by rememberUpdatedState(selected)
+    val latestLongClick by rememberUpdatedState(onLongClick)
+    val latestMoveStart by rememberUpdatedState(onMoveStart)
+    val latestMove by rememberUpdatedState(onMove)
+    val latestMoveCommit by rememberUpdatedState(onMoveCommit)
+    val latestMoveCancel by rememberUpdatedState(onMoveCancel)
+    val dragModifier = Modifier.pointerInput(entry.descriptor.entryId, isSmall, canResize) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val editControlPx = with(density) { YokuliMetrics.MinTouch.toPx() }
+            val inEditControls = if (latestEditing && latestSelected) {
+                if (isSmall) {
                     (down.position.x <= editControlPx && down.position.y <= editControlPx) ||
-                        (down.position.x >= size.width - editControlPx &&
+                        (canResize && down.position.x >= size.width - editControlPx &&
                             down.position.y >= size.height - editControlPx)
                 } else {
                     down.position.x >= size.width - editControlPx &&
-                        (down.position.y <= editControlPx || down.position.y >= size.height - editControlPx)
+                        (down.position.y <= editControlPx ||
+                            (canResize && down.position.y >= size.height - editControlPx))
                 }
-                if (inEditControls) return@awaitEachGesture
-                var total = Offset.Zero
-                val grabOffset = down.position
-                onMoveStart(down.id.value, grabOffset)
-                val completed = drag(down.id) { change ->
-                    val amount = change.positionChange()
-                    if (amount != Offset.Zero) {
-                        change.consume()
-                        total += amount
-                        onMove(total, grabOffset)
-                    }
-                }
-                if (completed) onMoveCommit() else onMoveCancel()
+            } else false
+            if (inEditControls) return@awaitEachGesture
+
+            val dragStart = if (latestEditing && latestSelected) {
+                down
+            } else {
+                awaitLongPressOrCancellation(down.id)?.also {
+                    it.consume()
+                    latestLongClick()
+                } ?: return@awaitEachGesture
             }
+
+            var total = Offset.Zero
+            val grabOffset = down.position
+            latestMoveStart(dragStart.id.value, grabOffset)
+            val completed = drag(dragStart.id) { change ->
+                val amount = change.positionChange()
+                if (amount != Offset.Zero) {
+                    change.consume()
+                    total += amount
+                    latestMove(total, grabOffset)
+                }
+            }
+            if (completed) latestMoveCommit() else latestMoveCancel()
         }
-    } else Modifier
+    }
     val accessibilityMoves = if (editing && selected) {
         listOf(
             CustomAccessibilityAction(stringResource(R.string.context_unpin)) { onUnpin(); true },
@@ -414,25 +428,34 @@ private fun WpTile(
                     if (entry.detail.isNotBlank()) append(" · ${entry.detail}")
                 }
                 customActions = accessibilityMoves
+                onLongClick {
+                    onLongClick()
+                    true
+                }
             }
             .wpTilt(interactions, enabled = !(editing && selected))
             .background(colors.accent)
-            .combinedClickable(
+            .clickable(
                 interactionSource = interactions,
                 indication = null,
                 onClick = onClick,
-                onLongClick = onLongClick,
             )
             .then(dragModifier).padding(tileInset),
     ) {
-        MarineTileContent(entry, tileSize)
+        entry.tileRenderer(tileSize).Render(
+            LauncherTileRenderContext(
+                size = tileSize,
+                contentColor = colors.onAccent,
+                modifier = Modifier.fillMaxSize(),
+                liveContentEnabled = !editing,
+            ),
+        )
         if (editing && selected) {
             WpTileEditOverlay(
                 compact = isSmall,
-                resizing = resizing,
+                canResize = canResize,
                 onUnpin = onUnpin,
                 onResize = onResize,
-                onResizeCancel = onResizeCancel,
             )
         }
         if (revealing) {
@@ -444,75 +467,15 @@ private fun WpTile(
     }
 }
 
-@Composable
-private fun BoxScope.MarineTileContent(entry: LauncherEntryUiState, size: MarineTileSize) {
-    val onAccent = LocalWpTheme.current.onAccent
-    when (size) {
-        MarineTileSize.ICON_1X1 ->
-            MarineIcon(entry.icon, onAccent, Modifier.align(Alignment.Center).size(25.dp))
-
-        MarineTileSize.COMPACT_2X1 -> Row(
-            Modifier.align(Alignment.CenterStart).fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            MarineIcon(entry.icon, onAccent, Modifier.size(23.dp))
-            Column(Modifier.padding(start = 8.dp)) {
-                WpText(entry.headline, 17, color = onAccent, weight = FontWeight.Light)
-                WpText(entry.title, 10, color = onAccent.copy(alpha = .82f))
-            }
-        }
-
-        MarineTileSize.STANDARD_2X2 -> {
-            MarineIcon(entry.icon, onAccent, Modifier.align(Alignment.TopStart).size(28.dp))
-            Column(Modifier.align(Alignment.CenterStart)) {
-                WpText(entry.headline, 25, color = onAccent, weight = FontWeight.Light)
-                WpText(entry.detail, 11, color = onAccent.copy(alpha = .82f))
-            }
-            WpText(entry.title, 12, color = onAccent, modifier = Modifier.align(Alignment.BottomStart))
-        }
-
-        MarineTileSize.WIDE_4X2 -> {
-            MarineIcon(entry.icon, onAccent, Modifier.align(Alignment.TopStart).size(30.dp))
-            Column(Modifier.align(Alignment.CenterStart)) {
-                WpText(entry.headline, 31, color = onAccent, weight = FontWeight.Light)
-                WpText(entry.detail, 13, color = onAccent.copy(alpha = .82f))
-            }
-            WpText(entry.title, 13, color = onAccent, modifier = Modifier.align(Alignment.BottomStart))
-        }
-
-        MarineTileSize.TALL_2X4 -> {
-            MarineIcon(entry.icon, onAccent, Modifier.align(Alignment.TopStart).size(34.dp))
-            Column(Modifier.align(Alignment.CenterStart)) {
-                WpText(entry.headline, 34, color = onAccent, weight = FontWeight.Light)
-                WpText(entry.detail, 14, color = onAccent.copy(alpha = .82f), modifier = Modifier.padding(top = 8.dp))
-            }
-            WpText(entry.title, 14, color = onAccent, modifier = Modifier.align(Alignment.BottomStart))
-        }
-
-        MarineTileSize.LARGE_4X4 -> {
-            Row(Modifier.align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
-                MarineIcon(entry.icon, onAccent, Modifier.size(36.dp))
-                WpText(entry.title, 16, color = onAccent, modifier = Modifier.padding(start = 10.dp))
-            }
-            Column(Modifier.align(Alignment.CenterStart)) {
-                WpText(entry.headline, 42, color = onAccent, weight = FontWeight.Light)
-                WpText(entry.detail, 16, color = onAccent.copy(alpha = .82f), modifier = Modifier.padding(top = 10.dp))
-            }
-        }
-    }
-}
-
 private fun StartInteractionState.selectedTile(): TileInstanceId? = when (this) {
     is StartInteractionState.EditIdle -> selectedTile
     is StartInteractionState.Dragging -> tileId
-    is StartInteractionState.Resizing -> tileId
     else -> null
 }
 
 private fun StartInteractionState.isEditing(): Boolean = when (this) {
     is StartInteractionState.EditIdle,
     is StartInteractionState.Dragging,
-    is StartInteractionState.Resizing,
     is StartInteractionState.Settling -> true
     else -> false
 }
@@ -520,21 +483,20 @@ private fun StartInteractionState.isEditing(): Boolean = when (this) {
 @Composable
 private fun WpTileEditOverlay(
     compact: Boolean,
-    resizing: Boolean,
+    canResize: Boolean,
     onUnpin: () -> Unit,
     onResize: () -> Unit,
-    onResizeCancel: () -> Unit,
 ) {
     val colors = LocalWpTheme.current
     // DERIVED_UNVERIFIED: edit controls were not visible in Stage 2.5. Compact 1x1 tiles use
-    // the owner's 44dp minimum so the two diagonal targets do not steal each other's centers.
-    val controlSize = if (compact) 44.dp else YokuliMetrics.MinTouch
-    val diskSize = if (compact) 17.dp else 30.dp
+    // the product's 48dp minimum and diagonal targets so their hit regions do not overlap.
+    val controlSize = YokuliMetrics.MinTouch
+    val diskSize = if (compact) 28.dp else 30.dp
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier.align(if (compact) Alignment.TopStart else Alignment.TopEnd).size(controlSize)
-                .testTag(if (resizing) "cancel-tile-resize" else "unpin-selected-tile")
-                .combinedNoRipple(if (resizing) onResizeCancel else onUnpin),
+                .testTag("unpin-selected-tile")
+                .combinedNoRipple(onUnpin),
             contentAlignment = Alignment.Center,
         ) {
             Box(
@@ -542,27 +504,30 @@ private fun WpTileEditOverlay(
                 contentAlignment = Alignment.Center,
             ) {
                 MarineIcon(
-                    if (resizing) MarineIconKind.CANCEL else MarineIconKind.UNPIN,
+                    MarineIconKind.UNPIN,
                     colors.foreground,
-                    Modifier.size(if (compact) 13.dp else 22.dp),
+                    Modifier.size(if (compact) 20.dp else 22.dp),
                 )
             }
         }
-        Box(
-            Modifier.align(Alignment.BottomEnd).size(controlSize)
-                .testTag(if (resizing) "commit-tile-resize" else "resize-selected-tile")
-                .combinedNoRipple(onResize),
-            contentAlignment = Alignment.Center,
-        ) {
+        if (canResize) {
             Box(
-                Modifier.size(diskSize).background(colors.background, androidx.compose.foundation.shape.CircleShape),
+                Modifier.align(Alignment.BottomEnd).size(controlSize)
+                    .testTag("resize-selected-tile")
+                    .combinedNoRipple(onResize),
                 contentAlignment = Alignment.Center,
             ) {
-                MarineIcon(
-                    if (resizing) MarineIconKind.DONE else MarineIconKind.RESIZE,
-                    colors.foreground,
-                    Modifier.size(if (compact) 12.dp else 20.dp),
-                )
+                Box(
+                    Modifier.size(diskSize).background(colors.background, androidx.compose.foundation.shape.CircleShape)
+                        .testTag("resize-affordance-disc"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    MarineIcon(
+                        MarineIconKind.RESIZE,
+                        colors.foreground,
+                        Modifier.size(if (compact) 19.dp else 20.dp).testTag("resize-affordance-glyph"),
+                    )
+                }
             }
         }
     }

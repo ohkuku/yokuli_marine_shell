@@ -19,24 +19,6 @@ fun MarineIcon(kind: MarineIconKind, color: Color, modifier: Modifier = Modifier
         val stroke = unit * .075f
         val center = center
         when (kind) {
-            MarineIconKind.CHART -> {
-                drawCircle(color, unit * .31f, center, style = Stroke(stroke))
-                drawLine(color, Offset(center.x, center.y - unit * .42f), Offset(center.x, center.y + unit * .42f), stroke)
-                drawLine(color, Offset(center.x - unit * .42f, center.y), Offset(center.x + unit * .42f, center.y), stroke)
-                val needle = Path().apply {
-                    moveTo(center.x + unit * .08f, center.y - unit * .30f)
-                    lineTo(center.x - unit * .04f, center.y + unit * .11f)
-                    lineTo(center.x + unit * .18f, center.y - unit * .03f)
-                    close()
-                }
-                drawPath(needle, color)
-            }
-            MarineIconKind.SETTINGS -> repeat(3) { index ->
-                val y = unit * (.23f + index * .27f)
-                val knobX = unit * listOf(.32f, .68f, .45f)[index]
-                drawLine(color, Offset(unit * .08f, y), Offset(unit * .92f, y), stroke * .72f)
-                drawCircle(color, stroke * 1.35f, Offset(knobX, y))
-            }
             MarineIconKind.APPS -> repeat(3) { row -> repeat(3) { column ->
                 drawCircle(color, unit * .055f, Offset(unit * (.27f + column * .23f), unit * (.27f + row * .23f)))
             } }

@@ -49,6 +49,7 @@ import com.yokuli.shell.contract.ShellInput
 import com.yokuli.shell.contract.ShellSafeBands
 import com.yokuli.shell.contract.ShellWindowMetrics
 import com.yokuli.shell.engine.InternalAppTask
+import com.yokuli.shell.compose.LauncherEntryUiState
 
 private val DerivedVirtualKeyBarHeight = 54.dp
 

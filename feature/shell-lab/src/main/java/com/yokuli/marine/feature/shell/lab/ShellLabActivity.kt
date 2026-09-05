@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -25,12 +26,13 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpPageHeader
+import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
-import com.yokuli.marine.feature.desktop.LauncherEntryUiState
 import com.yokuli.marine.feature.desktop.LauncherUiAction
 import com.yokuli.marine.feature.desktop.LauncherUiState
 import com.yokuli.marine.feature.desktop.MarineIconKind
+import com.yokuli.marine.feature.desktop.MarineIcon
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherAppId
@@ -52,6 +54,11 @@ import com.yokuli.shell.engine.ShellVisualSurface
 import com.yokuli.shell.engine.StartScreenState
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
+import com.yokuli.shell.compose.LauncherEntryUiState
+import com.yokuli.shell.compose.LauncherEntryVisualContribution
+import com.yokuli.shell.compose.LauncherIconRenderer
+import com.yokuli.shell.compose.LauncherTileRenderContext
+import com.yokuli.shell.compose.LauncherTileRenderer
 
 class ShellLabActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,13 +109,24 @@ private fun ShellLab(tileCount: Int, viewportDp: Int?) {
     val colors = LocalWpTheme.current
     val titlePattern = stringResource(R.string.lab_entry_title)
     val entries = descriptors.mapIndexed { index, descriptor ->
+        val title = titlePattern.format(index + 1)
+        val headline = stringResource(R.string.lab_demo_label)
+        val detail = stringResource(if (index % 2 == 0) R.string.lab_short_detail else R.string.lab_long_detail)
         LauncherEntryUiState(
             descriptor = descriptor,
-            title = titlePattern.format(index + 1),
-            chineseIndex = 'D',
-            icon = MarineIconKind.GENERIC,
-            headline = stringResource(R.string.lab_demo_label),
-            detail = stringResource(if (index % 2 == 0) R.string.lab_short_detail else R.string.lab_long_detail),
+            visual = LauncherEntryVisualContribution(
+                entryId = descriptor.entryId,
+                title = title,
+                chineseIndex = 'D',
+                headline = headline,
+                detail = detail,
+                icon = LauncherIconRenderer { tint, modifier ->
+                    MarineIcon(MarineIconKind.GENERIC, tint, modifier)
+                },
+                tileRenderers = descriptor.supportedSizes.associateWith {
+                    LauncherTileRenderer { context -> DemoTile(context, title, headline) }
+                },
+            ),
         )
     }
     val shellModifier = if (viewportDp == null) {
@@ -152,6 +170,21 @@ private fun ShellLab(tileCount: Int, viewportDp: Int?) {
     }
 }
 
+@Composable
+private fun DemoTile(context: LauncherTileRenderContext, title: String, headline: String) {
+    Box(context.modifier.fillMaxSize()) {
+        MarineIcon(
+            MarineIconKind.GENERIC,
+            context.contentColor,
+            Modifier.align(Alignment.TopStart).size(if (context.size.columns == 1) 32.dp else 28.dp),
+        )
+        if (context.size.columns > 1) {
+            WpText(headline, 18, color = context.contentColor, modifier = Modifier.align(Alignment.CenterStart))
+            WpText(title, 11, color = context.contentColor, modifier = Modifier.align(Alignment.BottomStart))
+        }
+    }
+}
+
 private fun LauncherUiAction.toLabEngineAction(): LauncherAction? = when (this) {
     is LauncherUiAction.ProposeLayout -> LauncherAction.ApplyLayoutProposal(proposal)
     is LauncherUiAction.EnterStartEdit -> LauncherAction.EnterStartEdit(tileId)
@@ -162,7 +195,6 @@ private fun LauncherUiAction.toLabEngineAction(): LauncherAction? = when (this) 
     is LauncherUiAction.DropTile -> LauncherAction.DropTile(tileId)
     LauncherUiAction.CancelTileOperation -> LauncherAction.CancelTileOperation
     is LauncherUiAction.ResizeTile -> LauncherAction.ResizeTile(tileId)
-    LauncherUiAction.CommitTileResize -> LauncherAction.CommitTileResize
     is LauncherUiAction.MoveTileBy -> LauncherAction.MoveTileBy(tileId, columns, rows)
     is LauncherUiAction.UnpinTile -> LauncherAction.UnpinTile(tileId)
     is LauncherUiAction.AcknowledgeStartReveal -> LauncherAction.AcknowledgeStartReveal(tileId)

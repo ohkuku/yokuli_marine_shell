@@ -20,4 +20,5 @@ dependencies {
     api(project(":core:shell-contract"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
+    testImplementation(libs.junit)
 }

@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -164,6 +165,34 @@ class ShellActivityStoryTest {
     }
 
     @Test
+    fun sameLongPressGestureCanLiftReorderAndDropATile() {
+        compose.activityRule.scenario.onActivity { activity ->
+            val order = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
+                .start.document.placements.sortedBy { it.rank }.map { it.entryId.value }
+            assertEquals(listOf("chart", "settings"), order)
+        }
+
+        compose.onNodeWithTag("tile-settings").performTouchInput {
+            down(center)
+            advanceEventTime(650)
+            moveTo(Offset(center.x, -center.y), delayMillis = 500)
+            up()
+        }
+
+        compose.waitUntil(5_000) {
+            var reordered = false
+            compose.activityRule.scenario.onActivity { activity ->
+                val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
+                reordered = state.start.document.placements.sortedBy { it.rank }
+                    .map { it.entryId.value } == listOf("settings", "chart") &&
+                    state.start.interaction is com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle
+            }
+            reordered
+        }
+        compose.onNodeWithTag("resize-selected-tile").assertIsDisplayed()
+    }
+
+    @Test
     fun systemBackExitsEditModeBeforeLeavingStart() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
         awaitDisplayed("unpin-selected-tile")
@@ -177,7 +206,7 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun chartResizeRequiresExplicitCommitAndCanCancel() {
+    fun chartResizeCommitsOnOneTapWithoutConfirmationUi() {
         val wideBounds = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("tile-chart").performTouchInput { longClick() }
         awaitDisplayed("resize-selected-tile")
@@ -186,36 +215,26 @@ class ShellActivityStoryTest {
         compose.waitUntil(5_000) {
             compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height > wideBounds.height
         }
-        val largePreviewHeight = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height
-        awaitDisplayed("cancel-tile-resize")
-        awaitDisplayed("commit-tile-resize")
-
-        compose.onNodeWithTag("cancel-tile-resize").performClick()
-        awaitDisplayed("resize-selected-tile")
         compose.activityRule.scenario.onActivity { activity ->
             val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
             assertEquals(
-                com.yokuli.shell.contract.MarineTileSize.WIDE_4X2,
+                com.yokuli.shell.contract.MarineTileSize.LARGE_4X4,
                 state.start.document.placements.single { it.entryId.value == "chart" }.size,
             )
+            assertTrue(state.start.activeTransaction == null)
         }
-        compose.waitUntil(5_000) {
-            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height < largePreviewHeight
-        }
+        compose.onNodeWithTag("resize-selected-tile").assertIsDisplayed()
+        compose.onNodeWithTag("commit-tile-resize").assertDoesNotExist()
+        compose.onNodeWithTag("cancel-tile-resize").assertDoesNotExist()
 
         compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.waitUntil(5_000) {
-            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height > wideBounds.height
+            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height < wideBounds.height
         }
-        compose.onNodeWithTag("commit-tile-resize").performClick()
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithTag("commit-tile-resize").fetchSemanticsNodes().isEmpty()
-        }
-        assertTrue(compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height > wideBounds.height)
     }
 
     @Test
-    fun smallTileEditControlsHaveAtLeast44DpHitTargets() {
+    fun smallTileEditControlsAreVisiblyUsableAndHave48DpHitTargets() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
         awaitDisplayed("resize-selected-tile")
         var density = 1f
@@ -223,16 +242,24 @@ class ShellActivityStoryTest {
 
         val unpin = compose.onNodeWithTag("unpin-selected-tile").fetchSemanticsNode().boundsInRoot
         val resize = compose.onNodeWithTag("resize-selected-tile").fetchSemanticsNode().boundsInRoot
-        assertTrue(unpin.width >= 44f * density && unpin.height >= 44f * density)
-        assertTrue(resize.width >= 44f * density && resize.height >= 44f * density)
+        assertTrue(unpin.width >= 48f * density && unpin.height >= 48f * density)
+        assertTrue(resize.width >= 48f * density && resize.height >= 48f * density)
+        val disc = compose.onNodeWithTag("resize-affordance-disc", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val glyph = compose.onNodeWithTag("resize-affordance-glyph", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(disc.width >= 28f * density && disc.height >= 28f * density)
+        assertTrue(glyph.width >= 19f * density && glyph.height >= 19f * density)
 
         compose.onNodeWithTag("resize-selected-tile").performClick()
-        awaitDisplayed("cancel-tile-resize")
         compose.activityRule.scenario.onActivity { activity ->
-            val interaction = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value.start.interaction
-            assertTrue(interaction is com.yokuli.shell.engine.interaction.StartInteractionState.Resizing)
+            val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
+            assertEquals(
+                com.yokuli.shell.contract.MarineTileSize.COMPACT_2X1,
+                state.start.document.placements.single { it.entryId.value == "settings" }.size,
+            )
+            assertTrue(state.start.interaction is com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle)
         }
-        compose.onNodeWithTag("cancel-tile-resize").performClick()
         awaitDisplayed("unpin-selected-tile")
         compose.onNodeWithTag("unpin-selected-tile").performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
@@ -537,9 +564,7 @@ class ShellActivityStoryTest {
                             state = productionLauncherUiState(
                                 productionCatalog.snapshot,
                                 defaultStartDocument,
-                                mapConfigured = false,
-                                theme = WpThemeSpec(),
-                                visualContributions = productionVisualContributions,
+                                visualContributions = productionVisualContributions(false, WpThemeSpec()),
                             ),
                             onAction = {},
                         )
@@ -562,9 +587,7 @@ class ShellActivityStoryTest {
                             state = productionLauncherUiState(
                                 productionCatalog.snapshot,
                                 defaultStartDocument,
-                                mapConfigured = false,
-                                theme = WpThemeSpec(),
-                                visualContributions = productionVisualContributions,
+                                visualContributions = productionVisualContributions(false, WpThemeSpec()),
                             ),
                             onAction = {},
                         )

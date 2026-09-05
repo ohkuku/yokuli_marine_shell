@@ -33,6 +33,7 @@ import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.engine.LauncherTransient
+import com.yokuli.shell.compose.LauncherEntryUiState
 import java.text.Collator
 import kotlinx.coroutines.launch
 
@@ -110,7 +111,7 @@ fun WpAppList(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.size(48.dp).background(colors.accent), contentAlignment = Alignment.Center) {
-                            MarineIcon(entry.icon, colors.onAccent, Modifier.size(25.dp))
+                            entry.icon.Render(colors.onAccent, Modifier.size(25.dp))
                         }
                         WpText(entry.title, 20, weight = FontWeight.Light, modifier = Modifier.padding(start = 14.dp))
                     }
