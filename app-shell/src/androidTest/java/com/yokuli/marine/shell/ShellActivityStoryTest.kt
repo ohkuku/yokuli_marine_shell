@@ -130,9 +130,16 @@ class ShellActivityStoryTest {
         compose.waitUntil(5_000) { currentMapState().tool == MapTool.MEASURE }
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        compose.waitUntil(5_000) {
-            currentMapState().tool == MapTool.BROWSE &&
-                currentEngine().state.value.surface is ShellVisualSurface.Module
+        runCatching {
+            compose.waitUntil(5_000) {
+                currentMapState().tool == MapTool.BROWSE &&
+                    currentEngine().state.value.surface is ShellVisualSurface.Module
+            }
+        }.getOrElse { failure ->
+            throw AssertionError(
+                "Feature Back escaped its plane: map=${currentMapState()}, shell=${currentEngine().state.value.surface}",
+                failure,
+            )
         }
         compose.onNodeWithTag("map-root-command-bar").assertIsDisplayed()
 
