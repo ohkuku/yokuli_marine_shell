@@ -6,7 +6,7 @@
   "auditedSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "workingBaseSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
   "auditedShaIsAncestorOfWorkingBase": true,
-  "currentTask": "C07",
+  "currentTask": "C08",
   "taskStatus": {
     "C00": "VERIFIED_LOCAL",
     "C01": "VERIFIED_LOCAL",
@@ -15,14 +15,14 @@
     "C04": "VERIFIED_LOCAL",
     "C05": "VERIFIED_LOCAL",
     "C06": "VERIFIED_LOCAL",
-    "C07": "TODO",
+    "C07": "VERIFIED_LOCAL",
     "C08": "TODO",
     "C09": "TODO",
     "C10": "TODO",
     "C11": "TODO",
     "C12": "TODO"
   },
-  "lastVerifiedSha": "15d0f1a91623cb4121e92cf82bf9dc01952eb982",
+  "lastVerifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
   "ciRun": null,
   "openFindings": [
     "Hosted CI status for C00 could not be queried locally because GitHub CLI is unavailable; final same-SHA hosted evidence remains a C12 gate",
@@ -30,5 +30,5 @@
   ],
   "sourceDelivery": "NOT_VERIFIED",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Begin C07 with Red tests for MBTiles tables/views validation, bounded raster decoding, cancellable import jobs, content identity, version replacement and crash-journal recovery"
+  "nextAction": "Begin C08 with Red tests for bounded GPX 1.1 streaming import, explicit preview selection, duplicate identity, segmented read-only tracks and truthful export outcomes"
 }

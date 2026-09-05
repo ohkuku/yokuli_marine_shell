@@ -329,7 +329,7 @@
         "MAP-R17",
         "MAP-R18"
       ],
-      "status": "TODO",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C07",
       "acceptanceScenarioIds": [
         "C07-T01",
@@ -343,8 +343,12 @@
         "C07-T09",
         "C07-T10"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": [
+        "C07 Red/Green and two adversarial audits cover bounded full-tile decode, tables/views, derived facts, operation cancellation, version identity, journal recovery and renderer leases",
+        "API 34 ran 15 offline package/renderer tests including all three install checkpoints, storage failure cleanup, deduplication, rollback and corrupt manifest visibility",
+        "Cumulative C00-C07 gate passed: 190 Python contracts, 300 JVM XML tests, 1151 Gradle tasks and 70 API 34 device tests"
+      ]
     },
     {
       "id": "C08",
@@ -1154,11 +1158,11 @@
       "given": "标准tables与views schema的真实raster",
       "when": "导入并绘制",
       "then": "两者可用；不是只检查sqlite_master的table",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["API 34 validates both table fixtures and metadata/tiles views through the same full decode path"]
     },
     {
       "id": "C07-T02",
@@ -1166,11 +1170,11 @@
       "given": "缺推荐bounds/zoom的有效tile索引",
       "when": "inspect",
       "then": "从索引推导；不让用户猜，也不拒绝所有可选缺失",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["Missing bounds/minzoom/maxzoom are derived from validated z/x/y tile coverage"]
     },
     {
       "id": "C07-T03",
@@ -1178,11 +1182,11 @@
       "given": "非法zoom/xy/重复key/空包/声明矛盾",
       "when": "验证",
       "then": "受控拒绝或明确报告；不会安装成正常可用",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["Invalid zoom/matrix coordinates, duplicate coordinate keys, duplicate metadata, empty tiles and declared zoom conflicts fail explicitly"]
     },
     {
       "id": "C07-T04",
@@ -1190,11 +1194,11 @@
       "given": "0x01假PNG、过大图片、异常metadata",
       "when": "验证和使用时读块",
       "then": "有界失败/坏块隔离；不把格式标签当解码证据",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["0x01 payloads, encoding mismatches, encoded byte limits, pixel limits and oversized metadata are rejected before install"]
     },
     {
       "id": "C07-T05",
@@ -1202,11 +1206,11 @@
       "given": "SAF失效/文件复制中写满",
       "when": "导入",
       "then": "staging可清理重试，旧包和个人资料不受影响",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["Cannot-open and injected mid-copy storage failure leave the old active package intact and remove partial staging"]
     },
     {
       "id": "C07-T06",
@@ -1214,11 +1218,11 @@
       "given": "inspect/install在途",
       "when": "取消、另选文件、旧完成回调到达",
       "then": "取消真实生效；旧结果不复活页面或激活旧包",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartPackageCoordinatorTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["A single owned Job plus operation generation makes the newest selection authoritative and reports user cancellation as Cancelled, never Failed"]
     },
     {
       "id": "C07-T07",
@@ -1226,11 +1230,11 @@
       "given": "同字节、同名不同包、同逻辑包V2",
       "when": "重复安装/版本替换",
       "then": "去重、身份和更新语义正确，不按文件名覆盖",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["Identical content deduplicates by immutable version ID, same display names remain distinct logical packages, and replacement requires an explicit logical ID"]
     },
     {
       "id": "C07-T08",
@@ -1238,11 +1242,11 @@
       "given": "安装每个文件/数据库边界",
       "when": "中止进程并重启",
       "then": "journal恢复幂等，至少旧版本可用，无半文件active",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["Fresh repository instances reconcile PREPARED, PUBLISHED and ACTIVATED crash points to exactly one complete active logical package"]
     },
     {
       "id": "C07-T09",
@@ -1250,11 +1254,11 @@
       "given": "renderer/snapshot/coverage持有版本",
       "when": "删除或替换",
       "then": "先释放租约再清文件；不改个人点线；可回退",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt; adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/OfflineMarineChartSurface.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["The renderer holds a version lease; leased deletion fails with PACKAGE_IN_USE, then release and deletion restore the prior valid version"]
     },
     {
       "id": "C07-T10",
@@ -1262,11 +1266,11 @@
       "given": "坏manifest或未知来源用户文件",
       "when": "列表、来源编辑、清缓存",
       "then": "问题可见，Unknown不变官方认证；清缓存不删离线包",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt; feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartPackageCoordinatorTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest :feature:chart:testDebugUnitTest",
+      "result": "PASS",
+      "verifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+      "evidence": ["A corrupt active manifest becomes an explicit INVALID_DATABASE UI failure; missing legal facts remain Unknown/user-declared and no cache operation deletes package storage"]
     },
     {
       "id": "C08-T01",

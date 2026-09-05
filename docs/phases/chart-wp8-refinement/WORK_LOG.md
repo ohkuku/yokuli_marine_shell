@@ -170,3 +170,11 @@ Red 先固定 RouteDraft 与 RoutePlan 的独立身份、可空计划船速、�
 累计 Gate 首轮准确暴露三项测试基础设施漂移：系统 Python 缺 pinned jsonschema、C05 静态断言把迁移调用锁死为单一 v1→v2，以及旧 UI 扫描禁止合法的 `activeRoute` 字样。使用临时 pinned Python 环境运行；迁移断言改为要求链中保留 MIGRATION_1_2；字面扫描按主规格改成“生产文案无开始导航 + reducer 行为保持 navigation false”。同时补齐显式 zh-CN 的 C06 资源键，没有把 Gate 设为 optional。
 
 冻结点 `15d0f1a91623cb4121e92cf82bf9dc01952eb982` 的累计 Host Gate 通过 185 条 Python 合同、294 个 JVM XML 测试和 1207 个 Gradle tasks；API 34 上离线 renderer 6、Room 6、Shell 49 全部通过。Debug/unsigned Release hash 分别为 `1c5df1c621993695a502e6a6108e4a05f0381f5d663a3eb846414ff3c205c71f` 与 `8ca772e2d3c8052647d514fcc4e98dc5fd134b1ff34c2fc9a86191d9209f8a78`。C06 标记为 `VERIFIED_LOCAL`，进入 C07；GPX、覆盖检查、实时观测与 Shell 地图磁贴摘要仍未提前宣称。
+
+## C07｜海图包验证、可取消任务与版本恢复
+
+Red 首先固定 raster PNG/JPEG 的 tables/views、缺推荐 metadata 推导、逐图块完整解码、索引/资源边界、逻辑包/不可变版本/SHA 身份、安装 journal、版本 lease，以及新选择/取消淘汰迟到结果。实现将 UI 拆成 Copying、Inspecting、ReadyToInstall、Installing、Cancelled、Failed，并由 operation ID、generation 和单一 Job owner 串行化当前选择。
+
+第一轮自查修正 Kotlin 编译问题、旧合同错误强制 WebP，以及 XYZ 归一化后仍沿用导入前摘要的身份错误。第二轮反证覆盖三个 journal checkpoint、复制写满、同字节去重、同名隔离、空包/重复 metadata/超限文本/编码矛盾、renderer lease、版本回退与损坏 manifest 可见性。Unknown 只表示事实未知或用户声明，不被写成官方核验。
+
+冻结点 `cc1b598343b3dd9cd4ed43c43d43ae76b276c90b` 的累计 Host Gate 通过 190 条 Python 合同、300 个 JVM XML 测试和 1151 个 Gradle tasks；API 34 上离线包/renderer 15、Room 6、Shell 49 全部通过。Debug/unsigned Release hash 分别为 `9a52af6c7c88627c600b3d5260466ea95095f69e93e36525c223bc0587f04238` 与 `63cd91ffd9c70c518061fe1598b0732ce84c1a572247f5768313acece833a24b`。C07 标记 `VERIFIED_LOCAL`，只允许进入 C08；GPX、覆盖/来源、实时观测和动态 Shell 摘要没有提前宣称。

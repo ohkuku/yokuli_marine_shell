@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "phase": "WP8_CHART_COMPLETION",
+  "package": "C07",
+  "branch": "codex/shell-map-contract",
+  "baselineSha": "37241c9d2cb9cb84e00ea90b598757b8fd95f811",
+  "implementationCandidateSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+  "cumulativeVerifiedSha": "cc1b598343b3dd9cd4ed43c43d43ae76b276c90b",
+  "status": "VERIFIED_LOCAL",
+  "supportedRasterFormats": ["png", "jpg", "jpeg"],
+  "fullTileDecodeValidation": true,
+  "tablesAndViews": true,
+  "derivedCoverageAndZoom": true,
+  "logicalAndImmutableVersionIdentity": true,
+  "installJournalReconciliation": true,
+  "rendererVersionLease": true,
+  "staleOperationSuppression": true,
+  "focusedGate": {
+    "pythonTests": 5,
+    "coordinatorJvmTests": 4,
+    "offlinePackageDeviceTests": 15,
+    "deviceApi": 34
+  },
+  "cumulativeGate": {
+    "status": "PASSED",
+    "pythonTests": 190,
+    "jvmXmlTests": 300,
+    "gradleTasks": 1151,
+    "offlinePackageAndRendererDeviceTests": 15,
+    "appShellDeviceTests": 49,
+    "roomDeviceTests": 6,
+    "debugApkSha256": "9a52af6c7c88627c600b3d5260466ea95095f69e93e36525c223bc0587f04238",
+    "unsignedReleaseApkSha256": "63cd91ffd9c70c518061fe1598b0732ce84c1a572247f5768313acece833a24b"
+  },
+  "hostedCi": "PENDING_FINAL_C12_SAME_SHA_GATE",
+  "nextPermittedPackageAfterGate": "C08"
+}
