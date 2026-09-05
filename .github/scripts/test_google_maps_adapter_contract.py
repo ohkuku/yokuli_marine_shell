@@ -20,7 +20,7 @@ class GoogleMapsAdapterContractTest(unittest.TestCase):
             for path in (ROOT / "feature/chart/src/main/java").rglob("*.kt")
         )
 
-        self.assertIn('":adapter:chart-google"', settings)
+        self.assertIn('\":adapter:chart-google\"', settings)
         self.assertRegex(catalog, r'playServicesMaps\s*=\s*"20\.0\.0"')
         self.assertTrue(adapter_build.is_file(), "missing Google chart adapter Gradle module")
         self.assertTrue(adapter_source.is_file(), "missing Google chart surface adapter")
@@ -43,7 +43,7 @@ class GoogleMapsAdapterContractTest(unittest.TestCase):
         self.assertIn('android:name="com.google.android.geo.API_KEY"', manifest)
         self.assertIn('android:value="${GOOGLE_MAPS_ANDROID_API_KEY}"', manifest)
 
-    def test_missing_ci_key_uses_an_explicit_non_network_demo(self):
+    def test_missing_ci_key_uses_an_explicit_provider_free_workbench(self):
         gradle = (ROOT / "app-shell/build.gradle.kts").read_text()
         shell = "\n".join(
             path.read_text()
@@ -54,9 +54,11 @@ class GoogleMapsAdapterContractTest(unittest.TestCase):
         self.assertIn("MAPS_API_KEY_NOT_CONFIGURED", gradle)
         self.assertIn("BuildConfig.GOOGLE_MAPS_CONFIGURED", shell)
         self.assertIn("GoogleMarineChartSurface", shell)
-        self.assertIn("MarineChartDemoSurface", shell)
+        self.assertIn("OfflineMarineChartSurface", shell)
         self.assertIn('testTag("chart-surface-google")', shell)
-        self.assertIn('testTag("chart-surface-demo")', shell)
+        self.assertIn('testTag("chart-surface-offline-empty")', shell)
+        self.assertNotIn("MarineChartDemoSurface", shell + chart)
+        self.assertNotIn('testTag("chart-surface-demo")', shell)
         self.assertNotIn("GoogleMap", chart)
 
     def test_tracked_text_contains_no_google_api_key_value(self):

@@ -35,12 +35,15 @@ class LauncherStage6AdaptiveGridContractTest(unittest.TestCase):
         self.assertIn("AdaptiveTilePacker.insert", editor)
         self.assertNotIn("solver.propose", editor)
 
-    def test_renderer_uses_custom_layout_and_proposed_graphics_translation(self):
+    def test_renderer_uses_custom_layout_and_proposed_pixel_placement(self):
         renderer = (ROOT / "feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSpatialStartLayout.kt").read_text()
         screen = (ROOT / "feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt").read_text()
         self.assertIn("fun WpSpatialStartLayout", renderer)
         self.assertIn("Layout(", renderer)
-        self.assertIn("graphicsLayer", renderer)
+        # Layout offsets keep both hit geometry and pixels in sync; a graphics-only transform is not required.
+        self.assertIn(".offset {", renderer)
+        self.assertIn(".zIndex(", renderer)
+        self.assertIn("heldPosition.lastDrawn", renderer)
         self.assertIn("proposedDocument", renderer)
         self.assertIn("WpSpatialStartLayout(", screen)
         self.assertIn("proposedDocument", screen)

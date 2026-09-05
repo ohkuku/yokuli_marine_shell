@@ -86,7 +86,14 @@ class ShellAppTileContractTest(unittest.TestCase):
         self.assertNotIn("cancel-tile-resize", screen)
         self.assertNotIn("MarineIconKind.DONE", screen)
         self.assertIn("awaitLongPressOrCancellation", screen)
-        self.assertIn("latestMoveStart(dragStart.id.value", screen)
+        self.assertIn("LauncherUiAction.BeginTileDrag(tileId, dragStart.id.value", screen)
+        self.assertIn("TileDragCoordinates", screen)
+        self.assertIn("PointerEventPass.Initial", screen)
+
+    def test_daily_debug_product_has_no_shell_lab_entry(self):
+        graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
+        self.assertIn("debugShellLabAvailable = false", graph)
+        self.assertNotIn("debugShellLabAvailable = runtime.debugShellLabAvailable", graph)
 
     def test_red_green_scenarios_remain_executable(self):
         engine_tests = (

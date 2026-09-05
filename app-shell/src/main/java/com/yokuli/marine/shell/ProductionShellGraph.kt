@@ -156,7 +156,8 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                     versionName = runtime.versionName,
                     buildVariant = runtime.buildVariant,
                     gitSha = runtime.gitSha,
-                    debugShellLabAvailable = runtime.debugShellLabAvailable,
+                    // Daily Debug APKs are product builds too. Lab is only an explicit instrumentation/tooling target.
+                    debugShellLabAvailable = false,
                 ),
                 onAction = runtime.onSettingsAction,
             )
