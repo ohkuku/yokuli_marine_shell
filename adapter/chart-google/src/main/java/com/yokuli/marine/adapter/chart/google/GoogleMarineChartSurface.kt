@@ -193,7 +193,11 @@ fun GoogleMarineChartSurface(
                 addPolyline(PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xff00a4ef.toInt()).width(7f))
             }
             state.position.observation?.let { observation ->
-                addMarker(MarkerOptions().position(observation.point.toLatLng()).title(observation.source))
+                addMarker(
+                    MarkerOptions()
+                        .position(observation.point.toLatLng())
+                        .title(observation.identity.source.sourceId),
+                )
             }
         }
     }
