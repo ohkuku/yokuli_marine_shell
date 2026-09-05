@@ -83,7 +83,8 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
             re.findall(r"\b[A-Z][A-Z_]+\b", enum_body),
         )
         for fact in (
-            "mapConfigured",
+            "chartPackageCount",
+            "activeChartPackageName",
             "pinnedTileCount",
             "startDocumentVersion",
             "versionName",
@@ -161,31 +162,14 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, text)
         for required in (
-            "MAP CONFIGURED",
-            "地图已配置",
-            "BROWSE ONLY",
-            "仅浏览",
-            "Map content and trademarks belong to their providers.",
-            "地图内容与商标归其提供方所有。",
-            "Shows current build, map configuration, and Start document facts.",
-            "显示当前构建、地图配置和桌面文档信息。",
+            "MapLibre · local raster charts",
+            "MapLibre · 本地栅格海图",
+            "no local chart package",
+            "尚无本地海图包",
+            "Shows current build, local chart packages, and Start document facts.",
+            "显示当前构建、本地海图包和桌面文档信息。",
         ):
             self.assertIn(required, text)
-
-        settings_zh = ET.parse(
-            ROOT / "feature/settings/src/main/res/values/strings.xml"
-        ).getroot()
-        settings_en = ET.parse(
-            ROOT / "feature/settings/src/main/res/values-en/strings.xml"
-        ).getroot()
-        zh_detail = settings_zh.find("string[@name='map_configured_detail']")
-        en_detail = settings_en.find("string[@name='map_configured_detail']")
-        self.assertIsNotNone(zh_detail)
-        self.assertIsNotNone(en_detail)
-        self.assertIn("已配置 Android 地图密钥", zh_detail.text)
-        self.assertIn("不表示", zh_detail.text)
-        self.assertIn("An Android Maps key is configured", en_detail.text)
-        self.assertIn("not validated", en_detail.text)
 
     def test_shell_lab_is_debug_only_in_source_and_release_apk_gate(self):
         app = (ROOT / "app-shell/build.gradle.kts").read_text()

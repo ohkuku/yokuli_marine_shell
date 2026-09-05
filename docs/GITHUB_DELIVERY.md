@@ -27,9 +27,9 @@
 
 ### 发布
 
-普通 PR 在没有地图 secret 时仍可构建，并明确使用 fixture Chart surface。要让 push/manual CI 产出的 APK 使用真实 Google Maps，进入仓库 **Settings → Secrets and variables → Actions → New repository secret**，新增 `GOOGLE_MAPS_ANDROID_API_KEY`。个人加密 vault 的密文可以提交到 GitHub，但 Actions 不持有主口令、不会解密它，也不会自动把密文变成 Actions Secret。
+普通 PR、push、手动与 Release 构建都使用同一个 MapLibre 本地海图生产路径，不需要地图 secret，也没有无 key 的替代 renderer。个人加密 vault 的密文可以提交到 GitHub，但 Actions 不持有主口令、不会解密它，也不会自动把密文变成 Actions Secret。
 
-签名发布需要 `GOOGLE_MAPS_ANDROID_API_KEY`，以及同一签名库产生的四个 secret：`ANDROID_SIGNING_KEY_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。preflight 必须先确认地图 key 非空，再实际打开 keystore 并恢复私钥。诊断收集使用窄 allow-list，不能包含构建配置、环境转储、地图 key 或签名材料。
+签名发布只需要同一签名库产生的四个 secret：`ANDROID_SIGNING_KEY_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。preflight 必须实际打开 keystore 并恢复私钥。诊断收集使用窄 allow-list，不能包含构建配置、环境转储或签名材料。
 
 支持 `v1.2.3-alpha.1`、`v1.2.3-beta.1`、`v1.2.3`。alpha 可以来自 `codex/*` 或 `main`，beta 来自 `codex/release/*` 或 `main`，stable 只能来自 `main`。已有 tag 必须指向当前提交；已有 Release 不覆盖，必须使用新版本。
 
@@ -93,13 +93,7 @@ Do not require `Publish fully verified debug APKs` on pull requests; it intentio
 
 ## Release secrets
 
-Configure the Maps key as a repository Actions secret if push/manual artifacts must use the real Google provider. Pull requests without it deliberately compile the fixture fallback. Committing the encrypted personal vault does not expose or decrypt it in Actions:
-
-```text
-GOOGLE_MAPS_ANDROID_API_KEY
-```
-
-Releases require that Maps secret plus these four signing secrets, which must come from the same local signing vault:
+The production MapLibre path reads local raster MBTiles and does not require a map secret. Pull requests, push/manual artifacts, and releases build the same renderer; Actions never decrypts the personal vault. Releases require these four signing secrets, which must come from the same local signing vault:
 
 ```text
 ANDROID_SIGNING_KEY_BASE64

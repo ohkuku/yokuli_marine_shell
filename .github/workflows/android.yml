@@ -69,8 +69,6 @@ jobs:
         id: assemble
         continue-on-error: true
         timeout-minutes: 15
-        env:
-          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         run: ./gradlew --no-daemon assembleStandaloneDebug assembleStandaloneRelease --stacktrace
       - name: Launcher Stage 1 product-surface contract
         id: launcher_stage1_contract
@@ -245,8 +243,6 @@ jobs:
         run: bash .github/scripts/enable_kvm.sh
       - name: Run real-Activity stories with motion enabled
         uses: reactivecircus/android-emulator-runner@v2.38.0
-        env:
-          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         with:
           api-level: 34
           arch: x86_64
@@ -306,8 +302,6 @@ jobs:
         run: bash .github/scripts/enable_kvm.sh
       - name: API 36 launch smoke with platform animation scale disabled
         uses: reactivecircus/android-emulator-runner@v2.38.0
-        env:
-          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         with:
           api-level: 36
           arch: x86_64
@@ -367,8 +361,6 @@ jobs:
         run: bash .github/scripts/enable_kvm.sh
       - name: Run Macrobenchmark journeys as a non-hardware trend gate
         uses: reactivecircus/android-emulator-runner@v2.38.0
-        env:
-          GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
         with:
           api-level: 34
           arch: x86_64

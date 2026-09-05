@@ -231,7 +231,7 @@ class ShellEditRegressionStoryTest {
                                 catalog = current.catalog, document = current.start.document,
                                 interaction = current.start.interaction, transient = current.transient,
                                 reveal = current.start.reveal,
-                                visualContributions = productionVisualContributions(false, theme),
+                                visualContributions = productionVisualContributions(theme),
                             ), ::dispatch,
                         )
                     }

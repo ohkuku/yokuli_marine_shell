@@ -120,10 +120,7 @@ class ShellActivityStoryTest {
                             durableLibraryRevision = 2L,
                             saveState = MapSaveState.FAILED,
                         ),
-                        chartPackageCount = 0,
-                        activeChartPackageName = null,
                         onAction = { if (it == MapAction.RetryPersistence) retryRequested = true },
-                        onOpenMapSettings = {},
                         importState = ChartImportUiState.Idle,
                         onImportAction = {},
                         recoveryExportState = MapRecoveryExportUiState.SUCCEEDED,
@@ -654,7 +651,7 @@ class ShellActivityStoryTest {
                             state = productionLauncherUiState(
                                 productionCatalog.snapshot,
                                 defaultStartDocument,
-                                visualContributions = productionVisualContributions(false, WpThemeSpec()),
+                                visualContributions = productionVisualContributions(WpThemeSpec()),
                             ),
                             onAction = {},
                         )
@@ -677,7 +674,7 @@ class ShellActivityStoryTest {
                             state = productionLauncherUiState(
                                 productionCatalog.snapshot,
                                 defaultStartDocument,
-                                visualContributions = productionVisualContributions(false, WpThemeSpec()),
+                                visualContributions = productionVisualContributions(WpThemeSpec()),
                             ),
                             onAction = {},
                         )
