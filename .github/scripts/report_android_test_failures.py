@@ -64,9 +64,15 @@ def log_failure_excerpt() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--result-root", type=Path, default=RESULT_ROOT)
+    parser.add_argument("--result-root", type=Path, action="append")
     args = parser.parse_args()
-    failures = xml_failures(args.result_root)
+    result_roots = args.result_root or [RESULT_ROOT]
+    failures: list[tuple[str, str]] = []
+    for result_root in result_roots:
+        failures.extend(xml_failures(result_root))
+        if len(failures) >= MAX_FAILURES:
+            failures = failures[:MAX_FAILURES]
+            break
     if failures:
         for title, details in failures:
             print(f"::error title={github_escape(title)}::{github_escape(details)}")

@@ -9,6 +9,9 @@ test_runner='com.yokuli.marine.test/androidx.test.runner.AndroidJUnitRunner'
 probe_class='com.yokuli.marine.shell.ChartC12ProcessRestartProbeTest'
 
 cd "$repo_root"
+mkdir -p build
+process_log='build/ci-c12-process-restore.log'
+: > "$process_log"
 ./gradlew --no-daemon \
   :app-shell:assembleStandaloneDebug \
   :app-shell:assembleStandaloneDebugAndroidTest \
@@ -24,14 +27,17 @@ run_probe() {
   output="$(mktemp -t yokuli-c12-process.XXXXXX)"
   "$adb_bin" shell am instrument -w \
     -e class "$probe_class#$method" \
-    "$test_runner" | tee "$output"
+    "$test_runner" | tee "$output" | tee -a "$process_log"
   if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$output" || ! grep -Fq 'OK (1 test)' "$output"; then
     printf 'C12 process-restart probe failed: %s\n' "$method" >&2
+    rm -f "$output"
     return 1
   fi
+  rm -f "$output"
 }
 
+printf 'C12 external process-restart probe\n' | tee -a "$process_log"
 run_probe seedDurableStateForExternalProcessRestart
 "$adb_bin" shell am force-stop com.yokuli.marine
 run_probe verifyDurableStateAfterExternalProcessRestart
-printf 'C12 external force-stop persistence probe passed\n'
+printf 'C12 external force-stop persistence probe passed\n' | tee -a "$process_log"

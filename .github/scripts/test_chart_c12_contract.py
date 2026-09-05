@@ -37,6 +37,13 @@ class ChartC12DeliveryContract(unittest.TestCase):
             "adapter/map-storage/build/outputs/androidTest-results/**",
         ):
             self.assertIn(report_root, workflow)
+        self.assertIn("build/ci-c12-process-restore.log", workflow)
+        for result_root in (
+            "app-shell/build/outputs/androidTest-results",
+            "adapter/map-offline/build/outputs/androidTest-results",
+            "adapter/map-storage/build/outputs/androidTest-results",
+        ):
+            self.assertIn(f"--result-root {result_root}", workflow)
 
     def test_verified_alpha_waits_for_every_required_gate(self):
         workflow = self.text(".github/workflows/android.yml")
@@ -60,6 +67,7 @@ class ChartC12DeliveryContract(unittest.TestCase):
         self.assertNotIn("ActivityScenario.recreate", process_driver)
         self.assertIn("seedDurableStateForExternalProcessRestart", process_driver)
         self.assertIn("verifyDurableStateAfterExternalProcessRestart", process_driver)
+        self.assertIn("build/ci-c12-process-restore.log", process_driver)
 
     def test_final_gate_records_process_restart_and_release_manifest_audit(self):
         gate = self.text(".github/scripts/run_marine_shell_final_gate.sh")

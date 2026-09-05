@@ -263,7 +263,11 @@ jobs:
             bash .github/scripts/run_c12_process_restore.sh
       - name: Expose instrumented test failures
         if: failure()
-        run: python3 .github/scripts/report_android_test_failures.py
+        run: |
+          python3 .github/scripts/report_android_test_failures.py \
+            --result-root app-shell/build/outputs/androidTest-results \
+            --result-root adapter/map-offline/build/outputs/androidTest-results \
+            --result-root adapter/map-storage/build/outputs/androidTest-results
       - name: Device-test summary
         if: always()
         run: python3 .github/scripts/write_job_summary.py "API 34 real-Activity stories" "Instrumented tests=${{ job.status }}"
@@ -280,6 +284,7 @@ jobs:
             adapter/map-storage/build/reports/androidTests/**
             adapter/map-storage/build/outputs/androidTest-results/**
             build/ci-device-tests.log
+            build/ci-c12-process-restore.log
           if-no-files-found: warn
           retention-days: 14
       - name: Collect integration failure diagnostics
