@@ -99,7 +99,8 @@ class ShellActivityStoryTest {
 
         awaitDisplayed("chart-workspace-browse")
         compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
-        compose.onNodeWithTag("wp-page-title-chart").assertIsDisplayed()
+        compose.onNodeWithTag("wp-page-title-chart").assertDoesNotExist()
+        compose.onNodeWithTag("map-root-command-bar").assertIsDisplayed()
         compose.onNodeWithTag("chart-surface-maplibre").assertIsDisplayed()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
@@ -156,7 +157,7 @@ class ShellActivityStoryTest {
                         onImportAction = {},
                         recoveryExportState = MapRecoveryExportUiState.SUCCEEDED,
                         onExportRecovery = { exportRequested = true },
-                        chartSurface = { _, _, modifier -> Box(modifier) },
+                        chartSurface = { _, _, _, modifier -> Box(modifier) },
                     )
                 }
             }
@@ -176,8 +177,8 @@ class ShellActivityStoryTest {
     @Test
     fun mapAppKeepsPlanningToolsInternalAndPositionTruthExplicit() {
         compose.onNodeWithTag("tile-chart").performClick()
-        awaitDisplayed("map-tool-bar")
-        compose.onNodeWithTag("map-position-truth").assertIsDisplayed()
+        awaitDisplayed("map-root-command-bar")
+        compose.onNodeWithTag("map-truth-strip").assertIsDisplayed()
 
         compose.onNodeWithTag("map-tool-manual_route").performClick()
         compose.activityRule.scenario.onActivity { activity ->
@@ -185,20 +186,20 @@ class ShellActivityStoryTest {
             assertEquals(com.yokuli.marine.map.domain.MapTool.MANUAL_ROUTE, mapState.tool)
             assertEquals(com.yokuli.marine.map.domain.PositionAvailability.UNAVAILABLE, mapState.position.availability)
         }
-        compose.onNodeWithTag("map-tool-charts").performClick()
+        compose.onNodeWithTag("map-open-charts").performClick()
         compose.activityRule.scenario.onActivity { activity ->
             val mapState = ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.state.value
-            assertEquals(com.yokuli.marine.map.domain.MapTool.CHARTS, mapState.tool)
+            assertEquals(com.yokuli.marine.map.domain.MapSurface.ChartPackages, mapState.surface)
         }
         compose.onNodeWithTag("launcher-entry-routes").assertDoesNotExist()
         compose.onNodeWithTag("launcher-entry-charts").assertDoesNotExist()
     }
 
     @Test
-    fun productionShellExposesOnlyChartAndSettingsWithReusableLargeTitles() {
+    fun productionShellExposesOnlyChartAndSettingsAndMapRootStaysMapFirst() {
         compose.onNodeWithTag("tile-chart").performClick()
-        awaitDisplayed("wp-page-title-chart")
-        compose.onNodeWithTag("wp-page-title-chart").assertIsDisplayed()
+        awaitDisplayed("map-root-command-bar")
+        compose.onNodeWithTag("wp-page-title-chart").assertDoesNotExist()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("tile-settings")
 

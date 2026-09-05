@@ -58,8 +58,6 @@ data class PositionState(
     val observation: PositionObservation? = null,
 )
 
-enum class MapTool { BROWSE, PLACES, MEASURE, MANUAL_ROUTE, CHARTS }
-
 data class MapSelection(val point: GeoPoint)
 data class SavedPlace(
     val id: String,
@@ -225,8 +223,13 @@ object RandomMapIdGenerator : MapIdGenerator {
 
 data class MapState(
     val camera: MapCamera = MapCamera(),
+    val surface: MapSurface = MapSurface.Root,
     val tool: MapTool = MapTool.BROWSE,
+    val transient: MapTransient? = null,
     val selection: MapSelection? = null,
+    val editGesture: MapEditGesture? = null,
+    val viewport: MapViewport? = null,
+    val crosshairEnabled: Boolean = false,
     val places: List<SavedPlace> = emptyList(),
     val measurementDraft: MeasurementDraft? = null,
     val routeDrafts: List<ManualRouteDraft> = emptyList(),

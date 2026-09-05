@@ -35,7 +35,6 @@ import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
-import com.yokuli.marine.map.domain.MapTool
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -77,7 +76,6 @@ fun OfflineMarineChartSurface(
     val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentAction by rememberUpdatedState(onAction)
-    val currentState by rememberUpdatedState(state)
     val currentQueryPortChanged by rememberUpdatedState(onQueryPortChanged)
     remember(context.applicationContext) { MapLibre.getInstance(context.applicationContext) }
 
@@ -119,6 +117,7 @@ fun OfflineMarineChartSurface(
 
     DisposableEffect(mapView, generation) {
         var cameraListener: MapLibreMap.OnCameraIdleListener? = null
+        var clickListener: MapLibreMap.OnMapClickListener? = null
         var longPressListener: MapLibreMap.OnMapLongClickListener? = null
         val loadFailureListener = MapView.OnDidFailLoadingMapListener {
             if (!disposed.get()) currentAction(MapAction.RendererFailed(generation, MapRendererFailure.STYLE))
@@ -143,7 +142,8 @@ fun OfflineMarineChartSurface(
                 isZoomGesturesEnabled = true
                 isTiltGesturesEnabled = false
             }
-            currentQueryPortChanged(MapLibreRendererQueryPort(readyMap) { !disposed.get() })
+            val queryPort = MapLibreRendererQueryPort(readyMap) { !disposed.get() }
+            currentQueryPortChanged(queryPort)
             cameraListener = MapLibreMap.OnCameraIdleListener {
                 if (activeCameraCommand.get() == null) {
                     readyMap.cameraPosition.toDomainCameraOrNull()?.let { camera ->
@@ -151,18 +151,25 @@ fun OfflineMarineChartSurface(
                     }
                 }
             }.also(readyMap::addOnCameraIdleListener)
+            clickListener = MapLibreMap.OnMapClickListener { point ->
+                val screenPoint = readyMap.projection.toScreenLocation(point).toDomainScreenPoint()
+                currentAction(MapAction.MapTapped(point.toDomainPoint(), queryPort.query(screenPoint, INTERACTIVE_OVERLAYS)))
+                true
+            }.also(readyMap::addOnMapClickListener)
             longPressListener = MapLibreMap.OnMapLongClickListener { point ->
-                val action = if (currentState.tool == MapTool.MEASURE || currentState.tool == MapTool.MANUAL_ROUTE) {
-                    MapAction.AddPoint(point.toDomainPoint())
-                } else {
-                    MapAction.LongPressMap(point.toDomainPoint())
-                }
-                currentAction(action)
+                val screenPoint = readyMap.projection.toScreenLocation(point).toDomainScreenPoint()
+                currentAction(
+                    MapAction.MapLongPressed(
+                        point.toDomainPoint(),
+                        queryPort.query(screenPoint, INTERACTIVE_OVERLAYS),
+                    ),
+                )
                 true
             }.also(readyMap::addOnMapLongClickListener)
         }
         onDispose {
             cameraListener?.let { listener -> map?.removeOnCameraIdleListener(listener) }
+            clickListener?.let { listener -> map?.removeOnMapClickListener(listener) }
             longPressListener?.let { listener -> map?.removeOnMapLongClickListener(listener) }
             mapView.removeOnDidFailLoadingMapListener(loadFailureListener)
             mapView.removeOnRenderErrorListener(renderErrorListener)
@@ -315,6 +322,7 @@ private fun MapCamera.toCameraPosition() = CameraPosition.Builder()
 private fun CameraPosition.toDomainCameraOrNull() = target?.let { MapCamera(it.toDomainPoint(), zoom, bearing) }
 private fun LatLng.toDomainPoint() = GeoPoint(latitude.coerceIn(-90.0, 90.0), wrapLongitude(longitude))
 private fun GeoPoint.toLatLng() = LatLng(latitude, longitude)
+private fun PointF.toDomainScreenPoint() = MapScreenPoint(x.toDouble(), y.toDouble())
 private fun GeoBounds.toLatLngBounds() = LatLngBounds.from(north, east, south, west)
 private fun GeoPoint.toGeoJsonPoint() = Point.fromLngLat(longitude, latitude)
 private fun GeoPoint.toFeature(id: String) = Feature.fromGeometry(toGeoJsonPoint(), null, id)
@@ -384,6 +392,14 @@ private fun MapOverlayId.objectIdPrefix(): String = when (this) {
     MapOverlayId.MANUAL_ROUTE_POINTS -> "route-point:"
     MapOverlayId.POSITION_OBSERVATION -> "position:"
 }
+
+private val INTERACTIVE_OVERLAYS = setOf(
+    MapOverlayId.SAVED_PLACES,
+    MapOverlayId.SELECTION,
+    MapOverlayId.MEASUREMENT,
+    MapOverlayId.MANUAL_ROUTE,
+    MapOverlayId.MANUAL_ROUTE_POINTS,
+)
 
 private class OfflineMapLifecycleDriver(private val mapView: MapView) {
     private var created = false

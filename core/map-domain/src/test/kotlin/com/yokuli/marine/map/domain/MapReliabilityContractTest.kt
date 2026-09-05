@@ -173,10 +173,12 @@ class MapReliabilityContractTest {
             effectHandler = { if (it == MapEffect.LogIncident(MapIncident.QueueBackpressure)) incidents.incrementAndGet() },
         )
 
-        repeat(4) { assertEquals(MapDispatchResult.ACCEPTED, store.dispatch(MapAction.SelectTool(MapTool.entries[it]))) }
+        val accepted = MapTool.entries.map(MapAction::SelectTool) +
+            MapAction.OpenSurface(MapSurface.ChartPackages)
+        accepted.forEach { assertEquals(MapDispatchResult.ACCEPTED, store.dispatch(it)) }
         assertEquals(
             MapDispatchResult.REJECTED_BACKPRESSURE,
-            store.dispatch(MapAction.SelectTool(MapTool.CHARTS)),
+            store.dispatch(MapAction.OpenSurface(MapSurface.Places)),
         )
         withTimeout(2_000) {
             while (incidents.get() == 0) delay(10)

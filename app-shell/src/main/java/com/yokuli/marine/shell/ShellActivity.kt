@@ -93,6 +93,8 @@ import com.yokuli.shell.contract.ShellInput
 import com.yokuli.shell.contract.ShellWindowMetrics
 import com.yokuli.shell.android.AndroidShellKeyAdapter
 import com.yokuli.shell.android.AndroidShellWindowMetrics
+import com.yokuli.shell.compose.InternalAppInputRouter
+import com.yokuli.shell.compose.LocalInternalAppInputRouter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -100,6 +102,7 @@ import kotlinx.coroutines.withContext
 class ShellActivity : AppCompatActivity() {
     private val shellViewModel by viewModels<ShellViewModel>()
     private var longBackConsumed = false
+    internal val internalAppInputRouter = InternalAppInputRouter()
     internal var platformIntentLauncher: (Intent) -> Unit = { intent -> startActivity(intent) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -158,8 +161,10 @@ class ShellActivity : AppCompatActivity() {
         return true
     }
 
-    private fun dispatchInput(input: ShellInput) {
-        shellViewModel.engine.dispatch(input.toShellAction())
+    internal fun dispatchInput(input: ShellInput) {
+        if (!internalAppInputRouter.dispatch(input)) {
+            shellViewModel.engine.dispatch(input.toShellAction())
+        }
     }
 
     private fun prepareBenchmarkStart(intent: Intent) {
@@ -248,7 +253,9 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     )
     val language = if (persistedPreferences.languageTag == "en") AppLanguage.ENGLISH else AppLanguage.CHINESE
     val dispatch: (LauncherAction) -> Unit = engine::dispatch
-    val dispatchInput: (ShellInput) -> Unit = { input -> dispatch(input.toShellAction()) }
+    val dispatchInput: (ShellInput) -> Unit = { input ->
+        (context as? ShellActivity)?.dispatchInput(input) ?: dispatch(input.toShellAction())
+    }
     BackHandler(enabled = true) { dispatchInput(ShellInput.BACK) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, engine) {
@@ -315,7 +322,10 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 }
             },
         )
-        CompositionLocalProvider(LocalProductionShellRuntime provides runtime) {
+        CompositionLocalProvider(
+            LocalProductionShellRuntime provides runtime,
+            LocalInternalAppInputRouter provides (context as ShellActivity).internalAppInputRouter,
+        ) {
             val launcherState = productionLauncherUiState(
                 catalog = engineState.catalog,
                 document = engineState.start.document,

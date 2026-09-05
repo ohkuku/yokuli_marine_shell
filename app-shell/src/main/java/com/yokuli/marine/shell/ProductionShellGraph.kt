@@ -84,15 +84,16 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val runtime = LocalProductionShellRuntime.current
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
                 if (runtime.heavyContentReady) {
-                    { state, onAction, modifier ->
+                    { state, onAction, onQueryPortChanged, modifier ->
                         OfflineMarineChartSurface(
                             state = state,
                             onAction = onAction,
+                            onQueryPortChanged = onQueryPortChanged,
                             modifier = modifier.testTag("chart-surface-maplibre"),
                         )
                     }
                 } else {
-                    { _, _, modifier -> MarineChartTransitionSurface(modifier) }
+                    { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }
                 }
             }
             ChartWorkspace(

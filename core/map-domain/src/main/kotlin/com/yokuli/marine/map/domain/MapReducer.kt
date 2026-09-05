@@ -4,7 +4,24 @@ sealed interface MapAction {
     data class Restore(val result: MapLoadResult) : MapAction
     data class CameraChanged(val camera: MapCamera) : MapAction
     data class SelectTool(val tool: MapTool) : MapAction
+    data class OpenSurface(val surface: MapSurface) : MapAction
+    data object CloseSurface : MapAction
+    data object DismissTransient : MapAction
+    data object ClearSelection : MapAction
+    data class SetCrosshairEnabled(val enabled: Boolean) : MapAction
+    data class MapTapped(val point: GeoPoint, val hits: List<MapHitResult>) : MapAction
+    data class MapLongPressed(val point: GeoPoint, val hits: List<MapHitResult>) : MapAction
+    data class CrosshairConfirmed(val point: GeoPoint, val hits: List<MapHitResult>) : MapAction
+    data class ChooseObjectCandidate(val hit: MapHitResult) : MapAction
+    data object ConfirmPointCandidate : MapAction
+    data class BeginPointDrag(val gestureId: MapGestureId, val target: MapEditTarget) : MapAction
+    data class PreviewPointDrag(val gestureId: MapGestureId, val point: GeoPoint) : MapAction
+    data class CommitPointDrag(val gestureId: MapGestureId, val finalPoint: GeoPoint) : MapAction
+    data class CancelPointDrag(val gestureId: MapGestureId) : MapAction
+    data class ViewportChanged(val viewport: MapViewport) : MapAction
+    /** Compatibility action for pre-C03 callers; production input uses MapLongPressed. */
     data class LongPressMap(val point: GeoPoint) : MapAction
+    /** Compatibility action for pre-C03 tests and imports; production input confirms a candidate. */
     data class AddPoint(val point: GeoPoint) : MapAction
     data class SaveSelectionAsPlace(val name: String) : MapAction
     data class ConvertMeasurementToManualRoute(val name: String) : MapAction
@@ -82,7 +99,34 @@ class DefaultMapReducer(
         is MapAction.Restore -> restore(state, action.result)
         is MapAction.CameraChanged -> persistSession(state.copy(camera = action.camera))
         is MapAction.SelectTool -> MapReduction(selectTool(state, action.tool))
-        is MapAction.LongPressMap -> MapReduction(state.copy(selection = MapSelection(action.point)))
+        is MapAction.OpenSurface -> MapReduction(openSurface(state, action.surface))
+        MapAction.CloseSurface -> MapReduction(state.copy(surface = MapSurface.Root))
+        MapAction.DismissTransient -> MapReduction(state.copy(transient = null))
+        MapAction.ClearSelection -> MapReduction(state.copy(selection = null))
+        is MapAction.SetCrosshairEnabled -> MapReduction(state.copy(crosshairEnabled = action.enabled))
+        is MapAction.MapTapped -> MapReduction(mapInteraction(state, action.point, action.hits, PointCandidateOrigin.MAP_TAP))
+        is MapAction.MapLongPressed -> MapReduction(
+            mapInteraction(state, action.point, action.hits, PointCandidateOrigin.MAP_LONG_PRESS),
+        )
+        is MapAction.CrosshairConfirmed -> MapReduction(
+            mapInteraction(state, action.point, action.hits, PointCandidateOrigin.CROSSHAIR),
+        )
+        is MapAction.ChooseObjectCandidate -> chooseObjectCandidate(state, action.hit)
+        MapAction.ConfirmPointCandidate -> confirmPointCandidate(state)
+        is MapAction.BeginPointDrag -> beginPointDrag(state, action.gestureId, action.target)
+        is MapAction.PreviewPointDrag -> previewPointDrag(state, action.gestureId, action.point)
+        is MapAction.CommitPointDrag -> commitPointDrag(state, action.gestureId, action.finalPoint)
+        is MapAction.CancelPointDrag -> MapReduction(
+            if (state.editGesture?.id == action.gestureId) state.copy(editGesture = null) else state,
+        )
+        is MapAction.ViewportChanged -> MapReduction(
+            if (state.viewport == action.viewport) state else state.copy(viewport = action.viewport, editGesture = null),
+        )
+        is MapAction.LongPressMap -> MapReduction(
+            state.copy(
+                selection = MapSelection(action.point),
+            ),
+        )
         is MapAction.AddPoint -> addPoint(state, action.point)
         is MapAction.SaveSelectionAsPlace -> savePlace(state, action.name)
         is MapAction.ConvertMeasurementToManualRoute -> convertMeasurement(state, action.name)
@@ -262,8 +306,117 @@ class DefaultMapReducer(
     }
 
     private fun selectTool(state: MapState, tool: MapTool): MapState = when (tool) {
-        MapTool.MEASURE -> state.copy(tool = tool, measurementDraft = state.measurementDraft ?: MeasurementDraft())
-        else -> state.copy(tool = tool)
+        MapTool.MEASURE -> state.copy(
+            tool = tool,
+            transient = null,
+            editGesture = null,
+            measurementDraft = state.measurementDraft ?: MeasurementDraft(),
+        )
+        else -> state.copy(tool = tool, transient = null, editGesture = null)
+    }
+
+    private fun openSurface(state: MapState, surface: MapSurface): MapState = when (surface) {
+        is MapSurface.PlaceDetail -> if (state.places.any { it.id == surface.placeId }) {
+            state.copy(surface = surface, transient = null)
+        } else {
+            state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.placeId))
+        }
+        is MapSurface.RouteDetail -> if (state.savedRoutes.any { it.id == surface.routeId } ||
+            state.routeDrafts.any { it.id == surface.routeId }
+        ) {
+            state.copy(surface = surface, transient = null)
+        } else {
+            state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.routeId))
+        }
+        is MapSurface.ChartPackageDetail -> if (state.chartPackages.any { it.id == surface.packageId }) {
+            state.copy(surface = surface, transient = null)
+        } else {
+            state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.packageId.value))
+        }
+        else -> state.copy(surface = surface, transient = null)
+    }
+
+    private fun mapInteraction(
+        state: MapState,
+        point: GeoPoint,
+        inputHits: List<MapHitResult>,
+        origin: PointCandidateOrigin,
+    ): MapState {
+        val hits = inputHits.distinctBy { it.overlayId to it.objectId }
+        val transient = when (hits.size) {
+            0 -> if (state.tool == MapTool.BROWSE && origin == PointCandidateOrigin.MAP_TAP) {
+                null
+            } else {
+                MapTransient.PointCandidate(point, origin)
+            }
+            1 -> MapTransient.SelectedObject(hits.single())
+            else -> MapTransient.ObjectCandidates(hits)
+        }
+        return state.copy(transient = transient)
+    }
+
+    private fun chooseObjectCandidate(state: MapState, hit: MapHitResult): MapReduction {
+        val candidates = (state.transient as? MapTransient.ObjectCandidates)?.hits ?: return MapReduction(state)
+        return if (hit in candidates) {
+            MapReduction(state.copy(transient = MapTransient.SelectedObject(hit)))
+        } else {
+            incident(state, MapIncident.ActionRejected)
+        }
+    }
+
+    private fun confirmPointCandidate(state: MapState): MapReduction {
+        val candidate = state.transient as? MapTransient.PointCandidate ?: return MapReduction(state)
+        val cleared = state.copy(transient = null)
+        return if (state.tool == MapTool.BROWSE) {
+            MapReduction(cleared.copy(selection = MapSelection(candidate.point)))
+        } else {
+            addPoint(cleared, candidate.point)
+        }
+    }
+
+    private fun beginPointDrag(state: MapState, id: MapGestureId, target: MapEditTarget): MapReduction {
+        if (state.editGesture != null) return incident(state, MapIncident.ActionRejected)
+        val original = state.pointFor(target) ?: return incident(state, MapIncident.ActionRejected)
+        return MapReduction(state.copy(editGesture = MapEditGesture(id, target, original)))
+    }
+
+    private fun previewPointDrag(state: MapState, id: MapGestureId, point: GeoPoint): MapReduction {
+        val gesture = state.editGesture?.takeIf { it.id == id } ?: return MapReduction(state)
+        return MapReduction(state.copy(editGesture = gesture.copy(previewPoint = point)))
+    }
+
+    private fun commitPointDrag(state: MapState, id: MapGestureId, finalPoint: GeoPoint): MapReduction {
+        val gesture = state.editGesture?.takeIf { it.id == id } ?: return MapReduction(state)
+        val cleared = state.copy(editGesture = null)
+        return when (val target = gesture.target) {
+            is MapEditTarget.MeasurementPoint -> {
+                val points = cleared.measurementDraft?.points ?: return incident(cleared, MapIncident.ActionRejected)
+                if (target.index !in points.indices) return incident(cleared, MapIncident.ActionRejected)
+                persistSession(
+                    cleared.copy(
+                        measurementDraft = requireNotNull(cleared.measurementDraft).copy(
+                            points = points.mapIndexed { index, point -> if (index == target.index) finalPoint else point },
+                        ),
+                    ),
+                )
+            }
+            is MapEditTarget.RoutePoint -> {
+                val draft = cleared.routeDrafts.firstOrNull { it.id == target.draftId }
+                    ?: return incident(cleared, MapIncident.ActionRejected)
+                if (target.index !in draft.waypoints.indices) return incident(cleared, MapIncident.ActionRejected)
+                val updated = draft.record(
+                    draft.waypoints.mapIndexed { index, point -> if (index == target.index) finalPoint else point },
+                )
+                persistLibrary(
+                    cleared.copy(routeDrafts = cleared.routeDrafts.map { if (it.id == updated.id) updated else it }),
+                )
+            }
+        }
+    }
+
+    private fun MapState.pointFor(target: MapEditTarget): GeoPoint? = when (target) {
+        is MapEditTarget.MeasurementPoint -> measurementDraft?.points?.getOrNull(target.index)
+        is MapEditTarget.RoutePoint -> routeDrafts.firstOrNull { it.id == target.draftId }?.waypoints?.getOrNull(target.index)
     }
 
     private fun addPoint(state: MapState, point: GeoPoint): MapReduction = when (state.tool) {
