@@ -63,14 +63,15 @@ sealed interface MapPrecisePointEdit {
     data class Move(val target: MapEditTarget) : MapPrecisePointEdit
     data class InsertMeasurement(val index: Int) : MapPrecisePointEdit {
         init {
-        require(index >= 0)
+            require(index >= 0)
+        }
     }
+
     data class InsertRoute(val draftId: String, val beforeWaypointId: String?) : MapPrecisePointEdit {
         init {
             require(draftId.isNotBlank())
         }
     }
-}
 }
 
 data class MapEditGesture(
