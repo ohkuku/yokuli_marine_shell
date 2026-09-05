@@ -281,7 +281,11 @@ class ShellActivityStoryTest {
             )
             assertTrue(state.start.interaction is com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle)
         }
-        awaitDisplayed("unpin-selected-tile")
+        compose.waitUntil(5_000) {
+            val tileBounds = compose.onNodeWithTag("tile-settings").fetchSemanticsNode().boundsInRoot
+            val unpinBounds = compose.onNodeWithTag("unpin-selected-tile").fetchSemanticsNode().boundsInRoot
+            tileBounds.width > tileBounds.height && unpinBounds.center.x > tileBounds.center.x
+        }
         compose.onNodeWithTag("unpin-selected-tile", useUnmergedTree = true)
             .performTouchInput { click(center) }
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
