@@ -1,0 +1,26 @@
+name: Refinement JVM verification dependencies
+on:
+  push:
+    branches: [codex/shell-map-contract]
+    paths: [.github/workflows/refinement-jvm.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch fixed public test and geodesic libraries
+        shell: bash
+        run: |
+          mkdir -p /tmp/refinement-jvm
+          curl --fail --location --retry 2 https://repo.maven.apache.org/maven2/net/sf/geographiclib/GeographicLib-Java/2.1/GeographicLib-Java-2.1.jar -o /tmp/refinement-jvm/geographiclib.jar
+          curl --fail --location --retry 2 https://repo.maven.apache.org/maven2/junit/junit/4.13.2/junit-4.13.2.jar -o /tmp/refinement-jvm/junit.jar
+          curl --fail --location --retry 2 https://repo.maven.apache.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar -o /tmp/refinement-jvm/hamcrest.jar
+          cd /tmp/refinement-jvm && sha256sum *.jar > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: refinement-jvm
+          path: /tmp/refinement-jvm
+          retention-days: 1
+          if-no-files-found: error
