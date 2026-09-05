@@ -441,24 +441,26 @@ class DefaultMapReducer(
         }
     }
 
-    private fun commitPointEdit(state: MapState, target: MapEditTarget, point: GeoPoint): MapReduction = when (target) {
-        is MapEditTarget.MeasurementPoint -> {
-            val points = state.measurementDraft?.points ?: return incident(state, MapIncident.ActionRejected)
-            if (target.index !in points.indices) return incident(state, MapIncident.ActionRejected)
-            editMeasurement(state) { current ->
-                current.mapIndexed { index, existing -> if (index == target.index) point else existing }
+    private fun commitPointEdit(state: MapState, target: MapEditTarget, point: GeoPoint): MapReduction {
+        return when (target) {
+            is MapEditTarget.MeasurementPoint -> {
+                val points = state.measurementDraft?.points ?: return incident(state, MapIncident.ActionRejected)
+                if (target.index !in points.indices) return incident(state, MapIncident.ActionRejected)
+                editMeasurement(state) { current ->
+                    current.mapIndexed { index, existing -> if (index == target.index) point else existing }
+                }
             }
-        }
-        is MapEditTarget.RoutePoint -> {
-            val draft = state.routeDrafts.firstOrNull { it.id == target.draftId }
-                ?: return incident(state, MapIncident.ActionRejected)
-            if (target.index !in draft.waypoints.indices) return incident(state, MapIncident.ActionRejected)
-            val updated = draft.record(
-                draft.waypoints.mapIndexed { index, existing -> if (index == target.index) point else existing },
-            )
-            persistLibrary(
-                state.copy(routeDrafts = state.routeDrafts.map { if (it.id == updated.id) updated else it }),
-            )
+            is MapEditTarget.RoutePoint -> {
+                val draft = state.routeDrafts.firstOrNull { it.id == target.draftId }
+                    ?: return incident(state, MapIncident.ActionRejected)
+                if (target.index !in draft.waypoints.indices) return incident(state, MapIncident.ActionRejected)
+                val updated = draft.record(
+                    draft.waypoints.mapIndexed { index, existing -> if (index == target.index) point else existing },
+                )
+                persistLibrary(
+                    state.copy(routeDrafts = state.routeDrafts.map { if (it.id == updated.id) updated else it }),
+                )
+            }
         }
     }
 
