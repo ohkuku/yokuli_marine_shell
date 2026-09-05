@@ -81,5 +81,43 @@ class MeasurementEditingTest {
         assertEquals(listOf(a, b, c), measured.measurementDraft?.points)
     }
 
+    @Test
+    fun `coordinate input preserves its origin and precise entry commits exactly one edit`() {
+        val candidate = reduce(
+            MapState(surface = MapSurface.CoordinateInput),
+            MapAction.CoordinateEntered(a),
+        ).state
+        assertEquals(MapSurface.Root, candidate.surface)
+        assertEquals(PointCandidateOrigin.COORDINATE_INPUT, (candidate.transient as MapTransient.PointCandidate).origin)
+
+        val editing = reduce(
+            MapState(
+                surface = MapSurface.CoordinateInput,
+                measurementDraft = MeasurementDraft(listOf(a, b)),
+                precisePointEdit = MapPrecisePointEdit.Move(MapEditTarget.MeasurementPoint(1)),
+            ),
+            MapAction.CoordinateEntered(c),
+        )
+        assertEquals(MapSurface.Root, editing.state.surface)
+        assertEquals(listOf(a, c), editing.state.measurementDraft?.points)
+        assertNull(editing.state.precisePointEdit)
+        assertEquals(1, editing.effects.filterIsInstance<MapEffect.PersistSession>().size)
+    }
+
+    @Test
+    fun `saving a point candidate works in measure mode without adding a measurement point`() {
+        val state = MapState(
+            tool = MapTool.MEASURE,
+            libraryLoadState = MapLibraryLoadState.READY_EMPTY,
+            measurementDraft = MeasurementDraft(listOf(a)),
+            transient = MapTransient.PointCandidate(b, PointCandidateOrigin.MAP_TAP),
+        )
+        val saved = reduce(state, MapAction.SavePointCandidateAsPlace("candidate")).state
+
+        assertEquals(listOf(a), saved.measurementDraft?.points)
+        assertEquals(b, saved.places.single().point)
+        assertNull(saved.transient)
+    }
+
     private fun reduce(state: MapState, action: MapAction): MapReduction = MapReducer.reduce(state, action)
 }
