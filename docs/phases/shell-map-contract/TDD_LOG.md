@@ -54,3 +54,8 @@
 - The unmerged tree proved the final cause: independent 48dp controls still overlapped heavily because the whole Tile, including its edit overlay, had been inset for App content. Only the App renderer is now inset; edit controls occupy the full Tile corners. Any residual 1x1 overlap is resolved by nearest control center (and compact horizontal tiles by nearest vertical half), never a hard-coded Unpin priority.
 - Compact edit geometry/touch and both direct resize steps pass together. The drag story was intermittent because one synthetic jump did not model the continuous path through insertion hysteresis; it now emits an intermediate row crossing before the final three-row target, without weakening the production threshold.
 - Joint regression showed the drag still cancelled at the long-press state transition. Conditionally removing the Tile clickable changed the modifier chain while the same pointer was still down, cancelling the coroutine before move/drop. The clickable node is structurally stable again; the tile gesture owner consumes edit-control taps, and full-corner nearest-center routing prevents their prior overlap error.
+
+## 2026-09-05 — Shell edit Green
+
+- API 34 joint Activity run passes all three critical stories in one instrumentation invocation: direct Chart resize, compact Settings control geometry plus pointer unpin, and same-gesture long-press/reorder/drop.
+- The proof covers both Engine outcomes and renderer outcomes: immediate persisted sizes, no confirmation UI, exact 48dp/28dp/19dp compact geometry, viewport containment, right-side relocation after 2x1 resize, real pointer unpin, rank change, selected edit retention, and cleared local drag translation.
