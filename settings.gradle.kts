@@ -12,6 +12,7 @@ rootProject.name = "YokuliOS"
 include(
     ":app-shell",
     ":core:model",
+    ":core:map-domain",
     ":core:design",
     ":core:shell-contract",
     ":core:shell-engine",

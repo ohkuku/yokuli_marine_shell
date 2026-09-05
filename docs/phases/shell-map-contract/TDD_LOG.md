@@ -59,3 +59,9 @@
 
 - API 34 joint Activity run passes all three critical stories in one instrumentation invocation: direct Chart resize, compact Settings control geometry plus pointer unpin, and same-gesture long-press/reorder/drop.
 - The proof covers both Engine outcomes and renderer outcomes: immediate persisted sizes, no confirmation UI, exact 48dp/28dp/19dp compact geometry, viewport containment, right-side relocation after 2x1 resize, real pointer unpin, rank change, selected edit retention, and cleared local drag translation.
+
+## 2026-09-05 — Map domain M1 Red → Green
+
+- Added a dependency-free `:core:map-domain` test suite first. The Red run failed at compile time because every intended Map type was absent.
+- Green adds validated coordinates/camera/bounds, explicit unavailable/stale/fresh position semantics, saved places, independent measurement and manual-route drafts, undo/redo/reverse/copy, planned-speed ETA, offline chart package facts, durable snapshots, pure reductions, and a Channel-serialized StateFlow store.
+- Eight tests pass. Position observations and `navigationActive` are deliberately excluded from persistence; a repeated observation ID cannot refresh an old fix; chart package removal preserves camera and user content.

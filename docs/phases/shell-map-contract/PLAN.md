@@ -60,7 +60,7 @@ Stage 2.5 的 owner-supplied WP8.1 模拟器视频已批准几何、页面切换
 - 长按磁贴进入编辑；右下 resize affordance 一次点击即切换到 App 声明序列中的下一尺寸、提交、持久化并保持编辑选中；
 - 不出现 resize preview、取消叉或确认对号；无第二次确认；
 - 只有一个支持尺寸时不显示 resize affordance；
-- 1×1 的可见圆盘必须清楚，触控区至少 48 dp，并与 unpin 目标不重叠。
+- 1×1 的可见圆盘必须清楚，触控区至少 48 dp；受物理尺寸限制的边缘重叠区必须按最近控件中心唯一裁决，不能固定偏向 unpin 或 resize。
 
 ### E2 — 同一次长按拖动
 
@@ -115,4 +115,3 @@ Shell–App Gate 全绿后才开始以下切片：
 6. `feat(map): add chart packages and manual route planning`
 
 每个切片先提交并 push，再运行对应昂贵本地 Gate，让 hosted CI 与本地测试并行。任一 Gate 失败即停在该切片，不进入后续地图切片。报告会记录 Red 证据、Green 证据、自审发现、修正和仍需人工判断的 UI/真机项。
-
