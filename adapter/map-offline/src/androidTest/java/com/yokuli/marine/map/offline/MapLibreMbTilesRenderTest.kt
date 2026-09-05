@@ -13,7 +13,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -77,15 +76,27 @@ class MapLibreMbTilesRenderTest {
             assertTrue("MapLibre did not produce a fully-rendered local snapshot", finished.await(20, TimeUnit.SECONDS))
             failure.get()?.let { throw AssertionError("MapLibre fixture setup failed", it) }
             val bitmap = requireNotNull(snapshot.get())
-            val topLeft = bitmap.getPixel(bitmap.width / 4, bitmap.height / 4)
-            val topRight = bitmap.getPixel(bitmap.width * 3 / 4, bitmap.height / 4)
-            val bottomLeft = bitmap.getPixel(bitmap.width / 4, bitmap.height * 3 / 4)
             val center = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
-            assertNotEquals("directional tile must not collapse horizontally", topLeft, topRight)
-            assertNotEquals("directional tile must not collapse vertically", topLeft, bottomLeft)
+            val fixtureColors = listOf(
+                Color.rgb(210, 45, 35),
+                Color.rgb(25, 135, 220),
+                Color.rgb(245, 205, 35),
+                Color.rgb(30, 165, 95),
+            )
+            fixtureColors.forEach { expected ->
+                val matchingSamples = (0 until bitmap.width step 4).sumOf { x ->
+                    (0 until bitmap.height step 4).count { y -> bitmap.getPixel(x, y).near(expected) }
+                }
+                assertTrue("local raster color ${Integer.toHexString(expected)} was not rendered", matchingSamples > 80)
+            }
             assertTrue("stable overlay must be visibly bright", Color.red(center) > 220 && Color.green(center) > 220)
         }
     }
+
+    private fun Int.near(expected: Int): Boolean =
+        kotlin.math.abs(Color.red(this) - Color.red(expected)) <= 12 &&
+            kotlin.math.abs(Color.green(this) - Color.green(expected)) <= 12 &&
+            kotlin.math.abs(Color.blue(this) - Color.blue(expected)) <= 12
 
     private fun createFixture(file: File) {
         file.delete()
