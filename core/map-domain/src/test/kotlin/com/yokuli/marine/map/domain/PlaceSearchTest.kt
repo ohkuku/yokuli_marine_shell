@@ -25,6 +25,7 @@ class PlaceSearchTest {
         assertEquals(listOf("p2"), PlaceSearch.filterAndSort(places, "补水").map { it.id })
         assertEquals(listOf("p2"), PlaceSearch.filterAndSort(places, "FUEL").map { it.id })
         assertEquals(listOf("p1"), PlaceSearch.filterAndSort(places, "anchorage").map { it.id })
+        assertEquals(listOf("p2"), PlaceSearch.filterAndSort(places, "码头").map { it.id })
         assertEquals(listOf("p3"), PlaceSearch.filterAndSort(places, "shore").map { it.id })
         assertEquals(listOf("p2"), PlaceSearch.filterAndSort(places, "-36.8485, 174.7633").map { it.id })
         assertTrue(PlaceSearch.filterAndSort(places, "Auckland online geocoder result").isEmpty())

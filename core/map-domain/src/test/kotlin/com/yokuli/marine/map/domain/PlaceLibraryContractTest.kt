@@ -148,6 +148,26 @@ class PlaceLibraryContractTest {
         assertTrue(rejected.effects.single() is MapEffect.LogIncident)
     }
 
+    @Test
+    fun `a place id is not reused immediately after deletion`() {
+        val generated = ArrayDeque(listOf("place-a", "place-a", "place-b"))
+        val uniqueReducer = DefaultMapReducer(
+            idGenerator = MapIdGenerator { generated.removeFirst() },
+            clock = clock,
+        )
+        val create = MapAction.CreatePlace(first, "first", "", PlaceCategory.ANCHORAGE, emptyList())
+        val firstState = uniqueReducer.reduce(MapState(), create).state
+        val deleted = uniqueReducer.reduce(
+            uniqueReducer.reduce(firstState, MapAction.RequestDeletePlace("place-a")).state,
+            MapAction.ConfirmDeletePlace,
+        ).state
+
+        val replacement = uniqueReducer.reduce(deleted, create).state
+
+        assertEquals("place-b", replacement.places.single().id)
+        assertEquals("place-a", deleted.placeDeleteUndo?.place?.id)
+    }
+
     private fun savedPlace() = SavedPlace(
         id = "place-a",
         name = "锚地 A",
