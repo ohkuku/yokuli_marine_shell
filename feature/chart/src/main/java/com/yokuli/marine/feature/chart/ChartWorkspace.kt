@@ -288,7 +288,9 @@ private fun MapPersistenceTruth(
                     MapActionText(R.string.map_library_retry_save, "map-library-retry-save") {
                         onAction(MapAction.RetryPersistence)
                     }
-                    MapActionText(R.string.map_library_export_recovery, "map-library-export-recovery", onExportRecovery)
+                    MapActionText(R.string.map_library_export_recovery, "map-library-export-recovery") {
+                        onExportRecovery()
+                    }
                 }
             }
         }
