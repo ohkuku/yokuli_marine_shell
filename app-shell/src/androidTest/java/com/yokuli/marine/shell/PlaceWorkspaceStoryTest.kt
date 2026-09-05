@@ -182,7 +182,7 @@ class PlaceWorkspaceStoryTest {
                 val currentDensity = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(currentDensity.density, fontScale)) {
                     YokuliTheme(WpThemeSpec()) {
-                        var state by remember { mutableStateOf(initial) }
+                        var state by remember(initial) { mutableStateOf(initial) }
                         stateAccessor = { state }
                         dispatcher = { action -> state = reducer.reduce(state, action).state }
                         ChartWorkspace(
