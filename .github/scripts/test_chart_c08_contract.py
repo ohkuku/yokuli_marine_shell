@@ -58,6 +58,18 @@ class ChartC08ContractTest(unittest.TestCase):
         for phrase in ("预览", "作为副本", "用户取消", "写入失败", "不保留未知扩展"):
             self.assertIn(phrase, strings)
 
+    def test_background_track_lod_returns_to_main_before_maplibre_mutation(self):
+        renderer = (
+            ROOT
+            / "adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/OfflineMarineChartSurface.kt"
+        ).read_text()
+        self.assertIn("withContext(Dispatchers.Default)", renderer)
+        self.assertIn("withContext(Dispatchers.Main.immediate)", renderer)
+        self.assertLess(
+            renderer.index("withContext(Dispatchers.Main.immediate)"),
+            renderer.index("style.source(MapOverlayId.SAVED_PLACES)"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
