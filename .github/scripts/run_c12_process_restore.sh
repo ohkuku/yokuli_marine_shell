@@ -3,10 +3,32 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
-adb_bin="${ADB_BIN:-adb}"
 target_package='com.yokuli.marine'
 test_runner='com.yokuli.marine.test/androidx.test.runner.AndroidJUnitRunner'
 probe_class='com.yokuli.marine.shell.ChartC12ProcessRestartProbeTest'
+
+resolve_adb() {
+  if [[ -n "${ADB_BIN:-}" && -x "$ADB_BIN" ]]; then
+    printf '%s\n' "$ADB_BIN"
+    return
+  fi
+  if command -v adb >/dev/null 2>&1; then
+    command -v adb
+    return
+  fi
+  local sdk_dir="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+  if [[ -z "$sdk_dir" && -f "$repo_root/local.properties" ]]; then
+    sdk_dir="$(sed -n 's/^sdk\.dir=//p' "$repo_root/local.properties" | head -n 1)"
+  fi
+  if [[ -n "$sdk_dir" && -x "$sdk_dir/platform-tools/adb" ]]; then
+    printf '%s\n' "$sdk_dir/platform-tools/adb"
+    return
+  fi
+  printf 'adb was not found; set ADB_BIN or configure the Android SDK\n' >&2
+  return 127
+}
+
+adb_bin="$(resolve_adb)"
 
 cd "$repo_root"
 mkdir -p build

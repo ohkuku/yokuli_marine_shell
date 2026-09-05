@@ -68,6 +68,8 @@ class ChartC12DeliveryContract(unittest.TestCase):
         self.assertIn("seedDurableStateForExternalProcessRestart", process_driver)
         self.assertIn("verifyDurableStateAfterExternalProcessRestart", process_driver)
         self.assertIn("build/ci-c12-process-restore.log", process_driver)
+        self.assertIn("command -v adb", process_driver)
+        self.assertIn("local.properties", process_driver)
 
     def test_final_gate_records_process_restart_and_release_manifest_audit(self):
         gate = self.text(".github/scripts/run_marine_shell_final_gate.sh")

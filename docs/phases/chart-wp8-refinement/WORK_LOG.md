@@ -224,3 +224,5 @@ Red 先锁定三模块 instrumentation 必须真实进入 CI、Verified Alpha �
 C12 封口提交将从头执行 Host、三模块 API 34、双进程恢复、性能、Release manifest 与 digest，并要求同一 SHA 的 GitHub Actions 全绿后才交付 Verified Alpha。未解决 P0/P1 为空；来源在线交付保持 `BLOCKED_EXTERNAL`，生产 GNSS/NMEA/活动导航/船网输出未实现，人工状态保持 `PENDING`。
 
 第一次封口 Host Gate 在静态阶段停止：系统 Python 没有仓库锁定的 `jsonschema`，同时全局双语合同发现 C11 REPORT 漏了 `English translation` 标记。前者改用既有规则要求的隔离 pinned 环境重跑；后者只补英文边界摘要，不更改 C11 的实现、合同或验证结论。
+
+第二次封口运行的 Host 219 条合同、1207 tasks、Release 清单与三模块设备 17+7+59 均通过，随后在双进程 probe 启动前因本机 PATH 没有 `adb` 停止。脚本因此补成可移植解析：显式 `ADB_BIN` → PATH → Android SDK 环境 → `local.properties`；没有工具仍明确退出，不把 probe 跳过。
