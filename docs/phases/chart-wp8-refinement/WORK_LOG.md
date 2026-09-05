@@ -136,3 +136,9 @@ C02 恢复为 `VERIFIED_LOCAL`。它证明单一离线 renderer、相机协议�
 第一次完整 API 34 Shell 场景有 42/43 通过。唯一失败不是测试波动：快速选中测量工具后立即 Back，MapStore 已是 `MEASURE`，但 Compose handler 仍看到上一帧 `BROWSE`，结果 Shell 先退到 Desktop。测试增加状态诊断后稳定复现，生产路由改为读取 MapStore 实时状态，定向测试与完整 43 条场景随后全部通过。
 
 自查又补上 Shell 圆角安全带向 Chart viewport 的映射、四边参与 revision、旋转/IME 重排及 MapLibre 多指开始取消未确认 preview。当前 C03 是 `IMPLEMENTED_UNVERIFIED`；C04 才完成测量数学和真正的任意点编辑，C03 不提前宣称这些能力。
+
+## C03｜累计 Gate、历史合同纠错与封口
+
+第一次累计 Python Gate 有 5 条旧合同失败：两条读取已删除的 `ChartUiContract.kt`，一条仍要求旧 Activity story 名，两条把旧 UI 形态或内部路线草稿字段当成 Stage 1 发布表面。修正只迁移测试真值来源和 device runner 名称，没有恢复废弃文件，也没有删除 Map App 内部规划模型。171 条 Python 合同与 CI 拓扑随后全绿。
+
+冻结点 `56f2abb049a82b71f222548760f4b5511a793928` 的累计结果：全仓 test/lint/Standalone Debug+Release 共 1151 tasks；XML 汇总 248 JVM tests；API 34 的 Shell 43、真实 renderer 6、Room 4 全部通过。Debug APK hash 为 `a222156a38e3bf7fbbd80d4dd386c5507fb1eb14a8bc4e96a971c241115e53c3`，unsigned Release hash 为 `5223becdb806b7986cbef92b0b2d03e9adb380cf1f69743b40de84c3edfb68a7`。C03 标记 `VERIFIED_LOCAL`，只允许进入 C04。

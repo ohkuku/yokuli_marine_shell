@@ -4,9 +4,9 @@
   "package": "C03",
   "branch": "codex/shell-map-contract",
   "baselineSha": "dcb694614e9110d765fdb3ef8ff1d464e0d7102f",
-  "implementationCandidateSha": "7d1a1df593f8a8cafc5c83e72e1849d53a8bd673",
-  "cumulativeVerifiedSha": null,
-  "status": "IMPLEMENTED_UNVERIFIED",
+  "implementationCandidateSha": "56f2abb049a82b71f222548760f4b5511a793928",
+  "cumulativeVerifiedSha": "56f2abb049a82b71f222548760f4b5511a793928",
+  "status": "VERIFIED_LOCAL",
   "surfaceToolTransientSeparated": true,
   "featureFirstBack": true,
   "featureBackReadsRuntimeStore": true,
@@ -22,7 +22,15 @@
     "deviceApi": 34
   },
   "cumulativeGate": {
-    "status": "NOT_RUN"
+    "status": "PASSED",
+    "pythonTests": 171,
+    "jvmXmlTests": 248,
+    "gradleTasks": 1151,
+    "offlineRendererDeviceTests": 6,
+    "appShellDeviceTests": 43,
+    "roomDeviceTests": 4,
+    "debugApkSha256": "a222156a38e3bf7fbbd80d4dd386c5507fb1eb14a8bc4e96a971c241115e53c3",
+    "unsignedReleaseApkSha256": "5223becdb806b7986cbef92b0b2d03e9adb380cf1f69743b40de84c3edfb68a7"
   },
   "nextPermittedPackageAfterGate": "C04"
 }

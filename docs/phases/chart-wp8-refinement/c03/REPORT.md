@@ -6,8 +6,9 @@
 
 - package：C03
 - baseline：`dcb694614e9110d765fdb3ef8ff1d464e0d7102f`
-- implementation candidate：`7d1a1df593f8a8cafc5c83e72e1849d53a8bd673`
-- status：`IMPLEMENTED_UNVERIFIED`
+- implementation candidate：`56f2abb049a82b71f222548760f4b5511a793928`
+- cumulative verified SHA：`56f2abb049a82b71f222548760f4b5511a793928`
+- status：`VERIFIED_LOCAL`
 - hosted CI：留给 C12 的最终同 SHA Gate；本报告不伪造远端结果
 
 ## 交付
@@ -31,7 +32,14 @@
 
 ## 累计 Gate
 
-尚未运行。进入 C04 前必须从本报告提交重新执行 C00–C03 Python/CI 合同、全仓 JVM、lint、Debug/Release 构建以及 API 34 renderer/Shell/Room 设备测试；任一失败即停止。
+- Python repository contracts：171 passed；CI/release workflow contract passed。
+- Gradle：1151 tasks；全仓 test、lint、Standalone Debug/Release passed。
+- JVM XML：248 tests，0 failure/error/skipped。
+- API 34：offline renderer 6、app-shell 43、Room 4，0 failure。
+- Debug APK SHA-256：`a222156a38e3bf7fbbd80d4dd386c5507fb1eb14a8bc4e96a971c241115e53c3`。
+- unsigned Release APK SHA-256：`5223becdb806b7986cbef92b0b2d03e9adb380cf1f69743b40de84c3edfb68a7`。
+
+第一次累计 Python Gate 有 5 条失败：历史合同仍读取已删除的 `ChartUiContract.kt`，要求旧 Activity story 名，并把内部 `activeRouteDraftId` 误判为 Stage 1 生产导航入口。修正将合同迁移到 `ChartDestinations`、`MapState/MapAction` 和 map-first Activity story，并把 Stage 1 检查严格限定于生产 Surface；没有复活旧 UI 文件，也没有删除合法的内部规划状态。全套 Gate 随后从头通过。
 
 ## 未宣称完成
 

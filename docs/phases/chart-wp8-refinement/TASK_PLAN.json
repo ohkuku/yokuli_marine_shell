@@ -208,7 +208,7 @@
         "MAP-R03",
         "MAP-R17"
       ],
-      "status": "IMPLEMENTED_UNVERIFIED",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C03",
       "acceptanceScenarioIds": [
         "C03-T01",
@@ -219,11 +219,11 @@
         "C03-T06",
         "C03-T07"
       ],
-      "verifiedSha": null,
+      "verifiedSha": "56f2abb049a82b71f222548760f4b5511a793928",
       "evidence": [
         "C03 focused repository contracts, domain/chart JVM tests and 43 API 34 Shell stories passed",
         "Feature Back race was reproduced with Shell=Desktop and tool=MEASURE, then fixed by reading the runtime MapStore state",
-        "Cumulative C00-C03 gate remains required before C04"
+        "Cumulative C00-C03 gate passed: 171 Python contracts, 248 JVM XML tests, 1151 Gradle tasks and 53 API 34 device tests"
       ]
     },
     {
