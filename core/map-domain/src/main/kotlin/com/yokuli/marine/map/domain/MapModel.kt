@@ -375,15 +375,20 @@ data class MapLibrarySnapshot(
     val places: List<SavedPlace> = emptyList(),
     val routeDrafts: List<ManualRouteDraft> = emptyList(),
     val savedRoutes: List<SavedRoute> = emptyList(),
+    val importedTracks: List<ImportedTrack> = emptyList(),
+    val gpxImportRecords: List<GpxImportRecord> = emptyList(),
 ) {
     init {
         require(revision >= 0L)
         require(places.map { it.id }.distinct().size == places.size) { "Duplicate place ID" }
         require(routeDrafts.map { it.id }.distinct().size == routeDrafts.size) { "Duplicate draft ID" }
         require(savedRoutes.map { it.id }.distinct().size == savedRoutes.size) { "Duplicate route ID" }
+        require(importedTracks.map { it.id }.distinct().size == importedTracks.size) { "Duplicate imported track ID" }
+        require(gpxImportRecords.map { it.id }.distinct().size == gpxImportRecords.size) { "Duplicate GPX import ID" }
     }
 
-    val isEmpty: Boolean get() = places.isEmpty() && routeDrafts.isEmpty() && savedRoutes.isEmpty()
+    val isEmpty: Boolean get() = places.isEmpty() && routeDrafts.isEmpty() && savedRoutes.isEmpty() &&
+        importedTracks.isEmpty() && gpxImportRecords.isEmpty()
 }
 
 data class MapPersistenceAck(val revision: Long)
@@ -429,6 +434,8 @@ data class MapState(
     val routeDrafts: List<ManualRouteDraft> = emptyList(),
     val activeRouteDraftId: String? = null,
     val savedRoutes: List<SavedRoute> = emptyList(),
+    val importedTracks: List<ImportedTrack> = emptyList(),
+    val gpxImportRecords: List<GpxImportRecord> = emptyList(),
     val activeRoutePlanId: String? = null,
     val routeSaveStatus: RouteSaveStatus? = null,
     val routeSaveTransaction: RouteSaveTransaction? = null,
@@ -503,6 +510,8 @@ data class MapState(
         places = places,
         routeDrafts = routeDrafts.map { it.copy(undo = emptyList(), redo = emptyList()) },
         savedRoutes = savedRoutes,
+        importedTracks = importedTracks,
+        gpxImportRecords = gpxImportRecords,
     )
 }
 

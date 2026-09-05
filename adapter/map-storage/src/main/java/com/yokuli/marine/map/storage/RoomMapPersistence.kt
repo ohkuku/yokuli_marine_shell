@@ -8,6 +8,11 @@ import androidx.datastore.core.DataStoreFactory
 import androidx.datastore.dataStoreFile
 import androidx.room.Room
 import com.yokuli.marine.map.domain.GeoPoint
+import com.yokuli.marine.map.domain.GpxImportRecord
+import com.yokuli.marine.map.domain.ImportedTrack
+import com.yokuli.marine.map.domain.ImportedTrackEditability
+import com.yokuli.marine.map.domain.ImportedTrackPoint
+import com.yokuli.marine.map.domain.ImportedTrackSegment
 import com.yokuli.marine.map.domain.ManualRouteDraft
 import com.yokuli.marine.map.domain.MapLibrarySnapshot
 import com.yokuli.marine.map.domain.MapLoadResult
@@ -75,7 +80,7 @@ class RoomMapPersistence private constructor(
 
         fun create(context: Context, scope: CoroutineScope): RoomMapPersistence {
             val database = Room.databaseBuilder(context, MapLibraryDatabase::class.java, DATABASE_FILE_NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
             return create(context.dataStoreFile(SESSION_FILE_NAME), scope, database)
         }
@@ -168,6 +173,38 @@ private fun encode(snapshot: MapLibrarySnapshot): MapLibraryRecords = MapLibrary
                 waypointId = route.waypointIds[index],
             )
         }
+    },
+    importedTracks = snapshot.importedTracks.map { track ->
+        ImportedTrackEntity(
+            id = track.id,
+            revision = track.revision,
+            name = track.name,
+            description = track.description,
+            sourceDigest = track.sourceDigest,
+            importedAtMillis = track.importedAtMillis,
+            editability = track.editability.name,
+        )
+    },
+    importedTrackSegments = snapshot.importedTracks.flatMap { track ->
+        track.segments.mapIndexed { segmentIndex, _ -> ImportedTrackSegmentEntity(track.id, segmentIndex) }
+    },
+    importedTrackPoints = snapshot.importedTracks.flatMap { track ->
+        track.segments.flatMapIndexed { segmentIndex, segment ->
+            segment.points.mapIndexed { pointIndex, point ->
+                ImportedTrackPointEntity(
+                    trackId = track.id,
+                    segmentPosition = segmentIndex,
+                    pointPosition = pointIndex,
+                    latitude = point.point.latitude,
+                    longitude = point.point.longitude,
+                    elevationMeters = point.elevationMeters,
+                    time = point.time,
+                )
+            }
+        }
+    },
+    gpxImportRecords = snapshot.gpxImportRecords.map { record ->
+        GpxImportRecordEntity(record.id, record.sha256, record.importedAtMillis)
     },
 )
 
@@ -265,12 +302,62 @@ private fun decode(records: MapLibraryRecords): DecodedLibrary {
         }
     }
 
+    val rawTrackIds = records.importedTracks.map { it.id }.toSet()
+    quarantined += records.importedTrackSegments.count { it.trackId !in rawTrackIds }
+    quarantined += records.importedTrackPoints.count { point ->
+        point.trackId !in rawTrackIds || records.importedTrackSegments.none {
+            it.trackId == point.trackId && it.position == point.segmentPosition
+        }
+    }
+    val importedTracks = records.importedTracks.mapNotNull { entity ->
+        runCatching {
+            val segments = records.importedTrackSegments
+                .filter { it.trackId == entity.id }
+                .sortedBy { it.position }
+                .map { segment ->
+                    val points = records.importedTrackPoints
+                        .filter { it.trackId == entity.id && it.segmentPosition == segment.position }
+                        .sortedBy { it.pointPosition }
+                        .map { point ->
+                            ImportedTrackPoint(
+                                point = GeoPoint(point.latitude, point.longitude),
+                                elevationMeters = point.elevationMeters,
+                                time = point.time,
+                            )
+                        }
+                    ImportedTrackSegment(points)
+                }
+            ImportedTrack(
+                id = entity.id,
+                name = entity.name,
+                description = entity.description,
+                segments = segments,
+                sourceDigest = entity.sourceDigest,
+                importedAtMillis = entity.importedAtMillis,
+                revision = entity.revision,
+                editability = ImportedTrackEditability.valueOf(entity.editability),
+            )
+        }.getOrElse {
+            quarantined += 1
+            null
+        }
+    }
+    val gpxImportRecords = records.gpxImportRecords.mapNotNull { entity ->
+        runCatching { GpxImportRecord(entity.id, entity.sha256, entity.importedAtMillis) }
+            .getOrElse {
+                quarantined += 1
+                null
+            }
+    }
+
     return DecodedLibrary(
         snapshot = MapLibrarySnapshot(
             revision = records.revision,
             places = places,
             routeDrafts = drafts,
             savedRoutes = routes,
+            importedTracks = importedTracks,
+            gpxImportRecords = gpxImportRecords,
         ),
         quarantinedRecordCount = quarantined,
     )

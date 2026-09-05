@@ -104,6 +104,8 @@ sealed interface MapAction {
     data object UndoDeleteRoutePlan : MapAction
     /** Compatibility action retained for pre-C06 callers; C06 product UI uses SaveRoutePlan/SaveRoutePlanAsCopy. */
     data class SaveRouteCopy(val name: String) : MapAction
+    /** One confirmed GPX preview becomes one optimistic, transactional library revision. */
+    data class ImportGpxBatch(val batch: GpxImportBatch) : MapAction
     data class ObservePosition(val observation: PositionObservation, val nowMillis: Long) : MapAction
     data class ClockTick(val nowMillis: Long) : MapAction
     data object PositionUnavailable : MapAction
@@ -301,6 +303,7 @@ class DefaultMapReducer(
         MapAction.CancelDeleteRoutePlan -> MapReduction(closeSurface(state.copy(routeDeleteRequest = null)))
         MapAction.UndoDeleteRoutePlan -> undoDeleteRoutePlan(state)
         is MapAction.SaveRouteCopy -> saveRouteCopy(state, action.name)
+        is MapAction.ImportGpxBatch -> importGpxBatch(state, action.batch)
         is MapAction.ObservePosition -> observePosition(state, action)
         is MapAction.ClockTick -> MapReduction(state.copy(position = state.position.at(action.nowMillis)))
         MapAction.PositionUnavailable -> MapReduction(state.copy(position = PositionState()))
@@ -341,6 +344,8 @@ class DefaultMapReducer(
                     routeDrafts = library.routeDrafts,
                     activeRouteDraftId = activeDraftId,
                     savedRoutes = library.savedRoutes,
+                    importedTracks = library.importedTracks,
+                    gpxImportRecords = library.gpxImportRecords,
                     activeRoutePlanId = activePlanId,
                     activeChartPackageId = result.session.activeChartPackageId,
                     libraryLoadState = if (library.isEmpty) MapLibraryLoadState.READY_EMPTY else MapLibraryLoadState.READY,
@@ -1469,13 +1474,35 @@ class DefaultMapReducer(
             libraryRevision = revision,
             saveState = MapSaveState.PENDING,
             persistenceFailure = null,
-            libraryLoadState = if (state.places.isEmpty() && state.routeDrafts.isEmpty() && state.savedRoutes.isEmpty()) {
+            libraryLoadState = if (
+                state.places.isEmpty() && state.routeDrafts.isEmpty() && state.savedRoutes.isEmpty() &&
+                state.importedTracks.isEmpty() && state.gpxImportRecords.isEmpty()
+            ) {
                 MapLibraryLoadState.READY_EMPTY
             } else {
                 MapLibraryLoadState.READY
             },
         )
         return MapReduction(updated, listOf(MapEffect.PersistLibrary(updated.librarySnapshot())))
+    }
+
+    private fun importGpxBatch(state: MapState, batch: GpxImportBatch): MapReduction {
+        if (state.libraryLoadState !in setOf(MapLibraryLoadState.READY, MapLibraryLoadState.READY_EMPTY)) {
+            return incident(state, MapIncident.LibraryUnavailable)
+        }
+        val collides = batch.places.any { incoming -> state.places.any { it.id == incoming.id } } ||
+            batch.routes.any { incoming -> state.savedRoutes.any { it.id == incoming.id } } ||
+            batch.tracks.any { incoming -> state.importedTracks.any { it.id == incoming.id } } ||
+            state.gpxImportRecords.any { it.id == batch.importRecord.id }
+        if (collides) return incident(state, MapIncident.ActionRejected)
+        return persistLibrary(
+            state.copy(
+                places = state.places + batch.places,
+                savedRoutes = state.savedRoutes + batch.routes,
+                importedTracks = state.importedTracks + batch.tracks,
+                gpxImportRecords = state.gpxImportRecords + batch.importRecord,
+            ),
+        )
     }
 
     private fun MapState.withCameraCommand(

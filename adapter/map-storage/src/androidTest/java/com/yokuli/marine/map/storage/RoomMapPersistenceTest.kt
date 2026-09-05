@@ -5,6 +5,10 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.yokuli.marine.map.domain.GeoPoint
+import com.yokuli.marine.map.domain.GpxImportRecord
+import com.yokuli.marine.map.domain.ImportedTrack
+import com.yokuli.marine.map.domain.ImportedTrackPoint
+import com.yokuli.marine.map.domain.ImportedTrackSegment
 import com.yokuli.marine.map.domain.ManualRouteDraft
 import com.yokuli.marine.map.domain.MapLibrarySnapshot
 import com.yokuli.marine.map.domain.MapLoadResult
@@ -88,6 +92,22 @@ class RoomMapPersistenceTest {
                     waypointIds = listOf("plan-point-a", "plan-point-b"),
                 ),
             ),
+            importedTracks = listOf(
+                ImportedTrack(
+                    id = "track-stable",
+                    name = "晨航",
+                    description = "two independent legs",
+                    segments = listOf(
+                        ImportedTrackSegment(
+                            listOf(ImportedTrackPoint(first, 2.5, "2026-01-02T03:04:05Z")),
+                        ),
+                        ImportedTrackSegment(listOf(ImportedTrackPoint(second))),
+                    ),
+                    sourceDigest = "a".repeat(64),
+                    importedAtMillis = 300L,
+                ),
+            ),
+            gpxImportRecords = listOf(GpxImportRecord("import-stable", "a".repeat(64), 300L)),
         )
         val session = MapSessionSnapshot(activeRouteDraftId = "draft-stable", activeRoutePlanId = "route-stable")
 
@@ -298,6 +318,38 @@ class RoomMapPersistenceTest {
             ).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("legacy-route-waypoint-1", cursor.getString(0))
+            }
+        }
+    }
+
+    @Test
+    fun versionThreeAddsEmptySegmentedTrackAndImportRecordTablesWithoutTouchingExistingRows() {
+        val databaseName = "map-library-gpx-migration-${System.nanoTime()}.db"
+        migrationHelper.createDatabase(databaseName, 3).apply {
+            execSQL("INSERT INTO library_metadata(`key`, revision) VALUES (0, 21)")
+            execSQL(
+                "INSERT INTO places(id, revision, name, latitude, longitude, notes, category, createdAtMillis, updatedAtMillis) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>("existing", 1L, "Existing", -36.8, 174.7, "", "personal", 0L, 0L),
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(databaseName, 4, true, MIGRATION_3_4).use { migrated ->
+            migrated.query("SELECT COUNT(*) FROM places WHERE id = 'existing'").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(1, cursor.getInt(0))
+            }
+            listOf(
+                "imported_tracks",
+                "imported_track_segments",
+                "imported_track_points",
+                "gpx_import_records",
+            ).forEach { table ->
+                migrated.query("SELECT COUNT(*) FROM `$table`").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(0, cursor.getInt(0))
+                }
             }
         }
     }

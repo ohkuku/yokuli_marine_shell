@@ -81,6 +81,44 @@ internal data class SavedRoutePointEntity(
     @androidx.room.ColumnInfo(defaultValue = "''") val waypointId: String,
 )
 
+@Entity(tableName = "imported_tracks")
+internal data class ImportedTrackEntity(
+    @androidx.room.PrimaryKey val id: String,
+    val revision: Long,
+    val name: String,
+    val description: String,
+    val sourceDigest: String,
+    val importedAtMillis: Long,
+    val editability: String,
+)
+
+@Entity(tableName = "imported_track_segments", primaryKeys = ["trackId", "position"])
+internal data class ImportedTrackSegmentEntity(
+    val trackId: String,
+    val position: Int,
+)
+
+@Entity(
+    tableName = "imported_track_points",
+    primaryKeys = ["trackId", "segmentPosition", "pointPosition"],
+)
+internal data class ImportedTrackPointEntity(
+    val trackId: String,
+    val segmentPosition: Int,
+    val pointPosition: Int,
+    val latitude: Double,
+    val longitude: Double,
+    val elevationMeters: Double?,
+    val time: String?,
+)
+
+@Entity(tableName = "gpx_import_records")
+internal data class GpxImportRecordEntity(
+    @androidx.room.PrimaryKey val id: String,
+    val sha256: String,
+    val importedAtMillis: Long,
+)
+
 internal data class MapLibraryRecords(
     val revision: Long,
     val places: List<PlaceEntity>,
@@ -89,6 +127,10 @@ internal data class MapLibraryRecords(
     val draftPoints: List<RouteDraftPointEntity>,
     val routes: List<SavedRouteEntity>,
     val routePoints: List<SavedRoutePointEntity>,
+    val importedTracks: List<ImportedTrackEntity>,
+    val importedTrackSegments: List<ImportedTrackSegmentEntity>,
+    val importedTrackPoints: List<ImportedTrackPointEntity>,
+    val gpxImportRecords: List<GpxImportRecordEntity>,
 )
 
 @Dao
@@ -114,6 +156,18 @@ internal abstract class MapLibraryDao {
     @Query("SELECT * FROM saved_route_points ORDER BY routeId, position")
     abstract suspend fun routePoints(): List<SavedRoutePointEntity>
 
+    @Query("SELECT * FROM imported_tracks ORDER BY id")
+    abstract suspend fun importedTracks(): List<ImportedTrackEntity>
+
+    @Query("SELECT * FROM imported_track_segments ORDER BY trackId, position")
+    abstract suspend fun importedTrackSegments(): List<ImportedTrackSegmentEntity>
+
+    @Query("SELECT * FROM imported_track_points ORDER BY trackId, segmentPosition, pointPosition")
+    abstract suspend fun importedTrackPoints(): List<ImportedTrackPointEntity>
+
+    @Query("SELECT * FROM gpx_import_records ORDER BY id")
+    abstract suspend fun gpxImportRecords(): List<GpxImportRecordEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun putMetadata(value: LibraryMetadataEntity)
 
@@ -135,6 +189,18 @@ internal abstract class MapLibraryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     protected abstract suspend fun putRoutePoints(values: List<SavedRoutePointEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun putImportedTracks(values: List<ImportedTrackEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun putImportedTrackSegments(values: List<ImportedTrackSegmentEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun putImportedTrackPoints(values: List<ImportedTrackPointEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun putGpxImportRecords(values: List<GpxImportRecordEntity>)
+
     @Query("DELETE FROM route_draft_points")
     protected abstract suspend fun clearDraftPoints()
 
@@ -153,6 +219,18 @@ internal abstract class MapLibraryDao {
     @Query("DELETE FROM place_tags")
     protected abstract suspend fun clearPlaceTags()
 
+    @Query("DELETE FROM imported_track_points")
+    protected abstract suspend fun clearImportedTrackPoints()
+
+    @Query("DELETE FROM imported_track_segments")
+    protected abstract suspend fun clearImportedTrackSegments()
+
+    @Query("DELETE FROM imported_tracks")
+    protected abstract suspend fun clearImportedTracks()
+
+    @Query("DELETE FROM gpx_import_records")
+    protected abstract suspend fun clearGpxImportRecords()
+
     @Transaction
     open suspend fun readAll(): MapLibraryRecords = MapLibraryRecords(
         revision = revision() ?: 0L,
@@ -162,6 +240,10 @@ internal abstract class MapLibraryDao {
         draftPoints = draftPoints(),
         routes = routes(),
         routePoints = routePoints(),
+        importedTracks = importedTracks(),
+        importedTrackSegments = importedTrackSegments(),
+        importedTrackPoints = importedTrackPoints(),
+        gpxImportRecords = gpxImportRecords(),
     )
 
     @Transaction
@@ -172,6 +254,10 @@ internal abstract class MapLibraryDao {
         clearRoutes()
         clearPlaceTags()
         clearPlaces()
+        clearImportedTrackPoints()
+        clearImportedTrackSegments()
+        clearImportedTracks()
+        clearGpxImportRecords()
         putMetadata(LibraryMetadataEntity(revision = records.revision))
         if (records.places.isNotEmpty()) putPlaces(records.places)
         if (records.placeTags.isNotEmpty()) putPlaceTags(records.placeTags)
@@ -179,6 +265,10 @@ internal abstract class MapLibraryDao {
         if (records.draftPoints.isNotEmpty()) putDraftPoints(records.draftPoints)
         if (records.routes.isNotEmpty()) putRoutes(records.routes)
         if (records.routePoints.isNotEmpty()) putRoutePoints(records.routePoints)
+        if (records.importedTracks.isNotEmpty()) putImportedTracks(records.importedTracks)
+        if (records.importedTrackSegments.isNotEmpty()) putImportedTrackSegments(records.importedTrackSegments)
+        if (records.importedTrackPoints.isNotEmpty()) putImportedTrackPoints(records.importedTrackPoints)
+        if (records.gpxImportRecords.isNotEmpty()) putGpxImportRecords(records.gpxImportRecords)
     }
 }
 
@@ -191,8 +281,12 @@ internal abstract class MapLibraryDao {
         RouteDraftPointEntity::class,
         SavedRouteEntity::class,
         SavedRoutePointEntity::class,
+        ImportedTrackEntity::class,
+        ImportedTrackSegmentEntity::class,
+        ImportedTrackPointEntity::class,
+        GpxImportRecordEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 internal abstract class MapLibraryDatabase : RoomDatabase() {
@@ -238,6 +332,58 @@ internal val MIGRATION_2_3 = object : Migration(2, 3) {
         )
         database.execSQL(
             "UPDATE `route_drafts` SET `nextWaypointOrdinal` = (SELECT COUNT(*) + 1 FROM `route_draft_points` WHERE `draftId` = `route_drafts`.`id`)",
+        )
+    }
+}
+
+internal val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `imported_tracks` (
+                `id` TEXT NOT NULL,
+                `revision` INTEGER NOT NULL,
+                `name` TEXT NOT NULL,
+                `description` TEXT NOT NULL,
+                `sourceDigest` TEXT NOT NULL,
+                `importedAtMillis` INTEGER NOT NULL,
+                `editability` TEXT NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `imported_track_segments` (
+                `trackId` TEXT NOT NULL,
+                `position` INTEGER NOT NULL,
+                PRIMARY KEY(`trackId`, `position`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `imported_track_points` (
+                `trackId` TEXT NOT NULL,
+                `segmentPosition` INTEGER NOT NULL,
+                `pointPosition` INTEGER NOT NULL,
+                `latitude` REAL NOT NULL,
+                `longitude` REAL NOT NULL,
+                `elevationMeters` REAL,
+                `time` TEXT,
+                PRIMARY KEY(`trackId`, `segmentPosition`, `pointPosition`)
+            )
+            """.trimIndent(),
+        )
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `gpx_import_records` (
+                `id` TEXT NOT NULL,
+                `sha256` TEXT NOT NULL,
+                `importedAtMillis` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent(),
         )
     }
 }
