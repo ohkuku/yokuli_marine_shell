@@ -129,6 +129,11 @@ fun ChartWorkspace(
     onExportRecovery: () -> Unit,
     placeExportState: MapPlaceExportUiState = MapPlaceExportUiState.Idle,
     onExportPlace: (SavedPlace) -> Unit = {},
+    gpxImportState: GpxImportUiState = GpxImportUiState.Idle,
+    onGpxImportAction: (GpxImportUiAction) -> Unit = {},
+    gpxExportState: GpxExportUiState = GpxExportUiState.Idle,
+    onSaveGpx: (GpxExportTarget) -> Unit = {},
+    onShareGpx: (GpxExportTarget) -> Unit = {},
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -197,7 +202,19 @@ fun ChartWorkspace(
                 onExportRecovery,
             )
         } else {
-            MapPageSurface(state, importState, onImportAction, placeExportState, onExportPlace, onAction)
+            MapPageSurface(
+                state,
+                importState,
+                onImportAction,
+                placeExportState,
+                onExportPlace,
+                gpxImportState,
+                onGpxImportAction,
+                gpxExportState,
+                onSaveGpx,
+                onShareGpx,
+                onAction,
+            )
         }
     }
 }
@@ -454,6 +471,7 @@ private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: 
     val measurementIndex = hit.measurementPointIndexOrNull()
     val routeTarget = hit.routePointTargetOrNull()
     val place = hit.savedPlaceIdOrNull()?.let { id -> state.places.firstOrNull { it.id == id } }
+    val track = hit.importedTrackIdOrNull()?.let { id -> state.importedTracks.firstOrNull { it.id == id } }
     val point = measurementIndex?.let { state.measurementDraft?.points?.getOrNull(it) }
         ?: routeTarget?.let { target -> state.routeDrafts.firstOrNull { it.id == target.draftId }?.waypoints?.getOrNull(target.index) }
         ?: place?.point
@@ -461,7 +479,7 @@ private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: 
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
             .testTag("map-object-summary"),
     ) {
-        WpText(place?.name ?: point?.coordinateText() ?: hit.objectId, 11, maxLines = 1)
+        WpText(place?.name ?: track?.name ?: point?.coordinateText() ?: hit.objectId, 11, maxLines = 1)
         Row(Modifier.fillMaxWidth()) {
             val target = measurementIndex?.let(MapEditTarget::MeasurementPoint) ?: routeTarget
             if (target != null) {
@@ -498,6 +516,11 @@ private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: 
             if (place != null) {
                 MapActionText(R.string.map_details, "map-object-place-details-${place.id}") {
                     onAction(MapAction.OpenSurface(MapSurface.PlaceDetail(place.id)))
+                }
+            }
+            if (track != null) {
+                MapActionText(R.string.map_details, "map-object-track-details-${track.id}") {
+                    onAction(MapAction.OpenSurface(MapSurface.ImportedTrackDetail(track.id)))
                 }
             }
             MapActionText(R.string.map_close, "map-object-close") { onAction(MapAction.DismissTransient) }
@@ -656,6 +679,11 @@ private fun MapPageSurface(
     onImportAction: (ChartImportUiAction) -> Unit,
     placeExportState: MapPlaceExportUiState,
     onExportPlace: (SavedPlace) -> Unit,
+    gpxImportState: GpxImportUiState,
+    onGpxImportAction: (GpxImportUiAction) -> Unit,
+    gpxExportState: GpxExportUiState,
+    onSaveGpx: (GpxExportTarget) -> Unit,
+    onShareGpx: (GpxExportTarget) -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -672,6 +700,9 @@ private fun MapPageSurface(
             MapSurface.Routes, is MapSurface.RouteDetail, is MapSurface.DeleteRoutePlan ->
                 R.string.map_routes_title to R.string.map_routes_context
             MapSurface.ChartPackages, is MapSurface.ChartPackageDetail -> R.string.map_charts_title to R.string.map_charts_context
+            MapSurface.GpxExchange -> R.string.map_gpx_title to R.string.map_gpx_context
+            MapSurface.ImportedTracks, is MapSurface.ImportedTrackDetail ->
+                R.string.map_tracks_title to R.string.map_tracks_context
             MapSurface.Measurement -> R.string.map_measure_title to R.string.map_measure_context
             MapSurface.CoordinateInput -> R.string.map_coordinate_input to R.string.map_coordinate_input_context
             MapSurface.Root -> R.string.app_chart to R.string.map_context_offline_first
@@ -682,11 +713,16 @@ private fun MapPageSurface(
                 MapSurface.Places -> PlacesPage(state, onAction)
                 MapSurface.Routes -> RoutesPage(state, onAction)
                 MapSurface.ChartPackages -> ChartPackagesPage(state, importState, onImportAction, onAction)
+                MapSurface.GpxExchange -> GpxExchangePage(gpxImportState, onGpxImportAction)
+                MapSurface.ImportedTracks -> ImportedTracksPage(state, onAction)
                 is MapSurface.PlaceDetail -> PlaceDetailPage(
                     state,
                     surface.placeId,
                     placeExportState,
                     onExportPlace,
+                    gpxExportState,
+                    onSaveGpx,
+                    onShareGpx,
                     onAction,
                 )
                 is MapSurface.NewPlace -> PlaceEditorPage(state, surface.point, null, onAction)
@@ -695,9 +731,24 @@ private fun MapPageSurface(
                 }
                 is MapSurface.MovePlace -> PlaceMovePage(state, surface.placeId, onAction)
                 is MapSurface.DeletePlace -> PlaceDeletePage(state, surface.placeId, onAction)
-                is MapSurface.RouteDetail -> RouteDetailPage(state, surface.routeId, onAction)
+                is MapSurface.RouteDetail -> RouteDetailPage(
+                    state,
+                    surface.routeId,
+                    gpxExportState,
+                    onSaveGpx,
+                    onShareGpx,
+                    onAction,
+                )
                 is MapSurface.DeleteRoutePlan -> RouteDeletePage(state, surface.routeId, onAction)
                 is MapSurface.ChartPackageDetail -> ChartPackageDetailPage(state, surface.packageId, onAction)
+                is MapSurface.ImportedTrackDetail -> ImportedTrackDetailPage(
+                    state,
+                    surface.trackId,
+                    gpxExportState,
+                    onSaveGpx,
+                    onShareGpx,
+                    onAction,
+                )
                 MapSurface.Measurement -> MeasurementPage(state, onAction)
                 MapSurface.CoordinateInput -> CoordinateInputPage(state, onAction)
                 MapSurface.Root -> Unit
@@ -931,6 +982,9 @@ private fun PlaceDetailPage(
     id: String,
     exportState: MapPlaceExportUiState,
     onExportPlace: (SavedPlace) -> Unit,
+    gpxExportState: GpxExportUiState,
+    onSaveGpx: (GpxExportTarget) -> Unit,
+    onShareGpx: (GpxExportTarget) -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val place = state.places.firstOrNull { it.id == id } ?: return
@@ -991,6 +1045,7 @@ private fun PlaceDetailPage(
         MapTextButton(stringResource(R.string.map_place_export), "map-place-export-$id", modifier = Modifier.fillMaxWidth()) {
             onExportPlace(place)
         }
+        GpxExportActions(GpxExportTarget.Place(place), gpxExportState, onSaveGpx, onShareGpx)
         when (exportState) {
             is MapPlaceExportUiState.Writing -> if (exportState.placeId == id) {
                 WpText(stringResource(R.string.map_place_export_writing), 10, color = colors.muted)
@@ -1102,12 +1157,19 @@ private fun RoutesPage(state: MapState, onAction: (MapAction) -> Unit) {
 }
 
 @Composable
-private fun RouteDetailPage(state: MapState, id: String, onAction: (MapAction) -> Unit) {
+private fun RouteDetailPage(
+    state: MapState,
+    id: String,
+    gpxExportState: GpxExportUiState,
+    onSaveGpx: (GpxExportTarget) -> Unit,
+    onShareGpx: (GpxExportTarget) -> Unit,
+    onAction: (MapAction) -> Unit,
+) {
     val draft = state.routeDrafts.firstOrNull { it.id == id }
     val plan = state.savedRoutes.firstOrNull { it.id == id }
     when {
         draft != null -> RouteEditorPage(state, draft, onAction)
-        plan != null -> RoutePreviewPage(state, plan, onAction)
+        plan != null -> RoutePreviewPage(state, plan, gpxExportState, onSaveGpx, onShareGpx, onAction)
     }
 }
 
@@ -1295,7 +1357,14 @@ private fun RouteEditorPage(
 }
 
 @Composable
-private fun RoutePreviewPage(state: MapState, plan: SavedRoute, onAction: (MapAction) -> Unit) {
+private fun RoutePreviewPage(
+    state: MapState,
+    plan: SavedRoute,
+    gpxExportState: GpxExportUiState,
+    onSaveGpx: (GpxExportTarget) -> Unit,
+    onShareGpx: (GpxExportTarget) -> Unit,
+    onAction: (MapAction) -> Unit,
+) {
     val colors = LocalWpTheme.current
     val distance = plan.waypoints.zipWithNext().sumOf { (from, to) ->
         com.yokuli.marine.map.domain.Wgs84Geodesic.inverse(from, to).distanceMeters / 1_852.0
@@ -1358,6 +1427,7 @@ private fun RoutePreviewPage(state: MapState, plan: SavedRoute, onAction: (MapAc
                 ),
             )
         }
+        GpxExportActions(GpxExportTarget.Route(plan), gpxExportState, onSaveGpx, onShareGpx)
         MapTextButton(stringResource(R.string.map_route_delete), "map-route-delete-${plan.id}", mutable, Modifier.fillMaxWidth()) {
             onAction(MapAction.RequestDeleteRoutePlan(plan.id))
         }
@@ -1553,6 +1623,18 @@ private fun ChartPackagesPage(
     onMapAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
+    Row(Modifier.fillMaxWidth()) {
+        MapTextButton(
+            stringResource(R.string.map_gpx_title),
+            "map-open-gpx",
+            modifier = Modifier.weight(1f),
+        ) { onMapAction(MapAction.OpenSurface(MapSurface.GpxExchange)) }
+        MapTextButton(
+            stringResource(R.string.map_tracks_title),
+            "map-open-imported-tracks",
+            modifier = Modifier.weight(1f),
+        ) { onMapAction(MapAction.OpenSurface(MapSurface.ImportedTracks)) }
+    }
     WpText(
         if (state.chartPackages.isEmpty()) stringResource(R.string.map_charts_empty)
         else stringResource(R.string.map_charts_count, state.chartPackages.size),
@@ -1602,6 +1684,234 @@ private fun ChartPackagesPage(
         is ChartImportUiState.ReadyToInstall -> ChartImportEditor(importState, onImportAction)
     }
 }
+
+@Composable
+private fun GpxExchangePage(state: GpxImportUiState, onAction: (GpxImportUiAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    WpText(stringResource(R.string.map_gpx_limits), 10, color = colors.muted)
+    WpText(stringResource(R.string.map_gpx_extensions_unsupported), 10, color = colors.muted)
+    when (state) {
+        GpxImportUiState.Idle -> MapActionText(R.string.map_gpx_choose, "map-gpx-choose") {
+            onAction(GpxImportUiAction.ChooseDocument)
+        }
+        is GpxImportUiState.Inspecting -> {
+            WpText(stringResource(R.string.map_gpx_inspecting), 12, modifier = Modifier.testTag("map-gpx-inspecting"))
+            MapActionText(R.string.map_cancel, "map-gpx-cancel") { onAction(GpxImportUiAction.Cancel) }
+        }
+        is GpxImportUiState.Preview -> GpxPreview(state, onAction)
+        is GpxImportUiState.Writing -> WpText(
+            stringResource(R.string.map_gpx_writing),
+            12,
+            modifier = Modifier.testTag("map-gpx-writing"),
+        )
+        is GpxImportUiState.Succeeded -> {
+            WpText(
+                stringResource(R.string.map_gpx_succeeded, state.placeCount, state.routeCount, state.trackCount),
+                12,
+                modifier = Modifier.testTag("map-gpx-succeeded"),
+            )
+            MapActionText(R.string.map_close, "map-gpx-result-close") { onAction(GpxImportUiAction.DismissResult) }
+        }
+        is GpxImportUiState.Cancelled -> {
+            WpText(stringResource(R.string.map_gpx_cancelled), 12, modifier = Modifier.testTag("map-gpx-cancelled"))
+            MapActionText(R.string.map_import_try_again, "map-gpx-retry") { onAction(GpxImportUiAction.ChooseDocument) }
+        }
+        is GpxImportUiState.Failed -> {
+            WpText(gpxImportFailureText(state.reason), 12, color = colors.accent, modifier = Modifier.testTag("map-gpx-failed"))
+            MapActionText(R.string.map_import_try_again, "map-gpx-retry") { onAction(GpxImportUiAction.ChooseDocument) }
+        }
+    }
+}
+
+@Composable
+private fun GpxPreview(state: GpxImportUiState.Preview, onAction: (GpxImportUiAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    WpText(
+        stringResource(
+            R.string.map_gpx_preview_counts,
+            state.preview.waypoints.size,
+            state.preview.routes.size,
+            state.preview.tracks.size,
+            state.preview.totalPointCount,
+        ),
+        13,
+        modifier = Modifier.testTag("map-gpx-preview"),
+    )
+    state.preview.bounds?.let { bounds ->
+        WpText(
+            stringResource(R.string.map_gpx_preview_bounds, bounds.south, bounds.west, bounds.north, bounds.east),
+            10,
+            color = colors.muted,
+        )
+    }
+    if (state.preview.duplicate) {
+        WpText(stringResource(R.string.map_gpx_duplicate), 11, color = colors.accent, modifier = Modifier.testTag("map-gpx-duplicate"))
+    }
+    state.preview.warnings.forEach { warning -> WpText(gpxWarningText(warning), 10, color = colors.accent) }
+    state.preview.waypoints.forEachIndexed { index, item ->
+        GpxSelectionRow(
+            selected = index in state.selection.waypointIndices,
+            label = item.name.ifBlank { stringResource(R.string.map_gpx_unnamed_waypoint, index + 1) },
+            tag = "map-gpx-waypoint-$index",
+        ) { onAction(GpxImportUiAction.ToggleWaypoint(index)) }
+    }
+    state.preview.routes.forEachIndexed { index, item ->
+        GpxSelectionRow(
+            selected = index in state.selection.routeIndices,
+            label = stringResource(
+                R.string.map_gpx_route_item,
+                item.name.ifBlank { stringResource(R.string.map_gpx_unnamed_route, index + 1) },
+                item.points.size,
+            ),
+            tag = "map-gpx-route-$index",
+        ) { onAction(GpxImportUiAction.ToggleRoute(index)) }
+    }
+    state.preview.tracks.forEachIndexed { index, item ->
+        GpxSelectionRow(
+            selected = index in state.selection.trackIndices,
+            label = stringResource(
+                R.string.map_gpx_track_item,
+                item.name.ifBlank { stringResource(R.string.map_gpx_unnamed_track, index + 1) },
+                item.segments.size,
+                item.segments.sumOf { it.points.size },
+            ),
+            tag = "map-gpx-track-$index",
+        ) { onAction(GpxImportUiAction.ToggleTrack(index)) }
+    }
+    Row(Modifier.fillMaxWidth()) {
+        if (state.preview.duplicate) {
+            MapTextButton(
+                stringResource(R.string.map_gpx_import_copy),
+                "map-gpx-import-copy",
+                state.canImport,
+                Modifier.weight(1f),
+            ) { onAction(GpxImportUiAction.ImportAsCopy) }
+        } else {
+            MapTextButton(
+                stringResource(R.string.map_gpx_confirm),
+                "map-gpx-confirm",
+                state.canImport,
+                Modifier.weight(1f),
+            ) { onAction(GpxImportUiAction.ConfirmImport) }
+        }
+        MapActionText(R.string.map_cancel, "map-gpx-preview-cancel", Modifier.weight(1f)) {
+            onAction(GpxImportUiAction.Cancel)
+        }
+    }
+}
+
+@Composable
+private fun GpxSelectionRow(selected: Boolean, label: String, tag: String, action: () -> Unit) {
+    val colors = LocalWpTheme.current
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clickNoRipple(action = action)
+            .border(1.dp, if (selected) colors.accent else colors.muted.copy(alpha = .45f))
+            .padding(horizontal = 8.dp).testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WpText(if (selected) "✓" else "○", 16, color = if (selected) colors.accent else colors.muted)
+        WpText(label, 12, modifier = Modifier.padding(start = 8.dp).weight(1f), maxLines = 2)
+    }
+}
+
+@Composable
+private fun ImportedTracksPage(state: MapState, onAction: (MapAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    if (state.importedTracks.isEmpty()) {
+        WpText(stringResource(R.string.map_tracks_empty), 12, color = colors.muted, modifier = Modifier.testTag("map-tracks-empty"))
+    }
+    state.importedTracks.forEach { track ->
+        Column(
+            Modifier.fillMaxWidth().heightIn(min = 64.dp).clickNoRipple {
+                onAction(MapAction.OpenSurface(MapSurface.ImportedTrackDetail(track.id)))
+            }.border(1.dp, colors.muted.copy(alpha = .45f)).padding(8.dp).testTag("map-track-${track.id}"),
+        ) {
+            WpText(track.name, 15)
+            WpText(
+                stringResource(R.string.map_track_summary, track.segments.size, track.segments.sumOf { it.points.size }),
+                10,
+                color = colors.muted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImportedTrackDetailPage(
+    state: MapState,
+    id: String,
+    exportState: GpxExportUiState,
+    onSaveGpx: (GpxExportTarget) -> Unit,
+    onShareGpx: (GpxExportTarget) -> Unit,
+    onAction: (MapAction) -> Unit,
+) {
+    val track = state.importedTracks.firstOrNull { it.id == id } ?: return
+    val colors = LocalWpTheme.current
+    WpText(track.name, 22, weight = FontWeight.Light, modifier = Modifier.testTag("map-track-name"))
+    WpText(stringResource(R.string.map_track_read_only), 11, color = colors.muted)
+    if (track.description.isNotBlank()) WpText(track.description, 12)
+    WpText(stringResource(R.string.map_track_summary, track.segments.size, track.segments.sumOf { it.points.size }), 11)
+    WpText(stringResource(R.string.map_track_segment_truth), 10, color = colors.muted)
+    MapTextButton(stringResource(R.string.map_view_route), "map-track-view-$id", modifier = Modifier.fillMaxWidth()) {
+        val points = track.segments.flatMap { segment -> segment.points.map { it.point } }
+        if (points.isNotEmpty()) {
+            onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(points.toBounds()), MapCameraIntent.VIEW_TRACK, state.viewportInsets()))
+            onAction(MapAction.OpenSurface(MapSurface.Root))
+        }
+    }
+    GpxExportActions(GpxExportTarget.Track(track), exportState, onSaveGpx, onShareGpx)
+}
+
+@Composable
+private fun GpxExportActions(
+    target: GpxExportTarget,
+    state: GpxExportUiState,
+    onSave: (GpxExportTarget) -> Unit,
+    onShare: (GpxExportTarget) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth()) {
+        MapTextButton(stringResource(R.string.map_gpx_export), "map-gpx-export-${target.stableId}", modifier = Modifier.weight(1f)) {
+            onSave(target)
+        }
+        MapTextButton(stringResource(R.string.map_gpx_share), "map-gpx-share-${target.stableId}", modifier = Modifier.weight(1f)) {
+            onShare(target)
+        }
+    }
+    val message = when (state) {
+        is GpxExportUiState.AwaitingDestination -> R.string.map_gpx_export_awaiting.takeIf { state.targetId == target.stableId }
+        is GpxExportUiState.Writing -> R.string.map_gpx_export_writing.takeIf { state.targetId == target.stableId }
+        is GpxExportUiState.Succeeded -> R.string.map_gpx_export_succeeded.takeIf { state.targetId == target.stableId }
+        is GpxExportUiState.TargetCancelled -> R.string.map_gpx_export_cancelled.takeIf { state.targetId == target.stableId }
+        is GpxExportUiState.WriteFailed -> R.string.map_gpx_export_failed.takeIf { state.targetId == target.stableId }
+        is GpxExportUiState.PreparingShare -> R.string.map_gpx_share_preparing.takeIf { state.targetId == target.stableId }
+        is GpxExportUiState.ShareOffered -> R.string.map_gpx_share_offered.takeIf { state.targetId == target.stableId }
+        is GpxExportUiState.ShareFailed -> R.string.map_gpx_share_failed.takeIf { state.targetId == target.stableId }
+        GpxExportUiState.Idle -> null
+    }
+    message?.let {
+        WpText(stringResource(it), 10, color = LocalWpTheme.current.muted, modifier = Modifier.testTag("map-gpx-export-state"))
+    }
+}
+
+@Composable
+private fun gpxImportFailureText(reason: GpxImportFailure): String = stringResource(
+    when (reason) {
+        GpxImportFailure.INVALID_DOCUMENT -> R.string.map_gpx_error_invalid
+        GpxImportFailure.EMPTY_SELECTION -> R.string.map_gpx_error_empty_selection
+        GpxImportFailure.DISPATCH_REJECTED -> R.string.map_gpx_error_busy
+        GpxImportFailure.WRITE_FAILED -> R.string.map_gpx_error_write
+    },
+)
+
+@Composable
+private fun gpxWarningText(warning: com.yokuli.marine.map.domain.GpxWarning): String = stringResource(
+    when (warning) {
+        com.yokuli.marine.map.domain.GpxWarning.ROUTE_HAS_FEWER_THAN_TWO_POINTS -> R.string.map_gpx_warning_short_route
+        com.yokuli.marine.map.domain.GpxWarning.UNKNOWN_EXTENSIONS_NOT_PRESERVED -> R.string.map_gpx_extensions_unsupported
+        com.yokuli.marine.map.domain.GpxWarning.INVALID_OPTIONAL_TIME_OMITTED -> R.string.map_gpx_warning_time
+        com.yokuli.marine.map.domain.GpxWarning.EMPTY_TRACK_OMITTED -> R.string.map_gpx_warning_empty_track
+    },
+)
 
 @Composable
 private fun ChartPackageDetailPage(state: MapState, id: ChartPackageId, onAction: (MapAction) -> Unit) {
@@ -1669,6 +1979,13 @@ private fun MapHitResult.savedPlaceIdOrNull(): String? =
     takeIf { overlayId == MapOverlayId.SAVED_PLACES }
         ?.objectId
         ?.removePrefix("place:")
+        ?.takeIf(String::isNotBlank)
+
+private fun MapHitResult.importedTrackIdOrNull(): String? =
+    takeIf { overlayId == MapOverlayId.IMPORTED_TRACKS }
+        ?.objectId
+        ?.removePrefix("track:")
+        ?.substringBefore(":segment:")
         ?.takeIf(String::isNotBlank)
 
 private fun MapHitResult.measurementPointIndexOrNull(): Int? =
@@ -1818,4 +2135,5 @@ private val INTERACTIVE_OVERLAYS = setOf(
     MapOverlayId.MEASUREMENT_POINTS,
     MapOverlayId.MANUAL_ROUTE,
     MapOverlayId.MANUAL_ROUTE_POINTS,
+    MapOverlayId.IMPORTED_TRACKS,
 )

@@ -529,6 +529,11 @@ class DefaultMapReducer(
         } else {
             state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.packageId.value))
         }
+        is MapSurface.ImportedTrackDetail -> if (state.importedTracks.any { it.id == surface.trackId }) {
+            state.pushSurface(surface)
+        } else {
+            state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.trackId))
+        }
         else -> state.pushSurface(surface)
     }
 

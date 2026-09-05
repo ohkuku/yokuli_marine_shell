@@ -443,7 +443,39 @@ object GpxImportPlanner {
     }
 }
 
+/** Display-only decimation. Stored source points and segment boundaries are never rewritten. */
+object ImportedTrackDisplayLod {
+    fun sample(track: ImportedTrack, zoom: Double): List<ImportedTrackSegment> {
+        val pointBudget = when {
+            zoom < 6.0 -> 2_000
+            zoom < 10.0 -> 8_000
+            zoom < 14.0 -> 24_000
+            else -> 60_000
+        }
+        val total = track.segments.sumOf { it.points.size }
+        if (total <= pointBudget) return track.segments
+        val stride = kotlin.math.ceil(total.toDouble() / pointBudget).toInt().coerceAtLeast(1)
+        return track.segments.map { segment ->
+            if (segment.points.size <= 2) {
+                segment
+            } else {
+                val sampled = buildList {
+                    add(segment.points.first())
+                    var index = stride
+                    while (index < segment.points.lastIndex) {
+                        add(segment.points[index])
+                        index += stride
+                    }
+                    add(segment.points.last())
+                }
+                ImportedTrackSegment(sampled)
+            }
+        }
+    }
+}
+
 object GpxWriter {
+    const val MIME_TYPE = "application/gpx+xml"
     // Literal tags make the track/segment contract human-auditable: <trk> and <trkseg>.
     fun writeTrack(track: GpxTrack, output: OutputStream) = writeDocument(output) { writer ->
         writer.writeStartElement("trk")

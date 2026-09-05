@@ -85,6 +85,28 @@ class GpxInterchangeTest {
         assertEquals(original.name, reparsed.name)
     }
 
+    @Test
+    fun `display LOD preserves segment identities and never mutates imported source points`() {
+        val source = (0..100_000).map { index ->
+            ImportedTrackPoint(GeoPoint(-40.0 + index / 1_000_000.0, 174.0))
+        }
+        val track = ImportedTrack(
+            "track", "large", segments = listOf(
+                ImportedTrackSegment(source),
+                ImportedTrackSegment(listOf(ImportedTrackPoint(GeoPoint(-30.0, 170.0)))),
+            ),
+            sourceDigest = "a".repeat(64), importedAtMillis = 1L,
+        )
+
+        val sampled = ImportedTrackDisplayLod.sample(track, zoom = 5.0)
+
+        assertEquals(2, sampled.size)
+        assertTrue(sampled.first().points.size < source.size)
+        assertEquals(source.first(), sampled.first().points.first())
+        assertEquals(source.last(), sampled.first().points.last())
+        assertEquals(100_001, track.segments.first().points.size)
+    }
+
     private fun mixedGpx() = gpx(
         """
         <wpt lat="-36.8" lon="174.7"><name>泊位 α</name><desc>备注</desc></wpt>

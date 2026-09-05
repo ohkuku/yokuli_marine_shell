@@ -1,6 +1,7 @@
 package com.yokuli.marine.shell
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.database.ContentObserver
@@ -48,6 +49,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -73,10 +75,14 @@ import com.yokuli.marine.feature.desktop.WpSystemKeyBar
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
 import com.yokuli.marine.feature.chart.ChartImportUiAction
+import com.yokuli.marine.feature.chart.GpxExportTarget
+import com.yokuli.marine.feature.chart.GpxExportUiState
+import com.yokuli.marine.feature.chart.GpxImportUiAction
 import com.yokuli.marine.feature.chart.MapPlaceExportUiState
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
 import com.yokuli.marine.map.domain.MapPlaceExport
 import com.yokuli.marine.map.domain.MapRecoveryExport
+import com.yokuli.marine.map.domain.GpxWriter
 import com.yokuli.marine.map.domain.MapViewportInsets
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.feature.settings.SettingsDestinations
@@ -103,6 +109,8 @@ import com.yokuli.shell.compose.LocalInternalAppInputRouter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 class ShellActivity : AppCompatActivity() {
     private val shellViewModel by viewModels<ShellViewModel>()
@@ -205,16 +213,27 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val engineState by engine.state.collectAsState()
     val mapState by shellViewModel.mapStore.state.collectAsState()
     val chartImportState by shellViewModel.chartImportState.collectAsState()
+    val gpxImportState by shellViewModel.gpxImportState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var recoveryExportState by remember { mutableStateOf(MapRecoveryExportUiState.IDLE) }
     var placeExportState by remember { mutableStateOf<MapPlaceExportUiState>(MapPlaceExportUiState.Idle) }
     var pendingPlaceExport by remember { mutableStateOf<SavedPlace?>(null) }
+    var gpxExportState by remember { mutableStateOf<GpxExportUiState>(GpxExportUiState.Idle) }
+    var pendingGpxExport by remember { mutableStateOf<GpxExportTarget?>(null) }
     val chartDocumentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             shellViewModel.inspectChartDocument(uri.toString())
+        }
+    }
+    val gpxDocumentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            shellViewModel.inspectGpxDocument(uri.toString())
         }
     }
     val recoveryDocumentCreator = rememberLauncherForActivityResult(
@@ -259,6 +278,32 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     MapPlaceExportUiState.Succeeded(place.id)
                 } else {
                     MapPlaceExportUiState.Failed(place.id)
+                }
+            }
+        }
+    }
+    val gpxDocumentCreator = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(GpxWriter.MIME_TYPE),
+    ) { uri ->
+        val target = pendingGpxExport
+        if (target == null) {
+            gpxExportState = GpxExportUiState.Idle
+        } else if (uri == null) {
+            pendingGpxExport = null
+            gpxExportState = GpxExportUiState.TargetCancelled(target.stableId)
+        } else {
+            gpxExportState = GpxExportUiState.Writing(target.stableId)
+            coroutineScope.launch {
+                val written = withContext(Dispatchers.IO) {
+                    runCatching {
+                        checkNotNull(context.contentResolver.openOutputStream(uri, "w")).use(target::writeTo)
+                    }.isSuccess
+                }
+                pendingGpxExport = null
+                gpxExportState = if (written) {
+                    GpxExportUiState.Succeeded(target.stableId)
+                } else {
+                    GpxExportUiState.WriteFailed(target.stableId)
                 }
             }
         }
@@ -348,6 +393,52 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 pendingPlaceExport = place
                 placeExportState = MapPlaceExportUiState.Idle
                 placeDocumentCreator.launch(MapPlaceExport.suggestedFileName(place))
+            },
+            gpxImportState = gpxImportState,
+            onGpxImportAction = { action ->
+                if (action == GpxImportUiAction.ChooseDocument) {
+                    gpxDocumentPicker.launch(arrayOf(GpxWriter.MIME_TYPE, "application/xml", "text/xml", "*/*"))
+                } else {
+                    shellViewModel.onGpxImportAction(action)
+                }
+            },
+            gpxExportState = gpxExportState,
+            onSaveGpx = { target ->
+                pendingGpxExport = target
+                gpxExportState = GpxExportUiState.AwaitingDestination(target.stableId)
+                gpxDocumentCreator.launch(target.suggestedFileName)
+            },
+            onShareGpx = { target ->
+                pendingGpxExport = null
+                gpxExportState = GpxExportUiState.PreparingShare(target.stableId)
+                coroutineScope.launch {
+                    val sharedUri = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val directory = File(context.cacheDir, "shared-gpx").apply { mkdirs() }
+                            val outputFile = File(directory, target.suggestedFileName)
+                            FileOutputStream(outputFile).use(target::writeTo)
+                            FileProvider.getUriForFile(context, "${context.packageName}.files", outputFile)
+                        }.getOrNull()
+                    }
+                    if (sharedUri == null) {
+                        gpxExportState = GpxExportUiState.ShareFailed(target.stableId)
+                    } else {
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = GpxWriter.MIME_TYPE
+                            putExtra(Intent.EXTRA_STREAM, sharedUri)
+                            clipData = ClipData.newRawUri("Yokuli GPX", sharedUri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        val opened = runCatching {
+                            context.startActivity(Intent.createChooser(sendIntent, null))
+                        }.isSuccess
+                        gpxExportState = if (opened) {
+                            GpxExportUiState.ShareOffered(target.stableId)
+                        } else {
+                            GpxExportUiState.ShareFailed(target.stableId)
+                        }
+                    }
+                }
             },
             onSettingsAction = { action ->
                 when (action) {

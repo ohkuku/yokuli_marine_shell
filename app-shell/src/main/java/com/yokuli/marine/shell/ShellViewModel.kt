@@ -15,6 +15,11 @@ import com.yokuli.marine.map.domain.ChartPackageLease
 import com.yokuli.marine.feature.chart.ChartImportUiAction
 import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.ChartPackageCoordinator
+import com.yokuli.marine.feature.chart.GpxDocumentSource
+import com.yokuli.marine.feature.chart.GpxImportCoordinator
+import com.yokuli.marine.feature.chart.GpxImportUiAction
+import com.yokuli.marine.feature.chart.GpxImportUiState
+import android.net.Uri
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
 import com.yokuli.shell.engine.LauncherAction
@@ -84,6 +89,18 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         },
     )
     val chartImportState: StateFlow<ChartImportUiState> = chartPackageCoordinator.state
+    private val gpxImportCoordinator = GpxImportCoordinator(
+        documentSource = GpxDocumentSource { sourceUri ->
+            checkNotNull(application.contentResolver.openInputStream(Uri.parse(sourceUri)))
+        },
+        mapStore = mapStore,
+        scope = viewModelScope,
+        incidentLogger = {
+            // GPX contents, coordinates, names and source URI are private and never logged.
+            android.util.Log.w("YokuliMap", "GPX workflow failed: ${it.javaClass.simpleName}")
+        },
+    )
+    val gpxImportState: StateFlow<GpxImportUiState> = gpxImportCoordinator.state
 
     init {
         if (!recoveryTrackingEnabled) {
@@ -126,6 +143,14 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onChartImportAction(action: ChartImportUiAction) {
         chartPackageCoordinator.dispatch(action)
+    }
+
+    fun inspectGpxDocument(sourceUri: String) {
+        gpxImportCoordinator.inspectDocument(sourceUri)
+    }
+
+    fun onGpxImportAction(action: GpxImportUiAction) {
+        gpxImportCoordinator.dispatch(action)
     }
 
     fun acquireChartPackageLease(packageId: ChartPackageId): ChartPackageLease =

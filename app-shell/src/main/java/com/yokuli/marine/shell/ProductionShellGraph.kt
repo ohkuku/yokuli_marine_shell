@@ -20,6 +20,10 @@ import com.yokuli.marine.feature.chart.MarineChartSurface
 import com.yokuli.marine.feature.chart.MarineChartTransitionSurface
 import com.yokuli.marine.feature.chart.MapPlaceExportUiState
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
+import com.yokuli.marine.feature.chart.GpxExportTarget
+import com.yokuli.marine.feature.chart.GpxExportUiState
+import com.yokuli.marine.feature.chart.GpxImportUiAction
+import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.chartLauncherVisualContribution
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
@@ -72,6 +76,11 @@ data class ProductionShellRuntime(
     val onExportMapRecovery: () -> Unit,
     val placeExportState: MapPlaceExportUiState,
     val onExportPlace: (SavedPlace) -> Unit,
+    val gpxImportState: GpxImportUiState,
+    val onGpxImportAction: (GpxImportUiAction) -> Unit,
+    val gpxExportState: GpxExportUiState,
+    val onSaveGpx: (GpxExportTarget) -> Unit,
+    val onShareGpx: (GpxExportTarget) -> Unit,
     val onSettingsAction: (SettingsUiAction) -> Unit,
 )
 
@@ -118,6 +127,11 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 onExportRecovery = runtime.onExportMapRecovery,
                 placeExportState = runtime.placeExportState,
                 onExportPlace = runtime.onExportPlace,
+                gpxImportState = runtime.gpxImportState,
+                onGpxImportAction = runtime.onGpxImportAction,
+                gpxExportState = runtime.gpxExportState,
+                onSaveGpx = runtime.onSaveGpx,
+                onShareGpx = runtime.onShareGpx,
                 chartSurface = chartSurface,
             )
         },

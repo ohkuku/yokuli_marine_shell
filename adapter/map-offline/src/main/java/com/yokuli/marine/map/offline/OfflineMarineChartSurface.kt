@@ -42,12 +42,15 @@ import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
+import com.yokuli.marine.map.domain.ImportedTrackDisplayLod
 import com.yokuli.marine.map.domain.Wgs84Polyline
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.hypot
 import kotlin.math.cos
 import kotlin.math.pow
@@ -284,6 +287,7 @@ fun OfflineMarineChartSurface(
                 style.addPointOverlay(MapOverlayId.MEASUREMENT_POINTS, 0xfff7b500.toInt(), 6f)
                 style.addLineOverlay(MapOverlayId.MANUAL_ROUTE, 0xff00a4ef.toInt(), 5f)
                 style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 5f)
+                style.addLineOverlay(MapOverlayId.IMPORTED_TRACKS, 0xff9b59b6.toInt(), 3f)
                 style.addPointOverlay(MapOverlayId.POSITION_OBSERVATION, 0xff00d084.toInt(), 7f)
                 activeStyle = style
                 currentAction(MapAction.RendererHostReady(generation))
@@ -355,6 +359,7 @@ fun OfflineMarineChartSurface(
         state.routeDraft,
         state.activeRoutePlanId,
         state.savedRoutes,
+        state.importedTracks,
         state.editGesture,
         state.camera.zoom,
         state.position.observation,
@@ -362,6 +367,21 @@ fun OfflineMarineChartSurface(
         val style = activeStyle ?: return@LaunchedEffect
         val measurementPoints = state.measurementPointsWithPreview()
         val routePoints = state.routePointsWithPreview()
+        val trackFeatures = withContext(Dispatchers.Default) {
+            FeatureCollection.fromFeatures(
+                state.importedTracks.flatMap { track ->
+                    ImportedTrackDisplayLod.sample(track, state.camera.zoom).mapIndexedNotNull { segmentIndex, segment ->
+                        segment.points.takeIf { it.size >= 2 }?.let { points ->
+                            Feature.fromGeometry(
+                                LineString.fromLngLats(points.map { it.point.toGeoJsonPoint() }),
+                                null,
+                                "track:${track.id}:segment:$segmentIndex",
+                            )
+                        }
+                    }
+                },
+            )
+        }
         style.source(MapOverlayId.SAVED_PLACES)?.setGeoJson(
             FeatureCollection.fromFeatures(state.places.map { place -> place.point.toFeature("place:${place.id}") }),
         )
@@ -394,6 +414,7 @@ fun OfflineMarineChartSurface(
                 },
             ),
         )
+        style.source(MapOverlayId.IMPORTED_TRACKS)?.setGeoJson(trackFeatures)
         style.source(MapOverlayId.POSITION_OBSERVATION)?.setGeoJson(
             state.position.observation?.point.toFeatureCollection(
                 "position:${state.position.observation?.observationId.orEmpty()}",
@@ -533,6 +554,7 @@ private fun MapOverlayId.objectIdPrefix(): String = when (this) {
     MapOverlayId.MEASUREMENT_POINTS -> "measurement-point:"
     MapOverlayId.MANUAL_ROUTE -> "route:"
     MapOverlayId.MANUAL_ROUTE_POINTS -> "route-point:"
+    MapOverlayId.IMPORTED_TRACKS -> "track:"
     MapOverlayId.POSITION_OBSERVATION -> "position:"
 }
 
@@ -543,6 +565,7 @@ private val INTERACTIVE_OVERLAYS = setOf(
     MapOverlayId.MEASUREMENT_POINTS,
     MapOverlayId.MANUAL_ROUTE,
     MapOverlayId.MANUAL_ROUTE_POINTS,
+    MapOverlayId.IMPORTED_TRACKS,
 )
 
 private val HANDLE_OVERLAYS = setOf(

@@ -5,6 +5,8 @@ sealed interface MapSurface {
     data object Places : MapSurface
     data object Routes : MapSurface
     data object ChartPackages : MapSurface
+    data object GpxExchange : MapSurface
+    data object ImportedTracks : MapSurface
     data object Measurement : MapSurface
     data object CoordinateInput : MapSurface
     data class NewPlace(val point: GeoPoint) : MapSurface
@@ -15,6 +17,7 @@ sealed interface MapSurface {
     data class RouteDetail(val routeId: String) : MapSurface
     data class DeleteRoutePlan(val routeId: String) : MapSurface
     data class ChartPackageDetail(val packageId: ChartPackageId) : MapSurface
+    data class ImportedTrackDetail(val trackId: String) : MapSurface
 }
 
 enum class MapTool { BROWSE, MEASURE, MANUAL_ROUTE }
