@@ -273,7 +273,6 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             )
         }
         val runtime = ProductionShellRuntime(
-            mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
             theme = themeSpec,
             language = language,
             heavyContentReady = true,
@@ -297,10 +296,6 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             onExportMapRecovery = {
                 recoveryExportState = MapRecoveryExportUiState.IDLE
                 recoveryDocumentCreator.launch(MapRecoveryExport.SUGGESTED_FILE_NAME)
-            },
-            openMapSettings = {
-                dispatch(LauncherAction.Open(SettingsDestinations.Overview))
-                dispatch(LauncherAction.Open(SettingsDestinations.Map))
             },
             onSettingsAction = { action ->
                 when (action) {
@@ -328,7 +323,6 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 transient = engineState.transient,
                 reveal = engineState.start.reveal,
                 visualContributions = productionVisualContributions(
-                    mapConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
                     theme = themeSpec,
                     mapState = mapState,
                 ),

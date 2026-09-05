@@ -65,9 +65,7 @@ enum class MapRecoveryExportUiState { IDLE, WRITING, SUCCEEDED, FAILED }
 @Composable
 fun ChartWorkspace(
     state: MapState,
-    mapConfigured: Boolean,
     onAction: (MapAction) -> Unit,
-    onOpenMapSettings: () -> Unit,
     importState: ChartImportUiState,
     onImportAction: (ChartImportUiAction) -> Unit,
     recoveryExportState: MapRecoveryExportUiState,
@@ -123,9 +121,7 @@ fun ChartWorkspace(
             }
             MapToolPanel(
                 state = state,
-                mapConfigured = mapConfigured,
                 onAction = onAction,
-                onOpenMapSettings = onOpenMapSettings,
                 importState = importState,
                 onImportAction = onImportAction,
             )
@@ -261,9 +257,7 @@ private fun MapToolBar(selected: MapTool, onAction: (MapAction) -> Unit) {
 @Composable
 private fun MapToolPanel(
     state: MapState,
-    mapConfigured: Boolean,
     onAction: (MapAction) -> Unit,
-    onOpenMapSettings: () -> Unit,
     importState: ChartImportUiState,
     onImportAction: (ChartImportUiAction) -> Unit,
 ) {
@@ -290,8 +284,6 @@ private fun MapToolPanel(
             MapTool.MANUAL_ROUTE -> RoutePanel(state, onAction)
             MapTool.CHARTS -> ChartPackagesPanel(
                 state,
-                mapConfigured,
-                onOpenMapSettings,
                 importState,
                 onImportAction,
                 onAction,
@@ -416,8 +408,6 @@ private fun RoutePanel(state: MapState, onAction: (MapAction) -> Unit) {
 @Composable
 private fun ChartPackagesPanel(
     state: MapState,
-    mapConfigured: Boolean,
-    onOpenMapSettings: () -> Unit,
     importState: ChartImportUiState,
     onImportAction: (ChartImportUiAction) -> Unit,
     onMapAction: (MapAction) -> Unit,
@@ -476,9 +466,6 @@ private fun ChartPackagesPanel(
                 }
             }
             is ChartImportUiState.Editing -> ChartImportEditor(importState, onImportAction)
-        }
-        if (!mapConfigured) {
-            MapActionText(R.string.chart_open_settings, "chart-open-map-settings", onOpenMapSettings)
         }
     }
 }

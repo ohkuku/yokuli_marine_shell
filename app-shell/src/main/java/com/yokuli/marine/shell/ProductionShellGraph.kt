@@ -41,13 +41,11 @@ import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 
 data class ProductionShellVisualEnvironment(
-    val mapConfigured: Boolean,
     val theme: WpThemeSpec,
     val mapState: MapState,
 )
 
 data class ProductionShellRuntime(
-    val mapConfigured: Boolean,
     val theme: WpThemeSpec,
     val language: AppLanguage,
     val heavyContentReady: Boolean,
@@ -63,7 +61,6 @@ data class ProductionShellRuntime(
     val onChartImportAction: (ChartImportUiAction) -> Unit,
     val recoveryExportState: MapRecoveryExportUiState,
     val onExportMapRecovery: () -> Unit,
-    val openMapSettings: () -> Unit,
     val onSettingsAction: (SettingsUiAction) -> Unit,
 )
 
@@ -79,7 +76,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
     InstalledAppBinding(
         catalogContribution = ChartShellContribution,
         visualContributions = { environment ->
-            listOf(chartLauncherVisualContribution(environment.mapConfigured, environment.mapState))
+            listOf(chartLauncherVisualContribution(environment.mapState))
         },
         internalAppHost = InternalAppHost(ChartDestinations.AppId) { token ->
             check(token == ChartDestinations.Browse)
@@ -97,9 +94,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             }
             ChartWorkspace(
                 state = runtime.mapState,
-                mapConfigured = runtime.mapConfigured,
                 onAction = runtime.onMapAction,
-                onOpenMapSettings = runtime.openMapSettings,
                 importState = runtime.chartImportState,
                 onImportAction = runtime.onChartImportAction,
                 recoveryExportState = runtime.recoveryExportState,
@@ -122,7 +117,10 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                     section = tokenSection,
                     theme = runtime.theme,
                     language = runtime.language,
-                    mapConfigured = runtime.mapConfigured,
+                    chartPackageCount = runtime.mapState.chartPackages.size,
+                    activeChartPackageName = runtime.mapState.chartPackages
+                        .firstOrNull { it.id == runtime.mapState.activeChartPackageId }
+                        ?.displayName,
                     pinnedTileCount = runtime.pinnedTileCount,
                     startDocumentVersion = runtime.startDocumentVersion,
                     versionName = runtime.versionName,
@@ -144,11 +142,10 @@ val productionCatalog = LauncherCatalog.compose(revision = 1, contributions = pr
 val productionLaunchRegistrations = productionInstalledAppRegistry.launchRegistrations
 @Composable
 fun productionVisualContributions(
-    mapConfigured: Boolean,
     theme: WpThemeSpec,
     mapState: MapState = MapState(),
 ): List<LauncherEntryVisualContribution> {
-    val environment = ProductionShellVisualEnvironment(mapConfigured, theme, mapState)
+    val environment = ProductionShellVisualEnvironment(theme, mapState)
     return productionInstalledAppRegistry.visualContributions(environment)
 }
 val productionInternalAppHostResolver = DefaultInternalAppHostResolver(

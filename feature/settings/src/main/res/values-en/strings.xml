@@ -27,19 +27,19 @@
     <string name="appearance_summary">%1$s · %2$s</string>
     <string name="start_summary">%1$d pinned tiles</string>
     <string name="start_document">Start document v%1$d · %2$d tiles</string>
-    <string name="start_reset_explanation">Restore the spatial Chart and Settings layout without clearing map credentials or appearance.</string>
+    <string name="start_reset_explanation">Restore the spatial Map and Settings layout without clearing local chart packages or appearance.</string>
     <string name="start_reset">restore default start screen</string>
     <string name="open_android_settings">open Android Home settings</string>
     <string name="debug_tools">debug tools</string>
     <string name="shell_lab_explanation">Exercise dense tiles, long titles, and layout boundaries in an isolated debug surface.</string>
     <string name="open_shell_lab">open Shell Lab</string>
-    <string name="map_provider">map source</string>
-    <string name="map_google_normal">Google Maps · normal layer</string>
-    <string name="map_configured">configured</string>
-    <string name="map_not_configured">map not configured</string>
-    <string name="map_configured_detail">An Android Maps key is configured. This only means a non-placeholder key was supplied; API authorization, network access, billing, app restrictions, and tile loading are not validated.</string>
-    <string name="map_not_configured_detail">No Android Maps key is configured. Chart shows a demo background.</string>
-    <string name="map_attribution">Map content and trademarks belong to their providers.</string>
+    <string name="map_provider">map rendering</string>
+    <string name="map_local_renderer">MapLibre · local raster charts</string>
+    <string name="map_no_local_package">no local chart package</string>
+    <string name="map_local_package_count">%1$d local chart packages</string>
+    <string name="map_no_local_package_detail">The map workbench opens offline; chart content appears after importing an MBTiles package.</string>
+    <string name="map_active_local_package">active chart: %1$s</string>
+    <string name="map_local_attribution">Each chart package shows its own source and license on the map; local packages are not presented as an online basemap.</string>
     <string name="about_summary">Yokuli OS %1$s</string>
     <string name="about_product">product</string>
     <string name="product_name">Yokuli OS</string>
@@ -48,5 +48,5 @@
     <string name="about_revision">revision</string>
     <string name="about_map">map</string>
     <string name="about_shell_document">Start document</string>
-    <string name="about_scope">Shows current build, map configuration, and Start document facts.</string>
+    <string name="about_scope">Shows current build, local chart packages, and Start document facts.</string>
 </resources>

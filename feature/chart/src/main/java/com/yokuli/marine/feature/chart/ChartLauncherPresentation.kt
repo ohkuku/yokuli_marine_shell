@@ -27,7 +27,6 @@ import kotlin.math.min
 /** App-owned Map presentation. Shell supplies the accent surface and edit chrome only. */
 @Composable
 fun chartLauncherVisualContribution(
-    mapConfigured: Boolean,
     mapState: MapState,
 ): LauncherEntryVisualContribution {
     val title = stringResource(R.string.app_chart)

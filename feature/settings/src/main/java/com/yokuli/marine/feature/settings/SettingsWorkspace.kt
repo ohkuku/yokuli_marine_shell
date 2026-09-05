@@ -79,7 +79,8 @@ private fun SettingsOverview(state: SettingsUiState, onOpen: (SettingsSection) -
         SettingsDestination(
             SettingsSection.MAP,
             sectionLabel(SettingsSection.MAP),
-            stringResource(if (state.mapConfigured) R.string.map_configured else R.string.map_not_configured),
+            if (state.chartPackageCount == 0) stringResource(R.string.map_no_local_package)
+            else stringResource(R.string.map_local_package_count, state.chartPackageCount),
         ),
         SettingsDestination(
             SettingsSection.LANGUAGE,
@@ -179,14 +180,15 @@ private fun StartScreenSettings(state: SettingsUiState, onAction: (SettingsUiAct
 private fun MapSettings(state: SettingsUiState) {
     SettingsBody {
         SettingsLabel(stringResource(R.string.map_provider))
-        WpText(stringResource(R.string.map_google_normal), 21, weight = FontWeight.Light)
+        WpText(stringResource(R.string.map_local_renderer), 21, weight = FontWeight.Light)
         WpText(
-            stringResource(if (state.mapConfigured) R.string.map_configured_detail else R.string.map_not_configured_detail),
+            if (state.activeChartPackageName == null) stringResource(R.string.map_no_local_package_detail)
+            else stringResource(R.string.map_active_local_package, state.activeChartPackageName),
             12,
             color = LocalWpTheme.current.muted,
             modifier = Modifier.padding(top = 6.dp),
         )
-        WpText(stringResource(R.string.map_attribution), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 18.dp))
+        WpText(stringResource(R.string.map_local_attribution), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 18.dp))
     }
 }
 
@@ -214,7 +216,11 @@ private fun AboutSettings(state: SettingsUiState) {
         AboutRow(stringResource(R.string.about_version), state.versionName)
         AboutRow(stringResource(R.string.about_variant), state.buildVariant)
         AboutRow(stringResource(R.string.about_revision), state.gitSha.take(12))
-        AboutRow(stringResource(R.string.about_map), stringResource(if (state.mapConfigured) R.string.map_configured else R.string.map_not_configured))
+        AboutRow(
+            stringResource(R.string.about_map),
+            if (state.chartPackageCount == 0) stringResource(R.string.map_no_local_package)
+            else stringResource(R.string.map_local_package_count, state.chartPackageCount),
+        )
         AboutRow(stringResource(R.string.about_shell_document), "v${state.startDocumentVersion}")
         WpText(stringResource(R.string.about_scope), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 22.dp))
     }
