@@ -1090,6 +1090,9 @@ class DefaultMapReducer(
     }
 
     private fun beginRoutePlanEdit(state: MapState, routeId: String): MapReduction = ifWritable(state) {
+        if (state.routeSaveTransaction?.savedPlanId == routeId) {
+            return@ifWritable incident(state, MapIncident.ActionRejected)
+        }
         val plan = state.savedRoutes.firstOrNull { it.id == routeId }
             ?: return@ifWritable incident(state, MapIncident.ActionRejected)
         val id = nextUniqueId("draft", state.routeDrafts.map { it.id }.toSet())
@@ -1121,6 +1124,7 @@ class DefaultMapReducer(
     }
 
     private fun saveRoutePlan(state: MapState, copyName: String? = null): MapReduction = ifWritable(state) {
+        if (state.routeSaveTransaction != null) return@ifWritable incident(state, MapIncident.ActionRejected)
         val draft = state.routeDraft?.takeIf { it.waypoints.size >= 2 }
             ?: return@ifWritable incident(state, MapIncident.InsufficientRoute)
         val asCopy = copyName != null
@@ -1174,6 +1178,7 @@ class DefaultMapReducer(
         reverse: Boolean,
         name: String?,
     ): MapReduction = ifWritable(state) {
+        if (state.routeSaveTransaction != null) return@ifWritable incident(state, MapIncident.ActionRejected)
         val source = state.savedRoutes.firstOrNull { it.id == routeId }
             ?: return@ifWritable incident(state, MapIncident.ActionRejected)
         val id = nextUniqueId("route", state.savedRoutes.map { it.id }.toSet())
@@ -1217,6 +1222,9 @@ class DefaultMapReducer(
     }
 
     private fun requestDeleteRoutePlan(state: MapState, routeId: String): MapReduction {
+        if (state.routeSaveTransaction?.savedPlanId == routeId) {
+            return incident(state, MapIncident.ActionRejected)
+        }
         val route = state.savedRoutes.firstOrNull { it.id == routeId }
             ?: return incident(state, MapIncident.ActionRejected)
         return MapReduction(
@@ -1323,6 +1331,7 @@ class DefaultMapReducer(
             } else {
                 MapReduction(
                     state.copy(
+                        durableLibraryRevision = maxOf(state.durableLibraryRevision, revision),
                         routeSaveStatus = state.routeSaveStatus?.copy(state = MapSaveState.SAVED),
                         routeSaveTransaction = null,
                     ),
@@ -1363,7 +1372,11 @@ class DefaultMapReducer(
                 state.copy(
                     saveState = MapSaveState.FAILED,
                     placeSaveStatus = state.placeSaveStatus?.copy(state = MapSaveState.FAILED),
-                    routeSaveStatus = state.routeSaveStatus?.copy(state = MapSaveState.FAILED),
+                    routeSaveStatus = if (transaction == null) {
+                        state.routeSaveStatus
+                    } else {
+                        state.routeSaveStatus?.copy(state = MapSaveState.FAILED)
+                    },
                     routeSaveTransaction = null,
                     savedRoutes = rolledBackRoutes,
                     routeDrafts = if (transaction == null || state.routeDrafts.any { it.id == transaction.draft.id }) {

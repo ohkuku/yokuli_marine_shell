@@ -236,6 +236,25 @@ class RoutePlanningContractTest {
         assertNull(acknowledged.routeSaveTransaction)
         assertEquals(MapSaveState.SAVED, acknowledged.routeSaveStatus?.state)
         assertEquals(MapSaveState.PENDING, acknowledged.saveState)
+        assertEquals(routeRevision, acknowledged.durableLibraryRevision)
+    }
+
+    @Test
+    fun `a second route save cannot replace the pending transaction`() {
+        val reducer = reducerWithIds("draft-a", "route-a", "draft-b", "route-b")
+        var state = reducer.reduce(MapState(), MapAction.CreateRouteDraft("A", "", a)).state
+        state = reducer.reduce(state, MapAction.AddRouteWaypoint(b)).state
+        state = reducer.reduce(state, MapAction.SaveRoutePlan).state
+        val pending = requireNotNull(state.routeSaveTransaction)
+        state = reducer.reduce(state, MapAction.CreateRouteDraft("B", "", c)).state
+        state = reducer.reduce(state, MapAction.AddRouteWaypoint(d)).state
+
+        val rejected = reducer.reduce(state, MapAction.SaveRoutePlan)
+
+        assertEquals(pending, rejected.state.routeSaveTransaction)
+        assertEquals("draft-b", rejected.state.routeDraft?.id)
+        assertEquals(listOf("route-a"), rejected.state.savedRoutes.map { it.id })
+        assertTrue((rejected.effects.single() as MapEffect.LogIncident).incident is MapIncident.ActionRejected)
     }
 
     @Test
@@ -259,6 +278,29 @@ class RoutePlanningContractTest {
         assertEquals("draft-a", failed.routeDraft?.id)
         assertEquals(MapSaveState.FAILED, failed.routeSaveStatus?.state)
         assertNull(failed.routeSaveTransaction)
+    }
+
+    @Test
+    fun `a durable route remains saved when a newer unrelated write fails`() {
+        val reducer = reducerWithIds("draft-a", "route-a", "place-a")
+        var state = reducer.reduce(MapState(), MapAction.CreateRouteDraft("A", "", a)).state
+        state = reducer.reduce(state, MapAction.AddRouteWaypoint(b)).state
+        state = reducer.reduce(state, MapAction.SaveRoutePlan).state
+        val routeRevision = state.libraryRevision
+        state = reducer.reduce(
+            state,
+            MapAction.CreatePlace(c, "Place", "", PlaceCategory.PERSONAL_MARKER, emptyList()),
+        ).state
+        state = reducer.reduce(state, MapAction.PersistenceAck(routeRevision)).state
+
+        val failed = reducer.reduce(
+            state,
+            MapAction.PersistenceFailed(state.libraryRevision, MapReadFailure.IO),
+        ).state
+
+        assertEquals(listOf("route-a"), failed.savedRoutes.map { it.id })
+        assertEquals(MapSaveState.SAVED, failed.routeSaveStatus?.state)
+        assertEquals(MapSaveState.FAILED, failed.placeSaveStatus?.state)
     }
 
     private fun routePlan(id: String, revision: Long) = RoutePlan(

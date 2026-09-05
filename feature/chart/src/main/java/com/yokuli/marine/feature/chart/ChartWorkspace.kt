@@ -1162,6 +1162,14 @@ private fun RouteEditorPage(
                 modifier = Modifier.testTag("map-route-adjacent-duplicate"),
             )
         }
+        if (state.routeSaveTransaction != null) {
+            WpText(
+                stringResource(R.string.map_route_another_save_pending),
+                11,
+                color = colors.muted,
+                modifier = Modifier.testTag("map-route-another-save-pending"),
+            )
+        }
         summary?.let {
             WpText(
                 it.estimatedDurationMillis?.let { duration ->
@@ -1248,7 +1256,7 @@ private fun RouteEditorPage(
         MapTextButton(
             stringResource(R.string.map_route_save),
             "map-route-save",
-            enabled = draft.waypoints.size >= 2,
+            enabled = draft.waypoints.size >= 2 && state.routeSaveTransaction == null,
             modifier = Modifier.fillMaxWidth().border(1.dp, colors.accent),
         ) {
             val parsed = speed.trim().takeIf(String::isNotEmpty)?.toDoubleOrNull()
@@ -1261,7 +1269,12 @@ private fun RouteEditorPage(
             }
         }
         if (draft.basePlanId != null) {
-            MapTextButton(stringResource(R.string.map_route_save_copy), "map-route-save-copy", modifier = Modifier.fillMaxWidth()) {
+            MapTextButton(
+                stringResource(R.string.map_route_save_copy),
+                "map-route-save-copy",
+                enabled = state.routeSaveTransaction == null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 val parsed = speed.trim().takeIf(String::isNotEmpty)?.toDoubleOrNull()
                 if (speed.isNotBlank() && (parsed == null || !parsed.isFinite() || parsed <= 0.0)) {
                     invalidSpeed = true
@@ -1290,6 +1303,7 @@ private fun RoutePreviewPage(state: MapState, plan: SavedRoute, onAction: (MapAc
     val duration = plan.plannedSpeedKnots?.let { speed -> ((distance / speed) * 60.0).roundToInt() }
     val localizedCopyName = stringResource(R.string.map_route_copy_name, plan.name)
     val localizedReverseCopyName = stringResource(R.string.map_route_reverse_copy_name, plan.name)
+    val mutable = state.routeSaveTransaction?.savedPlanId != plan.id
     val sourceChanged = plan.waypointPlaceReferences.keys.any { index ->
         plan.placeSourceState(index, state.places) in setOf(RoutePlaceSourceState.CHANGED, RoutePlaceSourceState.MISSING)
     }
@@ -1329,13 +1343,13 @@ private fun RoutePreviewPage(state: MapState, plan: SavedRoute, onAction: (MapAc
             onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(plan.waypoints.toBounds()), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
             onAction(MapAction.OpenSurface(MapSurface.Root))
         }
-        MapTextButton(stringResource(R.string.map_route_edit), "map-route-edit-${plan.id}", modifier = Modifier.fillMaxWidth()) {
+        MapTextButton(stringResource(R.string.map_route_edit), "map-route-edit-${plan.id}", mutable, Modifier.fillMaxWidth()) {
             onAction(MapAction.BeginRoutePlanEdit(plan.id))
         }
-        MapTextButton(stringResource(R.string.map_route_duplicate), "map-route-duplicate-${plan.id}", modifier = Modifier.fillMaxWidth()) {
+        MapTextButton(stringResource(R.string.map_route_duplicate), "map-route-duplicate-${plan.id}", mutable, Modifier.fillMaxWidth()) {
             onAction(MapAction.DuplicateRoutePlan(plan.id, name = localizedCopyName))
         }
-        MapTextButton(stringResource(R.string.map_route_reverse_copy), "map-route-reverse-copy-${plan.id}", modifier = Modifier.fillMaxWidth()) {
+        MapTextButton(stringResource(R.string.map_route_reverse_copy), "map-route-reverse-copy-${plan.id}", mutable, Modifier.fillMaxWidth()) {
             onAction(
                 MapAction.DuplicateRoutePlan(
                     plan.id,
@@ -1344,7 +1358,7 @@ private fun RoutePreviewPage(state: MapState, plan: SavedRoute, onAction: (MapAc
                 ),
             )
         }
-        MapTextButton(stringResource(R.string.map_route_delete), "map-route-delete-${plan.id}", modifier = Modifier.fillMaxWidth()) {
+        MapTextButton(stringResource(R.string.map_route_delete), "map-route-delete-${plan.id}", mutable, Modifier.fillMaxWidth()) {
             onAction(MapAction.RequestDeleteRoutePlan(plan.id))
         }
     }

@@ -144,6 +144,7 @@
     <string name="map_route_invalid_speed">船速必须是大于 0 的有限数值。</string>
     <string name="map_route_extreme_speed">此计划船速异常偏高，请确认单位和输入。</string>
     <string name="map_route_adjacent_duplicate">相邻航点坐标相同；请移动或删除其中一个点。</string>
+    <string name="map_route_another_save_pending">另一条路线正在写入；确认完成前不能提交新的正式路线。</string>
     <string name="map_route_leg">第 %1$d→%2$d 段 · %3$s · 起始 %4$s</string>
     <string name="map_route_distance_only">总距离 %1$.2f 海里 · 计划用时 —</string>
     <string name="map_route_distance_time">总距离 %1$.2f 海里 · 约 %2$d 分钟</string>

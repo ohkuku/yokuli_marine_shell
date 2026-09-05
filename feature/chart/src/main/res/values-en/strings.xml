@@ -144,6 +144,7 @@
     <string name="map_route_invalid_speed">Speed must be a finite number greater than 0.</string>
     <string name="map_route_extreme_speed">This planning speed is unusually high. Check the value and unit.</string>
     <string name="map_route_adjacent_duplicate">Adjacent waypoints have the same coordinate. Move or delete one of them.</string>
+    <string name="map_route_another_save_pending">Another route is being written. Wait for confirmation before committing a new plan.</string>
     <string name="map_route_leg">leg %1$d→%2$d · %3$s · initial %4$s</string>
     <string name="map_route_distance_only">%1$.2f NM total · planning duration —</string>
     <string name="map_route_distance_time">%1$.2f NM total · about %2$d min</string>
