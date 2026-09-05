@@ -58,7 +58,7 @@ class MapLibreMbTilesRenderTest {
         assertTrue("stable overlay must be visibly bright", Color.red(center) > 220 && Color.green(center) > 220)
         assertTrue(
             "transparent fixture edge must expose enough of the empty local style",
-            bitmap.countNear(Color.rgb(8, 27, 39)) > 80,
+            bitmap.countNear(Color.rgb(92, 255, 25)) > 80,
         )
 
         val rotated = captureFixture(
@@ -260,7 +260,7 @@ class MapLibreMbTilesRenderTest {
         const val EMPTY_TEST_STYLE = """{
           "version": 8,
           "sources": {},
-          "layers": [{"id":"background","type":"background","paint":{"background-color":"#081b27"}}]
+          "layers": [{"id":"background","type":"background","paint":{"background-color":"#5cff19"}}]
         }"""
     }
 }
