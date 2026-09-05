@@ -13,6 +13,7 @@ sealed interface MapSurface {
     data class DeletePlace(val placeId: String) : MapSurface
     data class PlaceDetail(val placeId: String) : MapSurface
     data class RouteDetail(val routeId: String) : MapSurface
+    data class DeleteRoutePlan(val routeId: String) : MapSurface
     data class ChartPackageDetail(val packageId: ChartPackageId) : MapSurface
 }
 
@@ -62,9 +63,14 @@ sealed interface MapPrecisePointEdit {
     data class Move(val target: MapEditTarget) : MapPrecisePointEdit
     data class InsertMeasurement(val index: Int) : MapPrecisePointEdit {
         init {
-            require(index >= 0)
+        require(index >= 0)
+    }
+    data class InsertRoute(val draftId: String, val beforeWaypointId: String?) : MapPrecisePointEdit {
+        init {
+            require(draftId.isNotBlank())
         }
     }
+}
 }
 
 data class MapEditGesture(

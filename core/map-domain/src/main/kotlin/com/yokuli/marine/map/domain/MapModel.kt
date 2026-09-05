@@ -181,14 +181,42 @@ data class ManualRouteDraft(
     val revision: Long = 0L,
     val name: String = "",
     val waypoints: List<GeoPoint> = emptyList(),
-    val plannedSpeedKnots: Double = 5.0,
+    val plannedSpeedKnots: Double? = null,
     val purpose: RoutePurpose = RoutePurpose.MANUAL_PLANNING,
-    val undo: List<List<GeoPoint>> = emptyList(),
-    val redo: List<List<GeoPoint>> = emptyList(),
+    val notes: String = "",
+    val waypointIds: List<String> = waypoints.indices.map { index -> "$id-waypoint-${index + 1}" },
+    val waypointPlaceReferences: Map<Int, PlaceRevisionReference> = emptyMap(),
+    val basePlanId: String? = null,
+    val basePlanRevision: Long? = null,
+    val nextWaypointOrdinal: Int = waypoints.size + 1,
+    val undo: List<RouteGeometrySnapshot> = emptyList(),
+    val redo: List<RouteGeometrySnapshot> = emptyList(),
 ) {
     init {
         require(revision >= 0L)
         require(id.isNotBlank() || revision == 0L) { "A persisted draft requires a stable ID" }
+        require(plannedSpeedKnots == null || plannedSpeedKnots.isFinite() && plannedSpeedKnots > 0.0)
+        require(waypointIds.size == waypoints.size && waypointIds.all(String::isNotBlank))
+        require(waypointIds.distinct().size == waypointIds.size)
+        require(waypointPlaceReferences.keys.all { it in waypoints.indices })
+        require(basePlanRevision == null || basePlanRevision > 0L)
+        require((basePlanId == null) == (basePlanRevision == null))
+        require(nextWaypointOrdinal > waypoints.size)
+    }
+}
+
+typealias RouteDraft = ManualRouteDraft
+
+data class RouteGeometrySnapshot(
+    val waypoints: List<GeoPoint>,
+    val waypointIds: List<String>,
+    val waypointPlaceReferences: Map<Int, PlaceRevisionReference>,
+    val nextWaypointOrdinal: Int,
+) {
+    init {
+        require(waypoints.size == waypointIds.size)
+        require(waypointIds.distinct().size == waypointIds.size)
+        require(waypointPlaceReferences.keys.all { it in waypoints.indices })
     }
 }
 
@@ -196,17 +224,22 @@ data class SavedRoute(
     val id: String,
     val name: String,
     val waypoints: List<GeoPoint>,
-    val plannedSpeedKnots: Double,
+    val plannedSpeedKnots: Double? = null,
     val purpose: RoutePurpose = RoutePurpose.MANUAL_PLANNING,
     val revision: Long = 1L,
     val sourceDraftId: String? = null,
     val sourceDraftRevision: Long? = null,
     val waypointPlaceReferences: Map<Int, PlaceRevisionReference> = emptyMap(),
+    val notes: String = "",
+    val waypointIds: List<String> = waypoints.indices.map { index -> "$id-waypoint-${index + 1}" },
 ) {
     init {
         require(id.isNotBlank())
         require(revision > 0L)
+        require(plannedSpeedKnots == null || plannedSpeedKnots.isFinite() && plannedSpeedKnots > 0.0)
         require(sourceDraftRevision == null || sourceDraftRevision > 0L)
+        require(waypointIds.size == waypoints.size && waypointIds.all(String::isNotBlank))
+        require(waypointIds.distinct().size == waypointIds.size)
         require(waypointPlaceReferences.keys.all { it in waypoints.indices })
     }
 
@@ -221,6 +254,8 @@ data class SavedRoute(
     }
 }
 
+typealias RoutePlan = SavedRoute
+
 data class PlaceRevisionReference(val placeId: String, val revision: Long) {
     init {
         require(placeId.isNotBlank())
@@ -232,7 +267,29 @@ enum class RoutePlaceSourceState { NONE, CURRENT, CHANGED, MISSING }
 
 data class RouteSummary(
     val distanceNauticalMiles: Double,
-    val estimatedDurationMillis: Long,
+    val estimatedDurationMillis: Long?,
+)
+
+enum class RouteSpeedNotice { EXTREME }
+
+data class RouteSaveStatus(
+    val routeId: String,
+    val revision: Long,
+    val state: MapSaveState,
+)
+
+data class RouteSaveTransaction(
+    val draft: ManualRouteDraft,
+    val previousPlan: SavedRoute?,
+    val savedPlanId: String,
+    val targetLibraryRevision: Long,
+)
+
+data class RouteDeleteRequest(val routeId: String, val expectedRevision: Long, val name: String)
+
+data class RouteDeleteUndo(
+    val route: SavedRoute,
+    val compatibleLibraryRevision: Long,
 )
 
 @JvmInline
@@ -305,6 +362,7 @@ data class MapSessionSnapshot(
     val camera: MapCamera = MapCamera(),
     val measurementDraft: MeasurementDraft? = null,
     val activeRouteDraftId: String? = null,
+    val activeRoutePlanId: String? = null,
     val activeChartPackageId: ChartPackageId? = null,
 )
 
@@ -367,6 +425,12 @@ data class MapState(
     val routeDrafts: List<ManualRouteDraft> = emptyList(),
     val activeRouteDraftId: String? = null,
     val savedRoutes: List<SavedRoute> = emptyList(),
+    val activeRoutePlanId: String? = null,
+    val routeSaveStatus: RouteSaveStatus? = null,
+    val routeSaveTransaction: RouteSaveTransaction? = null,
+    val routeDeleteRequest: RouteDeleteRequest? = null,
+    val routeDeleteUndo: RouteDeleteUndo? = null,
+    val routeSpeedNotice: RouteSpeedNotice? = null,
     val chartPackages: List<ChartPackage> = emptyList(),
     val activeChartPackageId: ChartPackageId? = null,
     val position: PositionState = PositionState(),
@@ -381,14 +445,21 @@ data class MapState(
     val routeDraft: ManualRouteDraft?
         get() = activeRouteDraftId?.let { active -> routeDrafts.firstOrNull { it.id == active } }
 
+    val visibleRoutePoints: List<GeoPoint>
+        get() = routeDraft?.takeIf { tool == MapTool.MANUAL_ROUTE }?.waypoints
+            ?: activeRoutePlanId?.let { id -> savedRoutes.firstOrNull { it.id == id }?.waypoints }
+            ?: emptyList()
+
     val routeSummary: RouteSummary?
-        get() = routeDraft?.takeIf { it.waypoints.size >= 2 && it.plannedSpeedKnots > 0.0 }?.let { draft ->
+        get() = routeDraft?.takeIf { it.waypoints.size >= 2 }?.let { draft ->
             val distance = draft.waypoints.zipWithNext().sumOf { (from, to) ->
                 Wgs84Geodesic.inverse(from, to).distanceMeters / METERS_PER_NAUTICAL_MILE
             }
             RouteSummary(
                 distanceNauticalMiles = distance,
-                estimatedDurationMillis = ((distance / draft.plannedSpeedKnots) * 3_600_000.0).toLong(),
+                estimatedDurationMillis = draft.plannedSpeedKnots?.let { speed ->
+                    ((distance / speed) * 3_600_000.0).toLong()
+                },
             )
         }
 
@@ -408,6 +479,7 @@ data class MapState(
         camera = camera,
         measurementDraft = measurementDraft?.copy(undo = emptyList(), redo = emptyList()),
         activeRouteDraftId = activeRouteDraftId,
+        activeRoutePlanId = activeRoutePlanId,
         activeChartPackageId = activeChartPackageId,
     )
 

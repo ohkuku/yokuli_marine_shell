@@ -59,11 +59,46 @@ sealed interface MapAction {
     data object UndoDeletePlace : MapAction
     data class SetPlaceQuery(val query: String) : MapAction
     data class SetPlaceSort(val sort: PlaceSort) : MapAction
+    data class CreateRouteDraft(
+        val name: String,
+        val notes: String = "",
+        val startPoint: GeoPoint? = null,
+        val sourcePlaceId: String? = null,
+        val sourcePlaceRevision: Long? = null,
+    ) : MapAction
+    data class ActivateRouteDraft(val draftId: String) : MapAction
+    data class UpdateRouteDraftMetadata(val name: String, val notes: String) : MapAction
+    data class AddRouteWaypoint(
+        val point: GeoPoint,
+        val sourcePlaceId: String? = null,
+        val sourcePlaceRevision: Long? = null,
+    ) : MapAction
+    data class InsertRouteWaypoint(
+        val beforeWaypointId: String,
+        val point: GeoPoint,
+        val sourcePlaceId: String? = null,
+        val sourcePlaceRevision: Long? = null,
+    ) : MapAction
+    data class MoveRouteWaypoint(val waypointId: String, val point: GeoPoint) : MapAction
+    data class DeleteRouteWaypoint(val waypointId: String) : MapAction
+    data class ReorderRouteWaypoint(val waypointId: String, val toIndex: Int) : MapAction
     data class ConvertMeasurementToManualRoute(val name: String) : MapAction
     data object UndoRouteEdit : MapAction
     data object RedoRouteEdit : MapAction
     data object ReverseRoute : MapAction
     data class SetPlannedSpeedKnots(val knots: Double) : MapAction
+    data object ClearPlannedSpeed : MapAction
+    data class PreviewRoutePlan(val routeId: String) : MapAction
+    data class BeginRoutePlanEdit(val routeId: String) : MapAction
+    data object SaveRoutePlan : MapAction
+    data class SaveRoutePlanAsCopy(val name: String) : MapAction
+    data class DuplicateRoutePlan(val routeId: String, val reverse: Boolean = false) : MapAction
+    data class DiscardRouteDraft(val draftId: String) : MapAction
+    data class RequestDeleteRoutePlan(val routeId: String) : MapAction
+    data object ConfirmDeleteRoutePlan : MapAction
+    data object CancelDeleteRoutePlan : MapAction
+    data object UndoDeleteRoutePlan : MapAction
+    /** Compatibility action retained for pre-C06 callers; C06 product UI uses SaveRoutePlan/SaveRoutePlanAsCopy. */
     data class SaveRouteCopy(val name: String) : MapAction
     data class ObservePosition(val observation: PositionObservation, val nowMillis: Long) : MapAction
     data class ClockTick(val nowMillis: Long) : MapAction
@@ -102,6 +137,8 @@ sealed interface MapAction {
 
 sealed interface MapIncident {
     data class InvalidPlannedSpeed(val knots: Double) : MapIncident
+    data object AdjacentDuplicateWaypoint : MapIncident
+    data class RouteRevisionConflict(val routeId: String, val expectedRevision: Long, val actualRevision: Long?) : MapIncident
     data object MissingSelection : MapIncident
     data object InsufficientMeasurement : MapIncident
     data object InsufficientRoute : MapIncident
@@ -202,29 +239,63 @@ class DefaultMapReducer(
         MapAction.UndoDeletePlace -> undoDeletePlace(state)
         is MapAction.SetPlaceQuery -> MapReduction(state.copy(placeQuery = action.query))
         is MapAction.SetPlaceSort -> MapReduction(state.copy(placeSort = action.sort))
+        is MapAction.CreateRouteDraft -> createRouteDraft(state, action)
+        is MapAction.ActivateRouteDraft -> activateRouteDraft(state, action.draftId)
+        is MapAction.UpdateRouteDraftMetadata -> updateRouteMetadata(state, action.name, action.notes)
+        is MapAction.AddRouteWaypoint -> addRouteWaypoint(
+            state,
+            action.point,
+            action.sourcePlaceId?.let { id -> action.sourcePlaceRevision?.let { revision -> PlaceRevisionReference(id, revision) } },
+        )
+        is MapAction.InsertRouteWaypoint -> insertRouteWaypoint(
+            state,
+            action.beforeWaypointId,
+            action.point,
+            action.sourcePlaceId?.let { id -> action.sourcePlaceRevision?.let { revision -> PlaceRevisionReference(id, revision) } },
+        )
+        is MapAction.MoveRouteWaypoint -> moveRouteWaypoint(state, action.waypointId, action.point)
+        is MapAction.DeleteRouteWaypoint -> deleteRouteWaypoint(state, action.waypointId)
+        is MapAction.ReorderRouteWaypoint -> reorderRouteWaypoint(state, action.waypointId, action.toIndex)
         is MapAction.ConvertMeasurementToManualRoute -> convertMeasurement(state, action.name)
         MapAction.UndoRouteEdit -> editRoute(state) { draft ->
             val previous = draft.undo.lastOrNull() ?: return@editRoute null
             draft.copy(
                 revision = draft.revision + 1,
-                waypoints = previous,
+                waypoints = previous.waypoints,
+                waypointIds = previous.waypointIds,
+                waypointPlaceReferences = previous.waypointPlaceReferences,
+                nextWaypointOrdinal = previous.nextWaypointOrdinal,
                 undo = draft.undo.dropLast(1),
-                redo = bounded(draft.redo + listOf(draft.waypoints)),
+                redo = boundedRouteHistory(draft.redo + draft.geometry()),
             )
         }
         MapAction.RedoRouteEdit -> editRoute(state) { draft ->
             val next = draft.redo.lastOrNull() ?: return@editRoute null
             draft.copy(
                 revision = draft.revision + 1,
-                waypoints = next,
-                undo = bounded(draft.undo + listOf(draft.waypoints)),
+                waypoints = next.waypoints,
+                waypointIds = next.waypointIds,
+                waypointPlaceReferences = next.waypointPlaceReferences,
+                nextWaypointOrdinal = next.nextWaypointOrdinal,
+                undo = boundedRouteHistory(draft.undo + draft.geometry()),
                 redo = draft.redo.dropLast(1),
             )
         }
         MapAction.ReverseRoute -> editRoute(state) { draft ->
-            if (draft.waypoints.size < 2) null else draft.record(draft.waypoints.reversed())
+            if (draft.waypoints.size < 2) null else draft.record(draft.routeWaypoints().reversed())
         }
         is MapAction.SetPlannedSpeedKnots -> setPlannedSpeed(state, action.knots)
+        MapAction.ClearPlannedSpeed -> clearPlannedSpeed(state)
+        is MapAction.PreviewRoutePlan -> previewRoutePlan(state, action.routeId)
+        is MapAction.BeginRoutePlanEdit -> beginRoutePlanEdit(state, action.routeId)
+        MapAction.SaveRoutePlan -> saveRoutePlan(state)
+        is MapAction.SaveRoutePlanAsCopy -> saveRoutePlan(state, action.name)
+        is MapAction.DuplicateRoutePlan -> duplicateRoutePlan(state, action.routeId, action.reverse)
+        is MapAction.DiscardRouteDraft -> discardRouteDraft(state, action.draftId)
+        is MapAction.RequestDeleteRoutePlan -> requestDeleteRoutePlan(state, action.routeId)
+        MapAction.ConfirmDeleteRoutePlan -> confirmDeleteRoutePlan(state)
+        MapAction.CancelDeleteRoutePlan -> MapReduction(closeSurface(state.copy(routeDeleteRequest = null)))
+        MapAction.UndoDeleteRoutePlan -> undoDeleteRoutePlan(state)
         is MapAction.SaveRouteCopy -> saveRouteCopy(state, action.name)
         is MapAction.ObservePosition -> observePosition(state, action)
         is MapAction.ClockTick -> MapReduction(state.copy(position = state.position.at(action.nowMillis)))
@@ -255,6 +326,9 @@ class DefaultMapReducer(
             val activeDraftId = result.session.activeRouteDraftId?.takeIf { active ->
                 library.routeDrafts.any { it.id == active }
             } ?: library.routeDrafts.lastOrNull()?.id
+            val activePlanId = result.session.activeRoutePlanId?.takeIf { active ->
+                library.savedRoutes.any { it.id == active }
+            }
             MapReduction(
                 state.copy(
                     camera = result.session.camera,
@@ -263,6 +337,7 @@ class DefaultMapReducer(
                     routeDrafts = library.routeDrafts,
                     activeRouteDraftId = activeDraftId,
                     savedRoutes = library.savedRoutes,
+                    activeRoutePlanId = activePlanId,
                     activeChartPackageId = result.session.activeChartPackageId,
                     libraryLoadState = if (library.isEmpty) MapLibraryLoadState.READY_EMPTY else MapLibraryLoadState.READY,
                     libraryRevision = library.revision,
@@ -272,6 +347,11 @@ class DefaultMapReducer(
                     placeDeleteRequest = null,
                     placeDeleteUndo = null,
                     placeSaveStatus = null,
+                    routeSaveStatus = null,
+                    routeSaveTransaction = null,
+                    routeDeleteRequest = null,
+                    routeDeleteUndo = null,
+                    routeSpeedNotice = null,
                     persistenceFailure = null,
                 ).withCameraCommand(
                     target = MapCameraTarget.Exact(result.session.camera),
@@ -429,6 +509,11 @@ class DefaultMapReducer(
         } else {
             state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.routeId))
         }
+        is MapSurface.DeleteRoutePlan -> if (state.savedRoutes.any { it.id == surface.routeId }) {
+            state.pushSurface(surface)
+        } else {
+            state.copy(surface = MapSurface.Root, transient = MapTransient.UnavailableObject(surface.routeId))
+        }
         is MapSurface.ChartPackageDetail -> if (state.chartPackages.any { it.id == surface.packageId }) {
             state.pushSurface(surface)
         } else {
@@ -451,6 +536,7 @@ class DefaultMapReducer(
             precisePointEdit = if (state.surface == MapSurface.CoordinateInput) null else state.precisePointEdit,
             placeMove = if (state.surface is MapSurface.MovePlace) null else state.placeMove,
             placeDeleteRequest = if (state.surface is MapSurface.DeletePlace) null else state.placeDeleteRequest,
+            routeDeleteRequest = if (state.surface is MapSurface.DeleteRoutePlan) null else state.routeDeleteRequest,
         )
     }
 
@@ -521,6 +607,10 @@ class DefaultMapReducer(
                 val size = state.measurementDraft?.points?.size ?: 0
                 edit.index in 0..size
             }
+            is MapPrecisePointEdit.InsertRoute -> {
+                val draft = state.routeDrafts.firstOrNull { it.id == edit.draftId }
+                draft != null && (edit.beforeWaypointId == null || edit.beforeWaypointId in draft.waypointIds)
+            }
         }
         return if (valid) {
             MapReduction(state.copy(precisePointEdit = edit, transient = null, crosshairEnabled = true))
@@ -535,6 +625,13 @@ class DefaultMapReducer(
         return when (edit) {
             is MapPrecisePointEdit.Move -> commitPointEdit(cleared, edit.target, point)
             is MapPrecisePointEdit.InsertMeasurement -> insertMeasurementPoint(cleared, edit.index, point)
+            is MapPrecisePointEdit.InsertRoute -> {
+                val draft = state.routeDrafts.firstOrNull { it.id == edit.draftId }
+                    ?: return incident(state, MapIncident.ActionRejected)
+                if (state.activeRouteDraftId != draft.id) return incident(state, MapIncident.ActionRejected)
+                if (edit.beforeWaypointId == null) addRouteWaypoint(cleared, point, null)
+                else insertRouteWaypoint(cleared, edit.beforeWaypointId, point, null)
+            }
         }
     }
 
@@ -551,9 +648,9 @@ class DefaultMapReducer(
                 val draft = state.routeDrafts.firstOrNull { it.id == target.draftId }
                     ?: return incident(state, MapIncident.ActionRejected)
                 if (target.index !in draft.waypoints.indices) return incident(state, MapIncident.ActionRejected)
-                val updated = draft.record(
-                    draft.waypoints.mapIndexed { index, existing -> if (index == target.index) point else existing },
-                )
+                val updated = draft.record(draft.routeWaypoints().mapIndexed { index, existing ->
+                    if (index == target.index) existing.copy(point = point, source = null) else existing
+                })
                 persistLibrary(
                     state.copy(routeDrafts = state.routeDrafts.map { if (it.id == updated.id) updated else it }),
                 )
@@ -618,19 +715,7 @@ class DefaultMapReducer(
 
     private fun addPoint(state: MapState, point: GeoPoint): MapReduction = when (state.tool) {
         MapTool.MEASURE -> editMeasurement(state) { points -> points + point }
-        MapTool.MANUAL_ROUTE -> ifWritable(state) {
-            val active = state.routeDraft
-            if (active == null) {
-                val draft = ManualRouteDraft(
-                    id = idGenerator.nextId("draft"),
-                    revision = 1L,
-                    waypoints = listOf(point),
-                )
-                persistLibrary(state.copy(routeDrafts = state.routeDrafts + draft, activeRouteDraftId = draft.id))
-            } else {
-                replaceActiveDraft(state, active.record(active.waypoints + point))
-            }
-        }
+        MapTool.MANUAL_ROUTE -> addRouteWaypoint(state, point, null)
         else -> MapReduction(state.copy(selection = MapSelection(point)))
     }
 
@@ -821,49 +906,347 @@ class DefaultMapReducer(
         )
     }
 
-    private fun convertMeasurement(state: MapState, name: String): MapReduction = ifWritable(state) {
-        val points = state.measurementDraft?.points.orEmpty()
-        if (points.size < 2) return@ifWritable incident(state, MapIncident.InsufficientMeasurement)
+    private fun createRouteDraft(state: MapState, action: MapAction.CreateRouteDraft): MapReduction = ifWritable(state) {
+        val id = nextUniqueId("draft", state.routeDrafts.map { it.id }.toSet())
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        if ((action.sourcePlaceId == null) != (action.sourcePlaceRevision == null)) {
+            return@ifWritable incident(state, MapIncident.ActionRejected)
+        }
+        val points = action.startPoint?.let(::listOf).orEmpty()
+        val ids = if (points.isEmpty()) emptyList() else listOf(routeWaypointId(id, 1))
+        val references = if (points.isEmpty() || action.sourcePlaceId == null) emptyMap() else mapOf(
+            0 to PlaceRevisionReference(action.sourcePlaceId, requireNotNull(action.sourcePlaceRevision)),
+        )
         val draft = ManualRouteDraft(
-            id = idGenerator.nextId("draft"),
+            id = id,
             revision = 1L,
-            name = name.trim(),
-            waypoints = points.toList(),
+            name = action.name.trim(),
+            waypoints = points,
+            notes = action.notes.trim(),
+            waypointIds = ids,
+            waypointPlaceReferences = references,
+            nextWaypointOrdinal = points.size + 1,
         )
         persistLibrary(
             state.copy(
                 tool = MapTool.MANUAL_ROUTE,
                 routeDrafts = state.routeDrafts + draft,
                 activeRouteDraftId = draft.id,
+                activeRoutePlanId = null,
+                routeSaveStatus = null,
+                routeSpeedNotice = null,
+                surface = MapSurface.RouteDetail(draft.id),
+                surfaceHistory = listOf(MapSurface.Root, MapSurface.Routes),
+            ),
+        )
+    }
+
+    private fun activateRouteDraft(state: MapState, draftId: String): MapReduction {
+        if (state.routeDrafts.none { it.id == draftId }) return incident(state, MapIncident.ActionRejected)
+        return MapReduction(
+            state.copy(
+                tool = MapTool.MANUAL_ROUTE,
+                activeRouteDraftId = draftId,
+                activeRoutePlanId = null,
+                routeSpeedNotice = null,
+            ),
+        )
+    }
+
+    private fun updateRouteMetadata(state: MapState, name: String, notes: String): MapReduction = editRoute(state) { draft ->
+        val normalizedName = name.trim()
+        val normalizedNotes = notes.trim()
+        if (draft.name == normalizedName && draft.notes == normalizedNotes) null
+        else draft.copy(revision = draft.revision + 1L, name = normalizedName, notes = normalizedNotes)
+    }
+
+    private fun addRouteWaypoint(
+        state: MapState,
+        point: GeoPoint,
+        source: PlaceRevisionReference?,
+    ): MapReduction = ifWritable(state) {
+        val draft = state.routeDraft ?: return@ifWritable createRouteDraft(
+            state,
+            MapAction.CreateRouteDraft("", startPoint = point, sourcePlaceId = source?.placeId, sourcePlaceRevision = source?.revision),
+        )
+        if (draft.waypoints.lastOrNull() == point) return@ifWritable incident(state, MapIncident.AdjacentDuplicateWaypoint)
+        val items = draft.routeWaypoints() + RouteWaypointValue(
+            id = routeWaypointId(draft.id, draft.nextWaypointOrdinal),
+            point = point,
+            source = source,
+        )
+        replaceActiveDraft(state, draft.record(items, draft.nextWaypointOrdinal + 1))
+    }
+
+    private fun insertRouteWaypoint(
+        state: MapState,
+        beforeWaypointId: String,
+        point: GeoPoint,
+        source: PlaceRevisionReference?,
+    ): MapReduction = ifWritable(state) {
+        val draft = state.routeDraft ?: return@ifWritable incident(state, MapIncident.InsufficientRoute)
+        val index = draft.waypointIds.indexOf(beforeWaypointId).takeIf { it >= 0 }
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val items = draft.routeWaypoints().toMutableList()
+        if (items.getOrNull(index - 1)?.point == point || items.getOrNull(index)?.point == point) {
+            return@ifWritable incident(state, MapIncident.AdjacentDuplicateWaypoint)
+        }
+        items.add(index, RouteWaypointValue(routeWaypointId(draft.id, draft.nextWaypointOrdinal), point, source))
+        replaceActiveDraft(state, draft.record(items, draft.nextWaypointOrdinal + 1))
+    }
+
+    private fun moveRouteWaypoint(state: MapState, waypointId: String, point: GeoPoint): MapReduction = ifWritable(state) {
+        val draft = state.routeDraft ?: return@ifWritable incident(state, MapIncident.InsufficientRoute)
+        val items = draft.routeWaypoints().toMutableList()
+        val index = items.indexOfFirst { it.id == waypointId }.takeIf { it >= 0 }
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        if (items.getOrNull(index - 1)?.point == point || items.getOrNull(index + 1)?.point == point) {
+            return@ifWritable incident(state, MapIncident.AdjacentDuplicateWaypoint)
+        }
+        items[index] = items[index].copy(point = point, source = null)
+        replaceActiveDraft(state, draft.record(items))
+    }
+
+    private fun deleteRouteWaypoint(state: MapState, waypointId: String): MapReduction = ifWritable(state) {
+        val draft = state.routeDraft ?: return@ifWritable incident(state, MapIncident.InsufficientRoute)
+        val items = draft.routeWaypoints()
+        if (items.none { it.id == waypointId }) return@ifWritable incident(state, MapIncident.ActionRejected)
+        replaceActiveDraft(state, draft.record(items.filterNot { it.id == waypointId }))
+    }
+
+    private fun reorderRouteWaypoint(state: MapState, waypointId: String, toIndex: Int): MapReduction = ifWritable(state) {
+        val draft = state.routeDraft ?: return@ifWritable incident(state, MapIncident.InsufficientRoute)
+        if (toIndex !in draft.waypoints.indices) return@ifWritable incident(state, MapIncident.ActionRejected)
+        val items = draft.routeWaypoints().toMutableList()
+        val fromIndex = items.indexOfFirst { it.id == waypointId }.takeIf { it >= 0 }
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        if (fromIndex == toIndex) return@ifWritable MapReduction(state)
+        val moved = items.removeAt(fromIndex)
+        items.add(toIndex, moved)
+        if (items.zipWithNext().any { (from, to) -> from.point == to.point }) {
+            return@ifWritable incident(state, MapIncident.AdjacentDuplicateWaypoint)
+        }
+        replaceActiveDraft(state, draft.record(items))
+    }
+
+    private fun convertMeasurement(state: MapState, name: String): MapReduction = ifWritable(state) {
+        val points = state.measurementDraft?.points.orEmpty()
+        if (points.size < 2) return@ifWritable incident(state, MapIncident.InsufficientMeasurement)
+        val id = nextUniqueId("draft", state.routeDrafts.map { it.id }.toSet())
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val draft = ManualRouteDraft(
+            id = id,
+            revision = 1L,
+            name = name.trim(),
+            waypoints = points.toList(),
+            waypointIds = points.indices.map { routeWaypointId(id, it + 1) },
+            nextWaypointOrdinal = points.size + 1,
+        )
+        persistLibrary(
+            state.copy(
+                tool = MapTool.MANUAL_ROUTE,
+                routeDrafts = state.routeDrafts + draft,
+                activeRouteDraftId = draft.id,
+                activeRoutePlanId = null,
             ),
         )
     }
 
     private fun setPlannedSpeed(state: MapState, knots: Double): MapReduction {
         if (!knots.isFinite() || knots <= 0.0) return incident(state, MapIncident.InvalidPlannedSpeed(knots))
-        return editRoute(state) { draft -> draft.copy(revision = draft.revision + 1, plannedSpeedKnots = knots) }
+        val reduction = editRoute(state) { draft ->
+            if (draft.plannedSpeedKnots == knots) null else draft.copy(revision = draft.revision + 1, plannedSpeedKnots = knots)
+        }
+        return reduction.copy(
+            state = reduction.state.copy(routeSpeedNotice = if (knots > EXTREME_PLANNED_SPEED_KNOTS) RouteSpeedNotice.EXTREME else null),
+        )
     }
 
-    private fun saveRouteCopy(state: MapState, name: String): MapReduction = ifWritable(state) {
-        val draft = state.routeDraft?.takeIf { it.waypoints.size >= 2 }
-            ?: return@ifWritable incident(state, MapIncident.InsufficientRoute)
-        if (state.savedRoutes.any { it.sourceDraftId == draft.id && it.sourceDraftRevision == draft.revision }) {
-            return@ifWritable MapReduction(state)
+    private fun clearPlannedSpeed(state: MapState): MapReduction {
+        val reduction = editRoute(state) { draft ->
+            if (draft.plannedSpeedKnots == null) null else draft.copy(revision = draft.revision + 1L, plannedSpeedKnots = null)
         }
-        val displayName = name.trim().ifEmpty { "Manual route ${state.savedRoutes.size + 1}" }
-        persistLibrary(
+        return reduction.copy(state = reduction.state.copy(routeSpeedNotice = null))
+    }
+
+    private fun previewRoutePlan(state: MapState, routeId: String): MapReduction {
+        val plan = state.savedRoutes.firstOrNull { it.id == routeId }
+            ?: return incident(state, MapIncident.ActionRejected)
+        return MapReduction(
             state.copy(
-                savedRoutes = state.savedRoutes + SavedRoute(
-                    id = idGenerator.nextId("route"),
-                    name = displayName,
-                    waypoints = draft.waypoints,
-                    plannedSpeedKnots = draft.plannedSpeedKnots,
-                    sourceDraftId = draft.id,
-                    sourceDraftRevision = draft.revision,
-                ),
+                tool = MapTool.BROWSE,
+                activeRoutePlanId = plan.id,
+                activeRouteDraftId = null,
+                surface = MapSurface.RouteDetail(plan.id),
+                transient = null,
+                routeSpeedNotice = null,
             ),
         )
     }
+
+    private fun beginRoutePlanEdit(state: MapState, routeId: String): MapReduction = ifWritable(state) {
+        val plan = state.savedRoutes.firstOrNull { it.id == routeId }
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val id = nextUniqueId("draft", state.routeDrafts.map { it.id }.toSet())
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val draft = ManualRouteDraft(
+            id = id,
+            revision = 1L,
+            name = plan.name,
+            waypoints = plan.waypoints.toList(),
+            plannedSpeedKnots = plan.plannedSpeedKnots,
+            notes = plan.notes,
+            waypointIds = plan.waypointIds.toList(),
+            waypointPlaceReferences = plan.waypointPlaceReferences.toMap(),
+            basePlanId = plan.id,
+            basePlanRevision = plan.revision,
+            nextWaypointOrdinal = plan.waypoints.size + 1,
+        )
+        persistLibrary(
+            state.copy(
+                tool = MapTool.MANUAL_ROUTE,
+                routeDrafts = state.routeDrafts + draft,
+                activeRouteDraftId = draft.id,
+                activeRoutePlanId = plan.id,
+                surface = MapSurface.RouteDetail(draft.id),
+                routeSaveStatus = null,
+                routeSpeedNotice = null,
+            ),
+        )
+    }
+
+    private fun saveRoutePlan(state: MapState, copyName: String? = null): MapReduction = ifWritable(state) {
+        val draft = state.routeDraft?.takeIf { it.waypoints.size >= 2 }
+            ?: return@ifWritable incident(state, MapIncident.InsufficientRoute)
+        val asCopy = copyName != null
+        val previous = if (!asCopy) draft.basePlanId?.let { id -> state.savedRoutes.firstOrNull { it.id == id } } else null
+        if (!asCopy && draft.basePlanId != null && previous?.revision != draft.basePlanRevision) {
+            return@ifWritable incident(
+                state,
+                MapIncident.RouteRevisionConflict(draft.basePlanId, requireNotNull(draft.basePlanRevision), previous?.revision),
+            )
+        }
+        val planId = previous?.id ?: nextUniqueId("route", state.savedRoutes.map { it.id }.toSet())
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val plan = SavedRoute(
+            id = planId,
+            name = copyName?.trim()?.takeIf(String::isNotEmpty)
+                ?: draft.name.trim().ifEmpty { "Manual route ${state.savedRoutes.size + 1}" },
+            waypoints = draft.waypoints.toList(),
+            plannedSpeedKnots = draft.plannedSpeedKnots,
+            revision = previous?.revision?.plus(1L) ?: 1L,
+            sourceDraftId = draft.id,
+            sourceDraftRevision = draft.revision,
+            waypointPlaceReferences = draft.waypointPlaceReferences.toMap(),
+            notes = draft.notes,
+            waypointIds = draft.waypointIds.toList(),
+        )
+        val plans = if (previous == null) state.savedRoutes + plan else state.savedRoutes.map { if (it.id == plan.id) plan else it }
+        val optimistic = state.copy(
+            tool = MapTool.BROWSE,
+            routeDrafts = state.routeDrafts.filterNot { it.id == draft.id },
+            activeRouteDraftId = null,
+            savedRoutes = plans,
+            activeRoutePlanId = plan.id,
+            routeSaveStatus = RouteSaveStatus(plan.id, plan.revision, MapSaveState.PENDING),
+            routeDeleteUndo = null,
+            surface = MapSurface.RouteDetail(plan.id),
+            surfaceHistory = listOf(MapSurface.Root, MapSurface.Routes),
+        )
+        val persisted = persistLibrary(optimistic)
+        persisted.copy(
+            state = persisted.state.copy(
+                routeSaveTransaction = RouteSaveTransaction(draft, previous, plan.id, persisted.state.libraryRevision),
+            ),
+        )
+    }
+
+    private fun duplicateRoutePlan(state: MapState, routeId: String, reverse: Boolean): MapReduction = ifWritable(state) {
+        val source = state.savedRoutes.firstOrNull { it.id == routeId }
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val id = nextUniqueId("route", state.savedRoutes.map { it.id }.toSet())
+            ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val points = if (reverse) source.waypoints.reversed() else source.waypoints.toList()
+        val ids = if (reverse) source.waypointIds.reversed() else source.waypointIds.toList()
+        val references = if (reverse) source.waypointPlaceReferences.entries.associate { (index, value) ->
+            source.waypoints.lastIndex - index to value
+        } else source.waypointPlaceReferences.toMap()
+        val copy = source.copy(
+            id = id,
+            name = "${source.name} copy",
+            waypoints = points,
+            waypointIds = ids,
+            waypointPlaceReferences = references,
+            revision = 1L,
+            sourceDraftId = null,
+            sourceDraftRevision = null,
+        )
+        persistLibrary(
+            state.copy(
+                savedRoutes = state.savedRoutes + copy,
+                activeRoutePlanId = copy.id,
+                routeSaveStatus = RouteSaveStatus(copy.id, copy.revision, MapSaveState.PENDING),
+                routeDeleteUndo = null,
+            ),
+        )
+    }
+
+    private fun discardRouteDraft(state: MapState, draftId: String): MapReduction = ifWritable(state) {
+        if (state.routeDrafts.none { it.id == draftId }) return@ifWritable incident(state, MapIncident.ActionRejected)
+        persistLibrary(
+            state.copy(
+                routeDrafts = state.routeDrafts.filterNot { it.id == draftId },
+                activeRouteDraftId = state.activeRouteDraftId.takeUnless { it == draftId },
+                tool = if (state.activeRouteDraftId == draftId) MapTool.BROWSE else state.tool,
+                surface = MapSurface.Routes,
+                surfaceHistory = listOf(MapSurface.Root),
+            ),
+        )
+    }
+
+    private fun requestDeleteRoutePlan(state: MapState, routeId: String): MapReduction {
+        val route = state.savedRoutes.firstOrNull { it.id == routeId }
+            ?: return incident(state, MapIncident.ActionRejected)
+        return MapReduction(
+            state.copy(routeDeleteRequest = RouteDeleteRequest(route.id, route.revision, route.name))
+                .pushSurface(MapSurface.DeleteRoutePlan(route.id)),
+        )
+    }
+
+    private fun confirmDeleteRoutePlan(state: MapState): MapReduction = ifWritable(state) {
+        val request = state.routeDeleteRequest ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        val route = state.savedRoutes.firstOrNull { it.id == request.routeId }
+            ?.takeIf { it.revision == request.expectedRevision }
+            ?: return@ifWritable incident(state, MapIncident.RouteRevisionConflict(request.routeId, request.expectedRevision, null))
+        persistLibrary(
+            state.copy(
+                savedRoutes = state.savedRoutes.filterNot { it.id == route.id },
+                activeRoutePlanId = state.activeRoutePlanId.takeUnless { it == route.id },
+                routeDeleteRequest = null,
+                routeDeleteUndo = RouteDeleteUndo(route, state.libraryRevision + 1L),
+                routeSaveStatus = null,
+                surface = MapSurface.Routes,
+                surfaceHistory = listOf(MapSurface.Root),
+            ),
+        )
+    }
+
+    private fun undoDeleteRoutePlan(state: MapState): MapReduction = ifWritable(state) {
+        val undo = state.routeDeleteUndo ?: return@ifWritable incident(state, MapIncident.ActionRejected)
+        if (state.libraryRevision != undo.compatibleLibraryRevision || state.savedRoutes.any { it.id == undo.route.id }) {
+            return@ifWritable incident(state, MapIncident.ActionRejected)
+        }
+        val restored = undo.route.copy(revision = undo.route.revision + 1L)
+        persistLibrary(
+            state.copy(
+                savedRoutes = state.savedRoutes + restored,
+                routeDeleteUndo = null,
+                routeSaveStatus = RouteSaveStatus(restored.id, restored.revision, MapSaveState.PENDING),
+            ),
+        )
+    }
+
+    private fun saveRouteCopy(state: MapState, name: String): MapReduction = saveRoutePlan(state, name)
 
     private fun editRoute(
         state: MapState,
@@ -903,6 +1286,7 @@ class DefaultMapReducer(
                 state.copy(
                     saveState = MapSaveState.PENDING,
                     placeSaveStatus = state.placeSaveStatus?.copy(state = MapSaveState.PENDING),
+                    routeSaveStatus = state.routeSaveStatus?.copy(state = MapSaveState.PENDING),
                     persistenceFailure = null,
                 ),
                 listOf(MapEffect.PersistLibrary(state.librarySnapshot())),
@@ -914,24 +1298,51 @@ class DefaultMapReducer(
     private fun persistenceAck(state: MapState, revision: Long): MapReduction = when {
         revision < state.libraryRevision -> MapReduction(state)
         revision != state.libraryRevision -> incident(state, MapIncident.ActionRejected)
-        else -> MapReduction(
+        else -> {
+            val completedRouteSave = state.routeSaveTransaction?.takeIf { it.targetLibraryRevision == revision }
+            MapReduction(
             state.copy(
                 durableLibraryRevision = revision,
                 saveState = MapSaveState.SAVED,
                 placeSaveStatus = state.placeSaveStatus?.copy(state = MapSaveState.SAVED),
+                routeSaveStatus = state.routeSaveStatus?.copy(state = MapSaveState.SAVED),
+                routeSaveTransaction = if (completedRouteSave != null) null else state.routeSaveTransaction,
                 persistenceFailure = null,
             ),
-        )
+            )
+        }
     }
 
     private fun persistenceFailed(state: MapState, revision: Long, failure: MapReadFailure): MapReduction =
         if (revision != state.libraryRevision) {
             MapReduction(state)
         } else {
+            val transaction = state.routeSaveTransaction?.takeIf { it.targetLibraryRevision == revision }
+            val rolledBackRoutes = if (transaction == null) {
+                state.savedRoutes
+            } else if (transaction.previousPlan == null) {
+                state.savedRoutes.filterNot { it.id == transaction.savedPlanId }
+            } else {
+                state.savedRoutes.map { route ->
+                    if (route.id == transaction.savedPlanId) transaction.previousPlan else route
+                }
+            }
             MapReduction(
                 state.copy(
                     saveState = MapSaveState.FAILED,
                     placeSaveStatus = state.placeSaveStatus?.copy(state = MapSaveState.FAILED),
+                    routeSaveStatus = state.routeSaveStatus?.copy(state = MapSaveState.FAILED),
+                    routeSaveTransaction = null,
+                    savedRoutes = rolledBackRoutes,
+                    routeDrafts = if (transaction == null || state.routeDrafts.any { it.id == transaction.draft.id }) {
+                        state.routeDrafts
+                    } else {
+                        state.routeDrafts + transaction.draft
+                    },
+                    activeRouteDraftId = transaction?.draft?.id ?: state.activeRouteDraftId,
+                    activeRoutePlanId = transaction?.previousPlan?.id,
+                    tool = if (transaction != null) MapTool.MANUAL_ROUTE else state.tool,
+                    surface = transaction?.let { MapSurface.RouteDetail(it.draft.id) } ?: state.surface,
                     persistenceFailure = failure,
                 ),
                 listOf(MapEffect.LogIncident(MapIncident.PersistenceFailure("save", failure))),
@@ -961,12 +1372,42 @@ class DefaultMapReducer(
             PositionAvailability.STALE
         }
 
-    private fun ManualRouteDraft.record(points: List<GeoPoint>): ManualRouteDraft = copy(
+    private fun ManualRouteDraft.record(
+        items: List<RouteWaypointValue>,
+        ordinal: Int = nextWaypointOrdinal,
+    ): ManualRouteDraft = copy(
         revision = revision + 1,
-        waypoints = points,
-        undo = bounded(undo + listOf(waypoints)),
+        waypoints = items.map { it.point },
+        waypointIds = items.map { it.id },
+        waypointPlaceReferences = items.mapIndexedNotNull { index, item -> item.source?.let { index to it } }.toMap(),
+        nextWaypointOrdinal = ordinal,
+        undo = boundedRouteHistory(undo + geometry()),
         redo = emptyList(),
     )
+
+    private fun ManualRouteDraft.geometry() = RouteGeometrySnapshot(
+        waypoints = waypoints,
+        waypointIds = waypointIds,
+        waypointPlaceReferences = waypointPlaceReferences,
+        nextWaypointOrdinal = nextWaypointOrdinal,
+    )
+
+    private fun ManualRouteDraft.routeWaypoints(): List<RouteWaypointValue> = waypoints.mapIndexed { index, point ->
+        RouteWaypointValue(waypointIds[index], point, waypointPlaceReferences[index])
+    }
+
+    private fun routeWaypointId(draftId: String, ordinal: Int): String = "$draftId-waypoint-$ordinal"
+
+    private fun nextUniqueId(namespace: String, unavailable: Set<String>): String? {
+        repeat(16) {
+            val candidate = idGenerator.nextId(namespace).trim()
+            if (candidate.isNotEmpty() && candidate !in unavailable) return candidate
+        }
+        return null
+    }
+
+    private fun boundedRouteHistory(history: List<RouteGeometrySnapshot>): List<RouteGeometrySnapshot> =
+        history.takeLast(historyLimit)
 
     private fun bounded(history: List<List<GeoPoint>>): List<List<GeoPoint>> = history.takeLast(historyLimit)
 
@@ -1018,8 +1459,15 @@ class DefaultMapReducer(
     private companion object {
         const val FRESH_POSITION_WINDOW_MILLIS = 30_000L
         const val DEFAULT_HISTORY_LIMIT = 50
+        const val EXTREME_PLANNED_SPEED_KNOTS = 100.0
     }
 }
+
+private data class RouteWaypointValue(
+    val id: String,
+    val point: GeoPoint,
+    val source: PlaceRevisionReference?,
+)
 
 /** Compatibility entrypoint for pure reducer tests and small adapters. */
 object MapReducer {
