@@ -7,7 +7,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 class ChartC03ContractTest(unittest.TestCase):
     def test_obsolete_provider_ui_contract_is_removed(self):
-        contract = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartUiContract.kt").read_text()
+        path = ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartUiContract.kt"
+        contract = path.read_text() if path.exists() else ""
         self.assertNotIn("ChartSurfaceKind", contract)
         self.assertNotIn("GOOGLE_MAPS", contract)
         self.assertNotIn("mapConfigured", contract)
@@ -24,7 +25,8 @@ class ChartC03ContractTest(unittest.TestCase):
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
         self.assertNotIn('testTag("map-tool-panel")', workspace)
         self.assertIn('testTag("map-root-command-bar")', workspace)
-        self.assertIn("MapCrosshairResolver.resolve", workspace)
+        self.assertIn("MapCrosshairResolver.screenPoint", workspace)
+        self.assertIn("port.unproject(target)", workspace)
         self.assertIn("onQueryPortChanged", workspace)
         self.assertIn("onQueryPortChanged", graph)
 

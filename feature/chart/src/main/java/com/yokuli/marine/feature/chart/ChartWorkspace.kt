@@ -434,7 +434,7 @@ private fun MapRootCommandBar(state: MapState, onAction: (MapAction) -> Unit) {
 private fun MapCommandButton(label: Int, tag: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val colors = LocalWpTheme.current
     Box(
-        modifier.heightIn(min = 48.dp).clickNoRipple(onClick)
+        modifier.heightIn(min = 48.dp).clickNoRipple(action = onClick)
             .background(if (selected) colors.accent else colors.background).testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
