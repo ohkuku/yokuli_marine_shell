@@ -59,6 +59,46 @@ class GpxInterchangeTest {
     }
 
     @Test
+    fun `preview bounds choose the short antimeridian span`() {
+        val preview = GpxReader().inspect(
+            gpx(
+                """
+                <wpt lat="-40" lon="179.5"/>
+                <wpt lat="-41" lon="-179.5"/>
+                """.trimIndent(),
+            ).byteInputStream(),
+        )
+
+        assertTrue(preview.bounds!!.crossesAntimeridian)
+        assertEquals(179.5, preview.bounds.west, 0.0)
+        assertEquals(-179.5, preview.bounds.east, 0.0)
+    }
+
+    @Test
+    fun `unnamed objects receive locale neutral technical names`() {
+        val preview = GpxReader().inspect(
+            gpx(
+                """
+                <wpt lat="-36" lon="174"/>
+                <rte><rtept lat="-36" lon="174"/><rtept lat="-37" lon="175"/></rte>
+                <trk><trkseg><trkpt lat="-36" lon="174"/></trkseg></trk>
+                """.trimIndent(),
+            ).byteInputStream(),
+        )
+        var ordinal = 0
+        val batch = GpxImportPlanner.materialize(
+            preview,
+            GpxDuplicateDecision.NEW_IMPORT,
+            MapIdGenerator { "id-${++ordinal}" },
+            1L,
+        )
+
+        assertEquals("GPX WPT 1", batch.places.single().name)
+        assertEquals("GPX RTE 1", batch.routes.single().name)
+        assertEquals("GPX TRK 1", batch.tracks.single().name)
+    }
+
+    @Test
     fun `DTD depth text point budget and illegal coordinates fail without truncation`() {
         val reader = GpxReader(GpxLimits(maxTotalPoints = 2, maxDepth = 5, maxTextChars = 8))
         listOf(
@@ -151,6 +191,22 @@ class GpxInterchangeTest {
         val collision = reducer.reduce(imported.state, MapAction.ImportGpxBatch(batch))
         assertEquals(imported.state, collision.state)
         assertTrue(collision.effects.single() is MapEffect.LogIncident)
+    }
+
+    @Test
+    fun `empty GPX batch is rejected without persisting an orphan import record`() {
+        val initial = MapState(libraryLoadState = MapLibraryLoadState.READY_EMPTY, libraryRevision = 4L)
+        val empty = GpxImportBatch(
+            places = emptyList(),
+            routes = emptyList(),
+            tracks = emptyList(),
+            importRecord = GpxImportRecord("empty", "a".repeat(64), 1L),
+        )
+
+        val reduction = DefaultMapReducer().reduce(initial, MapAction.ImportGpxBatch(empty))
+
+        assertEquals(initial, reduction.state)
+        assertTrue(reduction.effects.single() is MapEffect.LogIncident)
     }
 
     private fun mixedGpx() = gpx(
