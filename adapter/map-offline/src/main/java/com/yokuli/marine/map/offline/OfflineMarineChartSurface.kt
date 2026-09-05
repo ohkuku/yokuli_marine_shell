@@ -38,6 +38,7 @@ import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.MapTool
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import org.maplibre.android.MapLibre
@@ -81,7 +82,9 @@ fun OfflineMarineChartSurface(
     remember(context.applicationContext) { MapLibre.getInstance(context.applicationContext) }
 
     val generation = remember { MapRendererGeneration(nextRendererGeneration.incrementAndGet()) }
-    val mapView = remember(context, generation) { MapView(context) }
+    val mapView = remember(context, generation) {
+        MapView(context).also { OfflineMapInstanceMetrics.onCreated() }
+    }
     val lifecycleDriver = remember(mapView) { OfflineMapLifecycleDriver(mapView) }
     val disposed = remember(mapView) { AtomicBoolean(false) }
     val styleGeneration = remember(mapView) { AtomicLong(0L) }
@@ -109,6 +112,7 @@ fun OfflineMarineChartSurface(
             lifecycle.removeObserver(observer)
             context.applicationContext.unregisterComponentCallbacks(memoryCallbacks)
             lifecycleDriver.destroy()
+            OfflineMapInstanceMetrics.onDestroyed()
         }
     }
 
@@ -422,6 +426,34 @@ private fun wrapLongitude(value: Double): Double = ((value + 180.0) % 360.0 + 36
 private const val CHART_SOURCE = "installed-raster-chart"
 private const val CHART_LAYER = "installed-raster-chart-layer"
 private val nextRendererGeneration = AtomicLong(0L)
+
+/** Bounded process-local counters used by lifecycle gates and later diagnostics. */
+object OfflineMapInstanceMetrics {
+    private val live = AtomicInteger(0)
+    private val created = AtomicInteger(0)
+    private val peak = AtomicInteger(0)
+
+    val liveCount: Int get() = live.get()
+    val createdCount: Int get() = created.get()
+    val peakLiveCount: Int get() = peak.get()
+
+    internal fun onCreated() {
+        created.incrementAndGet()
+        val now = live.incrementAndGet()
+        peak.updateAndGet { previous -> maxOf(previous, now) }
+    }
+
+    internal fun onDestroyed() {
+        check(live.decrementAndGet() >= 0) { "MapView lifecycle counter became negative" }
+    }
+
+    fun resetForTest() {
+        check(live.get() == 0) { "Cannot reset while a MapView is live" }
+        created.set(0)
+        peak.set(0)
+    }
+}
+
 private const val EMPTY_STYLE = """{
   "version": 8,
   "name": "Yokuli offline chart",

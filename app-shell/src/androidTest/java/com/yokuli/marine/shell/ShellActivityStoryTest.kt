@@ -48,6 +48,7 @@ import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapLibraryLoadState
 import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.offline.OfflineMapInstanceMetrics
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherRecoveryMode
 import com.yokuli.shell.engine.ShellVisualSurface
@@ -104,6 +105,33 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun fiftyMapSearchBridgeTransitionsDoNotAccumulateNativeMapViews() {
+        compose.waitUntil(timeoutMillis = 10_000) { OfflineMapInstanceMetrics.liveCount == 0 }
+        OfflineMapInstanceMetrics.resetForTest()
+
+        repeat(25) {
+            compose.onNodeWithTag("tile-chart").performClick()
+            awaitDisplayed("chart-surface-maplibre")
+            compose.waitUntil(timeoutMillis = 10_000) { OfflineMapInstanceMetrics.liveCount == 1 }
+
+            compose.onNodeWithTag("virtual-key-search").performClick()
+            awaitDisplayed("shell-search-surface")
+            compose.waitUntil(timeoutMillis = 10_000) { OfflineMapInstanceMetrics.liveCount == 0 }
+            compose.onNodeWithTag("search-result-chart").performClick()
+            awaitDisplayed("chart-surface-maplibre")
+            compose.waitUntil(timeoutMillis = 10_000) { OfflineMapInstanceMetrics.liveCount == 1 }
+
+            compose.onNodeWithTag("virtual-key-bridge").performClick()
+            awaitDisplayed("start-screen")
+            compose.waitUntil(timeoutMillis = 10_000) { OfflineMapInstanceMetrics.liveCount == 0 }
+        }
+
+        assertEquals(50, OfflineMapInstanceMetrics.createdCount)
+        assertEquals(0, OfflineMapInstanceMetrics.liveCount)
+        assertEquals(1, OfflineMapInstanceMetrics.peakLiveCount)
     }
 
     @Test

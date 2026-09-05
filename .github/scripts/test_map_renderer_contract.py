@@ -65,6 +65,8 @@ class MapRendererContractTest(unittest.TestCase):
             "isTiltGesturesEnabled = false",
             "mapView.onLowMemory()",
             "mapView.onDestroy()",
+            "OfflineMapInstanceMetrics.onCreated()",
+            "OfflineMapInstanceMetrics.onDestroyed()",
         ):
             self.assertIn(required, surface)
         self.assertNotRegex(surface, r'(?i)https?://')
@@ -84,6 +86,13 @@ class MapRendererContractTest(unittest.TestCase):
         ):
             self.assertIn(required, test)
         self.assertNotIn("assertNotNull(activity.mapView)", test)
+
+        story = (
+            ROOT / "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt"
+        ).read_text()
+        self.assertIn("fiftyMapSearchBridgeTransitionsDoNotAccumulateNativeMapViews", story)
+        self.assertIn("assertEquals(50, OfflineMapInstanceMetrics.createdCount)", story)
+        self.assertIn("assertEquals(1, OfflineMapInstanceMetrics.peakLiveCount)", story)
 
     def test_noaa_subset_and_each_copied_tile_are_hash_bound(self):
         provenance_path = FIXTURE_ROOT / "NOAA_NCDS_21_SOURCE.json"
