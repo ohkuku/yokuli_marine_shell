@@ -35,26 +35,6 @@ data class MapCamera(
     }
 }
 
-enum class PositionAvailability { UNAVAILABLE, STALE, FRESH }
-
-data class PositionObservation(
-    val observationId: String,
-    val point: GeoPoint,
-    val observedAtMillis: Long,
-    val source: String,
-) {
-    init {
-        require(observationId.isNotBlank()) { "Position observation ID is required" }
-        require(observedAtMillis >= 0L) { "Observation time must be non-negative" }
-        require(source.isNotBlank()) { "Position source is required" }
-    }
-}
-
-data class PositionState(
-    val availability: PositionAvailability = PositionAvailability.UNAVAILABLE,
-    val observation: PositionObservation? = null,
-)
-
 data class MapSelection(val point: GeoPoint)
 
 enum class PlaceCategory(val wireValue: String, val searchAliases: Set<String>) {

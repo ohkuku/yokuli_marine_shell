@@ -215,14 +215,14 @@ class DefaultMapStore(
             if (action is MapAction.CameraChanged) {
                 val removed = actions.removeAll { it is MapAction.CameraChanged }
                 if (actions.size >= capacity) {
-                    actions.removeFirstOrNull { it is MapAction.ClockTick }
+                    actions.removeFirstOrNull { it is MapAction.PositionClockTick }
                 }
                 if (actions.size >= capacity) return MapDispatchResult.REJECTED_BACKPRESSURE
                 actions.addLast(action)
                 return if (removed) MapDispatchResult.COALESCED else MapDispatchResult.ACCEPTED
             }
             if (actions.size >= capacity) {
-                actions.removeFirstOrNull { it is MapAction.CameraChanged || it is MapAction.ClockTick }
+                actions.removeFirstOrNull { it is MapAction.CameraChanged || it is MapAction.PositionClockTick }
             }
             if (actions.size >= capacity && !internal) return MapDispatchResult.REJECTED_BACKPRESSURE
             actions.addLast(action)

@@ -45,6 +45,19 @@ object Wgs84Geodesic {
         }
     }
 
+    fun destination(from: GeoPoint, trueBearingDegrees: Double, distanceMeters: Double): GeoPoint {
+        require(trueBearingDegrees.isFinite())
+        require(distanceMeters.isFinite() && distanceMeters >= 0.0)
+        if (distanceMeters == 0.0) return from
+        val result = Geodesic.WGS84.Direct(
+            from.latitude,
+            from.longitude,
+            trueBearingDegrees,
+            distanceMeters,
+        )
+        return GeoPoint(result.lat2, normalizeLongitude(result.lon2))
+    }
+
     private fun hasMultipleShortestAzimuths(from: GeoPoint, to: GeoPoint): Boolean {
         val oppositePoles = abs(from.latitude) == 90.0 && abs(to.latitude) == 90.0 &&
             from.latitude == -to.latitude

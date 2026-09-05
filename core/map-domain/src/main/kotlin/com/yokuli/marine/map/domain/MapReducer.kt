@@ -106,9 +106,14 @@ sealed interface MapAction {
     data class SaveRouteCopy(val name: String) : MapAction
     /** One confirmed GPX preview becomes one optimistic, transactional library revision. */
     data class ImportGpxBatch(val batch: GpxImportBatch) : MapAction
-    data class ObservePosition(val observation: PositionObservation, val nowMillis: Long) : MapAction
-    data class ClockTick(val nowMillis: Long) : MapAction
-    data object PositionUnavailable : MapAction
+    data class PositionSourceConnected(val source: ObservationSource) : MapAction
+    data class PositionSourceDisconnected(val source: ObservationSource, val at: MonotonicTime) : MapAction
+    data object PositionSourceUnavailable : MapAction
+    data class ObservePosition(val observation: PositionObservation, val now: MonotonicTime) : MapAction
+    data class ObserveHeading(val observation: HeadingObservation, val now: MonotonicTime) : MapAction
+    data class ObserveCourseSpeed(val observation: CourseSpeedObservation, val now: MonotonicTime) : MapAction
+    data class PositionClockTick(val now: MonotonicTime) : MapAction
+    data class SetPositionViewIntent(val intent: PositionViewIntent) : MapAction
     data class ChartPackagesChanged(val packages: List<ChartPackage>) : MapAction
     data class SelectChartPackage(val packageId: ChartPackageId) : MapAction
     data object RetryPersistence : MapAction
@@ -154,6 +159,7 @@ sealed interface MapIncident {
     data class UnknownChartPackage(val packageId: ChartPackageId) : MapIncident
     data class PersistenceFailure(val operation: String, val failure: MapReadFailure) : MapIncident
     data class RendererFailure(val failure: MapRendererFailure) : MapIncident
+    data class ObservationRejected(val reason: ObservationRejection) : MapIncident
 }
 
 sealed interface MapEffect {
@@ -304,9 +310,18 @@ class DefaultMapReducer(
         MapAction.UndoDeleteRoutePlan -> undoDeleteRoutePlan(state)
         is MapAction.SaveRouteCopy -> saveRouteCopy(state, action.name)
         is MapAction.ImportGpxBatch -> importGpxBatch(state, action.batch)
+        is MapAction.PositionSourceConnected -> MapReduction(
+            state.copy(position = state.position.copy(sourceStatus = PositionSourceStatus.Connected(action.source))),
+        )
+        is MapAction.PositionSourceDisconnected -> positionSourceDisconnected(state, action)
+        MapAction.PositionSourceUnavailable -> MapReduction(
+            state.copy(position = state.position.copy(sourceStatus = PositionSourceStatus.NoSource)),
+        )
         is MapAction.ObservePosition -> observePosition(state, action)
-        is MapAction.ClockTick -> MapReduction(state.copy(position = state.position.at(action.nowMillis)))
-        MapAction.PositionUnavailable -> MapReduction(state.copy(position = PositionState()))
+        is MapAction.ObserveHeading -> observeHeading(state, action)
+        is MapAction.ObserveCourseSpeed -> observeCourseSpeed(state, action)
+        is MapAction.PositionClockTick -> MapReduction(state.copy(position = state.position.at(action.now)))
+        is MapAction.SetPositionViewIntent -> setPositionViewIntent(state, action.intent)
         is MapAction.ChartPackagesChanged -> updateChartPackages(state, action.packages)
         is MapAction.SelectChartPackage -> selectChartPackage(state, action.packageId)
         MapAction.RetryPersistence -> retryPersistence(state)
@@ -469,7 +484,12 @@ class DefaultMapReducer(
         ) {
             return MapReduction(state)
         }
-        return if (state.camera == action.camera) MapReduction(state) else persistSession(state.copy(camera = action.camera))
+        val browsing = state.copy(position = state.position.copy(viewIntent = PositionViewIntent.BROWSE))
+        return if (browsing.camera == action.camera && browsing == state) {
+            MapReduction(state)
+        } else {
+            persistSession(browsing.copy(camera = action.camera))
+        }
     }
 
     private fun selectTool(state: MapState, tool: MapTool): MapState = when (tool) {
@@ -1409,28 +1429,131 @@ class DefaultMapReducer(
             )
         }
 
+    private fun positionSourceDisconnected(
+        state: MapState,
+        action: MapAction.PositionSourceDisconnected,
+    ): MapReduction {
+        val current = state.position.sourceStatus as? PositionSourceStatus.Connected ?: return MapReduction(state)
+        if (current.source != action.source) return incident(state, MapIncident.ObservationRejected(ObservationRejection.SOURCE_MISMATCH))
+        return MapReduction(
+            state.copy(position = state.position.copy(sourceStatus = PositionSourceStatus.Disconnected(action.source, action.at))),
+        )
+    }
+
     private fun observePosition(state: MapState, action: MapAction.ObservePosition): MapReduction {
-        if (state.position.observation?.observationId == action.observation.observationId) return MapReduction(state)
+        observationRejection(state.position, state.position.observation?.identity, action.observation.identity, action.now)
+            ?.let { return incident(state, MapIncident.ObservationRejected(it)) }
+        val availability = PositionFreshnessPolicy.availability(
+            action.observation.identity,
+            action.observation.validity,
+            action.now,
+            PositionFreshnessPolicy.POSITION_FRESH_MILLIS,
+        )
+        var updated = state.copy(
+            position = state.position.copy(
+                observation = action.observation,
+                availability = availability,
+                evaluatedAt = action.now,
+            ),
+        )
+        if (availability == PositionAvailability.FRESH && updated.position.viewIntent == PositionViewIntent.FOLLOW_POSITION) {
+            updated = updated.withCameraCommand(
+                MapCameraTarget.Exact(updated.camera.copy(center = action.observation.point)),
+                MapCameraIntent.FOLLOW_POSITION,
+            )
+        }
+        return MapReduction(updated)
+    }
+
+    private fun observeHeading(state: MapState, action: MapAction.ObserveHeading): MapReduction {
+        observationRejection(state.position, state.position.heading?.identity, action.observation.identity, action.now)
+            ?.let { return incident(state, MapIncident.ObservationRejected(it)) }
         return MapReduction(
             state.copy(
-                position = PositionState(
-                    availability = availability(action.observation, action.nowMillis),
-                    observation = action.observation,
+                position = state.position.copy(
+                    heading = action.observation,
+                    evaluatedAt = action.now,
+                    headingAvailability = PositionFreshnessPolicy.availability(
+                        action.observation.identity,
+                        action.observation.validity,
+                        action.now,
+                        PositionFreshnessPolicy.HEADING_FRESH_MILLIS,
+                    ),
                 ),
             ),
         )
     }
 
-    private fun PositionState.at(nowMillis: Long): PositionState = observation?.let { observation ->
-        copy(availability = availability(observation, nowMillis))
-    } ?: PositionState()
+    private fun observeCourseSpeed(state: MapState, action: MapAction.ObserveCourseSpeed): MapReduction {
+        observationRejection(state.position, state.position.courseSpeed?.identity, action.observation.identity, action.now)
+            ?.let { return incident(state, MapIncident.ObservationRejected(it)) }
+        return MapReduction(
+            state.copy(
+                position = state.position.copy(
+                    courseSpeed = action.observation,
+                    evaluatedAt = action.now,
+                    courseSpeedAvailability = PositionFreshnessPolicy.availability(
+                        action.observation.identity,
+                        action.observation.validity,
+                        action.now,
+                        PositionFreshnessPolicy.COURSE_SPEED_FRESH_MILLIS,
+                    ),
+                ),
+            ),
+        )
+    }
 
-    private fun availability(observation: PositionObservation, nowMillis: Long): PositionAvailability =
-        if (nowMillis - observation.observedAtMillis <= FRESH_POSITION_WINDOW_MILLIS) {
-            PositionAvailability.FRESH
-        } else {
-            PositionAvailability.STALE
+    private fun observationRejection(
+        state: PositionState,
+        current: ObservationIdentity?,
+        incoming: ObservationIdentity,
+        now: MonotonicTime,
+    ): ObservationRejection? {
+        val active = (state.sourceStatus as? PositionSourceStatus.Connected)?.source
+        if (active != incoming.source) return ObservationRejection.SOURCE_MISMATCH
+        if (incoming.receivedAt.bootId == now.bootId &&
+            incoming.receivedAt.elapsedRealtimeMillis > now.elapsedRealtimeMillis
+        ) return ObservationRejection.FUTURE_MONOTONIC_TIME
+        if (current?.source != incoming.source) return null
+        if (current.observationId == incoming.observationId) return ObservationRejection.DUPLICATE
+        if (current.sequence != null && incoming.sequence != null && incoming.sequence <= current.sequence) {
+            return ObservationRejection.OUT_OF_ORDER
         }
+        if (current.receivedAt.bootId == incoming.receivedAt.bootId &&
+            incoming.receivedAt.elapsedRealtimeMillis < current.receivedAt.elapsedRealtimeMillis
+        ) return ObservationRejection.OUT_OF_ORDER
+        return null
+    }
+
+    private fun PositionState.at(now: MonotonicTime): PositionState = copy(
+        evaluatedAt = now,
+        availability = observation?.let {
+            PositionFreshnessPolicy.availability(it.identity, it.validity, now, PositionFreshnessPolicy.POSITION_FRESH_MILLIS)
+        } ?: PositionAvailability.UNAVAILABLE,
+        headingAvailability = heading?.let {
+            PositionFreshnessPolicy.availability(it.identity, it.validity, now, PositionFreshnessPolicy.HEADING_FRESH_MILLIS)
+        } ?: PositionAvailability.UNAVAILABLE,
+        courseSpeedAvailability = courseSpeed?.let {
+            PositionFreshnessPolicy.availability(it.identity, it.validity, now, PositionFreshnessPolicy.COURSE_SPEED_FRESH_MILLIS)
+        } ?: PositionAvailability.UNAVAILABLE,
+    )
+
+    private fun setPositionViewIntent(state: MapState, intent: PositionViewIntent): MapReduction {
+        if (intent == PositionViewIntent.BROWSE) {
+            return MapReduction(state.copy(position = state.position.copy(viewIntent = intent)))
+        }
+        val render = PositionRenderPolicy.resolve(state.position)
+        val point = render.point ?: return MapReduction(state)
+        if (render.markerStyle !in setOf(VesselMarkerStyle.LIVE_NEUTRAL, VesselMarkerStyle.LIVE_TRUE_HEADING)) {
+            return MapReduction(state)
+        }
+        return MapReduction(
+            state.copy(position = state.position.copy(viewIntent = intent)).withCameraCommand(
+                MapCameraTarget.Exact(state.camera.copy(center = point)),
+                MapCameraIntent.FOLLOW_POSITION,
+            ),
+        )
+    }
 
     private fun ManualRouteDraft.record(
         items: List<RouteWaypointValue>,
@@ -1542,7 +1665,6 @@ class DefaultMapReducer(
         MapReduction(state, listOf(MapEffect.LogIncident(value)))
 
     private companion object {
-        const val FRESH_POSITION_WINDOW_MILLIS = 30_000L
         const val DEFAULT_HISTORY_LIMIT = 50
         const val EXTREME_PLANNED_SPEED_KNOTS = 100.0
     }

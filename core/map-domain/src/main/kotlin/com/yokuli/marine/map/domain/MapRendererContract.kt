@@ -41,7 +41,7 @@ sealed interface MapCameraTarget {
     }
 }
 
-enum class MapCameraIntent { RESTORE, NORTH_RESET, VIEW_PLACE, VIEW_ROUTE, VIEW_PACKAGE, VIEW_TRACK }
+enum class MapCameraIntent { RESTORE, NORTH_RESET, VIEW_PLACE, VIEW_ROUTE, VIEW_PACKAGE, VIEW_TRACK, FOLLOW_POSITION }
 
 data class MapCameraCommand(
     val id: MapCameraCommandId,
@@ -85,6 +85,10 @@ enum class MapOverlayId(val wireValue: String) {
     MANUAL_ROUTE_POINTS("manual-route-points"),
     IMPORTED_TRACKS("imported-tracks"),
     POSITION_OBSERVATION("position-observation"),
+    POSITION_HISTORY("position-history"),
+    TRUE_HEADING("true-heading"),
+    COURSE_OVER_GROUND("course-over-ground"),
+    POSITION_ACCURACY("position-accuracy"),
 }
 
 data class MapHitResult(val overlayId: MapOverlayId, val objectId: String)

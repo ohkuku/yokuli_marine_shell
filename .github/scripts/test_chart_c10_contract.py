@@ -53,8 +53,8 @@ class ChartC10ContractTest(unittest.TestCase):
             for p in base.rglob("*")
             if p.is_file() and p.suffix in {".kt", ".xml"}
         )
-        self.assertNotIn("ACCESS_FINE_LOCATION", manifest)
-        self.assertNotIn("ACCESS_COARSE_LOCATION", manifest)
+        self.assertIn('android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove"', manifest)
+        self.assertIn('android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove"', manifest)
         self.assertNotIn("NmeaWriter", production)
         self.assertNotIn("Autopilot", production)
         self.assertNotIn("ReplayPosition", production)

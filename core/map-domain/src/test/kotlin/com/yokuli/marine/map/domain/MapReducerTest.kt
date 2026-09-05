@@ -33,17 +33,24 @@ class MapReducerTest {
 
     @Test
     fun `position freshness is based on observation identity and observed time`() {
-        val first = PositionObservation("fix-1", auckland, observedAtMillis = 1_000L, source = "phone")
-        val fresh = reduce(MapState(), MapAction.ObservePosition(first, nowMillis = 5_000L)).state
+        val source = ObservationSource("phone", "session-1")
+        fun fix(id: String, point: GeoPoint, received: Long) = PositionObservation(
+            ObservationIdentity(source, id, received, receivedAt = MonotonicTime("boot", received)),
+            point,
+            ObservationValidity.VALID,
+        )
+        var connected = reduce(MapState(), MapAction.PositionSourceConnected(source)).state
+        val first = fix("fix-1", auckland, 1_000L)
+        val fresh = reduce(connected, MapAction.ObservePosition(first, MonotonicTime("boot", 5_000L))).state
         val duplicate = reduce(
             fresh,
-            MapAction.ObservePosition(first.copy(point = rangitoto, observedAtMillis = 20_000L), nowMillis = 20_000L),
+            MapAction.ObservePosition(fix("fix-1", rangitoto, 20_000L), MonotonicTime("boot", 20_000L)),
         ).state
-        val stale = reduce(duplicate, MapAction.ClockTick(nowMillis = 40_001L)).state
+        val stale = reduce(duplicate, MapAction.PositionClockTick(MonotonicTime("boot", 40_001L))).state
 
         assertEquals(PositionAvailability.FRESH, fresh.position.availability)
         assertEquals(auckland, duplicate.position.observation?.point)
-        assertEquals(1_000L, duplicate.position.observation?.observedAtMillis)
+        assertEquals(1_000L, duplicate.position.observation?.identity?.receivedAt?.elapsedRealtimeMillis)
         assertEquals(PositionAvailability.STALE, stale.position.availability)
     }
 

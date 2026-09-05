@@ -42,6 +42,9 @@ import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
+import com.yokuli.marine.map.domain.PositionRenderPolicy
+import com.yokuli.marine.map.domain.VesselMarkerStyle
+import com.yokuli.marine.map.domain.Wgs84Geodesic
 import com.yokuli.marine.map.domain.ImportedTrackDisplayLod
 import com.yokuli.marine.map.domain.ImportedTrack
 import com.yokuli.marine.map.domain.Wgs84Polyline
@@ -72,6 +75,7 @@ import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
+import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -290,6 +294,10 @@ fun OfflineMarineChartSurface(
                 style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 5f)
                 style.addLineOverlay(MapOverlayId.IMPORTED_TRACKS, 0xff9b59b6.toInt(), 3f)
                 style.addPointOverlay(MapOverlayId.POSITION_OBSERVATION, 0xff00d084.toInt(), 7f)
+                style.addPointOverlay(MapOverlayId.POSITION_HISTORY, 0xff7f8c8d.toInt(), 6f)
+                style.addLineOverlay(MapOverlayId.TRUE_HEADING, 0xff00d084.toInt(), 4f)
+                style.addLineOverlay(MapOverlayId.COURSE_OVER_GROUND, 0xff00a4ef.toInt(), 2f, dashed = true)
+                style.addLineOverlay(MapOverlayId.POSITION_ACCURACY, 0xffb7c4c8.toInt(), 1.5f, dashed = true)
                 activeStyle = style
                 currentAction(MapAction.RendererHostReady(generation))
                 currentAction(MapAction.RendererReady(generation))
@@ -363,7 +371,7 @@ fun OfflineMarineChartSurface(
         state.importedTracks,
         state.editGesture,
         state.camera.zoom,
-        state.position.observation,
+        state.position,
     ) {
         val style = activeStyle ?: return@LaunchedEffect
         val measurementPoints = state.measurementPointsWithPreview()
@@ -371,6 +379,7 @@ fun OfflineMarineChartSurface(
         val trackFeatures = withContext(Dispatchers.Default) {
             state.importedTracks.toDisplayFeatureCollection(state.camera.zoom)
         }
+        val positionFrame = withContext(Dispatchers.Default) { state.position.toOverlayFrame() }
         withContext(Dispatchers.Main.immediate) {
             if (disposed.get() || activeStyle !== style) return@withContext
             style.source(MapOverlayId.SAVED_PLACES)?.setGeoJson(
@@ -406,11 +415,11 @@ fun OfflineMarineChartSurface(
                 ),
             )
             style.source(MapOverlayId.IMPORTED_TRACKS)?.setGeoJson(trackFeatures)
-            style.source(MapOverlayId.POSITION_OBSERVATION)?.setGeoJson(
-                state.position.observation?.point.toFeatureCollection(
-                    "position:${state.position.observation?.observationId.orEmpty()}",
-                ),
-            )
+            style.source(MapOverlayId.POSITION_OBSERVATION)?.setGeoJson(positionFrame.livePoint)
+            style.source(MapOverlayId.POSITION_HISTORY)?.setGeoJson(positionFrame.historicalPoint)
+            style.source(MapOverlayId.TRUE_HEADING)?.setGeoJson(positionFrame.trueHeading)
+            style.source(MapOverlayId.COURSE_OVER_GROUND)?.setGeoJson(positionFrame.courseOverGround)
+            style.source(MapOverlayId.POSITION_ACCURACY)?.setGeoJson(positionFrame.accuracy)
         }
     }
 
@@ -519,10 +528,69 @@ private fun Style.addPointOverlay(id: MapOverlayId, color: Int, radius: Float) {
     )
 }
 
-private fun Style.addLineOverlay(id: MapOverlayId, color: Int, width: Float) {
+private fun Style.addLineOverlay(id: MapOverlayId, color: Int, width: Float, dashed: Boolean = false) {
     addSource(GeoJsonSource(id.wireValue, FeatureCollection.fromFeatures(emptyList<Feature>())))
-    addLayer(LineLayer(id.wireValue, id.wireValue).withProperties(lineColor(color), lineWidth(width)))
+    val layer = LineLayer(id.wireValue, id.wireValue).withProperties(lineColor(color), lineWidth(width))
+    if (dashed) layer.setProperties(lineDasharray(arrayOf(2f, 2f)))
+    addLayer(layer)
 }
+
+internal data class PositionOverlayFrame(
+    val livePoint: FeatureCollection,
+    val historicalPoint: FeatureCollection,
+    val trueHeading: FeatureCollection,
+    val courseOverGround: FeatureCollection,
+    val accuracy: FeatureCollection,
+)
+
+internal fun com.yokuli.marine.map.domain.PositionState.toOverlayFrame(): PositionOverlayFrame {
+    val render = PositionRenderPolicy.resolve(this)
+    val id = observation?.identity?.observationId.orEmpty()
+    val live = render.point.takeIf {
+        render.markerStyle == VesselMarkerStyle.LIVE_NEUTRAL || render.markerStyle == VesselMarkerStyle.LIVE_TRUE_HEADING
+    }
+    val historical = render.point.takeIf { render.markerStyle == VesselMarkerStyle.HISTORICAL }
+    return PositionOverlayFrame(
+        livePoint = live.toFeatureCollection("position:$id"),
+        historicalPoint = historical.toFeatureCollection("position:$id"),
+        trueHeading = render.point.directionFeatureCollection(
+            render.trueHeadingDegrees,
+            HEADING_VECTOR_METERS,
+            "position-heading:$id",
+        ),
+        courseOverGround = render.point.directionFeatureCollection(
+            render.courseVector?.trueDegrees,
+            render.courseVector?.speedKnots?.times(COURSE_VECTOR_METERS_PER_KNOT)?.coerceIn(
+                MIN_COURSE_VECTOR_METERS,
+                MAX_COURSE_VECTOR_METERS,
+            ),
+            "position-course:$id",
+        ),
+        accuracy = render.point.accuracyFeatureCollection(render.accuracyMeters, "position-accuracy:$id"),
+    )
+}
+
+private fun GeoPoint?.directionFeatureCollection(
+    trueDegrees: Double?,
+    distanceMeters: Double?,
+    id: String,
+): FeatureCollection {
+    if (this == null || trueDegrees == null || distanceMeters == null) return emptyFeatureCollection()
+    val end = Wgs84Geodesic.destination(this, trueDegrees, distanceMeters)
+    return FeatureCollection.fromFeatures(
+        listOf(Feature.fromGeometry(LineString.fromLngLats(listOf(toGeoJsonPoint(), end.toGeoJsonPoint())), null, id)),
+    )
+}
+
+private fun GeoPoint?.accuracyFeatureCollection(radiusMeters: Double?, id: String): FeatureCollection {
+    if (this == null || radiusMeters == null || radiusMeters <= 0.0) return emptyFeatureCollection()
+    val ring = (0..ACCURACY_RING_SEGMENTS).map { index ->
+        Wgs84Geodesic.destination(this, index * 360.0 / ACCURACY_RING_SEGMENTS, radiusMeters).toGeoJsonPoint()
+    }
+    return FeatureCollection.fromFeatures(listOf(Feature.fromGeometry(LineString.fromLngLats(ring), null, id)))
+}
+
+private fun emptyFeatureCollection() = FeatureCollection.fromFeatures(emptyList<Feature>())
 
 private fun ChartPackage.hasReadableMbTiles(): Boolean {
     val uri = Uri.parse(localUri)
@@ -563,6 +631,10 @@ private fun MapOverlayId.objectIdPrefix(): String = when (this) {
     MapOverlayId.MANUAL_ROUTE_POINTS -> "route-point:"
     MapOverlayId.IMPORTED_TRACKS -> "track:"
     MapOverlayId.POSITION_OBSERVATION -> "position:"
+    MapOverlayId.POSITION_HISTORY -> "position:"
+    MapOverlayId.TRUE_HEADING -> "position-heading:"
+    MapOverlayId.COURSE_OVER_GROUND -> "position-course:"
+    MapOverlayId.POSITION_ACCURACY -> "position-accuracy:"
 }
 
 private val INTERACTIVE_OVERLAYS = setOf(
@@ -679,6 +751,11 @@ private fun wrapLongitude(value: Double): Double = ((value + 180.0) % 360.0 + 36
 private const val CHART_SOURCE = "installed-raster-chart"
 private const val CHART_LAYER = "installed-raster-chart-layer"
 private const val WEB_MERCATOR_MAX_LATITUDE = 85.05112878
+private const val HEADING_VECTOR_METERS = 120.0
+private const val COURSE_VECTOR_METERS_PER_KNOT = 25.0
+private const val MIN_COURSE_VECTOR_METERS = 80.0
+private const val MAX_COURSE_VECTOR_METERS = 500.0
+private const val ACCURACY_RING_SEGMENTS = 36
 private val nextRendererGeneration = AtomicLong(0L)
 private val nextPointGesture = AtomicLong(0L)
 

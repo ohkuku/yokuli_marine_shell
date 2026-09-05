@@ -87,6 +87,10 @@ import com.yokuli.marine.map.domain.NavigationSuitability
 import com.yokuli.marine.map.domain.PlaceCategory
 import com.yokuli.marine.map.domain.PlaceSearch
 import com.yokuli.marine.map.domain.PlaceSort
+import com.yokuli.marine.map.domain.PositionAvailability
+import com.yokuli.marine.map.domain.PositionRenderPolicy
+import com.yokuli.marine.map.domain.PositionSourceStatus
+import com.yokuli.marine.map.domain.PositionViewIntent
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
 import com.yokuli.marine.map.domain.RoutePlaceSourceState
@@ -94,6 +98,7 @@ import com.yokuli.marine.map.domain.RouteEditNotice
 import com.yokuli.marine.map.domain.SlippyTileKey
 import com.yokuli.marine.map.domain.TileAvailability
 import com.yokuli.marine.map.domain.minimalBounds
+import com.yokuli.marine.map.domain.positionAgeMillis
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import java.util.Locale
@@ -240,7 +245,7 @@ private fun MapRootChrome(
     onExportRecovery: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        MapTruthStrip(state, Modifier.align(Alignment.TopStart))
+        MapTruthStrip(state, onAction, Modifier.align(Alignment.TopStart))
         MapPersistenceTruth(
             state,
             recoveryExportState,
@@ -272,7 +277,7 @@ private fun MapRootChrome(
 }
 
 @Composable
-private fun MapTruthStrip(state: MapState, modifier: Modifier = Modifier) {
+private fun MapTruthStrip(state: MapState, onAction: (MapAction) -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalWpTheme.current
     val status = when {
         state.renderer.readiness == MapRendererReadiness.ERROR -> R.string.map_renderer_error
@@ -282,18 +287,72 @@ private fun MapTruthStrip(state: MapState, modifier: Modifier = Modifier) {
         state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_ATTACHED -> R.string.map_package_attached
         else -> R.string.map_no_package
     }
-    Row(
+    Column(
         modifier.background(colors.background.copy(alpha = .88f)).padding(horizontal = 10.dp, vertical = 6.dp)
             .testTag("map-truth-strip"),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        WpText(stringResource(status), 10, color = colors.foreground, maxLines = 1)
-        WpText(
-            stringResource(R.string.map_scale_100px, state.camera.scaleNauticalMilesForPixels(100.0)),
-            10,
-            color = colors.muted,
-            maxLines = 1,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            WpText(stringResource(status), 10, color = colors.foreground, maxLines = 1)
+            WpText(
+                stringResource(R.string.map_scale_100px, state.camera.scaleNauticalMilesForPixels(100.0)),
+                10,
+                color = colors.muted,
+                maxLines = 1,
+            )
+        }
+        MapPositionTruth(state, onAction)
+    }
+}
+
+@Composable
+private fun MapPositionTruth(state: MapState, onAction: (MapAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    val position = state.position
+    val message = when {
+        position.sourceStatus is PositionSourceStatus.NoSource -> stringResource(R.string.map_position_no_source)
+        position.availability == PositionAvailability.INVALID -> stringResource(R.string.map_position_invalid)
+        position.availability == PositionAvailability.UNAVAILABLE -> stringResource(R.string.map_position_unavailable)
+        position.sourceStatus is PositionSourceStatus.Disconnected && position.availability == PositionAvailability.FRESH ->
+            stringResource(R.string.map_position_disconnected_last_fix)
+        position.availability == PositionAvailability.STALE -> position.positionAgeMillis()?.let { age ->
+            stringResource(R.string.map_position_history_age, age / 1_000L)
+        } ?: stringResource(R.string.map_position_history)
+        else -> {
+            val render = PositionRenderPolicy.resolve(position)
+            when {
+                render.trueHeadingDegrees != null -> stringResource(R.string.map_position_fresh_true_heading)
+                render.courseVector != null -> stringResource(R.string.map_position_fresh_cog)
+                else -> stringResource(R.string.map_position_fresh_neutral)
+            }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        WpText(message, 10, color = colors.muted, maxLines = 1, modifier = Modifier.testTag("map-position-truth"))
+        if (position.sourceStatus is PositionSourceStatus.Connected &&
+            position.availability == PositionAvailability.FRESH
+        ) {
+            MapTextButton(
+                label = stringResource(
+                    if (position.viewIntent == PositionViewIntent.FOLLOW_POSITION) {
+                        R.string.map_position_browse
+                    } else {
+                        R.string.map_position_follow
+                    },
+                ),
+                tag = "map-position-follow",
+            ) {
+                onAction(
+                    MapAction.SetPositionViewIntent(
+                        if (position.viewIntent == PositionViewIntent.FOLLOW_POSITION) {
+                            PositionViewIntent.BROWSE
+                        } else {
+                            PositionViewIntent.FOLLOW_POSITION
+                        },
+                    ),
+                )
+            }
+        }
     }
 }
 

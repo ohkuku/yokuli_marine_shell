@@ -21,6 +21,7 @@ import com.yokuli.marine.feature.chart.GpxImportUiAction
 import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.OfflineCoverageCoordinator
 import com.yokuli.marine.feature.chart.OfflineCoverageUiState
+import com.yokuli.marine.feature.chart.PositionObservationCoordinator
 import android.net.Uri
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
@@ -81,6 +82,12 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
                 -> Unit
             }
         },
+    )
+    private val positionObservationCoordinator = PositionObservationCoordinator(
+        port = (application as ShellApplication).positionPort,
+        mapStore = mapStore,
+        scope = viewModelScope,
+        clock = application.observationClock,
     )
     private val chartPackageCoordinator = ChartPackageCoordinator(
         repository = chartPackages,
@@ -242,6 +249,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        positionObservationCoordinator.close()
         mapStore.close()
         super.onCleared()
     }

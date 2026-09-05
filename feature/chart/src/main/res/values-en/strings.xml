@@ -1,9 +1,17 @@
 <resources>
     <string name="app_chart">map</string>
     <string name="map_context_offline_first">offline first · planning workbench</string>
-    <string name="map_position_unavailable">POSITION UNAVAILABLE</string>
-    <string name="map_position_stale">POSITION DATA STALE</string>
-    <string name="map_position_fresh">POSITION DATA FRESH</string>
+    <string name="map_position_no_source">NO POSITION SOURCE</string>
+    <string name="map_position_unavailable">NO VALID POSITION</string>
+    <string name="map_position_invalid">POSITION SAMPLE INVALID</string>
+    <string name="map_position_disconnected_last_fix">SOURCE DISCONNECTED · LAST FIX NOT YET STALE</string>
+    <string name="map_position_history_age">HISTORICAL POSITION · %1$d S AGO</string>
+    <string name="map_position_history">HISTORICAL POSITION · DEVICE CLOCK RESTARTED</string>
+    <string name="map_position_fresh_neutral">LIVE POSITION · NO VALID ORIENTATION</string>
+    <string name="map_position_fresh_true_heading">LIVE POSITION · TRUE HEADING</string>
+    <string name="map_position_fresh_cog">LIVE POSITION · COURSE OVER GROUND</string>
+    <string name="map_position_follow">FOLLOW POSITION</string>
+    <string name="map_position_browse">STOP FOLLOWING</string>
     <string name="map_renderer_error">MAP RENDERER ERROR</string>
     <string name="map_package_missing">CHART PACKAGE MISSING · LINES PRESERVED</string>
     <string name="map_package_degraded">SOME TILES UNAVAILABLE · LINES PRESERVED</string>

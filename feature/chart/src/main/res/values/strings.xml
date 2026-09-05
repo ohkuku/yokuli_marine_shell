@@ -1,9 +1,17 @@
 <resources>
     <string name="app_chart">地图</string>
     <string name="map_context_offline_first">离线优先 · 规划工作台</string>
-    <string name="map_position_unavailable">位置不可用</string>
-    <string name="map_position_stale">位置数据已过期</string>
-    <string name="map_position_fresh">位置数据为最新</string>
+    <string name="map_position_no_source">无位置数据源</string>
+    <string name="map_position_unavailable">暂无有效位置</string>
+    <string name="map_position_invalid">位置样本无效</string>
+    <string name="map_position_disconnected_last_fix">数据源已断开 · 最后位置暂未过期</string>
+    <string name="map_position_history_age">历史位置 · %1$d 秒前</string>
+    <string name="map_position_history">历史位置 · 设备时钟已重启</string>
+    <string name="map_position_fresh_neutral">实时位置 · 无有效朝向</string>
+    <string name="map_position_fresh_true_heading">实时位置 · 真航向</string>
+    <string name="map_position_fresh_cog">实时位置 · 对地航迹</string>
+    <string name="map_position_follow">跟随位置</string>
+    <string name="map_position_browse">停止跟随</string>
     <string name="map_renderer_error">地图渲染器错误</string>
     <string name="map_package_missing">海图包已丢失 · 点线仍保留</string>
     <string name="map_package_degraded">部分图块不可用 · 点线仍保留</string>

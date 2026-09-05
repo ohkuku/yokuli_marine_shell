@@ -193,7 +193,7 @@ class RoutePlanningContractTest {
             MapAction.PreviewRoutePlan(plan.id),
         ).state
         val before = state.savedRoutes
-        state = reducer.reduce(state, MapAction.PositionUnavailable).state
+        state = reducer.reduce(state, MapAction.PositionSourceUnavailable).state
         state = reducer.reduce(state, MapAction.ChartPackagesChanged(emptyList())).state
 
         assertEquals(before, state.savedRoutes)

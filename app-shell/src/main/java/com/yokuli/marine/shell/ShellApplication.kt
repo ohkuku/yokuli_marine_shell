@@ -12,6 +12,9 @@ import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.map.storage.RoomMapPersistence
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
+import com.yokuli.marine.map.domain.NoSourcePositionPort
+import com.yokuli.marine.map.domain.ObservationMonotonicClock
+import com.yokuli.marine.map.domain.MonotonicTime
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
 class ShellApplication : Application() {
+    private val processObservationClockId = java.util.UUID.randomUUID().toString()
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val launcherPersistence by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ProtoDataStoreLauncherPersistence.create(
@@ -35,6 +39,10 @@ class ShellApplication : Application() {
     }
     val chartCoverageIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         AndroidChartCoverageIndex(chartPackageRepository::acquireLease)
+    }
+    val positionPort = NoSourcePositionPort
+    val observationClock = ObservationMonotonicClock {
+        MonotonicTime(processObservationClockId, android.os.SystemClock.elapsedRealtime())
     }
 
     override fun onCreate() {
