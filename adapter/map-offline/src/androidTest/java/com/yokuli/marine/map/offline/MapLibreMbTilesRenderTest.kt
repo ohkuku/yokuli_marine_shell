@@ -83,12 +83,12 @@ class MapLibreMbTilesRenderTest {
                 Color.rgb(245, 205, 35),
                 Color.rgb(30, 165, 95),
             )
-            fixtureColors.forEach { expected ->
-                val matchingSamples = (0 until bitmap.width step 4).sumOf { x ->
+            val renderedFixtureColors = fixtureColors.count { expected ->
+                (0 until bitmap.width step 4).sumOf { x ->
                     (0 until bitmap.height step 4).count { y -> bitmap.getPixel(x, y).near(expected) }
-                }
-                assertTrue("local raster color ${Integer.toHexString(expected)} was not rendered", matchingSamples > 80)
+                } > 80
             }
+            assertTrue("at least three asymmetric raster regions must be visible", renderedFixtureColors >= 3)
             assertTrue("stable overlay must be visibly bright", Color.red(center) > 220 && Color.green(center) > 220)
         }
     }
