@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.yokuli.marine.map.domain.ChartPackageImportRequest
 import com.yokuli.marine.map.domain.ChartPackageImportException
 import com.yokuli.marine.map.domain.ChartPackageImportFailure
@@ -112,6 +113,37 @@ class AndroidMbTilesRepositoryTest {
         val jpegCandidate = repository.inspect(jpeg.toURI().toString())
         assertEquals(512, jpegCandidate.tileSize)
         assertEquals("jpeg", jpegCandidate.rasterFormat)
+        testRoot.deleteRecursively()
+        Unit
+    }
+
+    @Test
+    fun tracedNoaaSubsetPassesTheSameImportPathAsUserDocuments() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-noaa-test").also { it.deleteRecursively(); it.mkdirs() }
+        val source = File(testRoot, "noaa-subset.mbtiles")
+        InstrumentationRegistry.getInstrumentation().context.assets
+            .open("fixtures/noaa_ncds21_real_chart_subset.mbtiles")
+            .use { input -> source.outputStream().use(input::copyTo) }
+        val repository = AndroidMbTilesRepository(context.contentResolver, File(testRoot, "packages"))
+
+        val candidate = repository.inspect(source.toURI().toString())
+        assertEquals("7da5ed14bc0b79585ec39f0afeb4fdde9d449a1f811054ea754929525530064f", candidate.sha256)
+        assertEquals("NOAA Chart Display Service ncds_21", candidate.suggestedSource)
+        assertEquals("Provided by NOAA Office of Coast Survey", candidate.suggestedAttribution)
+        assertEquals(256, candidate.tileSize)
+        val installed = repository.commit(
+            ChartPackageImportRequest(
+                candidate.stagedImportId,
+                candidate.suggestedDisplayName,
+                candidate.suggestedSource,
+                candidate.suggestedLicense,
+                candidate.suggestedAttribution,
+                candidate.suggestedVersion,
+            ),
+        )
+        assertEquals(candidate.sha256, installed.sha256)
+        assertTrue(File(android.net.Uri.parse(installed.localUri).path!!).isFile)
         testRoot.deleteRecursively()
         Unit
     }

@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -34,69 +35,114 @@ import org.maplibre.geojson.Point
 class MapLibreMbTilesRenderTest {
     @Test
     fun localMbTilesActuallyRendersDirectionalPixelsAndStableOverlayWithoutNetworkStyle() {
-        ActivityScenario.launch(MapRendererTestActivity::class.java).use { scenario ->
-            val snapshot = AtomicReference<Bitmap>()
-            val failure = AtomicReference<Throwable>()
-            val finished = CountDownLatch(1)
-            scenario.onActivity { activity ->
-                val fixture = File(activity.cacheDir, "maplibre-render-fixture.mbtiles")
-                createFixture(fixture)
-                activity.mapView.getMapAsync { map ->
-                    val requested = AtomicBoolean(false)
-                    activity.mapView.addOnDidFinishRenderingMapListener(
-                        object : MapView.OnDidFinishRenderingMapListener {
-                            override fun onDidFinishRenderingMap(fully: Boolean) {
-                                if (!fully || !requested.compareAndSet(false, true)) return
-                                map.snapshot { bitmap -> snapshot.set(bitmap); finished.countDown() }
-                            }
-                        },
-                    )
-                    map.cameraPosition = CameraPosition.Builder()
-                        .target(LatLng(0.0, 0.0)).zoom(0.0).bearing(0.0).tilt(0.0).build()
-                    map.setStyle(Style.Builder().fromJson(EMPTY_TEST_STYLE)) { style ->
-                        try {
-                            style.addSource(RasterSource("fixture", "mbtiles://${fixture.absolutePath}", 256))
-                            style.addLayer(RasterLayer("fixture-layer", "fixture"))
-                            val center = Feature.fromGeometry(Point.fromLngLat(0.0, 0.0), null, "overlay:center")
-                            style.addSource(GeoJsonSource("overlay", FeatureCollection.fromFeature(center)))
+        val bitmap = captureFixture(
+            name = "directional",
+            center = LatLng(0.0, 0.0),
+            zoom = 0.0,
+            overlayPoint = LatLng(0.0, 0.0),
+            prepare = { _, file -> createFixture(file) },
+        )
+        val center = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
+        val fixtureColors = listOf(
+            Color.rgb(210, 45, 35),
+            Color.rgb(25, 135, 220),
+            Color.rgb(245, 205, 35),
+            Color.rgb(30, 165, 95),
+        )
+        val renderedFixtureColors = fixtureColors.count { expected ->
+            (0 until bitmap.width step 4).sumOf { x ->
+                (0 until bitmap.height step 4).count { y -> bitmap.getPixel(x, y).near(expected) }
+            } > 80
+        }
+        assertTrue("at least three asymmetric raster regions must be visible", renderedFixtureColors >= 3)
+        assertTrue("stable overlay must be visibly bright", Color.red(center) > 220 && Color.green(center) > 220)
+    }
+
+    @Test
+    fun tracedNoaaSubsetRendersRecognisableChartPaletteFromLocalMbTiles() {
+        val bitmap = captureFixture(
+            name = "noaa-ncds21",
+            center = LatLng(51.9443, -130.957),
+            zoom = 10.0,
+            prepare = { _, file ->
+                InstrumentationRegistry.getInstrumentation().context.assets
+                    .open("fixtures/noaa_ncds21_real_chart_subset.mbtiles")
+                    .use { input -> file.outputStream().use(input::copyTo) }
+            },
+        )
+        val expectedPalette = listOf(
+            Color.rgb(254, 245, 206),
+            Color.rgb(180, 210, 225),
+            Color.rgb(235, 40, 135),
+            Color.rgb(35, 35, 35),
+        )
+        val represented = expectedPalette.count { expected ->
+            (0 until bitmap.width step 3).sumOf { x ->
+                (0 until bitmap.height step 3).count { y -> bitmap.getPixel(x, y).near(expected, tolerance = 35) }
+            } > 25
+        }
+        assertTrue("real NOAA chart pixels were not distinguishable from the empty style", represented >= 3)
+    }
+
+    private fun captureFixture(
+        name: String,
+        center: LatLng,
+        zoom: Double,
+        overlayPoint: LatLng? = null,
+        prepare: (MapRendererTestActivity, File) -> Unit,
+    ): Bitmap = ActivityScenario.launch(MapRendererTestActivity::class.java).use { scenario ->
+        val snapshot = AtomicReference<Bitmap>()
+        val failure = AtomicReference<Throwable>()
+        val finished = CountDownLatch(1)
+        scenario.onActivity { activity ->
+            val fixture = File(activity.cacheDir, "$name.mbtiles").also { it.delete() }
+            prepare(activity, fixture)
+            activity.mapView.getMapAsync { map ->
+                val requested = AtomicBoolean(false)
+                activity.mapView.addOnDidFinishRenderingMapListener(
+                    object : MapView.OnDidFinishRenderingMapListener {
+                        override fun onDidFinishRenderingMap(fully: Boolean) {
+                            if (!fully || !requested.compareAndSet(false, true)) return
+                            map.snapshot { bitmap -> snapshot.set(bitmap); finished.countDown() }
+                        }
+                    },
+                )
+                map.cameraPosition = CameraPosition.Builder()
+                    .target(center).zoom(zoom).bearing(0.0).tilt(0.0).build()
+                map.setStyle(Style.Builder().fromJson(EMPTY_TEST_STYLE)) { style ->
+                    try {
+                        style.addSource(RasterSource("fixture", "mbtiles://${fixture.absolutePath}", 256))
+                        style.addLayer(RasterLayer("fixture-layer", "fixture"))
+                        overlayPoint?.let { point ->
+                            val feature = Feature.fromGeometry(
+                                Point.fromLngLat(point.longitude, point.latitude),
+                                null,
+                                "overlay:center",
+                            )
+                            style.addSource(GeoJsonSource("overlay", FeatureCollection.fromFeature(feature)))
                             style.addLayer(
                                 CircleLayer("overlay-layer", "overlay").withProperties(
                                     circleColor(Color.WHITE), circleRadius(9f),
                                 ),
                             )
-                            map.triggerRepaint()
-                        } catch (error: Throwable) {
-                            failure.set(error)
-                            finished.countDown()
                         }
+                        map.triggerRepaint()
+                    } catch (error: Throwable) {
+                        failure.set(error)
+                        finished.countDown()
                     }
                 }
             }
-
-            assertTrue("MapLibre did not produce a fully-rendered local snapshot", finished.await(20, TimeUnit.SECONDS))
-            failure.get()?.let { throw AssertionError("MapLibre fixture setup failed", it) }
-            val bitmap = requireNotNull(snapshot.get())
-            val center = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
-            val fixtureColors = listOf(
-                Color.rgb(210, 45, 35),
-                Color.rgb(25, 135, 220),
-                Color.rgb(245, 205, 35),
-                Color.rgb(30, 165, 95),
-            )
-            val renderedFixtureColors = fixtureColors.count { expected ->
-                (0 until bitmap.width step 4).sumOf { x ->
-                    (0 until bitmap.height step 4).count { y -> bitmap.getPixel(x, y).near(expected) }
-                } > 80
-            }
-            assertTrue("at least three asymmetric raster regions must be visible", renderedFixtureColors >= 3)
-            assertTrue("stable overlay must be visibly bright", Color.red(center) > 220 && Color.green(center) > 220)
         }
+        assertTrue("MapLibre did not produce a fully-rendered local snapshot", finished.await(20, TimeUnit.SECONDS))
+        failure.get()?.let { throw AssertionError("MapLibre fixture setup failed", it) }
+        requireNotNull(snapshot.get())
     }
 
-    private fun Int.near(expected: Int): Boolean =
-        kotlin.math.abs(Color.red(this) - Color.red(expected)) <= 12 &&
-            kotlin.math.abs(Color.green(this) - Color.green(expected)) <= 12 &&
-            kotlin.math.abs(Color.blue(this) - Color.blue(expected)) <= 12
+    private fun Int.near(expected: Int, tolerance: Int = 12): Boolean =
+        kotlin.math.abs(Color.red(this) - Color.red(expected)) <= tolerance &&
+            kotlin.math.abs(Color.green(this) - Color.green(expected)) <= tolerance &&
+            kotlin.math.abs(Color.blue(this) - Color.blue(expected)) <= tolerance
 
     private fun createFixture(file: File) {
         file.delete()

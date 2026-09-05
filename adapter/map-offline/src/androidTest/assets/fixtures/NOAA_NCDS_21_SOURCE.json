@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "fixture": "noaa_ncds21_real_chart_subset.mbtiles",
+  "fixtureSha256": "7da5ed14bc0b79585ec39f0afeb4fdde9d449a1f811054ea754929525530064f",
+  "accessedUtcDate": "2026-09-06",
+  "officialLandingPage": "https://distribution.charts.noaa.gov/ncds/index.html",
+  "officialProductDescription": "https://nauticalcharts.noaa.gov/data/gis-data-and-services.html",
+  "officialRegionMetadata": "https://gis.charttools.noaa.gov/arcgis/rest/services/MarineChart_Services/ncds_tilecache_metadata/MapServer/0",
+  "sourcePackage": "https://distribution.charts.noaa.gov/ncds/mbtiles/ncds_21.mbtiles",
+  "sourcePackageSha256": "33ed95c59b85514accbcb1deb8eb23f155d47a4b3c3e9a6ca88e70f9d98e616c",
+  "sourceRegionBounds": [-138.092778, 44.700833, -129.917222, 52.489722],
+  "licenseEvidence": "https://www.fisheries.noaa.gov/inport/item/39977",
+  "license": "U.S. public domain / CC0-1.0 for NOAA data",
+  "attribution": "Provided by NOAA Office of Coast Survey",
+  "useRestriction": "Renderer verification only. This four-tile derivative is not an official NOAA chart and must not be used to satisfy chart-carriage or navigation requirements.",
+  "processing": {
+    "pixelTransformation": "none",
+    "databaseTransformation": "Copied four tile_data blobs without image re-encoding; rebuilt minimal MBTiles metadata and unique tile index.",
+    "tiles": [
+      {"z": 5, "x": 4, "tmsY": 21, "sha256": "f0829eb6363810ecd261ba0af840f883c47d8bc7027d88cb49306a6672f3203b"},
+      {"z": 7, "x": 17, "tmsY": 86, "sha256": "1d6b70fdef0ae4dc1f8c7ce4cb7ac63cf04249643aafc39b09789f8ccdad66a0"},
+      {"z": 10, "x": 139, "tmsY": 685, "sha256": "69482c126dff8338df6abeec6bbe94bcc1e91d9f5650679433f9a5ab9566d472"},
+      {"z": 12, "x": 557, "tmsY": 2741, "sha256": "68a9abb13d0169b3b59e6556c7d20ff207f33ed018394691227017ce0eee3475"}
+    ]
+  }
+}
