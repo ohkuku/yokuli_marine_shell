@@ -86,6 +86,8 @@ import com.yokuli.marine.map.domain.PlaceCategory
 import com.yokuli.marine.map.domain.PlaceSearch
 import com.yokuli.marine.map.domain.PlaceSort
 import com.yokuli.marine.map.domain.SavedPlace
+import com.yokuli.marine.map.domain.SavedRoute
+import com.yokuli.marine.map.domain.RoutePlaceSourceState
 import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
@@ -429,7 +431,16 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .90f))
                     .padding(horizontal = 12.dp, vertical = 5.dp).testTag("map-active-tool-summary"),
             ) {
-                WpText(stringResource(R.string.map_route_short, state.routeDraft?.waypoints?.size ?: 0), 11)
+                WpText(
+                    stringResource(R.string.map_route_short, state.routeDraft?.waypoints?.size ?: 0),
+                    11,
+                    modifier = Modifier.weight(1f),
+                )
+                state.routeDraft?.let { draft ->
+                    MapActionText(R.string.map_details, "map-active-route-editor") {
+                        onAction(MapAction.OpenSurface(MapSurface.RouteDetail(draft.id)))
+                    }
+                }
             }
             MapTool.BROWSE -> Unit
         }
@@ -455,6 +466,23 @@ private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: 
             if (target != null) {
                 MapActionText(R.string.map_move_point, "map-object-move") {
                     onAction(MapAction.BeginPrecisePointEdit(MapPrecisePointEdit.Move(target)))
+                }
+            }
+            if (routeTarget != null) {
+                val draft = state.routeDrafts.firstOrNull { it.id == routeTarget.draftId }
+                val waypointId = draft?.waypointIds?.getOrNull(routeTarget.index)
+                if (draft != null && waypointId != null) {
+                    MapActionText(R.string.map_insert_after, "map-object-route-insert") {
+                        onAction(
+                            MapAction.BeginPrecisePointEdit(
+                                MapPrecisePointEdit.InsertRoute(draft.id, draft.waypointIds.getOrNull(routeTarget.index + 1)),
+                            ),
+                        )
+                    }
+                    MapActionText(R.string.map_delete_point, "map-object-route-delete") {
+                        onAction(MapAction.DeleteRouteWaypoint(waypointId))
+                        onAction(MapAction.DismissTransient)
+                    }
                 }
             }
             if (measurementIndex != null) {
@@ -640,7 +668,8 @@ private fun MapPageSurface(
             is MapSurface.EditPlace -> R.string.map_place_edit_title to R.string.map_places_context
             is MapSurface.MovePlace -> R.string.map_place_move_title to R.string.map_place_move_context
             is MapSurface.DeletePlace -> R.string.map_place_delete_title to R.string.map_places_context
-            MapSurface.Routes, is MapSurface.RouteDetail -> R.string.map_routes_title to R.string.map_routes_context
+            MapSurface.Routes, is MapSurface.RouteDetail, is MapSurface.DeleteRoutePlan ->
+                R.string.map_routes_title to R.string.map_routes_context
             MapSurface.ChartPackages, is MapSurface.ChartPackageDetail -> R.string.map_charts_title to R.string.map_charts_context
             MapSurface.Measurement -> R.string.map_measure_title to R.string.map_measure_context
             MapSurface.CoordinateInput -> R.string.map_coordinate_input to R.string.map_coordinate_input_context
@@ -666,6 +695,7 @@ private fun MapPageSurface(
                 is MapSurface.MovePlace -> PlaceMovePage(state, surface.placeId, onAction)
                 is MapSurface.DeletePlace -> PlaceDeletePage(state, surface.placeId, onAction)
                 is MapSurface.RouteDetail -> RouteDetailPage(state, surface.routeId, onAction)
+                is MapSurface.DeleteRoutePlan -> RouteDeletePage(state, surface.routeId, onAction)
                 is MapSurface.ChartPackageDetail -> ChartPackageDetailPage(state, surface.packageId, onAction)
                 MapSurface.Measurement -> MeasurementPage(state, onAction)
                 MapSurface.CoordinateInput -> CoordinateInputPage(state, onAction)
@@ -947,6 +977,16 @@ private fun PlaceDetailPage(
         MapTextButton(stringResource(R.string.map_place_move), "map-place-move-$id", modifier = Modifier.fillMaxWidth()) {
             onAction(MapAction.BeginPlaceMove(id))
         }
+        MapTextButton(stringResource(R.string.map_route_from_here), "map-place-route-from-$id", modifier = Modifier.fillMaxWidth()) {
+            onAction(
+                MapAction.CreateRouteDraft(
+                    name = "",
+                    startPoint = place.point,
+                    sourcePlaceId = place.id,
+                    sourcePlaceRevision = place.revision,
+                ),
+            )
+        }
         MapTextButton(stringResource(R.string.map_place_export), "map-place-export-$id", modifier = Modifier.fillMaxWidth()) {
             onExportPlace(place)
         }
@@ -1000,29 +1040,298 @@ private fun PlaceCategory.labelResource(): Int = when (this) {
 @Composable
 private fun RoutesPage(state: MapState, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
-    WpText(stringResource(R.string.map_routes_count, state.routeDrafts.size, state.savedRoutes.size), 12, color = colors.muted)
-    state.routeDrafts.forEach { route ->
-        MapTextButton(route.name.ifBlank { stringResource(R.string.map_route_draft_unnamed) }, "map-route-${route.id}") {
-            onAction(MapAction.OpenSurface(MapSurface.RouteDetail(route.id)))
+    Column(Modifier.fillMaxWidth().testTag("map-routes-page"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        WpText(stringResource(R.string.map_routes_count, state.routeDrafts.size, state.savedRoutes.size), 12, color = colors.muted)
+        MapTextButton(
+            stringResource(R.string.map_route_create),
+            "map-route-create",
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.accent),
+        ) {
+            onAction(MapAction.CreateRouteDraft("", ""))
         }
-    }
-    state.savedRoutes.forEach { route ->
-        MapTextButton(route.name, "map-route-${route.id}") {
-            onAction(MapAction.OpenSurface(MapSurface.RouteDetail(route.id)))
+        state.routeDeleteUndo?.takeIf { it.compatibleLibraryRevision == state.libraryRevision }?.let { undo ->
+            Row(
+                Modifier.fillMaxWidth().border(1.dp, colors.accent).padding(horizontal = 8.dp)
+                    .testTag("map-route-delete-undo-strip"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                WpText(stringResource(R.string.map_route_deleted, undo.route.name), 11, modifier = Modifier.weight(1f))
+                MapActionText(R.string.map_undo, "map-route-delete-undo") { onAction(MapAction.UndoDeleteRoutePlan) }
+            }
+        }
+        WpText(
+            stringResource(R.string.map_route_drafts),
+            18,
+            weight = FontWeight.Light,
+            modifier = Modifier.testTag("map-route-drafts-section"),
+        )
+        state.routeDrafts.forEach { draft ->
+            Column(
+                Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f))
+                    .clickNoRipple {
+                        onAction(MapAction.ActivateRouteDraft(draft.id))
+                        onAction(MapAction.OpenSurface(MapSurface.RouteDetail(draft.id)))
+                    }
+                    .padding(8.dp).testTag("map-route-draft-${draft.id}"),
+            ) {
+                WpText(draft.name.ifBlank { stringResource(R.string.map_route_draft_unnamed) }, 15)
+                WpText(stringResource(R.string.map_points_count, draft.waypoints.size), 10, color = colors.muted)
+            }
+        }
+        WpText(
+            stringResource(R.string.map_route_plans),
+            18,
+            weight = FontWeight.Light,
+            modifier = Modifier.testTag("map-route-plans-section"),
+        )
+        state.savedRoutes.forEach { plan ->
+            Column(
+                Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f))
+                    .clickNoRipple { onAction(MapAction.PreviewRoutePlan(plan.id)) }
+                    .padding(8.dp).testTag("map-route-plan-${plan.id}"),
+            ) {
+                WpText(plan.name, 15)
+                WpText(stringResource(R.string.map_points_count, plan.waypoints.size), 10, color = colors.muted)
+            }
+        }
+        if (state.routeDrafts.isEmpty() && state.savedRoutes.isEmpty()) {
+            WpText(stringResource(R.string.map_route_none), 12, color = colors.muted, modifier = Modifier.testTag("map-routes-empty"))
         }
     }
 }
 
 @Composable
 private fun RouteDetailPage(state: MapState, id: String, onAction: (MapAction) -> Unit) {
-    val points = state.routeDrafts.firstOrNull { it.id == id }?.waypoints
-        ?: state.savedRoutes.firstOrNull { it.id == id }?.waypoints
-        ?: return
-    WpText(stringResource(R.string.map_points_count, points.size), 12)
-    if (points.size >= 2) {
-        MapActionText(R.string.map_view_route, "map-route-view") {
-            onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(points.toBounds()), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
+    val draft = state.routeDrafts.firstOrNull { it.id == id }
+    val plan = state.savedRoutes.firstOrNull { it.id == id }
+    when {
+        draft != null -> RouteEditorPage(state, draft, onAction)
+        plan != null -> RoutePreviewPage(state, plan, onAction)
+    }
+}
+
+@Composable
+private fun RouteEditorPage(
+    state: MapState,
+    draft: com.yokuli.marine.map.domain.ManualRouteDraft,
+    onAction: (MapAction) -> Unit,
+) {
+    val colors = LocalWpTheme.current
+    val defaultName = stringResource(R.string.map_default_route_name, state.savedRoutes.size + state.routeDrafts.size)
+    var name by remember(draft.id) { mutableStateOf(draft.name.ifBlank { defaultName }) }
+    var notes by remember(draft.id) { mutableStateOf(draft.notes) }
+    var speed by remember(draft.id) { mutableStateOf(draft.plannedSpeedKnots?.toString().orEmpty()) }
+    var invalidSpeed by remember(draft.id) { mutableStateOf(false) }
+    val summary = state.routeSummary.takeIf { state.activeRouteDraftId == draft.id }
+    Column(
+        Modifier.fillMaxWidth().testTag("map-route-editor-${draft.id}"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        WpText(stringResource(R.string.map_route_draft_truth), 11, color = colors.muted)
+        MapFormTextField(R.string.map_route_name, name, "map-route-name-field", onValueChange = { name = it })
+        MapFormTextField(
+            R.string.map_route_notes,
+            notes,
+            "map-route-notes-field",
+            singleLine = false,
+            onValueChange = { notes = it },
+        )
+        MapFormTextField(R.string.map_route_speed, speed, "map-route-speed-field") {
+            speed = it
+            invalidSpeed = false
+        }
+        if (speed.isBlank()) {
+            WpText(
+                stringResource(R.string.map_route_no_speed),
+                11,
+                color = colors.muted,
+                modifier = Modifier.testTag("map-route-no-speed"),
+            )
+        }
+        if (invalidSpeed) WpText(stringResource(R.string.map_route_invalid_speed), 11, color = colors.accent)
+        if (state.routeSpeedNotice != null) {
+            WpText(stringResource(R.string.map_route_extreme_speed), 11, color = colors.accent)
+        }
+        summary?.let {
+            WpText(
+                it.estimatedDurationMillis?.let { duration ->
+                    stringResource(R.string.map_route_distance_time, it.distanceNauticalMiles, duration / 60_000L)
+                } ?: stringResource(R.string.map_route_distance_only, it.distanceNauticalMiles),
+                13,
+                modifier = Modifier.testTag("map-route-summary"),
+            )
+        }
+        WpText(stringResource(R.string.map_points_count, draft.waypoints.size), 13)
+        draft.waypoints.forEachIndexed { index, point ->
+            val waypointId = draft.waypointIds[index]
+            Column(
+                Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .4f)).padding(6.dp)
+                    .testTag("map-route-waypoint-$waypointId"),
+            ) {
+                WpText(stringResource(R.string.map_route_point, index + 1, point.coordinateText()), 11)
+                Row(Modifier.fillMaxWidth()) {
+                    MapTextButton(
+                        stringResource(R.string.map_route_point_up),
+                        "map-route-waypoint-up-$waypointId",
+                        enabled = index > 0,
+                        modifier = Modifier.weight(1f),
+                    ) { onAction(MapAction.ReorderRouteWaypoint(waypointId, index - 1)) }
+                    MapTextButton(
+                        stringResource(R.string.map_route_point_down),
+                        "map-route-waypoint-down-$waypointId",
+                        enabled = index < draft.waypoints.lastIndex,
+                        modifier = Modifier.weight(1f),
+                    ) { onAction(MapAction.ReorderRouteWaypoint(waypointId, index + 1)) }
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    MapTextButton(
+                        stringResource(R.string.map_route_point_move),
+                        "map-route-waypoint-move-$waypointId",
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        onAction(MapAction.BeginPrecisePointEdit(MapPrecisePointEdit.Move(MapEditTarget.RoutePoint(draft.id, index))))
+                        onAction(MapAction.OpenSurface(MapSurface.CoordinateInput))
+                    }
+                    MapTextButton(
+                        stringResource(R.string.map_route_point_delete),
+                        "map-route-waypoint-delete-$waypointId",
+                        modifier = Modifier.weight(1f),
+                    ) { onAction(MapAction.DeleteRouteWaypoint(waypointId)) }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth()) {
+            MapTextButton(stringResource(R.string.map_undo), "map-route-undo", draft.undo.isNotEmpty(), Modifier.weight(1f)) {
+                onAction(MapAction.UndoRouteEdit)
+            }
+            MapTextButton(stringResource(R.string.map_redo), "map-route-redo", draft.redo.isNotEmpty(), Modifier.weight(1f)) {
+                onAction(MapAction.RedoRouteEdit)
+            }
+            MapTextButton(stringResource(R.string.map_reverse), "map-route-reverse", draft.waypoints.size >= 2, Modifier.weight(1f)) {
+                onAction(MapAction.ReverseRoute)
+            }
+        }
+        if (draft.waypoints.size >= 2) {
+            MapTextButton(stringResource(R.string.map_route_fit), "map-route-fit", modifier = Modifier.fillMaxWidth()) {
+                onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(draft.waypoints.toBounds()), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
+                onAction(MapAction.OpenSurface(MapSurface.Root))
+            }
+        }
+        MapTextButton(stringResource(R.string.map_route_continue_map), "map-route-continue-map", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.ActivateRouteDraft(draft.id))
             onAction(MapAction.OpenSurface(MapSurface.Root))
+        }
+        MapTextButton(
+            stringResource(R.string.map_route_save),
+            "map-route-save",
+            enabled = draft.waypoints.size >= 2,
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.accent),
+        ) {
+            val parsed = speed.trim().takeIf(String::isNotEmpty)?.toDoubleOrNull()
+            if (speed.isNotBlank() && (parsed == null || !parsed.isFinite() || parsed <= 0.0)) {
+                invalidSpeed = true
+            } else {
+                onAction(MapAction.UpdateRouteDraftMetadata(name, notes))
+                if (parsed == null) onAction(MapAction.ClearPlannedSpeed) else onAction(MapAction.SetPlannedSpeedKnots(parsed))
+                onAction(MapAction.SaveRoutePlan)
+            }
+        }
+        if (draft.basePlanId != null) {
+            MapTextButton(stringResource(R.string.map_route_save_copy), "map-route-save-copy", modifier = Modifier.fillMaxWidth()) {
+                val parsed = speed.trim().takeIf(String::isNotEmpty)?.toDoubleOrNull()
+                if (speed.isNotBlank() && (parsed == null || !parsed.isFinite() || parsed <= 0.0)) {
+                    invalidSpeed = true
+                } else {
+                    onAction(MapAction.UpdateRouteDraftMetadata(name, notes))
+                    if (parsed == null) onAction(MapAction.ClearPlannedSpeed) else onAction(MapAction.SetPlannedSpeedKnots(parsed))
+                    onAction(MapAction.SaveRoutePlanAsCopy("$name copy"))
+                }
+            }
+        }
+        MapTextButton(stringResource(R.string.map_route_discard), "map-route-discard", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.DiscardRouteDraft(draft.id))
+        }
+        state.routeSaveStatus?.takeIf { it.state == MapSaveState.FAILED }?.let {
+            WpText(stringResource(R.string.map_route_save_failed), 11, color = colors.accent, modifier = Modifier.testTag("map-route-save-failed"))
+        }
+    }
+}
+
+@Composable
+private fun RoutePreviewPage(state: MapState, plan: SavedRoute, onAction: (MapAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    val distance = plan.waypoints.zipWithNext().sumOf { (from, to) ->
+        com.yokuli.marine.map.domain.Wgs84Geodesic.inverse(from, to).distanceMeters / 1_852.0
+    }
+    val duration = plan.plannedSpeedKnots?.let { speed -> ((distance / speed) * 60.0).roundToInt() }
+    val sourceChanged = plan.waypointPlaceReferences.keys.any { index ->
+        plan.placeSourceState(index, state.places) in setOf(RoutePlaceSourceState.CHANGED, RoutePlaceSourceState.MISSING)
+    }
+    Column(
+        Modifier.fillMaxWidth().testTag("map-route-preview-${plan.id}"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        WpText(plan.name, 22, weight = FontWeight.Light, modifier = Modifier.testTag("map-route-name"))
+        if (plan.notes.isNotBlank()) WpText(plan.notes, 12, modifier = Modifier.testTag("map-route-notes"))
+        WpText(stringResource(R.string.map_route_preview_truth), 11, color = colors.muted)
+        WpText(
+            duration?.let { stringResource(R.string.map_route_distance_time, distance, it) }
+                ?: stringResource(R.string.map_route_distance_only, distance),
+            13,
+            modifier = Modifier.testTag("map-route-preview-summary"),
+        )
+        if (plan.plannedSpeedKnots == null) {
+            WpText(stringResource(R.string.map_route_no_speed), 11, color = colors.muted, modifier = Modifier.testTag("map-route-no-speed"))
+        }
+        if (sourceChanged) WpText(stringResource(R.string.map_route_source_changed), 11, color = colors.accent)
+        state.routeSaveStatus?.takeIf { it.routeId == plan.id && it.revision == plan.revision }?.let { status ->
+            WpText(
+                stringResource(
+                    when (status.state) {
+                        MapSaveState.PENDING -> R.string.map_route_save_pending
+                        MapSaveState.SAVED -> R.string.map_route_save_saved
+                        MapSaveState.FAILED -> R.string.map_route_save_failed
+                    },
+                ),
+                10,
+                color = if (status.state == MapSaveState.FAILED) colors.accent else colors.muted,
+                modifier = Modifier.testTag("map-route-save-${status.state.name.lowercase(Locale.US)}"),
+            )
+        }
+        MapTextButton(stringResource(R.string.map_view_route), "map-route-view-${plan.id}", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.PreviewRoutePlan(plan.id))
+            onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(plan.waypoints.toBounds()), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
+            onAction(MapAction.OpenSurface(MapSurface.Root))
+        }
+        MapTextButton(stringResource(R.string.map_route_edit), "map-route-edit-${plan.id}", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.BeginRoutePlanEdit(plan.id))
+        }
+        MapTextButton(stringResource(R.string.map_route_duplicate), "map-route-duplicate-${plan.id}", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.DuplicateRoutePlan(plan.id))
+        }
+        MapTextButton(stringResource(R.string.map_route_reverse_copy), "map-route-reverse-copy-${plan.id}", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.DuplicateRoutePlan(plan.id, reverse = true))
+        }
+        MapTextButton(stringResource(R.string.map_route_delete), "map-route-delete-${plan.id}", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.RequestDeleteRoutePlan(plan.id))
+        }
+    }
+}
+
+@Composable
+private fun RouteDeletePage(state: MapState, id: String, onAction: (MapAction) -> Unit) {
+    val request = state.routeDeleteRequest?.takeIf { it.routeId == id } ?: return
+    Column(
+        Modifier.fillMaxWidth().testTag("map-route-delete-confirmation"),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        WpText(stringResource(R.string.map_route_delete_question, request.name), 20, weight = FontWeight.Light)
+        WpText(stringResource(R.string.map_route_delete_impact), 11, color = LocalWpTheme.current.muted)
+        MapTextButton(stringResource(R.string.map_route_delete), "map-route-delete-confirm", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.ConfirmDeleteRoutePlan)
+        }
+        MapTextButton(stringResource(R.string.map_cancel), "map-route-delete-cancel", modifier = Modifier.fillMaxWidth()) {
+            onAction(MapAction.CancelDeleteRoutePlan)
         }
     }
 }
@@ -1329,6 +1638,11 @@ private fun MapState.coordinateInputSeed(): GeoPoint = when (val edit = preciseP
     is MapPrecisePointEdit.InsertMeasurement -> {
         val points = measurementDraft?.points.orEmpty()
         points.getOrNull(edit.index - 1) ?: points.getOrNull(edit.index)
+    }
+    is MapPrecisePointEdit.InsertRoute -> {
+        val draft = routeDrafts.firstOrNull { it.id == edit.draftId }
+        edit.beforeWaypointId?.let { id -> draft?.waypointIds?.indexOf(id)?.let { draft.waypoints.getOrNull(it) } }
+            ?: draft?.waypoints?.lastOrNull()
     }
     null -> selection?.point
 } ?: camera.center

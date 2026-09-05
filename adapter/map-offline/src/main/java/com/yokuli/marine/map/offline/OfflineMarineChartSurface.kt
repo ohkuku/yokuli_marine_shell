@@ -345,6 +345,8 @@ fun OfflineMarineChartSurface(
         state.places,
         state.measurementDraft,
         state.routeDraft,
+        state.activeRoutePlanId,
+        state.savedRoutes,
         state.editGesture,
         state.camera.zoom,
         state.position.observation,
@@ -373,14 +375,14 @@ fun OfflineMarineChartSurface(
         )
         style.source(MapOverlayId.MANUAL_ROUTE)?.setGeoJson(
             routePoints.toGeodesicFeatureCollection(
-                "route:${state.routeDraft?.id.orEmpty()}",
+                "route:${state.routeOverlayObjectId()}",
                 state.geodesicMaxSegmentMeters(routePoints),
             ),
         )
         style.source(MapOverlayId.MANUAL_ROUTE_POINTS)?.setGeoJson(
             FeatureCollection.fromFeatures(
                 routePoints.mapIndexed { index, point ->
-                    point.toFeature("route-point:${state.routeDraft?.id.orEmpty()}:$index")
+                    point.toFeature(state.routePointObjectId(index))
                 },
             ),
         )
@@ -439,12 +441,23 @@ private fun MapState.measurementPointsWithPreview(): List<GeoPoint> {
 }
 
 private fun MapState.routePointsWithPreview(): List<GeoPoint> {
-    val draft = routeDraft ?: return emptyList()
+    val points = visibleRoutePoints
+    val draft = routeDraft?.takeIf { tool == com.yokuli.marine.map.domain.MapTool.MANUAL_ROUTE } ?: return points
     val gesture = editGesture ?: return draft.waypoints
     val target = gesture.target as? MapEditTarget.RoutePoint ?: return draft.waypoints
     if (target.draftId != draft.id) return draft.waypoints
     return draft.waypoints.replaceAt(target.index, gesture.previewPoint)
 }
+
+private fun MapState.routeOverlayObjectId(): String = routeDraft
+    ?.takeIf { tool == com.yokuli.marine.map.domain.MapTool.MANUAL_ROUTE }
+    ?.id
+    ?: activeRoutePlanId.orEmpty()
+
+private fun MapState.routePointObjectId(index: Int): String = routeDraft
+    ?.takeIf { tool == com.yokuli.marine.map.domain.MapTool.MANUAL_ROUTE }
+    ?.let { "route-point:${it.id}:$index" }
+    ?: "route-preview-point:${activeRoutePlanId.orEmpty()}:$index"
 
 private fun List<GeoPoint>.replaceAt(index: Int, point: GeoPoint): List<GeoPoint> =
     if (index !in indices) this else mapIndexed { itemIndex, item -> if (itemIndex == index) point else item }

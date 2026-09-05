@@ -13,7 +13,7 @@ object MapRecoveryExport {
     fun encode(snapshot: MapLibrarySnapshot): ByteArray = buildString {
         append("{\n")
         append("  \"format\": \"yokuli-map-recovery\",\n")
-        append("  \"version\": 2,\n")
+        append("  \"version\": 3,\n")
         append("  \"libraryRevision\": ${snapshot.revision},\n")
         append("  \"places\": [")
         snapshot.places.forEachIndexed { index, place ->
@@ -31,7 +31,12 @@ object MapRecoveryExport {
         snapshot.routeDrafts.forEachIndexed { index, draft ->
             if (index > 0) append(',')
             append("\n    {\"id\":${draft.id.toJsonString()},\"revision\":${draft.revision},")
-            append("\"name\":${draft.name.toJsonString()},\"plannedSpeedKnots\":${draft.plannedSpeedKnots},")
+            append("\"name\":${draft.name.toJsonString()},\"notes\":${draft.notes.toJsonString()},")
+            append("\"plannedSpeedKnots\":${draft.plannedSpeedKnots ?: "null"},")
+            append("\"basePlanId\":${draft.basePlanId.toJsonStringOrNull()},")
+            append("\"basePlanRevision\":${draft.basePlanRevision ?: "null"},")
+            append("\"waypointIds\":${draft.waypointIds.toJsonStrings()},")
+            append("\"waypointPlaceReferences\":${draft.waypointPlaceReferences.jsonReferences()},")
             append("\"points\":${draft.waypoints.toJsonPoints()}}")
         }
         if (snapshot.routeDrafts.isNotEmpty()) append('\n').append("  ")
@@ -40,10 +45,12 @@ object MapRecoveryExport {
         snapshot.savedRoutes.forEachIndexed { index, route ->
             if (index > 0) append(',')
             append("\n    {\"id\":${route.id.toJsonString()},\"revision\":${route.revision},")
-            append("\"name\":${route.name.toJsonString()},\"plannedSpeedKnots\":${route.plannedSpeedKnots},")
+            append("\"name\":${route.name.toJsonString()},\"notes\":${route.notes.toJsonString()},")
+            append("\"plannedSpeedKnots\":${route.plannedSpeedKnots ?: "null"},")
             append("\"sourceDraftId\":${route.sourceDraftId.toJsonStringOrNull()},")
             append("\"sourceDraftRevision\":${route.sourceDraftRevision ?: "null"},")
             append("\"waypointPlaceReferences\":${route.waypointPlaceReferences.jsonReferences()},")
+            append("\"waypointIds\":${route.waypointIds.toJsonStrings()},")
             append("\"points\":${route.waypoints.toJsonPoints()}}")
         }
         if (snapshot.savedRoutes.isNotEmpty()) append('\n').append("  ")
