@@ -143,6 +143,8 @@
     <string name="map_route_no_speed">Set a planning speed to estimate; duration is —.</string>
     <string name="map_route_invalid_speed">Speed must be a finite number greater than 0.</string>
     <string name="map_route_extreme_speed">This planning speed is unusually high. Check the value and unit.</string>
+    <string name="map_route_adjacent_duplicate">Adjacent waypoints have the same coordinate. Move or delete one of them.</string>
+    <string name="map_route_leg">leg %1$d→%2$d · %3$s · initial %4$s</string>
     <string name="map_route_distance_only">%1$.2f NM total · planning duration —</string>
     <string name="map_route_distance_time">%1$.2f NM total · about %2$d min</string>
     <string name="map_route_save">save plan</string>
@@ -152,6 +154,8 @@
     <string name="map_route_edit">edit as independent draft</string>
     <string name="map_route_duplicate">duplicate as new plan</string>
     <string name="map_route_reverse_copy">reverse into new plan</string>
+    <string name="map_route_copy_name">%1$s copy</string>
+    <string name="map_route_reverse_copy_name">%1$s reverse copy</string>
     <string name="map_route_delete">delete plan</string>
     <string name="map_route_delete_question">Delete “%1$s”?</string>
     <string name="map_route_delete_impact">Only this saved plan is deleted. Places and other drafts/plans remain.</string>

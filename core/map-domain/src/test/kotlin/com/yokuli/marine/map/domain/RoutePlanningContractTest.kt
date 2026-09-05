@@ -110,7 +110,8 @@ class RoutePlanningContractTest {
         val reducer = reducerWithIds("draft-a")
         var state = reducer.reduce(MapState(), MapAction.CreateRouteDraft("A", "", a)).state
         val duplicate = reducer.reduce(state, MapAction.AddRouteWaypoint(a))
-        assertEquals(state, duplicate.state)
+        assertEquals(state.routeDraft?.waypoints, duplicate.state.routeDraft?.waypoints)
+        assertEquals(RouteEditNotice.ADJACENT_DUPLICATE, duplicate.state.routeEditNotice)
         assertTrue((duplicate.effects.single() as MapEffect.LogIncident).incident is MapIncident.AdjacentDuplicateWaypoint)
 
         state = reducer.reduce(state, MapAction.AddRouteWaypoint(b)).state
@@ -235,6 +236,29 @@ class RoutePlanningContractTest {
         assertNull(acknowledged.routeSaveTransaction)
         assertEquals(MapSaveState.SAVED, acknowledged.routeSaveStatus?.state)
         assertEquals(MapSaveState.PENDING, acknowledged.saveState)
+    }
+
+    @Test
+    fun `newer coalesced write failure rolls back an unacknowledged route save`() {
+        val reducer = reducerWithIds("draft-a", "route-a", "place-a")
+        var state = reducer.reduce(MapState(), MapAction.CreateRouteDraft("A", "", a)).state
+        state = reducer.reduce(state, MapAction.AddRouteWaypoint(b)).state
+        state = reducer.reduce(state, MapAction.SaveRoutePlan).state
+        val savedRouteId = requireNotNull(state.routeSaveTransaction).savedPlanId
+        state = reducer.reduce(
+            state,
+            MapAction.CreatePlace(c, "Place", "", PlaceCategory.PERSONAL_MARKER, emptyList()),
+        ).state
+
+        val failed = reducer.reduce(
+            state,
+            MapAction.PersistenceFailed(state.libraryRevision, MapReadFailure.IO),
+        ).state
+
+        assertTrue(failed.savedRoutes.none { it.id == savedRouteId })
+        assertEquals("draft-a", failed.routeDraft?.id)
+        assertEquals(MapSaveState.FAILED, failed.routeSaveStatus?.state)
+        assertNull(failed.routeSaveTransaction)
     }
 
     private fun routePlan(id: String, revision: Long) = RoutePlan(

@@ -92,7 +92,11 @@ sealed interface MapAction {
     data class BeginRoutePlanEdit(val routeId: String) : MapAction
     data object SaveRoutePlan : MapAction
     data class SaveRoutePlanAsCopy(val name: String) : MapAction
-    data class DuplicateRoutePlan(val routeId: String, val reverse: Boolean = false) : MapAction
+    data class DuplicateRoutePlan(
+        val routeId: String,
+        val reverse: Boolean = false,
+        val name: String? = null,
+    ) : MapAction
     data class DiscardRouteDraft(val draftId: String) : MapAction
     data class RequestDeleteRoutePlan(val routeId: String) : MapAction
     data object ConfirmDeleteRoutePlan : MapAction
@@ -290,7 +294,7 @@ class DefaultMapReducer(
         is MapAction.BeginRoutePlanEdit -> beginRoutePlanEdit(state, action.routeId)
         MapAction.SaveRoutePlan -> saveRoutePlan(state)
         is MapAction.SaveRoutePlanAsCopy -> saveRoutePlan(state, action.name)
-        is MapAction.DuplicateRoutePlan -> duplicateRoutePlan(state, action.routeId, action.reverse)
+        is MapAction.DuplicateRoutePlan -> duplicateRoutePlan(state, action.routeId, action.reverse, action.name)
         is MapAction.DiscardRouteDraft -> discardRouteDraft(state, action.draftId)
         is MapAction.RequestDeleteRoutePlan -> requestDeleteRoutePlan(state, action.routeId)
         MapAction.ConfirmDeleteRoutePlan -> confirmDeleteRoutePlan(state)
@@ -352,6 +356,7 @@ class DefaultMapReducer(
                     routeDeleteRequest = null,
                     routeDeleteUndo = null,
                     routeSpeedNotice = null,
+                    routeEditNotice = null,
                     persistenceFailure = null,
                 ).withCameraCommand(
                     target = MapCameraTarget.Exact(result.session.camera),
@@ -943,7 +948,7 @@ class DefaultMapReducer(
 
     private fun activateRouteDraft(state: MapState, draftId: String): MapReduction {
         if (state.routeDrafts.none { it.id == draftId }) return incident(state, MapIncident.ActionRejected)
-        return MapReduction(
+        return persistSession(
             state.copy(
                 tool = MapTool.MANUAL_ROUTE,
                 activeRouteDraftId = draftId,
@@ -969,7 +974,7 @@ class DefaultMapReducer(
             state,
             MapAction.CreateRouteDraft("", startPoint = point, sourcePlaceId = source?.placeId, sourcePlaceRevision = source?.revision),
         )
-        if (draft.waypoints.lastOrNull() == point) return@ifWritable incident(state, MapIncident.AdjacentDuplicateWaypoint)
+        if (draft.waypoints.lastOrNull() == point) return@ifWritable adjacentDuplicate(state)
         val items = draft.routeWaypoints() + RouteWaypointValue(
             id = routeWaypointId(draft.id, draft.nextWaypointOrdinal),
             point = point,
@@ -989,7 +994,7 @@ class DefaultMapReducer(
             ?: return@ifWritable incident(state, MapIncident.ActionRejected)
         val items = draft.routeWaypoints().toMutableList()
         if (items.getOrNull(index - 1)?.point == point || items.getOrNull(index)?.point == point) {
-            return@ifWritable incident(state, MapIncident.AdjacentDuplicateWaypoint)
+            return@ifWritable adjacentDuplicate(state)
         }
         items.add(index, RouteWaypointValue(routeWaypointId(draft.id, draft.nextWaypointOrdinal), point, source))
         replaceActiveDraft(state, draft.record(items, draft.nextWaypointOrdinal + 1))
@@ -1001,7 +1006,7 @@ class DefaultMapReducer(
         val index = items.indexOfFirst { it.id == waypointId }.takeIf { it >= 0 }
             ?: return@ifWritable incident(state, MapIncident.ActionRejected)
         if (items.getOrNull(index - 1)?.point == point || items.getOrNull(index + 1)?.point == point) {
-            return@ifWritable incident(state, MapIncident.AdjacentDuplicateWaypoint)
+            return@ifWritable adjacentDuplicate(state)
         }
         items[index] = items[index].copy(point = point, source = null)
         replaceActiveDraft(state, draft.record(items))
@@ -1024,7 +1029,7 @@ class DefaultMapReducer(
         val moved = items.removeAt(fromIndex)
         items.add(toIndex, moved)
         if (items.zipWithNext().any { (from, to) -> from.point == to.point }) {
-            return@ifWritable incident(state, MapIncident.AdjacentDuplicateWaypoint)
+            return@ifWritable adjacentDuplicate(state)
         }
         replaceActiveDraft(state, draft.record(items))
     }
@@ -1072,7 +1077,7 @@ class DefaultMapReducer(
     private fun previewRoutePlan(state: MapState, routeId: String): MapReduction {
         val plan = state.savedRoutes.firstOrNull { it.id == routeId }
             ?: return incident(state, MapIncident.ActionRejected)
-        return MapReduction(
+        return persistSession(
             state.copy(
                 tool = MapTool.BROWSE,
                 activeRoutePlanId = plan.id,
@@ -1154,14 +1159,21 @@ class DefaultMapReducer(
             surfaceHistory = listOf(MapSurface.Root, MapSurface.Routes),
         )
         val persisted = persistLibrary(optimistic)
-        persisted.copy(
-            state = persisted.state.copy(
+        val withTransaction = persisted.state.copy(
                 routeSaveTransaction = RouteSaveTransaction(draft, previous, plan.id, persisted.state.libraryRevision),
-            ),
+            )
+        persisted.copy(
+            state = withTransaction,
+            effects = persisted.effects + MapEffect.PersistSession(withTransaction.sessionSnapshot()),
         )
     }
 
-    private fun duplicateRoutePlan(state: MapState, routeId: String, reverse: Boolean): MapReduction = ifWritable(state) {
+    private fun duplicateRoutePlan(
+        state: MapState,
+        routeId: String,
+        reverse: Boolean,
+        name: String?,
+    ): MapReduction = ifWritable(state) {
         val source = state.savedRoutes.firstOrNull { it.id == routeId }
             ?: return@ifWritable incident(state, MapIncident.ActionRejected)
         val id = nextUniqueId("route", state.savedRoutes.map { it.id }.toSet())
@@ -1173,7 +1185,7 @@ class DefaultMapReducer(
         } else source.waypointPlaceReferences.toMap()
         val copy = source.copy(
             id = id,
-            name = "${source.name} copy",
+            name = name?.trim()?.takeIf(String::isNotEmpty) ?: source.name,
             waypoints = points,
             waypointIds = ids,
             waypointPlaceReferences = references,
@@ -1258,7 +1270,15 @@ class DefaultMapReducer(
     }
 
     private fun replaceActiveDraft(state: MapState, updated: ManualRouteDraft): MapReduction = persistLibrary(
-        state.copy(routeDrafts = state.routeDrafts.map { if (it.id == updated.id) updated else it }),
+        state.copy(
+            routeDrafts = state.routeDrafts.map { if (it.id == updated.id) updated else it },
+            routeEditNotice = null,
+        ),
+    )
+
+    private fun adjacentDuplicate(state: MapState): MapReduction = MapReduction(
+        state.copy(routeEditNotice = RouteEditNotice.ADJACENT_DUPLICATE),
+        listOf(MapEffect.LogIncident(MapIncident.AdjacentDuplicateWaypoint)),
     )
 
     private fun updateChartPackages(state: MapState, input: List<ChartPackage>): MapReduction {
@@ -1296,10 +1316,22 @@ class DefaultMapReducer(
         }
 
     private fun persistenceAck(state: MapState, revision: Long): MapReduction = when {
-        revision < state.libraryRevision -> MapReduction(state)
+        revision < state.libraryRevision -> {
+            val completedRouteSave = state.routeSaveTransaction?.takeIf { it.targetLibraryRevision <= revision }
+            if (completedRouteSave == null) {
+                MapReduction(state)
+            } else {
+                MapReduction(
+                    state.copy(
+                        routeSaveStatus = state.routeSaveStatus?.copy(state = MapSaveState.SAVED),
+                        routeSaveTransaction = null,
+                    ),
+                )
+            }
+        }
         revision != state.libraryRevision -> incident(state, MapIncident.ActionRejected)
         else -> {
-            val completedRouteSave = state.routeSaveTransaction?.takeIf { it.targetLibraryRevision == revision }
+            val completedRouteSave = state.routeSaveTransaction?.takeIf { it.targetLibraryRevision <= revision }
             MapReduction(
             state.copy(
                 durableLibraryRevision = revision,
@@ -1317,7 +1349,7 @@ class DefaultMapReducer(
         if (revision != state.libraryRevision) {
             MapReduction(state)
         } else {
-            val transaction = state.routeSaveTransaction?.takeIf { it.targetLibraryRevision == revision }
+            val transaction = state.routeSaveTransaction?.takeIf { it.targetLibraryRevision <= revision }
             val rolledBackRoutes = if (transaction == null) {
                 state.savedRoutes
             } else if (transaction.previousPlan == null) {

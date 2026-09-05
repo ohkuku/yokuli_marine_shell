@@ -143,6 +143,8 @@
     <string name="map_route_no_speed">填写计划船速后估算；当前用时为 —。</string>
     <string name="map_route_invalid_speed">船速必须是大于 0 的有限数值。</string>
     <string name="map_route_extreme_speed">此计划船速异常偏高，请确认单位和输入。</string>
+    <string name="map_route_adjacent_duplicate">相邻航点坐标相同；请移动或删除其中一个点。</string>
+    <string name="map_route_leg">第 %1$d→%2$d 段 · %3$s · 起始 %4$s</string>
     <string name="map_route_distance_only">总距离 %1$.2f 海里 · 计划用时 —</string>
     <string name="map_route_distance_time">总距离 %1$.2f 海里 · 约 %2$d 分钟</string>
     <string name="map_route_save">保存计划</string>
@@ -152,6 +154,8 @@
     <string name="map_route_edit">编辑为独立草稿</string>
     <string name="map_route_duplicate">复制为新计划</string>
     <string name="map_route_reverse_copy">反向复制为新计划</string>
+    <string name="map_route_copy_name">%1$s 副本</string>
+    <string name="map_route_reverse_copy_name">%1$s 反向副本</string>
     <string name="map_route_delete">删除计划</string>
     <string name="map_route_delete_question">删除“%1$s”？</string>
     <string name="map_route_delete_impact">只删除这条正式计划；地点和其他草稿/计划保留。</string>

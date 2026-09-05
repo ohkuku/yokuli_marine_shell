@@ -88,6 +88,7 @@ import com.yokuli.marine.map.domain.PlaceSort
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
 import com.yokuli.marine.map.domain.RoutePlaceSourceState
+import com.yokuli.marine.map.domain.RouteEditNotice
 import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
@@ -1123,6 +1124,7 @@ private fun RouteEditorPage(
     var speed by remember(draft.id) { mutableStateOf(draft.plannedSpeedKnots?.toString().orEmpty()) }
     var invalidSpeed by remember(draft.id) { mutableStateOf(false) }
     val summary = state.routeSummary.takeIf { state.activeRouteDraftId == draft.id }
+    val localizedCopyName = stringResource(R.string.map_route_copy_name, name)
     Column(
         Modifier.fillMaxWidth().testTag("map-route-editor-${draft.id}"),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1152,6 +1154,14 @@ private fun RouteEditorPage(
         if (state.routeSpeedNotice != null) {
             WpText(stringResource(R.string.map_route_extreme_speed), 11, color = colors.accent)
         }
+        if (state.routeEditNotice == RouteEditNotice.ADJACENT_DUPLICATE) {
+            WpText(
+                stringResource(R.string.map_route_adjacent_duplicate),
+                11,
+                color = colors.accent,
+                modifier = Modifier.testTag("map-route-adjacent-duplicate"),
+            )
+        }
         summary?.let {
             WpText(
                 it.estimatedDurationMillis?.let { duration ->
@@ -1159,6 +1169,20 @@ private fun RouteEditorPage(
                 } ?: stringResource(R.string.map_route_distance_only, it.distanceNauticalMiles),
                 13,
                 modifier = Modifier.testTag("map-route-summary"),
+            )
+        }
+        state.routeLegs.forEach { leg ->
+            WpText(
+                stringResource(
+                    R.string.map_route_leg,
+                    leg.fromIndex + 1,
+                    leg.toIndex + 1,
+                    leg.distanceMeters.distanceText(),
+                    leg.bearingText(),
+                ),
+                11,
+                color = colors.muted,
+                modifier = Modifier.testTag("map-route-leg-${leg.fromIndex}-${leg.toIndex}"),
             )
         }
         WpText(stringResource(R.string.map_points_count, draft.waypoints.size), 13)
@@ -1244,7 +1268,7 @@ private fun RouteEditorPage(
                 } else {
                     onAction(MapAction.UpdateRouteDraftMetadata(name, notes))
                     if (parsed == null) onAction(MapAction.ClearPlannedSpeed) else onAction(MapAction.SetPlannedSpeedKnots(parsed))
-                    onAction(MapAction.SaveRoutePlanAsCopy("$name copy"))
+                    onAction(MapAction.SaveRoutePlanAsCopy(localizedCopyName))
                 }
             }
         }
@@ -1264,6 +1288,8 @@ private fun RoutePreviewPage(state: MapState, plan: SavedRoute, onAction: (MapAc
         com.yokuli.marine.map.domain.Wgs84Geodesic.inverse(from, to).distanceMeters / 1_852.0
     }
     val duration = plan.plannedSpeedKnots?.let { speed -> ((distance / speed) * 60.0).roundToInt() }
+    val localizedCopyName = stringResource(R.string.map_route_copy_name, plan.name)
+    val localizedReverseCopyName = stringResource(R.string.map_route_reverse_copy_name, plan.name)
     val sourceChanged = plan.waypointPlaceReferences.keys.any { index ->
         plan.placeSourceState(index, state.places) in setOf(RoutePlaceSourceState.CHANGED, RoutePlaceSourceState.MISSING)
     }
@@ -1307,10 +1333,16 @@ private fun RoutePreviewPage(state: MapState, plan: SavedRoute, onAction: (MapAc
             onAction(MapAction.BeginRoutePlanEdit(plan.id))
         }
         MapTextButton(stringResource(R.string.map_route_duplicate), "map-route-duplicate-${plan.id}", modifier = Modifier.fillMaxWidth()) {
-            onAction(MapAction.DuplicateRoutePlan(plan.id))
+            onAction(MapAction.DuplicateRoutePlan(plan.id, name = localizedCopyName))
         }
         MapTextButton(stringResource(R.string.map_route_reverse_copy), "map-route-reverse-copy-${plan.id}", modifier = Modifier.fillMaxWidth()) {
-            onAction(MapAction.DuplicateRoutePlan(plan.id, reverse = true))
+            onAction(
+                MapAction.DuplicateRoutePlan(
+                    plan.id,
+                    reverse = true,
+                    name = localizedReverseCopyName,
+                ),
+            )
         }
         MapTextButton(stringResource(R.string.map_route_delete), "map-route-delete-${plan.id}", modifier = Modifier.fillMaxWidth()) {
             onAction(MapAction.RequestDeleteRoutePlan(plan.id))

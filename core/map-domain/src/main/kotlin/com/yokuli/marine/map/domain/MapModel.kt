@@ -271,6 +271,7 @@ data class RouteSummary(
 )
 
 enum class RouteSpeedNotice { EXTREME }
+enum class RouteEditNotice { ADJACENT_DUPLICATE }
 
 data class RouteSaveStatus(
     val routeId: String,
@@ -431,6 +432,7 @@ data class MapState(
     val routeDeleteRequest: RouteDeleteRequest? = null,
     val routeDeleteUndo: RouteDeleteUndo? = null,
     val routeSpeedNotice: RouteSpeedNotice? = null,
+    val routeEditNotice: RouteEditNotice? = null,
     val chartPackages: List<ChartPackage> = emptyList(),
     val activeChartPackageId: ChartPackageId? = null,
     val position: PositionState = PositionState(),
@@ -450,11 +452,21 @@ data class MapState(
             ?: activeRoutePlanId?.let { id -> savedRoutes.firstOrNull { it.id == id }?.waypoints }
             ?: emptyList()
 
+    val routeLegs: List<MeasurementSegment>
+        get() = routeDraft?.waypoints.orEmpty().zipWithNext().mapIndexed { index, (from, to) ->
+            val inverse = Wgs84Geodesic.inverse(from, to)
+            MeasurementSegment(
+                fromIndex = index,
+                toIndex = index + 1,
+                distanceMeters = inverse.distanceMeters,
+                initialBearingTrueDegrees = inverse.initialBearingTrueDegrees,
+                azimuthAmbiguous = inverse.azimuthAmbiguous,
+            )
+        }
+
     val routeSummary: RouteSummary?
         get() = routeDraft?.takeIf { it.waypoints.size >= 2 }?.let { draft ->
-            val distance = draft.waypoints.zipWithNext().sumOf { (from, to) ->
-                Wgs84Geodesic.inverse(from, to).distanceMeters / METERS_PER_NAUTICAL_MILE
-            }
+            val distance = routeLegs.sumOf { it.distanceMeters } / METERS_PER_NAUTICAL_MILE
             RouteSummary(
                 distanceNauticalMiles = distance,
                 estimatedDurationMillis = draft.plannedSpeedKnots?.let { speed ->
