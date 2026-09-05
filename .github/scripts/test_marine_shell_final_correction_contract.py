@@ -65,15 +65,15 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         stories = self.text("app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt")
         self.assertIn("awaitHostWindowChrome(Color.WHITE)", stories)
 
-    def test_marine_tile_contract_has_all_six_sizes(self):
+    def test_marine_tile_contract_exposes_classic_wp8_sizes(self):
         tile_contract = self.text("core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineTile.kt")
-        for token in ("ICON_1X1", "COMPACT_2X1", "STANDARD_2X2", "WIDE_4X2", "TALL_2X4", "LARGE_4X4"):
+        for token in ("ICON_1X1", "STANDARD_2X2", "WIDE_4X2"):
             self.assertIn(token, tile_contract)
         self.assertIn("TilePresentationKind", tile_contract)
         chart = self.text("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartLauncherPresentation.kt")
         settings = self.text("feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsLauncherPresentation.kt")
         renderer = chart + settings
-        for token in ("ICON_1X1", "COMPACT_2X1", "STANDARD_2X2", "WIDE_4X2", "LARGE_4X4"):
+        for token in ("ICON_1X1", "STANDARD_2X2", "WIDE_4X2"):
             self.assertIn(token, renderer)
         desktop = self.text("feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt")
         self.assertNotIn("MarineTileSize.", desktop)

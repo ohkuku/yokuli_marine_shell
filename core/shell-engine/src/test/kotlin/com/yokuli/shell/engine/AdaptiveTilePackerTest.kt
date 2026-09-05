@@ -20,11 +20,11 @@ class AdaptiveTilePackerTest {
     @Test
     fun `mixed marine tiles pack deterministically without overlap`() {
         val document = document(
-            tile("chart", MarineTileSize.LARGE_4X4, 0),
-            tile("wind", MarineTileSize.COMPACT_2X1, 1),
+            tile("chart", MarineTileSize.WIDE_4X2, 0),
+            tile("wind", MarineTileSize.STANDARD_2X2, 1),
             tile("depth", MarineTileSize.STANDARD_2X2, 2),
             tile("settings", MarineTileSize.ICON_1X1, 3),
-            tile("status", MarineTileSize.TALL_2X4, 4),
+            tile("status", MarineTileSize.STANDARD_2X2, 4),
         )
 
         val first = AdaptiveTilePacker.pack(document, columns = 4)
@@ -73,14 +73,14 @@ class AdaptiveTilePackerTest {
     @Test
     fun `only explicit spacer reserves intentional whitespace`() {
         val withoutSpacer = document(
-            tile("a", MarineTileSize.COMPACT_2X1, 0),
-            tile("b", MarineTileSize.COMPACT_2X1, 1),
+            tile("a", MarineTileSize.STANDARD_2X2, 0),
+            tile("b", MarineTileSize.STANDARD_2X2, 1),
         )
         val withSpacer = withoutSpacer.copy(
             spacers = listOf(
                 Spacer(
                     spacerId = TileInstanceId("spacer-weather-gap"),
-                    size = MarineTileSize.COMPACT_2X1,
+                    size = MarineTileSize.STANDARD_2X2,
                     rank = 1,
                 ),
             ),
@@ -89,10 +89,10 @@ class AdaptiveTilePackerTest {
             },
         )
 
-        assertEquals(1, AdaptiveTilePacker.pack(withoutSpacer, 4).documentHeightRows)
+        assertEquals(2, AdaptiveTilePacker.pack(withoutSpacer, 4).documentHeightRows)
         val packedWithSpacer = AdaptiveTilePacker.pack(withSpacer, 4)
         assertEquals(1, packedWithSpacer.spacers.size)
-        assertEquals(2, packedWithSpacer.documentHeightRows)
+        assertEquals(4, packedWithSpacer.documentHeightRows)
     }
 
     @Test

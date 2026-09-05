@@ -141,7 +141,7 @@ class EditInteractionTest {
             context,
         )
 
-        assertEquals(MarineTileSize.COMPACT_2X1, reduction.state.start.document.size("a"))
+        assertEquals(MarineTileSize.STANDARD_2X2, reduction.state.start.document.size("a"))
         assertEquals(StartInteractionState.EditIdle(TileInstanceId("tile-a")), reduction.state.start.interaction)
         assertTrue(reduction.state.start.activeTransaction == null)
         assertEquals(1, reduction.state.start.undoStack.size)
@@ -150,27 +150,24 @@ class EditInteractionTest {
     }
 
     @Test
-    fun sixSizeResizeCycleIsExactAndEveryStepIsImmediate() {
+    fun threeSizeResizeCycleIsExactAndEveryStepIsImmediate() {
         val first = resize(initial())
         val second = resize(first)
         val third = resize(second)
-        val fourth = resize(third)
-        val fifth = resize(fourth)
-        val sixth = resize(fifth)
-
-        assertEquals(MarineTileSize.COMPACT_2X1, first.start.document.size("a"))
-        assertEquals(MarineTileSize.STANDARD_2X2, second.start.document.size("a"))
-        assertEquals(MarineTileSize.WIDE_4X2, third.start.document.size("a"))
-        assertEquals(MarineTileSize.TALL_2X4, fourth.start.document.size("a"))
-        assertEquals(MarineTileSize.LARGE_4X4, fifth.start.document.size("a"))
-        assertEquals(MarineTileSize.ICON_1X1, sixth.start.document.size("a"))
+        assertEquals(MarineTileSize.STANDARD_2X2, first.start.document.size("a"))
+        assertEquals(MarineTileSize.WIDE_4X2, second.start.document.size("a"))
+        assertEquals(MarineTileSize.ICON_1X1, third.start.document.size("a"))
+        listOf(first, second, third).forEach { state ->
+            assertTrue(state.start.activeTransaction == null)
+            assertEquals(StartInteractionState.EditIdle(TileInstanceId("tile-a")), state.start.interaction)
+        }
     }
 
     @Test
     fun resizeFollowsOnlyTheAppsDeclaredOrder() {
         val appSizes = listOf(
             MarineTileSize.ICON_1X1,
-            MarineTileSize.LARGE_4X4,
+            MarineTileSize.STANDARD_2X2,
             MarineTileSize.WIDE_4X2,
         )
         val appEntry = descriptor("a", appSizes)
@@ -182,7 +179,7 @@ class EditInteractionTest {
         val wide = reducer.reduce(large, LauncherAction.ResizeTile(TileInstanceId("tile-a")), appContext).state
         val icon = reducer.reduce(wide, LauncherAction.ResizeTile(TileInstanceId("tile-a")), appContext).state
 
-        assertEquals(MarineTileSize.LARGE_4X4, large.start.document.size("a"))
+        assertEquals(MarineTileSize.STANDARD_2X2, large.start.document.size("a"))
         assertEquals(MarineTileSize.WIDE_4X2, wide.start.document.size("a"))
         assertEquals(MarineTileSize.ICON_1X1, icon.start.document.size("a"))
     }

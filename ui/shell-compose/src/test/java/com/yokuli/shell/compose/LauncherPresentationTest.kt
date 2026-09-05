@@ -50,7 +50,7 @@ class LauncherPresentationTest {
         assertThrows(IllegalArgumentException::class.java) {
             LauncherPresentationValidator.validate(
                 catalog,
-                listOf(visual(sizes + MarineTileSize.LARGE_4X4)),
+                listOf(visual(sizes + MarineTileSize.ICON_1X1)),
             )
         }
     }

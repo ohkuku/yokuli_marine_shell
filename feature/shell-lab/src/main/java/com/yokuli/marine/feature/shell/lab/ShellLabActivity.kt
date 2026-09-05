@@ -219,9 +219,6 @@ private val benchmarkTileSizes = listOf(
     MarineTileSize.STANDARD_2X2,
     MarineTileSize.WIDE_4X2,
     MarineTileSize.ICON_1X1,
-    MarineTileSize.COMPACT_2X1,
-    MarineTileSize.TALL_2X4,
-    MarineTileSize.LARGE_4X4,
 )
 
 internal fun demoDocument(entries: List<LauncherEntryDescriptor>): StartDocument {

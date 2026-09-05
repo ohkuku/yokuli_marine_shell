@@ -43,9 +43,6 @@ fun settingsLauncherVisualContribution(theme: WpThemeSpec): LauncherEntryVisualC
         icon = LauncherIconRenderer { tint, modifier -> SettingsLauncherIcon(tint, modifier) },
         tileRenderers = mapOf(
             MarineTileSize.ICON_1X1 to LauncherTileRenderer { context -> SettingsIconTile(context) },
-            MarineTileSize.COMPACT_2X1 to LauncherTileRenderer { context ->
-                SettingsCompactTile(context, title, headline)
-            },
             MarineTileSize.STANDARD_2X2 to LauncherTileRenderer { context ->
                 SettingsStandardTile(context, title, headline, detail)
             },
@@ -57,20 +54,6 @@ fun settingsLauncherVisualContribution(theme: WpThemeSpec): LauncherEntryVisualC
 private fun SettingsIconTile(context: LauncherTileRenderContext) {
     Box(context.modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         SettingsLauncherIcon(context.contentColor, Modifier.size(34.dp))
-    }
-}
-
-@Composable
-private fun SettingsCompactTile(context: LauncherTileRenderContext, title: String, headline: String) {
-    Row(
-        context.modifier.fillMaxSize(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SettingsLauncherIcon(context.contentColor, Modifier.size(25.dp))
-        Column(Modifier.padding(start = 8.dp)) {
-            WpText(headline, 17, color = context.contentColor, weight = FontWeight.Light)
-            WpText(title, 10, color = context.contentColor.copy(alpha = .82f))
-        }
     }
 }
 

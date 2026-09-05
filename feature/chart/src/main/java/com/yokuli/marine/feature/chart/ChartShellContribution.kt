@@ -25,9 +25,9 @@ object ChartShellContribution : LauncherCatalogContribution {
             launchToken = ChartDestinations.Browse,
             defaultSize = MarineTileSize.WIDE_4X2,
             supportedSizes = listOf(
+                MarineTileSize.ICON_1X1,
                 MarineTileSize.STANDARD_2X2,
                 MarineTileSize.WIDE_4X2,
-                MarineTileSize.LARGE_4X4,
             ),
             pinPolicy = PinPolicy.PINNABLE,
             presentationKind = TilePresentationKind.STATUS,

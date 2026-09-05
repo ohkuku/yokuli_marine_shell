@@ -87,7 +87,7 @@ object LauncherProtoMapper {
     private fun decodeDocument(proto: StartDocumentProto): StartDocument {
         var structurallyValid = true
         val placements = proto.placementsList.map { placement ->
-            val size = MarineTileSize.entries.firstOrNull { it.name == placement.size }
+            val size = MarineTileSize.fromPersistedName(placement.size)
             if (size == null) structurallyValid = false
             TilePlacement(
                 tileId = TileInstanceId(placement.tileId),
@@ -98,7 +98,7 @@ object LauncherProtoMapper {
             )
         }
         val spacers = proto.spacersList.map { spacer ->
-            val size = MarineTileSize.entries.firstOrNull { it.name == spacer.size }
+            val size = MarineTileSize.fromPersistedName(spacer.size)
             if (size == null) structurallyValid = false
             Spacer(
                 spacerId = TileInstanceId(spacer.spacerId),

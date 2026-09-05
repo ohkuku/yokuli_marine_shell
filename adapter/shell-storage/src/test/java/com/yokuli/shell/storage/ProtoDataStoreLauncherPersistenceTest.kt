@@ -37,7 +37,7 @@ class ProtoDataStoreLauncherPersistenceTest {
                 0L,
             ),
         ),
-        spacers = listOf(Spacer(TileInstanceId("spacer-one"), MarineTileSize.COMPACT_2X1, 1024L, "weather")),
+        spacers = listOf(Spacer(TileInstanceId("spacer-one"), MarineTileSize.STANDARD_2X2, 1024L, "weather")),
     )
     private val defaults = LauncherPersistedState(document = document)
 

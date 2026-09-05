@@ -39,12 +39,12 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         for removed in ("CockpitShellContribution", "LibraryShellContribution", "AnchorShortcutContribution"):
             self.assertNotIn(removed, graph)
 
-    def test_product_correction_extends_the_wp_geometry_with_marine_tile_sizes(self):
+    def test_product_uses_exactly_three_classic_wp8_tile_sizes(self):
         model = (ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineTile.kt").read_text()
         block = model.split("enum class MarineTileSize", 1)[1].split("}", 1)[0]
         names = re.findall(r"^\s*([A-Z][A-Z0-9_]*)\(", block, flags=re.MULTILINE)
         self.assertEqual(
-            ["ICON_1X1", "COMPACT_2X1", "STANDARD_2X2", "WIDE_4X2", "TALL_2X4", "LARGE_4X4"],
+            ["ICON_1X1", "STANDARD_2X2", "WIDE_4X2"],
             names,
         )
 

@@ -2,24 +2,31 @@ package com.yokuli.shell.contract
 
 enum class MarineTileContentLayout {
     ICON,
-    COMPACT_METRIC,
     STANDARD_FACTS,
     WIDE_PREVIEW,
-    TALL_STATUS,
-    LARGE_DASHBOARD,
 }
 
+/** Width × height in the smallest WP8 grid cell. No product-specific extra shapes. */
 enum class MarineTileSize(
     val columns: Int,
     val rows: Int,
     val contentLayout: MarineTileContentLayout,
 ) {
     ICON_1X1(1, 1, MarineTileContentLayout.ICON),
-    COMPACT_2X1(2, 1, MarineTileContentLayout.COMPACT_METRIC),
     STANDARD_2X2(2, 2, MarineTileContentLayout.STANDARD_FACTS),
-    WIDE_4X2(4, 2, MarineTileContentLayout.WIDE_PREVIEW),
-    TALL_2X4(2, 4, MarineTileContentLayout.TALL_STATUS),
-    LARGE_4X4(4, 4, MarineTileContentLayout.LARGE_DASHBOARD),
+    WIDE_4X2(4, 2, MarineTileContentLayout.WIDE_PREVIEW);
+
+    companion object {
+        /**
+         * 中文：仅在持久化边界识别旧形状；保留磁贴身份、顺序和分组，不重置桌面。
+         * English: Decode retired shapes only at the storage boundary, preserving identity/order.
+         */
+        fun fromPersistedName(name: String): MarineTileSize? = when (name) {
+            "COMPACT_2X1" -> STANDARD_2X2
+            "TALL_2X4", "LARGE_4X4" -> WIDE_4X2
+            else -> entries.firstOrNull { it.name == name }
+        }
+    }
 }
 
 enum class TilePresentationKind(val allowsAutomaticCycling: Boolean = false) {

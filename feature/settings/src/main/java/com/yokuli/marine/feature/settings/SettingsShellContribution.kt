@@ -43,7 +43,6 @@ object SettingsShellContribution : LauncherCatalogContribution {
             defaultSize = MarineTileSize.ICON_1X1,
             supportedSizes = listOf(
                 MarineTileSize.ICON_1X1,
-                MarineTileSize.COMPACT_2X1,
                 MarineTileSize.STANDARD_2X2,
             ),
             pinPolicy = PinPolicy.PINNABLE,

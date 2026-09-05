@@ -48,14 +48,16 @@ fun chartLauncherVisualContribution(
         detail = detail,
         icon = LauncherIconRenderer { tint, modifier -> ChartLauncherIcon(tint, modifier) },
         tileRenderers = mapOf(
+            MarineTileSize.ICON_1X1 to LauncherTileRenderer { context ->
+                Box(context.modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    ChartLauncherIcon(context.contentColor, Modifier.size(34.dp))
+                }
+            },
             MarineTileSize.STANDARD_2X2 to LauncherTileRenderer { context ->
                 ChartStandardTile(context, title)
             },
             MarineTileSize.WIDE_4X2 to LauncherTileRenderer { context ->
                 ChartWideTile(context, title, headline, detail)
-            },
-            MarineTileSize.LARGE_4X4 to LauncherTileRenderer { context ->
-                ChartLargeTile(context, title, headline, detail)
             },
         ),
     )
@@ -83,30 +85,6 @@ private fun ChartWideTile(
             WpText(detail, 13, color = context.contentColor.copy(alpha = .82f))
         }
         WpText(title, 13, color = context.contentColor, modifier = Modifier.align(Alignment.BottomStart))
-    }
-}
-
-@Composable
-private fun ChartLargeTile(
-    context: LauncherTileRenderContext,
-    title: String,
-    headline: String,
-    detail: String,
-) {
-    Box(context.modifier.fillMaxSize()) {
-        Row(Modifier.align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
-            ChartLauncherIcon(context.contentColor, Modifier.size(38.dp))
-            WpText(title, 16, color = context.contentColor, modifier = Modifier.padding(start = 10.dp))
-        }
-        Column(Modifier.align(Alignment.CenterStart)) {
-            WpText(headline, 40, color = context.contentColor, weight = FontWeight.Light)
-            WpText(
-                detail,
-                16,
-                color = context.contentColor.copy(alpha = .82f),
-                modifier = Modifier.padding(top = 10.dp),
-            )
-        }
     }
 }
 

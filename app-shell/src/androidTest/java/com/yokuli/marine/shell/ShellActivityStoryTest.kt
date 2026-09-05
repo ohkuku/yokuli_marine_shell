@@ -232,29 +232,27 @@ class ShellActivityStoryTest {
 
     @Test
     fun chartResizeCommitsOnOneTapWithoutConfirmationUi() {
-        val wideBounds = compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("tile-chart").performTouchInput { longClick() }
         awaitExists("resize-selected-tile")
-
-        compose.onNodeWithTag("resize-selected-tile").performClick()
-        compose.waitUntil(5_000) {
-            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height > wideBounds.height
-        }
-        compose.activityRule.scenario.onActivity { activity ->
-            val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
-            assertEquals(
-                com.yokuli.shell.contract.MarineTileSize.LARGE_4X4,
-                state.start.document.placements.single { it.entryId.value == "chart" }.size,
-            )
-            assertTrue(state.start.activeTransaction == null)
-        }
-        compose.onNodeWithTag("resize-selected-tile").assertIsDisplayed()
-        compose.onNodeWithTag("commit-tile-resize").assertDoesNotExist()
-        compose.onNodeWithTag("cancel-tile-resize").assertDoesNotExist()
-
-        compose.onNodeWithTag("resize-selected-tile").performClick()
-        compose.waitUntil(5_000) {
-            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width < wideBounds.width
+        val sizes = listOf(
+            com.yokuli.shell.contract.MarineTileSize.ICON_1X1,
+            com.yokuli.shell.contract.MarineTileSize.STANDARD_2X2,
+            com.yokuli.shell.contract.MarineTileSize.WIDE_4X2,
+        )
+        sizes.forEach { expected ->
+            compose.onNodeWithTag("resize-selected-tile").performTouchInput { click(center) }
+            compose.waitUntil(5_000) {
+                var matches = false
+                compose.activityRule.scenario.onActivity { activity ->
+                    val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
+                    matches = state.start.document.placements.single { it.entryId.value == "chart" }.size == expected &&
+                        state.start.activeTransaction == null
+                }
+                matches
+            }
+            compose.onNodeWithTag("resize-selected-tile").assertIsDisplayed()
+            compose.onNodeWithTag("commit-tile-resize").assertDoesNotExist()
+            compose.onNodeWithTag("cancel-tile-resize").assertDoesNotExist()
         }
     }
 
@@ -298,7 +296,7 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { activity ->
             val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
             assertEquals(
-                com.yokuli.shell.contract.MarineTileSize.COMPACT_2X1,
+                com.yokuli.shell.contract.MarineTileSize.STANDARD_2X2,
                 state.start.document.placements.single { it.entryId.value == "settings" }.size,
             )
             assertTrue(state.start.interaction is com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle)
@@ -306,7 +304,7 @@ class ShellActivityStoryTest {
         compose.waitUntil(5_000) {
             val tileBounds = compose.onNodeWithTag("tile-settings").fetchSemanticsNode().boundsInRoot
             val unpinBounds = compose.onNodeWithTag("unpin-selected-tile").fetchSemanticsNode().boundsInRoot
-            tileBounds.width > tileBounds.height && unpinBounds.center.x > tileBounds.center.x
+            abs(tileBounds.width - tileBounds.height) <= 1f && unpinBounds.center.x > tileBounds.center.x
         }
         compose.onNodeWithTag("unpin-selected-tile", useUnmergedTree = true)
             .performTouchInput { click(center) }
