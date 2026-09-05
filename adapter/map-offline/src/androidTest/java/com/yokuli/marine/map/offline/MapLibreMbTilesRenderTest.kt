@@ -57,7 +57,9 @@ class MapLibreMbTilesRenderTest {
         assertTrue("at least three asymmetric raster regions must be visible", renderedFixtureColors >= 3)
         assertTrue("stable overlay must be visibly bright", Color.red(center) > 220 && Color.green(center) > 220)
         assertTrue(
-            "transparent fixture edge must expose enough of the empty local style",
+            "transparent fixture edge must expose enough of the empty local style; " +
+                "backgroundSamples=${bitmap.countNear(Color.rgb(92, 255, 25))}, " +
+                "palette=${bitmap.sampledPalette()}",
             bitmap.countNear(Color.rgb(92, 255, 25)) > 80,
         )
 
@@ -132,7 +134,15 @@ class MapLibreMbTilesRenderTest {
                     object : MapView.OnDidFinishRenderingMapListener {
                         override fun onDidFinishRenderingMap(fully: Boolean) {
                             if (!fully || !requested.compareAndSet(false, true)) return
-                            map.snapshot { bitmap -> snapshot.set(bitmap); finished.countDown() }
+                            map.snapshot { bitmap ->
+                                snapshot.set(bitmap)
+                                activity.getExternalFilesDir(null)?.let { directory ->
+                                    File(directory, "renderer-$name.png").outputStream().use { output ->
+                                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                                    }
+                                }
+                                finished.countDown()
+                            }
                         }
                     },
                 )
@@ -177,6 +187,14 @@ class MapLibreMbTilesRenderTest {
 
     private fun Bitmap.countNear(expected: Int): Int = (0 until width step 3).sumOf { x ->
         (0 until height step 3).count { y -> getPixel(x, y).near(expected, tolerance = 24) }
+    }
+
+    private fun Bitmap.sampledPalette(): List<String> = buildList<Int> {
+        for (x in 0 until width step 8) {
+            for (y in 0 until height step 8) add(getPixel(x, y) and 0x00ffffff)
+        }
+    }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(8).map { (rgb, count) ->
+        "#%06x:%d".format(rgb, count)
     }
 
     private fun createFixture(file: File) {
