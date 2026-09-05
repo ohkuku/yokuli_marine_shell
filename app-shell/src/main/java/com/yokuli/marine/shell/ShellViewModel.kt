@@ -93,6 +93,16 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         engine.dispatch(LauncherAction.ResetStartDocument)
     }
 
+    /**
+     * Benchmark-only rendezvous for task reuse. Production relaunch must preserve its surface.
+     */
+    fun prepareBenchmarkStart() {
+        if (recoveryTrackingEnabled) return
+        engine.dispatch(LauncherAction.RestorePersistedDocument(defaultStartDocument))
+        engine.dispatch(LauncherAction.ExitSafeMode)
+        engine.dispatch(LauncherAction.ShowDesktop)
+    }
+
     fun requestAndroidSettings() {
         engine.dispatch(LauncherAction.RequestAndroidSettings)
     }

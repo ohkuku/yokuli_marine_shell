@@ -30,6 +30,7 @@ private const val SHELL_ACTIVITY = "com.yokuli.marine.shell.ShellActivity"
 private const val SHELL_LAB_ACTIVITY = "com.yokuli.marine.feature.shell.lab.ShellLabActivity"
 private const val EXTRA_TILE_COUNT = "com.yokuli.marine.shell.lab.TILE_COUNT"
 private const val EXTRA_VIEWPORT_DP = "com.yokuli.marine.shell.lab.VIEWPORT_DP"
+private const val EXTRA_PREPARE_BENCHMARK_START = "com.yokuli.marine.shell.PREPARE_BENCHMARK_START"
 private const val WAIT_MILLIS = 20_000L
 
 /**
@@ -231,6 +232,7 @@ class ShellMacrobenchmark {
     private fun shellIntent() = Intent(Intent.ACTION_MAIN).apply {
         component = ComponentName(TARGET_PACKAGE, SHELL_ACTIVITY)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        putExtra(EXTRA_PREPARE_BENCHMARK_START, true)
     }
 
     private fun androidx.benchmark.macro.MacrobenchmarkScope.openStart() {

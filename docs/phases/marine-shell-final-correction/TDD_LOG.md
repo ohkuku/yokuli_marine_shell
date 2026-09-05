@@ -18,6 +18,12 @@
 
 所有模拟器数据只用于同环境回归趋势。Golden 人工判断、三星方屏、普通真机和 60/90/120 Hz 仍未由机器关闭。
 
+### Hosted correction
+
+提交 `5e9d741` 的 GitHub run `33934748331` 中，build、29 条 API 34 stories 与 API 36 smoke 通过，但 Hosted Macrobenchmark 的 7 条生产 `ShellActivity` 旅程都在等待 `start-screen` 时超时；4 条独立 Shell Lab 旅程没有相同失败。产品纠错要求普通 task relaunch 保持当前内部 Surface，而旧 benchmark setup 仍把显式 Activity launch 当作 Desktop reset，这在 Hosted 的 task 复用方式下不成立。
+
+新增 Red 合同要求 benchmark intent、Activity build-type guard 和 ViewModel 串行 reset 三者同时存在。Green 使用只在 `BuildConfig.BUILD_TYPE == "benchmark"` 生效的显式 handshake，经 Engine queue 依次恢复默认文档、退出 Safe Mode 并显示 Desktop。普通 Debug/Release intent 没有该能力，`onNewIntent` 的生产“保留当前 Surface”语义不变。
+
 ## English translation
 
 The quality slice began Red with three real gaps: the six correction performance journeys were absent, generated profiles still referenced removed motion types, and the final gate/report/status lock did not exist. The first contract run failed three tests.
@@ -25,3 +31,5 @@ The quality slice began Red with three real gaps: the six correction performance
 Self-review then found a false positive: `settingsScroll` completed while `gfxFrameTotalCount` was zero. The summarizer now rejects every interaction journey that observes no target frames. The Settings measurement window includes entry into the Settings surface, and its focused rerun observed two target frames per iteration.
 
 The real reducer-driven Shell Lab supports 30/60 mixed six-size tiles, direct long-press/drag/resize, and a 320dp rounded viewport. Eleven five-iteration Macrobenchmark journeys cover the correction and retained Stage 11 paths. Regenerated Baseline and Startup Profiles contain 1984 and 1605 rules respectively and no removed motion contracts. Emulator results remain regression trends only; human Golden review, Samsung-square hardware, ordinary physical devices, and 60/90/120 Hz validation remain pending.
+
+Hosted run `33934748331` passed build, all 29 API 34 stories, and API 36 smoke, but seven production-Activity benchmarks timed out at `start-screen` while all four standalone Shell Lab journeys avoided that failure. A new Red contract now requires an explicit benchmark-only start rendezvous. The Green implementation restores the default document, exits Safe Mode, and shows Desktop through the serialized Engine queue only when the target build type is `benchmark`; normal task relaunch continues to preserve the current Release surface.

@@ -53,6 +53,8 @@ ordinary physical phone:  PHYSICAL_DEVICE_PENDING
 
 本轮不等待、触发或管理旧 Release；新分支 CI 只作为当前提交的自动反馈。最终 Alpha 发布仍由 owner 在人工视觉和真机证据可接受后决定。
 
+首个 Hosted run `33934748331` 的 build、API 34 stories 与 API 36 smoke 通过，但 Macrobenchmark 暴露 benchmark task 复用没有显式 Desktop reset。后续纠错只为 `benchmark` build 增加 intent handshake，并经串行 Engine queue 恢复默认测试起点；普通 Release 的 task resume 继续保留当前 Surface。最终接受以纠错提交的新 run 为准。
+
 ## English translation
 
 This correction is `MACHINE_VERIFIED`, while subjective fidelity and physical devices remain explicitly pending. Yokuli is now a normal immersive Android marine application with an internal WP-inspired shell, not an Android HOME provider. System Home leaves Yokuli; the in-app compass Bridge navigates within Yokuli. Release remains limited to Chart and Settings and does not claim unimplemented marine capabilities or operational map readiness.
@@ -60,3 +62,5 @@ This correction is `MACHINE_VERIFIED`, while subjective fidelity and physical de
 Desktop, Module List, Search, Recents, and Module are atomic visual surfaces driven by serialized Engine actions. Search launches Chart without an intermediate launcher frame. Safe chrome derives from real platform inset inputs. The six-size marine tile document stores rank, size, and group and is packed adaptively for each viewport. Direct edit/drag/resize keeps pointer-frame offsets in the renderer. Settings uses restrained bilingual typography and compact accent swatches.
 
 The final TDD audit rejected a zero-frame Settings benchmark false positive, regenerated current Baseline/Startup Profiles, and covers eleven five-iteration emulator journeys. Emulator values are trend evidence only, not calibrated frame gates. Golden acceptance, subjective WP feel, Samsung-square hardware, ordinary phones, and physical 60/90/120 Hz verification remain `PENDING`. The old release pipeline is outside this task; owner approval is still required before an Alpha is declared final.
+
+Hosted run `33934748331` passed build, API 34 stories, and API 36 smoke, but exposed that reused benchmark tasks had no explicit Desktop reset. The correction adds a build-type-guarded benchmark intent handshake that restores the deterministic start point through the serialized Engine queue. Normal Release task resume still preserves its current surface. Final hosted acceptance belongs to the correction commit's new run.

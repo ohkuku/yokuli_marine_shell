@@ -102,6 +102,7 @@ class ShellActivity : AppCompatActivity() {
         }
         enterImmersiveMode()
         setContent { YokuliShell(shellViewModel) }
+        prepareBenchmarkStart(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -109,6 +110,7 @@ class ShellActivity : AppCompatActivity() {
         setIntent(intent)
         // Bringing the existing Android task forward preserves its in-app Shell surface.
         // Only explicit deep links may request a different internal destination.
+        prepareBenchmarkStart(intent)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -150,6 +152,15 @@ class ShellActivity : AppCompatActivity() {
         shellViewModel.engine.dispatch(input.toShellAction())
     }
 
+    private fun prepareBenchmarkStart(intent: Intent) {
+        if (
+            BuildConfig.BUILD_TYPE == "benchmark" &&
+            intent.getBooleanExtra(EXTRA_PREPARE_BENCHMARK_START, false)
+        ) {
+            shellViewModel.prepareBenchmarkStart()
+        }
+    }
+
     internal fun openAndroidSettings() {
         platformIntentLauncher(Intent(Settings.ACTION_SETTINGS))
     }
@@ -160,6 +171,10 @@ class ShellActivity : AppCompatActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+    }
+
+    private companion object {
+        const val EXTRA_PREPARE_BENCHMARK_START = "com.yokuli.marine.shell.PREPARE_BENCHMARK_START"
     }
 }
 

@@ -126,6 +126,21 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertIn("EXTRA_VIEWPORT_DP", lab)
         self.assertIn("shell-lab-rounded-viewport-$viewportDp", lab)
 
+    def test_benchmark_start_reset_is_explicit_and_cannot_change_release_resume_semantics(self):
+        benchmark = self.text(
+            "benchmark/shell/src/main/java/com/yokuli/marine/benchmark/shell/ShellMacrobenchmark.kt"
+        )
+        activity = self.text("app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt")
+        view_model = self.text("app-shell/src/main/java/com/yokuli/marine/shell/ShellViewModel.kt")
+        self.assertIn("EXTRA_PREPARE_BENCHMARK_START", benchmark)
+        self.assertIn("EXTRA_PREPARE_BENCHMARK_START", activity)
+        self.assertRegex(
+            activity,
+            r'BuildConfig\.BUILD_TYPE\s*==\s*"benchmark"[\s\S]{0,180}prepareBenchmarkStart',
+        )
+        self.assertIn("fun prepareBenchmarkStart()", view_model)
+        self.assertIn("LauncherAction.ShowDesktop", view_model)
+
     def test_generated_profiles_do_not_reference_removed_motion_contracts(self):
         for name in ("baseline-prof.txt", "startup-prof.txt"):
             profile = self.text(f"app-shell/src/main/generated/baselineProfiles/{name}")
