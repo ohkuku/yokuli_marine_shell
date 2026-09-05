@@ -103,14 +103,23 @@ class UiArchitectureContractTest(unittest.TestCase):
 
     def test_map_ui_does_not_render_invented_marine_runtime_values(self):
         chart = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
+        route_behavior = (
+            ROOT / "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/RoutePlanningContractTest.kt"
+        ).read_text()
+        product_copy = "\n".join(
+            (ROOT / f"feature/chart/src/main/res/{qualifier}/strings.xml").read_text()
+            for qualifier in ("values", "values-en")
+        )
         self.assertNotIn("vesselPosition", chart)
-        self.assertNotIn("activeRoute", chart)
         self.assertNotIn("MarineChartDemoSurface", chart)
         self.assertNotRegex(chart, r"\b(?:SOG|COG|HDG)\s*[:=]?\s*\d")
         self.assertNotIn('"Saved place"', chart)
         self.assertNotIn('"Manual route', chart)
         self.assertIn("map_no_package", chart)
         self.assertNotIn("MAP READY", chart)
+        self.assertNotIn("开始导航", product_copy)
+        self.assertNotIn("START NAVIGATION", product_copy)
+        self.assertIn("never emit navigation", route_behavior)
 
     def test_public_documents_are_chinese_first_with_english_translation(self):
         paths = [ROOT / "README.md", ROOT / "CONTRIBUTING.md", ROOT / "CHANGELOG.md"]

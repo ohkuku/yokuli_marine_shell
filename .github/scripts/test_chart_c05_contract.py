@@ -64,7 +64,7 @@ class ChartC05ContractTest(unittest.TestCase):
         self.assertEqual(1, one["database"]["version"])
         self.assertEqual(2, two["database"]["version"])
         self.assertIn("MIGRATION_1_2", database)
-        self.assertIn("addMigrations(MIGRATION_1_2)", persistence)
+        self.assertIn(".addMigrations(MIGRATION_1_2", persistence)
         self.assertIn('assets.srcDir("$projectDir/schemas")', build)
         combined = database + persistence
         self.assertNotIn("fallbackToDestructiveMigration", combined)
