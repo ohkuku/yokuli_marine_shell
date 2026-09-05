@@ -14,6 +14,14 @@ sealed interface MapAction {
     data class CrosshairConfirmed(val point: GeoPoint, val hits: List<MapHitResult>) : MapAction
     data class ChooseObjectCandidate(val hit: MapHitResult) : MapAction
     data object ConfirmPointCandidate : MapAction
+    data class InsertMeasurementPoint(val index: Int, val point: GeoPoint) : MapAction
+    data class DeleteMeasurementPoint(val index: Int) : MapAction
+    data object UndoMeasurementEdit : MapAction
+    data object RedoMeasurementEdit : MapAction
+    data object ClearMeasurement : MapAction
+    data class BeginPrecisePointEdit(val edit: MapPrecisePointEdit) : MapAction
+    data class ConfirmPrecisePoint(val point: GeoPoint) : MapAction
+    data object CancelPrecisePointEdit : MapAction
     data class BeginPointDrag(val gestureId: MapGestureId, val target: MapEditTarget) : MapAction
     data class PreviewPointDrag(val gestureId: MapGestureId, val point: GeoPoint) : MapAction
     data class CommitPointDrag(val gestureId: MapGestureId, val finalPoint: GeoPoint) : MapAction
@@ -113,6 +121,14 @@ class DefaultMapReducer(
         )
         is MapAction.ChooseObjectCandidate -> chooseObjectCandidate(state, action.hit)
         MapAction.ConfirmPointCandidate -> confirmPointCandidate(state)
+        is MapAction.InsertMeasurementPoint -> insertMeasurementPoint(state, action.index, action.point)
+        is MapAction.DeleteMeasurementPoint -> deleteMeasurementPoint(state, action.index)
+        MapAction.UndoMeasurementEdit -> undoMeasurement(state)
+        MapAction.RedoMeasurementEdit -> redoMeasurement(state)
+        MapAction.ClearMeasurement -> editMeasurement(state) { emptyList() }
+        is MapAction.BeginPrecisePointEdit -> beginPrecisePointEdit(state, action.edit)
+        is MapAction.ConfirmPrecisePoint -> confirmPrecisePoint(state, action.point)
+        MapAction.CancelPrecisePointEdit -> MapReduction(state.copy(precisePointEdit = null))
         is MapAction.BeginPointDrag -> beginPointDrag(state, action.gestureId, action.target)
         is MapAction.PreviewPointDrag -> previewPointDrag(state, action.gestureId, action.point)
         is MapAction.CommitPointDrag -> commitPointDrag(state, action.gestureId, action.finalPoint)
@@ -120,7 +136,11 @@ class DefaultMapReducer(
             if (state.editGesture?.id == action.gestureId) state.copy(editGesture = null) else state,
         )
         is MapAction.ViewportChanged -> MapReduction(
-            if (state.viewport == action.viewport) state else state.copy(viewport = action.viewport, editGesture = null),
+            if (state.viewport == action.viewport) {
+                state
+            } else {
+                state.copy(viewport = action.viewport, editGesture = null, precisePointEdit = null)
+            },
         )
         is MapAction.LongPressMap -> MapReduction(
             state.copy(
@@ -310,9 +330,10 @@ class DefaultMapReducer(
             tool = tool,
             transient = null,
             editGesture = null,
+            precisePointEdit = null,
             measurementDraft = state.measurementDraft ?: MeasurementDraft(),
         )
-        else -> state.copy(tool = tool, transient = null, editGesture = null)
+        else -> state.copy(tool = tool, transient = null, editGesture = null, precisePointEdit = null)
     }
 
     private fun openSurface(state: MapState, surface: MapSurface): MapState = when (surface) {
@@ -388,30 +409,7 @@ class DefaultMapReducer(
     private fun commitPointDrag(state: MapState, id: MapGestureId, finalPoint: GeoPoint): MapReduction {
         val gesture = state.editGesture?.takeIf { it.id == id } ?: return MapReduction(state)
         val cleared = state.copy(editGesture = null)
-        return when (val target = gesture.target) {
-            is MapEditTarget.MeasurementPoint -> {
-                val points = cleared.measurementDraft?.points ?: return incident(cleared, MapIncident.ActionRejected)
-                if (target.index !in points.indices) return incident(cleared, MapIncident.ActionRejected)
-                persistSession(
-                    cleared.copy(
-                        measurementDraft = requireNotNull(cleared.measurementDraft).copy(
-                            points = points.mapIndexed { index, point -> if (index == target.index) finalPoint else point },
-                        ),
-                    ),
-                )
-            }
-            is MapEditTarget.RoutePoint -> {
-                val draft = cleared.routeDrafts.firstOrNull { it.id == target.draftId }
-                    ?: return incident(cleared, MapIncident.ActionRejected)
-                if (target.index !in draft.waypoints.indices) return incident(cleared, MapIncident.ActionRejected)
-                val updated = draft.record(
-                    draft.waypoints.mapIndexed { index, point -> if (index == target.index) finalPoint else point },
-                )
-                persistLibrary(
-                    cleared.copy(routeDrafts = cleared.routeDrafts.map { if (it.id == updated.id) updated else it }),
-                )
-            }
-        }
+        return commitPointEdit(cleared, gesture.target, finalPoint)
     }
 
     private fun MapState.pointFor(target: MapEditTarget): GeoPoint? = when (target) {
@@ -419,12 +417,108 @@ class DefaultMapReducer(
         is MapEditTarget.RoutePoint -> routeDrafts.firstOrNull { it.id == target.draftId }?.waypoints?.getOrNull(target.index)
     }
 
-    private fun addPoint(state: MapState, point: GeoPoint): MapReduction = when (state.tool) {
-        MapTool.MEASURE -> persistSession(
-            state.copy(measurementDraft = (state.measurementDraft ?: MeasurementDraft()).let { draft ->
-                draft.copy(points = draft.points + point)
-            }),
+    private fun beginPrecisePointEdit(state: MapState, edit: MapPrecisePointEdit): MapReduction {
+        val valid = when (edit) {
+            is MapPrecisePointEdit.Move -> state.pointFor(edit.target) != null
+            is MapPrecisePointEdit.InsertMeasurement -> {
+                val size = state.measurementDraft?.points?.size ?: 0
+                edit.index in 0..size
+            }
+        }
+        return if (valid) {
+            MapReduction(state.copy(precisePointEdit = edit, transient = null, crosshairEnabled = true))
+        } else {
+            incident(state, MapIncident.ActionRejected)
+        }
+    }
+
+    private fun confirmPrecisePoint(state: MapState, point: GeoPoint): MapReduction {
+        val edit = state.precisePointEdit ?: return incident(state, MapIncident.ActionRejected)
+        val cleared = state.copy(precisePointEdit = null)
+        return when (edit) {
+            is MapPrecisePointEdit.Move -> commitPointEdit(cleared, edit.target, point)
+            is MapPrecisePointEdit.InsertMeasurement -> insertMeasurementPoint(cleared, edit.index, point)
+        }
+    }
+
+    private fun commitPointEdit(state: MapState, target: MapEditTarget, point: GeoPoint): MapReduction = when (target) {
+        is MapEditTarget.MeasurementPoint -> {
+            val points = state.measurementDraft?.points ?: return incident(state, MapIncident.ActionRejected)
+            if (target.index !in points.indices) return incident(state, MapIncident.ActionRejected)
+            editMeasurement(state) { current ->
+                current.mapIndexed { index, existing -> if (index == target.index) point else existing }
+            }
+        }
+        is MapEditTarget.RoutePoint -> {
+            val draft = state.routeDrafts.firstOrNull { it.id == target.draftId }
+                ?: return incident(state, MapIncident.ActionRejected)
+            if (target.index !in draft.waypoints.indices) return incident(state, MapIncident.ActionRejected)
+            val updated = draft.record(
+                draft.waypoints.mapIndexed { index, existing -> if (index == target.index) point else existing },
+            )
+            persistLibrary(
+                state.copy(routeDrafts = state.routeDrafts.map { if (it.id == updated.id) updated else it }),
+            )
+        }
+    }
+
+    private fun insertMeasurementPoint(state: MapState, index: Int, point: GeoPoint): MapReduction {
+        val points = state.measurementDraft?.points ?: emptyList()
+        if (index !in 0..points.size) return incident(state, MapIncident.ActionRejected)
+        return editMeasurement(state) { current -> current.toMutableList().apply { add(index, point) } }
+    }
+
+    private fun deleteMeasurementPoint(state: MapState, index: Int): MapReduction {
+        val points = state.measurementDraft?.points ?: return incident(state, MapIncident.ActionRejected)
+        if (index !in points.indices) return incident(state, MapIncident.ActionRejected)
+        return editMeasurement(state) { current -> current.filterIndexed { candidate, _ -> candidate != index } }
+    }
+
+    private fun undoMeasurement(state: MapState): MapReduction {
+        val draft = state.measurementDraft ?: return MapReduction(state)
+        val previous = draft.undo.lastOrNull() ?: return MapReduction(state)
+        return persistSession(
+            state.copy(
+                measurementDraft = draft.copy(
+                    points = previous,
+                    undo = draft.undo.dropLast(1),
+                    redo = bounded(draft.redo + listOf(draft.points)),
+                ),
+            ),
         )
+    }
+
+    private fun redoMeasurement(state: MapState): MapReduction {
+        val draft = state.measurementDraft ?: return MapReduction(state)
+        val next = draft.redo.lastOrNull() ?: return MapReduction(state)
+        return persistSession(
+            state.copy(
+                measurementDraft = draft.copy(
+                    points = next,
+                    undo = bounded(draft.undo + listOf(draft.points)),
+                    redo = draft.redo.dropLast(1),
+                ),
+            ),
+        )
+    }
+
+    private fun editMeasurement(state: MapState, transform: (List<GeoPoint>) -> List<GeoPoint>): MapReduction {
+        val draft = state.measurementDraft ?: MeasurementDraft()
+        val updated = transform(draft.points).toList()
+        if (updated == draft.points) return MapReduction(state)
+        return persistSession(
+            state.copy(
+                measurementDraft = draft.copy(
+                    points = updated,
+                    undo = bounded(draft.undo + listOf(draft.points)),
+                    redo = emptyList(),
+                ),
+            ),
+        )
+    }
+
+    private fun addPoint(state: MapState, point: GeoPoint): MapReduction = when (state.tool) {
+        MapTool.MEASURE -> editMeasurement(state) { points -> points + point }
         MapTool.MANUAL_ROUTE -> ifWritable(state) {
             val active = state.routeDraft
             if (active == null) {
@@ -463,7 +557,7 @@ class DefaultMapReducer(
             id = idGenerator.nextId("draft"),
             revision = 1L,
             name = name.trim(),
-            waypoints = points,
+            waypoints = points.toList(),
         )
         persistLibrary(
             state.copy(

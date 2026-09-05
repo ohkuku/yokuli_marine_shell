@@ -52,6 +52,15 @@ sealed interface MapEditTarget {
     }
 }
 
+sealed interface MapPrecisePointEdit {
+    data class Move(val target: MapEditTarget) : MapPrecisePointEdit
+    data class InsertMeasurement(val index: Int) : MapPrecisePointEdit {
+        init {
+            require(index >= 0)
+        }
+    }
+}
+
 data class MapEditGesture(
     val id: MapGestureId,
     val target: MapEditTarget,
@@ -81,6 +90,7 @@ object MapFeatureBackPolicy {
     fun actionFor(state: MapState): MapAction? = when {
         state.transient != null -> MapAction.DismissTransient
         state.editGesture != null -> MapAction.CancelPointDrag(state.editGesture.id)
+        state.precisePointEdit != null -> MapAction.CancelPrecisePointEdit
         state.tool != MapTool.BROWSE -> MapAction.SelectTool(MapTool.BROWSE)
         state.surface != MapSurface.Root -> MapAction.CloseSurface
         state.selection != null -> MapAction.ClearSelection

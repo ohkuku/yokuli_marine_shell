@@ -1,9 +1,5 @@
 package com.yokuli.marine.map.domain
 
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 import java.util.UUID
 
 data class GeoPoint(val latitude: Double, val longitude: Double) {
@@ -21,10 +17,11 @@ data class GeoBounds(
 ) {
     init {
         require(south <= north) { "South must not exceed north" }
-        require(west <= east) { "West must not exceed east" }
         GeoPoint(south, west)
         GeoPoint(north, east)
     }
+
+    val crossesAntimeridian: Boolean get() = west > east
 }
 
 data class MapCamera(
@@ -70,7 +67,51 @@ data class SavedPlace(
         require(revision > 0L)
     }
 }
-data class MeasurementDraft(val points: List<GeoPoint> = emptyList())
+data class MeasurementDraft(
+    val points: List<GeoPoint> = emptyList(),
+    val undo: List<List<GeoPoint>> = emptyList(),
+    val redo: List<List<GeoPoint>> = emptyList(),
+)
+
+enum class MeasurementPrompt { PLACE_START, PLACE_END, RESULTS }
+
+data class MeasurementSegment(
+    val fromIndex: Int,
+    val toIndex: Int,
+    val distanceMeters: Double,
+    val initialBearingTrueDegrees: Double?,
+    val azimuthAmbiguous: Boolean,
+)
+
+data class MeasurementSummary(
+    val prompt: MeasurementPrompt,
+    val segments: List<MeasurementSegment>,
+    val totalDistanceMeters: Double,
+)
+
+object MeasurementMath {
+    fun summarize(draft: MeasurementDraft): MeasurementSummary {
+        val segments = draft.points.zipWithNext().mapIndexed { index, (from, to) ->
+            val inverse = Wgs84Geodesic.inverse(from, to)
+            MeasurementSegment(
+                fromIndex = index,
+                toIndex = index + 1,
+                distanceMeters = inverse.distanceMeters,
+                initialBearingTrueDegrees = inverse.initialBearingTrueDegrees,
+                azimuthAmbiguous = inverse.azimuthAmbiguous,
+            )
+        }
+        return MeasurementSummary(
+            prompt = when (draft.points.size) {
+                0 -> MeasurementPrompt.PLACE_START
+                1 -> MeasurementPrompt.PLACE_END
+                else -> MeasurementPrompt.RESULTS
+            },
+            segments = segments,
+            totalDistanceMeters = segments.sumOf { it.distanceMeters },
+        )
+    }
+}
 enum class RoutePurpose { MANUAL_PLANNING }
 
 data class ManualRouteDraft(
@@ -228,6 +269,7 @@ data class MapState(
     val transient: MapTransient? = null,
     val selection: MapSelection? = null,
     val editGesture: MapEditGesture? = null,
+    val precisePointEdit: MapPrecisePointEdit? = null,
     val viewport: MapViewport? = null,
     val crosshairEnabled: Boolean = false,
     val places: List<SavedPlace> = emptyList(),
@@ -252,7 +294,7 @@ data class MapState(
     val routeSummary: RouteSummary?
         get() = routeDraft?.takeIf { it.waypoints.size >= 2 && it.plannedSpeedKnots > 0.0 }?.let { draft ->
             val distance = draft.waypoints.zipWithNext().sumOf { (from, to) ->
-                greatCircleNauticalMiles(from, to)
+                Wgs84Geodesic.inverse(from, to).distanceMeters / METERS_PER_NAUTICAL_MILE
             }
             RouteSummary(
                 distanceNauticalMiles = distance,
@@ -263,7 +305,7 @@ data class MapState(
     fun persisted(): MapPersistedState = MapPersistedState(
         camera = camera,
         places = places,
-        measurementDraft = measurementDraft,
+        measurementDraft = measurementDraft?.copy(undo = emptyList(), redo = emptyList()),
         routeDraft = routeDraft,
         savedRoutes = savedRoutes,
         chartPackages = chartPackages,
@@ -274,7 +316,7 @@ data class MapState(
 
     fun sessionSnapshot(): MapSessionSnapshot = MapSessionSnapshot(
         camera = camera,
-        measurementDraft = measurementDraft,
+        measurementDraft = measurementDraft?.copy(undo = emptyList(), redo = emptyList()),
         activeRouteDraftId = activeRouteDraftId,
         activeChartPackageId = activeChartPackageId,
     )
@@ -287,13 +329,4 @@ data class MapState(
     )
 }
 
-internal fun greatCircleNauticalMiles(from: GeoPoint, to: GeoPoint): Double {
-    val radiusNm = 3_440.065
-    val lat1 = Math.toRadians(from.latitude)
-    val lat2 = Math.toRadians(to.latitude)
-    val deltaLat = lat2 - lat1
-    val deltaLon = Math.toRadians(to.longitude - from.longitude)
-    val a = sin(deltaLat / 2).let { it * it } +
-        cos(lat1) * cos(lat2) * sin(deltaLon / 2).let { it * it }
-    return radiusNm * 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
-}
+const val METERS_PER_NAUTICAL_MILE = 1_852.0
