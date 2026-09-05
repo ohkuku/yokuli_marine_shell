@@ -12,6 +12,9 @@ import com.yokuli.shell.engine.layout.Spacer
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 import com.yokuli.shell.storage.proto.LauncherStateProto
+import com.yokuli.shell.storage.proto.SpacerProto
+import com.yokuli.shell.storage.proto.StartDocumentProto
+import com.yokuli.shell.storage.proto.TilePlacementProto
 import java.nio.file.Files
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +43,60 @@ class ProtoDataStoreLauncherPersistenceTest {
         spacers = listOf(Spacer(TileInstanceId("spacer-one"), MarineTileSize.STANDARD_2X2, 1024L, "weather")),
     )
     private val defaults = LauncherPersistedState(document = document)
+
+    @Test
+    fun retiredAndUnknownSizesDecodeWithoutDiscardingLayoutIdentityOrOrder() {
+        fun placement(id: String, size: String, rank: Long, group: String) = TilePlacementProto.newBuilder()
+            .setTileId("tile-$id")
+            .setEntryId(id)
+            .setSize(size)
+            .setRank(rank)
+            .setGroupId(group)
+            .build()
+        val proto = LauncherStateProto.newBuilder()
+            .setSchemaVersion(2)
+            .setStartDocument(
+                StartDocumentProto.newBuilder()
+                    .setSchemaVersion(2)
+                    .setProfileId("phone-portrait-4col")
+                    .setDefaultLayoutVersion(2)
+                    .addPlacements(placement("small", "ICON_1X1", 3L, "g1"))
+                    .addPlacements(placement("compact", "COMPACT_2X1", 19L, "g2"))
+                    .addPlacements(placement("tall", "TALL_2X4", 47L, "g3"))
+                    .addPlacements(placement("large", "LARGE_4X4", 89L, "g4"))
+                    .addPlacements(placement("future", "FUTURE_9X9", 144L, "g5"))
+                    .addSpacers(
+                        SpacerProto.newBuilder()
+                            .setSpacerId("spacer-legacy")
+                            .setSize("COMPACT_2X1")
+                            .setRank(233L)
+                            .setGroupId("space")
+                            .build(),
+                    )
+                    .build(),
+            )
+            .build()
+
+        val decoded = requireNotNull(LauncherProtoMapper.decode(proto).document)
+
+        assertEquals(listOf("tile-small", "tile-compact", "tile-tall", "tile-large", "tile-future"), decoded.placements.map { it.tileId.value })
+        assertEquals(listOf(3L, 19L, 47L, 89L, 144L), decoded.placements.map { it.rank })
+        assertEquals(listOf("g1", "g2", "g3", "g4", "g5"), decoded.placements.map { it.groupId })
+        assertEquals(
+            listOf(
+                MarineTileSize.ICON_1X1,
+                MarineTileSize.STANDARD_2X2,
+                MarineTileSize.WIDE_4X2,
+                MarineTileSize.WIDE_4X2,
+                MarineTileSize.ICON_1X1,
+            ),
+            decoded.placements.map { it.size },
+        )
+        assertEquals(MarineTileSize.STANDARD_2X2, decoded.spacers.single().size)
+        assertEquals(233L, decoded.spacers.single().rank)
+        assertEquals("space", decoded.spacers.single().groupId)
+        assertEquals(decoded, LauncherProtoMapper.decode(LauncherProtoMapper.encode(LauncherPersistedState(document = decoded))).document)
+    }
 
     @Test
     fun aFreshDataStoreRestoresTheCommittedSnapshot() = runBlocking {

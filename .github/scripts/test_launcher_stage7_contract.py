@@ -59,7 +59,7 @@ class LauncherStage7EditDragResizeContractTest(unittest.TestCase):
             "pointerCancelRestoresCommittedDocument",
             "catalogChangeCancelsDragSafely",
             "oneResizeActionCommitsAndPersistsWithoutConfirmationState",
-            "sixSizeResizeCycleIsExactAndEveryStepIsImmediate",
+            "threeSizeResizeCycleIsExactAndEveryStepIsImmediate",
             "resizeFollowsOnlyTheAppsDeclaredOrder",
             "singleSizeEntryDoesNotCreateAResizeTransaction",
         ):

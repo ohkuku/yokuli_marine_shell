@@ -69,6 +69,8 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         tile_contract = self.text("core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineTile.kt")
         for token in ("ICON_1X1", "STANDARD_2X2", "WIDE_4X2"):
             self.assertIn(token, tile_contract)
+        for retired in ("COMPACT_2X1(", "TALL_2X4(", "LARGE_4X4("):
+            self.assertNotIn(retired, tile_contract)
         self.assertIn("TilePresentationKind", tile_contract)
         chart = self.text("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartLauncherPresentation.kt")
         settings = self.text("feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsLauncherPresentation.kt")

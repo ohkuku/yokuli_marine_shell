@@ -4,6 +4,8 @@
 基线：`a144de02657b5dd778d329f26ee5f2443370af01`  
 工作分支：`codex/shell-map-contract`
 
+> 2026-09-06 范围更新：本计划的初始 Shell–App 边界已经保留；后续产品施工由 [WP8 三档磁贴与地图 V1 收尾规范](../chart-wp8-refinement/CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md) 接管。正式磁贴只有 1×1、2×2、4×2，C00–C12 连续执行，不恢复扩展形状，也不再按旧 Stage 停等。
+
 ## 1. 本轮目标 / Objective
 
 本轮先修正 Launcher 的编辑模型，再让地图作为一个独立 App 通过同一安装合同进入 Shell。完成标准不是“看起来像磁贴”，而是：

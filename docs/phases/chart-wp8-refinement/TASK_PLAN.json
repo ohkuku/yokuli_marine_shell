@@ -1,0 +1,1720 @@
+{
+  "schemaVersion": 1,
+  "document": "CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md",
+  "phase": "WP8_CHART_COMPLETION",
+  "repository": "ohkuku/yokuli_marine_shell",
+  "branch": "codex/shell-map-contract",
+  "auditedSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
+  "auditedCi": {
+    "runId": 33961941146,
+    "status": "completed",
+    "conclusion": "failure"
+  },
+  "planStatus": "NOT_STARTED",
+  "warning": "以下104个逻辑验收场景是待实现/待执行规格，不是已通过测试数。现有基线探针与12个领域测试的结果见evidence，不能混计。",
+  "scopeOverride": {
+    "tileSizesWidthHeight": [
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        2
+      ],
+      [
+        4,
+        2
+      ]
+    ],
+    "chartSizes": [
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        2
+      ],
+      [
+        4,
+        2
+      ]
+    ],
+    "settingsSizes": [
+      [
+        1,
+        1
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "productionApps": [
+      "Chart",
+      "Settings"
+    ],
+    "runtimeNmeaGnssNavigation": "OUT_OF_SCOPE",
+    "observationConsumer": "IN_SCOPE",
+    "defaultAndroidLauncher": false,
+    "rewriteShellEngine": false
+  },
+  "execution": {
+    "mode": "CONTINUOUS_UNTIL_COMPLETE_OR_REAL_BLOCKER",
+    "perTaskOwnerApprovalRequired": false,
+    "writeCoordinators": 1,
+    "sameFailureAttemptLimit": 3,
+    "forcePush": false,
+    "mergeMain": false,
+    "release": false,
+    "requiredFreezeReviews": 2,
+    "physicalDeviceReview": "PENDING_OWNER"
+  },
+  "conditionalDeliverables": [
+    {
+      "id": "SOURCE_DOWNLOAD_DELIVERY",
+      "ownerTask": "C09",
+      "status": "NOT_VERIFIED",
+      "condition": "存在已核验许可和真实可用提供方端点",
+      "ifBlocked": "BLOCKED_EXTERNAL；继续全部本地工作；不能宣称完整来源获取交付",
+      "doesNotWaive": [
+        "真实小区域资料验证",
+        "本地导入维护",
+        "实际覆盖检查"
+      ]
+    },
+    {
+      "id": "ROUTE_SECONDARY_PIN",
+      "ownerTask": "C11",
+      "status": "NOT_EVALUATED",
+      "condition": "既有secondary entry能力可窄扩展",
+      "ifNotApplicable": "NOT_APPLICABLE_CURRENT_SHELL；无假按钮；不得重写Shell",
+      "doesNotWaive": [
+        "普通地图三档磁贴",
+        "Shell会话恢复",
+        "本地对象搜索"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "C00",
+      "title": "三档磁贴与当前CI收尾",
+      "dependsOn": [],
+      "requirements": [
+        "MAP-R03",
+        "MAP-R15",
+        "MAP-R19",
+        "MAP-R20"
+      ],
+      "status": "TODO",
+      "specSection": "C00",
+      "acceptanceScenarioIds": [
+        "C00-T01",
+        "C00-T02",
+        "C00-T03",
+        "C00-T04",
+        "C00-T05",
+        "C00-T06"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01",
+      "title": "资料保存、恢复与动作队列保护",
+      "dependsOn": [
+        "C00"
+      ],
+      "requirements": [
+        "MAP-R02",
+        "MAP-R08",
+        "MAP-R17",
+        "MAP-R18"
+      ],
+      "status": "TODO",
+      "specSection": "C01",
+      "acceptanceScenarioIds": [
+        "C01-T01",
+        "C01-T02",
+        "C01-T03",
+        "C01-T04",
+        "C01-T05",
+        "C01-T06",
+        "C01-T07",
+        "C01-T08",
+        "C01-T09",
+        "C01-T10"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C02",
+      "title": "单一真实地图renderer与相机协议",
+      "dependsOn": [
+        "C01"
+      ],
+      "requirements": [
+        "MAP-R01",
+        "MAP-R02",
+        "MAP-R04",
+        "MAP-R10",
+        "MAP-R11",
+        "MAP-R17",
+        "MAP-R19"
+      ],
+      "status": "TODO",
+      "specSection": "C02",
+      "acceptanceScenarioIds": [
+        "C02-T01",
+        "C02-T02",
+        "C02-T03",
+        "C02-T04",
+        "C02-T05",
+        "C02-T06",
+        "C02-T07",
+        "C02-T08"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C03",
+      "title": "WP地图层级、按键和方屏交互",
+      "dependsOn": [
+        "C01",
+        "C02"
+      ],
+      "requirements": [
+        "MAP-R02",
+        "MAP-R03",
+        "MAP-R17"
+      ],
+      "status": "TODO",
+      "specSection": "C03",
+      "acceptanceScenarioIds": [
+        "C03-T01",
+        "C03-T02",
+        "C03-T03",
+        "C03-T04",
+        "C03-T05",
+        "C03-T06",
+        "C03-T07"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C04",
+      "title": "地理数学、选点与测量",
+      "dependsOn": [
+        "C03"
+      ],
+      "requirements": [
+        "MAP-R04",
+        "MAP-R05",
+        "MAP-R06"
+      ],
+      "status": "TODO",
+      "specSection": "C04",
+      "acceptanceScenarioIds": [
+        "C04-T01",
+        "C04-T02",
+        "C04-T03",
+        "C04-T04",
+        "C04-T05",
+        "C04-T06",
+        "C04-T07",
+        "C04-T08"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C05",
+      "title": "地点CRUD与本地搜索",
+      "dependsOn": [
+        "C04"
+      ],
+      "requirements": [
+        "MAP-R06",
+        "MAP-R08"
+      ],
+      "status": "TODO",
+      "specSection": "C05",
+      "acceptanceScenarioIds": [
+        "C05-T01",
+        "C05-T02",
+        "C05-T03",
+        "C05-T04",
+        "C05-T05",
+        "C05-T06"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06",
+      "title": "路线草稿、正式计划与再编辑",
+      "dependsOn": [
+        "C04",
+        "C05"
+      ],
+      "requirements": [
+        "MAP-R07",
+        "MAP-R08",
+        "MAP-R16"
+      ],
+      "status": "TODO",
+      "specSection": "C06",
+      "acceptanceScenarioIds": [
+        "C06-T01",
+        "C06-T02",
+        "C06-T03",
+        "C06-T04",
+        "C06-T05",
+        "C06-T06",
+        "C06-T07",
+        "C06-T08",
+        "C06-T09"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07",
+      "title": "海图包验证、任务取消和版本恢复",
+      "dependsOn": [
+        "C01",
+        "C02"
+      ],
+      "requirements": [
+        "MAP-R10",
+        "MAP-R11",
+        "MAP-R12",
+        "MAP-R17",
+        "MAP-R18"
+      ],
+      "status": "TODO",
+      "specSection": "C07",
+      "acceptanceScenarioIds": [
+        "C07-T01",
+        "C07-T02",
+        "C07-T03",
+        "C07-T04",
+        "C07-T05",
+        "C07-T06",
+        "C07-T07",
+        "C07-T08",
+        "C07-T09",
+        "C07-T10"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C08",
+      "title": "GPX互操作与只读分段轨迹",
+      "dependsOn": [
+        "C05",
+        "C06"
+      ],
+      "requirements": [
+        "MAP-R06",
+        "MAP-R08",
+        "MAP-R09",
+        "MAP-R18"
+      ],
+      "status": "TODO",
+      "specSection": "C08",
+      "acceptanceScenarioIds": [
+        "C08-T01",
+        "C08-T02",
+        "C08-T03",
+        "C08-T04",
+        "C08-T05",
+        "C08-T06",
+        "C08-T07"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09",
+      "title": "实际离线覆盖与合法来源获取",
+      "dependsOn": [
+        "C06",
+        "C07"
+      ],
+      "requirements": [
+        "MAP-R10",
+        "MAP-R11",
+        "MAP-R12",
+        "MAP-R13"
+      ],
+      "status": "TODO",
+      "specSection": "C09",
+      "acceptanceScenarioIds": [
+        "C09-T01",
+        "C09-T02",
+        "C09-T03",
+        "C09-T04",
+        "C09-T05",
+        "C09-T06",
+        "C09-T07",
+        "C09-T08",
+        "C09-T09",
+        "C09-T10"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10",
+      "title": "NoSource及只读观测质量",
+      "dependsOn": [
+        "C01",
+        "C02",
+        "C03"
+      ],
+      "requirements": [
+        "MAP-R01",
+        "MAP-R14",
+        "MAP-R16",
+        "MAP-R18"
+      ],
+      "status": "TODO",
+      "specSection": "C10",
+      "acceptanceScenarioIds": [
+        "C10-T01",
+        "C10-T02",
+        "C10-T03",
+        "C10-T04",
+        "C10-T05",
+        "C10-T06",
+        "C10-T07",
+        "C10-T08",
+        "C10-T09",
+        "C10-T10"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C11",
+      "title": "三档地图磁贴与Shell集成",
+      "dependsOn": [
+        "C03",
+        "C05",
+        "C06",
+        "C07",
+        "C09"
+      ],
+      "requirements": [
+        "MAP-R02",
+        "MAP-R03",
+        "MAP-R15",
+        "MAP-R16"
+      ],
+      "status": "TODO",
+      "specSection": "C11",
+      "acceptanceScenarioIds": [
+        "C11-T01",
+        "C11-T02",
+        "C11-T03",
+        "C11-T04",
+        "C11-T05",
+        "C11-T06",
+        "C11-T07"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C12",
+      "title": "累计验证、反证审阅和交付",
+      "dependsOn": [
+        "C00",
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06",
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "C11"
+      ],
+      "requirements": [
+        "MAP-R19",
+        "MAP-R20"
+      ],
+      "status": "TODO",
+      "specSection": "C12",
+      "acceptanceScenarioIds": [
+        "C12-T01",
+        "C12-T02",
+        "C12-T03",
+        "C12-T04",
+        "C12-T05",
+        "C12-T06"
+      ],
+      "verifiedSha": null,
+      "evidence": []
+    }
+  ],
+  "acceptanceScenarios": [
+    {
+      "id": "C00-T01",
+      "taskId": "C00",
+      "given": "当前生产catalog",
+      "when": "检查enum及Chart/Settings声明和renderer键",
+      "then": "只有三种形状且键严格匹配；单档App无缩放",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C00-T02",
+      "taskId": "C00",
+      "given": "Chart和Settings固定在主屏",
+      "when": "真实点击缩放连续循环",
+      "then": "Chart小中宽小、Settings小中；每次直接提交，无确认勾",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C00-T03",
+      "taskId": "C00",
+      "given": "含退休尺寸/组/空白/稀疏rank的布局",
+      "when": "解码、保存、再次解码",
+      "then": "身份顺序保留、目标形状正确、二次读写幂等",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C00-T04",
+      "taskId": "C00",
+      "given": "混合三尺寸与4/6/8列布局",
+      "when": "随机重排并检查每步",
+      "then": "无越界、无重叠、预览与drop顺序一致",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C00-T05",
+      "taskId": "C00",
+      "given": "1x1在视口各边缘",
+      "when": "真实pointer点击unpin/resize与中心拖动",
+      "then": "各目标独立、不重叠、不误触、至少48dp",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C00-T06",
+      "taskId": "C00",
+      "given": "修正当前旧契约",
+      "when": "跑完整契约和JVM及编译",
+      "then": "所有实际结果通过；不是删除断言或恢复扩展尺寸",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T01",
+      "taskId": "C01",
+      "given": "已有路线草稿A和另一组测量",
+      "when": "测量转换为新路线",
+      "then": "A仍可重开；新draft有独立ID；正式资料未变化",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T02",
+      "taskId": "C01",
+      "given": "仓储load抛I/O异常且原库存在",
+      "when": "发生相机、包刷新、切工具事件",
+      "then": "原库不被默认空数据覆盖；UI显示可恢复错误",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T03",
+      "taskId": "C01",
+      "given": "损坏/未来schema/单条非法记录",
+      "when": "加载用户资料",
+      "then": "不静默整库重置；保留原文件并局部隔离或报错",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T04",
+      "taskId": "C01",
+      "given": "写入耗时且输入持续到来",
+      "when": "pan、切工具、Bridge、最终drop",
+      "then": "交互不等待写入；控制可靠；中间相机可合并；无溢出崩溃",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T05",
+      "taskId": "C01",
+      "given": "A正在保存且用户编辑成B",
+      "when": "A的ack/失败迟到",
+      "then": "B仍Pending或对应错误；旧ack不宣称B已保存",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T06",
+      "taskId": "C01",
+      "given": "用户双击Save或重复命令送达",
+      "when": "提交正式计划",
+      "then": "相同command/revision只提交一次",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T07",
+      "taskId": "C01",
+      "given": "保存写满或I/O失败",
+      "when": "用户返回、重试、导出",
+      "then": "内存编辑保留、Failed可见、不假报Saved",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T08",
+      "taskId": "C01",
+      "given": "一次action/effect报错或Store已close",
+      "when": "后续合法动作/迟到回调进入",
+      "then": "动作消费者仍健康或安全拒绝；UI不崩溃",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T09",
+      "taskId": "C01",
+      "given": "当前操作被取消",
+      "when": "协程取消传播",
+      "then": "CancellationException不转为普通IO失败、不产生迟到成功",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C01-T10",
+      "taskId": "C01",
+      "given": "实际资料写入获得durable ack",
+      "when": "外部驱动终止并重启进程",
+      "then": "恢复同ID/revision；ack前另测并明确不保证",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C02-T01",
+      "taskId": "C02",
+      "given": "真实PNG/JPEG本地MBTiles",
+      "when": "禁外网、清incidental cache后冷启动renderer",
+      "then": "实际区分图面绘出；不是只存在MapView",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C02-T02",
+      "taskId": "C02",
+      "given": "非对称多zoom、透明边、不同tile尺寸fixture",
+      "when": "旋转缩放并检查已知地物",
+      "then": "TMS/XYZ、方向、经纬度顺序、比例尺与overlay正确",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C02-T03",
+      "taskId": "C02",
+      "given": "renderer先就绪、持久恢复后到达",
+      "when": "恢复camera",
+      "then": "最终为恢复相机；默认idle不覆盖存储",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C02-T04",
+      "taskId": "C02",
+      "given": "持久恢复先完成、renderer后就绪",
+      "when": "挂载并发送camera命令",
+      "then": "命令正确应用一次；echo不形成写入循环",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C02-T05",
+      "taskId": "C02",
+      "given": "style/package A切B",
+      "when": "A回调晚到或dispose后到达",
+      "then": "B状态不被污染；无已释放资源访问",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C02-T06",
+      "taskId": "C02",
+      "given": "无包/坏块/包被移除",
+      "when": "打开地图、Back、重试",
+      "then": "Host可用、错误明确、用户点线保留、不无限spinner",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C02-T07",
+      "taskId": "C02",
+      "given": "有地点/路线/包范围目标及面板遮挡",
+      "when": "执行明确相机命令",
+      "then": "目标处于可见地图，普通切图不自动fit-all",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C02-T08",
+      "taskId": "C02",
+      "given": "真实合法小区域源",
+      "when": "导入并重复50次进出地图",
+      "then": "来源证据可追溯；无隐藏外网依赖或native实例持续增长",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C03-T01",
+      "taskId": "C03",
+      "given": "无选点的地图根页",
+      "when": "普通浏览",
+      "then": "无大标题/常驻大面板；少量工具和必要地图信息",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C03-T02",
+      "taskId": "C03",
+      "given": "IME、modal、gesture、tool、detail、root依次存在",
+      "when": "逐次Back",
+      "then": "按规定仅消费最上层，最后才回桌面",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C03-T03",
+      "taskId": "C03",
+      "given": "编辑中且保存很慢",
+      "when": "Bridge或Android Home后返回",
+      "then": "两种Home语义不同；已确认状态保留；不等待磁盘退出",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C03-T04",
+      "taskId": "C03",
+      "given": "地图位于Shell模块中",
+      "when": "单指平移和双指缩放旋转",
+      "then": "地图拥有手势，不被Shell pager抢走",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C03-T05",
+      "taskId": "C03",
+      "given": "路线/测量工具有候选点",
+      "when": "轻点空白、平移、点击添加",
+      "then": "前两者不提交；只有明确添加产生一个点",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C03-T06",
+      "taskId": "C03",
+      "given": "多个重叠对象或工具覆盖地图",
+      "when": "点对象或点工具",
+      "then": "候选选择确定；控件事件不穿透地图",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C03-T07",
+      "taskId": "C03",
+      "given": "方屏/圆角/大字体/IME或拖动时视口改变",
+      "when": "打开表单并编辑",
+      "then": "确认取消可达；安全区只扣一次；未确认位移取消",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C04-T01",
+      "taskId": "C04",
+      "given": "独立参考坐标与已知WGS84距离",
+      "when": "逆算短/长段、赤道一度",
+      "then": "距离与起始真方位按容差匹配，非自己生成golden",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C04-T02",
+      "taskId": "C04",
+      "given": "相同点和近对跖点",
+      "when": "计算距离/方向",
+      "then": "零距方向为未定义；难例不NaN或伪装唯一方向",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C04-T03",
+      "taskId": "C04",
+      "given": "跨日期线或高纬合法点",
+      "when": "绘制和fit范围",
+      "then": "短跨界不横穿世界；数据不被Mercator裁掉",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C04-T04",
+      "taskId": "C04",
+      "given": "十进制度/度分小数/半球字符串",
+      "when": "解析及格式往返",
+      "then": "精度保留；分>=60、符号冲突、非有限数明确拒绝",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C04-T05",
+      "taskId": "C04",
+      "given": "零/一/二/多测量点",
+      "when": "逐步放点并移动任意点",
+      "then": "下一步明确，实际距离/方位/累计正确",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C04-T06",
+      "taskId": "C04",
+      "given": "已确认测量编辑",
+      "when": "插删移和undo/redo/clear",
+      "then": "可逆语义正确，临时测量不污染地点或路线",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C04-T07",
+      "taskId": "C04",
+      "given": "最后一帧handle坐标变化",
+      "when": "立即drop/取消/切视口",
+      "then": "drop使用最终合法坐标；取消不残留半提交",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C04-T08",
+      "taskId": "C04",
+      "given": "已有测量与不同草稿",
+      "when": "转换路线后分别编辑",
+      "then": "坐标值复制而非共享可变列表；原稿不丢",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C05-T01",
+      "taskId": "C05",
+      "given": "地图临时选点",
+      "when": "填写名称备注分类并保存",
+      "then": "ack后列表/详情可找，同坐标同内容可核对",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C05-T02",
+      "taskId": "C05",
+      "given": "一个现有地点",
+      "when": "普通pan与显式位置编辑确认/取消",
+      "then": "普通pan不改坐标；编辑可准确确认或取消",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C05-T03",
+      "taskId": "C05",
+      "given": "路线使用了地点坐标快照",
+      "when": "移动/删除该地点",
+      "then": "路线位置顺序不被静默更新；来源状态可解释",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C05-T04",
+      "taskId": "C05",
+      "given": "删除后又新建/编辑/导入资料",
+      "when": "撤销删除",
+      "then": "不复用ID、不覆盖较新revision",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C05-T05",
+      "taskId": "C05",
+      "given": "重复名字/中文/长备注/空库",
+      "when": "搜索、排序、打开详情再返回",
+      "then": "列表与焦点稳定；无结果不偷偷外网查询",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C05-T06",
+      "taskId": "C05",
+      "given": "已ack地点与未ack修改",
+      "when": "进程终止重启和写失败重试",
+      "then": "已ack恢复，未ack诚实；错误不会清整个库",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06-T01",
+      "taskId": "C06",
+      "given": "新路线至少两个点",
+      "when": "保存后从列表重开",
+      "then": "同一正式ID，可预览实际保存点线而非仅draft",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06-T02",
+      "taskId": "C06",
+      "given": "已保存计划",
+      "when": "打开预览、再点编辑、保存",
+      "then": "预览不变dirty；编辑独立draft；保存更新同ID新revision",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06-T03",
+      "taskId": "C06",
+      "given": "草稿A、草稿B、测量转草稿C",
+      "when": "依次切换再恢复",
+      "then": "三份内容不覆盖、活动编辑只有一个",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06-T04",
+      "taskId": "C06",
+      "given": "路线多个有ID的点",
+      "when": "插入、删除、移动、重排、undo/redo",
+      "then": "顺序几何和身份正确；最终输入不丢",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06-T05",
+      "taskId": "C06",
+      "given": "未输入计划船速",
+      "when": "保存并看汇总，再输入合法/非法值",
+      "then": "未输入无虚构时长且可保存；非法拒绝，合法估时正确",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06-T06",
+      "taskId": "C06",
+      "given": "一个正式计划",
+      "when": "复制、反向、另存",
+      "then": "新ID/副本语义明确；原计划不被默改",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06-T07",
+      "taskId": "C06",
+      "given": "并发revision更新或快速重复Save",
+      "when": "写入正式计划",
+      "then": "冲突保留draft，重试去重，不silent last-write-wins",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06-T08",
+      "taskId": "C06",
+      "given": "正在编辑草稿",
+      "when": "丢弃/删除/撤销/写失败",
+      "then": "只影响指定对象；原正式计划与其他稿保留",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C06-T09",
+      "taskId": "C06",
+      "given": "计划预览中切图/恢复源/从搜索打开",
+      "when": "观察route和输出spy",
+      "then": "路线数据不变；没有活动导航或船网输出",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T01",
+      "taskId": "C07",
+      "given": "标准tables与views schema的真实raster",
+      "when": "导入并绘制",
+      "then": "两者可用；不是只检查sqlite_master的table",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T02",
+      "taskId": "C07",
+      "given": "缺推荐bounds/zoom的有效tile索引",
+      "when": "inspect",
+      "then": "从索引推导；不让用户猜，也不拒绝所有可选缺失",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T03",
+      "taskId": "C07",
+      "given": "非法zoom/xy/重复key/空包/声明矛盾",
+      "when": "验证",
+      "then": "受控拒绝或明确报告；不会安装成正常可用",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T04",
+      "taskId": "C07",
+      "given": "0x01假PNG、过大图片、异常metadata",
+      "when": "验证和使用时读块",
+      "then": "有界失败/坏块隔离；不把格式标签当解码证据",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T05",
+      "taskId": "C07",
+      "given": "SAF失效/文件复制中写满",
+      "when": "导入",
+      "then": "staging可清理重试，旧包和个人资料不受影响",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T06",
+      "taskId": "C07",
+      "given": "inspect/install在途",
+      "when": "取消、另选文件、旧完成回调到达",
+      "then": "取消真实生效；旧结果不复活页面或激活旧包",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T07",
+      "taskId": "C07",
+      "given": "同字节、同名不同包、同逻辑包V2",
+      "when": "重复安装/版本替换",
+      "then": "去重、身份和更新语义正确，不按文件名覆盖",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T08",
+      "taskId": "C07",
+      "given": "安装每个文件/数据库边界",
+      "when": "中止进程并重启",
+      "then": "journal恢复幂等，至少旧版本可用，无半文件active",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T09",
+      "taskId": "C07",
+      "given": "renderer/snapshot/coverage持有版本",
+      "when": "删除或替换",
+      "then": "先释放租约再清文件；不改个人点线；可回退",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C07-T10",
+      "taskId": "C07",
+      "given": "坏manifest或未知来源用户文件",
+      "when": "列表、来源编辑、清缓存",
+      "then": "问题可见，Unknown不变官方认证；清缓存不删离线包",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C08-T01",
+      "taskId": "C08",
+      "given": "含wpt/rte/trk/trkseg的GPX1.1",
+      "when": "导入预览并选择确认",
+      "then": "类型映射正确；未确认无写入",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C08-T02",
+      "taskId": "C08",
+      "given": "同GPX重复选择",
+      "when": "取消或显式作为副本导入",
+      "then": "取消零变更；重复提醒；副本有新稳定ID",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C08-T03",
+      "taskId": "C08",
+      "given": "至少两段轨迹且中间明显缺口",
+      "when": "显示和导出",
+      "then": "不跨缺口连线，仍为trk/trkseg而非rte",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C08-T04",
+      "taskId": "C08",
+      "given": "中文/缺可选字段/时间时区/未知extensions",
+      "when": "导入导出并独立解析",
+      "then": "支持字段精度顺序保真；不承诺未知字段无损",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C08-T05",
+      "taskId": "C08",
+      "given": "DTD/XXE/XML bomb/过深/巨大文本/非法坐标",
+      "when": "流式解析",
+      "then": "不外网、不读外部文件，有界明确失败",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C08-T06",
+      "taskId": "C08",
+      "given": "大GPX或超过点数预算",
+      "when": "导入/查看/取消",
+      "then": "无OOM/主线程长卡；超限不静默截断成功",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C08-T07",
+      "taskId": "C08",
+      "given": "SAF导出取消/撤权/写满",
+      "when": "生成并写目标或分享",
+      "then": "生成、保存、分享状态区分；不假报成功",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T01",
+      "taskId": "C09",
+      "given": "包bbox内洞且路线段穿过洞",
+      "when": "指定级别走廊检查",
+      "then": "识别缺块，不因航点都被覆盖而判完整",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T02",
+      "taskId": "C09",
+      "given": "有低级图但目标级别缺失",
+      "when": "覆盖检查及放大查看",
+      "then": "不把过度放大当目标级别图面",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T03",
+      "taskId": "C09",
+      "given": "所需key齐全但透明/图幅边未知",
+      "when": "显示检查结果",
+      "then": "tile可用与content未核验分开，navigation未评估",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T04",
+      "taskId": "C09",
+      "given": "日期线、窄缝、转角、端点与备用地点",
+      "when": "生成所需tile集合",
+      "then": "无漏检后Complete；近似误差与预算可解释",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T05",
+      "taskId": "C09",
+      "given": "旧检查在途",
+      "when": "改route/宽度/级别/包集合或删除包",
+      "then": "旧fingerprint结果被拒绝，状态立即失效",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T06",
+      "taskId": "C09",
+      "given": "超预算或取消检查",
+      "when": "执行任务",
+      "then": "明确范围过大/取消；不卡UI，不截断后称完整",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T07",
+      "taskId": "C09",
+      "given": "真实provider或ImportOnly源",
+      "when": "查看缺失与获取按钮",
+      "then": "能力和许可匹配；无法下载时导入路径真实可用",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T08",
+      "taskId": "C09",
+      "given": "下载中断后Range恢复且ETag可能改变",
+      "when": "处理200/206/416与不同长度",
+      "then": "不拼接不同版本；校验后才安装",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T09",
+      "taskId": "C09",
+      "given": "用户暂停/取消、断网/限流/写满",
+      "when": "恢复网络、重试或重启",
+      "then": "用户暂停不自动恢复；有限重试、旧好包保留",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C09-T10",
+      "taskId": "C09",
+      "given": "下载任务完成或来源未知",
+      "when": "重新检查/显示来源状态",
+      "then": "下载成功不自动Complete；不能伪造官方许可或安全结论",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T01",
+      "taskId": "C10",
+      "given": "NoSource生产入口",
+      "when": "浏览、测量、规划、GPX",
+      "then": "无红故障墙、无假船位、无高频空闲timer",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T02",
+      "taskId": "C10",
+      "given": "相同坐标的新样本与同ID旧缓存",
+      "when": "消费两种输入",
+      "then": "前者更新新鲜度，后者不刷新年龄",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T03",
+      "taskId": "C10",
+      "given": "source epoch变化或切源",
+      "when": "接收重复ID与乱序样本",
+      "then": "不会永久误丢新epoch，也不会混源拼装fix",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T04",
+      "taskId": "C10",
+      "given": "未来/负年龄或UTC调整",
+      "when": "新鲜度判定",
+      "then": "质量受控，单调时钟不被wall clock伪更新",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T05",
+      "taskId": "C10",
+      "given": "没有新消息",
+      "when": "推进可测试时钟超过策略阈值",
+      "then": "样本主动转stale并更新图形，不等下一包",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T06",
+      "taskId": "C10",
+      "given": "position fresh而heading stale/只有COG",
+      "when": "绘制船位和方向",
+      "then": "局部降级；COG不叫HDG；未知精度不造圈",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T07",
+      "taskId": "C10",
+      "given": "链路断开但样本未超时",
+      "when": "随后过期",
+      "then": "断开和新鲜度并存，过期后保留明示历史点",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T08",
+      "taskId": "C10",
+      "given": "保存最后已知位置并设备重启",
+      "when": "恢复历史",
+      "then": "不同boot elapsed不比较成fresh，无推航",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T09",
+      "taskId": "C10",
+      "given": "用户Browse/pan过或此前Follow",
+      "when": "数据恢复",
+      "then": "Browse不抢相机；Follow仅按用户保留意图恢复",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C10-T10",
+      "taskId": "C10",
+      "given": "预览/保存/磁贴/观测恢复",
+      "when": "检查输出spy与发布产物",
+      "then": "无NMEA/自动舵输出，无生产Fake或GPS采集权限",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C11-T01",
+      "taskId": "C11",
+      "given": "三档磁贴与不同真实Chart任务",
+      "when": "各尺寸绘制",
+      "then": "小图标、中摘要、宽历史/计划预览，各自可读",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C11-T02",
+      "taskId": "C11",
+      "given": "无资料/无快照/失败保存/过期覆盖",
+      "when": "回到主屏",
+      "then": "优先状态真实，不假图、不口号替代任务",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C11-T03",
+      "taskId": "C11",
+      "given": "快照A/B代次和路线/包变化",
+      "when": "异步更新摘要",
+      "then": "旧快照/旧完整结论不覆盖新状态",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C11-T04",
+      "taskId": "C11",
+      "given": "地图已隐藏且磁贴不可见/编辑中",
+      "when": "观察资源与装饰动画",
+      "then": "无第二MapView/自动网络/定位；编辑不跳目标",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C11-T05",
+      "taskId": "C11",
+      "given": "普通地图磁贴与Search对象入口",
+      "when": "打开、返回、再次打开",
+      "then": "会话恢复和原子转场，无重复压栈或自动导航",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C11-T06",
+      "taskId": "C11",
+      "given": "目标资料被删/非法token",
+      "when": "点旧入口",
+      "then": "可操作不存在状态，不崩溃或随机打开别的资料",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C11-T07",
+      "taskId": "C11",
+      "given": "secondary-entry capability满足或不满足",
+      "when": "路线pin功能检查",
+      "then": "满足则稳定ID并回归；否则不露假按钮，普通磁贴仍完成",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C12-T01",
+      "taskId": "C12",
+      "given": "冻结候选同SHA",
+      "when": "检查CI任务、test report、APK和digest",
+      "then": "全部绑定同版本；adapter真机测试不是未运行",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C12-T02",
+      "taskId": "C12",
+      "given": "完整生产入口与真实图面",
+      "when": "连续J01至J06旅程",
+      "then": "成功/取消/失败/返回都有可见正确结果",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C12-T03",
+      "taskId": "C12",
+      "given": "320/360方屏及其他尺寸、大字体、圆角、IME",
+      "when": "真实触控布局回归",
+      "then": "关键按钮可达，无层级/手势/中间帧穿透",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C12-T04",
+      "taskId": "C12",
+      "given": "大型导入/保存/包更新并行地图操作",
+      "when": "release-like性能与50次资源循环",
+      "then": "有界内存/响应；模拟器只记录趋势，不冒称三星达标",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C12-T05",
+      "taskId": "C12",
+      "given": "已ack资料和安装边界",
+      "when": "外部驱动终止重启进程",
+      "then": "证明进程级恢复，不能只用Activity.recreate",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    },
+    {
+      "id": "C12-T06",
+      "taskId": "C12",
+      "given": "Release APK和两轮反证审阅",
+      "when": "检查入口、权限、日志、来源、未修缺陷",
+      "then": "无Lab/Fake/HOME/无关权限，P0/P1为空才机器ready，人工状态独立",
+      "implementationTestPath": null,
+      "command": null,
+      "result": "NOT_RUN",
+      "verifiedSha": null,
+      "evidence": []
+    }
+  ]
+}

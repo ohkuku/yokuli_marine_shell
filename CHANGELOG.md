@@ -1,5 +1,11 @@
 # Changelog
 
+## WP8 Chart Completion — C00 candidate
+
+- 正式磁贴尺寸收敛为 WP 经典三档 1×1、2×2、4×2；Chart 提供三档独立内容，Settings 提供 1×1/2×2，直接缩放继续一次点击提交且不出现确认勾。
+- 退休的 2×1、2×4、4×4 仅在持久化边界映射到 2×2/4×2；布局身份、排序、分组和空白项保持，未知值受控降级而不清空整张桌面。
+- 随机 packing 回归扩到 4/6/8 列，设备测试改为真实 pointer 点击 resize/unpin；当前 Map V1 以 C00–C12 连续工作包和唯一执行状态推进。
+
 ## Stage 11 — Performance & Fidelity Gate
 
 - 新增独立 Macrobenchmark 与 Baseline Profile 模块，版本化保存只包含 Yokuli 产品 descriptor 的 Baseline/Startup Profile；CI 归档 AndroidX 原始 metrics 与 trace，并明确模拟器只用于趋势。

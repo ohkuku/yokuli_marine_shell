@@ -1,23 +1,23 @@
 # Yokuli OS — Launcher Engine TDD 施工规范
 
-状态：`ACTIVE`。当前阶段顺序以 [`LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md`](requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md) 为唯一规范；旧 Slice 日志和旧需求已归档。
+状态：`ACTIVE`。Shell 历史阶段仍以 [`LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md`](requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md) 追溯；当前 Map V1 施工以 [`CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md`](phases/chart-wp8-refinement/CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md) 的 C00–C12 为产品合同。后者明确覆盖旧文档中的扩展磁贴尺寸、地图禁入和逐 Stage 等待要求。
 
-## 1. 一次只做一个 Stage
+## 1. 当前 Phase 一次只写一个工作包
 
 每个 Stage 必须独立经历：
 
 ```text
-Freeze baseline
+Freeze working base
 → Red
 → Green
 → Refactor
-→ Stage Gate
+→ Package Gate
 → Commit
-→ Report
-→ Stop for human review
+→ Update execution state
+→ Continue when dependencies are green
 ```
 
-不能把下一 Stage 的模型、UI 或“顺手优化”混进当前提交。用户对起始 SHA 或范围的直接修正优先于附件中的旧仓库快照，必须同时写入 Master 版本记录、`BASELINE_LOCK.json`、TDD 日志和最终报告；规范变化要保留前一版哈希，不能用互相矛盾的 side document 静默覆盖。
+不能把下一个工作包的模型、UI 或“顺手优化”混进当前提交。用户对起始 SHA 或范围的直接修正优先于附件旧仓库快照；不得 reset 到不相干旧 SHA。每包先提交并 push，再跑昂贵累计 Gate；失败立即记为未验证并用独立纠错提交，禁止 squash 或改写历史。
 
 ## 2. Red 必须证明合同缺失
 
@@ -33,7 +33,7 @@ Stage 2.5 是 Stage 3 的强制前置：先取得合法 capture、完成 scenari
 - 不弱化断言，不用 retry 掩盖 flaky；
 - 不把 fixture、模拟器或视觉印象冒充真实数据或硬件证据；
 - 未测量的 Golden、帧耗时、输入延迟和方屏硬件统一写 `NOT_YET_MEASURED` 或 `UNVERIFIED_HARDWARE`；
-- Launcher Engine 完成前禁止接入 GPS、NMEA、Anchor、Trip、Navigation、Survey、OpenSeaMap 等海事能力。
+- 当前允许实现规范内的 MBTiles、地点、测量、手工路线、GPX、离线覆盖和只读观测端口；生产 GPS/NMEA 采集、活动导航和船网输出继续禁止。
 
 ## 4. Refactor 与边界检查
 

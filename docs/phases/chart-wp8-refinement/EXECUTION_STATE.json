@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "phase": "WP8_CHART_COMPLETION",
+  "branch": "codex/shell-map-contract",
+  "sourcePackSha256": "151ab808d0d77276b40a343eb8542fbd8922f352b0fbfad2793d1c08df24be49",
+  "auditedSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
+  "workingBaseSha": "9579761a3c7c5cf13735dfecaeb38636b715b695",
+  "auditedShaIsAncestorOfWorkingBase": true,
+  "currentTask": "C00",
+  "taskStatus": {
+    "C00": "IMPLEMENTED_UNVERIFIED",
+    "C01": "TODO",
+    "C02": "TODO",
+    "C03": "TODO",
+    "C04": "TODO",
+    "C05": "TODO",
+    "C06": "TODO",
+    "C07": "TODO",
+    "C08": "TODO",
+    "C09": "TODO",
+    "C10": "TODO",
+    "C11": "TODO",
+    "C12": "TODO"
+  },
+  "lastVerifiedSha": null,
+  "ciRun": null,
+  "openFindings": [
+    "C00 device pointer and cumulative CI gates remain to be executed on its committed SHA",
+    "Samsung square-screen and physical refresh-rate review remain owner-only"
+  ],
+  "sourceDelivery": "NOT_VERIFIED",
+  "deviceReview": "PENDING_OWNER",
+  "nextAction": "Commit C00, run static/JVM/APK/device gates, then start C01 only if green"
+}

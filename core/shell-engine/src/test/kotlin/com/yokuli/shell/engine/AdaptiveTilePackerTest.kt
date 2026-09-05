@@ -36,7 +36,7 @@ class AdaptiveTilePackerTest {
     }
 
     @Test
-    fun `one durable document repacks for four and six columns`() {
+    fun `one durable document repacks for four six and eight columns`() {
         val document = document(
             tile("a", MarineTileSize.WIDE_4X2, 0),
             tile("b", MarineTileSize.STANDARD_2X2, 1),
@@ -45,11 +45,13 @@ class AdaptiveTilePackerTest {
 
         val phone = AdaptiveTilePacker.pack(document, columns = 4)
         val landscape = AdaptiveTilePacker.pack(document, columns = 6)
+        val tablet = AdaptiveTilePacker.pack(document, columns = 8)
 
         assertEquals(document, document.copy())
         assertNotEquals(phone.tiles.map { it.cell }, landscape.tiles.map { it.cell })
         assertNoOverlap(phone.occupiedCellsByItem.values)
         assertNoOverlap(landscape.occupiedCellsByItem.values)
+        assertNoOverlap(tablet.occupiedCellsByItem.values)
     }
 
     @Test
@@ -106,7 +108,7 @@ class AdaptiveTilePackerTest {
                     rank = index.toLong(),
                 )
             }
-            for (columns in listOf(4, 6)) {
+            for (columns in listOf(4, 6, 8)) {
                 val packed = AdaptiveTilePacker.pack(document(*entries.toTypedArray()), columns)
                 assertTrue(packed.tiles.all { it.cell.column >= 0 && it.cell.column + it.entry.size.columns <= columns })
                 assertNoOverlap(packed.occupiedCellsByItem.values)

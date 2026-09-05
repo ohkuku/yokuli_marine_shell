@@ -85,30 +85,27 @@ object LauncherProtoMapper {
         .build()
 
     private fun decodeDocument(proto: StartDocumentProto): StartDocument {
-        var structurallyValid = true
         val placements = proto.placementsList.map { placement ->
-            val size = MarineTileSize.fromPersistedName(placement.size)
-            if (size == null) structurallyValid = false
+            val size = MarineTileSize.fromPersistedName(placement.size) ?: MarineTileSize.ICON_1X1
             TilePlacement(
                 tileId = TileInstanceId(placement.tileId),
                 entryId = LauncherEntryId(placement.entryId),
-                size = size ?: MarineTileSize.ICON_1X1,
+                size = size,
                 rank = placement.rank,
                 groupId = placement.groupId.ifBlank { null },
             )
         }
         val spacers = proto.spacersList.map { spacer ->
-            val size = MarineTileSize.fromPersistedName(spacer.size)
-            if (size == null) structurallyValid = false
+            val size = MarineTileSize.fromPersistedName(spacer.size) ?: MarineTileSize.ICON_1X1
             Spacer(
                 spacerId = TileInstanceId(spacer.spacerId),
-                size = size ?: MarineTileSize.ICON_1X1,
+                size = size,
                 rank = spacer.rank,
                 groupId = spacer.groupId.ifBlank { null },
             )
         }
         return StartDocument(
-            schemaVersion = if (structurallyValid) proto.schemaVersion else -1,
+            schemaVersion = proto.schemaVersion,
             profileId = ProfileId(proto.profileId),
             defaultLayoutVersion = proto.defaultLayoutVersion,
             placements = placements,

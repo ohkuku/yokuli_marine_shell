@@ -6,27 +6,31 @@
 
 ## 中文（主文）
 
-Yokuli OS 当前只施工一个与应用解耦、可验证、可持久化的 Windows Phone 8 Classic 风格 Launcher Shell。唯一施工规范是 [Launcher Shell Engine Master Construction Spec](docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md)。Stage 0–10 已按独立 Gate 和 commit 完成；Stage 11 自动化部分正在最终收口，真机性能与视觉结论仍必须人工批准。
+Yokuli OS 当前在已经完成的 Windows Phone 8 Classic 风格应用内 Shell 上，施工离线优先、无定位也可独立规划的地图 V1。当前有效产品合同是 [WP8 三档磁贴与地图 V1 收尾规范](docs/phases/chart-wp8-refinement/CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md)，执行真值只记录在 [EXECUTION_STATE.json](docs/phases/chart-wp8-refinement/EXECUTION_STATE.json)。旧 Stage 规范仍用于追溯 Shell 合同，但不再覆盖本 Phase 的产品修正。
 
 当前分支：
 
 ```text
-branch: codex/launcher-engine-stage11
-stage: 11 — Performance & Fidelity Gate
-starting SHA: 1192d0bf9cee42266fe8430fd7ba59c424c03c56
-status: COMPLETE_PROVISIONAL
+branch: codex/shell-map-contract
+phase: WP8_CHART_COMPLETION
+work packages: C00–C12
+status: see docs/phases/chart-wp8-refinement/EXECUTION_STATE.json
 ```
 
 Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化／HOME Recovery。生产目录仍严格只有 Chart + Settings；Shell Lab 只在 debug/benchmark classpath。
 
-Stage 11 提供 Macrobenchmark、Baseline/Startup Profile、60 Tile 压测、API 34/36 回归路径、320×320／360×360 模拟方屏以及内容寻址的 Golden 候选。模拟器结果只用于趋势；`Golden`、真实三星方屏、物理 60/90/120 Hz、WP8 视觉手感和输入延迟均不得由 Codex 宣称通过。
+正式磁贴只允许宽×高 1×1、2×2、4×2；2×1、2×4、4×4 只作为旧持久化值在边界迁移，不得回到生产 UI。地图、设置仍是唯二一级入口；地点、路线、海图包和导入轨迹都是地图内部页面。
 
 Yokuli OS 默认沉浸式全屏。壳内虚拟 Back／Start／Search，以及 Activity 实际收到的 Android Back 和可交付键盘／硬件事件，统一进入串行 Launcher Engine；Android 保留的物理 HOME 不能由普通应用可靠拦截，Home flavor 通过 HOME/DEFAULT intent 承接启动语义。
 
-在 Shell Engine 全部完成人工验收前，禁止继续接入 GPS、NMEA、Anchor、Trip、Navigation、Survey、OpenSeaMap、MBTiles、AIS、Weather、Tide 或海事前台 Runtime。
+本 Phase 允许 MapLibre raster MBTiles、地点、测量、手工路线、GPX、离线覆盖与只读观测消费；仍禁止生产 NMEA/GNSS 采集、活动导航、自动舵/船网输出、Anchor/Trip/Survey 等 Runtime。模拟器结果不能替代三星方屏、物理刷新率或实船结论。
 
 当前文档入口：
 
+- [当前地图收尾规范](docs/phases/chart-wp8-refinement/CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md)
+- [当前任务索引](docs/phases/chart-wp8-refinement/TASK_PLAN.json)
+- [当前执行状态](docs/phases/chart-wp8-refinement/EXECUTION_STATE.json)
+- [当前工作日志](docs/phases/chart-wp8-refinement/WORK_LOG.md)
 - [施工主文档](docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md)
 - [WP8 Reference Lab](docs/reference/wp8/README.md)
 - [Launcher Engine TDD 规范](docs/TDD_PLAYBOOK.md)
@@ -63,6 +67,6 @@ bash .github/scripts/test-release-product-surface.sh
 
 ## English translation
 
-Yokuli OS is constructing an app-agnostic, verifiable, durable WP8 Classic-style Launcher Shell. Stages 0–10 are separated by commits and gates. Stage 11 is `COMPLETE_PROVISIONAL`: automated profiles, emulator trends, simulated-square coverage, and content-addressed visual candidates are delivered, while Golden acceptance, physical refresh-rate performance, WP8 feel, and Samsung-square hardware remain human/device gates.
+Yokuli OS is completing an offline-first Map V1 on top of the existing app-agnostic WP8 Classic-style in-app Shell. The active product contract is the C00–C12 completion phase. Production tiles are exactly 1×1, 2×2, and 4×2; retired shapes are migration inputs only. Map and Settings remain the only top-level apps. Production NMEA/GNSS acquisition, active navigation, and vessel-network output remain out of scope, while physical Samsung-square and refresh-rate acceptance remain owner gates.
 
 The immersive shell routes virtual Back/Start/Search and deliverable Android or keyboard input through the serialized Launcher Engine. Android's reserved physical HOME key is not falsely claimed as interceptable; the Home flavor integrates through the platform HOME/DEFAULT intent contract.
