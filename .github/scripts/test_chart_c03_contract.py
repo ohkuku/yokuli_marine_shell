@@ -14,7 +14,8 @@ class ChartC03ContractTest(unittest.TestCase):
         self.assertNotIn("mapConfigured", contract)
 
     def test_surface_tool_and_transient_are_distinct_domain_planes(self):
-        model = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapModel.kt").read_text()
+        domain = ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain"
+        model = "\n".join(path.read_text() for path in domain.glob("*.kt"))
         self.assertIn("sealed interface MapSurface", model)
         self.assertIn("enum class MapTool { BROWSE, MEASURE, MANUAL_ROUTE }", model)
         self.assertIn("sealed interface MapTransient", model)
