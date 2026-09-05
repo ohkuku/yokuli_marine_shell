@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import re
 import unittest
 
@@ -108,6 +109,55 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertIn("SettingsShellContribution", graph)
         for forbidden in ("Anchor", "Trip", "Nmea", "Navigation", "Survey"):
             self.assertNotIn(forbidden, graph)
+
+    def test_correction_performance_gate_covers_every_normative_journey(self):
+        benchmark = self.text("benchmark/shell/src/main/java/com/yokuli/marine/benchmark/shell/ShellMacrobenchmark.kt")
+        for journey in (
+            "desktopModuleListRoundTrip",
+            "searchToChart",
+            "dragAcrossThirtyMixedTiles",
+            "resizeStandardTileToLarge",
+            "rounded320Viewport",
+            "settingsScroll",
+        ):
+            self.assertIn(f"fun {journey}()", benchmark)
+        lab = self.text("feature/shell-lab/src/main/java/com/yokuli/marine/feature/shell/lab/ShellLabActivity.kt")
+        self.assertIn("EXTRA_TILE_COUNT", lab)
+        self.assertIn("EXTRA_VIEWPORT_DP", lab)
+        self.assertIn("shell-lab-rounded-viewport-$viewportDp", lab)
+
+    def test_generated_profiles_do_not_reference_removed_motion_contracts(self):
+        for name in ("baseline-prof.txt", "startup-prof.txt"):
+            profile = self.text(f"app-shell/src/main/generated/baselineProfiles/{name}")
+            self.assertNotIn("WpNavigationIntent", profile)
+            self.assertNotIn("LauncherTransitionIntent", profile)
+            self.assertIn("WpSurfaceTransitionKind", profile)
+            self.assertIn("ShellTransitionRequest", profile)
+
+    def test_final_machine_gate_and_truthful_report_are_versioned(self):
+        gate = ROOT / ".github/scripts/run_marine_shell_final_gate.sh"
+        report = ROOT / "docs/phases/marine-shell-final-correction/REPORT.md"
+        self.assertTrue(gate.is_file())
+        self.assertTrue(report.is_file())
+        gate_text = gate.read_text(encoding="utf-8")
+        for command in (
+            "test-release-product-surface.sh",
+            "run_device_tests.sh all",
+            "run_device_tests.sh performance",
+            "--require-journeys",
+            "MARINE_SHELL_FINAL_GATE=MACHINE_VERIFIED",
+        ):
+            self.assertIn(command, gate_text)
+        lock = json.loads(self.text("docs/phases/marine-shell-final-correction/BASELINE_LOCK.json"))
+        self.assertEqual("MACHINE_VERIFIED", lock["machineStatus"])
+        self.assertEqual("PENDING", lock["humanFidelityStatus"])
+        self.assertEqual("PENDING", lock["physicalDeviceStatus"])
+        report_text = report.read_text(encoding="utf-8")
+        self.assertIn("MACHINE_VERIFIED", report_text)
+        self.assertIn("HUMAN_FIDELITY_PENDING", report_text)
+        self.assertIn("PHYSICAL_DEVICE_PENDING", report_text)
+        self.assertNotIn("HUMAN_FIDELITY_PASS", report_text)
+        self.assertNotIn("PHYSICAL_DEVICE_PASS", report_text)
 
 
 if __name__ == "__main__":

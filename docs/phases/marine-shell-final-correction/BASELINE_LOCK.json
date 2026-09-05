@@ -16,6 +16,11 @@
   "referenceApprovalDecision": "APPROVED",
   "releaseCatalogConstraint": ["chart", "settings"],
   "marineDomainWorkPermitted": false,
+  "machineGateParentCommit": "23413c7f3297ca1937a67f32e019885eef189ee4",
+  "machineStatus": "MACHINE_VERIFIED",
+  "goldenStatus": "CANDIDATE_PENDING_HUMAN_REVIEW",
   "humanFidelityStatus": "PENDING",
-  "physicalDeviceStatus": "PENDING"
+  "physicalDeviceStatus": "PENDING",
+  "correctionCommitCount": 10,
+  "finalReportPath": "docs/phases/marine-shell-final-correction/REPORT.md"
 }

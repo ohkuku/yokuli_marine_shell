@@ -19,7 +19,11 @@ class Stage11PerformanceSummaryTest(unittest.TestCase):
                             {
                                 "name": name,
                                 "className": "ShellMacrobenchmark",
-                                "metrics": {"frameDurationCpuMs": {"median": 4.2}},
+                                "metrics": (
+                                    {"timeToInitialDisplayMs": {"median": 280.0}}
+                                    if name in subject.STARTUP_JOURNEYS
+                                    else {"gfxFrameTotalCount": {"maximum": 12.0, "runs": [10.0, 12.0]}}
+                                ),
                             }
                             for name in sorted(subject.EXPECTED_JOURNEYS)
                         ],
@@ -43,7 +47,16 @@ class Stage11PerformanceSummaryTest(unittest.TestCase):
             self.assertEqual("EMULATOR_TREND_ONLY", summary["status"])
             self.assertFalse(summary["hardPerformanceGate"])
             self.assertEqual([], summary["missingJourneys"])
-            self.assertEqual(5, len(summary["results"]))
+            self.assertEqual([], summary["emptyFrameJourneys"])
+            self.assertEqual(len(subject.EXPECTED_JOURNEYS), len(summary["results"]))
+
+    def test_rejects_an_interaction_journey_with_zero_observed_frames(self):
+        results = {
+            "name": "settingsScroll",
+            "metrics": {"gfxFrameTotalCount": {"maximum": 0.0, "runs": [0.0]}},
+            "sampledMetrics": {},
+        }
+        self.assertFalse(subject.has_observed_frames(results))
 
 
 if __name__ == "__main__":

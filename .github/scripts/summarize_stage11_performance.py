@@ -15,7 +15,39 @@ EXPECTED_JOURNEYS = {
     "startToAllApps",
     "openChartAndReturn",
     "startVerticalScroll60Tiles",
+    "desktopModuleListRoundTrip",
+    "searchToChart",
+    "dragAcrossThirtyMixedTiles",
+    "resizeStandardTileToLarge",
+    "rounded320Viewport",
+    "settingsScroll",
 }
+
+STARTUP_JOURNEYS = {"coldStartToStart", "warmStartToStart"}
+INTERACTION_JOURNEYS = EXPECTED_JOURNEYS - STARTUP_JOURNEYS
+
+
+def has_observed_frames(result: dict) -> bool:
+    """Reject gfxinfo's empty-window sentinel while accepting physical frame samples."""
+    metrics = result.get("metrics", {})
+    gfx_count = metrics.get("gfxFrameTotalCount")
+    if isinstance(gfx_count, dict):
+        values = [gfx_count.get("maximum"), gfx_count.get("median")]
+        values.extend(gfx_count.get("runs", []))
+        return any(isinstance(value, (int, float)) and value > 0 for value in values)
+
+    for metric_name in ("frameDurationCpuMs", "frameOverrunMs"):
+        metric = metrics.get(metric_name)
+        if isinstance(metric, dict):
+            runs = metric.get("runs", [])
+            if runs or any(isinstance(metric.get(key), (int, float)) for key in ("median", "maximum")):
+                return True
+
+    sampled = result.get("sampledMetrics", {})
+    return any(
+        metric_name in sampled and bool(sampled[metric_name])
+        for metric_name in ("frameDurationCpuMs", "frameOverrunMs")
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,6 +89,16 @@ def main() -> int:
     missing = sorted(EXPECTED_JOURNEYS - present)
     if args.require_journeys and missing:
         raise SystemExit(f"Missing Stage 11 journeys: {', '.join(missing)}")
+    empty_frame_journeys = sorted(
+        result["name"]
+        for result in results
+        if result["name"] in INTERACTION_JOURNEYS and not has_observed_frames(result)
+    )
+    if args.require_journeys and empty_frame_journeys:
+        raise SystemExit(
+            "Stage 11 interaction journeys observed no target frames: "
+            + ", ".join(empty_frame_journeys)
+        )
 
     summary = {
         "schemaVersion": 1,
@@ -69,6 +111,7 @@ def main() -> int:
         ),
         "expectedJourneys": sorted(EXPECTED_JOURNEYS),
         "missingJourneys": missing,
+        "emptyFrameJourneys": empty_frame_journeys,
         "contexts": contexts,
         "results": results,
     }

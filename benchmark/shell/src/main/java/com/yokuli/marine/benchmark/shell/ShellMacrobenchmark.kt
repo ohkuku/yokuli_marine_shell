@@ -3,6 +3,10 @@ package com.yokuli.marine.benchmark.shell
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Build
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.ExperimentalMetricApi
 import androidx.benchmark.macro.FrameTimingGfxInfoMetric
@@ -24,6 +28,8 @@ import org.junit.runner.RunWith
 private const val TARGET_PACKAGE = "com.yokuli.marine"
 private const val SHELL_ACTIVITY = "com.yokuli.marine.shell.ShellActivity"
 private const val SHELL_LAB_ACTIVITY = "com.yokuli.marine.feature.shell.lab.ShellLabActivity"
+private const val EXTRA_TILE_COUNT = "com.yokuli.marine.shell.lab.TILE_COUNT"
+private const val EXTRA_VIEWPORT_DP = "com.yokuli.marine.shell.lab.VIEWPORT_DP"
 private const val WAIT_MILLIS = 20_000L
 
 /**
@@ -123,9 +129,130 @@ class ShellMacrobenchmark {
         }
     }
 
+    @Test
+    fun desktopModuleListRoundTrip() = benchmarkRule.measureRepeated(
+        packageName = TARGET_PACKAGE,
+        metrics = interactionFrameMetrics(),
+        compilationMode = CompilationMode.Partial(),
+        iterations = 5,
+        setupBlock = { openStart() },
+    ) {
+        device.swipe(device.displayWidth - 24, device.displayHeight / 2, 24, device.displayHeight / 2, 24)
+        device.awaitTag("all-apps-list")
+        device.awaitTag("virtual-key-bridge").click()
+        device.awaitTag("start-screen")
+    }
+
+    @Test
+    fun searchToChart() = benchmarkRule.measureRepeated(
+        packageName = TARGET_PACKAGE,
+        metrics = interactionFrameMetrics(),
+        compilationMode = CompilationMode.Partial(),
+        iterations = 5,
+        setupBlock = { openStart() },
+    ) {
+        device.awaitTag("virtual-key-search").click()
+        device.awaitTag("launcher-search-field").setText("chart")
+        device.awaitTag("search-result-chart").click()
+        device.awaitTag("chart-workspace-browse")
+    }
+
+    @Test
+    fun dragAcrossThirtyMixedTiles() = benchmarkRule.measureRepeated(
+        packageName = TARGET_PACKAGE,
+        metrics = interactionFrameMetrics(),
+        compilationMode = CompilationMode.Partial(),
+        iterations = 5,
+        setupBlock = { openLab(tileCount = 30) },
+    ) {
+        val tile = device.awaitTag("tile-demo-1")
+        tile.longPress()
+        device.awaitTag("resize-selected-tile")
+        device.awaitTag("tile-demo-1").dragTo(
+            device.displayWidth / 2,
+            device.displayHeight - 140,
+            40,
+        )
+        device.awaitTag("tile-demo-1")
+    }
+
+    @Test
+    fun resizeStandardTileToLarge() = benchmarkRule.measureRepeated(
+        packageName = TARGET_PACKAGE,
+        metrics = interactionFrameMetrics(),
+        compilationMode = CompilationMode.Partial(),
+        iterations = 5,
+        setupBlock = { openLab(tileCount = 30) },
+    ) {
+        device.awaitTag("tile-demo-1").longPress()
+        device.awaitTag("resize-selected-tile")
+        repeat(3) {
+            device.awaitTag("resize-selected-tile").click()
+            device.awaitTag("commit-tile-resize").click()
+        }
+        device.awaitTag("shell-lab-demo-1-size-large_4x4")
+    }
+
+    @Test
+    fun rounded320Viewport() = benchmarkRule.measureRepeated(
+        packageName = TARGET_PACKAGE,
+        metrics = interactionFrameMetrics(),
+        compilationMode = CompilationMode.Partial(),
+        iterations = 5,
+        setupBlock = { openLab(tileCount = 30, viewportDp = 320) },
+    ) {
+        val viewport = device.awaitTag("shell-lab-rounded-viewport-320").bounds
+        device.swipe(viewport.centerX(), viewport.bottom - 24, viewport.centerX(), viewport.top + 24, 24)
+        device.waitForIdle()
+        device.awaitTag("shell-lab-rounded-viewport-320")
+    }
+
+    @Test
+    fun settingsScroll() = benchmarkRule.measureRepeated(
+        packageName = TARGET_PACKAGE,
+        metrics = interactionFrameMetrics(),
+        compilationMode = CompilationMode.Partial(),
+        iterations = 5,
+        setupBlock = { openStart() },
+    ) {
+        // Include the Settings surface entrance in the measured window. The compact
+        // overview can fit tall emulators, where a swipe alone legitimately produces
+        // zero target frames and would otherwise be a false-positive benchmark.
+        device.awaitTag("tile-settings").click()
+        device.awaitTag("settings-overview-list")
+        val list = device.awaitTag("settings-overview-list").bounds
+        repeat(2) {
+            device.swipe(list.centerX(), list.bottom - 20, list.centerX(), list.top + 20, 20)
+        }
+        device.waitForIdle()
+        device.awaitTag("settings-overview-list")
+    }
+
     private fun shellIntent() = Intent(Intent.ACTION_MAIN).apply {
         component = ComponentName(TARGET_PACKAGE, SHELL_ACTIVITY)
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    }
+
+    private fun androidx.benchmark.macro.MacrobenchmarkScope.openStart() {
+        pressHome()
+        startActivityAndWait(shellIntent())
+        device.awaitTag("start-screen")
+    }
+
+    private fun androidx.benchmark.macro.MacrobenchmarkScope.openLab(
+        tileCount: Int,
+        viewportDp: Int? = null,
+    ) {
+        pressHome()
+        startActivityAndWait(
+            Intent(Intent.ACTION_MAIN).apply {
+                component = ComponentName(TARGET_PACKAGE, SHELL_LAB_ACTIVITY)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                putExtra(EXTRA_TILE_COUNT, tileCount)
+                viewportDp?.let { putExtra(EXTRA_VIEWPORT_DP, it) }
+            },
+        )
+        device.awaitTag("start-screen")
     }
 
     private fun interactionFrameMetrics(): List<Metric> = if (isEmulator()) {
@@ -146,5 +273,32 @@ class ShellMacrobenchmark {
         val tagged = findObject(UiSelector().resourceId(tag))
         require(tagged.waitForExists(WAIT_MILLIS)) { "Timed out waiting for Compose tag: $tag" }
         return tagged
+    }
+
+    private fun UiObject.longPress() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(
+            downTime,
+            downTime,
+            MotionEvent.ACTION_DOWN,
+            bounds.centerX().toFloat(),
+            bounds.centerY().toFloat(),
+            0,
+        ).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+        require(automation.injectInputEvent(down, true)) { "Unable to inject long-press DOWN" }
+        down.recycle()
+        SystemClock.sleep(ViewConfiguration.getLongPressTimeout().toLong() + 250L)
+        val up = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_UP,
+            bounds.centerX().toFloat(),
+            bounds.centerY().toFloat(),
+            0,
+        ).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
+        require(automation.injectInputEvent(up, true)) { "Unable to inject long-press UP" }
+        up.recycle()
+        device.waitForIdle()
     }
 }
