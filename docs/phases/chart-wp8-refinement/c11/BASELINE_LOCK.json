@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "task": "C11",
+  "status": "VERIFIED_LOCAL",
+  "baselineSha": "08f9dece033ddc76f70d3549a125fb4e0be8784b",
+  "verifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+  "gate": {
+    "pythonContracts": 212,
+    "jvmTests": 387,
+    "gradleTasks": 1207,
+    "api34": {
+      "mapOffline": 17,
+      "mapStorage": 7,
+      "appShell": 53,
+      "failures": 0,
+      "skipped": 0
+    }
+  },
+  "artifacts": {
+    "debugApkSha256": "ae263807d2f19df1525edfe833c71ae69d3a792efbcb11b34db27f3153073731",
+    "unsignedReleaseApkSha256": "181ac2786c648406021b4c74301228c607fb53f64b8d6e534fc16956a7013315"
+  },
+  "conditionalDeliverables": {
+    "routeSecondaryPin": "NOT_APPLICABLE_CURRENT_SHELL"
+  },
+  "carryover": [
+    "Explicit hosted device coverage for map-offline and map-storage",
+    "Baseline profile stale-rule warnings",
+    "J01-J06 and performance evidence",
+    "Owner-only Samsung square-screen review"
+  ]
+}

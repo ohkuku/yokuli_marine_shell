@@ -202,3 +202,13 @@ Red 固定 source/epoch/identity、boot-scoped monotonic age、独立 Position/H
 MapLibre 使用实时点、历史点、真航向、虚线 COG 和精度圈五个独立 plane。同 ID 缓存、乱序和未来样本不覆盖好 fix；同坐标新身份和新 epoch 可用；不同 boot 与持久历史不恢复为 fresh。无磁差的 magnetic heading、低速 COG 和未知精度不会被画成确定事实。
 
 累计 Gate 先准确发现历史字面测试与新合法观测模型冲突，以及隔离 Google adapter 的旧字段访问；均以窄纠错提交修正，没有把 adapter 接回 Release。冻结点 `260a343940c49bfa1564de544dea5881b9d8bf3a` 通过 206 条 Python 合同、357 个 JVM XML tests、1178 个 Gradle tasks；API 34 的 MapLibre 17、Shell 52、Room 7 全绿。C10 标记 `VERIFIED_LOCAL`，只允许进入 C11。
+
+## C11｜三档地图磁贴、会话恢复与本地搜索
+
+Red 先固定三档磁贴职责、真实状态优先级、Start 编辑冻结、预览缓存失效、会话恢复和缺失对象不崩溃。实现中 1×1 只保留高辨识入口，2×2 显示关键摘要，4×2 用纯路线数据绘制预览；Start 不创建 renderer、不读取网络或位置。
+
+本地地点、路线和图包搜索通过同一 `InstalledAppBinding` 贡献并生成有界不透明 token。Shell 只路由 token，Chart 自己解释目的地；无效、冲突和已删除对象不会崩溃，也不会启动导航。Browse 恢复最近会话而非重置状态。
+
+自查发现 `ChartLaunchTarget` 命名触发 Stage 2 对应用目标耦合的冻结合同，因而改为 `ChartDestination`，未回改旧合同。现有 Shell 没有动态 secondary entry 生命周期，路线二级固定结论为 `NOT_APPLICABLE_CURRENT_SHELL`，没有添加假按钮。
+
+冻结点 `5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110` 的 Host Gate 通过 212 条 Python 合同、387 个 JVM XML 测试和 1207 个 Gradle tasks；API 34 的 MapLibre 17、Room 7、Shell 53 全绿。Debug/unsigned Release hash 分别为 `ae263807d2f19df1525edfe833c71ae69d3a792efbcb11b34db27f3153073731` 与 `181ac2786c648406021b4c74301228c607fb53f64b8d6e534fc16956a7013315`。C11 标记 `VERIFIED_LOCAL`，进入最终 C12。

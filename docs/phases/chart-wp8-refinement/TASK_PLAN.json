@@ -87,7 +87,7 @@
     {
       "id": "ROUTE_SECONDARY_PIN",
       "ownerTask": "C11",
-      "status": "NOT_EVALUATED",
+      "status": "NOT_APPLICABLE_CURRENT_SHELL",
       "condition": "既有secondary entry能力可窄扩展",
       "ifNotApplicable": "NOT_APPLICABLE_CURRENT_SHELL；无假按钮；不得重写Shell",
       "doesNotWaive": [
@@ -464,7 +464,7 @@
         "MAP-R15",
         "MAP-R16"
       ],
-      "status": "TODO",
+      "status": "VERIFIED_LOCAL",
       "specSection": "C11",
       "acceptanceScenarioIds": [
         "C11-T01",
@@ -475,8 +475,11 @@
         "C11-T06",
         "C11-T07"
       ],
-      "verifiedSha": null,
-      "evidence": []
+      "verifiedSha": "5ac6cf6fb62f3e3d2f46ffc76d8ad6819d7c6110",
+      "evidence": [
+        "docs/phases/chart-wp8-refinement/c11/REPORT.md",
+        "docs/phases/chart-wp8-refinement/c11/BASELINE_LOCK.json"
+      ]
     },
     {
       "id": "C12",
