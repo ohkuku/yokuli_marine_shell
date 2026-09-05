@@ -57,6 +57,7 @@ data class ProductionShellRuntime(
     val gitSha: String,
     val debugShellLabAvailable: Boolean,
     val mapState: MapState,
+    val currentMapState: () -> MapState,
     val onMapAction: (MapAction) -> Unit,
     val chartImportState: ChartImportUiState,
     val onChartImportAction: (ChartImportUiAction) -> Unit,
@@ -99,6 +100,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             ChartWorkspace(
                 state = runtime.mapState,
                 onAction = runtime.onMapAction,
+                currentState = runtime.currentMapState,
                 importState = runtime.chartImportState,
                 onImportAction = runtime.onChartImportAction,
                 recoveryExportState = runtime.recoveryExportState,

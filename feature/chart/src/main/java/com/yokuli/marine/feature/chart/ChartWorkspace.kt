@@ -95,6 +95,7 @@ enum class MapRecoveryExportUiState { IDLE, WRITING, SUCCEEDED, FAILED }
 fun ChartWorkspace(
     state: MapState,
     onAction: (MapAction) -> Unit,
+    currentState: () -> MapState = { state },
     importState: ChartImportUiState,
     onImportAction: (ChartImportUiAction) -> Unit,
     recoveryExportState: MapRecoveryExportUiState,
@@ -123,7 +124,7 @@ fun ChartWorkspace(
             keyboardController?.hide()
             true
         } else {
-            MapFeatureBackPolicy.actionFor(state)?.let { action ->
+            MapFeatureBackPolicy.actionFor(currentState())?.let { action ->
                 onAction(action)
                 true
             } ?: false

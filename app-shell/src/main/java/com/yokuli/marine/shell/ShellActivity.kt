@@ -290,6 +290,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             gitSha = BuildConfig.GIT_SHA,
             debugShellLabAvailable = BuildConfig.DEBUG,
             mapState = mapState,
+            currentMapState = { shellViewModel.mapStore.state.value },
             onMapAction = shellViewModel.mapStore::dispatch,
             chartImportState = chartImportState,
             onChartImportAction = { action ->
