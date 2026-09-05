@@ -29,6 +29,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -219,6 +220,56 @@ class ShellActivityStoryTest {
     }
 
     @Test
+    fun measurementShowsRealResultsAndCoordinateEntryMovesTheChosenPoint() {
+        compose.onNodeWithTag("tile-chart").performClick()
+        awaitDisplayed("map-root-command-bar")
+        val a = GeoPoint(-36.8485, 174.7633)
+        val b = GeoPoint(-36.82, 174.81)
+        val c = GeoPoint(-36.79, 174.86)
+        compose.activityRule.scenario.onActivity { activity ->
+            val store = ViewModelProvider(activity)[ShellViewModel::class.java].mapStore
+            store.dispatch(MapAction.SelectTool(MapTool.MEASURE))
+            store.dispatch(MapAction.ClearMeasurement)
+            store.dispatch(MapAction.AddPoint(a))
+            store.dispatch(MapAction.AddPoint(b))
+            store.dispatch(MapAction.AddPoint(c))
+        }
+
+        awaitDisplayed("map-measurement-summary")
+        compose.onNodeWithTag("map-measure-details").assertIsDisplayed().performClick()
+        awaitDisplayed("map-measure-segment-0")
+        compose.onNodeWithTag("map-measure-segment-1").assertIsDisplayed()
+        compose.onNodeWithTag("map-measure-point-move-1").performClick()
+        awaitDisplayed("map-precise-point-edit")
+        compose.onNodeWithTag("map-precise-coordinate-input").performClick()
+        awaitDisplayed("map-coordinate-latitude")
+        compose.onNodeWithTag("map-coordinate-latitude").performTextClearance()
+        compose.onNodeWithTag("map-coordinate-latitude").performTextInput("36.8 S")
+        compose.onNodeWithTag("map-coordinate-longitude").performTextClearance()
+        compose.onNodeWithTag("map-coordinate-longitude").performTextInput("174.9 E")
+        compose.onNodeWithTag("map-coordinate-confirm").performClick()
+
+        compose.waitUntil(5_000) {
+            currentMapState().measurementDraft?.points?.getOrNull(1) == GeoPoint(-36.8, 174.9)
+        }
+        assertEquals(listOf(a, GeoPoint(-36.8, 174.9), c), currentMapState().measurementDraft?.points)
+    }
+
+    @Test
+    fun invalidCoordinateEntryStaysOpenWithAFieldError() {
+        compose.onNodeWithTag("tile-chart").performClick()
+        awaitDisplayed("map-coordinate-input")
+        compose.onNodeWithTag("map-coordinate-input").performClick()
+        awaitDisplayed("map-coordinate-latitude")
+        compose.onNodeWithTag("map-coordinate-latitude").performTextClearance()
+        compose.onNodeWithTag("map-coordinate-latitude").performTextInput("91 N")
+        compose.onNodeWithTag("map-coordinate-confirm").performClick()
+
+        awaitDisplayed("map-coordinate-latitude-error")
+        assertEquals(MapSurface.CoordinateInput, currentMapState().surface)
+    }
+
+    @Test
     fun squareLargeTextKeepsCandidateActionsAndCommandTargetsReachable() {
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent {
@@ -248,7 +299,8 @@ class ShellActivityStoryTest {
             }
         }
 
-        compose.onNodeWithTag("map-add-point").assertIsDisplayed()
+        compose.onNodeWithTag("map-candidate-measure").assertIsDisplayed()
+        compose.onNodeWithTag("map-candidate-save").assertIsDisplayed()
         compose.onNodeWithTag("map-candidate-cancel").assertIsDisplayed()
         compose.onNodeWithTag("map-tool-measure").assertIsDisplayed()
         compose.onNodeWithTag("map-crosshair-toggle").assertIsDisplayed()
