@@ -129,9 +129,9 @@ class ShellActivityStoryTest {
             compose.waitUntil(timeoutMillis = 10_000) { OfflineMapInstanceMetrics.liveCount == 0 }
         }
 
-        assertEquals(50, OfflineMapInstanceMetrics.createdCount)
         assertEquals(0, OfflineMapInstanceMetrics.liveCount)
         assertEquals(1, OfflineMapInstanceMetrics.peakLiveCount)
+        assertEquals(50, OfflineMapInstanceMetrics.createdCount)
     }
 
     @Test
