@@ -27,7 +27,7 @@ jobs:
                   path = pathlib.Path(name)
                   if not name or path.is_symlink() or not path.is_file():
                       continue
-                  if path.name in {'local.properties', '.env'} or path.stat().st_size > 2_000_000:
+                  if path.parts[0] == 'secrets' or path.name in {'local.properties', '.env'} or path.stat().st_size > 2_000_000:
                       continue
                   if path.suffix in suffixes or path.name in {'gradlew', '.gitignore', 'LICENSE'}:
                       archive.write(path, name)
