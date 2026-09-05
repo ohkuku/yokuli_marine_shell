@@ -10,6 +10,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.map.storage.ProtoDataStoreMapPersistence
+import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +28,9 @@ class ShellApplication : Application() {
     }
     val mapPersistence by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ProtoDataStoreMapPersistence.create(this, applicationScope)
+    }
+    val chartPackageRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AndroidMbTilesRepository(this)
     }
 
     override fun onCreate() {

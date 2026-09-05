@@ -114,6 +114,25 @@ class MapReducerTest {
         assertEquals(content.places, removed.places)
         assertEquals(content.savedRoutes, removed.savedRoutes)
         assertTrue(removed.chartPackages.isEmpty())
+        assertNull(removed.activeChartPackageId)
+    }
+
+    @Test
+    fun `active chart package is explicit and rejects an uninstalled id`() {
+        fun packageInfo(id: String) = ChartPackage(
+            ChartPackageId(id), id, "source", "license", "attribution", id.first().toString().repeat(64),
+            "mbtiles:///charts/$id.mbtiles", GeoBounds(-37.0, 174.0, -36.0, 176.0), 4, 14, "1",
+        )
+        val first = packageInfo("aaaa")
+        val second = packageInfo("bbbb")
+        val installed = reduce(MapState(), MapAction.ChartPackagesChanged(listOf(first, second))).state
+        val selected = reduce(installed, MapAction.SelectChartPackage(first.id)).state
+        val rejected = reduce(selected, MapAction.SelectChartPackage(ChartPackageId("missing")))
+
+        assertEquals(second.id, installed.activeChartPackageId)
+        assertEquals(first.id, selected.activeChartPackageId)
+        assertEquals(selected, rejected.state)
+        assertTrue((rejected.effects.single() as MapEffect.LogIncident).incident is MapIncident.UnknownChartPackage)
     }
 
     @Test

@@ -2,6 +2,8 @@ package com.yokuli.marine.feature.chart
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -22,6 +25,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpPageHeader
@@ -33,6 +37,7 @@ import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.PositionAvailability
+import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import java.util.Locale
 
 typealias MarineChartSurface = @Composable (
@@ -52,7 +57,8 @@ fun ChartWorkspace(
     mapConfigured: Boolean,
     onAction: (MapAction) -> Unit,
     onOpenMapSettings: () -> Unit,
-    onImportChart: () -> Unit,
+    importState: ChartImportUiState,
+    onImportAction: (ChartImportUiAction) -> Unit,
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -87,7 +93,8 @@ fun ChartWorkspace(
                 mapConfigured = mapConfigured,
                 onAction = onAction,
                 onOpenMapSettings = onOpenMapSettings,
-                onImportChart = onImportChart,
+                importState = importState,
+                onImportAction = onImportAction,
             )
             MapToolBar(state.tool, onAction)
         }
@@ -146,7 +153,8 @@ private fun MapToolPanel(
     mapConfigured: Boolean,
     onAction: (MapAction) -> Unit,
     onOpenMapSettings: () -> Unit,
-    onImportChart: () -> Unit,
+    importState: ChartImportUiState,
+    onImportAction: (ChartImportUiAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
     Column(
@@ -176,7 +184,7 @@ private fun MapToolPanel(
                 }
             }
             MapTool.MANUAL_ROUTE -> RoutePanel(state, onAction)
-            MapTool.CHARTS -> ChartPackagesPanel(state, mapConfigured, onOpenMapSettings, onImportChart)
+            MapTool.CHARTS -> ChartPackagesPanel(state, mapConfigured, onOpenMapSettings, importState, onImportAction)
         }
     }
 }
@@ -239,23 +247,120 @@ private fun ChartPackagesPanel(
     state: MapState,
     mapConfigured: Boolean,
     onOpenMapSettings: () -> Unit,
-    onImportChart: () -> Unit,
+    importState: ChartImportUiState,
+    onImportAction: (ChartImportUiAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
-    WpText(stringResource(R.string.map_charts_title), 22, weight = FontWeight.Light)
-    WpText(
-        if (state.chartPackages.isEmpty()) stringResource(R.string.map_charts_empty)
-        else stringResource(R.string.map_charts_count, state.chartPackages.size),
-        12,
-        color = colors.muted,
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-        MapActionText(R.string.map_import_mbtiles, "map-import-chart", onImportChart)
+    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        WpText(stringResource(R.string.map_charts_title), 22, weight = FontWeight.Light)
+        WpText(
+            if (state.chartPackages.isEmpty()) stringResource(R.string.map_charts_empty)
+            else stringResource(R.string.map_charts_count, state.chartPackages.size),
+            12,
+            color = colors.muted,
+        )
+        state.chartPackages.forEach { chartPackage ->
+            Column(Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f)).padding(7.dp)) {
+                WpText(chartPackage.displayName, 14, weight = FontWeight.SemiBold)
+                WpText(
+                    stringResource(R.string.map_chart_package_detail, chartPackage.source, chartPackage.version),
+                    10,
+                    color = colors.muted,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (chartPackage.id == state.activeChartPackageId) {
+                        WpText(stringResource(R.string.map_chart_active), 11, color = colors.accent)
+                    } else {
+                        MapActionText(R.string.map_chart_use, "map-use-${chartPackage.id.value.take(8)}") {
+                            onImportAction(ChartImportUiAction.Activate(chartPackage.id))
+                        }
+                    }
+                    MapActionText(R.string.map_chart_delete, "map-delete-${chartPackage.id.value.take(8)}") {
+                        onImportAction(ChartImportUiAction.Delete(chartPackage.id))
+                    }
+                }
+            }
+        }
+        when (importState) {
+            ChartImportUiState.Idle -> MapActionText(R.string.map_import_mbtiles, "map-import-chart") {
+                onImportAction(ChartImportUiAction.ChooseDocument)
+            }
+            ChartImportUiState.Inspecting -> WpText(stringResource(R.string.map_import_inspecting), 12)
+            ChartImportUiState.Installing -> WpText(stringResource(R.string.map_import_installing), 12)
+            is ChartImportUiState.Failed -> {
+                WpText(importFailureLabel(importState.reason), 12, color = colors.accent)
+                MapActionText(R.string.map_import_try_again, "map-import-retry") {
+                    onImportAction(ChartImportUiAction.ChooseDocument)
+                }
+            }
+            is ChartImportUiState.Editing -> ChartImportEditor(importState, onImportAction)
+        }
         if (!mapConfigured) {
             MapActionText(R.string.chart_open_settings, "chart-open-map-settings", onOpenMapSettings)
         }
     }
 }
+
+@Composable
+private fun ChartImportEditor(
+    state: ChartImportUiState.Editing,
+    onAction: (ChartImportUiAction) -> Unit,
+) {
+    WpText(
+        stringResource(
+            R.string.map_import_candidate,
+            state.candidate.rasterFormat.uppercase(Locale.US),
+            state.candidate.minZoom,
+            state.candidate.maxZoom,
+        ),
+        11,
+    )
+    state.validationFailure?.let { WpText(importFailureLabel(it), 11, color = LocalWpTheme.current.accent) }
+    ImportTextField(R.string.map_import_name, state.displayName, ChartImportField.DISPLAY_NAME, onAction)
+    ImportTextField(R.string.map_import_source, state.source, ChartImportField.SOURCE, onAction)
+    ImportTextField(R.string.map_import_license, state.license, ChartImportField.LICENSE, onAction)
+    ImportTextField(R.string.map_import_attribution, state.attribution, ChartImportField.ATTRIBUTION, onAction)
+    ImportTextField(R.string.map_import_version, state.version, ChartImportField.VERSION, onAction)
+    Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+        MapActionText(R.string.map_import_install, "map-import-install") { onAction(ChartImportUiAction.Install) }
+        MapActionText(R.string.map_import_cancel, "map-import-cancel") { onAction(ChartImportUiAction.Cancel) }
+    }
+}
+
+@Composable
+private fun ImportTextField(
+    label: Int,
+    value: String,
+    field: ChartImportField,
+    onAction: (ChartImportUiAction) -> Unit,
+) {
+    val colors = LocalWpTheme.current
+    Column {
+        WpText(stringResource(label), 10, color = colors.muted)
+        BasicTextField(
+            value = value,
+            onValueChange = { onAction(ChartImportUiAction.UpdateField(field, it)) },
+            singleLine = true,
+            textStyle = TextStyle(color = colors.foreground),
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.muted).padding(7.dp),
+        )
+    }
+}
+
+@Composable
+private fun importFailureLabel(reason: ChartPackageImportFailure): String = stringResource(
+    when (reason) {
+        ChartPackageImportFailure.CANNOT_OPEN -> R.string.map_import_error_open
+        ChartPackageImportFailure.INVALID_DATABASE -> R.string.map_import_error_database
+        ChartPackageImportFailure.EMPTY_PACKAGE -> R.string.map_import_error_empty
+        ChartPackageImportFailure.UNSUPPORTED_FORMAT -> R.string.map_import_error_format
+        ChartPackageImportFailure.INVALID_METADATA -> R.string.map_import_error_metadata
+        ChartPackageImportFailure.REQUIRED_FIELD_MISSING -> R.string.map_import_error_required
+        ChartPackageImportFailure.STAGING_EXPIRED -> R.string.map_import_error_expired
+        ChartPackageImportFailure.INSTALL_FAILED -> R.string.map_import_error_install
+        ChartPackageImportFailure.IO_FAILURE -> R.string.map_import_error_io
+    },
+)
 
 @Composable
 private fun MapActionText(label: Int, tag: String, action: () -> Unit) {

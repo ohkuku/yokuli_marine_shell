@@ -8,6 +8,7 @@ import com.yokuli.marine.map.domain.ChartPackage
 import com.yokuli.marine.map.domain.ChartPackageCandidate
 import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.ChartPackageImportException
+import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import com.yokuli.marine.map.domain.ChartPackageImportRequest
 import com.yokuli.marine.map.domain.ChartPackageRepository
 import com.yokuli.marine.map.domain.GeoBounds
@@ -65,15 +66,18 @@ class AndroidMbTilesRepository(
             } catch (error: Throwable) {
                 staging.deleteRecursively()
                 if (error is ChartPackageImportException) throw error
-                throw ChartPackageImportException("Unable to inspect MBTiles package", error)
+                throw ChartPackageImportException(ChartPackageImportFailure.IO_FAILURE, "Unable to inspect MBTiles package", error)
             }
         }
     }
 
     override suspend fun commit(request: ChartPackageImportRequest): ChartPackage = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val candidate = candidates.remove(request.stagedImportId)
-                ?: throw ChartPackageImportException("The staged import is no longer available")
+            val candidate = candidates[request.stagedImportId]
+                ?: throw ChartPackageImportException(
+                    ChartPackageImportFailure.STAGING_EXPIRED,
+                    "The staged import is no longer available",
+                )
             val metadata = listOf(
                 "display name" to request.displayName,
                 "source" to request.source,
@@ -82,11 +86,18 @@ class AndroidMbTilesRepository(
                 "version" to request.version,
             )
             metadata.firstOrNull { it.second.isBlank() }?.let {
-                throw ChartPackageImportException("${it.first} is required before import")
+                throw ChartPackageImportException(
+                    ChartPackageImportFailure.REQUIRED_FIELD_MISSING,
+                    "${it.first} is required before import",
+                )
             }
+            candidates.remove(request.stagedImportId)
             val staging = File(root, ".staging-${request.stagedImportId}")
             val database = File(staging, DATABASE_FILE)
-            if (!database.isFile) throw ChartPackageImportException("The staged MBTiles file is missing")
+            if (!database.isFile) throw ChartPackageImportException(
+                ChartPackageImportFailure.STAGING_EXPIRED,
+                "The staged MBTiles file is missing",
+            )
             val destination = File(root, "package-${candidate.sha256}")
             val installed = ChartPackage(
                 id = ChartPackageId(candidate.sha256),
@@ -108,7 +119,10 @@ class AndroidMbTilesRepository(
             writeManifest(staging, installed)
             if (!staging.renameTo(destination)) {
                 staging.deleteRecursively()
-                throw ChartPackageImportException("Could not atomically install the chart package")
+                throw ChartPackageImportException(
+                    ChartPackageImportFailure.INSTALL_FAILED,
+                    "Could not atomically install the chart package",
+                )
             }
             installed
         }
@@ -134,7 +148,10 @@ class AndroidMbTilesRepository(
         mutex.withLock {
             val directory = File(root, "package-${packageId.value}")
             if (directory.exists() && !directory.deleteRecursively()) {
-                throw ChartPackageImportException("Could not delete chart package ${packageId.value}")
+                throw ChartPackageImportException(
+                    ChartPackageImportFailure.IO_FAILURE,
+                    "Could not delete chart package ${packageId.value}",
+                )
             }
         }
     }
@@ -143,7 +160,10 @@ class AndroidMbTilesRepository(
         when (uri.scheme) {
             ContentResolver.SCHEME_FILE -> FileInputStream(requireNotNull(uri.path))
             else -> contentResolver.openInputStream(uri)
-                ?: throw ChartPackageImportException("The selected document cannot be opened")
+                ?: throw ChartPackageImportException(
+                    ChartPackageImportFailure.CANNOT_OPEN,
+                    "The selected document cannot be opened",
+                )
         }
     }
 
@@ -155,10 +175,16 @@ class AndroidMbTilesRepository(
                 null,
             ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
             if (tables != setOf("metadata", "tiles")) {
-                throw ChartPackageImportException("MBTiles must contain metadata and tiles tables")
+                throw ChartPackageImportException(
+                    ChartPackageImportFailure.INVALID_DATABASE,
+                    "MBTiles must contain metadata and tiles tables",
+                )
             }
             val hasTile = db.rawQuery("SELECT 1 FROM tiles LIMIT 1", null).use { it.moveToFirst() }
-            if (!hasTile) throw ChartPackageImportException("MBTiles contains no tiles")
+            if (!hasTile) throw ChartPackageImportException(
+                ChartPackageImportFailure.EMPTY_PACKAGE,
+                "MBTiles contains no tiles",
+            )
             val values = db.rawQuery("SELECT name, value FROM metadata", null).use { cursor ->
                 buildMap { while (cursor.moveToNext()) put(cursor.getString(0), cursor.getString(1)) }
             }
@@ -197,9 +223,15 @@ class AndroidMbTilesRepository(
             FileInputStream(File(directory, MANIFEST_FILE)).use(::load)
         }
         fun required(key: String) = properties.getProperty(key)?.takeIf { it.isNotBlank() }
-            ?: throw ChartPackageImportException("Installed package manifest is missing $key")
+            ?: throw ChartPackageImportException(
+                ChartPackageImportFailure.INVALID_DATABASE,
+                "Installed package manifest is missing $key",
+            )
         val database = File(directory, DATABASE_FILE)
-        if (!database.isFile) throw ChartPackageImportException("Installed package database is missing")
+        if (!database.isFile) throw ChartPackageImportException(
+            ChartPackageImportFailure.INVALID_DATABASE,
+            "Installed package database is missing",
+        )
         return ChartPackage(
             id = ChartPackageId(required("id")),
             displayName = required("displayName"),
@@ -219,7 +251,10 @@ class AndroidMbTilesRepository(
     }
 
     private fun File.mkdirsChecked() {
-        if (!isDirectory && !mkdirs()) throw ChartPackageImportException("Could not create chart package directory")
+        if (!isDirectory && !mkdirs()) throw ChartPackageImportException(
+            ChartPackageImportFailure.IO_FAILURE,
+            "Could not create chart package directory",
+        )
     }
 
     private companion object {

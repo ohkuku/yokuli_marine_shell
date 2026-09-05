@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.testTag
 import com.yokuli.marine.adapter.chart.google.GoogleMarineChartSurface
+import com.yokuli.marine.map.offline.OfflineMarineChartSurface
 import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
@@ -12,6 +13,8 @@ import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.chart.ChartShellContribution
 import com.yokuli.marine.feature.chart.ChartWorkspace
+import com.yokuli.marine.feature.chart.ChartImportUiAction
+import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.MarineChartDemoSurface
 import com.yokuli.marine.feature.chart.MarineChartSurface
 import com.yokuli.marine.feature.chart.MarineChartTransitionSurface
@@ -58,7 +61,8 @@ data class ProductionShellRuntime(
     val debugShellLabAvailable: Boolean,
     val mapState: MapState,
     val onMapAction: (MapAction) -> Unit,
-    val onImportChart: () -> Unit,
+    val chartImportState: ChartImportUiState,
+    val onChartImportAction: (ChartImportUiAction) -> Unit,
     val openMapSettings: () -> Unit,
     val onSettingsAction: (SettingsUiAction) -> Unit,
 )
@@ -80,7 +84,17 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
         internalAppHost = InternalAppHost(ChartDestinations.AppId) { token ->
             check(token == ChartDestinations.Browse)
             val runtime = LocalProductionShellRuntime.current
-            val chartSurface: MarineChartSurface = if (runtime.mapConfigured && runtime.heavyContentReady) {
+            val hasOfflineChart = runtime.mapState.activeChartPackageId != null
+            val chartSurface: MarineChartSurface = if (hasOfflineChart && runtime.heavyContentReady) {
+                { state, onCameraChanged, onLongPress, modifier ->
+                    OfflineMarineChartSurface(
+                        state = state,
+                        onCameraChanged = onCameraChanged,
+                        onLongPress = onLongPress,
+                        modifier = modifier.testTag("chart-surface-offline"),
+                    )
+                }
+            } else if (runtime.mapConfigured && runtime.heavyContentReady) {
                 { state, onCameraChanged, onLongPress, modifier ->
                     GoogleMarineChartSurface(
                         state = state,
@@ -90,7 +104,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                         modifier = modifier.testTag("chart-surface-google"),
                     )
                 }
-            } else if (runtime.mapConfigured) {
+            } else if (runtime.mapConfigured || hasOfflineChart) {
                 { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }
             } else {
                 { _, _, _, modifier -> MarineChartDemoSurface(modifier.testTag("chart-surface-demo")) }
@@ -100,7 +114,8 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 mapConfigured = runtime.mapConfigured,
                 onAction = runtime.onMapAction,
                 onOpenMapSettings = runtime.openMapSettings,
-                onImportChart = runtime.onImportChart,
+                importState = runtime.chartImportState,
+                onImportAction = runtime.onChartImportAction,
                 chartSurface = chartSurface,
             )
         },

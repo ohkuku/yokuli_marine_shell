@@ -34,6 +34,7 @@ internal object MapProtoMapper {
         .also { builder ->
             state.measurementDraft?.let { builder.measurementDraft = it.toProto() }
             state.routeDraft?.let { builder.routeDraft = it.toProto() }
+            state.activeChartPackageId?.let { builder.activeChartPackageId = it.value }
         }
         .build()
 
@@ -46,6 +47,7 @@ internal object MapProtoMapper {
             routeDraft = if (proto.hasRouteDraft()) proto.routeDraft.toDomain() else null,
             savedRoutes = proto.savedRoutesList.map { it.toDomain() },
             chartPackages = proto.chartPackagesList.map { it.toDomain() },
+            activeChartPackageId = proto.activeChartPackageId.takeIf { it.isNotBlank() }?.let(::ChartPackageId),
             navigationActive = false,
             positionObservation = null,
         )

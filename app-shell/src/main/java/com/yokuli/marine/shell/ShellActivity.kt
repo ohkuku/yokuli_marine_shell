@@ -15,7 +15,9 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.background
@@ -69,6 +71,7 @@ import com.yokuli.marine.feature.desktop.WpStatusStrip
 import com.yokuli.marine.feature.desktop.WpSystemKeyBar
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
+import com.yokuli.marine.feature.chart.ChartImportUiAction
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
@@ -185,6 +188,15 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val engine = shellViewModel.engine
     val engineState by engine.state.collectAsState()
     val mapState by shellViewModel.mapStore.state.collectAsState()
+    val chartImportState by shellViewModel.chartImportState.collectAsState()
+    val chartDocumentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            shellViewModel.inspectChartDocument(uri.toString())
+        }
+    }
     val hostView = LocalView.current
     LaunchedEffect(engine, hostView) {
         engine.effects.collect { effect ->
@@ -244,8 +256,13 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             debugShellLabAvailable = BuildConfig.DEBUG,
             mapState = mapState,
             onMapAction = shellViewModel.mapStore::dispatch,
-            onImportChart = {
-                Log.i("YokuliMap", "MBTiles import requested before the package importer is installed")
+            chartImportState = chartImportState,
+            onChartImportAction = { action ->
+                if (action == ChartImportUiAction.ChooseDocument) {
+                    chartDocumentPicker.launch(arrayOf("application/x-sqlite3", "application/octet-stream", "*/*"))
+                } else {
+                    shellViewModel.onChartImportAction(action)
+                }
             },
             openMapSettings = {
                 dispatch(LauncherAction.Open(SettingsDestinations.Overview))

@@ -9,6 +9,9 @@ import com.yokuli.marine.map.domain.DefaultMapStore
 import com.yokuli.marine.map.domain.MapEffect
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapStore
+import com.yokuli.marine.feature.chart.ChartImportUiAction
+import com.yokuli.marine.feature.chart.ChartImportUiState
+import com.yokuli.marine.feature.chart.ChartPackageCoordinator
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
 import com.yokuli.shell.engine.LauncherAction
@@ -41,6 +44,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     }
     private var healthyTimer: Job? = null
     private val startupJob: Job
+    private val chartPackages = (application as ShellApplication).chartPackageRepository
 
     val persistedPreferences: StateFlow<LauncherPersistedState> = persistence.state
         .map { it ?: defaults }
@@ -64,6 +68,13 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
             }
         },
     )
+    private val chartPackageCoordinator = ChartPackageCoordinator(
+        repository = chartPackages,
+        mapStore = mapStore,
+        scope = viewModelScope,
+        incidentLogger = { android.util.Log.w("YokuliMap", "Chart package workflow failed", it) },
+    )
+    val chartImportState: StateFlow<ChartImportUiState> = chartPackageCoordinator.state
 
     init {
         if (!recoveryTrackingEnabled) {
@@ -98,6 +109,14 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
             val current = persistence.load() ?: defaults
             persistence.savePreferences(theme.mode.name, theme.accent.name, current.languageTag)
         }
+    }
+
+    fun inspectChartDocument(sourceUri: String) {
+        chartPackageCoordinator.inspectDocument(sourceUri)
+    }
+
+    fun onChartImportAction(action: ChartImportUiAction) {
+        chartPackageCoordinator.dispatch(action)
     }
 
     fun saveLanguage(language: AppLanguage) {

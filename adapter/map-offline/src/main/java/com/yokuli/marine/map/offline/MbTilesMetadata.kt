@@ -1,6 +1,7 @@
 package com.yokuli.marine.map.offline
 
 import com.yokuli.marine.map.domain.ChartPackageImportException
+import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import com.yokuli.marine.map.domain.GeoBounds
 
 internal data class MbTilesMetadata(
@@ -21,20 +22,26 @@ internal object MbTilesMetadataParser {
     fun parse(values: Map<String, String>): MbTilesMetadata {
         val bounds = values["bounds"]?.split(',')?.map { it.trim().toDoubleOrNull() }
         if (bounds == null || bounds.size != 4 || bounds.any { it == null }) {
-            throw ChartPackageImportException("MBTiles metadata must contain numeric west,south,east,north bounds")
+            throw ChartPackageImportException(
+                ChartPackageImportFailure.INVALID_METADATA,
+                "MBTiles metadata must contain numeric west,south,east,north bounds",
+            )
         }
         val west = requireNotNull(bounds[0])
         val south = requireNotNull(bounds[1])
         val east = requireNotNull(bounds[2])
         val north = requireNotNull(bounds[3])
         val minZoom = values["minzoom"]?.toIntOrNull()
-            ?: throw ChartPackageImportException("MBTiles metadata is missing minzoom")
+            ?: throw ChartPackageImportException(ChartPackageImportFailure.INVALID_METADATA, "MBTiles metadata is missing minzoom")
         val maxZoom = values["maxzoom"]?.toIntOrNull()
-            ?: throw ChartPackageImportException("MBTiles metadata is missing maxzoom")
+            ?: throw ChartPackageImportException(ChartPackageImportFailure.INVALID_METADATA, "MBTiles metadata is missing maxzoom")
         val format = values["format"]?.trim()?.lowercase()
-            ?: throw ChartPackageImportException("MBTiles metadata is missing raster format")
+            ?: throw ChartPackageImportException(ChartPackageImportFailure.INVALID_METADATA, "MBTiles metadata is missing raster format")
         if (format !in rasterFormats) {
-            throw ChartPackageImportException("Only raster PNG/JPEG/WebP MBTiles are supported; found $format")
+            throw ChartPackageImportException(
+                ChartPackageImportFailure.UNSUPPORTED_FORMAT,
+                "Only raster PNG/JPEG/WebP MBTiles are supported; found $format",
+            )
         }
         return try {
             MbTilesMetadata(
@@ -49,7 +56,11 @@ internal object MbTilesMetadataParser {
                 rasterFormat = format,
             )
         } catch (error: IllegalArgumentException) {
-            throw ChartPackageImportException("Invalid MBTiles coverage or zoom metadata", error)
+            throw ChartPackageImportException(
+                ChartPackageImportFailure.INVALID_METADATA,
+                "Invalid MBTiles coverage or zoom metadata",
+                error,
+            )
         }
     }
 }

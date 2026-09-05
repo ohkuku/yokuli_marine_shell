@@ -17,6 +17,7 @@ sealed interface MapAction {
     data class ClockTick(val nowMillis: Long) : MapAction
     data object PositionUnavailable : MapAction
     data class ChartPackagesChanged(val packages: List<ChartPackage>) : MapAction
+    data class SelectChartPackage(val packageId: ChartPackageId) : MapAction
 }
 
 sealed interface MapIncident {
@@ -24,6 +25,7 @@ sealed interface MapIncident {
     data object MissingSelection : MapIncident
     data object InsufficientMeasurement : MapIncident
     data object InsufficientRoute : MapIncident
+    data class UnknownChartPackage(val packageId: ChartPackageId) : MapIncident
     data class PersistenceFailure(val operation: String, val detail: String) : MapIncident
 }
 
@@ -69,7 +71,22 @@ object MapReducer {
         is MapAction.ObservePosition -> observePosition(state, action)
         is MapAction.ClockTick -> MapReduction(state.copy(position = state.position.at(action.nowMillis)))
         MapAction.PositionUnavailable -> MapReduction(state.copy(position = PositionState()))
-        is MapAction.ChartPackagesChanged -> persist(state.copy(chartPackages = action.packages.distinctBy { it.id }))
+        is MapAction.ChartPackagesChanged -> {
+            val packages = action.packages.distinctBy { it.id }
+            persist(
+                state.copy(
+                    chartPackages = packages,
+                    activeChartPackageId = state.activeChartPackageId?.takeIf { active ->
+                        packages.any { it.id == active }
+                    } ?: packages.lastOrNull()?.id,
+                ),
+            )
+        }
+        is MapAction.SelectChartPackage -> if (state.chartPackages.none { it.id == action.packageId }) {
+            incident(state, MapIncident.UnknownChartPackage(action.packageId))
+        } else {
+            persist(state.copy(activeChartPackageId = action.packageId))
+        }
     }
 
     private fun selectTool(state: MapState, tool: MapTool): MapState = when (tool) {
@@ -192,6 +209,7 @@ private fun MapPersistedState.toRuntimeState(): MapState = MapState(
     routeDraft = routeDraft,
     savedRoutes = savedRoutes,
     chartPackages = chartPackages,
+    activeChartPackageId = activeChartPackageId,
     position = PositionState(),
     navigationActive = false,
 )

@@ -23,7 +23,23 @@ data class ChartPackageImportRequest(
     val version: String,
 )
 
-class ChartPackageImportException(message: String, cause: Throwable? = null) : Exception(message, cause)
+enum class ChartPackageImportFailure {
+    CANNOT_OPEN,
+    INVALID_DATABASE,
+    EMPTY_PACKAGE,
+    UNSUPPORTED_FORMAT,
+    INVALID_METADATA,
+    REQUIRED_FIELD_MISSING,
+    STAGING_EXPIRED,
+    INSTALL_FAILED,
+    IO_FAILURE,
+}
+
+class ChartPackageImportException(
+    val reason: ChartPackageImportFailure,
+    val technicalDetail: String,
+    cause: Throwable? = null,
+) : Exception(technicalDetail, cause)
 
 interface ChartPackageRepository {
     suspend fun inspect(sourceUri: String): ChartPackageCandidate

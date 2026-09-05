@@ -92,7 +92,7 @@ fun OfflineMarineChartSurface(
         }
     }
 
-    val activePackage = state.chartPackages.lastOrNull()
+    val activePackage = state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }
     LaunchedEffect(map, activePackage) {
         map?.setStyle(Style.Builder().fromJson(EMPTY_STYLE)) { style ->
             activePackage?.let { chartPackage ->

@@ -76,6 +76,7 @@ dependencies {
     implementation(project(":adapter:shell-storage"))
     implementation(project(":adapter:chart-google"))
     implementation(project(":adapter:map-storage"))
+    implementation(project(":adapter:map-offline"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))
     implementation(project(":feature:settings"))

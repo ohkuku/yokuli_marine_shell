@@ -123,6 +123,7 @@ data class MapPersistedState(
     val routeDraft: ManualRouteDraft?,
     val savedRoutes: List<SavedRoute>,
     val chartPackages: List<ChartPackage>,
+    val activeChartPackageId: ChartPackageId? = null,
     val navigationActive: Boolean = false,
     val positionObservation: PositionObservation? = null,
 )
@@ -136,6 +137,7 @@ data class MapState(
     val routeDraft: ManualRouteDraft? = null,
     val savedRoutes: List<SavedRoute> = emptyList(),
     val chartPackages: List<ChartPackage> = emptyList(),
+    val activeChartPackageId: ChartPackageId? = null,
     val position: PositionState = PositionState(),
     val navigationActive: Boolean = false,
 ) {
@@ -157,6 +159,7 @@ data class MapState(
         routeDraft = routeDraft,
         savedRoutes = savedRoutes,
         chartPackages = chartPackages,
+        activeChartPackageId = activeChartPackageId,
         navigationActive = false,
         positionObservation = null,
     )
