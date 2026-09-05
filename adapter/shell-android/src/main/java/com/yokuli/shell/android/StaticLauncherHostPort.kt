@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 class StaticLauncherHostPort(
     catalog: LauncherCatalogSnapshot,
     private val launches: Map<LaunchToken, LauncherAppId>,
+    private val dynamicLaunches: List<Pair<LauncherAppId, (LaunchToken) -> Boolean>> = emptyList(),
 ) : LauncherHostPort {
     override val catalog: StateFlow<LauncherCatalogSnapshot> = MutableStateFlow(catalog)
     override val tileContents: StateFlow<Map<LauncherEntryId, TileContentSnapshot>> = MutableStateFlow(emptyMap())
@@ -29,9 +30,18 @@ class StaticLauncherHostPort(
         require(catalog.entries.all { launches[it.launchToken] == it.appId }) {
             "Every catalog entry must resolve to its contributed app"
         }
+        require(dynamicLaunches.all { it.first in installedApps }) {
+            "Dynamic launch matcher belongs to an app outside the catalog"
+        }
     }
 
-    override suspend fun resolveLaunch(token: LaunchToken): LaunchResolution = launches[token]?.let { appId ->
-        LaunchResolution.Internal(appId, token)
-    } ?: LaunchResolution.Unresolved(token)
+    override suspend fun resolveLaunch(token: LaunchToken): LaunchResolution {
+        launches[token]?.let { return LaunchResolution.Internal(it, token) }
+        val matches = dynamicLaunches.filter { (_, matcher) -> runCatching { matcher(token) }.getOrDefault(false) }
+        return if (matches.size == 1) {
+            LaunchResolution.Internal(matches.single().first, token)
+        } else {
+            LaunchResolution.Unresolved(token)
+        }
+    }
 }

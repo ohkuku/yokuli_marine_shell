@@ -206,6 +206,7 @@ fun WpSearchSurface(
         query.isEmpty() || entry.title.contains(query, ignoreCase = true) ||
             entry.headline.contains(query, ignoreCase = true)
     }
+    val contributedResults = if (query.isEmpty()) emptyList() else state.searchResults
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column(
@@ -252,7 +253,29 @@ fun WpSearchSurface(
                     WpText(entry.title, 21, modifier = Modifier.padding(start = 12.dp))
                 }
             }
-            if (results.isEmpty()) WpText(stringResource(R.string.search_no_results), 18, color = colors.muted)
+            contributedResults.forEach { result ->
+                val interactions = remember(result.stableId) { MutableInteractionSource() }
+                Row(
+                    Modifier.fillMaxWidth().height(64.dp)
+                        .testTag("search-result-${result.stableId}")
+                        .wpTilt(interactions)
+                        .combinedClickable(
+                            interactionSource = interactions,
+                            indication = null,
+                            onClick = { onAction(LauncherUiAction.Open(result.launchToken)) },
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(9.dp).background(colors.accent))
+                    Column(Modifier.padding(start = 12.dp)) {
+                        WpText(result.title, 20, maxLines = 1)
+                        if (result.detail.isNotBlank()) WpText(result.detail, 12, color = colors.muted, maxLines = 1)
+                    }
+                }
+            }
+            if (results.isEmpty() && contributedResults.isEmpty()) {
+                WpText(stringResource(R.string.search_no_results), 18, color = colors.muted)
+            }
         }
     }
 }

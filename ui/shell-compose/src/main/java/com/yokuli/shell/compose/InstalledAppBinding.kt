@@ -13,6 +13,8 @@ class InstalledAppBinding<VisualEnvironment>(
     val catalogContribution: LauncherCatalogContribution,
     val visualContributions: @Composable (VisualEnvironment) -> List<LauncherEntryVisualContribution>,
     val internalAppHost: InternalAppHost,
+    val searchContributions: @Composable (VisualEnvironment, String) -> List<LauncherSearchResultContribution> = { _, _ -> emptyList() },
+    val dynamicLaunchTokenMatcher: (LaunchToken) -> Boolean = { false },
 ) {
     val launchRegistrations: Map<LaunchToken, LauncherAppId>
 
@@ -54,4 +56,12 @@ class InstalledAppRegistry<VisualEnvironment>(
     fun visualContributions(environment: VisualEnvironment): List<LauncherEntryVisualContribution> = buildList {
         bindings.forEach { binding -> addAll(binding.visualContributions(environment)) }
     }
+
+    @Composable
+    fun searchContributions(environment: VisualEnvironment, query: String): List<LauncherSearchResultContribution> = buildList {
+        bindings.forEach { binding -> addAll(binding.searchContributions(environment, query)) }
+    }
+
+    val dynamicLaunchTokenMatchers: List<Pair<LauncherAppId, (LaunchToken) -> Boolean>> =
+        bindings.map { it.catalogContribution.app.appId to it.dynamicLaunchTokenMatcher }
 }

@@ -91,7 +91,7 @@ class ChartLauncherProjectionTest {
                 routeId = route.id,
                 routeRevision = route.revision,
                 routePoints = route.waypoints,
-                packageVersionIds = emptyList(),
+                packageVersionIds = listOf(com.yokuli.marine.map.domain.ChartPackageVersionId("a".repeat(64))),
                 targetZoom = 10,
                 halfWidthNauticalMiles = 1.0,
             ),
@@ -104,7 +104,13 @@ class ChartLauncherProjectionTest {
             ),
         )
         val result = ChartLauncherProjection.project(
-            MapState(savedRoutes = listOf(route), activeRoutePlanId = route.id, libraryLoadState = MapLibraryLoadState.READY),
+            MapState(
+                savedRoutes = listOf(route),
+                activeRoutePlanId = route.id,
+                chartPackages = listOf(chartPackage()),
+                activeChartPackageId = ChartPackageId("local"),
+                libraryLoadState = MapLibraryLoadState.READY,
+            ),
             coverage,
         )
 

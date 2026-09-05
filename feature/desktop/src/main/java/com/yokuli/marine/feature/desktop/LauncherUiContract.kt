@@ -16,6 +16,7 @@ import com.yokuli.shell.engine.InternalAppTaskId
 import com.yokuli.shell.compose.LauncherEntryUiState
 import com.yokuli.shell.compose.LauncherEntryVisualContribution
 import com.yokuli.shell.compose.LauncherPresentationValidator
+import com.yokuli.shell.compose.LauncherSearchResultContribution
 
 enum class MarineIconKind { APPS, CANCEL, UNPIN, RESIZE, PIN, INFO, GENERIC }
 
@@ -25,6 +26,7 @@ data class LauncherUiState(
     val interaction: StartInteractionState = StartInteractionState.Idle,
     val transient: LauncherTransient? = null,
     val reveal: StartReveal? = null,
+    val searchResults: List<LauncherSearchResultContribution> = emptyList(),
 ) {
     val pinnedEntries: Set<LauncherEntryId> = document.placements.map { it.entryId }.toSet()
 }
@@ -66,6 +68,7 @@ fun productionLauncherUiState(
     transient: LauncherTransient? = null,
     reveal: StartReveal? = null,
     visualContributions: List<LauncherEntryVisualContribution>,
+    searchResults: List<LauncherSearchResultContribution> = emptyList(),
 ): LauncherUiState {
     LauncherPresentationValidator.validate(catalog, visualContributions)
     val visualsByEntry = visualContributions.associateBy { it.entryId }
@@ -74,6 +77,7 @@ fun productionLauncherUiState(
         interaction = interaction,
         transient = transient,
         reveal = reveal,
+        searchResults = searchResults,
         entries = catalog.entries.map { descriptor ->
             LauncherEntryUiState(
                 descriptor = descriptor,

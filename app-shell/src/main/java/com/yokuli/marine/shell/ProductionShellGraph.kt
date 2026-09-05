@@ -1,6 +1,7 @@
 package com.yokuli.marine.shell
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.testTag
@@ -26,6 +27,8 @@ import com.yokuli.marine.feature.chart.GpxExportUiState
 import com.yokuli.marine.feature.chart.GpxImportUiAction
 import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.chartLauncherVisualContribution
+import com.yokuli.marine.feature.chart.chartLauncherSearchContributions
+import com.yokuli.marine.feature.chart.ChartLaunchProjector
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsShellContribution
@@ -54,6 +57,7 @@ import com.yokuli.marine.map.domain.ChartPackageLease
 data class ProductionShellVisualEnvironment(
     val theme: WpThemeSpec,
     val mapState: MapState,
+    val offlineCoverageState: OfflineCoverageUiState,
 )
 
 data class ProductionShellRuntime(
@@ -100,11 +104,18 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
     InstalledAppBinding(
         catalogContribution = ChartShellContribution,
         visualContributions = { environment ->
-            listOf(chartLauncherVisualContribution(environment.mapState))
+            listOf(chartLauncherVisualContribution(environment.mapState, environment.offlineCoverageState))
         },
+        searchContributions = { environment, query ->
+            chartLauncherSearchContributions(environment.mapState, query)
+        },
+        dynamicLaunchTokenMatcher = ChartDestinations::accepts,
         internalAppHost = InternalAppHost(ChartDestinations.AppId) { token ->
-            check(token == ChartDestinations.Browse)
             val runtime = LocalProductionShellRuntime.current
+            val target = remember(token) { requireNotNull(ChartDestinations.parse(token)) }
+            LaunchedEffect(token) {
+                ChartLaunchProjector.action(target, runtime.currentMapState())?.let(runtime.onMapAction)
+            }
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
                 if (runtime.heavyContentReady) {
                     { state, onAction, onQueryPortChanged, modifier ->
@@ -184,10 +195,21 @@ val productionLaunchRegistrations = productionInstalledAppRegistry.launchRegistr
 fun productionVisualContributions(
     theme: WpThemeSpec,
     mapState: MapState = MapState(),
+    offlineCoverageState: OfflineCoverageUiState = OfflineCoverageUiState.Idle,
 ): List<LauncherEntryVisualContribution> {
-    val environment = ProductionShellVisualEnvironment(theme, mapState)
+    val environment = ProductionShellVisualEnvironment(theme, mapState, offlineCoverageState)
     return productionInstalledAppRegistry.visualContributions(environment)
 }
+@Composable
+fun productionSearchContributions(
+    theme: WpThemeSpec,
+    mapState: MapState,
+    offlineCoverageState: OfflineCoverageUiState,
+    query: String,
+) = productionInstalledAppRegistry.searchContributions(
+    ProductionShellVisualEnvironment(theme, mapState, offlineCoverageState),
+    query,
+)
 val productionInternalAppHostResolver = DefaultInternalAppHostResolver(
     productionInstalledAppRegistry.internalAppHosts,
 )
@@ -195,6 +217,7 @@ val productionInternalAppHostResolver = DefaultInternalAppHostResolver(
 val productionHostPort = StaticLauncherHostPort(
     catalog = productionCatalog.snapshot,
     launches = productionLaunchRegistrations,
+    dynamicLaunches = productionInstalledAppRegistry.dynamicLaunchTokenMatchers,
 )
 
 val defaultStartDocument = StartDocument(

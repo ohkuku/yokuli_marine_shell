@@ -45,6 +45,22 @@ data class LauncherEntryVisualContribution(
     val tileRenderers: Map<MarineTileSize, LauncherTileRenderer>,
 )
 
+/**
+ * A narrow app-owned Search row. Shell renders text and launches the opaque token; it never sees
+ * the feature's place, route, document, or SDK model.
+ */
+data class LauncherSearchResultContribution(
+    val stableId: String,
+    val title: String,
+    val detail: String,
+    val launchToken: com.yokuli.shell.contract.LaunchToken,
+) {
+    init {
+        require(stableId.isNotBlank())
+        require(title.isNotBlank())
+    }
+}
+
 data class LauncherEntryUiState(
     val descriptor: LauncherEntryDescriptor,
     val visual: LauncherEntryVisualContribution,

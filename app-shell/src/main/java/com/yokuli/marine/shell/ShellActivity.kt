@@ -466,6 +466,11 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             LocalProductionShellRuntime provides runtime,
             LocalInternalAppInputRouter provides (context as ShellActivity).internalAppInputRouter,
         ) {
+            var retainedSearchQuery by remember { mutableStateOf("") }
+            val activeSearchQuery = (engineState.surface as? ShellVisualSurface.Search)?.query
+            LaunchedEffect(activeSearchQuery) {
+                if (activeSearchQuery != null) retainedSearchQuery = activeSearchQuery
+            }
             val launcherState = productionLauncherUiState(
                 catalog = engineState.catalog,
                 document = engineState.start.document,
@@ -475,14 +480,16 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 visualContributions = productionVisualContributions(
                     theme = themeSpec,
                     mapState = mapState,
+                    offlineCoverageState = offlineCoverageState,
+                ),
+                searchResults = productionSearchContributions(
+                    theme = themeSpec,
+                    mapState = mapState,
+                    offlineCoverageState = offlineCoverageState,
+                    query = activeSearchQuery ?: retainedSearchQuery,
                 ),
             )
             val startEditing = engineState.start.interaction !is StartInteractionState.Idle
-            var retainedSearchQuery by remember { mutableStateOf("") }
-            val activeSearchQuery = (engineState.surface as? ShellVisualSurface.Search)?.query
-            LaunchedEffect(activeSearchQuery) {
-                if (activeSearchQuery != null) retainedSearchQuery = activeSearchQuery
-            }
             val launcherAction: (LauncherUiAction) -> Unit = { action ->
                 when (action) {
                     is LauncherUiAction.Open -> dispatch(LauncherAction.Open(action.token))

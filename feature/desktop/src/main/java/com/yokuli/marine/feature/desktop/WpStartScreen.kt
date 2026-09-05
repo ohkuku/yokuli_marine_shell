@@ -428,6 +428,7 @@ private fun WpTile(
             .alpha(if (editing && !selected) .55f else 1f).testTag("tile-${entry.descriptor.entryId.value}")
             .semantics {
                 wpTileAccentName = colors.spec.accent.displayName
+                contentDescription = entry.title
                 stateDescription = buildString {
                     append(entry.headline)
                     if (entry.detail.isNotBlank()) append(" · ${entry.detail}")
