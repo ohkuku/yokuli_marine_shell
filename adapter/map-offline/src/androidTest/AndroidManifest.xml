@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:theme="@style/MapRendererTestTheme">
         <activity
-            android:name=".MapRendererTestActivity"
+            android:name="com.yokuli.marine.map.offline.MapRendererTestActivity"
             android:exported="false" />
     </application>
 </manifest>
