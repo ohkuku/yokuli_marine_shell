@@ -57,6 +57,7 @@ class RoomMapPersistenceTest {
         scope.cancel()
         assertTrue(sessionFile.exists())
         sessionFile.delete()
+        Unit
     }
 
     @Test
@@ -82,6 +83,7 @@ class RoomMapPersistenceTest {
         database.close()
         scope.cancel()
         sessionFile.delete()
+        Unit
     }
 
     @Test
