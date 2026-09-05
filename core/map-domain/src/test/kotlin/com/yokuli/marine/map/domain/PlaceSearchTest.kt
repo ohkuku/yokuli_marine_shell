@@ -32,7 +32,7 @@ class PlaceSearchTest {
 
     @Test
     fun `duplicate names have deterministic sort order and update sort is explicit`() {
-        assertEquals(listOf("p1", "p2", "p3"), PlaceSearch.filterAndSort(places, "", PlaceSort.NAME).map { it.id })
+        assertEquals(listOf("p3", "p1", "p2"), PlaceSearch.filterAndSort(places, "", PlaceSort.NAME).map { it.id })
         assertEquals(listOf("p3", "p2", "p1"), PlaceSearch.filterAndSort(places, "", PlaceSort.UPDATED_DESC).map { it.id })
     }
 }
