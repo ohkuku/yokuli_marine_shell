@@ -35,8 +35,12 @@ object CoordinateCodec {
             CoordinateFormat.DECIMAL_DEGREES -> DECIMAL.matchEntire(text)
             CoordinateFormat.DEGREES_DECIMAL_MINUTES -> DMM.matchEntire(text)
         } ?: return AxisResult.Failure(CoordinateError.INVALID_FORMAT)
-        val rawDegrees = match.groupValues[1].toDoubleOrNull()
-            ?: return AxisResult.Failure(CoordinateError.INVALID_FORMAT)
+        val degreesToken = match.groupValues[1]
+        val rawDegrees = when (degreesToken.removePrefix("+").removePrefix("-")) {
+            "NAN" -> Double.NaN
+            "INFINITY" -> if (degreesToken.startsWith('-')) Double.NEGATIVE_INFINITY else Double.POSITIVE_INFINITY
+            else -> degreesToken.toDoubleOrNull() ?: return AxisResult.Failure(CoordinateError.INVALID_FORMAT)
+        }
         if (!rawDegrees.isFinite()) return AxisResult.Failure(CoordinateError.NON_FINITE)
         val minutes = if (format == CoordinateFormat.DEGREES_DECIMAL_MINUTES) {
             match.groupValues[2].toDoubleOrNull() ?: return AxisResult.Failure(CoordinateError.INVALID_FORMAT)
