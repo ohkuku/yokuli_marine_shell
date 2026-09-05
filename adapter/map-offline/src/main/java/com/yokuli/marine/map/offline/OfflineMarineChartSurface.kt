@@ -371,44 +371,47 @@ fun OfflineMarineChartSurface(
         val trackFeatures = withContext(Dispatchers.Default) {
             state.importedTracks.toDisplayFeatureCollection(state.camera.zoom)
         }
-        style.source(MapOverlayId.SAVED_PLACES)?.setGeoJson(
-            FeatureCollection.fromFeatures(state.places.map { place -> place.point.toFeature("place:${place.id}") }),
-        )
-        style.source(MapOverlayId.SELECTION)?.setGeoJson(
-            state.selection?.point.toFeatureCollection("selection"),
-        )
-        style.source(MapOverlayId.MEASUREMENT)?.setGeoJson(
-            measurementPoints.toGeodesicFeatureCollection(
-                "measurement",
-                state.geodesicMaxSegmentMeters(measurementPoints),
-            ),
-        )
-        style.source(MapOverlayId.MEASUREMENT_POINTS)?.setGeoJson(
-            FeatureCollection.fromFeatures(
-                measurementPoints.mapIndexed { index, point ->
-                    point.toFeature("measurement-point:$index")
-                },
-            ),
-        )
-        style.source(MapOverlayId.MANUAL_ROUTE)?.setGeoJson(
-            routePoints.toGeodesicFeatureCollection(
-                "route:${state.routeOverlayObjectId()}",
-                state.geodesicMaxSegmentMeters(routePoints),
-            ),
-        )
-        style.source(MapOverlayId.MANUAL_ROUTE_POINTS)?.setGeoJson(
-            FeatureCollection.fromFeatures(
-                routePoints.mapIndexed { index, point ->
-                    point.toFeature(state.routePointObjectId(index))
-                },
-            ),
-        )
-        style.source(MapOverlayId.IMPORTED_TRACKS)?.setGeoJson(trackFeatures)
-        style.source(MapOverlayId.POSITION_OBSERVATION)?.setGeoJson(
-            state.position.observation?.point.toFeatureCollection(
-                "position:${state.position.observation?.observationId.orEmpty()}",
-            ),
-        )
+        withContext(Dispatchers.Main.immediate) {
+            if (disposed.get() || activeStyle !== style) return@withContext
+            style.source(MapOverlayId.SAVED_PLACES)?.setGeoJson(
+                FeatureCollection.fromFeatures(state.places.map { place -> place.point.toFeature("place:${place.id}") }),
+            )
+            style.source(MapOverlayId.SELECTION)?.setGeoJson(
+                state.selection?.point.toFeatureCollection("selection"),
+            )
+            style.source(MapOverlayId.MEASUREMENT)?.setGeoJson(
+                measurementPoints.toGeodesicFeatureCollection(
+                    "measurement",
+                    state.geodesicMaxSegmentMeters(measurementPoints),
+                ),
+            )
+            style.source(MapOverlayId.MEASUREMENT_POINTS)?.setGeoJson(
+                FeatureCollection.fromFeatures(
+                    measurementPoints.mapIndexed { index, point ->
+                        point.toFeature("measurement-point:$index")
+                    },
+                ),
+            )
+            style.source(MapOverlayId.MANUAL_ROUTE)?.setGeoJson(
+                routePoints.toGeodesicFeatureCollection(
+                    "route:${state.routeOverlayObjectId()}",
+                    state.geodesicMaxSegmentMeters(routePoints),
+                ),
+            )
+            style.source(MapOverlayId.MANUAL_ROUTE_POINTS)?.setGeoJson(
+                FeatureCollection.fromFeatures(
+                    routePoints.mapIndexed { index, point ->
+                        point.toFeature(state.routePointObjectId(index))
+                    },
+                ),
+            )
+            style.source(MapOverlayId.IMPORTED_TRACKS)?.setGeoJson(trackFeatures)
+            style.source(MapOverlayId.POSITION_OBSERVATION)?.setGeoJson(
+                state.position.observation?.point.toFeatureCollection(
+                    "position:${state.position.observation?.observationId.orEmpty()}",
+                ),
+            )
+        }
     }
 
     AndroidView(factory = { mapView }, modifier = modifier)
