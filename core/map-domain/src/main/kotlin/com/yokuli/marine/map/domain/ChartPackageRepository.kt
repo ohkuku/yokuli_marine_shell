@@ -12,6 +12,8 @@ data class ChartPackageCandidate(
     val minZoom: Int,
     val maxZoom: Int,
     val rasterFormat: String,
+    val tileSize: Int = 256,
+    val tileScheme: MapTileScheme = MapTileScheme.MBTILES_TMS,
 )
 
 data class ChartPackageImportRequest(
@@ -26,6 +28,7 @@ data class ChartPackageImportRequest(
 enum class ChartPackageImportFailure {
     CANNOT_OPEN,
     INVALID_DATABASE,
+    CORRUPT_TILE,
     EMPTY_PACKAGE,
     UNSUPPORTED_FORMAT,
     INVALID_METADATA,

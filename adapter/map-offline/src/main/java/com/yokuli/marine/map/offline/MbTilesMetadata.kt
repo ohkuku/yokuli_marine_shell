@@ -3,6 +3,7 @@ package com.yokuli.marine.map.offline
 import com.yokuli.marine.map.domain.ChartPackageImportException
 import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import com.yokuli.marine.map.domain.GeoBounds
+import com.yokuli.marine.map.domain.MapTileScheme
 
 internal data class MbTilesMetadata(
     val name: String,
@@ -14,6 +15,8 @@ internal data class MbTilesMetadata(
     val minZoom: Int,
     val maxZoom: Int,
     val rasterFormat: String,
+    val tileSize: Int = 256,
+    val tileScheme: MapTileScheme = MapTileScheme.MBTILES_TMS,
 )
 
 internal object MbTilesMetadataParser {

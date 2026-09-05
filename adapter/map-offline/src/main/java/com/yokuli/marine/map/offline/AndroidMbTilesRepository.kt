@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
+import android.graphics.BitmapFactory
 import android.net.Uri
 import com.yokuli.marine.map.domain.ChartPackage
 import com.yokuli.marine.map.domain.ChartPackageCandidate
@@ -16,7 +17,6 @@ import com.yokuli.marine.map.domain.GeoBounds
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.util.Properties
 import java.util.UUID
@@ -42,11 +42,8 @@ class AndroidMbTilesRepository(
             val staging = File(root, ".staging-$stagedId").also { it.mkdirsChecked() }
             val database = File(staging, DATABASE_FILE)
             try {
-                val digest = MessageDigest.getInstance("SHA-256")
                 openSource(sourceUri).use { raw ->
-                    DigestInputStream(raw, digest).use { input ->
-                        FileOutputStream(database).use { output -> input.copyTo(output) }
-                    }
+                    FileOutputStream(database).use { output -> raw.copyTo(output) }
                 }
                 val metadata = try {
                     inspectDatabase(database)
@@ -64,11 +61,13 @@ class AndroidMbTilesRepository(
                     suggestedLicense = metadata.license,
                     suggestedAttribution = metadata.attribution,
                     suggestedVersion = metadata.version,
-                    sha256 = digest.digest().joinToString("") { "%02x".format(it) },
+                    sha256 = database.sha256(),
                     coverage = metadata.coverage,
                     minZoom = metadata.minZoom,
                     maxZoom = metadata.maxZoom,
                     rasterFormat = metadata.rasterFormat,
+                    tileSize = metadata.tileSize,
+                    tileScheme = metadata.tileScheme,
                 )
                 candidates[stagedId] = candidate
                 candidate
@@ -120,6 +119,9 @@ class AndroidMbTilesRepository(
                 minZoom = candidate.minZoom,
                 maxZoom = candidate.maxZoom,
                 version = request.version.trim(),
+                rasterFormat = candidate.rasterFormat,
+                tileSize = candidate.tileSize,
+                tileScheme = candidate.tileScheme,
             )
             if (destination.isDirectory) {
                 staging.deleteRecursively()
@@ -177,7 +179,7 @@ class AndroidMbTilesRepository(
     }
 
     private fun inspectDatabase(file: File): MbTilesMetadata {
-        val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        val database = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
         return database.use { db ->
             val tables = db.rawQuery(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('metadata','tiles')",
@@ -197,9 +199,72 @@ class AndroidMbTilesRepository(
             val values = db.rawQuery("SELECT name, value FROM metadata", null).use { cursor ->
                 buildMap { while (cursor.moveToNext()) put(cursor.getString(0), cursor.getString(1)) }
             }
-            MbTilesMetadataParser.parse(values)
+            val scheme = values["scheme"]?.trim()?.lowercase() ?: "tms"
+            if (scheme !in setOf("tms", "xyz")) throw ChartPackageImportException(
+                ChartPackageImportFailure.INVALID_METADATA,
+                "MBTiles scheme must be tms or xyz",
+            )
+            if (scheme == "xyz") {
+                db.beginTransaction()
+                try {
+                    db.execSQL("UPDATE tiles SET tile_row = ((1 << zoom_level) - 1 - tile_row)")
+                    db.execSQL("DELETE FROM metadata WHERE name = 'scheme'")
+                    db.execSQL("INSERT INTO metadata(name,value) VALUES('scheme','tms')")
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
+            }
+            val metadata = MbTilesMetadataParser.parse(values)
+            metadata.copy(tileSize = validateRasterTiles(db, metadata))
         }
     }
+
+    private fun validateRasterTiles(database: SQLiteDatabase, metadata: MbTilesMetadata): Int {
+        var expectedSize: Int? = null
+        database.rawQuery(
+            "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles ORDER BY zoom_level, tile_column, tile_row",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val zoom = cursor.getInt(0)
+                val column = cursor.getInt(1)
+                val row = cursor.getInt(2)
+                val tile = cursor.getBlob(3)
+                val maximumCoordinate = (1 shl zoom.coerceIn(0, 24)) - 1
+                if (zoom !in metadata.minZoom..metadata.maxZoom || column !in 0..maximumCoordinate || row !in 0..maximumCoordinate) {
+                    throw corruptTile("Tile coordinate is outside declared zoom or matrix bounds")
+                }
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(tile, 0, tile.size, options)
+                val formatMatches = when (metadata.rasterFormat) {
+                    "png" -> options.outMimeType == "image/png"
+                    "jpg", "jpeg" -> options.outMimeType == "image/jpeg"
+                    "webp" -> options.outMimeType == "image/webp"
+                    else -> false
+                }
+                if (!formatMatches || options.outWidth <= 0 || options.outHeight <= 0 || options.outWidth != options.outHeight) {
+                    throw corruptTile("Tile payload is not a square ${metadata.rasterFormat.uppercase()} image")
+                }
+                if (options.outWidth !in SUPPORTED_TILE_SIZES) {
+                    throw corruptTile("Tile edge must be one of ${SUPPORTED_TILE_SIZES.joinToString()}")
+                }
+                if (expectedSize != null && expectedSize != options.outWidth) {
+                    throw corruptTile("All tiles in one package must use one tile size")
+                }
+                expectedSize = options.outWidth
+            }
+        }
+        return expectedSize ?: throw ChartPackageImportException(
+            ChartPackageImportFailure.EMPTY_PACKAGE,
+            "MBTiles contains no tiles",
+        )
+    }
+
+    private fun corruptTile(detail: String) = ChartPackageImportException(
+        ChartPackageImportFailure.CORRUPT_TILE,
+        detail,
+    )
 
     private fun cleanAbandonedStaging() {
         root.listFiles().orEmpty().filter { it.name.startsWith(".staging-") }.forEach { directory ->
@@ -223,6 +288,9 @@ class AndroidMbTilesRepository(
             setProperty("minZoom", value.minZoom.toString())
             setProperty("maxZoom", value.maxZoom.toString())
             setProperty("version", value.version)
+            setProperty("rasterFormat", value.rasterFormat)
+            setProperty("tileSize", value.tileSize.toString())
+            setProperty("tileScheme", value.tileScheme.name)
         }
         FileOutputStream(File(directory, MANIFEST_FILE)).use { properties.store(it, null) }
     }
@@ -256,6 +324,8 @@ class AndroidMbTilesRepository(
             minZoom = required("minZoom").toInt(),
             maxZoom = required("maxZoom").toInt(),
             version = required("version"),
+            rasterFormat = properties.getProperty("rasterFormat")?.takeIf { it.isNotBlank() } ?: "png",
+            tileSize = properties.getProperty("tileSize")?.toIntOrNull() ?: 256,
         )
     }
 
@@ -266,8 +336,22 @@ class AndroidMbTilesRepository(
         )
     }
 
+    private fun File.sha256(): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        inputStream().buffered().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     private companion object {
         const val DATABASE_FILE = "map.mbtiles"
         const val MANIFEST_FILE = "manifest.properties"
+        val SUPPORTED_TILE_SIZES = setOf(128, 256, 512, 1024)
     }
 }

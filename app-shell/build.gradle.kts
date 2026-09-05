@@ -74,7 +74,6 @@ dependencies {
     implementation(project(":ui:shell-compose"))
     implementation(project(":adapter:shell-android"))
     implementation(project(":adapter:shell-storage"))
-    implementation(project(":adapter:chart-google"))
     implementation(project(":adapter:map-storage"))
     implementation(project(":adapter:map-offline"))
     implementation(project(":feature:desktop"))

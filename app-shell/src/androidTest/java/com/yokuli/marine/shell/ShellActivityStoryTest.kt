@@ -99,9 +99,7 @@ class ShellActivityStoryTest {
         awaitDisplayed("chart-workspace-browse")
         compose.onNodeWithTag("chart-workspace-browse").assertIsDisplayed()
         compose.onNodeWithTag("wp-page-title-chart").assertIsDisplayed()
-        compose.onNodeWithTag(
-            if (BuildConfig.GOOGLE_MAPS_CONFIGURED) "chart-surface-google" else "chart-surface-offline-empty",
-        ).assertIsDisplayed()
+        compose.onNodeWithTag("chart-surface-maplibre").assertIsDisplayed()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("start-screen")
@@ -129,7 +127,7 @@ class ShellActivityStoryTest {
                         onImportAction = {},
                         recoveryExportState = MapRecoveryExportUiState.SUCCEEDED,
                         onExportRecovery = { exportRequested = true },
-                        chartSurface = { _, _, _, modifier -> Box(modifier) },
+                        chartSurface = { _, _, modifier -> Box(modifier) },
                     )
                 }
             }

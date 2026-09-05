@@ -123,6 +123,8 @@ value class ChartPackageId(val value: String) {
     }
 }
 
+enum class MapTileScheme { MBTILES_TMS }
+
 data class ChartPackage(
     val id: ChartPackageId,
     val displayName: String,
@@ -135,6 +137,9 @@ data class ChartPackage(
     val minZoom: Int,
     val maxZoom: Int,
     val version: String,
+    val rasterFormat: String = "png",
+    val tileSize: Int = 256,
+    val tileScheme: MapTileScheme = MapTileScheme.MBTILES_TMS,
 ) {
     init {
         require(displayName.isNotBlank())
@@ -145,6 +150,8 @@ data class ChartPackage(
         require(localUri.isNotBlank())
         require(minZoom in 0..24 && maxZoom in minZoom..24)
         require(version.isNotBlank())
+        require(rasterFormat in setOf("png", "jpg", "jpeg", "webp"))
+        require(tileSize in setOf(128, 256, 512, 1024))
     }
 }
 

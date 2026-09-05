@@ -46,4 +46,6 @@ message ChartPackageProto {
   int32 min_zoom = 9;
   int32 max_zoom = 10;
   string version = 11;
+  string raster_format = 12;
+  int32 tile_size = 13;
 }

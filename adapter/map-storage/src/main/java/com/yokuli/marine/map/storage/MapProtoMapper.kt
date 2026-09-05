@@ -107,9 +107,12 @@ internal object MapProtoMapper {
     private fun SavedRouteProto.toDomain() = SavedRoute(id, name, waypointsList.map { it.toDomain() }, plannedSpeedKnots)
     private fun ChartPackage.toProto() = ChartPackageProto.newBuilder().setId(id.value).setDisplayName(displayName)
         .setSource(source).setLicense(license).setAttribution(attribution).setSha256(sha256).setLocalUri(localUri)
-        .setCoverage(coverage.toProto()).setMinZoom(minZoom).setMaxZoom(maxZoom).setVersion(version).build()
+        .setCoverage(coverage.toProto()).setMinZoom(minZoom).setMaxZoom(maxZoom).setVersion(version)
+        .setRasterFormat(rasterFormat).setTileSize(tileSize).build()
     private fun ChartPackageProto.toDomain() = ChartPackage(
         ChartPackageId(id), displayName, source, license, attribution, sha256, localUri,
         coverage.toDomain(), minZoom, maxZoom, version,
+        rasterFormat = rasterFormat.ifBlank { "png" },
+        tileSize = tileSize.takeIf { it > 0 } ?: 256,
     )
 }

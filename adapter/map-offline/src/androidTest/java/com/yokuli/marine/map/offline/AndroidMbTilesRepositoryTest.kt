@@ -1,12 +1,17 @@
 package com.yokuli.marine.map.offline
 
 import android.database.sqlite.SQLiteDatabase
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yokuli.marine.map.domain.ChartPackageImportRequest
 import com.yokuli.marine.map.domain.ChartPackageImportException
 import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import java.io.File
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -40,6 +45,16 @@ class AndroidMbTilesRepositoryTest {
         assertTrue(unrelated.isFile)
         assertFalse(packagesRoot.listFiles().orEmpty().any { it.name.startsWith(".staging-") })
 
+        val corruptTile = File(testRoot, "corrupt-tile.mbtiles")
+        createRasterMbTiles(corruptTile, tileData = byteArrayOf(0x01))
+        val corruptFailure = try {
+            repository.inspect(corruptTile.toURI().toString())
+            null
+        } catch (error: ChartPackageImportException) {
+            error
+        }
+        assertEquals(ChartPackageImportFailure.CORRUPT_TILE, corruptFailure?.reason)
+
         val invalid = File(testRoot, "invalid.mbtiles").also { it.writeText("not sqlite") }
         val failure = try {
             repository.inspect(invalid.toURI().toString())
@@ -53,20 +68,93 @@ class AndroidMbTilesRepositoryTest {
         Unit
     }
 
-    private fun createRasterMbTiles(file: File) {
+    @Test
+    fun pngAndJpegTileSizesAreDetectedAndXyzRowsAreNormalisedToMbTilesTms() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-format-test").also { it.deleteRecursively(); it.mkdirs() }
+        val repository = AndroidMbTilesRepository(context.contentResolver, File(testRoot, "packages"))
+        val png = File(testRoot, "small-xyz.mbtiles")
+        createRasterMbTiles(
+            png,
+            format = "png",
+            zoom = 1,
+            row = 0,
+            scheme = "xyz",
+            tileData = asymmetricTile(128, Bitmap.CompressFormat.PNG),
+        )
+        val pngCandidate = repository.inspect(png.toURI().toString())
+        assertEquals(128, pngCandidate.tileSize)
+        assertEquals("png", pngCandidate.rasterFormat)
+
+        val installed = repository.commit(
+            ChartPackageImportRequest(
+                pngCandidate.stagedImportId, "XYZ fixture", "Fixture", "CC0", "Fixture", "1",
+            ),
+        )
+        SQLiteDatabase.openDatabase(
+            android.net.Uri.parse(installed.localUri).path!!,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+        ).use { database ->
+            val normalisedRow = database.rawQuery("SELECT tile_row FROM tiles", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                cursor.getInt(0)
+            }
+            assertEquals(1, normalisedRow)
+        }
+
+        val jpeg = File(testRoot, "large-jpeg.mbtiles")
+        createRasterMbTiles(
+            jpeg,
+            format = "jpeg",
+            tileData = asymmetricTile(512, Bitmap.CompressFormat.JPEG),
+        )
+        val jpegCandidate = repository.inspect(jpeg.toURI().toString())
+        assertEquals(512, jpegCandidate.tileSize)
+        assertEquals("jpeg", jpegCandidate.rasterFormat)
+        testRoot.deleteRecursively()
+    }
+
+    private fun createRasterMbTiles(
+        file: File,
+        format: String = "png",
+        zoom: Int = 0,
+        row: Int = 0,
+        scheme: String = "tms",
+        tileData: ByteArray = asymmetricTile(256, Bitmap.CompressFormat.PNG),
+    ) {
         SQLiteDatabase.openOrCreateDatabase(file, null).use { database ->
             database.execSQL("CREATE TABLE metadata (name TEXT, value TEXT)")
             database.execSQL("CREATE TABLE tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB)")
             mapOf(
                 "name" to "Fixture", "bounds" to "170,-47,179,-34", "minzoom" to "0",
-                "maxzoom" to "2", "format" to "png",
+                "maxzoom" to zoom.toString(), "format" to format, "scheme" to scheme,
             ).forEach { (name, value) ->
                 database.execSQL("INSERT INTO metadata(name,value) VALUES(?,?)", arrayOf(name, value))
             }
             database.execSQL(
-                "INSERT INTO tiles(zoom_level,tile_column,tile_row,tile_data) VALUES(0,0,0,?)",
-                arrayOf(byteArrayOf(0x01)),
+                "INSERT INTO tiles(zoom_level,tile_column,tile_row,tile_data) VALUES(?,0,?,?)",
+                arrayOf(zoom, row, tileData),
             )
+        }
+    }
+
+    private fun asymmetricTile(size: Int, format: Bitmap.CompressFormat): ByteArray {
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint().apply { style = Paint.Style.FILL }
+        paint.color = Color.rgb(210, 50, 45)
+        canvas.drawRect(0f, 0f, size * 0.65f, size * 0.35f, paint)
+        paint.color = Color.rgb(25, 145, 210)
+        canvas.drawRect(size * 0.65f, 0f, size.toFloat(), size * 0.7f, paint)
+        paint.color = Color.rgb(245, 205, 40)
+        canvas.drawRect(0f, size * 0.35f, size * 0.65f, size.toFloat(), paint)
+        paint.color = Color.rgb(35, 170, 100)
+        canvas.drawRect(size * 0.65f, size * 0.7f, size.toFloat(), size.toFloat(), paint)
+        return ByteArrayOutputStream().use { output ->
+            check(bitmap.compress(format, 92, output))
+            bitmap.recycle()
+            output.toByteArray()
         }
     }
 }

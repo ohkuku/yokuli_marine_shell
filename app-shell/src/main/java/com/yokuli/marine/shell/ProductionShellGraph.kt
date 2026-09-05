@@ -3,9 +3,7 @@ package com.yokuli.marine.shell
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.testTag
-import com.yokuli.marine.adapter.chart.google.GoogleMarineChartSurface
 import com.yokuli.marine.map.offline.OfflineMarineChartSurface
-import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.map.domain.MapAction
@@ -86,47 +84,16 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
         internalAppHost = InternalAppHost(ChartDestinations.AppId) { token ->
             check(token == ChartDestinations.Browse)
             val runtime = LocalProductionShellRuntime.current
-            val hasOfflineChart = runtime.mapState.activeChartPackageId != null
-            val chartSurface: MarineChartSurface = if (hasOfflineChart && runtime.heavyContentReady) {
-                { state, onCameraChanged, onLongPress, modifier ->
+            val chartSurface: MarineChartSurface = if (runtime.heavyContentReady) {
+                { state, onAction, modifier ->
                     OfflineMarineChartSurface(
                         state = state,
-                        onCameraChanged = onCameraChanged,
-                        onLongPress = onLongPress,
-                        modifier = modifier.testTag("chart-surface-offline"),
+                        onAction = onAction,
+                        modifier = modifier.testTag("chart-surface-maplibre"),
                     )
                 }
-            } else if (runtime.mapConfigured && runtime.heavyContentReady) {
-                { state, onCameraChanged, onLongPress, modifier ->
-                    GoogleMarineChartSurface(
-                        state = state,
-                        onCameraChanged = onCameraChanged,
-                        onLongPress = onLongPress,
-                        darkMode = runtime.theme.mode == WpThemeMode.DARK,
-                        modifier = modifier.testTag("chart-surface-google"),
-                    )
-                }
-            } else if (!runtime.mapConfigured && runtime.heavyContentReady) {
-                { state, onCameraChanged, onLongPress, modifier ->
-                    OfflineMarineChartSurface(
-                        state = state,
-                        onCameraChanged = onCameraChanged,
-                        onLongPress = onLongPress,
-                        modifier = modifier.testTag("chart-surface-offline-empty"),
-                    )
-                }
-            } else if (runtime.mapConfigured || hasOfflineChart) {
-                { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }
             } else {
-                // The provider-free state is an empty coordinate workbench, never invented chart data.
-                { state, onCameraChanged, onLongPress, modifier ->
-                    OfflineMarineChartSurface(
-                        state = state,
-                        onCameraChanged = onCameraChanged,
-                        onLongPress = onLongPress,
-                        modifier = modifier.testTag("chart-surface-offline-empty"),
-                    )
-                }
+                { _, _, modifier -> MarineChartTransitionSurface(modifier) }
             }
             ChartWorkspace(
                 state = runtime.mapState,

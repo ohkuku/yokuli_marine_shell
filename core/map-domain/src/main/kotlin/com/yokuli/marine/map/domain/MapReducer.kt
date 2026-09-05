@@ -22,6 +22,7 @@ sealed interface MapAction {
     data object RetryLoad : MapAction
 
     data class RendererHostReady(val generation: MapRendererGeneration) : MapAction
+    data class RendererDetached(val generation: MapRendererGeneration) : MapAction
     data class RendererReady(val generation: MapRendererGeneration) : MapAction
     data class RendererFailed(
         val generation: MapRendererGeneration,
@@ -121,6 +122,7 @@ class DefaultMapReducer(
         is MapAction.PersistenceAck -> persistenceAck(state, action.revision)
         is MapAction.PersistenceFailed -> persistenceFailed(state, action.revision, action.failure)
         is MapAction.RendererHostReady -> rendererHostReady(state, action.generation)
+        is MapAction.RendererDetached -> rendererDetached(state, action.generation)
         is MapAction.RendererReady -> rendererReady(state, action.generation)
         is MapAction.RendererFailed -> rendererFailed(state, action.generation, action.failure)
         is MapAction.RendererCoverageChanged -> rendererCoverage(state, action.generation, action.coverage)
@@ -192,6 +194,16 @@ class DefaultMapReducer(
             ),
         )
     }
+
+    private fun rendererDetached(state: MapState, generation: MapRendererGeneration): MapReduction =
+        if (state.renderer.generation != generation) MapReduction(state) else MapReduction(
+            state.copy(
+                renderer = state.renderer.copy(
+                    readiness = MapRendererReadiness.DETACHED,
+                    cameraInputEnabled = false,
+                ),
+            ),
+        )
 
     private fun rendererReady(state: MapState, generation: MapRendererGeneration): MapReduction =
         if (state.renderer.generation != generation) MapReduction(state) else MapReduction(

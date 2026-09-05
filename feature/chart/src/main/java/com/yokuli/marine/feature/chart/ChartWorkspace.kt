@@ -33,9 +33,7 @@ import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliColors
-import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapAction
-import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapLibraryLoadState
 import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
@@ -46,8 +44,7 @@ import java.util.Locale
 
 typealias MarineChartSurface = @Composable (
     state: MapState,
-    onCameraChanged: (MapCamera) -> Unit,
-    onLongPress: (GeoPoint) -> Unit,
+    onAction: (MapAction) -> Unit,
     modifier: Modifier,
 ) -> Unit
 
@@ -76,16 +73,7 @@ fun ChartWorkspace(
     ) {
         chartSurface(
             state,
-            { onAction(MapAction.CameraChanged(it)) },
-            { point ->
-                onAction(
-                    if (state.tool == MapTool.MEASURE || state.tool == MapTool.MANUAL_ROUTE) {
-                        MapAction.AddPoint(point)
-                    } else {
-                        MapAction.LongPressMap(point)
-                    },
-                )
-            },
+            onAction,
             Modifier.fillMaxSize(),
         )
         if (kotlin.math.abs(configuration.screenWidthDp - configuration.screenHeightDp) <= 80) {

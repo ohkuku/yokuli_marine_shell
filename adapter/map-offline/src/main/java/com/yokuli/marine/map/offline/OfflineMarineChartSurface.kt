@@ -1,8 +1,9 @@
 package com.yokuli.marine.map.offline
 
 import android.content.ComponentCallbacks2
-import android.content.Context
 import android.content.res.Configuration
+import android.graphics.PointF
+import android.net.Uri
 import android.os.Bundle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -17,16 +18,37 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.yokuli.marine.map.domain.ChartPackage
+import com.yokuli.marine.map.domain.GeoBounds
 import com.yokuli.marine.map.domain.GeoPoint
+import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapCamera
+import com.yokuli.marine.map.domain.MapCameraCommand
+import com.yokuli.marine.map.domain.MapCameraCommandId
+import com.yokuli.marine.map.domain.MapCameraTarget
+import com.yokuli.marine.map.domain.MapHitResult
+import com.yokuli.marine.map.domain.MapOverlayId
+import com.yokuli.marine.map.domain.MapRendererFailure
+import com.yokuli.marine.map.domain.MapRendererGeneration
+import com.yokuli.marine.map.domain.MapRendererQueryPort
+import com.yokuli.marine.map.domain.MapRendererReadiness
+import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.domain.MapTileCoverageStatus
+import com.yokuli.marine.map.domain.MapTool
+import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdate
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
-import org.maplibre.android.maps.MapView
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
@@ -35,6 +57,7 @@ import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.sources.RasterSource
 import org.maplibre.geojson.Feature
@@ -42,23 +65,34 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
-/** Renders an installed raster MBTiles package without network or a provider API key. */
+/** The single production renderer. It never requires a provider key or an online style. */
 @Composable
 fun OfflineMarineChartSurface(
     state: MapState,
-    onCameraChanged: (MapCamera) -> Unit,
-    onLongPress: (GeoPoint) -> Unit,
+    onAction: (MapAction) -> Unit,
     modifier: Modifier = Modifier,
+    onQueryPortChanged: (MapRendererQueryPort?) -> Unit = {},
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val currentCameraChanged by rememberUpdatedState(onCameraChanged)
-    val currentLongPress by rememberUpdatedState(onLongPress)
+    val currentAction by rememberUpdatedState(onAction)
+    val currentState by rememberUpdatedState(state)
+    val currentQueryPortChanged by rememberUpdatedState(onQueryPortChanged)
     remember(context.applicationContext) { MapLibre.getInstance(context.applicationContext) }
-    val mapView = remember(context) { MapView(context) }
+
+    val generation = remember { MapRendererGeneration(nextRendererGeneration.incrementAndGet()) }
+    val mapView = remember(context, generation) { MapView(context) }
     val lifecycleDriver = remember(mapView) { OfflineMapLifecycleDriver(mapView) }
+    val disposed = remember(mapView) { AtomicBoolean(false) }
+    val styleGeneration = remember(mapView) { AtomicLong(0L) }
+    val activeCameraCommand = remember(mapView) { AtomicReference<MapCameraCommandId?>(null) }
+    val submittedCameraCommand = remember(mapView) { AtomicReference<MapCameraCommandId?>(null) }
     var map by remember(mapView) { mutableStateOf<MapLibreMap?>(null) }
     var activeStyle by remember(mapView) { mutableStateOf<Style?>(null) }
+
+    LaunchedEffect(generation) {
+        currentAction(MapAction.RendererHostReady(generation))
+    }
 
     DisposableEffect(mapView, lifecycle, context.applicationContext) {
         lifecycleDriver.create()
@@ -68,57 +102,148 @@ fun OfflineMarineChartSurface(
         lifecycleDriver.syncTo(lifecycle.currentState)
         context.applicationContext.registerComponentCallbacks(memoryCallbacks)
         onDispose {
+            disposed.set(true)
+            styleGeneration.incrementAndGet()
+            currentQueryPortChanged(null)
+            currentAction(MapAction.RendererDetached(generation))
             lifecycle.removeObserver(observer)
             context.applicationContext.unregisterComponentCallbacks(memoryCallbacks)
             lifecycleDriver.destroy()
         }
     }
 
-    DisposableEffect(mapView) {
-        var disposed = false
+    DisposableEffect(mapView, generation) {
         var cameraListener: MapLibreMap.OnCameraIdleListener? = null
         var longPressListener: MapLibreMap.OnMapLongClickListener? = null
+        val loadFailureListener = MapView.OnDidFailLoadingMapListener {
+            if (!disposed.get()) currentAction(MapAction.RendererFailed(generation, MapRendererFailure.STYLE))
+        }
+        val renderErrorListener = MapView.OnRenderErrorListener {
+            if (!disposed.get()) {
+                currentAction(MapAction.RendererCoverageChanged(generation, MapTileCoverageStatus.DEGRADED))
+            }
+        }
+        mapView.addOnDidFailLoadingMapListener(loadFailureListener)
+        mapView.addOnRenderErrorListener(renderErrorListener)
         mapView.getMapAsync { readyMap ->
-            if (disposed) return@getMapAsync
+            if (disposed.get()) return@getMapAsync
             map = readyMap
+            currentAction(MapAction.RendererHostReady(generation))
             readyMap.uiSettings.apply {
                 isCompassEnabled = false
                 isLogoEnabled = false
                 isAttributionEnabled = true
                 isRotateGesturesEnabled = true
+                isScrollGesturesEnabled = true
+                isZoomGesturesEnabled = true
                 isTiltGesturesEnabled = false
             }
-            readyMap.cameraPosition = state.camera.toCameraPosition()
+            currentQueryPortChanged(MapLibreRendererQueryPort(readyMap) { !disposed.get() })
             cameraListener = MapLibreMap.OnCameraIdleListener {
-                readyMap.cameraPosition.toDomainCameraOrNull()?.let(currentCameraChanged)
+                if (activeCameraCommand.get() == null) {
+                    readyMap.cameraPosition.toDomainCameraOrNull()?.let { camera ->
+                        currentAction(MapAction.RendererCameraIdle(generation, camera))
+                    }
+                }
             }.also(readyMap::addOnCameraIdleListener)
             longPressListener = MapLibreMap.OnMapLongClickListener { point ->
-                currentLongPress(point.toDomainPoint())
+                val action = if (currentState.tool == MapTool.MEASURE || currentState.tool == MapTool.MANUAL_ROUTE) {
+                    MapAction.AddPoint(point.toDomainPoint())
+                } else {
+                    MapAction.LongPressMap(point.toDomainPoint())
+                }
+                currentAction(action)
                 true
             }.also(readyMap::addOnMapLongClickListener)
         }
         onDispose {
-            disposed = true
             cameraListener?.let { listener -> map?.removeOnCameraIdleListener(listener) }
             longPressListener?.let { listener -> map?.removeOnMapLongClickListener(listener) }
+            mapView.removeOnDidFailLoadingMapListener(loadFailureListener)
+            mapView.removeOnRenderErrorListener(renderErrorListener)
         }
     }
 
     val activePackage = state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }
-    LaunchedEffect(map, activePackage) {
-        map?.setStyle(Style.Builder().fromJson(EMPTY_STYLE)) { style ->
-            activePackage?.let { chartPackage ->
-                style.addSource(RasterSource(CHART_SOURCE, chartPackage.localUri, 256))
-                style.addLayer(RasterLayer(CHART_LAYER, CHART_SOURCE))
+    LaunchedEffect(map, activePackage?.id, activePackage?.localUri, activePackage?.tileSize, generation) {
+        val readyMap = map ?: return@LaunchedEffect
+        val requestGeneration = styleGeneration.incrementAndGet()
+        activeStyle = null
+        submittedCameraCommand.set(null)
+        val packageExists = activePackage?.hasReadableMbTiles() == true
+        currentAction(
+            MapAction.RendererCoverageChanged(
+                generation,
+                when {
+                    activePackage == null -> MapTileCoverageStatus.NO_PACKAGE
+                    packageExists -> MapTileCoverageStatus.CHECKING
+                    else -> MapTileCoverageStatus.PACKAGE_MISSING
+                },
+            ),
+        )
+        readyMap.setStyle(Style.Builder().fromJson(EMPTY_STYLE)) { style ->
+            if (disposed.get() || styleGeneration.get() != requestGeneration) return@setStyle
+            try {
+                if (activePackage != null && packageExists) {
+                    style.addSource(RasterSource(CHART_SOURCE, activePackage.localUri, activePackage.tileSize))
+                    style.addLayer(RasterLayer(CHART_LAYER, CHART_SOURCE))
+                }
+                style.addPointOverlay(MapOverlayId.SAVED_PLACES, 0xfff7b500.toInt(), 5f)
+                style.addPointOverlay(MapOverlayId.SELECTION, 0xffffffff.toInt(), 7f)
+                style.addLineOverlay(MapOverlayId.MEASUREMENT, 0xfff7b500.toInt(), 3f)
+                style.addLineOverlay(MapOverlayId.MANUAL_ROUTE, 0xff00a4ef.toInt(), 5f)
+                style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 5f)
+                style.addPointOverlay(MapOverlayId.POSITION_OBSERVATION, 0xff00d084.toInt(), 7f)
+                activeStyle = style
+                currentAction(MapAction.RendererHostReady(generation))
+                currentAction(MapAction.RendererReady(generation))
+                currentAction(
+                    MapAction.RendererCoverageChanged(
+                        generation,
+                        when {
+                            activePackage == null -> MapTileCoverageStatus.NO_PACKAGE
+                            packageExists -> MapTileCoverageStatus.PACKAGE_ATTACHED
+                            else -> MapTileCoverageStatus.PACKAGE_MISSING
+                        },
+                    ),
+                )
+            } catch (_: Throwable) {
+                currentAction(MapAction.RendererFailed(generation, MapRendererFailure.STYLE))
             }
-            style.addPointOverlay(PLACES_SOURCE, PLACES_LAYER, 0xfff7b500.toInt(), 5f)
-            style.addPointOverlay(SELECTION_SOURCE, SELECTION_LAYER, 0xffffffff.toInt(), 7f)
-            style.addLineOverlay(MEASUREMENT_SOURCE, MEASUREMENT_LAYER, 0xfff7b500.toInt(), 3f)
-            style.addLineOverlay(ROUTE_SOURCE, ROUTE_LAYER, 0xff00a4ef.toInt(), 5f)
-            style.addPointOverlay(ROUTE_POINTS_SOURCE, ROUTE_POINTS_LAYER, 0xff00a4ef.toInt(), 5f)
-            style.addPointOverlay(POSITION_SOURCE, POSITION_LAYER, 0xff00d084.toInt(), 7f)
-            activeStyle = style
         }
+    }
+
+    LaunchedEffect(
+        map,
+        generation,
+        state.renderer.generation,
+        state.renderer.readiness,
+        state.renderer.pendingCameraCommand,
+    ) {
+        val readyMap = map ?: return@LaunchedEffect
+        val command = state.renderer.pendingCameraCommand ?: return@LaunchedEffect
+        if (
+            state.renderer.generation != generation ||
+            state.renderer.readiness != MapRendererReadiness.RENDERER_READY ||
+            submittedCameraCommand.get() == command.id
+        ) {
+            return@LaunchedEffect
+        }
+        submittedCameraCommand.set(command.id)
+        activeCameraCommand.set(command.id)
+        readyMap.moveCamera(command.toCameraUpdate(), object : MapLibreMap.CancelableCallback {
+            override fun onFinish() {
+                if (disposed.get() || activeCameraCommand.getAndSet(null) != command.id) return
+                readyMap.cameraPosition.toDomainCameraOrNull()?.let { camera ->
+                    currentAction(MapAction.RendererCameraIdle(generation, camera, command.id))
+                }
+            }
+
+            override fun onCancel() {
+                activeCameraCommand.compareAndSet(command.id, null)
+                submittedCameraCommand.compareAndSet(command.id, null)
+            }
+        })
     }
 
     LaunchedEffect(
@@ -129,50 +254,70 @@ fun OfflineMarineChartSurface(
         state.routeDraft,
         state.position.observation,
     ) {
-        activeStyle?.getSourceAs<GeoJsonSource>(PLACES_SOURCE)?.setGeoJson(
-            FeatureCollection.fromFeatures(state.places.map { it.point.toFeature() }),
+        val style = activeStyle ?: return@LaunchedEffect
+        style.source(MapOverlayId.SAVED_PLACES)?.setGeoJson(
+            FeatureCollection.fromFeatures(state.places.map { place -> place.point.toFeature("place:${place.id}") }),
         )
-        activeStyle?.getSourceAs<GeoJsonSource>(SELECTION_SOURCE)?.setGeoJson(
-            state.selection?.point.toFeatureCollection(),
+        style.source(MapOverlayId.SELECTION)?.setGeoJson(
+            state.selection?.point.toFeatureCollection("selection"),
         )
-        activeStyle?.getSourceAs<GeoJsonSource>(MEASUREMENT_SOURCE)?.setGeoJson(
-            state.measurementDraft?.points.toLineFeatureCollection(),
+        style.source(MapOverlayId.MEASUREMENT)?.setGeoJson(
+            state.measurementDraft?.points.toLineFeatureCollection("measurement"),
         )
-        activeStyle?.getSourceAs<GeoJsonSource>(ROUTE_SOURCE)?.setGeoJson(
-            state.routeDraft?.waypoints.toLineFeatureCollection(),
+        style.source(MapOverlayId.MANUAL_ROUTE)?.setGeoJson(
+            state.routeDraft?.waypoints.toLineFeatureCollection("route:${state.routeDraft?.id.orEmpty()}"),
         )
-        activeStyle?.getSourceAs<GeoJsonSource>(ROUTE_POINTS_SOURCE)?.setGeoJson(
-            FeatureCollection.fromFeatures(state.routeDraft?.waypoints.orEmpty().map { it.toFeature() }),
+        style.source(MapOverlayId.MANUAL_ROUTE_POINTS)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                state.routeDraft?.waypoints.orEmpty().mapIndexed { index, point ->
+                    point.toFeature("route-point:${state.routeDraft?.id.orEmpty()}:$index")
+                },
+            ),
         )
-        activeStyle?.getSourceAs<GeoJsonSource>(POSITION_SOURCE)?.setGeoJson(
-            state.position.observation?.point.toFeatureCollection(),
+        style.source(MapOverlayId.POSITION_OBSERVATION)?.setGeoJson(
+            state.position.observation?.point.toFeatureCollection(
+                "position:${state.position.observation?.observationId.orEmpty()}",
+            ),
         )
     }
 
     AndroidView(factory = { mapView }, modifier = modifier)
 }
 
+private fun MapCameraCommand.toCameraUpdate(): CameraUpdate = when (val value = target) {
+    is MapCameraTarget.Exact -> CameraUpdateFactory.newCameraPosition(value.camera.toCameraPosition())
+    is MapCameraTarget.Bounds -> CameraUpdateFactory.newLatLngBounds(
+        value.bounds.toLatLngBounds(),
+        viewportInsets.leftPx,
+        viewportInsets.topPx,
+        viewportInsets.rightPx,
+        viewportInsets.bottomPx,
+    )
+}
+
 private fun MapCamera.toCameraPosition() = CameraPosition.Builder()
     .target(center.toLatLng()).zoom(zoom).bearing(bearing).tilt(0.0).build()
 private fun CameraPosition.toDomainCameraOrNull() = target?.let { MapCamera(it.toDomainPoint(), zoom, bearing) }
-private fun LatLng.toDomainPoint() = GeoPoint(latitude, longitude)
+private fun LatLng.toDomainPoint() = GeoPoint(latitude.coerceIn(-90.0, 90.0), wrapLongitude(longitude))
 private fun GeoPoint.toLatLng() = LatLng(latitude, longitude)
+private fun GeoBounds.toLatLngBounds() = LatLngBounds(north, east, south, west)
 private fun GeoPoint.toGeoJsonPoint() = Point.fromLngLat(longitude, latitude)
-private fun GeoPoint.toFeature() = Feature.fromGeometry(toGeoJsonPoint())
-private fun GeoPoint?.toFeatureCollection() = FeatureCollection.fromFeatures(
-    if (this == null) emptyList() else listOf(toFeature()),
+private fun GeoPoint.toFeature(id: String) = Feature.fromGeometry(toGeoJsonPoint(), null, id)
+private fun GeoPoint?.toFeatureCollection(id: String) = FeatureCollection.fromFeatures(
+    if (this == null) emptyList() else listOf(toFeature(id)),
 )
-private fun List<GeoPoint>?.toLineFeatureCollection() = FeatureCollection.fromFeatures(
+private fun List<GeoPoint>?.toLineFeatureCollection(id: String) = FeatureCollection.fromFeatures(
     this?.takeIf { it.size >= 2 }?.let { points ->
-        listOf(Feature.fromGeometry(LineString.fromLngLats(points.map { it.toGeoJsonPoint() })))
-    }
-        .orEmpty(),
+        listOf(Feature.fromGeometry(LineString.fromLngLats(points.map { it.toGeoJsonPoint() }), null, id))
+    }.orEmpty(),
 )
 
-private fun Style.addPointOverlay(sourceId: String, layerId: String, color: Int, radius: Float) {
-    addSource(GeoJsonSource(sourceId, FeatureCollection.fromFeatures(emptyList<Feature>())))
+private fun Style.source(id: MapOverlayId) = getSourceAs<GeoJsonSource>(id.wireValue)
+
+private fun Style.addPointOverlay(id: MapOverlayId, color: Int, radius: Float) {
+    addSource(GeoJsonSource(id.wireValue, FeatureCollection.fromFeatures(emptyList<Feature>())))
     addLayer(
-        CircleLayer(layerId, sourceId).withProperties(
+        CircleLayer(id.wireValue, id.wireValue).withProperties(
             circleColor(color),
             circleRadius(radius),
             circleStrokeColor(0xffffffff.toInt()),
@@ -181,9 +326,48 @@ private fun Style.addPointOverlay(sourceId: String, layerId: String, color: Int,
     )
 }
 
-private fun Style.addLineOverlay(sourceId: String, layerId: String, color: Int, width: Float) {
-    addSource(GeoJsonSource(sourceId, FeatureCollection.fromFeatures(emptyList<Feature>())))
-    addLayer(LineLayer(layerId, sourceId).withProperties(lineColor(color), lineWidth(width)))
+private fun Style.addLineOverlay(id: MapOverlayId, color: Int, width: Float) {
+    addSource(GeoJsonSource(id.wireValue, FeatureCollection.fromFeatures(emptyList<Feature>())))
+    addLayer(LineLayer(id.wireValue, id.wireValue).withProperties(lineColor(color), lineWidth(width)))
+}
+
+private fun ChartPackage.hasReadableMbTiles(): Boolean {
+    val uri = Uri.parse(localUri)
+    return uri.scheme == "mbtiles" && uri.path?.let { File(it).isFile && File(it).canRead() } == true
+}
+
+internal class MapLibreRendererQueryPort(
+    private val map: MapLibreMap,
+    private val isCurrent: () -> Boolean,
+) : MapRendererQueryPort {
+    override fun project(point: GeoPoint): MapScreenPoint? = ifCurrent {
+        map.projection.toScreenLocation(point.toLatLng()).let { MapScreenPoint(it.x.toDouble(), it.y.toDouble()) }
+    }
+
+    override fun unproject(point: MapScreenPoint): GeoPoint? = ifCurrent {
+        map.projection.fromScreenLocation(PointF(point.xPx.toFloat(), point.yPx.toFloat())).toDomainPoint()
+    }
+
+    override fun query(point: MapScreenPoint, overlayIds: Set<MapOverlayId>): List<MapHitResult> = ifCurrent {
+        val layers = overlayIds.map { it.wireValue }.toTypedArray()
+        map.queryRenderedFeatures(PointF(point.xPx.toFloat(), point.yPx.toFloat()), *layers).mapNotNull { feature ->
+            val layer = overlayIds.firstOrNull { candidate ->
+                feature.id()?.startsWith(candidate.objectIdPrefix()) == true
+            } ?: return@mapNotNull null
+            feature.id()?.let { MapHitResult(layer, it) }
+        }
+    }.orEmpty()
+
+    private inline fun <T> ifCurrent(block: () -> T): T? = if (isCurrent()) runCatching(block).getOrNull() else null
+}
+
+private fun MapOverlayId.objectIdPrefix(): String = when (this) {
+    MapOverlayId.SAVED_PLACES -> "place:"
+    MapOverlayId.SELECTION -> "selection"
+    MapOverlayId.MEASUREMENT -> "measurement"
+    MapOverlayId.MANUAL_ROUTE -> "route:"
+    MapOverlayId.MANUAL_ROUTE_POINTS -> "route-point:"
+    MapOverlayId.POSITION_OBSERVATION -> "position:"
 }
 
 private class OfflineMapLifecycleDriver(private val mapView: MapView) {
@@ -223,20 +407,11 @@ private class OfflineMapMemoryCallbacks(private val mapView: MapView) : Componen
     }
 }
 
+private fun wrapLongitude(value: Double): Double = ((value + 180.0) % 360.0 + 360.0) % 360.0 - 180.0
+
 private const val CHART_SOURCE = "installed-raster-chart"
 private const val CHART_LAYER = "installed-raster-chart-layer"
-private const val PLACES_SOURCE = "saved-places"
-private const val PLACES_LAYER = "saved-places-layer"
-private const val SELECTION_SOURCE = "map-selection"
-private const val SELECTION_LAYER = "map-selection-layer"
-private const val MEASUREMENT_SOURCE = "measurement-draft"
-private const val MEASUREMENT_LAYER = "measurement-draft-layer"
-private const val ROUTE_SOURCE = "manual-route-draft"
-private const val ROUTE_LAYER = "manual-route-draft-layer"
-private const val ROUTE_POINTS_SOURCE = "manual-route-points"
-private const val ROUTE_POINTS_LAYER = "manual-route-points-layer"
-private const val POSITION_SOURCE = "position-observation"
-private const val POSITION_LAYER = "position-observation-layer"
+private val nextRendererGeneration = AtomicLong(0L)
 private const val EMPTY_STYLE = """{
   "version": 8,
   "name": "Yokuli offline chart",
