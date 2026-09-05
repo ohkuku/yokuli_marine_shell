@@ -128,3 +128,11 @@
 - Release 合并清单仍只有 MapLibre 依赖带来的网络、网络状态和 Wi-Fi 状态权限，没有位置权限或 Google Maps metadata。
 
 C02 恢复为 `VERIFIED_LOCAL`。它证明单一离线 renderer、相机协议和相关资源生命周期；不提前宣称 C03 的地图层级、方屏交互或 feature-first Back。
+
+## C03｜地图层级、输入优先级与方屏候选
+
+先以 Red 合同冻结 Surface/Tool/Transient 分离、feature-first 输入路由、真实 renderer 准星与 gesture ID。实现把 Chart 根页收敛为地图主体，地点/路线/图包改为内部页面；地图点按和长按只产生临时候选或稳定对象候选，显式确认才写一个点。Shell 的 Back、Bridge、Search 和虚拟实体键继续走同一输入边界。
+
+第一次完整 API 34 Shell 场景有 42/43 通过。唯一失败不是测试波动：快速选中测量工具后立即 Back，MapStore 已是 `MEASURE`，但 Compose handler 仍看到上一帧 `BROWSE`，结果 Shell 先退到 Desktop。测试增加状态诊断后稳定复现，生产路由改为读取 MapStore 实时状态，定向测试与完整 43 条场景随后全部通过。
+
+自查又补上 Shell 圆角安全带向 Chart viewport 的映射、四边参与 revision、旋转/IME 重排及 MapLibre 多指开始取消未确认 preview。当前 C03 是 `IMPLEMENTED_UNVERIFIED`；C04 才完成测量数学和真正的任意点编辑，C03 不提前宣称这些能力。

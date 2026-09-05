@@ -11,7 +11,7 @@
     "C00": "VERIFIED_LOCAL",
     "C01": "VERIFIED_LOCAL",
     "C02": "VERIFIED_LOCAL",
-    "C03": "TODO",
+    "C03": "IMPLEMENTED_UNVERIFIED",
     "C04": "TODO",
     "C05": "TODO",
     "C06": "TODO",
@@ -30,5 +30,5 @@
   ],
   "sourceDelivery": "NOT_VERIFIED",
   "deviceReview": "PENDING_OWNER",
-  "nextAction": "Begin C03 with Red tests for map hierarchy, feature-first Back, query-driven square-screen crosshair and gesture cancellation"
+  "nextAction": "Run the cumulative C00-C03 Gate from the C03 report commit; stop on any failure before C04"
 }

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "phase": "WP8_CHART_COMPLETION",
+  "package": "C03",
+  "branch": "codex/shell-map-contract",
+  "baselineSha": "dcb694614e9110d765fdb3ef8ff1d464e0d7102f",
+  "implementationCandidateSha": "7d1a1df593f8a8cafc5c83e72e1849d53a8bd673",
+  "cumulativeVerifiedSha": null,
+  "status": "IMPLEMENTED_UNVERIFIED",
+  "surfaceToolTransientSeparated": true,
+  "featureFirstBack": true,
+  "featureBackReadsRuntimeStore": true,
+  "rootIsMapFirst": true,
+  "crosshairUsesRendererUnproject": true,
+  "shellSafeInsetsPropagated": true,
+  "gestureIdentityContract": true,
+  "multiTouchCancelsPreview": true,
+  "focusedGate": {
+    "pythonTests": 6,
+    "mapDomainAndChartJvm": "PASSED",
+    "appShellDeviceTests": 43,
+    "deviceApi": 34
+  },
+  "cumulativeGate": {
+    "status": "NOT_RUN"
+  },
+  "nextPermittedPackageAfterGate": "C04"
+}

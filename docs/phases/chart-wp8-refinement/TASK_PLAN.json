@@ -208,7 +208,7 @@
         "MAP-R03",
         "MAP-R17"
       ],
-      "status": "TODO",
+      "status": "IMPLEMENTED_UNVERIFIED",
       "specSection": "C03",
       "acceptanceScenarioIds": [
         "C03-T01",
@@ -220,7 +220,11 @@
         "C03-T07"
       ],
       "verifiedSha": null,
-      "evidence": []
+      "evidence": [
+        "C03 focused repository contracts, domain/chart JVM tests and 43 API 34 Shell stories passed",
+        "Feature Back race was reproduced with Shell=Desktop and tool=MEASURE, then fixed by reading the runtime MapStore state",
+        "Cumulative C00-C03 gate remains required before C04"
+      ]
     },
     {
       "id": "C04",
@@ -778,11 +782,11 @@
       "given": "无选点的地图根页",
       "when": "普通浏览",
       "then": "无大标题/常驻大面板；少量工具和必要地图信息",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": ".github/scripts/test_chart_c03_contract.py; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "python3 .github/scripts/test_chart_c03_contract.py; ./gradlew :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "7d1a1df593f8a8cafc5c83e72e1849d53a8bd673",
+      "evidence": ["Map-first root has no large Chart title or persistent tool panel; real renderer and compact command chrome are visible"]
     },
     {
       "id": "C03-T02",
@@ -790,11 +794,11 @@
       "given": "IME、modal、gesture、tool、detail、root依次存在",
       "when": "逐次Back",
       "then": "按规定仅消费最上层，最后才回桌面",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapInteractionContractTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "7d1a1df593f8a8cafc5c83e72e1849d53a8bd673",
+      "evidence": ["Back consumes one transient, gesture, tool or page plane; a reproduced stale-Compose race was fixed against the current MapStore state"]
     },
     {
       "id": "C03-T03",
@@ -802,11 +806,11 @@
       "given": "编辑中且保存很慢",
       "when": "Bridge或Android Home后返回",
       "then": "两种Home语义不同；已确认状态保留；不等待磁盘退出",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt; core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapStoreTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "7d1a1df593f8a8cafc5c83e72e1849d53a8bd673",
+      "evidence": ["Bridge and Search retain confirmed map state; independent persistence writer keeps feature navigation non-blocking"]
     },
     {
       "id": "C03-T04",
@@ -814,11 +818,11 @@
       "given": "地图位于Shell模块中",
       "when": "单指平移和双指缩放旋转",
       "then": "地图拥有手势，不被Shell pager抢走",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/OfflineMarineChartSurface.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "7d1a1df593f8a8cafc5c83e72e1849d53a8bd673",
+      "evidence": ["Mounted Chart owns the MapView gesture surface with scroll, zoom and rotate enabled; Shell pager is absent from module surfaces"]
     },
     {
       "id": "C03-T05",
@@ -826,11 +830,11 @@
       "given": "路线/测量工具有候选点",
       "when": "轻点空白、平移、点击添加",
       "then": "前两者不提交；只有明确添加产生一个点",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapInteractionContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASSED",
+      "verifiedSha": "7d1a1df593f8a8cafc5c83e72e1849d53a8bd673",
+      "evidence": ["Tap creates a candidate, camera motion adds nothing and repeated confirmation still appends exactly one point"]
     },
     {
       "id": "C03-T06",
@@ -838,11 +842,11 @@
       "given": "多个重叠对象或工具覆盖地图",
       "when": "点对象或点工具",
       "then": "候选选择确定；控件事件不穿透地图",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapInteractionContractTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "7d1a1df593f8a8cafc5c83e72e1849d53a8bd673",
+      "evidence": ["Stable hit IDs are deduplicated into one selection or an ordered overlap list; command-bar taps do not reach the renderer query port"]
     },
     {
       "id": "C03-T07",
@@ -850,11 +854,11 @@
       "given": "方屏/圆角/大字体/IME或拖动时视口改变",
       "when": "打开表单并编辑",
       "then": "确认取消可达；安全区只扣一次；未确认位移取消",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "feature/chart/src/test/java/com/yokuli/marine/feature/chart/MapCrosshairResolverTest.kt; core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapInteractionContractTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :feature:chart:testDebugUnitTest :core:map-domain:test :app-shell:connectedStandaloneDebugAndroidTest",
+      "result": "PASSED",
+      "verifiedSha": "7d1a1df593f8a8cafc5c83e72e1849d53a8bd673",
+      "evidence": ["All four viewport edges affect crosshair geometry and revision; 320dp square at 1.5 font scale keeps actions reachable; viewport and multi-touch cancel preview only"]
     },
     {
       "id": "C04-T01",
