@@ -72,7 +72,7 @@ class RoomMapPersistenceTest {
         persistence.saveLibrary(MapLibrarySnapshot(revision = 2L, places = listOf(valid)))
         database.openHelper.writableDatabase.execSQL(
             "INSERT INTO places(id, revision, name, latitude, longitude) VALUES (?, ?, ?, ?, ?)",
-            arrayOf("bad-place", 1L, "bad", 200.0, 174.0),
+            arrayOf<Any?>("bad-place", 1L, "bad", 200.0, 174.0),
         )
 
         val loaded = persistence.load() as MapLoadResult.Ready
