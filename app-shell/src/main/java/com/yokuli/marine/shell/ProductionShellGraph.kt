@@ -1,6 +1,7 @@
 package com.yokuli.marine.shell
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.testTag
 import com.yokuli.marine.map.offline.OfflineMarineChartSurface
@@ -81,16 +82,18 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
         internalAppHost = InternalAppHost(ChartDestinations.AppId) { token ->
             check(token == ChartDestinations.Browse)
             val runtime = LocalProductionShellRuntime.current
-            val chartSurface: MarineChartSurface = if (runtime.heavyContentReady) {
-                { state, onAction, modifier ->
-                    OfflineMarineChartSurface(
-                        state = state,
-                        onAction = onAction,
-                        modifier = modifier.testTag("chart-surface-maplibre"),
-                    )
+            val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
+                if (runtime.heavyContentReady) {
+                    { state, onAction, modifier ->
+                        OfflineMarineChartSurface(
+                            state = state,
+                            onAction = onAction,
+                            modifier = modifier.testTag("chart-surface-maplibre"),
+                        )
+                    }
+                } else {
+                    { _, _, modifier -> MarineChartTransitionSurface(modifier) }
                 }
-            } else {
-                { _, _, modifier -> MarineChartTransitionSurface(modifier) }
             }
             ChartWorkspace(
                 state = runtime.mapState,
