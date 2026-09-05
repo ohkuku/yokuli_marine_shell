@@ -2,18 +2,22 @@ package com.yokuli.marine.shell
 
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.Density
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
 import com.yokuli.marine.feature.chart.ChartImportUiState
@@ -77,6 +81,34 @@ class PlaceWorkspaceStoryTest {
         compose.onNodeWithTag("map-places-search-field").performTextInput("补水")
         compose.onNodeWithTag("map-place-row-place-ui").assertIsDisplayed().performClick()
         compose.onNodeWithTag("map-place-detail-place-ui").assertIsDisplayed()
+        compose.runOnIdle { harness.dispatch(MapAction.CloseSurface) }
+        compose.onNodeWithTag("map-places-search-field").assertTextContains("补水")
+    }
+
+    @Test
+    fun emptyDuplicateAndNoResultSurfacesStayReachableAtOnePointFiveFontScale() {
+        setPlaceContent(
+            MapState(surface = MapSurface.Places, libraryLoadState = MapLibraryLoadState.READY_EMPTY),
+            fontScale = 1.5f,
+        )
+        compose.onNodeWithTag("map-places-empty").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("map-places-empty-map").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("map-places-empty-coordinate").performScrollTo().assertIsDisplayed()
+
+        val first = SavedPlace("duplicate-a", "同名", GeoPoint(-36.8, 174.7), revision = 1L)
+        val second = SavedPlace("duplicate-b", "同名", GeoPoint(-36.9, 174.8), revision = 1L)
+        setPlaceContent(
+            MapState(
+                surface = MapSurface.Places,
+                places = listOf(second, first),
+                libraryLoadState = MapLibraryLoadState.READY,
+            ),
+            fontScale = 1.5f,
+        )
+        compose.onNodeWithTag("map-place-row-duplicate-a").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("map-place-row-duplicate-b").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("map-places-search-field").performTextInput("没有这个地点")
+        compose.onNodeWithTag("map-places-no-results").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -137,7 +169,7 @@ class PlaceWorkspaceStoryTest {
         compose.runOnIdle { assertEquals("place-a", harness.state().places.single().id) }
     }
 
-    private fun setPlaceContent(initial: MapState): Harness {
+    private fun setPlaceContent(initial: MapState, fontScale: Float = 1f): Harness {
         val reducer = DefaultMapReducer(
             idGenerator = MapIdGenerator { "place-ui" },
             clock = MapClock { 1_700_000_000_000L },
@@ -147,21 +179,24 @@ class PlaceWorkspaceStoryTest {
         var exportedPlace: SavedPlace? = null
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent {
-                YokuliTheme(WpThemeSpec()) {
-                    var state by remember { mutableStateOf(initial) }
-                    stateAccessor = { state }
-                    dispatcher = { action -> state = reducer.reduce(state, action).state }
-                    ChartWorkspace(
-                        state = state,
-                        currentState = { state },
-                        onAction = dispatcher,
-                        importState = ChartImportUiState.Idle,
-                        onImportAction = {},
-                        recoveryExportState = MapRecoveryExportUiState.IDLE,
-                        onExportRecovery = {},
-                        onExportPlace = { exportedPlace = it },
-                        chartSurface = { _, _, _, modifier -> Box(modifier) },
-                    )
+                val currentDensity = LocalDensity.current
+                CompositionLocalProvider(LocalDensity provides Density(currentDensity.density, fontScale)) {
+                    YokuliTheme(WpThemeSpec()) {
+                        var state by remember { mutableStateOf(initial) }
+                        stateAccessor = { state }
+                        dispatcher = { action -> state = reducer.reduce(state, action).state }
+                        ChartWorkspace(
+                            state = state,
+                            currentState = { state },
+                            onAction = dispatcher,
+                            importState = ChartImportUiState.Idle,
+                            onImportAction = {},
+                            recoveryExportState = MapRecoveryExportUiState.IDLE,
+                            onExportRecovery = {},
+                            onExportPlace = { exportedPlace = it },
+                            chartSurface = { _, _, _, modifier -> Box(modifier) },
+                        )
+                    }
                 }
             }
         }

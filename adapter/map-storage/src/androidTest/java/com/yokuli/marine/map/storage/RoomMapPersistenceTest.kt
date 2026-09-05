@@ -11,6 +11,7 @@ import com.yokuli.marine.map.domain.MapLoadResult
 import com.yokuli.marine.map.domain.MapReadFailure
 import com.yokuli.marine.map.domain.MapSessionSnapshot
 import com.yokuli.marine.map.domain.PlaceCategory
+import com.yokuli.marine.map.domain.PlaceRevisionReference
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
 import java.io.File
@@ -150,8 +151,29 @@ class RoomMapPersistenceTest {
         val point = GeoPoint(-41.2866, 174.7756)
         val expected = MapLibrarySnapshot(
             revision = 19L,
-            places = listOf(SavedPlace("place-after-kill", "Wellington", point, revision = 8L)),
+            places = listOf(
+                SavedPlace(
+                    "place-after-kill",
+                    "Wellington",
+                    point,
+                    revision = 8L,
+                    notes = "夜间入口",
+                    category = PlaceCategory.MARINA,
+                    tags = listOf("fuel", "补水"),
+                    createdAtMillis = 100L,
+                    updatedAtMillis = 200L,
+                ),
+            ),
             routeDrafts = listOf(ManualRouteDraft("draft-after-kill", 11L, "draft", listOf(point))),
+            savedRoutes = listOf(
+                SavedRoute(
+                    "route-after-kill",
+                    "route",
+                    listOf(point),
+                    5.0,
+                    waypointPlaceReferences = mapOf(0 to PlaceRevisionReference("place-after-kill", 8L)),
+                ),
+            ),
         )
 
         val firstDatabase = Room.databaseBuilder(context, MapLibraryDatabase::class.java, databaseName).build()
