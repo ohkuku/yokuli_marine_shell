@@ -26,3 +26,10 @@
 - Activity proves the same down/long-press/move/up sequence reorders and persists a tile.
 - Binding graph proves catalog, tokens, visuals and hosts derive from one exact App set.
 
+## 2026-09-05 — First Green implementation and device correction
+
+- Focused Engine run: the four new resize tests failed against the old preview/confirm reducer, providing the expected Red evidence.
+- Green implementation removes `Resizing` and `CommitTileResize`; one `ResizeTile` action now commits, persists, records undo, emits selection haptic, and remains in edit selection.
+- App-owned Compose SPI and installation registry unit tests pass; Chart and Settings now provide exact size-specific renderers from their own feature modules.
+- First API 34 Activity run intentionally failed all three new stories. Review found two incorrect test assumptions: wide and standard tiles share height, and the drag target crossed only one packed row. Assertions now compare width and cross two rows.
+- The compact-tile unpin path is being retested with an actual pointer click on the unmerged child target, not a direct semantics action. It remains unverified until that device run passes.

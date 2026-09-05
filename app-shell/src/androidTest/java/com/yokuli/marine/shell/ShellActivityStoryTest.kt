@@ -17,6 +17,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
@@ -175,7 +176,7 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("tile-settings").performTouchInput {
             down(center)
             advanceEventTime(650)
-            moveTo(Offset(center.x, -center.y), delayMillis = 500)
+            moveTo(Offset(center.x, -height * 2f), delayMillis = 500)
             up()
         }
 
@@ -229,7 +230,7 @@ class ShellActivityStoryTest {
 
         compose.onNodeWithTag("resize-selected-tile").performClick()
         compose.waitUntil(5_000) {
-            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.height < wideBounds.height
+            compose.onNodeWithTag("tile-chart").fetchSemanticsNode().boundsInRoot.width < wideBounds.width
         }
     }
 
@@ -261,7 +262,8 @@ class ShellActivityStoryTest {
             assertTrue(state.start.interaction is com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle)
         }
         awaitDisplayed("unpin-selected-tile")
-        compose.onNodeWithTag("unpin-selected-tile").performClick()
+        compose.onNodeWithTag("unpin-selected-tile", useUnmergedTree = true)
+            .performTouchInput { click(center) }
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
     }
 
