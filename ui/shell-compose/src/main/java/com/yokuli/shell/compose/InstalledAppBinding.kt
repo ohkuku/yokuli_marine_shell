@@ -6,14 +6,16 @@ import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.LauncherCatalogContribution
 
 /**
- * A feature is installed once. Catalog entries derive launch registrations; the same binding
- * contributes its app-owned visuals and its one internal host.
+ * A feature is installed once. Its public entries and internal destinations derive all launch
+ * registrations; the same binding contributes its app-owned visuals and its one internal host.
  */
 class InstalledAppBinding<VisualEnvironment>(
     val catalogContribution: LauncherCatalogContribution,
     val visualContributions: @Composable (VisualEnvironment) -> List<LauncherEntryVisualContribution>,
     val internalAppHost: InternalAppHost,
 ) {
+    val launchRegistrations: Map<LaunchToken, LauncherAppId>
+
     init {
         val appId = catalogContribution.app.appId
         require(internalAppHost.appId == appId) { "Internal host must belong to the installed app" }
@@ -21,10 +23,11 @@ class InstalledAppBinding<VisualEnvironment>(
         require(catalogContribution.entries.all { it.appId == appId }) {
             "Installed app may contribute only its own entries"
         }
+        val tokens = catalogContribution.entries.map { it.launchToken } + catalogContribution.internalLaunchTokens
+        // Check the list before converting to a map: associate must never silently hide a duplicate.
+        require(tokens.distinct().size == tokens.size) { "Duplicate LaunchToken within installed app" }
+        launchRegistrations = tokens.associateWith { appId }
     }
-
-    val launchRegistrations: Map<LaunchToken, LauncherAppId> =
-        catalogContribution.entries.associate { it.launchToken to it.appId }
 }
 
 class InstalledAppRegistry<VisualEnvironment>(

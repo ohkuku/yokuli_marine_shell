@@ -24,4 +24,11 @@ data class LauncherEntryDescriptor(
 interface LauncherCatalogContribution {
     val app: LauncherAppDescriptor
     val entries: List<LauncherEntryDescriptor>
+
+    /**
+     * App-owned destinations that are routable but are not separate Start/All Apps entries.
+     * Entry launch tokens are registered automatically; do not repeat them here.
+     * The installation binding validates uniqueness and assigns every token to this app's host.
+     */
+    val internalLaunchTokens: List<LaunchToken> get() = emptyList()
 }

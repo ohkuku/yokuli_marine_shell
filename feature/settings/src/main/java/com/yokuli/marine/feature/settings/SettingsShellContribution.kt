@@ -50,4 +50,9 @@ object SettingsShellContribution : LauncherCatalogContribution {
             presentationKind = TilePresentationKind.STATIC,
         ),
     )
+
+    // Subpages share the installed Settings task, without becoming extra launcher entries.
+    override val internalLaunchTokens = SettingsSection.entries
+        .filterNot { it == SettingsSection.OVERVIEW }
+        .map(SettingsDestinations::token)
 }
