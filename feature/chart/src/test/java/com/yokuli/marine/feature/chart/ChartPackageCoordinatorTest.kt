@@ -3,6 +3,8 @@ package com.yokuli.marine.feature.chart
 import com.yokuli.marine.map.domain.ChartPackage
 import com.yokuli.marine.map.domain.ChartPackageCandidate
 import com.yokuli.marine.map.domain.ChartPackageId
+import com.yokuli.marine.map.domain.ChartPackageImportException
+import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import com.yokuli.marine.map.domain.ChartPackageImportRequest
 import com.yokuli.marine.map.domain.ChartPackageRepository
 import com.yokuli.marine.map.domain.GeoBounds
