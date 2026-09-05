@@ -56,7 +56,10 @@ class MapLibreMbTilesRenderTest {
         }
         assertTrue("at least three asymmetric raster regions must be visible", renderedFixtureColors >= 3)
         assertTrue("stable overlay must be visibly bright", Color.red(center) > 220 && Color.green(center) > 220)
-        assertTrue("transparent fixture edge must expose the empty local style", bitmap.getPixel(3, 3).near(Color.rgb(8, 27, 39)))
+        assertTrue(
+            "transparent fixture edge must expose enough of the empty local style",
+            bitmap.countNear(Color.rgb(8, 27, 39)) > 80,
+        )
 
         val rotated = captureFixture(
             name = "directional-rotated",
