@@ -2837,9 +2837,6 @@ PLcom/yokuli/shell/engine/LauncherAction$PinEntry;-><init>(Ljava/lang/String;)V
 PLcom/yokuli/shell/engine/LauncherAction$PinEntry;-><init>(Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 PLcom/yokuli/shell/engine/LauncherAction$PinEntry;->equals(Ljava/lang/Object;)Z
 PLcom/yokuli/shell/engine/LauncherAction$PinEntry;->getEntryId-wP13zQU()Ljava/lang/String;
-Lcom/yokuli/shell/engine/LauncherAction$RequestAndroidSettings;
-HSPLcom/yokuli/shell/engine/LauncherAction$RequestAndroidSettings;-><clinit>()V
-HSPLcom/yokuli/shell/engine/LauncherAction$RequestAndroidSettings;-><init>()V
 Lcom/yokuli/shell/engine/LauncherAction$RestorePersistedDocument;
 HSPLcom/yokuli/shell/engine/LauncherAction$RestorePersistedDocument;-><init>(Lcom/yokuli/shell/engine/layout/StartDocument;)V
 HSPLcom/yokuli/shell/engine/LauncherAction$RestorePersistedDocument;->equals(Ljava/lang/Object;)Z
@@ -2875,14 +2872,10 @@ PLcom/yokuli/shell/engine/LauncherEffect$Launch;-><init>(Ljava/lang/String;)V
 PLcom/yokuli/shell/engine/LauncherEffect$Launch;-><init>(Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 PLcom/yokuli/shell/engine/LauncherEffect$Launch;->equals(Ljava/lang/Object;)Z
 Lcom/yokuli/shell/engine/LauncherEffect$LogIncident;
-PLcom/yokuli/shell/engine/LauncherEffect$OpenAndroidSettings;-><clinit>()V
-PLcom/yokuli/shell/engine/LauncherEffect$OpenAndroidSettings;-><init>()V
 Lcom/yokuli/shell/engine/LauncherEffect$PersistDocument;
 PLcom/yokuli/shell/engine/LauncherEffect$PersistDocument;-><init>(Lcom/yokuli/shell/engine/layout/StartDocument;)V
 PLcom/yokuli/shell/engine/LauncherEffect$PersistDocument;->equals(Ljava/lang/Object;)Z
 PLcom/yokuli/shell/engine/LauncherEffect$PersistDocument;->getDocument()Lcom/yokuli/shell/engine/layout/StartDocument;
-PLcom/yokuli/shell/engine/LauncherEffect$RequestHostExit;-><clinit>()V
-PLcom/yokuli/shell/engine/LauncherEffect$RequestHostExit;-><init>()V
 PLcom/yokuli/shell/engine/LauncherEffect$ScrollStartToReveal;-><init>(Ljava/lang/String;)V
 PLcom/yokuli/shell/engine/LauncherEffect$ScrollStartToReveal;-><init>(Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 PLcom/yokuli/shell/engine/LauncherEffect$ScrollStartToReveal;->equals(Ljava/lang/Object;)Z

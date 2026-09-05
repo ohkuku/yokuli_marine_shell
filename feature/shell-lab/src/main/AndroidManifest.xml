@@ -3,6 +3,6 @@
         <activity
             android:name=".ShellLabActivity"
             android:exported="true"
-            android:screenOrientation="fullSensor" />
+            android:screenOrientation="portrait" />
     </application>
 </manifest>

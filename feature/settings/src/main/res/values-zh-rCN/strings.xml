@@ -29,7 +29,6 @@
     <string name="start_document">开始屏幕文档 v%1$d · %2$d 块磁贴</string>
     <string name="start_reset_explanation">恢复地图与设置的默认空间布局；这不会清除本地海图包或主题。</string>
     <string name="start_reset">恢复默认开始屏幕</string>
-    <string name="open_android_settings">打开 Android 桌面设置</string>
     <string name="debug_tools">调试工具</string>
     <string name="shell_lab_explanation">在独立调试页面中验证高密度磁贴、长标题和边界布局。</string>
     <string name="open_shell_lab">打开 Shell Lab</string>

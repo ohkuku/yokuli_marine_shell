@@ -182,7 +182,7 @@ fun ChartWorkspace(
     LaunchedEffect(isSquare) {
         if (isSquare && !state.crosshairEnabled) onAction(MapAction.SetCrosshairEnabled(true))
     }
-    LaunchedEffect(configuration.orientation, imeVisible) {
+    LaunchedEffect(imeVisible) {
         state.editGesture?.let { gesture -> onAction(MapAction.CancelPointDrag(gesture.id)) }
     }
     LaunchedEffect(viewportSize, rootInsets) {

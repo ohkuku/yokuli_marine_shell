@@ -1,5 +1,13 @@
 # Changelog
 
+## Shell Product Boundary Correction
+
+- 明确 Yokuli OS 是带应用内 Shell 的普通 Android 应用：设置、恢复 UI 与 Engine 删除 Android 桌面设置入口；普通“应用信息”入口不受影响。
+- 最外层 Back 改为停留在 Shell 桌面且无副作用，不再结束 Activity；应用内页面、临时层、编辑和事务的既有 Back 优先级保持不变。
+- `ShellActivity` 与 debug-only `ShellLabActivity` 默认锁定竖屏；方屏继续适配，横屏从当前能力与验收范围移除。
+
+English: removed the obsolete Android Home-settings escape, bounded Back at the in-app Shell Desktop without finishing the host, and made production plus Shell Lab portrait-only by default.
+
 ## WP8 Chart Completion — C00 candidate
 
 - 正式磁贴尺寸收敛为 WP 经典三档 1×1、2×2、4×2；Chart 提供三档独立内容，Settings 提供 1×1/2×2，直接缩放继续一次点击提交且不出现确认勾。

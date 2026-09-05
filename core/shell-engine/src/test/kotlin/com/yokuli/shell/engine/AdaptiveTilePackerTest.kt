@@ -44,13 +44,13 @@ class AdaptiveTilePackerTest {
         )
 
         val phone = AdaptiveTilePacker.pack(document, columns = 4)
-        val landscape = AdaptiveTilePacker.pack(document, columns = 6)
+        val sixColumnGrid = AdaptiveTilePacker.pack(document, columns = 6)
         val tablet = AdaptiveTilePacker.pack(document, columns = 8)
 
         assertEquals(document, document.copy())
-        assertNotEquals(phone.tiles.map { it.cell }, landscape.tiles.map { it.cell })
+        assertNotEquals(phone.tiles.map { it.cell }, sixColumnGrid.tiles.map { it.cell })
         assertNoOverlap(phone.occupiedCellsByItem.values)
-        assertNoOverlap(landscape.occupiedCellsByItem.values)
+        assertNoOverlap(sixColumnGrid.occupiedCellsByItem.values)
         assertNoOverlap(tablet.occupiedCellsByItem.values)
     }
 

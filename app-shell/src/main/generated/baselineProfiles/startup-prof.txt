@@ -2095,9 +2095,6 @@ Lcom/yokuli/shell/engine/LauncherAction$OpenSearch;
 HSPLcom/yokuli/shell/engine/LauncherAction$OpenSearch;-><clinit>()V
 HSPLcom/yokuli/shell/engine/LauncherAction$OpenSearch;-><init>()V
 Lcom/yokuli/shell/engine/LauncherAction$PersistenceIncidentObserved;
-Lcom/yokuli/shell/engine/LauncherAction$RequestAndroidSettings;
-HSPLcom/yokuli/shell/engine/LauncherAction$RequestAndroidSettings;-><clinit>()V
-HSPLcom/yokuli/shell/engine/LauncherAction$RequestAndroidSettings;-><init>()V
 Lcom/yokuli/shell/engine/LauncherAction$RestorePersistedDocument;
 HSPLcom/yokuli/shell/engine/LauncherAction$RestorePersistedDocument;-><init>(Lcom/yokuli/shell/engine/layout/StartDocument;)V
 HSPLcom/yokuli/shell/engine/LauncherAction$RestorePersistedDocument;->equals(Ljava/lang/Object;)Z

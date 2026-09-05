@@ -34,12 +34,11 @@
     <string name="recents_context">internal app tasks</string>
     <string name="recents_empty">no internal app tasks yet</string>
     <string name="restoring_title">restoring</string>
-    <string name="restoring_explanation">Reading the committed Start settings. Android Settings remains available.</string>
+    <string name="restoring_explanation">Reading the committed Start settings.</string>
     <string name="recovery_title">safe mode</string>
     <string name="recovery_context">startup recovery</string>
-    <string name="recovery_explanation">Repeated startup failures were detected. The default layout and reduced motion are active; Chart, Settings, and Android Settings remain available.</string>
+    <string name="recovery_explanation">Repeated startup failures were detected. The default layout and reduced motion are active; Chart, Settings, and Start reset remain available.</string>
     <string name="recovery_reset">reset and leave safe mode</string>
-    <string name="recovery_android_settings">open Android settings</string>
     <string name="status_charging">charging</string>
     <string name="status_battery">%1$d%%</string>
 </resources>

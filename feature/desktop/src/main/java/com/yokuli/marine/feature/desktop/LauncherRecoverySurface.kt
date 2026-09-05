@@ -28,7 +28,6 @@ fun LauncherRecoverySurface(
     onOpenChart: () -> Unit,
     onOpenSettings: () -> Unit,
     onResetStart: () -> Unit,
-    onOpenAndroidSettings: () -> Unit,
 ) {
     val colors = LocalWpTheme.current
     Column(Modifier.fillMaxSize().testTag(if (restoring) "launcher-restoring" else "launcher-recovery")) {
@@ -49,11 +48,6 @@ fun LauncherRecoverySurface(
             Spacer(Modifier.height(8.dp))
             RecoveryCommand(stringResource(R.string.recovery_reset), "recovery-reset-start", onResetStart)
         }
-        RecoveryCommand(
-            stringResource(R.string.recovery_android_settings),
-            "recovery-open-android-settings",
-            onOpenAndroidSettings,
-        )
     }
 }
 

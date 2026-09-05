@@ -1,6 +1,8 @@
 # Yokuli Launcher Shell Engine — Master Construction Specification
 ## 在接入任何海事功能之前，先完成一个与应用解耦、可验证、可持久化、可高帧率运行的 Windows Phone 8 风格模拟 Launcher
 
+> 历史施工规范提示：本文件保留 Stage 0–11 的来源链。当前产品不是 Android HOME Launcher；有关 Android 桌面设置、Start 层 Back 退出宿主和横屏支持的冲突条款，均由 [Shell 产品边界修正](../phases/shell-product-boundary-correction/REQUIREMENTS.md)覆盖。
+
 ### 文档状态
 
 ```text
@@ -687,7 +689,6 @@ sealed interface LauncherEffect {
     data class AccessibilityAnnouncement(val text: UiText) : LauncherEffect
     data class LogIncident(val incident: LauncherIncident) : LauncherEffect
     data class ScrollStartToReveal(val tileId: TileInstanceId) : LauncherEffect
-    data object OpenAndroidSettings : LauncherEffect
 }
 ```
 

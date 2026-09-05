@@ -45,7 +45,6 @@ sealed interface LauncherAction {
     data class RestorePersistedDocument(val document: StartDocument?) : LauncherAction
     data object EnterSafeMode : LauncherAction
     data object ExitSafeMode : LauncherAction
-    data object RequestAndroidSettings : LauncherAction
     data class Open(val token: LaunchToken) : LauncherAction
     data class CatalogChanged(val catalog: LauncherCatalogSnapshot) : LauncherAction
     data class ApplyLayoutProposal(val proposal: LayoutProposal) : LauncherAction
@@ -94,8 +93,6 @@ sealed interface LauncherEffect {
     data class AccessibilityAnnouncement(val text: UiText) : LauncherEffect
     data class LogIncident(val incident: LauncherIncident) : LauncherEffect
     data class ScrollStartToReveal(val tileId: TileInstanceId) : LauncherEffect
-    data object OpenAndroidSettings : LauncherEffect
-    data object RequestHostExit : LauncherEffect
 }
 
 fun ShellInput.toShellAction(): LauncherAction = when (this) {
@@ -124,8 +121,7 @@ class DefaultLauncherReducer : LauncherReducer {
             action !is LauncherAction.RestorePersistedDocument &&
             action !is LauncherAction.CatalogChanged &&
             action !is LauncherAction.PersistenceIncidentObserved &&
-            action != LauncherAction.EnterSafeMode &&
-            action != LauncherAction.RequestAndroidSettings
+            action != LauncherAction.EnterSafeMode
         ) {
             return LauncherReduction(state)
         }
@@ -138,8 +134,7 @@ class DefaultLauncherReducer : LauncherReducer {
             action != LauncherAction.ShowDesktop &&
             action != LauncherAction.EnterSafeMode &&
             action != LauncherAction.ExitSafeMode &&
-            action != LauncherAction.ResetStartDocument &&
-            action != LauncherAction.RequestAndroidSettings
+            action != LauncherAction.ResetStartDocument
         ) {
             return LauncherReduction(state)
         }
@@ -160,10 +155,6 @@ class DefaultLauncherReducer : LauncherReducer {
         LauncherAction.EnterSafeMode -> enterSafeMode(state, context)
         LauncherAction.ExitSafeMode -> LauncherReduction(
             state.copy(recoveryMode = LauncherRecoveryMode.NORMAL, transitionRequest = null),
-        )
-        LauncherAction.RequestAndroidSettings -> LauncherReduction(
-            state,
-            listOf(LauncherEffect.OpenAndroidSettings),
         )
         is LauncherAction.PersistenceIncidentObserved -> LauncherReduction(
             state,
@@ -266,7 +257,7 @@ class DefaultLauncherReducer : LauncherReducer {
         }
         state.start.activeTransaction?.let { return cancel(state) }
         return when (val surface = state.surface) {
-            ShellVisualSurface.Desktop -> LauncherReduction(state, listOf(LauncherEffect.RequestHostExit))
+            ShellVisualSurface.Desktop -> LauncherReduction(state)
             ShellVisualSurface.ModuleList -> LauncherReduction(
                 state.navigateTo(ShellVisualSurface.Desktop, ShellTransitionTrigger.BACK),
             )

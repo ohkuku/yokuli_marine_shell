@@ -24,6 +24,5 @@ sealed interface SettingsUiAction {
     data class ChangeTheme(val theme: WpThemeSpec) : SettingsUiAction
     data class ChangeLanguage(val language: AppLanguage) : SettingsUiAction
     data object ResetStartScreen : SettingsUiAction
-    data object OpenAndroidSettings : SettingsUiAction
     data object OpenShellLab : SettingsUiAction
 }

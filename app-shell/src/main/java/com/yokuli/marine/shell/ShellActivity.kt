@@ -116,7 +116,6 @@ class ShellActivity : AppCompatActivity() {
     private val shellViewModel by viewModels<ShellViewModel>()
     private var longBackConsumed = false
     internal val internalAppInputRouter = InternalAppInputRouter()
-    internal var platformIntentLauncher: (Intent) -> Unit = { intent -> startActivity(intent) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -187,10 +186,6 @@ class ShellActivity : AppCompatActivity() {
         ) {
             shellViewModel.prepareBenchmarkStart()
         }
-    }
-
-    internal fun openAndroidSettings() {
-        platformIntentLauncher(Intent(Settings.ACTION_SETTINGS))
     }
 
     private fun enterImmersiveMode() {
@@ -316,9 +311,6 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 is LauncherEffect.Haptic -> hostView.performHapticFeedback(
                     AndroidLauncherHapticMapper.constantFor(effect.kind),
                 )
-                LauncherEffect.RequestHostExit -> (context as? Activity)?.finishAfterTransition()
-                LauncherEffect.OpenAndroidSettings -> (context as? ShellActivity)?.openAndroidSettings()
-                    ?: context.startActivity(Intent(Settings.ACTION_SETTINGS))
                 is LauncherEffect.LogIncident -> Log.w("YokuliLauncher", effect.incident.toString())
                 else -> Unit
             }
@@ -457,7 +449,6 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                         context.persistAppLanguage(action.language)
                     }
                     SettingsUiAction.ResetStartScreen -> shellViewModel.resetStartDocument()
-                    SettingsUiAction.OpenAndroidSettings -> shellViewModel.requestAndroidSettings()
                     SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
                 }
             },
@@ -541,7 +532,6 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                             onOpenChart = { dispatch(LauncherAction.Open(com.yokuli.marine.feature.chart.ChartDestinations.Browse)) },
                             onOpenSettings = { dispatch(LauncherAction.Open(SettingsDestinations.Overview)) },
                             onResetStart = shellViewModel::resetLauncher,
-                            onOpenAndroidSettings = shellViewModel::requestAndroidSettings,
                         )
                     } else {
                         Column(Modifier.fillMaxSize()) {

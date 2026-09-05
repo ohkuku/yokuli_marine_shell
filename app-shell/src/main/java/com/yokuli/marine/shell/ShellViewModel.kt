@@ -220,10 +220,6 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         engine.dispatch(LauncherAction.ShowDesktop)
     }
 
-    fun requestAndroidSettings() {
-        engine.dispatch(LauncherAction.RequestAndroidSettings)
-    }
-
     fun onHostResumed() {
         if (!recoveryTrackingEnabled) return
         healthyTimer?.cancel()
