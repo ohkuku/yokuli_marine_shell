@@ -41,6 +41,13 @@ import com.yokuli.marine.core.design.WpTileAccentNameKey
 import com.yokuli.marine.core.design.YokuliTheme
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
+import com.yokuli.marine.feature.chart.ChartImportUiState
+import com.yokuli.marine.feature.chart.ChartWorkspace
+import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
+import com.yokuli.marine.map.domain.MapAction
+import com.yokuli.marine.map.domain.MapLibraryLoadState
+import com.yokuli.marine.map.domain.MapSaveState
+import com.yokuli.marine.map.domain.MapState
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherRecoveryMode
 import com.yokuli.shell.engine.ShellVisualSurface
@@ -99,6 +106,44 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun failedMapSaveExposesRetryAndExplicitRecoveryExportWithoutClaimingSaved() {
+        var retryRequested = false
+        var exportRequested = false
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                YokuliTheme(WpThemeSpec()) {
+                    ChartWorkspace(
+                        state = MapState(
+                            libraryLoadState = MapLibraryLoadState.READY,
+                            libraryRevision = 3L,
+                            durableLibraryRevision = 2L,
+                            saveState = MapSaveState.FAILED,
+                        ),
+                        mapConfigured = false,
+                        onAction = { if (it == MapAction.RetryPersistence) retryRequested = true },
+                        onOpenMapSettings = {},
+                        importState = ChartImportUiState.Idle,
+                        onImportAction = {},
+                        recoveryExportState = MapRecoveryExportUiState.SUCCEEDED,
+                        onExportRecovery = { exportRequested = true },
+                        chartSurface = { _, _, _, modifier -> Box(modifier) },
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithTag("map-persistence-truth").assertIsDisplayed()
+        compose.onNodeWithTag("map-library-retry-save").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("map-library-export-recovery").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("map-recovery-export-state").assertIsDisplayed()
+
+        compose.runOnIdle {
+            assertTrue(retryRequested)
+            assertTrue(exportRequested)
+        }
     }
 
     @Test
