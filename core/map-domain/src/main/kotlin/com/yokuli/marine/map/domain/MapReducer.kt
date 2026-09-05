@@ -33,6 +33,7 @@ sealed interface MapAction {
     /** Compatibility action for pre-C03 tests and imports; production input confirms a candidate. */
     data class AddPoint(val point: GeoPoint) : MapAction
     data class SaveSelectionAsPlace(val name: String) : MapAction
+    data class SavePointCandidateAsPlace(val name: String) : MapAction
     data class ConvertMeasurementToManualRoute(val name: String) : MapAction
     data object UndoRouteEdit : MapAction
     data object RedoRouteEdit : MapAction
@@ -167,6 +168,7 @@ class DefaultMapReducer(
         )
         is MapAction.AddPoint -> addPoint(state, action.point)
         is MapAction.SaveSelectionAsPlace -> savePlace(state, action.name)
+        is MapAction.SavePointCandidateAsPlace -> savePointCandidate(state, action.name)
         is MapAction.ConvertMeasurementToManualRoute -> convertMeasurement(state, action.name)
         MapAction.UndoRouteEdit -> editRoute(state) { draft ->
             val previous = draft.undo.lastOrNull() ?: return@editRoute null
@@ -566,6 +568,22 @@ class DefaultMapReducer(
                     point = selection.point,
                 ),
                 selection = null,
+            ),
+        )
+    }
+
+    private fun savePointCandidate(state: MapState, name: String): MapReduction = ifWritable(state) {
+        val candidate = state.transient as? MapTransient.PointCandidate
+            ?: return@ifWritable incident(state, MapIncident.MissingSelection)
+        val displayName = name.trim().ifEmpty { "Place ${state.places.size + 1}" }
+        persistLibrary(
+            state.copy(
+                places = state.places + SavedPlace(
+                    id = idGenerator.nextId("place"),
+                    name = displayName,
+                    point = candidate.point,
+                ),
+                transient = null,
             ),
         )
     }

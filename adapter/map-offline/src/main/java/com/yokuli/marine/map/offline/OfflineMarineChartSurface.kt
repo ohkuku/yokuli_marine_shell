@@ -160,10 +160,7 @@ fun OfflineMarineChartSurface(
                     }
                 }
                 MotionEvent.ACTION_MOVE -> activePointDrag.get()?.let { drag ->
-                    val moved = drag.moved || hypot(
-                        screenPoint.xPx - drag.downPoint.xPx,
-                        screenPoint.yPx - drag.downPoint.yPx,
-                    ) >= touchSlop
+                    val moved = drag.moved || PointDragMotion.hasMoved(drag.downPoint, screenPoint, touchSlop)
                     if (moved) {
                         activePointDrag.set(drag.copy(moved = true))
                         queryPort?.unproject(screenPoint)?.let { point ->
@@ -174,9 +171,10 @@ fun OfflineMarineChartSurface(
                 } ?: false
                 MotionEvent.ACTION_UP -> activePointDrag.getAndSet(null)?.let { drag ->
                     val finalPoint = queryPort?.unproject(screenPoint)
+                    val moved = drag.moved || PointDragMotion.hasMoved(drag.downPoint, screenPoint, touchSlop)
                     if (finalPoint == null) {
                         currentAction(MapAction.CancelPointDrag(drag.id))
-                    } else if (!drag.moved) {
+                    } else if (!moved) {
                         currentAction(MapAction.CancelPointDrag(drag.id))
                         currentAction(MapAction.MapTapped(finalPoint, listOf(drag.target.toHitResult())))
                     } else {
@@ -509,7 +507,7 @@ private val HANDLE_OVERLAYS = setOf(
     MapOverlayId.MANUAL_ROUTE_POINTS,
 )
 
-private fun MapHitResult.toEditTargetOrNull(): MapEditTarget? = when (overlayId) {
+internal fun MapHitResult.toEditTargetOrNull(): MapEditTarget? = when (overlayId) {
     MapOverlayId.MEASUREMENT_POINTS -> objectId.removePrefix("measurement-point:")
         .toIntOrNull()
         ?.let(MapEditTarget::MeasurementPoint)
@@ -535,6 +533,13 @@ private data class ActivePointDrag(
     val downPoint: MapScreenPoint,
     val moved: Boolean = false,
 )
+
+internal object PointDragMotion {
+    fun hasMoved(down: MapScreenPoint, current: MapScreenPoint, touchSlop: Double): Boolean {
+        require(touchSlop >= 0.0)
+        return hypot(current.xPx - down.xPx, current.yPx - down.yPx) >= touchSlop
+    }
+}
 
 private class OfflineMapLifecycleDriver(private val mapView: MapView) {
     private var created = false

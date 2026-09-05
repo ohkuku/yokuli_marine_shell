@@ -338,8 +338,7 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
                 WpText(transient.point.coordinateText(), 11)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     MapActionText(R.string.map_save_place, "map-candidate-save") {
-                        onAction(MapAction.ConfirmPointCandidate)
-                        onAction(MapAction.SaveSelectionAsPlace(defaultPlaceName))
+                        onAction(MapAction.SavePointCandidateAsPlace(defaultPlaceName))
                     }
                     MapActionText(R.string.map_measure_from_here, "map-candidate-measure") {
                         onAction(MapAction.SelectTool(MapTool.MEASURE))
@@ -349,6 +348,8 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
                         onAction(MapAction.SelectTool(MapTool.MANUAL_ROUTE))
                         onAction(MapAction.AddPoint(transient.point))
                     }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     MapActionText(R.string.map_copy_coordinate, "map-candidate-copy") {
                         clipboard.setText(AnnotatedString(transient.point.coordinateText()))
                     }
@@ -479,6 +480,8 @@ private fun MeasurementRootSummary(state: MapState, onAction: (MapAction) -> Uni
             MapTextButton(stringResource(R.string.map_clear), "map-measure-clear", draft.points.isNotEmpty()) {
                 onAction(MapAction.ClearMeasurement)
             }
+        }
+        Row(Modifier.fillMaxWidth()) {
             MapTextButton(stringResource(R.string.map_measure_all_segments), "map-measure-details", draft.points.size >= 2) {
                 onAction(MapAction.OpenSurface(MapSurface.Measurement))
             }
@@ -762,10 +765,11 @@ private fun CoordinateInputPage(state: MapState, onAction: (MapAction) -> Unit) 
         color = colors.muted,
     )
     Row(Modifier.fillMaxWidth()) {
-        MapTextButton(
-            stringResource(R.string.map_coordinate_format_dd_short),
+        MapCommandButton(
+            R.string.map_coordinate_format_dd_short,
             "map-coordinate-format-dd",
-            format != CoordinateFormat.DECIMAL_DEGREES,
+            format == CoordinateFormat.DECIMAL_DEGREES,
+            Modifier.weight(1f),
         ) {
             val point = (CoordinateCodec.parse(latitude, longitude, format) as? CoordinateParseResult.Success)?.point ?: initial
             format = CoordinateFormat.DECIMAL_DEGREES
@@ -775,10 +779,11 @@ private fun CoordinateInputPage(state: MapState, onAction: (MapAction) -> Unit) 
             }
             failure = null
         }
-        MapTextButton(
-            stringResource(R.string.map_coordinate_format_dmm_short),
+        MapCommandButton(
+            R.string.map_coordinate_format_dmm_short,
             "map-coordinate-format-dmm",
-            format != CoordinateFormat.DEGREES_DECIMAL_MINUTES,
+            format == CoordinateFormat.DEGREES_DECIMAL_MINUTES,
+            Modifier.weight(1f),
         ) {
             val point = (CoordinateCodec.parse(latitude, longitude, format) as? CoordinateParseResult.Success)?.point ?: initial
             format = CoordinateFormat.DEGREES_DECIMAL_MINUTES
