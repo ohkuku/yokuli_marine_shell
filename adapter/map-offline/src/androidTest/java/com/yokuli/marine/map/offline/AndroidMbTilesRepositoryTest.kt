@@ -113,6 +113,7 @@ class AndroidMbTilesRepositoryTest {
         assertEquals(512, jpegCandidate.tileSize)
         assertEquals("jpeg", jpegCandidate.rasterFormat)
         testRoot.deleteRecursively()
+        Unit
     }
 
     private fun createRasterMbTiles(
