@@ -32,7 +32,7 @@ class RoomMapPersistenceTest {
     @get:Rule
     val migrationHelper = MigrationTestHelper(
         InstrumentationRegistry.getInstrumentation(),
-        MapLibraryDatabase::class.java.canonicalName,
+        MapLibraryDatabase::class.java,
     )
 
     @Test
