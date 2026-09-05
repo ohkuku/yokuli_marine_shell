@@ -60,18 +60,25 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         for forbidden in ("MOTUIHE", "6.2 kn", "6.2 节", "COG 184", "HDG 184", "32 / 60", "NOT ARMED", "SURVEY READY", "27 TRIPS"):
             self.assertNotIn(forbidden, text)
 
-    def test_chart_exposes_browse_only_and_labels_unconfigured_demo(self):
-        contract = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartUiContract.kt").read_text()
+    def test_chart_exposes_browse_only_and_an_honest_offline_root(self):
+        contribution = (
+            ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartShellContribution.kt"
+        ).read_text()
+        domain = "\n".join(
+            path.read_text()
+            for path in (ROOT / "core/map-domain/src/main/kotlin").rglob("*.kt")
+        )
         workspace = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
         default_strings = (ROOT / "feature/chart/src/main/res/values/strings.xml").read_text()
         english_strings = (ROOT / "feature/chart/src/main/res/values-en/strings.xml").read_text()
 
         for removed in ("ChartMode", "courseOverGround", "speedOverGround", "destination", "anchorArmed", "surveyDepth"):
-            self.assertNotIn(removed, contract)
+            self.assertNotIn(removed, contribution + domain + workspace)
         self.assertNotIn("WpApplicationBar", workspace)
-        self.assertNotIn("Home", contract)
-        self.assertIn("地图未配置", default_strings)
-        self.assertIn("DEMO MAP", english_strings)
+        self.assertNotIn("Home", contribution)
+        self.assertIn('LaunchToken("chart.browse")', contribution)
+        self.assertIn("无海图包 · 坐标工作台", default_strings)
+        self.assertIn("NO CHART PACKAGE · COORDINATE WORKBENCH", english_strings)
 
     def test_settings_surface_contains_only_implemented_sections(self):
         contract = (ROOT / "feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsUiContract.kt").read_text()

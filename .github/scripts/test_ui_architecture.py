@@ -49,7 +49,6 @@ class UiArchitectureContractTest(unittest.TestCase):
     def test_each_feature_exposes_state_and_action_contract(self):
         contracts = {
             "feature/desktop": "LauncherUiContract.kt",
-            "feature/chart": "ChartUiContract.kt",
             "feature/settings": "SettingsUiContract.kt",
         }
         for module, filename in contracts.items():
@@ -58,6 +57,12 @@ class UiArchitectureContractTest(unittest.TestCase):
             source = matches[0].read_text()
             self.assertRegex(source, r"data class \w+UiState")
             self.assertRegex(source, r"sealed interface \w+UiAction")
+        map_sources = "\n".join(
+            path.read_text()
+            for path in (ROOT / "core/map-domain/src/main/kotlin").rglob("*.kt")
+        )
+        self.assertRegex(map_sources, r"data class MapState")
+        self.assertRegex(map_sources, r"sealed interface MapAction")
 
     def test_wp_text_has_no_hardcoded_alphabetic_user_copy(self):
         offenders = []
@@ -104,9 +109,8 @@ class UiArchitectureContractTest(unittest.TestCase):
         self.assertNotRegex(chart, r"\b(?:SOG|COG|HDG)\s*[:=]?\s*\d")
         self.assertNotIn('"Saved place"', chart)
         self.assertNotIn('"Manual route', chart)
-        self.assertIn("PositionAvailability.UNAVAILABLE", chart)
-        self.assertIn("PositionAvailability.STALE", chart)
-        self.assertIn("PositionAvailability.FRESH", chart)
+        self.assertIn("map_no_package", chart)
+        self.assertNotIn("MAP READY", chart)
 
     def test_public_documents_are_chinese_first_with_english_translation(self):
         paths = [ROOT / "README.md", ROOT / "CONTRIBUTING.md", ROOT / "CHANGELOG.md"]

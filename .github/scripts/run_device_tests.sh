@@ -16,7 +16,7 @@ case "$mode" in
     ;;
   ui-contract)
     gradle_args+=(
-      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#productionShellExposesOnlyChartAndSettingsWithReusableLargeTitles'
+      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#productionShellExposesOnlyChartAndSettingsAndMapRootStaysMapFirst'
     )
     ;;
   performance)

@@ -155,7 +155,7 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
         ).read_text()
         for story in (
             "chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart",
-            "productionShellExposesOnlyChartAndSettingsWithReusableLargeTitles",
+            "productionShellExposesOnlyChartAndSettingsAndMapRootStaysMapFirst",
         ):
             self.assertIn(story, stories)
             self.assertIn(story, device_runner)
