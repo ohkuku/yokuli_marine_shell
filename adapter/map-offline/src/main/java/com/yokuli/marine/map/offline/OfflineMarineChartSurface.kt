@@ -47,6 +47,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.hypot
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sqrt
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdate
@@ -343,9 +346,12 @@ fun OfflineMarineChartSurface(
         state.measurementDraft,
         state.routeDraft,
         state.editGesture,
+        state.camera.zoom,
         state.position.observation,
     ) {
         val style = activeStyle ?: return@LaunchedEffect
+        val measurementPoints = state.measurementPointsWithPreview()
+        val routePoints = state.routePointsWithPreview()
         style.source(MapOverlayId.SAVED_PLACES)?.setGeoJson(
             FeatureCollection.fromFeatures(state.places.map { place -> place.point.toFeature("place:${place.id}") }),
         )
@@ -353,21 +359,27 @@ fun OfflineMarineChartSurface(
             state.selection?.point.toFeatureCollection("selection"),
         )
         style.source(MapOverlayId.MEASUREMENT)?.setGeoJson(
-            state.measurementPointsWithPreview().toGeodesicFeatureCollection("measurement"),
+            measurementPoints.toGeodesicFeatureCollection(
+                "measurement",
+                state.geodesicMaxSegmentMeters(measurementPoints),
+            ),
         )
         style.source(MapOverlayId.MEASUREMENT_POINTS)?.setGeoJson(
             FeatureCollection.fromFeatures(
-                state.measurementPointsWithPreview().mapIndexed { index, point ->
+                measurementPoints.mapIndexed { index, point ->
                     point.toFeature("measurement-point:$index")
                 },
             ),
         )
         style.source(MapOverlayId.MANUAL_ROUTE)?.setGeoJson(
-            state.routePointsWithPreview().toGeodesicFeatureCollection("route:${state.routeDraft?.id.orEmpty()}"),
+            routePoints.toGeodesicFeatureCollection(
+                "route:${state.routeDraft?.id.orEmpty()}",
+                state.geodesicMaxSegmentMeters(routePoints),
+            ),
         )
         style.source(MapOverlayId.MANUAL_ROUTE_POINTS)?.setGeoJson(
             FeatureCollection.fromFeatures(
-                state.routePointsWithPreview().mapIndexed { index, point ->
+                routePoints.mapIndexed { index, point ->
                     point.toFeature("route-point:${state.routeDraft?.id.orEmpty()}:$index")
                 },
             ),
@@ -410,8 +422,11 @@ private fun GeoPoint.toFeature(id: String) = Feature.fromGeometry(toGeoJsonPoint
 private fun GeoPoint?.toFeatureCollection(id: String) = FeatureCollection.fromFeatures(
     if (this == null) emptyList() else listOf(toFeature(id)),
 )
-private fun List<GeoPoint>.toGeodesicFeatureCollection(id: String) = FeatureCollection.fromFeatures(
-    takeIf { it.size >= 2 }?.let { Wgs84Polyline.build(it) }?.parts?.mapIndexed { index, part ->
+private fun List<GeoPoint>.toGeodesicFeatureCollection(
+    id: String,
+    maxSegmentMeters: Double,
+) = FeatureCollection.fromFeatures(
+    takeIf { it.size >= 2 }?.let { Wgs84Polyline.build(it, maxSegmentMeters) }?.parts?.mapIndexed { index, part ->
         Feature.fromGeometry(LineString.fromLngLats(part.map(GeoPoint::toGeoJsonPoint)), null, "$id:$index")
     }.orEmpty(),
 )
@@ -433,6 +448,13 @@ private fun MapState.routePointsWithPreview(): List<GeoPoint> {
 
 private fun List<GeoPoint>.replaceAt(index: Int, point: GeoPoint): List<GeoPoint> =
     if (index !in indices) this else mapIndexed { itemIndex, item -> if (itemIndex == index) point else item }
+
+private fun MapState.geodesicMaxSegmentMeters(points: List<GeoPoint>): Double =
+    GeodesicRenderBudget.maxSegmentMeters(
+        zoom = camera.zoom,
+        maxAbsoluteLatitude = points.maxOfOrNull { kotlin.math.abs(it.latitude) }
+            ?: kotlin.math.abs(camera.center.latitude),
+    )
 
 private fun Style.source(id: MapOverlayId) = getSourceAs<GeoJsonSource>(id.wireValue)
 
@@ -538,6 +560,29 @@ internal object PointDragMotion {
     fun hasMoved(down: MapScreenPoint, current: MapScreenPoint, touchSlop: Double): Boolean {
         require(touchSlop >= 0.0)
         return hypot(current.xPx - down.xPx, current.yPx - down.yPx) >= touchSlop
+    }
+}
+
+/**
+ * Bounds projected geodesic chord error to roughly three quarters of a pixel at the current
+ * zoom. The floor prevents pathological world-scale lines from allocating unbounded vertices;
+ * source coordinates and measurement math remain full WGS84 precision.
+ */
+internal object GeodesicRenderBudget {
+    const val MIN_SEGMENT_METERS = 500.0
+    const val MAX_SEGMENT_METERS = 25_000.0
+    private const val TARGET_PIXEL_ERROR = 0.75
+    private const val WGS84_MEAN_RADIUS_METERS = 6_371_008.8
+    private const val EQUATOR_METERS_PER_PIXEL_ZOOM_0 = 156_543.03392
+
+    fun maxSegmentMeters(zoom: Double, maxAbsoluteLatitude: Double): Double {
+        require(zoom.isFinite() && zoom in 0.0..24.0)
+        require(maxAbsoluteLatitude.isFinite() && maxAbsoluteLatitude in 0.0..90.0)
+        val displayLatitude = maxAbsoluteLatitude.coerceAtMost(WEB_MERCATOR_MAX_LATITUDE)
+        val metersPerPixel = EQUATOR_METERS_PER_PIXEL_ZOOM_0 *
+            cos(Math.toRadians(displayLatitude)) / 2.0.pow(zoom)
+        val segmentForSagitta = sqrt(8.0 * WGS84_MEAN_RADIUS_METERS * metersPerPixel * TARGET_PIXEL_ERROR)
+        return segmentForSagitta.coerceIn(MIN_SEGMENT_METERS, MAX_SEGMENT_METERS)
     }
 }
 
