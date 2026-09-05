@@ -132,6 +132,41 @@ class AndroidMbTilesRepositoryTest {
         testRoot.deleteRecursively()
         Unit
     }
+
+    @Test
+    fun leaseBlocksDeletionAndDeletingNewVersionFallsBackToOldVersion() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-lease-rollback-test").also { it.deleteRecursively(); it.mkdirs() }
+        val packages = File(testRoot, "packages")
+        val repository = AndroidMbTilesRepository(context.contentResolver, packages)
+        val sourceV1 = File(testRoot, "v1.mbtiles")
+        createRasterMbTiles(sourceV1)
+        val candidateV1 = repository.inspect(sourceV1.toURI().toString())
+        val versionV1 = repository.commit(
+            ChartPackageImportRequest(candidateV1.stagedImportId, "Harbour", "Unknown", "Unknown", "Unknown", "1"),
+        )
+        val sourceV2 = File(testRoot, "v2.mbtiles")
+        createRasterMbTiles(sourceV2, tileData = asymmetricTile(512, Bitmap.CompressFormat.PNG))
+        val candidateV2 = repository.inspect(sourceV2.toURI().toString())
+        val versionV2 = repository.commit(
+            ChartPackageImportRequest(
+                candidateV2.stagedImportId, "Harbour", "Unknown", "Unknown", "Unknown", "2",
+                replaceLogicalPackageId = versionV1.logicalId,
+            ),
+        )
+
+        val lease = repository.acquireLease(versionV2.id)
+        val failure = runCatching { repository.delete(versionV2.id) }.exceptionOrNull() as ChartPackageImportException
+        assertEquals(ChartPackageImportFailure.PACKAGE_IN_USE, failure.reason)
+        lease.close()
+        repository.delete(versionV2.id)
+
+        val restored = repository.listInstalled().single()
+        assertEquals(versionV1.id, restored.id)
+        assertEquals(versionV1.logicalId, restored.logicalId)
+        testRoot.deleteRecursively()
+        Unit
+    }
     @Test
     fun importIsValidatedAndAtomicAndDeleteKeepsUnrelatedUserFiles() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()

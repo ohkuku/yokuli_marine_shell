@@ -43,6 +43,8 @@ import com.yokuli.shell.engine.catalog.LauncherCatalog
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
+import com.yokuli.marine.map.domain.ChartPackageId
+import com.yokuli.marine.map.domain.ChartPackageLease
 
 data class ProductionShellVisualEnvironment(
     val theme: WpThemeSpec,
@@ -65,6 +67,7 @@ data class ProductionShellRuntime(
     val onMapAction: (MapAction) -> Unit,
     val chartImportState: ChartImportUiState,
     val onChartImportAction: (ChartImportUiAction) -> Unit,
+    val acquireChartPackageLease: (ChartPackageId) -> ChartPackageLease,
     val recoveryExportState: MapRecoveryExportUiState,
     val onExportMapRecovery: () -> Unit,
     val placeExportState: MapPlaceExportUiState,
@@ -96,6 +99,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                             state = state,
                             onAction = onAction,
                             onQueryPortChanged = onQueryPortChanged,
+                            acquirePackageLease = runtime.acquireChartPackageLease,
                             modifier = modifier.testTag("chart-surface-maplibre"),
                         )
                     }

@@ -337,6 +337,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     shellViewModel.onChartImportAction(action)
                 }
             },
+            acquireChartPackageLease = shellViewModel::acquireChartPackageLease,
             recoveryExportState = recoveryExportState,
             onExportMapRecovery = {
                 recoveryExportState = MapRecoveryExportUiState.IDLE

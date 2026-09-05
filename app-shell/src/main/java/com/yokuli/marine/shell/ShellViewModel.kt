@@ -10,6 +10,8 @@ import com.yokuli.marine.map.domain.MapEffect
 import com.yokuli.marine.map.domain.MapLibraryLoadState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapStore
+import com.yokuli.marine.map.domain.ChartPackageId
+import com.yokuli.marine.map.domain.ChartPackageLease
 import com.yokuli.marine.feature.chart.ChartImportUiAction
 import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.ChartPackageCoordinator
@@ -125,6 +127,9 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     fun onChartImportAction(action: ChartImportUiAction) {
         chartPackageCoordinator.dispatch(action)
     }
+
+    fun acquireChartPackageLease(packageId: ChartPackageId): ChartPackageLease =
+        chartPackages.acquireLease(packageId)
 
     fun saveLanguage(language: AppLanguage) {
         viewModelScope.launch {

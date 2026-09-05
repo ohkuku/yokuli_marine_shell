@@ -74,9 +74,8 @@ class AndroidMbTilesRepository(
             val staging = File(root, ".staging-$stagedId").also { it.mkdirsChecked() }
             val database = File(staging, DATABASE_FILE)
             try {
-                val digest = MessageDigest.getInstance("SHA-256")
                 openSource(sourceUri).use { input ->
-                    copySource(input, database, sourceLength(sourceUri), digest, onProgress)
+                    copySource(input, database, sourceLength(sourceUri), onProgress)
                 }
                 currentCoroutineContext().ensureActive()
                 val metadata = try {
@@ -88,7 +87,7 @@ class AndroidMbTilesRepository(
                         error,
                     )
                 }
-                val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
+                val sha256 = database.sha256()
                 ChartPackageCandidate(
                     stagedImportId = stagedId,
                     suggestedDisplayName = metadata.name,
@@ -287,7 +286,6 @@ class AndroidMbTilesRepository(
         input: InputStream,
         destination: File,
         totalBytes: Long?,
-        digest: MessageDigest,
         onProgress: (ChartPackageInspectProgress) -> Unit,
     ) {
         var completed = 0L
@@ -303,7 +301,6 @@ class AndroidMbTilesRepository(
                     "The selected package exceeds the supported import size",
                 )
                 output.write(buffer, 0, count)
-                digest.update(buffer, 0, count)
                 onProgress(ChartPackageInspectProgress.Copying(completed, totalBytes))
             }
             output.fd.sync()
@@ -656,6 +653,20 @@ class AndroidMbTilesRepository(
 
     private fun File.mkdirsChecked() {
         if (!isDirectory && !mkdirs()) throw ioFailure("Could not create chart package directory")
+    }
+
+    private suspend fun File.sha256(): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        inputStream().buffered().use { input ->
+            val buffer = ByteArray(COPY_BUFFER_BYTES)
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun corruptTile(detail: String) = ChartPackageImportException(ChartPackageImportFailure.CORRUPT_TILE, detail)

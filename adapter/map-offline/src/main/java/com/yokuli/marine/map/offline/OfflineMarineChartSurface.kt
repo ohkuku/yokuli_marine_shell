@@ -21,6 +21,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.yokuli.marine.map.domain.ChartPackage
+import com.yokuli.marine.map.domain.ChartPackageId
+import com.yokuli.marine.map.domain.ChartPackageLease
 import com.yokuli.marine.map.domain.GeoBounds
 import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapAction
@@ -82,6 +84,7 @@ fun OfflineMarineChartSurface(
     onAction: (MapAction) -> Unit,
     modifier: Modifier = Modifier,
     onQueryPortChanged: (MapRendererQueryPort?) -> Unit = {},
+    acquirePackageLease: (ChartPackageId) -> ChartPackageLease = { ChartPackageLease {} },
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -103,6 +106,12 @@ fun OfflineMarineChartSurface(
     val touchSlop = remember(context) { ViewConfiguration.get(context).scaledTouchSlop.toDouble() }
     var map by remember(mapView) { mutableStateOf<MapLibreMap?>(null) }
     var activeStyle by remember(mapView) { mutableStateOf<Style?>(null) }
+    val activePackage = state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }
+
+    DisposableEffect(activePackage?.id, acquirePackageLease) {
+        val lease = activePackage?.id?.let(acquirePackageLease)
+        onDispose { lease?.close() }
+    }
 
     LaunchedEffect(generation) {
         currentAction(MapAction.RendererHostReady(generation))
@@ -246,7 +255,6 @@ fun OfflineMarineChartSurface(
         }
     }
 
-    val activePackage = state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }
     LaunchedEffect(map, activePackage?.id, activePackage?.localUri, activePackage?.tileSize, generation) {
         val readyMap = map ?: return@LaunchedEffect
         val requestGeneration = styleGeneration.incrementAndGet()

@@ -31,6 +31,9 @@ class ChartC07ContractTest(unittest.TestCase):
             self.assertIn(symbol, contract + implementation)
         self.assertIn("ensureActive()", implementation)
         self.assertNotIn("raw.copyTo(output)", implementation)
+        renderer = (ROOT / "adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/OfflineMarineChartSurface.kt").read_text()
+        self.assertIn("acquirePackageLease", renderer)
+        self.assertIn("lease?.close()", renderer)
 
     def test_validation_supports_views_derivation_and_png_jpeg_only(self):
         implementation = (ROOT / "adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/AndroidMbTilesRepository.kt").read_text()
