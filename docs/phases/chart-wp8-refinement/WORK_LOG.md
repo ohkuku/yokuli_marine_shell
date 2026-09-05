@@ -81,3 +81,20 @@
 - Debug APK SHA-256：`cdc3dde9fd9bfbacf784b980a7b2a14323515dfa26ff902097569bc6937b8853`；unsigned Release APK SHA-256：`ce28afa7b2dd6de0351b3799bcbbaa5f2c1bc380981986cd95353e39d442d540`。
 
 独立数据/异步复查确认相机 session 不再整库重写，迟到 revision 不改变新编辑，损坏文件无静默替换。资源/安全复查确认 Release 合并清单无位置权限，代码无 destructive migration/corruption fallback，异常日志不含 URI/message/坐标。C01 标记为 `VERIFIED_LOCAL`；托管同 SHA 证据仍统一留给 C12。
+
+## C02｜Red：renderer 存在不等于图面、配置不等于可用
+
+先写失败合同约束生产只能有一条 MapLibre 本地 renderer 路线，并把 HostReady、RendererReady 与 Coverage 分开。真实 Android 反向测试不接受“MapView 存在”作为通过条件：它从小型 MBTiles 读取不对称 PNG/JPEG 图块，截取 MapLibre snapshot 并检查方向色块和稳定 overlay 像素。另一个追溯测试把公开 NOAA Chart Display Service 小区域的来源包、处理步骤、fixture 和逐 tile SHA-256 绑定在一起。
+
+第一次证据 Gate 确实发现来源 JSON 内四个 tile hash 与实际复制字节不一致，以及中英文决策页标题不满足文档合同；两项均已修正后重跑。生命周期测试最初错误地假定 50 次地图访问必须恰好创建 50 个 MapView；实测 Compose `AnimatedContent` 在转场 settle 时会串行提交两次，但同时存活峰值始终为 1，离开地图后为 0。Gate 因此收紧为规格真正要求的“有界且不持续增长”：50 次访问允许 50–100 次完整 create/destroy，仍要求 peak=1、final=0。
+
+## C02｜实现候选与真实边界
+
+- 生产 composition root 不再读取 `GOOGLE_MAPS_ANDROID_API_KEY`，也不再按 key 配置分叉。唯一生产 surface 是 MapLibre Native 13.4.1 + 本地 raster MBTiles；历史 Google adapter 仍隔离存在，但 app-shell 不依赖它。
+- SDK-free 协议包含 renderer generation、相机 command ID/ack、exact/bounds target、viewport insets、project/unproject、稳定 overlay ID 和 hit query。旧 generation、dispose 后回调与旧 command echo 被丢弃。
+- MBTiles 导入验证 SQLite/schema/metadata/PNG/JPEG/tile size，明确把 XYZ row 归一化为 TMS；安装采用 staging 后原子移动，坏块不产生半安装包。
+- 空包、丢失包、检查中、已挂载、退化和错误分别表达；`PACKAGE_ATTACHED` 只表示本地 source 已被 style 接受，不冒充所有瓦片已覆盖或已加载。
+- 北向复位、查看地点、路线全貌和包范围都通过 typed camera command 进入同一 renderer；用户 pan/pinch/rotate 启用，tilt 关闭。
+- NOAA 子集只用于测试和可追溯性验证，不冒充官方 NOAA chart，也不作为 Release 内置海图。当前生产首屏不需要 Google key；用户仍需导入自己有权使用的本地资料。
+
+实现候选冻结在 `32e13b991ed2274296c1b6a0083a3ee63b055e39`。聚焦 JVM、MBTiles/真实像素 API 34 和 50 次生命周期故事已通过；状态暂为 `IMPLEMENTED_UNVERIFIED`，等待累计 C00–C02 Gate。

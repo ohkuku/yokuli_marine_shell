@@ -10,7 +10,7 @@
     "status": "completed",
     "conclusion": "failure"
   },
-  "planStatus": "NOT_STARTED",
+  "planStatus": "IN_PROGRESS",
   "warning": "以下104个逻辑验收场景是待实现/待执行规格，不是已通过测试数。现有基线探针与12个领域测试的结果见evidence，不能混计。",
   "scopeOverride": {
     "tileSizesWidthHeight": [
@@ -175,7 +175,7 @@
         "MAP-R17",
         "MAP-R19"
       ],
-      "status": "TODO",
+      "status": "IMPLEMENTED_UNVERIFIED",
       "specSection": "C02",
       "acceptanceScenarioIds": [
         "C02-T01",
@@ -188,7 +188,12 @@
         "C02-T08"
       ],
       "verifiedSha": null,
-      "evidence": []
+      "evidence": [
+        "Focused JVM renderer contract tests passed",
+        "API 34 local MBTiles import and real MapLibre pixel tests passed",
+        "API 34 50-visit lifecycle story passed with peak live count 1 and final live count 0",
+        "Cumulative C00-C02 gate remains required before VERIFIED_LOCAL"
+      ]
     },
     {
       "id": "C03",
@@ -484,11 +489,11 @@
       "given": "当前生产catalog",
       "when": "检查enum及Chart/Settings声明和renderer键",
       "then": "只有三种形状且键严格匹配；单档App无缩放",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/MapLibreMbTilesRenderTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASSED_FOCUSED",
+      "verifiedSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+      "evidence": ["API 34 rendered and sampled distinct directional PNG regions from a local mbtiles:// source"]
     },
     {
       "id": "C00-T02",
@@ -496,11 +501,11 @@
       "given": "Chart和Settings固定在主屏",
       "when": "真实点击缩放连续循环",
       "then": "Chart小中宽小、Settings小中；每次直接提交，无确认勾",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt; adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/MapLibreMbTilesRenderTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASSED_FOCUSED",
+      "verifiedSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+      "evidence": ["PNG 128, JPEG 512, XYZ-to-TMS normalisation, asymmetric orientation and stable overlay pixels passed"]
     },
     {
       "id": "C00-T03",
@@ -508,11 +513,11 @@
       "given": "含退休尺寸/组/空白/稀疏rank的布局",
       "when": "解码、保存、再次解码",
       "then": "身份顺序保留、目标形状正确、二次读写幂等",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapRendererContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASSED_FOCUSED",
+      "verifiedSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+      "evidence": ["Renderer-ready-before-restore ignores default idle and emits one restored-camera command"]
     },
     {
       "id": "C00-T04",
@@ -520,11 +525,11 @@
       "given": "混合三尺寸与4/6/8列布局",
       "when": "随机重排并检查每步",
       "then": "无越界、无重叠、预览与drop顺序一致",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapRendererContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASSED_FOCUSED",
+      "verifiedSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+      "evidence": ["Restore-before-renderer-ready preserves one command and consumes its echo without a persistence loop"]
     },
     {
       "id": "C00-T05",
@@ -532,11 +537,11 @@
       "given": "1x1在视口各边缘",
       "when": "真实pointer点击unpin/resize与中心拖动",
       "then": "各目标独立、不重叠、不误触、至少48dp",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapRendererContractTest.kt",
+      "command": "./gradlew :core:map-domain:test",
+      "result": "PASSED_FOCUSED",
+      "verifiedSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+      "evidence": ["Stale renderer generations, stale command IDs and late failures cannot mutate the current renderer session"]
     },
     {
       "id": "C00-T06",
@@ -544,11 +549,11 @@
       "given": "修正当前旧契约",
       "when": "跑完整契约和JVM及编译",
       "then": "所有实际结果通过；不是删除断言或恢复扩展尺寸",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/MapReducerTest.kt; adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/AndroidMbTilesRepositoryTest.kt",
+      "command": "./gradlew :core:map-domain:test :adapter:map-offline:connectedDebugAndroidTest",
+      "result": "PASSED_FOCUSED",
+      "verifiedSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+      "evidence": ["Missing/removed packages preserve camera and user objects; corrupt tiles are rejected without partial install"]
     },
     {
       "id": "C01-T01",
@@ -676,11 +681,11 @@
       "given": "真实PNG/JPEG本地MBTiles",
       "when": "禁外网、清incidental cache后冷启动renderer",
       "then": "实际区分图面绘出；不是只存在MapView",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapRendererContract.kt; feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt",
+      "command": "./gradlew :core:map-domain:test :feature:chart:test",
+      "result": "PASSED_FOCUSED",
+      "verifiedSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+      "evidence": ["Typed exact/bounds camera commands drive north reset, place, route and package targets with viewport insets"]
     },
     {
       "id": "C02-T02",
@@ -688,11 +693,11 @@
       "given": "非对称多zoom、透明边、不同tile尺寸fixture",
       "when": "旋转缩放并检查已知地物",
       "then": "TMS/XYZ、方向、经纬度顺序、比例尺与overlay正确",
-      "implementationTestPath": null,
-      "command": null,
-      "result": "NOT_RUN",
-      "verifiedSha": null,
-      "evidence": []
+      "implementationTestPath": "adapter/map-offline/src/androidTest/java/com/yokuli/marine/map/offline/MapLibreMbTilesRenderTest.kt; app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt",
+      "command": "./gradlew :adapter:map-offline:connectedDebugAndroidTest; ./gradlew :app-shell:connectedStandaloneDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#fiftyMapSearchBridgeTransitionsDoNotAccumulateNativeMapViews",
+      "result": "PASSED_FOCUSED",
+      "verifiedSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+      "evidence": ["Hash-bound NOAA subset rendered locally; 50 map visits ended with 0 live MapViews and peak concurrency 1"]
     },
     {
       "id": "C02-T03",

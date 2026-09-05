@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "phase": "WP8_CHART_COMPLETION",
+  "package": "C02",
+  "branch": "codex/shell-map-contract",
+  "baselineSha": "038f1b4e87e1fb7db79bb10178ff10b0c7644c82",
+  "implementationCandidateSha": "32e13b991ed2274296c1b6a0083a3ee63b055e39",
+  "status": "IMPLEMENTED_UNVERIFIED",
+  "productionRenderer": "MapLibre Native 13.4.1 local raster MBTiles",
+  "productionRendererCount": 1,
+  "requiresGoogleMapsKey": false,
+  "historicalGoogleAdapterProductionConnected": false,
+  "noaaOriginalPackageSha256": "33ed95c59b85514accbcb1deb8eb23f155d47a4b3c3e9a6ca88e70f9d98e616c",
+  "noaaFixtureSha256": "7da5ed14bc0b79585ec39f0afeb4fdde9d449a1f811054ea754929525530064f",
+  "sourceFixtureIsOfficialChart": false,
+  "rendererContractSdkFree": true,
+  "focusedGate": {
+    "pythonTests": 165,
+    "offlineAdapterDeviceTests": 5,
+    "lifecycleStoryTests": 1,
+    "lifecycleMapVisits": 50,
+    "maxCommittedInstances": 100,
+    "peakLiveInstances": 1,
+    "finalLiveInstances": 0
+  },
+  "cumulativeGate": "PENDING",
+  "nextPermittedPackageAfterGate": "C03"
+}
