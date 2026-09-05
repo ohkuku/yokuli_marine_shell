@@ -74,4 +74,8 @@
     <string name="map_library_save_failed">Save failed. Your current edits are retained and can be retried.</string>
     <string name="map_library_retry_load">retry read</string>
     <string name="map_library_retry_save">retry save</string>
+    <string name="map_library_export_recovery">export unsaved data</string>
+    <string name="map_library_export_writing">writing recovery file…</string>
+    <string name="map_library_export_succeeded">Recovery file written to the selected location; the database is still marked save failed.</string>
+    <string name="map_library_export_failed">Recovery file could not be written; in-memory data is retained. Try again.</string>
 </resources>

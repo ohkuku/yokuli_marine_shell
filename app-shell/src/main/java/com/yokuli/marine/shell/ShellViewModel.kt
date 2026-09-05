@@ -76,7 +76,10 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         repository = chartPackages,
         mapStore = mapStore,
         scope = viewModelScope,
-        incidentLogger = { android.util.Log.w("YokuliMap", "Chart package workflow failed", it) },
+        incidentLogger = {
+            // Source URIs, package metadata and coordinates are intentionally excluded.
+            android.util.Log.w("YokuliMap", "Chart package workflow failed: ${it.javaClass.simpleName}")
+        },
     )
     val chartImportState: StateFlow<ChartImportUiState> = chartPackageCoordinator.state
 

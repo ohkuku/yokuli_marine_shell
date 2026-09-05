@@ -1,6 +1,7 @@
 package com.yokuli.marine.map.domain
 
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -114,14 +115,13 @@ class MapReliabilityContractTest {
     @Test
     fun `effect logger failure never kills the next action`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        var calls = 0
+        val calls = AtomicInteger()
         val store = DefaultMapStore(
             MapState(),
             scope,
             RecordingPersistence(MapLoadResult.Ready(MapSessionSnapshot(), MapLibrarySnapshot())),
             effectHandler = {
-                calls += 1
-                if (calls == 1) error("logger failed")
+                if (calls.incrementAndGet() == 1) error("logger failed")
             },
         )
         withTimeout(2_000) { store.state.first { it.libraryLoadState == MapLibraryLoadState.READY_EMPTY } }
@@ -129,7 +129,9 @@ class MapReliabilityContractTest {
         store.dispatch(MapAction.CameraChanged(MapCamera(second, 7.0)))
 
         withTimeout(2_000) { store.state.first { it.camera.center == second } }
-        assertTrue(calls >= 2)
+        withTimeout(2_000) {
+            while (calls.get() < 2) delay(10)
+        }
         store.close()
         scope.cancel()
     }

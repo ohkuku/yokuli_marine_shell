@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "89644a543a67f3d89517278caca8b60a",
+    "identityHash": "9374a4dea3069318d0735aff9f4290bc",
     "entities": [
       {
         "tableName": "library_metadata",
@@ -145,7 +145,7 @@
       },
       {
         "tableName": "saved_routes",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `revision` INTEGER NOT NULL, `name` TEXT NOT NULL, `plannedSpeedKnots` REAL NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `revision` INTEGER NOT NULL, `name` TEXT NOT NULL, `plannedSpeedKnots` REAL NOT NULL, `sourceDraftId` TEXT, `sourceDraftRevision` INTEGER, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -170,6 +170,16 @@
             "columnName": "plannedSpeedKnots",
             "affinity": "REAL",
             "notNull": true
+          },
+          {
+            "fieldPath": "sourceDraftId",
+            "columnName": "sourceDraftId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceDraftRevision",
+            "columnName": "sourceDraftRevision",
+            "affinity": "INTEGER"
           }
         ],
         "primaryKey": {
@@ -219,7 +229,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '89644a543a67f3d89517278caca8b60a')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '9374a4dea3069318d0735aff9f4290bc')"
     ]
   }
 }

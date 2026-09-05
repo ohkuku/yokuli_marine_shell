@@ -7,6 +7,7 @@ import com.yokuli.marine.map.domain.ChartPackageImportRequest
 import com.yokuli.marine.map.domain.ChartPackageRepository
 import com.yokuli.marine.map.domain.GeoBounds
 import com.yokuli.marine.map.domain.MapAction
+import com.yokuli.marine.map.domain.MapDispatchResult
 import com.yokuli.marine.map.domain.MapReducer
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapStore
@@ -53,7 +54,10 @@ class ChartPackageCoordinatorTest {
     private class ImmediateMapStore : MapStore {
         private val mutable = MutableStateFlow(MapState())
         override val state: StateFlow<MapState> = mutable
-        override fun dispatch(action: MapAction) { mutable.value = MapReducer.reduce(mutable.value, action).state }
+        override fun dispatch(action: MapAction): MapDispatchResult {
+            mutable.value = MapReducer.reduce(mutable.value, action).state
+            return MapDispatchResult.ACCEPTED
+        }
         override fun close() = Unit
     }
 

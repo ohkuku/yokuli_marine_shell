@@ -17,6 +17,7 @@ import com.yokuli.marine.feature.chart.ChartImportUiAction
 import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.MarineChartSurface
 import com.yokuli.marine.feature.chart.MarineChartTransitionSurface
+import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
 import com.yokuli.marine.feature.chart.chartLauncherVisualContribution
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
@@ -62,6 +63,8 @@ data class ProductionShellRuntime(
     val onMapAction: (MapAction) -> Unit,
     val chartImportState: ChartImportUiState,
     val onChartImportAction: (ChartImportUiAction) -> Unit,
+    val recoveryExportState: MapRecoveryExportUiState,
+    val onExportMapRecovery: () -> Unit,
     val openMapSettings: () -> Unit,
     val onSettingsAction: (SettingsUiAction) -> Unit,
 )
@@ -132,6 +135,8 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 onOpenMapSettings = runtime.openMapSettings,
                 importState = runtime.chartImportState,
                 onImportAction = runtime.onChartImportAction,
+                recoveryExportState = runtime.recoveryExportState,
+                onExportRecovery = runtime.onExportMapRecovery,
                 chartSurface = chartSurface,
             )
         },

@@ -51,6 +51,8 @@ typealias MarineChartSurface = @Composable (
     modifier: Modifier,
 ) -> Unit
 
+enum class MapRecoveryExportUiState { IDLE, WRITING, SUCCEEDED, FAILED }
+
 /**
  * One installed Map app. Browse, places, measurement, manual routes, and chart packages are
  * internal app tools, never separate Shell entries or implied navigation capabilities.
@@ -63,6 +65,8 @@ fun ChartWorkspace(
     onOpenMapSettings: () -> Unit,
     importState: ChartImportUiState,
     onImportAction: (ChartImportUiAction) -> Unit,
+    recoveryExportState: MapRecoveryExportUiState,
+    onExportRecovery: () -> Unit,
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -101,7 +105,7 @@ fun ChartWorkspace(
                 modifier = Modifier.background(colors.background.copy(alpha = .90f)),
             )
             PositionTruthBadge(state.position.availability)
-            MapPersistenceTruth(state, onAction)
+            MapPersistenceTruth(state, recoveryExportState, onAction, onExportRecovery)
             Spacer(Modifier.weight(1f))
             state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.let { chartPackage ->
                 Box(
@@ -134,7 +138,12 @@ fun ChartWorkspace(
 }
 
 @Composable
-private fun MapPersistenceTruth(state: MapState, onAction: (MapAction) -> Unit) {
+private fun MapPersistenceTruth(
+    state: MapState,
+    recoveryExportState: MapRecoveryExportUiState,
+    onAction: (MapAction) -> Unit,
+    onExportRecovery: () -> Unit,
+) {
     val colors = LocalWpTheme.current
     val message = when {
         state.libraryLoadState == MapLibraryLoadState.LOADING -> R.string.map_library_loading
@@ -162,8 +171,24 @@ private fun MapPersistenceTruth(state: MapState, onAction: (MapAction) -> Unit) 
                 MapActionText(R.string.map_library_retry_save, "map-library-retry-save") {
                     onAction(MapAction.RetryPersistence)
                 }
+                MapActionText(R.string.map_library_export_recovery, "map-library-export-recovery", onExportRecovery)
             }
         }
+    }
+    val exportMessage = when (recoveryExportState) {
+        MapRecoveryExportUiState.IDLE -> null
+        MapRecoveryExportUiState.WRITING -> R.string.map_library_export_writing
+        MapRecoveryExportUiState.SUCCEEDED -> R.string.map_library_export_succeeded
+        MapRecoveryExportUiState.FAILED -> R.string.map_library_export_failed
+    }
+    exportMessage?.let {
+        WpText(
+            stringResource(it),
+            11,
+            color = colors.foreground,
+            modifier = Modifier.padding(start = 18.dp, top = 4.dp).background(colors.background.copy(alpha = .92f))
+                .padding(horizontal = 9.dp, vertical = 5.dp).testTag("map-recovery-export-state"),
+        )
     }
 }
 
