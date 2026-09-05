@@ -80,6 +80,9 @@ class ChartC12JourneyTest {
     fun journeyJ01OfflinePackagePlaceBridgeAndSearchDetail() = runBlocking {
         awaitMapReady()
         val viewModel = currentViewModel()
+        viewModel.resetLauncher().join()
+        viewModel.engine.dispatch(LauncherAction.ShowDesktop)
+        awaitDisplayed("tile-chart")
         val application = currentApplication()
         assertTrue(application.positionPort === NoSourcePositionPort)
 
@@ -320,7 +323,9 @@ class ChartC12JourneyTest {
         viewModel.mapStore.dispatch(MapAction.PositionSourceConnected(source1))
         viewModel.mapStore.dispatch(MapAction.ObservePosition(source1.fix("same", 1L, now1), now1))
         viewModel.mapStore.dispatch(MapAction.PositionSourceDisconnected(source1, MonotonicTime("boot-c12", 11_000L)))
-        compose.waitUntil(10_000) { currentMapState().position.availability == PositionAvailability.STALE }
+        compose.waitUntil(10_000) {
+            currentMapState().position.sourceStatus is com.yokuli.marine.map.domain.PositionSourceStatus.Disconnected
+        }
         assertEquals(VesselMarkerStyle.HISTORICAL, PositionRenderPolicy.resolve(currentMapState().position).markerStyle)
 
         val source2 = ObservationSource("c12-test", "epoch-2")

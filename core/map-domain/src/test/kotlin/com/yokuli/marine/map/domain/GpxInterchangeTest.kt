@@ -194,6 +194,25 @@ class GpxInterchangeTest {
     }
 
     @Test
+    fun `portable exporter escapes user text and round trips without desktop stax`() {
+        val place = SavedPlace(
+            id = "escaped",
+            name = "A&B <泊位> \"north\"",
+            point = GeoPoint(-36.8, 174.7),
+            notes = "owner's & public <note>",
+        )
+        val output = ByteArrayOutputStream()
+
+        GpxWriter.writePlace(place, output)
+
+        val xml = output.toString(Charsets.UTF_8.name())
+        val reparsed = GpxReader().inspect(ByteArrayInputStream(output.toByteArray())).waypoints.single()
+        assertTrue(xml.contains("A&amp;B &lt;泊位&gt; \"north\""))
+        assertEquals(place.name, reparsed.name)
+        assertEquals(place.notes, reparsed.description)
+    }
+
+    @Test
     fun `empty GPX batch is rejected without persisting an orphan import record`() {
         val initial = MapState(libraryLoadState = MapLibraryLoadState.READY_EMPTY, libraryRevision = 4L)
         val empty = GpxImportBatch(

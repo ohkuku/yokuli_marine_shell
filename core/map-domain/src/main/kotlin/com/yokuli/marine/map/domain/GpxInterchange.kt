@@ -3,12 +3,13 @@ package com.yokuli.marine.map.domain
 import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.OutputStreamWriter
+import java.io.Writer
 import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.time.Instant
 import javax.xml.XMLConstants
 import javax.xml.parsers.SAXParserFactory
-import javax.xml.stream.XMLOutputFactory
 import org.xml.sax.Attributes
 import org.xml.sax.InputSource
 import org.xml.sax.SAXException
@@ -537,31 +538,27 @@ object GpxWriter {
         writer.writeEndElement()
     }
 
-    private inline fun writeDocument(output: OutputStream, body: (javax.xml.stream.XMLStreamWriter) -> Unit) {
-        val writer = XMLOutputFactory.newFactory().createXMLStreamWriter(output, Charsets.UTF_8.name())
-        try {
-            writer.writeStartDocument(Charsets.UTF_8.name(), "1.0")
-            writer.writeStartElement("gpx")
-            writer.writeDefaultNamespace(GPX_NAMESPACE)
-            writer.writeAttribute("version", "1.1")
-            writer.writeAttribute("creator", "Yokuli OS")
-            body(writer)
-            writer.writeEndElement()
-            writer.writeEndDocument()
-            writer.flush()
-        } finally {
-            writer.close()
-        }
+    private inline fun writeDocument(output: OutputStream, body: (PortableXmlWriter) -> Unit) {
+        val sink = OutputStreamWriter(output, Charsets.UTF_8)
+        val writer = PortableXmlWriter(sink)
+        sink.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+        writer.writeStartElement("gpx")
+        writer.writeAttribute("xmlns", GPX_NAMESPACE)
+        writer.writeAttribute("version", "1.1")
+        writer.writeAttribute("creator", "Yokuli OS")
+        body(writer)
+        writer.writeEndElement()
+        writer.finish()
     }
 
-    private fun javax.xml.stream.XMLStreamWriter.writeOptionalText(element: String, value: String) {
+    private fun PortableXmlWriter.writeOptionalText(element: String, value: String) {
         if (value.isBlank()) return
         writeStartElement(element)
-        writeCharacters(value)
+        writeText(value)
         writeEndElement()
     }
 
-    private fun javax.xml.stream.XMLStreamWriter.writeTrackPoint(point: ImportedTrackPoint) {
+    private fun PortableXmlWriter.writeTrackPoint(point: ImportedTrackPoint) {
         writeStartElement("trkpt")
         writeAttribute("lat", point.point.latitude.toString())
         writeAttribute("lon", point.point.longitude.toString())
@@ -571,4 +568,72 @@ object GpxWriter {
     }
 
     private const val GPX_NAMESPACE = "http://www.topografix.com/GPX/1/1"
+
+    /** java.io only: Android does not provide javax.xml.stream at runtime. */
+    private class PortableXmlWriter(private val sink: Writer) {
+        private val elements = ArrayDeque<String>()
+        private var startTagOpen = false
+
+        fun writeStartElement(name: String) {
+            require(name.matches(XML_NAME))
+            closeStartTag()
+            sink.write("<$name")
+            elements.addLast(name)
+            startTagOpen = true
+        }
+
+        fun writeAttribute(name: String, value: String) {
+            require(startTagOpen) { "Attributes must follow their start element" }
+            require(name.matches(XML_NAME))
+            sink.write(" $name=\"")
+            sink.write(value.escapeXml(attribute = true))
+            sink.write('"'.code)
+        }
+
+        fun writeText(value: String) {
+            closeStartTag()
+            sink.write(value.escapeXml(attribute = false))
+        }
+
+        fun writeEndElement() {
+            val name = elements.removeLastOrNull() ?: error("No XML element to close")
+            if (startTagOpen) {
+                sink.write("/>")
+                startTagOpen = false
+            } else {
+                sink.write("</$name>")
+            }
+        }
+
+        fun finish() {
+            require(elements.isEmpty()) { "Unclosed XML elements" }
+            closeStartTag()
+            sink.flush()
+        }
+
+        private fun closeStartTag() {
+            if (!startTagOpen) return
+            sink.write('>'.code)
+            startTagOpen = false
+        }
+
+        private fun String.escapeXml(attribute: Boolean): String = buildString(length) {
+            this@escapeXml.forEach { character ->
+                append(
+                    when (character) {
+                        '&' -> "&amp;"
+                        '<' -> "&lt;"
+                        '>' -> "&gt;"
+                        '"' -> if (attribute) "&quot;" else "\""
+                        '\'' -> if (attribute) "&apos;" else "'"
+                        else -> character
+                    },
+                )
+            }
+        }
+
+        private companion object {
+            val XML_NAME = Regex("[A-Za-z_][A-Za-z0-9_.-]*")
+        }
+    }
 }
