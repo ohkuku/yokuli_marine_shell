@@ -7,6 +7,9 @@ import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toPixelMap
@@ -32,6 +35,8 @@ import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.lifecycle.ViewModelProvider
@@ -45,9 +50,18 @@ import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.ChartWorkspace
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
 import com.yokuli.marine.map.domain.MapAction
+import com.yokuli.marine.map.domain.GeoPoint
+import com.yokuli.marine.map.domain.MapHitResult
 import com.yokuli.marine.map.domain.MapLibraryLoadState
+import com.yokuli.marine.map.domain.MapOverlayId
+import com.yokuli.marine.map.domain.MapRendererQueryPort
 import com.yokuli.marine.map.domain.MapSaveState
+import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.domain.MapSurface
+import com.yokuli.marine.map.domain.MapTool
+import com.yokuli.marine.map.domain.MapTransient
+import com.yokuli.marine.map.domain.PointCandidateOrigin
 import com.yokuli.marine.map.offline.OfflineMapInstanceMetrics
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherRecoveryMode
@@ -106,6 +120,131 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun featureBackClosesOneMapPlaneBeforeShellLeavesTheApp() {
+        compose.onNodeWithTag("tile-chart").performClick()
+        awaitDisplayed("map-root-command-bar")
+        compose.onNodeWithTag("map-tool-measure").performClick()
+        compose.waitUntil(5_000) { currentMapState().tool == MapTool.MEASURE }
+
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(5_000) {
+            currentMapState().tool == MapTool.BROWSE &&
+                currentEngine().state.value.surface is ShellVisualSurface.Module
+        }
+        compose.onNodeWithTag("map-root-command-bar").assertIsDisplayed()
+
+        compose.onNodeWithTag("map-open-charts").performClick()
+        awaitDisplayed("map-page-surface")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitUntil(5_000) { currentMapState().surface == MapSurface.Root }
+        compose.onNodeWithTag("map-root-command-bar").assertIsDisplayed()
+
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        awaitDisplayed("start-screen")
+    }
+
+    @Test
+    fun bridgePreservesConfirmedMapToolAndTransientWhileShellSearchStillTargetsMapDirectly() {
+        compose.onNodeWithTag("tile-chart").performClick()
+        awaitDisplayed("map-root-command-bar")
+        compose.onNodeWithTag("map-tool-measure").performClick()
+        val point = GeoPoint(-36.81, 174.79)
+        compose.activityRule.scenario.onActivity { activity ->
+            ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.dispatch(
+                MapAction.MapTapped(point, emptyList()),
+            )
+        }
+        compose.waitUntil(5_000) { currentMapState().transient is MapTransient.PointCandidate }
+
+        compose.onNodeWithTag("virtual-key-bridge").performClick()
+        awaitDisplayed("start-screen")
+        compose.onNodeWithTag("tile-chart").performClick()
+        awaitDisplayed("map-point-candidate")
+        assertEquals(MapTool.MEASURE, currentMapState().tool)
+        assertEquals(point, (currentMapState().transient as MapTransient.PointCandidate).point)
+
+        compose.onNodeWithTag("virtual-key-search").performClick()
+        awaitDisplayed("shell-search-surface")
+        compose.onNodeWithTag("search-result-chart").performClick()
+        awaitDisplayed("map-point-candidate")
+    }
+
+    @Test
+    fun crosshairUsesRendererUnprojectAndToolControlsDoNotPassThroughToMap() {
+        val resolved = GeoPoint(-36.77, 174.91)
+        val actions = mutableListOf<MapAction>()
+        var mapClicks = 0
+        val port = object : MapRendererQueryPort {
+            override fun project(point: GeoPoint): MapScreenPoint? = null
+            override fun unproject(point: MapScreenPoint): GeoPoint = resolved
+            override fun query(point: MapScreenPoint, overlayIds: Set<MapOverlayId>): List<MapHitResult> = emptyList()
+        }
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                YokuliTheme(WpThemeSpec()) {
+                    ChartWorkspace(
+                        state = MapState(crosshairEnabled = true),
+                        onAction = actions::add,
+                        importState = ChartImportUiState.Idle,
+                        onImportAction = {},
+                        recoveryExportState = MapRecoveryExportUiState.IDLE,
+                        onExportRecovery = {},
+                        chartSurface = { _, _, onQueryPortChanged, modifier ->
+                            Box(modifier.clickable { mapClicks++ })
+                            LaunchedEffect(Unit) { onQueryPortChanged(port) }
+                        },
+                    )
+                }
+            }
+        }
+
+        awaitDisplayed("map-crosshair-use")
+        compose.onNodeWithTag("map-tool-measure").performClick()
+        compose.onNodeWithTag("map-crosshair-use").performClick()
+        compose.runOnIdle {
+            assertEquals(0, mapClicks)
+            assertTrue(actions.any { it == MapAction.SelectTool(MapTool.MEASURE) })
+            assertTrue(actions.any { it == MapAction.CrosshairConfirmed(resolved, emptyList()) })
+        }
+    }
+
+    @Test
+    fun squareLargeTextKeepsCandidateActionsAndCommandTargetsReachable() {
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                YokuliTheme(WpThemeSpec()) {
+                    val density = LocalDensity.current
+                    CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
+                        Box(Modifier.requiredSize(320.dp)) {
+                            ChartWorkspace(
+                                state = MapState(
+                                    crosshairEnabled = true,
+                                    tool = MapTool.MEASURE,
+                                    transient = MapTransient.PointCandidate(
+                                        GeoPoint(-36.8485, 174.7633),
+                                        PointCandidateOrigin.CROSSHAIR,
+                                    ),
+                                ),
+                                onAction = {},
+                                importState = ChartImportUiState.Idle,
+                                onImportAction = {},
+                                recoveryExportState = MapRecoveryExportUiState.IDLE,
+                                onExportRecovery = {},
+                                chartSurface = { _, _, _, modifier -> Box(modifier) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        compose.onNodeWithTag("map-add-point").assertIsDisplayed()
+        compose.onNodeWithTag("map-candidate-cancel").assertIsDisplayed()
+        compose.onNodeWithTag("map-tool-measure").assertIsDisplayed()
+        compose.onNodeWithTag("map-crosshair-toggle").assertIsDisplayed()
     }
 
     @Test
@@ -822,6 +961,22 @@ class ShellActivityStoryTest {
         awaitDisplayed("language-$tag")
         compose.onNodeWithTag("language-$tag").performClick()
         compose.waitForIdle()
+    }
+
+    private fun currentMapState(): MapState {
+        lateinit var state: MapState
+        compose.activityRule.scenario.onActivity { activity ->
+            state = ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.state.value
+        }
+        return state
+    }
+
+    private fun currentEngine(): LauncherEngine {
+        lateinit var engine: LauncherEngine
+        compose.activityRule.scenario.onActivity { activity ->
+            engine = ViewModelProvider(activity)[ShellViewModel::class.java].engine
+        }
+        return engine
     }
 
     private fun awaitDisplayed(tag: String) {

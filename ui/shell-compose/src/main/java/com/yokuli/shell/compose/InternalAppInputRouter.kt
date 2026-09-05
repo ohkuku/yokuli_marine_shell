@@ -35,7 +35,7 @@ class InternalAppInputRouter {
 }
 
 val LocalInternalAppInputRouter = staticCompositionLocalOf<InternalAppInputRouter> {
-    error("Internal app input router was not provided")
+    InternalAppInputRouter()
 }
 
 @Composable
