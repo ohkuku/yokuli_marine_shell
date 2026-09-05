@@ -21,6 +21,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject
 import androidx.test.uiautomator.UiSelector
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -57,6 +58,13 @@ class ShellMacrobenchmark {
 
     private val device: UiDevice
         get() = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+
+    @Before
+    fun confirmImmersiveModeForHarness() {
+        // Fresh Android emulators may place a platform-owned education overlay above the
+        // still-resumed immersive Activity. Confirm it before measurements begin.
+        device.executeShellCommand("settings put secure immersive_mode_confirmations confirmed")
+    }
 
     @Test
     fun coldStartToStart() = benchmarkRule.measureRepeated(
@@ -284,7 +292,16 @@ class ShellMacrobenchmark {
 
     private fun UiDevice.awaitTag(tag: String): UiObject {
         val tagged = findObject(UiSelector().resourceId(tag))
-        if (!tagged.waitForExists(WAIT_MILLIS)) {
+        val deadline = SystemClock.uptimeMillis() + WAIT_MILLIS
+        var dismissedPlatformOverlay = false
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (tagged.exists()) return tagged
+            if (!dismissedPlatformOverlay && dismissPlatformOverlayIfTargetRemainsResumed()) {
+                dismissedPlatformOverlay = true
+            }
+            SystemClock.sleep(100L)
+        }
+        if (!tagged.exists()) {
             val visibleTags = DIAGNOSTIC_TAGS.filter { candidate ->
                 findObject(UiSelector().resourceId(candidate)).exists()
             }
@@ -310,6 +327,19 @@ class ShellMacrobenchmark {
             )
         }
         return tagged
+    }
+
+    private fun UiDevice.dismissPlatformOverlayIfTargetRemainsResumed(): Boolean {
+        if (currentPackageName !in setOf("android", "com.android.systemui")) return false
+        val resumedTarget = executeShellCommand("dumpsys activity activities")
+            .lineSequence()
+            .filter { line ->
+                line.contains("mResumedActivity") || line.contains("topResumedActivity")
+            }
+            .any { line -> line.contains("$TARGET_PACKAGE/.shell.ShellActivity") }
+        if (!resumedTarget) return false
+        pressBack()
+        return true
     }
 
     private fun String.compactEvidence(limit: Int): String =

@@ -57,7 +57,7 @@ ordinary physical phone:  PHYSICAL_DEVICE_PENDING
 
 纠错 run `33936328836` 随后暴露 Light Theme story 只等待 Compose idle、没有等待异步持久化后的 window `SideEffect`。测试改为等待真实 status/navigation bar 变白后再断言；生产主题、动画和导航代码未为测试放宽。最终接受继续以后续提交的新 run 为准。
 
-最新 run `33937077179` 的 build、API 34 stories 与 API 36 通过，但全新 Hosted 进程仍在 Proto restore 完成前等待不到 `start-screen`。最终 harness 隔离让 `benchmark/nonMinifiedRelease` Engine 从同步内存默认文档开始，避免把 CI 的 force-stop/reinstall 当作产品恢复；普通 Debug/Release 仍走真实 Proto DataStore、迁移、修复与 Recovery。最终接受继续以后续提交的新 run 为准。
+Run `33937077179` 的 build、API 34 stories 与 API 36 通过，但全新 Hosted 进程等待不到 `start-screen`。先前曾把它归因于 Proto restore；后续诊断 run `33939536453` 已推翻该假设：ShellActivity 始终 top-resumed 且进程存活，真正遮挡应用 tag 的是 `currentPackage=android` 的首次沉浸式全屏教育覆盖层。Harness 仍使用同步内存默认文档隔离 CI force-stop/reinstall；普通 Debug/Release 仍走真实 Proto DataStore、迁移、修复与 Recovery。
 
 ## English translation
 
@@ -74,3 +74,5 @@ Correction run `33936328836` then exposed that the Light Theme story waited only
 The latest run `33937077179` passed build, API 34 stories, and API 36, but a fresh Hosted process still could not expose `start-screen` before Proto restore completed. Benchmark/non-minified profile Engines now start from a synchronous in-memory default document so CI force-stop/reinstall behavior is not treated as product recovery. Normal Debug/Release builds continue to use real Proto DataStore migration, repair, and Recovery. Final hosted acceptance remains assigned to the next run.
 
 Run `33938475676` passed build, API 34 stories, and API 36; its Hosted performance job retained seven production-Activity `start-screen` timeouts despite a local 11/11 pass. Because the public annotations contained no runtime-surface evidence, the next correction adds bounded Activity/process/visible-tag/AndroidRuntime diagnostics without changing product behavior or relaxing the benchmark gate. Final hosted acceptance remains pending.
+
+Diagnostic run `33939536453` showed that `ShellActivity` remained top-resumed with a live target process while `currentPackage=android` obscured every application tag. This supersedes the earlier Proto-restore hypothesis: a fresh Hosted emulator was showing Android's first-run immersive-mode education overlay, while the local emulator already reported `secure immersive_mode_confirmations=confirmed`. The benchmark harness now confirms that platform education before measurement and retains a narrowly guarded one-time Back fallback. Product fullscreen and key behavior are unchanged. Final hosted acceptance remains pending.

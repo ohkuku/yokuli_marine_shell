@@ -155,6 +155,15 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertIn("visibleTags=", benchmark)
         self.assertIn("androidRuntime=", benchmark)
 
+    def test_benchmark_neutralizes_only_the_platform_immersive_education_overlay(self):
+        benchmark = self.text(
+            "benchmark/shell/src/main/java/com/yokuli/marine/benchmark/shell/ShellMacrobenchmark.kt"
+        )
+        self.assertIn("fun confirmImmersiveModeForHarness()", benchmark)
+        self.assertIn("settings put secure immersive_mode_confirmations confirmed", benchmark)
+        self.assertIn("dismissPlatformOverlayIfTargetRemainsResumed", benchmark)
+        self.assertIn('setOf("android", "com.android.systemui")', benchmark)
+
     def test_generated_profiles_do_not_reference_removed_motion_contracts(self):
         for name in ("baseline-prof.txt", "startup-prof.txt"):
             profile = self.text(f"app-shell/src/main/generated/baselineProfiles/{name}")
