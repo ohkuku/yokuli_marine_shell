@@ -62,11 +62,34 @@ class RoomMapPersistenceTest {
                 ),
             ),
             routeDrafts = listOf(
-                ManualRouteDraft("draft-stable", 4L, "草稿", listOf(first, second)),
+                ManualRouteDraft(
+                    id = "draft-stable",
+                    revision = 4L,
+                    name = "草稿",
+                    waypoints = listOf(first, second),
+                    plannedSpeedKnots = null,
+                    notes = "draft notes",
+                    waypointIds = listOf("draft-point-a", "draft-point-b"),
+                    waypointPlaceReferences = mapOf(0 to PlaceRevisionReference("place-stable", 3L)),
+                    basePlanId = "route-stable",
+                    basePlanRevision = 6L,
+                    nextWaypointOrdinal = 9,
+                ),
             ),
-            savedRoutes = listOf(SavedRoute("route-stable", "计划", listOf(first, second), 5.0, revision = 6L)),
+            savedRoutes = listOf(
+                SavedRoute(
+                    id = "route-stable",
+                    name = "计划",
+                    waypoints = listOf(first, second),
+                    plannedSpeedKnots = null,
+                    revision = 6L,
+                    waypointPlaceReferences = mapOf(0 to PlaceRevisionReference("place-stable", 3L)),
+                    notes = "plan notes",
+                    waypointIds = listOf("plan-point-a", "plan-point-b"),
+                ),
+            ),
         )
-        val session = MapSessionSnapshot(activeRouteDraftId = "draft-stable")
+        val session = MapSessionSnapshot(activeRouteDraftId = "draft-stable", activeRoutePlanId = "route-stable")
 
         assertEquals(7L, persistence.saveLibrary(library).revision)
         persistence.saveSession(session)

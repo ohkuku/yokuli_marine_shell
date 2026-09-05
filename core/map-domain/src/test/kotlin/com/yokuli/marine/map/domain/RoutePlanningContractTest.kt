@@ -200,6 +200,43 @@ class RoutePlanningContractTest {
         assertFalse(state.navigationActive)
     }
 
+    @Test
+    fun `route legs expose WGS84 distance and initial true bearing without calling it steering`() {
+        val reducer = reducerWithIds("draft-a")
+        var state = reducer.reduce(MapState(), MapAction.CreateRouteDraft("A", "", a)).state
+        state = reducer.reduce(state, MapAction.AddRouteWaypoint(b)).state
+        state = reducer.reduce(state, MapAction.AddRouteWaypoint(c)).state
+
+        assertEquals(2, state.routeLegs.size)
+        assertTrue(state.routeLegs.all { it.distanceMeters > 0.0 })
+        assertTrue(state.routeLegs.all { it.initialBearingTrueDegrees != null })
+        assertEquals(
+            state.routeLegs.sumOf { it.distanceMeters } / METERS_PER_NAUTICAL_MILE,
+            state.routeSummary?.distanceNauticalMiles ?: 0.0,
+            1e-9,
+        )
+    }
+
+    @Test
+    fun `route save ack finalizes its transaction while a newer unrelated library write remains pending`() {
+        val reducer = reducerWithIds("draft-a", "route-a", "place-a")
+        var state = reducer.reduce(MapState(), MapAction.CreateRouteDraft("A", "", a)).state
+        state = reducer.reduce(state, MapAction.AddRouteWaypoint(b)).state
+        state = reducer.reduce(state, MapAction.SaveRoutePlan).state
+        val routeRevision = state.libraryRevision
+        state = reducer.reduce(
+            state,
+            MapAction.CreatePlace(c, "Place", "", PlaceCategory.PERSONAL_MARKER, emptyList()),
+        ).state
+        assertTrue(state.libraryRevision > routeRevision)
+
+        val acknowledged = reducer.reduce(state, MapAction.PersistenceAck(routeRevision)).state
+
+        assertNull(acknowledged.routeSaveTransaction)
+        assertEquals(MapSaveState.SAVED, acknowledged.routeSaveStatus?.state)
+        assertEquals(MapSaveState.PENDING, acknowledged.saveState)
+    }
+
     private fun routePlan(id: String, revision: Long) = RoutePlan(
         id = id,
         name = "Plan",
