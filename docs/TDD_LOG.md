@@ -790,3 +790,21 @@ P5 begins with failing installation, projection, status, and three-size contract
 ### English translation — NMEA Sources P6
 
 P6 connects the single selected marine-data truth to Chart's existing read-only port, then uses follow-up Reds to prevent partial motion projection, cross-frame assembly, foreground-service orphan sockets, destructive corruption recovery, and live-state resurrection across an external force-stop. Scoped JVM and API 34 process evidence passes. The reusable sender defaults to the required 30-minute/four-connection/100-sentence profile; only its short smoke was run, so the full app soak and all physical-device background, GNSS, radio, power, and square-screen claims remain explicitly unverified. Full repository gates remain P7-only.
+
+## NMEA Sources P7 — 终局交付门禁
+
+### Red
+
+P7 合同先要求当前四应用产品面、两个正式 runtime/FGS、P0–P7 独立 CI 结果、Release 发布前二进制审计、依赖方向、三份双语资源 parity、生产日志隐私和 E01–E26 证据账本。旧 Gate 仍把 Stage 1 的 Chart + Settings 历史基线当作当前产品事实，因此 Red 继续要求所有可执行 Gate 与新 Phase 一致，而不是静默改写旧批准报告。
+
+后续自审分别加入三类能真实失败的合同：删除已采用连接前必须解释不会自动换源；手机定位权限必须由 marine-data 边界而非 Chart 持有；所有残留“生产精确两应用”的静态 Gate 必须被拒绝。
+
+### Green 与待封口
+
+Android CI、Release workflow、最终 Gate 和 Release APK 审计现在都认识 Chart、Settings、NMEA Input、Data Sources 四个生产 App，同时坚持默认 Start 只有 Chart + Settings、不含 Android HOME/DEFAULT、只允许竖屏且 Release 不含 debug/demo/test sender。删除确认、位置权限所有权和旧可执行合同也已纠正。
+
+遵照用户的测试成本约束，施工中的每个小提交只运行所属静态／模块 Gate；不会反复执行 `test + lint + assemble + device`。P7 报告和 lock 先保持 `PENDING_MACHINE_GATE`，唯一完整命令 `run_marine_shell_final_gate.sh --with-device` 实际退出 0 后，才会写入最终计数并升级为 `MACHINE_VERIFIED`。30 分钟应用 soak 与全部真机项不会被终局机器 Gate 冒充。
+
+### English translation — NMEA Sources P7
+
+The P7 Red rejects stale two-app executable assumptions and requires the current four-app release surface, all P0–P7 CI results, dependency and privacy boundaries, bilingual parity, and a complete E01–E26 evidence ledger. Follow-up Reds cover truthful selected-source deletion and correct phone-location ownership. Construction uses scoped tests only; the full test/lint/build/device gate runs once at final sealing, and the report cannot claim `MACHINE_VERIFIED` before its real exit code is zero.

@@ -1,0 +1,39 @@
+{
+  "phase": "NMEA_SOURCES",
+  "stage": "P7",
+  "status": "PENDING_MACHINE_GATE",
+  "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
+  "baseCommit": "2f889800c035413dee5f4a34c668e243be1a690c",
+  "redContractCommit": "6e2d9e1af353e0e8a8724cac5d2610d332095a42",
+  "releaseAuditCommit": "b0c86fdf4ee3e1df02a300b1020c9f7c99791fc8",
+  "storyCompileCorrectionCommit": "fa62de9b7930d3921994b3af955fee5fb1930877",
+  "truthfulDeleteRedCommit": "5e61e720d964b9c5bf169dec2f9e9dd375776e67",
+  "truthfulDeleteCorrectionCommit": "13c6cb714162dfc627ac7bd3971b7fd831dcad35",
+  "permissionOwnershipRedCommit": "9796a8e146ad0e6e139da8451fcf0cae68d3fb10",
+  "permissionOwnershipCorrectionCommit": "3cccb8c82d9ebec4feeb484018d07ac0c35355ba",
+  "staleGateRedCommit": "a7fdb1a90265dad36575974dd41bf434767e71de",
+  "lastImplementationCommit": "909bb382820dc353874cd5a8292a762f22ae2705",
+  "physicalDevice": "UNVERIFIED_PHYSICAL_DEVICE",
+  "contracts": {
+    "productionInstalledApps": ["chart", "settings", "nmea-input", "data-sources"],
+    "defaultStartEntries": ["chart", "settings"],
+    "androidHomeCapability": false,
+    "orientation": "portrait",
+    "backBoundary": "in-app Start",
+    "runtimeFixturesInRelease": false,
+    "mapProvider": "offline MapLibre + imported MBTiles"
+  },
+  "evidence": {
+    "p7Contract": "PENDING_EXECUTION",
+    "fullRepositoryGate": "PENDING_EXECUTION",
+    "releaseProductSurface": "PENDING_EXECUTION",
+    "api34DeviceSuites": "PENDING_EXECUTION",
+    "api34ExternalProcessProbes": "PENDING_EXECUTION",
+    "performanceJourneys": "PENDING_EXECUTION",
+    "hostedCi": "PENDING_PUSH",
+    "alphaPackage": "PENDING_HOSTED_CI",
+    "thirtyMinuteAppSoak": "NOT_RUN",
+    "manualScreenshotRecordingReview": "NOT_RUN",
+    "physicalDevice": "UNVERIFIED_PHYSICAL_DEVICE"
+  }
+}

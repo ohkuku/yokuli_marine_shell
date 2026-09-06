@@ -196,7 +196,12 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         self.assertEqual("NMEA_SOURCES", lock["phase"])
         self.assertEqual("P7", lock["stage"])
         self.assertEqual(SPEC_SHA256, lock["sourceSpecSha256"])
-        self.assertEqual("MACHINE_VERIFIED", lock["status"])
+        expected_status = (
+            "PENDING_MACHINE_GATE"
+            if lock["evidence"]["fullRepositoryGate"] == "PENDING_EXECUTION"
+            else "MACHINE_VERIFIED"
+        )
+        self.assertEqual(expected_status, lock["status"])
         self.assertEqual("UNVERIFIED_PHYSICAL_DEVICE", lock["physicalDevice"])
         for phase in range(8):
             self.assertIn(f"P{phase}", report)
