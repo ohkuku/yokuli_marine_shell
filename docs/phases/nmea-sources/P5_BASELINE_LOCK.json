@@ -1,0 +1,31 @@
+{
+  "phase": "NMEA_SOURCES",
+  "stage": "P5",
+  "status": "PASS",
+  "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
+  "baseCommit": "4b1cec8f13fdf6d93fb4c69a9609b7209c2d72b5",
+  "redContractCommit": "11006625006d6a3a72c03821d69361b2f79edb4e",
+  "implementationCommit": "de9eb9981190699e83c673671876ab95000ad404",
+  "compileCorrectionCommit": "6ebd77e4c727c883d03535559700e06f10bcf2f7",
+  "selfReviewRedCommit": "041da81186276b3154f51868f698d16845e4bf7c",
+  "lastBehaviorCorrectionCommit": "2f56fb272b503e3a642c2c4afe33d9d29100bc8b",
+  "visualMatrixCommit": "1ab714c0e42597d1b2893a0296bd758133f2e4c8",
+  "contracts": {
+    "productionInstalledApps": ["chart", "settings", "nmea-input", "data-sources"],
+    "defaultStartEntries": ["chart", "settings"],
+    "newAppTileSizes": ["ICON_1X1", "STANDARD_2X2", "WIDE_4X2"],
+    "runtimeTruth": "NmeaRuntimeSnapshot + MarineSourceSnapshot",
+    "statusEntries": ["nmea", "data-sources"],
+    "androidHomeCapability": false,
+    "orientation": "portrait"
+  },
+  "evidence": {
+    "initialStaticRed": "7 tests; 2 failures / 2 errors / 3 pass",
+    "featureRed": "compileDebugUnitTestKotlin failed on absent P5 contracts",
+    "selfReviewRed": "mixed receiving + waiting projected RECEIVING instead of WAITING",
+    "targetedGreen": "static 8/8; NMEA projector 7/7; Data Sources 20/20; app-shell unit 7/7; composition compile PASS",
+    "deviceGreen": "API 34 AVD Shell discovery/back/pin/resize/visual matrix 3/3",
+    "fullRepositoryGate": "DEFERRED_TO_P7",
+    "physicalDevice": "UNVERIFIED_PHYSICAL_DEVICE"
+  }
+}

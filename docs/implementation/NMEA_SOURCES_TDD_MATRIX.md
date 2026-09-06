@@ -19,7 +19,7 @@
 - P2：`ConnectionConfigReducerTest`、`ConnectionPersistenceTest`、`TcpNmeaClientIntegrationTest`、`UdpNmeaListenerIntegrationTest`、`NmeaRuntimeLifecycleTest`、`NmeaInputProjectionTest`、`NmeaInputWorkspaceStoryTest`。
 - P3：`SourceSelectionTransactionTest`、`ResolvedDataPortTest`、`PhoneLocationPermissionReducerTest`、`AndroidLocationAdapterAndroidTest`。
 - P4：`DataSourcesWorkspaceStoryTest`，从空态、phone-only、unknown、wind/depth-only 到多源选择失败／成功和深链。
-- P5：`NmeaInputTileProjectionTest`、`DataSourcesTileProjectionTest`、`MarineRuntimeStatusProjectionTest`、`ProductionLaunchRegistryTest` 与 Shell Activity stories。
+- P5：`NmeaInputLauncherProjectorTest`、`DataSourcesLauncherProjectorTest`、`ProductionNmeaSourcesInstallationTest`、`ProductionLaunchRegistryTest` 与 `NmeaSourcesShellStoryTest`。
 - P6：`MarineDataCrossAppStoryTest`、独立 ADB process-restore driver、30 分钟四连接 100 sentences/s soak；实机后台矩阵单列。
 
 ## E01–E26 证据归属

@@ -762,3 +762,19 @@ Green 提供 WP8 排版型数据／句型视图、搜索筛选、候选详情、
 ### English translation — NMEA Sources P4
 
 P4 begins with independent static, core-link, projector/coordinator, and Compose Reds. Green renders the one real runtime catalog as searchable data and sentence views, preserves every candidate, commits source choices through the OS port, bounds raw evidence, and uses opaque links. Self-review Reds add phone-only, runtime sentence discovery, bounded evidence, and recoverable permanent-denial/system-location states. The scoped gate passes; production installation remains P5, the full repository gate remains P7, and physical-device behavior is not claimed.
+
+## NMEA Sources P5 — Shell 安装、磁贴与状态条
+
+### Red
+
+P5 先以静态合同、两组纯 projector 测试和生产安装测试进入 Red，锁定四个生产应用、默认 Start 仍只有 Chart + Settings、两个新应用各自拥有三种尺寸、状态条两个独立入口，以及磁贴不得执行 runtime 命令。首跑 static 为 `2 failures / 2 errors / 3 pass`，Feature 测试因生产合同缺失而编译失败。
+
+### Green 与自审
+
+Green 从同一 `InstalledAppBinding` 派生目录、动态 token、视觉与内部宿主；页面、磁贴和状态条直接投影进程 runtime snapshot。首轮编译抓到两个作用域错误并用小型提交修正。API 34 story 随后验证 All Apps、根 Back、固定和 Medium → Wide → Small 尺寸循环。
+
+自审 Red 又捕获混合连接下“等待被接收掩盖”的状态错误；修正后异常 > 等待 > 接收 > 停止／未配置的产品语义成立，并补了全部停止回归。最终 static `8/8`，NMEA P5 projector `7/7`，Data Sources Feature `20/20`，Shell unit `7/7`，composition compile 与 API 34 P5 stories `3/3` 通过。完整质量门禁按用户要求留到 P7，真机后台／网络／GNSS 仍未验证。
+
+### English translation — NMEA Sources P5
+
+P5 begins with failing installation, projection, status, and three-size contracts. Green installs both apps from one binding each, keeps the existing Start document unchanged, and projects the same process-owned runtime truth into pages, tiles, and two independent status entries. A self-review Red exposed mixed receiving/waiting truth and was corrected before the scoped static, JVM, composition, and API 34 visual/navigation gates passed. Full repository gates remain deferred to P7; physical-device behavior is not claimed.
