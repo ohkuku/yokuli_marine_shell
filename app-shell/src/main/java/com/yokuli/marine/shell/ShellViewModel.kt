@@ -40,6 +40,7 @@ import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiState
 import com.yokuli.marine.data.source.MarineFeatureLinkToken
+import com.yokuli.marine.data.source.MarineFeatureLinks
 import android.net.Uri
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
