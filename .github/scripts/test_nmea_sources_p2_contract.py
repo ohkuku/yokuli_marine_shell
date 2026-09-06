@@ -201,7 +201,7 @@ class NmeaSourcesP2ContractTest(unittest.TestCase):
         default_document = graph[graph.index("val defaultStartDocument"):]
         self.assertNotIn("tile-nmea", default_document)
         self.assertNotIn("tile-data-sources", default_document)
-        self.assertIn('":feature:data-sources"', self.text("settings.gradle.kts"))
+        self.assertNotIn('":feature:data-sources"', self.text("settings.gradle.kts"))
 
 
 if __name__ == "__main__":

@@ -139,6 +139,9 @@ grep -Fq 'steps.osr_w13_contract.outcome' "$android" || fail 'OS Redesign cumula
 grep -Fq 'id: osr_w14_contract' "$android" || fail 'OS Redesign W14 needs an independent named CI gate'
 grep -Fq 'python3 .github/scripts/test_osr_w14_contract.py' "$android" || fail 'OS Redesign W14 contract must run in CI'
 grep -Fq 'steps.osr_w14_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W14'
+grep -Fq 'id: osr_w15_contract' "$android" || fail 'OS Redesign W15 needs an independent named CI gate'
+grep -Fq 'python3 .github/scripts/test_osr_w15_contract.py' "$android" || fail 'OS Redesign W15 contract must run in CI'
+grep -Fq 'steps.osr_w15_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W15'
 grep -Fq 'OSR_W01_CONTRACT_RESULT' "$android" || fail 'OS Redesign W01 result must participate in final enforcement'
 grep -Fq ':feature:chart-library:connectedDebugAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Chart Library standalone UI stories must run on API 34'
 grep -Fq 'bash .github/scripts/run_device_tests.sh performance' "$android" || fail 'Stage 11 Macrobenchmark must use the diagnostic wrapper'
@@ -175,7 +178,7 @@ fi
 for helper in run_ci_capture.sh build_codex_job_report.py compose_codex_ci_report.py test_codex_ci_report.py; do
   [[ -f "$repo_root/.github/scripts/$helper" ]] || fail "Codex report helper missing: $helper"
 done
-for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract chart-library-cl11-contract chart-library-cl12-contract osr-w01-contract osr-w02-contract osr-w03-contract osr-w04-contract osr-w08-contract osr-w12-contract osr-w13-contract google-maps-evidence unit-tests lint assemble; do
+for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract chart-library-cl11-contract chart-library-cl12-contract osr-w01-contract osr-w02-contract osr-w03-contract osr-w04-contract osr-w08-contract osr-w12-contract osr-w13-contract osr-w14-contract osr-w15-contract google-maps-evidence unit-tests lint assemble; do
   grep -Fq "run_ci_capture.sh $captured_step --" "$android" || fail "important build step is not captured: $captured_step"
 done
 grep -Fq 'if: always()' "$android" || fail 'Codex reports must be generated even after failures'

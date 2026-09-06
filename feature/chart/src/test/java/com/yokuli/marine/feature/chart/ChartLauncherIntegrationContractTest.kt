@@ -38,6 +38,12 @@ class ChartLauncherIntegrationContractTest {
         assertFalse(MapState(savedRoutes = listOf(route)).navigationActive)
         assertTrue(ChartLaunchProjector.isSettled(ChartDestination.Browse, MapState()))
         assertFalse(ChartLaunchProjector.isSettled(ChartDestination.Route(route.id), MapState()))
+        assertTrue(
+            ChartLaunchProjector.isSettled(
+                ChartDestination.Route(route.id),
+                MapState(savedRoutes = listOf(route), activeRoutePlanId = route.id),
+            ),
+        )
     }
 
     @Test

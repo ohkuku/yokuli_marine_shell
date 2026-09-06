@@ -11,9 +11,11 @@ LOCALIZED_MODULES = (
     "core/design",
     "feature/desktop",
     "feature/chart",
-    "feature/data-sources",
+    "feature/data",
+    "feature/chart-library",
+    "feature/navigation",
+    "feature/preferences",
     "feature/nmea-input",
-    "feature/settings",
     "feature/shell-lab",
 )
 
@@ -53,7 +55,7 @@ class UiArchitectureContractTest(unittest.TestCase):
         contracts = {
             "feature/desktop": "LauncherUiContract.kt",
             "feature/nmea-input": "NmeaInputUiContract.kt",
-            "feature/settings": "SettingsUiContract.kt",
+            "feature/preferences": "PreferencesUiContract.kt",
         }
         for module, filename in contracts.items():
             matches = list((ROOT / module / "src/main/java").rglob(filename))
@@ -71,7 +73,7 @@ class UiArchitectureContractTest(unittest.TestCase):
     def test_wp_text_has_no_hardcoded_alphabetic_user_copy(self):
         offenders = []
         pattern = re.compile(r'WpText\(\s*"[^"\n]*[A-Za-z\u4e00-\u9fff]')
-        for module in ("feature/desktop", "feature/chart", "feature/nmea-input", "feature/settings", "feature/shell-lab"):
+        for module in ("feature/desktop", "feature/chart", "feature/nmea-input", "feature/preferences", "feature/shell-lab"):
             for path in (ROOT / module / "src/main/java").rglob("*.kt"):
                 for number, line in enumerate(path.read_text().splitlines(), start=1):
                     if pattern.search(line):
@@ -82,7 +84,7 @@ class UiArchitectureContractTest(unittest.TestCase):
         workspaces = {
             "feature/chart": ("ChartWorkspace.kt", "MapState", "MapAction"),
             "feature/nmea-input": ("NmeaInputWorkspace.kt", "NmeaInputUiState", "NmeaInputUiAction"),
-            "feature/settings": ("SettingsWorkspace.kt", "SettingsUiState", "SettingsUiAction"),
+            "feature/preferences": ("PreferencesWorkspace.kt", "PreferencesUiState", "PreferencesUiAction"),
         }
         for module, (filename, state, action) in workspaces.items():
             path = next((ROOT / module / "src/main/java").rglob(filename))

@@ -201,7 +201,7 @@ object ChartLaunchProjector {
         ChartDestination.Browse -> true
         is ChartDestination.Place -> state.surface == MapSurface.PlaceDetail(target.id) ||
             (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id
-        is ChartDestination.Route -> state.surface == MapSurface.RouteDetail(target.id) ||
+        is ChartDestination.Route -> (state.surface == MapSurface.Root && state.activeRoutePlanId == target.id) ||
             (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id
         is ChartDestination.ChartAsset -> state.surface == MapSurface.Root
     }

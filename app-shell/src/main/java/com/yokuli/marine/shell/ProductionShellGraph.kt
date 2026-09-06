@@ -33,7 +33,6 @@ import com.yokuli.marine.feature.chart.GpxExportUiState
 import com.yokuli.marine.feature.chart.GpxImportUiAction
 import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.chartLauncherVisualContribution
-import com.yokuli.marine.feature.chart.chartLauncherSearchContributions
 import com.yokuli.marine.feature.chart.ChartLaunchProjector
 import com.yokuli.marine.feature.chart.ChartDestination
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
@@ -87,12 +86,18 @@ import com.yokuli.marine.navigation.domain.ActiveNavigationSnapshot
 import com.yokuli.marine.feature.navigation.ActiveNavigationStrip
 import com.yokuli.marine.feature.navigation.NavigationDestinations
 import com.yokuli.marine.feature.navigation.NavigationShellContribution
+import com.yokuli.marine.feature.navigation.NavigationGpxBounds
+import com.yokuli.marine.feature.navigation.NavigationGpxFailure
+import com.yokuli.marine.feature.navigation.NavigationGpxItem
+import com.yokuli.marine.feature.navigation.NavigationGpxItemKind
+import com.yokuli.marine.feature.navigation.NavigationGpxUiAction
+import com.yokuli.marine.feature.navigation.NavigationGpxUiState
+import com.yokuli.marine.feature.navigation.NavigationGpxWarning
 import com.yokuli.marine.feature.navigation.NavigationUiAction
 import com.yokuli.marine.feature.navigation.NavigationUiState
 import com.yokuli.marine.feature.navigation.NavigationWorkspace
 import com.yokuli.marine.feature.navigation.navigationLauncherVisualContribution
 import com.yokuli.marine.feature.navigation.navigationSearchContributions
-import com.yokuli.marine.feature.chart.NavigationGpxExchangeSurface
 
 data class ProductionShellVisualEnvironment(
     val theme: WpThemeSpec,
@@ -153,6 +158,84 @@ val LocalProductionShellRuntime = staticCompositionLocalOf<ProductionShellRuntim
     error("Production shell runtime was not provided")
 }
 
+private fun GpxImportUiState.toNavigationGpxState(): NavigationGpxUiState = when (this) {
+    GpxImportUiState.Idle -> NavigationGpxUiState.Idle
+    is GpxImportUiState.Inspecting -> NavigationGpxUiState.Inspecting
+    is GpxImportUiState.Preview -> NavigationGpxUiState.Preview(
+        items = buildList {
+            preview.waypoints.forEachIndexed { index, item ->
+                add(
+                    NavigationGpxItem(
+                        index,
+                        NavigationGpxItemKind.WAYPOINT,
+                        item.name,
+                        index in selection.waypointIndices,
+                    ),
+                )
+            }
+            preview.routes.forEachIndexed { index, item ->
+                add(
+                    NavigationGpxItem(
+                        index,
+                        NavigationGpxItemKind.ROUTE,
+                        item.name,
+                        index in selection.routeIndices,
+                        pointCount = item.points.size,
+                    ),
+                )
+            }
+            preview.tracks.forEachIndexed { index, item ->
+                add(
+                    NavigationGpxItem(
+                        index,
+                        NavigationGpxItemKind.TRACK,
+                        item.name,
+                        index in selection.trackIndices,
+                        pointCount = item.segments.sumOf { it.points.size },
+                        segmentCount = item.segments.size,
+                    ),
+                )
+            }
+        },
+        totalPointCount = preview.totalPointCount,
+        bounds = preview.bounds?.let { NavigationGpxBounds(it.south, it.west, it.north, it.east) },
+        duplicate = preview.duplicate,
+        warnings = preview.warnings.mapTo(linkedSetOf()) {
+            when (it) {
+                com.yokuli.marine.map.domain.GpxWarning.ROUTE_HAS_FEWER_THAN_TWO_POINTS -> NavigationGpxWarning.SHORT_ROUTE
+                com.yokuli.marine.map.domain.GpxWarning.UNKNOWN_EXTENSIONS_NOT_PRESERVED -> NavigationGpxWarning.UNKNOWN_EXTENSIONS
+                com.yokuli.marine.map.domain.GpxWarning.INVALID_OPTIONAL_TIME_OMITTED -> NavigationGpxWarning.INVALID_OPTIONAL_TIME
+                com.yokuli.marine.map.domain.GpxWarning.EMPTY_TRACK_OMITTED -> NavigationGpxWarning.EMPTY_TRACK
+            }
+        },
+        canImport = canImport,
+    )
+    is GpxImportUiState.Writing -> NavigationGpxUiState.Writing
+    is GpxImportUiState.Succeeded -> NavigationGpxUiState.Succeeded(placeCount, routeCount, trackCount)
+    is GpxImportUiState.Cancelled -> NavigationGpxUiState.Cancelled
+    is GpxImportUiState.Failed -> NavigationGpxUiState.Failed(
+        when (reason) {
+            com.yokuli.marine.feature.chart.GpxImportFailure.INVALID_DOCUMENT -> NavigationGpxFailure.INVALID_DOCUMENT
+            com.yokuli.marine.feature.chart.GpxImportFailure.EMPTY_SELECTION -> NavigationGpxFailure.EMPTY_SELECTION
+            com.yokuli.marine.feature.chart.GpxImportFailure.DISPATCH_REJECTED -> NavigationGpxFailure.QUEUE_BUSY
+            com.yokuli.marine.feature.chart.GpxImportFailure.WRITE_FAILED -> NavigationGpxFailure.WRITE_FAILED
+        },
+    )
+}
+
+private fun NavigationGpxUiAction.toDocumentAction(): GpxImportUiAction = when (this) {
+    NavigationGpxUiAction.ChooseDocument -> GpxImportUiAction.ChooseDocument
+    is NavigationGpxUiAction.ToggleItem -> when (kind) {
+        NavigationGpxItemKind.WAYPOINT -> GpxImportUiAction.ToggleWaypoint(index)
+        NavigationGpxItemKind.ROUTE -> GpxImportUiAction.ToggleRoute(index)
+        NavigationGpxItemKind.TRACK -> GpxImportUiAction.ToggleTrack(index)
+    }
+    NavigationGpxUiAction.ConfirmImport -> GpxImportUiAction.ConfirmImport
+    NavigationGpxUiAction.ImportAsCopy -> GpxImportUiAction.ImportAsCopy
+    NavigationGpxUiAction.Cancel -> GpxImportUiAction.Cancel
+    NavigationGpxUiAction.DismissResult -> GpxImportUiAction.DismissResult
+}
+
 /**
  * 中文：生产应用只在这里注册一次，目录、LaunchToken、视觉和内部宿主均从该绑定派生。
  * English: Production apps register once here; catalog, launch tokens, visuals, and hosts derive from it.
@@ -170,9 +253,6 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                     environment.chartTileMode,
                 ),
             )
-        },
-        searchContributions = { environment, query ->
-            chartLauncherSearchContributions(environment.mapState, query)
         },
         dynamicLaunchTokenMatcher = ChartDestinations::accepts,
         internalAppHost = InternalAppHost(ChartDestinations.AppId) { token ->
@@ -310,9 +390,12 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
         internalAppHost = InternalAppHost(NavigationShellContribution.AppId) { token ->
             val runtime = LocalProductionShellRuntime.current
             LaunchedEffect(token) { runtime.onOpenNavigation(token) }
-            NavigationWorkspace(runtime.navigationState, runtime.onNavigationAction) {
-                NavigationGpxExchangeSurface(runtime.gpxImportState, runtime.onGpxImportAction)
-            }
+            NavigationWorkspace(
+                state = runtime.navigationState,
+                onAction = runtime.onNavigationAction,
+                gpxState = runtime.gpxImportState.toNavigationGpxState(),
+                onGpxAction = { runtime.onGpxImportAction(it.toDocumentAction()) },
+            )
         },
     ),
 )

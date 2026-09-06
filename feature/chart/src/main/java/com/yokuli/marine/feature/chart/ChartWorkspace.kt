@@ -523,19 +523,10 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
                     maxLines = 1,
                 )
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    MapActionText(R.string.map_save_place, "map-candidate-save", Modifier.weight(1f)) {
-                        onAction(MapAction.OpenSurface(MapSurface.NewPlace(transient.point)))
-                    }
                     MapActionText(R.string.map_measure_from_here, "map-candidate-measure", Modifier.weight(1f)) {
                         onAction(MapAction.SelectTool(MapTool.MEASURE))
                         onAction(MapAction.AddPoint(transient.point))
                     }
-                    MapActionText(R.string.map_route_from_here, "map-candidate-route", Modifier.weight(1f)) {
-                        onAction(MapAction.SelectTool(MapTool.MANUAL_ROUTE))
-                        onAction(MapAction.AddPoint(transient.point))
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     MapActionText(R.string.map_copy_coordinate, "map-candidate-copy") {
                         clipboard.setText(AnnotatedString(transient.point.coordinateText()))
                     }
@@ -577,9 +568,6 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 WpText(selection.point.coordinateText(), 11, modifier = Modifier.weight(1f))
-                MapActionText(R.string.map_save_place, "map-save-place") {
-                    onAction(MapAction.OpenSurface(MapSurface.NewPlace(selection.point)))
-                }
                 MapActionText(R.string.map_close, "map-selection-close") { onAction(MapAction.ClearSelection) }
             }
         }
@@ -660,11 +648,6 @@ private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: 
                     onAction(MapAction.OpenSurface(MapSurface.PlaceDetail(place.id)))
                 }
             }
-            if (track != null) {
-                MapActionText(R.string.map_details, "map-object-track-details-${track.id}") {
-                    onAction(MapAction.OpenSurface(MapSurface.ImportedTrackDetail(track.id)))
-                }
-            }
             MapActionText(R.string.map_close, "map-object-close") { onAction(MapAction.DismissTransient) }
         }
     }
@@ -675,7 +658,6 @@ private fun MeasurementRootSummary(state: MapState, onAction: (MapAction) -> Uni
     val colors = LocalWpTheme.current
     val draft = state.measurementDraft ?: return
     val summary = MeasurementMath.summarize(draft)
-    val defaultRouteName = stringResource(R.string.map_default_route_name, state.routeDrafts.size + 1)
     Column(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .92f))
             .padding(horizontal = 12.dp, vertical = 4.dp).testTag("map-measurement-summary"),
@@ -711,9 +693,6 @@ private fun MeasurementRootSummary(state: MapState, onAction: (MapAction) -> Uni
             }
             MapTextButton(stringResource(R.string.map_fit_all), "map-measure-fit", draft.points.size >= 2) {
                 onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(minimalBounds(draft.points)), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
-            }
-            MapTextButton(stringResource(R.string.map_convert_to_route), "map-measure-convert", draft.points.size >= 2) {
-                onAction(MapAction.ConvertMeasurementToManualRoute(defaultRouteName))
             }
         }
     }
@@ -769,12 +748,6 @@ private fun MapRootCommandBar(
     ) {
         MapCommandButton(R.string.map_tool_measure, "map-tool-measure", state.tool == MapTool.MEASURE, Modifier.weight(1f)) {
             onAction(MapAction.SelectTool(if (state.tool == MapTool.MEASURE) MapTool.BROWSE else MapTool.MEASURE))
-        }
-        MapCommandButton(R.string.map_tool_places, "map-open-places", false, Modifier.weight(1f)) {
-            onAction(MapAction.OpenSurface(MapSurface.Places))
-        }
-        MapCommandButton(R.string.map_routes_title, "map-open-routes", false, Modifier.weight(1f)) {
-            onAction(MapAction.OpenSurface(MapSurface.Routes))
         }
         MapCommandButton(R.string.map_tool_quick_layers, "map-open-quick-layers", false, Modifier.weight(1f)) {
             onAction(MapAction.OpenSurface(MapSurface.ChartPackages))
@@ -863,11 +836,6 @@ private fun MapPageSurface(
                 is MapSurface.PlaceDetail -> PlaceDetailPage(
                     state,
                     surface.placeId,
-                    placeExportState,
-                    onExportPlace,
-                    gpxExportState,
-                    onSaveGpx,
-                    onShareGpx,
                     onAction,
                 )
                 is MapSurface.NewPlace -> PlaceEditorPage(state, surface.point, null, onAction)
@@ -1133,11 +1101,6 @@ private fun PlaceDeletePage(state: MapState, id: String, onAction: (MapAction) -
 private fun PlaceDetailPage(
     state: MapState,
     id: String,
-    exportState: MapPlaceExportUiState,
-    onExportPlace: (SavedPlace) -> Unit,
-    gpxExportState: GpxExportUiState,
-    onSaveGpx: (GpxExportTarget) -> Unit,
-    onShareGpx: (GpxExportTarget) -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val place = state.places.firstOrNull { it.id == id } ?: return
@@ -1155,20 +1118,6 @@ private fun PlaceDetailPage(
             WpText(place.tags.joinToString(" · "), 11, color = colors.muted, modifier = Modifier.testTag("map-place-detail-tags"))
         }
         WpText(place.point.coordinateText(), 12, color = colors.muted, modifier = Modifier.testTag("map-place-detail-coordinate"))
-        state.placeSaveStatus?.takeIf { it.placeId == place.id && it.revision == place.revision }?.let { status ->
-            WpText(
-                stringResource(
-                    when (status.state) {
-                        MapSaveState.PENDING -> R.string.map_place_save_pending
-                        MapSaveState.SAVED -> R.string.map_place_save_saved
-                        MapSaveState.FAILED -> R.string.map_place_save_failed
-                    },
-                ),
-                10,
-                color = if (status.state == MapSaveState.FAILED) colors.accent else colors.muted,
-                modifier = Modifier.testTag("map-place-save-${status.state.name.lowercase(Locale.US)}"),
-            )
-        }
         MapTextButton(stringResource(R.string.map_view), "map-place-view-$id", modifier = Modifier.fillMaxWidth()) {
             onAction(
                 MapAction.RequestCamera(
@@ -1178,41 +1127,6 @@ private fun PlaceDetailPage(
                 ),
             )
             onAction(MapAction.OpenSurface(MapSurface.Root))
-        }
-        MapTextButton(stringResource(R.string.map_place_edit), "map-place-edit-$id", modifier = Modifier.fillMaxWidth()) {
-            onAction(MapAction.OpenSurface(MapSurface.EditPlace(id)))
-        }
-        MapTextButton(stringResource(R.string.map_place_move), "map-place-move-$id", modifier = Modifier.fillMaxWidth()) {
-            onAction(MapAction.BeginPlaceMove(id))
-        }
-        MapTextButton(stringResource(R.string.map_route_from_here), "map-place-route-from-$id", modifier = Modifier.fillMaxWidth()) {
-            onAction(
-                MapAction.CreateRouteDraft(
-                    name = "",
-                    startPoint = place.point,
-                    sourcePlaceId = place.id,
-                    sourcePlaceRevision = place.revision,
-                ),
-            )
-        }
-        MapTextButton(stringResource(R.string.map_place_export), "map-place-export-$id", modifier = Modifier.fillMaxWidth()) {
-            onExportPlace(place)
-        }
-        GpxExportActions(GpxExportTarget.Place(place), gpxExportState, onSaveGpx, onShareGpx)
-        when (exportState) {
-            is MapPlaceExportUiState.Writing -> if (exportState.placeId == id) {
-                WpText(stringResource(R.string.map_place_export_writing), 10, color = colors.muted)
-            }
-            is MapPlaceExportUiState.Succeeded -> if (exportState.placeId == id) {
-                WpText(stringResource(R.string.map_place_export_succeeded), 10, color = colors.muted)
-            }
-            is MapPlaceExportUiState.Failed -> if (exportState.placeId == id) {
-                WpText(stringResource(R.string.map_place_export_failed), 10, color = colors.accent)
-            }
-            MapPlaceExportUiState.Idle -> Unit
-        }
-        MapTextButton(stringResource(R.string.map_place_delete), "map-place-delete-$id", modifier = Modifier.fillMaxWidth()) {
-            onAction(MapAction.RequestDeletePlace(id))
         }
     }
 }

@@ -31,7 +31,9 @@ class OsRedesignW12ContractTest(unittest.TestCase):
         self.assertIn("Channel<Request>(32)", coordinator)
         for forbidden in (":feature:chart", ":adapter:", ":app-shell"):
             self.assertNotIn(forbidden, build)
-        self.assertIn("NavigationGpxExchangeSurface", graph)
+        self.assertIn("NavigationGpxWorkspace", self.read("feature/navigation/src/main/java/com/yokuli/marine/feature/navigation/NavigationGpxWorkspace.kt"))
+        self.assertIn("toNavigationGpxState", graph)
+        self.assertNotIn("NavigationGpxExchangeSurface", graph)
         self.assertIn("NavigationEffect.ShowRouteInChart", activity)
         self.assertIn("ChartDestinations.route(effect.routeId)", activity)
 

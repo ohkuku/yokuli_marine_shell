@@ -42,7 +42,7 @@ private val DIAGNOSTIC_TAGS = listOf(
     "shell-search-surface",
     "launcher-recents",
     "chart-workspace-browse",
-    "settings-overview-list",
+    "preferences-workspace",
 )
 
 /**
@@ -228,24 +228,24 @@ class ShellMacrobenchmark {
     }
 
     @Test
-    fun settingsScroll() = benchmarkRule.measureRepeated(
+    fun preferencesScroll() = benchmarkRule.measureRepeated(
         packageName = TARGET_PACKAGE,
         metrics = interactionFrameMetrics(),
         compilationMode = CompilationMode.Partial(),
         iterations = 5,
         setupBlock = { openStart() },
     ) {
-        // Include the Settings surface entrance in the measured window. The compact
+        // Include the Preferences surface entrance in the measured window. The compact
         // overview can fit tall emulators, where a swipe alone legitimately produces
         // zero target frames and would otherwise be a false-positive benchmark.
         device.awaitTag("tile-settings").click()
-        device.awaitTag("settings-overview-list")
-        val list = device.awaitTag("settings-overview-list").bounds
+        device.awaitTag("preferences-workspace")
+        val list = device.awaitTag("preferences-workspace").bounds
         repeat(2) {
             device.swipe(list.centerX(), list.bottom - 20, list.centerX(), list.top + 20, 20)
         }
         device.waitForIdle()
-        device.awaitTag("settings-overview-list")
+        device.awaitTag("preferences-workspace")
     }
 
     private fun shellIntent() = Intent(Intent.ACTION_MAIN).apply {

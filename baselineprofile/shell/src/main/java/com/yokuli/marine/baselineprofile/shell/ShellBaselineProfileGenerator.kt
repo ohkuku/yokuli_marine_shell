@@ -68,7 +68,7 @@ class ShellBaselineProfileGenerator {
             "Settings tile did not leave Start after Unpin"
         }
         device.showAllApps()
-        device.awaitTag("launcher-entry-settings").longPress(device)
+        device.awaitTag("launcher-entry-preferences").longPress(device)
         device.awaitTag("launcher-context-menu")
         device.clickSemantically("launcher-context-pin")
         device.awaitTag("start-screen")
@@ -130,7 +130,7 @@ class ShellBaselineProfileGenerator {
     private fun UiDevice.ensureSettingsPinned() {
         if (findObject(UiSelector().resourceId("tile-settings")).exists()) return
         showAllApps()
-        awaitTag("launcher-entry-settings").longPress(this)
+        awaitTag("launcher-entry-preferences").longPress(this)
         awaitTag("launcher-context-menu")
         awaitTag("launcher-context-pin").click()
         awaitTag("start-screen")

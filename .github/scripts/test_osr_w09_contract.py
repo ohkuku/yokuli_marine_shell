@@ -15,12 +15,14 @@ class OsRedesignW09ContractTest(unittest.TestCase):
         workspace = self.read("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt")
         return workspace.split("private fun ChartLayersPage(", 1)[1].split("private fun chartDisplayIssueText", 1)[0]
 
-    def test_root_is_a_five_action_live_map_surface(self):
+    def test_root_is_a_focused_three_action_live_map_surface(self):
         workspace = self.read("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt")
         command_bar = workspace.split("private fun MapRootCommandBar(", 1)[1].split("private fun MapCommandButton", 1)[0]
-        for tag in ("map-tool-measure", "map-open-places", "map-open-routes", "map-open-quick-layers", "map-crosshair-toggle"):
+        for tag in ("map-tool-measure", "map-open-quick-layers", "map-crosshair-toggle"):
             self.assertIn(tag, command_bar)
-        self.assertEqual(5, command_bar.count("MapCommandButton("))
+        self.assertEqual(3, command_bar.count("MapCommandButton("))
+        self.assertNotIn("map-open-places", command_bar)
+        self.assertNotIn("map-open-routes", command_bar)
         self.assertNotIn("map-tool-manual_route", command_bar)
         self.assertNotIn("map-coordinate-input", command_bar)
 
@@ -48,11 +50,12 @@ class OsRedesignW09ContractTest(unittest.TestCase):
         self.assertIn("quick layer visibility changes display preferences without changing catalog ownership", tests)
         self.assertIn("assertEquals(0, catalog.mutationCount)", tests)
 
-    def test_old_navigation_assets_remain_reachable_until_navigation_owns_them(self):
+    def test_old_navigation_models_remain_readable_but_are_no_longer_chart_entry_points(self):
         workspace = self.read("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt")
         routes = workspace.split("private fun RoutesPage(", 1)[1].split("private fun RouteDetailPage", 1)[0]
-        self.assertIn("MapSurface.GpxExchange", routes)
-        self.assertIn("MapSurface.ImportedTracks", routes)
+        command_bar = workspace.split("private fun MapRootCommandBar(", 1)[1].split("private fun MapCommandButton", 1)[0]
+        self.assertNotIn("MapSurface.Routes", command_bar)
+        self.assertNotIn("MapSurface.Places", command_bar)
         interaction = self.read("core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapInteraction.kt")
         for token in ("data object Places", "data object Routes", "data object GpxExchange", "data object ImportedTracks"):
             self.assertIn(token, interaction)

@@ -341,7 +341,7 @@ fun YokuliStartScreen(
                     ) { placement ->
                         val entry = byId[placement.entryId] ?: return@WpSpatialStartLayout
                         WpTile(
-                            entry = entry, tileSize = placement.size,
+                            tileId = placement.tileId, entry = entry, tileSize = placement.size,
                             width = cell * placement.size.columns + seam * (placement.size.columns - 1),
                             height = cell * placement.size.rows + seam * (placement.size.rows - 1),
                             editing = editing, selected = selectedTile == placement.tileId,
@@ -406,7 +406,7 @@ private suspend fun AwaitPointerEventScope.awaitSelectedDragSlop(down: PointerIn
 
 @Composable
 private fun WpTile(
-    entry: LauncherEntryUiState, tileSize: MarineTileSize, width: Dp, height: Dp,
+    tileId: TileInstanceId, entry: LauncherEntryUiState, tileSize: MarineTileSize, width: Dp, height: Dp,
     editing: Boolean, selected: Boolean, canResize: Boolean, revealing: Boolean, revealProgress: Float,
     onClick: () -> Unit, onLongClick: () -> Unit, onUnpin: () -> Unit, onResize: () -> Unit,
     onMoveBy: (Int, Int) -> Unit, modifier: Modifier = Modifier,
@@ -425,7 +425,7 @@ private fun WpTile(
     } else emptyList()
     Box(
         modifier.width(width).height(height).scale(scale * (1f + revealProgress * DERIVED_REVEAL_SCALE))
-            .alpha(if (editing && !selected) .55f else 1f).testTag("tile-${entry.descriptor.entryId.value}")
+            .alpha(if (editing && !selected) .55f else 1f).testTag(tileId.value)
             .semantics {
                 wpTileAccentName = colors.spec.accent.displayName
                 contentDescription = entry.title

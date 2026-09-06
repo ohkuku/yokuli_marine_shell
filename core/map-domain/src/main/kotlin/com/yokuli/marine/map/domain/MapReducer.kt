@@ -1186,7 +1186,9 @@ class DefaultMapReducer(
                 tool = MapTool.BROWSE,
                 activeRoutePlanId = plan.id,
                 activeRouteDraftId = null,
-                surface = MapSurface.RouteDetail(plan.id),
+                // Navigation owns route management. A Chart handoff is a map preview, not a
+                // second route-detail workflow.
+                surface = MapSurface.Root,
                 transient = null,
                 routeSpeedNotice = null,
             ),

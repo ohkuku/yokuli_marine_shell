@@ -55,7 +55,8 @@ import kotlin.math.max
 fun NavigationWorkspace(
     state: NavigationUiState,
     onAction: (NavigationUiAction) -> Unit,
-    gpxContent: @Composable () -> Unit,
+    gpxState: NavigationGpxUiState = NavigationGpxUiState.Idle,
+    onGpxAction: (NavigationGpxUiAction) -> Unit = {},
 ) {
     val currentState by rememberUpdatedState(state)
     val currentAction by rememberUpdatedState(onAction)
@@ -81,7 +82,7 @@ fun NavigationWorkspace(
                     NavigationSection.OVERVIEW -> OverviewPage(state, onAction)
                     NavigationSection.WAYPOINTS -> WaypointsPage(state, onAction)
                     NavigationSection.ROUTES -> RoutesPage(state, onAction)
-                    NavigationSection.GPX -> Box(Modifier.fillMaxSize().testTag("navigation-gpx")) { gpxContent() }
+                    NavigationSection.GPX -> NavigationGpxWorkspace(gpxState, onGpxAction)
                     NavigationSection.ACTIVE -> ActivePage(state, onAction)
                 }
                 is NavigationPage.WaypointEditor -> WaypointEditor(page.draft, onAction)

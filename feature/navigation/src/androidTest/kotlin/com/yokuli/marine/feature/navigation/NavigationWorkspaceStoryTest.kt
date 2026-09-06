@@ -1,9 +1,6 @@
 package com.yokuli.marine.feature.navigation
 
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.layout.Box
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -26,7 +23,7 @@ class NavigationWorkspaceStoryTest {
         val actions = mutableListOf<NavigationUiAction>()
         compose.setContent {
             YokuliTheme(WpThemeSpec()) {
-                NavigationWorkspace(state(), actions::add) { Box(Modifier.testTag("real-gpx-workflow")) }
+                NavigationWorkspace(state(), actions::add)
             }
         }
 
@@ -48,7 +45,7 @@ class NavigationWorkspaceStoryTest {
                 NavigationWorkspace(
                     state(section = NavigationSection.ROUTES, page = NavigationPage.RouteDetail(route.id)),
                     actions::add,
-                ) {}
+                )
             }
         }
 
@@ -64,13 +61,41 @@ class NavigationWorkspaceStoryTest {
         val actions = mutableListOf<NavigationUiAction>()
         compose.setContent {
             YokuliTheme(WpThemeSpec()) {
-                NavigationWorkspace(state(page = NavigationPage.RouteDetail("deleted")), actions::add) {}
+                NavigationWorkspace(state(page = NavigationPage.RouteDetail("deleted")), actions::add)
             }
         }
 
         compose.onNodeWithTag("navigation-route-missing").assertIsDisplayed()
         compose.onNodeWithTag("navigation-route-missing-back").performClick()
         assertEquals(NavigationUiAction.Navigate(NavigationSection.ROUTES), actions.single())
+    }
+
+    @Test
+    fun `GPX is rendered and operated by Navigation rather than injected peer UI`() {
+        val actions = mutableListOf<NavigationGpxUiAction>()
+        compose.setContent {
+            YokuliTheme(WpThemeSpec()) {
+                NavigationWorkspace(
+                    state = state(section = NavigationSection.GPX),
+                    onAction = {},
+                    gpxState = NavigationGpxUiState.Preview(
+                        items = listOf(
+                            NavigationGpxItem(0, NavigationGpxItemKind.ROUTE, "Harbour", true, pointCount = 3),
+                        ),
+                        totalPointCount = 3,
+                        bounds = NavigationGpxBounds(-36.9, 174.7, -36.8, 174.9),
+                        duplicate = false,
+                        warnings = emptySet(),
+                        canImport = true,
+                    ),
+                    onGpxAction = actions::add,
+                )
+            }
+        }
+
+        compose.onNodeWithTag("navigation-gpx-workspace").assertIsDisplayed()
+        compose.onNodeWithTag("navigation-gpx-confirm").performClick()
+        assertEquals(NavigationGpxUiAction.ConfirmImport, actions.single())
     }
 
     private fun state(

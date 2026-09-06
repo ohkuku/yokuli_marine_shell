@@ -31,7 +31,7 @@ class RoutePlanningContractTest {
         assertTrue(acknowledged.routeDrafts.isEmpty())
         assertEquals("route-a", acknowledged.activeRoutePlanId)
         assertEquals(MapSaveState.SAVED, acknowledged.routeSaveStatus?.state)
-        assertEquals(MapSurface.RouteDetail("route-a"), acknowledged.surface)
+        assertEquals(MapSurface.Root, acknowledged.surface)
         assertFalse(acknowledged.navigationActive)
     }
 
@@ -45,6 +45,7 @@ class RoutePlanningContractTest {
         ).state
 
         assertEquals(plan.id, preview.activeRoutePlanId)
+        assertEquals(MapSurface.Root, preview.surface)
         assertTrue(preview.routeDrafts.isEmpty())
         assertEquals(plan.waypoints, preview.visibleRoutePoints)
 

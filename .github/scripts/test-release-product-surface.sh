@@ -87,7 +87,7 @@ inspect_apk() {
 
   require_class "$apk" 'com.yokuli.marine.shell.ProductionShellGraphKt'
   require_class "$apk" 'com.yokuli.marine.feature.chart.ChartWorkspaceKt'
-  require_class "$apk" 'com.yokuli.marine.feature.settings.SettingsWorkspaceKt'
+  require_class "$apk" 'com.yokuli.marine.feature.preferences.PreferencesWorkspaceKt'
   require_class "$apk" 'com.yokuli.marine.feature.data.DataWorkspaceKt'
   require_class "$apk" 'com.yokuli.marine.feature.nmeainput.NmeaInputWorkspaceKt'
   require_class "$apk" 'com.yokuli.marine.feature.chartlibrary.ChartLibraryWorkspaceKt'
@@ -100,12 +100,15 @@ inspect_apk() {
   forbid_class "$apk" 'com.yokuli.marine.feature.cockpit.CockpitShellContribution'
   forbid_class "$apk" 'com.yokuli.marine.feature.library.LibraryShellContribution'
   forbid_class "$apk" 'com.yokuli.marine.feature.system.SystemShellContribution'
+  forbid_class "$apk" 'com.yokuli.marine.feature.settings.SettingsShellContribution'
+  forbid_class "$apk" 'com.yokuli.marine.feature.settings.SettingsWorkspaceKt'
+  forbid_class "$apk" 'com.yokuli.marine.feature.datasources.DataSourcesShellContribution'
   forbid_class "$apk" 'com.yokuli.marine.data.android.FakeNmeaTransport'
   forbid_class "$apk" 'com.yokuli.marine.data.android.DemoNmeaSender'
   forbid_class "$apk" 'com.yokuli.marine.data.android.NmeaSoakSender'
   forbid_class "$apk" 'com.yokuli.marine.data.android.TestSender'
 
-  printf '%s release APK passed: four installed apps, production runtimes present, debug/demo code absent\n' "$flavor"
+  printf '%s release APK passed: five installed apps, internal NMEA workflow and production runtimes present, legacy/debug/demo surfaces absent\n' "$flavor"
 }
 
 [[ -f "$standalone_apk" ]] || fail "missing standalone release APK: ${standalone_apk#"$repo_root/"}"

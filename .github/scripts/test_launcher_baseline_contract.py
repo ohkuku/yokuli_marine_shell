@@ -11,12 +11,13 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         settings = (ROOT / "settings.gradle.kts").read_text()
         app = (ROOT / "app-shell/build.gradle.kts").read_text()
 
-        for module in (":core:shell-engine", ":feature:settings", ":feature:shell-lab"):
+        for module in (":core:shell-engine", ":feature:preferences", ":feature:shell-lab"):
             self.assertIn(f'"{module}"', settings)
         for module in (":feature:cockpit", ":feature:library", ":feature:system"):
             self.assertNotIn(f'"{module}"', settings)
             self.assertNotIn(f'project("{module}")', app)
-        self.assertIn('implementation(project(":feature:settings"))', app)
+        self.assertIn('implementation(project(":feature:preferences"))', app)
+        self.assertNotIn('implementation(project(":feature:settings"))', app)
         self.assertIn('debugImplementation(project(":feature:shell-lab"))', app)
         self.assertNotIn('implementation(project(":feature:shell-lab"))', app)
 
@@ -97,11 +98,11 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         self.assertIn("无海图包 · 坐标工作台", default_strings)
         self.assertIn("NO CHART PACKAGE · COORDINATE WORKBENCH", english_strings)
 
-    def test_settings_surface_contains_only_implemented_sections(self):
-        contract = (ROOT / "feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsUiContract.kt").read_text()
-        workspace = (ROOT / "feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsWorkspace.kt").read_text()
+    def test_preferences_surface_contains_only_product_owned_sections(self):
+        contract = (ROOT / "feature/preferences/src/main/java/com/yokuli/marine/feature/preferences/PreferencesUiContract.kt").read_text()
+        workspace = (ROOT / "feature/preferences/src/main/java/com/yokuli/marine/feature/preferences/PreferencesWorkspace.kt").read_text()
 
-        for section in ("APPEARANCE", "START_SCREEN", "MAP", "LANGUAGE", "ABOUT"):
+        for section in ("APPEARANCE", "START", "APP_TILES", "LANGUAGE", "ABOUT"):
             self.assertIn(section, contract)
         for forbidden in ("CONNECTIONS", "DATA_SOURCES", "DEVICES", "SAFETY", "NMEA"):
             self.assertNotIn(forbidden, contract + workspace)
