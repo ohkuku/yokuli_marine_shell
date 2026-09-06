@@ -5,6 +5,7 @@ import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapSessionSnapshot
+import com.yokuli.marine.map.domain.MapViewMode
 import com.yokuli.marine.map.domain.MeasurementDraft
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPreferences
@@ -32,12 +33,14 @@ class MapProtoMapperTest {
                 hiddenAssetIds = setOf(ChartAssetId("10000000-0000-0000-0000-000000000002")),
             ),
             chartDisplayPreferencesInitialized = true,
+            mapViewMode = MapViewMode.MARINE,
         )
 
         val proto = MapProtoMapper.encodeSession(snapshot)
         val restored = MapProtoMapper.decodeSession(proto)
 
-        assertEquals(snapshot, restored)
+        assertEquals(snapshot.copy(measurementDraft = null), restored)
+        assertEquals(false, proto.hasMeasurementDraft())
         assertEquals(0, proto.placesCount)
         assertEquals(0, proto.savedRoutesCount)
         assertEquals(0, proto.chartPackagesCount)

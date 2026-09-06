@@ -138,6 +138,7 @@ data class ProductionShellRuntime(
     val onCancelOfflineCoverage: () -> Unit,
     val activeNavigationState: ActiveNavigationSnapshot,
     val onActiveNavigationCommand: (ActiveNavigationCommand) -> Unit,
+    val onSaveAndStartRoute: () -> Unit,
     val preferencesState: PreferencesUiState,
     val onPreferencesAction: (PreferencesUiAction) -> Unit,
     val dataState: DataUiState,
@@ -267,7 +268,8 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
                 if (runtime.heavyContentReady) {
                     { state, onAction, onQueryPortChanged, modifier ->
-                    if (state.chartDisplayPlan.selection is
+                    if (state.mapViewMode != com.yokuli.marine.map.domain.MapViewMode.MARINE &&
+                        state.chartDisplayPlan.selection is
                         com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection.None &&
                         BuildConfig.GOOGLE_MAPS_CONFIGURED
                     ) {
@@ -331,6 +333,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 onStartNavigation = { routeId, routeRevision ->
                     runtime.onActiveNavigationCommand(ActiveNavigationCommand.Start(routeId, routeRevision))
                 },
+                onSaveAndStartRoute = runtime.onSaveAndStartRoute,
                 chartSurface = chartSurface,
             )
         },

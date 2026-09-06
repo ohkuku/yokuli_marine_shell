@@ -9,6 +9,7 @@ import com.yokuli.marine.map.domain.ManualRouteDraft
 import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapPersistedState
 import com.yokuli.marine.map.domain.MapSessionSnapshot
+import com.yokuli.marine.map.domain.MapViewMode
 import com.yokuli.marine.map.domain.MeasurementDraft
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPreferences
@@ -35,12 +36,12 @@ internal object MapProtoMapper {
         .setSchemaVersion(SCHEMA_VERSION)
         .setCamera(state.camera.toProto())
         .also { builder ->
-            state.measurementDraft?.let { builder.measurementDraft = it.toProto() }
             state.activeRouteDraftId?.let { builder.activeRouteDraftId = it }
             state.activeRoutePlanId?.let { builder.activeRoutePlanId = it }
             state.activeChartPackageId?.let { builder.activeChartPackageId = it.value }
             builder.encodeDisplayPreferences(state.chartDisplayPreferences)
             builder.chartDisplayPreferencesInitialized = state.chartDisplayPreferencesInitialized
+            builder.mapViewMode = state.mapViewMode.name
         }
         .build()
 
@@ -48,12 +49,15 @@ internal object MapProtoMapper {
         require(proto.schemaVersion in 0..SCHEMA_VERSION) { "Unsupported map schema ${proto.schemaVersion}" }
         MapSessionSnapshot(
             camera = if (proto.hasCamera()) proto.camera.toDomain() else MapCamera(),
-            measurementDraft = if (proto.hasMeasurementDraft()) proto.measurementDraft.toDomain() else null,
+            // The A/B ruler is a transient interaction. Legacy payloads are deliberately ignored.
+            measurementDraft = null,
             activeRouteDraftId = proto.activeRouteDraftId.takeIf { it.isNotBlank() },
             activeRoutePlanId = proto.activeRoutePlanId.takeIf { it.isNotBlank() },
             activeChartPackageId = proto.activeChartPackageId.takeIf { it.isNotBlank() }?.let(::ChartPackageId),
             chartDisplayPreferences = proto.decodeDisplayPreferences(),
             chartDisplayPreferencesInitialized = proto.schemaVersion >= 4 && proto.chartDisplayPreferencesInitialized,
+            mapViewMode = MapViewMode.entries.firstOrNull { it.name == proto.mapViewMode }
+                ?: MapViewMode.SATELLITE,
         )
     } catch (error: IllegalArgumentException) {
         throw CorruptionException("Invalid map session", error)

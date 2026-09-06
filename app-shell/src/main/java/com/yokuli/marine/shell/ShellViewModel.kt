@@ -9,6 +9,8 @@ import com.yokuli.marine.map.domain.DefaultMapStore
 import com.yokuli.marine.map.domain.MapEffect
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapLibraryLoadState
+import com.yokuli.marine.map.domain.MapDispatchResult
+import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapStore
 import com.yokuli.marine.map.domain.ChartPackageId
@@ -317,6 +319,27 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
             mapStore.dispatch(MapAction.PreviewRoutePlan(command.routeId))
             mapStore.dispatch(MapAction.OpenSurface(com.yokuli.marine.map.domain.MapSurface.Root))
         }
+    }
+
+    fun saveAndStartActiveRoute(): Job = viewModelScope.launch {
+        val before = mapStore.state.value
+        val draft = before.routeDraft?.takeIf { it.waypoints.size >= 2 } ?: return@launch
+        if (mapStore.dispatch(MapAction.SaveRoutePlan) !in setOf(MapDispatchResult.ACCEPTED, MapDispatchResult.COALESCED)) {
+            return@launch
+        }
+        val submitted = mapStore.state.first { state ->
+            state.libraryRevision > before.libraryRevision && state.routeSaveStatus != null
+        }
+        val completed = if (submitted.routeSaveStatus?.state == MapSaveState.PENDING) {
+            mapStore.state.first { state ->
+                val status = state.routeSaveStatus
+                status != null && status.routeId == submitted.routeSaveStatus?.routeId && status.state != MapSaveState.PENDING
+            }
+        } else {
+            submitted
+        }
+        val status = completed.routeSaveStatus?.takeIf { it.state == MapSaveState.SAVED } ?: return@launch
+        onActiveNavigationCommand(ActiveNavigationCommand.Start(status.routeId, status.revision)).join()
     }
 
     fun onNavigationAction(action: NavigationUiAction) = navigationCoordinator.dispatch(action)

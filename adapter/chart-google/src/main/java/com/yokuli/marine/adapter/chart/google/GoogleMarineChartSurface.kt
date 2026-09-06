@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Point
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.os.SystemClock
 import android.os.Bundle
 import android.view.MotionEvent
@@ -28,6 +31,7 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.GoogleMapOptions
 import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MapColorScheme
@@ -60,6 +64,7 @@ import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.MapTileSnapshotFormat
 import com.yokuli.marine.map.domain.MapTileSnapshotSink
+import com.yokuli.marine.map.domain.MapViewMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -72,6 +77,11 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
+
+private fun MapViewMode.googleMapType(): Int = when (this) {
+    MapViewMode.STANDARD -> GoogleMap.MAP_TYPE_NORMAL
+    MapViewMode.SATELLITE, MapViewMode.MARINE -> GoogleMap.MAP_TYPE_SATELLITE
+}
 
 /**
  * Google Maps adapter for the shared chart surface.
@@ -107,7 +117,7 @@ fun GoogleMarineChartSurface(
             context,
             GoogleMapOptions()
                 .mapColorScheme(if (darkMode) MapColorScheme.DARK else MapColorScheme.LIGHT)
-                .mapType(GoogleMap.MAP_TYPE_SATELLITE)
+                .mapType(state.mapViewMode.googleMapType())
                 .compassEnabled(false)
                 .mapToolbarEnabled(false)
                 .rotateGesturesEnabled(true)
@@ -121,6 +131,10 @@ fun GoogleMarineChartSurface(
     var googleMap by remember(mapView) { mutableStateOf<GoogleMap?>(null) }
     var preparedDisplay by remember(mapView) { mutableStateOf<PreparedGoogleChartDisplay?>(null) }
     val snapshotCadence = remember(mapView) { RendererSnapshotCadence() }
+
+    LaunchedEffect(googleMap, state.mapViewMode) {
+        googleMap?.mapType = state.mapViewMode.googleMapType()
+    }
 
     LaunchedEffect(
         googleMap,
@@ -227,7 +241,7 @@ fun GoogleMarineChartSurface(
         mapView.getMapAsync { readyMap ->
             if (disposed) return@getMapAsync
             googleMap = readyMap.apply {
-                mapType = GoogleMap.MAP_TYPE_SATELLITE
+                mapType = currentState.mapViewMode.googleMapType()
                 isBuildingsEnabled = false
                 isIndoorEnabled = false
                 isTrafficEnabled = false
@@ -432,6 +446,14 @@ fun GoogleMarineChartSurface(
                 domainPolylines += addPolyline(
                     PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xfff7b500.toInt()).width(5f),
                 )
+                points.take(2).forEachIndexed { index, point ->
+                    addMarker(
+                        MarkerOptions()
+                            .position(point.toLatLng())
+                            .anchor(.5f, .5f)
+                            .icon(BitmapDescriptorFactory.fromBitmap(measurementHandleBitmap(if (index == 0) "A" else "B"))),
+                    )?.let(domainMarkers::add)
+                }
             }
             state.routePointsWithPreview().takeIf { it.isNotEmpty() }?.let { points ->
                 domainPolylines += addPolyline(
@@ -523,6 +545,29 @@ private fun CameraPosition.toDomainCamera(): MapCamera = MapCamera(
 )
 
 private fun LatLng.toDomainPoint(): GeoPoint = GeoPoint(latitude, longitude)
+
+private fun measurementHandleBitmap(label: String): Bitmap {
+    val size = 56
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xfff7b500.toInt() }
+    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+    }
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        textAlign = Paint.Align.CENTER
+        textSize = 30f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3f, fill)
+    canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3f, stroke)
+    canvas.drawText(label, size / 2f, size / 2f - (text.descent() + text.ascent()) / 2f, text)
+    return bitmap
+}
+
 private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
 private fun Point.toDomainScreenPoint() = MapScreenPoint(x.toDouble(), y.toDouble())
 private fun MapScreenPoint.toAndroidPoint() = Point(xPx.toInt(), yPx.toInt())

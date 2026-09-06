@@ -12,6 +12,11 @@ sealed interface MapAction {
     data object CloseSurface : MapAction
     data object DismissTransient : MapAction
     data object ClearSelection : MapAction
+    data object OpenMapViewPicker : MapAction
+    data class SetMapViewMode(val mode: MapViewMode) : MapAction
+    data class QuickMark(val point: GeoPoint) : MapAction
+    data class BeginMeasurement(val vessel: GeoPoint?, val target: GeoPoint?) : MapAction
+    data object RequestCloseRouteDraft : MapAction
     data class SetCrosshairEnabled(val enabled: Boolean) : MapAction
     data class MapTapped(val point: GeoPoint, val hits: List<MapHitResult>) : MapAction
     data class MapLongPressed(val point: GeoPoint, val hits: List<MapHitResult>) : MapAction
@@ -209,8 +214,17 @@ class DefaultMapReducer(
         MapAction.CloseSurface -> MapReduction(closeSurface(state))
         MapAction.DismissTransient -> MapReduction(state.copy(transient = null))
         MapAction.ClearSelection -> MapReduction(state.copy(selection = null))
+        MapAction.OpenMapViewPicker -> MapReduction(state.copy(transient = MapTransient.MapViewPicker))
+        is MapAction.SetMapViewMode -> persistSession(state.copy(mapViewMode = action.mode, transient = null))
+        is MapAction.QuickMark -> quickMark(state, action.point)
+        is MapAction.BeginMeasurement -> beginMeasurement(state, action.vessel, action.target)
+        MapAction.RequestCloseRouteDraft -> requestCloseRouteDraft(state)
         is MapAction.SetCrosshairEnabled -> MapReduction(state.copy(crosshairEnabled = action.enabled))
-        is MapAction.MapTapped -> MapReduction(mapInteraction(state, action.point, action.hits, PointCandidateOrigin.MAP_TAP))
+        is MapAction.MapTapped -> if (action.hits.isEmpty() && state.tool != MapTool.BROWSE) {
+            addPoint(state.copy(transient = null, selection = null), action.point)
+        } else {
+            MapReduction(mapInteraction(state, action.point, action.hits, PointCandidateOrigin.MAP_TAP))
+        }
         is MapAction.MapLongPressed -> MapReduction(
             mapInteraction(state, action.point, action.hits, PointCandidateOrigin.MAP_LONG_PRESS),
         )
@@ -423,10 +437,11 @@ class DefaultMapReducer(
             MapReduction(
                 state.copy(
                     camera = result.session.camera,
-                    measurementDraft = result.session.measurementDraft,
+                    measurementDraft = null,
                     places = library.places,
                     routeDrafts = library.routeDrafts,
                     activeRouteDraftId = activeDraftId,
+                    tool = if (activeDraftId != null) MapTool.MANUAL_ROUTE else MapTool.BROWSE,
                     savedRoutes = library.savedRoutes,
                     importedTracks = library.importedTracks,
                     gpxImportRecords = library.gpxImportRecords,
@@ -434,6 +449,7 @@ class DefaultMapReducer(
                     activeChartPackageId = result.session.activeChartPackageId,
                     chartDisplayPreferences = result.session.chartDisplayPreferences,
                     chartDisplayPreferencesInitialized = result.session.chartDisplayPreferencesInitialized,
+                    mapViewMode = result.session.mapViewMode,
                     libraryLoadState = if (library.isEmpty) MapLibraryLoadState.READY_EMPTY else MapLibraryLoadState.READY,
                     libraryRevision = library.revision,
                     durableLibraryRevision = library.revision,
@@ -595,7 +611,13 @@ class DefaultMapReducer(
             precisePointEdit = null,
             measurementDraft = state.measurementDraft ?: MeasurementDraft(),
         )
-        else -> state.copy(tool = tool, transient = null, editGesture = null, precisePointEdit = null)
+        else -> state.copy(
+            tool = tool,
+            transient = null,
+            editGesture = null,
+            precisePointEdit = null,
+            measurementDraft = if (state.tool == MapTool.MEASURE) null else state.measurementDraft,
+        )
     }
 
     private fun openSurface(state: MapState, surface: MapSurface): MapState = when (surface) {
@@ -683,15 +705,14 @@ class DefaultMapReducer(
     ): MapState {
         val hits = inputHits.distinctBy { it.overlayId to it.objectId }
         val transient = when (hits.size) {
-            0 -> if (state.tool == MapTool.BROWSE && origin == PointCandidateOrigin.MAP_TAP) {
-                null
-            } else {
-                MapTransient.PointCandidate(point, origin)
-            }
+            0 -> MapTransient.PointCandidate(point, origin)
             1 -> MapTransient.SelectedObject(hits.single())
             else -> MapTransient.ObjectCandidates(hits)
         }
-        return state.copy(transient = transient)
+        return state.copy(
+            transient = transient,
+            selection = if (hits.isEmpty()) MapSelection(point) else state.selection,
+        )
     }
 
     private fun chooseObjectCandidate(state: MapState, hit: MapHitResult): MapReduction {
@@ -849,9 +870,66 @@ class DefaultMapReducer(
     }
 
     private fun addPoint(state: MapState, point: GeoPoint): MapReduction = when (state.tool) {
-        MapTool.MEASURE -> editMeasurement(state) { points -> points + point }
+        MapTool.MEASURE -> editMeasurement(state) { points ->
+            when (points.size) {
+                0, 1 -> points + point
+                else -> listOf(points.first(), point)
+            }
+        }
         MapTool.MANUAL_ROUTE -> addRouteWaypoint(state, point, null)
         else -> MapReduction(state.copy(selection = MapSelection(point)))
+    }
+
+    private fun beginMeasurement(state: MapState, vessel: GeoPoint?, target: GeoPoint?): MapReduction {
+        // A and B are separate handles even if the initial target happens to equal the vessel.
+        val points = listOfNotNull(vessel, target).take(2)
+        return MapReduction(
+            state.copy(
+                surface = MapSurface.Root,
+                surfaceHistory = emptyList(),
+                tool = MapTool.MEASURE,
+                transient = null,
+                selection = null,
+                editGesture = null,
+                precisePointEdit = null,
+                measurementDraft = MeasurementDraft(points),
+            ),
+        )
+    }
+
+    private fun requestCloseRouteDraft(state: MapState): MapReduction {
+        val draft = state.routeDraft ?: return MapReduction(state.copy(tool = MapTool.BROWSE))
+        return if (draft.waypoints.isEmpty()) {
+            discardRouteDraft(state, draft.id)
+        } else {
+            MapReduction(state.copy(transient = MapTransient.UnsavedRoute(draft.id)))
+        }
+    }
+
+    private fun quickMark(state: MapState, point: GeoPoint): MapReduction {
+        val nextOrdinal = state.places.asSequence().mapNotNull { place ->
+            Regex("^WP\\s+(\\d{1,6})$", RegexOption.IGNORE_CASE).matchEntire(place.name.trim())
+                ?.groupValues?.getOrNull(1)?.toIntOrNull()
+        }.maxOrNull()?.plus(1) ?: 1
+        val created = createPlace(
+            state.copy(surface = MapSurface.Root, surfaceHistory = emptyList()),
+            MapAction.CreatePlace(
+                point = point,
+                name = "WP %03d".format(nextOrdinal),
+                notes = "",
+                category = PlaceCategory.PERSONAL_MARKER,
+                tags = emptyList(),
+            ),
+        )
+        val place = created.state.places.lastOrNull() ?: return created
+        return created.copy(
+            state = created.state.copy(
+                surface = MapSurface.Root,
+                surfaceHistory = emptyList(),
+                selection = MapSelection(place.point),
+                transient = MapTransient.SelectedObject(MapHitResult(MapOverlayId.SAVED_PLACES, "place:${place.id}")),
+            ),
+        )
     }
 
     private fun savePlace(state: MapState, name: String): MapReduction = ifWritable(state) {
@@ -1070,8 +1148,8 @@ class DefaultMapReducer(
                 activeRoutePlanId = null,
                 routeSaveStatus = null,
                 routeSpeedNotice = null,
-                surface = MapSurface.RouteDetail(draft.id),
-                surfaceHistory = listOf(MapSurface.Root, MapSurface.Routes),
+                surface = MapSurface.Root,
+                surfaceHistory = emptyList(),
             ),
         )
     }
@@ -1291,8 +1369,8 @@ class DefaultMapReducer(
             activeRoutePlanId = plan.id,
             routeSaveStatus = RouteSaveStatus(plan.id, plan.revision, MapSaveState.PENDING),
             routeDeleteUndo = null,
-            surface = MapSurface.RouteDetail(plan.id),
-            surfaceHistory = listOf(MapSurface.Root, MapSurface.Routes),
+            surface = MapSurface.Root,
+            surfaceHistory = emptyList(),
         )
         val persisted = persistLibrary(optimistic)
         val withTransaction = persisted.state.copy(
@@ -1519,7 +1597,7 @@ class DefaultMapReducer(
                     activeRouteDraftId = transaction?.draft?.id ?: state.activeRouteDraftId,
                     activeRoutePlanId = transaction?.previousPlan?.id,
                     tool = if (transaction != null) MapTool.MANUAL_ROUTE else state.tool,
-                    surface = transaction?.let { MapSurface.RouteDetail(it.draft.id) } ?: state.surface,
+                    surface = if (transaction != null) MapSurface.Root else state.surface,
                     persistenceFailure = failure,
                 ),
                 listOf(MapEffect.LogIncident(MapIncident.PersistenceFailure("save", failure))),

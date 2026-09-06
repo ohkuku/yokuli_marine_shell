@@ -79,6 +79,7 @@ import com.yokuli.marine.map.domain.MapSurface
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.MapTransient
+import com.yokuli.marine.map.domain.MapViewMode
 import com.yokuli.marine.map.domain.MapPrecisePointEdit
 import com.yokuli.marine.map.domain.MapViewport
 import com.yokuli.marine.map.domain.MapViewportInsets
@@ -100,6 +101,7 @@ import com.yokuli.marine.map.domain.SlippyTileKey
 import com.yokuli.marine.map.domain.TileAvailability
 import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.marine.map.domain.positionAgeMillis
+import com.yokuli.marine.map.domain.Wgs84Geodesic
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayIssue
 import com.yokuli.shell.compose.BindInternalAppInputHandler
@@ -151,6 +153,7 @@ fun ChartWorkspace(
     onCancelOfflineCoverage: () -> Unit = {},
     activeNavigationStrip: (@Composable () -> Unit)? = null,
     onStartNavigation: (routeId: String, routeRevision: Long) -> Unit = { _, _ -> },
+    onSaveAndStartRoute: () -> Unit = {},
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -216,6 +219,7 @@ fun ChartWorkspace(
                 rootInsets,
                 recoveryExportState,
                 activeNavigationStrip,
+                onSaveAndStartRoute,
                 onAction,
                 onExportRecovery,
             )
@@ -249,11 +253,13 @@ private fun MapRootChrome(
     viewportInsets: MapViewportInsets,
     recoveryExportState: MapRecoveryExportUiState,
     activeNavigationStrip: (@Composable () -> Unit)?,
+    onSaveAndStartRoute: () -> Unit,
     onAction: (MapAction) -> Unit,
     onExportRecovery: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
         MapTruthStrip(state, onAction, Modifier.align(Alignment.TopStart))
+        MapEdgeControls(state, viewportInsets, onAction)
         MapPersistenceTruth(
             state,
             recoveryExportState,
@@ -292,7 +298,7 @@ private fun MapRootChrome(
             activeNavigationStrip?.let { content ->
                 Box(Modifier.fillMaxWidth().testTag("map-active-navigation-strip")) { content() }
             }
-            MapRootSummary(state, onAction)
+            MapRootSummary(state, onSaveAndStartRoute, onAction)
             if (state.crosshairEnabled) CrosshairAction(state, queryPort, viewportSize, viewportInsets, onAction)
             MapRootCommandBar(state, viewportInsets, onAction)
         }
@@ -488,7 +494,7 @@ private fun MapPersistenceTruth(
 }
 
 @Composable
-private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
+private fun MapRootSummary(state: MapState, onSaveAndStartRoute: () -> Unit, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
     val clipboard = LocalClipboardManager.current
     state.precisePointEdit?.let {
@@ -507,11 +513,25 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
     }
     when (val transient = state.transient) {
         is MapTransient.PointCandidate -> {
+            val vessel = PositionRenderPolicy.resolve(state.position).point
+                ?.takeIf { state.position.availability == PositionAvailability.FRESH }
             Column(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
                     .testTag("map-point-candidate"),
             ) {
                 WpText(transient.point.coordinateText(), 11)
+                vessel?.let { current ->
+                    val inverse = Wgs84Geodesic.inverse(current, transient.point)
+                    WpText(
+                        stringResource(
+                            R.string.map_target_distance_bearing,
+                            inverse.distanceMeters.distanceText(),
+                            inverse.initialBearingTrueDegrees?.let { "%03.0f°T".format(it) } ?: "—",
+                        ),
+                        11,
+                        color = colors.foreground,
+                    )
+                }
                 WpText(
                     stringResource(
                         R.string.map_point_source,
@@ -523,9 +543,11 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
                     maxLines = 1,
                 )
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    MapActionText(R.string.map_measure_from_here, "map-candidate-measure", Modifier.weight(1f)) {
-                        onAction(MapAction.SelectTool(MapTool.MEASURE))
-                        onAction(MapAction.AddPoint(transient.point))
+                    MapActionText(R.string.map_target_mark, "map-candidate-mark", Modifier.weight(1f)) {
+                        onAction(MapAction.QuickMark(transient.point))
+                    }
+                    MapActionText(R.string.map_measure_from_here, "map-candidate-measure") {
+                        onAction(MapAction.BeginMeasurement(vessel, transient.point))
                     }
                     MapActionText(R.string.map_copy_coordinate, "map-candidate-copy") {
                         clipboard.setText(AnnotatedString(transient.point.coordinateText()))
@@ -561,6 +583,26 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
                 MapActionText(R.string.map_close, "map-unavailable-close") { onAction(MapAction.DismissTransient) }
             }
         }
+        is MapTransient.UnsavedRoute -> {
+            val draft = state.routeDrafts.firstOrNull { it.id == transient.draftId }
+            Row(
+                Modifier.fillMaxWidth().background(colors.background.copy(alpha = .97f)).padding(horizontal = 12.dp)
+                    .testTag("map-unsaved-route"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                WpText(stringResource(R.string.map_route_unsaved), 11, modifier = Modifier.weight(1f))
+                MapTextButton(
+                    stringResource(R.string.map_route_save),
+                    "map-unsaved-route-save",
+                    enabled = (draft?.waypoints?.size ?: 0) >= 2,
+                ) { onAction(MapAction.SaveRoutePlan) }
+                MapActionText(R.string.map_route_discard, "map-unsaved-route-discard") {
+                    onAction(MapAction.DiscardRouteDraft(transient.draftId))
+                }
+                MapActionText(R.string.map_cancel, "map-unsaved-route-cancel") { onAction(MapAction.DismissTransient) }
+            }
+        }
+        MapTransient.MapViewPicker -> MapViewPicker(state, onAction)
         null -> state.selection?.let { selection ->
             Row(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
@@ -575,22 +617,35 @@ private fun MapRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
     if (state.transient == null && state.selection == null) {
         when (state.tool) {
             MapTool.MEASURE -> MeasurementRootSummary(state, onAction)
-            MapTool.MANUAL_ROUTE -> Row(
-                Modifier.fillMaxWidth().background(colors.background.copy(alpha = .90f))
-                    .padding(horizontal = 12.dp, vertical = 5.dp).testTag("map-active-tool-summary"),
-            ) {
-                WpText(
-                    stringResource(R.string.map_route_short, state.routeDraft?.waypoints?.size ?: 0),
-                    11,
-                    modifier = Modifier.weight(1f),
-                )
-                state.routeDraft?.let { draft ->
-                    MapActionText(R.string.map_details, "map-active-route-editor") {
-                        onAction(MapAction.OpenSurface(MapSurface.RouteDetail(draft.id)))
-                    }
-                }
-            }
+            MapTool.MANUAL_ROUTE -> RouteRootSummary(state, onSaveAndStartRoute, onAction)
             MapTool.BROWSE -> Unit
+        }
+    }
+}
+
+@Composable
+private fun MapViewPicker(state: MapState, onAction: (MapAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    Column(
+        Modifier.fillMaxWidth().background(colors.background.copy(alpha = .97f))
+            .padding(horizontal = 12.dp, vertical = 8.dp).testTag("map-view-picker"),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        WpText(stringResource(R.string.map_view_title), 12, weight = FontWeight.SemiBold)
+        Row(Modifier.fillMaxWidth()) {
+            MapViewMode.entries.forEach { mode ->
+                val label = when (mode) {
+                    MapViewMode.MARINE -> R.string.map_view_marine
+                    MapViewMode.STANDARD -> R.string.map_view_standard
+                    MapViewMode.SATELLITE -> R.string.map_view_satellite
+                }
+                MapCommandButton(
+                    label,
+                    "map-view-${mode.name.lowercase(Locale.ROOT)}",
+                    state.mapViewMode == mode,
+                    Modifier.weight(1f),
+                ) { onAction(MapAction.SetMapViewMode(mode)) }
+            }
         }
     }
 }
@@ -676,24 +731,56 @@ private fun MeasurementRootSummary(state: MapState, onAction: (MapAction) -> Uni
             }
         }
         WpText(message, 11)
-        Row(Modifier.fillMaxWidth()) {
-            MapTextButton(stringResource(R.string.map_undo), "map-measure-undo", draft.undo.isNotEmpty()) {
-                onAction(MapAction.UndoMeasurementEdit)
-            }
-            MapTextButton(stringResource(R.string.map_redo), "map-measure-redo", draft.redo.isNotEmpty()) {
-                onAction(MapAction.RedoMeasurementEdit)
-            }
-            MapTextButton(stringResource(R.string.map_clear), "map-measure-clear", draft.points.isNotEmpty()) {
-                onAction(MapAction.ClearMeasurement)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            WpText(stringResource(R.string.map_measure_ab_hint), 10, color = colors.muted, modifier = Modifier.weight(1f))
+            MapTextButton(stringResource(R.string.map_close), "map-measure-close") {
+                onAction(MapAction.SelectTool(MapTool.BROWSE))
             }
         }
+    }
+}
+
+@Composable
+private fun RouteRootSummary(
+    state: MapState,
+    onSaveAndStartRoute: () -> Unit,
+    onAction: (MapAction) -> Unit,
+) {
+    val colors = LocalWpTheme.current
+    val draft = state.routeDraft ?: return
+    val distance = state.routeSummary?.distanceNauticalMiles
+        ?.let { String.format(Locale.US, "%.2f NM", it) }
+        ?: "— NM"
+    val saveEnabled = draft.waypoints.size >= 2 && state.routeSaveStatus?.state != MapSaveState.PENDING
+    Column(
+        Modifier.fillMaxWidth().background(colors.background.copy(alpha = .94f))
+            .padding(horizontal = 12.dp, vertical = 4.dp).testTag("map-active-tool-summary"),
+    ) {
+        WpText(stringResource(R.string.map_route_hud, distance, draft.waypoints.size), 11)
         Row(Modifier.fillMaxWidth()) {
-            MapTextButton(stringResource(R.string.map_measure_all_segments), "map-measure-details", draft.points.size >= 2) {
-                onAction(MapAction.OpenSurface(MapSurface.Measurement))
-            }
-            MapTextButton(stringResource(R.string.map_fit_all), "map-measure-fit", draft.points.size >= 2) {
-                onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(minimalBounds(draft.points)), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
-            }
+            MapTextButton(
+                stringResource(R.string.map_undo),
+                "map-route-undo",
+                enabled = draft.undo.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            ) { onAction(MapAction.UndoRouteEdit) }
+            MapTextButton(
+                stringResource(R.string.map_route_save),
+                "map-route-save-direct",
+                enabled = saveEnabled,
+                modifier = Modifier.weight(1f),
+            ) { onAction(MapAction.SaveRoutePlan) }
+            MapTextButton(
+                stringResource(R.string.map_route_go),
+                "map-route-go",
+                enabled = saveEnabled,
+                modifier = Modifier.weight(1f),
+            ) { onSaveAndStartRoute() }
+            MapTextButton(
+                stringResource(R.string.map_route_discard),
+                "map-route-discard-direct",
+                modifier = Modifier.weight(1f),
+            ) { onAction(MapAction.DiscardRouteDraft(draft.id)) }
         }
     }
 }
@@ -731,6 +818,108 @@ private fun CrosshairAction(
 }
 
 @Composable
+private fun MapEdgeControls(
+    state: MapState,
+    viewportInsets: MapViewportInsets,
+    onAction: (MapAction) -> Unit,
+) {
+    val density = LocalDensity.current
+    val colors = LocalWpTheme.current
+    val vessel = PositionRenderPolicy.resolve(state.position).point
+        ?.takeIf { state.position.availability == PositionAvailability.FRESH }
+    Box(Modifier.fillMaxSize().padding(bottom = 62.dp)) {
+        MapEdgeButton(
+            label = if (state.camera.bearing == 0.0) "N" else "%03.0f°".format(state.camera.bearing),
+            tag = "map-orientation-north",
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp),
+        ) {
+            onAction(
+                MapAction.RequestCamera(
+                    MapCameraTarget.Exact(state.camera.copy(bearing = 0.0)),
+                    MapCameraIntent.NORTH_RESET,
+                    viewportInsets,
+                ),
+            )
+        }
+        Column(
+            Modifier.align(Alignment.TopEnd).padding(
+                top = 4.dp,
+                end = with(density) { viewportInsets.rightPx.toDp() } + 6.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            MapEdgeButton("+", "map-zoom-in") {
+                onAction(
+                    MapAction.RequestCamera(
+                        MapCameraTarget.Exact(state.camera.copy(zoom = (state.camera.zoom + 1.0).coerceAtMost(24.0))),
+                        MapCameraIntent.RESTORE,
+                        viewportInsets,
+                    ),
+                )
+            }
+            MapEdgeButton("−", "map-zoom-out") {
+                onAction(
+                    MapAction.RequestCamera(
+                        MapCameraTarget.Exact(state.camera.copy(zoom = (state.camera.zoom - 1.0).coerceAtLeast(0.0))),
+                        MapCameraIntent.RESTORE,
+                        viewportInsets,
+                    ),
+                )
+            }
+        }
+        MapEdgeButton(
+            label = "GPS",
+            tag = "map-recenter",
+            selected = state.position.viewIntent == PositionViewIntent.FOLLOW_POSITION,
+            enabled = vessel != null,
+            modifier = Modifier.align(Alignment.BottomStart).padding(
+                start = with(density) { viewportInsets.leftPx.toDp() } + 6.dp,
+                bottom = 6.dp,
+            ),
+        ) {
+            val point = vessel ?: return@MapEdgeButton
+            onAction(MapAction.SetPositionViewIntent(PositionViewIntent.FOLLOW_POSITION))
+            onAction(
+                MapAction.RequestCamera(
+                    MapCameraTarget.Exact(state.camera.copy(center = point)),
+                    MapCameraIntent.FOLLOW_POSITION,
+                    viewportInsets,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MapEdgeButton(
+    label: String,
+    tag: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val colors = LocalWpTheme.current
+    Box(
+        modifier.size(48.dp).background(
+            if (selected) colors.accent else colors.background.copy(alpha = .9f),
+        ).clickNoRipple(enabled, onClick).testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        WpText(
+            label,
+            if (label.length > 3) 10 else 20,
+            color = when {
+                !enabled -> colors.muted
+                selected -> colors.onAccent
+                else -> colors.foreground
+            },
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
 private fun MapRootCommandBar(
     state: MapState,
     viewportInsets: MapViewportInsets,
@@ -746,27 +935,64 @@ private fun MapRootCommandBar(
                 bottom = 4.dp,
             ).testTag("map-root-command-bar"),
     ) {
+        val target = (state.transient as? MapTransient.PointCandidate)?.point ?: state.selection?.point
+        val vessel = PositionRenderPolicy.resolve(state.position).point
+            ?.takeIf { state.position.availability == PositionAvailability.FRESH }
+        MapCommandButton(
+            R.string.map_tool_mark,
+            "map-tool-mark",
+            false,
+            Modifier.weight(1f),
+            enabled = target != null || vessel != null,
+        ) {
+            onAction(MapAction.QuickMark(target ?: vessel ?: return@MapCommandButton))
+        }
+        MapCommandButton(R.string.map_tool_route, "map-tool-route", state.tool == MapTool.MANUAL_ROUTE, Modifier.weight(1f)) {
+            if (state.tool == MapTool.MANUAL_ROUTE) {
+                onAction(MapAction.RequestCloseRouteDraft)
+            } else {
+                onAction(MapAction.SelectTool(MapTool.MANUAL_ROUTE))
+                if (state.routeDraft == null && vessel != null) onAction(MapAction.AddPoint(vessel))
+            }
+        }
         MapCommandButton(R.string.map_tool_measure, "map-tool-measure", state.tool == MapTool.MEASURE, Modifier.weight(1f)) {
-            onAction(MapAction.SelectTool(if (state.tool == MapTool.MEASURE) MapTool.BROWSE else MapTool.MEASURE))
+            if (state.tool == MapTool.MEASURE) {
+                onAction(MapAction.SelectTool(MapTool.BROWSE))
+            } else {
+                onAction(MapAction.BeginMeasurement(vessel, target ?: state.camera.center))
+            }
         }
-        MapCommandButton(R.string.map_tool_quick_layers, "map-open-quick-layers", false, Modifier.weight(1f)) {
-            onAction(MapAction.OpenSurface(MapSurface.ChartPackages))
-        }
-        MapCommandButton(R.string.map_crosshair, "map-crosshair-toggle", state.crosshairEnabled, Modifier.weight(1f)) {
-            onAction(MapAction.SetCrosshairEnabled(!state.crosshairEnabled))
+        MapCommandButton(R.string.map_tool_view, "map-open-view-picker", false, Modifier.weight(1f)) {
+            onAction(MapAction.OpenMapViewPicker)
         }
     }
 }
 
 @Composable
-private fun MapCommandButton(label: Int, tag: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun MapCommandButton(
+    label: Int,
+    tag: String,
+    selected: Boolean,
+    modifier: Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
     val colors = LocalWpTheme.current
     Box(
-        modifier.heightIn(min = 48.dp).clickNoRipple(action = onClick)
+        modifier.heightIn(min = 48.dp).clickNoRipple(enabled = enabled, action = onClick)
             .background(if (selected) colors.accent else colors.background).testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
-        WpText(stringResource(label), 9, color = if (selected) colors.onAccent else colors.foreground, maxLines = 1)
+        WpText(
+            stringResource(label),
+            9,
+            color = when {
+                !enabled -> colors.muted
+                selected -> colors.onAccent
+                else -> colors.foreground
+            },
+            maxLines = 1,
+        )
     }
 }
 

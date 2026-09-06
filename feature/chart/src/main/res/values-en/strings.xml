@@ -31,6 +31,16 @@
     <string name="map_tool_browse">browse</string>
     <string name="map_tool_places">places</string>
     <string name="map_tool_measure">measure</string>
+    <string name="map_tool_mark">mark</string>
+    <string name="map_tool_route">route</string>
+    <string name="map_tool_view">map</string>
+    <string name="map_view_title">map view</string>
+    <string name="map_view_marine">marine</string>
+    <string name="map_view_standard">standard</string>
+    <string name="map_view_satellite">satellite</string>
+    <string name="map_target_mark">mark</string>
+    <string name="map_target_distance_bearing">%1$s · %2$s</string>
+    <string name="map_measure_ab_hint">drag A / B to adjust the ruler</string>
     <string name="map_tool_routes">routes</string>
     <string name="map_tool_charts">charts</string>
     <string name="map_tool_quick_layers">layers</string>
@@ -166,6 +176,9 @@
     <string name="map_route_save">save plan</string>
     <string name="map_route_save_copy">save as new plan</string>
     <string name="map_route_discard">discard this draft</string>
+    <string name="map_route_go">go</string>
+    <string name="map_route_hud">%1$s · %2$d points</string>
+    <string name="map_route_unsaved">unsaved route</string>
     <string name="map_route_continue_map">continue drawing on map</string>
     <string name="map_route_edit">edit as independent draft</string>
     <string name="map_route_duplicate">duplicate as new plan</string>

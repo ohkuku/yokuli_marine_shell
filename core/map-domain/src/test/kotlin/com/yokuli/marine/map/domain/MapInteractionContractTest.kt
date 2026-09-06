@@ -46,22 +46,18 @@ class MapInteractionContractTest {
     }
 
     @Test
-    fun `map tap creates a candidate and only explicit confirmation appends one point`() {
+    fun `map tap directly adds a visible point in measurement mode`() {
         var state = reduce(MapState(), MapAction.SelectTool(MapTool.MEASURE)).state
 
         state = reduce(state, MapAction.MapTapped(first, emptyList())).state
-        assertEquals(first, (state.transient as MapTransient.PointCandidate).point)
-        assertTrue(state.measurementDraft?.points.orEmpty().isEmpty())
-
-        state = reduce(state, MapAction.CameraChanged(MapCamera(second, 12.0))).state
-        assertTrue(state.measurementDraft?.points.orEmpty().isEmpty())
-
-        state = reduce(state, MapAction.ConfirmPointCandidate).state
         assertEquals(listOf(first), state.measurementDraft?.points)
         assertNull(state.transient)
 
-        state = reduce(state, MapAction.ConfirmPointCandidate).state
+        state = reduce(state, MapAction.CameraChanged(MapCamera(second, 12.0))).state
         assertEquals(listOf(first), state.measurementDraft?.points)
+
+        state = reduce(state, MapAction.MapTapped(second, emptyList())).state
+        assertEquals(listOf(first, second), state.measurementDraft?.points)
     }
 
     @Test

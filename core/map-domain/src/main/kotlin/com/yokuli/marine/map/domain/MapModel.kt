@@ -40,6 +40,8 @@ data class MapCamera(
 
 data class MapSelection(val point: GeoPoint)
 
+enum class MapViewMode { MARINE, STANDARD, SATELLITE }
+
 enum class PlaceCategory(val wireValue: String, val searchAliases: Set<String>) {
     ANCHORAGE("anchorage", setOf("锚地", "泊地")),
     MARINA("marina", setOf("码头", "游艇港")),
@@ -356,6 +358,7 @@ data class MapSessionSnapshot(
     val activeChartPackageId: ChartPackageId? = null,
     val chartDisplayPreferences: ChartDisplayPreferences = ChartDisplayPreferences(),
     val chartDisplayPreferencesInitialized: Boolean = false,
+    val mapViewMode: MapViewMode = MapViewMode.SATELLITE,
 )
 
 data class MapLibrarySnapshot(
@@ -411,6 +414,7 @@ data class MapState(
     val precisePointEdit: MapPrecisePointEdit? = null,
     val viewport: MapViewport? = null,
     val crosshairEnabled: Boolean = false,
+    val mapViewMode: MapViewMode = MapViewMode.SATELLITE,
     val places: List<SavedPlace> = emptyList(),
     val placeMove: PlaceMoveDraft? = null,
     val placeDeleteRequest: PlaceDeleteRequest? = null,
@@ -500,6 +504,7 @@ data class MapState(
         activeChartPackageId = activeChartPackageId,
         chartDisplayPreferences = chartDisplayPreferences,
         chartDisplayPreferencesInitialized = chartDisplayPreferencesInitialized,
+        mapViewMode = mapViewMode,
     )
 
     fun librarySnapshot(): MapLibrarySnapshot = MapLibrarySnapshot(

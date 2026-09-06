@@ -39,6 +39,10 @@ sealed interface MapTransient {
     }
 
     data class UnavailableObject(val objectId: String) : MapTransient
+    data object MapViewPicker : MapTransient
+    data class UnsavedRoute(val draftId: String) : MapTransient {
+        init { require(draftId.isNotBlank()) }
+    }
 }
 
 @JvmInline
@@ -109,7 +113,8 @@ object MapFeatureBackPolicy {
         state.editGesture != null -> MapAction.CancelPointDrag(state.editGesture.id)
         state.surface == MapSurface.CoordinateInput -> MapAction.CloseSurface
         state.precisePointEdit != null -> MapAction.CancelPrecisePointEdit
-        state.tool != MapTool.BROWSE -> MapAction.SelectTool(MapTool.BROWSE)
+        state.tool == MapTool.MANUAL_ROUTE -> MapAction.RequestCloseRouteDraft
+        state.tool == MapTool.MEASURE -> MapAction.SelectTool(MapTool.BROWSE)
         state.surface != MapSurface.Root -> MapAction.CloseSurface
         state.selection != null -> MapAction.ClearSelection
         else -> null

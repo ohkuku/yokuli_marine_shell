@@ -80,6 +80,7 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
@@ -88,7 +89,13 @@ import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.layers.PropertyFactory.rasterOpacity
+import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
+import org.maplibre.android.style.layers.PropertyFactory.textColor
+import org.maplibre.android.style.layers.PropertyFactory.textField
+import org.maplibre.android.style.layers.PropertyFactory.textIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.textSize
 import org.maplibre.android.style.layers.RasterLayer
+import org.maplibre.android.style.expressions.Expression.get
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.sources.RasterSource
 import org.maplibre.geojson.Feature
@@ -383,6 +390,7 @@ fun OfflineMarineChartSurface(
                 style.addPointOverlay(MapOverlayId.SELECTION, 0xffffffff.toInt(), 7f)
                 style.addLineOverlay(MapOverlayId.MEASUREMENT, 0xfff7b500.toInt(), 3f)
                 style.addPointOverlay(MapOverlayId.MEASUREMENT_POINTS, 0xfff7b500.toInt(), 6f)
+                style.addMeasurementLabels()
                 style.addLineOverlay(MapOverlayId.MANUAL_ROUTE, 0xff00a4ef.toInt(), 5f)
                 style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 5f)
                 style.addLineOverlay(MapOverlayId.IMPORTED_TRACKS, 0xff9b59b6.toInt(), 3f)
@@ -497,7 +505,7 @@ fun OfflineMarineChartSurface(
             style.source(MapOverlayId.MEASUREMENT_POINTS)?.setGeoJson(
                 FeatureCollection.fromFeatures(
                     measurementPoints.mapIndexed { index, point ->
-                        point.toFeature("measurement-point:$index")
+                        point.toLabeledFeature("measurement-point:$index", if (index == 0) "A" else "B")
                     },
                 ),
             )
@@ -586,6 +594,9 @@ private fun GeoBounds.toLatLngBounds() = LatLngBounds.from(
 )
 internal fun GeoPoint.toGeoJsonPoint() = Point.fromLngLat(longitude, latitude)
 private fun GeoPoint.toFeature(id: String) = Feature.fromGeometry(toGeoJsonPoint(), null, id)
+private fun GeoPoint.toLabeledFeature(id: String, label: String) = toFeature(id).apply {
+    addStringProperty("label", label)
+}
 private fun GeoPoint?.toFeatureCollection(id: String) = FeatureCollection.fromFeatures(
     if (this == null) emptyList() else listOf(toFeature(id)),
 )
@@ -660,6 +671,19 @@ private fun Style.addPointOverlay(id: MapOverlayId, color: Int, radius: Float) {
             circleStrokeColor(0xffffffff.toInt()),
             circleStrokeWidth(1.5f),
         ),
+    )
+}
+
+private fun Style.addMeasurementLabels() {
+    addLayer(
+        SymbolLayer("${MapOverlayId.MEASUREMENT_POINTS.wireValue}-labels", MapOverlayId.MEASUREMENT_POINTS.wireValue)
+            .withProperties(
+                textField(get("label")),
+                textSize(13f),
+                textColor(0xff000000.toInt()),
+                textAllowOverlap(true),
+                textIgnorePlacement(true),
+            ),
     )
 }
 
