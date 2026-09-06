@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task": "CL03",
+  "start_commit": "fcfbb42",
+  "catalog_database": "Room chart-library database v1",
+  "catalog_page_size": 100,
+  "transaction_replay_window": 256,
+  "chart_blob_columns": 0,
+  "catalog_truth_owner": "RoomChartCatalogRepository",
+  "map_state_asset_writer": false,
+  "test_device": "pixel_7_api_34 emulator"
+}

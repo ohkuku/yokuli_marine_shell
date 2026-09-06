@@ -125,12 +125,41 @@
     },
     "CL03": {
       "title": "目录模型、版本和持久化",
-      "status": "NOT_STARTED",
-      "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "status": "PASS",
+      "head": "fcfbb42",
+      "changed_files": [
+        "core/map-domain/**/chartlibrary/ChartCatalogContracts*",
+        "adapter/chart-library-android/**/ChartCatalogDatabase.kt",
+        "adapter/chart-library-android/**/RoomChartCatalogRepository*",
+        "adapter/chart-library-android/schemas/**",
+        ".github/scripts/test_chart_library_cl03_contract.py"
+      ],
+      "commands": [
+        {
+          "command": "./gradlew :core:map-domain:test :adapter:chart-library-android:compileDebugAndroidTestKotlin --no-daemon",
+          "red_exit_code": 1,
+          "green_exit_code": 0
+        },
+        {
+          "command": "./gradlew :adapter:chart-library-android:connectedDebugAndroidTest -P...RoomChartCatalogRepositoryTest",
+          "first_exit_code": 1,
+          "corrected_exit_code": 0,
+          "result": "4/4 API34"
+        },
+        {
+          "command": "python3 .github/scripts/test_chart_library_cl03_contract.py",
+          "exit_code": 0
+        }
+      ],
+      "evidence": [
+        "adapter/chart-library-android/build/reports/androidTests/connected/debug/index.html",
+        "adapter/chart-library-android/schemas/com.yokuli.marine.chart.library.android.ChartCatalogDatabase/1.json",
+        "docs/phases/chart-library/CL03_REPORT.md",
+        "docs/phases/chart-library/CL03_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "idempotency ledger is bounded to 256 general transactions; schema migration idempotency gets its own durable marker in CL09"
+      ],
       "blockers": []
     },
     "CL04": {
