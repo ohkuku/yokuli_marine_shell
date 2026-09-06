@@ -334,6 +334,12 @@ def build_report(repo_root: Path, output: Path, job: str, status: str, head_sha:
         destination = output / "google-maps-configuration.json"
         shutil.copyfile(google_maps_evidence, destination)
         attachments.append(destination.name)
+    w16_evidence = repo_root / "build" / "w16"
+    if job in {"build", "api34"} and w16_evidence.is_dir():
+        for source in sorted(w16_evidence.glob("*.json")):
+            destination = output / source.name
+            shutil.copyfile(source, destination)
+            attachments.append(destination.name)
     steps = load_steps(repo_root)
     tests, test_warnings = junit_findings(repo_root, evidence)
     lint, lint_warnings = lint_findings(repo_root, evidence)

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W16",
+  "baseCommit": "f61b86e5eb09a088303f9635ec3abf4bd1a22bb7",
+  "status": "IMPLEMENTED_CI_PENDING",
+  "workflow": "Yokuli OS Android CI",
+  "trustedDistributionRequiresMapsConfiguration": true,
+  "mapsConfigurationMeansRuntimeReady": false,
+  "virtualSoak": {
+    "durationMinutes": 30,
+    "connections": 4,
+    "totalFramesPerSecond": 100,
+    "badChecksumInjection": true,
+    "silentWindowSeconds": 12
+  },
+  "activeFeatureDeviceSuites": ["chart-library", "navigation", "nmea-input", "preferences"],
+  "migrationScopes": ["jvm", "api34"],
+  "processRestoreProbes": ["chart", "nmea"],
+  "acceptanceStatuses": ["PASS", "FAIL", "BLOCKED", "NOT_RUN"],
+  "humanPhysicalDefault": "NOT_RUN",
+  "localFullGate": "NOT_RUN_BY_CONTRACT",
+  "authoritativeEvidence": "GITHUB_ACTIONS_PENDING"
+}

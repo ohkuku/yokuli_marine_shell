@@ -5,6 +5,12 @@ on:
     branches: [main, "codex/**"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      final_gate:
+        description: Run the same complete W16 machine gate as a manual acceptance run
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -108,11 +114,14 @@ jobs:
       - name: Emit secret-free Google Maps build configuration evidence
         id: google_maps_evidence
         continue-on-error: true
-        run: >-
-          bash .github/scripts/run_ci_capture.sh google-maps-evidence --
-          python3 .github/scripts/emit_google_maps_configuration_evidence.py
-          --build-root app-shell/build
-          --output build/google-maps/configuration.json
+        run: |
+          maps_args=()
+          if [ '${{ github.event_name }}' != pull_request ]; then maps_args+=(--require-configured); fi
+          bash .github/scripts/run_ci_capture.sh google-maps-evidence -- \
+            python3 .github/scripts/emit_google_maps_configuration_evidence.py \
+            --build-root app-shell/build \
+            --output build/google-maps/configuration.json \
+            "${maps_args[@]}"
       - name: Launcher Stage 1 product-surface contract
         id: launcher_stage1_contract
         continue-on-error: true
@@ -247,6 +256,23 @@ jobs:
         id: osr_w15_contract
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w15-contract -- python3 .github/scripts/test_osr_w15_contract.py
+      - name: OS Redesign W16 final evidence contract
+        id: osr_w16_contract
+        continue-on-error: true
+        run: bash .github/scripts/run_ci_capture.sh osr-w16-contract -- python3 .github/scripts/test_osr_w16_contract.py
+      - name: Collect W16 build, migration, release-surface, soak, and Maps evidence
+        id: osr_w16_build_evidence
+        continue-on-error: true
+        run: |
+          w16_args=()
+          if [ '${{ github.event_name }}' = pull_request ]; then w16_args+=(--allow-unconfigured-maps); fi
+          bash .github/scripts/run_ci_capture.sh w16-build-evidence -- \
+            python3 .github/scripts/collect_w16_machine_evidence.py \
+            --scope build \
+            --output build/w16/w16-build-evidence.json \
+            --migration-output build/w16/w16-migration-build.json \
+            --require-complete \
+            "${w16_args[@]}"
       - name: OS Redesign cumulative contract enforcement
         id: osr_w01_contract
         if: always()
@@ -264,6 +290,7 @@ jobs:
           OSR_W13_RESULT: ${{ steps.osr_w13_contract.outcome }}
           OSR_W14_RESULT: ${{ steps.osr_w14_contract.outcome }}
           OSR_W15_RESULT: ${{ steps.osr_w15_contract.outcome }}
+          OSR_W16_RESULT: ${{ steps.osr_w16_contract.outcome }}
         run: |
           test "$OSR_W01_ONLY_RESULT" = success
           test "$OSR_W02_RESULT" = success
@@ -277,8 +304,9 @@ jobs:
           test "$OSR_W13_RESULT" = success
           test "$OSR_W14_RESULT" = success
           test "$OSR_W15_RESULT" = success
+          test "$OSR_W16_RESULT" = success
       - name: Upload quality-gate candidate APKs
-        if: steps.ci_helpers.outcome == 'success' && steps.launcher_stage0_contract.outcome == 'success' && steps.nmea_sources_p0_contract.outcome == 'success' && steps.nmea_sources_p1_contract.outcome == 'success' && steps.nmea_sources_p2_contract.outcome == 'success' && steps.nmea_sources_p3_contract.outcome == 'success' && steps.nmea_sources_p4_contract.outcome == 'success' && steps.nmea_sources_p5_contract.outcome == 'success' && steps.nmea_sources_p6_contract.outcome == 'success' && steps.nmea_sources_p7_contract.outcome == 'success' && steps.launcher_stage1_contract.outcome == 'success' && steps.launcher_stage2_contract.outcome == 'success' && steps.launcher_stage25_contract.outcome == 'success' && steps.launcher_stage3_contract.outcome == 'success' && steps.launcher_stage4_contract.outcome == 'success' && steps.launcher_stage5_contract.outcome == 'success' && steps.launcher_stage6_contract.outcome == 'success' && steps.launcher_stage7_contract.outcome == 'success' && steps.launcher_stage8_contract.outcome == 'success' && steps.launcher_stage9_contract.outcome == 'success' && steps.launcher_stage10_contract.outcome == 'success' && steps.launcher_stage11_contract.outcome == 'success' && steps.shell_app_contract.outcome == 'success' && steps.chart_c12_contract.outcome == 'success' && steps.chart_library_cl07_contract.outcome == 'success' && steps.chart_library_cl08_contract.outcome == 'success' && steps.chart_library_cl09_contract.outcome == 'success' && steps.chart_library_cl10_contract.outcome == 'success' && steps.chart_library_cl11_contract.outcome == 'success' && steps.chart_library_cl12_contract.outcome == 'success' && steps.osr_w01_contract.outcome == 'success' && steps.google_maps_evidence.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.ci_helpers.outcome == 'success' && steps.launcher_stage0_contract.outcome == 'success' && steps.nmea_sources_p0_contract.outcome == 'success' && steps.nmea_sources_p1_contract.outcome == 'success' && steps.nmea_sources_p2_contract.outcome == 'success' && steps.nmea_sources_p3_contract.outcome == 'success' && steps.nmea_sources_p4_contract.outcome == 'success' && steps.nmea_sources_p5_contract.outcome == 'success' && steps.nmea_sources_p6_contract.outcome == 'success' && steps.nmea_sources_p7_contract.outcome == 'success' && steps.launcher_stage1_contract.outcome == 'success' && steps.launcher_stage2_contract.outcome == 'success' && steps.launcher_stage25_contract.outcome == 'success' && steps.launcher_stage3_contract.outcome == 'success' && steps.launcher_stage4_contract.outcome == 'success' && steps.launcher_stage5_contract.outcome == 'success' && steps.launcher_stage6_contract.outcome == 'success' && steps.launcher_stage7_contract.outcome == 'success' && steps.launcher_stage8_contract.outcome == 'success' && steps.launcher_stage9_contract.outcome == 'success' && steps.launcher_stage10_contract.outcome == 'success' && steps.launcher_stage11_contract.outcome == 'success' && steps.shell_app_contract.outcome == 'success' && steps.chart_c12_contract.outcome == 'success' && steps.chart_library_cl07_contract.outcome == 'success' && steps.chart_library_cl08_contract.outcome == 'success' && steps.chart_library_cl09_contract.outcome == 'success' && steps.chart_library_cl10_contract.outcome == 'success' && steps.chart_library_cl11_contract.outcome == 'success' && steps.chart_library_cl12_contract.outcome == 'success' && steps.osr_w01_contract.outcome == 'success' && steps.osr_w16_build_evidence.outcome == 'success' && steps.google_maps_evidence.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: yokuli-os-debug-candidate-${{ github.sha }}
@@ -287,7 +315,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload explicitly unverified diagnostic APKs
-        if: steps.assemble.outcome == 'success' && (steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p2_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.nmea_sources_p4_contract.outcome != 'success' || steps.nmea_sources_p5_contract.outcome != 'success' || steps.nmea_sources_p6_contract.outcome != 'success' || steps.nmea_sources_p7_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.chart_c12_contract.outcome != 'success' || steps.chart_library_cl07_contract.outcome != 'success' || steps.chart_library_cl08_contract.outcome != 'success' || steps.chart_library_cl09_contract.outcome != 'success' || steps.chart_library_cl10_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.chart_library_cl12_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: steps.assemble.outcome == 'success' && (steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p2_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.nmea_sources_p4_contract.outcome != 'success' || steps.nmea_sources_p5_contract.outcome != 'success' || steps.nmea_sources_p6_contract.outcome != 'success' || steps.nmea_sources_p7_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.chart_c12_contract.outcome != 'success' || steps.chart_library_cl07_contract.outcome != 'success' || steps.chart_library_cl08_contract.outcome != 'success' || steps.chart_library_cl09_contract.outcome != 'success' || steps.chart_library_cl10_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.chart_library_cl12_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.osr_w16_build_evidence.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-yokuli-os-debug-${{ github.sha }}
@@ -415,6 +443,14 @@ jobs:
           path: app-shell/build/outputs/apk/standalone/debug/*.apk
           if-no-files-found: error
           retention-days: 7
+      - name: Upload W16 diagnostic APK when final machine evidence fails
+        if: steps.assemble.outcome == 'success' && (steps.osr_w16_contract.outcome != 'success' || steps.osr_w16_build_evidence.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v7
+        with:
+          name: UNVERIFIED-W16-yokuli-os-debug-${{ github.sha }}
+          path: app-shell/build/outputs/apk/standalone/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload unit-test and lint reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -425,6 +461,7 @@ jobs:
             **/build/reports/lint-results-*.html
             **/build/reports/lint-results-*.xml
             build/google-maps/configuration.json
+            build/w16/**
           if-no-files-found: warn
           retention-days: 14
       - name: Build gate summary and annotations
@@ -473,6 +510,8 @@ jobs:
           "OS Redesign W13 Preferences=${{ steps.osr_w13_contract.outcome }}"
           "OS Redesign W14 bounded live tiles=${{ steps.osr_w14_contract.outcome }}"
           "OS Redesign W15 product-surface removal=${{ steps.osr_w15_contract.outcome }}"
+          "OS Redesign W16 final evidence contract=${{ steps.osr_w16_contract.outcome }}"
+          "OS Redesign W16 build evidence=${{ steps.osr_w16_build_evidence.outcome }}"
           "OS Redesign cumulative enforcement=${{ steps.osr_w01_contract.outcome }}"
           "Google Maps build configuration evidence=${{ steps.google_maps_evidence.outcome }}"
           "Release metadata=${{ steps.release_metadata.outcome }}"
@@ -526,6 +565,8 @@ jobs:
           CHART_LIBRARY_CL11_CONTRACT_RESULT: ${{ steps.chart_library_cl11_contract.outcome }}
           CHART_LIBRARY_CL12_CONTRACT_RESULT: ${{ steps.chart_library_cl12_contract.outcome }}
           OSR_W01_CONTRACT_RESULT: ${{ steps.osr_w01_contract.outcome }}
+          OSR_W16_CONTRACT_RESULT: ${{ steps.osr_w16_contract.outcome }}
+          OSR_W16_BUILD_EVIDENCE_RESULT: ${{ steps.osr_w16_build_evidence.outcome }}
           GOOGLE_MAPS_EVIDENCE_RESULT: ${{ steps.google_maps_evidence.outcome }}
           RELEASE_METADATA_RESULT: ${{ steps.release_metadata.outcome }}
           CI_CONTRACT_RESULT: ${{ steps.ci_contract.outcome }}
@@ -535,7 +576,7 @@ jobs:
           ASSEMBLE_RESULT: ${{ steps.assemble.outcome }}
         run: |
           failed=0
-          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT NMEA_SOURCES_P0_CONTRACT_RESULT NMEA_SOURCES_P1_CONTRACT_RESULT NMEA_SOURCES_P2_CONTRACT_RESULT NMEA_SOURCES_P3_CONTRACT_RESULT NMEA_SOURCES_P4_CONTRACT_RESULT NMEA_SOURCES_P5_CONTRACT_RESULT NMEA_SOURCES_P6_CONTRACT_RESULT NMEA_SOURCES_P7_CONTRACT_RESULT LAUNCHER_STAGE1_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT LAUNCHER_STAGE5_CONTRACT_RESULT LAUNCHER_STAGE6_CONTRACT_RESULT LAUNCHER_STAGE7_CONTRACT_RESULT LAUNCHER_STAGE8_CONTRACT_RESULT LAUNCHER_STAGE9_CONTRACT_RESULT LAUNCHER_STAGE10_CONTRACT_RESULT LAUNCHER_STAGE11_CONTRACT_RESULT SHELL_APP_CONTRACT_RESULT CHART_C12_CONTRACT_RESULT CHART_LIBRARY_CL07_CONTRACT_RESULT CHART_LIBRARY_CL08_CONTRACT_RESULT CHART_LIBRARY_CL09_CONTRACT_RESULT CHART_LIBRARY_CL10_CONTRACT_RESULT CHART_LIBRARY_CL11_CONTRACT_RESULT CHART_LIBRARY_CL12_CONTRACT_RESULT OSR_W01_CONTRACT_RESULT GOOGLE_MAPS_EVIDENCE_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
+          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT NMEA_SOURCES_P0_CONTRACT_RESULT NMEA_SOURCES_P1_CONTRACT_RESULT NMEA_SOURCES_P2_CONTRACT_RESULT NMEA_SOURCES_P3_CONTRACT_RESULT NMEA_SOURCES_P4_CONTRACT_RESULT NMEA_SOURCES_P5_CONTRACT_RESULT NMEA_SOURCES_P6_CONTRACT_RESULT NMEA_SOURCES_P7_CONTRACT_RESULT LAUNCHER_STAGE1_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT LAUNCHER_STAGE5_CONTRACT_RESULT LAUNCHER_STAGE6_CONTRACT_RESULT LAUNCHER_STAGE7_CONTRACT_RESULT LAUNCHER_STAGE8_CONTRACT_RESULT LAUNCHER_STAGE9_CONTRACT_RESULT LAUNCHER_STAGE10_CONTRACT_RESULT LAUNCHER_STAGE11_CONTRACT_RESULT SHELL_APP_CONTRACT_RESULT CHART_C12_CONTRACT_RESULT CHART_LIBRARY_CL07_CONTRACT_RESULT CHART_LIBRARY_CL08_CONTRACT_RESULT CHART_LIBRARY_CL09_CONTRACT_RESULT CHART_LIBRARY_CL10_CONTRACT_RESULT CHART_LIBRARY_CL11_CONTRACT_RESULT CHART_LIBRARY_CL12_CONTRACT_RESULT OSR_W01_CONTRACT_RESULT OSR_W16_CONTRACT_RESULT OSR_W16_BUILD_EVIDENCE_RESULT GOOGLE_MAPS_EVIDENCE_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
             if [ "${!result}" != success ]; then echo "::error title=$result failed::Open the job summary and FAILURE artifact."; failed=1; fi
           done
           exit "$failed"
@@ -561,7 +602,7 @@ jobs:
           retention-days: 30
 
   integration:
-    name: Chart MBTiles, Room, and WP8 Shell on API 34
+    name: All active apps, adapters, migrations, and restore on API 34
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -578,6 +619,7 @@ jobs:
       - name: Enable KVM hardware acceleration
         run: bash .github/scripts/enable_kvm.sh
       - name: Run MBTiles + Room + Shell device suites with motion enabled
+        id: api34_suite
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: 34
@@ -600,13 +642,25 @@ jobs:
             --result-root adapter/marine-data-android/build/outputs/androidTest-results \
             --result-root adapter/map-offline/build/outputs/androidTest-results \
             --result-root adapter/map-storage/build/outputs/androidTest-results \
-            --result-root feature/chart-library/build/outputs/androidTest-results
+            --result-root feature/chart-library/build/outputs/androidTest-results \
+            --result-root feature/navigation/build/outputs/androidTest-results \
+            --result-root feature/nmea-input/build/outputs/androidTest-results \
+            --result-root feature/preferences/build/outputs/androidTest-results
       - name: Extract Chart Library CL11 resource evidence
         if: always()
         run: >-
           python3 .github/scripts/extract_chart_library_cl11_evidence.py
           --root .
           --output build/chart-library-cl11/evidence.json
+          --require-complete
+      - name: Collect W16 API 34 migration and process-restore evidence
+        id: osr_w16_api34_evidence
+        if: always()
+        run: >-
+          python3 .github/scripts/collect_w16_machine_evidence.py
+          --scope api34
+          --output build/w16/w16-api34-evidence.json
+          --migration-output build/w16/w16-migration-api34.json
           --require-complete
       - name: Device-test summary
         if: always()
@@ -627,10 +681,17 @@ jobs:
             adapter/map-storage/build/outputs/androidTest-results/**
             feature/chart-library/build/reports/androidTests/**
             feature/chart-library/build/outputs/androidTest-results/**
+            feature/navigation/build/reports/androidTests/**
+            feature/navigation/build/outputs/androidTest-results/**
+            feature/nmea-input/build/reports/androidTests/**
+            feature/nmea-input/build/outputs/androidTest-results/**
+            feature/preferences/build/reports/androidTests/**
+            feature/preferences/build/outputs/androidTest-results/**
             build/ci-device-tests.log
             build/ci-c12-process-restore.log
             build/ci-nmea-sources-process-restore.log
             build/chart-library-cl11/evidence.json
+            build/w16/**
           if-no-files-found: warn
           retention-days: 14
       - name: Collect integration failure diagnostics
@@ -869,6 +930,7 @@ jobs:
           --branch '${{ github.head_ref || github.ref_name }}'
           --run-id '${{ github.run_id }}'
           --run-attempt '${{ github.run_attempt }}'
+          --event-name '${{ github.event_name }}'
           --job-result 'build=${{ needs.build.result }}'
           --job-result 'api34=${{ needs.integration.result }}'
           --job-result 'api36=${{ needs.api-compatibility.result }}'

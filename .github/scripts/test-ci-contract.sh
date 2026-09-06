@@ -142,8 +142,22 @@ grep -Fq 'steps.osr_w14_contract.outcome' "$android" || fail 'OS Redesign cumula
 grep -Fq 'id: osr_w15_contract' "$android" || fail 'OS Redesign W15 needs an independent named CI gate'
 grep -Fq 'python3 .github/scripts/test_osr_w15_contract.py' "$android" || fail 'OS Redesign W15 contract must run in CI'
 grep -Fq 'steps.osr_w15_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W15'
+grep -Fq 'id: osr_w16_contract' "$android" || fail 'OS Redesign W16 needs an independent named CI gate'
+grep -Fq 'python3 .github/scripts/test_osr_w16_contract.py' "$android" || fail 'OS Redesign W16 contract must run in CI'
+grep -Fq 'id: osr_w16_build_evidence' "$android" || fail 'W16 must collect executed build, migration, soak, release, and Maps evidence'
+grep -Fq 'id: osr_w16_api34_evidence' "$android" || fail 'W16 must collect executed API 34 migration and process evidence'
+grep -Fq 'collect_w16_machine_evidence.py' "$android" || fail 'W16 machine evidence collector must run in CI'
+grep -Fq 'OSR_W16_BUILD_EVIDENCE_RESULT' "$android" || fail 'W16 machine evidence must participate in final enforcement'
+grep -Fq -- "--event-name '\${{ github.event_name }}'" "$android" || fail 'final ledger must distinguish push from manual dispatch'
+grep -Fq 'FINAL_ACCEPTANCE_LEDGER.json' "$repo_root/.github/scripts/compose_codex_ci_report.py" || fail 'unified report must include the final acceptance ledger'
+grep -Fq 'MIGRATION_REPORT.md' "$repo_root/.github/scripts/compose_codex_ci_report.py" || fail 'unified report must include the migration report'
+grep -Fq -- '--require-configured' "$android" || fail 'trusted alpha builds must reject a missing Maps key'
 grep -Fq 'OSR_W01_CONTRACT_RESULT' "$android" || fail 'OS Redesign W01 result must participate in final enforcement'
 grep -Fq ':feature:chart-library:connectedDebugAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Chart Library standalone UI stories must run on API 34'
+for active_feature in navigation nmea-input preferences; do
+  grep -Fq ":feature:$active_feature:connectedDebugAndroidTest" "$repo_root/.github/scripts/run_device_tests.sh" || \
+    fail "active Feature device suite missing from API 34: $active_feature"
+done
 grep -Fq 'bash .github/scripts/run_device_tests.sh performance' "$android" || fail 'Stage 11 Macrobenchmark must use the diagnostic wrapper'
 grep -Fq ':benchmark:shell:connectedStandaloneBenchmarkAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Stage 11 wrapper must run the real benchmark task'
 grep -Fq 'name: stage11-performance-reports-${{ github.sha }}' "$android" || fail 'Stage 11 measurements and traces must be commit-bound'
@@ -178,7 +192,7 @@ fi
 for helper in run_ci_capture.sh build_codex_job_report.py compose_codex_ci_report.py test_codex_ci_report.py; do
   [[ -f "$repo_root/.github/scripts/$helper" ]] || fail "Codex report helper missing: $helper"
 done
-for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract chart-library-cl11-contract chart-library-cl12-contract osr-w01-contract osr-w02-contract osr-w03-contract osr-w04-contract osr-w08-contract osr-w12-contract osr-w13-contract osr-w14-contract osr-w15-contract google-maps-evidence unit-tests lint assemble; do
+for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract chart-library-cl11-contract chart-library-cl12-contract osr-w01-contract osr-w02-contract osr-w03-contract osr-w04-contract osr-w08-contract osr-w12-contract osr-w13-contract osr-w14-contract osr-w15-contract osr-w16-contract w16-build-evidence google-maps-evidence unit-tests lint assemble; do
   grep -Fq "run_ci_capture.sh $captured_step --" "$android" || fail "important build step is not captured: $captured_step"
 done
 grep -Fq 'if: always()' "$android" || fail 'Codex reports must be generated even after failures'

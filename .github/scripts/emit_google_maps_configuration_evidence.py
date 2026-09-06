@@ -71,6 +71,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--require-configured",
+        action="store_true",
+        help="Fail a trusted distribution build when the non-placeholder key was not injected.",
+    )
     args = parser.parse_args()
     try:
         result = inspect(args.build_root.resolve())
@@ -81,6 +86,9 @@ def main() -> int:
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if not result["configurationConsistent"]:
         print("::error title=Google Maps build evidence::BuildConfig and merged manifest disagree")
+        return 1
+    if args.require_configured and not result["buildConfigConfigured"]:
+        print("::error title=Google Maps build evidence::Trusted distribution APK has no configured Maps key")
         return 1
     return 0
 

@@ -10,6 +10,9 @@ all_device_tasks=(
   :adapter:map-offline:connectedDebugAndroidTest
   :adapter:map-storage:connectedDebugAndroidTest
   :feature:chart-library:connectedDebugAndroidTest
+  :feature:navigation:connectedDebugAndroidTest
+  :feature:nmea-input:connectedDebugAndroidTest
+  :feature:preferences:connectedDebugAndroidTest
   :app-shell:connectedStandaloneDebugAndroidTest
 )
 gradle_args=(--no-daemon --stacktrace)

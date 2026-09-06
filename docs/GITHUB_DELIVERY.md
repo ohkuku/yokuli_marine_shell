@@ -8,11 +8,12 @@
 
 | 工作流 | 触发 | 必须证明 | 输出 |
 |---|---|---|---|
-| `android.yml` | PR、`main`／`codex/**` push、手动 | CI helper、版本/拓扑合同、JVM 测试、lint、standalone debug/release audit、API 34 完整故事、API 36 reduced-motion smoke | 统一 Codex 报告、raw reports、candidate／`UNVERIFIED`、全部门禁后的 `VERIFIED` APK |
+| `android.yml` | PR、`main`／`codex/**` push、手动 | CI helper、版本/拓扑合同、JVM 测试、lint、standalone debug/release audit、API 34 全活动 App/adapter/迁移/恢复、API 36 reduced-motion、NMEA 虚拟 soak、性能趋势 | 统一 Codex 报告、迁移报告、最终验收台账、raw reports、candidate／`UNVERIFIED`、全部机器门禁后的 `VERIFIED` alpha APK |
 | `nightly.yml` | 周二/周五、手动 | JVM 回归及 API 34/36 全 UI 故事 | 30 天兼容性报告或失败证据 |
 | `release.yml` | 语义 tag、手动 | metadata、签名预检、API 36 UI 合同、测试、lint、APK/AAB 签名校验 | 90 天签名制品和不可覆盖 GitHub Release |
 
-旧 runtime soak 在 Anchor/NMEA/backup runtime 尚未迁入前不得复制并冒充覆盖；届时再恢复逻辑时钟、故障注入和 wall-clock soak。
+W16 执行四连接、总计 100 Hz、30 分钟虚拟单调时间的 NMEA pipeline soak，并注入坏 checksum 与静默窗口。它证明有界 runtime
+在逻辑负载下不越界，但不能冒充 30 分钟真实船网、锁屏或 OEM 后台验证。
 
 ### GitHub 反馈与制品可信度
 
@@ -20,7 +21,7 @@
 
 - `yokuli-os-debug-candidate-*`：JVM/lint/build 已过，设备门禁未完。
 - `UNVERIFIED-yokuli-os-debug-*`：仅供诊断，至少一个质量门禁失败。
-- `VERIFIED-yokuli-os-debug-*`：build、API 34 和 API 36 均通过。
+- `VERIFIED-yokuli-os-alpha-*`：build、API 34、API 36、迁移、恢复、soak 与性能趋势机器门禁均通过。
 - `VERIFIED-yokuli-os-vX.Y.Z-signed`：已校验签名的 APK/AAB 与 checksums。
 
 ### CI-first Codex 返工报告
@@ -46,7 +47,10 @@ CODEX-CI-REPORT-<sha12>-<run_id>-<attempt>
 
 ### 发布
 
-普通 PR、push、手动与 Release 构建都会读取可选的 Repository Secret `GOOGLE_MAPS_ANDROID_API_KEY` 并注入 Android Manifest。未配置时仍可成功构建，但只提供本地 MapLibre 海图链路；配置时 Google 是在线底图，本地海图覆盖事实仍独立。个人加密 vault 的密文可以提交到 GitHub，但 Actions 不持有主口令、不会解密它，也不会自动把密文变成 Actions Secret。
+所有构建都会读取 Repository Secret `GOOGLE_MAPS_ANDROID_API_KEY` 并通过 Android Manifest 注入。GitHub 不向不受信任 PR 提供 secret，因此 PR
+允许 keyless 构建并只验证本地 MapLibre 链路；`codex/**`/`main` push 与手动分发构建若没有同时在 BuildConfig 和 merged manifest 看到非占位
+key，W16 会失败且不发布 verified alpha。这个证据仍只表示配置已注入，不证明 Google API 授权、账单、包名/签名限制、网络或图块加载成功。
+个人加密 vault 的密文可以提交到 GitHub，但 Actions 不持有主口令、不会解密它，也不会自动把密文变成 Actions Secret。
 
 签名发布只需要同一签名库产生的四个 secret：`ANDROID_SIGNING_KEY_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。preflight 必须实际打开 keystore 并恢复私钥。诊断收集使用窄 allow-list，不能包含构建配置、环境转储或签名材料。
 
@@ -72,11 +76,11 @@ This document is the operating contract for pull requests, CI artifacts, diagnos
 
 | Workflow | Trigger | Required proof | Output |
 |---|---|---|---|
-| `android.yml` | PR, `main`/`codex/**` push, manual | CI helper, release-metadata and workflow contracts; JVM tests; lint; standalone debug/release audit; API 34 full stories; API 36 reduced-motion smoke | unified Codex report; raw reports; candidate/`UNVERIFIED`; post-gate `VERIFIED` APKs |
+| `android.yml` | PR, `main`/`codex/**` push, manual | CI helper, contracts, JVM, lint, Debug/Release audit, API 34 active apps/adapters/migrations/restore, API 36 reduced motion, virtual NMEA soak, performance trend | unified Codex report, migration report, final ledger, raw reports, candidate/`UNVERIFIED`, and post-machine-gate `VERIFIED` alpha APK |
 | `nightly.yml` | Tue/Fri schedule, manual | JVM regression plus all UI stories on API 34 and 36 | 30-day compatibility reports/failure evidence |
 | `release.yml` | semantic tag, manual | metadata/topology, signing preflight, API 36 UI contract, tests, lint, signed APK/AAB verification | 90-day signed artifact and immutable GitHub Release |
 
-The old runtime soak suite is intentionally not copied yet. It depended on Anchor/NMEA/backup runtime modules that are not present in this clean-slate repository. `nightly.yml` provides real compatibility coverage without reporting fictional marine-runtime verification. Restore logical-time, fault-injection, and wall-clock soak jobs when those runtime modules land.
+W16 runs the current NMEA parser/catalog pipeline through four connections at an aggregate 100 Hz over 30 minutes of virtual monotonic time, including bad checksums and a silent window. This is bounded machine evidence, not a claim about a 30-minute boat network, lock screen, or OEM background execution.
 
 ## Feedback in GitHub
 
@@ -93,7 +97,7 @@ Artifacts carry trust in their name:
 
 - `yokuli-os-debug-candidate-*`: JVM/lint/build passed; device gates still pending.
 - `UNVERIFIED-yokuli-os-debug-*`: installable diagnostic only; a quality gate failed.
-- `VERIFIED-yokuli-os-debug-*`: build, API 34 stories, and API 36 smoke all passed.
+- `VERIFIED-yokuli-os-alpha-*`: build, API 34, API 36, migration, restore, soak, and emulator performance-trend gates all passed.
 - `VERIFIED-yokuli-os-vX.Y.Z-signed`: signature-checked release APK/AAB assets plus checksums.
 
 ### CI-first Codex repair artifact
@@ -118,7 +122,7 @@ Do not require `Publish fully verified debug APKs` on pull requests; it intentio
 
 ## Release secrets
 
-The offline MapLibre path reads local raster charts without a map secret. Push/manual artifacts and releases also inject the optional Repository Secret `GOOGLE_MAPS_ANDROID_API_KEY` for the connected Google base map; missing secrets keep builds valid but keyless. Actions never decrypts the personal vault. Releases require these four signing secrets, which must come from the same local signing vault:
+The offline MapLibre path reads local raster charts without a map secret. Untrusted pull requests remain allowed to build keyless because GitHub withholds secrets. Trusted push/manual distribution builds must inject a non-placeholder `GOOGLE_MAPS_ANDROID_API_KEY` into both BuildConfig and the merged manifest before a verified alpha can be published. This proves configuration only; API authorization, billing, package/signature restrictions, network access, and real tile loading remain a separate physical acceptance item. Actions never decrypts the personal vault. Releases require these four signing secrets, which must come from the same local signing vault:
 
 ```text
 ANDROID_SIGNING_KEY_BASE64
