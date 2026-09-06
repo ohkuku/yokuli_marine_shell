@@ -125,12 +125,16 @@ class NmeaSourcesP7Contract(unittest.TestCase):
             self.assertNotIn('project(":adapter:marine-data-android")', feature)
             self.assertNotIn('project(":app-shell")', feature)
         self.assertNotIn('project(":feature:', adapter)
+        # W04 keeps the mature NMEA editor as a composed sub-workspace, while
+        # the former Data Sources feature is retained only as migration/history
+        # code. The installed successor is the single Data app.
         for module in (
             ':adapter:marine-data-android',
             ':feature:nmea-input',
-            ':feature:data-sources',
+            ':feature:data',
         ):
             self.assertIn(f'project("{module}")', app)
+        self.assertNotIn('project(":feature:data-sources")', app)
 
     def test_phone_location_permissions_are_owned_outside_chart(self):
         app_manifest = self.read("app-shell/src/main/AndroidManifest.xml")
