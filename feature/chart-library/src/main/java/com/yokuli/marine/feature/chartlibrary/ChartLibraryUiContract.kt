@@ -17,6 +17,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceScanState
 import com.yokuli.marine.map.domain.chartlibrary.ChartValidationJob
+import com.yokuli.marine.map.domain.chartlibrary.ChartValidationJobStatus
 
 enum class ChartLibraryFilter { ALL, NEEDS_ATTENTION, ENABLED, DISABLED }
 
@@ -128,7 +129,7 @@ data class ChartLibraryAssetRowUi(
             ChartAssetValidationState.INVALID,
             ChartAssetValidationState.UNSUPPORTED_FORMAT,
             ChartAssetValidationState.CANCELLED_OR_INTERRUPTED,
-        )
+        ) || validationJob?.status in setOf(ChartValidationJobStatus.FAILED, ChartValidationJobStatus.INTERRUPTED)
 }
 
 data class ChartLibraryStorageUi(

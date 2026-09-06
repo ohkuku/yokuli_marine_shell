@@ -157,7 +157,9 @@ object ChartLibraryProjector {
             selectedAssetIds = local.selectedAssetIds,
             page = page,
             notice = notice,
-            busy = busy || metrics.queuedBasicChecks > 0,
+            // Background Basic checks are asset-local work. They must not freeze the whole App
+            // or leave the user staring at an indefinite global "working" state.
+            busy = busy,
             searchItems = sourceRows.map { ChartLibrarySearchItem.Source(it.id, it.name) } +
                 rows.map { ChartLibrarySearchItem.Asset(it.id, it.title, it.sourceNames.joinToString(" · ")) },
         )

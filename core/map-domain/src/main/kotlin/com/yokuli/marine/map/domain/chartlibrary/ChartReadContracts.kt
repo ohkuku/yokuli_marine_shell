@@ -98,6 +98,7 @@ data class ChartReadStatistics(
 
 enum class ChartReadFailure {
     CANNOT_OPEN,
+    PERMISSION_LOST,
     DIRECT_READ_UNSUPPORTED,
     SUBRANGE_UNSUPPORTED,
     INVALID_DATABASE,
@@ -129,6 +130,8 @@ interface ChartReadSession : AutoCloseable {
     fun readMetadata(limit: Int = MAX_METADATA_ROWS): Map<String, String>
     fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload?
     fun hasTile(key: ChartTileKey, scheme: MapTileScheme): Boolean
+    /** A cheap unordered sample for Basic Check; it must not scan or sort the entire tile table. */
+    fun readSampleTiles(limit: Int): List<ChartStoredTile> = readStoredTiles(0L, limit)
     fun readStoredTiles(offset: Long, limit: Int = MAX_VALIDATION_PAGE_SIZE): List<ChartStoredTile>
     fun readSourceRange(offset: Long, maxByteCount: Int = MAX_HASH_READ_BYTES): ByteArray
     fun statistics(): ChartReadStatistics

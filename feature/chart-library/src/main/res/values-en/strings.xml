@@ -52,6 +52,13 @@
     <string name="validation_invalid">validation failed</string>
     <string name="validation_unsupported">unsupported format</string>
     <string name="validation_interrupted">validation cancelled or interrupted</string>
+    <string name="validation_issue_permission">This chart cannot be read because its source permission was lost. Reauthorize the source, then retry.</string>
+    <string name="validation_issue_provider">This document provider cannot be read safely in place. The original remains registered in the library.</string>
+    <string name="validation_issue_schema">The file opened, but its MBTiles metadata or database schema is invalid.</string>
+    <string name="validation_issue_changed">The file changed during the check. Wait for writing to finish, then retry.</string>
+    <string name="validation_issue_content">Tile content did not pass the check. The asset remains in the library and can be retried.</string>
+    <string name="validation_issue_open">This file cannot be opened now. Check that its source is online, then retry.</string>
+    <string name="validation_issue_cancelled">The check was cancelled; the asset remains in the library.</string>
     <string name="role_base">base chart</string>
     <string name="role_overlay">overlay</string>
     <string name="action_add_folder">add folder</string>

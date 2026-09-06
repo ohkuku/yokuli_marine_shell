@@ -52,6 +52,13 @@
     <string name="validation_invalid">验证失败</string>
     <string name="validation_unsupported">格式不支持</string>
     <string name="validation_interrupted">验证已取消或中断</string>
+    <string name="validation_issue_permission">无法读取此海图：所属来源的只读授权已失效。请重新授权来源后重试。</string>
+    <string name="validation_issue_provider">此文档提供方不支持安全原地读取。原资源仍保留在海图库中。</string>
+    <string name="validation_issue_schema">文件可打开，但 MBTiles 元数据或数据库结构无效。</string>
+    <string name="validation_issue_changed">文件在检查期间发生变化。请等待写入完成后重试。</string>
+    <string name="validation_issue_content">图块内容未通过检查。资源没有从海图库删除，可以重试或查看来源。</string>
+    <string name="validation_issue_open">当前无法打开这个文件。请检查来源是否在线并重试。</string>
+    <string name="validation_issue_cancelled">检查已取消；资源仍保留在海图库中。</string>
     <string name="role_base">底图</string>
     <string name="role_overlay">叠加图</string>
     <string name="action_add_folder">添加文件夹</string>

@@ -25,6 +25,11 @@ class AndroidSafRandomAccessReader(private val resolver: ContentResolver) {
     fun open(uri: Uri): SafRandomAccessOpenResult {
         val descriptor = try {
             resolver.openFileDescriptor(uri, "r")
+        } catch (_: SecurityException) {
+            return SafRandomAccessOpenResult.Rejected(
+                ChartReadFailure.PERMISSION_LOST,
+                "Persisted read permission is no longer available",
+            )
         } catch (error: Throwable) {
             return SafRandomAccessOpenResult.Rejected(
                 ChartReadFailure.CANNOT_OPEN,

@@ -58,6 +58,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyFailure
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartValidationJobStatus
+import com.yokuli.marine.map.domain.chartlibrary.ChartValidationIssue
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import java.util.Locale
@@ -305,6 +306,9 @@ private fun AssetDetail(asset: ChartLibraryAssetRowUi, onAction: (ChartLibraryUi
             }
             asset.validationJob?.let { job ->
                 WpText(validationJobLabel(job.status), 13, color = LocalWpTheme.current.accent, modifier = Modifier.testTag(ChartLibraryTestTags.validation(asset.id.value)))
+                job.issue?.let { issue ->
+                    WpText(validationIssueLabel(issue), 12, color = LocalWpTheme.current.warning)
+                }
                 if (job.status == ChartValidationJobStatus.RUNNING) {
                     TextCommand(stringResource(R.string.action_cancel_validation), "chart-library-cancel-validation") {
                         onAction(ChartLibraryUiAction.CancelValidation(asset.id))
@@ -345,6 +349,28 @@ private fun AssetDetail(asset: ChartLibraryAssetRowUi, onAction: (ChartLibraryUi
         }
     }
 }
+
+@Composable
+private fun validationIssueLabel(issue: ChartValidationIssue): String = stringResource(
+    when (issue) {
+        ChartValidationIssue.PERMISSION_LOST -> R.string.validation_issue_permission
+        ChartValidationIssue.DIRECT_READ_UNSUPPORTED -> R.string.validation_issue_provider
+        ChartValidationIssue.INVALID_SCHEMA,
+        ChartValidationIssue.INVALID_METADATA,
+        ChartValidationIssue.UNKNOWN_SCHEME,
+        -> R.string.validation_issue_schema
+        ChartValidationIssue.REVISION_CHANGED -> R.string.validation_issue_changed
+        ChartValidationIssue.EMPTY_TILESET,
+        ChartValidationIssue.INVALID_COORDINATE,
+        ChartValidationIssue.MIXED_TILE_SIZE,
+        ChartValidationIssue.MIXED_RASTER_ENCODING,
+        ChartValidationIssue.DUPLICATE_COORDINATE,
+        ChartValidationIssue.READ_FAILED,
+        -> R.string.validation_issue_content
+        ChartValidationIssue.OPEN_FAILED -> R.string.validation_issue_open
+        ChartValidationIssue.CANCELLED -> R.string.validation_issue_cancelled
+    },
+)
 
 @Composable
 private fun Storage(storage: ChartLibraryStorageUi) {

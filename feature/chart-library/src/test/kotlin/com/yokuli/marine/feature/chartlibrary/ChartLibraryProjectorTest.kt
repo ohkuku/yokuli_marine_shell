@@ -20,6 +20,10 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceScanState
 import com.yokuli.marine.map.domain.chartlibrary.ChartValidationSnapshot
+import com.yokuli.marine.map.domain.chartlibrary.ChartValidationIssue
+import com.yokuli.marine.map.domain.chartlibrary.ChartValidationJob
+import com.yokuli.marine.map.domain.chartlibrary.ChartValidationJobKind
+import com.yokuli.marine.map.domain.chartlibrary.ChartValidationJobStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -91,6 +95,50 @@ class ChartLibraryProjectorTest {
     fun missingRevisionEvidenceStaysUnknownInsteadOfFabricated() {
         val row = (project(listOf(source()), listOf(asset())).page as ChartLibraryPageUi.Overview).assets.single()
         assertNull(row.revisionSummary)
+    }
+
+    @Test
+    fun backgroundBasicQueueDoesNotPresentTheWholeLibraryAsBlocked() {
+        val ui = ChartLibraryProjector.project(
+            catalog = ChartCatalogSnapshot(sourceCount = 1, assetCount = 1),
+            sources = listOf(source()),
+            assets = listOf(asset()),
+            validation = ChartValidationSnapshot(),
+            storage = ChartLibraryStorageSnapshot.EMPTY,
+            metrics = ChartLibraryRuntimeMetrics(queuedBasicChecks = 32),
+            local = ChartLibraryLocalState(),
+            busy = false,
+        )
+
+        assertFalse(ui.busy)
+    }
+
+    @Test
+    fun failedValidationKeepsTheAssetAndMakesItsRecoveryNeedVisible() {
+        val validation = ChartValidationSnapshot(
+            mapOf(
+                ASSET_A to ChartValidationJob(
+                    ASSET_A,
+                    ChartValidationJobKind.BASIC,
+                    ChartValidationJobStatus.FAILED,
+                    issue = ChartValidationIssue.PERMISSION_LOST,
+                ),
+            ),
+        )
+        val ui = ChartLibraryProjector.project(
+            catalog = ChartCatalogSnapshot(sourceCount = 1, assetCount = 1),
+            sources = listOf(source()),
+            assets = listOf(asset()),
+            validation = validation,
+            storage = ChartLibraryStorageSnapshot.EMPTY,
+            metrics = ChartLibraryRuntimeMetrics(),
+            local = ChartLibraryLocalState(),
+        )
+        val row = (ui.page as ChartLibraryPageUi.Overview).assets.single()
+
+        assertTrue(row.needsAttention)
+        assertEquals(ASSET_A, row.id)
+        assertEquals(ChartValidationIssue.PERMISSION_LOST, row.validationJob?.issue)
     }
 
     private fun project(

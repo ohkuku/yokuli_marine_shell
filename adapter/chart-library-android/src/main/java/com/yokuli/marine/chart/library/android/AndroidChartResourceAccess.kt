@@ -212,6 +212,32 @@ private class AndroidMbTilesReadSession(
         }
     }
 
+    override fun readSampleTiles(limit: Int): List<ChartStoredTile> = checked {
+        require(limit in 1..MAX_VALIDATION_PAGE_SIZE)
+        database.rawQuery(
+            "SELECT zoom_level,tile_column,tile_row,length(tile_data)," +
+                "CASE WHEN length(tile_data)<=? THEN tile_data ELSE NULL END FROM tiles LIMIT ?",
+            arrayOf(MAX_TILE_BYTES.toString(), limit.toString()),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    if (cursor.getLong(3) > MAX_TILE_BYTES) throw ChartReadException(
+                        ChartReadFailure.TILE_TOO_LARGE,
+                        "Tile exceeds the bounded payload limit",
+                    )
+                    val bytes = cursor.getBlob(4)
+                    logicalBytesRead.addAndGet(bytes.size.toLong())
+                    add(
+                        ChartStoredTile(
+                            ChartStoredTileKey(cursor.getLong(0), cursor.getLong(1), cursor.getLong(2)),
+                            bytes.toTilePayload(),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     override fun readSourceRange(offset: Long, maxByteCount: Int): ByteArray = checked {
         require(maxByteCount in 1..MAX_HASH_READ_BYTES)
         handle.readAtUpTo(offset, maxByteCount)

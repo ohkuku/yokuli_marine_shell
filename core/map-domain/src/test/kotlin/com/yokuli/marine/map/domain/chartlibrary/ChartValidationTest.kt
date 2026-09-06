@@ -25,6 +25,8 @@ class ChartValidationTest {
         assertEquals(1, inspection.sampledTileCount)
         assertNull(inspection.facts.tileCount)
         assertEquals(0, session.sourceReads)
+        assertEquals(1, session.sampleReads)
+        assertEquals(0, session.orderedTileReads)
     }
 
     @Test fun fullVerificationCancellationNeverHashesOrPublishesVerified() = runBlocking {
@@ -70,6 +72,16 @@ class ChartValidationTest {
         assertTrue(session.sourceSizeBytes > Int.MAX_VALUE)
     }
 
+    @Test fun basicInspectionPreservesPermissionFailureAsARecoverableTypedIssue() = runBlocking {
+        val result = ChartBasicInspector(
+            ChartResourceAccessPort {
+                ChartOpenResult.Rejected(ChartReadFailure.PERMISSION_LOST, "permission revoked")
+            },
+        ).inspect(asset(), 1)
+
+        assertEquals(ChartValidationIssue.PERMISSION_LOST, (result as ChartBasicInspectionResult.Rejected).issue)
+    }
+
     private fun asset() = ChartAsset(
         ChartAssetId(UUID.randomUUID().toString()),
         ChartDocumentIdentity("provider", "chart"),
@@ -95,10 +107,19 @@ class ChartValidationTest {
         )
         override val sourceSizeBytes = reportedSize
         var sourceReads = 0
+        var sampleReads = 0
+        var orderedTileReads = 0
         override fun readMetadata(limit: Int) = metadata
         override fun readTile(key: ChartTileKey, scheme: MapTileScheme) = tiles.firstOrNull()?.payload
         override fun hasTile(key: ChartTileKey, scheme: MapTileScheme) = tiles.isNotEmpty()
-        override fun readStoredTiles(offset: Long, limit: Int) = tiles.drop(offset.toInt()).take(limit)
+        override fun readSampleTiles(limit: Int): List<ChartStoredTile> {
+            sampleReads++
+            return tiles.take(limit)
+        }
+        override fun readStoredTiles(offset: Long, limit: Int): List<ChartStoredTile> {
+            orderedTileReads++
+            return tiles.drop(offset.toInt()).take(limit)
+        }
         override fun readSourceRange(offset: Long, maxByteCount: Int): ByteArray {
             sourceReads++
             return source.copyOfRange(offset.toInt(), minOf(source.size, offset.toInt() + maxByteCount))

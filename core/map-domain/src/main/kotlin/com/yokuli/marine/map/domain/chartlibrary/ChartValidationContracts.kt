@@ -17,6 +17,9 @@ enum class ChartValidationIssue {
     DUPLICATE_COORDINATE,
     READ_FAILED,
     REVISION_CHANGED,
+    PERMISSION_LOST,
+    DIRECT_READ_UNSUPPORTED,
+    INVALID_SCHEMA,
     CANCELLED,
 }
 
@@ -105,7 +108,7 @@ class ChartBasicInspector(private val access: ChartResourceAccessPort) {
         val request = ChartReadRequest(asset.id, asset.locator, asset.revision, sourceGeneration, ChartReadPurpose.VALIDATION)
         val opened = access.open(request)
         if (opened is ChartOpenResult.Rejected) {
-            return ChartBasicInspectionResult.Rejected(ChartValidationIssue.OPEN_FAILED, opened.failure.name)
+            return ChartBasicInspectionResult.Rejected(opened.failure.validationIssue(), opened.detail)
         }
         val session = (opened as ChartOpenResult.Opened).session
         return session.use {
@@ -113,7 +116,7 @@ class ChartBasicInspector(private val access: ChartResourceAccessPort) {
                 val metadata = it.readMetadata()
                 val scheme = parseScheme(metadata)
                     ?: return@use ChartBasicInspectionResult.Rejected(ChartValidationIssue.UNKNOWN_SCHEME, "Unknown tile scheme")
-                val samples = it.readStoredTiles(0L, BASIC_SAMPLE_LIMIT)
+                val samples = it.readSampleTiles(BASIC_SAMPLE_LIMIT)
                 if (samples.isEmpty()) {
                     return@use ChartBasicInspectionResult.Rejected(ChartValidationIssue.EMPTY_TILESET, "No raster tiles")
                 }
@@ -161,7 +164,7 @@ class ChartFullVerifier(
         }
         val opened = access.open(ChartReadRequest(asset.id, asset.locator, asset.revision, sourceGeneration, ChartReadPurpose.VALIDATION))
         if (opened is ChartOpenResult.Rejected) {
-            return ChartFullVerificationResult.Rejected(ChartValidationIssue.OPEN_FAILED, opened.failure.name)
+            return ChartFullVerificationResult.Rejected(opened.failure.validationIssue(), opened.detail)
         }
         val session = (opened as ChartOpenResult.Opened).session
         return session.use {
@@ -251,6 +254,19 @@ class ChartFullVerifier(
             }
         }
     }
+}
+
+private fun ChartReadFailure.validationIssue(): ChartValidationIssue = when (this) {
+    ChartReadFailure.PERMISSION_LOST -> ChartValidationIssue.PERMISSION_LOST
+    ChartReadFailure.DIRECT_READ_UNSUPPORTED,
+    ChartReadFailure.SUBRANGE_UNSUPPORTED,
+    -> ChartValidationIssue.DIRECT_READ_UNSUPPORTED
+    ChartReadFailure.INVALID_DATABASE,
+    ChartReadFailure.INVALID_SCHEMA,
+    -> ChartValidationIssue.INVALID_SCHEMA
+    ChartReadFailure.REVISION_CHANGED -> ChartValidationIssue.REVISION_CHANGED
+    ChartReadFailure.CANCELLED -> ChartValidationIssue.CANCELLED
+    else -> ChartValidationIssue.OPEN_FAILED
 }
 
 private fun parseScheme(metadata: Map<String, String>): MapTileScheme? = when (metadata["scheme"]?.trim()?.lowercase()) {
