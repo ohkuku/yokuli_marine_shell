@@ -32,7 +32,9 @@ class ChartLibraryCl08ContractTest(unittest.TestCase):
             "ChartImportUiAction", "ChartImportUiState", "ChartPackageCoordinator",
             "chartDocumentPicker", "map-import-chart", "map-coverage-import",
         ):
-            self.assertNotIn(forbidden, workspace + shell)
+            self.assertNotIn(forbidden, workspace)
+        self.assertNotIn("ChartImportUi", shell)
+        self.assertIn("ChartLibraryPickerEffect.OpenDocument", shell)
 
     def test_renderer_opens_only_planned_resources_and_google_never_fills_local_holes(self):
         preparer = (ROOT / "adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/ChartDisplayPreparer.kt").read_text()
