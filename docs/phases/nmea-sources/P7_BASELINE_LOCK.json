@@ -19,6 +19,8 @@
   "compiledOrientationRedCommit": "8c8196a50ef6ce665e6783dab296584a87c9d6ae",
   "compiledOrientationCorrectionCommit": "8ae2a8fe6965dbe3b0de77615d51088e0f547451",
   "lastGateCorrectionCommit": "05588ad3be64860d9764b731f69ec2555c374801",
+  "hostedRunnerIsolationRedCommit": "69cb78b7d30b34276ff1988f968b148dc816f30f",
+  "hostedRunnerIsolationCorrectionCommit": "29c758bdb75f533940d46a2f5462b7e45571a573",
   "physicalDevice": "UNVERIFIED_PHYSICAL_DEVICE",
   "contracts": {
     "productionInstalledApps": ["chart", "settings", "nmea-input", "data-sources"],
@@ -30,7 +32,7 @@
     "mapProvider": "offline MapLibre + imported MBTiles"
   },
   "evidence": {
-    "p7Contract": "PASS_11_OF_11",
+    "p7Contract": "PASS_12_OF_12",
     "allPythonContracts": "PASS_287_OF_287",
     "jvmTestsAcrossBuildVariants": "PASS_668_OF_668",
     "fullRepositoryGate": "PASS_EXIT_0",
@@ -39,7 +41,7 @@
     "api34DeviceSuites": "PASS_92_OF_92",
     "api34ExternalProcessProbes": "PASS_4_OF_4",
     "performanceJourneys": "PASS_11_OF_11_EMULATOR_TREND_ONLY",
-    "hostedCi": "PENDING_PUSH",
+    "hostedCi": "PENDING_CORRECTED_PUSH",
     "alphaPackage": "PENDING_HOSTED_CI",
     "thirtyMinuteAppSoak": "NOT_RUN",
     "manualScreenshotRecordingReview": "NOT_RUN",

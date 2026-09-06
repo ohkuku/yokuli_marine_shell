@@ -6,7 +6,7 @@
 
 实施基线：`codex/shell-map-contract@69bfd4d0ed29f27450351df530b4a8b1e8e2c6a6`
 
-P7 最后门禁修正提交：`05588ad3be64860d9764b731f69ec2555c374801`
+P7 最后门禁修正提交：`29c758bdb75f533940d46a2f5462b7e45571a573`
 
 ## 交付结论
 
@@ -81,7 +81,7 @@ exit: 0
 MARINE_SHELL_FINAL_GATE=MACHINE_VERIFIED CHART_C12_GATE=CORE_MACHINE_READY
 ```
 
-托管 Android CI、可下载 Alpha artifact 与签名 Release 必须等待本次封口提交 push 后的远端实际结果；本地 `MACHINE_VERIFIED` 不冒充 hosted CI。
+首次托管 run `34010119590` 的主构建成功并生成候选 APK，但 API 36 job 暴露跨模块 class filter 错误；它不是产品测试失败。新增 Red 后，adapter 与 app-shell instrumentation 已分成两个 invocation，定向 P7 `12/12` 及真实设备 smoke `2/2 + 1/1` 通过。完整托管结论和新的候选 artifact 必须等待修正提交 push 后的实际结果；本地 `MACHINE_VERIFIED` 不冒充 hosted CI。
 
 ## 截图／录屏索引
 
