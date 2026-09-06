@@ -3,6 +3,7 @@ package com.yokuli.marine.data.android
 import com.yokuli.marine.data.android.runtime.ReconnectDelayPort
 import com.yokuli.marine.data.android.runtime.HealthTickPort
 import com.yokuli.marine.data.android.service.ForegroundRuntimeController
+import com.yokuli.marine.data.android.service.ForegroundServiceLossListener
 import com.yokuli.marine.data.android.transport.NetworkTransportEvent
 import com.yokuli.marine.data.android.transport.NmeaTransportFactory
 import com.yokuli.marine.data.connection.NmeaConnectionConfig
@@ -211,6 +212,27 @@ class NmeaRuntimeLifecycleTest {
         }
     }
 
+    @Test
+    fun foregroundServiceLossClosesSocketsWithoutChangingEnabledIntent() = runBlocking {
+        val transports = ControllableTransportFactory()
+        RuntimeFixture(storage(), transportFactory = transports).use { fixture ->
+            val config = tcpConfig(id = "foreground-lost", port = 10_111)
+            fixture.start(config)
+            transports.awaitOpenCount(1)
+
+            (fixture.runtime as ForegroundServiceLossListener).onForegroundServiceLost()
+
+            val suspended = fixture.await {
+                it.connections[config.id]?.transport is ConnectionTransportState.PlatformStartRequired
+            }.connections.getValue(config.id)
+            awaitCondition { transports.activeSessionCount.get() == 0 }
+            assertEquals(com.yokuli.marine.data.connection.ConnectionRunIntent.ENABLED, suspended.stored.runIntent)
+            assertTrue(suspended.transport is ConnectionTransportState.PlatformStartRequired)
+            assertEquals(NmeaRuntimeFailure.PlatformRestricted, suspended.failure)
+            assertEquals(0, transports.activeSessionCount.get())
+        }
+    }
+
     private fun storage(): File = File(temporaryFolder.newFolder(), "connections.pb")
 }
 
@@ -233,7 +255,7 @@ private class ControlledHealthTicker : HealthTickPort {
 private class ControllableTransportFactory : NmeaTransportFactory {
     val openCount = AtomicInteger(0)
     val maxConcurrentSessions = AtomicInteger(0)
-    private val activeSessions = AtomicInteger(0)
+    val activeSessionCount = AtomicInteger(0)
     private val sessions = CopyOnWriteArrayList<ControlledSession>()
 
     override suspend fun run(
@@ -242,14 +264,14 @@ private class ControllableTransportFactory : NmeaTransportFactory {
         emit: suspend (NetworkTransportEvent) -> Unit,
     ) {
         openCount.incrementAndGet()
-        val active = activeSessions.incrementAndGet()
+        val active = activeSessionCount.incrementAndGet()
         maxConcurrentSessions.getAndUpdate { current -> maxOf(current, active) }
         val session = ControlledSession(sessionToken, emit)
         sessions += session
         try {
             session.finished.await()
         } finally {
-            activeSessions.decrementAndGet()
+            activeSessionCount.decrementAndGet()
         }
     }
 
