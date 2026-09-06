@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W09",
+  "startCommit": "33596e8ea378f62dc51c7de436a6c47a321b8d08",
+  "chartRootActions": ["MEASURE", "PLACES", "ROUTES", "QUICK_LAYERS", "CROSSHAIR"],
+  "quickLayersOwnSourceManagement": false,
+  "quickLayersOwnFileAccess": false,
+  "chartLibraryAssetHandoffPreserved": true,
+  "legacyNavigationDataRemoved": false,
+  "activeNavigationContent": "REAL_INJECTED_CONTENT_ONLY",
+  "backAtRoot": "SHELL_START",
+  "displayPreferenceSchema": 5,
+  "verification": "GITHUB_ACTION_PENDING"
+}

@@ -105,6 +105,26 @@ class ChartDisplayCoordinatorTest {
     }
 
     @Test
+    fun `quick layer visibility changes display preferences without changing catalog ownership`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A), asset(ASSET_B)))
+        val store = FakeMapStore()
+        val coordinator = ChartDisplayCoordinator(catalog, store, scope)
+        withTimeout(2_000L) { coordinator.state.first { !it.busy && it.assets.size == 2 } }
+        coordinator.dispatch(ChartDisplayUiAction.ToggleSource(SOURCE_ID))
+        withTimeout(2_000L) { coordinator.state.first { it.quickLayers.size == 2 && it.plan.layers.size == 2 } }
+
+        coordinator.dispatch(ChartDisplayUiAction.SetLayerVisible(ASSET_B, false))
+        withTimeout(2_000L) { coordinator.state.first { state -> state.quickLayers.any { it.id == ASSET_B && !it.visible } } }
+
+        assertEquals(listOf(ASSET_A), coordinator.state.value.plan.layers.map { it.assetId })
+        assertTrue(store.state.value.chartDisplayPreferences.hiddenAssetIds.contains(ASSET_B))
+        assertEquals(0, catalog.mutationCount)
+        coordinator.close()
+        scope.cancel()
+    }
+
+    @Test
     fun `legacy active package migrates once and explicit none is never stolen back`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A)), legacyAssetId = ASSET_A)

@@ -102,7 +102,6 @@ import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.marine.map.domain.positionAgeMillis
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayIssue
-import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import java.util.Locale
@@ -150,7 +149,7 @@ fun ChartWorkspace(
     offlineCoverageState: OfflineCoverageUiState = OfflineCoverageUiState.Idle,
     onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit = { _, _, _ -> },
     onCancelOfflineCoverage: () -> Unit = {},
-    onOpenChartLibrary: () -> Unit = {},
+    activeNavigationStrip: (@Composable () -> Unit)? = null,
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -215,6 +214,7 @@ fun ChartWorkspace(
                 viewportSize,
                 rootInsets,
                 recoveryExportState,
+                activeNavigationStrip,
                 onAction,
                 onExportRecovery,
             )
@@ -233,7 +233,6 @@ fun ChartWorkspace(
                 offlineCoverageState,
                 onStartOfflineCoverage,
                 onCancelOfflineCoverage,
-                onOpenChartLibrary,
                 onAction,
             )
         }
@@ -247,6 +246,7 @@ private fun MapRootChrome(
     viewportSize: IntSize,
     viewportInsets: MapViewportInsets,
     recoveryExportState: MapRecoveryExportUiState,
+    activeNavigationStrip: (@Composable () -> Unit)?,
     onAction: (MapAction) -> Unit,
     onExportRecovery: () -> Unit,
 ) {
@@ -286,6 +286,9 @@ private fun MapRootChrome(
                             .joinToString(" · "),
                     )
                 }
+            }
+            activeNavigationStrip?.let { content ->
+                Box(Modifier.fillMaxWidth().testTag("map-active-navigation-strip")) { content() }
             }
             MapRootSummary(state, onAction)
             if (state.crosshairEnabled) CrosshairAction(state, queryPort, viewportSize, viewportInsets, onAction)
@@ -765,23 +768,17 @@ private fun MapRootCommandBar(
         MapCommandButton(R.string.map_tool_measure, "map-tool-measure", state.tool == MapTool.MEASURE, Modifier.weight(1f)) {
             onAction(MapAction.SelectTool(if (state.tool == MapTool.MEASURE) MapTool.BROWSE else MapTool.MEASURE))
         }
-        MapCommandButton(R.string.map_tool_routes, "map-tool-manual_route", state.tool == MapTool.MANUAL_ROUTE, Modifier.weight(1f)) {
-            onAction(MapAction.SelectTool(if (state.tool == MapTool.MANUAL_ROUTE) MapTool.BROWSE else MapTool.MANUAL_ROUTE))
-        }
         MapCommandButton(R.string.map_tool_places, "map-open-places", false, Modifier.weight(1f)) {
             onAction(MapAction.OpenSurface(MapSurface.Places))
         }
         MapCommandButton(R.string.map_routes_title, "map-open-routes", false, Modifier.weight(1f)) {
             onAction(MapAction.OpenSurface(MapSurface.Routes))
         }
-        MapCommandButton(R.string.map_tool_charts, "map-open-charts", false, Modifier.weight(1f)) {
+        MapCommandButton(R.string.map_tool_quick_layers, "map-open-quick-layers", false, Modifier.weight(1f)) {
             onAction(MapAction.OpenSurface(MapSurface.ChartPackages))
         }
         MapCommandButton(R.string.map_crosshair, "map-crosshair-toggle", state.crosshairEnabled, Modifier.weight(1f)) {
             onAction(MapAction.SetCrosshairEnabled(!state.crosshairEnabled))
-        }
-        MapCommandButton(R.string.map_coordinate_input_short, "map-coordinate-input", false, Modifier.weight(1f)) {
-            onAction(MapAction.OpenSurface(MapSurface.CoordinateInput))
         }
     }
 }
@@ -824,7 +821,6 @@ private fun MapPageSurface(
     offlineCoverageState: OfflineCoverageUiState,
     onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
     onCancelOfflineCoverage: () -> Unit,
-    onOpenChartLibrary: () -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -841,7 +837,8 @@ private fun MapPageSurface(
             MapSurface.Routes, is MapSurface.RouteDetail, is MapSurface.DeleteRoutePlan ->
                 R.string.map_routes_title to R.string.map_routes_context
             is MapSurface.OfflineCoverage -> R.string.map_coverage_title to R.string.map_coverage_context
-            MapSurface.ChartPackages, is MapSurface.ChartPackageDetail -> R.string.map_charts_title to R.string.map_charts_context
+            MapSurface.ChartPackages, is MapSurface.ChartPackageDetail ->
+                R.string.map_quick_layers_title to R.string.map_quick_layers_context
             MapSurface.GpxExchange -> R.string.map_gpx_title to R.string.map_gpx_context
             MapSurface.ImportedTracks, is MapSurface.ImportedTrackDetail ->
                 R.string.map_tracks_title to R.string.map_tracks_context
@@ -857,8 +854,6 @@ private fun MapPageSurface(
                 MapSurface.ChartPackages -> ChartLayersPage(
                     chartDisplayState,
                     onChartDisplayAction,
-                    onOpenChartLibrary,
-                    onAction,
                 )
                 MapSurface.GpxExchange -> GpxExchangePage(gpxImportState, onGpxImportAction)
                 MapSurface.ImportedTracks -> ImportedTracksPage(state, onAction)
@@ -1258,6 +1253,18 @@ private fun RoutesPage(state: MapState, onAction: (MapAction) -> Unit) {
             modifier = Modifier.fillMaxWidth().border(1.dp, colors.accent),
         ) {
             onAction(MapAction.CreateRouteDraft("", ""))
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MapTextButton(
+                stringResource(R.string.map_gpx_title),
+                "map-open-gpx",
+                modifier = Modifier.weight(1f),
+            ) { onAction(MapAction.OpenSurface(MapSurface.GpxExchange)) }
+            MapTextButton(
+                stringResource(R.string.map_tracks_title),
+                "map-open-imported-tracks",
+                modifier = Modifier.weight(1f),
+            ) { onAction(MapAction.OpenSurface(MapSurface.ImportedTracks)) }
         }
         state.routeDeleteUndo?.takeIf { it.compatibleLibraryRevision == state.libraryRevision }?.let { undo ->
             Row(
@@ -1943,94 +1950,57 @@ private fun CoordinateTextField(
 private fun ChartLayersPage(
     state: ChartDisplayUiState,
     onDisplayAction: (ChartDisplayUiAction) -> Unit,
-    onOpenChartLibrary: () -> Unit,
-    onMapAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
     Column(
         Modifier.fillMaxWidth().testTag(ChartDisplayTestTags.ROOT),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        WpText(stringResource(R.string.map_chart_display_truth), 11, color = colors.muted)
-        MapTextButton(
-            stringResource(R.string.map_chart_manage_library),
-            "map-open-chart-library",
-            modifier = Modifier.fillMaxWidth(),
-            action = onOpenChartLibrary,
-        )
-        MapTextButton(
-            stringResource(R.string.map_chart_display_none),
-            ChartDisplayTestTags.NO_LOCAL,
-            modifier = Modifier.fillMaxWidth().then(
-                if (state.selection is ChartDisplaySelection.None) Modifier.border(1.dp, colors.accent) else Modifier,
-            ),
-        ) { onDisplayAction(ChartDisplayUiAction.UseNoLocalChart) }
-        Row(Modifier.fillMaxWidth()) {
-            MapTextButton(
-                if (state.overlaysVisible) stringResource(R.string.map_chart_overlays_visible)
-                else stringResource(R.string.map_chart_overlays_hidden),
-                ChartDisplayTestTags.TOGGLE_OVERLAYS,
-                modifier = Modifier.weight(1f).then(
-                    if (state.overlaysVisible) Modifier.border(1.dp, colors.accent) else Modifier,
-                ),
-            ) { onDisplayAction(ChartDisplayUiAction.ToggleOverlays) }
-            MapTextButton(
-                stringResource(R.string.map_chart_refresh_display),
-                ChartDisplayTestTags.REFRESH,
-                modifier = Modifier.weight(1f),
-            ) { onDisplayAction(ChartDisplayUiAction.Refresh) }
+        WpText(stringResource(R.string.map_quick_layers_truth), 11, color = colors.muted)
+        if (state.quickLayers.isEmpty() && !state.busy) {
+            WpText(
+                stringResource(R.string.map_quick_layers_empty),
+                12,
+                color = colors.muted,
+                modifier = Modifier.testTag("map-quick-layers-empty"),
+            )
         }
-        WpText(stringResource(R.string.map_chart_sources_title), 18, weight = FontWeight.Light)
-        if (state.sources.isEmpty() && !state.busy) {
-            WpText(stringResource(R.string.map_chart_sources_empty), 12, color = colors.muted)
-        }
-        state.sources.forEach { source ->
-            MapTextButton(
-                stringResource(
-                    if (source.enabled) R.string.map_chart_source_summary else R.string.map_chart_source_disabled,
-                    source.name,
-                    source.availableAssetCount,
-                ),
-                ChartDisplayTestTags.source(source.id.value.take(8)),
-                enabled = source.enabled,
-                modifier = Modifier.fillMaxWidth().then(
-                    if (source.selected) Modifier.border(1.dp, colors.accent) else Modifier,
-                ),
-            ) { onDisplayAction(ChartDisplayUiAction.ToggleSource(source.id)) }
-        }
-        WpText(stringResource(R.string.map_chart_assets_title), 18, weight = FontWeight.Light)
-        state.assets.forEach { asset ->
-            Column(Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f)).padding(8.dp)) {
+        state.quickLayers.forEach { layer ->
+            Column(
+                Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f)).padding(8.dp)
+                    .testTag(ChartDisplayTestTags.quickLayer(layer.id.value.take(8))),
+            ) {
                 MapTextButton(
-                    asset.title,
-                    ChartDisplayTestTags.asset(asset.id.value.take(8)),
-                    enabled = asset.available,
-                    modifier = Modifier.fillMaxWidth().then(
-                        if (asset.selected) Modifier.border(1.dp, colors.accent) else Modifier,
+                    stringResource(
+                        if (layer.visible) R.string.map_quick_layer_visible else R.string.map_quick_layer_hidden,
+                        layer.title,
                     ),
-                ) { onDisplayAction(ChartDisplayUiAction.PinAsset(asset.id)) }
+                    ChartDisplayTestTags.quickLayerVisibility(layer.id.value.take(8)),
+                    enabled = layer.available,
+                    modifier = Modifier.fillMaxWidth().then(
+                        if (layer.visible) Modifier.border(1.dp, colors.accent) else Modifier,
+                    ),
+                ) { onDisplayAction(ChartDisplayUiAction.SetLayerVisible(layer.id, !layer.visible)) }
                 WpText(
                     stringResource(
-                        if (asset.role == ChartAssetRole.BASE) R.string.map_chart_role_base else R.string.map_chart_role_overlay,
-                    ) + " · " + stringResource(
-                        if (asset.visible) R.string.map_chart_layer_visible else R.string.map_chart_layer_not_visible,
+                        if (layer.role == ChartAssetRole.BASE) R.string.map_chart_role_base else R.string.map_chart_role_overlay,
                     ),
                     10,
-                    color = if (asset.visible) colors.accent else colors.muted,
+                    color = if (layer.visible) colors.accent else colors.muted,
                 )
-                if (asset.visible) {
+                if (layer.visible) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         MapTextButton(
                             stringResource(R.string.map_chart_opacity_down),
-                            ChartDisplayTestTags.opacityDown(asset.id.value.take(8)),
-                            enabled = asset.opacity > 0f,
-                        ) { onDisplayAction(ChartDisplayUiAction.SetOpacity(asset.id, asset.opacity - .1f)) }
-                        WpText(stringResource(R.string.map_chart_opacity_value, (asset.opacity * 100).roundToInt()), 11)
+                            ChartDisplayTestTags.opacityDown(layer.id.value.take(8)),
+                            enabled = layer.opacity > 0f,
+                        ) { onDisplayAction(ChartDisplayUiAction.SetOpacity(layer.id, layer.opacity - .1f)) }
+                        WpText(stringResource(R.string.map_chart_opacity_value, (layer.opacity * 100).roundToInt()), 11)
                         MapTextButton(
                             stringResource(R.string.map_chart_opacity_up),
-                            ChartDisplayTestTags.opacityUp(asset.id.value.take(8)),
-                            enabled = asset.opacity < 1f,
-                        ) { onDisplayAction(ChartDisplayUiAction.SetOpacity(asset.id, asset.opacity + .1f)) }
+                            ChartDisplayTestTags.opacityUp(layer.id.value.take(8)),
+                            enabled = layer.opacity < 1f,
+                        ) { onDisplayAction(ChartDisplayUiAction.SetOpacity(layer.id, layer.opacity + .1f)) }
                     }
                 }
             }
@@ -2048,24 +2018,13 @@ private fun ChartLayersPage(
                         ChartDisplayNoticeUi.ITEM_NO_LONGER_AVAILABLE -> R.string.map_chart_item_unavailable
                         ChartDisplayNoticeUi.ACTION_QUEUE_FULL -> R.string.map_chart_action_queue_full
                         ChartDisplayNoticeUi.SELECTION_LIMIT_REACHED -> R.string.map_chart_selection_limit
+                        ChartDisplayNoticeUi.PREFERENCE_LIMIT_REACHED -> R.string.map_chart_preference_limit
                     },
                 ),
                 11,
                 color = colors.accent,
             )
         }
-    }
-    Row(Modifier.fillMaxWidth()) {
-        MapTextButton(
-            stringResource(R.string.map_gpx_title),
-            "map-open-gpx",
-            modifier = Modifier.weight(1f),
-        ) { onMapAction(MapAction.OpenSurface(MapSurface.GpxExchange)) }
-        MapTextButton(
-            stringResource(R.string.map_tracks_title),
-            "map-open-imported-tracks",
-            modifier = Modifier.weight(1f),
-        ) { onMapAction(MapAction.OpenSurface(MapSurface.ImportedTracks)) }
     }
 }
 

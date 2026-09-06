@@ -118,7 +118,10 @@ class ChartDisplayCoordinator(
                     mutableState.value = mutableState.value.copy(notice = ChartDisplayNoticeUi.ITEM_NO_LONGER_AVAILABLE)
                     return
                 }
-                preferences = preferences.copy(selection = ChartDisplaySelection.PinnedAsset(action.assetId))
+                preferences = preferences.copy(
+                    selection = ChartDisplaySelection.PinnedAsset(action.assetId),
+                    hiddenAssetIds = preferences.hiddenAssetIds - action.assetId,
+                )
             }
             is ChartDisplayUiAction.ToggleSource -> {
                 if (sources.none { it.id == action.sourceId }) {
@@ -137,6 +140,20 @@ class ChartDisplayCoordinator(
                 )
             }
             ChartDisplayUiAction.ToggleOverlays -> preferences = preferences.copy(overlaysVisible = !preferences.overlaysVisible)
+            is ChartDisplayUiAction.SetLayerVisible -> {
+                val asset = assets.firstOrNull { it.id == action.assetId }
+                if (asset == null || !asset.belongsTo(preferences.selection)) {
+                    mutableState.value = mutableState.value.copy(notice = ChartDisplayNoticeUi.ITEM_NO_LONGER_AVAILABLE)
+                    return
+                }
+                val hidden = preferences.hiddenAssetIds.toMutableSet()
+                if (action.visible) hidden.remove(action.assetId) else hidden.add(action.assetId)
+                if (hidden.size > MAX_UI_ASSET_PREFERENCES) {
+                    mutableState.value = mutableState.value.copy(notice = ChartDisplayNoticeUi.PREFERENCE_LIMIT_REACHED)
+                    return
+                }
+                preferences = preferences.copy(hiddenAssetIds = hidden)
+            }
             is ChartDisplayUiAction.SetOpacity -> {
                 if (assets.none { it.id == action.assetId }) return
                 val updated = preferences.assetOpacity.toMutableMap()
@@ -202,6 +219,20 @@ class ChartDisplayCoordinator(
         val selectedSourceIds = (preferences.selection as? ChartDisplaySelection.SourceSet)?.sourceIds.orEmpty()
         val visibleAssetIds = plan.layers.mapTo(hashSetOf()) { it.assetId }
         val selectedAssetId = (preferences.selection as? ChartDisplaySelection.PinnedAsset)?.assetId
+        val quickLayers = assets.asSequence()
+            .filter { it.belongsTo(preferences.selection) }
+            .sortedWith(compareBy<ChartAsset> { it.role }.thenBy { it.priority }.thenBy { it.id.value })
+            .map { asset ->
+                ChartQuickLayerUi(
+                    id = asset.id,
+                    title = asset.displayPath.substringAfterLast('/').ifBlank { asset.displayPath },
+                    role = asset.role,
+                    visible = asset.id in visibleAssetIds,
+                    available = asset.availableForDisplay(),
+                    opacity = preferences.assetOpacity[asset.id] ?: if (asset.role == ChartAssetRole.BASE) 1f else .85f,
+                )
+            }
+            .toList()
         mutableState.value = ChartDisplayUiState(
             catalogRevision = catalogSnapshot.revision,
             selection = preferences.selection,
@@ -227,6 +258,7 @@ class ChartDisplayCoordinator(
                         opacity = preferences.assetOpacity[asset.id] ?: if (asset.role == ChartAssetRole.BASE) 1f else .85f,
                     )
                 },
+            quickLayers = quickLayers,
             plan = plan,
             issues = plan.issues,
             notice = notice,
@@ -238,6 +270,12 @@ class ChartDisplayCoordinator(
         validation in setOf(ChartAssetValidationState.BASIC_READABLE, ChartAssetValidationState.FULL_VERIFIED) &&
         facts.format == ChartAssetFormat.RASTER_MBTILES && facts.tileSize in setOf(256, 512) &&
         facts.tileScheme != null && facts.minZoom != null && facts.maxZoom != null
+
+    private fun ChartAsset.belongsTo(selection: ChartDisplaySelection): Boolean = when (selection) {
+        ChartDisplaySelection.None -> false
+        is ChartDisplaySelection.PinnedAsset -> id == selection.assetId
+        is ChartDisplaySelection.SourceSet -> memberships.any(selection.sourceIds::contains)
+    }
 
     private suspend fun <T> loadPages(loader: suspend (Int, Int) -> com.yokuli.marine.map.domain.chartlibrary.ChartCatalogPage<T>): Loaded<T> {
         val result = ArrayList<T>()

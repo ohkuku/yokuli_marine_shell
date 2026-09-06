@@ -211,9 +211,6 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 offlineCoverageState = runtime.offlineCoverageState,
                 onStartOfflineCoverage = runtime.onStartOfflineCoverage,
                 onCancelOfflineCoverage = runtime.onCancelOfflineCoverage,
-                onOpenChartLibrary = {
-                    runtime.onOpenChartLibrary(ChartLibraryDestinations.Browse)
-                },
                 chartSurface = chartSurface,
             )
         },

@@ -262,8 +262,12 @@ class ShellActivityStoryTest {
     @Test
     fun invalidCoordinateEntryStaysOpenWithAFieldError() {
         compose.onNodeWithTag("tile-chart").performClick()
-        awaitDisplayed("map-coordinate-input")
-        compose.onNodeWithTag("map-coordinate-input").performClick()
+        awaitDisplayed("map-root-command-bar")
+        compose.activityRule.scenario.onActivity { activity ->
+            ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.dispatch(
+                MapAction.OpenSurface(MapSurface.CoordinateInput),
+            )
+        }
         awaitDisplayed("map-coordinate-latitude")
         compose.onNodeWithTag("map-coordinate-latitude").performTextClearance()
         compose.onNodeWithTag("map-coordinate-latitude").performTextInput("91 N")
@@ -373,18 +377,24 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun mapAppKeepsPlanningToolsInternalAndPositionTruthExplicit() {
+    fun chartRootStaysFocusedWhileUnmigratedPlanningDataRemainsReachable() {
         compose.onNodeWithTag("tile-chart").performClick()
         awaitDisplayed("map-root-command-bar")
         compose.onNodeWithTag("map-truth-strip").assertIsDisplayed()
 
-        compose.onNodeWithTag("map-tool-manual_route").performClick()
+        compose.onNodeWithTag("map-tool-manual_route").assertDoesNotExist()
+        compose.onNodeWithTag("map-coordinate-input").assertDoesNotExist()
+        compose.onNodeWithTag("map-open-routes").performClick()
         compose.activityRule.scenario.onActivity { activity ->
             val mapState = ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.state.value
-            assertEquals(com.yokuli.marine.map.domain.MapTool.MANUAL_ROUTE, mapState.tool)
+            assertEquals(com.yokuli.marine.map.domain.MapSurface.Routes, mapState.surface)
             assertEquals(com.yokuli.marine.map.domain.PositionAvailability.UNAVAILABLE, mapState.position.availability)
         }
-        compose.onNodeWithTag("map-open-charts").performClick()
+        compose.activityRule.scenario.onActivity { activity ->
+            ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.dispatch(MapAction.CloseSurface)
+        }
+        awaitDisplayed("map-root-command-bar")
+        compose.onNodeWithTag("map-open-quick-layers").performClick()
         compose.activityRule.scenario.onActivity { activity ->
             val mapState = ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.state.value
             assertEquals(com.yokuli.marine.map.domain.MapSurface.ChartPackages, mapState.surface)

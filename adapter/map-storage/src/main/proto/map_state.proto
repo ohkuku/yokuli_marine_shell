@@ -19,6 +19,7 @@ message MapStateProto {
   bool chart_display_overlays_visible = 13;
   repeated ChartAssetOpacityProto chart_asset_opacity = 14;
   bool chart_display_preferences_initialized = 15;
+  repeated string chart_display_hidden_asset_ids = 16;
 }
 
 message ChartAssetOpacityProto { string asset_id = 1; float opacity = 2; }

@@ -32,6 +32,7 @@
     <string name="map_tool_measure">测量</string>
     <string name="map_tool_routes">航线</string>
     <string name="map_tool_charts">海图</string>
+    <string name="map_tool_quick_layers">图层</string>
     <string name="map_crosshair">准星</string>
     <string name="map_crosshair_use">使用准星位置</string>
     <string name="map_crosshair_wait">地图准备中</string>
@@ -140,6 +141,8 @@
     <string name="map_save_copy">另存副本</string>
     <string name="map_charts_title">海图与资料</string>
     <string name="map_charts_context">本地资料与来源事实</string>
+    <string name="map_quick_layers_title">快速图层</string>
+    <string name="map_quick_layers_context">只调整当前地图显示</string>
     <string name="map_routes_title">路线</string>
     <string name="map_routes_context">草稿与已保存路线</string>
     <string name="map_routes_count">%1$d 个草稿 · %2$d 条已保存路线</string>
@@ -347,10 +350,15 @@
     <string name="map_chart_item_unavailable">所选项目已不在当前目录中；当前地图保持不变。</string>
     <string name="map_chart_action_queue_full">操作队列忙；本次更改未应用，请重试。</string>
     <string name="map_chart_selection_limit">最多选择 8 个来源；本次选择未应用。</string>
+    <string name="map_chart_preference_limit">图层显示偏好已达上限；本次更改未应用。</string>
     <string name="map_chart_pinned_missing">固定海图已从目录消失；不会自动改选另一张。</string>
     <string name="map_chart_pinned_unavailable">固定海图当前不可读；不会用在线地图填补。</string>
     <string name="map_chart_source_missing">一个已选来源已禁用或不存在。</string>
     <string name="map_chart_unknown_bounds">范围未知的资源未参与自动视野选择；仍可手动固定。</string>
     <string name="map_chart_no_native_zoom">当前级别没有原生图块；放大显示不算完整覆盖。</string>
     <string name="map_chart_layer_limit">候选超过活跃图层上限；部分资源未显示。</string>
+    <string name="map_quick_layers_truth">这里只调整已经交给 Chart 的图层。文件、权限、扫描和来源仍由海图库负责。</string>
+    <string name="map_quick_layers_empty">当前没有可快速调整的本地图层。请从海图库明确选择“在 Chart 查看”。</string>
+    <string name="map_quick_layer_visible">%1$s · 显示</string>
+    <string name="map_quick_layer_hidden">%1$s · 隐藏</string>
 </resources>

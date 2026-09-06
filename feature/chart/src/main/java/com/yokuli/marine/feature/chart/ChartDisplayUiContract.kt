@@ -25,12 +25,23 @@ data class ChartDisplayAssetUi(
     val opacity: Float,
 )
 
+/** A display-only control. Source membership, scanning and files remain Chart Library concerns. */
+data class ChartQuickLayerUi(
+    val id: ChartAssetId,
+    val title: String,
+    val role: ChartAssetRole,
+    val visible: Boolean,
+    val available: Boolean,
+    val opacity: Float,
+)
+
 enum class ChartDisplayNoticeUi {
     CATALOG_LIMIT_REACHED,
     CATALOG_READ_FAILED,
     ITEM_NO_LONGER_AVAILABLE,
     ACTION_QUEUE_FULL,
     SELECTION_LIMIT_REACHED,
+    PREFERENCE_LIMIT_REACHED,
 }
 
 data class ChartDisplayUiState(
@@ -39,6 +50,7 @@ data class ChartDisplayUiState(
     val overlaysVisible: Boolean = true,
     val sources: List<ChartDisplaySourceUi> = emptyList(),
     val assets: List<ChartDisplayAssetUi> = emptyList(),
+    val quickLayers: List<ChartQuickLayerUi> = emptyList(),
     val plan: ChartDisplayPlan = ChartDisplayPlan.EMPTY,
     val issues: Set<ChartDisplayIssue> = emptySet(),
     val notice: ChartDisplayNoticeUi? = null,
@@ -50,6 +62,7 @@ sealed interface ChartDisplayUiAction {
     data class PinAsset(val assetId: ChartAssetId) : ChartDisplayUiAction
     data class ToggleSource(val sourceId: ChartSourceId) : ChartDisplayUiAction
     data object ToggleOverlays : ChartDisplayUiAction
+    data class SetLayerVisible(val assetId: ChartAssetId, val visible: Boolean) : ChartDisplayUiAction
     data class SetOpacity(val assetId: ChartAssetId, val opacity: Float) : ChartDisplayUiAction
     data object Refresh : ChartDisplayUiAction
     data object DismissNotice : ChartDisplayUiAction
@@ -64,4 +77,6 @@ object ChartDisplayTestTags {
     fun asset(id: String) = "chart-display-asset-$id"
     fun opacityDown(id: String) = "chart-display-opacity-down-$id"
     fun opacityUp(id: String) = "chart-display-opacity-up-$id"
+    fun quickLayer(id: String) = "chart-quick-layer-$id"
+    fun quickLayerVisibility(id: String) = "chart-quick-layer-visible-$id"
 }

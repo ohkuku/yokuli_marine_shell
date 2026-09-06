@@ -16,10 +16,13 @@ data class ChartDisplayPreferences(
     val selection: ChartDisplaySelection = ChartDisplaySelection.None,
     val overlaysVisible: Boolean = true,
     val assetOpacity: Map<ChartAssetId, Float> = emptyMap(),
+    /** Quick visibility overrides for assets that still belong to the durable selection. */
+    val hiddenAssetIds: Set<ChartAssetId> = emptySet(),
 ) {
     init {
         require(assetOpacity.size <= MAX_CHART_DISPLAY_PREFERENCES)
         require(assetOpacity.values.all { it.isFinite() && it in 0f..1f })
+        require(hiddenAssetIds.size <= MAX_CHART_DISPLAY_PREFERENCES)
     }
 }
 
@@ -115,6 +118,7 @@ object ChartDisplayPlanner {
                 if (enabledIds.size != selection.sourceIds.size) issues += ChartDisplayIssue.SOURCE_MISSING_OR_DISABLED
                 assets.asSequence()
                     .filter { asset -> asset.memberships.any(enabledIds::contains) && asset.isDisplayEligible(sourceById) }
+                    .filterNot { asset -> asset.id in preferences.hiddenAssetIds }
                     .filter { asset ->
                         if (asset.role == ChartAssetRole.OVERLAY && !preferences.overlaysVisible) return@filter false
                         val bounds = asset.facts.bounds
@@ -135,11 +139,12 @@ object ChartDisplayPlanner {
                     .toList()
             }
         }
+        val visibleSelection = selected.filterNot { it.id in preferences.hiddenAssetIds }
         if (
             preferences.selection is ChartDisplaySelection.PinnedAsset && viewport != null &&
-            selected.any { viewport.zoom !in requireNotNull(it.facts.minZoom)..requireNotNull(it.facts.maxZoom) }
+            visibleSelection.any { viewport.zoom !in requireNotNull(it.facts.minZoom)..requireNotNull(it.facts.maxZoom) }
         ) issues += ChartDisplayIssue.NO_NATIVE_ZOOM
-        val ordered = selected.sortedWith(
+        val ordered = visibleSelection.sortedWith(
             compareBy<ChartAsset> { if (it.role == ChartAssetRole.BASE) 0 else 1 }
                 .thenBy(ChartAsset::priority)
                 .thenBy { it.id.value },

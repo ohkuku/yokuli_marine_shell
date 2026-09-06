@@ -29,7 +29,7 @@ import com.yokuli.marine.map.storage.proto.SavedPlaceProto
 import com.yokuli.marine.map.storage.proto.SavedRouteProto
 
 internal object MapProtoMapper {
-    const val SCHEMA_VERSION = 4
+    const val SCHEMA_VERSION = 5
 
     fun encodeSession(state: MapSessionSnapshot): MapStateProto = MapStateProto.newBuilder()
         .setSchemaVersion(SCHEMA_VERSION)
@@ -109,6 +109,7 @@ internal object MapProtoMapper {
                 ChartAssetOpacityProto.newBuilder().setAssetId(assetId.value).setOpacity(opacity).build()
             },
         )
+        addAllChartDisplayHiddenAssetIds(value.hiddenAssetIds.map { it.value }.sorted())
     }
 
     /** A malformed new preference must not quarantine otherwise valid routes, places or camera state. */
@@ -121,7 +122,12 @@ internal object MapProtoMapper {
             else -> error("Unknown chart display selection")
         }
         val opacity = chartAssetOpacityList.associate { ChartAssetId(it.assetId) to it.opacity }
-        ChartDisplayPreferences(selection, chartDisplayOverlaysVisible, opacity)
+        val hidden = if (schemaVersion >= 5) {
+            chartDisplayHiddenAssetIdsList.mapTo(linkedSetOf(), ::ChartAssetId)
+        } else {
+            emptySet()
+        }
+        ChartDisplayPreferences(selection, chartDisplayOverlaysVisible, opacity, hidden)
     }.getOrDefault(ChartDisplayPreferences())
     private fun GeoPointProto.toDomain() = GeoPoint(latitude, longitude)
     private fun GeoBounds.toProto() = GeoBoundsProto.newBuilder().setSouth(south).setWest(west).setNorth(north).setEast(east).build()

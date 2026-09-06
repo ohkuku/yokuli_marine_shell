@@ -35,6 +35,19 @@ class ChartDisplayPlannerTest {
     }
 
     @Test
+    fun hiddenQuickLayerRemainsSelectedButIsExcludedDeterministically() {
+        val preferences = ChartDisplayPreferences(
+            selection = ChartDisplaySelection.SourceSet(setOf(SOURCE_ID)),
+            hiddenAssetIds = setOf(ASSET_B),
+        )
+
+        val plan = plan(listOf(asset(ASSET_A), asset(ASSET_B)), preferences)
+
+        assertEquals(ChartDisplaySelection.SourceSet(setOf(SOURCE_ID)), plan.selection)
+        assertEquals(listOf(ASSET_A), plan.layers.map { it.assetId })
+    }
+
+    @Test
     fun viewportFiltersDistantRegionsWithoutOpeningEveryCatalogAsset() {
         val visible = asset(ASSET_A, bounds = GeoBounds(-37.0, 174.0, -36.0, 175.0))
         val distant = asset(ASSET_B, bounds = GeoBounds(40.0, -75.0, 41.0, -74.0))

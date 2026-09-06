@@ -29,6 +29,7 @@ class MapProtoMapperTest {
                 ),
                 overlaysVisible = false,
                 assetOpacity = mapOf(ChartAssetId("10000000-0000-0000-0000-000000000001") to .4f),
+                hiddenAssetIds = setOf(ChartAssetId("10000000-0000-0000-0000-000000000002")),
             ),
             chartDisplayPreferencesInitialized = true,
         )
