@@ -1957,6 +1957,14 @@ private fun ChartLayersPage(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         WpText(stringResource(R.string.map_quick_layers_truth), 11, color = colors.muted)
+        MapTextButton(
+            if (state.overlaysVisible) stringResource(R.string.map_chart_overlays_visible)
+            else stringResource(R.string.map_chart_overlays_hidden),
+            ChartDisplayTestTags.TOGGLE_OVERLAYS,
+            modifier = Modifier.fillMaxWidth().then(
+                if (state.overlaysVisible) Modifier.border(1.dp, colors.accent) else Modifier,
+            ),
+        ) { onDisplayAction(ChartDisplayUiAction.ToggleOverlays) }
         if (state.quickLayers.isEmpty() && !state.busy) {
             WpText(
                 stringResource(R.string.map_quick_layers_empty),

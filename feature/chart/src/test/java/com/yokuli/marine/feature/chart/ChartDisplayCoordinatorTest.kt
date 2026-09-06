@@ -125,6 +125,32 @@ class ChartDisplayCoordinatorTest {
     }
 
     @Test
+    fun `quick layers contain only active pinned or explicitly hidden assets`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val outside = asset(
+            ASSET_B,
+            role = ChartAssetRole.OVERLAY,
+        ).copy(facts = asset(ASSET_B).facts.copy(bounds = GeoBounds(40.0, -75.0, 41.0, -74.0)))
+        val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A), outside))
+        val store = FakeMapStore(
+            MapState(
+                chartDisplayViewport = com.yokuli.marine.map.domain.chartlibrary.ChartDisplayViewport(
+                    GeoBounds(-37.2, 173.8, -35.8, 175.2),
+                    8,
+                ),
+            ),
+        )
+        val coordinator = ChartDisplayCoordinator(catalog, store, scope)
+        withTimeout(2_000L) { coordinator.state.first { !it.busy && it.assets.size == 2 } }
+        coordinator.dispatch(ChartDisplayUiAction.ToggleSource(SOURCE_ID))
+        withTimeout(2_000L) { coordinator.state.first { it.plan.layers.size == 1 } }
+
+        assertEquals(listOf(ASSET_A), coordinator.state.value.quickLayers.map { it.id })
+        coordinator.close()
+        scope.cancel()
+    }
+
+    @Test
     fun `legacy active package migrates once and explicit none is never stolen back`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A)), legacyAssetId = ASSET_A)

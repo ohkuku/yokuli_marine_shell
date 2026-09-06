@@ -219,8 +219,13 @@ class ChartDisplayCoordinator(
         val selectedSourceIds = (preferences.selection as? ChartDisplaySelection.SourceSet)?.sourceIds.orEmpty()
         val visibleAssetIds = plan.layers.mapTo(hashSetOf()) { it.assetId }
         val selectedAssetId = (preferences.selection as? ChartDisplaySelection.PinnedAsset)?.assetId
+        val quickLayerIds = buildSet {
+            addAll(visibleAssetIds)
+            addAll(preferences.hiddenAssetIds)
+            selectedAssetId?.let(::add)
+        }
         val quickLayers = assets.asSequence()
-            .filter { it.belongsTo(preferences.selection) }
+            .filter { it.id in quickLayerIds && it.belongsTo(preferences.selection) }
             .sortedWith(compareBy<ChartAsset> { it.role }.thenBy { it.priority }.thenBy { it.id.value })
             .map { asset ->
                 ChartQuickLayerUi(
@@ -232,6 +237,7 @@ class ChartDisplayCoordinator(
                     opacity = preferences.assetOpacity[asset.id] ?: if (asset.role == ChartAssetRole.BASE) 1f else .85f,
                 )
             }
+            .take(MAX_UI_ASSET_PREFERENCES)
             .toList()
         mutableState.value = ChartDisplayUiState(
             catalogRevision = catalogSnapshot.revision,
