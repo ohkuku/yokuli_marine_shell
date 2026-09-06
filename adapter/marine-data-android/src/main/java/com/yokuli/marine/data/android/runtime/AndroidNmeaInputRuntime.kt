@@ -3,6 +3,7 @@ package com.yokuli.marine.data.android.runtime
 import com.yokuli.marine.data.android.persistence.ConnectionPersistenceResult
 import com.yokuli.marine.data.android.persistence.ProtoDataStoreConnectionRepository
 import com.yokuli.marine.data.android.service.ForegroundRuntimeController
+import com.yokuli.marine.data.android.service.ForegroundServiceLossListener
 import com.yokuli.marine.data.android.transport.NetworkTransportEvent
 import com.yokuli.marine.data.android.transport.NmeaTransportFactory
 import com.yokuli.marine.data.connection.ConnectionConfigAction
@@ -75,7 +76,7 @@ class AndroidNmeaInputRuntime(
     private val healthTick: HealthTickPort = HealthTickPort.SYSTEM,
     private val retryPolicy: RetryPolicy = RetryPolicy(),
     private val foregroundController: ForegroundRuntimeController = ForegroundRuntimeController.NO_OP,
-) : NmeaInputRuntimePort {
+) : NmeaInputRuntimePort, ForegroundServiceLossListener {
     private val sessionRegistry = ActiveSessionRegistry()
     private val pipeline = NmeaInboundPipeline(clock, sessionRegistry)
     private val inputHealthPolicy = InputHealthPolicy()
@@ -124,6 +125,10 @@ class AndroidNmeaInputRuntime(
         return reply.await()
     }
 
+    override fun onForegroundServiceLost() {
+        applicationScope.launch { mailbox.send(RuntimeMessage.ForegroundServiceLost) }
+    }
+
     private suspend fun handleRuntimeMessageSafely(message: RuntimeMessage) {
         if (message is RuntimeMessage.Command) {
             handleCommandSafely(message)
@@ -136,6 +141,7 @@ class AndroidNmeaInputRuntime(
                 is RuntimeMessage.Transport -> handleTransport(message)
                 is RuntimeMessage.RetryElapsed -> handleRetryElapsed(message)
                 RuntimeMessage.HealthTick -> publish()
+                RuntimeMessage.ForegroundServiceLost -> handleForegroundServiceLost()
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -687,7 +693,28 @@ class AndroidNmeaInputRuntime(
             .forEach { connection -> startConnection(connection.stored.config.id) }
     }
 
-    private fun endRuntimeSession(connectionId: ConnectionId) {
+    private fun handleForegroundServiceLost() {
+        val affected = connections().filter {
+            it.stored.runIntent == ConnectionRunIntent.ENABLED &&
+                (it.token != null || it.transport !is ConnectionTransportState.PlatformStartRequired)
+        }
+        if (affected.isEmpty()) return
+        affected.forEach { connection ->
+            endRuntimeSession(connection.stored.config.id, publishAfter = false)
+            val suspended = checkNotNull(connection(connection.stored.config.id)).copy(
+                transport = ConnectionTransportState.PlatformStartRequired,
+                input = ConnectionInputState.NO_BYTES,
+                failure = NmeaRuntimeFailure.PlatformRestricted,
+            )
+            pipeline.upsertConnection(suspended)
+            recordIncident(connection.stored.config.id, connection.token, NmeaRuntimeFailure.PlatformRestricted)
+        }
+        foregroundCount = affected.size
+        foregroundPermitted = false
+        publish()
+    }
+
+    private fun endRuntimeSession(connectionId: ConnectionId, publishAfter: Boolean = true) {
         retryJobs.remove(connectionId)?.cancel()
         sessionJobs.remove(connectionId)?.cancel()
         val current = connection(connectionId) ?: return
@@ -705,7 +732,7 @@ class AndroidNmeaInputRuntime(
                 failure = null,
             ),
         )
-        publish()
+        if (publishAfter) publish()
     }
 
     private fun rejectStaleTransportEvent(token: SessionToken) {
@@ -846,6 +873,7 @@ class AndroidNmeaInputRuntime(
         data class Transport(val token: SessionToken, val event: NetworkTransportEvent) : RuntimeMessage
         data class RetryElapsed(val connectionId: ConnectionId, val configRevision: Long) : RuntimeMessage
         data object HealthTick : RuntimeMessage
+        data object ForegroundServiceLost : RuntimeMessage
     }
 }
 

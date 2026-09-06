@@ -34,6 +34,7 @@ class NmeaInputForegroundService : Service() {
     private val notificationManager: NotificationManager by lazy {
         getSystemService(NotificationManager::class.java)
     }
+    private var stoppedAfterAllInputsDisabled = false
 
     override fun onCreate() {
         super.onCreate()
@@ -49,6 +50,7 @@ class NmeaInputForegroundService : Service() {
                     it.stored.runIntent == ConnectionRunIntent.ENABLED
                 }
                 if (enabledCount == 0) {
+                    stoppedAfterAllInputsDisabled = true
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 } else {
@@ -72,6 +74,12 @@ class NmeaInputForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        val enabledInputsRemain = runtime.state.value.connections.any {
+            it.stored.runIntent == ConnectionRunIntent.ENABLED
+        }
+        if (!stoppedAfterAllInputsDisabled && enabledInputsRemain) {
+            (runtime as? ForegroundServiceLossListener)?.onForegroundServiceLost()
+        }
         serviceScope.cancel()
         super.onDestroy()
     }
