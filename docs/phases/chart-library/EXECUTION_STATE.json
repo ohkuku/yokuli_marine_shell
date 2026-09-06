@@ -498,12 +498,37 @@
     },
     "CL12": {
       "title": "最终回归与产品验收",
-      "status": "NOT_STARTED",
+      "status": "IMPLEMENTED_CI_PENDING",
       "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "changed_files": [
+        "README.md",
+        "app-shell/src/androidTest/**/ShellActivityStoryTest.kt",
+        ".github/scripts/{emit_google_maps_configuration_evidence.py,test_google_maps_configuration_evidence.py,test_chart_library_cl12_contract.py,test_launcher_stage2_contract.py,build_codex_job_report.py,test-ci-contract.sh,run_device_tests.sh}",
+        ".github/workflows/android.yml",
+        "docs/phases/chart-library/{CL12_REPORT.md,CL12_BASELINE_LOCK.json,CL12_SUPPORT_MATRIX.md,ACCEPTANCE_RESULTS_TEMPLATE.md,EXECUTION_STATE.json}"
+      ],
+      "commands": [
+        {
+          "command": "python3 test_google_maps_configuration_evidence.py + test_chart_library_cl12_contract.py + JSON/shell/diff sanity",
+          "result": "PASS"
+        },
+        {
+          "command": "./gradlew test lintStandaloneDebug assembleStandaloneDebug assembleStandaloneRelease + API34/API36/performance/product-surface gates",
+          "result": "PENDING_GITHUB_ACTION"
+        }
+      ],
+      "evidence": [
+        "CODEX-CI-REPORT-<CL12_SHA12>-<run_id>-<attempt>",
+        "google-maps-configuration.json inside CODEX-JOB-build",
+        "chart-library-cl11-evidence.json inside CODEX-JOB-api34",
+        "docs/phases/chart-library/CL12_REPORT.md",
+        "docs/phases/chart-library/CL12_SUPPORT_MATRIX.md"
+      ],
+      "deviations": [
+        "用户明确采用CI-first批量施工；CL12完整门禁不在本地重复执行，而由精确提交的GitHub Action裁决",
+        "A01-A42在Action回传前不预先记PASS；物理provider、30分钟、16KiB设备和真实Google图块继续NOT_RUN/未验证",
+        "Google证据只输出配置布尔值和一致性，不输出或验证实际key"
+      ],
       "blockers": []
     }
   }

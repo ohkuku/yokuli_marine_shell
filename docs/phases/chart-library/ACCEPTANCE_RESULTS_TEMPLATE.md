@@ -1,12 +1,13 @@
-# 最终验收结果模板
+# 最终验收结果（CI 候选）
 
-本文件为未执行模板，不是测试报告。每项从NOT_RUN开始，实施后附真实证据。
+文件名保留历史 `TEMPLATE` 以免破坏既有引用；内容已是 CL12 的逐项活验收表。托管结果回传前，
+`CI_PENDING` 不是 PASS；物理设备未覆盖项继续明确写 `NOT_RUN`。
 
 基线HEAD：未填写。最终HEAD：未填写。设备/系统/provider：未填写。
 
 | ID | 状态 | 测试层次/命令/退出码 | 证据路径 | 限制 |
 |---|---|---|---|---|
-| A01 | CI_PENDING | CL10 install + empty-state stories | `CODEX-CI-REPORT-<CL10_SHA12>-<run_id>-<attempt>` | 等待 Action |
+| A01 | CI_PENDING | CL12 cumulative install + empty-state stories | `CODEX-CI-REPORT-<CL12_SHA12>-<run_id>-<attempt>` | 等待 Action |
 | A02 | CI_PENDING | CL11 bounded provider enumeration + zero-copy evidence | `CODEX-CI-REPORT-<CL11_SHA12>-<run_id>-<attempt>` | 真实provider留CL12 |
 | A03 | CI_PENDING | single-document reader stories | 同上 | 等待Action |
 | A04 | CI_PENDING | picker rejection/cancellation stories | 同上 | 等待Action |
@@ -27,7 +28,7 @@
 | A19 | CI_PENDING | corrupt DB/blob/schema bounded failure | 同上 | 等待Action |
 | A20 | CI_PENDING | BASIC scan does not hash/decode full source | 同上 | 等待Action |
 | A21 | CI_PENDING | cancelled/full validation revision guard | 同上 | 等待Action |
-| A22 | CI_PENDING | CL10 independent host/runtime story | 同上 | 等待 Action |
+| A22 | CI_PENDING | CL12 independent host/runtime story | 同上 | 等待 Action |
 | A23 | CI_PENDING | process runtime consumes catalog without Library UI | 同上 | 等待Action |
 | A24 | CI_PENDING | bounded display-plan candidate/session stories | 同上 | 等待Action |
 | A25 | CI_PENDING | fixed-selection stability story | 同上 | 等待Action |
@@ -36,16 +37,16 @@
 | A28 | CI_PENDING | antimeridian/zoom/overzoom stories | 同上 | 等待Action |
 | A29 | CI_PENDING | revision/session invalidation stories | 同上 | 实体外部改写时机留CL12 |
 | A30 | CI_PENDING | forced revision probe + documented detection limit | 同上 | 无provider通知的静默替换不可自动保证 |
-| A31 | CI_PENDING | CL09 contract + catalog/source tests | `CODEX-CI-REPORT-<CL09_SHA12>-<run_id>-<attempt>` | 等待 Action |
+| A31 | CI_PENDING | CL12 cumulative catalog/source safety tests | `CODEX-CI-REPORT-<CL12_SHA12>-<run_id>-<attempt>` | 等待 Action |
 | A32 | CI_PENDING | managed copy/journal/cancellation/space tests | 同上 | 真实低磁盘留 CL12 |
 | A33 | CI_PENDING | managed read lease + confirmed delete tests | 同上 | 外部 renderer lease 真机组合留 CL12 |
 | A34 | CI_PENDING | legacy fixture + every journal checkpoint + idempotent catalog sync | 同上 | 进程杀死设备故事留 CL12 |
 | A35 | CI_PENDING | full existing unit/integration/build gates | 同上 | 等待 Action |
 | A36 | CI_PENDING | token/path/LAN/gateway bounded attack stories | `CODEX-CI-REPORT-<CL11_SHA12>-<run_id>-<attempt>` | 等待Action |
 | A37 | CI_PENDING | session/gateway/task bounded counters | 同上 | 30分钟物理soak未执行 |
-| A38 | CI_PENDING | CL10 three-size/theme/large-type stories | `CODEX-CI-REPORT-<CL10_SHA12>-<run_id>-<attempt>` | 真机圆角/方屏留 CL12 |
-| A39 | CI_PENDING | CL10 linked Back/Start/deep-link stories | 同上 | 等待 Action |
-| A40 | CI_PENDING | CL10 five-app product-surface/APK contracts | 同上 | 等待 Action |
+| A38 | CI_PENDING | CL12 cumulative three-size/theme/large-type stories | `CODEX-CI-REPORT-<CL12_SHA12>-<run_id>-<attempt>` | 真机圆角/方屏仍NOT_RUN |
+| A39 | CI_PENDING | CL12 linked Back/Start/deep-link stories | 同上 | 等待 Action |
+| A40 | CI_PENDING | CL12 five-app product-surface/APK contracts | 同上 | 等待 Action |
 | A41 | PARTIAL_CI_PENDING | API34/API36 build/load jobs | 同上 | 物理16KiB设备NOT_RUN |
 | A42 | PARTIAL_CI_PENDING | 1000-item bounded catalog evidence | `chart-library-cl11-evidence.json` | 30分钟物理负载NOT_RUN |
 

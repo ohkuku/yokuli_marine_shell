@@ -6,6 +6,7 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 mode="${1:-}"
 all_device_tasks=(
   :adapter:marine-data-android:connectedDebugAndroidTest
+  :adapter:chart-library-android:connectedDebugAndroidTest
   :adapter:map-offline:connectedDebugAndroidTest
   :adapter:map-storage:connectedDebugAndroidTest
   :feature:chart-library:connectedDebugAndroidTest
@@ -47,7 +48,7 @@ case "$mode" in
   ui-contract)
     gradle_args+=(
       :app-shell:connectedStandaloneDebugAndroidTest
-      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#productionShellExposesFourAppsWhileDefaultStartStaysMapFirst'
+      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#productionShellExposesFiveAppsWhileDefaultStartStaysMapFirst'
     )
     ;;
   performance)

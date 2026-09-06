@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "task": "CL12",
+  "start_commit": "271f606b219211d34c9756e6c0a3f1cd9b611fa4",
+  "acceptance_ids": {
+    "first": "A01",
+    "last": "A42",
+    "count": 42
+  },
+  "production_app_ids": [
+    "chart",
+    "settings",
+    "nmea_input",
+    "data_sources",
+    "chart_library"
+  ],
+  "default_start_app_ids": [
+    "chart",
+    "settings"
+  ],
+  "android_home_intent": false,
+  "portrait_only": true,
+  "external_source_write_bytes": 0,
+  "implicit_full_copy_bytes": 0,
+  "google_map_evidence_is_configuration_only": true,
+  "required_codex_attachments": [
+    "google-maps-configuration.json",
+    "chart-library-cl11-evidence.json"
+  ],
+  "full_local_gate_run": false,
+  "verification": "GITHUB_ACTION_PENDING"
+}

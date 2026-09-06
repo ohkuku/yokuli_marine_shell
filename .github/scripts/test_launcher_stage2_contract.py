@@ -170,7 +170,7 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
         ).read_text()
         for story in (
             "chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart",
-            "productionShellExposesFourAppsWhileDefaultStartStaysMapFirst",
+            "productionShellExposesFiveAppsWhileDefaultStartStaysMapFirst",
         ):
             self.assertIn(story, stories)
             self.assertIn(story, device_runner)

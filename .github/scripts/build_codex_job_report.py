@@ -329,6 +329,11 @@ def build_report(repo_root: Path, output: Path, job: str, status: str, head_sha:
         destination = output / "chart-library-cl11-evidence.json"
         shutil.copyfile(cl11_evidence, destination)
         attachments.append(destination.name)
+    google_maps_evidence = repo_root / "build" / "google-maps" / "configuration.json"
+    if job == "build" and google_maps_evidence.is_file():
+        destination = output / "google-maps-configuration.json"
+        shutil.copyfile(google_maps_evidence, destination)
+        attachments.append(destination.name)
     steps = load_steps(repo_root)
     tests, test_warnings = junit_findings(repo_root, evidence)
     lint, lint_warnings = lint_findings(repo_root, evidence)
