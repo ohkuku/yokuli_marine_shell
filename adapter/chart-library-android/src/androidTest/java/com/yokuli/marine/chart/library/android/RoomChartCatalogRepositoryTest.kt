@@ -1,6 +1,7 @@
 package com.yokuli.marine.chart.library.android
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yokuli.marine.map.domain.chartlibrary.*
@@ -148,6 +149,37 @@ class RoomChartCatalogRepositoryTest {
             assertEquals(managed.id, repository.managedCopyFor(second.id))
             assertNotNull(repository.originalForManagedCopy(managed.id))
         }
+    }
+
+    @Test fun thousandAssetCatalogIsConsumedInBoundedDatabasePages() = runBlocking {
+        val file = freshDatabase("catalog-thousand")
+        val source = source("thousand")
+        val assets = (0 until 1_000).map { index ->
+            asset(source.id, "document-$index", "region/chart-${index.toString().padStart(4, '0')}.mbtiles")
+        }
+        val startedAt = SystemClock.elapsedRealtime()
+        RoomChartCatalogRepository.create(context, file).use { repository ->
+            val mutations = buildList {
+                add(ChartCatalogMutation.PutSource(source))
+                assets.forEach { add(ChartCatalogMutation.PutAsset(it)) }
+            }
+            assertTrue(repository.transact(ChartCatalogTransaction("thousand-assets", mutations = mutations)) is ChartCatalogCommitResult.Committed)
+            val observed = linkedSetOf<ChartAssetId>()
+            var offset = 0
+            do {
+                val page = repository.assets(offset = offset)
+                assertTrue(page.items.size <= MAX_CATALOG_PAGE_SIZE)
+                observed += page.items.map(ChartAsset::id)
+                offset += page.items.size
+            } while (offset < 1_000)
+            assertEquals(assets.mapTo(linkedSetOf(), ChartAsset::id), observed)
+            assertEquals(1_000, repository.snapshot.value.assetCount)
+        }
+        println(
+            "CL11_EVIDENCE " +
+                "{\"scenario\":\"catalog-1000\",\"assetCount\":1000,\"pageSize\":100," +
+                "\"catalogBytes\":${file.length()},\"elapsedMillis\":${SystemClock.elapsedRealtime() - startedAt}}",
+        )
     }
 
     private val context get() = ApplicationProvider.getApplicationContext<Context>()

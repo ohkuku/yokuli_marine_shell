@@ -13,8 +13,12 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import org.maplibre.android.style.sources.RasterSource
 import org.maplibre.android.style.sources.TileSet
@@ -27,9 +31,17 @@ class ChartLoopbackTileGateway : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val token = ByteArray(TOKEN_BYTES).also(SecureRandom()::nextBytes).toHex()
     private val registrations = ConcurrentHashMap<RouteKey, RegisteredAsset>()
-    private val workers = Executors.newFixedThreadPool(MAX_CONCURRENT_REQUESTS) { runnable ->
-        Thread(runnable, "yokuli-chart-tile").apply { isDaemon = true }
-    }
+    private val activeWorkers = AtomicInteger(0)
+    private val workerHighWater = AtomicInteger(0)
+    private val workers = ThreadPoolExecutor(
+        MAX_CONCURRENT_REQUESTS,
+        MAX_CONCURRENT_REQUESTS,
+        0L,
+        TimeUnit.MILLISECONDS,
+        ArrayBlockingQueue(MAX_QUEUED_REQUESTS),
+        { runnable -> Thread(runnable, "yokuli-chart-tile").apply { isDaemon = true } },
+        ThreadPoolExecutor.AbortPolicy(),
+    )
     // Use the IPv4 loopback literal deliberately. Apart from making the transport scope explicit,
     // this avoids emitting an invalid unbracketed IPv6 URL when Android resolves "loopback" to ::1.
     // The application network-security policy can consequently allow exactly 127.0.0.1.
@@ -44,6 +56,15 @@ class ChartLoopbackTileGateway : AutoCloseable {
     val requestCount = AtomicLong(0L)
     val rejectionCount = AtomicLong(0L)
 
+    fun metrics(): ChartLoopbackGatewayMetrics = ChartLoopbackGatewayMetrics(
+        registeredAssetCount = registrations.size,
+        activeRequestCount = activeWorkers.get(),
+        queuedRequestCount = workers.queue.size,
+        requestHighWater = workerHighWater.get(),
+        servedRequestCount = requestCount.get(),
+        rejectedRequestCount = rejectionCount.get(),
+    )
+
     fun register(
         session: ChartReadSession,
         scheme: MapTileScheme,
@@ -56,7 +77,10 @@ class ChartLoopbackTileGateway : AutoCloseable {
         require(minZoom in 0..24 && maxZoom in minZoom..24)
         val route = RouteKey(session.request.assetId.value, session.request.revision.routeKey())
         val asset = RegisteredAsset(session, scheme, tileSize, minZoom, maxZoom)
-        check(registrations.putIfAbsent(route, asset) == null) { "Asset revision is already registered" }
+        synchronized(registrations) {
+            check(registrations.size < MAX_REGISTERED_ASSETS) { "Chart gateway registration limit reached" }
+            check(registrations.putIfAbsent(route, asset) == null) { "Asset revision is already registered" }
+        }
         val template = "http://${localAddress.hostAddress}:$localPort/$token/${route.assetId}/${route.revision}/{z}/{x}/{y}"
         return ChartRasterRegistration(
             assetId = route.assetId,
@@ -94,7 +118,20 @@ class ChartLoopbackTileGateway : AutoCloseable {
                 socket.close()
                 continue
             }
-            runCatching { workers.execute { socket.use(::serve) } }.onFailure { socket.close() }
+            try {
+                workers.execute {
+                    val active = activeWorkers.incrementAndGet()
+                    workerHighWater.accumulateAndGet(active) { left, right -> maxOf(left, right) }
+                    try {
+                        socket.use(::serve)
+                    } finally {
+                        activeWorkers.decrementAndGet()
+                    }
+                }
+            } catch (_: RejectedExecutionException) {
+                rejectionCount.incrementAndGet()
+                socket.close()
+            }
         }
     }
 
@@ -166,6 +203,8 @@ class ChartLoopbackTileGateway : AutoCloseable {
         private const val TOKEN_BYTES = 16
         private const val IPV4_LOOPBACK = "127.0.0.1"
         private const val MAX_CONCURRENT_REQUESTS = 8
+        private const val MAX_QUEUED_REQUESTS = 16
+        private const val MAX_REGISTERED_ASSETS = 8
         private const val ACCEPT_BACKLOG = 16
         private const val SOCKET_TIMEOUT_MILLIS = 5_000
         private const val MAX_REQUEST_LINE_BYTES = 1_024
@@ -174,6 +213,15 @@ class ChartLoopbackTileGateway : AutoCloseable {
         private const val MAX_PATH_BYTES = 768
     }
 }
+
+data class ChartLoopbackGatewayMetrics(
+    val registeredAssetCount: Int,
+    val activeRequestCount: Int,
+    val queuedRequestCount: Int,
+    val requestHighWater: Int,
+    val servedRequestCount: Long,
+    val rejectedRequestCount: Long,
+)
 
 class ChartRasterRegistration internal constructor(
     val assetId: String,

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "task": "CL11",
+  "start_commit": "4bf4e536c71fd399bbb29ee7f19322cd5eb7786b",
+  "max_enumerated_provider_rows": 10000,
+  "max_tree_depth": 32,
+  "enumeration_time_budget_millis": 30000,
+  "timeout_is_user_cancellation": false,
+  "shared_assets_are_invalidated_by_one_lost_membership": false,
+  "max_scan_mutations_per_transaction": 1000,
+  "scan_failure_may_remain_running": false,
+  "max_open_read_sessions": 12,
+  "max_pending_read_requests": 12,
+  "read_overload_failure": "RESOURCE_LIMIT",
+  "max_coordination_lock_stripes": 64,
+  "max_gateway_registered_assets": 8,
+  "max_gateway_workers": 8,
+  "max_gateway_queued_requests": 16,
+  "gateway_bind_address": "127.0.0.1",
+  "evidence_schema_version": 1,
+  "required_machine_evidence": [
+    "zero-copy-read",
+    "runtime-bounds",
+    "catalog-1000"
+  ],
+  "physical_30_minute_soak_verified": false,
+  "verification": "GITHUB_ACTION_PENDING"
+}

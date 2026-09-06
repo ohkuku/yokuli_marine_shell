@@ -56,6 +56,19 @@ class AndroidChartDocumentEnumeratorTest {
         assertTrue((result as ChartEnumerationResult.Partial).issues.any { it.kind == ChartEnumerationIssueKind.QUERY_FAILED })
     }
 
+    @Test fun providerRowsAreBoundedBeforeTheyCanBuildAnUnboundedChildList() = runBlocking {
+        root.deleteRecursively()
+        root.mkdirs()
+        repeat(1_001) { index -> File(root, "chart-${index.toString().padStart(4, '0')}.mbtiles").writeBytes(byteArrayOf(1)) }
+
+        val result = AndroidChartDocumentEnumerator(context.contentResolver, maxDocuments = 1_000)
+            .enumerate(treeSource()) { false }
+
+        assertTrue("unexpected enumeration: $result", result is ChartEnumerationResult.Partial)
+        assertEquals(1_000, result.documents.size)
+        assertTrue((result as ChartEnumerationResult.Partial).issues.any { it.kind == ChartEnumerationIssueKind.LIMIT_REACHED })
+    }
+
     private fun treeSource() = ChartLibrarySource(
         ChartSourceId(UUID.randomUUID().toString()), ChartLibrarySourceKind.TREE,
         ChartOpaqueLocator(DocumentsContract.buildTreeDocumentUri(authority, "root").toString()),

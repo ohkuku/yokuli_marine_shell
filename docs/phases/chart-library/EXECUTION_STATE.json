@@ -455,12 +455,45 @@
     },
     "CL11": {
       "title": "故障、数据安全与资源压力",
-      "status": "NOT_STARTED",
+      "status": "IMPLEMENTED_CI_PENDING",
       "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "changed_files": [
+        "core/map-domain/**/chartlibrary/{ChartLibraryRuntimeContracts,ChartReadContracts,ChartScanContracts}*",
+        "adapter/chart-library-android/**/{AndroidChartDocumentEnumerator,AndroidChartLibraryRuntime,AndroidChartSourceController,AndroidChartValidationController}*",
+        "adapter/map-offline/**/{ChartLoopbackTileGateway,ChartDisplayRuntimeTest}*",
+        ".github/scripts/{extract_chart_library_cl11_evidence.py,test_chart_library_cl11_contract.py,test_chart_library_cl11_evidence.py,build_codex_job_report.py,test-ci-contract.sh}",
+        ".github/workflows/android.yml",
+        "docs/phases/chart-library/{CL11_REPORT.md,CL11_BASELINE_LOCK.json,ACCEPTANCE_RESULTS_TEMPLATE.md,EXECUTION_STATE.json}"
+      ],
+      "commands": [
+        {
+          "command": "./gradlew :core:map-domain:compileTestKotlin :adapter:map-offline:compileDebugUnitTestKotlin :adapter:chart-library-android:compileDebugAndroidTestKotlin --no-daemon",
+          "first_exit_code": 1,
+          "first_failure": "CL08 ChartDisplayRuntimeTest omitted the now-required expectedFingerprint",
+          "corrected_exit_code": 0,
+          "result": "minimal domain/unit/androidTest Kotlin compile passed"
+        },
+        {
+          "command": "python3 .github/scripts/test_chart_library_cl11_evidence.py + test_chart_library_cl11_contract.py + test-ci-contract.sh",
+          "result": "PASS"
+        },
+        {
+          "command": "Yokuli OS Android CI / Chart Library CL11 resilience, machine evidence and cumulative quality gates",
+          "result": "PENDING_GITHUB_ACTION"
+        }
+      ],
+      "evidence": [
+        "CODEX-CI-REPORT-<CL11_SHA12>-<run_id>-<attempt>",
+        "chart-library-cl11-evidence.json inside CODEX-JOB-api34",
+        "yokuli-os-api34-reports-<CL11_SHA>/build/chart-library-cl11/evidence.json",
+        "docs/phases/chart-library/CL11_REPORT.md",
+        "docs/phases/chart-library/CL11_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "按用户CI-first工作流，本地只运行静态合同与最小编译；全仓、emulator、APK和压力门禁等待GitHub Action",
+        "真实30分钟、物理provider、低内存与16KiB设备证据不由合成测试替代",
+        "最小编译纠正CL08测试调用缺失fingerprint，未改变CL08产品合同"
+      ],
       "blockers": []
     },
     "CL12": {

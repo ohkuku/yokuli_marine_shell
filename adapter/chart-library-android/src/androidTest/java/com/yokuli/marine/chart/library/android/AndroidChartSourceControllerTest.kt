@@ -128,6 +128,24 @@ class AndroidChartSourceControllerTest {
         }
     }
 
+    @Test fun largeScanPublishesInBoundedTransactionsAndNeverRemainsRunning() = runBlocking {
+        RoomChartCatalogRepository.create(context, freshDatabase("source-large-scan")).use { catalog ->
+            val documents = (0 until 1_025).map { index -> document("large-$index") }
+            val controller = AndroidChartSourceController(
+                catalog,
+                { _, _ -> ChartEnumerationResult.Complete(documents) },
+                FakeGrant(),
+            )
+            val sourceId = (controller.acceptPicker(selection("large-scan")) as ChartSourceCommandResult.Accepted).sourceId
+
+            val result = controller.refresh(sourceId)
+
+            assertTrue(result is ChartSourceCommandResult.ScanPublished)
+            assertEquals(ChartScanStatus.COMPLETE, catalog.source(sourceId)?.scan?.status)
+            assertEquals(1_025, catalog.assets(ChartAssetQuery(sourceId = sourceId)).total)
+        }
+    }
+
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private fun freshDatabase(name: String) = File(context.cacheDir, "$name.db").also {
         it.delete(); File("${it.path}-wal").delete(); File("${it.path}-shm").delete()

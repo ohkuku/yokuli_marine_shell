@@ -61,6 +61,39 @@ class ChartSourceScanPlannerTest {
         assertEquals(ChartAssetAccessState.PERMISSION_LOST, failed.assetsToPut.single().access)
     }
 
+    @Test fun completedScanRemovesOnlyItsMembershipWhenAnotherSourceStillOwnsTheAsset() {
+        val otherSourceId = ChartSourceId(UUID.randomUUID().toString())
+        val shared = asset("shared").copy(
+            memberships = setOf(sourceId, otherSourceId),
+            access = ChartAssetAccessState.READABLE,
+        )
+
+        val plan = planner.plan(source, 1, ChartEnumerationResult.Complete(emptyList()), listOf(shared))
+
+        assertTrue(plan.missingAssetIds.isEmpty())
+        assertEquals(setOf(shared.id), plan.membershipsToRemove)
+        assertTrue(plan.assetsToPut.isEmpty())
+    }
+
+    @Test fun revokedSourceDoesNotInvalidateAnAssetStillReadableThroughAnotherGrant() {
+        val shared = asset("shared-revoked").copy(
+            memberships = setOf(sourceId, ChartSourceId(UUID.randomUUID().toString())),
+            access = ChartAssetAccessState.READABLE,
+        )
+
+        val plan = planner.plan(
+            source,
+            1,
+            ChartEnumerationResult.Failed(ChartEnumerationIssue(null, ChartEnumerationIssueKind.PERMISSION_LOST)),
+            listOf(shared),
+        )
+
+        assertEquals(ChartGrantState.REVOKED, plan.source.grantState)
+        assertTrue(plan.assetsToPut.isEmpty())
+        assertTrue(plan.missingAssetIds.isEmpty())
+        assertTrue(plan.membershipsToRemove.isEmpty())
+    }
+
     @Test fun incompleteFileRemainsPendingAndIsNeverPromotedByDiscovery() {
         val pending = document("pending", "downloading.part").copy(pending = true)
         val plan = planner.plan(source, 1, ChartEnumerationResult.Complete(listOf(pending)), emptyList())

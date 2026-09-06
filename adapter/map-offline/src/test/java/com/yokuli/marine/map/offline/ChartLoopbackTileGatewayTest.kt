@@ -50,6 +50,23 @@ class ChartLoopbackTileGatewayTest {
         }
     }
 
+    @Test fun registrationTableAndReportedWorkerStateStayBounded() {
+        ChartLoopbackTileGateway().use { gateway ->
+            val registrations = (0 until 8).map { index ->
+                gateway.register(FakeReadSession("asset-$index"), MapTileScheme.XYZ, 256)
+            }
+            assertEquals(8, gateway.metrics().registeredAssetCount)
+            val overflow = runCatching {
+                gateway.register(FakeReadSession("asset-overflow"), MapTileScheme.XYZ, 256)
+            }
+            assertTrue(overflow.isFailure)
+            assertTrue(gateway.metrics().activeRequestCount <= 8)
+            assertTrue(gateway.metrics().queuedRequestCount <= 16)
+            registrations.forEach(AutoCloseable::close)
+            assertEquals(0, gateway.metrics().registeredAssetCount)
+        }
+    }
+
     private fun get(url: URL): Response = request(url, "GET")
 
     private fun request(url: URL, method: String): Response {
@@ -67,9 +84,9 @@ class ChartLoopbackTileGatewayTest {
 
     private data class Response(val code: Int, val cacheControl: String?, val body: ByteArray)
 
-    private class FakeReadSession : ChartReadSession {
+    private class FakeReadSession(assetId: String = "asset-loopback") : ChartReadSession {
         override val request = ChartReadRequest(
-            ChartAssetId("asset-loopback"),
+            ChartAssetId(assetId),
             ChartOpaqueLocator("content://fixture/chart"),
             ChartContentRevision("doc-1", 100, 1),
             sourceGeneration = 3,

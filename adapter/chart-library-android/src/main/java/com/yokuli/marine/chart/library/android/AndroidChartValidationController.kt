@@ -22,7 +22,7 @@ class AndroidChartValidationController(
     private val basic = ChartBasicInspector(access)
     private val full = ChartFullVerifier(access, revisionProbe)
     private val budget = Semaphore(2)
-    private val assetLocks = ConcurrentHashMap<String, Mutex>()
+    private val assetLocks = Array(LOCK_STRIPES) { Mutex() }
     private val epochs = ConcurrentHashMap<String, AtomicLong>()
     private val mutableState = MutableStateFlow(ChartValidationSnapshot(jobStore?.restoreInterrupted().orEmpty()))
     override val state: StateFlow<ChartValidationSnapshot> = mutableState.asStateFlow()
@@ -58,7 +58,7 @@ class AndroidChartValidationController(
     }
 
     override fun cancel(assetId: ChartAssetId) {
-        epochs.computeIfAbsent(assetId.value) { AtomicLong() }.incrementAndGet()
+        epochs[assetId.value]?.incrementAndGet()
         updateJob(ChartValidationJob(assetId, state.value.jobs[assetId]?.kind ?: ChartValidationJobKind.BASIC, ChartValidationJobStatus.CANCELLED))
     }
 
@@ -66,16 +66,24 @@ class AndroidChartValidationController(
         assetId: ChartAssetId,
         kind: ChartValidationJobKind,
         block: suspend (ChartAsset, Long, Long) -> ChartValidationCommandResult,
-    ): ChartValidationCommandResult = assetLocks.computeIfAbsent(assetId.value) { Mutex() }.withLock {
+    ): ChartValidationCommandResult = assetLock(assetId).withLock {
         budget.withPermit {
             val asset = catalog.asset(assetId) ?: return@withPermit reject(assetId, ChartValidationIssue.OPEN_FAILED)
             val generation = asset.memberships.mapNotNull { catalog.source(it)?.scan?.generation }.maxOrNull()
                 ?.takeIf { it > 0L } ?: return@withPermit reject(assetId, ChartValidationIssue.OPEN_FAILED)
-            val epoch = epochs.computeIfAbsent(assetId.value) { AtomicLong() }.incrementAndGet()
-            updateJob(ChartValidationJob(assetId, kind, ChartValidationJobStatus.RUNNING))
-            block(asset, generation, epoch)
+            val epochCounter = epochs.computeIfAbsent(assetId.value) { AtomicLong() }
+            val epoch = epochCounter.incrementAndGet()
+            try {
+                updateJob(ChartValidationJob(assetId, kind, ChartValidationJobStatus.RUNNING))
+                block(asset, generation, epoch)
+            } finally {
+                epochs.remove(assetId.value, epochCounter)
+            }
         }
     }
+
+    private fun assetLock(assetId: ChartAssetId): Mutex =
+        assetLocks[(assetId.value.hashCode() and Int.MAX_VALUE) % assetLocks.size]
 
     private suspend fun publishIfCurrent(
         original: ChartAsset,
@@ -125,5 +133,8 @@ class AndroidChartValidationController(
         ) }
     }
 
-    companion object { private const val MAX_JOBS = 256 }
+    companion object {
+        private const val MAX_JOBS = 256
+        private const val LOCK_STRIPES = 64
+    }
 }

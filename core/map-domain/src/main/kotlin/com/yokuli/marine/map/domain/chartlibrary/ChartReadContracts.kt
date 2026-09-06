@@ -108,6 +108,7 @@ enum class ChartReadFailure {
     CANCELLED,
     TILE_TOO_LARGE,
     UNSUPPORTED_RASTER,
+    RESOURCE_LIMIT,
     IO_FAILURE,
 }
 

@@ -30,13 +30,14 @@ class AndroidChartDocumentEnumerator(
         val issues = mutableListOf<ChartEnumerationIssue>()
         val visited = mutableSetOf<String>()
         val cancellation = CancellationSignal()
-        fun stopped(): Boolean {
-            val stop = shouldCancel() || SystemClock.elapsedRealtime() - started >= timeBudgetMillis
-            if (stop) cancellation.cancel()
-            return stop
-        }
+        fun cancelled() = shouldCancel().also { if (it) cancellation.cancel() }
+        fun timedOut() = (SystemClock.elapsedRealtime() - started >= timeBudgetMillis)
+            .also { if (it) cancellation.cancel() }
 
-        if (stopped()) return ChartEnumerationResult.Cancelled(emptyList())
+        if (cancelled()) return ChartEnumerationResult.Cancelled(emptyList())
+        if (timedOut()) return ChartEnumerationResult.Partial(
+            emptyList(), listOf(ChartEnumerationIssue(null, ChartEnumerationIssueKind.TIME_BUDGET_REACHED)),
+        )
         return try {
             when (source.kind) {
                 ChartLibrarySourceKind.SINGLE_DOCUMENT -> {
@@ -45,7 +46,8 @@ class AndroidChartDocumentEnumerator(
                 ChartLibrarySourceKind.TREE -> {
                     val rootId = DocumentsContract.getTreeDocumentId(root)
                     val queue = ArrayDeque<DirectoryFrame>().apply { add(DirectoryFrame(rootId, "", 0)) }
-                    while (queue.isNotEmpty() && documents.size < maxDocuments && !stopped()) {
+                    var enumeratedEntries = 0
+                    while (queue.isNotEmpty() && enumeratedEntries < maxDocuments && !cancelled() && !timedOut()) {
                         val frame = queue.removeFirst()
                         if (!visited.add(frame.documentId)) continue
                         if (frame.depth >= maxDepth) {
@@ -53,7 +55,7 @@ class AndroidChartDocumentEnumerator(
                             continue
                         }
                         val children = try {
-                            queryChildren(root, frame, cancellation)
+                            queryChildren(root, frame, cancellation, maxDocuments - enumeratedEntries)
                         } catch (_: SecurityException) {
                             return ChartEnumerationResult.Failed(
                                 ChartEnumerationIssue(frame.path, ChartEnumerationIssueKind.PERMISSION_LOST),
@@ -62,15 +64,20 @@ class AndroidChartDocumentEnumerator(
                             issues += ChartEnumerationIssue(frame.path, ChartEnumerationIssueKind.QUERY_FAILED)
                             continue
                         }
-                        children.forEach { child ->
+                        enumeratedEntries += children.rows.size
+                        children.rows.forEach { child ->
                             if (child.directory) {
                                 if (source.recursive) queue += DirectoryFrame(child.documentId, child.displayPath, frame.depth + 1)
                             } else if (child.chartCandidate) {
                                 documents += child.toDocument(requireNotNull(root.authority), root, withinTree = true)
                             }
                         }
+                        if (children.truncated) {
+                            issues += ChartEnumerationIssue(frame.path, ChartEnumerationIssueKind.LIMIT_REACHED)
+                            break
+                        }
                     }
-                    if (documents.size >= maxDocuments || queue.isNotEmpty()) {
+                    if (queue.isNotEmpty()) {
                         issues += ChartEnumerationIssue(null, ChartEnumerationIssueKind.LIMIT_REACHED)
                     }
                 }
@@ -80,6 +87,10 @@ class AndroidChartDocumentEnumerator(
             }
             when {
                 shouldCancel() -> ChartEnumerationResult.Cancelled(documents)
+                timedOut() -> ChartEnumerationResult.Partial(
+                    documents,
+                    (issues + ChartEnumerationIssue(null, ChartEnumerationIssueKind.TIME_BUDGET_REACHED)).distinct(),
+                )
                 issues.isNotEmpty() -> ChartEnumerationResult.Partial(documents, issues)
                 else -> ChartEnumerationResult.Complete(documents)
             }
@@ -99,16 +110,23 @@ class AndroidChartDocumentEnumerator(
             row.takeIf(Row::chartCandidate)?.toDocument(requireNotNull(uri.authority), uri, withinTree = false)
         }
 
-    private fun queryChildren(tree: Uri, frame: DirectoryFrame, cancellation: CancellationSignal): List<Row> {
+    private fun queryChildren(
+        tree: Uri,
+        frame: DirectoryFrame,
+        cancellation: CancellationSignal,
+        maximumRows: Int,
+    ): ChildPage {
+        require(maximumRows > 0)
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, frame.documentId)
         return resolver.query(childrenUri, PROJECTION, null, null, null, cancellation)?.use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
+            val rows = buildList {
+                while (size < maximumRows && cursor.moveToNext()) {
                     val row = cursor.toRow("")
                     val path = listOf(frame.path, row.name).filter(String::isNotBlank).joinToString("/")
                     add(row.copy(displayPath = path))
                 }
             }
+            ChildPage(rows, truncated = rows.size == maximumRows && cursor.moveToNext())
         } ?: throw IllegalStateException("Provider returned null cursor")
     }
 
@@ -130,6 +148,7 @@ class AndroidChartDocumentEnumerator(
     }
 
     private data class DirectoryFrame(val documentId: String, val path: String, val depth: Int)
+    private data class ChildPage(val rows: List<Row>, val truncated: Boolean)
     private data class Row(
         val documentId: String,
         val name: String,

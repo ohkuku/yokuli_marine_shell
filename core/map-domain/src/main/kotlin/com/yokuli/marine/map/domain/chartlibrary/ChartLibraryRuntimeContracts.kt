@@ -5,11 +5,20 @@ import kotlinx.coroutines.flow.StateFlow
 data class ChartLibraryRuntimeMetrics(
     val activeReadSessions: Int = 0,
     val readSessionHighWater: Int = 0,
+    val queuedReadRequests: Int = 0,
+    val queuedReadHighWater: Int = 0,
+    val rejectedReadRequests: Long = 0L,
+    val closedReadSessions: Long = 0L,
+    val sourceBytesRead: Long = 0L,
+    val tileQueries: Long = 0L,
     val queuedBasicChecks: Int = 0,
     val rejectedBasicChecks: Long = 0L,
 ) {
     init {
         require(activeReadSessions >= 0 && readSessionHighWater >= activeReadSessions)
+        require(queuedReadRequests >= 0 && queuedReadHighWater >= queuedReadRequests)
+        require(rejectedReadRequests >= 0L && closedReadSessions >= 0L)
+        require(sourceBytesRead >= 0L && tileQueries >= 0L)
         require(queuedBasicChecks >= 0 && rejectedBasicChecks >= 0L)
     }
 }

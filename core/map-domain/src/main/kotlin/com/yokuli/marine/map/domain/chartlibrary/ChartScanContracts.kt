@@ -54,7 +54,14 @@ data class ChartDiscoveredDocument(
 data class ChartEnumerationIssue(val displayPath: String?, val kind: ChartEnumerationIssueKind) {
     init { require(displayPath == null || displayPath.length <= 1_024) }
 }
-enum class ChartEnumerationIssueKind { QUERY_FAILED, PERMISSION_LOST, LIMIT_REACHED, DEPTH_LIMIT, CANCELLED }
+enum class ChartEnumerationIssueKind {
+    QUERY_FAILED,
+    PERMISSION_LOST,
+    LIMIT_REACHED,
+    TIME_BUDGET_REACHED,
+    DEPTH_LIMIT,
+    CANCELLED,
+}
 
 sealed interface ChartEnumerationResult {
     val documents: List<ChartDiscoveredDocument>
@@ -80,6 +87,8 @@ data class ChartScanPlan(
     val source: ChartLibrarySource,
     val assetsToPut: List<ChartAsset>,
     val missingAssetIds: Set<ChartAssetId>,
+    /** A completed scan may remove only this source's membership while preserving another source. */
+    val membershipsToRemove: Set<ChartAssetId> = emptySet(),
 )
 
 fun interface ChartAssetIdFactory {
@@ -139,10 +148,16 @@ class ChartSourceScanPlanner(private val ids: ChartAssetIdFactory = RandomChartA
             ChartEnumerationIssueKind.PERMISSION_LOST
         val put = if (permissionLost) {
             discoveredPuts + existing.filter { source.id in it.memberships && it.id !in seen }
+                .filter { it.memberships.size == 1 }
                 .map { it.copy(access = ChartAssetAccessState.PERMISSION_LOST) }
         } else discoveredPuts
         val missing = if (enumeration is ChartEnumerationResult.Complete) {
-            existing.filter { source.id in it.memberships && it.id !in seen }.mapTo(linkedSetOf(), ChartAsset::id)
+            existing.filter { source.id in it.memberships && it.id !in seen && it.memberships.size == 1 }
+                .mapTo(linkedSetOf(), ChartAsset::id)
+        } else emptySet()
+        val membershipsToRemove = if (enumeration is ChartEnumerationResult.Complete) {
+            existing.filter { source.id in it.memberships && it.id !in seen && it.memberships.size > 1 }
+                .mapTo(linkedSetOf(), ChartAsset::id)
         } else emptySet()
         val status = when (enumeration) {
             is ChartEnumerationResult.Complete -> ChartScanStatus.COMPLETE
@@ -169,6 +184,7 @@ class ChartSourceScanPlanner(private val ids: ChartAssetIdFactory = RandomChartA
             ),
             assetsToPut = put,
             missingAssetIds = missing,
+            membershipsToRemove = membershipsToRemove,
         )
     }
 }

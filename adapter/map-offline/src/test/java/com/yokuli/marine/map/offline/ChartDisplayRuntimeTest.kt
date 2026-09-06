@@ -37,7 +37,8 @@ class ChartDisplayRuntimeTest {
             ChartOpenResult.Opened(FakeSession(request, available.getValue(request.assetId)))
         })
 
-        val result = index.evaluate(plan(), 3, required)
+        val currentPlan = plan()
+        val result = index.evaluate(currentPlan, 3, required, expectedFingerprint = currentPlan.fingerprint)
 
         assertEquals(ChartDisplayCoverageStatus.PARTIAL, result.status)
         assertEquals(setOf(SlippyTileKey(3, 1, 3)), result.missingKeys)

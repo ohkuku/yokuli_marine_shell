@@ -12,6 +12,7 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -44,6 +45,7 @@ class AndroidChartLibraryRuntime private constructor(
     private val runtimeJob = SupervisorJob(parentScope.coroutineContext[Job])
     private val scope = CoroutineScope(parentScope.coroutineContext + runtimeJob)
     private val readBudget = Semaphore(MAX_OPEN_READ_SESSIONS)
+    private val waitingReads = AtomicInteger(0)
     private val sessions = ConcurrentHashMap<ChartAssetId, MutableSet<BudgetedReadSession>>()
     private val basicQueue = Channel<ChartAssetId>(BASIC_QUEUE_CAPACITY)
     private val copyBudget = Semaphore(MAX_ACTIVE_COPY_JOBS)
@@ -228,45 +230,76 @@ class AndroidChartLibraryRuntime private constructor(
         if (!requestIsCurrent(request)) return ChartOpenResult.Rejected(
             ChartReadFailure.REVISION_CHANGED, "Catalog revision or source generation changed",
         )
-        readBudget.acquire()
-        if (closed.get()) {
-            readBudget.release()
-            return ChartOpenResult.Rejected(ChartReadFailure.SESSION_CLOSED, "Chart library runtime is closed")
+        val queued = waitingReads.incrementAndGet()
+        if (queued > MAX_PENDING_READ_REQUESTS) {
+            waitingReads.decrementAndGet()
+            mutableMetrics.update { value -> value.copy(rejectedReadRequests = value.rejectedReadRequests + 1L) }
+            return ChartOpenResult.Rejected(ChartReadFailure.RESOURCE_LIMIT, "Chart read queue is full")
         }
-        val opened = try {
-            delegateAccess.open(request)
-        } catch (error: Throwable) {
-            readBudget.release()
-            throw error
-        }
-        if (opened !is ChartOpenResult.Opened) {
-            readBudget.release()
-            return opened
-        }
-        if (!requestIsCurrent(request)) {
-            opened.session.close()
-            readBudget.release()
-            return ChartOpenResult.Rejected(ChartReadFailure.REVISION_CHANGED, "Catalog changed while opening")
-        }
-        val tracked = BudgetedReadSession(opened.session) { session ->
-            sessions[request.assetId]?.let { set ->
-                set.remove(session)
-                if (set.isEmpty()) sessions.remove(request.assetId, set)
-            }
-            readBudget.release()
-            mutableMetrics.update { value -> value.copy(activeReadSessions = (value.activeReadSessions - 1).coerceAtLeast(0)) }
-        }
-        val revisionBeforeRegistration = catalog.snapshot.value.revision
-        sessions.computeIfAbsent(request.assetId) { ConcurrentHashMap.newKeySet() }.add(tracked)
         mutableMetrics.update { value ->
-            val active = value.activeReadSessions + 1
-            value.copy(activeReadSessions = active, readSessionHighWater = maxOf(value.readSessionHighWater, active))
+            value.copy(
+                queuedReadRequests = queued,
+                queuedReadHighWater = maxOf(value.queuedReadHighWater, queued),
+            )
         }
-        if (catalog.snapshot.value.revision != revisionBeforeRegistration && !requestIsCurrent(request)) {
-            tracked.close()
-            return ChartOpenResult.Rejected(ChartReadFailure.REVISION_CHANGED, "Catalog changed while registering session")
+        try {
+            readBudget.acquire()
+        } finally {
+            val remaining = waitingReads.decrementAndGet().coerceAtLeast(0)
+            mutableMetrics.update { value -> value.copy(queuedReadRequests = remaining) }
         }
-        return ChartOpenResult.Opened(tracked)
+        var openedSession: ChartReadSession? = null
+        var permitTransferred = false
+        try {
+            if (closed.get()) {
+                return ChartOpenResult.Rejected(ChartReadFailure.SESSION_CLOSED, "Chart library runtime is closed")
+            }
+            val opened = delegateAccess.open(request)
+            if (opened !is ChartOpenResult.Opened) return opened
+            openedSession = opened.session
+            if (!requestIsCurrent(request)) {
+                return ChartOpenResult.Rejected(ChartReadFailure.REVISION_CHANGED, "Catalog changed while opening")
+            }
+            val tracked = BudgetedReadSession(opened.session) { session, statistics ->
+                sessions[request.assetId]?.let { set ->
+                    set.remove(session)
+                    if (set.isEmpty()) sessions.remove(request.assetId, set)
+                }
+                readBudget.release()
+                mutableMetrics.update { value -> value.copy(
+                    activeReadSessions = (value.activeReadSessions - 1).coerceAtLeast(0),
+                    closedReadSessions = value.closedReadSessions + 1L,
+                    sourceBytesRead = value.sourceBytesRead.saturatedPlus(statistics.sourceBytesRead),
+                    tileQueries = value.tileQueries.saturatedPlus(statistics.tileQueries),
+                ) }
+            }
+            val revisionBeforeRegistration = catalog.snapshot.value.revision
+            sessions.computeIfAbsent(request.assetId) { ConcurrentHashMap.newKeySet() }.add(tracked)
+            mutableMetrics.update { value ->
+                val active = value.activeReadSessions + 1
+                value.copy(activeReadSessions = active, readSessionHighWater = maxOf(value.readSessionHighWater, active))
+            }
+            permitTransferred = true
+            openedSession = null
+            try {
+                if (catalog.snapshot.value.revision != revisionBeforeRegistration && !requestIsCurrent(request)) {
+                    tracked.close()
+                    return ChartOpenResult.Rejected(
+                        ChartReadFailure.REVISION_CHANGED,
+                        "Catalog changed while registering session",
+                    )
+                }
+            } catch (error: Throwable) {
+                runCatching(tracked::close)
+                throw error
+            }
+            return ChartOpenResult.Opened(tracked)
+        } finally {
+            if (!permitTransferred) {
+                runCatching { openedSession?.close() }
+                readBudget.release()
+            }
+        }
     }
 
     private suspend fun requestIsCurrent(request: ChartReadRequest): Boolean {
@@ -373,6 +406,7 @@ class AndroidChartLibraryRuntime private constructor(
 
     companion object {
         const val MAX_OPEN_READ_SESSIONS = 12
+        const val MAX_PENDING_READ_REQUESTS = 12
         const val BASIC_WORKERS = 2
         const val BASIC_QUEUE_CAPACITY = 256
         const val MAX_ACTIVE_COPY_JOBS = 1
@@ -440,7 +474,7 @@ private val ACTIVE_COPY_STATES = setOf(
 
 private class BudgetedReadSession(
     private val delegate: ChartReadSession,
-    private val onClose: (BudgetedReadSession) -> Unit,
+    private val onClose: (BudgetedReadSession, ChartReadStatistics) -> Unit,
 ) : ChartReadSession {
     private val closed = AtomicBoolean(false)
     override val request: ChartReadRequest get() = delegate.request
@@ -453,8 +487,15 @@ private class BudgetedReadSession(
     override fun statistics() = delegate.statistics()
     override fun close() {
         if (closed.compareAndSet(false, true)) {
-            delegate.close()
-            onClose(this)
+            val statistics = runCatching(delegate::statistics).getOrDefault(ChartReadStatistics())
+            try {
+                delegate.close()
+            } finally {
+                onClose(this, statistics)
+            }
         }
     }
 }
+
+private fun Long.saturatedPlus(other: Long): Long =
+    if (other > Long.MAX_VALUE - this) Long.MAX_VALUE else this + other

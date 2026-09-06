@@ -7,52 +7,53 @@
 | ID | 状态 | 测试层次/命令/退出码 | 证据路径 | 限制 |
 |---|---|---|---|---|
 | A01 | CI_PENDING | CL10 install + empty-state stories | `CODEX-CI-REPORT-<CL10_SHA12>-<run_id>-<attempt>` | 等待 Action |
-| A02 | NOT_RUN | — | — | 未执行 |
-| A03 | NOT_RUN | — | — | 未执行 |
-| A04 | NOT_RUN | — | — | 未执行 |
-| A05 | NOT_RUN | — | — | 未执行 |
-| A06 | NOT_RUN | — | — | 未执行 |
-| A07 | NOT_RUN | — | — | 未执行 |
-| A08 | NOT_RUN | — | — | 未执行 |
-| A09 | NOT_RUN | — | — | 未执行 |
-| A10 | NOT_RUN | — | — | 未执行 |
-| A11 | NOT_RUN | — | — | 未执行 |
-| A12 | NOT_RUN | — | — | 未执行 |
-| A13 | NOT_RUN | — | — | 未执行 |
-| A14 | NOT_RUN | — | — | 未执行 |
-| A15 | NOT_RUN | — | — | 未执行 |
-| A16 | NOT_RUN | — | — | 未执行 |
-| A17 | NOT_RUN | — | — | 未执行 |
-| A18 | NOT_RUN | — | — | 未执行 |
-| A19 | NOT_RUN | — | — | 未执行 |
-| A20 | NOT_RUN | — | — | 未执行 |
-| A21 | NOT_RUN | — | — | 未执行 |
+| A02 | CI_PENDING | CL11 bounded provider enumeration + zero-copy evidence | `CODEX-CI-REPORT-<CL11_SHA12>-<run_id>-<attempt>` | 真实provider留CL12 |
+| A03 | CI_PENDING | single-document reader stories | 同上 | 等待Action |
+| A04 | CI_PENDING | picker rejection/cancellation stories | 同上 | 等待Action |
+| A05 | CI_PENDING | persisted grant/catalog restore stories | 同上 | 真实重启留CL12 |
+| A06 | CI_PENDING | permission-loss isolation stories | 同上 | 真实USB/SD离线未执行 |
+| A07 | CI_PENDING | source repair/idempotency stories | 同上 | 等待Action |
+| A08 | CI_PENDING | shared membership/remove-one-reference stories | 同上 | 等待Action |
+| A09 | CI_PENDING | complete refresh/missing membership stories | 同上 | 等待Action |
+| A10 | CI_PENDING | cancel/partial/generation stories | 同上 | 等待Action |
+| A11 | CI_PENDING | document identity/revision stories | 同上 | 不确定身份仍需用户确认 |
+| A12 | CI_PENDING | pipe-provider explicit rejection | 同上 | 物理provider未执行 |
+| A13 | CI_PENDING | no-network SAF→MapLibre pixel story | 同上 | 等待API34 |
+| A14 | CI_PENDING | >4GiB sparse random-read story | 同上 | synthetic；真实大文件未执行 |
+| A15 | CI_PENDING | TMS/XYZ equivalence + source hash evidence | 同上 | 等待Action |
+| A16 | CI_PENDING | SQLite view-backed tile query | 同上 | 等待Action |
+| A17 | CI_PENDING | raster format/tile-size validation | 同上 | 设备codec差异留CL12 |
+| A18 | CI_PENDING | hostile/unknown metadata validation | 同上 | 等待Action |
+| A19 | CI_PENDING | corrupt DB/blob/schema bounded failure | 同上 | 等待Action |
+| A20 | CI_PENDING | BASIC scan does not hash/decode full source | 同上 | 等待Action |
+| A21 | CI_PENDING | cancelled/full validation revision guard | 同上 | 等待Action |
 | A22 | CI_PENDING | CL10 independent host/runtime story | 同上 | 等待 Action |
-| A23 | NOT_RUN | — | — | 未执行 |
-| A24 | NOT_RUN | — | — | 未执行 |
-| A25 | NOT_RUN | — | — | 未执行 |
-| A26 | NOT_RUN | — | — | 未执行 |
-| A27 | NOT_RUN | — | — | 未执行 |
-| A28 | NOT_RUN | — | — | 未执行 |
-| A29 | NOT_RUN | — | — | 未执行 |
-| A30 | NOT_RUN | — | — | 未执行 |
+| A23 | CI_PENDING | process runtime consumes catalog without Library UI | 同上 | 等待Action |
+| A24 | CI_PENDING | bounded display-plan candidate/session stories | 同上 | 等待Action |
+| A25 | CI_PENDING | fixed-selection stability story | 同上 | 等待Action |
+| A26 | CI_PENDING | deterministic layer order/overlay story | 同上 | 等待Action |
+| A27 | CI_PENDING | real tile-key coverage gaps | 同上 | 等待Action |
+| A28 | CI_PENDING | antimeridian/zoom/overzoom stories | 同上 | 等待Action |
+| A29 | CI_PENDING | revision/session invalidation stories | 同上 | 实体外部改写时机留CL12 |
+| A30 | CI_PENDING | forced revision probe + documented detection limit | 同上 | 无provider通知的静默替换不可自动保证 |
 | A31 | CI_PENDING | CL09 contract + catalog/source tests | `CODEX-CI-REPORT-<CL09_SHA12>-<run_id>-<attempt>` | 等待 Action |
 | A32 | CI_PENDING | managed copy/journal/cancellation/space tests | 同上 | 真实低磁盘留 CL12 |
 | A33 | CI_PENDING | managed read lease + confirmed delete tests | 同上 | 外部 renderer lease 真机组合留 CL12 |
 | A34 | CI_PENDING | legacy fixture + every journal checkpoint + idempotent catalog sync | 同上 | 进程杀死设备故事留 CL12 |
 | A35 | CI_PENDING | full existing unit/integration/build gates | 同上 | 等待 Action |
-| A36 | NOT_RUN | — | — | 未执行 |
-| A37 | NOT_RUN | — | — | 未执行 |
+| A36 | CI_PENDING | token/path/LAN/gateway bounded attack stories | `CODEX-CI-REPORT-<CL11_SHA12>-<run_id>-<attempt>` | 等待Action |
+| A37 | CI_PENDING | session/gateway/task bounded counters | 同上 | 30分钟物理soak未执行 |
 | A38 | CI_PENDING | CL10 three-size/theme/large-type stories | `CODEX-CI-REPORT-<CL10_SHA12>-<run_id>-<attempt>` | 真机圆角/方屏留 CL12 |
 | A39 | CI_PENDING | CL10 linked Back/Start/deep-link stories | 同上 | 等待 Action |
 | A40 | CI_PENDING | CL10 five-app product-surface/APK contracts | 同上 | 等待 Action |
-| A41 | NOT_RUN | — | — | 未执行 |
-| A42 | NOT_RUN | — | — | 未执行 |
+| A41 | PARTIAL_CI_PENDING | API34/API36 build/load jobs | 同上 | 物理16KiB设备NOT_RUN |
+| A42 | PARTIAL_CI_PENDING | 1000-item bounded catalog evidence | `chart-library-cl11-evidence.json` | 30分钟物理负载NOT_RUN |
 
 ## 零复制独立证据
 
-原件测试hash前后：未执行。应用新增文件及字节：未执行。源随机读取字节：未执行。
-SAF provider与权限：未执行。MapLibre无外网显示：未执行。大于4GB真实瓦片查询：未执行。
+原件测试hash前后：`CI_PENDING`。应用隐式副本字节：目标值0，`CI_PENDING`。源随机读取字节：`CI_PENDING`。
+SAF provider与权限：模拟provider为`CI_PENDING`、物理provider为`NOT_RUN`。MapLibre无外网显示：`CI_PENDING`。
+大于4GB sparse瓦片查询：`CI_PENDING_SYNTHETIC`；真实大文件：`NOT_RUN`。
 
 ## 数据迁移
 

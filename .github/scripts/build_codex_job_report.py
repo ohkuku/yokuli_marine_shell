@@ -323,6 +323,12 @@ def build_report(repo_root: Path, output: Path, job: str, status: str, head_sha:
     (output / "relevant-log-excerpts").mkdir(parents=True)
 
     evidence = allowlisted_evidence(repo_root, job)
+    attachments: list[str] = []
+    cl11_evidence = repo_root / "build" / "chart-library-cl11" / "evidence.json"
+    if job == "api34" and cl11_evidence.is_file():
+        destination = output / "chart-library-cl11-evidence.json"
+        shutil.copyfile(cl11_evidence, destination)
+        attachments.append(destination.name)
     steps = load_steps(repo_root)
     tests, test_warnings = junit_findings(repo_root, evidence)
     lint, lint_warnings = lint_findings(repo_root, evidence)
@@ -365,6 +371,7 @@ def build_report(repo_root: Path, output: Path, job: str, status: str, head_sha:
             if findings
         ],
         "warnings": test_warnings + lint_warnings,
+        "attachments": attachments,
     }
     (output / "job.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (output / "failed-tests.json").write_text(

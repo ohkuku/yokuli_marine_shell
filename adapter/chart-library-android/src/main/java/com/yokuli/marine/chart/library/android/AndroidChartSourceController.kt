@@ -34,7 +34,7 @@ class AndroidChartSourceController(
     private val planner: ChartSourceScanPlanner = ChartSourceScanPlanner(),
 ) : ChartSourceCommandPort {
     private val workerBudget = Semaphore(2)
-    private val sourceLocks = ConcurrentHashMap<String, Mutex>()
+    private val sourceLocks = Array(LOCK_STRIPES) { Mutex() }
     private val operationEpoch = ConcurrentHashMap<String, AtomicLong>()
 
     override suspend fun acceptPicker(selection: ChartPickerSelection): ChartSourceCommandResult {
@@ -67,7 +67,7 @@ class AndroidChartSourceController(
     override suspend fun repair(
         sourceId: ChartSourceId,
         selection: ChartPickerSelection,
-    ): ChartSourceCommandResult = sourceLocks.computeIfAbsent(sourceId.value) { Mutex() }.withLock {
+    ): ChartSourceCommandResult = sourceLock(sourceId).withLock {
         val source = catalog.source(sourceId)
             ?: return@withLock ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.SOURCE_NOT_FOUND)
         val expectedPickerKind = when (source.kind) {
@@ -101,42 +101,78 @@ class AndroidChartSourceController(
     }
 
     override suspend fun refresh(sourceId: ChartSourceId): ChartSourceCommandResult =
-        sourceLocks.computeIfAbsent(sourceId.value) { Mutex() }.withLock {
+        sourceLock(sourceId).withLock {
             workerBudget.withPermit {
                 val source = catalog.source(sourceId)
                     ?: return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.SOURCE_NOT_FOUND)
-                val epoch = operationEpoch.computeIfAbsent(sourceId.value) { AtomicLong(0L) }.incrementAndGet()
+                val epochCounter = operationEpoch.computeIfAbsent(sourceId.value) { AtomicLong(0L) }
+                val epoch = epochCounter.incrementAndGet()
                 val generation = source.scan.generation + 1L
-                val running = source.copy(
-                    scan = source.scan.copy(generation = generation, status = ChartScanStatus.RUNNING, discoveredCount = 0L, issueCount = 0),
-                )
-                if (catalog.transact(ChartCatalogTransaction("scan-start:${sourceId.value}:$generation", mutations = listOf(ChartCatalogMutation.PutSource(running)))) !is ChartCatalogCommitResult.Committed) {
-                    return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
-                }
-                val existing = allAssets(ChartAssetQuery(sourceId = sourceId))
-                val enumeration = enumerator.enumerate(running) {
-                    operationEpoch[sourceId.value]?.get() != epoch
-                }
-                if (operationEpoch[sourceId.value]?.get() != epoch) {
-                    return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.STALE_OPERATION)
-                }
-                val plan = planner.plan(source, generation, enumeration, existing)
-                val puts: List<ChartCatalogMutation> = buildList {
-                    add(ChartCatalogMutation.PutSource(plan.source))
-                    plan.assetsToPut.forEach { add(ChartCatalogMutation.PutAsset(it)) }
-                    existing.filter { it.id in plan.missingAssetIds }.forEach {
-                        add(ChartCatalogMutation.PutAsset(it.copy(access = ChartAssetAccessState.MISSING)))
+                try {
+                    val running = source.copy(
+                        scan = source.scan.copy(generation = generation, status = ChartScanStatus.RUNNING, discoveredCount = 0L, issueCount = 0),
+                    )
+                    if (catalog.transact(ChartCatalogTransaction("scan-start:${sourceId.value}:$generation", mutations = listOf(ChartCatalogMutation.PutSource(running)))) !is ChartCatalogCommitResult.Committed) {
+                        return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
                     }
-                }
-                return@withPermit when (catalog.transact(ChartCatalogTransaction("scan-finish:${sourceId.value}:$generation", mutations = puts))) {
-                    is ChartCatalogCommitResult.Committed -> ChartSourceCommandResult.ScanPublished(sourceId, generation, plan.source.scan.status)
-                    else -> ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+                    val existing = allAssets(ChartAssetQuery(sourceId = sourceId))
+                    val enumeration = enumerator.enumerate(running) {
+                        operationEpoch[sourceId.value]?.get() != epoch
+                    }
+                    if (operationEpoch[sourceId.value]?.get() != epoch) {
+                        return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.STALE_OPERATION)
+                    }
+                    val plan = planner.plan(source, generation, enumeration, existing)
+                    val contentMutations: List<ChartCatalogMutation> = buildList {
+                        plan.assetsToPut.forEach { add(ChartCatalogMutation.PutAsset(it)) }
+                        existing.filter { it.id in plan.missingAssetIds }.forEach {
+                            add(ChartCatalogMutation.PutAsset(it.copy(access = ChartAssetAccessState.MISSING)))
+                        }
+                        plan.membershipsToRemove.forEach {
+                            add(ChartCatalogMutation.RemoveAssetMembership(it, sourceId))
+                        }
+                    }
+                    contentMutations.chunked(MAX_SCAN_MUTATIONS_PER_TRANSACTION).forEachIndexed { index, mutations ->
+                        if (operationEpoch[sourceId.value]?.get() != epoch) {
+                            return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.STALE_OPERATION)
+                        }
+                        if (catalog.transact(
+                                ChartCatalogTransaction(
+                                    "scan-content:${sourceId.value}:$generation:$index",
+                                    mutations = mutations,
+                                ),
+                            ) !is ChartCatalogCommitResult.Committed
+                        ) {
+                            publishInterruptedScan(sourceId, generation)
+                            return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+                        }
+                    }
+                    if (operationEpoch[sourceId.value]?.get() != epoch) {
+                        return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.STALE_OPERATION)
+                    }
+                    return@withPermit when (
+                        catalog.transact(
+                            ChartCatalogTransaction(
+                                "scan-finish:${sourceId.value}:$generation",
+                                mutations = listOf(ChartCatalogMutation.PutSource(plan.source)),
+                            ),
+                        )
+                    ) {
+                        is ChartCatalogCommitResult.Committed ->
+                            ChartSourceCommandResult.ScanPublished(sourceId, generation, plan.source.scan.status)
+                        else -> {
+                            publishInterruptedScan(sourceId, generation)
+                            ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+                        }
+                    }
+                } finally {
+                    operationEpoch.remove(sourceId.value, epochCounter)
                 }
             }
         }
 
     override suspend fun cancel(sourceId: ChartSourceId): ChartSourceCommandResult {
-        operationEpoch.computeIfAbsent(sourceId.value) { AtomicLong(0L) }.incrementAndGet()
+        operationEpoch[sourceId.value]?.incrementAndGet()
         val source = catalog.source(sourceId)
             ?: return ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.SOURCE_NOT_FOUND)
         val cancelled = source.copy(scan = source.scan.copy(status = ChartScanStatus.CANCELLED, issueCount = source.scan.issueCount + 1))
@@ -149,10 +185,11 @@ class AndroidChartSourceController(
     override suspend fun remove(sourceId: ChartSourceId): ChartSourceCommandResult {
         val source = catalog.source(sourceId)
             ?: return ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.SOURCE_NOT_FOUND)
-        operationEpoch.computeIfAbsent(sourceId.value) { AtomicLong(0L) }.incrementAndGet()
+        operationEpoch[sourceId.value]?.incrementAndGet()
         return when (catalog.transact(ChartCatalogTransaction("source-remove:${sourceId.value}:${UUID.randomUUID()}", mutations = listOf(ChartCatalogMutation.RemoveSource(sourceId))))) {
             is ChartCatalogCommitResult.Committed -> {
                 releaseIfUnused(source.locator)
+                operationEpoch.remove(sourceId.value)
                 ChartSourceCommandResult.Accepted(sourceId)
             }
             else -> ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
@@ -162,6 +199,30 @@ class AndroidChartSourceController(
     private suspend fun releaseIfUnused(locator: ChartOpaqueLocator) {
         if (allSources().none { it.locator == locator }) grants.releaseRead(locator)
     }
+
+    private suspend fun publishInterruptedScan(sourceId: ChartSourceId, generation: Long) {
+        val current = catalog.source(sourceId)?.takeIf {
+            it.scan.generation == generation && it.scan.status == ChartScanStatus.RUNNING
+        } ?: return
+        catalog.transact(
+            ChartCatalogTransaction(
+                "scan-interrupted:${sourceId.value}:$generation",
+                mutations = listOf(
+                    ChartCatalogMutation.PutSource(
+                        current.copy(
+                            scan = current.scan.copy(
+                                status = ChartScanStatus.PARTIAL,
+                                issueCount = current.scan.issueCount + 1,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    private fun sourceLock(sourceId: ChartSourceId): Mutex =
+        sourceLocks[(sourceId.value.hashCode() and Int.MAX_VALUE) % sourceLocks.size]
 
     private suspend fun allSources(): List<ChartLibrarySource> = buildList {
         var offset = 0
@@ -179,5 +240,10 @@ class AndroidChartSourceController(
             addAll(page.items)
             offset += page.items.size
         } while (offset < page.total && page.items.isNotEmpty())
+    }
+
+    private companion object {
+        const val LOCK_STRIPES = 64
+        const val MAX_SCAN_MUTATIONS_PER_TRANSACTION = 1_000
     }
 }

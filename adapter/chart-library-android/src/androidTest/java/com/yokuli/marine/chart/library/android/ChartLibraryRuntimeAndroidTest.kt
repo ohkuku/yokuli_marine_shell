@@ -66,6 +66,53 @@ class ChartLibraryRuntimeAndroidTest {
         }
     }
 
+    @Test fun pendingReadQueueRejectsOverflowWithoutCreatingUnboundedSessions() = runBlocking {
+        fixture("pending-budget").use { fixture ->
+            val sessions = List(AndroidChartLibraryRuntime.MAX_OPEN_READ_SESSIONS) {
+                (fixture.runtime.open(fixture.request()) as ChartOpenResult.Opened).session
+            }
+            val waiting = List(AndroidChartLibraryRuntime.MAX_PENDING_READ_REQUESTS) {
+                async { fixture.runtime.open(fixture.request()) }
+            }
+            withTimeout(2_000) {
+                while (fixture.runtime.metrics.value.queuedReadRequests != AndroidChartLibraryRuntime.MAX_PENDING_READ_REQUESTS) delay(10)
+            }
+
+            val overflow = fixture.runtime.open(fixture.request()) as ChartOpenResult.Rejected
+            assertEquals(ChartReadFailure.RESOURCE_LIMIT, overflow.failure)
+            assertEquals(1L, fixture.runtime.metrics.value.rejectedReadRequests)
+            assertEquals(AndroidChartLibraryRuntime.MAX_PENDING_READ_REQUESTS, fixture.runtime.metrics.value.queuedReadHighWater)
+
+            waiting.forEach { it.cancel() }
+            waiting.forEach { runCatching { it.await() } }
+            sessions.forEach(ChartReadSession::close)
+            withTimeout(2_000) { while (fixture.runtime.metrics.value.queuedReadRequests != 0) delay(10) }
+            assertEquals(0, fixture.runtime.metrics.value.activeReadSessions)
+        }
+    }
+
+    @Test fun closedSessionsPublishBoundedReadEvidence() = runBlocking {
+        fixture("read-evidence").use { fixture ->
+            val session = (fixture.runtime.open(fixture.request()) as ChartOpenResult.Opened).session
+            assertTrue(session.hasTile(ChartTileKey(0, 0, 0), MapTileScheme.MBTILES_TMS))
+            assertEquals(1, session.readSourceRange(0, 1).size)
+            session.close()
+
+            assertEquals(1L, fixture.runtime.metrics.value.closedReadSessions)
+            assertEquals(1L, fixture.runtime.metrics.value.tileQueries)
+            assertEquals(1L, fixture.runtime.metrics.value.sourceBytesRead)
+            fixture.runtime.metrics.value.let { metrics ->
+                println(
+                    "CL11_EVIDENCE " +
+                        "{\"scenario\":\"runtime-bounds\",\"activeReads\":${metrics.activeReadSessions}," +
+                        "\"readHighWater\":${metrics.readSessionHighWater},\"queuedReads\":${metrics.queuedReadRequests}," +
+                        "\"queuedHighWater\":${metrics.queuedReadHighWater},\"rejectedReads\":${metrics.rejectedReadRequests}," +
+                        "\"sourceBytesRead\":${metrics.sourceBytesRead},\"tileQueries\":${metrics.tileQueries}}",
+                )
+            }
+        }
+    }
+
     @Test fun processRestartRestoresRunningValidationAsInterruptedWithoutRestoringFd() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         SharedPreferencesChartValidationJobStore(context).restoreInterrupted()
@@ -144,18 +191,23 @@ class ChartLibraryRuntimeAndroidTest {
 
     private class FakeSession(override val request: ChartReadRequest) : ChartReadSession {
         val closed = AtomicBoolean(false)
+        private var bytesRead = 0L
+        private var queries = 0L
         override val sourceSizeBytes = 1L
         override fun readMetadata(limit: Int) = mapOf("scheme" to "tms")
-        override fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload? { ensureOpen(); return null }
-        override fun hasTile(key: ChartTileKey, scheme: MapTileScheme): Boolean { ensureOpen(); return true }
+        override fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload? { ensureOpen(); queries++; return null }
+        override fun hasTile(key: ChartTileKey, scheme: MapTileScheme): Boolean { ensureOpen(); queries++; return true }
         override fun readStoredTiles(offset: Long, limit: Int): List<ChartStoredTile> {
             ensureOpen()
             return if (offset == 0L) listOf(
                 ChartStoredTile(ChartStoredTileKey(0, 0, 0), ChartTilePayload(byteArrayOf(1), "image/png", 256, 256)),
             ) else emptyList()
         }
-        override fun readSourceRange(offset: Long, maxByteCount: Int): ByteArray { ensureOpen(); return byteArrayOf(0) }
-        override fun statistics() = ChartReadStatistics()
+        override fun readSourceRange(offset: Long, maxByteCount: Int): ByteArray {
+            ensureOpen()
+            return byteArrayOf(0).also { bytesRead += it.size }
+        }
+        override fun statistics() = ChartReadStatistics(sourceBytesRead = bytesRead, tileQueries = queries)
         override fun close() { closed.set(true) }
         private fun ensureOpen() {
             if (closed.get()) throw ChartReadException(ChartReadFailure.SESSION_CLOSED, "closed")

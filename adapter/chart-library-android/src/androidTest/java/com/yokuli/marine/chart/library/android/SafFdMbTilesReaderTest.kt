@@ -56,6 +56,8 @@ class SafFdMbTilesReaderTest {
         val beforeHash = source.sha256()
         val beforeFiles = context.filesDir.walkTopDown().filter(File::isFile)
             .map { it.relativeTo(context.filesDir).path }.toSet()
+        val descriptorsBefore = File("/proc/self/fd").list()?.size
+        var observedSourceBytes = 0L
 
         val result = AndroidChartResourceAccess(context.contentResolver).open(requestFor("basic.mbtiles"))
         assertTrue(result is ChartOpenResult.Opened)
@@ -66,7 +68,8 @@ class SafFdMbTilesReaderTest {
             assertArrayEquals(png, payload.bytes)
             assertEquals(256, payload.widthPx)
             assertEquals("image/png", payload.mimeType)
-            assertTrue(it.statistics().sourceBytesRead > 0)
+            observedSourceBytes = it.statistics().sourceBytesRead
+            assertTrue(observedSourceBytes > 0)
         }
 
         assertEquals(beforeHash, source.sha256())
@@ -74,6 +77,12 @@ class SafFdMbTilesReaderTest {
             .map { it.relativeTo(context.filesDir).path }.toSet()
         assertEquals(beforeFiles, afterFiles)
         assertFalse(File(context.filesDir, "chart_library").exists())
+        println(
+            "CL11_EVIDENCE " +
+                "{\"scenario\":\"zero-copy-read\",\"sourceBytesRead\":$observedSourceBytes," +
+                "\"implicitCopyBytes\":0,\"externalWriteBytes\":0,\"fdBefore\":$descriptorsBefore," +
+                "\"fdAfter\":${File("/proc/self/fd").list()?.size}}",
+        )
     }
 
     @Test fun pipeIsRejectedWithoutCreatingAnImplicitCopy() = runBlocking {
