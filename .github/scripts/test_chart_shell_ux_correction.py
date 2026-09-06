@@ -37,7 +37,7 @@ class ChartShellUxCorrectionContractTest(unittest.TestCase):
             self.assertIn(required, command)
         for forbidden in ("map-open-places", "map-open-routes", "map-open-quick-layers", "map-open-chart-packages"):
             self.assertNotIn(forbidden, command)
-        for direct_control in ("map-follow", "map-zoom-in", "map-zoom-out", "map-compass"):
+        for direct_control in ("map-recenter", "map-zoom-in", "map-zoom-out", "map-orientation-north"):
             self.assertIn(direct_control, workspace)
 
     def test_target_measure_waypoint_and_route_states_are_visible_and_bounded(self):
@@ -81,7 +81,7 @@ class ChartShellUxCorrectionContractTest(unittest.TestCase):
         self.assertIn("connectedBaseConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED", graph)
         self.assertIn("mode == MapViewMode.MARINE || connectedBaseConfigured", workspace)
         self.assertIn("map_connected_view_not_configured", workspace)
-        self.assertIn("配置只表示", readme)
+        self.assertIn("密钥存在只表示", readme)
         for resources in ROOT.glob("feature/chart/src/main/res/values*/strings.xml"):
             self.assertIn("map_connected_view_not_configured", resources.read_text(encoding="utf-8"))
 
@@ -117,7 +117,7 @@ class ChartShellUxCorrectionContractTest(unittest.TestCase):
         )
         self.assertIsNotNone(complete_only)
         self.assertIn("lastSuccessfulGeneration", scan)
-        for truth in ("read-only permission available", "permission lost", "resource remains registered", "retry"):
+        for truth in ("read-only permission available", "permission lost", "original remains registered", "retry"):
             self.assertIn(truth, strings.lower())
 
     def test_correction_gate_is_captured_and_enforced_by_ci(self):
