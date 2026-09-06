@@ -111,11 +111,18 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertNotIn(".wpTilt(", settings)
         self.assertIn("CompactAccentSwatch", settings)
 
-    def test_release_surface_remains_chart_and_settings_only(self):
+    def test_current_release_surface_extends_the_historical_shell_without_fake_apps(self):
         graph = self.text("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
-        self.assertIn("ChartShellContribution", graph)
-        self.assertIn("SettingsShellContribution", graph)
-        for forbidden in ("Anchor", "Trip", "Nmea", "Navigation", "Survey"):
+        self.assertEqual(
+            [
+                "ChartShellContribution",
+                "SettingsShellContribution",
+                "NmeaInputShellContribution",
+                "DataSourcesShellContribution",
+            ],
+            re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
+        )
+        for forbidden in ("AnchorShellContribution", "TripShellContribution", "NavigationShellContribution", "SurveyShellContribution"):
             self.assertNotIn(forbidden, graph)
 
     def test_correction_performance_gate_covers_every_normative_journey(self):

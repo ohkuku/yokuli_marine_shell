@@ -11,6 +11,7 @@ LOCALIZED_MODULES = (
     "core/design",
     "feature/desktop",
     "feature/chart",
+    "feature/data-sources",
     "feature/nmea-input",
     "feature/settings",
     "feature/shell-lab",

@@ -20,7 +20,7 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         self.assertIn('debugImplementation(project(":feature:shell-lab"))', app)
         self.assertNotIn('implementation(project(":feature:shell-lab"))', app)
 
-    def test_registry_is_contribution_based_and_production_has_two_entries(self):
+    def test_registry_is_contribution_based_and_keeps_the_approved_apps(self):
         identifiers = (ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/LauncherIdentifiers.kt").read_text()
         catalog = (ROOT / "core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/LauncherCatalogContract.kt").read_text()
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
@@ -49,14 +49,26 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         )
 
     def test_production_main_contains_no_fixture_objects_or_fake_marine_facts(self):
-        production_modules = ("app-shell", "core/model", "core/shell-contract", "core/shell-engine", "feature/desktop", "feature/chart", "feature/settings")
+        production_modules = (
+            "app-shell",
+            "adapter/marine-data-android",
+            "core/marine-data",
+            "core/model",
+            "core/shell-contract",
+            "core/shell-engine",
+            "feature/desktop",
+            "feature/chart",
+            "feature/data-sources",
+            "feature/nmea-input",
+            "feature/settings",
+        )
         text = "\n".join(
             path.read_text()
             for module in production_modules
             for path in (ROOT / module / "src/main").rglob("*")
             if path.is_file() and path.suffix in {".kt", ".xml"}
         )
-        self.assertNotRegex(text, r"\b(?:Launcher|Chart|Cockpit|Library|System)UiFixtures\b")
+        self.assertNotRegex(text, r"\b(?:Launcher|Chart|Cockpit|Library|System|Nmea|DataSources)UiFixtures\b")
         for forbidden in ("MOTUIHE", "6.2 kn", "6.2 节", "COG 184", "HDG 184", "32 / 60", "NOT ARMED", "SURVEY READY", "27 TRIPS"):
             self.assertNotIn(forbidden, text)
 

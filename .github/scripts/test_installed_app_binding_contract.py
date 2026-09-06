@@ -23,7 +23,15 @@ class InstalledAppBindingContractTest(unittest.TestCase):
         ):
             self.assertIn(field, binding)
         self.assertRegex(graph, r"productionInstalledApps\s*:[^=]+?=\s*listOf\(")
-        self.assertEqual(2, graph.count("InstalledAppBinding("))
+        self.assertEqual(
+            [
+                "ChartShellContribution",
+                "SettingsShellContribution",
+                "NmeaInputShellContribution",
+                "DataSourcesShellContribution",
+            ],
+            re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
+        )
 
     def test_every_runtime_registry_is_derived_from_the_binding_list(self):
         graph = GRAPH.read_text()
