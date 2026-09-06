@@ -190,4 +190,7 @@
     <string name="launcher_status_current_issue">当前地图所用的本地海图需要处理</string>
     <string name="launcher_status_scanning_compact">海图 %1$d</string>
     <string name="launcher_status_scanning">%1$d 个海图来源正在扫描</string>
+    <string name="launcher_visible_layers">%1$d 层当前可见</string>
+    <string name="launcher_no_visible_layers">当前没有可见本机图层</string>
+    <string name="launcher_display_warnings">%1$d 项显示警告</string>
 </resources>

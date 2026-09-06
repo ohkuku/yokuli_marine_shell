@@ -3,8 +3,10 @@ package com.yokuli.marine.map.offline
 import android.content.ComponentCallbacks2
 import android.content.res.Configuration
 import android.graphics.PointF
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import androidx.compose.runtime.Composable
@@ -42,6 +44,8 @@ import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
+import com.yokuli.marine.map.domain.MapTileSnapshotFormat
+import com.yokuli.marine.map.domain.MapTileSnapshotSink
 import com.yokuli.marine.map.domain.PositionRenderPolicy
 import com.yokuli.marine.map.domain.VesselMarkerStyle
 import com.yokuli.marine.map.domain.Wgs84Geodesic
@@ -52,6 +56,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayViewport
 import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -59,6 +64,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import kotlin.math.hypot
 import kotlin.math.cos
 import kotlin.math.pow
@@ -100,6 +106,7 @@ fun OfflineMarineChartSurface(
     acquirePackageLease: (ChartPackageId) -> ChartPackageLease = { ChartPackageLease {} },
     chartLibraryAccess: ChartResourceAccessPort? = null,
     chartTileGateway: ChartLoopbackTileGateway? = null,
+    tileSnapshotSink: MapTileSnapshotSink? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -127,6 +134,25 @@ fun OfflineMarineChartSurface(
         state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }
     }
     var preparedDisplay by remember(mapView) { mutableStateOf<PreparedChartDisplay?>(null) }
+    val snapshotCadence = remember(mapView) { RendererSnapshotCadence() }
+
+    LaunchedEffect(
+        map,
+        state.camera,
+        state.chartDisplayPlan.fingerprint,
+        state.renderer.readiness,
+        state.renderer.tileCoverage,
+        state.renderer.overlayStatus,
+        tileSnapshotSink,
+    ) {
+        val readyMap = map ?: return@LaunchedEffect
+        val sink = tileSnapshotSink ?: return@LaunchedEffect
+        if (state.renderer.readiness != MapRendererReadiness.RENDERER_READY) return@LaunchedEffect
+        delay(snapshotCadence.delayUntilNext(SystemClock.elapsedRealtime()))
+        snapshotCadence.markRequested(SystemClock.elapsedRealtime())
+        val request = sink.begin(state.camera, "maplibre:${state.chartDisplayPlan.fingerprint}")
+        readyMap.snapshot { bitmap -> bitmap?.publishTileSnapshot(sink, request) }
+    }
 
     LaunchedEffect(displayPlan.fingerprint, chartLibraryAccess, chartTileGateway) {
         preparedDisplay?.close()
@@ -499,6 +525,41 @@ fun OfflineMarineChartSurface(
 
     AndroidView(factory = { mapView }, modifier = modifier)
 }
+
+private class RendererSnapshotCadence {
+    private var lastRequestAtMillis = Long.MIN_VALUE
+    fun delayUntilNext(nowMillis: Long): Long = if (lastRequestAtMillis == Long.MIN_VALUE) 0L else {
+        (lastRequestAtMillis + TILE_SNAPSHOT_CAPTURE_INTERVAL_MILLIS - nowMillis).coerceAtLeast(0L)
+    }
+    fun markRequested(nowMillis: Long) { lastRequestAtMillis = nowMillis }
+}
+
+private fun Bitmap.publishTileSnapshot(
+    sink: MapTileSnapshotSink,
+    request: com.yokuli.marine.map.domain.MapTileSnapshotRequest,
+) {
+    if (width <= 0 || height <= 0) return
+    val scale = kotlin.math.min(
+        1.0,
+        kotlin.math.min(TILE_SNAPSHOT_WIDTH.toDouble() / width, TILE_SNAPSHOT_HEIGHT.toDouble() / height),
+    )
+    val targetWidth = (width * scale).toInt().coerceAtLeast(1)
+    val targetHeight = (height * scale).toInt().coerceAtLeast(1)
+    val scaled = if (targetWidth == width && targetHeight == height) this
+    else Bitmap.createScaledBitmap(this, targetWidth, targetHeight, true)
+    val output = ByteArrayOutputStream()
+    try {
+        if (scaled.compress(Bitmap.CompressFormat.JPEG, 72, output)) {
+            sink.complete(request, scaled.width, scaled.height, MapTileSnapshotFormat.JPEG, output.toByteArray())
+        }
+    } finally {
+        if (scaled !== this) scaled.recycle()
+    }
+}
+
+private const val TILE_SNAPSHOT_CAPTURE_INTERVAL_MILLIS = 5_000L
+private const val TILE_SNAPSHOT_WIDTH = 320
+private const val TILE_SNAPSHOT_HEIGHT = 180
 
 private fun MapCameraCommand.toCameraUpdate(): CameraUpdate = when (val value = target) {
     is MapCameraTarget.Exact -> CameraUpdateFactory.newCameraPosition(value.camera.toCameraPosition())

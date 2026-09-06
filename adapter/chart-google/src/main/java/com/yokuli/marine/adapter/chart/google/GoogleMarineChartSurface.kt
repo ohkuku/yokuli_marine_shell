@@ -4,6 +4,8 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Point
+import android.graphics.Bitmap
+import android.os.SystemClock
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.ViewConfiguration
@@ -56,15 +58,20 @@ import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
+import com.yokuli.marine.map.domain.MapTileSnapshotFormat
+import com.yokuli.marine.map.domain.MapTileSnapshotSink
 import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import java.io.ByteArrayOutputStream
+import kotlin.math.min
 import kotlin.math.hypot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 
 /**
  * Google Maps adapter for the shared chart surface.
@@ -79,6 +86,7 @@ fun GoogleMarineChartSurface(
     onQueryPortChanged: (MapRendererQueryPort?) -> Unit = {},
     darkMode: Boolean,
     chartLibraryAccess: ChartResourceAccessPort? = null,
+    tileSnapshotSink: MapTileSnapshotSink? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -112,6 +120,29 @@ fun GoogleMarineChartSurface(
     val lifecycleDriver = remember(mapView) { MapViewLifecycleDriver(mapView) }
     var googleMap by remember(mapView) { mutableStateOf<GoogleMap?>(null) }
     var preparedDisplay by remember(mapView) { mutableStateOf<PreparedGoogleChartDisplay?>(null) }
+    val snapshotCadence = remember(mapView) { RendererSnapshotCadence() }
+
+    LaunchedEffect(
+        googleMap,
+        state.camera,
+        state.chartDisplayPlan.fingerprint,
+        state.renderer.readiness,
+        state.renderer.baseStatus,
+        state.renderer.overlayStatus,
+        tileSnapshotSink,
+        darkMode,
+    ) {
+        val readyMap = googleMap ?: return@LaunchedEffect
+        val sink = tileSnapshotSink ?: return@LaunchedEffect
+        if (state.renderer.readiness != MapRendererReadiness.RENDERER_READY) return@LaunchedEffect
+        delay(snapshotCadence.delayUntilNext(SystemClock.elapsedRealtime()))
+        snapshotCadence.markRequested(SystemClock.elapsedRealtime())
+        val request = sink.begin(
+            state.camera,
+            "google:${state.chartDisplayPlan.fingerprint}:${if (darkMode) "dark" else "light"}",
+        )
+        readyMap.snapshot { bitmap -> bitmap?.publishTileSnapshot(sink, request) }
+    }
 
     LaunchedEffect(generation) {
         currentAction(MapAction.RendererHostReady(generation))
@@ -422,6 +453,38 @@ fun GoogleMarineChartSurface(
         modifier = modifier,
     )
 }
+
+private class RendererSnapshotCadence {
+    private var lastRequestAtMillis = Long.MIN_VALUE
+    fun delayUntilNext(nowMillis: Long): Long = if (lastRequestAtMillis == Long.MIN_VALUE) 0L else {
+        (lastRequestAtMillis + TILE_SNAPSHOT_CAPTURE_INTERVAL_MILLIS - nowMillis).coerceAtLeast(0L)
+    }
+    fun markRequested(nowMillis: Long) { lastRequestAtMillis = nowMillis }
+}
+
+private fun Bitmap.publishTileSnapshot(
+    sink: MapTileSnapshotSink,
+    request: com.yokuli.marine.map.domain.MapTileSnapshotRequest,
+) {
+    if (width <= 0 || height <= 0) return
+    val scale = min(1.0, min(TILE_SNAPSHOT_WIDTH.toDouble() / width, TILE_SNAPSHOT_HEIGHT.toDouble() / height))
+    val targetWidth = (width * scale).toInt().coerceAtLeast(1)
+    val targetHeight = (height * scale).toInt().coerceAtLeast(1)
+    val scaled = if (targetWidth == width && targetHeight == height) this
+    else Bitmap.createScaledBitmap(this, targetWidth, targetHeight, true)
+    val output = ByteArrayOutputStream()
+    try {
+        if (scaled.compress(Bitmap.CompressFormat.JPEG, 72, output)) {
+            sink.complete(request, scaled.width, scaled.height, MapTileSnapshotFormat.JPEG, output.toByteArray())
+        }
+    } finally {
+        if (scaled !== this) scaled.recycle()
+    }
+}
+
+private const val TILE_SNAPSHOT_CAPTURE_INTERVAL_MILLIS = 5_000L
+private const val TILE_SNAPSHOT_WIDTH = 320
+private const val TILE_SNAPSHOT_HEIGHT = 180
 
 private fun MutableList<TileOverlay>.clearGoogleTileOverlays() {
     forEach { overlay ->

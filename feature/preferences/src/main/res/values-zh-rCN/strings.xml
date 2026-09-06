@@ -30,6 +30,8 @@
     <string name="preferences_reset_start">恢复默认开始屏幕</string>
     <string name="preferences_app_tiles_truth">每个应用声明自己支持的磁贴尺寸和设置；设置应用不猜测 Feature 内部状态。</string>
     <string name="preferences_no_app_options">当前没有应用专属磁贴选项</string>
+    <string name="preferences_enabled">已启用</string>
+    <string name="preferences_disabled">已关闭</string>
     <string name="preferences_version">版本</string>
     <string name="preferences_variant">构建变体</string>
     <string name="preferences_revision">代码版本</string>

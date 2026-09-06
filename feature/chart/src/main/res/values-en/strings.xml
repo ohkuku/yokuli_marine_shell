@@ -362,4 +362,12 @@
     <string name="map_quick_layers_empty">No local layer is available for quick adjustment. Explicitly choose “view in Chart” from Chart Library.</string>
     <string name="map_quick_layer_visible">%1$s · visible</string>
     <string name="map_quick_layer_hidden">%1$s · hidden</string>
+    <string name="map_tile_snapshot">RECENT MAP</string>
+    <string name="map_tile_last_view">cached by Chart renderer · no second map instance</string>
+    <string name="map_tile_navigation_next">NEXT WAYPOINT · %1$d</string>
+    <string name="map_tile_navigation_solution">%1$.2f NM · %2$.0f° TRUE · XTE %3$.2f NM</string>
+    <string name="map_tile_navigation_waiting">WAITING FOR FRESH POSITION IN THIS PROCESS</string>
+    <string name="map_tile_position">%1$.4f°, %2$.4f°</string>
+    <string name="map_tile_course_speed">COG %1$.0f° TRUE · %2$.1f kn</string>
+    <string name="map_tile_position_only">CURRENT POSITION · NO USABLE COG/SOG</string>
 </resources>

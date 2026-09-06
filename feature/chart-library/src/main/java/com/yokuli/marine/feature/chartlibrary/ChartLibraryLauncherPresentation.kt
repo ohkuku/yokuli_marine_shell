@@ -30,6 +30,9 @@ import com.yokuli.shell.compose.LauncherTileRenderContext
 import com.yokuli.shell.compose.LauncherTileRenderer
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.MarineTileSize
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
+import com.yokuli.marine.core.design.PresentationCadence
+import com.yokuli.marine.core.design.rememberCadencedLiveValue
 import java.text.Normalizer
 import java.util.Locale
 import kotlin.math.min
@@ -40,8 +43,15 @@ data class ChartLibraryTileState(
     val availableCount: Int,
     val attentionCount: Int,
     val scanningCount: Int,
+    val visibleLayerCount: Int = 0,
+    val visibleLayerNames: List<String> = emptyList(),
+    val displayWarningCount: Int = 0,
 ) {
-    val critical: Boolean get() = attentionCount > 0
+    val critical: Boolean get() = attentionCount > 0 || displayWarningCount > 0
+    init {
+        require(visibleLayerCount >= visibleLayerNames.size)
+        require(visibleLayerNames.size <= 3 && displayWarningCount >= 0)
+    }
 }
 
 class ChartLibraryTileDisplaySlot(initial: ChartLibraryTileState) {
@@ -67,12 +77,15 @@ data class ChartLibrarySearchMatch(
 }
 
 object ChartLibraryLauncherProjector {
-    fun project(state: ChartLibraryUiState) = ChartLibraryTileState(
+    fun project(state: ChartLibraryUiState, displayPlan: ChartDisplayPlan = ChartDisplayPlan.EMPTY) = ChartLibraryTileState(
         sourceCount = state.summary.sourceCount,
         assetCount = state.summary.assetCount,
         availableCount = state.summary.availableAssetCount,
         attentionCount = state.summary.attentionCount,
         scanningCount = state.summary.scanningCount,
+        visibleLayerCount = displayPlan.layers.size,
+        visibleLayerNames = displayPlan.layers.map { it.displayName }.take(3),
+        displayWarningCount = displayPlan.issues.size + if (displayPlan.omittedLayerCount > 0) 1 else 0,
     )
 }
 
@@ -103,9 +116,12 @@ object ChartLibrarySearchProjector {
 }
 
 @Composable
-fun chartLibraryLauncherVisualContribution(state: ChartLibraryUiState): LauncherEntryVisualContribution {
+fun chartLibraryLauncherVisualContribution(
+    state: ChartLibraryUiState,
+    displayPlan: ChartDisplayPlan = ChartDisplayPlan.EMPTY,
+): LauncherEntryVisualContribution {
     val title = stringResource(R.string.chart_library_title)
-    val incoming = ChartLibraryLauncherProjector.project(state)
+    val incoming = ChartLibraryLauncherProjector.project(state, displayPlan)
     return LauncherEntryVisualContribution(
         entryId = ChartLibraryDestinations.EntryId,
         title = title,
@@ -170,8 +186,13 @@ fun chartLibraryStatusCopy(
 
 @Composable
 private fun rememberLibraryTile(incoming: ChartLibraryTileState, live: Boolean): ChartLibraryTileState {
+    val cadenced = rememberCadencedLiveValue(
+        incoming,
+        structuralKey = Triple(incoming.critical, incoming.displayWarningCount, incoming.visibleLayerNames),
+        cadence = PresentationCadence.StartTile,
+    )
     val slot = remember { ChartLibraryTileDisplaySlot(incoming) }
-    return slot.resolve(incoming, live)
+    return slot.resolve(cadenced, live)
 }
 
 @Composable
@@ -209,10 +230,19 @@ private fun ChartLibraryWideTile(context: LauncherTileRenderContext, title: Stri
             WpText(title, 12, color = context.contentColor)
         }
         Column(Modifier.width(148.dp).padding(start = 12.dp, top = 4.dp)) {
-            WpText(stringResource(R.string.launcher_sources_assets, state.sourceCount, state.assetCount), 13, color = context.contentColor, maxLines = 1)
-            WpText(stringResource(R.string.launcher_available, state.availableCount), 11, color = context.contentColor.copy(alpha = .84f), maxLines = 1)
+            WpText(stringResource(R.string.launcher_visible_layers, state.visibleLayerCount), 13, color = context.contentColor, maxLines = 1)
+            state.visibleLayerNames.forEach { name ->
+                WpText(name, 10, color = context.contentColor.copy(alpha = .84f), maxLines = 1)
+            }
+            if (state.visibleLayerNames.isEmpty()) {
+                WpText(stringResource(R.string.launcher_no_visible_layers), 10, color = context.contentColor.copy(alpha = .84f), maxLines = 1)
+            }
             if (state.attentionCount > 0) WpText(
                 stringResource(R.string.launcher_attention, state.attentionCount), 11,
+                color = context.contentColor, weight = FontWeight.SemiBold, maxLines = 1,
+            )
+            if (state.displayWarningCount > 0) WpText(
+                stringResource(R.string.launcher_display_warnings, state.displayWarningCount), 11,
                 color = context.contentColor, weight = FontWeight.SemiBold, maxLines = 1,
             )
             if (state.scanningCount > 0) WpText(

@@ -74,6 +74,11 @@
     <string name="data_tile_receiving">%1$d inputs receiving</string>
     <string name="data_tile_attention">%1$d need attention</string>
     <string name="data_tile_groups">%1$d data groups selected</string>
+    <string name="data_tile_value_position">position</string>
+    <string name="data_tile_value_course_speed">course / speed</string>
+    <string name="data_tile_value_heading">heading</string>
+    <string name="data_tile_value_depth">depth</string>
+    <string name="data_tile_value_wind">wind</string>
     <string name="data_status_attention">data !%1$d</string>
     <string name="data_status_receiving">data %1$d</string>
     <string name="data_status_expanded">%1$d/%2$d inputs receiving · %3$d data groups selected</string>

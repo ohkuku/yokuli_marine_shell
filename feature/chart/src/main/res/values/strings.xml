@@ -362,4 +362,12 @@
     <string name="map_quick_layers_empty">当前没有可快速调整的本地图层。请从海图库明确选择“在 Chart 查看”。</string>
     <string name="map_quick_layer_visible">%1$s · 显示</string>
     <string name="map_quick_layer_hidden">%1$s · 隐藏</string>
+    <string name="map_tile_snapshot">最近地图</string>
+    <string name="map_tile_last_view">由 Chart 渲染器缓存 · 不启动第二张地图</string>
+    <string name="map_tile_navigation_next">下一航点 · %1$d</string>
+    <string name="map_tile_navigation_solution">%1$.2f 海里 · %2$.0f° 真 · 偏航 %3$.2f 海里</string>
+    <string name="map_tile_navigation_waiting">等待当前进程的新鲜位置</string>
+    <string name="map_tile_position">%1$.4f°, %2$.4f°</string>
+    <string name="map_tile_course_speed">航迹 %1$.0f° 真 · %2$.1f 节</string>
+    <string name="map_tile_position_only">当前位置 · 无可用航迹/航速</string>
 </resources>

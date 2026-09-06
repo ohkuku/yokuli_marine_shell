@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W14",
+  "startCommit": "2d649380498867e4c8495633fb62f175169d9453",
+  "chartTileModes": ["AUTO", "MAP", "NAVIGATION", "POSITION", "STATIC"],
+  "chartAutoPriority": ["ACTIVE_NAVIGATION", "MAP_SNAPSHOT", "FRESH_POSITION", "STATIC"],
+  "tileSnapshotStorage": "PROCESS_SINGLE_SLOT_MEMORY",
+  "tileSnapshotFormat": "JPEG",
+  "maximumTileSnapshotBytes": 262144,
+  "rendererSnapshotMaximumPixels": [320, 180],
+  "numericCadenceMillis": 1000,
+  "rotationCadenceMillis": 5000,
+  "structuralAlertsImmediate": true,
+  "dataTileUsesResolvedValuesOnly": true,
+  "preferencesTileStatic": true,
+  "verification": "GITHUB_ACTION_PENDING"
+}

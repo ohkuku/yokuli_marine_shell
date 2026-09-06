@@ -58,6 +58,9 @@ import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.engine.LauncherRecoveryMode
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.shell.contract.MotionPreference
+import com.yokuli.shell.contract.AppPreferenceKey
+import com.yokuli.shell.contract.AppPreferenceRegistry
+import com.yokuli.shell.contract.AppPreferenceValue
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
@@ -338,6 +341,21 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val current = persistence.load() ?: defaults
             persistence.save(current.copy(motionPreferenceName = preference.name))
+        }
+    }
+
+    fun saveAppPreference(key: AppPreferenceKey, value: AppPreferenceValue) {
+        viewModelScope.launch {
+            val definition = productionInstalledAppRegistry.appPreferenceRegistry.definitions[key]?.second
+                ?: return@launch
+            if (!definition.accepts(value)) return@launch
+            val current = persistence.load() ?: defaults
+            val next = current.appPreferenceValues.toMutableMap().apply {
+                put(key.value, AppPreferenceRegistry.encode(value))
+            }.entries.sortedBy { it.key }
+                .take(AppPreferenceRegistry.MAX_REGISTERED_PREFERENCES)
+                .associate { it.toPair() }
+            persistence.save(current.copy(appPreferenceValues = next))
         }
     }
 

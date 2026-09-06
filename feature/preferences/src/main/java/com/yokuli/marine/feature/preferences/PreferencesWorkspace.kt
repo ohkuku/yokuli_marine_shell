@@ -43,6 +43,9 @@ import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.shell.contract.MotionPreference
+import com.yokuli.shell.contract.AppPreferenceDefinition
+import com.yokuli.shell.contract.AppPreferenceLabel
+import com.yokuli.shell.contract.AppPreferenceValue
 import com.yokuli.shell.contract.ShellInput
 
 @Composable
@@ -64,7 +67,7 @@ fun PreferencesWorkspace(state: PreferencesUiState, onAction: (PreferencesUiActi
             PreferencesSection.UNITS -> Units(state, onAction)
             PreferencesSection.MOTION -> Motion(state, onAction)
             PreferencesSection.START -> Start(state, onAction)
-            PreferencesSection.APP_TILES -> AppTiles(state)
+            PreferencesSection.APP_TILES -> AppTiles(state, onAction)
             PreferencesSection.ABOUT -> About(state)
         }
     }
@@ -157,15 +160,43 @@ private fun Start(state: PreferencesUiState, onAction: (PreferencesUiAction) -> 
 }
 
 @Composable
-private fun AppTiles(state: PreferencesUiState) = Body("preferences-app-tiles") {
+private fun AppTiles(state: PreferencesUiState, onAction: (PreferencesUiAction) -> Unit) = Body("preferences-app-tiles") {
     WpText(stringResource(R.string.preferences_app_tiles_truth), 12, color = LocalWpTheme.current.muted)
     state.appTiles.forEach { app ->
         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("preferences-app-tile-${app.appId.value}")) {
             WpText(app.appId.value.replace('_', ' '), 19, weight = FontWeight.Light)
             WpText(app.supportedSizes.sortedBy { it.columns * it.rows }.joinToString(" · ") { "${it.columns}×${it.rows}" }, 11, color = LocalWpTheme.current.muted)
-            if (app.preferenceKeys.isEmpty()) {
+            if (app.preferences.isEmpty()) {
                 WpText(stringResource(R.string.preferences_no_app_options), 10, color = LocalWpTheme.current.muted)
-            } else app.preferenceKeys.forEach { WpText(it.value, 10, color = LocalWpTheme.current.accent) }
+            } else app.preferences.forEach { item ->
+                WpText(item.definition.label.forLanguage(state.language), 14, color = LocalWpTheme.current.muted)
+                when (val definition = item.definition) {
+                    is AppPreferenceDefinition.Toggle -> {
+                        val value = item.value as AppPreferenceValue.Toggle
+                        Select(
+                            stringResource(if (value.enabled) R.string.preferences_enabled else R.string.preferences_disabled),
+                            true,
+                            "preferences-app-option-${item.key.value}",
+                        ) {
+                            onAction(
+                                PreferencesUiAction.ChangeAppPreference(
+                                    item.key,
+                                    AppPreferenceValue.Toggle(!value.enabled),
+                                ),
+                            )
+                        }
+                    }
+                    is AppPreferenceDefinition.Choice -> definition.options.forEach { option ->
+                        Select(
+                            definition.optionLabels[option]?.forLanguage(state.language) ?: option,
+                            (item.value as? AppPreferenceValue.Choice)?.option == option,
+                            "preferences-app-option-${item.key.value}-$option",
+                        ) {
+                            onAction(PreferencesUiAction.ChangeAppPreference(item.key, AppPreferenceValue.Choice(option)))
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -236,3 +267,5 @@ private fun AboutRow(label: String, value: String) {
 @Composable private fun unitsLabel(units: MeasurementUnitSystem) = stringResource(if (units == MeasurementUnitSystem.NAUTICAL) R.string.preferences_units_nautical else R.string.preferences_units_metric)
 @Composable private fun motionLabel(value: MotionPreference) = stringResource(if (value == MotionPreference.FOLLOW_SYSTEM) R.string.preferences_motion_system else R.string.preferences_motion_reduced)
 @Composable private fun accentLabel(accent: WpAccent) = accent.displayName
+private fun AppPreferenceLabel.forLanguage(language: AppLanguage): String =
+    if (language == AppLanguage.CHINESE) chinese else english

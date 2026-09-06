@@ -50,8 +50,14 @@
     <string name="navigation_start_rejected">Navigation could not start. Check the route revision and current state.</string>
     <string name="navigation_tile_idle">%1$d ROUTES</string>
     <string name="navigation_tile_active">TO %1$s</string>
+    <string name="navigation_tile_active_unknown">NAVIGATING</string>
+    <string name="navigation_tile_recent">recent · %1$s</string>
     <string name="navigation_tile_distance">%1$.2f NM</string>
     <string name="navigation_tile_distance_metric">%1$.2f KM</string>
+    <string name="navigation_tile_dtw_btw">DTW %1$.2f NM · BTW %2$.0f° T</string>
+    <string name="navigation_tile_dtw_btw_metric">DTW %1$.2f KM · BTW %2$.0f° T</string>
+    <string name="navigation_tile_xte">XTE %1$.2f NM</string>
+    <string name="navigation_tile_xte_metric">XTE %1$.2f KM</string>
     <string name="nav_next">NEXT · %1$s</string>
     <string name="nav_dtw_btw">%1$.2f NM · %2$.0f° TRUE</string>
     <string name="nav_dtw_btw_metric">%1$.2f KM · %2$.0f° TRUE</string>

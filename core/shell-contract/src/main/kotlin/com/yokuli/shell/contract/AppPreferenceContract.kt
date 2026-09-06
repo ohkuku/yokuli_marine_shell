@@ -3,6 +3,13 @@ package com.yokuli.shell.contract
 enum class MeasurementUnitSystem { NAUTICAL, METRIC }
 enum class MotionPreference { FOLLOW_SYSTEM, REDUCED }
 
+data class AppPreferenceLabel(val chinese: String, val english: String) {
+    init {
+        require(chinese.isNotBlank() && chinese.length <= 80)
+        require(english.isNotBlank() && english.length <= 80)
+    }
+}
+
 @JvmInline
 value class AppPreferenceKey(val value: String) {
     init {
@@ -19,21 +26,26 @@ sealed interface AppPreferenceValue {
 
 sealed interface AppPreferenceDefinition {
     val key: AppPreferenceKey
+    val label: AppPreferenceLabel
     val defaultValue: AppPreferenceValue
 
     data class Toggle(
         override val key: AppPreferenceKey,
         override val defaultValue: AppPreferenceValue.Toggle,
+        override val label: AppPreferenceLabel = AppPreferenceLabel(key.value, key.value),
     ) : AppPreferenceDefinition
 
     data class Choice(
         override val key: AppPreferenceKey,
         val options: List<String>,
         override val defaultValue: AppPreferenceValue.Choice,
+        override val label: AppPreferenceLabel = AppPreferenceLabel(key.value, key.value),
+        val optionLabels: Map<String, AppPreferenceLabel> = emptyMap(),
     ) : AppPreferenceDefinition {
         init {
             require(options.size in 2..16 && options.none(String::isBlank) && options.distinct().size == options.size)
             require(defaultValue.option in options)
+            require(optionLabels.keys.all(options::contains))
         }
     }
 

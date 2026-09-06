@@ -14,6 +14,8 @@ import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.domain.MapTileSnapshot
+import com.yokuli.marine.map.domain.MapTileSnapshotSink
 import com.yokuli.marine.map.domain.MapViewportInsets
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.feature.chart.ChartDestinations
@@ -42,6 +44,7 @@ import com.yokuli.marine.feature.chartlibrary.ChartLibraryWorkspace
 import com.yokuli.marine.feature.chartlibrary.chartLibraryLauncherVisualContribution
 import com.yokuli.marine.feature.chartlibrary.chartLibrarySearchContributions
 import com.yokuli.marine.feature.preferences.AppTilePreferenceUi
+import com.yokuli.marine.feature.preferences.AppTilePreferenceItemUi
 import com.yokuli.marine.feature.preferences.PreferencesDestinations
 import com.yokuli.marine.feature.preferences.PreferencesShellContribution
 import com.yokuli.marine.feature.preferences.PreferencesUiAction
@@ -99,6 +102,8 @@ data class ProductionShellVisualEnvironment(
     val dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
     val chartLibraryState: ChartLibraryUiState = ChartLibraryUiState(),
     val navigationState: NavigationUiState = NavigationUiState(),
+    val mapTileSnapshot: MapTileSnapshot? = null,
+    val chartTileMode: com.yokuli.marine.feature.chart.ChartTileMode = com.yokuli.marine.feature.chart.ChartTileMode.AUTO,
 )
 
 data class ProductionShellRuntime(
@@ -113,6 +118,7 @@ data class ProductionShellRuntime(
     val acquireChartPackageLease: (ChartPackageId) -> ChartPackageLease,
     val chartLibraryAccess: ChartResourceAccessPort,
     val chartTileGateway: ChartLoopbackTileGateway,
+    val mapTileSnapshotSink: MapTileSnapshotSink,
     val recoveryExportState: MapRecoveryExportUiState,
     val onExportMapRecovery: () -> Unit,
     val placeExportState: MapPlaceExportUiState,
@@ -155,7 +161,15 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
     InstalledAppBinding(
         catalogContribution = ChartShellContribution,
         visualContributions = { environment ->
-            listOf(chartLauncherVisualContribution(environment.mapState, environment.offlineCoverageState))
+            listOf(
+                chartLauncherVisualContribution(
+                    environment.mapState,
+                    environment.offlineCoverageState,
+                    environment.navigationState.active,
+                    environment.mapTileSnapshot,
+                    environment.chartTileMode,
+                ),
+            )
         },
         searchContributions = { environment, query ->
             chartLauncherSearchContributions(environment.mapState, query)
@@ -180,6 +194,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                                 onQueryPortChanged = onQueryPortChanged,
                                 darkMode = runtime.theme.mode == WpThemeMode.DARK,
                                 chartLibraryAccess = runtime.chartLibraryAccess,
+                                tileSnapshotSink = runtime.mapTileSnapshotSink,
                                 modifier = modifier.testTag("chart-surface-google"),
                             )
                         } else {
@@ -190,6 +205,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                                 acquirePackageLease = runtime.acquireChartPackageLease,
                                 chartLibraryAccess = runtime.chartLibraryAccess,
                                 chartTileGateway = runtime.chartTileGateway,
+                                tileSnapshotSink = runtime.mapTileSnapshotSink,
                                 modifier = modifier.testTag("chart-surface-maplibre"),
                             )
                         }
@@ -273,7 +289,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
     InstalledAppBinding(
         catalogContribution = ChartLibraryShellContribution,
         visualContributions = { environment ->
-            listOf(chartLibraryLauncherVisualContribution(environment.chartLibraryState))
+            listOf(chartLibraryLauncherVisualContribution(environment.chartLibraryState, environment.mapState.chartDisplayPlan))
         },
         searchContributions = { environment, query ->
             chartLibrarySearchContributions(environment.chartLibraryState, query)
@@ -307,16 +323,21 @@ val productionContributions = productionInstalledAppRegistry.catalogContribution
 val productionCatalog = LauncherCatalog.compose(revision = 5, contributions = productionContributions)
 val productionLaunchRegistrations = productionInstalledAppRegistry.launchRegistrations
 
-fun productionAppTilePreferences(): List<AppTilePreferenceUi> = productionCatalog.snapshot.apps.map { app ->
-    AppTilePreferenceUi(
-        appId = app.appId,
-        supportedSizes = productionCatalog.snapshot.entries
-            .filter { it.appId == app.appId }
-            .flatMapTo(linkedSetOf()) { it.supportedSizes },
-        preferenceKeys = productionInstalledAppRegistry.appPreferenceRegistry.definitions
-            .filterValues { it.first == app.appId }
-            .keys.sortedBy { it.value },
-    )
+fun productionAppTilePreferences(persistedValues: Map<String, String>): List<AppTilePreferenceUi> {
+    val registry = productionInstalledAppRegistry.appPreferenceRegistry
+    val resolved = registry.resolve(persistedValues)
+    return productionCatalog.snapshot.apps.map { app ->
+        AppTilePreferenceUi(
+            appId = app.appId,
+            supportedSizes = productionCatalog.snapshot.entries
+                .filter { it.appId == app.appId }
+                .flatMapTo(linkedSetOf()) { it.supportedSizes },
+            preferences = registry.definitions
+                .filterValues { it.first == app.appId }
+                .entries.sortedBy { it.key.value }
+                .map { (key, owned) -> AppTilePreferenceItemUi(owned.second, resolved.getValue(key)) },
+        )
+    }
 }
 @Composable
 fun productionVisualContributions(
@@ -327,6 +348,8 @@ fun productionVisualContributions(
     dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
     chartLibraryState: ChartLibraryUiState = ChartLibraryUiState(),
     navigationState: NavigationUiState = NavigationUiState(),
+    mapTileSnapshot: MapTileSnapshot? = null,
+    chartTileMode: com.yokuli.marine.feature.chart.ChartTileMode = com.yokuli.marine.feature.chart.ChartTileMode.AUTO,
 ): List<LauncherEntryVisualContribution> {
     val environment = ProductionShellVisualEnvironment(
         theme,
@@ -336,6 +359,8 @@ fun productionVisualContributions(
         dataSourcesSnapshot,
         chartLibraryState,
         navigationState,
+        mapTileSnapshot,
+        chartTileMode,
     )
     return productionInstalledAppRegistry.visualContributions(environment)
 }

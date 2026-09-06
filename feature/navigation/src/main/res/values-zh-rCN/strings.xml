@@ -50,8 +50,14 @@
     <string name="navigation_start_rejected">无法开始导航；请检查路线版本和当前状态。</string>
     <string name="navigation_tile_idle">%1$d 条航线</string>
     <string name="navigation_tile_active">前往 %1$s</string>
+    <string name="navigation_tile_active_unknown">正在导航</string>
+    <string name="navigation_tile_recent">最近 · %1$s</string>
     <string name="navigation_tile_distance">%1$.2f 海里</string>
     <string name="navigation_tile_distance_metric">%1$.2f 千米</string>
+    <string name="navigation_tile_dtw_btw">距下一点 %1$.2f 海里 · %2$.0f° 真</string>
+    <string name="navigation_tile_dtw_btw_metric">距下一点 %1$.2f 千米 · %2$.0f° 真</string>
+    <string name="navigation_tile_xte">偏航 %1$.2f 海里</string>
+    <string name="navigation_tile_xte_metric">偏航 %1$.2f 千米</string>
     <string name="nav_next">下一点 · %1$s</string>
     <string name="nav_dtw_btw">%1$.2f 海里 · %2$.0f° 真</string>
     <string name="nav_dtw_btw_metric">%1$.2f 千米 · %2$.0f° 真</string>

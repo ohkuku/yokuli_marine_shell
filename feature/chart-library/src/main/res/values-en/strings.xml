@@ -190,4 +190,7 @@
     <string name="launcher_status_current_issue">A local chart used by the current display needs attention</string>
     <string name="launcher_status_scanning_compact">chart %1$d</string>
     <string name="launcher_status_scanning">%1$d chart sources are scanning</string>
+    <string name="launcher_visible_layers">%1$d VISIBLE LAYERS</string>
+    <string name="launcher_no_visible_layers">NO LOCAL LAYER VISIBLE</string>
+    <string name="launcher_display_warnings">%1$d DISPLAY WARNINGS</string>
 </resources>

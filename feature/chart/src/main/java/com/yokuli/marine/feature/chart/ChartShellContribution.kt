@@ -10,6 +10,15 @@ import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.contract.TilePresentationKind
+import com.yokuli.shell.contract.AppPreferenceContribution
+import com.yokuli.shell.contract.AppPreferenceDefinition
+import com.yokuli.shell.contract.AppPreferenceKey
+import com.yokuli.shell.contract.AppPreferenceLabel
+import com.yokuli.shell.contract.AppPreferenceValue
+
+enum class ChartTileMode { AUTO, MAP, NAVIGATION, POSITION, STATIC }
+
+val ChartTileModePreferenceKey = AppPreferenceKey("chart.tile.mode")
 
 object ChartDestinations {
     val AppId = LauncherAppId("chart")
@@ -73,7 +82,25 @@ object ChartShellContribution : LauncherCatalogContribution {
                 MarineTileSize.WIDE_4X2,
             ),
             pinPolicy = PinPolicy.PINNABLE,
-            presentationKind = TilePresentationKind.STATUS,
+            presentationKind = TilePresentationKind.CYCLE,
+        ),
+    )
+    override val appPreferences = AppPreferenceContribution(
+        appId = ChartDestinations.AppId,
+        definitions = listOf(
+            AppPreferenceDefinition.Choice(
+                key = ChartTileModePreferenceKey,
+                options = ChartTileMode.entries.map { it.name },
+                defaultValue = AppPreferenceValue.Choice(ChartTileMode.AUTO.name),
+                label = AppPreferenceLabel("海图磁贴内容", "Chart tile content"),
+                optionLabels = mapOf(
+                    ChartTileMode.AUTO.name to AppPreferenceLabel("自动", "Automatic"),
+                    ChartTileMode.MAP.name to AppPreferenceLabel("地图快照", "Map snapshot"),
+                    ChartTileMode.NAVIGATION.name to AppPreferenceLabel("当前导航", "Active navigation"),
+                    ChartTileMode.POSITION.name to AppPreferenceLabel("当前位置", "Current position"),
+                    ChartTileMode.STATIC.name to AppPreferenceLabel("静态图标", "Static icon"),
+                ),
+            ),
         ),
     )
 }

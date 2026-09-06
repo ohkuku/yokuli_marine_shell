@@ -38,6 +38,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryRuntimePort
 import com.yokuli.marine.map.domain.ReadOnlyPositionPort
 import com.yokuli.marine.map.domain.ObservationMonotonicClock
 import com.yokuli.marine.map.domain.MonotonicTime
+import com.yokuli.marine.map.domain.BoundedMapTileSnapshotRuntime
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
 import com.yokuli.marine.navigation.domain.ActiveNavigationRuntimePort
@@ -75,6 +76,7 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
         AndroidChartLibraryRuntime.create(this, applicationScope, chartPackageRepository)
     }
     val chartTileGateway by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ChartLoopbackTileGateway() }
+    val mapTileSnapshots by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { BoundedMapTileSnapshotRuntime() }
     val positionPort: ReadOnlyPositionPort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         MarineSourcePositionPort(marineSourceRuntime.state, processObservationClockId)
     }

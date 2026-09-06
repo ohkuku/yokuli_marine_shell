@@ -74,6 +74,11 @@
     <string name="data_tile_receiving">%1$d 个输入接收中</string>
     <string name="data_tile_attention">%1$d 项需处理</string>
     <string name="data_tile_groups">%1$d 个数据组已采用</string>
+    <string name="data_tile_value_position">位置</string>
+    <string name="data_tile_value_course_speed">航迹 / 航速</string>
+    <string name="data_tile_value_heading">航向</string>
+    <string name="data_tile_value_depth">水深</string>
+    <string name="data_tile_value_wind">风</string>
     <string name="data_status_attention">数据 !%1$d</string>
     <string name="data_status_receiving">数据 %1$d</string>
     <string name="data_status_expanded">%1$d/%2$d 个输入接收中 · %3$d 个数据组已采用</string>

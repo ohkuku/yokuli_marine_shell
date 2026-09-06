@@ -107,6 +107,8 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
 import com.yokuli.marine.map.domain.chartlibrary.ChartPickerKind
 import com.yokuli.marine.map.domain.chartlibrary.ChartPickerSelection
 import com.yokuli.marine.feature.chart.ChartDestinations
+import com.yokuli.marine.feature.chart.ChartTileMode
+import com.yokuli.marine.feature.chart.ChartTileModePreferenceKey
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapCameraIntent
 import com.yokuli.marine.map.domain.MapCameraTarget
@@ -116,6 +118,7 @@ import com.yokuli.shell.engine.LauncherEffect
 import com.yokuli.shell.engine.LauncherRecoveryMode
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.shell.contract.MotionPreference
+import com.yokuli.shell.contract.AppPreferenceValue
 import com.yokuli.shell.engine.ShellVisualSurface
 import com.yokuli.shell.engine.InternalAppTaskId
 import com.yokuli.shell.engine.ShellTransitionKind
@@ -243,6 +246,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val dataSourcesSnapshot by shellViewModel.marineSourceState.collectAsState()
     val activeNavigationState by shellViewModel.activeNavigationState.collectAsState()
     val navigationState by shellViewModel.navigationState.collectAsState()
+    val mapTileSnapshot by application.mapTileSnapshots.snapshots.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var recoveryExportState by remember { mutableStateOf(MapRecoveryExportUiState.IDLE) }
     var placeExportState by remember { mutableStateOf<MapPlaceExportUiState>(MapPlaceExportUiState.Idle) }
@@ -460,6 +464,11 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val motionPreference = MotionPreference.entries.firstOrNull {
         it.name == persistedPreferences.motionPreferenceName
     } ?: MotionPreference.FOLLOW_SYSTEM
+    val chartTileMode = (
+        productionInstalledAppRegistry.appPreferenceRegistry
+            .resolve(persistedPreferences.appPreferenceValues)[ChartTileModePreferenceKey] as? AppPreferenceValue.Choice
+        )?.option?.let { option -> ChartTileMode.entries.firstOrNull { it.name == option } }
+        ?: ChartTileMode.AUTO
     val dispatch: (LauncherAction) -> Unit = engine::dispatch
     val dispatchInput: (ShellInput) -> Unit = { input ->
         (context as? ShellActivity)?.dispatchInput(input) ?: dispatch(input.toShellAction())
@@ -514,6 +523,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             acquireChartPackageLease = shellViewModel::acquireChartPackageLease,
             chartLibraryAccess = application.chartLibraryRuntime,
             chartTileGateway = application.chartTileGateway,
+            mapTileSnapshotSink = application.mapTileSnapshots,
             recoveryExportState = recoveryExportState,
             onExportMapRecovery = {
                 recoveryExportState = MapRecoveryExportUiState.IDLE
@@ -583,7 +593,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 motionPreference = motionPreference,
                 pinnedTileCount = engineState.start.document.placements.size,
                 startDocumentVersion = engineState.start.document.defaultLayoutVersion,
-                appTiles = productionAppTilePreferences(),
+                appTiles = productionAppTilePreferences(persistedPreferences.appPreferenceValues),
                 versionName = BuildConfig.VERSION_NAME,
                 buildVariant = "${BuildConfig.FLAVOR}/${BuildConfig.BUILD_TYPE}",
                 gitSha = BuildConfig.GIT_SHA,
@@ -602,6 +612,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     }
                     is PreferencesUiAction.ChangeUnits -> shellViewModel.saveMeasurementUnits(action.units)
                     is PreferencesUiAction.ChangeMotion -> shellViewModel.saveMotionPreference(action.preference)
+                    is PreferencesUiAction.ChangeAppPreference -> shellViewModel.saveAppPreference(action.key, action.value)
                     PreferencesUiAction.ResetStartScreen -> shellViewModel.resetStartDocument()
                 }
             },
@@ -648,6 +659,8 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     dataSourcesSnapshot = dataSourcesSnapshot,
                     chartLibraryState = chartLibraryState,
                     navigationState = navigationState,
+                    mapTileSnapshot = mapTileSnapshot,
+                    chartTileMode = chartTileMode,
                 ),
                 searchResults = productionSearchContributions(
                     theme = themeSpec,

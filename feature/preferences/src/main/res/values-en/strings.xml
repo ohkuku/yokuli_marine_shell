@@ -30,6 +30,8 @@
     <string name="preferences_reset_start">restore default Start</string>
     <string name="preferences_app_tiles_truth">Each app declares its supported tile sizes and settings. Preferences does not guess Feature runtime state.</string>
     <string name="preferences_no_app_options">NO APP-SPECIFIC TILE OPTIONS</string>
+    <string name="preferences_enabled">enabled</string>
+    <string name="preferences_disabled">disabled</string>
     <string name="preferences_version">version</string>
     <string name="preferences_variant">build variant</string>
     <string name="preferences_revision">code revision</string>

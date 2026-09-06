@@ -2,7 +2,9 @@ package com.yokuli.marine.feature.preferences
 
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
+import com.yokuli.shell.contract.AppPreferenceDefinition
 import com.yokuli.shell.contract.AppPreferenceKey
+import com.yokuli.shell.contract.AppPreferenceValue
 import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.contract.MeasurementUnitSystem
@@ -13,8 +15,15 @@ enum class PreferencesSection { OVERVIEW, APPEARANCE, LANGUAGE, UNITS, MOTION, S
 data class AppTilePreferenceUi(
     val appId: LauncherAppId,
     val supportedSizes: Set<MarineTileSize>,
-    val preferenceKeys: List<AppPreferenceKey> = emptyList(),
+    val preferences: List<AppTilePreferenceItemUi> = emptyList(),
 )
+
+data class AppTilePreferenceItemUi(
+    val definition: AppPreferenceDefinition,
+    val value: AppPreferenceValue,
+) {
+    val key: AppPreferenceKey get() = definition.key
+}
 
 data class PreferencesUiState(
     val section: PreferencesSection = PreferencesSection.OVERVIEW,
@@ -36,5 +45,6 @@ sealed interface PreferencesUiAction {
     data class ChangeLanguage(val language: AppLanguage) : PreferencesUiAction
     data class ChangeUnits(val units: MeasurementUnitSystem) : PreferencesUiAction
     data class ChangeMotion(val preference: MotionPreference) : PreferencesUiAction
+    data class ChangeAppPreference(val key: AppPreferenceKey, val value: AppPreferenceValue) : PreferencesUiAction
     data object ResetStartScreen : PreferencesUiAction
 }

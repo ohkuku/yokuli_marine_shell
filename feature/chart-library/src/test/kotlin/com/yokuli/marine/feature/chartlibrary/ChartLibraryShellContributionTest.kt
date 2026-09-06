@@ -1,6 +1,15 @@
 package com.yokuli.marine.feature.chartlibrary
 
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
+import com.yokuli.marine.map.domain.GeoBounds
+import com.yokuli.marine.map.domain.MapTileScheme
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
+import com.yokuli.marine.map.domain.chartlibrary.ChartContentRevision
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayIssue
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayLayer
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
+import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
+import com.yokuli.marine.map.domain.chartlibrary.ChartReadRequest
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
 import com.yokuli.shell.contract.MarineTileSize
 import org.junit.Assert.assertEquals
@@ -48,5 +57,40 @@ class ChartLibraryShellContributionTest {
         assertEquals(tile(2, 1), slot.resolve(tile(2, 1), liveContentEnabled = false))
         assertEquals(tile(2, 0), slot.resolve(tile(2, 0), liveContentEnabled = false))
         assertEquals(tile(2, 0), slot.resolve(tile(2, 0), liveContentEnabled = true))
+    }
+
+    @Test fun visibleLayerNamesAndDisplayWarningsComeFromTheCurrentDisplayPlan() {
+        fun layer(id: String, name: String) = ChartDisplayLayer(
+            assetId = ChartAssetId(id),
+            displayName = name,
+            request = ChartReadRequest(
+                ChartAssetId(id), ChartOpaqueLocator("content://charts/$id"),
+                ChartContentRevision(id, 1L, 1L), 1L,
+            ),
+            role = ChartAssetRole.BASE,
+            priority = 0,
+            opacity = 1f,
+            tileSize = 256,
+            tileScheme = MapTileScheme.XYZ,
+            minZoom = 0,
+            maxZoom = 10,
+            bounds = GeoBounds(-40.0, 170.0, -30.0, 179.0),
+            attribution = null,
+        )
+        val plan = ChartDisplayPlan(
+            generation = 1L,
+            catalogRevision = 1L,
+            fingerprint = "a".repeat(64),
+            layers = listOf(layer("asset-a", "NZ Hydro"), layer("asset-b", "Harbour overlay")),
+            omittedLayerCount = 1,
+            issues = setOf(ChartDisplayIssue.LAYER_LIMIT_REACHED),
+        )
+
+        val projected = ChartLibraryLauncherProjector.project(ChartLibraryUiState(), plan)
+
+        assertEquals(2, projected.visibleLayerCount)
+        assertEquals(listOf("NZ Hydro", "Harbour overlay"), projected.visibleLayerNames)
+        assertEquals(2, projected.displayWarningCount)
+        assertTrue(projected.critical)
     }
 }
