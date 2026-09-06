@@ -92,6 +92,7 @@ class NmeaSourcesP2ContractTest(unittest.TestCase):
         permissions = {item.attrib[ns + "name"] for item in manifest.findall("uses-permission")}
         self.assertIn("android.permission.FOREGROUND_SERVICE", permissions)
         self.assertIn("android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE", permissions)
+        self.assertIn("android.permission.POST_NOTIFICATIONS", permissions)
         services = {
             service.attrib[ns + "name"]: service
             for service in manifest.findall("application/service")

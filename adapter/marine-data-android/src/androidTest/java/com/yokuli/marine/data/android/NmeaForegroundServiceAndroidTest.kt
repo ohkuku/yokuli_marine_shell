@@ -37,6 +37,7 @@ class NmeaForegroundServiceAndroidTest {
         assertTrue("android.permission.FOREGROUND_SERVICE" in requestedPermissions)
         assertTrue("android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" in requestedPermissions)
         assertTrue("android.permission.CHANGE_NETWORK_STATE" in requestedPermissions)
+        assertTrue("android.permission.POST_NOTIFICATIONS" in requestedPermissions)
         assertEquals(0, service.foregroundServiceType and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
     }
 

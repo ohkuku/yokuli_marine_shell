@@ -129,6 +129,15 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         self.assertNotIn("requestPermissions", chart)
         self.assertNotIn("manifest.count('tools:node=\"remove\"')", legacy_gate)
 
+    def test_foreground_runtime_declares_android_13_notification_permission(self):
+        adapter_manifest = self.read("adapter/marine-data-android/src/main/AndroidManifest.xml")
+        device_contract = self.read(
+            "adapter/marine-data-android/src/androidTest/java/com/yokuli/marine/data/android/"
+            "NmeaForegroundServiceAndroidTest.kt"
+        )
+        self.assertIn("android.permission.POST_NOTIFICATIONS", adapter_manifest)
+        self.assertIn("android.permission.POST_NOTIFICATIONS", device_contract)
+
     def test_chinese_primary_english_and_qualified_chinese_resources_have_key_parity(self):
         modules = (
             "feature/nmea-input",
