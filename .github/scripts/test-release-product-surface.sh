@@ -68,7 +68,8 @@ inspect_apk() {
     fail "$flavor release manifest is missing ShellActivity"
   grep -Fq 'android.intent.category.LAUNCHER' <<<"$manifest" ||
     fail "$flavor release manifest is missing the launcher category"
-  grep -Fq 'android:screenOrientation="portrait"' <<<"$manifest" ||
+  # apkanalyzer prints the compiled ActivityInfo enum; SCREEN_ORIENTATION_PORTRAIT is 1.
+  grep -Fq 'android:screenOrientation="1"' <<<"$manifest" ||
     fail "$flavor release manifest is not locked to portrait"
 
   for forbidden in \
