@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task": "CL06",
+  "start_commit": "1826b9dff801a0b5f0b7c0a6a56772e44a8ff4fc",
+  "runtime_owner": "ShellApplication",
+  "open_read_session_limit": 12,
+  "basic_validation_workers": 2,
+  "basic_validation_queue_capacity": 256,
+  "validation_job_restart_state": "INTERRUPTED",
+  "ordinary_scan_foreground_service": false,
+  "test_device": "pixel_7_api_34 emulator"
+}

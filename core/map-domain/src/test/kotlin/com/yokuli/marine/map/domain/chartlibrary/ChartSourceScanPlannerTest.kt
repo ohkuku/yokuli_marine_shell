@@ -61,6 +61,13 @@ class ChartSourceScanPlannerTest {
         assertEquals(ChartAssetAccessState.PERMISSION_LOST, failed.assetsToPut.single().access)
     }
 
+    @Test fun incompleteFileRemainsPendingAndIsNeverPromotedByDiscovery() {
+        val pending = document("pending", "downloading.part").copy(pending = true)
+        val plan = planner.plan(source, 1, ChartEnumerationResult.Complete(listOf(pending)), emptyList())
+        assertEquals(ChartAssetAccessState.PENDING, plan.assetsToPut.single().access)
+        assertEquals(ChartAssetValidationState.DISCOVERED, plan.assetsToPut.single().validation)
+    }
+
     private fun document(id: String, path: String, modified: Long = 1) = ChartDiscoveredDocument(
         ChartDocumentIdentity("provider", id), ChartOpaqueLocator("content://provider/document/$id"),
         path, null, modified,

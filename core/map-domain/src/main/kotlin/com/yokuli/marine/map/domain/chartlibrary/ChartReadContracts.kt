@@ -47,9 +47,12 @@ data class ChartReadRequest(
     val locator: ChartOpaqueLocator,
     val revision: ChartContentRevision,
     val sourceGeneration: Long,
+    val purpose: ChartReadPurpose = ChartReadPurpose.RENDER,
 ) {
     init { require(sourceGeneration > 0L) }
 }
+
+enum class ChartReadPurpose { RENDER, COVERAGE, VALIDATION }
 
 data class ChartTileKey(val zoom: Int, val column: Long, val row: Long) {
     init {

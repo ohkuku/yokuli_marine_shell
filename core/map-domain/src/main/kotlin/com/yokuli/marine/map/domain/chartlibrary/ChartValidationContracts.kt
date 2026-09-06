@@ -51,7 +51,7 @@ sealed interface ChartFullVerificationResult {
 }
 
 enum class ChartValidationJobKind { BASIC, FULL }
-enum class ChartValidationJobStatus { RUNNING, COMPLETED, FAILED, CANCELLED }
+enum class ChartValidationJobStatus { RUNNING, COMPLETED, FAILED, CANCELLED, INTERRUPTED }
 
 data class ChartValidationJob(
     val assetId: ChartAssetId,
@@ -102,7 +102,7 @@ object ChartTileCoordinateMapper {
 
 class ChartBasicInspector(private val access: ChartResourceAccessPort) {
     suspend fun inspect(asset: ChartAsset, sourceGeneration: Long): ChartBasicInspectionResult {
-        val request = ChartReadRequest(asset.id, asset.locator, asset.revision, sourceGeneration)
+        val request = ChartReadRequest(asset.id, asset.locator, asset.revision, sourceGeneration, ChartReadPurpose.VALIDATION)
         val opened = access.open(request)
         if (opened is ChartOpenResult.Rejected) {
             return ChartBasicInspectionResult.Rejected(ChartValidationIssue.OPEN_FAILED, opened.failure.name)
@@ -159,7 +159,7 @@ class ChartFullVerifier(
         if (revisionProbe.currentRevision(asset)?.cacheKey != asset.revision.cacheKey) {
             return ChartFullVerificationResult.Rejected(ChartValidationIssue.REVISION_CHANGED, "Revision changed before validation")
         }
-        val opened = access.open(ChartReadRequest(asset.id, asset.locator, asset.revision, sourceGeneration))
+        val opened = access.open(ChartReadRequest(asset.id, asset.locator, asset.revision, sourceGeneration, ChartReadPurpose.VALIDATION))
         if (opened is ChartOpenResult.Rejected) {
             return ChartFullVerificationResult.Rejected(ChartValidationIssue.OPEN_FAILED, opened.failure.name)
         }

@@ -78,6 +78,7 @@ dependencies {
     implementation(project(":adapter:map-storage"))
     implementation(project(":adapter:map-offline"))
     implementation(project(":adapter:chart-google"))
+    implementation(project(":adapter:chart-library-android"))
     implementation(project(":adapter:marine-data-android"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))

@@ -19,7 +19,7 @@ class ChartLibraryCoverageIndex(private val access: ChartResourceAccessPort) {
         requiredKeys: Set<SlippyTileKey>,
     ): Set<SlippyTileKey> = withContext(Dispatchers.IO) {
         if (requiredKeys.isEmpty()) return@withContext emptySet()
-        val opened = access.open(request)
+        val opened = access.open(request.copy(purpose = com.yokuli.marine.map.domain.chartlibrary.ChartReadPurpose.COVERAGE))
         if (opened !is ChartOpenResult.Opened) return@withContext emptySet()
         opened.session.use { session ->
             buildSet {

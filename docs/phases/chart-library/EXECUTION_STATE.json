@@ -248,12 +248,37 @@
     },
     "CL06": {
       "title": "Runtime、会话与外部变更",
-      "status": "NOT_STARTED",
-      "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "status": "PASS",
+      "head": "1826b9d",
+      "changed_files": [
+        "core/map-domain/**/chartlibrary/ChartLibraryRuntimeContracts.kt",
+        "adapter/chart-library-android/**/{AndroidChartLibraryRuntime,ChartValidationJobStore}*",
+        "app-shell/**/{build.gradle.kts,ShellApplication.kt}",
+        ".github/scripts/test_chart_library_cl06_contract.py"
+      ],
+      "commands": [
+        {
+          "command": "./gradlew :core:map-domain:test :adapter:map-offline:testDebugUnitTest :adapter:chart-library-android:compileDebugAndroidTestKotlin :app-shell:compileStandaloneDebugKotlin --no-daemon",
+          "exit_code": 0
+        },
+        {
+          "command": "./gradlew :adapter:chart-library-android:connectedDebugAndroidTest -P...ChartLibraryRuntimeAndroidTest",
+          "exit_code": 0,
+          "result": "5/5 API34"
+        },
+        {
+          "command": "python3 .github/scripts/test_chart_library_cl06_contract.py",
+          "exit_code": 0
+        }
+      ],
+      "evidence": [
+        "adapter/chart-library-android/build/reports/androidTests/connected/debug/index.html",
+        "docs/phases/chart-library/CL06_REPORT.md",
+        "docs/phases/chart-library/CL06_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "running-job marker is a dedicated bounded SharedPreferences store; catalog remains asset truth"
+      ],
       "blockers": []
     },
     "CL07": {

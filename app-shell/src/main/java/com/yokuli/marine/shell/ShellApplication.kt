@@ -29,6 +29,9 @@ import com.yokuli.marine.data.source.MarineSourceRuntimePort
 import com.yokuli.marine.map.storage.RoomMapPersistence
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
+import com.yokuli.marine.chart.library.android.AndroidChartLibraryRuntime
+import com.yokuli.marine.chart.library.android.ChartLibraryRuntimeOwner
+import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryRuntimePort
 import com.yokuli.marine.map.domain.ReadOnlyPositionPort
 import com.yokuli.marine.map.domain.ObservationMonotonicClock
 import com.yokuli.marine.map.domain.MonotonicTime
@@ -38,7 +41,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-class ShellApplication : Application(), MarineDataRuntimeOwner {
+class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRuntimeOwner {
     private val processObservationClockId = java.util.UUID.randomUUID().toString()
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val launcherPersistence by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -56,6 +59,9 @@ class ShellApplication : Application(), MarineDataRuntimeOwner {
     }
     val chartCoverageIndex by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         AndroidChartCoverageIndex(chartPackageRepository::acquireLease)
+    }
+    override val chartLibraryRuntime: ChartLibraryRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AndroidChartLibraryRuntime.create(this, applicationScope)
     }
     val positionPort: ReadOnlyPositionPort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         MarineSourcePositionPort(marineSourceRuntime.state, processObservationClockId)
@@ -115,6 +121,7 @@ class ShellApplication : Application(), MarineDataRuntimeOwner {
         nmeaInputRuntime
         phoneLocationRuntime
         marineSourceRuntime
+        chartLibraryRuntime
         if (BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")) {
             // Harnesses repeatedly force-stop/reinstall the target. A first-run LocaleManager
             // recreation would measure platform setup instead of the launcher journey.

@@ -17,13 +17,14 @@ class AndroidChartValidationController(
     private val catalog: RoomChartCatalogRepository,
     access: ChartResourceAccessPort,
     private val revisionProbe: ChartRevisionProbe,
+    private val jobStore: ChartValidationJobStore? = null,
 ) : ChartValidationCommandPort {
     private val basic = ChartBasicInspector(access)
     private val full = ChartFullVerifier(access, revisionProbe)
     private val budget = Semaphore(2)
     private val assetLocks = ConcurrentHashMap<String, Mutex>()
     private val epochs = ConcurrentHashMap<String, AtomicLong>()
-    private val mutableState = MutableStateFlow(ChartValidationSnapshot())
+    private val mutableState = MutableStateFlow(ChartValidationSnapshot(jobStore?.restoreInterrupted().orEmpty()))
     override val state: StateFlow<ChartValidationSnapshot> = mutableState.asStateFlow()
 
     override suspend fun inspectBasic(assetId: ChartAssetId): ChartValidationCommandResult = runLocked(assetId, ChartValidationJobKind.BASIC) { asset, generation, epoch ->
@@ -112,6 +113,11 @@ class AndroidChartValidationController(
     }
 
     private fun updateJob(job: ChartValidationJob) {
+        val prior = mutableState.value.jobs[job.assetId]
+        if (prior?.status != job.status) {
+            if (job.status == ChartValidationJobStatus.RUNNING) jobStore?.running(job.assetId, job.kind)
+            else jobStore?.finished(job.assetId)
+        }
         mutableState.update { snapshot -> ChartValidationSnapshot(
             (snapshot.jobs + (job.assetId to job)).entries.toList()
                 .takeLast(MAX_JOBS)

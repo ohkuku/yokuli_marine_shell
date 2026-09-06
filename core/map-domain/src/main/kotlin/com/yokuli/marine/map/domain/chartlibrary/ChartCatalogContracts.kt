@@ -17,6 +17,7 @@ enum class ChartAssetAccessState {
     SOURCE_OFFLINE,
     MISSING,
     CHANGED,
+    PENDING,
     DIRECT_READ_UNSUPPORTED,
 }
 enum class ChartAssetValidationState {

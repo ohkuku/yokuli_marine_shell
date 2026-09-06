@@ -113,7 +113,7 @@ class ChartSourceScanPlanner(private val ids: ChartAssetIdFactory = RandomChartA
                     revision = document.revision,
                     facts = ChartAssetFacts(sizeBytes = document.sizeBytes),
                     role = source.defaultRole,
-                    access = if (document.pending) ChartAssetAccessState.UNCHECKED else ChartAssetAccessState.UNCHECKED,
+                    access = if (document.pending) ChartAssetAccessState.PENDING else ChartAssetAccessState.UNCHECKED,
                     validation = ChartAssetValidationState.DISCOVERED,
                 )
             } else {
@@ -124,7 +124,7 @@ class ChartSourceScanPlanner(private val ids: ChartAssetIdFactory = RandomChartA
                     revision = document.revision,
                     facts = prior.facts.copy(sizeBytes = document.sizeBytes),
                     access = when {
-                        document.pending -> ChartAssetAccessState.UNCHECKED
+                        document.pending -> ChartAssetAccessState.PENDING
                         changed -> ChartAssetAccessState.CHANGED
                         prior.access == ChartAssetAccessState.MISSING -> ChartAssetAccessState.UNCHECKED
                         else -> prior.access
