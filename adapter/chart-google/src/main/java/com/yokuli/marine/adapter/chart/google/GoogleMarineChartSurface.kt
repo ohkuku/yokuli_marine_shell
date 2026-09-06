@@ -176,8 +176,8 @@ fun GoogleMarineChartSurface(
         context.applicationContext.registerComponentCallbacks(memoryCallbacks)
         onDispose {
             chartTileOverlays.clearGoogleTileOverlays()
-            domainMarkers.removeAllFromMap()
-            domainPolylines.removeAllFromMap()
+            domainMarkers.removeMarkersFromMap()
+            domainPolylines.removePolylinesFromMap()
             preparedDisplay?.close()
             preparedDisplay = null
             activePointDrag.getAndSet(null)?.let { currentAction(MapAction.CancelPointDrag(it.id)) }
@@ -389,8 +389,8 @@ fun GoogleMarineChartSurface(
         state.position.observation,
     ) {
         googleMap?.apply {
-            domainMarkers.removeAllFromMap()
-            domainPolylines.removeAllFromMap()
+            domainMarkers.removeMarkersFromMap()
+            domainPolylines.removePolylinesFromMap()
             state.places.forEach { place ->
                 addMarker(MarkerOptions().position(place.point.toLatLng()).title(place.name))?.let(domainMarkers::add)
             }
@@ -431,12 +431,12 @@ private fun MutableList<TileOverlay>.clearGoogleTileOverlays() {
     clear()
 }
 
-private fun MutableList<Marker>.removeAllFromMap() {
+private fun MutableList<Marker>.removeMarkersFromMap() {
     forEach { marker -> runCatching { marker.remove() } }
     clear()
 }
 
-private fun MutableList<Polyline>.removeAllFromMap() {
+private fun MutableList<Polyline>.removePolylinesFromMap() {
     forEach { polyline -> runCatching { polyline.remove() } }
     clear()
 }
