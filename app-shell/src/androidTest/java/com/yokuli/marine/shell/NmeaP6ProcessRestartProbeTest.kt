@@ -15,6 +15,8 @@ import com.yokuli.marine.data.runtime.NmeaRuntimeCommand
 import com.yokuli.marine.data.runtime.NmeaRuntimeCommandResult
 import com.yokuli.marine.data.source.SourceCandidateAvailability
 import com.yokuli.marine.data.source.SourceDecisionStatus
+import com.yokuli.marine.data.source.SourceSelectionCommand
+import com.yokuli.marine.data.source.SourceSelectionCommandResult
 import java.io.Closeable
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -64,7 +66,16 @@ class NmeaP6ProcessRestartProbeTest {
             }
             assertEquals(1L, receiving.connections.single().metrics.legalFrameCount)
 
-            val selected = withTimeout(12_000L) {
+            val positionSource = withTimeout(10_000L) {
+                application.marineSourceRuntime.state.first { snapshot ->
+                    snapshot.sourceCatalog.candidates.any { it.id.key == DataKey.Position }
+                }.sourceCatalog.candidates.single { it.id.key == DataKey.Position }.id.source
+            }
+            val selection = application.marineSourceRuntime.execute(
+                SourceSelectionCommand.Select(DataKey.Position, positionSource),
+            )
+            assertTrue(selection is SourceSelectionCommandResult.Success)
+            val selected = withTimeout(10_000L) {
                 application.marineSourceRuntime.state.first { snapshot ->
                     snapshot.resolvedData.items[DataKey.Position]?.value is MarineValue.Position
                 }
