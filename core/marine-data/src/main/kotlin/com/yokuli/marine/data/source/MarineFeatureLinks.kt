@@ -9,7 +9,6 @@ const val MAX_LINK_PAYLOAD_BYTES: Int = 128
 value class MarineFeatureLinkToken(val value: String) {
     init {
         require(value.isNotBlank())
-        require(value.length <= MAX_LINK_PAYLOAD_BYTES * 2 + 32)
     }
 }
 
