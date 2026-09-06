@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W10",
+  "startCommit": "7a30e5eed4a7a873024ef4a01b6fdccb95766b8b",
+  "domainModule": ":core:navigation-domain",
+  "durableStore": "EXISTING_MAP_LIBRARY_ROOM_SCHEMA",
+  "databaseVersion": 4,
+  "migrationStrategy": "BIDIRECTIONAL_COMPATIBILITY_ADAPTER",
+  "optimisticLibraryRevision": true,
+  "optimisticEntityRevision": true,
+  "gpxImportAtomic": true,
+  "navigationAppRegistered": false,
+  "legacyChartDataRemoved": false,
+  "verification": "GITHUB_ACTION_PENDING"
+}

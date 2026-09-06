@@ -30,6 +30,7 @@ protobuf {
 
 dependencies {
     api(project(":core:map-domain"))
+    implementation(project(":core:navigation-domain"))
     implementation(libs.androidx.datastore)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.protobuf.javalite)

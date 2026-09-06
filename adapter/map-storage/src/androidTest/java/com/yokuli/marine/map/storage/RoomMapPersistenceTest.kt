@@ -18,6 +18,11 @@ import com.yokuli.marine.map.domain.PlaceCategory
 import com.yokuli.marine.map.domain.PlaceRevisionReference
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
+import com.yokuli.marine.navigation.domain.NavigationLibraryChange
+import com.yokuli.marine.navigation.domain.NavigationLibraryCommitResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryLoadResult
+import com.yokuli.marine.navigation.domain.NavigationPosition
+import com.yokuli.marine.navigation.domain.Waypoint
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -121,6 +126,32 @@ class RoomMapPersistenceTest {
         database.close()
         scope.cancel()
         assertTrue(sessionFile.exists())
+        sessionFile.delete()
+        Unit
+    }
+
+    @Test
+    fun navigationPortReadsAndWritesTheExistingRoomLibraryWithOptimisticRevision() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(context, MapLibraryDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val sessionFile = File(context.cacheDir, "navigation-library-${System.nanoTime()}.pb")
+        val persistence = RoomMapPersistence.create(sessionFile, scope, database)
+        persistence.saveLibrary(MapLibrarySnapshot(revision = 3L))
+        val waypoint = Waypoint("navigation-waypoint", 1L, "泊位", NavigationPosition(-36.8, 174.7))
+
+        val conflict = persistence.commitNavigationChange(2L, NavigationLibraryChange.PutWaypoint(waypoint))
+        val committed = persistence.commitNavigationChange(3L, NavigationLibraryChange.PutWaypoint(waypoint))
+        val navigation = persistence.loadNavigationLibrary() as NavigationLibraryLoadResult.Ready
+        val legacy = persistence.load() as MapLoadResult.Ready
+
+        assertEquals(NavigationLibraryCommitResult.Conflict(3L), conflict)
+        assertEquals(NavigationLibraryCommitResult.Committed(4L), committed)
+        assertEquals(waypoint, navigation.library.waypoints.single())
+        assertEquals("navigation-waypoint", legacy.library.places.single().id)
+        database.close()
+        scope.cancel()
         sessionFile.delete()
         Unit
     }

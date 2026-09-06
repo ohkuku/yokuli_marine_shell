@@ -25,53 +25,106 @@ import com.yokuli.marine.map.domain.PlaceRevisionReference
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
 import com.yokuli.marine.map.storage.proto.MapStateProto
+import com.yokuli.marine.navigation.domain.NavigationChangeResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryChange
+import com.yokuli.marine.navigation.domain.NavigationLibraryCommitResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryEditor
+import com.yokuli.marine.navigation.domain.NavigationLibraryFailure
+import com.yokuli.marine.navigation.domain.NavigationLibraryLoadResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryPort
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
- * Room is the transactional owner of user-created places/routes/drafts. DataStore owns only
- * lightweight session facts. Neither path has a destructive corruption fallback.
+ * Room remains the single transactional compatibility store while Navigation takes semantic
+ * ownership from Chart. DataStore owns only lightweight map-session facts. Neither path has a
+ * destructive corruption fallback.
  */
 class RoomMapPersistence private constructor(
     private val sessionStore: DataStore<MapStateProto>,
     private val database: MapLibraryDatabase,
-) : MapPersistencePort {
-    override suspend fun load(): MapLoadResult = try {
-        val session = MapProtoMapper.decodeSession(sessionStore.data.first())
-        val decoded = decode(database.libraryDao().readAll())
-        MapLoadResult.Ready(session, decoded.snapshot, decoded.quarantinedRecordCount)
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (error: CorruptionException) {
-        if (error.cause?.message.orEmpty().contains("Unsupported map schema", ignoreCase = true)) {
-            MapLoadResult.ReadFailed(MapReadFailure.FUTURE_SCHEMA)
-        } else {
-            MapLoadResult.Corrupt()
-        }
-    } catch (error: SQLiteException) {
-        MapLoadResult.ReadFailed(
-            if (error.message.orEmpty().contains("migration", ignoreCase = true)) {
-                MapReadFailure.FUTURE_SCHEMA
+) : MapPersistencePort, NavigationLibraryPort {
+    private val libraryMutex = Mutex()
+
+    override suspend fun load(): MapLoadResult = libraryMutex.withLock {
+        try {
+            val session = MapProtoMapper.decodeSession(sessionStore.data.first())
+            val decoded = decode(database.libraryDao().readAll())
+            MapLoadResult.Ready(session, decoded.snapshot, decoded.quarantinedRecordCount)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: CorruptionException) {
+            if (error.cause?.message.orEmpty().contains("Unsupported map schema", ignoreCase = true)) {
+                MapLoadResult.ReadFailed(MapReadFailure.FUTURE_SCHEMA)
             } else {
-                MapReadFailure.CORRUPT
-            },
-        )
-    } catch (_: IOException) {
-        MapLoadResult.ReadFailed(MapReadFailure.IO)
-    } catch (_: Throwable) {
-        MapLoadResult.ReadFailed(MapReadFailure.UNKNOWN)
+                MapLoadResult.Corrupt()
+            }
+        } catch (error: SQLiteException) {
+            MapLoadResult.ReadFailed(error.toMapReadFailure())
+        } catch (_: IOException) {
+            MapLoadResult.ReadFailed(MapReadFailure.IO)
+        } catch (_: Throwable) {
+            MapLoadResult.ReadFailed(MapReadFailure.UNKNOWN)
+        }
     }
 
     override suspend fun saveSession(snapshot: MapSessionSnapshot) {
         sessionStore.updateData { MapProtoMapper.encodeSession(snapshot) }
     }
 
-    override suspend fun saveLibrary(snapshot: MapLibrarySnapshot): MapPersistenceAck {
+    override suspend fun saveLibrary(snapshot: MapLibrarySnapshot): MapPersistenceAck = libraryMutex.withLock {
         database.libraryDao().replaceAll(encode(snapshot))
-        return MapPersistenceAck(snapshot.revision)
+        MapPersistenceAck(snapshot.revision)
+    }
+
+    override suspend fun loadNavigationLibrary(): NavigationLibraryLoadResult = libraryMutex.withLock {
+        try {
+            val decoded = decode(database.libraryDao().readAll())
+            NavigationLibraryLoadResult.Ready(
+                NavigationLegacyMapper.toNavigation(decoded.snapshot),
+                decoded.quarantinedRecordCount,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: SQLiteException) {
+            NavigationLibraryLoadResult.Failed(error.toMapReadFailure().toNavigationFailure())
+        } catch (_: IOException) {
+            NavigationLibraryLoadResult.Failed(NavigationLibraryFailure.IO)
+        } catch (_: Throwable) {
+            NavigationLibraryLoadResult.Failed(NavigationLibraryFailure.UNKNOWN)
+        }
+    }
+
+    override suspend fun commitNavigationChange(
+        expectedLibraryRevision: Long,
+        change: NavigationLibraryChange,
+    ): NavigationLibraryCommitResult = libraryMutex.withLock {
+        try {
+            val current = NavigationLegacyMapper.toNavigation(decode(database.libraryDao().readAll()).snapshot)
+            if (current.revision != expectedLibraryRevision) {
+                return@withLock NavigationLibraryCommitResult.Conflict(current.revision)
+            }
+            when (val result = NavigationLibraryEditor.apply(current, change)) {
+                is NavigationChangeResult.Rejected -> NavigationLibraryCommitResult.Rejected(result.reason)
+                is NavigationChangeResult.Applied -> {
+                    database.libraryDao().replaceAll(encode(NavigationLegacyMapper.toLegacy(result.library)))
+                    NavigationLibraryCommitResult.Committed(result.library.revision)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: SQLiteException) {
+            NavigationLibraryCommitResult.Failed(error.toMapReadFailure().toNavigationFailure())
+        } catch (_: IOException) {
+            NavigationLibraryCommitResult.Failed(NavigationLibraryFailure.IO)
+        } catch (_: Throwable) {
+            NavigationLibraryCommitResult.Failed(NavigationLibraryFailure.UNKNOWN)
+        }
     }
 
     companion object {
@@ -98,6 +151,16 @@ class RoomMapPersistence private constructor(
             database = database,
         )
     }
+}
+
+private fun SQLiteException.toMapReadFailure(): MapReadFailure =
+    if (message.orEmpty().contains("migration", ignoreCase = true)) MapReadFailure.FUTURE_SCHEMA else MapReadFailure.CORRUPT
+
+private fun MapReadFailure.toNavigationFailure(): NavigationLibraryFailure = when (this) {
+    MapReadFailure.IO -> NavigationLibraryFailure.IO
+    MapReadFailure.CORRUPT -> NavigationLibraryFailure.CORRUPT
+    MapReadFailure.FUTURE_SCHEMA -> NavigationLibraryFailure.FUTURE_SCHEMA
+    MapReadFailure.UNKNOWN -> NavigationLibraryFailure.UNKNOWN
 }
 
 private data class DecodedLibrary(
