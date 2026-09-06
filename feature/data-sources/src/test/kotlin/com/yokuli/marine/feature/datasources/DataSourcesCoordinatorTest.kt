@@ -6,6 +6,10 @@ import com.yokuli.marine.data.model.DataKey
 import com.yokuli.marine.data.model.MarineValue
 import com.yokuli.marine.data.model.ObservationGroupId
 import com.yokuli.marine.data.model.SourceIdentity
+import com.yokuli.marine.data.catalog.SentenceCatalogEntry
+import com.yokuli.marine.data.catalog.SentenceCatalogKey
+import com.yokuli.marine.data.catalog.SentenceParseStatus
+import com.yokuli.marine.data.model.SessionGeneration
 import com.yokuli.marine.data.phone.PhoneLocationCommand
 import com.yokuli.marine.data.phone.PhoneLocationCommandResult
 import com.yokuli.marine.data.phone.PhoneLocationPermission
@@ -131,6 +135,91 @@ class DataSourcesCoordinatorTest {
         }
     }
 
+    @Test
+    fun newSentencePublishedByRuntimeAppearsWithoutRecreatingTheCoordinator() {
+        val nmea = FakeNmeaPort()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val coordinator = DataSourcesCoordinator(FakeSourcePort(snapshot()), nmea, FakePhonePort(), scope)
+            coordinator.dispatch(DataSourcesUiAction.ChangeView(DataSourcesViewMode.SENTENCES))
+            assertTrue((coordinator.state.value.page as DataSourcesPageUi.Overview).sentenceRows.isEmpty())
+
+            val key = SentenceCatalogKey(source, "GP", "XYZ")
+            nmea.state.value = NmeaRuntimeSnapshot.EMPTY.copy(
+                sentenceCatalog = NmeaRuntimeSnapshot.EMPTY.sentenceCatalog.copy(
+                    entries = listOf(
+                        SentenceCatalogEntry(
+                            key,
+                            SessionGeneration(1L),
+                            1L,
+                            1L,
+                            1L,
+                            ObservationGroupId(1L),
+                            "GPXYZ",
+                            SentenceParseStatus.UNSUPPORTED,
+                            null,
+                            true,
+                        ),
+                    ),
+                ),
+            )
+
+            assertEquals("GPXYZ", (coordinator.state.value.page as DataSourcesPageUi.Overview).sentenceRows.single().sentenceId)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun permanentlyDeniedPhoneResolutionOpensAppPermissionSettingsWithoutTouchingRuntime() = runBlocking {
+        val phone = FakePhonePort(
+            PhoneLocationSnapshot(
+                true,
+                PhoneLocationPermission.PERMANENTLY_DENIED,
+                true,
+                com.yokuli.marine.data.phone.PhoneLocationState.PERMISSION_REQUIRED,
+                null,
+                1L,
+            ),
+        )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val coordinator = DataSourcesCoordinator(FakeSourcePort(snapshot()), FakeNmeaPort(), phone, scope)
+            val effect = async { coordinator.effects.first() }
+            coordinator.dispatch(DataSourcesUiAction.ResolvePhoneLocation)
+
+            assertEquals(DataSourcesEffect.OpenAppPermissionSettings, effect.await())
+            assertTrue(phone.commands.isEmpty())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun disabledSystemLocationResolutionOpensLocationSettingsWithoutTouchingRuntime() = runBlocking {
+        val phone = FakePhonePort(
+            PhoneLocationSnapshot(
+                true,
+                PhoneLocationPermission.PRECISE,
+                false,
+                com.yokuli.marine.data.phone.PhoneLocationState.SYSTEM_LOCATION_DISABLED,
+                null,
+                1L,
+            ),
+        )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val coordinator = DataSourcesCoordinator(FakeSourcePort(snapshot()), FakeNmeaPort(), phone, scope)
+            val effect = async { coordinator.effects.first() }
+            coordinator.dispatch(DataSourcesUiAction.ResolvePhoneLocation)
+
+            assertEquals(DataSourcesEffect.OpenSystemLocationSettings, effect.await())
+            assertTrue(phone.commands.isEmpty())
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun snapshot(): MarineSourceSnapshot {
         val candidate = SourceCandidate(
             CandidateId(DataKey.Position, source),
@@ -173,8 +262,8 @@ private class FakeNmeaPort : NmeaInputRuntimePort {
     }
 }
 
-private class FakePhonePort : PhoneLocationRuntimePort {
-    override val state = MutableStateFlow(PhoneLocationSnapshot.EMPTY)
+private class FakePhonePort(initial: PhoneLocationSnapshot = PhoneLocationSnapshot.EMPTY) : PhoneLocationRuntimePort {
+    override val state = MutableStateFlow(initial)
     val commands = mutableListOf<PhoneLocationCommand>()
     var nextResult: PhoneLocationCommandResult = PhoneLocationCommandResult.Success
     override suspend fun execute(command: PhoneLocationCommand): PhoneLocationCommandResult {

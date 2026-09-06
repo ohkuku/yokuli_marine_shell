@@ -15,6 +15,7 @@ import com.yokuli.marine.data.model.SourceIdentity
 import com.yokuli.marine.data.phone.PhoneLocationPermission
 import com.yokuli.marine.data.phone.PhoneLocationSnapshot
 import com.yokuli.marine.data.phone.PhoneLocationState
+import com.yokuli.marine.data.phone.PhoneLocationFix
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
 import com.yokuli.marine.data.source.MarineSourceSnapshot
 import com.yokuli.marine.data.source.ResolvedDataSnapshot
@@ -154,6 +155,99 @@ class DataSourcesProjectorTest {
 
         assertEquals(PhoneSourceUi.PERMISSION_REQUIRED, ui.phone.state)
         assertEquals(1, (ui.page as DataSourcesPageUi.Overview).dataRows.size)
+    }
+
+    @Test
+    fun phoneOnlyCandidateIsUsableWithoutAnyNmeaConnection() {
+        val phoneSource = SourceIdentity(ConnectionId("phone-system-location"))
+        val position = SourceCandidate(
+            id = CandidateId(DataKey.Position, phoneSource),
+            descriptor = SourceDescriptor(
+                phoneSource,
+                SourceKind.PHONE_SYSTEM_LOCATION,
+                "Phone system location",
+                "fused",
+            ),
+            value = MarineValue.Position(-36.8, 174.7),
+            lastValidValue = MarineValue.Position(-36.8, 174.7),
+            availability = SourceCandidateAvailability.LIVE,
+            ageMillis = 0L,
+            receivedAtMillis = 1_000L,
+            groupId = ObservationGroupId(1L),
+            evidence = SourceEvidence.PhoneSystemLocation("fused", permissionIsApproximate = false),
+        )
+        val phone = PhoneLocationSnapshot(
+            enabledByUser = true,
+            permission = PhoneLocationPermission.PRECISE,
+            systemLocationEnabled = true,
+            state = PhoneLocationState.RECEIVING,
+            latestFix = PhoneLocationFix(-36.8, 174.7, null, null, 4.0, 1_000L, null, "fused", 1L),
+            revision = 1L,
+        )
+
+        val ui = DataSourcesProjector.project(
+            sourceSnapshot(listOf(position)),
+            NmeaRuntimeSnapshot.EMPTY,
+            phone,
+            DataSourcesLocalState(filter = DataSourcesFilter.Phone),
+            1_000L,
+        )
+
+        assertEquals(listOf(phoneSource), (ui.page as DataSourcesPageUi.Overview).dataRows.single().candidates.map { it.source })
+        assertEquals(PhoneSourceUi.RECEIVING, ui.phone.state)
+    }
+
+    @Test
+    fun oneAlreadySelectedSourceDoesNotAskForAnotherConfirmation() {
+        val item = candidate(DataKey.Position, sourceA)
+        val ui = DataSourcesProjector.project(
+            sourceSnapshot(
+                listOf(item),
+                listOf(SourceDecision(DataKey.Position, SourceDecisionStatus.USING, sourceA, SelectionReason.USER, 1, false)),
+            ),
+            NmeaRuntimeSnapshot.EMPTY,
+            PhoneLocationSnapshot.EMPTY,
+            DataSourcesLocalState(),
+            1_000L,
+        )
+
+        val row = (ui.page as DataSourcesPageUi.Overview).dataRows.single()
+        assertFalse(row.needsAttention)
+        assertTrue(row.candidates.single().selected)
+    }
+
+    @Test
+    fun rawEvidenceIsBoundedEvenWhenTheRuntimePreviewContainsMoreRows() {
+        val key = SentenceCatalogKey(sourceA, "GP", "XYZ")
+        val entry = SentenceCatalogEntry(
+            key,
+            SessionGeneration(1L),
+            30L,
+            1L,
+            30L,
+            ObservationGroupId(30L),
+            "GPXYZ",
+            SentenceParseStatus.UNSUPPORTED,
+            null,
+            true,
+        )
+        val raw = (1L..30L).map { sequence ->
+            RawPreviewEntry(sourceA, SessionGeneration(1L), null, "GPXYZ", sequence, "\$GPXYZ,$sequence*00", true)
+        }
+        val nmea = NmeaRuntimeSnapshot.EMPTY.copy(
+            sentenceCatalog = NmeaRuntimeSnapshot.EMPTY.sentenceCatalog.copy(entries = listOf(entry)),
+            rawPreview = NmeaRuntimeSnapshot.EMPTY.rawPreview.copy(entries = raw, retainedBytes = raw.sumOf { it.raw.length }),
+        )
+
+        val ui = DataSourcesProjector.project(
+            MarineSourceSnapshot.EMPTY,
+            nmea,
+            PhoneLocationSnapshot.EMPTY,
+            DataSourcesLocalState(viewMode = DataSourcesViewMode.SENTENCES),
+            30L,
+        )
+
+        assertEquals(20, (ui.page as DataSourcesPageUi.Overview).sentenceRows.single().rawEvidence.size)
     }
 
     private fun candidate(key: DataKey, source: SourceIdentity) = SourceCandidate(
