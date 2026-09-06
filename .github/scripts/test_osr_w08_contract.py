@@ -11,12 +11,13 @@ class OsRedesignW08ContractTest(unittest.TestCase):
     def read(self, path: str) -> str:
         return (ROOT / path).read_text(encoding="utf-8")
 
-    def test_configured_chart_uses_satellite_with_the_current_local_plan(self):
+    def test_explicit_connected_views_use_google_while_marine_uses_the_local_plan(self):
         surface = self.read("adapter/chart-google/src/main/java/com/yokuli/marine/adapter/chart/google/GoogleMarineChartSurface.kt")
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
-        self.assertGreaterEqual(surface.count("GoogleMap.MAP_TYPE_SATELLITE"), 2)
-        self.assertNotIn("GoogleMap.MAP_TYPE_NORMAL", surface)
-        self.assertIn("if (BuildConfig.GOOGLE_MAPS_CONFIGURED)", graph)
+        self.assertIn("GoogleMap.MAP_TYPE_SATELLITE", surface)
+        self.assertIn("GoogleMap.MAP_TYPE_NORMAL", surface)
+        self.assertIn("state.mapViewMode != com.yokuli.marine.map.domain.MapViewMode.MARINE", graph)
+        self.assertIn("BuildConfig.GOOGLE_MAPS_CONFIGURED", graph)
         self.assertNotIn("ChartDisplaySelection.None &&", graph)
         self.assertIn("chartLibraryAccess = runtime.chartLibraryAccess", graph)
 

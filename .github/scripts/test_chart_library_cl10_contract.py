@@ -66,11 +66,12 @@ class ChartLibraryCl10ContractTest(unittest.TestCase):
         self.assertIn("assertEquals(0, bands.status.top)", tests)
         self.assertIn("assertEquals(20, bands.navigation.bottom)", tests)
 
-    def test_google_is_selected_from_current_display_truth_not_legacy_active_slot(self):
+    def test_google_is_selected_by_explicit_map_view_not_chart_library_presence(self):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         google_branch = graph.split("val chartSurface", 1)[1].split("GoogleMarineChartSurface(", 1)[0].rsplit("if (", 1)[-1]
-        self.assertIn("ChartDisplaySelection.None", google_branch)
+        self.assertIn("MapViewMode.MARINE", google_branch)
         self.assertIn("GOOGLE_MAPS_CONFIGURED", google_branch)
+        self.assertNotIn("ChartDisplaySelection", google_branch)
         self.assertNotIn("activeChartPackageId", google_branch)
 
     def test_current_product_keeps_every_completed_app_and_portrait_shell(self):
