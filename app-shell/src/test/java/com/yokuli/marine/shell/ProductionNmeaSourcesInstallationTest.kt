@@ -4,6 +4,7 @@ import com.yokuli.marine.data.model.ConnectionId
 import com.yokuli.marine.feature.data.DataDestinations
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
 import com.yokuli.marine.feature.navigation.NavigationShellContribution
+import com.yokuli.marine.feature.preferences.PreferencesDestinations
 import com.yokuli.shell.contract.LaunchResolution
 import com.yokuli.shell.contract.MarineTileSize
 import kotlinx.coroutines.runBlocking
@@ -17,7 +18,7 @@ class ProductionNmeaSourcesInstallationTest {
     fun productionRegistryInstallsOneDataAppInsteadOfTwoProtocolSurfaces() {
         assertEquals(5, productionInstalledApps.size)
         assertEquals(
-            setOf("chart", "settings", "data", "chart_library", "navigation"),
+            setOf("chart", "preferences", "data", "chart_library", "navigation"),
             productionInstalledApps.map { it.catalogContribution.app.appId.value }.toSet(),
         )
         assertEquals(5, productionInstalledAppRegistry.internalAppHosts.size)
@@ -38,7 +39,8 @@ class ProductionNmeaSourcesInstallationTest {
         assertFalse(DataDestinations.EntryId in pinnedEntries)
         assertFalse(ChartLibraryDestinations.EntryId in pinnedEntries)
         assertFalse(NavigationShellContribution.EntryId in pinnedEntries)
-        assertEquals(setOf("chart", "settings"), pinnedEntries.map { it.value }.toSet())
+        assertEquals(setOf("chart", "preferences"), pinnedEntries.map { it.value }.toSet())
+        assertTrue(PreferencesDestinations.EntryId in pinnedEntries)
     }
 
     @Test

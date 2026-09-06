@@ -12,7 +12,6 @@ import com.yokuli.marine.map.offline.OfflineMarineChartSurface
 import com.yokuli.marine.map.offline.ChartLoopbackTileGateway
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.WpThemeMode
-import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapViewportInsets
@@ -42,13 +41,13 @@ import com.yokuli.marine.feature.chartlibrary.ChartLibraryUiState
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryWorkspace
 import com.yokuli.marine.feature.chartlibrary.chartLibraryLauncherVisualContribution
 import com.yokuli.marine.feature.chartlibrary.chartLibrarySearchContributions
-import com.yokuli.marine.feature.settings.SettingsDestinations
-import com.yokuli.marine.feature.settings.SettingsSection
-import com.yokuli.marine.feature.settings.SettingsShellContribution
-import com.yokuli.marine.feature.settings.SettingsUiAction
-import com.yokuli.marine.feature.settings.SettingsUiState
-import com.yokuli.marine.feature.settings.SettingsWorkspace
-import com.yokuli.marine.feature.settings.settingsLauncherVisualContribution
+import com.yokuli.marine.feature.preferences.AppTilePreferenceUi
+import com.yokuli.marine.feature.preferences.PreferencesDestinations
+import com.yokuli.marine.feature.preferences.PreferencesShellContribution
+import com.yokuli.marine.feature.preferences.PreferencesUiAction
+import com.yokuli.marine.feature.preferences.PreferencesUiState
+import com.yokuli.marine.feature.preferences.PreferencesWorkspace
+import com.yokuli.marine.feature.preferences.preferencesLauncherVisualContribution
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
 import com.yokuli.marine.data.source.MarineFeatureLinkToken
 import com.yokuli.marine.data.source.MarineSourceSnapshot
@@ -104,14 +103,7 @@ data class ProductionShellVisualEnvironment(
 
 data class ProductionShellRuntime(
     val theme: WpThemeSpec,
-    val language: AppLanguage,
     val heavyContentReady: Boolean,
-    val pinnedTileCount: Int,
-    val startDocumentVersion: Int,
-    val versionName: String,
-    val buildVariant: String,
-    val gitSha: String,
-    val debugShellLabAvailable: Boolean,
     val mapState: MapState,
     val currentMapState: () -> MapState,
     val mapShellSafeInsets: MapViewportInsets,
@@ -135,7 +127,8 @@ data class ProductionShellRuntime(
     val onCancelOfflineCoverage: () -> Unit,
     val activeNavigationState: ActiveNavigationSnapshot,
     val onActiveNavigationCommand: (ActiveNavigationCommand) -> Unit,
-    val onSettingsAction: (SettingsUiAction) -> Unit,
+    val preferencesState: PreferencesUiState,
+    val onPreferencesAction: (PreferencesUiAction) -> Unit,
     val dataState: DataUiState,
     val onDataAction: (DataUiAction) -> Unit,
     val onOpenData: (LaunchToken) -> Unit,
@@ -244,33 +237,16 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
         },
     ),
     InstalledAppBinding(
-        catalogContribution = SettingsShellContribution,
+        catalogContribution = PreferencesShellContribution,
         visualContributions = { environment ->
-            listOf(settingsLauncherVisualContribution(environment.theme))
+            listOf(preferencesLauncherVisualContribution())
         },
-        internalAppHost = InternalAppHost(SettingsDestinations.AppId) { token ->
+        dynamicLaunchTokenMatcher = PreferencesDestinations::accepts,
+        internalAppHost = InternalAppHost(PreferencesDestinations.AppId) { token ->
             val runtime = LocalProductionShellRuntime.current
-            val tokenSection = SettingsDestinations.section(token)
-                ?: error("Unknown Settings launch token: ${token.value}")
-            SettingsWorkspace(
-                state = SettingsUiState(
-                    section = tokenSection,
-                    theme = runtime.theme,
-                    language = runtime.language,
-                    chartPackageCount = runtime.mapState.chartPackages.size,
-                    activeChartPackageName = runtime.mapState.chartPackages
-                        .firstOrNull { it.id == runtime.mapState.activeChartPackageId }
-                        ?.displayName,
-                    pinnedTileCount = runtime.pinnedTileCount,
-                    startDocumentVersion = runtime.startDocumentVersion,
-                    versionName = runtime.versionName,
-                    buildVariant = runtime.buildVariant,
-                    gitSha = runtime.gitSha,
-                    // Daily Debug APKs are product builds too. Lab is only an explicit instrumentation/tooling target.
-                    debugShellLabAvailable = false,
-                ),
-                onAction = runtime.onSettingsAction,
-            )
+            val tokenSection = PreferencesDestinations.section(token)
+                ?: error("Unknown Preferences launch token: ${token.value}")
+            PreferencesWorkspace(runtime.preferencesState.copy(section = tokenSection), runtime.onPreferencesAction)
         },
     ),
     InstalledAppBinding(
@@ -330,6 +306,18 @@ val productionInstalledAppRegistry: InstalledAppRegistry<ProductionShellVisualEn
 val productionContributions = productionInstalledAppRegistry.catalogContributions
 val productionCatalog = LauncherCatalog.compose(revision = 5, contributions = productionContributions)
 val productionLaunchRegistrations = productionInstalledAppRegistry.launchRegistrations
+
+fun productionAppTilePreferences(): List<AppTilePreferenceUi> = productionCatalog.snapshot.apps.map { app ->
+    AppTilePreferenceUi(
+        appId = app.appId,
+        supportedSizes = productionCatalog.snapshot.entries
+            .filter { it.appId == app.appId }
+            .flatMapTo(linkedSetOf()) { it.supportedSizes },
+        preferenceKeys = productionInstalledAppRegistry.appPreferenceRegistry.definitions
+            .filterValues { it.first == app.appId }
+            .keys.sortedBy { it.value },
+    )
+}
 @Composable
 fun productionVisualContributions(
     theme: WpThemeSpec,
@@ -396,7 +384,7 @@ val defaultStartDocument = StartDocument(
         ),
         TilePlacement(
             tileId = TileInstanceId("tile-settings"),
-            entryId = SettingsDestinations.EntryId,
+            entryId = PreferencesDestinations.EntryId,
             size = MarineTileSize.ICON_1X1,
             rank = 1024L,
         ),

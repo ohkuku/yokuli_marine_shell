@@ -19,6 +19,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.WpText
+import com.yokuli.marine.core.design.LocalMeasurementUnitSystem
+import com.yokuli.marine.core.design.MarineDisplayUnits
 import com.yokuli.marine.navigation.domain.NavigationSessionState
 import com.yokuli.shell.compose.LauncherEntryVisualContribution
 import com.yokuli.shell.compose.LauncherIconRenderer
@@ -31,6 +33,7 @@ import kotlin.math.min
 @Composable
 fun navigationLauncherVisualContribution(state: NavigationUiState): LauncherEntryVisualContribution {
     val title = stringResource(R.string.navigation_title)
+    val units = LocalMeasurementUnitSystem.current
     val active = state.active
     val nextIndex = (active.session?.activeLegIndex ?: -1) + 1
     val next = active.route?.points?.getOrNull(nextIndex)
@@ -40,7 +43,12 @@ fun navigationLauncherVisualContribution(state: NavigationUiState): LauncherEntr
     val headline = if (active.sessionState == NavigationSessionState.ACTIVE && nextLabel != null) {
         stringResource(R.string.navigation_tile_active, nextLabel)
     } else stringResource(R.string.navigation_tile_idle, state.library.routePlans.size)
-    val detail = active.solution?.let { stringResource(R.string.navigation_tile_distance, it.distanceToWaypointNauticalMiles) }
+    val detail = active.solution?.let {
+        stringResource(
+            if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) R.string.navigation_tile_distance else R.string.navigation_tile_distance_metric,
+            MarineDisplayUnits.distanceFromNauticalMiles(it.distanceToWaypointNauticalMiles, units),
+        )
+    }
         ?: stringResource(R.string.navigation_library_summary, state.library.waypoints.size, state.library.routePlans.size)
     return LauncherEntryVisualContribution(
         entryId = NavigationShellContribution.EntryId,

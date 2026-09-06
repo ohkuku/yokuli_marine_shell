@@ -18,6 +18,7 @@
     <string name="navigation_route_new">新建航线</string>
     <string name="navigation_routes_empty">还没有保存航线</string>
     <string name="navigation_route_summary">%1$d 点 · %2$.2f 海里</string>
+    <string name="navigation_route_summary_metric">%1$d 点 · %2$.2f 千米</string>
     <string name="navigation_route_missing">航线不可用</string>
     <string name="navigation_route_missing_detail">该入口引用的航线已删除或已被新版本替换；当前页面没有开始导航。</string>
     <string name="navigation_back_routes">返回航线</string>
@@ -32,6 +33,7 @@
     <string name="navigation_start">开始导航</string>
     <string name="navigation_show_chart">在地图中显示</string>
     <string name="navigation_leg">%1$d → %2$d · %3$.2f 海里 · %4$.0f° 真</string>
+    <string name="navigation_leg_metric">%1$d → %2$d · %3$.2f 千米 · %4$.0f° 真</string>
     <string name="navigation_route_points">航线点 · %1$d</string>
     <string name="navigation_route_point">航线点 %1$d</string>
     <string name="navigation_add_waypoint">从已保存航点添加</string>
@@ -49,13 +51,16 @@
     <string name="navigation_tile_idle">%1$d 条航线</string>
     <string name="navigation_tile_active">前往 %1$s</string>
     <string name="navigation_tile_distance">%1$.2f 海里</string>
+    <string name="navigation_tile_distance_metric">%1$.2f 千米</string>
     <string name="nav_next">下一点 · %1$s</string>
     <string name="nav_dtw_btw">%1$.2f 海里 · %2$.0f° 真</string>
+    <string name="nav_dtw_btw_metric">%1$.2f 千米 · %2$.0f° 真</string>
     <string name="nav_waiting_position">等待已选择的位置数据</string>
     <string name="nav_state_active">导航中</string>
     <string name="nav_state_paused">已暂停</string>
     <string name="nav_state_complete">已完成</string>
     <string name="nav_xte">偏航 %1$.2f 海里</string>
+    <string name="nav_xte_metric">偏航 %1$.2f 千米</string>
     <string name="nav_eta">预计 %1$d 分钟</string>
     <string name="nav_eta_unavailable">预计时间不可用</string>
     <string name="nav_progress">全程 %1$d%%</string>

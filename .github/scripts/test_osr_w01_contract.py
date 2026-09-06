@@ -21,13 +21,13 @@ class OsRedesignW01ContractTest(unittest.TestCase):
         self.assertEqual(5, len(installed))
         self.assertIn("DataShellContribution", installed)
         self.assertIn("NavigationShellContribution", installed)
-        self.assertNotIn("PreferencesShellContribution", installed)
+        self.assertIn("PreferencesShellContribution", installed)
 
     def test_storage_and_product_versions_are_separate_and_durable(self):
         persistence = self.read("core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt")
         proto = self.read("adapter/shell-storage/src/main/proto/launcher_state.proto")
         mapper = self.read("adapter/shell-storage/src/main/java/com/yokuli/shell/storage/LauncherProtoMapper.kt")
-        self.assertIn("CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 3", persistence)
+        self.assertIn("CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 4", persistence)
         self.assertIn("productModelVersion", persistence)
         self.assertIn("product_model_version = 10", proto)
         self.assertIn("setProductModelVersion", mapper)

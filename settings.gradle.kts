@@ -34,6 +34,7 @@ include(
     ":feature:data-sources",
     ":feature:data",
     ":feature:navigation",
+    ":feature:preferences",
     ":feature:settings",
     ":feature:shell-lab",
     ":benchmark:shell",

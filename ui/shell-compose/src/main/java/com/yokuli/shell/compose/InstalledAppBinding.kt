@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.LauncherCatalogContribution
+import com.yokuli.shell.contract.AppPreferenceRegistry
 
 /**
  * A feature is installed once. Its public entries and internal destinations derive all launch
@@ -51,6 +52,11 @@ class InstalledAppRegistry<VisualEnvironment>(
         bindings.flatMap { it.launchRegistrations.entries }.associate { it.key to it.value }
 
     val internalAppHosts: List<InternalAppHost> = bindings.map { it.internalAppHost }
+
+    val appPreferenceRegistry: AppPreferenceRegistry = AppPreferenceRegistry.compose(
+        installedAppIds = bindings.mapTo(linkedSetOf()) { it.catalogContribution.app.appId },
+        contributions = bindings.mapNotNull { it.catalogContribution.appPreferences },
+    )
 
     @Composable
     fun visualContributions(environment: VisualEnvironment): List<LauncherEntryVisualContribution> = buildList {

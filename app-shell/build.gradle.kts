@@ -86,6 +86,7 @@ dependencies {
     implementation(project(":feature:chart-library"))
     implementation(project(":feature:data"))
     implementation(project(":feature:navigation"))
+    implementation(project(":feature:preferences"))
     implementation(project(":feature:nmea-input"))
     implementation(project(":feature:settings"))
     implementation(libs.androidx.core.ktx)

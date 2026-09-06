@@ -47,7 +47,7 @@ class ChartLibraryCl00ContractTest(unittest.TestCase):
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
         for contribution in (
             "ChartShellContribution",
-            "SettingsShellContribution",
+            "PreferencesShellContribution",
             "DataShellContribution",
         ):
             self.assertIn(contribution, graph)

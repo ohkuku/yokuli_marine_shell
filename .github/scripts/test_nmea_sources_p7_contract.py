@@ -26,7 +26,7 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         self.assertEqual(
             [
                 "ChartShellContribution",
-                "SettingsShellContribution",
+                "PreferencesShellContribution",
                 "DataShellContribution",
                 "ChartLibraryShellContribution",
                 "NavigationShellContribution",
@@ -36,7 +36,7 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         default_document = graph[graph.index("val defaultStartDocument"):]
         self.assertEqual(2, default_document.count("TilePlacement("))
         self.assertIn("ChartDestinations.EntryId", default_document)
-        self.assertIn("SettingsDestinations.EntryId", default_document)
+        self.assertIn("PreferencesDestinations.EntryId", default_document)
         self.assertNotIn("DataDestinations.EntryId", default_document)
         self.assertNotIn("ChartLibraryDestinations.EntryId", default_document)
         self.assertNotIn("NavigationShellContribution.EntryId", default_document)

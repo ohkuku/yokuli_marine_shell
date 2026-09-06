@@ -1,8 +1,8 @@
 package com.yokuli.marine.shell
 
 import com.yokuli.marine.feature.chart.ChartDestinations
-import com.yokuli.marine.feature.settings.SettingsDestinations
-import com.yokuli.marine.feature.settings.SettingsSection
+import com.yokuli.marine.feature.preferences.PreferencesDestinations
+import com.yokuli.marine.feature.preferences.PreferencesSection
 import com.yokuli.marine.feature.data.DataDestinations
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
 import com.yokuli.marine.feature.navigation.NavigationDestinations
@@ -13,11 +13,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class ProductionLaunchRegistryTest {
-    @Test fun everySettingsSubpageIsRoutableThroughTheOneInstalledBinding() {
-        SettingsSection.entries.forEach { section ->
-            val token = SettingsDestinations.token(section)
-            assertEquals("Missing Settings route: ${token.value}", SettingsDestinations.AppId, productionLaunchRegistrations[token])
-            assertEquals(section, SettingsDestinations.section(token))
+    @Test fun everyPreferencesSubpageIsRoutableThroughTheOneInstalledBinding() {
+        PreferencesSection.entries.forEach { section ->
+            val token = PreferencesDestinations.token(section)
+            assertEquals("Missing Preferences route: ${token.value}", PreferencesDestinations.AppId, productionLaunchRegistrations[token])
+            assertEquals(section, PreferencesDestinations.section(token))
         }
         assertEquals(ChartDestinations.AppId, productionLaunchRegistrations[ChartDestinations.Browse])
     }
@@ -26,7 +26,7 @@ class ProductionLaunchRegistryTest {
         assertEquals(
             setOf(
                 ChartDestinations.EntryId,
-                SettingsDestinations.EntryId,
+                PreferencesDestinations.EntryId,
                 DataDestinations.EntryId,
                 ChartLibraryDestinations.EntryId,
                 NavigationShellContribution.EntryId,

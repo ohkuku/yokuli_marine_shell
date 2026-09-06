@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 
-const val CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 3
+const val CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 4
 
 enum class PersistedLauncherPage { START, ALL_APPS }
 
@@ -24,6 +24,9 @@ data class LauncherPersistedState(
     val themeModeName: String = "DARK",
     val accentName: String = "CYAN",
     val languageTag: String = "zh-CN",
+    val measurementUnitSystemName: String = "NAUTICAL",
+    val motionPreferenceName: String = "FOLLOW_SYSTEM",
+    val appPreferenceValues: Map<String, String> = emptyMap(),
     val layoutLocked: Boolean = false,
     val lastLauncherPage: PersistedLauncherPage = PersistedLauncherPage.START,
     val lastForegroundToken: String? = null,
@@ -49,6 +52,8 @@ object LauncherPersistedStateMigration {
     private val themes = setOf("DARK", "LIGHT")
     private val accents = setOf("COBALT", "CYAN", "EMERALD", "MAGENTA", "VIOLET", "CRIMSON", "AMBER")
     private val languages = setOf("zh-CN", "en")
+    private val unitSystems = setOf("NAUTICAL", "METRIC")
+    private val motionPreferences = setOf("FOLLOW_SYSTEM", "REDUCED")
 
     fun migrate(
         source: LauncherPersistedState?,
@@ -83,12 +88,28 @@ object LauncherPersistedStateMigration {
             incidents += LauncherPersistenceIncident.INVALID_PRODUCT_MODEL_VERSION_REPLACED
             0
         }
+        val normalizedAppPreferences = source.appPreferenceValues.entries.asSequence()
+            .filter { (key, value) ->
+                key.matches(Regex("[a-z0-9][a-z0-9_.-]{2,95}")) && value.length <= 128
+            }
+            .take(64)
+            .associate { it.toPair() }
+        if (normalizedAppPreferences != source.appPreferenceValues) {
+            incidents += LauncherPersistenceIncident.INVALID_PREFERENCE_REPLACED
+        }
         val normalizedState = source.copy(
                 schemaVersion = CURRENT_LAUNCHER_PERSISTENCE_SCHEMA,
                 document = source.document ?: defaults.document,
                 themeModeName = normalized(source.themeModeName, themes, defaults.themeModeName),
                 accentName = normalized(source.accentName, accents, defaults.accentName),
                 languageTag = normalized(source.languageTag, languages, defaults.languageTag),
+                measurementUnitSystemName = normalized(
+                    source.measurementUnitSystemName, unitSystems, defaults.measurementUnitSystemName,
+                ),
+                motionPreferenceName = normalized(
+                    source.motionPreferenceName, motionPreferences, defaults.motionPreferenceName,
+                ),
+                appPreferenceValues = normalizedAppPreferences,
                 productModelVersion = productModelVersion,
             )
         val product = productMigration.migrate(normalizedState, installedEntryIds)

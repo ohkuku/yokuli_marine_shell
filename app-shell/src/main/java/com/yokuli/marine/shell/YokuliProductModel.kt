@@ -47,7 +47,10 @@ object YokuliProductModel {
                     LauncherTokenAlias("settings.overview", "preferences.overview"),
                     LauncherTokenAlias("settings.appearance", "preferences.appearance"),
                     LauncherTokenAlias("settings.start", "preferences.start"),
-                    LauncherTokenAlias("settings.map", "preferences.chart"),
+                    // The old Settings map page administered providers/packages. Preferences
+                    // deliberately has no such surface, so this legacy entry lands safely on
+                    // the system overview instead of resolving to a fictional destination.
+                    LauncherTokenAlias("settings.map", "preferences.overview"),
                     LauncherTokenAlias("settings.language", "preferences.language"),
                     LauncherTokenAlias("settings.about", "preferences.about"),
                 ),

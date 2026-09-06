@@ -13,6 +13,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.LocalMeasurementUnitSystem
+import com.yokuli.marine.core.design.MarineDisplayUnits
 import com.yokuli.marine.core.design.WpCircleButton
 import com.yokuli.marine.core.design.WpLiveField
 import com.yokuli.marine.core.design.WpText
@@ -32,6 +34,7 @@ fun ActiveNavigationStrip(
     val route = snapshot.route ?: return
     val solution = snapshot.solution
     val colors = LocalWpTheme.current
+    val units = LocalMeasurementUnitSystem.current
     val nextOrdinal = (session.activeLegIndex + 2).coerceAtMost(route.points.size)
     val nextName = stringResource(R.string.navigation_route_point, nextOrdinal)
     Column(
@@ -45,7 +48,11 @@ fun ActiveNavigationStrip(
                 WpText(stringResource(R.string.nav_next, nextName), 10, color = colors.muted, maxLines = 1)
                 WpLiveField(
                     value = solution?.let {
-                        stringResource(R.string.nav_dtw_btw, it.distanceToWaypointNauticalMiles, it.bearingToWaypointTrueDegrees ?: 0.0)
+                        stringResource(
+                            if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) R.string.nav_dtw_btw else R.string.nav_dtw_btw_metric,
+                            MarineDisplayUnits.distanceFromNauticalMiles(it.distanceToWaypointNauticalMiles, units),
+                            it.bearingToWaypointTrueDegrees ?: 0.0,
+                        )
                     } ?: stringResource(R.string.nav_waiting_position),
                     structuralKey = Triple(session.routeId, session.activeLegIndex, snapshot.issue),
                     size = 18,
@@ -68,7 +75,14 @@ fun ActiveNavigationStrip(
         }
         solution?.let {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                WpText(stringResource(R.string.nav_xte, it.crossTrackErrorNauticalMiles), 11, color = colors.muted)
+                WpText(
+                    stringResource(
+                        if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) R.string.nav_xte else R.string.nav_xte_metric,
+                        MarineDisplayUnits.distanceFromNauticalMiles(it.crossTrackErrorNauticalMiles, units),
+                    ),
+                    11,
+                    color = colors.muted,
+                )
                 WpText(
                     it.estimatedTimeToWaypointMillis?.let { eta -> stringResource(R.string.nav_eta, eta / 60_000L) }
                         ?: stringResource(R.string.nav_eta_unavailable),

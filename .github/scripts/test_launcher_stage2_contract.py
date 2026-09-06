@@ -100,7 +100,7 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
             ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartShellContribution.kt"
         ).read_text()
         settings = (
-            ROOT / "feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsShellContribution.kt"
+            ROOT / "feature/preferences/src/main/java/com/yokuli/marine/feature/preferences/PreferencesShellContribution.kt"
         ).read_text()
         data = (
             ROOT / "feature/data/src/main/java/com/yokuli/marine/feature/data/DataShellContribution.kt"
@@ -115,7 +115,7 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
         self.assertEqual(
             [
                 "ChartShellContribution",
-                "SettingsShellContribution",
+                "PreferencesShellContribution",
                 "DataShellContribution",
                 "ChartLibraryShellContribution",
                 "NavigationShellContribution",

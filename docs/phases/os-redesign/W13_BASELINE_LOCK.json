@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W13",
+  "startCommit": "1027ad2103ad3bcc03e6632bf11493eae2139d83",
+  "productionApps": ["chart", "preferences", "data", "chart_library", "navigation"],
+  "settingsAppRegistered": false,
+  "preferencesAppRegistered": true,
+  "launcherPersistenceSchema": 4,
+  "productMigrationVersion": 2,
+  "legacySettingsTileIdentityPreserved": true,
+  "sections": ["OVERVIEW", "APPEARANCE", "LANGUAGE", "UNITS", "MOTION", "START", "APP_TILES", "ABOUT"],
+  "mapAdministrationInPreferences": false,
+  "featureRuntimeDependencies": false,
+  "verification": "GITHUB_ACTION_PENDING"
+}

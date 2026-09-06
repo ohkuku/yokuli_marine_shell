@@ -76,7 +76,7 @@ class ChartLibraryCl10ContractTest(unittest.TestCase):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         installed = re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph)
         self.assertEqual(
-            ["ChartShellContribution", "SettingsShellContribution", "DataShellContribution",
+            ["ChartShellContribution", "PreferencesShellContribution", "DataShellContribution",
              "ChartLibraryShellContribution", "NavigationShellContribution"],
             installed,
         )

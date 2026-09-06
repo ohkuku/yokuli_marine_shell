@@ -83,7 +83,7 @@ class ShellEditRegressionStoryTest {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
         await { engine.state.value.start.interaction is StartInteractionState.EditIdle }
         compose.waitForIdle()
-        val sizes = engine.state.value.catalog.entries.single { it.entryId.value == "settings" }.supportedSizes
+        val sizes = engine.state.value.catalog.entries.single { it.entryId.value == "preferences" }.supportedSizes
         val initial = document().placements.single { it.tileId == settingsId }.size
         repeat(sizes.size) { index ->
             assertPhysicalControls()
@@ -110,7 +110,7 @@ class ShellEditRegressionStoryTest {
         assertNear(end, localCenter("tile-settings"))
         assertFloatingTileOnTop()
         compose.onNodeWithTag("start-screen").performTouchInput { up() }
-        await { order(document()) == listOf("settings", "chart") && engine.state.value.start.interaction is StartInteractionState.EditIdle }
+        await { order(document()) == listOf("preferences", "chart") && engine.state.value.start.interaction is StartInteractionState.EditIdle }
         val committed = document()
         await {
             var saved = false
@@ -212,10 +212,10 @@ class ShellEditRegressionStoryTest {
     @Test fun dailyDebugSettingsDoesNotExposeALabEntry() {
         compose.onNodeWithTag("tile-settings").performTouchInput { click(center) }
         compose.waitForIdle()
-        compose.onNodeWithTag("settings-section-start_screen").performTouchInput { click(center) }
+        compose.onNodeWithTag("preferences-section-start").performTouchInput { click(center) }
         compose.waitForIdle()
-        compose.onNodeWithTag("settings-reset-start").assertIsDisplayed()
-        compose.onNodeWithTag("settings-open-shell-lab").assertDoesNotExist()
+        compose.onNodeWithTag("preferences-reset-start").assertIsDisplayed()
+        compose.onNodeWithTag("preferences-open-shell-lab").assertDoesNotExist()
     }
 
     private fun installProductionStartViewport(height: Int = 320) {
@@ -276,7 +276,7 @@ class ShellEditRegressionStoryTest {
         compose.waitForIdle()
     }
     private fun awaitPreviewBeforeChart() = await {
-        (engine.state.value.start.interaction as? StartInteractionState.Dragging)?.proposedLayout?.let(::order) == listOf("settings", "chart")
+        (engine.state.value.start.interaction as? StartInteractionState.Dragging)?.proposedLayout?.let(::order) == listOf("preferences", "chart")
     }
     private fun assertPhysicalControls() {
         val root = bounds("start-screen")

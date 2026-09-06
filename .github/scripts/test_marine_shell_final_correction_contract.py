@@ -116,7 +116,7 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
         self.assertEqual(
             [
                 "ChartShellContribution",
-                "SettingsShellContribution",
+                "PreferencesShellContribution",
                 "DataShellContribution",
                 "ChartLibraryShellContribution",
                 "NavigationShellContribution",

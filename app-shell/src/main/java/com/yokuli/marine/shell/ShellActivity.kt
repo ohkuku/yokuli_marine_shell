@@ -58,6 +58,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.LocalMeasurementUnitSystem
 import com.yokuli.marine.core.design.WpAccent
 import com.yokuli.marine.core.design.WpMotionTimings
 import com.yokuli.marine.core.design.WpSurfaceTransitionKind
@@ -88,9 +89,9 @@ import com.yokuli.marine.map.domain.MapRecoveryExport
 import com.yokuli.marine.map.domain.GpxWriter
 import com.yokuli.marine.map.domain.MapViewportInsets
 import com.yokuli.marine.map.domain.SavedPlace
-import com.yokuli.marine.feature.settings.SettingsDestinations
-import com.yokuli.marine.feature.settings.SettingsSection
-import com.yokuli.marine.feature.settings.SettingsUiAction
+import com.yokuli.marine.feature.preferences.PreferencesDestinations
+import com.yokuli.marine.feature.preferences.PreferencesUiAction
+import com.yokuli.marine.feature.preferences.PreferencesUiState
 import com.yokuli.marine.feature.data.DataDestinations
 import com.yokuli.marine.feature.data.DataEffect
 import com.yokuli.marine.feature.data.DataLauncherProjector
@@ -113,6 +114,8 @@ import com.yokuli.marine.map.domain.MapSurface
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEffect
 import com.yokuli.shell.engine.LauncherRecoveryMode
+import com.yokuli.shell.contract.MeasurementUnitSystem
+import com.yokuli.shell.contract.MotionPreference
 import com.yokuli.shell.engine.ShellVisualSurface
 import com.yokuli.shell.engine.InternalAppTaskId
 import com.yokuli.shell.engine.ShellTransitionKind
@@ -451,6 +454,12 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         WpAccent.valueOf(persistedPreferences.accentName),
     )
     val language = if (persistedPreferences.languageTag == "en") AppLanguage.ENGLISH else AppLanguage.CHINESE
+    val measurementUnits = MeasurementUnitSystem.entries.firstOrNull {
+        it.name == persistedPreferences.measurementUnitSystemName
+    } ?: MeasurementUnitSystem.NAUTICAL
+    val motionPreference = MotionPreference.entries.firstOrNull {
+        it.name == persistedPreferences.motionPreferenceName
+    } ?: MotionPreference.FOLLOW_SYSTEM
     val dispatch: (LauncherAction) -> Unit = engine::dispatch
     val dispatchInput: (ShellInput) -> Unit = { input ->
         (context as? ShellActivity)?.dispatchInput(input) ?: dispatch(input.toShellAction())
@@ -470,7 +479,9 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         val windowMetrics = rememberShellWindowMetrics()
         val shellSafeBands = ShellSafeBands.resolve(windowMetrics)
         SyncHostWindowChrome(colors.background, themeSpec.mode == WpThemeMode.LIGHT)
-        val reducedMotion = rememberPlatformReducedMotion() || engineState.recoveryMode != LauncherRecoveryMode.NORMAL
+        val reducedMotion = rememberPlatformReducedMotion() ||
+            motionPreference == MotionPreference.REDUCED ||
+            engineState.recoveryMode != LauncherRecoveryMode.NORMAL
         val motionProfile = WpReferenceProfiles.require(engineState.start.document.profileId).motion
         val motionTimings = remember(motionProfile) {
             WpMotionTimings(
@@ -490,14 +501,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         )
         val runtime = ProductionShellRuntime(
             theme = themeSpec,
-            language = language,
             heavyContentReady = true,
-            pinnedTileCount = engineState.start.document.placements.size,
-            startDocumentVersion = engineState.start.document.defaultLayoutVersion,
-            versionName = BuildConfig.VERSION_NAME,
-            buildVariant = "${BuildConfig.FLAVOR}/${BuildConfig.BUILD_TYPE}",
-            gitSha = BuildConfig.GIT_SHA,
-            debugShellLabAvailable = BuildConfig.DEBUG,
             mapState = mapState,
             currentMapState = { shellViewModel.mapStore.state.value },
             mapShellSafeInsets = MapViewportInsets(
@@ -572,24 +576,33 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             onCancelOfflineCoverage = shellViewModel::cancelOfflineCoverage,
             activeNavigationState = activeNavigationState,
             onActiveNavigationCommand = { shellViewModel.onActiveNavigationCommand(it) },
-            onSettingsAction = { action ->
+            preferencesState = PreferencesUiState(
+                theme = themeSpec,
+                language = language,
+                measurementUnits = measurementUnits,
+                motionPreference = motionPreference,
+                pinnedTileCount = engineState.start.document.placements.size,
+                startDocumentVersion = engineState.start.document.defaultLayoutVersion,
+                appTiles = productionAppTilePreferences(),
+                versionName = BuildConfig.VERSION_NAME,
+                buildVariant = "${BuildConfig.FLAVOR}/${BuildConfig.BUILD_TYPE}",
+                gitSha = BuildConfig.GIT_SHA,
+            ),
+            onPreferencesAction = { action ->
                 when (action) {
-                    is SettingsUiAction.OpenSection -> dispatch(
-                        LauncherAction.Open(SettingsDestinations.token(action.section)),
+                    is PreferencesUiAction.OpenSection -> dispatch(
+                        LauncherAction.Open(PreferencesDestinations.token(action.section)),
                     )
-                    is SettingsUiAction.ChangeTheme -> {
+                    is PreferencesUiAction.ChangeTheme -> {
                         shellViewModel.saveTheme(action.theme)
                     }
-                    is SettingsUiAction.ChangeLanguage -> {
+                    is PreferencesUiAction.ChangeLanguage -> {
                         shellViewModel.saveLanguage(action.language)
                         context.persistAppLanguage(action.language)
                     }
-                    SettingsUiAction.ResetStartScreen -> shellViewModel.resetStartDocument()
-                    SettingsUiAction.OpenChartLibrary -> {
-                        shellViewModel.openChartLibrary(requireNotNull(ChartLibraryDestinations.parse(ChartLibraryDestinations.Browse)))
-                        dispatch(LauncherAction.Open(ChartLibraryDestinations.Browse, preserveCaller = true))
-                    }
-                    SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
+                    is PreferencesUiAction.ChangeUnits -> shellViewModel.saveMeasurementUnits(action.units)
+                    is PreferencesUiAction.ChangeMotion -> shellViewModel.saveMotionPreference(action.preference)
+                    PreferencesUiAction.ResetStartScreen -> shellViewModel.resetStartDocument()
                 }
             },
             dataState = dataState,
@@ -614,6 +627,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         CompositionLocalProvider(
             LocalProductionShellRuntime provides runtime,
             LocalInternalAppInputRouter provides (context as ShellActivity).internalAppInputRouter,
+            LocalMeasurementUnitSystem provides measurementUnits,
         ) {
             var retainedSearchQuery by remember { mutableStateOf("") }
             val activeSearchQuery = (engineState.surface as? ShellVisualSurface.Search)?.query
@@ -696,7 +710,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                         LauncherRecoverySurface(
                             restoring = engineState.recoveryMode == LauncherRecoveryMode.RESTORING,
                             onOpenChart = { dispatch(LauncherAction.Open(com.yokuli.marine.feature.chart.ChartDestinations.Browse)) },
-                            onOpenSettings = { dispatch(LauncherAction.Open(SettingsDestinations.Overview)) },
+                            onOpenSettings = { dispatch(LauncherAction.Open(PreferencesDestinations.Overview)) },
                             onResetStart = shellViewModel::resetLauncher,
                         )
                     } else {
@@ -733,7 +747,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                     }
                                 },
                             ) {
-                                dispatch(LauncherAction.Open(SettingsDestinations.Overview))
+                                dispatch(LauncherAction.Open(PreferencesDestinations.Overview))
                             }
                             WpSurfaceTransitionHost(
                                 targetState = transitionTarget,

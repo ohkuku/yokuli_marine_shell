@@ -43,4 +43,22 @@ class LauncherRecoveryTest {
         assertEquals(first, second)
         assertTrue(first.incidents.isNotEmpty())
     }
+
+    @Test
+    fun invalidDisplayPreferencesFallBackWithoutChangingTheStartDocument() {
+        val defaults = LauncherPersistedState()
+        val result = LauncherPersistedStateMigration.migrate(
+            defaults.copy(
+                measurementUnitSystemName = "imperial-ish",
+                motionPreferenceName = "FAST",
+                appPreferenceValues = mapOf("BAD KEY" to "x", "chart.tile.mode" to "c:auto"),
+            ),
+            defaults,
+        )
+
+        assertEquals("NAUTICAL", result.state.measurementUnitSystemName)
+        assertEquals("FOLLOW_SYSTEM", result.state.motionPreferenceName)
+        assertEquals(mapOf("chart.tile.mode" to "c:auto"), result.state.appPreferenceValues)
+        assertTrue(LauncherPersistenceIncident.INVALID_PREFERENCE_REPLACED in result.incidents)
+    }
 }

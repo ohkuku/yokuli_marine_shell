@@ -412,8 +412,8 @@ class ShellActivityStoryTest {
         awaitDisplayed("tile-settings")
 
         compose.onNodeWithTag("tile-settings").performClick()
-        awaitDisplayed("wp-page-title-settings")
-        compose.onNodeWithTag("wp-page-title-settings").assertIsDisplayed()
+        awaitDisplayed("wp-page-title-preferences")
+        compose.onNodeWithTag("wp-page-title-preferences").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("all-apps-entry")
 
@@ -426,7 +426,7 @@ class ShellActivityStoryTest {
             },
         ).assertCountEquals(5)
         compose.onNodeWithTag("launcher-entry-chart").assertIsDisplayed()
-        compose.onNodeWithTag("launcher-entry-settings").assertIsDisplayed()
+        compose.onNodeWithTag("launcher-entry-preferences").assertIsDisplayed()
         compose.onNodeWithTag("launcher-entry-data").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("launcher-entry-chart-library").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("launcher-entry-anchor").assertDoesNotExist()
@@ -474,7 +474,7 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { activity ->
             val order = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
                 .start.document.placements.sortedBy { it.rank }.map { it.entryId.value }
-            assertEquals(listOf("chart", "settings"), order)
+            assertEquals(listOf("chart", "preferences"), order)
         }
 
         compose.onNodeWithTag("tile-settings").performTouchInput {
@@ -492,7 +492,7 @@ class ShellActivityStoryTest {
                 val selected = state.start.interaction as?
                     com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle
                 reordered = state.start.document.placements.sortedBy { it.rank }
-                    .map { it.entryId.value } == listOf("settings", "chart") &&
+                    .map { it.entryId.value } == listOf("preferences", "chart") &&
                     selected?.selectedTile?.value == "tile-settings"
             }
             reordered
@@ -544,7 +544,7 @@ class ShellActivityStoryTest {
         compose.activityRule.scenario.onActivity { activity ->
             val engine = ViewModelProvider(activity)[ShellViewModel::class.java].engine
             val tileId = engine.state.value.start.document.placements
-                .single { it.entryId.value == "settings" }.tileId
+                .single { it.entryId.value == "preferences" }.tileId
             engine.dispatch(LauncherAction.EnterStartEdit(tileId))
         }
         compose.waitUntil(5_000) {
@@ -580,7 +580,7 @@ class ShellActivityStoryTest {
             val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
             assertEquals(
                 com.yokuli.shell.contract.MarineTileSize.STANDARD_2X2,
-                state.start.document.placements.single { it.entryId.value == "settings" }.size,
+                state.start.document.placements.single { it.entryId.value == "preferences" }.size,
             )
             assertTrue(state.start.interaction is com.yokuli.shell.engine.interaction.StartInteractionState.EditIdle)
         }
@@ -609,13 +609,13 @@ class ShellActivityStoryTest {
     @Test
     fun appearanceUsesOneAccentAndCorrectBlackWhitePageForegroundPolicy() {
         compose.onNodeWithTag("tile-settings").performClick()
-        awaitDisplayed("settings-section-appearance")
-        compose.onNodeWithTag("settings-section-appearance").performClick()
-        awaitDisplayed("theme-accent-magenta")
-        compose.onNodeWithTag("theme-accent-magenta").performClick()
-        compose.onNodeWithTag("theme-mode-light").performClick()
+        awaitDisplayed("preferences-section-appearance")
+        compose.onNodeWithTag("preferences-section-appearance").performClick()
+        awaitDisplayed("preferences-accent-magenta")
+        compose.onNodeWithTag("preferences-accent-magenta").performClick()
+        compose.onNodeWithTag("preferences-theme-light").performClick()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        awaitDisplayed("settings-section-appearance")
+        awaitDisplayed("preferences-section-appearance")
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("start-screen")
 
@@ -630,18 +630,18 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun settingsUsesTypographicOverviewAndCompactFourColumnAccentSwatches() {
+    fun preferencesUsesTypographicOverviewAndCompactFourColumnAccentSwatches() {
         compose.onNodeWithTag("tile-settings").performClick()
-        awaitDisplayed("settings-overview-list")
-        compose.onNodeWithTag("settings-overview-list").assertIsDisplayed()
+        awaitDisplayed("preferences-overview")
+        compose.onNodeWithTag("preferences-overview").assertIsDisplayed()
         compose.onNodeWithTag("settings-accent-bullet").assertDoesNotExist()
 
-        compose.onNodeWithTag("settings-section-appearance").performClick()
-        awaitDisplayed("settings-accent-grid")
+        compose.onNodeWithTag("preferences-section-appearance").performClick()
+        awaitDisplayed("preferences-appearance")
         val swatches = compose.onAllNodes(
             SemanticsMatcher("accent swatch") { node ->
                 node.config.contains(SemanticsProperties.TestTag) &&
-                    node.config[SemanticsProperties.TestTag].startsWith("theme-accent-")
+                    node.config[SemanticsProperties.TestTag].startsWith("preferences-accent-")
             },
         ).fetchSemanticsNodes()
         assertTrue(swatches.size >= 4)
@@ -657,7 +657,7 @@ class ShellActivityStoryTest {
         compose.onAllNodes(
             SemanticsMatcher("selected accent swatch") { node ->
                 node.config.contains(SemanticsProperties.TestTag) &&
-                    node.config[SemanticsProperties.TestTag].startsWith("theme-accent-") &&
+                    node.config[SemanticsProperties.TestTag].startsWith("preferences-accent-") &&
                     node.config.contains(SemanticsProperties.Selected) &&
                     node.config[SemanticsProperties.Selected]
             },
@@ -677,10 +677,10 @@ class ShellActivityStoryTest {
         }
 
         compose.onNodeWithTag("tile-settings").performClick()
-        awaitDisplayed("settings-section-appearance")
-        compose.onNodeWithTag("settings-section-appearance").performClick()
-        awaitDisplayed("theme-mode-light")
-        compose.onNodeWithTag("theme-mode-light").performClick()
+        awaitDisplayed("preferences-section-appearance")
+        compose.onNodeWithTag("preferences-section-appearance").performClick()
+        awaitDisplayed("preferences-theme-light")
+        compose.onNodeWithTag("preferences-theme-light").performClick()
         awaitHostWindowChrome(Color.WHITE)
 
         compose.activityRule.scenario.onActivity { activity ->
@@ -697,7 +697,7 @@ class ShellActivityStoryTest {
     fun allAppsLongPressOpensContextWithoutChangingStart() {
         compose.onNodeWithTag("all-apps-entry").performClick()
         awaitDisplayed("all-apps-list")
-        compose.onNodeWithTag("launcher-entry-settings").performTouchInput { longClick() }
+        compose.onNodeWithTag("launcher-entry-preferences").performTouchInput { longClick() }
         awaitDisplayed("launcher-context-menu")
         compose.onNodeWithTag("launcher-context-menu").assertIsDisplayed()
         compose.onNodeWithTag("launcher-context-app-info").assertIsDisplayed()
@@ -722,14 +722,14 @@ class ShellActivityStoryTest {
             val state = ViewModelProvider(activity)[ShellViewModel::class.java].engine.state.value
             assertTrue(
                 "unpin click did not leave the serialized Engine document: ${state.start.interaction}",
-                state.start.document.placements.none { it.entryId.value == "settings" },
+                state.start.document.placements.none { it.entryId.value == "preferences" },
             )
         }
         compose.waitUntil(5_000) { compose.onAllNodesWithTag("tile-settings").fetchSemanticsNodes().isEmpty() }
 
         compose.onNodeWithTag("all-apps-entry").performClick()
         awaitDisplayed("all-apps-list")
-        compose.onNodeWithTag("launcher-entry-settings").performTouchInput { longClick() }
+        compose.onNodeWithTag("launcher-entry-preferences").performTouchInput { longClick() }
         awaitDisplayed("launcher-context-pin")
         compose.onNodeWithTag("launcher-context-pin").performClick()
 
@@ -754,15 +754,15 @@ class ShellActivityStoryTest {
         awaitDisplayed("tile-settings")
         compose.onNodeWithTag("tile-settings").assertIsDisplayed()
         compose.onNodeWithTag("all-apps-entry").performClick()
-        awaitDisplayed("launcher-entry-settings")
-        compose.onNodeWithTag("launcher-entry-settings").assertIsDisplayed()
+        awaitDisplayed("launcher-entry-preferences")
+        compose.onNodeWithTag("launcher-entry-preferences").assertIsDisplayed()
     }
 
     @Test
-    fun virtualBridgeReturnsFromSettingsWithoutDestroyingItsTask() {
+    fun virtualBridgeReturnsFromPreferencesWithoutDestroyingItsTask() {
         compose.onNodeWithTag("tile-settings").performClick()
-        awaitDisplayed("settings-workspace")
-        compose.onNodeWithTag("settings-workspace").assertIsDisplayed()
+        awaitDisplayed("preferences-workspace")
+        compose.onNodeWithTag("preferences-workspace").assertIsDisplayed()
 
         compose.onNodeWithTag("virtual-key-bridge").performClick()
         awaitDisplayed("start-screen")
@@ -771,7 +771,7 @@ class ShellActivityStoryTest {
 
         awaitDisplayed("launcher-recents")
         compose.onNodeWithTag("launcher-recents").assertIsDisplayed()
-        compose.onNodeWithTag("recent-task-settings").assertIsDisplayed()
+        compose.onNodeWithTag("recent-task-preferences").assertIsDisplayed()
     }
 
     @Test
@@ -799,7 +799,7 @@ class ShellActivityStoryTest {
 
         compose.onNodeWithTag("virtual-key-search").performClick()
         awaitDisplayed("launcher-search-field")
-        compose.onNodeWithTag("launcher-search-field").performTextInput("settings")
+        compose.onNodeWithTag("launcher-search-field").performTextInput("preferences")
         compose.onNodeWithTag("virtual-key-bridge").assertIsDisplayed().performClick()
         awaitDisplayed("start-screen")
     }
@@ -870,7 +870,7 @@ class ShellActivityStoryTest {
         compose.onNodeWithTag("shell-search-surface").assertDoesNotExist()
 
         compose.onNodeWithTag("tile-settings").performClick()
-        awaitDisplayed("settings-workspace")
+        awaitDisplayed("preferences-workspace")
         dispatchHardwareKey(KeyEvent.KEYCODE_HOME)
         awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
@@ -879,7 +879,7 @@ class ShellActivityStoryTest {
     @Test
     fun appRelaunchDoesNotForceDesktopOrRecreateActivity() {
         compose.onNodeWithTag("tile-settings").performClick()
-        awaitDisplayed("settings-workspace")
+        awaitDisplayed("preferences-workspace")
         var before = 0
         compose.activityRule.scenario.onActivity { activity ->
             before = System.identityHashCode(activity)
@@ -891,8 +891,8 @@ class ShellActivityStoryTest {
             )
         }
 
-        awaitDisplayed("settings-workspace")
-        compose.onNodeWithTag("settings-workspace").assertIsDisplayed()
+        awaitDisplayed("preferences-workspace")
+        compose.onNodeWithTag("preferences-workspace").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { activity ->
             assertEquals(before, System.identityHashCode(activity))
         }
@@ -1039,7 +1039,7 @@ class ShellActivityStoryTest {
     fun activityRecreationRetainsTheEngineDocument() {
         compose.onNodeWithTag("tile-settings").performTouchInput { longClick() }
         awaitDisplayed("resize-selected-tile")
-        compose.onNodeWithTag("wp-page-title-settings").assertDoesNotExist()
+        compose.onNodeWithTag("wp-page-title-preferences").assertDoesNotExist()
         compose.onNodeWithTag("unpin-selected-tile").performClick()
         awaitGone("tile-settings")
         compose.onNodeWithTag("tile-settings").assertDoesNotExist()
@@ -1059,8 +1059,8 @@ class ShellActivityStoryTest {
             compose.onAllNodesWithText("app language").fetchSemanticsNodes().isNotEmpty()
         }
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        awaitDisplayed("settings-section-language")
-        compose.onNodeWithTag("settings-section-language").assertIsDisplayed()
+        awaitDisplayed("preferences-section-language")
+        compose.onNodeWithTag("preferences-section-language").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
@@ -1071,8 +1071,8 @@ class ShellActivityStoryTest {
             compose.onAllNodesWithText("应用语言").fetchSemanticsNodes().isNotEmpty()
         }
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        awaitDisplayed("settings-section-language")
-        compose.onNodeWithTag("settings-section-language").assertIsDisplayed()
+        awaitDisplayed("preferences-section-language")
+        compose.onNodeWithTag("preferences-section-language").assertIsDisplayed()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         awaitDisplayed("start-screen")
         compose.onNodeWithTag("start-screen").assertIsDisplayed()
@@ -1081,10 +1081,10 @@ class ShellActivityStoryTest {
 
     private fun selectLanguage(tag: String) {
         compose.onNodeWithTag("tile-settings").performClick()
-        awaitDisplayed("settings-section-language")
-        compose.onNodeWithTag("settings-section-language").performClick()
-        awaitDisplayed("language-$tag")
-        compose.onNodeWithTag("language-$tag").performClick()
+        awaitDisplayed("preferences-section-language")
+        compose.onNodeWithTag("preferences-section-language").performClick()
+        awaitDisplayed("preferences-language-$tag")
+        compose.onNodeWithTag("preferences-language-$tag").performClick()
         compose.waitForIdle()
     }
 

@@ -83,7 +83,7 @@ class LauncherStage3GeometryContractTest(unittest.TestCase):
         self.assertEqual(2, graph.count("TilePlacement("))
         self.assertIn("entryId = ChartDestinations.EntryId", graph)
         self.assertIn("size = MarineTileSize.WIDE_4X2", graph)
-        self.assertIn("entryId = SettingsDestinations.EntryId", graph)
+        self.assertIn("entryId = PreferencesDestinations.EntryId", graph)
         self.assertIn("size = MarineTileSize.ICON_1X1", graph)
 
     def test_stage_report_and_named_ci_gate_exist(self):

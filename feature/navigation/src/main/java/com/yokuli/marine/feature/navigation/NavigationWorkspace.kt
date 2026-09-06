@@ -39,6 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.LocalMeasurementUnitSystem
+import com.yokuli.marine.core.design.MarineDisplayUnits
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliMetrics
@@ -171,7 +173,7 @@ private fun RouteRow(route: RoutePlan, onAction: (NavigationUiAction) -> Unit) {
             .padding(vertical = 10.dp).testTag("navigation-route-${route.id}"),
     ) {
         WpText(route.name, 20, weight = FontWeight.Light)
-        WpText(stringResource(R.string.navigation_route_summary, route.points.size, summary.distanceNauticalMiles), 11, color = LocalWpTheme.current.muted)
+        WpText(routeSummary(route.points.size, summary.distanceNauticalMiles), 11, color = LocalWpTheme.current.muted)
     }
 }
 
@@ -197,10 +199,15 @@ private fun RouteDetail(route: RoutePlan, state: NavigationUiState, onAction: (N
     WpText(route.name, 28, weight = FontWeight.Light)
     RouteSketch(route)
     val summary = NavigationRouteMath.summarize(route)
-    WpText(stringResource(R.string.navigation_route_summary, route.points.size, summary.distanceNauticalMiles), 13)
+    WpText(routeSummary(route.points.size, summary.distanceNauticalMiles), 13)
     summary.legs.forEach { leg ->
+        val units = LocalMeasurementUnitSystem.current
+        val distance = MarineDisplayUnits.distanceFromNauticalMiles(leg.distanceMeters / 1852.0, units)
         WpText(
-            stringResource(R.string.navigation_leg, leg.index + 1, leg.index + 2, leg.distanceMeters / 1852.0, leg.initialBearingTrueDegrees ?: 0.0),
+            stringResource(
+                if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) R.string.navigation_leg else R.string.navigation_leg_metric,
+                leg.index + 1, leg.index + 2, distance, leg.initialBearingTrueDegrees ?: 0.0,
+            ),
             11, color = LocalWpTheme.current.muted,
         )
     }
@@ -217,6 +224,20 @@ private fun RouteDetail(route: RoutePlan, state: NavigationUiState, onAction: (N
         stringResource(R.string.navigation_delete), "navigation-route-delete-${route.id}",
         enabled = state.active.session?.routeId != route.id,
     ) { onAction(NavigationUiAction.DeleteRoute(route.id, route.revision)) }
+}
+
+@Composable
+private fun routeSummary(pointCount: Int, nauticalMiles: Double): String {
+    val units = LocalMeasurementUnitSystem.current
+    return stringResource(
+        if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) {
+            R.string.navigation_route_summary
+        } else {
+            R.string.navigation_route_summary_metric
+        },
+        pointCount,
+        MarineDisplayUnits.distanceFromNauticalMiles(nauticalMiles, units),
+    )
 }
 
 @Composable

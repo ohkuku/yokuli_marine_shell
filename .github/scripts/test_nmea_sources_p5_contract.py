@@ -26,7 +26,7 @@ class NmeaSourcesP5Contract(unittest.TestCase):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         for contribution in (
             "ChartShellContribution",
-            "SettingsShellContribution",
+            "PreferencesShellContribution",
             "DataShellContribution",
         ):
             self.assertIn(contribution, graph)
@@ -39,7 +39,7 @@ class NmeaSourcesP5Contract(unittest.TestCase):
         self.assertNotIn("NmeaInputDestinations.EntryId", document)
         self.assertNotIn("DataSourcesDestinations.EntryId", document)
         self.assertIn("ChartDestinations.EntryId", document)
-        self.assertIn("SettingsDestinations.EntryId", document)
+        self.assertIn("PreferencesDestinations.EntryId", document)
 
     def test_tiles_and_status_are_pure_projectors_without_runtime_commands(self):
         files = [

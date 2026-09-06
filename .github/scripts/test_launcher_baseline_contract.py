@@ -30,10 +30,10 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         self.assertIn("value class LaunchToken", identifiers)
         self.assertIn("interface LauncherCatalogContribution", catalog)
         self.assertIn("ChartShellContribution", graph)
-        self.assertIn("SettingsShellContribution", graph)
+        self.assertIn("PreferencesShellContribution", graph)
         self.assertRegex(graph, r"productionInstalledApps\s*:[^=]+?=\s*listOf\(")
         self.assertIn("catalogContribution = ChartShellContribution", graph)
-        self.assertIn("catalogContribution = SettingsShellContribution", graph)
+        self.assertIn("catalogContribution = PreferencesShellContribution", graph)
         self.assertIn("InstalledAppRegistry(productionInstalledApps)", graph)
         self.assertIn("productionInstalledAppRegistry.catalogContributions", graph)
         for removed in ("CockpitShellContribution", "LibraryShellContribution", "AnchorShortcutContribution"):

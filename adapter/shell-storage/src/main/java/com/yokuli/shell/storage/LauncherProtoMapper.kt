@@ -23,6 +23,9 @@ object LauncherProtoMapper {
         .setThemeMode(state.themeModeName)
         .setAccent(state.accentName)
         .setLanguageTag(state.languageTag)
+        .setMeasurementUnitSystem(state.measurementUnitSystemName)
+        .setMotionPreference(state.motionPreferenceName)
+        .putAllAppPreferences(state.appPreferenceValues)
         .setLayoutLocked(state.layoutLocked)
         .setLastLauncherPage(state.lastLauncherPage.name)
         .setLastForegroundToken(state.lastForegroundToken.orEmpty())
@@ -46,6 +49,9 @@ object LauncherProtoMapper {
             themeModeName = proto.themeMode.ifBlank { "DARK" },
             accentName = proto.accent.ifBlank { "CYAN" },
             languageTag = proto.languageTag.ifBlank { "zh-CN" },
+            measurementUnitSystemName = proto.measurementUnitSystem.ifBlank { "NAUTICAL" },
+            motionPreferenceName = proto.motionPreference.ifBlank { "FOLLOW_SYSTEM" },
+            appPreferenceValues = proto.appPreferencesMap,
             layoutLocked = proto.layoutLocked,
             lastLauncherPage = page,
             lastForegroundToken = proto.lastForegroundToken.ifBlank { null },

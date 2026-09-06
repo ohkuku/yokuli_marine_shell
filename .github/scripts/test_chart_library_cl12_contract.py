@@ -18,7 +18,7 @@ class ChartLibraryCl12ContractTest(unittest.TestCase):
         self.assertEqual(
             [
                 "ChartShellContribution",
-                "SettingsShellContribution",
+                "PreferencesShellContribution",
                 "DataShellContribution",
                 "ChartLibraryShellContribution",
                 "NavigationShellContribution",
@@ -27,8 +27,8 @@ class ChartLibraryCl12ContractTest(unittest.TestCase):
         )
         default = graph[graph.index("val defaultStartDocument"):]
         self.assertEqual(2, default.count("TilePlacement("))
-        self.assertIn("Chart、Settings、Data、Chart Library、Navigation 五项", readme)
-        self.assertIn("Chart, Settings, Data, Chart Library, and Navigation", readme)
+        self.assertIn("Chart、Preferences、Data、Chart Library、Navigation 五项", readme)
+        self.assertIn("Chart, Preferences, Data, Chart Library, and Navigation", readme)
 
     def test_all_acceptance_ids_exist_once_and_unrun_items_are_not_preapproved(self):
         acceptance = self.read("docs/phases/chart-library/ACCEPTANCE_RESULTS_TEMPLATE.md")

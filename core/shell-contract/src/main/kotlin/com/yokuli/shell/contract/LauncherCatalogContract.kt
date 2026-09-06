@@ -31,4 +31,8 @@ interface LauncherCatalogContribution {
      * The installation binding validates uniqueness and assigns every token to this app's host.
      */
     val internalLaunchTokens: List<LaunchToken> get() = emptyList()
+
+    /** Optional typed settings owned by this app and rendered by the OS Preferences app. */
+    val appPreferences: AppPreferenceContribution?
+        get() = null
 }

@@ -18,6 +18,7 @@
     <string name="navigation_route_new">new route</string>
     <string name="navigation_routes_empty">NO SAVED ROUTES YET</string>
     <string name="navigation_route_summary">%1$d POINTS · %2$.2f NM</string>
+    <string name="navigation_route_summary_metric">%1$d POINTS · %2$.2f KM</string>
     <string name="navigation_route_missing">ROUTE UNAVAILABLE</string>
     <string name="navigation_route_missing_detail">The route referenced by this entry was deleted or replaced. Navigation was not started.</string>
     <string name="navigation_back_routes">back to routes</string>
@@ -32,6 +33,7 @@
     <string name="navigation_start">start navigation</string>
     <string name="navigation_show_chart">show in Chart</string>
     <string name="navigation_leg">%1$d → %2$d · %3$.2f NM · %4$.0f° TRUE</string>
+    <string name="navigation_leg_metric">%1$d → %2$d · %3$.2f KM · %4$.0f° TRUE</string>
     <string name="navigation_route_points">ROUTE POINTS · %1$d</string>
     <string name="navigation_route_point">route point %1$d</string>
     <string name="navigation_add_waypoint">add from saved waypoints</string>
@@ -49,13 +51,16 @@
     <string name="navigation_tile_idle">%1$d ROUTES</string>
     <string name="navigation_tile_active">TO %1$s</string>
     <string name="navigation_tile_distance">%1$.2f NM</string>
+    <string name="navigation_tile_distance_metric">%1$.2f KM</string>
     <string name="nav_next">NEXT · %1$s</string>
     <string name="nav_dtw_btw">%1$.2f NM · %2$.0f° TRUE</string>
+    <string name="nav_dtw_btw_metric">%1$.2f KM · %2$.0f° TRUE</string>
     <string name="nav_waiting_position">WAITING FOR SELECTED POSITION DATA</string>
     <string name="nav_state_active">ACTIVE</string>
     <string name="nav_state_paused">PAUSED</string>
     <string name="nav_state_complete">COMPLETE</string>
     <string name="nav_xte">XTE %1$.2f NM</string>
+    <string name="nav_xte_metric">XTE %1$.2f KM</string>
     <string name="nav_eta">ETA %1$d MIN</string>
     <string name="nav_eta_unavailable">ETA UNAVAILABLE</string>
     <string name="nav_progress">ROUTE %1$d%%</string>

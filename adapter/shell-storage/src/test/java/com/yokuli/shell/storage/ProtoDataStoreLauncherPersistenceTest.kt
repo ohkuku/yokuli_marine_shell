@@ -178,6 +178,9 @@ class ProtoDataStoreLauncherPersistenceTest {
             layoutLocked = true,
             lastLauncherPage = PersistedLauncherPage.ALL_APPS,
             lastForegroundToken = "chart.root",
+            measurementUnitSystemName = "METRIC",
+            motionPreferenceName = "REDUCED",
+            appPreferenceValues = mapOf("chart.tile.mode" to "c:auto"),
             recovery = LauncherStartupHealth(lastLaunchEpochMillis = 7),
         )
         store.save(moved)
@@ -191,6 +194,9 @@ class ProtoDataStoreLauncherPersistenceTest {
         assertEquals("LIGHT", result?.themeModeName)
         assertEquals("EMERALD", result?.accentName)
         assertEquals("en", result?.languageTag)
+        assertEquals("METRIC", result?.measurementUnitSystemName)
+        assertEquals("REDUCED", result?.motionPreferenceName)
+        assertEquals(mapOf("chart.tile.mode" to "c:auto"), result?.appPreferenceValues)
         assertEquals(true, result?.layoutLocked)
         assertEquals(PersistedLauncherPage.ALL_APPS, result?.lastLauncherPage)
         assertEquals("chart.root", result?.lastForegroundToken)
@@ -246,7 +252,7 @@ class ProtoDataStoreLauncherPersistenceTest {
             }
         }
 
-        assertEquals(3, migrated.schemaVersion)
+        assertEquals(4, migrated.schemaVersion)
         assertEquals(1, migrated.productModelVersion)
         assertEquals("tile-sources", requireNotNull(migrated.document).placements.single().tileId.value)
         assertEquals(dataEntry, migrated.document?.placements?.single()?.entryId)

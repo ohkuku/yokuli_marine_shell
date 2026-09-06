@@ -19,9 +19,10 @@ class YokuliProductModelTest {
             YokuliProductModel.finalApps.map { it.appId.value },
         )
         val installed = productionCatalog.entries.mapTo(linkedSetOf()) { it.entryId.value }
-        assertEquals(setOf("chart", "settings", "data", "chart_library", "navigation"), installed)
+        assertEquals(setOf("chart", "preferences", "data", "chart_library", "navigation"), installed)
         assertTrue("navigation" in installed)
-        assertFalse("preferences" in installed)
+        assertTrue("preferences" in installed)
+        assertFalse("settings" in installed)
     }
 
     @Test fun currentCompositionRootMigratesLegacyMarineTilesOnlyAfterDataHasARealHost() {
@@ -49,11 +50,28 @@ class YokuliProductModelTest {
             productionCatalog.entries.mapTo(linkedSetOf()) { it.entryId },
         )
 
-        assertEquals(1, result.state.productModelVersion)
-        assertEquals(listOf(1), result.appliedVersions)
+        assertEquals(2, result.state.productModelVersion)
+        assertEquals(listOf(1, 2), result.appliedVersions)
         assertEquals(
-            listOf("settings", "data"),
+            listOf("preferences", "data"),
             result.state.document!!.placements.map { it.entryId.value },
         )
+        assertEquals(listOf("tile-settings", "tile-nmea"), result.state.document!!.placements.map { it.tileId.value })
+        assertEquals(listOf(MarineTileSize.ICON_1X1, MarineTileSize.WIDE_4X2), result.state.document!!.placements.map { it.size })
+    }
+
+    @Test fun legacySettingsResourcePageFallsBackToPreferencesOverview() {
+        val legacy = LauncherPersistedState(
+            schemaVersion = 3,
+            lastForegroundToken = "settings.map",
+            productModelVersion = 1,
+        )
+
+        val result = YokuliProductModel.migrationPlan.migrate(
+            legacy,
+            productionCatalog.entries.mapTo(linkedSetOf()) { it.entryId },
+        )
+
+        assertEquals("preferences.overview", result.state.lastForegroundToken)
     }
 }

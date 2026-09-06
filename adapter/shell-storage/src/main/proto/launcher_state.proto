@@ -14,6 +14,9 @@ message LauncherStateProto {
   string last_foreground_token = 8;
   LauncherRecoveryProto recovery = 9;
   int32 product_model_version = 10;
+  string measurement_unit_system = 11;
+  string motion_preference = 12;
+  map<string, string> app_preferences = 13;
 }
 
 message StartDocumentProto {

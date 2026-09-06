@@ -56,6 +56,8 @@ import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEngine
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.engine.LauncherRecoveryMode
+import com.yokuli.shell.contract.MeasurementUnitSystem
+import com.yokuli.shell.contract.MotionPreference
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
@@ -322,6 +324,20 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val current = persistence.load() ?: defaults
             persistence.savePreferences(current.themeModeName, current.accentName, language.languageTag)
+        }
+    }
+
+    fun saveMeasurementUnits(units: MeasurementUnitSystem) {
+        viewModelScope.launch {
+            val current = persistence.load() ?: defaults
+            persistence.save(current.copy(measurementUnitSystemName = units.name))
+        }
+    }
+
+    fun saveMotionPreference(preference: MotionPreference) {
+        viewModelScope.launch {
+            val current = persistence.load() ?: defaults
+            persistence.save(current.copy(motionPreferenceName = preference.name))
         }
     }
 
