@@ -1,12 +1,12 @@
 # NMEA 输入与数据来源最终实施报告 / NMEA Input and Data Sources Final Report
 
-状态：`PENDING_MACHINE_GATE`
+状态：`MACHINE_VERIFIED`
 
 规范哈希：`a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348`
 
 实施基线：`codex/shell-map-contract@69bfd4d0ed29f27450351df530b4a8b1e8e2c6a6`
 
-P7 最后功能／门禁修正提交：`909bb382820dc353874cd5a8292a762f22ae2705`
+P7 最后门禁修正提交：`05588ad3be64860d9764b731f69ec2555c374801`
 
 ## 交付结论
 
@@ -67,19 +67,27 @@ P0 冻结真实仓库、参考和 Android 边界；P1 建立有界纯 NMEA 数�
 
 施工阶段遵循用户的 Gate 成本约束，只运行修改所属的 Python 合同、模块编译或定向 JVM／Activity tests。P0–P6 的实际 scoped 命令和计数分别记录于同目录的 `P0_REPORT.md` 至 `P6_REPORT.md`。
 
-P7 唯一完整命令尚待执行：
+P7 唯一完整命令已执行：
 
 ```text
-bash .github/scripts/run_marine_shell_final_gate.sh --with-device
-exit: PENDING_EXECUTION
+PYTHON_BIN=/private/tmp/yokuli-p7-python/bin/python \
+  bash .github/scripts/run_marine_shell_final_gate.sh --with-device
+exit: 0
 ```
 
-托管 Android CI、可下载 Alpha artifact 与签名 Release 也必须等待最终本地 Gate、提交和 push；本报告不会预填 run id 或成功状态。
+实际结果：Python 合同 `287/287`；Gradle JVM 测试执行 `668/668`；构建、Lint、Debug／Release 与测试 APK 共 `1477` 个 task 成功；Release 产品面审计通过；API 34 的 marine-data、map-offline、map-storage 与 app-shell 共 `92/92`；C12 与 NMEA force-stop 外部进程探针共 `4/4`；性能旅程 `11/11`，证据等级严格为 `EMULATOR_TREND_ONLY`。最终输出：
+
+```text
+MARINE_SHELL_FINAL_GATE=MACHINE_VERIFIED CHART_C12_GATE=CORE_MACHINE_READY
+```
+
+托管 Android CI、可下载 Alpha artifact 与签名 Release 必须等待本次封口提交 push 后的远端实际结果；本地 `MACHINE_VERIFIED` 不冒充 hosted CI。
 
 ## 截图／录屏索引
 
-- 自动 Compose／Activity 证据：各模块 `build/outputs/androidTest-results`、`build/reports/androidTests`（由最终 Gate 生成，不作为人工像素批准）。
-- 独立进程日志：`build/ci-nmea-sources-process-restore.log`（由最终 Gate 生成）。
+- 自动 Compose／Activity 证据：`adapter/marine-data-android` 2/2、`adapter/map-offline` 17/17、`adapter/map-storage` 7/7、`app-shell` 66/66 的 `build/outputs/androidTest-results` 与 `build/reports/androidTests`（不作为人工像素批准）。
+- 独立进程日志：`build/ci-c12-process-restore.log` 与 `build/ci-nmea-sources-process-restore.log`，各自两次独立 instrumentation invocation 通过。
+- 性能索引：`build/marine-shell-final-correction/performance-summary.json`，11/11 且仅为 `EMULATOR_TREND_ONLY`。
 - P6 sender smoke 数字：`docs/phases/nmea-sources/P6_REPORT.md`。
 - NMEA Sources 专项人工截图／录屏：`NOT_RUN`。
 - 三星方屏实机与 WP8 主观还原批准：`UNVERIFIED_PHYSICAL_DEVICE`。
@@ -98,4 +106,4 @@ exit: PENDING_EXECUTION
 
 ## English translation
 
-The phase delivers two independently installed in-Shell apps over one process-owned, typed and bounded marine-data runtime. Real TCP/UDP input, twelve NMEA 0183 formatter families, catalogs, explicit per-key source selection, Android system-location candidacy, dynamic tiles/status entries, and the read-only Chart consumer are implemented. P0–P6 retain their scoped evidence; P7 is the one final repository/device/release gate and is still pending in this draft. The E01–E26 ledger distinguishes JVM, loopback, emulator, partial and physical evidence. No claim is made for OEM background behavior, real GNSS/radio/power, Samsung-square interaction, manual visual approval, or the full 30-minute app soak.
+The phase delivers two independently installed in-Shell apps over one process-owned, typed and bounded marine-data runtime. Real TCP/UDP input, twelve NMEA 0183 formatter families, catalogs, explicit per-key source selection, Android system-location candidacy, dynamic tiles/status entries, and the read-only Chart consumer are implemented. P0–P6 retain their scoped evidence; the single P7 repository/device/release gate passed and is `MACHINE_VERIFIED`. The E01–E26 ledger still distinguishes JVM, loopback, emulator, partial and physical evidence. Hosted CI remains pending until push, and no claim is made for OEM background behavior, real GNSS/radio/power, Samsung-square interaction, manual visual approval, or the full 30-minute app soak.

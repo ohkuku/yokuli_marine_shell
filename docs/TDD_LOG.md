@@ -799,12 +799,14 @@ P7 合同先要求当前四应用产品面、两个正式 runtime/FGS、P0–P7 
 
 后续自审分别加入三类能真实失败的合同：删除已采用连接前必须解释不会自动换源；手机定位权限必须由 marine-data 边界而非 Chart 持有；所有残留“生产精确两应用”的静态 Gate 必须被拒绝。
 
-### Green 与待封口
+### Green 与封口
 
 Android CI、Release workflow、最终 Gate 和 Release APK 审计现在都认识 Chart、Settings、NMEA Input、Data Sources 四个生产 App，同时坚持默认 Start 只有 Chart + Settings、不含 Android HOME/DEFAULT、只允许竖屏且 Release 不含 debug/demo/test sender。删除确认、位置权限所有权和旧可执行合同也已纠正。
 
-遵照用户的测试成本约束，施工中的每个小提交只运行所属静态／模块 Gate；不会反复执行 `test + lint + assemble + device`。P7 报告和 lock 先保持 `PENDING_MACHINE_GATE`，唯一完整命令 `run_marine_shell_final_gate.sh --with-device` 实际退出 0 后，才会写入最终计数并升级为 `MACHINE_VERIFIED`。30 分钟应用 soak 与全部真机项不会被终局机器 Gate 冒充。
+遵照用户的测试成本约束，施工中的每个小提交只运行所属静态／模块 Gate，没有反复执行 `test + lint + assemble + device`。最终 Gate 的早期 Red 依次暴露 Android 13+ 前台通知权限缺失、compiled manifest 竖屏枚举审计错误，以及 C12 旧 `NoSourcePositionPort` 测试假设；均先提交 Red 或保留失败证据，再做最小 Green，没有放宽产品合同。
+
+最终唯一完整命令 `run_marine_shell_final_gate.sh --with-device` 退出 0：Python `287/287`、JVM `668/668`、Gradle `1477` tasks、API 34 设备套件 `92/92`、两个独立进程探针 `4/4`、性能旅程 `11/11 EMULATOR_TREND_ONLY`，Release 四应用与 no-HOME 审计通过。P7 因而升级为 `MACHINE_VERIFIED`；hosted CI 仍等 push，30 分钟应用 soak 与全部真机项仍不由机器 Gate 冒充。
 
 ### English translation — NMEA Sources P7
 
-The P7 Red rejects stale two-app executable assumptions and requires the current four-app release surface, all P0–P7 CI results, dependency and privacy boundaries, bilingual parity, and a complete E01–E26 evidence ledger. Follow-up Reds cover truthful selected-source deletion and correct phone-location ownership. Construction uses scoped tests only; the full test/lint/build/device gate runs once at final sealing, and the report cannot claim `MACHINE_VERIFIED` before its real exit code is zero.
+The P7 Red rejects stale two-app executable assumptions and requires the current four-app release surface, all P0–P7 CI results, dependency and privacy boundaries, bilingual parity, and a complete E01–E26 evidence ledger. Follow-up Reds cover truthful selected-source deletion, phone-location ownership, notification permission, compiled portrait inspection, and the current Chart source bridge. Construction used scoped tests; the one final test/lint/build/device gate exited zero with 287 Python checks, 668 JVM executions, 1477 Gradle tasks, 92 API 34 tests, four process-probe executions, and 11 emulator-trend journeys. P7 is machine verified while hosted and physical evidence remain separate.

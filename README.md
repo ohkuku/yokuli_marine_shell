@@ -6,7 +6,7 @@
 
 ## 中文（主文）
 
-Yokuli OS 已在 Windows Phone 8 Classic 风格应用内 Shell 和离线优先地图 V1 上完成 `NMEA_SOURCES` P0–P6，并进入 P7 终局交付门禁。NMEA Input 与 Data Sources 是两个独立 Shell App，共享一套进程持有、类型化且有界的 marine-data runtime。当前有效合同由 [NMEA_SOURCES 产品合同](docs/phases/nmea-sources/REQUIREMENTS.md)、[P0 实施基线](docs/implementation/NMEA_SOURCES_P0_BASELINE.md)和[最新 Shell 产品边界修正](docs/phases/shell-product-boundary-correction/REQUIREMENTS.md)共同组成。它们覆盖旧文档中“只允许 Chart + Settings／禁止生产 NMEA/GNSS”以及 Android 桌面、最外层 Back 和横屏的冲突条款；历史 Stage 与 Map C00–C12 报告保持原样，不能作为当前产品面的可执行合同。
+Yokuli OS 已在 Windows Phone 8 Classic 风格应用内 Shell 和离线优先地图 V1 上完成 `NMEA_SOURCES` P0–P7 本地机器门禁。NMEA Input 与 Data Sources 是两个独立 Shell App，共享一套进程持有、类型化且有界的 marine-data runtime。当前有效合同由 [NMEA_SOURCES 产品合同](docs/phases/nmea-sources/REQUIREMENTS.md)、[P0 实施基线](docs/implementation/NMEA_SOURCES_P0_BASELINE.md)和[最新 Shell 产品边界修正](docs/phases/shell-product-boundary-correction/REQUIREMENTS.md)共同组成。它们覆盖旧文档中“只允许 Chart + Settings／禁止生产 NMEA/GNSS”以及 Android 桌面、最外层 Back 和横屏的冲突条款；历史 Stage 与 Map C00–C12 报告保持原样，不能作为当前产品面的可执行合同。
 
 当前分支：
 
@@ -14,7 +14,7 @@ Yokuli OS 已在 Windows Phone 8 Classic 风格应用内 Shell 和离线优先�
 branch: codex/shell-map-contract
 phase: NMEA_SOURCES
 work packages: P0–P7
-status: P0–P6 machine-scoped gates passed; P7 full repository/device gate pending
+status: P0–P7 local machine gates passed; hosted CI and physical review remain separate
 ```
 
 Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化与应用内恢复。当前生产 All Apps 精确为 Chart、Settings、NMEA Input、Data Sources 四项；全新 Start Document 仍只放 Chart 与 Settings。Shell Lab 只在 debug/benchmark classpath。
@@ -86,11 +86,11 @@ bash .github/scripts/test-ci-contract.sh
 bash .github/scripts/test-release-product-surface.sh
 ```
 
-完整构建 Gate 仍由 Android CI 执行。Golden 候选是 `CANDIDATE_PENDING_HUMAN_REVIEW`；刷新率、Samsung 方屏和物理 WP8 设备保持 `UNVERIFIED_HARDWARE`／`PENDING_HUMAN_REVIEW`。
+P7 本地完整 Gate 已通过；Android CI 会在 push 后重新执行托管门禁并生成可下载候选包。Golden 候选是 `CANDIDATE_PENDING_HUMAN_REVIEW`；刷新率、Samsung 方屏和物理 WP8 设备保持 `UNVERIFIED_HARDWARE`／`PENDING_HUMAN_REVIEW`。
 
 ## English translation
 
-Yokuli OS has completed the scoped P0–P6 machine gates of `NMEA_SOURCES` and is entering its P7 delivery gate. The current production All Apps surface is exactly Chart, Settings, NMEA Input, and Data Sources; the default Start document remains Chart + Settings. Both new apps use one typed, bounded, process-owned runtime. NMEA output/forwarding, active navigation, autopilot, and vessel-network control remain out of scope, and physical-device evidence remains separate.
+Yokuli OS has completed the local P0–P7 machine gates of `NMEA_SOURCES`. The current production All Apps surface is exactly Chart, Settings, NMEA Input, and Data Sources; the default Start document remains Chart + Settings. Both new apps use one typed, bounded, process-owned runtime. Hosted CI and physical review remain separate; NMEA output/forwarding, active navigation, autopilot, and vessel-network control remain out of scope.
 
 The portrait-only immersive shell routes virtual Back/Start/Search and deliverable Android or keyboard input through the serialized Launcher Engine. Back stops at the in-app Shell Desktop and never exits Yokuli. The app does not register Android HOME/DEFAULT or expose Android Home settings; square layouts remain supported, while landscape is outside the current product contract.
 

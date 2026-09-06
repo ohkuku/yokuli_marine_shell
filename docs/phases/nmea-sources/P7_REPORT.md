@@ -1,6 +1,6 @@
 # NMEA_SOURCES P7 报告 / P7 Report
 
-状态：`PENDING_MACHINE_GATE`
+状态：`PASS — MACHINE_VERIFIED`
 
 物理设备状态：`UNVERIFIED_PHYSICAL_DEVICE`
 
@@ -20,15 +20,20 @@ P7 不再增加 NMEA、选源或 Shell 产品功能。它把 P0–P6 已完成�
 - 自查 Red／Green `5e61e72…` → `13c6cb7…` 要求删除已采用连接前明确说明影响：删除后进入“来源已删除”，不会静默切换。
 - 自查 Red／Green `9796a8e…` → `3cccb8c…` 把系统定位权限所有权从已废弃的 Chart 采集假设迁到 marine-data composition boundary；Chart 只消费只读端口。
 - 自查 Red／Green `a7fdb1a…` → `909bb38…` 清除仍把历史 Chart + Settings 基线当作当前生产事实的可执行 Gate，同时不改写历史报告。
+- 最终 Gate 首轮自查继续捕获三个真实交付缺口：Android 13+ 前台通知权限未声明、APK analyzer 输出的竖屏枚举检查写错，以及 C12 设备故事仍断言旧的 `NoSourcePositionPort`。对应 Red／Green 提交为 `d987ca9…` → `7df967a…`、`8c8196a…` → `8ae2a8f…`、`05588ad…`；修正没有放宽产品、安全或二进制合同。
 - P7 lock 只有在 `fullRepositoryGate` 仍为 `PENDING_EXECUTION` 时才允许 `PENDING_MACHINE_GATE`；只有实际退出码为 0 后才允许升级为 `MACHINE_VERIFIED`。
 
-## 待执行的唯一完整 Gate
+## 唯一完整 Gate 与实际证据
 
 ```text
-bash .github/scripts/run_marine_shell_final_gate.sh --with-device
+PYTHON_BIN=/private/tmp/yokuli-p7-python/bin/python \
+  bash .github/scripts/run_marine_shell_final_gate.sh --with-device
+exit: 0
 ```
 
-该命令会在 P7 封口时执行一次。施工中的小修改只运行所属静态或模块测试，不重复消耗完整 Gradle Gate。当前报告不会预填成功数字；最终退出码、测试结果、APK 审计、设备/进程证据和 hosted CI 将在实际完成后写回 lock 与最终报告。
+最终封口运行得到：Python 合同 `287/287`；Gradle JVM 测试结果 `668/668`（含构建变体）；完整构建／Lint／Debug／Release Gate `1477` 个 task 成功；Release APK 四应用、双 runtime、双私有服务、竖屏、无 HOME／DEFAULT、无 debug/demo sender 审计通过；API 34 adapter/map/app 设备套件 `92/92`；C12 与 NMEA 两个独立 force-stop 探针合计 `4/4`；性能旅程 `11/11`，仅标记 `EMULATOR_TREND_ONLY`。最终输出为 `MARINE_SHELL_FINAL_GATE=MACHINE_VERIFIED CHART_C12_GATE=CORE_MACHINE_READY`。
+
+施工中的小修改只运行所属静态或模块测试，没有反复消耗完整 Gate。GitHub hosted CI 和 Alpha artifact 仍需在本提交 push 后由远端实际结果补证，不能由本地通过代替。
 
 ## 明确不冒充的证据
 
@@ -36,4 +41,4 @@ bash .github/scripts/run_marine_shell_final_gate.sh --with-device
 
 ## English translation
 
-P7 is the delivery gate, not another feature stage. It aligns executable CI, release and APK audits with the current four-app product while preserving the two-tile default Start document, portrait-only in-app Shell, bounded Back behavior, and no Android Home capability. The lock remains `PENDING_MACHINE_GATE` until the one final full repository/device command actually exits successfully. Physical background, radio, GNSS, power, Samsung-square interaction, manual visual review, and the full 30-minute app soak remain explicitly unverified or not run.
+P7 is the delivery gate, not another feature stage. The one final repository/device command exited successfully: 287 Python checks, 668 JVM test executions across build variants, the 1477-task build/lint/package gate, the four-app Release binary audit, 92 API 34 device tests, four independent process-probe executions, and 11 emulator trend journeys all passed. This is `MACHINE_VERIFIED`, not hosted-CI, physical-device, or subjective-visual approval. Physical background, radio, GNSS, power, Samsung-square interaction, manual visual review, and the full 30-minute app soak remain explicitly unverified or not run.
