@@ -14,7 +14,7 @@ import org.junit.Test
 class DefaultActiveNavigationRuntimeTest {
     @Test
     fun `start and controls are serialized against an exact saved route revision`() = runTest {
-        val fixture = Fixture(this)
+        val fixture = Fixture(backgroundScope)
         fixture.runtime.initialize()
 
         assertTrue(fixture.runtime.execute(ActiveNavigationCommand.Start("route", 3)) is ActiveNavigationCommandResult.Accepted)
@@ -31,7 +31,7 @@ class DefaultActiveNavigationRuntimeTest {
     @Test
     fun `process restore pauses an active session and waits for a fresh process input`() = runTest {
         val stored = session()
-        val fixture = Fixture(this, stored)
+        val fixture = Fixture(backgroundScope, stored)
 
         fixture.runtime.initialize()
 
@@ -48,7 +48,7 @@ class DefaultActiveNavigationRuntimeTest {
 
     @Test
     fun `arrival policy advances once and stale revisions cannot move the active leg`() = runTest {
-        val fixture = Fixture(this)
+        val fixture = Fixture(backgroundScope)
         fixture.runtime.initialize()
         fixture.runtime.execute(
             ActiveNavigationCommand.Start("route", 3, arrivalRadiusMeters = 200.0, advancePolicy = NavigationAdvancePolicy.ARRIVAL_RADIUS),
@@ -70,7 +70,7 @@ class DefaultActiveNavigationRuntimeTest {
 
     @Test
     fun `missing or changed restored route is rejected without inventing a session`() = runTest {
-        val fixture = Fixture(this, session().copy(routeRevision = 2))
+        val fixture = Fixture(backgroundScope, session().copy(routeRevision = 2))
         fixture.runtime.initialize()
         assertNull(fixture.runtime.state.value.session)
         assertEquals(ActiveNavigationIssue.ROUTE_REVISION_CHANGED, fixture.runtime.state.value.issue)
@@ -79,7 +79,7 @@ class DefaultActiveNavigationRuntimeTest {
 
     @Test
     fun `direct to uses current fix without creating a durable library route`() = runTest {
-        val fixture = Fixture(this)
+        val fixture = Fixture(backgroundScope)
         fixture.input.value = usableFix(1)
         fixture.runtime.initialize()
 
@@ -99,7 +99,7 @@ class DefaultActiveNavigationRuntimeTest {
 
     @Test
     fun `direct to rejects unavailable position and embedded session restores without route library`() = runTest {
-        val first = Fixture(this)
+        val first = Fixture(backgroundScope)
         first.runtime.initialize()
         assertEquals(
             ActiveNavigationIssue.INPUT_UNAVAILABLE,
@@ -113,7 +113,7 @@ class DefaultActiveNavigationRuntimeTest {
         first.runtime.execute(
             ActiveNavigationCommand.DirectTo(NavigationPosition(-36.80, 174.86), "target", "Target"),
         )
-        val restored = Fixture(this, requireNotNull(first.store.value))
+        val restored = Fixture(backgroundScope, requireNotNull(first.store.value))
         restored.runtime.initialize()
         assertEquals(NavigationSessionState.PAUSED, restored.runtime.state.value.sessionState)
         assertEquals("target", restored.runtime.state.value.route?.points?.last()?.id)
