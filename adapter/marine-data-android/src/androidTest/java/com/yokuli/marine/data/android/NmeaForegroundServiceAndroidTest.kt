@@ -6,6 +6,7 @@ import android.content.pm.ServiceInfo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yokuli.marine.data.android.service.NmeaInputForegroundService
+import com.yokuli.marine.data.android.service.PhoneLocationForegroundService
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -36,7 +37,31 @@ class NmeaForegroundServiceAndroidTest {
         assertTrue("android.permission.FOREGROUND_SERVICE" in requestedPermissions)
         assertTrue("android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" in requestedPermissions)
         assertTrue("android.permission.CHANGE_NETWORK_STATE" in requestedPermissions)
-        assertFalse("android.permission.ACCESS_FINE_LOCATION" in requestedPermissions)
-        assertFalse("android.permission.ACCESS_COARSE_LOCATION" in requestedPermissions)
+        assertEquals(0, service.foregroundServiceType and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+    }
+
+    @Test
+    fun phoneLocationServiceIsPrivateAndUsesOnlyForegroundLocationPermissions() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        @Suppress("DEPRECATION")
+        val service = context.packageManager.getServiceInfo(
+            ComponentName(context, PhoneLocationForegroundService::class.java),
+            0,
+        )
+        @Suppress("DEPRECATION")
+        val requestedPermissions = context.packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.GET_PERMISSIONS,
+        ).requestedPermissions.orEmpty().toSet()
+
+        assertFalse(service.exported)
+        assertEquals(
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+            service.foregroundServiceType and ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+        )
+        assertTrue("android.permission.ACCESS_FINE_LOCATION" in requestedPermissions)
+        assertTrue("android.permission.ACCESS_COARSE_LOCATION" in requestedPermissions)
+        assertTrue("android.permission.FOREGROUND_SERVICE_LOCATION" in requestedPermissions)
+        assertFalse("android.permission.ACCESS_BACKGROUND_LOCATION" in requestedPermissions)
     }
 }
