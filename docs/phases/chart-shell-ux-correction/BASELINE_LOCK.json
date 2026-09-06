@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "phase": "chart-shell-ux-correction",
+  "baseCommit": "e594189e5ef3eee55825ce024d4cbf5b9426649a",
+  "branch": "codex/shell-map-contract",
+  "status": "IMPLEMENTED_CI_PENDING",
+  "implementationCommits": [
+    "6eb66b3910411dd6018e04b64a199e331e21e9ae"
+  ],
+  "chartRootActions": ["mark", "route", "measure", "map_view"],
+  "mapViewModes": ["marine", "standard", "satellite"],
+  "measurementMaximumPoints": 2,
+  "routeDraftPolicy": "FULL_UI_OR_EXPLICIT_SAVE_DISCARD_CANCEL",
+  "closeTaskDeletesDurableData": false,
+  "statusStripInteractive": false,
+  "portraitOnly": true,
+  "androidHomeRegistered": false,
+  "authoritativeEvidence": "GITHUB_ACTIONS_PENDING",
+  "supersedesConflictingHistoricalChartRootClauses": true
+}

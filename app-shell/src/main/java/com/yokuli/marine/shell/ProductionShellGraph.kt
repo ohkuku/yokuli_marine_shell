@@ -317,6 +317,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 onAction = runtime.onMapAction,
                 currentState = runtime.currentMapState,
                 shellSafeInsets = runtime.mapShellSafeInsets,
+                connectedBaseConfigured = BuildConfig.GOOGLE_MAPS_CONFIGURED,
                 chartDisplayState = runtime.chartDisplayState,
                 onChartDisplayAction = runtime.onChartDisplayAction,
                 recoveryExportState = runtime.recoveryExportState,

@@ -40,6 +40,7 @@
     <string name="map_view_satellite">satellite</string>
     <string name="map_standard_view_active">STANDARD MAP VIEW</string>
     <string name="map_satellite_view_active">SATELLITE MAP VIEW</string>
+    <string name="map_connected_view_not_configured">CONNECTED BASE MAP NOT CONFIGURED · SWITCH TO MARINE</string>
     <string name="map_target_mark">mark</string>
     <string name="map_target_go_to">go to</string>
     <string name="map_target_default_name">map target</string>

@@ -40,6 +40,7 @@
     <string name="map_view_satellite">卫星</string>
     <string name="map_standard_view_active">标准地图视图</string>
     <string name="map_satellite_view_active">卫星地图视图</string>
+    <string name="map_connected_view_not_configured">在线底图未配置 · 可切换海图</string>
     <string name="map_target_mark">标记</string>
     <string name="map_target_go_to">前往</string>
     <string name="map_target_default_name">地图目标</string>

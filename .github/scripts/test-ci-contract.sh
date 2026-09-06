@@ -148,6 +148,9 @@ grep -Fq 'id: osr_w16_build_evidence' "$android" || fail 'W16 must collect execu
 grep -Fq 'id: osr_w16_api34_evidence' "$android" || fail 'W16 must collect executed API 34 migration and process evidence'
 grep -Fq 'collect_w16_machine_evidence.py' "$android" || fail 'W16 machine evidence collector must run in CI'
 grep -Fq 'OSR_W16_BUILD_EVIDENCE_RESULT' "$android" || fail 'W16 machine evidence must participate in final enforcement'
+grep -Fq 'id: chart_shell_ux_correction' "$android" || fail 'Chart/Shell UX correction needs an independent named CI gate'
+grep -Fq 'python3 .github/scripts/test_chart_shell_ux_correction.py' "$android" || fail 'Chart/Shell UX correction contract must run in CI'
+grep -Fq 'CHART_SHELL_UX_CORRECTION_RESULT' "$android" || fail 'Chart/Shell UX correction must participate in final enforcement'
 grep -Fq -- "--event-name '\${{ github.event_name }}'" "$android" || fail 'final ledger must distinguish push from manual dispatch'
 grep -Fq 'FINAL_ACCEPTANCE_LEDGER.json' "$repo_root/.github/scripts/compose_codex_ci_report.py" || fail 'unified report must include the final acceptance ledger'
 grep -Fq 'MIGRATION_REPORT.md' "$repo_root/.github/scripts/compose_codex_ci_report.py" || fail 'unified report must include the migration report'
@@ -192,7 +195,7 @@ fi
 for helper in run_ci_capture.sh build_codex_job_report.py compose_codex_ci_report.py test_codex_ci_report.py; do
   [[ -f "$repo_root/.github/scripts/$helper" ]] || fail "Codex report helper missing: $helper"
 done
-for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract chart-library-cl11-contract chart-library-cl12-contract osr-w01-contract osr-w02-contract osr-w03-contract osr-w04-contract osr-w08-contract osr-w12-contract osr-w13-contract osr-w14-contract osr-w15-contract osr-w16-contract w16-build-evidence google-maps-evidence unit-tests lint assemble; do
+for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract chart-library-cl11-contract chart-library-cl12-contract osr-w01-contract osr-w02-contract osr-w03-contract osr-w04-contract osr-w08-contract osr-w12-contract osr-w13-contract osr-w14-contract osr-w15-contract osr-w16-contract chart-shell-ux-correction w16-build-evidence google-maps-evidence unit-tests lint assemble; do
   grep -Fq "run_ci_capture.sh $captured_step --" "$android" || fail "important build step is not captured: $captured_step"
 done
 grep -Fq 'if: always()' "$android" || fail 'Codex reports must be generated even after failures'

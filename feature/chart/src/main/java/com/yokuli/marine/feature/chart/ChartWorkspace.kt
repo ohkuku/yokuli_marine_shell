@@ -137,6 +137,7 @@ fun ChartWorkspace(
     onAction: (MapAction) -> Unit,
     currentState: () -> MapState = { state },
     shellSafeInsets: MapViewportInsets = MapViewportInsets(),
+    connectedBaseConfigured: Boolean = false,
     chartDisplayState: ChartDisplayUiState = ChartDisplayUiState(),
     onChartDisplayAction: (ChartDisplayUiAction) -> Unit = {},
     recoveryExportState: MapRecoveryExportUiState,
@@ -223,6 +224,7 @@ fun ChartWorkspace(
                 queryPort,
                 viewportSize,
                 rootInsets,
+                connectedBaseConfigured,
                 recoveryExportState,
                 activeNavigationStrip,
                 onDirectTo,
@@ -259,6 +261,7 @@ private fun MapRootChrome(
     queryPort: MapRendererQueryPort?,
     viewportSize: IntSize,
     viewportInsets: MapViewportInsets,
+    connectedBaseConfigured: Boolean,
     recoveryExportState: MapRecoveryExportUiState,
     activeNavigationStrip: (@Composable () -> Unit)?,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
@@ -268,7 +271,7 @@ private fun MapRootChrome(
     onExportRecovery: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        MapTruthStrip(state, onAction, Modifier.align(Alignment.TopStart))
+        MapTruthStrip(state, connectedBaseConfigured, onAction, Modifier.align(Alignment.TopStart))
         MapEdgeControls(state, viewportInsets, onAction)
         MapPersistenceTruth(
             state,
@@ -308,7 +311,14 @@ private fun MapRootChrome(
             activeNavigationStrip?.let { content ->
                 Box(Modifier.fillMaxWidth().testTag("map-active-navigation-strip")) { content() }
             }
-            MapRootSummary(state, onDirectTo, onUnsavedRouteDecision, onSaveAndStartRoute, onAction)
+            MapRootSummary(
+                state,
+                connectedBaseConfigured,
+                onDirectTo,
+                onUnsavedRouteDecision,
+                onSaveAndStartRoute,
+                onAction,
+            )
             if (state.crosshairEnabled) CrosshairAction(state, queryPort, viewportSize, viewportInsets, onAction)
             MapRootCommandBar(state, viewportInsets, onAction)
         }
@@ -316,10 +326,16 @@ private fun MapRootChrome(
 }
 
 @Composable
-private fun MapTruthStrip(state: MapState, onAction: (MapAction) -> Unit, modifier: Modifier = Modifier) {
+private fun MapTruthStrip(
+    state: MapState,
+    connectedBaseConfigured: Boolean,
+    onAction: (MapAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = LocalWpTheme.current
     val status = when {
         state.renderer.readiness == MapRendererReadiness.ERROR -> R.string.map_renderer_error
+        state.mapViewMode != MapViewMode.MARINE && !connectedBaseConfigured -> R.string.map_connected_view_not_configured
         state.mapViewMode == MapViewMode.STANDARD -> R.string.map_standard_view_active
         state.mapViewMode == MapViewMode.SATELLITE -> R.string.map_satellite_view_active
         state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_MISSING -> R.string.map_package_missing
@@ -508,6 +524,7 @@ private fun MapPersistenceTruth(
 @Composable
 private fun MapRootSummary(
     state: MapState,
+    connectedBaseConfigured: Boolean,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     onSaveAndStartRoute: () -> Unit,
@@ -626,7 +643,7 @@ private fun MapRootSummary(
                 }
             }
         }
-        MapTransient.MapViewPicker -> MapViewPicker(state, onAction)
+        MapTransient.MapViewPicker -> MapViewPicker(state, connectedBaseConfigured, onAction)
         null -> state.selection?.let { selection ->
             Row(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
@@ -650,7 +667,7 @@ private fun MapRootSummary(
 enum class UnsavedRouteDecision { SAVE, DISCARD, CANCEL }
 
 @Composable
-private fun MapViewPicker(state: MapState, onAction: (MapAction) -> Unit) {
+private fun MapViewPicker(state: MapState, connectedBaseConfigured: Boolean, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
     Column(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .97f))
@@ -670,6 +687,7 @@ private fun MapViewPicker(state: MapState, onAction: (MapAction) -> Unit) {
                     "map-view-${mode.name.lowercase(Locale.ROOT)}",
                     state.mapViewMode == mode,
                     Modifier.weight(1f),
+                    enabled = mode == MapViewMode.MARINE || connectedBaseConfigured,
                 ) { onAction(MapAction.SetMapViewMode(mode)) }
             }
         }
