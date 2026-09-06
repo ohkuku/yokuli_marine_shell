@@ -15,7 +15,7 @@
 
 ## 核心自动测试组
 
-- P1：`MarineDataIdentifiersTest`、`NmeaStreamFramerTest`、`NmeaDatagramFramerTest`、`NmeaChecksumTest`、`Nmea0183ParserTest`、`SentenceInventoryTest`、`ObservationCatalogReducerTest`、`FreshnessPolicyTest`、`SourceSelectionReducerTest`。
+- P1：`MarineDataIdentifiersTest`、`NmeaStreamFramerTest`、`NmeaDatagramFramerTest`、`NmeaChecksumTest`、`Nmea0183ParserTest`、`SentenceInventoryTest`、`ObservationCatalogReducerTest`、`FreshnessPolicyTest`。
 - P2：`ConnectionConfigReducerTest`、`ConnectionPersistenceTest`、`TcpNmeaClientIntegrationTest`、`UdpNmeaListenerIntegrationTest`、`NmeaRuntimeLifecycleTest`、`NmeaInputProjectionTest`、`NmeaInputWorkspaceStoryTest`。
 - P3：`SourceSelectionTransactionTest`、`ResolvedDataPortTest`、`PhoneLocationPermissionReducerTest`、`AndroidLocationAdapterAndroidTest`。
 - P4：`DataSourcesWorkspaceStoryTest`，从空态、phone-only、unknown、wind/depth-only 到多源选择失败／成功和深链。

@@ -14,7 +14,7 @@ Yokuli OS 已在 Windows Phone 8 Classic 风格应用内 Shell 和离线优先�
 branch: codex/shell-map-contract
 phase: NMEA_SOURCES
 work packages: P0–P7
-status: P0 baseline recorded; implementation gates pending
+status: P0 passed; P1 pure-data candidate ready for full gate
 ```
 
 Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化与应用内恢复。生产目录仍严格只有 Chart + Settings；Shell Lab 只在 debug/benchmark classpath。
@@ -30,6 +30,8 @@ Yokuli OS 默认沉浸式全屏且只允许竖屏；方屏仍属于适配范围�
 - [当前地图收尾规范](docs/phases/chart-wp8-refinement/CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md)
 - [NMEA_SOURCES 产品合同](docs/phases/nmea-sources/REQUIREMENTS.md)
 - [NMEA_SOURCES P0 基线](docs/implementation/NMEA_SOURCES_P0_BASELINE.md)
+- [NMEA_SOURCES P1 字段映射](docs/implementation/NMEA_SOURCES_P1_FIELD_MAPPING.md)
+- [NMEA_SOURCES P1 候选报告](docs/phases/nmea-sources/P1_REPORT.md)
 - [NMEA_SOURCES TDD 矩阵](docs/implementation/NMEA_SOURCES_TDD_MATRIX.md)
 - [当前任务索引](docs/phases/chart-wp8-refinement/TASK_PLAN.json)
 - [当前执行状态](docs/phases/chart-wp8-refinement/EXECUTION_STATE.json)
@@ -60,6 +62,8 @@ python3 .github/scripts/test_launcher_stage1_contract.py
 python3 .github/scripts/test_launcher_stage2_contract.py
 python3 .github/scripts/test_launcher_stage25_contract.py
 python3 .github/scripts/test_launcher_stage11_contract.py
+python3 .github/scripts/test_nmea_sources_p0_contract.py
+python3 .github/scripts/test_nmea_sources_p1_contract.py
 python3 .github/scripts/validate_wp8_reference.py --require-human-review
 python3 .github/scripts/validate_stage11_fidelity.py
 python3 -m unittest discover .github/scripts 'test_*.py'

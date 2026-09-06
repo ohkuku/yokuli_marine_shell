@@ -16,6 +16,19 @@ data class SessionGeneration(val value: Long) {
     fun next(): SessionGeneration = SessionGeneration(Math.addExact(value, 1L))
 }
 
+/** Sequence allocated once per accepted frame inside one source session. */
+data class ObservationGroupId(val frameSequence: Long) {
+    init {
+        require(frameSequence >= 0L) { "Observation frame sequence must be non-negative" }
+    }
+}
+
+/** Whether an observation was protected by an actual checksum on its source frame. */
+enum class ChecksumTrust {
+    VERIFIED,
+    UNVERIFIED_ALLOWED,
+}
+
 /** Optional UDP sender identity. It is observed transport truth, not a physical-device claim. */
 data class SenderIdentity(
     val hostAddress: String,
@@ -27,11 +40,47 @@ data class SenderIdentity(
     }
 }
 
-/** Stable logical source: the configured channel plus an observed UDP sender when applicable. */
-data class SourceIdentity(
-    val connectionId: ConnectionId,
-    val sender: SenderIdentity? = null,
+/** Normalized UDP origin key. It is deliberately not the observed transport provenance object. */
+@ConsistentCopyVisibility
+data class UdpOriginIdentity internal constructor(
+    val hostAddress: String,
+    val port: Int?,
 )
+
+/**
+ * A UDP listener must explicitly choose whether a sender's ephemeral port is part of candidate
+ * identity. The observed [SenderIdentity] itself remains provenance on [ObservationOrigin].
+ */
+enum class UdpOriginIdentityPolicy {
+    HOST_ADDRESS,
+    HOST_AND_PORT;
+
+    fun sourceIdentity(connectionId: ConnectionId, sender: SenderIdentity): SourceIdentity =
+        SourceIdentity.forUdp(connectionId, sender, this)
+}
+
+/** Stable logical source derived from configured identity and an explicit UDP identity policy. */
+@ConsistentCopyVisibility
+data class SourceIdentity internal constructor(
+    val connectionId: ConnectionId,
+    val udpOrigin: UdpOriginIdentity?,
+) {
+    constructor(connectionId: ConnectionId) : this(connectionId, null)
+
+    companion object {
+        fun forUdp(
+            connectionId: ConnectionId,
+            sender: SenderIdentity,
+            policy: UdpOriginIdentityPolicy,
+        ): SourceIdentity = SourceIdentity(
+            connectionId = connectionId,
+            udpOrigin = UdpOriginIdentity(
+                hostAddress = sender.hostAddress,
+                port = sender.port.takeIf { policy == UdpOriginIdentityPolicy.HOST_AND_PORT },
+            ),
+        )
+    }
+}
 
 /** Full provenance of one parsed observation. Talker is metadata, never the source identity. */
 data class ObservationOrigin(
@@ -39,6 +88,7 @@ data class ObservationOrigin(
     val sessionGeneration: SessionGeneration,
     val talker: String,
     val formatter: String,
+    val sender: SenderIdentity? = null,
 ) {
     init {
         require(talker.length == 2 && talker.all(Char::isLetterOrDigit)) {
@@ -46,6 +96,26 @@ data class ObservationOrigin(
         }
         require(formatter.length == 3 && formatter.all(Char::isLetterOrDigit)) {
             "NMEA formatter must contain three identifier characters"
+        }
+        require(talker.all { it in '0'..'9' || it in 'A'..'Z' }) {
+            "NMEA talker must be normalized uppercase ASCII"
+        }
+        require(formatter.all { it in '0'..'9' || it in 'A'..'Z' }) {
+            "NMEA formatter must be normalized uppercase ASCII"
+        }
+        source.udpOrigin?.let { identity ->
+            val observed = requireNotNull(sender) {
+                "A UDP source identity requires observed sender provenance"
+            }
+            require(observed.hostAddress == identity.hostAddress) {
+                "UDP source host and observed sender host must match"
+            }
+            require(identity.port == null || observed.port == identity.port) {
+                "UDP endpoint identity and observed sender port must match"
+            }
+        }
+        require(source.udpOrigin != null || sender == null) {
+            "Observed UDP sender provenance requires an explicitly derived UDP source identity"
         }
     }
 
@@ -58,6 +128,9 @@ enum class DepthReference { BELOW_TRANSDUCER, BELOW_SURFACE, BELOW_KEEL }
 
 enum class WindReference { APPARENT, TRUE_RELATIVE, TRUE_NORTH, MAGNETIC_NORTH }
 
+/** Wind speed has no compass-frame direction; it is either apparent or true. */
+enum class WindSpeedReference { APPARENT, TRUE }
+
 sealed interface DataKey {
     data object Position : DataKey
     data object SpeedOverGround : DataKey
@@ -65,7 +138,7 @@ sealed interface DataKey {
     data class Heading(val reference: HeadingReference) : DataKey
     data class Depth(val reference: DepthReference) : DataKey
     data class WindAngle(val reference: WindReference) : DataKey
-    data class WindSpeed(val reference: WindReference) : DataKey
+    data class WindSpeed(val reference: WindSpeedReference) : DataKey
     data object MagneticVariation : DataKey
     data object SourceTime : DataKey
     data object FixQuality : DataKey
@@ -118,6 +191,8 @@ data class MarineObservation(
     val validity: ObservationValidity,
     val origin: ObservationOrigin,
     val measuredAtMillis: Long,
+    val groupId: ObservationGroupId,
+    val checksumTrust: ChecksumTrust,
     val sourceTimeEpochMillis: Long? = null,
 ) {
     init {

@@ -1,0 +1,45 @@
+{
+  "phase": "NMEA_SOURCES",
+  "stage": "P1",
+  "status": "CANDIDATE_PENDING_FULL_GATE",
+  "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
+  "baseCommit": "32602b7",
+  "redContractCommit": "068da34",
+  "implementationCommit": "PENDING_CANDIDATE_COMMIT",
+  "module": "core:marine-data",
+  "platformDependencies": [],
+  "contracts": {
+    "activeSessionLimit": 32,
+    "frameByteLimit": 1024,
+    "sentenceKeyLimit": 256,
+    "rawPreviewEntryLimit": 200,
+    "rawPreviewByteLimit": 262144,
+    "liveBeforeMillis": 3000,
+    "staleAtMillis": 10000,
+    "strictChecksumDefault": true,
+    "supportedFormatters": ["RMC", "GGA", "GLL", "VTG", "ZDA", "HDG", "HDM", "HDT", "DPT", "DBT", "MWD", "MWV"]
+  },
+  "identity": {
+    "sessionScope": "ConnectionId",
+    "udpOriginPolicies": ["HOST_ADDRESS", "HOST_AND_PORT"],
+    "talkerIsPhysicalDeviceIdentity": false,
+    "senderEndpointIsProvenance": true
+  },
+  "scopeExclusions": [
+    "socket runtime",
+    "Android lifecycle",
+    "configuration persistence",
+    "global source selection",
+    "phone location",
+    "feature UI",
+    "production fixtures"
+  ],
+  "evidence": {
+    "initialStaticRed": "4 FAIL / 1 ERROR / 1 PASS",
+    "independentReviewBeforeCorrection": "FAIL; 10 blocking findings",
+    "correctedJvm": "66/66 PASS",
+    "p1Contract": "7/7 PASS",
+    "ciTopology": "PASS",
+    "fullRepositoryGate": "PENDING_CANDIDATE_COMMIT"
+  }
+}

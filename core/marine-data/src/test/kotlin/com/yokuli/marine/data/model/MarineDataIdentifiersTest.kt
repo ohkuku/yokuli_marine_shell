@@ -30,12 +30,82 @@ class MarineDataIdentifiersTest {
     }
 
     @Test
-    fun udpSendersRemainDistinctWithinOneListener() {
+    fun udpHostIdentitySurvivesEphemeralPortChange() {
         val listener = ConnectionId("udp-10110")
-        val a = SourceIdentity(listener, SenderIdentity("192.0.2.10", 50_000))
-        val b = SourceIdentity(listener, SenderIdentity("192.0.2.11", 50_000))
+        val first = SenderIdentity("192.0.2.10", 50_000)
+        val sameHostNewPort = SenderIdentity("192.0.2.10", 50_001)
+        val otherHost = SenderIdentity("192.0.2.11", 50_000)
 
-        assertNotEquals(a, b)
+        val hostOnlyA = UdpOriginIdentityPolicy.HOST_ADDRESS.sourceIdentity(listener, first)
+        val hostOnlyB = UdpOriginIdentityPolicy.HOST_ADDRESS.sourceIdentity(listener, sameHostNewPort)
+        val hostOnlyOther = UdpOriginIdentityPolicy.HOST_ADDRESS.sourceIdentity(listener, otherHost)
+        val endpointA = UdpOriginIdentityPolicy.HOST_AND_PORT.sourceIdentity(listener, first)
+        val endpointB = UdpOriginIdentityPolicy.HOST_AND_PORT.sourceIdentity(listener, sameHostNewPort)
+
+        assertEquals(hostOnlyA, hostOnlyB)
+        assertEquals(
+            CandidateId(DataKey.Position, hostOnlyA),
+            CandidateId(DataKey.Position, hostOnlyB),
+        )
+        assertNotEquals(hostOnlyA, hostOnlyOther)
+        assertNotEquals(endpointA, endpointB)
+        assertNotEquals(hostOnlyA, endpointA)
+
+        val provenance = ObservationOrigin(
+            source = hostOnlyA,
+            sessionGeneration = SessionGeneration(2),
+            talker = "GP",
+            formatter = "RMC",
+            sender = sameHostNewPort,
+        )
+        assertEquals(sameHostNewPort, provenance.sender)
+    }
+
+    @Test
+    fun udpOriginRejectsMismatchedOrMissingProvenance() {
+        val connection = ConnectionId("udp-10110")
+        val expected = SenderIdentity("192.0.2.10", 50_000)
+        val hostIdentity = SourceIdentity.forUdp(
+            connection,
+            expected,
+            UdpOriginIdentityPolicy.HOST_ADDRESS,
+        )
+        val endpointIdentity = SourceIdentity.forUdp(
+            connection,
+            expected,
+            UdpOriginIdentityPolicy.HOST_AND_PORT,
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ObservationOrigin(hostIdentity, SessionGeneration(1), "GP", "RMC")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ObservationOrigin(
+                hostIdentity,
+                SessionGeneration(1),
+                "GP",
+                "RMC",
+                SenderIdentity("192.0.2.11", 50_000),
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ObservationOrigin(
+                endpointIdentity,
+                SessionGeneration(1),
+                "GP",
+                "RMC",
+                SenderIdentity("192.0.2.10", 50_001),
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ObservationOrigin(
+                SourceIdentity(connection),
+                SessionGeneration(1),
+                "GP",
+                "RMC",
+                expected,
+            )
+        }
     }
 
     @Test
@@ -70,6 +140,8 @@ class MarineDataIdentifiersTest {
                 ObservationValidity.VALID,
                 origin,
                 10,
+                ObservationGroupId(1),
+                ChecksumTrust.VERIFIED,
             )
         }
         assertThrows(IllegalArgumentException::class.java) {
@@ -79,6 +151,8 @@ class MarineDataIdentifiersTest {
                 ObservationValidity.EXPLICIT_INVALID,
                 origin,
                 10,
+                ObservationGroupId(1),
+                ChecksumTrust.VERIFIED,
             )
         }
     }
@@ -87,6 +161,7 @@ class MarineDataIdentifiersTest {
     fun identifiersRejectAmbiguousOrImpossibleValues() {
         assertThrows(IllegalArgumentException::class.java) { ConnectionId(" ") }
         assertThrows(IllegalArgumentException::class.java) { SessionGeneration(-1) }
+        assertThrows(IllegalArgumentException::class.java) { ObservationGroupId(-1) }
         assertThrows(IllegalArgumentException::class.java) {
             SenderIdentity("192.0.2.1", 0)
         }
@@ -96,5 +171,17 @@ class MarineDataIdentifiersTest {
         assertThrows(IllegalArgumentException::class.java) {
             MarineValue.Decimal(Double.NaN, MarineUnit.KNOTS)
         }
+        assertThrows(IllegalArgumentException::class.java) {
+            ObservationOrigin(
+                SourceIdentity(ConnectionId("gateway")),
+                SessionGeneration(1),
+                "gp",
+                "RMC",
+            )
+        }
+        assertNotEquals(
+            DataKey.WindSpeed(WindSpeedReference.TRUE),
+            DataKey.WindSpeed(WindSpeedReference.APPARENT),
+        )
     }
 }

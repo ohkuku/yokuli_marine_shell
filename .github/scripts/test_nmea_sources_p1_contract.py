@@ -29,8 +29,13 @@ class NmeaSourcesP1ContractTest(unittest.TestCase):
         for symbol in (
             "ConnectionId",
             "SessionGeneration",
+            "ActiveSessionRegistry",
+            "MAX_ACTIVE_CONNECTIONS",
             "SourceIdentity",
+            "UdpOriginIdentityPolicy",
             "ObservationOrigin",
+            "ObservationGroupId",
+            "ChecksumTrust",
             "DataKey",
             "MarineObservation",
             "ObservationValidity",
@@ -70,7 +75,7 @@ class NmeaSourcesP1ContractTest(unittest.TestCase):
         ):
             self.assertIn(f'"{sentence}"', source)
 
-    def test_catalog_freshness_selection_and_bounds_exist(self):
+    def test_catalog_freshness_and_bounds_exist(self):
         source = self.module_source()
         for symbol in (
             "SentenceCatalog",
@@ -80,15 +85,35 @@ class NmeaSourcesP1ContractTest(unittest.TestCase):
             "Freshness.HELD",
             "Freshness.STALE",
             "Freshness.INVALID",
-            "SourceSelectionReducer",
-            "SelectionPersistence",
-            "ResolvedDataSnapshot",
-            "needsReview",
             "MAX_SENTENCE_KEYS",
             "MAX_RAW_ENTRIES",
             "MAX_RAW_BYTES",
         ):
             self.assertIn(symbol, source)
+
+    def test_field_mapping_freezes_supported_semantics_and_phase_boundary(self):
+        mapping = self.text("docs/implementation/NMEA_SOURCES_P1_FIELD_MAPPING.md")
+        for required in (
+            "RMC",
+            "GGA",
+            "GLL",
+            "VTG",
+            "ZDA",
+            "HDG",
+            "HDM",
+            "HDT",
+            "DPT",
+            "DBT",
+            "MWD",
+            "MWV",
+            "UNVERIFIED_ALLOWED",
+            "ObservationGroupId",
+            "HOST_ADDRESS",
+            "HOST_AND_PORT",
+            "P2",
+            "P3",
+        ):
+            self.assertIn(required, mapping)
 
     def test_p1_has_behavioral_tests_for_every_boundary(self):
         tests = "\n".join(
@@ -105,10 +130,20 @@ class NmeaSourcesP1ContractTest(unittest.TestCase):
             "freshnessAgesWithoutNewPackets",
             "sameOriginRmcAndGgaAreNotSeparateDevices",
             "deterministicSentencePriorityBeatsLastWriter",
-            "firstMultipleCandidatesRequireSelection",
-            "existingSelectionNeverSilentlyFailsOver",
-            "persistenceFailureKeepsPreviousResolvedSnapshot",
             "catalogAndRawPreviewRemainBounded",
+            "checksumTrustSurvivesIntoEveryObservation",
+            "udpHostIdentitySurvivesEphemeralPortChange",
+            "oneSentenceSharesOneObservationGroupButSeparateFramesDoNot",
+            "invalidRmcGllAndVtgModesPublishNoValues",
+            "ggaQualityZeroInvalidatesFixDependentValuesAndUnknownQualityIsRejected",
+            "dptPositiveNegativeAndZeroOffsetsKeepTruthfulReferences",
+            "sentenceSemanticInstanceSeparatesMwvRelativeAndTrue",
+            "quietNewSessionRejectsLateOldCallbacks",
+            "connectionGenerationAppliesAcrossUdpSendersAndRawPreview",
+            "activeSessionRegistryRemainsBoundedUnderRejectedOrigins",
+            "separateSentenceKeysPreserveTalkerAndMwvReference",
+            "newerExplicitInvalidBeatsOlderValidComplementaryEvidence",
+            "liveComplementaryEvidenceBeatsHeldPreferredEvidence",
         ):
             self.assertIn(scenario, tests)
 

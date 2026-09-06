@@ -29,13 +29,19 @@ P0 begins from the real clean Shell SHA and the owner-selected read-only `codex/
 
 ### Red
 
-起点：`32602b7…`。先加入 P1 静态合同，要求纯 JVM 模块、typed identity/provenance、严格且有界的 NMEA framing/parser、Sentence/Observation catalog、单调老化、统一选源和 13 项具名行为测试。首次运行结果为 `4 FAIL / 1 ERROR / 1 PASS`：模块、实现和测试尚不存在，失败与 P1 缺口精确对应。
+起点：`32602b7…`。先加入 P1 静态合同，要求纯 JVM 模块、typed identity/provenance、严格且有界的 NMEA framing/parser、Sentence/Observation catalog、单调老化和本阶段具名行为测试。首次运行结果为 `4 FAIL / 1 ERROR / 1 PASS`：模块、实现和测试尚不存在，失败与 P1 缺口精确对应。自查随即移除误放进 P1 的 selection reducer／transaction 断言；它们严格留给 P3，不用提前实现冒充后续阶段完成。
 
 随后只建立 `core:marine-data` scaffold、公共 `ConnectionId`／`SessionGeneration`／`SourceIdentity`／`ObservationOrigin`／`DataKey`／`MarineObservation` 与 `MonotonicClock`，并用 6 项 identifier/semantic reference tests 固定 talker 不是设备、UDP sender 分离和数据参考系不可合并。协议、catalog、freshness 和 selection 的 Red/Green 继续在独立文件中完成；本提交不包含 Socket、Android 或 UI。
 
+### Review-driven correction
+
+第一轮 Green 达到 45 项 JVM 测试，但独立只读审查仍判定 `FAIL`。审查发现 10 类会破坏后续安全语义的问题：session 仅由首包推进、generation map 可绕过目录上限、跨 formatter invalid 被旧 valid 遮蔽、sentence key 丢失 talker/MWV R-T、checksum trust 丢失、UDP 临时端口进入持久身份、RMC/GLL/GGA/DPT 有效性边界错误、LIVE/HELD 仲裁错误，以及没有 frame group identity。
+
+纠错先扩展静态合同为 7 项并加入具名 JVM 场景；当 `ActiveSessionRegistry`、typed trust/group 和新 identity 尚不存在时，静态合同保持 Red，catalog tests 在 API 迁移期间也按预期编译失败。Green 重写为显式且有界的 connection-session admission、稳定 UDP origin policy、细粒度 sentence inventory、更新 invalid 屏障、freshness-first 仲裁和逐字段 parser 证据。第二轮自查又补上 end 后同 generation 不得复活，以及同一 monotonic millis 内用 group sequence 决定 invalid/recovery 顺序。当前 targeted 结果：`66/66 JVM PASS`、P1 `7/7 PASS`、CI topology 与 `git diff --check` PASS；完整仓库 Gate 待 candidate commit 后执行。
+
 ## English translation
 
-P1 starts with a static contract that fails for the missing pure module, protocol, catalog, freshness, selection, and named behavioral tests. The first scaffold adds only platform-neutral identifiers, provenance, semantic data keys, observations, an injected monotonic clock, and their tests. Transport, Android and UI remain outside this stage.
+P1 starts with a meaningful failing static contract and a platform-neutral scaffold. A first green implementation was rejected by independent review; ten identity, session, bounds, trust, invalidity, reference and atomic-frame gaps were converted into tests before correction. The current targeted candidate passes 66 JVM tests and all seven P1 static contracts. Transport, Android, selection transactions and UI remain outside this phase.
 
 ## Marine Shell Final Product-Model Correction
 
