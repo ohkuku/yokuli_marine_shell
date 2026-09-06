@@ -158,6 +158,18 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, services)
 
+    def test_delete_confirmation_explains_selected_source_impact_before_commit(self):
+        chinese = self.read("feature/nmea-input/src/main/res/values/strings.xml")
+        english = self.read("feature/nmea-input/src/main/res/values-en/strings.xml")
+        source_behavior = self.read(
+            "core/marine-data/src/test/kotlin/com/yokuli/marine/data/source/SourceSelectionRuntimeTest.kt"
+        )
+        self.assertIn("如果这条连接正被采用", chinese)
+        self.assertIn("不会自动切换到其他来源", chinese)
+        self.assertIn("If this connection is selected", english)
+        self.assertIn("will not switch to another source automatically", english)
+        self.assertIn("renamingADescriptorDoesNotLosePreferenceButDeletingSourceIsTruthful", source_behavior)
+
     def test_final_report_and_lock_are_hash_bound_and_ledger_every_required_story(self):
         report = self.read("docs/implementation/NMEA_SOURCES_FINAL_REPORT.md")
         stage_report = self.read("docs/phases/nmea-sources/P7_REPORT.md")
