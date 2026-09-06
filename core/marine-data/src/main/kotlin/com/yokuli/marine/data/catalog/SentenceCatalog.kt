@@ -1,6 +1,8 @@
 package com.yokuli.marine.data.catalog
 
 import com.yokuli.marine.data.model.ObservationOrigin
+import com.yokuli.marine.data.model.ObservationGroupId
+import com.yokuli.marine.data.model.SenderIdentity
 import com.yokuli.marine.data.model.SessionGeneration
 import com.yokuli.marine.data.model.SourceIdentity
 import com.yokuli.marine.data.nmea.NmeaSentence
@@ -40,6 +42,7 @@ data class SentenceCatalogKey(
 class SentenceCatalogEvent private constructor(
     val origin: ObservationOrigin,
     val receivedAtMillis: Long,
+    val groupId: ObservationGroupId,
     val parseStatus: SentenceParseStatus,
     val semanticInstance: String = DEFAULT_SENTENCE_SEMANTIC_INSTANCE,
 ) {
@@ -55,6 +58,7 @@ class SentenceCatalogEvent private constructor(
         ): SentenceCatalogEvent = SentenceCatalogEvent(
             origin = sentence.origin,
             receivedAtMillis = sentence.receivedAtMonotonicMillis,
+            groupId = sentence.groupId,
             parseStatus = parseStatus,
             semanticInstance = sentence.semanticDiscriminator?.stableKey
                 ?: if (sentence.formatter == "MWV") "MWV:UNKNOWN" else DEFAULT_SENTENCE_SEMANTIC_INSTANCE,
@@ -64,6 +68,7 @@ class SentenceCatalogEvent private constructor(
         internal fun fromOrigin(
             origin: ObservationOrigin,
             receivedAtMillis: Long,
+            groupId: ObservationGroupId = ObservationGroupId(receivedAtMillis),
             parseStatus: SentenceParseStatus,
             semanticInstance: String = DEFAULT_SENTENCE_SEMANTIC_INSTANCE,
         ): SentenceCatalogEvent {
@@ -73,6 +78,7 @@ class SentenceCatalogEvent private constructor(
             return SentenceCatalogEvent(
                 origin = origin,
                 receivedAtMillis = receivedAtMillis,
+                groupId = groupId,
                 parseStatus = parseStatus,
                 semanticInstance = semanticInstance,
             )
@@ -86,8 +92,10 @@ data class SentenceCatalogEntry(
     val receivedCount: Long,
     val firstSeenMillis: Long,
     val lastSeenMillis: Long,
+    val lastGroupId: ObservationGroupId,
     val lastSentenceId: String,
     val lastParseStatus: SentenceParseStatus,
+    val lastSender: SenderIdentity?,
     val isCurrentSession: Boolean,
 )
 
@@ -123,10 +131,20 @@ class SentenceCatalog(
         protectedKeys: Set<SentenceCatalogKey> = emptySet(),
     ): SentenceCatalogSnapshot {
         val generation = event.origin.sessionGeneration
-        if (!sessionRegistry.acceptInbound(event.origin.source.connectionId, generation)) {
-            staleSessionDropCount++
-            return snapshotLocked()
+        val accepted = sessionRegistry.commitInbound(event.origin.source.connectionId, generation) {
+            recordAuthorized(event, protectedKeys)
         }
+        if (!accepted) {
+            staleSessionDropCount++
+        }
+        return snapshotLocked()
+    }
+
+    private fun recordAuthorized(
+        event: SentenceCatalogEvent,
+        protectedKeys: Set<SentenceCatalogKey>,
+    ) {
+        val generation = event.origin.sessionGeneration
         val key = SentenceCatalogKey(
             source = event.origin.source,
             talker = event.origin.talker,
@@ -137,15 +155,21 @@ class SentenceCatalog(
         if (
             current != null &&
             current.sessionGeneration == generation &&
-            event.receivedAtMillis < current.lastSeenMillis
+            (
+                event.receivedAtMillis < current.lastSeenMillis ||
+                    (
+                        event.receivedAtMillis == current.lastSeenMillis &&
+                            event.groupId.frameSequence < current.lastGroupId.frameSequence
+                    )
+                )
         ) {
             outOfOrderDropCount++
-            return snapshotLocked()
+            return
         }
 
         if (current == null && entries.size >= maxEntries && !makeRoom(protectedKeys)) {
             capacityRejectionCount++
-            return snapshotLocked()
+            return
         }
 
         entries[key] = if (current == null || current.sessionGeneration != generation) {
@@ -155,20 +179,23 @@ class SentenceCatalog(
                 receivedCount = 1L,
                 firstSeenMillis = event.receivedAtMillis,
                 lastSeenMillis = event.receivedAtMillis,
+                lastGroupId = event.groupId,
                 lastSentenceId = event.origin.sentenceId,
                 lastParseStatus = event.parseStatus,
+                lastSender = event.origin.sender,
                 isCurrentSession = true,
             )
         } else {
             current.copy(
                 receivedCount = current.receivedCount + 1L,
                 lastSeenMillis = event.receivedAtMillis,
+                lastGroupId = event.groupId,
                 lastSentenceId = event.origin.sentenceId,
                 lastParseStatus = event.parseStatus,
+                lastSender = event.origin.sender,
                 isCurrentSession = true,
             )
         }
-        return snapshotLocked()
     }
 
     @Synchronized
@@ -210,6 +237,7 @@ class SentenceCatalog(
 data class RawPreviewEntry(
     val source: SourceIdentity,
     val sessionGeneration: SessionGeneration,
+    val sender: SenderIdentity? = null,
     val sentenceId: String?,
     val receivedAtMillis: Long,
     val raw: String,
@@ -218,6 +246,20 @@ data class RawPreviewEntry(
 ) {
     init {
         require(receivedAtMillis >= 0L)
+        source.udpOrigin?.let { identity ->
+            val observed = requireNotNull(sender) {
+                "A UDP source identity requires observed sender provenance"
+            }
+            require(observed.hostAddress == identity.hostAddress) {
+                "UDP source host and observed sender host must match"
+            }
+            require(identity.port == null || observed.port == identity.port) {
+                "UDP endpoint identity and observed sender port must match"
+            }
+        }
+        require(source.udpOrigin != null || sender == null) {
+            "Observed UDP sender provenance requires a UDP source identity"
+        }
     }
 
     val utf8Bytes: Int = raw.toByteArray(StandardCharsets.UTF_8).size
@@ -252,15 +294,21 @@ class RawPreviewBuffer(
 
     @Synchronized
     fun record(entry: RawPreviewEntry): RawPreviewSnapshot {
-        if (!sessionRegistry.acceptInbound(entry.source.connectionId, entry.sessionGeneration)) {
-            staleSessionDropCount++
-            return snapshotLocked()
+        val accepted = sessionRegistry.commitInbound(entry.source.connectionId, entry.sessionGeneration) {
+            recordAuthorized(entry)
         }
+        if (!accepted) {
+            staleSessionDropCount++
+        }
+        return snapshotLocked()
+    }
+
+    private fun recordAuthorized(entry: RawPreviewEntry) {
         if (entry.utf8Bytes > maxBytes) {
             oversizeRejectionCount++
             overflowEntryCount++
             overflowByteCount += entry.utf8Bytes.toLong()
-            return snapshotLocked()
+            return
         }
 
         while (
@@ -274,7 +322,6 @@ class RawPreviewBuffer(
         }
         entries.addLast(entry.copy(isCurrentSession = false))
         retainedBytes += entry.utf8Bytes
-        return snapshotLocked()
     }
 
     @Synchronized

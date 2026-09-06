@@ -235,7 +235,7 @@ class Nmea0183Parser(
             }
             quality != null -> {
                 state.position(2, 3, 4, 5)?.let { state.valid(DataKey.Position, it) }
-                state.finiteNumber(9, "altitude")?.let { altitude ->
+                state.finiteNumber(9, "altitude", allowNegative = true)?.let { altitude ->
                     val unit = state.token(10)
                     if (unit == "M") {
                         state.validDecimal(DataKey.Altitude, altitude, MarineUnit.METERS)
@@ -291,7 +291,14 @@ class Nmea0183Parser(
         } else {
             null
         }
-        (knots ?: kilometresPerHour?.times(KILOMETRES_PER_HOUR_TO_KNOTS))?.let {
+        (knots ?: kilometresPerHour?.let {
+            state.scaled(
+                value = it,
+                factor = KILOMETRES_PER_HOUR_TO_KNOTS,
+                fieldName = "speedKilometresPerHour",
+                rawValue = state.field(7),
+            )
+        })?.let {
             state.validDecimal(DataKey.SpeedOverGround, it, MarineUnit.KNOTS)
         }
         return state.parsed()
@@ -337,7 +344,7 @@ class Nmea0183Parser(
             transducerDepth,
             MarineUnit.METERS,
         )
-        state.finiteNumber(2, "transducerOffset")?.let { offset ->
+        state.finiteNumber(2, "transducerOffset", allowNegative = true)?.let { offset ->
             val adjusted = transducerDepth + offset
             if (!adjusted.isFinite() || adjusted < 0.0) {
                 state.error("adjustedDepth", adjusted.toString(), NmeaFieldErrorReason.OUT_OF_RANGE)
@@ -367,7 +374,21 @@ class Nmea0183Parser(
         } else {
             null
         }
-        val resolvedMetres = metres ?: feet?.times(FEET_TO_METRES) ?: fathoms?.times(FATHOMS_TO_METRES)
+        val resolvedMetres = metres ?: feet?.let {
+            state.scaled(
+                value = it,
+                factor = FEET_TO_METRES,
+                fieldName = "depthFeet",
+                rawValue = state.field(1),
+            )
+        } ?: fathoms?.let {
+            state.scaled(
+                value = it,
+                factor = FATHOMS_TO_METRES,
+                fieldName = "depthFathoms",
+                rawValue = state.field(5),
+            )
+        }
         resolvedMetres?.let {
             state.validDecimal(DataKey.Depth(DepthReference.BELOW_TRANSDUCER), it, MarineUnit.METERS)
         }
@@ -387,7 +408,14 @@ class Nmea0183Parser(
         } else {
             null
         }
-        (knots ?: metresPerSecond?.times(METRES_PER_SECOND_TO_KNOTS))?.let {
+        (knots ?: metresPerSecond?.let {
+            state.scaled(
+                value = it,
+                factor = METRES_PER_SECOND_TO_KNOTS,
+                fieldName = "trueWindSpeedMetresPerSecond",
+                rawValue = state.field(7),
+            )
+        })?.let {
             state.validDecimal(
                 DataKey.WindSpeed(WindSpeedReference.TRUE),
                 it,
@@ -494,9 +522,18 @@ class Nmea0183Parser(
                 fieldErrors = mutableErrors.toList(),
             )
 
-        fun finiteNumber(index: Int, fieldName: String): Double? {
+        fun finiteNumber(
+            index: Int,
+            fieldName: String,
+            allowNegative: Boolean = false,
+        ): Double? {
             val raw = field(index)?.trim().orEmpty()
             if (raw.isEmpty()) return null
+            val lexicalRule = if (allowNegative) SIGNED_DECIMAL_PATTERN else UNSIGNED_DECIMAL_PATTERN
+            if (!lexicalRule.matches(raw)) {
+                error(fieldName, raw, NmeaFieldErrorReason.INVALID_NUMBER)
+                return null
+            }
             val value = raw.toDoubleOrNull()
             if (value == null || !value.isFinite()) {
                 error(fieldName, raw, NmeaFieldErrorReason.INVALID_NUMBER)
@@ -521,6 +558,10 @@ class Nmea0183Parser(
         fun nonNegativeInteger(index: Int, fieldName: String): Int? {
             val raw = field(index)?.trim().orEmpty()
             if (raw.isEmpty()) return null
+            if (!raw.all(::isAsciiDigit)) {
+                error(fieldName, raw, NmeaFieldErrorReason.INVALID_NUMBER)
+                return null
+            }
             val value = raw.toIntOrNull()
             if (value == null) {
                 error(fieldName, raw, NmeaFieldErrorReason.INVALID_NUMBER)
@@ -587,13 +628,37 @@ class Nmea0183Parser(
             val value = nonNegative(valueIndex, "windSpeed") ?: return null
             return when (token(unitIndex)) {
                 "N" -> value
-                "M" -> value * METRES_PER_SECOND_TO_KNOTS
-                "K" -> value * KILOMETRES_PER_HOUR_TO_KNOTS
+                "M" -> scaled(
+                    value = value,
+                    factor = METRES_PER_SECOND_TO_KNOTS,
+                    fieldName = "windSpeed",
+                    rawValue = field(valueIndex),
+                )
+                "K" -> scaled(
+                    value = value,
+                    factor = KILOMETRES_PER_HOUR_TO_KNOTS,
+                    fieldName = "windSpeed",
+                    rawValue = field(valueIndex),
+                )
                 else -> {
                     error("speedUnit", field(unitIndex), NmeaFieldErrorReason.INVALID_UNIT)
                     null
                 }
             }
+        }
+
+        fun scaled(
+            value: Double,
+            factor: Double,
+            fieldName: String,
+            rawValue: String?,
+        ): Double? {
+            val converted = value * factor
+            if (!converted.isFinite()) {
+                error(fieldName, rawValue, NmeaFieldErrorReason.OUT_OF_RANGE)
+                return null
+            }
+            return converted
         }
 
         fun signedVariation(
@@ -665,6 +730,15 @@ class Nmea0183Parser(
                 )
                 return null
             }
+            val coordinatePattern = if (latitude) LATITUDE_PATTERN else LONGITUDE_PATTERN
+            if (!coordinatePattern.matches(raw)) {
+                error(
+                    if (latitude) "latitude" else "longitude",
+                    raw,
+                    NmeaFieldErrorReason.INVALID_NUMBER,
+                )
+                return null
+            }
             val packed = raw.toDoubleOrNull()
             if (packed == null || !packed.isFinite()) {
                 error(
@@ -701,7 +775,7 @@ class Nmea0183Parser(
             val rawTime = field(timeIndex)?.trim().orEmpty()
             val rawDate = field(dateIndex)?.trim().orEmpty()
             if (rawTime.isEmpty() && rawDate.isEmpty()) return null
-            if (rawTime.isEmpty() || rawDate.length != 6 || rawDate.any { !it.isDigit() }) {
+            if (rawTime.isEmpty() || rawDate.length != 6 || rawDate.any { !isAsciiDigit(it) }) {
                 error("sourceDateTime", "$rawDate $rawTime", NmeaFieldErrorReason.INVALID_DATE_TIME)
                 return null
             }
@@ -729,9 +803,9 @@ class Nmea0183Parser(
             val rawYear = field(4)?.trim().orEmpty()
             if (listOf(rawTime, rawDay, rawMonth, rawYear).all(String::isEmpty)) return null
             val time = parseClock(rawTime)
-            val day = rawDay.toIntOrNull()
-            val month = rawMonth.toIntOrNull()
-            val year = rawYear.toIntOrNull()
+            val day = rawDay.takeIf { it.length == 2 && it.all(::isAsciiDigit) }?.toIntOrNull()
+            val month = rawMonth.takeIf { it.length == 2 && it.all(::isAsciiDigit) }?.toIntOrNull()
+            val year = rawYear.takeIf { it.length == 4 && it.all(::isAsciiDigit) }?.toIntOrNull()
             if (time == null || day == null || month == null || year == null) {
                 error("sourceDateTime", "$rawYear-$rawMonth-$rawDay $rawTime", NmeaFieldErrorReason.INVALID_DATE_TIME)
                 return null
@@ -741,11 +815,14 @@ class Nmea0183Parser(
             } catch (_: DateTimeException) {
                 error("sourceDateTime", "$rawYear-$rawMonth-$rawDay $rawTime", NmeaFieldErrorReason.INVALID_DATE_TIME)
                 null
+            } catch (_: ArithmeticException) {
+                error("sourceDateTime", "$rawYear-$rawMonth-$rawDay $rawTime", NmeaFieldErrorReason.INVALID_DATE_TIME)
+                null
             }
         }
 
         private fun parseClock(raw: String): LocalTime? {
-            if (raw.length < 6 || raw.take(6).any { !it.isDigit() }) return null
+            if (!CLOCK_PATTERN.matches(raw)) return null
             return try {
                 val hour = raw.substring(0, 2).toInt()
                 val minute = raw.substring(2, 4).toInt()
@@ -771,6 +848,11 @@ class Nmea0183Parser(
         const val RMC_YEAR_PIVOT = 80
         val IDENTIFIER_CHARACTERS = ('A'..'Z').toSet() + ('0'..'9').toSet()
         val VALID_FAA_MODES = setOf("A", "D", "E", "F", "M", "P", "R", "S")
+        val UNSIGNED_DECIMAL_PATTERN = Regex("[0-9]+(?:\\.[0-9]+)?")
+        val SIGNED_DECIMAL_PATTERN = Regex("-?[0-9]+(?:\\.[0-9]+)?")
+        val LATITUDE_PATTERN = Regex("[0-9]{4}(?:\\.[0-9]+)?")
+        val LONGITUDE_PATTERN = Regex("[0-9]{5}(?:\\.[0-9]+)?")
+        val CLOCK_PATTERN = Regex("[0-9]{6}(?:\\.[0-9]+)?")
 
         fun semanticDiscriminator(
             formatter: String,
@@ -783,6 +865,8 @@ class Nmea0183Parser(
         }
     }
 }
+
+private fun isAsciiDigit(character: Char): Boolean = character in '0'..'9'
 
 private fun WindReference.toSpeedReference(): WindSpeedReference = when (this) {
     WindReference.APPARENT -> WindSpeedReference.APPARENT

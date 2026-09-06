@@ -14,7 +14,7 @@ Yokuli OS 已在 Windows Phone 8 Classic 风格应用内 Shell 和离线优先�
 branch: codex/shell-map-contract
 phase: NMEA_SOURCES
 work packages: P0–P7
-status: P0 passed; P1 pure-data candidate ready for full gate
+status: P0 passed; P1 review-corrected pure-data candidate (83 JVM tests) ready for full gate
 ```
 
 Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化与应用内恢复。生产目录仍严格只有 Chart + Settings；Shell Lab 只在 debug/benchmark classpath。

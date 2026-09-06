@@ -37,11 +37,13 @@ P0 begins from the real clean Shell SHA and the owner-selected read-only `codex/
 
 第一轮 Green 达到 45 项 JVM 测试，但独立只读审查仍判定 `FAIL`。审查发现 10 类会破坏后续安全语义的问题：session 仅由首包推进、generation map 可绕过目录上限、跨 formatter invalid 被旧 valid 遮蔽、sentence key 丢失 talker/MWV R-T、checksum trust 丢失、UDP 临时端口进入持久身份、RMC/GLL/GGA/DPT 有效性边界错误、LIVE/HELD 仲裁错误，以及没有 frame group identity。
 
-纠错先扩展静态合同为 7 项并加入具名 JVM 场景；当 `ActiveSessionRegistry`、typed trust/group 和新 identity 尚不存在时，静态合同保持 Red，catalog tests 在 API 迁移期间也按预期编译失败。Green 重写为显式且有界的 connection-session admission、稳定 UDP origin policy、细粒度 sentence inventory、更新 invalid 屏障、freshness-first 仲裁和逐字段 parser 证据。第二轮自查又补上 end 后同 generation 不得复活，以及同一 monotonic millis 内用 group sequence 决定 invalid/recovery 顺序。当前 targeted 结果：`66/66 JVM PASS`、P1 `7/7 PASS`、CI topology 与 `git diff --check` PASS；完整仓库 Gate 待 candidate commit 后执行。
+纠错先扩展静态合同为 7 项并加入具名 JVM 场景；当 `ActiveSessionRegistry`、typed trust/group 和新 identity 尚不存在时，静态合同保持 Red，catalog tests 在 API 迁移期间也按预期编译失败。Green 重写为显式且有界的 connection-session admission、稳定 UDP origin policy、细粒度 sentence inventory、更新 invalid 屏障、freshness-first 仲裁和逐字段 parser 证据。第二轮自查又补上 end 后同 generation 不得复活，以及同一 monotonic millis 内用 group sequence 决定 invalid/recovery 顺序。首个推送候选 `4dff57c…` 的 targeted 结果为 `66/66 JVM PASS`，但仍未获准。
+
+推送后的两轮独立反例审查继续以 `FAIL` 拒绝候选：会话 admission 与 catalog commit 存在 TOCTOU；invalid barrier 会在同 formatter 恢复时丢失；active 容量与 inactive tombstone 容量混淆；Sentence 丢失 same-millis frame sequence；checksum 接受 `+1`；数字换算可溢出抛异常；HOST_ADDRESS 下 UDP sender port 无法从 catalog 恢复；candidate 内部 streams 可无界增长；`MarineObservation` 可构造 key/value/unit 矛盾；经纬度会把 decimal degrees 错解为 packed degrees/minutes，ZDA 的日月词法也不严格。每一项都先加精确 Red；另加 fixed-seed、12 formatter、3000 组 bounded printable-field no-throw 测试做异常安全反查。修正后 targeted 证据为 `83/83 JVM PASS`、P1 `7/7 PASS`和 `git diff --check` PASS；完整仓库 Gate 仍待 correction commit 后执行。
 
 ## English translation
 
-P1 starts with a meaningful failing static contract and a platform-neutral scaffold. A first green implementation was rejected by independent review; ten identity, session, bounds, trust, invalidity, reference and atomic-frame gaps were converted into tests before correction. The current targeted candidate passes 66 JVM tests and all seven P1 static contracts. Transport, Android, selection transactions and UI remain outside this phase.
+P1 starts with a meaningful failing static contract and a platform-neutral scaffold. A first green implementation and its first pushed correction candidate were both rejected by counterexample review. Session linearization, split capacity, nested bounds, retained invalidity, frame ordering, UDP provenance, strict checksum/numeric/date/coordinate lexemes, conversion overflow and value invariants now have failing-before-green contracts. The current correction candidate passes 83 JVM tests and all seven P1 static contracts. Transport, Android, selection transactions and UI remain outside this phase.
 
 ## Marine Shell Final Product-Model Correction
 

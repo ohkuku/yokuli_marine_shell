@@ -59,7 +59,11 @@ object NmeaChecksum {
             return ChecksumValidation.Failure(ChecksumFailureReason.MALFORMED)
         }
 
-        val supplied = frame.substring(checksumSeparator + 1).toIntOrNull(radix = 16)
+        val checksumText = frame.substring(checksumSeparator + 1)
+        if (!checksumText.all(::isAsciiHexDigit)) {
+            return ChecksumValidation.Failure(ChecksumFailureReason.MALFORMED)
+        }
+        val supplied = checksumText.toIntOrNull(radix = 16)
             ?: return ChecksumValidation.Failure(ChecksumFailureReason.MALFORMED)
         val body = frame.substring(1, checksumSeparator)
         val calculated = body.fold(0) { checksum, character -> checksum xor character.code }
@@ -84,4 +88,7 @@ object NmeaChecksum {
     }
 
     private val ASCII_PRINTABLE_RANGE = 0x20..0x7e
+
+    private fun isAsciiHexDigit(character: Char): Boolean =
+        character in '0'..'9' || character in 'A'..'F' || character in 'a'..'f'
 }

@@ -3,10 +3,10 @@
 ## NMEA_SOURCES — P1 pure data candidate
 
 - 新增纯 JVM `core:marine-data`：typed NMEA identity/provenance、12 类句型 parser、strict checksum、TCP/UDP framing、有界 session/sentence/observation/raw catalogs 与单调 freshness。
-- 独立审查否决第一轮 Green 后，将 10 类 session、边界、invalid、identity、trust 和原子帧问题转成测试并纠正；当前 66 项 JVM 测试通过。
+- 独立审查连续否决第一轮 Green 和首个推送候选，将 session 线性化、双容量、nested stream 上限、invalid barrier、UDP provenance、checksum/numeric/date/coordinate 词法、换算溢出和 typed value invariant 反例转成测试并纠正；当前 83 项 JVM 测试通过。
 - 风角/风速、true/magnetic heading、transducer/surface/keel depth 均使用不同 typed key；空字段不写零，显式 invalid 不被旧互补句型遮蔽。
 
-English: added the platform-neutral P1 marine-data core, then converted all independent-review findings into tests and corrections before accepting its targeted 66-test candidate. No socket, Android runtime, global source selection, phone location or UI is claimed in P1.
+English: added the platform-neutral P1 marine-data core, then converted every counterexample-review finding into failing-before-green contracts. The corrected targeted gate is 83 JVM tests. No socket, Android runtime, global source selection, phone location or UI is claimed in P1.
 
 ## NMEA_SOURCES — P0 baseline
 

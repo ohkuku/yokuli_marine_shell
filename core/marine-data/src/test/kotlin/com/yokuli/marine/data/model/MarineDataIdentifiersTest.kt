@@ -158,6 +158,70 @@ class MarineDataIdentifiersTest {
     }
 
     @Test
+    fun validObservationsRejectMismatchedValueKindsUnitsAndRanges() {
+        val origin = ObservationOrigin(
+            SourceIdentity(ConnectionId("gateway")),
+            SessionGeneration(1),
+            "GP",
+            "RMC",
+        )
+
+        fun rejects(key: DataKey, value: MarineValue) {
+            assertThrows(IllegalArgumentException::class.java) {
+                MarineObservation(
+                    key = key,
+                    value = value,
+                    validity = ObservationValidity.VALID,
+                    origin = origin,
+                    measuredAtMillis = 10,
+                    groupId = ObservationGroupId(1),
+                    checksumTrust = ChecksumTrust.VERIFIED,
+                )
+            }
+        }
+
+        rejects(DataKey.Position, MarineValue.Decimal(1.0, MarineUnit.DEGREES))
+        rejects(DataKey.SpeedOverGround, MarineValue.Position(-36.8, 174.7))
+        rejects(DataKey.SpeedOverGround, MarineValue.Decimal(4.0, MarineUnit.METERS))
+        rejects(DataKey.SpeedOverGround, MarineValue.Decimal(-1.0, MarineUnit.KNOTS))
+        rejects(DataKey.CourseOverGround, MarineValue.Decimal(360.0, MarineUnit.DEGREES))
+        rejects(DataKey.Heading(HeadingReference.TRUE), MarineValue.Decimal(12.0, MarineUnit.KNOTS))
+        rejects(DataKey.Depth(DepthReference.BELOW_KEEL), MarineValue.Decimal(-0.1, MarineUnit.METERS))
+        rejects(DataKey.WindAngle(WindReference.APPARENT), MarineValue.Decimal(361.0, MarineUnit.DEGREES))
+        rejects(DataKey.WindSpeed(WindSpeedReference.TRUE), MarineValue.Decimal(2.0, MarineUnit.METERS))
+        rejects(DataKey.MagneticVariation, MarineValue.Decimal(181.0, MarineUnit.DEGREES))
+        rejects(DataKey.SourceTime, MarineValue.Count(1))
+        rejects(DataKey.FixQuality, MarineValue.Count(9))
+        rejects(DataKey.Satellites, MarineValue.Decimal(8.0, MarineUnit.DIMENSIONLESS))
+        rejects(DataKey.HorizontalDilution, MarineValue.Decimal(-0.1, MarineUnit.DIMENSIONLESS))
+        rejects(DataKey.Altitude, MarineValue.Decimal(1.0, MarineUnit.KNOTS))
+    }
+
+    @Test
+    fun countsCannotBeNegativeAndSourceTimeEvidenceCannotContradictItsValue() {
+        assertThrows(IllegalArgumentException::class.java) { MarineValue.Count(-1) }
+
+        val origin = ObservationOrigin(
+            SourceIdentity(ConnectionId("gateway")),
+            SessionGeneration(1),
+            "GP",
+            "ZDA",
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            MarineObservation(
+                key = DataKey.SourceTime,
+                value = MarineValue.UtcEpochMillis(100L),
+                validity = ObservationValidity.VALID,
+                origin = origin,
+                measuredAtMillis = 10,
+                groupId = ObservationGroupId(1),
+                checksumTrust = ChecksumTrust.VERIFIED,
+                sourceTimeEpochMillis = 200L,
+            )
+        }
+    }
+
+    @Test
     fun identifiersRejectAmbiguousOrImpossibleValues() {
         assertThrows(IllegalArgumentException::class.java) { ConnectionId(" ") }
         assertThrows(IllegalArgumentException::class.java) { SessionGeneration(-1) }

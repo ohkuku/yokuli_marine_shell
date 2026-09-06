@@ -39,4 +39,25 @@ class NmeaChecksumTest {
         val bangFrame = NmeaChecksum.append("AIVDM,1,1,,A,13aG?P001oP,0", prefix = '!')
         assertTrue(NmeaChecksum.validate(bangFrame) is ChecksumValidation.Valid)
     }
+
+    @Test
+    fun checksumRequiresExactlyTwoAsciiHexDigits() {
+        val valid = NmeaChecksum.append("GPXYZ")
+        val supplied = valid.takeLast(2)
+
+        assertTrue(NmeaChecksum.validate(valid) is ChecksumValidation.Valid)
+        // 'A' xor '@' is exactly 0x01; the old numeric parser accepted "+1" as that value.
+        assertEquals(
+            ChecksumFailureReason.MALFORMED,
+            (NmeaChecksum.validate("\$A@*+1") as ChecksumValidation.Failure).reason,
+        )
+        assertEquals(
+            ChecksumFailureReason.MALFORMED,
+            (NmeaChecksum.validate(valid.dropLast(2) + "-${supplied.last()}") as ChecksumValidation.Failure).reason,
+        )
+        assertEquals(
+            ChecksumFailureReason.MALFORMED,
+            (NmeaChecksum.validate(valid.dropLast(2) + "G${supplied.last()}") as ChecksumValidation.Failure).reason,
+        )
+    }
 }

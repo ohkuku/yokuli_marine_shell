@@ -174,7 +174,11 @@ sealed interface MarineValue {
         }
     }
 
-    data class Count(val value: Int) : MarineValue
+    data class Count(val value: Int) : MarineValue {
+        init {
+            require(value >= 0) { "Observation counts must be non-negative" }
+        }
+    }
 
     data class UtcEpochMillis(val value: Long) : MarineValue
 }
@@ -203,6 +207,16 @@ data class MarineObservation(
         require(validity != ObservationValidity.EXPLICIT_INVALID || value == null) {
             "An explicitly invalid observation must not carry a value"
         }
+        if (validity == ObservationValidity.VALID) {
+            require(key.accepts(requireNotNull(value))) {
+                "Observation value kind, unit, or range does not match its data key"
+            }
+        }
+        if (key == DataKey.SourceTime && value is MarineValue.UtcEpochMillis) {
+            require(sourceTimeEpochMillis == null || sourceTimeEpochMillis == value.value) {
+                "Source-time evidence must not contradict the SourceTime value"
+            }
+        }
     }
 }
 
@@ -210,3 +224,26 @@ data class CandidateId(
     val key: DataKey,
     val source: SourceIdentity,
 )
+
+private fun DataKey.accepts(value: MarineValue): Boolean = when (this) {
+    DataKey.Position -> value is MarineValue.Position
+    DataKey.SpeedOverGround -> value.isDecimal(MarineUnit.KNOTS) { it >= 0.0 }
+    DataKey.CourseOverGround -> value.isDecimal(MarineUnit.DEGREES, ::isCompassAngle)
+    is DataKey.Heading -> value.isDecimal(MarineUnit.DEGREES, ::isCompassAngle)
+    is DataKey.Depth -> value.isDecimal(MarineUnit.METERS) { it >= 0.0 }
+    is DataKey.WindAngle -> value.isDecimal(MarineUnit.DEGREES, ::isCompassAngle)
+    is DataKey.WindSpeed -> value.isDecimal(MarineUnit.KNOTS) { it >= 0.0 }
+    DataKey.MagneticVariation -> value.isDecimal(MarineUnit.DEGREES) { it in -180.0..180.0 }
+    DataKey.SourceTime -> value is MarineValue.UtcEpochMillis
+    DataKey.FixQuality -> value is MarineValue.Count && value.value in 0..8
+    DataKey.Satellites -> value is MarineValue.Count
+    DataKey.HorizontalDilution -> value.isDecimal(MarineUnit.DIMENSIONLESS) { it >= 0.0 }
+    DataKey.Altitude -> value.isDecimal(MarineUnit.METERS)
+}
+
+private inline fun MarineValue.isDecimal(
+    expectedUnit: MarineUnit,
+    predicate: (Double) -> Boolean = { true },
+): Boolean = this is MarineValue.Decimal && unit == expectedUnit && predicate(value)
+
+private fun isCompassAngle(value: Double): Boolean = value >= 0.0 && value < 360.0

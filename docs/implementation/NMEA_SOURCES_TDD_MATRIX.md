@@ -5,7 +5,7 @@
 | 阶段 | 先失败的合同 | Green 与门禁 |
 |---|---|---|
 | P0 | 真实分支／SHA、旧符号、模块方向、Android 36 方案和冲突覆盖文件不存在 | hash-bound baseline + 全部既有 JVM/lint/Debug/Release 基线 |
-| P1 | pure identifiers、framer/checksum、13 类句型、typed parse result、catalog、freshness、selection reducer 缺失 | `core:marine-data` 纯 JVM 全绿；无 Android/Compose/socket/feature 依赖 |
+| P1 | pure identifiers、framer/checksum、12 类句型、typed parse result、catalog 与freshness 缺失 | `core:marine-data` 纯 JVM 全绿；无 Android/Compose/socket/feature 依赖；selection reducer 仍属 P3 |
 | P2 | 多连接持久化、TCP/UDP actor、generation、重连／停止、诊断上限、NMEA Input state/action/UI 缺失 | 真实 loopback socket + Feature tests；页面退出不停止；计数来自 socket |
 | P3 | 单一 SourceCatalog/Selection/ResolvedData、3 秒发现窗、事务、手机定位／权限缺失 | 无 UI 消费同一原子 snapshot；不静默 failover；拒权不破坏 NMEA |
 | P4 | 数据／语句双目录、搜索筛选、详情选源、停用、未知句型、受控深链缺失 | Compose/Activity stories 完整管理闭环；没有第二套 GPS 设置页 |
@@ -15,7 +15,7 @@
 
 ## 核心自动测试组
 
-- P1：`MarineDataIdentifiersTest`、`NmeaStreamFramerTest`、`NmeaDatagramFramerTest`、`NmeaChecksumTest`、`Nmea0183ParserTest`、`SentenceInventoryTest`、`ObservationCatalogReducerTest`、`FreshnessPolicyTest`。
+- P1：`MarineDataIdentifiersTest`、`NmeaFramerTest`、`NmeaChecksumTest`、`Nmea0183ParserTest`、`ActiveSessionRegistryTest`、`SentenceCatalogTest`、`ObservationCatalogTest`、`CatalogPressureTest`、`FreshnessPolicyTest`。这些是仓库中实际类名；TCP/UDP framing 是 `NmeaFramerTest` 内的独立场景，不伪造两个不存在的测试类。
 - P2：`ConnectionConfigReducerTest`、`ConnectionPersistenceTest`、`TcpNmeaClientIntegrationTest`、`UdpNmeaListenerIntegrationTest`、`NmeaRuntimeLifecycleTest`、`NmeaInputProjectionTest`、`NmeaInputWorkspaceStoryTest`。
 - P3：`SourceSelectionTransactionTest`、`ResolvedDataPortTest`、`PhoneLocationPermissionReducerTest`、`AndroidLocationAdapterAndroidTest`。
 - P4：`DataSourcesWorkspaceStoryTest`，从空态、phone-only、unknown、wind/depth-only 到多源选择失败／成功和深链。

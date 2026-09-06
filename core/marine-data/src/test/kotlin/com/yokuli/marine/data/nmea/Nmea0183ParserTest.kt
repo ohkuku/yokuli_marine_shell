@@ -18,9 +18,11 @@ import com.yokuli.marine.data.model.WindReference
 import com.yokuli.marine.data.model.WindSpeedReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Random
 
 class Nmea0183ParserTest {
     private val parser = Nmea0183Parser()
@@ -211,6 +213,49 @@ class Nmea0183ParserTest {
     }
 
     @Test
+    fun numericFieldsRejectNonNmeaDecimalLexemesAndWrongCoordinateWidths() {
+        val decimalDegrees = parsed(
+            "GPRMC,123519,A,48.1173,N,11.5167,E,1.0,2.0,230394,,,A",
+        )
+        assertTrue(decimalDegrees.observations.none { it.key == DataKey.Position })
+        assertTrue(decimalDegrees.fieldErrors.any { it.fieldName == "latitude" })
+
+        val exponentAndPlus = parsed(
+            "GPRMC,123519,A,4807.038,N,01131.000,E,1e1,+2.0,230394,,,A",
+        )
+        assertTrue(exponentAndPlus.observations.none { it.key == DataKey.SpeedOverGround })
+        assertTrue(exponentAndPlus.observations.none { it.key == DataKey.CourseOverGround })
+        assertTrue(exponentAndPlus.fieldErrors.any { it.fieldName == "speedOverGround" })
+        assertTrue(exponentAndPlus.fieldErrors.any { it.fieldName == "courseOverGround" })
+
+        val plusFix = parsed(
+            "GNGGA,123519,4807.038,N,01131.000,E,+1,1e1,0.9,545.4,M,46.9,M,,",
+        )
+        assertTrue(plusFix.observations.none { it.key == DataKey.FixQuality })
+        assertTrue(plusFix.observations.none { it.key == DataKey.Satellites })
+        assertTrue(plusFix.observations.none { it.key == DataKey.Position })
+
+        val exponentClock = parsed("GPZDA,123519e0,04,07,2002,00,00")
+        assertTrue(exponentClock.observations.none { it.key == DataKey.SourceTime })
+        assertTrue(exponentClock.fieldErrors.any { it.fieldName == "sourceDateTime" })
+
+        val plusDepth = parsed("IIDPT,+5.2,-1.2")
+        assertTrue(plusDepth.observations.none { it.key is DataKey.Depth })
+        assertTrue(plusDepth.fieldErrors.any { it.fieldName == "depth" })
+    }
+
+    @Test
+    fun explicitlySignedAltitudeAndTransducerOffsetRemainSupported() {
+        val gga = parsed(
+            "GNGGA,123520,4807.038,N,01131.000,E,1,08,0.9,-2.5,M,46.9,M,,",
+        )
+        assertDecimal(gga, DataKey.Altitude, -2.5, MarineUnit.METERS)
+
+        val dpt = parsed("IIDPT,5.2,-1.2")
+        assertDecimal(dpt, DataKey.Depth(DepthReference.BELOW_KEEL), 4.0, MarineUnit.METERS)
+    }
+
+    @Test
     fun invalidRmcGllAndVtgModesPublishNoValues() {
         val badMode = parsed("GPVTG,84.4,T,,M,12.3,N,22.8,K,X")
         assertTrue(badMode.observations.isEmpty())
@@ -331,6 +376,60 @@ class Nmea0183ParserTest {
     }
 
     @Test
+    fun zdaRejectsNonFourDigitYearsWithoutThrowing() {
+        listOf("02", "999999999").forEach { malformedYear ->
+            val result = parsed("GPZDA,201530.00,04,07,$malformedYear,00,00")
+
+            assertTrue(result.observations.none { it.key == DataKey.SourceTime })
+            assertTrue(
+                "year $malformedYear must be a typed field error",
+                result.fieldErrors.any {
+                    it.fieldName == "sourceDateTime" &&
+                        it.reason == NmeaFieldErrorReason.INVALID_DATE_TIME
+                },
+            )
+        }
+    }
+
+    @Test
+    fun zdaRejectsSignedOrWrongWidthDayAndMonthFields() {
+        listOf(
+            "+4,07",
+            "04,+7",
+            "4,07",
+            "04,7",
+        ).forEach { dayAndMonth ->
+            val result = parsed("GPZDA,201530.00,$dayAndMonth,2002,00,00")
+
+            assertTrue(result.observations.none { it.key == DataKey.SourceTime })
+            assertTrue(
+                result.fieldErrors.any {
+                    it.fieldName == "sourceDateTime" &&
+                        it.reason == NmeaFieldErrorReason.INVALID_DATE_TIME
+                },
+            )
+        }
+    }
+
+    @Test
+    fun overflowingUnitConversionsBecomeTypedErrorsWithoutThrowing() {
+        val maximumFinite = "1" + "0".repeat(308)
+
+        val dbt = parsed("IIDBT,,f,,M,$maximumFinite,F")
+        assertTrue(dbt.observations.none { it.key is DataKey.Depth })
+        assertTrue(dbt.fieldErrors.any { it.fieldName == "depthFathoms" })
+
+        val mwd = parsed("IIMWD,,T,,M,,N,$maximumFinite,M")
+        assertTrue(mwd.observations.none { it.key is DataKey.WindSpeed })
+        assertTrue(mwd.fieldErrors.any { it.fieldName == "trueWindSpeedMetresPerSecond" })
+
+        val mwv = parsed("IIMWV,32.0,R,$maximumFinite,M,A")
+        assertTrue(mwv.observations.none { it.key is DataKey.WindSpeed })
+        assertTrue(mwv.fieldErrors.any { it.fieldName == "windSpeed" })
+        assertTrue(mwv.observations.any { it.key is DataKey.WindAngle })
+    }
+
+    @Test
     fun unknownLegalSentenceRemainsVisible() {
         val body = "IIVHW,123.4,T,120.0,M,5.6,N,10.4,K"
         val result = parser.parse(NmeaChecksum.append(body), context)
@@ -352,6 +451,55 @@ class Nmea0183ParserTest {
 
         val malformed = parser.parse(NmeaChecksum.append("TOO-SHORT,1,2"), context)
         assertTrue(malformed is NmeaParseResult.Malformed)
+    }
+
+    @Test
+    fun boundedPrintableFieldFuzzNeverEscapesTheTypedResultContract() {
+        val random = Random(0x59_4f_4b_55_4c_49L)
+        val formatters = listOf(
+            "RMC", "GGA", "GLL", "VTG", "ZDA", "HDG",
+            "HDM", "HDT", "DPT", "DBT", "MWD", "MWV",
+        )
+        val edgeTokens = listOf(
+            "", "+1", "-1", ".", "1.", ".1", "1e2", "1E309",
+            "NaN", "Infinity", "999999999", "0000", "360", "-0.1",
+        )
+
+        formatters.forEachIndexed { formatterIndex, formatter ->
+            repeat(250) { caseIndex ->
+                val fieldCount = random.nextInt(18)
+                val fields = List(fieldCount) {
+                    if (random.nextInt(4) == 0) {
+                        edgeTokens[random.nextInt(edgeTokens.size)]
+                    } else {
+                        buildString {
+                            repeat(random.nextInt(13)) {
+                                var character: Char
+                                do {
+                                    character = (0x20 + random.nextInt(0x7f - 0x20)).toChar()
+                                } while (character == '*' || character == ',')
+                                append(character)
+                            }
+                        }
+                    }
+                }
+                val body = buildString {
+                    append("GP")
+                    append(formatter)
+                    fields.forEach {
+                        append(',')
+                        append(it)
+                    }
+                }
+                val fuzzContext = context.copy(
+                    observationGroupId = ObservationGroupId(
+                        formatterIndex.toLong() * 250L + caseIndex.toLong(),
+                    ),
+                )
+
+                assertNotNull(parser.parse(NmeaChecksum.append(body), fuzzContext))
+            }
+        }
     }
 
     private fun parsed(body: String): NmeaParseResult.Parsed {

@@ -72,6 +72,7 @@ data class ObservationCandidate(
     val contributingSentenceIds: Set<String>,
     val sourceAvailable: Boolean,
     val lastSeenMillis: Long,
+    val retainedStreamCount: Int,
 )
 
 data class ObservationCatalogSnapshot(
@@ -81,6 +82,9 @@ data class ObservationCatalogSnapshot(
     val capacityRejectionCount: Long,
     val staleSessionDropCount: Long,
     val outOfOrderDropCount: Long,
+    val streamCapacityEvictionCount: Long,
+    val streamCapacityRejectionCount: Long,
+    val streamHighWaterMark: Int,
 )
 
 /**
@@ -91,11 +95,13 @@ class ObservationCatalog(
     clock: MonotonicClock,
     private val sessionRegistry: ActiveSessionRegistry,
     private val maxCandidates: Int = DEFAULT_MAX_CANDIDATES,
+    private val maxStreamsPerCandidate: Int = MAX_STREAMS_PER_CANDIDATE,
     private val priorityRules: SentencePriorityRules = DefaultSentencePriorityRules,
     thresholds: FreshnessThresholds = FreshnessThresholds(),
 ) {
     init {
         require(maxCandidates > 0) { "Observation candidate capacity must be positive" }
+        require(maxStreamsPerCandidate > 0) { "Candidate stream capacity must be positive" }
     }
 
     private val clock = clock
@@ -106,6 +112,9 @@ class ObservationCatalog(
     private var capacityRejectionCount = 0L
     private var staleSessionDropCount = 0L
     private var outOfOrderDropCount = 0L
+    private var streamCapacityEvictionCount = 0L
+    private var streamCapacityRejectionCount = 0L
+    private var streamHighWaterMark = 0
 
     @Synchronized
     fun record(
@@ -113,21 +122,32 @@ class ObservationCatalog(
         protectedCandidates: Set<CandidateId> = emptySet(),
     ): ObservationCatalogSnapshot {
         val generation = observation.origin.sessionGeneration
-        if (!sessionRegistry.acceptInbound(observation.origin.source.connectionId, generation)) {
-            staleSessionDropCount++
-            return snapshotLocked()
+        val accepted = sessionRegistry.commitInbound(observation.origin.source.connectionId, generation) {
+            recordAuthorized(observation, protectedCandidates)
         }
+        if (!accepted) {
+            staleSessionDropCount++
+        }
+        return snapshotLocked()
+    }
 
+    private fun recordAuthorized(
+        observation: MarineObservation,
+        protectedCandidates: Set<CandidateId>,
+    ) {
+        val generation = observation.origin.sessionGeneration
         val id = CandidateId(observation.key, observation.origin.source)
         val current = candidates[id]
         if (current == null && candidates.size >= maxCandidates && !makeRoom(protectedCandidates)) {
             capacityRejectionCount++
-            return snapshotLocked()
+            return
         }
         val base = if (current == null || current.sessionGeneration != generation) {
             CandidateState(
                 sessionGeneration = generation,
                 streams = emptyMap(),
+                latestValidObservation = null,
+                latestInvalidObservation = null,
                 lastTouched = nextTouch(),
             )
         } else {
@@ -141,22 +161,37 @@ class ObservationCatalog(
         val currentStream = base.streams[streamKey]
         if (currentStream != null && observation.isOlderThan(currentStream.current)) {
             outOfOrderDropCount++
-            return snapshotLocked()
+            return
         }
 
-        val stream = ObservationStream(
-            current = observation,
-            lastValid = if (observation.validity == ObservationValidity.VALID) {
-                observation
-            } else {
-                currentStream?.lastValid
-            },
-        )
+        var retainedStreams = base.streams
+        if (currentStream == null && retainedStreams.size >= maxStreamsPerCandidate) {
+            val eviction = retainedStreams.entries.minWithOrNull(streamEvictionComparator)
+                ?: error("A full candidate must contain an evictable stream")
+            if (compareObservationOrder(observation, eviction.value.current) <= 0) {
+                streamCapacityRejectionCount++
+                return
+            }
+            retainedStreams = retainedStreams - eviction.key
+            streamCapacityEvictionCount++
+        }
+
+        retainedStreams = retainedStreams + (streamKey to ObservationStream(observation))
+        streamHighWaterMark = maxOf(streamHighWaterMark, retainedStreams.size)
         candidates[id] = base.copy(
-            streams = base.streams + (streamKey to stream),
+            streams = retainedStreams,
+            latestValidObservation = if (observation.validity == ObservationValidity.VALID) {
+                preferredLatest(base.latestValidObservation, observation, id.key)
+            } else {
+                base.latestValidObservation
+            },
+            latestInvalidObservation = if (observation.validity == ObservationValidity.EXPLICIT_INVALID) {
+                preferredLatest(base.latestInvalidObservation, observation, id.key)
+            } else {
+                base.latestInvalidObservation
+            },
             lastTouched = nextTouch(),
         )
-        return snapshotLocked()
     }
 
     /** Compatibility helper; the shared registry remains the only source-availability authority. */
@@ -184,6 +219,9 @@ class ObservationCatalog(
             capacityRejectionCount = capacityRejectionCount,
             staleSessionDropCount = staleSessionDropCount,
             outOfOrderDropCount = outOfOrderDropCount,
+            streamCapacityEvictionCount = streamCapacityEvictionCount,
+            streamCapacityRejectionCount = streamCapacityRejectionCount,
+            streamHighWaterMark = streamHighWaterMark,
         )
     }
 
@@ -195,51 +233,35 @@ class ObservationCatalog(
                 freshness = freshnessPolicy.evaluateAt(stream.current, sourceAvailable = true, nowMillis = now),
             )
         }
-        val latestInvalid = evaluated
-            .asSequence()
-            .filter { it.stream.current.validity == ObservationValidity.EXPLICIT_INVALID }
-            .maxWithOrNull(evaluatedObservationOrderComparator)
-        val latestValid = evaluated
-            .asSequence()
-            .filter { it.stream.current.validity == ObservationValidity.VALID }
-            .maxWithOrNull(evaluatedObservationOrderComparator)
-
-        val selected = if (
-            latestInvalid != null &&
-            (latestValid == null || evaluatedObservationOrderComparator.compare(latestInvalid, latestValid) >= 0)
-        ) {
-            evaluated
-                .asSequence()
-                .filter {
-                    it.stream.current.validity == ObservationValidity.EXPLICIT_INVALID &&
-                        evaluatedObservationOrderComparator.compare(it, latestInvalid) == 0
-                }
-                .minWithOrNull(invalidComparator(id.key))
-                ?: error("A newest explicit invalid observation must exist")
-        } else {
-            val eligibleValid = evaluated.filter {
-                it.stream.current.validity == ObservationValidity.VALID &&
-                    (latestInvalid == null || evaluatedObservationOrderComparator.compare(it, latestInvalid) > 0)
-            }
+        val eligibleValid = evaluated.filter {
+            it.stream.current.validity == ObservationValidity.VALID &&
+                (
+                    latestInvalidObservation == null ||
+                        compareObservationOrder(it.stream.current, latestInvalidObservation) > 0
+                    )
+        }
+        val selectedObservation = if (eligibleValid.isNotEmpty()) {
             val live = eligibleValid.filter { it.freshness.state == Freshness.LIVE }
             val held = eligibleValid.filter { it.freshness.state == Freshness.HELD }
             val stale = eligibleValid.filter { it.freshness.state == Freshness.STALE }
             val unavailable = eligibleValid.filter { it.freshness.state == Freshness.UNAVAILABLE }
             (live.ifEmpty { held }.ifEmpty { stale }.ifEmpty { unavailable })
                 .minWithOrNull(streamComparator(id.key))
+                ?.stream
+                ?.current
+                ?: error("Eligible valid evidence must be selectable")
+        } else {
+            latestInvalidObservation
                 ?: error("A candidate must contain valid or explicitly invalid evidence")
         }
-        val lastValid = streams.values
-            .mapNotNull { it.lastValid }
-            .maxWithOrNull(lastValidComparator(id.key))
 
         return ObservationCandidate(
             id = id,
             sessionGeneration = sessionGeneration,
-            selectedObservation = selected.stream.current,
-            lastValidObservation = lastValid,
+            selectedObservation = selectedObservation,
+            lastValidObservation = latestValidObservation,
             freshness = freshnessPolicy.evaluateAt(
-                selected.stream.current,
+                selectedObservation,
                 sourceAvailable = sourceAvailable,
                 nowMillis = now,
             ),
@@ -247,6 +269,7 @@ class ObservationCatalog(
             contributingSentenceIds = streams.values.map { it.current.origin.sentenceId }.toSet(),
             sourceAvailable = sourceAvailable,
             lastSeenMillis = streams.values.maxOf { it.current.measuredAtMillis },
+            retainedStreamCount = streams.size,
         )
     }
 
@@ -258,20 +281,22 @@ class ObservationCatalog(
             .thenByDescending { it.stream.current.measuredAtMillis }
             .thenByDescending { it.stream.current.groupId.frameSequence }
 
-    private fun invalidComparator(key: DataKey) =
-        compareByDescending<EvaluatedStream> { it.stream.current.groupId.frameSequence }
-            .thenBy { priorityRules.rank(key, it.stream.current.origin.formatter) }
-            .thenBy { if (it.stream.current.checksumTrust == ChecksumTrust.VERIFIED) 0 else 1 }
-            .thenBy { it.stream.current.origin.formatter }
-            .thenBy { it.stream.current.origin.talker }
+    private fun preferredLatest(
+        current: MarineObservation?,
+        incoming: MarineObservation,
+        key: DataKey,
+    ): MarineObservation {
+        if (current == null) return incoming
+        val order = compareObservationOrder(incoming, current)
+        if (order != 0) return if (order > 0) incoming else current
+        return if (observationTieComparator(key).compare(incoming, current) < 0) incoming else current
+    }
 
-    private fun lastValidComparator(key: DataKey) =
-        compareBy<MarineObservation> { it.measuredAtMillis }
-            .thenBy { it.groupId.frameSequence }
-            .thenByDescending { priorityRules.rank(key, it.origin.formatter) }
-            .thenByDescending { if (it.checksumTrust == ChecksumTrust.VERIFIED) 0 else 1 }
-            .thenByDescending { it.origin.formatter }
-            .thenByDescending { it.origin.talker }
+    private fun observationTieComparator(key: DataKey) =
+        compareBy<MarineObservation> { priorityRules.rank(key, it.origin.formatter) }
+            .thenBy { if (it.checksumTrust == ChecksumTrust.VERIFIED) 0 else 1 }
+            .thenBy { it.origin.formatter }
+            .thenBy { it.origin.talker }
 
     private fun makeRoom(protectedCandidates: Set<CandidateId>): Boolean {
         val eviction = candidates.entries
@@ -291,12 +316,15 @@ class ObservationCatalog(
 
     companion object {
         const val DEFAULT_MAX_CANDIDATES = 256
+        const val MAX_STREAMS_PER_CANDIDATE = 32
     }
 }
 
 private data class CandidateState(
     val sessionGeneration: SessionGeneration,
     val streams: Map<ObservationStreamKey, ObservationStream>,
+    val latestValidObservation: MarineObservation?,
+    val latestInvalidObservation: MarineObservation?,
     val lastTouched: Long,
 )
 
@@ -307,7 +335,6 @@ private data class ObservationStreamKey(
 
 private data class ObservationStream(
     val current: MarineObservation,
-    val lastValid: MarineObservation?,
 )
 
 private data class EvaluatedStream(
@@ -315,13 +342,20 @@ private data class EvaluatedStream(
     val freshness: FreshnessEvaluation,
 )
 
-private val evaluatedObservationOrderComparator =
-    compareBy<EvaluatedStream> { it.stream.current.measuredAtMillis }
-        .thenBy { it.stream.current.groupId.frameSequence }
+private val streamEvictionComparator =
+    compareBy<Map.Entry<ObservationStreamKey, ObservationStream>> { it.value.current.measuredAtMillis }
+        .thenBy { it.value.current.groupId.frameSequence }
+        .thenBy { it.key.stableOrder() }
+
+private fun compareObservationOrder(first: MarineObservation, second: MarineObservation): Int {
+    val timestamp = first.measuredAtMillis.compareTo(second.measuredAtMillis)
+    return if (timestamp != 0) timestamp else first.groupId.frameSequence.compareTo(second.groupId.frameSequence)
+}
 
 private fun MarineObservation.isOlderThan(other: MarineObservation): Boolean =
-    measuredAtMillis < other.measuredAtMillis ||
-        (measuredAtMillis == other.measuredAtMillis && groupId.frameSequence < other.groupId.frameSequence)
+    compareObservationOrder(this, other) < 0
+
+private fun ObservationStreamKey.stableOrder(): String = "$talker|$formatter"
 
 private fun CandidateId.stableOrder(): String = buildString {
     append(key.toString())

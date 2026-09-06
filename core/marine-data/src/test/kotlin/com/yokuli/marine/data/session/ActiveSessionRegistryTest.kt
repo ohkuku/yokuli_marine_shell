@@ -6,8 +6,104 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 
 class ActiveSessionRegistryTest {
+    @Test
+    fun inboundCommitIsLinearizedBeforeSessionReplacementReturns() {
+        val registry = ActiveSessionRegistry()
+        val connection = ConnectionId("gateway")
+        registry.beginSession(connection, SessionGeneration(1))
+        val commitEntered = CountDownLatch(1)
+        val releaseCommit = CountDownLatch(1)
+        val commitFinished = CountDownLatch(1)
+        val replacementStarted = CountDownLatch(1)
+        val replacementFinished = CountDownLatch(1)
+        val replacementResult = AtomicReference<ActiveSessionRegistry.BeginResult>()
+
+        val inboundThread = thread(name = "p1-inbound-commit") {
+            assertTrue(
+                registry.commitInbound(connection, SessionGeneration(1)) {
+                    commitEntered.countDown()
+                    assertTrue(releaseCommit.await(5, TimeUnit.SECONDS))
+                },
+            )
+            commitFinished.countDown()
+        }
+        assertTrue(commitEntered.await(5, TimeUnit.SECONDS))
+
+        val replacementThread = thread(name = "p1-session-replacement") {
+            replacementStarted.countDown()
+            replacementResult.set(registry.beginSession(connection, SessionGeneration(2)))
+            replacementFinished.countDown()
+        }
+        assertTrue(replacementStarted.await(5, TimeUnit.SECONDS))
+        assertFalse(
+            "beginSession must not return while an admitted catalog commit is unfinished",
+            replacementFinished.await(100, TimeUnit.MILLISECONDS),
+        )
+
+        releaseCommit.countDown()
+        assertTrue(commitFinished.await(5, TimeUnit.SECONDS))
+        assertTrue(replacementFinished.await(5, TimeUnit.SECONDS))
+        inboundThread.join(5_000)
+        replacementThread.join(5_000)
+
+        assertEquals(ActiveSessionRegistry.BeginResult.REPLACED, replacementResult.get())
+        assertTrue(registry.isCurrent(connection, SessionGeneration(2)))
+    }
+
+    @Test
+    fun inactiveTombstonesDoNotConsumeActiveSlotsButKnownConnectionsStayBounded() {
+        val registry = ActiveSessionRegistry(
+            maxActiveConnections = 1,
+            maxKnownConnections = 2,
+        )
+        val first = ConnectionId("first")
+        val second = ConnectionId("second")
+        val third = ConnectionId("third")
+
+        assertEquals(
+            ActiveSessionRegistry.BeginResult.ACTIVATED,
+            registry.beginSession(first, SessionGeneration(1)),
+        )
+        assertTrue(registry.endSession(first, SessionGeneration(1)))
+        assertEquals(
+            ActiveSessionRegistry.BeginResult.ACTIVATED,
+            registry.beginSession(second, SessionGeneration(1)),
+        )
+        assertEquals(
+            ActiveSessionRegistry.BeginResult.REJECTED_ACTIVE_CAPACITY,
+            registry.beginSession(first, SessionGeneration(2)),
+        )
+        assertFalse(registry.isCurrent(first, SessionGeneration(2)))
+        assertEquals(
+            ActiveSessionRegistry.BeginResult.REJECTED_ACTIVE_CAPACITY,
+            registry.beginSession(third, SessionGeneration(1)),
+        )
+
+        assertTrue(registry.endSession(second, SessionGeneration(1)))
+        assertEquals(
+            ActiveSessionRegistry.BeginResult.REJECTED_KNOWN_CAPACITY,
+            registry.beginSession(third, SessionGeneration(1)),
+        )
+        assertEquals(2, registry.snapshot().knownConnectionCount)
+        assertEquals(1, registry.snapshot().activeHighWaterMark)
+        assertEquals(2, registry.snapshot().knownHighWaterMark)
+        assertEquals(2L, registry.snapshot().activeCapacityRejectionCount)
+        assertEquals(1L, registry.snapshot().knownCapacityRejectionCount)
+
+        assertTrue(registry.forgetConnection(first))
+        assertEquals(
+            ActiveSessionRegistry.BeginResult.ACTIVATED,
+            registry.beginSession(third, SessionGeneration(1)),
+        )
+        assertEquals(2, registry.snapshot().knownConnectionCount)
+    }
+
     @Test
     fun activeSessionRegistryRemainsBoundedUnderRejectedOrigins() {
         val registry = ActiveSessionRegistry(maxActiveConnections = 4)
@@ -19,8 +115,10 @@ class ActiveSessionRegistryTest {
         val snapshot = registry.snapshot()
         assertEquals(4, snapshot.activeSessions.size)
         assertEquals(4, snapshot.highWaterMark)
+        assertEquals(4, snapshot.activeHighWaterMark)
+        assertEquals(4, snapshot.knownHighWaterMark)
         assertEquals(996L, snapshot.capacityRejectionCount)
-        assertEquals(ActiveSessionRegistry.BeginResult.REJECTED_CAPACITY, registry.beginSession(
+        assertEquals(ActiveSessionRegistry.BeginResult.REJECTED_ACTIVE_CAPACITY, registry.beginSession(
             ConnectionId("still-full"),
             SessionGeneration(1),
         ))
@@ -114,14 +212,14 @@ class ActiveSessionRegistryTest {
 
         repeat(10_000) { index ->
             assertFalse(
-                registry.acceptInbound(
+                registry.commitInbound(
                     ConnectionId("unregistered-$index"),
                     SessionGeneration(1),
-                ),
+                ) {},
             )
         }
-        assertFalse(registry.acceptInbound(connection, SessionGeneration(7)))
-        assertTrue(registry.acceptInbound(connection, SessionGeneration(8)))
+        assertFalse(registry.commitInbound(connection, SessionGeneration(7)) {})
+        assertTrue(registry.commitInbound(connection, SessionGeneration(8)) {})
 
         val snapshot = registry.snapshot()
         assertEquals(1, snapshot.activeSessions.size)

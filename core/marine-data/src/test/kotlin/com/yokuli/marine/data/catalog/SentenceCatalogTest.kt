@@ -2,6 +2,7 @@ package com.yokuli.marine.data.catalog
 
 import com.yokuli.marine.data.model.ConnectionId
 import com.yokuli.marine.data.model.ObservationOrigin
+import com.yokuli.marine.data.model.ObservationGroupId
 import com.yokuli.marine.data.model.SenderIdentity
 import com.yokuli.marine.data.model.SessionGeneration
 import com.yokuli.marine.data.model.SourceIdentity
@@ -9,6 +10,7 @@ import com.yokuli.marine.data.model.UdpOriginIdentityPolicy
 import com.yokuli.marine.data.session.ActiveSessionRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,6 +79,78 @@ class SentenceCatalogTest {
     }
 
     @Test
+    fun hostOnlyUdpIdentityStillPreservesObservedSenderPortProvenance() {
+        val connection = ConnectionId("udp")
+        val firstSender = SenderIdentity("192.0.2.20", 20_001)
+        val secondSender = SenderIdentity("192.0.2.20", 20_002)
+        val source = SourceIdentity.forUdp(
+            connection,
+            firstSender,
+            UdpOriginIdentityPolicy.HOST_ADDRESS,
+        )
+        val sessions = ActiveSessionRegistry()
+        sessions.beginSession(connection, SessionGeneration(1))
+        val sentences = SentenceCatalog(sessions)
+        val raw = RawPreviewBuffer(sessions)
+
+        sentences.record(event(source, "GP", "RMC", 1L, sender = firstSender))
+        sentences.record(event(source, "GP", "RMC", 2L, sender = secondSender))
+        raw.record(raw(source, "first", 1L, sender = firstSender))
+        raw.record(raw(source, "second", 2L, sender = secondSender))
+
+        val sentenceEntry = sentences.snapshot().entries.single()
+        assertEquals(source, sentenceEntry.key.source)
+        assertEquals(secondSender, sentenceEntry.lastSender)
+        assertEquals(
+            listOf(firstSender, secondSender),
+            raw.snapshot().entries.map { it.sender },
+        )
+    }
+
+    @Test
+    fun rawPreviewRejectsSenderProvenanceThatDoesNotMatchItsStableUdpIdentity() {
+        val connection = ConnectionId("udp")
+        val configuredSender = SenderIdentity("192.0.2.20", 20_001)
+        val sourceWithPort = SourceIdentity.forUdp(
+            connection,
+            configuredSender,
+            UdpOriginIdentityPolicy.HOST_AND_PORT,
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            raw(
+                source = sourceWithPort,
+                text = "missing-sender",
+                at = 0L,
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            raw(
+                source = sourceWithPort,
+                text = "spoofed-host",
+                at = 1L,
+                sender = SenderIdentity("192.0.2.21", 20_001),
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            raw(
+                source = sourceWithPort,
+                text = "wrong-port",
+                at = 2L,
+                sender = SenderIdentity("192.0.2.20", 20_002),
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            raw(
+                source = SourceIdentity(connection),
+                text = "tcp-with-udp-provenance",
+                at = 3L,
+                sender = configuredSender,
+            )
+        }
+    }
+
+    @Test
     fun quietNewSessionRejectsLateOldCallbacks() {
         val source = SourceIdentity(ConnectionId("tcp"))
         val sessions = ActiveSessionRegistry()
@@ -94,6 +168,42 @@ class SentenceCatalogTest {
         assertEquals(1L, snapshot.entries.single().receivedCount)
         assertFalse(snapshot.entries.single().isCurrentSession)
         assertEquals(1L, snapshot.staleSessionDropCount)
+    }
+
+    @Test
+    fun sameMillisSentenceOrderingUsesFrameSequenceInsteadOfCallbackOrder() {
+        val sessions = ActiveSessionRegistry()
+        val source = SourceIdentity(ConnectionId("tcp"))
+        sessions.begin(source, generation = 1)
+        val catalog = SentenceCatalog(sessions)
+
+        catalog.record(
+            event(
+                source,
+                "GP",
+                "RMC",
+                at = 100L,
+                status = SentenceParseStatus.EXPLICIT_INVALID,
+                group = 9L,
+            ),
+        )
+        catalog.record(
+            event(
+                source,
+                "GP",
+                "RMC",
+                at = 100L,
+                status = SentenceParseStatus.PARSED,
+                group = 8L,
+            ),
+        )
+
+        val snapshot = catalog.snapshot()
+        val entry = snapshot.entries.single()
+        assertEquals(SentenceParseStatus.EXPLICIT_INVALID, entry.lastParseStatus)
+        assertEquals(ObservationGroupId(9), entry.lastGroupId)
+        assertEquals(1L, entry.receivedCount)
+        assertEquals(1L, snapshot.outOfOrderDropCount)
     }
 
     @Test
@@ -116,7 +226,7 @@ class SentenceCatalogTest {
         val sentences = SentenceCatalog(sessions)
         val raw = RawPreviewBuffer(sessions)
         sentences.record(event(senderA, "GP", "RMC", 1L, generation = 1, sender = observedA))
-        raw.record(raw(senderA, "old-a", 1L, generation = 1))
+        raw.record(raw(senderA, "old-a", 1L, generation = 1, sender = observedA))
 
         sessions.beginSession(connection, SessionGeneration(2))
         sentences.record(
@@ -130,7 +240,7 @@ class SentenceCatalogTest {
                 sender = observedB,
             ),
         )
-        raw.record(raw(senderB, "late-old-b", 2L, generation = 1))
+        raw.record(raw(senderB, "late-old-b", 2L, generation = 1, sender = observedB))
         sentences.record(
             event(
                 senderB,
@@ -142,7 +252,7 @@ class SentenceCatalogTest {
                 sender = observedB,
             ),
         )
-        raw.record(raw(senderB, "new-b", 3L, generation = 2))
+        raw.record(raw(senderB, "new-b", 3L, generation = 2, sender = observedB))
 
         val sentenceSnapshot = sentences.snapshot()
         assertEquals(2, sentenceSnapshot.entries.size)
@@ -219,9 +329,11 @@ class SentenceCatalogTest {
         generation: Long = 1L,
         semanticInstance: String = DEFAULT_SENTENCE_SEMANTIC_INSTANCE,
         sender: SenderIdentity? = null,
+        group: Long = at,
     ) = SentenceCatalogEvent.fromOrigin(
         origin = ObservationOrigin(source, SessionGeneration(generation), talker, formatter, sender),
         receivedAtMillis = at,
+        groupId = ObservationGroupId(group),
         parseStatus = status,
         semanticInstance = semanticInstance,
     )
@@ -279,10 +391,12 @@ private fun raw(
     text: String,
     at: Long,
     generation: Long = 1L,
+    sender: SenderIdentity? = null,
 ) = RawPreviewEntry(
     source = source,
     sessionGeneration = SessionGeneration(generation),
     sentenceId = "GPRMC",
     receivedAtMillis = at,
     raw = text,
+    sender = sender,
 )

@@ -134,6 +134,22 @@ class ObservationCatalogTest {
     }
 
     @Test
+    fun sameFormatterRecoveryDoesNotResurrectPreferredEvidenceFromBeforeInvalidation() {
+        val sessions = ActiveSessionRegistry()
+        val source = SourceIdentity(ConnectionId("gateway"))
+        sessions.begin(source, 1)
+        val catalog = ObservationCatalog(clock, sessions)
+        catalog.record(position(source, "GP", "GGA", 700L, 10.0, group = 7))
+        catalog.record(invalidPosition(source, "GP", "RMC", 800L, group = 8))
+        catalog.record(position(source, "GP", "RMC", 900L, 12.0, group = 9))
+
+        val candidate = catalog.snapshot().candidates.single()
+        assertEquals(Freshness.LIVE, candidate.freshness.state)
+        assertEquals("RMC", candidate.selectedObservation.origin.formatter)
+        assertEquals(12.0, candidate.selectedObservation.positionLatitude(), 0.0)
+    }
+
+    @Test
     fun liveComplementaryEvidenceBeatsHeldPreferredEvidence() {
         clock.now = 4_000L
         val sessions = ActiveSessionRegistry()
@@ -248,6 +264,74 @@ class ObservationCatalogTest {
         assertTrue(snapshot.candidates.any { it.id == protected })
         assertTrue(snapshot.candidates.any { it.id.source == three })
         assertEquals(1L, snapshot.capacityEvictionCount)
+    }
+
+    @Test
+    fun perCandidateStreamsAreBoundedAndPressureIsObservable() {
+        val sessions = ActiveSessionRegistry()
+        val source = SourceIdentity(ConnectionId("multiplexer"))
+        sessions.begin(source, 1)
+        val catalog = ObservationCatalog(
+            clock = clock,
+            sessionRegistry = sessions,
+            maxStreamsPerCandidate = 4,
+        )
+
+        repeat(100) { index ->
+            catalog.record(
+                position(
+                    source = source,
+                    talker = index.toString().padStart(2, '0'),
+                    formatter = "RMC",
+                    at = (index + 1).toLong(),
+                    latitude = index % 90 + 0.1,
+                    group = (index + 1).toLong(),
+                ),
+            )
+        }
+        catalog.record(
+            position(
+                source = source,
+                talker = "ZZ",
+                formatter = "GGA",
+                at = 1L,
+                latitude = 1.0,
+                group = 1L,
+            ),
+        )
+
+        val snapshot = catalog.snapshot()
+        val candidate = snapshot.candidates.single()
+        assertEquals(4, candidate.retainedStreamCount)
+        assertEquals(4, snapshot.streamHighWaterMark)
+        assertEquals(96L, snapshot.streamCapacityEvictionCount)
+        assertEquals(1L, snapshot.streamCapacityRejectionCount)
+        assertEquals(9.1, candidate.lastValidObservation.positionLatitude(), 0.000_001)
+    }
+
+    @Test
+    fun streamEvictionCannotEraseTheCandidateInvalidationBarrier() {
+        val sessions = ActiveSessionRegistry()
+        val source = SourceIdentity(ConnectionId("multiplexer"))
+        sessions.begin(source, 1)
+        val catalog = ObservationCatalog(
+            clock = clock,
+            sessionRegistry = sessions,
+            maxStreamsPerCandidate = 2,
+        )
+        catalog.record(position(source, "GP", "GGA", 700L, 10.0, group = 7))
+        catalog.record(invalidPosition(source, "GP", "RMC", 800L, group = 8))
+        catalog.record(position(source, "GN", "GLL", 900L, 12.0, group = 9))
+        catalog.record(position(source, "II", "ABC", 1_000L, 13.0, group = 10))
+        catalog.record(position(source, "ZZ", "GGA", 750L, 89.0, group = 11))
+
+        val snapshot = catalog.snapshot()
+        val candidate = snapshot.candidates.single()
+        assertEquals(2, candidate.retainedStreamCount)
+        assertEquals("GLL", candidate.selectedObservation.origin.formatter)
+        assertEquals(12.0, candidate.selectedObservation.positionLatitude(), 0.0)
+        assertEquals(13.0, candidate.lastValidObservation.positionLatitude(), 0.0)
+        assertEquals(1L, snapshot.streamCapacityRejectionCount)
     }
 
     @Test

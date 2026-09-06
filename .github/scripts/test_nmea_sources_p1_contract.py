@@ -31,6 +31,8 @@ class NmeaSourcesP1ContractTest(unittest.TestCase):
             "SessionGeneration",
             "ActiveSessionRegistry",
             "MAX_ACTIVE_CONNECTIONS",
+            "MAX_KNOWN_CONNECTIONS",
+            "commitInbound",
             "SourceIdentity",
             "UdpOriginIdentityPolicy",
             "ObservationOrigin",
@@ -88,6 +90,7 @@ class NmeaSourcesP1ContractTest(unittest.TestCase):
             "MAX_SENTENCE_KEYS",
             "MAX_RAW_ENTRIES",
             "MAX_RAW_BYTES",
+            "MAX_STREAMS_PER_CANDIDATE",
         ):
             self.assertIn(symbol, source)
 
@@ -144,6 +147,23 @@ class NmeaSourcesP1ContractTest(unittest.TestCase):
             "separateSentenceKeysPreserveTalkerAndMwvReference",
             "newerExplicitInvalidBeatsOlderValidComplementaryEvidence",
             "liveComplementaryEvidenceBeatsHeldPreferredEvidence",
+            "inboundCommitIsLinearizedBeforeSessionReplacementReturns",
+            "inactiveTombstonesDoNotConsumeActiveSlotsButKnownConnectionsStayBounded",
+            "sameMillisSentenceOrderingUsesFrameSequenceInsteadOfCallbackOrder",
+            "sameFormatterRecoveryDoesNotResurrectPreferredEvidenceFromBeforeInvalidation",
+            "hostOnlyUdpIdentityStillPreservesObservedSenderPortProvenance",
+            "rawPreviewRejectsSenderProvenanceThatDoesNotMatchItsStableUdpIdentity",
+            "perCandidateStreamsAreBoundedAndPressureIsObservable",
+            "streamEvictionCannotEraseTheCandidateInvalidationBarrier",
+            "checksumRequiresExactlyTwoAsciiHexDigits",
+            "zdaRejectsNonFourDigitYearsWithoutThrowing",
+            "zdaRejectsSignedOrWrongWidthDayAndMonthFields",
+            "overflowingUnitConversionsBecomeTypedErrorsWithoutThrowing",
+            "explicitlySignedAltitudeAndTransducerOffsetRemainSupported",
+            "validObservationsRejectMismatchedValueKindsUnitsAndRanges",
+            "countsCannotBeNegativeAndSourceTimeEvidenceCannotContradictItsValue",
+            "numericFieldsRejectNonNmeaDecimalLexemesAndWrongCoordinateWidths",
+            "boundedPrintableFieldFuzzNeverEscapesTheTypedResultContract",
         ):
             self.assertIn(scenario, tests)
 
