@@ -108,7 +108,9 @@ class NmeaInputCoordinator(
     fun open(token: MarineFeatureLinkToken): Boolean = synchronized(lock) {
         val destination = MarineFeatureLinks.parse(token) as? MarineFeatureDestination.NmeaInput
             ?: return false
-        local = destination.connectionId?.takeIf(runtime::hasConnection)
+        local = destination.connectionId?.takeIf { id ->
+            runtime.connections.any { it.stored.config.id == id }
+        }
             ?.let(NmeaInputLocalState::Detail)
             ?: NmeaInputLocalState.Overview
         publishLocked()

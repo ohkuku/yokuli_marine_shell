@@ -6,6 +6,8 @@ import com.yokuli.marine.data.source.SourceCandidateAvailability
 import com.yokuli.marine.data.source.SourceDecisionStatus
 import com.yokuli.marine.data.source.SourceKind
 
+private const val MAX_TILE_RELATIONS = 3
+
 enum class DataSourcesTilePriority { WAITING, USING, ATTENTION }
 
 data class DataSourceTileRelation(
@@ -97,8 +99,6 @@ object DataSourcesLauncherProjector {
             ),
         )
     }
-
-    private const val MAX_TILE_RELATIONS = 3
 }
 
 class DataSourcesTileDisplaySlot(initial: DataSourcesTileState) {
