@@ -32,11 +32,32 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.yokuli.marine.navigation.domain.NavigationInputStatus
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MarineSourcePositionPortTest {
     private val sourceA = SourceIdentity(ConnectionId("source-a"))
     private val sourceB = SourceIdentity(ConnectionId("source-b"))
+
+    @Test
+    fun resolvedPositionAndAtomicMotionProjectToNavigationWithoutEndpointDisclosure() = runTest {
+        val snapshots = MutableStateFlow(MarineSourceSnapshot.EMPTY)
+        val port = MarineSourceNavigationInputPort(snapshots, this)
+        val position = candidate(DataKey.Position, sourceA, MarineValue.Position(-36.8, 174.7), 120L, 7L)
+        val speed = candidate(DataKey.SpeedOverGround, sourceB, MarineValue.Decimal(6.2, MarineUnit.KNOTS), 121L, 8L)
+        val course = candidate(DataKey.CourseOverGround, sourceB, MarineValue.Decimal(42.0, MarineUnit.DEGREES), 121L, 8L)
+
+        snapshots.value = snapshot(position, resolvedExtras = listOf(speed, course))
+        runCurrent()
+
+        val fix = port.state.value
+        assertEquals(NavigationInputStatus.LIVE, fix.positionStatus)
+        assertEquals(-36.8, requireNotNull(fix.position).latitude, 0.0)
+        assertEquals(6.2, requireNotNull(fix.speedOverGroundKnots), 0.0)
+        assertEquals(42.0, requireNotNull(fix.courseOverGroundTrueDegrees), 0.0)
+        assertFalse(requireNotNull(fix.positionSourceId).contains("source-a"))
+        assertFalse(requireNotNull(fix.motionSourceId).contains("source-b"))
+    }
 
     @Test
     fun selectedLivePositionFlowsToChartWithMonotonicIdentityAndSameSourceAccuracy() = runTest {
@@ -117,9 +138,10 @@ class MarineSourcePositionPortTest {
         position: SourceCandidate,
         accuracy: SourceCandidate? = null,
         alternatives: List<SourceCandidate> = emptyList(),
+        resolvedExtras: List<SourceCandidate> = emptyList(),
         revision: Long = 1L,
     ): MarineSourceSnapshot {
-        val selected = listOfNotNull(position, accuracy)
+        val selected = listOfNotNull(position, accuracy) + resolvedExtras
         val resolved = selected.associate { candidate ->
             candidate.id.key to ResolvedDatum(
                 key = candidate.id.key,

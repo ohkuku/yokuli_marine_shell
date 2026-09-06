@@ -1,0 +1,17 @@
+<resources>
+    <string name="nav_next">NEXT · %1$s</string>
+    <string name="nav_dtw_btw">%1$.2f NM · %2$.0f° TRUE</string>
+    <string name="nav_waiting_position">WAITING FOR SELECTED POSITION DATA</string>
+    <string name="nav_state_active">ACTIVE</string>
+    <string name="nav_state_paused">PAUSED</string>
+    <string name="nav_state_complete">COMPLETE</string>
+    <string name="nav_xte">XTE %1$.2f NM</string>
+    <string name="nav_eta">ETA %1$d MIN</string>
+    <string name="nav_eta_unavailable">ETA UNAVAILABLE</string>
+    <string name="nav_progress">ROUTE %1$d%%</string>
+    <string name="nav_previous">previous leg</string>
+    <string name="nav_pause">pause navigation</string>
+    <string name="nav_resume">resume navigation</string>
+    <string name="nav_next_waypoint">next leg</string>
+    <string name="nav_stop">stop navigation</string>
+</resources>

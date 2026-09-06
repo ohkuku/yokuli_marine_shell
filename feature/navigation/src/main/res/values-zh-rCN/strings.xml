@@ -1,0 +1,17 @@
+<resources>
+    <string name="nav_next">下一点 · %1$s</string>
+    <string name="nav_dtw_btw">%1$.2f 海里 · %2$.0f° 真</string>
+    <string name="nav_waiting_position">等待已选择的位置数据</string>
+    <string name="nav_state_active">导航中</string>
+    <string name="nav_state_paused">已暂停</string>
+    <string name="nav_state_complete">已完成</string>
+    <string name="nav_xte">偏航 %1$.2f 海里</string>
+    <string name="nav_eta">预计 %1$d 分钟</string>
+    <string name="nav_eta_unavailable">预计时间不可用</string>
+    <string name="nav_progress">全程 %1$d%%</string>
+    <string name="nav_previous">上一航段</string>
+    <string name="nav_pause">暂停导航</string>
+    <string name="nav_resume">继续导航</string>
+    <string name="nav_next_waypoint">下一航段</string>
+    <string name="nav_stop">停止导航</string>
+</resources>

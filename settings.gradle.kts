@@ -33,6 +33,7 @@ include(
     ":feature:nmea-input",
     ":feature:data-sources",
     ":feature:data",
+    ":feature:navigation",
     ":feature:settings",
     ":feature:shell-lab",
     ":benchmark:shell",

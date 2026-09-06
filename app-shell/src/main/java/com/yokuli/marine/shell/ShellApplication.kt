@@ -28,6 +28,7 @@ import com.yokuli.marine.data.runtime.NmeaInputRuntimePort
 import com.yokuli.marine.data.source.MarineSourceRuntimePort
 import com.yokuli.marine.feature.data.DataPhoneDemandRuntime
 import com.yokuli.marine.map.storage.RoomMapPersistence
+import com.yokuli.marine.map.storage.ProtoDataStoreActiveNavigationSessionStore
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
 import com.yokuli.marine.map.offline.ChartLoopbackTileGateway
@@ -39,9 +40,15 @@ import com.yokuli.marine.map.domain.ObservationMonotonicClock
 import com.yokuli.marine.map.domain.MonotonicTime
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
+import com.yokuli.marine.navigation.domain.ActiveNavigationRuntimePort
+import com.yokuli.marine.navigation.domain.DefaultActiveNavigationRuntime
+import com.yokuli.marine.navigation.domain.NavigationLibraryLoadResult
+import com.yokuli.marine.navigation.domain.NavigationRouteReadPort
+import com.yokuli.marine.navigation.domain.NavigationRuntimeClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRuntimeOwner {
     private val processObservationClockId = java.util.UUID.randomUUID().toString()
@@ -125,6 +132,26 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
             scope = applicationScope,
         )
     }
+    private val navigationInputPort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        MarineSourceNavigationInputPort(marineSourceRuntime.state, applicationScope)
+    }
+    private val navigationSessionStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProtoDataStoreActiveNavigationSessionStore.create(this, applicationScope)
+    }
+    val activeNavigationRuntime: ActiveNavigationRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        DefaultActiveNavigationRuntime(
+            routes = NavigationRouteReadPort { routeId ->
+                when (val result = mapPersistence.loadNavigationLibrary()) {
+                    is NavigationLibraryLoadResult.Ready -> result.library.routePlans.firstOrNull { it.id == routeId }
+                    is NavigationLibraryLoadResult.Failed -> null
+                }
+            },
+            input = navigationInputPort,
+            sessionStore = navigationSessionStore,
+            clock = NavigationRuntimeClock(System::currentTimeMillis),
+            scope = applicationScope,
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -135,6 +162,7 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
         marineSourceRuntime
         dataPhoneDemandRuntime
         chartLibraryRuntime
+        applicationScope.launch { activeNavigationRuntime.initialize() }
         if (BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")) {
             // Harnesses repeatedly force-stop/reinstall the target. A first-run LocaleManager
             // recreation would measure platform setup instead of the launcher journey.

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+option java_package = "com.yokuli.marine.map.storage.proto";
+option java_multiple_files = true;
+
+message ActiveNavigationSessionProto {
+  int32 schema_version = 1;
+  bool has_session = 2;
+  string route_id = 3;
+  int64 route_revision = 4;
+  int64 started_at_epoch_millis = 5;
+  int32 active_leg_index = 6;
+  double arrival_radius_meters = 7;
+  string advance_policy = 8;
+  string state = 9;
+}

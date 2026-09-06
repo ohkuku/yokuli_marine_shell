@@ -4,5 +4,7 @@ kotlin { jvmToolchain(17) }
 
 dependencies {
     implementation(libs.geographiclib)
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

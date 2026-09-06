@@ -41,6 +41,8 @@ import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiState
 import com.yokuli.marine.data.source.MarineFeatureLinkToken
 import com.yokuli.marine.data.source.MarineFeatureLinks
+import com.yokuli.marine.navigation.domain.ActiveNavigationCommand
+import com.yokuli.marine.navigation.domain.ActiveNavigationCommandResult
 import android.net.Uri
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
@@ -55,6 +57,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -102,6 +105,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     )
     val chartLibraryState: StateFlow<ChartLibraryUiState> = chartLibraryCoordinator.state
     val chartLibraryEffects: Flow<ChartLibraryEffect> = chartLibraryCoordinator.effects
+    val activeNavigationState = shellApplication.activeNavigationRuntime.state
 
     val persistedPreferences: StateFlow<LauncherPersistedState> = persistence.state
         .map { it ?: defaults }
@@ -164,6 +168,18 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     val offlineCoverageState: StateFlow<OfflineCoverageUiState> = offlineCoverageCoordinator.state
 
     init {
+        viewModelScope.launch {
+            combine(activeNavigationState, mapStore.state) { navigation, map -> navigation.session to map }
+                .collect { (session, map) ->
+                    if (
+                        session != null &&
+                        map.savedRoutes.any { it.id == session.routeId && it.revision == session.routeRevision } &&
+                        map.activeRoutePlanId != session.routeId
+                    ) {
+                        mapStore.dispatch(MapAction.PreviewRoutePlan(session.routeId))
+                    }
+                }
+        }
         viewModelScope.launch {
             mapStore.state.collect { state ->
                 offlineCoverageCoordinator.invalidateIfInputsChanged(state.savedRoutes, state.chartPackages)
@@ -269,6 +285,14 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cancelOfflineCoverage() = offlineCoverageCoordinator.cancel()
+
+    fun onActiveNavigationCommand(command: ActiveNavigationCommand): Job = viewModelScope.launch {
+        val result = shellApplication.activeNavigationRuntime.execute(command)
+        if (result is ActiveNavigationCommandResult.Accepted && command is ActiveNavigationCommand.Start) {
+            mapStore.dispatch(MapAction.PreviewRoutePlan(command.routeId))
+            mapStore.dispatch(MapAction.OpenSurface(com.yokuli.marine.map.domain.MapSurface.Root))
+        }
+    }
 
     fun saveLanguage(language: AppLanguage) {
         viewModelScope.launch {

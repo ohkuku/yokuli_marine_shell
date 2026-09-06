@@ -150,6 +150,7 @@ fun ChartWorkspace(
     onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit = { _, _, _ -> },
     onCancelOfflineCoverage: () -> Unit = {},
     activeNavigationStrip: (@Composable () -> Unit)? = null,
+    onStartNavigation: (routeId: String, routeRevision: Long) -> Unit = { _, _ -> },
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -233,6 +234,7 @@ fun ChartWorkspace(
                 offlineCoverageState,
                 onStartOfflineCoverage,
                 onCancelOfflineCoverage,
+                onStartNavigation,
                 onAction,
             )
         }
@@ -821,6 +823,7 @@ private fun MapPageSurface(
     offlineCoverageState: OfflineCoverageUiState,
     onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
     onCancelOfflineCoverage: () -> Unit,
+    onStartNavigation: (routeId: String, routeRevision: Long) -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -879,6 +882,7 @@ private fun MapPageSurface(
                     gpxExportState,
                     onSaveGpx,
                     onShareGpx,
+                    onStartNavigation,
                     onAction,
                 )
                 is MapSurface.DeleteRoutePlan -> RouteDeletePage(state, surface.routeId, onAction)
@@ -1324,13 +1328,22 @@ private fun RouteDetailPage(
     gpxExportState: GpxExportUiState,
     onSaveGpx: (GpxExportTarget) -> Unit,
     onShareGpx: (GpxExportTarget) -> Unit,
+    onStartNavigation: (routeId: String, routeRevision: Long) -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val draft = state.routeDrafts.firstOrNull { it.id == id }
     val plan = state.savedRoutes.firstOrNull { it.id == id }
     when {
         draft != null -> RouteEditorPage(state, draft, onAction)
-        plan != null -> RoutePreviewPage(state, plan, gpxExportState, onSaveGpx, onShareGpx, onAction)
+        plan != null -> RoutePreviewPage(
+            state,
+            plan,
+            gpxExportState,
+            onSaveGpx,
+            onShareGpx,
+            onStartNavigation,
+            onAction,
+        )
     }
 }
 
@@ -1524,6 +1537,7 @@ private fun RoutePreviewPage(
     gpxExportState: GpxExportUiState,
     onSaveGpx: (GpxExportTarget) -> Unit,
     onShareGpx: (GpxExportTarget) -> Unit,
+    onStartNavigation: (routeId: String, routeRevision: Long) -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -1572,6 +1586,14 @@ private fun RoutePreviewPage(
             onAction(MapAction.PreviewRoutePlan(plan.id))
             onAction(MapAction.RequestCamera(MapCameraTarget.Bounds(plan.waypoints.toBounds()), MapCameraIntent.VIEW_ROUTE, state.viewportInsets()))
             onAction(MapAction.OpenSurface(MapSurface.Root))
+        }
+        MapTextButton(
+            stringResource(R.string.map_route_start_navigation),
+            "map-route-start-navigation-${plan.id}",
+            enabled = plan.waypoints.size >= 2,
+            modifier = Modifier.fillMaxWidth().border(1.dp, colors.accent),
+        ) {
+            onStartNavigation(plan.id, plan.revision)
         }
         MapTextButton(stringResource(R.string.map_route_edit), "map-route-edit-${plan.id}", mutable, Modifier.fillMaxWidth()) {
             onAction(MapAction.BeginRoutePlanEdit(plan.id))

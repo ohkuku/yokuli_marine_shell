@@ -26,6 +26,7 @@
     <string name="map_view_point">VIEW THIS POINT</string>
     <string name="map_view">VIEW</string>
     <string name="map_view_route">VIEW FULL ROUTE</string>
+    <string name="map_route_start_navigation">START NAVIGATION</string>
     <string name="map_view_package">VIEW COVERAGE</string>
     <string name="map_tool_browse">browse</string>
     <string name="map_tool_places">places</string>

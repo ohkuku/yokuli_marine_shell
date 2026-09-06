@@ -237,6 +237,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val chartLibraryState by shellViewModel.chartLibraryState.collectAsState()
     val nmeaRuntimeSnapshot by shellViewModel.nmeaRuntimeState.collectAsState()
     val dataSourcesSnapshot by shellViewModel.marineSourceState.collectAsState()
+    val activeNavigationState by shellViewModel.activeNavigationState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var recoveryExportState by remember { mutableStateOf(MapRecoveryExportUiState.IDLE) }
     var placeExportState by remember { mutableStateOf<MapPlaceExportUiState>(MapPlaceExportUiState.Idle) }
@@ -556,6 +557,8 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             offlineCoverageState = offlineCoverageState,
             onStartOfflineCoverage = shellViewModel::startOfflineCoverage,
             onCancelOfflineCoverage = shellViewModel::cancelOfflineCoverage,
+            activeNavigationState = activeNavigationState,
+            onActiveNavigationCommand = { shellViewModel.onActiveNavigationCommand(it) },
             onSettingsAction = { action ->
                 when (action) {
                     is SettingsUiAction.OpenSection -> dispatch(

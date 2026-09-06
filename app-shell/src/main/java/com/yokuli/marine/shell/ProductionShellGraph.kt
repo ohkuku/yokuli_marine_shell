@@ -80,6 +80,9 @@ import com.yokuli.shell.engine.layout.TilePlacement
 import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.ChartPackageLease
 import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
+import com.yokuli.marine.navigation.domain.ActiveNavigationCommand
+import com.yokuli.marine.navigation.domain.ActiveNavigationSnapshot
+import com.yokuli.marine.feature.navigation.ActiveNavigationStrip
 
 data class ProductionShellVisualEnvironment(
     val theme: WpThemeSpec,
@@ -121,6 +124,8 @@ data class ProductionShellRuntime(
     val offlineCoverageState: OfflineCoverageUiState,
     val onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
     val onCancelOfflineCoverage: () -> Unit,
+    val activeNavigationState: ActiveNavigationSnapshot,
+    val onActiveNavigationCommand: (ActiveNavigationCommand) -> Unit,
     val onSettingsAction: (SettingsUiAction) -> Unit,
     val dataState: DataUiState,
     val onDataAction: (DataUiAction) -> Unit,
@@ -211,6 +216,17 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 offlineCoverageState = runtime.offlineCoverageState,
                 onStartOfflineCoverage = runtime.onStartOfflineCoverage,
                 onCancelOfflineCoverage = runtime.onCancelOfflineCoverage,
+                activeNavigationStrip = if (runtime.activeNavigationState.session == null) null else {
+                    {
+                        ActiveNavigationStrip(
+                            snapshot = runtime.activeNavigationState,
+                            onCommand = runtime.onActiveNavigationCommand,
+                        )
+                    }
+                },
+                onStartNavigation = { routeId, routeRevision ->
+                    runtime.onActiveNavigationCommand(ActiveNavigationCommand.Start(routeId, routeRevision))
+                },
                 chartSurface = chartSurface,
             )
         },

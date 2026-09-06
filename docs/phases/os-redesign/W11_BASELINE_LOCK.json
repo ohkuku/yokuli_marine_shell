@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W11",
+  "startCommit": "a1a0d48bf5b1703b17db979c83a9ce913c0d287e",
+  "routeTruth": "W10_EXISTING_ROOM_LIBRARY",
+  "sessionStore": "LIGHTWEIGHT_SEPARATE_DATASTORE",
+  "inputTruth": "OS_RESOLVED_MARINE_DATA_ONLY",
+  "restoreActiveAs": "PAUSED",
+  "solutionFreshness": ["LIVE", "HELD"],
+  "bearingReference": "TRUE",
+  "xtePositiveSide": "STARBOARD_RIGHT",
+  "autopilotOutput": false,
+  "nmeaOutput": false,
+  "navigationAppRegistered": false,
+  "verification": "GITHUB_ACTION_PENDING"
+}
