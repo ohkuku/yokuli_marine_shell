@@ -70,7 +70,9 @@ class NmeaSourcesP7Contract(unittest.TestCase):
             "TestSender",
         ):
             self.assertIn(forbidden, gate)
-        self.assertIn("android:screenOrientation=\"portrait\"", gate)
+        # apkanalyzer exposes the compiled enum value (portrait == 1), not the
+        # source-manifest spelling. The binary gate must inspect that truth.
+        self.assertIn("android:screenOrientation=\"1\"", gate)
         self.assertIn("android.intent.category.HOME", gate)
         self.assertIn("android.intent.category.DEFAULT", gate)
         self.assertNotIn("Chart + Settings;", gate)
