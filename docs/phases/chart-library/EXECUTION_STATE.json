@@ -205,12 +205,45 @@
     },
     "CL05": {
       "title": "分层验证与共享瓦片查询",
-      "status": "NOT_STARTED",
-      "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "status": "PASS",
+      "head": "b0ba6bc",
+      "changed_files": [
+        "core/map-domain/**/chartlibrary/{ChartReadContracts,ChartValidationContracts}*",
+        "adapter/chart-library-android/**/{AndroidChartResourceAccess,AndroidChartValidationController,AndroidChartRevisionProbe}*",
+        "adapter/map-offline/**/ChartLibraryCoverageIndex*",
+        "adapter/chart-library-android/schemas/**/2.json",
+        ".github/scripts/test_chart_library_cl05_contract.py"
+      ],
+      "commands": [
+        {
+          "command": "./gradlew :core:map-domain:test :adapter:map-offline:testDebugUnitTest --no-daemon",
+          "exit_code": 0
+        },
+        {
+          "command": "./gradlew :adapter:chart-library-android:connectedDebugAndroidTest -P...ChartValidationAndroidTest,ChartCatalogMigrationTest",
+          "first_exit_code": 1,
+          "first_failure": "Room migration schemas absent from androidTest assets",
+          "corrected_exit_code": 0,
+          "result": "9/9 API34"
+        },
+        {
+          "command": "python3 .github/scripts/test_chart_library_cl05_contract.py",
+          "exit_code": 0
+        },
+        {
+          "command": "./gradlew :app-shell:compileStandaloneDebugKotlin --no-daemon",
+          "exit_code": 0
+        }
+      ],
+      "evidence": [
+        "adapter/chart-library-android/build/reports/androidTests/connected/debug/index.html",
+        "adapter/chart-library-android/schemas/com.yokuli.marine.chart.library.android.ChartCatalogDatabase/2.json",
+        "docs/phases/chart-library/CL05_REPORT.md",
+        "docs/phases/chart-library/CL05_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "catalog v2 migration adds optional raster MIME evidence required by CL05"
+      ],
       "blockers": []
     },
     "CL06": {

@@ -61,6 +61,15 @@ class SafReadOnlyHandle internal constructor(
 
     fun readAt(offset: Long, byteCount: Int): ByteArray = readAtResult(offset, byteCount).getOrThrow()
 
+    fun readAtUpTo(offset: Long, maxByteCount: Int): ByteArray {
+        if (closed.get()) throw ChartReadException(ChartReadFailure.SESSION_CLOSED, "Read handle is closed")
+        if (offset < 0L || maxByteCount < 0 || maxByteCount > MAX_DIRECT_READ_BYTES) {
+            throw ChartReadException(ChartReadFailure.IO_FAILURE, "Invalid bounded read request")
+        }
+        if (offset >= sizeBytes || maxByteCount == 0) return ByteArray(0)
+        return readAt(offset, minOf(maxByteCount.toLong(), sizeBytes - offset).toInt())
+    }
+
     fun readAtResult(offset: Long, byteCount: Int): Result<ByteArray> = runCatching {
         if (closed.get()) throw ChartReadException(ChartReadFailure.SESSION_CLOSED, "Read handle is closed")
         if (offset < 0L || byteCount < 0 || byteCount > MAX_DIRECT_READ_BYTES) {

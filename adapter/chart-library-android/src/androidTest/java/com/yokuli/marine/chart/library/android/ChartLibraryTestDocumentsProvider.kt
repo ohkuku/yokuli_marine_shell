@@ -21,7 +21,7 @@ class ChartLibraryTestDocumentsProvider : DocumentsProvider() {
 
     override fun queryRoots(projection: Array<out String>?): Cursor = MatrixCursor(
         projection ?: arrayOf(Root.COLUMN_ROOT_ID, Root.COLUMN_DOCUMENT_ID, Root.COLUMN_TITLE, Root.COLUMN_FLAGS),
-    ).apply { addRow(arrayOf("root", "root", "Chart tests", Root.FLAG_SUPPORTS_CREATE)) }
+    ).apply { addRow(arrayOf<Any?>("root", "root", "Chart tests", Root.FLAG_SUPPORTS_CREATE)) }
 
     override fun queryDocument(documentId: String, projection: Array<out String>?): Cursor =
         documentCursor(documentId, projection)

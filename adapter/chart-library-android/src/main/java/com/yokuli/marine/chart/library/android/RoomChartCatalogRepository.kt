@@ -162,6 +162,7 @@ class RoomChartCatalogRepository private constructor(
         fun create(context: Context, file: File): RoomChartCatalogRepository {
             file.parentFile?.mkdirs()
             val database = Room.databaseBuilder(context.applicationContext, ChartCatalogDatabase::class.java, file.absolutePath)
+                .addMigrations(CHART_CATALOG_MIGRATION_1_2)
                 .enableMultiInstanceInvalidation()
                 .build()
             return RoomChartCatalogRepository(database)
@@ -197,7 +198,7 @@ private fun ChartAsset.toEntity() = ChartAssetEntity(
     revision.identity, revision.observedSizeBytes, revision.observedModifiedAtMillis,
     revision.providerRevisionHint, revision.contentSha256,
     facts.format.name, facts.sizeBytes, facts.bounds?.west, facts.bounds?.south, facts.bounds?.east, facts.bounds?.north,
-    facts.minZoom, facts.maxZoom, facts.tileCount, facts.tileSize, facts.tileScheme?.name,
+    facts.minZoom, facts.maxZoom, facts.tileCount, facts.tileSize, facts.tileScheme?.name, facts.rasterMimeType,
     facts.attribution, facts.attributionProvenance.name,
     role.name, priority, enabled, access.name, validation.name,
 )
@@ -211,7 +212,7 @@ private fun ChartAssetEntity.toDomain(membershipIds: List<String>): ChartAsset =
             GeoBounds(south = south, west = west, north = north, east = east)
         } else null,
         minZoom, maxZoom, tileCount, tileSize, tileScheme?.let(MapTileScheme::valueOf),
-        attribution, ChartFactProvenance.valueOf(attributionProvenance),
+        attribution, ChartFactProvenance.valueOf(attributionProvenance), rasterMimeType,
     ),
     ChartAssetRole.valueOf(role), priority, enabled,
     ChartAssetAccessState.valueOf(accessState), ChartAssetValidationState.valueOf(validationState),

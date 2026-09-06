@@ -11,6 +11,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "chart_catalog_metadata")
 internal data class ChartCatalogMetadataEntity(
@@ -62,6 +64,7 @@ internal data class ChartAssetEntity(
     val tileCount: Long?,
     val tileSize: Int?,
     val tileScheme: String?,
+    val rasterMimeType: String?,
     val attribution: String?,
     val attributionProvenance: String,
     val role: String,
@@ -242,9 +245,15 @@ internal interface ChartCatalogDao {
         LegacyChartMappingEntity::class,
         ChartCatalogTransactionEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 internal abstract class ChartCatalogDatabase : RoomDatabase() {
     abstract fun dao(): ChartCatalogDao
+}
+
+internal val CHART_CATALOG_MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE chart_assets ADD COLUMN rasterMimeType TEXT")
+    }
 }

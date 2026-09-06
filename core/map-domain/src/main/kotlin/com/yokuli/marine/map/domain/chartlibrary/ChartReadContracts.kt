@@ -59,10 +59,7 @@ data class ChartTileKey(val zoom: Int, val column: Long, val row: Long) {
         require(row in 0 until axisSize)
     }
 
-    fun storageRow(scheme: MapTileScheme): Long = when (scheme) {
-        MapTileScheme.MBTILES_TMS -> (1L shl zoom) - 1L - row
-        MapTileScheme.XYZ -> row
-    }
+    fun storageRow(scheme: MapTileScheme): Long = ChartTileCoordinateMapper.storageRow(this, scheme)
 }
 
 data class ChartTilePayload(
@@ -124,12 +121,19 @@ sealed interface ChartOpenResult {
 
 interface ChartReadSession : AutoCloseable {
     val request: ChartReadRequest
+    val sourceSizeBytes: Long
     fun readMetadata(limit: Int = MAX_METADATA_ROWS): Map<String, String>
     fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload?
     fun hasTile(key: ChartTileKey, scheme: MapTileScheme): Boolean
+    fun readStoredTiles(offset: Long, limit: Int = MAX_VALIDATION_PAGE_SIZE): List<ChartStoredTile>
+    fun readSourceRange(offset: Long, maxByteCount: Int = MAX_HASH_READ_BYTES): ByteArray
     fun statistics(): ChartReadStatistics
     override fun close()
 }
+
+data class ChartStoredTileKey(val zoom: Long, val column: Long, val storageRow: Long)
+
+data class ChartStoredTile(val key: ChartStoredTileKey, val payload: ChartTilePayload)
 
 fun interface ChartResourceAccessPort {
     suspend fun open(request: ChartReadRequest): ChartOpenResult
@@ -139,6 +143,8 @@ const val MIN_ZOOM = 0
 const val MAX_ZOOM = 24
 const val MAX_METADATA_ROWS = 256
 const val MAX_TILE_BYTES = 16 * 1024 * 1024
+const val MAX_VALIDATION_PAGE_SIZE = 32
+const val MAX_HASH_READ_BYTES = 1024 * 1024
 val SUPPORTED_TILE_SIZES = setOf(256, 512)
 val SUPPORTED_RASTER_MIME_TYPES = setOf("image/png", "image/jpeg", "image/webp")
 

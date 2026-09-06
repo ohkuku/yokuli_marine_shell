@@ -80,6 +80,7 @@ data class ChartAssetFacts(
     val tileScheme: MapTileScheme? = null,
     val attribution: String? = null,
     val attributionProvenance: ChartFactProvenance = ChartFactProvenance.UNKNOWN,
+    val rasterMimeType: String? = null,
 ) {
     init {
         require(sizeBytes == null || sizeBytes >= 0L)
@@ -88,6 +89,7 @@ data class ChartAssetFacts(
         require(maxZoom == null || maxZoom in 0..24)
         require(minZoom == null || maxZoom == null || minZoom <= maxZoom)
         require(tileSize == null || tileSize == 256 || tileSize == 512)
+        require(rasterMimeType == null || rasterMimeType in SUPPORTED_RASTER_MIME_TYPES)
         require(attribution == null || attribution.length <= 2_048)
     }
 }

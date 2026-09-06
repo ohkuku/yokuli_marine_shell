@@ -16,8 +16,12 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 import com.yokuli.marine.map.domain.chartlibrary.ChartTileKey
 import com.yokuli.marine.map.domain.chartlibrary.ChartTilePayload
 import com.yokuli.marine.map.domain.chartlibrary.MAX_METADATA_ROWS
+import com.yokuli.marine.map.domain.chartlibrary.MAX_HASH_READ_BYTES
 import com.yokuli.marine.map.domain.chartlibrary.MAX_TILE_BYTES
+import com.yokuli.marine.map.domain.chartlibrary.MAX_VALIDATION_PAGE_SIZE
 import com.yokuli.marine.map.domain.chartlibrary.SUPPORTED_TILE_SIZES
+import com.yokuli.marine.map.domain.chartlibrary.ChartStoredTile
+import com.yokuli.marine.map.domain.chartlibrary.ChartStoredTileKey
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -93,6 +97,7 @@ private class AndroidMbTilesReadSession(
     private val handle: SafReadOnlyHandle,
     private val database: SQLiteDatabase,
 ) : ChartReadSession {
+    override val sourceSizeBytes: Long = handle.sizeBytes
     private val closed = AtomicBoolean(false)
     private val metadataRows = AtomicInteger(0)
     private val tileQueries = AtomicLong(0L)
@@ -101,10 +106,16 @@ private class AndroidMbTilesReadSession(
     override fun readMetadata(limit: Int): Map<String, String> = checked {
         require(limit in 1..MAX_METADATA_ROWS)
         val result = linkedMapOf<String, String>()
-        database.rawQuery("SELECT name,value FROM metadata ORDER BY name LIMIT $limit", emptyArray()).use { cursor ->
+        database.rawQuery(
+            "SELECT length(name),length(value),substr(name,1,?),substr(value,1,?) FROM metadata ORDER BY name LIMIT ?",
+            arrayOf((MAX_METADATA_TEXT + 1).toString(), (MAX_METADATA_TEXT + 1).toString(), limit.toString()),
+        ).use { cursor ->
             while (cursor.moveToNext()) {
-                val name = cursor.getString(0).take(MAX_METADATA_TEXT)
-                val value = cursor.getString(1).take(MAX_METADATA_TEXT)
+                if (cursor.getLong(0) > MAX_METADATA_TEXT || cursor.getLong(1) > MAX_METADATA_TEXT) {
+                    throw ChartReadException(ChartReadFailure.INVALID_SCHEMA, "Metadata text exceeds bounded limit")
+                }
+                val name = cursor.getString(2)
+                val value = cursor.getString(3)
                 if (name !in result) result[name] = value
                 logicalBytesRead.addAndGet((name.length + value.length).toLong())
             }
@@ -116,15 +127,16 @@ private class AndroidMbTilesReadSession(
     override fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload? = checked {
         tileQueries.incrementAndGet()
         database.rawQuery(
-            "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=? LIMIT 1",
-            arrayOf(key.zoom.toString(), key.column.toString(), key.storageRow(scheme).toString()),
+            "SELECT length(tile_data),CASE WHEN length(tile_data)<=? THEN tile_data ELSE NULL END " +
+                "FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=? LIMIT 1",
+            arrayOf(MAX_TILE_BYTES.toString(), key.zoom.toString(), key.column.toString(), key.storageRow(scheme).toString()),
         ).use { cursor ->
             if (!cursor.moveToFirst()) return@checked null
-            val bytes = cursor.getBlob(0)
-            if (bytes.size > MAX_TILE_BYTES) throw ChartReadException(
+            if (cursor.getLong(0) > MAX_TILE_BYTES) throw ChartReadException(
                 ChartReadFailure.TILE_TOO_LARGE,
                 "Tile exceeds the bounded payload limit",
             )
+            val bytes = cursor.getBlob(1)
             logicalBytesRead.addAndGet(bytes.size.toLong())
             bytes.toTilePayload()
         }
@@ -136,6 +148,39 @@ private class AndroidMbTilesReadSession(
             "SELECT 1 FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=? LIMIT 1",
             arrayOf(key.zoom.toString(), key.column.toString(), key.storageRow(scheme).toString()),
         ).use { it.moveToFirst() }
+    }
+
+    override fun readStoredTiles(offset: Long, limit: Int): List<ChartStoredTile> = checked {
+        require(offset >= 0L)
+        require(limit in 1..MAX_VALIDATION_PAGE_SIZE)
+        database.rawQuery(
+            "SELECT zoom_level,tile_column,tile_row,length(tile_data)," +
+                "CASE WHEN length(tile_data)<=? THEN tile_data ELSE NULL END FROM tiles " +
+                "ORDER BY zoom_level,tile_column,tile_row LIMIT ? OFFSET ?",
+            arrayOf(MAX_TILE_BYTES.toString(), limit.toString(), offset.toString()),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    if (cursor.getLong(3) > MAX_TILE_BYTES) throw ChartReadException(
+                        ChartReadFailure.TILE_TOO_LARGE,
+                        "Tile exceeds the bounded payload limit",
+                    )
+                    val bytes = cursor.getBlob(4)
+                    logicalBytesRead.addAndGet(bytes.size.toLong())
+                    add(
+                        ChartStoredTile(
+                            ChartStoredTileKey(cursor.getLong(0), cursor.getLong(1), cursor.getLong(2)),
+                            bytes.toTilePayload(),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    override fun readSourceRange(offset: Long, maxByteCount: Int): ByteArray = checked {
+        require(maxByteCount in 1..MAX_HASH_READ_BYTES)
+        handle.readAtUpTo(offset, maxByteCount)
     }
 
     override fun statistics(): ChartReadStatistics = ChartReadStatistics(

@@ -7,6 +7,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadRequest
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadSession
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadStatistics
+import com.yokuli.marine.map.domain.chartlibrary.ChartStoredTile
 import com.yokuli.marine.map.domain.chartlibrary.ChartTileKey
 import com.yokuli.marine.map.domain.chartlibrary.ChartTilePayload
 import java.net.HttpURLConnection
@@ -73,6 +74,7 @@ class ChartLoopbackTileGatewayTest {
             ChartContentRevision("doc-1", 100, 1),
             sourceGeneration = 3,
         )
+        override val sourceSizeBytes: Long = 100L
         val tile = ChartTilePayload(byteArrayOf(1, 2, 3), "image/png", 256, 256)
         var lastKey: ChartTileKey? = null
         override fun readMetadata(limit: Int) = emptyMap<String, String>()
@@ -81,6 +83,8 @@ class ChartLoopbackTileGatewayTest {
             return tile
         }
         override fun hasTile(key: ChartTileKey, scheme: MapTileScheme) = true
+        override fun readStoredTiles(offset: Long, limit: Int) = emptyList<ChartStoredTile>()
+        override fun readSourceRange(offset: Long, maxByteCount: Int) = byteArrayOf()
         override fun statistics() = ChartReadStatistics()
         override fun close() = Unit
     }

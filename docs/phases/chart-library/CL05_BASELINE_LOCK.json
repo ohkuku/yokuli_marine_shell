@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "task": "CL05",
+  "start_commit": "b0ba6bc1a8c91242a32cd2451b267d19760b8461",
+  "basic_sample_tile_limit": 3,
+  "metadata_row_limit": 256,
+  "metadata_text_limit": 4096,
+  "tile_payload_limit_bytes": 16777216,
+  "full_verification_page_size": 32,
+  "full_hash_read_block_bytes": 1048576,
+  "supported_raster_mime_types": ["image/png", "image/jpeg", "image/webp"],
+  "supported_tile_sizes": [256, 512],
+  "catalog_schema_version": 2,
+  "test_device": "pixel_7_api_34 emulator"
+}
