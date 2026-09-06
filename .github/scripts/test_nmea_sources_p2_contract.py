@@ -92,10 +92,26 @@ class NmeaSourcesP2ContractTest(unittest.TestCase):
         permissions = {item.attrib[ns + "name"] for item in manifest.findall("uses-permission")}
         self.assertIn("android.permission.FOREGROUND_SERVICE", permissions)
         self.assertIn("android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE", permissions)
-        services = manifest.findall("application/service")
-        self.assertEqual(1, len(services))
-        self.assertEqual("false", services[0].attrib[ns + "exported"])
-        self.assertEqual("connectedDevice", services[0].attrib[ns + "foregroundServiceType"])
+        services = {
+            service.attrib[ns + "name"]: service
+            for service in manifest.findall("application/service")
+        }
+        # P2 sealed the private NMEA service. P3 later adds a separate private
+        # location service; the current executable gate must validate both truths.
+        self.assertEqual(
+            {".service.NmeaInputForegroundService", ".service.PhoneLocationForegroundService"},
+            set(services),
+        )
+        self.assertEqual("false", services[".service.NmeaInputForegroundService"].attrib[ns + "exported"])
+        self.assertEqual(
+            "connectedDevice",
+            services[".service.NmeaInputForegroundService"].attrib[ns + "foregroundServiceType"],
+        )
+        self.assertEqual("false", services[".service.PhoneLocationForegroundService"].attrib[ns + "exported"])
+        self.assertEqual(
+            "location",
+            services[".service.PhoneLocationForegroundService"].attrib[ns + "foregroundServiceType"],
+        )
 
         shell_manifest = self.text("app-shell/src/main/AndroidManifest.xml")
         self.assertIn('android:screenOrientation="portrait"', shell_manifest)
@@ -174,13 +190,16 @@ class NmeaSourcesP2ContractTest(unittest.TestCase):
         ):
             self.assertIn(scenario, tests)
 
-    def test_p2_does_not_prematurely_install_tiles_or_data_sources(self):
+    def test_p2_deferral_is_preserved_while_p5_installs_without_default_pinning(self):
+        report = self.text("docs/phases/nmea-sources/P2_REPORT.md")
         graph = self.text("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
-        self.assertNotIn("NmeaInputShellContribution", graph)
-        self.assertNotIn("DataSourcesShellContribution", graph)
-        self.assertNotIn("tile-nmea", graph)
-        self.assertNotIn("tile-data-sources", graph)
-        self.assertNotIn('":feature:data-sources"', self.text("settings.gradle.kts"))
+        self.assertIn("正式安装属于 P5", report)
+        self.assertIn("NmeaInputShellContribution", graph)
+        self.assertIn("DataSourcesShellContribution", graph)
+        default_document = graph[graph.index("val defaultStartDocument"):]
+        self.assertNotIn("tile-nmea", default_document)
+        self.assertNotIn("tile-data-sources", default_document)
+        self.assertIn('":feature:data-sources"', self.text("settings.gradle.kts"))
 
 
 if __name__ == "__main__":

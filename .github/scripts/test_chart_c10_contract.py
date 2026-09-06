@@ -18,12 +18,15 @@ class ChartC10ContractTest(unittest.TestCase):
         self.assertIn("English translation", report)
         self.assertIn("C11", report)
 
-    def test_production_uses_read_only_no_source_port(self):
+    def test_current_production_keeps_the_read_only_port_boundary(self):
         contract = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/PositionObservation.kt").read_text()
         app = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellApplication.kt").read_text()
         self.assertIn("interface ReadOnlyPositionPort", contract)
         self.assertIn("NoSourcePositionPort", contract)
-        self.assertIn("NoSourcePositionPort", app)
+        # C10 originally sealed NoSource. NMEA_SOURCES P6 supersedes only the composition:
+        # Chart still consumes the same read-only port and owns no collector/runtime.
+        self.assertIn("MarineSourcePositionPort", app)
+        self.assertIn("val positionPort: ReadOnlyPositionPort", app)
         self.assertNotIn("ReplayPosition", app)
         self.assertNotIn("FakePosition", app)
 
@@ -53,23 +56,32 @@ class ChartC10ContractTest(unittest.TestCase):
         for overlay in ("POSITION_HISTORY", "TRUE_HEADING", "COURSE_OVER_GROUND", "POSITION_ACCURACY"):
             self.assertIn(overlay, renderer)
 
-    def test_release_has_no_position_collection_or_vessel_output_permission(self):
+    def test_current_release_keeps_collection_outside_chart_and_has_no_vessel_output(self):
         manifest = (ROOT / "app-shell/src/main/AndroidManifest.xml").read_text()
-        production = "\n".join(
+        chart_production = "\n".join(
             p.read_text(errors="ignore")
             for base in (
-                ROOT / "app-shell/src/main",
                 ROOT / "feature/chart/src/main",
                 ROOT / "adapter/map-offline/src/main",
             )
             for p in base.rglob("*")
             if p.is_file() and p.suffix in {".kt", ".xml"}
         )
-        self.assertIn('android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove"', manifest)
-        self.assertIn('android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove"', manifest)
-        self.assertNotIn("NmeaWriter", production)
-        self.assertNotIn("Autopilot", production)
-        self.assertNotIn("ReplayPosition", production)
+        marine_adapter = "\n".join(
+            p.read_text(errors="ignore")
+            for p in (ROOT / "adapter/marine-data-android/src/main").rglob("*")
+            if p.is_file() and p.suffix in {".kt", ".xml"}
+        )
+        # P3 deliberately adds foreground phone-location permission at the app boundary.
+        self.assertIn('android.permission.ACCESS_FINE_LOCATION', manifest)
+        self.assertIn('android.permission.ACCESS_COARSE_LOCATION', manifest)
+        self.assertNotIn('android.permission.ACCESS_BACKGROUND_LOCATION', manifest)
+        self.assertIn("LocationManager", marine_adapter)
+        self.assertNotIn("LocationManager", chart_production)
+        self.assertNotIn("requestPermissions", chart_production)
+        self.assertNotIn("NmeaWriter", chart_production + marine_adapter)
+        self.assertNotIn("Autopilot", chart_production + marine_adapter)
+        self.assertNotIn("ReplayPosition", chart_production + marine_adapter)
 
     def test_ui_states_no_source_and_does_not_offer_an_unusable_follow_action(self):
         workspace = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
