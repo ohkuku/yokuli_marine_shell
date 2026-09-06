@@ -79,6 +79,23 @@ data class SourceIdentity internal constructor(
                 port = sender.port.takeIf { policy == UdpOriginIdentityPolicy.HOST_AND_PORT },
             ),
         )
+
+        /** Rebuilds a durable logical origin without pretending an observed sender is present. */
+        fun fromStableOrigin(
+            connectionId: ConnectionId,
+            udpHostAddress: String?,
+            udpPort: Int?,
+        ): SourceIdentity {
+            require(udpHostAddress != null || udpPort == null) {
+                "A persisted UDP port requires a persisted host"
+            }
+            require(udpHostAddress == null || udpHostAddress.isNotBlank())
+            require(udpPort == null || udpPort in 1..65_535)
+            return SourceIdentity(
+                connectionId = connectionId,
+                udpOrigin = udpHostAddress?.let { UdpOriginIdentity(it, udpPort) },
+            )
+        }
     }
 }
 
@@ -145,6 +162,8 @@ sealed interface DataKey {
     data object Satellites : DataKey
     data object HorizontalDilution : DataKey
     data object Altitude : DataKey
+    /** Accuracy radius reported by a platform location provider; never synthesized by NMEA. */
+    data object PositionAccuracy : DataKey
 }
 
 enum class MarineUnit {
@@ -239,6 +258,7 @@ private fun DataKey.accepts(value: MarineValue): Boolean = when (this) {
     DataKey.Satellites -> value is MarineValue.Count
     DataKey.HorizontalDilution -> value.isDecimal(MarineUnit.DIMENSIONLESS) { it >= 0.0 }
     DataKey.Altitude -> value.isDecimal(MarineUnit.METERS)
+    DataKey.PositionAccuracy -> value.isDecimal(MarineUnit.METERS) { it >= 0.0 }
 }
 
 private inline fun MarineValue.isDecimal(

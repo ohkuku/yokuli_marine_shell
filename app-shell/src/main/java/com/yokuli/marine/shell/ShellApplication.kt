@@ -10,14 +10,22 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.data.android.persistence.ProtoDataStoreConnectionRepository
+import com.yokuli.marine.data.android.persistence.ProtoDataStoreSourceSelectionRepository
+import com.yokuli.marine.data.android.location.AndroidLocationManagerPlatform
+import com.yokuli.marine.data.android.location.AndroidPhoneLocationRuntime
+import com.yokuli.marine.data.android.location.SharedPreferencesPhoneLocationIntentStore
 import com.yokuli.marine.data.android.runtime.AndroidElapsedRealtimeClock
+import com.yokuli.marine.data.android.runtime.AndroidMarineSourceRuntime
 import com.yokuli.marine.data.android.runtime.AndroidNetworkAvailability
 import com.yokuli.marine.data.android.runtime.AndroidNmeaInputRuntime
 import com.yokuli.marine.data.android.runtime.MarineDataRuntimeOwner
 import com.yokuli.marine.data.android.runtime.ReconnectDelayPort
 import com.yokuli.marine.data.android.runtime.SocketNmeaTransportFactory
 import com.yokuli.marine.data.android.service.NmeaForegroundServiceController
+import com.yokuli.marine.data.android.service.PhoneLocationForegroundServiceController
+import com.yokuli.marine.data.phone.PhoneLocationRuntimePort
 import com.yokuli.marine.data.runtime.NmeaInputRuntimePort
+import com.yokuli.marine.data.source.MarineSourceRuntimePort
 import com.yokuli.marine.map.storage.RoomMapPersistence
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
@@ -73,12 +81,38 @@ class ShellApplication : Application(), MarineDataRuntimeOwner {
             foregroundController = NmeaForegroundServiceController(this),
         )
     }
+    override val phoneLocationRuntime: PhoneLocationRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AndroidPhoneLocationRuntime(
+            platform = AndroidLocationManagerPlatform(this),
+            clock = AndroidElapsedRealtimeClock,
+            applicationScope = applicationScope,
+            intentStore = SharedPreferencesPhoneLocationIntentStore(this),
+            foregroundController = PhoneLocationForegroundServiceController(this),
+        )
+    }
+    private val sourceSelectionRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProtoDataStoreSourceSelectionRepository.create(
+            storageFile = java.io.File(filesDir, "marine-data/source-selection.pb"),
+            scope = applicationScope,
+        )
+    }
+    override val marineSourceRuntime: MarineSourceRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AndroidMarineSourceRuntime(
+            nmeaRuntime = nmeaInputRuntime,
+            phoneRuntime = phoneLocationRuntime,
+            repository = sourceSelectionRepository,
+            clock = AndroidElapsedRealtimeClock,
+            applicationScope = applicationScope,
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
         // Process ownership is independent of any Feature/ViewModel subscription. This restores
         // durable user intent without resurrecting live observations from disk.
         nmeaInputRuntime
+        phoneLocationRuntime
+        marineSourceRuntime
         if (BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")) {
             // Harnesses repeatedly force-stop/reinstall the target. A first-run LocaleManager
             // recreation would measure platform setup instead of the launcher journey.

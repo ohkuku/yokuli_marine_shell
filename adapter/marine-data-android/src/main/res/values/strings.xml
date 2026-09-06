@@ -5,4 +5,9 @@
     <string name="nmea_notification_title">NMEA 输入正在运行</string>
     <string name="nmea_notification_enabled_count">%1$d 条输入已启用</string>
     <string name="nmea_notification_stop_all">全部停止</string>
+    <string name="phone_location_notification_channel_name">手机系统定位</string>
+    <string name="phone_location_notification_channel_description">保持用户明确启用的系统定位来源</string>
+    <string name="phone_location_notification_title">手机系统定位已启用</string>
+    <string name="phone_location_notification_text">为 Yokuli OS 提供实际平台位置</string>
+    <string name="phone_location_notification_stop">停止定位</string>
 </resources>

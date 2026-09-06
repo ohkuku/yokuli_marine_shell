@@ -5,4 +5,9 @@
     <string name="nmea_notification_title">NMEA input is running</string>
     <string name="nmea_notification_enabled_count">%1$d inputs enabled</string>
     <string name="nmea_notification_stop_all">Stop all</string>
+    <string name="phone_location_notification_channel_name">Phone system location</string>
+    <string name="phone_location_notification_channel_description">Keeps the explicitly enabled system location source running</string>
+    <string name="phone_location_notification_title">Phone system location enabled</string>
+    <string name="phone_location_notification_text">Provides actual platform location to Yokuli OS</string>
+    <string name="phone_location_notification_stop">Stop location</string>
 </resources>

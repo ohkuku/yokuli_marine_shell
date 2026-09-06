@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+option java_package = "com.yokuli.marine.data.android.proto";
+option java_multiple_files = true;
+
+message PersistedSourceSelectionStore {
+  uint32 schema_version = 1;
+  int64 revision = 2;
+  repeated PersistedSourcePreference preferences = 3;
+}
+
+message PersistedSourcePreference {
+  string data_key = 1;
+  oneof preference {
+    PersistedSelectedSource selected = 2;
+    bool disabled = 3;
+  }
+}
+
+message PersistedSelectedSource {
+  string connection_id = 1;
+  optional string udp_host_address = 2;
+  optional uint32 udp_port = 3;
+  PersistedSelectionReason reason = 4;
+}
+
+enum PersistedSelectionReason {
+  PERSISTED_SELECTION_REASON_UNSPECIFIED = 0;
+  PERSISTED_SELECTION_REASON_AUTOMATIC_UNIQUE = 1;
+  PERSISTED_SELECTION_REASON_USER = 2;
+}
