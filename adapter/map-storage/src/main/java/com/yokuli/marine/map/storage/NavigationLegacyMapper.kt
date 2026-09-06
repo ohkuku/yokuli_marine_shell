@@ -28,27 +28,27 @@ import com.yokuli.marine.navigation.domain.WaypointRevisionReference
 internal object NavigationLegacyMapper {
     fun toNavigation(source: MapLibrarySnapshot): NavigationLibrary = NavigationLibrary(
         revision = source.revision,
-        waypoints = source.places.map(SavedPlace::toNavigation),
-        routeDrafts = source.routeDrafts.map(ManualRouteDraft::toNavigation),
-        routePlans = source.savedRoutes.map(SavedRoute::toNavigation),
-        importedTracks = source.importedTracks.map(ImportedTrack::toNavigation),
-        gpxImports = source.gpxImportRecords.map(GpxImportRecord::toNavigation),
+        waypoints = source.places.map(SavedPlace::asNavigation),
+        routeDrafts = source.routeDrafts.map(ManualRouteDraft::asNavigation),
+        routePlans = source.savedRoutes.map(SavedRoute::asNavigation),
+        importedTracks = source.importedTracks.map(ImportedTrack::asNavigation),
+        gpxImports = source.gpxImportRecords.map(GpxImportRecord::asNavigation),
     )
 
     fun toLegacy(source: NavigationLibrary): MapLibrarySnapshot = MapLibrarySnapshot(
         revision = source.revision,
-        places = source.waypoints.map(Waypoint::toLegacy),
-        routeDrafts = source.routeDrafts.map(RouteDraft::toLegacy),
-        savedRoutes = source.routePlans.map(RoutePlan::toLegacy),
-        importedTracks = source.importedTracks.map(NavigationTrack::toLegacy),
-        gpxImportRecords = source.gpxImports.map(GpxImportReceipt::toLegacy),
+        places = source.waypoints.map(Waypoint::asLegacy),
+        routeDrafts = source.routeDrafts.map(RouteDraft::asLegacy),
+        savedRoutes = source.routePlans.map(RoutePlan::asLegacy),
+        importedTracks = source.importedTracks.map(NavigationTrack::asLegacy),
+        gpxImportRecords = source.gpxImports.map(GpxImportReceipt::asLegacy),
     )
 
-    private fun SavedPlace.toNavigation() = Waypoint(
+    private fun SavedPlace.asNavigation() = Waypoint(
         id = id,
         revision = revision,
         name = name,
-        position = point.toNavigation(),
+        position = point.asNavigation(),
         notes = notes,
         category = WaypointCategory.valueOf(category.name),
         tags = tags,
@@ -56,11 +56,11 @@ internal object NavigationLegacyMapper {
         updatedAtMillis = updatedAtMillis,
     )
 
-    private fun Waypoint.toLegacy() = SavedPlace(
+    private fun Waypoint.asLegacy() = SavedPlace(
         id = id,
         revision = revision,
         name = name,
-        point = position.toLegacy(),
+        point = position.asLegacy(),
         notes = notes,
         category = PlaceCategory.valueOf(category.name),
         tags = tags,
@@ -68,15 +68,15 @@ internal object NavigationLegacyMapper {
         updatedAtMillis = updatedAtMillis,
     )
 
-    private fun ManualRouteDraft.toNavigation() = RouteDraft(
+    private fun ManualRouteDraft.asNavigation() = RouteDraft(
         id = id,
         revision = revision,
         name = name,
         points = waypoints.mapIndexed { index, point ->
             RoutePoint(
                 id = waypointIds[index],
-                position = point.toNavigation(),
-                sourceWaypoint = waypointPlaceReferences[index]?.toNavigation(),
+                position = point.asNavigation(),
+                sourceWaypoint = waypointPlaceReferences[index]?.asNavigation(),
             )
         },
         plannedSpeedKnots = plannedSpeedKnots,
@@ -86,31 +86,31 @@ internal object NavigationLegacyMapper {
         nextPointOrdinal = nextWaypointOrdinal,
     )
 
-    private fun RouteDraft.toLegacy() = ManualRouteDraft(
+    private fun RouteDraft.asLegacy() = ManualRouteDraft(
         id = id,
         revision = revision,
         name = name,
-        waypoints = points.map { it.position.toLegacy() },
+        waypoints = points.map { it.position.asLegacy() },
         plannedSpeedKnots = plannedSpeedKnots,
         notes = notes,
         waypointIds = points.map(RoutePoint::id),
         waypointPlaceReferences = points.mapIndexedNotNull { index, point ->
-            point.sourceWaypoint?.let { index to it.toLegacy() }
+            point.sourceWaypoint?.let { index to it.asLegacy() }
         }.toMap(),
         basePlanId = baseRouteId,
         basePlanRevision = baseRouteRevision,
         nextWaypointOrdinal = nextPointOrdinal,
     )
 
-    private fun SavedRoute.toNavigation() = RoutePlan(
+    private fun SavedRoute.asNavigation() = RoutePlan(
         id = id,
         revision = revision,
         name = name,
         points = waypoints.mapIndexed { index, point ->
             RoutePoint(
                 id = waypointIds[index],
-                position = point.toNavigation(),
-                sourceWaypoint = waypointPlaceReferences[index]?.toNavigation(),
+                position = point.asNavigation(),
+                sourceWaypoint = waypointPlaceReferences[index]?.asNavigation(),
             )
         },
         plannedSpeedKnots = plannedSpeedKnots,
@@ -119,57 +119,57 @@ internal object NavigationLegacyMapper {
         sourceDraftRevision = sourceDraftRevision,
     )
 
-    private fun RoutePlan.toLegacy() = SavedRoute(
+    private fun RoutePlan.asLegacy() = SavedRoute(
         id = id,
         revision = revision,
         name = name,
-        waypoints = points.map { it.position.toLegacy() },
+        waypoints = points.map { it.position.asLegacy() },
         plannedSpeedKnots = plannedSpeedKnots,
         notes = notes,
         sourceDraftId = sourceDraftId,
         sourceDraftRevision = sourceDraftRevision,
         waypointIds = points.map(RoutePoint::id),
         waypointPlaceReferences = points.mapIndexedNotNull { index, point ->
-            point.sourceWaypoint?.let { index to it.toLegacy() }
+            point.sourceWaypoint?.let { index to it.asLegacy() }
         }.toMap(),
     )
 
-    private fun ImportedTrack.toNavigation() = NavigationTrack(
+    private fun ImportedTrack.asNavigation() = NavigationTrack(
         id = id,
         revision = revision,
         name = name,
         description = description,
-        segments = segments.map { segment -> NavigationTrackSegment(segment.points.map(ImportedTrackPoint::toNavigation)) },
+        segments = segments.map { segment -> NavigationTrackSegment(segment.points.map(ImportedTrackPoint::asNavigation)) },
         sourceDigest = sourceDigest,
         importedAtMillis = importedAtMillis,
     )
 
-    private fun NavigationTrack.toLegacy() = ImportedTrack(
+    private fun NavigationTrack.asLegacy() = ImportedTrack(
         id = id,
         revision = revision,
         name = name,
         description = description,
-        segments = segments.map { segment -> ImportedTrackSegment(segment.points.map(NavigationTrackPoint::toLegacy)) },
+        segments = segments.map { segment -> ImportedTrackSegment(segment.points.map(NavigationTrackPoint::asLegacy)) },
         sourceDigest = sourceDigest,
         importedAtMillis = importedAtMillis,
     )
 
-    private fun ImportedTrackPoint.toNavigation() = NavigationTrackPoint(
-        position = point.toNavigation(),
+    private fun ImportedTrackPoint.asNavigation() = NavigationTrackPoint(
+        position = point.asNavigation(),
         elevationMeters = elevationMeters,
         time = time,
     )
 
-    private fun NavigationTrackPoint.toLegacy() = ImportedTrackPoint(
-        point = position.toLegacy(),
+    private fun NavigationTrackPoint.asLegacy() = ImportedTrackPoint(
+        point = position.asLegacy(),
         elevationMeters = elevationMeters,
         time = time,
     )
 
-    private fun GpxImportRecord.toNavigation() = GpxImportReceipt(id, sha256, importedAtMillis)
-    private fun GpxImportReceipt.toLegacy() = GpxImportRecord(id, sha256, importedAtMillis)
-    private fun PlaceRevisionReference.toNavigation() = WaypointRevisionReference(placeId, revision)
-    private fun WaypointRevisionReference.toLegacy() = PlaceRevisionReference(waypointId, revision)
-    private fun GeoPoint.toNavigation() = NavigationPosition(latitude, longitude)
-    private fun NavigationPosition.toLegacy() = GeoPoint(latitude, longitude)
+    private fun GpxImportRecord.asNavigation() = GpxImportReceipt(id, sha256, importedAtMillis)
+    private fun GpxImportReceipt.asLegacy() = GpxImportRecord(id, sha256, importedAtMillis)
+    private fun PlaceRevisionReference.asNavigation() = WaypointRevisionReference(placeId, revision)
+    private fun WaypointRevisionReference.asLegacy() = PlaceRevisionReference(waypointId, revision)
+    private fun GeoPoint.asNavigation() = NavigationPosition(latitude, longitude)
+    private fun NavigationPosition.asLegacy() = GeoPoint(latitude, longitude)
 }
