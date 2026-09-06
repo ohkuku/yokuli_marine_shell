@@ -283,12 +283,37 @@
     },
     "CL07": {
       "title": "独立海图库应用页面",
-      "status": "NOT_STARTED",
-      "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "status": "IMPLEMENTED_CI_PENDING",
+      "head": "225ab0c0f60aef6b64c05da27d64ac6c29df4a3c",
+      "changed_files": [
+        "core/map-domain/**/chartlibrary/{ChartLibraryRuntimeContracts,ChartScanContracts}.kt",
+        "adapter/chart-library-android/**/{AndroidChartLibraryRuntime,AndroidChartSourceController}*",
+        "feature/chart-library/**",
+        ".github/scripts/{test_chart_library_cl07_contract.py,run_device_tests.sh,test-ci-contract.sh}",
+        ".github/workflows/android.yml",
+        "docs/phases/chart-library/{CL07_REPORT.md,CL07_BASELINE_LOCK.json,EXECUTION_STATE.json}"
+      ],
+      "commands": [
+        {
+          "command": "Yokuli OS Android CI / Chart Library CL07 independent application contract",
+          "result": "PENDING_GITHUB_ACTION"
+        },
+        {
+          "command": "Yokuli OS Android CI / unit tests + API34 all device suites",
+          "result": "PENDING_GITHUB_ACTION"
+        }
+      ],
+      "evidence": [
+        "CODEX-CI-REPORT-<CL07_SHA12>-<run_id>-<attempt>",
+        "yokuli-os-build-reports-<CL07_SHA>",
+        "yokuli-os-api34-reports-<CL07_SHA>",
+        "docs/phases/chart-library/CL07_REPORT.md",
+        "docs/phases/chart-library/CL07_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "按用户指定的新工作流，本地不重复运行 Gradle；提交后由 GitHub Action 提供机器证据，施工继续进入 CL08",
+        "受管副本端口与真实不可用状态已建立；复制事务后端属于 CL09，因此 CL07 不显示可执行的假复制入口"
+      ],
       "blockers": []
     },
     "CL08": {

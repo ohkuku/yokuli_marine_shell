@@ -28,6 +28,7 @@ include(
     ":ui:shell-compose",
     ":feature:desktop",
     ":feature:chart",
+    ":feature:chart-library",
     ":feature:nmea-input",
     ":feature:data-sources",
     ":feature:settings",

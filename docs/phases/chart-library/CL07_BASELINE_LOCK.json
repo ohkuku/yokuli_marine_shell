@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "task": "CL07",
+  "start_commit": "225ab0c0f60aef6b64c05da27d64ac6c29df4a3c",
+  "feature_module": ":feature:chart-library",
+  "runtime_truth_port": "ChartLibraryRuntimePort",
+  "production_activity_count": 0,
+  "map_view_per_list_item": false,
+  "opaque_locator_in_ui_state": false,
+  "max_pending_actions": 64,
+  "max_pending_pickers": 1,
+  "max_selected_assets": 1000,
+  "max_loaded_ui_items": 10000,
+  "external_source_removal_deletes_original": false,
+  "managed_copy_backend": "NOT_AVAILABLE_UNTIL_CL09",
+  "verification": "GITHUB_ACTION_PENDING"
+}

@@ -8,6 +8,7 @@ all_device_tasks=(
   :adapter:marine-data-android:connectedDebugAndroidTest
   :adapter:map-offline:connectedDebugAndroidTest
   :adapter:map-storage:connectedDebugAndroidTest
+  :feature:chart-library:connectedDebugAndroidTest
   :app-shell:connectedStandaloneDebugAndroidTest
 )
 gradle_args=(--no-daemon --stacktrace)

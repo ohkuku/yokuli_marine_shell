@@ -64,6 +64,42 @@ class AndroidChartSourceController(
         }
     }
 
+    override suspend fun repair(
+        sourceId: ChartSourceId,
+        selection: ChartPickerSelection,
+    ): ChartSourceCommandResult = sourceLocks.computeIfAbsent(sourceId.value) { Mutex() }.withLock {
+        val source = catalog.source(sourceId)
+            ?: return@withLock ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.SOURCE_NOT_FOUND)
+        val expectedPickerKind = when (source.kind) {
+            ChartLibrarySourceKind.TREE -> ChartPickerKind.TREE
+            ChartLibrarySourceKind.SINGLE_DOCUMENT -> ChartPickerKind.SINGLE_DOCUMENT
+            ChartLibrarySourceKind.MANAGED -> return@withLock ChartSourceCommandResult.Rejected(
+                ChartSourceCommandFailure.STALE_OPERATION,
+            )
+        }
+        if (selection.kind != expectedPickerKind || !selection.persistableReadGranted || !grants.takeRead(selection.locator)) {
+            return@withLock ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.READ_GRANT_MISSING)
+        }
+        val repaired = source.copy(locator = selection.locator, grantState = ChartGrantState.GRANTED)
+        return@withLock when (
+            catalog.transact(
+                ChartCatalogTransaction(
+                    "source-repair:${sourceId.value}:${selection.operationId.value}",
+                    mutations = listOf(ChartCatalogMutation.PutSource(repaired)),
+                ),
+            )
+        ) {
+            is ChartCatalogCommitResult.Committed -> {
+                if (source.locator != repaired.locator) releaseIfUnused(source.locator)
+                ChartSourceCommandResult.Accepted(sourceId)
+            }
+            else -> {
+                if (source.locator != repaired.locator) releaseIfUnused(repaired.locator)
+                ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+            }
+        }
+    }
+
     override suspend fun refresh(sourceId: ChartSourceId): ChartSourceCommandResult =
         sourceLocks.computeIfAbsent(sourceId.value) { Mutex() }.withLock {
             workerBudget.withPermit {

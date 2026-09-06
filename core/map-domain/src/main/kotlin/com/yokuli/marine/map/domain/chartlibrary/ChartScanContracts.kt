@@ -182,6 +182,7 @@ enum class ChartSourceCommandFailure { PICKER_CANCELLED, READ_GRANT_MISSING, SOU
 
 interface ChartSourceCommandPort {
     suspend fun acceptPicker(selection: ChartPickerSelection): ChartSourceCommandResult
+    suspend fun repair(sourceId: ChartSourceId, selection: ChartPickerSelection): ChartSourceCommandResult
     suspend fun refresh(sourceId: ChartSourceId): ChartSourceCommandResult
     suspend fun cancel(sourceId: ChartSourceId): ChartSourceCommandResult
     suspend fun remove(sourceId: ChartSourceId): ChartSourceCommandResult

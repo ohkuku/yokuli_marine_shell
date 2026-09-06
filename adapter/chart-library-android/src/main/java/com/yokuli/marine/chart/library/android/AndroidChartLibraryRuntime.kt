@@ -36,8 +36,10 @@ class AndroidChartLibraryRuntime private constructor(
     private val sessions = ConcurrentHashMap<ChartAssetId, MutableSet<BudgetedReadSession>>()
     private val basicQueue = Channel<ChartAssetId>(BASIC_QUEUE_CAPACITY)
     private val mutableMetrics = MutableStateFlow(ChartLibraryRuntimeMetrics())
+    private val mutableStorage = MutableStateFlow(ChartLibraryStorageSnapshot.EMPTY)
     private val closed = AtomicBoolean(false)
     override val metrics: StateFlow<ChartLibraryRuntimeMetrics> = mutableMetrics.asStateFlow()
+    override val storage: StateFlow<ChartLibraryStorageSnapshot> = mutableStorage.asStateFlow()
     private val validationController: AndroidChartValidationController by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         AndroidChartValidationController(catalog, this, revisionProbe, jobStore)
     }
@@ -69,8 +71,11 @@ class AndroidChartLibraryRuntime private constructor(
     override suspend fun asset(id: ChartAssetId) = catalog.asset(id)
     override suspend fun resolveLegacyAsset(legacyLogicalId: String, legacyVersionId: String?) =
         catalog.resolveLegacyAsset(legacyLogicalId, legacyVersionId)
+    override suspend fun transact(transaction: ChartCatalogTransaction) = catalog.transact(transaction)
 
     override suspend fun acceptPicker(selection: ChartPickerSelection) = sourceController.acceptPicker(selection)
+    override suspend fun repair(sourceId: ChartSourceId, selection: ChartPickerSelection) =
+        sourceController.repair(sourceId, selection)
 
     override suspend fun refresh(sourceId: ChartSourceId): ChartSourceCommandResult {
         val result = sourceController.refresh(sourceId)
@@ -85,6 +90,9 @@ class AndroidChartLibraryRuntime private constructor(
     override suspend fun inspectBasic(assetId: ChartAssetId) = validationController.inspectBasic(assetId)
     override suspend fun verifyFull(assetId: ChartAssetId) = validationController.verifyFull(assetId)
     override fun cancel(assetId: ChartAssetId) = validationController.cancel(assetId)
+    override suspend fun saveManagedCopy(assetId: ChartAssetId): ChartManagedCopyCommandResult =
+        ChartManagedCopyCommandResult.Rejected(ChartManagedCopyFailure.NOT_AVAILABLE)
+    override fun cancelManagedCopy(assetId: ChartAssetId) = Unit
 
     override suspend fun open(request: ChartReadRequest): ChartOpenResult {
         if (closed.get()) return ChartOpenResult.Rejected(ChartReadFailure.SESSION_CLOSED, "Chart library runtime is closed")

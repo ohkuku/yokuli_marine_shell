@@ -14,10 +14,74 @@ data class ChartLibraryRuntimeMetrics(
     }
 }
 
+enum class ChartManagedCopyCapability { UNAVAILABLE, AVAILABLE }
+enum class ChartManagedCopyStatus {
+    QUEUED,
+    COPYING,
+    VERIFYING,
+    PUBLISHING,
+    COMPLETED,
+    FAILED,
+    CANCELLED,
+    INTERRUPTED,
+}
+
+data class ChartManagedCopyProgress(
+    val sourceAssetId: ChartAssetId,
+    val status: ChartManagedCopyStatus,
+    val copiedBytes: Long = 0L,
+    val totalBytes: Long? = null,
+    val managedAssetId: ChartAssetId? = null,
+) {
+    init {
+        require(copiedBytes >= 0L)
+        require(totalBytes == null || totalBytes >= copiedBytes)
+        require(status != ChartManagedCopyStatus.COMPLETED || managedAssetId != null)
+    }
+}
+
+data class ChartLibraryStorageSnapshot(
+    /** Null means the runtime cannot currently measure the corresponding store. */
+    val managedCopyBytes: Long? = null,
+    val catalogBytes: Long? = null,
+    val cacheBytes: Long? = null,
+    val copyCapability: ChartManagedCopyCapability = ChartManagedCopyCapability.UNAVAILABLE,
+    val copyJobs: Map<ChartAssetId, ChartManagedCopyProgress> = emptyMap(),
+) {
+    init {
+        require(managedCopyBytes == null || managedCopyBytes >= 0L)
+        require(catalogBytes == null || catalogBytes >= 0L)
+        require(cacheBytes == null || cacheBytes >= 0L)
+        require(copyJobs.size <= MAX_COPY_JOB_HISTORY)
+        require(copyJobs.all { (assetId, job) -> assetId == job.sourceAssetId })
+    }
+
+    companion object {
+        val EMPTY = ChartLibraryStorageSnapshot()
+    }
+}
+
+enum class ChartManagedCopyFailure { NOT_AVAILABLE, ASSET_NOT_FOUND, INSUFFICIENT_SPACE, ACTIVE_LEASE, PERSISTENCE }
+
+sealed interface ChartManagedCopyCommandResult {
+    data class Accepted(val sourceAssetId: ChartAssetId) : ChartManagedCopyCommandResult
+    data class Rejected(val failure: ChartManagedCopyFailure) : ChartManagedCopyCommandResult
+}
+
+interface ChartManagedCopyPort {
+    val storage: StateFlow<ChartLibraryStorageSnapshot>
+    suspend fun saveManagedCopy(assetId: ChartAssetId): ChartManagedCopyCommandResult
+    fun cancelManagedCopy(assetId: ChartAssetId)
+}
+
 interface ChartLibraryRuntimePort :
     ChartCatalogReadPort,
+    ChartLibraryCommandPort,
     ChartSourceCommandPort,
     ChartValidationCommandPort,
-    ChartResourceAccessPort {
+    ChartResourceAccessPort,
+    ChartManagedCopyPort {
     val metrics: StateFlow<ChartLibraryRuntimeMetrics>
 }
+
+const val MAX_COPY_JOB_HISTORY = 64

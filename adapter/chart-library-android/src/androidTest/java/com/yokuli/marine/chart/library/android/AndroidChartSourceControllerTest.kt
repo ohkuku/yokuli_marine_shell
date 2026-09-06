@@ -109,6 +109,25 @@ class AndroidChartSourceControllerTest {
         }
     }
 
+    @Test fun reauthorizationPreservesSourceIdentityAndReleasesOnlyTheReplacedGrant() = runBlocking {
+        RoomChartCatalogRepository.create(context, freshDatabase("source-repair")).use { catalog ->
+            val grant = FakeGrant()
+            val controller = AndroidChartSourceController(
+                catalog,
+                { _, _ -> ChartEnumerationResult.Complete(emptyList()) },
+                grant,
+            )
+            val sourceId = (controller.acceptPicker(selection("old")) as ChartSourceCommandResult.Accepted).sourceId
+            val replacement = selection("new").copy(operationId = ChartLibraryOperationId("repair-new"))
+
+            assertEquals(sourceId, (controller.repair(sourceId, replacement) as ChartSourceCommandResult.Accepted).sourceId)
+            assertEquals(replacement.locator, catalog.source(sourceId)?.locator)
+            assertEquals(2, grant.taken)
+            assertEquals(1, grant.released)
+            assertEquals(1, catalog.snapshot.value.sourceCount)
+        }
+    }
+
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private fun freshDatabase(name: String) = File(context.cacheDir, "$name.db").also {
         it.delete(); File("${it.path}-wal").delete(); File("${it.path}-shm").delete()
