@@ -153,6 +153,7 @@ fun ChartWorkspace(
     onCancelOfflineCoverage: () -> Unit = {},
     activeNavigationStrip: (@Composable () -> Unit)? = null,
     onDirectTo: (point: GeoPoint, name: String) -> Unit = { _, _ -> },
+    onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit = {},
     onStartNavigation: (routeId: String, routeRevision: Long) -> Unit = { _, _ -> },
     onSaveAndStartRoute: () -> Unit = {},
     chartSurface: MarineChartSurface,
@@ -181,6 +182,10 @@ fun ChartWorkspace(
             keyboardController?.hide()
             true
         } else {
+            if (currentState().transient is MapTransient.UnsavedRoute) {
+                onUnsavedRouteDecision(UnsavedRouteDecision.CANCEL)
+                return@BindInternalAppInputHandler true
+            }
             MapFeatureBackPolicy.actionFor(currentState())?.let { action ->
                 onAction(action)
                 true
@@ -221,6 +226,7 @@ fun ChartWorkspace(
                 recoveryExportState,
                 activeNavigationStrip,
                 onDirectTo,
+                onUnsavedRouteDecision,
                 onSaveAndStartRoute,
                 onAction,
                 onExportRecovery,
@@ -256,6 +262,7 @@ private fun MapRootChrome(
     recoveryExportState: MapRecoveryExportUiState,
     activeNavigationStrip: (@Composable () -> Unit)?,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
+    onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     onSaveAndStartRoute: () -> Unit,
     onAction: (MapAction) -> Unit,
     onExportRecovery: () -> Unit,
@@ -301,7 +308,7 @@ private fun MapRootChrome(
             activeNavigationStrip?.let { content ->
                 Box(Modifier.fillMaxWidth().testTag("map-active-navigation-strip")) { content() }
             }
-            MapRootSummary(state, onDirectTo, onSaveAndStartRoute, onAction)
+            MapRootSummary(state, onDirectTo, onUnsavedRouteDecision, onSaveAndStartRoute, onAction)
             if (state.crosshairEnabled) CrosshairAction(state, queryPort, viewportSize, viewportInsets, onAction)
             MapRootCommandBar(state, viewportInsets, onAction)
         }
@@ -500,6 +507,7 @@ private fun MapPersistenceTruth(
 private fun MapRootSummary(
     state: MapState,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
+    onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     onSaveAndStartRoute: () -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
@@ -607,11 +615,13 @@ private fun MapRootSummary(
                     stringResource(R.string.map_route_save),
                     "map-unsaved-route-save",
                     enabled = (draft?.waypoints?.size ?: 0) >= 2,
-                ) { onAction(MapAction.SaveRoutePlan) }
+                ) { onUnsavedRouteDecision(UnsavedRouteDecision.SAVE) }
                 MapActionText(R.string.map_route_discard, "map-unsaved-route-discard") {
-                    onAction(MapAction.DiscardRouteDraft(transient.draftId))
+                    onUnsavedRouteDecision(UnsavedRouteDecision.DISCARD)
                 }
-                MapActionText(R.string.map_cancel, "map-unsaved-route-cancel") { onAction(MapAction.DismissTransient) }
+                MapActionText(R.string.map_cancel, "map-unsaved-route-cancel") {
+                    onUnsavedRouteDecision(UnsavedRouteDecision.CANCEL)
+                }
             }
         }
         MapTransient.MapViewPicker -> MapViewPicker(state, onAction)
@@ -634,6 +644,8 @@ private fun MapRootSummary(
         }
     }
 }
+
+enum class UnsavedRouteDecision { SAVE, DISCARD, CANCEL }
 
 @Composable
 private fun MapViewPicker(state: MapState, onAction: (MapAction) -> Unit) {

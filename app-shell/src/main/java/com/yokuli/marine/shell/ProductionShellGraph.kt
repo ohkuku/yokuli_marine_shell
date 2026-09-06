@@ -28,6 +28,7 @@ import com.yokuli.marine.feature.chart.MarineChartTransitionSurface
 import com.yokuli.marine.feature.chart.MapPlaceExportUiState
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
 import com.yokuli.marine.feature.chart.OfflineCoverageUiState
+import com.yokuli.marine.feature.chart.UnsavedRouteDecision
 import com.yokuli.marine.feature.chart.GpxExportTarget
 import com.yokuli.marine.feature.chart.GpxExportUiState
 import com.yokuli.marine.feature.chart.GpxImportUiAction
@@ -139,6 +140,7 @@ data class ProductionShellRuntime(
     val activeNavigationState: ActiveNavigationSnapshot,
     val onActiveNavigationCommand: (ActiveNavigationCommand) -> Unit,
     val onDirectTo: (point: com.yokuli.marine.map.domain.GeoPoint, name: String) -> Unit,
+    val onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     val onSaveAndStartRoute: () -> Unit,
     val preferencesState: PreferencesUiState,
     val onPreferencesAction: (PreferencesUiAction) -> Unit,
@@ -330,6 +332,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                     }
                 },
                 onDirectTo = runtime.onDirectTo,
+                onUnsavedRouteDecision = runtime.onUnsavedRouteDecision,
                 onStartNavigation = { routeId, routeRevision ->
                     runtime.onActiveNavigationCommand(ActiveNavigationCommand.Start(routeId, routeRevision))
                 },

@@ -588,6 +588,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             activeNavigationState = activeNavigationState,
             onActiveNavigationCommand = { shellViewModel.onActiveNavigationCommand(it) },
             onDirectTo = shellViewModel::startDirectTo,
+            onUnsavedRouteDecision = shellViewModel::resolveUnsavedRoute,
             onSaveAndStartRoute = { shellViewModel.saveAndStartActiveRoute() },
             preferencesState = PreferencesUiState(
                 theme = themeSpec,
@@ -713,7 +714,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     LauncherUiAction.UndoLayout -> dispatch(LauncherAction.UndoLayout)
                     is LauncherUiAction.UpdateSearchQuery -> dispatch(LauncherAction.UpdateSearchQuery(action.query))
                     is LauncherUiAction.ActivateTask -> dispatch(LauncherAction.ActivateTask(action.taskId))
-                    is LauncherUiAction.CloseTask -> dispatch(LauncherAction.CloseTask(action.taskId))
+                    is LauncherUiAction.CloseTask -> shellViewModel.requestCloseTask(action.taskId)
                     is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
                 }
             }
@@ -809,7 +810,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                     tasks = engineState.tasks.tasks,
                                     entries = launcherState.entries,
                                     onActivate = { dispatch(LauncherAction.ActivateTask(it.taskId)) },
-                                    onClose = { dispatch(LauncherAction.CloseTask(it.taskId)) },
+                                    onClose = { shellViewModel.requestCloseTask(it.taskId) },
                                 )
                                 ShellMotionTarget.Search -> WpSearchSurface(
                                     state = launcherState,

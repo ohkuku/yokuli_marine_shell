@@ -25,6 +25,7 @@ import com.yokuli.marine.feature.chart.GpxImportUiAction
 import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.OfflineCoverageCoordinator
 import com.yokuli.marine.feature.chart.OfflineCoverageUiState
+import com.yokuli.marine.feature.chart.UnsavedRouteDecision
 import com.yokuli.marine.feature.chart.PositionObservationCoordinator
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryCoordinator
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestination
@@ -60,6 +61,7 @@ import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEngine
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.engine.LauncherRecoveryMode
+import com.yokuli.shell.engine.InternalAppTaskId
 import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.shell.contract.MotionPreference
@@ -98,6 +100,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         InMemoryLauncherPersistence(defaultStartDocument)
     }
     private var healthyTimer: Job? = null
+    private var pendingCloseTaskId: InternalAppTaskId? = null
     private val startupJob: Job
     private val chartPackages = shellApplication.chartPackageRepository
     val nmeaRuntimeState = shellApplication.nmeaInputRuntime.state
@@ -354,10 +357,49 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     fun saveAndStartActiveRoute(): Job = viewModelScope.launch {
+        val status = saveActiveRouteDraft() ?: return@launch
+        onActiveNavigationCommand(ActiveNavigationCommand.Start(status.routeId, status.revision)).join()
+    }
+
+    fun requestCloseTask(taskId: InternalAppTaskId) {
+        val task = engine.state.value.tasks.task(taskId) ?: return
+        val isChart = task.appId == com.yokuli.marine.feature.chart.ChartDestinations.AppId
+        val draft = mapStore.state.value.routeDraft
+        if (!isChart || draft == null || draft.waypoints.isEmpty()) {
+            engine.dispatch(LauncherAction.CloseTask(taskId))
+            return
+        }
+        pendingCloseTaskId = taskId
+        mapStore.dispatch(MapAction.RequestCloseRouteDraft)
+        engine.dispatch(LauncherAction.ActivateTask(taskId))
+    }
+
+    fun resolveUnsavedRoute(decision: UnsavedRouteDecision): Job = viewModelScope.launch {
+        val pendingTask = pendingCloseTaskId
+        when (decision) {
+            UnsavedRouteDecision.CANCEL -> {
+                pendingCloseTaskId = null
+                mapStore.dispatch(MapAction.DismissTransient)
+            }
+            UnsavedRouteDecision.DISCARD -> {
+                val draftId = mapStore.state.value.routeDraft?.id ?: return@launch
+                mapStore.dispatch(MapAction.DiscardRouteDraft(draftId))
+                pendingCloseTaskId = null
+                pendingTask?.let { engine.dispatch(LauncherAction.CloseTask(it)) }
+            }
+            UnsavedRouteDecision.SAVE -> {
+                saveActiveRouteDraft() ?: return@launch
+                pendingCloseTaskId = null
+                pendingTask?.let { engine.dispatch(LauncherAction.CloseTask(it)) }
+            }
+        }
+    }
+
+    private suspend fun saveActiveRouteDraft(): com.yokuli.marine.map.domain.RouteSaveStatus? {
         val before = mapStore.state.value
-        val draft = before.routeDraft?.takeIf { it.waypoints.size >= 2 } ?: return@launch
+        before.routeDraft?.takeIf { it.waypoints.size >= 2 } ?: return null
         if (mapStore.dispatch(MapAction.SaveRoutePlan) !in setOf(MapDispatchResult.ACCEPTED, MapDispatchResult.COALESCED)) {
-            return@launch
+            return null
         }
         val submitted = mapStore.state.first { state ->
             state.libraryRevision > before.libraryRevision && state.routeSaveStatus != null
@@ -367,11 +409,8 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
                 val status = state.routeSaveStatus
                 status != null && status.routeId == submitted.routeSaveStatus?.routeId && status.state != MapSaveState.PENDING
             }
-        } else {
-            submitted
-        }
-        val status = completed.routeSaveStatus?.takeIf { it.state == MapSaveState.SAVED } ?: return@launch
-        onActiveNavigationCommand(ActiveNavigationCommand.Start(status.routeId, status.revision)).join()
+        } else submitted
+        return completed.routeSaveStatus?.takeIf { it.state == MapSaveState.SAVED }
     }
 
     fun onNavigationAction(action: NavigationUiAction) = navigationCoordinator.dispatch(action)
