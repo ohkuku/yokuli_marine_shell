@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "task": "CL08",
+  "start_commit": "908ac9d64d7fc042f053aa45eab63d03ec754fc6",
+  "chart_is_catalog_read_only": true,
+  "display_selection_modes": ["NONE", "PINNED_ASSET", "SOURCE_SET"],
+  "max_selected_sources": 8,
+  "max_active_layers": 8,
+  "max_catalog_items_loaded": 10000,
+  "bounds_are_coverage_proof": false,
+  "overlay_contributes_base_coverage": false,
+  "google_fills_selected_local_gaps": false,
+  "renderer_and_coverage_share_read_port": true,
+  "display_preferences_persisted": false,
+  "display_preferences_persistence_owner": "CL09",
+  "verification": "GITHUB_ACTION_PENDING"
+}

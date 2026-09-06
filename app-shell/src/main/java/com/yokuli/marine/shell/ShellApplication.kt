@@ -29,6 +29,7 @@ import com.yokuli.marine.data.source.MarineSourceRuntimePort
 import com.yokuli.marine.map.storage.RoomMapPersistence
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
+import com.yokuli.marine.map.offline.ChartLoopbackTileGateway
 import com.yokuli.marine.chart.library.android.AndroidChartLibraryRuntime
 import com.yokuli.marine.chart.library.android.ChartLibraryRuntimeOwner
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryRuntimePort
@@ -63,6 +64,7 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
     override val chartLibraryRuntime: ChartLibraryRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         AndroidChartLibraryRuntime.create(this, applicationScope)
     }
+    val chartTileGateway by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ChartLoopbackTileGateway() }
     val positionPort: ReadOnlyPositionPort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         MarineSourcePositionPort(marineSourceRuntime.state, processObservationClockId)
     }

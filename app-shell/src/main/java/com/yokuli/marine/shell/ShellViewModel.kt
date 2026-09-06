@@ -12,9 +12,9 @@ import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapStore
 import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.ChartPackageLease
-import com.yokuli.marine.feature.chart.ChartImportUiAction
-import com.yokuli.marine.feature.chart.ChartImportUiState
-import com.yokuli.marine.feature.chart.ChartPackageCoordinator
+import com.yokuli.marine.feature.chart.ChartDisplayCoordinator
+import com.yokuli.marine.feature.chart.ChartDisplayUiAction
+import com.yokuli.marine.feature.chart.ChartDisplayUiState
 import com.yokuli.marine.feature.chart.GpxDocumentSource
 import com.yokuli.marine.feature.chart.GpxImportCoordinator
 import com.yokuli.marine.feature.chart.GpxImportUiAction
@@ -22,6 +22,8 @@ import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.OfflineCoverageCoordinator
 import com.yokuli.marine.feature.chart.OfflineCoverageUiState
 import com.yokuli.marine.feature.chart.PositionObservationCoordinator
+import com.yokuli.marine.map.offline.ChartDisplayCoverageIndex
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.marine.feature.datasources.DataSourcesCoordinator
 import com.yokuli.marine.feature.datasources.DataSourcesEffect
 import com.yokuli.marine.feature.datasources.DataSourcesUiAction
@@ -119,16 +121,12 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         scope = viewModelScope,
         clock = application.observationClock,
     )
-    private val chartPackageCoordinator = ChartPackageCoordinator(
-        repository = chartPackages,
+    private val chartDisplayCoordinator = ChartDisplayCoordinator(
+        catalog = shellApplication.chartLibraryRuntime,
         mapStore = mapStore,
         scope = viewModelScope,
-        incidentLogger = {
-            // Source URIs, package metadata and coordinates are intentionally excluded.
-            android.util.Log.w("YokuliMap", "Chart package workflow failed: ${it.javaClass.simpleName}")
-        },
     )
-    val chartImportState: StateFlow<ChartImportUiState> = chartPackageCoordinator.state
+    val chartDisplayState: StateFlow<ChartDisplayUiState> = chartDisplayCoordinator.state
     private val gpxImportCoordinator = GpxImportCoordinator(
         documentSource = GpxDocumentSource { sourceUri ->
             checkNotNull(application.contentResolver.openInputStream(Uri.parse(sourceUri)))
@@ -144,6 +142,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     private val offlineCoverageCoordinator = OfflineCoverageCoordinator(
         tileIndex = (application as ShellApplication).chartCoverageIndex,
         scope = viewModelScope,
+        displayCoverage = ChartDisplayCoverageIndex(application.chartLibraryRuntime),
         incidentLogger = {
             // Package paths and route geometry are private and intentionally excluded.
             android.util.Log.w("YokuliMap", "Offline coverage check failed: ${it.javaClass.simpleName}")
@@ -155,6 +154,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             mapStore.state.collect { state ->
                 offlineCoverageCoordinator.invalidateIfInputsChanged(state.savedRoutes, state.chartPackages)
+                offlineCoverageCoordinator.invalidateIfDisplayInputsChanged(state.savedRoutes, state.chartDisplayPlan)
             }
         }
         if (!recoveryTrackingEnabled) {
@@ -191,12 +191,8 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun inspectChartDocument(sourceUri: String) {
-        chartPackageCoordinator.inspectDocument(sourceUri)
-    }
-
-    fun onChartImportAction(action: ChartImportUiAction) {
-        chartPackageCoordinator.dispatch(action)
+    fun onChartDisplayAction(action: ChartDisplayUiAction) {
+        chartDisplayCoordinator.dispatch(action)
     }
 
     fun inspectGpxDocument(sourceUri: String) {
@@ -229,12 +225,21 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     fun startOfflineCoverage(routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) {
         val state = mapStore.state.value
         val route = state.savedRoutes.firstOrNull { it.id == routeId } ?: return
-        offlineCoverageCoordinator.start(
-            route = route,
-            packages = state.chartPackages,
-            targetZoom = targetZoom,
-            halfWidthNauticalMiles = halfWidthNauticalMiles,
-        )
+        if (state.chartDisplayPlan.selection !is ChartDisplaySelection.None) {
+            offlineCoverageCoordinator.start(
+                route = route,
+                displayPlan = state.chartDisplayPlan,
+                targetZoom = targetZoom,
+                halfWidthNauticalMiles = halfWidthNauticalMiles,
+            )
+        } else {
+            offlineCoverageCoordinator.start(
+                route = route,
+                packages = state.chartPackages,
+                targetZoom = targetZoom,
+                halfWidthNauticalMiles = halfWidthNauticalMiles,
+            )
+        }
     }
 
     fun cancelOfflineCoverage() = offlineCoverageCoordinator.cancel()
@@ -291,6 +296,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        chartDisplayCoordinator.close()
         positionObservationCoordinator.close()
         mapStore.close()
         super.onCleared()

@@ -9,6 +9,19 @@ import com.yokuli.marine.map.domain.OfflineCoverageArea
 import com.yokuli.marine.map.domain.SavedRoute
 import com.yokuli.marine.map.domain.SlippyTileKey
 import com.yokuli.marine.map.domain.TileAvailability
+import com.yokuli.marine.map.domain.MapTileScheme
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
+import com.yokuli.marine.map.domain.chartlibrary.ChartContentRevision
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayCoveragePort
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayCoverageResult
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayCoverageStatus
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayLayer
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
+import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
+import com.yokuli.marine.map.domain.chartlibrary.ChartReadRequest
+import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -104,6 +117,37 @@ class OfflineCoverageCoordinatorTest {
         scope.cancel()
     }
 
+    @Test
+    fun `display plan coverage uses base tile union and invalidates on catalog revision`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val display = displayPlan('a')
+        val coordinator = OfflineCoverageCoordinator(
+            tileIndex = LocalChartTileIndex { _, _ -> error("legacy index must not be used") },
+            scope = scope,
+            displayCoverage = ChartDisplayCoveragePort { plan, zoom, required, expected ->
+                assertEquals(display.fingerprint, expected)
+                assertEquals(display, plan)
+                ChartDisplayCoverageResult(
+                    plan.fingerprint,
+                    zoom,
+                    ChartDisplayCoverageStatus.PARTIAL,
+                    required.size,
+                    setOf(required.first()),
+                    setOf(plan.layers.single().assetId),
+                )
+            },
+        )
+
+        coordinator.start(route(), display, 8, 2.0)
+        val ready = withTimeout(2_000L) { coordinator.state.first { it is OfflineCoverageUiState.Ready } }
+            as OfflineCoverageUiState.Ready
+        assertEquals(TileAvailability.MISSING, ready.result.tileAvailability)
+
+        coordinator.invalidateIfDisplayInputsChanged(listOf(route()), displayPlan('b'))
+        assertTrue(coordinator.state.value is OfflineCoverageUiState.Stale)
+        scope.cancel()
+    }
+
     private fun route() = SavedRoute(
         id = "route",
         name = "route",
@@ -123,4 +167,35 @@ class OfflineCoverageCoordinatorTest {
         maxZoom = 18,
         version = "1",
     )
+
+    private fun displayPlan(seed: Char): ChartDisplayPlan {
+        val assetId = ChartAssetId("display")
+        return ChartDisplayPlan(
+            generation = 1L,
+            catalogRevision = seed.code.toLong(),
+            fingerprint = seed.toString().repeat(64),
+            selection = ChartDisplaySelection.SourceSet(setOf(ChartSourceId("source"))),
+            layers = listOf(
+                ChartDisplayLayer(
+                    assetId,
+                    "display.mbtiles",
+                    ChartReadRequest(
+                        assetId,
+                        ChartOpaqueLocator("content://display"),
+                        ChartContentRevision(seed.toString(), 100L, 1L),
+                        1L,
+                    ),
+                    ChartAssetRole.BASE,
+                    0,
+                    1f,
+                    256,
+                    MapTileScheme.MBTILES_TMS,
+                    0,
+                    18,
+                    GeoBounds(-90.0, -180.0, 90.0, 180.0),
+                    "fixture",
+                ),
+            ),
+        )
+    }
 }

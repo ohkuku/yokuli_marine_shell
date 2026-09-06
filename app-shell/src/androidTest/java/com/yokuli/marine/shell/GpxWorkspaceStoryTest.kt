@@ -10,7 +10,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
-import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.ChartWorkspace
 import com.yokuli.marine.feature.chart.GpxExportTarget
 import com.yokuli.marine.feature.chart.GpxExportUiState
@@ -113,8 +112,6 @@ class GpxWorkspaceStoryTest {
                     ChartWorkspace(
                         state = state,
                         onAction = {},
-                        importState = ChartImportUiState.Idle,
-                        onImportAction = {},
                         recoveryExportState = MapRecoveryExportUiState.IDLE,
                         onExportRecovery = {},
                         gpxImportState = importState,

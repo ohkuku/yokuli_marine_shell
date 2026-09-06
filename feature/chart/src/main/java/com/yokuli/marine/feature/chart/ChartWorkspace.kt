@@ -52,7 +52,6 @@ import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliColors
 import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.ContentFootprint
-import com.yokuli.marine.map.domain.ChartPackageImportFailure
 import com.yokuli.marine.map.domain.CoordinateCodec
 import com.yokuli.marine.map.domain.CoordinateError
 import com.yokuli.marine.map.domain.CoordinateField
@@ -99,6 +98,9 @@ import com.yokuli.marine.map.domain.SlippyTileKey
 import com.yokuli.marine.map.domain.TileAvailability
 import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.marine.map.domain.positionAgeMillis
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayIssue
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import java.util.Locale
@@ -132,8 +134,8 @@ fun ChartWorkspace(
     onAction: (MapAction) -> Unit,
     currentState: () -> MapState = { state },
     shellSafeInsets: MapViewportInsets = MapViewportInsets(),
-    importState: ChartImportUiState,
-    onImportAction: (ChartImportUiAction) -> Unit,
+    chartDisplayState: ChartDisplayUiState = ChartDisplayUiState(),
+    onChartDisplayAction: (ChartDisplayUiAction) -> Unit = {},
     recoveryExportState: MapRecoveryExportUiState,
     onExportRecovery: () -> Unit,
     placeExportState: MapPlaceExportUiState = MapPlaceExportUiState.Idle,
@@ -216,8 +218,8 @@ fun ChartWorkspace(
         } else {
             MapPageSurface(
                 state,
-                importState,
-                onImportAction,
+                chartDisplayState,
+                onChartDisplayAction,
                 placeExportState,
                 onExportPlace,
                 gpxImportState,
@@ -266,8 +268,20 @@ private fun MapRootChrome(
             }
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.let { chartPackage ->
-                MapAttribution(chartPackage.attribution, chartPackage.license)
+            val displayAttribution = state.chartDisplayPlan.layers
+                .mapNotNull { it.attribution?.trim()?.takeIf(String::isNotEmpty) }
+                .distinct()
+                .joinToString(" · ")
+            if (displayAttribution.isNotEmpty()) {
+                MapAttribution(displayAttribution)
+            } else {
+                state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.let { chartPackage ->
+                    MapAttribution(
+                        listOf(chartPackage.attribution, chartPackage.license)
+                            .filter(String::isNotBlank)
+                            .joinToString(" · "),
+                    )
+                }
             }
             MapRootSummary(state, onAction)
             if (state.crosshairEnabled) CrosshairAction(state, queryPort, viewportSize, viewportInsets, onAction)
@@ -744,8 +758,8 @@ private fun MapCrosshair(modifier: Modifier = Modifier) {
 @Composable
 private fun MapPageSurface(
     state: MapState,
-    importState: ChartImportUiState,
-    onImportAction: (ChartImportUiAction) -> Unit,
+    chartDisplayState: ChartDisplayUiState,
+    onChartDisplayAction: (ChartDisplayUiAction) -> Unit,
     placeExportState: MapPlaceExportUiState,
     onExportPlace: (SavedPlace) -> Unit,
     gpxImportState: GpxImportUiState,
@@ -785,7 +799,7 @@ private fun MapPageSurface(
             when (val surface = state.surface) {
                 MapSurface.Places -> PlacesPage(state, onAction)
                 MapSurface.Routes -> RoutesPage(state, onAction)
-                MapSurface.ChartPackages -> ChartPackagesPage(state, importState, onImportAction, onAction)
+                MapSurface.ChartPackages -> ChartLayersPage(chartDisplayState, onChartDisplayAction, onAction)
                 MapSurface.GpxExchange -> GpxExchangePage(gpxImportState, onGpxImportAction)
                 MapSurface.ImportedTracks -> ImportedTracksPage(state, onAction)
                 is MapSurface.PlaceDetail -> PlaceDetailPage(
@@ -819,7 +833,6 @@ private fun MapPageSurface(
                     coverageState = offlineCoverageState,
                     onStart = onStartOfflineCoverage,
                     onCancel = onCancelOfflineCoverage,
-                    onImportAction = onImportAction,
                 )
                 is MapSurface.ChartPackageDetail -> ChartPackageDetailPage(state, surface.packageId, onAction)
                 is MapSurface.ImportedTrackDetail -> ImportedTrackDetailPage(
@@ -1529,13 +1542,13 @@ private fun OfflineCoveragePage(
     coverageState: OfflineCoverageUiState,
     onStart: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
     onCancel: () -> Unit,
-    onImportAction: (ChartImportUiAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
     val route = state.savedRoutes.firstOrNull { it.id == routeId } ?: return
-    val suggestedZoom = state.chartPackages
-        .firstOrNull { it.id == state.activeChartPackageId }
-        ?.maxZoom
+    val suggestedZoom = state.chartDisplayPlan.layers
+        .filter { it.role == ChartAssetRole.BASE }
+        .maxOfOrNull { it.maxZoom }
+        ?: state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.maxZoom
         ?: state.chartPackages.maxOfOrNull { it.maxZoom }
         ?: 14
     var zoomText by remember(routeId, suggestedZoom) { mutableStateOf(suggestedZoom.toString()) }
@@ -1619,12 +1632,7 @@ private fun OfflineCoveragePage(
             -> Unit
         }
         WpText(stringResource(R.string.map_coverage_source_title), 16, weight = FontWeight.Light)
-        WpText(stringResource(R.string.map_coverage_source_noaa), 11, color = colors.muted)
-        MapTextButton(
-            stringResource(R.string.map_coverage_import),
-            "map-coverage-import",
-            modifier = Modifier.fillMaxWidth(),
-        ) { onImportAction(ChartImportUiAction.ChooseDocument) }
+        WpText(stringResource(R.string.map_coverage_registered_sources_only), 11, color = colors.muted)
     }
 }
 
@@ -1872,13 +1880,114 @@ private fun CoordinateTextField(
 }
 
 @Composable
-private fun ChartPackagesPage(
-    state: MapState,
-    importState: ChartImportUiState,
-    onImportAction: (ChartImportUiAction) -> Unit,
+private fun ChartLayersPage(
+    state: ChartDisplayUiState,
+    onDisplayAction: (ChartDisplayUiAction) -> Unit,
     onMapAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
+    Column(
+        Modifier.fillMaxWidth().testTag(ChartDisplayTestTags.ROOT),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        WpText(stringResource(R.string.map_chart_display_truth), 11, color = colors.muted)
+        MapTextButton(
+            stringResource(R.string.map_chart_display_none),
+            ChartDisplayTestTags.NO_LOCAL,
+            modifier = Modifier.fillMaxWidth().then(
+                if (state.selection is ChartDisplaySelection.None) Modifier.border(1.dp, colors.accent) else Modifier,
+            ),
+        ) { onDisplayAction(ChartDisplayUiAction.UseNoLocalChart) }
+        Row(Modifier.fillMaxWidth()) {
+            MapTextButton(
+                if (state.overlaysVisible) stringResource(R.string.map_chart_overlays_visible)
+                else stringResource(R.string.map_chart_overlays_hidden),
+                ChartDisplayTestTags.TOGGLE_OVERLAYS,
+                modifier = Modifier.weight(1f).then(
+                    if (state.overlaysVisible) Modifier.border(1.dp, colors.accent) else Modifier,
+                ),
+            ) { onDisplayAction(ChartDisplayUiAction.ToggleOverlays) }
+            MapTextButton(
+                stringResource(R.string.map_chart_refresh_display),
+                ChartDisplayTestTags.REFRESH,
+                modifier = Modifier.weight(1f),
+            ) { onDisplayAction(ChartDisplayUiAction.Refresh) }
+        }
+        WpText(stringResource(R.string.map_chart_sources_title), 18, weight = FontWeight.Light)
+        if (state.sources.isEmpty() && !state.busy) {
+            WpText(stringResource(R.string.map_chart_sources_empty), 12, color = colors.muted)
+        }
+        state.sources.forEach { source ->
+            MapTextButton(
+                stringResource(
+                    if (source.enabled) R.string.map_chart_source_summary else R.string.map_chart_source_disabled,
+                    source.name,
+                    source.availableAssetCount,
+                ),
+                ChartDisplayTestTags.source(source.id.value.take(8)),
+                enabled = source.enabled,
+                modifier = Modifier.fillMaxWidth().then(
+                    if (source.selected) Modifier.border(1.dp, colors.accent) else Modifier,
+                ),
+            ) { onDisplayAction(ChartDisplayUiAction.ToggleSource(source.id)) }
+        }
+        WpText(stringResource(R.string.map_chart_assets_title), 18, weight = FontWeight.Light)
+        state.assets.forEach { asset ->
+            Column(Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f)).padding(8.dp)) {
+                MapTextButton(
+                    asset.title,
+                    ChartDisplayTestTags.asset(asset.id.value.take(8)),
+                    enabled = asset.available,
+                    modifier = Modifier.fillMaxWidth().then(
+                        if (asset.selected) Modifier.border(1.dp, colors.accent) else Modifier,
+                    ),
+                ) { onDisplayAction(ChartDisplayUiAction.PinAsset(asset.id)) }
+                WpText(
+                    stringResource(
+                        if (asset.role == ChartAssetRole.BASE) R.string.map_chart_role_base else R.string.map_chart_role_overlay,
+                    ) + " · " + stringResource(
+                        if (asset.visible) R.string.map_chart_layer_visible else R.string.map_chart_layer_not_visible,
+                    ),
+                    10,
+                    color = if (asset.visible) colors.accent else colors.muted,
+                )
+                if (asset.visible) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        MapTextButton(
+                            stringResource(R.string.map_chart_opacity_down),
+                            ChartDisplayTestTags.opacityDown(asset.id.value.take(8)),
+                            enabled = asset.opacity > 0f,
+                        ) { onDisplayAction(ChartDisplayUiAction.SetOpacity(asset.id, asset.opacity - .1f)) }
+                        WpText(stringResource(R.string.map_chart_opacity_value, (asset.opacity * 100).roundToInt()), 11)
+                        MapTextButton(
+                            stringResource(R.string.map_chart_opacity_up),
+                            ChartDisplayTestTags.opacityUp(asset.id.value.take(8)),
+                            enabled = asset.opacity < 1f,
+                        ) { onDisplayAction(ChartDisplayUiAction.SetOpacity(asset.id, asset.opacity + .1f)) }
+                    }
+                }
+            }
+        }
+        if (state.busy) WpText(stringResource(R.string.map_chart_catalog_reading), 12, color = colors.muted)
+        state.issues.forEach { issue ->
+            WpText(chartDisplayIssueText(issue), 11, color = colors.accent)
+        }
+        state.notice?.let { notice ->
+            WpText(
+                stringResource(
+                    when (notice) {
+                        ChartDisplayNoticeUi.CATALOG_LIMIT_REACHED -> R.string.map_chart_catalog_limited
+                        ChartDisplayNoticeUi.CATALOG_READ_FAILED -> R.string.map_chart_catalog_read_failed
+                        ChartDisplayNoticeUi.ITEM_NO_LONGER_AVAILABLE -> R.string.map_chart_item_unavailable
+                        ChartDisplayNoticeUi.ACTION_QUEUE_FULL -> R.string.map_chart_action_queue_full
+                        ChartDisplayNoticeUi.SELECTION_LIMIT_REACHED -> R.string.map_chart_selection_limit
+                    },
+                ),
+                11,
+                color = colors.accent,
+            )
+        }
+    }
     Row(Modifier.fillMaxWidth()) {
         MapTextButton(
             stringResource(R.string.map_gpx_title),
@@ -1891,55 +2000,19 @@ private fun ChartPackagesPage(
             modifier = Modifier.weight(1f),
         ) { onMapAction(MapAction.OpenSurface(MapSurface.ImportedTracks)) }
     }
-    WpText(
-        if (state.chartPackages.isEmpty()) stringResource(R.string.map_charts_empty)
-        else stringResource(R.string.map_charts_count, state.chartPackages.size),
-        12,
-        color = colors.muted,
-    )
-    state.chartPackages.forEach { chartPackage ->
-        Column(Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f)).padding(8.dp)) {
-            WpText(chartPackage.displayName, 14, weight = FontWeight.SemiBold)
-            WpText(stringResource(R.string.map_chart_package_detail, chartPackage.source, chartPackage.version), 10, color = colors.muted)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (chartPackage.id == state.activeChartPackageId) {
-                    WpText(stringResource(R.string.map_chart_active), 11, color = colors.accent)
-                } else {
-                    MapActionText(R.string.map_chart_use, "map-use-${chartPackage.id.value.take(8)}") {
-                        onImportAction(ChartImportUiAction.Activate(chartPackage.id))
-                    }
-                }
-                MapActionText(R.string.map_details, "map-package-${chartPackage.id.value.take(8)}") {
-                    onMapAction(MapAction.OpenSurface(MapSurface.ChartPackageDetail(chartPackage.id)))
-                }
-            }
-        }
-    }
-    when (importState) {
-        ChartImportUiState.Idle -> MapActionText(R.string.map_import_mbtiles, "map-import-chart") {
-            onImportAction(ChartImportUiAction.ChooseDocument)
-        }
-        is ChartImportUiState.Copying -> {
-            WpText(stringResource(R.string.map_import_copying), 12)
-            MapActionText(R.string.map_import_cancel, "map-import-cancel") { onImportAction(ChartImportUiAction.Cancel) }
-        }
-        is ChartImportUiState.Inspecting -> {
-            WpText(stringResource(R.string.map_import_inspecting), 12)
-            MapActionText(R.string.map_import_cancel, "map-import-cancel") { onImportAction(ChartImportUiAction.Cancel) }
-        }
-        is ChartImportUiState.Installing -> WpText(stringResource(R.string.map_import_installing), 12)
-        is ChartImportUiState.Cancelled -> MapActionText(R.string.map_import_try_again, "map-import-retry") {
-            onImportAction(ChartImportUiAction.ChooseDocument)
-        }
-        is ChartImportUiState.Failed -> {
-            WpText(importFailureLabel(importState.reason), 12, color = colors.accent)
-            MapActionText(R.string.map_import_try_again, "map-import-retry") {
-                onImportAction(ChartImportUiAction.ChooseDocument)
-            }
-        }
-        is ChartImportUiState.ReadyToInstall -> ChartImportEditor(importState, onImportAction)
-    }
 }
+
+@Composable
+private fun chartDisplayIssueText(issue: ChartDisplayIssue): String = stringResource(
+    when (issue) {
+        ChartDisplayIssue.PINNED_ASSET_MISSING -> R.string.map_chart_pinned_missing
+        ChartDisplayIssue.PINNED_ASSET_UNAVAILABLE -> R.string.map_chart_pinned_unavailable
+        ChartDisplayIssue.SOURCE_MISSING_OR_DISABLED -> R.string.map_chart_source_missing
+        ChartDisplayIssue.UNKNOWN_BOUNDS_EXCLUDED -> R.string.map_chart_unknown_bounds
+        ChartDisplayIssue.NO_NATIVE_ZOOM -> R.string.map_chart_no_native_zoom
+        ChartDisplayIssue.LAYER_LIMIT_REACHED -> R.string.map_chart_layer_limit
+    },
+)
 
 @Composable
 private fun GpxExchangePage(state: GpxImportUiState, onAction: (GpxImportUiAction) -> Unit) {
@@ -2182,13 +2255,13 @@ private fun ChartPackageDetailPage(state: MapState, id: ChartPackageId, onAction
 }
 
 @Composable
-private fun MapAttribution(attribution: String, license: String) {
+private fun MapAttribution(attribution: String) {
     val colors = LocalWpTheme.current
     Box(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .88f)).padding(horizontal = 10.dp, vertical = 3.dp)
             .testTag("map-chart-attribution"),
     ) {
-        WpText(stringResource(R.string.map_chart_attribution, attribution, license), 9, color = colors.muted, maxLines = 1)
+        WpText(attribution, 9, color = colors.muted, maxLines = 1)
     }
 }
 
@@ -2293,61 +2366,6 @@ internal fun MapCamera.scaleNauticalMilesForPixels(pixelCount: Double): Double {
     val metresPerPixel = 156_543.03392 * kotlin.math.cos(Math.toRadians(center.latitude)) / 2.0.pow(zoom)
     return metresPerPixel * pixelCount / 1_852.0
 }
-
-@Composable
-private fun ChartImportEditor(state: ChartImportUiState.ReadyToInstall, onAction: (ChartImportUiAction) -> Unit) {
-    WpText(
-        stringResource(R.string.map_import_candidate, state.candidate.rasterFormat.uppercase(Locale.US), state.candidate.minZoom, state.candidate.maxZoom),
-        11,
-    )
-    WpText(stringResource(R.string.map_import_validation_full), 10, color = LocalWpTheme.current.muted)
-    WpText(stringResource(R.string.map_import_unknown_facts), 10, color = LocalWpTheme.current.muted)
-    state.validationFailure?.let { WpText(importFailureLabel(it), 11, color = LocalWpTheme.current.accent) }
-    ImportTextField(R.string.map_import_name, state.displayName, ChartImportField.DISPLAY_NAME, onAction)
-    ImportTextField(R.string.map_import_source, state.source, ChartImportField.SOURCE, onAction)
-    ImportTextField(R.string.map_import_license, state.license, ChartImportField.LICENSE, onAction)
-    ImportTextField(R.string.map_import_attribution, state.attribution, ChartImportField.ATTRIBUTION, onAction)
-    ImportTextField(R.string.map_import_version, state.version, ChartImportField.VERSION, onAction)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        MapActionText(R.string.map_import_install, "map-import-install") { onAction(ChartImportUiAction.Install) }
-        MapActionText(R.string.map_import_cancel, "map-import-cancel") { onAction(ChartImportUiAction.Cancel) }
-    }
-}
-
-@Composable
-private fun ImportTextField(label: Int, value: String, field: ChartImportField, onAction: (ChartImportUiAction) -> Unit) {
-    val colors = LocalWpTheme.current
-    Column {
-        WpText(stringResource(label), 10, color = colors.muted)
-        BasicTextField(
-            value = value,
-            onValueChange = { onAction(ChartImportUiAction.UpdateField(field, it)) },
-            singleLine = true,
-            textStyle = TextStyle(color = colors.foreground, fontSize = 16.sp),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).border(1.dp, colors.muted).padding(8.dp),
-        )
-    }
-}
-
-@Composable
-private fun importFailureLabel(reason: ChartPackageImportFailure): String = stringResource(
-    when (reason) {
-        ChartPackageImportFailure.CANNOT_OPEN -> R.string.map_import_error_open
-        ChartPackageImportFailure.INVALID_DATABASE -> R.string.map_import_error_database
-        ChartPackageImportFailure.CORRUPT_TILE -> R.string.map_import_error_format
-        ChartPackageImportFailure.EMPTY_PACKAGE -> R.string.map_import_error_empty
-        ChartPackageImportFailure.UNSUPPORTED_FORMAT -> R.string.map_import_error_format
-        ChartPackageImportFailure.INVALID_METADATA -> R.string.map_import_error_metadata
-        ChartPackageImportFailure.INVALID_TILE_INDEX -> R.string.map_import_error_metadata
-        ChartPackageImportFailure.DUPLICATE_TILE -> R.string.map_import_error_metadata
-        ChartPackageImportFailure.RESOURCE_LIMIT -> R.string.map_import_error_io
-        ChartPackageImportFailure.REQUIRED_FIELD_MISSING -> R.string.map_import_error_required
-        ChartPackageImportFailure.STAGING_EXPIRED -> R.string.map_import_error_expired
-        ChartPackageImportFailure.INSTALL_FAILED -> R.string.map_import_error_install
-        ChartPackageImportFailure.IO_FAILURE -> R.string.map_import_error_io
-        ChartPackageImportFailure.PACKAGE_IN_USE -> R.string.map_import_error_in_use
-    },
-)
 
 @Composable
 private fun MapActionText(label: Int, tag: String, modifier: Modifier = Modifier, action: () -> Unit) {

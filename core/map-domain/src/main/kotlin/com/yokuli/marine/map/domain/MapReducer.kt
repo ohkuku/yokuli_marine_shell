@@ -1,5 +1,8 @@
 package com.yokuli.marine.map.domain
 
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayViewport
+
 sealed interface MapAction {
     data class Restore(val result: MapLoadResult) : MapAction
     data class CameraChanged(val camera: MapCamera) : MapAction
@@ -116,6 +119,11 @@ sealed interface MapAction {
     data class SetPositionViewIntent(val intent: PositionViewIntent) : MapAction
     data class ChartPackagesChanged(val packages: List<ChartPackage>) : MapAction
     data class SelectChartPackage(val packageId: ChartPackageId) : MapAction
+    data class ChartDisplayPlanChanged(val plan: ChartDisplayPlan) : MapAction
+    data class ChartDisplayViewportChanged(
+        val rendererGeneration: MapRendererGeneration,
+        val viewport: ChartDisplayViewport,
+    ) : MapAction
     data object RetryPersistence : MapAction
     data object RetryLoad : MapAction
 
@@ -157,6 +165,7 @@ sealed interface MapIncident {
     data object QueueBackpressure : MapIncident
     data object ActionRejected : MapIncident
     data class UnknownChartPackage(val packageId: ChartPackageId) : MapIncident
+    data class StaleChartDisplayPlan(val generation: Long, val currentGeneration: Long) : MapIncident
     data class PersistenceFailure(val operation: String, val failure: MapReadFailure) : MapIncident
     data class RendererFailure(val failure: MapRendererFailure) : MapIncident
     data class ObservationRejected(val reason: ObservationRejection) : MapIncident
@@ -324,6 +333,19 @@ class DefaultMapReducer(
         is MapAction.SetPositionViewIntent -> setPositionViewIntent(state, action.intent)
         is MapAction.ChartPackagesChanged -> updateChartPackages(state, action.packages)
         is MapAction.SelectChartPackage -> selectChartPackage(state, action.packageId)
+        is MapAction.ChartDisplayPlanChanged -> if (action.plan.generation < state.chartDisplayPlan.generation) {
+            incident(
+                state,
+                MapIncident.StaleChartDisplayPlan(action.plan.generation, state.chartDisplayPlan.generation),
+            )
+        } else {
+            MapReduction(state.copy(chartDisplayPlan = action.plan))
+        }
+        is MapAction.ChartDisplayViewportChanged -> if (state.renderer.generation != action.rendererGeneration) {
+            MapReduction(state)
+        } else {
+            MapReduction(state.copy(chartDisplayViewport = action.viewport))
+        }
         MapAction.RetryPersistence -> retryPersistence(state)
         MapAction.RetryLoad -> MapReduction(
             state.copy(libraryLoadState = MapLibraryLoadState.LOADING, persistenceFailure = null),
@@ -403,7 +425,7 @@ class DefaultMapReducer(
         val current = state.renderer.generation
         if (current != null && generation.value < current.value) return MapReduction(state)
         if (current == generation && state.renderer.readiness != MapRendererReadiness.DETACHED) return MapReduction(state)
-        val coverage = if (state.activeChartPackageId == null) {
+        val coverage = if (state.activeChartPackageId == null && state.chartDisplayPlan.layers.isEmpty()) {
             MapTileCoverageStatus.NO_PACKAGE
         } else {
             MapTileCoverageStatus.CHECKING

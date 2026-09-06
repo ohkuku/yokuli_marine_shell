@@ -318,12 +318,39 @@
     },
     "CL08": {
       "title": "Chart显示消费、多图与覆盖",
-      "status": "NOT_STARTED",
-      "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "status": "IMPLEMENTED_CI_PENDING",
+      "head": "908ac9d64d7fc042f053aa45eab63d03ec754fc6",
+      "changed_files": [
+        "core/map-domain/**/chartlibrary/ChartDisplayContracts.kt",
+        "core/map-domain/**/{MapModel,MapReducer}*",
+        "adapter/map-offline/**/{ChartDisplayPreparer,ChartLibraryCoverageIndex,OfflineMarineChartSurface}*",
+        "feature/chart/**",
+        "app-shell/**/{ShellApplication,ShellViewModel,ShellActivity,ProductionShellGraph}*",
+        ".github/scripts/{test_chart_library_cl08_contract.py,test-ci-contract.sh}",
+        ".github/workflows/android.yml",
+        "docs/phases/chart-library/{CL08_REPORT.md,CL08_BASELINE_LOCK.json,EXECUTION_STATE.json}"
+      ],
+      "commands": [
+        {
+          "command": "Yokuli OS Android CI / Chart Library CL08 display plan and coverage contract",
+          "result": "PENDING_GITHUB_ACTION"
+        },
+        {
+          "command": "Yokuli OS Android CI / unit tests + API34 all device suites",
+          "result": "PENDING_GITHUB_ACTION"
+        }
+      ],
+      "evidence": [
+        "CODEX-CI-REPORT-<CL08_SHA12>-<run_id>-<attempt>",
+        "yokuli-os-build-reports-<CL08_SHA>",
+        "yokuli-os-api34-reports-<CL08_SHA>",
+        "docs/phases/chart-library/CL08_REPORT.md",
+        "docs/phases/chart-library/CL08_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "按用户指定的CI-first工作流，本地不重复运行Gradle；提交后由GitHub Action提供机器证据，施工继续进入CL09",
+        "显示偏好持久化与旧受管包活动选择迁移留给CL09，本轮不制造第二套持久化真相"
+      ],
       "blockers": []
     },
     "CL09": {

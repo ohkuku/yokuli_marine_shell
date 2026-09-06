@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import com.yokuli.marine.adapter.chart.google.GoogleMarineChartSurface
 import com.yokuli.marine.map.offline.OfflineMarineChartSurface
+import com.yokuli.marine.map.offline.ChartLoopbackTileGateway
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.model.AppLanguage
@@ -19,8 +20,8 @@ import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.chart.ChartShellContribution
 import com.yokuli.marine.feature.chart.ChartWorkspace
-import com.yokuli.marine.feature.chart.ChartImportUiAction
-import com.yokuli.marine.feature.chart.ChartImportUiState
+import com.yokuli.marine.feature.chart.ChartDisplayUiAction
+import com.yokuli.marine.feature.chart.ChartDisplayUiState
 import com.yokuli.marine.feature.chart.MarineChartSurface
 import com.yokuli.marine.feature.chart.MarineChartTransitionSurface
 import com.yokuli.marine.feature.chart.MapPlaceExportUiState
@@ -72,6 +73,8 @@ import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.ChartPackageLease
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
+import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 
 data class ProductionShellVisualEnvironment(
     val theme: WpThemeSpec,
@@ -95,9 +98,11 @@ data class ProductionShellRuntime(
     val currentMapState: () -> MapState,
     val mapShellSafeInsets: MapViewportInsets,
     val onMapAction: (MapAction) -> Unit,
-    val chartImportState: ChartImportUiState,
-    val onChartImportAction: (ChartImportUiAction) -> Unit,
+    val chartDisplayState: ChartDisplayUiState,
+    val onChartDisplayAction: (ChartDisplayUiAction) -> Unit,
     val acquireChartPackageLease: (ChartPackageId) -> ChartPackageLease,
+    val chartLibraryAccess: ChartResourceAccessPort,
+    val chartTileGateway: ChartLoopbackTileGateway,
     val recoveryExportState: MapRecoveryExportUiState,
     val onExportMapRecovery: () -> Unit,
     val placeExportState: MapPlaceExportUiState,
@@ -146,7 +151,11 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
                 if (runtime.heavyContentReady) {
                     { state, onAction, onQueryPortChanged, modifier ->
-                        if (state.activeChartPackageId == null && BuildConfig.GOOGLE_MAPS_CONFIGURED) {
+                        if (
+                            state.activeChartPackageId == null &&
+                            state.chartDisplayPlan.selection is ChartDisplaySelection.None &&
+                            BuildConfig.GOOGLE_MAPS_CONFIGURED
+                        ) {
                             GoogleMarineChartSurface(
                                 state = state,
                                 onAction = onAction,
@@ -160,6 +169,8 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                                 onAction = onAction,
                                 onQueryPortChanged = onQueryPortChanged,
                                 acquirePackageLease = runtime.acquireChartPackageLease,
+                                chartLibraryAccess = runtime.chartLibraryAccess,
+                                chartTileGateway = runtime.chartTileGateway,
                                 modifier = modifier.testTag("chart-surface-maplibre"),
                             )
                         }
@@ -177,8 +188,8 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 onAction = runtime.onMapAction,
                 currentState = runtime.currentMapState,
                 shellSafeInsets = runtime.mapShellSafeInsets,
-                importState = runtime.chartImportState,
-                onImportAction = runtime.onChartImportAction,
+                chartDisplayState = runtime.chartDisplayState,
+                onChartDisplayAction = runtime.onChartDisplayAction,
                 recoveryExportState = runtime.recoveryExportState,
                 onExportRecovery = runtime.onExportMapRecovery,
                 placeExportState = runtime.placeExportState,

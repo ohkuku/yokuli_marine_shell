@@ -48,11 +48,15 @@ import com.yokuli.marine.map.domain.Wgs84Geodesic
 import com.yokuli.marine.map.domain.ImportedTrackDisplayLod
 import com.yokuli.marine.map.domain.ImportedTrack
 import com.yokuli.marine.map.domain.Wgs84Polyline
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayViewport
+import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.hypot
@@ -77,6 +81,7 @@ import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.PropertyFactory.rasterOpacity
 import org.maplibre.android.style.layers.RasterLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.sources.RasterSource
@@ -93,6 +98,8 @@ fun OfflineMarineChartSurface(
     modifier: Modifier = Modifier,
     onQueryPortChanged: (MapRendererQueryPort?) -> Unit = {},
     acquirePackageLease: (ChartPackageId) -> ChartPackageLease = { ChartPackageLease {} },
+    chartLibraryAccess: ChartResourceAccessPort? = null,
+    chartTileGateway: ChartLoopbackTileGateway? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -114,7 +121,35 @@ fun OfflineMarineChartSurface(
     val touchSlop = remember(context) { ViewConfiguration.get(context).scaledTouchSlop.toDouble() }
     var map by remember(mapView) { mutableStateOf<MapLibreMap?>(null) }
     var activeStyle by remember(mapView) { mutableStateOf<Style?>(null) }
-    val activePackage = state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }
+    val displayPlan = state.chartDisplayPlan
+    val librarySelectionActive = displayPlan.selection !is ChartDisplaySelection.None
+    val activePackage = if (librarySelectionActive) null else {
+        state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }
+    }
+    var preparedDisplay by remember(mapView) { mutableStateOf<PreparedChartDisplay?>(null) }
+
+    LaunchedEffect(displayPlan.fingerprint, chartLibraryAccess, chartTileGateway) {
+        preparedDisplay?.close()
+        preparedDisplay = null
+        if (displayPlan.layers.isEmpty() || chartLibraryAccess == null || chartTileGateway == null) return@LaunchedEffect
+        preparedDisplay = try {
+            withContext(Dispatchers.IO) {
+                ChartDisplayPreparer(chartLibraryAccess, chartTileGateway).prepare(displayPlan)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            currentAction(MapAction.RendererFailed(generation, MapRendererFailure.PACKAGE_MISSING))
+            null
+        }
+    }
+
+    DisposableEffect(mapView) {
+        onDispose {
+            preparedDisplay?.close()
+            preparedDisplay = null
+        }
+    }
 
     DisposableEffect(activePackage?.id, acquirePackageLease) {
         val lease = activePackage?.id?.let(acquirePackageLease)
@@ -225,6 +260,9 @@ fun OfflineMarineChartSurface(
             queryPort = MapLibreRendererQueryPort(readyMap) { !disposed.get() }
             currentQueryPortChanged(queryPort)
             cameraListener = MapLibreMap.OnCameraIdleListener {
+                readyMap.currentChartViewport()?.let { viewport ->
+                    currentAction(MapAction.ChartDisplayViewportChanged(generation, viewport))
+                }
                 if (activeCameraCommand.get() == null) {
                     readyMap.cameraPosition.toDomainCameraOrNull()?.let { camera ->
                         currentAction(MapAction.RendererCameraIdle(generation, camera))
@@ -263,8 +301,27 @@ fun OfflineMarineChartSurface(
         }
     }
 
-    LaunchedEffect(map, activePackage?.id, activePackage?.localUri, activePackage?.tileSize, generation) {
+    LaunchedEffect(
+        map,
+        activePackage?.id,
+        activePackage?.localUri,
+        activePackage?.tileSize,
+        displayPlan.fingerprint,
+        preparedDisplay?.planFingerprint,
+        generation,
+    ) {
         val readyMap = map ?: return@LaunchedEffect
+        if (
+            librarySelectionActive && displayPlan.layers.isNotEmpty() &&
+            chartLibraryAccess != null && chartTileGateway != null &&
+            preparedDisplay?.planFingerprint != displayPlan.fingerprint
+        ) {
+            styleGeneration.incrementAndGet()
+            activeStyle = null
+            readyMap.setStyle(Style.Builder().fromJson(EMPTY_STYLE))
+            currentAction(MapAction.RendererCoverageChanged(generation, MapTileCoverageStatus.CHECKING))
+            return@LaunchedEffect
+        }
         val requestGeneration = styleGeneration.incrementAndGet()
         activeStyle = null
         submittedCameraCommand.set(null)
@@ -273,6 +330,8 @@ fun OfflineMarineChartSurface(
             MapAction.RendererCoverageChanged(
                 generation,
                 when {
+                    librarySelectionActive && displayPlan.layers.isNotEmpty() -> MapTileCoverageStatus.CHECKING
+                    librarySelectionActive -> MapTileCoverageStatus.PACKAGE_MISSING
                     activePackage == null -> MapTileCoverageStatus.NO_PACKAGE
                     packageExists -> MapTileCoverageStatus.CHECKING
                     else -> MapTileCoverageStatus.PACKAGE_MISSING
@@ -285,6 +344,14 @@ fun OfflineMarineChartSurface(
                 if (activePackage != null && packageExists) {
                     style.addSource(RasterSource(CHART_SOURCE, activePackage.localUri, activePackage.tileSize))
                     style.addLayer(RasterLayer(CHART_LAYER, CHART_SOURCE))
+                }
+                preparedDisplay?.layers?.forEachIndexed { index, prepared ->
+                    val sourceId = "library-raster-source-$index"
+                    val layerId = "library-raster-layer-$index"
+                    style.addSource(prepared.registration.toRasterSource(sourceId))
+                    style.addLayer(
+                        RasterLayer(layerId, sourceId).withProperties(rasterOpacity(prepared.planLayer.opacity)),
+                    )
                 }
                 style.addPointOverlay(MapOverlayId.SAVED_PLACES, 0xfff7b500.toInt(), 5f)
                 style.addPointOverlay(MapOverlayId.SELECTION, 0xffffffff.toInt(), 7f)
@@ -301,10 +368,17 @@ fun OfflineMarineChartSurface(
                 activeStyle = style
                 currentAction(MapAction.RendererHostReady(generation))
                 currentAction(MapAction.RendererReady(generation))
+                readyMap.currentChartViewport()?.let { viewport ->
+                    currentAction(MapAction.ChartDisplayViewportChanged(generation, viewport))
+                }
                 currentAction(
                     MapAction.RendererCoverageChanged(
                         generation,
                         when {
+                            librarySelectionActive && preparedDisplay?.layers?.isNotEmpty() == true &&
+                                preparedDisplay?.rejectedLayerCount == 0 -> MapTileCoverageStatus.PACKAGE_ATTACHED
+                            librarySelectionActive && preparedDisplay?.layers?.isNotEmpty() == true -> MapTileCoverageStatus.DEGRADED
+                            librarySelectionActive -> MapTileCoverageStatus.PACKAGE_MISSING
                             activePackage == null -> MapTileCoverageStatus.NO_PACKAGE
                             packageExists -> MapTileCoverageStatus.PACKAGE_ATTACHED
                             else -> MapTileCoverageStatus.PACKAGE_MISSING
@@ -747,6 +821,19 @@ private class OfflineMapMemoryCallbacks(private val mapView: MapView) : Componen
 }
 
 private fun wrapLongitude(value: Double): Double = ((value + 180.0) % 360.0 + 360.0) % 360.0 - 180.0
+
+private fun MapLibreMap.currentChartViewport(): ChartDisplayViewport? = runCatching {
+    val bounds = projection.visibleRegion.latLngBounds
+    ChartDisplayViewport(
+        bounds = GeoBounds(
+            south = bounds.latitudeSouth.coerceIn(-90.0, 90.0),
+            west = bounds.longitudeWest.coerceIn(-180.0, 180.0),
+            north = bounds.latitudeNorth.coerceIn(-90.0, 90.0),
+            east = bounds.longitudeEast.coerceIn(-180.0, 180.0),
+        ),
+        zoom = cameraPosition.zoom.toInt().coerceIn(0, 24),
+    )
+}.getOrNull()
 
 private const val CHART_SOURCE = "installed-raster-chart"
 private const val CHART_LAYER = "installed-raster-chart-layer"

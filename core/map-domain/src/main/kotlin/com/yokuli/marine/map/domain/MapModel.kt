@@ -1,5 +1,7 @@
 package com.yokuli.marine.map.domain
 
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayViewport
 import java.util.UUID
 
 data class GeoPoint(val latitude: Double, val longitude: Double) {
@@ -425,6 +427,9 @@ data class MapState(
     val routeEditNotice: RouteEditNotice? = null,
     val chartPackages: List<ChartPackage> = emptyList(),
     val activeChartPackageId: ChartPackageId? = null,
+    /** Runtime-only catalog display truth. CL09 owns persistence/migration of the selection. */
+    val chartDisplayPlan: ChartDisplayPlan = ChartDisplayPlan.EMPTY,
+    val chartDisplayViewport: ChartDisplayViewport? = null,
     val position: PositionState = PositionState(),
     val navigationActive: Boolean = false,
     val libraryLoadState: MapLibraryLoadState = MapLibraryLoadState.READY_EMPTY,

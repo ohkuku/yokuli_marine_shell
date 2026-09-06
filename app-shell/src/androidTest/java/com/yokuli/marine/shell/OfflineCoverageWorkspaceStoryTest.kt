@@ -8,14 +8,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
-import com.yokuli.marine.feature.chart.ChartImportUiAction
-import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.ChartWorkspace
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
 import com.yokuli.marine.feature.chart.OfflineCoverageUiState
@@ -33,7 +32,6 @@ import com.yokuli.marine.map.domain.SavedRoute
 import com.yokuli.marine.map.domain.SlippyTileKey
 import com.yokuli.marine.map.domain.TileAvailability
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -42,7 +40,7 @@ class OfflineCoverageWorkspaceStoryTest {
     val compose = createAndroidComposeRule<ShellActivity>()
 
     @Test
-    fun savedRouteOpensTruthfulCoverageFactsAndImportPath() {
+    fun savedRouteOpensTruthfulCoverageFactsWithoutOwningLibraryImport() {
         val route = SavedRoute(
             id = "route-coverage",
             name = "Harbour plan",
@@ -67,7 +65,6 @@ class OfflineCoverageWorkspaceStoryTest {
                 missingKeys = setOf(missing),
             ),
         )
-        val imports = mutableListOf<ChartImportUiAction>()
         val reducer = DefaultMapReducer()
         val initial = MapState(surface = MapSurface.RouteDetail(route.id), savedRoutes = listOf(route))
         var currentState: () -> MapState = { initial }
@@ -81,8 +78,6 @@ class OfflineCoverageWorkspaceStoryTest {
                         state = state,
                         currentState = { state },
                         onAction = { state = reducer.reduce(state, it).state },
-                        importState = ChartImportUiState.Idle,
-                        onImportAction = imports::add,
                         recoveryExportState = MapRecoveryExportUiState.IDLE,
                         onExportRecovery = {},
                         offlineCoverageState = coverage,
@@ -98,10 +93,9 @@ class OfflineCoverageWorkspaceStoryTest {
         compose.onNodeWithTag("map-coverage-content-footprint").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("map-coverage-navigation-suitability").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("map-coverage-missing-12-4035-2568").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("map-coverage-import").performScrollTo().performClick()
+        compose.onNodeWithTag("map-coverage-import").assertDoesNotExist()
         compose.runOnIdle {
             assertEquals(MapSurface.OfflineCoverage(route.id), currentState().surface)
-            assertTrue(imports.contains(ChartImportUiAction.ChooseDocument))
         }
     }
 }

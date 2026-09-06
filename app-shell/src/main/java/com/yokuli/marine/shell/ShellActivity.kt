@@ -77,7 +77,6 @@ import com.yokuli.marine.feature.desktop.WpStatusStripItem
 import com.yokuli.marine.feature.desktop.WpSystemKeyBar
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
-import com.yokuli.marine.feature.chart.ChartImportUiAction
 import com.yokuli.marine.feature.chart.GpxExportTarget
 import com.yokuli.marine.feature.chart.GpxExportUiState
 import com.yokuli.marine.feature.chart.GpxImportUiAction
@@ -215,10 +214,11 @@ class ShellActivity : AppCompatActivity() {
 @Composable
 private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewModel>()) {
     val context = LocalContext.current
+    val application = context.applicationContext as ShellApplication
     val engine = shellViewModel.engine
     val engineState by engine.state.collectAsState()
     val mapState by shellViewModel.mapStore.state.collectAsState()
-    val chartImportState by shellViewModel.chartImportState.collectAsState()
+    val chartDisplayState by shellViewModel.chartDisplayState.collectAsState()
     val gpxImportState by shellViewModel.gpxImportState.collectAsState()
     val offlineCoverageState by shellViewModel.offlineCoverageState.collectAsState()
     val nmeaInputState by shellViewModel.nmeaInputState.collectAsState()
@@ -242,14 +242,6 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         shellViewModel.onDataSourcesAction(
             DataSourcesUiAction.PhonePermissionResult(permanentlyDenied = permanentlyDenied),
         )
-    }
-    val chartDocumentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            shellViewModel.inspectChartDocument(uri.toString())
-        }
     }
     val gpxDocumentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -429,15 +421,11 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 rightPx = maxOf(shellSafeBands.status.right, shellSafeBands.navigation.right),
             ),
             onMapAction = shellViewModel.mapStore::dispatch,
-            chartImportState = chartImportState,
-            onChartImportAction = { action ->
-                if (action == ChartImportUiAction.ChooseDocument) {
-                    chartDocumentPicker.launch(arrayOf("application/x-sqlite3", "application/octet-stream", "*/*"))
-                } else {
-                    shellViewModel.onChartImportAction(action)
-                }
-            },
+            chartDisplayState = chartDisplayState,
+            onChartDisplayAction = shellViewModel::onChartDisplayAction,
             acquireChartPackageLease = shellViewModel::acquireChartPackageLease,
+            chartLibraryAccess = application.chartLibraryRuntime,
+            chartTileGateway = application.chartTileGateway,
             recoveryExportState = recoveryExportState,
             onExportMapRecovery = {
                 recoveryExportState = MapRecoveryExportUiState.IDLE

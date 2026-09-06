@@ -20,7 +20,6 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
-import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.ChartWorkspace
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
 import com.yokuli.marine.map.domain.DefaultMapReducer
@@ -189,8 +188,6 @@ class PlaceWorkspaceStoryTest {
                             state = state,
                             currentState = { state },
                             onAction = dispatcher,
-                            importState = ChartImportUiState.Idle,
-                            onImportAction = {},
                             recoveryExportState = MapRecoveryExportUiState.IDLE,
                             onExportRecovery = {},
                             onExportPlace = { exportedPlace = it },

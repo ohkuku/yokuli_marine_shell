@@ -49,7 +49,6 @@ import com.yokuli.marine.core.design.WpTileAccentNameKey
 import com.yokuli.marine.core.design.YokuliTheme
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
-import com.yokuli.marine.feature.chart.ChartImportUiState
 import com.yokuli.marine.feature.chart.ChartWorkspace
 import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.chart.MapRecoveryExportUiState
@@ -203,8 +202,6 @@ class ShellActivityStoryTest {
                     ChartWorkspace(
                         state = MapState(crosshairEnabled = true),
                         onAction = actions::add,
-                        importState = ChartImportUiState.Idle,
-                        onImportAction = {},
                         recoveryExportState = MapRecoveryExportUiState.IDLE,
                         onExportRecovery = {},
                         chartSurface = { _, _, onQueryPortChanged, modifier ->
@@ -294,8 +291,6 @@ class ShellActivityStoryTest {
                                     ),
                                 ),
                                 onAction = {},
-                                importState = ChartImportUiState.Idle,
-                                onImportAction = {},
                                 recoveryExportState = MapRecoveryExportUiState.IDLE,
                                 onExportRecovery = {},
                                 chartSurface = { _, _, _, modifier -> Box(modifier) },
@@ -358,8 +353,6 @@ class ShellActivityStoryTest {
                             saveState = MapSaveState.FAILED,
                         ),
                         onAction = { if (it == MapAction.RetryPersistence) retryRequested = true },
-                        importState = ChartImportUiState.Idle,
-                        onImportAction = {},
                         recoveryExportState = MapRecoveryExportUiState.SUCCEEDED,
                         onExportRecovery = { exportRequested = true },
                         chartSurface = { _, _, _, modifier -> Box(modifier) },
