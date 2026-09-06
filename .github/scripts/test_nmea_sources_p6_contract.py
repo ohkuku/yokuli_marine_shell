@@ -27,12 +27,15 @@ class NmeaSourcesP6Contract(unittest.TestCase):
 
     def test_cross_app_safety_scenarios_are_executable_tests(self):
         tests = self.read("app-shell/src/test/java/com/yokuli/marine/shell/MarineSourcePositionPortTest.kt")
+        cross_app = self.read("app-shell/src/test/java/com/yokuli/marine/shell/MarineDataCrossAppStoryTest.kt")
         for name in [
             "selectedLivePositionFlowsToChartWithMonotonicIdentityAndSameSourceAccuracy",
             "selectedStaleSourceDisconnectsWithoutSilentlySwitchingToLiveAlternative",
             "sourceSwitchIsOrderedAndNeverMixesAccuracyFromAnotherSelectedSourceOrRepeatsAFrame",
         ]:
             self.assertIn(name, tests)
+        self.assertIn("selectedPositionHeadingAndAtomicCourseSpeedReachTheExistingChartConsumer", cross_app)
+        self.assertIn("chartBridgeNeverCombinesCourseAndSpeedFromDifferentFrames", cross_app)
 
     def test_existing_lifecycle_and_fault_contracts_remain_named_evidence(self):
         paths = [
@@ -58,6 +61,28 @@ class NmeaSourcesP6Contract(unittest.TestCase):
         self.assertIn("DEFAULT_TOTAL_RATE = 100", sender)
         self.assertIn("bad-frame", sender)
         self.assertIn("silent", sender)
+
+    def test_process_restore_is_an_external_force_stop_probe_not_two_methods_in_one_process(self):
+        driver = self.read(".github/scripts/run_nmea_sources_process_restore.sh")
+        probe = self.read(
+            "app-shell/src/androidTest/java/com/yokuli/marine/shell/NmeaP6ProcessRestartProbeTest.kt"
+        )
+        self.assertIn("am force-stop com.yokuli.marine", driver)
+        self.assertIn("seedNmeaStateBeforeExternalProcessRestart", driver)
+        self.assertIn("verifyPolicySurvivesButLiveValuesDoNot", driver)
+        self.assertIn("seedNmeaStateBeforeExternalProcessRestart", probe)
+        self.assertIn("verifyPolicySurvivesButLiveValuesDoNot", probe)
+
+    def test_service_loss_and_configuration_corruption_have_behavioral_evidence(self):
+        lifecycle = self.read(
+            "adapter/marine-data-android/src/test/kotlin/com/yokuli/marine/data/android/NmeaRuntimeLifecycleTest.kt"
+        )
+        persistence = self.read(
+            "adapter/marine-data-android/src/test/kotlin/com/yokuli/marine/data/android/ConnectionPersistenceTest.kt"
+        )
+        self.assertIn("foregroundServiceLossClosesSocketsWithoutChangingEnabledIntent", lifecycle)
+        self.assertIn("semanticCorruptionIsQuarantinedWithoutDroppingValidConnections", persistence)
+        self.assertIn("wireCorruptionIsReportedWithoutReplacingTheOriginalFile", persistence)
 
     def test_physical_gate_cannot_be_declared_by_emulator_or_host_soak(self):
         report = self.read("docs/phases/nmea-sources/P6_REPORT.md")
