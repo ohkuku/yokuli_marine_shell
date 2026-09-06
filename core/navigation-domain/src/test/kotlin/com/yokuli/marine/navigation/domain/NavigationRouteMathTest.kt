@@ -23,7 +23,7 @@ class NavigationRouteMathTest {
 
         assertEquals(2, summary.legs.size)
         assertTrue(summary.distanceNauticalMiles > 5.0)
-        assertTrue(summary.legs.first().initialBearingTrueDegrees in 0.0..360.0)
+        assertTrue(requireNotNull(summary.legs.first().initialBearingTrueDegrees) in 0.0..360.0)
         assertEquals(0.0, summary.legs.last().distanceMeters, 0.0)
         assertEquals(null, summary.legs.last().initialBearingTrueDegrees)
         assertTrue(requireNotNull(summary.estimatedDurationMillis) > 0L)
