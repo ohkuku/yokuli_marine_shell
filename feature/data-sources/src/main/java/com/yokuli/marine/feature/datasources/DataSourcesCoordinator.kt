@@ -146,10 +146,16 @@ class DataSourcesCoordinator(
     }
 
     fun open(token: MarineFeatureLinkToken): Boolean = synchronized(lock) {
-        val destination = MarineFeatureLinks.parse(token) as? MarineFeatureDestination.DataSources
-            ?: return false
+        val destination = MarineFeatureLinks.parse(token)
+        val filter = when (destination) {
+            is MarineFeatureDestination.DataSources -> destination.connectionId
+                ?.let(DataSourcesFilter::Connection)
+                ?: DataSourcesFilter.All
+            MarineFeatureDestination.DataSourcesAttention -> DataSourcesFilter.NeedsAttention
+            else -> return false
+        }
         local = local.copy(
-            filter = destination.connectionId?.let(DataSourcesFilter::Connection) ?: DataSourcesFilter.All,
+            filter = filter,
             page = DataSourcesLocalPage.Overview,
         )
         publishLocked()

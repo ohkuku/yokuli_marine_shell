@@ -38,6 +38,21 @@ import com.yokuli.marine.feature.settings.SettingsUiAction
 import com.yokuli.marine.feature.settings.SettingsUiState
 import com.yokuli.marine.feature.settings.SettingsWorkspace
 import com.yokuli.marine.feature.settings.settingsLauncherVisualContribution
+import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
+import com.yokuli.marine.data.source.MarineFeatureLinkToken
+import com.yokuli.marine.data.source.MarineSourceSnapshot
+import com.yokuli.marine.feature.datasources.DataSourcesDestinations
+import com.yokuli.marine.feature.datasources.DataSourcesShellContribution
+import com.yokuli.marine.feature.datasources.DataSourcesUiAction
+import com.yokuli.marine.feature.datasources.DataSourcesUiState
+import com.yokuli.marine.feature.datasources.DataSourcesWorkspace
+import com.yokuli.marine.feature.datasources.dataSourcesLauncherVisualContribution
+import com.yokuli.marine.feature.nmeainput.NmeaInputDestinations
+import com.yokuli.marine.feature.nmeainput.NmeaInputShellContribution
+import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
+import com.yokuli.marine.feature.nmeainput.NmeaInputUiState
+import com.yokuli.marine.feature.nmeainput.NmeaInputWorkspace
+import com.yokuli.marine.feature.nmeainput.nmeaInputLauncherVisualContribution
 import com.yokuli.shell.android.DefaultInternalAppHostResolver
 import com.yokuli.shell.android.StaticLauncherHostPort
 import com.yokuli.shell.compose.InternalAppHost
@@ -60,6 +75,8 @@ data class ProductionShellVisualEnvironment(
     val theme: WpThemeSpec,
     val mapState: MapState,
     val offlineCoverageState: OfflineCoverageUiState,
+    val nmeaSnapshot: NmeaRuntimeSnapshot = NmeaRuntimeSnapshot.EMPTY,
+    val dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
 )
 
 data class ProductionShellRuntime(
@@ -92,6 +109,12 @@ data class ProductionShellRuntime(
     val onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
     val onCancelOfflineCoverage: () -> Unit,
     val onSettingsAction: (SettingsUiAction) -> Unit,
+    val nmeaInputState: NmeaInputUiState,
+    val onNmeaInputAction: (NmeaInputUiAction) -> Unit,
+    val onOpenNmeaInput: (MarineFeatureLinkToken) -> Unit,
+    val dataSourcesState: DataSourcesUiState,
+    val onDataSourcesAction: (DataSourcesUiAction) -> Unit,
+    val onOpenDataSources: (MarineFeatureLinkToken) -> Unit,
 )
 
 val LocalProductionShellRuntime = staticCompositionLocalOf<ProductionShellRuntime> {
@@ -190,20 +213,62 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             )
         },
     ),
+    InstalledAppBinding(
+        catalogContribution = NmeaInputShellContribution,
+        visualContributions = { environment ->
+            listOf(nmeaInputLauncherVisualContribution(environment.nmeaSnapshot))
+        },
+        dynamicLaunchTokenMatcher = NmeaInputDestinations::accepts,
+        internalAppHost = InternalAppHost(NmeaInputDestinations.AppId) { token ->
+            val runtime = LocalProductionShellRuntime.current
+            LaunchedEffect(token) {
+                runtime.onOpenNmeaInput(MarineFeatureLinkToken(token.value))
+            }
+            NmeaInputWorkspace(
+                state = runtime.nmeaInputState,
+                onAction = runtime.onNmeaInputAction,
+            )
+        },
+    ),
+    InstalledAppBinding(
+        catalogContribution = DataSourcesShellContribution,
+        visualContributions = { environment ->
+            listOf(dataSourcesLauncherVisualContribution(environment.dataSourcesSnapshot))
+        },
+        dynamicLaunchTokenMatcher = DataSourcesDestinations::accepts,
+        internalAppHost = InternalAppHost(DataSourcesDestinations.AppId) { token ->
+            val runtime = LocalProductionShellRuntime.current
+            LaunchedEffect(token) {
+                runtime.onOpenDataSources(MarineFeatureLinkToken(token.value))
+            }
+            DataSourcesWorkspace(
+                state = runtime.dataSourcesState,
+                onAction = runtime.onDataSourcesAction,
+            )
+        },
+    ),
 )
 
 val productionInstalledAppRegistry: InstalledAppRegistry<ProductionShellVisualEnvironment> =
     InstalledAppRegistry(productionInstalledApps)
 val productionContributions = productionInstalledAppRegistry.catalogContributions
-val productionCatalog = LauncherCatalog.compose(revision = 1, contributions = productionContributions)
+val productionCatalog = LauncherCatalog.compose(revision = 2, contributions = productionContributions)
 val productionLaunchRegistrations = productionInstalledAppRegistry.launchRegistrations
 @Composable
 fun productionVisualContributions(
     theme: WpThemeSpec,
     mapState: MapState = MapState(),
     offlineCoverageState: OfflineCoverageUiState = OfflineCoverageUiState.Idle,
+    nmeaSnapshot: NmeaRuntimeSnapshot = NmeaRuntimeSnapshot.EMPTY,
+    dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
 ): List<LauncherEntryVisualContribution> {
-    val environment = ProductionShellVisualEnvironment(theme, mapState, offlineCoverageState)
+    val environment = ProductionShellVisualEnvironment(
+        theme,
+        mapState,
+        offlineCoverageState,
+        nmeaSnapshot,
+        dataSourcesSnapshot,
+    )
     return productionInstalledAppRegistry.visualContributions(environment)
 }
 @Composable
@@ -211,9 +276,17 @@ fun productionSearchContributions(
     theme: WpThemeSpec,
     mapState: MapState,
     offlineCoverageState: OfflineCoverageUiState,
+    nmeaSnapshot: NmeaRuntimeSnapshot = NmeaRuntimeSnapshot.EMPTY,
+    dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
     query: String,
 ) = productionInstalledAppRegistry.searchContributions(
-    ProductionShellVisualEnvironment(theme, mapState, offlineCoverageState),
+    ProductionShellVisualEnvironment(
+        theme,
+        mapState,
+        offlineCoverageState,
+        nmeaSnapshot,
+        dataSourcesSnapshot,
+    ),
     query,
 )
 val productionInternalAppHostResolver = DefaultInternalAppHostResolver(

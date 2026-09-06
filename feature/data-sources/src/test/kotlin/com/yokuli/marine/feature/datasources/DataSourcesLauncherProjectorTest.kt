@@ -111,7 +111,7 @@ class DataSourcesLauncherProjectorTest {
             status == SourceDecisionStatus.NEEDS_SELECTION,
         )
         val revision = if (selected) 1L else 0L
-        val resolved = if (selected) {
+        val resolved: Map<DataKey, ResolvedDatum> = if (selected) {
             mapOf(
                 DataKey.Position to ResolvedDatum(
                     DataKey.Position,

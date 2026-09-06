@@ -7,6 +7,8 @@ import com.yokuli.marine.data.runtime.NmeaRuntimeCommandResult
 import com.yokuli.marine.data.runtime.NmeaRuntimeFailure
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
 import com.yokuli.marine.data.source.MarineFeatureLinks
+import com.yokuli.marine.data.source.MarineFeatureDestination
+import com.yokuli.marine.data.source.MarineFeatureLinkToken
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -99,6 +101,16 @@ class NmeaInputCoordinator(
     fun handleBack(): Boolean = synchronized(lock) {
         val action = NmeaInputBackPolicy.actionFor(local) ?: return false
         local = NmeaInputLocalReducer.reduce(local, action, runtime, newConnectionId).localState
+        publishLocked()
+        true
+    }
+
+    fun open(token: MarineFeatureLinkToken): Boolean = synchronized(lock) {
+        val destination = MarineFeatureLinks.parse(token) as? MarineFeatureDestination.NmeaInput
+            ?: return false
+        local = destination.connectionId?.takeIf(runtime::hasConnection)
+            ?.let(NmeaInputLocalState::Detail)
+            ?: NmeaInputLocalState.Overview
         publishLocked()
         true
     }

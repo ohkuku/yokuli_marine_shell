@@ -71,4 +71,19 @@
     <string name="notice_phone_disabled">手机位置已停用</string>
     <string name="notice_phone_unavailable">手机位置目前不可用</string>
     <string name="notice_busy">操作队列已满，请稍后重试</string>
+    <string name="launcher_sources_waiting">等待数据</string>
+    <string name="launcher_sources_using">%1$d 项正在使用</string>
+    <string name="launcher_sources_attention">%1$d 项需处理</string>
+    <string name="launcher_sources_needs_selection">%1$d 项待选择</string>
+    <string name="launcher_sources_interrupted">%1$d 项已中断</string>
+    <string name="launcher_sources_save_failed">来源策略保存失败</string>
+    <string name="launcher_sources_no_measurements">尚未发现数据</string>
+    <string name="launcher_sources_relation">%1$s ← %2$s</string>
+    <string name="launcher_status_sources_attention">来源 !%1$d</string>
+    <string name="launcher_status_sources_ok">来源 ✓</string>
+    <string name="launcher_status_sources_expanded">%1$d 项待选择 / %2$d 项已中断</string>
+    <string name="data_heading_short">艏向</string>
+    <string name="data_depth_short">水深</string>
+    <string name="data_wind_angle_short">风角</string>
+    <string name="data_wind_speed_short">风速</string>
 </resources>

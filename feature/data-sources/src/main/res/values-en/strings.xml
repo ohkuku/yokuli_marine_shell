@@ -74,4 +74,19 @@
     <string name="notice_phone_disabled">Phone location disabled</string>
     <string name="notice_phone_unavailable">Phone location is currently unavailable</string>
     <string name="notice_busy">Action queue is full; try again</string>
+    <string name="launcher_sources_waiting">waiting for data</string>
+    <string name="launcher_sources_using">%1$d in use</string>
+    <string name="launcher_sources_attention">%1$d need attention</string>
+    <string name="launcher_sources_needs_selection">%1$d need a source</string>
+    <string name="launcher_sources_interrupted">%1$d interrupted</string>
+    <string name="launcher_sources_save_failed">source policy save failed</string>
+    <string name="launcher_sources_no_measurements">no data discovered yet</string>
+    <string name="launcher_sources_relation">%1$s ← %2$s</string>
+    <string name="launcher_status_sources_attention">sources !%1$d</string>
+    <string name="launcher_status_sources_ok">sources ✓</string>
+    <string name="launcher_status_sources_expanded">%1$d need a source / %2$d interrupted</string>
+    <string name="data_heading_short">heading</string>
+    <string name="data_depth_short">depth</string>
+    <string name="data_wind_angle_short">wind angle</string>
+    <string name="data_wind_speed_short">wind speed</string>
 </resources>

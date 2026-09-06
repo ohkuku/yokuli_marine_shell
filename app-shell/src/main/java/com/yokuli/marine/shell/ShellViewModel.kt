@@ -30,6 +30,7 @@ import com.yokuli.marine.feature.nmeainput.NmeaInputCoordinator
 import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiState
+import com.yokuli.marine.data.source.MarineFeatureLinkToken
 import android.net.Uri
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
@@ -53,8 +54,9 @@ import kotlinx.coroutines.launch
  * English: This ViewModel composes platform storage with the pure Engine; the Activity only renders flows and effects.
  */
 class ShellViewModel(application: Application) : AndroidViewModel(application) {
+    private val shellApplication = application as ShellApplication
     private val defaults = LauncherPersistedState(document = defaultStartDocument)
-    private val persistence = (application as ShellApplication).launcherPersistence
+    private val persistence = shellApplication.launcherPersistence
     private val recoveryTrackingEnabled = BuildConfig.BUILD_TYPE !in HARNESS_BUILD_TYPES
     private val enginePersistence = if (recoveryTrackingEnabled) {
         persistence
@@ -65,18 +67,21 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     }
     private var healthyTimer: Job? = null
     private val startupJob: Job
-    private val chartPackages = (application as ShellApplication).chartPackageRepository
+    private val chartPackages = shellApplication.chartPackageRepository
+    val nmeaRuntimeState = shellApplication.nmeaInputRuntime.state
+    val marineSourceState = shellApplication.marineSourceRuntime.state
+    val phoneLocationState = shellApplication.phoneLocationRuntime.state
     private val nmeaInputCoordinator = NmeaInputCoordinator(
-        runtimePort = (application as ShellApplication).nmeaInputRuntime,
+        runtimePort = shellApplication.nmeaInputRuntime,
         scope = viewModelScope,
         nowMillis = { android.os.SystemClock.elapsedRealtime() },
     )
     val nmeaInputState: StateFlow<NmeaInputUiState> = nmeaInputCoordinator.state
     val nmeaInputEffects: Flow<NmeaInputEffect> = nmeaInputCoordinator.effects
     private val dataSourcesCoordinator = DataSourcesCoordinator(
-        sourcePort = (application as ShellApplication).marineSourceRuntime,
-        nmeaPort = application.nmeaInputRuntime,
-        phonePort = application.phoneLocationRuntime,
+        sourcePort = shellApplication.marineSourceRuntime,
+        nmeaPort = shellApplication.nmeaInputRuntime,
+        phonePort = shellApplication.phoneLocationRuntime,
         scope = viewModelScope,
         nowMillis = { android.os.SystemClock.elapsedRealtime() },
     )
@@ -206,8 +211,16 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         nmeaInputCoordinator.dispatch(action)
     }
 
+    fun openNmeaInput(token: MarineFeatureLinkToken) {
+        nmeaInputCoordinator.open(token)
+    }
+
     fun onDataSourcesAction(action: DataSourcesUiAction) {
         dataSourcesCoordinator.dispatch(action)
+    }
+
+    fun openDataSources(token: MarineFeatureLinkToken) {
+        dataSourcesCoordinator.open(token)
     }
 
     fun acquireChartPackageLease(packageId: ChartPackageId): ChartPackageLease =

@@ -14,16 +14,19 @@ value class MarineFeatureLinkToken(val value: String) {
 
 sealed interface MarineFeatureDestination {
     data class DataSources(val connectionId: ConnectionId?) : MarineFeatureDestination
+    data object DataSourcesAttention : MarineFeatureDestination
     data class NmeaInput(val connectionId: ConnectionId?) : MarineFeatureDestination
 }
 
 object MarineFeatureLinks {
     private const val SOURCES_ROOT = "sources.root"
     private const val SOURCES_CONNECTION = "sources.connection."
+    private const val SOURCES_ATTENTION = "sources.attention"
     private const val NMEA_ROOT = "nmea.root"
     private const val NMEA_CONNECTION = "nmea.connection."
 
     val dataSourcesRoot = MarineFeatureLinkToken(SOURCES_ROOT)
+    val dataSourcesAttention = MarineFeatureLinkToken(SOURCES_ATTENTION)
     val nmeaInputRoot = MarineFeatureLinkToken(NMEA_ROOT)
 
     fun dataSourcesForConnection(connectionId: ConnectionId): MarineFeatureLinkToken =
@@ -34,6 +37,7 @@ object MarineFeatureLinks {
 
     fun parse(token: MarineFeatureLinkToken): MarineFeatureDestination? = when {
         token.value == SOURCES_ROOT -> MarineFeatureDestination.DataSources(null)
+        token.value == SOURCES_ATTENTION -> MarineFeatureDestination.DataSourcesAttention
         token.value == NMEA_ROOT -> MarineFeatureDestination.NmeaInput(null)
         token.value.startsWith(SOURCES_CONNECTION) -> decode(
             token.value.removePrefix(SOURCES_CONNECTION),

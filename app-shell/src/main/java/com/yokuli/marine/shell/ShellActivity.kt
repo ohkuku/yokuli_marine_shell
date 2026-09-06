@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.Context
@@ -50,6 +51,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.content.FileProvider
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -71,6 +73,7 @@ import com.yokuli.marine.feature.desktop.WpAppList
 import com.yokuli.marine.feature.desktop.WpRecentsSurface
 import com.yokuli.marine.feature.desktop.WpSearchSurface
 import com.yokuli.marine.feature.desktop.WpStatusStrip
+import com.yokuli.marine.feature.desktop.WpStatusStripItem
 import com.yokuli.marine.feature.desktop.WpSystemKeyBar
 import com.yokuli.marine.feature.desktop.YokuliStartScreen
 import com.yokuli.marine.feature.desktop.productionLauncherUiState
@@ -88,6 +91,14 @@ import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
+import com.yokuli.marine.data.source.MarineFeatureLinks
+import com.yokuli.marine.feature.datasources.DataSourcesEffect
+import com.yokuli.marine.feature.datasources.DataSourcesLauncherProjector
+import com.yokuli.marine.feature.datasources.DataSourcesUiAction
+import com.yokuli.marine.feature.datasources.dataSourcesStatusCopy
+import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
+import com.yokuli.marine.feature.nmeainput.NmeaInputLauncherProjector
+import com.yokuli.marine.feature.nmeainput.nmeaInputStatusCopy
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEffect
 import com.yokuli.shell.engine.LauncherRecoveryMode
@@ -210,12 +221,28 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val chartImportState by shellViewModel.chartImportState.collectAsState()
     val gpxImportState by shellViewModel.gpxImportState.collectAsState()
     val offlineCoverageState by shellViewModel.offlineCoverageState.collectAsState()
+    val nmeaInputState by shellViewModel.nmeaInputState.collectAsState()
+    val dataSourcesState by shellViewModel.dataSourcesState.collectAsState()
+    val nmeaRuntimeSnapshot by shellViewModel.nmeaRuntimeState.collectAsState()
+    val dataSourcesSnapshot by shellViewModel.marineSourceState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var recoveryExportState by remember { mutableStateOf(MapRecoveryExportUiState.IDLE) }
     var placeExportState by remember { mutableStateOf<MapPlaceExportUiState>(MapPlaceExportUiState.Idle) }
     var pendingPlaceExport by remember { mutableStateOf<SavedPlace?>(null) }
     var gpxExportState by remember { mutableStateOf<GpxExportUiState>(GpxExportUiState.Idle) }
     var pendingGpxExport by remember { mutableStateOf<GpxExportTarget?>(null) }
+    val phonePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        val granted = grants.values.any { it }
+        val host = context as? Activity
+        val permanentlyDenied = !granted && host != null && PHONE_LOCATION_PERMISSIONS.all { permission ->
+            !ActivityCompat.shouldShowRequestPermissionRationale(host, permission)
+        }
+        shellViewModel.onDataSourcesAction(
+            DataSourcesUiAction.PhonePermissionResult(permanentlyDenied = permanentlyDenied),
+        )
+    }
     val chartDocumentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
@@ -316,6 +343,33 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             }
         }
     }
+    LaunchedEffect(engine, shellViewModel) {
+        shellViewModel.nmeaInputEffects.collect { effect ->
+            when (effect) {
+                is NmeaInputEffect.OpenDataSources -> engine.dispatch(
+                    LauncherAction.Open(LaunchToken(effect.token.value)),
+                )
+            }
+        }
+    }
+    LaunchedEffect(engine, shellViewModel, context) {
+        shellViewModel.dataSourcesEffects.collect { effect ->
+            when (effect) {
+                DataSourcesEffect.RequestPhoneLocationPermission -> {
+                    phonePermissionLauncher.launch(PHONE_LOCATION_PERMISSIONS)
+                }
+                DataSourcesEffect.OpenSystemLocationSettings -> runCatching {
+                    context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                }
+                DataSourcesEffect.OpenAppPermissionSettings -> runCatching {
+                    context.openHostAppInfo()
+                }
+                is DataSourcesEffect.OpenNmeaInput -> engine.dispatch(
+                    LauncherAction.Open(LaunchToken(effect.token.value)),
+                )
+            }
+        }
+    }
     val persistedPreferences by shellViewModel.persistedPreferences.collectAsState()
     val themeSpec = WpThemeSpec(
         WpThemeMode.valueOf(persistedPreferences.themeModeName),
@@ -350,6 +404,14 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 backReturnVisibleWindowMillis = motionProfile.measuredBackReturnMillis ?: 750,
             )
         }
+        val nmeaLauncherState = remember(nmeaRuntimeSnapshot) {
+            NmeaInputLauncherProjector.project(nmeaRuntimeSnapshot)
+        }
+        val dataSourcesLauncherState = remember(dataSourcesSnapshot) {
+            DataSourcesLauncherProjector.project(dataSourcesSnapshot)
+        }
+        val nmeaStatus = nmeaInputStatusCopy(nmeaLauncherState.status)
+        val dataSourcesStatus = dataSourcesStatusCopy(dataSourcesLauncherState.status)
         val runtime = ProductionShellRuntime(
             theme = themeSpec,
             language = language,
@@ -452,6 +514,12 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
                 }
             },
+            nmeaInputState = nmeaInputState,
+            onNmeaInputAction = shellViewModel::onNmeaInputAction,
+            onOpenNmeaInput = shellViewModel::openNmeaInput,
+            dataSourcesState = dataSourcesState,
+            onDataSourcesAction = shellViewModel::onDataSourcesAction,
+            onOpenDataSources = shellViewModel::openDataSources,
         )
         CompositionLocalProvider(
             LocalProductionShellRuntime provides runtime,
@@ -472,11 +540,15 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     theme = themeSpec,
                     mapState = mapState,
                     offlineCoverageState = offlineCoverageState,
+                    nmeaSnapshot = nmeaRuntimeSnapshot,
+                    dataSourcesSnapshot = dataSourcesSnapshot,
                 ),
                 searchResults = productionSearchContributions(
                     theme = themeSpec,
                     mapState = mapState,
                     offlineCoverageState = offlineCoverageState,
+                    nmeaSnapshot = nmeaRuntimeSnapshot,
+                    dataSourcesSnapshot = dataSourcesSnapshot,
                     query = activeSearchQuery ?: retainedSearchQuery,
                 ),
             )
@@ -535,7 +607,36 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                         )
                     } else {
                         Column(Modifier.fillMaxSize()) {
-                            WpStatusStrip(windowMetrics) {
+                            WpStatusStrip(
+                                windowMetrics = windowMetrics,
+                                statusItems = listOfNotNull(
+                                    nmeaStatus?.let {
+                                        WpStatusStripItem("nmea", it.compact, it.expanded, nmeaLauncherState.status.attentionCount > 0)
+                                    },
+                                    dataSourcesStatus?.let {
+                                        WpStatusStripItem(
+                                            "data-sources",
+                                            it.compact,
+                                            it.expanded,
+                                            dataSourcesLauncherState.status.attentionCount > 0,
+                                        )
+                                    },
+                                ),
+                                onStatusItem = { statusId ->
+                                    val token = when (statusId) {
+                                        "nmea" -> nmeaLauncherState.status.preferredConnectionId
+                                            ?.let(MarineFeatureLinks::nmeaInputForConnection)
+                                            ?: MarineFeatureLinks.nmeaInputRoot
+                                        "data-sources" -> if (dataSourcesLauncherState.status.openNeedsAttention) {
+                                            MarineFeatureLinks.dataSourcesAttention
+                                        } else {
+                                            MarineFeatureLinks.dataSourcesRoot
+                                        }
+                                        else -> null
+                                    }
+                                    token?.let { dispatch(LauncherAction.Open(LaunchToken(it.value))) }
+                                },
+                            ) {
                                 dispatch(LauncherAction.Open(SettingsDestinations.Overview))
                             }
                             WpSurfaceTransitionHost(
@@ -711,6 +812,11 @@ private fun Context.openHostAppInfo() {
 private fun Context.openShellLab() {
     startActivity(Intent().setClassName(packageName, "com.yokuli.marine.feature.shell.lab.ShellLabActivity"))
 }
+
+private val PHONE_LOCATION_PERMISSIONS = arrayOf(
+    Manifest.permission.ACCESS_FINE_LOCATION,
+    Manifest.permission.ACCESS_COARSE_LOCATION,
+)
 
 @Composable
 private fun SyncHostWindowChrome(background: Color, useDarkSystemIcons: Boolean) {

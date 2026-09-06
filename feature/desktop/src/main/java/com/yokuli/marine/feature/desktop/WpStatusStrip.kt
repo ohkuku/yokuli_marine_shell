@@ -31,7 +31,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.yokuli.marine.core.design.LocalWpTheme
@@ -44,8 +49,30 @@ import kotlinx.coroutines.delay
 
 private data class BatteryUiState(val percent: Int = -1, val charging: Boolean = false)
 
+/**
+ * A compact, independently actionable status owned by an installed app.
+ * The Shell renders facts only; opening the owning app remains a typed callback.
+ */
+data class WpStatusStripItem(
+    val stableId: String,
+    val compactText: String,
+    val expandedDescription: String,
+    val attention: Boolean,
+) {
+    init {
+        require(stableId.isNotBlank())
+        require(compactText.isNotBlank())
+        require(expandedDescription.isNotBlank())
+    }
+}
+
 @Composable
-fun WpStatusStrip(windowMetrics: ShellWindowMetrics, onOpenSettings: () -> Unit) {
+fun WpStatusStrip(
+    windowMetrics: ShellWindowMetrics,
+    statusItems: List<WpStatusStripItem> = emptyList(),
+    onStatusItem: (String) -> Unit = {},
+    onOpenSettings: () -> Unit,
+) {
     val colors = LocalWpTheme.current
     val context = LocalContext.current
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -96,11 +123,30 @@ fun WpStatusStrip(windowMetrics: ShellWindowMetrics, onOpenSettings: () -> Unit)
     ) {
         WpText(time, 12)
         Spacer(Modifier.weight(1f))
+        statusItems.take(MAX_APP_STATUS_ITEMS).forEach { item ->
+            WpText(
+                text = item.compactText,
+                size = 10,
+                color = if (item.attention) colors.alarm else colors.muted,
+                modifier = Modifier
+                    .testTag("shell-status-${item.stableId}")
+                    .semantics {
+                        contentDescription = item.expandedDescription
+                        role = Role.Button
+                    }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { onStatusItem(item.stableId) },
+            )
+        }
         if (battery.charging) WpText(stringResource(R.string.status_charging), 10, color = colors.muted)
         if (battery.percent >= 0) WpText(stringResource(R.string.status_battery, battery.percent), 11)
         BatteryIcon(battery.percent, Modifier.size(width = 20.dp, height = 10.dp))
     }
 }
+
+private const val MAX_APP_STATUS_ITEMS = 2
 
 @Composable
 private fun BatteryIcon(percent: Int, modifier: Modifier = Modifier) {
