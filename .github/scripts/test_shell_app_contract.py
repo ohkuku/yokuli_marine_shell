@@ -169,14 +169,20 @@ class ShellAppTileContractTest(unittest.TestCase):
         self.assertIn("OfflineMarineChartSurface", graph)
         self.assertIn("mapAppKeepsPlanningToolsInternalAndPositionTruthExplicit", activity_tests)
 
-    def test_map_dependency_cannot_silently_add_location_permissions_or_fake_chart_data(self):
+    def test_phone_location_permissions_are_owned_by_marine_adapter_not_chart(self):
         manifest = (ROOT / "app-shell/src/main/AndroidManifest.xml").read_text()
+        adapter_manifest = (ROOT / "adapter/marine-data-android/src/main/AndroidManifest.xml").read_text()
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
-        workspace = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
+        chart = "\n".join(
+            path.read_text()
+            for path in (ROOT / "feature/chart/src/main").rglob("*.kt")
+        )
         for permission in ("ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"):
             self.assertIn(permission, manifest)
-        self.assertGreaterEqual(manifest.count('tools:node="remove"'), 2)
-        self.assertNotIn("MarineChartDemoSurface", graph + workspace)
+            self.assertIn(permission, adapter_manifest)
+        self.assertNotIn("LocationManager", chart)
+        self.assertNotIn("requestPermissions", chart)
+        self.assertNotIn("MarineChartDemoSurface", graph + chart)
 
 
 if __name__ == "__main__":
