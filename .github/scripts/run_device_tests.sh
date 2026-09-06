@@ -21,11 +21,27 @@ case "$mode" in
     )
     ;;
   smoke)
-    gradle_args+=(
-      :adapter:marine-data-android:connectedDebugAndroidTest
-      :app-shell:connectedStandaloneDebugAndroidTest
-      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart'
-    )
+    # A positive class filter is interpreted by every instrumentation task in
+    # one Gradle invocation. Keep the adapter and app runners separate so the
+    # adapter APK is never asked to load an app-shell test class.
+    cd "$repo_root"
+    mkdir -p build
+    set +e
+    ./gradlew --no-daemon \
+      :adapter:marine-data-android:connectedDebugAndroidTest \
+      --stacktrace 2>&1 | tee build/ci-device-tests.log
+    adapter_status="${PIPESTATUS[0]}"
+    if [[ "$adapter_status" -ne 0 ]]; then
+      set -e
+      exit "$adapter_status"
+    fi
+    ./gradlew --no-daemon \
+      :app-shell:connectedStandaloneDebugAndroidTest \
+      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart' \
+      --stacktrace 2>&1 | tee -a build/ci-device-tests.log
+    app_status="${PIPESTATUS[0]}"
+    set -e
+    exit "$app_status"
     ;;
   ui-contract)
     gradle_args+=(
