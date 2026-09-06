@@ -64,6 +64,7 @@ import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapSurface
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.MapTransient
+import com.yokuli.marine.map.domain.MeasurementMath
 import com.yokuli.marine.map.domain.PointCandidateOrigin
 import com.yokuli.marine.map.domain.PlaceCategory
 import com.yokuli.marine.map.offline.OfflineMapInstanceMetrics
@@ -150,10 +151,15 @@ class ShellActivityStoryTest {
         }
         compose.onNodeWithTag("map-root-command-bar").assertIsDisplayed()
 
-        compose.onNodeWithTag("map-open-charts").performClick()
-        awaitDisplayed("map-page-surface")
+        val selected = GeoPoint(-36.81, 174.79)
+        compose.activityRule.scenario.onActivity { activity ->
+            ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.dispatch(
+                MapAction.MapTapped(selected, emptyList()),
+            )
+        }
+        awaitDisplayed("map-point-candidate")
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        compose.waitUntil(5_000) { currentMapState().surface == MapSurface.Root }
+        compose.waitUntil(5_000) { currentMapState().transient == null }
         compose.onNodeWithTag("map-root-command-bar").assertIsDisplayed()
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
@@ -224,7 +230,7 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun measurementShowsRealResultsAndCoordinateEntryMovesTheChosenPoint() {
+    fun measurementShowsOneABLegAndDirectDragMovesTheChosenPoint() {
         compose.onNodeWithTag("tile-chart").performClick()
         awaitDisplayed("map-root-command-bar")
         val a = GeoPoint(-36.8485, 174.7633)
@@ -237,26 +243,16 @@ class ShellActivityStoryTest {
             store.dispatch(MapAction.AddPoint(a))
             store.dispatch(MapAction.AddPoint(b))
             store.dispatch(MapAction.AddPoint(c))
+            store.dispatch(MapAction.BeginPointDrag(com.yokuli.marine.map.domain.MapGestureId("move-b"), com.yokuli.marine.map.domain.MapEditTarget.MeasurementPoint(1)))
+            store.dispatch(MapAction.CommitPointDrag(com.yokuli.marine.map.domain.MapGestureId("move-b"), GeoPoint(-36.8, 174.9)))
         }
 
         awaitDisplayed("map-measurement-summary")
-        compose.onNodeWithTag("map-measure-details").assertIsDisplayed().performClick()
-        awaitDisplayed("map-measure-segment-0")
-        compose.onNodeWithTag("map-measure-segment-1").assertIsDisplayed()
-        compose.onNodeWithTag("map-measure-point-move-1").performClick()
-        awaitDisplayed("map-precise-point-edit")
-        compose.onNodeWithTag("map-precise-coordinate-input").performClick()
-        awaitDisplayed("map-coordinate-latitude")
-        compose.onNodeWithTag("map-coordinate-latitude").performTextClearance()
-        compose.onNodeWithTag("map-coordinate-latitude").performTextInput("36.8 S")
-        compose.onNodeWithTag("map-coordinate-longitude").performTextClearance()
-        compose.onNodeWithTag("map-coordinate-longitude").performTextInput("174.9 E")
-        compose.onNodeWithTag("map-coordinate-confirm").performClick()
-
         compose.waitUntil(5_000) {
             currentMapState().measurementDraft?.points?.getOrNull(1) == GeoPoint(-36.8, 174.9)
         }
-        assertEquals(listOf(a, GeoPoint(-36.8, 174.9), c), currentMapState().measurementDraft?.points)
+        assertEquals(listOf(a, GeoPoint(-36.8, 174.9)), currentMapState().measurementDraft?.points)
+        assertEquals(1, MeasurementMath.summarize(requireNotNull(currentMapState().measurementDraft)).segments.size)
     }
 
     @Test
@@ -306,10 +302,11 @@ class ShellActivityStoryTest {
         }
 
         compose.onNodeWithTag("map-candidate-measure").assertIsDisplayed()
-        compose.onNodeWithTag("map-candidate-save").assertIsDisplayed()
+        compose.onNodeWithTag("map-candidate-mark").assertIsDisplayed()
+        compose.onNodeWithTag("map-candidate-go-to").assertIsDisplayed()
         compose.onNodeWithTag("map-candidate-cancel").assertIsDisplayed()
         compose.onNodeWithTag("map-tool-measure").assertIsDisplayed()
-        compose.onNodeWithTag("map-crosshair-toggle").assertIsDisplayed()
+        compose.onNodeWithTag("map-position-follow").assertIsDisplayed()
     }
 
     @Test
@@ -377,28 +374,19 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun chartRootStaysFocusedWhileUnmigratedPlanningDataRemainsReachable() {
+    fun chartRootContainsOnlyDirectMapActionsAndNoResourceManagementEntrypoints() {
         compose.onNodeWithTag("tile-chart").performClick()
         awaitDisplayed("map-root-command-bar")
         compose.onNodeWithTag("map-truth-strip").assertIsDisplayed()
 
-        compose.onNodeWithTag("map-tool-manual_route").assertDoesNotExist()
+        compose.onNodeWithTag("map-tool-mark").assertIsDisplayed()
+        compose.onNodeWithTag("map-tool-route").assertIsDisplayed()
+        compose.onNodeWithTag("map-tool-measure").assertIsDisplayed()
+        compose.onNodeWithTag("map-open-view-picker").assertIsDisplayed()
         compose.onNodeWithTag("map-coordinate-input").assertDoesNotExist()
-        compose.onNodeWithTag("map-open-routes").performClick()
-        compose.activityRule.scenario.onActivity { activity ->
-            val mapState = ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.state.value
-            assertEquals(com.yokuli.marine.map.domain.MapSurface.Routes, mapState.surface)
-            assertEquals(com.yokuli.marine.map.domain.PositionAvailability.UNAVAILABLE, mapState.position.availability)
-        }
-        compose.activityRule.scenario.onActivity { activity ->
-            ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.dispatch(MapAction.CloseSurface)
-        }
-        awaitDisplayed("map-root-command-bar")
-        compose.onNodeWithTag("map-open-quick-layers").performClick()
-        compose.activityRule.scenario.onActivity { activity ->
-            val mapState = ViewModelProvider(activity)[ShellViewModel::class.java].mapStore.state.value
-            assertEquals(com.yokuli.marine.map.domain.MapSurface.ChartPackages, mapState.surface)
-        }
+        compose.onNodeWithTag("map-open-routes").assertDoesNotExist()
+        compose.onNodeWithTag("map-open-quick-layers").assertDoesNotExist()
+        compose.onNodeWithTag("map-open-charts").assertDoesNotExist()
         compose.onNodeWithTag("launcher-entry-routes").assertDoesNotExist()
         compose.onNodeWithTag("launcher-entry-charts").assertDoesNotExist()
     }
@@ -834,8 +822,9 @@ class ShellActivityStoryTest {
         awaitDisplayed(resultTag)
         compose.onNodeWithTag(resultTag).performClick()
 
-        awaitDisplayed("map-place-detail-$placeId")
-        assertEquals(MapSurface.PlaceDetail(placeId), currentMapState().surface)
+        awaitDisplayed("map-object-summary")
+        assertEquals(MapSurface.Root, currentMapState().surface)
+        assertEquals(placeId, currentMapState().places.firstOrNull { it.point == currentMapState().selection?.point }?.id)
         assertEquals(false, currentMapState().navigationActive)
     }
 

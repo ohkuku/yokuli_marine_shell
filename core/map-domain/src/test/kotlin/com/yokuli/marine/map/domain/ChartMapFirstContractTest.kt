@@ -48,6 +48,27 @@ class ChartMapFirstContractTest {
     }
 
     @Test
+    fun `measurement cannot accept a third route-like point`() {
+        val measured = reduce(MapState(), MapAction.BeginMeasurement(vessel, target)).state
+        val rejected = reduce(measured, MapAction.InsertMeasurementPoint(1, movedTarget))
+
+        assertEquals(listOf(vessel, target), rejected.state.measurementDraft?.points)
+        assertTrue((rejected.effects.single() as MapEffect.LogIncident).incident is MapIncident.ActionRejected)
+    }
+
+    @Test
+    fun `measure request cannot hide a nonempty route editor`() {
+        var state = reduce(MapState(), MapAction.SelectTool(MapTool.MANUAL_ROUTE)).state
+        state = reduce(state, MapAction.MapTapped(vessel, emptyList())).state
+
+        val guarded = reduce(state, MapAction.SelectTool(MapTool.MEASURE)).state
+
+        assertEquals(MapTool.MANUAL_ROUTE, guarded.tool)
+        assertNull(guarded.measurementDraft)
+        assertEquals(MapTransient.UnsavedRoute(requireNotNull(guarded.routeDraft).id), guarded.transient)
+    }
+
+    @Test
     fun `route tap commits immediately and back requests an explicit draft decision`() {
         var state = reduce(MapState(), MapAction.SelectTool(MapTool.MANUAL_ROUTE)).state
         state = reduce(state, MapAction.MapTapped(vessel, emptyList())).state
@@ -59,6 +80,22 @@ class ChartMapFirstContractTest {
 
         state = reduce(state, MapAction.RequestCloseRouteDraft).state
         assertEquals(state.routeDraft?.id, (state.transient as MapTransient.UnsavedRoute).draftId)
+    }
+
+    @Test
+    fun `discard removes both route geometry and its editor state`() {
+        var state = reduce(MapState(), MapAction.SelectTool(MapTool.MANUAL_ROUTE)).state
+        state = reduce(state, MapAction.MapTapped(vessel, emptyList())).state
+        state = reduce(state, MapAction.MapTapped(target, emptyList())).state
+        state = reduce(state, MapAction.RequestCloseRouteDraft).state
+        val draftId = requireNotNull(state.routeDraft).id
+
+        state = reduce(state, MapAction.DiscardRouteDraft(draftId)).state
+
+        assertNull(state.routeDraft)
+        assertNull(state.transient)
+        assertEquals(MapTool.BROWSE, state.tool)
+        assertEquals(MapSurface.Root, state.surface)
     }
 
     @Test

@@ -118,7 +118,14 @@ data class MeasurementDraft(
     val points: List<GeoPoint> = emptyList(),
     val undo: List<List<GeoPoint>> = emptyList(),
     val redo: List<List<GeoPoint>> = emptyList(),
-)
+) {
+    init {
+        require(points.size <= 2) { "Measurement is a two-point A/B ruler" }
+        require(undo.all { it.size <= 2 } && redo.all { it.size <= 2 }) {
+            "Measurement history cannot contain route geometry"
+        }
+    }
+}
 
 enum class MeasurementPrompt { PLACE_START, PLACE_END, RESULTS }
 

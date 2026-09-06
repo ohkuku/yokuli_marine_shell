@@ -15,16 +15,17 @@ class OsRedesignW09ContractTest(unittest.TestCase):
         workspace = self.read("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt")
         return workspace.split("private fun ChartLayersPage(", 1)[1].split("private fun chartDisplayIssueText", 1)[0]
 
-    def test_root_is_a_focused_three_action_live_map_surface(self):
+    def test_root_is_a_focused_four_action_live_map_surface_after_product_correction(self):
         workspace = self.read("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt")
         command_bar = workspace.split("private fun MapRootCommandBar(", 1)[1].split("private fun MapCommandButton", 1)[0]
-        for tag in ("map-tool-measure", "map-open-quick-layers", "map-crosshair-toggle"):
+        for tag in ("map-tool-mark", "map-tool-route", "map-tool-measure", "map-open-view-picker"):
             self.assertIn(tag, command_bar)
-        self.assertEqual(3, command_bar.count("MapCommandButton("))
+        self.assertEqual(4, command_bar.count("MapCommandButton("))
         self.assertNotIn("map-open-places", command_bar)
         self.assertNotIn("map-open-routes", command_bar)
         self.assertNotIn("map-tool-manual_route", command_bar)
         self.assertNotIn("map-coordinate-input", command_bar)
+        self.assertNotIn("map-open-quick-layers", command_bar)
 
     def test_quick_layers_do_not_expose_peer_or_resource_management(self):
         body = self.chart_layers_body()

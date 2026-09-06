@@ -188,7 +188,7 @@ sealed interface ChartDestination {
 object ChartLaunchProjector {
     fun action(target: ChartDestination, state: MapState): MapAction? = when (target) {
         ChartDestination.Browse -> null
-        is ChartDestination.Place -> MapAction.OpenSurface(MapSurface.PlaceDetail(target.id))
+        is ChartDestination.Place -> MapAction.FocusSavedPlace(target.id)
         is ChartDestination.Route -> if (state.savedRoutes.any { it.id == target.id }) {
             MapAction.PreviewRoutePlan(target.id)
         } else {
@@ -199,7 +199,8 @@ object ChartLaunchProjector {
 
     fun isSettled(target: ChartDestination, state: MapState): Boolean = when (target) {
         ChartDestination.Browse -> true
-        is ChartDestination.Place -> state.surface == MapSurface.PlaceDetail(target.id) ||
+        is ChartDestination.Place ->
+            (state.transient as? MapTransient.SelectedObject)?.hit?.objectId == "place:${target.id}" ||
             (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id
         is ChartDestination.Route -> (state.surface == MapSurface.Root && state.activeRoutePlanId == target.id) ||
             (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id

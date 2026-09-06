@@ -64,21 +64,20 @@ class RoutePlanningContractTest {
     }
 
     @Test
-    fun `multiple drafts survive activation and measurement conversion`() {
-        val reducer = reducerWithIds("draft-a", "draft-b", "draft-c")
+    fun `entering measure never hides an active unsaved route draft`() {
+        val reducer = reducerWithIds("draft-a", "draft-b")
         var state = reducer.reduce(MapState(), MapAction.CreateRouteDraft("A", "", a)).state
         state = reducer.reduce(state, MapAction.CreateRouteDraft("B", "", b)).state
         state = reducer.reduce(state, MapAction.ActivateRouteDraft("draft-a")).state
         state = reducer.reduce(state, MapAction.SelectTool(MapTool.MEASURE)).state
-        state = reducer.reduce(state, MapAction.AddPoint(c)).state
-        state = reducer.reduce(state, MapAction.AddPoint(d)).state
-        state = reducer.reduce(state, MapAction.ConvertMeasurementToManualRoute("C")).state
 
-        assertEquals(listOf("draft-a", "draft-b", "draft-c"), state.routeDrafts.map { it.id })
-        assertEquals("draft-c", state.activeRouteDraftId)
+        assertEquals(listOf("draft-a", "draft-b"), state.routeDrafts.map { it.id })
+        assertEquals("draft-a", state.activeRouteDraftId)
+        assertEquals(MapTool.MANUAL_ROUTE, state.tool)
+        assertEquals(MapTransient.UnsavedRoute("draft-a"), state.transient)
+        assertNull(state.measurementDraft)
         assertEquals(listOf(a), state.routeDrafts[0].waypoints)
         assertEquals(listOf(b), state.routeDrafts[1].waypoints)
-        assertEquals(listOf(c, d), state.routeDrafts[2].waypoints)
     }
 
     @Test

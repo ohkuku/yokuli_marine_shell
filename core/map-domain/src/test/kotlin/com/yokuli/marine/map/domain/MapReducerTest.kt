@@ -97,23 +97,22 @@ class MapReducerTest {
     }
 
     @Test
-    fun `measurement conversion creates a second stable draft without overwriting the first`() {
-        val ids = ArrayDeque(listOf("draft-a", "draft-b"))
+    fun `measurement entry requires an explicit decision for the active route draft`() {
+        val ids = ArrayDeque(listOf("draft-a"))
         val reducer = DefaultMapReducer(MapIdGenerator { ids.removeFirst() })
         var state = reducer.reduce(MapState(), MapAction.SelectTool(MapTool.MANUAL_ROUTE)).state
         state = reducer.reduce(state, MapAction.AddPoint(auckland)).state
         state = reducer.reduce(state, MapAction.AddPoint(rangitoto)).state
         val original = requireNotNull(state.routeDraft)
-        state = reducer.reduce(state, MapAction.SelectTool(MapTool.MEASURE)).state
-        state = reducer.reduce(state, MapAction.AddPoint(rangitoto)).state
-        state = reducer.reduce(state, MapAction.AddPoint(waiheke)).state
+        val guarded = reducer.reduce(state, MapAction.SelectTool(MapTool.MEASURE)).state
 
-        val converted = reducer.reduce(state, MapAction.ConvertMeasurementToManualRoute("second")).state
-
-        assertEquals(listOf("draft-a", "draft-b"), converted.routeDrafts.map { it.id })
-        assertEquals(original, converted.routeDrafts.first())
-        assertEquals("draft-b", converted.activeRouteDraftId)
-        assertTrue(converted.savedRoutes.isEmpty())
+        assertEquals(listOf("draft-a"), guarded.routeDrafts.map { it.id })
+        assertEquals(original, guarded.routeDrafts.single())
+        assertEquals("draft-a", guarded.activeRouteDraftId)
+        assertEquals(MapTool.MANUAL_ROUTE, guarded.tool)
+        assertEquals(MapTransient.UnsavedRoute("draft-a"), guarded.transient)
+        assertNull(guarded.measurementDraft)
+        assertTrue(guarded.savedRoutes.isEmpty())
     }
 
     @Test

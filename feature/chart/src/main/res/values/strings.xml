@@ -106,10 +106,12 @@
     <string name="map_measure_short">测量 · %1$d 个点 · 轻点只定位，添加点才写入</string>
     <string name="map_measure_place_start">选择位置并添加测量起点。</string>
     <string name="map_measure_place_end">选择位置并添加终点以计算距离与真方位。</string>
-    <string name="map_measure_result">本段 %1$s · %2$s · 总长 %3$s</string>
+    <string name="map_measure_result">%1$s · %2$s</string>
     <string name="map_measure_total">总长 %1$s</string>
     <string name="map_measure_segment">%1$d→%2$d · %3$s · %4$s</string>
     <string name="map_measure_point">点 %1$d · %2$s</string>
+    <string name="map_measure_handle_a">A  %1$s</string>
+    <string name="map_measure_handle_b">B  %1$s</string>
     <string name="map_measure_all_segments">全段</string>
     <string name="map_fit_all">总览</string>
     <string name="map_clear">清除</string>

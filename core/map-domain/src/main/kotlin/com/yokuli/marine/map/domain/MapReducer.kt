@@ -16,6 +16,7 @@ sealed interface MapAction {
     data class SetMapViewMode(val mode: MapViewMode) : MapAction
     data class ActiveNavigationGeometryChanged(val points: List<GeoPoint>) : MapAction
     data class QuickMark(val point: GeoPoint) : MapAction
+    data class FocusSavedPlace(val placeId: String) : MapAction
     data class BeginMeasurement(val vessel: GeoPoint?, val target: GeoPoint?) : MapAction
     data object RequestCloseRouteDraft : MapAction
     data class SetCrosshairEnabled(val enabled: Boolean) : MapAction
@@ -224,6 +225,7 @@ class DefaultMapReducer(
             ),
         )
         is MapAction.QuickMark -> quickMark(state, action.point)
+        is MapAction.FocusSavedPlace -> focusSavedPlace(state, action.placeId)
         is MapAction.BeginMeasurement -> beginMeasurement(state, action.vessel, action.target)
         MapAction.RequestCloseRouteDraft -> requestCloseRouteDraft(state)
         is MapAction.SetCrosshairEnabled -> MapReduction(state.copy(crosshairEnabled = action.enabled))
@@ -613,8 +615,11 @@ class DefaultMapReducer(
         }
     }
 
-    private fun selectTool(state: MapState, tool: MapTool): MapState = when (tool) {
-        MapTool.MEASURE -> state.copy(
+    private fun selectTool(state: MapState, tool: MapTool): MapState = when {
+        tool == MapTool.MEASURE && state.routeDraft?.waypoints?.isNotEmpty() == true -> state.copy(
+            transient = MapTransient.UnsavedRoute(requireNotNull(state.routeDraft).id),
+        )
+        tool == MapTool.MEASURE -> state.copy(
             tool = tool,
             transient = null,
             editGesture = null,
@@ -826,7 +831,7 @@ class DefaultMapReducer(
 
     private fun insertMeasurementPoint(state: MapState, index: Int, point: GeoPoint): MapReduction {
         val points = state.measurementDraft?.points ?: emptyList()
-        if (index !in 0..points.size) return incident(state, MapIncident.ActionRejected)
+        if (index !in 0..points.size || points.size >= 2) return incident(state, MapIncident.ActionRejected)
         return editMeasurement(state) { current -> current.toMutableList().apply { add(index, point) } }
     }
 
@@ -940,6 +945,29 @@ class DefaultMapReducer(
                 transient = MapTransient.SelectedObject(MapHitResult(MapOverlayId.SAVED_PLACES, "place:${place.id}")),
             ),
         )
+    }
+
+    private fun focusSavedPlace(state: MapState, placeId: String): MapReduction {
+        val place = state.places.firstOrNull { it.id == placeId }
+            ?: return MapReduction(
+                state.copy(
+                    surface = MapSurface.Root,
+                    surfaceHistory = emptyList(),
+                    transient = MapTransient.UnavailableObject(placeId),
+                ),
+            )
+        val focused = state.copy(
+            surface = MapSurface.Root,
+            surfaceHistory = emptyList(),
+            selection = MapSelection(place.point),
+            transient = MapTransient.SelectedObject(
+                MapHitResult(MapOverlayId.SAVED_PLACES, "place:${place.id}"),
+            ),
+        ).withCameraCommand(
+            target = MapCameraTarget.Exact(state.camera.copy(center = place.point)),
+            intent = MapCameraIntent.VIEW_PLACE,
+        )
+        return persistSession(focused)
     }
 
     private fun savePlace(state: MapState, name: String): MapReduction = ifWritable(state) {
@@ -1394,6 +1422,7 @@ class DefaultMapReducer(
             routeDeleteUndo = null,
             surface = MapSurface.Root,
             surfaceHistory = emptyList(),
+            transient = null,
         )
         val persisted = persistLibrary(optimistic)
         val withTransaction = persisted.state.copy(
@@ -1448,8 +1477,9 @@ class DefaultMapReducer(
                 routeDrafts = state.routeDrafts.filterNot { it.id == draftId },
                 activeRouteDraftId = state.activeRouteDraftId.takeUnless { it == draftId },
                 tool = if (state.activeRouteDraftId == draftId) MapTool.BROWSE else state.tool,
-                surface = MapSurface.Routes,
-                surfaceHistory = listOf(MapSurface.Root),
+                surface = MapSurface.Root,
+                surfaceHistory = emptyList(),
+                transient = null,
             ),
         )
     }

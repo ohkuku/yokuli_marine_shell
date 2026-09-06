@@ -106,10 +106,12 @@
     <string name="map_measure_short">measure · %1$d points · tap locates; add point commits</string>
     <string name="map_measure_place_start">Choose a position and add the measurement start.</string>
     <string name="map_measure_place_end">Choose a position and add the end to calculate distance and true bearing.</string>
-    <string name="map_measure_result">segment %1$s · %2$s · total %3$s</string>
+    <string name="map_measure_result">%1$s · %2$s</string>
     <string name="map_measure_total">total %1$s</string>
     <string name="map_measure_segment">%1$d→%2$d · %3$s · %4$s</string>
     <string name="map_measure_point">point %1$d · %2$s</string>
+    <string name="map_measure_handle_a">A  %1$s</string>
+    <string name="map_measure_handle_b">B  %1$s</string>
     <string name="map_measure_all_segments">segments</string>
     <string name="map_fit_all">fit</string>
     <string name="map_clear">clear</string>

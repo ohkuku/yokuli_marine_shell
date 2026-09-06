@@ -319,9 +319,9 @@ private fun MapRootChrome(
 private fun MapTruthStrip(state: MapState, onAction: (MapAction) -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalWpTheme.current
     val status = when {
+        state.renderer.readiness == MapRendererReadiness.ERROR -> R.string.map_renderer_error
         state.mapViewMode == MapViewMode.STANDARD -> R.string.map_standard_view_active
         state.mapViewMode == MapViewMode.SATELLITE -> R.string.map_satellite_view_active
-        state.renderer.readiness == MapRendererReadiness.ERROR -> R.string.map_renderer_error
         state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_MISSING -> R.string.map_package_missing
         state.renderer.tileCoverage == MapTileCoverageStatus.DEGRADED -> R.string.map_package_degraded
         state.renderer.tileCoverage == MapTileCoverageStatus.CHECKING -> R.string.map_package_checking
@@ -725,15 +725,6 @@ private fun SelectedObjectSummary(
                     }
                 }
             }
-            if (measurementIndex != null) {
-                MapActionText(R.string.map_insert_after, "map-object-insert") {
-                    onAction(MapAction.BeginPrecisePointEdit(MapPrecisePointEdit.InsertMeasurement(measurementIndex + 1)))
-                }
-                MapActionText(R.string.map_delete_point, "map-object-delete") {
-                    onAction(MapAction.DeleteMeasurementPoint(measurementIndex))
-                    onAction(MapAction.DismissTransient)
-                }
-            }
             if (place != null) {
                 MapActionText(R.string.map_details, "map-object-place-details-${place.id}") {
                     onAction(MapAction.OpenSurface(MapSurface.PlaceDetail(place.id)))
@@ -762,7 +753,6 @@ private fun MeasurementRootSummary(state: MapState, onAction: (MapAction) -> Uni
                     R.string.map_measure_result,
                     last.distanceMeters.distanceText(),
                     last.bearingText(),
-                    summary.totalDistanceMeters.distanceText(),
                 )
             }
         }
@@ -2000,46 +1990,37 @@ private fun MeasurementPage(state: MapState, onAction: (MapAction) -> Unit) {
             color = colors.muted,
         )
     }
-    summary.segments.forEach { segment ->
-        Column(
-            Modifier.fillMaxWidth().border(1.dp, colors.muted.copy(alpha = .45f)).padding(8.dp)
-                .testTag("map-measure-segment-${segment.fromIndex}"),
-        ) {
-            WpText(
-                stringResource(
-                    R.string.map_measure_segment,
-                    segment.fromIndex + 1,
-                    segment.toIndex + 1,
-                    segment.distanceMeters.distanceText(),
-                    segment.bearingText(),
-                ),
-                12,
-            )
-        }
+    summary.segments.singleOrNull()?.let { segment ->
+        WpText(
+            stringResource(
+                R.string.map_measure_result,
+                segment.distanceMeters.distanceText(),
+                segment.bearingText(),
+            ),
+            16,
+            modifier = Modifier.testTag("map-measure-ab-result"),
+        )
     }
     draft.points.forEachIndexed { index, point ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            WpText(stringResource(R.string.map_measure_point, index + 1, point.coordinateText()), 11, modifier = Modifier.weight(1f))
+            WpText(
+                stringResource(
+                    if (index == 0) R.string.map_measure_handle_a else R.string.map_measure_handle_b,
+                    point.coordinateText(),
+                ),
+                11,
+                modifier = Modifier.weight(1f),
+            )
             MapActionText(R.string.map_move_point, "map-measure-point-move-$index") {
                 onAction(MapAction.CloseSurface)
                 onAction(MapAction.BeginPrecisePointEdit(MapPrecisePointEdit.Move(MapEditTarget.MeasurementPoint(index))))
             }
-            MapActionText(R.string.map_delete_point, "map-measure-point-delete-$index") {
-                onAction(MapAction.DeleteMeasurementPoint(index))
-            }
         }
     }
     Row(Modifier.fillMaxWidth()) {
-        MapTextButton(stringResource(R.string.map_undo), "map-measure-page-undo", draft.undo.isNotEmpty()) {
-            onAction(MapAction.UndoMeasurementEdit)
+        MapActionText(R.string.map_close, "map-measure-page-close") {
+            onAction(MapAction.SelectTool(MapTool.BROWSE))
         }
-        MapTextButton(stringResource(R.string.map_redo), "map-measure-page-redo", draft.redo.isNotEmpty()) {
-            onAction(MapAction.RedoMeasurementEdit)
-        }
-        MapTextButton(stringResource(R.string.map_clear), "map-measure-page-clear", draft.points.isNotEmpty()) {
-            onAction(MapAction.ClearMeasurement)
-        }
-        MapActionText(R.string.map_close, "map-measure-page-close") { onAction(MapAction.CloseSurface) }
     }
 }
 

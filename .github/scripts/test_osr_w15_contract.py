@@ -34,12 +34,17 @@ class OsRedesignW15ContractTest(unittest.TestCase):
     def test_chart_product_reachability_is_map_measure_layers_and_handoffs_only(self):
         workspace = self.read("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt")
         command = workspace.split("private fun MapRootCommandBar(", 1)[1].split("private fun MapCommandButton", 1)[0]
-        self.assertEqual(3, command.count("MapCommandButton("))
-        for required in ("map-tool-measure", "map-open-quick-layers", "map-crosshair-toggle"):
+        self.assertEqual(4, command.count("MapCommandButton("))
+        for required in ("map-tool-mark", "map-tool-route", "map-tool-measure", "map-open-view-picker"):
             self.assertIn(required, command)
-        for forbidden in ("map-open-places", "map-open-routes", "MapSurface.Places", "MapSurface.Routes"):
+        for forbidden in (
+            "map-open-places", "map-open-routes", "map-open-quick-layers",
+            "MapSurface.Places", "MapSurface.Routes", "MapSurface.ChartPackages",
+        ):
             self.assertNotIn(forbidden, command)
         root_summary = workspace.split("private fun MapRootSummary(", 1)[1].split("private fun SelectedObjectSummary", 1)[0]
+        for required in ("map-candidate-go-to", "map-candidate-mark", "map-candidate-measure"):
+            self.assertIn(required, root_summary)
         for forbidden in ("map-candidate-save", "map-candidate-route", "map-save-place"):
             self.assertNotIn(forbidden, root_summary)
         measure = workspace.split("private fun MeasurementRootSummary(", 1)[1].split("private fun CrosshairAction", 1)[0]

@@ -13,42 +13,39 @@ class MeasurementEditingTest {
     private val moved = GeoPoint(-36.80, 174.83)
 
     @Test
-    fun `zero one and multi point summaries expose real segment and total facts`() {
+    fun `zero one and two point summaries expose one real AB leg`() {
         assertEquals(MeasurementPrompt.PLACE_START, MeasurementMath.summarize(MeasurementDraft()).prompt)
         assertEquals(MeasurementPrompt.PLACE_END, MeasurementMath.summarize(MeasurementDraft(listOf(a))).prompt)
 
-        val summary = MeasurementMath.summarize(MeasurementDraft(listOf(a, b, c)))
+        val summary = MeasurementMath.summarize(MeasurementDraft(listOf(a, b)))
         assertEquals(MeasurementPrompt.RESULTS, summary.prompt)
-        assertEquals(2, summary.segments.size)
+        assertEquals(1, summary.segments.size)
         assertEquals(summary.segments.sumOf { it.distanceMeters }, summary.totalDistanceMeters, 1e-9)
         assertTrue(summary.segments.all { it.initialBearingTrueDegrees != null })
     }
 
     @Test
-    fun `insert delete move clear and undo redo are reversible confirmed edits`() {
-        var state = MapState(tool = MapTool.MEASURE, measurementDraft = MeasurementDraft(listOf(a, c)))
+    fun `AB handles move directly and a third point is rejected`() {
+        var state = MapState(tool = MapTool.MEASURE, measurementDraft = MeasurementDraft(listOf(a)))
         state = reduce(state, MapAction.InsertMeasurementPoint(1, b)).state
-        assertEquals(listOf(a, b, c), state.measurementDraft?.points)
+        assertEquals(listOf(a, b), state.measurementDraft?.points)
 
-        state = reduce(state, MapAction.DeleteMeasurementPoint(0)).state
-        assertEquals(listOf(b, c), state.measurementDraft?.points)
-        state = reduce(state, MapAction.UndoMeasurementEdit).state
-        assertEquals(listOf(a, b, c), state.measurementDraft?.points)
-        state = reduce(state, MapAction.RedoMeasurementEdit).state
-        assertEquals(listOf(b, c), state.measurementDraft?.points)
+        val rejected = reduce(state, MapAction.InsertMeasurementPoint(1, c))
+        assertEquals(listOf(a, b), rejected.state.measurementDraft?.points)
+        assertTrue((rejected.effects.single() as MapEffect.LogIncident).incident is MapIncident.ActionRejected)
 
         val dragging = reduce(
             state,
-            MapAction.BeginPointDrag(MapGestureId("final-drop"), MapEditTarget.MeasurementPoint(0)),
+            MapAction.BeginPointDrag(MapGestureId("final-drop"), MapEditTarget.MeasurementPoint(1)),
         ).state
         val committed = reduce(dragging, MapAction.CommitPointDrag(MapGestureId("final-drop"), moved))
-        assertEquals(listOf(moved, c), committed.state.measurementDraft?.points)
+        assertEquals(listOf(a, moved), committed.state.measurementDraft?.points)
         assertEquals(1, committed.effects.filterIsInstance<MapEffect.PersistSession>().size)
 
         val cleared = reduce(committed.state, MapAction.ClearMeasurement).state
         assertTrue(cleared.measurementDraft?.points.orEmpty().isEmpty())
         val restored = reduce(cleared, MapAction.UndoMeasurementEdit).state
-        assertEquals(listOf(moved, c), restored.measurementDraft?.points)
+        assertEquals(listOf(a, moved), restored.measurementDraft?.points)
     }
 
     @Test
@@ -73,12 +70,12 @@ class MeasurementEditingTest {
     @Test
     fun `measurement conversion copies coordinates into a distinct route draft`() {
         val reducer = DefaultMapReducer(MapIdGenerator { "draft-copy" })
-        val measured = MapState(tool = MapTool.MEASURE, measurementDraft = MeasurementDraft(listOf(a, b, c)))
+        val measured = MapState(tool = MapTool.MEASURE, measurementDraft = MeasurementDraft(listOf(a, b)))
         val converted = reducer.reduce(measured, MapAction.ConvertMeasurementToManualRoute("copy")).state
 
         assertEquals(measured.measurementDraft?.points, converted.routeDraft?.waypoints)
         assertNotSame(measured.measurementDraft?.points, converted.routeDraft?.waypoints)
-        assertEquals(listOf(a, b, c), measured.measurementDraft?.points)
+        assertEquals(listOf(a, b), measured.measurementDraft?.points)
     }
 
     @Test

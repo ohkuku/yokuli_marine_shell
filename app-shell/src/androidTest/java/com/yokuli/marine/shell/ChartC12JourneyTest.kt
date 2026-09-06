@@ -135,44 +135,37 @@ class ChartC12JourneyTest {
         val resultTag = "search-result-chart-place-$token"
         awaitDisplayed(resultTag)
         compose.onNodeWithTag(resultTag).performClick()
-        awaitDisplayed("map-place-detail-$placeId")
+        awaitDisplayed("map-object-summary")
 
         val restored = currentMapState().places.single { it.id == placeId }
+        assertEquals(MapSurface.Root, currentMapState().surface)
+        assertEquals(restored.point, currentMapState().selection?.point)
         assertEquals("离线图面核对", restored.notes)
         assertEquals(PlaceCategory.ANCHORAGE, restored.category)
         assertFalse(currentMapState().navigationActive)
     }
 
     @Test
-    fun journeyJ02MeasurementEditUndoRedoConvertAndSaveRoute() {
-        var nextId = 0
-        val reducer = DefaultMapReducer(MapIdGenerator { namespace -> "$namespace-c12-${++nextId}" })
+    fun journeyJ02MeasurementStaysAnABRulerAndNeverCreatesRouteState() {
+        val reducer = DefaultMapReducer()
         var state = MapState(libraryLoadState = MapLibraryLoadState.READY_EMPTY)
         fun dispatch(action: MapAction) { state = reducer.reduce(state, action).state }
 
         val first = GeoPoint(-36.8485, 174.7633)
-        val middle = GeoPoint(-36.82, 174.80)
         val last = GeoPoint(-36.7867, 174.86)
+        val moved = GeoPoint(-36.82, 174.80)
         dispatch(MapAction.SelectTool(MapTool.MEASURE))
         dispatch(MapAction.AddPoint(first))
         dispatch(MapAction.AddPoint(last))
-        dispatch(MapAction.InsertMeasurementPoint(1, middle))
-        val threePointSummary = MeasurementMath.summarize(requireNotNull(state.measurementDraft))
-        assertEquals(2, threePointSummary.segments.size)
-        assertTrue(threePointSummary.totalDistanceMeters > 0.0)
-        assertTrue(threePointSummary.segments.all { it.initialBearingTrueDegrees != null })
+        dispatch(MapAction.AddPoint(moved))
+        val summary = MeasurementMath.summarize(requireNotNull(state.measurementDraft))
 
-        dispatch(MapAction.UndoMeasurementEdit)
-        assertEquals(listOf(first, last), state.measurementDraft?.points)
-        dispatch(MapAction.RedoMeasurementEdit)
-        assertEquals(listOf(first, middle, last), state.measurementDraft?.points)
-        dispatch(MapAction.ConvertMeasurementToManualRoute("C12 route"))
-        dispatch(MapAction.SaveRoutePlan)
-        dispatch(MapAction.PersistenceAck(state.libraryRevision))
-
-        assertEquals(1, state.savedRoutes.size)
-        assertEquals(3, state.savedRoutes.single().waypoints.size)
-        assertEquals(null, state.savedRoutes.single().plannedSpeedKnots)
+        assertEquals(listOf(first, moved), state.measurementDraft?.points)
+        assertEquals(1, summary.segments.size)
+        assertTrue(summary.totalDistanceMeters > 0.0)
+        assertTrue(summary.segments.single().initialBearingTrueDegrees != null)
+        assertTrue(state.routeDrafts.isEmpty())
+        assertTrue(state.savedRoutes.isEmpty())
         assertFalse(state.navigationActive)
     }
 

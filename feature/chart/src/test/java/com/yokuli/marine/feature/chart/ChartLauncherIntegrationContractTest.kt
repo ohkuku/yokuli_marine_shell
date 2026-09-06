@@ -47,6 +47,24 @@ class ChartLauncherIntegrationContractTest {
     }
 
     @Test
+    fun `place search destination returns to a visible map pin instead of a record page`() {
+        val action = ChartLaunchProjector.action(ChartDestination.Place(place.id), MapState(places = listOf(place)))
+        assertEquals(MapAction.FocusSavedPlace(place.id), action)
+
+        val focused = com.yokuli.marine.map.domain.DefaultMapReducer().reduce(
+            MapState(places = listOf(place)),
+            requireNotNull(action),
+        ).state
+        assertEquals(com.yokuli.marine.map.domain.MapSurface.Root, focused.surface)
+        assertEquals(place.point, focused.selection?.point)
+        assertEquals(
+            "place:${place.id}",
+            (focused.transient as com.yokuli.marine.map.domain.MapTransient.SelectedObject).hit.objectId,
+        )
+        assertTrue(ChartLaunchProjector.isSettled(ChartDestination.Place(place.id), focused))
+    }
+
+    @Test
     fun `place and route search contributions contain only generic shell facts`() {
         val results = ChartSearchProjection.search(MapState(places = listOf(place), savedRoutes = listOf(route)), "island")
         assertEquals(1, results.size)

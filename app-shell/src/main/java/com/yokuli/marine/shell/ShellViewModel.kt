@@ -48,6 +48,9 @@ import com.yokuli.marine.data.source.MarineFeatureLinkToken
 import com.yokuli.marine.data.source.MarineFeatureLinks
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommand
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommandResult
+import com.yokuli.marine.navigation.domain.ActiveNavigationIssue
+import com.yokuli.marine.navigation.domain.ActiveNavigationRuntimePort
+import com.yokuli.marine.navigation.domain.ActiveNavigationSnapshot
 import com.yokuli.marine.navigation.domain.NavigationPosition
 import com.yokuli.marine.feature.navigation.NavigationCoordinator
 import com.yokuli.marine.feature.navigation.NavigationDestination
@@ -69,6 +72,7 @@ import com.yokuli.shell.contract.AppPreferenceKey
 import com.yokuli.shell.contract.AppPreferenceRegistry
 import com.yokuli.shell.contract.AppPreferenceValue
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -85,6 +89,14 @@ import kotlinx.coroutines.launch
  * English: This ViewModel composes platform storage with the pure Engine; the Activity only renders flows and effects.
  */
 class ShellViewModel(application: Application) : AndroidViewModel(application) {
+    private sealed interface PendingRouteDecision {
+        data class CloseTask(val taskId: InternalAppTaskId) : PendingRouteDecision
+        data class StartNavigation(
+            val command: ActiveNavigationCommand,
+            val completion: CompletableDeferred<ActiveNavigationCommandResult>,
+        ) : PendingRouteDecision
+    }
+
     private val shellApplication = application as ShellApplication
     private val defaults = LauncherPersistedState(
         document = defaultStartDocument,
@@ -100,7 +112,8 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         InMemoryLauncherPersistence(defaultStartDocument)
     }
     private var healthyTimer: Job? = null
-    private var pendingCloseTaskId: InternalAppTaskId? = null
+    private val routeDecisionLock = Any()
+    private var pendingRouteDecision: PendingRouteDecision? = null
     private val startupJob: Job
     private val chartPackages = shellApplication.chartPackageRepository
     val nmeaRuntimeState = shellApplication.nmeaInputRuntime.state
@@ -190,9 +203,18 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         },
     )
     val offlineCoverageState: StateFlow<OfflineCoverageUiState> = offlineCoverageCoordinator.state
+    private val guardedActiveNavigationRuntime = object : ActiveNavigationRuntimePort {
+        override val state: StateFlow<ActiveNavigationSnapshot> = activeNavigationState
+
+        override suspend fun initialize(): ActiveNavigationSnapshot =
+            shellApplication.activeNavigationRuntime.initialize()
+
+        override suspend fun execute(command: ActiveNavigationCommand): ActiveNavigationCommandResult =
+            executeNavigationWithDraftGuard(command)
+    }
     private val navigationCoordinator = NavigationCoordinator(
         libraryPort = shellApplication.mapPersistence,
-        activeRuntime = shellApplication.activeNavigationRuntime,
+        activeRuntime = guardedActiveNavigationRuntime,
         nowMillis = System::currentTimeMillis,
         scope = viewModelScope,
     )
@@ -337,7 +359,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     fun cancelOfflineCoverage() = offlineCoverageCoordinator.cancel()
 
     fun onActiveNavigationCommand(command: ActiveNavigationCommand): Job = viewModelScope.launch {
-        val result = shellApplication.activeNavigationRuntime.execute(command)
+        val result = guardedActiveNavigationRuntime.execute(command)
         if (result is ActiveNavigationCommandResult.Accepted &&
             command is ActiveNavigationCommand.Start
         ) {
@@ -369,29 +391,78 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
             engine.dispatch(LauncherAction.CloseTask(taskId))
             return
         }
-        pendingCloseTaskId = taskId
+        val claimed = synchronized(routeDecisionLock) {
+            if (pendingRouteDecision != null) false else {
+                pendingRouteDecision = PendingRouteDecision.CloseTask(taskId)
+                true
+            }
+        }
+        if (!claimed) return
         mapStore.dispatch(MapAction.RequestCloseRouteDraft)
         engine.dispatch(LauncherAction.ActivateTask(taskId))
     }
 
     fun resolveUnsavedRoute(decision: UnsavedRouteDecision): Job = viewModelScope.launch {
-        val pendingTask = pendingCloseTaskId
+        val pending = synchronized(routeDecisionLock) { pendingRouteDecision }
         when (decision) {
             UnsavedRouteDecision.CANCEL -> {
-                pendingCloseTaskId = null
+                clearPendingRouteDecision(pending)
                 mapStore.dispatch(MapAction.DismissTransient)
+                (pending as? PendingRouteDecision.StartNavigation)?.completion?.complete(
+                    ActiveNavigationCommandResult.Rejected(ActiveNavigationIssue.INVALID_COMMAND),
+                )
             }
             UnsavedRouteDecision.DISCARD -> {
                 val draftId = mapStore.state.value.routeDraft?.id ?: return@launch
                 mapStore.dispatch(MapAction.DiscardRouteDraft(draftId))
-                pendingCloseTaskId = null
-                pendingTask?.let { engine.dispatch(LauncherAction.CloseTask(it)) }
+                finishPendingRouteDecision(pending)
             }
             UnsavedRouteDecision.SAVE -> {
                 saveActiveRouteDraft() ?: return@launch
-                pendingCloseTaskId = null
-                pendingTask?.let { engine.dispatch(LauncherAction.CloseTask(it)) }
+                finishPendingRouteDecision(pending)
             }
+        }
+    }
+
+    private suspend fun executeNavigationWithDraftGuard(
+        command: ActiveNavigationCommand,
+    ): ActiveNavigationCommandResult {
+        if (command !is ActiveNavigationCommand.Start && command !is ActiveNavigationCommand.DirectTo) {
+            return shellApplication.activeNavigationRuntime.execute(command)
+        }
+        val draft = mapStore.state.value.routeDraft
+        if (draft == null || draft.waypoints.isEmpty()) {
+            if (draft != null) mapStore.dispatch(MapAction.DiscardRouteDraft(draft.id))
+            mapStore.dispatch(MapAction.SelectTool(com.yokuli.marine.map.domain.MapTool.BROWSE))
+            return shellApplication.activeNavigationRuntime.execute(command)
+        }
+        val completion = CompletableDeferred<ActiveNavigationCommandResult>()
+        val claimed = synchronized(routeDecisionLock) {
+            if (pendingRouteDecision != null) false else {
+                pendingRouteDecision = PendingRouteDecision.StartNavigation(command, completion)
+                true
+            }
+        }
+        if (!claimed) return ActiveNavigationCommandResult.Rejected(ActiveNavigationIssue.INVALID_COMMAND)
+        mapStore.dispatch(MapAction.RequestCloseRouteDraft)
+        engine.dispatch(LauncherAction.Open(com.yokuli.marine.feature.chart.ChartDestinations.Browse, preserveCaller = true))
+        return completion.await()
+    }
+
+    private suspend fun finishPendingRouteDecision(pending: PendingRouteDecision?) {
+        clearPendingRouteDecision(pending)
+        when (pending) {
+            is PendingRouteDecision.CloseTask -> engine.dispatch(LauncherAction.CloseTask(pending.taskId))
+            is PendingRouteDecision.StartNavigation -> pending.completion.complete(
+                shellApplication.activeNavigationRuntime.execute(pending.command),
+            )
+            null -> Unit
+        }
+    }
+
+    private fun clearPendingRouteDecision(expected: PendingRouteDecision?) {
+        synchronized(routeDecisionLock) {
+            if (pendingRouteDecision === expected) pendingRouteDecision = null
         }
     }
 
