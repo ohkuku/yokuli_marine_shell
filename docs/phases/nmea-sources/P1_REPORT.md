@@ -1,6 +1,6 @@
 # NMEA_SOURCES P1 报告 / P1 Report
 
-状态：`CORRECTION_CANDIDATE_PENDING_FULL_GATE`
+状态：`PASS`
 
 基线提交：`32602b7…`
 
@@ -24,10 +24,12 @@ Red 合同提交：`068da34…`
 1. 初始静态 Red 为 `4 FAIL / 1 ERROR / 1 PASS`，缺口精确对应纯模块、parser、catalog 和测试。
 2. 第一轮 Green 达到 45 项 JVM 测试后，独立只读审查仍判定 `FAIL`，发现 session 首帧竞态、可绕过的 identity cache 上限、跨 formatter invalid、丢失的 sentence instance/checksum trust、UDP 持久身份、GGA/DPT/mode、LIVE/HELD 和 frame grouping 共 10 类问题。
 3. 首个推送候选 `4dff57c…` 后再做两轮独立反例审查，又拒绝了 admission/commit TOCTOU、同 formatter 恢复丢 invalid barrier、active/tombstone 容量混淆、同毫秒帧排序、checksum 语法、numeric overflow、UDP endpoint provenance、candidate 内部无界 streams 以及名义 typed value 等问题。
-4. 上述问题全部先加精确 Red，再实现 Green；当前 targeted 证据为 `83/83 JVM PASS`、P1 静态合同 `7/7 PASS`、`git diff --check` PASS。完整 P0–P1 repository gate 将在 correction commit 后用实际命令写回，不预先伪造。
+4. 上述问题全部先加精确 Red，再实现 Green；最终 targeted 证据为 `83/83 JVM PASS`、P1 静态合同 `7/7 PASS`、`git diff --check` PASS。
+5. correction commit `d746910f731d251a88c87817eed8a1d29a197026` 的完整本地 Gate 通过：Python `237/237`、Gradle `test lintStandaloneDebug assembleStandaloneDebug assembleStandaloneRelease` 成功（1155 actionable tasks）、CI topology、Release surface、metadata、secrets 与 P0/P1 合同均通过。
+6. 同一 correction commit 的 GitHub Actions run `34001507481` 最终为 `completed / success`；build、API 34 integration、API 36 compatibility 与 performance trend jobs 均成功。P1 不把这些平台 job 冒充 socket/runtime 证据，它们只证明 P1 没有破坏既有仓库门禁。
 
 P1 没有实现 TCP/UDP 连接、配置保存、Android 服务、来源采用事务、手机定位或 UI；这些分别属于 P2/P3/P4/P5。
 
 ## English translation
 
-P1 now provides a platform-neutral, bounded and provenance-preserving NMEA data core. The first pushed candidate remained deliberately unapproved: two further counterexample reviews found session linearization, invalid-barrier retention, split active/tombstone capacity, same-millisecond frame ordering, checksum grammar, numeric-overflow, strict coordinate/date lexemes, UDP endpoint provenance, nested-stream bounds and typed-value invariant gaps. Each is now represented by a failing-before-green JVM contract. The corrected targeted gate is 83/83 JVM and 7/7 static tests; the full repository gate remains pending the correction commit. No socket, Android runtime, source-selection transaction or UI is claimed here.
+P1 now provides a platform-neutral, bounded and provenance-preserving NMEA data core. The first pushed candidate remained deliberately unapproved: two further counterexample reviews found session linearization, invalid-barrier retention, split active/tombstone capacity, same-millisecond frame ordering, checksum grammar, numeric-overflow, strict coordinate/date lexemes, UDP endpoint provenance, nested-stream bounds and typed-value invariant gaps. Each is now represented by a failing-before-green JVM contract. The corrected targeted gate is 83/83 JVM and 7/7 static tests; the complete local repository gate and GitHub Actions run 34001507481 both passed at correction commit d746910. No socket, Android runtime, source-selection transaction or UI is claimed here.

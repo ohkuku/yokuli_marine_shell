@@ -1,12 +1,12 @@
 {
   "phase": "NMEA_SOURCES",
   "stage": "P1",
-  "status": "CORRECTION_CANDIDATE_PENDING_FULL_GATE",
+  "status": "PASS",
   "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
   "baseCommit": "32602b7",
   "redContractCommit": "068da34",
   "implementationCommit": "4dff57c5cc42a3ba779b2e23348d05a37c00a56c",
-  "correctionCommit": "PENDING_CORRECTION_COMMIT",
+  "correctionCommit": "d746910f731d251a88c87817eed8a1d29a197026",
   "module": "core:marine-data",
   "platformDependencies": [],
   "contracts": {
@@ -44,6 +44,7 @@
     "correctedJvm": "83/83 PASS",
     "p1Contract": "7/7 PASS",
     "ciTopology": "PASS",
-    "fullRepositoryGate": "PENDING_CANDIDATE_COMMIT"
+    "localFullRepositoryGate": "PASS; Python 237/237, Gradle 1155 actionable tasks, lint/debug/release and repository contracts",
+    "hostedCiRun": "34001507481 completed success"
   }
 }
