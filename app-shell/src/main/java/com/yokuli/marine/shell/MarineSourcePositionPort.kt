@@ -185,11 +185,12 @@ class MarineSourcePositionPort(
     private fun ResolvedDatum.isUsableFrom(source: ObservationSource): Boolean =
         availability in CONNECTED_AVAILABILITY && this.source.toObservationSource(sourceEpoch) == source
 
-    private fun ResolvedDatum.sameFrameAs(other: ResolvedDatum): Boolean =
-        source == other.source &&
+    private fun ResolvedDatum.sameFrameAs(other: ResolvedDatum): Boolean {
+        val ownGroup = candidate?.groupId ?: return false
+        return source == other.source &&
             availability in CONNECTED_AVAILABILITY &&
-            candidate?.groupId != null &&
-            candidate.groupId == other.candidate?.groupId
+            ownGroup == other.candidate?.groupId
+    }
 
     private fun ResolvedDatum.decimal(unit: MarineUnit): MarineValue.Decimal? =
         (value as? MarineValue.Decimal)?.takeIf { it.unit == unit }
