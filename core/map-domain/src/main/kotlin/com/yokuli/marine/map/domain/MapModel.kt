@@ -355,8 +355,6 @@ data class MapSessionSnapshot(
     val measurementDraft: MeasurementDraft? = null,
     val activeRouteDraftId: String? = null,
     val activeRoutePlanId: String? = null,
-    /** Runtime navigation geometry, including Direct-To routes that do not belong to the saved library. */
-    val activeNavigationRoute: List<GeoPoint> = emptyList(),
     val activeChartPackageId: ChartPackageId? = null,
     val chartDisplayPreferences: ChartDisplayPreferences = ChartDisplayPreferences(),
     val chartDisplayPreferencesInitialized: Boolean = false,
@@ -431,6 +429,8 @@ data class MapState(
     val importedTracks: List<ImportedTrack> = emptyList(),
     val gpxImportRecords: List<GpxImportRecord> = emptyList(),
     val activeRoutePlanId: String? = null,
+    /** Runtime navigation geometry, including Direct-To routes that do not belong to the saved library. */
+    val activeNavigationRoute: List<GeoPoint> = emptyList(),
     val routeSaveStatus: RouteSaveStatus? = null,
     val routeSaveTransaction: RouteSaveTransaction? = null,
     val routeDeleteRequest: RouteDeleteRequest? = null,
