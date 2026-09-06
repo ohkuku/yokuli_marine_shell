@@ -5,7 +5,9 @@
   "branch": "codex/shell-map-contract",
   "status": "IMPLEMENTED_CI_PENDING",
   "implementationCommits": [
-    "6eb66b3910411dd6018e04b64a199e331e21e9ae"
+    "6eb66b3910411dd6018e04b64a199e331e21e9ae",
+    "55210a2bae1a92dfdeda01a5d7457a3c72700397",
+    "58d47a946d778b93329a28da4920b1e539ad756a"
   ],
   "chartRootActions": ["mark", "route", "measure", "map_view"],
   "mapViewModes": ["marine", "standard", "satellite"],
@@ -15,6 +17,12 @@
   "statusStripInteractive": false,
   "portraitOnly": true,
   "androidHomeRegistered": false,
+  "localEvidence": {
+    "chartShellUxContract": "8/8 PASS",
+    "ciContract": "PASS",
+    "featureChartCompile": "PASS",
+    "appShellCompile": "PASS"
+  },
   "authoritativeEvidence": "GITHUB_ACTIONS_PENDING",
   "supersedesConflictingHistoricalChartRootClauses": true
 }

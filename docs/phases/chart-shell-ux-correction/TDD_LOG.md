@@ -5,7 +5,8 @@
 1. Renderer selection：旧逻辑让任意已选择本地资源遮蔽 Standard/Satellite；测试先锁定 Map View 决策，再由 `e594189` 修正为 `MapViewMode + GOOGLE_MAPS_CONFIGURED`。
 2. Direct interaction state：新增失败用例覆盖 measurement 第三点、Measure 隐藏 route、Discard ghost、search deep link 与 close/navigation draft guard；`6eb66b3` 实现后窄 JVM、Feature、app-shell compile、AndroidTest compile、W09/W15 均通过。
 3. Configuration truth：本轮把 `connectedBaseConfigured` 从 composition root 明确传到 Chart UI；缺 key 时 Standard/Satellite 不可选，且只显示“未配置”，不声称“不可用原因已验证”。
-4. Cumulative contract：新增 Python Gate，把用户给出的产品不变量与现有代码主路径绑定，并接入最终 CI report。
+4. Cumulative contract：新增 Python Gate，把用户给出的产品不变量与现有代码主路径绑定，并接入最终 CI report。首次执行发现三个测试自身的命名假设与真实 UI/resource 不一致；`58d47a9` 只修正断言，重跑 `8/8 PASS`，CI contract `PASS`。
+5. Narrow compile：`:feature:chart:compileDebugKotlin` 与 `:app-shell:compileStandaloneDebugKotlin` 在最终代码上 `BUILD SUCCESSFUL`；未重复运行 P7 全门禁。
 
 ## 不伪造的证据
 

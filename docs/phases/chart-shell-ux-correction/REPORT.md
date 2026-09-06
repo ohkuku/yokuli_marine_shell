@@ -18,7 +18,7 @@
 
 - `6eb66b3` 的 Red/Green 回归覆盖 A/B 第三点拒绝、Measure/Route 互斥、route draft 显式决定、Discard 无 ghost、搜索结果回地图和生产 Android stories。
 - `e594189` 的 renderer policy test 覆盖 Standard/Satellite 选择 Google、Marine 选择 offline，以及未配置 key 时不得假装 Google renderer 可用。
-- 本修正新增一个累计静态合同，锁定产品主路径、Shell 不变量、Chart Library 保护和 CI 接线；窄编译与合同 Gate 在提交后执行，完整 JVM/lint/APK/API 34/API 36 由 GitHub Actions 执行。
+- 本修正新增一个累计静态合同，锁定产品主路径、Shell 不变量、Chart Library 保护和 CI 接线；本地合同 `8/8 PASS`、CI 接线合同 `PASS`、Chart 与 app-shell 增量 Kotlin 编译 `BUILD SUCCESSFUL`。完整 JVM/lint/APK/API 34/API 36 由 GitHub Actions 执行。
 - 用户提供的最新旧报告 `ba2728b / 34032105597` 已证明 manifest 与 BuildConfig 收到非占位 key；该证据只等于配置成功，不等于 Google 服务授权或真实图块加载。
 
 ## DESIGN DECISIONS
