@@ -4,9 +4,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -59,12 +60,12 @@ class ChartDisplayWorkspaceStoryTest {
         compose.onNodeWithTag(ChartDisplayTestTags.ROOT).assertIsDisplayed()
         compose.onNodeWithTag(ChartDisplayTestTags.quickLayerVisibility(assetId.value.take(8))).performScrollTo().performClick()
         compose.onNodeWithTag(ChartDisplayTestTags.opacityDown(assetId.value.take(8))).performScrollTo().performClick()
-        compose.onNodeWithTag("map-open-chart-library").assertDoesNotExist()
-        compose.onNodeWithTag(ChartDisplayTestTags.REFRESH).assertDoesNotExist()
-        compose.onNodeWithTag("map-open-gpx").assertDoesNotExist()
-        compose.onNodeWithTag("map-open-imported-tracks").assertDoesNotExist()
-        compose.onNodeWithTag("map-import-chart").assertDoesNotExist()
-        compose.onNodeWithTag("map-coverage-import").assertDoesNotExist()
+        compose.onAllNodesWithTag("map-open-chart-library").assertCountEquals(0)
+        compose.onAllNodesWithTag(ChartDisplayTestTags.REFRESH).assertCountEquals(0)
+        compose.onAllNodesWithTag("map-open-gpx").assertCountEquals(0)
+        compose.onAllNodesWithTag("map-open-imported-tracks").assertCountEquals(0)
+        compose.onAllNodesWithTag("map-import-chart").assertCountEquals(0)
+        compose.onAllNodesWithTag("map-coverage-import").assertCountEquals(0)
         compose.runOnIdle {
             assertTrue(actions.contains(ChartDisplayUiAction.SetLayerVisible(assetId, false)))
             assertTrue(actions.contains(ChartDisplayUiAction.SetOpacity(assetId, .7f)))

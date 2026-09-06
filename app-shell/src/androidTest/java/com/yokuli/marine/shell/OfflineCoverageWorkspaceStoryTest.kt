@@ -8,8 +8,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -93,7 +94,7 @@ class OfflineCoverageWorkspaceStoryTest {
         compose.onNodeWithTag("map-coverage-content-footprint").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("map-coverage-navigation-suitability").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("map-coverage-missing-12-4035-2568").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("map-coverage-import").assertDoesNotExist()
+        compose.onAllNodesWithTag("map-coverage-import").assertCountEquals(0)
         compose.runOnIdle {
             assertEquals(MapSurface.OfflineCoverage(route.id), currentState().surface)
         }

@@ -1,7 +1,7 @@
 package com.yokuli.marine.shell
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -42,7 +42,7 @@ class ChartLibraryShellStoryTest {
     }
 
     @Test fun libraryIsDiscoverableButNotAutoPinnedAndRootBackStopsAtStart() {
-        compose.onNodeWithTag("tile-chart_library").assertDoesNotExist()
+        compose.onAllNodesWithTag("tile-chart_library").assertCountEquals(0)
         compose.onNodeWithTag("all-apps-entry").performClick()
         await("all-apps-list")
         compose.onNodeWithTag("launcher-entry-chart_library").performScrollTo().performClick()
