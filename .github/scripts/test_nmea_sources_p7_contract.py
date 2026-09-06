@@ -91,6 +91,22 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         self.assertIn("bash .github/scripts/run_nmea_sources_process_restore.sh", workflow)
         self.assertIn("build/ci-nmea-sources-process-restore.log", workflow)
 
+    def test_api36_smoke_does_not_send_an_app_test_class_to_the_adapter_runner(self):
+        device_gate = self.read(".github/scripts/run_device_tests.sh")
+        smoke = device_gate.split("  smoke)", 1)[1].split("    ;;", 1)[0]
+        invocations = smoke.split("./gradlew")[1:]
+        self.assertEqual(2, len(invocations))
+        adapter, app = invocations
+        self.assertIn(":adapter:marine-data-android:connectedDebugAndroidTest", adapter)
+        self.assertNotIn("android.testInstrumentationRunnerArguments.class", adapter)
+        self.assertIn(":app-shell:connectedStandaloneDebugAndroidTest", app)
+        self.assertIn(
+            "android.testInstrumentationRunnerArguments.class="
+            "com.yokuli.marine.shell.ShellActivityStoryTest#"
+            "chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart",
+            app,
+        )
+
     def test_release_path_runs_the_final_contract_and_binary_audit_before_publication(self):
         release = self.read(".github/workflows/release.yml")
         publish = release[release.index("  publish:"):]
