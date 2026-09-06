@@ -9,6 +9,15 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import com.yokuli.marine.core.model.AppLanguage
+import com.yokuli.marine.data.android.persistence.ProtoDataStoreConnectionRepository
+import com.yokuli.marine.data.android.runtime.AndroidElapsedRealtimeClock
+import com.yokuli.marine.data.android.runtime.AndroidNetworkAvailability
+import com.yokuli.marine.data.android.runtime.AndroidNmeaInputRuntime
+import com.yokuli.marine.data.android.runtime.MarineDataRuntimeOwner
+import com.yokuli.marine.data.android.runtime.ReconnectDelayPort
+import com.yokuli.marine.data.android.runtime.SocketNmeaTransportFactory
+import com.yokuli.marine.data.android.service.NmeaForegroundServiceController
+import com.yokuli.marine.data.runtime.NmeaInputRuntimePort
 import com.yokuli.marine.map.storage.RoomMapPersistence
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
@@ -21,7 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
-class ShellApplication : Application() {
+class ShellApplication : Application(), MarineDataRuntimeOwner {
     private val processObservationClockId = java.util.UUID.randomUUID().toString()
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val launcherPersistence by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -44,9 +53,32 @@ class ShellApplication : Application() {
     val observationClock = ObservationMonotonicClock {
         MonotonicTime(processObservationClockId, android.os.SystemClock.elapsedRealtime())
     }
+    private val nmeaConnectionRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProtoDataStoreConnectionRepository.create(
+            storageFile = java.io.File(filesDir, "marine-data/nmea-connections.pb"),
+            scope = applicationScope,
+        )
+    }
+    private val nmeaNetworkAvailability by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AndroidNetworkAvailability(this)
+    }
+    override val nmeaInputRuntime: NmeaInputRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AndroidNmeaInputRuntime(
+            repository = nmeaConnectionRepository,
+            transportFactory = SocketNmeaTransportFactory(),
+            networkAvailability = nmeaNetworkAvailability,
+            clock = AndroidElapsedRealtimeClock,
+            reconnectDelay = ReconnectDelayPort.SYSTEM,
+            applicationScope = applicationScope,
+            foregroundController = NmeaForegroundServiceController(this),
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
+        // Process ownership is independent of any Feature/ViewModel subscription. This restores
+        // durable user intent without resurrecting live observations from disk.
+        nmeaInputRuntime
         if (BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")) {
             // Harnesses repeatedly force-stop/reinstall the target. A first-run LocaleManager
             // recreation would measure platform setup instead of the launcher journey.

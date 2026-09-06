@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -24,7 +25,8 @@ class ConnectionPersistenceTest {
     @Test
     fun configPersistsStoppedIntentWithoutRevivingRuntimeTruth() = runBlocking {
         val file = File(temporaryFolder.newFolder("restart"), "nmea-connections.pb")
-        val firstScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val firstJob = SupervisorJob()
+        val firstScope = CoroutineScope(firstJob + Dispatchers.IO)
         val first = ProtoDataStoreConnectionRepository.create(file, firstScope)
         first.awaitLoaded()
         val config = tcpConfig(id = "saved-stopped", port = 10_111)
@@ -38,7 +40,7 @@ class ConnectionPersistenceTest {
                 ),
             ) is ConnectionPersistenceResult.Saved,
         )
-        firstScope.cancel()
+        firstJob.cancelAndJoin()
 
         val secondScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {

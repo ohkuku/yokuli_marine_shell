@@ -18,10 +18,12 @@ import com.yokuli.marine.data.runtime.NmeaRuntimeFailure
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
 import com.yokuli.marine.data.runtime.SessionToken
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
@@ -119,6 +121,31 @@ class NmeaInputCoordinatorTest {
     }
 
     @Test
+    fun duplicateTcpEndpointRequiresExplicitUserConfirmationBeforeResubmission() = runBlocking {
+        val existingId = ConnectionId("existing")
+        val port = FakeRuntimePort(
+            result = NmeaRuntimeCommandResult.Rejected(
+                NmeaRuntimeFailure.DuplicateTcpEndpoint(existingId),
+            ),
+        )
+        val coordinator = NmeaInputCoordinator(port, scope)
+        enterValidTcpDraft(coordinator, "duplicate")
+
+        coordinator.dispatch(NmeaInputUiAction.Save)
+        awaitCommands(port, 1)
+        withTimeout(1_000L) {
+            while (coordinator.state.value.page !is NmeaInputPageUi.DuplicateTcpConfirmation) yield()
+        }
+
+        assertFalse((port.commands.single() as NmeaRuntimeCommand.Save).duplicateTcpConfirmed)
+
+        coordinator.dispatch(NmeaInputUiAction.ConfirmDuplicateTcp)
+        awaitCommands(port, 2)
+
+        assertTrue((port.commands.last() as NmeaRuntimeCommand.Save).duplicateTcpConfirmed)
+    }
+
+    @Test
     fun invalidTcpAndUdpDraftsNeverReachRuntime() = runBlocking {
         val port = FakeRuntimePort()
         val coordinator = NmeaInputCoordinator(port, scope)
@@ -177,6 +204,31 @@ class NmeaInputCoordinatorTest {
         assertTrue(coordinator.state.value.page is NmeaInputPageUi.Editor)
     }
 
+    @Test
+    fun runtimeCommandsAreExecutedOneAtATimeInDispatchOrder() = runBlocking {
+        val port = BlockingRuntimePort()
+        val coordinator = NmeaInputCoordinator(port, scope)
+        val id = ConnectionId("serialized")
+
+        coordinator.dispatch(NmeaInputUiAction.Start(id))
+        withTimeout(1_000L) { while (port.commands.size < 1) yield() }
+        coordinator.dispatch(NmeaInputUiAction.Stop(id))
+        repeat(3) { yield() }
+
+        assertEquals(listOf(NmeaRuntimeCommand.Start(id)), port.commands)
+        assertEquals(1, port.maximumInFlight.get())
+
+        port.release.trySend(Unit)
+        withTimeout(1_000L) { while (port.commands.size < 2) yield() }
+        assertEquals(
+            listOf(NmeaRuntimeCommand.Start(id), NmeaRuntimeCommand.Stop(id)),
+            port.commands,
+        )
+        assertEquals(1, port.maximumInFlight.get())
+        port.release.trySend(Unit)
+        Unit
+    }
+
     private fun enterValidTcpDraft(coordinator: NmeaInputCoordinator, name: String) {
         coordinator.dispatch(NmeaInputUiAction.AddConnection)
         coordinator.dispatch(NmeaInputUiAction.ChangeName(name))
@@ -232,5 +284,25 @@ private class FakeRuntimePort(
     override suspend fun execute(command: NmeaRuntimeCommand): NmeaRuntimeCommandResult {
         commands += command
         return result
+    }
+}
+
+private class BlockingRuntimePort : NmeaInputRuntimePort {
+    override val state: StateFlow<NmeaRuntimeSnapshot> = MutableStateFlow(NmeaRuntimeSnapshot.EMPTY)
+    val commands = CopyOnWriteArrayList<NmeaRuntimeCommand>()
+    val release = Channel<Unit>(capacity = Channel.UNLIMITED)
+    val maximumInFlight = AtomicInteger(0)
+    private val inFlight = AtomicInteger(0)
+
+    override suspend fun execute(command: NmeaRuntimeCommand): NmeaRuntimeCommandResult {
+        val current = inFlight.incrementAndGet()
+        maximumInFlight.updateAndGet { maximum -> maxOf(maximum, current) }
+        commands += command
+        return try {
+            release.receive()
+            NmeaRuntimeCommandResult.Success(connectionId = null, revision = 0L)
+        } finally {
+            inFlight.decrementAndGet()
+        }
     }
 }

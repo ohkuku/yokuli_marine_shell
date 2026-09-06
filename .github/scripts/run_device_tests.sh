@@ -5,6 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 mode="${1:-}"
 all_device_tasks=(
+  :adapter:marine-data-android:connectedDebugAndroidTest
   :adapter:map-offline:connectedDebugAndroidTest
   :adapter:map-storage:connectedDebugAndroidTest
   :app-shell:connectedStandaloneDebugAndroidTest
@@ -21,6 +22,7 @@ case "$mode" in
     ;;
   smoke)
     gradle_args+=(
+      :adapter:marine-data-android:connectedDebugAndroidTest
       :app-shell:connectedStandaloneDebugAndroidTest
       '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart'
     )

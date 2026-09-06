@@ -4,6 +4,8 @@ import com.yokuli.marine.data.catalog.Freshness
 import com.yokuli.marine.data.catalog.SentenceParseStatus
 import com.yokuli.marine.data.connection.NmeaConnectionConfig
 import com.yokuli.marine.data.connection.NmeaEndpoint
+import com.yokuli.marine.data.connection.ConnectionRunIntent
+import com.yokuli.marine.data.connection.StoredNmeaConnection
 import com.yokuli.marine.data.model.ConnectionId
 import com.yokuli.marine.data.model.DataKey
 import com.yokuli.marine.data.model.MarineValue
@@ -37,7 +39,7 @@ class NmeaInboundPipelineTest {
         clock.now = 300L
 
         val snapshot = pipeline.snapshot()
-        val input = snapshot.connections.getValue(connectionId)
+        val input = snapshot.connection(connectionId)
         assertEquals(ConnectionInputState.RECEIVING_VALID_FRAMES, input.input)
         assertEquals(300L, input.metrics.lastLegalFrameAtMillis)
         assertEquals(3L, input.metrics.legalFrameCount)
@@ -73,7 +75,7 @@ class NmeaInboundPipelineTest {
         clock.now = 200L
 
         val snapshot = pipeline.snapshot()
-        val input = snapshot.connections.getValue(connectionId)
+        val input = snapshot.connection(connectionId)
         assertEquals(ConnectionInputState.BYTES_WITHOUT_VALID_FRAME, input.input)
         assertEquals(200L, input.metrics.lastByteAtMillis)
         assertEquals(2L, input.metrics.frameCount)
@@ -94,18 +96,18 @@ class NmeaInboundPipelineTest {
         }
 
         clock.now = 4_000L
-        var rate = pipeline.snapshot().connections.getValue(connectionId).metrics.validRate
+        var rate = pipeline.snapshot().connection(connectionId).metrics.validRate
         assertEquals(1.0, rate.framesPerSecond, 0.0)
         assertEquals(5, rate.retainedBucketCount)
         assertTrue(rate.retainedBucketCount <= 5)
 
         clock.now = 5_000L
-        rate = pipeline.snapshot().connections.getValue(connectionId).metrics.validRate
+        rate = pipeline.snapshot().connection(connectionId).metrics.validRate
         assertEquals(0.8, rate.framesPerSecond, 0.0)
         assertTrue(rate.retainedBucketCount <= 5)
 
         clock.now = 10_000L
-        rate = pipeline.snapshot().connections.getValue(connectionId).metrics.validRate
+        rate = pipeline.snapshot().connection(connectionId).metrics.validRate
         assertEquals(0.0, rate.framesPerSecond, 0.0)
         assertEquals(0, rate.retainedBucketCount)
     }
@@ -119,11 +121,11 @@ class NmeaInboundPipelineTest {
         clock.now = 10_099L
         assertEquals(
             ConnectionInputState.RECEIVING_VALID_FRAMES,
-            pipeline.snapshot().connections.getValue(connectionId).input,
+            pipeline.snapshot().connection(connectionId).input,
         )
 
         clock.now = 10_100L
-        val interrupted = pipeline.snapshot().connections.getValue(connectionId)
+        val interrupted = pipeline.snapshot().connection(connectionId)
         assertEquals(ConnectionInputState.INTERRUPTED, interrupted.input)
         assertEquals(100L, interrupted.metrics.lastLegalFrameAtMillis)
         assertEquals(10_100L, interrupted.metrics.inputInterruptedAtMillis)
@@ -141,7 +143,7 @@ class NmeaInboundPipelineTest {
         clock.now = 300L
 
         val snapshot = pipeline.snapshot()
-        val input = snapshot.connections.getValue(connectionId)
+        val input = snapshot.connection(connectionId)
         assertEquals(token(2L), input.token)
         assertEquals(2L, input.metrics.legalFrameCount)
         assertEquals(1L, input.metrics.staleSessionDropCount)
@@ -157,10 +159,70 @@ class NmeaInboundPipelineTest {
         assertEquals(-38.8485, (position.selectedObservation.value as MarineValue.Position).latitudeDegrees, 0.000_001)
     }
 
+    @Test
+    fun replacementSessionDoesNotInheritReceivingEvidenceFromItsPredecessor() {
+        sessions.beginSession(connectionId, SessionGeneration(1))
+        val pipeline = pipeline()
+        pipeline.accept(frame(rmc(), at = 100L, group = 1L))
+        sessions.beginSession(connectionId, SessionGeneration(2))
+
+        val correct = rmc()
+        val wrongChecksum = correct.dropLast(2) + if (correct.endsWith("00")) "FF" else "00"
+        pipeline.accept(frame(wrongChecksum, at = 200L, group = 2L, generation = 2L))
+        clock.now = 200L
+
+        val replacement = pipeline.snapshot().connection(connectionId)
+        assertEquals(token(2L), replacement.token)
+        assertEquals(ConnectionInputState.BYTES_WITHOUT_VALID_FRAME, replacement.input)
+        assertEquals(null, replacement.metrics.lastValidFrameAtMillis)
+        assertEquals(1L, replacement.metrics.legalFrameCount)
+        assertEquals(1L, replacement.metrics.checksumFailureCount)
+        assertEquals(0.0, replacement.metrics.validRate.framesPerSecond, 0.0)
+    }
+
+    @Test
+    fun delayedTimestampCannotRegressEvidenceOrReviveInterruptedInput() {
+        sessions.beginSession(connectionId, SessionGeneration(1))
+        val pipeline = pipeline()
+        pipeline.accept(frame(rmc(), at = 100L, group = 2L))
+        clock.now = 10_100L
+        val interruptedAt = pipeline.snapshot().connection(connectionId).metrics.inputInterruptedAtMillis
+
+        pipeline.accept(frame(rmc(latitude = "3750.9100"), at = 50L, group = 1L))
+
+        val afterLateFrame = pipeline.snapshot().connection(connectionId)
+        assertEquals(ConnectionInputState.INTERRUPTED, afterLateFrame.input)
+        assertEquals(100L, afterLateFrame.metrics.lastByteAtMillis)
+        assertEquals(100L, afterLateFrame.metrics.lastValidFrameAtMillis)
+        assertEquals(interruptedAt, afterLateFrame.metrics.inputInterruptedAtMillis)
+    }
+
+    @Test
+    fun wrongConfigRevisionIsRejectedBeforeAnyCatalogOrFrameCounterMutation() {
+        sessions.beginSession(connectionId, SessionGeneration(1))
+        val pipeline = pipeline()
+
+        assertFalse(
+            pipeline.accept(
+                frame(rmc(), at = 100L, group = 1L, configRevision = 2L),
+            ),
+        )
+        clock.now = 100L
+
+        val snapshot = pipeline.snapshot()
+        val rejected = snapshot.connection(connectionId)
+        assertEquals(0L, rejected.metrics.frameCount)
+        assertEquals(1L, rejected.metrics.staleSessionDropCount)
+        assertTrue(snapshot.rawPreview.entries.isEmpty())
+        assertTrue(snapshot.sentenceCatalog.entries.isEmpty())
+        assertTrue(snapshot.observationCatalog.candidates.isEmpty())
+        assertEquals(NmeaRuntimeFailure.StaleSession, snapshot.incidents.single().failure)
+    }
+
     private fun pipeline() = NmeaInboundPipeline(
         clock = clock,
         sessionRegistry = sessions,
-        initialConnections = mapOf(connectionId to connectionSnapshot()),
+        initialConnections = listOf(connectionSnapshot()),
         inputHealthPolicy = InputHealthPolicy(interruptionTimeoutMillis = 10_000L),
     )
 
@@ -169,17 +231,18 @@ class NmeaInboundPipelineTest {
         at: Long,
         group: Long,
         generation: Long = 1L,
+        configRevision: Long = 1L,
     ) = NmeaInboundFrame(
         source = source,
-        sessionToken = token(generation),
+        sessionToken = token(generation, configRevision),
         receivedAtMillis = at,
         groupId = ObservationGroupId(group),
         raw = raw,
     )
 
-    private fun token(generation: Long = 1L) = SessionToken(
+    private fun token(generation: Long = 1L, configRevision: Long = 1L) = SessionToken(
         connectionId = connectionId,
-        configRevision = 1L,
+        configRevision = configRevision,
         generation = SessionGeneration(generation),
     )
 
@@ -208,6 +271,9 @@ class NmeaInboundPipelineTest {
         "GPRMC,120001,V,,,,,,,260826,,,N",
     )
 }
+
+private fun NmeaRuntimeSnapshot.connection(connectionId: ConnectionId): ConnectionRuntimeSnapshot =
+    connections.single { it.stored.config.id == connectionId }
 
 private class PipelineClock(var now: Long) : MonotonicClock {
     override fun nowMillis(): Long = now

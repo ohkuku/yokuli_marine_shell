@@ -61,6 +61,7 @@ android {
 dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:map-domain"))
+    implementation(project(":core:marine-data"))
     implementation(project(":core:design"))
     implementation(project(":core:shell-contract"))
     implementation(project(":core:shell-engine"))
@@ -69,8 +70,10 @@ dependencies {
     implementation(project(":adapter:shell-storage"))
     implementation(project(":adapter:map-storage"))
     implementation(project(":adapter:map-offline"))
+    implementation(project(":adapter:marine-data-android"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))
+    implementation(project(":feature:nmea-input"))
     implementation(project(":feature:settings"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

@@ -1,6 +1,8 @@
 package com.yokuli.marine.data.android
 
 import com.yokuli.marine.data.android.runtime.ReconnectDelayPort
+import com.yokuli.marine.data.android.runtime.HealthTickPort
+import com.yokuli.marine.data.android.service.ForegroundRuntimeController
 import com.yokuli.marine.data.android.transport.NetworkTransportEvent
 import com.yokuli.marine.data.android.transport.NmeaTransportFactory
 import com.yokuli.marine.data.connection.NmeaConnectionConfig
@@ -8,12 +10,16 @@ import com.yokuli.marine.data.runtime.NmeaRuntimeCommand
 import com.yokuli.marine.data.runtime.NmeaRuntimeFailure
 import com.yokuli.marine.data.runtime.SessionToken
 import com.yokuli.marine.data.runtime.ConnectionTransportState
+import com.yokuli.marine.data.runtime.ConnectionInputState
+import com.yokuli.marine.data.runtime.NmeaRuntimeCommandResult
 import com.yokuli.marine.data.runtime.TransportFailureKind
+import com.yokuli.marine.data.time.MonotonicClock
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
@@ -66,7 +72,7 @@ class NmeaRuntimeLifecycleTest {
             repeat(20) { yield() }
 
             assertEquals(1, transports.openCount.get())
-            val stopped = fixture.runtime.snapshots.value.connections.getValue(config.id)
+            val stopped = fixture.runtime.state.value.connections.getValue(config.id)
             assertTrue(stopped.transport is ConnectionTransportState.Stopped)
         }
     }
@@ -79,7 +85,7 @@ class NmeaRuntimeLifecycleTest {
             fixture.start(original)
             val oldSession = transports.awaitSession(0)
             oldSession.emit(NetworkTransportEvent.TcpConnected)
-            val originalRevision = fixture.runtime.snapshots.value.connections
+            val originalRevision = fixture.runtime.state.value.connections
                 .getValue(original.id)
                 .stored
                 .revision
@@ -98,7 +104,7 @@ class NmeaRuntimeLifecycleTest {
             )
             val newSession = transports.awaitSession(1)
             newSession.emit(NetworkTransportEvent.TcpConnected)
-            val before = fixture.runtime.snapshots.value.connections.getValue(original.id)
+            val before = fixture.runtime.state.value.connections.getValue(original.id)
             assertNotEquals(oldSession.token, newSession.token)
 
             oldSession.emit(
@@ -106,9 +112,10 @@ class NmeaRuntimeLifecycleTest {
                     nmea("WIMWV,045.0,R,10.5,N,A").toByteArray(Charsets.US_ASCII),
                 ),
             )
-            repeat(20) { yield() }
-
-            val rejected = fixture.runtime.snapshots.value.connections.getValue(original.id)
+            val rejected = fixture.await {
+                it.connections[original.id]?.metrics?.staleSessionDropCount ==
+                    before.metrics.staleSessionDropCount + 1L
+            }.connections.getValue(original.id)
             assertEquals(before.metrics.legalFrameCount, rejected.metrics.legalFrameCount)
             assertEquals(before.metrics.byteCount, rejected.metrics.byteCount)
             assertEquals(before.metrics.staleSessionDropCount + 1L, rejected.metrics.staleSessionDropCount)
@@ -123,6 +130,7 @@ class NmeaRuntimeLifecycleTest {
                     before.metrics.legalFrameCount + 1L
             }
         }
+        Unit
     }
 
     @Test
@@ -149,7 +157,77 @@ class NmeaRuntimeLifecycleTest {
         }
     }
 
+    @Test
+    fun saveAndStartDoesNotOpenSocketWhenForegroundStartIsRejected() = runBlocking {
+        val transports = ControllableTransportFactory()
+        RuntimeFixture(
+            storage(),
+            transportFactory = transports,
+            foregroundController = ForegroundRuntimeController { false },
+        ).use { fixture ->
+            val config = tcpConfig(id = "platform-restricted", port = 10_111)
+
+            val result = fixture.runtime.execute(NmeaRuntimeCommand.SaveAndStart(config))
+            val state = fixture.runtime.state.value.connections.getValue(config.id)
+
+            assertTrue(result is NmeaRuntimeCommandResult.Rejected)
+            assertEquals(NmeaRuntimeFailure.PlatformRestricted, (result as NmeaRuntimeCommandResult.Rejected).failure)
+            assertEquals(0, transports.openCount.get())
+            assertTrue(state.transport is ConnectionTransportState.PlatformStartRequired)
+        }
+    }
+
+    @Test
+    fun healthTimerPublishesInterruptionWithoutNewPackets() = runBlocking {
+        val transports = ControllableTransportFactory()
+        val clock = MutableClock(1_000L)
+        val ticker = ControlledHealthTicker()
+        RuntimeFixture(
+            storage(),
+            transportFactory = transports,
+            clock = clock,
+            healthTick = ticker,
+        ).use { fixture ->
+            val config = tcpConfig(id = "silent-after-data", port = 10_111)
+            fixture.start(config)
+            val session = transports.awaitSession(0)
+            session.emit(NetworkTransportEvent.TcpConnected)
+            session.emit(
+                NetworkTransportEvent.TcpBytes(
+                    nmea("WIMWV,045.0,R,10.5,N,A").toByteArray(Charsets.US_ASCII),
+                ),
+            )
+            fixture.await {
+                it.connections[config.id]?.input == ConnectionInputState.RECEIVING_VALID_FRAMES
+            }
+
+            clock.now = 11_000L
+            ticker.tick()
+
+            fixture.await {
+                it.connections[config.id]?.input == ConnectionInputState.INTERRUPTED
+            }
+            assertTrue(fixture.runtime.state.value.connections.getValue(config.id).transport is ConnectionTransportState.TcpConnected)
+        }
+    }
+
     private fun storage(): File = File(temporaryFolder.newFolder(), "connections.pb")
+}
+
+private class MutableClock(@Volatile var now: Long) : MonotonicClock {
+    override fun nowMillis(): Long = now
+}
+
+private class ControlledHealthTicker : HealthTickPort {
+    private val ticks = Channel<Unit>(Channel.UNLIMITED)
+
+    override suspend fun awaitNextTick() {
+        ticks.receive()
+    }
+
+    fun tick() {
+        ticks.trySend(Unit).getOrThrow()
+    }
 }
 
 private class ControllableTransportFactory : NmeaTransportFactory {

@@ -35,6 +35,7 @@ class TcpNmeaClientIntegrationTest {
                 release.complete(Unit)
             }
         }
+        Unit
     }
 
     @Test
@@ -61,6 +62,7 @@ class TcpNmeaClientIntegrationTest {
                 release.complete(Unit)
             }
         }
+        Unit
     }
 
     @Test
@@ -88,6 +90,7 @@ class TcpNmeaClientIntegrationTest {
                 release.complete(Unit)
             }
         }
+        Unit
     }
 
     @Test
@@ -110,10 +113,11 @@ class TcpNmeaClientIntegrationTest {
 
                 assertTrue(bounded.metrics.tcpBufferedByteCount <= 1_024)
                 assertTrue(bounded.metrics.pendingIngressFrameCount <= 64)
-                assertTrue(fixture.runtime.snapshots.value.incidents.size <= 128)
+                assertTrue(fixture.runtime.state.value.incidents.size <= 128)
                 assertEquals(0L, bounded.metrics.legalFrameCount)
                 release.complete(Unit)
             }
         }
+        Unit
     }
 }

@@ -1,12 +1,17 @@
 package com.yokuli.marine.data.runtime
 
 import com.yokuli.marine.data.model.ConnectionId
+import com.yokuli.marine.data.model.SenderIdentity
 import com.yokuli.marine.data.model.SessionGeneration
 import com.yokuli.marine.data.connection.NmeaConnectionConfig
 import com.yokuli.marine.data.connection.NmeaEndpoint
+import com.yokuli.marine.data.connection.ConnectionRunIntent
+import com.yokuli.marine.data.connection.StoredNmeaConnection
 import com.yokuli.marine.data.nmea.ChecksumPolicy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class RetryPolicyTest {
@@ -65,7 +70,7 @@ class RetryPolicyTest {
 
         val interrupted = connectedWithoutData.copy(
             input = ConnectionInputState.INTERRUPTED,
-            metrics = connectedWithoutData.metrics.copy(lastLegalFrameAtMillis = 1_000L),
+            metrics = connectedWithoutData.metrics.copy(lastValidFrameAtMillis = 1_000L),
         )
         assertEquals(ConnectionRunIntent.ENABLED, interrupted.stored.runIntent)
         assertEquals(connectedWithoutData.transport, interrupted.transport)
@@ -84,5 +89,41 @@ class RetryPolicyTest {
         )
         assertSame(ConnectionTransportState.UdpListening, udpListening.transport)
         assertSame(ConnectionInputState.NO_BYTES, udpListening.input)
+    }
+
+    @Test
+    fun retryIsAnExplicitTypedCommandRatherThanAnAliasForStart() {
+        val id = ConnectionId("retry")
+
+        assertEquals(id, NmeaRuntimeCommand.Retry(id).connectionId)
+        assertEquals(id, NmeaRuntimeCommand.Start(id).connectionId)
+        assertNotEquals(NmeaRuntimeCommand.Retry(id), NmeaRuntimeCommand.Start(id))
+    }
+
+    @Test
+    fun runtimeDiagnosticsAndStructuredIncidentsRejectUnboundedSnapshots() {
+        assertThrows(IllegalArgumentException::class.java) {
+            NmeaConnectionDiagnostics(
+                pendingIngressFrameCount = MAX_INGRESS_FRAMES_PER_CONNECTION + 1,
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NmeaConnectionDiagnostics(
+                observedUdpSenders = (1..MAX_OBSERVED_UDP_SENDERS_PER_CONNECTION + 1)
+                    .mapTo(linkedSetOf()) { port -> SenderIdentity("127.0.0.1", port) },
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            NmeaRuntimeSnapshot.EMPTY.copy(
+                incidents = (0..MAX_STRUCTURED_INCIDENTS).map { index ->
+                    NmeaRuntimeIncident(
+                        connectionId = null,
+                        sessionToken = null,
+                        failure = NmeaRuntimeFailure.InternalError,
+                        occurredAtMillis = index.toLong(),
+                    )
+                },
+            )
+        }
     }
 }

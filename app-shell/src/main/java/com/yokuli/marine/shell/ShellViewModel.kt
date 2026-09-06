@@ -22,6 +22,9 @@ import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.OfflineCoverageCoordinator
 import com.yokuli.marine.feature.chart.OfflineCoverageUiState
 import com.yokuli.marine.feature.chart.PositionObservationCoordinator
+import com.yokuli.marine.feature.nmeainput.NmeaInputCoordinator
+import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
+import com.yokuli.marine.feature.nmeainput.NmeaInputUiState
 import android.net.Uri
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
@@ -57,6 +60,12 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     private var healthyTimer: Job? = null
     private val startupJob: Job
     private val chartPackages = (application as ShellApplication).chartPackageRepository
+    private val nmeaInputCoordinator = NmeaInputCoordinator(
+        runtimePort = (application as ShellApplication).nmeaInputRuntime,
+        scope = viewModelScope,
+        nowMillis = { android.os.SystemClock.elapsedRealtime() },
+    )
+    val nmeaInputState: StateFlow<NmeaInputUiState> = nmeaInputCoordinator.state
 
     val persistedPreferences: StateFlow<LauncherPersistedState> = persistence.state
         .map { it ?: defaults }
@@ -175,6 +184,10 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onGpxImportAction(action: GpxImportUiAction) {
         gpxImportCoordinator.dispatch(action)
+    }
+
+    fun onNmeaInputAction(action: NmeaInputUiAction) {
+        nmeaInputCoordinator.dispatch(action)
     }
 
     fun acquireChartPackageLease(packageId: ChartPackageId): ChartPackageLease =

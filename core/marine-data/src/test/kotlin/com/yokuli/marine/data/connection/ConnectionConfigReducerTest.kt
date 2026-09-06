@@ -90,6 +90,41 @@ class ConnectionConfigReducerTest {
         assertTrue(result.effects.single() is ConnectionConfigEffect.Persist)
     }
 
+    @Test
+    fun configurationCapacityAndUserControlledTextAreBounded() {
+        val boundedReducer = ConnectionConfigReducer(maxConnections = 2)
+        val first = config("one", endpoint = NmeaEndpoint.TcpClient("one.local", 10_111))
+        val second = config("two", endpoint = NmeaEndpoint.TcpClient("two.local", 10_112))
+        val third = config("three", endpoint = NmeaEndpoint.TcpClient("three.local", 10_113))
+        val withOne = boundedReducer.reduce(ConnectionConfigState(), ConnectionConfigAction.Save(first)).state
+        val full = boundedReducer.reduce(withOne, ConnectionConfigAction.Save(second)).state
+
+        val capacity = boundedReducer.reduce(full, ConnectionConfigAction.Save(third))
+
+        assertEquals(full, capacity.state)
+        assertEquals(
+            setOf(ConnectionConfigIssue.CONNECTION_LIMIT_REACHED),
+            (capacity.effects.single() as ConnectionConfigEffect.Invalid).issues,
+        )
+
+        val oversized = config(
+            id = "oversized",
+            name = "n".repeat(MAX_CONNECTION_DISPLAY_NAME_LENGTH + 1),
+            endpoint = NmeaEndpoint.TcpClient(
+                host = "h".repeat(MAX_CONNECTION_HOST_LENGTH + 1),
+                port = 10_111,
+            ),
+        )
+        val invalid = boundedReducer.reduce(ConnectionConfigState(), ConnectionConfigAction.Save(oversized))
+        assertEquals(
+            setOf(
+                ConnectionConfigIssue.DISPLAY_NAME_TOO_LONG,
+                ConnectionConfigIssue.TCP_HOST_TOO_LONG,
+            ),
+            (invalid.effects.single() as ConnectionConfigEffect.Invalid).issues,
+        )
+    }
+
     private fun config(
         id: String,
         name: String = "Boat gateway",

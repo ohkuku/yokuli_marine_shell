@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[2]
 LOCALIZED_MODULES = (
     "app-shell",
+    "adapter/marine-data-android",
     "core/design",
     "feature/desktop",
     "feature/chart",

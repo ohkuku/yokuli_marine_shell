@@ -1,11 +1,11 @@
 {
   "phase": "NMEA_SOURCES",
   "stage": "P2",
-  "status": "RED_DEFINED",
+  "status": "CANDIDATE_GREEN",
   "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
   "baseCommit": "d746910f731d251a88c87817eed8a1d29a197026",
-  "redContractCommit": "PENDING_RED_COMMIT",
-  "implementationCommit": "PENDING",
+  "redContractCommit": "357c293210ae63d3991db792a8b3aabc67a9fc61",
+  "implementationCommit": "PENDING_CANDIDATE_COMMIT",
   "modules": ["core:marine-data", "adapter:marine-data-android", "feature:nmea-input"],
   "runtimeContracts": {
     "retryMillis": [1000, 2000, 4000, 8000, 16000, 30000],
@@ -26,7 +26,7 @@
   "evidence": {
     "initialStaticRed": "9 tests; 7 failures / 1 error / 1 pass",
     "behaviorRed": "36 tests across core 11, adapter 13 and feature 12; expected compile failures on absent P2 production contracts",
-    "targetedGreen": "NOT_RUN",
+    "targetedGreen": "static 9/9; core 100/100; adapter 15/15; feature 16/16; app androidTest compile PASS",
     "fullRepositoryGate": "NOT_RUN",
     "physicalDevice": "UNVERIFIED_PHYSICAL_DEVICE"
   }

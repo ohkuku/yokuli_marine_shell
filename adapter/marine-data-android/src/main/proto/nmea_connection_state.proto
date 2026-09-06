@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+option java_package = "com.yokuli.marine.data.android.proto";
+option java_multiple_files = true;
+
+message PersistedNmeaConnectionStore {
+  uint32 schema_version = 1;
+  repeated PersistedNmeaConnection connections = 2;
+}
+
+message PersistedNmeaConnection {
+  string connection_id = 1;
+  string display_name = 2;
+  PersistedEndpoint endpoint = 3;
+  PersistedChecksumPolicy checksum_policy = 4;
+  PersistedRunIntent run_intent = 5;
+  int64 revision = 6;
+}
+
+message PersistedEndpoint {
+  oneof kind {
+    PersistedTcpClient tcp_client = 1;
+    PersistedUdpListener udp_listener = 2;
+  }
+}
+
+message PersistedTcpClient {
+  string host = 1;
+  uint32 port = 2;
+}
+
+message PersistedUdpListener {
+  uint32 local_port = 1;
+  optional string sender_host_filter = 2;
+  PersistedUdpOriginIdentityPolicy origin_identity_policy = 3;
+}
+
+enum PersistedChecksumPolicy {
+  PERSISTED_CHECKSUM_POLICY_UNSPECIFIED = 0;
+  PERSISTED_CHECKSUM_POLICY_STRICT = 1;
+  PERSISTED_CHECKSUM_POLICY_ALLOW_MISSING = 2;
+}
+
+enum PersistedRunIntent {
+  PERSISTED_RUN_INTENT_UNSPECIFIED = 0;
+  PERSISTED_RUN_INTENT_STOPPED_BY_USER = 1;
+  PERSISTED_RUN_INTENT_ENABLED = 2;
+}
+
+enum PersistedUdpOriginIdentityPolicy {
+  PERSISTED_UDP_ORIGIN_IDENTITY_POLICY_UNSPECIFIED = 0;
+  PERSISTED_UDP_ORIGIN_IDENTITY_POLICY_HOST_ADDRESS = 1;
+  PERSISTED_UDP_ORIGIN_IDENTITY_POLICY_HOST_AND_PORT = 2;
+}

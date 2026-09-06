@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nmea_notification_channel_name">NMEA input</string>
+    <string name="nmea_notification_channel_description">Keeps user-enabled vessel data connections running</string>
+    <string name="nmea_notification_title">NMEA input is running</string>
+    <string name="nmea_notification_enabled_count">%1$d inputs enabled</string>
+    <string name="nmea_notification_stop_all">Stop all</string>
+</resources>

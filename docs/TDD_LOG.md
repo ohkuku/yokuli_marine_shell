@@ -57,6 +57,8 @@ P1 starts with a meaningful failing static contract and a platform-neutral scaff
 
 P2 begins at the corrected P1 commit with a nine-part static contract. Its first run is meaningfully red at seven failures, one missing-file error and one passing phase-boundary assertion. Separate failing behavior suites freeze pure runtime policy, real TCP/UDP and persistence integration, and the NMEA Input feature projection/coordinator. Production Shell registration, tiles, status strip and Data Sources remain outside P2.
 
+Candidate Green 先只运行本阶段最小门禁：P2 static 9/9、core 100/100、真实 localhost adapter 15/15、Feature 16/16，以及 app instrumentation compile。自查先新增失败用例再修复 FGS 拒绝后仍开 socket、无包时不会主动老化、actor 被单帧异常杀死和 DataStore owner 未完全释放四个问题。API 34/36 设备故事留在本阶段设备 Gate，整仓 test/lint/release 只在 P7 运行。
+
 ## Marine Shell Final Product-Model Correction
 
 ### Baseline

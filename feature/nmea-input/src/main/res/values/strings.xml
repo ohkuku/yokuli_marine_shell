@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nmea_input_title">NMEA 输入</string>
+    <string name="nmea_summary">%1$d 条已启用 · %2$d 条正在接收</string>
+    <string name="context_connection_detail">连接详情</string>
+    <string name="context_new_connection">新建连接</string>
+    <string name="context_edit_connection">编辑连接</string>
+    <string name="context_confirm_change">确认更改</string>
+    <string name="context_confirm_duplicate">确认重复地址</string>
+    <string name="context_confirm_delete">确认删除</string>
+
+    <string name="empty_title">还没有输入连接</string>
+    <string name="empty_body">添加船上设备提供的 TCP 客户端或 UDP 本机监听配置。仅在收到合法 NMEA 帧后，应用才会显示正在接收。</string>
+
+    <string name="action_add">添加</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_start">启用</string>
+    <string name="action_stop">停止</string>
+    <string name="action_retry">重试</string>
+    <string name="action_delete">删除</string>
+    <string name="action_save">保存</string>
+    <string name="action_save_enable">保存并启用</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_confirm">确认</string>
+    <string name="action_dismiss">关闭提示</string>
+
+    <string name="endpoint_tcp">TCP · %1$s:%2$d</string>
+    <string name="endpoint_udp">UDP · 本机监听 %1$d</string>
+    <string name="endpoint_udp_restricted">UDP · 本机监听 %1$d · 仅接收 %2$s</string>
+
+    <string name="headline_stopped">已停止</string>
+    <string name="headline_starting">正在启动</string>
+    <string name="headline_tcp_waiting">TCP 已连接，等待 NMEA 数据</string>
+    <string name="headline_udp_waiting">正在监听，尚未收到报文</string>
+    <string name="headline_invalid_input">收到输入，尚无有效 NMEA</string>
+    <string name="headline_receiving">正在接收有效 NMEA</string>
+    <string name="headline_interrupted">输入已中断</string>
+    <string name="headline_overloaded">输入过载，部分帧已丢弃</string>
+    <string name="headline_waiting_network">等待网络</string>
+    <string name="headline_reconnect">等待重连</string>
+    <string name="headline_platform_start">需要你在应用中恢复</string>
+    <string name="headline_failed">连接失败</string>
+
+    <string name="rate_five_seconds">近 5 秒 %1$.1f 句/秒</string>
+    <string name="last_never">尚未收到有效帧</string>
+    <string name="last_just_now">刚刚收到有效帧</string>
+    <string name="last_seconds_ago">%1$d 秒前收到有效帧</string>
+    <string name="last_minutes_ago">%1$d 分钟前收到有效帧</string>
+
+    <string name="section_runtime_facts">当前事实</string>
+    <string name="section_diagnostics">连接诊断</string>
+    <string name="section_recent_input">最近输入</string>
+    <string name="fact_user_intent">用户意图</string>
+    <string name="fact_transport">传输状态</string>
+    <string name="fact_input">输入状态</string>
+    <string name="fact_last_valid">最后合法帧</string>
+    <string name="fact_rate">有效帧速率</string>
+    <string name="intent_enabled">已启用</string>
+    <string name="intent_stopped">用户已停止</string>
+
+    <string name="transport_stopped">已停止</string>
+    <string name="transport_starting">启动中</string>
+    <string name="transport_tcp_connected">TCP 已连接</string>
+    <string name="transport_udp_listening">UDP 本机监听中</string>
+    <string name="transport_waiting_network">等待网络</string>
+    <string name="transport_reconnect">等待重连</string>
+    <string name="transport_platform_start">平台要求用户恢复</string>
+    <string name="transport_failed">失败</string>
+    <string name="input_no_bytes">尚未收到字节</string>
+    <string name="input_no_valid_frame">有输入但无合法帧</string>
+    <string name="input_receiving">正在收到合法帧</string>
+    <string name="input_interrupted">合法帧已中断</string>
+    <string name="input_overloaded">输入队列过载</string>
+    <string name="input_timeout_note">连续 10 秒没有合法帧时，输入会标记为中断；这不会改写 TCP 或 UDP 的传输事实。</string>
+
+    <string name="diagnostic_bytes">收到字节</string>
+    <string name="diagnostic_datagrams">UDP 报文</string>
+    <string name="diagnostic_frames">完整帧</string>
+    <string name="diagnostic_legal_frames">合法帧</string>
+    <string name="diagnostic_parsed_frames">已解析帧</string>
+    <string name="diagnostic_observations">解析观测</string>
+    <string name="diagnostic_explicit_invalid">明确无效帧</string>
+    <string name="diagnostic_unsupported">尚未解析句型</string>
+    <string name="diagnostic_checksum_failures">校验和失败</string>
+    <string name="diagnostic_malformed">格式错误</string>
+    <string name="diagnostic_stale_session_drops">旧会话丢弃</string>
+    <string name="diagnostic_ingress_drops">入口过载丢弃</string>
+    <string name="diagnostic_preview_drops">预览丢弃</string>
+    <string name="raw_empty">还没有可显示的原始输入。</string>
+    <string name="raw_sender">当前会话 · 发送端 %1$s</string>
+    <string name="raw_current_session">当前会话</string>
+    <string name="raw_previous_session">之前的会话</string>
+
+    <string name="editor_new_title">添加输入</string>
+    <string name="editor_edit_title">编辑输入</string>
+    <string name="field_name">名称</string>
+    <string name="field_protocol">协议</string>
+    <string name="field_tcp_host">远程主机</string>
+    <string name="field_remote_port">远程端口</string>
+    <string name="field_local_port">本机监听端口</string>
+    <string name="field_udp_sender">允许的发送端地址</string>
+    <string name="field_checksum_policy">校验和策略</string>
+    <string name="protocol_tcp_client">TCP 客户端</string>
+    <string name="protocol_udp_listener">UDP 本机监听</string>
+    <string name="udp_listener_explanation">UDP 会在本机端口等待报文，不会连接某个远程服务器。</string>
+    <string name="restrict_udp_sender">只接收指定发送端地址</string>
+    <string name="checksum_strict">严格要求校验和</string>
+    <string name="checksum_allow_missing">允许缺少校验和</string>
+    <string name="checksum_explanation">严格模式会拒绝缺少或错误的校验和；宽松模式只允许缺少校验和，错误校验和仍会被拒绝。</string>
+    <string name="operation_in_progress">正在提交，请等待运行时确认。</string>
+    <string name="validation_required">此项必填。</string>
+    <string name="validation_ascii_digits">端口只能使用 ASCII 数字 0–9。</string>
+    <string name="validation_port_range">端口必须在 1–65535 之间。</string>
+
+    <string name="replace_title">替换运行中的会话？</string>
+    <string name="replace_body">“%1$s”的地址已经改变。继续会结束旧会话；旧会话迟到的数据不会进入新配置。</string>
+    <string name="replace_restart_fact">保存成功后会使用新地址启动。收到合法帧之前，不会显示正在接收。</string>
+    <string name="replace_save_fact">只保存新配置，不把保存成功写成接收成功。</string>
+    <string name="delete_title">删除这条连接？</string>
+    <string name="delete_body">将删除“%1$s”的配置并停止其运行任务。</string>
+    <string name="delete_fact">此操作不会删除其他连接，也不会把历史数据伪装成当前实时数据。</string>
+    <string name="duplicate_tcp_title">仍要保存重复地址？</string>
+    <string name="duplicate_tcp_body">“%1$s”与已有连接使用相同的 TCP 地址。两个任务可能收到同一批数据。</string>
+    <string name="duplicate_tcp_fact">只有明确确认后才会保存；取消不会创建重复连接。</string>
+
+    <string name="failure_udp_port">本机 UDP 端口 %1$d 已被占用。</string>
+    <string name="failure_persistence">无法保存连接配置。当前运行状态没有被写成成功。</string>
+    <string name="failure_invalid_configuration">连接配置无效，请检查表单。</string>
+    <string name="failure_duplicate_tcp">已有相同的 TCP 地址，未创建重复连接。</string>
+    <string name="failure_connection_limit">已达到可管理连接数量上限。</string>
+    <string name="failure_connection_not_found">这条连接已不存在，请返回列表刷新。</string>
+    <string name="failure_stale_session">旧会话操作已被拒绝，请重试。</string>
+    <string name="failure_platform_restricted">Android 当前不允许后台启动，请回到应用中恢复。</string>
+    <string name="failure_ingress_overloaded">输入过载，部分数据已被有界队列丢弃。</string>
+    <string name="failure_transport">网络传输失败，请检查地址和网络后重试。</string>
+    <string name="failure_internal">操作未完成。运行时返回了内部错误。</string>
+
+    <string name="notice_saved">配置已保存；这不表示已经收到数据。</string>
+    <string name="notice_start_requested">已提交启用请求；请以连接状态为准。</string>
+    <string name="notice_stop_requested">已提交停止请求；请以连接状态为准。</string>
+    <string name="notice_deleted">连接已删除。</string>
+    <string name="notice_queue_full">操作过快，当前请求未提交。请稍后重试。</string>
+</resources>

@@ -45,7 +45,9 @@ class UdpNmeaListenerIntegrationTest {
             fixture.await { it.connections[config.id]?.transport is ConnectionTransportState.UdpListening }
 
             DatagramSocket(0, InetAddress.getByName("127.0.0.1")).use { first ->
-                DatagramSocket(0, InetAddress.getByName("127.0.0.2")).use { second ->
+                // Distinct ephemeral ports are distinct observed senders while remaining portable
+                // to hosts that do not bind every address in the 127/8 loopback range.
+                DatagramSocket(0, InetAddress.getByName("127.0.0.1")).use { second ->
                     val complete = nmea("WIMWV,045.0,R,10.5,N,A").toByteArray(Charsets.US_ASCII)
                     val splitAt = complete.size / 2
                     first.sendTo(complete.copyOfRange(0, splitAt), port)
@@ -90,7 +92,7 @@ class UdpNmeaListenerIntegrationTest {
             }.connections.getValue(config.id)
             assertEquals(0L, bounded.metrics.legalFrameCount)
             assertTrue(bounded.metrics.pendingIngressFrameCount <= 64)
-            assertTrue(fixture.runtime.snapshots.value.incidents.size <= 128)
+            assertTrue(fixture.runtime.state.value.incidents.size <= 128)
         }
     }
 

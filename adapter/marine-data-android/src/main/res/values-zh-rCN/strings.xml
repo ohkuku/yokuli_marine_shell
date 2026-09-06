@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nmea_notification_channel_name">NMEA 输入</string>
+    <string name="nmea_notification_channel_description">保持用户启用的船载数据连接</string>
+    <string name="nmea_notification_title">NMEA 输入正在运行</string>
+    <string name="nmea_notification_enabled_count">%1$d 条输入已启用</string>
+    <string name="nmea_notification_stop_all">全部停止</string>
+</resources>

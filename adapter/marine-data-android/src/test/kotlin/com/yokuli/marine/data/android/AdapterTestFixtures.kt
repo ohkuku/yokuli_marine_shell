@@ -2,6 +2,7 @@ package com.yokuli.marine.data.android
 
 import com.yokuli.marine.data.android.persistence.ProtoDataStoreConnectionRepository
 import com.yokuli.marine.data.android.runtime.AndroidNmeaInputRuntime
+import com.yokuli.marine.data.android.runtime.HealthTickPort
 import com.yokuli.marine.data.android.runtime.NetworkAvailabilityPort
 import com.yokuli.marine.data.android.runtime.SocketNmeaTransportFactory
 import com.yokuli.marine.data.connection.ConnectionRunIntent
@@ -15,6 +16,7 @@ import com.yokuli.marine.data.runtime.ConnectionRuntimeSnapshot
 import com.yokuli.marine.data.runtime.NmeaRuntimeCommand
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
 import com.yokuli.marine.data.time.MonotonicClock
+import com.yokuli.marine.data.android.service.ForegroundRuntimeController
 import java.io.Closeable
 import java.io.File
 import java.net.InetAddress
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
 
 internal fun tcpConfig(
     id: String = "tcp",
@@ -82,6 +85,9 @@ internal class RuntimeFixture(
         SocketNmeaTransportFactory(),
     reconnectDelay: com.yokuli.marine.data.android.runtime.ReconnectDelayPort =
         com.yokuli.marine.data.android.runtime.ReconnectDelayPort.SYSTEM,
+    clock: MonotonicClock = MonotonicClock { System.nanoTime() / 1_000_000L },
+    healthTick: HealthTickPort = HealthTickPort.SYSTEM,
+    foregroundController: ForegroundRuntimeController = ForegroundRuntimeController.NO_OP,
 ) : Closeable {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val repository = ProtoDataStoreConnectionRepository.create(
@@ -92,8 +98,10 @@ internal class RuntimeFixture(
         repository = repository,
         transportFactory = transportFactory,
         networkAvailability = networkAvailability,
-        clock = MonotonicClock { System.nanoTime() / 1_000_000L },
+        clock = clock,
         reconnectDelay = reconnectDelay,
+        healthTick = healthTick,
+        foregroundController = foregroundController,
         applicationScope = scope,
     )
 
@@ -108,8 +116,10 @@ internal class RuntimeFixture(
     suspend fun await(
         timeoutMillis: Long = 5_000L,
         predicate: (NmeaRuntimeSnapshot) -> Boolean,
-    ): NmeaRuntimeSnapshot = withTimeout(timeoutMillis) {
-        runtime.snapshots.first(predicate)
+    ): NmeaRuntimeSnapshot = try {
+        withTimeout(timeoutMillis) { runtime.state.first(predicate) }
+    } catch (timeout: TimeoutCancellationException) {
+        throw AssertionError("Timed out with runtime state: ${runtime.state.value}", timeout)
     }
 
     override fun close() {
