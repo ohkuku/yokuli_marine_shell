@@ -1,0 +1,37 @@
+{
+  "phase": "NMEA_SOURCES",
+  "stage": "P6",
+  "status": "MACHINE_VERIFIED",
+  "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
+  "baseCommit": "e05b01a44c667409905bade1cb9e732e79741b7c",
+  "redContractCommit": "d71437ddbbca11f3c9d387370cbfceed700136d4",
+  "positionBridgeCommit": "0908bd778f0b58f737601937ce5a93a1cc2a87f8",
+  "crossAppRedCommit": "ae474f2ce284de565b050a928f8161ca8ddc84ee",
+  "completeProjectionCommit": "6a58048e757fada4dbd16951bc3ef91ee8a56c11",
+  "compileCorrectionCommit": "5281506978fe760209ab9b31124484c341c8dc73",
+  "lifecycleRedCommit": "1f4d9fb22c8829282594e0fdc48401c7b4cbe811",
+  "foregroundLossCommit": "1d0c90f65e71be8fb0807e931d4fe68057d4b97d",
+  "processProbeCommit": "59667deb0a29bae33099a8de4cd49c36955d518d",
+  "processProbeCorrectionCommit": "1f3a9274dfd7d0188e63d25d27f36dda7749c4af",
+  "contracts": {
+    "consumer": "Chart ReadOnlyPositionPort",
+    "runtimeTruth": "MarineSourceSnapshot",
+    "projectedKeys": ["Position", "PositionAccuracy", "SourceTime", "Heading", "CourseOverGround", "SpeedOverGround"],
+    "crossSourceFailover": false,
+    "courseSpeedAtomicity": "same SourceIdentity + ObservationGroupId",
+    "serviceLoss": "release sockets; preserve ENABLED; require explicit retry",
+    "processRestart": "restore config/policy; never restore live values",
+    "androidHomeCapability": false,
+    "orientation": "portrait"
+  },
+  "evidence": {
+    "crossAppUnit": "5/5",
+    "sourcePolicyUnit": "12/12",
+    "lifecycleCorruptionPermissionUnit": "15/15",
+    "externalProcessProbe": "API 34; 2/2",
+    "soakSenderSmoke": "3.002s; 4 connections; 100 sentences/s configured; 254 valid; 14 bad; 0 write failures",
+    "thirtyMinuteAppSoak": "NOT_RUN",
+    "fullRepositoryGate": "DEFERRED_TO_P7",
+    "physicalDevice": "UNVERIFIED_PHYSICAL_DEVICE"
+  }
+}

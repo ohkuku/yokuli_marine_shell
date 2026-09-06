@@ -778,3 +778,15 @@ Green 从同一 `InstalledAppBinding` 派生目录、动态 token、视觉与内
 ### English translation — NMEA Sources P5
 
 P5 begins with failing installation, projection, status, and three-size contracts. Green installs both apps from one binding each, keeps the existing Start document unchanged, and projects the same process-owned runtime truth into pages, tiles, and two independent status entries. A self-review Red exposed mixed receiving/waiting truth and was corrected before the scoped static, JVM, composition, and API 34 visual/navigation gates passed. Full repository gates remain deferred to P7; physical-device behavior is not claimed.
+
+## NMEA Sources P6 — 跨应用、生命周期与故障边界
+
+初始 Red 缺少跨应用 adapter、耐久 sender 与阶段证据。Green 从 composition root 把唯一 OS 采用结果接入 Chart 既有只读 port；自审 Red 随后证明首版只投影 Position，Heading 与 COG/SOG 没有抵达消费者。修正严格要求同源同 frame group 才组合 accuracy、time、variation 与 course/speed，不同帧不拼成虚假向量，所选位置不可用时断开且不切备用源。
+
+第二轮 Red 覆盖前台服务单独丢失、语义／wire 配置损坏和独立进程恢复。runtime 现在由同一 actor 在服务丢失时释放 socket/retry，保留用户 `ENABLED` 意图并要求明确恢复；损坏 entry 被隔离，wire 失败不清空原文件。API 34 探针先经真实 TCP/RMC 与正式 `Select` 建立 live，再由宿主 force-stop；新进程只恢复配置/策略，live/counters/catalog 不复活。第一次探针依赖自动采用时间并超时，修正为正式选择事务而非加 sleep 后 2/2 通过。
+
+本阶段定向证据为跨应用 5/5、选源 12/12、lifecycle/corruption/permission 15/15、外部进程 2/2，以及四连接 100 句/秒的 3 秒 sender smoke。冻结 sender 默认 30 分钟，但完整应用级 30 分钟资源曲线没有执行，明确记 `NOT_RUN`；锁屏、Doze、OEM、真实网络/GNSS、功耗与三星方屏为 `UNVERIFIED_PHYSICAL_DEVICE`。全仓 test/lint/release 只在 P7 执行。
+
+### English translation — NMEA Sources P6
+
+P6 connects the single selected marine-data truth to Chart's existing read-only port, then uses follow-up Reds to prevent partial motion projection, cross-frame assembly, foreground-service orphan sockets, destructive corruption recovery, and live-state resurrection across an external force-stop. Scoped JVM and API 34 process evidence passes. The reusable sender defaults to the required 30-minute/four-connection/100-sentence profile; only its short smoke was run, so the full app soak and all physical-device background, GNSS, radio, power, and square-screen claims remain explicitly unverified. Full repository gates remain P7-only.
