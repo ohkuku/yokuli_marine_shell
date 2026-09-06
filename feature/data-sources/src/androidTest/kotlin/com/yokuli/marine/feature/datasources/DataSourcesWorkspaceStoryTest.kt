@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.yokuli.marine.core.design.YokuliTheme
+import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.data.model.ConnectionId
 import com.yokuli.marine.data.phone.PhoneLocationSnapshot
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
@@ -26,7 +27,7 @@ class DataSourcesWorkspaceStoryTest {
             DataSourcesLocalState(),
             0L,
         )
-        compose.setContent { YokuliTheme { DataSourcesWorkspace(state, {}) } }
+        compose.setContent { YokuliTheme(WpThemeSpec()) { DataSourcesWorkspace(state, {}) } }
 
         compose.onNodeWithTag(DataSourcesTestTags.ROOT).assertIsDisplayed()
         compose.onNodeWithTag(DataSourcesTestTags.EMPTY).assertIsDisplayed()
@@ -43,7 +44,7 @@ class DataSourcesWorkspaceStoryTest {
             DataSourcesLocalState(),
             0L,
         )
-        compose.setContent { YokuliTheme { DataSourcesWorkspace(state) { action = it } } }
+        compose.setContent { YokuliTheme(WpThemeSpec()) { DataSourcesWorkspace(state) { action = it } } }
 
         compose.onNodeWithTag(DataSourcesTestTags.SENTENCE_VIEW).performClick()
         assert(action == DataSourcesUiAction.ChangeView(DataSourcesViewMode.SENTENCES))
