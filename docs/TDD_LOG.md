@@ -45,6 +45,18 @@ P0 begins from the real clean Shell SHA and the owner-selected read-only `codex/
 
 P1 starts with a meaningful failing static contract and a platform-neutral scaffold. A first green implementation and its first pushed correction candidate were both rejected by counterexample review. Session linearization, split capacity, nested bounds, retained invalidity, frame ordering, UDP provenance, strict checksum/numeric/date/coordinate lexemes, conversion overflow and value invariants now have failing-before-green contracts. The current correction candidate passes 83 JVM tests and all seven P1 static contracts. Transport, Android, selection transactions and UI remain outside this phase.
 
+## NMEA_SOURCES — P2 Real Input Runtime and NMEA Input Feature
+
+### Red
+
+起点：`d746910…`。先加入 P2 静态合同，锁定两条新模块依赖方向、进程级 runtime 所有权、用户意图／传输／输入健康三条正交事实、有界重试与诊断、private connected-device foreground service、双语 Feature、真实 loopback 和页面退出不停止等具名场景。首次运行结果为 `7 FAIL / 1 ERROR / 1 PASS`；唯一立即通过的是 P2 不得提前安装磁贴／Data Sources，其他失败均由模块、runtime、UI 和测试尚不存在造成。
+
+行为 Red 分三组并行建立：pure connection/runtime policy、生产 socket/DataStore integration，以及 Feature projector/coordinator。P2 不修改 `productionInstalledApps`、`productionCatalog`、`productionHostPort` 或默认 Start Document；可独立 host 的 Workspace 不等于已在 All Apps 正式安装，正式注册严格留给 P5。
+
+### English translation
+
+P2 begins at the corrected P1 commit with a nine-part static contract. Its first run is meaningfully red at seven failures, one missing-file error and one passing phase-boundary assertion. Separate failing behavior suites freeze pure runtime policy, real TCP/UDP and persistence integration, and the NMEA Input feature projection/coordinator. Production Shell registration, tiles, status strip and Data Sources remain outside P2.
+
 ## Marine Shell Final Product-Model Correction
 
 ### Baseline
