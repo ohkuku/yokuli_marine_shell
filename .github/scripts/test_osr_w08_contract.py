@@ -16,7 +16,7 @@ class OsRedesignW08ContractTest(unittest.TestCase):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         self.assertIn("GoogleMap.MAP_TYPE_SATELLITE", surface)
         self.assertIn("GoogleMap.MAP_TYPE_NORMAL", surface)
-        self.assertIn("state.mapViewMode != com.yokuli.marine.map.domain.MapViewMode.MARINE", graph)
+        self.assertIn("chartSurfaceKind(state.mapViewMode, BuildConfig.GOOGLE_MAPS_CONFIGURED)", graph)
         self.assertIn("BuildConfig.GOOGLE_MAPS_CONFIGURED", graph)
         self.assertNotIn("ChartDisplaySelection.None &&", graph)
         self.assertIn("chartLibraryAccess = runtime.chartLibraryAccess", graph)

@@ -14,6 +14,7 @@ import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.domain.MapViewMode
 import com.yokuli.marine.map.domain.MapTileSnapshot
 import com.yokuli.marine.map.domain.MapTileSnapshotSink
 import com.yokuli.marine.map.domain.MapViewportInsets
@@ -162,6 +163,15 @@ val LocalProductionShellRuntime = staticCompositionLocalOf<ProductionShellRuntim
     error("Production shell runtime was not provided")
 }
 
+internal enum class ChartSurfaceKind { GOOGLE, OFFLINE }
+
+internal fun chartSurfaceKind(mapViewMode: MapViewMode, googleMapsConfigured: Boolean): ChartSurfaceKind =
+    if (mapViewMode != MapViewMode.MARINE && googleMapsConfigured) {
+        ChartSurfaceKind.GOOGLE
+    } else {
+        ChartSurfaceKind.OFFLINE
+    }
+
 private fun GpxImportUiState.toNavigationGpxState(): NavigationGpxUiState = when (this) {
     GpxImportUiState.Idle -> NavigationGpxUiState.Idle
     is GpxImportUiState.Inspecting -> NavigationGpxUiState.Inspecting
@@ -271,9 +281,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
                 if (runtime.heavyContentReady) {
                     { state, onAction, onQueryPortChanged, modifier ->
-                    if (state.mapViewMode != com.yokuli.marine.map.domain.MapViewMode.MARINE &&
-                        BuildConfig.GOOGLE_MAPS_CONFIGURED
-                    ) {
+                    if (chartSurfaceKind(state.mapViewMode, BuildConfig.GOOGLE_MAPS_CONFIGURED) == ChartSurfaceKind.GOOGLE) {
                             GoogleMarineChartSurface(
                                 state = state,
                                 onAction = onAction,

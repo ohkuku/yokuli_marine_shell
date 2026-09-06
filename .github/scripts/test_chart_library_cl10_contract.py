@@ -69,7 +69,7 @@ class ChartLibraryCl10ContractTest(unittest.TestCase):
     def test_google_is_selected_by_explicit_map_view_not_chart_library_presence(self):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         google_branch = graph.split("val chartSurface", 1)[1].split("GoogleMarineChartSurface(", 1)[0].rsplit("if (", 1)[-1]
-        self.assertIn("MapViewMode.MARINE", google_branch)
+        self.assertIn("chartSurfaceKind", google_branch)
         self.assertIn("GOOGLE_MAPS_CONFIGURED", google_branch)
         self.assertNotIn("ChartDisplaySelection", google_branch)
         self.assertNotIn("activeChartPackageId", google_branch)

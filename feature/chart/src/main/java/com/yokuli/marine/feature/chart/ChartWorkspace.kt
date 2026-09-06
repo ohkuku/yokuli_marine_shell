@@ -319,6 +319,8 @@ private fun MapRootChrome(
 private fun MapTruthStrip(state: MapState, onAction: (MapAction) -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalWpTheme.current
     val status = when {
+        state.mapViewMode == MapViewMode.STANDARD -> R.string.map_standard_view_active
+        state.mapViewMode == MapViewMode.SATELLITE -> R.string.map_satellite_view_active
         state.renderer.readiness == MapRendererReadiness.ERROR -> R.string.map_renderer_error
         state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_MISSING -> R.string.map_package_missing
         state.renderer.tileCoverage == MapTileCoverageStatus.DEGRADED -> R.string.map_package_degraded

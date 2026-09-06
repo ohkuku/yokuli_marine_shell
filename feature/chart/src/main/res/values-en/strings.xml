@@ -38,6 +38,8 @@
     <string name="map_view_marine">marine</string>
     <string name="map_view_standard">standard</string>
     <string name="map_view_satellite">satellite</string>
+    <string name="map_standard_view_active">STANDARD MAP VIEW</string>
+    <string name="map_satellite_view_active">SATELLITE MAP VIEW</string>
     <string name="map_target_mark">mark</string>
     <string name="map_target_go_to">go to</string>
     <string name="map_target_default_name">map target</string>
