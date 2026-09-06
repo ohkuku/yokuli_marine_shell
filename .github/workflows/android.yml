@@ -41,132 +41,132 @@ jobs:
       - name: CI helper unit tests
         id: ci_helpers
         continue-on-error: true
-        run: python3 -m unittest discover .github/scripts 'test_*.py'
+        run: bash .github/scripts/run_ci_capture.sh ci-helpers -- python3 -m unittest discover .github/scripts 'test_*.py'
       - name: Launcher Stage 0 reference contract
         id: launcher_stage0_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage0_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage0-contract -- python3 .github/scripts/test_launcher_stage0_contract.py
       - name: NMEA Sources P0 implementation baseline contract
         id: nmea_sources_p0_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_nmea_sources_p0_contract.py
+        run: bash .github/scripts/run_ci_capture.sh nmea-sources-p0-contract -- python3 .github/scripts/test_nmea_sources_p0_contract.py
       - name: NMEA Sources P1 pure data contract
         id: nmea_sources_p1_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_nmea_sources_p1_contract.py
+        run: bash .github/scripts/run_ci_capture.sh nmea-sources-p1-contract -- python3 .github/scripts/test_nmea_sources_p1_contract.py
       - name: NMEA Sources P2 real input runtime contract
         id: nmea_sources_p2_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_nmea_sources_p2_contract.py
+        run: bash .github/scripts/run_ci_capture.sh nmea-sources-p2-contract -- python3 .github/scripts/test_nmea_sources_p2_contract.py
       - name: NMEA Sources P3 unified source-selection contract
         id: nmea_sources_p3_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_nmea_sources_p3_contract.py
+        run: bash .github/scripts/run_ci_capture.sh nmea-sources-p3-contract -- python3 .github/scripts/test_nmea_sources_p3_contract.py
       - name: NMEA Sources P4 Data Sources application contract
         id: nmea_sources_p4_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_nmea_sources_p4_contract.py
+        run: bash .github/scripts/run_ci_capture.sh nmea-sources-p4-contract -- python3 .github/scripts/test_nmea_sources_p4_contract.py
       - name: NMEA Sources P5 Shell installation contract
         id: nmea_sources_p5_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_nmea_sources_p5_contract.py
+        run: bash .github/scripts/run_ci_capture.sh nmea-sources-p5-contract -- python3 .github/scripts/test_nmea_sources_p5_contract.py
       - name: NMEA Sources P6 cross-app and lifecycle contract
         id: nmea_sources_p6_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_nmea_sources_p6_contract.py
+        run: bash .github/scripts/run_ci_capture.sh nmea-sources-p6-contract -- python3 .github/scripts/test_nmea_sources_p6_contract.py
       - name: NMEA Sources P7 final delivery contract
         id: nmea_sources_p7_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_nmea_sources_p7_contract.py
+        run: bash .github/scripts/run_ci_capture.sh nmea-sources-p7-contract -- python3 .github/scripts/test_nmea_sources_p7_contract.py
       - name: Release metadata contract
         id: release_metadata
         continue-on-error: true
-        run: bash .github/scripts/test-resolve-release-metadata.sh
+        run: bash .github/scripts/run_ci_capture.sh release-metadata -- bash .github/scripts/test-resolve-release-metadata.sh
       - name: Workflow topology contract
         id: ci_contract
         continue-on-error: true
-        run: bash .github/scripts/test-ci-contract.sh
+        run: bash .github/scripts/run_ci_capture.sh ci-contract -- bash .github/scripts/test-ci-contract.sh
       - name: Encrypted secrets workflow contract
         id: secrets_contract
         continue-on-error: true
-        run: bash .github/scripts/test-secrets-manager.sh
+        run: bash .github/scripts/run_ci_capture.sh secrets-contract -- bash .github/scripts/test-secrets-manager.sh
       - name: Unit tests
         id: unit_tests
         continue-on-error: true
         timeout-minutes: 20
-        run: ./gradlew --no-daemon test --stacktrace
+        run: bash .github/scripts/run_ci_capture.sh unit-tests -- ./gradlew --no-daemon test --stacktrace
       - name: Android lint
         id: lint
         continue-on-error: true
         timeout-minutes: 15
-        run: ./gradlew --no-daemon lintStandaloneDebug --stacktrace
+        run: bash .github/scripts/run_ci_capture.sh lint -- ./gradlew --no-daemon lintStandaloneDebug --stacktrace
       - name: Assemble standalone debug and release-audit APKs
         id: assemble
         continue-on-error: true
         timeout-minutes: 15
-        run: ./gradlew --no-daemon assembleStandaloneDebug assembleStandaloneRelease --stacktrace
+        run: bash .github/scripts/run_ci_capture.sh assemble -- ./gradlew --no-daemon assembleStandaloneDebug assembleStandaloneRelease --stacktrace
       - name: Launcher Stage 1 product-surface contract
         id: launcher_stage1_contract
         continue-on-error: true
-        run: |
-          python3 .github/scripts/test_launcher_stage1_contract.py
-          bash .github/scripts/test-release-product-surface.sh
+        run: >-
+          bash .github/scripts/run_ci_capture.sh launcher-stage1-contract -- bash -c
+          'python3 .github/scripts/test_launcher_stage1_contract.py && bash .github/scripts/test-release-product-surface.sh'
       - name: Launcher Stage 2 engine-boundary contract
         id: launcher_stage2_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage2_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage2-contract -- python3 .github/scripts/test_launcher_stage2_contract.py
       - name: Launcher Stage 2.5 WP8 reference-evidence contract
         id: launcher_stage25_contract
         continue-on-error: true
-        run: |
-          python3 .github/scripts/test_launcher_stage25_contract.py
-          python3 .github/scripts/validate_wp8_reference.py --require-human-review
+        run: >-
+          bash .github/scripts/run_ci_capture.sh launcher-stage25-contract -- bash -c
+          'python3 .github/scripts/test_launcher_stage25_contract.py && python3 .github/scripts/validate_wp8_reference.py --require-human-review'
       - name: Launcher Stage 3 geometry and Start-document contract
         id: launcher_stage3_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage3_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage3-contract -- python3 .github/scripts/test_launcher_stage3_contract.py
       - name: Launcher Stage 4 deterministic Engine-state contract
         id: launcher_stage4_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage4_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage4-contract -- python3 .github/scripts/test_launcher_stage4_contract.py
       - name: Launcher Stage 5 interactive-pager contract
         id: launcher_stage5_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage5_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage5-contract -- python3 .github/scripts/test_launcher_stage5_contract.py
       - name: Launcher Stage 6 spatial-grid contract
         id: launcher_stage6_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage6_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage6-contract -- python3 .github/scripts/test_launcher_stage6_contract.py
       - name: Launcher Stage 7 complete-edit contract
         id: launcher_stage7_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage7_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage7-contract -- python3 .github/scripts/test_launcher_stage7_contract.py
       - name: Launcher Stage 8 pin/unpin contract
         id: launcher_stage8_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage8_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage8-contract -- python3 .github/scripts/test_launcher_stage8_contract.py
       - name: Launcher Stage 9 navigation and virtual-key contract
         id: launcher_stage9_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage9_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage9-contract -- python3 .github/scripts/test_launcher_stage9_contract.py
       - name: Launcher Stage 10 durable-restore and recovery contract
         id: launcher_stage10_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_launcher_stage10_contract.py
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage10-contract -- python3 .github/scripts/test_launcher_stage10_contract.py
       - name: Launcher Stage 11 performance and fidelity candidate contract
         id: launcher_stage11_contract
         continue-on-error: true
-        run: |
-          python3 .github/scripts/test_launcher_stage11_contract.py
-          python3 .github/scripts/validate_stage11_fidelity.py
+        run: >-
+          bash .github/scripts/run_ci_capture.sh launcher-stage11-contract -- bash -c
+          'python3 .github/scripts/test_launcher_stage11_contract.py && python3 .github/scripts/validate_stage11_fidelity.py'
       - name: Shell-App tile installation contract
         id: shell_app_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_shell_app_contract.py
+        run: bash .github/scripts/run_ci_capture.sh shell-app-contract -- python3 .github/scripts/test_shell_app_contract.py
       - name: Chart C12 cumulative delivery contract
         id: chart_c12_contract
         continue-on-error: true
-        run: python3 .github/scripts/test_chart_c12_contract.py
+        run: bash .github/scripts/run_ci_capture.sh chart-c12-contract -- python3 .github/scripts/test_chart_c12_contract.py
       - name: Upload quality-gate candidate APKs
         if: steps.ci_helpers.outcome == 'success' && steps.launcher_stage0_contract.outcome == 'success' && steps.nmea_sources_p0_contract.outcome == 'success' && steps.nmea_sources_p1_contract.outcome == 'success' && steps.nmea_sources_p2_contract.outcome == 'success' && steps.nmea_sources_p3_contract.outcome == 'success' && steps.nmea_sources_p4_contract.outcome == 'success' && steps.nmea_sources_p5_contract.outcome == 'success' && steps.nmea_sources_p6_contract.outcome == 'success' && steps.nmea_sources_p7_contract.outcome == 'success' && steps.launcher_stage1_contract.outcome == 'success' && steps.launcher_stage2_contract.outcome == 'success' && steps.launcher_stage25_contract.outcome == 'success' && steps.launcher_stage3_contract.outcome == 'success' && steps.launcher_stage4_contract.outcome == 'success' && steps.launcher_stage5_contract.outcome == 'success' && steps.launcher_stage6_contract.outcome == 'success' && steps.launcher_stage7_contract.outcome == 'success' && steps.launcher_stage8_contract.outcome == 'success' && steps.launcher_stage9_contract.outcome == 'success' && steps.launcher_stage10_contract.outcome == 'success' && steps.launcher_stage11_contract.outcome == 'success' && steps.shell_app_contract.outcome == 'success' && steps.chart_c12_contract.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
@@ -280,6 +280,26 @@ jobs:
             if [ "${!result}" != success ]; then echo "::error title=$result failed::Open the job summary and FAILURE artifact."; failed=1; fi
           done
           exit "$failed"
+      - name: Compute Codex report artifact identity
+        if: always()
+        id: codex_identity
+        run: echo "sha12=${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      - name: Build bounded Codex build-job report
+        if: always()
+        run: >-
+          python3 .github/scripts/build_codex_job_report.py
+          --job build
+          --status '${{ job.status }}'
+          --head-sha '${{ github.sha }}'
+          --output build/codex-ci/job-report
+      - name: Upload Codex build-job report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: CODEX-JOB-build-${{ steps.codex_identity.outputs.sha12 }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/codex-ci/job-report
+          if-no-files-found: error
+          retention-days: 30
 
   integration:
     name: Chart MBTiles, Room, and WP8 Shell on API 34
@@ -354,6 +374,26 @@ jobs:
           path: .github-failure-bundle/integration-api34
           if-no-files-found: error
           retention-days: 30
+      - name: Compute Codex report artifact identity
+        if: always()
+        id: codex_identity
+        run: echo "sha12=${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      - name: Build bounded Codex API 34 job report
+        if: always()
+        run: >-
+          python3 .github/scripts/build_codex_job_report.py
+          --job api34
+          --status '${{ job.status }}'
+          --head-sha '${{ github.sha }}'
+          --output build/codex-ci/job-report
+      - name: Upload Codex API 34 job report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: CODEX-JOB-api34-${{ steps.codex_identity.outputs.sha12 }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/codex-ci/job-report
+          if-no-files-found: error
+          retention-days: 30
 
   api-compatibility:
     name: Android 16 / API 36 reduced-motion smoke
@@ -418,6 +458,26 @@ jobs:
           path: .github-failure-bundle/compatibility-api36
           if-no-files-found: error
           retention-days: 30
+      - name: Compute Codex report artifact identity
+        if: always()
+        id: codex_identity
+        run: echo "sha12=${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      - name: Build bounded Codex API 36 job report
+        if: always()
+        run: >-
+          python3 .github/scripts/build_codex_job_report.py
+          --job api36
+          --status '${{ job.status }}'
+          --head-sha '${{ github.sha }}'
+          --output build/codex-ci/job-report
+      - name: Upload Codex API 36 job report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: CODEX-JOB-api36-${{ steps.codex_identity.outputs.sha12 }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/codex-ci/job-report
+          if-no-files-found: error
+          retention-days: 30
 
   stage11-performance:
     name: Stage 11 API 34 emulator performance trend
@@ -471,7 +531,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: stage11-performance-reports
+          name: stage11-performance-reports-${{ github.sha }}
           path: |
             benchmark/shell/build/outputs/**
             benchmark/shell/build/reports/**
@@ -488,6 +548,67 @@ jobs:
         with:
           name: FAILURE-stage11-performance-${{ github.run_id }}-${{ github.run_attempt }}
           path: .github-failure-bundle/stage11-performance
+          if-no-files-found: error
+          retention-days: 30
+      - name: Compute Codex report artifact identity
+        if: always()
+        id: codex_identity
+        run: echo "sha12=${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      - name: Build bounded Codex performance job report
+        if: always()
+        run: >-
+          python3 .github/scripts/build_codex_job_report.py
+          --job performance
+          --status '${{ job.status }}'
+          --head-sha '${{ github.sha }}'
+          --output build/codex-ci/job-report
+      - name: Upload Codex performance job report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: CODEX-JOB-performance-${{ steps.codex_identity.outputs.sha12 }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/codex-ci/job-report
+          if-no-files-found: error
+          retention-days: 30
+
+  codex-report:
+    name: Compose downloadable Codex repair report
+    if: always()
+    needs: [build, integration, api-compatibility, stage11-performance]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Compute Codex report artifact identity
+        id: codex_identity
+        run: echo "sha12=${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      - name: Download this run's bounded per-job reports
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: CODEX-JOB-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/codex-ci/downloaded-jobs
+      - name: Compose commit-bound unified report
+        if: always()
+        run: >-
+          python3 .github/scripts/compose_codex_ci_report.py
+          --input build/codex-ci/downloaded-jobs
+          --output build/codex-ci/unified-report
+          --repository '${{ github.repository }}'
+          --workflow '${{ github.workflow }}'
+          --head-sha '${{ github.sha }}'
+          --branch '${{ github.head_ref || github.ref_name }}'
+          --run-id '${{ github.run_id }}'
+          --run-attempt '${{ github.run_attempt }}'
+          --job-result 'build=${{ needs.build.result }}'
+          --job-result 'api34=${{ needs.integration.result }}'
+          --job-result 'api36=${{ needs.api-compatibility.result }}'
+          --job-result 'performance=${{ needs.stage11-performance.result }}'
+      - name: Upload the one report used for Codex repair
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: CODEX-CI-REPORT-${{ steps.codex_identity.outputs.sha12 }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/codex-ci/unified-report
           if-no-files-found: error
           retention-days: 30
 

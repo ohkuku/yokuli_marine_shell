@@ -50,7 +50,7 @@ copy_path() {
   fi
 }
 
-for module in app-shell benchmark/shell baselineprofile/shell core/design core/model core/marine-data core/shell-contract core/shell-engine adapter/marine-data-android adapter/map-offline adapter/map-storage feature/chart feature/data-sources feature/desktop feature/nmea-input feature/settings; do
+for module in app-shell benchmark/shell baselineprofile/shell core/design core/model core/marine-data core/shell-contract core/shell-engine core/navigation core/chart-library adapter/marine-data-android adapter/map-offline adapter/map-storage feature/chart feature/chart-library feature/data feature/data-sources feature/desktop feature/navigation feature/nmea-input feature/preferences feature/settings; do
   copy_path "$module/build/reports"
   copy_path "$module/build/test-results"
   copy_path "$module/build/outputs/androidTest-results"

@@ -8,7 +8,7 @@
 
 | 工作流 | 触发 | 必须证明 | 输出 |
 |---|---|---|---|
-| `android.yml` | PR、`main`／`codex/**` push、手动 | CI helper、版本/拓扑合同、JVM 测试、lint、双 debug APK、API 34 完整故事、API 36 reduced-motion smoke | 报告、candidate／`UNVERIFIED`、全部门禁后的 `VERIFIED` APK |
+| `android.yml` | PR、`main`／`codex/**` push、手动 | CI helper、版本/拓扑合同、JVM 测试、lint、standalone debug/release audit、API 34 完整故事、API 36 reduced-motion smoke | 统一 Codex 报告、raw reports、candidate／`UNVERIFIED`、全部门禁后的 `VERIFIED` APK |
 | `nightly.yml` | 周二/周五、手动 | JVM 回归及 API 34/36 全 UI 故事 | 30 天兼容性报告或失败证据 |
 | `release.yml` | 语义 tag、手动 | metadata、签名预检、API 36 UI 合同、测试、lint、APK/AAB 签名校验 | 90 天签名制品和不可覆盖 GitHub Release |
 
@@ -22,6 +22,25 @@
 - `UNVERIFIED-yokuli-os-debug-*`：仅供诊断，至少一个质量门禁失败。
 - `VERIFIED-yokuli-os-debug-*`：build、API 34 和 API 36 均通过。
 - `VERIFIED-yokuli-os-vX.Y.Z-signed`：已校验签名的 APK/AAB 与 checksums。
+
+### CI-first Codex 返工报告
+
+每次 `codex/**` push 后，无论门禁成功、失败或部分 job 被依赖关系跳过，`codex-report` job 都尝试上传一个提交绑定的制品：
+
+```text
+CODEX-CI-REPORT-<sha12>-<run_id>-<attempt>
+```
+
+这是继续同一个实现工作的默认唯一输入。下载并交回整个 artifact（GitHub 会以 zip 下载），不要只复制网页日志。Codex 先核对 `manifest.json.headSha`，然后读取 `CODEX_REPORT.md` 定点返工。只有报告出现 `EXTRA_ARTIFACT_REQUIRED` 时，才额外下载它明确点名的 raw artifact。
+
+四个原始报告仍可独立下载：
+
+- `yokuli-os-build-reports-<full sha>`
+- `yokuli-os-api34-reports-<full sha>`
+- `yokuli-os-api36-reports-<full sha>`
+- `stage11-performance-reports-<full sha>`
+
+统一报告及 per-job Codex 报告保留 30 天；常规 unit/lint/API raw reports 保留 14 天；性能 trace 和 verified alpha 保留 30 天。捕获器不记录命令参数或环境变量，汇总器也不会读取 `local.properties`、Gradle properties、签名材料或个人 vault。
 
 `main` 分支应要求 build、API 34 stories、API 36 smoke 三个 check；不要在 PR 要求只对 push/manual 运行的 verified artifact job。
 
@@ -53,7 +72,7 @@ This document is the operating contract for pull requests, CI artifacts, diagnos
 
 | Workflow | Trigger | Required proof | Output |
 |---|---|---|---|
-| `android.yml` | PR, `main`/`codex/**` push, manual | CI helper, release-metadata and workflow contracts; JVM tests; lint; two debug variants; API 34 full stories; API 36 reduced-motion smoke | reports; candidate/`UNVERIFIED`; post-gate `VERIFIED` APKs |
+| `android.yml` | PR, `main`/`codex/**` push, manual | CI helper, release-metadata and workflow contracts; JVM tests; lint; standalone debug/release audit; API 34 full stories; API 36 reduced-motion smoke | unified Codex report; raw reports; candidate/`UNVERIFIED`; post-gate `VERIFIED` APKs |
 | `nightly.yml` | Tue/Fri schedule, manual | JVM regression plus all UI stories on API 34 and 36 | 30-day compatibility reports/failure evidence |
 | `release.yml` | semantic tag, manual | metadata/topology, signing preflight, API 36 UI contract, tests, lint, signed APK/AAB verification | 90-day signed artifact and immutable GitHub Release |
 
@@ -76,6 +95,12 @@ Artifacts carry trust in their name:
 - `UNVERIFIED-yokuli-os-debug-*`: installable diagnostic only; a quality gate failed.
 - `VERIFIED-yokuli-os-debug-*`: build, API 34 stories, and API 36 smoke all passed.
 - `VERIFIED-yokuli-os-vX.Y.Z-signed`: signature-checked release APK/AAB assets plus checksums.
+
+### CI-first Codex repair artifact
+
+Every `codex/**` push produces, on both success and failure, one commit-bound artifact named `CODEX-CI-REPORT-<sha12>-<run_id>-<attempt>`. Return that complete download to Codex for the next repair round. Codex first verifies `manifest.json.headSha`, then follows `CODEX_REPORT.md`; raw artifacts are needed only when the report explicitly names one with `EXTRA_ARTIFACT_REQUIRED`.
+
+The original `yokuli-os-build-reports-<full sha>`, `yokuli-os-api34-reports-<full sha>`, `yokuli-os-api36-reports-<full sha>`, and `stage11-performance-reports-<full sha>` remain available. The bounded unified/per-job reports are retained for 30 days. Capture metadata excludes command arguments and environment variables, and the report allow-list excludes local/Gradle properties, signing material, and the personal vault.
 
 GitHub supports job summaries through `GITHUB_STEP_SUMMARY`, workflow commands such as `::error`, and artifacts for transferring outputs between jobs and retaining test evidence. See [workflow commands](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands) and [workflow artifacts](https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts).
 

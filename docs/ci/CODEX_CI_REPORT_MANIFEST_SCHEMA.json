@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Yokuli Codex CI Report Manifest",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "repository",
+    "workflow",
+    "headSha",
+    "sha12",
+    "runId",
+    "runAttempt",
+    "overall",
+    "jobs"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "repository": {
+      "const": "ohkuku/yokuli_marine_shell"
+    },
+    "workflow": {
+      "type": "string"
+    },
+    "headSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha12": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "runAttempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "overall": {
+      "enum": [
+        "SUCCESS",
+        "FAILURE",
+        "CANCELLED"
+      ]
+    },
+    "jobs": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

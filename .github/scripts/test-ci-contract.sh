@@ -26,7 +26,7 @@ for action in \
 done
 grep -Fq 'actions/download-artifact@v8' "$android" || fail 'verified artifact must be transferred with digest checking'
 
-for job in 'build:' 'integration:' 'api-compatibility:' 'stage11-performance:' 'verified-debug:'; do
+for job in 'build:' 'integration:' 'api-compatibility:' 'stage11-performance:' 'codex-report:' 'verified-debug:'; do
   grep -Fq "  $job" "$android" || fail "Android CI missing job $job"
 done
 for check_id in 'ci_helpers' 'release_metadata' 'ci_contract' 'secrets_contract'; do
@@ -88,7 +88,7 @@ grep -Fq 'python3 .github/scripts/validate_stage11_fidelity.py' "$android" || fa
 grep -Fq 'LAUNCHER_STAGE11_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 11 result must participate in final enforcement'
 grep -Fq 'bash .github/scripts/run_device_tests.sh performance' "$android" || fail 'Stage 11 Macrobenchmark must use the diagnostic wrapper'
 grep -Fq ':benchmark:shell:connectedStandaloneBenchmarkAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Stage 11 wrapper must run the real benchmark task'
-grep -Fq 'stage11-performance-reports' "$android" || fail 'Stage 11 measurements and traces must be downloadable'
+grep -Fq 'name: stage11-performance-reports-${{ github.sha }}' "$android" || fail 'Stage 11 measurements and traces must be commit-bound'
 for workflow in "$android" "$release" "$nightly"; do
   grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$workflow" || \
     fail "$(basename "$workflow") must inject the optional Google Maps Android key"
@@ -116,6 +116,26 @@ grep -Fq 'device-logcat.txt' "$repo_root/.github/scripts/collect_failure_bundle.
 if grep -Eq 'local\.properties|gradle\.properties|ANDROID_SIGNING_KEY|KEYSTORE_PASSWORD' "$repo_root/.github/scripts/collect_failure_bundle.sh"; then
   fail 'failure bundle allow-list references credential-bearing data'
 fi
+
+for helper in run_ci_capture.sh build_codex_job_report.py compose_codex_ci_report.py test_codex_ci_report.py; do
+  [[ -f "$repo_root/.github/scripts/$helper" ]] || fail "Codex report helper missing: $helper"
+done
+for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract unit-tests lint assemble; do
+  grep -Fq "run_ci_capture.sh $captured_step --" "$android" || fail "important build step is not captured: $captured_step"
+done
+grep -Fq 'if: always()' "$android" || fail 'Codex reports must be generated even after failures'
+grep -Fq 'needs: [build, integration, api-compatibility, stage11-performance]' "$android" || fail 'unified Codex report must observe every authoritative job'
+for job in build api34 api36 performance; do
+  grep -Fq "CODEX-JOB-$job-" "$android" || fail "missing bounded Codex job artifact for $job"
+done
+grep -Fq 'actions/download-artifact@v8' "$android" || fail 'unified Codex report must download per-job evidence with digest verification'
+grep -Fq 'compose_codex_ci_report.py' "$android" || fail 'unified Codex report composer must run'
+grep -Fq 'CODEX-CI-REPORT-${{ steps.codex_identity.outputs.sha12 }}-${{ github.run_id }}-${{ github.run_attempt }}' "$android" || fail 'unified Codex artifact must bind SHA, run, and attempt'
+grep -Fq 'retention-days: 30' "$android" || fail 'Codex evidence needs a 30-day retention declaration'
+for future_module in core/navigation core/chart-library feature/data feature/chart-library feature/navigation feature/preferences; do
+  grep -Fq "$future_module" "$repo_root/.github/scripts/collect_failure_bundle.sh" || fail "failure allow-list is not ready for $future_module"
+done
+grep -Fq 'CODEX-CI-REPORT-<sha12>-' "$repo_root/docs/CODEX_CI_FIRST_WORKFLOW.md" || fail 'developer handoff must name the unified report discovery key'
 
 grep -Fq 'permissions:' "$release" || fail 'release permissions must be explicit'
 grep -Fq 'contents: write' "$release" || fail 'release publication needs contents write only in release workflow'
