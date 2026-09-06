@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W02",
+  "startCommit": "3b3117f119f9c27976f92d21888d0f7f301e03a7",
+  "presentationOnly": true,
+  "cadenceHzUpperBounds": {
+    "chartPosition": 5,
+    "dataOverview": 4,
+    "rawPreview": 4,
+    "nmeaRateAndAge": 1,
+    "startTileFutureUse": 1
+  },
+  "immediateChanges": ["STRUCTURAL", "SAFETY", "DISCONNECT", "INVALID", "STALE", "OVERLOAD"],
+  "rawPreviewPolicy": "BOUNDED_LATEST_WINS_SNAPSHOT",
+  "runtimeOwnershipChanged": false,
+  "ingestionRateChanged": false,
+  "physicalPerformanceEvidence": "UNVERIFIED_PHYSICAL_DEVICE",
+  "verification": "GITHUB_ACTION_PENDING"
+}

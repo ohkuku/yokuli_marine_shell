@@ -12,6 +12,9 @@
     <string name="map_position_fresh_cog">实时位置 · 对地航迹</string>
     <string name="map_position_follow">跟随位置</string>
     <string name="map_position_browse">停止跟随</string>
+    <string name="map_position_coordinate">%1$.5f, %2$.5f</string>
+    <string name="map_position_true_heading_value">真航向 %1$.1f°</string>
+    <string name="map_position_course_speed_value">对地航迹 %1$.1f° · 航速 %2$.1f 节</string>
     <string name="map_renderer_error">地图渲染器错误</string>
     <string name="map_package_missing">海图包已丢失 · 点线仍保留</string>
     <string name="map_package_degraded">部分图块不可用 · 点线仍保留</string>

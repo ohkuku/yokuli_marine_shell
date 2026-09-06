@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.PresentationCadence
+import com.yokuli.marine.core.design.WpLiveField
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliColors
@@ -325,6 +327,12 @@ private fun MapTruthStrip(state: MapState, onAction: (MapAction) -> Unit, modifi
 private fun MapPositionTruth(state: MapState, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
     val position = state.position
+    val render = PositionRenderPolicy.resolve(position)
+    val structuralKey = Triple(
+        position.sourceStatus::class,
+        position.availability,
+        position.observation?.identity?.source,
+    )
     val message = when {
         position.sourceStatus is PositionSourceStatus.NoSource -> stringResource(R.string.map_position_no_source)
         position.availability == PositionAvailability.INVALID -> stringResource(R.string.map_position_invalid)
@@ -335,7 +343,6 @@ private fun MapPositionTruth(state: MapState, onAction: (MapAction) -> Unit) {
             stringResource(R.string.map_position_history_age, age / 1_000L)
         } ?: stringResource(R.string.map_position_history)
         else -> {
-            val render = PositionRenderPolicy.resolve(position)
             when {
                 render.trueHeadingDegrees != null -> stringResource(R.string.map_position_fresh_true_heading)
                 render.courseVector != null -> stringResource(R.string.map_position_fresh_cog)
@@ -343,31 +350,74 @@ private fun MapPositionTruth(state: MapState, onAction: (MapAction) -> Unit) {
             }
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        WpText(message, 10, color = colors.muted, maxLines = 1, modifier = Modifier.testTag("map-position-truth"))
-        if (position.sourceStatus is PositionSourceStatus.Connected &&
-            position.availability == PositionAvailability.FRESH
-        ) {
-            MapTextButton(
-                label = stringResource(
-                    if (position.viewIntent == PositionViewIntent.FOLLOW_POSITION) {
-                        R.string.map_position_browse
-                    } else {
-                        R.string.map_position_follow
-                    },
-                ),
-                tag = "map-position-follow",
+    Column {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            WpLiveField(
+                value = message,
+                structuralKey = structuralKey,
+                cadence = PresentationCadence.ChartPosition,
+                size = 10,
+                color = colors.muted,
+                minValueWidth = 170.dp,
+                modifier = Modifier.testTag("map-position-truth"),
+            )
+            if (position.sourceStatus is PositionSourceStatus.Connected &&
+                position.availability == PositionAvailability.FRESH
             ) {
-                onAction(
-                    MapAction.SetPositionViewIntent(
+                MapTextButton(
+                    label = stringResource(
                         if (position.viewIntent == PositionViewIntent.FOLLOW_POSITION) {
-                            PositionViewIntent.BROWSE
+                            R.string.map_position_browse
                         } else {
-                            PositionViewIntent.FOLLOW_POSITION
+                            R.string.map_position_follow
                         },
                     ),
-                )
+                    tag = "map-position-follow",
+                ) {
+                    onAction(
+                        MapAction.SetPositionViewIntent(
+                            if (position.viewIntent == PositionViewIntent.FOLLOW_POSITION) {
+                                PositionViewIntent.BROWSE
+                            } else {
+                                PositionViewIntent.FOLLOW_POSITION
+                            },
+                        ),
+                    )
+                }
             }
+        }
+        render.point?.let { point ->
+            WpLiveField(
+                value = stringResource(R.string.map_position_coordinate, point.latitude, point.longitude),
+                structuralKey = structuralKey,
+                cadence = PresentationCadence.ChartPosition,
+                size = 11,
+                minValueWidth = 196.dp,
+                modifier = Modifier.testTag("map-position-coordinate"),
+            )
+        }
+        val motion = when {
+            render.trueHeadingDegrees != null -> stringResource(
+                R.string.map_position_true_heading_value,
+                render.trueHeadingDegrees,
+            )
+            render.courseVector != null -> stringResource(
+                R.string.map_position_course_speed_value,
+                render.courseVector.trueDegrees,
+                render.courseVector.speedKnots,
+            )
+            else -> null
+        }
+        motion?.let {
+            WpLiveField(
+                value = it,
+                structuralKey = structuralKey,
+                cadence = PresentationCadence.ChartPosition,
+                size = 10,
+                color = colors.muted,
+                minValueWidth = 196.dp,
+                modifier = Modifier.testTag("map-position-motion"),
+            )
         }
     }
 }

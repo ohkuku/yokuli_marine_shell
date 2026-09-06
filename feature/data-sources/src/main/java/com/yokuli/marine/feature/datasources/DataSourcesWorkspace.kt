@@ -37,8 +37,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.PresentationCadence
 import com.yokuli.marine.core.design.WpAppBarAction
 import com.yokuli.marine.core.design.WpApplicationBar
+import com.yokuli.marine.core.design.WpLiveConsole
+import com.yokuli.marine.core.design.WpLiveField
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliMetrics
@@ -276,7 +279,15 @@ private fun DataRow(row: DataSourceRowUi, index: Int, onAction: (DataSourcesUiAc
         WpText(decisionLabel(row.decision.status), 13, color = if (row.needsAttention) colors.alarm else colors.accent)
         val sources = row.candidates.joinToString(" · ") { candidate -> candidate.sourceName }
         WpText(sources, 11, color = colors.muted, maxLines = 2)
-        row.resolvedValue?.let { WpText(formatValue(it), 16, modifier = Modifier.padding(top = 3.dp)) }
+        row.resolvedValue?.let {
+            WpLiveField(
+                value = formatValue(it),
+                structuralKey = row.decision.status to row.needsAttention,
+                cadence = PresentationCadence.DataOverview,
+                size = 16,
+                modifier = Modifier.padding(top = 3.dp),
+            )
+        }
     }
 }
 
@@ -292,10 +303,13 @@ private fun SentenceRow(row: SentenceRowUi, index: Int, onAction: (DataSourcesUi
     ) {
         WpText(row.sentenceId, 23, weight = FontWeight.Light)
         WpText(sentenceMeaningLabel(row.meaning), 13, color = if (row.current) colors.accent else colors.alarm)
-        WpText(
-            stringResource(R.string.sentence_source_count, row.sourceName, row.receivedCount),
-            11,
+        WpLiveField(
+            value = stringResource(R.string.sentence_source_count, row.sourceName, row.receivedCount),
+            structuralKey = row.current to row.meaning,
+            cadence = PresentationCadence.NmeaStatus,
+            size = 11,
             color = colors.muted,
+            minValueWidth = 180.dp,
         )
     }
 }
@@ -320,7 +334,14 @@ private fun DataDetail(row: DataSourceRowUi, onAction: (DataSourcesUiAction) -> 
                 )
                 WpText(candidate.detail, 12, color = LocalWpTheme.current.muted)
                 WpText(availabilityLabel(candidate.availability), 13, color = LocalWpTheme.current.muted)
-                candidate.value?.let { WpText(formatValue(it), 18) }
+                candidate.value?.let {
+                    WpLiveField(
+                        value = formatValue(it),
+                        structuralKey = candidate.availability to candidate.selected,
+                        cadence = PresentationCadence.DataOverview,
+                        size = 18,
+                    )
+                }
                 if (candidate.selected) WpText(stringResource(R.string.currently_used), 12, color = LocalWpTheme.current.accent)
                 TextCommand(stringResource(R.string.action_use_source), "data-sources-use-${candidate.source.connectionId.value}") {
                     onAction(DataSourcesUiAction.UseSource(row.key, candidate.source))
@@ -345,12 +366,14 @@ private fun SentenceDetail(row: SentenceRowUi, onAction: (DataSourcesUiAction) -
         WpText(row.sourceName, 15, color = LocalWpTheme.current.muted)
         WpText(sentenceMeaningLabel(row.meaning), 14, color = LocalWpTheme.current.accent)
         Spacer(Modifier.height(14.dp))
-        if (row.rawEvidence.isEmpty()) {
+        WpLiveConsole(
+            newestFirstLines = row.rawEvidence.map { it.raw },
+            structuralKey = row.current to row.meaning,
+            cadence = PresentationCadence.RawPreview,
+            maxEntries = 20,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             WpText(stringResource(R.string.raw_empty), 13, color = LocalWpTheme.current.muted)
-        } else {
-            row.rawEvidence.forEach { evidence ->
-                WpText(evidence.raw, 12, modifier = Modifier.padding(vertical = 5.dp), maxLines = 3)
-            }
         }
         TextCommand(stringResource(R.string.action_open_nmea), "data-sources-open-nmea") {
             onAction(DataSourcesUiAction.OpenNmeaInput(row.key.source.connectionId))

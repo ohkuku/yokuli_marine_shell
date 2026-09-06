@@ -12,5 +12,6 @@ dependencies {
     implementation(libs.androidx.compose.animation)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
 }

@@ -12,6 +12,9 @@
     <string name="map_position_fresh_cog">LIVE POSITION · COURSE OVER GROUND</string>
     <string name="map_position_follow">FOLLOW POSITION</string>
     <string name="map_position_browse">STOP FOLLOWING</string>
+    <string name="map_position_coordinate">%1$.5f, %2$.5f</string>
+    <string name="map_position_true_heading_value">HDG %1$.1f° T</string>
+    <string name="map_position_course_speed_value">COG %1$.1f° T · SOG %2$.1f kn</string>
     <string name="map_renderer_error">MAP RENDERER ERROR</string>
     <string name="map_package_missing">CHART PACKAGE MISSING · LINES PRESERVED</string>
     <string name="map_package_degraded">SOME TILES UNAVAILABLE · LINES PRESERVED</string>

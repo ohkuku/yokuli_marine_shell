@@ -52,6 +52,9 @@ import androidx.compose.ui.unit.sp
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpAppBarAction
 import com.yokuli.marine.core.design.WpApplicationBar
+import com.yokuli.marine.core.design.PresentationCadence
+import com.yokuli.marine.core.design.WpLiveConsole
+import com.yokuli.marine.core.design.WpLiveField
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliMetrics
@@ -205,18 +208,21 @@ private fun ConnectionRow(
                     .testTag(NmeaInputTestTags.status(row.id.value)),
             )
             Row(Modifier.padding(top = 3.dp)) {
-                if (row.validFramesPerSecond5s > 0.0) {
-                    WpText(
-                        stringResource(R.string.rate_five_seconds, row.validFramesPerSecond5s),
-                        11,
-                        color = colors.muted,
-                        modifier = Modifier.testTag(NmeaInputTestTags.rate(row.id.value)),
-                    )
-                }
-                row.lastValidFrameAgeMillis?.let { age ->
-                    if (row.validFramesPerSecond5s > 0.0) WpText(" · ", 11, color = colors.muted)
-                    WpText(ageLabel(age), 11, color = colors.muted)
-                }
+                val liveFacts = buildList {
+                    if (row.validFramesPerSecond5s > 0.0) {
+                        add(stringResource(R.string.rate_five_seconds, row.validFramesPerSecond5s))
+                    }
+                    row.lastValidFrameAgeMillis?.let { add(ageLabel(it)) }
+                }.joinToString(" · ")
+                if (liveFacts.isNotEmpty()) WpLiveField(
+                    value = liveFacts,
+                    structuralKey = Triple(row.enabled, row.transport, row.input),
+                    cadence = PresentationCadence.NmeaStatus,
+                    size = 11,
+                    color = colors.muted,
+                    minValueWidth = 148.dp,
+                    modifier = Modifier.testTag(NmeaInputTestTags.rate(row.id.value)),
+                )
             }
         }
         InlineRunAction(row, onAction)
@@ -267,13 +273,15 @@ private fun DetailPage(detail: NmeaConnectionDetailUi) {
         })
         FactRow(stringResource(R.string.fact_transport), transportLabel(row.transport))
         FactRow(stringResource(R.string.fact_input), inputLabel(row.input))
-        FactRow(
+        LiveFactRow(
             stringResource(R.string.fact_last_valid),
             row.lastValidFrameAgeMillis?.let { ageLabel(it) } ?: stringResource(R.string.last_never),
+            Triple(row.enabled, row.transport, row.input),
         )
-        FactRow(
+        LiveFactRow(
             stringResource(R.string.fact_rate),
             stringResource(R.string.rate_five_seconds, row.validFramesPerSecond5s),
+            Triple(row.enabled, row.transport, row.input),
         )
 
         Column(Modifier.testTag(NmeaInputTestTags.DIAGNOSTICS)) {
@@ -301,30 +309,23 @@ private fun DetailPage(detail: NmeaConnectionDetailUi) {
 
         Column(Modifier.testTag(NmeaInputTestTags.RAW_PREVIEW)) {
             SectionTitle(stringResource(R.string.section_recent_input))
-            if (detail.rawPreview.isEmpty()) {
-                WpText(stringResource(R.string.raw_empty), 13, color = colors.muted)
-            } else {
-                detail.rawPreview.forEachIndexed { index, entry -> RawPreviewRow(entry, index)
+            val rawLines = detail.rawPreview.map { entry ->
+                val provenance = when {
+                    !entry.isCurrentSession -> stringResource(R.string.raw_previous_session)
+                    entry.sender != null -> stringResource(R.string.raw_sender, entry.sender)
+                    else -> stringResource(R.string.raw_current_session)
                 }
+                "$provenance\n${entry.raw}"
+            }
+            WpLiveConsole(
+                newestFirstLines = rawLines,
+                structuralKey = detail.row.id to detail.rawPreview.map { it.isCurrentSession },
+                maxEntries = 20,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                WpText(stringResource(R.string.raw_empty), 13, color = colors.muted)
             }
         }
-    }
-}
-
-@Composable
-private fun RawPreviewRow(entry: NmeaRawPreviewUi, order: Int) {
-    val colors = LocalWpTheme.current
-    Column(
-        Modifier.fillMaxWidth().heightIn(min = 58.dp).padding(vertical = 7.dp)
-            .wpEntrance(entry.receivedAtMillis, order),
-    ) {
-        val provenance = when {
-            !entry.isCurrentSession -> stringResource(R.string.raw_previous_session)
-            entry.sender != null -> stringResource(R.string.raw_sender, entry.sender)
-            else -> stringResource(R.string.raw_current_session)
-        }
-        WpText(provenance, 10, color = colors.muted)
-        WpText(entry.raw, 12, maxLines = 3, modifier = Modifier.padding(top = 3.dp))
     }
 }
 
@@ -711,6 +712,24 @@ private fun FactRow(label: String, value: String) {
         WpText(label, 12, color = colors.muted)
         Spacer(Modifier.weight(1f))
         WpText(value, 13, modifier = Modifier.padding(start = 12.dp), maxLines = 2)
+    }
+}
+
+@Composable
+private fun LiveFactRow(label: String, value: String, structuralKey: Any?) {
+    val colors = LocalWpTheme.current
+    Row(Modifier.fillMaxWidth().heightIn(min = 34.dp), verticalAlignment = Alignment.Bottom) {
+        WpText(label, 12, color = colors.muted)
+        Spacer(Modifier.weight(1f))
+        WpLiveField(
+            value = value,
+            structuralKey = structuralKey,
+            cadence = PresentationCadence.NmeaStatus,
+            size = 13,
+            minValueWidth = 148.dp,
+            modifier = Modifier.padding(start = 12.dp),
+            maxLines = 2,
+        )
     }
 }
 
