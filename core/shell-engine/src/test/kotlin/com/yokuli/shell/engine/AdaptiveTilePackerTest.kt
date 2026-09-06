@@ -98,6 +98,23 @@ class AdaptiveTilePackerTest {
     }
 
     @Test
+    fun `two one by one tiles can be vertical or horizontal neighbours`() {
+        val source = document(
+            tile("first", MarineTileSize.ICON_1X1, 0),
+            tile("second", MarineTileSize.ICON_1X1, 1),
+        )
+
+        val horizontal = AdaptiveTilePacker.place(source, TileInstanceId("tile-second"), GridCell(1, 0), 4)
+        val vertical = AdaptiveTilePacker.place(horizontal, TileInstanceId("tile-second"), GridCell(0, 1), 4)
+
+        assertEquals(GridCell(0, 0), AdaptiveTilePacker.pack(horizontal, 4).tiles[0].cell)
+        assertEquals(GridCell(1, 0), AdaptiveTilePacker.pack(horizontal, 4).tiles[1].cell)
+        assertEquals(GridCell(0, 0), AdaptiveTilePacker.pack(vertical, 4).tiles[0].cell)
+        assertEquals(GridCell(0, 1), AdaptiveTilePacker.pack(vertical, 4).tiles[1].cell)
+        assertEquals(GridCell(0, 1), vertical.placements.single { it.tileId.value == "tile-second" }.preferredCell)
+    }
+
+    @Test
     fun `seeded mixed documents always remain bounded and collision free`() {
         val random = Random(825)
         repeat(100) { sample ->

@@ -4,6 +4,7 @@ import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.LayoutTransaction
+import com.yokuli.shell.engine.layout.GridCell
 
 enum class LauncherPage { START, ALL_APPS }
 data class ShellOffset(val x: Float, val y: Float)
@@ -22,6 +23,8 @@ sealed interface StartInteractionState {
         val grabOffsetPx: ShellOffset,
         val insertionIndex: Int,
         val proposedLayout: StartDocument,
+        val targetCell: GridCell = GridCell(0, 0),
+        val columns: Int = 4,
     ) : StartInteractionState
     data class Settling(val transaction: LayoutTransaction) : StartInteractionState
     data class Launching(

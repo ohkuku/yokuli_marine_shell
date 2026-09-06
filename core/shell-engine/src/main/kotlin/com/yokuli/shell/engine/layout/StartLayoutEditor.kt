@@ -19,9 +19,17 @@ object StartLayoutEditor {
         val entry = entries.firstOrNull { it.entryId == current.entryId } ?: return null
         val cycle = entry.supportedSizes
         val next = cycle[(cycle.indexOf(current.size) + 1).mod(cycle.size)]
+        val profile = WpReferenceProfiles.require(document.profileId)
+        val resizedCell = current.preferredCell?.copy(
+            column = current.preferredCell.column.coerceIn(0, profile.columnCount - next.columns),
+        )
         return transaction(
             document,
-            document.copy(placements = document.placements.map { if (it.tileId == tileId) it.copy(size = next) else it }),
+            document.copy(
+                placements = document.placements.map {
+                    if (it.tileId == tileId) it.copy(size = next, preferredCell = resizedCell) else it
+                },
+            ),
             LayoutChangeReason.RESIZE,
         )
     }
@@ -67,8 +75,7 @@ object StartLayoutEditor {
         document.placements.firstOrNull { it.tileId == tileId } ?: return null
         val profile = WpReferenceProfiles.require(document.profileId)
         if (target.column < 0 || target.row < 0 || target.column >= profile.columnCount) return null
-        val insertionIndex = AdaptiveTilePacker.insertionIndexForCell(document, profile.columnCount, target, tileId)
-        val after = AdaptiveTilePacker.insert(document, tileId, insertionIndex)
+        val after = AdaptiveTilePacker.place(document, tileId, target, profile.columnCount)
         return transaction(document, after, LayoutChangeReason.MOVE)
     }
 

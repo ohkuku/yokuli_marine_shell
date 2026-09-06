@@ -7,8 +7,6 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -33,9 +31,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -50,8 +46,8 @@ import kotlinx.coroutines.delay
 private data class BatteryUiState(val percent: Int = -1, val charging: Boolean = false)
 
 /**
- * A compact, independently actionable status owned by an installed app.
- * The Shell renders facts only; opening the owning app remains a typed callback.
+ * A compact display-only status owned by an installed app. Navigation belongs to visible
+ * Start/All Apps affordances, never to an invisible hit target in the system strip.
  */
 data class WpStatusStripItem(
     val stableId: String,
@@ -70,8 +66,6 @@ data class WpStatusStripItem(
 fun WpStatusStrip(
     windowMetrics: ShellWindowMetrics,
     statusItems: List<WpStatusStripItem> = emptyList(),
-    onStatusItem: (String) -> Unit = {},
-    onOpenSettings: () -> Unit,
 ) {
     val colors = LocalWpTheme.current
     val context = LocalContext.current
@@ -116,7 +110,7 @@ fun WpStatusStrip(
     val safeRight = (safe.right / density).dp
     Row(
         Modifier.fillMaxWidth().height(27.dp + safeTop).background(colors.background)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onOpenSettings)
+            .testTag("shell-status-strip")
             .padding(start = safeLeft, top = safeTop, end = safeRight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -132,12 +126,7 @@ fun WpStatusStrip(
                     .testTag("shell-status-${item.stableId}")
                     .semantics {
                         contentDescription = item.expandedDescription
-                        role = Role.Button
-                    }
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { onStatusItem(item.stableId) },
+                    },
             )
         }
         if (battery.charging) WpText(stringResource(R.string.status_charging), 10, color = colors.muted)

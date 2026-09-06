@@ -128,6 +128,8 @@ sealed interface MapAction {
     ) : MapAction
     data object RetryPersistence : MapAction
     data object RetryLoad : MapAction
+    /** Close the Chart UI session while retaining durable waypoints, routes and chart data. */
+    data object CloseSession : MapAction
 
     data class RendererHostReady(val generation: MapRendererGeneration) : MapAction
     data class RendererDetached(val generation: MapRendererGeneration) : MapAction
@@ -200,6 +202,7 @@ class DefaultMapReducer(
 
     fun reduce(state: MapState, action: MapAction): MapReduction = when (action) {
         is MapAction.Restore -> restore(state, action.result)
+        MapAction.CloseSession -> closeSession(state)
         is MapAction.CameraChanged -> persistSession(state.copy(camera = action.camera))
         is MapAction.SelectTool -> MapReduction(selectTool(state, action.tool))
         is MapAction.OpenSurface -> MapReduction(openSurface(state, action.surface))
@@ -384,6 +387,29 @@ class DefaultMapReducer(
             state.withCameraCommand(action.target, action.intent, action.viewportInsets),
         )
     }
+
+    private fun closeSession(state: MapState): MapReduction = persistSession(
+        state.copy(
+            surface = MapSurface.Root,
+            surfaceHistory = emptyList(),
+            tool = if (state.routeDraft != null) MapTool.MANUAL_ROUTE else MapTool.BROWSE,
+            transient = null,
+            selection = null,
+            editGesture = null,
+            precisePointEdit = null,
+            viewport = null,
+            crosshairEnabled = false,
+            measurementDraft = null,
+            placeMove = null,
+            placeDeleteRequest = null,
+            placeDeleteUndo = null,
+            placeSaveStatus = null,
+            routeDeleteRequest = null,
+            routeDeleteUndo = null,
+            routeSpeedNotice = null,
+            routeEditNotice = null,
+        ),
+    )
 
     private fun restore(state: MapState, result: MapLoadResult): MapReduction = when (result) {
         is MapLoadResult.Ready -> {

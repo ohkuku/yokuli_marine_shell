@@ -13,6 +13,12 @@ data class TileDocumentEntry(
     val size: MarineTileSize,
     val rank: Long,
     val groupId: String? = null,
+    /**
+     * An optional user-authored grid location. A null value keeps the adaptive rank-first
+     * behaviour used by migrated documents; a value preserves the actual two-dimensional
+     * placement chosen on Start instead of collapsing it back into a one-dimensional list.
+     */
+    val preferredCell: GridCell? = null,
 )
 
 typealias TilePlacement = TileDocumentEntry

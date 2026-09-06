@@ -28,7 +28,7 @@ fun preferencesLauncherVisualContribution(): LauncherEntryVisualContribution {
     return LauncherEntryVisualContribution(
         entryId = PreferencesDestinations.EntryId,
         title = title,
-        chineseIndex = 'P',
+        chineseIndex = 'S',
         headline = stringResource(R.string.preferences_tile_headline),
         detail = stringResource(R.string.preferences_tile_detail),
         icon = LauncherIconRenderer { color, modifier -> PreferencesIcon(color, modifier) },

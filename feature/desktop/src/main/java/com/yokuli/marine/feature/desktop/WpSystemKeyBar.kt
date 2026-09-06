@@ -285,6 +285,7 @@ fun WpRecentsSurface(
     tasks: List<InternalAppTask>,
     entries: List<LauncherEntryUiState>,
     onActivate: (InternalAppTask) -> Unit,
+    onClose: (InternalAppTask) -> Unit,
 ) {
     val colors = LocalWpTheme.current
     val entryByApp = entries.associateBy { it.descriptor.appId }
@@ -298,6 +299,7 @@ fun WpRecentsSurface(
             tasks.asReversed().forEach { task ->
                 val entry = entryByApp[task.appId] ?: return@forEach
                 val interactions = remember(task.taskId) { MutableInteractionSource() }
+                val closeDescription = stringResource(R.string.recents_close, entry.title)
                 Box(
                     Modifier.fillMaxWidth().height(108.dp).background(colors.accent)
                         .testTag("recent-task-${task.appId.value}")
@@ -311,6 +313,22 @@ fun WpRecentsSurface(
                     contentAlignment = Alignment.BottomStart,
                 ) {
                     WpText(entry.title, 22, color = Color.White, weight = FontWeight.Light)
+                    Box(
+                        Modifier.align(Alignment.TopEnd).size(48.dp)
+                            .testTag("recent-close-${task.appId.value}")
+                            .semantics {
+                                contentDescription = closeDescription
+                                role = Role.Button
+                            }
+                            .combinedClickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onClose(task) },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        WpText("×", 28, color = Color.White, weight = FontWeight.Light)
+                    }
                 }
             }
             if (tasks.isEmpty()) WpText(stringResource(R.string.recents_empty), 18, color = colors.muted)

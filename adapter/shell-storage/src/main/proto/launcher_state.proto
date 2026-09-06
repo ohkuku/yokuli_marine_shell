@@ -34,6 +34,9 @@ message TilePlacementProto {
   reserved 4, 5;
   int64 rank = 6;
   string group_id = 7;
+  int32 preferred_column = 8;
+  int32 preferred_row = 9;
+  bool has_preferred_cell = 10;
 }
 
 message SpacerProto {

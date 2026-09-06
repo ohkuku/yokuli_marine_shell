@@ -385,6 +385,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     AndroidLauncherHapticMapper.constantFor(effect.kind),
                 )
                 is LauncherEffect.LogIncident -> Log.w("YokuliLauncher", effect.incident.toString())
+                is LauncherEffect.CloseAppSession -> shellViewModel.closeAppSession(effect.appId)
                 else -> Unit
             }
         }
@@ -688,6 +689,9 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     is LauncherUiAction.InsertionTargetChanged -> dispatch(
                         LauncherAction.InsertionTargetChanged(action.tileId, action.insertionIndex),
                     )
+                    is LauncherUiAction.TileCellTargetChanged -> dispatch(
+                        LauncherAction.TileCellTargetChanged(action.tileId, action.targetCell, action.columns),
+                    )
                     is LauncherUiAction.DropTile -> dispatch(LauncherAction.DropTile(action.tileId))
                     LauncherUiAction.CancelTileOperation -> dispatch(LauncherAction.CancelTileOperation)
                     is LauncherUiAction.ResizeTile -> dispatch(LauncherAction.ResizeTile(action.tileId))
@@ -707,6 +711,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     LauncherUiAction.UndoLayout -> dispatch(LauncherAction.UndoLayout)
                     is LauncherUiAction.UpdateSearchQuery -> dispatch(LauncherAction.UpdateSearchQuery(action.query))
                     is LauncherUiAction.ActivateTask -> dispatch(LauncherAction.ActivateTask(action.taskId))
+                    is LauncherUiAction.CloseTask -> dispatch(LauncherAction.CloseTask(action.taskId))
                     is LauncherUiAction.ShowAppInfo -> context.openHostAppInfo()
                 }
             }
@@ -743,25 +748,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                         WpStatusStripItem("chart-library", it.compact, it.expanded, chartDisplayState.issues.isNotEmpty())
                                     },
                                 ),
-                                onStatusItem = { statusId ->
-                                    val token: LaunchToken? = when (statusId) {
-                                        "data" -> if (dataLauncherState.attentionCount > 0) {
-                                            DataDestinations.Diagnostics
-                                        } else DataDestinations.Overview
-                                        "chart-library" -> if (chartDisplayState.issues.isNotEmpty()) {
-                                            ChartLibraryDestinations.NeedsAttention
-                                        } else {
-                                            ChartLibraryDestinations.Browse
-                                        }
-                                        else -> null
-                                    }
-                                    token?.let {
-                                        dispatch(LauncherAction.Open(it, preserveCaller = statusId == "chart-library"))
-                                    }
-                                },
-                            ) {
-                                dispatch(LauncherAction.Open(PreferencesDestinations.Overview))
-                            }
+                            )
                             WpSurfaceTransitionHost(
                                 targetState = transitionTarget,
                                 transitionKind = engineState.transitionRequest?.kind.toWpSurfaceTransitionKind(),
@@ -820,6 +807,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                     tasks = engineState.tasks.tasks,
                                     entries = launcherState.entries,
                                     onActivate = { dispatch(LauncherAction.ActivateTask(it.taskId)) },
+                                    onClose = { dispatch(LauncherAction.CloseTask(it.taskId)) },
                                 )
                                 ShellMotionTarget.Search -> WpSearchSurface(
                                     state = launcherState,

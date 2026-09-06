@@ -125,7 +125,7 @@ fun chartLibraryLauncherVisualContribution(
     return LauncherEntryVisualContribution(
         entryId = ChartLibraryDestinations.EntryId,
         title = title,
-        chineseIndex = '海',
+        chineseIndex = 'H',
         headline = tileHeadline(incoming),
         detail = tileDetail(incoming),
         icon = LauncherIconRenderer { tint, modifier -> ChartLibraryIcon(tint, modifier) },

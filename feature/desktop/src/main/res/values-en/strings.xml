@@ -33,6 +33,7 @@
     <string name="recents_title">recent</string>
     <string name="recents_context">internal app tasks</string>
     <string name="recents_empty">no internal app tasks yet</string>
+    <string name="recents_close">close %1$s session</string>
     <string name="restoring_title">restoring</string>
     <string name="restoring_explanation">Reading the committed Start settings.</string>
     <string name="recovery_title">safe mode</string>

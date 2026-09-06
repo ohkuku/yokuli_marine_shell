@@ -27,7 +27,7 @@ enum class InsertionSide { BEFORE, AFTER }
 /** A visual hit names an item, never an index into a differently ordered list. */
 data class TileInsertionTarget(val anchorId: TileInstanceId, val side: InsertionSide)
 
-/** Deterministic rank-first packing. Only an explicit [Spacer] reserves a hole. */
+/** Deterministic packing that preserves a valid user-authored cell and adapts legacy rank-only entries. */
 object AdaptiveTilePacker {
     private const val RANK_STEP = 1024L
 
@@ -37,7 +37,10 @@ object AdaptiveTilePacker {
         val tiles = mutableListOf<PackedTilePlacement>()
         val spacers = mutableListOf<PackedSpacerPlacement>()
         orderedItems(document).forEach { item ->
-            val cell = firstAvailableCell(item.size, columns, occupied)
+            val preferred = (item as? RankedItem.Tile)?.entry?.preferredCell
+            val cell = preferred
+                ?.takeIf { fits(it, item.size, columns) && occupiedCells(it, item.size).none(occupied::contains) }
+                ?: firstAvailableCell(item.size, columns, occupied)
             occupied += occupiedCells(cell, item.size)
             when (item) {
                 is RankedItem.Tile -> tiles += PackedTilePlacement(item.entry, cell)
@@ -45,6 +48,32 @@ object AdaptiveTilePacker {
             }
         }
         return AdaptivePackedLayout(columns, tiles, spacers)
+    }
+
+    /**
+     * Move one tile to an actual grid cell. Rank remains the collision tie-breaker, while the
+     * preferred cell is the durable spatial truth. This is what permits two 1x1 tiles to be
+     * either horizontal or vertical neighbours.
+     */
+    fun place(
+        document: StartDocument,
+        tileId: TileInstanceId,
+        target: GridCell,
+        columns: Int,
+    ): StartDocument {
+        val moving = document.placements.firstOrNull { it.tileId == tileId } ?: return document
+        val bounded = GridCell(
+            column = target.column.coerceIn(0, columns - moving.size.columns),
+            row = target.row.coerceAtLeast(0),
+        )
+        val index = insertionIndexForCell(document, columns, bounded, tileId)
+        val reordered = insert(document, tileId, index)
+        val placed = reordered.copy(
+            placements = reordered.placements.map { entry ->
+                if (entry.tileId == tileId) entry.copy(preferredCell = bounded) else entry
+            },
+        )
+        return if (placed == document) document else placed
     }
 
     fun insert(document: StartDocument, tileId: TileInstanceId, insertionIndex: Int): StartDocument {
@@ -149,6 +178,9 @@ object AdaptiveTilePacker {
             row++
         }
     }
+
+    private fun fits(cell: GridCell, size: MarineTileSize, columns: Int): Boolean =
+        cell.column >= 0 && cell.row >= 0 && cell.column + size.columns <= columns
 
     private sealed interface RankedItem {
         val rank: Long

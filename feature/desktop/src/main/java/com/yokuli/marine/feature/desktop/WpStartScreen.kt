@@ -152,7 +152,10 @@ fun YokuliStartScreen(
         val local = localTileDrag ?: return@LaunchedEffect
         // StateFlow can conflate a no-op Begin/Drop back into the same EditIdle state.
         // No changed document needs acknowledgement in this case; do not leave a ghost drag.
-        if (local.finishing && local.insertionIndex == AdaptiveTilePacker.insertionIndexOf(local.sourceDocument, local.tileId)) {
+        if (
+            local.finishing && local.targetCell == local.originCell &&
+            local.insertionIndex == AdaptiveTilePacker.insertionIndexOf(local.sourceDocument, local.tileId)
+        ) {
             localTileDrag = null
         }
     }
@@ -220,7 +223,9 @@ fun YokuliStartScreen(
             val target = hysteresis.resolve(current.originCell, offset, pitchPx, current.targetCell)
             val index = AdaptiveTilePacker.insertionIndexForCell(current.sourceDocument, geometry.columns, target, current.tileId)
             localTileDrag = current.copy(coordinates = coordinates, hasMoved = true, targetCell = target, insertionIndex = index)
-            if (index != current.insertionIndex) latestAction(LauncherUiAction.InsertionTargetChanged(current.tileId, index))
+            if (target != current.targetCell) {
+                latestAction(LauncherUiAction.TileCellTargetChanged(current.tileId, target, geometry.columns))
+            }
         }
         val latestUpdateDrag by rememberUpdatedState<(Long, Offset?) -> Unit>({ session, point -> updateDrag(session, point) })
         val scrollVelocity = localTileDrag?.takeIf { it.hasMoved && !it.finishing }

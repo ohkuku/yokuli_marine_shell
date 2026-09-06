@@ -251,6 +251,7 @@ class ShellEditRegressionStoryTest {
             LauncherUiAction.ExitStartEdit -> LauncherAction.ExitStartEdit
             is LauncherUiAction.BeginTileDrag -> LauncherAction.BeginTileDrag(action.tileId, action.pointerId, action.grabOffset)
             is LauncherUiAction.InsertionTargetChanged -> LauncherAction.InsertionTargetChanged(action.tileId, action.insertionIndex)
+            is LauncherUiAction.TileCellTargetChanged -> LauncherAction.TileCellTargetChanged(action.tileId, action.targetCell, action.columns)
             is LauncherUiAction.DropTile -> LauncherAction.DropTile(action.tileId)
             LauncherUiAction.CancelTileOperation -> LauncherAction.CancelTileOperation
             is LauncherUiAction.ResizeTile -> LauncherAction.ResizeTile(action.tileId)

@@ -192,6 +192,7 @@ private fun LauncherUiAction.toLabEngineAction(): LauncherAction? = when (this) 
     LauncherUiAction.ExitStartEdit -> LauncherAction.ExitStartEdit
     is LauncherUiAction.BeginTileDrag -> LauncherAction.BeginTileDrag(tileId, pointerId, grabOffset)
     is LauncherUiAction.InsertionTargetChanged -> LauncherAction.InsertionTargetChanged(tileId, insertionIndex)
+    is LauncherUiAction.TileCellTargetChanged -> LauncherAction.TileCellTargetChanged(tileId, targetCell, columns)
     is LauncherUiAction.DropTile -> LauncherAction.DropTile(tileId)
     LauncherUiAction.CancelTileOperation -> LauncherAction.CancelTileOperation
     is LauncherUiAction.ResizeTile -> LauncherAction.ResizeTile(tileId)

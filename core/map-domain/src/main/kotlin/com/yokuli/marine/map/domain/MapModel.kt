@@ -482,7 +482,7 @@ data class MapState(
     fun persisted(): MapPersistedState = MapPersistedState(
         camera = camera,
         places = places,
-        measurementDraft = measurementDraft?.copy(undo = emptyList(), redo = emptyList()),
+        measurementDraft = null,
         routeDraft = routeDraft,
         savedRoutes = savedRoutes,
         chartPackages = chartPackages,
@@ -493,7 +493,8 @@ data class MapState(
 
     fun sessionSnapshot(): MapSessionSnapshot = MapSessionSnapshot(
         camera = camera,
-        measurementDraft = measurementDraft?.copy(undo = emptyList(), redo = emptyList()),
+        // Measurement is a transient A/B ruler, never a process-restart draft.
+        measurementDraft = null,
         activeRouteDraftId = activeRouteDraftId,
         activeRoutePlanId = activeRoutePlanId,
         activeChartPackageId = activeChartPackageId,

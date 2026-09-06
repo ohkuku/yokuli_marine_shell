@@ -56,6 +56,7 @@ import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEngine
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.engine.LauncherRecoveryMode
+import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.shell.contract.MotionPreference
 import com.yokuli.shell.contract.AppPreferenceKey
@@ -367,6 +368,13 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetStartDocument() {
         engine.dispatch(LauncherAction.ResetStartDocument)
+    }
+
+    /** Ends only app-owned transient UI. Saved marine data remains in its durable store. */
+    fun closeAppSession(appId: LauncherAppId) {
+        if (appId == com.yokuli.marine.feature.chart.ChartDestinations.AppId) {
+            mapStore.dispatch(MapAction.CloseSession)
+        }
     }
 
     /**

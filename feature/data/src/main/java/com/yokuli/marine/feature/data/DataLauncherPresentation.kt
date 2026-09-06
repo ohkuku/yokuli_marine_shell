@@ -162,7 +162,7 @@ fun dataLauncherVisualContribution(
     return LauncherEntryVisualContribution(
         entryId = DataDestinations.EntryId,
         title = title,
-        chineseIndex = 'D',
+        chineseIndex = 'S',
         headline = if (state.attentionCount > 0) {
             stringResource(R.string.data_tile_attention, state.attentionCount)
         } else {

@@ -24,7 +24,9 @@ object StartDocumentValidator {
         return document.placements.all { placement ->
             val entry = byId[placement.entryId] ?: return@all false
             if (placement.size !in entry.supportedSizes) return@all false
-            placement.size.columns <= profile.columnCount
+            placement.size.columns <= profile.columnCount && placement.preferredCell?.let { cell ->
+                cell.column >= 0 && cell.row >= 0 && cell.column + placement.size.columns <= profile.columnCount
+            } != false
         }
     }
 }
@@ -79,7 +81,14 @@ object StartDocumentRepair {
                     incidents += StartRepairIncident.UNSUPPORTED_SIZE_REPLACED
                     original.copy(size = descriptor.defaultSize)
                 }
-                add(sized)
+                add(
+                    sized.copy(
+                        preferredCell = sized.preferredCell?.takeIf { cell ->
+                            cell.column >= 0 && cell.row >= 0 &&
+                                cell.column + sized.size.columns <= profile.columnCount
+                        },
+                    ),
+                )
             }
         }
         val seenSpacerIds = mutableSetOf<TileInstanceId>()

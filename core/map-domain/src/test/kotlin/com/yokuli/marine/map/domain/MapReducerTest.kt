@@ -11,6 +11,31 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class MapReducerTest {
+    @Test
+    fun `closing chart clears transient session without deleting durable marine data`() {
+        val place = SavedPlace("place-1", "WP 001", GeoPoint(-36.8, 174.7), revision = 1)
+        val route = SavedRoute("route-1", "Route 001", listOf(GeoPoint(-36.8, 174.7), GeoPoint(-36.9, 174.8)))
+        val state = MapState(
+            surface = MapSurface.Measurement,
+            tool = MapTool.MEASURE,
+            transient = MapTransient.PointCandidate(GeoPoint(-36.7, 174.6), PointCandidateOrigin.MAP_TAP),
+            selection = MapSelection(GeoPoint(-36.7, 174.6)),
+            crosshairEnabled = true,
+            measurementDraft = MeasurementDraft(listOf(GeoPoint(-36.8, 174.7), GeoPoint(-36.9, 174.8))),
+            places = listOf(place),
+            savedRoutes = listOf(route),
+        )
+
+        val closed = reducer.reduce(state, MapAction.CloseSession)
+
+        assertEquals(MapSurface.Root, closed.state.surface)
+        assertEquals(MapTool.BROWSE, closed.state.tool)
+        assertNull(closed.state.transient)
+        assertNull(closed.state.selection)
+        assertNull(closed.state.measurementDraft)
+        assertEquals(listOf(place), closed.state.places)
+        assertEquals(listOf(route), closed.state.savedRoutes)
+    }
     private val auckland = GeoPoint(-36.8485, 174.7633)
     private val rangitoto = GeoPoint(-36.7867, 174.8600)
     private val waiheke = GeoPoint(-36.7950, 175.0900)

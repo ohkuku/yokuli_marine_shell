@@ -172,6 +172,21 @@ class LauncherNavigationTest {
     }
 
     @Test
+    fun recentsCloseRemovesOnlyTheUiSessionAndEmitsTypedCleanup() {
+        val chartOpen = open(initial(), chart.appId, chart.launchToken)
+        val settingsOpen = open(chartOpen.copy(surface = ShellVisualSurface.Desktop), settings.appId, settings.launchToken)
+        val recents = reduce(settingsOpen, LauncherAction.ShowRecents).state
+        val chartTask = recents.tasks.tasks.first { it.appId == chart.appId }
+
+        val closed = reducer.reduce(recents, LauncherAction.CloseTask(chartTask.taskId), context())
+
+        assertEquals(ShellVisualSurface.Recents, closed.state.surface)
+        assertEquals(listOf(settings.appId), closed.state.tasks.tasks.map { it.appId })
+        assertEquals(listOf(LauncherEffect.CloseAppSession(chart.appId)), closed.effects)
+        assertEquals(document, closed.state.start.document)
+    }
+
+    @Test
     fun backAtStartStaysInsideShellWithoutEffect() {
         val result = reduce(initial(), LauncherAction.Back)
         assertEquals(initial(), result.state)

@@ -7,6 +7,7 @@ import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.LayoutProposal
+import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.engine.interaction.ShellOffset
 import com.yokuli.shell.engine.interaction.StartInteractionState
@@ -40,6 +41,7 @@ sealed interface LauncherUiAction {
     data object ExitStartEdit : LauncherUiAction
     data class BeginTileDrag(val tileId: TileInstanceId, val pointerId: Long, val grabOffset: ShellOffset) : LauncherUiAction
     data class InsertionTargetChanged(val tileId: TileInstanceId, val insertionIndex: Int) : LauncherUiAction
+    data class TileCellTargetChanged(val tileId: TileInstanceId, val targetCell: GridCell, val columns: Int) : LauncherUiAction
     data class DropTile(val tileId: TileInstanceId) : LauncherUiAction
     data object CancelTileOperation : LauncherUiAction
     data class ResizeTile(val tileId: TileInstanceId) : LauncherUiAction
@@ -53,6 +55,7 @@ sealed interface LauncherUiAction {
     data object UndoLayout : LauncherUiAction
     data class UpdateSearchQuery(val query: String) : LauncherUiAction
     data class ActivateTask(val taskId: InternalAppTaskId) : LauncherUiAction
+    data class CloseTask(val taskId: InternalAppTaskId) : LauncherUiAction
     data class ShowAppInfo(val entryId: LauncherEntryId) : LauncherUiAction
 }
 

@@ -13,6 +13,7 @@ import com.yokuli.shell.engine.LauncherTokenAlias
 import com.yokuli.shell.engine.PersistedLauncherPage
 import com.yokuli.shell.engine.geometry.ProfileId
 import com.yokuli.shell.engine.layout.Spacer
+import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 import com.yokuli.shell.storage.proto.LauncherStateProto
@@ -42,6 +43,7 @@ class ProtoDataStoreLauncherPersistenceTest {
                 LauncherEntryId("chart"),
                 MarineTileSize.WIDE_4X2,
                 0L,
+                preferredCell = GridCell(0, 2),
             ),
         ),
         spacers = listOf(Spacer(TileInstanceId("spacer-one"), MarineTileSize.STANDARD_2X2, 1024L, "weather")),
@@ -116,6 +118,7 @@ class ProtoDataStoreLauncherPersistenceTest {
         val restored = second.load()
 
         assertEquals(document, restored?.document)
+        assertEquals(GridCell(0, 2), restored?.document?.placements?.single()?.preferredCell)
         assertEquals("LIGHT", restored?.themeModeName)
         assertEquals("MAGENTA", restored?.accentName)
         assertEquals("en", restored?.languageTag)

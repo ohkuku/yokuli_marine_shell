@@ -9,6 +9,7 @@ import com.yokuli.shell.engine.LauncherStartupHealth
 import com.yokuli.shell.engine.PersistedLauncherPage
 import com.yokuli.shell.engine.geometry.ProfileId
 import com.yokuli.shell.engine.layout.Spacer
+import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 import com.yokuli.shell.storage.proto.LauncherRecoveryProto
@@ -77,6 +78,13 @@ object LauncherProtoMapper {
                     .setSize(placement.size.name)
                     .setRank(placement.rank)
                     .setGroupId(placement.groupId.orEmpty())
+                    .also { builder ->
+                        placement.preferredCell?.let { cell ->
+                            builder.setHasPreferredCell(true)
+                                .setPreferredColumn(cell.column)
+                                .setPreferredRow(cell.row)
+                        }
+                    }
                     .build()
             },
         )
@@ -101,6 +109,9 @@ object LauncherProtoMapper {
                 size = size,
                 rank = placement.rank,
                 groupId = placement.groupId.ifBlank { null },
+                preferredCell = if (placement.hasPreferredCell) {
+                    GridCell(placement.preferredColumn, placement.preferredRow)
+                } else null,
             )
         }
         val spacers = proto.spacersList.map { spacer ->

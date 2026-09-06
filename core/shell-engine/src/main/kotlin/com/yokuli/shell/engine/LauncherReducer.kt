@@ -19,6 +19,7 @@ import com.yokuli.shell.engine.layout.StartDocumentValidator
 import com.yokuli.shell.engine.layout.StartLayoutEditor
 import com.yokuli.shell.engine.layout.StartRepairIncident
 import com.yokuli.shell.engine.layout.AdaptiveTilePacker
+import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.interaction.ShellOffset
 import com.yokuli.shell.engine.interaction.StartInteractionState
 
@@ -42,6 +43,7 @@ sealed interface LauncherAction {
     data class UpdateSearchQuery(val query: String) : LauncherAction
     data object ShowRecents : LauncherAction
     data class ActivateTask(val taskId: InternalAppTaskId) : LauncherAction
+    data class CloseTask(val taskId: InternalAppTaskId) : LauncherAction
     data class RestorePersistedDocument(val document: StartDocument?) : LauncherAction
     data object EnterSafeMode : LauncherAction
     data object ExitSafeMode : LauncherAction
@@ -62,6 +64,11 @@ sealed interface LauncherAction {
         val grabOffsetPx: ShellOffset,
     ) : LauncherAction
     data class InsertionTargetChanged(val tileId: TileInstanceId, val insertionIndex: Int) : LauncherAction
+    data class TileCellTargetChanged(
+        val tileId: TileInstanceId,
+        val targetCell: GridCell,
+        val columns: Int,
+    ) : LauncherAction
     data class DropTile(val tileId: TileInstanceId) : LauncherAction
     data object CancelTileOperation : LauncherAction
     data class ResizeTile(val tileId: TileInstanceId) : LauncherAction
@@ -94,6 +101,8 @@ sealed interface LauncherEffect {
     data class AccessibilityAnnouncement(val text: UiText) : LauncherEffect
     data class LogIncident(val incident: LauncherIncident) : LauncherEffect
     data class ScrollStartToReveal(val tileId: TileInstanceId) : LauncherEffect
+    /** Host-owned session cleanup must never delete the app's durable data. */
+    data class CloseAppSession(val appId: com.yokuli.shell.contract.LauncherAppId) : LauncherEffect
 }
 
 fun ShellInput.toShellAction(): LauncherAction = when (this) {
@@ -152,6 +161,7 @@ class DefaultLauncherReducer : LauncherReducer {
         is LauncherAction.UpdateSearchQuery -> updateSearchQuery(state, action.query)
         LauncherAction.ShowRecents -> showRecents(state)
         is LauncherAction.ActivateTask -> activateTask(state, action.taskId)
+        is LauncherAction.CloseTask -> closeTask(state, action.taskId)
         is LauncherAction.RestorePersistedDocument -> restorePersistedDocument(state, action.document, context)
         LauncherAction.EnterSafeMode -> enterSafeMode(state, context)
         LauncherAction.ExitSafeMode -> LauncherReduction(
@@ -182,6 +192,7 @@ class DefaultLauncherReducer : LauncherReducer {
         LauncherAction.ExitStartEdit -> exitEdit(state)
         is LauncherAction.BeginTileDrag -> beginDrag(state, action)
         is LauncherAction.InsertionTargetChanged -> updateInsertionTarget(state, action)
+        is LauncherAction.TileCellTargetChanged -> updateCellTarget(state, action)
         is LauncherAction.DropTile -> dropTile(state, action.tileId)
         LauncherAction.CancelTileOperation -> cancelTileOperation(state)
         is LauncherAction.ResizeTile -> resizeTile(state, action.tileId)
@@ -388,6 +399,33 @@ class DefaultLauncherReducer : LauncherReducer {
         )
     }
 
+    private fun closeTask(state: LauncherEngineState, taskId: InternalAppTaskId): LauncherReduction {
+        val closing = state.tasks.task(taskId) ?: return LauncherReduction(state)
+        val remaining = state.tasks.tasks.filterNot { it.taskId == taskId }
+        val returnSurface = state.recentsReturnSurface?.let { candidate ->
+            if (candidate is ShellVisualSurface.Module && candidate.taskId == taskId) {
+                ShellVisualSurface.Desktop
+            } else candidate
+        }
+        val surface = if (state.surface is ShellVisualSurface.Module && state.surface.taskId == taskId) {
+            ShellVisualSurface.Desktop
+        } else state.surface
+        return LauncherReduction(
+            state.copy(
+                surface = surface,
+                tasks = InternalTaskState(
+                    tasks = remaining,
+                    linkedReturns = state.tasks.linkedReturns.filterNot {
+                        it.callerTaskId == taskId || it.targetTaskId == taskId
+                    },
+                ),
+                recentsReturnSurface = returnSurface,
+                transient = null,
+            ),
+            effects = listOf(LauncherEffect.CloseAppSession(closing.appId)),
+        )
+    }
+
     private fun open(
         state: LauncherEngineState,
         action: LauncherAction.Open,
@@ -530,6 +568,9 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun beginDrag(state: LauncherEngineState, action: LauncherAction.BeginTileDrag): LauncherReduction {
         if (state.start.document.placements.none { it.tileId == action.tileId }) return LauncherReduction(state)
         val insertionIndex = AdaptiveTilePacker.insertionIndexOf(state.start.document, action.tileId)
+        val profile = WpReferenceProfiles.require(state.start.document.profileId)
+        val originCell = AdaptiveTilePacker.pack(state.start.document, profile.columnCount)
+            .tile(action.tileId)?.cell ?: return LauncherReduction(state)
         return LauncherReduction(
             state.copy(
                 // Keep undo history, but dismiss its old notice so Back cancels this drag immediately.
@@ -541,7 +582,40 @@ class DefaultLauncherReducer : LauncherReducer {
                         pointerId = action.pointerId,
                         grabOffsetPx = action.grabOffsetPx,
                         insertionIndex = insertionIndex,
+                        targetCell = originCell,
+                        columns = profile.columnCount,
                         proposedLayout = state.start.document,
+                    ),
+                ),
+            ),
+        )
+    }
+
+    private fun updateCellTarget(
+        state: LauncherEngineState,
+        action: LauncherAction.TileCellTargetChanged,
+    ): LauncherReduction {
+        val dragging = state.start.interaction as? StartInteractionState.Dragging ?: return LauncherReduction(state)
+        if (dragging.tileId != action.tileId || action.columns <= 0) return LauncherReduction(state)
+        val proposed = AdaptiveTilePacker.place(
+            state.start.document,
+            action.tileId,
+            action.targetCell,
+            action.columns,
+        )
+        if (
+            dragging.targetCell == action.targetCell &&
+            dragging.columns == action.columns &&
+            dragging.proposedLayout == proposed
+        ) return LauncherReduction(state)
+        return LauncherReduction(
+            state.copy(
+                start = state.start.copy(
+                    interaction = dragging.copy(
+                        targetCell = action.targetCell,
+                        columns = action.columns,
+                        insertionIndex = AdaptiveTilePacker.insertionIndexOf(proposed, action.tileId),
+                        proposedLayout = proposed,
                     ),
                 ),
             ),
@@ -630,19 +704,15 @@ class DefaultLauncherReducer : LauncherReducer {
 
     private fun moveTileBy(state: LauncherEngineState, action: LauncherAction.MoveTileBy): LauncherReduction {
         if (state.start.document.placements.none { it.tileId == action.tileId }) return LauncherReduction(state)
-        // Accessibility and touch insertion must index the same durable sequence, including spacers.
-        val currentIndex = AdaptiveTilePacker.insertionIndexOf(state.start.document, action.tileId)
-        val delta = when {
-            action.columns < 0 || action.rows < 0 -> -1
-            action.columns > 0 || action.rows > 0 -> 1
-            else -> 0
-        }
-        if (delta == 0) return LauncherReduction(state)
-        val maximumIndex = (state.start.document.placements.size + state.start.document.spacers.size - 1).coerceAtLeast(0)
-        val after = AdaptiveTilePacker.insert(
+        if (action.columns == 0 && action.rows == 0) return LauncherReduction(state)
+        val profile = WpReferenceProfiles.require(state.start.document.profileId)
+        val current = AdaptiveTilePacker.pack(state.start.document, profile.columnCount)
+            .tile(action.tileId)?.cell ?: return LauncherReduction(state)
+        val after = AdaptiveTilePacker.place(
             state.start.document,
             action.tileId,
-            (currentIndex + delta).coerceIn(0, maximumIndex),
+            GridCell(current.column + action.columns, current.row + action.rows),
+            profile.columnCount,
         )
         if (after == state.start.document) return LauncherReduction(state)
         val proposal = LayoutProposal(state.start.document, after, LayoutChangeReason.MOVE)
