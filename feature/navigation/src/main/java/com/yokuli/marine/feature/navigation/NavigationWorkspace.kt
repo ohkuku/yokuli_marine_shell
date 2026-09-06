@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -201,7 +200,7 @@ private fun RouteDetail(route: RoutePlan, state: NavigationUiState, onAction: (N
     WpText(stringResource(R.string.navigation_route_summary, route.points.size, summary.distanceNauticalMiles), 13)
     summary.legs.forEach { leg ->
         WpText(
-            stringResource(R.string.navigation_leg, leg.fromIndex + 1, leg.toIndex + 1, leg.distanceMeters / 1852.0, leg.initialBearingTrueDegrees ?: 0.0),
+            stringResource(R.string.navigation_leg, leg.index + 1, leg.index + 2, leg.distanceMeters / 1852.0, leg.initialBearingTrueDegrees ?: 0.0),
             11, color = LocalWpTheme.current.muted,
         )
     }

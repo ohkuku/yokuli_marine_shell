@@ -95,7 +95,8 @@ class NavigationCoordinator(
         } else false
     }
 
-    private fun reduceLocked(action: NavigationUiAction): Request? = when (action) {
+    private fun reduceLocked(action: NavigationUiAction): Request? {
+        return when (action) {
         is NavigationUiAction.Navigate -> { section = action.section; page = NavigationPage.Root; null }
         NavigationUiAction.NavigateUp -> { handleBack(); null }
         NavigationUiAction.Refresh -> Request.Refresh
@@ -181,6 +182,7 @@ class NavigationCoordinator(
         }
         is NavigationUiAction.StartRoute -> Request.Active(ActiveNavigationCommand.Start(action.routeId, action.revision))
         is NavigationUiAction.ActiveCommand -> Request.Active(action.command)
+        }
     }
 
     private fun saveWaypointLocked(): Request? {
