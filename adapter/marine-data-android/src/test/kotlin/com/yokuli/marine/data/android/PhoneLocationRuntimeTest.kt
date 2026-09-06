@@ -89,6 +89,23 @@ class PhoneLocationRuntimeTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun permissionResultCanRepresentPermanentDenialWithoutStartingAListener() = runBlocking {
+        val platform = FakePhonePlatform(permission = PhoneLocationPermission.DENIED)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val runtime = AndroidPhoneLocationRuntime(platform, TestClock(40L), scope)
+            runtime.execute(PhoneLocationCommand.Enable)
+            runtime.execute(PhoneLocationCommand.PermissionResult(permanentlyDenied = true))
+
+            assertEquals(PhoneLocationPermission.PERMANENTLY_DENIED, runtime.state.value.permission)
+            assertEquals(PhoneLocationState.PERMISSION_REQUIRED, runtime.state.value.state)
+            assertEquals(0, platform.startCount)
+        } finally {
+            scope.cancel()
+        }
+    }
 }
 
 private class FakePhonePlatform(

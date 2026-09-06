@@ -60,15 +60,18 @@ class AndroidLocationManagerPlatform(context: Context) : PhoneLocationPlatform {
                 (android.os.Build.VERSION.SDK_INT >= 31 && it == LocationManager.FUSED_PROVIDER)
         }
         require(allowedProviders.isNotEmpty()) { "No enabled Android location provider" }
-        allowedProviders.forEach { provider ->
-            locationManager.requestLocationUpdates(
-                provider,
-                MIN_UPDATE_MILLIS,
-                MIN_UPDATE_METERS,
-                callback,
-                Looper.getMainLooper(),
-            )
-        }
+        val provider = listOfNotNull(
+            LocationManager.FUSED_PROVIDER.takeIf { android.os.Build.VERSION.SDK_INT >= 31 },
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+        ).first { it in allowedProviders }
+        locationManager.requestLocationUpdates(
+            provider,
+            MIN_UPDATE_MILLIS,
+            MIN_UPDATE_METERS,
+            callback,
+            Looper.getMainLooper(),
+        )
         listener = callback
     }
 

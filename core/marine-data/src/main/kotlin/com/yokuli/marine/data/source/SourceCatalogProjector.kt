@@ -9,7 +9,6 @@ import com.yokuli.marine.data.model.MarineValue
 import com.yokuli.marine.data.model.ObservationGroupId
 import com.yokuli.marine.data.model.ObservationValidity
 import com.yokuli.marine.data.model.SourceIdentity
-import com.yokuli.marine.data.phone.METERS_PER_SECOND_TO_KNOTS
 import com.yokuli.marine.data.phone.PHONE_SYSTEM_LOCATION_SOURCE
 import com.yokuli.marine.data.phone.PhoneLocationPermission
 import com.yokuli.marine.data.phone.PhoneLocationSnapshot

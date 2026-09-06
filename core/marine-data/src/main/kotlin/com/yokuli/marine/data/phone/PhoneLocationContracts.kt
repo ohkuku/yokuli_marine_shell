@@ -103,6 +103,7 @@ sealed interface PhoneLocationCommand {
     data object Enable : PhoneLocationCommand
     data object Disable : PhoneLocationCommand
     data object RefreshPlatformState : PhoneLocationCommand
+    data class PermissionResult(val permanentlyDenied: Boolean) : PhoneLocationCommand
 }
 
 sealed interface PhoneLocationCommandResult {
@@ -122,13 +123,9 @@ interface PhoneLocationIntentStore {
     suspend fun saveEnabled(enabled: Boolean): Boolean
 
     companion object {
-        val VOLATILE = object : PhoneLocationIntentStore {
-            private var enabled = false
-            override suspend fun loadEnabled(): Boolean = enabled
-            override suspend fun saveEnabled(enabled: Boolean): Boolean {
-                this.enabled = enabled
-                return true
-            }
+        val NON_PERSISTENT = object : PhoneLocationIntentStore {
+            override suspend fun loadEnabled(): Boolean = false
+            override suspend fun saveEnabled(enabled: Boolean): Boolean = true
         }
     }
 }

@@ -105,7 +105,7 @@ class DefaultMarineSourceRuntime(
     }
 
     suspend fun tick() = updateCatalog(
-        selectionState.catalog.copy(evaluatedAtMillis = clock.nowMillis()),
+        state.value.sourceCatalog.copy(evaluatedAtMillis = clock.nowMillis()),
     )
 
     override suspend fun execute(command: SourceSelectionCommand): SourceSelectionCommandResult = mutex.withLock {

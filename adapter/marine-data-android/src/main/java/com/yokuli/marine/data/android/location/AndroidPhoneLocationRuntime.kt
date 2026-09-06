@@ -24,7 +24,7 @@ class AndroidPhoneLocationRuntime(
     private val platform: PhoneLocationPlatform,
     private val clock: MonotonicClock,
     private val applicationScope: CoroutineScope,
-    private val intentStore: PhoneLocationIntentStore = PhoneLocationIntentStore.VOLATILE,
+    private val intentStore: PhoneLocationIntentStore = PhoneLocationIntentStore.NON_PERSISTENT,
     private val foregroundController: PhoneLocationForegroundController =
         PhoneLocationForegroundController.NO_OP,
 ) : PhoneLocationRuntimePort {
@@ -33,6 +33,7 @@ class AndroidPhoneLocationRuntime(
     override val state: StateFlow<PhoneLocationSnapshot> = mutableState.asStateFlow()
     private var sequence = 0L
     private var listening = false
+    private var permanentlyDenied = false
 
     init {
         applicationScope.launch {
@@ -47,6 +48,10 @@ class AndroidPhoneLocationRuntime(
             PhoneLocationCommand.Enable -> enable(persistIntent = true)
             PhoneLocationCommand.Disable -> disable()
             PhoneLocationCommand.RefreshPlatformState -> refresh()
+            is PhoneLocationCommand.PermissionResult -> {
+                permanentlyDenied = command.permanentlyDenied
+                refresh()
+            }
         }
     }
 
@@ -60,7 +65,7 @@ class AndroidPhoneLocationRuntime(
             )
             return PhoneLocationCommandResult.PlatformRestricted
         }
-        val permission = platform.permission()
+        val permission = currentPermission()
         val systemEnabled = platform.isSystemLocationEnabled()
         if (!permission.isGranted) {
             stopListener()
@@ -82,17 +87,17 @@ class AndroidPhoneLocationRuntime(
         if (!listening) {
             update(true, permission, true, PhoneLocationState.STARTING)
             try {
+                listening = true
                 platform.start(
                     onFix = { fix -> applicationScope.launch { acceptFix(fix) } },
                     onProviderChanged = { applicationScope.launch { execute(PhoneLocationCommand.RefreshPlatformState) } },
                 )
-                listening = true
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {
                 stopListener()
                 foregroundController.reconcile(false)
-                update(true, platform.permission(), platform.isSystemLocationEnabled(), PhoneLocationState.PLATFORM_RESTRICTED)
+                update(true, currentPermission(), platform.isSystemLocationEnabled(), PhoneLocationState.PLATFORM_RESTRICTED)
                 return PhoneLocationCommandResult.PlatformRestricted
             }
         }
@@ -105,7 +110,7 @@ class AndroidPhoneLocationRuntime(
         foregroundController.reconcile(false)
         update(
             enabled = false,
-            permission = platform.permission(),
+            permission = currentPermission(),
             systemEnabled = platform.isSystemLocationEnabled(),
             state = PhoneLocationState.DISABLED_BY_USER,
         )
@@ -114,7 +119,7 @@ class AndroidPhoneLocationRuntime(
 
     private suspend fun refresh(): PhoneLocationCommandResult {
         if (!mutableState.value.enabledByUser) {
-            update(false, platform.permission(), platform.isSystemLocationEnabled(), PhoneLocationState.DISABLED_BY_USER)
+            update(false, currentPermission(), platform.isSystemLocationEnabled(), PhoneLocationState.DISABLED_BY_USER)
             return PhoneLocationCommandResult.Success
         }
         stopListener()
@@ -136,7 +141,7 @@ class AndroidPhoneLocationRuntime(
             sequence = sequence,
         )
         mutableState.value = mutableState.value.copy(
-            permission = platform.permission(),
+            permission = currentPermission(),
             systemLocationEnabled = platform.isSystemLocationEnabled(),
             state = PhoneLocationState.RECEIVING,
             latestFix = converted,
@@ -165,9 +170,19 @@ class AndroidPhoneLocationRuntime(
     }
 
     private fun initialSnapshot() = PhoneLocationSnapshot.EMPTY.copy(
-        permission = platform.permission(),
+        permission = platform.permission().takeIf { it.isGranted }
+            ?: PhoneLocationPermission.NOT_DETERMINED,
         systemLocationEnabled = platform.isSystemLocationEnabled(),
     )
+
+    private fun currentPermission(): PhoneLocationPermission {
+        val actual = platform.permission()
+        if (actual.isGranted) {
+            permanentlyDenied = false
+            return actual
+        }
+        return if (permanentlyDenied) PhoneLocationPermission.PERMANENTLY_DENIED else actual
+    }
 }
 
 private val PhoneLocationPermission.isGranted: Boolean

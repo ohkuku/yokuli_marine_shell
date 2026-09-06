@@ -180,6 +180,18 @@ class MarineDataIdentifiersTest {
             }
         }
 
+        fun accepts(key: DataKey, value: MarineValue) {
+            MarineObservation(
+                key = key,
+                value = value,
+                validity = ObservationValidity.VALID,
+                origin = origin,
+                measuredAtMillis = 10,
+                groupId = ObservationGroupId(1),
+                checksumTrust = ChecksumTrust.VERIFIED,
+            )
+        }
+
         rejects(DataKey.Position, MarineValue.Decimal(1.0, MarineUnit.DEGREES))
         rejects(DataKey.SpeedOverGround, MarineValue.Position(-36.8, 174.7))
         rejects(DataKey.SpeedOverGround, MarineValue.Decimal(4.0, MarineUnit.METERS))
@@ -195,6 +207,9 @@ class MarineDataIdentifiersTest {
         rejects(DataKey.Satellites, MarineValue.Decimal(8.0, MarineUnit.DIMENSIONLESS))
         rejects(DataKey.HorizontalDilution, MarineValue.Decimal(-0.1, MarineUnit.DIMENSIONLESS))
         rejects(DataKey.Altitude, MarineValue.Decimal(1.0, MarineUnit.KNOTS))
+        accepts(DataKey.PositionAccuracy, MarineValue.Decimal(4.5, MarineUnit.METERS))
+        rejects(DataKey.PositionAccuracy, MarineValue.Decimal(-0.1, MarineUnit.METERS))
+        rejects(DataKey.PositionAccuracy, MarineValue.Decimal(4.5, MarineUnit.KNOTS))
     }
 
     @Test
