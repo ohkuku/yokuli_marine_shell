@@ -7,6 +7,7 @@ import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.map.domain.DefaultMapStore
 import com.yokuli.marine.map.domain.MapEffect
+import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapLibraryLoadState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapStore
