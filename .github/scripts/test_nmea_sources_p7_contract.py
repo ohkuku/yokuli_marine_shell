@@ -43,9 +43,13 @@ class NmeaSourcesP7Contract(unittest.TestCase):
             ".github/scripts/test_launcher_stage1_contract.py",
             ".github/scripts/test_launcher_stage2_contract.py",
             ".github/scripts/run_device_tests.sh",
+            ".github/scripts/test_installed_app_binding_contract.py",
+            ".github/scripts/test_marine_shell_final_correction_contract.py",
         ):
             current_gate = self.read(path)
             self.assertNotIn("productionShellExposesOnlyChartAndSettings", current_gate)
+            self.assertNotIn('graph.count("InstalledAppBinding(")', current_gate)
+            self.assertNotIn("test_release_surface_remains_chart_and_settings_only", current_gate)
 
     def test_release_apk_gate_requires_both_new_apps_and_rejects_debug_or_demo_code(self):
         gate = self.read(".github/scripts/test-release-product-surface.sh")
