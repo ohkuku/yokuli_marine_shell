@@ -393,6 +393,7 @@ fun OfflineMarineChartSurface(
                 style.addMeasurementLabels()
                 style.addLineOverlay(MapOverlayId.MANUAL_ROUTE, 0xff00a4ef.toInt(), 5f)
                 style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 5f)
+                style.addPointLabels(MapOverlayId.MANUAL_ROUTE_POINTS)
                 style.addLineOverlay(MapOverlayId.IMPORTED_TRACKS, 0xff9b59b6.toInt(), 3f)
                 style.addPointOverlay(MapOverlayId.POSITION_OBSERVATION, 0xff00d084.toInt(), 7f)
                 style.addPointOverlay(MapOverlayId.POSITION_HISTORY, 0xff7f8c8d.toInt(), 6f)
@@ -519,7 +520,7 @@ fun OfflineMarineChartSurface(
             style.source(MapOverlayId.MANUAL_ROUTE_POINTS)?.setGeoJson(
                 FeatureCollection.fromFeatures(
                     routePoints.mapIndexed { index, point ->
-                        point.toFeature(state.routePointObjectId(index))
+                        point.toLabeledFeature(state.routePointObjectId(index), (index + 1).toString())
                     },
                 ),
             )
@@ -676,9 +677,11 @@ private fun Style.addPointOverlay(id: MapOverlayId, color: Int, radius: Float) {
     )
 }
 
-private fun Style.addMeasurementLabels() {
+private fun Style.addMeasurementLabels() = addPointLabels(MapOverlayId.MEASUREMENT_POINTS)
+
+private fun Style.addPointLabels(id: MapOverlayId) {
     addLayer(
-        SymbolLayer("${MapOverlayId.MEASUREMENT_POINTS.wireValue}-labels", MapOverlayId.MEASUREMENT_POINTS.wireValue)
+        SymbolLayer("${id.wireValue}-labels", id.wireValue)
             .withProperties(
                 textField(get("label")),
                 textSize(13f),

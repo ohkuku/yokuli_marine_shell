@@ -227,10 +227,13 @@ class DefaultMapReducer(
         is MapAction.BeginMeasurement -> beginMeasurement(state, action.vessel, action.target)
         MapAction.RequestCloseRouteDraft -> requestCloseRouteDraft(state)
         is MapAction.SetCrosshairEnabled -> MapReduction(state.copy(crosshairEnabled = action.enabled))
-        is MapAction.MapTapped -> if (action.hits.isEmpty() && state.tool != MapTool.BROWSE) {
-            addPoint(state.copy(transient = null, selection = null), action.point)
-        } else {
-            MapReduction(mapInteraction(state, action.point, action.hits, PointCandidateOrigin.MAP_TAP))
+        is MapAction.MapTapped -> when {
+            state.tool == MapTool.MANUAL_ROUTE &&
+                action.hits.any { it.overlayId == MapOverlayId.MANUAL_ROUTE } ->
+                insertRouteWaypointAtNearestLeg(state, action.point)
+            action.hits.isEmpty() && state.tool != MapTool.BROWSE ->
+                addPoint(state.copy(transient = null, selection = null), action.point)
+            else -> MapReduction(mapInteraction(state, action.point, action.hits, PointCandidateOrigin.MAP_TAP))
         }
         is MapAction.MapLongPressed -> MapReduction(
             mapInteraction(state, action.point, action.hits, PointCandidateOrigin.MAP_LONG_PRESS),
@@ -1213,6 +1216,19 @@ class DefaultMapReducer(
         }
         items.add(index, RouteWaypointValue(routeWaypointId(draft.id, draft.nextWaypointOrdinal), point, source))
         replaceActiveDraft(state, draft.record(items, draft.nextWaypointOrdinal + 1))
+    }
+
+    private fun insertRouteWaypointAtNearestLeg(state: MapState, point: GeoPoint): MapReduction {
+        val draft = state.routeDraft ?: return incident(state, MapIncident.InsufficientRoute)
+        if (draft.waypoints.size < 2) return incident(state, MapIncident.InsufficientRoute)
+        val legIndex = (0 until draft.waypoints.lastIndex).minByOrNull { index ->
+            val from = draft.waypoints[index]
+            val to = draft.waypoints[index + 1]
+            Wgs84Geodesic.inverse(from, point).distanceMeters +
+                Wgs84Geodesic.inverse(point, to).distanceMeters -
+                Wgs84Geodesic.inverse(from, to).distanceMeters
+        } ?: return incident(state, MapIncident.InsufficientRoute)
+        return insertRouteWaypoint(state, draft.waypointIds[legIndex + 1], point, null)
     }
 
     private fun moveRouteWaypoint(state: MapState, waypointId: String, point: GeoPoint): MapReduction = ifWritable(state) {

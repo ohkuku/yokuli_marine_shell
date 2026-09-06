@@ -460,12 +460,13 @@ fun GoogleMarineChartSurface(
                 domainPolylines += addPolyline(
                     PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xff00a4ef.toInt()).width(7f),
                 )
-                if (state.navigationActive) {
-                    points.drop(1).forEachIndexed { index, point ->
-                        addMarker(
-                            MarkerOptions().position(point.toLatLng()).title((index + 1).toString()),
-                        )?.let(domainMarkers::add)
-                    }
+                points.forEachIndexed { index, point ->
+                    addMarker(
+                        MarkerOptions()
+                            .position(point.toLatLng())
+                            .anchor(.5f, .5f)
+                            .icon(BitmapDescriptorFactory.fromBitmap(measurementHandleBitmap((index + 1).toString()))),
+                    )?.let(domainMarkers::add)
                 }
             }
             state.position.observation?.let { observation ->
@@ -590,6 +591,14 @@ private data class ActivePointDrag(
 
 private fun MapScreenPoint.distanceTo(other: MapScreenPoint) = hypot(xPx - other.xPx, yPx - other.yPx)
 
+private fun MapScreenPoint.distanceToSegment(from: MapScreenPoint, to: MapScreenPoint): Double {
+    val dx = to.xPx - from.xPx
+    val dy = to.yPx - from.yPx
+    if (dx == 0.0 && dy == 0.0) return distanceTo(from)
+    val fraction = (((xPx - from.xPx) * dx + (yPx - from.yPx) * dy) / (dx * dx + dy * dy)).coerceIn(0.0, 1.0)
+    return hypot(xPx - (from.xPx + fraction * dx), yPx - (from.yPx + fraction * dy))
+}
+
 private class GoogleRendererQueryPort(
     private val map: GoogleMap,
     private val currentState: () -> MapState,
@@ -604,12 +613,28 @@ private class GoogleRendererQueryPort(
     }
 
     override fun query(point: MapScreenPoint, overlayIds: Set<MapOverlayId>): List<MapHitResult> = ifCurrent {
-        currentState().hitCandidates(overlayIds)
+        val state = currentState()
+        val pointHits = state.hitCandidates(overlayIds)
             .mapNotNull { candidate ->
                 val screen = map.projection.toScreenLocation(candidate.point.toLatLng()).toDomainScreenPoint()
                 candidate.hit.takeIf { screen.distanceTo(point) <= HIT_RADIUS_PX }
             }
             .distinct()
+        val routeHit = if (
+            MapOverlayId.MANUAL_ROUTE in overlayIds &&
+            state.tool == com.yokuli.marine.map.domain.MapTool.MANUAL_ROUTE &&
+            state.routePointsWithPreview().zipWithNext().any { (from, to) ->
+                point.distanceToSegment(
+                    map.projection.toScreenLocation(from.toLatLng()).toDomainScreenPoint(),
+                    map.projection.toScreenLocation(to.toLatLng()).toDomainScreenPoint(),
+                ) <= LINE_HIT_RADIUS_PX
+            }
+        ) {
+            listOf(MapHitResult(MapOverlayId.MANUAL_ROUTE, "route:${state.routeDraft?.id.orEmpty()}"))
+        } else {
+            emptyList()
+        }
+        (pointHits + routeHit).distinct()
     }.orEmpty()
 
     private inline fun <T> ifCurrent(block: () -> T): T? = if (isCurrent()) runCatching(block).getOrNull() else null
@@ -673,6 +698,7 @@ private val HANDLE_OVERLAYS = setOf(MapOverlayId.MEASUREMENT_POINTS, MapOverlayI
 private val nextRendererGeneration = AtomicLong(20_000L)
 private val nextPointGesture = AtomicLong(0L)
 private const val HIT_RADIUS_PX = 36.0
+private const val LINE_HIT_RADIUS_PX = 24.0
 private const val GOOGLE_MAX_ZOOM = 21.0
 
 private class MapViewLifecycleDriver(private val mapView: MapView) {

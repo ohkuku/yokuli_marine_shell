@@ -62,6 +62,27 @@ class ChartMapFirstContractTest {
     }
 
     @Test
+    fun `tapping a route leg inserts a directly editable point on the nearest leg`() {
+        val third = GeoPoint(-36.77, 174.92)
+        val insertion = GeoPoint(-36.805, 174.855)
+        var state = reduce(MapState(), MapAction.SelectTool(MapTool.MANUAL_ROUTE)).state
+        state = reduce(state, MapAction.MapTapped(vessel, emptyList())).state
+        state = reduce(state, MapAction.MapTapped(target, emptyList())).state
+        state = reduce(state, MapAction.MapTapped(third, emptyList())).state
+
+        state = reduce(
+            state,
+            MapAction.MapTapped(
+                insertion,
+                listOf(MapHitResult(MapOverlayId.MANUAL_ROUTE, "route:${state.routeDraft?.id}:0")),
+            ),
+        ).state
+
+        assertEquals(listOf(vessel, target, insertion, third), state.routeDraft?.waypoints)
+        assertNull(state.transient)
+    }
+
+    @Test
     fun `map view is the session preference while measurement is not`() {
         val changed = reduce(MapState(), MapAction.SetMapViewMode(MapViewMode.STANDARD))
         val session = (changed.effects.single() as MapEffect.PersistSession).snapshot
