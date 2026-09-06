@@ -732,3 +732,17 @@ P2 先写 36 个行为测试与 9 项静态合同，分别锁定 pure runtime、
 ### English translation — NMEA Sources P2
 
 P2 begins with 36 behavioral Reds and nine static contracts across the pure runtime, real localhost TCP/UDP, persistence, foreground-service boundaries, Feature projection/coordinator behavior, and workspace-independent ownership. Green provides one process-owned serialized runtime and a Feature that only consumes the core port. The scoped gate passes static 9/9, core 100/100, adapter 15/15, Feature 16/16, plus API 34 device stories 1/1, 3/3, and app-shell real-loopback lifecycle 2/2. Physical background and GNSS behavior remains explicitly unverified for P6.
+
+## NMEA Sources P3 — OS 统一选源与手机系统定位
+
+### Red
+
+P3 先写 reducer、runtime、catalog projector、selection persistence 和 phone runtime 测试。静态合同首跑 `2 failures / 3 errors / 1 pass`；core 因全部 P3 类型缺失而在 `compileTestKotlin` 失败。行为合同要求 3 秒窗口、首次多源不猜选、新源不抢占、断流不 failover、持久化失败不发布假成功、重启不复活 live，以及手机可选字段不补0。
+
+### Green 与纠错
+
+一个 `MarineSourceSnapshot` 同时携带 catalog、decision、resolved value 和 selection revision；选择先落盘再原子发布。真实 Android `LocationManager` 仅在用户意图、权限、系统开关和前台服务都允许时启动，只投影平台存在的字段。首轮 Green 暴露 exhaustive key 缺口；设备 Red 又暴露 target 26 兼容语义的隐式后台定位，测试包对齐 target 36 后确认不申请 background location。最终 P3 static `6/6`、core `115/115`、adapter `21/21`、API 34 merged-manifest `2/2` 和 app composition compile 通过。
+
+### English translation — NMEA Sources P3
+
+The P3 Reds define the single source-policy reducer/runtime, atomic persistence, catalog projection, and real phone-location boundary. Green publishes catalog, decisions, resolved values, and selection revision together; keeps explicit source choice across stale/missing states without failover; and starts Android system location only after explicit intent and platform gates. Follow-up Reds exposed an exhaustive-key gap and target-26 implicit permission compatibility, both corrected before the scoped gate passed.

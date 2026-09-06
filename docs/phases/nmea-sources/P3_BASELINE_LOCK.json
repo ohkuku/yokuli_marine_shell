@@ -1,0 +1,26 @@
+{
+  "phase": "NMEA_SOURCES",
+  "stage": "P3",
+  "status": "PASS",
+  "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
+  "baseCommit": "03e4d01",
+  "redContractCommit": "dd191f959c87a475a49fda6f98c672c9ef5f420d",
+  "implementationCommit": "762ecacc1a22f73ee9e903df8b206251dc66b6c2",
+  "lastCorrectionCommit": "362d25091a2485e35dede61be2acf84346685b7f",
+  "policy": {
+    "version": 1,
+    "discoveryWindowMillis": 3000,
+    "automaticFailover": false,
+    "selectionAuditLimit": 64,
+    "phoneProvider": "Android system location",
+    "backgroundLocationPermission": false
+  },
+  "evidence": {
+    "initialStaticRed": "6 tests; 2 failures / 3 errors / 1 pass",
+    "coreRed": "compileTestKotlin failed on absent P3 production contracts",
+    "targetedGreen": "static 6/6; core 115/115; adapter 21/21; app-shell composition compile PASS",
+    "deviceGreen": "API 34 AVD adapter merged-manifest stories 2/2; targetSdk 36",
+    "fullRepositoryGate": "DEFERRED_TO_P7",
+    "physicalDevice": "UNVERIFIED_PHYSICAL_DEVICE"
+  }
+}
