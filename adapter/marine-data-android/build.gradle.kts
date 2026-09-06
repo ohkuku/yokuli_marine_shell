@@ -10,8 +10,6 @@ android {
 
     defaultConfig {
         minSdk = 26
-        // Keep the library instrumentation APK on the same permission semantics as app-shell.
-        targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -20,6 +18,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    testOptions {
+        // Keep the library instrumentation APK on the same permission semantics as app-shell.
+        targetSdk = 36
+    }
 }
 
 protobuf {
