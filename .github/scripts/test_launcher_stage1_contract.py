@@ -22,10 +22,15 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
         self.assertEqual("Product Surface Reduction", lock["scope"])
         self.assertEqual("PENDING_HUMAN_REVIEW", lock["approvalStatus"])
 
-    def test_release_catalog_and_start_document_are_exactly_chart_and_settings(self):
+    def test_current_catalog_extends_the_approved_stage_one_surface_without_rewriting_start(self):
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
         self.assertEqual(
-            ["ChartShellContribution", "SettingsShellContribution"],
+            [
+                "ChartShellContribution",
+                "SettingsShellContribution",
+                "NmeaInputShellContribution",
+                "DataSourcesShellContribution",
+            ],
             re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
         )
         self.assertIn("InstalledAppRegistry(productionInstalledApps)", graph)

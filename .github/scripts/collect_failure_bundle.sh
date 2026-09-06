@@ -50,14 +50,14 @@ copy_path() {
   fi
 }
 
-for module in app-shell benchmark/shell baselineprofile/shell core/design core/model core/shell feature/chart feature/cockpit feature/desktop feature/library feature/system; do
+for module in app-shell benchmark/shell baselineprofile/shell core/design core/model core/marine-data core/shell-contract core/shell-engine adapter/marine-data-android adapter/map-offline adapter/map-storage feature/chart feature/data-sources feature/desktop feature/nmea-input feature/settings; do
   copy_path "$module/build/reports"
   copy_path "$module/build/test-results"
   copy_path "$module/build/outputs/androidTest-results"
   copy_path "$module/build/outputs/logs"
 done
 
-for diagnostic_path in build/ci-device-tests.log build/reports build/test-results verified-release SHA256SUMS.txt; do
+for diagnostic_path in build/ci-device-tests.log build/ci-c12-process-restore.log build/ci-nmea-sources-process-restore.log build/reports build/test-results verified-release SHA256SUMS.txt; do
   copy_path "$diagnostic_path"
 done
 

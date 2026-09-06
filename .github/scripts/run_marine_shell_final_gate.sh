@@ -36,6 +36,7 @@ bash .github/scripts/test-release-product-surface.sh
 if [[ "$mode" == "--with-device" ]]; then
   bash .github/scripts/run_device_tests.sh all
   bash .github/scripts/run_c12_process_restore.sh
+  bash .github/scripts/run_nmea_sources_process_restore.sh
   bash .github/scripts/run_device_tests.sh performance
   "$python_bin" .github/scripts/summarize_stage11_performance.py \
     --search benchmark/shell/build \

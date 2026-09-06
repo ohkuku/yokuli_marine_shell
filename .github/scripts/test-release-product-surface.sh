@@ -2,7 +2,13 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-standalone_apk="$repo_root/app-shell/build/outputs/apk/standalone/release/app-shell-standalone-release-unsigned.apk"
+standalone_unsigned_apk="$repo_root/app-shell/build/outputs/apk/standalone/release/app-shell-standalone-release-unsigned.apk"
+standalone_signed_apk="$repo_root/app-shell/build/outputs/apk/standalone/release/app-shell-standalone-release.apk"
+if [[ -f "$standalone_signed_apk" ]]; then
+  standalone_apk="$standalone_signed_apk"
+else
+  standalone_apk="$standalone_unsigned_apk"
+fi
 
 fail() {
   printf 'Release product-surface contract failed: %s\n' "$*" >&2
@@ -62,6 +68,8 @@ inspect_apk() {
     fail "$flavor release manifest is missing ShellActivity"
   grep -Fq 'android.intent.category.LAUNCHER' <<<"$manifest" ||
     fail "$flavor release manifest is missing the launcher category"
+  grep -Fq 'android:screenOrientation="portrait"' <<<"$manifest" ||
+    fail "$flavor release manifest is not locked to portrait"
 
   for forbidden in \
     'com.yokuli.marine.feature.shell.lab.ShellLabActivity' \
@@ -79,12 +87,22 @@ inspect_apk() {
   require_class "$apk" 'com.yokuli.marine.shell.ProductionShellGraphKt'
   require_class "$apk" 'com.yokuli.marine.feature.chart.ChartWorkspaceKt'
   require_class "$apk" 'com.yokuli.marine.feature.settings.SettingsWorkspaceKt'
+  require_class "$apk" 'com.yokuli.marine.feature.nmeainput.NmeaInputWorkspaceKt'
+  require_class "$apk" 'com.yokuli.marine.feature.datasources.DataSourcesWorkspaceKt'
+  require_class "$apk" 'com.yokuli.marine.data.android.runtime.AndroidNmeaInputRuntime'
+  require_class "$apk" 'com.yokuli.marine.data.android.runtime.AndroidMarineSourceRuntime'
+  require_class "$apk" 'com.yokuli.marine.data.android.service.NmeaInputForegroundService'
+  require_class "$apk" 'com.yokuli.marine.data.android.service.PhoneLocationForegroundService'
   forbid_class "$apk" 'com.yokuli.marine.feature.shell.lab.ShellLabActivity'
   forbid_class "$apk" 'com.yokuli.marine.feature.cockpit.CockpitShellContribution'
   forbid_class "$apk" 'com.yokuli.marine.feature.library.LibraryShellContribution'
   forbid_class "$apk" 'com.yokuli.marine.feature.system.SystemShellContribution'
+  forbid_class "$apk" 'com.yokuli.marine.data.android.FakeNmeaTransport'
+  forbid_class "$apk" 'com.yokuli.marine.data.android.DemoNmeaSender'
+  forbid_class "$apk" 'com.yokuli.marine.data.android.NmeaSoakSender'
+  forbid_class "$apk" 'com.yokuli.marine.data.android.TestSender'
 
-  printf '%s release APK passed: Chart + Settings; Shell Lab absent\n' "$flavor"
+  printf '%s release APK passed: four installed apps, production runtimes present, debug/demo code absent\n' "$flavor"
 }
 
 [[ -f "$standalone_apk" ]] || fail "missing standalone release APK: ${standalone_apk#"$repo_root/"}"

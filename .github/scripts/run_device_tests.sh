@@ -30,7 +30,7 @@ case "$mode" in
   ui-contract)
     gradle_args+=(
       :app-shell:connectedStandaloneDebugAndroidTest
-      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#productionShellExposesOnlyChartAndSettingsAndMapRootStaysMapFirst'
+      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#productionShellExposesFourAppsWhileDefaultStartStaysMapFirst'
     )
     ;;
   performance)

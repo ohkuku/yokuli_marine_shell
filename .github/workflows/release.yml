@@ -211,6 +211,10 @@ jobs:
         run: >-
           ./gradlew --no-daemon test lintStandaloneRelease
           assembleStandaloneRelease bundleStandaloneRelease --stacktrace
+      - name: Enforce NMEA Sources final and signed product-surface contracts
+        run: |
+          python3 .github/scripts/test_nmea_sources_p7_contract.py
+          bash .github/scripts/test-release-product-surface.sh
       - name: Verify signatures and generate checksums
         run: |
           apksigner_path="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f -print | sort -V | tail -n 1)"

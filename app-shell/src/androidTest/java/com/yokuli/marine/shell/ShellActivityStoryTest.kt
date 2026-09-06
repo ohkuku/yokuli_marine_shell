@@ -400,7 +400,7 @@ class ShellActivityStoryTest {
     }
 
     @Test
-    fun productionShellExposesOnlyChartAndSettingsAndMapRootStaysMapFirst() {
+    fun productionShellExposesFourAppsWhileDefaultStartStaysMapFirst() {
         compose.onNodeWithTag("tile-chart").performClick()
         awaitDisplayed("map-root-command-bar")
         compose.onNodeWithTag("wp-page-title-chart").assertDoesNotExist()
@@ -420,9 +420,11 @@ class ShellActivityStoryTest {
                 node.config.contains(SemanticsProperties.TestTag) &&
                     node.config[SemanticsProperties.TestTag].startsWith("launcher-entry-")
             },
-        ).assertCountEquals(2)
+        ).assertCountEquals(4)
         compose.onNodeWithTag("launcher-entry-chart").assertIsDisplayed()
         compose.onNodeWithTag("launcher-entry-settings").assertIsDisplayed()
+        compose.onNodeWithTag("launcher-entry-nmea-input").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("launcher-entry-data-sources").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("launcher-entry-anchor").assertDoesNotExist()
         compose.onNodeWithTag("launcher-entry-cockpit").assertDoesNotExist()
     }

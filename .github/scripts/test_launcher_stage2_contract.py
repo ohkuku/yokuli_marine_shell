@@ -94,7 +94,7 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, engine)
 
-    def test_release_catalog_is_composed_from_opaque_feature_contributions(self):
+    def test_current_release_catalog_is_composed_from_opaque_feature_contributions(self):
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
         chart = (
             ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartShellContribution.kt"
@@ -102,15 +102,26 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
         settings = (
             ROOT / "feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsShellContribution.kt"
         ).read_text()
+        nmea = (
+            ROOT / "feature/nmea-input/src/main/java/com/yokuli/marine/feature/nmeainput/NmeaInputShellContribution.kt"
+        ).read_text()
+        data_sources = (
+            ROOT / "feature/data-sources/src/main/java/com/yokuli/marine/feature/datasources/DataSourcesShellContribution.kt"
+        ).read_text()
         self.assertRegex(graph, r"productionInstalledApps\s*:[^=]+?=\s*listOf\(")
         self.assertEqual(
-            ["ChartShellContribution", "SettingsShellContribution"],
+            [
+                "ChartShellContribution",
+                "SettingsShellContribution",
+                "NmeaInputShellContribution",
+                "DataSourcesShellContribution",
+            ],
             re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
         )
         self.assertIn("InstalledAppRegistry(productionInstalledApps)", graph)
         self.assertIn("productionInstalledAppRegistry.catalogContributions", graph)
         self.assertIn("LauncherCatalog.compose", graph)
-        for feature in (chart, settings):
+        for feature in (chart, settings, nmea, data_sources):
             self.assertIn("LauncherCatalogContribution", feature)
             self.assertIn("LauncherAppId", feature)
             self.assertIn("LaunchToken", feature)
@@ -148,14 +159,14 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
         self.assertIn("LAUNCHER_STAGE2_CONTRACT_RESULT", workflow)
         self.assertIn("launcher_stage2_contract", ci_contract)
 
-    def test_device_gates_execute_current_chart_and_settings_stories(self):
+    def test_device_gates_execute_current_product_and_chart_stories(self):
         device_runner = (ROOT / ".github/scripts/run_device_tests.sh").read_text()
         stories = (
             ROOT / "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt"
         ).read_text()
         for story in (
             "chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart",
-            "productionShellExposesOnlyChartAndSettingsAndMapRootStaysMapFirst",
+            "productionShellExposesFourAppsWhileDefaultStartStaysMapFirst",
         ):
             self.assertIn(story, stories)
             self.assertIn(story, device_runner)
