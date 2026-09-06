@@ -14,8 +14,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Serializes a future provider's read-only observations into the existing MapStore actor.
- * Production supplies [NoSourcePositionPort], which deliberately starts neither collector nor timer.
+ * Serializes a composition-provided read-only observation stream into the existing MapStore actor.
+ * [NoSourcePositionPort] deliberately starts neither collector nor timer; production may instead
+ * provide the OS-selected marine-data adapter without coupling Chart to that runtime.
  */
 class PositionObservationCoordinator(
     port: ReadOnlyPositionPort,
