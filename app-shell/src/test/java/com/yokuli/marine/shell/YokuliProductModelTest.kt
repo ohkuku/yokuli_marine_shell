@@ -13,14 +13,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class YokuliProductModelTest {
-    @Test fun finalProductIdentitiesAreStableButFutureAppsAreNotInstalledEarly() {
+    @Test fun finalProductIdentitiesAreStableAndOnlyCompletedAppsAreInstalled() {
         assertEquals(
             listOf("chart", "chart_library", "data", "navigation", "preferences"),
             YokuliProductModel.finalApps.map { it.appId.value },
         )
         val installed = productionCatalog.entries.mapTo(linkedSetOf()) { it.entryId.value }
-        assertEquals(setOf("chart", "settings", "data", "chart_library"), installed)
-        assertFalse("navigation" in installed)
+        assertEquals(setOf("chart", "settings", "data", "chart_library", "navigation"), installed)
+        assertTrue("navigation" in installed)
         assertFalse("preferences" in installed)
     }
 

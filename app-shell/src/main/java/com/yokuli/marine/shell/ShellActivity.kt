@@ -96,6 +96,7 @@ import com.yokuli.marine.feature.data.DataEffect
 import com.yokuli.marine.feature.data.DataLauncherProjector
 import com.yokuli.marine.feature.data.DataUiAction
 import com.yokuli.marine.feature.data.dataStatusCopy
+import com.yokuli.marine.feature.navigation.NavigationEffect
 import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryEffect
@@ -238,6 +239,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val nmeaRuntimeSnapshot by shellViewModel.nmeaRuntimeState.collectAsState()
     val dataSourcesSnapshot by shellViewModel.marineSourceState.collectAsState()
     val activeNavigationState by shellViewModel.activeNavigationState.collectAsState()
+    val navigationState by shellViewModel.navigationState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var recoveryExportState by remember { mutableStateOf(MapRecoveryExportUiState.IDLE) }
     var placeExportState by remember { mutableStateOf<MapPlaceExportUiState>(MapPlaceExportUiState.Idle) }
@@ -432,6 +434,17 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             }
         }
     }
+    LaunchedEffect(engine, shellViewModel) {
+        shellViewModel.navigationEffects.collect { effect ->
+            when (effect) {
+                is NavigationEffect.ShowRouteInChart -> {
+                    shellViewModel.mapStore.dispatch(MapAction.PreviewRoutePlan(effect.routeId))
+                    shellViewModel.mapStore.dispatch(MapAction.OpenSurface(MapSurface.Root))
+                    engine.dispatch(LauncherAction.Open(ChartDestinations.route(effect.routeId), preserveCaller = true))
+                }
+            }
+        }
+    }
     val persistedPreferences by shellViewModel.persistedPreferences.collectAsState()
     val themeSpec = WpThemeSpec(
         WpThemeMode.valueOf(persistedPreferences.themeModeName),
@@ -594,6 +607,9 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     dispatch(LauncherAction.Open(token, preserveCaller = true))
                 }
             },
+            navigationState = navigationState,
+            onNavigationAction = shellViewModel::onNavigationAction,
+            onOpenNavigation = { shellViewModel.openNavigation(it) },
         )
         CompositionLocalProvider(
             LocalProductionShellRuntime provides runtime,
@@ -617,6 +633,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     nmeaSnapshot = nmeaRuntimeSnapshot,
                     dataSourcesSnapshot = dataSourcesSnapshot,
                     chartLibraryState = chartLibraryState,
+                    navigationState = navigationState,
                 ),
                 searchResults = productionSearchContributions(
                     theme = themeSpec,
@@ -625,6 +642,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     nmeaSnapshot = nmeaRuntimeSnapshot,
                     dataSourcesSnapshot = dataSourcesSnapshot,
                     chartLibraryState = chartLibraryState,
+                    navigationState = navigationState,
                     query = activeSearchQuery ?: retainedSearchQuery,
                 ),
             )

@@ -11,16 +11,16 @@ class OsRedesignW01ContractTest(unittest.TestCase):
     def read(self, path: str) -> str:
         return (ROOT / path).read_text(encoding="utf-8")
 
-    def test_final_identity_model_is_explicit_without_installing_future_apps(self):
+    def test_final_identity_model_is_explicit_and_only_completed_successors_are_installed(self):
         model = self.read("app-shell/src/main/java/com/yokuli/marine/shell/YokuliProductModel.kt")
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         self.assertIn('identity("data", "data", "data.overview")', model)
         self.assertIn('identity("navigation", "navigation", "navigation.overview")', model)
         self.assertIn('identity("preferences", "preferences", "preferences.overview")', model)
         installed = re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph)
-        self.assertEqual(4, len(installed))
+        self.assertEqual(5, len(installed))
         self.assertIn("DataShellContribution", installed)
-        self.assertNotIn("NavigationShellContribution", installed)
+        self.assertIn("NavigationShellContribution", installed)
         self.assertNotIn("PreferencesShellContribution", installed)
 
     def test_storage_and_product_versions_are_separate_and_durable(self):

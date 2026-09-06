@@ -44,6 +44,11 @@ import com.yokuli.marine.data.source.MarineFeatureLinkToken
 import com.yokuli.marine.data.source.MarineFeatureLinks
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommand
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommandResult
+import com.yokuli.marine.feature.navigation.NavigationCoordinator
+import com.yokuli.marine.feature.navigation.NavigationDestination
+import com.yokuli.marine.feature.navigation.NavigationEffect
+import com.yokuli.marine.feature.navigation.NavigationUiAction
+import com.yokuli.marine.feature.navigation.NavigationUiState
 import android.net.Uri
 import com.yokuli.shell.engine.DefaultLauncherEngine
 import com.yokuli.shell.engine.InMemoryLauncherPersistence
@@ -167,6 +172,14 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         },
     )
     val offlineCoverageState: StateFlow<OfflineCoverageUiState> = offlineCoverageCoordinator.state
+    private val navigationCoordinator = NavigationCoordinator(
+        libraryPort = shellApplication.mapPersistence,
+        activeRuntime = shellApplication.activeNavigationRuntime,
+        nowMillis = System::currentTimeMillis,
+        scope = viewModelScope,
+    )
+    val navigationState: StateFlow<NavigationUiState> = navigationCoordinator.state
+    val navigationEffects: Flow<NavigationEffect> = navigationCoordinator.effects
 
     init {
         viewModelScope.launch {
@@ -180,6 +193,11 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
                         mapStore.dispatch(MapAction.PreviewRoutePlan(session.routeId))
                     }
                 }
+        }
+        viewModelScope.launch {
+            gpxImportState.collect { state ->
+                if (state is GpxImportUiState.Succeeded) navigationCoordinator.dispatch(NavigationUiAction.Refresh)
+            }
         }
         viewModelScope.launch {
             mapStore.state.collect { state ->
@@ -294,6 +312,11 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
             mapStore.dispatch(MapAction.OpenSurface(com.yokuli.marine.map.domain.MapSurface.Root))
         }
     }
+
+    fun onNavigationAction(action: NavigationUiAction) = navigationCoordinator.dispatch(action)
+
+    fun openNavigation(token: com.yokuli.shell.contract.LaunchToken): NavigationDestination? =
+        navigationCoordinator.open(token)
 
     fun saveLanguage(language: AppLanguage) {
         viewModelScope.launch {

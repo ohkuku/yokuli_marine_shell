@@ -29,6 +29,7 @@ class NmeaSourcesP7Contract(unittest.TestCase):
                 "SettingsShellContribution",
                 "DataShellContribution",
                 "ChartLibraryShellContribution",
+                "NavigationShellContribution",
             ],
             installed,
         )
@@ -38,6 +39,7 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         self.assertIn("SettingsDestinations.EntryId", default_document)
         self.assertNotIn("DataDestinations.EntryId", default_document)
         self.assertNotIn("ChartLibraryDestinations.EntryId", default_document)
+        self.assertNotIn("NavigationShellContribution.EntryId", default_document)
 
         for path in (
             ".github/scripts/test_launcher_stage1_contract.py",

@@ -13,17 +13,17 @@ Yokuli OS 当前同时包含 Windows Phone 8 Classic 风格应用内 Shell、离
 ```text
 branch: codex/shell-map-contract
 phase: OS Redesign CI-first
-work package: W01
-status: W01 implementation candidate; Chart Library CL12, hosted CI and physical review remain separate
+work package: W12
+status: W12 implementation candidate; hosted CI and physical review remain separate
 ```
 
-Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化与应用内恢复。当前生产 All Apps 精确为 Chart、Settings、Data、Chart Library 四项；全新 Start Document 仍只放 Chart 与 Settings。Shell Lab 只在 debug/benchmark classpath。
+Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化与应用内恢复。当前生产 All Apps 精确为 Chart、Settings、Data、Chart Library、Navigation 五项；全新 Start Document 仍只放 Chart 与 Settings。Shell Lab 只在 debug/benchmark classpath。
 
-正式磁贴只允许宽×高 1×1、2×2、4×2；2×1、2×4、4×4 只作为旧持久化值在边界迁移，不得回到生产 UI。地点、路线和导入轨迹仍是地图内部页面；海图文件夹、单文件来源、受管副本与验证只在 Chart Library 维护。Data 内部的 Inputs 管理连接，Sources 保存可解释的 OS 选源决定，Overview、Flow 与 Diagnostics 只展示真实运行时证据。
+正式磁贴只允许宽×高 1×1、2×2、4×2；2×1、2×4、4×4 只作为旧持久化值在边界迁移，不得回到生产 UI。Navigation 使用同一持久库管理航点、航线、GPX 导入与活动航行，并只通过明确的内容 handoff 让 Chart 显示指定航线；海图文件夹、单文件来源、受管副本与验证只在 Chart Library 维护。Data 内部的 Inputs 管理连接，Sources 保存可解释的 OS 选源决定，Overview、Flow 与 Diagnostics 只展示真实运行时证据。
 
 Yokuli OS 默认沉浸式全屏且只允许竖屏；方屏仍属于适配范围，横屏不属于当前产品能力。壳内虚拟 Back／Start／Search，以及 Activity 实际收到的 Android Back 和可交付键盘／硬件事件，统一进入串行 Launcher Engine。Back 的最远终点是应用内 Shell 桌面，不结束 Yokuli；应用不注册 Android HOME／DEFAULT，也不提供 Android 桌面设置入口。
 
-本 Phase 在保留地图能力的基础上实现真实 NMEA 0183 TCP／UDP 输入、手机系统定位候选、统一来源目录和按数据语义选源；仍禁止 NMEA 输出／转发、活动导航、自动舵/船网控制、Anchor/Trip/Survey Runtime。模拟器结果不能替代三星方屏、真机 GNSS、OEM 后台行为或实船结论。
+本 Phase 在保留地图能力的基础上实现真实 NMEA 0183 TCP／UDP 输入、手机系统定位候选、统一来源目录、按数据语义选源和本地活动导航；仍禁止 NMEA 输出／转发、自动舵/船网控制、Anchor/Trip/Survey Runtime。模拟器结果不能替代三星方屏、真机 GNSS、OEM 后台行为或实船结论。
 
 当前 Chart 有两条解耦渲染链路：配置了 `GOOGLE_MAPS_ANDROID_API_KEY` 时，未选择本地海图会显示 Google 在线底图；用户选择本地海图后由 MapLibre 离线渲染。密钥存在只表示“已配置”，不证明 API 授权、账单、签名限制、网络或图块加载已经成功；本地海图覆盖状态也不会被 Google 底图冒充。
 
@@ -35,6 +35,7 @@ Yokuli OS 默认沉浸式全屏且只允许竖屏；方屏仍属于适配范围�
 - [Chart Library CL12 报告](docs/phases/chart-library/CL12_REPORT.md)
 - [OS Redesign Product & Engineering Contract](docs/phases/os-redesign/PRODUCT_ENGINEERING_CONTRACT.md)
 - [OS Redesign W01 合同](docs/phases/os-redesign/work-packages/W01_PRODUCT_ENGINEERING_CONTRACT.md)
+- [OS Redesign W12 Navigation 合同](docs/phases/os-redesign/work-packages/W12_PRODUCT_ENGINEERING_CONTRACT.md)
 - [OS Redesign 执行状态](docs/phases/os-redesign/EXECUTION_STATE.json)
 - [NMEA_SOURCES 产品合同](docs/phases/nmea-sources/REQUIREMENTS.md)
 - [NMEA_SOURCES P0 基线](docs/implementation/NMEA_SOURCES_P0_BASELINE.md)
@@ -77,6 +78,7 @@ python3 .github/scripts/test_launcher_stage1_contract.py
 python3 .github/scripts/test_launcher_stage2_contract.py
 python3 .github/scripts/test_launcher_stage25_contract.py
 python3 .github/scripts/test_launcher_stage11_contract.py
+python3 .github/scripts/test_osr_w12_contract.py
 python3 .github/scripts/test_nmea_sources_p0_contract.py
 python3 .github/scripts/test_nmea_sources_p1_contract.py
 python3 .github/scripts/test_nmea_sources_p2_contract.py
@@ -98,7 +100,7 @@ P7 本地完整 Gate 已通过；Android CI 会在 push 后重新执行托管门
 
 ## English translation
 
-Yokuli OS currently combines its WP8 Classic in-app Shell with offline-first charts, one unified Data app, and an independent Chart Library. The production All Apps surface is exactly Chart, Settings, Data, and Chart Library; the default Start document remains Chart + Settings. Data contains connection inputs, explainable source selection, actual runtime flow, and bounded diagnostics while reusing the process-owned marine runtime. Chart Library owns read-only external chart sources, cataloguing, validation, and explicit managed copies, while Chart only selects and displays those resources. Hosted CI and physical review remain separate; NMEA output/forwarding, active navigation, autopilot, and vessel-network control remain out of scope.
+Yokuli OS currently combines its WP8 Classic in-app Shell with offline-first Chart, unified Data, independent Chart Library, and a real Navigation app. The production All Apps surface is exactly Chart, Settings, Data, Chart Library, and Navigation; the default Start document remains Chart + Settings. Navigation manages the shared waypoint/route library, explicit active-navigation sessions, and route-content handoff to Chart. Data contains connection inputs, explainable source selection, actual runtime flow, and bounded diagnostics. Hosted CI and physical review remain separate; NMEA output/forwarding, autopilot, and vessel-network control remain out of scope.
 
 The portrait-only immersive shell routes virtual Back/Start/Search and deliverable Android or keyboard input through the serialized Launcher Engine. Back stops at the in-app Shell Desktop and never exits Yokuli. The app does not register Android HOME/DEFAULT or expose Android Home settings; square layouts remain supported, while landscape is outside the current product contract.
 

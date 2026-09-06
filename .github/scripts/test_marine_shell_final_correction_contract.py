@@ -119,10 +119,11 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
                 "SettingsShellContribution",
                 "DataShellContribution",
                 "ChartLibraryShellContribution",
+                "NavigationShellContribution",
             ],
             re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
         )
-        for forbidden in ("AnchorShellContribution", "TripShellContribution", "NavigationShellContribution", "SurveyShellContribution"):
+        for forbidden in ("AnchorShellContribution", "TripShellContribution", "SurveyShellContribution"):
             self.assertNotIn(forbidden, graph)
 
     def test_correction_performance_gate_covers_every_normative_journey(self):

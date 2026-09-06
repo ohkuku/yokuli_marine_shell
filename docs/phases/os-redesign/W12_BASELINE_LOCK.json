@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W12",
+  "startCommit": "284fc47e828ea0b939f0ab2f69b299088fcfd151",
+  "productionApps": ["chart", "settings", "data", "chart_library", "navigation"],
+  "navigationAppRegistered": true,
+  "navigationLibraryTruth": "W10_ROOM_NAVIGATION_LIBRARY_PORT",
+  "activeRuntimeTruth": "W11_PROCESS_OWNED_ACTIVE_NAVIGATION_RUNTIME",
+  "sections": ["OVERVIEW", "WAYPOINTS", "ROUTES", "GPX", "ACTIVE"],
+  "tileSizes": ["ICON_1X1", "STANDARD_2X2", "WIDE_4X2"],
+  "defaultStartPinsNavigation": false,
+  "chartHandoff": "ROUTE_ID_CONTENT_HANDOFF",
+  "gpxUiOwnership": "COMPOSITION_INJECTED_COMPATIBILITY_UNTIL_W15",
+  "legacyChartManagementRemoved": false,
+  "autopilotOutput": false,
+  "verification": "GITHUB_ACTION_PENDING"
+}

@@ -77,7 +77,7 @@ class ChartLibraryCl10ContractTest(unittest.TestCase):
         installed = re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph)
         self.assertEqual(
             ["ChartShellContribution", "SettingsShellContribution", "DataShellContribution",
-             "ChartLibraryShellContribution"],
+             "ChartLibraryShellContribution", "NavigationShellContribution"],
             installed,
         )
         manifest = self.read("app-shell/src/main/AndroidManifest.xml")

@@ -30,6 +30,7 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
                 "SettingsShellContribution",
                 "DataShellContribution",
                 "ChartLibraryShellContribution",
+                "NavigationShellContribution",
             ],
             re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
         )

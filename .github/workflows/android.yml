@@ -231,6 +231,10 @@ jobs:
         id: osr_w11_contract
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w11-contract -- python3 .github/scripts/test_osr_w11_contract.py
+      - name: OS Redesign W12 Navigation application contract
+        id: osr_w12_contract
+        continue-on-error: true
+        run: bash .github/scripts/run_ci_capture.sh osr-w12-contract -- python3 .github/scripts/test_osr_w12_contract.py
       - name: OS Redesign cumulative contract enforcement
         id: osr_w01_contract
         if: always()
@@ -244,6 +248,7 @@ jobs:
           OSR_W09_RESULT: ${{ steps.osr_w09_contract.outcome }}
           OSR_W10_RESULT: ${{ steps.osr_w10_contract.outcome }}
           OSR_W11_RESULT: ${{ steps.osr_w11_contract.outcome }}
+          OSR_W12_RESULT: ${{ steps.osr_w12_contract.outcome }}
         run: |
           test "$OSR_W01_ONLY_RESULT" = success
           test "$OSR_W02_RESULT" = success
@@ -253,6 +258,7 @@ jobs:
           test "$OSR_W09_RESULT" = success
           test "$OSR_W10_RESULT" = success
           test "$OSR_W11_RESULT" = success
+          test "$OSR_W12_RESULT" = success
       - name: Upload quality-gate candidate APKs
         if: steps.ci_helpers.outcome == 'success' && steps.launcher_stage0_contract.outcome == 'success' && steps.nmea_sources_p0_contract.outcome == 'success' && steps.nmea_sources_p1_contract.outcome == 'success' && steps.nmea_sources_p2_contract.outcome == 'success' && steps.nmea_sources_p3_contract.outcome == 'success' && steps.nmea_sources_p4_contract.outcome == 'success' && steps.nmea_sources_p5_contract.outcome == 'success' && steps.nmea_sources_p6_contract.outcome == 'success' && steps.nmea_sources_p7_contract.outcome == 'success' && steps.launcher_stage1_contract.outcome == 'success' && steps.launcher_stage2_contract.outcome == 'success' && steps.launcher_stage25_contract.outcome == 'success' && steps.launcher_stage3_contract.outcome == 'success' && steps.launcher_stage4_contract.outcome == 'success' && steps.launcher_stage5_contract.outcome == 'success' && steps.launcher_stage6_contract.outcome == 'success' && steps.launcher_stage7_contract.outcome == 'success' && steps.launcher_stage8_contract.outcome == 'success' && steps.launcher_stage9_contract.outcome == 'success' && steps.launcher_stage10_contract.outcome == 'success' && steps.launcher_stage11_contract.outcome == 'success' && steps.shell_app_contract.outcome == 'success' && steps.chart_c12_contract.outcome == 'success' && steps.chart_library_cl07_contract.outcome == 'success' && steps.chart_library_cl08_contract.outcome == 'success' && steps.chart_library_cl09_contract.outcome == 'success' && steps.chart_library_cl10_contract.outcome == 'success' && steps.chart_library_cl11_contract.outcome == 'success' && steps.chart_library_cl12_contract.outcome == 'success' && steps.osr_w01_contract.outcome == 'success' && steps.google_maps_evidence.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
@@ -356,6 +362,14 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W11-yokuli-os-debug-${{ github.sha }}
+          path: app-shell/build/outputs/apk/standalone/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload W12 diagnostic APK when its Navigation app contract fails
+        if: steps.assemble.outcome == 'success' && steps.osr_w12_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v7
+        with:
+          name: UNVERIFIED-W12-yokuli-os-debug-${{ github.sha }}
           path: app-shell/build/outputs/apk/standalone/debug/*.apk
           if-no-files-found: error
           retention-days: 7

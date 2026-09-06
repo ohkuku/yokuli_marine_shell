@@ -5,6 +5,8 @@ import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.data.DataDestinations
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
+import com.yokuli.marine.feature.navigation.NavigationDestinations
+import com.yokuli.marine.feature.navigation.NavigationShellContribution
 import com.yokuli.shell.contract.LaunchToken
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,11 +29,16 @@ class ProductionLaunchRegistryTest {
                 SettingsDestinations.EntryId,
                 DataDestinations.EntryId,
                 ChartLibraryDestinations.EntryId,
+                NavigationShellContribution.EntryId,
             ),
             productionContributions.flatMap { it.entries }.map { it.entryId }.toSet(),
         )
-        assertEquals(4, productionContributions.flatMap { it.entries }.size)
-        assertEquals(4, productionInstalledAppRegistry.internalAppHosts.size)
+        assertEquals(5, productionContributions.flatMap { it.entries }.size)
+        assertEquals(5, productionInstalledAppRegistry.internalAppHosts.size)
+        assertEquals(
+            NavigationShellContribution.AppId,
+            productionLaunchRegistrations[NavigationDestinations.Routes],
+        )
         assertFalse(productionLaunchRegistrations.containsKey(LaunchToken("settings.unknown")))
     }
 }

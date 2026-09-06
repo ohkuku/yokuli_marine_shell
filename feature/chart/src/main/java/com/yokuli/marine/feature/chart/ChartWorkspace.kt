@@ -2071,6 +2071,16 @@ private fun chartDisplayIssueText(issue: ChartDisplayIssue): String = stringReso
 )
 
 @Composable
+fun NavigationGpxExchangeSurface(state: GpxImportUiState, onAction: (GpxImportUiAction) -> Unit) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        GpxExchangePage(state, onAction)
+    }
+}
+
+@Composable
 private fun GpxExchangePage(state: GpxImportUiState, onAction: (GpxImportUiAction) -> Unit) {
     val colors = LocalWpTheme.current
     WpText(stringResource(R.string.map_gpx_limits), 10, color = colors.muted)

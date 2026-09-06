@@ -83,6 +83,14 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommand
 import com.yokuli.marine.navigation.domain.ActiveNavigationSnapshot
 import com.yokuli.marine.feature.navigation.ActiveNavigationStrip
+import com.yokuli.marine.feature.navigation.NavigationDestinations
+import com.yokuli.marine.feature.navigation.NavigationShellContribution
+import com.yokuli.marine.feature.navigation.NavigationUiAction
+import com.yokuli.marine.feature.navigation.NavigationUiState
+import com.yokuli.marine.feature.navigation.NavigationWorkspace
+import com.yokuli.marine.feature.navigation.navigationLauncherVisualContribution
+import com.yokuli.marine.feature.navigation.navigationSearchContributions
+import com.yokuli.marine.feature.chart.NavigationGpxExchangeSurface
 
 data class ProductionShellVisualEnvironment(
     val theme: WpThemeSpec,
@@ -91,6 +99,7 @@ data class ProductionShellVisualEnvironment(
     val nmeaSnapshot: NmeaRuntimeSnapshot = NmeaRuntimeSnapshot.EMPTY,
     val dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
     val chartLibraryState: ChartLibraryUiState = ChartLibraryUiState(),
+    val navigationState: NavigationUiState = NavigationUiState(),
 )
 
 data class ProductionShellRuntime(
@@ -136,6 +145,9 @@ data class ProductionShellRuntime(
     val chartLibraryState: ChartLibraryUiState,
     val onChartLibraryAction: (ChartLibraryUiAction) -> Unit,
     val onOpenChartLibrary: (LaunchToken) -> Unit,
+    val navigationState: NavigationUiState,
+    val onNavigationAction: (NavigationUiAction) -> Unit,
+    val onOpenNavigation: (LaunchToken) -> Unit,
 )
 
 val LocalProductionShellRuntime = staticCompositionLocalOf<ProductionShellRuntime> {
@@ -298,12 +310,25 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             ChartLibraryWorkspace(runtime.chartLibraryState, runtime.onChartLibraryAction)
         },
     ),
+    InstalledAppBinding(
+        catalogContribution = NavigationShellContribution,
+        visualContributions = { environment -> listOf(navigationLauncherVisualContribution(environment.navigationState)) },
+        searchContributions = { environment, query -> navigationSearchContributions(environment.navigationState, query) },
+        dynamicLaunchTokenMatcher = NavigationDestinations::accepts,
+        internalAppHost = InternalAppHost(NavigationShellContribution.AppId) { token ->
+            val runtime = LocalProductionShellRuntime.current
+            LaunchedEffect(token) { runtime.onOpenNavigation(token) }
+            NavigationWorkspace(runtime.navigationState, runtime.onNavigationAction) {
+                NavigationGpxExchangeSurface(runtime.gpxImportState, runtime.onGpxImportAction)
+            }
+        },
+    ),
 )
 
 val productionInstalledAppRegistry: InstalledAppRegistry<ProductionShellVisualEnvironment> =
     InstalledAppRegistry(productionInstalledApps)
 val productionContributions = productionInstalledAppRegistry.catalogContributions
-val productionCatalog = LauncherCatalog.compose(revision = 4, contributions = productionContributions)
+val productionCatalog = LauncherCatalog.compose(revision = 5, contributions = productionContributions)
 val productionLaunchRegistrations = productionInstalledAppRegistry.launchRegistrations
 @Composable
 fun productionVisualContributions(
@@ -313,6 +338,7 @@ fun productionVisualContributions(
     nmeaSnapshot: NmeaRuntimeSnapshot = NmeaRuntimeSnapshot.EMPTY,
     dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
     chartLibraryState: ChartLibraryUiState = ChartLibraryUiState(),
+    navigationState: NavigationUiState = NavigationUiState(),
 ): List<LauncherEntryVisualContribution> {
     val environment = ProductionShellVisualEnvironment(
         theme,
@@ -321,6 +347,7 @@ fun productionVisualContributions(
         nmeaSnapshot,
         dataSourcesSnapshot,
         chartLibraryState,
+        navigationState,
     )
     return productionInstalledAppRegistry.visualContributions(environment)
 }
@@ -332,6 +359,7 @@ fun productionSearchContributions(
     nmeaSnapshot: NmeaRuntimeSnapshot = NmeaRuntimeSnapshot.EMPTY,
     dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
     chartLibraryState: ChartLibraryUiState = ChartLibraryUiState(),
+    navigationState: NavigationUiState = NavigationUiState(),
     query: String,
 ) = productionInstalledAppRegistry.searchContributions(
     ProductionShellVisualEnvironment(
@@ -341,6 +369,7 @@ fun productionSearchContributions(
         nmeaSnapshot,
         dataSourcesSnapshot,
         chartLibraryState,
+        navigationState,
     ),
     query,
 )
