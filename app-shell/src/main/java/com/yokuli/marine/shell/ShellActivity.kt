@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.provider.OpenableColumns
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -98,6 +99,18 @@ import com.yokuli.marine.feature.datasources.dataSourcesStatusCopy
 import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
 import com.yokuli.marine.feature.nmeainput.NmeaInputLauncherProjector
 import com.yokuli.marine.feature.nmeainput.nmeaInputStatusCopy
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryEffect
+import com.yokuli.marine.feature.chartlibrary.chartLibraryStatusCopy
+import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryPickerEffect
+import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
+import com.yokuli.marine.map.domain.chartlibrary.ChartPickerKind
+import com.yokuli.marine.map.domain.chartlibrary.ChartPickerSelection
+import com.yokuli.marine.feature.chart.ChartDestinations
+import com.yokuli.marine.map.domain.MapAction
+import com.yokuli.marine.map.domain.MapCameraIntent
+import com.yokuli.marine.map.domain.MapCameraTarget
+import com.yokuli.marine.map.domain.MapSurface
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEffect
 import com.yokuli.shell.engine.LauncherRecoveryMode
@@ -223,6 +236,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val offlineCoverageState by shellViewModel.offlineCoverageState.collectAsState()
     val nmeaInputState by shellViewModel.nmeaInputState.collectAsState()
     val dataSourcesState by shellViewModel.dataSourcesState.collectAsState()
+    val chartLibraryState by shellViewModel.chartLibraryState.collectAsState()
     val nmeaRuntimeSnapshot by shellViewModel.nmeaRuntimeState.collectAsState()
     val dataSourcesSnapshot by shellViewModel.marineSourceState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
@@ -231,6 +245,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     var pendingPlaceExport by remember { mutableStateOf<SavedPlace?>(null) }
     var gpxExportState by remember { mutableStateOf<GpxExportUiState>(GpxExportUiState.Idle) }
     var pendingGpxExport by remember { mutableStateOf<GpxExportTarget?>(null) }
+    var pendingChartPicker by remember { mutableStateOf<ChartLibraryPickerEffect?>(null) }
     val phonePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
@@ -251,6 +266,37 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             shellViewModel.inspectGpxDocument(uri.toString())
         }
     }
+    fun completeChartPicker(uri: Uri?) {
+        val pending = pendingChartPicker
+        pendingChartPicker = null
+        if (pending == null || uri == null) {
+            shellViewModel.completeChartLibraryPicker(null)
+            return
+        }
+        val kind = when (pending) {
+            is ChartLibraryPickerEffect.OpenTree -> ChartPickerKind.TREE
+            is ChartLibraryPickerEffect.OpenDocument -> ChartPickerKind.SINGLE_DOCUMENT
+        }
+        val selection = runCatching {
+            ChartPickerSelection(
+                operationId = pending.operationId,
+                kind = kind,
+                locator = ChartOpaqueLocator(uri.toString()),
+                displayName = context.chartDocumentDisplayName(uri),
+                // The runtime attempts and verifies the persisted read grant before registering.
+                persistableReadGranted = true,
+            )
+        }.getOrNull()
+        shellViewModel.completeChartLibraryPicker(selection)
+    }
+    val chartTreePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = ::completeChartPicker,
+    )
+    val chartDocumentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = ::completeChartPicker,
+    )
     val recoveryDocumentCreator = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(MapRecoveryExport.MIME_TYPE),
     ) { uri ->
@@ -362,6 +408,32 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             }
         }
     }
+    LaunchedEffect(engine, shellViewModel) {
+        shellViewModel.chartLibraryEffects.collect { effect ->
+            when (effect) {
+                is ChartLibraryEffect.OpenPicker -> {
+                    pendingChartPicker = effect.picker
+                    when (effect.picker) {
+                        is ChartLibraryPickerEffect.OpenTree -> chartTreePicker.launch(null)
+                        is ChartLibraryPickerEffect.OpenDocument -> chartDocumentPicker.launch(
+                            arrayOf("application/vnd.sqlite3", "application/x-sqlite3", "application/octet-stream", "*/*"),
+                        )
+                    }
+                }
+                is ChartLibraryEffect.OpenAssetInChart -> {
+                    shellViewModel.mapStore.dispatch(MapAction.OpenSurface(MapSurface.Root))
+                    effect.bounds?.let { bounds ->
+                        shellViewModel.mapStore.dispatch(
+                            MapAction.RequestCamera(MapCameraTarget.Bounds(bounds), MapCameraIntent.VIEW_PACKAGE),
+                        )
+                    }
+                    engine.dispatch(
+                        LauncherAction.Open(ChartDestinations.chartAsset(effect.assetId), preserveCaller = true),
+                    )
+                }
+            }
+        }
+    }
     val persistedPreferences by shellViewModel.persistedPreferences.collectAsState()
     val themeSpec = WpThemeSpec(
         WpThemeMode.valueOf(persistedPreferences.themeModeName),
@@ -404,6 +476,11 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         }
         val nmeaStatus = nmeaInputStatusCopy(nmeaLauncherState.status)
         val dataSourcesStatus = dataSourcesStatusCopy(dataSourcesLauncherState.status)
+        val chartLibraryStatus = chartLibraryStatusCopy(
+            chartLibraryState,
+            currentDisplayNeedsAttention = chartDisplayState.selection !is com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection.None &&
+                chartDisplayState.issues.isNotEmpty(),
+        )
         val runtime = ProductionShellRuntime(
             theme = themeSpec,
             language = language,
@@ -499,6 +576,10 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                         context.persistAppLanguage(action.language)
                     }
                     SettingsUiAction.ResetStartScreen -> shellViewModel.resetStartDocument()
+                    SettingsUiAction.OpenChartLibrary -> {
+                        shellViewModel.openChartLibrary(requireNotNull(ChartLibraryDestinations.parse(ChartLibraryDestinations.Browse)))
+                        dispatch(LauncherAction.Open(ChartLibraryDestinations.Browse, preserveCaller = true))
+                    }
                     SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
                 }
             },
@@ -508,6 +589,16 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             dataSourcesState = dataSourcesState,
             onDataSourcesAction = shellViewModel::onDataSourcesAction,
             onOpenDataSources = shellViewModel::openDataSources,
+            chartLibraryState = chartLibraryState,
+            onChartLibraryAction = shellViewModel::onChartLibraryAction,
+            onOpenChartLibrary = { token ->
+                ChartLibraryDestinations.parse(token)?.let(shellViewModel::openChartLibrary)
+                val activeApp = (engineState.surface as? ShellVisualSurface.Module)
+                    ?.let { engineState.tasks.task(it.taskId)?.appId }
+                if (activeApp != ChartLibraryDestinations.AppId) {
+                    dispatch(LauncherAction.Open(token, preserveCaller = true))
+                }
+            },
         )
         CompositionLocalProvider(
             LocalProductionShellRuntime provides runtime,
@@ -530,6 +621,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     offlineCoverageState = offlineCoverageState,
                     nmeaSnapshot = nmeaRuntimeSnapshot,
                     dataSourcesSnapshot = dataSourcesSnapshot,
+                    chartLibraryState = chartLibraryState,
                 ),
                 searchResults = productionSearchContributions(
                     theme = themeSpec,
@@ -537,6 +629,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     offlineCoverageState = offlineCoverageState,
                     nmeaSnapshot = nmeaRuntimeSnapshot,
                     dataSourcesSnapshot = dataSourcesSnapshot,
+                    chartLibraryState = chartLibraryState,
                     query = activeSearchQuery ?: retainedSearchQuery,
                 ),
             )
@@ -609,20 +702,30 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                             dataSourcesLauncherState.status.attentionCount > 0,
                                         )
                                     },
+                                    chartLibraryStatus?.let {
+                                        WpStatusStripItem("chart-library", it.compact, it.expanded, chartDisplayState.issues.isNotEmpty())
+                                    },
                                 ),
                                 onStatusItem = { statusId ->
-                                    val token = when (statusId) {
-                                        "nmea" -> nmeaLauncherState.status.preferredConnectionId
+                                    val token: LaunchToken? = when (statusId) {
+                                        "nmea" -> (nmeaLauncherState.status.preferredConnectionId
                                             ?.let(MarineFeatureLinks::nmeaInputForConnection)
-                                            ?: MarineFeatureLinks.nmeaInputRoot
-                                        "data-sources" -> if (dataSourcesLauncherState.status.openNeedsAttention) {
+                                            ?: MarineFeatureLinks.nmeaInputRoot).let { LaunchToken(it.value) }
+                                        "data-sources" -> (if (dataSourcesLauncherState.status.openNeedsAttention) {
                                             MarineFeatureLinks.dataSourcesAttention
                                         } else {
                                             MarineFeatureLinks.dataSourcesRoot
+                                        }).let { LaunchToken(it.value) }
+                                        "chart-library" -> if (chartDisplayState.issues.isNotEmpty()) {
+                                            ChartLibraryDestinations.NeedsAttention
+                                        } else {
+                                            ChartLibraryDestinations.Browse
                                         }
                                         else -> null
                                     }
-                                    token?.let { dispatch(LauncherAction.Open(LaunchToken(it.value))) }
+                                    token?.let {
+                                        dispatch(LauncherAction.Open(it, preserveCaller = statusId == "chart-library"))
+                                    }
                                 },
                             ) {
                                 dispatch(LauncherAction.Open(SettingsDestinations.Overview))
@@ -795,6 +898,18 @@ private fun Context.animatorDurationScale(): Float = runCatching {
 
 private fun Context.openHostAppInfo() {
     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+}
+
+private fun Context.chartDocumentDisplayName(uri: Uri): String {
+    val fromProvider = runCatching {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) null
+            else cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let(cursor::getString)
+        }
+    }.getOrNull()
+    return fromProvider?.trim()?.take(256)?.takeIf(String::isNotBlank)
+        ?: uri.lastPathSegment?.substringAfterLast('/')?.take(256)?.takeIf(String::isNotBlank)
+        ?: "MBTiles"
 }
 
 private fun Context.openShellLab() {

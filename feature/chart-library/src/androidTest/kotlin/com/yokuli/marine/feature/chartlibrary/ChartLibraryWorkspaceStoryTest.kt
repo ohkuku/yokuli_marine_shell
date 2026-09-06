@@ -5,6 +5,18 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.WpThemeMode
+import com.yokuli.shell.compose.LauncherTileRenderContext
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetAccessState
@@ -76,6 +88,49 @@ class ChartLibraryWorkspaceStoryTest {
 
         compose.onNodeWithTag("chart-library-confirm-save-copy").performClick()
         assertEquals(ChartLibraryUiAction.ConfirmManagedCopy, action)
+    }
+
+    @Test
+    fun threeAppOwnedTileSizesRenderInBothThemesAndLargeType() {
+        val suffix = mapOf(
+            MarineTileSize.ICON_1X1 to "small",
+            MarineTileSize.STANDARD_2X2 to "medium",
+            MarineTileSize.WIDE_4X2 to "wide",
+        )
+        WpThemeMode.entries.forEach { mode ->
+            MarineTileSize.entries.forEach { size ->
+                compose.setContent {
+                    val platformDensity = LocalDensity.current
+                    CompositionLocalProvider(LocalDensity provides Density(platformDensity.density, 1.6f)) {
+                        YokuliTheme(WpThemeSpec(mode = mode)) {
+                            val colors = LocalWpTheme.current
+                            val visual = chartLibraryLauncherVisualContribution(
+                                ChartLibraryUiState(
+                                    summary = ChartLibrarySummaryUi(2, 42, 40, 2, 1),
+                                ),
+                            )
+                            Box(
+                                Modifier.requiredSize(
+                                    width = if (size == MarineTileSize.WIDE_4X2) 320.dp else 152.dp,
+                                    height = if (size == MarineTileSize.ICON_1X1) 76.dp else 152.dp,
+                                ),
+                            ) {
+                                visual.tileRenderers.getValue(size).Render(
+                                    LauncherTileRenderContext(
+                                        size,
+                                        colors.onAccent,
+                                        Modifier.fillMaxSize(),
+                                        liveContentEnabled = true,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+                compose.onNodeWithTag("chart-library-tile-${suffix.getValue(size)}", useUnmergedTree = true)
+                    .assertIsDisplayed()
+            }
+        }
     }
 
     private fun render(state: ChartLibraryUiState, action: (ChartLibraryUiAction) -> Unit) {

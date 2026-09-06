@@ -108,6 +108,9 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
         data_sources = (
             ROOT / "feature/data-sources/src/main/java/com/yokuli/marine/feature/datasources/DataSourcesShellContribution.kt"
         ).read_text()
+        chart_library = (
+            ROOT / "feature/chart-library/src/main/java/com/yokuli/marine/feature/chartlibrary/ChartLibraryShellContribution.kt"
+        ).read_text()
         self.assertRegex(graph, r"productionInstalledApps\s*:[^=]+?=\s*listOf\(")
         self.assertEqual(
             [
@@ -115,13 +118,14 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
                 "SettingsShellContribution",
                 "NmeaInputShellContribution",
                 "DataSourcesShellContribution",
+                "ChartLibraryShellContribution",
             ],
             re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
         )
         self.assertIn("InstalledAppRegistry(productionInstalledApps)", graph)
         self.assertIn("productionInstalledAppRegistry.catalogContributions", graph)
         self.assertIn("LauncherCatalog.compose", graph)
-        for feature in (chart, settings, nmea, data_sources):
+        for feature in (chart, settings, nmea, data_sources, chart_library):
             self.assertIn("LauncherCatalogContribution", feature)
             self.assertIn("LauncherAppId", feature)
             self.assertIn("LaunchToken", feature)

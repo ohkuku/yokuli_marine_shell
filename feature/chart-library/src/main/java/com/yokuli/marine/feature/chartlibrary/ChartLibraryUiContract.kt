@@ -50,6 +50,12 @@ data class ChartLibrarySummaryUi(
     }
 }
 
+sealed interface ChartLibrarySearchItem {
+    val title: String
+    data class Source(val id: ChartSourceId, override val title: String) : ChartLibrarySearchItem
+    data class Asset(val id: ChartAssetId, override val title: String, val sourceSummary: String) : ChartLibrarySearchItem
+}
+
 data class ChartLibrarySourceRowUi(
     val id: ChartSourceId,
     val name: String,
@@ -189,6 +195,8 @@ data class ChartLibraryUiState(
     val page: ChartLibraryPageUi = ChartLibraryPageUi.Overview(emptyList(), emptyList()),
     val notice: ChartLibraryNoticeUi? = null,
     val busy: Boolean = false,
+    /** Bounded feature-owned index; Shell never reads locators, SQLite rows or document paths. */
+    val searchItems: List<ChartLibrarySearchItem> = emptyList(),
 )
 
 sealed interface ChartLibraryUiAction {

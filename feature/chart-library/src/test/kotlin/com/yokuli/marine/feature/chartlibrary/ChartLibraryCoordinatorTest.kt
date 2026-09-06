@@ -16,6 +16,22 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChartLibraryCoordinatorTest {
     @Test
+    fun shellDestinationRestoresAttentionFilterAndOpaqueAssetDetail() = runTest {
+        val runtime = FakeRuntime(source(), asset())
+        val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)
+        advanceUntilIdle()
+
+        coordinator.open(ChartLibraryDestination.NeedsAttention)
+        advanceUntilIdle()
+        assertEquals(ChartLibraryFilter.NEEDS_ATTENTION, coordinator.state.value.filter)
+        assertTrue(coordinator.state.value.page is ChartLibraryPageUi.Overview)
+
+        coordinator.open(ChartLibraryDestination.Asset(ASSET_ID))
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value.page is ChartLibraryPageUi.AssetDetail)
+    }
+
+    @Test
     fun selectedAssetMutationIsSerializedThroughCatalogTransaction() = runTest {
         val runtime = FakeRuntime(source(), asset())
         val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)

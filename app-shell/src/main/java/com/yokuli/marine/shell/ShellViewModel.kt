@@ -22,6 +22,12 @@ import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.OfflineCoverageCoordinator
 import com.yokuli.marine.feature.chart.OfflineCoverageUiState
 import com.yokuli.marine.feature.chart.PositionObservationCoordinator
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryCoordinator
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestination
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryEffect
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryUiAction
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryUiState
+import com.yokuli.marine.map.domain.chartlibrary.ChartPickerSelection
 import com.yokuli.marine.map.offline.ChartDisplayCoverageIndex
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.marine.feature.datasources.DataSourcesCoordinator
@@ -89,6 +95,12 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     )
     val dataSourcesState: StateFlow<DataSourcesUiState> = dataSourcesCoordinator.state
     val dataSourcesEffects: Flow<DataSourcesEffect> = dataSourcesCoordinator.effects
+    private val chartLibraryCoordinator = ChartLibraryCoordinator(
+        runtime = shellApplication.chartLibraryRuntime,
+        scope = viewModelScope,
+    )
+    val chartLibraryState: StateFlow<ChartLibraryUiState> = chartLibraryCoordinator.state
+    val chartLibraryEffects: Flow<ChartLibraryEffect> = chartLibraryCoordinator.effects
 
     val persistedPreferences: StateFlow<LauncherPersistedState> = persistence.state
         .map { it ?: defaults }
@@ -214,6 +226,13 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     fun onDataSourcesAction(action: DataSourcesUiAction) {
         dataSourcesCoordinator.dispatch(action)
     }
+
+    fun onChartLibraryAction(action: ChartLibraryUiAction) = chartLibraryCoordinator.dispatch(action)
+
+    fun openChartLibrary(destination: ChartLibraryDestination) = chartLibraryCoordinator.open(destination)
+
+    fun completeChartLibraryPicker(selection: ChartPickerSelection?) =
+        chartLibraryCoordinator.completePicker(selection)
 
     fun openDataSources(token: MarineFeatureLinkToken) {
         dataSourcesCoordinator.open(token)

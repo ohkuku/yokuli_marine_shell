@@ -60,7 +60,7 @@ fun SettingsWorkspace(state: SettingsUiState, onAction: (SettingsUiAction) -> Un
             SettingsSection.OVERVIEW -> SettingsOverview(state) { onAction(SettingsUiAction.OpenSection(it)) }
             SettingsSection.APPEARANCE -> AppearanceSettings(state, onAction)
             SettingsSection.START_SCREEN -> StartScreenSettings(state, onAction)
-            SettingsSection.MAP -> MapSettings(state)
+            SettingsSection.MAP -> MapSettings(state, onAction)
             SettingsSection.LANGUAGE -> LanguageSettings(state, onAction)
             SettingsSection.ABOUT -> AboutSettings(state)
         }
@@ -174,7 +174,7 @@ private fun StartScreenSettings(state: SettingsUiState, onAction: (SettingsUiAct
 }
 
 @Composable
-private fun MapSettings(state: SettingsUiState) {
+private fun MapSettings(state: SettingsUiState, onAction: (SettingsUiAction) -> Unit) {
     SettingsBody {
         SettingsLabel(stringResource(R.string.map_provider))
         WpText(stringResource(R.string.map_local_renderer), 21, weight = FontWeight.Light)
@@ -186,6 +186,9 @@ private fun MapSettings(state: SettingsUiState) {
             modifier = Modifier.padding(top = 6.dp),
         )
         WpText(stringResource(R.string.map_local_attribution), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 18.dp))
+        SettingsCommand(stringResource(R.string.map_manage_chart_library), "settings-open-chart-library") {
+            onAction(SettingsUiAction.OpenChartLibrary)
+        }
     }
 }
 

@@ -6,18 +6,18 @@ import org.junit.Test
 
 class ShellWindowMetricsTest {
     @Test
-    fun roundedStatusAvoidsTopCorners() {
+    fun roundedStatusAvoidsCornersLaterallyWithoutSacrificingAFullTopBand() {
         val metrics = roundedSquare(size = 320, radius = 36)
 
         val bands = ShellSafeBands.resolve(metrics)
 
-        assertTrue(bands.status.top >= 36)
+        assertEquals(0, bands.status.top)
         assertTrue(bands.status.left >= 36)
         assertTrue(bands.status.right >= 36)
     }
 
     @Test
-    fun roundedNavBarAvoidsBottomCornersAndSystemGestures() {
+    fun roundedNavBarAvoidsBottomCornersLaterallyAndUsesOnlyRealBottomInsets() {
         val metrics = roundedSquare(size = 360, radius = 44).copy(
             systemGestureInsets = ShellInsets(left = 51, right = 48, bottom = 20),
         )
@@ -26,7 +26,7 @@ class ShellWindowMetricsTest {
 
         assertEquals(51, bands.navigation.left)
         assertEquals(48, bands.navigation.right)
-        assertEquals(44, bands.navigation.bottom)
+        assertEquals(20, bands.navigation.bottom)
     }
 
     @Test

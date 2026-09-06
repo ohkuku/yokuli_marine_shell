@@ -1,5 +1,6 @@
 package com.yokuli.marine.feature.chart
 
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherAppDescriptor
 import com.yokuli.shell.contract.LauncherAppId
@@ -17,6 +18,8 @@ object ChartDestinations {
 
     fun place(id: String): LaunchToken = requireNotNull(placeOrNull(id)) { "Place ID is too large for a launch token" }
     fun route(id: String): LaunchToken = requireNotNull(routeOrNull(id)) { "Route ID is too large for a launch token" }
+    fun chartAsset(id: ChartAssetId): LaunchToken =
+        requireNotNull(objectToken(CHART_ASSET_PREFIX, id.value)) { "Chart asset ID is too large for a launch token" }
     fun placeOrNull(id: String): LaunchToken? = objectToken(PLACE_PREFIX, id)
     fun routeOrNull(id: String): LaunchToken? = objectToken(ROUTE_PREFIX, id)
 
@@ -26,6 +29,9 @@ object ChartDestinations {
         token == Browse -> ChartDestination.Browse
         token.value.startsWith(PLACE_PREFIX) -> decodeId(token.value.removePrefix(PLACE_PREFIX))?.let(ChartDestination::Place)
         token.value.startsWith(ROUTE_PREFIX) -> decodeId(token.value.removePrefix(ROUTE_PREFIX))?.let(ChartDestination::Route)
+        token.value.startsWith(CHART_ASSET_PREFIX) -> decodeId(token.value.removePrefix(CHART_ASSET_PREFIX))
+            ?.let { runCatching { ChartAssetId(it) }.getOrNull() }
+            ?.let(ChartDestination::ChartAsset)
         else -> null
     }
 
@@ -49,6 +55,7 @@ object ChartDestinations {
 
     private const val PLACE_PREFIX = "chart.place."
     private const val ROUTE_PREFIX = "chart.route."
+    private const val CHART_ASSET_PREFIX = "chart.library_asset."
     private const val MAX_OBJECT_ID_BYTES = 512
 }
 

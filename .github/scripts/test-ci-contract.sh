@@ -95,6 +95,9 @@ grep -Fq 'CHART_LIBRARY_CL08_CONTRACT_RESULT' "$android" || fail 'Chart Library 
 grep -Fq 'id: chart_library_cl09_contract' "$android" || fail 'Chart Library CL09 needs an independent named CI gate'
 grep -Fq 'python3 .github/scripts/test_chart_library_cl09_contract.py' "$android" || fail 'Chart Library CL09 contract must run in CI'
 grep -Fq 'CHART_LIBRARY_CL09_CONTRACT_RESULT' "$android" || fail 'Chart Library CL09 result must participate in final enforcement'
+grep -Fq 'id: chart_library_cl10_contract' "$android" || fail 'Chart Library CL10 needs an independent named CI gate'
+grep -Fq 'python3 .github/scripts/test_chart_library_cl10_contract.py' "$android" || fail 'Chart Library CL10 contract must run in CI'
+grep -Fq 'CHART_LIBRARY_CL10_CONTRACT_RESULT' "$android" || fail 'Chart Library CL10 result must participate in final enforcement'
 grep -Fq ':feature:chart-library:connectedDebugAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Chart Library standalone UI stories must run on API 34'
 grep -Fq 'bash .github/scripts/run_device_tests.sh performance' "$android" || fail 'Stage 11 Macrobenchmark must use the diagnostic wrapper'
 grep -Fq ':benchmark:shell:connectedStandaloneBenchmarkAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Stage 11 wrapper must run the real benchmark task'
@@ -130,7 +133,7 @@ fi
 for helper in run_ci_capture.sh build_codex_job_report.py compose_codex_ci_report.py test_codex_ci_report.py; do
   [[ -f "$repo_root/.github/scripts/$helper" ]] || fail "Codex report helper missing: $helper"
 done
-for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract unit-tests lint assemble; do
+for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract unit-tests lint assemble; do
   grep -Fq "run_ci_capture.sh $captured_step --" "$android" || fail "important build step is not captured: $captured_step"
 done
 grep -Fq 'if: always()' "$android" || fail 'Codex reports must be generated even after failures'

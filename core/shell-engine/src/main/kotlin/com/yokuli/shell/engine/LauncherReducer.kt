@@ -45,7 +45,8 @@ sealed interface LauncherAction {
     data class RestorePersistedDocument(val document: StartDocument?) : LauncherAction
     data object EnterSafeMode : LauncherAction
     data object ExitSafeMode : LauncherAction
-    data class Open(val token: LaunchToken) : LauncherAction
+    /** preserveCaller is used only for an explicit feature-to-feature deep link. */
+    data class Open(val token: LaunchToken, val preserveCaller: Boolean = false) : LauncherAction
     data class CatalogChanged(val catalog: LauncherCatalogSnapshot) : LauncherAction
     data class ApplyLayoutProposal(val proposal: LayoutProposal) : LauncherAction
     data class BeginLayoutTransaction(val proposal: LayoutProposal) : LauncherAction
@@ -281,6 +282,25 @@ class DefaultLauncherReducer : LauncherReducer {
             ?: return LauncherReduction(
                 state.navigateTo(ShellVisualSurface.Desktop, ShellTransitionTrigger.BACK),
             )
+        val linkedReturn = state.tasks.linkedReturns.lastOrNull()?.takeIf {
+            it.targetTaskId == taskId && task.backStack.size <= it.targetBackStackDepth
+        }
+        if (linkedReturn != null) {
+            val caller = state.tasks.task(linkedReturn.callerTaskId)
+            if (caller != null) {
+                return LauncherReduction(
+                    state.copy(
+                        surface = ShellVisualSurface.Module(caller.taskId),
+                        tasks = state.tasks.copy(linkedReturns = state.tasks.linkedReturns.dropLast(1)),
+                        transitionRequest = ShellTransitionResolver.resolve(
+                            state.surface,
+                            ShellVisualSurface.Module(caller.taskId),
+                            ShellTransitionTrigger.MODULE_ROUTE_BACK,
+                        ),
+                    ),
+                )
+            }
+        }
         val previous = task.backStack.lastOrNull()
         if (previous == null) {
             return LauncherReduction(
@@ -295,7 +315,7 @@ class DefaultLauncherReducer : LauncherReducer {
         )
         return LauncherReduction(
             state.copy(
-                tasks = InternalTaskState(state.tasks.tasks.map { if (it.taskId == taskId) restored else it }),
+                tasks = state.tasks.copy(tasks = state.tasks.tasks.map { if (it.taskId == taskId) restored else it }),
                 transitionRequest = request,
             ),
         )
@@ -310,6 +330,7 @@ class DefaultLauncherReducer : LauncherReducer {
             ).copy(
                 transient = null,
                 recentsReturnSurface = null,
+                tasks = cancelled.tasks.copy(linkedReturns = emptyList()),
             ),
         )
     }
@@ -394,10 +415,21 @@ class DefaultLauncherReducer : LauncherReducer {
                     target -> ShellTransitionTrigger.MODULE_ROUTE_FORWARD
                     else -> ShellTransitionTrigger.TILE
                 }
+                val linkedReturns = if (
+                    action.preserveCaller && state.surface is ShellVisualSurface.Module &&
+                    state.surface.taskId != taskId
+                ) {
+                    state.tasks.linkedReturns + LinkedTaskReturn(
+                        callerTaskId = state.surface.taskId,
+                        targetTaskId = taskId,
+                        targetBackStackDepth = task.backStack.size,
+                    )
+                } else state.tasks.linkedReturns
                 LauncherReduction(
                     state = state.navigateTo(target, trigger).copy(
-                        tasks = InternalTaskState(
-                            state.tasks.tasks.filterNot { it.appId == resolution.appId } + task,
+                        tasks = state.tasks.copy(
+                            tasks = state.tasks.tasks.filterNot { it.appId == resolution.appId } + task,
+                            linkedReturns = linkedReturns,
                         ),
                         transient = null,
                     ),

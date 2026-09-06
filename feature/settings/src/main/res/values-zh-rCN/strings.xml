@@ -39,6 +39,7 @@
     <string name="map_no_local_package_detail">地图工作台可离线打开；导入 MBTiles 后才会显示海图内容。</string>
     <string name="map_active_local_package">当前海图：%1$s</string>
     <string name="map_local_attribution">每个海图包在地图中显示其自身来源与许可；应用不把本地包冒充在线底图。</string>
+    <string name="map_manage_chart_library">管理海图库</string>
     <string name="about_summary">Yokuli OS %1$s</string>
     <string name="about_product">产品</string>
     <string name="product_name">Yokuli OS</string>

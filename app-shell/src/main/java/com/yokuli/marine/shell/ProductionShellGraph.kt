@@ -34,6 +34,14 @@ import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.chartLauncherVisualContribution
 import com.yokuli.marine.feature.chart.chartLauncherSearchContributions
 import com.yokuli.marine.feature.chart.ChartLaunchProjector
+import com.yokuli.marine.feature.chart.ChartDestination
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryShellContribution
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryUiAction
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryUiState
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryWorkspace
+import com.yokuli.marine.feature.chartlibrary.chartLibraryLauncherVisualContribution
+import com.yokuli.marine.feature.chartlibrary.chartLibrarySearchContributions
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsShellContribution
@@ -82,6 +90,7 @@ data class ProductionShellVisualEnvironment(
     val offlineCoverageState: OfflineCoverageUiState,
     val nmeaSnapshot: NmeaRuntimeSnapshot = NmeaRuntimeSnapshot.EMPTY,
     val dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
+    val chartLibraryState: ChartLibraryUiState = ChartLibraryUiState(),
 )
 
 data class ProductionShellRuntime(
@@ -122,6 +131,9 @@ data class ProductionShellRuntime(
     val dataSourcesState: DataSourcesUiState,
     val onDataSourcesAction: (DataSourcesUiAction) -> Unit,
     val onOpenDataSources: (MarineFeatureLinkToken) -> Unit,
+    val chartLibraryState: ChartLibraryUiState,
+    val onChartLibraryAction: (ChartLibraryUiAction) -> Unit,
+    val onOpenChartLibrary: (LaunchToken) -> Unit,
 )
 
 val LocalProductionShellRuntime = staticCompositionLocalOf<ProductionShellRuntime> {
@@ -146,13 +158,15 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val runtime = LocalProductionShellRuntime.current
             val target = remember(token) { requireNotNull(ChartDestinations.parse(token)) }
             LaunchedEffect(token) {
+                if (target is ChartDestination.ChartAsset) {
+                    runtime.onChartDisplayAction(ChartDisplayUiAction.PinAsset(target.id))
+                }
                 ChartLaunchProjector.action(target, runtime.currentMapState())?.let(runtime.onMapAction)
             }
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
                 if (runtime.heavyContentReady) {
                     { state, onAction, onQueryPortChanged, modifier ->
                         if (
-                            state.activeChartPackageId == null &&
                             state.chartDisplayPlan.selection is ChartDisplaySelection.None &&
                             BuildConfig.GOOGLE_MAPS_CONFIGURED
                         ) {
@@ -202,6 +216,9 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 offlineCoverageState = runtime.offlineCoverageState,
                 onStartOfflineCoverage = runtime.onStartOfflineCoverage,
                 onCancelOfflineCoverage = runtime.onCancelOfflineCoverage,
+                onOpenChartLibrary = {
+                    runtime.onOpenChartLibrary(ChartLibraryDestinations.Browse)
+                },
                 chartSurface = chartSurface,
             )
         },
@@ -270,12 +287,28 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             )
         },
     ),
+    InstalledAppBinding(
+        catalogContribution = ChartLibraryShellContribution,
+        visualContributions = { environment ->
+            listOf(chartLibraryLauncherVisualContribution(environment.chartLibraryState))
+        },
+        searchContributions = { environment, query ->
+            chartLibrarySearchContributions(environment.chartLibraryState, query)
+        },
+        dynamicLaunchTokenMatcher = ChartLibraryDestinations::accepts,
+        internalAppHost = InternalAppHost(ChartLibraryDestinations.AppId) { token ->
+            val runtime = LocalProductionShellRuntime.current
+            val destination = remember(token) { requireNotNull(ChartLibraryDestinations.parse(token)) }
+            LaunchedEffect(token) { runtime.onOpenChartLibrary(token) }
+            ChartLibraryWorkspace(runtime.chartLibraryState, runtime.onChartLibraryAction)
+        },
+    ),
 )
 
 val productionInstalledAppRegistry: InstalledAppRegistry<ProductionShellVisualEnvironment> =
     InstalledAppRegistry(productionInstalledApps)
 val productionContributions = productionInstalledAppRegistry.catalogContributions
-val productionCatalog = LauncherCatalog.compose(revision = 2, contributions = productionContributions)
+val productionCatalog = LauncherCatalog.compose(revision = 3, contributions = productionContributions)
 val productionLaunchRegistrations = productionInstalledAppRegistry.launchRegistrations
 @Composable
 fun productionVisualContributions(
@@ -284,6 +317,7 @@ fun productionVisualContributions(
     offlineCoverageState: OfflineCoverageUiState = OfflineCoverageUiState.Idle,
     nmeaSnapshot: NmeaRuntimeSnapshot = NmeaRuntimeSnapshot.EMPTY,
     dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
+    chartLibraryState: ChartLibraryUiState = ChartLibraryUiState(),
 ): List<LauncherEntryVisualContribution> {
     val environment = ProductionShellVisualEnvironment(
         theme,
@@ -291,6 +325,7 @@ fun productionVisualContributions(
         offlineCoverageState,
         nmeaSnapshot,
         dataSourcesSnapshot,
+        chartLibraryState,
     )
     return productionInstalledAppRegistry.visualContributions(environment)
 }
@@ -301,6 +336,7 @@ fun productionSearchContributions(
     offlineCoverageState: OfflineCoverageUiState,
     nmeaSnapshot: NmeaRuntimeSnapshot = NmeaRuntimeSnapshot.EMPTY,
     dataSourcesSnapshot: MarineSourceSnapshot = MarineSourceSnapshot.EMPTY,
+    chartLibraryState: ChartLibraryUiState = ChartLibraryUiState(),
     query: String,
 ) = productionInstalledAppRegistry.searchContributions(
     ProductionShellVisualEnvironment(
@@ -309,6 +345,7 @@ fun productionSearchContributions(
         offlineCoverageState,
         nmeaSnapshot,
         dataSourcesSnapshot,
+        chartLibraryState,
     ),
     query,
 )

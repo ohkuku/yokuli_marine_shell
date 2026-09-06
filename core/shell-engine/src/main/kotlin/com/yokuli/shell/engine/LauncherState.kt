@@ -46,7 +46,22 @@ data class InternalAppTask(
     val savedUiStateKey: String? = null,
 )
 
-data class InternalTaskState(val tasks: List<InternalAppTask> = emptyList()) {
+/**
+ * A linked return marks an explicit cross-app hand-off. The target depth is the route depth
+ * created by that hand-off, so routes opened afterwards still pop inside the target first.
+ */
+data class LinkedTaskReturn(
+    val callerTaskId: InternalAppTaskId,
+    val targetTaskId: InternalAppTaskId,
+    val targetBackStackDepth: Int,
+) {
+    init { require(targetBackStackDepth >= 0) }
+}
+
+data class InternalTaskState(
+    val tasks: List<InternalAppTask> = emptyList(),
+    val linkedReturns: List<LinkedTaskReturn> = emptyList(),
+) {
     fun task(id: InternalAppTaskId): InternalAppTask? = tasks.firstOrNull { it.taskId == id }
 }
 

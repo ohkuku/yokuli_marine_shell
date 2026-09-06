@@ -178,4 +178,16 @@
     <string name="notice_failed">操作未完成，当前目录没有被写成成功。</string>
     <string name="notice_queue_full">操作过快，本次请求没有提交。</string>
     <string name="notice_selection_limit">一次最多选择 1000 张资源。</string>
+    <string name="launcher_available">%1$d 张可用</string>
+    <string name="launcher_attention">%1$d 项需处理</string>
+    <string name="launcher_sources_assets">%1$d 个来源 · %2$d 张资源</string>
+    <string name="launcher_scanning">%1$d 个来源扫描中</string>
+    <string name="launcher_scan_secondary">扫描中 · %1$d</string>
+    <string name="launcher_search_app">应用</string>
+    <string name="launcher_search_source">海图来源</string>
+    <string name="launcher_search_asset">海图资源</string>
+    <string name="launcher_status_current_issue_compact">海图 !</string>
+    <string name="launcher_status_current_issue">当前地图所用的本地海图需要处理</string>
+    <string name="launcher_status_scanning_compact">海图 %1$d</string>
+    <string name="launcher_status_scanning">%1$d 个海图来源正在扫描</string>
 </resources>

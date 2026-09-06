@@ -6,7 +6,7 @@
 
 | ID | 状态 | 测试层次/命令/退出码 | 证据路径 | 限制 |
 |---|---|---|---|---|
-| A01 | NOT_RUN | — | — | 未执行 |
+| A01 | CI_PENDING | CL10 install + empty-state stories | `CODEX-CI-REPORT-<CL10_SHA12>-<run_id>-<attempt>` | 等待 Action |
 | A02 | NOT_RUN | — | — | 未执行 |
 | A03 | NOT_RUN | — | — | 未执行 |
 | A04 | NOT_RUN | — | — | 未执行 |
@@ -27,7 +27,7 @@
 | A19 | NOT_RUN | — | — | 未执行 |
 | A20 | NOT_RUN | — | — | 未执行 |
 | A21 | NOT_RUN | — | — | 未执行 |
-| A22 | NOT_RUN | — | — | 未执行 |
+| A22 | CI_PENDING | CL10 independent host/runtime story | 同上 | 等待 Action |
 | A23 | NOT_RUN | — | — | 未执行 |
 | A24 | NOT_RUN | — | — | 未执行 |
 | A25 | NOT_RUN | — | — | 未执行 |
@@ -43,9 +43,9 @@
 | A35 | CI_PENDING | full existing unit/integration/build gates | 同上 | 等待 Action |
 | A36 | NOT_RUN | — | — | 未执行 |
 | A37 | NOT_RUN | — | — | 未执行 |
-| A38 | NOT_RUN | — | — | 未执行 |
-| A39 | NOT_RUN | — | — | 未执行 |
-| A40 | NOT_RUN | — | — | 未执行 |
+| A38 | CI_PENDING | CL10 three-size/theme/large-type stories | `CODEX-CI-REPORT-<CL10_SHA12>-<run_id>-<attempt>` | 真机圆角/方屏留 CL12 |
+| A39 | CI_PENDING | CL10 linked Back/Start/deep-link stories | 同上 | 等待 Action |
+| A40 | CI_PENDING | CL10 five-app product-surface/APK contracts | 同上 | 等待 Action |
 | A41 | NOT_RUN | — | — | 未执行 |
 | A42 | NOT_RUN | — | — | 未执行 |
 

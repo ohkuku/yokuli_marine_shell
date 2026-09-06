@@ -57,7 +57,9 @@ object ShellSafeBands {
 
         val status = ShellSafeBand(
             left = maxOf(metrics.safeInsets.left, topLeft, cutoutLeft),
-            top = max(metrics.safeInsets.top, max(topLeft, topRight)),
+            // Rounded corners are avoided laterally by edge controls. Treating their radius as a
+            // full-width top inset wastes the whole app canvas on square/round displays.
+            top = metrics.safeInsets.top,
             right = maxOf(metrics.safeInsets.right, topRight, cutoutRight),
             bottom = 0,
         )
@@ -65,12 +67,9 @@ object ShellSafeBands {
             left = maxOf(metrics.safeInsets.left, metrics.systemGestureInsets.left, bottomLeft),
             top = 0,
             right = maxOf(metrics.safeInsets.right, metrics.systemGestureInsets.right, bottomRight),
-            bottom = maxOf(
-                metrics.safeInsets.bottom,
-                metrics.systemGestureInsets.bottom,
-                bottomLeft,
-                bottomRight,
-            ),
+            // As above, bottom corner radii move the edge keys inward; only actual platform and
+            // gesture insets consume a full-width bottom band.
+            bottom = maxOf(metrics.safeInsets.bottom, metrics.systemGestureInsets.bottom),
         )
         return ShellChromeSafeBands(status, navigation, metrics.imeInsets.bottom)
     }

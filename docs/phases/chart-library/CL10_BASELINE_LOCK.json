@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "task": "CL10",
+  "start_commit": "e26b1375ba3d0d05e4b02040cb16c91582fa2a93",
+  "installed_app_id": "chart_library",
+  "root_launch_token": "chart_library.browse",
+  "installed_binding_count": 1,
+  "supported_tile_sizes": ["SMALL", "MEDIUM", "WIDE"],
+  "auto_pinned_on_upgrade": false,
+  "default_start_changed": false,
+  "resource_tokens_expose_uri_or_path": false,
+  "chart_owns_resource_maintenance": false,
+  "settings_owns_resource_maintenance": false,
+  "cross_app_back_restores_caller": true,
+  "start_clears_linked_return_chain": true,
+  "android_home_intent_added": false,
+  "portrait_contract_preserved": true,
+  "rounded_corners_consume_full_vertical_band": false,
+  "google_requires_explicit_no_local_selection": true,
+  "google_fills_selected_local_chart_gaps": false,
+  "production_app_ids": ["chart", "settings", "nmea_input", "data_sources", "chart_library"],
+  "verification": "GITHUB_ACTION_PENDING"
+}

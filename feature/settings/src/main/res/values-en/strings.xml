@@ -39,6 +39,7 @@
     <string name="map_no_local_package_detail">The map workbench opens offline; chart content appears after importing an MBTiles package.</string>
     <string name="map_active_local_package">active chart: %1$s</string>
     <string name="map_local_attribution">Each chart package shows its own source and license on the map; local packages are not presented as an online basemap.</string>
+    <string name="map_manage_chart_library">manage Chart Library</string>
     <string name="about_summary">Yokuli OS %1$s</string>
     <string name="about_product">product</string>
     <string name="product_name">Yokuli OS</string>

@@ -56,6 +56,44 @@ class LauncherNavigationTest {
     }
 
     @Test
+    fun linkedCrossAppRouteReturnsDirectlyToItsCallerContext() {
+        val chartOpened = open(initial(), chart.appId, chart.launchToken)
+        val chartDetail = open(chartOpened, chart.appId, LaunchToken("chart.place.home"))
+        val linked = reducer.reduce(
+            chartDetail,
+            LauncherAction.Open(settings.launchToken, preserveCaller = true),
+            context(LaunchResolution.Internal(settings.appId, settings.launchToken)),
+        ).state
+        val settingsDetail = open(linked, settings.appId, LaunchToken("settings.map"))
+
+        val settingsRoot = reduce(settingsDetail, LauncherAction.Back).state
+        assertEquals(settings.launchToken, settingsRoot.tasks.task(InternalAppTaskId("settings"))?.lastLaunchToken)
+
+        val returned = reduce(settingsRoot, LauncherAction.Back).state
+        assertEquals(ShellVisualSurface.Module(InternalAppTaskId("chart")), returned.surface)
+        assertEquals(
+            LaunchToken("chart.place.home"),
+            returned.tasks.task(InternalAppTaskId("chart"))?.lastLaunchToken,
+        )
+    }
+
+    @Test
+    fun startAbandonsLinkedCallerChainButPreservesReusableTasks() {
+        val chartOpened = open(initial(), chart.appId, chart.launchToken)
+        val linked = reducer.reduce(
+            chartOpened,
+            LauncherAction.Open(settings.launchToken, preserveCaller = true),
+            context(LaunchResolution.Internal(settings.appId, settings.launchToken)),
+        ).state
+
+        val start = reduce(linked, LauncherAction.ShowDesktop).state
+        assertEquals(ShellVisualSurface.Desktop, start.surface)
+        assertTrue(start.tasks.linkedReturns.isEmpty())
+        assertEquals(2, start.tasks.tasks.size)
+        assertEquals(start, reduce(start, LauncherAction.Back).state)
+    }
+
+    @Test
     fun desktopCommandPreservesInternalTasks() {
         val opened = open(initial(), chart.appId, chart.launchToken)
         val result = reduce(opened, LauncherAction.ShowDesktop)

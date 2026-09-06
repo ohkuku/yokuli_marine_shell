@@ -146,7 +146,7 @@ fun WpStatusStrip(
     }
 }
 
-private const val MAX_APP_STATUS_ITEMS = 2
+private const val MAX_APP_STATUS_ITEMS = 3
 
 @Composable
 private fun BatteryIcon(percent: Int, modifier: Modifier = Modifier) {

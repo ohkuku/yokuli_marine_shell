@@ -34,7 +34,7 @@ object ChartLibraryProjector {
                 id = asset.id,
                 title = asset.displayPath.substringAfterLast('/').ifBlank { asset.displayPath },
                 displayPath = asset.displayPath,
-                sourceNames = asset.memberships.mapNotNull { sourceById[it]?.displayName }.sorted(String.CASE_INSENSITIVE_ORDER),
+                sourceNames = asset.memberships.mapNotNull { sourceById[it]?.displayName }.sortedWith(String.CASE_INSENSITIVE_ORDER),
                 enabled = asset.enabled,
                 role = asset.role,
                 priority = asset.priority,
@@ -158,6 +158,8 @@ object ChartLibraryProjector {
             page = page,
             notice = notice,
             busy = busy || metrics.queuedBasicChecks > 0,
+            searchItems = sourceRows.map { ChartLibrarySearchItem.Source(it.id, it.name) } +
+                rows.map { ChartLibrarySearchItem.Asset(it.id, it.title, it.sourceNames.joinToString(" · ")) },
         )
     }
 

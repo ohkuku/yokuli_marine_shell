@@ -408,12 +408,49 @@
     },
     "CL10": {
       "title": "Shell安装、磁贴与跨应用导航",
-      "status": "NOT_STARTED",
+      "status": "IMPLEMENTED_CI_PENDING",
       "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "changed_files": [
+        "core/shell-contract/**/ShellWindowMetrics*",
+        "core/shell-engine/**/{LauncherState,LauncherReducer,LauncherNavigationTest}*",
+        "feature/chart-library/**",
+        "feature/chart/**/{ChartLauncherProjection,ChartShellContribution,ChartWorkspace}*",
+        "feature/settings/**",
+        "feature/desktop/**/WpStatusStrip.kt",
+        "app-shell/**/{build.gradle.kts,ProductionShellGraph,ShellActivity,ShellViewModel}*",
+        ".github/scripts/{test_chart_library_cl10_contract.py,test-ci-contract.sh}",
+        ".github/workflows/android.yml",
+        "docs/phases/chart-library/{CL10_REPORT.md,CL10_BASELINE_LOCK.json,ACCEPTANCE_RESULTS_TEMPLATE.md,EXECUTION_STATE.json}"
+      ],
+      "commands": [
+        {
+          "command": "./gradlew :app-shell:compileStandaloneDebugKotlin :app-shell:compileStandaloneDebugUnitTestKotlin :feature:chart-library:compileDebugAndroidTestKotlin --no-daemon",
+          "first_exit_code": 1,
+          "first_failure": "CL07 ChartLibraryProjector used sorted(comparator) instead of sortedWith(comparator); its test fixture passed ChartSourceId to a String helper",
+          "corrected_exit_code": 0,
+          "result": "minimal production/unit/androidTest Kotlin compile passed"
+        },
+        {
+          "command": "python3 .github/scripts/test_chart_library_cl10_contract.py + active Stage/NMEA/InstalledApp and syntax checks",
+          "result": "PASS"
+        },
+        {
+          "command": "Yokuli OS Android CI / Chart Library CL10 shell installation and linked navigation contract",
+          "result": "PENDING_GITHUB_ACTION"
+        }
+      ],
+      "evidence": [
+        "CODEX-CI-REPORT-<CL10_SHA12>-<run_id>-<attempt>",
+        "yokuli-os-build-reports-<CL10_SHA>",
+        "yokuli-os-api34-reports-<CL10_SHA>",
+        "docs/phases/chart-library/CL10_REPORT.md",
+        "docs/phases/chart-library/CL10_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "按用户指定的CI-first工作流，本地只运行最小编译与静态合同；完整机器门禁等待GitHub Action，施工继续进入CL11",
+        "同轮修正圆角整带过度留白与显式无本地图时旧active包阻止Google显示的问题",
+        "跨应用caller恢复作为通用Shell Engine linked-task语义实现，不建立Chart/Library专用导航分支"
+      ],
       "blockers": []
     },
     "CL11": {

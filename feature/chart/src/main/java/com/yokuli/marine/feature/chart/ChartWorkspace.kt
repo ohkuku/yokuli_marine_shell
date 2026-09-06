@@ -148,6 +148,7 @@ fun ChartWorkspace(
     offlineCoverageState: OfflineCoverageUiState = OfflineCoverageUiState.Idle,
     onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit = { _, _, _ -> },
     onCancelOfflineCoverage: () -> Unit = {},
+    onOpenChartLibrary: () -> Unit = {},
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -230,6 +231,7 @@ fun ChartWorkspace(
                 offlineCoverageState,
                 onStartOfflineCoverage,
                 onCancelOfflineCoverage,
+                onOpenChartLibrary,
                 onAction,
             )
         }
@@ -274,7 +276,7 @@ private fun MapRootChrome(
                 .joinToString(" · ")
             if (displayAttribution.isNotEmpty()) {
                 MapAttribution(displayAttribution)
-            } else {
+            } else if (!state.chartDisplayPreferencesInitialized) {
                 state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.let { chartPackage ->
                     MapAttribution(
                         listOf(chartPackage.attribution, chartPackage.license)
@@ -770,6 +772,7 @@ private fun MapPageSurface(
     offlineCoverageState: OfflineCoverageUiState,
     onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
     onCancelOfflineCoverage: () -> Unit,
+    onOpenChartLibrary: () -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -799,7 +802,12 @@ private fun MapPageSurface(
             when (val surface = state.surface) {
                 MapSurface.Places -> PlacesPage(state, onAction)
                 MapSurface.Routes -> RoutesPage(state, onAction)
-                MapSurface.ChartPackages -> ChartLayersPage(chartDisplayState, onChartDisplayAction, onAction)
+                MapSurface.ChartPackages -> ChartLayersPage(
+                    chartDisplayState,
+                    onChartDisplayAction,
+                    onOpenChartLibrary,
+                    onAction,
+                )
                 MapSurface.GpxExchange -> GpxExchangePage(gpxImportState, onGpxImportAction)
                 MapSurface.ImportedTracks -> ImportedTracksPage(state, onAction)
                 is MapSurface.PlaceDetail -> PlaceDetailPage(
@@ -1883,6 +1891,7 @@ private fun CoordinateTextField(
 private fun ChartLayersPage(
     state: ChartDisplayUiState,
     onDisplayAction: (ChartDisplayUiAction) -> Unit,
+    onOpenChartLibrary: () -> Unit,
     onMapAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -1891,6 +1900,12 @@ private fun ChartLayersPage(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         WpText(stringResource(R.string.map_chart_display_truth), 11, color = colors.muted)
+        MapTextButton(
+            stringResource(R.string.map_chart_manage_library),
+            "map-open-chart-library",
+            modifier = Modifier.fillMaxWidth(),
+            action = onOpenChartLibrary,
+        )
         MapTextButton(
             stringResource(R.string.map_chart_display_none),
             ChartDisplayTestTags.NO_LOCAL,

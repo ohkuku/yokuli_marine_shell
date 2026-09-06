@@ -321,6 +321,7 @@
     <string name="map_coverage_import">导入离线包</string>
     <string name="map_coverage_registered_sources_only">只核对当前显示计划中的已登记本机底图；叠加层和在线地图不会填补缺口。</string>
     <string name="map_chart_display_truth">这里只控制当前显示。添加、扫描、验证和移除资源请在独立海图库中完成。</string>
+    <string name="map_chart_manage_library">管理海图库</string>
     <string name="map_chart_display_none">不使用本机海图</string>
     <string name="map_chart_overlays_visible">叠加层：显示</string>
     <string name="map_chart_overlays_hidden">叠加层：隐藏</string>

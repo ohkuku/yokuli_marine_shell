@@ -1,6 +1,7 @@
 package com.yokuli.marine.feature.chart
 
 import com.yokuli.marine.map.domain.ChartPackageVersionId
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
 import com.yokuli.marine.map.domain.ContentFootprint
 import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapAction
@@ -14,6 +15,7 @@ import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.PlaceSearch
 import com.yokuli.marine.map.domain.TileAvailability
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.MarineTileSize
 import java.text.Normalizer
@@ -126,6 +128,8 @@ object ChartLauncherProjection {
     private fun lastViewStatus(state: MapState): ChartLauncherStatus = when {
         state.renderer.readiness == MapRendererReadiness.ERROR || state.renderer.tileCoverage == MapTileCoverageStatus.ERROR ->
             ChartLauncherStatus.RENDERER_ERROR
+        state.chartDisplayPreferencesInitialized && state.chartDisplayPlan.selection is ChartDisplaySelection.None ->
+            ChartLauncherStatus.NO_LOCAL_CHART
         state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_MISSING -> ChartLauncherStatus.LOCAL_CHART_MISSING
         state.renderer.tileCoverage == MapTileCoverageStatus.DEGRADED -> ChartLauncherStatus.LOCAL_CHART_DEGRADED
         state.renderer.tileCoverage == MapTileCoverageStatus.CHECKING -> ChartLauncherStatus.LOCAL_CHART_CHECKING
@@ -178,6 +182,7 @@ sealed interface ChartDestination {
     data object Browse : ChartDestination
     data class Place(val id: String) : ChartDestination
     data class Route(val id: String) : ChartDestination
+    data class ChartAsset(val id: ChartAssetId) : ChartDestination
 }
 
 object ChartLaunchProjector {
@@ -189,6 +194,7 @@ object ChartLaunchProjector {
         } else {
             MapAction.OpenSurface(MapSurface.RouteDetail(target.id))
         }
+        is ChartDestination.ChartAsset -> MapAction.OpenSurface(MapSurface.Root)
     }
 
     fun isSettled(target: ChartDestination, state: MapState): Boolean = when (target) {
@@ -197,6 +203,7 @@ object ChartLaunchProjector {
             (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id
         is ChartDestination.Route -> state.surface == MapSurface.RouteDetail(target.id) ||
             (state.transient as? MapTransient.UnavailableObject)?.objectId == target.id
+        is ChartDestination.ChartAsset -> state.surface == MapSurface.Root
     }
 }
 

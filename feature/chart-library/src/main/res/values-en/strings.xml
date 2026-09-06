@@ -178,4 +178,16 @@
     <string name="notice_failed">The operation did not complete; the catalog was not presented as successful.</string>
     <string name="notice_queue_full">Actions arrived too quickly; this request was not submitted.</string>
     <string name="notice_selection_limit">At most 1000 assets can be selected at once.</string>
+    <string name="launcher_available">%1$d available</string>
+    <string name="launcher_attention">%1$d need attention</string>
+    <string name="launcher_sources_assets">%1$d sources · %2$d assets</string>
+    <string name="launcher_scanning">%1$d sources scanning</string>
+    <string name="launcher_scan_secondary">scanning · %1$d</string>
+    <string name="launcher_search_app">app</string>
+    <string name="launcher_search_source">chart source</string>
+    <string name="launcher_search_asset">chart asset</string>
+    <string name="launcher_status_current_issue_compact">chart !</string>
+    <string name="launcher_status_current_issue">A local chart used by the current display needs attention</string>
+    <string name="launcher_status_scanning_compact">chart %1$d</string>
+    <string name="launcher_status_scanning">%1$d chart sources are scanning</string>
 </resources>

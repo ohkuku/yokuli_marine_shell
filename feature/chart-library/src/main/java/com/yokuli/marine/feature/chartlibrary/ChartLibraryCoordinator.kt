@@ -52,6 +52,7 @@ class ChartLibraryCoordinator(
         data class MetricsChanged(val value: ChartLibraryRuntimeMetrics) : Event
         data class Action(val value: ChartLibraryUiAction) : Event
         data class PickerResult(val value: ChartPickerSelection?) : Event
+        data class OpenDestination(val value: ChartLibraryDestination) : Event
     }
 
     private data class PendingPicker(val kind: ChartPickerKind, val repairSourceId: ChartSourceId?)
@@ -91,6 +92,13 @@ class ChartLibraryCoordinator(
         }
     }
 
+    /** A Shell token restores feature-owned page/filter state without exposing storage models. */
+    fun open(destination: ChartLibraryDestination) {
+        if (events.trySend(Event.OpenDestination(destination)).isFailure) {
+            mutableState.value = mutableState.value.copy(notice = ChartLibraryNoticeUi.ACTION_QUEUE_FULL)
+        }
+    }
+
     /** The host returns only the selection produced for a previously emitted opaque operation id. */
     fun completePicker(selection: ChartPickerSelection?) {
         if (events.trySend(Event.PickerResult(selection)).isFailure) {
@@ -123,6 +131,7 @@ class ChartLibraryCoordinator(
                 }
                 is Event.Action -> processAction(event.value)
                 is Event.PickerResult -> processPicker(event.value)
+                is Event.OpenDestination -> openDestination(event.value)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -247,6 +256,19 @@ class ChartLibraryCoordinator(
                 publish()
             }
         }
+    }
+
+    private suspend fun openDestination(destination: ChartLibraryDestination) {
+        local = when (destination) {
+            ChartLibraryDestination.Browse -> local.copy(page = ChartLibraryLocalPage.Overview)
+            ChartLibraryDestination.NeedsAttention -> local.copy(
+                page = ChartLibraryLocalPage.Overview,
+                filter = ChartLibraryFilter.NEEDS_ATTENTION,
+            )
+            is ChartLibraryDestination.Source -> local.copy(page = ChartLibraryLocalPage.SourceDetail(destination.id))
+            is ChartLibraryDestination.Asset -> local.copy(page = ChartLibraryLocalPage.AssetDetail(destination.id))
+        }
+        reload()
     }
 
     private fun requestPicker(kind: ChartPickerKind, repairSourceId: ChartSourceId?) {

@@ -29,6 +29,7 @@ class InstalledAppBindingContractTest(unittest.TestCase):
                 "SettingsShellContribution",
                 "NmeaInputShellContribution",
                 "DataSourcesShellContribution",
+                "ChartLibraryShellContribution",
             ],
             re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph),
         )

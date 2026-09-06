@@ -40,7 +40,7 @@ class ChartLibraryProjectorTest {
 
     @Test
     fun onePhysicalAssetInTwoExternalSourcesCountsStorageOnlyOnce() {
-        val first = source(id = SOURCE_A)
+        val first = source(id = SOURCE_A_VALUE)
         val second = source(id = SOURCE_B_VALUE)
         val asset = asset(memberships = setOf(first.id, second.id), size = 4_096L)
         val ui = project(listOf(first, second), listOf(asset), local = ChartLibraryLocalState(page = ChartLibraryLocalPage.Storage))

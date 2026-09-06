@@ -18,6 +18,8 @@ import com.yokuli.marine.map.domain.OfflineCoverageResult
 import com.yokuli.marine.map.domain.SavedRoute
 import com.yokuli.marine.map.domain.TileAvailability
 import com.yokuli.marine.map.domain.ContentFootprint
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -158,6 +160,23 @@ class ChartLauncherProjectionTest {
         assertEquals(ChartLauncherPriority.LAST_VIEW, visited.priority)
         assertEquals(ChartLauncherStatus.LOCAL_CHART_SELECTED, visited.status)
         assertEquals(-41.2865, visited.camera?.center?.latitude ?: 0.0, 0.0)
+    }
+
+    @Test
+    fun `explicit no local chart ignores a migrated legacy active package`() {
+        val result = ChartLauncherProjection.project(
+            MapState(
+                chartPackages = listOf(chartPackage()),
+                activeChartPackageId = ChartPackageId("local"),
+                chartDisplayPreferencesInitialized = true,
+                chartDisplayPlan = ChartDisplayPlan(selection = ChartDisplaySelection.None),
+                renderer = MapRendererState(generation = MapRendererGeneration(3)),
+            ),
+            OfflineCoverageUiState.Idle,
+        )
+
+        assertEquals(ChartLauncherPriority.LAST_VIEW, result.priority)
+        assertEquals(ChartLauncherStatus.NO_LOCAL_CHART, result.status)
     }
 
     @Test

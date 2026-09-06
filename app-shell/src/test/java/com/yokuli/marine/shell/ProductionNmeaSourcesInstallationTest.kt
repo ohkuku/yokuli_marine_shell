@@ -3,6 +3,7 @@ package com.yokuli.marine.shell
 import com.yokuli.marine.data.model.ConnectionId
 import com.yokuli.marine.feature.datasources.DataSourcesDestinations
 import com.yokuli.marine.feature.nmeainput.NmeaInputDestinations
+import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
 import com.yokuli.shell.contract.LaunchResolution
 import com.yokuli.shell.contract.MarineTileSize
 import kotlinx.coroutines.runBlocking
@@ -13,13 +14,13 @@ import org.junit.Test
 
 class ProductionNmeaSourcesInstallationTest {
     @Test
-    fun productionRegistryInstallsExactlyFourRealAppsFromSingleBindings() {
-        assertEquals(4, productionInstalledApps.size)
+    fun productionRegistryKeepsBothMarineDataAppsWhenChartLibraryIsInstalled() {
+        assertEquals(5, productionInstalledApps.size)
         assertEquals(
-            setOf("chart", "settings", "nmea-input", "data-sources"),
+            setOf("chart", "settings", "nmea-input", "data-sources", "chart_library"),
             productionInstalledApps.map { it.catalogContribution.app.appId.value }.toSet(),
         )
-        assertEquals(4, productionInstalledAppRegistry.internalAppHosts.size)
+        assertEquals(5, productionInstalledAppRegistry.internalAppHosts.size)
     }
 
     @Test
@@ -40,6 +41,7 @@ class ProductionNmeaSourcesInstallationTest {
         val pinnedEntries = defaultStartDocument.placements.map { it.entryId }.toSet()
         assertFalse(NmeaInputDestinations.EntryId in pinnedEntries)
         assertFalse(DataSourcesDestinations.EntryId in pinnedEntries)
+        assertFalse(ChartLibraryDestinations.EntryId in pinnedEntries)
         assertEquals(setOf("chart", "settings"), pinnedEntries.map { it.value }.toSet())
     }
 

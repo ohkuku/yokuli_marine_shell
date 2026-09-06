@@ -82,6 +82,7 @@ dependencies {
     implementation(project(":adapter:marine-data-android"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))
+    implementation(project(":feature:chart-library"))
     implementation(project(":feature:data-sources"))
     implementation(project(":feature:nmea-input"))
     implementation(project(":feature:settings"))

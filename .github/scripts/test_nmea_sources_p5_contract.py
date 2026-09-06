@@ -22,11 +22,15 @@ class NmeaSourcesP5Contract(unittest.TestCase):
                 self.assertIn(size, shell)
                 self.assertIn(size, visual)
 
-    def test_production_registry_installs_four_apps_once(self):
+    def test_production_registry_keeps_the_four_p5_apps_after_later_installations(self):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
-        self.assertIn("NmeaInputShellContribution", graph)
-        self.assertIn("DataSourcesShellContribution", graph)
-        self.assertEqual(4, graph.count("InstalledAppBinding("))
+        for contribution in (
+            "ChartShellContribution",
+            "SettingsShellContribution",
+            "NmeaInputShellContribution",
+            "DataSourcesShellContribution",
+        ):
+            self.assertIn(contribution, graph)
 
     def test_default_start_stays_chart_and_settings_only(self):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
