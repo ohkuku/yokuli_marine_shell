@@ -12,6 +12,7 @@ import com.yokuli.marine.map.domain.MapLibraryLoadState
 import com.yokuli.marine.map.domain.MapDispatchResult
 import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapStore
 import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.ChartPackageLease
@@ -46,6 +47,7 @@ import com.yokuli.marine.data.source.MarineFeatureLinkToken
 import com.yokuli.marine.data.source.MarineFeatureLinks
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommand
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommandResult
+import com.yokuli.marine.navigation.domain.NavigationPosition
 import com.yokuli.marine.feature.navigation.NavigationCoordinator
 import com.yokuli.marine.feature.navigation.NavigationDestination
 import com.yokuli.marine.feature.navigation.NavigationEffect
@@ -191,10 +193,18 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            combine(activeNavigationState, mapStore.state) { navigation, map -> navigation.session to map }
-                .collect { (session, map) ->
+            combine(activeNavigationState, mapStore.state) { navigation, map -> navigation to map }
+                .collect { (navigation, map) ->
+                    val session = navigation.session
+                    val geometry = navigation.route?.points.orEmpty().map { point ->
+                        GeoPoint(point.position.latitude, point.position.longitude)
+                    }
+                    if (map.activeNavigationRoute != geometry) {
+                        mapStore.dispatch(MapAction.ActiveNavigationGeometryChanged(geometry))
+                    }
                     if (
                         session != null &&
+                        session.embeddedRoute == null &&
                         map.savedRoutes.any { it.id == session.routeId && it.revision == session.routeRevision } &&
                         map.activeRoutePlanId != session.routeId
                     ) {
@@ -315,11 +325,23 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onActiveNavigationCommand(command: ActiveNavigationCommand): Job = viewModelScope.launch {
         val result = shellApplication.activeNavigationRuntime.execute(command)
-        if (result is ActiveNavigationCommandResult.Accepted && command is ActiveNavigationCommand.Start) {
+        if (result is ActiveNavigationCommandResult.Accepted &&
+            command is ActiveNavigationCommand.Start
+        ) {
             mapStore.dispatch(MapAction.PreviewRoutePlan(command.routeId))
+            mapStore.dispatch(MapAction.OpenSurface(com.yokuli.marine.map.domain.MapSurface.Root))
+        } else if (result is ActiveNavigationCommandResult.Accepted && command is ActiveNavigationCommand.DirectTo) {
             mapStore.dispatch(MapAction.OpenSurface(com.yokuli.marine.map.domain.MapSurface.Root))
         }
     }
+
+    fun startDirectTo(point: GeoPoint, name: String): Job = onActiveNavigationCommand(
+        ActiveNavigationCommand.DirectTo(
+            destination = NavigationPosition(point.latitude, point.longitude),
+            destinationId = "target-${point.latitude}-${point.longitude}",
+            destinationName = name,
+        ),
+    )
 
     fun saveAndStartActiveRoute(): Job = viewModelScope.launch {
         val before = mapStore.state.value

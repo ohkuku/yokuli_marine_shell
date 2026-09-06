@@ -429,6 +429,7 @@ fun GoogleMarineChartSurface(
         state.measurementDraft,
         state.routeDraft,
         state.activeRoutePlanId,
+        state.activeNavigationRoute,
         state.savedRoutes,
         state.editGesture,
         state.position.observation,
@@ -459,6 +460,13 @@ fun GoogleMarineChartSurface(
                 domainPolylines += addPolyline(
                     PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xff00a4ef.toInt()).width(7f),
                 )
+                if (state.navigationActive) {
+                    points.drop(1).forEachIndexed { index, point ->
+                        addMarker(
+                            MarkerOptions().position(point.toLatLng()).title((index + 1).toString()),
+                        )?.let(domainMarkers::add)
+                    }
+                }
             }
             state.position.observation?.let { observation ->
                 addMarker(
@@ -634,7 +642,7 @@ private fun MapState.routePointsWithPreview(): List<GeoPoint> {
 
 private fun MapState.routePointObjectId(index: Int): String = routeDraft
     ?.let { "route-point:${it.id}:$index" }
-    ?: "route-preview-point:${activeRoutePlanId.orEmpty()}:$index"
+    ?: "route-preview-point:${activeRoutePlanId ?: "active-navigation"}:$index"
 
 private fun List<GeoPoint>.replaceAt(index: Int, value: GeoPoint): List<GeoPoint> =
     if (index !in indices) this else mapIndexed { itemIndex, item -> if (itemIndex == index) value else item }

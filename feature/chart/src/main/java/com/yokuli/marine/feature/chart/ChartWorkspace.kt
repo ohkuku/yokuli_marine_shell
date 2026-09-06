@@ -152,6 +152,7 @@ fun ChartWorkspace(
     onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit = { _, _, _ -> },
     onCancelOfflineCoverage: () -> Unit = {},
     activeNavigationStrip: (@Composable () -> Unit)? = null,
+    onDirectTo: (point: GeoPoint, name: String) -> Unit = { _, _ -> },
     onStartNavigation: (routeId: String, routeRevision: Long) -> Unit = { _, _ -> },
     onSaveAndStartRoute: () -> Unit = {},
     chartSurface: MarineChartSurface,
@@ -219,6 +220,7 @@ fun ChartWorkspace(
                 rootInsets,
                 recoveryExportState,
                 activeNavigationStrip,
+                onDirectTo,
                 onSaveAndStartRoute,
                 onAction,
                 onExportRecovery,
@@ -253,6 +255,7 @@ private fun MapRootChrome(
     viewportInsets: MapViewportInsets,
     recoveryExportState: MapRecoveryExportUiState,
     activeNavigationStrip: (@Composable () -> Unit)?,
+    onDirectTo: (point: GeoPoint, name: String) -> Unit,
     onSaveAndStartRoute: () -> Unit,
     onAction: (MapAction) -> Unit,
     onExportRecovery: () -> Unit,
@@ -298,7 +301,7 @@ private fun MapRootChrome(
             activeNavigationStrip?.let { content ->
                 Box(Modifier.fillMaxWidth().testTag("map-active-navigation-strip")) { content() }
             }
-            MapRootSummary(state, onSaveAndStartRoute, onAction)
+            MapRootSummary(state, onDirectTo, onSaveAndStartRoute, onAction)
             if (state.crosshairEnabled) CrosshairAction(state, queryPort, viewportSize, viewportInsets, onAction)
             MapRootCommandBar(state, viewportInsets, onAction)
         }
@@ -494,7 +497,12 @@ private fun MapPersistenceTruth(
 }
 
 @Composable
-private fun MapRootSummary(state: MapState, onSaveAndStartRoute: () -> Unit, onAction: (MapAction) -> Unit) {
+private fun MapRootSummary(
+    state: MapState,
+    onDirectTo: (point: GeoPoint, name: String) -> Unit,
+    onSaveAndStartRoute: () -> Unit,
+    onAction: (MapAction) -> Unit,
+) {
     val colors = LocalWpTheme.current
     val clipboard = LocalClipboardManager.current
     state.precisePointEdit?.let {
@@ -515,6 +523,7 @@ private fun MapRootSummary(state: MapState, onSaveAndStartRoute: () -> Unit, onA
         is MapTransient.PointCandidate -> {
             val vessel = PositionRenderPolicy.resolve(state.position).point
                 ?.takeIf { state.position.availability == PositionAvailability.FRESH }
+            val targetName = stringResource(R.string.map_target_default_name)
             Column(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
                     .testTag("map-point-candidate"),
@@ -543,6 +552,9 @@ private fun MapRootSummary(state: MapState, onSaveAndStartRoute: () -> Unit, onA
                     maxLines = 1,
                 )
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    MapActionText(R.string.map_target_go_to, "map-candidate-go-to") {
+                        onDirectTo(transient.point, targetName)
+                    }
                     MapActionText(R.string.map_target_mark, "map-candidate-mark", Modifier.weight(1f)) {
                         onAction(MapAction.QuickMark(transient.point))
                     }
@@ -557,7 +569,7 @@ private fun MapRootSummary(state: MapState, onSaveAndStartRoute: () -> Unit, onA
             }
         }
         is MapTransient.SelectedObject -> {
-            SelectedObjectSummary(state, transient.hit, onAction)
+            SelectedObjectSummary(state, transient.hit, onDirectTo, onAction)
         }
         is MapTransient.ObjectCandidates -> {
             Column(
@@ -651,7 +663,12 @@ private fun MapViewPicker(state: MapState, onAction: (MapAction) -> Unit) {
 }
 
 @Composable
-private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: (MapAction) -> Unit) {
+private fun SelectedObjectSummary(
+    state: MapState,
+    hit: MapHitResult,
+    onDirectTo: (point: GeoPoint, name: String) -> Unit,
+    onAction: (MapAction) -> Unit,
+) {
     val colors = LocalWpTheme.current
     val measurementIndex = hit.measurementPointIndexOrNull()
     val routeTarget = hit.routePointTargetOrNull()
@@ -666,6 +683,11 @@ private fun SelectedObjectSummary(state: MapState, hit: MapHitResult, onAction: 
     ) {
         WpText(place?.name ?: track?.name ?: point?.coordinateText() ?: hit.objectId, 11, maxLines = 1)
         Row(Modifier.fillMaxWidth()) {
+            if (place != null && point != null) {
+                MapActionText(R.string.map_target_go_to, "map-object-go-to-${place.id}") {
+                    onDirectTo(point, place.name)
+                }
+            }
             val target = measurementIndex?.let(MapEditTarget::MeasurementPoint) ?: routeTarget
             if (target != null) {
                 MapActionText(R.string.map_move_point, "map-object-move") {

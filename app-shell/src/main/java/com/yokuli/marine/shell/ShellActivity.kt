@@ -587,6 +587,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             onCancelOfflineCoverage = shellViewModel::cancelOfflineCoverage,
             activeNavigationState = activeNavigationState,
             onActiveNavigationCommand = { shellViewModel.onActiveNavigationCommand(it) },
+            onDirectTo = shellViewModel::startDirectTo,
             onSaveAndStartRoute = { shellViewModel.saveAndStartActiveRoute() },
             preferencesState = PreferencesUiState(
                 theme = themeSpec,

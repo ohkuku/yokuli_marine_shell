@@ -14,6 +14,7 @@ sealed interface MapAction {
     data object ClearSelection : MapAction
     data object OpenMapViewPicker : MapAction
     data class SetMapViewMode(val mode: MapViewMode) : MapAction
+    data class ActiveNavigationGeometryChanged(val points: List<GeoPoint>) : MapAction
     data class QuickMark(val point: GeoPoint) : MapAction
     data class BeginMeasurement(val vessel: GeoPoint?, val target: GeoPoint?) : MapAction
     data object RequestCloseRouteDraft : MapAction
@@ -216,6 +217,12 @@ class DefaultMapReducer(
         MapAction.ClearSelection -> MapReduction(state.copy(selection = null))
         MapAction.OpenMapViewPicker -> MapReduction(state.copy(transient = MapTransient.MapViewPicker))
         is MapAction.SetMapViewMode -> persistSession(state.copy(mapViewMode = action.mode, transient = null))
+        is MapAction.ActiveNavigationGeometryChanged -> MapReduction(
+            state.copy(
+                activeNavigationRoute = action.points,
+                navigationActive = action.points.size >= 2,
+            ),
+        )
         is MapAction.QuickMark -> quickMark(state, action.point)
         is MapAction.BeginMeasurement -> beginMeasurement(state, action.vessel, action.target)
         MapAction.RequestCloseRouteDraft -> requestCloseRouteDraft(state)

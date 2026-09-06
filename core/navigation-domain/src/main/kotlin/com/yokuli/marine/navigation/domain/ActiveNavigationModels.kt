@@ -13,12 +13,18 @@ data class ActiveNavigationSession(
     val arrivalRadiusMeters: Double,
     val advancePolicy: NavigationAdvancePolicy,
     val state: NavigationSessionState,
+    /**
+     * A route owned by this UI-independent navigation session rather than the durable route library.
+     * Direct-To uses this so it can survive process recreation without inventing a saved route.
+     */
+    val embeddedRoute: RoutePlan? = null,
 ) {
     init {
         require(routeId.isNotBlank() && routeRevision > 0L)
         require(startedAtEpochMillis >= 0L && activeLegIndex >= 0)
         require(arrivalRadiusMeters.isFinite() && arrivalRadiusMeters > 0.0)
         require(state != NavigationSessionState.STOPPED) { "Stopped navigation is represented by no stored session" }
+        require(embeddedRoute == null || embeddedRoute.id == routeId && embeddedRoute.revision == routeRevision)
     }
 }
 
@@ -148,6 +154,12 @@ sealed interface ActiveNavigationCommand {
         val routeRevision: Long,
         val arrivalRadiusMeters: Double = 50.0,
         val advancePolicy: NavigationAdvancePolicy = NavigationAdvancePolicy.MANUAL,
+    ) : ActiveNavigationCommand
+    data class DirectTo(
+        val destination: NavigationPosition,
+        val destinationId: String,
+        val destinationName: String,
+        val arrivalRadiusMeters: Double = 50.0,
     ) : ActiveNavigationCommand
     data object Pause : ActiveNavigationCommand
     data object Resume : ActiveNavigationCommand

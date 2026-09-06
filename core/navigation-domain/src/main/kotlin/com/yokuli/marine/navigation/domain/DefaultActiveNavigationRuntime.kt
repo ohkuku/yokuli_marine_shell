@@ -52,6 +52,7 @@ class DefaultActiveNavigationRuntime(
         ensureInitializedLocked()
         when (command) {
             is ActiveNavigationCommand.Start -> startLocked(command)
+            is ActiveNavigationCommand.DirectTo -> directToLocked(command)
             ActiveNavigationCommand.Pause -> changeStateLocked(NavigationSessionState.PAUSED)
             ActiveNavigationCommand.Resume -> changeStateLocked(NavigationSessionState.ACTIVE)
             ActiveNavigationCommand.Stop -> stopLocked()
@@ -74,7 +75,7 @@ class DefaultActiveNavigationRuntime(
     }
 
     private suspend fun restoreLocked(stored: ActiveNavigationSession) {
-        val loadedRoute = routes.route(stored.routeId)
+        val loadedRoute = stored.embeddedRoute ?: routes.route(stored.routeId)
         when {
             loadedRoute == null -> {
                 issue = ActiveNavigationIssue.ROUTE_NOT_FOUND
@@ -119,6 +120,42 @@ class DefaultActiveNavigationRuntime(
         )
         if (!persistLocked(next)) return rejectLocked(ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED)
         route = loaded
+        session = next
+        issue = null
+        publishLocked()
+        return ActiveNavigationCommandResult.Accepted(revision)
+    }
+
+    private suspend fun directToLocked(command: ActiveNavigationCommand.DirectTo): ActiveNavigationCommandResult {
+        if (
+            command.destinationId.isBlank() || command.destinationName.isBlank() ||
+            !command.arrivalRadiusMeters.isFinite() || command.arrivalRadiusMeters <= 0.0
+        ) return rejectLocked(ActiveNavigationIssue.INVALID_COMMAND)
+        val origin = currentFix.position?.takeIf { currentFix.usablePosition }
+            ?: return rejectLocked(ActiveNavigationIssue.INPUT_UNAVAILABLE)
+        val startedAt = clock.wallTimeMillis()
+        val routeId = "direct-to-$startedAt-${command.destinationId.hashCode().toUInt()}"
+        val embedded = RoutePlan(
+            id = routeId,
+            revision = 1L,
+            name = command.destinationName,
+            points = listOf(
+                RoutePoint("direct-to-origin", origin),
+                RoutePoint(command.destinationId, command.destination),
+            ),
+        )
+        val next = ActiveNavigationSession(
+            routeId = routeId,
+            routeRevision = embedded.revision,
+            startedAtEpochMillis = startedAt,
+            activeLegIndex = 0,
+            arrivalRadiusMeters = command.arrivalRadiusMeters,
+            advancePolicy = NavigationAdvancePolicy.MANUAL,
+            state = NavigationSessionState.ACTIVE,
+            embeddedRoute = embedded,
+        )
+        if (!persistLocked(next)) return rejectLocked(ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED)
+        route = embedded
         session = next
         issue = null
         publishLocked()

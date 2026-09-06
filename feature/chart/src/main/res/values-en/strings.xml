@@ -39,6 +39,8 @@
     <string name="map_view_standard">standard</string>
     <string name="map_view_satellite">satellite</string>
     <string name="map_target_mark">mark</string>
+    <string name="map_target_go_to">go to</string>
+    <string name="map_target_default_name">map target</string>
     <string name="map_target_distance_bearing">%1$s · %2$s</string>
     <string name="map_measure_ab_hint">drag A / B to adjust the ruler</string>
     <string name="map_tool_routes">routes</string>

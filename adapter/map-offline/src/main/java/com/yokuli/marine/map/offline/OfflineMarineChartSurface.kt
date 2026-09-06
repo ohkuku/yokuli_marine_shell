@@ -475,6 +475,7 @@ fun OfflineMarineChartSurface(
         state.measurementDraft,
         state.routeDraft,
         state.activeRoutePlanId,
+        state.activeNavigationRoute,
         state.savedRoutes,
         state.importedTracks,
         state.editGesture,
@@ -643,12 +644,13 @@ private fun MapState.routePointsWithPreview(): List<GeoPoint> {
 private fun MapState.routeOverlayObjectId(): String = routeDraft
     ?.takeIf { tool == com.yokuli.marine.map.domain.MapTool.MANUAL_ROUTE }
     ?.id
-    ?: activeRoutePlanId.orEmpty()
+    ?: activeRoutePlanId
+    ?: "active-navigation"
 
 private fun MapState.routePointObjectId(index: Int): String = routeDraft
     ?.takeIf { tool == com.yokuli.marine.map.domain.MapTool.MANUAL_ROUTE }
     ?.let { "route-point:${it.id}:$index" }
-    ?: "route-preview-point:${activeRoutePlanId.orEmpty()}:$index"
+    ?: "route-preview-point:${activeRoutePlanId ?: "active-navigation"}:$index"
 
 private fun List<GeoPoint>.replaceAt(index: Int, point: GeoPoint): List<GeoPoint> =
     if (index !in indices) this else mapIndexed { itemIndex, item -> if (itemIndex == index) point else item }

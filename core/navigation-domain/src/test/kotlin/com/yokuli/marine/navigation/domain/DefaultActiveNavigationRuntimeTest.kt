@@ -77,6 +77,48 @@ class DefaultActiveNavigationRuntimeTest {
         assertNull(fixture.store.value)
     }
 
+    @Test
+    fun `direct to uses current fix without creating a durable library route`() = runTest {
+        val fixture = Fixture(this)
+        fixture.input.value = usableFix(1)
+        fixture.runtime.initialize()
+
+        val result = fixture.runtime.execute(
+            ActiveNavigationCommand.DirectTo(
+                destination = NavigationPosition(-36.80, 174.86),
+                destinationId = "waypoint-14",
+                destinationName = "WP 014",
+            ),
+        )
+
+        assertTrue(result is ActiveNavigationCommandResult.Accepted)
+        assertEquals(listOf("direct-to-origin", "waypoint-14"), fixture.runtime.state.value.route?.points?.map { it.id })
+        assertEquals(fixture.runtime.state.value.route, fixture.store.value?.embeddedRoute)
+        assertTrue(fixture.runtime.state.value.solution != null)
+    }
+
+    @Test
+    fun `direct to rejects unavailable position and embedded session restores without route library`() = runTest {
+        val first = Fixture(this)
+        first.runtime.initialize()
+        assertEquals(
+            ActiveNavigationIssue.INPUT_UNAVAILABLE,
+            (first.runtime.execute(
+                ActiveNavigationCommand.DirectTo(NavigationPosition(-36.80, 174.86), "target", "Target"),
+            ) as ActiveNavigationCommandResult.Rejected).issue,
+        )
+
+        first.input.value = usableFix(1)
+        advanceUntilIdle()
+        first.runtime.execute(
+            ActiveNavigationCommand.DirectTo(NavigationPosition(-36.80, 174.86), "target", "Target"),
+        )
+        val restored = Fixture(this, requireNotNull(first.store.value))
+        restored.runtime.initialize()
+        assertEquals(NavigationSessionState.PAUSED, restored.runtime.state.value.sessionState)
+        assertEquals("target", restored.runtime.state.value.route?.points?.last()?.id)
+    }
+
     private class Fixture(
         scope: kotlinx.coroutines.CoroutineScope,
         stored: ActiveNavigationSession? = null,

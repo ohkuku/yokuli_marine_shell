@@ -1,12 +1,18 @@
 package com.yokuli.marine.map.storage
 
 import com.yokuli.marine.map.storage.proto.ActiveNavigationSessionProto
+import com.yokuli.marine.map.storage.proto.ActiveNavigationEmbeddedRouteProto
+import com.yokuli.marine.map.storage.proto.ActiveNavigationRoutePointProto
 import com.yokuli.marine.navigation.domain.ActiveNavigationSession
 import com.yokuli.marine.navigation.domain.NavigationAdvancePolicy
+import com.yokuli.marine.navigation.domain.NavigationPosition
 import com.yokuli.marine.navigation.domain.NavigationSessionState
+import com.yokuli.marine.navigation.domain.RoutePlan
+import com.yokuli.marine.navigation.domain.RoutePoint
+import com.yokuli.marine.navigation.domain.WaypointRevisionReference
 
 internal object ActiveNavigationSessionProtoMapper {
-    const val SCHEMA_VERSION = 1
+    const val SCHEMA_VERSION = 2
 
     fun encode(session: ActiveNavigationSession?): ActiveNavigationSessionProto =
         ActiveNavigationSessionProto.newBuilder()
@@ -21,6 +27,10 @@ internal object ActiveNavigationSessionProtoMapper {
                     arrivalRadiusMeters = it.arrivalRadiusMeters
                     advancePolicy = it.advancePolicy.name
                     state = it.state.name
+                    it.embeddedRoute?.let { embedded ->
+                        hasEmbeddedRoute = true
+                        embeddedRoute = encodeEmbeddedRoute(embedded)
+                    }
                 }
             }
             .build()
@@ -36,6 +46,48 @@ internal object ActiveNavigationSessionProtoMapper {
             arrivalRadiusMeters = proto.arrivalRadiusMeters,
             advancePolicy = enumValueOf<NavigationAdvancePolicy>(proto.advancePolicy),
             state = enumValueOf<NavigationSessionState>(proto.state),
+            embeddedRoute = if (proto.hasEmbeddedRoute) decodeEmbeddedRoute(proto.embeddedRoute) else null,
         )
     }
+
+    private fun encodeEmbeddedRoute(route: RoutePlan): ActiveNavigationEmbeddedRouteProto =
+        ActiveNavigationEmbeddedRouteProto.newBuilder()
+            .setId(route.id)
+            .setRevision(route.revision)
+            .setName(route.name)
+            .addAllPoints(route.points.map(::encodePoint))
+            .setHasPlannedSpeedKnots(route.plannedSpeedKnots != null)
+            .setPlannedSpeedKnots(route.plannedSpeedKnots ?: 0.0)
+            .setNotes(route.notes)
+            .setSourceDraftId(route.sourceDraftId.orEmpty())
+            .setSourceDraftRevision(route.sourceDraftRevision ?: 0L)
+            .build()
+
+    private fun encodePoint(point: RoutePoint): ActiveNavigationRoutePointProto =
+        ActiveNavigationRoutePointProto.newBuilder()
+            .setId(point.id)
+            .setLatitude(point.position.latitude)
+            .setLongitude(point.position.longitude)
+            .setSourceWaypointId(point.sourceWaypoint?.waypointId.orEmpty())
+            .setSourceWaypointRevision(point.sourceWaypoint?.revision ?: 0L)
+            .build()
+
+    private fun decodeEmbeddedRoute(route: ActiveNavigationEmbeddedRouteProto): RoutePlan = RoutePlan(
+        id = route.id,
+        revision = route.revision,
+        name = route.name,
+        points = route.pointsList.map { point ->
+            RoutePoint(
+                id = point.id,
+                position = NavigationPosition(point.latitude, point.longitude),
+                sourceWaypoint = point.sourceWaypointId.takeIf(String::isNotBlank)?.let { id ->
+                    WaypointRevisionReference(id, point.sourceWaypointRevision)
+                },
+            )
+        },
+        plannedSpeedKnots = route.plannedSpeedKnots.takeIf { route.hasPlannedSpeedKnots },
+        notes = route.notes,
+        sourceDraftId = route.sourceDraftId.takeIf(String::isNotBlank),
+        sourceDraftRevision = route.sourceDraftRevision.takeIf { route.sourceDraftId.isNotBlank() },
+    )
 }

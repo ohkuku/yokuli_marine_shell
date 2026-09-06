@@ -36,7 +36,9 @@ fun ActiveNavigationStrip(
     val colors = LocalWpTheme.current
     val units = LocalMeasurementUnitSystem.current
     val nextOrdinal = (session.activeLegIndex + 2).coerceAtMost(route.points.size)
-    val nextName = stringResource(R.string.navigation_route_point, nextOrdinal)
+    val nextName = if (session.embeddedRoute != null) route.name else {
+        stringResource(R.string.navigation_route_point, nextOrdinal)
+    }
     Column(
         modifier.fillMaxWidth().background(colors.chrome.copy(alpha = .94f))
             .padding(horizontal = 12.dp, vertical = 8.dp)

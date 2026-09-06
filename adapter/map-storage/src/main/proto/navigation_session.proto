@@ -13,4 +13,26 @@ message ActiveNavigationSessionProto {
   double arrival_radius_meters = 7;
   string advance_policy = 8;
   string state = 9;
+  bool has_embedded_route = 10;
+  ActiveNavigationEmbeddedRouteProto embedded_route = 11;
+}
+
+message ActiveNavigationEmbeddedRouteProto {
+  string id = 1;
+  int64 revision = 2;
+  string name = 3;
+  repeated ActiveNavigationRoutePointProto points = 4;
+  bool has_planned_speed_knots = 5;
+  double planned_speed_knots = 6;
+  string notes = 7;
+  string source_draft_id = 8;
+  int64 source_draft_revision = 9;
+}
+
+message ActiveNavigationRoutePointProto {
+  string id = 1;
+  double latitude = 2;
+  double longitude = 3;
+  string source_waypoint_id = 4;
+  int64 source_waypoint_revision = 5;
 }

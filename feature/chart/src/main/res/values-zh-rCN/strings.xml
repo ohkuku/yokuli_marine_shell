@@ -39,6 +39,8 @@
     <string name="map_view_standard">标准</string>
     <string name="map_view_satellite">卫星</string>
     <string name="map_target_mark">标记</string>
+    <string name="map_target_go_to">前往</string>
+    <string name="map_target_default_name">地图目标</string>
     <string name="map_target_distance_bearing">%1$s · %2$s</string>
     <string name="map_measure_ab_hint">拖动 A / B 调整测距</string>
     <string name="map_tool_routes">航线</string>

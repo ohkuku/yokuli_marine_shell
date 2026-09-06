@@ -355,6 +355,8 @@ data class MapSessionSnapshot(
     val measurementDraft: MeasurementDraft? = null,
     val activeRouteDraftId: String? = null,
     val activeRoutePlanId: String? = null,
+    /** Runtime navigation geometry, including Direct-To routes that do not belong to the saved library. */
+    val activeNavigationRoute: List<GeoPoint> = emptyList(),
     val activeChartPackageId: ChartPackageId? = null,
     val chartDisplayPreferences: ChartDisplayPreferences = ChartDisplayPreferences(),
     val chartDisplayPreferencesInitialized: Boolean = false,
@@ -457,6 +459,7 @@ data class MapState(
 
     val visibleRoutePoints: List<GeoPoint>
         get() = routeDraft?.takeIf { tool == MapTool.MANUAL_ROUTE }?.waypoints
+            ?: activeNavigationRoute.takeIf(List<GeoPoint>::isNotEmpty)
             ?: activeRoutePlanId?.let { id -> savedRoutes.firstOrNull { it.id == id }?.waypoints }
             ?: emptyList()
 

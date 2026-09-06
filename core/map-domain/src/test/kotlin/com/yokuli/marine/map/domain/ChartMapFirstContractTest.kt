@@ -70,5 +70,18 @@ class ChartMapFirstContractTest {
         assertNull(MapState(measurementDraft = MeasurementDraft(listOf(vessel, target))).sessionSnapshot().measurementDraft)
     }
 
+    @Test
+    fun `direct to geometry is visible without becoming a saved route`() {
+        val state = reduce(
+            MapState(),
+            MapAction.ActiveNavigationGeometryChanged(listOf(vessel, target)),
+        ).state
+
+        assertEquals(listOf(vessel, target), state.visibleRoutePoints)
+        assertTrue(state.savedRoutes.isEmpty())
+        assertNull(state.activeRoutePlanId)
+        assertTrue(state.persisted().savedRoutes.isEmpty())
+    }
+
     private fun reduce(state: MapState, action: MapAction): MapReduction = DefaultMapReducer().reduce(state, action)
 }
