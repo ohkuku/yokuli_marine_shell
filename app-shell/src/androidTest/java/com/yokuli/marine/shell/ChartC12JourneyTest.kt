@@ -39,7 +39,6 @@ import com.yokuli.marine.map.domain.MapSurface
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.MeasurementMath
 import com.yokuli.marine.map.domain.MonotonicTime
-import com.yokuli.marine.map.domain.NoSourcePositionPort
 import com.yokuli.marine.map.domain.ObservationIdentity
 import com.yokuli.marine.map.domain.ObservationSource
 import com.yokuli.marine.map.domain.ObservationValidity
@@ -84,7 +83,7 @@ class ChartC12JourneyTest {
         viewModel.engine.dispatch(LauncherAction.ShowDesktop)
         awaitDisplayed("tile-chart")
         val application = currentApplication()
-        assertTrue(application.positionPort === NoSourcePositionPort)
+        assertTrue(application.positionPort is MarineSourcePositionPort)
 
         val source = File(application.cacheDir, "c12-j01.mbtiles")
         createRasterMbTiles(source, Color.rgb(31, 115, 179))
