@@ -9,6 +9,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import com.yokuli.marine.core.model.AppLanguage
+import com.yokuli.marine.core.model.initialAppLanguage
+import com.yokuli.marine.core.model.supportedAppLanguage
 import com.yokuli.marine.data.android.persistence.ProtoDataStoreConnectionRepository
 import com.yokuli.marine.data.android.persistence.ProtoDataStoreSourceSelectionRepository
 import com.yokuli.marine.data.android.location.AndroidLocationManagerPlatform
@@ -58,7 +60,10 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
         ProtoDataStoreLauncherPersistence.create(
             context = this,
             scope = applicationScope,
-            defaults = LauncherPersistedState(document = defaultStartDocument),
+            defaults = LauncherPersistedState(
+                document = defaultStartDocument,
+                languageTag = selectedAppLanguageTag(),
+            ),
             productMigration = YokuliProductModel.migrationPlan,
             installedEntryIds = productionCatalog.entries.mapTo(linkedSetOf()) { it.entryId },
         )
@@ -174,11 +179,10 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
             val localeManager = getSystemService(LocaleManager::class.java)
             val frameworkTag = localeManager.applicationLocales.toLanguageTags()
             if (frameworkTag.isNotBlank()) {
-                saveLanguageTag(frameworkTag)
+                saveLanguageTag(supportedAppLanguage(frameworkTag.substringBefore(','))?.languageTag ?: selectedAppLanguageTag())
             } else {
-                // 中文：覆盖安装可能清空 framework locale；从持久化选择恢复，首次默认中文。
-                // English: An update may clear the framework locale; restore the saved choice, defaulting to Chinese.
-                localeManager.applicationLocales = LocaleList.forLanguageTags(selectedLanguageTag())
+                // First run follows a supported device locale; later runs restore the explicit local choice.
+                localeManager.applicationLocales = LocaleList.forLanguageTags(selectedAppLanguageTag())
             }
         }
     }
@@ -188,11 +192,9 @@ fun AppCompatActivity.bootstrapLegacyLocale() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
         val androidXTag = AppCompatDelegate.getApplicationLocales().toLanguageTags()
         if (androidXTag.isNotBlank()) {
-            saveLanguageTag(androidXTag)
+            saveLanguageTag(supportedAppLanguage(androidXTag.substringBefore(','))?.languageTag ?: selectedAppLanguageTag())
         } else {
-            // 中文：Android 12 及以下通过 AndroidX 恢复选择；首次仍以中文启动。
-            // English: AndroidX restores the choice on Android 12 and lower; first launch remains Chinese.
-            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(selectedLanguageTag()))
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(selectedAppLanguageTag()))
         }
     }
 }
@@ -210,7 +212,7 @@ fun Context.persistAppLanguage(language: AppLanguage) {
 }
 
 fun Context.synchronizePersistedLanguage(languageTag: String) {
-    if (selectedLanguageTag() == languageTag) return
+    if (selectedAppLanguageTag() == languageTag) return
     saveLanguageTag(languageTag)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         getSystemService(LocaleManager::class.java).applicationLocales = LocaleList.forLanguageTags(languageTag)
@@ -219,8 +221,15 @@ fun Context.synchronizePersistedLanguage(languageTag: String) {
     }
 }
 
-private fun Context.selectedLanguageTag(): String =
-    languagePreferences().getString(LANGUAGE_SELECTION, CHINESE_LANGUAGE_TAG) ?: CHINESE_LANGUAGE_TAG
+fun Context.selectedAppLanguageTag(): String {
+    val saved = languagePreferences().getString(LANGUAGE_SELECTION, null)
+        ?.let(::supportedAppLanguage)
+    if (saved != null) return saved.languageTag
+    val deviceTags = resources.configuration.locales.toLanguageTags()
+        .split(',')
+        .filter(String::isNotBlank)
+    return initialAppLanguage(deviceTags).languageTag
+}
 
 private fun Context.saveLanguageTag(languageTag: String) {
     languagePreferences().edit().putString(LANGUAGE_SELECTION, languageTag).commit()
@@ -231,4 +240,3 @@ private fun Context.languagePreferences() =
 
 private const val LOCALE_PREFERENCES = "yokuli_locale"
 private const val LANGUAGE_SELECTION = "selected_language_tag"
-private const val CHINESE_LANGUAGE_TAG = "zh-CN"

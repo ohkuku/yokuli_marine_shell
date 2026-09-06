@@ -84,7 +84,10 @@ import kotlinx.coroutines.launch
  */
 class ShellViewModel(application: Application) : AndroidViewModel(application) {
     private val shellApplication = application as ShellApplication
-    private val defaults = LauncherPersistedState(document = defaultStartDocument)
+    private val defaults = LauncherPersistedState(
+        document = defaultStartDocument,
+        languageTag = application.selectedAppLanguageTag(),
+    )
     private val persistence = shellApplication.launcherPersistence
     private val recoveryTrackingEnabled = BuildConfig.BUILD_TYPE !in HARNESS_BUILD_TYPES
     private val enginePersistence = if (recoveryTrackingEnabled) {
@@ -124,7 +127,9 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     val activeNavigationState = shellApplication.activeNavigationRuntime.state
 
     val persistedPreferences: StateFlow<LauncherPersistedState> = persistence.state
-        .map { it ?: defaults }
+        .map { persisted ->
+            (persisted ?: defaults).copy(languageTag = application.selectedAppLanguageTag())
+        }
         .stateIn(viewModelScope, SharingStarted.Eagerly, defaults)
 
     val engine: LauncherEngine = DefaultLauncherEngine(
@@ -230,9 +235,14 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
             engine.dispatch(LauncherAction.ShowDesktop)
         }
         startupJob = viewModelScope.launch {
-            val persisted = persistence.load() ?: defaults
+            val selectedLanguageTag = application.selectedAppLanguageTag()
+            val loaded = persistence.load()
+            val persisted = (loaded ?: defaults).copy(languageTag = selectedLanguageTag)
+            if (loaded != null && loaded.languageTag != selectedLanguageTag) {
+                persistence.save(persisted)
+            }
             if (recoveryTrackingEnabled) {
-                application.synchronizePersistedLanguage(persisted.languageTag)
+                application.synchronizePersistedLanguage(selectedLanguageTag)
             }
             engine.state.first { it.recoveryMode != LauncherRecoveryMode.RESTORING }
             if (recoveryTrackingEnabled) {
@@ -253,7 +263,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     fun saveTheme(theme: WpThemeSpec) {
         viewModelScope.launch {
             val current = persistence.load() ?: defaults
-            persistence.savePreferences(theme.mode.name, theme.accent.name, current.languageTag)
+            persistence.savePreferences(theme.mode.name, theme.accent.name, shellApplication.selectedAppLanguageTag())
         }
     }
 
@@ -379,14 +389,24 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     fun saveMeasurementUnits(units: MeasurementUnitSystem) {
         viewModelScope.launch {
             val current = persistence.load() ?: defaults
-            persistence.save(current.copy(measurementUnitSystemName = units.name))
+            persistence.save(
+                current.copy(
+                    languageTag = shellApplication.selectedAppLanguageTag(),
+                    measurementUnitSystemName = units.name,
+                ),
+            )
         }
     }
 
     fun saveMotionPreference(preference: MotionPreference) {
         viewModelScope.launch {
             val current = persistence.load() ?: defaults
-            persistence.save(current.copy(motionPreferenceName = preference.name))
+            persistence.save(
+                current.copy(
+                    languageTag = shellApplication.selectedAppLanguageTag(),
+                    motionPreferenceName = preference.name,
+                ),
+            )
         }
     }
 
@@ -401,7 +421,12 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
             }.entries.sortedBy { it.key }
                 .take(AppPreferenceRegistry.MAX_REGISTERED_PREFERENCES)
                 .associate { it.toPair() }
-            persistence.save(current.copy(appPreferenceValues = next))
+            persistence.save(
+                current.copy(
+                    languageTag = shellApplication.selectedAppLanguageTag(),
+                    appPreferenceValues = next,
+                ),
+            )
         }
     }
 

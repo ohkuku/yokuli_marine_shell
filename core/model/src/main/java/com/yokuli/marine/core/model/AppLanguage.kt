@@ -8,3 +8,16 @@ enum class AppLanguage(val languageTag: String) {
     CHINESE("zh-CN"),
     ENGLISH("en"),
 }
+
+fun supportedAppLanguage(languageTag: String): AppLanguage? {
+    val normalized = languageTag.trim().lowercase()
+    return when {
+        normalized == "zh" || normalized.startsWith("zh-") -> AppLanguage.CHINESE
+        normalized == "en" || normalized.startsWith("en-") -> AppLanguage.ENGLISH
+        else -> null
+    }
+}
+
+/** First run follows the first supported device language; unsupported devices start in English. */
+fun initialAppLanguage(deviceLanguageTags: List<String>): AppLanguage =
+    deviceLanguageTags.firstNotNullOfOrNull(::supportedAppLanguage) ?: AppLanguage.ENGLISH
