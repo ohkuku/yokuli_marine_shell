@@ -67,6 +67,7 @@ class NmeaSourcesP5Contract(unittest.TestCase):
         tests = "\n".join(p.read_text(encoding="utf-8") for p in [
             ROOT / "feature/nmea-input/src/test/kotlin/com/yokuli/marine/feature/nmeainput/NmeaInputLauncherProjectorTest.kt",
             ROOT / "feature/data-sources/src/test/kotlin/com/yokuli/marine/feature/datasources/DataSourcesLauncherProjectorTest.kt",
+            ROOT / "app-shell/src/androidTest/java/com/yokuli/marine/shell/NmeaSourcesShellStoryTest.kt",
         ])
         for name in [
             "udpListeningWithoutDatagramsIsWaitingNotConnectedOrReceiving",
@@ -74,8 +75,30 @@ class NmeaSourcesP5Contract(unittest.TestCase):
             "phoneOnlySelectionIsAHealthyFirstClassSource",
             "needsSelectionAndSelectedStaleAreDistinctAttentionFacts",
             "launcherDisplayFreezesDecorativeChangesDuringEditButNeverHidesAttention",
+            "bothAppsAreDiscoverableAndRootBackReturnsToTheInAppStart",
+            "bothFeatureOwnedRendererSetsSurviveThreeSizesTwoThemesAndLargeType",
         ]:
             self.assertIn(name, tests)
+
+    def test_launcher_copy_exists_in_chinese_primary_english_and_chinese_qualified_resources(self):
+        for feature, names in {
+            "nmea-input": [
+                "launcher_nmea_unconfigured",
+                "launcher_nmea_waiting",
+                "launcher_nmea_receiving",
+                "launcher_status_nmea_expanded",
+            ],
+            "data-sources": [
+                "launcher_sources_waiting",
+                "launcher_sources_using",
+                "launcher_sources_attention",
+                "launcher_status_sources_expanded",
+            ],
+        }.items():
+            for folder in ["values", "values-en", "values-zh-rCN"]:
+                resource = self.read(f"feature/{feature}/src/main/res/{folder}/strings.xml")
+                for name in names:
+                    self.assertIn(f'name="{name}"', resource, f"{feature}/{folder} misses {name}")
 
 
 if __name__ == "__main__":

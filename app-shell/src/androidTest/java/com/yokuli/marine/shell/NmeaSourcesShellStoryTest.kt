@@ -1,5 +1,13 @@
 package com.yokuli.marine.shell
 
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
@@ -8,8 +16,21 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.WpThemeMode
+import com.yokuli.marine.core.design.WpThemeSpec
+import com.yokuli.marine.core.design.YokuliTheme
+import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
+import com.yokuli.marine.data.source.MarineSourceSnapshot
+import com.yokuli.marine.feature.datasources.dataSourcesLauncherVisualContribution
+import com.yokuli.marine.feature.nmeainput.nmeaInputLauncherVisualContribution
+import com.yokuli.shell.compose.LauncherTileRenderContext
+import com.yokuli.shell.compose.LauncherEntryVisualContribution
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.LauncherAction
 import com.yokuli.shell.engine.LauncherEngine
 import com.yokuli.shell.engine.LauncherRecoveryMode
@@ -81,6 +102,54 @@ class NmeaSourcesShellStoryTest {
 
         compose.onNodeWithTag("resize-selected-tile").performClick()
         await("nmea-tile-small", unmerged = true)
+    }
+
+    @Test
+    fun bothFeatureOwnedRendererSetsSurviveThreeSizesTwoThemesAndLargeType() {
+        val cases: List<Pair<String, @Composable () -> LauncherEntryVisualContribution>> = listOf(
+            "nmea" to { nmeaInputLauncherVisualContribution(NmeaRuntimeSnapshot.EMPTY) },
+            "data-sources" to { dataSourcesLauncherVisualContribution(MarineSourceSnapshot.EMPTY) },
+        )
+        val tagSuffix = mapOf(
+            MarineTileSize.ICON_1X1 to "small",
+            MarineTileSize.STANDARD_2X2 to "medium",
+            MarineTileSize.WIDE_4X2 to "wide",
+        )
+        cases.forEach { (app, contribution) ->
+            WpThemeMode.entries.forEach { mode ->
+                MarineTileSize.entries.forEach { size ->
+                    compose.activityRule.scenario.onActivity { activity ->
+                        activity.setContent {
+                            val platformDensity = LocalDensity.current
+                            CompositionLocalProvider(
+                                LocalDensity provides Density(platformDensity.density, 1.6f),
+                            ) {
+                                YokuliTheme(WpThemeSpec(mode = mode)) {
+                                    val colors = LocalWpTheme.current
+                                    val visual = contribution()
+                                    Box(
+                                        Modifier.requiredSize(
+                                            width = if (size == MarineTileSize.WIDE_4X2) 320.dp else 152.dp,
+                                            height = if (size == MarineTileSize.ICON_1X1) 76.dp else 152.dp,
+                                        ),
+                                    ) {
+                                        visual.tileRenderers.getValue(size).Render(
+                                            LauncherTileRenderContext(
+                                                size = size,
+                                                contentColor = colors.onAccent,
+                                                modifier = Modifier.fillMaxSize(),
+                                                liveContentEnabled = true,
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    await("$app-tile-${tagSuffix.getValue(size)}", unmerged = true)
+                }
+            }
+        }
     }
 
     private fun openAllApps() {
