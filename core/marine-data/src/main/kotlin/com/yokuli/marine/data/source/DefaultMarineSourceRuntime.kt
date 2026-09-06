@@ -12,6 +12,11 @@ import kotlinx.coroutines.sync.withLock
 sealed interface SourceSelectionCommand {
     data class Select(val key: DataKey, val source: SourceIdentity) : SourceSelectionCommand
     data class Disable(val key: DataKey) : SourceSelectionCommand
+    data class ApplyAtomically(val preferences: Map<DataKey, SourcePreference>) : SourceSelectionCommand {
+        init {
+            require(preferences.isNotEmpty())
+        }
+    }
 }
 
 sealed interface SourceSelectionCommandResult {
@@ -117,6 +122,10 @@ class DefaultMarineSourceRuntime(
                 clock.nowMillis(),
             )
             is SourceSelectionCommand.Disable -> SourceSelectionAction.Disable(command.key, clock.nowMillis())
+            is SourceSelectionCommand.ApplyAtomically -> SourceSelectionAction.ApplyAtomically(
+                command.preferences,
+                clock.nowMillis(),
+            )
         }
         val transition = reducer.reduce(selectionState, action)
         if (transition.rejection != null) {

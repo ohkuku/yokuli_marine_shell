@@ -3,7 +3,7 @@
   "phase": "OS_REDESIGN_CI_FIRST",
   "baseCommit": "ba0daa09f2675da54e463c9ecccb0cfb7e81d6bf",
   "status": "IN_PROGRESS",
-  "currentWorkPackage": "W02",
+  "currentWorkPackage": "W03",
   "ciPolicy": {
     "localFullTests": "DISALLOWED_BY_DEFAULT",
     "githubActions": "AUTHORITATIVE",
@@ -12,8 +12,8 @@
   "workPackages": {
     "W00": {"status": "PASS", "head": "225ab0c0f60aef6b64c05da27d64ac6c29df4a3c"},
     "W01": {"status": "IMPLEMENTED_CI_PENDING", "head": "3b3117f119f9c27976f92d21888d0f7f301e03a7"},
-    "W02": {"status": "IMPLEMENTED_CI_PENDING", "head": null},
-    "W03": {"status": "NOT_STARTED", "head": null},
+    "W02": {"status": "IMPLEMENTED_CI_PENDING", "head": "038c36b5a870f7fd82465a3ff42ae0e71a5e464b"},
+    "W03": {"status": "IMPLEMENTED_CI_PENDING", "head": null},
     "W04": {"status": "NOT_STARTED", "head": null},
     "W05": {"status": "SUPERSEDED_BY_CL03_CL06", "head": "3ce9e651728000eff91173d651f6c2930c983be6"},
     "W06": {"status": "SUPERSEDED_BY_CL01_CL06", "head": "3ce9e651728000eff91173d651f6c2930c983be6"},

@@ -78,6 +78,17 @@ sealed interface SourceSelectionAction {
             require(disabledAtMillis >= 0L)
         }
     }
+
+    /** Generic all-or-nothing preference replacement used by semantic group adapters. */
+    data class ApplyAtomically(
+        val preferences: Map<DataKey, SourcePreference>,
+        val selectedAtMillis: Long,
+    ) : SourceSelectionAction {
+        init {
+            require(preferences.isNotEmpty())
+            require(selectedAtMillis >= 0L)
+        }
+    }
 }
 
 enum class SourceSelectionRejection {
@@ -98,6 +109,7 @@ class SourceSelectionReducer {
         is SourceSelectionAction.CatalogChanged -> catalogChanged(state, action)
         is SourceSelectionAction.Select -> select(state, action)
         is SourceSelectionAction.Disable -> disable(state, action)
+        is SourceSelectionAction.ApplyAtomically -> applyAtomically(state, action)
     }
 
     private fun catalogChanged(
@@ -217,6 +229,51 @@ class SourceSelectionReducer {
                     ),
                     state.maxAuditEntries,
                 ),
+                lastFailure = null,
+            ),
+            persistenceRequired = true,
+        )
+    }
+
+    private fun applyAtomically(
+        state: SourceSelectionState,
+        action: SourceSelectionAction.ApplyAtomically,
+    ): SourceSelectionTransition {
+        val unavailable = action.preferences.any { (key, preference) ->
+            preference is SourcePreference.Selected && state.catalog.candidates.none { candidate ->
+                candidate.id.key == key &&
+                    candidate.id.source == preference.source &&
+                    candidate.availability.isSelectable
+            }
+        }
+        if (unavailable) {
+            return SourceSelectionTransition(
+                state = state,
+                rejection = SourceSelectionRejection.CANDIDATE_UNAVAILABLE,
+            )
+        }
+
+        val changed = action.preferences.filter { (key, preference) -> state.preferences[key] != preference }
+        if (changed.isEmpty()) return SourceSelectionTransition(state)
+        val nextPreferences = state.preferences + changed
+        val nextAudit = changed.entries.sortedBy { it.key.stableKey() }.fold(state.audit) { audit, (key, preference) ->
+            audit.appendBounded(
+                SourceSelectionAuditEntry(
+                    occurredAtMillis = action.selectedAtMillis,
+                    key = key,
+                    oldSource = (state.preferences[key] as? SourcePreference.Selected)?.source,
+                    newSource = (preference as? SourcePreference.Selected)?.source,
+                    reason = (preference as? SourcePreference.Selected)?.reason,
+                ),
+                state.maxAuditEntries,
+            )
+        }
+        return SourceSelectionTransition(
+            state = state.copy(
+                preferences = nextPreferences,
+                selectionRevision = increment(state.selectionRevision),
+                revision = increment(state.revision),
+                audit = nextAudit,
                 lastFailure = null,
             ),
             persistenceRequired = true,

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W03",
+  "startCommit": "038c36b5a870f7fd82465a3ff42ae0e71a5e464b",
+  "dataSections": ["OVERVIEW", "INPUTS", "SOURCES", "FLOW", "DIAGNOSTICS"],
+  "sourceGroups": ["POSITION_AND_MOTION", "HEADING", "DEPTH", "WIND"],
+  "durableSelectionShape": "PER_DATA_KEY_COMPATIBLE",
+  "groupSelectionPersistence": "ONE_ATOMIC_TRANSACTION",
+  "silentFailover": false,
+  "phoneControl": "DERIVED_DEMAND",
+  "dataAppInstalled": false,
+  "legacyAppsStillInstalled": true,
+  "verification": "GITHUB_ACTION_PENDING"
+}
