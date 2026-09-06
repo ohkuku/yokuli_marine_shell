@@ -109,7 +109,7 @@
     <string name="replace_save_fact">This saves the new configuration without presenting a save as successful input.</string>
     <string name="delete_title">Delete this connection?</string>
     <string name="delete_body">This deletes “%1$s” and stops its runtime task.</string>
-    <string name="delete_fact">Other connections are unaffected, and historical data will not be presented as current live data.</string>
+    <string name="delete_fact">If this connection is selected, its data will show that the source was deleted; the system will not switch to another source automatically. Other connections are unaffected, and historical data will not be presented as current live data.</string>
     <string name="duplicate_tcp_title">Save the duplicate endpoint?</string>
     <string name="duplicate_tcp_body">“%1$s” uses the same TCP endpoint as an existing connection. Both tasks could receive the same data.</string>
     <string name="duplicate_tcp_fact">It is saved only after explicit confirmation. Cancelling does not create a duplicate connection.</string>

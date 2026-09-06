@@ -119,7 +119,7 @@
     <string name="replace_save_fact">只保存新配置，不把保存成功写成接收成功。</string>
     <string name="delete_title">删除这条连接？</string>
     <string name="delete_body">将删除“%1$s”的配置并停止其运行任务。</string>
-    <string name="delete_fact">此操作不会删除其他连接，也不会把历史数据伪装成当前实时数据。</string>
+    <string name="delete_fact">如果这条连接正被采用，对应数据将显示来源已删除；系统不会自动切换到其他来源。其他连接不受影响，历史数据也不会被伪装成当前实时数据。</string>
     <string name="duplicate_tcp_title">仍要保存重复地址？</string>
     <string name="duplicate_tcp_body">“%1$s”与已有连接使用相同的 TCP 地址。两个任务可能收到同一批数据。</string>
     <string name="duplicate_tcp_fact">只有明确确认后才会保存；取消不会创建重复连接。</string>
