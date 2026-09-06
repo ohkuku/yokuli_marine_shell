@@ -93,6 +93,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(project(":feature:shell-lab"))
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     "benchmarkImplementation"(project(":feature:shell-lab"))
     baselineProfile(project(":baselineprofile:shell"))
 }
