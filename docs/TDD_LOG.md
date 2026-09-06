@@ -718,3 +718,17 @@ Red 测试先要求 source epoch、观测 identity、boot-scoped monotonic clock
 ### English translation — Chart C10
 
 The Red required epoch-aware identities, a boot-scoped monotonic clock, independent position/heading/COG-SOG/accuracy quality, historical disconnect rendering, and explicit Follow intent. Green adds a read-only port while production remains NoSource with no collection permission, fake provider, vessel output, or idle timer. Adversarial tests cover dedupe, source changes, clock changes, rendering planes, camera ownership, and historical persistence boundaries.
+
+## NMEA Sources P2 — 真实输入运行时与独立 Feature
+
+### Red
+
+P2 先写 36 个行为测试与 9 项静态合同，分别锁定 pure runtime、真实 localhost TCP/UDP、持久化、前台服务边界、NMEA Input 投影／协调器及“离开 workspace 不停止 runtime”。缺少生产合同时分别在 core、adapter 和 Feature 编译阶段按预期失败；没有用 fake transport 冒充 socket 证据。
+
+### Green 与设备 Gate
+
+进程持有的串行 runtime 统一管理多连接、session generation、重连／取消、有界诊断和前台服务；Feature 只消费 core port，不持有 socket。最小 P2 Gate 为 static `9/9`、core `100/100`、adapter `15/15`、Feature `16/16`。API 34 AVD 上 adapter merged-service `1/1`、Feature Compose `3/3`、app-shell 真实 loopback/lifecycle `2/2` 通过。过程中的唯一设备编译修正是将 `ServiceInfo` 改为正确的 `android.content.pm` 类型；没有放宽断言。锁屏、Doze、OEM 后台和真机 GNSS 仍记为 `UNVERIFIED_PHYSICAL_DEVICE`，留给 P6。
+
+### English translation — NMEA Sources P2
+
+P2 begins with 36 behavioral Reds and nine static contracts across the pure runtime, real localhost TCP/UDP, persistence, foreground-service boundaries, Feature projection/coordinator behavior, and workspace-independent ownership. Green provides one process-owned serialized runtime and a Feature that only consumes the core port. The scoped gate passes static 9/9, core 100/100, adapter 15/15, Feature 16/16, plus API 34 device stories 1/1, 3/3, and app-shell real-loopback lifecycle 2/2. Physical background and GNSS behavior remains explicitly unverified for P6.

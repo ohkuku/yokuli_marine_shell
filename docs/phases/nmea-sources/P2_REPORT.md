@@ -1,6 +1,6 @@
 # NMEA_SOURCES P2 报告 / P2 Report
 
-状态：`CANDIDATE_GREEN`（设备 Gate 待运行）
+状态：`PASS`
 
 起点提交：`d746910f731d251a88c87817eed8a1d29a197026`
 
@@ -21,7 +21,7 @@ P2 只实现真实 NMEA 0183 TCP client／UDP listener、多连接持久化与�
 
 Red 合同提交：`357c293210ae63d3991db792a8b3aabc67a9fc61`。
 
-## Candidate Green
+## Green 实现
 
 - 纯 core 建立连接配置 reducer、typed runtime contract、5 秒有界速率、10 秒主动健康时钟、session/token/generation 隔离，以及 parser/catalog 的唯一 ingress pipeline。
 - Android adapter 使用真实 `java.net.Socket`／`DatagramSocket`、Proto DataStore、process-owned serialized runtime、private `connectedDevice` foreground service 与明确的 Stop all 通知操作。
@@ -37,15 +37,20 @@ python3 .github/scripts/test_nmea_sources_p2_contract.py              PASS 9/9
 ./gradlew :adapter:marine-data-android:testDebugUnitTest              PASS 15/15
 ./gradlew :feature:nmea-input:testDebugUnitTest                       PASS 16/16
 ./gradlew :app-shell:compileStandaloneDebugAndroidTestKotlin          PASS
+./gradlew :adapter:marine-data-android:connectedDebugAndroidTest \
+  :feature:nmea-input:connectedDebugAndroidTest                       PASS 1 + 3 stories
+./gradlew :app-shell:connectedStandaloneDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=\
+com.yokuli.marine.shell.NmeaInputWorkspaceStoryTest                   PASS 2/2
 git diff --check                                                      PASS
 ```
 
-API 34/36 的真实 Compose loopback story 和 merged foreground-service instrumentation 已写入，但尚未在本提交前运行；因此本报告现在不宣称 P2 最终 PASS。
+设备 Gate 在 API 34 `pixel_7_api_34` AVD 上运行。adapter 的 merged-manifest 故事确认 service 非导出、`connectedDevice` 类型与权限边界；Feature 的 3 个 Compose story 通过；app-shell 的 2 个定向 story 通过真实 localhost socket 验证“UI 保存并启动后收到有效帧”与“离开 workspace 不停 runtime”。P2 的独立应用与运行时闭环因此通过。
 
 ## Android 与人工边界
 
-本阶段机器门禁覆盖 API 34/36 service lifecycle、真实 localhost sockets 与配置恢复。锁屏、Doze、OEM 杀进程、真实网络切换、功耗和三星方屏仍属于 P6 物理设备证据；未执行时必须写 `UNVERIFIED_PHYSICAL_DEVICE`，不能由 emulator 代替。
+本阶段机器门禁覆盖 API 34 service manifest/lifecycle、真实 localhost sockets 与配置恢复。API 36 会在 P7 的完整设备套件中复验；锁屏、Doze、OEM 杀进程、真实网络切换、功耗和三星方屏仍属于 P6 物理设备证据；未执行时必须写 `UNVERIFIED_PHYSICAL_DEVICE`，不能由 emulator 代替。
 
 ## English translation
 
-P2 is candidate-green at the machine/JVM boundary: its static contract is 9/9, core is 100/100, the real-loopback Android adapter is 15/15, the Feature is 16/16, and the app instrumentation sources compile. Process ownership, truthful TCP/UDP state, bounded diagnostics, foreground-service refusal, active no-input aging and Feature separation are implemented. API 34/36 device stories are written but not yet executed, so final P2 PASS is intentionally not claimed.
+P2 passes its scoped gate: static contract 9/9, core 100/100, Android adapter 15/15, Feature 16/16, adapter/Feature device stories 1+3, and both app-shell real-loopback lifecycle stories 2/2 on API 34. Process ownership, truthful TCP/UDP state, bounded diagnostics, foreground-service refusal, active no-input aging and Feature separation are implemented. Physical-device background behavior remains explicitly unverified for P6.
