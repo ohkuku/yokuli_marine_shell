@@ -1,8 +1,8 @@
 package com.yokuli.marine.data.android
 
-import android.app.ServiceInfo
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yokuli.marine.data.android.service.NmeaInputForegroundService
