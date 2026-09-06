@@ -3,6 +3,8 @@ package com.yokuli.marine.shell
 import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
+import com.yokuli.marine.feature.datasources.DataSourcesDestinations
+import com.yokuli.marine.feature.nmeainput.NmeaInputDestinations
 import com.yokuli.shell.contract.LaunchToken
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,11 +22,16 @@ class ProductionLaunchRegistryTest {
 
     @Test fun internalRoutesDoNotBecomeAdditionalLauncherEntries() {
         assertEquals(
-            setOf(ChartDestinations.EntryId, SettingsDestinations.EntryId),
+            setOf(
+                ChartDestinations.EntryId,
+                SettingsDestinations.EntryId,
+                NmeaInputDestinations.EntryId,
+                DataSourcesDestinations.EntryId,
+            ),
             productionContributions.flatMap { it.entries }.map { it.entryId }.toSet(),
         )
-        assertEquals(2, productionContributions.flatMap { it.entries }.size)
-        assertEquals(2, productionInstalledAppRegistry.internalAppHosts.size)
+        assertEquals(4, productionContributions.flatMap { it.entries }.size)
+        assertEquals(4, productionInstalledAppRegistry.internalAppHosts.size)
         assertFalse(productionLaunchRegistrations.containsKey(LaunchToken("settings.unknown")))
     }
 }
