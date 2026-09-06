@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "phase": "chart-library",
+  "status": "IN_PROGRESS",
+  "reviewed_at": "2026-09-06",
+  "reviewed_shell": {
+    "repo": "ohkuku/yokuli_marine_shell",
+    "branch": "codex/shell-map-contract",
+    "commit": "4b1cec8f13fdf6d93fb4c69a9609b7209c2d72b5"
+  },
+  "reviewed_legacy": {
+    "repo": "ohkuku/yokuli_nmea_anchor_alarm",
+    "branch": "codex/develop",
+    "commit": "a845d3d734d3b573a2b53952e66e5f800e944205"
+  },
+  "requirements_sha256": "322a62c034b6c0311b2d578deb718e65a7684456853c4e1d3f96b2804c1577f4",
+  "actual_start_head": "8d2376bd76c38bd5d6e559d08b00a59d7261c837",
+  "note": "实际施工基线已锁定；完整仓库门禁按用户要求仅在 CL12 执行。",
+  "tasks": {
+    "CL00": {
+      "title": "基线确认与合同覆盖",
+      "status": "PASS",
+      "head": "8d2376bd76c38bd5d6e559d08b00a59d7261c837",
+      "changed_files": [
+        "docs/phases/chart-library/**",
+        ".github/scripts/test_chart_library_cl00_contract.py"
+      ],
+      "commands": [
+        {
+          "command": "python3 .github/scripts/test_chart_library_cl00_contract.py",
+          "red_exit_code": 1,
+          "green_exit_code": 0
+        }
+      ],
+      "evidence": [
+        "docs/phases/chart-library/CL00_BASELINE_LOCK.json",
+        "docs/phases/chart-library/CL00_REPORT.md",
+        "docs/phases/chart-library/USER_OVERRIDES.md"
+      ],
+      "deviations": [
+        "reviewed document SHA is older than actual NMEA P7 head; no rewind",
+        "direct user request enables Google online basemap without treating it as offline coverage"
+      ],
+      "blockers": []
+    },
+    "CL01": {
+      "title": "SAF原件与FD SQLite读取",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL02": {
+      "title": "MapLibre零复制显示闭环",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL03": {
+      "title": "目录模型、版本和持久化",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL04": {
+      "title": "来源授权与增量目录扫描",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL05": {
+      "title": "分层验证与共享瓦片查询",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL06": {
+      "title": "Runtime、会话与外部变更",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL07": {
+      "title": "独立海图库应用页面",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL08": {
+      "title": "Chart显示消费、多图与覆盖",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL09": {
+      "title": "旧受管包迁移与显式副本",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL10": {
+      "title": "Shell安装、磁贴与跨应用导航",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL11": {
+      "title": "故障、数据安全与资源压力",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    },
+    "CL12": {
+      "title": "最终回归与产品验收",
+      "status": "NOT_STARTED",
+      "head": null,
+      "changed_files": [],
+      "commands": [],
+      "evidence": [],
+      "deviations": [],
+      "blockers": []
+    }
+  }
+}

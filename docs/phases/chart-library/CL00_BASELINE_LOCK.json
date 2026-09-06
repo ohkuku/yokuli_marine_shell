@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "task": "CL00",
+  "branch": "codex/shell-map-contract",
+  "actual_start_head": "8d2376bd76c38bd5d6e559d08b00a59d7261c837",
+  "document_review_head": "4b1cec8f13fdf6d93fb4c69a9609b7209c2d72b5",
+  "build_flavors": ["standalone"],
+  "production_apps_before_chart_library": [
+    "chart",
+    "settings",
+    "nmea_input",
+    "data_sources"
+  ],
+  "android_home_registered": false,
+  "screen_orientation": "portrait",
+  "google_secret_name": "GOOGLE_MAPS_ANDROID_API_KEY",
+  "google_adapter_present_but_detached": true,
+  "legacy_import_behavior": [
+    "whole-source copy",
+    "full SHA-256",
+    "full tile decode"
+  ],
+  "full_repository_gate": "DEFERRED_TO_CL12"
+}
+
