@@ -134,7 +134,7 @@ class MarineShellFinalCorrectionContract(unittest.TestCase):
             "dragAcrossThirtyMixedTiles",
             "resizeStandardTileToWide",
             "rounded320Viewport",
-            "settingsScroll",
+            "preferencesScroll",
         ):
             self.assertIn(f"fun {journey}()", benchmark)
         self.assertNotIn("resizeStandardTileToLarge", benchmark)

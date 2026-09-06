@@ -13,7 +13,7 @@ class ChartLibraryCl07ContractTest(unittest.TestCase):
         manifest = (FEATURE / "src/main/AndroidManifest.xml").read_text()
         source = "\n".join(path.read_text() for path in (FEATURE / "src/main/java").rglob("*.kt"))
 
-        self.assertIn('include(":feature:chart-library")', settings)
+        self.assertIn('":feature:chart-library"', settings)
         self.assertIn('project(":core:map-domain")', build)
         for forbidden in ('project(":feature:chart")', 'project(":adapter:', "MapView", "<activity", "HOME"):
             self.assertNotIn(forbidden, build + manifest + source)

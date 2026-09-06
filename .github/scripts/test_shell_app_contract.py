@@ -48,9 +48,9 @@ class ShellAppTileContractTest(unittest.TestCase):
             ROOT
             / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartLauncherPresentation.kt"
         ).read_text()
-        settings = (
+        preferences = (
             ROOT
-            / "feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsLauncherPresentation.kt"
+            / "feature/preferences/src/main/java/com/yokuli/marine/feature/preferences/PreferencesLauncherPresentation.kt"
         ).read_text()
         desktop = (
             ROOT
@@ -61,10 +61,10 @@ class ShellAppTileContractTest(unittest.TestCase):
         self.assertIn("ChartStandardTile", chart)
         self.assertIn("ChartWideTile", chart)
         self.assertNotIn("ChartLargeTile", chart)
-        self.assertIn("settingsLauncherVisualContribution", settings)
-        self.assertIn("SettingsIconTile", settings)
-        self.assertNotIn("SettingsCompactTile", settings)
-        self.assertIn("SettingsStandardTile", settings)
+        self.assertIn("preferencesLauncherVisualContribution", preferences)
+        self.assertIn("PreferencesIconTile", preferences)
+        self.assertNotIn("PreferencesCompactTile", preferences)
+        self.assertIn("PreferencesStandardTile", preferences)
         self.assertNotIn("MarineTileContent", desktop)
         self.assertNotIn('entryId.value == "chart"', desktop)
         self.assertNotIn('entryId.value == "settings"', desktop)
@@ -93,8 +93,10 @@ class ShellAppTileContractTest(unittest.TestCase):
 
     def test_daily_debug_product_has_no_shell_lab_entry(self):
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
-        self.assertIn("debugShellLabAvailable = false", graph)
-        self.assertNotIn("debugShellLabAvailable = runtime.debugShellLabAvailable", graph)
+        app = (ROOT / "app-shell/build.gradle.kts").read_text()
+        self.assertNotIn("ShellLabContribution", graph)
+        self.assertIn('debugImplementation(project(":feature:shell-lab"))', app)
+        self.assertNotIn('implementation(project(":feature:shell-lab"))', app)
 
     def test_red_green_scenarios_remain_executable(self):
         engine_tests = (
@@ -121,12 +123,15 @@ class ShellAppTileContractTest(unittest.TestCase):
         for forbidden in ("android.", "androidx.", "compose", "LauncherAction", "ShellVisualSurface"):
             self.assertNotIn(forbidden, domain)
         coordinator = (
-            ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartPackageCoordinator.kt"
+            ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartDisplayCoordinator.kt"
         ).read_text()
-        self.assertIn("ChartPackageRepository", coordinator)
-        self.assertIn("MapAction.ChartPackagesChanged", coordinator)
-        self.assertIn("MapAction.SelectChartPackage", coordinator)
-        self.assertNotIn("ContentResolver", coordinator)
+        library = (
+            ROOT / "feature/chart-library/src/main/java/com/yokuli/marine/feature/chartlibrary/ChartLibraryCoordinator.kt"
+        ).read_text()
+        self.assertIn("ChartCatalogReadPort", coordinator)
+        self.assertIn("MapAction.ChartDisplayPlanChanged", coordinator)
+        self.assertIn("ChartLibraryRuntimePort", library)
+        self.assertNotIn("ContentResolver", coordinator + library)
 
     def test_offline_package_install_is_validated_atomic_and_legally_described(self):
         repository = (
@@ -159,15 +164,16 @@ class ShellAppTileContractTest(unittest.TestCase):
         )
         reducer = (ROOT / "core/map-domain/src/main/kotlin/com/yokuli/marine/map/domain/MapReducer.kt").read_text()
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
-        activity_tests = (
-            ROOT / "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt"
-        ).read_text()
+        activity_tests = "\n".join(
+            path.read_text() for path in (ROOT / "app-shell/src/androidTest").rglob("*Test.kt")
+        )
         self.assertIn("positionObservation = null", model)
         self.assertIn("navigationActive = false", model)
         self.assertIn("PositionAvailability.UNAVAILABLE", model)
         self.assertIn("UnknownChartPackage", reducer)
         self.assertIn("OfflineMarineChartSurface", graph)
-        self.assertIn("mapAppKeepsPlanningToolsInternalAndPositionTruthExplicit", activity_tests)
+        self.assertIn("chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart", activity_tests)
+        self.assertIn("chartRootAcceptsRealNavigationContentWithoutInventingNavigationState", activity_tests)
 
     def test_phone_location_permissions_are_owned_by_marine_adapter_not_chart(self):
         manifest = (ROOT / "app-shell/src/main/AndroidManifest.xml").read_text()

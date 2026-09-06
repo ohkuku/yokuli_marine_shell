@@ -66,8 +66,6 @@ class LauncherStage1ProductSurfaceContractTest(unittest.TestCase):
         for forbidden in (
             "ChartMode",
             "TRACKING",
-            "NAVIGATION",
-            "ANCHOR",
             "TRIP",
             "SURVEY",
             "courseOverGround",

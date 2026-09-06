@@ -1,5 +1,6 @@
 <resources>
     <string name="preferences_title">设置</string>
+    <string name="preferences_product_name">Yokuli OS</string>
     <string name="preferences_section_overview">设置</string>
     <string name="preferences_section_appearance">外观</string>
     <string name="preferences_section_language">语言</string>

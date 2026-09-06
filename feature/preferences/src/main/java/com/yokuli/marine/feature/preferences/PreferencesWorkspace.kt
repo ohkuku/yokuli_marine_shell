@@ -203,7 +203,7 @@ private fun AppTiles(state: PreferencesUiState, onAction: (PreferencesUiAction) 
 
 @Composable
 private fun About(state: PreferencesUiState) = Body("preferences-about") {
-    WpText("Yokuli OS", 28, weight = FontWeight.Light)
+    WpText(stringResource(R.string.preferences_product_name), 28, weight = FontWeight.Light)
     AboutRow(stringResource(R.string.preferences_version), state.versionName)
     AboutRow(stringResource(R.string.preferences_variant), state.buildVariant)
     AboutRow(stringResource(R.string.preferences_revision), state.gitSha.take(12))

@@ -44,18 +44,19 @@ class ChartLibraryCl10ContractTest(unittest.TestCase):
 
     def test_chart_settings_and_library_use_linked_shell_navigation(self):
         chart = self.read("feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt")
-        settings = self.read("feature/settings/src/main/java/com/yokuli/marine/feature/settings/SettingsWorkspace.kt")
+        preferences = self.read("feature/preferences/src/main/java/com/yokuli/marine/feature/preferences/PreferencesWorkspace.kt")
         activity = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt")
         reducer = self.read("core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherReducer.kt")
         tests = self.read("core/shell-engine/src/test/kotlin/com/yokuli/shell/engine/LauncherNavigationTest.kt")
         for required in (
-            "map-open-chart-library",
-            "settings-open-chart-library",
             "preserveCaller = true",
             "LinkedTaskReturn",
             "linkedCrossAppRouteReturnsDirectlyToItsCallerContext",
+            "ChartLibraryDestinations",
         ):
-            self.assertIn(required, chart + settings + activity + reducer + tests)
+            self.assertIn(required, chart + preferences + activity + reducer + tests)
+        self.assertNotIn("map-open-chart-library", chart)
+        self.assertNotIn("preferences-open-chart-library", preferences)
 
     def test_rounded_edges_do_not_consume_full_vertical_bands(self):
         policy = self.read("core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/ShellWindowMetrics.kt")

@@ -47,7 +47,7 @@ class ChartC05ContractTest(unittest.TestCase):
             "map-place-detail-$id",
             "map-place-move-editor",
             "map-place-delete-confirmation",
-            "map-place-export-$id",
+            "map-place-view-$id",
         ):
             self.assertIn(tag, workspace)
         self.assertIn("只搜索本机资料，不访问网络", chinese)

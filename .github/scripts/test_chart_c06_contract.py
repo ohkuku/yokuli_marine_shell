@@ -34,7 +34,7 @@ class ChartC06ContractTest(unittest.TestCase):
         ):
             self.assertIn(action, reducer)
 
-    def test_route_workspace_is_a_real_product_surface_without_navigation_claims(self):
+    def test_route_workspace_hands_navigation_to_the_typed_host_without_inventing_runtime_state(self):
         workspace = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
         chinese = (ROOT / "feature/chart/src/main/res/values/strings.xml").read_text()
         english = (ROOT / "feature/chart/src/main/res/values-en/strings.xml").read_text()
@@ -52,8 +52,10 @@ class ChartC06ContractTest(unittest.TestCase):
             self.assertIn(tag, workspace)
         self.assertIn("填写计划船速后估算", chinese)
         self.assertIn("Set a planning speed to estimate", english)
-        self.assertNotIn("开始导航", chinese)
-        self.assertNotIn("START NAVIGATION", english)
+        self.assertIn("开始导航", chinese)
+        self.assertIn("START NAVIGATION", english)
+        self.assertIn("onStartNavigation(plan.id, plan.revision)", workspace)
+        self.assertNotIn("ActiveNavigationEngine", workspace)
 
     def test_room_v3_migration_preserves_route_identity_and_metadata(self):
         database = (ROOT / "adapter/map-storage/src/main/java/com/yokuli/marine/map/storage/MapLibraryDatabase.kt").read_text()

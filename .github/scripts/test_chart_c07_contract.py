@@ -50,15 +50,15 @@ class ChartC07ContractTest(unittest.TestCase):
             self.assertIn(phrase, tests)
 
     def test_coordinator_generation_makes_cancel_and_latest_selection_authoritative(self):
-        contract = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartImportUiContract.kt").read_text()
-        coordinator = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartPackageCoordinator.kt").read_text()
-        tests = (ROOT / "feature/chart/src/test/java/com/yokuli/marine/feature/chart/ChartPackageCoordinatorTest.kt").read_text()
-        for state in ("Copying", "Inspecting", "ReadyToInstall", "Installing", "Cancelled", "Failed"):
-            self.assertIn(f"data class {state}", contract)
-        self.assertIn("operationGeneration", coordinator)
-        self.assertIn("activeJob?.cancel()", coordinator)
-        self.assertIn("lateInspectCompletionCannotReplaceNewerSelection", tests)
-        self.assertIn("cancelIsNotReportedAsFailure", tests)
+        contract = (ROOT / "feature/chart-library/src/main/java/com/yokuli/marine/feature/chartlibrary/ChartLibraryUiContract.kt").read_text()
+        coordinator = (ROOT / "feature/chart-library/src/main/java/com/yokuli/marine/feature/chartlibrary/ChartLibraryCoordinator.kt").read_text()
+        tests = (ROOT / "feature/chart-library/src/test/kotlin/com/yokuli/marine/feature/chartlibrary/ChartLibraryCoordinatorTest.kt").read_text()
+        for action in ("InspectBasic", "VerifyFull", "CancelValidation", "CancelSourceScan"):
+            self.assertIn(f"data class {action}", contract)
+        self.assertIn("pendingPickers[operationId]", coordinator)
+        self.assertIn("runtime.cancel(action.assetId)", coordinator)
+        self.assertIn("pickerEffectMustReturnMatchingOpaqueOperationBeforeSourceIsAccepted", tests)
+        self.assertIn("repairUsesSourceIdentityAndRequestsFreshScanWithoutDeletingOriginal", tests)
 
     def test_release_copy_is_truthful_about_local_validation_and_unknown_legal_facts(self):
         chinese = (ROOT / "feature/chart/src/main/res/values/strings.xml").read_text()

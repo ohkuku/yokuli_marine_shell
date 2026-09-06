@@ -71,7 +71,7 @@ class LauncherStage9NavigationContractTest(unittest.TestCase):
         ):
             self.assertIn(scenario, jvm)
         for scenario in (
-            "virtualBridgeReturnsFromSettingsWithoutDestroyingItsTask",
+            "virtualBridgeReturnsFromPreferencesWithoutDestroyingItsTask",
             "searchResultLaunchHasNoIntermediateSurface",
             "virtualBackLongPressOpensRecents",
             "androidBackAndDeliveredHardwareKeysUseTheUnifiedInputPath",

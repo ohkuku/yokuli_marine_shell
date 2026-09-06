@@ -12,10 +12,10 @@ class Stage11PerformanceSummaryTest(unittest.TestCase):
     def test_abort_emits_a_github_annotation_without_relaxing_the_failure(self):
         output = io.StringIO()
         with redirect_stdout(output), self.assertRaises(SystemExit):
-            subject.abort_with_annotation("empty: settingsScroll")
+            subject.abort_with_annotation("empty: preferencesScroll")
 
         self.assertIn(
-            "::error title=Stage 11 performance summary::empty: settingsScroll",
+            "::error title=Stage 11 performance summary::empty: preferencesScroll",
             output.getvalue(),
         )
 
@@ -64,7 +64,7 @@ class Stage11PerformanceSummaryTest(unittest.TestCase):
 
     def test_rejects_an_interaction_journey_with_zero_observed_frames(self):
         results = {
-            "name": "settingsScroll",
+            "name": "preferencesScroll",
             "metrics": {"gfxFrameTotalCount": {"maximum": 0.0, "runs": [0.0]}},
             "sampledMetrics": {},
         }

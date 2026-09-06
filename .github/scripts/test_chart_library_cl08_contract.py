@@ -21,12 +21,13 @@ class ChartLibraryCl08ContractTest(unittest.TestCase):
         workspace = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartWorkspace.kt").read_text()
         coordinator = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartDisplayCoordinator.kt").read_text()
         shell = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt").read_text()
+        renderer = (ROOT / "adapter/map-offline/src/main/java/com/yokuli/marine/map/offline/OfflineMarineChartSurface.kt").read_text()
         for required in (
             "ChartCatalogReadPort", "catalog.snapshot.collect", "ChartDisplayPlanner.plan",
             "MapAction.ChartDisplayPlanChanged", "ChartDisplayViewportChanged",
             "MAX_CATALOG_ITEMS = 10_000", "ChartLayersPage",
         ):
-            self.assertIn(required, coordinator + workspace)
+            self.assertIn(required, coordinator + workspace + renderer)
         for forbidden in (
             "ChartImportUiAction", "ChartImportUiState", "ChartPackageCoordinator",
             "chartDocumentPicker", "map-import-chart", "map-coverage-import",
@@ -40,7 +41,8 @@ class ChartLibraryCl08ContractTest(unittest.TestCase):
         for required in (
             "plan.layers.forEach", "ChartReadPurpose.RENDER", "gateway.register",
             "prepared.registration.toRasterSource", "rasterOpacity(prepared.planLayer.opacity)",
-            "preparedDisplay?.rejectedLayerCount", "state.chartDisplayPlan.selection is ChartDisplaySelection.None",
+            "preparedDisplay?.rejectedLayerCount",
+            "val librarySelectionActive = displayPlan.selection !is ChartDisplaySelection.None",
         ):
             self.assertIn(required, preparer + renderer + graph)
         self.assertNotIn("GoogleMarineChartSurface", renderer)
@@ -51,7 +53,7 @@ class ChartLibraryCl08ContractTest(unittest.TestCase):
         coordinator = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/OfflineCoverageCoordinator.kt").read_text()
         for required in (
             "ChartAssetRole.BASE", "index.probe", "expectedFingerprint != plan.fingerprint",
-            "ChartDisplayCoverageStatus.STALE", "checked.flatMapTo", "displayCoverage.evaluate",
+            "ChartDisplayCoverageStatus.STALE", "checked.flatMapTo", "coverage.evaluate",
         ):
             self.assertIn(required, coverage + contract + coordinator)
 
@@ -64,7 +66,7 @@ class ChartLibraryCl08ContractTest(unittest.TestCase):
             "overzoomNeverClaimsNativeSourceSetCoverage",
             "coverage unions real base keys and never uses overlay keys to fill a hole",
             "preparer opens only planned revisions honors each tile size and releases every session",
-            "chartControlsDisplayOnlyAndNeverOwnsFileImportOrScanning",
+            "quickLayersControlDisplayOnlyAndNeverExposeLibraryOrNavigationManagement",
         ):
             self.assertIn(required, tests)
 

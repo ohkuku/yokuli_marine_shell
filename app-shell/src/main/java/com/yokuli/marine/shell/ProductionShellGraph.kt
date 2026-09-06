@@ -267,7 +267,10 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
                 if (runtime.heavyContentReady) {
                     { state, onAction, onQueryPortChanged, modifier ->
-                        if (BuildConfig.GOOGLE_MAPS_CONFIGURED) {
+                    if (state.chartDisplayPlan.selection is
+                        com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection.None &&
+                        BuildConfig.GOOGLE_MAPS_CONFIGURED
+                    ) {
                             GoogleMarineChartSurface(
                                 state = state,
                                 onAction = onAction,

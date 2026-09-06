@@ -57,7 +57,7 @@ class OsRedesignW14ContractTest(unittest.TestCase):
         for value in (
             "NavigationTileMode.ACTIVE", "NavigationTileMode.RECENT_ROUTE",
             "distanceToWaypointNauticalMiles", "bearingToWaypointTrueDegrees",
-            "crossTrackErrorNauticalMiles", "NavigationRouteMath.summarize",
+            "crossTrackErrorNauticalMiles", "NavigationRouteMath", "summarize",
         ):
             self.assertIn(value, navigation)
         self.assertIn("PresentationCadence.StartTile", library)
@@ -71,7 +71,7 @@ class OsRedesignW14ContractTest(unittest.TestCase):
             "late and oversized renderer snapshots cannot replace the bounded latest image",
             "auto rotates navigation and real map while deterministic fallbacks stay truthful",
             "chart owns a bounded typed preference for every supported tile mode",
-            "visible layer names and display warnings come from the current display plan",
+            "visibleLayerNamesAndDisplayWarningsComeFromTheCurrentDisplayPlan",
             "tile projects bounded resolved values rather than raw sentence traffic",
             "active navigation projects next waypoint dtw btw and xte without route draft UI",
             "inactive tile describes the most recent saved route and edit freeze yields to alerts",

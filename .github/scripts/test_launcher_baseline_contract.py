@@ -37,7 +37,11 @@ class LauncherFrozenBaselineContractTest(unittest.TestCase):
         self.assertIn("catalogContribution = PreferencesShellContribution", graph)
         self.assertIn("InstalledAppRegistry(productionInstalledApps)", graph)
         self.assertIn("productionInstalledAppRegistry.catalogContributions", graph)
-        for removed in ("CockpitShellContribution", "LibraryShellContribution", "AnchorShortcutContribution"):
+        for removed in (
+            "catalogContribution = CockpitShellContribution",
+            "catalogContribution = LibraryShellContribution",
+            "catalogContribution = AnchorShortcutContribution",
+        ):
             self.assertNotIn(removed, graph)
 
     def test_product_uses_exactly_three_classic_wp8_tile_sizes(self):

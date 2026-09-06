@@ -42,7 +42,7 @@ class MarineSourcePositionPortTest {
     @Test
     fun resolvedPositionAndAtomicMotionProjectToNavigationWithoutEndpointDisclosure() = runTest {
         val snapshots = MutableStateFlow(MarineSourceSnapshot.EMPTY)
-        val port = MarineSourceNavigationInputPort(snapshots, this)
+        val port = MarineSourceNavigationInputPort(snapshots, backgroundScope)
         val position = candidate(DataKey.Position, sourceA, MarineValue.Position(-36.8, 174.7), 120L, 7L)
         val speed = candidate(DataKey.SpeedOverGround, sourceB, MarineValue.Decimal(6.2, MarineUnit.KNOTS), 121L, 8L)
         val course = candidate(DataKey.CourseOverGround, sourceB, MarineValue.Decimal(42.0, MarineUnit.DEGREES), 121L, 8L)

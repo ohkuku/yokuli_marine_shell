@@ -20,7 +20,7 @@ EXPECTED_JOURNEYS = {
     "dragAcrossThirtyMixedTiles",
     "resizeStandardTileToWide",
     "rounded320Viewport",
-    "settingsScroll",
+    "preferencesScroll",
 }
 
 STARTUP_JOURNEYS = {"coldStartToStart", "warmStartToStart"}

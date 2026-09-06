@@ -91,6 +91,7 @@ inspect_apk() {
   require_class "$apk" 'com.yokuli.marine.feature.data.DataWorkspaceKt'
   require_class "$apk" 'com.yokuli.marine.feature.nmeainput.NmeaInputWorkspaceKt'
   require_class "$apk" 'com.yokuli.marine.feature.chartlibrary.ChartLibraryWorkspaceKt'
+  require_class "$apk" 'com.yokuli.marine.feature.navigation.NavigationWorkspaceKt'
   require_class "$apk" 'com.yokuli.marine.chart.library.android.AndroidChartLibraryRuntime'
   require_class "$apk" 'com.yokuli.marine.data.android.runtime.AndroidNmeaInputRuntime'
   require_class "$apk" 'com.yokuli.marine.data.android.runtime.AndroidMarineSourceRuntime'

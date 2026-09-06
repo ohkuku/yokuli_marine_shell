@@ -24,7 +24,8 @@ class ChartC11ContractTest(unittest.TestCase):
         source = (ROOT / "feature/chart/src/main/java/com/yokuli/marine/feature/chart/ChartLauncherPresentation.kt").read_text()
         for forbidden in ("MapView(", "MapLibreMap(", "HttpClient", "OkHttpClient", "LocationManager"):
             self.assertNotIn(forbidden, source)
-        self.assertIn("ChartRouteMiniMap", source)
+        self.assertIn("MapTileSnapshot", source)
+        self.assertIn('testTag("chart-tile-map-snapshot")', source)
 
     def test_search_and_dynamic_tokens_stay_generic_at_shell_boundary(self):
         presentation = (ROOT / "ui/shell-compose/src/main/java/com/yokuli/shell/compose/LauncherPresentation.kt").read_text()
