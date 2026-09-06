@@ -12,9 +12,9 @@ Yokuli OS 当前同时包含 Windows Phone 8 Classic 风格应用内 Shell、离
 
 ```text
 branch: codex/shell-map-contract
-phase: Chart Library
-work packages: CL00–CL12
-status: CL12 implementation candidate; hosted CI and physical review remain separate
+phase: OS Redesign CI-first
+work package: W01
+status: W01 implementation candidate; Chart Library CL12, hosted CI and physical review remain separate
 ```
 
 Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化与应用内恢复。当前生产 All Apps 精确为 Chart、Settings、NMEA Input、Data Sources、Chart Library 五项；全新 Start Document 仍只放 Chart 与 Settings。Shell Lab 只在 debug/benchmark classpath。
@@ -33,6 +33,9 @@ Yokuli OS 默认沉浸式全屏且只允许竖屏；方屏仍属于适配范围�
 - [Chart Library 产品合同](docs/phases/chart-library/REQUIREMENTS.md)
 - [Chart Library 当前支持矩阵](docs/phases/chart-library/CL12_SUPPORT_MATRIX.md)
 - [Chart Library CL12 报告](docs/phases/chart-library/CL12_REPORT.md)
+- [OS Redesign Product & Engineering Contract](docs/phases/os-redesign/PRODUCT_ENGINEERING_CONTRACT.md)
+- [OS Redesign W01 合同](docs/phases/os-redesign/work-packages/W01_PRODUCT_ENGINEERING_CONTRACT.md)
+- [OS Redesign 执行状态](docs/phases/os-redesign/EXECUTION_STATE.json)
 - [NMEA_SOURCES 产品合同](docs/phases/nmea-sources/REQUIREMENTS.md)
 - [NMEA_SOURCES P0 基线](docs/implementation/NMEA_SOURCES_P0_BASELINE.md)
 - [NMEA_SOURCES P1 字段映射](docs/implementation/NMEA_SOURCES_P1_FIELD_MAPPING.md)

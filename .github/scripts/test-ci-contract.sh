@@ -107,6 +107,9 @@ grep -Fq 'python3 .github/scripts/test_chart_library_cl12_contract.py' "$android
 grep -Fq 'CHART_LIBRARY_CL12_CONTRACT_RESULT' "$android" || fail 'Chart Library CL12 result must participate in final enforcement'
 grep -Fq 'emit_google_maps_configuration_evidence.py' "$android" || fail 'built Maps configuration must emit secret-free evidence'
 grep -Fq 'GOOGLE_MAPS_EVIDENCE_RESULT' "$android" || fail 'Maps configuration evidence must participate in final enforcement'
+grep -Fq 'id: osr_w01_contract' "$android" || fail 'OS Redesign W01 needs an independent named CI gate'
+grep -Fq 'python3 .github/scripts/test_osr_w01_contract.py' "$android" || fail 'OS Redesign W01 contract must run in CI'
+grep -Fq 'OSR_W01_CONTRACT_RESULT' "$android" || fail 'OS Redesign W01 result must participate in final enforcement'
 grep -Fq ':feature:chart-library:connectedDebugAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Chart Library standalone UI stories must run on API 34'
 grep -Fq 'bash .github/scripts/run_device_tests.sh performance' "$android" || fail 'Stage 11 Macrobenchmark must use the diagnostic wrapper'
 grep -Fq ':benchmark:shell:connectedStandaloneBenchmarkAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Stage 11 wrapper must run the real benchmark task'
@@ -142,7 +145,7 @@ fi
 for helper in run_ci_capture.sh build_codex_job_report.py compose_codex_ci_report.py test_codex_ci_report.py; do
   [[ -f "$repo_root/.github/scripts/$helper" ]] || fail "Codex report helper missing: $helper"
 done
-for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract chart-library-cl11-contract chart-library-cl12-contract google-maps-evidence unit-tests lint assemble; do
+for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract chart-library-cl11-contract chart-library-cl12-contract osr-w01-contract google-maps-evidence unit-tests lint assemble; do
   grep -Fq "run_ci_capture.sh $captured_step --" "$android" || fail "important build step is not captured: $captured_step"
 done
 grep -Fq 'if: always()' "$android" || fail 'Codex reports must be generated even after failures'

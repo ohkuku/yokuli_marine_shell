@@ -9,9 +9,11 @@ import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.engine.LauncherPersistedStateMigration
 import com.yokuli.shell.engine.LauncherPersistenceIncident
 import com.yokuli.shell.engine.LauncherPersistencePort
+import com.yokuli.shell.engine.LauncherProductMigrationPlan
 import com.yokuli.shell.engine.LauncherRecoveryDecision
 import com.yokuli.shell.engine.LauncherRecoveryPolicy
 import com.yokuli.shell.engine.layout.StartDocument
+import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.storage.proto.LauncherStateProto
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +28,8 @@ import kotlinx.coroutines.launch
 class ProtoDataStoreLauncherPersistence private constructor(
     private val dataStore: DataStore<LauncherStateProto>,
     private val defaults: LauncherPersistedState,
+    private val productMigration: LauncherProductMigrationPlan,
+    private val installedEntryIds: Set<LauncherEntryId>,
     private val mutableIncidents: MutableSharedFlow<LauncherPersistenceIncident>,
     scope: CoroutineScope,
 ) : LauncherPersistencePort {
@@ -41,7 +45,9 @@ class ProtoDataStoreLauncherPersistence private constructor(
     init {
         scope.launch {
             dataStore.data.collect { proto ->
-                val result = LauncherPersistedStateMigration.migrate(LauncherProtoMapper.decode(proto), defaults)
+                val result = LauncherPersistedStateMigration.migrate(
+                    LauncherProtoMapper.decode(proto), defaults, productMigration, installedEntryIds,
+                )
                 publish(result.state)
                 result.incidents.forEach { mutableIncidents.emit(it) }
                 if (LauncherProtoMapper.encode(result.state) != proto) {
@@ -57,7 +63,9 @@ class ProtoDataStoreLauncherPersistence private constructor(
     }
 
     override suspend fun save(state: LauncherPersistedState) {
-        val migrated = LauncherPersistedStateMigration.migrate(state, defaults).state
+        val migrated = LauncherPersistedStateMigration.migrate(
+            state, defaults, productMigration, installedEntryIds,
+        ).state
         val written = dataStore.updateData { LauncherProtoMapper.encode(migrated) }
         publish(LauncherProtoMapper.decode(written))
     }
@@ -92,7 +100,10 @@ class ProtoDataStoreLauncherPersistence private constructor(
     }
 
     override suspend fun reset() {
-        val written = dataStore.updateData { LauncherProtoMapper.encode(defaults) }
+        val resetState = LauncherPersistedStateMigration.migrate(
+            null, defaults, productMigration, installedEntryIds,
+        ).state
+        val written = dataStore.updateData { LauncherProtoMapper.encode(resetState) }
         publish(LauncherProtoMapper.decode(written))
     }
 
@@ -104,8 +115,14 @@ class ProtoDataStoreLauncherPersistence private constructor(
 
     private suspend fun updateCurrent(transform: (LauncherPersistedState) -> LauncherPersistedState) {
         val written = dataStore.updateData { currentProto ->
-            val current = LauncherPersistedStateMigration.migrate(LauncherProtoMapper.decode(currentProto), defaults).state
-            LauncherProtoMapper.encode(LauncherPersistedStateMigration.migrate(transform(current), defaults).state)
+            val current = LauncherPersistedStateMigration.migrate(
+                LauncherProtoMapper.decode(currentProto), defaults, productMigration, installedEntryIds,
+            ).state
+            LauncherProtoMapper.encode(
+                LauncherPersistedStateMigration.migrate(
+                    transform(current), defaults, productMigration, installedEntryIds,
+                ).state,
+            )
         }
         publish(LauncherProtoMapper.decode(written))
     }
@@ -117,12 +134,18 @@ class ProtoDataStoreLauncherPersistence private constructor(
             context: Context,
             scope: CoroutineScope,
             defaults: LauncherPersistedState,
-        ): ProtoDataStoreLauncherPersistence = create(context.dataStoreFile(FILE_NAME), scope, defaults)
+            productMigration: LauncherProductMigrationPlan = LauncherProductMigrationPlan.NONE,
+            installedEntryIds: Set<LauncherEntryId> = emptySet(),
+        ): ProtoDataStoreLauncherPersistence = create(
+            context.dataStoreFile(FILE_NAME), scope, defaults, productMigration, installedEntryIds,
+        )
 
         fun create(
             file: File,
             scope: CoroutineScope,
             defaults: LauncherPersistedState,
+            productMigration: LauncherProductMigrationPlan = LauncherProductMigrationPlan.NONE,
+            installedEntryIds: Set<LauncherEntryId> = emptySet(),
         ): ProtoDataStoreLauncherPersistence {
             val defaultProto = LauncherProtoMapper.encode(defaults)
             val serializer = LauncherStateSerializer(defaultProto)
@@ -138,6 +161,8 @@ class ProtoDataStoreLauncherPersistence private constructor(
                     produceFile = { file },
                 ),
                 defaults = defaults,
+                productMigration = productMigration,
+                installedEntryIds = installedEntryIds,
                 mutableIncidents = incidents,
                 scope = scope,
             )

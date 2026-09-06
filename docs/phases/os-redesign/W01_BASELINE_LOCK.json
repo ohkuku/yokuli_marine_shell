@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W01",
+  "startCommit": "ba0daa09f2675da54e463c9ecccb0cfb7e81d6bf",
+  "finalProductAppIds": ["chart", "chart_library", "data", "navigation", "preferences"],
+  "currentlyInstalledAppIds": ["chart", "settings", "nmea-input", "data-sources", "chart_library"],
+  "launcherPersistenceSchema": 3,
+  "latestProductMigrationVersion": 2,
+  "migrationSteps": [
+    {"version": 1, "target": "data", "aliases": ["nmea-input", "data-sources"]},
+    {"version": 2, "target": "preferences", "aliases": ["settings"]}
+  ],
+  "migrationRequiresInstalledTarget": true,
+  "duplicateSurvivor": "LOWEST_RANK_THEN_TILE_ID",
+  "emptyFutureAppsInstalled": false,
+  "verification": "GITHUB_ACTION_PENDING"
+}

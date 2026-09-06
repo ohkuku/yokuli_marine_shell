@@ -4,8 +4,12 @@ import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.LauncherPersistedState
+import com.yokuli.shell.engine.CURRENT_LAUNCHER_PERSISTENCE_SCHEMA
 import com.yokuli.shell.engine.LauncherPersistenceIncident
 import com.yokuli.shell.engine.LauncherStartupHealth
+import com.yokuli.shell.engine.LauncherProductMigrationPlan
+import com.yokuli.shell.engine.LauncherProductMigrationStep
+import com.yokuli.shell.engine.LauncherTokenAlias
 import com.yokuli.shell.engine.PersistedLauncherPage
 import com.yokuli.shell.engine.geometry.ProfileId
 import com.yokuli.shell.engine.layout.Spacer
@@ -152,7 +156,7 @@ class ProtoDataStoreLauncherPersistenceTest {
         val restored = withTimeout(2_000) { store.load() }
         val incident = withTimeout(2_000) { store.incidents.first() }
         withTimeout(2_000) {
-            while (LauncherStateProto.parseFrom(Files.readAllBytes(path)).schemaVersion != 2) {
+            while (LauncherStateProto.parseFrom(Files.readAllBytes(path)).schemaVersion != CURRENT_LAUNCHER_PERSISTENCE_SCHEMA) {
                 kotlinx.coroutines.delay(10)
             }
         }
@@ -191,6 +195,62 @@ class ProtoDataStoreLauncherPersistenceTest {
         assertEquals(PersistedLauncherPage.ALL_APPS, result?.lastLauncherPage)
         assertEquals("chart.root", result?.lastForegroundToken)
         assertFalse(requireNotNull(result).recovery.launchPending)
+        job.cancelAndJoin()
+    }
+
+    @Test
+    fun productMigrationVersionAndCollapsedTileAreCommittedAtomically() = runBlocking {
+        val path = Files.createTempDirectory("yokuli-product-migration").resolve("launcher.pb")
+        val legacyDocument = document.copy(
+            placements = listOf(
+                TilePlacement(
+                    TileInstanceId("tile-nmea"), LauncherEntryId("nmea-input"),
+                    MarineTileSize.ICON_1X1, 2_048L, "legacy",
+                ),
+                TilePlacement(
+                    TileInstanceId("tile-sources"), LauncherEntryId("data-sources"),
+                    MarineTileSize.WIDE_4X2, 1_024L, "bridge",
+                ),
+            ),
+        )
+        Files.write(
+            path,
+            LauncherProtoMapper.encode(
+                LauncherPersistedState(
+                    schemaVersion = 2,
+                    document = legacyDocument,
+                    lastForegroundToken = "nmea.connection.616263",
+                ),
+            ).toByteArray(),
+        )
+        val dataEntry = LauncherEntryId("data")
+        val migration = LauncherProductMigrationPlan(
+            listOf(
+                LauncherProductMigrationStep(
+                    1,
+                    dataEntry,
+                    setOf(LauncherEntryId("nmea-input"), LauncherEntryId("data-sources")),
+                    listOf(LauncherTokenAlias("nmea.connection.", "data.input.", prefix = true)),
+                ),
+            ),
+        )
+        val job = SupervisorJob()
+        val store = ProtoDataStoreLauncherPersistence.create(
+            path.toFile(), CoroutineScope(job + Dispatchers.IO), defaults, migration, setOf(dataEntry),
+        )
+
+        val migrated = requireNotNull(store.load())
+        withTimeout(2_000) {
+            while (LauncherStateProto.parseFrom(Files.readAllBytes(path)).productModelVersion != 1) {
+                kotlinx.coroutines.delay(10)
+            }
+        }
+
+        assertEquals(3, migrated.schemaVersion)
+        assertEquals(1, migrated.productModelVersion)
+        assertEquals("tile-sources", requireNotNull(migrated.document).placements.single().tileId.value)
+        assertEquals(dataEntry, migrated.document?.placements?.single()?.entryId)
+        assertEquals("data.input.616263", migrated.lastForegroundToken)
         job.cancelAndJoin()
     }
 }

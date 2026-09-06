@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "phase": "OS_REDESIGN_CI_FIRST",
+  "baseCommit": "ba0daa09f2675da54e463c9ecccb0cfb7e81d6bf",
+  "status": "IN_PROGRESS",
+  "currentWorkPackage": "W01",
+  "ciPolicy": {
+    "localFullTests": "DISALLOWED_BY_DEFAULT",
+    "githubActions": "AUTHORITATIVE",
+    "unifiedArtifactPrefix": "CODEX-CI-REPORT-"
+  },
+  "workPackages": {
+    "W00": {"status": "PASS", "head": "225ab0c0f60aef6b64c05da27d64ac6c29df4a3c"},
+    "W01": {"status": "IMPLEMENTED_CI_PENDING", "head": null},
+    "W02": {"status": "NOT_STARTED", "head": null},
+    "W03": {"status": "NOT_STARTED", "head": null},
+    "W04": {"status": "NOT_STARTED", "head": null},
+    "W05": {"status": "SUPERSEDED_BY_CL03_CL06", "head": "3ce9e651728000eff91173d651f6c2930c983be6"},
+    "W06": {"status": "SUPERSEDED_BY_CL01_CL06", "head": "3ce9e651728000eff91173d651f6c2930c983be6"},
+    "W07": {"status": "SUPERSEDED_BY_CL07_CL12", "head": "ba0daa09f2675da54e463c9ecccb0cfb7e81d6bf"},
+    "W08": {"status": "NOT_STARTED", "head": null},
+    "W09": {"status": "NOT_STARTED", "head": null},
+    "W10": {"status": "NOT_STARTED", "head": null},
+    "W11": {"status": "NOT_STARTED", "head": null},
+    "W12": {"status": "NOT_STARTED", "head": null},
+    "W13": {"status": "NOT_STARTED", "head": null},
+    "W14": {"status": "NOT_STARTED", "head": null},
+    "W15": {"status": "NOT_STARTED", "head": null},
+    "W16": {"status": "NOT_STARTED", "head": null}
+  }
+}

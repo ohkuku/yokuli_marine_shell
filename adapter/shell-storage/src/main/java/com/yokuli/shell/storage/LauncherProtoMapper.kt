@@ -26,6 +26,7 @@ object LauncherProtoMapper {
         .setLayoutLocked(state.layoutLocked)
         .setLastLauncherPage(state.lastLauncherPage.name)
         .setLastForegroundToken(state.lastForegroundToken.orEmpty())
+        .setProductModelVersion(state.productModelVersion)
         .setRecovery(
             LauncherRecoveryProto.newBuilder()
                 .setStartupAttemptCount(state.recovery.startupAttemptCount)
@@ -48,6 +49,7 @@ object LauncherProtoMapper {
             layoutLocked = proto.layoutLocked,
             lastLauncherPage = page,
             lastForegroundToken = proto.lastForegroundToken.ifBlank { null },
+            productModelVersion = proto.productModelVersion,
             recovery = LauncherStartupHealth(
                 startupAttemptCount = proto.recovery.startupAttemptCount,
                 launchPending = proto.recovery.launchPending,

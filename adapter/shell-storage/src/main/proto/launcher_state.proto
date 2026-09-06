@@ -13,6 +13,7 @@ message LauncherStateProto {
   string last_launcher_page = 7;
   string last_foreground_token = 8;
   LauncherRecoveryProto recovery = 9;
+  int32 product_model_version = 10;
 }
 
 message StartDocumentProto {

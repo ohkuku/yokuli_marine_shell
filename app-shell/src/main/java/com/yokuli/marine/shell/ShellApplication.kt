@@ -50,6 +50,8 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
             context = this,
             scope = applicationScope,
             defaults = LauncherPersistedState(document = defaultStartDocument),
+            productMigration = YokuliProductModel.migrationPlan,
+            installedEntryIds = productionCatalog.entries.mapTo(linkedSetOf()) { it.entryId },
         )
     }
     val mapPersistence by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {

@@ -1,12 +1,13 @@
 package com.yokuli.shell.engine
 
+import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.engine.layout.StartDocument
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 
-const val CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 2
+const val CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 3
 
 enum class PersistedLauncherPage { START, ALL_APPS }
 
@@ -26,6 +27,7 @@ data class LauncherPersistedState(
     val layoutLocked: Boolean = false,
     val lastLauncherPage: PersistedLauncherPage = PersistedLauncherPage.START,
     val lastForegroundToken: String? = null,
+    val productModelVersion: Int = 0,
     val recovery: LauncherStartupHealth = LauncherStartupHealth(),
 )
 
@@ -34,6 +36,8 @@ enum class LauncherPersistenceIncident {
     LEGACY_SCHEMA_MIGRATED,
     FUTURE_SCHEMA_REJECTED,
     INVALID_PREFERENCE_REPLACED,
+    INVALID_PRODUCT_MODEL_VERSION_REPLACED,
+    PRODUCT_MODEL_MIGRATED,
 }
 
 data class LauncherPersistenceMigrationResult(
@@ -49,8 +53,17 @@ object LauncherPersistedStateMigration {
     fun migrate(
         source: LauncherPersistedState?,
         defaults: LauncherPersistedState,
+        productMigration: LauncherProductMigrationPlan = LauncherProductMigrationPlan.NONE,
+        installedEntryIds: Set<LauncherEntryId> = emptySet(),
     ): LauncherPersistenceMigrationResult {
-        if (source == null) return LauncherPersistenceMigrationResult(defaults)
+        if (source == null) {
+            val product = productMigration.migrate(defaults, installedEntryIds)
+            return LauncherPersistenceMigrationResult(
+                product.state,
+                if (product.appliedVersions.isEmpty()) emptyList()
+                else listOf(LauncherPersistenceIncident.PRODUCT_MODEL_MIGRATED),
+            )
+        }
         if (source.schemaVersion > CURRENT_LAUNCHER_PERSISTENCE_SCHEMA) {
             return LauncherPersistenceMigrationResult(
                 defaults,
@@ -66,16 +79,127 @@ object LauncherPersistedStateMigration {
             incidents += LauncherPersistenceIncident.INVALID_PREFERENCE_REPLACED
             return fallback
         }
-        return LauncherPersistenceMigrationResult(
-            source.copy(
+        val productModelVersion = source.productModelVersion.takeIf { it >= 0 } ?: run {
+            incidents += LauncherPersistenceIncident.INVALID_PRODUCT_MODEL_VERSION_REPLACED
+            0
+        }
+        val normalizedState = source.copy(
                 schemaVersion = CURRENT_LAUNCHER_PERSISTENCE_SCHEMA,
                 document = source.document ?: defaults.document,
                 themeModeName = normalized(source.themeModeName, themes, defaults.themeModeName),
                 accentName = normalized(source.accentName, accents, defaults.accentName),
                 languageTag = normalized(source.languageTag, languages, defaults.languageTag),
-            ),
+                productModelVersion = productModelVersion,
+            )
+        val product = productMigration.migrate(normalizedState, installedEntryIds)
+        if (product.appliedVersions.isNotEmpty()) {
+            incidents += LauncherPersistenceIncident.PRODUCT_MODEL_MIGRATED
+        }
+        return LauncherPersistenceMigrationResult(
+            product.state,
             incidents.distinct(),
         )
+    }
+}
+
+/** A typed, product-neutral rule for translating a persisted launch token. */
+data class LauncherTokenAlias(
+    val legacy: String,
+    val replacement: String,
+    val prefix: Boolean = false,
+) {
+    init {
+        require(legacy.isNotBlank())
+        require(replacement.isNotBlank())
+    }
+
+    fun migrate(value: String): String? = when {
+        prefix && value.startsWith(legacy) -> replacement + value.removePrefix(legacy)
+        !prefix && value == legacy -> replacement
+        else -> null
+    }
+}
+
+data class LauncherProductMigrationStep(
+    val version: Int,
+    val targetEntryId: LauncherEntryId,
+    val legacyEntryIds: Set<LauncherEntryId>,
+    val tokenAliases: List<LauncherTokenAlias> = emptyList(),
+) {
+    init {
+        require(version > 0)
+        require(legacyEntryIds.isNotEmpty())
+        require(targetEntryId !in legacyEntryIds)
+    }
+}
+
+data class LauncherProductMigrationResult(
+    val state: LauncherPersistedState,
+    val appliedVersions: List<Int>,
+)
+
+/**
+ * Applies only consecutive steps whose target app is actually installed. This keeps old tiles
+ * usable until their replacement has a real host instead of exposing an empty future app.
+ */
+class LauncherProductMigrationPlan(
+    steps: List<LauncherProductMigrationStep>,
+) {
+    private val orderedSteps = steps.sortedBy(LauncherProductMigrationStep::version)
+
+    init {
+        require(orderedSteps.map { it.version } == (1..orderedSteps.size).toList()) {
+            "Product migration versions must be unique and consecutive from 1"
+        }
+    }
+
+    fun migrate(
+        source: LauncherPersistedState,
+        installedEntryIds: Set<LauncherEntryId>,
+    ): LauncherProductMigrationResult {
+        var state = source
+        val applied = mutableListOf<Int>()
+        for (step in orderedSteps) {
+            if (step.version <= state.productModelVersion) continue
+            if (step.version != state.productModelVersion + 1 || step.targetEntryId !in installedEntryIds) break
+            state = state.apply(step)
+            applied += step.version
+        }
+        return LauncherProductMigrationResult(state, applied)
+    }
+
+    private fun LauncherPersistedState.apply(step: LauncherProductMigrationStep): LauncherPersistedState {
+        val aliases = step.legacyEntryIds + step.targetEntryId
+        val migratedDocument = document?.let { current ->
+            val candidates = current.placements.filter { it.entryId in aliases }
+            if (candidates.isEmpty()) current else {
+                val survivor = candidates.minWith(
+                    compareBy<com.yokuli.shell.engine.layout.TilePlacement> { it.rank }
+                        .thenBy { it.tileId.value },
+                )
+                current.copy(
+                    placements = current.placements.mapNotNull { placement ->
+                        when {
+                            placement.tileId == survivor.tileId -> placement.copy(entryId = step.targetEntryId)
+                            placement.entryId in aliases -> null
+                            else -> placement
+                        }
+                    },
+                )
+            }
+        }
+        val migratedToken = lastForegroundToken?.let { token ->
+            step.tokenAliases.firstNotNullOfOrNull { alias -> alias.migrate(token) } ?: token
+        }
+        return copy(
+            document = migratedDocument,
+            lastForegroundToken = migratedToken,
+            productModelVersion = step.version,
+        )
+    }
+
+    companion object {
+        val NONE = LauncherProductMigrationPlan(emptyList())
     }
 }
 
