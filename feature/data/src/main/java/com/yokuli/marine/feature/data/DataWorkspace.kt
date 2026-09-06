@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -248,13 +247,11 @@ private fun Sources(state: DataUiState, onAction: (DataUiAction) -> Unit) {
                             11,
                             color = LocalWpTheme.current.muted,
                         )
-                        WpText(
-                            candidate.evidence.availabilityByKey.values.distinct().joinToString(" · ") {
-                                availabilityLabel(it)
-                            },
-                            11,
-                            color = LocalWpTheme.current.muted,
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            candidate.evidence.availabilityByKey.values.distinct().forEach { availability ->
+                                WpText(availabilityLabel(availability), 11, color = LocalWpTheme.current.muted)
+                            }
+                        }
                         if (candidate.source == group.selectedSource) {
                             WpText(stringResource(R.string.current_source), 11, color = LocalWpTheme.current.accent)
                         } else {

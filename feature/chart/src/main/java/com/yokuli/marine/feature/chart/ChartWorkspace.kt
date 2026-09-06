@@ -396,15 +396,17 @@ private fun MapPositionTruth(state: MapState, onAction: (MapAction) -> Unit) {
                 modifier = Modifier.testTag("map-position-coordinate"),
             )
         }
+        val trueHeadingDegrees = render.trueHeadingDegrees
+        val courseVector = render.courseVector
         val motion = when {
-            render.trueHeadingDegrees != null -> stringResource(
+            trueHeadingDegrees != null -> stringResource(
                 R.string.map_position_true_heading_value,
-                render.trueHeadingDegrees,
+                trueHeadingDegrees,
             )
-            render.courseVector != null -> stringResource(
+            courseVector != null -> stringResource(
                 R.string.map_position_course_speed_value,
-                render.courseVector.trueDegrees,
-                render.courseVector.speedKnots,
+                courseVector.trueDegrees,
+                courseVector.speedKnots,
             )
             else -> null
         }

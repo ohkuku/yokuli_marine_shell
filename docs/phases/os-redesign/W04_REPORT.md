@@ -37,6 +37,9 @@
 
 CI-first：提交前只执行 source/static/JSON/XML/YAML/diff sanity；完整 unit、lint、Debug/Release build、APK 审计与 API 34/36 device suites 由 GitHub 对精确 SHA 执行。
 
+首次提交后的定向 compile 自查发现并纠正 Compose scope import、本地化 lambda，以及 W02 Chart presentation
+跨模块 smart-cast 三处编译问题；未改变 W02 cadence 或 W04 产品合同。纠错以独立 commit 保留。
+
 ## English translation
 
 W04 installs one real Data app and retires the two visible protocol-oriented entries. It reuses the proven connection editor inside Data/Inputs, projects only real runtime evidence across Overview/Flow/Diagnostics, preserves atomic source selection, and moves Phone demand to process scope. Full build and device evidence remains pending from GitHub Actions for the exact commit.
