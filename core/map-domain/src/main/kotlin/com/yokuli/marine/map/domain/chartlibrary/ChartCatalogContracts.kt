@@ -153,6 +153,7 @@ data class ChartAssetQuery(
 interface ChartCatalogReadPort {
     val snapshot: StateFlow<ChartCatalogSnapshot>
     suspend fun sources(offset: Int = 0, limit: Int = DEFAULT_CATALOG_PAGE_SIZE): ChartCatalogPage<ChartLibrarySource>
+    suspend fun source(id: ChartSourceId): ChartLibrarySource?
     suspend fun assets(
         query: ChartAssetQuery = ChartAssetQuery(),
         offset: Int = 0,

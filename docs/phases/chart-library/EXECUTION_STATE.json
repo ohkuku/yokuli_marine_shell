@@ -164,12 +164,43 @@
     },
     "CL04": {
       "title": "来源授权与增量目录扫描",
-      "status": "NOT_STARTED",
-      "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "status": "PASS",
+      "head": "80f2a7e",
+      "changed_files": [
+        "core/map-domain/**/chartlibrary/ChartScanContracts*",
+        "adapter/chart-library-android/**/AndroidChartDocumentEnumerator*",
+        "adapter/chart-library-android/**/AndroidChartSourceController*",
+        ".github/scripts/test_chart_library_cl04_contract.py"
+      ],
+      "commands": [
+        {
+          "command": "./gradlew :core:map-domain:test --no-daemon",
+          "exit_code": 0
+        },
+        {
+          "command": "./gradlew :adapter:chart-library-android:connectedDebugAndroidTest -P...AndroidChartDocumentEnumeratorTest",
+          "first_exit_code": 1,
+          "corrected_exit_code": 0,
+          "result": "3/3 API34"
+        },
+        {
+          "command": "./gradlew :adapter:chart-library-android:connectedDebugAndroidTest -P...AndroidChartSourceControllerTest",
+          "exit_code": 0,
+          "result": "4/4 API34"
+        },
+        {
+          "command": "python3 .github/scripts/test_chart_library_cl04_contract.py",
+          "exit_code": 0
+        }
+      ],
+      "evidence": [
+        "adapter/chart-library-android/build/reports/androidTests/connected/debug/index.html",
+        "docs/phases/chart-library/CL04_REPORT.md",
+        "docs/phases/chart-library/CL04_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "physical document providers and real SD-card revocation remain NOT_RUN_PHYSICAL_DEVICE"
+      ],
       "blockers": []
     },
     "CL05": {

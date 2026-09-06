@@ -1,0 +1,147 @@
+package com.yokuli.marine.chart.library.android
+
+import android.content.ContentResolver
+import android.content.Intent
+import android.net.Uri
+import com.yokuli.marine.map.domain.chartlibrary.*
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+
+interface PersistedChartGrantPort {
+    fun takeRead(locator: ChartOpaqueLocator): Boolean
+    fun releaseRead(locator: ChartOpaqueLocator): Boolean
+}
+
+class AndroidPersistedChartGrantPort(private val resolver: ContentResolver) : PersistedChartGrantPort {
+    override fun takeRead(locator: ChartOpaqueLocator): Boolean = runCatching {
+        resolver.takePersistableUriPermission(Uri.parse(locator.value), Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }.isSuccess
+
+    override fun releaseRead(locator: ChartOpaqueLocator): Boolean = runCatching {
+        resolver.releasePersistableUriPermission(Uri.parse(locator.value), Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }.isSuccess
+}
+
+class AndroidChartSourceController(
+    private val catalog: RoomChartCatalogRepository,
+    private val enumerator: ChartDocumentEnumerationPort,
+    private val grants: PersistedChartGrantPort,
+    private val planner: ChartSourceScanPlanner = ChartSourceScanPlanner(),
+) : ChartSourceCommandPort {
+    private val workerBudget = Semaphore(2)
+    private val sourceLocks = ConcurrentHashMap<String, Mutex>()
+    private val operationEpoch = ConcurrentHashMap<String, AtomicLong>()
+
+    override suspend fun acceptPicker(selection: ChartPickerSelection): ChartSourceCommandResult {
+        if (!selection.persistableReadGranted || !grants.takeRead(selection.locator)) {
+            return ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.READ_GRANT_MISSING)
+        }
+        val existing = allSources().firstOrNull { it.locator == selection.locator }
+        if (existing != null) return ChartSourceCommandResult.Accepted(existing.id)
+        val id = ChartSourceId(UUID.randomUUID().toString())
+        val source = ChartLibrarySource(
+            id = id,
+            kind = when (selection.kind) {
+                ChartPickerKind.TREE -> ChartLibrarySourceKind.TREE
+                ChartPickerKind.SINGLE_DOCUMENT -> ChartLibrarySourceKind.SINGLE_DOCUMENT
+            },
+            locator = selection.locator,
+            displayName = selection.displayName,
+            recursive = selection.kind == ChartPickerKind.TREE,
+            grantState = ChartGrantState.GRANTED,
+        )
+        return when (catalog.transact(ChartCatalogTransaction("picker:${selection.operationId.value}", mutations = listOf(ChartCatalogMutation.PutSource(source))))) {
+            is ChartCatalogCommitResult.Committed -> ChartSourceCommandResult.Accepted(id)
+            else -> {
+                releaseIfUnused(selection.locator)
+                ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+            }
+        }
+    }
+
+    override suspend fun refresh(sourceId: ChartSourceId): ChartSourceCommandResult =
+        sourceLocks.computeIfAbsent(sourceId.value) { Mutex() }.withLock {
+            workerBudget.withPermit {
+                val source = catalog.source(sourceId)
+                    ?: return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.SOURCE_NOT_FOUND)
+                val epoch = operationEpoch.computeIfAbsent(sourceId.value) { AtomicLong(0L) }.incrementAndGet()
+                val generation = source.scan.generation + 1L
+                val running = source.copy(
+                    scan = source.scan.copy(generation = generation, status = ChartScanStatus.RUNNING, discoveredCount = 0L, issueCount = 0),
+                )
+                if (catalog.transact(ChartCatalogTransaction("scan-start:${sourceId.value}:$generation", mutations = listOf(ChartCatalogMutation.PutSource(running)))) !is ChartCatalogCommitResult.Committed) {
+                    return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+                }
+                val existing = allAssets(ChartAssetQuery(sourceId = sourceId))
+                val enumeration = enumerator.enumerate(running) {
+                    operationEpoch[sourceId.value]?.get() != epoch
+                }
+                if (operationEpoch[sourceId.value]?.get() != epoch) {
+                    return@withPermit ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.STALE_OPERATION)
+                }
+                val plan = planner.plan(source, generation, enumeration, existing)
+                val puts: List<ChartCatalogMutation> = buildList {
+                    add(ChartCatalogMutation.PutSource(plan.source))
+                    plan.assetsToPut.forEach { add(ChartCatalogMutation.PutAsset(it)) }
+                    existing.filter { it.id in plan.missingAssetIds }.forEach {
+                        add(ChartCatalogMutation.PutAsset(it.copy(access = ChartAssetAccessState.MISSING)))
+                    }
+                }
+                return@withPermit when (catalog.transact(ChartCatalogTransaction("scan-finish:${sourceId.value}:$generation", mutations = puts))) {
+                    is ChartCatalogCommitResult.Committed -> ChartSourceCommandResult.ScanPublished(sourceId, generation, plan.source.scan.status)
+                    else -> ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+                }
+            }
+        }
+
+    override suspend fun cancel(sourceId: ChartSourceId): ChartSourceCommandResult {
+        operationEpoch.computeIfAbsent(sourceId.value) { AtomicLong(0L) }.incrementAndGet()
+        val source = catalog.source(sourceId)
+            ?: return ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.SOURCE_NOT_FOUND)
+        val cancelled = source.copy(scan = source.scan.copy(status = ChartScanStatus.CANCELLED, issueCount = source.scan.issueCount + 1))
+        return when (catalog.transact(ChartCatalogTransaction("scan-cancel:${sourceId.value}:${UUID.randomUUID()}", mutations = listOf(ChartCatalogMutation.PutSource(cancelled))))) {
+            is ChartCatalogCommitResult.Committed -> ChartSourceCommandResult.ScanPublished(sourceId, cancelled.scan.generation, ChartScanStatus.CANCELLED)
+            else -> ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+        }
+    }
+
+    override suspend fun remove(sourceId: ChartSourceId): ChartSourceCommandResult {
+        val source = catalog.source(sourceId)
+            ?: return ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.SOURCE_NOT_FOUND)
+        operationEpoch.computeIfAbsent(sourceId.value) { AtomicLong(0L) }.incrementAndGet()
+        return when (catalog.transact(ChartCatalogTransaction("source-remove:${sourceId.value}:${UUID.randomUUID()}", mutations = listOf(ChartCatalogMutation.RemoveSource(sourceId))))) {
+            is ChartCatalogCommitResult.Committed -> {
+                releaseIfUnused(source.locator)
+                ChartSourceCommandResult.Accepted(sourceId)
+            }
+            else -> ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+        }
+    }
+
+    private suspend fun releaseIfUnused(locator: ChartOpaqueLocator) {
+        if (allSources().none { it.locator == locator }) grants.releaseRead(locator)
+    }
+
+    private suspend fun allSources(): List<ChartLibrarySource> = buildList {
+        var offset = 0
+        do {
+            val page = catalog.sources(offset)
+            addAll(page.items)
+            offset += page.items.size
+        } while (offset < page.total && page.items.isNotEmpty())
+    }
+
+    private suspend fun allAssets(query: ChartAssetQuery): List<ChartAsset> = buildList {
+        var offset = 0
+        do {
+            val page = catalog.assets(query, offset)
+            addAll(page.items)
+            offset += page.items.size
+        } while (offset < page.total && page.items.isNotEmpty())
+    }
+}

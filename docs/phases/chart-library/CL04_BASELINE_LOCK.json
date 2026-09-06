@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task": "CL04",
+  "start_commit": "80f2a7ec6d4cf821dbc95e2bbfcbff35b0aaa1fd",
+  "enumeration_max_documents": 10000,
+  "enumeration_max_depth": 32,
+  "enumeration_time_budget_millis": 30000,
+  "parallel_source_scan_limit": 2,
+  "missing_requires_complete_enumeration": true,
+  "picker_kinds": ["TREE", "SINGLE_DOCUMENT"],
+  "test_device": "pixel_7_api_34 emulator"
+}

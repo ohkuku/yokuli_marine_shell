@@ -31,6 +31,10 @@ class RoomChartCatalogRepository private constructor(
         ChartCatalogPage(dao.sources(limit, offset).map(ChartSourceEntity::toDomain), offset, limit, dao.sourceCount())
     }
 
+    override suspend fun source(id: ChartSourceId): ChartLibrarySource? = ioRead {
+        dao.source(id.value)?.toDomain()
+    }
+
     override suspend fun assets(query: ChartAssetQuery, offset: Int, limit: Int): ChartCatalogPage<ChartAsset> = ioRead {
         checkPage(offset, limit)
         val text = "%${query.text.escapeLike()}%"
