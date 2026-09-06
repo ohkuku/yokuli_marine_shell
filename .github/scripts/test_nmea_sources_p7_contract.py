@@ -27,8 +27,7 @@ class NmeaSourcesP7Contract(unittest.TestCase):
             [
                 "ChartShellContribution",
                 "SettingsShellContribution",
-                "NmeaInputShellContribution",
-                "DataSourcesShellContribution",
+                "DataShellContribution",
                 "ChartLibraryShellContribution",
             ],
             installed,
@@ -37,8 +36,7 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         self.assertEqual(2, default_document.count("TilePlacement("))
         self.assertIn("ChartDestinations.EntryId", default_document)
         self.assertIn("SettingsDestinations.EntryId", default_document)
-        self.assertNotIn("NmeaInputDestinations.EntryId", default_document)
-        self.assertNotIn("DataSourcesDestinations.EntryId", default_document)
+        self.assertNotIn("DataDestinations.EntryId", default_document)
         self.assertNotIn("ChartLibraryDestinations.EntryId", default_document)
 
         for path in (
@@ -57,7 +55,7 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         gate = self.read(".github/scripts/test-release-product-surface.sh")
         for required in (
             "NmeaInputWorkspaceKt",
-            "DataSourcesWorkspaceKt",
+            "DataWorkspaceKt",
             "AndroidNmeaInputRuntime",
             "AndroidMarineSourceRuntime",
             "NmeaInputForegroundService",

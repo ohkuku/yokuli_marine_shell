@@ -11,7 +11,7 @@ class ChartLibraryCl12ContractTest(unittest.TestCase):
     def read(self, path: str) -> str:
         return (ROOT / path).read_text(encoding="utf-8")
 
-    def test_current_product_truth_is_five_apps_but_default_start_stays_two(self):
+    def test_current_product_truth_is_four_apps_but_default_start_stays_two(self):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         readme = self.read("README.md")
         installed = re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph)
@@ -19,16 +19,15 @@ class ChartLibraryCl12ContractTest(unittest.TestCase):
             [
                 "ChartShellContribution",
                 "SettingsShellContribution",
-                "NmeaInputShellContribution",
-                "DataSourcesShellContribution",
+                "DataShellContribution",
                 "ChartLibraryShellContribution",
             ],
             installed,
         )
         default = graph[graph.index("val defaultStartDocument"):]
         self.assertEqual(2, default.count("TilePlacement("))
-        self.assertIn("Chart Library 五项", readme)
-        self.assertIn("Chart, Settings, NMEA Input, Data Sources, and Chart Library", readme)
+        self.assertIn("Chart、Settings、Data、Chart Library 四项", readme)
+        self.assertIn("Chart, Settings, Data, and Chart Library", readme)
 
     def test_all_acceptance_ids_exist_once_and_unrun_items_are_not_preapproved(self):
         acceptance = self.read("docs/phases/chart-library/ACCEPTANCE_RESULTS_TEMPLATE.md")

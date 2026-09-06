@@ -22,15 +22,16 @@ class NmeaSourcesP5Contract(unittest.TestCase):
                 self.assertIn(size, shell)
                 self.assertIn(size, visual)
 
-    def test_production_registry_keeps_the_four_p5_apps_after_later_installations(self):
+    def test_w04_successor_keeps_p5_implementation_but_exposes_one_data_app(self):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         for contribution in (
             "ChartShellContribution",
             "SettingsShellContribution",
-            "NmeaInputShellContribution",
-            "DataSourcesShellContribution",
+            "DataShellContribution",
         ):
             self.assertIn(contribution, graph)
+        self.assertNotIn("catalogContribution = NmeaInputShellContribution", graph)
+        self.assertNotIn("catalogContribution = DataSourcesShellContribution", graph)
 
     def test_default_start_stays_chart_and_settings_only(self):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
@@ -51,12 +52,13 @@ class NmeaSourcesP5Contract(unittest.TestCase):
             self.assertNotIn("Socket", source)
             self.assertNotIn("PhoneLocationCommand", source)
 
-    def test_status_strip_has_two_independent_typed_entries(self):
+    def test_status_strip_has_one_data_entry_after_product_merge(self):
         strip = self.read("feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStatusStrip.kt")
         activity = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ShellActivity.kt")
         self.assertIn("WpStatusStripItem", strip)
-        self.assertIn("nmeaStatus", activity)
-        self.assertIn("dataSourcesStatus", activity)
+        self.assertIn("dataStatus", activity)
+        self.assertNotIn("nmeaStatus", activity)
+        self.assertNotIn("dataSourcesStatus", activity)
 
     def test_product_keeps_portrait_launcher_only_and_never_home(self):
         manifest = self.read("app-shell/src/main/AndroidManifest.xml")
@@ -79,8 +81,8 @@ class NmeaSourcesP5Contract(unittest.TestCase):
             "phoneOnlySelectionIsAHealthyFirstClassSource",
             "needsSelectionAndSelectedStaleAreDistinctAttentionFacts",
             "launcherDisplayFreezesDecorativeChangesDuringEditButNeverHidesAttention",
-            "bothAppsAreDiscoverableAndRootBackReturnsToTheInAppStart",
-            "bothFeatureOwnedRendererSetsSurviveThreeSizesTwoThemesAndLargeType",
+            "dataJourneyMovesInputsToSourcesToOverviewAndRootBackReturnsToStart",
+            "dataRendererSurvivesThreeSizesTwoThemesAndLargeType",
         ]:
             self.assertIn(name, tests)
 

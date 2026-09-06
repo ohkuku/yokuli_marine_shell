@@ -19,13 +19,12 @@ class YokuliProductModelTest {
             YokuliProductModel.finalApps.map { it.appId.value },
         )
         val installed = productionCatalog.entries.mapTo(linkedSetOf()) { it.entryId.value }
-        assertEquals(setOf("chart", "settings", "nmea-input", "data-sources", "chart_library"), installed)
-        assertFalse("data" in installed)
+        assertEquals(setOf("chart", "settings", "data", "chart_library"), installed)
         assertFalse("navigation" in installed)
         assertFalse("preferences" in installed)
     }
 
-    @Test fun currentCompositionRootDefersMigrationUntilTheReplacementAppHasARealHost() {
+    @Test fun currentCompositionRootMigratesLegacyMarineTilesOnlyAfterDataHasARealHost() {
         val legacy = LauncherPersistedState(
             schemaVersion = 2,
             document = StartDocument(
@@ -50,8 +49,11 @@ class YokuliProductModelTest {
             productionCatalog.entries.mapTo(linkedSetOf()) { it.entryId },
         )
 
-        assertEquals(0, result.state.productModelVersion)
-        assertTrue(result.appliedVersions.isEmpty())
-        assertEquals(legacy.document, result.state.document)
+        assertEquals(1, result.state.productModelVersion)
+        assertEquals(listOf(1), result.appliedVersions)
+        assertEquals(
+            listOf("settings", "data"),
+            result.state.document!!.placements.map { it.entryId.value },
+        )
     }
 }

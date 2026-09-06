@@ -1,6 +1,7 @@
 package com.yokuli.marine.feature.data
 
 import com.yokuli.marine.data.connection.ConnectionRunIntent
+import com.yokuli.marine.data.catalog.SentenceParseStatus
 import com.yokuli.marine.data.model.ConnectionId
 import com.yokuli.marine.data.model.DataKey
 import com.yokuli.marine.data.model.DepthReference
@@ -10,6 +11,7 @@ import com.yokuli.marine.data.model.WindReference
 import com.yokuli.marine.data.model.WindSpeedReference
 import com.yokuli.marine.data.phone.PhoneLocationDemand
 import com.yokuli.marine.data.phone.PhoneLocationDemandPolicy
+import com.yokuli.marine.data.phone.PhoneLocationSnapshot
 import com.yokuli.marine.data.runtime.ConnectionInputState
 import com.yokuli.marine.data.runtime.ConnectionTransportState
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
@@ -120,6 +122,35 @@ data class DataDiagnosticsState(
     val ingressDropCount: Long,
 )
 
+data class DataSentenceState(
+    val sentenceId: String,
+    val sourceName: String,
+    val formatter: String,
+    val semanticInstance: String,
+    val status: SentenceParseStatus,
+    val receivedCount: Long,
+    val current: Boolean,
+)
+
+data class DataRawLineState(
+    val receivedAtMillis: Long,
+    val sourceName: String,
+    val sender: String?,
+    val raw: String,
+    val current: Boolean,
+)
+
+enum class DataNotice {
+    SAVED,
+    DISABLED,
+    CANDIDATE_UNAVAILABLE,
+    PERSISTENCE_FAILED,
+    PHONE_PERMISSION_REQUIRED,
+    PHONE_LOCATION_DISABLED,
+    PHONE_PLATFORM_RESTRICTED,
+    ACTION_QUEUE_FULL,
+}
+
 data class DataUiState(
     val section: DataSection = DataSection.OVERVIEW,
     val resolvedValues: Map<DataKey, ResolvedDatum> = emptyMap(),
@@ -127,7 +158,12 @@ data class DataUiState(
     val inputs: List<DataInputState> = emptyList(),
     val flow: List<DataFlowLink> = emptyList(),
     val diagnostics: DataDiagnosticsState = DataDiagnosticsState(0, 0, 0L, 0L),
+    val sentences: List<DataSentenceState> = emptyList(),
+    val rawLines: List<DataRawLineState> = emptyList(),
     val phoneDemand: PhoneLocationDemand = PhoneLocationDemand.NONE,
+    val phone: PhoneLocationSnapshot = PhoneLocationSnapshot.EMPTY,
+    val focusedSourceConnectionId: ConnectionId? = null,
+    val notice: DataNotice? = null,
 )
 
 object DataDomainProjector {
@@ -137,6 +173,9 @@ object DataDomainProjector {
         section: DataSection = DataSection.OVERVIEW,
     ): DataUiState {
         val groups = SourceGroup.entries.map { group -> projectGroup(group, sources) }
+        val connectionNames = nmea.connections.associate {
+            it.stored.config.id to it.stored.config.displayName
+        }
         return DataUiState(
             section = section,
             resolvedValues = sources.resolvedData.items,
@@ -167,6 +206,28 @@ object DataDomainProjector {
                 checksumFailureCount = nmea.connections.sumOf { it.metrics.checksumFailureCount },
                 ingressDropCount = nmea.connections.sumOf { it.metrics.ingressDropCount },
             ),
+            sentences = nmea.sentenceCatalog.entries.map { entry ->
+                DataSentenceState(
+                    sentenceId = entry.lastSentenceId,
+                    sourceName = connectionNames[entry.key.source.connectionId]
+                        ?: entry.key.source.connectionId.value,
+                    formatter = entry.key.formatter,
+                    semanticInstance = entry.key.semanticInstance,
+                    status = entry.lastParseStatus,
+                    receivedCount = entry.receivedCount,
+                    current = entry.isCurrentSession,
+                )
+            },
+            rawLines = nmea.rawPreview.entries.map { entry ->
+                DataRawLineState(
+                    receivedAtMillis = entry.receivedAtMillis,
+                    sourceName = connectionNames[entry.source.connectionId]
+                        ?: entry.source.connectionId.value,
+                    sender = entry.sender?.let { "${it.hostAddress}:${it.port}" },
+                    raw = entry.raw,
+                    current = entry.isCurrentSession,
+                )
+            },
             phoneDemand = PhoneLocationDemandPolicy.resolve(sources),
         )
     }

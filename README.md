@@ -6,7 +6,7 @@
 
 ## 中文（主文）
 
-Yokuli OS 当前同时包含 Windows Phone 8 Classic 风格应用内 Shell、离线优先地图、NMEA 数据输入与独立海图库。NMEA Input 与 Data Sources 共享进程持有、类型化且有界的 marine-data runtime；Chart Library 管理只读外部海图来源、目录和验证，Chart 只负责选择与显示。当前有效合同由 [Chart Library 产品合同](docs/phases/chart-library/REQUIREMENTS.md)、[NMEA_SOURCES 产品合同](docs/phases/nmea-sources/REQUIREMENTS.md)和[最新 Shell 产品边界修正](docs/phases/shell-product-boundary-correction/REQUIREMENTS.md)共同组成。它们覆盖旧文档中“只允许 Chart + Settings／禁止生产 NMEA/GNSS／海图维护属于 Chart”以及 Android 桌面、最外层 Back 和横屏的冲突条款；历史 Stage 与 Map C00–C12 报告保持原样，不能作为当前产品面的可执行合同。
+Yokuli OS 当前同时包含 Windows Phone 8 Classic 风格应用内 Shell、离线优先地图、统一 Data 应用与独立海图库。Data 把 NMEA 输入、来源选择、真实流向与有界诊断组织在一个产品里，底层仍复用进程持有、类型化且有界的 marine-data runtime；Chart Library 管理只读外部海图来源、目录和验证，Chart 只负责选择与显示。当前有效合同由 [OS Redesign 产品合同](docs/phases/os-redesign/PRODUCT_ENGINEERING_CONTRACT.md)、[Chart Library 产品合同](docs/phases/chart-library/REQUIREMENTS.md)、[NMEA_SOURCES 产品合同](docs/phases/nmea-sources/REQUIREMENTS.md)和[最新 Shell 产品边界修正](docs/phases/shell-product-boundary-correction/REQUIREMENTS.md)共同组成。历史 Stage 与阶段报告保留为证据，不覆盖后续明确的产品演进。
 
 当前分支：
 
@@ -17,9 +17,9 @@ work package: W01
 status: W01 implementation candidate; Chart Library CL12, hosted CI and physical review remain separate
 ```
 
-Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化与应用内恢复。当前生产 All Apps 精确为 Chart、Settings、NMEA Input、Data Sources、Chart Library 五项；全新 Start Document 仍只放 Chart 与 Settings。Shell Lab 只在 debug/benchmark classpath。
+Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化与应用内恢复。当前生产 All Apps 精确为 Chart、Settings、Data、Chart Library 四项；全新 Start Document 仍只放 Chart 与 Settings。Shell Lab 只在 debug/benchmark classpath。
 
-正式磁贴只允许宽×高 1×1、2×2、4×2；2×1、2×4、4×4 只作为旧持久化值在边界迁移，不得回到生产 UI。地点、路线和导入轨迹仍是地图内部页面；海图文件夹、单文件来源、受管副本与验证只在 Chart Library 维护。NMEA Input 只管理连接，Data Sources 只展示实际接收结果并保存 OS 选源决定。
+正式磁贴只允许宽×高 1×1、2×2、4×2；2×1、2×4、4×4 只作为旧持久化值在边界迁移，不得回到生产 UI。地点、路线和导入轨迹仍是地图内部页面；海图文件夹、单文件来源、受管副本与验证只在 Chart Library 维护。Data 内部的 Inputs 管理连接，Sources 保存可解释的 OS 选源决定，Overview、Flow 与 Diagnostics 只展示真实运行时证据。
 
 Yokuli OS 默认沉浸式全屏且只允许竖屏；方屏仍属于适配范围，横屏不属于当前产品能力。壳内虚拟 Back／Start／Search，以及 Activity 实际收到的 Android Back 和可交付键盘／硬件事件，统一进入串行 Launcher Engine。Back 的最远终点是应用内 Shell 桌面，不结束 Yokuli；应用不注册 Android HOME／DEFAULT，也不提供 Android 桌面设置入口。
 
@@ -98,7 +98,7 @@ P7 本地完整 Gate 已通过；Android CI 会在 push 后重新执行托管门
 
 ## English translation
 
-Yokuli OS currently combines its WP8 Classic in-app Shell with offline-first charts, NMEA input, and an independent Chart Library. The production All Apps surface is exactly Chart, Settings, NMEA Input, Data Sources, and Chart Library; the default Start document remains Chart + Settings. Chart Library owns read-only external chart sources, cataloguing, validation, and explicit managed copies, while Chart only selects and displays those resources. Hosted CI and physical review remain separate; NMEA output/forwarding, active navigation, autopilot, and vessel-network control remain out of scope.
+Yokuli OS currently combines its WP8 Classic in-app Shell with offline-first charts, one unified Data app, and an independent Chart Library. The production All Apps surface is exactly Chart, Settings, Data, and Chart Library; the default Start document remains Chart + Settings. Data contains connection inputs, explainable source selection, actual runtime flow, and bounded diagnostics while reusing the process-owned marine runtime. Chart Library owns read-only external chart sources, cataloguing, validation, and explicit managed copies, while Chart only selects and displays those resources. Hosted CI and physical review remain separate; NMEA output/forwarding, active navigation, autopilot, and vessel-network control remain out of scope.
 
 The portrait-only immersive shell routes virtual Back/Start/Search and deliverable Android or keyboard input through the serialized Launcher Engine. Back stops at the in-app Shell Desktop and never exits Yokuli. The app does not register Android HOME/DEFAULT or expose Android Home settings; square layouts remain supported, while landscape is outside the current product contract.
 

@@ -69,6 +69,8 @@ import com.yokuli.shell.contract.ShellInput
 fun NmeaInputWorkspace(
     state: NmeaInputUiState,
     onAction: (NmeaInputUiAction) -> Unit,
+    embedded: Boolean = false,
+    onExitEmbedded: (() -> Unit)? = null,
 ) {
     val colors = LocalWpTheme.current
     val currentState by rememberUpdatedState(state)
@@ -89,18 +91,23 @@ fun NmeaInputWorkspace(
             else -> NmeaInputBackPolicy.actionFor(currentState.page)?.let { action ->
                 currentAction(action)
                 true
-            } ?: false
+            } ?: if (embedded && onExitEmbedded != null) {
+                onExitEmbedded()
+                true
+            } else false
         }
     }
 
     Column(
         Modifier.fillMaxSize().background(colors.background).testTag(NmeaInputTestTags.ROOT),
     ) {
-        WpPageHeader(
-            appKey = "nmea-input",
-            appName = stringResource(R.string.nmea_input_title),
-            contextLine = pageContext(state),
-        )
+        if (!embedded) {
+            WpPageHeader(
+                appKey = "nmea-input",
+                appName = stringResource(R.string.nmea_input_title),
+                contextLine = pageContext(state),
+            )
+        }
         state.notice?.let { NoticeBar(it, onAction) }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (val page = state.page) {

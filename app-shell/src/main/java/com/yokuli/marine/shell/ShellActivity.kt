@@ -91,14 +91,12 @@ import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.feature.settings.SettingsDestinations
 import com.yokuli.marine.feature.settings.SettingsSection
 import com.yokuli.marine.feature.settings.SettingsUiAction
-import com.yokuli.marine.data.source.MarineFeatureLinks
-import com.yokuli.marine.feature.datasources.DataSourcesEffect
-import com.yokuli.marine.feature.datasources.DataSourcesLauncherProjector
-import com.yokuli.marine.feature.datasources.DataSourcesUiAction
-import com.yokuli.marine.feature.datasources.dataSourcesStatusCopy
+import com.yokuli.marine.feature.data.DataDestinations
+import com.yokuli.marine.feature.data.DataEffect
+import com.yokuli.marine.feature.data.DataLauncherProjector
+import com.yokuli.marine.feature.data.DataUiAction
+import com.yokuli.marine.feature.data.dataStatusCopy
 import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
-import com.yokuli.marine.feature.nmeainput.NmeaInputLauncherProjector
-import com.yokuli.marine.feature.nmeainput.nmeaInputStatusCopy
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryEffect
 import com.yokuli.marine.feature.chartlibrary.chartLibraryStatusCopy
@@ -235,7 +233,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val gpxImportState by shellViewModel.gpxImportState.collectAsState()
     val offlineCoverageState by shellViewModel.offlineCoverageState.collectAsState()
     val nmeaInputState by shellViewModel.nmeaInputState.collectAsState()
-    val dataSourcesState by shellViewModel.dataSourcesState.collectAsState()
+    val dataState by shellViewModel.dataState.collectAsState()
     val chartLibraryState by shellViewModel.chartLibraryState.collectAsState()
     val nmeaRuntimeSnapshot by shellViewModel.nmeaRuntimeState.collectAsState()
     val dataSourcesSnapshot by shellViewModel.marineSourceState.collectAsState()
@@ -254,8 +252,8 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         val permanentlyDenied = !granted && host != null && PHONE_LOCATION_PERMISSIONS.all { permission ->
             !ActivityCompat.shouldShowRequestPermissionRationale(host, permission)
         }
-        shellViewModel.onDataSourcesAction(
-            DataSourcesUiAction.PhonePermissionResult(permanentlyDenied = permanentlyDenied),
+        shellViewModel.onDataAction(
+            DataUiAction.PhonePermissionResult(permanentlyDenied = permanentlyDenied),
         )
     }
     val gpxDocumentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -384,27 +382,26 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     LaunchedEffect(engine, shellViewModel) {
         shellViewModel.nmeaInputEffects.collect { effect ->
             when (effect) {
-                is NmeaInputEffect.OpenDataSources -> engine.dispatch(
-                    LauncherAction.Open(LaunchToken(effect.token.value)),
-                )
+                is NmeaInputEffect.OpenDataSources -> {
+                    val token = LaunchToken(effect.token.value)
+                    shellViewModel.openData(token)
+                    engine.dispatch(LauncherAction.Open(token))
+                }
             }
         }
     }
     LaunchedEffect(engine, shellViewModel, context) {
-        shellViewModel.dataSourcesEffects.collect { effect ->
+        shellViewModel.dataEffects.collect { effect ->
             when (effect) {
-                DataSourcesEffect.RequestPhoneLocationPermission -> {
+                DataEffect.RequestPhoneLocationPermission -> {
                     phonePermissionLauncher.launch(PHONE_LOCATION_PERMISSIONS)
                 }
-                DataSourcesEffect.OpenSystemLocationSettings -> runCatching {
+                DataEffect.OpenSystemLocationSettings -> runCatching {
                     context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                 }
-                DataSourcesEffect.OpenAppPermissionSettings -> runCatching {
+                DataEffect.OpenAppPermissionSettings -> runCatching {
                     context.openHostAppInfo()
                 }
-                is DataSourcesEffect.OpenNmeaInput -> engine.dispatch(
-                    LauncherAction.Open(LaunchToken(effect.token.value)),
-                )
             }
         }
     }
@@ -468,14 +465,10 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 backReturnVisibleWindowMillis = motionProfile.measuredBackReturnMillis ?: 750,
             )
         }
-        val nmeaLauncherState = remember(nmeaRuntimeSnapshot) {
-            NmeaInputLauncherProjector.project(nmeaRuntimeSnapshot)
+        val dataLauncherState = remember(nmeaRuntimeSnapshot, dataSourcesSnapshot) {
+            DataLauncherProjector.project(nmeaRuntimeSnapshot, dataSourcesSnapshot)
         }
-        val dataSourcesLauncherState = remember(dataSourcesSnapshot) {
-            DataSourcesLauncherProjector.project(dataSourcesSnapshot)
-        }
-        val nmeaStatus = nmeaInputStatusCopy(nmeaLauncherState.status)
-        val dataSourcesStatus = dataSourcesStatusCopy(dataSourcesLauncherState.status)
+        val dataStatus = dataStatusCopy(dataLauncherState)
         val chartLibraryStatus = chartLibraryStatusCopy(
             chartLibraryState,
             currentDisplayNeedsAttention = chartDisplayState.selection !is com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection.None &&
@@ -583,12 +576,11 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                     SettingsUiAction.OpenShellLab -> if (BuildConfig.DEBUG) context.openShellLab()
                 }
             },
+            dataState = dataState,
+            onDataAction = shellViewModel::onDataAction,
+            onOpenData = shellViewModel::openData,
             nmeaInputState = nmeaInputState,
             onNmeaInputAction = shellViewModel::onNmeaInputAction,
-            onOpenNmeaInput = shellViewModel::openNmeaInput,
-            dataSourcesState = dataSourcesState,
-            onDataSourcesAction = shellViewModel::onDataSourcesAction,
-            onOpenDataSources = shellViewModel::openDataSources,
             chartLibraryState = chartLibraryState,
             onChartLibraryAction = shellViewModel::onChartLibraryAction,
             onOpenChartLibrary = { token ->
@@ -691,15 +683,12 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                             WpStatusStrip(
                                 windowMetrics = windowMetrics,
                                 statusItems = listOfNotNull(
-                                    nmeaStatus?.let {
-                                        WpStatusStripItem("nmea", it.compact, it.expanded, nmeaLauncherState.status.attentionCount > 0)
-                                    },
-                                    dataSourcesStatus?.let {
+                                    dataStatus?.let {
                                         WpStatusStripItem(
-                                            "data-sources",
+                                            "data",
                                             it.compact,
                                             it.expanded,
-                                            dataSourcesLauncherState.status.attentionCount > 0,
+                                            dataLauncherState.attentionCount > 0,
                                         )
                                     },
                                     chartLibraryStatus?.let {
@@ -708,14 +697,9 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                 ),
                                 onStatusItem = { statusId ->
                                     val token: LaunchToken? = when (statusId) {
-                                        "nmea" -> (nmeaLauncherState.status.preferredConnectionId
-                                            ?.let(MarineFeatureLinks::nmeaInputForConnection)
-                                            ?: MarineFeatureLinks.nmeaInputRoot).let { LaunchToken(it.value) }
-                                        "data-sources" -> (if (dataSourcesLauncherState.status.openNeedsAttention) {
-                                            MarineFeatureLinks.dataSourcesAttention
-                                        } else {
-                                            MarineFeatureLinks.dataSourcesRoot
-                                        }).let { LaunchToken(it.value) }
+                                        "data" -> if (dataLauncherState.attentionCount > 0) {
+                                            DataDestinations.Diagnostics
+                                        } else DataDestinations.Overview
                                         "chart-library" -> if (chartDisplayState.issues.isNotEmpty()) {
                                             ChartLibraryDestinations.NeedsAttention
                                         } else {

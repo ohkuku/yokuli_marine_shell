@@ -26,8 +26,7 @@ import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliTheme
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
 import com.yokuli.marine.data.source.MarineSourceSnapshot
-import com.yokuli.marine.feature.datasources.dataSourcesLauncherVisualContribution
-import com.yokuli.marine.feature.nmeainput.nmeaInputLauncherVisualContribution
+import com.yokuli.marine.feature.data.dataLauncherVisualContribution
 import com.yokuli.shell.compose.LauncherTileRenderContext
 import com.yokuli.shell.compose.LauncherEntryVisualContribution
 import com.yokuli.shell.contract.MarineTileSize
@@ -69,17 +68,16 @@ class NmeaSourcesShellStoryTest {
     }
 
     @Test
-    fun bothAppsAreDiscoverableAndRootBackReturnsToTheInAppStart() {
+    fun dataJourneyMovesInputsToSourcesToOverviewAndRootBackReturnsToStart() {
         openAllApps()
-        compose.onNodeWithTag("launcher-entry-nmea-input").performScrollTo().assertIsDisplayed().performClick()
-        await("nmea-input-workspace")
-
-        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        await("start-screen")
-
-        openAllApps()
-        compose.onNodeWithTag("launcher-entry-data-sources").performScrollTo().assertIsDisplayed().performClick()
-        await("data-sources-root")
+        compose.onNodeWithTag("launcher-entry-data").performScrollTo().assertIsDisplayed().performClick()
+        await("data-root")
+        compose.onNodeWithTag("data-section-inputs").performClick()
+        await("data-inputs")
+        compose.onNodeWithTag("data-section-sources").performClick()
+        await("data-sources")
+        compose.onNodeWithTag("data-section-overview").performClick()
+        await("data-overview")
 
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         await("start-screen")
@@ -87,28 +85,27 @@ class NmeaSourcesShellStoryTest {
     }
 
     @Test
-    fun nmeaAppOwnsPinningAndItsDeclaredThreeSizeCycle() {
+    fun dataAppOwnsPinningAndItsDeclaredThreeSizeCycle() {
         openAllApps()
-        compose.onNodeWithTag("launcher-entry-nmea-input").performScrollTo().performTouchInput { longClick() }
+        compose.onNodeWithTag("launcher-entry-data").performScrollTo().performTouchInput { longClick() }
         await("launcher-context-pin")
         compose.onNodeWithTag("launcher-context-pin").performClick()
 
-        await("tile-nmea-input")
-        await("nmea-tile-medium", unmerged = true)
-        compose.onNodeWithTag("tile-nmea-input").performTouchInput { longClick() }
+        await("tile-data")
+        await("data-tile-medium", unmerged = true)
+        compose.onNodeWithTag("tile-data").performTouchInput { longClick() }
         await("resize-selected-tile")
         compose.onNodeWithTag("resize-selected-tile").performClick()
-        await("nmea-tile-wide", unmerged = true)
+        await("data-tile-wide", unmerged = true)
 
         compose.onNodeWithTag("resize-selected-tile").performClick()
-        await("nmea-tile-small", unmerged = true)
+        await("data-tile-small", unmerged = true)
     }
 
     @Test
-    fun bothFeatureOwnedRendererSetsSurviveThreeSizesTwoThemesAndLargeType() {
+    fun dataRendererSurvivesThreeSizesTwoThemesAndLargeType() {
         val cases: List<Pair<String, @Composable () -> LauncherEntryVisualContribution>> = listOf(
-            "nmea" to { nmeaInputLauncherVisualContribution(NmeaRuntimeSnapshot.EMPTY) },
-            "data-sources" to { dataSourcesLauncherVisualContribution(MarineSourceSnapshot.EMPTY) },
+            "data" to { dataLauncherVisualContribution(NmeaRuntimeSnapshot.EMPTY, MarineSourceSnapshot.EMPTY) },
         )
         val tagSuffix = mapOf(
             MarineTileSize.ICON_1X1 to "small",

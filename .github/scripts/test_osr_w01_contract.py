@@ -18,8 +18,8 @@ class OsRedesignW01ContractTest(unittest.TestCase):
         self.assertIn('identity("navigation", "navigation", "navigation.overview")', model)
         self.assertIn('identity("preferences", "preferences", "preferences.overview")', model)
         installed = re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph)
-        self.assertEqual(5, len(installed))
-        self.assertNotIn("DataShellContribution", installed)
+        self.assertEqual(4, len(installed))
+        self.assertIn("DataShellContribution", installed)
         self.assertNotIn("NavigationShellContribution", installed)
         self.assertNotIn("PreferencesShellContribution", installed)
 
@@ -43,7 +43,7 @@ class OsRedesignW01ContractTest(unittest.TestCase):
             "unavailableReplacementStopsTheVersionChainAndLeavesUserLayoutUntouched",
             "stepsActivateOnlyWhenRealTargetsArriveAndLaunchTokensFollowTheSameBoundary",
             "migrationIsIdempotentAndDoesNotTouchSpacersOrUnrelatedTiles",
-            "currentCompositionRootDefersMigrationUntilTheReplacementAppHasARealHost",
+            "currentCompositionRootMigratesLegacyMarineTilesOnlyAfterDataHasARealHost",
         ):
             self.assertIn(story, tests + app_test)
 

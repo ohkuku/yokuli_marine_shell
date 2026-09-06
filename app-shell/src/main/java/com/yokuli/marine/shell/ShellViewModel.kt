@@ -30,10 +30,11 @@ import com.yokuli.marine.feature.chartlibrary.ChartLibraryUiState
 import com.yokuli.marine.map.domain.chartlibrary.ChartPickerSelection
 import com.yokuli.marine.map.offline.ChartDisplayCoverageIndex
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
-import com.yokuli.marine.feature.datasources.DataSourcesCoordinator
-import com.yokuli.marine.feature.datasources.DataSourcesEffect
-import com.yokuli.marine.feature.datasources.DataSourcesUiAction
-import com.yokuli.marine.feature.datasources.DataSourcesUiState
+import com.yokuli.marine.feature.data.DataCoordinator
+import com.yokuli.marine.feature.data.DataDestination
+import com.yokuli.marine.feature.data.DataEffect
+import com.yokuli.marine.feature.data.DataUiAction
+import com.yokuli.marine.feature.data.DataUiState
 import com.yokuli.marine.feature.nmeainput.NmeaInputCoordinator
 import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
@@ -86,15 +87,14 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     )
     val nmeaInputState: StateFlow<NmeaInputUiState> = nmeaInputCoordinator.state
     val nmeaInputEffects: Flow<NmeaInputEffect> = nmeaInputCoordinator.effects
-    private val dataSourcesCoordinator = DataSourcesCoordinator(
+    private val dataCoordinator = DataCoordinator(
         sourcePort = shellApplication.marineSourceRuntime,
         nmeaPort = shellApplication.nmeaInputRuntime,
-        phonePort = shellApplication.phoneLocationRuntime,
+        phoneDemandPort = shellApplication.dataPhoneDemandRuntime,
         scope = viewModelScope,
-        nowMillis = { android.os.SystemClock.elapsedRealtime() },
     )
-    val dataSourcesState: StateFlow<DataSourcesUiState> = dataSourcesCoordinator.state
-    val dataSourcesEffects: Flow<DataSourcesEffect> = dataSourcesCoordinator.effects
+    val dataState: StateFlow<DataUiState> = dataCoordinator.state
+    val dataEffects: Flow<DataEffect> = dataCoordinator.effects
     private val chartLibraryCoordinator = ChartLibraryCoordinator(
         runtime = shellApplication.chartLibraryRuntime,
         scope = viewModelScope,
@@ -223,8 +223,8 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         nmeaInputCoordinator.open(token)
     }
 
-    fun onDataSourcesAction(action: DataSourcesUiAction) {
-        dataSourcesCoordinator.dispatch(action)
+    fun onDataAction(action: DataUiAction) {
+        dataCoordinator.dispatch(action)
     }
 
     fun onChartLibraryAction(action: ChartLibraryUiAction) = chartLibraryCoordinator.dispatch(action)
@@ -234,8 +234,14 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     fun completeChartLibraryPicker(selection: ChartPickerSelection?) =
         chartLibraryCoordinator.completePicker(selection)
 
-    fun openDataSources(token: MarineFeatureLinkToken) {
-        dataSourcesCoordinator.open(token)
+    fun openData(token: com.yokuli.shell.contract.LaunchToken) {
+        when (val destination = dataCoordinator.open(token)) {
+            is DataDestination.Input -> nmeaInputCoordinator.open(
+                destination.connectionId?.let(MarineFeatureLinks::nmeaInputForConnection)
+                    ?: MarineFeatureLinks.nmeaInputRoot,
+            )
+            else -> Unit
+        }
     }
 
     fun acquireChartPackageLease(packageId: ChartPackageId): ChartPackageLease =

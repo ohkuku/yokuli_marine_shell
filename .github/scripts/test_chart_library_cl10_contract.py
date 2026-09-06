@@ -76,8 +76,8 @@ class ChartLibraryCl10ContractTest(unittest.TestCase):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         installed = re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph)
         self.assertEqual(
-            ["ChartShellContribution", "SettingsShellContribution", "NmeaInputShellContribution",
-             "DataSourcesShellContribution", "ChartLibraryShellContribution"],
+            ["ChartShellContribution", "SettingsShellContribution", "DataShellContribution",
+             "ChartLibraryShellContribution"],
             installed,
         )
         manifest = self.read("app-shell/src/main/AndroidManifest.xml")

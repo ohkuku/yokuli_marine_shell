@@ -195,8 +195,9 @@ class NmeaSourcesP2ContractTest(unittest.TestCase):
         report = self.text("docs/phases/nmea-sources/P2_REPORT.md")
         graph = self.text("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         self.assertIn("正式安装属于 P5", report)
-        self.assertIn("NmeaInputShellContribution", graph)
-        self.assertIn("DataSourcesShellContribution", graph)
+        self.assertIn("DataShellContribution", graph)
+        self.assertNotIn("catalogContribution = NmeaInputShellContribution", graph)
+        self.assertNotIn("catalogContribution = DataSourcesShellContribution", graph)
         default_document = graph[graph.index("val defaultStartDocument"):]
         self.assertNotIn("tile-nmea", default_document)
         self.assertNotIn("tile-data-sources", default_document)

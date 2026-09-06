@@ -54,11 +54,12 @@ class OsRedesignW03ContractTest(unittest.TestCase):
         self.assertNotIn("feature.nmeainput", domain)
         self.assertNotIn("feature.datasources", domain)
 
-    def test_w03_does_not_install_an_empty_future_app(self):
+    def test_w04_successor_installs_data_only_after_the_complete_vertical_slice_exists(self):
         graph = self.read("app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt")
         installed = re.findall(r"catalogContribution\s*=\s*([A-Z][A-Za-z]+ShellContribution)", graph)
-        self.assertEqual(5, len(installed))
-        self.assertNotIn("DataShellContribution", installed)
+        self.assertEqual(4, len(installed))
+        self.assertIn("DataShellContribution", installed)
+        self.assertTrue((ROOT / "feature/data/src/main/java/com/yokuli/marine/feature/data/DataWorkspace.kt").is_file())
 
     def test_report_and_baseline_are_truthful(self):
         contract = self.read("docs/phases/os-redesign/work-packages/W03_PRODUCT_ENGINEERING_CONTRACT.md")

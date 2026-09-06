@@ -26,6 +26,7 @@ import com.yokuli.marine.data.android.service.PhoneLocationForegroundServiceCont
 import com.yokuli.marine.data.phone.PhoneLocationRuntimePort
 import com.yokuli.marine.data.runtime.NmeaInputRuntimePort
 import com.yokuli.marine.data.source.MarineSourceRuntimePort
+import com.yokuli.marine.feature.data.DataPhoneDemandRuntime
 import com.yokuli.marine.map.storage.RoomMapPersistence
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
@@ -117,6 +118,13 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
             applicationScope = applicationScope,
         )
     }
+    val dataPhoneDemandRuntime by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        DataPhoneDemandRuntime(
+            sourcePort = marineSourceRuntime,
+            phonePort = phoneLocationRuntime,
+            scope = applicationScope,
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -125,6 +133,7 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
         nmeaInputRuntime
         phoneLocationRuntime
         marineSourceRuntime
+        dataPhoneDemandRuntime
         chartLibraryRuntime
         if (BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")) {
             // Harnesses repeatedly force-stop/reinstall the target. A first-run LocaleManager

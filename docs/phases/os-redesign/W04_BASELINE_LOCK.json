@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W04",
+  "startCommit": "0fbac556943442a79cafa3a05bba4669a280e01a7",
+  "productionApps": ["chart", "settings", "data", "chart_library"],
+  "defaultStartEntries": ["chart", "settings"],
+  "dataSections": ["OVERVIEW", "INPUTS", "SOURCES", "FLOW", "DIAGNOSTICS"],
+  "legacyVisibleApps": false,
+  "legacyTokenPolicy": "REDIRECT_ONLY",
+  "groupSelectionPersistence": "ONE_ATOMIC_TRANSACTION",
+  "phoneLifecycleOwner": "PROCESS",
+  "phoneControl": "DERIVED_DEMAND_ONLY",
+  "silentFailover": false,
+  "verification": "GITHUB_ACTION_PENDING"
+}

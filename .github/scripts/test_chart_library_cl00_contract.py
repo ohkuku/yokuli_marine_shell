@@ -48,8 +48,7 @@ class ChartLibraryCl00ContractTest(unittest.TestCase):
         for contribution in (
             "ChartShellContribution",
             "SettingsShellContribution",
-            "NmeaInputShellContribution",
-            "DataSourcesShellContribution",
+            "DataShellContribution",
         ):
             self.assertIn(contribution, graph)
         manifest = (ROOT / "app-shell/src/main/AndroidManifest.xml").read_text()

@@ -63,8 +63,9 @@ Yokuli OS 不是一组互相跳转的工具页，而是一个以航海任务为�
 
 ## Compatibility / 兼容策略
 
-- 当前 Release 仍安装 Chart、Settings、NMEA Input、Data Sources、Chart Library；这是已实现真相，不是
-  最终模型。未来 Data/Preferences 只有在真实业务纵切片和 host 就绪后才替换旧入口。
+- W04 起当前 Release 安装 Chart、Settings、Data、Chart Library；Data 的真实纵切片与 host 已就绪，
+  NMEA Input/Data Sources 只保留历史实现或 Data 内部连接子流程，不再形成两个目录入口。Preferences
+  仍须等自己的真实业务纵切片就绪后才替换 Settings。
 - 迁移分两步：v1 合并 NMEA Input + Data Sources → Data；v2 Settings → Preferences。步骤必须按序，
   目标 entry 未安装时停止并保留旧布局/入口。
 - 两个旧数据磁贴或已存在的新 Data 磁贴发生重叠时，最早 rank 的 placement 幸存；保留它的 tileId、

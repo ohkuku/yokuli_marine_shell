@@ -52,18 +52,16 @@ import com.yokuli.marine.feature.settings.settingsLauncherVisualContribution
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
 import com.yokuli.marine.data.source.MarineFeatureLinkToken
 import com.yokuli.marine.data.source.MarineSourceSnapshot
-import com.yokuli.marine.feature.datasources.DataSourcesDestinations
-import com.yokuli.marine.feature.datasources.DataSourcesShellContribution
-import com.yokuli.marine.feature.datasources.DataSourcesUiAction
-import com.yokuli.marine.feature.datasources.DataSourcesUiState
-import com.yokuli.marine.feature.datasources.DataSourcesWorkspace
-import com.yokuli.marine.feature.datasources.dataSourcesLauncherVisualContribution
-import com.yokuli.marine.feature.nmeainput.NmeaInputDestinations
-import com.yokuli.marine.feature.nmeainput.NmeaInputShellContribution
+import com.yokuli.marine.feature.data.DataDestination
+import com.yokuli.marine.feature.data.DataDestinations
+import com.yokuli.marine.feature.data.DataShellContribution
+import com.yokuli.marine.feature.data.DataUiAction
+import com.yokuli.marine.feature.data.DataUiState
+import com.yokuli.marine.feature.data.DataWorkspace
+import com.yokuli.marine.feature.data.dataLauncherVisualContribution
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiState
 import com.yokuli.marine.feature.nmeainput.NmeaInputWorkspace
-import com.yokuli.marine.feature.nmeainput.nmeaInputLauncherVisualContribution
 import com.yokuli.shell.android.DefaultInternalAppHostResolver
 import com.yokuli.shell.android.StaticLauncherHostPort
 import com.yokuli.shell.compose.InternalAppHost
@@ -125,12 +123,12 @@ data class ProductionShellRuntime(
     val onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit,
     val onCancelOfflineCoverage: () -> Unit,
     val onSettingsAction: (SettingsUiAction) -> Unit,
+    val dataState: DataUiState,
+    val onDataAction: (DataUiAction) -> Unit,
+    val onOpenData: (LaunchToken) -> Unit,
+    /** Proven connection editor retained as an internal Data subflow, not an installed App. */
     val nmeaInputState: NmeaInputUiState,
     val onNmeaInputAction: (NmeaInputUiAction) -> Unit,
-    val onOpenNmeaInput: (MarineFeatureLinkToken) -> Unit,
-    val dataSourcesState: DataSourcesUiState,
-    val onDataSourcesAction: (DataSourcesUiAction) -> Unit,
-    val onOpenDataSources: (MarineFeatureLinkToken) -> Unit,
     val chartLibraryState: ChartLibraryUiState,
     val onChartLibraryAction: (ChartLibraryUiAction) -> Unit,
     val onOpenChartLibrary: (LaunchToken) -> Unit,
@@ -254,37 +252,24 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
         },
     ),
     InstalledAppBinding(
-        catalogContribution = NmeaInputShellContribution,
+        catalogContribution = DataShellContribution,
         visualContributions = { environment ->
-            listOf(nmeaInputLauncherVisualContribution(environment.nmeaSnapshot))
+            listOf(dataLauncherVisualContribution(environment.nmeaSnapshot, environment.dataSourcesSnapshot))
         },
-        dynamicLaunchTokenMatcher = NmeaInputDestinations::accepts,
-        internalAppHost = InternalAppHost(NmeaInputDestinations.AppId) { token ->
+        dynamicLaunchTokenMatcher = DataDestinations::accepts,
+        internalAppHost = InternalAppHost(DataDestinations.AppId) { token ->
             val runtime = LocalProductionShellRuntime.current
             LaunchedEffect(token) {
-                runtime.onOpenNmeaInput(MarineFeatureLinkToken(token.value))
+                runtime.onOpenData(token)
             }
-            NmeaInputWorkspace(
-                state = runtime.nmeaInputState,
-                onAction = runtime.onNmeaInputAction,
-            )
-        },
-    ),
-    InstalledAppBinding(
-        catalogContribution = DataSourcesShellContribution,
-        visualContributions = { environment ->
-            listOf(dataSourcesLauncherVisualContribution(environment.dataSourcesSnapshot))
-        },
-        dynamicLaunchTokenMatcher = DataSourcesDestinations::accepts,
-        internalAppHost = InternalAppHost(DataSourcesDestinations.AppId) { token ->
-            val runtime = LocalProductionShellRuntime.current
-            LaunchedEffect(token) {
-                runtime.onOpenDataSources(MarineFeatureLinkToken(token.value))
+            DataWorkspace(runtime.dataState, runtime.onDataAction) {
+                NmeaInputWorkspace(
+                    state = runtime.nmeaInputState,
+                    onAction = runtime.onNmeaInputAction,
+                    embedded = true,
+                    onExitEmbedded = { runtime.onDataAction(DataUiAction.Navigate(com.yokuli.marine.feature.data.DataSection.OVERVIEW)) },
+                )
             }
-            DataSourcesWorkspace(
-                state = runtime.dataSourcesState,
-                onAction = runtime.onDataSourcesAction,
-            )
         },
     ),
     InstalledAppBinding(
@@ -308,7 +293,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
 val productionInstalledAppRegistry: InstalledAppRegistry<ProductionShellVisualEnvironment> =
     InstalledAppRegistry(productionInstalledApps)
 val productionContributions = productionInstalledAppRegistry.catalogContributions
-val productionCatalog = LauncherCatalog.compose(revision = 3, contributions = productionContributions)
+val productionCatalog = LauncherCatalog.compose(revision = 4, contributions = productionContributions)
 val productionLaunchRegistrations = productionInstalledAppRegistry.launchRegistrations
 @Composable
 fun productionVisualContributions(
