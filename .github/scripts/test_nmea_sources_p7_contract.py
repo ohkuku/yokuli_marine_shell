@@ -110,6 +110,21 @@ class NmeaSourcesP7Contract(unittest.TestCase):
         ):
             self.assertIn(f'project("{module}")', app)
 
+    def test_phone_location_permissions_are_owned_outside_chart(self):
+        app_manifest = self.read("app-shell/src/main/AndroidManifest.xml")
+        adapter_manifest = self.read("adapter/marine-data-android/src/main/AndroidManifest.xml")
+        chart = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (ROOT / "feature/chart/src/main").rglob("*.kt")
+        )
+        legacy_gate = self.read(".github/scripts/test_shell_app_contract.py")
+        for permission in ("ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"):
+            self.assertIn(permission, app_manifest)
+            self.assertIn(permission, adapter_manifest)
+        self.assertNotIn("LocationManager", chart)
+        self.assertNotIn("requestPermissions", chart)
+        self.assertNotIn("manifest.count('tools:node=\"remove\"')", legacy_gate)
+
     def test_chinese_primary_english_and_qualified_chinese_resources_have_key_parity(self):
         modules = (
             "feature/nmea-input",
