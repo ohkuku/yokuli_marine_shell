@@ -283,7 +283,7 @@ value class ChartPackageId(val value: String) {
     }
 }
 
-enum class MapTileScheme { MBTILES_TMS }
+enum class MapTileScheme { MBTILES_TMS, XYZ }
 
 data class ChartPackage(
     val id: ChartPackageId,

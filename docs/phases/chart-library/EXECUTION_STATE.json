@@ -45,12 +45,33 @@
     },
     "CL01": {
       "title": "SAF原件与FD SQLite读取",
-      "status": "NOT_STARTED",
-      "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "status": "PASS",
+      "head": "4ab1d2b",
+      "changed_files": [
+        "core/map-domain/**/chartlibrary/ChartReadContracts*",
+        "adapter/chart-library-android/**",
+        "settings.gradle.kts"
+      ],
+      "commands": [
+        {
+          "command": "./gradlew :core:map-domain:test :adapter:chart-library-android:compileDebugAndroidTestKotlin --no-daemon",
+          "red_exit_code": 1,
+          "green_exit_code": 0
+        },
+        {
+          "command": "./gradlew :adapter:chart-library-android:connectedDebugAndroidTest --no-daemon",
+          "exit_code": 0,
+          "result": "4/4 API34"
+        }
+      ],
+      "evidence": [
+        "adapter/chart-library-android/build/reports/androidTests/connected/debug/index.html",
+        "docs/phases/chart-library/CL01_REPORT.md",
+        "docs/phases/chart-library/CL01_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "validated seekable proc-fd bridge used instead of a new JNI VFS; physical provider and 16KiB evidence remain NOT_RUN"
+      ],
       "blockers": []
     },
     "CL02": {

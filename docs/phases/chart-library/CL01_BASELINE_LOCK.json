@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "task": "CL01",
+  "start_commit": "4ab1d2b",
+  "reader": "read-only seekable ParcelFileDescriptor with bounded SQLite queries",
+  "supported_locator": "content URI backed by a complete seekable descriptor",
+  "unsupported_locator": [
+    "pipe or stream descriptor",
+    "asset subrange",
+    "mutable WAL-dependent archive"
+  ],
+  "source_copy_bytes": 0,
+  "source_write_bytes": 0,
+  "offset_type": "Long",
+  "max_zoom": 24,
+  "test_device": "pixel_7_api_34 emulator",
+  "physical_provider_evidence": "NOT_RUN"
+}
+
