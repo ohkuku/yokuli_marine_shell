@@ -140,6 +140,13 @@ sealed interface MapAction {
         val generation: MapRendererGeneration,
         val coverage: MapTileCoverageStatus,
     ) : MapAction
+    data class RendererContentChanged(
+        val generation: MapRendererGeneration,
+        val base: MapBaseRenderStatus? = null,
+        val overlay: MapOverlayRenderStatus? = null,
+    ) : MapAction {
+        init { require(base != null || overlay != null) }
+    }
     data class RendererCameraIdle(
         val generation: MapRendererGeneration,
         val camera: MapCamera,
@@ -371,6 +378,7 @@ class DefaultMapReducer(
         is MapAction.RendererReady -> rendererReady(state, action.generation)
         is MapAction.RendererFailed -> rendererFailed(state, action.generation, action.failure)
         is MapAction.RendererCoverageChanged -> rendererCoverage(state, action.generation, action.coverage)
+        is MapAction.RendererContentChanged -> rendererContent(state, action)
         is MapAction.RendererCameraIdle -> rendererCameraIdle(state, action)
         is MapAction.RequestCamera -> MapReduction(
             state.withCameraCommand(action.target, action.intent, action.viewportInsets),
@@ -453,6 +461,12 @@ class DefaultMapReducer(
                     tileCoverage = coverage,
                     cameraInputEnabled = false,
                     failure = null,
+                    baseStatus = MapBaseRenderStatus.BASE_UNAVAILABLE,
+                    overlayStatus = if (state.chartDisplayPlan.layers.isEmpty()) {
+                        MapOverlayRenderStatus.OVERLAY_NONE
+                    } else {
+                        MapOverlayRenderStatus.OVERLAY_LOADING
+                    },
                 ),
             ),
         )
@@ -464,6 +478,8 @@ class DefaultMapReducer(
                 renderer = state.renderer.copy(
                     readiness = MapRendererReadiness.DETACHED,
                     cameraInputEnabled = false,
+                    baseStatus = MapBaseRenderStatus.BASE_UNAVAILABLE,
+                    overlayStatus = MapOverlayRenderStatus.OVERLAY_NONE,
                 ),
             ),
         )
@@ -496,6 +512,22 @@ class DefaultMapReducer(
         MapReduction(state)
     } else {
         MapReduction(state.copy(renderer = state.renderer.copy(tileCoverage = coverage)))
+    }
+
+    private fun rendererContent(
+        state: MapState,
+        action: MapAction.RendererContentChanged,
+    ): MapReduction = if (state.renderer.generation != action.generation) {
+        MapReduction(state)
+    } else {
+        MapReduction(
+            state.copy(
+                renderer = state.renderer.copy(
+                    baseStatus = action.base ?: state.renderer.baseStatus,
+                    overlayStatus = action.overlay ?: state.renderer.overlayStatus,
+                ),
+            ),
+        )
     }
 
     private fun rendererCameraIdle(state: MapState, action: MapAction.RendererCameraIdle): MapReduction {

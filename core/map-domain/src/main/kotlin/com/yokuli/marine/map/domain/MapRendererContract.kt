@@ -53,6 +53,15 @@ data class MapCameraCommand(
 enum class MapRendererReadiness { DETACHED, HOST_READY, RENDERER_READY, ERROR }
 
 /**
+ * Online base-map and user-owned overlay readiness are independent facts. A local chart remains
+ * usable when the connected Google base cannot load, and a loaded Google frame never proves that
+ * an external MBTiles layer opened successfully.
+ */
+enum class MapBaseRenderStatus { BASE_UNAVAILABLE, BASE_LOADING, BASE_READY }
+
+enum class MapOverlayRenderStatus { OVERLAY_NONE, OVERLAY_LOADING, OVERLAY_READY, OVERLAY_DEGRADED }
+
+/**
  * PACKAGE_ATTACHED means the local source was accepted by the style. It deliberately does not
  * claim that every tile exists or has rendered.
  */
@@ -69,6 +78,8 @@ data class MapRendererState(
     val cameraInputEnabled: Boolean = false,
     val nextCameraCommandId: Long = 1L,
     val failure: MapRendererFailure? = null,
+    val baseStatus: MapBaseRenderStatus = MapBaseRenderStatus.BASE_UNAVAILABLE,
+    val overlayStatus: MapOverlayRenderStatus = MapOverlayRenderStatus.OVERLAY_NONE,
 ) {
     init {
         require(nextCameraCommandId > 0L)

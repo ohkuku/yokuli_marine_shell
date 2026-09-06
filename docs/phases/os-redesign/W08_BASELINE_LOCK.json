@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "W08",
+  "startCommit": "01fd23ac77cc91b06f448d2aec8aa6f61f1900c8",
+  "chartLibraryFoundation": "CL01_CL12_REUSED",
+  "connectedBase": "GOOGLE_MAPS_SATELLITE_SDK_ONLY",
+  "localLayerTransport": "REVISION_PINNED_READ_ONLY",
+  "rendererFacts": ["BASE_UNAVAILABLE", "BASE_LOADING", "BASE_READY", "OVERLAY_NONE", "OVERLAY_LOADING", "OVERLAY_READY", "OVERLAY_DEGRADED"],
+  "googleFillsLocalCoverage": false,
+  "externalChartWrites": false,
+  "unconfiguredFallback": "EXISTING_LOCAL_MAPLIBRE",
+  "verification": "GITHUB_ACTION_PENDING"
+}

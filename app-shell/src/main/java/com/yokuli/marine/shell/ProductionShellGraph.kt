@@ -79,7 +79,6 @@ import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TilePlacement
 import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.ChartPackageLease
-import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 
 data class ProductionShellVisualEnvironment(
@@ -164,15 +163,13 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
                 if (runtime.heavyContentReady) {
                     { state, onAction, onQueryPortChanged, modifier ->
-                        if (
-                            state.chartDisplayPlan.selection is ChartDisplaySelection.None &&
-                            BuildConfig.GOOGLE_MAPS_CONFIGURED
-                        ) {
+                        if (BuildConfig.GOOGLE_MAPS_CONFIGURED) {
                             GoogleMarineChartSurface(
                                 state = state,
                                 onAction = onAction,
                                 onQueryPortChanged = onQueryPortChanged,
                                 darkMode = runtime.theme.mode == WpThemeMode.DARK,
+                                chartLibraryAccess = runtime.chartLibraryAccess,
                                 modifier = modifier.testTag("chart-surface-google"),
                             )
                         } else {

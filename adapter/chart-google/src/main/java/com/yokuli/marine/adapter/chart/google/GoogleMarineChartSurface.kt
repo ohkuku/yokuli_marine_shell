@@ -29,10 +29,17 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MapColorScheme
+import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.Polyline
 import com.google.android.gms.maps.model.PolylineOptions
+import com.google.android.gms.maps.model.Tile
+import com.google.android.gms.maps.model.TileOverlay
+import com.google.android.gms.maps.model.TileOverlayOptions
+import com.google.android.gms.maps.model.TileProvider
 import com.yokuli.marine.map.domain.GeoBounds
 import com.yokuli.marine.map.domain.GeoPoint
+import com.yokuli.marine.map.domain.MapBaseRenderStatus
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapCameraCommand
@@ -42,15 +49,22 @@ import com.yokuli.marine.map.domain.MapEditTarget
 import com.yokuli.marine.map.domain.MapGestureId
 import com.yokuli.marine.map.domain.MapHitResult
 import com.yokuli.marine.map.domain.MapOverlayId
+import com.yokuli.marine.map.domain.MapOverlayRenderStatus
 import com.yokuli.marine.map.domain.MapRendererGeneration
 import com.yokuli.marine.map.domain.MapRendererQueryPort
 import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTileCoverageStatus
+import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.hypot
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /**
  * Google Maps adapter for the shared chart surface.
@@ -64,6 +78,7 @@ fun GoogleMarineChartSurface(
     onAction: (MapAction) -> Unit,
     onQueryPortChanged: (MapRendererQueryPort?) -> Unit = {},
     darkMode: Boolean,
+    chartLibraryAccess: ChartResourceAccessPort? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -76,12 +91,15 @@ fun GoogleMarineChartSurface(
     val submittedCameraCommand = remember { AtomicReference<MapCameraCommandId?>(null) }
     val activePointDrag = remember { AtomicReference<ActivePointDrag?>(null) }
     val touchSlop = remember(context) { ViewConfiguration.get(context).scaledTouchSlop.toDouble() }
+    val domainMarkers = remember { mutableListOf<Marker>() }
+    val domainPolylines = remember { mutableListOf<Polyline>() }
+    val chartTileOverlays = remember { mutableListOf<TileOverlay>() }
     val mapView = remember(context) {
         MapView(
             context,
             GoogleMapOptions()
                 .mapColorScheme(if (darkMode) MapColorScheme.DARK else MapColorScheme.LIGHT)
-                .mapType(GoogleMap.MAP_TYPE_NORMAL)
+                .mapType(GoogleMap.MAP_TYPE_SATELLITE)
                 .compassEnabled(false)
                 .mapToolbarEnabled(false)
                 .rotateGesturesEnabled(true)
@@ -93,8 +111,61 @@ fun GoogleMarineChartSurface(
     }
     val lifecycleDriver = remember(mapView) { MapViewLifecycleDriver(mapView) }
     var googleMap by remember(mapView) { mutableStateOf<GoogleMap?>(null) }
+    var preparedDisplay by remember(mapView) { mutableStateOf<PreparedGoogleChartDisplay?>(null) }
 
-    LaunchedEffect(generation) { currentAction(MapAction.RendererHostReady(generation)) }
+    LaunchedEffect(generation) {
+        currentAction(MapAction.RendererHostReady(generation))
+        currentAction(
+            MapAction.RendererContentChanged(
+                generation,
+                base = MapBaseRenderStatus.BASE_LOADING,
+                overlay = if (state.chartDisplayPlan.layers.isEmpty()) {
+                    MapOverlayRenderStatus.OVERLAY_NONE
+                } else {
+                    MapOverlayRenderStatus.OVERLAY_LOADING
+                },
+            ),
+        )
+    }
+
+    LaunchedEffect(state.chartDisplayPlan.fingerprint, chartLibraryAccess) {
+        preparedDisplay?.close()
+        preparedDisplay = null
+        val plan = state.chartDisplayPlan
+        if (plan.layers.isEmpty()) {
+            currentAction(
+                MapAction.RendererContentChanged(generation, overlay = MapOverlayRenderStatus.OVERLAY_NONE),
+            )
+            return@LaunchedEffect
+        }
+        val access = chartLibraryAccess
+        if (access == null) {
+            currentAction(
+                MapAction.RendererContentChanged(generation, overlay = MapOverlayRenderStatus.OVERLAY_DEGRADED),
+            )
+            return@LaunchedEffect
+        }
+        currentAction(
+            MapAction.RendererContentChanged(generation, overlay = MapOverlayRenderStatus.OVERLAY_LOADING),
+        )
+        val next = try {
+            withContext(Dispatchers.IO) { GoogleChartOverlayPreparer(access).prepare(plan) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            currentAction(
+                MapAction.RendererContentChanged(generation, overlay = MapOverlayRenderStatus.OVERLAY_DEGRADED),
+            )
+            return@LaunchedEffect
+        }
+        try {
+            currentCoroutineContext().ensureActive()
+            preparedDisplay = next
+        } catch (cancelled: CancellationException) {
+            next.close()
+            throw cancelled
+        }
+    }
 
     DisposableEffect(mapView, lifecycle, context.applicationContext) {
         lifecycleDriver.create()
@@ -104,6 +175,11 @@ fun GoogleMarineChartSurface(
         lifecycleDriver.syncTo(lifecycle.currentState)
         context.applicationContext.registerComponentCallbacks(memoryCallbacks)
         onDispose {
+            chartTileOverlays.clearGoogleTileOverlays()
+            domainMarkers.removeAllFromMap()
+            domainPolylines.removeAllFromMap()
+            preparedDisplay?.close()
+            preparedDisplay = null
             activePointDrag.getAndSet(null)?.let { currentAction(MapAction.CancelPointDrag(it.id)) }
             currentQueryPortChanged(null)
             currentAction(MapAction.RendererDetached(generation))
@@ -120,7 +196,7 @@ fun GoogleMarineChartSurface(
         mapView.getMapAsync { readyMap ->
             if (disposed) return@getMapAsync
             googleMap = readyMap.apply {
-                mapType = GoogleMap.MAP_TYPE_NORMAL
+                mapType = GoogleMap.MAP_TYPE_SATELLITE
                 isBuildingsEnabled = false
                 isIndoorEnabled = false
                 isTrafficEnabled = false
@@ -143,6 +219,11 @@ fun GoogleMarineChartSurface(
                         currentAction(MapAction.RendererCameraIdle(generation, cameraPosition.toDomainCamera()))
                     }
                 }
+                setOnMapLoadedCallback {
+                    currentAction(
+                        MapAction.RendererContentChanged(generation, base = MapBaseRenderStatus.BASE_READY),
+                    )
+                }
                 setOnMapClickListener { point ->
                     val screen = projection.toScreenLocation(point).toDomainScreenPoint()
                     currentAction(MapAction.MapTapped(point.toDomainPoint(), requireNotNull(queryPort).query(screen, INTERACTIVE_OVERLAYS)))
@@ -154,7 +235,6 @@ fun GoogleMarineChartSurface(
             }
             currentAction(MapAction.RendererHostReady(generation))
             currentAction(MapAction.RendererReady(generation))
-            currentAction(MapAction.RendererCoverageChanged(generation, MapTileCoverageStatus.NO_PACKAGE))
         }
         mapView.setOnTouchListener { _, event ->
             val port = queryPort ?: return@setOnTouchListener false
@@ -210,6 +290,65 @@ fun GoogleMarineChartSurface(
         googleMap?.setMapColorScheme(if (darkMode) MapColorScheme.DARK else MapColorScheme.LIGHT)
     }
 
+    LaunchedEffect(
+        googleMap,
+        state.chartDisplayPlan.fingerprint,
+        preparedDisplay?.planFingerprint,
+    ) {
+        val map = googleMap ?: return@LaunchedEffect
+        chartTileOverlays.clearGoogleTileOverlays()
+        val plan = state.chartDisplayPlan
+        val prepared = preparedDisplay
+        if (plan.layers.isEmpty()) {
+            currentAction(MapAction.RendererCoverageChanged(generation, MapTileCoverageStatus.NO_PACKAGE))
+            currentAction(
+                MapAction.RendererContentChanged(generation, overlay = MapOverlayRenderStatus.OVERLAY_NONE),
+            )
+            return@LaunchedEffect
+        }
+        if (prepared?.planFingerprint != plan.fingerprint) {
+            currentAction(MapAction.RendererCoverageChanged(generation, MapTileCoverageStatus.CHECKING))
+            return@LaunchedEffect
+        }
+        prepared.layers.forEachIndexed { index, layer ->
+            val overlay = map.addTileOverlay(
+                TileOverlayOptions()
+                    .tileProvider(
+                        TileProvider { column, row, zoom ->
+                            layer.reader.read(column, row, zoom)?.let { payload ->
+                                Tile(payload.widthPx, payload.heightPx, payload.bytes)
+                            } ?: TileProvider.NO_TILE
+                        },
+                    )
+                    .visible(true)
+                    .transparency((1f - layer.planLayer.opacity).coerceIn(0f, 1f))
+                    .zIndex(index.toFloat()),
+            )
+            if (overlay != null) chartTileOverlays += overlay
+        }
+        val degraded = prepared.rejectedLayerCount > 0 || chartTileOverlays.size != prepared.layers.size
+        currentAction(
+            MapAction.RendererContentChanged(
+                generation,
+                overlay = if (degraded) {
+                    MapOverlayRenderStatus.OVERLAY_DEGRADED
+                } else {
+                    MapOverlayRenderStatus.OVERLAY_READY
+                },
+            ),
+        )
+        currentAction(
+            MapAction.RendererCoverageChanged(
+                generation,
+                when {
+                    chartTileOverlays.isEmpty() -> MapTileCoverageStatus.PACKAGE_MISSING
+                    degraded -> MapTileCoverageStatus.DEGRADED
+                    else -> MapTileCoverageStatus.PACKAGE_ATTACHED
+                },
+            ),
+        )
+    }
+
     LaunchedEffect(googleMap, generation, state.renderer.generation, state.renderer.readiness, state.renderer.pendingCameraCommand) {
         val map = googleMap ?: return@LaunchedEffect
         val command = state.renderer.pendingCameraCommand ?: return@LaunchedEffect
@@ -250,25 +389,30 @@ fun GoogleMarineChartSurface(
         state.position.observation,
     ) {
         googleMap?.apply {
-            clear()
+            domainMarkers.removeAllFromMap()
+            domainPolylines.removeAllFromMap()
             state.places.forEach { place ->
-                addMarker(MarkerOptions().position(place.point.toLatLng()).title(place.name))
+                addMarker(MarkerOptions().position(place.point.toLatLng()).title(place.name))?.let(domainMarkers::add)
             }
             state.selection?.let { selection ->
-                addMarker(MarkerOptions().position(selection.point.toLatLng()))
+                addMarker(MarkerOptions().position(selection.point.toLatLng()))?.let(domainMarkers::add)
             }
             state.measurementPointsWithPreview().takeIf { it.isNotEmpty() }?.let { points ->
-                addPolyline(PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xfff7b500.toInt()).width(5f))
+                domainPolylines += addPolyline(
+                    PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xfff7b500.toInt()).width(5f),
+                )
             }
             state.routePointsWithPreview().takeIf { it.isNotEmpty() }?.let { points ->
-                addPolyline(PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xff00a4ef.toInt()).width(7f))
+                domainPolylines += addPolyline(
+                    PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xff00a4ef.toInt()).width(7f),
+                )
             }
             state.position.observation?.let { observation ->
                 addMarker(
                     MarkerOptions()
                         .position(observation.point.toLatLng())
                         .title(observation.identity.source.sourceId),
-                )
+                )?.let(domainMarkers::add)
             }
         }
     }
@@ -277,6 +421,24 @@ fun GoogleMarineChartSurface(
         factory = { mapView },
         modifier = modifier,
     )
+}
+
+private fun MutableList<TileOverlay>.clearGoogleTileOverlays() {
+    forEach { overlay ->
+        runCatching { overlay.clearTileCache() }
+        runCatching { overlay.remove() }
+    }
+    clear()
+}
+
+private fun MutableList<Marker>.removeAllFromMap() {
+    forEach { marker -> runCatching { marker.remove() } }
+    clear()
+}
+
+private fun MutableList<Polyline>.removeAllFromMap() {
+    forEach { polyline -> runCatching { polyline.remove() } }
+    clear()
 }
 
 private fun MapCameraCommand.toCameraUpdate() = when (val value = target) {
