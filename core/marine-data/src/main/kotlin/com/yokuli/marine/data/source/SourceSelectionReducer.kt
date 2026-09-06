@@ -3,6 +3,7 @@ package com.yokuli.marine.data.source
 import com.yokuli.marine.data.model.DataKey
 import com.yokuli.marine.data.model.SourceIdentity
 
+@ConsistentCopyVisibility
 data class SourceSelectionState private constructor(
     val catalog: SourceCatalogSnapshot,
     val preferences: Map<DataKey, SourcePreference>,

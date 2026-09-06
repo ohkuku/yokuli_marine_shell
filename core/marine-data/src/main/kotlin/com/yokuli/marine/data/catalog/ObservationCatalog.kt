@@ -35,6 +35,7 @@ object DefaultSentencePriorityRules : SentencePriorityRules {
             DataKey.HorizontalDilution,
             DataKey.Altitude,
             -> listOf("GGA")
+            DataKey.PositionAccuracy -> emptyList()
             DataKey.MagneticVariation -> listOf("HDG", "RMC")
             is DataKey.Heading -> when (key.reference) {
                 HeadingReference.TRUE -> listOf("HDT", "HDG")
