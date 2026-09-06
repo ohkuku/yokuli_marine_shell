@@ -32,6 +32,21 @@ class NmeaInputLauncherProjectorTest {
     }
 
     @Test
+    fun configuredButUserStoppedConnectionsAreNotReportedAsWaitingOrBroken() {
+        val state = NmeaInputLauncherProjector.project(
+            snapshot(
+                row("primary", ConnectionTransportState.Stopped, ConnectionInputState.NO_BYTES, enabled = false),
+                row("backup", ConnectionTransportState.Stopped, ConnectionInputState.NO_BYTES, enabled = false),
+            ),
+        )
+
+        assertEquals(NmeaInputTilePriority.STOPPED, state.tile.priority)
+        assertEquals(0, state.tile.enabledCount)
+        assertEquals(0, state.tile.attentionCount)
+        assertFalse(state.status.visible)
+    }
+
+    @Test
     fun udpListeningWithoutDatagramsIsWaitingNotConnectedOrReceiving() {
         val state = NmeaInputLauncherProjector.project(
             snapshot(row("udp", ConnectionTransportState.UdpListening, ConnectionInputState.NO_BYTES)),
@@ -120,6 +135,7 @@ class NmeaInputLauncherProjectorTest {
         input: ConnectionInputState,
         metrics: NmeaConnectionDiagnostics = NmeaConnectionDiagnostics.EMPTY,
         failure: NmeaRuntimeFailure? = null,
+        enabled: Boolean = true,
     ): ConnectionRuntimeSnapshot {
         val connectionId = ConnectionId(id)
         return ConnectionRuntimeSnapshot(
@@ -131,7 +147,7 @@ class NmeaInputLauncherProjectorTest {
                     else NmeaEndpoint.TcpClient("127.0.0.1", 10_111),
                     ChecksumPolicy.STRICT,
                 ),
-                ConnectionRunIntent.ENABLED,
+                if (enabled) ConnectionRunIntent.ENABLED else ConnectionRunIntent.STOPPED_BY_USER,
                 1L,
             ),
             token = null,
