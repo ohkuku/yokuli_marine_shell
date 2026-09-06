@@ -15,7 +15,9 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySource
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryStorageSnapshot
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyCommandResult
+import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyCapability
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyFailure
+import com.yokuli.marine.map.domain.chartlibrary.ChartManagedDeleteResult
 import com.yokuli.marine.map.domain.chartlibrary.ChartPickerKind
 import com.yokuli.marine.map.domain.chartlibrary.ChartPickerSelection
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceCommandFailure
@@ -63,6 +65,8 @@ class ChartLibraryCoordinator(
     private var metrics = runtime.metrics.value
     private var sources = emptyList<ChartLibrarySource>()
     private var assets = emptyList<ChartAsset>()
+    private var originalByManaged = emptyMap<ChartAssetId, ChartAssetId>()
+    private var managedByOriginal = emptyMap<ChartAssetId, ChartAssetId>()
     private var local = ChartLibraryLocalState()
     private var notice: ChartLibraryNoticeUi? = null
     private var busy = false
@@ -142,8 +146,18 @@ class ChartLibraryCoordinator(
             is ChartLibraryLocalPage.SourceDetail -> if (page.sourceId !in sourceIds) missingPage()
             is ChartLibraryLocalPage.AssetDetail -> if (page.assetId !in assetIds) missingPage()
             is ChartLibraryLocalPage.RemoveSourceConfirmation -> if (page.sourceId !in sourceIds) missingPage()
+            is ChartLibraryLocalPage.DeleteManagedCopyConfirmation -> if (page.assetId !in assetIds) missingPage()
+            is ChartLibraryLocalPage.SaveManagedCopyConfirmation -> if (page.assetId !in assetIds) missingPage()
             else -> Unit
         }
+        val detailAssetId = when (val page = local.page) {
+            is ChartLibraryLocalPage.AssetDetail -> page.assetId
+            is ChartLibraryLocalPage.DeleteManagedCopyConfirmation -> page.assetId
+            is ChartLibraryLocalPage.SaveManagedCopyConfirmation -> page.assetId
+            else -> null
+        }
+        originalByManaged = detailAssetId?.let { id -> runtime.originalForManagedCopy(id)?.let { mapOf(id to it) } }.orEmpty()
+        managedByOriginal = detailAssetId?.let { id -> runtime.managedCopyFor(id)?.let { mapOf(id to it) } }.orEmpty()
         busy = false
         publish()
     }
@@ -170,7 +184,7 @@ class ChartLibraryCoordinator(
                 local = if (assets.any { it.id == action.assetId }) {
                     local.copy(page = ChartLibraryLocalPage.AssetDetail(action.assetId))
                 } else local.also { notice = ChartLibraryNoticeUi.ITEM_NOT_FOUND }
-                publish()
+                reload()
             }
             ChartLibraryUiAction.OpenStorage -> {
                 local = local.copy(page = ChartLibraryLocalPage.Storage)
@@ -211,12 +225,15 @@ class ChartLibraryCoordinator(
                 notice = ChartLibraryNoticeUi.VALIDATION_CANCELLED
                 publish()
             }
-            is ChartLibraryUiAction.SaveManagedCopy -> saveCopy(action.assetId)
+            is ChartLibraryUiAction.SaveManagedCopy -> requestSaveCopy(action.assetId)
+            ChartLibraryUiAction.ConfirmManagedCopy -> confirmSaveCopy()
             is ChartLibraryUiAction.CancelManagedCopy -> {
                 runtime.cancelManagedCopy(action.assetId)
                 notice = ChartLibraryNoticeUi.COPY_CANCELLED
                 publish()
             }
+            is ChartLibraryUiAction.RequestDeleteManagedCopy -> requestDeleteManagedCopy(action.assetId)
+            ChartLibraryUiAction.ConfirmDeleteManagedCopy -> confirmDeleteManagedCopy()
             is ChartLibraryUiAction.ViewInChart -> {
                 val asset = assets.firstOrNull { it.id == action.assetId }
                 if (asset == null) missingPage()
@@ -282,6 +299,8 @@ class ChartLibraryCoordinator(
         local = local.copy(
             page = when (val page = local.page) {
                 is ChartLibraryLocalPage.RemoveSourceConfirmation -> ChartLibraryLocalPage.SourceDetail(page.sourceId)
+                is ChartLibraryLocalPage.DeleteManagedCopyConfirmation -> ChartLibraryLocalPage.AssetDetail(page.assetId)
+                is ChartLibraryLocalPage.SaveManagedCopyConfirmation -> ChartLibraryLocalPage.AssetDetail(page.assetId)
                 else -> ChartLibraryLocalPage.Overview
             },
         )
@@ -383,12 +402,64 @@ class ChartLibraryCoordinator(
         notice = when (val result = runtime.saveManagedCopy(assetId)) {
             is ChartManagedCopyCommandResult.Accepted -> ChartLibraryNoticeUi.COPY_STARTED
             is ChartManagedCopyCommandResult.Rejected -> when (result.failure) {
-                ChartManagedCopyFailure.NOT_AVAILABLE -> ChartLibraryNoticeUi.OPERATION_FAILED
+                ChartManagedCopyFailure.INSUFFICIENT_SPACE -> ChartLibraryNoticeUi.MANAGED_COPY_NO_SPACE
                 else -> ChartLibraryNoticeUi.OPERATION_FAILED
             }
         }
         busy = false
         publish()
+    }
+
+    private fun requestSaveCopy(assetId: ChartAssetId) {
+        val asset = assets.firstOrNull { it.id == assetId } ?: return missingPage()
+        val managedSourceIds = sources.filter { it.kind == ChartLibrarySourceKind.MANAGED }.mapTo(hashSetOf()) { it.id }
+        if (asset.memberships.any(managedSourceIds::contains) || storage.copyCapability != ChartManagedCopyCapability.AVAILABLE) {
+            notice = ChartLibraryNoticeUi.OPERATION_FAILED
+        } else {
+            local = local.copy(page = ChartLibraryLocalPage.SaveManagedCopyConfirmation(assetId))
+            notice = null
+        }
+        publish()
+    }
+
+    private suspend fun confirmSaveCopy() {
+        val assetId = (local.page as? ChartLibraryLocalPage.SaveManagedCopyConfirmation)?.assetId ?: return
+        local = local.copy(page = ChartLibraryLocalPage.AssetDetail(assetId))
+        saveCopy(assetId)
+    }
+
+    private suspend fun requestDeleteManagedCopy(assetId: ChartAssetId) {
+        notice = when (val result = runtime.deleteManagedCopy(assetId, confirmed = false)) {
+            is ChartManagedDeleteResult.ConfirmationRequired -> {
+                local = local.copy(page = ChartLibraryLocalPage.DeleteManagedCopyConfirmation(assetId))
+                null
+            }
+            ChartManagedDeleteResult.Deleted -> ChartLibraryNoticeUi.MANAGED_COPY_DELETED
+            is ChartManagedDeleteResult.Rejected -> if (result.failure == ChartManagedCopyFailure.ACTIVE_LEASE) {
+                ChartLibraryNoticeUi.MANAGED_COPY_IN_USE
+            } else ChartLibraryNoticeUi.OPERATION_FAILED
+        }
+        publish()
+    }
+
+    private suspend fun confirmDeleteManagedCopy() {
+        val assetId = (local.page as? ChartLibraryLocalPage.DeleteManagedCopyConfirmation)?.assetId ?: return
+        busy = true
+        publish()
+        val result = runtime.deleteManagedCopy(assetId, confirmed = true)
+        notice = when (result) {
+            ChartManagedDeleteResult.Deleted -> ChartLibraryNoticeUi.MANAGED_COPY_DELETED
+            is ChartManagedDeleteResult.Rejected -> if (result.failure == ChartManagedCopyFailure.ACTIVE_LEASE) {
+                ChartLibraryNoticeUi.MANAGED_COPY_IN_USE
+            } else ChartLibraryNoticeUi.OPERATION_FAILED
+            is ChartManagedDeleteResult.ConfirmationRequired -> ChartLibraryNoticeUi.OPERATION_FAILED
+        }
+        // A rejected destructive operation stays on the confirmation surface so the user can
+        // release the active reader or retry. Only a completed delete leaves the asset surface.
+        if (result == ChartManagedDeleteResult.Deleted) {
+            local = local.copy(page = ChartLibraryLocalPage.Overview)
+        }
+        reload()
     }
 
     private suspend fun readAllSources(): List<ChartLibrarySource> = buildList {
@@ -422,15 +493,17 @@ class ChartLibraryCoordinator(
     }
 
     private fun project() = ChartLibraryProjector.project(
-        catalog,
-        sources,
-        assets,
-        validation,
-        storage,
-        metrics,
-        local,
-        notice,
-        busy,
+        catalog = catalog,
+        sources = sources,
+        assets = assets,
+        validation = validation,
+        storage = storage,
+        metrics = metrics,
+        local = local,
+        originalByManaged = originalByManaged,
+        managedByOriginal = managedByOriginal,
+        notice = notice,
+        busy = busy,
     )
 
     private fun ChartSourceCommandFailure.toNotice() = when (this) {

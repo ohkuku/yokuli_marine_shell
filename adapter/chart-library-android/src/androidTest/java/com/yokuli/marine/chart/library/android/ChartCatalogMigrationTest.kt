@@ -23,5 +23,17 @@ class ChartCatalogMigrationTest {
         helper.runMigrationsAndValidate(DB_NAME, 2, true, CHART_CATALOG_MIGRATION_1_2).close()
     }
 
+    @Test fun catalogV2MigratesToV3WithManagedCopyRelations() {
+        helper.createDatabase("$DB_NAME-v2", 2).close()
+        helper.runMigrationsAndValidate("$DB_NAME-v2", 3, true, CHART_CATALOG_MIGRATION_2_3).close()
+    }
+
+    @Test fun catalogV1MigratesThroughV3WithoutDestructiveReset() {
+        helper.createDatabase("$DB_NAME-v3", 1).close()
+        helper.runMigrationsAndValidate(
+            "$DB_NAME-v3", 3, true, CHART_CATALOG_MIGRATION_1_2, CHART_CATALOG_MIGRATION_2_3,
+        ).close()
+    }
+
     companion object { private const val DB_NAME = "chart-catalog-migration" }
 }

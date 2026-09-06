@@ -1,12 +1,20 @@
 package com.yokuli.marine.chart.library.android
 
 import android.content.Context
+import com.yokuli.marine.map.domain.ChartPackageImportException
+import com.yokuli.marine.map.domain.ChartPackageImportFailure
+import com.yokuli.marine.map.domain.ChartPackageInspectProgress
+import com.yokuli.marine.map.domain.ChartPackageOperationId
+import com.yokuli.marine.map.domain.ChartPackageRepository
 import com.yokuli.marine.map.domain.MapTileScheme
 import com.yokuli.marine.map.domain.chartlibrary.*
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
@@ -17,6 +25,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 interface ChartLibraryRuntimeOwner {
     val chartLibraryRuntime: ChartLibraryRuntimePort
@@ -29,14 +38,22 @@ class AndroidChartLibraryRuntime private constructor(
     private val revisionProbe: ChartRevisionProbe,
     parentScope: CoroutineScope,
     private val jobStore: ChartValidationJobStore?,
+    private val managedBridge: ManagedChartCatalogBridge? = null,
+    private val catalogFile: File? = null,
 ) : ChartLibraryRuntimePort, AutoCloseable {
     private val runtimeJob = SupervisorJob(parentScope.coroutineContext[Job])
     private val scope = CoroutineScope(parentScope.coroutineContext + runtimeJob)
     private val readBudget = Semaphore(MAX_OPEN_READ_SESSIONS)
     private val sessions = ConcurrentHashMap<ChartAssetId, MutableSet<BudgetedReadSession>>()
     private val basicQueue = Channel<ChartAssetId>(BASIC_QUEUE_CAPACITY)
+    private val copyBudget = Semaphore(MAX_ACTIVE_COPY_JOBS)
+    private val copyJobs = ConcurrentHashMap<ChartAssetId, Job>()
     private val mutableMetrics = MutableStateFlow(ChartLibraryRuntimeMetrics())
-    private val mutableStorage = MutableStateFlow(ChartLibraryStorageSnapshot.EMPTY)
+    private val mutableStorage = MutableStateFlow(
+        ChartLibraryStorageSnapshot.EMPTY.copy(
+            copyCapability = if (managedBridge == null) ChartManagedCopyCapability.UNAVAILABLE else ChartManagedCopyCapability.AVAILABLE,
+        ),
+    )
     private val closed = AtomicBoolean(false)
     override val metrics: StateFlow<ChartLibraryRuntimeMetrics> = mutableMetrics.asStateFlow()
     override val storage: StateFlow<ChartLibraryStorageSnapshot> = mutableStorage.asStateFlow()
@@ -48,6 +65,7 @@ class AndroidChartLibraryRuntime private constructor(
 
     init {
         validationController.state // restore interrupted process-owned jobs without a UI subscriber
+        if (managedBridge != null) scope.launch { refreshManagedStore() }
         repeat(BASIC_WORKERS) {
             scope.launch {
                 for (assetId in basicQueue) {
@@ -71,6 +89,8 @@ class AndroidChartLibraryRuntime private constructor(
     override suspend fun asset(id: ChartAssetId) = catalog.asset(id)
     override suspend fun resolveLegacyAsset(legacyLogicalId: String, legacyVersionId: String?) =
         catalog.resolveLegacyAsset(legacyLogicalId, legacyVersionId)
+    override suspend fun managedCopyFor(originalAssetId: ChartAssetId) = catalog.managedCopyFor(originalAssetId)
+    override suspend fun originalForManagedCopy(managedAssetId: ChartAssetId) = catalog.originalForManagedCopy(managedAssetId)
     override suspend fun transact(transaction: ChartCatalogTransaction) = catalog.transact(transaction)
 
     override suspend fun acceptPicker(selection: ChartPickerSelection) = sourceController.acceptPicker(selection)
@@ -78,6 +98,10 @@ class AndroidChartLibraryRuntime private constructor(
         sourceController.repair(sourceId, selection)
 
     override suspend fun refresh(sourceId: ChartSourceId): ChartSourceCommandResult {
+        if (sourceId == ManagedChartCatalogBridge.MANAGED_SOURCE_ID) {
+            refreshManagedStore()
+            return ChartSourceCommandResult.Accepted(sourceId)
+        }
         val result = sourceController.refresh(sourceId)
         if (result is ChartSourceCommandResult.ScanPublished && result.status in setOf(ChartScanStatus.COMPLETE, ChartScanStatus.PARTIAL)) {
             enqueueDiscovered(sourceId)
@@ -85,14 +109,119 @@ class AndroidChartLibraryRuntime private constructor(
         return result
     }
 
-    override suspend fun cancel(sourceId: ChartSourceId) = sourceController.cancel(sourceId)
-    override suspend fun remove(sourceId: ChartSourceId) = sourceController.remove(sourceId)
+    override suspend fun cancel(sourceId: ChartSourceId) = if (sourceId == ManagedChartCatalogBridge.MANAGED_SOURCE_ID) {
+        ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.STALE_OPERATION)
+    } else sourceController.cancel(sourceId)
+    override suspend fun remove(sourceId: ChartSourceId) = if (sourceId == ManagedChartCatalogBridge.MANAGED_SOURCE_ID) {
+        ChartSourceCommandResult.Rejected(ChartSourceCommandFailure.PERSISTENCE)
+    } else sourceController.remove(sourceId)
     override suspend fun inspectBasic(assetId: ChartAssetId) = validationController.inspectBasic(assetId)
     override suspend fun verifyFull(assetId: ChartAssetId) = validationController.verifyFull(assetId)
     override fun cancel(assetId: ChartAssetId) = validationController.cancel(assetId)
-    override suspend fun saveManagedCopy(assetId: ChartAssetId): ChartManagedCopyCommandResult =
-        ChartManagedCopyCommandResult.Rejected(ChartManagedCopyFailure.NOT_AVAILABLE)
-    override fun cancelManagedCopy(assetId: ChartAssetId) = Unit
+    override suspend fun saveManagedCopy(assetId: ChartAssetId): ChartManagedCopyCommandResult {
+        val bridge = managedBridge ?: return ChartManagedCopyCommandResult.Rejected(ChartManagedCopyFailure.NOT_AVAILABLE)
+        val asset = catalog.asset(assetId)
+            ?: return ChartManagedCopyCommandResult.Rejected(ChartManagedCopyFailure.ASSET_NOT_FOUND)
+        if (ManagedChartCatalogBridge.MANAGED_SOURCE_ID in asset.memberships) {
+            return ChartManagedCopyCommandResult.Rejected(ChartManagedCopyFailure.NOT_AVAILABLE)
+        }
+        if (!bridge.hasSpaceFor(asset.facts.sizeBytes)) {
+            return ChartManagedCopyCommandResult.Rejected(ChartManagedCopyFailure.INSUFFICIENT_SPACE)
+        }
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            copyBudget.withPermit {
+                try {
+                    updateCopy(assetId, ChartManagedCopyStatus.COPYING, totalBytes = asset.facts.sizeBytes)
+                    val managedId = bridge.copy(
+                        original = asset,
+                        operationId = ChartPackageOperationId(UUID.randomUUID().toString()),
+                        onProgress = { progress ->
+                            when (progress) {
+                                is ChartPackageInspectProgress.Copying -> updateCopy(
+                                    assetId,
+                                    ChartManagedCopyStatus.COPYING,
+                                    copiedBytes = progress.completedBytes,
+                                    totalBytes = progress.totalBytes,
+                                )
+                                is ChartPackageInspectProgress.Inspecting -> updateCopy(
+                                    assetId,
+                                    ChartManagedCopyStatus.VERIFYING,
+                                    totalBytes = asset.facts.sizeBytes,
+                                )
+                            }
+                        },
+                        onPublishing = {
+                            updateCopy(assetId, ChartManagedCopyStatus.PUBLISHING, totalBytes = asset.facts.sizeBytes)
+                        },
+                    )
+                    updateCopy(
+                        assetId,
+                        ChartManagedCopyStatus.COMPLETED,
+                        copiedBytes = asset.facts.sizeBytes ?: mutableStorage.value.copyJobs[assetId]?.copiedBytes ?: 0L,
+                        totalBytes = asset.facts.sizeBytes,
+                        managedAssetId = managedId,
+                    )
+                } catch (cancelled: CancellationException) {
+                    updateCopy(assetId, ChartManagedCopyStatus.CANCELLED)
+                    throw cancelled
+                } catch (error: Throwable) {
+                    val failure = if (
+                        error is ChartPackageImportException && error.reason == ChartPackageImportFailure.INSUFFICIENT_SPACE
+                    ) ChartManagedCopyFailure.INSUFFICIENT_SPACE else ChartManagedCopyFailure.PERSISTENCE
+                    updateCopy(assetId, ChartManagedCopyStatus.FAILED, failure = failure)
+                } finally {
+                    copyJobs.remove(assetId)
+                    refreshManagedStore()
+                }
+            }
+        }
+        val admitted = synchronized(copyJobs) {
+            if (copyJobs.size >= MAX_QUEUED_COPY_JOBS || copyJobs.containsKey(assetId)) false
+            else {
+                copyJobs[assetId] = job
+                true
+            }
+        }
+        if (!admitted) {
+            job.cancel()
+            return ChartManagedCopyCommandResult.Rejected(ChartManagedCopyFailure.NOT_AVAILABLE)
+        }
+        updateCopy(assetId, ChartManagedCopyStatus.QUEUED, totalBytes = asset.facts.sizeBytes)
+        job.start()
+        return ChartManagedCopyCommandResult.Accepted(assetId)
+    }
+
+    override fun cancelManagedCopy(assetId: ChartAssetId) {
+        copyJobs[assetId]?.cancel()
+    }
+
+    override suspend fun deleteManagedCopy(assetId: ChartAssetId, confirmed: Boolean): ChartManagedDeleteResult {
+        val bridge = managedBridge ?: return ChartManagedDeleteResult.Rejected(ChartManagedCopyFailure.NOT_AVAILABLE)
+        val asset = catalog.asset(assetId)
+            ?: return ChartManagedDeleteResult.Rejected(ChartManagedCopyFailure.ASSET_NOT_FOUND)
+        if (ManagedChartCatalogBridge.MANAGED_SOURCE_ID !in asset.memberships) {
+            return ChartManagedDeleteResult.Rejected(ChartManagedCopyFailure.NOT_AVAILABLE)
+        }
+        if (!confirmed) return ChartManagedDeleteResult.ConfirmationRequired(
+            ChartManagedDeleteImpact(assetId, mayAffectDisplay = true),
+        )
+        sessions.remove(assetId)?.toList()?.forEach(ChartReadSession::close)
+        return try {
+            bridge.delete(asset)
+            refreshManagedStore()
+            ChartManagedDeleteResult.Deleted
+        } catch (error: ChartPackageImportException) {
+            ChartManagedDeleteResult.Rejected(
+                if (error.reason == ChartPackageImportFailure.PACKAGE_IN_USE) {
+                    ChartManagedCopyFailure.ACTIVE_LEASE
+                } else {
+                    ChartManagedCopyFailure.PERSISTENCE
+                },
+            )
+        } catch (_: Throwable) {
+            ChartManagedDeleteResult.Rejected(ChartManagedCopyFailure.PERSISTENCE)
+        }
+    }
 
     override suspend fun open(request: ChartReadRequest): ChartOpenResult {
         if (closed.get()) return ChartOpenResult.Rejected(ChartReadFailure.SESSION_CLOSED, "Chart library runtime is closed")
@@ -178,10 +307,66 @@ class AndroidChartLibraryRuntime private constructor(
         } while (offset < page.total && page.items.isNotEmpty())
     }
 
+    private suspend fun refreshManagedStore() {
+        val bridge = managedBridge ?: return
+        val store = try {
+            bridge.synchronize()
+        } catch (_: Throwable) {
+            // Keep the last catalog truth, but never claim that managed writes are usable while
+            // the store cannot be reconciled. A later explicit refresh retries convergence.
+            mutableStorage.update {
+                it.copy(
+                    availableCopyBytes = null,
+                    copyCapability = ChartManagedCopyCapability.UNAVAILABLE,
+                )
+            }
+            return
+        }
+        val catalogBytes = catalogFile?.let { file ->
+            sequenceOf(file, File("${file.path}-wal"), File("${file.path}-shm"))
+                .filter(File::isFile).sumOf(File::length)
+        }
+        mutableStorage.update {
+            it.copy(
+                managedCopyBytes = store.storageBytes,
+                catalogBytes = catalogBytes,
+                cacheBytes = 0L,
+                availableCopyBytes = bridge.availableSpaceBytes(),
+                copyCapability = ChartManagedCopyCapability.AVAILABLE,
+            )
+        }
+    }
+
+    private fun updateCopy(
+        assetId: ChartAssetId,
+        status: ChartManagedCopyStatus,
+        copiedBytes: Long? = null,
+        totalBytes: Long? = null,
+        managedAssetId: ChartAssetId? = null,
+        failure: ChartManagedCopyFailure? = null,
+    ) {
+        mutableStorage.update { storage ->
+            val previous = storage.copyJobs[assetId]
+            val completed = copiedBytes ?: previous?.copiedBytes ?: 0L
+            val total = (totalBytes ?: previous?.totalBytes)?.coerceAtLeast(completed)
+            val updated = ChartManagedCopyProgress(assetId, status, completed, total, managedAssetId, failure)
+            val jobs = (storage.copyJobs + (assetId to updated)).entries
+                .sortedWith(
+                    compareBy<Map.Entry<ChartAssetId, ChartManagedCopyProgress>> {
+                        it.value.status in ACTIVE_COPY_STATES
+                    }.thenBy { it.key.value },
+                )
+                .takeLast(MAX_COPY_JOB_HISTORY)
+                .associate { it.toPair() }
+            storage.copy(copyJobs = jobs)
+        }
+    }
+
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         runtimeJob.cancel()
         basicQueue.close()
+        copyJobs.values.forEach(Job::cancel)
         sessions.values.flatMap { it.toList() }.forEach(BudgetedReadSession::close)
         catalog.close()
     }
@@ -190,13 +375,26 @@ class AndroidChartLibraryRuntime private constructor(
         const val MAX_OPEN_READ_SESSIONS = 12
         const val BASIC_WORKERS = 2
         const val BASIC_QUEUE_CAPACITY = 256
+        const val MAX_ACTIVE_COPY_JOBS = 1
+        const val MAX_QUEUED_COPY_JOBS = 8
 
-        fun create(context: Context, parentScope: CoroutineScope): AndroidChartLibraryRuntime {
-            val catalog = RoomChartCatalogRepository.create(context, File(context.filesDir, "chart-library/catalog.db"))
+        fun create(
+            context: Context,
+            parentScope: CoroutineScope,
+            managedRepository: ChartPackageRepository? = null,
+        ): AndroidChartLibraryRuntime {
+            val catalogFile = File(context.filesDir, "chart-library/catalog.db")
+            val catalog = RoomChartCatalogRepository.create(context, catalogFile)
             val resolver = context.contentResolver
+            val managedRoot = File(context.filesDir, "map_packages")
+            val bridge = managedRepository?.let { ManagedChartCatalogBridge(catalog, it, managedRoot) }
             return AndroidChartLibraryRuntime(
                 catalog = catalog,
-                delegateAccess = AndroidChartResourceAccess(resolver),
+                delegateAccess = AndroidChartResourceAccess(
+                    resolver,
+                    managedRoot,
+                    managedRepository?.let { repository -> repository::acquireLease },
+                ),
                 sourceController = AndroidChartSourceController(
                     catalog,
                     AndroidChartDocumentEnumerator(resolver),
@@ -205,6 +403,8 @@ class AndroidChartLibraryRuntime private constructor(
                 revisionProbe = AndroidChartRevisionProbe(resolver),
                 parentScope = parentScope,
                 jobStore = SharedPreferencesChartValidationJobStore(context),
+                managedBridge = bridge,
+                catalogFile = catalogFile,
             )
         }
 
@@ -230,6 +430,13 @@ class AndroidChartLibraryRuntime private constructor(
 private fun ChartAssetAccessState.invalidFor(purpose: ChartReadPurpose): Boolean =
     this in AndroidChartLibraryRuntime.ALWAYS_INVALID_ACCESS ||
         this == ChartAssetAccessState.CHANGED && purpose != ChartReadPurpose.VALIDATION
+
+private val ACTIVE_COPY_STATES = setOf(
+    ChartManagedCopyStatus.QUEUED,
+    ChartManagedCopyStatus.COPYING,
+    ChartManagedCopyStatus.VERIFYING,
+    ChartManagedCopyStatus.PUBLISHING,
+)
 
 private class BudgetedReadSession(
     private val delegate: ChartReadSession,

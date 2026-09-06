@@ -58,6 +58,7 @@ data class ChartPackageImportRequest(
     val attribution: String,
     val version: String,
     val replaceLogicalPackageId: ChartPackageLogicalId? = null,
+    val copiedFromCatalogAssetId: String? = null,
 )
 
 enum class ChartPackageImportFailure {
@@ -70,6 +71,7 @@ enum class ChartPackageImportFailure {
     INVALID_TILE_INDEX,
     DUPLICATE_TILE,
     RESOURCE_LIMIT,
+    INSUFFICIENT_SPACE,
     REQUIRED_FIELD_MISSING,
     STAGING_EXPIRED,
     INSTALL_FAILED,
@@ -96,9 +98,42 @@ interface ChartPackageRepository {
     suspend fun delete(packageId: ChartPackageId)
     suspend fun reconcile() = Unit
     suspend fun rollback(logicalId: ChartPackageLogicalId): ChartPackage? = null
+    /**
+     * A bounded, read-only view of the app-private package store used only for catalog migration.
+     * Implementations reconcile their journal first and never copy payloads to produce it.
+     */
+    suspend fun managedStoreSnapshot(): ManagedChartPackageStoreSnapshot {
+        val installed = listInstalled()
+        return ManagedChartPackageStoreSnapshot(
+            packages = installed,
+            activeByLogicalId = installed.associate { it.logicalId to it.versionId },
+            historyByLogicalId = installed.groupBy(ChartPackage::logicalId)
+                .mapValues { (_, values) -> values.map(ChartPackage::versionId) },
+            storageBytes = null,
+        )
+    }
     fun acquireLease(packageId: ChartPackageId): ChartPackageLease = ChartPackageLease {}
+}
+
+data class ManagedChartPackageStoreSnapshot(
+    /** All readable published versions, including inactive history. */
+    val packages: List<ChartPackage>,
+    val activeByLogicalId: Map<ChartPackageLogicalId, ChartPackageVersionId>,
+    val historyByLogicalId: Map<ChartPackageLogicalId, List<ChartPackageVersionId>>,
+    val storageBytes: Long?,
+) {
+    init {
+        require(packages.size <= MAX_MANAGED_PACKAGE_VERSIONS)
+        require(packages.map(ChartPackage::versionId).distinct().size == packages.size)
+        require(storageBytes == null || storageBytes >= 0L)
+        val published = packages.mapTo(hashSetOf(), ChartPackage::versionId)
+        require(activeByLogicalId.values.all(published::contains))
+        require(historyByLogicalId.values.flatten().all(published::contains))
+    }
 }
 
 fun interface ChartPackageLease : AutoCloseable {
     override fun close()
 }
+
+const val MAX_MANAGED_PACKAGE_VERSIONS = 2_048

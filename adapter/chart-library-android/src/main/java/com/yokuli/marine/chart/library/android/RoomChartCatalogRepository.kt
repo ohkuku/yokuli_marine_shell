@@ -63,6 +63,14 @@ class RoomChartCatalogRepository private constructor(
         dao.legacyAssetId(legacyLogicalId, legacyVersionId.orEmpty())?.let(::ChartAssetId)
     }
 
+    override suspend fun managedCopyFor(originalAssetId: ChartAssetId): ChartAssetId? = ioRead {
+        dao.managedCopyFor(originalAssetId.value)?.let(::ChartAssetId)
+    }
+
+    override suspend fun originalForManagedCopy(managedAssetId: ChartAssetId): ChartAssetId? = ioRead {
+        dao.originalForManagedCopy(managedAssetId.value)?.let(::ChartAssetId)
+    }
+
     override suspend fun transact(transaction: ChartCatalogTransaction): ChartCatalogCommitResult = writer.withLock {
         if (closed.get()) return@withLock ChartCatalogCommitResult.Failed(ChartCatalogFailure.CLOSED)
         try {
@@ -137,6 +145,13 @@ class RoomChartCatalogRepository private constructor(
                 if (dao.asset(mutation.mapping.assetId.value) == null) throw InvalidReferenceException()
                 dao.putLegacyMapping(mutation.mapping.toEntity())
             }
+            is ChartCatalogMutation.PutManagedCopyRelation -> {
+                val relation = mutation.relation
+                if (dao.asset(relation.originalAssetId.value) == null || dao.asset(relation.managedAssetId.value) == null) {
+                    throw InvalidReferenceException()
+                }
+                dao.putManagedCopyRelation(relation.toEntity())
+            }
         }
     }
 
@@ -162,7 +177,7 @@ class RoomChartCatalogRepository private constructor(
         fun create(context: Context, file: File): RoomChartCatalogRepository {
             file.parentFile?.mkdirs()
             val database = Room.databaseBuilder(context.applicationContext, ChartCatalogDatabase::class.java, file.absolutePath)
-                .addMigrations(CHART_CATALOG_MIGRATION_1_2)
+                .addMigrations(CHART_CATALOG_MIGRATION_1_2, CHART_CATALOG_MIGRATION_2_3)
                 .enableMultiInstanceInvalidation()
                 .build()
             return RoomChartCatalogRepository(database)
@@ -218,3 +233,4 @@ private fun ChartAssetEntity.toDomain(membershipIds: List<String>): ChartAsset =
     ChartAssetAccessState.valueOf(accessState), ChartAssetValidationState.valueOf(validationState),
 )
 private fun LegacyChartAssetMapping.toEntity() = LegacyChartMappingEntity(legacyLogicalId, legacyVersionId.orEmpty(), assetId.value)
+private fun ChartManagedCopyRelation.toEntity() = ChartManagedCopyRelationEntity(originalAssetId.value, managedAssetId.value)

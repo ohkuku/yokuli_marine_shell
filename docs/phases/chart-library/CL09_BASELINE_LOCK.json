@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "task": "CL09",
+  "start_commit": "e6fd995bd754d2ec7c3d8dac3f232293eda784bf",
+  "legacy_managed_root": "app-private filesDir/map_packages",
+  "catalog_managed_source_kind": "MANAGED",
+  "migration_reads_or_copies_payloads": false,
+  "migration_preserves_all_published_versions": true,
+  "migration_preserves_active_and_history_indices": true,
+  "managed_asset_locator_exposes_absolute_path": false,
+  "managed_reads_are_read_only": true,
+  "managed_reads_hold_package_lease": true,
+  "copy_requires_explicit_whole_file_confirmation": true,
+  "max_active_copy_jobs": 1,
+  "max_queued_copy_jobs": 8,
+  "copy_auto_selects_chart": false,
+  "delete_requires_confirmation": true,
+  "external_original_is_deleted": false,
+  "display_preferences_persisted": true,
+  "legacy_display_choice_migrates_once": true,
+  "verification": "GITHUB_ACTION_PENDING"
+}

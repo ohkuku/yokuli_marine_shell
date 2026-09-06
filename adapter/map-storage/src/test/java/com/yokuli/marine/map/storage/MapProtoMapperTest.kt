@@ -6,6 +6,10 @@ import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapSessionSnapshot
 import com.yokuli.marine.map.domain.MeasurementDraft
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPreferences
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
+import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
 import com.yokuli.marine.map.storage.proto.MapStateProto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -19,6 +23,14 @@ class MapProtoMapperTest {
             measurementDraft = MeasurementDraft(listOf(GeoPoint(-36.8, 174.8))),
             activeRouteDraftId = "draft-stable",
             activeChartPackageId = ChartPackageId("chart-stable"),
+            chartDisplayPreferences = ChartDisplayPreferences(
+                selection = ChartDisplaySelection.SourceSet(
+                    setOf(ChartSourceId("00000000-0000-0000-0000-000000000001")),
+                ),
+                overlaysVisible = false,
+                assetOpacity = mapOf(ChartAssetId("10000000-0000-0000-0000-000000000001") to .4f),
+            ),
+            chartDisplayPreferencesInitialized = true,
         )
 
         val proto = MapProtoMapper.encodeSession(snapshot)
@@ -29,6 +41,20 @@ class MapProtoMapperTest {
         assertEquals(0, proto.savedRoutesCount)
         assertEquals(0, proto.chartPackagesCount)
         assertEquals(false, proto.hasRouteDraft())
+    }
+
+    @Test
+    fun `legacy session keeps its package id and exposes display migration as pending`() {
+        val legacy = MapStateProto.newBuilder()
+            .setSchemaVersion(3)
+            .setActiveChartPackageId("legacy-chart")
+            .build()
+
+        val restored = MapProtoMapper.decodeSession(legacy)
+
+        assertEquals(ChartPackageId("legacy-chart"), restored.activeChartPackageId)
+        assertEquals(ChartDisplayPreferences(), restored.chartDisplayPreferences)
+        assertEquals(false, restored.chartDisplayPreferencesInitialized)
     }
 
     @Test

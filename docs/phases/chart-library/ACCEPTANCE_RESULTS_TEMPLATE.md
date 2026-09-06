@@ -36,11 +36,11 @@
 | A28 | NOT_RUN | — | — | 未执行 |
 | A29 | NOT_RUN | — | — | 未执行 |
 | A30 | NOT_RUN | — | — | 未执行 |
-| A31 | NOT_RUN | — | — | 未执行 |
-| A32 | NOT_RUN | — | — | 未执行 |
-| A33 | NOT_RUN | — | — | 未执行 |
-| A34 | NOT_RUN | — | — | 未执行 |
-| A35 | NOT_RUN | — | — | 未执行 |
+| A31 | CI_PENDING | CL09 contract + catalog/source tests | `CODEX-CI-REPORT-<CL09_SHA12>-<run_id>-<attempt>` | 等待 Action |
+| A32 | CI_PENDING | managed copy/journal/cancellation/space tests | 同上 | 真实低磁盘留 CL12 |
+| A33 | CI_PENDING | managed read lease + confirmed delete tests | 同上 | 外部 renderer lease 真机组合留 CL12 |
+| A34 | CI_PENDING | legacy fixture + every journal checkpoint + idempotent catalog sync | 同上 | 进程杀死设备故事留 CL12 |
+| A35 | CI_PENDING | full existing unit/integration/build gates | 同上 | 等待 Action |
 | A36 | NOT_RUN | — | — | 未执行 |
 | A37 | NOT_RUN | — | — | 未执行 |
 | A38 | NOT_RUN | — | — | 未执行 |
@@ -56,8 +56,8 @@ SAF provider与权限：未执行。MapLibre无外网显示：未执行。大于
 
 ## 数据迁移
 
-旧受管包/旧ID/活动图/history/journal：未执行。
-地点/路线/轨迹/地图状态/Start Document/NMEA回归：未执行。
+旧受管包/旧ID/活动图/history/journal：已实现 fixtures，等待 GitHub Action。
+地点/路线/轨迹/地图状态/Start Document/NMEA回归：代码路径保持隔离，等待累计 CI。
 
 ## 不得隐去的限制
 

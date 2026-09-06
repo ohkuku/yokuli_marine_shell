@@ -101,6 +101,55 @@ class RoomChartCatalogRepositoryTest {
         assertEquals(before, repository.snapshot.value)
     }
 
+    @Test fun managedCopyRelationshipSurvivesRestartAndCascadesWithTheManagedAsset() = runBlocking {
+        val file = freshDatabase("catalog-copy-relation")
+        val externalSource = source("external")
+        val managedSource = source("managed-copy", ChartLibrarySourceKind.MANAGED)
+        val original = asset(externalSource.id, "original", "original.mbtiles")
+        val managed = asset(managedSource.id, "managed", "copy.mbtiles")
+        RoomChartCatalogRepository.create(context, file).use { repository ->
+            assertTrue(repository.transact(ChartCatalogTransaction("copy-seed", mutations = listOf(
+                ChartCatalogMutation.PutSource(externalSource),
+                ChartCatalogMutation.PutSource(managedSource),
+                ChartCatalogMutation.PutAsset(original),
+                ChartCatalogMutation.PutAsset(managed),
+                ChartCatalogMutation.PutManagedCopyRelation(ChartManagedCopyRelation(original.id, managed.id)),
+            ))) is ChartCatalogCommitResult.Committed)
+            assertEquals(managed.id, repository.managedCopyFor(original.id))
+            assertEquals(original.id, repository.originalForManagedCopy(managed.id))
+        }
+        RoomChartCatalogRepository.create(context, file).use { restored ->
+            assertEquals(managed.id, restored.managedCopyFor(original.id))
+            restored.transact(ChartCatalogTransaction("remove-copy", mutations = listOf(
+                ChartCatalogMutation.RemoveAssetMembership(managed.id, managedSource.id),
+            )))
+            assertNull(restored.managedCopyFor(original.id))
+        }
+    }
+
+    @Test fun oneDeduplicatedManagedCopyCanRelateToMultipleExternalCatalogItems() = runBlocking {
+        RoomChartCatalogRepository.create(context, freshDatabase("catalog-copy-aliases")).use { repository ->
+            val externalSource = source("external-aliases")
+            val managedSource = source("managed-alias", ChartLibrarySourceKind.MANAGED)
+            val first = asset(externalSource.id, "first-original", "first.mbtiles")
+            val second = asset(externalSource.id, "second-original", "second.mbtiles")
+            val managed = asset(managedSource.id, "one-copy", "copy.mbtiles")
+            assertTrue(repository.transact(ChartCatalogTransaction("aliases", mutations = listOf(
+                ChartCatalogMutation.PutSource(externalSource),
+                ChartCatalogMutation.PutSource(managedSource),
+                ChartCatalogMutation.PutAsset(first),
+                ChartCatalogMutation.PutAsset(second),
+                ChartCatalogMutation.PutAsset(managed),
+                ChartCatalogMutation.PutManagedCopyRelation(ChartManagedCopyRelation(first.id, managed.id)),
+                ChartCatalogMutation.PutManagedCopyRelation(ChartManagedCopyRelation(second.id, managed.id)),
+            ))) is ChartCatalogCommitResult.Committed)
+
+            assertEquals(managed.id, repository.managedCopyFor(first.id))
+            assertEquals(managed.id, repository.managedCopyFor(second.id))
+            assertNotNull(repository.originalForManagedCopy(managed.id))
+        }
+    }
+
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private fun freshDatabase(name: String) = File(context.cacheDir, "$name.db").also {
         it.delete(); File("${it.path}-wal").delete(); File("${it.path}-shm").delete()

@@ -1,6 +1,7 @@
 package com.yokuli.marine.map.domain
 
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPreferences
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayViewport
 import java.util.UUID
 
@@ -305,6 +306,8 @@ data class ChartPackage(
     val logicalId: ChartPackageLogicalId = ChartPackageLogicalId(id.value),
     val versionId: ChartPackageVersionId = ChartPackageVersionId(sha256.lowercase()),
     val validationLevel: ChartPackageValidationLevel = ChartPackageValidationLevel.FULL_TILE_DECODED,
+    /** Optional durable bridge back to the external catalog item that requested this copy. */
+    val copiedFromCatalogAssetId: String? = null,
 ) {
     init {
         require(displayName.isNotBlank())
@@ -317,6 +320,7 @@ data class ChartPackage(
         require(version.isNotBlank())
         require(rasterFormat in setOf("png", "jpg", "jpeg"))
         require(tileSize in setOf(128, 256, 512, 1024))
+        require(copiedFromCatalogAssetId == null || copiedFromCatalogAssetId.length in 1..128)
     }
 }
 
@@ -350,6 +354,8 @@ data class MapSessionSnapshot(
     val activeRouteDraftId: String? = null,
     val activeRoutePlanId: String? = null,
     val activeChartPackageId: ChartPackageId? = null,
+    val chartDisplayPreferences: ChartDisplayPreferences = ChartDisplayPreferences(),
+    val chartDisplayPreferencesInitialized: Boolean = false,
 )
 
 data class MapLibrarySnapshot(
@@ -427,7 +433,10 @@ data class MapState(
     val routeEditNotice: RouteEditNotice? = null,
     val chartPackages: List<ChartPackage> = emptyList(),
     val activeChartPackageId: ChartPackageId? = null,
-    /** Runtime-only catalog display truth. CL09 owns persistence/migration of the selection. */
+    /** Durable choice; the display plan is always recomputed from the current catalog. */
+    val chartDisplayPreferences: ChartDisplayPreferences = ChartDisplayPreferences(),
+    val chartDisplayPreferencesInitialized: Boolean = false,
+    /** Runtime-only catalog display truth. */
     val chartDisplayPlan: ChartDisplayPlan = ChartDisplayPlan.EMPTY,
     val chartDisplayViewport: ChartDisplayViewport? = null,
     val position: PositionState = PositionState(),
@@ -488,6 +497,8 @@ data class MapState(
         activeRouteDraftId = activeRouteDraftId,
         activeRoutePlanId = activeRoutePlanId,
         activeChartPackageId = activeChartPackageId,
+        chartDisplayPreferences = chartDisplayPreferences,
+        chartDisplayPreferencesInitialized = chartDisplayPreferencesInitialized,
     )
 
     fun librarySnapshot(): MapLibrarySnapshot = MapLibrarySnapshot(

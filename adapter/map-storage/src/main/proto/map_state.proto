@@ -14,7 +14,14 @@ message MapStateProto {
   string active_chart_package_id = 8;
   string active_route_draft_id = 9;
   string active_route_plan_id = 10;
+  string chart_display_selection_kind = 11;
+  repeated string chart_display_selection_ids = 12;
+  bool chart_display_overlays_visible = 13;
+  repeated ChartAssetOpacityProto chart_asset_opacity = 14;
+  bool chart_display_preferences_initialized = 15;
 }
+
+message ChartAssetOpacityProto { string asset_id = 1; float opacity = 2; }
 
 message GeoPointProto { double latitude = 1; double longitude = 2; }
 message GeoBoundsProto { double south = 1; double west = 2; double north = 3; double east = 4; }

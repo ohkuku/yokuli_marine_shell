@@ -114,6 +114,30 @@ internal data class LegacyChartMappingEntity(
     val assetId: String,
 )
 
+@Entity(
+    tableName = "chart_managed_copy_relations",
+    primaryKeys = ["originalAssetId", "managedAssetId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ChartAssetEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["originalAssetId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ChartAssetEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["managedAssetId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("originalAssetId"), Index("managedAssetId")],
+)
+internal data class ChartManagedCopyRelationEntity(
+    val originalAssetId: String,
+    val managedAssetId: String,
+)
+
 @Entity(tableName = "chart_catalog_transactions")
 internal data class ChartCatalogTransactionEntity(
     @PrimaryKey val transactionId: String,
@@ -221,6 +245,15 @@ internal interface ChartCatalogDao {
     @Query("SELECT assetId FROM legacy_chart_mappings WHERE legacyLogicalId = :logicalId AND legacyVersionKey = :versionKey")
     suspend fun legacyAssetId(logicalId: String, versionKey: String): String?
 
+    @Upsert
+    suspend fun putManagedCopyRelation(value: ChartManagedCopyRelationEntity)
+
+    @Query("SELECT managedAssetId FROM chart_managed_copy_relations WHERE originalAssetId = :assetId ORDER BY managedAssetId DESC LIMIT 1")
+    suspend fun managedCopyFor(assetId: String): String?
+
+    @Query("SELECT originalAssetId FROM chart_managed_copy_relations WHERE managedAssetId = :assetId ORDER BY originalAssetId LIMIT 1")
+    suspend fun originalForManagedCopy(assetId: String): String?
+
     @Query("SELECT revision FROM chart_catalog_transactions WHERE transactionId = :transactionId")
     suspend fun appliedTransactionRevision(transactionId: String): Long?
 
@@ -243,9 +276,10 @@ internal interface ChartCatalogDao {
         ChartAssetEntity::class,
         ChartMembershipEntity::class,
         LegacyChartMappingEntity::class,
+        ChartManagedCopyRelationEntity::class,
         ChartCatalogTransactionEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 internal abstract class ChartCatalogDatabase : RoomDatabase() {
@@ -255,5 +289,21 @@ internal abstract class ChartCatalogDatabase : RoomDatabase() {
 internal val CHART_CATALOG_MIGRATION_1_2 = object : Migration(1, 2) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE chart_assets ADD COLUMN rasterMimeType TEXT")
+    }
+}
+
+internal val CHART_CATALOG_MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """CREATE TABLE IF NOT EXISTS `chart_managed_copy_relations` (
+                `originalAssetId` TEXT NOT NULL,
+                `managedAssetId` TEXT NOT NULL,
+                PRIMARY KEY(`originalAssetId`, `managedAssetId`),
+                FOREIGN KEY(`originalAssetId`) REFERENCES `chart_assets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`managedAssetId`) REFERENCES `chart_assets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )""".trimIndent(),
+        )
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_chart_managed_copy_relations_originalAssetId` ON `chart_managed_copy_relations` (`originalAssetId`)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_chart_managed_copy_relations_managedAssetId` ON `chart_managed_copy_relations` (`managedAssetId`)")
     }
 }

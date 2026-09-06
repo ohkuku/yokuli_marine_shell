@@ -284,6 +284,6 @@ fun interface ChartDisplayCoveragePort {
         plan: ChartDisplayPlan,
         targetZoom: Int,
         requiredKeys: Set<com.yokuli.marine.map.domain.SlippyTileKey>,
-        expectedFingerprint: String = plan.fingerprint,
+        expectedFingerprint: String,
     ): ChartDisplayCoverageResult
 }

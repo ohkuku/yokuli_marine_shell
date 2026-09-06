@@ -5,6 +5,10 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.ParcelFileDescriptor
+import com.yokuli.marine.map.domain.ChartPackageId
+import com.yokuli.marine.map.domain.ChartPackageLease
+import com.yokuli.marine.map.domain.ChartPackageVersionId
 import com.yokuli.marine.map.domain.MapTileScheme
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpenResult
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadException
@@ -27,17 +31,45 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class AndroidChartResourceAccess(
     private val resolver: ContentResolver,
+    private val managedRoot: File? = null,
+    private val acquireManagedLease: ((ChartPackageId) -> ChartPackageLease)? = null,
 ) : ChartResourceAccessPort {
     override suspend fun open(request: ChartReadRequest): ChartOpenResult = withContext(Dispatchers.IO) {
         val uri = runCatching { Uri.parse(request.locator.value) }.getOrNull()
             ?: return@withContext ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Invalid locator")
+        if (uri.scheme == MANAGED_SCHEME) return@withContext openManaged(request, uri)
         when (val opened = AndroidSafRandomAccessReader(resolver).open(uri)) {
             is SafRandomAccessOpenResult.Rejected -> ChartOpenResult.Rejected(opened.failure, opened.detail)
             is SafRandomAccessOpenResult.Opened -> openDatabase(request, opened.handle)
         }
+    }
+
+    private fun openManaged(request: ChartReadRequest, uri: Uri): ChartOpenResult {
+        val root = managedRoot ?: return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Managed store unavailable")
+        val version = runCatching { ChartPackageVersionId(uri.host.orEmpty()) }.getOrNull()
+            ?: return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Invalid managed chart locator")
+        if (request.revision.contentSha256 != version.value) {
+            return ChartOpenResult.Rejected(ChartReadFailure.REVISION_CHANGED, "Managed version does not match catalog revision")
+        }
+        val rootPath = runCatching { root.canonicalFile }.getOrNull()
+            ?: return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Managed root unavailable")
+        val file = runCatching { File(rootPath, "package-${version.value}/map.mbtiles").canonicalFile }.getOrNull()
+            ?: return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Managed chart path unavailable")
+        if (file.parentFile?.parentFile != rootPath || !file.isFile) {
+            return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Managed chart version is missing")
+        }
+        val lease = acquireManagedLease?.invoke(ChartPackageId(version.value)) ?: ChartPackageLease {}
+        val descriptor = try {
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        } catch (error: Throwable) {
+            lease.close()
+            return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, error.javaClass.simpleName)
+        }
+        return openDatabase(request, SafReadOnlyHandle(descriptor, file.length(), lease::close))
     }
 
     private fun openDatabase(request: ChartReadRequest, handle: SafReadOnlyHandle): ChartOpenResult {
@@ -91,6 +123,8 @@ class AndroidChartResourceAccess(
         )
     }
 }
+
+private const val MANAGED_SCHEME = "yokuli-managed"
 
 private class AndroidMbTilesReadSession(
     override val request: ChartReadRequest,

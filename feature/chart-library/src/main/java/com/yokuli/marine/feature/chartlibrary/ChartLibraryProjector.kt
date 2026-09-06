@@ -24,6 +24,8 @@ object ChartLibraryProjector {
         local: ChartLibraryLocalState,
         notice: ChartLibraryNoticeUi? = null,
         busy: Boolean = false,
+        originalByManaged: Map<com.yokuli.marine.map.domain.chartlibrary.ChartAssetId, com.yokuli.marine.map.domain.chartlibrary.ChartAssetId> = emptyMap(),
+        managedByOriginal: Map<com.yokuli.marine.map.domain.chartlibrary.ChartAssetId, com.yokuli.marine.map.domain.chartlibrary.ChartAssetId> = emptyMap(),
     ): ChartLibraryUiState {
         val sourceById = sources.associateBy(ChartLibrarySource::id)
         val assetById = assets.associateBy(ChartAsset::id)
@@ -53,7 +55,11 @@ object ChartLibraryProjector {
                     ?: listOfNotNull(asset.revision.observedSizeBytes, asset.revision.observedModifiedAtMillis)
                         .joinToString(" · ").takeIf { it.isNotBlank() },
                 selected = asset.id in local.selectedAssetIds,
-                managedCopyAvailable = storage.copyCapability == ChartManagedCopyCapability.AVAILABLE,
+                managedCopyAvailable = storage.copyCapability == ChartManagedCopyCapability.AVAILABLE &&
+                    asset.memberships.none { sourceById[it]?.kind == ChartLibrarySourceKind.MANAGED },
+                isManagedAsset = asset.memberships.any { sourceById[it]?.kind == ChartLibrarySourceKind.MANAGED },
+                originalAssetId = originalByManaged[asset.id],
+                managedCopyAssetId = managedByOriginal[asset.id],
                 validationJob = validation.jobs[asset.id],
                 copyJob = storage.copyJobs[asset.id],
             )
@@ -111,6 +117,7 @@ object ChartLibraryProjector {
             catalogBytes = storage.catalogBytes,
             cacheBytes = storage.cacheBytes,
             copyAvailable = storage.copyCapability == ChartManagedCopyCapability.AVAILABLE,
+            availableCopyBytes = storage.availableCopyBytes,
             copyJobs = storage.copyJobs.values.sortedBy { it.sourceAssetId.value },
         )
         val page = when (val page = local.page) {
@@ -128,6 +135,12 @@ object ChartLibraryProjector {
             ChartLibraryLocalPage.Storage -> ChartLibraryPageUi.Storage(storageUi)
             is ChartLibraryLocalPage.RemoveSourceConfirmation -> sourceRows.firstOrNull { it.id == page.sourceId }
                 ?.let(ChartLibraryPageUi::RemoveSourceConfirmation)
+                ?: ChartLibraryPageUi.Overview(filteredSources, filteredAssets)
+            is ChartLibraryLocalPage.DeleteManagedCopyConfirmation -> rows.firstOrNull { it.id == page.assetId }
+                ?.let(ChartLibraryPageUi::DeleteManagedCopyConfirmation)
+                ?: ChartLibraryPageUi.Overview(filteredSources, filteredAssets)
+            is ChartLibraryLocalPage.SaveManagedCopyConfirmation -> rows.firstOrNull { it.id == page.assetId }
+                ?.let { ChartLibraryPageUi.SaveManagedCopyConfirmation(it, storage.availableCopyBytes) }
                 ?: ChartLibraryPageUi.Overview(filteredSources, filteredAssets)
         }
         return ChartLibraryUiState(

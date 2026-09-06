@@ -64,6 +64,20 @@ class ChartLibraryWorkspaceStoryTest {
         assertEquals(null, ChartLibraryBackPolicy.actionFor(ChartLibraryPageUi.Overview(emptyList(), emptyList())))
     }
 
+    @Test
+    fun managedCopyRequiresAVisibleWholeFileConfirmation() {
+        val asset = assetRow(managedCopyAvailable = true)
+        var action: ChartLibraryUiAction? = null
+        render(
+            ChartLibraryUiState(
+                page = ChartLibraryPageUi.SaveManagedCopyConfirmation(asset, availableCopyBytes = 8_000L),
+            ),
+        ) { action = it }
+
+        compose.onNodeWithTag("chart-library-confirm-save-copy").performClick()
+        assertEquals(ChartLibraryUiAction.ConfirmManagedCopy, action)
+    }
+
     private fun render(state: ChartLibraryUiState, action: (ChartLibraryUiAction) -> Unit) {
         compose.setContent { YokuliTheme(WpThemeSpec()) { ChartLibraryWorkspace(state, action) } }
     }
@@ -85,7 +99,7 @@ class ChartLibraryWorkspaceStoryTest {
         unknownSizeCount = 0,
     )
 
-    private fun assetRow() = ChartLibraryAssetRowUi(
+    private fun assetRow(managedCopyAvailable: Boolean = false) = ChartLibraryAssetRowUi(
         id = ASSET,
         title = "harbour.mbtiles",
         displayPath = "charts/harbour.mbtiles",
@@ -108,7 +122,7 @@ class ChartLibraryWorkspaceStoryTest {
         attributionProvenance = ChartFactProvenance.UNKNOWN,
         revisionSummary = null,
         selected = false,
-        managedCopyAvailable = false,
+        managedCopyAvailable = managedCopyAvailable,
         validationJob = null,
         copyJob = null,
     )

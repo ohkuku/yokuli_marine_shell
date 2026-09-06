@@ -87,12 +87,57 @@ class ChartLibraryCoordinatorTest {
         assertEquals(0, runtime.removedSources)
     }
 
+    @Test
+    fun managedCopyDoesNotStartBeforeExplicitWholeFileConfirmation() = runTest {
+        val runtime = FakeRuntime(source(), asset())
+        runtime.storage.value = ChartLibraryStorageSnapshot(
+            availableCopyBytes = 10_000L,
+            copyCapability = ChartManagedCopyCapability.AVAILABLE,
+        )
+        val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)
+        advanceUntilIdle()
+
+        coordinator.dispatch(ChartLibraryUiAction.SaveManagedCopy(ASSET_ID))
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value.page is ChartLibraryPageUi.SaveManagedCopyConfirmation)
+        assertEquals(0, runtime.savedCopies)
+
+        coordinator.dispatch(ChartLibraryUiAction.ConfirmManagedCopy)
+        advanceUntilIdle()
+        assertEquals(1, runtime.savedCopies)
+    }
+
+    @Test
+    fun rejectedManagedDeleteStaysOnConfirmationAndReportsActiveLease() = runTest {
+        val managedSource = source().copy(
+            kind = ChartLibrarySourceKind.MANAGED,
+            grantState = ChartGrantState.NOT_REQUIRED,
+        )
+        val runtime = FakeRuntime(managedSource, asset())
+        runtime.deleteResult = ChartManagedDeleteResult.Rejected(ChartManagedCopyFailure.ACTIVE_LEASE)
+        val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)
+        advanceUntilIdle()
+
+        coordinator.dispatch(ChartLibraryUiAction.OpenAsset(ASSET_ID))
+        coordinator.dispatch(ChartLibraryUiAction.RequestDeleteManagedCopy(ASSET_ID))
+        advanceUntilIdle()
+        assertTrue(coordinator.state.value.page is ChartLibraryPageUi.DeleteManagedCopyConfirmation)
+
+        coordinator.dispatch(ChartLibraryUiAction.ConfirmDeleteManagedCopy)
+        advanceUntilIdle()
+
+        assertTrue(coordinator.state.value.page is ChartLibraryPageUi.DeleteManagedCopyConfirmation)
+        assertEquals(ChartLibraryNoticeUi.MANAGED_COPY_IN_USE, coordinator.state.value.notice)
+    }
+
     private class FakeRuntime(vararg initial: Any) : ChartLibraryRuntimePort {
         var sources = initial.filterIsInstance<ChartLibrarySource>().toMutableList()
         var assets = initial.filterIsInstance<ChartAsset>().toMutableList()
         var committedTransactions = 0
         var acceptedPickers = 0
         var removedSources = 0
+        var savedCopies = 0
+        var deleteResult: ChartManagedDeleteResult = ChartManagedDeleteResult.Deleted
         val repairedSources = mutableListOf<ChartSourceId>()
         val refreshedSources = mutableListOf<ChartSourceId>()
         override val snapshot = MutableStateFlow(snapshot())
@@ -128,6 +173,7 @@ class ChartLibraryCoordinatorTest {
                         if (asset.id == mutation.assetId) asset.copy(memberships = asset.memberships - mutation.sourceId) else asset
                     }
                     is ChartCatalogMutation.PutLegacyMapping -> Unit
+                    is ChartCatalogMutation.PutManagedCopyRelation -> Unit
                 }
             }
             committedTransactions += 1
@@ -158,9 +204,15 @@ class ChartLibraryCoordinatorTest {
         override suspend fun verifyFull(assetId: ChartAssetId) =
             ChartValidationCommandResult.Rejected(ChartValidationIssue.OPEN_FAILED)
         override fun cancel(assetId: ChartAssetId) = Unit
-        override suspend fun saveManagedCopy(assetId: ChartAssetId) =
-            ChartManagedCopyCommandResult.Rejected(ChartManagedCopyFailure.NOT_AVAILABLE)
+        override suspend fun saveManagedCopy(assetId: ChartAssetId): ChartManagedCopyCommandResult {
+            savedCopies += 1
+            return ChartManagedCopyCommandResult.Accepted(assetId)
+        }
         override fun cancelManagedCopy(assetId: ChartAssetId) = Unit
+        override suspend fun deleteManagedCopy(assetId: ChartAssetId, confirmed: Boolean) =
+            if (confirmed) deleteResult else ChartManagedDeleteResult.ConfirmationRequired(
+                ChartManagedDeleteImpact(assetId, mayAffectDisplay = true),
+            )
         override suspend fun open(request: ChartReadRequest) =
             ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "test runtime")
 

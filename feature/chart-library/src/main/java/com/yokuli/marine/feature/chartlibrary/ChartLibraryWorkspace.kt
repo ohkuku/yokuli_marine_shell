@@ -54,6 +54,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartAssetValidationState
 import com.yokuli.marine.map.domain.chartlibrary.ChartFactProvenance
 import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
+import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyFailure
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartValidationJobStatus
@@ -92,6 +93,8 @@ fun ChartLibraryWorkspace(
                 is ChartLibraryPageUi.AssetDetail -> AssetDetail(page.asset, onAction)
                 is ChartLibraryPageUi.Storage -> Storage(page.storage)
                 is ChartLibraryPageUi.RemoveSourceConfirmation -> RemoveSource(page.source, onAction)
+                is ChartLibraryPageUi.DeleteManagedCopyConfirmation -> DeleteManagedCopy(page.asset, onAction)
+                is ChartLibraryPageUi.SaveManagedCopyConfirmation -> SaveManagedCopy(page, onAction)
             }
         }
         ApplicationBar(state, onAction)
@@ -294,6 +297,12 @@ private fun AssetDetail(asset: ChartLibraryAssetRowUi, onAction: (ChartLibraryUi
                 Fact(stringResource(R.string.fact_attribution), it)
                 Fact(stringResource(R.string.fact_attribution_source), provenanceLabel(asset.attributionProvenance))
             }
+            asset.originalAssetId?.let {
+                Fact(stringResource(R.string.fact_managed_relationship), stringResource(R.string.relationship_copy_of_original))
+            }
+            asset.managedCopyAssetId?.let {
+                Fact(stringResource(R.string.fact_managed_relationship), stringResource(R.string.relationship_has_managed_copy))
+            }
             asset.validationJob?.let { job ->
                 WpText(validationJobLabel(job.status), 13, color = LocalWpTheme.current.accent, modifier = Modifier.testTag(ChartLibraryTestTags.validation(asset.id.value)))
                 if (job.status == ChartValidationJobStatus.RUNNING) {
@@ -303,7 +312,11 @@ private fun AssetDetail(asset: ChartLibraryAssetRowUi, onAction: (ChartLibraryUi
                 }
             }
             asset.copyJob?.let { job ->
-                WpText(copyJobLabel(job.status, job.copiedBytes, job.totalBytes), 13, color = LocalWpTheme.current.accent)
+                WpText(
+                    copyJobLabel(job.status, job.copiedBytes, job.totalBytes, job.failure),
+                    13,
+                    color = LocalWpTheme.current.accent,
+                )
                 if (job.status in ACTIVE_COPY_STATES) {
                     TextCommand(stringResource(R.string.action_cancel_copy), "chart-library-cancel-copy") {
                         onAction(ChartLibraryUiAction.CancelManagedCopy(asset.id))
@@ -344,9 +357,14 @@ private fun Storage(storage: ChartLibraryStorageUi) {
             Fact(stringResource(R.string.storage_catalog), bytesLabel(storage.catalogBytes))
             Fact(stringResource(R.string.storage_cache), bytesLabel(storage.cacheBytes))
             Fact(stringResource(R.string.storage_copy_capability), yesNo(storage.copyAvailable))
+            Fact(stringResource(R.string.storage_available), bytesLabel(storage.availableCopyBytes))
             if (storage.copyJobs.isNotEmpty()) SectionTitle(stringResource(R.string.section_copy_jobs))
             storage.copyJobs.forEach { job ->
-                WpText(copyJobLabel(job.status, job.copiedBytes, job.totalBytes), 13, modifier = Modifier.padding(vertical = 5.dp))
+                WpText(
+                    copyJobLabel(job.status, job.copiedBytes, job.totalBytes, job.failure),
+                    13,
+                    modifier = Modifier.padding(vertical = 5.dp),
+                )
             }
         }
     }
@@ -365,6 +383,32 @@ private fun RemoveSource(source: ChartLibrarySourceRowUi, onAction: (ChartLibrar
 }
 
 @Composable
+private fun DeleteManagedCopy(asset: ChartLibraryAssetRowUi, onAction: (ChartLibraryUiAction) -> Unit) {
+    Column(Modifier.fillMaxSize().padding(horizontal = YokuliMetrics.PageMargin)) {
+        WpText(stringResource(R.string.delete_copy_title), 30, weight = FontWeight.Light)
+        WpText(stringResource(R.string.delete_copy_body, asset.title), 16, modifier = Modifier.padding(top = 12.dp))
+        WpText(stringResource(R.string.delete_copy_safety), 13, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 10.dp))
+        TextCommand(stringResource(R.string.action_confirm_delete_copy), "chart-library-confirm-delete-copy") {
+            onAction(ChartLibraryUiAction.ConfirmDeleteManagedCopy)
+        }
+    }
+}
+
+@Composable
+private fun SaveManagedCopy(page: ChartLibraryPageUi.SaveManagedCopyConfirmation, onAction: (ChartLibraryUiAction) -> Unit) {
+    Column(Modifier.fillMaxSize().padding(horizontal = YokuliMetrics.PageMargin)) {
+        WpText(stringResource(R.string.copy_confirm_title), 30, weight = FontWeight.Light)
+        WpText(stringResource(R.string.copy_confirm_body, page.asset.title), 16, modifier = Modifier.padding(top = 12.dp))
+        Fact(stringResource(R.string.fact_size), bytesLabel(page.asset.sizeBytes))
+        Fact(stringResource(R.string.storage_available), bytesLabel(page.availableCopyBytes))
+        WpText(stringResource(R.string.copy_confirm_safety), 13, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 10.dp))
+        TextCommand(stringResource(R.string.action_confirm_save_copy), "chart-library-confirm-save-copy") {
+            onAction(ChartLibraryUiAction.ConfirmManagedCopy)
+        }
+    }
+}
+
+@Composable
 private fun ApplicationBar(state: ChartLibraryUiState, onAction: (ChartLibraryUiAction) -> Unit) {
     val actions = when (val page = state.page) {
         is ChartLibraryPageUi.Overview -> if (state.selectedAssetIds.isEmpty()) {
@@ -378,17 +422,23 @@ private fun ApplicationBar(state: ChartLibraryUiState, onAction: (ChartLibraryUi
             action("×", R.string.action_disable, ChartLibraryTestTags.BULK_DISABLE) { onAction(ChartLibraryUiAction.SetSelectedEnabled(false)) },
             action("−", R.string.action_clear_selection, "chart-library-clear-selection") { onAction(ChartLibraryUiAction.ClearSelection) },
         )
-        is ChartLibraryPageUi.SourceDetail -> listOf(
-            action("←", R.string.action_back, "chart-library-back") { onAction(ChartLibraryUiAction.NavigateBack) },
-            if (page.source.scan.status == ChartScanStatus.RUNNING) {
-                action("×", R.string.action_cancel, "chart-library-cancel-scan") { onAction(ChartLibraryUiAction.CancelSourceScan(page.source.id)) }
-            } else action("↻", R.string.action_refresh, "chart-library-refresh") { onAction(ChartLibraryUiAction.RefreshSource(page.source.id)) },
-            action(if (page.source.enabled) "○" else "●", if (page.source.enabled) R.string.action_disable else R.string.action_enable, "chart-library-toggle-source") {
-                onAction(ChartLibraryUiAction.SetSourceEnabled(page.source.id, !page.source.enabled))
-            },
-            action("−", R.string.action_remove, "chart-library-remove-source") { onAction(ChartLibraryUiAction.RequestRemoveSource(page.source.id)) },
-        )
-        is ChartLibraryPageUi.AssetDetail -> listOf(
+        is ChartLibraryPageUi.SourceDetail -> {
+            val basic = listOf(
+                action("←", R.string.action_back, "chart-library-back") { onAction(ChartLibraryUiAction.NavigateBack) },
+                action(if (page.source.enabled) "○" else "●", if (page.source.enabled) R.string.action_disable else R.string.action_enable, "chart-library-toggle-source") {
+                    onAction(ChartLibraryUiAction.SetSourceEnabled(page.source.id, !page.source.enabled))
+                },
+            )
+            if (page.source.kind == ChartLibrarySourceKind.MANAGED) basic else basic + listOf(
+                if (page.source.scan.status == ChartScanStatus.RUNNING) {
+                    action("×", R.string.action_cancel, "chart-library-cancel-scan") { onAction(ChartLibraryUiAction.CancelSourceScan(page.source.id)) }
+                } else action("↻", R.string.action_refresh, "chart-library-refresh") { onAction(ChartLibraryUiAction.RefreshSource(page.source.id)) },
+                action("−", R.string.action_remove, "chart-library-remove-source") {
+                    onAction(ChartLibraryUiAction.RequestRemoveSource(page.source.id))
+                },
+            )
+        }
+        is ChartLibraryPageUi.AssetDetail -> listOfNotNull(
             action("←", R.string.action_back, "chart-library-back") { onAction(ChartLibraryUiAction.NavigateBack) },
             action(if (page.asset.enabled) "○" else "●", if (page.asset.enabled) R.string.action_disable else R.string.action_enable, "chart-library-toggle-asset") {
                 onAction(ChartLibraryUiAction.SetAssetEnabled(page.asset.id, !page.asset.enabled))
@@ -401,9 +451,14 @@ private fun ApplicationBar(state: ChartLibraryUiState, onAction: (ChartLibraryUi
                 onAction(ChartLibraryUiAction.InspectBasic(page.asset.id))
             },
             action("◎", R.string.action_full_verify, "chart-library-full-verify") { onAction(ChartLibraryUiAction.VerifyFull(page.asset.id)) },
+            if (page.asset.isManagedAsset) action(
+                "−", R.string.action_delete_managed_copy, ChartLibraryTestTags.deleteManagedCopy(page.asset.id.value),
+            ) { onAction(ChartLibraryUiAction.RequestDeleteManagedCopy(page.asset.id)) } else null,
         )
         is ChartLibraryPageUi.Storage,
         is ChartLibraryPageUi.RemoveSourceConfirmation,
+        is ChartLibraryPageUi.DeleteManagedCopyConfirmation,
+        is ChartLibraryPageUi.SaveManagedCopyConfirmation,
         -> listOf(action("←", R.string.action_back, "chart-library-back") { onAction(ChartLibraryUiAction.NavigateBack) })
     }
     WpApplicationBar(actions)
@@ -459,6 +514,8 @@ private fun TextCommand(label: String, tag: String, onClick: () -> Unit) {
     is ChartLibraryPageUi.AssetDetail -> R.string.context_asset_detail
     is ChartLibraryPageUi.Storage -> R.string.context_storage
     is ChartLibraryPageUi.RemoveSourceConfirmation -> R.string.context_remove
+    is ChartLibraryPageUi.DeleteManagedCopyConfirmation -> R.string.context_delete_copy
+    is ChartLibraryPageUi.SaveManagedCopyConfirmation -> R.string.context_save_copy
 })
 
 @Composable private fun filterLabel(value: ChartLibraryFilter) = stringResource(when (value) {
@@ -550,9 +607,24 @@ private fun TextCommand(label: String, tag: String, onClick: () -> Unit) {
     ChartValidationJobStatus.CANCELLED -> R.string.job_validation_cancelled
     ChartValidationJobStatus.INTERRUPTED -> R.string.job_validation_interrupted
 })
-@Composable private fun copyJobLabel(value: ChartManagedCopyStatus, copied: Long, total: Long?) = stringResource(
-    R.string.job_copy_progress, copyStatusLabel(value), bytesLabel(copied), bytesLabel(total),
-)
+@Composable
+private fun copyJobLabel(
+    value: ChartManagedCopyStatus,
+    copied: Long,
+    total: Long?,
+    failure: ChartManagedCopyFailure?,
+): String {
+    val progress = stringResource(R.string.job_copy_progress, copyStatusLabel(value), bytesLabel(copied), bytesLabel(total))
+    val reason = when (failure) {
+        ChartManagedCopyFailure.INSUFFICIENT_SPACE -> stringResource(R.string.copy_failure_no_space)
+        ChartManagedCopyFailure.ACTIVE_LEASE -> stringResource(R.string.copy_failure_in_use)
+        ChartManagedCopyFailure.ASSET_NOT_FOUND -> stringResource(R.string.copy_failure_missing)
+        ChartManagedCopyFailure.NOT_AVAILABLE -> stringResource(R.string.copy_failure_unavailable)
+        ChartManagedCopyFailure.PERSISTENCE -> stringResource(R.string.copy_failure_storage)
+        null -> null
+    }
+    return if (reason == null) progress else stringResource(R.string.job_copy_failure_detail, progress, reason)
+}
 @Composable private fun copyStatusLabel(value: ChartManagedCopyStatus) = stringResource(when (value) {
     ChartManagedCopyStatus.QUEUED -> R.string.copy_queued
     ChartManagedCopyStatus.COPYING -> R.string.copy_copying
@@ -575,6 +647,9 @@ private fun TextCommand(label: String, tag: String, onClick: () -> Unit) {
     ChartLibraryNoticeUi.VALIDATION_CANCELLED -> R.string.notice_validation_cancelled
     ChartLibraryNoticeUi.COPY_STARTED -> R.string.notice_copy_started
     ChartLibraryNoticeUi.COPY_CANCELLED -> R.string.notice_copy_cancelled
+    ChartLibraryNoticeUi.MANAGED_COPY_DELETED -> R.string.notice_copy_deleted
+    ChartLibraryNoticeUi.MANAGED_COPY_IN_USE -> R.string.notice_copy_in_use
+    ChartLibraryNoticeUi.MANAGED_COPY_NO_SPACE -> R.string.notice_copy_no_space
     ChartLibraryNoticeUi.PICKER_CANCELLED -> R.string.notice_picker_cancelled
     ChartLibraryNoticeUi.PERMISSION_REQUIRED -> R.string.notice_permission
     ChartLibraryNoticeUi.ITEM_NOT_FOUND -> R.string.notice_missing

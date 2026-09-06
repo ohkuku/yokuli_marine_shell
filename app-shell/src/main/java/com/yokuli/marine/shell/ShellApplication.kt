@@ -62,7 +62,7 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
         AndroidChartCoverageIndex(chartPackageRepository::acquireLease)
     }
     override val chartLibraryRuntime: ChartLibraryRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        AndroidChartLibraryRuntime.create(this, applicationScope)
+        AndroidChartLibraryRuntime.create(this, applicationScope, chartPackageRepository)
     }
     val chartTileGateway by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { ChartLoopbackTileGateway() }
     val positionPort: ReadOnlyPositionPort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {

@@ -355,12 +355,55 @@
     },
     "CL09": {
       "title": "旧受管包迁移与显式副本",
-      "status": "NOT_STARTED",
+      "status": "IMPLEMENTED_CI_PENDING",
       "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "changed_files": [
+        "core/map-domain/**/{ChartPackageRepository,MapModel,MapReducer}*",
+        "core/map-domain/**/chartlibrary/{ChartCatalogContracts,ChartLibraryRuntimeContracts}*",
+        "adapter/map-offline/**/AndroidMbTilesRepository*",
+        "adapter/chart-library-android/**/{ManagedChartCatalogBridge,AndroidChartLibraryRuntime,AndroidChartResourceAccess,AndroidSafRandomAccessReader,ChartCatalogDatabase,RoomChartCatalogRepository}*",
+        "adapter/chart-library-android/schemas/**/3.json",
+        "adapter/map-storage/**/{map_state.proto,MapProtoMapper}*",
+        "feature/chart/**/ChartDisplayCoordinator*",
+        "feature/chart-library/**",
+        "app-shell/**/ShellApplication.kt",
+        ".github/scripts/{test_chart_library_cl09_contract.py,test-ci-contract.sh}",
+        ".github/workflows/android.yml",
+        "docs/phases/chart-library/{CL09_REPORT.md,CL09_BASELINE_LOCK.json,ACCEPTANCE_RESULTS_TEMPLATE.md,EXECUTION_STATE.json}"
+      ],
+      "commands": [
+        {
+          "command": "python3 .github/scripts/test_chart_library_cl09_contract.py + py_compile/JSON/XML/bash syntax/diff checks",
+          "result": "PASS"
+        },
+        {
+          "command": "./gradlew :adapter:chart-library-android:kspDebugKotlin --no-daemon",
+          "first_exit_code": 1,
+          "first_failure": "CL08 fun-interface abstract method used an illegal default argument",
+          "corrected_exit_code": 0,
+          "result": "Room v3 schema generated and core compile passed"
+        },
+        {
+          "command": "Yokuli OS Android CI / Chart Library CL09 managed migration and copy contract",
+          "result": "PENDING_GITHUB_ACTION"
+        },
+        {
+          "command": "Yokuli OS Android CI / unit tests + API34 all device suites + APK compile",
+          "result": "PENDING_GITHUB_ACTION"
+        }
+      ],
+      "evidence": [
+        "CODEX-CI-REPORT-<CL09_SHA12>-<run_id>-<attempt>",
+        "yokuli-os-build-reports-<CL09_SHA>",
+        "yokuli-os-api34-reports-<CL09_SHA>",
+        "docs/phases/chart-library/CL09_REPORT.md",
+        "docs/phases/chart-library/CL09_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "按用户指定的CI-first工作流，本地不重复运行完整Gradle门禁；提交后继续CL10并累计读取机器证据",
+        "受管包后端继续复用现有map_packages事务实现；catalog仅建立索引、关系和稳定映射，不另造副本仓库",
+        "最小Room schema生成发现并纠正CL08 fun-interface默认参数的Kotlin编译错误；调用语义未改变"
+      ],
       "blockers": []
     },
     "CL10": {

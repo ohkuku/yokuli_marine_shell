@@ -32,11 +32,13 @@ data class ChartManagedCopyProgress(
     val copiedBytes: Long = 0L,
     val totalBytes: Long? = null,
     val managedAssetId: ChartAssetId? = null,
+    val failure: ChartManagedCopyFailure? = null,
 ) {
     init {
         require(copiedBytes >= 0L)
         require(totalBytes == null || totalBytes >= copiedBytes)
         require(status != ChartManagedCopyStatus.COMPLETED || managedAssetId != null)
+        require(status == ChartManagedCopyStatus.FAILED || failure == null)
     }
 }
 
@@ -45,6 +47,7 @@ data class ChartLibraryStorageSnapshot(
     val managedCopyBytes: Long? = null,
     val catalogBytes: Long? = null,
     val cacheBytes: Long? = null,
+    val availableCopyBytes: Long? = null,
     val copyCapability: ChartManagedCopyCapability = ChartManagedCopyCapability.UNAVAILABLE,
     val copyJobs: Map<ChartAssetId, ChartManagedCopyProgress> = emptyMap(),
 ) {
@@ -52,6 +55,7 @@ data class ChartLibraryStorageSnapshot(
         require(managedCopyBytes == null || managedCopyBytes >= 0L)
         require(catalogBytes == null || catalogBytes >= 0L)
         require(cacheBytes == null || cacheBytes >= 0L)
+        require(availableCopyBytes == null || availableCopyBytes >= 0L)
         require(copyJobs.size <= MAX_COPY_JOB_HISTORY)
         require(copyJobs.all { (assetId, job) -> assetId == job.sourceAssetId })
     }
@@ -68,10 +72,24 @@ sealed interface ChartManagedCopyCommandResult {
     data class Rejected(val failure: ChartManagedCopyFailure) : ChartManagedCopyCommandResult
 }
 
+data class ChartManagedDeleteImpact(
+    val assetId: ChartAssetId,
+    /** True when deleting can invalidate a current or restored display plan; confirmation stays conservative. */
+    val mayAffectDisplay: Boolean,
+)
+
+sealed interface ChartManagedDeleteResult {
+    data class ConfirmationRequired(val impact: ChartManagedDeleteImpact) : ChartManagedDeleteResult
+    data object Deleted : ChartManagedDeleteResult
+    data class Rejected(val failure: ChartManagedCopyFailure) : ChartManagedDeleteResult
+}
+
 interface ChartManagedCopyPort {
     val storage: StateFlow<ChartLibraryStorageSnapshot>
     suspend fun saveManagedCopy(assetId: ChartAssetId): ChartManagedCopyCommandResult
     fun cancelManagedCopy(assetId: ChartAssetId)
+    suspend fun deleteManagedCopy(assetId: ChartAssetId, confirmed: Boolean): ChartManagedDeleteResult =
+        ChartManagedDeleteResult.Rejected(ChartManagedCopyFailure.NOT_AVAILABLE)
 }
 
 interface ChartLibraryRuntimePort :

@@ -1,6 +1,7 @@
 package com.yokuli.marine.feature.chart
 
 import com.yokuli.marine.map.domain.GeoBounds
+import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapDispatchResult
 import com.yokuli.marine.map.domain.MapState
@@ -103,13 +104,38 @@ class ChartDisplayCoordinatorTest {
         scope.cancel()
     }
 
-    private class FakeMapStore : MapStore {
-        private val mutable = MutableStateFlow(MapState())
+    @Test
+    fun `legacy active package migrates once and explicit none is never stolen back`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A)), legacyAssetId = ASSET_A)
+        val store = FakeMapStore(MapState(activeChartPackageId = ChartPackageId("legacy-package")))
+        val coordinator = ChartDisplayCoordinator(catalog, store, scope)
+        withTimeout(2_000L) {
+            coordinator.state.first { it.selection == ChartDisplaySelection.PinnedAsset(ASSET_A) }
+        }
+        assertTrue(store.state.value.chartDisplayPreferencesInitialized)
+
+        coordinator.dispatch(ChartDisplayUiAction.UseNoLocalChart)
+        withTimeout(2_000L) { coordinator.state.first { it.selection == ChartDisplaySelection.None } }
+        catalog.replaceAssets(listOf(asset(ASSET_A), asset(ASSET_B)))
+        withTimeout(2_000L) { coordinator.state.first { it.assets.size == 2 } }
+
+        assertEquals(ChartDisplaySelection.None, coordinator.state.value.selection)
+        coordinator.close()
+        scope.cancel()
+    }
+
+    private class FakeMapStore(initial: MapState = MapState()) : MapStore {
+        private val mutable = MutableStateFlow(initial)
         override val state: StateFlow<MapState> = mutable
         val actions = mutableListOf<MapAction>()
         override fun dispatch(action: MapAction): MapDispatchResult {
             actions += action
             if (action is MapAction.ChartDisplayPlanChanged) mutable.value = mutable.value.copy(chartDisplayPlan = action.plan)
+            if (action is MapAction.ChartDisplayPreferencesChanged) mutable.value = mutable.value.copy(
+                chartDisplayPreferences = action.preferences,
+                chartDisplayPreferencesInitialized = true,
+            )
             return MapDispatchResult.ACCEPTED
         }
         override fun close() = Unit
@@ -118,6 +144,7 @@ class ChartDisplayCoordinatorTest {
     private class FakeCatalog(
         private var sourceItems: List<ChartLibrarySource>,
         private var assetItems: List<ChartAsset>,
+        private val legacyAssetId: ChartAssetId? = null,
     ) : ChartCatalogReadPort {
         private val mutableSnapshot = MutableStateFlow(snapshotFor(1L))
         override val snapshot: StateFlow<ChartCatalogSnapshot> = mutableSnapshot
@@ -136,7 +163,8 @@ class ChartDisplayCoordinatorTest {
             limit,
         )
         override suspend fun asset(id: ChartAssetId) = assetItems.firstOrNull { it.id == id }
-        override suspend fun resolveLegacyAsset(legacyLogicalId: String, legacyVersionId: String?) = null
+        override suspend fun resolveLegacyAsset(legacyLogicalId: String, legacyVersionId: String?) =
+            legacyAssetId.takeIf { legacyLogicalId == "legacy-package" }
 
         private fun snapshotFor(revision: Long) = ChartCatalogSnapshot(revision, sourceItems.size, assetItems.size)
         private fun <T> page(items: List<T>, offset: Int, limit: Int) = ChartCatalogPage(

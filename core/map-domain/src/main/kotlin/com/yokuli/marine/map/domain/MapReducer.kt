@@ -1,6 +1,7 @@
 package com.yokuli.marine.map.domain
 
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPreferences
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayViewport
 
 sealed interface MapAction {
@@ -120,6 +121,7 @@ sealed interface MapAction {
     data class ChartPackagesChanged(val packages: List<ChartPackage>) : MapAction
     data class SelectChartPackage(val packageId: ChartPackageId) : MapAction
     data class ChartDisplayPlanChanged(val plan: ChartDisplayPlan) : MapAction
+    data class ChartDisplayPreferencesChanged(val preferences: ChartDisplayPreferences) : MapAction
     data class ChartDisplayViewportChanged(
         val rendererGeneration: MapRendererGeneration,
         val viewport: ChartDisplayViewport,
@@ -341,6 +343,17 @@ class DefaultMapReducer(
         } else {
             MapReduction(state.copy(chartDisplayPlan = action.plan))
         }
+        is MapAction.ChartDisplayPreferencesChanged -> if (state.chartDisplayPreferences == action.preferences) {
+            if (state.chartDisplayPreferencesInitialized) MapReduction(state)
+            else persistSession(state.copy(chartDisplayPreferencesInitialized = true))
+        } else {
+            persistSession(
+                state.copy(
+                    chartDisplayPreferences = action.preferences,
+                    chartDisplayPreferencesInitialized = true,
+                ),
+            )
+        }
         is MapAction.ChartDisplayViewportChanged -> if (state.renderer.generation != action.rendererGeneration) {
             MapReduction(state)
         } else {
@@ -385,6 +398,8 @@ class DefaultMapReducer(
                     gpxImportRecords = library.gpxImportRecords,
                     activeRoutePlanId = activePlanId,
                     activeChartPackageId = result.session.activeChartPackageId,
+                    chartDisplayPreferences = result.session.chartDisplayPreferences,
+                    chartDisplayPreferencesInitialized = result.session.chartDisplayPreferencesInitialized,
                     libraryLoadState = if (library.isEmpty) MapLibraryLoadState.READY_EMPTY else MapLibraryLoadState.READY,
                     libraryRevision = library.revision,
                     durableLibraryRevision = library.revision,

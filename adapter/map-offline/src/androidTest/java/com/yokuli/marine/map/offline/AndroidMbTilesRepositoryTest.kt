@@ -169,6 +169,40 @@ class AndroidMbTilesRepositoryTest {
     }
 
     @Test
+    fun managedStoreSnapshotPreservesActiveVersionAndHistoryWithoutRecopyingPublishedPayloads() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val testRoot = File(context.cacheDir, "mbtiles-managed-snapshot-test").also { it.deleteRecursively(); it.mkdirs() }
+        val packages = File(testRoot, "packages")
+        val repository = AndroidMbTilesRepository(context.contentResolver, packages)
+        val sourceV1 = File(testRoot, "v1.mbtiles").also { createRasterMbTiles(it) }
+        val candidateV1 = repository.inspect(sourceV1.toURI().toString())
+        val versionV1 = repository.commit(
+            ChartPackageImportRequest(candidateV1.stagedImportId, "Harbour", "Unknown", "Unknown", "Unknown", "1"),
+        )
+        val sourceV2 = File(testRoot, "v2.mbtiles").also {
+            createRasterMbTiles(it, tileData = asymmetricTile(512, Bitmap.CompressFormat.PNG))
+        }
+        val candidateV2 = repository.inspect(sourceV2.toURI().toString())
+        val versionV2 = repository.commit(
+            ChartPackageImportRequest(
+                candidateV2.stagedImportId, "Harbour", "Unknown", "Unknown", "Unknown", "2",
+                replaceLogicalPackageId = versionV1.logicalId,
+            ),
+        )
+        val beforeFiles = packages.walkTopDown().filter(File::isFile).map { it.relativeTo(packages).path }.toSet()
+
+        val snapshot = AndroidMbTilesRepository(context.contentResolver, packages).managedStoreSnapshot()
+
+        assertEquals(setOf(versionV1.versionId, versionV2.versionId), snapshot.packages.map { it.versionId }.toSet())
+        assertEquals(versionV2.versionId, snapshot.activeByLogicalId[versionV1.logicalId])
+        assertEquals(listOf(versionV1.versionId, versionV2.versionId), snapshot.historyByLogicalId[versionV1.logicalId])
+        assertEquals(beforeFiles, packages.walkTopDown().filter(File::isFile).map { it.relativeTo(packages).path }.toSet())
+        assertTrue(requireNotNull(snapshot.storageBytes) >= sourceV1.length() + sourceV2.length())
+        testRoot.deleteRecursively()
+        Unit
+    }
+
+    @Test
     fun everyInstallJournalBoundaryRecoversOneCompleteLogicalPackage() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         InstallCheckpoint.entries.forEach { crashPoint ->

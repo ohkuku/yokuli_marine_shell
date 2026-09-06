@@ -129,6 +129,14 @@ data class LegacyChartAssetMapping(
     }
 }
 
+/** An explicit user-created managed copy remains related to its external original. */
+data class ChartManagedCopyRelation(
+    val originalAssetId: ChartAssetId,
+    val managedAssetId: ChartAssetId,
+) {
+    init { require(originalAssetId != managedAssetId) }
+}
+
 data class ChartCatalogSnapshot(
     val revision: Long = 0L,
     val sourceCount: Int = 0,
@@ -164,6 +172,8 @@ interface ChartCatalogReadPort {
     ): ChartCatalogPage<ChartAsset>
     suspend fun asset(id: ChartAssetId): ChartAsset?
     suspend fun resolveLegacyAsset(legacyLogicalId: String, legacyVersionId: String? = null): ChartAssetId?
+    suspend fun managedCopyFor(originalAssetId: ChartAssetId): ChartAssetId? = null
+    suspend fun originalForManagedCopy(managedAssetId: ChartAssetId): ChartAssetId? = null
 }
 
 sealed interface ChartCatalogMutation {
@@ -172,6 +182,7 @@ sealed interface ChartCatalogMutation {
     data class PutAsset(val asset: ChartAsset) : ChartCatalogMutation
     data class RemoveAssetMembership(val assetId: ChartAssetId, val sourceId: ChartSourceId) : ChartCatalogMutation
     data class PutLegacyMapping(val mapping: LegacyChartAssetMapping) : ChartCatalogMutation
+    data class PutManagedCopyRelation(val relation: ChartManagedCopyRelation) : ChartCatalogMutation
 }
 
 data class ChartCatalogTransaction(

@@ -26,6 +26,8 @@ sealed interface ChartLibraryLocalPage {
     data class AssetDetail(val assetId: ChartAssetId) : ChartLibraryLocalPage
     data object Storage : ChartLibraryLocalPage
     data class RemoveSourceConfirmation(val sourceId: ChartSourceId) : ChartLibraryLocalPage
+    data class DeleteManagedCopyConfirmation(val assetId: ChartAssetId) : ChartLibraryLocalPage
+    data class SaveManagedCopyConfirmation(val assetId: ChartAssetId) : ChartLibraryLocalPage
 }
 
 data class ChartLibraryLocalState(
@@ -97,6 +99,9 @@ data class ChartLibraryAssetRowUi(
     val revisionSummary: String?,
     val selected: Boolean,
     val managedCopyAvailable: Boolean,
+    val isManagedAsset: Boolean = false,
+    val originalAssetId: ChartAssetId? = null,
+    val managedCopyAssetId: ChartAssetId? = null,
     val validationJob: ChartValidationJob?,
     val copyJob: ChartManagedCopyProgress?,
 ) {
@@ -128,6 +133,7 @@ data class ChartLibraryStorageUi(
     val cacheBytes: Long?,
     val copyAvailable: Boolean,
     val copyJobs: List<ChartManagedCopyProgress>,
+    val availableCopyBytes: Long? = null,
 )
 
 sealed interface ChartLibraryPageUi {
@@ -144,6 +150,11 @@ sealed interface ChartLibraryPageUi {
     data class AssetDetail(val asset: ChartLibraryAssetRowUi) : ChartLibraryPageUi
     data class Storage(val storage: ChartLibraryStorageUi) : ChartLibraryPageUi
     data class RemoveSourceConfirmation(val source: ChartLibrarySourceRowUi) : ChartLibraryPageUi
+    data class DeleteManagedCopyConfirmation(val asset: ChartLibraryAssetRowUi) : ChartLibraryPageUi
+    data class SaveManagedCopyConfirmation(
+        val asset: ChartLibraryAssetRowUi,
+        val availableCopyBytes: Long?,
+    ) : ChartLibraryPageUi
 }
 
 enum class ChartLibraryNoticeUi {
@@ -158,6 +169,9 @@ enum class ChartLibraryNoticeUi {
     VALIDATION_CANCELLED,
     COPY_STARTED,
     COPY_CANCELLED,
+    MANAGED_COPY_DELETED,
+    MANAGED_COPY_IN_USE,
+    MANAGED_COPY_NO_SPACE,
     PICKER_CANCELLED,
     PERMISSION_REQUIRED,
     ITEM_NOT_FOUND,
@@ -202,7 +216,10 @@ sealed interface ChartLibraryUiAction {
     data class VerifyFull(val assetId: ChartAssetId) : ChartLibraryUiAction
     data class CancelValidation(val assetId: ChartAssetId) : ChartLibraryUiAction
     data class SaveManagedCopy(val assetId: ChartAssetId) : ChartLibraryUiAction
+    data object ConfirmManagedCopy : ChartLibraryUiAction
     data class CancelManagedCopy(val assetId: ChartAssetId) : ChartLibraryUiAction
+    data class RequestDeleteManagedCopy(val assetId: ChartAssetId) : ChartLibraryUiAction
+    data object ConfirmDeleteManagedCopy : ChartLibraryUiAction
     data class ViewInChart(val assetId: ChartAssetId) : ChartLibraryUiAction
     data object DismissNotice : ChartLibraryUiAction
 }
@@ -240,4 +257,5 @@ object ChartLibraryTestTags {
     fun priorityUp(id: String) = "chart-library-priority-up-$id"
     fun priorityDown(id: String) = "chart-library-priority-down-$id"
     fun managedCopy(id: String) = "chart-library-managed-copy-$id"
+    fun deleteManagedCopy(id: String) = "chart-library-delete-managed-copy-$id"
 }

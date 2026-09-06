@@ -53,6 +53,7 @@ class AndroidSafRandomAccessReader(private val resolver: ContentResolver) {
 class SafReadOnlyHandle internal constructor(
     private val descriptor: ParcelFileDescriptor,
     val sizeBytes: Long,
+    private val onClose: () -> Unit = {},
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val bytesRead = AtomicLong(0L)
@@ -104,6 +105,8 @@ class SafReadOnlyHandle internal constructor(
                 descriptor.close()
             } catch (_: IOException) {
                 // Idempotent close; there is no recovery action after ownership is released.
+            } finally {
+                onClose()
             }
         }
     }

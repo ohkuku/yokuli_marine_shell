@@ -1,6 +1,7 @@
 package com.yokuli.marine.feature.chart
 
 import com.yokuli.marine.map.domain.MapStore
+import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.chartlibrary.ChartAsset
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetAccessState
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
@@ -38,7 +39,12 @@ class ChartDisplayCoordinator(
 ) : Closeable {
     private sealed interface Event {
         data class CatalogChanged(val snapshot: ChartCatalogSnapshot) : Event
-        data class ViewportChanged(val viewport: ChartDisplayViewport?) : Event
+        data class MapDisplayChanged(
+            val viewport: ChartDisplayViewport?,
+            val preferences: ChartDisplayPreferences,
+            val preferencesInitialized: Boolean,
+            val legacyPackageId: ChartPackageId?,
+        ) : Event
         data class Action(val value: ChartDisplayUiAction) : Event
     }
 
@@ -49,6 +55,8 @@ class ChartDisplayCoordinator(
     private var preferences = ChartDisplayPreferences()
     private var catalogSnapshot = ChartCatalogSnapshot()
     private var viewport: ChartDisplayViewport? = null
+    private var preferencesInitialized = false
+    private var legacyPackageId: ChartPackageId? = null
     private var sources: List<ChartLibrarySource> = emptyList()
     private var assets: List<ChartAsset> = emptyList()
     private var generation = 0L
@@ -60,9 +68,12 @@ class ChartDisplayCoordinator(
                     catalogSnapshot = event.snapshot
                     reloadCatalog()
                 }
-                is Event.ViewportChanged -> {
+                is Event.MapDisplayChanged -> {
                     viewport = event.viewport
-                    publishPlan()
+                    preferences = event.preferences
+                    preferencesInitialized = event.preferencesInitialized
+                    legacyPackageId = event.legacyPackageId
+                    if (!preferencesInitialized && legacyPackageId != null) reloadCatalog() else publishPlan()
                 }
                 is Event.Action -> handle(event.value)
             }
@@ -72,8 +83,16 @@ class ChartDisplayCoordinator(
         catalog.snapshot.collect { events.send(Event.CatalogChanged(it)) }
     }
     private val viewportObserver = scope.launch {
-        mapStore.state.map { it.chartDisplayViewport }.distinctUntilChanged()
-            .collect { events.send(Event.ViewportChanged(it)) }
+        mapStore.state.map {
+            DisplayInput(
+                it.chartDisplayViewport,
+                it.chartDisplayPreferences,
+                it.chartDisplayPreferencesInitialized,
+                it.activeChartPackageId,
+            )
+        }.distinctUntilChanged().collect {
+            events.send(Event.MapDisplayChanged(it.viewport, it.preferences, it.preferencesInitialized, it.legacyPackageId))
+        }
     }
 
     fun dispatch(action: ChartDisplayUiAction): Boolean {
@@ -131,6 +150,8 @@ class ChartDisplayCoordinator(
                 return
             }
         }
+        mapStore.dispatch(MapAction.ChartDisplayPreferencesChanged(preferences))
+        preferencesInitialized = true
         publishPlan()
     }
 
@@ -152,6 +173,15 @@ class ChartDisplayCoordinator(
         }
         sources = loadedSources.items
         assets = loadedAssets.items
+        if (!preferencesInitialized && preferences.selection is ChartDisplaySelection.None) {
+            val legacyId = legacyPackageId
+            val migrated = legacyId?.let { catalog.resolveLegacyAsset(it.value) }
+            if (migrated != null && assets.any { it.id == migrated }) {
+                preferences = preferences.copy(selection = ChartDisplaySelection.PinnedAsset(migrated))
+                preferencesInitialized = true
+                mapStore.dispatch(MapAction.ChartDisplayPreferencesChanged(preferences))
+            }
+        }
         val notice = if (loadedSources.truncated || loadedAssets.truncated) {
             ChartDisplayNoticeUi.CATALOG_LIMIT_REACHED
         } else null
@@ -223,6 +253,12 @@ class ChartDisplayCoordinator(
     }
 
     private data class Loaded<T>(val items: List<T>, val truncated: Boolean)
+    private data class DisplayInput(
+        val viewport: ChartDisplayViewport?,
+        val preferences: ChartDisplayPreferences,
+        val preferencesInitialized: Boolean,
+        val legacyPackageId: ChartPackageId?,
+    )
 
     private companion object {
         const val EVENT_CAPACITY = 64

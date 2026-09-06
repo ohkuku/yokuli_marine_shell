@@ -10,6 +10,11 @@ import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapPersistedState
 import com.yokuli.marine.map.domain.MapSessionSnapshot
 import com.yokuli.marine.map.domain.MeasurementDraft
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPreferences
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
+import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
+import com.yokuli.marine.map.storage.proto.ChartAssetOpacityProto
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.map.domain.SavedRoute
 import com.yokuli.marine.map.storage.proto.ChartPackageProto
@@ -24,7 +29,7 @@ import com.yokuli.marine.map.storage.proto.SavedPlaceProto
 import com.yokuli.marine.map.storage.proto.SavedRouteProto
 
 internal object MapProtoMapper {
-    const val SCHEMA_VERSION = 3
+    const val SCHEMA_VERSION = 4
 
     fun encodeSession(state: MapSessionSnapshot): MapStateProto = MapStateProto.newBuilder()
         .setSchemaVersion(SCHEMA_VERSION)
@@ -34,6 +39,8 @@ internal object MapProtoMapper {
             state.activeRouteDraftId?.let { builder.activeRouteDraftId = it }
             state.activeRoutePlanId?.let { builder.activeRoutePlanId = it }
             state.activeChartPackageId?.let { builder.activeChartPackageId = it.value }
+            builder.encodeDisplayPreferences(state.chartDisplayPreferences)
+            builder.chartDisplayPreferencesInitialized = state.chartDisplayPreferencesInitialized
         }
         .build()
 
@@ -45,6 +52,8 @@ internal object MapProtoMapper {
             activeRouteDraftId = proto.activeRouteDraftId.takeIf { it.isNotBlank() },
             activeRoutePlanId = proto.activeRoutePlanId.takeIf { it.isNotBlank() },
             activeChartPackageId = proto.activeChartPackageId.takeIf { it.isNotBlank() }?.let(::ChartPackageId),
+            chartDisplayPreferences = proto.decodeDisplayPreferences(),
+            chartDisplayPreferencesInitialized = proto.schemaVersion >= 4 && proto.chartDisplayPreferencesInitialized,
         )
     } catch (error: IllegalArgumentException) {
         throw CorruptionException("Invalid map session", error)
@@ -81,6 +90,39 @@ internal object MapProtoMapper {
     }
 
     private fun GeoPoint.toProto() = GeoPointProto.newBuilder().setLatitude(latitude).setLongitude(longitude).build()
+
+    private fun MapStateProto.Builder.encodeDisplayPreferences(value: ChartDisplayPreferences) {
+        chartDisplayOverlaysVisible = value.overlaysVisible
+        when (val selection = value.selection) {
+            ChartDisplaySelection.None -> chartDisplaySelectionKind = "none"
+            is ChartDisplaySelection.PinnedAsset -> {
+                chartDisplaySelectionKind = "asset"
+                addChartDisplaySelectionIds(selection.assetId.value)
+            }
+            is ChartDisplaySelection.SourceSet -> {
+                chartDisplaySelectionKind = "sources"
+                addAllChartDisplaySelectionIds(selection.sourceIds.map { it.value }.sorted())
+            }
+        }
+        addAllChartAssetOpacity(
+            value.assetOpacity.entries.sortedBy { it.key.value }.map { (assetId, opacity) ->
+                ChartAssetOpacityProto.newBuilder().setAssetId(assetId.value).setOpacity(opacity).build()
+            },
+        )
+    }
+
+    /** A malformed new preference must not quarantine otherwise valid routes, places or camera state. */
+    private fun MapStateProto.decodeDisplayPreferences(): ChartDisplayPreferences = runCatching {
+        if (schemaVersion < 4 || chartDisplaySelectionKind.isBlank()) return@runCatching ChartDisplayPreferences()
+        val selection = when (chartDisplaySelectionKind) {
+            "none" -> ChartDisplaySelection.None
+            "asset" -> ChartDisplaySelection.PinnedAsset(ChartAssetId(chartDisplaySelectionIdsList.single()))
+            "sources" -> ChartDisplaySelection.SourceSet(chartDisplaySelectionIdsList.mapTo(linkedSetOf(), ::ChartSourceId))
+            else -> error("Unknown chart display selection")
+        }
+        val opacity = chartAssetOpacityList.associate { ChartAssetId(it.assetId) to it.opacity }
+        ChartDisplayPreferences(selection, chartDisplayOverlaysVisible, opacity)
+    }.getOrDefault(ChartDisplayPreferences())
     private fun GeoPointProto.toDomain() = GeoPoint(latitude, longitude)
     private fun GeoBounds.toProto() = GeoBoundsProto.newBuilder().setSouth(south).setWest(west).setNorth(north).setEast(east).build()
     private fun GeoBoundsProto.toDomain() = GeoBounds(south, west, north, east)

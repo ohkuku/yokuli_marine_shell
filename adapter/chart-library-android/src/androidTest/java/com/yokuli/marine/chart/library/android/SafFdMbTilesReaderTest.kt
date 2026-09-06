@@ -8,6 +8,7 @@ import android.provider.DocumentsContract
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yokuli.marine.map.domain.MapTileScheme
+import com.yokuli.marine.map.domain.ChartPackageLease
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
 import com.yokuli.marine.map.domain.chartlibrary.ChartContentRevision
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpenResult
@@ -20,6 +21,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.RandomAccessFile
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -80,6 +82,37 @@ class SafFdMbTilesReaderTest {
         assertTrue(result is ChartOpenResult.Rejected)
         assertEquals(ChartReadFailure.DIRECT_READ_UNSUPPORTED, (result as ChartOpenResult.Rejected).failure)
         assertFalse(File(context.filesDir, "chart_library").exists())
+    }
+
+    @Test fun managedLocatorOpensOnlyInsidePrivateStoreAndHoldsLeaseUntilSessionClose() = runBlocking {
+        val root = File(context.filesDir, "map_packages-managed-reader-test").also { it.deleteRecursively(); it.mkdirs() }
+        val temporary = File(root, "fixture.mbtiles")
+        val png = pngTile(256)
+        createMbTiles(temporary, png)
+        val sha = temporary.sha256()
+        val database = File(root, "package-$sha/map.mbtiles").also { it.parentFile?.mkdirs() }
+        assertTrue(temporary.renameTo(database))
+        val leases = AtomicInteger(0)
+        val access = AndroidChartResourceAccess(context.contentResolver, root) {
+            leases.incrementAndGet()
+            ChartPackageLease { leases.decrementAndGet() }
+        }
+        val request = ChartReadRequest(
+            ChartAssetId("asset-managed"),
+            ChartOpaqueLocator("yokuli-managed://$sha"),
+            ChartContentRevision("managed:$sha", database.length(), database.lastModified(), contentSha256 = sha),
+            1L,
+        )
+
+        val opened = access.open(request) as ChartOpenResult.Opened
+        assertEquals(1, leases.get())
+        assertArrayEquals(png, requireNotNull(opened.session.readTile(ChartTileKey(0, 0, 0), MapTileScheme.MBTILES_TMS)).bytes)
+        opened.session.close()
+        assertEquals(0, leases.get())
+
+        val escaped = request.copy(locator = ChartOpaqueLocator("yokuli-managed://not-a-version"))
+        assertEquals(ChartReadFailure.CANNOT_OPEN, (access.open(escaped) as ChartOpenResult.Rejected).failure)
+        root.deleteRecursively()
     }
 
     @Test fun randomAccessUsesLongOffsetsBeyondFourGiB() {

@@ -21,6 +21,8 @@ import com.yokuli.marine.map.domain.ChartPackageOperationId
 import com.yokuli.marine.map.domain.ChartPackageRepository
 import com.yokuli.marine.map.domain.ChartPackageVersionId
 import com.yokuli.marine.map.domain.GeoBounds
+import com.yokuli.marine.map.domain.ManagedChartPackageStoreSnapshot
+import com.yokuli.marine.map.domain.MAX_MANAGED_PACKAGE_VERSIONS
 import com.yokuli.marine.map.domain.MapTileScheme
 import java.io.File
 import java.io.FileInputStream
@@ -162,6 +164,7 @@ class AndroidMbTilesRepository(
                 logicalId = logicalId,
                 versionId = candidate.versionId,
                 validationLevel = candidate.validationLevel,
+                copiedFromCatalogAssetId = request.copiedFromCatalogAssetId,
             )
             if (!destination.isDirectory) {
                 currentCoroutineContext().ensureActive()
@@ -202,10 +205,46 @@ class AndroidMbTilesRepository(
         mutex.withLock {
             root.mkdirsChecked()
             reconcileLocked()
+            cleanAbandonedStaging()
             if (readActiveIndex().isEmpty()) migrateLegacyPackages()
             readActiveIndex().values.distinct().map { version ->
                 readManifest(versionDirectory(ChartPackageVersionId(version)))
             }.sortedBy { it.displayName.lowercase() }
+        }
+    }
+
+    override suspend fun managedStoreSnapshot(): ManagedChartPackageStoreSnapshot = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            root.mkdirsChecked()
+            reconcileLocked()
+            cleanAbandonedStaging()
+            if (readActiveIndex().isEmpty()) migrateLegacyPackages()
+            val directories = root.listFiles().orEmpty()
+                .filter { it.isDirectory && it.name.startsWith(VERSION_PREFIX) }
+                .sortedBy(File::getName)
+            if (directories.size > MAX_MANAGED_PACKAGE_VERSIONS) throw ChartPackageImportException(
+                ChartPackageImportFailure.RESOURCE_LIMIT,
+                "The managed chart store contains too many published versions",
+            )
+            val packages = directories.map(::readManifest)
+            val published = packages.mapTo(hashSetOf(), ChartPackage::versionId)
+            val active = readActiveIndex().mapNotNull { (logical, version) ->
+                runCatching { ChartPackageLogicalId(logical) to ChartPackageVersionId(version) }.getOrNull()
+                    ?.takeIf { it.second in published }
+            }.toMap()
+            val history = readHistory().mapNotNull { (logical, versions) ->
+                runCatching { ChartPackageLogicalId(logical) }.getOrNull()?.let { id ->
+                    id to versions.mapNotNull { version ->
+                        runCatching { ChartPackageVersionId(version) }.getOrNull()?.takeIf(published::contains)
+                    }.distinct()
+                }
+            }.toMap()
+            ManagedChartPackageStoreSnapshot(
+                packages = packages,
+                activeByLogicalId = active,
+                historyByLogicalId = history,
+                storageBytes = root.walkTopDown().filter(File::isFile).sumOf(File::length),
+            )
         }
     }
 
@@ -303,6 +342,12 @@ class AndroidMbTilesRepository(
                     ChartPackageImportFailure.RESOURCE_LIMIT,
                     "The selected package exceeds the supported import size",
                 )
+                if (destination.parentFile?.usableSpace?.let { it < count + MIN_FREE_SPACE_BYTES } == true) {
+                    throw ChartPackageImportException(
+                        ChartPackageImportFailure.INSUFFICIENT_SPACE,
+                        "Insufficient app-private storage for a complete managed chart copy",
+                    )
+                }
                 output.write(buffer, 0, count)
                 copyCheckpoint(completed)
                 onProgress(ChartPackageInspectProgress.Copying(completed, totalBytes))
@@ -608,6 +653,7 @@ class AndroidMbTilesRepository(
             setProperty("tileSize", value.tileSize.toString())
             setProperty("tileScheme", value.tileScheme.name)
             setProperty("validationLevel", value.validationLevel.name)
+            value.copiedFromCatalogAssetId?.let { setProperty("copiedFromCatalogAssetId", it) }
         }.also { File(directory, MANIFEST_FILE).storeAtomically(it) }
     }
 
@@ -646,6 +692,7 @@ class AndroidMbTilesRepository(
                 ?: ChartPackageLogicalId("chart-${sha.take(24)}"),
             versionId = properties.getProperty("versionId")?.let(::ChartPackageVersionId)
                 ?: ChartPackageVersionId(sha),
+            copiedFromCatalogAssetId = properties.getProperty("copiedFromCatalogAssetId")?.takeIf(String::isNotBlank),
         )
     }
 
@@ -695,6 +742,7 @@ class AndroidMbTilesRepository(
         const val MAX_METADATA_ENTRIES = 512
         const val MAX_METADATA_NAME_CHARS = 128
         const val MAX_METADATA_VALUE_CHARS = 16_384
+        const val MIN_FREE_SPACE_BYTES = 16L * 1024L * 1024L
         val SUPPORTED_TILE_SIZES = setOf(128, 256, 512, 1024)
     }
 }

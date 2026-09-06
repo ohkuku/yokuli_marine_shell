@@ -1,5 +1,8 @@
 package com.yokuli.marine.map.domain
 
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPreferences
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -195,6 +198,20 @@ class MapReducerTest {
 
         assertEquals(rangitoto, persisted.camera.center)
         assertNull(persisted.activeRouteDraftId)
+    }
+
+    @Test
+    fun `chart display preference is durable while derived plan remains runtime only`() {
+        val preference = ChartDisplayPreferences(
+            ChartDisplaySelection.PinnedAsset(ChartAssetId("10000000-0000-0000-0000-000000000001")),
+        )
+        val changed = reduce(MapState(), MapAction.ChartDisplayPreferencesChanged(preference))
+
+        assertEquals(preference, changed.state.chartDisplayPreferences)
+        assertTrue(changed.state.chartDisplayPreferencesInitialized)
+        val persisted = (changed.effects.single() as MapEffect.PersistSession).snapshot
+        assertEquals(preference, persisted.chartDisplayPreferences)
+        assertTrue(persisted.chartDisplayPreferencesInitialized)
     }
 
     @Test
