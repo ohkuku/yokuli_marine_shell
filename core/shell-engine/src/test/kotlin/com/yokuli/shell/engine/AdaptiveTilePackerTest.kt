@@ -4,6 +4,7 @@ import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.contract.TileInstanceId
 import com.yokuli.shell.engine.layout.AdaptiveTilePacker
+import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.Spacer
 import com.yokuli.shell.engine.layout.StartDocument
 import com.yokuli.shell.engine.layout.TileDocumentEntry

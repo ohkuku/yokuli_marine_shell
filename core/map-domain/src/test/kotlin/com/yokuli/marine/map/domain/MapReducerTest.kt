@@ -26,7 +26,7 @@ class MapReducerTest {
             savedRoutes = listOf(route),
         )
 
-        val closed = reducer.reduce(state, MapAction.CloseSession)
+        val closed = reduce(state, MapAction.CloseSession)
 
         assertEquals(MapSurface.Root, closed.state.surface)
         assertEquals(MapTool.BROWSE, closed.state.tool)
