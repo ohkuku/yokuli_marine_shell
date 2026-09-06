@@ -28,20 +28,20 @@ import com.yokuli.marine.navigation.domain.WaypointRevisionReference
 internal object NavigationLegacyMapper {
     fun toNavigation(source: MapLibrarySnapshot): NavigationLibrary = NavigationLibrary(
         revision = source.revision,
-        waypoints = source.places.map(SavedPlace::asNavigation),
-        routeDrafts = source.routeDrafts.map(ManualRouteDraft::asNavigation),
-        routePlans = source.savedRoutes.map(SavedRoute::asNavigation),
-        importedTracks = source.importedTracks.map(ImportedTrack::asNavigation),
-        gpxImports = source.gpxImportRecords.map(GpxImportRecord::asNavigation),
+        waypoints = source.places.map { it.asNavigation() },
+        routeDrafts = source.routeDrafts.map { it.asNavigation() },
+        routePlans = source.savedRoutes.map { it.asNavigation() },
+        importedTracks = source.importedTracks.map { it.asNavigation() },
+        gpxImports = source.gpxImportRecords.map { it.asNavigation() },
     )
 
     fun toLegacy(source: NavigationLibrary): MapLibrarySnapshot = MapLibrarySnapshot(
         revision = source.revision,
-        places = source.waypoints.map(Waypoint::asLegacy),
-        routeDrafts = source.routeDrafts.map(RouteDraft::asLegacy),
-        savedRoutes = source.routePlans.map(RoutePlan::asLegacy),
-        importedTracks = source.importedTracks.map(NavigationTrack::asLegacy),
-        gpxImportRecords = source.gpxImports.map(GpxImportReceipt::asLegacy),
+        places = source.waypoints.map { it.asLegacy() },
+        routeDrafts = source.routeDrafts.map { it.asLegacy() },
+        savedRoutes = source.routePlans.map { it.asLegacy() },
+        importedTracks = source.importedTracks.map { it.asLegacy() },
+        gpxImportRecords = source.gpxImports.map { it.asLegacy() },
     )
 
     private fun SavedPlace.asNavigation() = Waypoint(
@@ -139,7 +139,7 @@ internal object NavigationLegacyMapper {
         revision = revision,
         name = name,
         description = description,
-        segments = segments.map { segment -> NavigationTrackSegment(segment.points.map(ImportedTrackPoint::asNavigation)) },
+        segments = segments.map { segment -> NavigationTrackSegment(segment.points.map { it.asNavigation() }) },
         sourceDigest = sourceDigest,
         importedAtMillis = importedAtMillis,
     )
@@ -149,7 +149,7 @@ internal object NavigationLegacyMapper {
         revision = revision,
         name = name,
         description = description,
-        segments = segments.map { segment -> ImportedTrackSegment(segment.points.map(NavigationTrackPoint::asLegacy)) },
+        segments = segments.map { segment -> ImportedTrackSegment(segment.points.map { it.asLegacy() }) },
         sourceDigest = sourceDigest,
         importedAtMillis = importedAtMillis,
     )
