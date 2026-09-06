@@ -1,0 +1,27 @@
+{
+  "phase": "NMEA_SOURCES",
+  "stage": "P4",
+  "status": "PASS",
+  "sourceSpecSha256": "a5a38f08f8606d230952dcec8e8f521615efc9ec1a4d30ab4a3821f5943b3348",
+  "baseCommit": "e2fd6160a16efec50171a5e7e39068093277ec5c",
+  "redContractCommit": "c05d3e21acb74aef5c496b1e7ab50362733ebea0",
+  "implementationCommit": "19f7cbc618747f4262591d133ee1d5984738a4a8",
+  "selfReviewRedCommit": "aee5d963904fa6328f9cc94233ac214d31b540ca",
+  "lastCorrectionCommit": "cc0e7f143767bdd81e5a1466935d012f68220427",
+  "contracts": {
+    "runtimeTruth": "MarineSourceSnapshot + NmeaRuntimeSnapshot + PhoneLocationSnapshot",
+    "rawEvidencePerSentenceLimit": 20,
+    "crossFeatureLinkPayloadBytes": 128,
+    "parallelFeaturePreferences": false,
+    "productionRegistration": "DEFERRED_TO_P5"
+  },
+  "evidence": {
+    "initialStaticRed": "7 tests; 4 errors / 3 pass",
+    "featureRed": "compileDebugUnitTestKotlin failed on absent P4 production contracts",
+    "selfReviewRed": "compileDebugUnitTestKotlin failed on absent phone recovery action/effect",
+    "targetedGreen": "static 8/8; core 117/117; data-sources 16/16; nmea-input 17/17; app-shell composition compile PASS",
+    "deviceGreen": "API 34 AVD Data Sources Compose stories 3/3",
+    "fullRepositoryGate": "DEFERRED_TO_P7",
+    "physicalDevice": "UNVERIFIED_PHYSICAL_DEVICE"
+  }
+}

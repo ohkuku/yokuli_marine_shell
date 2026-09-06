@@ -746,3 +746,19 @@ P3 先写 reducer、runtime、catalog projector、selection persistence 和 phon
 ### English translation — NMEA Sources P3
 
 The P3 Reds define the single source-policy reducer/runtime, atomic persistence, catalog projection, and real phone-location boundary. Green publishes catalog, decisions, resolved values, and selection revision together; keeps explicit source choice across stale/missing states without failover; and starts Android system location only after explicit intent and platform gates. Follow-up Reds exposed an exhaustive-key gap and target-26 implicit permission compatibility, both corrected before the scoped gate passed.
+
+## NMEA Sources P4 — 数据来源应用完整闭环
+
+### Red
+
+独立 Data Sources 模块先以 7 项静态合同、核心受控深链、projector/coordinator JVM 合同和 3 条 Compose story 进入 Red。静态首跑为 `4 errors / 3 pass`，Feature 因全部生产类型缺失而编译失败。合同锁定同一真实 catalog、风／水深-only、未选候选可见、未知合法句型、实际选择事务、手机授权独立失败和总览 Back 交回 Shell。
+
+### Green 与自审
+
+Green 提供 WP8 排版型数据／句型视图、搜索筛选、候选详情、选择／停用、20 条 raw 证据上限和不透明双向深链。Feature 只读 runtime StateFlow 并调用类型化端口，不持有 socket 或第二份偏好。首轮最小 Gate 抓到超长 token 会在解析前抛异常及设备测试缺显式主题，两者分别修正且未弱化断言。
+
+自审 Red 再覆盖 phone-only、单一已选来源、运行时新增句型、raw 上限、永久拒绝和系统位置关闭；它精确因恢复 action/effect 不存在而编译失败。Green 增加权限请求、应用权限设置与系统位置设置三个明确出口，同时保持 NMEA 不受影响。最终 P4 static `8/8`、core `117/117`、Data Sources `16/16`、NMEA Input `17/17`、Shell composition compile 与 API 34 Compose `3/3` 通过；整仓门禁按约定留 P7，物理权限/GNSS/后台仍未验证。
+
+### English translation — NMEA Sources P4
+
+P4 begins with independent static, core-link, projector/coordinator, and Compose Reds. Green renders the one real runtime catalog as searchable data and sentence views, preserves every candidate, commits source choices through the OS port, bounds raw evidence, and uses opaque links. Self-review Reds add phone-only, runtime sentence discovery, bounded evidence, and recoverable permanent-denial/system-location states. The scoped gate passes; production installation remains P5, the full repository gate remains P7, and physical-device behavior is not claimed.

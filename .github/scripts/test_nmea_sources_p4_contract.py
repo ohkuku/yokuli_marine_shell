@@ -58,6 +58,13 @@ class NmeaSourcesP4Contract(unittest.TestCase):
         ]:
             self.assertIn(name, tests)
 
+    def test_p4_has_an_independent_report_and_baseline_lock(self):
+        report = self.read("docs/phases/nmea-sources/P4_REPORT.md")
+        lock = self.read("docs/phases/nmea-sources/P4_BASELINE_LOCK.json")
+        self.assertIn("状态：`PASS`", report)
+        self.assertIn('"stage": "P4"', lock)
+        self.assertIn('"fullRepositoryGate": "DEFERRED_TO_P7"', lock)
+
 
 if __name__ == "__main__":
     unittest.main()
