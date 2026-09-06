@@ -28,6 +28,7 @@ include(
     ":feature:desktop",
     ":feature:chart",
     ":feature:nmea-input",
+    ":feature:data-sources",
     ":feature:settings",
     ":feature:shell-lab",
     ":benchmark:shell",
