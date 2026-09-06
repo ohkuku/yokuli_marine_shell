@@ -141,16 +141,35 @@ private fun PhoneSourceRow(phone: PhoneSourceSummaryUi, onAction: (DataSourcesUi
             WpText(stringResource(R.string.phone_source_title), 21, weight = FontWeight.Light)
             WpText(phoneStateLabel(phone.state), 12, color = colors.muted)
         }
-        if (phone.enabledByUser) {
-            TextCommand(
-                stringResource(R.string.action_disable),
-                DataSourcesTestTags.DISABLE_PHONE,
-            ) { onAction(DataSourcesUiAction.DisablePhoneLocation) }
-        } else {
-            TextCommand(
+        when {
+            !phone.enabledByUser -> TextCommand(
                 stringResource(R.string.action_enable),
                 DataSourcesTestTags.ENABLE_PHONE,
             ) { onAction(DataSourcesUiAction.EnablePhoneLocation) }
+            phone.state == PhoneSourceUi.PERMISSION_REQUIRED -> TextCommand(
+                if (phone.permission == com.yokuli.marine.data.phone.PhoneLocationPermission.PERMANENTLY_DENIED) {
+                    stringResource(R.string.action_permission_settings)
+                } else {
+                    stringResource(R.string.action_grant_permission)
+                },
+                DataSourcesTestTags.ENABLE_PHONE,
+            ) {
+                onAction(
+                    if (phone.permission == com.yokuli.marine.data.phone.PhoneLocationPermission.PERMANENTLY_DENIED) {
+                        DataSourcesUiAction.ResolvePhoneLocation
+                    } else {
+                        DataSourcesUiAction.EnablePhoneLocation
+                    },
+                )
+            }
+            phone.state == PhoneSourceUi.SYSTEM_LOCATION_DISABLED -> TextCommand(
+                stringResource(R.string.action_location_settings),
+                DataSourcesTestTags.ENABLE_PHONE,
+            ) { onAction(DataSourcesUiAction.ResolvePhoneLocation) }
+            else -> TextCommand(
+                stringResource(R.string.action_disable),
+                DataSourcesTestTags.DISABLE_PHONE,
+            ) { onAction(DataSourcesUiAction.DisablePhoneLocation) }
         }
     }
 }

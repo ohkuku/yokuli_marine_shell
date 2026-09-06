@@ -137,6 +137,7 @@ sealed interface DataSourcesUiAction {
     data class DisableData(val key: DataKey) : DataSourcesUiAction
     data object EnablePhoneLocation : DataSourcesUiAction
     data object DisablePhoneLocation : DataSourcesUiAction
+    data object ResolvePhoneLocation : DataSourcesUiAction
     data class PhonePermissionResult(val permanentlyDenied: Boolean) : DataSourcesUiAction
     data class OpenNmeaInput(val connectionId: ConnectionId?) : DataSourcesUiAction
     data object DismissNotice : DataSourcesUiAction
@@ -145,6 +146,7 @@ sealed interface DataSourcesUiAction {
 sealed interface DataSourcesEffect {
     data object RequestPhoneLocationPermission : DataSourcesEffect
     data object OpenSystemLocationSettings : DataSourcesEffect
+    data object OpenAppPermissionSettings : DataSourcesEffect
     data class OpenNmeaInput(val token: MarineFeatureLinkToken) : DataSourcesEffect
 }
 

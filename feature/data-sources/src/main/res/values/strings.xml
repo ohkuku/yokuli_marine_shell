@@ -6,6 +6,9 @@
     <string name="phone_source_title">手机位置</string>
     <string name="action_enable">启用</string>
     <string name="action_disable">停用</string>
+    <string name="action_grant_permission">授权</string>
+    <string name="action_permission_settings">权限设置</string>
+    <string name="action_location_settings">开启系统位置</string>
     <string name="action_back">返回</string>
     <string name="action_use_source">使用此来源</string>
     <string name="action_disable_data">停用此数据</string>

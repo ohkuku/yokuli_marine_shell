@@ -6,6 +6,9 @@
     <string name="phone_source_title">Phone location</string>
     <string name="action_enable">enable</string>
     <string name="action_disable">disable</string>
+    <string name="action_grant_permission">grant permission</string>
+    <string name="action_permission_settings">permission settings</string>
+    <string name="action_location_settings">turn on system location</string>
     <string name="action_back">back</string>
     <string name="action_use_source">use this source</string>
     <string name="action_disable_data">disable this data</string>

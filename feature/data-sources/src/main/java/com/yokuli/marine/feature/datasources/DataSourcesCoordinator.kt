@@ -96,6 +96,20 @@ class DataSourcesCoordinator(
                         notice = DataSourcesNotice.ACTION_QUEUE_FULL
                     }
                 }
+                DataSourcesUiAction.ResolvePhoneLocation -> {
+                    val effect = when {
+                        phone.permission == com.yokuli.marine.data.phone.PhoneLocationPermission.PERMANENTLY_DENIED -> {
+                            DataSourcesEffect.OpenAppPermissionSettings
+                        }
+                        phone.state == com.yokuli.marine.data.phone.PhoneLocationState.SYSTEM_LOCATION_DISABLED -> {
+                            DataSourcesEffect.OpenSystemLocationSettings
+                        }
+                        else -> DataSourcesEffect.RequestPhoneLocationPermission
+                    }
+                    if (effectChannel.trySend(effect).isFailure) {
+                        notice = DataSourcesNotice.ACTION_QUEUE_FULL
+                    }
+                }
                 else -> Unit
             }
             publishLocked()
