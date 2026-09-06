@@ -3,7 +3,10 @@ package com.yokuli.marine.adapter.chart.google
 import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Point
 import android.os.Bundle
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -11,13 +14,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.listSaver
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -28,49 +27,30 @@ import com.google.android.gms.maps.GoogleMapOptions
 import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MapColorScheme
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.PolylineOptions
+import com.yokuli.marine.map.domain.GeoBounds
 import com.yokuli.marine.map.domain.GeoPoint
+import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapCamera
+import com.yokuli.marine.map.domain.MapCameraCommand
+import com.yokuli.marine.map.domain.MapCameraCommandId
+import com.yokuli.marine.map.domain.MapCameraTarget
+import com.yokuli.marine.map.domain.MapEditTarget
+import com.yokuli.marine.map.domain.MapGestureId
+import com.yokuli.marine.map.domain.MapHitResult
+import com.yokuli.marine.map.domain.MapOverlayId
+import com.yokuli.marine.map.domain.MapRendererGeneration
+import com.yokuli.marine.map.domain.MapRendererQueryPort
+import com.yokuli.marine.map.domain.MapRendererReadiness
+import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
-
-private data class CameraSnapshot(
-    val latitude: Double,
-    val longitude: Double,
-    val zoom: Float,
-    val bearing: Float,
-    val tilt: Float,
-)
-
-private val CameraSnapshotSaver = listSaver<CameraSnapshot, Double>(
-    save = { value ->
-        listOf(
-            value.latitude,
-            value.longitude,
-            value.zoom.toDouble(),
-            value.bearing.toDouble(),
-            value.tilt.toDouble(),
-        )
-    },
-    restore = { values ->
-        CameraSnapshot(
-            latitude = values[0],
-            longitude = values[1],
-            zoom = values[2].toFloat(),
-            bearing = values[3].toFloat(),
-            tilt = values[4].toFloat(),
-        )
-    },
-)
-
-private val AucklandHarbour = CameraSnapshot(
-    latitude = -36.8485,
-    longitude = 174.7633,
-    zoom = 11f,
-    bearing = 0f,
-    tilt = 0f,
-)
+import com.yokuli.marine.map.domain.MapTileCoverageStatus
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.hypot
 
 /**
  * Google Maps adapter for the shared chart surface.
@@ -81,21 +61,21 @@ private val AucklandHarbour = CameraSnapshot(
 @Composable
 fun GoogleMarineChartSurface(
     state: MapState,
-    onCameraChanged: (MapCamera) -> Unit,
-    onLongPress: (GeoPoint) -> Unit,
+    onAction: (MapAction) -> Unit,
+    onQueryPortChanged: (MapRendererQueryPort?) -> Unit = {},
     darkMode: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val density = LocalDensity.current
-    val topInsetPx = with(density) { 96.dp.roundToPx() }
-    val bottomInsetPx = with(density) { 150.dp.roundToPx() }
-    var camera by rememberSaveable(stateSaver = CameraSnapshotSaver) {
-        mutableStateOf(state.camera.toSnapshot())
-    }
-    val currentOnCameraChanged by rememberUpdatedState(onCameraChanged)
-    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    val currentAction by rememberUpdatedState(onAction)
+    val currentState by rememberUpdatedState(state)
+    val currentQueryPortChanged by rememberUpdatedState(onQueryPortChanged)
+    val generation = remember { MapRendererGeneration(nextRendererGeneration.incrementAndGet()) }
+    val activeCameraCommand = remember { AtomicReference<MapCameraCommandId?>(null) }
+    val submittedCameraCommand = remember { AtomicReference<MapCameraCommandId?>(null) }
+    val activePointDrag = remember { AtomicReference<ActivePointDrag?>(null) }
+    val touchSlop = remember(context) { ViewConfiguration.get(context).scaledTouchSlop.toDouble() }
     val mapView = remember(context) {
         MapView(
             context,
@@ -114,6 +94,8 @@ fun GoogleMarineChartSurface(
     val lifecycleDriver = remember(mapView) { MapViewLifecycleDriver(mapView) }
     var googleMap by remember(mapView) { mutableStateOf<GoogleMap?>(null) }
 
+    LaunchedEffect(generation) { currentAction(MapAction.RendererHostReady(generation)) }
+
     DisposableEffect(mapView, lifecycle, context.applicationContext) {
         lifecycleDriver.create()
         val observer = LifecycleEventObserver { _, event -> lifecycleDriver.onEvent(event) }
@@ -122,6 +104,9 @@ fun GoogleMarineChartSurface(
         lifecycleDriver.syncTo(lifecycle.currentState)
         context.applicationContext.registerComponentCallbacks(memoryCallbacks)
         onDispose {
+            activePointDrag.getAndSet(null)?.let { currentAction(MapAction.CancelPointDrag(it.id)) }
+            currentQueryPortChanged(null)
+            currentAction(MapAction.RendererDetached(generation))
             lifecycle.removeObserver(observer)
             context.applicationContext.unregisterComponentCallbacks(memoryCallbacks)
             googleMap?.setOnCameraIdleListener(null)
@@ -129,8 +114,9 @@ fun GoogleMarineChartSurface(
         }
     }
 
-    DisposableEffect(mapView) {
+    DisposableEffect(mapView, generation) {
         var disposed = false
+        var queryPort: GoogleRendererQueryPort? = null
         mapView.getMapAsync { readyMap ->
             if (disposed) return@getMapAsync
             googleMap = readyMap.apply {
@@ -149,25 +135,107 @@ fun GoogleMarineChartSurface(
                     isZoomControlsEnabled = false
                     isZoomGesturesEnabled = true
                 }
-                moveCamera(CameraUpdateFactory.newCameraPosition(camera.toCameraPosition()))
+                moveCamera(CameraUpdateFactory.newCameraPosition(currentState.camera.toCameraPosition()))
+                queryPort = GoogleRendererQueryPort(this, { currentState }, { !disposed })
+                currentQueryPortChanged(queryPort)
                 setOnCameraIdleListener {
-                    camera = cameraPosition.toSnapshot()
-                    currentOnCameraChanged(cameraPosition.toDomainCamera())
+                    if (activeCameraCommand.get() == null) {
+                        currentAction(MapAction.RendererCameraIdle(generation, cameraPosition.toDomainCamera()))
+                    }
                 }
-                setOnMapLongClickListener { point -> currentOnLongPress(point.toDomainPoint()) }
+                setOnMapClickListener { point ->
+                    val screen = projection.toScreenLocation(point).toDomainScreenPoint()
+                    currentAction(MapAction.MapTapped(point.toDomainPoint(), requireNotNull(queryPort).query(screen, INTERACTIVE_OVERLAYS)))
+                }
+                setOnMapLongClickListener { point ->
+                    val screen = projection.toScreenLocation(point).toDomainScreenPoint()
+                    currentAction(MapAction.MapLongPressed(point.toDomainPoint(), requireNotNull(queryPort).query(screen, INTERACTIVE_OVERLAYS)))
+                }
+            }
+            currentAction(MapAction.RendererHostReady(generation))
+            currentAction(MapAction.RendererReady(generation))
+            currentAction(MapAction.RendererCoverageChanged(generation, MapTileCoverageStatus.NO_PACKAGE))
+        }
+        mapView.setOnTouchListener { _, event ->
+            val port = queryPort ?: return@setOnTouchListener false
+            val screen = MapScreenPoint(event.x.toDouble(), event.y.toDouble())
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> port.query(screen, HANDLE_OVERLAYS)
+                    .asSequence()
+                    .mapNotNull(MapHitResult::toEditTargetOrNull)
+                    .firstOrNull()
+                    ?.let { target ->
+                        val gestureId = MapGestureId("google-${generation.value}-${nextPointGesture.incrementAndGet()}")
+                        activePointDrag.set(ActivePointDrag(gestureId, target, screen))
+                        currentAction(MapAction.BeginPointDrag(gestureId, target))
+                        true
+                    } ?: false
+                MotionEvent.ACTION_MOVE -> activePointDrag.get()?.let { drag ->
+                    val moved = drag.moved || drag.down.distanceTo(screen) >= touchSlop
+                    if (moved) {
+                        activePointDrag.set(drag.copy(moved = true))
+                        port.unproject(screen)?.let { currentAction(MapAction.PreviewPointDrag(drag.id, it)) }
+                    }
+                    true
+                } ?: false
+                MotionEvent.ACTION_UP -> activePointDrag.getAndSet(null)?.let { drag ->
+                    val point = port.unproject(screen)
+                    val moved = drag.moved || drag.down.distanceTo(screen) >= touchSlop
+                    when {
+                        point == null -> currentAction(MapAction.CancelPointDrag(drag.id))
+                        moved -> currentAction(MapAction.CommitPointDrag(drag.id, point))
+                        else -> {
+                            currentAction(MapAction.CancelPointDrag(drag.id))
+                            currentAction(MapAction.MapTapped(point, listOf(drag.target.toHitResult())))
+                        }
+                    }
+                    true
+                } ?: false
+                MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> activePointDrag.getAndSet(null)?.let {
+                    currentAction(MapAction.CancelPointDrag(it.id))
+                    true
+                } ?: false
+                else -> activePointDrag.get() != null
             }
         }
         onDispose {
             disposed = true
+            mapView.setOnTouchListener(null)
+            googleMap?.setOnMapClickListener(null)
             googleMap?.setOnMapLongClickListener(null)
         }
     }
 
-    LaunchedEffect(googleMap, darkMode, topInsetPx, bottomInsetPx) {
-        googleMap?.apply {
-            setMapColorScheme(if (darkMode) MapColorScheme.DARK else MapColorScheme.LIGHT)
-            setPadding(0, topInsetPx, 0, bottomInsetPx)
-        }
+    LaunchedEffect(googleMap, darkMode) {
+        googleMap?.setMapColorScheme(if (darkMode) MapColorScheme.DARK else MapColorScheme.LIGHT)
+    }
+
+    LaunchedEffect(googleMap, generation, state.renderer.generation, state.renderer.readiness, state.renderer.pendingCameraCommand) {
+        val map = googleMap ?: return@LaunchedEffect
+        val command = state.renderer.pendingCameraCommand ?: return@LaunchedEffect
+        if (state.renderer.generation != generation ||
+            state.renderer.readiness != MapRendererReadiness.RENDERER_READY ||
+            submittedCameraCommand.get() == command.id
+        ) return@LaunchedEffect
+        submittedCameraCommand.set(command.id)
+        activeCameraCommand.set(command.id)
+        map.setPadding(
+            command.viewportInsets.leftPx,
+            command.viewportInsets.topPx,
+            command.viewportInsets.rightPx,
+            command.viewportInsets.bottomPx,
+        )
+        map.animateCamera(command.toCameraUpdate(), object : GoogleMap.CancelableCallback {
+            override fun onFinish() {
+                if (activeCameraCommand.getAndSet(null) != command.id) return
+                currentAction(MapAction.RendererCameraIdle(generation, map.cameraPosition.toDomainCamera(), command.id))
+            }
+
+            override fun onCancel() {
+                activeCameraCommand.compareAndSet(command.id, null)
+                submittedCameraCommand.compareAndSet(command.id, null)
+            }
+        })
     }
 
     LaunchedEffect(
@@ -176,6 +244,9 @@ fun GoogleMarineChartSurface(
         state.places,
         state.measurementDraft,
         state.routeDraft,
+        state.activeRoutePlanId,
+        state.savedRoutes,
+        state.editGesture,
         state.position.observation,
     ) {
         googleMap?.apply {
@@ -186,10 +257,10 @@ fun GoogleMarineChartSurface(
             state.selection?.let { selection ->
                 addMarker(MarkerOptions().position(selection.point.toLatLng()))
             }
-            state.measurementDraft?.points?.takeIf { it.isNotEmpty() }?.let { points ->
+            state.measurementPointsWithPreview().takeIf { it.isNotEmpty() }?.let { points ->
                 addPolyline(PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xfff7b500.toInt()).width(5f))
             }
-            state.routeDraft?.waypoints?.takeIf { it.isNotEmpty() }?.let { points ->
+            state.routePointsWithPreview().takeIf { it.isNotEmpty() }?.let { points ->
                 addPolyline(PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xff00a4ef.toInt()).width(7f))
             }
             state.position.observation?.let { observation ->
@@ -208,20 +279,17 @@ fun GoogleMarineChartSurface(
     )
 }
 
-private fun CameraSnapshot.toCameraPosition(): CameraPosition = CameraPosition.Builder()
-    .target(LatLng(latitude, longitude))
-    .zoom(zoom)
-    .bearing(bearing)
-    .tilt(tilt)
-    .build()
+private fun MapCameraCommand.toCameraUpdate() = when (val value = target) {
+    is MapCameraTarget.Exact -> CameraUpdateFactory.newCameraPosition(value.camera.toCameraPosition())
+    is MapCameraTarget.Bounds -> CameraUpdateFactory.newLatLngBounds(value.bounds.toGoogleBounds(), 0)
+}
 
-private fun MapCamera.toSnapshot(): CameraSnapshot = CameraSnapshot(
-    latitude = center.latitude,
-    longitude = center.longitude,
-    zoom = zoom.toFloat(),
-    bearing = bearing.toFloat(),
-    tilt = 0f,
-)
+private fun MapCamera.toCameraPosition(): CameraPosition = CameraPosition.Builder()
+    .target(center.toLatLng())
+    .zoom(zoom.coerceIn(0.0, GOOGLE_MAX_ZOOM).toFloat())
+    .bearing(bearing.toFloat())
+    .tilt(0f)
+    .build()
 
 private fun CameraPosition.toDomainCamera(): MapCamera = MapCamera(
     center = target.toDomainPoint(),
@@ -231,14 +299,103 @@ private fun CameraPosition.toDomainCamera(): MapCamera = MapCamera(
 
 private fun LatLng.toDomainPoint(): GeoPoint = GeoPoint(latitude, longitude)
 private fun GeoPoint.toLatLng(): LatLng = LatLng(latitude, longitude)
+private fun Point.toDomainScreenPoint() = MapScreenPoint(x.toDouble(), y.toDouble())
+private fun MapScreenPoint.toAndroidPoint() = Point(xPx.toInt(), yPx.toInt())
+private fun GeoBounds.toGoogleBounds() = LatLngBounds(LatLng(south, west), LatLng(north, east))
 
-private fun CameraPosition.toSnapshot(): CameraSnapshot = CameraSnapshot(
-    latitude = target.latitude,
-    longitude = target.longitude,
-    zoom = zoom,
-    bearing = bearing,
-    tilt = tilt,
+private data class ActivePointDrag(
+    val id: MapGestureId,
+    val target: MapEditTarget,
+    val down: MapScreenPoint,
+    val moved: Boolean = false,
 )
+
+private fun MapScreenPoint.distanceTo(other: MapScreenPoint) = hypot(xPx - other.xPx, yPx - other.yPx)
+
+private class GoogleRendererQueryPort(
+    private val map: GoogleMap,
+    private val currentState: () -> MapState,
+    private val isCurrent: () -> Boolean,
+) : MapRendererQueryPort {
+    override fun project(point: GeoPoint): MapScreenPoint? = ifCurrent {
+        map.projection.toScreenLocation(point.toLatLng()).toDomainScreenPoint()
+    }
+
+    override fun unproject(point: MapScreenPoint): GeoPoint? = ifCurrent {
+        map.projection.fromScreenLocation(point.toAndroidPoint()).toDomainPoint()
+    }
+
+    override fun query(point: MapScreenPoint, overlayIds: Set<MapOverlayId>): List<MapHitResult> = ifCurrent {
+        currentState().hitCandidates(overlayIds)
+            .mapNotNull { candidate ->
+                val screen = map.projection.toScreenLocation(candidate.point.toLatLng()).toDomainScreenPoint()
+                candidate.hit.takeIf { screen.distanceTo(point) <= HIT_RADIUS_PX }
+            }
+            .distinct()
+    }.orEmpty()
+
+    private inline fun <T> ifCurrent(block: () -> T): T? = if (isCurrent()) runCatching(block).getOrNull() else null
+}
+
+private data class HitCandidate(val point: GeoPoint, val hit: MapHitResult)
+
+private fun MapState.hitCandidates(ids: Set<MapOverlayId>): List<HitCandidate> = buildList {
+    if (MapOverlayId.SAVED_PLACES in ids) places.forEach { add(HitCandidate(it.point, MapHitResult(MapOverlayId.SAVED_PLACES, "place:${it.id}"))) }
+    if (MapOverlayId.SELECTION in ids) selection?.let { add(HitCandidate(it.point, MapHitResult(MapOverlayId.SELECTION, "selection"))) }
+    if (MapOverlayId.MEASUREMENT_POINTS in ids) measurementPointsWithPreview().forEachIndexed { index, point ->
+        add(HitCandidate(point, MapHitResult(MapOverlayId.MEASUREMENT_POINTS, "measurement-point:$index")))
+    }
+    if (MapOverlayId.MANUAL_ROUTE_POINTS in ids) routePointsWithPreview().forEachIndexed { index, point ->
+        add(HitCandidate(point, MapHitResult(MapOverlayId.MANUAL_ROUTE_POINTS, routePointObjectId(index))))
+    }
+}
+
+private fun MapState.measurementPointsWithPreview(): List<GeoPoint> {
+    val points = measurementDraft?.points.orEmpty()
+    val target = editGesture?.target as? MapEditTarget.MeasurementPoint ?: return points
+    return points.replaceAt(target.index, requireNotNull(editGesture).previewPoint)
+}
+
+private fun MapState.routePointsWithPreview(): List<GeoPoint> {
+    val points = visibleRoutePoints
+    val target = editGesture?.target as? MapEditTarget.RoutePoint ?: return points
+    return points.replaceAt(target.index, requireNotNull(editGesture).previewPoint)
+}
+
+private fun MapState.routePointObjectId(index: Int): String = routeDraft
+    ?.let { "route-point:${it.id}:$index" }
+    ?: "route-preview-point:${activeRoutePlanId.orEmpty()}:$index"
+
+private fun List<GeoPoint>.replaceAt(index: Int, value: GeoPoint): List<GeoPoint> =
+    if (index !in indices) this else mapIndexed { itemIndex, item -> if (itemIndex == index) value else item }
+
+private fun MapHitResult.toEditTargetOrNull(): MapEditTarget? = when (overlayId) {
+    MapOverlayId.MEASUREMENT_POINTS -> objectId.removePrefix("measurement-point:").toIntOrNull()
+        ?.let(MapEditTarget::MeasurementPoint)
+    MapOverlayId.MANUAL_ROUTE_POINTS -> objectId.removePrefix("route-point:").let { body ->
+        val separator = body.lastIndexOf(':')
+        if (separator <= 0) null else body.substring(separator + 1).toIntOrNull()
+            ?.let { MapEditTarget.RoutePoint(body.substring(0, separator), it) }
+    }
+    else -> null
+}
+
+private fun MapEditTarget.toHitResult(): MapHitResult = when (this) {
+    is MapEditTarget.MeasurementPoint -> MapHitResult(MapOverlayId.MEASUREMENT_POINTS, "measurement-point:$index")
+    is MapEditTarget.RoutePoint -> MapHitResult(MapOverlayId.MANUAL_ROUTE_POINTS, "route-point:$draftId:$index")
+}
+
+private val INTERACTIVE_OVERLAYS = setOf(
+    MapOverlayId.SAVED_PLACES,
+    MapOverlayId.SELECTION,
+    MapOverlayId.MEASUREMENT_POINTS,
+    MapOverlayId.MANUAL_ROUTE_POINTS,
+)
+private val HANDLE_OVERLAYS = setOf(MapOverlayId.MEASUREMENT_POINTS, MapOverlayId.MANUAL_ROUTE_POINTS)
+private val nextRendererGeneration = AtomicLong(20_000L)
+private val nextPointGesture = AtomicLong(0L)
+private const val HIT_RADIUS_PX = 36.0
+private const val GOOGLE_MAX_ZOOM = 21.0
 
 private class MapViewLifecycleDriver(private val mapView: MapView) {
     private var created = false

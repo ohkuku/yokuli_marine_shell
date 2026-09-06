@@ -24,4 +24,6 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.kotlinx.coroutines.core)
+    androidTestImplementation(project(":adapter:map-offline"))
+    androidTestImplementation(libs.maplibre.android.opengl)
 }

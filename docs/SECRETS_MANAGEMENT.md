@@ -33,7 +33,7 @@ git diff --cached
 
 ## 日常操作
 
-当前生产地图使用 MapLibre 读取用户安装的本地 raster MBTiles，不需要 Google Maps key。保险库仍可保存将来的 API token；已经保存的 `GOOGLE_MAPS_ANDROID_API_KEY` 可以保留、导出或删除，但它不会进入当前 APK 或 CI。旧 Google 路径的历史合同位于 [`archive/pre-launcher-engine/CHART_SOURCE_IMPORT_REQUIREMENTS.md`](archive/pre-launcher-engine/CHART_SOURCE_IMPORT_REQUIREMENTS.md)。Android 发布签名材料仍是独立发布凭据。
+当前生产地图用 MapLibre 读取用户安装的本地海图，不需要 Google Maps key；同时可用 `GOOGLE_MAPS_ANDROID_API_KEY` 启用 Google 在线底图。Actions 从同名 Repository Secret 注入 Manifest，密钥不进入源码或字符串型 `BuildConfig`；本地可用下面的 vault `run --` 临时注入。Android 发布签名材料仍是独立发布凭据。
 
 新增或替换一个 key。value 在终端中隐藏，并通过标准输入进入工具（下面仅以已存在的旧名称举例）：
 
@@ -71,7 +71,7 @@ git diff --cached
 ./scripts/secrets/yokuli-secrets.sh run -- ./gradlew assembleStandaloneDebug
 ```
 
-当前离线地图构建无需解锁 vault；普通 Android Studio Run 与 `./gradlew installStandaloneDebug` 使用同一 MapLibre 生产路径。只有将来的明确能力真正声明某个 secret 时，才用 `run --` 把 vault 注入受信任子进程。
+离线地图构建无需解锁 vault；若要在本地包显示 Google 在线底图，应使用 `run --` 只向受信任的 Gradle 子进程临时注入密钥，例如：`./scripts/secrets/yokuli-secrets.sh run -- ./gradlew installStandaloneDebug`。
 
 环境变量可能被子进程、调试器、崩溃报告或同用户权限的进程读取，所以不要用 `run` 启动不受信任的程序。客户端 APK 内的长期 API key 仍可被提取；能放服务端的 secret 应放服务端，并限制权限、来源、额度和有效期。
 
@@ -113,4 +113,4 @@ git commit
 
 ## English translation — quick guide
 
-Install `age` and `jq`, run `doctor`, then `init`, and choose a brand-new strong passphrase only at age's interactive prompt. Commit only `identity.age`, `recipient.txt`, and `vault.json.age`. Use `set NAME`, `list`, `copy NAME`, `get NAME`, `remove NAME`, and `run -- command`; `get` prints a value and `run` exposes all values to a trusted child environment. The current production map reads local raster MBTiles through MapLibre and needs no Google key or vault unlock. A previously saved Google key may remain in the personal vault but is not injected into the APK or Actions. `rotate` rewraps the identity but cannot invalidate ciphertext already in Git history. After exposure, revoke and rotate provider credentials first. CI never decrypts the personal vault; releases currently require only the four Android signing secrets.
+Install `age` and `jq`, run `doctor`, then `init`, and choose a brand-new strong passphrase only at age's interactive prompt. Commit only `identity.age`, `recipient.txt`, and `vault.json.age`. Use `set NAME`, `list`, `copy NAME`, `get NAME`, `remove NAME`, and `run -- command`; `get` prints a value and `run` exposes all values to a trusted child environment. Local MapLibre charts need no Google key. Use `run -- ./gradlew …` to inject a locally vaulted Google key; hosted builds consume the separately configured repository secret of the same name. `rotate` rewraps the identity but cannot invalidate ciphertext already in Git history. After exposure, revoke and rotate provider credentials first. CI never decrypts the personal vault; release signing still requires the four Android signing secrets.

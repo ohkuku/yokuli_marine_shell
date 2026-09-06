@@ -12,6 +12,9 @@ concurrency:
   group: android-nightly-compatibility
   cancel-in-progress: true
 
+env:
+  GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
+
 jobs:
   compatibility:
     name: Full shell stories on API ${{ matrix.api-level }}

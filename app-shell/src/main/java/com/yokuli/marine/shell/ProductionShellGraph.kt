@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
+import com.yokuli.marine.adapter.chart.google.GoogleMarineChartSurface
 import com.yokuli.marine.map.offline.OfflineMarineChartSurface
 import com.yokuli.marine.core.design.WpThemeSpec
+import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.core.model.AppLanguage
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapState
@@ -144,13 +146,23 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
                 if (runtime.heavyContentReady) {
                     { state, onAction, onQueryPortChanged, modifier ->
-                        OfflineMarineChartSurface(
-                            state = state,
-                            onAction = onAction,
-                            onQueryPortChanged = onQueryPortChanged,
-                            acquirePackageLease = runtime.acquireChartPackageLease,
-                            modifier = modifier.testTag("chart-surface-maplibre"),
-                        )
+                        if (state.activeChartPackageId == null && BuildConfig.GOOGLE_MAPS_CONFIGURED) {
+                            GoogleMarineChartSurface(
+                                state = state,
+                                onAction = onAction,
+                                onQueryPortChanged = onQueryPortChanged,
+                                darkMode = runtime.theme.mode == WpThemeMode.DARK,
+                                modifier = modifier.testTag("chart-surface-google"),
+                            )
+                        } else {
+                            OfflineMarineChartSurface(
+                                state = state,
+                                onAction = onAction,
+                                onQueryPortChanged = onQueryPortChanged,
+                                acquirePackageLease = runtime.acquireChartPackageLease,
+                                modifier = modifier.testTag("chart-surface-maplibre"),
+                            )
+                        }
                     }
                 } else {
                     { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }

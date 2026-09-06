@@ -17,6 +17,9 @@ concurrency:
   group: android-release
   cancel-in-progress: true
 
+env:
+  GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
+
 jobs:
   validate-release:
     name: Validate tag and release topology

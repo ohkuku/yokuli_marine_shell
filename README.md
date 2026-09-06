@@ -25,7 +25,7 @@ Yokuli OS 默认沉浸式全屏且只允许竖屏；方屏仍属于适配范围�
 
 本 Phase 在保留地图能力的基础上实现真实 NMEA 0183 TCP／UDP 输入、手机系统定位候选、统一来源目录和按数据语义选源；仍禁止 NMEA 输出／转发、活动导航、自动舵/船网控制、Anchor/Trip/Survey Runtime。模拟器结果不能替代三星方屏、真机 GNSS、OEM 后台行为或实船结论。
 
-当前 Chart 使用离线 MapLibre，并只渲染用户导入的兼容 MBTiles 海图包。GitHub Actions 中配置 Google Maps key 不会让地图出现，因为当前生产构建没有 Google Maps SDK／在线图块消费链路；没有导入本地海图时应显示真实空态，而不是假装在线地图已就绪。
+当前 Chart 有两条解耦渲染链路：配置了 `GOOGLE_MAPS_ANDROID_API_KEY` 时，未选择本地海图会显示 Google 在线底图；用户选择本地海图后由 MapLibre 离线渲染。密钥存在只表示“已配置”，不证明 API 授权、账单、签名限制、网络或图块加载已经成功；本地海图覆盖状态也不会被 Google 底图冒充。
 
 当前文档入口：
 
@@ -94,4 +94,4 @@ Yokuli OS has completed the local P0–P7 machine gates of `NMEA_SOURCES`. The c
 
 The portrait-only immersive shell routes virtual Back/Start/Search and deliverable Android or keyboard input through the serialized Launcher Engine. Back stops at the in-app Shell Desktop and never exits Yokuli. The app does not register Android HOME/DEFAULT or expose Android Home settings; square layouts remain supported, while landscape is outside the current product contract.
 
-Chart currently renders imported offline MBTiles through MapLibre. A Google Maps Actions secret is intentionally not consumed by this production path and therefore cannot make an online basemap appear.
+Chart has two decoupled render adapters. With `GOOGLE_MAPS_ANDROID_API_KEY` configured, Google supplies the connected base map when no local chart is selected; MapLibre renders user-selected local charts offline. Key presence means configured only—it does not prove authorization, billing, application restrictions, connectivity, or tile delivery, and it never counts as offline coverage.

@@ -89,9 +89,10 @@ grep -Fq 'LAUNCHER_STAGE11_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 1
 grep -Fq 'bash .github/scripts/run_device_tests.sh performance' "$android" || fail 'Stage 11 Macrobenchmark must use the diagnostic wrapper'
 grep -Fq ':benchmark:shell:connectedStandaloneBenchmarkAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Stage 11 wrapper must run the real benchmark task'
 grep -Fq 'stage11-performance-reports' "$android" || fail 'Stage 11 measurements and traces must be downloadable'
-if grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY' "$android" "$release" "$nightly"; then
-  fail 'the offline-first production renderer must not require or consume a Google Maps key'
-fi
+for workflow in "$android" "$release" "$nightly"; do
+  grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$workflow" || \
+    fail "$(basename "$workflow") must inject the optional Google Maps Android key"
+done
 grep -Fq 'ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD' "$release" || fail 'release preflight must still reject missing signing secrets'
 grep -Fq 'needs: [build, integration, api-compatibility, stage11-performance]' "$android" || fail 'verified artifact must wait for every required gate'
 grep -Fq 'UNVERIFIED-' "$android" || fail 'partial build artifacts must be visibly unverified'

@@ -76,12 +76,51 @@
     },
     "CL02": {
       "title": "MapLibre零复制显示闭环",
-      "status": "NOT_STARTED",
-      "head": null,
-      "changed_files": [],
-      "commands": [],
-      "evidence": [],
-      "deviations": [],
+      "status": "PASS",
+      "head": "4fadfc5",
+      "changed_files": [
+        "adapter/map-offline/**/ChartLoopbackTileGateway*",
+        "adapter/chart-library-android/src/androidTest/**",
+        "adapter/chart-google/**/GoogleMarineChartSurface.kt",
+        "app-shell/build.gradle.kts",
+        "app-shell/src/main/AndroidManifest.xml",
+        "app-shell/src/main/res/xml/chart_network_security.xml",
+        "app-shell/**/ProductionShellGraph.kt",
+        ".github/workflows/{android,release,nightly}.yml"
+      ],
+      "commands": [
+        {
+          "command": "./gradlew :adapter:map-offline:testDebugUnitTest --tests '*ChartLoopbackTileGatewayTest' --no-daemon",
+          "red_exit_code": 1,
+          "green_exit_code": 0
+        },
+        {
+          "command": "./gradlew :adapter:chart-library-android:connectedDebugAndroidTest --no-daemon",
+          "first_exit_code": 1,
+          "first_failure": "unbracketed IPv6 loopback resource URL",
+          "corrected_exit_code": 0,
+          "result": "API34 real MapLibre SAF pixel story"
+        },
+        {
+          "command": "python3 .github/scripts/test_google_maps_adapter_contract.py",
+          "red_exit_code": 1,
+          "green_exit_code": 0
+        },
+        {
+          "command": "GOOGLE_MAPS_ANDROID_API_KEY=TEST_ONLY_NOT_A_REAL_KEY ./gradlew :app-shell:generateStandaloneDebugBuildConfig :app-shell:processStandaloneDebugManifestForPackage --rerun-tasks",
+          "exit_code": 0,
+          "result": "configured=true and test-only value in merged manifest"
+        }
+      ],
+      "evidence": [
+        "adapter/chart-library-android/build/reports/androidTests/connected/debug/index.html",
+        "docs/phases/chart-library/CL02_REPORT.md",
+        "docs/phases/chart-library/CL02_BASELINE_LOCK.json"
+      ],
+      "deviations": [
+        "direct user override adds an optional Google connected basemap; local coverage remains independent",
+        "fixed IPv4 loopback is used instead of platform-dependent getLoopbackAddress"
+      ],
       "blockers": []
     },
     "CL03": {

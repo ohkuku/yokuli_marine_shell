@@ -27,7 +27,7 @@
 
 ### 发布
 
-普通 PR、push、手动与 Release 构建都使用同一个 MapLibre 本地海图生产路径，不需要地图 secret，也没有无 key 的替代 renderer。个人加密 vault 的密文可以提交到 GitHub，但 Actions 不持有主口令、不会解密它，也不会自动把密文变成 Actions Secret。
+普通 PR、push、手动与 Release 构建都会读取可选的 Repository Secret `GOOGLE_MAPS_ANDROID_API_KEY` 并注入 Android Manifest。未配置时仍可成功构建，但只提供本地 MapLibre 海图链路；配置时 Google 是在线底图，本地海图覆盖事实仍独立。个人加密 vault 的密文可以提交到 GitHub，但 Actions 不持有主口令、不会解密它，也不会自动把密文变成 Actions Secret。
 
 签名发布只需要同一签名库产生的四个 secret：`ANDROID_SIGNING_KEY_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。preflight 必须实际打开 keystore 并恢复私钥。诊断收集使用窄 allow-list，不能包含构建配置、环境转储或签名材料。
 
@@ -93,7 +93,7 @@ Do not require `Publish fully verified debug APKs` on pull requests; it intentio
 
 ## Release secrets
 
-The production MapLibre path reads local raster MBTiles and does not require a map secret. Pull requests, push/manual artifacts, and releases build the same renderer; Actions never decrypts the personal vault. Releases require these four signing secrets, which must come from the same local signing vault:
+The offline MapLibre path reads local raster charts without a map secret. Push/manual artifacts and releases also inject the optional Repository Secret `GOOGLE_MAPS_ANDROID_API_KEY` for the connected Google base map; missing secrets keep builds valid but keyless. Actions never decrypts the personal vault. Releases require these four signing secrets, which must come from the same local signing vault:
 
 ```text
 ANDROID_SIGNING_KEY_BASE64

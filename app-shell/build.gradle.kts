@@ -9,6 +9,11 @@ val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_FILE")
 val releaseVersionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 1
 val releaseVersionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.1.0-dev"
 val gitSha = providers.environmentVariable("GITHUB_SHA").orElse("local")
+val unavailableMapsApiKey = "MAPS_API_KEY_NOT_CONFIGURED"
+val googleMapsApiKey = providers.environmentVariable("GOOGLE_MAPS_ANDROID_API_KEY")
+    .map { value -> value.trim().ifEmpty { unavailableMapsApiKey } }
+    .orElse(unavailableMapsApiKey)
+val googleMapsConfigured = googleMapsApiKey.map { value -> value != unavailableMapsApiKey }
 
 android {
     namespace = "com.yokuli.marine.shell"
@@ -20,7 +25,9 @@ android {
         versionCode = releaseVersionCode
         versionName = releaseVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = googleMapsApiKey.get()
         buildConfigField("String", "GIT_SHA", "\"${gitSha.get().replace("\"", "")}\"")
+        buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", googleMapsConfigured.get().toString())
     }
     flavorDimensions += "shellMode"
     productFlavors {
@@ -70,6 +77,7 @@ dependencies {
     implementation(project(":adapter:shell-storage"))
     implementation(project(":adapter:map-storage"))
     implementation(project(":adapter:map-offline"))
+    implementation(project(":adapter:chart-google"))
     implementation(project(":adapter:marine-data-android"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))

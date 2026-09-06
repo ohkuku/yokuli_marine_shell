@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
+    <application android:networkSecurityConfig="@xml/chart_library_test_network_security">
+        <activity
+            android:name="com.yokuli.marine.chart.library.android.ChartLibraryMapTestActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <provider
             android:name="com.yokuli.marine.chart.library.android.ChartLibraryTestDocumentsProvider"
             android:authorities="${applicationId}.chartlibrary.documents"

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "task": "CL02",
+  "start_commit": "4fadfc5",
+  "local_renderer": "MapLibre 13.4.1 raster source over tokenized IPv4 loopback",
+  "online_renderer": "Google Maps SDK adapter when GOOGLE_MAPS_ANDROID_API_KEY is configured",
+  "local_source_copy_bytes": 0,
+  "local_source_write_bytes": 0,
+  "loopback_address": "127.0.0.1",
+  "loopback_methods": ["GET"],
+  "cache_control": "no-store",
+  "max_concurrent_requests": 8,
+  "test_device": "pixel_7_api_34 emulator",
+  "google_real_key_device_evidence": "NOT_RUN",
+  "physical_provider_evidence": "NOT_RUN"
+}

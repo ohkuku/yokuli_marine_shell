@@ -11,20 +11,20 @@ FIXTURE_ROOT = ROOT / "adapter/map-offline/src/androidTest/assets/fixtures"
 
 
 class MapRendererContractTest(unittest.TestCase):
-    def test_maplibre_is_the_only_production_renderer(self):
+    def test_local_maplibre_and_optional_google_are_separate_production_adapters(self):
         settings = (ROOT / "settings.gradle.kts").read_text()
         app_build = (ROOT / "app-shell/build.gradle.kts").read_text()
         graph = (ROOT / "app-shell/src/main/java/com/yokuli/marine/shell/ProductionShellGraph.kt").read_text()
         manifest = (ROOT / "app-shell/src/main/AndroidManifest.xml").read_text()
 
         self.assertIn('implementation(project(":adapter:map-offline"))', app_build)
-        self.assertNotIn('implementation(project(":adapter:chart-google"))', app_build)
+        self.assertIn('implementation(project(":adapter:chart-google"))', app_build)
         self.assertIn("OfflineMarineChartSurface", graph)
-        self.assertNotIn("GoogleMarineChartSurface", graph)
-        self.assertNotIn("GOOGLE_MAPS_ANDROID_API_KEY", app_build + manifest)
-        self.assertNotIn("GOOGLE_MAPS_CONFIGURED", app_build + graph)
+        self.assertIn("GoogleMarineChartSurface", graph)
+        self.assertIn("GOOGLE_MAPS_ANDROID_API_KEY", app_build + manifest)
+        self.assertIn("GOOGLE_MAPS_CONFIGURED", app_build + graph)
 
-        # Historical code remains build-isolated and cannot become a second production path.
+        # Both SDKs remain behind map-domain; the Feature never imports either provider SDK.
         self.assertIn('\":adapter:chart-google\"', settings)
         self.assertTrue((ROOT / "adapter/chart-google/build.gradle.kts").is_file())
 
@@ -134,7 +134,7 @@ class MapRendererContractTest(unittest.TestCase):
         }
         self.assertEqual(expected, actual)
 
-    def test_no_google_key_value_or_workflow_dependency_is_tracked(self):
+    def test_no_google_key_value_is_tracked_and_all_workflows_inject_the_secret(self):
         google_key = re.compile(r"AIza[0-9A-Za-z_-]{35}")
         offenders = []
         for path in ROOT.rglob("*"):
@@ -150,8 +150,9 @@ class MapRendererContractTest(unittest.TestCase):
                 offenders.append(str(path.relative_to(ROOT)))
         self.assertEqual([], offenders, "tracked-looking text contains a Google API key value")
 
-        workflow_text = "\n".join(path.read_text() for path in (ROOT / ".github/workflows").glob("*.yml"))
-        self.assertNotIn("GOOGLE_MAPS_ANDROID_API_KEY", workflow_text)
+        binding = "GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}"
+        for workflow in ("android.yml", "release.yml", "nightly.yml"):
+            self.assertIn(binding, (ROOT / ".github/workflows" / workflow).read_text())
 
 
 if __name__ == "__main__":
