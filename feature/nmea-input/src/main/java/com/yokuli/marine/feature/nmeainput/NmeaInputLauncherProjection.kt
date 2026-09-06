@@ -79,10 +79,12 @@ object NmeaInputLauncherProjector {
         val enabledCount = snapshot.connections.count { it.stored.runIntent == ConnectionRunIntent.ENABLED }
         val receivingCount = rows.count { it.state == NmeaInputConnectionTileState.RECEIVING }
         val attentionRows = rows.filter { it.state.isAttention }
+        val waitingCount = rows.count { it.state.isWaiting }
         val priority = when {
             rows.isEmpty() -> NmeaInputTilePriority.UNCONFIGURED
             attentionRows.isNotEmpty() -> NmeaInputTilePriority.ATTENTION
             enabledCount == 0 -> NmeaInputTilePriority.STOPPED
+            waitingCount > 0 -> NmeaInputTilePriority.WAITING
             receivingCount > 0 -> NmeaInputTilePriority.RECEIVING
             else -> NmeaInputTilePriority.WAITING
         }
@@ -148,6 +150,16 @@ private val NmeaInputConnectionTileState.isAttention: Boolean
         NmeaInputConnectionTileState.OVERLOADED,
         NmeaInputConnectionTileState.PLATFORM_START_REQUIRED,
         NmeaInputConnectionTileState.FAILED,
+    )
+
+private val NmeaInputConnectionTileState.isWaiting: Boolean
+    get() = this in setOf(
+        NmeaInputConnectionTileState.STARTING,
+        NmeaInputConnectionTileState.TCP_WAITING,
+        NmeaInputConnectionTileState.UDP_LISTENING,
+        NmeaInputConnectionTileState.WAITING_FOR_NETWORK,
+        NmeaInputConnectionTileState.RECONNECTING,
+        NmeaInputConnectionTileState.INPUT_WITHOUT_VALID_NMEA,
     )
 
 private val NmeaInputConnectionTileState.sortOrder: Int
