@@ -74,6 +74,18 @@ class NmeaInputLauncherProjectorTest {
     }
 
     @Test
+    fun waitingConnectionOutranksASecondReceivingConnectionWithoutClaimingAllInputsHealthy() {
+        val receiving = row("primary", ConnectionTransportState.TcpConnected, ConnectionInputState.RECEIVING_VALID_FRAMES)
+        val waiting = row("backup", ConnectionTransportState.TcpConnected, ConnectionInputState.NO_BYTES)
+
+        val state = NmeaInputLauncherProjector.project(snapshot(receiving, waiting))
+
+        assertEquals(NmeaInputTilePriority.WAITING, state.tile.priority)
+        assertEquals(1, state.tile.receivingCount)
+        assertEquals(0, state.tile.attentionCount)
+    }
+
+    @Test
     fun launcherDisplayFreezesDecorativeChangesDuringEditButNeverHidesAttention() {
         val receiving = NmeaInputLauncherProjector.project(
             snapshot(row("one", ConnectionTransportState.TcpConnected, ConnectionInputState.RECEIVING_VALID_FRAMES)),
