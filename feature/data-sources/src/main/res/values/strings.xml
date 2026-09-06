@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="data_sources_title">数据源</string>
+    <string name="attention_summary">%1$d 项需要处理</string>
+    <string name="catalog_explanation">这里只显示系统实际观察到的数据、句型和候选来源。选择来源会写入系统级策略，不会复制或伪造数据。</string>
+    <string name="phone_source_title">手机位置</string>
+    <string name="action_enable">启用</string>
+    <string name="action_disable">停用</string>
+    <string name="action_back">返回</string>
+    <string name="action_use_source">使用此来源</string>
+    <string name="action_disable_data">停用此数据</string>
+    <string name="action_open_nmea">打开 NMEA 输入</string>
+    <string name="view_data">数据</string>
+    <string name="view_sentences">句型</string>
+    <string name="search_hint">搜索数据、来源或句型</string>
+    <string name="search_content_description">搜索数据源</string>
+    <string name="filter_all">全部</string>
+    <string name="filter_attention">需处理</string>
+    <string name="filter_multiple">多来源</string>
+    <string name="filter_phone">手机</string>
+    <string name="empty_title">没有符合条件的数据</string>
+    <string name="empty_body">启用手机位置或在 NMEA 输入中配置连接。系统不会用示例值填充这里。</string>
+    <string name="currently_used">当前使用</string>
+    <string name="raw_empty">没有保留的原始句子证据</string>
+    <string name="sentence_source_count">%1$s · 已接收 %2$d 次</string>
+
+    <string name="data_position">位置</string>
+    <string name="data_sog">对地速度</string>
+    <string name="data_cog">对地航向</string>
+    <string name="data_heading">艏向 · %1$s</string>
+    <string name="data_depth">水深 · %1$s</string>
+    <string name="data_wind_angle">风角 · %1$s</string>
+    <string name="data_wind_speed">风速 · %1$s</string>
+    <string name="data_magnetic_variation">磁差</string>
+    <string name="data_source_time">来源时间</string>
+    <string name="data_fix_quality">定位质量</string>
+    <string name="data_satellites">卫星数</string>
+    <string name="data_hdop">水平精度因子</string>
+    <string name="data_altitude">海拔</string>
+    <string name="data_accuracy">位置精度</string>
+
+    <string name="status_no_candidate">没有候选来源</string>
+    <string name="status_discovering">正在确认来源</string>
+    <string name="status_needs_selection">需要选择来源</string>
+    <string name="status_using">正在使用</string>
+    <string name="status_interrupted">所选来源已中断</string>
+    <string name="status_missing">所选来源已不存在</string>
+    <string name="status_disabled">已由用户停用</string>
+    <string name="phone_disabled">已停用</string>
+    <string name="phone_permission">需要位置权限</string>
+    <string name="phone_system_off">系统位置服务已关闭</string>
+    <string name="phone_starting">正在启动</string>
+    <string name="phone_receiving">正在接收位置</string>
+    <string name="phone_interrupted">位置输入已中断</string>
+    <string name="phone_restricted">平台限制了位置输入</string>
+    <string name="sentence_parsed">已解析</string>
+    <string name="sentence_invalid">句子明确标记为无效</string>
+    <string name="sentence_unsupported">合法但尚未解析</string>
+    <string name="availability_live">实时</string>
+    <string name="availability_held">保持</string>
+    <string name="availability_stale">过期</string>
+    <string name="availability_invalid">无效</string>
+    <string name="availability_unavailable">不可用</string>
+    <string name="availability_missing">来源不存在</string>
+
+    <string name="notice_selection_saved">来源选择已保存</string>
+    <string name="notice_selection_disabled">此数据已停用</string>
+    <string name="notice_selection_failed">无法保存来源选择</string>
+    <string name="notice_candidate_unavailable">该来源当前不可用</string>
+    <string name="notice_phone_enabled">手机位置已启用</string>
+    <string name="notice_phone_disabled">手机位置已停用</string>
+    <string name="notice_phone_unavailable">手机位置目前不可用</string>
+    <string name="notice_busy">操作队列已满，请稍后重试</string>
+</resources>

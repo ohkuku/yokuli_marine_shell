@@ -7,6 +7,7 @@ import com.yokuli.marine.data.connection.ConnectionRunIntent
 import com.yokuli.marine.data.model.ConnectionId
 import com.yokuli.marine.data.nmea.ChecksumPolicy
 import com.yokuli.marine.data.runtime.NmeaConnectionDiagnostics
+import com.yokuli.marine.data.source.MarineFeatureLinkToken
 
 data class NmeaInputUiState(
     val summary: NmeaInputSummaryUi = NmeaInputSummaryUi(),
@@ -260,9 +261,14 @@ sealed interface NmeaInputUiAction {
     data class Start(val id: ConnectionId) : NmeaInputUiAction
     data class Stop(val id: ConnectionId) : NmeaInputUiAction
     data class Retry(val id: ConnectionId) : NmeaInputUiAction
+    data class ViewReceivedData(val id: ConnectionId) : NmeaInputUiAction
     data class RequestDelete(val id: ConnectionId) : NmeaInputUiAction
     data object ConfirmDelete : NmeaInputUiAction
     data object DismissNotice : NmeaInputUiAction
+}
+
+sealed interface NmeaInputEffect {
+    data class OpenDataSources(val token: MarineFeatureLinkToken) : NmeaInputEffect
 }
 
 object NmeaInputBackPolicy {

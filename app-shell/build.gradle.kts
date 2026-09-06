@@ -73,6 +73,7 @@ dependencies {
     implementation(project(":adapter:marine-data-android"))
     implementation(project(":feature:desktop"))
     implementation(project(":feature:chart"))
+    implementation(project(":feature:data-sources"))
     implementation(project(":feature:nmea-input"))
     implementation(project(":feature:settings"))
     implementation(libs.androidx.core.ktx)

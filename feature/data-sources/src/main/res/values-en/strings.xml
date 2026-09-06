@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="data_sources_title">Data sources</string>
+    <string name="attention_summary">%1$d items need attention</string>
+    <string name="catalog_explanation">This screen shows only data, sentences, and candidates the system has actually observed. Source choices update the OS policy; they do not copy or invent data.</string>
+    <string name="phone_source_title">Phone location</string>
+    <string name="action_enable">enable</string>
+    <string name="action_disable">disable</string>
+    <string name="action_back">back</string>
+    <string name="action_use_source">use this source</string>
+    <string name="action_disable_data">disable this data</string>
+    <string name="action_open_nmea">open NMEA input</string>
+    <string name="view_data">data</string>
+    <string name="view_sentences">sentences</string>
+    <string name="search_hint">Search data, sources, or sentences</string>
+    <string name="search_content_description">Search data sources</string>
+    <string name="filter_all">all</string>
+    <string name="filter_attention">attention</string>
+    <string name="filter_multiple">multiple</string>
+    <string name="filter_phone">phone</string>
+    <string name="empty_title">No matching data</string>
+    <string name="empty_body">Enable phone location or configure a connection in NMEA input. The system never fills this screen with sample values.</string>
+    <string name="currently_used">currently used</string>
+    <string name="raw_empty">No retained raw sentence evidence</string>
+    <string name="sentence_source_count">%1$s · received %2$d times</string>
+
+    <string name="data_position">Position</string>
+    <string name="data_sog">Speed over ground</string>
+    <string name="data_cog">Course over ground</string>
+    <string name="data_heading">Heading · %1$s</string>
+    <string name="data_depth">Depth · %1$s</string>
+    <string name="data_wind_angle">Wind angle · %1$s</string>
+    <string name="data_wind_speed">Wind speed · %1$s</string>
+    <string name="data_magnetic_variation">Magnetic variation</string>
+    <string name="data_source_time">Source time</string>
+    <string name="data_fix_quality">Fix quality</string>
+    <string name="data_satellites">Satellites</string>
+    <string name="data_hdop">Horizontal dilution</string>
+    <string name="data_altitude">Altitude</string>
+    <string name="data_accuracy">Position accuracy</string>
+
+    <string name="status_no_candidate">No candidate source</string>
+    <string name="status_discovering">Confirming source</string>
+    <string name="status_needs_selection">Choose a source</string>
+    <string name="status_using">In use</string>
+    <string name="status_interrupted">Selected source interrupted</string>
+    <string name="status_missing">Selected source is missing</string>
+    <string name="status_disabled">Disabled by user</string>
+    <string name="phone_disabled">Disabled</string>
+    <string name="phone_permission">Location permission required</string>
+    <string name="phone_system_off">System location is off</string>
+    <string name="phone_starting">Starting</string>
+    <string name="phone_receiving">Receiving location</string>
+    <string name="phone_interrupted">Location input interrupted</string>
+    <string name="phone_restricted">Platform restricted location input</string>
+    <string name="sentence_parsed">Parsed</string>
+    <string name="sentence_invalid">Sentence explicitly reports invalid data</string>
+    <string name="sentence_unsupported">Legal but not parsed</string>
+    <string name="availability_live">live</string>
+    <string name="availability_held">held</string>
+    <string name="availability_stale">stale</string>
+    <string name="availability_invalid">invalid</string>
+    <string name="availability_unavailable">unavailable</string>
+    <string name="availability_missing">source missing</string>
+
+    <string name="notice_selection_saved">Source choice saved</string>
+    <string name="notice_selection_disabled">Data disabled</string>
+    <string name="notice_selection_failed">Could not save source choice</string>
+    <string name="notice_candidate_unavailable">That source is currently unavailable</string>
+    <string name="notice_phone_enabled">Phone location enabled</string>
+    <string name="notice_phone_disabled">Phone location disabled</string>
+    <string name="notice_phone_unavailable">Phone location is currently unavailable</string>
+    <string name="notice_busy">Action queue is full; try again</string>
+</resources>

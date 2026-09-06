@@ -502,6 +502,9 @@ private fun WorkspaceApplicationBar(
             },
         )
         is NmeaInputPageUi.Detail -> buildList {
+            add(appBarAction("≡", R.string.action_view_data, "nmea-input-detail-view-data") {
+                onAction(NmeaInputUiAction.ViewReceivedData(page.connection.row.id))
+            })
             add(appBarAction("✎", R.string.action_edit, "nmea-input-detail-edit") {
                 onAction(NmeaInputUiAction.EditConnection(page.connection.row.id))
             })

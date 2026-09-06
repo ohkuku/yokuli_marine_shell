@@ -17,15 +17,19 @@ import com.yokuli.marine.data.runtime.NmeaRuntimeCommandResult
 import com.yokuli.marine.data.runtime.NmeaRuntimeFailure
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
 import com.yokuli.marine.data.runtime.SessionToken
+import com.yokuli.marine.data.source.MarineFeatureDestination
+import com.yokuli.marine.data.source.MarineFeatureLinks
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -227,6 +231,23 @@ class NmeaInputCoordinatorTest {
         assertEquals(1, port.maximumInFlight.get())
         port.release.trySend(Unit)
         Unit
+    }
+
+    @Test
+    fun receivedDataLinkCarriesOnlyABoundedOpaqueDestinationToken() = runBlocking {
+        val runtime = FakeRuntimePort()
+        val coordinator = NmeaInputCoordinator(runtime, scope)
+        val effect = async { coordinator.effects.first() }
+
+        coordinator.dispatch(NmeaInputUiAction.ViewReceivedData(ConnectionId("gateway-secret")))
+
+        val actual = effect.await() as NmeaInputEffect.OpenDataSources
+        assertEquals(
+            MarineFeatureDestination.DataSources(ConnectionId("gateway-secret")),
+            MarineFeatureLinks.parse(actual.token),
+        )
+        assertFalse("gateway-secret" in actual.token.value)
+        assertTrue(runtime.commands.isEmpty())
     }
 
     private fun enterValidTcpDraft(coordinator: NmeaInputCoordinator, name: String) {

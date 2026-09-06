@@ -6,13 +6,16 @@ import com.yokuli.marine.data.runtime.NmeaRuntimeCommand
 import com.yokuli.marine.data.runtime.NmeaRuntimeCommandResult
 import com.yokuli.marine.data.runtime.NmeaRuntimeFailure
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
+import com.yokuli.marine.data.source.MarineFeatureLinks
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -37,6 +40,8 @@ class NmeaInputCoordinator(
 
     private val lock = Any()
     private val requests = Channel<RuntimeRequest>(capacity = MAX_PENDING_ACTIONS)
+    private val effectChannel = Channel<NmeaInputEffect>(capacity = MAX_PENDING_EFFECTS)
+    val effects: Flow<NmeaInputEffect> = effectChannel.receiveAsFlow()
     private var runtime = runtimePort.state.value
     private var local: NmeaInputLocalState = NmeaInputLocalState.Overview
     private var notice: NmeaInputNoticeUi? = null
@@ -58,6 +63,20 @@ class NmeaInputCoordinator(
     }
 
     fun dispatch(action: NmeaInputUiAction) {
+        if (action is NmeaInputUiAction.ViewReceivedData) {
+            synchronized(lock) {
+                if (effectChannel.trySend(
+                        NmeaInputEffect.OpenDataSources(
+                            MarineFeatureLinks.dataSourcesForConnection(action.id),
+                        ),
+                    ).isFailure
+                ) {
+                    notice = NmeaInputNoticeUi.ActionQueueFull
+                    publishLocked()
+                }
+            }
+            return
+        }
         val request = synchronized(lock) {
             if (action == NmeaInputUiAction.DismissNotice) notice = null
             val reduction = NmeaInputLocalReducer.reduce(local, action, runtime, newConnectionId)
@@ -143,6 +162,7 @@ class NmeaInputCoordinator(
 
     private companion object {
         const val MAX_PENDING_ACTIONS = 32
+        const val MAX_PENDING_EFFECTS = 16
     }
 }
 

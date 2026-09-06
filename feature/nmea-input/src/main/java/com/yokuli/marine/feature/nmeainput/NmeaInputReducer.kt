@@ -136,6 +136,8 @@ object NmeaInputLocalReducer {
             NmeaInputNoticeUi.Started,
         )
 
+        is NmeaInputUiAction.ViewReceivedData -> NmeaInputReduction(current)
+
         is NmeaInputUiAction.RequestDelete -> if (runtime.hasConnection(action.id)) {
             NmeaInputReduction(NmeaInputLocalState.DeleteConfirmation(action.id))
         } else {

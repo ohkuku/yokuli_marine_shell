@@ -22,7 +22,12 @@ import com.yokuli.marine.feature.chart.GpxImportUiState
 import com.yokuli.marine.feature.chart.OfflineCoverageCoordinator
 import com.yokuli.marine.feature.chart.OfflineCoverageUiState
 import com.yokuli.marine.feature.chart.PositionObservationCoordinator
+import com.yokuli.marine.feature.datasources.DataSourcesCoordinator
+import com.yokuli.marine.feature.datasources.DataSourcesEffect
+import com.yokuli.marine.feature.datasources.DataSourcesUiAction
+import com.yokuli.marine.feature.datasources.DataSourcesUiState
 import com.yokuli.marine.feature.nmeainput.NmeaInputCoordinator
+import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiState
 import android.net.Uri
@@ -36,6 +41,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
@@ -66,6 +72,16 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         nowMillis = { android.os.SystemClock.elapsedRealtime() },
     )
     val nmeaInputState: StateFlow<NmeaInputUiState> = nmeaInputCoordinator.state
+    val nmeaInputEffects: Flow<NmeaInputEffect> = nmeaInputCoordinator.effects
+    private val dataSourcesCoordinator = DataSourcesCoordinator(
+        sourcePort = (application as ShellApplication).marineSourceRuntime,
+        nmeaPort = application.nmeaInputRuntime,
+        phonePort = application.phoneLocationRuntime,
+        scope = viewModelScope,
+        nowMillis = { android.os.SystemClock.elapsedRealtime() },
+    )
+    val dataSourcesState: StateFlow<DataSourcesUiState> = dataSourcesCoordinator.state
+    val dataSourcesEffects: Flow<DataSourcesEffect> = dataSourcesCoordinator.effects
 
     val persistedPreferences: StateFlow<LauncherPersistedState> = persistence.state
         .map { it ?: defaults }
@@ -188,6 +204,10 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onNmeaInputAction(action: NmeaInputUiAction) {
         nmeaInputCoordinator.dispatch(action)
+    }
+
+    fun onDataSourcesAction(action: DataSourcesUiAction) {
+        dataSourcesCoordinator.dispatch(action)
     }
 
     fun acquireChartPackageLease(packageId: ChartPackageId): ChartPackageLease =
