@@ -30,6 +30,7 @@ class DefaultTrackRecorderRuntime(
     private val mutableState = MutableStateFlow(TrackRecorderSnapshot.EMPTY)
     override val state: StateFlow<TrackRecorderSnapshot> = mutableState.asStateFlow()
     private var initialized = false
+    private var loadBlocked = false
     private var revision = 0L
     private var session: TrackRecordingSession? = null
     private var issue: TrackRecorderIssue? = null
@@ -46,14 +47,15 @@ class DefaultTrackRecorderRuntime(
     }
 
     override suspend fun initialize(): TrackRecorderSnapshot = mutex.withLock {
-        if (!initialized) {
+        if (!initialized || loadBlocked) {
             restoreLocked()
         }
         mutableState.value
     }
 
     override suspend fun execute(command: TrackRecorderCommand): TrackRecorderCommandResult = mutex.withLock {
-        if (!initialized) initializeLocked()
+        if (!initialized || loadBlocked) initializeLocked()
+        if (loadBlocked) return@withLock rejectLocked(TrackRecorderIssue.PERSISTENCE_FAILED)
         when (command) {
             TrackRecorderCommand.Start -> startLocked()
             TrackRecorderCommand.Pause -> pauseLocked()
@@ -72,8 +74,14 @@ class DefaultTrackRecorderRuntime(
 
     private suspend fun restoreLocked() {
         when (val loaded = recordingStore.loadTrackRecording()) {
-            TrackRecordingLoadResult.Empty -> Unit
+            TrackRecordingLoadResult.Empty -> {
+                session = null
+                issue = null
+                loadBlocked = false
+            }
             is TrackRecordingLoadResult.Loaded -> {
+                loadBlocked = false
+                issue = null
                 val stored = loaded.session
                 session = if (stored.status == TrackRecorderStatus.RECORDING) {
                     stored.copy(
@@ -87,7 +95,11 @@ class DefaultTrackRecorderRuntime(
                     }
                 } else stored
             }
-            is TrackRecordingLoadResult.Failed -> issue = TrackRecorderIssue.PERSISTENCE_FAILED
+            is TrackRecordingLoadResult.Failed -> {
+                session = null
+                issue = TrackRecorderIssue.PERSISTENCE_FAILED
+                loadBlocked = true
+            }
         }
         lastFixRevision = input.state.value.revision
         initialized = true
@@ -168,7 +180,7 @@ class DefaultTrackRecorderRuntime(
             ?: return rejectLocked(TrackRecorderIssue.ARCHIVE_FAILED)
         val track = current.toNavigationTrack(
             name = rawName.trim().ifEmpty { "Track %03d".format(snapshot.importedTracks.size + 1) },
-            savedAtEpochMillis = clock.wallTimeMillis(),
+            savedAtEpochMillis = maxOf(clock.wallTimeMillis(), requireNotNull(current.stoppedAtEpochMillis)),
         )
         val existing = snapshot.importedTracks.firstOrNull { it.id == track.id }
         if (existing != null && existing.sourceDigest == track.sourceDigest) {
@@ -210,7 +222,11 @@ class DefaultTrackRecorderRuntime(
         }
         val point = RecordedTrackPoint(
             position = position,
-            recordedAtEpochMillis = clock.wallTimeMillis(),
+            recordedAtEpochMillis = maxOf(
+                clock.wallTimeMillis(),
+                current.startedAtEpochMillis,
+                current.segments.lastOrNull()?.points?.lastOrNull()?.recordedAtEpochMillis ?: 0L,
+            ),
             sourceId = requireNotNull(fix.positionSourceId),
             speedOverGroundKnots = fix.speedOverGroundKnots,
             courseOverGroundTrueDegrees = fix.courseOverGroundTrueDegrees,

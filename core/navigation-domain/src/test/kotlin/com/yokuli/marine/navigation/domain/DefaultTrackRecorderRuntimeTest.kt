@@ -178,17 +178,47 @@ class DefaultTrackRecorderRuntimeTest {
         assertEquals(0L, fixture.runtime.state.value.durationMillis)
     }
 
+    @Test
+    fun `failed recording load never gets overwritten by start`() = runTest {
+        val fixture = Fixture(this, storeFailure = TrackRecordingStoreFailure.FUTURE_SCHEMA)
+
+        val result = fixture.runtime.execute(TrackRecorderCommand.Start)
+
+        assertEquals(TrackRecorderIssue.PERSISTENCE_FAILED, (result as TrackRecorderCommandResult.Rejected).issue)
+        assertEquals(0, fixture.store.saveCalls)
+        assertNull(fixture.runtime.state.value.session)
+    }
+
+    @Test
+    fun `wall clock rollback keeps recorded and archived timestamps monotonic`() = runTest {
+        val fixture = Fixture(this)
+        fixture.clock.now = 1_000
+        fixture.runtime.execute(TrackRecorderCommand.Start)
+        fixture.clock.now = 500
+        fixture.emitFix(1, -36.85, 174.76)
+        fixture.runtime.execute(TrackRecorderCommand.Stop)
+        fixture.clock.now = 400
+
+        fixture.runtime.execute(TrackRecorderCommand.Save("Clock-safe track"))
+
+        val track = fixture.library.value.tracks.single()
+        assertEquals(1_000L, track.segments.single().points.single().recordedAtEpochMillis)
+        assertEquals(1_000L, track.endedAtEpochMillis)
+        assertEquals(1_000L, track.importedAtMillis)
+    }
+
     private class Fixture(
         testScope: TestScope,
         stored: TrackRecordingSession? = null,
         active: ActiveNavigationSnapshot = ActiveNavigationSnapshot.EMPTY,
         maxPoints: Int = 200_000,
+        storeFailure: TrackRecordingStoreFailure? = null,
     ) {
         private val testScope = testScope
         val input = MutableStateFlow(NavigationFix())
         val activeNavigation = MutableStateFlow(active)
         val clock = MutableClock()
-        val store = FakeTrackStore(stored)
+        val store = FakeTrackStore(stored, storeFailure)
         val library = FakeLibrary()
         val runtime = DefaultTrackRecorderRuntime(
             input = object : NavigationInputPort { override val state = input },
@@ -223,11 +253,17 @@ class DefaultTrackRecorderRuntimeTest {
         override fun wallTimeMillis() = now
     }
 
-    private class FakeTrackStore(initial: TrackRecordingSession?) : TrackRecordingStore {
+    private class FakeTrackStore(
+        initial: TrackRecordingSession?,
+        private val loadFailure: TrackRecordingStoreFailure? = null,
+    ) : TrackRecordingStore {
         var value = initial
-        override suspend fun loadTrackRecording(): TrackRecordingLoadResult =
-            value?.let(TrackRecordingLoadResult::Loaded) ?: TrackRecordingLoadResult.Empty
+        var saveCalls = 0
+        override suspend fun loadTrackRecording(): TrackRecordingLoadResult = loadFailure?.let {
+            TrackRecordingLoadResult.Failed(it)
+        } ?: value?.let(TrackRecordingLoadResult::Loaded) ?: TrackRecordingLoadResult.Empty
         override suspend fun saveTrackRecording(session: TrackRecordingSession?): TrackRecordingSaveResult {
+            saveCalls += 1
             value = session
             return TrackRecordingSaveResult.Saved
         }

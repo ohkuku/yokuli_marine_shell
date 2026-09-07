@@ -47,6 +47,9 @@ data class TrackRecordingSession(
         require(activeSinceEpochMillis == null || activeSinceEpochMillis >= startedAtEpochMillis)
         require((status == TrackRecorderStatus.STOPPED_AWAITING_SAVE) == (stoppedAtEpochMillis != null))
         require(stoppedAtEpochMillis == null || stoppedAtEpochMillis >= startedAtEpochMillis)
+        val recordedTimes = segments.flatMap { segment -> segment.points.map(RecordedTrackPoint::recordedAtEpochMillis) }
+        require(recordedTimes.all { it >= startedAtEpochMillis })
+        require(recordedTimes.zipWithNext().all { (before, after) -> before <= after })
     }
 }
 

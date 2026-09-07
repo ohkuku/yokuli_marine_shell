@@ -13,8 +13,11 @@ internal object TrackRecordingProtoMapper {
     const val SCHEMA_VERSION = 1
     private const val MAX_POINTS = 200_000
 
-    fun encode(session: TrackRecordingSession?): TrackRecordingStateProto =
-        TrackRecordingStateProto.newBuilder()
+    fun encode(session: TrackRecordingSession?): TrackRecordingStateProto {
+        require((session?.segments?.sumOf { it.points.size } ?: 0) <= MAX_POINTS) {
+            "Track recording exceeds capacity"
+        }
+        return TrackRecordingStateProto.newBuilder()
             .setSchemaVersion(SCHEMA_VERSION)
             .setHasSession(session != null)
             .apply {
@@ -35,6 +38,7 @@ internal object TrackRecordingProtoMapper {
                 }
             }
             .build()
+    }
 
     fun decode(proto: TrackRecordingStateProto): TrackRecordingSession? {
         require(proto.schemaVersion in 0..SCHEMA_VERSION) { "Unsupported track recording schema ${proto.schemaVersion}" }
