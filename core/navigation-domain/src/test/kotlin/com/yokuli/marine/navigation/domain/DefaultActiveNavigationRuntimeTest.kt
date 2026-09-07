@@ -270,6 +270,26 @@ class DefaultActiveNavigationRuntimeTest {
         assertEquals(2, passage.furthestAdvancedWaypointIndex)
     }
 
+    @Test
+    fun `failed session load stays read only and never overwrites an unreadable session`() = runTest {
+        val unreadable = session()
+        val fixture = Fixture(this, unreadable)
+        fixture.store.loadFailure = NavigationSessionStoreFailure.CORRUPT
+        fixture.history.begin(unreadable, route())
+
+        fixture.runtime.initialize()
+        val result = fixture.runtime.execute(ActiveNavigationCommand.Start("route", 3))
+
+        assertEquals(
+            ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED,
+            (result as ActiveNavigationCommandResult.Rejected).issue,
+        )
+        assertEquals(unreadable, fixture.store.value)
+        assertEquals(0, fixture.store.saveCalls)
+        assertEquals(2, fixture.store.loadCalls)
+        assertEquals(NavigationPassageOutcome.ACTIVE, fixture.history.state.value.passages.single().outcome)
+    }
+
     private class Fixture(
         testScope: TestScope,
         stored: ActiveNavigationSession? = null,
@@ -294,9 +314,17 @@ class DefaultActiveNavigationRuntimeTest {
     private class FakeStore(initial: ActiveNavigationSession?) : ActiveNavigationSessionStore {
         var value = initial
         var failSaves = false
-        override suspend fun loadActiveNavigationSession(): NavigationSessionLoadResult =
-            value?.let(NavigationSessionLoadResult::Loaded) ?: NavigationSessionLoadResult.Empty
+        var loadFailure: NavigationSessionStoreFailure? = null
+        var loadCalls = 0
+        var saveCalls = 0
+        override suspend fun loadActiveNavigationSession(): NavigationSessionLoadResult {
+            loadCalls += 1
+            return loadFailure?.let(NavigationSessionLoadResult::Failed)
+                ?: value?.let(NavigationSessionLoadResult::Loaded)
+                ?: NavigationSessionLoadResult.Empty
+        }
         override suspend fun saveActiveNavigationSession(session: ActiveNavigationSession?): NavigationSessionSaveResult {
+            saveCalls += 1
             if (failSaves) return NavigationSessionSaveResult.Failed(NavigationSessionStoreFailure.IO)
             value = session
             return NavigationSessionSaveResult.Saved

@@ -31,6 +31,7 @@ class DefaultActiveNavigationRuntime(
     private val mutableState = MutableStateFlow(ActiveNavigationSnapshot.EMPTY.copy(fix = input.state.value))
     override val state: StateFlow<ActiveNavigationSnapshot> = mutableState.asStateFlow()
     private var initialized = false
+    private var sessionStoreLoadBlocked = false
     private var revision = 0L
     private var currentFix = input.state.value
     private var session: ActiveNavigationSession? = null
@@ -55,6 +56,9 @@ class DefaultActiveNavigationRuntime(
 
     override suspend fun execute(command: ActiveNavigationCommand): ActiveNavigationCommandResult = mutex.withLock {
         ensureInitializedLocked()
+        if (sessionStoreLoadBlocked) {
+            return@withLock rejectLocked(ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED)
+        }
         when (command) {
             is ActiveNavigationCommand.Start -> startLocked(command)
             is ActiveNavigationCommand.DirectTo -> directToLocked(command)
@@ -71,15 +75,23 @@ class DefaultActiveNavigationRuntime(
     override fun close() { inputJob.cancel() }
 
     private suspend fun ensureInitializedLocked() {
-        if (initialized) return
+        if (initialized && !sessionStoreLoadBlocked) return
         history.initialize()
         when (val loaded = sessionStore.loadActiveNavigationSession()) {
-            NavigationSessionLoadResult.Empty -> Unit
-            is NavigationSessionLoadResult.Failed -> issue = ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED
-            is NavigationSessionLoadResult.Loaded -> restoreLocked(loaded.session)
+            NavigationSessionLoadResult.Empty -> sessionStoreLoadBlocked = false
+            is NavigationSessionLoadResult.Failed -> {
+                sessionStoreLoadBlocked = true
+                issue = ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED
+            }
+            is NavigationSessionLoadResult.Loaded -> {
+                sessionStoreLoadBlocked = false
+                restoreLocked(loaded.session)
+            }
         }
-        val reconcileFailure = history.reconcileActiveSession(session?.sessionId, clock.wallTimeMillis()).failureOrNull()
-        if (reconcileFailure != null) historyIssue = reconcileFailure
+        if (!sessionStoreLoadBlocked) {
+            val reconcileFailure = history.reconcileActiveSession(session?.sessionId, clock.wallTimeMillis()).failureOrNull()
+            if (reconcileFailure != null) historyIssue = reconcileFailure
+        }
         initialized = true
         publishLocked()
     }
