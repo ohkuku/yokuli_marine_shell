@@ -43,8 +43,13 @@
     <string name="navigation_open_active">打开当前航行</string>
     <string name="navigation_waypoint_new">新建航点</string>
     <string name="navigation_waypoints_empty">还没有航点</string>
+    <string name="navigation_waypoints_truth">这里管理已经保存的航点。快速 Mark 和地图选点在 Chart 中直接完成。</string>
+    <string name="navigation_waypoints_empty_detail">打开 Chart，在船位或目标点使用 MARK，两步内即可保存第一个航点。</string>
     <string name="navigation_route_new">新建航线</string>
     <string name="navigation_routes_empty">还没有保存航线</string>
+    <string name="navigation_routes_truth">这里管理已经保存的航线。航线几何的创建与修改直接发生在 Chart 地图上。</string>
+    <string name="navigation_routes_empty_detail">打开 Chart，选择 ROUTE 后直接在地图上添加和拖动航点。</string>
+    <string name="navigation_route_edit_in_chart">航线几何只在真实海图上编辑；“在地图中显示”会回到地图上下文。</string>
     <string name="navigation_route_summary">%1$d 点 · %2$.2f 海里</string>
     <string name="navigation_route_summary_metric">%1$d 点 · %2$.2f 千米</string>
     <string name="navigation_route_missing">航线不可用</string>

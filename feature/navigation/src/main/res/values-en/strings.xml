@@ -43,8 +43,13 @@
     <string name="navigation_open_active">open active navigation</string>
     <string name="navigation_waypoint_new">new waypoint</string>
     <string name="navigation_waypoints_empty">NO WAYPOINTS YET</string>
+    <string name="navigation_waypoints_truth">Manage saved waypoints here. Quick Mark and map targeting happen directly in Chart.</string>
+    <string name="navigation_waypoints_empty_detail">Open Chart and use MARK at the vessel or target position to save a waypoint in two steps.</string>
     <string name="navigation_route_new">new route</string>
     <string name="navigation_routes_empty">NO SAVED ROUTES YET</string>
+    <string name="navigation_routes_truth">Manage saved routes here. Route geometry is created and changed directly on the Chart map.</string>
+    <string name="navigation_routes_empty_detail">Open Chart, choose ROUTE, then add and drag waypoints directly on the map.</string>
+    <string name="navigation_route_edit_in_chart">Route geometry is edited only on the real chart; “show in Chart” returns to map context.</string>
     <string name="navigation_route_summary">%1$d POINTS · %2$.2f NM</string>
     <string name="navigation_route_summary_metric">%1$d POINTS · %2$.2f KM</string>
     <string name="navigation_route_missing">ROUTE UNAVAILABLE</string>

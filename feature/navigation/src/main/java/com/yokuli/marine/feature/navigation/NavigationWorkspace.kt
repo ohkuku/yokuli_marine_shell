@@ -1,6 +1,5 @@
 package com.yokuli.marine.feature.navigation
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -25,9 +23,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -49,7 +44,6 @@ import com.yokuli.marine.navigation.domain.NavigationSessionState
 import com.yokuli.marine.navigation.domain.RoutePlan
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
-import kotlin.math.max
 
 @Composable
 fun NavigationWorkspace(
@@ -141,8 +135,11 @@ private fun OverviewPage(state: NavigationUiState, onAction: (NavigationUiAction
 
 @Composable
 private fun WaypointsPage(state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-waypoints") {
-    Command(stringResource(R.string.navigation_waypoint_new), "navigation-waypoint-new") { onAction(NavigationUiAction.CreateWaypoint) }
-    if (state.library.waypoints.isEmpty()) WpText(stringResource(R.string.navigation_waypoints_empty), 23, weight = FontWeight.Light)
+    WpText(stringResource(R.string.navigation_waypoints_truth), 13, color = LocalWpTheme.current.muted)
+    if (state.library.waypoints.isEmpty()) {
+        WpText(stringResource(R.string.navigation_waypoints_empty), 23, weight = FontWeight.Light)
+        WpText(stringResource(R.string.navigation_waypoints_empty_detail), 13, color = LocalWpTheme.current.muted)
+    }
     state.library.waypoints.forEach { waypoint ->
         Column(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("navigation-waypoint-${waypoint.id}")) {
             WpText(waypoint.name, 20, weight = FontWeight.Light)
@@ -161,8 +158,11 @@ private fun WaypointsPage(state: NavigationUiState, onAction: (NavigationUiActio
 
 @Composable
 private fun RoutesPage(state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-routes") {
-    Command(stringResource(R.string.navigation_route_new), "navigation-route-new") { onAction(NavigationUiAction.CreateRoute) }
-    if (state.library.routePlans.isEmpty()) WpText(stringResource(R.string.navigation_routes_empty), 23, weight = FontWeight.Light)
+    WpText(stringResource(R.string.navigation_routes_truth), 13, color = LocalWpTheme.current.muted)
+    if (state.library.routePlans.isEmpty()) {
+        WpText(stringResource(R.string.navigation_routes_empty), 23, weight = FontWeight.Light)
+        WpText(stringResource(R.string.navigation_routes_empty_detail), 13, color = LocalWpTheme.current.muted)
+    }
     state.library.routePlans.forEach { RouteRow(it, onAction) }
 }
 
@@ -198,7 +198,6 @@ private fun WaypointEditor(draft: WaypointDraftUi, onAction: (NavigationUiAction
 @Composable
 private fun RouteDetail(route: RoutePlan, state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-route-detail") {
     WpText(route.name, 28, weight = FontWeight.Light)
-    RouteSketch(route)
     val summary = NavigationRouteMath.summarize(route)
     WpText(routeSummary(route.points.size, summary.distanceNauticalMiles), 13)
     summary.legs.forEach { leg ->
@@ -218,9 +217,7 @@ private fun RouteDetail(route: RoutePlan, state: NavigationUiState, onAction: (N
     Command(stringResource(R.string.navigation_show_chart), "navigation-route-chart-${route.id}") {
         onAction(NavigationUiAction.ShowRouteInChart(route.id))
     }
-    Command(stringResource(R.string.navigation_edit), "navigation-route-edit-${route.id}") {
-        onAction(NavigationUiAction.EditRoute(route.id))
-    }
+    WpText(stringResource(R.string.navigation_route_edit_in_chart), 12, color = LocalWpTheme.current.muted)
     Command(
         stringResource(R.string.navigation_delete), "navigation-route-delete-${route.id}",
         enabled = state.active.session?.routeId != route.id,
@@ -297,39 +294,12 @@ private fun ActivePage(state: NavigationUiState, onAction: (NavigationUiAction) 
     }
     ActiveNavigationStrip(state.active, { onAction(NavigationUiAction.ActiveCommand(it)) })
     state.active.route?.let { route ->
-        RouteSketch(route)
         Command(stringResource(R.string.navigation_show_chart), "navigation-active-chart") {
             onAction(NavigationUiAction.ShowRouteInChart(route.id))
         }
     }
     if (state.active.sessionState == NavigationSessionState.PAUSED) {
         WpText(stringResource(R.string.navigation_restore_truth), 11, color = LocalWpTheme.current.muted)
-    }
-}
-
-@Composable
-private fun RouteSketch(route: RoutePlan) {
-    val colors = LocalWpTheme.current
-    Canvas(Modifier.fillMaxWidth().height(170.dp).background(colors.chrome).testTag("navigation-route-sketch")) {
-        if (route.points.isEmpty()) return@Canvas
-        val minLat = route.points.minOf { it.position.latitude }
-        val maxLat = route.points.maxOf { it.position.latitude }
-        val minLon = route.points.minOf { it.position.longitude }
-        val maxLon = route.points.maxOf { it.position.longitude }
-        val latSpan = max(maxLat - minLat, 1e-9)
-        val lonSpan = max(maxLon - minLon, 1e-9)
-        val points = route.points.map {
-            Offset(
-                x = (size.width * .08f + size.width * .84f * ((it.position.longitude - minLon) / lonSpan)).toFloat(),
-                y = (size.height * .92f - size.height * .84f * ((it.position.latitude - minLat) / latSpan)).toFloat(),
-            )
-        }
-        val path = Path().apply {
-            moveTo(points.first().x, points.first().y)
-            points.drop(1).forEach { lineTo(it.x, it.y) }
-        }
-        drawPath(path, colors.accent, style = Stroke(width = 3.dp.toPx()))
-        points.forEachIndexed { index, point -> drawCircle(if (index == points.lastIndex) colors.accent else colors.foreground, 5.dp.toPx(), point) }
     }
 }
 
