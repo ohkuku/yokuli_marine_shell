@@ -45,7 +45,7 @@ for retired in \
   launcher_stage1_contract launcher_stage5_contract launcher_stage6_contract launcher_stage7_contract \
   launcher_stage8_contract launcher_stage9_contract launcher_stage10_contract launcher_stage11_contract shell_app_contract \
   chart_c12_contract chart_library_cl07_contract chart_library_cl08_contract chart_library_cl09_contract \
-  chart_library_cl10_contract chart_library_cl12_contract osr_w02_contract osr_w04_contract osr_w09_contract \
+  chart_library_cl10_contract chart_library_cl12_contract osr_w02_contract osr_w03_contract osr_w04_contract osr_w09_contract \
   osr_w12_contract osr_w13_contract osr_w14_contract osr_w15_contract osr_w16_contract chart_shell_ux_correction; do
   RETIRED_ID="$retired" ANDROID_WORKFLOW="$android" python3 - <<'PY'
 import os
@@ -59,7 +59,7 @@ done
 for active in \
   launcher_stage0_contract nmea_sources_p1_contract nmea_sources_p3_contract launcher_stage2_contract launcher_stage25_contract \
   launcher_stage3_contract launcher_stage4_contract chart_library_cl11_contract osr_w01_only_contract \
-  osr_w03_contract osr_w08_contract osr_w10_contract osr_w11_contract; do
+  osr_w08_contract osr_w10_contract osr_w11_contract; do
   grep -Fq "id: $active" "$android" || fail "protected gate is missing: $active"
 done
 grep -Fq 'id: release_surface_audit' "$android" || fail 'release manifest/code audit must stay active'

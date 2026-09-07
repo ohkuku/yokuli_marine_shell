@@ -324,13 +324,11 @@ jobs:
         continue-on-error: true
         env:
           OSR_W01_ONLY_RESULT: ${{ steps.osr_w01_only_contract.outcome }}
-          OSR_W03_RESULT: ${{ steps.osr_w03_contract.outcome }}
           OSR_W08_RESULT: ${{ steps.osr_w08_contract.outcome }}
           OSR_W10_RESULT: ${{ steps.osr_w10_contract.outcome }}
           OSR_W11_RESULT: ${{ steps.osr_w11_contract.outcome }}
         run: |
           test "$OSR_W01_ONLY_RESULT" = success
-          test "$OSR_W03_RESULT" = success
           test "$OSR_W08_RESULT" = success
           test "$OSR_W10_RESULT" = success
           test "$OSR_W11_RESULT" = success

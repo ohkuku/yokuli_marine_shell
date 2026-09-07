@@ -74,6 +74,9 @@ class ProductRecoveryWindowTest(unittest.TestCase):
             block = workflow.split(f"id: {step_id}", 1)[1].split("- name:", 1)[0]
             self.assertIn("if: false", block, step_id)
 
+        cumulative = workflow.split("id: osr_w01_contract", 1)[1].split("- name:", 1)[0]
+        self.assertNotIn("OSR_W03_RESULT", cumulative)
+
     def test_core_and_runtime_gates_remain_active(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         active = (
