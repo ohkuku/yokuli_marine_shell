@@ -357,30 +357,14 @@ private fun ViewsWorkspace(
     state: ChartLibraryUiState,
     onAction: (ChartLibraryUiAction) -> Unit,
 ) {
-    val nextName = stringResource(R.string.view_default_name, state.views.size + 1)
-    var newViewName by remember(state.views.size) { mutableStateOf(nextName) }
     LazyColumn(
         Modifier.fillMaxSize().testTag(ChartLibraryTestTags.VIEWS),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item {
             WpText(stringResource(R.string.views_explanation), 13, color = LocalWpTheme.current.muted)
-            state.views.firstOrNull { it.active }?.let { active ->
-                WpText(active.name, 24, weight = FontWeight.Light, modifier = Modifier.padding(top = 8.dp))
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                BasicTextField(
-                    value = newViewName,
-                    onValueChange = { newViewName = it.take(128) },
-                    modifier = Modifier.weight(1f).heightIn(min = YokuliMetrics.MinTouch),
-                    textStyle = TextStyle(LocalWpTheme.current.foreground, 18.sp, fontFamily = FontFamily.SansSerif),
-                    cursorBrush = SolidColor(LocalWpTheme.current.accent),
-                )
-                InlineCommand(stringResource(R.string.action_new_view), "chart-library-new-view") {
-                    onAction(ChartLibraryUiAction.CreateView(newViewName))
-                }
-            }
         }
+        if (state.views.isEmpty()) item { WpText(stringResource(R.string.views_empty), 22, weight = FontWeight.Light) }
         itemsIndexed(state.views, key = { _, view -> view.id.value }) { index, view ->
             MapViewRow(view, index, onAction)
         }
@@ -414,7 +398,37 @@ private fun MapViewRow(view: ChartLibraryViewUi, index: Int, onAction: (ChartLib
                 onAction(ChartLibraryUiAction.RenameView(view.id, draftName))
             }
         }
-        WpText(view.layers.filter { it.included }.joinToString { it.name }, 12, color = colors.muted)
+        if (view.assets.isEmpty()) {
+            WpText(stringResource(R.string.view_assets_empty), 12, color = colors.warning)
+        } else {
+            view.assets.forEachIndexed { assetIndex, asset ->
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = YokuliMetrics.MinTouch),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        WpText(asset.name, 16, weight = FontWeight.Light, maxLines = 1)
+                        WpText(
+                            stringResource(
+                                when {
+                                    asset.available -> R.string.view_asset_ready
+                                    asset.needsAttention -> R.string.view_asset_attention
+                                    else -> R.string.view_asset_checking
+                                },
+                            ),
+                            11,
+                            color = if (asset.needsAttention) colors.warning else colors.muted,
+                        )
+                    }
+                    if (assetIndex > 0) InlineCommand("↑", "chart-library-view-asset-up-${asset.id.value}") {
+                        onAction(ChartLibraryUiAction.MoveViewAsset(view.id, asset.id, 1))
+                    }
+                    if (assetIndex < view.assets.lastIndex) InlineCommand("↓", "chart-library-view-asset-down-${asset.id.value}") {
+                        onAction(ChartLibraryUiAction.MoveViewAsset(view.id, asset.id, -1))
+                    }
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             if (!view.active) InlineCommand(stringResource(R.string.action_use_view), "chart-library-use-view-${view.id.value}") {
                 onAction(ChartLibraryUiAction.ActivateView(view.id))
@@ -754,7 +768,6 @@ private fun ApplicationBar(state: ChartLibraryUiState, onAction: (ChartLibraryUi
         is ChartLibraryPageUi.Overview -> if (state.selectedAssetIds.isEmpty()) {
             listOf(
                 action("+", R.string.action_add_folder, ChartLibraryTestTags.ADD_FOLDER) { onAction(ChartLibraryUiAction.AddFolder) },
-                action("▤", R.string.action_add_file, ChartLibraryTestTags.ADD_FILE) { onAction(ChartLibraryUiAction.AddSingleFile) },
                 action("▥", R.string.action_storage, ChartLibraryTestTags.STORAGE) { onAction(ChartLibraryUiAction.OpenStorage) },
             )
         } else listOf(action("−", R.string.action_clear_selection, "chart-library-clear-selection") {

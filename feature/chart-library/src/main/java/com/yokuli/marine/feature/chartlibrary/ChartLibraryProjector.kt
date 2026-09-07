@@ -120,6 +120,27 @@ object ChartLibraryProjector {
         val viewRows = views.map { view ->
             val viewLayers = view.layers.associateBy { it.layerId }
             val orderedLayers = layers.sortedByDescending { viewLayers[it.id]?.stackOrder ?: it.stackOrder }
+            val viewSourceIds = layers.asSequence()
+                .filter { it.id in viewLayers }
+                .flatMap { it.sourceIds.asSequence() }
+                .toSet()
+            val viewAssets = rows.asSequence()
+                .filter { row -> assetById[row.id]?.memberships?.any(viewSourceIds::contains) == true }
+                .distinctBy(ChartLibraryAssetRowUi::id)
+                .sortedWith(
+                    compareByDescending<ChartLibraryAssetRowUi> { it.priority }
+                        .thenBy(String.CASE_INSENSITIVE_ORDER) { it.title },
+                )
+                .map { row ->
+                    ChartLibraryViewAssetUi(
+                        id = row.id,
+                        name = row.title,
+                        priority = row.priority,
+                        available = row.available,
+                        needsAttention = row.needsAttention,
+                    )
+                }
+                .toList()
             ChartLibraryViewUi(
                 id = view.id,
                 name = view.displayName,
@@ -135,6 +156,7 @@ object ChartLibraryProjector {
                         stackOrder = item?.stackOrder ?: layer.stackOrder,
                     )
                 },
+                assets = viewAssets,
                 visibleLayerCount = view.layers.count { it.visible },
                 active = view.id == catalog.activeViewId,
                 selected = view.id == local.selectedViewId,

@@ -148,7 +148,11 @@ fun OfflineMarineChartSurface(
     var map by remember(mapView) { mutableStateOf<MapLibreMap?>(null) }
     var activeStyle by remember(mapView) { mutableStateOf<Style?>(null) }
     val displayPlan = state.chartDisplayPlan
-    val librarySelectionActive = displayPlan.selection !is ChartDisplaySelection.None
+    // Folder-backed custom maps use the View contract, not the retired asset-selection
+    // contract. Treat an active View as authoritative so a legacy package cannot be mounted
+    // underneath it and so readiness reflects the resources the user actually selected.
+    val librarySelectionActive = displayPlan.activeViewId != null ||
+        displayPlan.selection !is ChartDisplaySelection.None
     val activePackage = if (librarySelectionActive) null else {
         state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }
     }

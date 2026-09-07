@@ -63,7 +63,6 @@ class ChartLibraryCoordinator(
     private data class PendingPicker(
         val kind: ChartPickerKind,
         val repairSourceId: ChartSourceId?,
-        val customViewName: String? = null,
     )
 
     private val events = Channel<Event>(MAX_PENDING_EVENTS)
@@ -194,7 +193,9 @@ class ChartLibraryCoordinator(
     private suspend fun processAction(action: ChartLibraryUiAction) {
         when (action) {
             ChartLibraryUiAction.AddFolder -> requestPicker(ChartPickerKind.TREE, null)
-            ChartLibraryUiAction.AddSingleFile -> requestPicker(ChartPickerKind.SINGLE_DOCUMENT, null)
+            // Kept as a source-compatible action for older callers, but the product now admits
+            // chart content only as a folder-backed View.
+            ChartLibraryUiAction.AddSingleFile -> requestPicker(ChartPickerKind.TREE, null)
             is ChartLibraryUiAction.ChangeQuery -> {
                 local = local.copy(query = action.value.take(MAX_QUERY_LENGTH))
                 publish()
@@ -242,6 +243,11 @@ class ChartLibraryCoordinator(
             is ChartLibraryUiAction.MoveAssetPriority -> mutateAsset(action.assetId) {
                 it.copy(priority = (it.priority + action.delta).coerceIn(-10_000, 10_000))
             }
+            is ChartLibraryUiAction.MoveViewAsset -> moveViewAsset(
+                action.viewId,
+                action.assetId,
+                action.delta,
+            )
             is ChartLibraryUiAction.RefreshSource -> sourceCommand { runtime.refresh(action.sourceId) }
             is ChartLibraryUiAction.CancelSourceScan -> sourceCommand { runtime.cancel(action.sourceId) }
             is ChartLibraryUiAction.RepairPermission -> {
@@ -293,13 +299,9 @@ class ChartLibraryCoordinator(
                 it.copy(opacity = action.opacity.coerceIn(0f, 1f))
             }
             is ChartLibraryUiAction.MoveLayer -> moveLayer(action.layerId, action.delta)
-            // A custom map is created together with its content. The old empty-view-first flow
-            // produced orphan views and forced users to connect three unrelated editors.
-            is ChartLibraryUiAction.CreateView -> requestPicker(
-                ChartPickerKind.SINGLE_DOCUMENT,
-                repairSourceId = null,
-                customViewName = action.name,
-            )
+            // Creating a custom map means authorizing its folder. Naming happens afterwards on
+            // the durable View, never before a second file picker.
+            is ChartLibraryUiAction.CreateView -> requestPicker(ChartPickerKind.TREE, null)
             is ChartLibraryUiAction.SelectView -> {
                 local = local.copy(selectedViewId = action.viewId.takeIf { id -> views.any { it.id == id } })
                 publish()
@@ -371,7 +373,6 @@ class ChartLibraryCoordinator(
     private fun requestPicker(
         kind: ChartPickerKind,
         repairSourceId: ChartSourceId?,
-        customViewName: String? = null,
     ) {
         val operationId = nextOperationId()
         val picker = when (kind) {
@@ -383,7 +384,7 @@ class ChartLibraryCoordinator(
         ) {
             notice = ChartLibraryNoticeUi.ACTION_QUEUE_FULL
         } else {
-            pendingPickers[operationId] = PendingPicker(kind, repairSourceId, customViewName)
+            pendingPickers[operationId] = PendingPicker(kind, repairSourceId)
         }
         publish()
     }
@@ -403,38 +404,40 @@ class ChartLibraryCoordinator(
         }
         busy = true
         publish()
+        val existingSourceId = sources.firstOrNull { it.locator == selection.locator }?.id
         val result = pending.repairSourceId?.let { runtime.repair(it, selection) }
             ?: runtime.acceptPicker(selection)
-        var addedSourceId: ChartSourceId? = null
         when (result) {
             is ChartSourceCommandResult.Accepted -> {
-                addedSourceId = result.sourceId.takeIf { pending.repairSourceId == null }
+                val newFolder = pending.repairSourceId == null && existingSourceId == null
+                val viewReady = if (pending.repairSourceId == null) {
+                    createOrActivateCustomView(
+                        sourceId = result.sourceId,
+                        defaultName = selection.displayName.trim().take(128),
+                        preserveExistingName = !newFolder,
+                    )
+                } else true
                 // Registration and scanning are two different durable operations. Never discard
                 // the scan result and claim success merely because the URI row was registered.
                 notice = when (val refreshed = runtime.refresh(result.sourceId)) {
                     is ChartSourceCommandResult.ScanPublished -> when (refreshed.status) {
                         com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus.COMPLETE ->
-                            if (pending.repairSourceId == null) ChartLibraryNoticeUi.SOURCE_ADDED
+                            if (!viewReady) ChartLibraryNoticeUi.OPERATION_FAILED
+                            else if (pending.repairSourceId == null) ChartLibraryNoticeUi.SOURCE_ADDED
                             else ChartLibraryNoticeUi.SOURCE_REPAIRED
                         com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus.PARTIAL ->
                             ChartLibraryNoticeUi.SCAN_PARTIAL
                         else -> ChartLibraryNoticeUi.SCAN_FAILED
                     }
                     is ChartSourceCommandResult.Accepted ->
-                        if (pending.repairSourceId == null) ChartLibraryNoticeUi.SOURCE_ADDED
+                        if (!viewReady) ChartLibraryNoticeUi.OPERATION_FAILED
+                        else if (pending.repairSourceId == null) ChartLibraryNoticeUi.SOURCE_ADDED
                         else ChartLibraryNoticeUi.SOURCE_REPAIRED
                     is ChartSourceCommandResult.Rejected -> refreshed.reason.toNotice()
                 }
             }
             is ChartSourceCommandResult.ScanPublished -> notice = ChartLibraryNoticeUi.SCAN_FINISHED
             is ChartSourceCommandResult.Rejected -> notice = result.reason.toNotice()
-        }
-        addedSourceId?.let { sourceId ->
-            createOrActivateCustomView(
-                sourceId,
-                pending.customViewName?.trim()?.take(128)?.takeIf(String::isNotBlank)
-                    ?: selection.displayName.substringBeforeLast('.').trim().take(128).ifBlank { selection.displayName.take(128) },
-            )
         }
         reload()
     }
@@ -482,6 +485,28 @@ class ChartLibraryCoordinator(
         commit(listOf(ChartCatalogMutation.PutAsset(transform(asset))), ChartLibraryNoticeUi.ASSET_UPDATED)
     }
 
+    private suspend fun moveViewAsset(viewId: ChartViewId, assetId: ChartAssetId, delta: Int) {
+        if (delta == 0) return
+        val view = views.firstOrNull { it.id == viewId } ?: return missingPage()
+        val includedLayerIds = view.layers.mapTo(linkedSetOf(), ChartViewLayer::layerId)
+        val sourceIds = layers.asSequence().filter { it.id in includedLayerIds }
+            .flatMap { it.sourceIds.asSequence() }.toSet()
+        val ordered = assets.filter { asset -> asset.memberships.any(sourceIds::contains) }
+            .sortedWith(compareByDescending<ChartAsset>(ChartAsset::priority).thenBy { it.displayPath.lowercase() }.thenBy { it.id.value })
+            .toMutableList()
+        val currentIndex = ordered.indexOfFirst { it.id == assetId }
+        if (currentIndex < 0) return missingPage()
+        val targetIndex = (currentIndex + if (delta > 0) -1 else 1).coerceIn(0, ordered.lastIndex)
+        if (targetIndex == currentIndex) return
+        val moved = ordered.removeAt(currentIndex)
+        ordered.add(targetIndex, moved)
+        val mutations = ordered.mapIndexedNotNull { index, asset ->
+            val priority = ordered.size - index
+            if (asset.priority == priority) null else ChartCatalogMutation.PutAsset(asset.copy(priority = priority))
+        }
+        if (mutations.isNotEmpty()) commit(mutations, ChartLibraryNoticeUi.VIEW_UPDATED)
+    }
+
     private suspend fun mutateLayer(layerId: ChartLayerId, transform: (ChartLayer) -> ChartLayer) {
         val layer = layers.firstOrNull { it.id == layerId } ?: return missingPage()
         commit(listOf(ChartCatalogMutation.PutLayer(transform(layer))), ChartLibraryNoticeUi.LAYER_UPDATED)
@@ -493,28 +518,43 @@ class ChartLibraryCoordinator(
         commit(listOf(ChartCatalogMutation.PutLayer(layer.copy(stackOrder = newOrder))), ChartLibraryNoticeUi.LAYER_UPDATED)
     }
 
-    private suspend fun createOrActivateCustomView(sourceId: ChartSourceId, name: String) {
-        val currentLayers = readAllLayers()
-        val sourceLayer = currentLayers.firstOrNull { sourceId in it.sourceIds } ?: return
-        val currentViews = readAllViews()
-        val existing = currentViews.firstOrNull { view ->
-            view.layers.size == 1 && view.layers.single().layerId == sourceLayer.id
+    private suspend fun createOrActivateCustomView(
+        sourceId: ChartSourceId,
+        defaultName: String,
+        preserveExistingName: Boolean,
+    ): Boolean {
+        repeat(MAX_VIEW_COMMIT_ATTEMPTS) {
+            val sourceLayer = readAllLayers().firstOrNull { sourceId in it.sourceIds } ?: return false
+            val existing = readAllViews().firstOrNull { view ->
+                view.layers.size == 1 && view.layers.single().layerId == sourceLayer.id
+            }
+            val id = existing?.id ?: ChartViewId("view-${UUID.randomUUID()}")
+            val name = existing?.displayName?.takeIf { preserveExistingName }
+                ?: defaultName.ifBlank { sourceLayer.displayName }
+            val view = ChartMapView(
+                id = id,
+                displayName = name,
+                baseStyle = com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle.NONE,
+                layers = listOf(ChartViewLayer(sourceLayer.id, visible = true, opacity = 1f, stackOrder = 0)),
+            )
+            when (
+                runtime.transact(
+                    ChartCatalogTransaction(
+                        transactionId = "custom-view:${nextTransactionId()}",
+                        expectedRevision = runtime.snapshot.value.revision,
+                        mutations = listOf(ChartCatalogMutation.PutView(view), ChartCatalogMutation.ActivateView(id)),
+                    ),
+                )
+            ) {
+                is ChartCatalogCommitResult.Committed -> {
+                    local = local.copy(selectedViewId = id)
+                    return true
+                }
+                is ChartCatalogCommitResult.Conflict -> Unit
+                is ChartCatalogCommitResult.Failed -> return false
+            }
         }
-        val id = existing?.id ?: ChartViewId("view-${UUID.randomUUID()}")
-        val view = ChartMapView(
-            id = id,
-            displayName = name,
-            baseStyle = com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle.NONE,
-            layers = listOf(ChartViewLayer(sourceLayer.id, visible = true, opacity = 1f, stackOrder = 0)),
-        )
-        runtime.transact(
-            ChartCatalogTransaction(
-                transactionId = "custom-view:${nextTransactionId()}",
-                expectedRevision = runtime.snapshot.value.revision,
-                mutations = listOf(ChartCatalogMutation.PutView(view), ChartCatalogMutation.ActivateView(id)),
-            ),
-        )
-        local = local.copy(selectedViewId = id)
+        return false
     }
 
     private suspend fun duplicateView(viewId: ChartViewId, name: String) {
@@ -740,5 +780,6 @@ class ChartLibraryCoordinator(
         const val MAX_SELECTED_ASSETS = 1_000
         const val MAX_QUERY_LENGTH = 256
         const val MAX_LOADED_ITEMS = 10_000
+        const val MAX_VIEW_COMMIT_ATTEMPTS = 3
     }
 }

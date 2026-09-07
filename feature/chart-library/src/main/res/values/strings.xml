@@ -31,7 +31,12 @@
     <string name="layers_empty">添加海图来源后，会在这里形成逻辑图层。</string>
     <string name="layer_summary">%1$d 个来源 · %2$d / %3$d 张海图可用 · %4$s</string>
     <string name="layer_thumbnail_description">%1$s 的覆盖范围缩略图</string>
-    <string name="views_explanation">给地图命名并选择一个 MBTiles 文件。保存后，它会作为一个完整地图出现在 Chart 的地图切换器中。</string>
+    <string name="views_explanation">选择一个文件夹即可创建自定义地图。地图默认使用文件夹名称，可在这里改名；文件夹内的 MBTiles 会共同显示，并可调整上下层级。</string>
+    <string name="views_empty">添加一个包含 MBTiles 的文件夹</string>
+    <string name="view_assets_empty">这个文件夹还没有可显示的 MBTiles</string>
+    <string name="view_asset_ready">可显示</string>
+    <string name="view_asset_checking">正在检查</string>
+    <string name="view_asset_attention">需要处理</string>
     <string name="view_default_name">地图视图 %1$d</string>
     <string name="view_copy_name">%1$s 副本</string>
     <string name="view_summary">%1$s · %2$d 个可见图层</string>

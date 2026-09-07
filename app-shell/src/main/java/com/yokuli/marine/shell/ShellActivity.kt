@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import android.provider.Settings
 import android.provider.OpenableColumns
 import android.util.Log
@@ -296,7 +297,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 operationId = pending.operationId,
                 kind = kind,
                 locator = ChartOpaqueLocator(uri.toString()),
-                displayName = context.chartDocumentDisplayName(uri),
+                displayName = context.chartDocumentDisplayName(uri, kind),
                 // The runtime attempts and verifies the persisted read grant before registering.
                 persistableReadGranted = true,
             )
@@ -954,16 +955,27 @@ private fun Context.openHostAppInfo() {
     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
 }
 
-private fun Context.chartDocumentDisplayName(uri: Uri): String {
+private fun Context.chartDocumentDisplayName(uri: Uri, kind: ChartPickerKind): String {
+    val queryUri = if (kind == ChartPickerKind.TREE) {
+        runCatching {
+            DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
+        }.getOrNull() ?: uri
+    } else uri
     val fromProvider = runCatching {
-        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        contentResolver.query(queryUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (!cursor.moveToFirst()) null
             else cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let(cursor::getString)
         }
     }.getOrNull()
+    val treeName = if (kind == ChartPickerKind.TREE) {
+        runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+            ?.substringAfterLast(':')
+            ?.substringAfterLast('/')
+    } else null
     return fromProvider?.trim()?.take(256)?.takeIf(String::isNotBlank)
+        ?: treeName?.trim()?.take(256)?.takeIf(String::isNotBlank)
         ?: uri.lastPathSegment?.substringAfterLast('/')?.take(256)?.takeIf(String::isNotBlank)
-        ?: "MBTiles"
+        ?: "Charts"
 }
 
 private fun Context.openShellLab() {

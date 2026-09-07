@@ -31,7 +31,12 @@
     <string name="layers_empty">Logical layers appear here after a chart source is added.</string>
     <string name="layer_summary">%1$d sources · %2$d / %3$d charts usable · %4$s</string>
     <string name="layer_thumbnail_description">Coverage thumbnail for %1$s</string>
-    <string name="views_explanation">Name a map and choose one MBTiles file. Once saved, it appears as one complete map in Chart\'s map picker.</string>
+    <string name="views_explanation">Choose one folder to create a custom map. Its folder name is used by default and can be renamed here. MBTiles inside it display together and can be reordered.</string>
+    <string name="views_empty">Add a folder containing MBTiles</string>
+    <string name="view_assets_empty">This folder has no displayable MBTiles yet</string>
+    <string name="view_asset_ready">ready to display</string>
+    <string name="view_asset_checking">checking</string>
+    <string name="view_asset_attention">needs attention</string>
     <string name="view_default_name">Map view %1$d</string>
     <string name="view_copy_name">%1$s copy</string>
     <string name="view_summary">%1$s · %2$d visible layers</string>

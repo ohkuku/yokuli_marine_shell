@@ -151,7 +151,14 @@ object ChartViewDisplayPlanner {
                     // after the first camera callback made valid MBTiles appear briefly and then
                     // disappear. Coverage/zoom are navigation hints, never layer-lifetime rules.
                     .onEach { asset -> asset.recordViewportAdvisories(viewport, issues) }
-                    .sortedWith(compareBy<ChartAsset> { it.displayPath.lowercase() }.thenBy { it.id.value })
+                    // Asset priority is the user-owned order inside this folder-backed View.
+                    // Renderers consume the result back-to-front, so the lowest priority is
+                    // mounted first and the highest priority remains visually on top.
+                    .sortedWith(
+                        compareBy<ChartAsset>(ChartAsset::priority)
+                            .thenBy { it.displayPath.lowercase() }
+                            .thenBy { it.id.value },
+                    )
                     .toList()
                 if (effectiveVisible && concrete.isEmpty()) issues += ChartDisplayIssue.LOGICAL_LAYER_UNAVAILABLE
                 logicalPlans += ChartLogicalDisplayLayer(
@@ -195,7 +202,7 @@ object ChartViewDisplayPlanner {
                 }
             }
 
-        val fingerprint = viewFingerprint(catalog.revision, view, viewport, renderLayers)
+        val fingerprint = viewFingerprint(view, renderLayers)
         return ChartDisplayPlan(
             generation = generation,
             catalogRevision = catalog.revision,
@@ -236,18 +243,16 @@ object ChartViewDisplayPlanner {
         return segments(this).any { left -> segments(other).any { right -> left.first <= right.second && right.first <= left.second } }
     }
 
-    private fun viewFingerprint(
-        revision: Long,
-        view: ChartMapView?,
-        viewport: ChartDisplayViewport?,
-        layers: List<ChartDisplayLayer>,
-    ): String {
+    private fun viewFingerprint(view: ChartMapView?, layers: List<ChartDisplayLayer>): String {
         val canonical = buildString {
-            append(revision).append('|').append(view?.id?.value).append('|').append(view?.displayName)
-            append('|').append(view?.baseStyle).append('|').append(viewport).append('|')
+            // Viewport and catalog revision are deliberately absent. They do not change the
+            // mounted resources, and including them caused every pan, zoom, Basic check and
+            // unrelated catalog write to close and reopen live MBTiles sessions.
+            append(view?.id?.value).append('|').append(view?.baseStyle).append('|')
             layers.forEach { layer ->
                 append(layer.logicalLayerId?.value).append(':').append(layer.assetId.value).append(':')
-                    .append(layer.request.revision.cacheKey).append(':').append(layer.opacity).append(';')
+                    .append(layer.request.revision.cacheKey).append(':').append(layer.request.sourceGeneration)
+                    .append(':').append(layer.priority).append(':').append(layer.opacity).append(';')
             }
         }
         return MessageDigest.getInstance("SHA-256").digest(canonical.encodeToByteArray())

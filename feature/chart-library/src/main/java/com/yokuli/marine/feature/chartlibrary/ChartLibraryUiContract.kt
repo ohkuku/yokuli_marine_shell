@@ -84,9 +84,19 @@ data class ChartLibraryViewUi(
     val name: String,
     val baseStyle: ChartBuiltInBaseStyle,
     val layers: List<ChartLibraryViewLayerUi>,
+    /** Top-to-bottom stack owned by this folder-backed custom View. */
+    val assets: List<ChartLibraryViewAssetUi> = emptyList(),
     val visibleLayerCount: Int,
     val active: Boolean,
     val selected: Boolean,
+)
+
+data class ChartLibraryViewAssetUi(
+    val id: ChartAssetId,
+    val name: String,
+    val priority: Int,
+    val available: Boolean,
+    val needsAttention: Boolean,
 )
 
 data class ChartLibraryViewLayerUi(
@@ -292,6 +302,11 @@ sealed interface ChartLibraryUiAction {
     data class SetAssetEnabled(val assetId: ChartAssetId, val enabled: Boolean) : ChartLibraryUiAction
     data class SetAssetRole(val assetId: ChartAssetId, val role: ChartAssetRole) : ChartLibraryUiAction
     data class MoveAssetPriority(val assetId: ChartAssetId, val delta: Int) : ChartLibraryUiAction
+    data class MoveViewAsset(
+        val viewId: ChartViewId,
+        val assetId: ChartAssetId,
+        val delta: Int,
+    ) : ChartLibraryUiAction
     data class RefreshSource(val sourceId: ChartSourceId) : ChartLibraryUiAction
     data class CancelSourceScan(val sourceId: ChartSourceId) : ChartLibraryUiAction
     data class RepairPermission(val sourceId: ChartSourceId) : ChartLibraryUiAction

@@ -110,7 +110,7 @@ class AndroidChartLibraryRuntime private constructor(
         }
         val result = sourceController.refresh(sourceId)
         if (result is ChartSourceCommandResult.ScanPublished && result.status in setOf(ChartScanStatus.COMPLETE, ChartScanStatus.PARTIAL)) {
-            enqueueDiscovered(sourceId)
+            primeRenderableAssetAndEnqueueRemainder(sourceId)
         }
         return result
     }
@@ -325,13 +325,30 @@ class AndroidChartLibraryRuntime private constructor(
         }
     }
 
-    private suspend fun enqueueDiscovered(sourceId: ChartSourceId) {
+    /**
+     * A folder-backed View must not be activated against a catalog containing only DISCOVERED
+     * placeholders. Publish at least one readable MBTiles synchronously, then let the bounded
+     * process queue inspect the rest. This keeps picker completion deterministic without making
+     * the user wait for every file in a large chart folder.
+     */
+    private suspend fun primeRenderableAssetAndEnqueueRemainder(sourceId: ChartSourceId) {
+        val pending = mutableListOf<ChartAsset>()
         var offset = 0
         do {
             val page = catalog.assets(ChartAssetQuery(sourceId = sourceId), offset)
-            page.items.filter(ChartAsset::needsBasicInspection).forEach(::enqueueBasic)
+            pending += page.items.filter(ChartAsset::needsBasicInspection)
             offset += page.items.size
         } while (offset < page.total && page.items.isNotEmpty())
+
+        var inspected = 0
+        var readablePublished = false
+        val remaining = pending.toMutableList()
+        while (!readablePublished && remaining.isNotEmpty() && inspected < MAX_STARTUP_BASIC_PROBES) {
+            val candidate = remaining.removeAt(0)
+            inspected += 1
+            readablePublished = validationController.inspectBasic(candidate.id) is ChartValidationCommandResult.Published
+        }
+        remaining.forEach(::enqueueBasic)
     }
 
     /**
@@ -433,6 +450,7 @@ class AndroidChartLibraryRuntime private constructor(
         const val MAX_PENDING_READ_REQUESTS = 12
         const val BASIC_WORKERS = 2
         const val BASIC_QUEUE_CAPACITY = 256
+        const val MAX_STARTUP_BASIC_PROBES = 8
         const val MAX_ACTIVE_COPY_JOBS = 1
         const val MAX_QUEUED_COPY_JOBS = 8
 
