@@ -42,10 +42,15 @@
     <string name="group_unavailable">Selected source unavailable</string>
     <string name="group_mixed">Legacy configuration mixes sources in this group</string>
     <string name="group_disabled">Disabled</string>
-    <string name="flow_explanation">Only input, sentence evidence, data group, and OS output relationships actually observed at runtime are shown.</string>
+    <string name="flow_explanation">Trace an input source through a marine data group to the value Yokuli OS uses. Only relationships actually observed at runtime are drawn.</string>
     <string name="flow_empty">No actual data relationships yet</string>
     <string name="phone_evidence">phone platform location</string>
     <string name="resolved_output">current OS output</string>
+    <string name="flow_candidate">candidate data</string>
+    <string name="flow_os_output">OS data</string>
+    <string name="flow_standby">not selected</string>
+    <string name="flow_selected_explanation">This path currently supplies data to the OS.</string>
+    <string name="flow_standby_explanation">The OS sees this path but will not silently fail over to it.</string>
     <string name="diagnostics_explanation">Counters and raw sentences are bounded runtime evidence. Leaving this page does not stop reception.</string>
     <string name="counter_sentence_types">sentence types</string>
     <string name="counter_raw_lines">retained raw lines</string>

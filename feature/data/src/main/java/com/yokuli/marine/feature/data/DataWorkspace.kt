@@ -1,6 +1,7 @@
 package com.yokuli.marine.feature.data
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -282,17 +285,67 @@ private fun Flow(state: DataUiState) {
             WpText(stringResource(R.string.flow_empty), 27, weight = FontWeight.Light, modifier = Modifier.padding(top = 24.dp))
         }
         state.flow.forEachIndexed { index, link ->
-            Column(Modifier.fillMaxWidth().padding(vertical = 10.dp).wpEntrance(link.source to link.group, index)) {
-                WpText(link.source.connectionId.value, 20, weight = FontWeight.Light)
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 10.dp)
+                    .wpEntrance(link.source to link.group, index),
+            ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TopologyNode(
+                        title = link.sourceDisplayName,
+                        caption = link.sentenceFamilies.sorted().joinToString(" · ")
+                            .ifBlank { stringResource(R.string.phone_evidence) },
+                        active = link.selectedForOutput,
+                    )
+                    TopologyArrow(link.selectedForOutput)
+                    TopologyNode(
+                        title = groupLabel(link.group),
+                        caption = stringResource(R.string.flow_candidate),
+                        active = link.selectedForOutput,
+                    )
+                    TopologyArrow(link.selectedForOutput)
+                    TopologyNode(
+                        title = stringResource(R.string.flow_os_output),
+                        caption = stringResource(
+                            if (link.selectedForOutput) R.string.resolved_output else R.string.flow_standby,
+                        ),
+                        active = link.selectedForOutput,
+                    )
+                }
                 WpText(
-                    "${link.sentenceFamilies.sorted().joinToString(" + ").ifBlank { stringResource(R.string.phone_evidence) }}  →  ${groupLabel(link.group)}",
-                    13,
-                    color = if (link.selectedForOutput) LocalWpTheme.current.accent else LocalWpTheme.current.muted,
+                    stringResource(
+                        if (link.selectedForOutput) R.string.flow_selected_explanation else R.string.flow_standby_explanation,
+                    ),
+                    11,
+                    color = LocalWpTheme.current.muted,
+                    modifier = Modifier.padding(top = 5.dp),
                 )
-                if (link.selectedForOutput) WpText(stringResource(R.string.resolved_output), 11, color = LocalWpTheme.current.accent)
             }
         }
     }
+}
+
+@Composable
+private fun RowScope.TopologyNode(title: String, caption: String, active: Boolean) {
+    val colors = LocalWpTheme.current
+    Column(
+        Modifier.weight(1f).heightIn(min = 76.dp)
+            .background(if (active) colors.accent.copy(alpha = .16f) else colors.foreground.copy(alpha = .035f))
+            .border(1.dp, if (active) colors.accent else colors.muted.copy(alpha = .55f))
+            .padding(7.dp),
+    ) {
+        WpText(title, 13, weight = FontWeight.Light, maxLines = 2)
+        WpText(caption, 9, color = if (active) colors.accent else colors.muted, maxLines = 2)
+    }
+}
+
+@Composable
+private fun RowScope.TopologyArrow(active: Boolean) {
+    WpText(
+        "›",
+        22,
+        color = if (active) LocalWpTheme.current.accent else LocalWpTheme.current.muted,
+        modifier = Modifier.padding(horizontal = 3.dp),
+    )
 }
 
 @Composable

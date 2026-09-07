@@ -42,10 +42,15 @@
     <string name="group_unavailable">所选来源不可用</string>
     <string name="group_mixed">旧配置在本组混用了来源</string>
     <string name="group_disabled">已停用</string>
-    <string name="flow_explanation">只显示运行时实际观察到的输入、句型证据、数据组和系统输出关系。</string>
+    <string name="flow_explanation">从输入来源追踪到航海数据组，再到 Yokuli OS 当前输出。这里只画运行时真实观察到的关系。</string>
     <string name="flow_empty">尚无真实数据关系</string>
     <string name="phone_evidence">手机平台位置</string>
     <string name="resolved_output">当前系统输出</string>
+    <string name="flow_candidate">候选数据</string>
+    <string name="flow_os_output">OS 数据</string>
+    <string name="flow_standby">未采用</string>
+    <string name="flow_selected_explanation">这条路径当前为系统提供数据。</string>
+    <string name="flow_standby_explanation">系统观察到这条路径，但不会静默切换到它。</string>
     <string name="diagnostics_explanation">计数和原始句子是有界运行时证据；离开此页面不会停止接收。</string>
     <string name="counter_sentence_types">句型种类</string>
     <string name="counter_raw_lines">保留原始行</string>

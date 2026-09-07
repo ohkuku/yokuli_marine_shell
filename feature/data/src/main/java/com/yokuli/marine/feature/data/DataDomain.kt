@@ -110,6 +110,7 @@ data class DataInputState(
 
 data class DataFlowLink(
     val source: SourceIdentity,
+    val sourceDisplayName: String,
     val sentenceFamilies: Set<String>,
     val group: SourceGroup,
     val selectedForOutput: Boolean,
@@ -193,6 +194,7 @@ object DataDomainProjector {
                 group.candidates.map { candidate ->
                     DataFlowLink(
                         source = candidate.source,
+                        sourceDisplayName = candidate.displayName,
                         sentenceFamilies = candidate.evidence.formatters,
                         group = group.group,
                         selectedForOutput = group.selectedSource == candidate.source &&
