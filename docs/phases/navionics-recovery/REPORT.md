@@ -38,6 +38,14 @@
 - CI 绿色仍不等于 R10 产品批准。真机地图手势、视觉层次、湿手/单手可用性和真实 Google tile load 只能由人工验收决定。
 - R11 严格等待 R10；当前不会把概念预览、文案或临时布局固化成新的 presentation authority。
 
+## Cumulative gate correction
+
+- 旧 run `34082187871` 的公开 annotations 指向 Stage 0、Stage 2、W10 与 Product Recovery unit gate；它不是本轮可接受证据。
+- Stage 2/W10 的失败来自两个过期静态断言：旧 Chart/Five-App presentation story，以及把 W10 历史 Room v4 基线误当成永远禁止 forward migration。现已改为只保护 host Back/portrait 安全与从历史基线开始的连续迁移。
+- Stage 0 workflow 本来仍安装并运行固定版本 validator；补回 CI topology 对 `stage0-schema.txt` 与 Stage 0 gate 的自检，未修改 Stage 0 内容。
+- Unit gate 暴露了 `MoveTileBy` 把 accessibility rank move 错接成 pointer cell placement 的真实回归。现已恢复两条独立路径：辅助移动每次跨 combined tile/spacer order 的一个对象，二维拖拽继续使用 cell target。
+- 本地定向结果：Stage 0 10/10、Stage 2 10/10、W10 5/5、CI topology PASS、Tile boundary 5/5；完整 Product Recovery unit gate PASS。Lint、assemble 与 device/migration gate 仍只交给 hosted CI。
+
 ## English summary
 
 NAVREF R00 through R09 are implemented by reusing the accepted Product Recovery foundations and adding one global active-navigation runtime contract, independent navigation camera modes, a process-owned track recorder, truthful passage history, and one shared Shell/future-consumer activity port. Hosted CI and R10 physical product acceptance remain pending; R11 presentation re-lock has not started.
