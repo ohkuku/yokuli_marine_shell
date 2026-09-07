@@ -6,15 +6,20 @@ android="$repo_root/.github/workflows/android.yml"
 release="$repo_root/.github/workflows/release.yml"
 nightly="$repo_root/.github/workflows/nightly.yml"
 device="$repo_root/.github/scripts/run_device_tests.sh"
+schema_requirements="$repo_root/.github/requirements/stage0-schema.txt"
 
 fail() {
   printf 'CI contract failed: %s\n' "$*" >&2
   exit 1
 }
 
-for required in "$android" "$release" "$nightly" "$device"; do
+for required in "$android" "$release" "$nightly" "$device" "$schema_requirements"; do
   [[ -f "$required" ]] || fail "missing ${required#"$repo_root/"}"
 done
+grep -Eq '^jsonschema==[0-9]+\.[0-9]+\.[0-9]+$' "$schema_requirements" || \
+  fail 'Stage 0 schema validator must remain exactly pinned'
+grep -Fq 'python3 -m pip install --requirement .github/requirements/stage0-schema.txt' "$android" || \
+  fail 'Android CI must install the pinned Stage 0 schema validator'
 
 workflows=("$android" "$release" "$nightly")
 for action in actions/checkout@v6 actions/setup-java@v5 gradle/actions/setup-gradle@v6 actions/upload-artifact@v7; do
@@ -52,7 +57,7 @@ PY
 done
 
 for active in \
-  nmea_sources_p1_contract nmea_sources_p3_contract launcher_stage2_contract launcher_stage25_contract \
+  launcher_stage0_contract nmea_sources_p1_contract nmea_sources_p3_contract launcher_stage2_contract launcher_stage25_contract \
   launcher_stage3_contract launcher_stage4_contract chart_library_cl11_contract osr_w01_only_contract \
   osr_w03_contract osr_w08_contract osr_w10_contract osr_w11_contract; do
   grep -Fq "id: $active" "$android" || fail "protected gate is missing: $active"
