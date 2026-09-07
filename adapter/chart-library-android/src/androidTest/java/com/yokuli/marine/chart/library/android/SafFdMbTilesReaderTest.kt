@@ -162,6 +162,7 @@ class SafFdMbTilesReaderTest {
         val escaped = request.copy(locator = ChartOpaqueLocator("yokuli-managed://not-a-version"))
         assertEquals(ChartReadFailure.CANNOT_OPEN, (access.open(escaped) as ChartOpenResult.Rejected).failure)
         root.deleteRecursively()
+        Unit
     }
 
     @Test fun randomAccessUsesLongOffsetsBeyondFourGiB() {
