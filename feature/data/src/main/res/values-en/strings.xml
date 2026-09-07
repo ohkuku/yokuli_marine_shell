@@ -95,7 +95,7 @@
     <string name="data_status_receiving">data %1$d</string>
     <string name="data_status_expanded">%1$d/%2$d inputs receiving · %3$d data groups selected</string>
     <string name="primary_boat">boat</string><string name="primary_flow">flow</string><string name="primary_connections">connections</string>
-    <string name="context_boat">the boat's data nervous system</string><string name="context_nervous_system">from sensors to consumers</string><string name="context_connections">%1$d sources enabled</string><string name="context_trust">who Yokuli trusts</string><string name="context_connection">connection and data health</string><string name="context_add_source">connect boat or phone data</string>
+    <string name="context_boat">marine data nervous system</string><string name="context_nervous_system">from sensors to consumers</string><string name="context_connections">%1$d sources enabled</string><string name="context_trust">who Yokuli trusts</string><string name="context_connection">connection and data health</string><string name="context_add_source">connect boat or phone data</string>
     <string name="boat_senses">Tap a vessel sensor hotspot to see its value, source and affected capabilities.</string>
     <string name="sensor_position">Position</string><string name="sensor_heading">Heading</string><string name="sensor_depth">Depth</string><string name="sensor_wind">Wind</string>
     <string name="health_live">LIVE</string><string name="health_last_reliable">LAST RELIABLE</string><string name="health_stale">STALE</string><string name="health_unavailable">UNAVAILABLE</string><string name="health_attention">NEEDS ATTENTION</string><string name="value_unavailable">—</string>

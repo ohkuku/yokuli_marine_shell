@@ -146,7 +146,7 @@ private fun BoatOverview(state: DataUiState, onAction: (DataUiAction) -> Unit) {
                     stringResource(
                         R.string.consumer_impact_line,
                         consumerLabel(impact.consumerId),
-                        impact.affectedSensors.joinToString(" · ") { sensorLabel(it) },
+                        sensorListLabel(impact.affectedSensors),
                     ), 13,
                     color = if (impact.severity == ConsumerImpactSeverity.BLOCKED) LocalWpTheme.current.alarm else LocalWpTheme.current.warning,
                 )
@@ -268,7 +268,7 @@ private fun TrustDetail(state: DataUiState, group: SourceGroup, onAction: (DataU
                     .background(LocalWpTheme.current.foreground.copy(alpha = .045f)).padding(14.dp),
             ) {
                 WpText(candidate.displayName, 20, weight = FontWeight.Light)
-                WpText(candidate.evidence.availabilityByKey.values.distinct().joinToString(" · ") { availabilityLabel(it) }, 11, color = LocalWpTheme.current.muted)
+                WpText(availabilityListLabel(candidate.evidence.availabilityByKey.values.distinct()), 11, color = LocalWpTheme.current.muted)
                 if (candidate.source == item.selectedSource) {
                     WpText(stringResource(R.string.current_source), 12, color = LocalWpTheme.current.accent, weight = FontWeight.SemiBold)
                 } else WpCommand(stringResource(R.string.use_source)) { onAction(DataUiAction.UseSource(group, candidate.source)) }
@@ -300,7 +300,8 @@ private fun Connections(state: DataUiState, onAction: (DataUiAction) -> Unit) {
                     WpText(inputHealthLabel(input.health), 11, color = inputHealthColor(input.health), weight = FontWeight.SemiBold)
                 }
                 WpText(connectionPlainStatus(input), 13, modifier = Modifier.padding(top = 7.dp))
-                WpText(input.providedSensors.joinToString(" · ") { sensorLabel(it) }.ifBlank { stringResource(R.string.provides_waiting) }, 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 3.dp))
+                val provided = sensorListLabel(input.providedSensors)
+                WpText(if (provided.isBlank()) stringResource(R.string.provides_waiting) else provided, 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 3.dp))
             }
         }
     }
@@ -381,7 +382,8 @@ private fun ConnectionDetail(state: DataUiState, id: String, onAction: (DataUiAc
         WpText(inputHealthLabel(input.health), 13, color = inputHealthColor(input.health), weight = FontWeight.SemiBold)
         WpText(connectionPlainStatus(input), 20, weight = FontWeight.Light, modifier = Modifier.padding(top = 16.dp))
         WpText(stringResource(R.string.provides_title), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 18.dp))
-        WpText(input.providedSensors.joinToString(" · ") { sensorLabel(it) }.ifBlank { stringResource(R.string.provides_waiting) }, 17)
+        val provided = sensorListLabel(input.providedSensors)
+        WpText(if (provided.isBlank()) stringResource(R.string.provides_waiting) else provided, 17)
         Row(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
             if (input.runIntent == ConnectionRunIntent.ENABLED) WpCommand(stringResource(R.string.action_stop)) { onAction(DataUiAction.StopConnection(input.id)) }
             else WpCommand(stringResource(R.string.action_start)) { onAction(DataUiAction.StartConnection(input.id)) }
@@ -515,11 +517,21 @@ private fun DataSurface.asAction(): DataUiAction = when (this) {
 
 @Composable private fun primaryLabel(v: PrimaryDataArea) = stringResource(when (v) { PrimaryDataArea.BOAT -> R.string.primary_boat; PrimaryDataArea.FLOW -> R.string.primary_flow; PrimaryDataArea.CONNECTIONS -> R.string.primary_connections })
 @Composable private fun sensorLabel(v: BoatSensor) = stringResource(when (v) { BoatSensor.POSITION -> R.string.sensor_position; BoatSensor.HEADING -> R.string.sensor_heading; BoatSensor.DEPTH -> R.string.sensor_depth; BoatSensor.WIND -> R.string.sensor_wind })
+@Composable private fun sensorListLabel(values: Collection<BoatSensor>): String {
+    val labels = mutableListOf<String>()
+    values.forEach { labels += sensorLabel(it) }
+    return labels.joinToString(" · ")
+}
 @Composable private fun consumerLabel(v: MarineConsumerId) = stringResource(when (v) { MarineConsumerId.CHART -> R.string.consumer_chart; MarineConsumerId.NAVIGATION -> R.string.consumer_navigation; MarineConsumerId.START_TILE -> R.string.consumer_start_tile })
 @Composable private fun healthLabel(v: SensorHealth) = stringResource(when (v) { SensorHealth.LIVE -> R.string.health_live; SensorHealth.HELD -> R.string.health_last_reliable; SensorHealth.STALE -> R.string.health_stale; SensorHealth.UNAVAILABLE -> R.string.health_unavailable; SensorHealth.NEEDS_ATTENTION -> R.string.health_attention })
 @Composable private fun groupLabel(v: SourceGroup) = stringResource(when (v) { SourceGroup.POSITION_AND_MOTION -> R.string.group_position_motion; SourceGroup.HEADING -> R.string.group_heading; SourceGroup.DEPTH -> R.string.group_depth; SourceGroup.APPARENT_WIND -> R.string.group_apparent_wind; SourceGroup.TRUE_WIND -> R.string.group_true_wind })
 @Composable private fun groupStatusLabel(v: SourceGroupStatus) = stringResource(when (v) { SourceGroupStatus.NO_DATA -> R.string.group_no_data; SourceGroupStatus.DISCOVERING -> R.string.group_discovering; SourceGroupStatus.NEEDS_SELECTION -> R.string.group_needs_selection; SourceGroupStatus.USING -> R.string.group_using; SourceGroupStatus.SELECTED_UNAVAILABLE -> R.string.group_unavailable; SourceGroupStatus.MIXED_LEGACY_SELECTION -> R.string.group_mixed; SourceGroupStatus.DISABLED -> R.string.group_disabled })
 @Composable private fun availabilityLabel(v: SourceCandidateAvailability) = stringResource(when (v) { SourceCandidateAvailability.LIVE -> R.string.availability_live; SourceCandidateAvailability.HELD -> R.string.availability_held; SourceCandidateAvailability.STALE -> R.string.availability_stale; SourceCandidateAvailability.INVALID -> R.string.availability_invalid; SourceCandidateAvailability.UNAVAILABLE -> R.string.availability_unavailable; SourceCandidateAvailability.MISSING -> R.string.availability_missing })
+@Composable private fun availabilityListLabel(values: Collection<SourceCandidateAvailability>): String {
+    val labels = mutableListOf<String>()
+    values.forEach { labels += availabilityLabel(it) }
+    return labels.joinToString(" · ")
+}
 @Composable private fun inputHealthLabel(v: DataInputHealth) = stringResource(when (v) { DataInputHealth.STOPPED -> R.string.connection_stopped; DataInputHealth.WAITING -> R.string.connection_starting; DataInputHealth.LISTENING -> R.string.connection_listening; DataInputHealth.RECEIVING -> R.string.connection_receiving; DataInputHealth.INTERRUPTED -> R.string.connection_interrupted; DataInputHealth.ATTENTION -> R.string.connection_attention })
 
 @Composable
