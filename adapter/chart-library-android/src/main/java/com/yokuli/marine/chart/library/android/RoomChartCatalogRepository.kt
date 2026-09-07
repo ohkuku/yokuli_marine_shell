@@ -122,7 +122,8 @@ class RoomChartCatalogRepository private constructor(
                     }
                     transaction.mutations.forEach { mutation -> applyMutation(mutation, resolved) }
                     val createdLayerIds = ensureDefaultLayersForSources()
-                    val activeViewId = ensureActiveView(metadata.activeViewId, createdLayerIds)
+                    val requestedActiveViewId = dao.metadata()?.activeViewId ?: metadata.activeViewId
+                    val activeViewId = ensureActiveView(requestedActiveViewId, createdLayerIds)
                     val newRevision = metadata.revision + 1L
                     dao.putMetadata(
                         ChartCatalogMetadataEntity(
@@ -197,7 +198,11 @@ class RoomChartCatalogRepository private constructor(
             is ChartCatalogMutation.RemoveView -> dao.deleteView(mutation.viewId.value)
             is ChartCatalogMutation.ActivateView -> {
                 if (dao.view(mutation.viewId.value) == null) throw InvalidReferenceException()
-                val metadata = dao.metadata() ?: ChartCatalogMetadataEntity(0L, null, null)
+                val metadata = dao.metadata() ?: ChartCatalogMetadataEntity(
+                    revision = 0L,
+                    lastTransactionId = null,
+                    activeViewId = null,
+                )
                 dao.putMetadata(metadata.copy(activeViewId = mutation.viewId.value))
             }
         }
