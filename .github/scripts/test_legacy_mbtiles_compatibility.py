@@ -58,9 +58,13 @@ class LegacyMbTilesCompatibilityTest(unittest.TestCase):
         tests = self.read(
             "core/map-domain/src/test/kotlin/com/yokuli/marine/map/domain/chartlibrary/ChartDisplayPlannerTest.kt"
         )
+        eligibility = display.split("private fun ChartAsset.isDisplayEligible", 1)[1].split(
+            "private fun ChartAsset.knownZoomRange", 1
+        )[0]
         self.assertIn("UNKNOWN_BOUNDS_UNFILTERED", display)
         self.assertNotIn("UNKNOWN_BOUNDS_EXCLUDED", display)
-        self.assertNotIn("facts.minZoom != null && facts.maxZoom != null", display)
+        self.assertNotIn("facts.minZoom", eligibility)
+        self.assertNotIn("facts.maxZoom", eligibility)
         self.assertIn("unknownBoundsNeverTurnRenderableContentIntoAnExcludedLayer", tests)
         self.assertIn("missingMetadataZoomRangeUsesSafeRendererRangeInsteadOfBlockingDisplay", tests)
 
