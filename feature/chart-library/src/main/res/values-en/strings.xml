@@ -27,7 +27,7 @@
     <string name="coverage_attention">needs attention</string>
     <string name="coverage_layers">logical layers</string>
     <string name="layer_coverage_summary">%1$d / %2$d charts usable · %3$s</string>
-    <string name="layers_explanation">A layer is one map-content unit in the user's mental model and may combine many MBTiles from its source. Rename, show, order and fade layers here.</string>
+    <string name="layers_explanation">A layer is one map-content unit in the user\'s mental model and may combine many MBTiles from its source. Rename, show, order and fade layers here.</string>
     <string name="layers_empty">Logical layers appear here after a chart source is added.</string>
     <string name="layer_summary">%1$d sources · %2$d / %3$d charts usable · %4$s</string>
     <string name="views_explanation">A view saves a base map and logical-layer composition. The active view is the only map-content truth consumed by Chart.</string>
