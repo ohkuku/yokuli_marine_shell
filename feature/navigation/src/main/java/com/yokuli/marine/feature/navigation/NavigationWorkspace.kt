@@ -248,7 +248,6 @@ private fun MissingRoute(onAction: (NavigationUiAction) -> Unit) = ScrollBody("n
 }
 
 @Composable
-@Composable
 private fun ActivePage(state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-active") {
     if (state.active.session == null) {
         WpText(stringResource(R.string.navigation_active_empty), 24, weight = FontWeight.Light)
