@@ -313,22 +313,13 @@ class DataCoordinator(
             ?: NmeaConnectionProbeResult.NoSemanticData(false, 0L)
         ) {
             is NmeaConnectionProbeResult.Detected -> {
-                val save = nmeaPort.execute(NmeaRuntimeCommand.SaveAndStart(config, request.draft.expectedRevision))
                 synchronized(lock) {
-                    connectionTest = when (save) {
-                        is NmeaRuntimeCommandResult.Success -> DataConnectionTestState(
-                            phase = ConnectionTestPhase.DETECTED,
-                            detectedSensors = probe.dataKeys.mapNotNullTo(linkedSetOf(), ::sensorFor),
-                            transportReady = true,
-                            legalFrameCount = probe.legalFrameCount,
-                        )
-                        is NmeaRuntimeCommandResult.Rejected -> DataConnectionTestState(
-                            phase = ConnectionTestPhase.FAILED,
-                            failure = save.failure,
-                            transportReady = true,
-                            legalFrameCount = probe.legalFrameCount,
-                        )
-                    }
+                    connectionTest = DataConnectionTestState(
+                        phase = ConnectionTestPhase.DETECTED,
+                        detectedSensors = probe.dataKeys.mapNotNullTo(linkedSetOf(), ::sensorFor),
+                        transportReady = true,
+                        legalFrameCount = probe.legalFrameCount,
+                    )
                     publishLocked()
                 }
             }
