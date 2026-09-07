@@ -17,6 +17,7 @@ sealed interface DataSurface {
     data class Primary(val area: PrimaryDataArea) : DataSurface
     data class Sensor(val sensor: BoatSensor) : DataSurface
     data class Trust(val group: SourceGroup) : DataSurface
+    data class Consumer(val consumerId: MarineConsumerId) : DataSurface
     data class Connection(val connectionId: com.yokuli.marine.data.model.ConnectionId) : DataSurface
     data class Diagnostics(val connectionId: com.yokuli.marine.data.model.ConnectionId? = null) : DataSurface
     data object AddSource : DataSurface

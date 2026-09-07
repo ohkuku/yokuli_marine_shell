@@ -102,6 +102,10 @@ class DataCoordinator(
                     surface = DataSurface.Trust(action.group)
                     null
                 }
+                is DataUiAction.OpenConsumer -> {
+                    surface = DataSurface.Consumer(action.consumerId)
+                    null
+                }
                 DataUiAction.OpenAddSource -> {
                     surface = DataSurface.AddSource
                     connectionDraft = null
@@ -216,9 +220,22 @@ class DataCoordinator(
                 }
                 is DataUiAction.DisableGroup -> Request.Select(SourceGroupSelectionAdapter.disable(action.group))
                 is DataUiAction.InspectFlowSource -> {
+                    val installedConnection = nmea.connections.any {
+                        it.stored.config.id == action.source.connectionId
+                    }
                     section = DataSection.SOURCES
-                    surface = DataSurface.Connection(action.source.connectionId)
-                    sourceFocus = action.source.connectionId
+                    surface = if (installedConnection) {
+                        sourceFocus = action.source.connectionId
+                        DataSurface.Connection(action.source.connectionId)
+                    } else {
+                        sourceFocus = null
+                        val group = SourceGroup.entries.firstOrNull { candidateGroup ->
+                            sources.sourceCatalog.candidates.any {
+                                it.id.source == action.source && it.id.key in candidateGroup.keys
+                            }
+                        } ?: SourceGroup.POSITION_AND_MOTION
+                        DataSurface.Trust(group)
+                    }
                     null
                 }
                 is DataUiAction.InspectFlowGroup -> {

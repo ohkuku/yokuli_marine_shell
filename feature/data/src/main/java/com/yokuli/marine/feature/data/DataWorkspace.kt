@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -38,6 +39,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
@@ -61,6 +63,8 @@ import com.yokuli.marine.data.connection.NmeaEndpoint
 import com.yokuli.marine.data.model.DataKey
 import com.yokuli.marine.data.model.MarineUnit
 import com.yokuli.marine.data.model.MarineValue
+import com.yokuli.marine.data.model.SourceIdentity
+import com.yokuli.marine.data.phone.PhoneLocationState
 import com.yokuli.marine.data.runtime.ConnectionTransportState
 import com.yokuli.marine.data.runtime.NmeaRuntimeFailure
 import com.yokuli.marine.data.source.SourceCandidateAvailability
@@ -102,6 +106,7 @@ fun DataWorkspace(state: DataUiState, onAction: (DataUiAction) -> Unit) {
             }
             is DataSurface.Sensor -> SensorDetail(state, surface.sensor, onAction)
             is DataSurface.Trust -> TrustDetail(state, surface.group, onAction)
+            is DataSurface.Consumer -> ConsumerDetail(state, surface.consumerId, onAction)
             is DataSurface.Connection -> ConnectionDetail(state, surface.connectionId.value, onAction)
             is DataSurface.Diagnostics -> Diagnostics(state, surface.connectionId?.value)
             DataSurface.AddSource -> AddSource(onAction)
@@ -284,6 +289,7 @@ private fun Connections(state: DataUiState, onAction: (DataUiAction) -> Unit) {
     ScrollBody(Modifier.testTag(DataTestTags.CONNECTIONS)) {
         WpText(stringResource(R.string.connections_intro), 13, color = LocalWpTheme.current.muted)
         WpCommand(stringResource(R.string.action_add_source)) { onAction(DataUiAction.OpenAddSource) }
+        PhoneCapability(state, onAction)
         if (state.inputs.isEmpty()) {
             WpText(stringResource(R.string.connections_empty), 28, weight = FontWeight.Light, modifier = Modifier.padding(top = 30.dp))
             WpText(stringResource(R.string.connections_empty_detail), 13, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 8.dp))
@@ -303,6 +309,36 @@ private fun Connections(state: DataUiState, onAction: (DataUiAction) -> Unit) {
                 val provided = sensorListLabel(input.providedSensors)
                 WpText(if (provided.isBlank()) stringResource(R.string.provides_waiting) else provided, 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 3.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun PhoneCapability(state: DataUiState, onAction: (DataUiAction) -> Unit) {
+    val color = when (state.phone.state) {
+        PhoneLocationState.RECEIVING -> LocalWpTheme.current.safe
+        PhoneLocationState.STARTING -> LocalWpTheme.current.warning
+        PhoneLocationState.DISABLED_BY_USER -> LocalWpTheme.current.muted
+        PhoneLocationState.PERMISSION_REQUIRED,
+        PhoneLocationState.SYSTEM_LOCATION_DISABLED,
+        PhoneLocationState.INTERRUPTED,
+        PhoneLocationState.PLATFORM_RESTRICTED,
+        -> LocalWpTheme.current.alarm
+    }
+    Column(
+        Modifier.fillMaxWidth().padding(top = 12.dp)
+            .background(LocalWpTheme.current.foreground.copy(alpha = .045f))
+            .clickable(role = Role.Button) { onAction(DataUiAction.OpenSensor(BoatSensor.POSITION)) }
+            .padding(14.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(10.dp).background(color, CircleShape))
+            WpText(stringResource(R.string.source_phone), 20, modifier = Modifier.padding(start = 9.dp).weight(1f), weight = FontWeight.Light)
+            WpText(phoneStatusLabel(state), 11, color = color, weight = FontWeight.SemiBold)
+        }
+        WpText(stringResource(R.string.phone_is_builtin), 13, modifier = Modifier.padding(top = 7.dp))
+        if (!state.phoneDemand.required) {
+            WpCommand(stringResource(R.string.use_phone_source)) { onAction(DataUiAction.ChoosePhoneSource) }
         }
     }
 }
@@ -421,39 +457,147 @@ private fun NervousSystemFlow(state: DataUiState, onAction: (DataUiAction) -> Un
 @Composable
 private fun FlowScene(state: DataUiState, onAction: (DataUiAction) -> Unit) {
     val colors = LocalWpTheme.current
-    Box(Modifier.fillMaxWidth().height(390.dp).padding(top = 16.dp).testTag(DataTestTags.FLOW_SCENE)) {
+    val sourceNames = linkedMapOf<SourceIdentity, String>()
+    state.inputs.forEach { sourceNames[SourceIdentity(it.id)] = it.displayName }
+    state.flow.forEach { sourceNames[it.source] = it.sourceDisplayName }
+    val sources = sourceNames.entries.toList()
+    val sensors = state.boat.sensors
+    val consumers = state.consumerImpact.filter { it.active }
+    Box(Modifier.fillMaxWidth().height(410.dp).padding(top = 16.dp).testTag(DataTestTags.FLOW_SCENE)) {
         Canvas(Modifier.fillMaxSize()) {
-            val left = size.width * .08f; val middle = size.width * .48f; val resolved = size.width * .73f; val right = size.width * .94f
-            drawLine(colors.muted.copy(alpha = .28f), Offset(left, 58f), Offset(middle, size.height * .5f), 2f)
-            drawLine(colors.accent.copy(alpha = .72f), Offset(middle, size.height * .5f), Offset(resolved, size.height * .5f), 4f, StrokeCap.Round)
-            drawLine(colors.accent.copy(alpha = .56f), Offset(resolved, size.height * .5f), Offset(right, 58f), 3f)
-            drawLine(colors.accent.copy(alpha = .56f), Offset(resolved, size.height * .5f), Offset(right, size.height - 44f), 3f)
+            fun nodeY(index: Int, count: Int): Float = if (count <= 1) {
+                size.height * .5f
+            } else {
+                val usable = size.height - 96f
+                48f + usable * index / (count - 1).toFloat()
+            }
+            val left = size.width * .14f
+            val channel = size.width * .48f
+            val resolver = size.width * .71f
+            val right = size.width * .90f
+            state.flow.groupBy { it.source to sensorFor(it.group) }.forEach { (identity, links) ->
+                val sourceIndex = sources.indexOfFirst { it.key == identity.first }
+                val sensorIndex = sensors.indexOfFirst { it.sensor == identity.second }
+                if (sourceIndex >= 0 && sensorIndex >= 0) {
+                    val selected = links.any { it.selectedForOutput }
+                    val available = links.any {
+                        it.health in setOf(SourceCandidateAvailability.LIVE, SourceCandidateAvailability.HELD)
+                    }
+                    drawLine(
+                        color = if (selected) colors.accent.copy(alpha = .9f) else colors.muted.copy(alpha = .24f),
+                        start = Offset(left, nodeY(sourceIndex, sources.size)),
+                        end = Offset(channel, nodeY(sensorIndex, sensors.size)),
+                        strokeWidth = if (selected) 4f else 2f,
+                        pathEffect = if (available) null else PathEffect.dashPathEffect(floatArrayOf(9f, 7f)),
+                    )
+                }
+            }
+            sensors.forEachIndexed { sensorIndex, sensor ->
+                val active = sensor.selectedSource != null &&
+                    sensor.health !in setOf(SensorHealth.UNAVAILABLE, SensorHealth.NEEDS_ATTENTION)
+                drawLine(
+                    if (active) colors.accent.copy(alpha = .72f) else colors.muted.copy(alpha = .18f),
+                    Offset(channel, nodeY(sensorIndex, sensors.size)),
+                    Offset(resolver, size.height * .5f),
+                    if (active) 3.5f else 1.5f,
+                )
+            }
+            consumers.forEachIndexed { index, consumer ->
+                drawLine(
+                    if (consumer.severity == ConsumerImpactSeverity.BLOCKED) colors.alarm else colors.accent.copy(alpha = .6f),
+                    Offset(resolver, size.height * .5f),
+                    Offset(right, nodeY(index, consumers.size)),
+                    if (consumer.severity == ConsumerImpactSeverity.BLOCKED) 4f else 2.5f,
+                )
+            }
+            drawCircle(colors.background, 20f, Offset(resolver, size.height * .5f))
+            drawCircle(colors.accent, 18f, Offset(resolver, size.height * .5f), style = Stroke(3f))
         }
         FlowColumn(stringResource(R.string.flow_inputs), Modifier.align(Alignment.CenterStart).width(112.dp)) {
-            state.inputs.take(4).forEach { input -> FlowNode(input.displayName, input.health == DataInputHealth.RECEIVING) { onAction(DataUiAction.OpenConnection(input.id)) } }
-            if (state.inputs.isEmpty()) WpText(stringResource(R.string.flow_no_input), 13, color = colors.muted)
+            sources.take(6).forEach { source ->
+                val links = state.flow.filter { it.source == source.key }
+                FlowNode(
+                    source.value,
+                    links.any { it.selectedForOutput },
+                    if (links.any { it.selectedForOutput }) stringResource(R.string.current_source)
+                    else stringResource(R.string.flow_standby),
+                ) { onAction(DataUiAction.InspectFlowSource(source.key)) }
+            }
+            if (sources.isEmpty()) WpText(stringResource(R.string.flow_no_input), 13, color = colors.muted)
         }
         FlowColumn(stringResource(R.string.flow_channels), Modifier.align(Alignment.Center).width(126.dp)) {
-            state.boat.sensors.forEach { sensor -> FlowNode(sensorLabel(sensor.sensor), sensor.health in setOf(SensorHealth.LIVE, SensorHealth.HELD)) { onAction(DataUiAction.OpenSensor(sensor.sensor)) } }
+            sensors.forEach { sensor -> FlowNode(sensorLabel(sensor.sensor), sensor.health in setOf(SensorHealth.LIVE, SensorHealth.HELD)) { onAction(DataUiAction.OpenSensor(sensor.sensor)) } }
         }
         FlowColumn(stringResource(R.string.flow_consumers), Modifier.align(Alignment.CenterEnd).width(118.dp), Alignment.End) {
-            state.consumerImpact.filter { it.active }.forEach { FlowNode(consumerLabel(it.consumerId), it.severity != ConsumerImpactSeverity.BLOCKED) {} }
-            if (state.consumerImpact.none { it.active }) WpText(stringResource(R.string.flow_no_consumer), 12, color = colors.muted)
+            consumers.forEach { consumer ->
+                FlowNode(consumerLabel(consumer.consumerId), consumer.severity != ConsumerImpactSeverity.BLOCKED) {
+                    onAction(DataUiAction.OpenConsumer(consumer.consumerId))
+                }
+            }
+            if (consumers.isEmpty()) WpText(stringResource(R.string.flow_no_consumer), 12, color = colors.muted)
         }
-        WpText(stringResource(R.string.flow_os_truth), 11, color = colors.accent, weight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Center).offset(x = 78.dp, y = (-116).dp))
+        WpText(stringResource(R.string.flow_os_truth), 10, color = colors.accent, weight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Center).offset(x = 78.dp, y = (-36).dp))
     }
 }
 
 @Composable
 private fun FlowColumn(label: String, modifier: Modifier, alignment: Alignment.Horizontal = Alignment.Start, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier, horizontalAlignment = alignment) { WpText(label, 10, color = LocalWpTheme.current.muted, weight = FontWeight.SemiBold); content() }
+    Column(modifier.fillMaxHeight(), horizontalAlignment = alignment) {
+        WpText(label, 10, color = LocalWpTheme.current.muted, weight = FontWeight.SemiBold)
+        Column(
+            Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.SpaceEvenly,
+            horizontalAlignment = alignment,
+            content = content,
+        )
+    }
 }
 
 @Composable
-private fun FlowNode(label: String, active: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
+private fun FlowNode(label: String, active: Boolean, detail: String? = null, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(role = Role.Button, onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(9.dp).background(if (active) LocalWpTheme.current.accent else LocalWpTheme.current.stale, CircleShape))
-        WpText(label, 12, modifier = Modifier.padding(start = 7.dp), maxLines = 2)
+        Column(Modifier.padding(start = 7.dp).weight(1f)) {
+            WpText(label, 12, maxLines = 2)
+            detail?.let { WpText(it, 9, color = LocalWpTheme.current.muted, maxLines = 1) }
+        }
+    }
+}
+
+@Composable
+private fun ConsumerDetail(state: DataUiState, consumerId: MarineConsumerId, onAction: (DataUiAction) -> Unit) {
+    val registration = MarineConsumerRegistry.registrations.single { it.id == consumerId }
+    val impact = state.consumerImpact.single { it.consumerId == consumerId }
+    ScrollBody {
+        WpText(consumerLabel(consumerId), 38, weight = FontWeight.Light)
+        WpText(
+            stringResource(if (impact.active) R.string.consumer_active else R.string.consumer_inactive),
+            13,
+            color = if (impact.active) LocalWpTheme.current.accent else LocalWpTheme.current.muted,
+        )
+        if (registration.requiredSensors.isNotEmpty()) {
+            WpText(stringResource(R.string.consumer_required), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 22.dp))
+            registration.requiredSensors.forEach { sensor ->
+                WpCommand(sensorLabel(sensor)) { onAction(DataUiAction.OpenSensor(sensor)) }
+            }
+        }
+        if (registration.optionalSensors.isNotEmpty()) {
+            WpText(stringResource(R.string.consumer_optional), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 22.dp))
+            registration.optionalSensors.forEach { sensor ->
+                WpCommand(sensorLabel(sensor)) { onAction(DataUiAction.OpenSensor(sensor)) }
+            }
+        }
+        WpText(
+            if (impact.affectedSensors.isEmpty()) stringResource(R.string.consumer_no_impact)
+            else stringResource(R.string.consumer_affected, sensorListLabel(impact.affectedSensors)),
+            15,
+            color = when (impact.severity) {
+                ConsumerImpactSeverity.NONE -> LocalWpTheme.current.safe
+                ConsumerImpactSeverity.DEGRADED -> LocalWpTheme.current.warning
+                ConsumerImpactSeverity.BLOCKED -> LocalWpTheme.current.alarm
+            },
+            modifier = Modifier.padding(top = 24.dp),
+        )
     }
 }
 
@@ -498,6 +642,7 @@ private fun DataSurface.asAction(): DataUiAction = when (this) {
     is DataSurface.Primary -> DataUiAction.NavigatePrimary(area)
     is DataSurface.Sensor -> DataUiAction.OpenSensor(sensor)
     is DataSurface.Trust -> DataUiAction.OpenTrust(group)
+    is DataSurface.Consumer -> DataUiAction.OpenConsumer(consumerId)
     is DataSurface.Connection -> DataUiAction.OpenConnection(connectionId)
     is DataSurface.Diagnostics -> DataUiAction.OpenDiagnostics(connectionId)
     DataSurface.AddSource -> DataUiAction.OpenAddSource
@@ -512,6 +657,7 @@ private fun DataSurface.asAction(): DataUiAction = when (this) {
     }
     is DataSurface.Sensor -> sensorLabel(s.sensor)
     is DataSurface.Trust -> stringResource(R.string.context_trust)
+    is DataSurface.Consumer -> consumerLabel(s.consumerId)
     is DataSurface.Connection -> stringResource(R.string.context_connection)
     is DataSurface.Diagnostics -> stringResource(R.string.context_diagnostics, state.diagnostics.sentenceTypeCount)
     DataSurface.AddSource -> stringResource(R.string.context_add_source)
@@ -536,6 +682,16 @@ private fun DataSurface.asAction(): DataUiAction = when (this) {
     return labels.joinToString(" · ")
 }
 @Composable private fun inputHealthLabel(v: DataInputHealth) = stringResource(when (v) { DataInputHealth.STOPPED -> R.string.connection_stopped; DataInputHealth.WAITING -> R.string.connection_starting; DataInputHealth.LISTENING -> R.string.connection_listening; DataInputHealth.RECEIVING -> R.string.connection_receiving; DataInputHealth.INTERRUPTED -> R.string.connection_interrupted; DataInputHealth.ATTENTION -> R.string.connection_attention })
+
+@Composable private fun phoneStatusLabel(state: DataUiState): String = stringResource(when {
+    state.phoneDemand.required && state.phone.state == PhoneLocationState.RECEIVING -> R.string.phone_status_in_use
+    state.phone.state == PhoneLocationState.STARTING -> R.string.phone_status_starting
+    state.phone.state == PhoneLocationState.PERMISSION_REQUIRED -> R.string.phone_status_permission
+    state.phone.state == PhoneLocationState.SYSTEM_LOCATION_DISABLED -> R.string.phone_status_location_off
+    state.phone.state == PhoneLocationState.INTERRUPTED -> R.string.phone_status_interrupted
+    state.phone.state == PhoneLocationState.PLATFORM_RESTRICTED -> R.string.phone_status_restricted
+    else -> R.string.phone_status_available
+})
 
 @Composable
 private fun sensorHeroValue(sensor: BoatSensorState): String {

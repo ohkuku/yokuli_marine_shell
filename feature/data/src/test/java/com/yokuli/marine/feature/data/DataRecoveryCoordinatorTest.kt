@@ -109,6 +109,11 @@ class DataRecoveryCoordinatorTest {
         coordinator.dispatch(DataUiAction.OpenDiagnostics())
         assertTrue(coordinator.state.value.surface is DataSurface.Diagnostics)
         assertFalse(coordinator.state.value.surface is DataSurface.Primary)
+
+        coordinator.dispatch(DataUiAction.OpenConsumer(MarineConsumerId.NAVIGATION))
+        assertEquals(DataSurface.Consumer(MarineConsumerId.NAVIGATION), coordinator.state.value.surface)
+        assertTrue(coordinator.handleBack())
+        assertEquals(DataSurface.Primary(PrimaryDataArea.BOAT), coordinator.state.value.surface)
     }
 
 }

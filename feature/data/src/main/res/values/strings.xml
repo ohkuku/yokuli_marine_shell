@@ -139,6 +139,14 @@
     <string name="source_udp_detail">在本机端口监听船上设备发来的数据</string>
     <string name="source_phone">这台手机</string>
     <string name="source_phone_detail">在位置数据被采用时，按需使用系统定位</string>
+    <string name="phone_is_builtin">内置位置能力 · 不是 NMEA 网络连接</string>
+    <string name="phone_status_available">可用</string>
+    <string name="phone_status_in_use">正用于位置</string>
+    <string name="phone_status_starting">正在获取位置</string>
+    <string name="phone_status_permission">需要权限</string>
+    <string name="phone_status_location_off">系统定位已关闭</string>
+    <string name="phone_status_interrupted">位置已中断</string>
+    <string name="phone_status_restricted">受平台限制</string>
     <string name="source_advanced">高级连接</string>
     <string name="source_advanced_detail">直接设置 TCP / UDP 与技术细节</string>
     <string name="connection_wizard_intro">填写设备地址后，Yokuli 会真实启动连接并等待识别语义数据。</string>
@@ -199,6 +207,12 @@
     <string name="flow_expert">展开专家证据</string>
     <string name="flow_simple">收起专家证据</string>
     <string name="expert_evidence">传输证据</string>
+    <string name="consumer_active">当前正在使用共享数据</string>
+    <string name="consumer_inactive">当前未活动</string>
+    <string name="consumer_required">必需数据</string>
+    <string name="consumer_optional">可增强的数据</string>
+    <string name="consumer_no_impact">当前数据状态未影响此功能</string>
+    <string name="consumer_affected">当前受影响：%1$s</string>
     <string name="diagnostics_title">诊断</string>
     <string name="key_speed">对地速度</string>
     <string name="key_course">对地航向</string>

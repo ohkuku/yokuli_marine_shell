@@ -7,6 +7,7 @@ sealed interface DataUiAction {
     data class Navigate(val section: DataSection) : DataUiAction
     data class OpenSensor(val sensor: BoatSensor) : DataUiAction
     data class OpenTrust(val group: SourceGroup) : DataUiAction
+    data class OpenConsumer(val consumerId: MarineConsumerId) : DataUiAction
     data object OpenAddSource : DataUiAction
     data class ChooseConnectionType(val type: DataConnectionType) : DataUiAction
     data class ChangeConnectionType(val type: DataConnectionType) : DataUiAction
@@ -56,6 +57,7 @@ object DataBackPolicy {
         }
         is DataSurface.Sensor,
         is DataSurface.Trust,
+        is DataSurface.Consumer,
         -> DataSurface.Primary(PrimaryDataArea.BOAT)
         is DataSurface.Connection -> DataSurface.Primary(PrimaryDataArea.CONNECTIONS)
         is DataSurface.Diagnostics -> surface.connectionId?.let(DataSurface::Connection)
