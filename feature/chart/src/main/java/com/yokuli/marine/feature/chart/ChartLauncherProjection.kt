@@ -2,179 +2,38 @@ package com.yokuli.marine.feature.chart
 
 import com.yokuli.marine.map.domain.ChartPackageVersionId
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
-import com.yokuli.marine.map.domain.ContentFootprint
 import com.yokuli.marine.map.domain.GeoPoint
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapCamera
-import com.yokuli.marine.map.domain.MapLibraryLoadState
-import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapSurface
 import com.yokuli.marine.map.domain.MapTransient
-import com.yokuli.marine.map.domain.MapRendererReadiness
-import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.PlaceSearch
-import com.yokuli.marine.map.domain.TileAvailability
-import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.MarineTileSize
 import java.text.Normalizer
 import java.util.LinkedHashMap
 import java.util.Locale
 
-enum class ChartLauncherPriority { WRITE_FAILURE, UNSAVED, EDITING_DRAFT, SELECTED_PLAN, LAST_VIEW, ENTRY }
+enum class ChartLauncherPriority { LAST_VIEW, ENTRY }
 
-enum class ChartLauncherStatus {
-    WRITE_FAILED,
-    SAVING,
-    EDITING_DRAFT,
-    PLAN_SELECTED,
-    COVERAGE_CHECKING,
-    COVERAGE_STALE,
-    COVERAGE_UNAVAILABLE,
-    COVERAGE_TOO_LARGE,
-    TILES_AVAILABLE_CONTENT_UNVERIFIED,
-    TILES_AVAILABLE_CONTENT_OBSERVED,
-    TILES_MISSING,
-    TILES_UNKNOWN,
-    LOCAL_CHART_SELECTED,
-    LOCAL_CHART_CHECKING,
-    LOCAL_CHART_MISSING,
-    LOCAL_CHART_DEGRADED,
-    RENDERER_ERROR,
-    NO_LOCAL_CHART,
-    READY_TO_BROWSE,
-}
-
-enum class ChartPreviewLabel { DRAFT, PLAN }
-
-data class ChartRoutePreview(
-    val points: List<GeoPoint>,
-    val revision: Long,
-    val label: ChartPreviewLabel,
-) {
-    init {
-        require(revision >= 0L)
-    }
-}
+enum class ChartLauncherStatus { LAST_VIEW, READY_TO_BROWSE }
 
 data class ChartLauncherSnapshot(
     val priority: ChartLauncherPriority,
     val status: ChartLauncherStatus,
-    val subjectName: String? = null,
-    val routePreview: ChartRoutePreview? = null,
     val camera: MapCamera? = null,
-    /** Failures and in-flight unsaved writes may update even while Start edit chrome is active. */
-    val critical: Boolean = false,
 )
 
 object ChartLauncherProjection {
-    fun project(state: MapState, coverage: OfflineCoverageUiState): ChartLauncherSnapshot {
-        val draft = state.routeDraft
-        val plan = state.activeRoutePlanId?.let { id -> state.savedRoutes.firstOrNull { it.id == id } }
-        val subject = draft?.name?.takeIf(String::isNotBlank) ?: plan?.name
-        val preview = draft?.let {
-            ChartRoutePreview(it.waypoints.toList(), it.revision, ChartPreviewLabel.DRAFT)
-        } ?: plan?.let {
-            ChartRoutePreview(it.waypoints.toList(), it.revision, ChartPreviewLabel.PLAN)
-        }
-        val writeFailed = state.saveState == MapSaveState.FAILED ||
-            state.placeSaveStatus?.state == MapSaveState.FAILED ||
-            state.routeSaveStatus?.state == MapSaveState.FAILED ||
-            state.persistenceFailure != null ||
-            state.libraryLoadState in setOf(MapLibraryLoadState.READ_FAILED, MapLibraryLoadState.CORRUPT)
-        if (writeFailed) return ChartLauncherSnapshot(
-            ChartLauncherPriority.WRITE_FAILURE,
-            ChartLauncherStatus.WRITE_FAILED,
-            subject,
-            preview,
-            critical = true,
-        )
-
-        val unsaved = state.saveState == MapSaveState.PENDING ||
-            state.placeSaveStatus?.state == MapSaveState.PENDING ||
-            state.routeSaveStatus?.state == MapSaveState.PENDING
-        if (unsaved) return ChartLauncherSnapshot(
-            ChartLauncherPriority.UNSAVED,
-            ChartLauncherStatus.SAVING,
-            subject,
-            preview,
-            critical = true,
-        )
-
-        if (draft != null) return ChartLauncherSnapshot(
-            ChartLauncherPriority.EDITING_DRAFT,
-            ChartLauncherStatus.EDITING_DRAFT,
-            draft.name.takeIf(String::isNotBlank),
-            preview,
-        )
-
-        if (plan != null) return ChartLauncherSnapshot(
-            ChartLauncherPriority.SELECTED_PLAN,
-            selectedPlanStatus(state, plan.id, plan.revision, plan.waypoints, coverage),
-            plan.name,
-            preview,
-        )
-
+    fun project(state: MapState): ChartLauncherSnapshot {
         if (state.renderer.generation != null) return ChartLauncherSnapshot(
             ChartLauncherPriority.LAST_VIEW,
-            lastViewStatus(state),
+            ChartLauncherStatus.LAST_VIEW,
             camera = state.camera,
         )
 
         return ChartLauncherSnapshot(ChartLauncherPriority.ENTRY, ChartLauncherStatus.READY_TO_BROWSE)
-    }
-
-    private fun lastViewStatus(state: MapState): ChartLauncherStatus = when {
-        state.renderer.readiness == MapRendererReadiness.ERROR || state.renderer.tileCoverage == MapTileCoverageStatus.ERROR ->
-            ChartLauncherStatus.RENDERER_ERROR
-        state.chartDisplayPreferencesInitialized && state.chartDisplayPlan.selection is ChartDisplaySelection.None ->
-            ChartLauncherStatus.NO_LOCAL_CHART
-        state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_MISSING -> ChartLauncherStatus.LOCAL_CHART_MISSING
-        state.renderer.tileCoverage == MapTileCoverageStatus.DEGRADED -> ChartLauncherStatus.LOCAL_CHART_DEGRADED
-        state.renderer.tileCoverage == MapTileCoverageStatus.CHECKING -> ChartLauncherStatus.LOCAL_CHART_CHECKING
-        state.activeChartPackageId != null && state.chartPackages.any { it.id == state.activeChartPackageId } ->
-            ChartLauncherStatus.LOCAL_CHART_SELECTED
-        else -> ChartLauncherStatus.NO_LOCAL_CHART
-    }
-
-    private fun selectedPlanStatus(
-        state: MapState,
-        routeId: String,
-        routeRevision: Long,
-        routePoints: List<GeoPoint>,
-        coverage: OfflineCoverageUiState,
-    ): ChartLauncherStatus = when (coverage) {
-        is OfflineCoverageUiState.Planning -> if (coverage.routeId == routeId) ChartLauncherStatus.COVERAGE_CHECKING else ChartLauncherStatus.PLAN_SELECTED
-        is OfflineCoverageUiState.Checking -> if (coverage.routeId == routeId) ChartLauncherStatus.COVERAGE_CHECKING else ChartLauncherStatus.PLAN_SELECTED
-        is OfflineCoverageUiState.Stale -> if (coverage.routeId == routeId) ChartLauncherStatus.COVERAGE_STALE else ChartLauncherStatus.PLAN_SELECTED
-        is OfflineCoverageUiState.Failed -> if (coverage.routeId == routeId) ChartLauncherStatus.COVERAGE_UNAVAILABLE else ChartLauncherStatus.PLAN_SELECTED
-        is OfflineCoverageUiState.TooLarge -> if (coverage.routeId == routeId) ChartLauncherStatus.COVERAGE_TOO_LARGE else ChartLauncherStatus.PLAN_SELECTED
-        is OfflineCoverageUiState.Cancelled -> if (coverage.routeId == routeId) ChartLauncherStatus.PLAN_SELECTED else ChartLauncherStatus.PLAN_SELECTED
-        is OfflineCoverageUiState.Ready -> {
-            val request = coverage.request
-            val currentVersions = state.chartPackages
-                .filter { request.targetZoom in it.minZoom..it.maxZoom }
-                .map { it.versionId }
-                .toSet()
-            val current = request.routeId == routeId &&
-                request.routeRevision == routeRevision &&
-                request.routePoints == routePoints &&
-                request.packageVersionIds.toSet() == currentVersions &&
-                coverage.result.fingerprint == com.yokuli.marine.map.domain.OfflineCoverageFingerprint.of(request)
-            if (!current) {
-                ChartLauncherStatus.COVERAGE_STALE
-            } else when (coverage.result.tileAvailability) {
-                TileAvailability.AVAILABLE -> if (coverage.result.contentFootprint == ContentFootprint.VERIFIED_VISIBLE) {
-                    ChartLauncherStatus.TILES_AVAILABLE_CONTENT_OBSERVED
-                } else {
-                    ChartLauncherStatus.TILES_AVAILABLE_CONTENT_UNVERIFIED
-                }
-                TileAvailability.MISSING -> ChartLauncherStatus.TILES_MISSING
-                TileAvailability.UNKNOWN -> ChartLauncherStatus.TILES_UNKNOWN
-            }
-        }
-        OfflineCoverageUiState.Idle -> ChartLauncherStatus.PLAN_SELECTED
     }
 }
 
@@ -288,13 +147,13 @@ class ChartTilePreviewCache<Value : Any>(private val maximumEntries: Int) {
     fun current(): Value? = currentRequest?.second?.let(entries::get)
 }
 
-/** Stable per-renderer slot: decorative facts freeze during Start editing; critical facts never do. */
+/** Stable per-renderer slot: live decoration freezes while Start edit chrome is active. */
 class ChartLauncherDisplaySlot(initial: ChartLauncherSnapshot) {
     var shown: ChartLauncherSnapshot = initial
         private set
 
     fun resolve(incoming: ChartLauncherSnapshot, liveContentEnabled: Boolean): ChartLauncherSnapshot {
-        if (liveContentEnabled || incoming.critical || shown.critical != incoming.critical) shown = incoming
+        if (liveContentEnabled) shown = incoming
         return shown
     }
 }

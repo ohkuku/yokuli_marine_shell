@@ -2,7 +2,6 @@ package com.yokuli.marine.feature.chart
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
@@ -28,7 +26,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -56,6 +53,7 @@ import kotlin.math.min
 
 /** App-owned Map presentation. Shell supplies the accent surface and edit chrome only. */
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun chartLauncherVisualContribution(
     mapState: MapState,
     offlineCoverageState: OfflineCoverageUiState = OfflineCoverageUiState.Idle,
@@ -64,7 +62,7 @@ fun chartLauncherVisualContribution(
     tileMode: ChartTileMode = ChartTileMode.AUTO,
 ): LauncherEntryVisualContribution {
     val title = stringResource(R.string.app_chart)
-    val snapshot = ChartLauncherProjection.project(mapState, offlineCoverageState)
+    val snapshot = ChartLauncherProjection.project(mapState)
     val copy = chartLauncherCopy(snapshot)
     return LauncherEntryVisualContribution(
         entryId = ChartDestinations.EntryId,
@@ -75,8 +73,7 @@ fun chartLauncherVisualContribution(
         icon = LauncherIconRenderer { tint, modifier -> ChartLauncherIcon(tint, modifier) },
         tileRenderers = mapOf(
             MarineTileSize.ICON_1X1 to LauncherTileRenderer { context ->
-                val shown = rememberVisibleChartSnapshot(snapshot, context.liveContentEnabled)
-                ChartSmallTile(context, shown)
+                ChartSmallTile(context)
             },
             MarineTileSize.STANDARD_2X2 to LauncherTileRenderer { context ->
                 val shown = rememberVisibleChartSnapshot(snapshot, context.liveContentEnabled)
@@ -109,7 +106,6 @@ private data class ChartLauncherCopy(val subject: String, val status: String, va
 @Composable
 private fun chartLauncherCopy(snapshot: ChartLauncherSnapshot): ChartLauncherCopy {
     val fallbackSubject = when (snapshot.priority) {
-        ChartLauncherPriority.EDITING_DRAFT -> stringResource(R.string.map_launcher_unnamed_draft)
         ChartLauncherPriority.LAST_VIEW -> snapshot.camera?.let { camera ->
             stringResource(
                 R.string.map_launcher_last_coordinates,
@@ -123,32 +119,11 @@ private fun chartLauncherCopy(snapshot: ChartLauncherSnapshot): ChartLauncherCop
     }
     val status = stringResource(
         when (snapshot.status) {
-            ChartLauncherStatus.WRITE_FAILED -> R.string.map_launcher_write_failed
-            ChartLauncherStatus.SAVING -> R.string.map_launcher_saving
-            ChartLauncherStatus.EDITING_DRAFT -> R.string.map_launcher_editing_draft
-            ChartLauncherStatus.PLAN_SELECTED -> R.string.map_launcher_plan_selected
-            ChartLauncherStatus.COVERAGE_CHECKING -> R.string.map_launcher_coverage_checking
-            ChartLauncherStatus.COVERAGE_STALE -> R.string.map_launcher_coverage_stale
-            ChartLauncherStatus.COVERAGE_UNAVAILABLE -> R.string.map_launcher_coverage_unavailable
-            ChartLauncherStatus.COVERAGE_TOO_LARGE -> R.string.map_launcher_coverage_too_large
-            ChartLauncherStatus.TILES_AVAILABLE_CONTENT_UNVERIFIED -> R.string.map_launcher_tiles_available_unverified
-            ChartLauncherStatus.TILES_AVAILABLE_CONTENT_OBSERVED -> R.string.map_launcher_tiles_available_observed
-            ChartLauncherStatus.TILES_MISSING -> R.string.map_launcher_tiles_missing
-            ChartLauncherStatus.TILES_UNKNOWN -> R.string.map_launcher_tiles_unknown
-            ChartLauncherStatus.LOCAL_CHART_SELECTED -> R.string.map_launcher_local_chart
-            ChartLauncherStatus.LOCAL_CHART_CHECKING -> R.string.map_launcher_local_chart_checking
-            ChartLauncherStatus.LOCAL_CHART_MISSING -> R.string.map_launcher_local_chart_missing
-            ChartLauncherStatus.LOCAL_CHART_DEGRADED -> R.string.map_launcher_local_chart_degraded
-            ChartLauncherStatus.RENDERER_ERROR -> R.string.map_launcher_renderer_error
-            ChartLauncherStatus.NO_LOCAL_CHART -> R.string.map_launcher_no_local_chart
+            ChartLauncherStatus.LAST_VIEW -> R.string.map_tile_last_view
             ChartLauncherStatus.READY_TO_BROWSE -> R.string.map_launcher_browse
         },
     )
-    val previewLabel = stringResource(
-        if (snapshot.routePreview?.label == ChartPreviewLabel.DRAFT) R.string.map_launcher_preview_draft
-        else R.string.map_launcher_preview_plan,
-    )
-    return ChartLauncherCopy(snapshot.subjectName ?: fallbackSubject, status, previewLabel)
+    return ChartLauncherCopy(fallbackSubject, status, "")
 }
 
 @Composable
@@ -158,29 +133,9 @@ private fun rememberVisibleChartSnapshot(snapshot: ChartLauncherSnapshot, liveCo
 }
 
 @Composable
-private fun ChartSmallTile(context: LauncherTileRenderContext, snapshot: ChartLauncherSnapshot) {
+private fun ChartSmallTile(context: LauncherTileRenderContext) {
     Box(context.modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         ChartLauncherIcon(context.contentColor, Modifier.size(42.dp))
-        val badge = when (snapshot.status) {
-            ChartLauncherStatus.WRITE_FAILED -> "!"
-            ChartLauncherStatus.SAVING -> "…"
-            else -> null
-        }
-        badge?.let {
-            Box(
-                Modifier.align(Alignment.TopEnd).size(20.dp).background(context.contentColor, CircleShape)
-                    .testTag("chart-tile-badge"),
-                contentAlignment = Alignment.Center,
-            ) {
-                WpText(
-                    it,
-                    13,
-                    color = if (context.contentColor.luminance() > .5f) Color.Black else Color.White,
-                    weight = FontWeight.Bold,
-                    maxLines = 1,
-                )
-            }
-        }
     }
 }
 
@@ -278,7 +233,6 @@ private fun rememberChartTileFacts(
         structuralKey = listOf(
             mode,
             frames,
-            snapshot.critical,
             navigation.session?.routeId,
             navigation.sessionState,
             navigation.issue,
@@ -303,8 +257,6 @@ private fun rememberChartTileFrame(frames: List<ChartTileFrameKind>, live: Boole
 
 @Composable
 private fun chartTileFrameCopy(frame: ChartTileFrameKind, facts: ChartTileFacts): ChartLauncherCopy {
-    // A structural failure is never hidden by a user's preferred live-tile frame.
-    if (facts.snapshot.critical) return chartLauncherCopy(facts.snapshot)
     return when (frame) {
     ChartTileFrameKind.MAP -> ChartLauncherCopy(
         stringResource(R.string.map_tile_snapshot),

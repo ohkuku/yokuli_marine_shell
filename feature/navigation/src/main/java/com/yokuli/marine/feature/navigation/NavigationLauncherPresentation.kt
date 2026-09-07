@@ -102,7 +102,7 @@ fun navigationLauncherVisualContribution(state: NavigationUiState): LauncherEntr
     return LauncherEntryVisualContribution(
         entryId = NavigationShellContribution.EntryId,
         title = title,
-        chineseIndex = 'N',
+        chineseIndex = 'D',
         headline = staticCopy.headline,
         detail = staticCopy.detail,
         icon = LauncherIconRenderer { tint, modifier -> NavigationIcon(tint, modifier) },
