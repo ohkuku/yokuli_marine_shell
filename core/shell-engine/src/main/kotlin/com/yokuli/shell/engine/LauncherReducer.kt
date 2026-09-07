@@ -48,7 +48,16 @@ sealed interface LauncherAction {
     data object EnterSafeMode : LauncherAction
     data object ExitSafeMode : LauncherAction
     /** preserveCaller is used only for an explicit feature-to-feature deep link. */
-    data class Open(val token: LaunchToken, val preserveCaller: Boolean = false) : LauncherAction
+    data class Open(
+        val token: LaunchToken,
+        val preserveCaller: Boolean = false,
+        /**
+         * Replaces the current route of an already open App instead of creating App-local Back
+         * history. Use this for flat OS surfaces such as Preferences sections whose Back contract
+         * is "return to Start", not "walk through another Settings page".
+         */
+        val replaceTaskRoute: Boolean = false,
+    ) : LauncherAction
     data class CatalogChanged(val catalog: LauncherCatalogSnapshot) : LauncherAction
     data class ApplyLayoutProposal(val proposal: LayoutProposal) : LauncherAction
     data class BeginLayoutTransaction(val proposal: LayoutProposal) : LauncherAction
@@ -437,6 +446,13 @@ class DefaultLauncherReducer : LauncherReducer {
             val task = when {
                 existing == null -> InternalAppTask(taskId, resolution.appId, resolution.token)
                 existing.lastLaunchToken == resolution.token -> existing
+                // Opening an App from Desktop, All Apps, Search, or another App is a new route
+                // entry, not an invisible continuation of that task's old nested Back stack.
+                // Recents uses ActivateTask and therefore still resumes the exact session.
+                action.replaceTaskRoute || state.surface != ShellVisualSurface.Module(taskId) -> existing.copy(
+                    lastLaunchToken = resolution.token,
+                    backStack = emptyList(),
+                )
                 else -> existing.copy(
                     lastLaunchToken = resolution.token,
                     backStack = existing.backStack + existing.lastLaunchToken,

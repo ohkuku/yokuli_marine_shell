@@ -616,7 +616,10 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             onPreferencesAction = { action ->
                 when (action) {
                     is PreferencesUiAction.OpenSection -> dispatch(
-                        LauncherAction.Open(PreferencesDestinations.token(action.section)),
+                        LauncherAction.Open(
+                            PreferencesDestinations.token(action.section),
+                            replaceTaskRoute = true,
+                        ),
                     )
                     is PreferencesUiAction.ChangeTheme -> {
                         shellViewModel.saveTheme(action.theme)
