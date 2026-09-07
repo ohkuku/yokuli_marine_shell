@@ -704,15 +704,22 @@ class DefaultLauncherReducer : LauncherReducer {
 
     private fun moveTileBy(state: LauncherEngineState, action: LauncherAction.MoveTileBy): LauncherReduction {
         if (state.start.document.placements.none { it.tileId == action.tileId }) return LauncherReduction(state)
-        if (action.columns == 0 && action.rows == 0) return LauncherReduction(state)
-        val profile = WpReferenceProfiles.require(state.start.document.profileId)
-        val current = AdaptiveTilePacker.pack(state.start.document, profile.columnCount)
-            .tile(action.tileId)?.cell ?: return LauncherReduction(state)
-        val after = AdaptiveTilePacker.place(
+        // This action is the serialized accessibility move, not a pointer-cell placement.
+        // Both axes mean one previous/next item in the same durable order used by drag insertion,
+        // including spacers. Pointer drag uses TileCellTargetChanged instead.
+        val currentIndex = AdaptiveTilePacker.insertionIndexOf(state.start.document, action.tileId)
+        val delta = when {
+            action.columns < 0 || action.rows < 0 -> -1
+            action.columns > 0 || action.rows > 0 -> 1
+            else -> 0
+        }
+        if (delta == 0) return LauncherReduction(state)
+        val maximumIndex = (state.start.document.placements.size + state.start.document.spacers.size - 1)
+            .coerceAtLeast(0)
+        val after = AdaptiveTilePacker.insert(
             state.start.document,
             action.tileId,
-            GridCell(current.column + action.columns, current.row + action.rows),
-            profile.columnCount,
+            (currentIndex + delta).coerceIn(0, maximumIndex),
         )
         if (after == state.start.document) return LauncherReduction(state)
         val proposal = LayoutProposal(state.start.document, after, LayoutChangeReason.MOVE)
