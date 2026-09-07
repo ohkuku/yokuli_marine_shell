@@ -14,8 +14,8 @@ sealed interface DataUiAction {
     data class ChangeConnectionHost(val value: String) : DataUiAction
     data class ChangeConnectionPort(val value: String) : DataUiAction
     data class ChangeConnectionName(val value: String) : DataUiAction
-    data object TestAndSaveConnection : DataUiAction
-    data object FinishConnectionSetup : DataUiAction
+    data object TestConnection : DataUiAction
+    data object UseTestedConnection : DataUiAction
     data object CancelConnectionSetup : DataUiAction
     data class OpenConnection(val id: com.yokuli.marine.data.model.ConnectionId) : DataUiAction
     data class EditConnection(val id: com.yokuli.marine.data.model.ConnectionId) : DataUiAction

@@ -1,24 +1,16 @@
 package com.yokuli.marine.feature.data
 
-import com.yokuli.marine.data.model.CandidateId
+import com.yokuli.marine.data.connection.NmeaConnectionConfig
+import com.yokuli.marine.data.connection.NmeaConnectionProbePort
+import com.yokuli.marine.data.connection.NmeaConnectionProbeResult
 import com.yokuli.marine.data.model.ConnectionId
 import com.yokuli.marine.data.model.DataKey
-import com.yokuli.marine.data.model.MarineValue
-import com.yokuli.marine.data.model.ObservationGroupId
-import com.yokuli.marine.data.model.SourceIdentity
 import com.yokuli.marine.data.runtime.NmeaInputRuntimePort
 import com.yokuli.marine.data.runtime.NmeaRuntimeCommand
 import com.yokuli.marine.data.runtime.NmeaRuntimeCommandResult
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
 import com.yokuli.marine.data.source.MarineSourceRuntimePort
 import com.yokuli.marine.data.source.MarineSourceSnapshot
-import com.yokuli.marine.data.source.ResolvedDataSnapshot
-import com.yokuli.marine.data.source.SourceCandidate
-import com.yokuli.marine.data.source.SourceCandidateAvailability
-import com.yokuli.marine.data.source.SourceCatalogSnapshot
-import com.yokuli.marine.data.source.SourceDescriptor
-import com.yokuli.marine.data.source.SourceEvidence
-import com.yokuli.marine.data.source.SourceKind
 import com.yokuli.marine.data.source.SourceSelectionCommand
 import com.yokuli.marine.data.source.SourceSelectionCommandResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -35,52 +27,69 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class DataRecoveryCoordinatorTest {
     @Test
-    fun gatewayWizardAutoNamesAndTestsThroughTheProcessRuntimePort() = runTest(UnconfinedTestDispatcher()) {
+    fun probeDetectsCapabilitiesWithoutPersistingUntilUserConfirms() = runTest(UnconfinedTestDispatcher()) {
         val runtime = RecordingNmeaPort()
+        val probe = RecordingProbe(
+            NmeaConnectionProbeResult.Detected(setOf(DataKey.Position), legalFrameCount = 1L),
+        )
         val coordinator = DataCoordinator(
             sourcePort = RecoverySourcePort(),
             nmeaPort = runtime,
             phoneDemandPort = RecoveryPhoneDemandPort(),
             scope = backgroundScope,
             newConnectionId = { ConnectionId("wizard-gateway") },
+            connectionProbe = probe,
         )
 
         coordinator.dispatch(DataUiAction.OpenAddSource)
         coordinator.dispatch(DataUiAction.ChooseConnectionType(DataConnectionType.BOAT_GATEWAY))
         coordinator.dispatch(DataUiAction.ChangeConnectionHost("192.168.4.1"))
         coordinator.dispatch(DataUiAction.ChangeConnectionPort("10110"))
-        coordinator.dispatch(DataUiAction.TestAndSaveConnection)
+        coordinator.dispatch(DataUiAction.TestConnection)
+        advanceUntilIdle()
+
+        assertTrue(runtime.commands.isEmpty())
+        assertEquals("Boat Gateway", probe.configs.single().displayName)
+        assertEquals(ConnectionId("wizard-gateway"), probe.configs.single().id)
+        assertEquals(ConnectionTestPhase.DETECTED, coordinator.state.value.connectionTest.phase)
+        assertEquals(setOf(BoatSensor.POSITION), coordinator.state.value.connectionTest.detectedSensors)
+        assertTrue(coordinator.state.value.surface is DataSurface.ConnectionWizard)
+
+        coordinator.dispatch(DataUiAction.UseTestedConnection)
         advanceUntilIdle()
 
         val command = runtime.commands.single() as NmeaRuntimeCommand.SaveAndStart
         assertEquals("Boat Gateway", command.config.displayName)
         assertEquals(ConnectionId("wizard-gateway"), command.config.id)
-        assertEquals(ConnectionTestPhase.WAITING_FOR_MARINE_DATA, coordinator.state.value.connectionTest.phase)
-        assertTrue(coordinator.state.value.surface is DataSurface.ConnectionWizard)
+        assertEquals(DataSurface.Primary(PrimaryDataArea.CONNECTIONS), coordinator.state.value.surface)
     }
 
     @Test
-    fun detectedSemanticEvidenceCompletesTheTestWithoutCallingSocketConnectedASuccess() = runTest(UnconfinedTestDispatcher()) {
-        val source = RecoverySourcePort()
+    fun transportWithoutSemanticDataNeverPollutesDurableConnections() = runTest(UnconfinedTestDispatcher()) {
+        val runtime = RecordingNmeaPort()
         val coordinator = DataCoordinator(
-            sourcePort = source,
-            nmeaPort = RecordingNmeaPort(),
+            sourcePort = RecoverySourcePort(),
+            nmeaPort = runtime,
             phoneDemandPort = RecoveryPhoneDemandPort(),
             scope = backgroundScope,
-            newConnectionId = { ConnectionId("detected") },
+            newConnectionId = { ConnectionId("transport-only") },
+            connectionProbe = RecordingProbe(
+                NmeaConnectionProbeResult.NoSemanticData(
+                    transportReady = true,
+                    legalFrameCount = 3L,
+                ),
+            ),
         )
         coordinator.dispatch(DataUiAction.OpenAddSource)
         coordinator.dispatch(DataUiAction.ChooseConnectionType(DataConnectionType.BOAT_GATEWAY))
         coordinator.dispatch(DataUiAction.ChangeConnectionHost("boat.local"))
-        coordinator.dispatch(DataUiAction.TestAndSaveConnection)
-        advanceUntilIdle()
-        assertEquals(ConnectionTestPhase.WAITING_FOR_MARINE_DATA, coordinator.state.value.connectionTest.phase)
-
-        source.mutable.value = sourceWithPosition(ConnectionId("detected"))
+        coordinator.dispatch(DataUiAction.TestConnection)
         advanceUntilIdle()
 
-        assertEquals(ConnectionTestPhase.DETECTED, coordinator.state.value.connectionTest.phase)
-        assertEquals(setOf(BoatSensor.POSITION), coordinator.state.value.connectionTest.detectedSensors)
+        assertEquals(ConnectionTestPhase.NO_SEMANTIC_DATA, coordinator.state.value.connectionTest.phase)
+        assertTrue(coordinator.state.value.connectionTest.transportReady)
+        assertEquals(3L, coordinator.state.value.connectionTest.legalFrameCount)
+        assertTrue(runtime.commands.isEmpty())
     }
 
     @Test
@@ -102,28 +111,19 @@ class DataRecoveryCoordinatorTest {
         assertFalse(coordinator.state.value.surface is DataSurface.Primary)
     }
 
-    private fun sourceWithPosition(id: ConnectionId): MarineSourceSnapshot {
-        val source = SourceIdentity(id)
-        val value = MarineValue.Position(-36.84, 174.76)
-        val candidate = SourceCandidate(
-            id = CandidateId(DataKey.Position, source),
-            descriptor = SourceDescriptor(source, SourceKind.NMEA, "Boat Gateway", "RMC"),
-            value = value,
-            lastValidValue = value,
-            availability = SourceCandidateAvailability.LIVE,
-            ageMillis = 0L,
-            receivedAtMillis = 20L,
-            groupId = ObservationGroupId(2L),
-            evidence = SourceEvidence.Nmea(setOf("GPRMC"), setOf("RMC")),
-        )
-        return MarineSourceSnapshot(
-            sourceCatalog = SourceCatalogSnapshot(listOf(candidate), 20L, 2L),
-            decisions = emptyList(),
-            resolvedData = ResolvedDataSnapshot(emptyMap(), 0L, 20L),
-            selectionRevision = 0L,
-            revision = 2L,
-            lastFailure = null,
-        )
+}
+
+private class RecordingProbe(
+    private val result: NmeaConnectionProbeResult,
+) : NmeaConnectionProbePort {
+    val configs = mutableListOf<NmeaConnectionConfig>()
+
+    override suspend fun probe(
+        config: NmeaConnectionConfig,
+        timeoutMillis: Long,
+    ): NmeaConnectionProbeResult {
+        configs += config
+        return result
     }
 }
 

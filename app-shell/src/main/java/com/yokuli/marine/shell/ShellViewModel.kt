@@ -163,6 +163,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         phoneDemandPort = shellApplication.dataPhoneDemandRuntime,
         scope = viewModelScope,
         consumerActivity = dataConsumerActivity,
+        connectionProbe = shellApplication.nmeaConnectionProbe,
     )
     val dataState: StateFlow<DataUiState> = dataCoordinator.state
     val dataEffects: Flow<DataEffect> = dataCoordinator.effects

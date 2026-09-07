@@ -80,9 +80,10 @@ data class DataConnectionDraft(
 
 enum class ConnectionTestPhase {
     NOT_STARTED,
-    SUBMITTING,
-    WAITING_FOR_MARINE_DATA,
+    PROBING,
+    NO_SEMANTIC_DATA,
     DETECTED,
+    SAVING,
     FAILED,
     INVALID_CONFIGURATION,
 }
@@ -91,7 +92,10 @@ data class DataConnectionTestState(
     val phase: ConnectionTestPhase = ConnectionTestPhase.NOT_STARTED,
     val detectedSensors: Set<BoatSensor> = emptySet(),
     val failure: com.yokuli.marine.data.runtime.NmeaRuntimeFailure? = null,
+    val transportReady: Boolean = false,
+    val legalFrameCount: Long = 0L,
 ) {
+    init { require(legalFrameCount >= 0L) }
     companion object {
         val IDLE = DataConnectionTestState()
     }

@@ -20,6 +20,7 @@ import com.yokuli.marine.data.android.runtime.AndroidElapsedRealtimeClock
 import com.yokuli.marine.data.android.runtime.AndroidMarineSourceRuntime
 import com.yokuli.marine.data.android.runtime.AndroidNetworkAvailability
 import com.yokuli.marine.data.android.runtime.AndroidNmeaInputRuntime
+import com.yokuli.marine.data.android.runtime.AndroidNmeaConnectionProbe
 import com.yokuli.marine.data.android.runtime.MarineDataRuntimeOwner
 import com.yokuli.marine.data.android.runtime.ReconnectDelayPort
 import com.yokuli.marine.data.android.runtime.SocketNmeaTransportFactory
@@ -114,6 +115,12 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
             reconnectDelay = ReconnectDelayPort.SYSTEM,
             applicationScope = applicationScope,
             foregroundController = NmeaForegroundServiceController(this),
+        )
+    }
+    val nmeaConnectionProbe by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AndroidNmeaConnectionProbe(
+            transportFactory = SocketNmeaTransportFactory(),
+            clock = AndroidElapsedRealtimeClock,
         )
     }
     override val phoneLocationRuntime: PhoneLocationRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {

@@ -7,6 +7,9 @@ import com.yokuli.marine.data.runtime.NmeaRuntimeCommandResult
 import com.yokuli.marine.data.model.ConnectionId
 import com.yokuli.marine.data.connection.NmeaEndpoint
 import com.yokuli.marine.data.connection.StoredNmeaConnection
+import com.yokuli.marine.data.connection.DEFAULT_NMEA_PROBE_TIMEOUT_MILLIS
+import com.yokuli.marine.data.connection.NmeaConnectionProbePort
+import com.yokuli.marine.data.connection.NmeaConnectionProbeResult
 import com.yokuli.marine.data.source.MarineSourceRuntimePort
 import com.yokuli.marine.data.source.MarineSourceSnapshot
 import com.yokuli.marine.data.source.SourceSelectionCommand
@@ -29,6 +32,7 @@ class DataCoordinator(
     scope: CoroutineScope,
     private val newConnectionId: () -> ConnectionId = { ConnectionId(UUID.randomUUID().toString()) },
     consumerActivity: StateFlow<MarineConsumerActivitySnapshot> = MutableStateFlow(MarineConsumerActivitySnapshot.EMPTY),
+    private val connectionProbe: NmeaConnectionProbePort? = null,
 ) {
     private sealed interface Request {
         data class Select(val command: SourceSelectionCommand) : Request
@@ -36,9 +40,10 @@ class DataCoordinator(
         data class Permission(val permanentlyDenied: Boolean) : Request
         data object ResolvePhone : Request
         data class Runtime(val command: NmeaRuntimeCommand, val purpose: RuntimePurpose) : Request
+        data class Probe(val draft: DataConnectionDraft) : Request
     }
 
-    private enum class RuntimePurpose { TEST_CONNECTION, START, STOP, RETRY, DELETE, CANCEL_PROVISIONAL }
+    private enum class RuntimePurpose { USE_PROBED, START, STOP, RETRY, DELETE }
 
     private val lock = Any()
     private val requests = Channel<Request>(MAX_PENDING_ACTIONS)
@@ -134,38 +139,36 @@ class DataCoordinator(
                     connectionTest = DataConnectionTestState.IDLE
                     null
                 }
-                DataUiAction.TestAndSaveConnection -> {
+                DataUiAction.TestConnection -> {
                     val draft = connectionDraft
                     val config = draft?.configOrNull()
                     if (draft == null || config == null) {
                         connectionTest = DataConnectionTestState(ConnectionTestPhase.INVALID_CONFIGURATION)
                         null
                     } else {
-                        connectionTest = DataConnectionTestState(ConnectionTestPhase.SUBMITTING)
+                        connectionTest = DataConnectionTestState(ConnectionTestPhase.PROBING)
+                        Request.Probe(draft)
+                    }
+                }
+                DataUiAction.UseTestedConnection -> {
+                    val draft = connectionDraft
+                    val config = draft?.configOrNull()
+                    if (draft == null || config == null || connectionTest.phase != ConnectionTestPhase.DETECTED) {
+                        null
+                    } else {
+                        connectionTest = connectionTest.copy(phase = ConnectionTestPhase.SAVING)
                         Request.Runtime(
                             NmeaRuntimeCommand.SaveAndStart(config, draft.expectedRevision),
-                            RuntimePurpose.TEST_CONNECTION,
+                            RuntimePurpose.USE_PROBED,
                         )
                     }
                 }
-                DataUiAction.FinishConnectionSetup -> {
+                DataUiAction.CancelConnectionSetup -> {
                     surface = DataSurface.Primary(PrimaryDataArea.CONNECTIONS)
                     section = DataSection.INPUTS
                     connectionDraft = null
                     connectionTest = DataConnectionTestState.IDLE
                     null
-                }
-                DataUiAction.CancelConnectionSetup -> {
-                    val provisional = connectionDraft?.id?.takeIf { id ->
-                        nmea.connections.any { it.stored.config.id == id }
-                    }
-                    surface = DataSurface.Primary(PrimaryDataArea.CONNECTIONS)
-                    section = DataSection.INPUTS
-                    connectionDraft = null
-                    connectionTest = DataConnectionTestState.IDLE
-                    provisional?.let {
-                        Request.Runtime(NmeaRuntimeCommand.Delete(it), RuntimePurpose.CANCEL_PROVISIONAL)
-                    }
                 }
                 is DataUiAction.OpenConnection -> {
                     surface = DataSurface.Connection(action.id)
@@ -289,6 +292,7 @@ class DataCoordinator(
                 is Request.Permission -> handlePhoneResult(phoneDemandPort.permissionResult(request.permanentlyDenied))
                 Request.ResolvePhone -> handlePhoneResult(phoneDemandPort.refreshPlatformState())
                 is Request.Runtime -> handleRuntimeResult(request, nmeaPort.execute(request.command))
+                is Request.Probe -> handleProbe(request)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -297,20 +301,69 @@ class DataCoordinator(
         }
     }
 
+    private suspend fun handleProbe(request: Request.Probe) {
+        val config = request.draft.configOrNull() ?: run {
+            synchronized(lock) {
+                connectionTest = DataConnectionTestState(ConnectionTestPhase.INVALID_CONFIGURATION)
+                publishLocked()
+            }
+            return
+        }
+        when (val probe = connectionProbe?.probe(config, DEFAULT_NMEA_PROBE_TIMEOUT_MILLIS)
+            ?: NmeaConnectionProbeResult.NoSemanticData(false, 0L)
+        ) {
+            is NmeaConnectionProbeResult.Detected -> {
+                val save = nmeaPort.execute(NmeaRuntimeCommand.SaveAndStart(config, request.draft.expectedRevision))
+                synchronized(lock) {
+                    connectionTest = when (save) {
+                        is NmeaRuntimeCommandResult.Success -> DataConnectionTestState(
+                            phase = ConnectionTestPhase.DETECTED,
+                            detectedSensors = probe.dataKeys.mapNotNullTo(linkedSetOf(), ::sensorFor),
+                            transportReady = true,
+                            legalFrameCount = probe.legalFrameCount,
+                        )
+                        is NmeaRuntimeCommandResult.Rejected -> DataConnectionTestState(
+                            phase = ConnectionTestPhase.FAILED,
+                            failure = save.failure,
+                            transportReady = true,
+                            legalFrameCount = probe.legalFrameCount,
+                        )
+                    }
+                    publishLocked()
+                }
+            }
+            is NmeaConnectionProbeResult.NoSemanticData -> synchronized(lock) {
+                connectionTest = DataConnectionTestState(
+                    phase = ConnectionTestPhase.NO_SEMANTIC_DATA,
+                    transportReady = probe.transportReady,
+                    legalFrameCount = probe.legalFrameCount,
+                )
+                publishLocked()
+            }
+            is NmeaConnectionProbeResult.Failed -> synchronized(lock) {
+                connectionTest = DataConnectionTestState(ConnectionTestPhase.FAILED, failure = probe.failure)
+                publishLocked()
+            }
+        }
+    }
+
     private fun handleRuntimeResult(request: Request.Runtime, result: NmeaRuntimeCommandResult) = synchronized(lock) {
         val failure = (result as? NmeaRuntimeCommandResult.Rejected)?.failure
         when (request.purpose) {
-            RuntimePurpose.TEST_CONNECTION -> {
-                connectionTest = if (failure == null) {
-                    DataConnectionTestState(ConnectionTestPhase.WAITING_FOR_MARINE_DATA)
+            RuntimePurpose.USE_PROBED -> {
+                if (failure == null) {
+                    surface = DataSurface.Primary(PrimaryDataArea.CONNECTIONS)
+                    section = DataSection.INPUTS
+                    connectionDraft = null
+                    connectionTest = DataConnectionTestState.IDLE
+                    notice = DataNotice.SAVED
                 } else {
-                    DataConnectionTestState(ConnectionTestPhase.FAILED, failure = failure)
+                    connectionTest = DataConnectionTestState(ConnectionTestPhase.FAILED, failure = failure)
                 }
             }
             RuntimePurpose.START, RuntimePurpose.STOP, RuntimePurpose.RETRY, RuntimePurpose.DELETE -> {
                 notice = if (failure == null) DataNotice.SAVED else DataNotice.PERSISTENCE_FAILED
             }
-            RuntimePurpose.CANCEL_PROVISIONAL -> Unit
         }
         publishLocked()
     }
@@ -343,23 +396,11 @@ class DataCoordinator(
     }
 
     private fun projectLocked(): DataUiState {
-        val detected = connectionDraft?.id?.let(::detectedSensors).orEmpty()
-        val runtimeFailure = connectionDraft?.id?.let { id ->
-            nmea.connections.firstOrNull { it.stored.config.id == id }?.failure
-        }
-        val projectedTest = when {
-            connectionTest.phase == ConnectionTestPhase.WAITING_FOR_MARINE_DATA && detected.isNotEmpty() ->
-                DataConnectionTestState(ConnectionTestPhase.DETECTED, detectedSensors = detected)
-            connectionTest.phase == ConnectionTestPhase.WAITING_FOR_MARINE_DATA && runtimeFailure != null ->
-                DataConnectionTestState(ConnectionTestPhase.FAILED, failure = runtimeFailure)
-            else -> connectionTest
-        }
-        if (projectedTest != connectionTest) connectionTest = projectedTest
         return DataDomainProjector.project(sources, nmea, section, consumers).copy(
         surface = surface,
         primaryArea = (surface as? DataSurface.Primary)?.area ?: section.toPrimaryArea(),
         connectionDraft = connectionDraft,
-        connectionTest = projectedTest,
+        connectionTest = connectionTest,
         flowExpert = flowExpert,
         phoneDemand = phoneDemand.demand,
         phone = phoneDemand.phone,
@@ -367,12 +408,6 @@ class DataCoordinator(
         notice = notice,
     )
     }
-
-    private fun detectedSensors(connectionId: ConnectionId): Set<BoatSensor> = sources.sourceCatalog.candidates
-        .asSequence()
-        .filter { it.id.source.connectionId == connectionId }
-        .mapNotNull { sensorFor(it.id.key) }
-        .toCollection(linkedSetOf())
 
     private fun publishLocked() {
         mutableState.value = projectLocked()
