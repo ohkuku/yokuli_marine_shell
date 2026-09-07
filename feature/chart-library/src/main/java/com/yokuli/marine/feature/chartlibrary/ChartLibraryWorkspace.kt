@@ -135,7 +135,11 @@ private fun WorkspacePivot(
     onAction: (ChartLibraryUiAction) -> Unit,
 ) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-        ChartLibraryWorkspaceMode.entries.forEach { mode ->
+        listOf(
+            ChartLibraryWorkspaceMode.VIEWS,
+            ChartLibraryWorkspaceMode.SOURCES,
+            ChartLibraryWorkspaceMode.COVERAGE,
+        ).forEach { mode ->
             val selected = mode == selectedMode
             val colors = LocalWpTheme.current
             val interactions = remember { MutableInteractionSource() }
@@ -357,6 +361,7 @@ private fun ViewsWorkspace(
     onAction: (ChartLibraryUiAction) -> Unit,
 ) {
     val nextName = stringResource(R.string.view_default_name, state.views.size + 1)
+    var newViewName by remember(state.views.size) { mutableStateOf(nextName) }
     LazyColumn(
         Modifier.fillMaxSize().testTag(ChartLibraryTestTags.VIEWS),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -372,8 +377,17 @@ private fun ViewsWorkspace(
                         .testTag(ChartLibraryTestTags.COMPOSITE_PREVIEW),
                 )
             }
-            InlineCommand(stringResource(R.string.action_new_view), "chart-library-new-view") {
-                onAction(ChartLibraryUiAction.CreateView(nextName))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BasicTextField(
+                    value = newViewName,
+                    onValueChange = { newViewName = it.take(128) },
+                    modifier = Modifier.weight(1f).heightIn(min = YokuliMetrics.MinTouch),
+                    textStyle = TextStyle(LocalWpTheme.current.foreground, 18.sp, fontFamily = FontFamily.SansSerif),
+                    cursorBrush = SolidColor(LocalWpTheme.current.accent),
+                )
+                InlineCommand(stringResource(R.string.action_new_view), "chart-library-new-view") {
+                    onAction(ChartLibraryUiAction.CreateView(newViewName))
+                }
             }
         }
         itemsIndexed(state.views, key = { _, view -> view.id.value }) { index, view ->
@@ -386,7 +400,6 @@ private fun ViewsWorkspace(
 private fun MapViewRow(view: ChartLibraryViewUi, index: Int, onAction: (ChartLibraryUiAction) -> Unit) {
     val colors = LocalWpTheme.current
     var draftName by remember(view.id, view.name) { mutableStateOf(view.name) }
-    val copyName = stringResource(R.string.view_copy_name, view.name)
     Column(
         Modifier.fillMaxWidth().border(
             2.dp,
@@ -410,74 +423,13 @@ private fun MapViewRow(view: ChartLibraryViewUi, index: Int, onAction: (ChartLib
                 onAction(ChartLibraryUiAction.RenameView(view.id, draftName))
             }
         }
-        WpText(
-            stringResource(R.string.view_summary, baseStyleLabel(view.baseStyle), view.visibleLayerCount),
-            12,
-            color = colors.muted,
-        )
-        if (view.layers.isEmpty()) {
-            WpText(stringResource(R.string.view_no_layers), 12, color = colors.muted)
-        } else {
-            view.layers.forEach { layer ->
-                Column(Modifier.fillMaxWidth()) {
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = YokuliMetrics.MinTouch)
-                            .clickable { onAction(ChartLibraryUiAction.ToggleViewLayer(view.id, layer.id)) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            Modifier.size(16.dp).border(2.dp, if (layer.included) colors.accent else colors.muted)
-                                .let { if (layer.included) it.background(colors.accent) else it },
-                        )
-                        WpText(
-                            layer.name,
-                            14,
-                            color = if (layer.included) colors.foreground else colors.muted,
-                            modifier = Modifier.padding(start = 8.dp).weight(1f),
-                        )
-                    }
-                    if (layer.included) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            InlineCommand(
-                                stringResource(if (layer.visible) R.string.action_hide_layer else R.string.action_show_layer),
-                                "chart-library-view-layer-visible-${view.id.value}-${layer.id.value}",
-                            ) {
-                                onAction(ChartLibraryUiAction.SetViewLayerVisible(view.id, layer.id, !layer.visible))
-                            }
-                            InlineCommand("−", "chart-library-view-layer-opacity-down-${view.id.value}-${layer.id.value}") {
-                                onAction(ChartLibraryUiAction.SetViewLayerOpacity(view.id, layer.id, layer.opacity - .1f))
-                            }
-                            WpText("${(layer.opacity * 100).toInt()}%", 12, color = colors.muted, modifier = Modifier.width(44.dp))
-                            InlineCommand("+", "chart-library-view-layer-opacity-up-${view.id.value}-${layer.id.value}") {
-                                onAction(ChartLibraryUiAction.SetViewLayerOpacity(view.id, layer.id, layer.opacity + .1f))
-                            }
-                            InlineCommand("↑", "chart-library-view-layer-up-${view.id.value}-${layer.id.value}") {
-                                onAction(ChartLibraryUiAction.MoveViewLayer(view.id, layer.id, 1))
-                            }
-                            InlineCommand("↓", "chart-library-view-layer-down-${view.id.value}-${layer.id.value}") {
-                                onAction(ChartLibraryUiAction.MoveViewLayer(view.id, layer.id, -1))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            ChartBuiltInBaseStyle.entries.forEach { style ->
-                InlineCommand(baseStyleLabel(style), "chart-library-view-base-${view.id.value}-${style.name}") {
-                    onAction(ChartLibraryUiAction.SetViewBaseStyle(view.id, style))
-                }
-            }
-        }
+        WpText(view.layers.filter { it.included }.joinToString { it.name }, 12, color = colors.muted)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             if (!view.selected) InlineCommand(stringResource(R.string.action_preview_view), "chart-library-preview-view-${view.id.value}") {
                 onAction(ChartLibraryUiAction.SelectView(view.id))
             }
             if (!view.active) InlineCommand(stringResource(R.string.action_use_view), "chart-library-use-view-${view.id.value}") {
                 onAction(ChartLibraryUiAction.ActivateView(view.id))
-            }
-            InlineCommand(stringResource(R.string.action_duplicate), "chart-library-copy-view-${view.id.value}") {
-                onAction(ChartLibraryUiAction.DuplicateView(view.id, copyName))
             }
             if (statefulCanDeleteView(view)) InlineCommand(stringResource(R.string.action_delete), "chart-library-delete-view-${view.id.value}") {
                 onAction(ChartLibraryUiAction.DeleteView(view.id))
