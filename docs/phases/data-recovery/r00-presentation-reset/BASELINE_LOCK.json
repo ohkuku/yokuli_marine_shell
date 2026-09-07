@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "DATA-R00_PRESENTATION_TEST_RESET",
+  "baseCommit": "b9d4c722b73ddb0597481ba3c826eaa38116b2d2",
+  "sourceDocumentSha256": "70fa6c56ec9a1124f8509bfd2b7f3f7d0857fb7c883740af96641a215ebcbfd2",
+  "status": "IMPLEMENTED_PRODUCT_WORK_CONTINUES",
+  "oldFiveSectionPresentationAuthoritative": false,
+  "humanAcceptance": "PENDING_DATA_R10",
+  "preservedHardGates": [
+    "nmea_protocol_catalog",
+    "tcp_udp_runtime_lifecycle",
+    "session_generation_concurrency_bounds",
+    "connection_and_selection_persistence",
+    "phone_location_demand",
+    "atomic_source_selection_no_silent_fallback"
+  ],
+  "newlySupersededGate": "osr_w03_contract",
+  "existingRecoveryPolicyUnchanged": true,
+  "verification": "TARGETED_GATE_PENDING_AFTER_COMMIT"
+}

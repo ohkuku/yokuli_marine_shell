@@ -66,6 +66,7 @@ class ProductRecoveryWindowTest(unittest.TestCase):
             "chart_c12_contract", "chart_library_cl07_contract", "chart_library_cl10_contract",
             "chart_library_cl08_contract", "chart_library_cl09_contract", "chart_library_cl12_contract",
             "osr_w02_contract", "osr_w04_contract", "osr_w09_contract", "osr_w12_contract",
+            "osr_w03_contract",
             "osr_w13_contract", "osr_w14_contract", "osr_w15_contract", "osr_w16_contract",
             "osr_w16_build_evidence", "launcher_stage11_contract", "chart_shell_ux_correction",
         )
@@ -80,7 +81,7 @@ class ProductRecoveryWindowTest(unittest.TestCase):
             "launcher_stage2_contract", "launcher_stage25_contract", "launcher_stage3_contract",
             "launcher_stage4_contract", "chart_library_cl11_contract", "osr_w01_only_contract",
             "legacy_mbtiles_compatibility",
-            "osr_w03_contract", "osr_w08_contract", "osr_w10_contract", "osr_w11_contract",
+            "osr_w08_contract", "osr_w10_contract", "osr_w11_contract",
             "release_surface_audit", "unit_tests", "lint", "assemble",
         )
         for step_id in active:

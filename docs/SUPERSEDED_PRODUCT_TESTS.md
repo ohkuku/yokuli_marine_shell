@@ -23,6 +23,7 @@
 | `nmea_sources_p2_contract` | 混合真实 runtime 与旧输入 UI 结构 | runtime 单元/集成测试保留，旧 presentation 退出 | DATA-03–04 | Data 内 TCP/UDP 与 raw 用户旅程 |
 | `nmea_sources_p4_contract`–`nmea_sources_p7_contract` | standalone sources App、旧列表/交付形状 | Data 必须整合 inputs/sources/topology | DATA-01–09 | instruments、selection、topology 与生命周期 |
 | `osr_w02_contract` | 固定 live Composable/test tags | 性能语义保留，具体 UI 未获批准 | DATA-01–02 | 稳定 live instrument 更新 |
+| `osr_w03_contract` | 固定 Overview/Inputs/Sources/Flow/Diagnostics 五段与旧 Data 形状 | 新 Data 合同明确只保留 Boat/Flow/Connections 一级心智，Sources 融入语义详情，Diagnostics 下沉 | DATA-R00–R10 | 人工批准后的 Boat、Flow、Connections 行为旅程 |
 | `osr_w04_contract` | 固定五段 Data 文字页面 | topology 不能是文字箭头 | DATA-01–09 | 节点、边、active path 与 node detail |
 | `osr_w09_contract` | 固定旧 Chart/Quick Layers presentation | Chart 必须消费 logical Layer/View | CH-01–17、CL-24–25 | map-first Chart 与 View/Layer picker |
 | `osr_w12_contract` | `RouteSketch`、point list、上下移动按钮 | Navigation 必须用真实地图直接编辑 | NAV-01–12 | 点、拖、leg insert、save/start/stop |

@@ -249,6 +249,7 @@ jobs:
         run: bash .github/scripts/run_ci_capture.sh osr-w02-contract -- python3 .github/scripts/test_osr_w02_contract.py
       - name: OS Redesign W03 Data domain merge contract
         id: osr_w03_contract
+        if: false # DATA_RECOVERY: protects the rejected five-section presentation shape.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w03-contract -- python3 .github/scripts/test_osr_w03_contract.py
       - name: OS Redesign W04 complete Data vertical-slice contract
