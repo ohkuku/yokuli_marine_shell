@@ -104,6 +104,7 @@ import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.marine.map.domain.positionAgeMillis
 import com.yokuli.marine.map.domain.Wgs84Geodesic
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
+import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayIssue
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
