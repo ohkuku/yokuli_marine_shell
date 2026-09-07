@@ -152,6 +152,7 @@ object ChartLibraryProjector {
                     sourceRows.count { it.grantState !in setOf(ChartGrantState.GRANTED, ChartGrantState.NOT_REQUIRED) },
                 scanningCount = sourceRows.count { it.scan.status == ChartScanStatus.RUNNING },
             ),
+            workspaceMode = local.workspaceMode,
             query = local.query,
             filter = local.filter,
             selectedAssetIds = local.selectedAssetIds,

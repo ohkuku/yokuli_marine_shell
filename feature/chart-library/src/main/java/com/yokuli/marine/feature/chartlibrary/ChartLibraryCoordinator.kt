@@ -183,6 +183,10 @@ class ChartLibraryCoordinator(
                 local = local.copy(filter = action.value)
                 publish()
             }
+            is ChartLibraryUiAction.SelectWorkspace -> {
+                local = local.copy(workspaceMode = action.value)
+                publish()
+            }
             is ChartLibraryUiAction.OpenSource -> {
                 local = if (sources.any { it.id == action.sourceId }) {
                     local.copy(page = ChartLibraryLocalPage.SourceDetail(action.sourceId))

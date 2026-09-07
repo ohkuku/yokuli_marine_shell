@@ -21,6 +21,12 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartValidationJobStatus
 
 enum class ChartLibraryFilter { ALL, NEEDS_ATTENTION, ENABLED, DISABLED }
 
+/**
+ * The three user-facing jobs of Chart Library. This is feature-local session state:
+ * changing workspace never changes the catalog or the map display by itself.
+ */
+enum class ChartLibraryWorkspaceMode { COVERAGE, STACK, SOURCES }
+
 sealed interface ChartLibraryLocalPage {
     data object Overview : ChartLibraryLocalPage
     data class SourceDetail(val sourceId: ChartSourceId) : ChartLibraryLocalPage
@@ -33,6 +39,7 @@ sealed interface ChartLibraryLocalPage {
 
 data class ChartLibraryLocalState(
     val page: ChartLibraryLocalPage = ChartLibraryLocalPage.Overview,
+    val workspaceMode: ChartLibraryWorkspaceMode = ChartLibraryWorkspaceMode.COVERAGE,
     val query: String = "",
     val filter: ChartLibraryFilter = ChartLibraryFilter.ALL,
     val selectedAssetIds: Set<ChartAssetId> = emptySet(),
@@ -190,6 +197,7 @@ enum class ChartLibraryNoticeUi {
 
 data class ChartLibraryUiState(
     val summary: ChartLibrarySummaryUi = ChartLibrarySummaryUi(),
+    val workspaceMode: ChartLibraryWorkspaceMode = ChartLibraryWorkspaceMode.COVERAGE,
     val query: String = "",
     val filter: ChartLibraryFilter = ChartLibraryFilter.ALL,
     val selectedAssetIds: Set<ChartAssetId> = emptySet(),
@@ -205,6 +213,7 @@ sealed interface ChartLibraryUiAction {
     data object AddSingleFile : ChartLibraryUiAction
     data class ChangeQuery(val value: String) : ChartLibraryUiAction
     data class ChangeFilter(val value: ChartLibraryFilter) : ChartLibraryUiAction
+    data class SelectWorkspace(val value: ChartLibraryWorkspaceMode) : ChartLibraryUiAction
     data class OpenSource(val sourceId: ChartSourceId) : ChartLibraryUiAction
     data class OpenAsset(val assetId: ChartAssetId) : ChartLibraryUiAction
     data object OpenStorage : ChartLibraryUiAction
@@ -233,6 +242,45 @@ sealed interface ChartLibraryUiAction {
     data object DismissNotice : ChartLibraryUiAction
 }
 
+/**
+ * A narrow display bridge supplied by the composition root. Chart Library can explain and
+ * arrange the Marine view without owning Chart's camera, renderer, or feature UI state.
+ */
+data class ChartLibraryDisplaySourceUi(
+    val id: ChartSourceId,
+    val name: String,
+    val selected: Boolean,
+    val enabled: Boolean,
+    val availableAssetCount: Int,
+)
+
+data class ChartLibraryDisplayLayerUi(
+    val id: ChartAssetId,
+    val title: String,
+    val role: ChartAssetRole,
+    val selected: Boolean,
+    val inCurrentStack: Boolean,
+    val visible: Boolean,
+    val available: Boolean,
+    val opacity: Float,
+) {
+    init { require(opacity.isFinite() && opacity in 0f..1f) }
+}
+
+data class ChartLibraryDisplayUi(
+    val sources: List<ChartLibraryDisplaySourceUi> = emptyList(),
+    val layers: List<ChartLibraryDisplayLayerUi> = emptyList(),
+    val overlaysVisible: Boolean = true,
+)
+
+sealed interface ChartLibraryDisplayAction {
+    data class ToggleSource(val sourceId: ChartSourceId) : ChartLibraryDisplayAction
+    data class SelectLayer(val assetId: ChartAssetId) : ChartLibraryDisplayAction
+    data class SetLayerVisible(val assetId: ChartAssetId, val visible: Boolean) : ChartLibraryDisplayAction
+    data class SetLayerOpacity(val assetId: ChartAssetId, val opacity: Float) : ChartLibraryDisplayAction
+    data object ToggleOverlays : ChartLibraryDisplayAction
+}
+
 sealed interface ChartLibraryEffect {
     data class OpenPicker(
         val picker: ChartLibraryPickerEffect,
@@ -256,6 +304,9 @@ object ChartLibraryTestTags {
     const val ADD_FOLDER = "chart-library-add-folder"
     const val ADD_FILE = "chart-library-add-file"
     const val STORAGE = "chart-library-storage"
+    const val COVERAGE = "chart-library-coverage"
+    const val STACK = "chart-library-stack"
+    const val SOURCES = "chart-library-sources"
     const val BULK_ENABLE = "chart-library-bulk-enable"
     const val BULK_DISABLE = "chart-library-bulk-disable"
     fun source(id: String) = "chart-library-source-$id"

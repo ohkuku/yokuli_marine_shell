@@ -1,6 +1,7 @@
 package com.yokuli.marine.feature.chartlibrary
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
@@ -27,6 +29,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -67,6 +70,8 @@ import java.util.Locale
 fun ChartLibraryWorkspace(
     state: ChartLibraryUiState,
     onAction: (ChartLibraryUiAction) -> Unit,
+    display: ChartLibraryDisplayUi = ChartLibraryDisplayUi(),
+    onDisplayAction: (ChartLibraryDisplayAction) -> Unit = {},
 ) {
     val colors = LocalWpTheme.current
     val currentState by rememberUpdatedState(state)
@@ -83,13 +88,13 @@ fun ChartLibraryWorkspace(
         WpPageHeader(
             appKey = "chart-library",
             appName = stringResource(R.string.chart_library_title),
-            contextLine = pageContext(state.page),
+            contextLine = pageContext(state),
             trailing = if (state.busy) stringResource(R.string.state_working) else null,
         )
         state.notice?.let { Notice(it, onAction) }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (val page = state.page) {
-                is ChartLibraryPageUi.Overview -> Overview(state, page, onAction)
+                is ChartLibraryPageUi.Overview -> Overview(state, page, display, onAction, onDisplayAction)
                 is ChartLibraryPageUi.SourceDetail -> SourceDetail(page, onAction)
                 is ChartLibraryPageUi.AssetDetail -> AssetDetail(page.asset, onAction)
                 is ChartLibraryPageUi.Storage -> Storage(page.storage)
@@ -106,49 +111,282 @@ fun ChartLibraryWorkspace(
 private fun Overview(
     state: ChartLibraryUiState,
     page: ChartLibraryPageUi.Overview,
+    display: ChartLibraryDisplayUi,
+    onAction: (ChartLibraryUiAction) -> Unit,
+    onDisplayAction: (ChartLibraryDisplayAction) -> Unit,
+) {
+    Column(Modifier.fillMaxSize().padding(horizontal = YokuliMetrics.PageMargin)) {
+        WorkspacePivot(state.workspaceMode, onAction)
+        when (state.workspaceMode) {
+            ChartLibraryWorkspaceMode.COVERAGE -> CoverageWorkspace(state, page, onAction)
+            ChartLibraryWorkspaceMode.STACK -> StackWorkspace(page, display, onAction, onDisplayAction)
+            ChartLibraryWorkspaceMode.SOURCES -> SourcesWorkspace(state, page, onAction)
+        }
+    }
+}
+
+@Composable
+private fun WorkspacePivot(
+    selectedMode: ChartLibraryWorkspaceMode,
     onAction: (ChartLibraryUiAction) -> Unit,
 ) {
-    LazyColumn(
-        Modifier.fillMaxSize().padding(horizontal = YokuliMetrics.PageMargin),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+        ChartLibraryWorkspaceMode.entries.forEach { mode ->
+            val selected = mode == selectedMode
+            val colors = LocalWpTheme.current
+            val interactions = remember { MutableInteractionSource() }
+            WpText(
+                text = workspaceLabel(mode),
+                size = if (selected) 22 else 17,
+                color = if (selected) colors.foreground else colors.muted,
+                weight = FontWeight.Light,
+                modifier = Modifier.heightIn(min = YokuliMetrics.MinTouch)
+                    .semantics { this.selected = selected; role = Role.Tab }
+                    .clickable(interactionSource = interactions, indication = null) {
+                        onAction(ChartLibraryUiAction.SelectWorkspace(mode))
+                    }.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CoverageWorkspace(
+    state: ChartLibraryUiState,
+    page: ChartLibraryPageUi.Overview,
+    onAction: (ChartLibraryUiAction) -> Unit,
+) {
+    val boundedAssets = page.assets.filter { it.bounds != null }
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             WpText(
-                stringResource(
-                    R.string.library_summary,
-                    state.summary.sourceCount,
-                    state.summary.assetCount,
-                    state.summary.attentionCount,
-                ),
+                stringResource(R.string.coverage_explanation),
                 13,
                 color = LocalWpTheme.current.muted,
+                modifier = Modifier.padding(bottom = 8.dp),
             )
-            Spacer(Modifier.height(12.dp))
+            if (state.summary.sourceCount == 0) {
+                EmptyLibrary()
+            } else {
+                CoverageCanvas(boundedAssets)
+                WpText(
+                    stringResource(
+                        R.string.coverage_summary,
+                        boundedAssets.count(ChartLibraryAssetRowUi::available),
+                        page.assets.count { it.bounds == null },
+                        state.summary.attentionCount,
+                    ),
+                    12,
+                    color = LocalWpTheme.current.muted,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
+        if (state.summary.sourceCount > 0 && boundedAssets.isEmpty()) {
+            item {
+                WpText(stringResource(R.string.coverage_unknown_title), 24, weight = FontWeight.Light)
+                WpText(stringResource(R.string.coverage_unknown_body), 13, color = LocalWpTheme.current.muted)
+            }
+        }
+        val attention = page.assets.filter(ChartLibraryAssetRowUi::needsAttention).take(5)
+        if (attention.isNotEmpty()) {
+            item { SectionTitle(stringResource(R.string.coverage_attention)) }
+            itemsIndexed(attention, key = { _, row -> row.id.value }) { index, row ->
+                AssetRow(row, index, onAction, showPath = false)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CoverageCanvas(assets: List<ChartLibraryAssetRowUi>) {
+    val colors = LocalWpTheme.current
+    val description = stringResource(R.string.coverage_canvas_description, assets.size)
+    Canvas(
+        Modifier.fillMaxWidth().height(250.dp).background(colors.foreground.copy(alpha = .035f))
+            .border(1.dp, colors.muted.copy(alpha = .55f))
+            .semantics { contentDescription = description }
+            .testTag(ChartLibraryTestTags.COVERAGE),
+    ) {
+        for (longitude in -120..120 step 60) {
+            val x = ((longitude + 180f) / 360f) * size.width
+            drawLine(colors.muted.copy(alpha = .18f), start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x, size.height))
+        }
+        for (latitude in -60..60 step 30) {
+            val y = ((90f - latitude) / 180f) * size.height
+            drawLine(colors.muted.copy(alpha = .18f), start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y))
+        }
+        assets.forEach { asset ->
+            val bounds = asset.bounds ?: return@forEach
+            val color = when {
+                asset.needsAttention -> colors.warning
+                asset.available -> colors.accent
+                else -> colors.muted
+            }
+            val top = (((90.0 - bounds.north) / 180.0) * size.height).toFloat()
+            val bottom = (((90.0 - bounds.south) / 180.0) * size.height).toFloat()
+            fun drawSegment(west: Double, east: Double) {
+                val left = (((west + 180.0) / 360.0) * size.width).toFloat()
+                val right = (((east + 180.0) / 360.0) * size.width).toFloat()
+                val rectSize = androidx.compose.ui.geometry.Size(
+                    width = (right - left).coerceAtLeast(2f),
+                    height = (bottom - top).coerceAtLeast(2f),
+                )
+                drawRect(color.copy(alpha = .22f), topLeft = androidx.compose.ui.geometry.Offset(left, top), size = rectSize)
+                drawRect(color.copy(alpha = .9f), topLeft = androidx.compose.ui.geometry.Offset(left, top), size = rectSize, style = Stroke(width = 2f))
+            }
+            if (bounds.crossesAntimeridian) {
+                drawSegment(bounds.west, 180.0)
+                drawSegment(-180.0, bounds.east)
+            } else drawSegment(bounds.west, bounds.east)
+        }
+    }
+}
+
+@Composable
+private fun StackWorkspace(
+    page: ChartLibraryPageUi.Overview,
+    display: ChartLibraryDisplayUi,
+    onAction: (ChartLibraryUiAction) -> Unit,
+    onDisplayAction: (ChartLibraryDisplayAction) -> Unit,
+) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        item {
+            WpText(stringResource(R.string.stack_explanation), 13, color = LocalWpTheme.current.muted)
+            Spacer(Modifier.height(10.dp))
+            WpText(stringResource(R.string.stack_sources), 22, weight = FontWeight.Light)
+        }
+        if (display.sources.isEmpty()) {
+            item { WpText(stringResource(R.string.stack_no_sources), 13, color = LocalWpTheme.current.muted) }
+        } else {
+            itemsIndexed(display.sources, key = { _, source -> source.id.value }) { _, source ->
+                DisplaySourceRow(source, onDisplayAction)
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                WpText(stringResource(R.string.stack_layers), 22, weight = FontWeight.Light, modifier = Modifier.weight(1f))
+                InlineCommand(
+                    stringResource(if (display.overlaysVisible) R.string.action_hide_overlays else R.string.action_show_overlays),
+                    "chart-library-toggle-overlays",
+                ) { onDisplayAction(ChartLibraryDisplayAction.ToggleOverlays) }
+            }
+        }
+        val activeLayers = display.layers.filter(ChartLibraryDisplayLayerUi::inCurrentStack)
+            .sortedWith(compareByDescending<ChartLibraryDisplayLayerUi> { it.role == ChartAssetRole.OVERLAY }
+                .thenByDescending { page.assets.firstOrNull { row -> row.id == it.id }?.priority ?: 0 })
+        if (activeLayers.isEmpty()) {
+            item { WpText(stringResource(R.string.stack_empty), 13, color = LocalWpTheme.current.muted) }
+        } else {
+            itemsIndexed(activeLayers, key = { _, layer -> layer.id.value }) { index, layer ->
+                DisplayLayerRow(layer, index, onAction, onDisplayAction)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DisplaySourceRow(source: ChartLibraryDisplaySourceUi, onAction: (ChartLibraryDisplayAction) -> Unit) {
+    val colors = LocalWpTheme.current
+    val interactions = remember { MutableInteractionSource() }
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = YokuliMetrics.MinTouch)
+            .semantics { selected = source.selected; role = Role.Checkbox }
+            .clickable(interactionSource = interactions, indication = null) {
+                onAction(ChartLibraryDisplayAction.ToggleSource(source.id))
+            }.padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(20.dp).border(2.dp, if (source.selected) colors.accent else colors.muted).let {
+            if (source.selected) it.background(colors.accent) else it
+        })
+        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+            WpText(source.name, 18, weight = FontWeight.Light)
+            WpText(stringResource(R.string.stack_source_assets, source.availableAssetCount), 11, color = colors.muted)
+        }
+        if (!source.enabled) WpText(stringResource(R.string.state_disabled), 11, color = colors.warning)
+    }
+}
+
+@Composable
+private fun DisplayLayerRow(
+    layer: ChartLibraryDisplayLayerUi,
+    index: Int,
+    onLibraryAction: (ChartLibraryUiAction) -> Unit,
+    onDisplayAction: (ChartLibraryDisplayAction) -> Unit,
+) {
+    val colors = LocalWpTheme.current
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 7.dp).wpEntrance(layer.id.value, index),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(7.dp, 48.dp).background(if (layer.visible) colors.accent else colors.muted))
+            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                WpText(layer.title, 18, weight = FontWeight.Light, maxLines = 1)
+                WpText(
+                    stringResource(
+                        R.string.stack_layer_state,
+                        roleLabel(layer.role),
+                        if (layer.available) stringResource(R.string.state_available) else stringResource(R.string.state_unavailable),
+                        (layer.opacity * 100).toInt(),
+                    ),
+                    11,
+                    color = if (layer.available) colors.muted else colors.warning,
+                )
+            }
+            InlineCommand(if (layer.visible) "●" else "○", "chart-library-layer-visible-${layer.id.value}") {
+                onDisplayAction(ChartLibraryDisplayAction.SetLayerVisible(layer.id, !layer.visible))
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            InlineCommand("−", "chart-library-opacity-down-${layer.id.value}") {
+                onDisplayAction(ChartLibraryDisplayAction.SetLayerOpacity(layer.id, layer.opacity - .1f))
+            }
+            WpText("${(layer.opacity * 100).toInt()}%", 12, color = colors.muted, modifier = Modifier.width(48.dp))
+            InlineCommand("+", "chart-library-opacity-up-${layer.id.value}") {
+                onDisplayAction(ChartLibraryDisplayAction.SetLayerOpacity(layer.id, layer.opacity + .1f))
+            }
+            InlineCommand("↑", "chart-library-stack-up-${layer.id.value}") {
+                onLibraryAction(ChartLibraryUiAction.MoveAssetPriority(layer.id, 1))
+            }
+            InlineCommand("↓", "chart-library-stack-down-${layer.id.value}") {
+                onLibraryAction(ChartLibraryUiAction.MoveAssetPriority(layer.id, -1))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourcesWorkspace(
+    state: ChartLibraryUiState,
+    page: ChartLibraryPageUi.Overview,
+    onAction: (ChartLibraryUiAction) -> Unit,
+) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        item {
+            WpText(stringResource(R.string.sources_explanation), 13, color = LocalWpTheme.current.muted)
+            Spacer(Modifier.height(10.dp))
             SearchField(state.query, onAction)
             Spacer(Modifier.height(8.dp))
             FilterRow(state.filter, onAction)
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(8.dp))
         }
         if (state.summary.sourceCount == 0) {
-            item {
-                Column(Modifier.fillMaxWidth().padding(top = 20.dp).testTag(ChartLibraryTestTags.EMPTY)) {
-                    WpText(stringResource(R.string.empty_title), 28, weight = FontWeight.Light)
-                    WpText(stringResource(R.string.empty_body), 13, color = LocalWpTheme.current.muted)
-                }
-            }
+            item { EmptyLibrary() }
         } else {
-            item { SectionTitle(stringResource(R.string.section_sources)) }
             itemsIndexed(page.sources, key = { _, row -> row.id.value }) { index, row ->
                 SourceRow(row, index, onAction)
             }
             if (page.sources.isEmpty()) item { EmptyResult() }
-            item { SectionTitle(stringResource(R.string.section_assets)) }
-            itemsIndexed(page.assets, key = { _, row -> row.id.value }) { index, row ->
-                AssetRow(row, index, onAction)
-            }
-            if (page.assets.isEmpty()) item { EmptyResult() }
-            item { Spacer(Modifier.height(12.dp)) }
         }
+    }
+}
+
+@Composable
+private fun EmptyLibrary() {
+    Column(Modifier.fillMaxWidth().padding(top = 20.dp).testTag(ChartLibraryTestTags.EMPTY)) {
+        WpText(stringResource(R.string.empty_title), 28, weight = FontWeight.Light)
+        WpText(stringResource(R.string.empty_body), 13, color = LocalWpTheme.current.muted)
     }
 }
 
@@ -534,14 +772,37 @@ private fun TextCommand(label: String, tag: String, onClick: () -> Unit) {
     ) { WpText(label, 18, color = colors.accent) }
 }
 
-@Composable private fun pageContext(page: ChartLibraryPageUi) = stringResource(when (page) {
-    is ChartLibraryPageUi.Overview -> R.string.context_sources
+@Composable
+private fun InlineCommand(label: String, tag: String, onClick: () -> Unit) {
+    val colors = LocalWpTheme.current
+    val interactions = remember { MutableInteractionSource() }
+    Box(
+        Modifier.heightIn(min = YokuliMetrics.MinTouch).testTag(tag)
+            .semantics { contentDescription = label; role = Role.Button }
+            .clickable(interactionSource = interactions, indication = null, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) { WpText(label, 16, color = colors.accent) }
+}
+
+@Composable private fun pageContext(state: ChartLibraryUiState) = stringResource(when (state.page) {
+    is ChartLibraryPageUi.Overview -> when (state.workspaceMode) {
+        ChartLibraryWorkspaceMode.COVERAGE -> R.string.context_coverage
+        ChartLibraryWorkspaceMode.STACK -> R.string.context_stack
+        ChartLibraryWorkspaceMode.SOURCES -> R.string.context_sources
+    }
     is ChartLibraryPageUi.SourceDetail -> R.string.context_source_detail
     is ChartLibraryPageUi.AssetDetail -> R.string.context_asset_detail
     is ChartLibraryPageUi.Storage -> R.string.context_storage
     is ChartLibraryPageUi.RemoveSourceConfirmation -> R.string.context_remove
     is ChartLibraryPageUi.DeleteManagedCopyConfirmation -> R.string.context_delete_copy
     is ChartLibraryPageUi.SaveManagedCopyConfirmation -> R.string.context_save_copy
+})
+
+@Composable private fun workspaceLabel(value: ChartLibraryWorkspaceMode) = stringResource(when (value) {
+    ChartLibraryWorkspaceMode.COVERAGE -> R.string.workspace_coverage
+    ChartLibraryWorkspaceMode.STACK -> R.string.workspace_stack
+    ChartLibraryWorkspaceMode.SOURCES -> R.string.workspace_sources
 })
 
 @Composable private fun filterLabel(value: ChartLibraryFilter) = stringResource(when (value) {

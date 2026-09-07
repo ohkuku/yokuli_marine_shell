@@ -2,6 +2,8 @@
 <resources>
     <string name="chart_library_title">Chart Library</string>
     <string name="context_sources">sources and assets</string>
+    <string name="context_coverage">coverage</string>
+    <string name="context_stack">layer stack</string>
     <string name="context_source_detail">source details</string>
     <string name="context_asset_detail">asset details</string>
     <string name="context_storage">storage</string>
@@ -10,6 +12,26 @@
     <string name="context_save_copy">confirm managed copy</string>
     <string name="state_working">working</string>
     <string name="library_summary">%1$d sources · %2$d assets · %3$d need attention</string>
+    <string name="workspace_coverage">coverage</string>
+    <string name="workspace_stack">stack</string>
+    <string name="workspace_sources">sources</string>
+    <string name="coverage_explanation">This view plots the geographic bounds declared by chart resources. A block means known coverage, not that every tile at every zoom has been fully verified.</string>
+    <string name="coverage_summary">%1$d usable charts · %2$d with unknown bounds · %3$d need attention</string>
+    <string name="coverage_canvas_description">Chart coverage overview with %1$d bounded resources</string>
+    <string name="coverage_unknown_title">Coverage cannot be drawn yet</string>
+    <string name="coverage_unknown_body">Existing resources do not have trustworthy bounds. Open Sources to review scan and Basic Check status.</string>
+    <string name="coverage_attention">needs attention</string>
+    <string name="stack_explanation">This workspace controls how local charts compose into Marine view. Higher layers draw over lower layers; Chart consumes only the result.</string>
+    <string name="stack_sources">sources used by marine view</string>
+    <string name="stack_no_sources">There are no sources to select. Add charts under Sources first.</string>
+    <string name="stack_layers">current layers</string>
+    <string name="stack_empty">Marine view has no local layers. Select a source containing usable charts.</string>
+    <string name="stack_source_assets">%1$d usable charts</string>
+    <string name="stack_layer_state">%1$s · %2$s · %3$d%% opacity</string>
+    <string name="sources_explanation">Sources handle folders, access, rescans and verification. External originals are read in place by default.</string>
+    <string name="state_available">available</string>
+    <string name="state_unavailable">unavailable</string>
+    <string name="state_disabled">disabled</string>
     <string name="empty_title">No chart sources</string>
     <string name="empty_body">Add a chart folder or one MBTiles file. Supported external originals are read in place and are not copied or modified merely by adding them.</string>
     <string name="search_hint">Search name or relative path</string>
@@ -64,6 +86,8 @@
     <string name="action_add_folder">add folder</string>
     <string name="action_add_file">add file</string>
     <string name="action_storage">storage</string>
+    <string name="action_hide_overlays">hide overlays</string>
+    <string name="action_show_overlays">show overlays</string>
     <string name="action_enable">enable</string>
     <string name="action_disable">disable</string>
     <string name="action_clear_selection">clear selection</string>

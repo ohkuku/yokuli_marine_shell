@@ -2,6 +2,8 @@
 <resources>
     <string name="chart_library_title">海图库</string>
     <string name="context_sources">来源与资源</string>
+    <string name="context_coverage">覆盖范围</string>
+    <string name="context_stack">图层组合</string>
     <string name="context_source_detail">来源详情</string>
     <string name="context_asset_detail">资源详情</string>
     <string name="context_storage">存储</string>
@@ -10,6 +12,26 @@
     <string name="context_save_copy">确认保存副本</string>
     <string name="state_working">处理中</string>
     <string name="library_summary">%1$d 个来源 · %2$d 张资源 · %3$d 项需处理</string>
+    <string name="workspace_coverage">覆盖</string>
+    <string name="workspace_stack">图层</string>
+    <string name="workspace_sources">来源</string>
+    <string name="coverage_explanation">这里显示海图资源声明的地理范围。色块代表已知覆盖，不代表每个缩放级别的每个图块都已经完整验证。</string>
+    <string name="coverage_summary">%1$d 张可用海图 · %2$d 张范围未知 · %3$d 项需处理</string>
+    <string name="coverage_canvas_description">海图覆盖概览，共 %1$d 个有范围的资源</string>
+    <string name="coverage_unknown_title">还无法绘制覆盖范围</string>
+    <string name="coverage_unknown_body">已有资源没有可信的范围信息。打开来源查看扫描和基础检查状态。</string>
+    <string name="coverage_attention">需要处理</string>
+    <string name="stack_explanation">这里决定 Marine 视图如何组合本地海图。上方图层会覆盖下方图层；Chart 只消费最终组合。</string>
+    <string name="stack_sources">用于 Marine 视图的来源</string>
+    <string name="stack_no_sources">还没有可选择的来源。先在“来源”中添加海图。</string>
+    <string name="stack_layers">当前图层</string>
+    <string name="stack_empty">当前 Marine 视图没有本地图层。选择一个含可用海图的来源。</string>
+    <string name="stack_source_assets">%1$d 张可用海图</string>
+    <string name="stack_layer_state">%1$s · %2$s · 不透明度 %3$d%%</string>
+    <string name="sources_explanation">来源负责文件夹、授权、重新扫描与验证。外部原件默认只读使用。</string>
+    <string name="state_available">可用</string>
+    <string name="state_unavailable">不可用</string>
+    <string name="state_disabled">已停用</string>
     <string name="empty_title">还没有海图来源</string>
     <string name="empty_body">添加一个海图文件夹或单个 MBTiles 文件。支持的外部原件会原地只读使用，不会因添加而复制或修改。</string>
     <string name="search_hint">搜索名称或相对路径</string>
@@ -64,6 +86,8 @@
     <string name="action_add_folder">添加文件夹</string>
     <string name="action_add_file">添加文件</string>
     <string name="action_storage">存储</string>
+    <string name="action_hide_overlays">隐藏叠加图</string>
+    <string name="action_show_overlays">显示叠加图</string>
     <string name="action_enable">启用</string>
     <string name="action_disable">停用</string>
     <string name="action_clear_selection">取消选择</string>
