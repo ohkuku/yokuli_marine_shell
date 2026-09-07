@@ -122,9 +122,6 @@
     <string name="map_precise_edit_hint">移动地图，让准星对准新位置后确认；也可输入坐标。</string>
     <string name="map_measure_from_here">从此测量</string>
     <string name="map_route_from_here">从此规划</string>
-    <string name="map_copy_coordinate">复制坐标</string>
-    <string name="map_point_source">当前图源：%1$s</string>
-    <string name="map_point_source_none">无海图包（坐标工作台）</string>
     <string name="map_coordinate_input">输入坐标</string>
     <string name="map_coordinate_input_short">坐标</string>
     <string name="map_coordinate_input_context">明确格式和半球；输入不会被静默修正</string>
@@ -349,7 +346,8 @@
     <string name="map_coverage_registered_sources_only">只核对当前显示计划中的已登记本机底图；叠加层和在线地图不会填补缺口。</string>
     <string name="map_chart_display_truth">这里只控制当前显示。添加、扫描、验证和移除资源请在独立海图库中完成。</string>
     <string name="map_view_truth">Chart 只使用海图库的活动视图。这里可以快速切换视图和临时调整其中的逻辑图层。</string>
-    <string name="map_view_missing">没有可用地图视图</string>
+    <string name="map_view_fallback">尚未建立自定义视图；这里使用并保留你的基础地图选择。</string>
+    <string name="map_manage_waypoint">航点管理</string>
     <string name="map_logical_layer_state">%1$s · 不透明度 %2$d%%</string>
     <string name="map_view_update_failed">地图视图未能安全更新；当前显示保持不变，请重试。</string>
     <string name="map_chart_manage_library">管理海图库</string>

@@ -188,7 +188,7 @@ class ChartDisplayCoordinator(
     private fun publishPlan(notice: ChartDisplayNoticeUi? = mutableState.value.notice) {
         generation += 1L
         val active = activeView()
-        val plan = ChartViewDisplayPlanner.plan(
+        val planned = ChartViewDisplayPlanner.plan(
             generation = generation,
             catalog = catalogSnapshot,
             sources = sources,
@@ -197,13 +197,22 @@ class ChartDisplayCoordinator(
             view = active,
             viewport = viewport,
         )
+        // With no user-created View, the persisted Chart basemap is the complete fallback
+        // preference. Catalog refreshes must not silently reset that user choice to Satellite.
+        val plan = if (active == null) {
+            planned.copy(builtInBaseStyle = mapStore.state.value.mapViewMode.toBuiltInBaseStyle())
+        } else {
+            planned
+        }
         mapStore.dispatch(MapAction.ChartDisplayPlanChanged(plan))
         val desiredMapMode = when (plan.builtInBaseStyle) {
             ChartBuiltInBaseStyle.NONE -> MapViewMode.MARINE
             ChartBuiltInBaseStyle.STANDARD -> MapViewMode.STANDARD
             ChartBuiltInBaseStyle.SATELLITE -> MapViewMode.SATELLITE
         }
-        if (mapStore.state.value.mapViewMode != desiredMapMode) mapStore.dispatch(MapAction.SetMapViewMode(desiredMapMode))
+        if (active != null && mapStore.state.value.mapViewMode != desiredMapMode) {
+            mapStore.dispatch(MapAction.SetMapViewMode(desiredMapMode))
+        }
         mutableState.value = ChartDisplayUiState(
             catalogRevision = catalogSnapshot.revision,
             activeViewId = active?.id,
@@ -260,4 +269,10 @@ class ChartDisplayCoordinator(
         const val PAGE_SIZE = 100
         const val MAX_CATALOG_ITEMS = 10_000
     }
+}
+
+private fun MapViewMode.toBuiltInBaseStyle(): ChartBuiltInBaseStyle = when (this) {
+    MapViewMode.MARINE -> ChartBuiltInBaseStyle.NONE
+    MapViewMode.STANDARD -> ChartBuiltInBaseStyle.STANDARD
+    MapViewMode.SATELLITE -> ChartBuiltInBaseStyle.SATELLITE
 }

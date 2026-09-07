@@ -870,3 +870,13 @@ R24 的 Reds 先锁定 canonical Waypoint 编号、RoutePlan exact geometry、re
 ### English translation — Base Apps Recovery R24
 
 R24 converges all new Chart waypoint, route, and GPX writes on the existing Navigation library and serialized coordinator queue. MapState is now a spatial projection plus editing scratch rather than a second durable authority, while the old Room schema remains a compatibility bridge. Focused behavior and composition gates pass; dead transitional APIs are deliberately deferred until replacement journeys are locked in R26.
+
+## Base Apps Recovery R25 — Chart Operational Surface
+
+R25 没有重做地图底层，而是清理最终用户操作面。Target HUD 不再暴露旧图包／文件身份，Waypoint 管理转交 Navigation；MAP 面板在有 View 时只显示 View 与 logical Layer quick visibility，在零 View 时提供可持久的 Marine／Standard／Satellite fallback。新增 Red 要求 catalog refresh 不得把零 View 用户的 session basemap 偷偷重置为 Satellite，也不得把零 View当作错误。
+
+首轮定向测试发现 fake action recorder 与异步 catalog observer 的真实并发遍历问题，使用线程安全 recorder 修正测试基础设施而未弱化断言。最终 Chart display `4/4`、map-first `10/10`、Target/Measure `5/5` 和 production composition compile PASS。旧 Page composables 暂时只作为不可达兼容代码留到 R26，真机触控与 exact user MBTiles 继续明确未验证。
+
+### English translation — Base Apps Recovery R25
+
+R25 completes the operational Chart surface without redesigning its lower layers. Target, MAP/View, logical-Layer toggles, fallback basemaps and Navigation handoff now match the product ownership boundary. The new behavior test also exposed and corrected a concurrent test recorder. Focused domain, coordinator and production composition gates pass; hosted and physical acceptance remain separate.

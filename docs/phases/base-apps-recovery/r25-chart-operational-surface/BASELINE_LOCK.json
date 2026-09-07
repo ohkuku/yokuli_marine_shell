@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "R25_CHART_OPERATIONAL_SURFACE_CLEANUP",
+  "baselineHead": "bbbdfd1",
+  "implementationHead": "4c383af6303722e48cac411717b4feb0420c0064",
+  "directiveSha256": "36f520ea6232b152554dd1d23d224e18b08009af89157ca046b1381a9dd68ac5",
+  "status": "FOCUSED_MACHINE_GATE_COMPLETE_HOSTED_CI_PENDING",
+  "nextPackage": "R26_ACCEPTANCE_LOCK_AND_LEGACY_CLEANUP",
+  "invariants": {
+    "chartRootIsOperationalMap": true,
+    "targetSelectionIsVisibleAndActionable": true,
+    "measureRemainsTransientABRuler": true,
+    "routeEditingRemainsDirectManipulation": true,
+    "chartDoesNotExposeRawResourceManagement": true,
+    "waypointAdministrationBelongsToNavigation": true,
+    "zeroUserViewsIsValid": true,
+    "fallbackBasemapChoiceSurvivesCatalogRefresh": true,
+    "viewPickerUsesLogicalLayerIdentity": true
+  },
+  "localEvidence": {
+    "chartDisplayCoordinator": "4/4 PASS",
+    "mapFirstDomainJourneys": "10/10 PASS",
+    "targetAndMeasureJourneys": "5/5 PASS",
+    "productionCompositionCompile": "PASS",
+    "diffCheck": "PASS"
+  },
+  "hostedEvidence": "PENDING_PUSH",
+  "humanEvidence": "PENDING_FINAL_PRODUCT_ACCEPTANCE",
+  "knownUnresolved": [
+    "Legacy Chart page composables and MapSurface compatibility types remain unreachable transitional code",
+    "Physical-device direct manipulation and wet-hand usability are unverified",
+    "Exact user MBTiles file has not been exercised"
+  ],
+  "ciReportPrefix": "CODEX-CI-REPORT-"
+}

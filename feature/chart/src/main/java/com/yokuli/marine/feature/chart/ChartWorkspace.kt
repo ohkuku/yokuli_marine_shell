@@ -34,13 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -79,7 +77,6 @@ import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapScreenPoint
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapSurface
-import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.MapTransient
 import com.yokuli.marine.map.domain.MapViewMode
@@ -160,6 +157,7 @@ fun ChartWorkspace(
     activeNavigationStrip: (@Composable () -> Unit)? = null,
     trackRecorderStrip: (@Composable () -> Unit)? = null,
     onDirectTo: (point: GeoPoint, name: String) -> Unit = { _, _ -> },
+    onOpenWaypointLibrary: () -> Unit = {},
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit = {},
     onStartNavigation: (routeId: String, routeRevision: Long) -> Unit = { _, _ -> },
     onSaveAndStartRoute: () -> Unit = {},
@@ -237,6 +235,7 @@ fun ChartWorkspace(
                 activeNavigationStrip,
                 trackRecorderStrip,
                 onDirectTo,
+                onOpenWaypointLibrary,
                 onUnsavedRouteDecision,
                 onSaveAndStartRoute,
                 onAction,
@@ -277,6 +276,7 @@ private fun MapRootChrome(
     activeNavigationStrip: (@Composable () -> Unit)?,
     trackRecorderStrip: (@Composable () -> Unit)?,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
+    onOpenWaypointLibrary: () -> Unit,
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     onSaveAndStartRoute: () -> Unit,
     onAction: (MapAction) -> Unit,
@@ -331,6 +331,7 @@ private fun MapRootChrome(
                 chartDisplayState,
                 onChartDisplayAction,
                 onDirectTo,
+                onOpenWaypointLibrary,
                 onUnsavedRouteDecision,
                 onSaveAndStartRoute,
                 onAction,
@@ -352,13 +353,7 @@ private fun MapTruthStrip(
     val status = when {
         state.renderer.readiness == MapRendererReadiness.ERROR -> R.string.map_renderer_error
         state.mapViewMode != MapViewMode.MARINE && !connectedBaseConfigured -> R.string.map_connected_view_not_configured
-        state.mapViewMode == MapViewMode.STANDARD -> R.string.map_standard_view_active
-        state.mapViewMode == MapViewMode.SATELLITE -> R.string.map_satellite_view_active
-        state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_MISSING -> R.string.map_package_missing
-        state.renderer.tileCoverage == MapTileCoverageStatus.DEGRADED -> R.string.map_package_degraded
-        state.renderer.tileCoverage == MapTileCoverageStatus.CHECKING -> R.string.map_package_checking
-        state.renderer.tileCoverage == MapTileCoverageStatus.PACKAGE_ATTACHED -> R.string.map_package_attached
-        else -> R.string.map_no_package
+        else -> null
     }
     Column(
         modifier.background(colors.background.copy(alpha = .88f)).padding(horizontal = 10.dp, vertical = 6.dp)
@@ -366,7 +361,7 @@ private fun MapTruthStrip(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            WpText(stringResource(status), 10, color = colors.foreground, maxLines = 1)
+            status?.let { WpText(stringResource(it), 10, color = colors.foreground, maxLines = 1) }
             WpText(
                 stringResource(R.string.map_scale_100px, state.camera.scaleNauticalMilesForPixels(100.0)),
                 10,
@@ -543,12 +538,12 @@ private fun MapRootSummary(
     chartDisplayState: ChartDisplayUiState,
     onChartDisplayAction: (ChartDisplayUiAction) -> Unit,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
+    onOpenWaypointLibrary: () -> Unit,
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     onSaveAndStartRoute: () -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
-    val clipboard = LocalClipboardManager.current
     state.precisePointEdit?.let {
         Row(
             Modifier.fillMaxWidth().background(colors.background.copy(alpha = .96f)).padding(horizontal = 12.dp)
@@ -585,16 +580,6 @@ private fun MapRootSummary(
                         color = colors.foreground,
                     )
                 }
-                WpText(
-                    stringResource(
-                        R.string.map_point_source,
-                        state.chartPackages.firstOrNull { it.id == state.activeChartPackageId }?.displayName
-                            ?: stringResource(R.string.map_point_source_none),
-                    ),
-                    10,
-                    color = colors.muted,
-                    maxLines = 1,
-                )
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     MapActionText(R.string.map_target_go_to, "map-candidate-go-to") {
                         onDirectTo(transient.point, targetName)
@@ -605,15 +590,12 @@ private fun MapRootSummary(
                     MapActionText(R.string.map_measure_from_here, "map-candidate-measure") {
                         onAction(MapAction.BeginMeasurement(vessel, transient.point))
                     }
-                    MapActionText(R.string.map_copy_coordinate, "map-candidate-copy") {
-                        clipboard.setText(AnnotatedString(transient.point.coordinateText()))
-                    }
                     MapActionText(R.string.map_cancel, "map-candidate-cancel") { onAction(MapAction.DismissTransient) }
                 }
             }
         }
         is MapTransient.SelectedObject -> {
-            SelectedObjectSummary(state, transient.hit, onDirectTo, onAction)
+            SelectedObjectSummary(state, transient.hit, onDirectTo, onOpenWaypointLibrary, onAction)
         }
         is MapTransient.ObjectCandidates -> {
             Column(
@@ -660,7 +642,7 @@ private fun MapRootSummary(
                 }
             }
         }
-        MapTransient.MapViewPicker -> MapViewPicker(chartDisplayState, onChartDisplayAction, onAction)
+        MapTransient.MapViewPicker -> MapViewPicker(state.mapViewMode, chartDisplayState, onChartDisplayAction, onAction)
         null -> state.selection?.let { selection ->
             Row(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
@@ -685,6 +667,7 @@ enum class UnsavedRouteDecision { SAVE, DISCARD, CANCEL }
 
 @Composable
 private fun MapViewPicker(
+    mapViewMode: MapViewMode,
     state: ChartDisplayUiState,
     onDisplayAction: (ChartDisplayUiAction) -> Unit,
     onMapAction: (MapAction) -> Unit,
@@ -697,16 +680,46 @@ private fun MapViewPicker(
     ) {
         WpText(stringResource(R.string.map_view_title), 12, weight = FontWeight.SemiBold)
         if (state.views.isEmpty()) {
-            WpText(stringResource(R.string.map_view_missing), 12, color = colors.muted)
-        } else Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-            state.views.forEach { view ->
-                MapTextButton(
-                    view.name,
-                    "map-view-${view.id.value}",
-                    modifier = Modifier.then(if (view.active) Modifier.border(1.dp, colors.accent) else Modifier),
-                ) {
-                    onDisplayAction(ChartDisplayUiAction.ActivateView(view.id))
-                    onMapAction(MapAction.DismissTransient)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                MapViewMode.entries.forEach { mode ->
+                    val label = when (mode) {
+                        MapViewMode.MARINE -> R.string.map_view_marine
+                        MapViewMode.STANDARD -> R.string.map_view_standard
+                        MapViewMode.SATELLITE -> R.string.map_view_satellite
+                    }
+                    MapTextButton(
+                        stringResource(label),
+                        "map-fallback-view-${mode.name.lowercase()}",
+                        modifier = Modifier.then(if (mode == mapViewMode) Modifier.border(1.dp, colors.accent) else Modifier),
+                    ) { onMapAction(MapAction.SetMapViewMode(mode)) }
+                }
+            }
+            WpText(stringResource(R.string.map_view_fallback), 10, color = colors.muted)
+        } else {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                state.views.forEach { view ->
+                    MapTextButton(
+                        view.name,
+                        "map-view-${view.id.value}",
+                        modifier = Modifier.then(if (view.active) Modifier.border(1.dp, colors.accent) else Modifier),
+                    ) {
+                        onDisplayAction(ChartDisplayUiAction.ActivateView(view.id))
+                        onMapAction(MapAction.DismissTransient)
+                    }
+                }
+            }
+            if (state.quickLayers.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                    state.quickLayers.forEach { layer ->
+                        MapTextButton(
+                            layer.title,
+                            "map-quick-layer-${layer.id.value}",
+                            enabled = layer.available,
+                            modifier = Modifier.then(if (layer.visible) Modifier.border(1.dp, colors.accent) else Modifier),
+                        ) {
+                            onDisplayAction(ChartDisplayUiAction.SetLayerVisible(layer.id, !layer.visible))
+                        }
+                    }
                 }
             }
         }
@@ -718,6 +731,7 @@ private fun SelectedObjectSummary(
     state: MapState,
     hit: MapHitResult,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
+    onOpenWaypointLibrary: () -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -780,8 +794,8 @@ private fun SelectedObjectSummary(
                 }
             }
             if (place != null) {
-                MapActionText(R.string.map_details, "map-object-place-details-${place.id}") {
-                    onAction(MapAction.OpenSurface(MapSurface.PlaceDetail(place.id)))
+                MapActionText(R.string.map_manage_waypoint, "map-object-manage-waypoint-${place.id}") {
+                    onOpenWaypointLibrary()
                 }
             }
             MapActionText(R.string.map_close, "map-object-close") { onAction(MapAction.DismissTransient) }
@@ -2246,7 +2260,7 @@ private fun ChartLayersPage(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         WpText(stringResource(R.string.map_view_truth), 11, color = colors.muted)
-        WpText(state.activeViewName ?: stringResource(R.string.map_view_missing), 24, weight = FontWeight.Light)
+        WpText(state.activeViewName ?: stringResource(R.string.map_view_fallback), 24, weight = FontWeight.Light)
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag(ChartDisplayTestTags.VIEW_PICKER),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -397,6 +397,9 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                     TrackRecorderStrip(runtime.trackRecorderState, runtime.onTrackRecorderCommand)
                 },
                 onDirectTo = runtime.onDirectTo,
+                onOpenWaypointLibrary = {
+                    runtime.onOpenNavigation(NavigationDestinations.Waypoints)
+                },
                 onUnsavedRouteDecision = runtime.onUnsavedRouteDecision,
                 onStartNavigation = { routeId, routeRevision ->
                     runtime.onActiveNavigationCommand(ActiveNavigationCommand.Start(routeId, routeRevision))

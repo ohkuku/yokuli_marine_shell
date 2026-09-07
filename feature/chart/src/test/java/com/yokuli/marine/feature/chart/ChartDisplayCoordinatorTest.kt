@@ -45,12 +45,31 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.CopyOnWriteArrayList
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChartDisplayCoordinatorTest {
+    @Test
+    fun `zero custom Views keeps the persisted fallback basemap without inventing a catalog View`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val catalog = FakeCatalog(startingViews = emptyList())
+        val store = FakeMapStore(MapState(mapViewMode = MapViewMode.STANDARD))
+        val coordinator = ChartDisplayCoordinator(catalog, store, scope)
+
+        val state = withTimeout(2_000L) { coordinator.state.first { !it.busy } }
+
+        assertTrue(state.views.isEmpty())
+        assertEquals(null, state.activeViewId)
+        assertEquals(ChartBuiltInBaseStyle.STANDARD, state.plan.builtInBaseStyle)
+        assertEquals(MapViewMode.STANDARD, store.state.value.mapViewMode)
+        assertTrue(catalog.transactions.isEmpty())
+        coordinator.close()
+        scope.cancel()
+    }
+
     @Test
     fun `active View is the only Chart display source and exposes logical names`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -111,7 +130,7 @@ class ChartDisplayCoordinatorTest {
     private class FakeMapStore(initial: MapState = MapState()) : MapStore {
         private val mutable = MutableStateFlow(initial)
         override val state: StateFlow<MapState> = mutable
-        val actions = mutableListOf<MapAction>()
+        val actions = CopyOnWriteArrayList<MapAction>()
 
         override fun dispatch(action: MapAction): MapDispatchResult {
             actions += action
@@ -126,17 +145,17 @@ class ChartDisplayCoordinatorTest {
         override fun close() = Unit
     }
 
-    private class FakeCatalog : ChartCatalogReadPort, ChartLibraryCommandPort {
+    private class FakeCatalog(startingViews: List<ChartMapView>? = null) : ChartCatalogReadPort, ChartLibraryCommandPort {
         private val sourcesValue = listOf(source())
         private val assetsValue = listOf(asset())
         private val layersValue = listOf(ChartLayer(LAYER_ID, "NZ Hydro", setOf(SOURCE_ID)))
-        var viewsValue = listOf(
+        var viewsValue = startingViews ?: listOf(
             ChartMapView(VIEW_A, "Sailing", ChartBuiltInBaseStyle.SATELLITE, listOf(ChartViewLayer(LAYER_ID))),
             ChartMapView(VIEW_B, "Planning", ChartBuiltInBaseStyle.STANDARD, listOf(ChartViewLayer(LAYER_ID, visible = false))),
         )
-        private val mutableSnapshot = MutableStateFlow(snapshot(1L, VIEW_A))
+        private val mutableSnapshot = MutableStateFlow(snapshot(1L, viewsValue.firstOrNull()?.id))
         override val snapshot: StateFlow<ChartCatalogSnapshot> = mutableSnapshot
-        val transactions = mutableListOf<ChartCatalogTransaction>()
+        val transactions = CopyOnWriteArrayList<ChartCatalogTransaction>()
 
         override suspend fun sources(offset: Int, limit: Int) = page(sourcesValue, offset, limit)
         override suspend fun source(id: ChartSourceId) = sourcesValue.firstOrNull { it.id == id }

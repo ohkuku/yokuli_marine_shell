@@ -122,9 +122,6 @@
     <string name="map_precise_edit_hint">Move the map until the crosshair reaches the new position, then confirm; or enter coordinates.</string>
     <string name="map_measure_from_here">measure from here</string>
     <string name="map_route_from_here">plan from here</string>
-    <string name="map_copy_coordinate">copy coordinate</string>
-    <string name="map_point_source">current chart source: %1$s</string>
-    <string name="map_point_source_none">no chart package (coordinate workbench)</string>
     <string name="map_coordinate_input">enter coordinates</string>
     <string name="map_coordinate_input_short">coordinate</string>
     <string name="map_coordinate_input_context">explicit format and hemisphere; input is never silently corrected</string>
@@ -349,7 +346,8 @@
     <string name="map_coverage_registered_sources_only">Only registered local base layers in the current display plan are checked. Overlays and online maps never fill gaps.</string>
     <string name="map_chart_display_truth">This page controls the current display only. Add, scan, verify, and remove resources in the separate Chart Library app.</string>
     <string name="map_view_truth">Chart consumes only Chart Library\'s active View. Switch Views and make quick logical-layer adjustments here.</string>
-    <string name="map_view_missing">No map View is available</string>
+    <string name="map_view_fallback">No custom View yet. Your fallback basemap choice is used and retained here.</string>
+    <string name="map_manage_waypoint">manage waypoint</string>
     <string name="map_logical_layer_state">%1$s · %2$d%% opacity</string>
     <string name="map_view_update_failed">The map View could not be updated safely. The current display was retained; retry.</string>
     <string name="map_chart_manage_library">manage Chart Library</string>
