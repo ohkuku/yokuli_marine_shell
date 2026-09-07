@@ -2,6 +2,7 @@ package com.yokuli.marine.feature.data
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -25,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -101,7 +104,7 @@ fun DataWorkspace(
                 DataSection.OVERVIEW -> Overview(state)
                 DataSection.INPUTS -> Box(Modifier.fillMaxSize().testTag(DataTestTags.INPUTS)) { inputsContent() }
                 DataSection.SOURCES -> Sources(state, onAction)
-                DataSection.FLOW -> Flow(state)
+                DataSection.FLOW -> Flow(state, onAction)
                 DataSection.DIAGNOSTICS -> Diagnostics(state)
             }
         }
@@ -137,80 +140,87 @@ private fun SectionStrip(section: DataSection, onAction: (DataUiAction) -> Unit)
 @Composable
 private fun Overview(state: DataUiState) {
     ScrollBody(Modifier.testTag(DataTestTags.OVERVIEW)) {
-        WpText(stringResource(R.string.overview_explanation), 13, color = LocalWpTheme.current.muted)
-        Spacer(Modifier.height(16.dp))
-        OverviewField(
+        InstrumentCard(
             stringResource(R.string.value_position),
             state.resolvedValues[DataKey.Position],
         )
-        OverviewPair(
-            stringResource(R.string.value_sog_cog),
-            state.resolvedValues[DataKey.SpeedOverGround],
-            state.resolvedValues[DataKey.CourseOverGround],
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            InstrumentCard(
+                stringResource(R.string.value_sog_cog),
+                state.resolvedValues[DataKey.SpeedOverGround],
+                state.resolvedValues[DataKey.CourseOverGround],
+                Modifier.weight(1f),
+            )
+            InstrumentCard(
+                stringResource(R.string.value_heading),
+                state.firstResolved(
+                    DataKey.Heading(HeadingReference.TRUE),
+                    DataKey.Heading(HeadingReference.MAGNETIC),
+                ),
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            InstrumentCard(
+                stringResource(R.string.value_depth),
+                state.firstResolved(
+                    DataKey.Depth(DepthReference.BELOW_SURFACE),
+                    DataKey.Depth(DepthReference.BELOW_TRANSDUCER),
+                    DataKey.Depth(DepthReference.BELOW_KEEL),
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            InstrumentCard(
+                stringResource(R.string.value_apparent_wind),
+                state.resolvedValues[DataKey.WindAngle(WindReference.APPARENT)],
+                state.resolvedValues[DataKey.WindSpeed(WindSpeedReference.APPARENT)],
+                Modifier.weight(1f),
+            )
+        }
+        val trueAngle = state.firstResolved(
+            DataKey.WindAngle(WindReference.TRUE_RELATIVE),
+            DataKey.WindAngle(WindReference.TRUE_NORTH),
+            DataKey.WindAngle(WindReference.MAGNETIC_NORTH),
         )
-        OverviewField(
-            stringResource(R.string.value_heading),
-            state.firstResolved(
-                DataKey.Heading(HeadingReference.TRUE),
-                DataKey.Heading(HeadingReference.MAGNETIC),
-            ),
-        )
-        OverviewField(
-            stringResource(R.string.value_depth),
-            state.firstResolved(
-                DataKey.Depth(DepthReference.BELOW_SURFACE),
-                DataKey.Depth(DepthReference.BELOW_TRANSDUCER),
-                DataKey.Depth(DepthReference.BELOW_KEEL),
-            ),
-        )
-        OverviewPair(
-            stringResource(R.string.value_wind),
-            state.firstResolved(
-                DataKey.WindAngle(WindReference.APPARENT),
-                DataKey.WindAngle(WindReference.TRUE_RELATIVE),
-                DataKey.WindAngle(WindReference.TRUE_NORTH),
-                DataKey.WindAngle(WindReference.MAGNETIC_NORTH),
-            ),
-            state.firstResolved(
-                DataKey.WindSpeed(WindSpeedReference.APPARENT),
-                DataKey.WindSpeed(WindSpeedReference.TRUE),
-            ),
-        )
+        val trueSpeed = state.resolvedValues[DataKey.WindSpeed(WindSpeedReference.TRUE)]
+        if (trueAngle != null || trueSpeed != null) {
+            InstrumentCard(stringResource(R.string.value_true_wind), trueAngle, trueSpeed)
+        }
+        Spacer(Modifier.height(8.dp))
+        WpText(stringResource(R.string.overview_explanation), 12, color = LocalWpTheme.current.muted)
     }
 }
 
 @Composable
-private fun OverviewField(label: String, datum: ResolvedDatum?) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 9.dp)) {
+private fun InstrumentCard(
+    label: String,
+    first: ResolvedDatum?,
+    second: ResolvedDatum? = null,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalWpTheme.current
+    Column(
+        modifier.padding(vertical = 4.dp).heightIn(min = 116.dp)
+            .background(colors.foreground.copy(alpha = .045f))
+            .border(1.dp, colors.foreground.copy(alpha = .13f))
+            .padding(12.dp),
+    ) {
+        WpText(label, 12, color = colors.muted, weight = FontWeight.SemiBold)
         WpLiveField(
-            value = datum?.value.formatted(),
-            label = label,
-            structuralKey = datum?.source to datum?.availability,
-            cadence = PresentationCadence.DataOverview,
-            size = 27,
-            minValueWidth = 190.dp,
-        )
-        WpText(datum.sourceLine(), 11, color = LocalWpTheme.current.muted)
-    }
-}
-
-@Composable
-private fun OverviewPair(label: String, first: ResolvedDatum?, second: ResolvedDatum?) {
-    val value = listOf(first?.value.formatted(), second?.value.formatted()).joinToString("  ·  ")
-    Column(Modifier.fillMaxWidth().padding(vertical = 9.dp)) {
-        WpLiveField(
-            value = value,
-            label = label,
+            value = listOf(first?.value.formatted(), second?.value.formatted()).joinToString("  ·  "),
             structuralKey = listOf(first?.source, first?.availability, second?.source, second?.availability),
             cadence = PresentationCadence.DataOverview,
-            size = 24,
-            minValueWidth = 240.dp,
+            size = if (second == null) 27 else 21,
+            minValueWidth = 120.dp,
         )
         WpText(
-            listOfNotNull(first?.sourceLine(), second?.sourceLine()).distinct().joinToString(" · ")
+            listOfNotNull(first?.instrumentTruthLine(), second?.instrumentTruthLine()).distinct().joinToString(" · ")
                 .ifBlank { stringResource(R.string.no_selected_source) },
             11,
-            color = LocalWpTheme.current.muted,
+            color = when {
+                listOfNotNull(first, second).any { it.availability !in setOf(SourceCandidateAvailability.LIVE, SourceCandidateAvailability.HELD) } -> colors.alarm
+                else -> colors.muted
+            },
         )
     }
 }
@@ -278,59 +288,80 @@ private fun Sources(state: DataUiState, onAction: (DataUiAction) -> Unit) {
 }
 
 @Composable
-private fun Flow(state: DataUiState) {
+private fun Flow(state: DataUiState, onAction: (DataUiAction) -> Unit) {
     ScrollBody(Modifier.testTag(DataTestTags.FLOW)) {
         WpText(stringResource(R.string.flow_explanation), 13, color = LocalWpTheme.current.muted)
         if (state.flow.isEmpty()) {
             WpText(stringResource(R.string.flow_empty), 27, weight = FontWeight.Light, modifier = Modifier.padding(top = 24.dp))
         }
         state.flow.forEachIndexed { index, link ->
-            Column(
-                Modifier.fillMaxWidth().padding(vertical = 10.dp)
-                    .wpEntrance(link.source to link.group, index),
-            ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    TopologyNode(
-                        title = link.sourceDisplayName,
-                        caption = link.sentenceFamilies.sorted().joinToString(" · ")
-                            .ifBlank { stringResource(R.string.phone_evidence) },
-                        active = link.selectedForOutput,
-                    )
-                    TopologyArrow(link.selectedForOutput)
-                    TopologyNode(
-                        title = groupLabel(link.group),
-                        caption = stringResource(R.string.flow_candidate),
-                        active = link.selectedForOutput,
-                    )
-                    TopologyArrow(link.selectedForOutput)
-                    TopologyNode(
-                        title = stringResource(R.string.flow_os_output),
-                        caption = stringResource(
-                            if (link.selectedForOutput) R.string.resolved_output else R.string.flow_standby,
-                        ),
-                        active = link.selectedForOutput,
-                    )
-                }
-                WpText(
-                    stringResource(
-                        if (link.selectedForOutput) R.string.flow_selected_explanation else R.string.flow_standby_explanation,
-                    ),
-                    11,
-                    color = LocalWpTheme.current.muted,
-                    modifier = Modifier.padding(top = 5.dp),
-                )
-            }
+            TopologyPath(link, index, onAction)
         }
     }
 }
 
 @Composable
-private fun RowScope.TopologyNode(title: String, caption: String, active: Boolean) {
+private fun TopologyPath(link: DataFlowLink, index: Int, onAction: (DataUiAction) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 12.dp)
+            .wpEntrance(link.source to link.group, index),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        TopologyNode(
+            title = link.sourceDisplayName,
+            caption = link.sentenceFamilies.sorted().joinToString(" · ")
+                .ifBlank { stringResource(R.string.phone_evidence) },
+            active = link.selectedForOutput,
+            onClick = { onAction(DataUiAction.InspectFlowSource(link.source)) },
+        )
+        TopologyEdge(link.selectedForOutput)
+        TopologyNode(
+            title = groupLabel(link.group),
+            caption = availabilityLabel(link.health),
+            active = link.selectedForOutput,
+            onClick = { onAction(DataUiAction.InspectFlowGroup(link.group)) },
+        )
+        TopologyEdge(link.selectedForOutput)
+        TopologyNode(
+            title = stringResource(R.string.flow_os_output),
+            caption = stringResource(if (link.selectedForOutput) R.string.resolved_output else R.string.flow_standby),
+            active = link.selectedForOutput,
+            onClick = { onAction(DataUiAction.Navigate(DataSection.OVERVIEW)) },
+        )
+        TopologyBranch(link.selectedForOutput)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            TopologyNode(
+                title = stringResource(R.string.flow_chart_consumer),
+                caption = stringResource(R.string.flow_consumer),
+                active = link.selectedForOutput,
+                modifier = Modifier.weight(1f),
+                onClick = { onAction(DataUiAction.Navigate(DataSection.OVERVIEW)) },
+            )
+            TopologyNode(
+                title = stringResource(R.string.flow_navigation_consumer),
+                caption = stringResource(R.string.flow_consumer),
+                active = link.selectedForOutput,
+                modifier = Modifier.weight(1f),
+                onClick = { onAction(DataUiAction.Navigate(DataSection.OVERVIEW)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TopologyNode(
+    title: String,
+    caption: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val colors = LocalWpTheme.current
     Column(
-        Modifier.weight(1f).heightIn(min = 76.dp)
+        modifier.fillMaxWidth(.72f).heightIn(min = 68.dp)
             .background(if (active) colors.accent.copy(alpha = .16f) else colors.foreground.copy(alpha = .035f))
             .border(1.dp, if (active) colors.accent else colors.muted.copy(alpha = .55f))
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(7.dp),
     ) {
         WpText(title, 13, weight = FontWeight.Light, maxLines = 2)
@@ -339,13 +370,27 @@ private fun RowScope.TopologyNode(title: String, caption: String, active: Boolea
 }
 
 @Composable
-private fun RowScope.TopologyArrow(active: Boolean) {
-    WpText(
-        "›",
-        22,
-        color = if (active) LocalWpTheme.current.accent else LocalWpTheme.current.muted,
-        modifier = Modifier.padding(horizontal = 3.dp),
-    )
+private fun TopologyEdge(active: Boolean) {
+    val color = if (active) LocalWpTheme.current.accent else LocalWpTheme.current.muted
+    Canvas(Modifier.size(width = 36.dp, height = 28.dp)) {
+        val center = size.width / 2f
+        drawLine(color, Offset(center, 0f), Offset(center, size.height - 7f), strokeWidth = if (active) 4f else 2f)
+        drawLine(color, Offset(center, size.height), Offset(center - 6f, size.height - 8f), strokeWidth = 3f)
+        drawLine(color, Offset(center, size.height), Offset(center + 6f, size.height - 8f), strokeWidth = 3f)
+    }
+}
+
+@Composable
+private fun TopologyBranch(active: Boolean) {
+    val color = if (active) LocalWpTheme.current.accent else LocalWpTheme.current.muted
+    Canvas(Modifier.fillMaxWidth(.55f).height(34.dp)) {
+        val mid = size.width / 2f
+        val y = size.height * .45f
+        drawLine(color, Offset(mid, 0f), Offset(mid, y), strokeWidth = if (active) 4f else 2f)
+        drawLine(color, Offset(size.width * .22f, y), Offset(size.width * .78f, y), strokeWidth = if (active) 4f else 2f)
+        drawLine(color, Offset(size.width * .22f, y), Offset(size.width * .22f, size.height), strokeWidth = if (active) 4f else 2f)
+        drawLine(color, Offset(size.width * .78f, y), Offset(size.width * .78f, size.height), strokeWidth = if (active) 4f else 2f)
+    }
 }
 
 @Composable
@@ -422,6 +467,17 @@ private fun ResolvedDatum?.sourceLine(): String = this?.let {
     stringResource(R.string.source_line, source.connectionId.value, availabilityLabel(availability))
 } ?: stringResource(R.string.no_selected_source)
 
+@Composable
+private fun ResolvedDatum?.instrumentTruthLine(): String = this?.let {
+    val age = candidate?.ageMillis
+    val freshness = when {
+        age == null -> availabilityLabel(availability)
+        age < 1_000L -> stringResource(R.string.freshness_now)
+        else -> stringResource(R.string.freshness_seconds, age / 1_000L)
+    }
+    "${source.connectionId.value} · ${availabilityLabel(availability)} · $freshness"
+} ?: stringResource(R.string.no_selected_source)
+
 private fun MarineValue?.formatted(): String = when (this) {
     null -> "—"
     is MarineValue.Position -> String.format(Locale.US, "%.5f°, %.5f°", latitudeDegrees, longitudeDegrees)
@@ -458,7 +514,8 @@ private fun groupLabel(group: SourceGroup): String = when (group) {
     SourceGroup.POSITION_AND_MOTION -> stringResource(R.string.group_position_motion)
     SourceGroup.HEADING -> stringResource(R.string.group_heading)
     SourceGroup.DEPTH -> stringResource(R.string.group_depth)
-    SourceGroup.WIND -> stringResource(R.string.group_wind)
+    SourceGroup.APPARENT_WIND -> stringResource(R.string.group_apparent_wind)
+    SourceGroup.TRUE_WIND -> stringResource(R.string.group_true_wind)
 }
 
 @Composable

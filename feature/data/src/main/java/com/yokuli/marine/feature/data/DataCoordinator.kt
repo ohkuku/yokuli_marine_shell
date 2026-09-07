@@ -75,6 +75,16 @@ class DataCoordinator(
                     }
                 }
                 is DataUiAction.DisableGroup -> Request.Select(SourceGroupSelectionAdapter.disable(action.group))
+                is DataUiAction.InspectFlowSource -> {
+                    section = DataSection.SOURCES
+                    sourceFocus = action.source.connectionId
+                    null
+                }
+                is DataUiAction.InspectFlowGroup -> {
+                    section = DataSection.SOURCES
+                    sourceFocus = null
+                    null
+                }
                 is DataUiAction.UsePhone -> Request.Phone(action.group)
                 is DataUiAction.PhonePermissionResult -> Request.Permission(action.permanentlyDenied)
                 DataUiAction.ResolvePhoneDemand -> Request.ResolvePhone

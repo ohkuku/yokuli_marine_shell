@@ -7,6 +7,8 @@ sealed interface DataUiAction {
     data class UseSource(val group: SourceGroup, val source: SourceIdentity) : DataUiAction
     data class UsePhone(val group: SourceGroup) : DataUiAction
     data class DisableGroup(val group: SourceGroup) : DataUiAction
+    data class InspectFlowSource(val source: SourceIdentity) : DataUiAction
+    data class InspectFlowGroup(val group: SourceGroup) : DataUiAction
     data class PhonePermissionResult(val permanentlyDenied: Boolean) : DataUiAction
     data object ResolvePhoneDemand : DataUiAction
     data object ClearSourceFocus : DataUiAction

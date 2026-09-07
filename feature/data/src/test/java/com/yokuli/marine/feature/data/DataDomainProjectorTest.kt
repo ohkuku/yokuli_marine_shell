@@ -121,6 +121,27 @@ class DataDomainProjectorTest {
         assertFalse(PhoneLocationDemandPolicy.resolve(snapshot()).required)
     }
 
+    @Test
+    fun apparentAndTrueWindRemainSeparateUserChoices() {
+        assertEquals(
+            setOf(
+                DataKey.WindAngle(com.yokuli.marine.data.model.WindReference.APPARENT),
+                DataKey.WindSpeed(com.yokuli.marine.data.model.WindSpeedReference.APPARENT),
+            ),
+            SourceGroup.APPARENT_WIND.keys,
+        )
+        assertEquals(
+            setOf(
+                DataKey.WindAngle(com.yokuli.marine.data.model.WindReference.TRUE_RELATIVE),
+                DataKey.WindAngle(com.yokuli.marine.data.model.WindReference.TRUE_NORTH),
+                DataKey.WindAngle(com.yokuli.marine.data.model.WindReference.MAGNETIC_NORTH),
+                DataKey.WindSpeed(com.yokuli.marine.data.model.WindSpeedReference.TRUE),
+            ),
+            SourceGroup.TRUE_WIND.keys,
+        )
+        assertTrue(SourceGroup.APPARENT_WIND.keys.intersect(SourceGroup.TRUE_WIND.keys).isEmpty())
+    }
+
     private fun SourceGroupState.flowWouldSelect(source: SourceIdentity): Boolean =
         selectedSource == source && status == SourceGroupStatus.USING
 

@@ -56,13 +56,17 @@ enum class SourceGroup(val keys: Set<DataKey>) {
             DataKey.Depth(DepthReference.BELOW_KEEL),
         ),
     ),
-    WIND(
+    APPARENT_WIND(
         setOf(
             DataKey.WindAngle(WindReference.APPARENT),
+            DataKey.WindSpeed(WindSpeedReference.APPARENT),
+        ),
+    ),
+    TRUE_WIND(
+        setOf(
             DataKey.WindAngle(WindReference.TRUE_RELATIVE),
             DataKey.WindAngle(WindReference.TRUE_NORTH),
             DataKey.WindAngle(WindReference.MAGNETIC_NORTH),
-            DataKey.WindSpeed(WindSpeedReference.APPARENT),
             DataKey.WindSpeed(WindSpeedReference.TRUE),
         ),
     ),
@@ -106,7 +110,13 @@ data class DataInputState(
     val runIntent: ConnectionRunIntent,
     val transport: ConnectionTransportState,
     val input: ConnectionInputState,
+    val framesPerSecond: Double,
+    val lastSentenceId: String?,
+    val lastSentenceAtMillis: Long?,
+    val health: DataInputHealth,
 )
+
+enum class DataInputHealth { STOPPED, WAITING, LISTENING, RECEIVING, INTERRUPTED, ATTENTION }
 
 data class DataFlowLink(
     val source: SourceIdentity,
@@ -114,6 +124,7 @@ data class DataFlowLink(
     val sentenceFamilies: Set<String>,
     val group: SourceGroup,
     val selectedForOutput: Boolean,
+    val health: SourceCandidateAvailability,
 )
 
 data class DataDiagnosticsState(
@@ -177,6 +188,9 @@ object DataDomainProjector {
         val connectionNames = nmea.connections.associate {
             it.stored.config.id to it.stored.config.displayName
         }
+        val latestSentenceByConnection = nmea.sentenceCatalog.entries
+            .groupBy { it.key.source.connectionId }
+            .mapValues { (_, entries) -> entries.maxByOrNull { it.lastSeenMillis } }
         return DataUiState(
             section = section,
             resolvedValues = sources.resolvedData.items,
@@ -188,6 +202,10 @@ object DataDomainProjector {
                     runIntent = connection.stored.runIntent,
                     transport = connection.transport,
                     input = connection.input,
+                    framesPerSecond = connection.metrics.validRate.framesPerSecond,
+                    lastSentenceId = latestSentenceByConnection[connection.stored.config.id]?.lastSentenceId,
+                    lastSentenceAtMillis = latestSentenceByConnection[connection.stored.config.id]?.lastSeenMillis,
+                    health = connectionHealth(connection),
                 )
             },
             flow = groups.flatMap { group ->
@@ -199,6 +217,8 @@ object DataDomainProjector {
                         group = group.group,
                         selectedForOutput = group.selectedSource == candidate.source &&
                             group.status == SourceGroupStatus.USING,
+                        health = candidate.evidence.availabilityByKey.values.minByOrNull { availabilityRank(it) }
+                            ?: SourceCandidateAvailability.MISSING,
                     )
                 }
             },
@@ -232,6 +252,28 @@ object DataDomainProjector {
             },
             phoneDemand = PhoneLocationDemandPolicy.resolve(sources),
         )
+    }
+
+    private fun connectionHealth(connection: com.yokuli.marine.data.runtime.ConnectionRuntimeSnapshot): DataInputHealth =
+        when {
+            connection.failure != null || connection.input == ConnectionInputState.OVERLOADED -> DataInputHealth.ATTENTION
+            connection.input == ConnectionInputState.INTERRUPTED -> DataInputHealth.INTERRUPTED
+            connection.input == ConnectionInputState.RECEIVING_VALID_FRAMES -> DataInputHealth.RECEIVING
+            connection.transport == ConnectionTransportState.UdpListening -> DataInputHealth.LISTENING
+            connection.runIntentStopped -> DataInputHealth.STOPPED
+            else -> DataInputHealth.WAITING
+        }
+
+    private val com.yokuli.marine.data.runtime.ConnectionRuntimeSnapshot.runIntentStopped: Boolean
+        get() = stored.runIntent != ConnectionRunIntent.ENABLED
+
+    private fun availabilityRank(value: SourceCandidateAvailability): Int = when (value) {
+        SourceCandidateAvailability.LIVE -> 5
+        SourceCandidateAvailability.HELD -> 4
+        SourceCandidateAvailability.STALE -> 3
+        SourceCandidateAvailability.INVALID -> 2
+        SourceCandidateAvailability.UNAVAILABLE -> 1
+        SourceCandidateAvailability.MISSING -> 0
     }
 
     private fun projectGroup(group: SourceGroup, sources: MarineSourceSnapshot): SourceGroupState {

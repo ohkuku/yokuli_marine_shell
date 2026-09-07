@@ -16,7 +16,10 @@
     <string name="value_sog_cog">Speed over ground · course over ground</string>
     <string name="value_heading">Heading</string>
     <string name="value_depth">Depth</string>
-    <string name="value_wind">Wind angle · speed</string>
+    <string name="value_apparent_wind">Apparent wind</string>
+    <string name="value_true_wind">True wind</string>
+    <string name="freshness_now">now</string>
+    <string name="freshness_seconds">%1$d s</string>
     <string name="source_line">%1$s · %2$s</string>
     <string name="no_selected_source">No selected source</string>
     <string name="sources_explanation">Choose by marine meaning. One atomic transaction updates the whole group; COG is never presented as heading.</string>
@@ -34,7 +37,8 @@
     <string name="group_position_motion">Position &amp; motion</string>
     <string name="group_heading">Heading</string>
     <string name="group_depth">Depth</string>
-    <string name="group_wind">Wind</string>
+    <string name="group_apparent_wind">Apparent wind</string>
+    <string name="group_true_wind">True wind</string>
     <string name="group_no_data">No candidate source</string>
     <string name="group_discovering">Confirming sources</string>
     <string name="group_needs_selection">Choose a source</string>
@@ -48,6 +52,9 @@
     <string name="resolved_output">current OS output</string>
     <string name="flow_candidate">candidate data</string>
     <string name="flow_os_output">OS data</string>
+    <string name="flow_chart_consumer">Chart</string>
+    <string name="flow_navigation_consumer">Navigation</string>
+    <string name="flow_consumer">consumer</string>
     <string name="flow_standby">not selected</string>
     <string name="flow_selected_explanation">This path currently supplies data to the OS.</string>
     <string name="flow_standby_explanation">The OS sees this path but will not silently fail over to it.</string>

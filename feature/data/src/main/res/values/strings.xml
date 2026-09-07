@@ -16,7 +16,10 @@
     <string name="value_sog_cog">对地速度 · 对地航向</string>
     <string name="value_heading">艏向</string>
     <string name="value_depth">水深</string>
-    <string name="value_wind">风角 · 风速</string>
+    <string name="value_apparent_wind">视风</string>
+    <string name="value_true_wind">真风</string>
+    <string name="freshness_now">刚刚</string>
+    <string name="freshness_seconds">%1$d 秒</string>
     <string name="source_line">%1$s · %2$s</string>
     <string name="no_selected_source">没有采用来源</string>
     <string name="sources_explanation">按航海含义选择来源。每次选择以一个原子事务更新整个数据组；这里不会把 COG 冒充艏向。</string>
@@ -34,7 +37,8 @@
     <string name="group_position_motion">位置与运动</string>
     <string name="group_heading">艏向</string>
     <string name="group_depth">水深</string>
-    <string name="group_wind">风</string>
+    <string name="group_apparent_wind">视风</string>
+    <string name="group_true_wind">真风</string>
     <string name="group_no_data">没有候选来源</string>
     <string name="group_discovering">正在确认来源</string>
     <string name="group_needs_selection">需要选择来源</string>
@@ -48,6 +52,9 @@
     <string name="resolved_output">当前系统输出</string>
     <string name="flow_candidate">候选数据</string>
     <string name="flow_os_output">OS 数据</string>
+    <string name="flow_chart_consumer">海图</string>
+    <string name="flow_navigation_consumer">导航</string>
+    <string name="flow_consumer">使用方</string>
     <string name="flow_standby">未采用</string>
     <string name="flow_selected_explanation">这条路径当前为系统提供数据。</string>
     <string name="flow_standby_explanation">系统观察到这条路径，但不会静默切换到它。</string>
