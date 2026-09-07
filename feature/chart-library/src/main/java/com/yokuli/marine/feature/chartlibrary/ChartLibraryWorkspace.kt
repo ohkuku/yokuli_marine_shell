@@ -76,8 +76,6 @@ import java.util.Locale
 fun ChartLibraryWorkspace(
     state: ChartLibraryUiState,
     onAction: (ChartLibraryUiAction) -> Unit,
-    display: ChartLibraryDisplayUi = ChartLibraryDisplayUi(),
-    onDisplayAction: (ChartLibraryDisplayAction) -> Unit = {},
 ) {
     val colors = LocalWpTheme.current
     val currentState by rememberUpdatedState(state)
@@ -100,7 +98,7 @@ fun ChartLibraryWorkspace(
         state.notice?.let { Notice(it, onAction) }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (val page = state.page) {
-                is ChartLibraryPageUi.Overview -> Overview(state, page, display, onAction, onDisplayAction)
+                is ChartLibraryPageUi.Overview -> Overview(state, page, onAction)
                 is ChartLibraryPageUi.SourceDetail -> SourceDetail(page, onAction)
                 is ChartLibraryPageUi.AssetDetail -> AssetDetail(page.asset, onAction)
                 is ChartLibraryPageUi.Storage -> Storage(page.storage)
@@ -117,9 +115,7 @@ fun ChartLibraryWorkspace(
 private fun Overview(
     state: ChartLibraryUiState,
     page: ChartLibraryPageUi.Overview,
-    display: ChartLibraryDisplayUi,
     onAction: (ChartLibraryUiAction) -> Unit,
-    onDisplayAction: (ChartLibraryDisplayAction) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = YokuliMetrics.PageMargin)) {
         WorkspacePivot(state.workspaceMode, onAction)

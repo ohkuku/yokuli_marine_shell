@@ -315,45 +315,6 @@ sealed interface ChartLibraryUiAction {
     data object DismissNotice : ChartLibraryUiAction
 }
 
-/**
- * A narrow display bridge supplied by the composition root. Chart Library can explain and
- * arrange the Marine view without owning Chart's camera, renderer, or feature UI state.
- */
-data class ChartLibraryDisplaySourceUi(
-    val id: ChartSourceId,
-    val name: String,
-    val selected: Boolean,
-    val enabled: Boolean,
-    val availableAssetCount: Int,
-)
-
-data class ChartLibraryDisplayLayerUi(
-    val id: ChartAssetId,
-    val title: String,
-    val role: ChartAssetRole,
-    val selected: Boolean,
-    val inCurrentStack: Boolean,
-    val visible: Boolean,
-    val available: Boolean,
-    val opacity: Float,
-) {
-    init { require(opacity.isFinite() && opacity in 0f..1f) }
-}
-
-data class ChartLibraryDisplayUi(
-    val sources: List<ChartLibraryDisplaySourceUi> = emptyList(),
-    val layers: List<ChartLibraryDisplayLayerUi> = emptyList(),
-    val overlaysVisible: Boolean = true,
-)
-
-sealed interface ChartLibraryDisplayAction {
-    data class ToggleSource(val sourceId: ChartSourceId) : ChartLibraryDisplayAction
-    data class SelectLayer(val assetId: ChartAssetId) : ChartLibraryDisplayAction
-    data class SetLayerVisible(val assetId: ChartAssetId, val visible: Boolean) : ChartLibraryDisplayAction
-    data class SetLayerOpacity(val assetId: ChartAssetId, val opacity: Float) : ChartLibraryDisplayAction
-    data object ToggleOverlays : ChartLibraryDisplayAction
-}
-
 sealed interface ChartLibraryEffect {
     data class OpenPicker(
         val picker: ChartLibraryPickerEffect,
