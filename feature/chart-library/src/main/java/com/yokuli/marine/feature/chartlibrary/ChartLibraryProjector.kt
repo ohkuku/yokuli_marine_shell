@@ -8,6 +8,9 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryRuntimeMetrics
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySource
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryStorageSnapshot
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayer
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayerSummaryProjector
+import com.yokuli.marine.map.domain.chartlibrary.ChartMapView
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyCapability
 import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
 import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
@@ -18,6 +21,8 @@ object ChartLibraryProjector {
         catalog: ChartCatalogSnapshot,
         sources: List<ChartLibrarySource>,
         assets: List<ChartAsset>,
+        layers: List<ChartLayer> = emptyList(),
+        views: List<ChartMapView> = emptyList(),
         validation: ChartValidationSnapshot,
         storage: ChartLibraryStorageSnapshot,
         metrics: ChartLibraryRuntimeMetrics,
@@ -87,6 +92,39 @@ object ChartLibraryProjector {
                 unknownSizeCount = members.count { it.sizeBytes == null },
             )
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+
+        val layerById = layers.associateBy(ChartLayer::id)
+        val layerRows = layers.map { layer ->
+            val summary = ChartLayerSummaryProjector.project(layer, sources, assets)
+            ChartLibraryLayerUi(
+                id = layer.id,
+                name = layer.displayName,
+                sourceCount = layer.sourceIds.size,
+                assetCount = summary.assetCount,
+                readyAssetCount = summary.readyAssetCount,
+                sizeBytes = summary.totalSizeBytes,
+                bounds = summary.coverage,
+                minZoom = summary.minZoom,
+                maxZoom = summary.maxZoom,
+                health = summary.health,
+                warningCount = summary.warningCount,
+                visible = layer.visible,
+                opacity = layer.opacity,
+                stackOrder = layer.stackOrder,
+                selected = layer.id == local.selectedLayerId,
+            )
+        }.sortedWith(compareByDescending<ChartLibraryLayerUi> { it.stackOrder }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        val viewRows = views.map { view ->
+            val orderedLayers = view.layers.sortedByDescending { it.stackOrder }
+            ChartLibraryViewUi(
+                id = view.id,
+                name = view.displayName,
+                baseStyle = view.baseStyle,
+                layerNames = orderedLayers.mapNotNull { layerById[it.layerId]?.displayName },
+                visibleLayerCount = orderedLayers.count { it.visible },
+                active = view.id == catalog.activeViewId,
+            )
+        }.sortedWith(compareByDescending<ChartLibraryViewUi> { it.active }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
         val filteredAssets = rows.filter { row ->
             val matchesQuery = local.query.isBlank() || sequenceOf(row.title, row.displayPath)
@@ -165,6 +203,8 @@ object ChartLibraryProjector {
             busy = busy,
             searchItems = sourceRows.map { ChartLibrarySearchItem.Source(it.id, it.name) } +
                 rows.map { ChartLibrarySearchItem.Asset(it.id, it.title, it.sourceNames.joinToString(" · ")) },
+            layers = layerRows,
+            views = viewRows,
         )
     }
 

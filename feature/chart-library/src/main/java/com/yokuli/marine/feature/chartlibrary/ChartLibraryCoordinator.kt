@@ -13,6 +13,11 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryRuntimeMetrics
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryRuntimePort
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySource
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayer
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayerId
+import com.yokuli.marine.map.domain.chartlibrary.ChartMapView
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewId
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewLayer
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryStorageSnapshot
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyCommandResult
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyCapability
@@ -66,6 +71,8 @@ class ChartLibraryCoordinator(
     private var metrics = runtime.metrics.value
     private var sources = emptyList<ChartLibrarySource>()
     private var assets = emptyList<ChartAsset>()
+    private var layers = emptyList<ChartLayer>()
+    private var views = emptyList<ChartMapView>()
     private var originalByManaged = emptyMap<ChartAssetId, ChartAssetId>()
     private var managedByOriginal = emptyMap<ChartAssetId, ChartAssetId>()
     private var local = ChartLibraryLocalState()
@@ -148,9 +155,15 @@ class ChartLibraryCoordinator(
         catalog = runtime.snapshot.value
         sources = readAllSources()
         assets = readAllAssets()
+        layers = readAllLayers()
+        views = readAllViews()
         val sourceIds = sources.mapTo(hashSetOf(), ChartLibrarySource::id)
         val assetIds = assets.mapTo(hashSetOf(), ChartAsset::id)
-        local = local.copy(selectedAssetIds = local.selectedAssetIds.intersect(assetIds))
+        val layerIds = layers.mapTo(hashSetOf(), ChartLayer::id)
+        local = local.copy(
+            selectedAssetIds = local.selectedAssetIds.intersect(assetIds),
+            selectedLayerId = local.selectedLayerId?.takeIf(layerIds::contains),
+        )
         when (val page = local.page) {
             is ChartLibraryLocalPage.SourceDetail -> if (page.sourceId !in sourceIds) missingPage()
             is ChartLibraryLocalPage.AssetDetail -> if (page.assetId !in assetIds) missingPage()
@@ -255,6 +268,29 @@ class ChartLibraryCoordinator(
                     publish()
                 }
             }
+            is ChartLibraryUiAction.SelectLayer -> {
+                local = local.copy(selectedLayerId = action.layerId?.takeIf { id -> layers.any { it.id == id } })
+                publish()
+            }
+            is ChartLibraryUiAction.RenameLayer -> mutateLayer(action.layerId) { layer ->
+                layer.copy(displayName = action.name.trim().take(128).ifBlank { layer.displayName })
+            }
+            is ChartLibraryUiAction.SetLayerVisible -> mutateLayer(action.layerId) { it.copy(visible = action.visible) }
+            is ChartLibraryUiAction.SetLayerOpacity -> mutateLayer(action.layerId) {
+                it.copy(opacity = action.opacity.coerceIn(0f, 1f))
+            }
+            is ChartLibraryUiAction.MoveLayer -> moveLayer(action.layerId, action.delta)
+            is ChartLibraryUiAction.CreateView -> createView(action.name, action.baseStyle)
+            is ChartLibraryUiAction.RenameView -> mutateView(action.viewId) { view ->
+                view.copy(displayName = action.name.trim().take(128).ifBlank { view.displayName })
+            }
+            is ChartLibraryUiAction.DuplicateView -> duplicateView(action.viewId, action.name)
+            is ChartLibraryUiAction.DeleteView -> deleteView(action.viewId)
+            is ChartLibraryUiAction.ActivateView -> commit(
+                listOf(ChartCatalogMutation.ActivateView(action.viewId)),
+                ChartLibraryNoticeUi.VIEW_UPDATED,
+            )
+            is ChartLibraryUiAction.SetViewBaseStyle -> mutateView(action.viewId) { it.copy(baseStyle = action.baseStyle) }
             ChartLibraryUiAction.DismissNotice -> {
                 notice = null
                 publish()
@@ -362,6 +398,71 @@ class ChartLibraryCoordinator(
     private suspend fun mutateAsset(assetId: ChartAssetId, transform: (ChartAsset) -> ChartAsset) {
         val asset = assets.firstOrNull { it.id == assetId } ?: return missingPage()
         commit(listOf(ChartCatalogMutation.PutAsset(transform(asset))), ChartLibraryNoticeUi.ASSET_UPDATED)
+    }
+
+    private suspend fun mutateLayer(layerId: ChartLayerId, transform: (ChartLayer) -> ChartLayer) {
+        val layer = layers.firstOrNull { it.id == layerId } ?: return missingPage()
+        commit(listOf(ChartCatalogMutation.PutLayer(transform(layer))), ChartLibraryNoticeUi.LAYER_UPDATED)
+    }
+
+    private suspend fun moveLayer(layerId: ChartLayerId, delta: Int) {
+        val layer = layers.firstOrNull { it.id == layerId } ?: return missingPage()
+        val newOrder = (layer.stackOrder + delta).coerceIn(-10_000, 10_000)
+        val mutations = buildList {
+            add(ChartCatalogMutation.PutLayer(layer.copy(stackOrder = newOrder)))
+            views.filter { view -> view.layers.any { it.layerId == layerId } }.forEach { view ->
+                add(
+                    ChartCatalogMutation.PutView(
+                        view.copy(layers = view.layers.map { item ->
+                            if (item.layerId == layerId) item.copy(stackOrder = newOrder) else item
+                        }),
+                    ),
+                )
+            }
+        }
+        commit(mutations, ChartLibraryNoticeUi.LAYER_UPDATED)
+    }
+
+    private suspend fun createView(name: String, baseStyle: com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle) {
+        val normalizedName = name.trim().take(128)
+        if (normalizedName.isBlank()) {
+            notice = ChartLibraryNoticeUi.OPERATION_FAILED
+            publish()
+            return
+        }
+        val id = ChartViewId("view-${UUID.randomUUID()}")
+        val view = ChartMapView(
+            id = id,
+            displayName = normalizedName,
+            baseStyle = baseStyle,
+            layers = layers.sortedBy { it.stackOrder }.map {
+                ChartViewLayer(it.id, visible = it.visible, opacity = it.opacity, stackOrder = it.stackOrder)
+            },
+        )
+        commit(
+            listOf(ChartCatalogMutation.PutView(view), ChartCatalogMutation.ActivateView(id)),
+            ChartLibraryNoticeUi.VIEW_UPDATED,
+        )
+    }
+
+    private suspend fun duplicateView(viewId: ChartViewId, name: String) {
+        val view = views.firstOrNull { it.id == viewId } ?: return missingPage()
+        val id = ChartViewId("view-${UUID.randomUUID()}")
+        val normalizedName = name.trim().take(128).ifBlank { view.displayName }
+        commit(
+            listOf(ChartCatalogMutation.PutView(view.copy(id = id, displayName = normalizedName))),
+            ChartLibraryNoticeUi.VIEW_UPDATED,
+        )
+    }
+
+    private suspend fun deleteView(viewId: ChartViewId) {
+        if (views.none { it.id == viewId }) return missingPage()
+        commit(listOf(ChartCatalogMutation.RemoveView(viewId)), ChartLibraryNoticeUi.VIEW_UPDATED)
+    }
+
+    private suspend fun mutateView(viewId: ChartViewId, transform: (ChartMapView) -> ChartMapView) {
+        val view = views.firstOrNull { it.id == viewId } ?: return missingPage()
+        commit(listOf(ChartCatalogMutation.PutView(transform(view))), ChartLibraryNoticeUi.VIEW_UPDATED)
     }
 
     private suspend fun commit(mutations: List<ChartCatalogMutation>, success: ChartLibraryNoticeUi) {
@@ -508,6 +609,24 @@ class ChartLibraryCoordinator(
         } while (offset < page.total && page.items.isNotEmpty() && size < MAX_LOADED_ITEMS)
     }
 
+    private suspend fun readAllLayers(): List<ChartLayer> = buildList {
+        var offset = 0
+        do {
+            val page = runtime.layers(offset)
+            addAll(page.items.take((MAX_LOADED_ITEMS - size).coerceAtLeast(0)))
+            offset += page.items.size
+        } while (offset < page.total && page.items.isNotEmpty() && size < MAX_LOADED_ITEMS)
+    }
+
+    private suspend fun readAllViews(): List<ChartMapView> = buildList {
+        var offset = 0
+        do {
+            val page = runtime.views(offset)
+            addAll(page.items.take((MAX_LOADED_ITEMS - size).coerceAtLeast(0)))
+            offset += page.items.size
+        } while (offset < page.total && page.items.isNotEmpty() && size < MAX_LOADED_ITEMS)
+    }
+
     private fun missingPage() {
         local = local.copy(page = ChartLibraryLocalPage.Overview)
         notice = ChartLibraryNoticeUi.ITEM_NOT_FOUND
@@ -522,6 +641,8 @@ class ChartLibraryCoordinator(
         catalog = catalog,
         sources = sources,
         assets = assets,
+        layers = layers,
+        views = views,
         validation = validation,
         storage = storage,
         metrics = metrics,

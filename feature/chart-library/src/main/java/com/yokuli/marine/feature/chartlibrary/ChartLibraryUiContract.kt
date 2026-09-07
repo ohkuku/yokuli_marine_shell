@@ -11,6 +11,11 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartFactProvenance
 import com.yokuli.marine.map.domain.chartlibrary.ChartCompatibilityWarning
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
+import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayerHealth
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayerId
+import com.yokuli.marine.map.domain.chartlibrary.ChartMapView
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewId
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryOperationId
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryPickerEffect
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
@@ -27,7 +32,7 @@ enum class ChartLibraryFilter { ALL, NEEDS_ATTENTION, ENABLED, DISABLED }
  * The three user-facing jobs of Chart Library. This is feature-local session state:
  * changing workspace never changes the catalog or the map display by itself.
  */
-enum class ChartLibraryWorkspaceMode { COVERAGE, STACK, SOURCES }
+enum class ChartLibraryWorkspaceMode { COVERAGE, LAYERS, VIEWS, SOURCES }
 
 sealed interface ChartLibraryLocalPage {
     data object Overview : ChartLibraryLocalPage
@@ -45,6 +50,40 @@ data class ChartLibraryLocalState(
     val query: String = "",
     val filter: ChartLibraryFilter = ChartLibraryFilter.ALL,
     val selectedAssetIds: Set<ChartAssetId> = emptySet(),
+    val selectedLayerId: ChartLayerId? = null,
+)
+
+data class ChartLibraryLayerUi(
+    val id: ChartLayerId,
+    val name: String,
+    val sourceCount: Int,
+    val assetCount: Int,
+    val readyAssetCount: Int,
+    val sizeBytes: Long,
+    val bounds: GeoBounds?,
+    val minZoom: Int?,
+    val maxZoom: Int?,
+    val health: ChartLayerHealth,
+    val warningCount: Int,
+    val visible: Boolean,
+    val opacity: Float,
+    val stackOrder: Int,
+    val selected: Boolean,
+) {
+    init {
+        require(sourceCount > 0 && assetCount >= 0 && readyAssetCount in 0..assetCount)
+        require(sizeBytes >= 0L && warningCount >= 0)
+        require(opacity.isFinite() && opacity in 0f..1f)
+    }
+}
+
+data class ChartLibraryViewUi(
+    val id: ChartViewId,
+    val name: String,
+    val baseStyle: ChartBuiltInBaseStyle,
+    val layerNames: List<String>,
+    val visibleLayerCount: Int,
+    val active: Boolean,
 )
 
 data class ChartLibrarySummaryUi(
@@ -181,6 +220,8 @@ enum class ChartLibraryNoticeUi {
     SOURCE_REMOVED,
     SOURCE_UPDATED,
     ASSET_UPDATED,
+    LAYER_UPDATED,
+    VIEW_UPDATED,
     SCAN_FINISHED,
     SCAN_CANCELLED,
     VALIDATION_FINISHED,
@@ -210,6 +251,9 @@ data class ChartLibraryUiState(
     val busy: Boolean = false,
     /** Bounded feature-owned index; Shell never reads locators, SQLite rows or document paths. */
     val searchItems: List<ChartLibrarySearchItem> = emptyList(),
+    /** Logical map content is the primary product surface; assets remain Sources detail only. */
+    val layers: List<ChartLibraryLayerUi> = emptyList(),
+    val views: List<ChartLibraryViewUi> = emptyList(),
 )
 
 sealed interface ChartLibraryUiAction {
@@ -243,6 +287,20 @@ sealed interface ChartLibraryUiAction {
     data class RequestDeleteManagedCopy(val assetId: ChartAssetId) : ChartLibraryUiAction
     data object ConfirmDeleteManagedCopy : ChartLibraryUiAction
     data class ViewInChart(val assetId: ChartAssetId) : ChartLibraryUiAction
+    data class SelectLayer(val layerId: ChartLayerId?) : ChartLibraryUiAction
+    data class RenameLayer(val layerId: ChartLayerId, val name: String) : ChartLibraryUiAction
+    data class SetLayerVisible(val layerId: ChartLayerId, val visible: Boolean) : ChartLibraryUiAction
+    data class SetLayerOpacity(val layerId: ChartLayerId, val opacity: Float) : ChartLibraryUiAction
+    data class MoveLayer(val layerId: ChartLayerId, val delta: Int) : ChartLibraryUiAction
+    data class CreateView(
+        val name: String,
+        val baseStyle: ChartBuiltInBaseStyle = ChartBuiltInBaseStyle.SATELLITE,
+    ) : ChartLibraryUiAction
+    data class RenameView(val viewId: ChartViewId, val name: String) : ChartLibraryUiAction
+    data class DuplicateView(val viewId: ChartViewId, val name: String) : ChartLibraryUiAction
+    data class DeleteView(val viewId: ChartViewId) : ChartLibraryUiAction
+    data class ActivateView(val viewId: ChartViewId) : ChartLibraryUiAction
+    data class SetViewBaseStyle(val viewId: ChartViewId, val baseStyle: ChartBuiltInBaseStyle) : ChartLibraryUiAction
     data object DismissNotice : ChartLibraryUiAction
 }
 
@@ -309,7 +367,8 @@ object ChartLibraryTestTags {
     const val ADD_FILE = "chart-library-add-file"
     const val STORAGE = "chart-library-storage"
     const val COVERAGE = "chart-library-coverage"
-    const val STACK = "chart-library-stack"
+    const val LAYERS = "chart-library-layers"
+    const val VIEWS = "chart-library-views"
     const val SOURCES = "chart-library-sources"
     const val BULK_ENABLE = "chart-library-bulk-enable"
     const val BULK_DISABLE = "chart-library-bulk-disable"
