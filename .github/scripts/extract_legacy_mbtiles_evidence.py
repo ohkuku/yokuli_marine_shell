@@ -24,6 +24,7 @@ def extract(root: Path) -> dict:
     for pattern in (
         "build/ci-device-tests.log",
         "adapter/chart-library-android/build/outputs/androidTest-results/**/*.xml",
+        "adapter/chart-library-android/build/outputs/androidTest-results/**/logcat-*.txt",
     ):
         candidates.update(path for path in root.glob(pattern) if path.is_file())
     scenarios: dict[str, dict] = {}
