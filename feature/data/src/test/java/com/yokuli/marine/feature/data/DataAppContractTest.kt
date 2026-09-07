@@ -29,6 +29,7 @@ import com.yokuli.marine.data.source.SourceSelectionCommand
 import com.yokuli.marine.data.source.SourceSelectionCommandResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -78,7 +79,7 @@ class DataAppContractTest {
     }
 
     @Test
-    fun selectedPhoneDemandSurvivesUiAndNoDemandStopsOnlyAfterSourceInitialization() = runTest {
+    fun selectedPhoneDemandSurvivesUiAndNoDemandStopsOnlyAfterSourceInitialization() = runTest(UnconfinedTestDispatcher()) {
         val source = FakeSourcePort(MarineSourceSnapshot.EMPTY)
         val enabled = PhoneLocationSnapshot.EMPTY.copy(
             enabledByUser = true,
