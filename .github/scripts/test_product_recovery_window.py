@@ -93,7 +93,7 @@ class ProductRecoveryWindowTest(unittest.TestCase):
 
     def test_artifacts_do_not_claim_human_acceptance(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("PRODUCT-RECOVERY", workflow)
+        self.assertIn("YOKULI-OS-DEBUG", workflow)
         self.assertIn("HUMAN-ACCEPTANCE-PENDING", workflow)
         self.assertNotIn("VERIFIED-yokuli-os-alpha", workflow)
         self.assertNotIn("Fully verified Yokuli OS", workflow)
