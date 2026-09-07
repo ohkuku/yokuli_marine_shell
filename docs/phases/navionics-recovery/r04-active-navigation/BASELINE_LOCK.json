@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "workPackage": "NAVREF_R04_GLOBAL_NAVIGATION_RUNTIME",
   "baseCommit": "19c76e25aa47e1d508ca694a2b7ffbe0d424c783",
-  "implementationHead": "5a405fe867c78cc1d253f2d6a9d27bbf9a129374",
+  "implementationHead": "4169ef401cfeea628a81f8879f87636a215ce118",
   "bundleSha256": "4a992c480b58d57ecc4fd96b7eb282800341e9f38e3a1f1caf72b213d8bf084f",
   "contractSha256": "326bd66398b2581bf72fecbe11ba2301e9218015bc39da68646db7bcb4abde9a",
   "status": "IMPLEMENTED_LOCAL_GREEN_CI_AND_HUMAN_PENDING",
@@ -13,10 +13,12 @@
     "replacementIsAtomicAfterPersistence": true,
     "cancelPreservesCurrentSession": true,
     "directToRemainsEphemeral": true,
-    "chartAndNavigationShareSnapshot": true
+    "chartAndNavigationShareSnapshot": true,
+    "unreadableSessionIsReadOnly": true,
+    "unreadableSessionDoesNotInterruptHistory": true
   },
   "evidence": {
-    "runtimeFocusedTests": "PASS",
+    "runtimeFocusedTests": "PASS_14_OF_14",
     "featureNavigationCompile": "PASS",
     "appShellCompile": "PASS",
     "fullMachineGate": "CI_PENDING",

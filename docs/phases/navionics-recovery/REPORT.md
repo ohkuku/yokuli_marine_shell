@@ -12,7 +12,7 @@
 | R01 Target + Quick Mark | Chart Interaction Recovery `af893a9` | 已实现，待真机手势验收 |
 | R02 A/B Measure | Chart Interaction Recovery `af893a9` | 已实现，待真机拖动验收 |
 | R03 Direct Route Editor | Navigation Spatial `8231930` | 已实现，待真机地图编辑验收 |
-| R04 Global Navigation Runtime | `5a405fe` | 已实现；替换必须显式确认 |
+| R04 Global Navigation Runtime | `5a405fe` + safety correction `4169ef4` | 已实现；替换必须显式确认，不可读 active session 不得被覆盖 |
 | R05 Navigation Camera | `9d3fe4b` | 已实现；Follow/Look Ahead/Next WP/Overview/Browse 分离 |
 | R06 Track Recorder | `73f5281` + safety correction `ae28a00` | 已实现；进程级、可恢复、actual track 独立且不可读文件受保护 |
 | R07 Navigation History | `27d8238` + safety correction `928bd3f` | 已实现；passage evidence、track association 与不可读文件保护 |
@@ -28,6 +28,7 @@
 - Active Navigation 与 Track Recorder 都由进程级 runtime 持有；页面、Start Tile、Shell、未来 Cockpit 不得建立副本。
 - Navigation camera 只改变视图，不改变 route/session；切换 map content 不停止 navigation 或 track。
 - 恢复只恢复已经持久化的事实；不能编造 position、waypoint passage、完成状态或连续航迹。
+- Active Session、Track Recording、Passage History 任一持久化文件不可读时，都必须保护原文件，不能用空状态或新操作静默覆盖。
 - R10 之前不新增“按钮/字符串/Composable 必须长这样”的 presentation gate；底层数学、持久化、迁移、并发和运行时安全继续是硬 gate。
 
 ## Hosted evidence boundary
