@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "R05_CHART_INTERACTION_RECOVERY",
+  "baseCommit": "b3d3cc8df8ca354a4d88742e39adec20440bb727",
+  "implementationHead": "af893a97670c267be3b1a081e3356cf314a24b71",
+  "implementationContractSha256": "4f935c31240ae886b260ab6b80fb5439bffcb295b8a9fb404a4939b919068b54",
+  "status": "IMPLEMENTED_LOCAL_GREEN_CI_AND_HUMAN_PENDING",
+  "humanAcceptance": "PENDING_REAL_MAP_GESTURE_APK",
+  "invariants": {
+    "mapIsPrimaryWorkspace": true,
+    "targetIsAlwaysVisible": true,
+    "quickMarkDoesNotRequireMetadataForm": true,
+    "measurementIsExactlyTwoPoints": true,
+    "measurementPreviewDrivesPinsLineAndHud": true,
+    "routeDraftUiAndGeometryStayTogether": true,
+    "activeNavigationUsesSharedRuntime": true
+  },
+  "evidence": {
+    "chartInteractionRecoveryDomainTests": "4_PASS",
+    "chartFeatureUnitTests": "30_PASS",
+    "googleRendererCompile": "PASS",
+    "offlineRendererCompile": "PASS",
+    "realTouchAndVisualAcceptance": "CI_AND_HUMAN_PENDING"
+  }
+}
