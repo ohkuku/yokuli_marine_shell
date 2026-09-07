@@ -240,7 +240,14 @@ fun OfflineMarineChartSurface(
         }
         mapView.addOnDidFailLoadingMapListener(loadFailureListener)
         mapView.addOnRenderErrorListener(renderErrorListener)
-        mapView.setOnTouchListener { _, event ->
+        fun setMapGesturesForPointDrag(enabled: Boolean) {
+            map?.uiSettings?.apply {
+                isScrollGesturesEnabled = enabled
+                isZoomGesturesEnabled = enabled
+            }
+            if (enabled) mapView.parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        mapView.setOnTouchListener { view, event ->
             val screenPoint = MapScreenPoint(event.x.toDouble(), event.y.toDouble())
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -255,6 +262,8 @@ fun OfflineMarineChartSurface(
                             "renderer-${generation.value}-${nextPointGesture.incrementAndGet()}",
                         )
                         activePointDrag.set(ActivePointDrag(gestureId, target, screenPoint))
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                        setMapGesturesForPointDrag(false)
                         currentAction(MapAction.BeginPointDrag(gestureId, target))
                         true
                     }
@@ -270,6 +279,7 @@ fun OfflineMarineChartSurface(
                     true
                 } ?: false
                 MotionEvent.ACTION_UP -> activePointDrag.getAndSet(null)?.let { drag ->
+                    setMapGesturesForPointDrag(true)
                     val finalPoint = queryPort?.unproject(screenPoint)
                     val moved = drag.moved || PointDragMotion.hasMoved(drag.downPoint, screenPoint, touchSlop)
                     if (finalPoint == null) {
@@ -283,6 +293,7 @@ fun OfflineMarineChartSurface(
                     true
                 } ?: false
                 MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> activePointDrag.getAndSet(null)?.let { drag ->
+                    setMapGesturesForPointDrag(true)
                     currentAction(MapAction.CancelPointDrag(drag.id))
                     true
                 } ?: false
@@ -340,6 +351,7 @@ fun OfflineMarineChartSurface(
         }
         onDispose {
             activePointDrag.getAndSet(null)?.let { drag -> currentAction(MapAction.CancelPointDrag(drag.id)) }
+            setMapGesturesForPointDrag(true)
             mapView.setOnTouchListener(null)
             cameraListener?.let { listener -> map?.removeOnCameraIdleListener(listener) }
             clickListener?.let { listener -> map?.removeOnMapClickListener(listener) }

@@ -295,7 +295,14 @@ fun GoogleMarineChartSurface(
             currentAction(MapAction.RendererHostReady(generation))
             currentAction(MapAction.RendererReady(generation))
         }
-        mapView.setOnTouchListener { _, event ->
+        fun setMapGesturesForPointDrag(enabled: Boolean) {
+            googleMap?.uiSettings?.apply {
+                isScrollGesturesEnabled = enabled
+                isZoomGesturesEnabled = enabled
+            }
+            if (enabled) mapView.parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        mapView.setOnTouchListener { view, event ->
             val port = queryPort ?: return@setOnTouchListener false
             val screen = MapScreenPoint(event.x.toDouble(), event.y.toDouble())
             when (event.actionMasked) {
@@ -306,6 +313,8 @@ fun GoogleMarineChartSurface(
                     ?.let { target ->
                         val gestureId = MapGestureId("google-${generation.value}-${nextPointGesture.incrementAndGet()}")
                         activePointDrag.set(ActivePointDrag(gestureId, target, screen))
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                        setMapGesturesForPointDrag(false)
                         currentAction(MapAction.BeginPointDrag(gestureId, target))
                         true
                     } ?: false
@@ -318,6 +327,7 @@ fun GoogleMarineChartSurface(
                     true
                 } ?: false
                 MotionEvent.ACTION_UP -> activePointDrag.getAndSet(null)?.let { drag ->
+                    setMapGesturesForPointDrag(true)
                     val point = port.unproject(screen)
                     val moved = drag.moved || drag.down.distanceTo(screen) >= touchSlop
                     when {
@@ -331,6 +341,7 @@ fun GoogleMarineChartSurface(
                     true
                 } ?: false
                 MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> activePointDrag.getAndSet(null)?.let {
+                    setMapGesturesForPointDrag(true)
                     currentAction(MapAction.CancelPointDrag(it.id))
                     true
                 } ?: false
@@ -339,6 +350,7 @@ fun GoogleMarineChartSurface(
         }
         onDispose {
             disposed = true
+            setMapGesturesForPointDrag(true)
             mapView.setOnTouchListener(null)
             googleMap?.setOnMapClickListener(null)
             googleMap?.setOnMapLongClickListener(null)
