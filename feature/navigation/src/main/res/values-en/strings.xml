@@ -172,5 +172,6 @@
     <string name="navigation_history_stopped">STOPPED</string>
     <string name="navigation_history_replaced">REPLACED</string>
     <string name="navigation_history_interrupted">INTERRUPTED</string>
+    <string name="navigation_history_store_unavailable">Passage history storage is unavailable. The existing history file will not be overwritten.</string>
     <string name="nav_history_persistence_issue">Navigation continues, but passage history is not safely stored yet. Recoverable session facts are retained for retry.</string>
 </resources>

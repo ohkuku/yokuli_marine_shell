@@ -163,6 +163,9 @@ private fun OverviewPage(
     state.active.historyIssue?.let {
         WpText(stringResource(R.string.nav_history_persistence_issue), 11, color = LocalWpTheme.current.muted)
     }
+    history.storeFailure?.let {
+        WpText(stringResource(R.string.navigation_history_store_unavailable), 11, color = LocalWpTheme.current.alarm)
+    }
     val session = state.active.session
     if (session != null) {
         Command(stringResource(R.string.navigation_open_active), "navigation-open-active") {

@@ -9,13 +9,20 @@ import kotlinx.coroutines.sync.withLock
 class DefaultNavigationHistoryRuntime(
     private val store: NavigationHistoryStore,
     private val maxPassages: Int = 1_000,
+    private val maxWaypointsPerPassage: Int = 2_000,
+    private val maxTotalWaypoints: Int = 200_000,
 ) : NavigationHistoryRuntimePort {
-    init { require(maxPassages > 0) }
+    init {
+        require(maxPassages > 0)
+        require(maxWaypointsPerPassage >= 2)
+        require(maxTotalWaypoints >= maxWaypointsPerPassage)
+    }
 
     private val mutex = Mutex()
     private val mutableState = MutableStateFlow(NavigationHistorySnapshot.EMPTY)
     override val state: StateFlow<NavigationHistorySnapshot> = mutableState.asStateFlow()
     private var initialized = false
+    private var loadBlocked = false
 
     override suspend fun initialize(): NavigationHistorySnapshot = mutex.withLock {
         initializeLocked()
@@ -26,7 +33,9 @@ class DefaultNavigationHistoryRuntime(
         session: ActiveNavigationSession,
         route: RoutePlan,
     ): NavigationHistoryWriteResult = mutex.withLock {
-        initializeLocked()
+        if (!ensureWritableLocked()) {
+            return@withLock NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.PERSISTENCE_FAILED)
+        }
         val current = mutableState.value
         val existing = current.passages.firstOrNull { it.sessionId == session.sessionId }
         if (existing != null) {
@@ -65,11 +74,8 @@ class DefaultNavigationHistoryRuntime(
             },
             furthestAdvancedWaypointIndex = session.historyCheckpoint(route),
         )
-        val retained = if (current.passages.size < maxPassages) current.passages else {
-            val removable = current.passages.firstOrNull { it.outcome != NavigationPassageOutcome.ACTIVE }
-                ?: return@withLock NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.CAPACITY_REACHED)
-            current.passages.filterNot { it.sessionId == removable.sessionId }
-        }
+        val retained = retainedFor(current, passage)
+            ?: return@withLock NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.CAPACITY_REACHED)
         saveLocked(current.copy(revision = current.revision + 1L, passages = retained + passage))
     }
 
@@ -83,7 +89,9 @@ class DefaultNavigationHistoryRuntime(
         reason: NavigationAdvanceReason,
         terminalOutcome: NavigationPassageOutcome?,
     ): NavigationHistoryWriteResult = mutex.withLock {
-        initializeLocked()
+        if (!ensureWritableLocked()) {
+            return@withLock NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.PERSISTENCE_FAILED)
+        }
         if (terminalOutcome != null && terminalOutcome != NavigationPassageOutcome.COMPLETED) {
             return@withLock NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.CONFLICT)
         }
@@ -141,7 +149,9 @@ class DefaultNavigationHistoryRuntime(
         outcome: NavigationPassageOutcome,
         endedAtEpochMillis: Long,
     ): NavigationHistoryWriteResult = mutex.withLock {
-        initializeLocked()
+        if (!ensureWritableLocked()) {
+            return@withLock NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.PERSISTENCE_FAILED)
+        }
         if (sessionId.isBlank() || outcome == NavigationPassageOutcome.ACTIVE) {
             return@withLock NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.CONFLICT)
         }
@@ -173,7 +183,9 @@ class DefaultNavigationHistoryRuntime(
         activeSessionId: String?,
         observedAtEpochMillis: Long,
     ): NavigationHistoryWriteResult = mutex.withLock {
-        initializeLocked()
+        if (!ensureWritableLocked()) {
+            return@withLock NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.PERSISTENCE_FAILED)
+        }
         val current = mutableState.value
         val orphaned = current.passages.filter {
             it.outcome == NavigationPassageOutcome.ACTIVE && it.sessionId != activeSessionId
@@ -199,6 +211,9 @@ class DefaultNavigationHistoryRuntime(
         route: RoutePlan,
     ): NavigationHistoryWriteResult {
         val current = mutableState.value
+        if (route.points.size > maxWaypointsPerPassage) {
+            return NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.CAPACITY_REACHED)
+        }
         val passage = NavigationPassage(
             sessionId = session.sessionId,
             revision = 1L,
@@ -211,29 +226,59 @@ class DefaultNavigationHistoryRuntime(
             },
             furthestAdvancedWaypointIndex = session.historyCheckpoint(route),
         )
-        val retained = if (current.passages.size < maxPassages) current.passages else {
-            val removable = current.passages.firstOrNull { it.outcome != NavigationPassageOutcome.ACTIVE }
-                ?: return NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.CAPACITY_REACHED)
-            current.passages.filterNot { it.sessionId == removable.sessionId }
-        }
+        val retained = retainedFor(current, passage)
+            ?: return NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.CAPACITY_REACHED)
         return saveLocked(current.copy(revision = current.revision + 1L, passages = retained + passage))
     }
 
     private suspend fun initializeLocked() {
-        if (initialized) return
-        mutableState.value = when (val loaded = store.loadNavigationHistory()) {
-            is NavigationHistoryLoadResult.Loaded -> loaded.snapshot
-            is NavigationHistoryLoadResult.Failed -> NavigationHistorySnapshot.EMPTY
+        if (initialized && !loadBlocked) return
+        when (val loaded = store.loadNavigationHistory()) {
+            is NavigationHistoryLoadResult.Loaded -> {
+                mutableState.value = loaded.snapshot.copy(storeFailure = null)
+                loadBlocked = false
+            }
+            is NavigationHistoryLoadResult.Failed -> {
+                mutableState.value = NavigationHistorySnapshot.EMPTY.copy(storeFailure = loaded.failure)
+                loadBlocked = true
+            }
         }
         initialized = true
     }
 
+    private suspend fun ensureWritableLocked(): Boolean {
+        initializeLocked()
+        return !loadBlocked
+    }
+
+    private fun retainedFor(
+        current: NavigationHistorySnapshot,
+        passage: NavigationPassage,
+    ): List<NavigationPassage>? {
+        if (passage.waypoints.size > maxWaypointsPerPassage || passage.waypoints.size > maxTotalWaypoints) {
+            return null
+        }
+        val retained = current.passages.toMutableList()
+        var totalWaypoints = retained.sumOf { it.waypoints.size }
+        while (retained.size >= maxPassages || totalWaypoints + passage.waypoints.size > maxTotalWaypoints) {
+            val removableIndex = retained.indexOfFirst { it.outcome != NavigationPassageOutcome.ACTIVE }
+            if (removableIndex < 0) return null
+            totalWaypoints -= retained.removeAt(removableIndex).waypoints.size
+        }
+        return retained
+    }
+
     private suspend fun saveLocked(next: NavigationHistorySnapshot): NavigationHistoryWriteResult {
-        return if (store.saveNavigationHistory(next) == NavigationHistorySaveResult.Saved) {
-            mutableState.value = next
-            NavigationHistoryWriteResult.Saved(next.revision)
-        } else {
-            NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.PERSISTENCE_FAILED)
+        if (loadBlocked) return NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.PERSISTENCE_FAILED)
+        return when (val result = store.saveNavigationHistory(next.copy(storeFailure = null))) {
+            NavigationHistorySaveResult.Saved -> {
+                mutableState.value = next.copy(storeFailure = null)
+                NavigationHistoryWriteResult.Saved(next.revision)
+            }
+            is NavigationHistorySaveResult.Failed -> {
+                mutableState.value = mutableState.value.copy(storeFailure = result.failure)
+                NavigationHistoryWriteResult.Failed(NavigationHistoryIssue.PERSISTENCE_FAILED)
+            }
         }
     }
 }

@@ -113,10 +113,49 @@ class DefaultNavigationHistoryRuntimeTest {
         assertEquals(NavigationPassageOutcome.ACTIVE, runtime.state.value.passages.single().outcome)
     }
 
-    private class FakeHistoryStore(initial: NavigationHistorySnapshot = NavigationHistorySnapshot.EMPTY) : NavigationHistoryStore {
+    @Test
+    fun `failed load stays read only and never overwrites an unreadable history`() = runTest {
+        val store = FakeHistoryStore(loadFailure = NavigationHistoryStoreFailure.FUTURE_SCHEMA)
+        val runtime = DefaultNavigationHistoryRuntime(store)
+
+        val loaded = runtime.initialize()
+        val result = runtime.begin(session(), route())
+
+        assertEquals(NavigationHistoryStoreFailure.FUTURE_SCHEMA, loaded.storeFailure)
+        assertEquals(NavigationHistoryIssue.PERSISTENCE_FAILED, (result as NavigationHistoryWriteResult.Failed).issue)
+        assertEquals(0, store.saveCalls)
+    }
+
+    @Test
+    fun `total waypoint bound evicts only the oldest ended passage`() = runTest {
+        val endedA = passage("ended-a", NavigationPassageOutcome.STOPPED, 2_000)
+        val endedB = passage("ended-b", NavigationPassageOutcome.STOPPED, 2_000)
+        val active = passage("active", NavigationPassageOutcome.ACTIVE, null)
+        val runtime = DefaultNavigationHistoryRuntime(
+            store = FakeHistoryStore(NavigationHistorySnapshot(3, listOf(endedA, endedB, active))),
+            maxPassages = 4,
+            maxWaypointsPerPassage = 3,
+            maxTotalWaypoints = 6,
+        )
+
+        val result = runtime.begin(session().copy(sessionId = "new"), route().copy(points = route().points.take(2)))
+
+        assertTrue(result is NavigationHistoryWriteResult.Saved)
+        assertEquals(listOf("ended-b", "active", "new"), runtime.state.value.passages.map { it.sessionId })
+        assertEquals(6, runtime.state.value.passages.sumOf { it.waypoints.size })
+    }
+
+    private class FakeHistoryStore(
+        initial: NavigationHistorySnapshot = NavigationHistorySnapshot.EMPTY,
+        private val loadFailure: NavigationHistoryStoreFailure? = null,
+    ) : NavigationHistoryStore {
         var value = initial
-        override suspend fun loadNavigationHistory() = NavigationHistoryLoadResult.Loaded(value)
+        var saveCalls = 0
+        override suspend fun loadNavigationHistory(): NavigationHistoryLoadResult = loadFailure?.let {
+            NavigationHistoryLoadResult.Failed(it)
+        } ?: NavigationHistoryLoadResult.Loaded(value)
         override suspend fun saveNavigationHistory(snapshot: NavigationHistorySnapshot): NavigationHistorySaveResult {
+            saveCalls += 1
             value = snapshot
             return NavigationHistorySaveResult.Saved
         }

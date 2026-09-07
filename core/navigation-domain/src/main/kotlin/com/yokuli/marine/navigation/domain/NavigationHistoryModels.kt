@@ -59,6 +59,8 @@ data class NavigationPassage(
 data class NavigationHistorySnapshot(
     val revision: Long = 0L,
     val passages: List<NavigationPassage> = emptyList(),
+    /** Ephemeral storage health; never serialized as passage history. */
+    val storeFailure: NavigationHistoryStoreFailure? = null,
 ) {
     init {
         require(revision >= 0L)

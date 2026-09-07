@@ -172,5 +172,6 @@
     <string name="navigation_history_stopped">已停止</string>
     <string name="navigation_history_replaced">已替换</string>
     <string name="navigation_history_interrupted">异常中断</string>
+    <string name="navigation_history_store_unavailable">航行历史存储不可用；为保护原数据，本次不会覆盖历史文件。</string>
     <string name="nav_history_persistence_issue">航行仍在继续，但历史记录尚未安全写入；系统会保留并重试可恢复的会话事实。</string>
 </resources>

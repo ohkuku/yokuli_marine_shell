@@ -18,12 +18,20 @@ internal object NavigationHistoryProtoMapper {
     private const val MAX_WAYPOINTS_PER_PASSAGE = 2_000
     private const val MAX_TOTAL_WAYPOINTS = 200_000
 
-    fun encode(snapshot: NavigationHistorySnapshot): NavigationHistoryStateProto =
-        NavigationHistoryStateProto.newBuilder()
+    fun encode(snapshot: NavigationHistorySnapshot): NavigationHistoryStateProto {
+        require(snapshot.passages.size <= MAX_PASSAGES) { "Navigation history exceeds passage capacity" }
+        require(snapshot.passages.all { it.waypoints.size <= MAX_WAYPOINTS_PER_PASSAGE }) {
+            "Navigation passage exceeds waypoint capacity"
+        }
+        require(snapshot.passages.sumOf { it.waypoints.size } <= MAX_TOTAL_WAYPOINTS) {
+            "Navigation history exceeds waypoint capacity"
+        }
+        return NavigationHistoryStateProto.newBuilder()
             .setSchemaVersion(SCHEMA_VERSION)
             .setRevision(snapshot.revision)
             .addAllPassages(snapshot.passages.map(::encodePassage))
             .build()
+    }
 
     fun decode(proto: NavigationHistoryStateProto): NavigationHistorySnapshot {
         require(proto.schemaVersion in 0..SCHEMA_VERSION) { "Unsupported navigation history schema ${proto.schemaVersion}" }
