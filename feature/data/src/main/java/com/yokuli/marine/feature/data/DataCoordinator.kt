@@ -28,6 +28,7 @@ class DataCoordinator(
     private val phoneDemandPort: DataPhoneDemandPort,
     scope: CoroutineScope,
     private val newConnectionId: () -> ConnectionId = { ConnectionId(UUID.randomUUID().toString()) },
+    consumerActivity: StateFlow<MarineConsumerActivitySnapshot> = MutableStateFlow(MarineConsumerActivitySnapshot.EMPTY),
 ) {
     private sealed interface Request {
         data class Select(val command: SourceSelectionCommand) : Request
@@ -46,6 +47,7 @@ class DataCoordinator(
     private var sources: MarineSourceSnapshot = sourcePort.state.value
     private var nmea: NmeaRuntimeSnapshot = nmeaPort.state.value
     private var phoneDemand: DataPhoneDemandState = phoneDemandPort.state.value
+    private var consumers: MarineConsumerActivitySnapshot = consumerActivity.value
     private var section = DataSection.OVERVIEW
     private var surface: DataSurface = DataSurface.Primary(PrimaryDataArea.BOAT)
     private var connectionDraft: DataConnectionDraft? = null
@@ -65,6 +67,9 @@ class DataCoordinator(
         }
         scope.launch {
             phoneDemandPort.state.collect { synchronized(lock) { phoneDemand = it; publishLocked() } }
+        }
+        scope.launch {
+            consumerActivity.collect { synchronized(lock) { consumers = it; publishLocked() } }
         }
         scope.launch {
             for (request in requests) execute(request)
@@ -100,6 +105,12 @@ class DataCoordinator(
                 }
                 is DataUiAction.ChooseConnectionType -> {
                     connectionDraft = DataConnectionDraft.create(newConnectionId(), action.type)
+                    connectionTest = DataConnectionTestState.IDLE
+                    surface = DataSurface.ConnectionWizard(action.type)
+                    null
+                }
+                is DataUiAction.ChangeConnectionType -> {
+                    connectionDraft = connectionDraft?.copy(type = action.type)
                     connectionTest = DataConnectionTestState.IDLE
                     surface = DataSurface.ConnectionWizard(action.type)
                     null
@@ -344,7 +355,7 @@ class DataCoordinator(
             else -> connectionTest
         }
         if (projectedTest != connectionTest) connectionTest = projectedTest
-        return DataDomainProjector.project(sources, nmea, section).copy(
+        return DataDomainProjector.project(sources, nmea, section, consumers).copy(
         surface = surface,
         primaryArea = (surface as? DataSurface.Primary)?.area ?: section.toPrimaryArea(),
         connectionDraft = connectionDraft,

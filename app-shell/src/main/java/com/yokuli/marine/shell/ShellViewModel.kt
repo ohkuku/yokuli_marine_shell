@@ -39,6 +39,8 @@ import com.yokuli.marine.feature.data.DataCoordinator
 import com.yokuli.marine.feature.data.DataEffect
 import com.yokuli.marine.feature.data.DataUiAction
 import com.yokuli.marine.feature.data.DataUiState
+import com.yokuli.marine.feature.data.MarineConsumerActivitySnapshot
+import com.yokuli.marine.feature.data.MarineConsumerId
 import com.yokuli.marine.feature.nmeainput.NmeaInputCoordinator
 import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
@@ -64,6 +66,7 @@ import com.yokuli.shell.engine.LauncherEngine
 import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.engine.LauncherRecoveryMode
 import com.yokuli.shell.engine.InternalAppTaskId
+import com.yokuli.shell.engine.ShellVisualSurface
 import com.yokuli.shell.contract.LauncherAppId
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.shell.contract.MotionPreference
@@ -110,6 +113,12 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         // needs a synchronous default document; production builds retain Proto restore/recovery.
         InMemoryLauncherPersistence(defaultStartDocument)
     }
+    val engine: LauncherEngine = DefaultLauncherEngine(
+        hostPort = productionHostPort,
+        persistence = enginePersistence,
+        defaultDocument = defaultStartDocument,
+        scope = viewModelScope,
+    )
     private var healthyTimer: Job? = null
     private val routeDecisionLock = Any()
     private var pendingRouteDecision: PendingRouteDecision? = null
@@ -126,11 +135,34 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     )
     val nmeaInputState: StateFlow<NmeaInputUiState> = nmeaInputCoordinator.state
     val nmeaInputEffects: Flow<NmeaInputEffect> = nmeaInputCoordinator.effects
+    private val dataConsumerActivity = combine(
+        engine.state,
+        shellApplication.activeNavigationRuntime.state,
+    ) { launcher, navigation ->
+            val activeApp = (launcher.surface as? ShellVisualSurface.Module)?.let { surface ->
+                launcher.tasks.task(surface.taskId)?.appId
+            }
+            MarineConsumerActivitySnapshot(
+                activeConsumers = buildSet {
+                    add(MarineConsumerId.START_TILE)
+                    if (navigation.session != null) add(MarineConsumerId.NAVIGATION)
+                    if (activeApp == com.yokuli.marine.feature.chart.ChartDestinations.AppId) {
+                        add(MarineConsumerId.CHART)
+                    }
+                },
+            )
+        }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            MarineConsumerActivitySnapshot(setOf(MarineConsumerId.START_TILE)),
+        )
     private val dataCoordinator = DataCoordinator(
         sourcePort = shellApplication.marineSourceRuntime,
         nmeaPort = shellApplication.nmeaInputRuntime,
         phoneDemandPort = shellApplication.dataPhoneDemandRuntime,
         scope = viewModelScope,
+        consumerActivity = dataConsumerActivity,
     )
     val dataState: StateFlow<DataUiState> = dataCoordinator.state
     val dataEffects: Flow<DataEffect> = dataCoordinator.effects
@@ -150,13 +182,6 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
             (persisted ?: defaults).copy(languageTag = application.selectedAppLanguageTag())
         }
         .stateIn(viewModelScope, SharingStarted.Eagerly, defaults)
-
-    val engine: LauncherEngine = DefaultLauncherEngine(
-        hostPort = productionHostPort,
-        persistence = enginePersistence,
-        defaultDocument = defaultStartDocument,
-        scope = viewModelScope,
-    )
 
     val mapStore: MapStore = DefaultMapStore(
         initialState = MapState(libraryLoadState = MapLibraryLoadState.NOT_LOADED),

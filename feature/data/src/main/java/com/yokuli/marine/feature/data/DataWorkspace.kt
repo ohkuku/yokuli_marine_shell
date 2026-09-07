@@ -343,8 +343,8 @@ private fun ConnectionWizard(state: DataUiState, type: DataConnectionType, onAct
             WpText(stringResource(R.string.field_name_optional), 11, color = LocalWpTheme.current.muted, modifier = Modifier.padding(top = 18.dp))
             WpField(draft.customName, stringResource(R.string.name_auto_hint)) { onAction(DataUiAction.ChangeConnectionName(it)) }
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.padding(top = 10.dp)) {
-                WpCommand(stringResource(R.string.transport_tcp)) { onAction(DataUiAction.ChooseConnectionType(DataConnectionType.ADVANCED_TCP)) }
-                WpCommand(stringResource(R.string.transport_udp)) { onAction(DataUiAction.ChooseConnectionType(DataConnectionType.ADVANCED_UDP)) }
+                WpCommand(stringResource(R.string.transport_tcp)) { onAction(DataUiAction.ChangeConnectionType(DataConnectionType.ADVANCED_TCP)) }
+                WpCommand(stringResource(R.string.transport_udp)) { onAction(DataUiAction.ChangeConnectionType(DataConnectionType.ADVANCED_UDP)) }
             }
         }
         if (type == DataConnectionType.BOAT_GATEWAY || type == DataConnectionType.ADVANCED_TCP) {

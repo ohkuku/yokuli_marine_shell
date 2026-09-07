@@ -9,6 +9,7 @@ sealed interface DataUiAction {
     data class OpenTrust(val group: SourceGroup) : DataUiAction
     data object OpenAddSource : DataUiAction
     data class ChooseConnectionType(val type: DataConnectionType) : DataUiAction
+    data class ChangeConnectionType(val type: DataConnectionType) : DataUiAction
     data object ChoosePhoneSource : DataUiAction
     data class ChangeConnectionHost(val value: String) : DataUiAction
     data class ChangeConnectionPort(val value: String) : DataUiAction
