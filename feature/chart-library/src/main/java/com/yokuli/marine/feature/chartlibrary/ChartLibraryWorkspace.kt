@@ -457,7 +457,12 @@ private fun SourceRow(row: ChartLibrarySourceRowUi, index: Int, onAction: (Chart
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AssetRow(row: ChartLibraryAssetRowUi, index: Int, onAction: (ChartLibraryUiAction) -> Unit) {
+private fun AssetRow(
+    row: ChartLibraryAssetRowUi,
+    index: Int,
+    onAction: (ChartLibraryUiAction) -> Unit,
+    showPath: Boolean = true,
+) {
     val colors = LocalWpTheme.current
     val interactions = remember { MutableInteractionSource() }
     Row(
@@ -476,7 +481,9 @@ private fun AssetRow(row: ChartLibraryAssetRowUi, index: Int, onAction: (ChartLi
     ) {
         Column(Modifier.weight(1f)) {
             WpText(row.title, 19, weight = FontWeight.Light, maxLines = 1, color = if (row.selected) colors.onAccent else null)
-            WpText(row.displayPath, 11, color = if (row.selected) colors.onAccent else colors.muted, maxLines = 1)
+            if (showPath) {
+                WpText(row.displayPath, 11, color = if (row.selected) colors.onAccent else colors.muted, maxLines = 1)
+            }
             WpText(assetStatus(row), 11, color = when {
                 row.selected -> colors.onAccent
                 row.needsAttention -> colors.warning
