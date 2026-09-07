@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "workPackage": "R04_CHART_VIEW_CONSUMPTION",
   "baseCommit": "54fd8e1",
-  "implementationHead": "aff99c6e936fc9270167fb38b6a584c057fd9483",
+  "implementationHead": "7fa622c19c72d457de54af248726bd2f3b081c98",
   "implementationContractSha256": "4f935c31240ae886b260ab6b80fb5439bffcb295b8a9fb404a4939b919068b54",
   "status": "IMPLEMENTED_LOCAL_GREEN_CI_AND_HUMAN_PENDING",
   "humanAcceptance": "PENDING_MAP_RENDERER_APK",

@@ -52,6 +52,7 @@
 
 - R03 product surface：`2a386646ae4262373f76ab56ac61315a39b54b4c`、`7353a36`、`54516d0`
 - 真实 composite preview：`aff99c6e936fc9270167fb38b6a584c057fd9483`
+- Preview renderer capture 与 Layer 恢复纠正：`7fa622c19c72d457de54af248726bd2f3b081c98`
 - CI report/artifact：本批 push 后填写。
 
 ## English summary

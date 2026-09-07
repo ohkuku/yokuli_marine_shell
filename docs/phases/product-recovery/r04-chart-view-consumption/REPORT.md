@@ -50,6 +50,7 @@
 - R04 implementation：`726769e4a47ee10968000e6a0e60a7413c2bd345`
 - localized compile correction：`9dec59a`
 - shared production renderer extraction：`aff99c6e936fc9270167fb38b6a584c057fd9483`
+- hidden Layer 可恢复与 picker 收口：`7fa622c19c72d457de54af248726bd2f3b081c98`
 - CI report/artifact：本批 push 后填写。
 
 ## English summary
