@@ -59,6 +59,7 @@ import com.yokuli.marine.map.domain.MapHitResult
 import com.yokuli.marine.map.domain.MapOverlayId
 import com.yokuli.marine.map.domain.MapOverlayRenderStatus
 import com.yokuli.marine.map.domain.MapRendererGeneration
+import com.yokuli.marine.map.domain.MapRendererGenerations
 import com.yokuli.marine.map.domain.MapRendererQueryPort
 import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapScreenPoint
@@ -110,7 +111,7 @@ fun GoogleMarineChartSurface(
     val currentState by rememberUpdatedState(state)
     val currentQueryPortChanged by rememberUpdatedState(onQueryPortChanged)
     val displayDensity = context.resources.displayMetrics.density
-    val generation = remember { MapRendererGeneration(nextRendererGeneration.incrementAndGet()) }
+    val generation = remember { MapRendererGenerations.next() }
     val activeCameraCommand = remember { AtomicReference<MapCameraCommandId?>(null) }
     val submittedCameraCommand = remember { AtomicReference<MapCameraCommandId?>(null) }
     val activePointDrag = remember { AtomicReference<ActivePointDrag?>(null) }
@@ -818,7 +819,6 @@ private val INTERACTIVE_OVERLAYS = setOf(
     MapOverlayId.MANUAL_ROUTE_POINTS,
 )
 private val HANDLE_OVERLAYS = setOf(MapOverlayId.MEASUREMENT_POINTS, MapOverlayId.MANUAL_ROUTE_POINTS)
-private val nextRendererGeneration = AtomicLong(20_000L)
 private val nextPointGesture = AtomicLong(0L)
 private const val GOOGLE_MAX_ZOOM = 21.0
 

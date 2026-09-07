@@ -1,11 +1,26 @@
 package com.yokuli.marine.map.domain
 
+import java.util.concurrent.atomic.AtomicLong
+
 /** Monotonically increasing identity for one native renderer instance. */
 @JvmInline
 value class MapRendererGeneration(val value: Long) {
     init {
         require(value > 0L) { "Renderer generation must be positive" }
     }
+}
+
+/**
+ * One process-wide sequence shared by every renderer adapter.
+ *
+ * Adapter-local counters are not safe: after an adapter with a larger counter has been attached,
+ * a different adapter can be permanently rejected by the reducer as stale. Renderer identity is
+ * an engine concern, so all adapters obtain it from this single monotonic source.
+ */
+object MapRendererGenerations {
+    private val next = AtomicLong(0L)
+
+    fun next(): MapRendererGeneration = MapRendererGeneration(next.incrementAndGet())
 }
 
 @JvmInline

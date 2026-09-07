@@ -47,7 +47,7 @@ sealed interface ChartLibraryLocalPage {
 
 data class ChartLibraryLocalState(
     val page: ChartLibraryLocalPage = ChartLibraryLocalPage.Overview,
-    val workspaceMode: ChartLibraryWorkspaceMode = ChartLibraryWorkspaceMode.COVERAGE,
+    val workspaceMode: ChartLibraryWorkspaceMode = ChartLibraryWorkspaceMode.VIEWS,
     val query: String = "",
     val filter: ChartLibraryFilter = ChartLibraryFilter.ALL,
     val selectedAssetIds: Set<ChartAssetId> = emptySet(),
@@ -258,7 +258,7 @@ enum class ChartLibraryNoticeUi {
 
 data class ChartLibraryUiState(
     val summary: ChartLibrarySummaryUi = ChartLibrarySummaryUi(),
-    val workspaceMode: ChartLibraryWorkspaceMode = ChartLibraryWorkspaceMode.COVERAGE,
+    val workspaceMode: ChartLibraryWorkspaceMode = ChartLibraryWorkspaceMode.VIEWS,
     val query: String = "",
     val filter: ChartLibraryFilter = ChartLibraryFilter.ALL,
     val selectedAssetIds: Set<ChartAssetId> = emptySet(),

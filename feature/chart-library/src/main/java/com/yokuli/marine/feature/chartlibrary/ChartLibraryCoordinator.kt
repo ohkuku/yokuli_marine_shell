@@ -204,7 +204,13 @@ class ChartLibraryCoordinator(
                 publish()
             }
             is ChartLibraryUiAction.SelectWorkspace -> {
-                local = local.copy(workspaceMode = action.value)
+                local = local.copy(
+                    workspaceMode = if (action.value == ChartLibraryWorkspaceMode.SOURCES) {
+                        ChartLibraryWorkspaceMode.SOURCES
+                    } else {
+                        ChartLibraryWorkspaceMode.VIEWS
+                    },
+                )
                 publish()
             }
             is ChartLibraryUiAction.OpenSource -> {

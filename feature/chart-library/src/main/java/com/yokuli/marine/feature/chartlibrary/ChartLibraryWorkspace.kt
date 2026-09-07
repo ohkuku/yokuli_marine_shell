@@ -53,7 +53,6 @@ import com.yokuli.marine.core.design.wpEntrance
 import com.yokuli.marine.map.domain.MapTileScheme
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetAccessState
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetFormat
-import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetValidationState
 import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
 import com.yokuli.marine.map.domain.chartlibrary.ChartCompatibilityWarning
@@ -123,7 +122,7 @@ private fun Overview(
         when (state.workspaceMode) {
             ChartLibraryWorkspaceMode.COVERAGE -> CoverageWorkspace(state, spatialPreview, onAction)
             ChartLibraryWorkspaceMode.LAYERS -> LayersWorkspace(state, onAction)
-            ChartLibraryWorkspaceMode.VIEWS -> ViewsWorkspace(state, spatialPreview, onAction)
+            ChartLibraryWorkspaceMode.VIEWS -> ViewsWorkspace(state, onAction)
             ChartLibraryWorkspaceMode.SOURCES -> SourcesWorkspace(state, page, onAction)
         }
     }
@@ -138,7 +137,6 @@ private fun WorkspacePivot(
         listOf(
             ChartLibraryWorkspaceMode.VIEWS,
             ChartLibraryWorkspaceMode.SOURCES,
-            ChartLibraryWorkspaceMode.COVERAGE,
         ).forEach { mode ->
             val selected = mode == selectedMode
             val colors = LocalWpTheme.current
@@ -357,7 +355,6 @@ private fun LayerZoomSpan(layer: ChartLibraryLayerUi) {
 @Composable
 private fun ViewsWorkspace(
     state: ChartLibraryUiState,
-    compositePreview: (@Composable (Modifier) -> Unit)?,
     onAction: (ChartLibraryUiAction) -> Unit,
 ) {
     val nextName = stringResource(R.string.view_default_name, state.views.size + 1)
@@ -370,12 +367,6 @@ private fun ViewsWorkspace(
             WpText(stringResource(R.string.views_explanation), 13, color = LocalWpTheme.current.muted)
             state.views.firstOrNull { it.active }?.let { active ->
                 WpText(active.name, 24, weight = FontWeight.Light, modifier = Modifier.padding(top = 8.dp))
-            }
-            if (compositePreview != null) {
-                compositePreview(
-                    Modifier.fillMaxWidth().height(250.dp).padding(vertical = 8.dp)
-                        .testTag(ChartLibraryTestTags.COMPOSITE_PREVIEW),
-                )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BasicTextField(
@@ -425,9 +416,6 @@ private fun MapViewRow(view: ChartLibraryViewUi, index: Int, onAction: (ChartLib
         }
         WpText(view.layers.filter { it.included }.joinToString { it.name }, 12, color = colors.muted)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            if (!view.selected) InlineCommand(stringResource(R.string.action_preview_view), "chart-library-preview-view-${view.id.value}") {
-                onAction(ChartLibraryUiAction.SelectView(view.id))
-            }
             if (!view.active) InlineCommand(stringResource(R.string.action_use_view), "chart-library-use-view-${view.id.value}") {
                 onAction(ChartLibraryUiAction.ActivateView(view.id))
             }
@@ -495,7 +483,7 @@ private fun SearchField(query: String, onAction: (ChartLibraryUiAction) -> Unit)
 @Composable
 private fun FilterRow(filter: ChartLibraryFilter, onAction: (ChartLibraryUiAction) -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        ChartLibraryFilter.entries.forEach { value ->
+        listOf(ChartLibraryFilter.ALL, ChartLibraryFilter.NEEDS_ATTENTION).forEach { value ->
             val selected = value == filter
             val colors = LocalWpTheme.current
             val interactions = remember { MutableInteractionSource() }
@@ -574,7 +562,7 @@ private fun AssetRow(
                 else -> colors.muted
             })
         }
-        WpText(if (row.role == ChartAssetRole.BASE) "▣" else "◇", 20, color = if (row.selected) colors.onAccent else colors.accent)
+        WpText("▣", 20, color = if (row.selected) colors.onAccent else colors.accent)
     }
 }
 
@@ -587,8 +575,6 @@ private fun SourceDetail(page: ChartLibraryPageUi.SourceDetail, onAction: (Chart
             Fact(stringResource(R.string.fact_provider), page.source.provider ?: stringResource(R.string.unknown))
             Fact(stringResource(R.string.fact_permission), grantLabel(page.source.grantState))
             Fact(stringResource(R.string.fact_recursive), yesNo(page.source.recursive))
-            Fact(stringResource(R.string.fact_default_role), roleLabel(page.source.defaultRole))
-            Fact(stringResource(R.string.fact_enabled), yesNo(page.source.enabled))
             Fact(stringResource(R.string.fact_scan), scanLabel(page.source.scan.status))
             Fact(stringResource(R.string.fact_generation), page.source.scan.generation.toString())
             Fact(stringResource(R.string.fact_assets), page.source.assetCount.toString())
@@ -635,8 +621,6 @@ private fun AssetDetail(asset: ChartLibraryAssetRowUi, onAction: (ChartLibraryUi
             Fact(stringResource(R.string.fact_size), bytesLabel(asset.sizeBytes))
             Fact(stringResource(R.string.fact_bounds), boundsLabel(asset))
             Fact(stringResource(R.string.fact_revision), asset.revisionSummary ?: stringResource(R.string.unknown))
-            Fact(stringResource(R.string.fact_role), roleLabel(asset.role))
-            Fact(stringResource(R.string.fact_priority), asset.priority.toString())
             asset.attribution?.let {
                 Fact(stringResource(R.string.fact_attribution), it)
                 Fact(stringResource(R.string.fact_attribution_source), provenanceLabel(asset.attributionProvenance))
@@ -669,19 +653,6 @@ private fun AssetDetail(asset: ChartLibraryAssetRowUi, onAction: (ChartLibraryUi
                         onAction(ChartLibraryUiAction.CancelManagedCopy(asset.id))
                     }
                 }
-            }
-            SectionTitle(stringResource(R.string.section_asset_settings))
-            TextCommand(
-                stringResource(
-                    if (asset.role == ChartAssetRole.BASE) R.string.action_make_overlay else R.string.action_make_base,
-                ),
-                ChartLibraryTestTags.role(asset.id.value),
-            ) { onAction(ChartLibraryUiAction.SetAssetRole(asset.id, asset.role.other())) }
-            TextCommand(stringResource(R.string.action_priority_up), ChartLibraryTestTags.priorityUp(asset.id.value)) {
-                onAction(ChartLibraryUiAction.MoveAssetPriority(asset.id, 1))
-            }
-            TextCommand(stringResource(R.string.action_priority_down), ChartLibraryTestTags.priorityDown(asset.id.value)) {
-                onAction(ChartLibraryUiAction.MoveAssetPriority(asset.id, -1))
             }
             if (asset.managedCopyAvailable && asset.copyJob?.status !in ACTIVE_COPY_STATES) {
                 TextCommand(stringResource(R.string.action_save_copy), ChartLibraryTestTags.managedCopy(asset.id.value)) {
@@ -786,18 +757,13 @@ private fun ApplicationBar(state: ChartLibraryUiState, onAction: (ChartLibraryUi
                 action("▤", R.string.action_add_file, ChartLibraryTestTags.ADD_FILE) { onAction(ChartLibraryUiAction.AddSingleFile) },
                 action("▥", R.string.action_storage, ChartLibraryTestTags.STORAGE) { onAction(ChartLibraryUiAction.OpenStorage) },
             )
-        } else listOf(
-            action("✓", R.string.action_enable, ChartLibraryTestTags.BULK_ENABLE) { onAction(ChartLibraryUiAction.SetSelectedEnabled(true)) },
-            action("×", R.string.action_disable, ChartLibraryTestTags.BULK_DISABLE) { onAction(ChartLibraryUiAction.SetSelectedEnabled(false)) },
-            action("−", R.string.action_clear_selection, "chart-library-clear-selection") { onAction(ChartLibraryUiAction.ClearSelection) },
-        )
+        } else listOf(action("−", R.string.action_clear_selection, "chart-library-clear-selection") {
+            onAction(ChartLibraryUiAction.ClearSelection)
+        })
         is ChartLibraryPageUi.SourceDetail -> {
-            val basic = listOf(
-                action("←", R.string.action_back, "chart-library-back") { onAction(ChartLibraryUiAction.NavigateBack) },
-                action(if (page.source.enabled) "○" else "●", if (page.source.enabled) R.string.action_disable else R.string.action_enable, "chart-library-toggle-source") {
-                    onAction(ChartLibraryUiAction.SetSourceEnabled(page.source.id, !page.source.enabled))
-                },
-            )
+            val basic = listOf(action("←", R.string.action_back, "chart-library-back") {
+                onAction(ChartLibraryUiAction.NavigateBack)
+            })
             if (page.source.kind == ChartLibrarySourceKind.MANAGED) basic else basic + listOf(
                 if (page.source.scan.status == ChartScanStatus.RUNNING) {
                     action("×", R.string.action_cancel, "chart-library-cancel-scan") { onAction(ChartLibraryUiAction.CancelSourceScan(page.source.id)) }
@@ -809,9 +775,6 @@ private fun ApplicationBar(state: ChartLibraryUiState, onAction: (ChartLibraryUi
         }
         is ChartLibraryPageUi.AssetDetail -> listOfNotNull(
             action("←", R.string.action_back, "chart-library-back") { onAction(ChartLibraryUiAction.NavigateBack) },
-            action(if (page.asset.enabled) "○" else "●", if (page.asset.enabled) R.string.action_disable else R.string.action_enable, "chart-library-toggle-asset") {
-                onAction(ChartLibraryUiAction.SetAssetEnabled(page.asset.id, !page.asset.enabled))
-            },
             if (page.asset.validationJob?.status == ChartValidationJobStatus.RUNNING) {
                 action("×", R.string.action_cancel_validation, "chart-library-cancel-validation") {
                     onAction(ChartLibraryUiAction.CancelValidation(page.asset.id))
@@ -819,7 +782,6 @@ private fun ApplicationBar(state: ChartLibraryUiState, onAction: (ChartLibraryUi
             } else action("✓", R.string.action_check, "chart-library-check") {
                 onAction(ChartLibraryUiAction.InspectBasic(page.asset.id))
             },
-            action("◎", R.string.action_full_verify, "chart-library-full-verify") { onAction(ChartLibraryUiAction.VerifyFull(page.asset.id)) },
             if (page.asset.isManagedAsset) action(
                 "−", R.string.action_delete_managed_copy, ChartLibraryTestTags.deleteManagedCopy(page.asset.id.value),
             ) { onAction(ChartLibraryUiAction.RequestDeleteManagedCopy(page.asset.id)) } else null,
@@ -938,7 +900,7 @@ private fun InlineCommand(label: String, tag: String, onClick: () -> Unit) {
     R.string.source_summary, sourceKindLabel(row.kind), row.assetCount, row.availableAssetCount, row.attentionCount,
 )
 @Composable private fun assetStatus(row: ChartLibraryAssetRowUi) = stringResource(
-    R.string.asset_summary, roleLabel(row.role), accessLabel(row.access), validationLabel(row.validation),
+    R.string.asset_summary, accessLabel(row.access), validationLabel(row.validation),
 )
 @Composable private fun sourceKindLabel(value: ChartLibrarySourceKind) = stringResource(when (value) {
     ChartLibrarySourceKind.TREE -> R.string.source_folder
@@ -994,7 +956,6 @@ private fun InlineCommand(label: String, tag: String, onClick: () -> Unit) {
     ChartCompatibilityWarning.MIXED_TILE_SIZE -> R.string.warning_mixed_size
     ChartCompatibilityWarning.INVALID_SAMPLE_COORDINATE -> R.string.warning_sample_coordinate
 })
-@Composable private fun roleLabel(value: ChartAssetRole) = stringResource(if (value == ChartAssetRole.BASE) R.string.role_base else R.string.role_overlay)
 @Composable private fun formatLabel(value: ChartAssetFormat) = stringResource(when (value) {
     ChartAssetFormat.RASTER_MBTILES -> R.string.format_raster_mbtiles
     ChartAssetFormat.UNKNOWN -> R.string.unknown
@@ -1088,7 +1049,6 @@ private fun copyJobLabel(
     ChartLibraryNoticeUi.SELECTION_LIMIT_REACHED -> R.string.notice_selection_limit
 })
 
-private fun ChartAssetRole.other() = if (this == ChartAssetRole.BASE) ChartAssetRole.OVERLAY else ChartAssetRole.BASE
 
 private val ACTIVE_COPY_STATES = setOf(
     ChartManagedCopyStatus.QUEUED,

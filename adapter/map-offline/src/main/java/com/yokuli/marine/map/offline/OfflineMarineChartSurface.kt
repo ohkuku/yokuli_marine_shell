@@ -40,6 +40,7 @@ import com.yokuli.marine.map.domain.MapHitResult
 import com.yokuli.marine.map.domain.MapOverlayId
 import com.yokuli.marine.map.domain.MapRendererFailure
 import com.yokuli.marine.map.domain.MapRendererGeneration
+import com.yokuli.marine.map.domain.MapRendererGenerations
 import com.yokuli.marine.map.domain.MapRendererQueryPort
 import com.yokuli.marine.map.domain.MapRendererReadiness
 import com.yokuli.marine.map.domain.MapScreenPoint
@@ -124,7 +125,7 @@ fun OfflineMarineChartSurface(
     val displayDensity = context.resources.displayMetrics.density
     remember(context.applicationContext) { MapLibre.getInstance(context.applicationContext) }
 
-    val generation = remember { MapRendererGeneration(nextRendererGeneration.incrementAndGet()) }
+    val generation = remember { MapRendererGenerations.next() }
     // The remember calculation may be evaluated by an abandoned composition. Only count a
     // renderer after its lifecycle effect commits and MapView.onCreate has actually run.
     val mapView = remember(context, generation) { MapView(context) }
@@ -967,7 +968,6 @@ private const val COURSE_VECTOR_METERS_PER_KNOT = 25.0
 private const val MIN_COURSE_VECTOR_METERS = 80.0
 private const val MAX_COURSE_VECTOR_METERS = 500.0
 private const val ACCURACY_RING_SEGMENTS = 36
-private val nextRendererGeneration = AtomicLong(0L)
 private val nextPointGesture = AtomicLong(0L)
 
 /** Bounded process-local counters used by lifecycle gates and later diagnostics. */

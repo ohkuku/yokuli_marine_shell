@@ -76,11 +76,28 @@ class ChartLoopbackTileGateway : AutoCloseable {
         require(tileSize == 256 || tileSize == 512)
         require(minZoom in 0..24 && maxZoom in minZoom..24)
         val route = RouteKey(session.request.assetId.value, session.request.revision.routeKey())
-        val asset = RegisteredAsset(session, scheme, tileSize, minZoom, maxZoom)
-        synchronized(registrations) {
-            check(registrations.size < MAX_REGISTERED_ASSETS) { "Chart gateway registration limit reached" }
-            check(registrations.putIfAbsent(route, asset) == null) { "Asset revision is already registered" }
+        val proposed = RegisteredAsset(session, scheme, tileSize, minZoom, maxZoom)
+        val asset = try {
+            synchronized(registrations) {
+                val existing = registrations[route]
+                if (existing == null) {
+                    check(registrations.size < MAX_REGISTERED_ASSETS) { "Chart gateway registration limit reached" }
+                    registrations[route] = proposed
+                    proposed
+                } else {
+                    check(
+                        existing.scheme == scheme && existing.tileSize == tileSize &&
+                            existing.minZoom == minZoom && existing.maxZoom == maxZoom,
+                    ) { "Asset revision was registered with incompatible raster facts" }
+                    existing.leaseCount += 1
+                    existing
+                }
+            }
+        } catch (error: Throwable) {
+            session.close()
+            throw error
         }
+        if (asset !== proposed) session.close()
         val template = "http://${localAddress.hostAddress}:$localPort/$token/${route.assetId}/${route.revision}/{z}/{x}/{y}"
         return ChartRasterRegistration(
             assetId = route.assetId,
@@ -90,8 +107,12 @@ class ChartLoopbackTileGateway : AutoCloseable {
             minZoom = minZoom,
             maxZoom = maxZoom,
         ) {
-            registrations.remove(route, asset)
-            session.close()
+            val closeSession = synchronized(registrations) {
+                asset.leaseCount -= 1
+                check(asset.leaseCount >= 0) { "Chart gateway lease count underflow" }
+                asset.leaseCount == 0 && registrations.remove(route, asset)
+            }
+            if (closeSession) asset.session.close()
         }
     }
 
@@ -197,6 +218,7 @@ class ChartLoopbackTileGateway : AutoCloseable {
         val tileSize: Int,
         val minZoom: Int,
         val maxZoom: Int,
+        var leaseCount: Int = 1,
     )
 
     companion object {
