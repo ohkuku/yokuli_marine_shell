@@ -230,7 +230,15 @@ class DefaultMapReducer(
         is MapAction.SelectTool -> MapReduction(selectTool(state, action.tool))
         is MapAction.OpenSurface -> MapReduction(openSurface(state, action.surface))
         MapAction.CloseSurface -> MapReduction(closeSurface(state))
-        MapAction.DismissTransient -> MapReduction(state.copy(transient = null))
+        MapAction.DismissTransient -> MapReduction(
+            state.copy(
+                transient = null,
+                // A raw point candidate is the complete target interaction. Older builds also
+                // mirrored it into selection, which made one visible target require two Back
+                // presses to dismiss. Never leave that invisible second plane behind.
+                selection = if (state.transient is MapTransient.PointCandidate) null else state.selection,
+            ),
+        )
         MapAction.ClearSelection -> MapReduction(state.copy(selection = null))
         MapAction.OpenMapViewPicker -> MapReduction(state.copy(transient = MapTransient.MapViewPicker))
         is MapAction.SetMapViewMode -> persistSession(state.copy(mapViewMode = action.mode, transient = null))
@@ -255,7 +263,10 @@ class DefaultMapReducer(
             state.tool == MapTool.MANUAL_ROUTE &&
                 action.hits.any { it.overlayId == MapOverlayId.MANUAL_ROUTE } ->
                 insertRouteWaypointAtNearestLeg(state, action.point)
-            action.hits.isEmpty() && state.tool != MapTool.BROWSE ->
+            // The ruler owns exactly two direct-manipulation handles. A map tap must not silently
+            // replace B; the user moves A or B by dragging the visible pin.
+            action.hits.isEmpty() && state.tool == MapTool.MEASURE -> MapReduction(state)
+            action.hits.isEmpty() && state.tool == MapTool.MANUAL_ROUTE ->
                 addPoint(state.copy(transient = null, selection = null), action.point)
             else -> MapReduction(mapInteraction(state, action.point, action.hits, PointCandidateOrigin.MAP_TAP))
         }
@@ -395,8 +406,14 @@ class DefaultMapReducer(
         is MapAction.SetMapOrientationMode -> {
             val changed = state.copy(navigationCamera = state.navigationCamera.copy(orientation = action.mode))
             MapReduction(
-                if (changed.navigationCamera.mode == NavigationCameraMode.FREE_BROWSE) changed
-                else applyNavigationCamera(changed, changed.navigationCamera.mode),
+                if (changed.navigationActive && changed.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE) {
+                    applyNavigationCamera(changed, changed.navigationCamera.mode)
+                } else {
+                    changed.withCameraCommand(
+                        MapCameraTarget.Exact(changed.camera.copy(bearing = changed.orientationBearing())),
+                        MapCameraIntent.NORTH_RESET,
+                    )
+                },
             )
         }
         MapAction.RecenterNavigationCamera -> MapReduction(
@@ -782,7 +799,9 @@ class DefaultMapReducer(
         }
         return state.copy(
             transient = transient,
-            selection = if (hits.isEmpty()) MapSelection(point) else state.selection,
+            // PointCandidate is already the visible selection plane. Mirroring the same point
+            // into selection creates a ghost state after dismiss/back.
+            selection = if (hits.isEmpty()) null else state.selection,
         )
     }
 
@@ -1764,7 +1783,12 @@ class DefaultMapReducer(
                 applyNavigationCamera(updated, updated.navigationCamera.mode)
             } else {
                 updated.withCameraCommand(
-                    MapCameraTarget.Exact(updated.camera.copy(center = action.observation.point)),
+                    MapCameraTarget.Exact(
+                        updated.camera.copy(
+                            center = action.observation.point,
+                            bearing = updated.orientationBearing(),
+                        ),
+                    ),
                     MapCameraIntent.FOLLOW_POSITION,
                 )
             }
@@ -1790,6 +1814,14 @@ class DefaultMapReducer(
         return MapReduction(
             if (updated.navigationActive && updated.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE) {
                 applyNavigationCamera(updated, updated.navigationCamera.mode)
+            } else if (
+                updated.position.viewIntent == PositionViewIntent.FOLLOW_POSITION &&
+                updated.position.availability == PositionAvailability.FRESH
+            ) {
+                updated.withCameraCommand(
+                    MapCameraTarget.Exact(updated.camera.copy(bearing = updated.orientationBearing())),
+                    MapCameraIntent.FOLLOW_POSITION,
+                )
             } else updated,
         )
     }
@@ -1812,6 +1844,14 @@ class DefaultMapReducer(
         return MapReduction(
             if (updated.navigationActive && updated.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE) {
                 applyNavigationCamera(updated, updated.navigationCamera.mode)
+            } else if (
+                updated.position.viewIntent == PositionViewIntent.FOLLOW_POSITION &&
+                updated.position.availability == PositionAvailability.FRESH
+            ) {
+                updated.withCameraCommand(
+                    MapCameraTarget.Exact(updated.camera.copy(bearing = updated.orientationBearing())),
+                    MapCameraIntent.FOLLOW_POSITION,
+                )
             } else updated,
         )
     }
@@ -1874,10 +1914,23 @@ class DefaultMapReducer(
         }
         return MapReduction(
             state.copy(position = state.position.copy(viewIntent = intent)).withCameraCommand(
-                MapCameraTarget.Exact(state.camera.copy(center = point)),
+                MapCameraTarget.Exact(
+                    state.camera.copy(
+                        center = point,
+                        bearing = state.orientationBearing(render),
+                    ),
+                ),
                 MapCameraIntent.FOLLOW_POSITION,
             ),
         )
+    }
+
+    private fun MapState.orientationBearing(
+        render: PositionRenderModel = PositionRenderPolicy.resolve(position),
+    ): Double = when (navigationCamera.orientation) {
+        MapOrientationMode.NORTH_UP -> 0.0
+        MapOrientationMode.COURSE_UP -> render.courseVector?.trueDegrees ?: 0.0
+        MapOrientationMode.HEADING_UP -> render.trueHeadingDegrees ?: render.courseVector?.trueDegrees ?: 0.0
     }
 
     private fun applyNavigationCamera(state: MapState, requested: NavigationCameraMode): MapState {

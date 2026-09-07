@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.BasicTextField
@@ -155,11 +156,9 @@ fun ChartWorkspace(
     onCancelOfflineCoverage: () -> Unit = {},
     activeNavigationStrip: (@Composable () -> Unit)? = null,
     trackRecorderStrip: (@Composable () -> Unit)? = null,
-    onDirectTo: (point: GeoPoint, name: String) -> Unit = { _, _ -> },
     onOpenWaypointLibrary: () -> Unit = {},
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit = {},
     onStartNavigation: (routeId: String, routeRevision: Long) -> Unit = { _, _ -> },
-    onSaveAndStartRoute: () -> Unit = {},
     chartSurface: MarineChartSurface,
 ) {
     val colors = LocalWpTheme.current
@@ -233,10 +232,8 @@ fun ChartWorkspace(
                 recoveryExportState,
                 activeNavigationStrip,
                 trackRecorderStrip,
-                onDirectTo,
                 onOpenWaypointLibrary,
                 onUnsavedRouteDecision,
-                onSaveAndStartRoute,
                 onAction,
                 onExportRecovery,
             )
@@ -274,10 +271,8 @@ private fun MapRootChrome(
     recoveryExportState: MapRecoveryExportUiState,
     activeNavigationStrip: (@Composable () -> Unit)?,
     trackRecorderStrip: (@Composable () -> Unit)?,
-    onDirectTo: (point: GeoPoint, name: String) -> Unit,
     onOpenWaypointLibrary: () -> Unit,
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
-    onSaveAndStartRoute: () -> Unit,
     onAction: (MapAction) -> Unit,
     onExportRecovery: () -> Unit,
 ) {
@@ -310,7 +305,34 @@ private fun MapRootChrome(
                         )
                     },
                 )
+                queryPort?.unproject(point)?.let { target ->
+                    WpText(
+                        target.coordinateText(),
+                        9,
+                        color = LocalWpTheme.current.foreground,
+                        maxLines = 1,
+                        modifier = Modifier.widthIn(max = 174.dp).offset {
+                            IntOffset(
+                                (point.xPx - 87.dp.toPx()).roundToInt(),
+                                (point.yPx + 19.dp.toPx()).roundToInt(),
+                            )
+                        }.background(LocalWpTheme.current.background.copy(alpha = .82f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .testTag("map-crosshair-coordinate"),
+                    )
+                }
             }
+        }
+        trackRecorderStrip?.let { content ->
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(
+                    end = with(LocalDensity.current) { viewportInsets.rightPx.toDp() } + 6.dp,
+                    bottom = if (
+                        activeNavigationStrip != null || state.transient != null ||
+                        state.selection != null || state.tool != MapTool.BROWSE
+                    ) 122.dp else 66.dp,
+                ).testTag("map-track-recorder-strip"),
+            ) { content() }
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             val displayAttribution = state.chartDisplayPlan.layers
@@ -331,17 +353,12 @@ private fun MapRootChrome(
             activeNavigationStrip?.let { content ->
                 Box(Modifier.fillMaxWidth().testTag("map-active-navigation-strip")) { content() }
             }
-            trackRecorderStrip?.let { content ->
-                Box(Modifier.fillMaxWidth().testTag("map-track-recorder-strip")) { content() }
-            }
             MapRootSummary(
                 state,
                 chartDisplayState,
                 onChartDisplayAction,
-                onDirectTo,
                 onOpenWaypointLibrary,
                 onUnsavedRouteDecision,
-                onSaveAndStartRoute,
                 onAction,
             )
             MapRootCommandBar(state, queryPort, viewportSize, viewportInsets, onAction)
@@ -375,7 +392,6 @@ private fun MapTruthStrip(
                 maxLines = 1,
             )
         }
-        WpText(state.camera.center.coordinateText(), 10, color = colors.foreground, maxLines = 1)
     }
 }
 
@@ -543,10 +559,8 @@ private fun MapRootSummary(
     state: MapState,
     chartDisplayState: ChartDisplayUiState,
     onChartDisplayAction: (ChartDisplayUiAction) -> Unit,
-    onDirectTo: (point: GeoPoint, name: String) -> Unit,
     onOpenWaypointLibrary: () -> Unit,
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
-    onSaveAndStartRoute: () -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -568,40 +582,35 @@ private fun MapRootSummary(
         is MapTransient.PointCandidate -> {
             val vessel = PositionRenderPolicy.resolve(state.position).point
                 ?.takeIf { state.position.availability == PositionAvailability.FRESH }
-            val targetName = stringResource(R.string.map_target_default_name)
-            Column(
+            Row(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
                     .testTag("map-point-candidate"),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                WpText(transient.point.coordinateText(), 11)
-                vessel?.let { current ->
-                    val inverse = Wgs84Geodesic.inverse(current, transient.point)
-                    WpText(
-                        stringResource(
-                            R.string.map_target_distance_bearing,
-                            inverse.distanceMeters.distanceText(),
-                            inverse.initialBearingTrueDegrees?.let { "%03.0f°T".format(it) } ?: "—",
-                        ),
-                        11,
-                        color = colors.foreground,
-                    )
+                Column(Modifier.weight(1f)) {
+                    WpText(transient.point.coordinateText(), 10, maxLines = 1)
+                    vessel?.let { current ->
+                        val inverse = Wgs84Geodesic.inverse(current, transient.point)
+                        WpText(
+                            stringResource(
+                                R.string.map_target_distance_bearing,
+                                inverse.distanceMeters.distanceText(),
+                                inverse.initialBearingTrueDegrees?.let { "%03.0f°T".format(it) } ?: "—",
+                            ),
+                            9,
+                            color = colors.muted,
+                            maxLines = 1,
+                        )
+                    }
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    MapActionText(R.string.map_target_go_to, "map-candidate-go-to") {
-                        onDirectTo(transient.point, targetName)
-                    }
-                    MapActionText(R.string.map_target_mark, "map-candidate-mark", Modifier.weight(1f)) {
-                        onAction(MapAction.QuickMark(transient.point))
-                    }
-                    MapActionText(R.string.map_measure_from_here, "map-candidate-measure") {
-                        onAction(MapAction.BeginMeasurement(vessel, transient.point))
-                    }
-                    MapActionText(R.string.map_cancel, "map-candidate-cancel") { onAction(MapAction.DismissTransient) }
+                MapActionText(R.string.map_target_mark, "map-candidate-mark") {
+                    onAction(MapAction.QuickMark(transient.point))
                 }
+                MapActionText(R.string.map_cancel, "map-candidate-cancel") { onAction(MapAction.DismissTransient) }
             }
         }
         is MapTransient.SelectedObject -> {
-            SelectedObjectSummary(state, transient.hit, onDirectTo, onOpenWaypointLibrary, onAction)
+            SelectedObjectSummary(state, transient.hit, onOpenWaypointLibrary, onAction)
         }
         is MapTransient.ObjectCandidates -> {
             Column(
@@ -663,7 +672,7 @@ private fun MapRootSummary(
     if (state.transient == null && state.selection == null) {
         when (state.tool) {
             MapTool.MEASURE -> MeasurementRootSummary(state, onAction)
-            MapTool.MANUAL_ROUTE -> RouteRootSummary(state, onSaveAndStartRoute, onAction)
+            MapTool.MANUAL_ROUTE -> RouteRootSummary(state)
             MapTool.BROWSE -> Unit
         }
     }
@@ -718,7 +727,6 @@ private fun MapViewPicker(
 private fun SelectedObjectSummary(
     state: MapState,
     hit: MapHitResult,
-    onDirectTo: (point: GeoPoint, name: String) -> Unit,
     onOpenWaypointLibrary: () -> Unit,
     onAction: (MapAction) -> Unit,
 ) {
@@ -753,11 +761,6 @@ private fun SelectedObjectSummary(
                 }
         }
         Row(Modifier.fillMaxWidth()) {
-            if (place != null && point != null) {
-                MapActionText(R.string.map_target_go_to, "map-object-go-to-${place.id}") {
-                    onDirectTo(point, place.name)
-                }
-            }
             val target = measurementIndex?.let(MapEditTarget::MeasurementPoint) ?: routeTarget
             if (target != null) {
                 MapActionText(R.string.map_move_point, "map-object-move") {
@@ -796,9 +799,10 @@ private fun MeasurementRootSummary(state: MapState, onAction: (MapAction) -> Uni
     val colors = LocalWpTheme.current
     state.measurementDraft ?: return
     val summary = state.visibleMeasurementSummary ?: return
-    Column(
+    Row(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .92f))
-            .padding(horizontal = 12.dp, vertical = 4.dp).testTag("map-measurement-summary"),
+            .padding(horizontal = 12.dp, vertical = 3.dp).testTag("map-measurement-summary"),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         val message = when (summary.prompt) {
             MeasurementPrompt.PLACE_START -> stringResource(R.string.map_measure_place_start)
@@ -812,57 +816,30 @@ private fun MeasurementRootSummary(state: MapState, onAction: (MapAction) -> Uni
                 )
             }
         }
-        WpText(message, 11)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            WpText(stringResource(R.string.map_measure_ab_hint), 10, color = colors.muted, modifier = Modifier.weight(1f))
-            MapTextButton(stringResource(R.string.map_close), "map-measure-close") {
-                onAction(MapAction.SelectTool(MapTool.BROWSE))
-            }
+        Column(Modifier.weight(1f)) {
+            WpText(message, 13, weight = FontWeight.SemiBold)
+            WpText(stringResource(R.string.map_measure_ab_hint), 9, color = colors.muted, maxLines = 1)
+        }
+        MapTextButton(stringResource(R.string.map_close), "map-measure-close") {
+            onAction(MapAction.SelectTool(MapTool.BROWSE))
         }
     }
 }
 
 @Composable
-private fun RouteRootSummary(
-    state: MapState,
-    onSaveAndStartRoute: () -> Unit,
-    onAction: (MapAction) -> Unit,
-) {
+private fun RouteRootSummary(state: MapState) {
     val colors = LocalWpTheme.current
     val draft = state.routeDraft ?: return
     val distance = state.routeSummary?.distanceNauticalMiles?.nauticalDistanceText()
         ?: if (LocalMeasurementUnitSystem.current == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) "— NM" else "— km"
     val saveEnabled = draft.waypoints.size >= 2 && state.routeSaveStatus?.state != MapSaveState.PENDING
-    Column(
+    Row(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .94f))
-            .padding(horizontal = 12.dp, vertical = 4.dp).testTag("map-active-tool-summary"),
+            .padding(horizontal = 12.dp, vertical = 3.dp).testTag("map-active-tool-summary"),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        WpText(stringResource(R.string.map_route_hud, distance, draft.waypoints.size), 11)
-        Row(Modifier.fillMaxWidth()) {
-            MapTextButton(
-                stringResource(R.string.map_undo),
-                "map-route-undo",
-                enabled = draft.undo.isNotEmpty(),
-                modifier = Modifier.weight(1f),
-            ) { onAction(MapAction.UndoRouteEdit) }
-            MapTextButton(
-                stringResource(R.string.map_route_save),
-                "map-route-save-direct",
-                enabled = saveEnabled,
-                modifier = Modifier.weight(1f),
-            ) { onAction(MapAction.SaveRoutePlan) }
-            MapTextButton(
-                stringResource(R.string.map_route_go),
-                "map-route-go",
-                enabled = saveEnabled,
-                modifier = Modifier.weight(1f),
-            ) { onSaveAndStartRoute() }
-            MapTextButton(
-                stringResource(R.string.map_route_discard),
-                "map-route-discard-direct",
-                modifier = Modifier.weight(1f),
-            ) { onAction(MapAction.DiscardRouteDraft(draft.id)) }
-        }
+        WpText(stringResource(R.string.map_route_hud, distance, draft.waypoints.size), 11, modifier = Modifier.weight(1f))
+        if (saveEnabled) WpText(stringResource(R.string.map_route_save), 9, color = colors.muted)
     }
 }
 
@@ -873,8 +850,16 @@ private fun MapEdgeControls(
     onAction: (MapAction) -> Unit,
 ) {
     val density = LocalDensity.current
-    val vessel = PositionRenderPolicy.resolve(state.position).point
+    val positionRender = PositionRenderPolicy.resolve(state.position)
+    val vessel = positionRender.point
         ?.takeIf { state.position.availability == PositionAvailability.FRESH }
+    val orientationOptions = buildList {
+        add(MapOrientationMode.NORTH_UP)
+        if (positionRender.courseVector != null) add(MapOrientationMode.COURSE_UP)
+        if (positionRender.trueHeadingDegrees != null) add(MapOrientationMode.HEADING_UP)
+    }
+    val currentOrientation = state.navigationCamera.orientation.takeIf { it in orientationOptions }
+        ?: MapOrientationMode.NORTH_UP
     Box(Modifier.fillMaxSize().padding(bottom = 62.dp)) {
         if (state.navigationActive) {
             val cameraMode = state.navigationCamera.mode
@@ -890,23 +875,21 @@ private fun MapEdgeControls(
             }
         }
         MapEdgeButton(
-            label = if (state.camera.bearing.roundToInt().mod(360) == 0) "N"
-            else "%03.0f°".format(state.camera.bearing),
-            tag = "map-orientation-north",
+            label = when (currentOrientation) {
+                MapOrientationMode.NORTH_UP -> "N ↑"
+                MapOrientationMode.COURSE_UP -> "COG ↑"
+                MapOrientationMode.HEADING_UP -> "HDG ↑"
+            },
+            tag = "map-orientation",
+            selected = currentOrientation != MapOrientationMode.NORTH_UP,
             modifier = Modifier.align(Alignment.TopCenter).padding(
                 top = with(density) { viewportInsets.topPx.toDp() } + 4.dp,
             ),
         ) {
-            if (state.navigationActive) {
-                onAction(MapAction.SetMapOrientationMode(MapOrientationMode.NORTH_UP))
-            }
-            onAction(
-                MapAction.RequestCamera(
-                    MapCameraTarget.Exact(state.camera.copy(bearing = 0.0)),
-                    MapCameraIntent.NORTH_RESET,
-                    viewportInsets,
-                ),
-            )
+            val next = orientationOptions[
+                (orientationOptions.indexOf(currentOrientation) + 1).mod(orientationOptions.size)
+            ]
+            onAction(MapAction.SetMapOrientationMode(next))
         }
         Column(
             Modifier.align(Alignment.TopEnd).padding(
@@ -941,6 +924,16 @@ private fun MapEdgeControls(
             ),
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
+            if (vessel == null) {
+                WpText(
+                    stringResource(R.string.map_gps_no_fix),
+                    9,
+                    color = LocalWpTheme.current.foreground,
+                    modifier = Modifier.background(LocalWpTheme.current.background.copy(alpha = .84f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .testTag("map-gps-no-fix"),
+                )
+            }
             MapEdgeButton(
                 label = stringResource(R.string.map_coordinate_input_short),
                 tag = "map-coordinate-shortcut",
@@ -948,25 +941,18 @@ private fun MapEdgeControls(
                 onAction(MapAction.OpenSurface(MapSurface.CoordinateInput))
             }
             MapEdgeButton(
-                label = "GPS",
+                label = "◎",
                 tag = "map-recenter",
                 selected = if (state.navigationActive) {
                     state.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE
                 } else state.position.viewIntent == PositionViewIntent.FOLLOW_POSITION,
                 enabled = vessel != null,
             ) {
-                val point = vessel ?: return@MapEdgeButton
+                if (vessel == null) return@MapEdgeButton
                 if (state.navigationActive) {
                     onAction(MapAction.RecenterNavigationCamera)
                 } else {
                     onAction(MapAction.SetPositionViewIntent(PositionViewIntent.FOLLOW_POSITION))
-                    onAction(
-                        MapAction.RequestCamera(
-                            MapCameraTarget.Exact(state.camera.copy(center = point, bearing = 0.0)),
-                            MapCameraIntent.FOLLOW_POSITION,
-                            viewportInsets,
-                        ),
-                    )
                 }
             }
         }
@@ -1005,7 +991,9 @@ private fun MapEdgeButton(
     Box(
         modifier.size(48.dp).background(
             if (selected) colors.accent else colors.background.copy(alpha = .9f),
-        ).clickNoRipple(enabled, onClick).testTag(tag),
+            CircleShape,
+        ).border(1.dp, colors.foreground.copy(alpha = .35f), CircleShape)
+            .clickNoRipple(enabled, onClick).testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
         WpText(
@@ -1041,34 +1029,64 @@ private fun MapRootCommandBar(
                 bottom = 4.dp,
             ).testTag("map-root-command-bar"),
     ) {
-        val target = (state.transient as? MapTransient.PointCandidate)?.point ?: state.selection?.point
-        val vessel = PositionRenderPolicy.resolve(state.position).point
-            ?.takeIf { state.position.availability == PositionAvailability.FRESH }
+        if (state.tool == MapTool.MANUAL_ROUTE) {
+            val draft = state.routeDraft
+            val saveEnabled = (draft?.waypoints?.size ?: 0) >= 2 && state.routeSaveStatus?.state != MapSaveState.PENDING
+            MapCommandButton(
+                R.string.map_add_point,
+                "map-route-add-crosshair",
+                true,
+                Modifier.weight(1f),
+                enabled = crosshairPoint != null,
+            ) { onAction(MapAction.AddPoint(crosshairPoint ?: return@MapCommandButton)) }
+            MapCommandButton(
+                R.string.map_undo,
+                "map-route-undo",
+                false,
+                Modifier.weight(1f),
+                enabled = draft?.undo?.isNotEmpty() == true,
+            ) { onAction(MapAction.UndoRouteEdit) }
+            MapCommandButton(
+                R.string.map_route_save,
+                "map-route-save-direct",
+                false,
+                Modifier.weight(1f),
+                enabled = saveEnabled,
+            ) { onAction(MapAction.SaveRoutePlan) }
+            MapCommandButton(
+                R.string.map_route_discard,
+                "map-route-discard-direct",
+                false,
+                Modifier.weight(1f),
+            ) {
+                if (draft == null) onAction(MapAction.SelectTool(MapTool.BROWSE))
+                else onAction(MapAction.DiscardRouteDraft(draft.id))
+            }
+            return@Row
+        }
         MapCommandButton(
             R.string.map_tool_mark,
             "map-tool-mark",
             false,
             Modifier.weight(1f),
-            enabled = target != null || vessel != null || crosshairPoint != null,
+            enabled = crosshairPoint != null,
         ) {
-            // The visible target owns the action. Falling back to vessel before the always-visible
-            // crosshair made MARK appear at a location different from the point the user was
-            // looking at.
-            onAction(MapAction.QuickMark(target ?: crosshairPoint ?: vessel ?: return@MapCommandButton))
+            // MARK always uses the visible center target. It never falls back to an old selection
+            // or a vessel that may be outside the area the user is inspecting.
+            onAction(MapAction.QuickMark(crosshairPoint ?: return@MapCommandButton))
         }
         MapCommandButton(R.string.map_tool_route, "map-tool-route", state.tool == MapTool.MANUAL_ROUTE, Modifier.weight(1f)) {
             if (state.tool == MapTool.MANUAL_ROUTE) {
                 onAction(MapAction.RequestCloseRouteDraft)
             } else {
                 onAction(MapAction.SelectTool(MapTool.MANUAL_ROUTE))
-                if (state.routeDraft == null && vessel != null) onAction(MapAction.AddPoint(vessel))
             }
         }
         MapCommandButton(R.string.map_tool_measure, "map-tool-measure", state.tool == MapTool.MEASURE, Modifier.weight(1f)) {
             if (state.tool == MapTool.MEASURE) {
                 onAction(MapAction.SelectTool(MapTool.BROWSE))
             } else {
-                val center = target ?: crosshairPoint ?: state.camera.center
+                val center = crosshairPoint ?: state.camera.center
                 val separationPx = with(density) { 72.dp.toPx().toDouble() }
                 val fallbackDistance = state.camera.scaleNauticalMilesForPixels(separationPx)
                     .times(1_852.0).coerceAtLeast(10.0)
@@ -1078,19 +1096,9 @@ private fun MapRootCommandBar(
                 val right = crosshairScreen?.let { screen ->
                     queryPort?.unproject(screen.copy(xPx = screen.xPx + separationPx))
                 } ?: Wgs84Geodesic.destination(center, 90.0, fallbackDistance)
-                // A ruler must appear as two visible handles immediately. A fresh vessel is a
-                // useful A point only while it is actually inside the current viewport; using an
-                // off-screen vessel while the user is browsing elsewhere creates a one-pin ruler.
-                val visibleVessel = vessel?.takeIf { point ->
-                    queryPort?.project(point)?.inside(viewportSize, viewportInsets) == true
-                }
-                val a = visibleVessel ?: left
-                val b = when {
-                    visibleVessel != null && center != visibleVessel -> center
-                    visibleVessel != null -> right
-                    else -> right
-                }
-                onAction(MapAction.BeginMeasurement(a, b))
+                // The distance tool is always born complete: two visible, independently draggable
+                // pins around the current target. It never waits for another map tap.
+                onAction(MapAction.BeginMeasurement(left, right))
             }
         }
         MapCommandButton(R.string.map_tool_view, "map-open-view-picker", false, Modifier.weight(1f)) {
@@ -1098,10 +1106,6 @@ private fun MapRootCommandBar(
         }
     }
 }
-
-private fun MapScreenPoint.inside(size: IntSize, insets: MapViewportInsets): Boolean =
-    xPx in insets.leftPx.toDouble()..(size.width - insets.rightPx).toDouble() &&
-        yPx in insets.topPx.toDouble()..(size.height - insets.bottomPx).toDouble()
 
 @Composable
 private fun MapCommandButton(

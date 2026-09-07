@@ -269,7 +269,7 @@ fun GoogleMarineChartSurface(
                     this,
                     { currentState },
                     { !disposed },
-                    hitRadiusPx = 28.0 * displayDensity,
+                    hitRadiusPx = 42.0 * displayDensity,
                     lineHitRadiusPx = 18.0 * displayDensity,
                 )
                 currentQueryPortChanged(queryPort)
@@ -439,6 +439,7 @@ fun GoogleMarineChartSurface(
     LaunchedEffect(
         googleMap,
         state.selection,
+        state.transient,
         state.places,
         state.measurementDraft,
         state.routeDraft,
@@ -464,10 +465,11 @@ fun GoogleMarineChartSurface(
                         .icon(icon("waypoint") { waypointBitmap(displayDensity) }),
                 )?.let(domainMarkers::add)
             }
-            state.selection?.let { selection ->
+            ((state.transient as? com.yokuli.marine.map.domain.MapTransient.PointCandidate)?.point
+                ?: state.selection?.point)?.let { selectedPoint ->
                 addMarker(
                     MarkerOptions()
-                        .position(selection.point.toLatLng())
+                        .position(selectedPoint.toLatLng())
                         .anchor(.5f, .5f)
                         .icon(icon("target") { targetBitmap(displayDensity) }),
                 )?.let(domainMarkers::add)
@@ -480,7 +482,7 @@ fun GoogleMarineChartSurface(
                     addMarker(
                         MarkerOptions()
                             .position(point.toLatLng())
-                            .anchor(.5f, .5f)
+                            .anchor(.5f, 1f)
                             .icon(icon("measure-$index") {
                                 measurementHandleBitmap(if (index == 0) "A" else "B", displayDensity)
                             }),
@@ -495,7 +497,7 @@ fun GoogleMarineChartSurface(
                     addMarker(
                         MarkerOptions()
                             .position(point.toLatLng())
-                            .anchor(.5f, .5f)
+                            .anchor(.5f, 1f)
                             .icon(icon("route-${index + 1}") {
                                 measurementHandleBitmap((index + 1).toString(), displayDensity)
                             }),
@@ -615,7 +617,7 @@ private fun CameraPosition.toDomainCamera(): MapCamera = MapCamera(
 private fun LatLng.toDomainPoint(): GeoPoint = GeoPoint(latitude, longitude)
 
 private fun measurementHandleBitmap(label: String, density: Float): Bitmap {
-    val size = (48f * density).roundToInt().coerceAtLeast(48)
+    val size = (56f * density).roundToInt().coerceAtLeast(56)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xfff7b500.toInt() }
@@ -627,12 +629,21 @@ private fun measurementHandleBitmap(label: String, density: Float): Bitmap {
     val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLACK
         textAlign = Paint.Align.CENTER
-        textSize = size * .54f
+        textSize = size * .36f
         typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
-    canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3f, fill)
-    canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3f, stroke)
-    canvas.drawText(label, size / 2f, size / 2f - (text.descent() + text.ascent()) / 2f, text)
+    val centerX = size / 2f
+    val centerY = size * .34f
+    val radius = size * .27f
+    val pin = Path().apply {
+        moveTo(centerX, size * .96f)
+        lineTo(centerX - radius * .7f, centerY + radius * .58f)
+        arcTo(centerX - radius, centerY - radius, centerX + radius, centerY + radius, 135f, 270f, false)
+        close()
+    }
+    canvas.drawPath(pin, fill)
+    canvas.drawPath(pin, stroke)
+    canvas.drawText(label, centerX, centerY - (text.descent() + text.ascent()) / 2f, text)
     return bitmap
 }
 

@@ -5,6 +5,10 @@ import android.content.res.Configuration
 import android.graphics.PointF
 import android.graphics.RectF
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
@@ -90,6 +94,11 @@ import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
+import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
+import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
+import org.maplibre.android.style.layers.PropertyFactory.iconImage
+import org.maplibre.android.style.layers.PropertyFactory.iconSize
 import org.maplibre.android.style.layers.PropertyFactory.rasterOpacity
 import org.maplibre.android.style.layers.PropertyFactory.textAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.textColor
@@ -295,7 +304,7 @@ fun OfflineMarineChartSurface(
             }
             queryPort = MapLibreRendererQueryPort(
                 readyMap,
-                hitRadiusPx = 28f * displayDensity,
+                hitRadiusPx = 42f * displayDensity,
             ) { !disposed.get() }
             currentQueryPortChanged(queryPort)
             cameraListener = MapLibreMap.OnCameraIdleListener {
@@ -395,8 +404,7 @@ fun OfflineMarineChartSurface(
                 style.addPointOverlay(MapOverlayId.SAVED_PLACES, 0xfff7b500.toInt(), 7f)
                 style.addPointOverlay(MapOverlayId.SELECTION, 0xffffffff.toInt(), 9f)
                 style.addLineOverlay(MapOverlayId.MEASUREMENT, 0xfff7b500.toInt(), 3f)
-                style.addPointOverlay(MapOverlayId.MEASUREMENT_POINTS, 0xfff7b500.toInt(), 13f)
-                style.addMeasurementLabels()
+                style.addMeasurementPinOverlay(displayDensity)
                 style.addLineOverlay(MapOverlayId.MANUAL_ROUTE, 0xff00a4ef.toInt(), 5f)
                 style.addLineOverlay(MapOverlayId.ACTIVE_NAVIGATION_LEG, 0xfff7b500.toInt(), 7f)
                 style.addLineOverlay(MapOverlayId.ACTIVE_TRACK, 0xff00d084.toInt(), 4f)
@@ -480,6 +488,7 @@ fun OfflineMarineChartSurface(
     LaunchedEffect(
         activeStyle,
         state.selection,
+        state.transient,
         state.places,
         state.measurementDraft,
         state.routeDraft,
@@ -506,7 +515,8 @@ fun OfflineMarineChartSurface(
                 FeatureCollection.fromFeatures(state.places.map { place -> place.point.toFeature("place:${place.id}") }),
             )
             style.source(MapOverlayId.SELECTION)?.setGeoJson(
-                state.selection?.point.toFeatureCollection("selection"),
+                ((state.transient as? com.yokuli.marine.map.domain.MapTransient.PointCandidate)?.point
+                    ?: state.selection?.point).toFeatureCollection("selection"),
             )
             style.source(MapOverlayId.MEASUREMENT)?.setGeoJson(
                 measurementPoints.toGeodesicFeatureCollection(
@@ -517,7 +527,10 @@ fun OfflineMarineChartSurface(
             style.source(MapOverlayId.MEASUREMENT_POINTS)?.setGeoJson(
                 FeatureCollection.fromFeatures(
                     measurementPoints.mapIndexed { index, point ->
-                        point.toLabeledFeature("measurement-point:$index", if (index == 0) "A" else "B")
+                        val label = if (index == 0) "A" else "B"
+                        point.toLabeledFeature("measurement-point:$index", label).apply {
+                            addStringProperty("icon", "measurement-pin-${label.lowercase()}")
+                        }
                     },
                 ),
             )
@@ -699,7 +712,52 @@ private fun Style.addPointOverlay(id: MapOverlayId, color: Int, radius: Float) {
     )
 }
 
-private fun Style.addMeasurementLabels() = addPointLabels(MapOverlayId.MEASUREMENT_POINTS)
+private fun Style.addMeasurementPinOverlay(displayDensity: Float) {
+    val id = MapOverlayId.MEASUREMENT_POINTS
+    addSource(GeoJsonSource(id.wireValue, FeatureCollection.fromFeatures(emptyList<Feature>())))
+    addImage("measurement-pin-a", measurementPinBitmap("A", displayDensity))
+    addImage("measurement-pin-b", measurementPinBitmap("B", displayDensity))
+    addLayer(
+        SymbolLayer(id.wireValue, id.wireValue).withProperties(
+            iconImage(get("icon")),
+            iconSize(1f / displayDensity.coerceAtLeast(1f)),
+            iconAnchor("bottom"),
+            iconAllowOverlap(true),
+            iconIgnorePlacement(true),
+        ),
+    )
+}
+
+private fun measurementPinBitmap(label: String, density: Float): Bitmap {
+    val size = (56f * density).toInt().coerceAtLeast(56)
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xfff7b500.toInt() }
+    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 2f * density
+    }
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        textAlign = Paint.Align.CENTER
+        textSize = size * .36f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+    val centerX = size / 2f
+    val centerY = size * .34f
+    val radius = size * .27f
+    val pin = Path().apply {
+        moveTo(centerX, size * .96f)
+        lineTo(centerX - radius * .7f, centerY + radius * .58f)
+        arcTo(centerX - radius, centerY - radius, centerX + radius, centerY + radius, 135f, 270f, false)
+        close()
+    }
+    canvas.drawPath(pin, fill)
+    canvas.drawPath(pin, stroke)
+    canvas.drawText(label, centerX, centerY - (text.descent() + text.ascent()) / 2f, text)
+    return bitmap
+}
 
 private fun Style.addPointLabels(id: MapOverlayId) {
     addLayer(

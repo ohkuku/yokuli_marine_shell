@@ -396,7 +396,6 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 trackRecorderStrip = {
                     TrackRecorderStrip(runtime.trackRecorderState, runtime.onTrackRecorderCommand)
                 },
-                onDirectTo = runtime.onDirectTo,
                 onOpenWaypointLibrary = {
                     runtime.onOpenNavigation(NavigationDestinations.Waypoints)
                 },
@@ -404,7 +403,6 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 onStartNavigation = { routeId, routeRevision ->
                     runtime.onActiveNavigationCommand(ActiveNavigationCommand.Start(routeId, routeRevision))
                 },
-                onSaveAndStartRoute = runtime.onSaveAndStartRoute,
                 chartSurface = chartSurface,
             )
         },

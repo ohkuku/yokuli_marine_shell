@@ -2,6 +2,7 @@
     <string name="app_chart">map</string>
     <string name="map_context_offline_first">offline first · planning workbench</string>
     <string name="map_position_no_source">NO POSITION SOURCE</string>
+    <string name="map_gps_no_fix">NO FIX</string>
     <string name="map_position_unavailable">NO VALID POSITION</string>
     <string name="map_position_invalid">POSITION SAMPLE INVALID</string>
     <string name="map_position_disconnected_last_fix">SOURCE DISCONNECTED · LAST FIX NOT YET STALE</string>

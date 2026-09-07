@@ -2,6 +2,7 @@
     <string name="app_chart">地图</string>
     <string name="map_context_offline_first">离线优先 · 规划工作台</string>
     <string name="map_position_no_source">无位置数据源</string>
+    <string name="map_gps_no_fix">无船位</string>
     <string name="map_position_unavailable">暂无有效位置</string>
     <string name="map_position_invalid">位置样本无效</string>
     <string name="map_position_disconnected_last_fix">数据源已断开 · 最后位置暂未过期</string>
