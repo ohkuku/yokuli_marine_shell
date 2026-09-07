@@ -54,11 +54,13 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartAssetAccessState
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetFormat
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetValidationState
+import com.yokuli.marine.map.domain.chartlibrary.ChartCompatibilityWarning
 import com.yokuli.marine.map.domain.chartlibrary.ChartFactProvenance
 import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyFailure
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyStatus
+import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartValidationJobStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartValidationIssue
@@ -527,7 +529,21 @@ private fun AssetDetail(asset: ChartLibraryAssetRowUi, onAction: (ChartLibraryUi
             WpText(asset.displayPath, 12, color = LocalWpTheme.current.muted)
             Fact(stringResource(R.string.fact_sources), asset.sourceNames.joinToString().ifBlank { stringResource(R.string.unknown) })
             Fact(stringResource(R.string.fact_access), accessLabel(asset.access))
+            Fact(
+                stringResource(R.string.fact_access_mode),
+                asset.accessMode?.let { accessModeLabel(it) } ?: stringResource(R.string.unknown),
+            )
             Fact(stringResource(R.string.fact_validation), validationLabel(asset.validation))
+            if (asset.compatibilityWarnings.isNotEmpty()) {
+                val warningLabels = mutableListOf<String>()
+                for (warning in asset.compatibilityWarnings.sortedBy { it.name }) {
+                    warningLabels += compatibilityWarningLabel(warning)
+                }
+                Fact(
+                    stringResource(R.string.fact_warnings),
+                    warningLabels.joinToString(),
+                )
+            }
             Fact(stringResource(R.string.fact_format), formatLabel(asset.format))
             Fact(stringResource(R.string.fact_encoding), asset.rasterMimeType ?: stringResource(R.string.unknown))
             Fact(stringResource(R.string.fact_tile_size), asset.tileSize?.toString() ?: stringResource(R.string.unknown))
@@ -862,6 +878,22 @@ private fun InlineCommand(label: String, tag: String, onClick: () -> Unit) {
     ChartAssetValidationState.INVALID -> R.string.validation_invalid
     ChartAssetValidationState.UNSUPPORTED_FORMAT -> R.string.validation_unsupported
     ChartAssetValidationState.CANCELLED_OR_INTERRUPTED -> R.string.validation_interrupted
+})
+@Composable private fun accessModeLabel(value: ChartReadAccessMode) = stringResource(when (value) {
+    ChartReadAccessMode.DIRECT_PROVIDER -> R.string.access_mode_direct
+    ChartReadAccessMode.LOCAL_FALLBACK -> R.string.access_mode_local_fallback
+    ChartReadAccessMode.MANAGED_COPY -> R.string.access_mode_managed
+})
+@Composable private fun compatibilityWarningLabel(value: ChartCompatibilityWarning) = stringResource(when (value) {
+    ChartCompatibilityWarning.METADATA_MISSING -> R.string.warning_metadata_missing
+    ChartCompatibilityWarning.BOUNDS_MISSING -> R.string.warning_bounds_missing
+    ChartCompatibilityWarning.BOUNDS_INVALID -> R.string.warning_bounds_invalid
+    ChartCompatibilityWarning.ZOOM_RANGE_MISSING -> R.string.warning_zoom_missing
+    ChartCompatibilityWarning.ZOOM_RANGE_INVALID -> R.string.warning_zoom_invalid
+    ChartCompatibilityWarning.FORMAT_MISMATCH -> R.string.warning_format_mismatch
+    ChartCompatibilityWarning.MIXED_RASTER_ENCODING -> R.string.warning_mixed_encoding
+    ChartCompatibilityWarning.MIXED_TILE_SIZE -> R.string.warning_mixed_size
+    ChartCompatibilityWarning.INVALID_SAMPLE_COORDINATE -> R.string.warning_sample_coordinate
 })
 @Composable private fun roleLabel(value: ChartAssetRole) = stringResource(if (value == ChartAssetRole.BASE) R.string.role_base else R.string.role_overlay)
 @Composable private fun formatLabel(value: ChartAssetFormat) = stringResource(when (value) {

@@ -13,6 +13,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
 import com.yokuli.marine.map.domain.chartlibrary.ChartContentRevision
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpenResult
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadException
+import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadFailure
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadRequest
@@ -37,6 +38,7 @@ class SafFdMbTilesReaderTest {
     private lateinit var context: Context
     private lateinit var documents: File
     private lateinit var authority: String
+    private lateinit var fallbackRoot: File
 
     @Before fun setUp() {
         context = ApplicationProvider.getApplicationContext()
@@ -45,9 +47,16 @@ class SafFdMbTilesReaderTest {
             mkdirs()
         }
         authority = "${context.packageName}.chartlibrary.documents"
+        fallbackRoot = File(context.cacheDir, "chart-library-compatibility-test").apply {
+            deleteRecursively()
+            mkdirs()
+        }
     }
 
-    @After fun tearDown() { documents.deleteRecursively() }
+    @After fun tearDown() {
+        documents.deleteRecursively()
+        fallbackRoot.deleteRecursively()
+    }
 
     @Test fun seekableProviderReadsTileWithoutCopyingOrWritingOriginal() = runBlocking {
         val source = File(documents, "basic.mbtiles")
@@ -85,12 +94,41 @@ class SafFdMbTilesReaderTest {
         )
     }
 
-    @Test fun pipeIsRejectedWithoutCreatingAnImplicitCopy() = runBlocking {
-        createMbTiles(File(documents, "stream.mbtiles"), pngTile(256))
-        val result = AndroidChartResourceAccess(context.contentResolver).open(requestFor("pipe-stream.mbtiles"))
-        assertTrue(result is ChartOpenResult.Rejected)
-        assertEquals(ChartReadFailure.DIRECT_READ_UNSUPPORTED, (result as ChartOpenResult.Rejected).failure)
-        assertFalse(File(context.filesDir, "chart_library").exists())
+    @Test fun streamOnlyProviderUsesSafeLocalAccessAndRendersWithoutChangingOriginal() = runBlocking {
+        val original = File(documents, "stream.mbtiles")
+        val png = pngTile(256)
+        createMbTiles(original, png)
+        val before = original.sha256()
+
+        val result = AndroidChartResourceAccess(
+            context.contentResolver,
+            localFallbackRoot = fallbackRoot,
+        ).open(requestFor("pipe-stream.mbtiles")) as ChartOpenResult.Opened
+
+        result.session.use { session ->
+            assertEquals(ChartReadAccessMode.LOCAL_FALLBACK, session.accessMode)
+            assertArrayEquals(png, requireNotNull(session.readTile(ChartTileKey(0, 0, 0), MapTileScheme.MBTILES_TMS)).bytes)
+        }
+        assertEquals(before, original.sha256())
+        assertEquals(1, fallbackRoot.listFiles { file -> file.extension == "mbtiles" }.orEmpty().size)
+        println("LEGACY_MBTILES_EVIDENCE {\"scenario\":\"stream-fallback-render\",\"result\":\"PASS\"}")
+    }
+
+    @Test fun metadataTableIsOptionalForLegacyRasterRendering() = runBlocking {
+        val original = File(documents, "no-metadata.mbtiles")
+        val png = pngTile(256)
+        createMbTiles(original, png, includeMetadata = false)
+
+        val result = AndroidChartResourceAccess(context.contentResolver)
+            .open(requestFor("no-metadata.mbtiles")) as ChartOpenResult.Opened
+
+        result.session.use { session ->
+            assertFalse(session.metadataPresent)
+            assertTrue(session.readMetadata().isEmpty())
+            assertEquals(0..0, session.readZoomRange())
+            assertArrayEquals(png, requireNotNull(session.readTile(ChartTileKey(0, 0, 0), MapTileScheme.MBTILES_TMS)).bytes)
+        }
+        println("LEGACY_MBTILES_EVIDENCE {\"scenario\":\"optional-metadata-render\",\"result\":\"PASS\"}")
     }
 
     @Test fun managedLocatorOpensOnlyInsidePrivateStoreAndHoldsLeaseUntilSessionClose() = runBlocking {
@@ -161,11 +199,11 @@ class SafFdMbTilesReaderTest {
 
     private fun documentUri(documentId: String): Uri = DocumentsContract.buildDocumentUri(authority, documentId)
 
-    private fun createMbTiles(file: File, tile: ByteArray) {
+    private fun createMbTiles(file: File, tile: ByteArray, includeMetadata: Boolean = true) {
         SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
-            db.execSQL("CREATE TABLE metadata (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            if (includeMetadata) db.execSQL("CREATE TABLE metadata (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execSQL("CREATE TABLE tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB, UNIQUE(zoom_level,tile_column,tile_row))")
-            db.execSQL("INSERT INTO metadata(name,value) VALUES ('name','fixture'),('format','png'),('minzoom','0'),('maxzoom','0'),('bounds','-180,-85,180,85')")
+            if (includeMetadata) db.execSQL("INSERT INTO metadata(name,value) VALUES ('name','fixture'),('format','png'),('minzoom','0'),('maxzoom','0'),('bounds','-180,-85,180,85')")
             db.execSQL("INSERT INTO tiles(zoom_level,tile_column,tile_row,tile_data) VALUES (0,0,0,?)", arrayOf(tile))
         }
     }

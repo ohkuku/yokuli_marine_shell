@@ -375,11 +375,11 @@ class AndroidMbTilesRepository(
                 "SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name IN ('metadata','tiles')",
                 null,
             ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
-            if (objects != setOf("metadata", "tiles")) throw ChartPackageImportException(
+            if ("tiles" !in objects) throw ChartPackageImportException(
                 ChartPackageImportFailure.INVALID_DATABASE,
-                "MBTiles must contain metadata and tiles tables or views",
+                "MBTiles must contain a tiles table or view",
             )
-            val values = readBoundedMetadata(db)
+            val values = if ("metadata" in objects) readBoundedMetadata(db) else emptyMap()
             val scheme = values["scheme"]?.trim()?.lowercase() ?: "tms"
             if (scheme !in setOf("tms", "xyz")) throw ChartPackageImportException(
                 ChartPackageImportFailure.INVALID_METADATA,
@@ -468,7 +468,8 @@ class AndroidMbTilesRepository(
                 val format = when (boundsOptions.outMimeType) {
                     "image/png" -> "png"
                     "image/jpeg" -> "jpeg"
-                    else -> throw corruptTile("Tile payload is not a supported PNG/JPEG image")
+                    "image/webp" -> "webp"
+                    else -> throw corruptTile("Tile payload is not a supported PNG/JPEG/WebP image")
                 }
                 val size = boundsOptions.outWidth
                 if (size <= 0 || size != boundsOptions.outHeight || size !in SUPPORTED_TILE_SIZES) {

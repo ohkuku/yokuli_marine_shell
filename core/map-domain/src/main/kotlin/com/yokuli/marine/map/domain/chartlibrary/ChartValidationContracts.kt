@@ -27,6 +27,8 @@ data class ChartBasicInspection(
     val facts: ChartAssetFacts,
     val sampledTileCount: Int,
     val statistics: ChartReadStatistics,
+    val accessMode: ChartReadAccessMode,
+    val warnings: Set<ChartCompatibilityWarning> = emptySet(),
 )
 
 sealed interface ChartBasicInspectionResult {
@@ -48,6 +50,8 @@ sealed interface ChartFullVerificationResult {
         val facts: ChartAssetFacts,
         val statistics: ChartReadStatistics,
         val tileCount: Long,
+        val accessMode: ChartReadAccessMode,
+        val warnings: Set<ChartCompatibilityWarning> = emptySet(),
     ) : ChartFullVerificationResult
     data class Rejected(val issue: ChartValidationIssue, val detail: String) : ChartFullVerificationResult
     data object Cancelled : ChartFullVerificationResult
@@ -120,25 +124,39 @@ class ChartBasicInspector(private val access: ChartResourceAccessPort) {
                 if (samples.isEmpty()) {
                     return@use ChartBasicInspectionResult.Rejected(ChartValidationIssue.EMPTY_TILESET, "No raster tiles")
                 }
-                if (samples.any { sample -> ChartTileCoordinateMapper.externalKey(sample.key, scheme) == null }) {
-                    return@use ChartBasicInspectionResult.Rejected(ChartValidationIssue.INVALID_COORDINATE, "Invalid tile coordinate")
+                val warnings = linkedSetOf<ChartCompatibilityWarning>()
+                if (!it.metadataPresent || metadata.isEmpty()) warnings += ChartCompatibilityWarning.METADATA_MISSING
+                val validSamples = samples.filter { sample ->
+                    val valid = ChartTileCoordinateMapper.externalKey(sample.key, scheme) != null
+                    if (!valid) warnings += ChartCompatibilityWarning.INVALID_SAMPLE_COORDINATE
+                    valid
                 }
-                val tileSizes = samples.map { sample -> sample.payload.widthPx }.distinct()
-                if (tileSizes.size != 1) {
-                    return@use ChartBasicInspectionResult.Rejected(ChartValidationIssue.MIXED_TILE_SIZE, "Sample tiles use different sizes")
+                if (validSamples.isEmpty()) {
+                    return@use ChartBasicInspectionResult.Rejected(ChartValidationIssue.INVALID_COORDINATE, "No renderable tile coordinate")
                 }
-                val encodings = samples.map { sample -> sample.payload.mimeType }.distinct()
-                if (encodings.size != 1) {
-                    return@use ChartBasicInspectionResult.Rejected(ChartValidationIssue.MIXED_RASTER_ENCODING, "Sample tiles use different encodings")
-                }
+                val tileSizes = validSamples.map { sample -> sample.payload.widthPx }.distinct()
+                if (tileSizes.size > 1) warnings += ChartCompatibilityWarning.MIXED_TILE_SIZE
+                val encodings = validSamples.map { sample -> sample.payload.mimeType }.distinct()
+                if (encodings.size > 1) warnings += ChartCompatibilityWarning.MIXED_RASTER_ENCODING
                 val declaredEncoding = declaredRasterMime(metadata)
-                if (metadata.containsKey("format") && declaredEncoding == null || declaredEncoding != null && declaredEncoding != encodings.single()) {
-                    return@use ChartBasicInspectionResult.Rejected(ChartValidationIssue.INVALID_METADATA, "Raster metadata does not match sampled tile")
+                if (metadata.containsKey("format") && declaredEncoding == null || declaredEncoding != null && declaredEncoding != encodings.first()) {
+                    warnings += ChartCompatibilityWarning.FORMAT_MISMATCH
                 }
-                val facts = factsFrom(metadata, tileSizes.single(), encodings.single(), scheme, tileCount = null)
-                    ?: return@use ChartBasicInspectionResult.Rejected(ChartValidationIssue.INVALID_METADATA, "Invalid MBTiles metadata")
+                val metadataZoom = parseZoomRange(metadata, warnings)
+                val derivedZoom = it.readZoomRange() ?: validSamples.map { sample -> sample.key.zoom.toInt() }
+                    .let { zooms -> zooms.min()..zooms.max() }
+                val bounds = parseBounds(metadata, warnings)
+                val facts = factsFrom(
+                    metadata = metadata,
+                    tileSize = tileSizes.first(),
+                    rasterMimeType = encodings.first(),
+                    scheme = scheme,
+                    tileCount = null,
+                    bounds = bounds,
+                    zoomRange = metadataZoom ?: derivedZoom,
+                )
                 ChartBasicInspectionResult.Readable(
-                    ChartBasicInspection(facts, samples.size, it.statistics()),
+                    ChartBasicInspection(facts, samples.size, it.statistics(), it.accessMode, warnings),
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -239,13 +257,14 @@ class ChartFullVerifier(
                     return@use ChartFullVerificationResult.Rejected(ChartValidationIssue.INVALID_METADATA, "Raster metadata does not match tiles")
                 }
                 val facts = factsFrom(exactMetadata, tileSize, requireNotNull(rasterMimeType), scheme, offset)
-                    ?: return@use ChartFullVerificationResult.Rejected(ChartValidationIssue.INVALID_METADATA, "Invalid MBTiles metadata")
                 val sha = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
                 ChartFullVerificationResult.Verified(
                     asset.revision.copy(contentSha256 = sha),
                     facts,
                     it.statistics(),
                     offset,
+                    it.accessMode,
+                    compatibilityWarnings(metadata, it.metadataPresent),
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -281,16 +300,13 @@ private fun factsFrom(
     rasterMimeType: String,
     scheme: MapTileScheme,
     tileCount: Long?,
-): ChartAssetFacts? = runCatching {
-    fun boundedInt(name: String): Int? = metadata[name]?.trim()?.takeIf(String::isNotEmpty)?.toIntOrNull()
-    val bounds = metadata["bounds"]?.split(',')?.takeIf { it.size == 4 }?.map { it.trim().toDouble() }?.let {
-        GeoBounds(south = it[1], west = it[0], north = it[3], east = it[2])
-    }
-    ChartAssetFacts(
+    bounds: GeoBounds? = parseBounds(metadata),
+    zoomRange: IntRange? = parseZoomRange(metadata),
+): ChartAssetFacts = ChartAssetFacts(
         format = ChartAssetFormat.RASTER_MBTILES,
         bounds = bounds,
-        minZoom = boundedInt("minzoom"),
-        maxZoom = boundedInt("maxzoom"),
+        minZoom = zoomRange?.first,
+        maxZoom = zoomRange?.last,
         tileCount = tileCount,
         tileSize = tileSize,
         tileScheme = scheme,
@@ -298,7 +314,51 @@ private fun factsFrom(
         attributionProvenance = if (metadata.containsKey("attribution")) ChartFactProvenance.EMBEDDED else ChartFactProvenance.UNKNOWN,
         rasterMimeType = rasterMimeType,
     )
-}.getOrNull()
+
+private fun parseBounds(
+    metadata: Map<String, String>,
+    warnings: MutableSet<ChartCompatibilityWarning>? = null,
+): GeoBounds? {
+    val raw = metadata["bounds"]?.trim()
+    if (raw.isNullOrEmpty()) {
+        warnings?.add(ChartCompatibilityWarning.BOUNDS_MISSING)
+        return null
+    }
+    val values = raw.split(',').takeIf { it.size == 4 }?.map { it.trim().toDoubleOrNull() }
+    val bounds = values?.takeIf { it.all { value -> value != null } }?.map { requireNotNull(it) }
+        ?.let { runCatching { GeoBounds(south = it[1], west = it[0], north = it[3], east = it[2]) }.getOrNull() }
+    if (bounds == null) warnings?.add(ChartCompatibilityWarning.BOUNDS_INVALID)
+    return bounds
+}
+
+private fun parseZoomRange(
+    metadata: Map<String, String>,
+    warnings: MutableSet<ChartCompatibilityWarning>? = null,
+): IntRange? {
+    val minRaw = metadata["minzoom"]?.trim()
+    val maxRaw = metadata["maxzoom"]?.trim()
+    if (minRaw.isNullOrEmpty() || maxRaw.isNullOrEmpty()) {
+        warnings?.add(ChartCompatibilityWarning.ZOOM_RANGE_MISSING)
+        return null
+    }
+    val min = minRaw.toIntOrNull()
+    val max = maxRaw.toIntOrNull()
+    if (min == null || max == null || min !in MIN_ZOOM..MAX_ZOOM || max !in min..MAX_ZOOM) {
+        warnings?.add(ChartCompatibilityWarning.ZOOM_RANGE_INVALID)
+        return null
+    }
+    return min..max
+}
+
+private fun compatibilityWarnings(
+    metadata: Map<String, String>,
+    metadataPresent: Boolean,
+): Set<ChartCompatibilityWarning> =
+    linkedSetOf<ChartCompatibilityWarning>().apply {
+        if (!metadataPresent || metadata.isEmpty()) add(ChartCompatibilityWarning.METADATA_MISSING)
+        parseBounds(metadata, this)
+        parseZoomRange(metadata, this)
+    }
 
 private fun declaredRasterMime(metadata: Map<String, String>): String? = when (metadata["format"]?.trim()?.lowercase()) {
     null, "" -> null

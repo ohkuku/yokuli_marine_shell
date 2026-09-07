@@ -68,6 +68,18 @@
     <string name="access_changed">原件已变化，需重新检查</string>
     <string name="access_pending">文件仍在写入</string>
     <string name="access_direct_unsupported">此提供方不支持安全原地读取</string>
+    <string name="access_mode_direct">直接读取原文件</string>
+    <string name="access_mode_local_fallback">Yokuli 本地兼容访问</string>
+    <string name="access_mode_managed">Yokuli 受管副本</string>
+    <string name="warning_metadata_missing">元数据缺失或为空，不影响已确认的图块读取</string>
+    <string name="warning_bounds_missing">未声明范围</string>
+    <string name="warning_bounds_invalid">声明范围无效</string>
+    <string name="warning_zoom_missing">未声明缩放范围，已从图块推导</string>
+    <string name="warning_zoom_invalid">声明缩放范围无效，已从图块推导</string>
+    <string name="warning_format_mismatch">格式声明与实际图块不一致</string>
+    <string name="warning_mixed_encoding">样本包含不同栅格编码</string>
+    <string name="warning_mixed_size">样本包含不同图块尺寸</string>
+    <string name="warning_sample_coordinate">部分样本坐标无效</string>
     <string name="validation_discovered">已发现，尚未基础检查</string>
     <string name="validation_basic">基础可读</string>
     <string name="validation_full">此版本已完整验证</string>
@@ -121,6 +133,8 @@
     <string name="fact_assets">资源数</string>
     <string name="fact_sources">所属来源</string>
     <string name="fact_access">访问状态</string>
+    <string name="fact_access_mode">访问方式</string>
+    <string name="fact_warnings">兼容性提示</string>
     <string name="fact_validation">验证层级</string>
     <string name="fact_format">格式</string>
     <string name="fact_encoding">图块编码</string>

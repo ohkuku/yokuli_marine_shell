@@ -56,7 +56,7 @@ enum class ChartDisplayIssue {
     PINNED_ASSET_MISSING,
     PINNED_ASSET_UNAVAILABLE,
     SOURCE_MISSING_OR_DISABLED,
-    UNKNOWN_BOUNDS_EXCLUDED,
+    UNKNOWN_BOUNDS_UNFILTERED,
     NO_NATIVE_ZOOM,
     LAYER_LIMIT_REACHED,
 }
@@ -123,8 +123,8 @@ object ChartDisplayPlanner {
                         if (asset.role == ChartAssetRole.OVERLAY && !preferences.overlaysVisible) return@filter false
                         val bounds = asset.facts.bounds
                         if (bounds == null) {
-                            issues += ChartDisplayIssue.UNKNOWN_BOUNDS_EXCLUDED
-                            false
+                            issues += ChartDisplayIssue.UNKNOWN_BOUNDS_UNFILTERED
+                            true
                         } else {
                             val target = viewport
                             target == null || bounds.intersects(target.bounds)
@@ -132,7 +132,8 @@ object ChartDisplayPlanner {
                     }
                     .filter { asset ->
                         val targetZoom = viewport?.zoom ?: return@filter true
-                        val native = targetZoom in requireNotNull(asset.facts.minZoom)..requireNotNull(asset.facts.maxZoom)
+                        val knownRange = asset.knownZoomRange() ?: return@filter true
+                        val native = targetZoom in knownRange
                         if (!native) issues += ChartDisplayIssue.NO_NATIVE_ZOOM
                         native
                     }
@@ -142,7 +143,7 @@ object ChartDisplayPlanner {
         val visibleSelection = selected.filterNot { it.id in preferences.hiddenAssetIds }
         if (
             preferences.selection is ChartDisplaySelection.PinnedAsset && viewport != null &&
-            visibleSelection.any { viewport.zoom !in requireNotNull(it.facts.minZoom)..requireNotNull(it.facts.maxZoom) }
+            visibleSelection.any { asset -> asset.knownZoomRange()?.let { viewport.zoom !in it } == true }
         ) issues += ChartDisplayIssue.NO_NATIVE_ZOOM
         val ordered = visibleSelection.sortedWith(
             compareBy<ChartAsset> { if (it.role == ChartAssetRole.BASE) 0 else 1 }
@@ -166,8 +167,8 @@ object ChartDisplayPlanner {
                 opacity = preferences.assetOpacity[asset.id] ?: if (asset.role == ChartAssetRole.BASE) 1f else .85f,
                 tileSize = requireNotNull(asset.facts.tileSize),
                 tileScheme = requireNotNull(asset.facts.tileScheme),
-                minZoom = requireNotNull(asset.facts.minZoom),
-                maxZoom = requireNotNull(asset.facts.maxZoom),
+                minZoom = asset.knownZoomRange()?.first ?: MIN_ZOOM,
+                maxZoom = asset.knownZoomRange()?.last ?: MAX_ZOOM,
                 bounds = asset.facts.bounds,
                 attribution = asset.facts.attribution,
             )
@@ -187,8 +188,11 @@ object ChartDisplayPlanner {
         enabled && access == ChartAssetAccessState.READABLE &&
             validation in setOf(ChartAssetValidationState.BASIC_READABLE, ChartAssetValidationState.FULL_VERIFIED) &&
             facts.format == ChartAssetFormat.RASTER_MBTILES && facts.tileSize in setOf(256, 512) &&
-            facts.tileScheme != null && facts.minZoom != null && facts.maxZoom != null &&
+            facts.tileScheme != null &&
             memberships.any { sources[it]?.let { source -> source.enabled && source.scan.generation > 0L } == true }
+
+    private fun ChartAsset.knownZoomRange(): IntRange? =
+        if (facts.minZoom != null && facts.maxZoom != null) facts.minZoom..facts.maxZoom else null
 
     private fun GeoBounds.intersects(other: GeoBounds): Boolean {
         if (north < other.south || other.north < south) return false

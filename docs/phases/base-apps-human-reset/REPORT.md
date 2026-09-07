@@ -17,6 +17,20 @@
 
 下一提交开始替换真实 App presentation。某个 App 只有完成用户旅程并由仓库所有者确认“像正常 App”后，才会加入新的 UI behavior Gate。
 
+## P0 MBTiles 功能回归纠正
+
+人工补充审计把 Chart Library 从单纯 UX rejection 提升为 `P0 FUNCTIONAL REGRESSION`。本轮已按补充材料 SHA-256 `9d5d1df21e88f63541fc0a7351eaaf20c1c3ea08ebca00e16ec069c8f7e625dd` 修正：
+
+- stream/pipe-only DocumentsProvider 不再直接判定 chart 无效；运行时建立原子、受控、可重用的本地兼容访问，原文件保持只读；
+- `metadata` 表恢复为可选，`tiles` 与标准字段仍为硬要求；
+- Basic 只以可访问 SQLite、可读 tiles、合法 raster sample 和可映射坐标判定可用；metadata/bounds/zoom/encoding 质量成为独立 warnings；
+- 缩放范围缺失时从 tile rows 推导，bounds 缺失时 display planner 仍尝试显示，不再静默排除；
+- access mode、content/readability、verification/warnings 分开持久化并展示；
+- Room catalog 增加非破坏性 v3→v4 migration；
+- 新增独立 `Legacy known-good MBTiles compatibility contract`，API 34 继续运行真实 SAF/SQLite/renderer instrumentation。
+
+当前没有用户提供的那一份真实 MBTiles fixture，因此这里的代码证据覆盖 legacy-shaped no-metadata archive 与真实 pipe DocumentsProvider；最终仍需要用用户原文件做一次人工导入/显示验收。
+
 ## 本地窄门禁证据
 
 提交 `79e2255` 后只运行本次 CI 策略直接相关的测试，没有运行全量 Gradle：

@@ -28,7 +28,7 @@ internal data class MbTilesDerivedFacts(
 )
 
 internal object MbTilesMetadataParser {
-    private val rasterFormats = setOf("png", "jpg", "jpeg")
+    private val rasterFormats = setOf("png", "jpg", "jpeg", "webp")
 
     fun parse(values: Map<String, String>, derived: MbTilesDerivedFacts? = null): MbTilesMetadata {
         val bounds = values["bounds"]?.split(',')?.map { it.trim().toDoubleOrNull() }
@@ -69,7 +69,7 @@ internal object MbTilesMetadataParser {
         if (format !in rasterFormats) {
             throw ChartPackageImportException(
                 ChartPackageImportFailure.UNSUPPORTED_FORMAT,
-                "Only raster PNG/JPEG MBTiles are supported; found $format",
+                "Only raster PNG/JPEG/WebP MBTiles are supported; found $format",
             )
         }
         if (derived != null && format.normalizedRasterFormat() != derived.rasterFormat.normalizedRasterFormat()) {

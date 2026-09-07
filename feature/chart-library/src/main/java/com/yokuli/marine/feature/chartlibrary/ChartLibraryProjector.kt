@@ -62,6 +62,8 @@ object ChartLibraryProjector {
                 managedCopyAssetId = managedByOriginal[asset.id],
                 validationJob = validation.jobs[asset.id],
                 copyJob = storage.copyJobs[asset.id],
+                accessMode = asset.accessMode,
+                compatibilityWarnings = asset.compatibilityWarnings,
             )
         }.sortedWith(compareByDescending<ChartLibraryAssetRowUi> { it.priority }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.title })
 

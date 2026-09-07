@@ -82,6 +82,58 @@ class ChartValidationTest {
         assertEquals(ChartValidationIssue.PERMISSION_LOST, (result as ChartBasicInspectionResult.Rejected).issue)
     }
 
+    @Test fun legacyRasterWithoutMetadataIsBasicReadableAndDerivesZoom() = runBlocking {
+        val session = FakeSession(metadata = emptyMap(), metadataPresent = false, zoomRange = 7..13)
+
+        val result = ChartBasicInspector(ChartResourceAccessPort { ChartOpenResult.Opened(session) }).inspect(asset(), 1)
+            as ChartBasicInspectionResult.Readable
+
+        assertEquals(MapTileScheme.MBTILES_TMS, result.inspection.facts.tileScheme)
+        assertEquals(7, result.inspection.facts.minZoom)
+        assertEquals(13, result.inspection.facts.maxZoom)
+        assertNull(result.inspection.facts.bounds)
+        assertTrue(ChartCompatibilityWarning.METADATA_MISSING in result.inspection.warnings)
+        assertTrue(ChartCompatibilityWarning.BOUNDS_MISSING in result.inspection.warnings)
+        assertEquals(ChartReadAccessMode.DIRECT_PROVIDER, result.inspection.accessMode)
+    }
+
+    @Test fun basicInspectionReportsMetadataAndMixedSamplesAsWarningsInsteadOfAdmissionFailures() = runBlocking {
+        val session = FakeSession(
+            metadata = mapOf("format" to "jpg", "minzoom" to "broken", "maxzoom" to "8", "bounds" to "broken"),
+            tiles = listOf(
+                ChartStoredTile(ChartStoredTileKey(0, 0, 0), payload()),
+                ChartStoredTile(ChartStoredTileKey(1, 0, 0), ChartTilePayload(byteArrayOf(2), "image/jpeg", 512, 512)),
+            ),
+            zoomRange = 0..1,
+        )
+
+        val result = ChartBasicInspector(ChartResourceAccessPort { ChartOpenResult.Opened(session) }).inspect(asset(), 1)
+            as ChartBasicInspectionResult.Readable
+
+        assertTrue(ChartCompatibilityWarning.MIXED_TILE_SIZE in result.inspection.warnings)
+        assertTrue(ChartCompatibilityWarning.MIXED_RASTER_ENCODING in result.inspection.warnings)
+        assertTrue(ChartCompatibilityWarning.FORMAT_MISMATCH in result.inspection.warnings)
+        assertTrue(ChartCompatibilityWarning.BOUNDS_INVALID in result.inspection.warnings)
+        assertTrue(ChartCompatibilityWarning.ZOOM_RANGE_INVALID in result.inspection.warnings)
+        assertEquals(0, result.inspection.facts.minZoom)
+        assertEquals(1, result.inspection.facts.maxZoom)
+    }
+
+    @Test fun fullVerificationCanVerifyLegacyRasterWithoutMetadataTable() = runBlocking {
+        val item = asset()
+        val session = FakeSession(metadata = emptyMap(), metadataPresent = false, zoomRange = 0..0)
+
+        val result = ChartFullVerifier(
+            ChartResourceAccessPort { ChartOpenResult.Opened(session) },
+            ChartRevisionProbe { it.revision },
+        ).verify(item, 1, { false }) as ChartFullVerificationResult.Verified
+
+        assertEquals(ChartReadAccessMode.DIRECT_PROVIDER, result.accessMode)
+        assertTrue(ChartCompatibilityWarning.METADATA_MISSING in result.warnings)
+        assertTrue(ChartCompatibilityWarning.BOUNDS_MISSING in result.warnings)
+        assertEquals(1L, result.tileCount)
+    }
+
     private fun asset() = ChartAsset(
         ChartAssetId(UUID.randomUUID().toString()),
         ChartDocumentIdentity("provider", "chart"),
@@ -100,6 +152,8 @@ class ChartValidationTest {
         ),
         private val source: ByteArray = ByteArray(5) { it.toByte() },
         private val reportedSize: Long = source.size.toLong(),
+        override val metadataPresent: Boolean = true,
+        private val zoomRange: IntRange? = 0..0,
     ) : ChartReadSession {
         override val request = ChartReadRequest(
             ChartAssetId("fake"), ChartOpaqueLocator("content://fake/document/chart"),
@@ -110,6 +164,7 @@ class ChartValidationTest {
         var sampleReads = 0
         var orderedTileReads = 0
         override fun readMetadata(limit: Int) = metadata
+        override fun readZoomRange() = zoomRange
         override fun readTile(key: ChartTileKey, scheme: MapTileScheme) = tiles.firstOrNull()?.payload
         override fun hasTile(key: ChartTileKey, scheme: MapTileScheme) = tiles.isNotEmpty()
         override fun readSampleTiles(limit: Int): List<ChartStoredTile> {

@@ -18,7 +18,7 @@ class ChartDisplayPlannerTest {
         )
 
         assertEquals(listOf(ASSET_A), plan.layers.map { it.assetId })
-        assertFalse(plan.issues.contains(ChartDisplayIssue.UNKNOWN_BOUNDS_EXCLUDED))
+        assertFalse(plan.issues.contains(ChartDisplayIssue.UNKNOWN_BOUNDS_UNFILTERED))
     }
 
     @Test
@@ -72,7 +72,7 @@ class ChartDisplayPlannerTest {
     }
 
     @Test
-    fun unknownBoundsAreExcludedFromAutomaticSetButRetainedWhenPinned() {
+    fun unknownBoundsNeverTurnRenderableContentIntoAnExcludedLayer() {
         val unknown = asset(ASSET_A, bounds = null)
         val viewport = ChartDisplayViewport(GeoBounds(-1.0, -1.0, 1.0, 1.0), 8)
         val automatic = plan(
@@ -86,9 +86,24 @@ class ChartDisplayPlannerTest {
             viewport,
         )
 
-        assertTrue(automatic.layers.isEmpty())
-        assertTrue(automatic.issues.contains(ChartDisplayIssue.UNKNOWN_BOUNDS_EXCLUDED))
+        assertEquals(listOf(ASSET_A), automatic.layers.map { it.assetId })
+        assertTrue(automatic.issues.contains(ChartDisplayIssue.UNKNOWN_BOUNDS_UNFILTERED))
         assertEquals(listOf(ASSET_A), pinned.layers.map { it.assetId })
+    }
+
+    @Test
+    fun missingMetadataZoomRangeUsesSafeRendererRangeInsteadOfBlockingDisplay() {
+        val unknownZoom = asset(ASSET_A).copy(facts = asset(ASSET_A).facts.copy(minZoom = null, maxZoom = null))
+
+        val plan = plan(
+            listOf(unknownZoom),
+            ChartDisplayPreferences(ChartDisplaySelection.SourceSet(setOf(SOURCE_ID))),
+            ChartDisplayViewport(GeoBounds(-1.0, -1.0, 1.0, 1.0), 8),
+        )
+
+        assertEquals(listOf(ASSET_A), plan.layers.map { it.assetId })
+        assertEquals(MIN_ZOOM, plan.layers.single().minZoom)
+        assertEquals(MAX_ZOOM, plan.layers.single().maxZoom)
     }
 
     @Test

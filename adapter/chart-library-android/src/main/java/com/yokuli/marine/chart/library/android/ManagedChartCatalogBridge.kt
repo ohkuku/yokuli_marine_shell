@@ -29,6 +29,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
 import com.yokuli.marine.map.domain.chartlibrary.LegacyChartAssetMapping
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyRelation
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
+import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceScanState
@@ -286,6 +287,7 @@ internal class ManagedChartCatalogBridge(
             } else {
                 ChartAssetValidationState.UNSUPPORTED_FORMAT
             },
+            accessMode = ChartReadAccessMode.MANAGED_COPY,
         )
     }
 

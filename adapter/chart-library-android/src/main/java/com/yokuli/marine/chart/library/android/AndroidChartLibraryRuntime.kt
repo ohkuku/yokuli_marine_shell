@@ -428,6 +428,7 @@ class AndroidChartLibraryRuntime private constructor(
                     resolver,
                     managedRoot,
                     managedRepository?.let { repository -> repository::acquireLease },
+                    File(context.cacheDir, "chart-library-access"),
                 ),
                 sourceController = AndroidChartSourceController(
                     catalog,

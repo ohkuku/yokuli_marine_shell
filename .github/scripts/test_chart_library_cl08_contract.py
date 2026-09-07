@@ -11,7 +11,7 @@ class ChartLibraryCl08ContractTest(unittest.TestCase):
         for required in (
             "PinnedAsset", "SourceSet", "catalogRevision", "fingerprint", "request.revision.cacheKey",
             "MAX_SELECTED_CHART_SOURCES = 8", "MAX_ACTIVE_CHART_LAYERS = 8",
-            "UNKNOWN_BOUNDS_EXCLUDED", "NO_NATIVE_ZOOM", "LAYER_LIMIT_REACHED",
+            "UNKNOWN_BOUNDS_UNFILTERED", "NO_NATIVE_ZOOM", "LAYER_LIMIT_REACHED",
             "compareBy<ChartAsset> { if (it.role == ChartAssetRole.BASE) 0 else 1 }",
             "longitudeSegments", "tileSize", "tileScheme", "opacity",
         ):
@@ -65,6 +65,8 @@ class ChartLibraryCl08ContractTest(unittest.TestCase):
             "pinnedAssetIsNotStolenByNewCatalogAssetAndCameraIsNotPartOfTheMutation",
             "viewportFiltersDistantRegionsWithoutOpeningEveryCatalogAsset",
             "datelineIntersectionUsesTwoLongitudeSegments",
+            "unknownBoundsNeverTurnRenderableContentIntoAnExcludedLayer",
+            "missingMetadataZoomRangeUsesSafeRendererRangeInsteadOfBlockingDisplay",
             "overzoomNeverClaimsNativeSourceSetCoverage",
             "coverage unions real base keys and never uses overlay keys to fill a hole",
             "preparer opens only planned revisions honors each tile size and releases every session",

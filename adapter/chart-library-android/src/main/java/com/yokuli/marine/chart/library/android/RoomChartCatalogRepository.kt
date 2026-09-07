@@ -177,7 +177,7 @@ class RoomChartCatalogRepository private constructor(
         fun create(context: Context, file: File): RoomChartCatalogRepository {
             file.parentFile?.mkdirs()
             val database = Room.databaseBuilder(context.applicationContext, ChartCatalogDatabase::class.java, file.absolutePath)
-                .addMigrations(CHART_CATALOG_MIGRATION_1_2, CHART_CATALOG_MIGRATION_2_3)
+                .addMigrations(CHART_CATALOG_MIGRATION_1_2, CHART_CATALOG_MIGRATION_2_3, CHART_CATALOG_MIGRATION_3_4)
                 .enableMultiInstanceInvalidation()
                 .build()
             return RoomChartCatalogRepository(database)
@@ -216,6 +216,7 @@ private fun ChartAsset.toEntity() = ChartAssetEntity(
     facts.minZoom, facts.maxZoom, facts.tileCount, facts.tileSize, facts.tileScheme?.name, facts.rasterMimeType,
     facts.attribution, facts.attributionProvenance.name,
     role.name, priority, enabled, access.name, validation.name,
+    accessMode?.name, compatibilityWarnings.map { it.name }.sorted().joinToString(","),
 )
 private fun ChartAssetEntity.toDomain(membershipIds: List<String>): ChartAsset = ChartAsset(
     ChartAssetId(id), ChartDocumentIdentity(authority, documentId), ChartOpaqueLocator(locator),
@@ -231,6 +232,8 @@ private fun ChartAssetEntity.toDomain(membershipIds: List<String>): ChartAsset =
     ),
     ChartAssetRole.valueOf(role), priority, enabled,
     ChartAssetAccessState.valueOf(accessState), ChartAssetValidationState.valueOf(validationState),
+    accessMode?.let(ChartReadAccessMode::valueOf),
+    compatibilityWarnings.split(',').filter(String::isNotBlank).mapTo(linkedSetOf(), ChartCompatibilityWarning::valueOf),
 )
 private fun LegacyChartAssetMapping.toEntity() = LegacyChartMappingEntity(legacyLogicalId, legacyVersionId.orEmpty(), assetId.value)
 private fun ChartManagedCopyRelation.toEntity() = ChartManagedCopyRelationEntity(originalAssetId.value, managedAssetId.value)

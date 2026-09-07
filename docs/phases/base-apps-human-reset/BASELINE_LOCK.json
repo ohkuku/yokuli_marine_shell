@@ -3,10 +3,12 @@
   "phase": "base-apps-human-acceptance-reset",
   "baseCommit": "b30d12fa8be04a5b41edb34abde8d7df479298c7",
   "sourceDocumentSha256": "c0443aea42619e56ca3aebbc8379949a411414e94025a1ddbb90de98d560d3d5",
+  "mbtilesCompatibilityCorrectionSha256": "9d5d1df21e88f63541fc0a7351eaaf20c1c3ea08ebca00e16ec069c8f7e625dd",
   "status": "PRODUCT_RECOVERY_WINDOW",
   "humanAuthority": "REQUIRED_PER_BASE_APP",
   "ciGreenMeansProductAccepted": false,
   "legacyPresentationContractsAuthoritative": false,
+  "legacyKnownGoodMbtilesCompatibilityHardGate": true,
   "hardGateFamilies": [
     "domain_math",
     "nmea_parser_runtime_source_selection",

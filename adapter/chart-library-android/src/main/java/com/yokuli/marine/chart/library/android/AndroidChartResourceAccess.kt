@@ -11,6 +11,7 @@ import com.yokuli.marine.map.domain.ChartPackageLease
 import com.yokuli.marine.map.domain.ChartPackageVersionId
 import com.yokuli.marine.map.domain.MapTileScheme
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpenResult
+import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadException
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadFailure
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadRequest
@@ -30,22 +31,115 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 
 class AndroidChartResourceAccess(
     private val resolver: ContentResolver,
     private val managedRoot: File? = null,
     private val acquireManagedLease: ((ChartPackageId) -> ChartPackageLease)? = null,
+    private val localFallbackRoot: File? = null,
 ) : ChartResourceAccessPort {
+    private val fallbackLocks = Array(FALLBACK_LOCK_STRIPES) { Mutex() }
+
     override suspend fun open(request: ChartReadRequest): ChartOpenResult = withContext(Dispatchers.IO) {
         val uri = runCatching { Uri.parse(request.locator.value) }.getOrNull()
             ?: return@withContext ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Invalid locator")
         if (uri.scheme == MANAGED_SCHEME) return@withContext openManaged(request, uri)
         when (val opened = AndroidSafRandomAccessReader(resolver).open(uri)) {
-            is SafRandomAccessOpenResult.Rejected -> ChartOpenResult.Rejected(opened.failure, opened.detail)
+            is SafRandomAccessOpenResult.Rejected -> if (
+                localFallbackRoot != null && opened.failure in STREAM_FALLBACK_FAILURES
+            ) {
+                fallbackLocks[(request.assetId.value.hashCode() and Int.MAX_VALUE) % fallbackLocks.size].withLock {
+                    openLocalFallback(request, uri, localFallbackRoot)
+                }
+            } else {
+                ChartOpenResult.Rejected(opened.failure, opened.detail)
+            }
             is SafRandomAccessOpenResult.Opened -> openDatabase(request, opened.handle)
         }
+    }
+
+    private suspend fun openLocalFallback(request: ChartReadRequest, uri: Uri, root: File): ChartOpenResult {
+        val canonicalRoot = runCatching { root.apply { mkdirs() }.canonicalFile }.getOrNull()
+            ?.takeIf(File::isDirectory)
+            ?: return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Local chart access is unavailable")
+        val revisionKey = request.revision.cacheKey.sha256().take(24)
+        val target = File(canonicalRoot, "${request.assetId.value}-$revisionKey.mbtiles")
+        val expectedSize = request.revision.observedSizeBytes
+        if (!target.isFile || expectedSize?.let { target.length() != it } == true) {
+            if (expectedSize != null && expectedSize > canonicalRoot.usableSpace - MIN_FREE_AFTER_FALLBACK_BYTES) {
+                return ChartOpenResult.Rejected(ChartReadFailure.INSUFFICIENT_SPACE, "Not enough local storage for chart access")
+            }
+            val temporary = File(canonicalRoot, ".${request.assetId.value}-$revisionKey.partial")
+            temporary.delete()
+            try {
+                val input = resolver.openInputStream(uri)
+                    ?: return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Provider returned no readable stream")
+                var copied = 0L
+                input.use { source ->
+                    FileOutputStream(temporary).buffered().use { destination ->
+                        val buffer = ByteArray(STREAM_COPY_BUFFER_BYTES)
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val count = source.read(buffer)
+                            if (count < 0) break
+                            copied += count
+                            if (canonicalRoot.usableSpace < count.toLong() + MIN_FREE_AFTER_FALLBACK_BYTES) {
+                                throw ChartReadException(
+                                    ChartReadFailure.INSUFFICIENT_SPACE,
+                                    "Not enough local storage for chart access",
+                                )
+                            }
+                            destination.write(buffer, 0, count)
+                        }
+                    }
+                }
+                if (copied <= 0L || expectedSize?.let { copied != it } == true) {
+                    throw ChartReadException(
+                        ChartReadFailure.SHORT_READ,
+                        "Provider stream size does not match the catalog revision",
+                    )
+                }
+                try {
+                    Files.move(
+                        temporary.toPath(),
+                        target.toPath(),
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING,
+                    )
+                } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                    Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                }
+                canonicalRoot.listFiles { file ->
+                    file.isFile && file.name.startsWith("${request.assetId.value}-") && file != target
+                }.orEmpty().forEach(File::delete)
+            } catch (error: SecurityException) {
+                temporary.delete()
+                return ChartOpenResult.Rejected(
+                    ChartReadFailure.PERMISSION_LOST,
+                    "Persisted read permission is no longer available",
+                )
+            } catch (error: Throwable) {
+                temporary.delete()
+                val failure = (error as? ChartReadException)?.failure ?: ChartReadFailure.IO_FAILURE
+                return ChartOpenResult.Rejected(failure, error.message ?: error.javaClass.simpleName)
+            }
+        }
+        val descriptor = runCatching { ParcelFileDescriptor.open(target, ParcelFileDescriptor.MODE_READ_ONLY) }
+            .getOrElse { return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, it.javaClass.simpleName) }
+        return openDatabase(
+            request,
+            SafReadOnlyHandle(descriptor, target.length(), accessMode = ChartReadAccessMode.LOCAL_FALLBACK),
+        )
     }
 
     private fun openManaged(request: ChartReadRequest, uri: Uri): ChartOpenResult {
@@ -69,7 +163,15 @@ class AndroidChartResourceAccess(
             lease.close()
             return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, error.javaClass.simpleName)
         }
-        return openDatabase(request, SafReadOnlyHandle(descriptor, file.length(), lease::close))
+        return openDatabase(
+            request,
+            SafReadOnlyHandle(
+                descriptor,
+                file.length(),
+                lease::close,
+                ChartReadAccessMode.MANAGED_COPY,
+            ),
+        )
     }
 
     private fun openDatabase(request: ChartReadRequest, handle: SafReadOnlyHandle): ChartOpenResult {
@@ -99,8 +201,8 @@ class AndroidChartResourceAccess(
             return ChartOpenResult.Rejected(ChartReadFailure.INVALID_DATABASE, error.javaClass.simpleName)
         }
         return try {
-            requireMbTilesSchema(database)
-            ChartOpenResult.Opened(AndroidMbTilesReadSession(request, handle, database))
+            val metadataPresent = requireMbTilesSchema(database)
+            ChartOpenResult.Opened(AndroidMbTilesReadSession(request, handle, database, metadataPresent))
         } catch (error: Throwable) {
             database.close()
             handle.close()
@@ -111,16 +213,38 @@ class AndroidChartResourceAccess(
         }
     }
 
-    private fun requireMbTilesSchema(database: SQLiteDatabase) {
-        val expected = mutableSetOf("metadata", "tiles")
+    private fun requireMbTilesSchema(database: SQLiteDatabase): Boolean {
+        val objects = linkedSetOf<String>()
         database.rawQuery(
             "SELECT name FROM sqlite_master WHERE (type='table' OR type='view') AND name IN ('metadata','tiles')",
             emptyArray(),
-        ).use { cursor -> while (cursor.moveToNext()) expected.remove(cursor.getString(0)) }
-        if (expected.isNotEmpty()) throw ChartReadException(
+        ).use { cursor -> while (cursor.moveToNext()) objects += cursor.getString(0) }
+        if ("tiles" !in objects) throw ChartReadException(
             ChartReadFailure.INVALID_SCHEMA,
-            "Missing required MBTiles objects: ${expected.sorted().joinToString()}",
+            "Missing required MBTiles tiles table or view",
         )
+        val columns = linkedSetOf<String>()
+        database.rawQuery("PRAGMA table_info(tiles)", emptyArray()).use { cursor ->
+            val name = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) columns += cursor.getString(name)
+        }
+        val required = setOf("zoom_level", "tile_column", "tile_row", "tile_data")
+        if (!columns.containsAll(required)) throw ChartReadException(
+            ChartReadFailure.INVALID_SCHEMA,
+            "MBTiles tiles object is missing required columns",
+        )
+        return "metadata" in objects
+    }
+
+    private companion object {
+        val STREAM_FALLBACK_FAILURES = setOf(
+            ChartReadFailure.CANNOT_OPEN,
+            ChartReadFailure.DIRECT_READ_UNSUPPORTED,
+            ChartReadFailure.SUBRANGE_UNSUPPORTED,
+        )
+        const val STREAM_COPY_BUFFER_BYTES = 1024 * 1024
+        const val MIN_FREE_AFTER_FALLBACK_BYTES = 250L * 1024L * 1024L
+        const val FALLBACK_LOCK_STRIPES = 64
     }
 }
 
@@ -130,8 +254,10 @@ private class AndroidMbTilesReadSession(
     override val request: ChartReadRequest,
     private val handle: SafReadOnlyHandle,
     private val database: SQLiteDatabase,
+    override val metadataPresent: Boolean,
 ) : ChartReadSession {
     override val sourceSizeBytes: Long = handle.sizeBytes
+    override val accessMode: ChartReadAccessMode = handle.accessMode
     private val closed = AtomicBoolean(false)
     private val metadataRows = AtomicInteger(0)
     private val tileQueries = AtomicLong(0L)
@@ -139,6 +265,7 @@ private class AndroidMbTilesReadSession(
 
     override fun readMetadata(limit: Int): Map<String, String> = checked {
         require(limit in 1..MAX_METADATA_ROWS)
+        if (!metadataPresent) return@checked emptyMap()
         val result = linkedMapOf<String, String>()
         database.rawQuery(
             "SELECT length(name),length(value),substr(name,1,?),substr(value,1,?) FROM metadata ORDER BY name LIMIT ?",
@@ -156,6 +283,17 @@ private class AndroidMbTilesReadSession(
         }
         metadataRows.set(result.size)
         result
+    }
+
+    override fun readZoomRange(): IntRange? = checked {
+        tileQueries.incrementAndGet()
+        database.rawQuery("SELECT MIN(zoom_level),MAX(zoom_level) FROM tiles", emptyArray()).use { cursor ->
+            if (!cursor.moveToFirst() || cursor.isNull(0) || cursor.isNull(1)) return@checked null
+            val min = cursor.getLong(0)
+            val max = cursor.getLong(1)
+            if (min !in 0L..24L || max !in min..24L) return@checked null
+            min.toInt()..max.toInt()
+        }
     }
 
     override fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload? = checked {
@@ -287,3 +425,6 @@ private fun ByteArray.toTilePayload(): ChartTilePayload {
 
 private val SQLITE_HEADER = "SQLite format 3\u0000".encodeToByteArray()
 private val PNG_HEADER = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
+
+private fun String.sha256(): String = MessageDigest.getInstance("SHA-256")
+    .digest(encodeToByteArray()).joinToString("") { byte -> "%02x".format(byte) }

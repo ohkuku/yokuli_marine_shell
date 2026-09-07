@@ -1,0 +1,550 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 4,
+    "identityHash": "df55765a645c8626042212827ce7a840",
+    "entities": [
+      {
+        "tableName": "chart_catalog_metadata",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `lastTransactionId` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastTransactionId",
+            "columnName": "lastTransactionId",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "chart_sources",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `kind` TEXT NOT NULL, `locator` TEXT NOT NULL, `displayName` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `recursive` INTEGER NOT NULL, `defaultRole` TEXT NOT NULL, `grantState` TEXT NOT NULL, `scanGeneration` INTEGER NOT NULL, `scanStatus` TEXT NOT NULL, `lastSuccessfulGeneration` INTEGER, `discoveredCount` INTEGER NOT NULL, `issueCount` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locator",
+            "columnName": "locator",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recursive",
+            "columnName": "recursive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defaultRole",
+            "columnName": "defaultRole",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "grantState",
+            "columnName": "grantState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scanGeneration",
+            "columnName": "scanGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scanStatus",
+            "columnName": "scanStatus",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSuccessfulGeneration",
+            "columnName": "lastSuccessfulGeneration",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "discoveredCount",
+            "columnName": "discoveredCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "issueCount",
+            "columnName": "issueCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "chart_assets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `authority` TEXT NOT NULL, `documentId` TEXT NOT NULL, `locator` TEXT NOT NULL, `displayPath` TEXT NOT NULL, `revisionIdentity` TEXT NOT NULL, `revisionSizeBytes` INTEGER, `revisionModifiedAtMillis` INTEGER, `revisionProviderHint` TEXT, `revisionSha256` TEXT, `format` TEXT NOT NULL, `sizeBytes` INTEGER, `west` REAL, `south` REAL, `east` REAL, `north` REAL, `minZoom` INTEGER, `maxZoom` INTEGER, `tileCount` INTEGER, `tileSize` INTEGER, `tileScheme` TEXT, `rasterMimeType` TEXT, `attribution` TEXT, `attributionProvenance` TEXT NOT NULL, `role` TEXT NOT NULL, `priority` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `accessState` TEXT NOT NULL, `validationState` TEXT NOT NULL, `accessMode` TEXT, `compatibilityWarnings` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "authority",
+            "columnName": "authority",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentId",
+            "columnName": "documentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "locator",
+            "columnName": "locator",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayPath",
+            "columnName": "displayPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revisionIdentity",
+            "columnName": "revisionIdentity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revisionSizeBytes",
+            "columnName": "revisionSizeBytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "revisionModifiedAtMillis",
+            "columnName": "revisionModifiedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "revisionProviderHint",
+            "columnName": "revisionProviderHint",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "revisionSha256",
+            "columnName": "revisionSha256",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "format",
+            "columnName": "format",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "sizeBytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "west",
+            "columnName": "west",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "south",
+            "columnName": "south",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "east",
+            "columnName": "east",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "north",
+            "columnName": "north",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "minZoom",
+            "columnName": "minZoom",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "maxZoom",
+            "columnName": "maxZoom",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "tileCount",
+            "columnName": "tileCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "tileSize",
+            "columnName": "tileSize",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "tileScheme",
+            "columnName": "tileScheme",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rasterMimeType",
+            "columnName": "rasterMimeType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attribution",
+            "columnName": "attribution",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attributionProvenance",
+            "columnName": "attributionProvenance",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accessState",
+            "columnName": "accessState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "validationState",
+            "columnName": "validationState",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accessMode",
+            "columnName": "accessMode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "compatibilityWarnings",
+            "columnName": "compatibilityWarnings",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_chart_assets_authority_documentId",
+            "unique": true,
+            "columnNames": [
+              "authority",
+              "documentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_chart_assets_authority_documentId` ON `${TABLE_NAME}` (`authority`, `documentId`)"
+          },
+          {
+            "name": "index_chart_assets_displayPath",
+            "unique": false,
+            "columnNames": [
+              "displayPath"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chart_assets_displayPath` ON `${TABLE_NAME}` (`displayPath`)"
+          }
+        ]
+      },
+      {
+        "tableName": "chart_memberships",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`assetId` TEXT NOT NULL, `sourceId` TEXT NOT NULL, PRIMARY KEY(`assetId`, `sourceId`), FOREIGN KEY(`assetId`) REFERENCES `chart_assets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`sourceId`) REFERENCES `chart_sources`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "assetId",
+            "columnName": "assetId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceId",
+            "columnName": "sourceId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "assetId",
+            "sourceId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_chart_memberships_assetId",
+            "unique": false,
+            "columnNames": [
+              "assetId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chart_memberships_assetId` ON `${TABLE_NAME}` (`assetId`)"
+          },
+          {
+            "name": "index_chart_memberships_sourceId",
+            "unique": false,
+            "columnNames": [
+              "sourceId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chart_memberships_sourceId` ON `${TABLE_NAME}` (`sourceId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "chart_assets",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "assetId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "chart_sources",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sourceId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "legacy_chart_mappings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`legacyLogicalId` TEXT NOT NULL, `legacyVersionKey` TEXT NOT NULL, `assetId` TEXT NOT NULL, PRIMARY KEY(`legacyLogicalId`, `legacyVersionKey`), FOREIGN KEY(`assetId`) REFERENCES `chart_assets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "legacyLogicalId",
+            "columnName": "legacyLogicalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "legacyVersionKey",
+            "columnName": "legacyVersionKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assetId",
+            "columnName": "assetId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "legacyLogicalId",
+            "legacyVersionKey"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_legacy_chart_mappings_assetId",
+            "unique": false,
+            "columnNames": [
+              "assetId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_legacy_chart_mappings_assetId` ON `${TABLE_NAME}` (`assetId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "chart_assets",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "assetId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "chart_managed_copy_relations",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`originalAssetId` TEXT NOT NULL, `managedAssetId` TEXT NOT NULL, PRIMARY KEY(`originalAssetId`, `managedAssetId`), FOREIGN KEY(`originalAssetId`) REFERENCES `chart_assets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`managedAssetId`) REFERENCES `chart_assets`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "originalAssetId",
+            "columnName": "originalAssetId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "managedAssetId",
+            "columnName": "managedAssetId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "originalAssetId",
+            "managedAssetId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_chart_managed_copy_relations_originalAssetId",
+            "unique": false,
+            "columnNames": [
+              "originalAssetId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chart_managed_copy_relations_originalAssetId` ON `${TABLE_NAME}` (`originalAssetId`)"
+          },
+          {
+            "name": "index_chart_managed_copy_relations_managedAssetId",
+            "unique": false,
+            "columnNames": [
+              "managedAssetId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_chart_managed_copy_relations_managedAssetId` ON `${TABLE_NAME}` (`managedAssetId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "chart_assets",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "originalAssetId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "chart_assets",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "managedAssetId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "chart_catalog_transactions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`transactionId` TEXT NOT NULL, `revision` INTEGER NOT NULL, PRIMARY KEY(`transactionId`))",
+        "fields": [
+          {
+            "fieldPath": "transactionId",
+            "columnName": "transactionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "transactionId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'df55765a645c8626042212827ce7a840')"
+    ]
+  }
+}

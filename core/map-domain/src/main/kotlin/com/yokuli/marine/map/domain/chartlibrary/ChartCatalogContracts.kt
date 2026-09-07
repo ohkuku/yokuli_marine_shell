@@ -29,6 +29,17 @@ enum class ChartAssetValidationState {
     CANCELLED_OR_INTERRUPTED,
 }
 enum class ChartFactProvenance { EMBEDDED, DERIVED, USER_DECLARED, UNKNOWN }
+enum class ChartCompatibilityWarning {
+    METADATA_MISSING,
+    BOUNDS_MISSING,
+    BOUNDS_INVALID,
+    ZOOM_RANGE_MISSING,
+    ZOOM_RANGE_INVALID,
+    FORMAT_MISMATCH,
+    MIXED_RASTER_ENCODING,
+    MIXED_TILE_SIZE,
+    INVALID_SAMPLE_COORDINATE,
+}
 
 data class ChartSourceScanState(
     val generation: Long = 0L,
@@ -108,6 +119,8 @@ data class ChartAsset(
     val enabled: Boolean = true,
     val access: ChartAssetAccessState = ChartAssetAccessState.UNCHECKED,
     val validation: ChartAssetValidationState = ChartAssetValidationState.DISCOVERED,
+    val accessMode: ChartReadAccessMode? = null,
+    val compatibilityWarnings: Set<ChartCompatibilityWarning> = emptySet(),
 ) {
     init {
         require(runCatching { UUID.fromString(id.value) }.isSuccess) { "External asset IDs must be UUIDs" }
@@ -115,6 +128,7 @@ data class ChartAsset(
         require(displayPath.isNotBlank() && displayPath.length <= 1_024 && '\u0000' !in displayPath)
         require(priority in -10_000..10_000)
         require(validation != ChartAssetValidationState.FULL_VERIFIED || revision.contentSha256 != null)
+        require(compatibilityWarnings.size <= ChartCompatibilityWarning.entries.size)
     }
 }
 

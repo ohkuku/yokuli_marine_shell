@@ -101,6 +101,10 @@ jobs:
         id: product_recovery_policy
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh product-recovery-policy -- python3 .github/scripts/test_product_recovery_window.py
+      - name: Legacy known-good MBTiles compatibility contract
+        id: legacy_mbtiles_compatibility
+        continue-on-error: true
+        run: bash .github/scripts/run_ci_capture.sh legacy-mbtiles-compatibility -- python3 .github/scripts/test_legacy_mbtiles_compatibility.py
       - name: Encrypted secrets workflow contract
         id: secrets_contract
         continue-on-error: true
@@ -540,15 +544,16 @@ jobs:
           "Google Maps build configuration evidence=${{ steps.google_maps_evidence.outcome }}"
           "Release metadata=${{ steps.release_metadata.outcome }}"
           "Workflow contract=${{ steps.ci_contract.outcome }}"
+          "Legacy known-good MBTiles compatibility=${{ steps.legacy_mbtiles_compatibility.outcome }}"
           "Encrypted secrets contract=${{ steps.secrets_contract.outcome }}"
           "Unit tests=${{ steps.unit_tests.outcome }}"
           "Android lint=${{ steps.lint.outcome }}"
           "Debug plus release-audit APK compile=${{ steps.assemble.outcome }}"
       - name: Collect build failure diagnostics
-        if: always() && (failure() || steps.product_recovery_policy.outcome != 'success' || steps.ci_helpers.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.release_surface_audit.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
+        if: always() && (failure() || steps.product_recovery_policy.outcome != 'success' || steps.legacy_mbtiles_compatibility.outcome != 'success' || steps.ci_helpers.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.release_surface_audit.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
         run: bash .github/scripts/collect_failure_bundle.sh build
       - name: Upload downloadable build failure bundle
-        if: always() && (failure() || steps.product_recovery_policy.outcome != 'success' || steps.ci_helpers.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.release_surface_audit.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
+        if: always() && (failure() || steps.product_recovery_policy.outcome != 'success' || steps.legacy_mbtiles_compatibility.outcome != 'success' || steps.ci_helpers.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.release_surface_audit.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
         uses: actions/upload-artifact@v7
         with:
           name: FAILURE-build-${{ github.run_id }}-${{ github.run_attempt }}
@@ -570,6 +575,7 @@ jobs:
           CHART_LIBRARY_CL11_CONTRACT_RESULT: ${{ steps.chart_library_cl11_contract.outcome }}
           OSR_W01_CONTRACT_RESULT: ${{ steps.osr_w01_contract.outcome }}
           PRODUCT_RECOVERY_POLICY_RESULT: ${{ steps.product_recovery_policy.outcome }}
+          LEGACY_MBTILES_COMPATIBILITY_RESULT: ${{ steps.legacy_mbtiles_compatibility.outcome }}
           RELEASE_SURFACE_AUDIT_RESULT: ${{ steps.release_surface_audit.outcome }}
           GOOGLE_MAPS_EVIDENCE_RESULT: ${{ steps.google_maps_evidence.outcome }}
           RELEASE_METADATA_RESULT: ${{ steps.release_metadata.outcome }}
@@ -580,7 +586,7 @@ jobs:
           ASSEMBLE_RESULT: ${{ steps.assemble.outcome }}
         run: |
           failed=0
-          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT NMEA_SOURCES_P0_CONTRACT_RESULT NMEA_SOURCES_P1_CONTRACT_RESULT NMEA_SOURCES_P3_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT CHART_LIBRARY_CL11_CONTRACT_RESULT OSR_W01_CONTRACT_RESULT PRODUCT_RECOVERY_POLICY_RESULT RELEASE_SURFACE_AUDIT_RESULT GOOGLE_MAPS_EVIDENCE_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
+          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT NMEA_SOURCES_P0_CONTRACT_RESULT NMEA_SOURCES_P1_CONTRACT_RESULT NMEA_SOURCES_P3_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT CHART_LIBRARY_CL11_CONTRACT_RESULT OSR_W01_CONTRACT_RESULT PRODUCT_RECOVERY_POLICY_RESULT LEGACY_MBTILES_COMPATIBILITY_RESULT RELEASE_SURFACE_AUDIT_RESULT GOOGLE_MAPS_EVIDENCE_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
             if [ "${!result}" != success ]; then echo "::error title=$result failed::Open the job summary and FAILURE artifact."; failed=1; fi
           done
           exit "$failed"
@@ -654,6 +660,13 @@ jobs:
           --root .
           --output build/chart-library-cl11/evidence.json
           --require-complete
+      - name: Extract legacy MBTiles compatibility evidence
+        if: always()
+        run: >-
+          python3 .github/scripts/extract_legacy_mbtiles_evidence.py
+          --root .
+          --output build/legacy-mbtiles/evidence.json
+          --require-complete
       - name: Collect W16 API 34 migration and process-restore evidence
         id: osr_w16_api34_evidence
         if: false # PRODUCT_RECOVERY: final W16 acceptance ledger is suspended.
@@ -686,6 +699,7 @@ jobs:
             build/ci-c12-process-restore.log
             build/ci-nmea-sources-process-restore.log
             build/chart-library-cl11/evidence.json
+            build/legacy-mbtiles/evidence.json
             build/w16/**
           if-no-files-found: warn
           retention-days: 14

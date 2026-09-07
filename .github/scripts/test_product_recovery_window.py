@@ -72,6 +72,7 @@ class ProductRecoveryWindowTest(unittest.TestCase):
             "nmea_sources_p1_contract", "nmea_sources_p3_contract",
             "launcher_stage2_contract", "launcher_stage25_contract", "launcher_stage3_contract",
             "launcher_stage4_contract", "chart_library_cl11_contract", "osr_w01_only_contract",
+            "legacy_mbtiles_compatibility",
             "osr_w03_contract", "osr_w08_contract", "osr_w10_contract", "osr_w11_contract",
             "release_surface_audit", "unit_tests", "lint", "assemble",
         )

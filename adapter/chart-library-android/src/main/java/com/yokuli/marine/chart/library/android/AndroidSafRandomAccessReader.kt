@@ -18,8 +18,9 @@ sealed interface SafRandomAccessOpenResult {
 }
 
 /**
- * Capability probe for a provider-owned descriptor. Only a seekable read-only descriptor is
- * accepted; streams and pipes are reported as unsupported and are never copied implicitly.
+ * Capability probe for a provider-owned descriptor. It reports whether direct random access is
+ * available; the higher-level resource gateway may provide safe local access for stream-only
+ * providers without treating the chart content as invalid.
  */
 class AndroidSafRandomAccessReader(private val resolver: ContentResolver) {
     fun open(uri: Uri): SafRandomAccessOpenResult {
@@ -59,6 +60,8 @@ class SafReadOnlyHandle internal constructor(
     private val descriptor: ParcelFileDescriptor,
     val sizeBytes: Long,
     private val onClose: () -> Unit = {},
+    val accessMode: com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode =
+        com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode.DIRECT_PROVIDER,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val bytesRead = AtomicLong(0L)

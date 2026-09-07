@@ -375,7 +375,7 @@
     <string name="map_chart_pinned_missing">固定海图已从目录消失；不会自动改选另一张。</string>
     <string name="map_chart_pinned_unavailable">固定海图当前不可读；不会用在线地图填补。</string>
     <string name="map_chart_source_missing">一个已选来源已禁用或不存在。</string>
-    <string name="map_chart_unknown_bounds">范围未知的资源未参与自动视野选择；仍可手动固定。</string>
+    <string name="map_chart_unknown_bounds">此海图未声明范围，Yokuli 仍会尝试显示其可用图块。</string>
     <string name="map_chart_no_native_zoom">当前级别没有原生图块；放大显示不算完整覆盖。</string>
     <string name="map_chart_layer_limit">候选超过活跃图层上限；部分资源未显示。</string>
     <string name="map_quick_layers_truth">这里只调整已经交给 Chart 的图层。文件、权限、扫描和来源仍由海图库负责。</string>

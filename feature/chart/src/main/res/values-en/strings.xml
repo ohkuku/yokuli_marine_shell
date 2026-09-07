@@ -375,7 +375,7 @@
     <string name="map_chart_pinned_missing">The pinned chart left the catalog. Another chart will not be selected automatically.</string>
     <string name="map_chart_pinned_unavailable">The pinned chart is unreadable. An online map will not fill its gaps.</string>
     <string name="map_chart_source_missing">A selected source is disabled or missing.</string>
-    <string name="map_chart_unknown_bounds">Unknown-bounds resources are excluded from automatic viewport selection; they can still be pinned.</string>
+    <string name="map_chart_unknown_bounds">This chart does not declare bounds; Yokuli still attempts to display its available tiles.</string>
     <string name="map_chart_no_native_zoom">No native tiles exist at this zoom. Overzoom is not complete coverage.</string>
     <string name="map_chart_layer_limit">Candidates exceed the active-layer limit. Some resources are not displayed.</string>
     <string name="map_quick_layers_truth">This surface only adjusts layers already handed to Chart. Files, permissions, scans, and sources remain owned by Chart Library.</string>

@@ -54,6 +54,9 @@ data class ChartReadRequest(
 
 enum class ChartReadPurpose { RENDER, COVERAGE, VALIDATION }
 
+/** How Yokuli obtained random access for this read session. This is independent of content health. */
+enum class ChartReadAccessMode { DIRECT_PROVIDER, LOCAL_FALLBACK, MANAGED_COPY }
+
 data class ChartTileKey(val zoom: Int, val column: Long, val row: Long) {
     init {
         require(zoom in MIN_ZOOM..MAX_ZOOM)
@@ -110,6 +113,7 @@ enum class ChartReadFailure {
     TILE_TOO_LARGE,
     UNSUPPORTED_RASTER,
     RESOURCE_LIMIT,
+    INSUFFICIENT_SPACE,
     IO_FAILURE,
 }
 
@@ -127,7 +131,12 @@ sealed interface ChartOpenResult {
 interface ChartReadSession : AutoCloseable {
     val request: ChartReadRequest
     val sourceSizeBytes: Long
+    val accessMode: ChartReadAccessMode get() = ChartReadAccessMode.DIRECT_PROVIDER
+    /** False means the optional MBTiles metadata table is absent, not that the chart is invalid. */
+    val metadataPresent: Boolean get() = true
     fun readMetadata(limit: Int = MAX_METADATA_ROWS): Map<String, String>
+    /** A bounded database aggregate used to recover renderable zoom facts when metadata is absent. */
+    fun readZoomRange(): IntRange? = null
     fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload?
     fun hasTile(key: ChartTileKey, scheme: MapTileScheme): Boolean
     /** A cheap unordered sample for Basic Check; it must not scan or sort the entire tile table. */

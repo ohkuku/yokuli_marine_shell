@@ -24,6 +24,18 @@ c0443aea42619e56ca3aebbc8379949a411414e94025a1ddbb90de98d560d3d5
 
 这里的 Kotlin/JVM 与 instrumentation 门禁采用显式清单，不等于执行所有模块中的旧测试。Chart/Chart Library/Data/Navigation Feature presentation suites 在恢复期不进入硬门禁；core 与 adapter 测试继续运行。
 
+### P0 Legacy MBTiles Compatibility Gate
+
+旧版 `yokuli_nmea_anchor_alarm` 能正确显示的合法 raster MBTiles，Yokuli OS 默认也必须可读、可渲染；除非能够指出旧显示结果确实错误或不安全的具体内容属性。此项是底层 correctness hard gate，不随 presentation tests 一起退出。
+
+- provider 不能提供 seekable descriptor 不等于文件无效；只要授权流仍可读，Yokuli 必须提供受控本地兼容访问；
+- `tiles` 及其四个标准字段是必要内容，`metadata` 表是可选信息；缺失 `scheme` 默认 TMS；
+- Basic 回答“现在能否渲染”，metadata/bounds/声明 zoom/encoding 的缺失或冲突默认成为可见 warning，不冒充内容损坏；
+- Full Verification 可以更深入，但不是普通显示的准入条件；
+- access mode、content health、verification/warnings 是三条独立事实；
+- 缺失 bounds 不得把已经证实可读的图层从显示计划中排除；
+- stream fallback 原子发布、不修改原件、保留磁盘余量、串行化同一资源，并由真实 DocumentsProvider instrumentation 覆盖。
+
 ## 暂时退出产品 Gate
 
 以下测试作为历史证据保留，但在对应 App 通过人工验收前不参与最终质量判定：

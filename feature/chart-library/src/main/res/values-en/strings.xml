@@ -68,6 +68,18 @@
     <string name="access_changed">original changed; check again</string>
     <string name="access_pending">file is still being written</string>
     <string name="access_direct_unsupported">provider cannot be read safely in place</string>
+    <string name="access_mode_direct">direct original access</string>
+    <string name="access_mode_local_fallback">Yokuli local compatibility access</string>
+    <string name="access_mode_managed">Yokuli managed copy</string>
+    <string name="warning_metadata_missing">metadata is missing or empty; confirmed tile access is still usable</string>
+    <string name="warning_bounds_missing">bounds are not declared</string>
+    <string name="warning_bounds_invalid">declared bounds are invalid</string>
+    <string name="warning_zoom_missing">zoom range was not declared and was derived from tiles</string>
+    <string name="warning_zoom_invalid">declared zoom range is invalid and was derived from tiles</string>
+    <string name="warning_format_mismatch">format declaration differs from sampled tiles</string>
+    <string name="warning_mixed_encoding">samples use different raster encodings</string>
+    <string name="warning_mixed_size">samples use different tile sizes</string>
+    <string name="warning_sample_coordinate">some sampled coordinates are invalid</string>
     <string name="validation_discovered">discovered; basic check pending</string>
     <string name="validation_basic">basic readable</string>
     <string name="validation_full">this revision is fully verified</string>
@@ -121,6 +133,8 @@
     <string name="fact_assets">asset count</string>
     <string name="fact_sources">sources</string>
     <string name="fact_access">access state</string>
+    <string name="fact_access_mode">access mode</string>
+    <string name="fact_warnings">compatibility warnings</string>
     <string name="fact_validation">validation level</string>
     <string name="fact_format">format</string>
     <string name="fact_encoding">tile encoding</string>

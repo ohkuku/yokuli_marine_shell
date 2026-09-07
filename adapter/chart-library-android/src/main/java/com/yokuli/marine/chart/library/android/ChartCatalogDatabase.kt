@@ -72,6 +72,8 @@ internal data class ChartAssetEntity(
     val enabled: Boolean,
     val accessState: String,
     val validationState: String,
+    val accessMode: String?,
+    val compatibilityWarnings: String,
 )
 
 @Entity(
@@ -279,7 +281,7 @@ internal interface ChartCatalogDao {
         ChartManagedCopyRelationEntity::class,
         ChartCatalogTransactionEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 internal abstract class ChartCatalogDatabase : RoomDatabase() {
@@ -305,5 +307,12 @@ internal val CHART_CATALOG_MIGRATION_2_3 = object : Migration(2, 3) {
         )
         database.execSQL("CREATE INDEX IF NOT EXISTS `index_chart_managed_copy_relations_originalAssetId` ON `chart_managed_copy_relations` (`originalAssetId`)")
         database.execSQL("CREATE INDEX IF NOT EXISTS `index_chart_managed_copy_relations_managedAssetId` ON `chart_managed_copy_relations` (`managedAssetId`)")
+    }
+}
+
+internal val CHART_CATALOG_MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE chart_assets ADD COLUMN accessMode TEXT")
+        database.execSQL("ALTER TABLE chart_assets ADD COLUMN compatibilityWarnings TEXT NOT NULL DEFAULT ''")
     }
 }

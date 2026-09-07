@@ -34,6 +34,8 @@ class AndroidChartValidationController(
                     facts = result.inspection.facts.copy(sizeBytes = it.facts.sizeBytes),
                     access = ChartAssetAccessState.READABLE,
                     validation = ChartAssetValidationState.BASIC_READABLE,
+                    accessMode = result.inspection.accessMode,
+                    compatibilityWarnings = result.inspection.warnings,
                 )
             }
             is ChartBasicInspectionResult.Rejected -> reject(assetId, result.issue)
@@ -50,6 +52,8 @@ class AndroidChartValidationController(
                     facts = result.facts.copy(sizeBytes = it.facts.sizeBytes),
                     access = ChartAssetAccessState.READABLE,
                     validation = ChartAssetValidationState.FULL_VERIFIED,
+                    accessMode = result.accessMode,
+                    compatibilityWarnings = result.warnings,
                 )
             }
             is ChartFullVerificationResult.Rejected -> reject(assetId, result.issue)

@@ -73,6 +73,11 @@ class RoomChartCatalogRepositoryTest {
                 facts = ChartAssetFacts(),
                 access = ChartAssetAccessState.READABLE,
                 validation = ChartAssetValidationState.BASIC_READABLE,
+                accessMode = ChartReadAccessMode.LOCAL_FALLBACK,
+                compatibilityWarnings = setOf(
+                    ChartCompatibilityWarning.METADATA_MISSING,
+                    ChartCompatibilityWarning.BOUNDS_MISSING,
+                ),
             )
             val mapping = LegacyChartAssetMapping("logical-old", "version-old", asset.id)
             val transaction = ChartCatalogTransaction("legacy-v1", mutations = listOf(
@@ -85,6 +90,8 @@ class RoomChartCatalogRepositoryTest {
             assertEquals(asset.id, repository.resolveLegacyAsset("logical-old", "version-old"))
             assertNull(repository.asset(asset.id)?.facts?.tileCount)
             assertEquals(ChartAssetValidationState.BASIC_READABLE, repository.asset(asset.id)?.validation)
+            assertEquals(ChartReadAccessMode.LOCAL_FALLBACK, repository.asset(asset.id)?.accessMode)
+            assertEquals(asset.compatibilityWarnings, repository.asset(asset.id)?.compatibilityWarnings)
         }
     }
 

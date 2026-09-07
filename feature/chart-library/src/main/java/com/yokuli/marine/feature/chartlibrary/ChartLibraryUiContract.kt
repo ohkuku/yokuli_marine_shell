@@ -8,6 +8,8 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetValidationState
 import com.yokuli.marine.map.domain.chartlibrary.ChartFactProvenance
+import com.yokuli.marine.map.domain.chartlibrary.ChartCompatibilityWarning
+import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryOperationId
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryPickerEffect
@@ -118,6 +120,8 @@ data class ChartLibraryAssetRowUi(
     val managedCopyAssetId: ChartAssetId? = null,
     val validationJob: ChartValidationJob?,
     val copyJob: ChartManagedCopyProgress?,
+    val accessMode: ChartReadAccessMode? = null,
+    val compatibilityWarnings: Set<ChartCompatibilityWarning> = emptySet(),
 ) {
     val available: Boolean
         get() = enabled && access == ChartAssetAccessState.READABLE && validation in setOf(
