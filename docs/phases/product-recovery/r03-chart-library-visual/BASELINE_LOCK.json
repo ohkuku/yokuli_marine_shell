@@ -19,7 +19,7 @@
   "evidence": {
     "chartLibraryUnitTests": "19_PASS",
     "shellCompile": "PASS",
-    "instrumentedRendererPreview": "CI_PENDING",
+    "instrumentedRendererPreview": "ANDROID_TEST_SOURCE_COMPILES_CI_RUNTIME_PENDING",
     "humanCoverageAndKnownGoodFixture": "PENDING"
   }
 }

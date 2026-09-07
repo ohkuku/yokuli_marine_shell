@@ -18,7 +18,7 @@
   "evidence": {
     "chartUnitTests": "30_PASS",
     "appShellMainCompile": "PASS",
-    "appShellAndroidTestCompile": "PASS_BEFORE_PREVIEW_FINALIZATION",
+    "appShellAndroidTestCompile": "PASS",
     "rendererAndHumanMapFlow": "CI_AND_HUMAN_PENDING"
   }
 }
