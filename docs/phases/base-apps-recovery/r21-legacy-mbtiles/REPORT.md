@@ -1,12 +1,12 @@
 # R21 — Legacy MBTiles Compatibility Recovery
 
-状态：`IMPLEMENTED_LOCAL_MACHINE_GREEN — STOP-SHIP OPEN`
-下一包：`R22 FORBIDDEN UNTIL HOSTED CI AND EXACT USER FILE HUMAN GATE PASS`
+状态：`MACHINE + HOSTED CI COMPLETE — EXACT USER FILE UNVERIFIED`
+下一包：`R22 PERMITTED BY OWNER DIRECTIVE (NO FALSE HUMAN CLAIM)`
 
 ## Baseline
 
 - Recovery baseline HEAD：`442741a414b554226a6b34b910617239556f3ba9`
-- Resulting code HEAD：`83c76263f77a76cd0f809b4be3a545b65f65ec28`
+- Resulting delivery HEAD：`4795bd204d77f095c8825dd370e0d17e93a43a34`
 - Execution directive SHA-256：`36f520ea6232b152554dd1d23d224e18b08009af89157ca046b1381a9dd68ac5`
 - 分支：`codex/shell-map-contract`
 
@@ -105,10 +105,14 @@ Green 将 asset page 读变为原子 Room transaction，并改为有界后台逐
 ## Hosted CI artifact
 
 - Report prefix：`CODEX-CI-REPORT-`
-- Exact artifact：push 后按最终 delivery HEAD 与 GitHub run id 生成，并在本轮交付消息中给出。
+- Evidence run：`34100076259`（`completed / success`）。
+- Evidence HEAD：`4795bd204d77f095c8825dd370e0d17e93a43a34`。
+- Exact artifact：`CODEX-CI-REPORT-4795bd204d77-34100076259-1`。
 - API 34 raw evidence（仅统一报告明确要求时）：`yokuli-os-api34-reports-<delivery-head>`。
 
-## Remaining human stop-ship gate
+Hosted correction also proved that Basic inspection treats declared-format mismatch as a bounded compatibility warning while Full remains the exhaustive verifier. The MapLibre pixel test now waits for the expected raster frame and compares the complete pre/post MBTiles path+hash set, so unrelated fixtures from prior AndroidJUnit cases cannot be mistaken for a copy made by the current journey. CL11 evidence extraction was replayed against the real failed-run artifact and recovered all 3/3 markers from AndroidJUnit logcat with zero rejected records.
+
+## Remaining exact-file human evidence
 
 必须使用用户那份旧 v1.0.2 已知可用的原始 MBTiles，在不清数据、不删除 Source、不重新导入、不重建文件的条件下验证：
 
@@ -123,8 +127,8 @@ Green 将 asset page 读变为原子 Room transaction，并改为有界后台逐
 
 记录：APK SHA、CI run、原 catalog 是否已经 poisoned、恢复入口、Basic 状态、Layer/View 名、实际像素截图。如仍失败，保留 source/file/reason/recovery 证据。
 
-在此真实文件 Gate 与 hosted CI 都通过以前，R21 保持 `OPEN`，禁止开始 R22。
+当前开发机与模拟器中没有找到用户那份原始 MBTiles，因此这项事实保持 `UNVERIFIED_EXACT_USER_FILE`。仓库所有者随后明确指示“无需我确认，全部干完”，故本记录仅放行后续施工，不把缺失的真实文件验证伪造为通过。若该文件随后仍失败，必须按本节证据重新打开兼容性缺陷。
 
 ## English summary
 
-R21 removes the permanent poison behavior without replacing the existing architecture. Historical `DIRECT_READ_UNSUPPORTED` rows can now enter validation, are re-inspected automatically on startup, and are normalized for a same-revision rescan. A stream-only fixture recovers through the existing local fallback, becomes Basic-readable, reaches the logical View planner, and renders actual MapLibre pixels without changing the external file. Batch recovery and catalog paging were hardened after a concurrency Red. Local machine gates pass, but R21 remains stop-ship open until hosted CI and the user's exact old-v1.0.2 MBTiles file pass the real APK journey.
+R21 removes the permanent poison behavior without replacing the existing architecture. Historical `DIRECT_READ_UNSUPPORTED` rows can now enter validation, are re-inspected automatically on startup, and are normalized for a same-revision rescan. A stream-only fixture recovers through the existing local fallback, becomes Basic-readable, reaches the logical View planner, and renders actual MapLibre pixels without changing the external file. Batch recovery and catalog paging were hardened after a concurrency Red. Local and hosted machine gates pass. The exact old-v1.0.2 user file remains explicitly unverified because it was not available in this workspace; the owner directed uninterrupted continuation without converting that missing evidence into a false PASS.

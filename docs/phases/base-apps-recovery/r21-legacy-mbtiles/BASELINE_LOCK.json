@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "workPackage": "R21_LEGACY_MBTILES_COMPATIBILITY_RECOVERY",
   "baselineHead": "442741a414b554226a6b34b910617239556f3ba9",
-  "resultingCodeHead": "83c76263f77a76cd0f809b4be3a545b65f65ec28",
+  "resultingCodeHead": "4795bd204d77f095c8825dd370e0d17e93a43a34",
   "directiveSha256": "36f520ea6232b152554dd1d23d224e18b08009af89157ca046b1381a9dd68ac5",
-  "status": "IMPLEMENTED_LOCAL_MACHINE_GREEN_STOP_SHIP_OPEN",
-  "nextPackage": "R22_FORBIDDEN",
+  "status": "MACHINE_AND_HOSTED_CI_COMPLETE_EXACT_USER_FILE_UNVERIFIED",
+  "nextPackage": "R22_PERMITTED_BY_OWNER_DIRECTIVE",
   "invariants": {
     "directReadUnsupportedIsCapabilityObservationNotContentVerdict": true,
     "historicalPoisonCanEnterValidationButNotRender": true,
@@ -38,7 +38,7 @@
     "androidTestCompilation": "PASS",
     "diffCheck": "PASS"
   },
-  "hostedEvidence": "PENDING_PUSH",
+  "hostedEvidence": "RUN_34100076259_COMPLETED_SUCCESS",
   "humanEvidence": {
     "exactLegacyUserMbtiles": "PENDING",
     "noClearNoReimportUpgradeJourney": "PENDING",
@@ -47,7 +47,8 @@
   "knownUnresolved": [
     "Exact user MBTiles content has not been exercised in this machine gate",
     "Old v1.0.2 accepted raster signatures without checking encoded tile dimensions; current renderer admits square 256/512 only",
-    "R21 cannot close and R22 cannot start until hosted CI and exact-file human acceptance pass"
+    "Exact user MBTiles content remains unverified because no such file was available on the development Mac or emulator",
+    "Owner explicitly directed uninterrupted continuation; this permits R22 without converting missing exact-file evidence into a PASS"
   ],
   "ciReportPrefix": "CODEX-CI-REPORT-"
 }
