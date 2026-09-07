@@ -1,18 +1,21 @@
 package com.yokuli.marine.navigation.domain
 
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
 
 class MarineOngoingActivityPortTest {
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun `consumer observes the exact process snapshots and commands the owning runtimes`() = runTest {
         val navigation = FakeNavigationRuntime(ActiveNavigationSnapshot(revision = 3L))
         val track = FakeTrackRuntime(TrackRecorderSnapshot(revision = 5L))
         val port = DefaultMarineOngoingActivityPort(navigation, track, backgroundScope)
+        runCurrent()
 
         assertSame(navigation.state.value, port.state.value.navigation)
         assertSame(track.state.value, port.state.value.trackRecorder)
@@ -21,7 +24,7 @@ class MarineOngoingActivityPortTest {
         val nextTrack = TrackRecorderSnapshot(revision = 6L)
         navigation.mutableState.value = nextNavigation
         track.mutableState.value = nextTrack
-        advanceUntilIdle()
+        runCurrent()
         assertSame(nextNavigation, port.state.value.navigation)
         assertSame(nextTrack, port.state.value.trackRecorder)
 
