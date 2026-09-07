@@ -997,7 +997,10 @@ class DefaultMapReducer(
             state = created.state.copy(
                 surface = MapSurface.Root,
                 surfaceHistory = emptyList(),
-                selection = MapSelection(place.point),
+                // The new waypoint marker is already the visible selected object. Keeping a
+                // second generic selection marker at the same coordinate made Mark look as if it
+                // had landed somewhere ambiguous.
+                selection = null,
                 transient = MapTransient.SelectedObject(MapHitResult(MapOverlayId.SAVED_PLACES, "place:${place.id}")),
             ),
         )

@@ -387,10 +387,22 @@ class ChartLibraryCoordinator(
             ?: runtime.acceptPicker(selection)
         when (result) {
             is ChartSourceCommandResult.Accepted -> {
-                notice = if (pending.repairSourceId == null) {
-                    ChartLibraryNoticeUi.SOURCE_ADDED
-                } else ChartLibraryNoticeUi.SOURCE_REPAIRED
-                runtime.refresh(result.sourceId)
+                // Registration and scanning are two different durable operations. Never discard
+                // the scan result and claim success merely because the URI row was registered.
+                notice = when (val refreshed = runtime.refresh(result.sourceId)) {
+                    is ChartSourceCommandResult.ScanPublished -> when (refreshed.status) {
+                        com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus.COMPLETE ->
+                            if (pending.repairSourceId == null) ChartLibraryNoticeUi.SOURCE_ADDED
+                            else ChartLibraryNoticeUi.SOURCE_REPAIRED
+                        com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus.PARTIAL ->
+                            ChartLibraryNoticeUi.SCAN_PARTIAL
+                        else -> ChartLibraryNoticeUi.SCAN_FAILED
+                    }
+                    is ChartSourceCommandResult.Accepted ->
+                        if (pending.repairSourceId == null) ChartLibraryNoticeUi.SOURCE_ADDED
+                        else ChartLibraryNoticeUi.SOURCE_REPAIRED
+                    is ChartSourceCommandResult.Rejected -> refreshed.reason.toNotice()
+                }
             }
             is ChartSourceCommandResult.ScanPublished -> notice = ChartLibraryNoticeUi.SCAN_FINISHED
             is ChartSourceCommandResult.Rejected -> notice = result.reason.toNotice()

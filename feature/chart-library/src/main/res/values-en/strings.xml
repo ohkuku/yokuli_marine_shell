@@ -111,7 +111,7 @@
     <string name="validation_interrupted">validation cancelled or interrupted</string>
     <string name="validation_issue_permission">This chart cannot be read because its source permission was lost. Reauthorize the source, then retry.</string>
     <string name="validation_issue_provider">This document provider cannot be read safely in place. The original remains registered in the library.</string>
-    <string name="validation_issue_schema">The file opened, but its MBTiles metadata or database schema is invalid.</string>
+    <string name="validation_issue_schema">The MBTiles tile store could not be read. Confirm that it contains a tiles object with zoom_level, tile_column, tile_row and tile_data columns, using PNG/JPG/WEBP raster tiles.</string>
     <string name="validation_issue_changed">The file changed during the check. Wait for writing to finish, then retry.</string>
     <string name="validation_issue_content">Tile content did not pass the check. The asset remains in the library and can be retried.</string>
     <string name="validation_issue_open">This file cannot be opened now. Check that its source is online, then retry.</string>
@@ -238,6 +238,8 @@
     <string name="notice_layer_updated">Layer settings saved.</string>
     <string name="notice_view_updated">Map view saved.</string>
     <string name="notice_scan_finished">Scan result published.</string>
+    <string name="notice_scan_partial">Only part of the scan completed. Previously usable charts were kept; open the source and retry.</string>
+    <string name="notice_scan_failed">The scan did not complete. Previously usable charts were kept; check access and retry.</string>
     <string name="notice_scan_cancelled">Operation cancelled.</string>
     <string name="notice_validation_finished">Validation result published.</string>
     <string name="notice_validation_cancelled">Validation cancellation requested.</string>
@@ -250,7 +252,7 @@
     <string name="notice_permission">Persistable read-only permission was not granted.</string>
     <string name="notice_missing">The item no longer exists; returned to Chart Library.</string>
     <string name="notice_changed">Another transaction changed the catalog. Retry against the current state.</string>
-    <string name="notice_failed">The operation did not complete; the catalog was not presented as successful.</string>
+    <string name="notice_failed">The chart-library change could not be saved. Existing sources and charts were kept; retry or reauthorize this source.</string>
     <string name="notice_queue_full">Actions arrived too quickly; this request was not submitted.</string>
     <string name="notice_selection_limit">At most 1000 assets can be selected at once.</string>
     <string name="launcher_available">%1$d available</string>

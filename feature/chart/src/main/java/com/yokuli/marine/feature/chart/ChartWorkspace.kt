@@ -33,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -109,7 +108,6 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayIssue
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
@@ -165,11 +163,9 @@ fun ChartWorkspace(
 ) {
     val colors = LocalWpTheme.current
     val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
-    val isSquare = abs(configuration.screenWidthDp - configuration.screenHeightDp) <= 80
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var queryPort by remember { mutableStateOf<MapRendererQueryPort?>(null) }
     val rootInsets = MapViewportInsets(
@@ -198,8 +194,10 @@ fun ChartWorkspace(
         }
     }
 
-    LaunchedEffect(isSquare) {
-        if (isSquare && !state.crosshairEnabled) onAction(MapAction.SetCrosshairEnabled(true))
+    LaunchedEffect(state.surface, state.crosshairEnabled) {
+        if (state.surface == MapSurface.Root && !state.crosshairEnabled) {
+            onAction(MapAction.SetCrosshairEnabled(true))
+        }
     }
     LaunchedEffect(imeVisible) {
         state.editGesture?.let { gesture -> onAction(MapAction.CancelPointDrag(gesture.id)) }
@@ -283,7 +281,14 @@ private fun MapRootChrome(
     onExportRecovery: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
-        MapTruthStrip(state, connectedBaseConfigured, onAction, Modifier.align(Alignment.TopStart))
+        MapTruthStrip(
+            state,
+            connectedBaseConfigured,
+            Modifier.align(Alignment.TopStart).padding(
+                start = with(LocalDensity.current) { viewportInsets.leftPx.toDp() } + 6.dp,
+                top = with(LocalDensity.current) { viewportInsets.topPx.toDp() } + 4.dp,
+            ),
+        )
         MapEdgeControls(state, viewportInsets, onAction)
         MapPersistenceTruth(
             state,
@@ -336,8 +341,7 @@ private fun MapRootChrome(
                 onSaveAndStartRoute,
                 onAction,
             )
-            if (state.crosshairEnabled) CrosshairAction(state, queryPort, viewportSize, viewportInsets, onAction)
-            MapRootCommandBar(state, viewportInsets, onAction)
+            MapRootCommandBar(state, queryPort, viewportSize, viewportInsets, onAction)
         }
     }
 }
@@ -346,7 +350,6 @@ private fun MapRootChrome(
 private fun MapTruthStrip(
     state: MapState,
     connectedBaseConfigured: Boolean,
-    onAction: (MapAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalWpTheme.current
@@ -358,7 +361,7 @@ private fun MapTruthStrip(
     Column(
         modifier.background(colors.background.copy(alpha = .88f)).padding(horizontal = 10.dp, vertical = 6.dp)
             .testTag("map-truth-strip"),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             status?.let { WpText(stringResource(it), 10, color = colors.foreground, maxLines = 1) }
@@ -369,7 +372,7 @@ private fun MapTruthStrip(
                 maxLines = 1,
             )
         }
-        MapPositionTruth(state, onAction)
+        WpText(state.camera.center.coordinateText(), 10, color = colors.foreground, maxLines = 1)
     }
 }
 
@@ -879,45 +882,12 @@ private fun RouteRootSummary(
 }
 
 @Composable
-private fun CrosshairAction(
-    state: MapState,
-    queryPort: MapRendererQueryPort?,
-    viewportSize: IntSize,
-    viewportInsets: MapViewportInsets,
-    onAction: (MapAction) -> Unit,
-) {
-    val colors = LocalWpTheme.current
-    val screenPoint = MapCrosshairResolver.screenPoint(viewportSize.width, viewportSize.height, viewportInsets)
-    val enabled = queryPort != null && screenPoint != null
-    Box(
-        Modifier.fillMaxWidth().background(colors.background.copy(alpha = .88f)).padding(horizontal = 12.dp),
-        contentAlignment = Alignment.CenterEnd,
-    ) {
-        MapTextButton(
-            stringResource(if (enabled) R.string.map_crosshair_use else R.string.map_crosshair_wait),
-            "map-crosshair-use",
-            enabled,
-        ) {
-            val port = queryPort ?: return@MapTextButton
-            val target = requireNotNull(screenPoint)
-            val coordinate = port.unproject(target) ?: return@MapTextButton
-            if (state.precisePointEdit == null) {
-                onAction(MapAction.CrosshairConfirmed(coordinate, port.query(target, INTERACTIVE_OVERLAYS)))
-            } else {
-                onAction(MapAction.ConfirmPrecisePoint(coordinate))
-            }
-        }
-    }
-}
-
-@Composable
 private fun MapEdgeControls(
     state: MapState,
     viewportInsets: MapViewportInsets,
     onAction: (MapAction) -> Unit,
 ) {
     val density = LocalDensity.current
-    val colors = LocalWpTheme.current
     val vessel = PositionRenderPolicy.resolve(state.position).point
         ?.takeIf { state.position.availability == PositionAvailability.FRESH }
     Box(Modifier.fillMaxSize().padding(bottom = 62.dp)) {
@@ -928,7 +898,7 @@ private fun MapEdgeControls(
                 tag = "map-navigation-camera",
                 selected = cameraMode != NavigationCameraMode.FREE_BROWSE,
                 modifier = Modifier.align(Alignment.TopStart).padding(
-                    top = 4.dp,
+                    top = with(density) { viewportInsets.topPx.toDp() } + 4.dp,
                     start = with(density) { viewportInsets.leftPx.toDp() } + 6.dp,
                 ),
             ) {
@@ -936,27 +906,27 @@ private fun MapEdgeControls(
             }
         }
         MapEdgeButton(
-            label = if (state.navigationActive) {
-                stringResource(state.navigationCamera.orientation.label())
-            } else if (state.camera.bearing == 0.0) "N" else "%03.0f°".format(state.camera.bearing),
+            label = if (state.camera.bearing.roundToInt().mod(360) == 0) "N"
+            else "%03.0f°".format(state.camera.bearing),
             tag = "map-orientation-north",
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp),
+            modifier = Modifier.align(Alignment.TopCenter).padding(
+                top = with(density) { viewportInsets.topPx.toDp() } + 4.dp,
+            ),
         ) {
             if (state.navigationActive) {
-                onAction(MapAction.SetMapOrientationMode(state.navigationCamera.orientation.next()))
-            } else {
-                onAction(
-                    MapAction.RequestCamera(
-                        MapCameraTarget.Exact(state.camera.copy(bearing = 0.0)),
-                        MapCameraIntent.NORTH_RESET,
-                        viewportInsets,
-                    ),
-                )
+                onAction(MapAction.SetMapOrientationMode(MapOrientationMode.NORTH_UP))
             }
+            onAction(
+                MapAction.RequestCamera(
+                    MapCameraTarget.Exact(state.camera.copy(bearing = 0.0)),
+                    MapCameraIntent.NORTH_RESET,
+                    viewportInsets,
+                ),
+            )
         }
         Column(
             Modifier.align(Alignment.TopEnd).padding(
-                top = 4.dp,
+                top = with(density) { viewportInsets.topPx.toDp() } + 4.dp,
                 end = with(density) { viewportInsets.rightPx.toDp() } + 6.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(5.dp),
@@ -980,30 +950,40 @@ private fun MapEdgeControls(
                 )
             }
         }
-        MapEdgeButton(
-            label = "GPS",
-            tag = "map-recenter",
-            selected = if (state.navigationActive) {
-                state.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE
-            } else state.position.viewIntent == PositionViewIntent.FOLLOW_POSITION,
-            enabled = vessel != null,
-            modifier = Modifier.align(Alignment.BottomStart).padding(
+        Column(
+            Modifier.align(Alignment.BottomStart).padding(
                 start = with(density) { viewportInsets.leftPx.toDp() } + 6.dp,
                 bottom = 6.dp,
             ),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            val point = vessel ?: return@MapEdgeButton
-            if (state.navigationActive) {
-                onAction(MapAction.RecenterNavigationCamera)
-            } else {
-                onAction(MapAction.SetPositionViewIntent(PositionViewIntent.FOLLOW_POSITION))
-                onAction(
-                    MapAction.RequestCamera(
-                        MapCameraTarget.Exact(state.camera.copy(center = point)),
-                        MapCameraIntent.FOLLOW_POSITION,
-                        viewportInsets,
-                    ),
-                )
+            MapEdgeButton(
+                label = stringResource(R.string.map_coordinate_input_short),
+                tag = "map-coordinate-shortcut",
+            ) {
+                onAction(MapAction.OpenSurface(MapSurface.CoordinateInput))
+            }
+            MapEdgeButton(
+                label = "GPS",
+                tag = "map-recenter",
+                selected = if (state.navigationActive) {
+                    state.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE
+                } else state.position.viewIntent == PositionViewIntent.FOLLOW_POSITION,
+                enabled = vessel != null,
+            ) {
+                val point = vessel ?: return@MapEdgeButton
+                if (state.navigationActive) {
+                    onAction(MapAction.RecenterNavigationCamera)
+                } else {
+                    onAction(MapAction.SetPositionViewIntent(PositionViewIntent.FOLLOW_POSITION))
+                    onAction(
+                        MapAction.RequestCamera(
+                            MapCameraTarget.Exact(state.camera.copy(center = point, bearing = 0.0)),
+                            MapCameraIntent.FOLLOW_POSITION,
+                            viewportInsets,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -1020,24 +1000,12 @@ private fun com.yokuli.marine.map.domain.NavigationCameraState.nextTrackingMode(
     }
 }
 
-private fun MapOrientationMode.next(): MapOrientationMode = when (this) {
-    MapOrientationMode.NORTH_UP -> MapOrientationMode.COURSE_UP
-    MapOrientationMode.COURSE_UP -> MapOrientationMode.HEADING_UP
-    MapOrientationMode.HEADING_UP -> MapOrientationMode.NORTH_UP
-}
-
 private fun NavigationCameraMode.label() = when (this) {
     NavigationCameraMode.VESSEL_FOLLOW -> R.string.map_camera_follow
     NavigationCameraMode.LOOK_AHEAD -> R.string.map_camera_look_ahead
     NavigationCameraMode.NEXT_WAYPOINT -> R.string.map_camera_next_waypoint
     NavigationCameraMode.ROUTE_OVERVIEW -> R.string.map_camera_route_overview
     NavigationCameraMode.FREE_BROWSE -> R.string.map_camera_free_browse
-}
-
-private fun MapOrientationMode.label() = when (this) {
-    MapOrientationMode.NORTH_UP -> R.string.map_orientation_north_up
-    MapOrientationMode.COURSE_UP -> R.string.map_orientation_course_up
-    MapOrientationMode.HEADING_UP -> R.string.map_orientation_heading_up
 }
 
 @Composable
@@ -1072,10 +1040,14 @@ private fun MapEdgeButton(
 @Composable
 private fun MapRootCommandBar(
     state: MapState,
+    queryPort: MapRendererQueryPort?,
+    viewportSize: IntSize,
     viewportInsets: MapViewportInsets,
     onAction: (MapAction) -> Unit,
 ) {
     val density = LocalDensity.current
+    val crosshairScreen = MapCrosshairResolver.screenPoint(viewportSize.width, viewportSize.height, viewportInsets)
+    val crosshairPoint = crosshairScreen?.let { queryPort?.unproject(it) }
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp).background(LocalWpTheme.current.background.copy(alpha = .98f))
             .padding(
@@ -1093,9 +1065,9 @@ private fun MapRootCommandBar(
             "map-tool-mark",
             false,
             Modifier.weight(1f),
-            enabled = target != null || vessel != null,
+            enabled = target != null || vessel != null || crosshairPoint != null,
         ) {
-            onAction(MapAction.QuickMark(target ?: vessel ?: return@MapCommandButton))
+            onAction(MapAction.QuickMark(target ?: vessel ?: crosshairPoint ?: return@MapCommandButton))
         }
         MapCommandButton(R.string.map_tool_route, "map-tool-route", state.tool == MapTool.MANUAL_ROUTE, Modifier.weight(1f)) {
             if (state.tool == MapTool.MANUAL_ROUTE) {
@@ -1109,7 +1081,23 @@ private fun MapRootCommandBar(
             if (state.tool == MapTool.MEASURE) {
                 onAction(MapAction.SelectTool(MapTool.BROWSE))
             } else {
-                onAction(MapAction.BeginMeasurement(vessel, target ?: state.camera.center))
+                val center = target ?: crosshairPoint ?: state.camera.center
+                val separationPx = with(density) { 72.dp.toPx().toDouble() }
+                val fallbackDistance = state.camera.scaleNauticalMilesForPixels(separationPx)
+                    .times(1_852.0).coerceAtLeast(10.0)
+                val left = crosshairScreen?.let { screen ->
+                    queryPort?.unproject(screen.copy(xPx = screen.xPx - separationPx))
+                } ?: Wgs84Geodesic.destination(center, 270.0, fallbackDistance)
+                val right = crosshairScreen?.let { screen ->
+                    queryPort?.unproject(screen.copy(xPx = screen.xPx + separationPx))
+                } ?: Wgs84Geodesic.destination(center, 90.0, fallbackDistance)
+                val a = vessel ?: left
+                val b = when {
+                    vessel != null && center != vessel -> center
+                    vessel != null -> right
+                    else -> right
+                }
+                onAction(MapAction.BeginMeasurement(a, b))
             }
         }
         MapCommandButton(R.string.map_tool_view, "map-open-view-picker", false, Modifier.weight(1f)) {

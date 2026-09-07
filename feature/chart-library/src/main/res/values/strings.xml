@@ -111,7 +111,7 @@
     <string name="validation_interrupted">验证已取消或中断</string>
     <string name="validation_issue_permission">无法读取此海图：所属来源的只读授权已失效。请重新授权来源后重试。</string>
     <string name="validation_issue_provider">此文档提供方不支持安全原地读取。原资源仍保留在海图库中。</string>
-    <string name="validation_issue_schema">文件可打开，但 MBTiles 元数据或数据库结构无效。</string>
+    <string name="validation_issue_schema">无法读取 MBTiles 图块表。请确认文件包含 tiles 以及 zoom_level、tile_column、tile_row、tile_data 字段，并且内容为 PNG/JPG/WEBP 栅格图块。</string>
     <string name="validation_issue_changed">文件在检查期间发生变化。请等待写入完成后重试。</string>
     <string name="validation_issue_content">图块内容未通过检查。资源没有从海图库删除，可以重试或查看来源。</string>
     <string name="validation_issue_open">当前无法打开这个文件。请检查来源是否在线并重试。</string>
@@ -238,6 +238,8 @@
     <string name="notice_layer_updated">图层设置已保存。</string>
     <string name="notice_view_updated">地图视图已保存。</string>
     <string name="notice_scan_finished">扫描结果已发布。</string>
+    <string name="notice_scan_partial">只完成了部分扫描；上一次可用海图仍然保留。请打开来源查看问题并重试。</string>
+    <string name="notice_scan_failed">扫描没有完成；上一次可用海图仍然保留。请检查权限后重试。</string>
     <string name="notice_scan_cancelled">任务已取消。</string>
     <string name="notice_validation_finished">验证结果已发布。</string>
     <string name="notice_validation_cancelled">验证取消请求已提交。</string>
@@ -250,7 +252,7 @@
     <string name="notice_permission">没有获得可持久化只读授权。</string>
     <string name="notice_missing">项目已经不存在，已返回海图库。</string>
     <string name="notice_changed">目录已被其它事务更新，请按最新状态重试。</string>
-    <string name="notice_failed">操作未完成，当前目录没有被写成成功。</string>
+    <string name="notice_failed">海图库更改未能保存；原有来源和海图没有被删除。请重试，或重新授权这个来源。</string>
     <string name="notice_queue_full">操作过快，本次请求没有提交。</string>
     <string name="notice_selection_limit">一次最多选择 1000 张资源。</string>
     <string name="launcher_available">%1$d 张可用</string>

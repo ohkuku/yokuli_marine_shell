@@ -56,6 +56,21 @@ class AndroidChartResourceAccess(
         val uri = runCatching { Uri.parse(request.locator.value) }.getOrNull()
             ?: return@withContext ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Invalid locator")
         if (uri.scheme == MANAGED_SCHEME) return@withContext openManaged(request, uri)
+
+        // A Storage Access Framework descriptor being seekable does not mean Android's SQLite
+        // stack can safely reopen it through /proc/self/fd. Real document providers commonly
+        // expose descriptors that pass lseek but fail once SQLite performs its own path and
+        // locking work. The old Yokuli importer avoided that provider-dependent failure by
+        // validating an app-private copy. Keep the user's source read-only and identity-stable,
+        // but use a revision-keyed local access copy whenever the production runtime provides a
+        // cache root. This is an access cache, not a managed-library import.
+        if (uri.scheme == ContentResolver.SCHEME_CONTENT && localFallbackRoot != null) {
+            return@withContext fallbackLocks[
+                (request.assetId.value.hashCode() and Int.MAX_VALUE) % fallbackLocks.size
+            ].withLock {
+                openLocalFallback(request, uri, localFallbackRoot)
+            }
+        }
         when (val opened = AndroidSafRandomAccessReader(resolver).open(uri)) {
             is SafRandomAccessOpenResult.Rejected -> if (
                 localFallbackRoot != null && opened.failure in STREAM_FALLBACK_FAILURES

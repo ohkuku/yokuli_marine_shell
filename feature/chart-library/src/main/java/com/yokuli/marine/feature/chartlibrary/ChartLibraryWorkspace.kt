@@ -1117,6 +1117,8 @@ private fun copyJobLabel(
     ChartLibraryNoticeUi.LAYER_UPDATED -> R.string.notice_layer_updated
     ChartLibraryNoticeUi.VIEW_UPDATED -> R.string.notice_view_updated
     ChartLibraryNoticeUi.SCAN_FINISHED -> R.string.notice_scan_finished
+    ChartLibraryNoticeUi.SCAN_PARTIAL -> R.string.notice_scan_partial
+    ChartLibraryNoticeUi.SCAN_FAILED -> R.string.notice_scan_failed
     ChartLibraryNoticeUi.SCAN_CANCELLED -> R.string.notice_scan_cancelled
     ChartLibraryNoticeUi.VALIDATION_FINISHED -> R.string.notice_validation_finished
     ChartLibraryNoticeUi.VALIDATION_CANCELLED -> R.string.notice_validation_cancelled

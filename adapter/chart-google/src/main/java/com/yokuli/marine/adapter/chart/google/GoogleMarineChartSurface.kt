@@ -71,6 +71,7 @@ import java.util.concurrent.atomic.AtomicReference
 import java.io.ByteArrayOutputStream
 import kotlin.math.min
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -104,6 +105,7 @@ fun GoogleMarineChartSurface(
     val currentAction by rememberUpdatedState(onAction)
     val currentState by rememberUpdatedState(state)
     val currentQueryPortChanged by rememberUpdatedState(onQueryPortChanged)
+    val displayDensity = context.resources.displayMetrics.density
     val generation = remember { MapRendererGeneration(nextRendererGeneration.incrementAndGet()) }
     val activeCameraCommand = remember { AtomicReference<MapCameraCommandId?>(null) }
     val submittedCameraCommand = remember { AtomicReference<MapCameraCommandId?>(null) }
@@ -120,7 +122,7 @@ fun GoogleMarineChartSurface(
                 .mapType(state.mapViewMode.googleMapType())
                 .compassEnabled(false)
                 .mapToolbarEnabled(false)
-                .rotateGesturesEnabled(true)
+                .rotateGesturesEnabled(false)
                 .scrollGesturesEnabled(true)
                 .tiltGesturesEnabled(false)
                 .zoomControlsEnabled(false)
@@ -250,14 +252,20 @@ fun GoogleMarineChartSurface(
                     isIndoorLevelPickerEnabled = false
                     isMapToolbarEnabled = false
                     isMyLocationButtonEnabled = false
-                    isRotateGesturesEnabled = true
+                    isRotateGesturesEnabled = false
                     isScrollGesturesEnabled = true
                     isTiltGesturesEnabled = false
                     isZoomControlsEnabled = false
                     isZoomGesturesEnabled = true
                 }
                 moveCamera(CameraUpdateFactory.newCameraPosition(currentState.camera.toCameraPosition()))
-                queryPort = GoogleRendererQueryPort(this, { currentState }, { !disposed })
+                queryPort = GoogleRendererQueryPort(
+                    this,
+                    { currentState },
+                    { !disposed },
+                    hitRadiusPx = 28.0 * displayDensity,
+                    lineHitRadiusPx = 18.0 * displayDensity,
+                )
                 currentQueryPortChanged(queryPort)
                 setOnCameraIdleListener {
                     if (activeCameraCommand.get() == null) {
@@ -454,7 +462,11 @@ fun GoogleMarineChartSurface(
                         MarkerOptions()
                             .position(point.toLatLng())
                             .anchor(.5f, .5f)
-                            .icon(BitmapDescriptorFactory.fromBitmap(measurementHandleBitmap(if (index == 0) "A" else "B"))),
+                            .icon(
+                                BitmapDescriptorFactory.fromBitmap(
+                                    measurementHandleBitmap(if (index == 0) "A" else "B", displayDensity),
+                                ),
+                            ),
                     )?.let(domainMarkers::add)
                 }
             }
@@ -467,7 +479,11 @@ fun GoogleMarineChartSurface(
                         MarkerOptions()
                             .position(point.toLatLng())
                             .anchor(.5f, .5f)
-                            .icon(BitmapDescriptorFactory.fromBitmap(measurementHandleBitmap((index + 1).toString()))),
+                            .icon(
+                                BitmapDescriptorFactory.fromBitmap(
+                                    measurementHandleBitmap((index + 1).toString(), displayDensity),
+                                ),
+                            ),
                     )?.let(domainMarkers::add)
                 }
             }
@@ -569,20 +585,20 @@ private fun CameraPosition.toDomainCamera(): MapCamera = MapCamera(
 
 private fun LatLng.toDomainPoint(): GeoPoint = GeoPoint(latitude, longitude)
 
-private fun measurementHandleBitmap(label: String): Bitmap {
-    val size = 56
+private fun measurementHandleBitmap(label: String, density: Float): Bitmap {
+    val size = (48f * density).roundToInt().coerceAtLeast(48)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xfff7b500.toInt() }
     val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = 3f
+        strokeWidth = 2f * density
     }
     val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLACK
         textAlign = Paint.Align.CENTER
-        textSize = 30f
+        textSize = size * .54f
         typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
     canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3f, fill)
@@ -617,6 +633,8 @@ private class GoogleRendererQueryPort(
     private val map: GoogleMap,
     private val currentState: () -> MapState,
     private val isCurrent: () -> Boolean,
+    private val hitRadiusPx: Double,
+    private val lineHitRadiusPx: Double,
 ) : MapRendererQueryPort {
     override fun project(point: GeoPoint): MapScreenPoint? = ifCurrent {
         map.projection.toScreenLocation(point.toLatLng()).toDomainScreenPoint()
@@ -631,7 +649,7 @@ private class GoogleRendererQueryPort(
         val pointHits = state.hitCandidates(overlayIds)
             .mapNotNull { candidate ->
                 val screen = map.projection.toScreenLocation(candidate.point.toLatLng()).toDomainScreenPoint()
-                candidate.hit.takeIf { screen.distanceTo(point) <= HIT_RADIUS_PX }
+                candidate.hit.takeIf { screen.distanceTo(point) <= hitRadiusPx }
             }
             .distinct()
         val routeHit = if (
@@ -641,7 +659,7 @@ private class GoogleRendererQueryPort(
                 point.distanceToSegment(
                     map.projection.toScreenLocation(from.toLatLng()).toDomainScreenPoint(),
                     map.projection.toScreenLocation(to.toLatLng()).toDomainScreenPoint(),
-                ) <= LINE_HIT_RADIUS_PX
+                ) <= lineHitRadiusPx
             }
         ) {
             listOf(MapHitResult(MapOverlayId.MANUAL_ROUTE, "route:${state.routeDraft?.id.orEmpty()}"))
@@ -705,8 +723,6 @@ private val INTERACTIVE_OVERLAYS = setOf(
 private val HANDLE_OVERLAYS = setOf(MapOverlayId.MEASUREMENT_POINTS, MapOverlayId.MANUAL_ROUTE_POINTS)
 private val nextRendererGeneration = AtomicLong(20_000L)
 private val nextPointGesture = AtomicLong(0L)
-private const val HIT_RADIUS_PX = 36.0
-private const val LINE_HIT_RADIUS_PX = 24.0
 private const val GOOGLE_MAX_ZOOM = 21.0
 
 private class MapViewLifecycleDriver(private val mapView: MapView) {

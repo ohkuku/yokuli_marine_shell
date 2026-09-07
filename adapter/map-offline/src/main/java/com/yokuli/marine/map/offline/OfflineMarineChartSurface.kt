@@ -3,6 +3,7 @@ package com.yokuli.marine.map.offline
 import android.content.ComponentCallbacks2
 import android.content.res.Configuration
 import android.graphics.PointF
+import android.graphics.RectF
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
@@ -120,6 +121,7 @@ fun OfflineMarineChartSurface(
     val currentAction by rememberUpdatedState(onAction)
     val currentState by rememberUpdatedState(state)
     val currentQueryPortChanged by rememberUpdatedState(onQueryPortChanged)
+    val displayDensity = context.resources.displayMetrics.density
     remember(context.applicationContext) { MapLibre.getInstance(context.applicationContext) }
 
     val generation = remember { MapRendererGeneration(nextRendererGeneration.incrementAndGet()) }
@@ -285,12 +287,15 @@ fun OfflineMarineChartSurface(
                 isCompassEnabled = false
                 isLogoEnabled = false
                 isAttributionEnabled = true
-                isRotateGesturesEnabled = true
+                isRotateGesturesEnabled = false
                 isScrollGesturesEnabled = true
                 isZoomGesturesEnabled = true
                 isTiltGesturesEnabled = false
             }
-            queryPort = MapLibreRendererQueryPort(readyMap) { !disposed.get() }
+            queryPort = MapLibreRendererQueryPort(
+                readyMap,
+                hitRadiusPx = 28f * displayDensity,
+            ) { !disposed.get() }
             currentQueryPortChanged(queryPort)
             cameraListener = MapLibreMap.OnCameraIdleListener {
                 readyMap.currentChartViewport()?.let { viewport ->
@@ -386,15 +391,15 @@ fun OfflineMarineChartSurface(
                         RasterLayer(layerId, sourceId).withProperties(rasterOpacity(prepared.planLayer.opacity)),
                     )
                 }
-                style.addPointOverlay(MapOverlayId.SAVED_PLACES, 0xfff7b500.toInt(), 5f)
-                style.addPointOverlay(MapOverlayId.SELECTION, 0xffffffff.toInt(), 7f)
+                style.addPointOverlay(MapOverlayId.SAVED_PLACES, 0xfff7b500.toInt(), 7f)
+                style.addPointOverlay(MapOverlayId.SELECTION, 0xffffffff.toInt(), 9f)
                 style.addLineOverlay(MapOverlayId.MEASUREMENT, 0xfff7b500.toInt(), 3f)
-                style.addPointOverlay(MapOverlayId.MEASUREMENT_POINTS, 0xfff7b500.toInt(), 6f)
+                style.addPointOverlay(MapOverlayId.MEASUREMENT_POINTS, 0xfff7b500.toInt(), 13f)
                 style.addMeasurementLabels()
                 style.addLineOverlay(MapOverlayId.MANUAL_ROUTE, 0xff00a4ef.toInt(), 5f)
                 style.addLineOverlay(MapOverlayId.ACTIVE_NAVIGATION_LEG, 0xfff7b500.toInt(), 7f)
                 style.addLineOverlay(MapOverlayId.ACTIVE_TRACK, 0xff00d084.toInt(), 4f)
-                style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 5f)
+                style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 10f)
                 style.addPointLabels(MapOverlayId.MANUAL_ROUTE_POINTS)
                 style.addLineOverlay(MapOverlayId.IMPORTED_TRACKS, 0xff9b59b6.toInt(), 3f)
                 style.addPointOverlay(MapOverlayId.POSITION_OBSERVATION, 0xff00d084.toInt(), 7f)
@@ -700,7 +705,7 @@ private fun Style.addPointLabels(id: MapOverlayId) {
         SymbolLayer("${id.wireValue}-labels", id.wireValue)
             .withProperties(
                 textField(get("label")),
-                textSize(13f),
+                textSize(16f),
                 textColor(0xff000000.toInt()),
                 textAllowOverlap(true),
                 textIgnorePlacement(true),
@@ -779,6 +784,7 @@ private fun ChartPackage.hasReadableMbTiles(): Boolean {
 
 internal class MapLibreRendererQueryPort(
     private val map: MapLibreMap,
+    private val hitRadiusPx: Float,
     private val isCurrent: () -> Boolean,
 ) : MapRendererQueryPort {
     override fun project(point: GeoPoint): MapScreenPoint? = ifCurrent {
@@ -791,7 +797,17 @@ internal class MapLibreRendererQueryPort(
 
     override fun query(point: MapScreenPoint, overlayIds: Set<MapOverlayId>): List<MapHitResult> = ifCurrent {
         val layers = overlayIds.map { it.wireValue }.toTypedArray()
-        map.queryRenderedFeatures(PointF(point.xPx.toFloat(), point.yPx.toFloat()), *layers).mapNotNull { feature ->
+        val centerX = point.xPx.toFloat()
+        val centerY = point.yPx.toFloat()
+        map.queryRenderedFeatures(
+            RectF(
+                centerX - hitRadiusPx,
+                centerY - hitRadiusPx,
+                centerX + hitRadiusPx,
+                centerY + hitRadiusPx,
+            ),
+            *layers,
+        ).mapNotNull { feature ->
             val layer = overlayIds.firstOrNull { candidate ->
                 feature.id()?.startsWith(candidate.objectIdPrefix()) == true
             } ?: return@mapNotNull null

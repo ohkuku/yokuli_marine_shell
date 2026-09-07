@@ -18,9 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -40,24 +38,16 @@ import com.yokuli.marine.core.design.WpThemePolicy
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.model.AppLanguage
-import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.shell.contract.MotionPreference
 import com.yokuli.shell.contract.AppPreferenceDefinition
 import com.yokuli.shell.contract.AppPreferenceLabel
 import com.yokuli.shell.contract.AppPreferenceValue
-import com.yokuli.shell.contract.ShellInput
 
 @Composable
 fun PreferencesWorkspace(state: PreferencesUiState, onAction: (PreferencesUiAction) -> Unit) {
-    val current by rememberUpdatedState(state)
-    val action by rememberUpdatedState(onAction)
-    BindInternalAppInputHandler { input ->
-        if (input == ShellInput.BACK && current.section != PreferencesSection.OVERVIEW) {
-            action(PreferencesUiAction.OpenSection(PreferencesSection.OVERVIEW))
-            true
-        } else false
-    }
+    // Settings sections are direct destinations, not a second nested navigation stack. The
+    // Shell owns Back and returns straight to Start from every Settings section.
     Column(Modifier.fillMaxSize().background(LocalWpTheme.current.background).testTag("preferences-workspace")) {
         WpPageHeader("preferences", stringResource(R.string.preferences_title), sectionLabel(state.section))
         when (state.section) {
