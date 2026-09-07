@@ -152,4 +152,16 @@
     <string name="track_issue_capacity">The safe point limit was reached. Recording is paused and accepted points are preserved.</string>
     <string name="track_issue_persistence">Persistence failed. Recording is safely paused; try again.</string>
     <string name="track_issue_archive">The track library write failed. The stopped track is retained for retry or discard.</string>
+    <string name="navigation_history_title">passage history</string>
+    <string name="navigation_history_time">%1$s → %2$s</string>
+    <string name="navigation_history_ongoing">ongoing</string>
+    <string name="navigation_history_waypoints">%1$d POSITION-CONFIRMED · %2$d ADVANCED · %3$d TARGETS</string>
+    <string name="navigation_history_track">ACTUAL TRACK · %1$s · %2$.2f NM</string>
+    <string name="navigation_history_track_metric">ACTUAL TRACK · %1$s · %2$.2f KM</string>
+    <string name="navigation_history_active">ACTIVE</string>
+    <string name="navigation_history_completed">COMPLETE</string>
+    <string name="navigation_history_stopped">STOPPED</string>
+    <string name="navigation_history_replaced">REPLACED</string>
+    <string name="navigation_history_interrupted">INTERRUPTED</string>
+    <string name="nav_history_persistence_issue">Navigation continues, but passage history is not safely stored yet. Recoverable session facts are retained for retry.</string>
 </resources>

@@ -164,6 +164,20 @@ class DefaultTrackRecorderRuntimeTest {
         assertEquals(1, fixture.runtime.state.value.pointCount)
     }
 
+    @Test
+    fun `wall clock rollback cannot crash stop or create negative timing`() = runTest {
+        val fixture = Fixture(this)
+        fixture.clock.now = 1_000
+        fixture.runtime.initialize()
+        fixture.runtime.execute(TrackRecorderCommand.Start)
+        fixture.clock.now = 500
+
+        fixture.runtime.execute(TrackRecorderCommand.Stop)
+
+        assertEquals(1_000L, fixture.runtime.state.value.session?.stoppedAtEpochMillis)
+        assertEquals(0L, fixture.runtime.state.value.durationMillis)
+    }
+
     private class Fixture(
         testScope: TestScope,
         stored: TrackRecordingSession? = null,

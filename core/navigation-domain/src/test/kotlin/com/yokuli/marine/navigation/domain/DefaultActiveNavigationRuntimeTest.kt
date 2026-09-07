@@ -188,6 +188,88 @@ class DefaultActiveNavigationRuntimeTest {
         assertTrue(fixture.runtime.state.value.pendingReplacement != null)
     }
 
+    @Test
+    fun `manual advance without a usable fix is not fabricated as a positioned passage`() = runTest {
+        val fixture = Fixture(this)
+        fixture.runtime.initialize()
+        fixture.runtime.execute(ActiveNavigationCommand.Start("route", 3))
+        fixture.runtime.execute(ActiveNavigationCommand.NextWaypoint)
+        fixture.runtime.execute(ActiveNavigationCommand.Stop)
+
+        val passage = fixture.history.state.value.passages.single()
+        assertEquals(NavigationPassageOutcome.STOPPED, passage.outcome)
+        assertEquals(NavigationPassageEvidence.NO_POSITION_EVIDENCE, passage.waypoints[1].event?.evidence)
+        assertNull(passage.waypoints[1].event?.actualPosition)
+    }
+
+    @Test
+    fun `arrival advance records actual vessel position and source`() = runTest {
+        val fixture = Fixture(this)
+        fixture.runtime.initialize()
+        fixture.runtime.execute(
+            ActiveNavigationCommand.Start(
+                "route", 3, arrivalRadiusMeters = 200.0,
+                advancePolicy = NavigationAdvancePolicy.ARRIVAL_RADIUS,
+            ),
+        )
+        fixture.input.value = NavigationFix(
+            revision = 2,
+            position = NavigationPosition(-36.80, 174.86),
+            positionStatus = NavigationInputStatus.LIVE,
+            positionSourceId = "source",
+            receivedAtMonotonicMillis = 200,
+        )
+        advanceUntilIdle()
+
+        val event = fixture.history.state.value.passages.single().waypoints[1].event
+        assertEquals(NavigationAdvanceReason.ARRIVAL_RADIUS, event?.reason)
+        assertEquals(NavigationPosition(-36.80, 174.86), event?.actualPosition)
+        assertEquals("source", event?.positionSourceId)
+    }
+
+    @Test
+    fun `moving to the previous leg never invents a new waypoint passage`() = runTest {
+        val fixture = Fixture(this)
+        fixture.runtime.initialize()
+        fixture.runtime.execute(ActiveNavigationCommand.Start("route", 3))
+        fixture.runtime.execute(ActiveNavigationCommand.NextWaypoint)
+        fixture.runtime.execute(ActiveNavigationCommand.PreviousWaypoint)
+
+        val passage = fixture.history.state.value.passages.single()
+        assertTrue(passage.waypoints[1].event != null)
+        assertNull(passage.waypoints[2].event)
+    }
+
+    @Test
+    fun `rapid restart of the same route creates a distinct passage identity`() = runTest {
+        val fixture = Fixture(this)
+        fixture.runtime.initialize()
+        fixture.runtime.execute(ActiveNavigationCommand.Start("route", 3))
+        val first = fixture.runtime.state.value.session?.sessionId
+        fixture.runtime.execute(ActiveNavigationCommand.Stop)
+        fixture.runtime.execute(ActiveNavigationCommand.Start("route", 3))
+
+        assertTrue(first != fixture.runtime.state.value.session?.sessionId)
+        assertEquals(2, fixture.history.state.value.passages.size)
+    }
+
+    @Test
+    fun `completed session restores its exact terminal time into history`() = runTest {
+        val stored = session().copy(
+            activeLegIndex = 1,
+            state = NavigationSessionState.COMPLETE,
+            completedAtEpochMillis = 3_500,
+        )
+        val fixture = Fixture(this, stored)
+
+        fixture.runtime.initialize()
+
+        val passage = fixture.history.state.value.passages.single()
+        assertEquals(NavigationPassageOutcome.COMPLETED, passage.outcome)
+        assertEquals(3_500L, passage.endedAtEpochMillis)
+        assertEquals(2, passage.furthestAdvancedWaypointIndex)
+    }
+
     private class Fixture(
         testScope: TestScope,
         stored: ActiveNavigationSession? = null,
@@ -197,11 +279,13 @@ class DefaultActiveNavigationRuntimeTest {
         )
         val input = MutableStateFlow(NavigationFix())
         val store = FakeStore(stored)
+        val history = DefaultNavigationHistoryRuntime(FakeHistoryStore())
         private val route = route()
         val runtime = DefaultActiveNavigationRuntime(
             routes = NavigationRouteReadPort { if (it == route.id) route else null },
             input = object : NavigationInputPort { override val state = input },
             sessionStore = store,
+            history = history,
             clock = NavigationRuntimeClock { 5_000 },
             scope = runtimeScope,
         )
@@ -216,6 +300,15 @@ class DefaultActiveNavigationRuntimeTest {
             if (failSaves) return NavigationSessionSaveResult.Failed(NavigationSessionStoreFailure.IO)
             value = session
             return NavigationSessionSaveResult.Saved
+        }
+    }
+
+    private class FakeHistoryStore : NavigationHistoryStore {
+        var value = NavigationHistorySnapshot.EMPTY
+        override suspend fun loadNavigationHistory() = NavigationHistoryLoadResult.Loaded(value)
+        override suspend fun saveNavigationHistory(snapshot: NavigationHistorySnapshot): NavigationHistorySaveResult {
+            value = snapshot
+            return NavigationHistorySaveResult.Saved
         }
     }
 

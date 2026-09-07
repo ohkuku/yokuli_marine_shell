@@ -18,6 +18,10 @@ data class ActiveNavigationSession(
      * Direct-To uses this so it can survive process recreation without inventing a saved route.
      */
     val embeddedRoute: RoutePlan? = null,
+    /** Stable passage attempt identity; legacy sessions derive it from their former natural key. */
+    val sessionId: String = "$routeId:$routeRevision:$startedAtEpochMillis",
+    /** Exact terminal time for newly completed sessions; null on legacy completed checkpoints. */
+    val completedAtEpochMillis: Long? = null,
 ) {
     init {
         require(routeId.isNotBlank() && routeRevision > 0L)
@@ -25,11 +29,10 @@ data class ActiveNavigationSession(
         require(arrivalRadiusMeters.isFinite() && arrivalRadiusMeters > 0.0)
         require(state != NavigationSessionState.STOPPED) { "Stopped navigation is represented by no stored session" }
         require(embeddedRoute == null || embeddedRoute.id == routeId && embeddedRoute.revision == routeRevision)
+        require(sessionId.isNotBlank())
+        require(completedAtEpochMillis == null || state == NavigationSessionState.COMPLETE)
+        require(completedAtEpochMillis == null || completedAtEpochMillis >= startedAtEpochMillis)
     }
-
-    /** Stable identity for this passage attempt; restarting the same route creates a different session. */
-    val sessionId: String
-        get() = "$routeId:$routeRevision:$startedAtEpochMillis"
 }
 
 enum class NavigationInputStatus { LIVE, HELD, STALE, INVALID, UNAVAILABLE }
@@ -141,6 +144,8 @@ data class ActiveNavigationSnapshot(
     val issue: ActiveNavigationIssue? = null,
     /** Ephemeral, process-local user decision. The active session remains authoritative until confirmed. */
     val pendingReplacement: NavigationStartProposal? = null,
+    /** History persistence never masquerades as a navigation/input failure. */
+    val historyIssue: NavigationHistoryIssue? = null,
 ) {
     init {
         require(revision >= 0L)

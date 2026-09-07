@@ -44,6 +44,7 @@ data class TrackRecordingSession(
         require(routeRevision == null || routeRevision > 0L)
         require(navigationSessionId == null || navigationSessionId.isNotBlank())
         require((status == TrackRecorderStatus.RECORDING) == (activeSinceEpochMillis != null))
+        require(activeSinceEpochMillis == null || activeSinceEpochMillis >= startedAtEpochMillis)
         require((status == TrackRecorderStatus.STOPPED_AWAITING_SAVE) == (stoppedAtEpochMillis != null))
         require(stoppedAtEpochMillis == null || stoppedAtEpochMillis >= startedAtEpochMillis)
     }

@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+option java_package = "com.yokuli.marine.map.storage.proto";
+option java_multiple_files = true;
+
+message NavigationHistoryStateProto {
+  int32 schema_version = 1;
+  int64 revision = 2;
+  repeated NavigationPassageProto passages = 3;
+}
+
+message NavigationPassageProto {
+  string session_id = 1;
+  int64 revision = 2;
+  string route_id = 3;
+  int64 route_revision = 4;
+  string route_name = 5;
+  int64 started_at_epoch_millis = 6;
+  bool has_ended_at = 7;
+  int64 ended_at_epoch_millis = 8;
+  string outcome = 9;
+  repeated NavigationPassageWaypointProto waypoints = 10;
+  int32 furthest_advanced_waypoint_index = 11;
+}
+
+message NavigationPassageWaypointProto {
+  int32 ordinal = 1;
+  string route_point_id = 2;
+  double planned_latitude = 3;
+  double planned_longitude = 4;
+  bool has_event = 5;
+  int64 event_at_epoch_millis = 6;
+  string advance_reason = 7;
+  string evidence = 8;
+  bool has_actual_position = 9;
+  double actual_latitude = 10;
+  double actual_longitude = 11;
+  string position_source_id = 12;
+}

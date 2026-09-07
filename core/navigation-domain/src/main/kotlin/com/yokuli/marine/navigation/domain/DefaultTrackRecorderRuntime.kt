@@ -96,7 +96,7 @@ class DefaultTrackRecorderRuntime(
 
     private suspend fun startLocked(): TrackRecorderCommandResult {
         if (session != null) return rejectLocked(TrackRecorderIssue.ALREADY_RUNNING)
-        val now = clock.wallTimeMillis()
+        val now = clock.wallTimeMillis().coerceAtLeast(0L)
         val active = activeNavigation.value.session
         val next = TrackRecordingSession(
             id = newId(),
@@ -135,7 +135,7 @@ class DefaultTrackRecorderRuntime(
             current.copy(
                 status = TrackRecorderStatus.RECORDING,
                 startNewSegment = true,
-                activeSinceEpochMillis = clock.wallTimeMillis(),
+                activeSinceEpochMillis = maxOf(clock.wallTimeMillis(), current.startedAtEpochMillis),
             ),
         )
     }
@@ -145,7 +145,7 @@ class DefaultTrackRecorderRuntime(
         if (current.status == TrackRecorderStatus.STOPPED_AWAITING_SAVE) {
             return TrackRecorderCommandResult.Accepted(revision)
         }
-        val now = clock.wallTimeMillis()
+        val now = maxOf(clock.wallTimeMillis(), current.startedAtEpochMillis)
         val duration = current.accumulatedDurationMillis + if (current.status == TrackRecorderStatus.RECORDING) {
             (now - requireNotNull(current.activeSinceEpochMillis)).coerceAtLeast(0L)
         } else 0L

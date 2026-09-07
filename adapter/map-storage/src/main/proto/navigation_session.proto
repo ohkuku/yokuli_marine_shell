@@ -15,6 +15,9 @@ message ActiveNavigationSessionProto {
   string state = 9;
   bool has_embedded_route = 10;
   ActiveNavigationEmbeddedRouteProto embedded_route = 11;
+  string session_id = 12;
+  bool has_completed_at = 13;
+  int64 completed_at_epoch_millis = 14;
 }
 
 message ActiveNavigationEmbeddedRouteProto {

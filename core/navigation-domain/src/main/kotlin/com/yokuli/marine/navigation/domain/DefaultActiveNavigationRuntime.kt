@@ -1,6 +1,7 @@
 package com.yokuli.marine.navigation.domain
 
 import java.io.Closeable
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +22,9 @@ class DefaultActiveNavigationRuntime(
     private val routes: NavigationRouteReadPort,
     private val input: NavigationInputPort,
     private val sessionStore: ActiveNavigationSessionStore,
+    private val history: NavigationHistoryRuntimePort = NoOpNavigationHistoryRuntime,
     private val clock: NavigationRuntimeClock,
+    private val newSessionId: () -> String = { UUID.randomUUID().toString() },
     scope: CoroutineScope,
 ) : ActiveNavigationRuntimePort, Closeable {
     private val mutex = Mutex()
@@ -34,6 +37,7 @@ class DefaultActiveNavigationRuntime(
     private var route: RoutePlan? = null
     private var issue: ActiveNavigationIssue? = null
     private var pendingReplacement: NavigationStartProposal? = null
+    private var historyIssue: NavigationHistoryIssue? = null
     private val inputJob: Job = scope.launch {
         input.state.collect { incoming ->
             mutex.withLock {
@@ -68,11 +72,14 @@ class DefaultActiveNavigationRuntime(
 
     private suspend fun ensureInitializedLocked() {
         if (initialized) return
+        history.initialize()
         when (val loaded = sessionStore.loadActiveNavigationSession()) {
             NavigationSessionLoadResult.Empty -> Unit
             is NavigationSessionLoadResult.Failed -> issue = ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED
             is NavigationSessionLoadResult.Loaded -> restoreLocked(loaded.session)
         }
+        val reconcileFailure = history.reconcileActiveSession(session?.sessionId, clock.wallTimeMillis()).failureOrNull()
+        if (reconcileFailure != null) historyIssue = reconcileFailure
         initialized = true
         publishLocked()
     }
@@ -101,6 +108,17 @@ class DefaultActiveNavigationRuntime(
                         }
                     }
                 } else stored
+                historyIssue = history.begin(requireNotNull(session), loadedRoute).failureOrNull()
+                val restored = requireNotNull(session)
+                if (restored.state == NavigationSessionState.COMPLETE && restored.completedAtEpochMillis != null) {
+                    val finishFailure = finishHistory(
+                        restored,
+                        loadedRoute,
+                        NavigationPassageOutcome.COMPLETED,
+                        restored.completedAtEpochMillis,
+                    )
+                    if (finishFailure != null) historyIssue = finishFailure
+                }
             }
         }
     }
@@ -134,6 +152,8 @@ class DefaultActiveNavigationRuntime(
         arrivalRadiusMeters: Double,
         advancePolicy: NavigationAdvancePolicy,
     ): ActiveNavigationCommandResult {
+        val previous = session?.takeIf { it.state != NavigationSessionState.COMPLETE }
+        val previousRoute = route
         val next = ActiveNavigationSession(
             routeId = loaded.id,
             routeRevision = loaded.revision,
@@ -142,11 +162,13 @@ class DefaultActiveNavigationRuntime(
             arrivalRadiusMeters = arrivalRadiusMeters,
             advancePolicy = advancePolicy,
             state = NavigationSessionState.ACTIVE,
+            sessionId = newSessionId(),
         )
         if (!persistLocked(next)) return rejectLocked(ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED)
         route = loaded
         session = next
         issue = null
+        historyIssue = updateHistoryForStart(previous, previousRoute, next, loaded)
         pendingReplacement = null
         publishLocked()
         return ActiveNavigationCommandResult.Accepted(revision)
@@ -185,6 +207,8 @@ class DefaultActiveNavigationRuntime(
         destinationName: String,
         arrivalRadiusMeters: Double,
     ): ActiveNavigationCommandResult {
+        val previous = session?.takeIf { it.state != NavigationSessionState.COMPLETE }
+        val previousRoute = route
         val startedAt = clock.wallTimeMillis()
         val routeId = "direct-to-$startedAt-${destinationId.hashCode().toUInt()}"
         val embedded = RoutePlan(
@@ -205,11 +229,13 @@ class DefaultActiveNavigationRuntime(
             advancePolicy = NavigationAdvancePolicy.MANUAL,
             state = NavigationSessionState.ACTIVE,
             embeddedRoute = embedded,
+            sessionId = newSessionId(),
         )
         if (!persistLocked(next)) return rejectLocked(ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED)
         route = embedded
         session = next
         issue = null
+        historyIssue = updateHistoryForStart(previous, previousRoute, next, embedded)
         pendingReplacement = null
         publishLocked()
         return ActiveNavigationCommandResult.Accepted(revision)
@@ -276,10 +302,20 @@ class DefaultActiveNavigationRuntime(
     }
 
     private suspend fun stopLocked(): ActiveNavigationCommandResult {
-        if (session == null) return ActiveNavigationCommandResult.Accepted(revision)
+        val current = session ?: return ActiveNavigationCommandResult.Accepted(revision)
         if (sessionStore.saveActiveNavigationSession(null) is NavigationSessionSaveResult.Failed) {
             return rejectLocked(ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED)
         }
+        historyIssue = finishHistory(
+            current,
+            route,
+            if (current.state == NavigationSessionState.COMPLETE) {
+                NavigationPassageOutcome.COMPLETED
+            } else {
+                NavigationPassageOutcome.STOPPED
+            },
+            current.completedAtEpochMillis ?: clock.wallTimeMillis(),
+        )
         session = null
         route = null
         issue = null
@@ -292,15 +328,35 @@ class DefaultActiveNavigationRuntime(
         val current = session ?: return rejectLocked(ActiveNavigationIssue.NOT_ACTIVE)
         val activeRoute = route ?: return rejectLocked(ActiveNavigationIssue.ROUTE_NOT_FOUND)
         val target = current.activeLegIndex + delta
+        val transitionAt = maxOf(clock.wallTimeMillis(), current.startedAtEpochMillis)
         val next = when {
             target < 0 -> return rejectLocked(ActiveNavigationIssue.NOT_ACTIVE)
-            target >= activeRoute.points.lastIndex -> current.copy(state = NavigationSessionState.COMPLETE)
+            target >= activeRoute.points.lastIndex -> current.copy(
+                state = NavigationSessionState.COMPLETE,
+                completedAtEpochMillis = transitionAt,
+            )
             else -> current.copy(
                 activeLegIndex = target,
                 state = if (current.state == NavigationSessionState.COMPLETE) NavigationSessionState.ACTIVE else current.state,
+                completedAtEpochMillis = null,
             )
         }
         if (!persistLocked(next)) return rejectLocked(ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED)
+        if (delta > 0) {
+            val passageWaypointIndex = current.activeLegIndex + 1
+            historyIssue = history.recordAdvance(
+                session = current,
+                route = activeRoute,
+                waypointIndex = passageWaypointIndex,
+                eventAtEpochMillis = transitionAt,
+                actualPosition = currentFix.position.takeIf { currentFix.usablePosition },
+                positionSourceId = currentFix.positionSourceId.takeIf { currentFix.usablePosition },
+                reason = NavigationAdvanceReason.MANUAL,
+                terminalOutcome = NavigationPassageOutcome.COMPLETED.takeIf {
+                    next.state == NavigationSessionState.COMPLETE
+                },
+            ).failureOrNull()
+        }
         session = next
         issue = null
         publishLocked()
@@ -320,12 +376,28 @@ class DefaultActiveNavigationRuntime(
             solution != null && nextSession.advancePolicy == NavigationAdvancePolicy.ARRIVAL_RADIUS &&
             solution.distanceToWaypointNauticalMiles * 1852.0 <= nextSession.arrivalRadiusMeters
         ) {
+            val transitionAt = maxOf(clock.wallTimeMillis(), nextSession.startedAtEpochMillis)
             nextSession = if (nextSession.activeLegIndex >= activeRoute.points.lastIndex - 1) {
-                nextSession.copy(state = NavigationSessionState.COMPLETE)
+                nextSession.copy(state = NavigationSessionState.COMPLETE, completedAtEpochMillis = transitionAt)
             } else {
                 nextSession.copy(activeLegIndex = nextSession.activeLegIndex + 1)
             }
             if (persistLocked(nextSession)) {
+                val passedWaypointIndex = session?.activeLegIndex?.plus(1)
+                if (passedWaypointIndex != null) {
+                    historyIssue = history.recordAdvance(
+                        session = requireNotNull(session),
+                        route = activeRoute,
+                        waypointIndex = passedWaypointIndex,
+                        eventAtEpochMillis = transitionAt,
+                        actualPosition = currentFix.position.takeIf { currentFix.usablePosition },
+                        positionSourceId = currentFix.positionSourceId.takeIf { currentFix.usablePosition },
+                        reason = NavigationAdvanceReason.ARRIVAL_RADIUS,
+                        terminalOutcome = NavigationPassageOutcome.COMPLETED.takeIf {
+                            nextSession.state == NavigationSessionState.COMPLETE
+                        },
+                    ).failureOrNull()
+                }
                 session = nextSession
                 solution = ActiveNavigationSolver.solve(activeRoute, nextSession, currentFix)
             } else {
@@ -366,7 +438,45 @@ class DefaultActiveNavigationRuntime(
             solution = solution,
             issue = issue,
             pendingReplacement = pendingReplacement,
+            historyIssue = historyIssue,
         )
     }
+
+    private suspend fun updateHistoryForStart(
+        previous: ActiveNavigationSession?,
+        previousRoute: RoutePlan?,
+        next: ActiveNavigationSession,
+        nextRoute: RoutePlan,
+    ): NavigationHistoryIssue? {
+        val finishFailure = previous?.let { old ->
+            finishHistory(old, previousRoute, NavigationPassageOutcome.REPLACED, clock.wallTimeMillis())
+        }
+        val beginFailure = history.begin(next, nextRoute).failureOrNull()
+        val reconcileFailure = history.reconcileActiveSession(
+            activeSessionId = next.sessionId,
+            observedAtEpochMillis = clock.wallTimeMillis(),
+        ).failureOrNull()
+        return reconcileFailure ?: beginFailure ?: finishFailure
+    }
+
+    private suspend fun finishHistory(
+        value: ActiveNavigationSession,
+        valueRoute: RoutePlan?,
+        outcome: NavigationPassageOutcome,
+        endedAtEpochMillis: Long,
+    ): NavigationHistoryIssue? {
+        if (valueRoute != null) {
+            val beginFailure = history.begin(value, valueRoute).failureOrNull()
+            if (beginFailure != null) return beginFailure
+        }
+        return history.finish(
+            value.sessionId,
+            outcome,
+            maxOf(endedAtEpochMillis, value.startedAtEpochMillis),
+        ).failureOrNull()
+    }
+
+    private fun NavigationHistoryWriteResult.failureOrNull(): NavigationHistoryIssue? =
+        (this as? NavigationHistoryWriteResult.Failed)?.issue
 
 }

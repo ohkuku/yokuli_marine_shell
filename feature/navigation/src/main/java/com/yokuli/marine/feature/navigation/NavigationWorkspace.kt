@@ -40,11 +40,17 @@ import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.navigation.domain.NavigationRouteMath
+import com.yokuli.marine.navigation.domain.NavigationHistorySnapshot
+import com.yokuli.marine.navigation.domain.NavigationPassage
+import com.yokuli.marine.navigation.domain.NavigationPassageEvidence
+import com.yokuli.marine.navigation.domain.NavigationPassageOutcome
 import com.yokuli.marine.navigation.domain.NavigationSessionState
 import com.yokuli.marine.navigation.domain.RoutePlan
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
 fun NavigationWorkspace(
@@ -54,6 +60,7 @@ fun NavigationWorkspace(
     onGpxAction: (NavigationGpxUiAction) -> Unit = {},
     mapState: MapState = MapState(),
     chartSurface: NavigationMapSurface? = null,
+    history: NavigationHistorySnapshot = NavigationHistorySnapshot.EMPTY,
     trackRecorderStrip: (@Composable () -> Unit)? = null,
 ) {
     val currentState by rememberUpdatedState(state)
@@ -98,7 +105,7 @@ fun NavigationWorkspace(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (val page = state.page) {
                 NavigationPage.Root -> when (state.section) {
-                    NavigationSection.OVERVIEW -> OverviewPage(state, onAction, trackRecorderStrip)
+                    NavigationSection.OVERVIEW -> OverviewPage(state, history, onAction, trackRecorderStrip)
                     NavigationSection.WAYPOINTS -> WaypointsPage(state, onAction)
                     NavigationSection.ROUTES -> RoutesPage(state, onAction)
                     NavigationSection.GPX -> NavigationGpxWorkspace(gpxState, onGpxAction)
@@ -148,10 +155,14 @@ private fun SectionStrip(selectedSection: NavigationSection, onAction: (Navigati
 @Composable
 private fun OverviewPage(
     state: NavigationUiState,
+    history: NavigationHistorySnapshot,
     onAction: (NavigationUiAction) -> Unit,
     trackRecorderStrip: (@Composable () -> Unit)?,
 ) = ScrollBody("navigation-overview") {
     trackRecorderStrip?.invoke()
+    state.active.historyIssue?.let {
+        WpText(stringResource(R.string.nav_history_persistence_issue), 11, color = LocalWpTheme.current.muted)
+    }
     val session = state.active.session
     if (session != null) {
         Command(stringResource(R.string.navigation_open_active), "navigation-open-active") {
@@ -163,6 +174,69 @@ private fun OverviewPage(
     }
     WpText(stringResource(R.string.navigation_library_summary, state.library.waypoints.size, state.library.routePlans.size), 28, weight = FontWeight.Light)
     state.library.routePlans.takeLast(5).reversed().forEach { route -> RouteRow(route, onAction) }
+    if (history.passages.isNotEmpty()) {
+        WpText(stringResource(R.string.navigation_history_title), 26, weight = FontWeight.Light)
+        history.passages.takeLast(5).reversed().forEach { passage ->
+            PassageHistoryRow(passage, state)
+        }
+    }
+}
+
+@Composable
+private fun PassageHistoryRow(passage: NavigationPassage, state: NavigationUiState) {
+    val colors = LocalWpTheme.current
+    val units = LocalMeasurementUnitSystem.current
+    val timeFormat = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
+    val confirmed = passage.waypoints.count { it.event?.evidence == NavigationPassageEvidence.POSITION_RECORDED }
+    val advanced = passage.furthestAdvancedWaypointIndex
+    val actualTrack = state.library.tracks.firstOrNull { it.navigationSessionId == passage.sessionId }
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 7.dp).testTag("navigation-history-${passage.sessionId}"),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            WpText(passage.routeName, 18, weight = FontWeight.Light, maxLines = 1, modifier = Modifier.weight(1f))
+            WpText(stringResource(passage.outcome.label()), 10, color = colors.accent)
+        }
+        WpText(
+            stringResource(
+                R.string.navigation_history_time,
+                timeFormat.format(Date(passage.startedAtEpochMillis)),
+                passage.endedAtEpochMillis?.let { timeFormat.format(Date(it)) }
+                    ?: stringResource(R.string.navigation_history_ongoing),
+            ),
+            11,
+            color = colors.muted,
+        )
+        WpText(
+            stringResource(R.string.navigation_history_waypoints, confirmed, advanced, passage.waypoints.size - 1),
+            11,
+            color = colors.muted,
+        )
+        actualTrack?.distanceNauticalMiles?.let { distance ->
+            WpText(
+                stringResource(
+                    if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) {
+                        R.string.navigation_history_track
+                    } else {
+                        R.string.navigation_history_track_metric
+                    },
+                    actualTrack.name,
+                    MarineDisplayUnits.distanceFromNauticalMiles(distance, units),
+                ),
+                11,
+                color = colors.muted,
+            )
+        }
+    }
+}
+
+private fun NavigationPassageOutcome.label(): Int = when (this) {
+    NavigationPassageOutcome.ACTIVE -> R.string.navigation_history_active
+    NavigationPassageOutcome.COMPLETED -> R.string.navigation_history_completed
+    NavigationPassageOutcome.STOPPED -> R.string.navigation_history_stopped
+    NavigationPassageOutcome.REPLACED -> R.string.navigation_history_replaced
+    NavigationPassageOutcome.INTERRUPTED -> R.string.navigation_history_interrupted
 }
 
 @Composable

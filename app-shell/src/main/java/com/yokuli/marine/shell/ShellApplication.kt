@@ -32,6 +32,7 @@ import com.yokuli.marine.feature.data.DataPhoneDemandRuntime
 import com.yokuli.marine.map.storage.RoomMapPersistence
 import com.yokuli.marine.map.storage.ProtoDataStoreActiveNavigationSessionStore
 import com.yokuli.marine.map.storage.ProtoDataStoreTrackRecordingStore
+import com.yokuli.marine.map.storage.ProtoDataStoreNavigationHistoryStore
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
 import com.yokuli.marine.map.offline.ChartLoopbackTileGateway
@@ -47,10 +48,12 @@ import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
 import com.yokuli.marine.navigation.domain.ActiveNavigationRuntimePort
 import com.yokuli.marine.navigation.domain.DefaultActiveNavigationRuntime
 import com.yokuli.marine.navigation.domain.DefaultTrackRecorderRuntime
+import com.yokuli.marine.navigation.domain.DefaultNavigationHistoryRuntime
 import com.yokuli.marine.navigation.domain.NavigationLibraryLoadResult
 import com.yokuli.marine.navigation.domain.NavigationRouteReadPort
 import com.yokuli.marine.navigation.domain.NavigationRuntimeClock
 import com.yokuli.marine.navigation.domain.TrackRecorderRuntimePort
+import com.yokuli.marine.navigation.domain.NavigationHistoryRuntimePort
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -148,6 +151,12 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
     private val navigationSessionStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ProtoDataStoreActiveNavigationSessionStore.create(this, applicationScope)
     }
+    private val navigationHistoryStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProtoDataStoreNavigationHistoryStore.create(this, applicationScope)
+    }
+    val navigationHistoryRuntime: NavigationHistoryRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        DefaultNavigationHistoryRuntime(navigationHistoryStore)
+    }
     val activeNavigationRuntime: ActiveNavigationRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         DefaultActiveNavigationRuntime(
             routes = NavigationRouteReadPort { routeId ->
@@ -158,6 +167,7 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
             },
             input = navigationInputPort,
             sessionStore = navigationSessionStore,
+            history = navigationHistoryRuntime,
             clock = NavigationRuntimeClock(System::currentTimeMillis),
             scope = applicationScope,
         )
@@ -186,6 +196,7 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
         dataPhoneDemandRuntime
         chartLibraryRuntime
         applicationScope.launch {
+            navigationHistoryRuntime.initialize()
             activeNavigationRuntime.initialize()
             trackRecorderRuntime.initialize()
         }

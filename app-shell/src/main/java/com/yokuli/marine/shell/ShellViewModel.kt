@@ -115,6 +115,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     private var healthyTimer: Job? = null
     private val routeDecisionLock = Any()
     private var pendingRouteDecision: PendingRouteDecision? = null
+    private var lastRefreshedTrackId: String? = null
     private val startupJob: Job
     private val chartPackages = shellApplication.chartPackageRepository
     val nmeaRuntimeState = shellApplication.nmeaInputRuntime.state
@@ -143,6 +144,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     val chartLibraryEffects: Flow<ChartLibraryEffect> = chartLibraryCoordinator.effects
     val activeNavigationState = shellApplication.activeNavigationRuntime.state
     val trackRecorderState = shellApplication.trackRecorderRuntime.state
+    val navigationHistoryState = shellApplication.navigationHistoryRuntime.state
 
     val persistedPreferences: StateFlow<LauncherPersistedState> = persistence.state
         .map { persisted ->
@@ -262,6 +264,10 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (mapStore.state.value.activeTrackSegments != segments) {
                     mapStore.dispatch(MapAction.ActiveTrackChanged(segments))
+                }
+                track.lastSavedTrackId?.takeIf { it != lastRefreshedTrackId }?.let { trackId ->
+                    lastRefreshedTrackId = trackId
+                    navigationCoordinator.dispatch(NavigationUiAction.Refresh)
                 }
             }
         }

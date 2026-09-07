@@ -26,7 +26,7 @@ class ActiveNavigationSessionProtoMapperTest {
     fun `future schema and invalid enum are rejected instead of cleared`() {
         assertThrows(IllegalArgumentException::class.java) {
             ActiveNavigationSessionProtoMapper.decode(
-                ActiveNavigationSessionProto.newBuilder().setSchemaVersion(3).setHasSession(false).build(),
+                ActiveNavigationSessionProto.newBuilder().setSchemaVersion(5).setHasSession(false).build(),
             )
         }
         assertThrows(IllegalArgumentException::class.java) {

@@ -77,6 +77,9 @@ fun ActiveNavigationStrip(
             .testTag("active-navigation-strip"),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
+        snapshot.historyIssue?.let {
+            WpText(stringResource(R.string.nav_history_persistence_issue), 10, color = colors.muted)
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f)) {
                 WpText(stringResource(R.string.nav_next, nextName), 10, color = colors.muted, maxLines = 1)

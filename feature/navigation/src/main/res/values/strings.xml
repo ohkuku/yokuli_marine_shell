@@ -152,4 +152,16 @@
     <string name="track_issue_capacity">已达到安全点数上限，记录已暂停；已有点未丢失。</string>
     <string name="track_issue_persistence">无法持久保存，记录已安全暂停；请重试。</string>
     <string name="track_issue_archive">无法写入航迹库；停止的航迹仍保留，可重试或丢弃。</string>
+    <string name="navigation_history_title">航行历史</string>
+    <string name="navigation_history_time">%1$s → %2$s</string>
+    <string name="navigation_history_ongoing">进行中</string>
+    <string name="navigation_history_waypoints">%1$d 个有船位证据 · %2$d 个已推进 · 共 %3$d 个目标点</string>
+    <string name="navigation_history_track">实际航迹 · %1$s · %2$.2f 海里</string>
+    <string name="navigation_history_track_metric">实际航迹 · %1$s · %2$.2f 千米</string>
+    <string name="navigation_history_active">进行中</string>
+    <string name="navigation_history_completed">已完成</string>
+    <string name="navigation_history_stopped">已停止</string>
+    <string name="navigation_history_replaced">已替换</string>
+    <string name="navigation_history_interrupted">异常中断</string>
+    <string name="nav_history_persistence_issue">航行仍在继续，但历史记录尚未安全写入；系统会保留并重试可恢复的会话事实。</string>
 </resources>

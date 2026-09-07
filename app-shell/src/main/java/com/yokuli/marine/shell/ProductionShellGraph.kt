@@ -93,6 +93,7 @@ import com.yokuli.marine.navigation.domain.ActiveNavigationCommand
 import com.yokuli.marine.navigation.domain.ActiveNavigationSnapshot
 import com.yokuli.marine.navigation.domain.TrackRecorderCommand
 import com.yokuli.marine.navigation.domain.TrackRecorderSnapshot
+import com.yokuli.marine.navigation.domain.NavigationHistorySnapshot
 import com.yokuli.marine.feature.navigation.ActiveNavigationStrip
 import com.yokuli.marine.feature.navigation.TrackRecorderStrip
 import com.yokuli.marine.feature.navigation.NavigationDestinations
@@ -151,6 +152,7 @@ data class ProductionShellRuntime(
     val onActiveNavigationCommand: (ActiveNavigationCommand) -> Unit,
     val trackRecorderState: TrackRecorderSnapshot,
     val onTrackRecorderCommand: (TrackRecorderCommand) -> Unit,
+    val navigationHistoryState: NavigationHistorySnapshot,
     val onDirectTo: (point: com.yokuli.marine.map.domain.GeoPoint, name: String) -> Unit,
     val onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     val onSaveAndStartRoute: () -> Unit,
@@ -472,6 +474,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 onGpxAction = { runtime.onGpxImportAction(it.toDocumentAction()) },
                 mapState = runtime.mapState,
                 chartSurface = rememberProductionChartSurface(runtime),
+                history = runtime.navigationHistoryState,
                 trackRecorderStrip = {
                     TrackRecorderStrip(runtime.trackRecorderState, runtime.onTrackRecorderCommand)
                 },

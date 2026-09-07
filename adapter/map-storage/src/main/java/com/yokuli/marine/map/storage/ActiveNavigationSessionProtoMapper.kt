@@ -12,7 +12,7 @@ import com.yokuli.marine.navigation.domain.RoutePoint
 import com.yokuli.marine.navigation.domain.WaypointRevisionReference
 
 internal object ActiveNavigationSessionProtoMapper {
-    const val SCHEMA_VERSION = 2
+    const val SCHEMA_VERSION = 4
 
     fun encode(session: ActiveNavigationSession?): ActiveNavigationSessionProto =
         ActiveNavigationSessionProto.newBuilder()
@@ -27,6 +27,9 @@ internal object ActiveNavigationSessionProtoMapper {
                     arrivalRadiusMeters = it.arrivalRadiusMeters
                     advancePolicy = it.advancePolicy.name
                     state = it.state.name
+                    sessionId = it.sessionId
+                    hasCompletedAt = it.completedAtEpochMillis != null
+                    completedAtEpochMillis = it.completedAtEpochMillis ?: 0L
                     it.embeddedRoute?.let { embedded ->
                         hasEmbeddedRoute = true
                         embeddedRoute = encodeEmbeddedRoute(embedded)
@@ -47,6 +50,9 @@ internal object ActiveNavigationSessionProtoMapper {
             advancePolicy = enumValueOf<NavigationAdvancePolicy>(proto.advancePolicy),
             state = enumValueOf<NavigationSessionState>(proto.state),
             embeddedRoute = if (proto.hasEmbeddedRoute) decodeEmbeddedRoute(proto.embeddedRoute) else null,
+            sessionId = proto.sessionId.takeIf(String::isNotBlank)
+                ?: "${proto.routeId}:${proto.routeRevision}:${proto.startedAtEpochMillis}",
+            completedAtEpochMillis = proto.completedAtEpochMillis.takeIf { proto.hasCompletedAt },
         )
     }
 
