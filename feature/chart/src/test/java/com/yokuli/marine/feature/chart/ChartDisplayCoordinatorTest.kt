@@ -1,33 +1,41 @@
 package com.yokuli.marine.feature.chart
 
 import com.yokuli.marine.map.domain.GeoBounds
-import com.yokuli.marine.map.domain.ChartPackageId
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapDispatchResult
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapStore
 import com.yokuli.marine.map.domain.MapTileScheme
+import com.yokuli.marine.map.domain.MapViewMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartAsset
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetAccessState
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetFacts
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetFormat
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetQuery
-import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetValidationState
+import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
+import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogCommitResult
+import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogMutation
 import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogPage
 import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogReadPort
 import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogSnapshot
+import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogTransaction
 import com.yokuli.marine.map.domain.chartlibrary.ChartContentRevision
-import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.marine.map.domain.chartlibrary.ChartDocumentIdentity
 import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayer
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayerId
+import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryCommandPort
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySource
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
+import com.yokuli.marine.map.domain.chartlibrary.ChartMapView
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
 import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceScanState
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewId
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewLayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,129 +52,57 @@ import org.junit.Test
 
 class ChartDisplayCoordinatorTest {
     @Test
-    fun `catalog flow becomes the only display source and actions are serialized`() = runBlocking {
+    fun `active View is the only Chart display source and exposes logical names`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A)))
+        val catalog = FakeCatalog()
         val store = FakeMapStore()
         val coordinator = ChartDisplayCoordinator(catalog, store, scope)
-        withTimeout(2_000L) { coordinator.state.first { !it.busy && it.assets.size == 1 } }
 
-        assertTrue(coordinator.dispatch(ChartDisplayUiAction.ToggleSource(SOURCE_ID)))
-        withTimeout(2_000L) {
-            coordinator.state.first { it.selection == ChartDisplaySelection.SourceSet(setOf(SOURCE_ID)) }
-        }
-        assertEquals(listOf(ASSET_A), coordinator.state.value.plan.layers.map { it.assetId })
-        assertTrue(store.actions.last() is MapAction.ChartDisplayPlanChanged)
+        val state = withTimeout(2_000L) { coordinator.state.first { !it.busy && it.activeViewId == VIEW_A } }
 
-        catalog.replaceAssets(listOf(asset(ASSET_A), asset(ASSET_B)))
-        withTimeout(2_000L) { coordinator.state.first { it.assets.size == 2 } }
-        assertEquals(2, coordinator.state.value.plan.layers.size)
+        assertEquals("Sailing", state.activeViewName)
+        assertEquals(listOf("NZ Hydro"), state.quickLayers.map { it.title })
+        assertEquals(listOf(ASSET_A), state.plan.layers.map { it.assetId })
+        assertFalse(state.plan.layers.single().displayName.contains("mbtiles", ignoreCase = true))
         coordinator.close()
         scope.cancel()
     }
 
     @Test
-    fun `new catalog asset never steals an explicitly pinned chart`() = runBlocking {
+    fun `activating a View is catalog durable and switches the matching built in base`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A)))
-        val coordinator = ChartDisplayCoordinator(catalog, FakeMapStore(), scope)
-        withTimeout(2_000L) { coordinator.state.first { !it.busy && it.assets.size == 1 } }
-
-        coordinator.dispatch(ChartDisplayUiAction.PinAsset(ASSET_A))
-        withTimeout(2_000L) { coordinator.state.first { it.selection == ChartDisplaySelection.PinnedAsset(ASSET_A) } }
-        catalog.replaceAssets(listOf(asset(ASSET_A), asset(ASSET_B, priority = -100)))
-        withTimeout(2_000L) { coordinator.state.first { it.assets.size == 2 } }
-
-        assertEquals(ChartDisplaySelection.PinnedAsset(ASSET_A), coordinator.state.value.selection)
-        assertEquals(listOf(ASSET_A), coordinator.state.value.plan.layers.map { it.assetId })
-        coordinator.close()
-        scope.cancel()
-    }
-
-    @Test
-    fun `overlay visibility and opacity are display preferences not catalog mutations`() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val overlay = asset(ASSET_B, role = ChartAssetRole.OVERLAY)
-        val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A), overlay))
-        val coordinator = ChartDisplayCoordinator(catalog, FakeMapStore(), scope)
-        withTimeout(2_000L) { coordinator.state.first { !it.busy && it.assets.size == 2 } }
-        coordinator.dispatch(ChartDisplayUiAction.ToggleSource(SOURCE_ID))
-        withTimeout(2_000L) { coordinator.state.first { it.plan.layers.size == 2 } }
-
-        coordinator.dispatch(ChartDisplayUiAction.SetOpacity(ASSET_B, .4f))
-        withTimeout(2_000L) { coordinator.state.first { it.plan.layers.any { layer -> layer.assetId == ASSET_B && layer.opacity == .4f } } }
-        coordinator.dispatch(ChartDisplayUiAction.ToggleOverlays)
-        withTimeout(2_000L) { coordinator.state.first { !it.overlaysVisible } }
-
-        assertFalse(coordinator.state.value.plan.layers.any { it.assetId == ASSET_B })
-        assertEquals(0, catalog.mutationCount)
-        coordinator.close()
-        scope.cancel()
-    }
-
-    @Test
-    fun `quick layer visibility changes display preferences without changing catalog ownership`() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A), asset(ASSET_B)))
+        val catalog = FakeCatalog()
         val store = FakeMapStore()
         val coordinator = ChartDisplayCoordinator(catalog, store, scope)
-        withTimeout(2_000L) { coordinator.state.first { !it.busy && it.assets.size == 2 } }
-        coordinator.dispatch(ChartDisplayUiAction.ToggleSource(SOURCE_ID))
-        withTimeout(2_000L) { coordinator.state.first { it.quickLayers.size == 2 && it.plan.layers.size == 2 } }
+        withTimeout(2_000L) { coordinator.state.first { !it.busy && it.activeViewId == VIEW_A } }
 
-        coordinator.dispatch(ChartDisplayUiAction.SetLayerVisible(ASSET_B, false))
-        withTimeout(2_000L) { coordinator.state.first { state -> state.quickLayers.any { it.id == ASSET_B && !it.visible } } }
+        coordinator.dispatch(ChartDisplayUiAction.ActivateView(VIEW_B))
+        val state = withTimeout(2_000L) { coordinator.state.first { !it.busy && it.activeViewId == VIEW_B } }
 
-        assertEquals(listOf(ASSET_A), coordinator.state.value.plan.layers.map { it.assetId })
-        assertTrue(store.state.value.chartDisplayPreferences.hiddenAssetIds.contains(ASSET_B))
-        assertEquals(0, catalog.mutationCount)
+        assertEquals("Planning", state.activeViewName)
+        assertEquals(MapViewMode.STANDARD, store.state.value.mapViewMode)
+        assertTrue(catalog.transactions.any { it.mutations == listOf(ChartCatalogMutation.ActivateView(VIEW_B)) })
         coordinator.close()
         scope.cancel()
     }
 
     @Test
-    fun `quick layers contain only active pinned or explicitly hidden assets`() = runBlocking {
+    fun `quick layer visibility and opacity update the active View not an Asset preference`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val outside = asset(
-            ASSET_B,
-            role = ChartAssetRole.OVERLAY,
-        ).copy(facts = asset(ASSET_B).facts.copy(bounds = GeoBounds(40.0, -75.0, 41.0, -74.0)))
-        val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A), outside))
-        val store = FakeMapStore(
-            MapState(
-                chartDisplayViewport = com.yokuli.marine.map.domain.chartlibrary.ChartDisplayViewport(
-                    GeoBounds(-37.2, 173.8, -35.8, 175.2),
-                    8,
-                ),
-            ),
-        )
+        val catalog = FakeCatalog()
+        val store = FakeMapStore()
         val coordinator = ChartDisplayCoordinator(catalog, store, scope)
-        withTimeout(2_000L) { coordinator.state.first { !it.busy && it.assets.size == 2 } }
-        coordinator.dispatch(ChartDisplayUiAction.ToggleSource(SOURCE_ID))
-        withTimeout(2_000L) { coordinator.state.first { it.plan.layers.size == 1 } }
+        withTimeout(2_000L) { coordinator.state.first { !it.busy && it.quickLayers.singleOrNull()?.visible == true } }
 
-        assertEquals(listOf(ASSET_A), coordinator.state.value.quickLayers.map { it.id })
-        coordinator.close()
-        scope.cancel()
-    }
+        coordinator.dispatch(ChartDisplayUiAction.SetOpacity(LAYER_ID, .4f))
+        withTimeout(2_000L) { coordinator.state.first { it.quickLayers.singleOrNull()?.opacity == .4f } }
+        coordinator.dispatch(ChartDisplayUiAction.SetLayerVisible(LAYER_ID, false))
+        val state = withTimeout(2_000L) { coordinator.state.first { it.quickLayers.singleOrNull()?.visible == false } }
 
-    @Test
-    fun `legacy active package migrates once and explicit none is never stolen back`() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val catalog = FakeCatalog(listOf(source()), listOf(asset(ASSET_A)), legacyAssetId = ASSET_A)
-        val store = FakeMapStore(MapState(activeChartPackageId = ChartPackageId("legacy-package")))
-        val coordinator = ChartDisplayCoordinator(catalog, store, scope)
-        withTimeout(2_000L) {
-            coordinator.state.first { it.selection == ChartDisplaySelection.PinnedAsset(ASSET_A) }
-        }
-        assertTrue(store.state.value.chartDisplayPreferencesInitialized)
-
-        coordinator.dispatch(ChartDisplayUiAction.UseNoLocalChart)
-        withTimeout(2_000L) { coordinator.state.first { it.selection == ChartDisplaySelection.None } }
-        catalog.replaceAssets(listOf(asset(ASSET_A), asset(ASSET_B)))
-        withTimeout(2_000L) { coordinator.state.first { it.assets.size == 2 } }
-
-        assertEquals(ChartDisplaySelection.None, coordinator.state.value.selection)
+        assertTrue(state.plan.layers.isEmpty())
+        assertEquals(.4f, catalog.viewsValue.single { it.id == VIEW_A }.layers.single().opacity)
+        assertFalse(catalog.viewsValue.single { it.id == VIEW_A }.layers.single().visible)
+        assertFalse(store.actions.any { it is MapAction.ChartDisplayPreferencesChanged })
         coordinator.close()
         scope.cancel()
     }
@@ -175,84 +111,106 @@ class ChartDisplayCoordinatorTest {
         private val mutable = MutableStateFlow(initial)
         override val state: StateFlow<MapState> = mutable
         val actions = mutableListOf<MapAction>()
+
         override fun dispatch(action: MapAction): MapDispatchResult {
             actions += action
-            if (action is MapAction.ChartDisplayPlanChanged) mutable.value = mutable.value.copy(chartDisplayPlan = action.plan)
-            if (action is MapAction.ChartDisplayPreferencesChanged) mutable.value = mutable.value.copy(
-                chartDisplayPreferences = action.preferences,
-                chartDisplayPreferencesInitialized = true,
-            )
+            when (action) {
+                is MapAction.ChartDisplayPlanChanged -> mutable.value = mutable.value.copy(chartDisplayPlan = action.plan)
+                is MapAction.SetMapViewMode -> mutable.value = mutable.value.copy(mapViewMode = action.mode)
+                else -> Unit
+            }
             return MapDispatchResult.ACCEPTED
         }
+
         override fun close() = Unit
     }
 
-    private class FakeCatalog(
-        private var sourceItems: List<ChartLibrarySource>,
-        private var assetItems: List<ChartAsset>,
-        private val legacyAssetId: ChartAssetId? = null,
-    ) : ChartCatalogReadPort {
-        private val mutableSnapshot = MutableStateFlow(snapshotFor(1L))
+    private class FakeCatalog : ChartCatalogReadPort, ChartLibraryCommandPort {
+        private val sourcesValue = listOf(source())
+        private val assetsValue = listOf(asset())
+        private val layersValue = listOf(ChartLayer(LAYER_ID, "NZ Hydro", setOf(SOURCE_ID)))
+        var viewsValue = listOf(
+            ChartMapView(VIEW_A, "Sailing", ChartBuiltInBaseStyle.SATELLITE, listOf(ChartViewLayer(LAYER_ID))),
+            ChartMapView(VIEW_B, "Planning", ChartBuiltInBaseStyle.STANDARD, listOf(ChartViewLayer(LAYER_ID, visible = false))),
+        )
+        private val mutableSnapshot = MutableStateFlow(snapshot(1L, VIEW_A))
         override val snapshot: StateFlow<ChartCatalogSnapshot> = mutableSnapshot
-        var mutationCount = 0
+        val transactions = mutableListOf<ChartCatalogTransaction>()
 
-        fun replaceAssets(value: List<ChartAsset>) {
-            assetItems = value
-            mutableSnapshot.value = snapshotFor(mutableSnapshot.value.revision + 1L)
+        override suspend fun sources(offset: Int, limit: Int) = page(sourcesValue, offset, limit)
+        override suspend fun source(id: ChartSourceId) = sourcesValue.firstOrNull { it.id == id }
+        override suspend fun assets(query: ChartAssetQuery, offset: Int, limit: Int) = page(assetsValue, offset, limit)
+        override suspend fun asset(id: ChartAssetId) = assetsValue.firstOrNull { it.id == id }
+        override suspend fun resolveLegacyAsset(legacyLogicalId: String, legacyVersionId: String?) = null
+        override suspend fun layers(offset: Int, limit: Int) = page(layersValue, offset, limit)
+        override suspend fun layer(id: ChartLayerId) = layersValue.firstOrNull { it.id == id }
+        override suspend fun views(offset: Int, limit: Int) = page(viewsValue, offset, limit)
+        override suspend fun view(id: ChartViewId) = viewsValue.firstOrNull { it.id == id }
+
+        override suspend fun transact(transaction: ChartCatalogTransaction): ChartCatalogCommitResult {
+            transactions += transaction
+            var active = mutableSnapshot.value.activeViewId
+            transaction.mutations.forEach { mutation ->
+                when (mutation) {
+                    is ChartCatalogMutation.PutView -> viewsValue = viewsValue.filterNot { it.id == mutation.view.id } + mutation.view
+                    is ChartCatalogMutation.ActivateView -> active = mutation.viewId
+                    else -> error("Unexpected mutation in Chart display test: $mutation")
+                }
+            }
+            val next = snapshot(mutableSnapshot.value.revision + 1L, active)
+            mutableSnapshot.value = next
+            return ChartCatalogCommitResult.Committed(next)
         }
 
-        override suspend fun sources(offset: Int, limit: Int) = page(sourceItems, offset, limit)
-        override suspend fun source(id: ChartSourceId) = sourceItems.firstOrNull { it.id == id }
-        override suspend fun assets(query: ChartAssetQuery, offset: Int, limit: Int) = page(
-            assetItems.filter { query.sourceId == null || query.sourceId in it.memberships },
-            offset,
-            limit,
+        private fun snapshot(revision: Long, active: ChartViewId?) = ChartCatalogSnapshot(
+            revision = revision,
+            sourceCount = sourcesValue.size,
+            assetCount = assetsValue.size,
+            layerCount = layersValue.size,
+            viewCount = viewsValue.size,
+            activeViewId = active,
         )
-        override suspend fun asset(id: ChartAssetId) = assetItems.firstOrNull { it.id == id }
-        override suspend fun resolveLegacyAsset(legacyLogicalId: String, legacyVersionId: String?) =
-            legacyAssetId.takeIf { legacyLogicalId == "legacy-package" }
 
-        private fun snapshotFor(revision: Long) = ChartCatalogSnapshot(revision, sourceItems.size, assetItems.size)
         private fun <T> page(items: List<T>, offset: Int, limit: Int) = ChartCatalogPage(
             items.drop(offset).take(limit), offset, limit, items.size,
         )
     }
 
-    private fun source() = ChartLibrarySource(
-        SOURCE_ID,
-        ChartLibrarySourceKind.TREE,
-        ChartOpaqueLocator("content://provider/tree/charts"),
-        "NZ Hydro",
-        grantState = ChartGrantState.GRANTED,
-        scan = ChartSourceScanState(2L, ChartScanStatus.COMPLETE, 2L),
-    )
-
-    private fun asset(id: ChartAssetId, role: ChartAssetRole = ChartAssetRole.BASE, priority: Int = 0) = ChartAsset(
-        id,
-        ChartDocumentIdentity("provider", id.value),
-        ChartOpaqueLocator("content://provider/document/${id.value}"),
-        setOf(SOURCE_ID),
-        "charts/${id.value}.mbtiles",
-        ChartContentRevision(id.value, 1024L, 1L),
-        facts = ChartAssetFacts(
-            format = ChartAssetFormat.RASTER_MBTILES,
-            sizeBytes = 1024L,
-            bounds = GeoBounds(-50.0, 160.0, -30.0, 180.0),
-            minZoom = 0,
-            maxZoom = 18,
-            tileCount = 1L,
-            tileSize = 256,
-            tileScheme = MapTileScheme.MBTILES_TMS,
-        ),
-        role = role,
-        priority = priority,
-        access = ChartAssetAccessState.READABLE,
-        validation = ChartAssetValidationState.BASIC_READABLE,
-    )
-
     private companion object {
         val SOURCE_ID = ChartSourceId("00000000-0000-0000-0000-000000000001")
         val ASSET_A = ChartAssetId("10000000-0000-0000-0000-000000000001")
-        val ASSET_B = ChartAssetId("10000000-0000-0000-0000-000000000002")
+        val LAYER_ID = ChartLayerId("nz-hydro")
+        val VIEW_A = ChartViewId("sailing")
+        val VIEW_B = ChartViewId("planning")
+
+        fun source() = ChartLibrarySource(
+            SOURCE_ID,
+            ChartLibrarySourceKind.TREE,
+            ChartOpaqueLocator("content://provider/tree/charts"),
+            "NZ Hydro",
+            grantState = ChartGrantState.GRANTED,
+            scan = ChartSourceScanState(2L, ChartScanStatus.COMPLETE, 2L),
+        )
+
+        fun asset() = ChartAsset(
+            ASSET_A,
+            ChartDocumentIdentity("provider", "secret.mbtiles"),
+            ChartOpaqueLocator("content://provider/document/secret.mbtiles"),
+            setOf(SOURCE_ID),
+            "files/secret.mbtiles",
+            ChartContentRevision("secret", 1_024L, 1L),
+            facts = ChartAssetFacts(
+                format = ChartAssetFormat.RASTER_MBTILES,
+                sizeBytes = 1_024L,
+                bounds = GeoBounds(-50.0, 160.0, -30.0, 180.0),
+                minZoom = 0,
+                maxZoom = 18,
+                tileCount = 1L,
+                tileSize = 256,
+                tileScheme = MapTileScheme.MBTILES_TMS,
+            ),
+            access = ChartAssetAccessState.READABLE,
+            validation = ChartAssetValidationState.BASIC_READABLE,
+        )
     }
 }

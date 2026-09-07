@@ -225,6 +225,8 @@ fun ChartWorkspace(
                 viewportSize,
                 rootInsets,
                 connectedBaseConfigured,
+                chartDisplayState,
+                onChartDisplayAction,
                 recoveryExportState,
                 activeNavigationStrip,
                 onDirectTo,
@@ -262,6 +264,8 @@ private fun MapRootChrome(
     viewportSize: IntSize,
     viewportInsets: MapViewportInsets,
     connectedBaseConfigured: Boolean,
+    chartDisplayState: ChartDisplayUiState,
+    onChartDisplayAction: (ChartDisplayUiAction) -> Unit,
     recoveryExportState: MapRecoveryExportUiState,
     activeNavigationStrip: (@Composable () -> Unit)?,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
@@ -313,7 +317,8 @@ private fun MapRootChrome(
             }
             MapRootSummary(
                 state,
-                connectedBaseConfigured,
+                chartDisplayState,
+                onChartDisplayAction,
                 onDirectTo,
                 onUnsavedRouteDecision,
                 onSaveAndStartRoute,
@@ -524,7 +529,8 @@ private fun MapPersistenceTruth(
 @Composable
 private fun MapRootSummary(
     state: MapState,
-    connectedBaseConfigured: Boolean,
+    chartDisplayState: ChartDisplayUiState,
+    onChartDisplayAction: (ChartDisplayUiAction) -> Unit,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     onSaveAndStartRoute: () -> Unit,
@@ -643,7 +649,7 @@ private fun MapRootSummary(
                 }
             }
         }
-        MapTransient.MapViewPicker -> MapViewPicker(state, connectedBaseConfigured, onAction)
+        MapTransient.MapViewPicker -> MapViewPicker(chartDisplayState, onChartDisplayAction)
         null -> state.selection?.let { selection ->
             Row(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
@@ -667,7 +673,7 @@ private fun MapRootSummary(
 enum class UnsavedRouteDecision { SAVE, DISCARD, CANCEL }
 
 @Composable
-private fun MapViewPicker(state: MapState, connectedBaseConfigured: Boolean, onAction: (MapAction) -> Unit) {
+private fun MapViewPicker(state: ChartDisplayUiState, onAction: (ChartDisplayUiAction) -> Unit) {
     val colors = LocalWpTheme.current
     Column(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .97f))
@@ -675,20 +681,15 @@ private fun MapViewPicker(state: MapState, connectedBaseConfigured: Boolean, onA
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         WpText(stringResource(R.string.map_view_title), 12, weight = FontWeight.SemiBold)
-        Row(Modifier.fillMaxWidth()) {
-            MapViewMode.entries.forEach { mode ->
-                val label = when (mode) {
-                    MapViewMode.MARINE -> R.string.map_view_marine
-                    MapViewMode.STANDARD -> R.string.map_view_standard
-                    MapViewMode.SATELLITE -> R.string.map_view_satellite
-                }
-                MapCommandButton(
-                    label,
-                    "map-view-${mode.name.lowercase(Locale.ROOT)}",
-                    state.mapViewMode == mode,
-                    Modifier.weight(1f),
-                    enabled = mode == MapViewMode.MARINE || connectedBaseConfigured,
-                ) { onAction(MapAction.SetMapViewMode(mode)) }
+        if (state.views.isEmpty()) {
+            WpText(stringResource(R.string.map_view_missing), 12, color = colors.muted)
+        } else Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            state.views.forEach { view ->
+                MapTextButton(
+                    view.name,
+                    "map-view-${view.id.value}",
+                    modifier = Modifier.then(if (view.active) Modifier.border(1.dp, colors.accent) else Modifier),
+                ) { onAction(ChartDisplayUiAction.ActivateView(view.id)) }
             }
         }
     }
@@ -2153,15 +2154,20 @@ private fun ChartLayersPage(
         Modifier.fillMaxWidth().testTag(ChartDisplayTestTags.ROOT),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        WpText(stringResource(R.string.map_quick_layers_truth), 11, color = colors.muted)
-        MapTextButton(
-            if (state.overlaysVisible) stringResource(R.string.map_chart_overlays_visible)
-            else stringResource(R.string.map_chart_overlays_hidden),
-            ChartDisplayTestTags.TOGGLE_OVERLAYS,
-            modifier = Modifier.fillMaxWidth().then(
-                if (state.overlaysVisible) Modifier.border(1.dp, colors.accent) else Modifier,
-            ),
-        ) { onDisplayAction(ChartDisplayUiAction.ToggleOverlays) }
+        WpText(stringResource(R.string.map_view_truth), 11, color = colors.muted)
+        WpText(state.activeViewName ?: stringResource(R.string.map_view_missing), 24, weight = FontWeight.Light)
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag(ChartDisplayTestTags.VIEW_PICKER),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            state.views.forEach { view ->
+                MapTextButton(
+                    view.name,
+                    "chart-view-${view.id.value}",
+                    modifier = if (view.active) Modifier.border(1.dp, colors.accent) else Modifier,
+                ) { onDisplayAction(ChartDisplayUiAction.ActivateView(view.id)) }
+            }
+        }
         if (state.quickLayers.isEmpty() && !state.busy) {
             WpText(
                 stringResource(R.string.map_quick_layers_empty),
@@ -2188,7 +2194,10 @@ private fun ChartLayersPage(
                 ) { onDisplayAction(ChartDisplayUiAction.SetLayerVisible(layer.id, !layer.visible)) }
                 WpText(
                     stringResource(
-                        if (layer.role == ChartAssetRole.BASE) R.string.map_chart_role_base else R.string.map_chart_role_overlay,
+                        R.string.map_logical_layer_state,
+                        if (layer.visible) stringResource(R.string.map_chart_layer_visible)
+                        else stringResource(R.string.map_chart_layer_not_visible),
+                        (layer.opacity * 100).roundToInt(),
                     ),
                     10,
                     color = if (layer.visible) colors.accent else colors.muted,
@@ -2222,8 +2231,7 @@ private fun ChartLayersPage(
                         ChartDisplayNoticeUi.CATALOG_READ_FAILED -> R.string.map_chart_catalog_read_failed
                         ChartDisplayNoticeUi.ITEM_NO_LONGER_AVAILABLE -> R.string.map_chart_item_unavailable
                         ChartDisplayNoticeUi.ACTION_QUEUE_FULL -> R.string.map_chart_action_queue_full
-                        ChartDisplayNoticeUi.SELECTION_LIMIT_REACHED -> R.string.map_chart_selection_limit
-                        ChartDisplayNoticeUi.PREFERENCE_LIMIT_REACHED -> R.string.map_chart_preference_limit
+                        ChartDisplayNoticeUi.VIEW_UPDATE_FAILED -> R.string.map_view_update_failed
                     },
                 ),
                 11,

@@ -506,7 +506,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
         val dataStatus = dataStatusCopy(dataLauncherState)
         val chartLibraryStatus = chartLibraryStatusCopy(
             chartLibraryState,
-            currentDisplayNeedsAttention = chartDisplayState.selection !is com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection.None &&
+            currentDisplayNeedsAttention = chartDisplayState.activeViewId != null &&
                 chartDisplayState.issues.isNotEmpty(),
         )
         val runtime = ProductionShellRuntime(

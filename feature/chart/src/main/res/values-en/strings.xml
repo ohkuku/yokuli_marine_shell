@@ -348,6 +348,10 @@
     <string name="map_coverage_import">import offline package</string>
     <string name="map_coverage_registered_sources_only">Only registered local base layers in the current display plan are checked. Overlays and online maps never fill gaps.</string>
     <string name="map_chart_display_truth">This page controls the current display only. Add, scan, verify, and remove resources in the separate Chart Library app.</string>
+    <string name="map_view_truth">Chart consumes only Chart Library's active View. Switch Views and make quick logical-layer adjustments here.</string>
+    <string name="map_view_missing">No map View is available</string>
+    <string name="map_logical_layer_state">%1$s · %2$d%% opacity</string>
+    <string name="map_view_update_failed">The map View could not be updated safely. The current display was retained; retry.</string>
     <string name="map_chart_manage_library">manage Chart Library</string>
     <string name="map_chart_display_none">use no local chart</string>
     <string name="map_chart_overlays_visible">overlays: visible</string>

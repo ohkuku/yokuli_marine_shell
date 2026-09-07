@@ -38,10 +38,6 @@ import com.yokuli.marine.feature.chart.chartLauncherVisualContribution
 import com.yokuli.marine.feature.chart.ChartLaunchProjector
 import com.yokuli.marine.feature.chart.ChartDestination
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
-import com.yokuli.marine.feature.chartlibrary.ChartLibraryDisplayAction
-import com.yokuli.marine.feature.chartlibrary.ChartLibraryDisplayLayerUi
-import com.yokuli.marine.feature.chartlibrary.ChartLibraryDisplaySourceUi
-import com.yokuli.marine.feature.chartlibrary.ChartLibraryDisplayUi
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryShellContribution
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryUiAction
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryUiState
@@ -254,36 +250,6 @@ private fun NavigationGpxUiAction.toDocumentAction(): GpxImportUiAction = when (
     NavigationGpxUiAction.DismissResult -> GpxImportUiAction.DismissResult
 }
 
-private fun ChartDisplayUiState.toLibraryDisplayUi(): ChartLibraryDisplayUi {
-    val selectedById = assets.associateBy { it.id }
-    return ChartLibraryDisplayUi(
-        sources = sources.map {
-            ChartLibraryDisplaySourceUi(it.id, it.name, it.selected, it.enabled, it.availableAssetCount)
-        },
-        layers = quickLayers.map {
-            ChartLibraryDisplayLayerUi(
-                id = it.id,
-                title = it.title,
-                role = it.role,
-                selected = selectedById[it.id]?.selected == true,
-                inCurrentStack = true,
-                visible = it.visible,
-                available = it.available,
-                opacity = it.opacity,
-            )
-        },
-        overlaysVisible = overlaysVisible,
-    )
-}
-
-private fun ChartLibraryDisplayAction.toChartAction(): ChartDisplayUiAction = when (this) {
-    is ChartLibraryDisplayAction.ToggleSource -> ChartDisplayUiAction.ToggleSource(sourceId)
-    is ChartLibraryDisplayAction.SelectLayer -> ChartDisplayUiAction.PinAsset(assetId)
-    is ChartLibraryDisplayAction.SetLayerVisible -> ChartDisplayUiAction.SetLayerVisible(assetId, visible)
-    is ChartLibraryDisplayAction.SetLayerOpacity -> ChartDisplayUiAction.SetOpacity(assetId, opacity)
-    ChartLibraryDisplayAction.ToggleOverlays -> ChartDisplayUiAction.ToggleOverlays
-}
-
 /**
  * 中文：生产应用只在这里注册一次，目录、LaunchToken、视觉和内部宿主均从该绑定派生。
  * English: Production apps register once here; catalog, launch tokens, visuals, and hosts derive from it.
@@ -307,9 +273,6 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val runtime = LocalProductionShellRuntime.current
             val target = remember(token) { requireNotNull(ChartDestinations.parse(token)) }
             LaunchedEffect(token) {
-                if (target is ChartDestination.ChartAsset) {
-                    runtime.onChartDisplayAction(ChartDisplayUiAction.PinAsset(target.id))
-                }
                 ChartLaunchProjector.action(target, runtime.currentMapState())?.let(runtime.onMapAction)
             }
             val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
@@ -434,8 +397,6 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             ChartLibraryWorkspace(
                 state = runtime.chartLibraryState,
                 onAction = runtime.onChartLibraryAction,
-                display = runtime.chartDisplayState.toLibraryDisplayUi(),
-                onDisplayAction = { runtime.onChartDisplayAction(it.toChartAction()) },
             )
         },
     ),

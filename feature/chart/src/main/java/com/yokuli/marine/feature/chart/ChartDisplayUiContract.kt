@@ -1,38 +1,29 @@
 package com.yokuli.marine.feature.chart
 
-import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetRole
+import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayIssue
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
-import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
-import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayerHealth
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayerId
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewId
 
-data class ChartDisplaySourceUi(
-    val id: ChartSourceId,
+data class ChartDisplayViewUi(
+    val id: ChartViewId,
     val name: String,
-    val selected: Boolean,
-    val enabled: Boolean,
-    val availableAssetCount: Int,
-)
-
-data class ChartDisplayAssetUi(
-    val id: ChartAssetId,
-    val title: String,
-    val role: ChartAssetRole,
-    val selected: Boolean,
-    val visible: Boolean,
-    val available: Boolean,
-    val opacity: Float,
+    val baseStyle: ChartBuiltInBaseStyle,
+    val active: Boolean,
 )
 
 /** A display-only control. Source membership, scanning and files remain Chart Library concerns. */
 data class ChartQuickLayerUi(
-    val id: ChartAssetId,
+    val id: ChartLayerId,
     val title: String,
     val role: ChartAssetRole,
     val visible: Boolean,
     val available: Boolean,
     val opacity: Float,
+    val health: ChartLayerHealth,
 )
 
 enum class ChartDisplayNoticeUi {
@@ -40,16 +31,14 @@ enum class ChartDisplayNoticeUi {
     CATALOG_READ_FAILED,
     ITEM_NO_LONGER_AVAILABLE,
     ACTION_QUEUE_FULL,
-    SELECTION_LIMIT_REACHED,
-    PREFERENCE_LIMIT_REACHED,
+    VIEW_UPDATE_FAILED,
 }
 
 data class ChartDisplayUiState(
     val catalogRevision: Long = 0L,
-    val selection: ChartDisplaySelection = ChartDisplaySelection.None,
-    val overlaysVisible: Boolean = true,
-    val sources: List<ChartDisplaySourceUi> = emptyList(),
-    val assets: List<ChartDisplayAssetUi> = emptyList(),
+    val activeViewId: ChartViewId? = null,
+    val activeViewName: String? = null,
+    val views: List<ChartDisplayViewUi> = emptyList(),
     val quickLayers: List<ChartQuickLayerUi> = emptyList(),
     val plan: ChartDisplayPlan = ChartDisplayPlan.EMPTY,
     val issues: Set<ChartDisplayIssue> = emptySet(),
@@ -58,20 +47,16 @@ data class ChartDisplayUiState(
 )
 
 sealed interface ChartDisplayUiAction {
-    data object UseNoLocalChart : ChartDisplayUiAction
-    data class PinAsset(val assetId: ChartAssetId) : ChartDisplayUiAction
-    data class ToggleSource(val sourceId: ChartSourceId) : ChartDisplayUiAction
-    data object ToggleOverlays : ChartDisplayUiAction
-    data class SetLayerVisible(val assetId: ChartAssetId, val visible: Boolean) : ChartDisplayUiAction
-    data class SetOpacity(val assetId: ChartAssetId, val opacity: Float) : ChartDisplayUiAction
+    data class ActivateView(val viewId: ChartViewId) : ChartDisplayUiAction
+    data class SetLayerVisible(val layerId: ChartLayerId, val visible: Boolean) : ChartDisplayUiAction
+    data class SetOpacity(val layerId: ChartLayerId, val opacity: Float) : ChartDisplayUiAction
     data object Refresh : ChartDisplayUiAction
     data object DismissNotice : ChartDisplayUiAction
 }
 
 object ChartDisplayTestTags {
     const val ROOT = "chart-display-root"
-    const val NO_LOCAL = "chart-display-no-local"
-    const val TOGGLE_OVERLAYS = "chart-display-toggle-overlays"
+    const val VIEW_PICKER = "chart-display-view-picker"
     const val REFRESH = "chart-display-refresh"
     fun source(id: String) = "chart-display-source-$id"
     fun asset(id: String) = "chart-display-asset-$id"
