@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "R02_MAP_CONTENT_DOMAIN",
+  "baseCommit": "5e438ae43d072a307f0c8edba754e1e2bcb37170",
+  "implementationHead": "e1a554d63e1044187a1502a66afeba95de8d15d6",
+  "implementationContractSha256": "4f935c31240ae886b260ab6b80fb5439bffcb295b8a9fb404a4939b919068b54",
+  "status": "IMPLEMENTED_LOCAL_GREEN_CI_PENDING",
+  "humanAcceptance": "PENDING_R03_R04_PRODUCT_SURFACE",
+  "catalogSchemaVersion": 5,
+  "invariants": {
+    "oneExternalSourceOwnsOneLogicalLayer": true,
+    "managedStoreIsNotExposedAsLogicalLayer": true,
+    "activeViewIsDurable": true,
+    "viewResolutionUsesLogicalNames": true,
+    "assetConflictOrderIsDeterministic": true,
+    "legacyCatalogMigrationIsNonDestructive": true,
+    "fullVerificationIsNotDisplayAdmission": true
+  },
+  "evidence": {
+    "coreMapDomainTests": "157_PASS",
+    "adapterCompile": "PASS",
+    "androidMigrationAndRoundTrip": "CI_PENDING",
+    "productRecoveryContract": "6_PASS",
+    "legacyMbtilesContract": "4_PASS"
+  }
+}
