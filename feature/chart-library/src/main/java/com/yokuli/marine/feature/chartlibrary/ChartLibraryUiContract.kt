@@ -81,10 +81,20 @@ data class ChartLibraryViewUi(
     val id: ChartViewId,
     val name: String,
     val baseStyle: ChartBuiltInBaseStyle,
-    val layerNames: List<String>,
+    val layers: List<ChartLibraryViewLayerUi>,
     val visibleLayerCount: Int,
     val active: Boolean,
 )
+
+data class ChartLibraryViewLayerUi(
+    val id: ChartLayerId,
+    val name: String,
+    val included: Boolean,
+    val visible: Boolean,
+    val opacity: Float,
+) {
+    init { require(opacity.isFinite() && opacity in 0f..1f) }
+}
 
 data class ChartLibrarySummaryUi(
     val sourceCount: Int = 0,
@@ -301,6 +311,7 @@ sealed interface ChartLibraryUiAction {
     data class DeleteView(val viewId: ChartViewId) : ChartLibraryUiAction
     data class ActivateView(val viewId: ChartViewId) : ChartLibraryUiAction
     data class SetViewBaseStyle(val viewId: ChartViewId, val baseStyle: ChartBuiltInBaseStyle) : ChartLibraryUiAction
+    data class ToggleViewLayer(val viewId: ChartViewId, val layerId: ChartLayerId) : ChartLibraryUiAction
     data object DismissNotice : ChartLibraryUiAction
 }
 

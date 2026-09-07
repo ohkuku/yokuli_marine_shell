@@ -387,7 +387,23 @@ private fun MapViewRow(view: ChartLibraryViewUi, index: Int, onAction: (ChartLib
             12,
             color = colors.muted,
         )
-        WpText(view.layerNames.joinToString(" · ").ifBlank { stringResource(R.string.view_no_layers) }, 12, color = colors.muted)
+        if (view.layers.isEmpty()) {
+            WpText(stringResource(R.string.view_no_layers), 12, color = colors.muted)
+        } else {
+            view.layers.forEach { layer ->
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = YokuliMetrics.MinTouch)
+                        .clickable { onAction(ChartLibraryUiAction.ToggleViewLayer(view.id, layer.id)) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        Modifier.size(16.dp).border(2.dp, if (layer.included) colors.accent else colors.muted)
+                            .let { if (layer.included) it.background(colors.accent) else it },
+                    )
+                    WpText(layer.name, 14, color = if (layer.included) colors.foreground else colors.muted, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             ChartBuiltInBaseStyle.entries.forEach { style ->
                 InlineCommand(baseStyleLabel(style), "chart-library-view-base-${view.id.value}-${style.name}") {

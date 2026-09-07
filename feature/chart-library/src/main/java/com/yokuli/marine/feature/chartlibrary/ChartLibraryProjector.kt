@@ -93,7 +93,6 @@ object ChartLibraryProjector {
             )
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
-        val layerById = layers.associateBy(ChartLayer::id)
         val layerRows = layers.map { layer ->
             val summary = ChartLayerSummaryProjector.project(layer, sources, assets)
             ChartLibraryLayerUi(
@@ -115,13 +114,23 @@ object ChartLibraryProjector {
             )
         }.sortedWith(compareByDescending<ChartLibraryLayerUi> { it.stackOrder }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
         val viewRows = views.map { view ->
-            val orderedLayers = view.layers.sortedByDescending { it.stackOrder }
+            val viewLayers = view.layers.associateBy { it.layerId }
+            val orderedLayers = layers.sortedByDescending { viewLayers[it.id]?.stackOrder ?: it.stackOrder }
             ChartLibraryViewUi(
                 id = view.id,
                 name = view.displayName,
                 baseStyle = view.baseStyle,
-                layerNames = orderedLayers.mapNotNull { layerById[it.layerId]?.displayName },
-                visibleLayerCount = orderedLayers.count { it.visible },
+                layers = orderedLayers.map { layer ->
+                    val item = viewLayers[layer.id]
+                    ChartLibraryViewLayerUi(
+                        id = layer.id,
+                        name = layer.displayName,
+                        included = item != null,
+                        visible = item?.visible == true,
+                        opacity = item?.opacity ?: layer.opacity,
+                    )
+                },
+                visibleLayerCount = view.layers.count { it.visible },
                 active = view.id == catalog.activeViewId,
             )
         }.sortedWith(compareByDescending<ChartLibraryViewUi> { it.active }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })

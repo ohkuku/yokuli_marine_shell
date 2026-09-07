@@ -291,6 +291,22 @@ class ChartLibraryCoordinator(
                 ChartLibraryNoticeUi.VIEW_UPDATED,
             )
             is ChartLibraryUiAction.SetViewBaseStyle -> mutateView(action.viewId) { it.copy(baseStyle = action.baseStyle) }
+            is ChartLibraryUiAction.ToggleViewLayer -> mutateView(action.viewId) { view ->
+                val current = view.layers.firstOrNull { it.layerId == action.layerId }
+                view.copy(
+                    layers = if (current == null) {
+                        val layer = layers.firstOrNull { it.id == action.layerId }
+                        if (layer == null) view.layers else view.layers + ChartViewLayer(
+                            layerId = layer.id,
+                            visible = true,
+                            opacity = layer.opacity,
+                            stackOrder = layer.stackOrder,
+                        )
+                    } else {
+                        view.layers.filterNot { it.layerId == action.layerId }
+                    },
+                )
+            }
             ChartLibraryUiAction.DismissNotice -> {
                 notice = null
                 publish()

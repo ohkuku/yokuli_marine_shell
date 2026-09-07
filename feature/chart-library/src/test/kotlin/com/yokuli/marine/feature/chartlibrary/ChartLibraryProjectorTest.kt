@@ -14,6 +14,12 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryRuntimeMetrics
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySource
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryStorageSnapshot
+import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayer
+import com.yokuli.marine.map.domain.chartlibrary.ChartLayerId
+import com.yokuli.marine.map.domain.chartlibrary.ChartMapView
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewId
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewLayer
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyCapability
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
 import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
@@ -139,6 +145,43 @@ class ChartLibraryProjectorTest {
         assertTrue(row.needsAttention)
         assertEquals(ASSET_A, row.id)
         assertEquals(ChartValidationIssue.PERMISSION_LOST, row.validationJob?.issue)
+    }
+
+    @Test
+    fun logicalLayerAndActiveViewAreThePrimaryProjectedMapContent() {
+        val layerId = ChartLayerId("nz-hydro")
+        val viewId = ChartViewId("sailing")
+        val layer = ChartLayer(layerId, "NZ Hydro", setOf(SOURCE_A), opacity = .7f, stackOrder = 4)
+        val view = ChartMapView(
+            viewId,
+            "Sailing",
+            ChartBuiltInBaseStyle.SATELLITE,
+            listOf(ChartViewLayer(layerId, opacity = .6f, stackOrder = 4)),
+        )
+        val ui = ChartLibraryProjector.project(
+            catalog = ChartCatalogSnapshot(
+                sourceCount = 1,
+                assetCount = 1,
+                layerCount = 1,
+                viewCount = 1,
+                activeViewId = viewId,
+            ),
+            sources = listOf(source()),
+            assets = listOf(asset(size = 4_096L)),
+            layers = listOf(layer),
+            views = listOf(view),
+            validation = ChartValidationSnapshot(),
+            storage = ChartLibraryStorageSnapshot.EMPTY,
+            metrics = ChartLibraryRuntimeMetrics(),
+            local = ChartLibraryLocalState(selectedLayerId = layerId),
+        )
+
+        assertEquals("NZ Hydro", ui.layers.single().name)
+        assertEquals(1, ui.layers.single().assetCount)
+        assertTrue(ui.layers.single().selected)
+        assertTrue(ui.views.single().active)
+        assertEquals("NZ Hydro", ui.views.single().layers.single().name)
+        assertTrue(ui.views.single().layers.single().included)
     }
 
     private fun project(
