@@ -828,3 +828,19 @@ Green 将 Data 重建为同一 marine-data truth 上的船体 overview、semanti
 ### English translation — Data Recovery R00–R09
 
 The recovery Reds retire the rejected five-section presentation while preserving correctness gates, then define one Boat/Flow/Connections model, semantic probing, source trust and consumer impact. Green reuses the real transport/parser/runtime truth, keeps probing disposable until explicit confirmation, and projects the same health into Data, its tile and the Shell. Focused gates pass; hosted CI, real-APK DATA-R10 acceptance and post-acceptance DATA-R11 locking remain pending.
+
+## Base Apps Recovery R21 — Legacy MBTiles poison recovery
+
+### Red
+
+第一条 domain Red 证明 same-revision rescan 会永久保留 `DIRECT_READ_UNSUPPORTED`。纵向 Android Red 从重启后的 poisoned Room catalog 开始，要求自动 Basic、stream/local fallback、`READABLE + BASIC_READABLE`、logical View planner、runtime tile session 和真实 MapLibre pixels。自查再用 300 个 poisoned assets 暴露了升序 filtered paging/queue skip，以及 validation publish 期间 rows/total 非原子读取触发的 `ChartCatalogPage` invariant。
+
+### Green 与纠错
+
+Validation 现在可以重新探测历史 capability poison，但 Render 仍被安全阻止到 Basic 成功。启动恢复改为有界后台逐项检查，same-revision rescan 会归一为待检查状态；asset page 在一个 Room transaction 中读取。外部原件不变，现有 `AndroidChartResourceAccess` fallback、validation controller、catalog、View planner、loopback gateway 和 MapLibre surface 全部复用。
+
+CI 自查同时发现 legacy evidence extractor 没有要求新场景，也没有读取 UTP `logcat-*.txt`；现已要求三个场景并正确提取。最后定向证据为 planner `8/8`、300 项 batch `1/1`、SAF + pixel `7/7`、evidence `3/3 COMPLETE`。R21 仍为 STOP-SHIP OPEN：hosted CI 和用户真实旧版可用 MBTiles 尚未人工通过，R22 未开始。
+
+### English translation — Base Apps Recovery R21
+
+R21 makes the persisted direct-read failure a recoverable provider-capability observation. Startup and same-revision rescan now re-enter the existing Basic/local-fallback path, catalog pages remain atomic while validation publishes, and a 300-item batch cannot be skipped. A synthetic stream-only poisoned asset reaches actual MapLibre pixels without changing the original. Focused machine evidence passes, but hosted CI and the exact user-file APK gate remain pending, so R21 stays open and R22 has not started.
