@@ -15,7 +15,7 @@
 | R04 Global Navigation Runtime | `5a405fe` | 已实现；替换必须显式确认 |
 | R05 Navigation Camera | `9d3fe4b` | 已实现；Follow/Look Ahead/Next WP/Overview/Browse 分离 |
 | R06 Track Recorder | `73f5281` | 已实现；进程级、可恢复、actual track 独立 |
-| R07 Navigation History | `27d8238` | 已实现；passage evidence 与 track association 持久化 |
+| R07 Navigation History | `27d8238` + safety correction `928bd3f` | 已实现；passage evidence、track association 与不可读文件保护 |
 | R08 Map Content Integration | Map Content/View `e1a554d` + `7fa622c` | 已实现；逻辑 View 与 MBTiles 资源管理分离 |
 | R09 Shell Activity / Consumer | `2ac2c1f` | 已实现；Shell/Future Cockpit 共用同一 snapshot |
 | R10 Human Acceptance | 需要本轮 CI APK | `PENDING` |

@@ -10,6 +10,7 @@
 - Stop、Complete、Replace 和异常恢复分别保存为 `STOPPED`、`COMPLETED`、`REPLACED`、`INTERRUPTED`，不会把中断冒充完成。
 - Navigation 页面显示最近航行摘要；实际保存的 Track 仅通过相同 navigation session ID 关联，规划路线和实际航迹仍是两个对象。
 - 历史由 `ShellApplication` 进程级 runtime 持有并持久化；上限 1000 段，只淘汰最早的已结束记录，绝不为腾容量删除仍 active 的 passage。
+- History 文件损坏、不可读或来自未来 schema 时进入只读故障态；在成功重新读取以前，runtime 不会用空历史覆盖原文件。单段 2000 航点、总计 20 万航点的上限同时由 runtime 与 wire encoder 强制。
 
 ## Design decisions
 
@@ -30,9 +31,10 @@
 
 - Red：Navigation History 合同、runtime、proto/store 与 UI projection 缺失，首轮测试在 compile 阶段失败。
 - Correction Red：同一路线快速重启 session ID 冲突、完成时刻不精确、恢复时伪造事件、wall clock 回拨构造异常均由行为测试先锁定。
-- Green：`DefaultNavigationHistoryRuntimeTest` 6/6 PASS。
-- Green：定向 `DefaultActiveNavigationRuntimeTest` 与 `DefaultTrackRecorderRuntimeTest` PASS；core 定向集合共 28/28 PASS。
-- Green：`NavigationHistoryProtoMapperTest` 与 `ActiveNavigationSessionProtoMapperTest` 共 4/4 PASS。
+- Persistence Correction Red：future-schema load 后首次 begin 可能覆盖原文件，以及 total-waypoint 容量只在 decoder 限制，新增安全测试先覆盖这两个反例。
+- Green：`DefaultNavigationHistoryRuntimeTest` 8/8 PASS。
+- Green：定向 `DefaultActiveNavigationRuntimeTest` 13/13、`MarineOngoingActivityPortTest` 1/1 PASS。
+- Green：`NavigationHistoryProtoMapperTest` 2/2 与 `ActiveNavigationSessionProtoMapperTest` 3/3 PASS。
 - `:feature:navigation:compileDebugKotlin` PASS。
 - `:app-shell:compileStandaloneDebugKotlin` PASS。
 - 全量 machine gate 留给 push CI。

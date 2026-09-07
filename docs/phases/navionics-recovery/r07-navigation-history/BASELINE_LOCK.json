@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "workPackage": "NAVREF_R07_NAVIGATION_HISTORY",
   "baseCommit": "a39ec542ec7f32321ef98245d741713f85b89fab",
-  "implementationHead": "27d82383578ca8c188ebd40a9eaa4fff294bc941",
+  "implementationHead": "928bd3fe634af5fdc869f5a4de8655fb158f655c",
   "bundleSha256": "4a992c480b58d57ecc4fd96b7eb282800341e9f38e3a1f1caf72b213d8bf084f",
   "contractSha256": "326bd66398b2581bf72fecbe11ba2301e9218015bc39da68646db7bcb4abde9a",
   "status": "IMPLEMENTED_LOCAL_GREEN_CI_AND_HUMAN_PENDING",
@@ -13,12 +13,15 @@
     "recoveryDoesNotFabricateEvidence": true,
     "historyFailureDoesNotBlockNavigationSafety": true,
     "plannedRouteAndActualTrackRemainDistinct": true,
-    "activePassageIsNeverCapacityEvicted": true
+    "activePassageIsNeverCapacityEvicted": true,
+    "failedLoadCannotOverwriteHistory": true,
+    "runtimeAndWireWaypointBoundsMatch": true
   },
   "evidence": {
-    "navigationHistoryFocusedTests": "PASS_6_OF_6",
-    "coreNavigationFocusedTests": "PASS_28_OF_28",
-    "navigationPersistenceFocusedTests": "PASS_4_OF_4",
+    "navigationHistoryFocusedTests": "PASS_8_OF_8",
+    "activeNavigationFocusedTests": "PASS_13_OF_13",
+    "ongoingActivityFocusedTest": "PASS_1_OF_1",
+    "navigationPersistenceFocusedTests": "PASS_5_OF_5",
     "featureNavigationCompile": "PASS",
     "appShellCompile": "PASS",
     "fullMachineGate": "CI_PENDING",
