@@ -31,6 +31,20 @@
 
 当前没有用户提供的那一份真实 MBTiles fixture，因此这里的代码证据覆盖 legacy-shaped no-metadata archive 与真实 pipe DocumentsProvider；最终仍需要用用户原文件做一次人工导入/显示验收。
 
+### MBTiles 纠正的本地窄门禁证据
+
+修复提交 `64e0303` 以及两笔测试合同纠正 `19b267a`、`b197167` 后执行了与本次回归直接相关的窄门禁：
+
+- `:core:map-domain:test`：153/153 PASS；
+- `:adapter:chart-library-android:compileDebugAndroidTestKotlin`：PASS；
+- `:adapter:map-offline:compileDebugKotlin`：PASS；
+- `:feature:chart-library:compileDebugKotlin`：PASS；
+- `:feature:chart:compileDebugKotlin`：PASS；
+- `test_legacy_mbtiles_compatibility.py`：4/4 PASS；
+- `test_product_recovery_window.py`：6/6 PASS。
+
+本地没有把 instrumentation **编译通过**冒充为真实设备执行。真实 pipe provider、SQLite 与 renderer 链路的运行证据，以及完整 build/lint 门禁，必须由本提交的 GitHub Actions artifact 给出；用户实际海图文件仍保留为人工验收项。
+
 ## 本地窄门禁证据
 
 提交 `79e2255` 后只运行本次 CI 策略直接相关的测试，没有运行全量 Gradle：
