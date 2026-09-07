@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yokuli.marine.map.domain.MapTileScheme
 import com.yokuli.marine.map.domain.chartlibrary.*
 import java.io.File
+import java.util.Collections
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.*
@@ -147,6 +148,77 @@ class ChartLibraryRuntimeAndroidTest {
         }
     }
 
+    @Test fun startupRecoveryDoesNotSkipPoisonedAssetsBeyondTheBasicQueueCapacity() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File(context.cacheDir, "runtime-poisoned-batch.db").also {
+            it.delete(); File("${it.path}-wal").delete(); File("${it.path}-shm").delete()
+        }
+        val catalog = RoomChartCatalogRepository.create(context, file)
+        val source = ChartLibrarySource(
+            ChartSourceId(UUID.randomUUID().toString()),
+            ChartLibrarySourceKind.SINGLE_DOCUMENT,
+            ChartOpaqueLocator("content://runtime/document/poisoned-batch"),
+            "Legacy charts",
+            recursive = false,
+            grantState = ChartGrantState.GRANTED,
+            scan = ChartSourceScanState(1, ChartScanStatus.COMPLETE, 1, 300, 0),
+        )
+        val poisoned = List(AndroidChartLibraryRuntime.BASIC_QUEUE_CAPACITY + 44) { index ->
+            ChartAsset(
+                ChartAssetId(UUID.randomUUID().toString()),
+                ChartDocumentIdentity("runtime", "poisoned-$index"),
+                ChartOpaqueLocator("content://runtime/document/poisoned-$index"),
+                setOf(source.id),
+                "poisoned-$index.mbtiles",
+                ChartContentRevision("runtime:poisoned-$index", 1, 1),
+                access = ChartAssetAccessState.DIRECT_READ_UNSUPPORTED,
+                validation = ChartAssetValidationState.INVALID,
+            )
+        }
+        assertTrue(
+            catalog.transact(
+                ChartCatalogTransaction(
+                    "seed-poisoned-batch",
+                    mutations = buildList {
+                        add(ChartCatalogMutation.PutSource(source))
+                        poisoned.forEach { add(ChartCatalogMutation.PutAsset(it)) }
+                    },
+                ),
+            ) is ChartCatalogCommitResult.Committed,
+        )
+        val access = FakeAccess()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val controller = AndroidChartSourceController(
+            catalog,
+            { _, _ -> ChartEnumerationResult.Complete(emptyList()) },
+            object : PersistedChartGrantPort {
+                override fun takeRead(locator: ChartOpaqueLocator) = true
+                override fun releaseRead(locator: ChartOpaqueLocator) = true
+            },
+        )
+        val runtime = AndroidChartLibraryRuntime.createForTest(
+            catalog, access, controller, ChartRevisionProbe { it.revision }, scope,
+        )
+        try {
+            withTimeout(15_000) {
+                while (
+                    runtime.assets(
+                        ChartAssetQuery(access = setOf(ChartAssetAccessState.DIRECT_READ_UNSUPPORTED)),
+                    ).total != 0
+                ) delay(20)
+            }
+            assertEquals(
+                poisoned.size,
+                runtime.assets(
+                    ChartAssetQuery(validation = setOf(ChartAssetValidationState.BASIC_READABLE)),
+                ).total,
+            )
+        } finally {
+            runtime.close()
+            scope.cancel()
+        }
+    }
+
     private suspend fun fixture(name: String): Fixture {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val file = File(context.cacheDir, "runtime-$name.db").also {
@@ -195,7 +267,7 @@ class ChartLibraryRuntimeAndroidTest {
     }
 
     private class FakeAccess : ChartResourceAccessPort {
-        val sessions = mutableListOf<FakeSession>()
+        val sessions = Collections.synchronizedList(mutableListOf<FakeSession>())
         override suspend fun open(request: ChartReadRequest): ChartOpenResult = ChartOpenResult.Opened(
             FakeSession(request).also(sessions::add),
         )
