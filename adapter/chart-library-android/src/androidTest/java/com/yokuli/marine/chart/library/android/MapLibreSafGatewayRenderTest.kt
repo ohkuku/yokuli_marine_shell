@@ -38,6 +38,7 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -65,6 +66,7 @@ class MapLibreSafGatewayRenderTest {
         val expectedColor = Color.rgb(38, 146, 214)
         createMbTiles(source, pngTile(expectedColor))
         val hashBefore = source.sha256()
+        val chartFilesBefore = context.filesDir.mbTilesHashes()
         val request = ChartReadRequest(
             ChartAssetId("asset-render"),
             ChartOpaqueLocator(
@@ -81,21 +83,34 @@ class MapLibreSafGatewayRenderTest {
             gateway.register(opened.session, MapTileScheme.MBTILES_TMS, 256, 0, 0).use { registration ->
                 val finished = CountDownLatch(1)
                 val snapshot = AtomicReference<Bitmap?>()
+                val capturing = AtomicBoolean(false)
                 ActivityScenario.launch(ChartLibraryMapTestActivity::class.java).use { scenario ->
                     scenario.onActivity { activity ->
                         activity.mapView.getMapAsync { map ->
                             activity.mapView.addOnDidFinishRenderingMapListener(
                                 object : MapView.OnDidFinishRenderingMapListener {
                                     override fun onDidFinishRenderingMap(fully: Boolean) {
-                                        if (!fully || snapshot.get() != null) return
-                                        map.snapshot { bitmap -> snapshot.set(bitmap); finished.countDown() }
+                                        if (!fully || snapshot.get() != null || !capturing.compareAndSet(false, true)) return
+                                        map.snapshot { bitmap ->
+                                            if (bitmap.contains(expectedColor)) {
+                                                snapshot.set(bitmap)
+                                                finished.countDown()
+                                            } else {
+                                                capturing.set(false)
+                                                map.triggerRepaint()
+                                            }
+                                        }
                                     }
                                 },
                             )
                             map.cameraPosition = CameraPosition.Builder().target(LatLng(0.0, 0.0)).zoom(0.0).build()
                             map.setStyle(Style.Builder().fromJson(EMPTY_STYLE)) { style ->
                                 style.addSource(registration.toRasterSource("saf-chart"))
-                                style.addLayer(RasterLayer("saf-chart-layer", "saf-chart"))
+                                style.addLayer(
+                                    RasterLayer("saf-chart-layer", "saf-chart").withProperties(
+                                        org.maplibre.android.style.layers.PropertyFactory.rasterFadeDuration(0f),
+                                    ),
+                                )
                                 map.triggerRepaint()
                             }
                         }
@@ -108,7 +123,7 @@ class MapLibreSafGatewayRenderTest {
             assertTrue(gateway.localAddress.isLoopbackAddress)
         }
         assertEquals(hashBefore, source.sha256())
-        assertTrue(context.filesDir.walkTopDown().none { it.isFile && it.name.endsWith(".mbtiles") && it != source })
+        assertEquals(chartFilesBefore, context.filesDir.mbTilesHashes())
     }
 
     @Test fun poisonedSameRevisionStreamOnlyAssetAutomaticallyRecoversIntoChartPixels() = runBlocking {
@@ -233,21 +248,34 @@ class MapLibreSafGatewayRenderTest {
                 ).use { registration ->
                     val finished = CountDownLatch(1)
                     val snapshot = AtomicReference<Bitmap?>()
+                    val capturing = AtomicBoolean(false)
                     ActivityScenario.launch(ChartLibraryMapTestActivity::class.java).use { scenario ->
                         scenario.onActivity { activity ->
                             activity.mapView.getMapAsync { map ->
                                 activity.mapView.addOnDidFinishRenderingMapListener(
                                     object : MapView.OnDidFinishRenderingMapListener {
                                         override fun onDidFinishRenderingMap(fully: Boolean) {
-                                            if (!fully || snapshot.get() != null) return
-                                            map.snapshot { bitmap -> snapshot.set(bitmap); finished.countDown() }
+                                            if (!fully || snapshot.get() != null || !capturing.compareAndSet(false, true)) return
+                                            map.snapshot { bitmap ->
+                                                if (bitmap.contains(expectedColor)) {
+                                                    snapshot.set(bitmap)
+                                                    finished.countDown()
+                                                } else {
+                                                    capturing.set(false)
+                                                    map.triggerRepaint()
+                                                }
+                                            }
                                         }
                                     },
                                 )
                                 map.cameraPosition = CameraPosition.Builder().target(LatLng(0.0, 0.0)).zoom(0.0).build()
                                 map.setStyle(Style.Builder().fromJson(EMPTY_STYLE)) { style ->
                                     style.addSource(registration.toRasterSource("recovered-chart"))
-                                    style.addLayer(RasterLayer("recovered-chart-layer", "recovered-chart"))
+                                    style.addLayer(
+                                        RasterLayer("recovered-chart-layer", "recovered-chart").withProperties(
+                                            org.maplibre.android.style.layers.PropertyFactory.rasterFadeDuration(0f),
+                                        ),
+                                    )
                                     map.triggerRepaint()
                                 }
                             }
@@ -292,6 +320,10 @@ class MapLibreSafGatewayRenderTest {
 
     private fun File.sha256(): String = MessageDigest.getInstance("SHA-256")
         .digest(readBytes()).joinToString("") { "%02x".format(it) }
+
+    private fun File.mbTilesHashes(): Map<String, String> = walkTopDown()
+        .filter { it.isFile && it.extension.equals("mbtiles", ignoreCase = true) }
+        .associate { it.relativeTo(this).invariantSeparatorsPath to it.sha256() }
 
     companion object {
         private const val EMPTY_STYLE = """{"version":8,"sources":{},"layers":[]}"""

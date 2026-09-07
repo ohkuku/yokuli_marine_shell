@@ -114,14 +114,18 @@ class ChartValidationAndroidTest {
         }
     }
 
-    @Test fun metadataConflictAndOverlongTextAreRejectedWithoutInventingFacts() = runBlocking {
+    @Test fun metadataMismatchIsWarnedWhileOverlongTextIsRejectedWithoutInventingFacts() = runBlocking {
         val conflict = File(root, "conflict.mbtiles")
         createMbTiles(conflict, tile = raster(Bitmap.CompressFormat.JPEG, 256))
         SQLiteDatabase.openDatabase(conflict.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
             db.execSQL("INSERT INTO metadata VALUES ('format','png')")
         }
         val conflictResult = ChartBasicInspector(AndroidChartResourceAccess(context.contentResolver)).inspect(asset(conflict), 1)
-        assertEquals(ChartValidationIssue.INVALID_METADATA, (conflictResult as ChartBasicInspectionResult.Rejected).issue)
+        assertTrue(conflictResult is ChartBasicInspectionResult.Readable)
+        assertTrue(
+            ChartCompatibilityWarning.FORMAT_MISMATCH in
+                (conflictResult as ChartBasicInspectionResult.Readable).inspection.warnings,
+        )
 
         val overlong = File(root, "overlong.mbtiles")
         createMbTiles(overlong)
