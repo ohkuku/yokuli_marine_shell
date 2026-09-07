@@ -78,7 +78,7 @@ class AndroidChartLibraryRuntime private constructor(
                 }
             }
         }
-        scope.launch { enqueueHistoricalAccessRecovery() }
+        scope.launch { recoverHistoricalAccessFailures() }
         scope.launch {
             catalog.snapshot.drop(1).collect { invalidateChangedSessions() }
         }
@@ -339,16 +339,21 @@ class AndroidChartLibraryRuntime private constructor(
      * verdict. Older catalog rows are re-probed on process start so the existing stream/local
      * fallback can recover them without a rescan, data clear, or source re-import.
      */
-    private suspend fun enqueueHistoricalAccessRecovery() {
-        var offset = 0
-        do {
-            val page = catalog.assets(
-                query = ChartAssetQuery(access = setOf(ChartAssetAccessState.DIRECT_READ_UNSUPPORTED)),
-                offset = offset,
-            )
-            page.items.forEach(::enqueueBasic)
-            offset += page.items.size
-        } while (offset < page.total && page.items.isNotEmpty())
+    private suspend fun recoverHistoricalAccessFailures() {
+        val query = ChartAssetQuery(access = setOf(ChartAssetAccessState.DIRECT_READ_UNSUPPORTED))
+        val initialTotal = catalog.assets(query, limit = 1).total
+        var offset = if (initialTotal == 0) -1 else {
+            ((initialTotal - 1) / DEFAULT_CATALOG_PAGE_SIZE) * DEFAULT_CATALOG_PAGE_SIZE
+        }
+        while (offset >= 0) {
+            val page = catalog.assets(query, offset = offset)
+            page.items.forEach { historical ->
+                if (catalog.asset(historical.id)?.access == ChartAssetAccessState.DIRECT_READ_UNSUPPORTED) {
+                    validationController.inspectBasic(historical.id)
+                }
+            }
+            offset -= DEFAULT_CATALOG_PAGE_SIZE
+        }
     }
 
     private fun enqueueBasic(asset: ChartAsset) {

@@ -37,22 +37,24 @@ class RoomChartCatalogRepository private constructor(
 
     override suspend fun assets(query: ChartAssetQuery, offset: Int, limit: Int): ChartCatalogPage<ChartAsset> = ioRead {
         checkPage(offset, limit)
-        val text = "%${query.text.escapeLike()}%"
-        val access = query.access.map { it.name }.ifEmpty { listOf(ChartAssetAccessState.UNCHECKED.name) }
-        val validation = query.validation.map { it.name }.ifEmpty { listOf(ChartAssetValidationState.DISCOVERED.name) }
-        val rows = dao.assets(
-            query.sourceId?.value, text, query.enabledOnly,
-            query.access.isNotEmpty(), access,
-            query.validation.isNotEmpty(), validation,
-            limit, offset,
-        )
-        val items = rows.map { it.toDomain(dao.memberships(it.id)) }
-        val total = dao.filteredAssetCount(
-            query.sourceId?.value, text, query.enabledOnly,
-            query.access.isNotEmpty(), access,
-            query.validation.isNotEmpty(), validation,
-        )
-        ChartCatalogPage(items, offset, limit, total)
+        database.withTransaction {
+            val text = "%${query.text.escapeLike()}%"
+            val access = query.access.map { it.name }.ifEmpty { listOf(ChartAssetAccessState.UNCHECKED.name) }
+            val validation = query.validation.map { it.name }.ifEmpty { listOf(ChartAssetValidationState.DISCOVERED.name) }
+            val rows = dao.assets(
+                query.sourceId?.value, text, query.enabledOnly,
+                query.access.isNotEmpty(), access,
+                query.validation.isNotEmpty(), validation,
+                limit, offset,
+            )
+            val items = rows.map { it.toDomain(dao.memberships(it.id)) }
+            val total = dao.filteredAssetCount(
+                query.sourceId?.value, text, query.enabledOnly,
+                query.access.isNotEmpty(), access,
+                query.validation.isNotEmpty(), validation,
+            )
+            ChartCatalogPage(items, offset, limit, total)
+        }
     }
 
     override suspend fun asset(id: ChartAssetId): ChartAsset? = ioRead {
