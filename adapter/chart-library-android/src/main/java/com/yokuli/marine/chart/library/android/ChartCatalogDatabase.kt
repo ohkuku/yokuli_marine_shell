@@ -514,6 +514,11 @@ internal val CHART_CATALOG_MIGRATION_4_5 = object : Migration(4, 5) {
                SELECT 'default-view-v1',id,visible,opacity,stackOrder FROM chart_layers""".trimIndent(),
         )
         database.execSQL(
+            """INSERT OR IGNORE INTO chart_catalog_metadata(id,revision,lastTransactionId,activeViewId)
+               SELECT 0,0,NULL,'default-view-v1'
+               WHERE EXISTS(SELECT 1 FROM chart_views)""".trimIndent(),
+        )
+        database.execSQL(
             "UPDATE chart_catalog_metadata SET activeViewId='default-view-v1' WHERE EXISTS(SELECT 1 FROM chart_views)",
         )
     }

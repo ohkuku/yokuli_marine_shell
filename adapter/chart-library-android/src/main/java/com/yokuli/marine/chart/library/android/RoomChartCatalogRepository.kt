@@ -210,6 +210,9 @@ class RoomChartCatalogRepository private constructor(
 
     private suspend fun putLayer(layer: ChartLayer) {
         if (layer.sourceIds.any { dao.source(it.value) == null }) throw InvalidReferenceException()
+        if (layer.sourceIds.any { sourceId -> dao.layerIdsForSource(sourceId.value).any { it != layer.id.value } }) {
+            throw IdentityConflictException()
+        }
         dao.putLayer(layer.toEntity())
         dao.deleteLayerSources(layer.id.value)
         dao.putLayerSources(layer.sourceIds.map { ChartLayerSourceEntity(layer.id.value, it.value) })

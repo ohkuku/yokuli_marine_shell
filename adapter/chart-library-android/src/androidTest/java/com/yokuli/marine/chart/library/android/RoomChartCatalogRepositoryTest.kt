@@ -81,6 +81,21 @@ class RoomChartCatalogRepositoryTest {
         }
     }
 
+    @Test fun oneSourceCannotSilentlyFeedTwoLogicalLayers() = runBlocking {
+        RoomChartCatalogRepository.create(context, freshDatabase("one-source-one-layer")).use { repository ->
+            val source = source("exclusive")
+            repository.transact(ChartCatalogTransaction("source", mutations = listOf(ChartCatalogMutation.PutSource(source))))
+            val duplicate = ChartLayer(ChartLayerId("duplicate-layer"), "Duplicate", setOf(source.id))
+
+            val result = repository.transact(
+                ChartCatalogTransaction("duplicate", mutations = listOf(ChartCatalogMutation.PutLayer(duplicate))),
+            ) as ChartCatalogCommitResult.Failed
+
+            assertEquals(ChartCatalogFailure.IDENTITY_CONFLICT, result.reason)
+            assertEquals(1, repository.layers().total)
+        }
+    }
+
     @Test fun confirmedDocumentIdentityDeduplicatesMembershipAliases() = runBlocking {
         RoomChartCatalogRepository.create(context, freshDatabase("catalog-dedup")).use { repository ->
             val firstSource = source("tree")
