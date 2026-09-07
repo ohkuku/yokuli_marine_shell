@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "NAVREF_R09_SHELL_ACTIVITY_FUTURE_CONSUMER",
+  "baseCommit": "9dd148b5a27edda709c4cc5f8fb74017c1174f33",
+  "implementationHead": "2ac2c1ff2659eaccf4d7f8f23bd440b40eb61d84",
+  "bundleSha256": "4a992c480b58d57ecc4fd96b7eb282800341e9f38e3a1f1caf72b213d8bf084f",
+  "contractSha256": "326bd66398b2581bf72fecbe11ba2301e9218015bc39da68646db7bcb4abde9a",
+  "status": "IMPLEMENTED_LOCAL_GREEN_CI_AND_HUMAN_PENDING",
+  "humanAcceptance": "PENDING_SHELL_ACTIVITY_APK",
+  "invariants": {
+    "singleProcessActivityTruth": true,
+    "futureConsumerDoesNotCalculateNavigation": true,
+    "typedCommandsDelegateToOwningRuntime": true,
+    "statusStripRemainsDisplayOnly": true,
+    "statusDoesNotConsumeAdditionalContentHeight": true,
+    "unavailableSolutionIsNotFabricated": true
+  },
+  "evidence": {
+    "ongoingActivityFocusedTest": "PASS_1_OF_1",
+    "featureNavigationCompile": "PASS",
+    "appShellCompile": "PASS",
+    "presentationRelock": "DEFERRED_UNTIL_HUMAN_ACCEPTANCE",
+    "fullMachineGate": "CI_PENDING",
+    "physicalAcceptance": "PENDING"
+  }
+}
