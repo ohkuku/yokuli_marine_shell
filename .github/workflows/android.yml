@@ -23,6 +23,31 @@ env:
   GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
 
 jobs:
+  human-test-apk:
+    name: Build downloadable human-test APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: Assemble the installable debug APK without waiting for test gates
+        run: ./gradlew --no-daemon assembleStandaloneDebug --stacktrace
+      - name: Upload the one installable debug APK
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: YOKULI-OS-DEBUG-${{ github.sha }}
+          path: app-shell/build/outputs/apk/standalone/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
   build:
     name: TDD contract, unit, lint, and in-app Shell APKs
     runs-on: ubuntu-latest
@@ -332,15 +357,6 @@ jobs:
           test "$OSR_W08_RESULT" = success
           test "$OSR_W10_RESULT" = success
           test "$OSR_W11_RESULT" = success
-      - name: Upload the one installable debug APK for human testing
-        if: steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        uses: actions/upload-artifact@v7
-        with:
-          name: YOKULI-OS-DEBUG-${{ github.sha }}
-          path: |
-            app-shell/build/outputs/apk/standalone/debug/*.apk
-          if-no-files-found: error
-          retention-days: 30
       - name: Upload explicitly unverified diagnostic APKs
         if: false # Product Recovery already publishes one explicitly pending artifact.
         uses: actions/upload-artifact@v7
@@ -956,7 +972,7 @@ jobs:
 
   verified-debug:
     name: Publish automation-passed Product Recovery APK
-    needs: [build, integration, api-compatibility, stage11-performance]
+    needs: [human-test-apk, build, integration, api-compatibility, stage11-performance]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
