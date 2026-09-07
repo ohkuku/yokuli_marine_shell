@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "R06_NAVIGATION_SPATIAL_REWRITE",
+  "baseCommit": "945a94198154b84da260be1dee7a7f8ef8fceaa5",
+  "implementationHead": "823193092cc7bd5092630bf234882f89cfa8e44a",
+  "implementationContractSha256": "4f935c31240ae886b260ab6b80fb5439bffcb295b8a9fb404a4939b919068b54",
+  "status": "IMPLEMENTED_LOCAL_GREEN_CI_AND_HUMAN_PENDING",
+  "humanAcceptance": "PENDING_REAL_MAP_ROUTE_EDIT_APK",
+  "invariants": {
+    "newRouteOpensRealMap": true,
+    "routeGeometryIsDirectlyManipulated": true,
+    "routeNameIsAutomatic": true,
+    "saveAndStartUsesCommittedRevision": true,
+    "nonEmptyDraftNeedsExplicitDecisionOnBack": true,
+    "discardDoesNotPersistDraft": true,
+    "activeNavigationSharesChartRuntimeTruth": true,
+    "activeLegIsRenderedSeparately": true,
+    "unitsFollowSharedPreference": true
+  },
+  "evidence": {
+    "navigationFeatureUnitTests": "12_PASS",
+    "r06CoordinatorScenarios": "3_PASS",
+    "chartInteractionActiveLegScenario": "PASS",
+    "appShellMainCompile": "PASS",
+    "realMapGestureAndVisualAcceptance": "CI_AND_HUMAN_PENDING"
+  }
+}
