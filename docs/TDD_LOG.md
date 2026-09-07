@@ -812,3 +812,19 @@ Android CI、Release workflow、最终 Gate 和 Release APK 审计现在都认�
 ### English translation — NMEA Sources P7
 
 The P7 Red rejects stale two-app executable assumptions and requires the current four-app release surface, all P0–P7 CI results, dependency and privacy boundaries, bilingual parity, and a complete E01–E26 evidence ledger. Follow-up Reds cover truthful selected-source deletion, phone-location ownership, notification permission, compiled portrait inspection, the current Chart source bridge, and module-scoped instrumentation filters. Construction used scoped tests; the one final test/lint/build/device gate exited zero with 287 Python checks, 668 JVM executions, 1477 Gradle tasks, 92 API 34 tests, four process-probe executions, and 11 emulator-trend journeys. The hosted-only runner correction then passed its focused 12/12 contract and 2+1 device smoke. P7 is machine verified while hosted and physical evidence remain separate.
+
+## Data Recovery R00–R09 — Marine Nervous System
+
+### Red
+
+Product Recovery 首先解除已被人工否决的 Data 五段式 presentation gate，但继续保留协议、runtime、持久化、选源、并发和安全测试。新的 Reds 再锁定 Boat/Flow/Connections 三个一级区域、四类船舶感官、consumer impact，以及“临时 Test Connection 不得写入 durable store”。真实 probe 首轮测试准确抓到检测成功后仍自动保存的旧顺序；Flow compilation 又抓到 semantic group 映射错误；Live Tile fixture 则暴露 resolved value 与 source decision 不一致。
+
+### Green 与自查
+
+Green 将 Data 重建为同一 marine-data truth 上的船体 overview、semantic source trust、统一 topology 和 consumer drill-down。TCP/UDP probe 复用真实 transport/framer/parser，但与正式 repository/runtime/FGS 完全分离；用户只有在能力摘要后明确选择“使用此来源”才保存并启动。Phone 仍是系统定位能力。Data Tile 与 active-navigation warning 由同一 consumer truth 投影，不重新计算来源。
+
+定向证据：Product Recovery `6/6`、probe `4/4`、consumer/connection journey `7/7`、projection/tile `5/5`、app-shell composition compile 与 diff-check 均 PASS。全仓 test/lint/assemble/device 交给 hosted CI；真实 APK 的 DATA-R10 仍为人工 pending，DATA-R11 按合同未启动。
+
+### English translation — Data Recovery R00–R09
+
+The recovery Reds retire the rejected five-section presentation while preserving correctness gates, then define one Boat/Flow/Connections model, semantic probing, source trust and consumer impact. Green reuses the real transport/parser/runtime truth, keeps probing disposable until explicit confirmation, and projects the same health into Data, its tile and the Shell. Focused gates pass; hosted CI, real-APK DATA-R10 acceptance and post-acceptance DATA-R11 locking remain pending.

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "phase": "YOKULI_OS_DATA_NMEA_MARINE_NERVOUS_SYSTEM_RECOVERY",
+  "sourceDocumentSha256": "70fa6c56ec9a1124f8509bfd2b7f3f7d0857fb7c883740af96641a215ebcbfd2",
+  "implementationHeadBeforeEvidenceCommit": "a37a687b72544252dcb74f81bdf3262ee1f33b0d",
+  "status": "CODE_COMPLETE_HOSTED_CI_AND_HUMAN_ACCEPTANCE_PENDING",
+  "workPackages": {
+    "DATA-R00": "COMPLETE",
+    "DATA-R01": "COMPLETE",
+    "DATA-R02": "COMPLETE",
+    "DATA-R03": "COMPLETE",
+    "DATA-R04": "COMPLETE",
+    "DATA-R05": "COMPLETE",
+    "DATA-R06": "COMPLETE",
+    "DATA-R07": "COMPLETE",
+    "DATA-R08": "COMPLETE",
+    "DATA-R09": "COMPLETE",
+    "DATA-R10": "PENDING_REAL_APK_HUMAN_ACCEPTANCE",
+    "DATA-R11": "NOT_STARTED_UNTIL_HUMAN_ACCEPTANCE"
+  },
+  "productInvariants": [
+    "only_boat_flow_connections_are_primary_areas",
+    "all_product_surfaces_project_one_resolved_marine_data_truth",
+    "selected_source_loss_never_silently_fails_over",
+    "phone_location_is_not_a_nmea_socket",
+    "transport_success_is_not_semantic_data_success",
+    "temporary_probe_never_persists_or_starts_the_durable_runtime",
+    "saving_requires_explicit_use_tested_source_confirmation",
+    "diagnostics_and_raw_nmea_are_drilldown_only",
+    "consumer_registration_and_active_use_are_distinct",
+    "chart_navigation_tile_and_shell_do_not_recompute_source_truth"
+  ],
+  "focusedEvidence": {
+    "productRecoveryPolicy": "6/6 PASS",
+    "androidNmeaConnectionProbe": "4/4 PASS",
+    "consumerConnectionJourney": "7/7 PASS",
+    "marineProjectionAndDataTile": "5/5 PASS",
+    "appShellCompositionCompile": "PASS",
+    "diffCheck": "PASS"
+  },
+  "deferredEvidence": {
+    "hostedFullGate": "PENDING_AFTER_PUSH",
+    "realApkProductAcceptance": "PENDING_DATA_R10",
+    "physicalDeviceBackgroundAndNetwork": "UNVERIFIED_PHYSICAL_DEVICE",
+    "postAcceptanceBehaviorRelock": "NOT_STARTED_DATA_R11"
+  }
+}

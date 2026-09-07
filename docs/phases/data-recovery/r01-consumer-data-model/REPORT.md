@@ -1,6 +1,6 @@
 # DATA-R01 — Consumer Data Model
 
-状态：`IMPLEMENTED — TARGETED GATE PENDING`
+状态：`IMPLEMENTED — TARGETED GATE PASS`
 
 ## Product outcome
 
@@ -19,9 +19,11 @@
 ## Tests
 
 - Red：新 projection test 因 Boat、Surface、Consumer contracts 不存在而编译失败。
-- Green：按 commit-before-test 约定，定向 `:feature:data:testDebugUnitTest --tests ...MarineNervousSystemProjectionTest` 在本提交后执行。
-- 完整 core/adapter/lint/assemble/device 仍交给 hosted CI。
+- Green：`MarineNervousSystemProjectionTest` 与 `DataLiveTileTest` 最终定向执行 `5/5 PASS`。
+- Consumer/connection journey 的 coordinator + projection 定向执行 `7/7 PASS`。
+- `:app-shell:compileStandaloneDebugKotlin`：`PASS`，证明同一投影可由 production composition root 消费。
+- 完整 core/adapter/lint/assemble/device 没有在每个小提交后重复执行，交给 hosted CI。
 
 ## English summary
 
-DATA-R01 establishes a single resolved-data projection for four human sensor groups and a stable, activity-aware consumer registry without weakening per-key source-selection safety.
+DATA-R01 establishes a single resolved-data projection for four human sensor groups and a stable, activity-aware consumer registry without weakening per-key source-selection safety. Its focused projection, tile, coordinator and composition gates pass.

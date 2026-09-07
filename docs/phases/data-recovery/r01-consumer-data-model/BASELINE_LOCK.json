@@ -3,7 +3,7 @@
   "workPackage": "DATA-R01_CONSUMER_DATA_MODEL",
   "baseCommit": "27ddaf2",
   "sourceDocumentSha256": "70fa6c56ec9a1124f8509bfd2b7f3f7d0857fb7c883740af96641a215ebcbfd2",
-  "status": "IMPLEMENTED_TARGETED_GATE_PENDING",
+  "status": "IMPLEMENTED_TARGETED_GATE_PASS",
   "invariants": {
     "primaryAreasAreBoatFlowConnectionsOnly": true,
     "boatHasFourHumanSensorGroups": true,
@@ -13,6 +13,11 @@
     "chartPositionLossIsDegradedBrowseCapability": true,
     "noSilentSourceFallbackPreserved": true
   },
-  "verification": "TARGETED_GATE_PENDING_AFTER_COMMIT",
+  "verification": {
+    "marineProjectionAndTile": "5/5 PASS",
+    "consumerConnectionJourney": "7/7 PASS",
+    "appShellCompositionCompile": "PASS",
+    "fullHostedGate": "PENDING"
+  },
   "humanAcceptance": "PENDING_DATA_R10"
 }

@@ -18,7 +18,10 @@
 
 ## 本地证据
 
-按项目的 commit-before-test 工作流，定向门禁在本提交之后执行并回填。完整 Gradle/lint/assemble/device 仍交给 hosted CI。
+- `.github/scripts/test_product_recovery_window.py`：`6/6 PASS`。
+- 旧 `osr_w03_contract` 在 Android workflow 中明确禁用，并标注其保护的是已经被否决的五段式 Data presentation。
+- 历史脚本与报告没有被删除或改写；`docs/SUPERSEDED_PRODUCT_TESTS.md` 记录了替代原因和重新上锁条件。
+- 完整 Gradle/lint/assemble/device 未在本地重复执行，按仓库当前协议交给 hosted CI。
 
 ## English summary
 

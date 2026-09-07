@@ -16,5 +16,8 @@
   ],
   "newlySupersededGate": "osr_w03_contract",
   "existingRecoveryPolicyUnchanged": true,
-  "verification": "TARGETED_GATE_PENDING_AFTER_COMMIT"
+  "verification": {
+    "productRecoveryWindow": "6/6 PASS",
+    "fullHostedGate": "PENDING"
+  }
 }
