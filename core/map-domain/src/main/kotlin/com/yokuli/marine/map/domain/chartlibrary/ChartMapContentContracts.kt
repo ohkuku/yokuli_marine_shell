@@ -2,7 +2,7 @@ package com.yokuli.marine.map.domain.chartlibrary
 
 import com.yokuli.marine.map.domain.GeoBounds
 import com.yokuli.marine.map.domain.GeoPoint
-import com.yokuli.marine.map.domain.computeGeoBounds
+import com.yokuli.marine.map.domain.minimalBounds
 
 @JvmInline
 value class ChartLayerId(val value: String) {
@@ -133,7 +133,7 @@ private fun Collection<GeoBounds>.unionBounds(): GeoBounds? {
             GeoPoint(bounds.north, bounds.east),
         )
     }
-    return computeGeoBounds(points)
+    return minimalBounds(points)
 }
 
 private fun Long.saturatedPlus(other: Long): Long =
