@@ -16,6 +16,8 @@ import com.yokuli.marine.data.source.SourceCandidate
 import com.yokuli.marine.data.source.SourceCandidateAvailability
 import com.yokuli.marine.data.source.SourceCatalogSnapshot
 import com.yokuli.marine.data.source.SourceDescriptor
+import com.yokuli.marine.data.source.SourceDecision
+import com.yokuli.marine.data.source.SourceDecisionStatus
 import com.yokuli.marine.data.source.SourceEvidence
 import com.yokuli.marine.data.source.SourceKind
 import org.junit.Assert.assertEquals
@@ -57,6 +59,16 @@ class DataLiveTileTest {
         }
         val snapshot = MarineSourceSnapshot.EMPTY.copy(
             sourceCatalog = SourceCatalogSnapshot(candidates, 10L, 1L),
+            decisions = candidates.map { candidate ->
+                SourceDecision(
+                    key = candidate.id.key,
+                    status = SourceDecisionStatus.USING,
+                    selectedSource = source,
+                    reason = SelectionReason.USER,
+                    selectableCandidateCount = 1,
+                    needsReview = false,
+                )
+            },
             resolvedData = ResolvedDataSnapshot(resolved, 1L, 10L),
             selectionRevision = 1L,
             revision = 1L,
