@@ -3,6 +3,9 @@ package com.yokuli.marine.map.domain.chartlibrary
 import com.yokuli.marine.map.domain.GeoBounds
 import com.yokuli.marine.map.domain.MapTileScheme
 import java.security.MessageDigest
+import kotlin.math.PI
+import kotlin.math.atan
+import kotlin.math.sinh
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.StateFlow
 
@@ -107,6 +110,43 @@ object ChartTileCoordinateMapper {
     }
 }
 
+/** Coarse coverage from tile truth. Highest valid zoom gives the least inflated rectangular footprint. */
+object ChartTileCoverageDeriver {
+    fun derive(extents: List<ChartStoredTileExtent>, scheme: MapTileScheme): GeoBounds? = extents
+        .asSequence()
+        .mapNotNull { it.toExternalBounds(scheme) }
+        .maxByOrNull { it.first }
+        ?.second
+
+    private fun ChartStoredTileExtent.toExternalBounds(scheme: MapTileScheme): Pair<Int, GeoBounds>? {
+        if (zoom !in MIN_ZOOM.toLong()..MAX_ZOOM.toLong()) return null
+        val z = zoom.toInt()
+        val axis = 1L shl z
+        if (minColumn !in 0 until axis || maxColumn !in 0 until axis) return null
+        if (minStorageRow !in 0 until axis || maxStorageRow !in 0 until axis) return null
+        val minExternalRow: Long
+        val maxExternalRow: Long
+        when (scheme) {
+            MapTileScheme.MBTILES_TMS -> {
+                minExternalRow = axis - 1L - maxStorageRow
+                maxExternalRow = axis - 1L - minStorageRow
+            }
+            MapTileScheme.XYZ -> {
+                minExternalRow = minStorageRow
+                maxExternalRow = maxStorageRow
+            }
+        }
+        val west = minColumn.toDouble() / axis * 360.0 - 180.0
+        val east = (maxColumn + 1L).toDouble() / axis * 360.0 - 180.0
+        val north = latitudeAtRow(minExternalRow.toDouble(), axis.toDouble())
+        val south = latitudeAtRow((maxExternalRow + 1L).toDouble(), axis.toDouble())
+        return z to GeoBounds(south = south, west = west, north = north, east = east)
+    }
+
+    private fun latitudeAtRow(row: Double, axis: Double): Double =
+        Math.toDegrees(atan(sinh(PI * (1.0 - 2.0 * row / axis))))
+}
+
 class ChartBasicInspector(private val access: ChartResourceAccessPort) {
     suspend fun inspect(asset: ChartAsset, sourceGeneration: Long): ChartBasicInspectionResult {
         val request = ChartReadRequest(asset.id, asset.locator, asset.revision, sourceGeneration, ChartReadPurpose.VALIDATION)
@@ -145,7 +185,8 @@ class ChartBasicInspector(private val access: ChartResourceAccessPort) {
                 val metadataZoom = parseZoomRange(metadata, warnings)
                 val derivedZoom = it.readZoomRange() ?: validSamples.map { sample -> sample.key.zoom.toInt() }
                     .let { zooms -> zooms.min()..zooms.max() }
-                val bounds = parseBounds(metadata, warnings)
+                val embeddedBounds = parseBounds(metadata, warnings)
+                val bounds = embeddedBounds ?: ChartTileCoverageDeriver.derive(it.readTileExtents(), scheme)
                 val facts = factsFrom(
                     metadata = metadata,
                     tileSize = tileSizes.first(),
@@ -256,7 +297,18 @@ class ChartFullVerifier(
                 if (metadata.containsKey("format") && declaredEncoding == null || declaredEncoding != null && declaredEncoding != rasterMimeType) {
                     return@use ChartFullVerificationResult.Rejected(ChartValidationIssue.INVALID_METADATA, "Raster metadata does not match tiles")
                 }
-                val facts = factsFrom(exactMetadata, tileSize, requireNotNull(rasterMimeType), scheme, offset)
+                val warnings = compatibilityWarnings(metadata, it.metadataPresent)
+                val embeddedBounds = parseBounds(metadata)
+                val bounds = embeddedBounds ?: ChartTileCoverageDeriver.derive(it.readTileExtents(), scheme)
+                val facts = factsFrom(
+                    exactMetadata,
+                    tileSize,
+                    requireNotNull(rasterMimeType),
+                    scheme,
+                    offset,
+                    bounds = bounds,
+                    zoomRange = requireNotNull(minZoom)..requireNotNull(maxZoom),
+                )
                 val sha = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
                 ChartFullVerificationResult.Verified(
                     asset.revision.copy(contentSha256 = sha),
@@ -264,7 +316,7 @@ class ChartFullVerifier(
                     it.statistics(),
                     offset,
                     it.accessMode,
-                    compatibilityWarnings(metadata, it.metadataPresent),
+                    warnings,
                 )
             } catch (error: CancellationException) {
                 throw error

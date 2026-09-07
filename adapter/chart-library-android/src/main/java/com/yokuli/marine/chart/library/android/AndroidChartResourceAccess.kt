@@ -296,6 +296,30 @@ private class AndroidMbTilesReadSession(
         }
     }
 
+    override fun readTileExtents(limit: Int): List<ChartStoredTileExtent> = checked {
+        require(limit in 1..MAX_TILE_EXTENT_LEVELS)
+        tileQueries.incrementAndGet()
+        database.rawQuery(
+            "SELECT zoom_level,MIN(tile_column),MAX(tile_column),MIN(tile_row),MAX(tile_row) " +
+                "FROM tiles GROUP BY zoom_level ORDER BY zoom_level DESC LIMIT ?",
+            arrayOf(limit.toString()),
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(
+                        ChartStoredTileExtent(
+                            zoom = cursor.getLong(0),
+                            minColumn = cursor.getLong(1),
+                            maxColumn = cursor.getLong(2),
+                            minStorageRow = cursor.getLong(3),
+                            maxStorageRow = cursor.getLong(4),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     override fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload? = checked {
         tileQueries.incrementAndGet()
         database.rawQuery(

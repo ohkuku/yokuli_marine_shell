@@ -126,6 +126,7 @@ class SafFdMbTilesReaderTest {
             assertFalse(session.metadataPresent)
             assertTrue(session.readMetadata().isEmpty())
             assertEquals(0..0, session.readZoomRange())
+            assertEquals(listOf(ChartStoredTileExtent(0, 0, 0, 0, 0)), session.readTileExtents())
             assertArrayEquals(png, requireNotNull(session.readTile(ChartTileKey(0, 0, 0), MapTileScheme.MBTILES_TMS)).bytes)
         }
         println("LEGACY_MBTILES_EVIDENCE {\"scenario\":\"optional-metadata-render\",\"result\":\"PASS\"}")

@@ -17,6 +17,25 @@ class ChartValidationTest {
         assertNull(ChartTileCoordinateMapper.externalKey(ChartStoredTileKey(25, 0, 0), MapTileScheme.XYZ))
     }
 
+    @Test fun coverageDerivationUsesActualTileExtentsAndScheme() {
+        val extent = ChartStoredTileExtent(2, 2, 3, 0, 1)
+        val tms = requireNotNull(ChartTileCoverageDeriver.derive(listOf(extent), MapTileScheme.MBTILES_TMS))
+        val xyz = requireNotNull(ChartTileCoverageDeriver.derive(listOf(extent), MapTileScheme.XYZ))
+
+        assertEquals(0.0, tms.west, 0.000001)
+        assertEquals(180.0, tms.east, 0.000001)
+        assertEquals(-85.0511287, tms.south, 0.000001)
+        assertEquals(0.0, tms.north, 0.000001)
+        assertEquals(0.0, xyz.south, 0.000001)
+        assertEquals(85.0511287, xyz.north, 0.000001)
+        assertNull(
+            ChartTileCoverageDeriver.derive(
+                listOf(ChartStoredTileExtent(2, -1, 3, 0, 1)),
+                MapTileScheme.XYZ,
+            ),
+        )
+    }
+
     @Test fun basicInspectionSamplesWithoutHashOrClaimingFull() = runBlocking {
         val session = FakeSession(metadata = mapOf("scheme" to "tms", "minzoom" to "0", "maxzoom" to "0"))
         val result = ChartBasicInspector(ChartResourceAccessPort { ChartOpenResult.Opened(session) }).inspect(asset(), 1)
@@ -91,7 +110,12 @@ class ChartValidationTest {
         assertEquals(MapTileScheme.MBTILES_TMS, result.inspection.facts.tileScheme)
         assertEquals(7, result.inspection.facts.minZoom)
         assertEquals(13, result.inspection.facts.maxZoom)
-        assertNull(result.inspection.facts.bounds)
+        requireNotNull(result.inspection.facts.bounds).let { bounds ->
+            assertEquals(-85.0511287, bounds.south, 0.000001)
+            assertEquals(-180.0, bounds.west, 0.000001)
+            assertEquals(85.0511287, bounds.north, 0.000001)
+            assertEquals(180.0, bounds.east, 0.000001)
+        }
         assertTrue(ChartCompatibilityWarning.METADATA_MISSING in result.inspection.warnings)
         assertTrue(ChartCompatibilityWarning.BOUNDS_MISSING in result.inspection.warnings)
         assertEquals(ChartReadAccessMode.DIRECT_PROVIDER, result.inspection.accessMode)
@@ -154,6 +178,7 @@ class ChartValidationTest {
         private val reportedSize: Long = source.size.toLong(),
         override val metadataPresent: Boolean = true,
         private val zoomRange: IntRange? = 0..0,
+        private val extents: List<ChartStoredTileExtent> = listOf(ChartStoredTileExtent(0, 0, 0, 0, 0)),
     ) : ChartReadSession {
         override val request = ChartReadRequest(
             ChartAssetId("fake"), ChartOpaqueLocator("content://fake/document/chart"),
@@ -165,6 +190,7 @@ class ChartValidationTest {
         var orderedTileReads = 0
         override fun readMetadata(limit: Int) = metadata
         override fun readZoomRange() = zoomRange
+        override fun readTileExtents(limit: Int) = extents.take(limit)
         override fun readTile(key: ChartTileKey, scheme: MapTileScheme) = tiles.firstOrNull()?.payload
         override fun hasTile(key: ChartTileKey, scheme: MapTileScheme) = tiles.isNotEmpty()
         override fun readSampleTiles(limit: Int): List<ChartStoredTile> {

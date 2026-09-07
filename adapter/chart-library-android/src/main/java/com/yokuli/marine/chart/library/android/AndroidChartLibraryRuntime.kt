@@ -480,9 +480,14 @@ private class BudgetedReadSession(
     private val closed = AtomicBoolean(false)
     override val request: ChartReadRequest get() = delegate.request
     override val sourceSizeBytes: Long get() = delegate.sourceSizeBytes
+    override val accessMode: ChartReadAccessMode get() = delegate.accessMode
+    override val metadataPresent: Boolean get() = delegate.metadataPresent
     override fun readMetadata(limit: Int) = delegate.readMetadata(limit)
+    override fun readZoomRange() = delegate.readZoomRange()
+    override fun readTileExtents(limit: Int) = delegate.readTileExtents(limit)
     override fun readTile(key: ChartTileKey, scheme: MapTileScheme) = delegate.readTile(key, scheme)
     override fun hasTile(key: ChartTileKey, scheme: MapTileScheme) = delegate.hasTile(key, scheme)
+    override fun readSampleTiles(limit: Int) = delegate.readSampleTiles(limit)
     override fun readStoredTiles(offset: Long, limit: Int) = delegate.readStoredTiles(offset, limit)
     override fun readSourceRange(offset: Long, maxByteCount: Int) = delegate.readSourceRange(offset, maxByteCount)
     override fun statistics() = delegate.statistics()

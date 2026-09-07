@@ -27,6 +27,18 @@ class ChartLibraryRuntimeAndroidTest {
         }
     }
 
+    @Test fun runtimeLeasePreservesFallbackMetadataAndCoverageCapabilities() = runBlocking {
+        fixture("capabilities").use { fixture ->
+            val session = (fixture.runtime.open(fixture.request()) as ChartOpenResult.Opened).session
+            session.use {
+                assertEquals(ChartReadAccessMode.LOCAL_FALLBACK, it.accessMode)
+                assertFalse(it.metadataPresent)
+                assertEquals(7..9, it.readZoomRange())
+                assertEquals(listOf(ChartStoredTileExtent(9, 1, 2, 3, 4)), it.readTileExtents())
+            }
+        }
+    }
+
     @Test fun catalogRevisionOrSourceGenerationInvalidatesOldSessionBeforeNewTilesCanReturn() = runBlocking {
         fixture("revision").use { fixture ->
             val opened = fixture.runtime.open(fixture.request()) as ChartOpenResult.Opened
@@ -194,7 +206,11 @@ class ChartLibraryRuntimeAndroidTest {
         private var bytesRead = 0L
         private var queries = 0L
         override val sourceSizeBytes = 1L
+        override val accessMode = ChartReadAccessMode.LOCAL_FALLBACK
+        override val metadataPresent = false
         override fun readMetadata(limit: Int) = mapOf("scheme" to "tms")
+        override fun readZoomRange() = 7..9
+        override fun readTileExtents(limit: Int) = listOf(ChartStoredTileExtent(9, 1, 2, 3, 4)).take(limit)
         override fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload? { ensureOpen(); queries++; return null }
         override fun hasTile(key: ChartTileKey, scheme: MapTileScheme): Boolean { ensureOpen(); queries++; return true }
         override fun readStoredTiles(offset: Long, limit: Int): List<ChartStoredTile> {

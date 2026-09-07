@@ -137,6 +137,8 @@ interface ChartReadSession : AutoCloseable {
     fun readMetadata(limit: Int = MAX_METADATA_ROWS): Map<String, String>
     /** A bounded database aggregate used to recover renderable zoom facts when metadata is absent. */
     fun readZoomRange(): IntRange? = null
+    /** One bounded aggregate row per zoom; no tile payloads are decoded. */
+    fun readTileExtents(limit: Int = MAX_TILE_EXTENT_LEVELS): List<ChartStoredTileExtent> = emptyList()
     fun readTile(key: ChartTileKey, scheme: MapTileScheme): ChartTilePayload?
     fun hasTile(key: ChartTileKey, scheme: MapTileScheme): Boolean
     /** A cheap unordered sample for Basic Check; it must not scan or sort the entire tile table. */
@@ -151,6 +153,19 @@ data class ChartStoredTileKey(val zoom: Long, val column: Long, val storageRow: 
 
 data class ChartStoredTile(val key: ChartStoredTileKey, val payload: ChartTilePayload)
 
+data class ChartStoredTileExtent(
+    val zoom: Long,
+    val minColumn: Long,
+    val maxColumn: Long,
+    val minStorageRow: Long,
+    val maxStorageRow: Long,
+) {
+    init {
+        require(minColumn <= maxColumn)
+        require(minStorageRow <= maxStorageRow)
+    }
+}
+
 fun interface ChartResourceAccessPort {
     suspend fun open(request: ChartReadRequest): ChartOpenResult
 }
@@ -161,6 +176,7 @@ const val MAX_METADATA_ROWS = 256
 const val MAX_TILE_BYTES = 16 * 1024 * 1024
 const val MAX_VALIDATION_PAGE_SIZE = 32
 const val MAX_HASH_READ_BYTES = 1024 * 1024
+const val MAX_TILE_EXTENT_LEVELS = MAX_ZOOM - MIN_ZOOM + 1
 val SUPPORTED_TILE_SIZES = setOf(256, 512)
 val SUPPORTED_RASTER_MIME_TYPES = setOf("image/png", "image/jpeg", "image/webp")
 
