@@ -232,8 +232,14 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
                     val activeLeg = session?.activeLegIndex?.let { index ->
                         geometry.drop(index).take(2).takeIf { it.size == 2 }
                     }.orEmpty()
-                    if (map.activeNavigationRoute != geometry || map.activeNavigationLeg != activeLeg) {
-                        mapStore.dispatch(MapAction.ActiveNavigationGeometryChanged(geometry, activeLeg))
+                    val remainingRoute = session?.activeLegIndex?.let(geometry::drop).orEmpty()
+                    if (
+                        map.activeNavigationRoute != geometry || map.activeNavigationLeg != activeLeg ||
+                        map.activeNavigationRemainingRoute != remainingRoute
+                    ) {
+                        mapStore.dispatch(
+                            MapAction.ActiveNavigationGeometryChanged(geometry, activeLeg, remainingRoute),
+                        )
                     }
                     if (
                         session != null &&

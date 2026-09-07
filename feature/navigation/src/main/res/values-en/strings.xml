@@ -125,4 +125,13 @@
     <string name="nav_replace_cancel">cancel replacement</string>
     <string name="nav_replace_confirm">confirm replacement</string>
     <string name="navigation_replacement_required">Navigation is unchanged; explicitly confirm or cancel the replacement.</string>
+    <string name="navigation_camera_follow">FOLLOW</string>
+    <string name="navigation_camera_look_ahead">LOOK</string>
+    <string name="navigation_camera_next">NEXT</string>
+    <string name="navigation_camera_route">ROUTE</string>
+    <string name="navigation_camera_browse">BROWSE</string>
+    <string name="navigation_orientation_north">NORTH</string>
+    <string name="navigation_orientation_course">COURSE</string>
+    <string name="navigation_orientation_heading">HEADING</string>
+    <string name="navigation_recenter">RECENTER</string>
 </resources>

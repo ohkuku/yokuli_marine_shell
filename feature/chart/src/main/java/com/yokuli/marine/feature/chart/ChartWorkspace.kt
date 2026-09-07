@@ -83,6 +83,8 @@ import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.MapTransient
 import com.yokuli.marine.map.domain.MapViewMode
+import com.yokuli.marine.map.domain.MapOrientationMode
+import com.yokuli.marine.map.domain.NavigationCameraMode
 import com.yokuli.marine.map.domain.MapPrecisePointEdit
 import com.yokuli.marine.map.domain.MapViewport
 import com.yokuli.marine.map.domain.MapViewportInsets
@@ -899,18 +901,38 @@ private fun MapEdgeControls(
     val vessel = PositionRenderPolicy.resolve(state.position).point
         ?.takeIf { state.position.availability == PositionAvailability.FRESH }
     Box(Modifier.fillMaxSize().padding(bottom = 62.dp)) {
+        if (state.navigationActive) {
+            val cameraMode = state.navigationCamera.mode
+            MapEdgeButton(
+                label = stringResource(cameraMode.label()),
+                tag = "map-navigation-camera",
+                selected = cameraMode != NavigationCameraMode.FREE_BROWSE,
+                modifier = Modifier.align(Alignment.TopStart).padding(
+                    top = 4.dp,
+                    start = with(density) { viewportInsets.leftPx.toDp() } + 6.dp,
+                ),
+            ) {
+                onAction(MapAction.SetNavigationCameraMode(state.navigationCamera.nextTrackingMode()))
+            }
+        }
         MapEdgeButton(
-            label = if (state.camera.bearing == 0.0) "N" else "%03.0f°".format(state.camera.bearing),
+            label = if (state.navigationActive) {
+                stringResource(state.navigationCamera.orientation.label())
+            } else if (state.camera.bearing == 0.0) "N" else "%03.0f°".format(state.camera.bearing),
             tag = "map-orientation-north",
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 4.dp),
         ) {
-            onAction(
-                MapAction.RequestCamera(
-                    MapCameraTarget.Exact(state.camera.copy(bearing = 0.0)),
-                    MapCameraIntent.NORTH_RESET,
-                    viewportInsets,
-                ),
-            )
+            if (state.navigationActive) {
+                onAction(MapAction.SetMapOrientationMode(state.navigationCamera.orientation.next()))
+            } else {
+                onAction(
+                    MapAction.RequestCamera(
+                        MapCameraTarget.Exact(state.camera.copy(bearing = 0.0)),
+                        MapCameraIntent.NORTH_RESET,
+                        viewportInsets,
+                    ),
+                )
+            }
         }
         Column(
             Modifier.align(Alignment.TopEnd).padding(
@@ -941,7 +963,9 @@ private fun MapEdgeControls(
         MapEdgeButton(
             label = "GPS",
             tag = "map-recenter",
-            selected = state.position.viewIntent == PositionViewIntent.FOLLOW_POSITION,
+            selected = if (state.navigationActive) {
+                state.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE
+            } else state.position.viewIntent == PositionViewIntent.FOLLOW_POSITION,
             enabled = vessel != null,
             modifier = Modifier.align(Alignment.BottomStart).padding(
                 start = with(density) { viewportInsets.leftPx.toDp() } + 6.dp,
@@ -949,16 +973,51 @@ private fun MapEdgeControls(
             ),
         ) {
             val point = vessel ?: return@MapEdgeButton
-            onAction(MapAction.SetPositionViewIntent(PositionViewIntent.FOLLOW_POSITION))
-            onAction(
-                MapAction.RequestCamera(
-                    MapCameraTarget.Exact(state.camera.copy(center = point)),
-                    MapCameraIntent.FOLLOW_POSITION,
-                    viewportInsets,
-                ),
-            )
+            if (state.navigationActive) {
+                onAction(MapAction.RecenterNavigationCamera)
+            } else {
+                onAction(MapAction.SetPositionViewIntent(PositionViewIntent.FOLLOW_POSITION))
+                onAction(
+                    MapAction.RequestCamera(
+                        MapCameraTarget.Exact(state.camera.copy(center = point)),
+                        MapCameraIntent.FOLLOW_POSITION,
+                        viewportInsets,
+                    ),
+                )
+            }
         }
     }
+}
+
+private fun com.yokuli.marine.map.domain.NavigationCameraState.nextTrackingMode(): NavigationCameraMode {
+    val current = mode.takeUnless { it == NavigationCameraMode.FREE_BROWSE } ?: resumeMode
+    return when (current) {
+        NavigationCameraMode.VESSEL_FOLLOW -> NavigationCameraMode.LOOK_AHEAD
+        NavigationCameraMode.LOOK_AHEAD -> NavigationCameraMode.NEXT_WAYPOINT
+        NavigationCameraMode.NEXT_WAYPOINT -> NavigationCameraMode.ROUTE_OVERVIEW
+        NavigationCameraMode.ROUTE_OVERVIEW -> NavigationCameraMode.VESSEL_FOLLOW
+        NavigationCameraMode.FREE_BROWSE -> error("resolved above")
+    }
+}
+
+private fun MapOrientationMode.next(): MapOrientationMode = when (this) {
+    MapOrientationMode.NORTH_UP -> MapOrientationMode.COURSE_UP
+    MapOrientationMode.COURSE_UP -> MapOrientationMode.HEADING_UP
+    MapOrientationMode.HEADING_UP -> MapOrientationMode.NORTH_UP
+}
+
+private fun NavigationCameraMode.label() = when (this) {
+    NavigationCameraMode.VESSEL_FOLLOW -> R.string.map_camera_follow
+    NavigationCameraMode.LOOK_AHEAD -> R.string.map_camera_look_ahead
+    NavigationCameraMode.NEXT_WAYPOINT -> R.string.map_camera_next_waypoint
+    NavigationCameraMode.ROUTE_OVERVIEW -> R.string.map_camera_route_overview
+    NavigationCameraMode.FREE_BROWSE -> R.string.map_camera_free_browse
+}
+
+private fun MapOrientationMode.label() = when (this) {
+    MapOrientationMode.NORTH_UP -> R.string.map_orientation_north_up
+    MapOrientationMode.COURSE_UP -> R.string.map_orientation_course_up
+    MapOrientationMode.HEADING_UP -> R.string.map_orientation_heading_up
 }
 
 @Composable

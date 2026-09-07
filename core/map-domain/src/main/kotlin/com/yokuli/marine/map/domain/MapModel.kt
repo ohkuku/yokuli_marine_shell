@@ -42,6 +42,21 @@ data class MapSelection(val point: GeoPoint)
 
 enum class MapViewMode { MARINE, STANDARD, SATELLITE }
 
+/** Navigation camera is independent from both map content and map orientation. */
+enum class NavigationCameraMode { VESSEL_FOLLOW, LOOK_AHEAD, NEXT_WAYPOINT, ROUTE_OVERVIEW, FREE_BROWSE }
+
+enum class MapOrientationMode { NORTH_UP, COURSE_UP, HEADING_UP }
+
+data class NavigationCameraState(
+    val mode: NavigationCameraMode = NavigationCameraMode.VESSEL_FOLLOW,
+    val resumeMode: NavigationCameraMode = NavigationCameraMode.VESSEL_FOLLOW,
+    val orientation: MapOrientationMode = MapOrientationMode.NORTH_UP,
+) {
+    init {
+        require(resumeMode != NavigationCameraMode.FREE_BROWSE) { "A tracking camera is required for recenter" }
+    }
+}
+
 enum class PlaceCategory(val wireValue: String, val searchAliases: Set<String>) {
     ANCHORAGE("anchorage", setOf("锚地", "泊地")),
     MARINA("marina", setOf("码头", "游艇港")),
@@ -440,6 +455,9 @@ data class MapState(
     val activeNavigationRoute: List<GeoPoint> = emptyList(),
     /** Current from/to leg, rendered above the complete route; runtime-only and never a second route truth. */
     val activeNavigationLeg: List<GeoPoint> = emptyList(),
+    /** Current vessel/leg origin followed by the not-yet-passed route geometry, used only for camera fitting. */
+    val activeNavigationRemainingRoute: List<GeoPoint> = emptyList(),
+    val navigationCamera: NavigationCameraState = NavigationCameraState(),
     val routeSaveStatus: RouteSaveStatus? = null,
     val routeSaveTransaction: RouteSaveTransaction? = null,
     val routeDeleteRequest: RouteDeleteRequest? = null,

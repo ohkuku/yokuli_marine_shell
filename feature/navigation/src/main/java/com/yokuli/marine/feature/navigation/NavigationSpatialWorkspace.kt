@@ -37,11 +37,13 @@ import com.yokuli.marine.map.domain.MapCameraIntent
 import com.yokuli.marine.map.domain.MapCameraTarget
 import com.yokuli.marine.map.domain.MapHitResult
 import com.yokuli.marine.map.domain.MapOverlayId
+import com.yokuli.marine.map.domain.MapOrientationMode
 import com.yokuli.marine.map.domain.MapReducer
 import com.yokuli.marine.map.domain.MapRendererQueryPort
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapTool
 import com.yokuli.marine.map.domain.MapTransient
+import com.yokuli.marine.map.domain.NavigationCameraMode
 import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.marine.navigation.domain.NavigationRouteMath
 import com.yokuli.marine.navigation.domain.RoutePlan
@@ -176,7 +178,7 @@ internal fun NavigationRouteMapDetail(
     chartSurface: NavigationMapSurface,
     onAction: (NavigationUiAction) -> Unit,
 ) {
-    NavigationRouteMapFrame(route, baseState, chartSurface, "navigation-route-map-detail") { mapModifier ->
+    NavigationRouteMapFrame(route, baseState, chartSurface, "navigation-route-map-detail") { mapModifier, _, _ ->
         val colors = LocalWpTheme.current
         Column(
             mapModifier.fillMaxWidth().background(colors.background.copy(alpha = .94f))
@@ -220,11 +222,28 @@ internal fun NavigationActiveMap(
     onAction: (NavigationUiAction) -> Unit,
 ) {
     val route = state.active.route ?: return
-    NavigationRouteMapFrame(route, baseState, chartSurface, "navigation-active-map") { mapModifier ->
+    NavigationRouteMapFrame(route, baseState, chartSurface, "navigation-active-map") { mapModifier, localMap, onMapAction ->
         Column(mapModifier.fillMaxWidth()) {
             ActiveNavigationStrip(state.active, { onAction(NavigationUiAction.ActiveCommand(it)) })
-            SpatialCommand(stringResource(R.string.navigation_back), "navigation-active-map-back") {
-                onAction(NavigationUiAction.Navigate(NavigationSection.OVERVIEW))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                SpatialCommand(
+                    stringResource(localMap.navigationCamera.mode.cameraLabel()),
+                    "navigation-camera-mode",
+                ) {
+                    onMapAction(MapAction.SetNavigationCameraMode(localMap.navigationCamera.nextTrackingMode()))
+                }
+                SpatialCommand(
+                    stringResource(localMap.navigationCamera.orientation.orientationLabel()),
+                    "navigation-camera-orientation",
+                ) {
+                    onMapAction(MapAction.SetMapOrientationMode(localMap.navigationCamera.orientation.next()))
+                }
+                SpatialCommand(stringResource(R.string.navigation_recenter), "navigation-camera-recenter") {
+                    onMapAction(MapAction.RecenterNavigationCamera)
+                }
+                SpatialCommand(stringResource(R.string.navigation_back), "navigation-active-map-back") {
+                    onAction(NavigationUiAction.Navigate(NavigationSection.OVERVIEW))
+                }
             }
         }
     }
@@ -236,7 +255,7 @@ private fun NavigationRouteMapFrame(
     baseState: MapState,
     chartSurface: NavigationMapSurface,
     tag: String,
-    chrome: @Composable (Modifier) -> Unit,
+    chrome: @Composable (Modifier, MapState, (MapAction) -> Unit) -> Unit,
 ) {
     var mapState by remember(route.id, route.revision) { mutableStateOf(previewMapState(baseState, route)) }
     LaunchedEffect(
@@ -266,13 +285,16 @@ private fun NavigationRouteMapFrame(
         }
     }
     Box(Modifier.fillMaxSize().testTag(tag)) {
+        val dispatchMap: (MapAction) -> Unit = { action ->
+            mapState = MapReducer.reduce(mapState, action).state
+        }
         chartSurface(
             mapState,
-            { action -> mapState = MapReducer.reduce(mapState, action).state },
+            dispatchMap,
             {},
             Modifier.fillMaxSize(),
         )
-        chrome(Modifier.align(Alignment.BottomCenter))
+        chrome(Modifier.align(Alignment.BottomCenter), mapState, dispatchMap)
     }
 }
 
@@ -358,6 +380,7 @@ private fun editorMapState(base: MapState, draft: RouteDraftUi): MapState = base
     activeRoutePlanId = null,
     activeNavigationRoute = emptyList(),
     activeNavigationLeg = emptyList(),
+    activeNavigationRemainingRoute = emptyList(),
     navigationActive = false,
 )
 
@@ -372,8 +395,43 @@ private fun previewMapState(base: MapState, route: RoutePlan): MapState {
         activeRoutePlanId = null,
         activeNavigationRoute = geometry,
         activeNavigationLeg = base.activeNavigationLeg.takeIf { base.activeNavigationRoute == geometry }.orEmpty(),
+        activeNavigationRemainingRoute = base.activeNavigationRemainingRoute
+            .takeIf { base.activeNavigationRoute == geometry }
+            .orEmpty()
+            .ifEmpty { geometry },
         navigationActive = true,
     )
+}
+
+private fun com.yokuli.marine.map.domain.NavigationCameraState.nextTrackingMode(): NavigationCameraMode {
+    val current = mode.takeUnless { it == NavigationCameraMode.FREE_BROWSE } ?: resumeMode
+    return when (current) {
+        NavigationCameraMode.VESSEL_FOLLOW -> NavigationCameraMode.LOOK_AHEAD
+        NavigationCameraMode.LOOK_AHEAD -> NavigationCameraMode.NEXT_WAYPOINT
+        NavigationCameraMode.NEXT_WAYPOINT -> NavigationCameraMode.ROUTE_OVERVIEW
+        NavigationCameraMode.ROUTE_OVERVIEW -> NavigationCameraMode.VESSEL_FOLLOW
+        NavigationCameraMode.FREE_BROWSE -> error("resolved above")
+    }
+}
+
+private fun MapOrientationMode.next(): MapOrientationMode = when (this) {
+    MapOrientationMode.NORTH_UP -> MapOrientationMode.COURSE_UP
+    MapOrientationMode.COURSE_UP -> MapOrientationMode.HEADING_UP
+    MapOrientationMode.HEADING_UP -> MapOrientationMode.NORTH_UP
+}
+
+private fun NavigationCameraMode.cameraLabel() = when (this) {
+    NavigationCameraMode.VESSEL_FOLLOW -> R.string.navigation_camera_follow
+    NavigationCameraMode.LOOK_AHEAD -> R.string.navigation_camera_look_ahead
+    NavigationCameraMode.NEXT_WAYPOINT -> R.string.navigation_camera_next
+    NavigationCameraMode.ROUTE_OVERVIEW -> R.string.navigation_camera_route
+    NavigationCameraMode.FREE_BROWSE -> R.string.navigation_camera_browse
+}
+
+private fun MapOrientationMode.orientationLabel() = when (this) {
+    MapOrientationMode.NORTH_UP -> R.string.navigation_orientation_north
+    MapOrientationMode.COURSE_UP -> R.string.navigation_orientation_course
+    MapOrientationMode.HEADING_UP -> R.string.navigation_orientation_heading
 }
 
 private fun MapState.withRouteDraft(draft: RouteDraftUi): MapState = copy(

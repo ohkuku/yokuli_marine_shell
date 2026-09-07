@@ -17,6 +17,7 @@ sealed interface MapAction {
     data class ActiveNavigationGeometryChanged(
         val points: List<GeoPoint>,
         val activeLeg: List<GeoPoint> = emptyList(),
+        val remainingRoute: List<GeoPoint> = points,
     ) : MapAction {
         init { require(activeLeg.size <= 2) }
     }
@@ -130,6 +131,9 @@ sealed interface MapAction {
     data class ObserveCourseSpeed(val observation: CourseSpeedObservation, val now: MonotonicTime) : MapAction
     data class PositionClockTick(val now: MonotonicTime) : MapAction
     data class SetPositionViewIntent(val intent: PositionViewIntent) : MapAction
+    data class SetNavigationCameraMode(val mode: NavigationCameraMode) : MapAction
+    data class SetMapOrientationMode(val mode: MapOrientationMode) : MapAction
+    data object RecenterNavigationCamera : MapAction
     data class ChartPackagesChanged(val packages: List<ChartPackage>) : MapAction
     data class SelectChartPackage(val packageId: ChartPackageId) : MapAction
     data class ChartDisplayPlanChanged(val plan: ChartDisplayPlan) : MapAction
@@ -224,10 +228,14 @@ class DefaultMapReducer(
         MapAction.OpenMapViewPicker -> MapReduction(state.copy(transient = MapTransient.MapViewPicker))
         is MapAction.SetMapViewMode -> persistSession(state.copy(mapViewMode = action.mode, transient = null))
         is MapAction.ActiveNavigationGeometryChanged -> MapReduction(
-            state.copy(
+            applyNavigationCamera(
+                state.copy(
                 activeNavigationRoute = action.points,
                 activeNavigationLeg = action.activeLeg,
+                activeNavigationRemainingRoute = action.remainingRoute,
                 navigationActive = action.points.size >= 2,
+                ),
+                state.navigationCamera.mode,
             ),
         )
         is MapAction.QuickMark -> quickMark(state, action.point)
@@ -375,6 +383,17 @@ class DefaultMapReducer(
         is MapAction.ObserveCourseSpeed -> observeCourseSpeed(state, action)
         is MapAction.PositionClockTick -> MapReduction(state.copy(position = state.position.at(action.now)))
         is MapAction.SetPositionViewIntent -> setPositionViewIntent(state, action.intent)
+        is MapAction.SetNavigationCameraMode -> MapReduction(applyNavigationCamera(state, action.mode))
+        is MapAction.SetMapOrientationMode -> {
+            val changed = state.copy(navigationCamera = state.navigationCamera.copy(orientation = action.mode))
+            MapReduction(
+                if (changed.navigationCamera.mode == NavigationCameraMode.FREE_BROWSE) changed
+                else applyNavigationCamera(changed, changed.navigationCamera.mode),
+            )
+        }
+        MapAction.RecenterNavigationCamera -> MapReduction(
+            applyNavigationCamera(state, state.navigationCamera.resumeMode),
+        )
         is MapAction.ChartPackagesChanged -> updateChartPackages(state, action.packages)
         is MapAction.SelectChartPackage -> selectChartPackage(state, action.packageId)
         is MapAction.ChartDisplayPlanChanged -> if (action.plan.generation < state.chartDisplayPlan.generation) {
@@ -613,7 +632,16 @@ class DefaultMapReducer(
         ) {
             return MapReduction(state)
         }
-        val browsing = state.copy(position = state.position.copy(viewIntent = PositionViewIntent.BROWSE))
+        val browsing = state.copy(
+            position = state.position.copy(viewIntent = PositionViewIntent.BROWSE),
+            navigationCamera = if (state.navigationActive) {
+                state.navigationCamera.copy(
+                    mode = NavigationCameraMode.FREE_BROWSE,
+                    resumeMode = state.navigationCamera.mode.takeUnless { it == NavigationCameraMode.FREE_BROWSE }
+                        ?: state.navigationCamera.resumeMode,
+                )
+            } else state.navigationCamera,
+        )
         return if (browsing.camera == action.camera && browsing == state) {
             MapReduction(state)
         } else {
@@ -1691,10 +1719,14 @@ class DefaultMapReducer(
             ),
         )
         if (availability == PositionAvailability.FRESH && updated.position.viewIntent == PositionViewIntent.FOLLOW_POSITION) {
-            updated = updated.withCameraCommand(
-                MapCameraTarget.Exact(updated.camera.copy(center = action.observation.point)),
-                MapCameraIntent.FOLLOW_POSITION,
-            )
+            updated = if (updated.navigationActive && updated.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE) {
+                applyNavigationCamera(updated, updated.navigationCamera.mode)
+            } else {
+                updated.withCameraCommand(
+                    MapCameraTarget.Exact(updated.camera.copy(center = action.observation.point)),
+                    MapCameraIntent.FOLLOW_POSITION,
+                )
+            }
         }
         return MapReduction(updated)
     }
@@ -1702,8 +1734,7 @@ class DefaultMapReducer(
     private fun observeHeading(state: MapState, action: MapAction.ObserveHeading): MapReduction {
         observationRejection(state.position, state.position.heading?.identity, action.observation.identity, action.now)
             ?.let { return incident(state, MapIncident.ObservationRejected(it)) }
-        return MapReduction(
-            state.copy(
+        val updated = state.copy(
                 position = state.position.copy(
                     heading = action.observation,
                     evaluatedAt = action.now,
@@ -1714,15 +1745,18 @@ class DefaultMapReducer(
                         PositionFreshnessPolicy.HEADING_FRESH_MILLIS,
                     ),
                 ),
-            ),
+            )
+        return MapReduction(
+            if (updated.navigationActive && updated.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE) {
+                applyNavigationCamera(updated, updated.navigationCamera.mode)
+            } else updated,
         )
     }
 
     private fun observeCourseSpeed(state: MapState, action: MapAction.ObserveCourseSpeed): MapReduction {
         observationRejection(state.position, state.position.courseSpeed?.identity, action.observation.identity, action.now)
             ?.let { return incident(state, MapIncident.ObservationRejected(it)) }
-        return MapReduction(
-            state.copy(
+        val updated = state.copy(
                 position = state.position.copy(
                     courseSpeed = action.observation,
                     evaluatedAt = action.now,
@@ -1733,7 +1767,11 @@ class DefaultMapReducer(
                         PositionFreshnessPolicy.COURSE_SPEED_FRESH_MILLIS,
                     ),
                 ),
-            ),
+            )
+        return MapReduction(
+            if (updated.navigationActive && updated.navigationCamera.mode != NavigationCameraMode.FREE_BROWSE) {
+                applyNavigationCamera(updated, updated.navigationCamera.mode)
+            } else updated,
         )
     }
 
@@ -1774,8 +1812,20 @@ class DefaultMapReducer(
 
     private fun setPositionViewIntent(state: MapState, intent: PositionViewIntent): MapReduction {
         if (intent == PositionViewIntent.BROWSE) {
-            return MapReduction(state.copy(position = state.position.copy(viewIntent = intent)))
+            return MapReduction(
+                state.copy(
+                    position = state.position.copy(viewIntent = intent),
+                    navigationCamera = if (state.navigationActive) {
+                        state.navigationCamera.copy(
+                            mode = NavigationCameraMode.FREE_BROWSE,
+                            resumeMode = state.navigationCamera.mode.takeUnless { it == NavigationCameraMode.FREE_BROWSE }
+                                ?: state.navigationCamera.resumeMode,
+                        )
+                    } else state.navigationCamera,
+                ),
+            )
         }
+        if (state.navigationActive) return MapReduction(applyNavigationCamera(state, state.navigationCamera.resumeMode))
         val render = PositionRenderPolicy.resolve(state.position)
         val point = render.point ?: return MapReduction(state)
         if (render.markerStyle !in setOf(VesselMarkerStyle.LIVE_NEUTRAL, VesselMarkerStyle.LIVE_TRUE_HEADING)) {
@@ -1787,6 +1837,65 @@ class DefaultMapReducer(
                 MapCameraIntent.FOLLOW_POSITION,
             ),
         )
+    }
+
+    private fun applyNavigationCamera(state: MapState, requested: NavigationCameraMode): MapState {
+        if (!state.navigationActive) return state
+        if (requested == NavigationCameraMode.FREE_BROWSE) {
+            return state.copy(
+                position = state.position.copy(viewIntent = PositionViewIntent.BROWSE),
+                navigationCamera = state.navigationCamera.copy(mode = NavigationCameraMode.FREE_BROWSE),
+            )
+        }
+        val render = PositionRenderPolicy.resolve(state.position)
+        val vessel = render.point ?: return state.copy(
+            navigationCamera = state.navigationCamera.copy(mode = requested, resumeMode = requested),
+        )
+        val motionDirection = render.trueHeadingDegrees ?: render.courseVector?.trueDegrees
+        val effective = if (requested == NavigationCameraMode.LOOK_AHEAD && motionDirection == null) {
+            NavigationCameraMode.VESSEL_FOLLOW
+        } else requested
+        val bearing = when (state.navigationCamera.orientation) {
+            MapOrientationMode.NORTH_UP -> 0.0
+            MapOrientationMode.COURSE_UP -> render.courseVector?.trueDegrees ?: 0.0
+            MapOrientationMode.HEADING_UP -> render.trueHeadingDegrees ?: render.courseVector?.trueDegrees ?: 0.0
+        }
+        val target = when (effective) {
+            NavigationCameraMode.VESSEL_FOLLOW -> MapCameraTarget.Exact(
+                state.camera.copy(center = vessel, bearing = bearing),
+            )
+            NavigationCameraMode.LOOK_AHEAD -> {
+                val next = state.activeNavigationLeg.lastOrNull()?.takeUnless { it == vessel }
+                val nextDistance = next?.let { Wgs84Geodesic.inverse(vessel, it).distanceMeters }
+                val distance = nextDistance?.times(0.25)?.coerceIn(250.0, 2_000.0) ?: 750.0
+                MapCameraTarget.Exact(
+                    state.camera.copy(
+                        center = Wgs84Geodesic.destination(vessel, requireNotNull(motionDirection), distance),
+                        bearing = bearing,
+                    ),
+                )
+            }
+            NavigationCameraMode.NEXT_WAYPOINT -> state.activeNavigationLeg.lastOrNull()
+                ?.takeUnless { it == vessel }
+                ?.let { MapCameraTarget.Bounds(minimalBounds(listOf(vessel, it))) }
+                ?: MapCameraTarget.Exact(state.camera.copy(center = vessel, bearing = bearing))
+            NavigationCameraMode.ROUTE_OVERVIEW -> state.activeNavigationRemainingRoute
+                .takeIf(List<GeoPoint>::isNotEmpty)
+                ?.let { MapCameraTarget.Bounds(minimalBounds((listOf(vessel) + it).distinct())) }
+                ?: MapCameraTarget.Exact(state.camera.copy(center = vessel, bearing = bearing))
+            NavigationCameraMode.FREE_BROWSE -> error("handled above")
+        }
+        val intent = when (effective) {
+            NavigationCameraMode.VESSEL_FOLLOW -> MapCameraIntent.NAVIGATION_FOLLOW
+            NavigationCameraMode.LOOK_AHEAD -> MapCameraIntent.NAVIGATION_LOOK_AHEAD
+            NavigationCameraMode.NEXT_WAYPOINT -> MapCameraIntent.NAVIGATION_NEXT_WAYPOINT
+            NavigationCameraMode.ROUTE_OVERVIEW -> MapCameraIntent.NAVIGATION_ROUTE_OVERVIEW
+            NavigationCameraMode.FREE_BROWSE -> error("handled above")
+        }
+        return state.copy(
+            position = state.position.copy(viewIntent = PositionViewIntent.FOLLOW_POSITION),
+            navigationCamera = state.navigationCamera.copy(mode = effective, resumeMode = effective),
+        ).withCameraCommand(target, intent)
     }
 
     private fun ManualRouteDraft.record(

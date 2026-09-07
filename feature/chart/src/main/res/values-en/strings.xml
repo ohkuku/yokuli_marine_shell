@@ -394,4 +394,12 @@
     <string name="map_tile_position">%1$.4f°, %2$.4f°</string>
     <string name="map_tile_course_speed">COG %1$.0f° TRUE · %2$.1f kn</string>
     <string name="map_tile_position_only">CURRENT POSITION · NO USABLE COG/SOG</string>
+    <string name="map_camera_follow">FOLLOW</string>
+    <string name="map_camera_look_ahead">LOOK</string>
+    <string name="map_camera_next_waypoint">NEXT</string>
+    <string name="map_camera_route_overview">ROUTE</string>
+    <string name="map_camera_free_browse">BROWSE</string>
+    <string name="map_orientation_north_up">NORTH</string>
+    <string name="map_orientation_course_up">COURSE</string>
+    <string name="map_orientation_heading_up">HEADING</string>
 </resources>

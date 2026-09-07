@@ -394,4 +394,12 @@
     <string name="map_tile_position">%1$.4f°, %2$.4f°</string>
     <string name="map_tile_course_speed">航迹 %1$.0f° 真 · %2$.1f 节</string>
     <string name="map_tile_position_only">当前位置 · 无可用航迹/航速</string>
+    <string name="map_camera_follow">跟随</string>
+    <string name="map_camera_look_ahead">前视</string>
+    <string name="map_camera_next_waypoint">下一点</string>
+    <string name="map_camera_route_overview">全航线</string>
+    <string name="map_camera_free_browse">浏览</string>
+    <string name="map_orientation_north_up">北向</string>
+    <string name="map_orientation_course_up">航向</string>
+    <string name="map_orientation_heading_up">艏向</string>
 </resources>

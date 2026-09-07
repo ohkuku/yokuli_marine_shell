@@ -41,7 +41,19 @@ sealed interface MapCameraTarget {
     }
 }
 
-enum class MapCameraIntent { RESTORE, NORTH_RESET, VIEW_PLACE, VIEW_ROUTE, VIEW_PACKAGE, VIEW_TRACK, FOLLOW_POSITION }
+enum class MapCameraIntent {
+    RESTORE,
+    NORTH_RESET,
+    VIEW_PLACE,
+    VIEW_ROUTE,
+    VIEW_PACKAGE,
+    VIEW_TRACK,
+    FOLLOW_POSITION,
+    NAVIGATION_FOLLOW,
+    NAVIGATION_LOOK_AHEAD,
+    NAVIGATION_NEXT_WAYPOINT,
+    NAVIGATION_ROUTE_OVERVIEW,
+}
 
 data class MapCameraCommand(
     val id: MapCameraCommandId,
