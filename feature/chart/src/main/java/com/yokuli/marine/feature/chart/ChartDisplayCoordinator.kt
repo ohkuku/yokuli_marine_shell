@@ -17,6 +17,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartLayerHealth
 import com.yokuli.marine.map.domain.chartlibrary.ChartLayerId
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryCommandPort
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySource
+import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
 import com.yokuli.marine.map.domain.chartlibrary.ChartMapView
 import com.yokuli.marine.map.domain.chartlibrary.ChartViewDisplayPlanner
 import com.yokuli.marine.map.domain.chartlibrary.ChartViewLayer
@@ -184,9 +185,10 @@ class ChartDisplayCoordinator(
             sources = loadedSources.items
             assets = loadedAssets.items
             layers = loadedLayers.items
-            // Empty views are remnants of the old two-step editor. A custom map is only real
-            // when it owns chart content.
-            views = loadedViews.items.filter { it.layers.isNotEmpty() }
+            // Empty views and single-document views are remnants of the rejected two-step
+            // product model. Keep their durable records untouched for recovery, but never expose
+            // them as current Chart choices; production custom maps are folder-backed.
+            views = loadedViews.items.filter(::isFolderBackedView)
             val truncated = loadedSources.truncated || loadedAssets.truncated || loadedLayers.truncated || loadedViews.truncated
             publishPlan(if (truncated) ChartDisplayNoticeUi.CATALOG_LIMIT_REACHED else notice)
         } catch (cancelled: CancellationException) {
@@ -253,6 +255,16 @@ class ChartDisplayCoordinator(
     }
 
     private fun activeView(): ChartMapView? = catalogSnapshot.activeViewId?.let { id -> views.firstOrNull { it.id == id } }
+
+    private fun isFolderBackedView(view: ChartMapView): Boolean {
+        if (view.layers.isEmpty()) return false
+        val sourceById = sources.associateBy(ChartLibrarySource::id)
+        val layerById = layers.associateBy(ChartLayer::id)
+        return view.layers.all { entry ->
+            val sourceIds = layerById[entry.layerId]?.sourceIds ?: return@all false
+            sourceIds.isNotEmpty() && sourceIds.all { sourceById[it]?.kind == ChartLibrarySourceKind.TREE }
+        }
+    }
 
     private fun missingItem() {
         mutableState.value = mutableState.value.copy(notice = ChartDisplayNoticeUi.ITEM_NO_LONGER_AVAILABLE)

@@ -159,7 +159,7 @@ class ChartLibraryCoordinator(
         sources = readAllSources()
         assets = readAllAssets()
         layers = readAllLayers()
-        views = readAllViews()
+        views = readAllViews().filter(::isFolderBackedView)
         val sourceIds = sources.mapTo(hashSetOf(), ChartLibrarySource::id)
         val assetIds = assets.mapTo(hashSetOf(), ChartAsset::id)
         val layerIds = layers.mapTo(hashSetOf(), ChartLayer::id)
@@ -737,6 +737,16 @@ class ChartLibraryCoordinator(
             addAll(page.items.take((MAX_LOADED_ITEMS - size).coerceAtLeast(0)))
             offset += page.items.size
         } while (offset < page.total && page.items.isNotEmpty() && size < MAX_LOADED_ITEMS)
+    }
+
+    private fun isFolderBackedView(view: ChartMapView): Boolean {
+        if (view.layers.isEmpty()) return false
+        val sourceById = sources.associateBy(ChartLibrarySource::id)
+        val layerById = layers.associateBy(ChartLayer::id)
+        return view.layers.all { entry ->
+            val sourceIds = layerById[entry.layerId]?.sourceIds ?: return@all false
+            sourceIds.isNotEmpty() && sourceIds.all { sourceById[it]?.kind == ChartLibrarySourceKind.TREE }
+        }
     }
 
     private fun missingPage() {
