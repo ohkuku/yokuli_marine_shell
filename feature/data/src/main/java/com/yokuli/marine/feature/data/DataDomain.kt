@@ -165,7 +165,10 @@ enum class DataNotice {
 
 data class DataUiState(
     val section: DataSection = DataSection.OVERVIEW,
+    val primaryArea: PrimaryDataArea = PrimaryDataArea.BOAT,
     val resolvedValues: Map<DataKey, ResolvedDatum> = emptyMap(),
+    val boat: DataBoatOverview = DataBoatOverview(emptyMap(), emptyList(), SensorHealth.UNAVAILABLE),
+    val consumerImpact: List<MarineConsumerImpact> = emptyList(),
     val groups: List<SourceGroupState> = emptyList(),
     val inputs: List<DataInputState> = emptyList(),
     val flow: List<DataFlowLink> = emptyList(),
@@ -183,8 +186,10 @@ object DataDomainProjector {
         sources: MarineSourceSnapshot,
         nmea: NmeaRuntimeSnapshot,
         section: DataSection = DataSection.OVERVIEW,
+        consumers: MarineConsumerActivitySnapshot = MarineConsumerActivitySnapshot.EMPTY,
     ): DataUiState {
         val groups = SourceGroup.entries.map { group -> projectGroup(group, sources) }
+        val boat = MarineNervousSystemProjector.boat(sources.resolvedData.items, groups)
         val connectionNames = nmea.connections.associate {
             it.stored.config.id to it.stored.config.displayName
         }
@@ -193,7 +198,14 @@ object DataDomainProjector {
             .mapValues { (_, entries) -> entries.maxByOrNull { it.lastSeenMillis } }
         return DataUiState(
             section = section,
+            primaryArea = when (section) {
+                DataSection.FLOW -> PrimaryDataArea.FLOW
+                DataSection.INPUTS -> PrimaryDataArea.CONNECTIONS
+                else -> PrimaryDataArea.BOAT
+            },
             resolvedValues = sources.resolvedData.items,
+            boat = boat,
+            consumerImpact = MarineNervousSystemProjector.consumerImpact(boat, consumers),
             groups = groups,
             inputs = nmea.connections.map { connection ->
                 DataInputState(
