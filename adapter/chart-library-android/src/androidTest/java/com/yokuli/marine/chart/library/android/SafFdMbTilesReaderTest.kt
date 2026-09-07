@@ -140,10 +140,10 @@ class SafFdMbTilesReaderTest {
         val database = File(root, "package-$sha/map.mbtiles").also { it.parentFile?.mkdirs() }
         assertTrue(temporary.renameTo(database))
         val leases = AtomicInteger(0)
-        val access = AndroidChartResourceAccess(context.contentResolver, root) {
+        val access = AndroidChartResourceAccess(context.contentResolver, root, acquireManagedLease = {
             leases.incrementAndGet()
             ChartPackageLease { leases.decrementAndGet() }
-        }
+        })
         val request = ChartReadRequest(
             ChartAssetId("asset-managed"),
             ChartOpaqueLocator("yokuli-managed://$sha"),
