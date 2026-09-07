@@ -18,9 +18,13 @@ interface PersistedChartGrantPort {
 }
 
 class AndroidPersistedChartGrantPort(private val resolver: ContentResolver) : PersistedChartGrantPort {
-    override fun takeRead(locator: ChartOpaqueLocator): Boolean = runCatching {
-        resolver.takePersistableUriPermission(Uri.parse(locator.value), Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }.isSuccess
+    override fun takeRead(locator: ChartOpaqueLocator): Boolean {
+        val uri = Uri.parse(locator.value)
+        if (resolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }) return true
+        return runCatching {
+            resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }.isSuccess
+    }
 
     override fun releaseRead(locator: ChartOpaqueLocator): Boolean = runCatching {
         resolver.releasePersistableUriPermission(Uri.parse(locator.value), Intent.FLAG_GRANT_READ_URI_PERMISSION)

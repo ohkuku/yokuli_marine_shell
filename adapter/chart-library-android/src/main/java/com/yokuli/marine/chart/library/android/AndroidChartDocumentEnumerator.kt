@@ -6,7 +6,9 @@ import android.os.CancellationSignal
 import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
+import android.provider.OpenableColumns
 import com.yokuli.marine.map.domain.chartlibrary.*
+import java.security.MessageDigest
 
 class AndroidChartDocumentEnumerator(
     private val resolver: ContentResolver,
@@ -103,12 +105,20 @@ class AndroidChartDocumentEnumerator(
         }
     }
 
-    private fun queryDocument(uri: Uri, fallbackName: String, cancellation: CancellationSignal): ChartDiscoveredDocument? =
-        resolver.query(uri, PROJECTION, null, null, null, cancellation)?.use { cursor ->
-            if (!cursor.moveToFirst()) return@use null
-            val row = cursor.toRow(fallbackName)
+    private fun queryDocument(uri: Uri, fallbackName: String, cancellation: CancellationSignal): ChartDiscoveredDocument? {
+        val fallbackId = runCatching { DocumentsContract.getDocumentId(uri) }
+            .getOrNull()
+            ?.takeIf(String::isNotBlank)
+            ?: "uri-${uri.toString().sha256()}"
+        val cursor = runCatching {
+            resolver.query(uri, PROJECTION, null, null, null, cancellation)
+        }.getOrNull() ?: resolver.query(uri, OPENABLE_PROJECTION, null, null, null, cancellation)
+        return cursor?.use {
+            if (!it.moveToFirst()) return@use null
+            val row = it.toRow(fallbackName, fallbackId)
             row.takeIf(Row::chartCandidate)?.toDocument(requireNotNull(uri.authority), uri, withinTree = false)
         }
+    }
 
     private fun queryChildren(
         tree: Uri,
@@ -130,11 +140,17 @@ class AndroidChartDocumentEnumerator(
         } ?: throw IllegalStateException("Provider returned null cursor")
     }
 
-    private fun android.database.Cursor.toRow(fallbackName: String): Row {
+    private fun android.database.Cursor.toRow(fallbackName: String, fallbackDocumentId: String? = null): Row {
         fun text(column: String): String? = getColumnIndex(column).takeIf { it >= 0 && !isNull(it) }?.let(::getString)
         fun long(column: String): Long? = getColumnIndex(column).takeIf { it >= 0 && !isNull(it) }?.let(::getLong)
-        val id = requireNotNull(text(Document.COLUMN_DOCUMENT_ID)).take(MAX_DOCUMENT_ID_LENGTH)
-        val name = text(Document.COLUMN_DISPLAY_NAME)?.take(MAX_NAME_LENGTH)?.ifBlank { fallbackName } ?: fallbackName
+        val id = (text(Document.COLUMN_DOCUMENT_ID) ?: fallbackDocumentId)
+            ?.take(MAX_DOCUMENT_ID_LENGTH)
+            ?.takeIf(String::isNotBlank)
+            ?: throw IllegalStateException("Provider did not expose a stable document identity")
+        val name = (text(Document.COLUMN_DISPLAY_NAME) ?: text(OpenableColumns.DISPLAY_NAME))
+            ?.take(MAX_NAME_LENGTH)
+            ?.ifBlank { fallbackName }
+            ?: fallbackName
         val mime = text(Document.COLUMN_MIME_TYPE)?.take(MAX_MIME_LENGTH)
         return Row(
             documentId = id,
@@ -192,5 +208,13 @@ class AndroidChartDocumentEnumerator(
             Document.COLUMN_SIZE,
             Document.COLUMN_LAST_MODIFIED,
         )
+        private val OPENABLE_PROJECTION = arrayOf(
+            OpenableColumns.DISPLAY_NAME,
+            OpenableColumns.SIZE,
+        )
     }
 }
+
+private fun String.sha256(): String = MessageDigest.getInstance("SHA-256")
+    .digest(encodeToByteArray())
+    .joinToString("") { byte -> "%02x".format(byte) }
