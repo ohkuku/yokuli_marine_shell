@@ -10,7 +10,11 @@ from pathlib import Path
 
 
 MARKER = "LEGACY_MBTILES_EVIDENCE "
-REQUIRED = {"stream-fallback-render", "optional-metadata-render"}
+REQUIRED = {
+    "stream-fallback-render",
+    "optional-metadata-render",
+    "poisoned-same-revision-fallback-render",
+}
 MAX_FILES = 256
 MAX_FILE_BYTES = 8 * 1024 * 1024
 

@@ -259,7 +259,7 @@ class MapLibreSafGatewayRenderTest {
                 assertTrue(gateway.requestCount.get() > 0L)
             }
             assertEquals(hashBefore, original.sha256())
-            println("R21_EVIDENCE {\"scenario\":\"poisoned-same-revision-fallback-render\",\"result\":\"PASS\"}")
+            println("LEGACY_MBTILES_EVIDENCE {\"scenario\":\"poisoned-same-revision-fallback-render\",\"result\":\"PASS\"}")
         } finally {
             runtime.close()
             scope.cancel()
