@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "NAVREF_R05_NAVIGATION_CAMERA",
+  "baseCommit": "f070d0d65a8ed6d198547e3f26bcb09cb00653e6",
+  "implementationHead": "9d3fe4bb26217954e6f573796c01423f5ba1477e",
+  "bundleSha256": "4a992c480b58d57ecc4fd96b7eb282800341e9f38e3a1f1caf72b213d8bf084f",
+  "contractSha256": "326bd66398b2581bf72fecbe11ba2301e9218015bc39da68646db7bcb4abde9a",
+  "status": "IMPLEMENTED_LOCAL_GREEN_CI_AND_HUMAN_PENDING",
+  "humanAcceptance": "PENDING_NAVIGATION_CAMERA_APK",
+  "invariants": {
+    "cameraContentOrientationIndependent": true,
+    "panEntersFreeBrowse": true,
+    "positionDoesNotStealBrowse": true,
+    "recenterRestoresPriorTrackingMode": true,
+    "lookAheadRequiresReliableDirection": true,
+    "cameraNeverChangesNavigationSession": true
+  },
+  "evidence": {
+    "navigationCameraFocusedTests": "PASS",
+    "featureChartCompile": "PASS",
+    "featureNavigationCompile": "PASS",
+    "appShellCompile": "PASS",
+    "fullMachineGate": "CI_PENDING",
+    "physicalAcceptance": "PENDING"
+  }
+}
