@@ -15,6 +15,7 @@ import com.yokuli.marine.navigation.domain.RoutePoint
 import com.yokuli.marine.navigation.domain.Waypoint
 import com.yokuli.marine.navigation.domain.WaypointRevisionReference
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -34,11 +35,14 @@ class NavigationCoordinator(
     scope: CoroutineScope,
 ) {
     private sealed interface Request {
-        data object Refresh : Request
+        data class Refresh(
+            val reply: CompletableDeferred<NavigationLibraryLoadResult>? = null,
+        ) : Request
         data class Commit(
             val change: NavigationLibraryChange,
-            val successPage: NavigationPage,
+            val successPage: NavigationPage?,
             val startAfterSave: Boolean = false,
+            val reply: CompletableDeferred<NavigationLibraryCommitResult>? = null,
         ) : Request
         data class Active(val command: ActiveNavigationCommand) : Request
     }
@@ -59,7 +63,7 @@ class NavigationCoordinator(
     init {
         scope.launch { activeRuntime.state.collect { synchronized(lock) { active = it; publishLocked() } } }
         scope.launch { for (request in requests) execute(request) }
-        offer(Request.Refresh)
+        offer(Request.Refresh())
     }
 
     fun dispatch(action: NavigationUiAction) {
@@ -103,7 +107,7 @@ class NavigationCoordinator(
         return when (action) {
         is NavigationUiAction.Navigate -> { section = action.section; page = NavigationPage.Root; null }
         NavigationUiAction.NavigateUp -> { navigateUpLocked(); null }
-        NavigationUiAction.Refresh -> Request.Refresh
+        NavigationUiAction.Refresh -> Request.Refresh()
         NavigationUiAction.DismissNotice -> { notice = null; null }
         NavigationUiAction.CreateWaypoint -> {
             page = NavigationPage.WaypointEditor(WaypointDraftUi(newId(), null, "", "", "", "")); null
@@ -216,6 +220,24 @@ class NavigationCoordinator(
         }
     }
 
+    /**
+     * Composition-root entry for Chart/GPX writes. It shares the exact same serialized queue and
+     * library revision as Navigation UI, so another feature can never create a parallel truth.
+     */
+    suspend fun commitFromHost(change: NavigationLibraryChange): NavigationLibraryCommitResult {
+        val loaded = refreshFromHost()
+        if (loaded is NavigationLibraryLoadResult.Failed) return NavigationLibraryCommitResult.Failed(loaded.failure)
+        val reply = CompletableDeferred<NavigationLibraryCommitResult>()
+        requests.send(Request.Commit(change, successPage = null, reply = reply))
+        return reply.await()
+    }
+
+    suspend fun refreshFromHost(): NavigationLibraryLoadResult {
+        val reply = CompletableDeferred<NavigationLibraryLoadResult>()
+        requests.send(Request.Refresh(reply))
+        return reply.await()
+    }
+
     private fun saveWaypointLocked(): Request? {
         val draft = (page as? NavigationPage.WaypointEditor)?.draft ?: return invalidLocked()
         val position = draft.positionOrNull() ?: return invalidLocked()
@@ -263,7 +285,7 @@ class NavigationCoordinator(
 
     private suspend fun execute(request: Request) = try {
         when (request) {
-            Request.Refresh -> refresh()
+            is Request.Refresh -> refresh(request.reply)
             is Request.Commit -> commit(request)
             is Request.Active -> {
                 val result = activeRuntime.execute(request.command)
@@ -282,21 +304,33 @@ class NavigationCoordinator(
             }
         }
     } catch (cancelled: CancellationException) {
+        when (request) {
+            is Request.Commit -> request.reply?.cancel(cancelled)
+            is Request.Refresh -> request.reply?.cancel(cancelled)
+            is Request.Active -> Unit
+        }
         throw cancelled
     } catch (_: Throwable) {
         synchronized(lock) { loading = false; notice = NavigationNotice.STORAGE_FAILED; publishLocked() }
+        val failure = com.yokuli.marine.navigation.domain.NavigationLibraryFailure.UNKNOWN
+        when (request) {
+            is Request.Commit -> request.reply?.complete(NavigationLibraryCommitResult.Failed(failure))
+            is Request.Refresh -> request.reply?.complete(NavigationLibraryLoadResult.Failed(failure))
+            is Request.Active -> Unit
+        }
     }
 
     private suspend fun commit(request: Request.Commit) {
         val expected = synchronized(lock) { library.revision }
-        when (val result = libraryPort.commitNavigationChange(expected, request.change)) {
+        val result = libraryPort.commitNavigationChange(expected, request.change)
+        when (result) {
             is NavigationLibraryCommitResult.Committed -> {
                 val projected = synchronized(lock) { NavigationLibraryEditor.apply(library, request.change) }
                 var routeToStart: RoutePlan? = null
                 synchronized(lock) {
                     if (projected is NavigationChangeResult.Applied && projected.library.revision == result.revision) {
                         library = projected.library
-                        page = request.successPage
+                        request.successPage?.let { page = it }
                         notice = if (request.change is NavigationLibraryChange.RemoveWaypoint || request.change is NavigationLibraryChange.RemoveRoutePlan) {
                             NavigationNotice.DELETED
                         } else NavigationNotice.SAVED
@@ -328,10 +362,12 @@ class NavigationCoordinator(
             is NavigationLibraryCommitResult.Rejected -> synchronized(lock) { notice = NavigationNotice.REVISION_CONFLICT; publishLocked() }
             is NavigationLibraryCommitResult.Failed -> synchronized(lock) { notice = NavigationNotice.STORAGE_FAILED; publishLocked() }
         }
+        request.reply?.complete(result)
     }
 
-    private suspend fun refresh() {
-        when (val result = libraryPort.loadNavigationLibrary()) {
+    private suspend fun refresh(reply: CompletableDeferred<NavigationLibraryLoadResult>? = null) {
+        val result = libraryPort.loadNavigationLibrary()
+        when (result) {
             is NavigationLibraryLoadResult.Ready -> synchronized(lock) {
                 library = result.library; loading = false
                 val detail = page as? NavigationPage.RouteDetail
@@ -342,6 +378,7 @@ class NavigationCoordinator(
                 loading = false; notice = NavigationNotice.STORAGE_FAILED; publishLocked()
             }
         }
+        reply?.complete(result)
     }
 
     private fun invalidLocked(): Request? { notice = NavigationNotice.INVALID_INPUT; return null }

@@ -181,6 +181,22 @@ class NavigationCoordinatorTest {
         assertTrue(coordinator.state.value.library.routeDrafts.isEmpty())
     }
 
+    @Test
+    fun `host commits share Navigation queue revision and immediately update the same library`() = runTest {
+        val library = FakeLibrary()
+        val coordinator = coordinator(library)
+        runCurrent()
+        val waypoint = waypoint("chart-mark", 1)
+
+        val result = coordinator.commitFromHost(NavigationLibraryChange.PutWaypoint(waypoint))
+        runCurrent()
+
+        assertTrue(result is NavigationLibraryCommitResult.Committed)
+        assertEquals(listOf(waypoint), coordinator.state.value.library.waypoints)
+        assertEquals(coordinator.state.value.library, library.value)
+        assertEquals(NavigationPage.Root, coordinator.state.value.page)
+    }
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(
         library: FakeLibrary,
         active: FakeActive = FakeActive(),

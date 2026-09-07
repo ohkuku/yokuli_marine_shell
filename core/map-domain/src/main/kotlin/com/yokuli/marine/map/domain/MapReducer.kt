@@ -143,6 +143,12 @@ sealed interface MapAction {
         val rendererGeneration: MapRendererGeneration,
         val viewport: ChartDisplayViewport,
     ) : MapAction
+    /** Durable navigation objects are projected from NavigationLibrary and never persisted here. */
+    data class NavigationLibraryProjected(val library: MapLibrarySnapshot) : MapAction
+    /** Closes the spatial scratch editor after its exact geometry was committed by Navigation. */
+    data class NavigationRouteCommitted(val routeId: String, val routeRevision: Long) : MapAction {
+        init { require(routeId.isNotBlank() && routeRevision > 0L) }
+    }
     data object RetryPersistence : MapAction
     data object RetryLoad : MapAction
     /** Close the Chart UI session while retaining durable waypoints, routes and chart data. */
@@ -422,6 +428,20 @@ class DefaultMapReducer(
         } else {
             MapReduction(state.copy(chartDisplayViewport = action.viewport))
         }
+        is MapAction.NavigationLibraryProjected -> projectNavigationLibrary(state, action.library)
+        is MapAction.NavigationRouteCommitted -> persistSession(
+            state.copy(
+                tool = MapTool.BROWSE,
+                routeDrafts = state.routeDrafts.filterNot { it.id == state.activeRouteDraftId },
+                activeRouteDraftId = null,
+                activeRoutePlanId = action.routeId,
+                routeSaveStatus = RouteSaveStatus(action.routeId, action.routeRevision, MapSaveState.SAVED),
+                routeSaveTransaction = null,
+                surface = MapSurface.Root,
+                surfaceHistory = emptyList(),
+                transient = null,
+            ),
+        )
         MapAction.RetryPersistence -> retryPersistence(state)
         MapAction.RetryLoad -> MapReduction(
             state.copy(libraryLoadState = MapLibraryLoadState.LOADING, persistenceFailure = null),
@@ -1621,6 +1641,22 @@ class DefaultMapReducer(
         } else {
             MapReduction(state)
         }
+
+    private fun projectNavigationLibrary(state: MapState, library: MapLibrarySnapshot): MapReduction = MapReduction(
+        state.copy(
+            places = library.places,
+            savedRoutes = library.savedRoutes,
+            importedTracks = library.importedTracks,
+            gpxImportRecords = library.gpxImportRecords,
+            libraryRevision = maxOf(state.libraryRevision, library.revision),
+            durableLibraryRevision = maxOf(state.durableLibraryRevision, library.revision),
+            libraryLoadState = if (
+                library.places.isEmpty() && library.savedRoutes.isEmpty() &&
+                library.importedTracks.isEmpty() && library.gpxImportRecords.isEmpty()
+            ) MapLibraryLoadState.READY_EMPTY else MapLibraryLoadState.READY,
+            persistenceFailure = null,
+        ),
+    )
 
     private fun persistenceAck(state: MapState, revision: Long): MapReduction = when {
         revision < state.libraryRevision -> {

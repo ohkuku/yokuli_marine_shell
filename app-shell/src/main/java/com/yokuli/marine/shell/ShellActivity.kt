@@ -526,7 +526,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                 leftPx = maxOf(shellSafeBands.status.left, shellSafeBands.navigation.left),
                 rightPx = maxOf(shellSafeBands.status.right, shellSafeBands.navigation.right),
             ),
-            onMapAction = shellViewModel.mapStore::dispatch,
+            onMapAction = shellViewModel::onMapAction,
             chartDisplayState = chartDisplayState,
             onChartDisplayAction = shellViewModel::onChartDisplayAction,
             acquireChartPackageLease = shellViewModel::acquireChartPackageLease,

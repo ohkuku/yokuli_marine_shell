@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "R24_NAVIGATION_SEMANTIC_OWNERSHIP_CONSOLIDATION",
+  "baselineHead": "c83c874",
+  "implementationHead": "240bb98",
+  "directiveSha256": "36f520ea6232b152554dd1d23d224e18b08009af89157ca046b1381a9dd68ac5",
+  "status": "FOCUSED_MACHINE_GATE_COMPLETE_HOSTED_CI_PENDING",
+  "nextPackage": "R25_CHART_OPERATIONAL_SURFACE_CLEANUP",
+  "invariants": {
+    "navigationLibraryIsSoleDurableNavigationTruth": true,
+    "activeNavigationRuntimeRemainsSoleLiveTruth": true,
+    "chartMarkCommitsCanonicalWaypoint": true,
+    "chartRouteSaveCommitsCanonicalRoutePlan": true,
+    "gpxImportCommitsCanonicalNavigationLibrary": true,
+    "mapStateDurableObjectsAreNavigationProjection": true,
+    "chartAndNavigationShareSerializedCommitQueue": true,
+    "legacyRoomSchemaIsCompatibilityInfrastructureOnly": true
+  },
+  "localEvidence": {
+    "navigationProjection": "2/2 PASS",
+    "chartCommitPlanner": "3/3 PASS",
+    "gpxCanonicalImport": "5/5 PASS",
+    "navigationCoordinator": "8/8 PASS",
+    "productionCompositionCompile": "PASS",
+    "diffCheck": "PASS"
+  },
+  "hostedEvidence": "PENDING_PUSH",
+  "humanEvidence": "PENDING_FINAL_PRODUCT_ACCEPTANCE",
+  "knownUnresolved": [
+    "Legacy Map durable-shaped actions remain as transitional compatibility and scratch APIs",
+    "Physical-device direct manipulation and UI-session continuity remain human-owned"
+  ],
+  "ciReportPrefix": "CODEX-CI-REPORT-"
+}

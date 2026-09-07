@@ -9,7 +9,6 @@ import com.yokuli.marine.map.domain.DefaultMapStore
 import com.yokuli.marine.map.domain.MapEffect
 import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapLibraryLoadState
-import com.yokuli.marine.map.domain.MapDispatchResult
 import com.yokuli.marine.map.domain.MapSaveState
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.GeoPoint
@@ -19,6 +18,7 @@ import com.yokuli.marine.map.domain.ChartPackageLease
 import com.yokuli.marine.feature.chart.ChartDisplayCoordinator
 import com.yokuli.marine.feature.chart.ChartDisplayUiAction
 import com.yokuli.marine.feature.chart.ChartDisplayUiState
+import com.yokuli.marine.feature.chart.ChartNavigationCommitPlanner
 import com.yokuli.marine.feature.chart.GpxDocumentSource
 import com.yokuli.marine.feature.chart.GpxImportCoordinator
 import com.yokuli.marine.feature.chart.GpxImportUiAction
@@ -52,6 +52,14 @@ import com.yokuli.marine.navigation.domain.ActiveNavigationIssue
 import com.yokuli.marine.navigation.domain.ActiveNavigationRuntimePort
 import com.yokuli.marine.navigation.domain.ActiveNavigationSnapshot
 import com.yokuli.marine.navigation.domain.NavigationPosition
+import com.yokuli.marine.navigation.domain.NavigationLibrary
+import com.yokuli.marine.navigation.domain.NavigationLibraryChange
+import com.yokuli.marine.navigation.domain.NavigationLibraryCommitResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryLoadResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryPort
+import com.yokuli.marine.navigation.domain.Waypoint
+import com.yokuli.marine.navigation.domain.WaypointCategory
+import com.yokuli.marine.map.storage.NavigationLegacyMapper
 import com.yokuli.marine.navigation.domain.TrackRecorderCommand
 import com.yokuli.marine.feature.navigation.NavigationCoordinator
 import com.yokuli.marine.feature.navigation.NavigationDestination
@@ -210,18 +218,6 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         scope = viewModelScope,
     )
     val chartDisplayState: StateFlow<ChartDisplayUiState> = chartDisplayCoordinator.state
-    private val gpxImportCoordinator = GpxImportCoordinator(
-        documentSource = GpxDocumentSource { sourceUri ->
-            checkNotNull(application.contentResolver.openInputStream(Uri.parse(sourceUri)))
-        },
-        mapStore = mapStore,
-        scope = viewModelScope,
-        incidentLogger = {
-            // GPX contents, coordinates, names and source URI are private and never logged.
-            android.util.Log.w("YokuliMap", "GPX workflow failed: ${it.javaClass.simpleName}")
-        },
-    )
-    val gpxImportState: StateFlow<GpxImportUiState> = gpxImportCoordinator.state
     private val offlineCoverageCoordinator = OfflineCoverageCoordinator(
         tileIndex = (application as ShellApplication).chartCoverageIndex,
         scope = viewModelScope,
@@ -249,8 +245,34 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     )
     val navigationState: StateFlow<NavigationUiState> = navigationCoordinator.state
     val navigationEffects: Flow<NavigationEffect> = navigationCoordinator.effects
+    private val canonicalNavigationPort = object : NavigationLibraryPort {
+        override suspend fun loadNavigationLibrary(): NavigationLibraryLoadResult =
+            navigationCoordinator.refreshFromHost()
+
+        override suspend fun commitNavigationChange(
+            expectedLibraryRevision: Long,
+            change: NavigationLibraryChange,
+        ): NavigationLibraryCommitResult = navigationCoordinator.commitFromHost(change)
+    }
+    private val gpxImportCoordinator = GpxImportCoordinator(
+        documentSource = GpxDocumentSource { sourceUri ->
+            checkNotNull(application.contentResolver.openInputStream(Uri.parse(sourceUri)))
+        },
+        navigationLibrary = canonicalNavigationPort,
+        scope = viewModelScope,
+        incidentLogger = {
+            // GPX contents, coordinates, names and source URI are private and never logged.
+            android.util.Log.w("YokuliMap", "GPX workflow failed: ${it.javaClass.simpleName}")
+        },
+    )
+    val gpxImportState: StateFlow<GpxImportUiState> = gpxImportCoordinator.state
 
     init {
+        viewModelScope.launch {
+            navigationState.collect { state ->
+                if (!state.loading) projectNavigationLibrary(state.library)
+            }
+        }
         viewModelScope.launch {
             combine(activeNavigationState, mapStore.state) { navigation, map -> navigation to map }
                 .collect { (navigation, map) ->
@@ -410,6 +432,121 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancelOfflineCoverage() = offlineCoverageCoordinator.cancel()
 
+    /** All production Chart actions enter here; durable navigation writes never bypass Navigation. */
+    fun onMapAction(action: MapAction) {
+        when (action) {
+            is MapAction.QuickMark -> viewModelScope.launch { quickMark(action.point) }
+            is MapAction.CreatePlace -> viewModelScope.launch {
+                putWaypoint(
+                    Waypoint(
+                        id = java.util.UUID.randomUUID().toString(),
+                        revision = 1L,
+                        name = action.name.trim().ifEmpty { nextWaypointName(navigationState.value.library) },
+                        position = NavigationPosition(action.point.latitude, action.point.longitude),
+                        notes = action.notes.trim(),
+                        category = WaypointCategory.valueOf(action.category.name),
+                        tags = action.tags.map(String::trim).filter(String::isNotEmpty).distinct(),
+                        createdAtMillis = System.currentTimeMillis(),
+                        updatedAtMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+            is MapAction.UpdatePlace -> viewModelScope.launch {
+                val current = currentNavigationLibrary().waypoints.firstOrNull {
+                    it.id == action.placeId && it.revision == action.expectedRevision
+                } ?: return@launch
+                putWaypoint(
+                    current.copy(
+                        revision = current.revision + 1L,
+                        name = action.name.trim().ifEmpty { current.name },
+                        notes = action.notes.trim(),
+                        category = WaypointCategory.valueOf(action.category.name),
+                        tags = action.tags.map(String::trim).filter(String::isNotEmpty).distinct(),
+                        updatedAtMillis = System.currentTimeMillis().coerceAtLeast(current.updatedAtMillis),
+                    ),
+                )
+            }
+            MapAction.ConfirmPlaceMove -> viewModelScope.launch {
+                val move = mapStore.state.value.placeMove ?: return@launch
+                val current = currentNavigationLibrary().waypoints.firstOrNull {
+                    it.id == move.placeId && it.revision == move.expectedRevision
+                } ?: return@launch
+                putWaypoint(
+                    current.copy(
+                        revision = current.revision + 1L,
+                        position = NavigationPosition(move.candidatePoint.latitude, move.candidatePoint.longitude),
+                        updatedAtMillis = System.currentTimeMillis().coerceAtLeast(current.updatedAtMillis),
+                    ),
+                    closePlaceMove = true,
+                )
+            }
+            MapAction.ConfirmDeletePlace -> viewModelScope.launch {
+                val request = mapStore.state.value.placeDeleteRequest ?: return@launch
+                val result = navigationCoordinator.commitFromHost(
+                    NavigationLibraryChange.RemoveWaypoint(request.placeId, request.expectedRevision),
+                )
+                if (result is NavigationLibraryCommitResult.Committed) {
+                    projectNavigationLibrary(navigationState.value.library)
+                    mapStore.dispatch(MapAction.CancelDeletePlace)
+                }
+            }
+            MapAction.SaveRoutePlan -> viewModelScope.launch { saveActiveRouteDraft() }
+            is MapAction.SaveRoutePlanAsCopy -> viewModelScope.launch { saveActiveRouteDraft(action.name) }
+            is MapAction.SaveRouteCopy -> viewModelScope.launch { saveActiveRouteDraft(action.name) }
+            MapAction.ConfirmDeleteRoutePlan -> viewModelScope.launch {
+                val request = mapStore.state.value.routeDeleteRequest ?: return@launch
+                val result = navigationCoordinator.commitFromHost(
+                    NavigationLibraryChange.RemoveRoutePlan(request.routeId, request.expectedRevision),
+                )
+                if (result is NavigationLibraryCommitResult.Committed) {
+                    projectNavigationLibrary(navigationState.value.library)
+                    mapStore.dispatch(MapAction.CancelDeleteRoutePlan)
+                }
+            }
+            is MapAction.ImportGpxBatch -> {
+                // The production GPX coordinator commits NavigationLibraryChange.ImportGpx.
+                // Keeping this compatibility action out of MapStore prevents a second durable truth.
+                android.util.Log.w("YokuliMap", "Rejected legacy MapAction.ImportGpxBatch")
+            }
+            else -> mapStore.dispatch(action)
+        }
+    }
+
+    private suspend fun currentNavigationLibrary(): NavigationLibrary =
+        (navigationCoordinator.refreshFromHost() as? NavigationLibraryLoadResult.Ready)?.library
+            ?: navigationState.value.library
+
+    private suspend fun quickMark(point: GeoPoint) {
+        val library = currentNavigationLibrary()
+        val change = ChartNavigationCommitPlanner.quickMark(
+            library = library,
+            point = point,
+            id = java.util.UUID.randomUUID().toString(),
+            nowMillis = System.currentTimeMillis(),
+        )
+        putWaypoint(change.waypoint)
+    }
+
+    private suspend fun putWaypoint(waypoint: Waypoint, closePlaceMove: Boolean = false) {
+        val result = navigationCoordinator.commitFromHost(NavigationLibraryChange.PutWaypoint(waypoint))
+        if (result !is NavigationLibraryCommitResult.Committed) return
+        projectNavigationLibrary(navigationState.value.library)
+        if (closePlaceMove) mapStore.dispatch(MapAction.CancelPlaceMove)
+        mapStore.dispatch(MapAction.FocusSavedPlace(waypoint.id))
+    }
+
+    private fun projectNavigationLibrary(library: NavigationLibrary) {
+        mapStore.dispatch(MapAction.NavigationLibraryProjected(NavigationLegacyMapper.toLegacy(library)))
+    }
+
+    private fun nextWaypointName(library: NavigationLibrary): String {
+        val ordinal = library.waypoints.asSequence().mapNotNull { waypoint ->
+            Regex("^WP\\s+(\\d{1,6})$", RegexOption.IGNORE_CASE).matchEntire(waypoint.name.trim())
+                ?.groupValues?.getOrNull(1)?.toIntOrNull()
+        }.maxOrNull()?.plus(1) ?: 1
+        return "WP %03d".format(ordinal)
+    }
+
     fun onActiveNavigationCommand(command: ActiveNavigationCommand): Job = viewModelScope.launch {
         val result = guardedActiveNavigationRuntime.execute(command)
         if (result is ActiveNavigationCommandResult.Accepted &&
@@ -518,22 +655,18 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun saveActiveRouteDraft(): com.yokuli.marine.map.domain.RouteSaveStatus? {
-        val before = mapStore.state.value
-        before.routeDraft?.takeIf { it.waypoints.size >= 2 } ?: return null
-        if (mapStore.dispatch(MapAction.SaveRoutePlan) !in setOf(MapDispatchResult.ACCEPTED, MapDispatchResult.COALESCED)) {
-            return null
-        }
-        val submitted = mapStore.state.first { state ->
-            state.libraryRevision > before.libraryRevision && state.routeSaveStatus != null
-        }
-        val completed = if (submitted.routeSaveStatus?.state == MapSaveState.PENDING) {
-            mapStore.state.first { state ->
-                val status = state.routeSaveStatus
-                status != null && status.routeId == submitted.routeSaveStatus?.routeId && status.state != MapSaveState.PENDING
-            }
-        } else submitted
-        return completed.routeSaveStatus?.takeIf { it.state == MapSaveState.SAVED }
+    private suspend fun saveActiveRouteDraft(nameOverride: String? = null): com.yokuli.marine.map.domain.RouteSaveStatus? {
+        val draft = mapStore.state.value.routeDraft?.takeIf { it.waypoints.size >= 2 } ?: return null
+        val change = ChartNavigationCommitPlanner.saveRoute(currentNavigationLibrary(), draft, nameOverride) ?: return null
+        val result = navigationCoordinator.commitFromHost(change)
+        if (result !is NavigationLibraryCommitResult.Committed) return null
+        projectNavigationLibrary(navigationState.value.library)
+        mapStore.dispatch(MapAction.NavigationRouteCommitted(change.route.id, change.route.revision))
+        return com.yokuli.marine.map.domain.RouteSaveStatus(
+            change.route.id,
+            change.route.revision,
+            MapSaveState.SAVED,
+        )
     }
 
     fun onNavigationAction(action: NavigationUiAction) = navigationCoordinator.dispatch(action)

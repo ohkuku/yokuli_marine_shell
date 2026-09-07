@@ -1,20 +1,21 @@
 package com.yokuli.marine.feature.chart
 
-import com.yokuli.marine.map.domain.DefaultMapReducer
-import com.yokuli.marine.map.domain.GpxImportRecord
-import com.yokuli.marine.map.domain.MapAction
-import com.yokuli.marine.map.domain.MapDispatchResult
-import com.yokuli.marine.map.domain.MapLibraryLoadState
-import com.yokuli.marine.map.domain.MapSaveState
-import com.yokuli.marine.map.domain.MapState
-import com.yokuli.marine.map.domain.MapStore
+import com.yokuli.marine.navigation.domain.GpxImportReceipt
+import com.yokuli.marine.navigation.domain.NavigationChangeResult
+import com.yokuli.marine.navigation.domain.NavigationLibrary
+import com.yokuli.marine.navigation.domain.NavigationLibraryChange
+import com.yokuli.marine.navigation.domain.NavigationLibraryCommitResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryEditor
+import com.yokuli.marine.navigation.domain.NavigationLibraryFailure
+import com.yokuli.marine.navigation.domain.NavigationLibraryLoadResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryPort
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -26,17 +27,16 @@ class GpxImportCoordinatorTest {
     @Test
     fun `inspection is non mutating and confirm publishes success only after durable ack`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val store = RecordingMapStore(autoAck = false)
+        val store = RecordingNavigationLibrary(autoAck = false)
         val coordinator = coordinator(store, scope)
 
         coordinator.inspectDocument("content://fixture")
         val preview = withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Preview } }
         assertTrue(preview is GpxImportUiState.Preview)
-        assertTrue(store.state.value.places.isEmpty())
+        assertTrue(store.value.waypoints.isEmpty())
 
         coordinator.dispatch(GpxImportUiAction.ConfirmImport)
         withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Writing } }
-        assertEquals(MapSaveState.PENDING, store.state.value.saveState)
         store.ack()
         val completed = withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Succeeded } }
             as GpxImportUiState.Succeeded
@@ -51,11 +51,8 @@ class GpxImportCoordinatorTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val bytes = GPX.toByteArray()
         val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        val store = RecordingMapStore(
-            initial = MapState(
-                libraryLoadState = MapLibraryLoadState.READY,
-                gpxImportRecords = listOf(GpxImportRecord("existing", digest, 1L)),
-            ),
+        val store = RecordingNavigationLibrary(
+            initial = NavigationLibrary(gpxImports = listOf(GpxImportReceipt("existing", digest, 1L))),
         )
         val coordinator = coordinator(store, scope)
 
@@ -76,7 +73,7 @@ class GpxImportCoordinatorTest {
     @Test
     fun `empty selection cannot create an empty import transaction`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val store = RecordingMapStore()
+        val store = RecordingNavigationLibrary()
         val coordinator = coordinator(store, scope)
         coordinator.inspectDocument("content://fixture")
         withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Preview } }
@@ -93,7 +90,7 @@ class GpxImportCoordinatorTest {
     @Test
     fun `cancelled preview never dispatches a library mutation`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val store = RecordingMapStore()
+        val store = RecordingNavigationLibrary()
         val coordinator = coordinator(store, scope)
         coordinator.inspectDocument("content://fixture")
         withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Preview } }
@@ -102,14 +99,14 @@ class GpxImportCoordinatorTest {
 
         assertTrue(coordinator.state.value is GpxImportUiState.Cancelled)
         assertEquals(0, store.importDispatches)
-        assertTrue(store.state.value.places.isEmpty())
+        assertTrue(store.value.waypoints.isEmpty())
         scope.cancel()
     }
 
     @Test
     fun `persistence failure remains visible and never becomes success`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val store = RecordingMapStore(autoAck = false)
+        val store = RecordingNavigationLibrary(autoAck = false)
         val coordinator = coordinator(store, scope)
         coordinator.inspectDocument("content://fixture")
         withTimeout(2_000L) { coordinator.state.first { it is GpxImportUiState.Preview } }
@@ -124,45 +121,64 @@ class GpxImportCoordinatorTest {
         scope.cancel()
     }
 
-    private fun coordinator(store: MapStore, scope: CoroutineScope) = GpxImportCoordinator(
+    private fun coordinator(store: NavigationLibraryPort, scope: CoroutineScope) = GpxImportCoordinator(
         documentSource = GpxDocumentSource { ByteArrayInputStream(GPX.toByteArray()) },
-        mapStore = store,
+        navigationLibrary = store,
         scope = scope,
         idGenerator = com.yokuli.marine.map.domain.MapIdGenerator { namespace -> "$namespace-id" },
         clock = com.yokuli.marine.map.domain.MapClock { 10L },
     )
 
-    private class RecordingMapStore(
-        initial: MapState = MapState(libraryLoadState = MapLibraryLoadState.READY_EMPTY),
+    private class RecordingNavigationLibrary(
+        initial: NavigationLibrary = NavigationLibrary(),
         private val autoAck: Boolean = true,
-    ) : MapStore {
-        private val reducer = DefaultMapReducer()
-        private val mutable = MutableStateFlow(initial)
-        override val state: StateFlow<MapState> = mutable
+    ) : NavigationLibraryPort {
+        var value = initial
+            private set
         var importDispatches = 0
+        private var pending: Pending? = null
 
-        override fun dispatch(action: MapAction): MapDispatchResult {
-            if (action is MapAction.ImportGpxBatch) importDispatches += 1
-            val reduction = reducer.reduce(mutable.value, action)
-            mutable.value = reduction.state
-            if (action is MapAction.ImportGpxBatch && autoAck) ack()
-            return MapDispatchResult.ACCEPTED
+        override suspend fun loadNavigationLibrary() = NavigationLibraryLoadResult.Ready(value)
+
+        override suspend fun commitNavigationChange(
+            expectedLibraryRevision: Long,
+            change: NavigationLibraryChange,
+        ): NavigationLibraryCommitResult {
+            if (change is NavigationLibraryChange.ImportGpx) importDispatches += 1
+            if (autoAck) return apply(expectedLibraryRevision, change)
+            val wait = CompletableDeferred<NavigationLibraryCommitResult>()
+            pending = Pending(expectedLibraryRevision, change, wait)
+            return wait.await()
         }
 
-        fun ack() {
-            val revision = mutable.value.libraryRevision
-            mutable.value = reducer.reduce(mutable.value, MapAction.PersistenceAck(revision)).state
+        suspend fun ack() {
+            while (pending == null) yield()
+            val request = requireNotNull(pending).also { pending = null }
+            request.reply.complete(apply(request.expectedRevision, request.change))
         }
 
-        fun failWrite() {
-            val revision = mutable.value.libraryRevision
-            mutable.value = reducer.reduce(
-                mutable.value,
-                MapAction.PersistenceFailed(revision, com.yokuli.marine.map.domain.MapReadFailure.IO),
-            ).state
+        suspend fun failWrite() {
+            while (pending == null) yield()
+            val request = requireNotNull(pending).also { pending = null }
+            request.reply.complete(NavigationLibraryCommitResult.Failed(NavigationLibraryFailure.IO))
         }
 
-        override fun close() = Unit
+        private fun apply(expectedRevision: Long, change: NavigationLibraryChange): NavigationLibraryCommitResult {
+            if (expectedRevision != value.revision) return NavigationLibraryCommitResult.Conflict(value.revision)
+            return when (val result = NavigationLibraryEditor.apply(value, change)) {
+                is NavigationChangeResult.Applied -> {
+                    value = result.library
+                    NavigationLibraryCommitResult.Committed(value.revision)
+                }
+                is NavigationChangeResult.Rejected -> NavigationLibraryCommitResult.Rejected(result.reason)
+            }
+        }
+
+        private data class Pending(
+            val expectedRevision: Long,
+            val change: NavigationLibraryChange,
+            val reply: CompletableDeferred<NavigationLibraryCommitResult>,
+        )
     }
 
     private companion object {

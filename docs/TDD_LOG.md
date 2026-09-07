@@ -860,3 +860,13 @@ R23 将旧 world-grid schematic 从 Coverage 的主要产品表面移除，并�
 ### English translation — Base Apps Recovery R23
 
 R23 makes real map rendering the primary Coverage/Preview surface. Ephemeral plans select the inspected Layer or View without mutating the active durable View, and both paths reuse Chart's production renderer and resource access. Focused behavior and composition gates pass.
+
+## Base Apps Recovery R24 — Navigation Semantic Ownership
+
+R24 的 Reds 先锁定 canonical Waypoint 编号、RoutePlan exact geometry、revision conflict／Save As Copy、Navigation → Chart 空间投影，以及来自 Chart 与 Navigation UI 的写入必须经过同一个串行 transaction queue。Green 没有新造数据库或跨 Feature 同步层：Shell composition root 将 Quick Mark、Waypoint/Route 操作和 GPX 导入提交给既有 `NavigationLibraryPort`，成功后把同一 revision 投影回 Map renderer；route draft 只保留为空间编辑 scratch。旧 Room schema 与 `NavigationLegacyMapper` 继续作为兼容基础设施。
+
+定向证据为 Map projection `2/2`、Chart commit planner `3/3`、GPX import `5/5`、Navigation coordinator `8/8` 与 production composition compile PASS。旧 Map durable-shaped actions 只作为过渡兼容／scratch API 留到 R26；完整 Gate 交给 hosted CI，真机跨 App 操作仍保留人工验收。
+
+### English translation — Base Apps Recovery R24
+
+R24 converges all new Chart waypoint, route, and GPX writes on the existing Navigation library and serialized coordinator queue. MapState is now a spatial projection plus editing scratch rather than a second durable authority, while the old Room schema remains a compatibility bridge. Focused behavior and composition gates pass; dead transitional APIs are deliberately deferred until replacement journeys are locked in R26.

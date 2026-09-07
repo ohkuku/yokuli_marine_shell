@@ -6,14 +6,25 @@ import com.yokuli.marine.map.domain.GpxImportPlanner
 import com.yokuli.marine.map.domain.GpxImportPreview
 import com.yokuli.marine.map.domain.GpxImportSelection
 import com.yokuli.marine.map.domain.GpxReader
-import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.MapClock
-import com.yokuli.marine.map.domain.MapDispatchResult
 import com.yokuli.marine.map.domain.MapIdGenerator
-import com.yokuli.marine.map.domain.MapSaveState
-import com.yokuli.marine.map.domain.MapStore
 import com.yokuli.marine.map.domain.RandomMapIdGenerator
 import com.yokuli.marine.map.domain.SystemMapClock
+import com.yokuli.marine.navigation.domain.GpxImportMode
+import com.yokuli.marine.navigation.domain.GpxImportReceipt
+import com.yokuli.marine.navigation.domain.NavigationLibraryChange
+import com.yokuli.marine.navigation.domain.NavigationLibraryCommitResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryLoadResult
+import com.yokuli.marine.navigation.domain.NavigationLibraryPort
+import com.yokuli.marine.navigation.domain.NavigationPosition
+import com.yokuli.marine.navigation.domain.NavigationTrack
+import com.yokuli.marine.navigation.domain.NavigationTrackOrigin
+import com.yokuli.marine.navigation.domain.NavigationTrackPoint
+import com.yokuli.marine.navigation.domain.NavigationTrackSegment
+import com.yokuli.marine.navigation.domain.RoutePlan
+import com.yokuli.marine.navigation.domain.RoutePoint
+import com.yokuli.marine.navigation.domain.Waypoint
+import com.yokuli.marine.navigation.domain.WaypointCategory
 import java.io.InputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -22,7 +33,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -69,12 +79,12 @@ sealed interface GpxImportUiAction {
 }
 
 /**
- * Preview is read-only. Exactly one confirmed batch enters MapStore's serialized queue and success
- * is published only after Room acknowledges the target library revision.
+ * Preview is read-only. Exactly one confirmed batch enters NavigationLibraryPort; Chart never
+ * creates a parallel GPX/waypoint/route truth in MapStore.
  */
 class GpxImportCoordinator(
     private val documentSource: GpxDocumentSource,
-    private val mapStore: MapStore,
+    private val navigationLibrary: NavigationLibraryPort,
     private val scope: CoroutineScope,
     private val reader: GpxReader = GpxReader(),
     private val idGenerator: MapIdGenerator = RandomMapIdGenerator,
@@ -85,6 +95,7 @@ class GpxImportCoordinator(
     val state: StateFlow<GpxImportUiState> = mutableState.asStateFlow()
     private var operationGeneration = 0L
     private var activeJob: Job? = null
+    private var observedLibraryRevision = 0L
 
     fun inspectDocument(sourceUri: String) {
         activeJob?.cancel()
@@ -93,7 +104,13 @@ class GpxImportCoordinator(
         mutableState.value = GpxImportUiState.Inspecting(operationId, generation)
         activeJob = scope.launch {
             try {
-                val digests = mapStore.state.value.gpxImportRecords.mapTo(linkedSetOf()) { it.sha256 }
+                val loaded = navigationLibrary.loadNavigationLibrary()
+                if (loaded !is NavigationLibraryLoadResult.Ready) {
+                    failIfCurrent(generation, GpxImportFailure.WRITE_FAILED, IllegalStateException("Navigation library unavailable"))
+                    return@launch
+                }
+                observedLibraryRevision = loaded.library.revision
+                val digests = loaded.library.gpxImports.mapTo(linkedSetOf()) { it.sha256 }
                 val preview = withContext(Dispatchers.IO) {
                     documentSource.open(sourceUri).use { input -> reader.inspect(input, digests) }
                 }
@@ -155,29 +172,25 @@ class GpxImportCoordinator(
             failIfCurrent(current.generation, GpxImportFailure.EMPTY_SELECTION, error)
             return
         }
-        val targetRevision = mapStore.state.value.libraryRevision + 1L
-        val dispatchResult = mapStore.dispatch(MapAction.ImportGpxBatch(batch))
-        if (dispatchResult !in setOf(MapDispatchResult.ACCEPTED, MapDispatchResult.COALESCED)) {
-            mutableState.value = GpxImportUiState.Failed(GpxImportFailure.DISPATCH_REJECTED, current.generation)
-            return
-        }
+        val targetRevision = observedLibraryRevision + 1L
         mutableState.value = GpxImportUiState.Writing(current.operationId, current.generation, targetRevision)
-        activeJob = scope.launch { awaitDurability(current.generation, targetRevision, batch) }
+        activeJob = scope.launch { commit(current.generation, decision, batch) }
     }
 
-    private suspend fun awaitDurability(generation: Long, targetRevision: Long, batch: GpxImportBatch) {
+    private suspend fun commit(generation: Long, decision: GpxDuplicateDecision, batch: GpxImportBatch) {
         try {
-            val settled = mapStore.state.first { state ->
-                state.durableLibraryRevision >= targetRevision ||
-                    (state.libraryRevision >= targetRevision && state.saveState == MapSaveState.FAILED)
-            }
+            val result = navigationLibrary.commitNavigationChange(
+                expectedLibraryRevision = observedLibraryRevision,
+                change = batch.toNavigationChange(decision),
+            )
             if (generation != operationGeneration) return
-            mutableState.value = if (settled.durableLibraryRevision >= targetRevision) {
+            mutableState.value = if (result is NavigationLibraryCommitResult.Committed) {
+                observedLibraryRevision = result.revision
                 GpxImportUiState.Succeeded(
                     batch.places.size,
                     batch.routes.size,
                     batch.tracks.size,
-                    settled.durableLibraryRevision,
+                    result.revision,
                 )
             } else {
                 GpxImportUiState.Failed(GpxImportFailure.WRITE_FAILED, generation)
@@ -213,3 +226,66 @@ class GpxImportCoordinator(
 
     private enum class ItemKind { WAYPOINT, ROUTE, TRACK }
 }
+
+private fun GpxImportBatch.toNavigationChange(decision: GpxDuplicateDecision) = NavigationLibraryChange.ImportGpx(
+    waypoints = places.map { place ->
+        Waypoint(
+            id = place.id,
+            revision = place.revision,
+            name = place.name,
+            position = NavigationPosition(place.point.latitude, place.point.longitude),
+            notes = place.notes,
+            category = WaypointCategory.valueOf(place.category.name),
+            tags = place.tags,
+            createdAtMillis = place.createdAtMillis,
+            updatedAtMillis = place.updatedAtMillis,
+        )
+    },
+    routePlans = routes.map { route ->
+        RoutePlan(
+            id = route.id,
+            revision = route.revision,
+            name = route.name,
+            points = route.waypoints.mapIndexed { index, point ->
+                RoutePoint(route.waypointIds[index], NavigationPosition(point.latitude, point.longitude))
+            },
+            plannedSpeedKnots = route.plannedSpeedKnots,
+            notes = route.notes,
+            sourceDraftId = route.sourceDraftId,
+            sourceDraftRevision = route.sourceDraftRevision,
+        )
+    },
+    tracks = tracks.map { track ->
+        NavigationTrack(
+            id = track.id,
+            revision = track.revision,
+            name = track.name,
+            description = track.description,
+            segments = track.segments.map { segment ->
+                NavigationTrackSegment(segment.points.map { point ->
+                    NavigationTrackPoint(
+                        position = NavigationPosition(point.point.latitude, point.point.longitude),
+                        elevationMeters = point.elevationMeters,
+                        time = point.time,
+                        recordedAtEpochMillis = point.recordedAtEpochMillis,
+                        sourceId = point.sourceId,
+                        speedOverGroundKnots = point.speedOverGroundKnots,
+                        courseOverGroundTrueDegrees = point.courseOverGroundTrueDegrees,
+                    )
+                })
+            },
+            sourceDigest = track.sourceDigest,
+            importedAtMillis = track.importedAtMillis,
+            origin = NavigationTrackOrigin.valueOf(track.origin.name),
+            startedAtEpochMillis = track.startedAtEpochMillis,
+            endedAtEpochMillis = track.endedAtEpochMillis,
+            durationMillis = track.durationMillis,
+            distanceNauticalMiles = track.distanceNauticalMiles,
+            navigationSessionId = track.navigationSessionId,
+            routeId = track.routeId,
+            routeRevision = track.routeRevision,
+        )
+    },
+    receipt = GpxImportReceipt(importRecord.id, importRecord.sha256, importRecord.importedAtMillis),
+    mode = if (decision == GpxDuplicateDecision.IMPORT_AS_COPY) GpxImportMode.IMPORT_AS_COPY else GpxImportMode.NEW_IMPORT,
+)

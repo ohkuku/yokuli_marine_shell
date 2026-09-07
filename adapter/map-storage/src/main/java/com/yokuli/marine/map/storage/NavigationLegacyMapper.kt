@@ -27,7 +27,7 @@ import com.yokuli.marine.navigation.domain.WaypointCategory
 import com.yokuli.marine.navigation.domain.WaypointRevisionReference
 
 /** Transitional schema bridge: ownership changes without rewriting or copying the Room library. */
-internal object NavigationLegacyMapper {
+object NavigationLegacyMapper {
     fun toNavigation(source: MapLibrarySnapshot): NavigationLibrary = NavigationLibrary(
         revision = source.revision,
         waypoints = source.places.map { it.asNavigation() },
