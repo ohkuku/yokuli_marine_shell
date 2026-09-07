@@ -152,6 +152,15 @@
     <string name="track_issue_capacity">The safe point limit was reached. Recording is paused and accepted points are preserved.</string>
     <string name="track_issue_persistence">Persistence failed. Recording is safely paused; try again.</string>
     <string name="track_issue_archive">The track library write failed. The stopped track is retained for retry or discard.</string>
+    <string name="shell_navigation_target">NAV · WP %1$02d</string>
+    <string name="shell_navigation_active">NAV · WP %1$02d · %2$.2f NM</string>
+    <string name="shell_navigation_active_metric">NAV · WP %1$02d · %2$.2f KM</string>
+    <string name="shell_navigation_paused">NAV PAUSED · WP %1$02d</string>
+    <string name="shell_navigation_complete">NAV · COMPLETE</string>
+    <string name="shell_navigation_expanded">Current system navigation activity: %1$s</string>
+    <string name="shell_track_recording_expanded">The system track is recording. Leaving the current app does not stop it.</string>
+    <string name="shell_track_paused_expanded">The system track is paused. Recorded points remain preserved.</string>
+    <string name="shell_track_save_pending_expanded">The system track has stopped and awaits an explicit save or discard.</string>
     <string name="navigation_history_title">passage history</string>
     <string name="navigation_history_time">%1$s → %2$s</string>
     <string name="navigation_history_ongoing">ongoing</string>

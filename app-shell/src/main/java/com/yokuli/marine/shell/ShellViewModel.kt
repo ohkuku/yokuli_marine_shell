@@ -145,6 +145,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     val activeNavigationState = shellApplication.activeNavigationRuntime.state
     val trackRecorderState = shellApplication.trackRecorderRuntime.state
     val navigationHistoryState = shellApplication.navigationHistoryRuntime.state
+    val ongoingMarineActivityState = shellApplication.ongoingMarineActivity.state
 
     val persistedPreferences: StateFlow<LauncherPersistedState> = persistence.state
         .map { persisted ->

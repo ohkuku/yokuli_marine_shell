@@ -49,6 +49,8 @@ import com.yokuli.marine.navigation.domain.ActiveNavigationRuntimePort
 import com.yokuli.marine.navigation.domain.DefaultActiveNavigationRuntime
 import com.yokuli.marine.navigation.domain.DefaultTrackRecorderRuntime
 import com.yokuli.marine.navigation.domain.DefaultNavigationHistoryRuntime
+import com.yokuli.marine.navigation.domain.DefaultMarineOngoingActivityPort
+import com.yokuli.marine.navigation.domain.MarineOngoingActivityPort
 import com.yokuli.marine.navigation.domain.NavigationLibraryLoadResult
 import com.yokuli.marine.navigation.domain.NavigationRouteReadPort
 import com.yokuli.marine.navigation.domain.NavigationRuntimeClock
@@ -185,6 +187,13 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
             scope = applicationScope,
         )
     }
+    val ongoingMarineActivity: MarineOngoingActivityPort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        DefaultMarineOngoingActivityPort(
+            activeNavigation = activeNavigationRuntime,
+            trackRecorder = trackRecorderRuntime,
+            scope = applicationScope,
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -199,6 +208,7 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
             navigationHistoryRuntime.initialize()
             activeNavigationRuntime.initialize()
             trackRecorderRuntime.initialize()
+            ongoingMarineActivity
         }
         if (BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")) {
             // Harnesses repeatedly force-stop/reinstall the target. A first-run LocaleManager

@@ -140,6 +140,15 @@
     <string name="track_issue_capacity">已达到安全点数上限，记录已暂停；已有点未丢失。</string>
     <string name="track_issue_persistence">无法持久保存，记录已安全暂停；请重试。</string>
     <string name="track_issue_archive">无法写入航迹库；停止的航迹仍保留，可重试或丢弃。</string>
+    <string name="shell_navigation_target">导航 · 航点 %1$02d</string>
+    <string name="shell_navigation_active">导航 · 航点 %1$02d · %2$.2f 海里</string>
+    <string name="shell_navigation_active_metric">导航 · 航点 %1$02d · %2$.2f 千米</string>
+    <string name="shell_navigation_paused">导航暂停 · 航点 %1$02d</string>
+    <string name="shell_navigation_complete">导航 · 已完成</string>
+    <string name="shell_navigation_expanded">当前系统航行活动：%1$s</string>
+    <string name="shell_track_recording_expanded">系统航迹正在记录；离开当前 App 不会停止记录。</string>
+    <string name="shell_track_paused_expanded">系统航迹已暂停；已记录的点仍保留。</string>
+    <string name="shell_track_save_pending_expanded">系统航迹已停止，正在等待明确保存或丢弃。</string>
     <string name="navigation_history_title">航行历史</string>
     <string name="navigation_history_time">%1$s → %2$s</string>
     <string name="navigation_history_ongoing">进行中</string>

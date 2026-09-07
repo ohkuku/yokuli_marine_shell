@@ -99,6 +99,7 @@ import com.yokuli.marine.feature.data.DataLauncherProjector
 import com.yokuli.marine.feature.data.DataUiAction
 import com.yokuli.marine.feature.data.dataStatusCopy
 import com.yokuli.marine.feature.navigation.NavigationEffect
+import com.yokuli.marine.feature.navigation.marineOngoingActivityStatusCopies
 import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryDestinations
 import com.yokuli.marine.feature.chartlibrary.ChartLibraryEffect
@@ -248,6 +249,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val activeNavigationState by shellViewModel.activeNavigationState.collectAsState()
     val trackRecorderState by shellViewModel.trackRecorderState.collectAsState()
     val navigationHistoryState by shellViewModel.navigationHistoryState.collectAsState()
+    val ongoingMarineActivity by shellViewModel.ongoingMarineActivityState.collectAsState()
     val navigationState by shellViewModel.navigationState.collectAsState()
     val mapTileSnapshot by application.mapTileSnapshots.snapshots.collectAsState()
     val coroutineScope = rememberCoroutineScope()
@@ -512,6 +514,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             currentDisplayNeedsAttention = chartDisplayState.activeViewId != null &&
                 chartDisplayState.issues.isNotEmpty(),
         )
+        val marineActivityStatuses = marineOngoingActivityStatusCopies(ongoingMarineActivity)
         val runtime = ProductionShellRuntime(
             theme = themeSpec,
             heavyContentReady = true,
@@ -746,6 +749,14 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                             WpStatusStrip(
                                 windowMetrics = windowMetrics,
                                 statusItems = listOfNotNull(
+                                    *marineActivityStatuses.map { activity ->
+                                        WpStatusStripItem(
+                                            stableId = activity.stableId,
+                                            compactText = activity.compact,
+                                            expandedDescription = activity.expanded,
+                                            attention = activity.attention,
+                                        )
+                                    }.toTypedArray(),
                                     dataStatus?.let {
                                         WpStatusStripItem(
                                             "data",
