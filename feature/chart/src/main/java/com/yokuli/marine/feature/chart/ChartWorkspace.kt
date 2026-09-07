@@ -723,6 +723,23 @@ private fun SelectedObjectSummary(
             .testTag("map-object-summary"),
     ) {
         WpText(place?.name ?: track?.name ?: point?.coordinateText() ?: hit.objectId, 11, maxLines = 1)
+        point?.let { selectedPoint ->
+            WpText(selectedPoint.coordinateText(), 10, color = colors.muted, maxLines = 1)
+            PositionRenderPolicy.resolve(state.position).point
+                ?.takeIf { state.position.availability == PositionAvailability.FRESH }
+                ?.let { vessel ->
+                    val inverse = Wgs84Geodesic.inverse(vessel, selectedPoint)
+                    WpText(
+                        stringResource(
+                            R.string.map_target_distance_bearing,
+                            inverse.distanceMeters.distanceText(),
+                            inverse.initialBearingTrueDegrees?.let { "%03.0f°T".format(it) } ?: "—",
+                        ),
+                        10,
+                        color = colors.foreground,
+                    )
+                }
+        }
         Row(Modifier.fillMaxWidth()) {
             if (place != null && point != null) {
                 MapActionText(R.string.map_target_go_to, "map-object-go-to-${place.id}") {
@@ -765,8 +782,8 @@ private fun SelectedObjectSummary(
 @Composable
 private fun MeasurementRootSummary(state: MapState, onAction: (MapAction) -> Unit) {
     val colors = LocalWpTheme.current
-    val draft = state.measurementDraft ?: return
-    val summary = MeasurementMath.summarize(draft)
+    state.measurementDraft ?: return
+    val summary = state.visibleMeasurementSummary ?: return
     Column(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .92f))
             .padding(horizontal = 12.dp, vertical = 4.dp).testTag("map-measurement-summary"),

@@ -443,7 +443,7 @@ fun GoogleMarineChartSurface(
             state.selection?.let { selection ->
                 addMarker(MarkerOptions().position(selection.point.toLatLng()))?.let(domainMarkers::add)
             }
-            state.measurementPointsWithPreview().takeIf { it.isNotEmpty() }?.let { points ->
+            state.visibleMeasurementPoints.takeIf { it.isNotEmpty() }?.let { points ->
                 domainPolylines += addPolyline(
                     PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xfff7b500.toInt()).width(5f),
                 )
@@ -645,18 +645,12 @@ private data class HitCandidate(val point: GeoPoint, val hit: MapHitResult)
 private fun MapState.hitCandidates(ids: Set<MapOverlayId>): List<HitCandidate> = buildList {
     if (MapOverlayId.SAVED_PLACES in ids) places.forEach { add(HitCandidate(it.point, MapHitResult(MapOverlayId.SAVED_PLACES, "place:${it.id}"))) }
     if (MapOverlayId.SELECTION in ids) selection?.let { add(HitCandidate(it.point, MapHitResult(MapOverlayId.SELECTION, "selection"))) }
-    if (MapOverlayId.MEASUREMENT_POINTS in ids) measurementPointsWithPreview().forEachIndexed { index, point ->
+    if (MapOverlayId.MEASUREMENT_POINTS in ids) visibleMeasurementPoints.forEachIndexed { index, point ->
         add(HitCandidate(point, MapHitResult(MapOverlayId.MEASUREMENT_POINTS, "measurement-point:$index")))
     }
     if (MapOverlayId.MANUAL_ROUTE_POINTS in ids) routePointsWithPreview().forEachIndexed { index, point ->
         add(HitCandidate(point, MapHitResult(MapOverlayId.MANUAL_ROUTE_POINTS, routePointObjectId(index))))
     }
-}
-
-private fun MapState.measurementPointsWithPreview(): List<GeoPoint> {
-    val points = measurementDraft?.points.orEmpty()
-    val target = editGesture?.target as? MapEditTarget.MeasurementPoint ?: return points
-    return points.replaceAt(target.index, requireNotNull(editGesture).previewPoint)
 }
 
 private fun MapState.routePointsWithPreview(): List<GeoPoint> {

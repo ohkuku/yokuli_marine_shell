@@ -484,7 +484,7 @@ fun OfflineMarineChartSurface(
         state.position,
     ) {
         val style = activeStyle ?: return@LaunchedEffect
-        val measurementPoints = state.measurementPointsWithPreview()
+        val measurementPoints = state.visibleMeasurementPoints
         val routePoints = state.routePointsWithPreview()
         val trackFeatures = withContext(Dispatchers.Default) {
             state.importedTracks.toDisplayFeatureCollection(state.camera.zoom)
@@ -625,13 +625,6 @@ internal fun List<ImportedTrack>.toDisplayFeatureCollection(zoom: Double): Featu
             }
         },
     )
-
-private fun MapState.measurementPointsWithPreview(): List<GeoPoint> {
-    val points = measurementDraft?.points.orEmpty()
-    val gesture = editGesture ?: return points
-    val target = gesture.target as? MapEditTarget.MeasurementPoint ?: return points
-    return points.replaceAt(target.index, gesture.previewPoint)
-}
 
 private fun MapState.routePointsWithPreview(): List<GeoPoint> {
     val points = visibleRoutePoints

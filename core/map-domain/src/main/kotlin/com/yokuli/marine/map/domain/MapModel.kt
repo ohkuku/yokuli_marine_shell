@@ -464,6 +464,26 @@ data class MapState(
     val routeDraft: ManualRouteDraft?
         get() = activeRouteDraftId?.let { active -> routeDrafts.firstOrNull { it.id == active } }
 
+    /**
+     * Current A/B geometry for both renderers and HUDs. A drag preview is visible truth even
+     * though the durable draft remains unchanged until the gesture commits.
+     */
+    val visibleMeasurementPoints: List<GeoPoint>
+        get() {
+            val points = measurementDraft?.points.orEmpty()
+            val gesture = editGesture ?: return points
+            val target = gesture.target as? MapEditTarget.MeasurementPoint ?: return points
+            if (target.index !in points.indices) return points
+            return points.mapIndexed { index, point ->
+                if (index == target.index) gesture.previewPoint else point
+            }
+        }
+
+    val visibleMeasurementSummary: MeasurementSummary?
+        get() = measurementDraft?.let {
+            MeasurementMath.summarize(MeasurementDraft(points = visibleMeasurementPoints))
+        }
+
     val visibleRoutePoints: List<GeoPoint>
         get() = routeDraft?.takeIf { tool == MapTool.MANUAL_ROUTE }?.waypoints
             ?: activeNavigationRoute.takeIf(List<GeoPoint>::isNotEmpty)
