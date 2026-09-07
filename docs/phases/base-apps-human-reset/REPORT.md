@@ -1,6 +1,6 @@
 # Base Apps Human Acceptance Reset 报告
 
-状态：`PRODUCT_RECOVERY_WINDOW — IMPLEMENTATION IN PROGRESS`
+状态：`PRODUCT_RECOVERY_WINDOW — ACTIVE`
 
 ## 本提交只改变测试与发布权威性
 
@@ -16,6 +16,17 @@
 - 旧 `run_marine_shell_final_gate.sh` 已改为同一恢复期白名单，不能从本地旁路复活旧 presentation tests 或输出 `MACHINE_VERIFIED`。
 
 下一提交开始替换真实 App presentation。某个 App 只有完成用户旅程并由仓库所有者确认“像正常 App”后，才会加入新的 UI behavior Gate。
+
+## 本地窄门禁证据
+
+提交 `79e2255` 后只运行本次 CI 策略直接相关的测试，没有运行全量 Gradle：
+
+- `test_product_recovery_window.py`：6/6 PASS；
+- `run_ci_helper_tests.sh`：17/17 PASS；
+- `test-ci-contract.sh`：PASS；
+- `android.yml`、`nightly.yml`、`release.yml` YAML parse：PASS。
+
+完整 core/adapter、lint、assemble、API 34/36 和启动性能证据由该提交的 GitHub Actions 提供。
 
 ## English translation
 
