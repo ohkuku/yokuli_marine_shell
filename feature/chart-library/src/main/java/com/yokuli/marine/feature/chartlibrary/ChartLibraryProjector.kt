@@ -11,6 +11,10 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartLibraryStorageSnapshot
 import com.yokuli.marine.map.domain.chartlibrary.ChartLayer
 import com.yokuli.marine.map.domain.chartlibrary.ChartLayerSummaryProjector
 import com.yokuli.marine.map.domain.chartlibrary.ChartMapView
+import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewDisplayPlanner
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewId
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewLayer
 import com.yokuli.marine.map.domain.chartlibrary.ChartManagedCopyCapability
 import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
 import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
@@ -136,6 +140,44 @@ object ChartLibraryProjector {
                 selected = view.id == local.selectedViewId,
             )
         }.sortedWith(compareByDescending<ChartLibraryViewUi> { it.active }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        val selectedView = local.selectedViewId?.let { selectedId -> views.firstOrNull { it.id == selectedId } }
+            ?: catalog.activeViewId?.let { activeId -> views.firstOrNull { it.id == activeId } }
+            ?: views.firstOrNull()
+        val displayGeneration = catalog.revision.coerceAtLeast(1L)
+        val previewDisplayPlan = ChartViewDisplayPlanner.plan(
+            generation = displayGeneration,
+            catalog = catalog,
+            sources = sources,
+            assets = assets,
+            layers = layers,
+            view = selectedView,
+            viewport = null,
+        )
+        val coverageLayers = local.selectedLayerId?.let { selectedId ->
+            layers.filter { it.id == selectedId }
+        } ?: layers
+        val coverageView = ChartMapView(
+            id = ChartViewId("coverage-preview"),
+            displayName = "Coverage preview",
+            baseStyle = ChartBuiltInBaseStyle.SATELLITE,
+            layers = coverageLayers.sortedBy { it.stackOrder }.map { layer ->
+                ChartViewLayer(
+                    layerId = layer.id,
+                    visible = true,
+                    opacity = layer.opacity,
+                    stackOrder = layer.stackOrder,
+                )
+            },
+        )
+        val coverageDisplayPlan = ChartViewDisplayPlanner.plan(
+            generation = displayGeneration,
+            catalog = catalog,
+            sources = sources,
+            assets = assets,
+            layers = layers,
+            view = coverageView,
+            viewport = null,
+        )
 
         val filteredAssets = rows.filter { row ->
             val matchesQuery = local.query.isBlank() || sequenceOf(row.title, row.displayPath)
@@ -216,6 +258,8 @@ object ChartLibraryProjector {
                 rows.map { ChartLibrarySearchItem.Asset(it.id, it.title, it.sourceNames.joinToString(" · ")) },
             layers = layerRows,
             views = viewRows,
+            coverageDisplayPlan = coverageDisplayPlan,
+            previewDisplayPlan = previewDisplayPlan,
         )
     }
 

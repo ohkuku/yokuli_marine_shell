@@ -19,11 +19,14 @@ import com.yokuli.marine.map.domain.MapAction
 import com.yokuli.marine.map.domain.BoundedMapTileSnapshotRuntime
 import com.yokuli.marine.map.domain.MapReducer
 import com.yokuli.marine.map.domain.MapState
+import com.yokuli.marine.map.domain.MapCamera
 import com.yokuli.marine.map.domain.MapViewMode
 import com.yokuli.marine.map.domain.MapTileSnapshot
 import com.yokuli.marine.map.domain.MapTileSnapshotSink
 import com.yokuli.marine.map.domain.MapViewportInsets
 import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
+import com.yokuli.marine.map.domain.minimalBounds
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.chart.ChartShellContribution
@@ -188,6 +191,29 @@ private fun chartMapMode(style: ChartBuiltInBaseStyle): MapViewMode = when (styl
     ChartBuiltInBaseStyle.NONE -> MapViewMode.MARINE
     ChartBuiltInBaseStyle.STANDARD -> MapViewMode.STANDARD
     ChartBuiltInBaseStyle.SATELLITE -> MapViewMode.SATELLITE
+}
+
+private fun previewCamera(plan: ChartDisplayPlan): MapCamera {
+    val bounds = plan.layers.mapNotNull { it.bounds }.flatMap { bounds ->
+        listOf(
+            com.yokuli.marine.map.domain.GeoPoint(bounds.south, bounds.west),
+            com.yokuli.marine.map.domain.GeoPoint(bounds.south, bounds.east),
+            com.yokuli.marine.map.domain.GeoPoint(bounds.north, bounds.west),
+            com.yokuli.marine.map.domain.GeoPoint(bounds.north, bounds.east),
+        )
+    }.takeIf { it.isNotEmpty() }?.let(::minimalBounds) ?: return MapCamera()
+    val longitudeSpan = if (bounds.crossesAntimeridian) 360.0 - bounds.west + bounds.east else bounds.east - bounds.west
+    val latitudeSpan = bounds.north - bounds.south
+    val span = maxOf(longitudeSpan, latitudeSpan, .01)
+    val centerLongitude = if (bounds.crossesAntimeridian) {
+        val raw = bounds.west + longitudeSpan / 2.0
+        if (raw > 180.0) raw - 360.0 else raw
+    } else (bounds.west + bounds.east) / 2.0
+    val zoom = (kotlin.math.log2(360.0 / span) - 1.0).coerceIn(1.0, 16.0)
+    return MapCamera(
+        center = com.yokuli.marine.map.domain.GeoPoint((bounds.south + bounds.north) / 2.0, centerLongitude),
+        zoom = zoom,
+    )
 }
 
 @Composable
@@ -422,10 +448,15 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             LaunchedEffect(token) { runtime.onOpenChartLibrary(token) }
             val previewSnapshotSink = remember { BoundedMapTileSnapshotRuntime() }
             val previewSurface = rememberProductionChartSurface(runtime, previewSnapshotSink)
-            val displayPlan = runtime.chartDisplayState.plan
+            val displayPlan = when (runtime.chartLibraryState.workspaceMode) {
+                com.yokuli.marine.feature.chartlibrary.ChartLibraryWorkspaceMode.COVERAGE ->
+                    runtime.chartLibraryState.coverageDisplayPlan
+                else -> runtime.chartLibraryState.previewDisplayPlan
+            }
             var previewState by remember {
                 mutableStateOf(
                     MapState(
+                        camera = previewCamera(displayPlan),
                         chartDisplayPlan = displayPlan,
                         mapViewMode = chartMapMode(displayPlan.builtInBaseStyle),
                     ),
@@ -440,7 +471,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             ChartLibraryWorkspace(
                 state = runtime.chartLibraryState,
                 onAction = runtime.onChartLibraryAction,
-                compositePreview = { modifier ->
+                spatialPreview = { modifier ->
                     previewSurface(
                         previewState,
                         { action -> previewState = MapReducer.reduce(previewState, action).state },

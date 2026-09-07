@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "R23_REAL_COVERAGE_AND_SELECTED_VIEW_PREVIEW",
+  "baselineHead": "cc87810ffad5fa1435de2a23330e3b04cc3b39ae",
+  "implementationHead": "6f9cc2bfbf22f58b85336fb18b61a75c0c3f7c8d",
+  "directiveSha256": "36f520ea6232b152554dd1d23d224e18b08009af89157ca046b1381a9dd68ac5",
+  "status": "FOCUSED_MACHINE_GATE_COMPLETE_HOSTED_CI_PENDING",
+  "nextPackage": "R24_NAVIGATION_SEMANTIC_OWNERSHIP",
+  "invariants": {
+    "coverageUsesProductionSpatialRenderer": true,
+    "coveragePlanUsesLogicalLayers": true,
+    "selectedLayerDoesNotMutateCatalog": true,
+    "inactiveSelectedViewCanBePreviewed": true,
+    "previewDoesNotActivateView": true,
+    "chartKeepsExistingActiveView": true,
+    "previewAndChartShareRendererAndDisplayPlanSemantics": true,
+    "schematicCanvasIsNotPrimaryCoverage": true
+  },
+  "localEvidence": {
+    "selectedInactiveViewJourney": "PASS",
+    "selectedLayerCoveragePlan": "PASS",
+    "featureCoordinatorSuite": "10/10 PASS",
+    "productionCompositionCompile": "PASS",
+    "diffCheck": "PASS"
+  },
+  "hostedEvidence": "PENDING_PUSH",
+  "humanEvidence": "PENDING_FINAL_PRODUCT_ACCEPTANCE",
+  "knownUnresolved": [
+    "Physical-device map framing and gestures remain human-owned",
+    "Exact legacy user MBTiles remains unavailable for direct exercise"
+  ],
+  "ciReportPrefix": "CODEX-CI-REPORT-"
+}

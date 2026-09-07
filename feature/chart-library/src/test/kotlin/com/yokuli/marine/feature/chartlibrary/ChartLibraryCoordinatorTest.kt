@@ -194,6 +194,48 @@ class ChartLibraryCoordinatorTest {
         assertEquals(.55f, runtime.views.single().layers.single().opacity)
     }
 
+    @Test
+    fun inactiveSelectedViewDrivesPreviewWithoutActivatingIt() = runTest(UnconfinedTestDispatcher()) {
+        val layer = ChartLayer(ChartLayerId("layer-a"), "Official Charts", setOf(SOURCE_ID))
+        val active = ChartMapView(
+            ChartViewId("active-a"), "Active A", ChartBuiltInBaseStyle.STANDARD,
+            listOf(ChartViewLayer(layer.id, opacity = .3f)),
+        )
+        val inactive = ChartMapView(
+            ChartViewId("preview-b"), "Preview B", ChartBuiltInBaseStyle.SATELLITE,
+            listOf(ChartViewLayer(layer.id, opacity = .8f)),
+        )
+        val runtime = FakeRuntime(renderableSource(), renderableAsset(), layer, active, inactive).apply { activeViewId = active.id }
+        val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)
+        advanceUntilIdle()
+
+        coordinator.dispatch(ChartLibraryUiAction.SelectView(inactive.id))
+        advanceUntilIdle()
+
+        assertEquals(active.id, runtime.activeViewId)
+        assertEquals(inactive.id, coordinator.state.value.previewDisplayPlan.activeViewId)
+        assertEquals("Preview B", coordinator.state.value.previewDisplayPlan.activeViewName)
+        assertEquals(.8f, coordinator.state.value.previewDisplayPlan.layers.single().opacity)
+    }
+
+    @Test
+    fun coveragePlanUsesSelectedLogicalLayerAndRealRenderableAssets() = runTest(UnconfinedTestDispatcher()) {
+        val selected = ChartLayer(ChartLayerId("layer-a"), "Official Charts", setOf(SOURCE_ID))
+        val otherSource = source().copy(id = ChartSourceId("00000000-0000-0000-0000-000000000002"), displayName = "Fishing")
+        val other = ChartLayer(ChartLayerId("layer-b"), "Fishing", setOf(otherSource.id))
+        val runtime = FakeRuntime(renderableSource(), otherSource, renderableAsset(), selected, other)
+        val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)
+        advanceUntilIdle()
+
+        coordinator.dispatch(ChartLibraryUiAction.SelectLayer(selected.id))
+        advanceUntilIdle()
+
+        val plan = coordinator.state.value.coverageDisplayPlan
+        assertEquals(listOf(selected.id), plan.logicalLayers.map { it.id })
+        assertEquals(listOf(ASSET_ID), plan.layers.map { it.assetId })
+        assertEquals(ChartBuiltInBaseStyle.SATELLITE, plan.builtInBaseStyle)
+    }
+
     private class FakeRuntime(vararg initial: Any) : ChartLibraryRuntimePort {
         var sources = initial.filterIsInstance<ChartLibrarySource>().toMutableList()
         var assets = initial.filterIsInstance<ChartAsset>().toMutableList()
@@ -321,6 +363,14 @@ class ChartLibraryCoordinatorTest {
             "charts",
             grantState = grant,
         )
+        fun renderableSource() = source().copy(
+            scan = ChartSourceScanState(
+                generation = 1L,
+                status = ChartScanStatus.COMPLETE,
+                lastSuccessfulGeneration = 1L,
+                discoveredCount = 1L,
+            ),
+        )
         fun asset() = ChartAsset(
             ASSET_ID,
             ChartDocumentIdentity("provider", "chart.mbtiles"),
@@ -328,6 +378,18 @@ class ChartLibraryCoordinatorTest {
             setOf(SOURCE_ID),
             "chart.mbtiles",
             ChartContentRevision("chart.mbtiles", 10L, 1L),
+        )
+        fun renderableAsset() = asset().copy(
+            facts = ChartAssetFacts(
+                format = ChartAssetFormat.RASTER_MBTILES,
+                bounds = com.yokuli.marine.map.domain.GeoBounds(-37.0, 174.0, -36.0, 175.0),
+                minZoom = 6,
+                maxZoom = 14,
+                tileSize = 256,
+                tileScheme = com.yokuli.marine.map.domain.MapTileScheme.XYZ,
+            ),
+            access = ChartAssetAccessState.READABLE,
+            validation = ChartAssetValidationState.BASIC_READABLE,
         )
     }
 }

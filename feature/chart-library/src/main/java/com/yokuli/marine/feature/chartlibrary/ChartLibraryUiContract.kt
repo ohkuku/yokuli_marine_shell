@@ -12,6 +12,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartCompatibilityWarning
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
 import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
+import com.yokuli.marine.map.domain.chartlibrary.ChartDisplayPlan
 import com.yokuli.marine.map.domain.chartlibrary.ChartLayerHealth
 import com.yokuli.marine.map.domain.chartlibrary.ChartLayerId
 import com.yokuli.marine.map.domain.chartlibrary.ChartMapView
@@ -267,6 +268,9 @@ data class ChartLibraryUiState(
     /** Logical map content is the primary product surface; assets remain Sources detail only. */
     val layers: List<ChartLibraryLayerUi> = emptyList(),
     val views: List<ChartLibraryViewUi> = emptyList(),
+    /** Ephemeral spatial plans. Neither selection nor preview activates or persists a View. */
+    val coverageDisplayPlan: ChartDisplayPlan = ChartDisplayPlan.EMPTY,
+    val previewDisplayPlan: ChartDisplayPlan = ChartDisplayPlan.EMPTY,
 )
 
 sealed interface ChartLibraryUiAction {

@@ -19,7 +19,7 @@
     <string name="workspace_layers">图层</string>
     <string name="workspace_views">视图</string>
     <string name="workspace_sources">来源</string>
-    <string name="coverage_explanation">这里显示海图资源声明的地理范围。色块代表已知覆盖，不代表每个缩放级别的每个图块都已经完整验证。</string>
+    <string name="coverage_explanation">在真实地图上查看逻辑图层的覆盖。可见内容来自已通过 Basic 的海图；范围仍不代表每个缩放级别都已完整验证。</string>
     <string name="coverage_summary">%1$d 张可用海图 · %2$d 张范围未知 · %3$d 项需处理</string>
     <string name="coverage_canvas_description">海图覆盖概览，共 %1$d 个有范围的资源</string>
     <string name="coverage_unknown_title">还无法绘制覆盖范围</string>

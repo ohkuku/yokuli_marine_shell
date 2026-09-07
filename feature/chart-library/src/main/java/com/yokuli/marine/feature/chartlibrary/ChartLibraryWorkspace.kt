@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,9 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -78,7 +75,7 @@ import java.util.Locale
 fun ChartLibraryWorkspace(
     state: ChartLibraryUiState,
     onAction: (ChartLibraryUiAction) -> Unit,
-    compositePreview: (@Composable (Modifier) -> Unit)? = null,
+    spatialPreview: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val colors = LocalWpTheme.current
     val currentState by rememberUpdatedState(state)
@@ -101,7 +98,7 @@ fun ChartLibraryWorkspace(
         state.notice?.let { Notice(it, onAction) }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (val page = state.page) {
-                is ChartLibraryPageUi.Overview -> Overview(state, page, compositePreview, onAction)
+                is ChartLibraryPageUi.Overview -> Overview(state, page, spatialPreview, onAction)
                 is ChartLibraryPageUi.SourceDetail -> SourceDetail(page, onAction)
                 is ChartLibraryPageUi.AssetDetail -> AssetDetail(page.asset, onAction)
                 is ChartLibraryPageUi.Storage -> Storage(page.storage)
@@ -118,15 +115,15 @@ fun ChartLibraryWorkspace(
 private fun Overview(
     state: ChartLibraryUiState,
     page: ChartLibraryPageUi.Overview,
-    compositePreview: (@Composable (Modifier) -> Unit)?,
+    spatialPreview: (@Composable (Modifier) -> Unit)?,
     onAction: (ChartLibraryUiAction) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = YokuliMetrics.PageMargin)) {
         WorkspacePivot(state.workspaceMode, onAction)
         when (state.workspaceMode) {
-            ChartLibraryWorkspaceMode.COVERAGE -> CoverageWorkspace(state, onAction)
+            ChartLibraryWorkspaceMode.COVERAGE -> CoverageWorkspace(state, spatialPreview, onAction)
             ChartLibraryWorkspaceMode.LAYERS -> LayersWorkspace(state, onAction)
-            ChartLibraryWorkspaceMode.VIEWS -> ViewsWorkspace(state, compositePreview, onAction)
+            ChartLibraryWorkspaceMode.VIEWS -> ViewsWorkspace(state, spatialPreview, onAction)
             ChartLibraryWorkspaceMode.SOURCES -> SourcesWorkspace(state, page, onAction)
         }
     }
@@ -160,6 +157,7 @@ private fun WorkspacePivot(
 @Composable
 private fun CoverageWorkspace(
     state: ChartLibraryUiState,
+    spatialPreview: (@Composable (Modifier) -> Unit)?,
     onAction: (ChartLibraryUiAction) -> Unit,
 ) {
     val boundedLayers = state.layers.filter { it.bounds != null }
@@ -174,7 +172,10 @@ private fun CoverageWorkspace(
             if (state.summary.sourceCount == 0) {
                 EmptyLibrary()
             } else {
-                CoverageCanvas(boundedLayers) { layer -> onAction(ChartLibraryUiAction.SelectLayer(layer.id)) }
+                spatialPreview?.invoke(
+                    Modifier.fillMaxWidth().height(250.dp).padding(vertical = 8.dp)
+                        .testTag(ChartLibraryTestTags.COVERAGE),
+                )
                 WpText(
                     stringResource(
                         R.string.coverage_summary,
@@ -199,69 +200,6 @@ private fun CoverageWorkspace(
             itemsIndexed(state.layers, key = { _, row -> row.id.value }) { index, row ->
                 CoverageLayerRow(row, index, onAction)
             }
-        }
-    }
-}
-
-@Composable
-private fun CoverageCanvas(layers: List<ChartLibraryLayerUi>, onSelect: (ChartLibraryLayerUi) -> Unit) {
-    val colors = LocalWpTheme.current
-    val description = stringResource(R.string.coverage_canvas_description, layers.size)
-    Canvas(
-        Modifier.fillMaxWidth().height(250.dp).background(colors.foreground.copy(alpha = .035f))
-            .border(1.dp, colors.muted.copy(alpha = .55f))
-            .pointerInput(layers) {
-                detectTapGestures { point ->
-                    val longitude = point.x / size.width * 360.0 - 180.0
-                    val latitude = 90.0 - point.y / size.height * 180.0
-                    layers.asReversed().firstOrNull { layer ->
-                        layer.bounds?.let { bounds ->
-                            latitude in bounds.south..bounds.north && if (bounds.crossesAntimeridian) {
-                                longitude >= bounds.west || longitude <= bounds.east
-                            } else longitude in bounds.west..bounds.east
-                        } == true
-                    }?.let(onSelect)
-                }
-            }
-            .semantics { contentDescription = description }
-            .testTag(ChartLibraryTestTags.COVERAGE),
-    ) {
-        for (longitude in -120..120 step 60) {
-            val x = ((longitude + 180f) / 360f) * size.width
-            drawLine(colors.muted.copy(alpha = .18f), start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x, size.height))
-        }
-        for (latitude in -60..60 step 30) {
-            val y = ((90f - latitude) / 180f) * size.height
-            drawLine(colors.muted.copy(alpha = .18f), start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y))
-        }
-        layers.forEach { layer ->
-            val bounds = layer.bounds ?: return@forEach
-            val color = when {
-                layer.health !in setOf(ChartLayerHealth.READY, ChartLayerHealth.WARNING) -> colors.warning
-                layer.readyAssetCount > 0 -> colors.accent
-                else -> colors.muted
-            }
-            val top = (((90.0 - bounds.north) / 180.0) * size.height).toFloat()
-            val bottom = (((90.0 - bounds.south) / 180.0) * size.height).toFloat()
-            fun drawSegment(west: Double, east: Double) {
-                val left = (((west + 180.0) / 360.0) * size.width).toFloat()
-                val right = (((east + 180.0) / 360.0) * size.width).toFloat()
-                val rectSize = androidx.compose.ui.geometry.Size(
-                    width = (right - left).coerceAtLeast(2f),
-                    height = (bottom - top).coerceAtLeast(2f),
-                )
-                drawRect(color.copy(alpha = .22f), topLeft = androidx.compose.ui.geometry.Offset(left, top), size = rectSize)
-                drawRect(
-                    if (layer.selected) colors.foreground else color.copy(alpha = .9f),
-                    topLeft = androidx.compose.ui.geometry.Offset(left, top),
-                    size = rectSize,
-                    style = Stroke(width = if (layer.selected) 5f else 2f),
-                )
-            }
-            if (bounds.crossesAntimeridian) {
-                drawSegment(bounds.west, 180.0)
-                drawSegment(-180.0, bounds.east)
-            } else drawSegment(bounds.west, bounds.east)
         }
     }
 }

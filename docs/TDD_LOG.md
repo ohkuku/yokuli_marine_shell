@@ -852,3 +852,11 @@ R21 后续 hosted run `34100076259` 已完整绿色；用户明确允许在不�
 ### English translation — Base Apps Recovery R22
 
 R22 removes the generated `Sailing` product fiction and completes the existing logical Layer/View model. A folder remains one Layer across fragment changes and restarts; zero user Views is valid; edited historical content survives conservative normalization; and each user View owns its basemap and Layer composition. Focused gates pass, while hosted CI and physical product acceptance remain pending.
+
+## Base Apps Recovery R23 — Real Coverage and View Preview
+
+R23 将旧 world-grid schematic 从 Coverage 的主要产品表面移除，并把现有 production Chart surface 接到两个 transient plans：Coverage 使用当前 selected logical Layer，Views 使用当前 selected View。Red 首次失败不是放宽安全条件，而是发现测试 source 没有成功 scan generation；修正为真实 `COMPLETE` source 后，inactive View B 的 preview 在 active View A 不变时通过，selected Layer plan 也只包含该 Layer 的真实 Basic-readable asset。feature `10/10` 与 app-shell production composition compile PASS；没有创建第二个 renderer，也没有通过 preview 写 catalog。
+
+### English translation — Base Apps Recovery R23
+
+R23 makes real map rendering the primary Coverage/Preview surface. Ephemeral plans select the inspected Layer or View without mutating the active durable View, and both paths reuse Chart's production renderer and resource access. Focused behavior and composition gates pass.

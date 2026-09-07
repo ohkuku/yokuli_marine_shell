@@ -19,7 +19,7 @@
     <string name="workspace_layers">layers</string>
     <string name="workspace_views">views</string>
     <string name="workspace_sources">sources</string>
-    <string name="coverage_explanation">This view plots the geographic bounds declared by chart resources. A block means known coverage, not that every tile at every zoom has been fully verified.</string>
+    <string name="coverage_explanation">Inspect logical-layer coverage on the real map. Visible content comes from Basic-readable charts; the extent still does not mean every zoom has been fully verified.</string>
     <string name="coverage_summary">%1$d usable charts · %2$d with unknown bounds · %3$d need attention</string>
     <string name="coverage_canvas_description">Chart coverage overview with %1$d bounded resources</string>
     <string name="coverage_unknown_title">Coverage cannot be drawn yet</string>
