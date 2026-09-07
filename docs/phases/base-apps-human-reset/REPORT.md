@@ -13,6 +13,7 @@
 - domain/runtime/migration/MBTiles/bounds/Launcher Engine 与正常 Gradle 测试继续执行。
 - 自动化通过的 APK 改名为 `PRODUCT-RECOVERY`，明确等待人工验收，不再声称 Fully Verified。
 - signed release 暂停；性能门禁只保留冷/热启动信号。
+- 旧 `run_marine_shell_final_gate.sh` 已改为同一恢复期白名单，不能从本地旁路复活旧 presentation tests 或输出 `MACHINE_VERIFIED`。
 
 下一提交开始替换真实 App presentation。某个 App 只有完成用户旅程并由仓库所有者确认“像正常 App”后，才会加入新的 UI behavior Gate。
 

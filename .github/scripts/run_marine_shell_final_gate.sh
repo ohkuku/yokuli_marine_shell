@@ -16,15 +16,15 @@ esac
 
 cd "$repo_root"
 
-"$python_bin" -m unittest discover -s .github/scripts -p 'test_*.py'
+"$python_bin" .github/scripts/test_product_recovery_window.py
+bash .github/scripts/run_ci_helper_tests.sh
 bash .github/scripts/test-resolve-release-metadata.sh
 bash .github/scripts/test-ci-contract.sh
 bash .github/scripts/test-secrets-manager.sh
 "$python_bin" .github/scripts/validate_wp8_reference.py --require-human-review
-"$python_bin" .github/scripts/validate_stage11_fidelity.py
 
+bash .github/scripts/run_product_recovery_unit_tests.sh
 ./gradlew --no-daemon \
-  test \
   lintStandaloneDebug \
   assembleStandaloneDebug \
   assembleStandaloneDebugAndroidTest \
@@ -41,10 +41,11 @@ if [[ "$mode" == "--with-device" ]]; then
   "$python_bin" .github/scripts/summarize_stage11_performance.py \
     --search benchmark/shell/build \
     --output build/marine-shell-final-correction/performance-summary.json \
+    --profile product-recovery \
     --require-journeys
-  printf 'MARINE_SHELL_FINAL_GATE=MACHINE_VERIFIED CHART_C12_GATE=CORE_MACHINE_READY\n'
+  printf 'PRODUCT_RECOVERY_GATE=AUTOMATION_PASS HUMAN_ACCEPTANCE=PENDING\n'
 else
-  printf 'MARINE_SHELL_FINAL_GATE=HOST_GATE_PASS device_stories=NOT_RUN_BY_THIS_INVOCATION\n'
+  printf 'PRODUCT_RECOVERY_GATE=HOST_PASS HUMAN_ACCEPTANCE=PENDING device_stories=NOT_RUN_BY_THIS_INVOCATION\n'
 fi
 
 git diff --check

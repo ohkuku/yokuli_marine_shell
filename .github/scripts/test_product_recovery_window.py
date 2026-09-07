@@ -43,6 +43,11 @@ class ProductRecoveryWindowTest(unittest.TestCase):
         for forbidden in (":feature:chart", ":feature:chart-library", ":feature:data", ":feature:navigation"):
             self.assertNotIn(forbidden, protected_units)
 
+        legacy_final = (ROOT / ".github/scripts/run_marine_shell_final_gate.sh").read_text(encoding="utf-8")
+        self.assertNotIn("unittest discover", legacy_final)
+        self.assertNotIn("validate_stage11_fidelity.py", legacy_final)
+        self.assertIn("HUMAN_ACCEPTANCE=PENDING", legacy_final)
+
     def test_rejected_presentation_gates_are_explicitly_retired(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         retired = (
