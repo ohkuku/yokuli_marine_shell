@@ -27,6 +27,7 @@ import com.yokuli.marine.data.source.SourceEvidence
 import com.yokuli.marine.data.source.SourceKind
 import com.yokuli.marine.data.source.SourceSelectionCommand
 import com.yokuli.marine.data.source.SourceSelectionCommandResult
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -38,6 +39,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DataAppContractTest {
     @Test
     fun currentAndLegacyTokensResolveIntoOneDataApp() {
