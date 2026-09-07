@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "R08_SHELL_PREFERENCES_COMPLETION",
+  "baseCommit": "e7a56d971c48f2d1def63e7f0f038af11a999a38",
+  "implementationHead": "028e75216a5addce2d1e393de17d1cbac652d5b4",
+  "implementationContractSha256": "4f935c31240ae886b260ab6b80fb5439bffcb295b8a9fb404a4939b919068b54",
+  "status": "IMPLEMENTED_LOCAL_GREEN_CI_AND_HUMAN_PENDING",
+  "humanAcceptance": "PENDING_SHELL_AND_PREFERENCES_APK",
+  "invariants": {
+    "startUsesDurableTwoDimensionalCells": true,
+    "oneByOneTilesCanBePlacedVertically": true,
+    "recentsCanCloseUiSessions": true,
+    "closeDoesNotDeleteDurableMarineData": true,
+    "statusStripIsDisplayOnly": true,
+    "chartLibraryUsesLatinHIndexInChinese": true,
+    "effectiveLocaleAndPreferenceShareOneTruth": true,
+    "unitsReachChartDataAndNavigation": true,
+    "reducedMotionReachesShellAndFeatureMotion": true,
+    "productionActivityIsPortraitOnly": true
+  },
+  "evidence": {
+    "shellEngineFocusedTests": "19_PASS",
+    "shellStorageFocusedTests": "6_PASS",
+    "localeFocusedTests": "3_PASS",
+    "displayUnitFocusedTests": "3_PASS",
+    "appShellMainCompile": "PASS",
+    "realGestureColdRestartAcceptance": "CI_AND_HUMAN_PENDING"
+  }
+}
