@@ -10,18 +10,42 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.yokuli.marine.map.domain.MapTileScheme
 import com.yokuli.marine.map.domain.chartlibrary.ChartAssetId
+import com.yokuli.marine.map.domain.chartlibrary.ChartAsset
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetAccessState
+import com.yokuli.marine.map.domain.chartlibrary.ChartAssetValidationState
+import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogCommitResult
+import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogMutation
+import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogTransaction
 import com.yokuli.marine.map.domain.chartlibrary.ChartContentRevision
+import com.yokuli.marine.map.domain.chartlibrary.ChartDiscoveredDocument
+import com.yokuli.marine.map.domain.chartlibrary.ChartDocumentIdentity
+import com.yokuli.marine.map.domain.chartlibrary.ChartEnumerationResult
+import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
+import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySource
+import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpenResult
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
+import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadRequest
+import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
+import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
+import com.yokuli.marine.map.domain.chartlibrary.ChartSourceScanState
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewDisplayPlanner
 import com.yokuli.marine.map.offline.ChartLoopbackTileGateway
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -85,6 +109,161 @@ class MapLibreSafGatewayRenderTest {
         }
         assertEquals(hashBefore, source.sha256())
         assertTrue(context.filesDir.walkTopDown().none { it.isFile && it.name.endsWith(".mbtiles") && it != source })
+    }
+
+    @Test fun poisonedSameRevisionStreamOnlyAssetAutomaticallyRecoversIntoChartPixels() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val documents = File(context.filesDir, "chart-library-test-documents").apply { mkdirs() }
+        val original = File(documents, "poisoned.mbtiles").also(File::delete)
+        val expectedColor = Color.rgb(207, 112, 36)
+        createMbTiles(original, pngTile(expectedColor))
+        val hashBefore = original.sha256()
+        val authority = "${context.packageName}.chartlibrary.documents"
+        val locator = ChartOpaqueLocator(
+            DocumentsContract.buildDocumentUri(authority, "pipe-poisoned.mbtiles").toString(),
+        )
+        val source = ChartLibrarySource(
+            id = ChartSourceId(UUID.randomUUID().toString()),
+            kind = ChartLibrarySourceKind.SINGLE_DOCUMENT,
+            locator = locator,
+            displayName = "Legacy poisoned chart",
+            recursive = false,
+            grantState = ChartGrantState.GRANTED,
+            scan = ChartSourceScanState(1, ChartScanStatus.COMPLETE, 1, 1, 0),
+        )
+        val asset = ChartAsset(
+            id = ChartAssetId(UUID.randomUUID().toString()),
+            documentIdentity = ChartDocumentIdentity(authority, "poisoned.mbtiles"),
+            locator = locator,
+            memberships = setOf(source.id),
+            displayPath = "poisoned.mbtiles",
+            revision = ChartContentRevision(
+                identity = "$authority:poisoned.mbtiles",
+                observedSizeBytes = original.length(),
+                observedModifiedAtMillis = original.lastModified(),
+            ),
+            access = ChartAssetAccessState.DIRECT_READ_UNSUPPORTED,
+            validation = ChartAssetValidationState.INVALID,
+        )
+        val catalogFile = File(context.cacheDir, "poisoned-runtime.db").also {
+            it.delete()
+            File("${it.path}-wal").delete()
+            File("${it.path}-shm").delete()
+        }
+        RoomChartCatalogRepository.create(context, catalogFile).use { catalog ->
+            assertTrue(
+                catalog.transact(
+                    ChartCatalogTransaction(
+                        "seed-poisoned-catalog",
+                        mutations = listOf(
+                            ChartCatalogMutation.PutSource(source),
+                            ChartCatalogMutation.PutAsset(asset),
+                        ),
+                    ),
+                ) is ChartCatalogCommitResult.Committed,
+            )
+        }
+
+        val catalog = RoomChartCatalogRepository.create(context, catalogFile)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val runtime = AndroidChartLibraryRuntime.createForTest(
+            catalog = catalog,
+            delegateAccess = AndroidChartResourceAccess(
+                context.contentResolver,
+                localFallbackRoot = File(context.cacheDir, "poisoned-runtime-fallback").apply { deleteRecursively() },
+            ),
+            sourceController = AndroidChartSourceController(
+                catalog,
+                { _, _ ->
+                    ChartEnumerationResult.Complete(
+                        listOf(
+                            ChartDiscoveredDocument(
+                                asset.documentIdentity,
+                                locator,
+                                asset.displayPath,
+                                original.length(),
+                                original.lastModified(),
+                            ),
+                        ),
+                    )
+                },
+                object : PersistedChartGrantPort {
+                    override fun takeRead(locator: ChartOpaqueLocator) = true
+                    override fun releaseRead(locator: ChartOpaqueLocator) = true
+                },
+            ),
+            revisionProbe = { asset.revision },
+            parentScope = scope,
+        )
+        try {
+            val recovered = withTimeout(5_000) {
+                var current = runtime.asset(asset.id)
+                while (
+                    current?.access != ChartAssetAccessState.READABLE ||
+                    current.validation != ChartAssetValidationState.BASIC_READABLE
+                ) {
+                    delay(20)
+                    current = runtime.asset(asset.id)
+                }
+                requireNotNull(current)
+            }
+            assertEquals(asset.revision.cacheKey, recovered.revision.cacheKey)
+            assertEquals(ChartReadAccessMode.LOCAL_FALLBACK, recovered.accessMode)
+
+            val catalogSnapshot = runtime.snapshot.value
+            val activeView = requireNotNull(runtime.activeView())
+            val plan = ChartViewDisplayPlanner.plan(
+                generation = 1,
+                catalog = catalogSnapshot,
+                sources = runtime.sources().items,
+                assets = runtime.assets().items,
+                layers = runtime.layers().items,
+                view = activeView,
+                viewport = null,
+            )
+            val renderLayer = plan.layers.single { it.assetId == asset.id }
+            val opened = runtime.open(renderLayer.request) as ChartOpenResult.Opened
+            ChartLoopbackTileGateway().use { gateway ->
+                gateway.register(
+                    opened.session,
+                    renderLayer.tileScheme,
+                    renderLayer.tileSize,
+                    renderLayer.minZoom,
+                    renderLayer.maxZoom,
+                ).use { registration ->
+                    val finished = CountDownLatch(1)
+                    val snapshot = AtomicReference<Bitmap?>()
+                    ActivityScenario.launch(ChartLibraryMapTestActivity::class.java).use { scenario ->
+                        scenario.onActivity { activity ->
+                            activity.mapView.getMapAsync { map ->
+                                activity.mapView.addOnDidFinishRenderingMapListener(
+                                    object : MapView.OnDidFinishRenderingMapListener {
+                                        override fun onDidFinishRenderingMap(fully: Boolean) {
+                                            if (!fully || snapshot.get() != null) return
+                                            map.snapshot { bitmap -> snapshot.set(bitmap); finished.countDown() }
+                                        }
+                                    },
+                                )
+                                map.cameraPosition = CameraPosition.Builder().target(LatLng(0.0, 0.0)).zoom(0.0).build()
+                                map.setStyle(Style.Builder().fromJson(EMPTY_STYLE)) { style ->
+                                    style.addSource(registration.toRasterSource("recovered-chart"))
+                                    style.addLayer(RasterLayer("recovered-chart-layer", "recovered-chart"))
+                                    map.triggerRepaint()
+                                }
+                            }
+                        }
+                        assertTrue("Recovered chart did not reach MapLibre pixels", finished.await(20, TimeUnit.SECONDS))
+                        assertTrue(requireNotNull(snapshot.get()).contains(expectedColor))
+                    }
+                }
+                assertTrue(gateway.requestCount.get() > 0L)
+            }
+            assertEquals(hashBefore, original.sha256())
+            println("R21_EVIDENCE {\"scenario\":\"poisoned-same-revision-fallback-render\",\"result\":\"PASS\"}")
+        } finally {
+            runtime.close()
+            scope.cancel()
+        }
     }
 
     private fun createMbTiles(file: File, tile: ByteArray) {

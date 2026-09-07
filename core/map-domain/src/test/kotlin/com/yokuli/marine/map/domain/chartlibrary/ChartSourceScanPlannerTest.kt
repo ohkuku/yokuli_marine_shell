@@ -49,6 +49,28 @@ class ChartSourceScanPlannerTest {
         assertNull(plan.assetsToPut.single().revision.contentSha256)
     }
 
+    @Test fun sameRevisionDirectReadPoisonIsResetForCapabilityReprobe() {
+        val prior = asset("legacy-stream").copy(
+            access = ChartAssetAccessState.DIRECT_READ_UNSUPPORTED,
+            validation = ChartAssetValidationState.INVALID,
+            accessMode = null,
+        )
+
+        val plan = planner.plan(
+            source,
+            1,
+            ChartEnumerationResult.Complete(listOf(document("legacy-stream", "legacy-stream.mbtiles"))),
+            listOf(prior),
+        )
+
+        val recovered = plan.assetsToPut.single()
+        assertEquals(prior.id, recovered.id)
+        assertEquals(prior.revision.cacheKey, recovered.revision.cacheKey)
+        assertEquals(ChartAssetAccessState.UNCHECKED, recovered.access)
+        assertEquals(ChartAssetValidationState.DISCOVERED, recovered.validation)
+        assertNull(recovered.accessMode)
+    }
+
     @Test fun permissionLossIsNotMisreportedAsMissing() {
         val existing = asset("offline").copy(access = ChartAssetAccessState.READABLE)
         val failed = planner.plan(
