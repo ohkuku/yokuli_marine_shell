@@ -475,7 +475,9 @@ private fun FlowScene(state: DataUiState, onAction: (DataUiAction) -> Unit) {
             val channel = size.width * .48f
             val resolver = size.width * .71f
             val right = size.width * .90f
-            state.flow.groupBy { it.source to sensorFor(it.group) }.forEach { (identity, links) ->
+            state.flow.groupBy { link ->
+                link.source to BoatSensor.entries.firstOrNull { sensor -> link.group in sensor.sourceGroups }
+            }.forEach { (identity, links) ->
                 val sourceIndex = sources.indexOfFirst { it.key == identity.first }
                 val sensorIndex = sensors.indexOfFirst { it.sensor == identity.second }
                 if (sourceIndex >= 0 && sensorIndex >= 0) {
