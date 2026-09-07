@@ -8,11 +8,22 @@ import com.yokuli.shell.contract.MeasurementUnitSystem
  * opt in at their rendering edge so changing this value cannot rewrite persisted or live data.
  */
 val LocalMeasurementUnitSystem = staticCompositionLocalOf { MeasurementUnitSystem.NAUTICAL }
+val LocalReducedMotion = staticCompositionLocalOf { false }
 
 object MarineDisplayUnits {
     const val NAUTICAL_MILES_TO_KILOMETRES = 1.852
 
     fun distanceFromNauticalMiles(value: Double, units: MeasurementUnitSystem): Double = when (units) {
+        MeasurementUnitSystem.NAUTICAL -> value
+        MeasurementUnitSystem.METRIC -> value * NAUTICAL_MILES_TO_KILOMETRES
+    }
+
+    fun distanceFromMeters(value: Double, units: MeasurementUnitSystem): Double = when (units) {
+        MeasurementUnitSystem.NAUTICAL -> value / 1_852.0
+        MeasurementUnitSystem.METRIC -> value / 1_000.0
+    }
+
+    fun speedFromKnots(value: Double, units: MeasurementUnitSystem): Double = when (units) {
         MeasurementUnitSystem.NAUTICAL -> value
         MeasurementUnitSystem.METRIC -> value * NAUTICAL_MILES_TO_KILOMETRES
     }

@@ -126,10 +126,11 @@ private fun WpPerspectiveEntrance(
 /** 中文：可错峰的 WP 短进场动效。 English: Short, staggerable WP content entrance. */
 @Composable
 fun Modifier.wpEntrance(motionKey: Any, order: Int = 0): Modifier {
-    val progress = remember(motionKey, order) { Animatable(0f) }
+    val reducedMotion = LocalReducedMotion.current
+    val progress = remember(motionKey, order, reducedMotion) { Animatable(if (reducedMotion) 1f else 0f) }
     val density = LocalDensity.current.density
-    LaunchedEffect(motionKey, order) {
-        progress.animateTo(
+    LaunchedEffect(motionKey, order, reducedMotion) {
+        if (reducedMotion) progress.snapTo(1f) else progress.animateTo(
             targetValue = 1f,
             animationSpec = tween(
                 durationMillis = 210,
@@ -157,9 +158,10 @@ fun Modifier.wpTilt(
     enabled: Boolean = true,
     maximumDegrees: Float = 5f,
 ): Modifier {
+    val reducedMotion = LocalReducedMotion.current
     val pressed by interactionSource.collectIsPressedAsState()
     val pressProgress by animateFloatAsState(
-        targetValue = if (enabled && pressed) 1f else 0f,
+        targetValue = if (enabled && !reducedMotion && pressed) 1f else 0f,
         animationSpec = tween(if (pressed) 70 else 115, easing = FastOutSlowInEasing),
         label = "wp-pointer-tilt",
     )
@@ -174,8 +176,8 @@ fun Modifier.wpTilt(
                 pointerPosition = Offset(it.width / 2f, it.height / 2f)
             }
         }
-        .pointerInput(enabled) {
-            if (!enabled) return@pointerInput
+        .pointerInput(enabled, reducedMotion) {
+            if (!enabled || reducedMotion) return@pointerInput
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)

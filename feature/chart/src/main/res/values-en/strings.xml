@@ -178,8 +178,8 @@
     <string name="map_route_adjacent_duplicate">Adjacent waypoints have the same coordinate. Move or delete one of them.</string>
     <string name="map_route_another_save_pending">Another route is being written. Wait for confirmation before committing a new plan.</string>
     <string name="map_route_leg">leg %1$d→%2$d · %3$s · initial %4$s</string>
-    <string name="map_route_distance_only">%1$.2f NM total · planning duration —</string>
-    <string name="map_route_distance_time">%1$.2f NM total · about %2$d min</string>
+    <string name="map_route_distance_only">%1$s total · planning duration —</string>
+    <string name="map_route_distance_time">%1$s total · about %2$d min</string>
     <string name="map_route_save">save plan</string>
     <string name="map_route_save_copy">save as new plan</string>
     <string name="map_route_discard">discard this draft</string>

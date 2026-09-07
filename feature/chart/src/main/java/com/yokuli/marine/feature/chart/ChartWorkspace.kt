@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.LocalMeasurementUnitSystem
+import com.yokuli.marine.core.design.MarineDisplayUnits
 import com.yokuli.marine.core.design.PresentationCadence
 import com.yokuli.marine.core.design.WpLiveField
 import com.yokuli.marine.core.design.WpPageHeader
@@ -818,9 +820,8 @@ private fun RouteRootSummary(
 ) {
     val colors = LocalWpTheme.current
     val draft = state.routeDraft ?: return
-    val distance = state.routeSummary?.distanceNauticalMiles
-        ?.let { String.format(Locale.US, "%.2f NM", it) }
-        ?: "— NM"
+    val distance = state.routeSummary?.distanceNauticalMiles?.nauticalDistanceText()
+        ?: if (LocalMeasurementUnitSystem.current == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) "— NM" else "— km"
     val saveEnabled = draft.waypoints.size >= 2 && state.routeSaveStatus?.state != MapSaveState.PENDING
     Column(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .94f))
@@ -1619,8 +1620,8 @@ private fun RouteEditorPage(
         summary?.let {
             WpText(
                 it.estimatedDurationMillis?.let { duration ->
-                    stringResource(R.string.map_route_distance_time, it.distanceNauticalMiles, duration / 60_000L)
-                } ?: stringResource(R.string.map_route_distance_only, it.distanceNauticalMiles),
+                    stringResource(R.string.map_route_distance_time, it.distanceNauticalMiles.nauticalDistanceText(), duration / 60_000L)
+                } ?: stringResource(R.string.map_route_distance_only, it.distanceNauticalMiles.nauticalDistanceText()),
                 13,
                 modifier = Modifier.testTag("map-route-summary"),
             )
@@ -2568,10 +2569,27 @@ private fun GeoPoint.coordinateText(): String = String.format(Locale.US, "%.5f, 
 
 private fun List<GeoPoint>.toBounds(): GeoBounds = minimalBounds(this)
 
-private fun Double.distanceText(): String = if (this < 1_000.0) {
-    String.format(Locale.getDefault(), "%.0f m", this)
-} else {
-    String.format(Locale.getDefault(), "%.2f NM", this / 1_852.0)
+@Composable
+private fun Double.distanceText(): String {
+    val units = LocalMeasurementUnitSystem.current
+    if (this < 1_000.0) return String.format(Locale.getDefault(), "%.0f m", this)
+    val value = MarineDisplayUnits.distanceFromMeters(this, units)
+    return if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) {
+        String.format(Locale.getDefault(), "%.2f NM", value)
+    } else {
+        String.format(Locale.getDefault(), "%.2f km", value)
+    }
+}
+
+@Composable
+private fun Double.nauticalDistanceText(): String {
+    val units = LocalMeasurementUnitSystem.current
+    val value = MarineDisplayUnits.distanceFromNauticalMiles(this, units)
+    return if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) {
+        String.format(Locale.getDefault(), "%.2f NM", value)
+    } else {
+        String.format(Locale.getDefault(), "%.2f km", value)
+    }
 }
 
 private fun com.yokuli.marine.map.domain.MeasurementSegment.bearingText(): String =

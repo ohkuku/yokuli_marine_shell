@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.LocalMeasurementUnitSystem
+import com.yokuli.marine.core.design.LocalReducedMotion
 import com.yokuli.marine.core.design.WpAccent
 import com.yokuli.marine.core.design.WpMotionTimings
 import com.yokuli.marine.core.design.WpSurfaceTransitionKind
@@ -643,6 +644,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             LocalProductionShellRuntime provides runtime,
             LocalInternalAppInputRouter provides (context as ShellActivity).internalAppInputRouter,
             LocalMeasurementUnitSystem provides measurementUnits,
+            LocalReducedMotion provides reducedMotion,
         ) {
             var retainedSearchQuery by remember { mutableStateOf("") }
             val activeSearchQuery = (engineState.surface as? ShellVisualSurface.Search)?.query

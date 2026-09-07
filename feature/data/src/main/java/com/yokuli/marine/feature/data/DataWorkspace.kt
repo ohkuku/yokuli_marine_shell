@@ -37,6 +37,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.LocalMeasurementUnitSystem
+import com.yokuli.marine.core.design.MarineDisplayUnits
 import com.yokuli.marine.core.design.PresentationCadence
 import com.yokuli.marine.core.design.WpLiveConsole
 import com.yokuli.marine.core.design.WpLiveField
@@ -478,17 +480,25 @@ private fun ResolvedDatum?.instrumentTruthLine(): String = this?.let {
     "${source.connectionId.value} · ${availabilityLabel(availability)} · $freshness"
 } ?: stringResource(R.string.no_selected_source)
 
-private fun MarineValue?.formatted(): String = when (this) {
+@Composable
+private fun MarineValue?.formatted(): String {
+    val units = LocalMeasurementUnitSystem.current
+    return when (this) {
     null -> "—"
     is MarineValue.Position -> String.format(Locale.US, "%.5f°, %.5f°", latitudeDegrees, longitudeDegrees)
     is MarineValue.Decimal -> when (unit) {
         MarineUnit.DEGREES -> String.format(Locale.US, "%.1f°", value)
-        MarineUnit.KNOTS -> String.format(Locale.US, "%.1f kn", value)
+        MarineUnit.KNOTS -> if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) {
+            String.format(Locale.US, "%.1f kn", value)
+        } else {
+            String.format(Locale.US, "%.1f km/h", MarineDisplayUnits.speedFromKnots(value, units))
+        }
         MarineUnit.METERS -> String.format(Locale.US, "%.1f m", value)
         MarineUnit.DIMENSIONLESS -> String.format(Locale.US, "%.2f", value)
     }
     is MarineValue.Count -> value.toString()
     is MarineValue.UtcEpochMillis -> value.toString()
+    }
 }
 
 @Composable
