@@ -33,16 +33,20 @@ class OsRedesignW10ContractTest(unittest.TestCase):
         self.assertIn("data class PassageSummary", math)
         self.assertIn("Geodesic.WGS84.Inverse", math)
 
-    def test_existing_room_library_is_the_only_durable_store(self):
+    def test_existing_room_library_remains_the_navigation_asset_store_after_forward_migrations(self):
         persistence = self.read("adapter/map-storage/src/main/java/com/yokuli/marine/map/storage/RoomMapPersistence.kt")
         mapper = self.read("adapter/map-storage/src/main/java/com/yokuli/marine/map/storage/NavigationLegacyMapper.kt")
         database = self.read("adapter/map-storage/src/main/java/com/yokuli/marine/map/storage/MapLibraryDatabase.kt")
+        baseline = json.loads(self.read("docs/phases/os-redesign/W10_BASELINE_LOCK.json"))
         self.assertIn("MapPersistencePort, NavigationLibraryPort", persistence)
         self.assertIn("libraryMutex.withLock", persistence)
         self.assertIn("NavigationLegacyMapper.toNavigation", persistence)
         self.assertIn("NavigationLegacyMapper.toLegacy", persistence)
         self.assertIn("MapLibrarySnapshot", mapper)
-        self.assertRegex(database, re.compile(r"version\s*=\s*4"))
+        current_version = int(re.search(r"version\s*=\s*(\d+)", database).group(1))
+        self.assertGreaterEqual(current_version, baseline["databaseVersion"])
+        for version in range(baseline["databaseVersion"], current_version):
+            self.assertIn(f"MIGRATION_{version}_{version + 1}", database)
         self.assertFalse((ROOT / "adapter/navigation-storage").exists())
 
     def test_crud_gpx_legacy_and_room_stories_are_real_tests(self):

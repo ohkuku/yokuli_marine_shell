@@ -163,17 +163,19 @@ class LauncherStage2EngineContractTest(unittest.TestCase):
         self.assertIn("LAUNCHER_STAGE2_CONTRACT_RESULT", workflow)
         self.assertIn("launcher_stage2_contract", ci_contract)
 
-    def test_device_gates_execute_current_product_and_chart_stories(self):
+    def test_device_smoke_keeps_host_safety_without_relocking_product_shape(self):
         device_runner = (ROOT / ".github/scripts/run_device_tests.sh").read_text()
         stories = (
             ROOT / "app-shell/src/androidTest/java/com/yokuli/marine/shell/ShellActivityStoryTest.kt"
         ).read_text()
         for story in (
-            "chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart",
-            "productionShellExposesFiveAppsWhileDefaultStartStaysMapFirst",
+            "backAtShellDesktopNeverFinishesHost",
+            "shellActivityIsPortraitOnly",
         ):
             self.assertIn(story, stories)
             self.assertIn(story, device_runner)
+        self.assertNotIn("chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart", device_runner)
+        self.assertNotIn("productionShellExposesFiveAppsWhileDefaultStartStaysMapFirst", device_runner)
         self.assertNotIn("anchorTileOpensSharedChartInAnchorModeAndHomeReturnsToStart", device_runner)
         self.assertNotIn("everyCoreAppUsesTheReusableLargeTopLeftTitleContract", device_runner)
 
