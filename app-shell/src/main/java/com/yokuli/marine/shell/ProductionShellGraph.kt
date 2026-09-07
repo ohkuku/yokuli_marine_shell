@@ -188,7 +188,13 @@ private fun chartMapMode(style: ChartBuiltInBaseStyle): MapViewMode = when (styl
 private fun rememberProductionChartSurface(
     runtime: ProductionShellRuntime,
     snapshotSink: MapTileSnapshotSink = runtime.mapTileSnapshotSink,
-): MarineChartSurface = remember(runtime.heavyContentReady, snapshotSink) {
+): MarineChartSurface = remember(
+    runtime.heavyContentReady,
+    runtime.theme.mode,
+    runtime.chartLibraryAccess,
+    runtime.chartTileGateway,
+    snapshotSink,
+) {
     if (runtime.heavyContentReady) {
         { state, onAction, onQueryPortChanged, modifier ->
             if (chartSurfaceKind(state.mapViewMode, BuildConfig.GOOGLE_MAPS_CONFIGURED) == ChartSurfaceKind.GOOGLE) {

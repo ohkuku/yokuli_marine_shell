@@ -216,7 +216,7 @@ class ChartDisplayCoordinator(
                     title = layer.displayName,
                     role = layer.role,
                     visible = layer.visible,
-                    available = layer.assetIds.isNotEmpty() && layer.health !in setOf(
+                    available = layer.health !in setOf(
                         ChartLayerHealth.PERMISSION_LOST,
                         ChartLayerHealth.UNAVAILABLE,
                         ChartLayerHealth.EMPTY,

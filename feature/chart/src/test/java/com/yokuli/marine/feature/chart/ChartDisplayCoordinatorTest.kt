@@ -100,6 +100,7 @@ class ChartDisplayCoordinatorTest {
         val state = withTimeout(2_000L) { coordinator.state.first { it.quickLayers.singleOrNull()?.visible == false } }
 
         assertTrue(state.plan.layers.isEmpty())
+        assertTrue(state.quickLayers.single().available)
         assertEquals(.4f, catalog.viewsValue.single { it.id == VIEW_A }.layers.single().opacity)
         assertFalse(catalog.viewsValue.single { it.id == VIEW_A }.layers.single().visible)
         assertFalse(store.actions.any { it is MapAction.ChartDisplayPreferencesChanged })

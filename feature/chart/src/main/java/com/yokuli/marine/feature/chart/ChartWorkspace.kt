@@ -650,7 +650,7 @@ private fun MapRootSummary(
                 }
             }
         }
-        MapTransient.MapViewPicker -> MapViewPicker(chartDisplayState, onChartDisplayAction)
+        MapTransient.MapViewPicker -> MapViewPicker(chartDisplayState, onChartDisplayAction, onAction)
         null -> state.selection?.let { selection ->
             Row(
                 Modifier.fillMaxWidth().background(colors.background.copy(alpha = .95f)).padding(horizontal = 12.dp)
@@ -674,7 +674,11 @@ private fun MapRootSummary(
 enum class UnsavedRouteDecision { SAVE, DISCARD, CANCEL }
 
 @Composable
-private fun MapViewPicker(state: ChartDisplayUiState, onAction: (ChartDisplayUiAction) -> Unit) {
+private fun MapViewPicker(
+    state: ChartDisplayUiState,
+    onDisplayAction: (ChartDisplayUiAction) -> Unit,
+    onMapAction: (MapAction) -> Unit,
+) {
     val colors = LocalWpTheme.current
     Column(
         Modifier.fillMaxWidth().background(colors.background.copy(alpha = .97f))
@@ -690,7 +694,10 @@ private fun MapViewPicker(state: ChartDisplayUiState, onAction: (ChartDisplayUiA
                     view.name,
                     "map-view-${view.id.value}",
                     modifier = Modifier.then(if (view.active) Modifier.border(1.dp, colors.accent) else Modifier),
-                ) { onAction(ChartDisplayUiAction.ActivateView(view.id)) }
+                ) {
+                    onDisplayAction(ChartDisplayUiAction.ActivateView(view.id))
+                    onMapAction(MapAction.DismissTransient)
+                }
             }
         }
     }
