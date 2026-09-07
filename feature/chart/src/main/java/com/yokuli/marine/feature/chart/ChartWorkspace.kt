@@ -684,47 +684,29 @@ private fun MapViewPicker(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         WpText(stringResource(R.string.map_view_title), 12, weight = FontWeight.SemiBold)
-        if (state.views.isEmpty()) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                MapViewMode.entries.forEach { mode ->
-                    val label = when (mode) {
-                        MapViewMode.MARINE -> R.string.map_view_marine
-                        MapViewMode.STANDARD -> R.string.map_view_standard
-                        MapViewMode.SATELLITE -> R.string.map_view_satellite
-                    }
-                    MapTextButton(
-                        stringResource(label),
-                        "map-fallback-view-${mode.name.lowercase()}",
-                        modifier = Modifier.then(if (mode == mapViewMode) Modifier.border(1.dp, colors.accent) else Modifier),
-                    ) { onMapAction(MapAction.SetMapViewMode(mode)) }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            listOf(
+                ChartBuiltInBaseStyle.STANDARD to R.string.map_view_standard,
+                ChartBuiltInBaseStyle.SATELLITE to R.string.map_view_satellite,
+            ).forEach { (style, label) ->
+                val mode = if (style == ChartBuiltInBaseStyle.STANDARD) MapViewMode.STANDARD else MapViewMode.SATELLITE
+                MapTextButton(
+                    stringResource(label),
+                    "map-built-in-view-${mode.name.lowercase()}",
+                    modifier = Modifier.then(if (state.activeViewId == null && mode == mapViewMode) Modifier.border(1.dp, colors.accent) else Modifier),
+                ) {
+                    onDisplayAction(ChartDisplayUiAction.ActivateBuiltIn(style))
+                    onMapAction(MapAction.DismissTransient)
                 }
             }
-            WpText(stringResource(R.string.map_view_fallback), 10, color = colors.muted)
-        } else {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                state.views.forEach { view ->
-                    MapTextButton(
-                        view.name,
-                        "map-view-${view.id.value}",
-                        modifier = Modifier.then(if (view.active) Modifier.border(1.dp, colors.accent) else Modifier),
-                    ) {
-                        onDisplayAction(ChartDisplayUiAction.ActivateView(view.id))
-                        onMapAction(MapAction.DismissTransient)
-                    }
-                }
-            }
-            if (state.quickLayers.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    state.quickLayers.forEach { layer ->
-                        MapTextButton(
-                            layer.title,
-                            "map-quick-layer-${layer.id.value}",
-                            enabled = layer.available,
-                            modifier = Modifier.then(if (layer.visible) Modifier.border(1.dp, colors.accent) else Modifier),
-                        ) {
-                            onDisplayAction(ChartDisplayUiAction.SetLayerVisible(layer.id, !layer.visible))
-                        }
-                    }
+            state.views.forEach { view ->
+                MapTextButton(
+                    view.name,
+                    "map-view-${view.id.value}",
+                    modifier = Modifier.then(if (view.active) Modifier.border(1.dp, colors.accent) else Modifier),
+                ) {
+                    onDisplayAction(ChartDisplayUiAction.ActivateView(view.id))
+                    onMapAction(MapAction.DismissTransient)
                 }
             }
         }

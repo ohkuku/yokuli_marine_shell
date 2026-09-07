@@ -60,7 +60,11 @@ class ChartLibraryCoordinator(
         data class OpenDestination(val value: ChartLibraryDestination) : Event
     }
 
-    private data class PendingPicker(val kind: ChartPickerKind, val repairSourceId: ChartSourceId?)
+    private data class PendingPicker(
+        val kind: ChartPickerKind,
+        val repairSourceId: ChartSourceId?,
+        val customViewName: String? = null,
+    )
 
     private val events = Channel<Event>(MAX_PENDING_EVENTS)
     private val effectChannel = Channel<ChartLibraryEffect>(MAX_PENDING_EFFECTS)
@@ -283,7 +287,13 @@ class ChartLibraryCoordinator(
                 it.copy(opacity = action.opacity.coerceIn(0f, 1f))
             }
             is ChartLibraryUiAction.MoveLayer -> moveLayer(action.layerId, action.delta)
-            is ChartLibraryUiAction.CreateView -> createView(action.name, action.baseStyle)
+            // A custom map is created together with its content. The old empty-view-first flow
+            // produced orphan views and forced users to connect three unrelated editors.
+            is ChartLibraryUiAction.CreateView -> requestPicker(
+                ChartPickerKind.SINGLE_DOCUMENT,
+                repairSourceId = null,
+                customViewName = action.name,
+            )
             is ChartLibraryUiAction.SelectView -> {
                 local = local.copy(selectedViewId = action.viewId.takeIf { id -> views.any { it.id == id } })
                 publish()
@@ -352,7 +362,11 @@ class ChartLibraryCoordinator(
         reload()
     }
 
-    private fun requestPicker(kind: ChartPickerKind, repairSourceId: ChartSourceId?) {
+    private fun requestPicker(
+        kind: ChartPickerKind,
+        repairSourceId: ChartSourceId?,
+        customViewName: String? = null,
+    ) {
         val operationId = nextOperationId()
         val picker = when (kind) {
             ChartPickerKind.TREE -> ChartLibraryPickerEffect.OpenTree(operationId)
@@ -363,7 +377,7 @@ class ChartLibraryCoordinator(
         ) {
             notice = ChartLibraryNoticeUi.ACTION_QUEUE_FULL
         } else {
-            pendingPickers[operationId] = PendingPicker(kind, repairSourceId)
+            pendingPickers[operationId] = PendingPicker(kind, repairSourceId, customViewName)
         }
         publish()
     }
@@ -385,8 +399,10 @@ class ChartLibraryCoordinator(
         publish()
         val result = pending.repairSourceId?.let { runtime.repair(it, selection) }
             ?: runtime.acceptPicker(selection)
+        var addedSourceId: ChartSourceId? = null
         when (result) {
             is ChartSourceCommandResult.Accepted -> {
+                addedSourceId = result.sourceId.takeIf { pending.repairSourceId == null }
                 // Registration and scanning are two different durable operations. Never discard
                 // the scan result and claim success merely because the URI row was registered.
                 notice = when (val refreshed = runtime.refresh(result.sourceId)) {
@@ -406,6 +422,13 @@ class ChartLibraryCoordinator(
             }
             is ChartSourceCommandResult.ScanPublished -> notice = ChartLibraryNoticeUi.SCAN_FINISHED
             is ChartSourceCommandResult.Rejected -> notice = result.reason.toNotice()
+        }
+        addedSourceId?.let { sourceId ->
+            createOrActivateCustomView(
+                sourceId,
+                pending.customViewName?.trim()?.take(128)?.takeIf(String::isNotBlank)
+                    ?: selection.displayName.substringBeforeLast('.').trim().take(128).ifBlank { selection.displayName.take(128) },
+            )
         }
         reload()
     }
@@ -464,28 +487,28 @@ class ChartLibraryCoordinator(
         commit(listOf(ChartCatalogMutation.PutLayer(layer.copy(stackOrder = newOrder))), ChartLibraryNoticeUi.LAYER_UPDATED)
     }
 
-    private suspend fun createView(name: String, baseStyle: com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle) {
-        val normalizedName = name.trim().take(128)
-        if (normalizedName.isBlank()) {
-            notice = ChartLibraryNoticeUi.OPERATION_FAILED
-            publish()
-            return
+    private suspend fun createOrActivateCustomView(sourceId: ChartSourceId, name: String) {
+        val currentLayers = readAllLayers()
+        val sourceLayer = currentLayers.firstOrNull { sourceId in it.sourceIds } ?: return
+        val currentViews = readAllViews()
+        val existing = currentViews.firstOrNull { view ->
+            view.layers.size == 1 && view.layers.single().layerId == sourceLayer.id
         }
-        val id = ChartViewId("view-${UUID.randomUUID()}")
+        val id = existing?.id ?: ChartViewId("view-${UUID.randomUUID()}")
         val view = ChartMapView(
             id = id,
-            displayName = normalizedName,
-            baseStyle = baseStyle,
-            layers = layers.sortedBy { it.stackOrder }.map {
-                ChartViewLayer(it.id, visible = it.visible, opacity = it.opacity, stackOrder = it.stackOrder)
-            },
+            displayName = name,
+            baseStyle = com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle.NONE,
+            layers = listOf(ChartViewLayer(sourceLayer.id, visible = true, opacity = 1f, stackOrder = 0)),
         )
-        commit(
-            listOf(ChartCatalogMutation.PutView(view), ChartCatalogMutation.ActivateView(id)),
-            ChartLibraryNoticeUi.VIEW_UPDATED,
+        runtime.transact(
+            ChartCatalogTransaction(
+                transactionId = "custom-view:${nextTransactionId()}",
+                expectedRevision = runtime.snapshot.value.revision,
+                mutations = listOf(ChartCatalogMutation.PutView(view), ChartCatalogMutation.ActivateView(id)),
+            ),
         )
         local = local.copy(selectedViewId = id)
-        publish()
     }
 
     private suspend fun duplicateView(viewId: ChartViewId, name: String) {

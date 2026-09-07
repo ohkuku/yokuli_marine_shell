@@ -101,6 +101,15 @@ class ChartDisplayCoordinator(
 
     private suspend fun handle(action: ChartDisplayUiAction) {
         when (action) {
+            is ChartDisplayUiAction.ActivateBuiltIn -> {
+                if (action.style == ChartBuiltInBaseStyle.NONE) return
+                commit(listOf(ChartCatalogMutation.DeactivateView))
+                mapStore.dispatch(
+                    MapAction.SetMapViewMode(
+                        if (action.style == ChartBuiltInBaseStyle.STANDARD) MapViewMode.STANDARD else MapViewMode.SATELLITE,
+                    ),
+                )
+            }
             is ChartDisplayUiAction.ActivateView -> {
                 if (views.none { it.id == action.viewId }) return missingItem()
                 commit(listOf(ChartCatalogMutation.ActivateView(action.viewId)))
@@ -175,7 +184,9 @@ class ChartDisplayCoordinator(
             sources = loadedSources.items
             assets = loadedAssets.items
             layers = loadedLayers.items
-            views = loadedViews.items
+            // Empty views are remnants of the old two-step editor. A custom map is only real
+            // when it owns chart content.
+            views = loadedViews.items.filter { it.layers.isNotEmpty() }
             val truncated = loadedSources.truncated || loadedAssets.truncated || loadedLayers.truncated || loadedViews.truncated
             publishPlan(if (truncated) ChartDisplayNoticeUi.CATALOG_LIMIT_REACHED else notice)
         } catch (cancelled: CancellationException) {

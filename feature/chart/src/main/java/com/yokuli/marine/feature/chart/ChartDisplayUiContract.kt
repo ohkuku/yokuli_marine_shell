@@ -47,6 +47,7 @@ data class ChartDisplayUiState(
 )
 
 sealed interface ChartDisplayUiAction {
+    data class ActivateBuiltIn(val style: ChartBuiltInBaseStyle) : ChartDisplayUiAction
     data class ActivateView(val viewId: ChartViewId) : ChartDisplayUiAction
     data class SetLayerVisible(val layerId: ChartLayerId, val visible: Boolean) : ChartDisplayUiAction
     data class SetOpacity(val layerId: ChartLayerId, val opacity: Float) : ChartDisplayUiAction

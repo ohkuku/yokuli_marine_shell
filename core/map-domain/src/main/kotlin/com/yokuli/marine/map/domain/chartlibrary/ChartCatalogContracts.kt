@@ -215,6 +215,8 @@ sealed interface ChartCatalogMutation {
     data class PutView(val view: ChartMapView) : ChartCatalogMutation
     data class RemoveView(val viewId: ChartViewId) : ChartCatalogMutation
     data class ActivateView(val viewId: ChartViewId) : ChartCatalogMutation
+    /** Selects the immutable Standard/Satellite map instead of a user chart view. */
+    data object DeactivateView : ChartCatalogMutation
 }
 
 data class ChartCatalogTransaction(

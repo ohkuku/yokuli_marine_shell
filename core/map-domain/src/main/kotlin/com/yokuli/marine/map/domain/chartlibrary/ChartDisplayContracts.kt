@@ -147,7 +147,10 @@ object ChartViewDisplayPlanner {
                     .filter { asset -> asset.memberships.any { sourceId ->
                         sourceById[sourceId]?.let { it.enabled && it.scan.generation > 0L } == true
                     } }
-                    .filter { asset -> asset.visibleIn(viewport, issues) }
+                    // A renderer needs the complete selected chart. Removing its only source
+                    // after the first camera callback made valid MBTiles appear briefly and then
+                    // disappear. Coverage/zoom are navigation hints, never layer-lifetime rules.
+                    .onEach { asset -> asset.recordViewportAdvisories(viewport, issues) }
                     .sortedWith(compareBy<ChartAsset> { it.displayPath.lowercase() }.thenBy { it.id.value })
                     .toList()
                 if (effectiveVisible && concrete.isEmpty()) issues += ChartDisplayIssue.LOGICAL_LAYER_UNAVAILABLE
@@ -209,18 +212,20 @@ object ChartViewDisplayPlanner {
         )
     }
 
-    private fun ChartAsset.visibleIn(
+    private fun ChartAsset.recordViewportAdvisories(
         viewport: ChartDisplayViewport?,
         issues: MutableSet<ChartDisplayIssue>,
-    ): Boolean {
-        val target = viewport ?: return true
+    ) {
+        val target = viewport ?: return
         val zoomVisible = facts.minZoom?.let { min -> facts.maxZoom?.let { max -> target.zoom in min..max } } ?: true
         if (!zoomVisible) issues += ChartDisplayIssue.NO_NATIVE_ZOOM
         val boundsVisible = facts.bounds?.intersectsView(target.bounds) ?: run {
             issues += ChartDisplayIssue.UNKNOWN_BOUNDS_UNFILTERED
             true
         }
-        return zoomVisible && boundsVisible
+        // Outside coverage is an expected map state. Keep the source mounted so panning back
+        // into coverage is immediate and deterministic.
+        @Suppress("UNUSED_VARIABLE") val outsideCoverage = !boundsVisible
     }
 
     private fun GeoBounds.intersectsView(other: GeoBounds): Boolean {

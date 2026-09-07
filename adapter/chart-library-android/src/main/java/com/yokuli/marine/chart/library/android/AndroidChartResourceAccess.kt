@@ -57,21 +57,6 @@ class AndroidChartResourceAccess(
             ?: return@withContext ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Invalid locator")
         if (uri.scheme == MANAGED_SCHEME) return@withContext openManaged(request, uri)
 
-        // A DocumentsProvider URI is not a SQLite filename. Even when its descriptor is seekable,
-        // reopening /proc/self/fd/<n> through Android's SQLite wrapper is provider/device specific
-        // and was the source of the user's immediate "invalid database" failure. The former
-        // Yokuli app used the dependable path: stream the selected document into an app-owned
-        // temporary file, publish it atomically, then open SQLite by the real filesystem path.
-        // Keep the external document as the catalog identity and read-only source of truth; this
-        // revision-keyed file is only the runtime access snapshot.
-        if (uri.scheme == ContentResolver.SCHEME_CONTENT && localFallbackRoot != null) {
-            return@withContext fallbackLocks[
-                (request.assetId.value.hashCode() and Int.MAX_VALUE) % fallbackLocks.size
-            ].withLock {
-                openLocalFallback(request, uri, localFallbackRoot)
-            }
-        }
-
         when (val opened = AndroidSafRandomAccessReader(resolver).open(uri)) {
             is SafRandomAccessOpenResult.Rejected -> if (
                 localFallbackRoot != null && opened.failure in STREAM_FALLBACK_FAILURES
@@ -82,7 +67,17 @@ class AndroidChartResourceAccess(
             } else {
                 ChartOpenResult.Rejected(opened.failure, opened.detail)
             }
-            is SafRandomAccessOpenResult.Opened -> openDatabase(request, opened.handle)
+            is SafRandomAccessOpenResult.Opened -> {
+                val direct = openDatabase(request, opened.handle)
+                if (
+                    uri.scheme == ContentResolver.SCHEME_CONTENT && localFallbackRoot != null &&
+                    direct is ChartOpenResult.Rejected && direct.failure in SQLITE_BRIDGE_FALLBACK_FAILURES
+                ) {
+                    fallbackLocks[(request.assetId.value.hashCode() and Int.MAX_VALUE) % fallbackLocks.size].withLock {
+                        openLocalFallback(request, uri, localFallbackRoot)
+                    }
+                } else direct
+            }
         }
     }
 
@@ -222,7 +217,14 @@ class AndroidChartResourceAccess(
             ).also { it.rawQuery("PRAGMA query_only=ON", emptyArray()).use { cursor -> cursor.moveToFirst() } }
         } catch (error: Throwable) {
             handle.close()
-            return ChartOpenResult.Rejected(ChartReadFailure.INVALID_DATABASE, error.javaClass.simpleName)
+            return ChartOpenResult.Rejected(
+                if (handle.accessMode == ChartReadAccessMode.DIRECT_PROVIDER) {
+                    ChartReadFailure.DIRECT_READ_UNSUPPORTED
+                } else {
+                    ChartReadFailure.INVALID_DATABASE
+                },
+                error.javaClass.simpleName,
+            )
         }
         return try {
             val metadataPresent = requireMbTilesSchema(database)
@@ -265,6 +267,10 @@ class AndroidChartResourceAccess(
             ChartReadFailure.CANNOT_OPEN,
             ChartReadFailure.DIRECT_READ_UNSUPPORTED,
             ChartReadFailure.SUBRANGE_UNSUPPORTED,
+        )
+        val SQLITE_BRIDGE_FALLBACK_FAILURES = setOf(
+            ChartReadFailure.DIRECT_READ_UNSUPPORTED,
+            ChartReadFailure.IO_FAILURE,
         )
         const val STREAM_COPY_BUFFER_BYTES = 1024 * 1024
         const val MIN_FREE_AFTER_FALLBACK_BYTES = 250L * 1024L * 1024L

@@ -214,6 +214,14 @@ class RoomChartCatalogRepository private constructor(
                 )
                 dao.putMetadata(metadata.copy(activeViewId = mutation.viewId.value))
             }
+            ChartCatalogMutation.DeactivateView -> {
+                val metadata = dao.metadata() ?: ChartCatalogMetadataEntity(
+                    revision = 0L,
+                    lastTransactionId = null,
+                    activeViewId = null,
+                )
+                dao.putMetadata(metadata.copy(activeViewId = null))
+            }
         }
     }
 
@@ -260,8 +268,7 @@ class RoomChartCatalogRepository private constructor(
     }
 
     private suspend fun resolveActiveView(currentId: String?): String? {
-        val validCurrent = currentId?.takeIf { dao.view(it) != null }
-        return validCurrent ?: dao.allViewIds().firstOrNull()
+        return currentId?.takeIf { dao.view(it) != null }
     }
 
     /**
