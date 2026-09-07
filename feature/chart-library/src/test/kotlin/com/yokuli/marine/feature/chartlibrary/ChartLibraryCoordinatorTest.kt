@@ -147,9 +147,59 @@ class ChartLibraryCoordinatorTest {
         assertEquals(ChartLibraryNoticeUi.MANAGED_COPY_IN_USE, coordinator.state.value.notice)
     }
 
+    @Test
+    fun userViewOwnsItsLayerVisibilityOpacityAndOrderWithoutMutatingGlobalLayers() = runTest(UnconfinedTestDispatcher()) {
+        val first = ChartLayer(ChartLayerId("layer-a"), "Official Charts", setOf(SOURCE_ID), stackOrder = 7)
+        val secondSource = source().copy(id = ChartSourceId("00000000-0000-0000-0000-000000000002"), displayName = "Fishing")
+        val second = ChartLayer(ChartLayerId("layer-b"), "Fishing", setOf(secondSource.id), stackOrder = 3)
+        val view = ChartMapView(
+            ChartViewId("test-a"), "Test A", ChartBuiltInBaseStyle.SATELLITE,
+            listOf(ChartViewLayer(first.id, stackOrder = 0), ChartViewLayer(second.id, opacity = .7f, stackOrder = 1)),
+        )
+        val runtime = FakeRuntime(source(), secondSource, first, second, view).apply { activeViewId = view.id }
+        val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)
+        advanceUntilIdle()
+
+        coordinator.dispatch(ChartLibraryUiAction.SelectView(view.id))
+        coordinator.dispatch(ChartLibraryUiAction.SetViewLayerVisible(view.id, second.id, false))
+        coordinator.dispatch(ChartLibraryUiAction.SetViewLayerOpacity(view.id, second.id, .4f))
+        coordinator.dispatch(ChartLibraryUiAction.MoveViewLayer(view.id, second.id, 5))
+        advanceUntilIdle()
+
+        val saved = runtime.views.single()
+        val savedSecond = saved.layers.single { it.layerId == second.id }
+        assertFalse(savedSecond.visible)
+        assertEquals(.4f, savedSecond.opacity)
+        assertEquals(6, savedSecond.stackOrder)
+        assertEquals(listOf(7, 3), runtime.layers.map { it.stackOrder })
+        assertTrue(coordinator.state.value.views.single().selected)
+    }
+
+    @Test
+    fun globalLayerMoveNeverSilentlyRewritesUserViewComposition() = runTest(UnconfinedTestDispatcher()) {
+        val layer = ChartLayer(ChartLayerId("layer-a"), "Official Charts", setOf(SOURCE_ID), stackOrder = 2)
+        val view = ChartMapView(
+            ChartViewId("test-a"), "Test A", ChartBuiltInBaseStyle.STANDARD,
+            listOf(ChartViewLayer(layer.id, opacity = .55f, stackOrder = 9)),
+        )
+        val runtime = FakeRuntime(source(), layer, view).apply { activeViewId = view.id }
+        val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)
+        advanceUntilIdle()
+
+        coordinator.dispatch(ChartLibraryUiAction.MoveLayer(layer.id, 4))
+        advanceUntilIdle()
+
+        assertEquals(6, runtime.layers.single().stackOrder)
+        assertEquals(9, runtime.views.single().layers.single().stackOrder)
+        assertEquals(.55f, runtime.views.single().layers.single().opacity)
+    }
+
     private class FakeRuntime(vararg initial: Any) : ChartLibraryRuntimePort {
         var sources = initial.filterIsInstance<ChartLibrarySource>().toMutableList()
         var assets = initial.filterIsInstance<ChartAsset>().toMutableList()
+        var layers = initial.filterIsInstance<ChartLayer>().toMutableList()
+        var views = initial.filterIsInstance<ChartMapView>().toMutableList()
+        var activeViewId: ChartViewId? = null
         var committedTransactions = 0
         var acceptedPickers = 0
         var removedSources = 0
@@ -176,6 +226,11 @@ class ChartLibraryCoordinatorTest {
         }
         override suspend fun asset(id: ChartAssetId) = assets.firstOrNull { it.id == id }
         override suspend fun resolveLegacyAsset(legacyLogicalId: String, legacyVersionId: String?) = null
+        override suspend fun layers(offset: Int, limit: Int) = page(layers, offset, limit)
+        override suspend fun layer(id: ChartLayerId) = layers.firstOrNull { it.id == id }
+        override suspend fun views(offset: Int, limit: Int) = page(views, offset, limit)
+        override suspend fun view(id: ChartViewId) = views.firstOrNull { it.id == id }
+        override suspend fun activeView() = views.firstOrNull { it.id == activeViewId }
 
         override suspend fun transact(transaction: ChartCatalogTransaction): ChartCatalogCommitResult {
             if (transaction.expectedRevision != null && transaction.expectedRevision != snapshot.value.revision) {
@@ -191,10 +246,13 @@ class ChartLibraryCoordinatorTest {
                     }
                     is ChartCatalogMutation.PutLegacyMapping -> Unit
                     is ChartCatalogMutation.PutManagedCopyRelation -> Unit
-                    is ChartCatalogMutation.PutLayer -> Unit
-                    is ChartCatalogMutation.PutView -> Unit
-                    is ChartCatalogMutation.RemoveView -> Unit
-                    is ChartCatalogMutation.ActivateView -> Unit
+                    is ChartCatalogMutation.PutLayer -> layers.replace(mutation.layer) { it.id }
+                    is ChartCatalogMutation.PutView -> views.replace(mutation.view) { it.id }
+                    is ChartCatalogMutation.RemoveView -> {
+                        views.removeAll { it.id == mutation.viewId }
+                        if (activeViewId == mutation.viewId) activeViewId = null
+                    }
+                    is ChartCatalogMutation.ActivateView -> activeViewId = mutation.viewId
                 }
             }
             committedTransactions += 1
@@ -237,7 +295,13 @@ class ChartLibraryCoordinatorTest {
         override suspend fun open(request: ChartReadRequest) =
             ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "test runtime")
 
-        private fun snapshot() = ChartCatalogSnapshot(sourceCount = sources.size, assetCount = assets.size)
+        private fun snapshot() = ChartCatalogSnapshot(
+            sourceCount = sources.size,
+            assetCount = assets.size,
+            layerCount = layers.size,
+            viewCount = views.size,
+            activeViewId = activeViewId,
+        )
         private fun <T> page(items: List<T>, offset: Int, limit: Int) =
             ChartCatalogPage(items.drop(offset).take(limit), offset, limit, items.size)
 

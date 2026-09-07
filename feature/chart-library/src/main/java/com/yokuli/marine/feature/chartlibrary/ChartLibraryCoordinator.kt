@@ -163,6 +163,9 @@ class ChartLibraryCoordinator(
         local = local.copy(
             selectedAssetIds = local.selectedAssetIds.intersect(assetIds),
             selectedLayerId = local.selectedLayerId?.takeIf(layerIds::contains),
+            selectedViewId = local.selectedViewId?.takeIf { id -> views.any { it.id == id } }
+                ?: catalog.activeViewId?.takeIf { id -> views.any { it.id == id } }
+                ?: views.firstOrNull()?.id,
         )
         when (val page = local.page) {
             is ChartLibraryLocalPage.SourceDetail -> if (page.sourceId !in sourceIds) missingPage()
@@ -281,6 +284,10 @@ class ChartLibraryCoordinator(
             }
             is ChartLibraryUiAction.MoveLayer -> moveLayer(action.layerId, action.delta)
             is ChartLibraryUiAction.CreateView -> createView(action.name, action.baseStyle)
+            is ChartLibraryUiAction.SelectView -> {
+                local = local.copy(selectedViewId = action.viewId.takeIf { id -> views.any { it.id == id } })
+                publish()
+            }
             is ChartLibraryUiAction.RenameView -> mutateView(action.viewId) { view ->
                 view.copy(displayName = action.name.trim().take(128).ifBlank { view.displayName })
             }
@@ -300,12 +307,30 @@ class ChartLibraryCoordinator(
                             layerId = layer.id,
                             visible = true,
                             opacity = layer.opacity,
-                            stackOrder = layer.stackOrder,
+                            stackOrder = (view.layers.maxOfOrNull(ChartViewLayer::stackOrder) ?: -1) + 1,
                         )
                     } else {
                         view.layers.filterNot { it.layerId == action.layerId }
                     },
                 )
+            }
+            is ChartLibraryUiAction.SetViewLayerVisible -> mutateView(action.viewId) { view ->
+                view.copy(layers = view.layers.map { item ->
+                    if (item.layerId == action.layerId) item.copy(visible = action.visible) else item
+                })
+            }
+            is ChartLibraryUiAction.SetViewLayerOpacity -> mutateView(action.viewId) { view ->
+                view.copy(layers = view.layers.map { item ->
+                    if (item.layerId == action.layerId) item.copy(opacity = action.opacity.coerceIn(0f, 1f)) else item
+                })
+            }
+            is ChartLibraryUiAction.MoveViewLayer -> mutateView(action.viewId) { view ->
+                val current = view.layers.firstOrNull { it.layerId == action.layerId } ?: return@mutateView view
+                view.copy(layers = view.layers.map { item ->
+                    if (item.layerId == action.layerId) {
+                        item.copy(stackOrder = (current.stackOrder + action.delta).coerceIn(-10_000, 10_000))
+                    } else item
+                })
             }
             ChartLibraryUiAction.DismissNotice -> {
                 notice = null
@@ -424,19 +449,7 @@ class ChartLibraryCoordinator(
     private suspend fun moveLayer(layerId: ChartLayerId, delta: Int) {
         val layer = layers.firstOrNull { it.id == layerId } ?: return missingPage()
         val newOrder = (layer.stackOrder + delta).coerceIn(-10_000, 10_000)
-        val mutations = buildList {
-            add(ChartCatalogMutation.PutLayer(layer.copy(stackOrder = newOrder)))
-            views.filter { view -> view.layers.any { it.layerId == layerId } }.forEach { view ->
-                add(
-                    ChartCatalogMutation.PutView(
-                        view.copy(layers = view.layers.map { item ->
-                            if (item.layerId == layerId) item.copy(stackOrder = newOrder) else item
-                        }),
-                    ),
-                )
-            }
-        }
-        commit(mutations, ChartLibraryNoticeUi.LAYER_UPDATED)
+        commit(listOf(ChartCatalogMutation.PutLayer(layer.copy(stackOrder = newOrder))), ChartLibraryNoticeUi.LAYER_UPDATED)
     }
 
     private suspend fun createView(name: String, baseStyle: com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle) {
@@ -459,6 +472,8 @@ class ChartLibraryCoordinator(
             listOf(ChartCatalogMutation.PutView(view), ChartCatalogMutation.ActivateView(id)),
             ChartLibraryNoticeUi.VIEW_UPDATED,
         )
+        local = local.copy(selectedViewId = id)
+        publish()
     }
 
     private suspend fun duplicateView(viewId: ChartViewId, name: String) {

@@ -51,6 +51,7 @@ data class ChartLibraryLocalState(
     val filter: ChartLibraryFilter = ChartLibraryFilter.ALL,
     val selectedAssetIds: Set<ChartAssetId> = emptySet(),
     val selectedLayerId: ChartLayerId? = null,
+    val selectedViewId: ChartViewId? = null,
 )
 
 data class ChartLibraryLayerUi(
@@ -84,6 +85,7 @@ data class ChartLibraryViewUi(
     val layers: List<ChartLibraryViewLayerUi>,
     val visibleLayerCount: Int,
     val active: Boolean,
+    val selected: Boolean,
 )
 
 data class ChartLibraryViewLayerUi(
@@ -92,6 +94,7 @@ data class ChartLibraryViewLayerUi(
     val included: Boolean,
     val visible: Boolean,
     val opacity: Float,
+    val stackOrder: Int,
 ) {
     init { require(opacity.isFinite() && opacity in 0f..1f) }
 }
@@ -306,12 +309,24 @@ sealed interface ChartLibraryUiAction {
         val name: String,
         val baseStyle: ChartBuiltInBaseStyle = ChartBuiltInBaseStyle.SATELLITE,
     ) : ChartLibraryUiAction
+    data class SelectView(val viewId: ChartViewId) : ChartLibraryUiAction
     data class RenameView(val viewId: ChartViewId, val name: String) : ChartLibraryUiAction
     data class DuplicateView(val viewId: ChartViewId, val name: String) : ChartLibraryUiAction
     data class DeleteView(val viewId: ChartViewId) : ChartLibraryUiAction
     data class ActivateView(val viewId: ChartViewId) : ChartLibraryUiAction
     data class SetViewBaseStyle(val viewId: ChartViewId, val baseStyle: ChartBuiltInBaseStyle) : ChartLibraryUiAction
     data class ToggleViewLayer(val viewId: ChartViewId, val layerId: ChartLayerId) : ChartLibraryUiAction
+    data class SetViewLayerVisible(
+        val viewId: ChartViewId,
+        val layerId: ChartLayerId,
+        val visible: Boolean,
+    ) : ChartLibraryUiAction
+    data class SetViewLayerOpacity(
+        val viewId: ChartViewId,
+        val layerId: ChartLayerId,
+        val opacity: Float,
+    ) : ChartLibraryUiAction
+    data class MoveViewLayer(val viewId: ChartViewId, val layerId: ChartLayerId, val delta: Int) : ChartLibraryUiAction
     data object DismissNotice : ChartLibraryUiAction
 }
 

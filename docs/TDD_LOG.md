@@ -844,3 +844,11 @@ CI 自查同时发现 legacy evidence extractor 没有要求新场景，也没�
 ### English translation — Base Apps Recovery R21
 
 R21 makes the persisted direct-read failure a recoverable provider-capability observation. Startup and same-revision rescan now re-enter the existing Basic/local-fallback path, catalog pages remain atomic while validation publishes, and a 300-item batch cannot be skipped. A synthetic stream-only poisoned asset reaches actual MapLibre pixels without changing the original. Focused machine evidence passes, but hosted CI and the exact user-file APK gate remain pending, so R21 stays open and R22 has not started.
+
+## Base Apps Recovery R22 — Logical Layers and User Views
+
+R21 后续 hosted run `34100076259` 已完整绿色；用户明确允许在不伪造真实文件证据的前提下继续。R22 的 Reds 证明旧实现仍会自动生成 `default-view-v1 / Sailing`、把新 asset 静默塞入已有 View、把零 View 误报为缺失 active View，并缺少 View 自己的 visibility/opacity/order 编辑合同。Green 保留既有 Room/Layer/View 架构：一个 folder 无论含几个 MBTiles 都只产生一个 logical Layer；重命名经 rescan/restart/repair 保留；只清理精确未编辑的历史生成 View；零 View 使用不持久化的 Satellite fallback；用户 View 独立拥有 composition。定向 map-domain、feature coordinator 和 Android test compilation 全部 PASS；完整质量门禁交给 hosted CI。
+
+### English translation — Base Apps Recovery R22
+
+R22 removes the generated `Sailing` product fiction and completes the existing logical Layer/View model. A folder remains one Layer across fragment changes and restarts; zero user Views is valid; edited historical content survives conservative normalization; and each user View owns its basemap and Layer composition. Focused gates pass, while hosted CI and physical product acceptance remain pending.

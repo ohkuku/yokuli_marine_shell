@@ -128,10 +128,12 @@ object ChartLibraryProjector {
                         included = item != null,
                         visible = item?.visible == true,
                         opacity = item?.opacity ?: layer.opacity,
+                        stackOrder = item?.stackOrder ?: layer.stackOrder,
                     )
                 },
                 visibleLayerCount = view.layers.count { it.visible },
                 active = view.id == catalog.activeViewId,
+                selected = view.id == local.selectedViewId,
             )
         }.sortedWith(compareByDescending<ChartLibraryViewUi> { it.active }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 

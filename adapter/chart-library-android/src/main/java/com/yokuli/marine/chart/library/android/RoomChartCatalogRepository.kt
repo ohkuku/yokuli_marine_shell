@@ -23,7 +23,14 @@ class RoomChartCatalogRepository private constructor(
     private val dao = database.dao()
     private val closed = AtomicBoolean(false)
     private val writer = Mutex()
-    private val mutableSnapshot = MutableStateFlow(runBlocking(Dispatchers.IO) { readSnapshot() })
+    private val mutableSnapshot = MutableStateFlow(
+        runBlocking(Dispatchers.IO) {
+            database.withTransaction {
+                normalizeGeneratedLegacyDefaultView()
+                readSnapshot()
+            }
+        },
+    )
     override val snapshot: StateFlow<ChartCatalogSnapshot> = mutableSnapshot.asStateFlow()
 
     override suspend fun sources(offset: Int, limit: Int): ChartCatalogPage<ChartLibrarySource> = ioRead {
@@ -123,9 +130,9 @@ class RoomChartCatalogRepository private constructor(
                         return@withTransaction CommitOutcome(conflict = metadata.revision)
                     }
                     transaction.mutations.forEach { mutation -> applyMutation(mutation, resolved) }
-                    val createdLayerIds = ensureDefaultLayersForSources()
+                    ensureDefaultLayersForSources()
                     val requestedActiveViewId = dao.metadata()?.activeViewId ?: metadata.activeViewId
-                    val activeViewId = ensureActiveView(requestedActiveViewId, createdLayerIds)
+                    val activeViewId = resolveActiveView(requestedActiveViewId)
                     val newRevision = metadata.revision + 1L
                     dao.putMetadata(
                         ChartCatalogMetadataEntity(
@@ -227,8 +234,7 @@ class RoomChartCatalogRepository private constructor(
         dao.putViewLayers(view.layers.map { it.toEntity(view.id) })
     }
 
-    private suspend fun ensureDefaultLayersForSources(): List<ChartLayerId> {
-        val created = mutableListOf<ChartLayerId>()
+    private suspend fun ensureDefaultLayersForSources() {
         var offset = 0
         do {
             val page = dao.sources(DEFAULT_CATALOG_PAGE_SIZE, offset)
@@ -247,45 +253,46 @@ class RoomChartCatalogRepository private constructor(
                                 role = ChartAssetRole.valueOf(source.defaultRole),
                             ),
                         )
-                        created += id
                     }
                 }
             offset += page.size
         } while (page.isNotEmpty() && offset < dao.sourceCount())
-        return created
     }
 
-    private suspend fun ensureActiveView(currentId: String?, createdLayerIds: List<ChartLayerId>): String? {
+    private suspend fun resolveActiveView(currentId: String?): String? {
         val validCurrent = currentId?.takeIf { dao.view(it) != null }
-        val existing = validCurrent ?: dao.allViewIds().firstOrNull()
-        if (existing != null) {
-            if (createdLayerIds.isNotEmpty()) {
-                val viewEntity = requireNotNull(dao.view(existing))
-                val currentLayers = dao.viewLayers(existing)
-                val known = currentLayers.mapTo(hashSetOf()) { it.layerId }
-                val nextOrder = (currentLayers.maxOfOrNull { it.stackOrder } ?: -1) + 1
-                val additions = createdLayerIds.filterNot { it.value in known }.mapIndexed { index, id ->
-                    val layer = requireNotNull(dao.layer(id.value))
-                    ChartViewLayerEntity(existing, id.value, layer.visible, layer.opacity, nextOrder + index)
-                }
-                if (additions.isNotEmpty()) dao.putViewLayers(additions)
-                requireNotNull(viewEntity)
-            }
-            return existing
+        return validCurrent ?: dao.allViewIds().firstOrNull()
+    }
+
+    /**
+     * V4→V5 generated this record before Views were correctly defined as user content.
+     * Remove only the untouched generated shape. The reserved ID alone is deliberately
+     * insufficient: a renamed or otherwise edited View belongs to the user and survives.
+     */
+    private suspend fun normalizeGeneratedLegacyDefaultView() {
+        val view = dao.view(LEGACY_GENERATED_VIEW_ID) ?: return
+        if (view.displayName != LEGACY_GENERATED_VIEW_NAME ||
+            view.baseStyle != ChartBuiltInBaseStyle.SATELLITE.name
+        ) return
+        val entries = dao.viewLayers(LEGACY_GENERATED_VIEW_ID)
+        val layers = buildList {
+            dao.allLayerIds().forEach { id -> dao.layer(id)?.let(::add) }
         }
-        val layerIds = dao.allLayerIds()
-        if (layerIds.isEmpty()) return null
-        val default = ChartMapView(
-            id = ChartViewId(DEFAULT_VIEW_ID),
-            displayName = "Sailing",
-            baseStyle = ChartBuiltInBaseStyle.SATELLITE,
-            layers = layerIds.mapIndexed { index, id ->
-                val layer = requireNotNull(dao.layer(id))
-                ChartViewLayer(ChartLayerId(id), layer.visible, layer.opacity, index)
-            },
-        )
-        putView(default)
-        return default.id.value
+        val untouched = entries.size == layers.size && entries.associateBy { it.layerId } ==
+            layers.associate { layer ->
+                layer.id to ChartViewLayerEntity(
+                    viewId = LEGACY_GENERATED_VIEW_ID,
+                    layerId = layer.id,
+                    visible = layer.visible,
+                    opacity = layer.opacity,
+                    stackOrder = layer.stackOrder,
+                )
+            }
+        if (!untouched) return
+        dao.deleteView(LEGACY_GENERATED_VIEW_ID)
+        dao.metadata()?.takeIf { it.activeViewId == LEGACY_GENERATED_VIEW_ID }?.let { metadata ->
+            dao.putMetadata(metadata.copy(activeViewId = null))
+        }
     }
 
     private suspend fun readSnapshot(): ChartCatalogSnapshot {
@@ -392,4 +399,5 @@ private fun ChartViewEntity.toDomain(layers: List<ChartViewLayerEntity>) = Chart
     layers.map { ChartViewLayer(ChartLayerId(it.layerId), it.visible, it.opacity, it.stackOrder) },
 )
 
-private const val DEFAULT_VIEW_ID = "default-view-v1"
+private const val LEGACY_GENERATED_VIEW_ID = "default-view-v1"
+private const val LEGACY_GENERATED_VIEW_NAME = "Sailing"

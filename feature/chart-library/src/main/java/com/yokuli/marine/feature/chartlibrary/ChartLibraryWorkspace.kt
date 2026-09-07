@@ -450,7 +450,14 @@ private fun MapViewRow(view: ChartLibraryViewUi, index: Int, onAction: (ChartLib
     var draftName by remember(view.id, view.name) { mutableStateOf(view.name) }
     val copyName = stringResource(R.string.view_copy_name, view.name)
     Column(
-        Modifier.fillMaxWidth().border(2.dp, if (view.active) colors.accent else colors.muted.copy(alpha = .4f))
+        Modifier.fillMaxWidth().border(
+            2.dp,
+            when {
+                view.selected -> colors.foreground
+                view.active -> colors.accent
+                else -> colors.muted.copy(alpha = .4f)
+            },
+        )
             .padding(12.dp).wpEntrance(view.id.value, index),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -474,16 +481,46 @@ private fun MapViewRow(view: ChartLibraryViewUi, index: Int, onAction: (ChartLib
             WpText(stringResource(R.string.view_no_layers), 12, color = colors.muted)
         } else {
             view.layers.forEach { layer ->
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = YokuliMetrics.MinTouch)
-                        .clickable { onAction(ChartLibraryUiAction.ToggleViewLayer(view.id, layer.id)) },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        Modifier.size(16.dp).border(2.dp, if (layer.included) colors.accent else colors.muted)
-                            .let { if (layer.included) it.background(colors.accent) else it },
-                    )
-                    WpText(layer.name, 14, color = if (layer.included) colors.foreground else colors.muted, modifier = Modifier.padding(start = 8.dp))
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = YokuliMetrics.MinTouch)
+                            .clickable { onAction(ChartLibraryUiAction.ToggleViewLayer(view.id, layer.id)) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier.size(16.dp).border(2.dp, if (layer.included) colors.accent else colors.muted)
+                                .let { if (layer.included) it.background(colors.accent) else it },
+                        )
+                        WpText(
+                            layer.name,
+                            14,
+                            color = if (layer.included) colors.foreground else colors.muted,
+                            modifier = Modifier.padding(start = 8.dp).weight(1f),
+                        )
+                    }
+                    if (layer.included) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            InlineCommand(
+                                stringResource(if (layer.visible) R.string.action_hide_layer else R.string.action_show_layer),
+                                "chart-library-view-layer-visible-${view.id.value}-${layer.id.value}",
+                            ) {
+                                onAction(ChartLibraryUiAction.SetViewLayerVisible(view.id, layer.id, !layer.visible))
+                            }
+                            InlineCommand("−", "chart-library-view-layer-opacity-down-${view.id.value}-${layer.id.value}") {
+                                onAction(ChartLibraryUiAction.SetViewLayerOpacity(view.id, layer.id, layer.opacity - .1f))
+                            }
+                            WpText("${(layer.opacity * 100).toInt()}%", 12, color = colors.muted, modifier = Modifier.width(44.dp))
+                            InlineCommand("+", "chart-library-view-layer-opacity-up-${view.id.value}-${layer.id.value}") {
+                                onAction(ChartLibraryUiAction.SetViewLayerOpacity(view.id, layer.id, layer.opacity + .1f))
+                            }
+                            InlineCommand("↑", "chart-library-view-layer-up-${view.id.value}-${layer.id.value}") {
+                                onAction(ChartLibraryUiAction.MoveViewLayer(view.id, layer.id, 1))
+                            }
+                            InlineCommand("↓", "chart-library-view-layer-down-${view.id.value}-${layer.id.value}") {
+                                onAction(ChartLibraryUiAction.MoveViewLayer(view.id, layer.id, -1))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -495,6 +532,9 @@ private fun MapViewRow(view: ChartLibraryViewUi, index: Int, onAction: (ChartLib
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            if (!view.selected) InlineCommand(stringResource(R.string.action_preview_view), "chart-library-preview-view-${view.id.value}") {
+                onAction(ChartLibraryUiAction.SelectView(view.id))
+            }
             if (!view.active) InlineCommand(stringResource(R.string.action_use_view), "chart-library-use-view-${view.id.value}") {
                 onAction(ChartLibraryUiAction.ActivateView(view.id))
             }

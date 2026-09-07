@@ -26,10 +26,10 @@ class RoomChartCatalogRepositoryTest {
             assertEquals(1L, result.snapshot.revision)
             assertEquals(3, result.snapshot.assetCount)
             assertEquals(1, result.snapshot.layerCount)
-            assertEquals(1, result.snapshot.viewCount)
-            assertNotNull(result.snapshot.activeViewId)
+            assertEquals(0, result.snapshot.viewCount)
+            assertNull(result.snapshot.activeViewId)
             assertEquals("source", repository.layers().items.single().displayName)
-            assertEquals(repository.layers().items.single().id, repository.activeView()?.layers?.single()?.layerId)
+            assertNull(repository.activeView())
             val first = repository.assets(offset = 0, limit = 2)
             assertEquals(2, first.items.size)
             assertEquals(3, first.total)
@@ -39,7 +39,7 @@ class RoomChartCatalogRepositoryTest {
             assertEquals(1L, restored.snapshot.value.revision)
             assertEquals(3, restored.assets().total)
             assertEquals("source", restored.layers().items.single().displayName)
-            assertEquals("Sailing", restored.activeView()?.displayName)
+            assertNull(restored.activeView())
         }
     }
 
@@ -77,7 +77,96 @@ class RoomChartCatalogRepositoryTest {
             assertEquals("Fishing", active.displayName)
             assertEquals(listOf(1f, .65f), active.layers.map(ChartViewLayer::opacity))
             assertEquals(2, restored.snapshot.value.layerCount)
-            assertEquals(2, restored.snapshot.value.viewCount)
+            assertEquals(1, restored.snapshot.value.viewCount)
+        }
+    }
+
+    @Test fun generatedSailingViewIsNormalizedButAnyUserEditSurvives() = runBlocking {
+        val generatedFile = freshDatabase("generated-view-normalization")
+        val source = source("generated")
+        RoomChartCatalogRepository.create(context, generatedFile).use { repository ->
+            repository.transact(ChartCatalogTransaction("source", mutations = listOf(ChartCatalogMutation.PutSource(source))))
+            val layer = repository.layers().items.single()
+            val generated = ChartMapView(
+                ChartViewId("default-view-v1"),
+                "Sailing",
+                ChartBuiltInBaseStyle.SATELLITE,
+                listOf(ChartViewLayer(layer.id, layer.visible, layer.opacity, layer.stackOrder)),
+            )
+            repository.transact(ChartCatalogTransaction("legacy-generated", mutations = listOf(
+                ChartCatalogMutation.PutView(generated), ChartCatalogMutation.ActivateView(generated.id),
+            )))
+        }
+        RoomChartCatalogRepository.create(context, generatedFile).use { restored ->
+            assertEquals(0, restored.views().total)
+            assertNull(restored.activeView())
+        }
+
+        val editedFile = freshDatabase("edited-view-preserved")
+        RoomChartCatalogRepository.create(context, editedFile).use { repository ->
+            repository.transact(ChartCatalogTransaction("source", mutations = listOf(ChartCatalogMutation.PutSource(source))))
+            val layer = repository.layers().items.single()
+            val edited = ChartMapView(
+                ChartViewId("default-view-v1"),
+                "My Offshore",
+                ChartBuiltInBaseStyle.SATELLITE,
+                listOf(ChartViewLayer(layer.id, opacity = .65f)),
+            )
+            repository.transact(ChartCatalogTransaction("user-edited", mutations = listOf(
+                ChartCatalogMutation.PutView(edited), ChartCatalogMutation.ActivateView(edited.id),
+            )))
+        }
+        RoomChartCatalogRepository.create(context, editedFile).use { restored ->
+            assertEquals("My Offshore", requireNotNull(restored.activeView()).displayName)
+            assertEquals(.65f, requireNotNull(restored.activeView()).layers.single().opacity)
+        }
+    }
+
+    @Test fun twoFoldersRemainTwoLogicalLayersAndUserCompositionSurvivesSourceChanges() = runBlocking {
+        val file = freshDatabase("two-folders-two-layers")
+        val hydro = source("NZ Hydro")
+        val fishing = source("Fishing")
+        RoomChartCatalogRepository.create(context, file).use { repository ->
+            val files = listOf(
+                asset(hydro.id, "northland", "NZ Hydro/northland.mbtiles"),
+                asset(hydro.id, "auckland", "NZ Hydro/auckland.mbtiles"),
+                asset(hydro.id, "coromandel", "NZ Hydro/coromandel.mbtiles"),
+                asset(fishing.id, "hauraki", "Fishing/hauraki.mbtiles"),
+                asset(fishing.id, "barrier", "Fishing/barrier.mbtiles"),
+            )
+            repository.transact(ChartCatalogTransaction("folders", mutations = buildList {
+                add(ChartCatalogMutation.PutSource(hydro))
+                add(ChartCatalogMutation.PutSource(fishing))
+                files.forEach { add(ChartCatalogMutation.PutAsset(it)) }
+            }))
+            val layers = repository.layers().items
+            assertEquals(2, layers.size)
+            val renamed = layers.single { hydro.id in it.sourceIds }.copy(displayName = "Official Charts")
+            val other = layers.single { fishing.id in it.sourceIds }
+            val view = ChartMapView(
+                ChartViewId("test-a"), "Test A", ChartBuiltInBaseStyle.STANDARD,
+                listOf(
+                    ChartViewLayer(renamed.id, opacity = 1f, stackOrder = 1),
+                    ChartViewLayer(other.id, opacity = .7f, stackOrder = 0),
+                ),
+            )
+            repository.transact(ChartCatalogTransaction("composition", mutations = listOf(
+                ChartCatalogMutation.PutLayer(renamed),
+                ChartCatalogMutation.PutView(view),
+                ChartCatalogMutation.ActivateView(view.id),
+            )))
+            repository.transact(ChartCatalogTransaction("source-repair", mutations = listOf(
+                ChartCatalogMutation.PutSource(hydro.copy(locator = ChartOpaqueLocator("content://provider/repaired"))),
+                ChartCatalogMutation.PutAsset(asset(hydro.id, "new", "NZ Hydro/new.mbtiles")),
+            )))
+        }
+        RoomChartCatalogRepository.create(context, file).use { restored ->
+            assertEquals(2, restored.layers().total)
+            assertEquals("Official Charts", restored.layers().items.single { hydro.id in it.sourceIds }.displayName)
+            val active = requireNotNull(restored.activeView())
+            assertEquals("Test A", active.displayName)
+            assertEquals(listOf(.7f, 1f), active.layers.sortedBy { it.stackOrder }.map { it.opacity })
+            assertEquals(6, restored.assets().total)
         }
     }
 

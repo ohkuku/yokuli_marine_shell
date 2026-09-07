@@ -83,6 +83,24 @@ class ChartMapContentContractsTest {
         assertTrue(ChartDisplayIssue.LOGICAL_LAYER_UNAVAILABLE in plan.issues)
     }
 
+    @Test fun zeroUserViewsIsAUsableSatelliteBasemapWithoutMissingViewIssue() {
+        val plan = ChartViewDisplayPlanner.plan(
+            generation = 1,
+            catalog = ChartCatalogSnapshot(),
+            sources = emptyList(),
+            assets = emptyList(),
+            layers = emptyList(),
+            view = null,
+            viewport = null,
+        )
+
+        assertEquals(ChartBuiltInBaseStyle.SATELLITE, plan.builtInBaseStyle)
+        assertTrue(plan.layers.isEmpty())
+        assertTrue(plan.logicalLayers.isEmpty())
+        assertTrue(ChartDisplayIssue.ACTIVE_VIEW_MISSING !in plan.issues)
+        assertEquals(null, plan.activeViewId)
+    }
+
     private fun source(name: String) = ChartLibrarySource(
         id = ChartSourceId(UUID.nameUUIDFromBytes(name.encodeToByteArray()).toString()),
         kind = ChartLibrarySourceKind.TREE,

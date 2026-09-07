@@ -125,7 +125,6 @@ object ChartViewDisplayPlanner {
     ): ChartDisplayPlan {
         require(generation > 0L)
         val issues = linkedSetOf<ChartDisplayIssue>()
-        if (view == null) issues += ChartDisplayIssue.ACTIVE_VIEW_MISSING
         val sourceById = sources.associateBy(ChartLibrarySource::id)
         val layerById = layers.associateBy(ChartLayer::id)
         val renderLayers = mutableListOf<ChartDisplayLayer>()
@@ -203,7 +202,9 @@ object ChartViewDisplayPlanner {
             issues = issues,
             activeViewId = view?.id,
             activeViewName = view?.displayName,
-            builtInBaseStyle = view?.baseStyle ?: ChartBuiltInBaseStyle.NONE,
+            // Zero user Views is a complete product state. Keep Chart useful without
+            // manufacturing durable content that pretends to know the user's purpose.
+            builtInBaseStyle = view?.baseStyle ?: ChartBuiltInBaseStyle.SATELLITE,
             logicalLayers = logicalPlans,
         )
     }

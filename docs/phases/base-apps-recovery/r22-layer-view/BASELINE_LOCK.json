@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "workPackage": "R22_LOGICAL_LAYERS_AND_USER_VIEWS",
+  "baselineHead": "359f4b71e107ba9bafd5fd4b3621e140dfb63976",
+  "implementationHead": "77ed58002d4b5f320ada22dc718b1b7ace26999a",
+  "directiveSha256": "36f520ea6232b152554dd1d23d224e18b08009af89157ca046b1381a9dd68ac5",
+  "status": "FOCUSED_MACHINE_GATE_COMPLETE_HOSTED_CI_PENDING",
+  "nextPackage": "R23_REAL_COVERAGE_AND_VIEW_PREVIEW",
+  "invariants": {
+    "oneFolderIsOneLogicalLayer": true,
+    "rawMbtilesAreCoverageFragments": true,
+    "layerRenameSurvivesSourceLifecycle": true,
+    "zeroUserViewsIsValid": true,
+    "zeroViewFallbackDoesNotPersistFakeView": true,
+    "generatedSailingViewIsConservativelyNormalized": true,
+    "editedHistoricalViewIsPreserved": true,
+    "viewOwnsBasemapMembershipOrderVisibilityOpacity": true,
+    "globalLayerOrderDoesNotRewriteView": true
+  },
+  "localEvidence": {
+    "mapContentContract": "PASS",
+    "chartLibraryCoordinator": "PASS",
+    "androidTestCompilation": "PASS",
+    "diffCheck": "PASS"
+  },
+  "hostedEvidence": "PENDING_PUSH",
+  "humanEvidence": "PENDING_FINAL_PRODUCT_ACCEPTANCE",
+  "knownUnresolved": [
+    "Real spatial Coverage and inactive View preview belong to R23",
+    "Exact legacy user MBTiles remains unavailable for direct exercise",
+    "Physical device usability remains human-owned"
+  ],
+  "ciReportPrefix": "CODEX-CI-REPORT-"
+}

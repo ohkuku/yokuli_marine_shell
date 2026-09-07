@@ -16,6 +16,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartAssetValidationState
 import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogCommitResult
 import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogMutation
 import com.yokuli.marine.map.domain.chartlibrary.ChartCatalogTransaction
+import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
 import com.yokuli.marine.map.domain.chartlibrary.ChartContentRevision
 import com.yokuli.marine.map.domain.chartlibrary.ChartDiscoveredDocument
 import com.yokuli.marine.map.domain.chartlibrary.ChartDocumentIdentity
@@ -23,6 +24,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartEnumerationResult
 import com.yokuli.marine.map.domain.chartlibrary.ChartGrantState
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySource
 import com.yokuli.marine.map.domain.chartlibrary.ChartLibrarySourceKind
+import com.yokuli.marine.map.domain.chartlibrary.ChartMapView
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpenResult
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
@@ -31,6 +33,8 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartScanStatus
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceId
 import com.yokuli.marine.map.domain.chartlibrary.ChartSourceScanState
 import com.yokuli.marine.map.domain.chartlibrary.ChartViewDisplayPlanner
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewId
+import com.yokuli.marine.map.domain.chartlibrary.ChartViewLayer
 import com.yokuli.marine.map.offline.ChartLoopbackTileGateway
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -226,13 +230,21 @@ class MapLibreSafGatewayRenderTest {
             assertEquals(ChartReadAccessMode.LOCAL_FALLBACK, recovered.accessMode)
 
             val catalogSnapshot = runtime.snapshot.value
-            val activeView = requireNotNull(runtime.activeView())
+            val recoveredLayers = runtime.layers().items
+            val activeView = ChartMapView(
+                id = ChartViewId("r21-render-view"),
+                displayName = "R21 render",
+                baseStyle = ChartBuiltInBaseStyle.SATELLITE,
+                layers = recoveredLayers.mapIndexed { index, layer ->
+                    ChartViewLayer(layer.id, opacity = layer.opacity, stackOrder = index)
+                },
+            )
             val plan = ChartViewDisplayPlanner.plan(
                 generation = 1,
                 catalog = catalogSnapshot,
                 sources = runtime.sources().items,
                 assets = runtime.assets().items,
-                layers = runtime.layers().items,
+                layers = recoveredLayers,
                 view = activeView,
                 viewport = null,
             )
