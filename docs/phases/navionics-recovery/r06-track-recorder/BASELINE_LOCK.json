@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "workPackage": "NAVREF_R06_TRACK_RECORDER",
   "baseCommit": "5f8a83de22a7977cd129fff560d0cc452f58dfdf",
-  "implementationHead": "73f5281c5df00df057fd9819d2f4e11befc5de57",
+  "implementationHead": "ae28a00a831c27b5ef36e5b83dd849cbe8b416fd",
   "bundleSha256": "4a992c480b58d57ecc4fd96b7eb282800341e9f38e3a1f1caf72b213d8bf084f",
   "contractSha256": "326bd66398b2581bf72fecbe11ba2301e9218015bc39da68646db7bcb4abde9a",
   "status": "IMPLEMENTED_LOCAL_GREEN_CI_AND_HUMAN_PENDING",
@@ -14,12 +14,15 @@
     "pauseResumePreservesSegments": true,
     "actualTrackSeparatedFromPlannedRoute": true,
     "archiveFailureRetainsStoppedSession": true,
-    "legacyTracksMigrateAsImported": true
+    "legacyTracksMigrateAsImported": true,
+    "failedLoadCannotOverwriteRecording": true,
+    "recordingTimestampsRemainMonotonic": true,
+    "runtimeAndWirePointBoundsMatch": true
   },
   "evidence": {
-    "trackRuntimeFocusedTests": "PASS_8_OF_8",
+    "trackRuntimeFocusedTests": "PASS_11_OF_11",
     "trackOverlayFocusedTest": "PASS",
-    "trackProtoMapperTest": "PASS",
+    "trackProtoMapperTest": "PASS_2_OF_2",
     "featureNavigationCompile": "PASS",
     "featureChartCompile": "PASS",
     "appShellCompile": "PASS",

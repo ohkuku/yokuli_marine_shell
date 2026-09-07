@@ -3,7 +3,7 @@
   "bundle": "Yokuli_OS_Chart_Navigation_Navionics_Research_V3_Bundle.zip",
   "bundleSha256": "4a992c480b58d57ecc4fd96b7eb282800341e9f38e3a1f1caf72b213d8bf084f",
   "contractSha256": "326bd66398b2581bf72fecbe11ba2301e9218015bc39da68646db7bcb4abde9a",
-  "implementationHead": "928bd3fe634af5fdc869f5a4de8655fb158f655c",
+  "implementationHead": "ae28a00a831c27b5ef36e5b83dd849cbe8b416fd",
   "completedPackages": ["R00", "R01", "R02", "R03", "R04", "R05", "R06", "R07", "R08", "R09"],
   "pendingPackages": {
     "R10": "HUMAN_ACCEPTANCE_PENDING",

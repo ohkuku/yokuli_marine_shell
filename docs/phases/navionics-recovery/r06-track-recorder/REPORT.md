@@ -13,6 +13,7 @@
 - Saved Track 保存分段、点时间、位置来源、可选 SOG/COG、距离、时长及开始时 active navigation/route 关联。
 - 实际航迹使用独立 `ACTIVE_TRACK` overlay；它与 planned route / active navigation leg 不是同一个对象，切换 map content 不清除轨迹。
 - map library schema 从 4 迁移到 5；旧 GPX track 保持 `IMPORTED`，新增 recorded metadata 默认为空。
+- recording 文件损坏、不可读或来自未来 schema 时进入只读故障态；成功重新读取以前，Start 不会用新空会话覆盖原文件。wall clock 回拨时点、Stop 与 archive 时间保持单调，20 万点上限由 runtime 与 encoder 双重强制。
 
 ## Design decisions
 
@@ -33,9 +34,10 @@
 
 - Red：核心 Track 模型/runtime 缺失，首轮 `DefaultTrackRecorderRuntimeTest` 在 compileTest 失败。
 - Correction Red：首次命令错误复活 stopped session、容量达到后仍 recording、Start 不采集现有 fix，三项行为测试精确失败。
-- Green：`DefaultTrackRecorderRuntimeTest` 8/8 PASS。
+- Persistence Correction Red：future-schema load 后 Start 覆盖原文件、回拨 wall clock 产生早于 session 的点/archive 时间、encoder 缺少独立容量拒绝，均先由安全测试覆盖。
+- Green：`DefaultTrackRecorderRuntimeTest` 11/11 PASS。
 - Renderer Red：`ACTIVE_TRACK` action/state/overlay 缺失，`TrackOverlayContractTest` 在 compileTest 失败；Green PASS。
-- `TrackRecordingProtoMapperTest` PASS。
+- `TrackRecordingProtoMapperTest` 2/2 PASS。
 - `:feature:navigation:compileDebugKotlin` PASS。
 - `:feature:chart:compileDebugKotlin` PASS。
 - `:app-shell:compileStandaloneDebugKotlin` PASS。
