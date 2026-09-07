@@ -16,7 +16,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChartLibraryCoordinatorTest {
     @Test
-    fun shellDestinationRestoresAttentionFilterAndOpaqueAssetDetail() = runTest {
+    fun shellDestinationRestoresAttentionFilterAndOpaqueAssetDetail() = runTest(UnconfinedTestDispatcher()) {
         val runtime = FakeRuntime(source(), asset())
         val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)
         advanceUntilIdle()
@@ -32,7 +32,7 @@ class ChartLibraryCoordinatorTest {
     }
 
     @Test
-    fun selectedAssetMutationIsSerializedThroughCatalogTransaction() = runTest {
+    fun selectedAssetMutationIsSerializedThroughCatalogTransaction() = runTest(UnconfinedTestDispatcher()) {
         val runtime = FakeRuntime(source(), asset())
         val coordinator = ChartLibraryCoordinator(runtime, backgroundScope)
         advanceUntilIdle()
@@ -104,7 +104,7 @@ class ChartLibraryCoordinatorTest {
     }
 
     @Test
-    fun managedCopyDoesNotStartBeforeExplicitWholeFileConfirmation() = runTest {
+    fun managedCopyDoesNotStartBeforeExplicitWholeFileConfirmation() = runTest(UnconfinedTestDispatcher()) {
         val runtime = FakeRuntime(source(), asset())
         runtime.storage.value = ChartLibraryStorageSnapshot(
             availableCopyBytes = 10_000L,
@@ -124,9 +124,10 @@ class ChartLibraryCoordinatorTest {
     }
 
     @Test
-    fun rejectedManagedDeleteStaysOnConfirmationAndReportsActiveLease() = runTest {
+    fun rejectedManagedDeleteStaysOnConfirmationAndReportsActiveLease() = runTest(UnconfinedTestDispatcher()) {
         val managedSource = source().copy(
             kind = ChartLibrarySourceKind.MANAGED,
+            recursive = false,
             grantState = ChartGrantState.NOT_REQUIRED,
         )
         val runtime = FakeRuntime(managedSource, asset())
