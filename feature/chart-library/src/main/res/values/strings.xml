@@ -30,6 +30,7 @@
     <string name="layers_explanation">一个图层代表用户理解的一片地图内容，可由同一来源内多张 MBTiles 共同组成。这里调整名称、显示、顺序和不透明度。</string>
     <string name="layers_empty">添加海图来源后，会在这里形成逻辑图层。</string>
     <string name="layer_summary">%1$d 个来源 · %2$d / %3$d 张海图可用 · %4$s</string>
+    <string name="layer_thumbnail_description">%1$s 的覆盖范围缩略图</string>
     <string name="views_explanation">视图保存底图与逻辑图层的组合。活动视图是 Chart 唯一消费的地图内容真相。</string>
     <string name="view_default_name">航海视图 %1$d</string>
     <string name="view_copy_name">%1$s 副本</string>

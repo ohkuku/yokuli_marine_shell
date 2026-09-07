@@ -341,6 +341,7 @@ object ChartLibraryTestTags {
     const val COVERAGE = "chart-library-coverage"
     const val LAYERS = "chart-library-layers"
     const val VIEWS = "chart-library-views"
+    const val COMPOSITE_PREVIEW = "chart-library-composite-preview"
     const val SOURCES = "chart-library-sources"
     const val BULK_ENABLE = "chart-library-bulk-enable"
     const val BULK_DISABLE = "chart-library-bulk-disable"

@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -76,6 +78,7 @@ import java.util.Locale
 fun ChartLibraryWorkspace(
     state: ChartLibraryUiState,
     onAction: (ChartLibraryUiAction) -> Unit,
+    compositePreview: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val colors = LocalWpTheme.current
     val currentState by rememberUpdatedState(state)
@@ -98,7 +101,7 @@ fun ChartLibraryWorkspace(
         state.notice?.let { Notice(it, onAction) }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (val page = state.page) {
-                is ChartLibraryPageUi.Overview -> Overview(state, page, onAction)
+                is ChartLibraryPageUi.Overview -> Overview(state, page, compositePreview, onAction)
                 is ChartLibraryPageUi.SourceDetail -> SourceDetail(page, onAction)
                 is ChartLibraryPageUi.AssetDetail -> AssetDetail(page.asset, onAction)
                 is ChartLibraryPageUi.Storage -> Storage(page.storage)
@@ -115,6 +118,7 @@ fun ChartLibraryWorkspace(
 private fun Overview(
     state: ChartLibraryUiState,
     page: ChartLibraryPageUi.Overview,
+    compositePreview: (@Composable (Modifier) -> Unit)?,
     onAction: (ChartLibraryUiAction) -> Unit,
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = YokuliMetrics.PageMargin)) {
@@ -122,7 +126,7 @@ private fun Overview(
         when (state.workspaceMode) {
             ChartLibraryWorkspaceMode.COVERAGE -> CoverageWorkspace(state, onAction)
             ChartLibraryWorkspaceMode.LAYERS -> LayersWorkspace(state, onAction)
-            ChartLibraryWorkspaceMode.VIEWS -> ViewsWorkspace(state, onAction)
+            ChartLibraryWorkspaceMode.VIEWS -> ViewsWorkspace(state, compositePreview, onAction)
             ChartLibraryWorkspaceMode.SOURCES -> SourcesWorkspace(state, page, onAction)
         }
     }
@@ -170,7 +174,7 @@ private fun CoverageWorkspace(
             if (state.summary.sourceCount == 0) {
                 EmptyLibrary()
             } else {
-                CoverageCanvas(boundedLayers)
+                CoverageCanvas(boundedLayers) { layer -> onAction(ChartLibraryUiAction.SelectLayer(layer.id)) }
                 WpText(
                     stringResource(
                         R.string.coverage_summary,
@@ -200,12 +204,25 @@ private fun CoverageWorkspace(
 }
 
 @Composable
-private fun CoverageCanvas(layers: List<ChartLibraryLayerUi>) {
+private fun CoverageCanvas(layers: List<ChartLibraryLayerUi>, onSelect: (ChartLibraryLayerUi) -> Unit) {
     val colors = LocalWpTheme.current
     val description = stringResource(R.string.coverage_canvas_description, layers.size)
     Canvas(
         Modifier.fillMaxWidth().height(250.dp).background(colors.foreground.copy(alpha = .035f))
             .border(1.dp, colors.muted.copy(alpha = .55f))
+            .pointerInput(layers) {
+                detectTapGestures { point ->
+                    val longitude = point.x / size.width * 360.0 - 180.0
+                    val latitude = 90.0 - point.y / size.height * 180.0
+                    layers.asReversed().firstOrNull { layer ->
+                        layer.bounds?.let { bounds ->
+                            latitude in bounds.south..bounds.north && if (bounds.crossesAntimeridian) {
+                                longitude >= bounds.west || longitude <= bounds.east
+                            } else longitude in bounds.west..bounds.east
+                        } == true
+                    }?.let(onSelect)
+                }
+            }
             .semantics { contentDescription = description }
             .testTag(ChartLibraryTestTags.COVERAGE),
     ) {
@@ -234,7 +251,12 @@ private fun CoverageCanvas(layers: List<ChartLibraryLayerUi>) {
                     height = (bottom - top).coerceAtLeast(2f),
                 )
                 drawRect(color.copy(alpha = .22f), topLeft = androidx.compose.ui.geometry.Offset(left, top), size = rectSize)
-                drawRect(color.copy(alpha = .9f), topLeft = androidx.compose.ui.geometry.Offset(left, top), size = rectSize, style = Stroke(width = 2f))
+                drawRect(
+                    if (layer.selected) colors.foreground else color.copy(alpha = .9f),
+                    topLeft = androidx.compose.ui.geometry.Offset(left, top),
+                    size = rectSize,
+                    style = Stroke(width = if (layer.selected) 5f else 2f),
+                )
             }
             if (bounds.crossesAntimeridian) {
                 drawSegment(bounds.west, 180.0)
@@ -309,6 +331,7 @@ private fun LogicalLayerRow(layer: ChartLibraryLayerUi, index: Int, onAction: (C
                 onAction(ChartLibraryUiAction.SetLayerVisible(layer.id, !layer.visible))
             }
         }
+        LayerCoverageThumbnail(layer)
         WpText(
             stringResource(
                 R.string.layer_summary,
@@ -320,6 +343,7 @@ private fun LogicalLayerRow(layer: ChartLibraryLayerUi, index: Int, onAction: (C
             12,
             color = if (layer.health == ChartLayerHealth.READY) colors.muted else colors.warning,
         )
+        LayerZoomSpan(layer)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             InlineCommand("−", "chart-library-layer-opacity-down-${layer.id.value}") {
                 onAction(ChartLibraryUiAction.SetLayerOpacity(layer.id, layer.opacity - .1f))
@@ -339,7 +363,61 @@ private fun LogicalLayerRow(layer: ChartLibraryLayerUi, index: Int, onAction: (C
 }
 
 @Composable
-private fun ViewsWorkspace(state: ChartLibraryUiState, onAction: (ChartLibraryUiAction) -> Unit) {
+private fun LayerCoverageThumbnail(layer: ChartLibraryLayerUi) {
+    val colors = LocalWpTheme.current
+    val description = stringResource(R.string.layer_thumbnail_description, layer.name)
+    Canvas(
+        Modifier.fillMaxWidth().height(76.dp).background(colors.foreground.copy(alpha = .035f))
+            .semantics { contentDescription = description },
+    ) {
+        drawLine(colors.muted.copy(alpha = .2f), androidx.compose.ui.geometry.Offset(size.width / 2f, 0f), androidx.compose.ui.geometry.Offset(size.width / 2f, size.height))
+        drawLine(colors.muted.copy(alpha = .2f), androidx.compose.ui.geometry.Offset(0f, size.height / 2f), androidx.compose.ui.geometry.Offset(size.width, size.height / 2f))
+        val bounds = layer.bounds ?: return@Canvas
+        val top = (((90.0 - bounds.north) / 180.0) * size.height).toFloat()
+        val bottom = (((90.0 - bounds.south) / 180.0) * size.height).toFloat()
+        fun segment(west: Double, east: Double) {
+            val left = (((west + 180.0) / 360.0) * size.width).toFloat()
+            val right = (((east + 180.0) / 360.0) * size.width).toFloat()
+            drawRect(
+                colors.accent.copy(alpha = .45f),
+                androidx.compose.ui.geometry.Offset(left, top),
+                androidx.compose.ui.geometry.Size((right - left).coerceAtLeast(2f), (bottom - top).coerceAtLeast(2f)),
+            )
+        }
+        if (bounds.crossesAntimeridian) {
+            segment(bounds.west, 180.0)
+            segment(-180.0, bounds.east)
+        } else segment(bounds.west, bounds.east)
+    }
+}
+
+@Composable
+private fun LayerZoomSpan(layer: ChartLibraryLayerUi) {
+    val colors = LocalWpTheme.current
+    Canvas(
+        Modifier.fillMaxWidth().height(12.dp).semantics {
+            contentDescription = "${layer.minZoom ?: "?"}–${layer.maxZoom ?: "?"}"
+        },
+    ) {
+        val y = size.height / 2f
+        drawLine(colors.muted.copy(alpha = .35f), androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 3f)
+        val min = layer.minZoom ?: return@Canvas
+        val max = layer.maxZoom ?: return@Canvas
+        drawLine(
+            colors.accent,
+            androidx.compose.ui.geometry.Offset(size.width * min / 24f, y),
+            androidx.compose.ui.geometry.Offset(size.width * max / 24f, y),
+            strokeWidth = 5f,
+        )
+    }
+}
+
+@Composable
+private fun ViewsWorkspace(
+    state: ChartLibraryUiState,
+    compositePreview: (@Composable (Modifier) -> Unit)?,
+    onAction: (ChartLibraryUiAction) -> Unit,
+) {
     val nextName = stringResource(R.string.view_default_name, state.views.size + 1)
     LazyColumn(
         Modifier.fillMaxSize().testTag(ChartLibraryTestTags.VIEWS),
@@ -347,6 +425,15 @@ private fun ViewsWorkspace(state: ChartLibraryUiState, onAction: (ChartLibraryUi
     ) {
         item {
             WpText(stringResource(R.string.views_explanation), 13, color = LocalWpTheme.current.muted)
+            state.views.firstOrNull { it.active }?.let { active ->
+                WpText(active.name, 24, weight = FontWeight.Light, modifier = Modifier.padding(top = 8.dp))
+            }
+            if (compositePreview != null) {
+                compositePreview(
+                    Modifier.fillMaxWidth().height(250.dp).padding(vertical = 8.dp)
+                        .testTag(ChartLibraryTestTags.COMPOSITE_PREVIEW),
+                )
+            }
             InlineCommand(stringResource(R.string.action_new_view), "chart-library-new-view") {
                 onAction(ChartLibraryUiAction.CreateView(nextName))
             }

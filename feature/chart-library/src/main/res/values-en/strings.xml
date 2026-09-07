@@ -30,6 +30,7 @@
     <string name="layers_explanation">A layer is one map-content unit in the user\'s mental model and may combine many MBTiles from its source. Rename, show, order and fade layers here.</string>
     <string name="layers_empty">Logical layers appear here after a chart source is added.</string>
     <string name="layer_summary">%1$d sources · %2$d / %3$d charts usable · %4$s</string>
+    <string name="layer_thumbnail_description">Coverage thumbnail for %1$s</string>
     <string name="views_explanation">A view saves a base map and logical-layer composition. The active view is the only map-content truth consumed by Chart.</string>
     <string name="view_default_name">Sailing view %1$d</string>
     <string name="view_copy_name">%1$s copy</string>

@@ -2,7 +2,10 @@ package com.yokuli.marine.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.testTag
@@ -13,11 +16,14 @@ import com.yokuli.marine.map.offline.ChartLoopbackTileGateway
 import com.yokuli.marine.core.design.WpThemeSpec
 import com.yokuli.marine.core.design.WpThemeMode
 import com.yokuli.marine.map.domain.MapAction
+import com.yokuli.marine.map.domain.BoundedMapTileSnapshotRuntime
+import com.yokuli.marine.map.domain.MapReducer
 import com.yokuli.marine.map.domain.MapState
 import com.yokuli.marine.map.domain.MapViewMode
 import com.yokuli.marine.map.domain.MapTileSnapshot
 import com.yokuli.marine.map.domain.MapTileSnapshotSink
 import com.yokuli.marine.map.domain.MapViewportInsets
+import com.yokuli.marine.map.domain.chartlibrary.ChartBuiltInBaseStyle
 import com.yokuli.marine.map.domain.SavedPlace
 import com.yokuli.marine.feature.chart.ChartDestinations
 import com.yokuli.marine.feature.chart.ChartShellContribution
@@ -172,6 +178,47 @@ internal fun chartSurfaceKind(mapViewMode: MapViewMode, googleMapsConfigured: Bo
         ChartSurfaceKind.OFFLINE
     }
 
+private fun chartMapMode(style: ChartBuiltInBaseStyle): MapViewMode = when (style) {
+    ChartBuiltInBaseStyle.NONE -> MapViewMode.MARINE
+    ChartBuiltInBaseStyle.STANDARD -> MapViewMode.STANDARD
+    ChartBuiltInBaseStyle.SATELLITE -> MapViewMode.SATELLITE
+}
+
+@Composable
+private fun rememberProductionChartSurface(
+    runtime: ProductionShellRuntime,
+    snapshotSink: MapTileSnapshotSink = runtime.mapTileSnapshotSink,
+): MarineChartSurface = remember(runtime.heavyContentReady, snapshotSink) {
+    if (runtime.heavyContentReady) {
+        { state, onAction, onQueryPortChanged, modifier ->
+            if (chartSurfaceKind(state.mapViewMode, BuildConfig.GOOGLE_MAPS_CONFIGURED) == ChartSurfaceKind.GOOGLE) {
+                GoogleMarineChartSurface(
+                    state = state,
+                    onAction = onAction,
+                    onQueryPortChanged = onQueryPortChanged,
+                    darkMode = runtime.theme.mode == WpThemeMode.DARK,
+                    chartLibraryAccess = runtime.chartLibraryAccess,
+                    tileSnapshotSink = snapshotSink,
+                    modifier = modifier.testTag("chart-surface-google"),
+                )
+            } else {
+                OfflineMarineChartSurface(
+                    state = state,
+                    onAction = onAction,
+                    onQueryPortChanged = onQueryPortChanged,
+                    acquirePackageLease = runtime.acquireChartPackageLease,
+                    chartLibraryAccess = runtime.chartLibraryAccess,
+                    chartTileGateway = runtime.chartTileGateway,
+                    tileSnapshotSink = snapshotSink,
+                    modifier = modifier.testTag("chart-surface-maplibre"),
+                )
+            }
+        }
+    } else {
+        { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }
+    }
+}
+
 private fun GpxImportUiState.toNavigationGpxState(): NavigationGpxUiState = when (this) {
     GpxImportUiState.Idle -> NavigationGpxUiState.Idle
     is GpxImportUiState.Inspecting -> NavigationGpxUiState.Inspecting
@@ -275,36 +322,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             LaunchedEffect(token) {
                 ChartLaunchProjector.action(target, runtime.currentMapState())?.let(runtime.onMapAction)
             }
-            val chartSurface: MarineChartSurface = remember(runtime.heavyContentReady) {
-                if (runtime.heavyContentReady) {
-                    { state, onAction, onQueryPortChanged, modifier ->
-                    if (chartSurfaceKind(state.mapViewMode, BuildConfig.GOOGLE_MAPS_CONFIGURED) == ChartSurfaceKind.GOOGLE) {
-                            GoogleMarineChartSurface(
-                                state = state,
-                                onAction = onAction,
-                                onQueryPortChanged = onQueryPortChanged,
-                                darkMode = runtime.theme.mode == WpThemeMode.DARK,
-                                chartLibraryAccess = runtime.chartLibraryAccess,
-                                tileSnapshotSink = runtime.mapTileSnapshotSink,
-                                modifier = modifier.testTag("chart-surface-google"),
-                            )
-                        } else {
-                            OfflineMarineChartSurface(
-                                state = state,
-                                onAction = onAction,
-                                onQueryPortChanged = onQueryPortChanged,
-                                acquirePackageLease = runtime.acquireChartPackageLease,
-                                chartLibraryAccess = runtime.chartLibraryAccess,
-                                chartTileGateway = runtime.chartTileGateway,
-                                tileSnapshotSink = runtime.mapTileSnapshotSink,
-                                modifier = modifier.testTag("chart-surface-maplibre"),
-                            )
-                        }
-                    }
-                } else {
-                    { _, _, _, modifier -> MarineChartTransitionSurface(modifier) }
-                }
-            }
+            val chartSurface = rememberProductionChartSurface(runtime)
             if (!ChartLaunchProjector.isSettled(target, runtime.mapState)) {
                 MarineChartTransitionSurface(Modifier.fillMaxSize())
                 return@InternalAppHost
@@ -394,9 +412,34 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             val runtime = LocalProductionShellRuntime.current
             val destination = remember(token) { requireNotNull(ChartLibraryDestinations.parse(token)) }
             LaunchedEffect(token) { runtime.onOpenChartLibrary(token) }
+            val previewSnapshotSink = remember { BoundedMapTileSnapshotRuntime() }
+            val previewSurface = rememberProductionChartSurface(runtime, previewSnapshotSink)
+            val displayPlan = runtime.chartDisplayState.plan
+            var previewState by remember {
+                mutableStateOf(
+                    MapState(
+                        chartDisplayPlan = displayPlan,
+                        mapViewMode = chartMapMode(displayPlan.builtInBaseStyle),
+                    ),
+                )
+            }
+            LaunchedEffect(displayPlan.fingerprint) {
+                previewState = previewState.copy(
+                    chartDisplayPlan = displayPlan,
+                    mapViewMode = chartMapMode(displayPlan.builtInBaseStyle),
+                )
+            }
             ChartLibraryWorkspace(
                 state = runtime.chartLibraryState,
                 onAction = runtime.onChartLibraryAction,
+                compositePreview = { modifier ->
+                    previewSurface(
+                        previewState,
+                        { action -> previewState = MapReducer.reduce(previewState, action).state },
+                        {},
+                        modifier,
+                    )
+                },
             )
         },
     ),
