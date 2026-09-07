@@ -66,6 +66,7 @@ class DataLiveTileTest {
 
         assertEquals(listOf(DataTileValueKind.POSITION, DataTileValueKind.COURSE_SPEED), tile.importantValues.map { it.kind })
         assertEquals(2, tile.importantValues.size)
+        assertEquals(SensorHealth.LIVE, tile.overallHealth)
         assertFalse(tile.importantValues.any { "RMC" in it.value || "GPRMC" in it.value })
     }
 }

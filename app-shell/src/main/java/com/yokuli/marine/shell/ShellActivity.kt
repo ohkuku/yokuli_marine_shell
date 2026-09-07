@@ -98,6 +98,7 @@ import com.yokuli.marine.feature.data.DataEffect
 import com.yokuli.marine.feature.data.DataLauncherProjector
 import com.yokuli.marine.feature.data.DataUiAction
 import com.yokuli.marine.feature.data.dataStatusCopy
+import com.yokuli.marine.feature.data.navigationDataWarningCopy
 import com.yokuli.marine.feature.navigation.NavigationEffect
 import com.yokuli.marine.feature.navigation.marineOngoingActivityStatusCopies
 import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
@@ -509,6 +510,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             DataLauncherProjector.project(nmeaRuntimeSnapshot, dataSourcesSnapshot)
         }
         val dataStatus = dataStatusCopy(dataLauncherState)
+        val navigationDataWarning = navigationDataWarningCopy(dataState)
         val chartLibraryStatus = chartLibraryStatusCopy(
             chartLibraryState,
             currentDisplayNeedsAttention = chartDisplayState.activeViewId != null &&
@@ -757,6 +759,14 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
                                             attention = activity.attention,
                                         )
                                     }.toTypedArray(),
+                                    navigationDataWarning?.let {
+                                        WpStatusStripItem(
+                                            "navigation-data",
+                                            it.compact,
+                                            it.expanded,
+                                            attention = true,
+                                        )
+                                    },
                                     dataStatus?.let {
                                         WpStatusStripItem(
                                             "data",

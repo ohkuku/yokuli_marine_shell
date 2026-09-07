@@ -55,6 +55,7 @@ data class DataLauncherState(
     val receivingInputCount: Int,
     val usingGroupCount: Int,
     val attentionCount: Int,
+    val overallHealth: SensorHealth,
     val groupLines: List<String>,
     val importantValues: List<DataTileValue> = emptyList(),
 ) {
@@ -78,6 +79,7 @@ object DataLauncherProjector {
                     SourceGroupStatus.MIXED_LEGACY_SELECTION,
                 )
             } + if (sources.lastFailure != null) 1 else 0,
+            overallHealth = domain.boat.health,
             groupLines = domain.groups.filter { it.status == SourceGroupStatus.USING }
                 .take(3)
                 .map { it.group.name },
@@ -153,22 +155,36 @@ fun dataStatusCopy(state: DataLauncherState): DataStatusCopy? {
 }
 
 @Composable
+fun navigationDataWarningCopy(state: DataUiState): DataStatusCopy? {
+    val navigation = state.consumerImpact.firstOrNull {
+        it.consumerId == MarineConsumerId.NAVIGATION && it.active
+    } ?: return null
+    if (navigation.severity != ConsumerImpactSeverity.BLOCKED) return null
+    val affectedLabels = mutableListOf<String>()
+    navigation.affectedSensors.forEach { affectedLabels += dataSensorLabel(it) }
+    return DataStatusCopy(
+        compact = stringResource(R.string.navigation_data_lost),
+        expanded = stringResource(
+            R.string.navigation_data_lost_detail,
+            affectedLabels.joinToString(" · "),
+        ),
+    )
+}
+
+@Composable
 fun dataLauncherVisualContribution(
     nmea: NmeaRuntimeSnapshot,
     sources: MarineSourceSnapshot,
 ): LauncherEntryVisualContribution {
     val state = DataLauncherProjector.project(nmea, sources)
     val title = stringResource(R.string.data_title)
+    val hero = state.importantValues.firstOrNull()
     return LauncherEntryVisualContribution(
         entryId = DataDestinations.EntryId,
         title = title,
         chineseIndex = 'S',
-        headline = if (state.attentionCount > 0) {
-            stringResource(R.string.data_tile_attention, state.attentionCount)
-        } else {
-            stringResource(R.string.data_tile_receiving, state.receivingInputCount)
-        },
-        detail = stringResource(R.string.data_tile_groups, state.usingGroupCount),
+        headline = hero?.value ?: dataHealthLabel(state.overallHealth),
+        detail = hero?.let { tileValueLabel(it.kind) } ?: stringResource(R.string.data_tile_groups, state.usingGroupCount),
         icon = LauncherIconRenderer { tint, modifier -> DataLauncherIcon(tint, modifier) },
         tileRenderers = mapOf(
             MarineTileSize.ICON_1X1 to LauncherTileRenderer { DataSmallTile(it, state) },
@@ -212,15 +228,13 @@ private fun DataMediumTile(context: LauncherTileRenderContext, title: String, st
     Box(context.modifier.fillMaxSize().testTag("data-tile-medium")) {
         DataLauncherIcon(context.contentColor, Modifier.size(34.dp).align(Alignment.TopStart))
         Column(Modifier.align(Alignment.CenterStart)) {
+            val hero = state.importantValues.firstOrNull()
+            WpText(hero?.value ?: dataHealthLabel(state.overallHealth), 22, color = context.contentColor, weight = FontWeight.Light)
             WpText(
-                if (state.attentionCount > 0) stringResource(R.string.data_tile_attention, state.attentionCount)
-                else stringResource(R.string.data_tile_receiving, state.receivingInputCount),
-                22,
-                color = context.contentColor,
-                weight = FontWeight.Light,
+                hero?.let { tileValueLabel(it.kind) } ?: stringResource(R.string.data_tile_groups, state.usingGroupCount),
+                11,
+                color = context.contentColor.copy(alpha = .84f),
             )
-            WpText(stringResource(R.string.data_tile_groups, state.usingGroupCount), 11, color = context.contentColor.copy(alpha = .84f))
-            state.importantValues.firstOrNull()?.let { WpText(it.value, 10, color = context.contentColor.copy(alpha = .84f), maxLines = 1) }
         }
         WpText(title, 12, color = context.contentColor, modifier = Modifier.align(Alignment.BottomStart))
     }
@@ -232,7 +246,7 @@ private fun DataWideTile(context: LauncherTileRenderContext, title: String, stat
         Column(Modifier.weight(1f).fillMaxHeight()) {
             DataLauncherIcon(context.contentColor, Modifier.size(34.dp))
             Spacer(Modifier.weight(1f))
-            WpText(stringResource(R.string.data_tile_receiving, state.receivingInputCount), 21, color = context.contentColor, weight = FontWeight.Light)
+            WpText(state.importantValues.firstOrNull()?.value ?: dataHealthLabel(state.overallHealth), 21, color = context.contentColor, weight = FontWeight.Light)
             WpText(title, 12, color = context.contentColor)
         }
         Column(Modifier.width(150.dp).padding(start = 12.dp, top = 4.dp)) {
@@ -248,6 +262,21 @@ private fun DataWideTile(context: LauncherTileRenderContext, title: String, stat
         }
     }
 }
+
+@Composable
+private fun dataHealthLabel(health: SensorHealth): String = stringResource(when (health) {
+    SensorHealth.LIVE -> R.string.data_tile_health_healthy
+    SensorHealth.HELD, SensorHealth.STALE, SensorHealth.NEEDS_ATTENTION -> R.string.data_tile_health_degraded
+    SensorHealth.UNAVAILABLE -> R.string.data_tile_health_offline
+})
+
+@Composable
+private fun dataSensorLabel(sensor: BoatSensor): String = stringResource(when (sensor) {
+    BoatSensor.POSITION -> R.string.sensor_position
+    BoatSensor.HEADING -> R.string.sensor_heading
+    BoatSensor.DEPTH -> R.string.sensor_depth
+    BoatSensor.WIND -> R.string.sensor_wind
+})
 
 @Composable
 private fun tileValueLabel(kind: DataTileValueKind): String = stringResource(

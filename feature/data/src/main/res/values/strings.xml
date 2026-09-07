@@ -91,6 +91,11 @@
     <string name="data_tile_value_heading">航向</string>
     <string name="data_tile_value_depth">水深</string>
     <string name="data_tile_value_wind">风</string>
+    <string name="data_tile_health_healthy">数据健康</string>
+    <string name="data_tile_health_degraded">数据降级</string>
+    <string name="data_tile_health_offline">船舶离线</string>
+    <string name="navigation_data_lost">导航数据丢失</string>
+    <string name="navigation_data_lost_detail">当前导航所需数据不可用：%1$s</string>
     <string name="data_status_attention">数据 !%1$d</string>
     <string name="data_status_receiving">数据 %1$d</string>
     <string name="data_status_expanded">%1$d/%2$d 个输入接收中 · %3$d 个数据组已采用</string>
