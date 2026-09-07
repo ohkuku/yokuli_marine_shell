@@ -15,6 +15,8 @@ import com.yokuli.marine.data.phone.PhoneLocationSnapshot
 import com.yokuli.marine.data.runtime.ConnectionInputState
 import com.yokuli.marine.data.runtime.ConnectionTransportState
 import com.yokuli.marine.data.runtime.NmeaRuntimeSnapshot
+import com.yokuli.marine.data.runtime.NmeaRuntimeFailure
+import com.yokuli.marine.data.connection.NmeaEndpoint
 import com.yokuli.marine.data.source.MarineSourceSnapshot
 import com.yokuli.marine.data.source.ResolvedDatum
 import com.yokuli.marine.data.source.SelectionReason
@@ -114,6 +116,9 @@ data class DataInputState(
     val lastSentenceId: String?,
     val lastSentenceAtMillis: Long?,
     val health: DataInputHealth,
+    val endpoint: NmeaEndpoint,
+    val providedSensors: Set<BoatSensor>,
+    val failure: NmeaRuntimeFailure?,
 )
 
 enum class DataInputHealth { STOPPED, WAITING, LISTENING, RECEIVING, INTERRUPTED, ATTENTION }
@@ -166,6 +171,10 @@ enum class DataNotice {
 data class DataUiState(
     val section: DataSection = DataSection.OVERVIEW,
     val primaryArea: PrimaryDataArea = PrimaryDataArea.BOAT,
+    val surface: DataSurface = DataSurface.Primary(PrimaryDataArea.BOAT),
+    val connectionDraft: DataConnectionDraft? = null,
+    val connectionTest: DataConnectionTestState = DataConnectionTestState.IDLE,
+    val flowExpert: Boolean = false,
     val resolvedValues: Map<DataKey, ResolvedDatum> = emptyMap(),
     val boat: DataBoatOverview = DataBoatOverview(emptyMap(), emptyList(), SensorHealth.UNAVAILABLE),
     val consumerImpact: List<MarineConsumerImpact> = emptyList(),
@@ -218,6 +227,12 @@ object DataDomainProjector {
                     lastSentenceId = latestSentenceByConnection[connection.stored.config.id]?.lastSentenceId,
                     lastSentenceAtMillis = latestSentenceByConnection[connection.stored.config.id]?.lastSeenMillis,
                     health = connectionHealth(connection),
+                    endpoint = connection.stored.config.endpoint,
+                    providedSensors = sources.sourceCatalog.candidates.asSequence()
+                        .filter { it.id.source.connectionId == connection.stored.config.id }
+                        .mapNotNull { sensorFor(it.id.key) }
+                        .toCollection(linkedSetOf()),
+                    failure = connection.failure,
                 )
             },
             flow = groups.flatMap { group ->

@@ -2,6 +2,10 @@ package com.yokuli.marine.feature.data
 
 import com.yokuli.marine.data.model.DataKey
 import com.yokuli.marine.data.model.SourceIdentity
+import com.yokuli.marine.data.connection.NmeaConnectionConfig
+import com.yokuli.marine.data.connection.NmeaEndpoint
+import com.yokuli.marine.data.model.ConnectionId
+import com.yokuli.marine.data.nmea.ChecksumPolicy
 import com.yokuli.marine.data.source.ResolvedDatum
 import com.yokuli.marine.data.source.SourceCandidateAvailability
 
@@ -15,6 +19,8 @@ sealed interface DataSurface {
     data class Trust(val group: SourceGroup) : DataSurface
     data class Connection(val connectionId: com.yokuli.marine.data.model.ConnectionId) : DataSurface
     data class Diagnostics(val connectionId: com.yokuli.marine.data.model.ConnectionId? = null) : DataSurface
+    data object AddSource : DataSurface
+    data class ConnectionWizard(val type: DataConnectionType) : DataSurface
 }
 
 enum class BoatSensor {
@@ -22,6 +28,73 @@ enum class BoatSensor {
     HEADING,
     DEPTH,
     WIND,
+}
+
+enum class DataConnectionType { BOAT_GATEWAY, UDP_BROADCAST, ADVANCED_TCP, ADVANCED_UDP }
+
+data class DataConnectionDraft(
+    val id: ConnectionId,
+    val type: DataConnectionType,
+    val host: String,
+    val portText: String,
+    val customName: String = "",
+    val checksumPolicy: ChecksumPolicy = ChecksumPolicy.STRICT,
+    val expectedRevision: Long? = null,
+) {
+    val port: Int?
+        get() = portText.takeIf { it.isNotEmpty() && it.all { character -> character in '0'..'9' } }
+            ?.toIntOrNull()?.takeIf { it in 1..65_535 }
+
+    val displayName: String
+        get() = customName.trim().ifBlank {
+            when (type) {
+                DataConnectionType.BOAT_GATEWAY, DataConnectionType.ADVANCED_TCP -> "Boat Gateway"
+                DataConnectionType.UDP_BROADCAST, DataConnectionType.ADVANCED_UDP -> "UDP Broadcast"
+            }
+        }
+
+    fun configOrNull(): NmeaConnectionConfig? {
+        val parsedPort = port ?: return null
+        val endpoint = when (type) {
+            DataConnectionType.BOAT_GATEWAY, DataConnectionType.ADVANCED_TCP ->
+                host.trim().takeIf { it.isNotEmpty() }?.let { NmeaEndpoint.TcpClient(it, parsedPort) }
+                    ?: return null
+            DataConnectionType.UDP_BROADCAST, DataConnectionType.ADVANCED_UDP ->
+                NmeaEndpoint.UdpListener(parsedPort)
+        }
+        return NmeaConnectionConfig(id, displayName, endpoint, checksumPolicy)
+    }
+
+    companion object {
+        fun create(id: ConnectionId, type: DataConnectionType): DataConnectionDraft = DataConnectionDraft(
+            id = id,
+            type = type,
+            host = "",
+            portText = when (type) {
+                DataConnectionType.BOAT_GATEWAY, DataConnectionType.ADVANCED_TCP -> "10110"
+                DataConnectionType.UDP_BROADCAST, DataConnectionType.ADVANCED_UDP -> "10110"
+            },
+        )
+    }
+}
+
+enum class ConnectionTestPhase {
+    NOT_STARTED,
+    SUBMITTING,
+    WAITING_FOR_MARINE_DATA,
+    DETECTED,
+    FAILED,
+    INVALID_CONFIGURATION,
+}
+
+data class DataConnectionTestState(
+    val phase: ConnectionTestPhase = ConnectionTestPhase.NOT_STARTED,
+    val detectedSensors: Set<BoatSensor> = emptySet(),
+    val failure: com.yokuli.marine.data.runtime.NmeaRuntimeFailure? = null,
+) {
+    companion object {
+        val IDLE = DataConnectionTestState()
+    }
 }
 
 enum class SensorHealth {
@@ -184,14 +257,6 @@ internal object MarineNervousSystemProjector {
         else -> SensorHealth.UNAVAILABLE
     }
 
-    private val BoatSensor.sourceGroups: Set<SourceGroup>
-        get() = when (this) {
-            BoatSensor.POSITION -> setOf(SourceGroup.POSITION_AND_MOTION)
-            BoatSensor.HEADING -> setOf(SourceGroup.HEADING)
-            BoatSensor.DEPTH -> setOf(SourceGroup.DEPTH)
-            BoatSensor.WIND -> setOf(SourceGroup.APPARENT_WIND, SourceGroup.TRUE_WIND)
-        }
-
     private val ATTENTION_STATUSES = setOf(
         SourceGroupStatus.NEEDS_SELECTION,
         SourceGroupStatus.SELECTED_UNAVAILABLE,
@@ -202,4 +267,16 @@ internal object MarineNervousSystemProjector {
         SensorHealth.UNAVAILABLE,
         SensorHealth.NEEDS_ATTENTION,
     )
+}
+
+internal val BoatSensor.sourceGroups: Set<SourceGroup>
+    get() = when (this) {
+        BoatSensor.POSITION -> setOf(SourceGroup.POSITION_AND_MOTION)
+        BoatSensor.HEADING -> setOf(SourceGroup.HEADING)
+        BoatSensor.DEPTH -> setOf(SourceGroup.DEPTH)
+        BoatSensor.WIND -> setOf(SourceGroup.APPARENT_WIND, SourceGroup.TRUE_WIND)
+    }
+
+internal fun sensorFor(key: DataKey): BoatSensor? = BoatSensor.entries.firstOrNull { sensor ->
+    sensor.sourceGroups.any { key in it.keys }
 }

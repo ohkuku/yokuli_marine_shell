@@ -36,7 +36,6 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartPickerSelection
 import com.yokuli.marine.map.offline.ChartDisplayCoverageIndex
 import com.yokuli.marine.map.domain.chartlibrary.ChartDisplaySelection
 import com.yokuli.marine.feature.data.DataCoordinator
-import com.yokuli.marine.feature.data.DataDestination
 import com.yokuli.marine.feature.data.DataEffect
 import com.yokuli.marine.feature.data.DataUiAction
 import com.yokuli.marine.feature.data.DataUiState
@@ -45,7 +44,6 @@ import com.yokuli.marine.feature.nmeainput.NmeaInputEffect
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiState
 import com.yokuli.marine.data.source.MarineFeatureLinkToken
-import com.yokuli.marine.data.source.MarineFeatureLinks
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommand
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommandResult
 import com.yokuli.marine.navigation.domain.ActiveNavigationIssue
@@ -358,13 +356,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
         chartLibraryCoordinator.completePicker(selection)
 
     fun openData(token: com.yokuli.shell.contract.LaunchToken) {
-        when (val destination = dataCoordinator.open(token)) {
-            is DataDestination.Input -> nmeaInputCoordinator.open(
-                destination.connectionId?.let(MarineFeatureLinks::nmeaInputForConnection)
-                    ?: MarineFeatureLinks.nmeaInputRoot,
-            )
-            else -> Unit
-        }
+        dataCoordinator.open(token)
     }
 
     fun acquireChartPackageLease(packageId: ChartPackageId): ChartPackageLease =

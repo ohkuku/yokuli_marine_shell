@@ -70,7 +70,6 @@ import com.yokuli.marine.feature.data.DataWorkspace
 import com.yokuli.marine.feature.data.dataLauncherVisualContribution
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiAction
 import com.yokuli.marine.feature.nmeainput.NmeaInputUiState
-import com.yokuli.marine.feature.nmeainput.NmeaInputWorkspace
 import com.yokuli.shell.android.DefaultInternalAppHostResolver
 import com.yokuli.shell.android.StaticLauncherHostPort
 import com.yokuli.shell.compose.InternalAppHost
@@ -405,14 +404,7 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
             LaunchedEffect(token) {
                 runtime.onOpenData(token)
             }
-            DataWorkspace(runtime.dataState, runtime.onDataAction) {
-                NmeaInputWorkspace(
-                    state = runtime.nmeaInputState,
-                    onAction = runtime.onNmeaInputAction,
-                    embedded = true,
-                    onExitEmbedded = { runtime.onDataAction(DataUiAction.Navigate(com.yokuli.marine.feature.data.DataSection.OVERVIEW)) },
-                )
-            }
+            DataWorkspace(runtime.dataState, runtime.onDataAction)
         },
     ),
     InstalledAppBinding(
