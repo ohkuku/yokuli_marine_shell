@@ -20,6 +20,7 @@ def evidence_files(root: Path) -> list[Path]:
     for pattern in (
         "build/ci-device-tests.log",
         "**/build/outputs/androidTest-results/**/*.xml",
+        "adapter/chart-library-android/build/outputs/androidTest-results/**/logcat-*.txt",
         "**/build/test-results/**/TEST-*.xml",
     ):
         candidates.update(path for path in root.glob(pattern) if path.is_file())

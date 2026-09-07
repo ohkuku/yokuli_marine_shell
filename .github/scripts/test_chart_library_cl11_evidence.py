@@ -42,6 +42,30 @@ class ChartLibraryCl11EvidenceTest(unittest.TestCase):
             self.assertEqual("PARTIAL", result["status"])
             self.assertEqual(3, len(result["missingScenarios"]))
 
+    def test_android_junit_logcat_is_a_supported_evidence_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / (
+                "adapter/chart-library-android/build/outputs/androidTest-results/connected/debug/"
+                "device/logcat-chart-library.txt"
+            )
+            log.parent.mkdir(parents=True)
+            log.write_text("\n".join(
+                f'CL11_EVIDENCE {{"scenario":"{scenario}","value":1}}'
+                for scenario in ("zero-copy-read", "runtime-bounds", "catalog-1000")
+            ) + "\n", encoding="utf-8")
+            output = root / "evidence.json"
+
+            completed = subprocess.run(
+                ["python3", str(SCRIPT), "--root", str(root), "--output", str(output), "--require-complete"],
+                check=False,
+            )
+
+            result = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(0, completed.returncode)
+            self.assertEqual("COMPLETE", result["status"])
+            self.assertTrue(all("logcat-chart-library.txt" in source for source in result["sources"].values()))
+
 
 if __name__ == "__main__":
     unittest.main()
