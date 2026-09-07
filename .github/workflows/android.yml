@@ -332,11 +332,11 @@ jobs:
           test "$OSR_W08_RESULT" = success
           test "$OSR_W10_RESULT" = success
           test "$OSR_W11_RESULT" = success
-      - name: Upload human-acceptance-pending Product Recovery APK
-        if: steps.product_recovery_policy.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      - name: Upload the one installable debug APK for human testing
+        if: steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
-          name: PRODUCT-RECOVERY-yokuli-os-debug-${{ github.sha }}
+          name: YOKULI-OS-DEBUG-${{ github.sha }}
           path: |
             app-shell/build/outputs/apk/standalone/debug/*.apk
           if-no-files-found: error
@@ -359,7 +359,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload CL11 diagnostic APK when its resilience contract fails
-        if: steps.assemble.outcome == 'success' && steps.chart_library_cl11_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Failure evidence belongs in reports; never duplicate the installable APK.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-CL11-yokuli-os-debug-${{ github.sha }}
@@ -375,7 +375,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W01 diagnostic APK when its product migration contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w01_only_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Failure evidence belongs in reports; never duplicate the installable APK.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W01-yokuli-os-debug-${{ github.sha }}
@@ -383,7 +383,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W02 diagnostic APK when its live UI contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w02_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Failure evidence belongs in reports; never duplicate the installable APK.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W02-yokuli-os-debug-${{ github.sha }}
@@ -391,7 +391,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W03 diagnostic APK when its Data domain contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w03_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Failure evidence belongs in reports; never duplicate the installable APK.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W03-yokuli-os-debug-${{ github.sha }}
@@ -407,7 +407,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W08 diagnostic APK when its connected-map contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w08_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Failure evidence belongs in reports; never duplicate the installable APK.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W08-yokuli-os-debug-${{ github.sha }}
@@ -423,7 +423,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W10 diagnostic APK when its Navigation-domain contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w10_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Failure evidence belongs in reports; never duplicate the installable APK.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W10-yokuli-os-debug-${{ github.sha }}
@@ -431,7 +431,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W11 diagnostic APK when its active-navigation contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w11_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Failure evidence belongs in reports; never duplicate the installable APK.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W11-yokuli-os-debug-${{ github.sha }}
@@ -447,7 +447,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W13 diagnostic APK when its Preferences contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w13_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Failure evidence belongs in reports; never duplicate the installable APK.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W13-yokuli-os-debug-${{ github.sha }}
@@ -455,7 +455,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W14 diagnostic APK when its live-tile contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w14_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Failure evidence belongs in reports; never duplicate the installable APK.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W14-yokuli-os-debug-${{ github.sha }}
@@ -961,24 +961,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Download Product Recovery candidate with digest verification
+      - name: Download the exact human-test APK with digest verification
         uses: actions/download-artifact@v8
         with:
-          name: PRODUCT-RECOVERY-yokuli-os-debug-${{ github.sha }}
+          name: YOKULI-OS-DEBUG-${{ github.sha }}
           path: verified-apk
-      - name: Upload human-acceptance-pending installable APK
-        uses: actions/upload-artifact@v7
-        with:
-          name: HUMAN-ACCEPTANCE-PENDING-yokuli-os-${{ github.sha }}
-          path: verified-apk/**/*.apk
-          if-no-files-found: error
-          retention-days: 30
       - name: Product Recovery artifact summary
         run: |
           {
             echo '## Yokuli OS Product Recovery APK — human acceptance pending'
             echo 'Protected domain/runtime tests, lint, build, API suites and cold/warm startup signals passed. Rejected presentation tests are deliberately not authoritative during the recovery window.'
-            echo 'Download: **HUMAN-ACCEPTANCE-PENDING-yokuli-os-${{ github.sha }}**'
+            echo 'Download: **YOKULI-OS-DEBUG-${{ github.sha }}**'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Collect verified-artifact failure diagnostics
         if: failure()

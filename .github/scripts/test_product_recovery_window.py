@@ -100,7 +100,7 @@ class ProductRecoveryWindowTest(unittest.TestCase):
 
         composer = (ROOT / ".github/scripts/compose_codex_ci_report.py").read_text(encoding="utf-8")
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        self.assertIn("HUMAN-ACCEPTANCE-PENDING-yokuli-os", composer)
+        self.assertIn("YOKULI-OS-DEBUG-", composer)
         self.assertNotIn("VERIFIED-yokuli-os-alpha", composer)
         self.assertIn("PRODUCT_RECOVERY: signed product releases resume only", release)
 

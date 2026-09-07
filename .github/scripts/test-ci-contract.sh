@@ -88,8 +88,7 @@ grep -Fq -- '--require-configured' "$android" || fail 'trusted recovery APKs mus
 grep -Fq 'if: false # PRODUCT_RECOVERY: signed product releases resume only after explicit human acceptance.' "$release" || \
   fail 'signed release must remain blocked until human acceptance'
 
-grep -Fq 'PRODUCT-RECOVERY-yokuli-os-debug-${{ github.sha }}' "$android" || fail 'recovery candidate artifact is missing'
-grep -Fq 'HUMAN-ACCEPTANCE-PENDING-yokuli-os-${{ github.sha }}' "$android" || fail 'pending acceptance artifact is missing'
+grep -Fq 'YOKULI-OS-DEBUG-${{ github.sha }}' "$android" || fail 'human-test APK artifact is missing'
 if grep -Fq 'VERIFIED-yokuli-os-alpha-' "$android"; then fail 'CI must not claim product acceptance'; fi
 grep -Fq 'CODEX-CI-REPORT-' "$android" || fail 'commit-bound Codex repair report is missing'
 grep -Fq 'FINAL_ACCEPTANCE_LEDGER.json' "$repo_root/.github/scripts/compose_codex_ci_report.py" || fail 'unified evidence ledger is missing'

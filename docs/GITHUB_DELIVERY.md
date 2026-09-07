@@ -18,8 +18,7 @@ Chart、Chart Library、Navigation 和 Data visualization 在人工批准前，�
 
 每个质量边界必须是独立命名 job；job summary 汇总结果；失败以 `::error` 注解；HTML/XML、Gradle 设备日志和有限范围 `FAILURE-*` 包可下载。build 中的 `continue-on-error` 只用于收集全部证据，最后的 enforce step 必须使任一失败门禁导致 job 失败。
 
-- `PRODUCT-RECOVERY-yokuli-os-debug-*`：受保护的单元测试、lint 与编译通过，供后续设备门禁传递。
-- `HUMAN-ACCEPTANCE-PENDING-yokuli-os-*`：全部当前机器门禁通过，但明确尚未获得产品人工批准。
+- `YOKULI-OS-DEBUG-*`：只要 Debug 编译成功就发布的唯一人工测试 APK；其他 Gate 失败不阻止下载。
 - Product Recovery Window 内禁止生成名称包含 `VERIFIED` 的产品制品。
 
 ### CI-first Codex 返工报告
@@ -94,8 +93,7 @@ The build job uses `continue-on-error` only to gather all independent results an
 
 Artifacts carry trust in their name:
 
-- `PRODUCT-RECOVERY-yokuli-os-debug-*`: protected tests, lint and assembly passed; used to transfer the candidate.
-- `HUMAN-ACCEPTANCE-PENDING-yokuli-os-*`: current machine gates passed, but product acceptance is explicitly pending.
+- `YOKULI-OS-DEBUG-*`: the single human-test APK, published whenever Debug assembly succeeds; other gate failures do not block its download.
 - No product artifact may use `VERIFIED` during this recovery window.
 
 ### CI-first Codex repair artifact

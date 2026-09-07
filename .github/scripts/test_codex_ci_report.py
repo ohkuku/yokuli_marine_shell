@@ -152,7 +152,7 @@ class UnifiedCodexReportTest(unittest.TestCase):
             self.assertEqual("AWAITING_HUMAN_ACCEPTANCE", ledger["decision"])
             self.assertFalse(ledger["legacyPresentationContractsAuthoritative"])
             self.assertIn(
-                "HUMAN-ACCEPTANCE-PENDING-yokuli-os",
+                "YOKULI-OS-DEBUG-",
                 (root / "out" / "RAW_ARTIFACTS.md").read_text(),
             )
 

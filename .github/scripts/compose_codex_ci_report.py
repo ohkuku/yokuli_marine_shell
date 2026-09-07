@@ -482,7 +482,7 @@ def compose(
         "",
     ]
     raw_lines.extend(f"- `{template.format(sha=head_sha)}`" for template in RAW_ARTIFACTS.values())
-    raw_lines.append(f"- `HUMAN-ACCEPTANCE-PENDING-yokuli-os-{head_sha}`")
+    raw_lines.append(f"- `YOKULI-OS-DEBUG-{head_sha}` (published whenever debug assembly succeeds)")
     (output / "RAW_ARTIFACTS.md").write_text("\n".join(raw_lines) + "\n", encoding="utf-8")
     write_product_recovery_reports(output, results)
     sha256_inventory(output)
