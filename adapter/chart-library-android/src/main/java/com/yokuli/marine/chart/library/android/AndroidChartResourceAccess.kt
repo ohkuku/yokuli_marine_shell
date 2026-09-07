@@ -57,20 +57,6 @@ class AndroidChartResourceAccess(
             ?: return@withContext ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, "Invalid locator")
         if (uri.scheme == MANAGED_SCHEME) return@withContext openManaged(request, uri)
 
-        // A Storage Access Framework descriptor being seekable does not mean Android's SQLite
-        // stack can safely reopen it through /proc/self/fd. Real document providers commonly
-        // expose descriptors that pass lseek but fail once SQLite performs its own path and
-        // locking work. The old Yokuli importer avoided that provider-dependent failure by
-        // validating an app-private copy. Keep the user's source read-only and identity-stable,
-        // but use a revision-keyed local access copy whenever the production runtime provides a
-        // cache root. This is an access cache, not a managed-library import.
-        if (uri.scheme == ContentResolver.SCHEME_CONTENT && localFallbackRoot != null) {
-            return@withContext fallbackLocks[
-                (request.assetId.value.hashCode() and Int.MAX_VALUE) % fallbackLocks.size
-            ].withLock {
-                openLocalFallback(request, uri, localFallbackRoot)
-            }
-        }
         when (val opened = AndroidSafRandomAccessReader(resolver).open(uri)) {
             is SafRandomAccessOpenResult.Rejected -> if (
                 localFallbackRoot != null && opened.failure in STREAM_FALLBACK_FAILURES
@@ -81,7 +67,28 @@ class AndroidChartResourceAccess(
             } else {
                 ChartOpenResult.Rejected(opened.failure, opened.detail)
             }
-            is SafRandomAccessOpenResult.Opened -> openDatabase(request, opened.handle)
+            is SafRandomAccessOpenResult.Opened -> {
+                val direct = openDatabase(request, opened.handle)
+                // Seekability alone does not prove that Android SQLite can reopen a provider
+                // descriptor through /proc/self/fd. Try the zero-copy path first, then recover the
+                // provider-specific SQLite failure through the same local-file strategy used by
+                // the old Yokuli importer. The external original remains read-only and registered
+                // by its stable document identity.
+                if (
+                    uri.scheme == ContentResolver.SCHEME_CONTENT &&
+                    localFallbackRoot != null &&
+                    direct is ChartOpenResult.Rejected &&
+                    direct.failure in SQLITE_PROVIDER_FALLBACK_FAILURES
+                ) {
+                    fallbackLocks[
+                        (request.assetId.value.hashCode() and Int.MAX_VALUE) % fallbackLocks.size
+                    ].withLock {
+                        openLocalFallback(request, uri, localFallbackRoot)
+                    }
+                } else {
+                    direct
+                }
+            }
         }
     }
 
@@ -155,7 +162,12 @@ class AndroidChartResourceAccess(
             .getOrElse { return ChartOpenResult.Rejected(ChartReadFailure.CANNOT_OPEN, it.javaClass.simpleName) }
         return openDatabase(
             request,
-            SafReadOnlyHandle(descriptor, target.length(), accessMode = ChartReadAccessMode.LOCAL_FALLBACK),
+            SafReadOnlyHandle(
+                descriptor = descriptor,
+                sizeBytes = target.length(),
+                accessMode = ChartReadAccessMode.LOCAL_FALLBACK,
+                localDatabasePath = target.absolutePath,
+            ),
         )
     }
 
@@ -187,6 +199,7 @@ class AndroidChartResourceAccess(
                 file.length(),
                 lease::close,
                 ChartReadAccessMode.MANAGED_COPY,
+                file.absolutePath,
             ),
         )
     }
@@ -209,7 +222,7 @@ class AndroidChartResourceAccess(
         }
         val database = try {
             SQLiteDatabase.openDatabase(
-                handle.procFdPath,
+                handle.databasePath,
                 null,
                 SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
             ).also { it.rawQuery("PRAGMA query_only=ON", emptyArray()).use { cursor -> cursor.moveToFirst() } }
@@ -258,6 +271,11 @@ class AndroidChartResourceAccess(
             ChartReadFailure.CANNOT_OPEN,
             ChartReadFailure.DIRECT_READ_UNSUPPORTED,
             ChartReadFailure.SUBRANGE_UNSUPPORTED,
+        )
+        val SQLITE_PROVIDER_FALLBACK_FAILURES = setOf(
+            ChartReadFailure.INVALID_DATABASE,
+            ChartReadFailure.INVALID_SCHEMA,
+            ChartReadFailure.IO_FAILURE,
         )
         const val STREAM_COPY_BUFFER_BYTES = 1024 * 1024
         const val MIN_FREE_AFTER_FALLBACK_BYTES = 250L * 1024L * 1024L

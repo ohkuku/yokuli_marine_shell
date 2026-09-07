@@ -295,7 +295,9 @@ private fun MapRootChrome(
             recoveryExportState,
             onAction,
             onExportRecovery,
-            Modifier.align(Alignment.TopEnd).padding(top = 42.dp),
+            Modifier.align(Alignment.CenterEnd).padding(
+                end = with(LocalDensity.current) { viewportInsets.rightPx.toDp() } + 6.dp,
+            ),
         )
         if (state.crosshairEnabled) {
             MapCrosshairResolver.screenPoint(viewportSize.width, viewportSize.height, viewportInsets)?.let { point ->
@@ -897,8 +899,7 @@ private fun MapEdgeControls(
                 label = stringResource(cameraMode.label()),
                 tag = "map-navigation-camera",
                 selected = cameraMode != NavigationCameraMode.FREE_BROWSE,
-                modifier = Modifier.align(Alignment.TopStart).padding(
-                    top = with(density) { viewportInsets.topPx.toDp() } + 4.dp,
+                modifier = Modifier.align(Alignment.CenterStart).padding(
                     start = with(density) { viewportInsets.leftPx.toDp() } + 6.dp,
                 ),
             ) {
@@ -1067,7 +1068,10 @@ private fun MapRootCommandBar(
             Modifier.weight(1f),
             enabled = target != null || vessel != null || crosshairPoint != null,
         ) {
-            onAction(MapAction.QuickMark(target ?: vessel ?: crosshairPoint ?: return@MapCommandButton))
+            // The visible target owns the action. Falling back to vessel before the always-visible
+            // crosshair made MARK appear at a location different from the point the user was
+            // looking at.
+            onAction(MapAction.QuickMark(target ?: crosshairPoint ?: vessel ?: return@MapCommandButton))
         }
         MapCommandButton(R.string.map_tool_route, "map-tool-route", state.tool == MapTool.MANUAL_ROUTE, Modifier.weight(1f)) {
             if (state.tool == MapTool.MANUAL_ROUTE) {
@@ -1091,10 +1095,16 @@ private fun MapRootCommandBar(
                 val right = crosshairScreen?.let { screen ->
                     queryPort?.unproject(screen.copy(xPx = screen.xPx + separationPx))
                 } ?: Wgs84Geodesic.destination(center, 90.0, fallbackDistance)
-                val a = vessel ?: left
+                // A ruler must appear as two visible handles immediately. A fresh vessel is a
+                // useful A point only while it is actually inside the current viewport; using an
+                // off-screen vessel while the user is browsing elsewhere creates a one-pin ruler.
+                val visibleVessel = vessel?.takeIf { point ->
+                    queryPort?.project(point)?.inside(viewportSize, viewportInsets) == true
+                }
+                val a = visibleVessel ?: left
                 val b = when {
-                    vessel != null && center != vessel -> center
-                    vessel != null -> right
+                    visibleVessel != null && center != visibleVessel -> center
+                    visibleVessel != null -> right
                     else -> right
                 }
                 onAction(MapAction.BeginMeasurement(a, b))
@@ -1105,6 +1115,10 @@ private fun MapRootCommandBar(
         }
     }
 }
+
+private fun MapScreenPoint.inside(size: IntSize, insets: MapViewportInsets): Boolean =
+    xPx in insets.leftPx.toDouble()..(size.width - insets.rightPx).toDouble() &&
+        yPx in insets.topPx.toDouble()..(size.height - insets.bottomPx).toDouble()
 
 @Composable
 private fun MapCommandButton(

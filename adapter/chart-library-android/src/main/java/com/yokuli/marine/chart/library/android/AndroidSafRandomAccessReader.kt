@@ -62,11 +62,17 @@ class SafReadOnlyHandle internal constructor(
     private val onClose: () -> Unit = {},
     val accessMode: com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode =
         com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode.DIRECT_PROVIDER,
+    /**
+     * App-owned files have a stable real path and should be opened by SQLite through that path.
+     * Provider-owned descriptors deliberately keep using the descriptor bridge because their
+     * original URI is not a filesystem path.
+     */
+    private val localDatabasePath: String? = null,
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val bytesRead = AtomicLong(0L)
 
-    internal val procFdPath: String get() = "/proc/self/fd/${descriptor.fd}"
+    internal val databasePath: String get() = localDatabasePath ?: "/proc/self/fd/${descriptor.fd}"
 
     fun readAt(offset: Long, byteCount: Int): ByteArray = readAtResult(offset, byteCount).getOrThrow()
 

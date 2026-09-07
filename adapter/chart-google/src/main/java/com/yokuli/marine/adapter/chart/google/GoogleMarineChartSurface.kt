@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.os.SystemClock
 import android.os.Bundle
 import android.view.MotionEvent
@@ -31,6 +32,7 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.GoogleMapOptions
 import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
@@ -65,6 +67,8 @@ import com.yokuli.marine.map.domain.MapTileCoverageStatus
 import com.yokuli.marine.map.domain.MapTileSnapshotFormat
 import com.yokuli.marine.map.domain.MapTileSnapshotSink
 import com.yokuli.marine.map.domain.MapViewMode
+import com.yokuli.marine.map.domain.PositionRenderPolicy
+import com.yokuli.marine.map.domain.VesselMarkerStyle
 import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -129,6 +133,7 @@ fun GoogleMarineChartSurface(
                 .zoomGesturesEnabled(true),
         )
     }
+    val markerIcons = remember(mapView) { mutableMapOf<String, BitmapDescriptor>() }
     val lifecycleDriver = remember(mapView) { MapViewLifecycleDriver(mapView) }
     var googleMap by remember(mapView) { mutableStateOf<GoogleMap?>(null) }
     var preparedDisplay by remember(mapView) { mutableStateOf<PreparedGoogleChartDisplay?>(null) }
@@ -445,13 +450,26 @@ fun GoogleMarineChartSurface(
         state.position.observation,
     ) {
         googleMap?.apply {
+            fun icon(key: String, create: () -> Bitmap): BitmapDescriptor =
+                markerIcons.getOrPut(key) { BitmapDescriptorFactory.fromBitmap(create()) }
             domainMarkers.removeMarkersFromMap()
             domainPolylines.removePolylinesFromMap()
             state.places.forEach { place ->
-                addMarker(MarkerOptions().position(place.point.toLatLng()).title(place.name))?.let(domainMarkers::add)
+                addMarker(
+                    MarkerOptions()
+                        .position(place.point.toLatLng())
+                        .title(place.name)
+                        .anchor(.5f, 1f)
+                        .icon(icon("waypoint") { waypointBitmap(displayDensity) }),
+                )?.let(domainMarkers::add)
             }
             state.selection?.let { selection ->
-                addMarker(MarkerOptions().position(selection.point.toLatLng()))?.let(domainMarkers::add)
+                addMarker(
+                    MarkerOptions()
+                        .position(selection.point.toLatLng())
+                        .anchor(.5f, .5f)
+                        .icon(icon("target") { targetBitmap(displayDensity) }),
+                )?.let(domainMarkers::add)
             }
             state.visibleMeasurementPoints.takeIf { it.isNotEmpty() }?.let { points ->
                 domainPolylines += addPolyline(
@@ -462,11 +480,9 @@ fun GoogleMarineChartSurface(
                         MarkerOptions()
                             .position(point.toLatLng())
                             .anchor(.5f, .5f)
-                            .icon(
-                                BitmapDescriptorFactory.fromBitmap(
-                                    measurementHandleBitmap(if (index == 0) "A" else "B", displayDensity),
-                                ),
-                            ),
+                            .icon(icon("measure-$index") {
+                                measurementHandleBitmap(if (index == 0) "A" else "B", displayDensity)
+                            }),
                     )?.let(domainMarkers::add)
                 }
             }
@@ -479,11 +495,9 @@ fun GoogleMarineChartSurface(
                         MarkerOptions()
                             .position(point.toLatLng())
                             .anchor(.5f, .5f)
-                            .icon(
-                                BitmapDescriptorFactory.fromBitmap(
-                                    measurementHandleBitmap((index + 1).toString(), displayDensity),
-                                ),
-                            ),
+                            .icon(icon("route-${index + 1}") {
+                                measurementHandleBitmap((index + 1).toString(), displayDensity)
+                            }),
                     )?.let(domainMarkers::add)
                 }
             }
@@ -499,11 +513,25 @@ fun GoogleMarineChartSurface(
                     )
                 }
             }
-            state.position.observation?.let { observation ->
+            val positionRender = PositionRenderPolicy.resolve(state.position)
+            positionRender.point?.let { point ->
                 addMarker(
                     MarkerOptions()
-                        .position(observation.point.toLatLng())
-                        .title(observation.identity.source.sourceId),
+                        .position(point.toLatLng())
+                        .title(state.position.observation?.identity?.source?.sourceId)
+                        .anchor(.5f, .5f)
+                        .flat(true)
+                        .rotation(
+                            (positionRender.trueHeadingDegrees
+                                ?: positionRender.courseVector?.trueDegrees
+                                ?: 0.0).toFloat(),
+                        )
+                        .icon(icon("vessel-${positionRender.markerStyle}") {
+                            vesselBitmap(
+                                displayDensity,
+                                live = positionRender.markerStyle != VesselMarkerStyle.HISTORICAL,
+                            )
+                        }),
                 )?.let(domainMarkers::add)
             }
         }
@@ -604,6 +632,75 @@ private fun measurementHandleBitmap(label: String, density: Float): Bitmap {
     canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3f, fill)
     canvas.drawCircle(size / 2f, size / 2f, size / 2f - 3f, stroke)
     canvas.drawText(label, size / 2f, size / 2f - (text.descent() + text.ascent()) / 2f, text)
+    return bitmap
+}
+
+private fun waypointBitmap(density: Float): Bitmap {
+    val size = (42f * density).roundToInt().coerceAtLeast(42)
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xff00a4ef.toInt() }
+    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 2f * density
+    }
+    val radius = size * .28f
+    val centerX = size / 2f
+    val centerY = size * .35f
+    val pin = Path().apply {
+        moveTo(centerX, size * .96f)
+        lineTo(centerX - radius * .72f, centerY + radius * .58f)
+        arcTo(centerX - radius, centerY - radius, centerX + radius, centerY + radius, 135f, 270f, false)
+        close()
+    }
+    canvas.drawPath(pin, fill)
+    canvas.drawPath(pin, stroke)
+    canvas.drawCircle(centerX, centerY, radius * .32f, stroke)
+    return bitmap
+}
+
+private fun targetBitmap(density: Float): Bitmap {
+    val size = (44f * density).roundToInt().coerceAtLeast(44)
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f * density
+    }
+    val center = size / 2f
+    val radius = size * .25f
+    canvas.drawCircle(center, center, radius, paint)
+    canvas.drawLine(center, 0f, center, center - radius * .55f, paint)
+    canvas.drawLine(center, center + radius * .55f, center, size.toFloat(), paint)
+    canvas.drawLine(0f, center, center - radius * .55f, center, paint)
+    canvas.drawLine(center + radius * .55f, center, size.toFloat(), center, paint)
+    return bitmap
+}
+
+private fun vesselBitmap(density: Float, live: Boolean): Bitmap {
+    val size = (48f * density).roundToInt().coerceAtLeast(48)
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = if (live) 0xff00d084.toInt() else 0xff6f7f89.toInt()
+    }
+    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 2f * density
+        strokeJoin = Paint.Join.ROUND
+    }
+    val arrow = Path().apply {
+        moveTo(size * .5f, size * .04f)
+        lineTo(size * .82f, size * .88f)
+        lineTo(size * .5f, size * .7f)
+        lineTo(size * .18f, size * .88f)
+        close()
+    }
+    canvas.drawPath(arrow, fill)
+    canvas.drawPath(arrow, stroke)
     return bitmap
 }
 
