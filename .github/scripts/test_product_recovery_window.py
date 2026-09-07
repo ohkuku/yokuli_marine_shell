@@ -16,6 +16,13 @@ class ProductRecoveryWindowTest(unittest.TestCase):
         self.assertEqual("PRODUCT_RECOVERY_WINDOW", lock["status"])
         self.assertFalse(lock["ciGreenMeansProductAccepted"])
         self.assertFalse(lock["legacyPresentationContractsAuthoritative"])
+        self.assertEqual(
+            "4f935c31240ae886b260ab6b80fb5439bffcb295b8a9fb404a4939b919068b54",
+            lock["implementationContractSha256"],
+        )
+        superseded = (ROOT / "docs/SUPERSEDED_PRODUCT_TESTS.md").read_text(encoding="utf-8")
+        for required in ("chart_c12_contract", "chart_library_cl07_contract", "osr_w12_contract", "DATA-01–09"):
+            self.assertIn(required, superseded)
         for required in (
             "domain model 与数学", "NMEA parser", "persistence", "MBTiles/SAF",
             "runtime lifecycle", "Shell Engine", "Kotlin/JVM tests",

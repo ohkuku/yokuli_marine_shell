@@ -12,6 +12,14 @@
 c0443aea42619e56ca3aebbc8379949a411414e94025a1ddbb90de98d560d3d5
 ```
 
+后续完整施工与产品合同为 `Yokuli_OS_Base_Apps_Product_Recovery_Implementation_Contract.md`，SHA-256：
+
+```text
+4f935c31240ae886b260ab6b80fb5439bffcb295b8a9fb404a4939b919068b54
+```
+
+该合同约束产品结果、危险边界和人工验收，不强制内部类名或文件布局。退出产品权威的旧测试逐项登记在 [`docs/SUPERSEDED_PRODUCT_TESTS.md`](../../SUPERSEDED_PRODUCT_TESTS.md)。
+
 ## 保持硬门禁
 
 - domain model 与数学，包括 geodesic、navigation math、tile coordinate；
