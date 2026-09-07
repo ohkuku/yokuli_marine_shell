@@ -120,4 +120,9 @@
     <string name="nav_resume">resume navigation</string>
     <string name="nav_next_waypoint">next leg</string>
     <string name="nav_stop">stop navigation</string>
+    <string name="nav_replace_title">NAVIGATION ALREADY ACTIVE</string>
+    <string name="nav_replace_detail">Replace “%1$s” with “%2$s”? The current passage remains unchanged until you confirm.</string>
+    <string name="nav_replace_cancel">cancel replacement</string>
+    <string name="nav_replace_confirm">confirm replacement</string>
+    <string name="navigation_replacement_required">Navigation is unchanged; explicitly confirm or cancel the replacement.</string>
 </resources>

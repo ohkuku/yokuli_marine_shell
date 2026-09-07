@@ -33,6 +33,7 @@ class DefaultActiveNavigationRuntime(
     private var session: ActiveNavigationSession? = null
     private var route: RoutePlan? = null
     private var issue: ActiveNavigationIssue? = null
+    private var pendingReplacement: NavigationStartProposal? = null
     private val inputJob: Job = scope.launch {
         input.state.collect { incoming ->
             mutex.withLock {
@@ -58,6 +59,8 @@ class DefaultActiveNavigationRuntime(
             ActiveNavigationCommand.Stop -> stopLocked()
             ActiveNavigationCommand.NextWaypoint -> moveLegLocked(1)
             ActiveNavigationCommand.PreviousWaypoint -> moveLegLocked(-1)
+            ActiveNavigationCommand.ConfirmReplacement -> confirmReplacementLocked()
+            ActiveNavigationCommand.CancelReplacement -> cancelReplacementLocked()
         }
     }
 
@@ -109,19 +112,42 @@ class DefaultActiveNavigationRuntime(
         val loaded = routes.route(command.routeId) ?: return rejectLocked(ActiveNavigationIssue.ROUTE_NOT_FOUND)
         if (loaded.revision != command.routeRevision) return rejectLocked(ActiveNavigationIssue.ROUTE_REVISION_CHANGED)
         if (loaded.points.size < 2) return rejectLocked(ActiveNavigationIssue.ROUTE_TOO_SHORT)
+        if (requiresReplacementLocked(loaded.id, loaded.revision)) {
+            return requestReplacementLocked(
+                NavigationStartProposal.SavedRoute(
+                    routeId = loaded.id,
+                    routeRevision = loaded.revision,
+                    displayName = loaded.name,
+                    arrivalRadiusMeters = command.arrivalRadiusMeters,
+                    advancePolicy = command.advancePolicy,
+                ),
+            )
+        }
+        if (session?.routeId == loaded.id && session?.routeRevision == loaded.revision &&
+            session?.state != NavigationSessionState.COMPLETE
+        ) return ActiveNavigationCommandResult.Accepted(revision)
+        return startRouteLocked(loaded, command.arrivalRadiusMeters, command.advancePolicy)
+    }
+
+    private suspend fun startRouteLocked(
+        loaded: RoutePlan,
+        arrivalRadiusMeters: Double,
+        advancePolicy: NavigationAdvancePolicy,
+    ): ActiveNavigationCommandResult {
         val next = ActiveNavigationSession(
             routeId = loaded.id,
             routeRevision = loaded.revision,
             startedAtEpochMillis = clock.wallTimeMillis(),
             activeLegIndex = 0,
-            arrivalRadiusMeters = command.arrivalRadiusMeters,
-            advancePolicy = command.advancePolicy,
+            arrivalRadiusMeters = arrivalRadiusMeters,
+            advancePolicy = advancePolicy,
             state = NavigationSessionState.ACTIVE,
         )
         if (!persistLocked(next)) return rejectLocked(ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED)
         route = loaded
         session = next
         issue = null
+        pendingReplacement = null
         publishLocked()
         return ActiveNavigationCommandResult.Accepted(revision)
     }
@@ -133,15 +159,41 @@ class DefaultActiveNavigationRuntime(
         ) return rejectLocked(ActiveNavigationIssue.INVALID_COMMAND)
         val origin = currentFix.position?.takeIf { currentFix.usablePosition }
             ?: return rejectLocked(ActiveNavigationIssue.INPUT_UNAVAILABLE)
+        if (session?.state != null && session?.state != NavigationSessionState.COMPLETE) {
+            return requestReplacementLocked(
+                NavigationStartProposal.DirectTo(
+                    destination = command.destination,
+                    destinationId = command.destinationId,
+                    displayName = command.destinationName,
+                    arrivalRadiusMeters = command.arrivalRadiusMeters,
+                ),
+            )
+        }
+        return startDirectToLocked(
+            origin = origin,
+            destination = command.destination,
+            destinationId = command.destinationId,
+            destinationName = command.destinationName,
+            arrivalRadiusMeters = command.arrivalRadiusMeters,
+        )
+    }
+
+    private suspend fun startDirectToLocked(
+        origin: NavigationPosition,
+        destination: NavigationPosition,
+        destinationId: String,
+        destinationName: String,
+        arrivalRadiusMeters: Double,
+    ): ActiveNavigationCommandResult {
         val startedAt = clock.wallTimeMillis()
-        val routeId = "direct-to-$startedAt-${command.destinationId.hashCode().toUInt()}"
+        val routeId = "direct-to-$startedAt-${destinationId.hashCode().toUInt()}"
         val embedded = RoutePlan(
             id = routeId,
             revision = 1L,
-            name = command.destinationName,
+            name = destinationName,
             points = listOf(
                 RoutePoint("direct-to-origin", origin),
-                RoutePoint(command.destinationId, command.destination),
+                RoutePoint(destinationId, destination),
             ),
         )
         val next = ActiveNavigationSession(
@@ -149,7 +201,7 @@ class DefaultActiveNavigationRuntime(
             routeRevision = embedded.revision,
             startedAtEpochMillis = startedAt,
             activeLegIndex = 0,
-            arrivalRadiusMeters = command.arrivalRadiusMeters,
+            arrivalRadiusMeters = arrivalRadiusMeters,
             advancePolicy = NavigationAdvancePolicy.MANUAL,
             state = NavigationSessionState.ACTIVE,
             embeddedRoute = embedded,
@@ -158,8 +210,57 @@ class DefaultActiveNavigationRuntime(
         route = embedded
         session = next
         issue = null
+        pendingReplacement = null
         publishLocked()
         return ActiveNavigationCommandResult.Accepted(revision)
+    }
+
+    private suspend fun confirmReplacementLocked(): ActiveNavigationCommandResult {
+        return when (val proposal = pendingReplacement) {
+            null -> rejectLocked(ActiveNavigationIssue.INVALID_COMMAND)
+            is NavigationStartProposal.SavedRoute -> {
+                val loaded = routes.route(proposal.routeId) ?: return rejectLocked(ActiveNavigationIssue.ROUTE_NOT_FOUND)
+                if (loaded.revision != proposal.routeRevision) return rejectLocked(ActiveNavigationIssue.ROUTE_REVISION_CHANGED)
+                if (loaded.points.size < 2) return rejectLocked(ActiveNavigationIssue.ROUTE_TOO_SHORT)
+                startRouteLocked(loaded, proposal.arrivalRadiusMeters, proposal.advancePolicy)
+            }
+            is NavigationStartProposal.DirectTo -> {
+                val origin = currentFix.position?.takeIf { currentFix.usablePosition }
+                    ?: return rejectLocked(ActiveNavigationIssue.INPUT_UNAVAILABLE)
+                startDirectToLocked(
+                    origin = origin,
+                    destination = proposal.destination,
+                    destinationId = proposal.destinationId,
+                    destinationName = proposal.displayName,
+                    arrivalRadiusMeters = proposal.arrivalRadiusMeters,
+                )
+            }
+        }
+    }
+
+    private fun cancelReplacementLocked(): ActiveNavigationCommandResult {
+        if (pendingReplacement == null) return ActiveNavigationCommandResult.Accepted(revision)
+        pendingReplacement = null
+        issue = null
+        publishLocked()
+        return ActiveNavigationCommandResult.Accepted(revision)
+    }
+
+    private fun requiresReplacementLocked(routeId: String, routeRevision: Long): Boolean {
+        val current = session ?: return false
+        if (current.state == NavigationSessionState.COMPLETE) return false
+        return current.routeId != routeId || current.routeRevision != routeRevision
+    }
+
+    private fun requestReplacementLocked(proposal: NavigationStartProposal): ActiveNavigationCommandResult {
+        pendingReplacement = proposal
+        issue = null
+        publishLocked()
+        return ActiveNavigationCommandResult.ReplacementRequired(
+            revision = revision,
+            activeDisplayName = route?.name ?: requireNotNull(session).routeId,
+            proposedDisplayName = proposal.displayName,
+        )
     }
 
     private suspend fun changeStateLocked(target: NavigationSessionState): ActiveNavigationCommandResult {
@@ -182,6 +283,7 @@ class DefaultActiveNavigationRuntime(
         session = null
         route = null
         issue = null
+        pendingReplacement = null
         publishLocked()
         return ActiveNavigationCommandResult.Accepted(revision)
     }
@@ -256,7 +358,15 @@ class DefaultActiveNavigationRuntime(
         if (current?.state == NavigationSessionState.ACTIVE && solution == null && issue == null) {
             issue = ActiveNavigationIssue.INPUT_UNAVAILABLE
         }
-        mutableState.value = ActiveNavigationSnapshot(revision, current, route, currentFix, solution, issue)
+        mutableState.value = ActiveNavigationSnapshot(
+            revision = revision,
+            session = current,
+            route = route,
+            fix = currentFix,
+            solution = solution,
+            issue = issue,
+            pendingReplacement = pendingReplacement,
+        )
     }
 
 }

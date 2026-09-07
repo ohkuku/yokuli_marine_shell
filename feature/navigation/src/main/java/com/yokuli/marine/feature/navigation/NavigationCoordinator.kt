@@ -268,7 +268,11 @@ class NavigationCoordinator(
             is Request.Active -> {
                 val result = activeRuntime.execute(request.command)
                 synchronized(lock) {
-                    notice = if (result is ActiveNavigationCommandResult.Accepted) NavigationNotice.SAVED else NavigationNotice.NAVIGATION_REJECTED
+                    notice = when (result) {
+                        is ActiveNavigationCommandResult.Accepted -> NavigationNotice.SAVED
+                        is ActiveNavigationCommandResult.ReplacementRequired -> NavigationNotice.REPLACEMENT_REQUIRED
+                        is ActiveNavigationCommandResult.Rejected -> NavigationNotice.NAVIGATION_REJECTED
+                    }
                     if (result is ActiveNavigationCommandResult.Accepted && request.command is ActiveNavigationCommand.Start) {
                         section = NavigationSection.ACTIVE
                         page = NavigationPage.Root
@@ -309,6 +313,10 @@ class NavigationCoordinator(
                             section = NavigationSection.ACTIVE
                             page = NavigationPage.Root
                             notice = NavigationNotice.SAVED
+                        } else if (start is ActiveNavigationCommandResult.ReplacementRequired) {
+                            section = NavigationSection.ACTIVE
+                            page = NavigationPage.Root
+                            notice = NavigationNotice.REPLACEMENT_REQUIRED
                         } else {
                             notice = NavigationNotice.NAVIGATION_REJECTED
                         }

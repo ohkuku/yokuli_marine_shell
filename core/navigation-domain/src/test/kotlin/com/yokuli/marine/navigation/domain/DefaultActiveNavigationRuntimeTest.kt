@@ -121,6 +121,73 @@ class DefaultActiveNavigationRuntimeTest {
         assertEquals("target", restored.runtime.state.value.route?.points?.last()?.id)
     }
 
+    @Test
+    fun `active navigation cannot be replaced until the pending proposal is explicitly confirmed`() = runTest {
+        val fixture = Fixture(this)
+        fixture.input.value = usableFix(1)
+        fixture.runtime.initialize()
+        fixture.runtime.execute(ActiveNavigationCommand.Start("route", 3))
+        val activeBefore = requireNotNull(fixture.store.value)
+
+        val requested = fixture.runtime.execute(
+            ActiveNavigationCommand.DirectTo(
+                destination = NavigationPosition(-36.80, 174.86),
+                destinationId = "target",
+                destinationName = "Target B",
+            ),
+        )
+
+        assertTrue(requested is ActiveNavigationCommandResult.ReplacementRequired)
+        assertEquals("route", fixture.runtime.state.value.session?.routeId)
+        assertEquals(activeBefore, fixture.store.value)
+        assertEquals("Target B", fixture.runtime.state.value.pendingReplacement?.displayName)
+
+        fixture.runtime.execute(ActiveNavigationCommand.CancelReplacement)
+        assertNull(fixture.runtime.state.value.pendingReplacement)
+        assertEquals(activeBefore, fixture.store.value)
+
+        fixture.runtime.execute(
+            ActiveNavigationCommand.DirectTo(
+                destination = NavigationPosition(-36.80, 174.86),
+                destinationId = "target",
+                destinationName = "Target B",
+            ),
+        )
+        val confirmed = fixture.runtime.execute(ActiveNavigationCommand.ConfirmReplacement)
+
+        assertTrue(confirmed is ActiveNavigationCommandResult.Accepted)
+        assertEquals("target", fixture.runtime.state.value.route?.points?.last()?.id)
+        assertEquals(fixture.runtime.state.value.session, fixture.store.value)
+        assertNull(fixture.runtime.state.value.pendingReplacement)
+    }
+
+    @Test
+    fun `replacement persistence failure leaves the original session intact`() = runTest {
+        val fixture = Fixture(this)
+        fixture.input.value = usableFix(1)
+        fixture.runtime.initialize()
+        fixture.runtime.execute(ActiveNavigationCommand.Start("route", 3))
+        val original = requireNotNull(fixture.store.value)
+        fixture.runtime.execute(
+            ActiveNavigationCommand.DirectTo(
+                destination = NavigationPosition(-36.80, 174.86),
+                destinationId = "target",
+                destinationName = "Target B",
+            ),
+        )
+        fixture.store.failSaves = true
+
+        val result = fixture.runtime.execute(ActiveNavigationCommand.ConfirmReplacement)
+
+        assertEquals(
+            ActiveNavigationIssue.SESSION_PERSISTENCE_FAILED,
+            (result as ActiveNavigationCommandResult.Rejected).issue,
+        )
+        assertEquals("route", fixture.runtime.state.value.session?.routeId)
+        assertEquals(original, fixture.store.value)
+        assertTrue(fixture.runtime.state.value.pendingReplacement != null)
+    }
+
     private class Fixture(
         testScope: TestScope,
         stored: ActiveNavigationSession? = null,
@@ -142,9 +209,11 @@ class DefaultActiveNavigationRuntimeTest {
 
     private class FakeStore(initial: ActiveNavigationSession?) : ActiveNavigationSessionStore {
         var value = initial
+        var failSaves = false
         override suspend fun loadActiveNavigationSession(): NavigationSessionLoadResult =
             value?.let(NavigationSessionLoadResult::Loaded) ?: NavigationSessionLoadResult.Empty
         override suspend fun saveActiveNavigationSession(session: ActiveNavigationSession?): NavigationSessionSaveResult {
+            if (failSaves) return NavigationSessionSaveResult.Failed(NavigationSessionStoreFailure.IO)
             value = session
             return NavigationSessionSaveResult.Saved
         }

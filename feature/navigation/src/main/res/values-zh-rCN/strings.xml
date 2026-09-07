@@ -108,4 +108,9 @@
     <string name="nav_resume">继续导航</string>
     <string name="nav_next_waypoint">下一航段</string>
     <string name="nav_stop">停止导航</string>
+    <string name="nav_replace_title">导航正在进行</string>
+    <string name="nav_replace_detail">要用“%2$s”替换“%1$s”吗？当前航行会保持不变，直到你确认。</string>
+    <string name="nav_replace_cancel">取消替换</string>
+    <string name="nav_replace_confirm">确认替换</string>
+    <string name="navigation_replacement_required">当前导航尚未改变；请明确确认或取消替换。</string>
 </resources>

@@ -322,4 +322,5 @@ private fun NavigationNotice.label() = when (this) {
     NavigationNotice.ACTIVE_ROUTE_LOCKED -> R.string.navigation_active_locked
     NavigationNotice.ACTION_QUEUE_FULL -> R.string.navigation_queue_full
     NavigationNotice.NAVIGATION_REJECTED -> R.string.navigation_start_rejected
+    NavigationNotice.REPLACEMENT_REQUIRED -> R.string.navigation_replacement_required
 }

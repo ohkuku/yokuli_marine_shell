@@ -46,6 +46,7 @@ enum class NavigationNotice {
     ACTIVE_ROUTE_LOCKED,
     ACTION_QUEUE_FULL,
     NAVIGATION_REJECTED,
+    REPLACEMENT_REQUIRED,
 }
 
 data class NavigationUiState(

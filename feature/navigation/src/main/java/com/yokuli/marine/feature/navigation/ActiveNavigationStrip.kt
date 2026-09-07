@@ -32,6 +32,38 @@ fun ActiveNavigationStrip(
 ) {
     val session = snapshot.session ?: return
     val route = snapshot.route ?: return
+    snapshot.pendingReplacement?.let { proposal ->
+        val colors = LocalWpTheme.current
+        Column(
+            modifier.fillMaxWidth().background(colors.chrome.copy(alpha = .97f))
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .testTag("active-navigation-replacement"),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            WpText(stringResource(R.string.nav_replace_title), 20)
+            WpText(
+                stringResource(R.string.nav_replace_detail, route.name, proposal.displayName),
+                12,
+                color = colors.muted,
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                WpCircleButton(
+                    "×",
+                    stringResource(R.string.nav_replace_cancel),
+                    { onCommand(ActiveNavigationCommand.CancelReplacement) },
+                    Modifier.testTag("active-navigation-replacement-cancel"),
+                )
+                WpCircleButton(
+                    "✓",
+                    stringResource(R.string.nav_replace_confirm),
+                    { onCommand(ActiveNavigationCommand.ConfirmReplacement) },
+                    Modifier.testTag("active-navigation-replacement-confirm"),
+                    selected = true,
+                )
+            }
+        }
+        return
+    }
     val solution = snapshot.solution
     val colors = LocalWpTheme.current
     val units = LocalMeasurementUnitSystem.current

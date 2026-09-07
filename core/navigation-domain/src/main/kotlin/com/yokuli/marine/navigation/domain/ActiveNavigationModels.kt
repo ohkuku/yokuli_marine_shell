@@ -135,6 +135,8 @@ data class ActiveNavigationSnapshot(
     val fix: NavigationFix = NavigationFix(),
     val solution: NavigationSolution? = null,
     val issue: ActiveNavigationIssue? = null,
+    /** Ephemeral, process-local user decision. The active session remains authoritative until confirmed. */
+    val pendingReplacement: NavigationStartProposal? = null,
 ) {
     init {
         require(revision >= 0L)
@@ -146,6 +148,25 @@ data class ActiveNavigationSnapshot(
     val sessionState: NavigationSessionState get() = session?.state ?: NavigationSessionState.STOPPED
 
     companion object { val EMPTY = ActiveNavigationSnapshot() }
+}
+
+sealed interface NavigationStartProposal {
+    val displayName: String
+
+    data class SavedRoute(
+        val routeId: String,
+        val routeRevision: Long,
+        override val displayName: String,
+        val arrivalRadiusMeters: Double,
+        val advancePolicy: NavigationAdvancePolicy,
+    ) : NavigationStartProposal
+
+    data class DirectTo(
+        val destination: NavigationPosition,
+        val destinationId: String,
+        override val displayName: String,
+        val arrivalRadiusMeters: Double,
+    ) : NavigationStartProposal
 }
 
 sealed interface ActiveNavigationCommand {
@@ -166,10 +187,18 @@ sealed interface ActiveNavigationCommand {
     data object Stop : ActiveNavigationCommand
     data object NextWaypoint : ActiveNavigationCommand
     data object PreviousWaypoint : ActiveNavigationCommand
+    /** Applies the exact proposal currently exposed by [ActiveNavigationSnapshot.pendingReplacement]. */
+    data object ConfirmReplacement : ActiveNavigationCommand
+    data object CancelReplacement : ActiveNavigationCommand
 }
 
 sealed interface ActiveNavigationCommandResult {
     data class Accepted(val revision: Long) : ActiveNavigationCommandResult
+    data class ReplacementRequired(
+        val revision: Long,
+        val activeDisplayName: String,
+        val proposedDisplayName: String,
+    ) : ActiveNavigationCommandResult
     data class Rejected(val issue: ActiveNavigationIssue) : ActiveNavigationCommandResult
 }
 
