@@ -438,6 +438,8 @@ data class MapState(
     val activeRoutePlanId: String? = null,
     /** Runtime navigation geometry, including Direct-To routes that do not belong to the saved library. */
     val activeNavigationRoute: List<GeoPoint> = emptyList(),
+    /** Current from/to leg, rendered above the complete route; runtime-only and never a second route truth. */
+    val activeNavigationLeg: List<GeoPoint> = emptyList(),
     val routeSaveStatus: RouteSaveStatus? = null,
     val routeSaveTransaction: RouteSaveTransaction? = null,
     val routeDeleteRequest: RouteDeleteRequest? = null,

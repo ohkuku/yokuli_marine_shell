@@ -462,6 +462,8 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 onAction = runtime.onNavigationAction,
                 gpxState = runtime.gpxImportState.toNavigationGpxState(),
                 onGpxAction = { runtime.onGpxImportAction(it.toDocumentAction()) },
+                mapState = runtime.mapState,
+                chartSurface = rememberProductionChartSurface(runtime),
             )
         },
     ),

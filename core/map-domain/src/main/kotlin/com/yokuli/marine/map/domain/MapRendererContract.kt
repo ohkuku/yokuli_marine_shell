@@ -94,6 +94,7 @@ enum class MapOverlayId(val wireValue: String) {
     MEASUREMENT_POINTS("measurement-points"),
     MANUAL_ROUTE("manual-route-draft"),
     MANUAL_ROUTE_POINTS("manual-route-points"),
+    ACTIVE_NAVIGATION_LEG("active-navigation-leg"),
     IMPORTED_TRACKS("imported-tracks"),
     POSITION_OBSERVATION("position-observation"),
     POSITION_HISTORY("position-history"),

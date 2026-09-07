@@ -18,6 +18,7 @@ android {
 
 dependencies {
     implementation(project(":core:navigation-domain"))
+    implementation(project(":core:map-domain"))
     implementation(project(":core:design"))
     implementation(project(":core:shell-contract"))
     implementation(project(":ui:shell-compose"))

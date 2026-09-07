@@ -74,5 +74,18 @@ class ChartInteractionRecoveryTest {
         assertEquals(MapSurface.Root, state.surface)
     }
 
+    @Test
+    fun `active navigation exposes the current leg without replacing the complete route`() {
+        val route = listOf(vessel, target, moved)
+        val state = reduce(
+            MapState(),
+            MapAction.ActiveNavigationGeometryChanged(route, listOf(target, moved)),
+        )
+
+        assertEquals(route, state.activeNavigationRoute)
+        assertEquals(listOf(target, moved), state.activeNavigationLeg)
+        assertTrue(state.navigationActive)
+    }
+
     private fun reduce(state: MapState, action: MapAction): MapState = reducer.reduce(state, action).state
 }

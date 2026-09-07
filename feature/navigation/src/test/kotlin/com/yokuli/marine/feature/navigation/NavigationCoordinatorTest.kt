@@ -114,6 +114,73 @@ class NavigationCoordinatorTest {
         assertFalse(coordinator.handleBack())
     }
 
+    @Test
+    fun `new route is auto named and map geometry replaces the draft without a metadata form`() = runTest {
+        val coordinator = coordinator(FakeLibrary())
+        runCurrent()
+
+        coordinator.dispatch(NavigationUiAction.CreateRoute)
+        val created = (coordinator.state.value.page as NavigationPage.RouteEditor).draft
+        assertEquals("Route 001", created.name)
+
+        val points = listOf(
+            RoutePoint("map-1", NavigationPosition(-36.84, 174.75)),
+            RoutePoint("map-2", NavigationPosition(-36.78, 174.88)),
+            RoutePoint("map-3", NavigationPosition(-36.74, 174.91)),
+        )
+        coordinator.dispatch(NavigationUiAction.ReplaceRouteGeometry(points))
+
+        assertEquals(points, (coordinator.state.value.page as NavigationPage.RouteEditor).draft.points)
+        assertTrue(coordinator.state.value.library.routePlans.isEmpty())
+    }
+
+    @Test
+    fun `save and start commits the exact map geometry before starting navigation`() = runTest {
+        val library = FakeLibrary()
+        val active = FakeActive()
+        val coordinator = coordinator(library, active)
+        runCurrent()
+        coordinator.dispatch(NavigationUiAction.CreateRoute)
+        coordinator.dispatch(
+            NavigationUiAction.ReplaceRouteGeometry(
+                listOf(
+                    RoutePoint("map-1", NavigationPosition(-36.84, 174.75)),
+                    RoutePoint("map-2", NavigationPosition(-36.78, 174.88)),
+                ),
+            ),
+        )
+
+        coordinator.dispatch(NavigationUiAction.SaveAndStartRoute)
+        runCurrent()
+
+        val saved = library.value.routePlans.single()
+        assertEquals(listOf("map-1", "map-2"), saved.points.map(RoutePoint::id))
+        assertEquals(ActiveNavigationCommand.Start(saved.id, saved.revision), active.commands.single())
+        assertEquals(NavigationSection.ACTIVE, coordinator.state.value.section)
+        assertEquals(NavigationPage.Root, coordinator.state.value.page)
+    }
+
+    @Test
+    fun `back from nonempty map draft requires an explicit decision and discard cannot resurrect it`() = runTest {
+        val coordinator = coordinator(FakeLibrary())
+        runCurrent()
+        coordinator.dispatch(NavigationUiAction.CreateRoute)
+        coordinator.dispatch(
+            NavigationUiAction.ReplaceRouteGeometry(
+                listOf(RoutePoint("map-1", NavigationPosition(-36.84, 174.75))),
+            ),
+        )
+
+        assertTrue(coordinator.handleBack())
+        assertTrue(coordinator.state.value.page is NavigationPage.RouteCloseConfirmation)
+
+        coordinator.dispatch(NavigationUiAction.DiscardRouteDraft)
+        assertEquals(NavigationPage.Root, coordinator.state.value.page)
+        coordinator.dispatch(NavigationUiAction.CreateRoute)
+        assertTrue((coordinator.state.value.page as NavigationPage.RouteEditor).draft.points.isEmpty())
+        assertTrue(coordinator.state.value.library.routeDrafts.isEmpty())
+    }
+
     private fun kotlinx.coroutines.test.TestScope.coordinator(
         library: FakeLibrary,
         active: FakeActive = FakeActive(),

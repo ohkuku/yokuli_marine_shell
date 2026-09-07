@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,6 +42,7 @@ import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.navigation.domain.NavigationRouteMath
 import com.yokuli.marine.navigation.domain.NavigationSessionState
 import com.yokuli.marine.navigation.domain.RoutePlan
+import com.yokuli.marine.map.domain.MapState
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 
@@ -52,6 +52,8 @@ fun NavigationWorkspace(
     onAction: (NavigationUiAction) -> Unit,
     gpxState: NavigationGpxUiState = NavigationGpxUiState.Idle,
     onGpxAction: (NavigationGpxUiAction) -> Unit = {},
+    mapState: MapState = MapState(),
+    chartSurface: NavigationMapSurface? = null,
 ) {
     val currentState by rememberUpdatedState(state)
     val currentAction by rememberUpdatedState(onAction)
@@ -61,6 +63,27 @@ fun NavigationWorkspace(
         }
     }
     val colors = LocalWpTheme.current
+    if (chartSurface != null) {
+        when (val page = state.page) {
+            is NavigationPage.RouteEditor -> {
+                NavigationRouteMapEditor(page.draft, mapState, chartSurface, onAction)
+                return
+            }
+            is NavigationPage.RouteDetail -> state.selectedRoute?.let { route ->
+                NavigationRouteMapDetail(route, mapState, chartSurface, onAction)
+                return
+            }
+            is NavigationPage.RouteCloseConfirmation -> {
+                NavigationRouteCloseConfirmation(page.draft, onAction)
+                return
+            }
+            NavigationPage.Root -> if (state.section == NavigationSection.ACTIVE && state.active.session != null) {
+                NavigationActiveMap(state, mapState, chartSurface, onAction)
+                return
+            }
+            else -> Unit
+        }
+    }
     Column(Modifier.fillMaxSize().background(colors.background).testTag(NavigationTestTags.ROOT)) {
         WpPageHeader("navigation", stringResource(R.string.navigation_title), stringResource(sectionContext(state.section)))
         SectionStrip(state.section, onAction)
@@ -81,9 +104,10 @@ fun NavigationWorkspace(
                     NavigationSection.ACTIVE -> ActivePage(state, onAction)
                 }
                 is NavigationPage.WaypointEditor -> WaypointEditor(page.draft, onAction)
-                is NavigationPage.RouteDetail -> state.selectedRoute?.let { RouteDetail(it, state, onAction) }
-                    ?: MissingRoute(onAction)
-                is NavigationPage.RouteEditor -> RouteEditor(page.draft, state, onAction)
+                is NavigationPage.RouteDetail -> if (state.selectedRoute == null) MissingRoute(onAction)
+                    else NavigationRouteMapUnavailable(onAction)
+                is NavigationPage.RouteEditor -> NavigationRouteMapUnavailable(onAction)
+                is NavigationPage.RouteCloseConfirmation -> NavigationRouteCloseConfirmation(page.draft, onAction)
             }
         }
     }
@@ -122,15 +146,16 @@ private fun SectionStrip(selectedSection: NavigationSection, onAction: (Navigati
 
 @Composable
 private fun OverviewPage(state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-overview") {
-    WpText(stringResource(R.string.navigation_overview_truth), 13, color = LocalWpTheme.current.muted)
-    Spacer(Modifier.height(12.dp))
-    WpText(stringResource(R.string.navigation_library_summary, state.library.waypoints.size, state.library.routePlans.size), 28, weight = FontWeight.Light)
     val session = state.active.session
     if (session != null) {
         Command(stringResource(R.string.navigation_open_active), "navigation-open-active") {
             onAction(NavigationUiAction.Navigate(NavigationSection.ACTIVE))
         }
     }
+    Command(stringResource(R.string.navigation_route_new), "navigation-new-route") {
+        onAction(NavigationUiAction.CreateRoute)
+    }
+    WpText(stringResource(R.string.navigation_library_summary, state.library.waypoints.size, state.library.routePlans.size), 28, weight = FontWeight.Light)
     state.library.routePlans.takeLast(5).reversed().forEach { route -> RouteRow(route, onAction) }
 }
 
@@ -159,7 +184,9 @@ private fun WaypointsPage(state: NavigationUiState, onAction: (NavigationUiActio
 
 @Composable
 private fun RoutesPage(state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-routes") {
-    WpText(stringResource(R.string.navigation_routes_truth), 13, color = LocalWpTheme.current.muted)
+    Command(stringResource(R.string.navigation_route_new), "navigation-routes-new") {
+        onAction(NavigationUiAction.CreateRoute)
+    }
     if (state.library.routePlans.isEmpty()) {
         WpText(stringResource(R.string.navigation_routes_empty), 23, weight = FontWeight.Light)
         WpText(stringResource(R.string.navigation_routes_empty_detail), 13, color = LocalWpTheme.current.muted)
@@ -174,6 +201,7 @@ private fun RouteRow(route: RoutePlan, onAction: (NavigationUiAction) -> Unit) {
         Modifier.fillMaxWidth().clickable { onAction(NavigationUiAction.OpenRoute(route.id)) }
             .padding(vertical = 10.dp).testTag("navigation-route-${route.id}"),
     ) {
+        NavigationRouteThumbnail(route, Modifier.fillMaxWidth().height(88.dp))
         WpText(route.name, 20, weight = FontWeight.Light)
         WpText(routeSummary(route.points.size, summary.distanceNauticalMiles), 11, color = LocalWpTheme.current.muted)
     }
@@ -194,35 +222,6 @@ private fun WaypointEditor(draft: WaypointDraftUi, onAction: (NavigationUiAction
         onAction(NavigationUiAction.UpdateWaypointDraft(notes = it))
     }
     Command(stringResource(R.string.navigation_save), "navigation-waypoint-save") { onAction(NavigationUiAction.SaveWaypoint) }
-}
-
-@Composable
-private fun RouteDetail(route: RoutePlan, state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-route-detail") {
-    WpText(route.name, 28, weight = FontWeight.Light)
-    val summary = NavigationRouteMath.summarize(route)
-    WpText(routeSummary(route.points.size, summary.distanceNauticalMiles), 13)
-    summary.legs.forEach { leg ->
-        val units = LocalMeasurementUnitSystem.current
-        val distance = MarineDisplayUnits.distanceFromNauticalMiles(leg.distanceMeters / 1852.0, units)
-        WpText(
-            stringResource(
-                if (units == com.yokuli.shell.contract.MeasurementUnitSystem.NAUTICAL) R.string.navigation_leg else R.string.navigation_leg_metric,
-                leg.index + 1, leg.index + 2, distance, leg.initialBearingTrueDegrees ?: 0.0,
-            ),
-            11, color = LocalWpTheme.current.muted,
-        )
-    }
-    Command(stringResource(R.string.navigation_start), "navigation-route-start-${route.id}") {
-        onAction(NavigationUiAction.StartRoute(route.id, route.revision))
-    }
-    Command(stringResource(R.string.navigation_show_chart), "navigation-route-chart-${route.id}") {
-        onAction(NavigationUiAction.ShowRouteInChart(route.id))
-    }
-    WpText(stringResource(R.string.navigation_route_edit_in_chart), 12, color = LocalWpTheme.current.muted)
-    Command(
-        stringResource(R.string.navigation_delete), "navigation-route-delete-${route.id}",
-        enabled = state.active.session?.routeId != route.id,
-    ) { onAction(NavigationUiAction.DeleteRoute(route.id, route.revision)) }
 }
 
 @Composable
@@ -249,43 +248,6 @@ private fun MissingRoute(onAction: (NavigationUiAction) -> Unit) = ScrollBody("n
 }
 
 @Composable
-private fun RouteEditor(draft: RouteDraftUi, state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-route-editor") {
-    Field(stringResource(R.string.navigation_name), draft.name, "navigation-route-name") {
-        onAction(NavigationUiAction.UpdateRouteDraft(name = it))
-    }
-    Field(stringResource(R.string.navigation_speed), draft.plannedSpeedKnots, "navigation-route-speed") {
-        onAction(NavigationUiAction.UpdateRouteDraft(plannedSpeedKnots = it))
-    }
-    Field(stringResource(R.string.navigation_notes), draft.notes, "navigation-route-notes") {
-        onAction(NavigationUiAction.UpdateRouteDraft(notes = it))
-    }
-    WpText(stringResource(R.string.navigation_route_points, draft.points.size), 13)
-    draft.points.forEachIndexed { index, point ->
-        val waypointName = point.sourceWaypoint?.waypointId?.let { id -> state.library.waypoints.firstOrNull { it.id == id }?.name }
-        Column(Modifier.fillMaxWidth().border(1.dp, LocalWpTheme.current.muted).padding(6.dp)) {
-            WpText(waypointName ?: stringResource(R.string.navigation_route_point, index + 1), 14)
-            Row {
-                Command("↑", "navigation-point-up-${point.id}", Modifier.weight(1f), index > 0) {
-                    onAction(NavigationUiAction.MoveRoutePoint(point.id, -1))
-                }
-                Command("↓", "navigation-point-down-${point.id}", Modifier.weight(1f), index < draft.points.lastIndex) {
-                    onAction(NavigationUiAction.MoveRoutePoint(point.id, 1))
-                }
-                Command("×", "navigation-point-remove-${point.id}", Modifier.weight(1f)) {
-                    onAction(NavigationUiAction.RemoveRoutePoint(point.id))
-                }
-            }
-        }
-    }
-    WpText(stringResource(R.string.navigation_add_waypoint), 13, color = LocalWpTheme.current.muted)
-    state.library.waypoints.forEach { waypoint ->
-        Command(waypoint.name, "navigation-add-waypoint-${waypoint.id}") { onAction(NavigationUiAction.AddWaypointToRoute(waypoint.id)) }
-    }
-    Command(stringResource(R.string.navigation_save), "navigation-route-save", enabled = draft.points.size >= 2) {
-        onAction(NavigationUiAction.SaveRoute)
-    }
-}
-
 @Composable
 private fun ActivePage(state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-active") {
     if (state.active.session == null) {

@@ -430,6 +430,7 @@ fun GoogleMarineChartSurface(
         state.routeDraft,
         state.activeRoutePlanId,
         state.activeNavigationRoute,
+        state.activeNavigationLeg,
         state.savedRoutes,
         state.editGesture,
         state.position.observation,
@@ -468,6 +469,11 @@ fun GoogleMarineChartSurface(
                             .icon(BitmapDescriptorFactory.fromBitmap(measurementHandleBitmap((index + 1).toString()))),
                     )?.let(domainMarkers::add)
                 }
+            }
+            state.activeNavigationLeg.takeIf { it.size == 2 }?.let { leg ->
+                domainPolylines += addPolyline(
+                    PolylineOptions().addAll(leg.map(GeoPoint::toLatLng)).color(0xfff7b500.toInt()).width(10f),
+                )
             }
             state.position.observation?.let { observation ->
                 addMarker(

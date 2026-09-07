@@ -14,7 +14,12 @@ sealed interface MapAction {
     data object ClearSelection : MapAction
     data object OpenMapViewPicker : MapAction
     data class SetMapViewMode(val mode: MapViewMode) : MapAction
-    data class ActiveNavigationGeometryChanged(val points: List<GeoPoint>) : MapAction
+    data class ActiveNavigationGeometryChanged(
+        val points: List<GeoPoint>,
+        val activeLeg: List<GeoPoint> = emptyList(),
+    ) : MapAction {
+        init { require(activeLeg.size <= 2) }
+    }
     data class QuickMark(val point: GeoPoint) : MapAction
     data class FocusSavedPlace(val placeId: String) : MapAction
     data class BeginMeasurement(val vessel: GeoPoint?, val target: GeoPoint?) : MapAction
@@ -221,6 +226,7 @@ class DefaultMapReducer(
         is MapAction.ActiveNavigationGeometryChanged -> MapReduction(
             state.copy(
                 activeNavigationRoute = action.points,
+                activeNavigationLeg = action.activeLeg,
                 navigationActive = action.points.size >= 2,
             ),
         )

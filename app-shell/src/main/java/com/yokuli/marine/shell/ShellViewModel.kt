@@ -229,8 +229,11 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
                     val geometry = navigation.route?.points.orEmpty().map { point ->
                         GeoPoint(point.position.latitude, point.position.longitude)
                     }
-                    if (map.activeNavigationRoute != geometry) {
-                        mapStore.dispatch(MapAction.ActiveNavigationGeometryChanged(geometry))
+                    val activeLeg = session?.activeLegIndex?.let { index ->
+                        geometry.drop(index).take(2).takeIf { it.size == 2 }
+                    }.orEmpty()
+                    if (map.activeNavigationRoute != geometry || map.activeNavigationLeg != activeLeg) {
+                        mapStore.dispatch(MapAction.ActiveNavigationGeometryChanged(geometry, activeLeg))
                     }
                     if (
                         session != null &&

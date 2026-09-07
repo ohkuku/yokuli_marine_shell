@@ -16,6 +16,7 @@ sealed interface NavigationPage {
     data class WaypointEditor(val draft: WaypointDraftUi) : NavigationPage
     data class RouteDetail(val routeId: String) : NavigationPage
     data class RouteEditor(val draft: RouteDraftUi) : NavigationPage
+    data class RouteCloseConfirmation(val draft: RouteDraftUi) : NavigationPage
 }
 
 data class WaypointDraftUi(
@@ -78,10 +79,16 @@ sealed interface NavigationUiAction {
     data class OpenRoute(val routeId: String) : NavigationUiAction
     data class EditRoute(val routeId: String) : NavigationUiAction
     data class UpdateRouteDraft(val name: String? = null, val plannedSpeedKnots: String? = null, val notes: String? = null) : NavigationUiAction
+    /** Complete geometry projected by the real map editor; IDs and order are retained exactly. */
+    data class ReplaceRouteGeometry(val points: List<RoutePoint>) : NavigationUiAction
     data class AddWaypointToRoute(val waypointId: String) : NavigationUiAction
     data class MoveRoutePoint(val pointId: String, val delta: Int) : NavigationUiAction
     data class RemoveRoutePoint(val pointId: String) : NavigationUiAction
     data object SaveRoute : NavigationUiAction
+    data object SaveAndStartRoute : NavigationUiAction
+    data object RequestCloseRouteDraft : NavigationUiAction
+    data object DiscardRouteDraft : NavigationUiAction
+    data object CancelRouteClose : NavigationUiAction
     data class DeleteRoute(val routeId: String, val revision: Long) : NavigationUiAction
     data class ShowRouteInChart(val routeId: String) : NavigationUiAction
     data class StartRoute(val routeId: String, val revision: Long) : NavigationUiAction

@@ -35,7 +35,11 @@ class NavigationCoordinator(
 ) {
     private sealed interface Request {
         data object Refresh : Request
-        data class Commit(val change: NavigationLibraryChange, val successPage: NavigationPage) : Request
+        data class Commit(
+            val change: NavigationLibraryChange,
+            val successPage: NavigationPage,
+            val startAfterSave: Boolean = false,
+        ) : Request
         data class Active(val command: ActiveNavigationCommand) : Request
     }
 
@@ -85,7 +89,7 @@ class NavigationCoordinator(
 
     fun handleBack(): Boolean = synchronized(lock) {
         if (page != NavigationPage.Root) {
-            page = NavigationPage.Root
+            navigateUpLocked()
             publishLocked()
             true
         } else if (section != NavigationSection.OVERVIEW) {
@@ -98,7 +102,7 @@ class NavigationCoordinator(
     private fun reduceLocked(action: NavigationUiAction): Request? {
         return when (action) {
         is NavigationUiAction.Navigate -> { section = action.section; page = NavigationPage.Root; null }
-        NavigationUiAction.NavigateUp -> { handleBack(); null }
+        NavigationUiAction.NavigateUp -> { navigateUpLocked(); null }
         NavigationUiAction.Refresh -> Request.Refresh
         NavigationUiAction.DismissNotice -> { notice = null; null }
         NavigationUiAction.CreateWaypoint -> {
@@ -127,7 +131,9 @@ class NavigationCoordinator(
             NavigationLibraryChange.RemoveWaypoint(action.waypointId, action.revision), NavigationPage.Root,
         )
         NavigationUiAction.CreateRoute -> {
-            page = NavigationPage.RouteEditor(RouteDraftUi(newId(), null, "", "", "", emptyList())); null
+            page = NavigationPage.RouteEditor(
+                RouteDraftUi(newId(), null, nextRouteNameLocked(), "", "", emptyList()),
+            ); null
         }
         is NavigationUiAction.OpenRoute -> { page = NavigationPage.RouteDetail(action.routeId); null }
         is NavigationUiAction.EditRoute -> {
@@ -138,7 +144,7 @@ class NavigationCoordinator(
             }; null
         }
         is NavigationUiAction.UpdateRouteDraft -> {
-            val current = (page as? NavigationPage.RouteEditor)?.draft ?: return invalidLocked()
+            val current = editableRouteDraftLocked() ?: return invalidLocked()
             page = NavigationPage.RouteEditor(
                 current.copy(
                     name = action.name ?: current.name,
@@ -147,8 +153,15 @@ class NavigationCoordinator(
                 ),
             ); null
         }
+        is NavigationUiAction.ReplaceRouteGeometry -> {
+            val current = editableRouteDraftLocked() ?: return invalidLocked()
+            if (action.points.size > MAX_ROUTE_POINTS ||
+                action.points.map(RoutePoint::id).distinct().size != action.points.size
+            ) return invalidLocked()
+            page = NavigationPage.RouteEditor(current.copy(points = action.points)); null
+        }
         is NavigationUiAction.AddWaypointToRoute -> {
-            val current = (page as? NavigationPage.RouteEditor)?.draft ?: return invalidLocked()
+            val current = editableRouteDraftLocked() ?: return invalidLocked()
             val waypoint = library.waypoints.firstOrNull { it.id == action.waypointId } ?: return invalidLocked()
             page = NavigationPage.RouteEditor(
                 current.copy(
@@ -160,7 +173,7 @@ class NavigationCoordinator(
             ); null
         }
         is NavigationUiAction.MoveRoutePoint -> {
-            val current = (page as? NavigationPage.RouteEditor)?.draft ?: return invalidLocked()
+            val current = editableRouteDraftLocked() ?: return invalidLocked()
             val index = current.points.indexOfFirst { it.id == action.pointId }
             val target = index + action.delta
             if (index < 0 || target !in current.points.indices) return invalidLocked()
@@ -168,10 +181,28 @@ class NavigationCoordinator(
             page = NavigationPage.RouteEditor(current.copy(points = changed)); null
         }
         is NavigationUiAction.RemoveRoutePoint -> {
-            val current = (page as? NavigationPage.RouteEditor)?.draft ?: return invalidLocked()
+            val current = editableRouteDraftLocked() ?: return invalidLocked()
             page = NavigationPage.RouteEditor(current.copy(points = current.points.filterNot { it.id == action.pointId })); null
         }
         NavigationUiAction.SaveRoute -> saveRouteLocked()
+        NavigationUiAction.SaveAndStartRoute -> saveRouteLocked(startAfterSave = true)
+        NavigationUiAction.RequestCloseRouteDraft -> {
+            val current = editableRouteDraftLocked() ?: return invalidLocked()
+            if (current.points.isEmpty()) page = NavigationPage.Root
+            else page = NavigationPage.RouteCloseConfirmation(current)
+            null
+        }
+        NavigationUiAction.DiscardRouteDraft -> {
+            if (editableRouteDraftLocked() == null) return invalidLocked()
+            page = NavigationPage.Root
+            section = NavigationSection.ROUTES
+            null
+        }
+        NavigationUiAction.CancelRouteClose -> {
+            val current = (page as? NavigationPage.RouteCloseConfirmation)?.draft ?: return invalidLocked()
+            page = NavigationPage.RouteEditor(current)
+            null
+        }
         is NavigationUiAction.DeleteRoute -> {
             if (active.session?.routeId == action.routeId) { notice = NavigationNotice.ACTIVE_ROUTE_LOCKED; null }
             else Request.Commit(NavigationLibraryChange.RemoveRoutePlan(action.routeId, action.revision), NavigationPage.Root)
@@ -205,9 +236,9 @@ class NavigationCoordinator(
         return Request.Commit(NavigationLibraryChange.PutWaypoint(waypoint), NavigationPage.Root)
     }
 
-    private fun saveRouteLocked(): Request? {
-        val draft = (page as? NavigationPage.RouteEditor)?.draft ?: return invalidLocked()
-        val name = draft.name.trim().takeIf(String::isNotEmpty) ?: return invalidLocked()
+    private fun saveRouteLocked(startAfterSave: Boolean = false): Request? {
+        val draft = editableRouteDraftLocked() ?: return invalidLocked()
+        val name = draft.name.trim().ifEmpty { nextRouteNameLocked() }
         if (draft.points.size < 2) return invalidLocked()
         val speed = draft.plannedSpeedKnots.trim().takeIf(String::isNotEmpty)?.toDoubleOrNull()
         if (draft.plannedSpeedKnots.isNotBlank() && (speed == null || !speed.isFinite() || speed <= 0.0)) return invalidLocked()
@@ -223,7 +254,11 @@ class NavigationCoordinator(
             sourceDraftId = existing?.sourceDraftId,
             sourceDraftRevision = existing?.sourceDraftRevision,
         )
-        return Request.Commit(NavigationLibraryChange.PutRoutePlan(route), NavigationPage.RouteDetail(route.id))
+        return Request.Commit(
+            NavigationLibraryChange.PutRoutePlan(route),
+            NavigationPage.RouteDetail(route.id),
+            startAfterSave = startAfterSave,
+        )
     }
 
     private suspend fun execute(request: Request) = try {
@@ -253,6 +288,7 @@ class NavigationCoordinator(
         when (val result = libraryPort.commitNavigationChange(expected, request.change)) {
             is NavigationLibraryCommitResult.Committed -> {
                 val projected = synchronized(lock) { NavigationLibraryEditor.apply(library, request.change) }
+                var routeToStart: RoutePlan? = null
                 synchronized(lock) {
                     if (projected is NavigationChangeResult.Applied && projected.library.revision == result.revision) {
                         library = projected.library
@@ -260,8 +296,24 @@ class NavigationCoordinator(
                         notice = if (request.change is NavigationLibraryChange.RemoveWaypoint || request.change is NavigationLibraryChange.RemoveRoutePlan) {
                             NavigationNotice.DELETED
                         } else NavigationNotice.SAVED
+                        if (request.startAfterSave && request.change is NavigationLibraryChange.PutRoutePlan) {
+                            routeToStart = request.change.route
+                        }
                     } else notice = NavigationNotice.REVISION_CONFLICT
                     publishLocked()
+                }
+                routeToStart?.let { route ->
+                    val start = activeRuntime.execute(ActiveNavigationCommand.Start(route.id, route.revision))
+                    synchronized(lock) {
+                        if (start is ActiveNavigationCommandResult.Accepted) {
+                            section = NavigationSection.ACTIVE
+                            page = NavigationPage.Root
+                            notice = NavigationNotice.SAVED
+                        } else {
+                            notice = NavigationNotice.NAVIGATION_REJECTED
+                        }
+                        publishLocked()
+                    }
                 }
             }
             is NavigationLibraryCommitResult.Conflict,
@@ -291,4 +343,35 @@ class NavigationCoordinator(
     }
     private fun projectLocked() = NavigationUiState(section, page, library, active, loading, notice)
     private fun publishLocked() { mutableState.value = projectLocked() }
+
+    private fun navigateUpLocked() {
+        page = when (val current = page) {
+            is NavigationPage.RouteEditor -> if (current.draft.points.isEmpty()) {
+                NavigationPage.Root
+            } else {
+                NavigationPage.RouteCloseConfirmation(current.draft)
+            }
+            is NavigationPage.RouteCloseConfirmation -> NavigationPage.RouteEditor(current.draft)
+            NavigationPage.Root -> NavigationPage.Root
+            else -> NavigationPage.Root
+        }
+    }
+
+    private fun editableRouteDraftLocked(): RouteDraftUi? = when (val current = page) {
+        is NavigationPage.RouteEditor -> current.draft
+        is NavigationPage.RouteCloseConfirmation -> current.draft
+        else -> null
+    }
+
+    private fun nextRouteNameLocked(): String {
+        val ordinal = library.routePlans.asSequence().mapNotNull { route ->
+            Regex("^Route\\s+(\\d{1,6})$", RegexOption.IGNORE_CASE).matchEntire(route.name.trim())
+                ?.groupValues?.getOrNull(1)?.toIntOrNull()
+        }.maxOrNull()?.plus(1) ?: 1
+        return "Route %03d".format(ordinal)
+    }
+
+    private companion object {
+        const val MAX_ROUTE_POINTS = 2_000
+    }
 }

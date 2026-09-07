@@ -392,6 +392,7 @@ fun OfflineMarineChartSurface(
                 style.addPointOverlay(MapOverlayId.MEASUREMENT_POINTS, 0xfff7b500.toInt(), 6f)
                 style.addMeasurementLabels()
                 style.addLineOverlay(MapOverlayId.MANUAL_ROUTE, 0xff00a4ef.toInt(), 5f)
+                style.addLineOverlay(MapOverlayId.ACTIVE_NAVIGATION_LEG, 0xfff7b500.toInt(), 7f)
                 style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 5f)
                 style.addPointLabels(MapOverlayId.MANUAL_ROUTE_POINTS)
                 style.addLineOverlay(MapOverlayId.IMPORTED_TRACKS, 0xff9b59b6.toInt(), 3f)
@@ -480,6 +481,7 @@ fun OfflineMarineChartSurface(
         state.savedRoutes,
         state.importedTracks,
         state.editGesture,
+        state.activeNavigationLeg,
         state.camera.zoom,
         state.position,
     ) {
@@ -522,6 +524,12 @@ fun OfflineMarineChartSurface(
                     routePoints.mapIndexed { index, point ->
                         point.toLabeledFeature(state.routePointObjectId(index), (index + 1).toString())
                     },
+                ),
+            )
+            style.source(MapOverlayId.ACTIVE_NAVIGATION_LEG)?.setGeoJson(
+                state.activeNavigationLeg.toGeodesicFeatureCollection(
+                    "active-navigation-leg",
+                    state.geodesicMaxSegmentMeters(state.activeNavigationLeg),
                 ),
             )
             style.source(MapOverlayId.IMPORTED_TRACKS)?.setGeoJson(trackFeatures)
@@ -786,6 +794,7 @@ private fun MapOverlayId.objectIdPrefix(): String = when (this) {
     MapOverlayId.MEASUREMENT_POINTS -> "measurement-point:"
     MapOverlayId.MANUAL_ROUTE -> "route:"
     MapOverlayId.MANUAL_ROUTE_POINTS -> "route-point:"
+    MapOverlayId.ACTIVE_NAVIGATION_LEG -> "active-navigation-leg:"
     MapOverlayId.IMPORTED_TRACKS -> "track:"
     MapOverlayId.POSITION_OBSERVATION -> "position:"
     MapOverlayId.POSITION_HISTORY -> "position:"
