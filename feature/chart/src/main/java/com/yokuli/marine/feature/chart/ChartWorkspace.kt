@@ -2242,6 +2242,9 @@ private fun chartDisplayIssueText(issue: ChartDisplayIssue): String = stringReso
         ChartDisplayIssue.UNKNOWN_BOUNDS_UNFILTERED -> R.string.map_chart_unknown_bounds
         ChartDisplayIssue.NO_NATIVE_ZOOM -> R.string.map_chart_no_native_zoom
         ChartDisplayIssue.LAYER_LIMIT_REACHED -> R.string.map_chart_layer_limit
+        ChartDisplayIssue.ACTIVE_VIEW_MISSING -> R.string.map_chart_pinned_missing
+        ChartDisplayIssue.LOGICAL_LAYER_MISSING -> R.string.map_chart_source_missing
+        ChartDisplayIssue.LOGICAL_LAYER_UNAVAILABLE -> R.string.map_chart_pinned_unavailable
     },
 )
 
