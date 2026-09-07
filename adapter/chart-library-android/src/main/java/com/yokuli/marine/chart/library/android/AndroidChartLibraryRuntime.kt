@@ -93,6 +93,11 @@ class AndroidChartLibraryRuntime private constructor(
         catalog.resolveLegacyAsset(legacyLogicalId, legacyVersionId)
     override suspend fun managedCopyFor(originalAssetId: ChartAssetId) = catalog.managedCopyFor(originalAssetId)
     override suspend fun originalForManagedCopy(managedAssetId: ChartAssetId) = catalog.originalForManagedCopy(managedAssetId)
+    override suspend fun layers(offset: Int, limit: Int) = catalog.layers(offset, limit)
+    override suspend fun layer(id: ChartLayerId) = catalog.layer(id)
+    override suspend fun views(offset: Int, limit: Int) = catalog.views(offset, limit)
+    override suspend fun view(id: ChartViewId) = catalog.view(id)
+    override suspend fun activeView() = catalog.activeView()
     override suspend fun transact(transaction: ChartCatalogTransaction) = catalog.transact(transaction)
 
     override suspend fun acceptPicker(selection: ChartPickerSelection) = sourceController.acceptPicker(selection)

@@ -157,8 +157,15 @@ data class ChartCatalogSnapshot(
     val assetCount: Int = 0,
     val issueCount: Int = 0,
     val lastTransactionId: String? = null,
+    val layerCount: Int = 0,
+    val viewCount: Int = 0,
+    val activeViewId: ChartViewId? = null,
 ) {
-    init { require(revision >= 0L && sourceCount >= 0 && assetCount >= 0 && issueCount >= 0) }
+    init {
+        require(revision >= 0L && sourceCount >= 0 && assetCount >= 0 && issueCount >= 0)
+        require(layerCount >= 0 && viewCount >= 0)
+        require(activeViewId == null || viewCount > 0)
+    }
 }
 
 data class ChartCatalogPage<T>(val items: List<T>, val offset: Int, val limit: Int, val total: Int) {
@@ -188,6 +195,13 @@ interface ChartCatalogReadPort {
     suspend fun resolveLegacyAsset(legacyLogicalId: String, legacyVersionId: String? = null): ChartAssetId?
     suspend fun managedCopyFor(originalAssetId: ChartAssetId): ChartAssetId? = null
     suspend fun originalForManagedCopy(managedAssetId: ChartAssetId): ChartAssetId? = null
+    suspend fun layers(offset: Int = 0, limit: Int = DEFAULT_CATALOG_PAGE_SIZE): ChartCatalogPage<ChartLayer> =
+        ChartCatalogPage(emptyList(), offset, limit, 0)
+    suspend fun layer(id: ChartLayerId): ChartLayer? = null
+    suspend fun views(offset: Int = 0, limit: Int = DEFAULT_CATALOG_PAGE_SIZE): ChartCatalogPage<ChartMapView> =
+        ChartCatalogPage(emptyList(), offset, limit, 0)
+    suspend fun view(id: ChartViewId): ChartMapView? = null
+    suspend fun activeView(): ChartMapView? = snapshot.value.activeViewId?.let { view(it) }
 }
 
 sealed interface ChartCatalogMutation {
@@ -197,6 +211,10 @@ sealed interface ChartCatalogMutation {
     data class RemoveAssetMembership(val assetId: ChartAssetId, val sourceId: ChartSourceId) : ChartCatalogMutation
     data class PutLegacyMapping(val mapping: LegacyChartAssetMapping) : ChartCatalogMutation
     data class PutManagedCopyRelation(val relation: ChartManagedCopyRelation) : ChartCatalogMutation
+    data class PutLayer(val layer: ChartLayer) : ChartCatalogMutation
+    data class PutView(val view: ChartMapView) : ChartCatalogMutation
+    data class RemoveView(val viewId: ChartViewId) : ChartCatalogMutation
+    data class ActivateView(val viewId: ChartViewId) : ChartCatalogMutation
 }
 
 data class ChartCatalogTransaction(

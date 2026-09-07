@@ -71,13 +71,49 @@ class RoomChartCatalogRepository private constructor(
         dao.originalForManagedCopy(managedAssetId.value)?.let(::ChartAssetId)
     }
 
+    override suspend fun layers(offset: Int, limit: Int): ChartCatalogPage<ChartLayer> = ioRead {
+        checkPage(offset, limit)
+        ChartCatalogPage(
+            dao.layers(limit, offset).map { it.toDomain(dao.sourceIdsForLayer(it.id)) },
+            offset,
+            limit,
+            dao.layerCount(),
+        )
+    }
+
+    override suspend fun layer(id: ChartLayerId): ChartLayer? = ioRead {
+        dao.layer(id.value)?.let { it.toDomain(dao.sourceIdsForLayer(it.id)) }
+    }
+
+    override suspend fun views(offset: Int, limit: Int): ChartCatalogPage<ChartMapView> = ioRead {
+        checkPage(offset, limit)
+        ChartCatalogPage(
+            dao.views(limit, offset).map { it.toDomain(dao.viewLayers(it.id)) },
+            offset,
+            limit,
+            dao.viewCount(),
+        )
+    }
+
+    override suspend fun view(id: ChartViewId): ChartMapView? = ioRead {
+        dao.view(id.value)?.let { it.toDomain(dao.viewLayers(it.id)) }
+    }
+
+    override suspend fun activeView(): ChartMapView? = ioRead {
+        dao.metadata()?.activeViewId?.let { id -> dao.view(id)?.toDomain(dao.viewLayers(id)) }
+    }
+
     override suspend fun transact(transaction: ChartCatalogTransaction): ChartCatalogCommitResult = writer.withLock {
         if (closed.get()) return@withLock ChartCatalogCommitResult.Failed(ChartCatalogFailure.CLOSED)
         try {
             val resolved = linkedMapOf<ChartAssetId, ChartAssetId>()
             val outcome = withContext(Dispatchers.IO) {
                 database.withTransaction {
-                    val metadata = dao.metadata() ?: ChartCatalogMetadataEntity(revision = 0L, lastTransactionId = null)
+                    val metadata = dao.metadata() ?: ChartCatalogMetadataEntity(
+                        revision = 0L,
+                        lastTransactionId = null,
+                        activeViewId = null,
+                    )
                     if (dao.appliedTransactionRevision(transaction.transactionId) != null) {
                         return@withTransaction CommitOutcome(readSnapshot(), resolved)
                     }
@@ -85,11 +121,14 @@ class RoomChartCatalogRepository private constructor(
                         return@withTransaction CommitOutcome(conflict = metadata.revision)
                     }
                     transaction.mutations.forEach { mutation -> applyMutation(mutation, resolved) }
+                    val createdLayerIds = ensureDefaultLayersForSources()
+                    val activeViewId = ensureActiveView(metadata.activeViewId, createdLayerIds)
                     val newRevision = metadata.revision + 1L
                     dao.putMetadata(
                         ChartCatalogMetadataEntity(
                             revision = newRevision,
                             lastTransactionId = transaction.transactionId,
+                            activeViewId = activeViewId,
                         ),
                     )
                     dao.recordTransaction(ChartCatalogTransactionEntity(transaction.transactionId, newRevision))
@@ -123,6 +162,7 @@ class RoomChartCatalogRepository private constructor(
             is ChartCatalogMutation.RemoveSource -> {
                 dao.deleteSource(mutation.sourceId.value)
                 dao.deleteOrphanAssets()
+                dao.deleteOrphanLayers()
             }
             is ChartCatalogMutation.PutAsset -> {
                 val asset = mutation.asset
@@ -152,7 +192,90 @@ class RoomChartCatalogRepository private constructor(
                 }
                 dao.putManagedCopyRelation(relation.toEntity())
             }
+            is ChartCatalogMutation.PutLayer -> putLayer(mutation.layer)
+            is ChartCatalogMutation.PutView -> putView(mutation.view)
+            is ChartCatalogMutation.RemoveView -> dao.deleteView(mutation.viewId.value)
+            is ChartCatalogMutation.ActivateView -> {
+                if (dao.view(mutation.viewId.value) == null) throw InvalidReferenceException()
+                val metadata = dao.metadata() ?: ChartCatalogMetadataEntity(0L, null, null)
+                dao.putMetadata(metadata.copy(activeViewId = mutation.viewId.value))
+            }
         }
+    }
+
+    private suspend fun putLayer(layer: ChartLayer) {
+        if (layer.sourceIds.any { dao.source(it.value) == null }) throw InvalidReferenceException()
+        dao.putLayer(layer.toEntity())
+        dao.deleteLayerSources(layer.id.value)
+        dao.putLayerSources(layer.sourceIds.map { ChartLayerSourceEntity(layer.id.value, it.value) })
+    }
+
+    private suspend fun putView(view: ChartMapView) {
+        if (view.layers.any { dao.layer(it.layerId.value) == null }) throw InvalidReferenceException()
+        dao.putView(view.toEntity())
+        dao.deleteViewLayers(view.id.value)
+        dao.putViewLayers(view.layers.map { it.toEntity(view.id) })
+    }
+
+    private suspend fun ensureDefaultLayersForSources(): List<ChartLayerId> {
+        val created = mutableListOf<ChartLayerId>()
+        var offset = 0
+        do {
+            val page = dao.sources(DEFAULT_CATALOG_PAGE_SIZE, offset)
+            page.filter { it.kind != ChartLibrarySourceKind.MANAGED.name && dao.layerIdsForSource(it.id).isEmpty() }
+                .forEach { source ->
+                    val id = ChartLayerId("source-${source.id}")
+                    if (dao.layer(id.value) == null) {
+                        putLayer(
+                            ChartLayer(
+                                id = id,
+                                displayName = source.displayName,
+                                sourceIds = setOf(ChartSourceId(source.id)),
+                                visible = source.enabled,
+                                opacity = 1f,
+                                stackOrder = dao.layerCount().coerceAtMost(10_000),
+                                role = ChartAssetRole.valueOf(source.defaultRole),
+                            ),
+                        )
+                        created += id
+                    }
+                }
+            offset += page.size
+        } while (page.isNotEmpty() && offset < dao.sourceCount())
+        return created
+    }
+
+    private suspend fun ensureActiveView(currentId: String?, createdLayerIds: List<ChartLayerId>): String? {
+        val validCurrent = currentId?.takeIf { dao.view(it) != null }
+        val existing = validCurrent ?: dao.allViewIds().firstOrNull()
+        if (existing != null) {
+            if (createdLayerIds.isNotEmpty()) {
+                val viewEntity = requireNotNull(dao.view(existing))
+                val currentLayers = dao.viewLayers(existing)
+                val known = currentLayers.mapTo(hashSetOf()) { it.layerId }
+                val nextOrder = (currentLayers.maxOfOrNull { it.stackOrder } ?: -1) + 1
+                val additions = createdLayerIds.filterNot { it.value in known }.mapIndexed { index, id ->
+                    val layer = requireNotNull(dao.layer(id.value))
+                    ChartViewLayerEntity(existing, id.value, layer.visible, layer.opacity, nextOrder + index)
+                }
+                if (additions.isNotEmpty()) dao.putViewLayers(additions)
+                requireNotNull(viewEntity)
+            }
+            return existing
+        }
+        val layerIds = dao.allLayerIds()
+        if (layerIds.isEmpty()) return null
+        val default = ChartMapView(
+            id = ChartViewId(DEFAULT_VIEW_ID),
+            displayName = "Sailing",
+            baseStyle = ChartBuiltInBaseStyle.SATELLITE,
+            layers = layerIds.mapIndexed { index, id ->
+                val layer = requireNotNull(dao.layer(id))
+                ChartViewLayer(ChartLayerId(id), layer.visible, layer.opacity, index)
+            },
+        )
+        putView(default)
+        return default.id.value
     }
 
     private suspend fun readSnapshot(): ChartCatalogSnapshot {
@@ -163,6 +286,9 @@ class RoomChartCatalogRepository private constructor(
             assetCount = dao.assetCount(),
             issueCount = dao.issueCount(),
             lastTransactionId = metadata?.lastTransactionId,
+            layerCount = dao.layerCount(),
+            viewCount = dao.viewCount(),
+            activeViewId = metadata?.activeViewId?.takeIf { dao.view(it) != null }?.let(::ChartViewId),
         )
     }
 
@@ -177,7 +303,12 @@ class RoomChartCatalogRepository private constructor(
         fun create(context: Context, file: File): RoomChartCatalogRepository {
             file.parentFile?.mkdirs()
             val database = Room.databaseBuilder(context.applicationContext, ChartCatalogDatabase::class.java, file.absolutePath)
-                .addMigrations(CHART_CATALOG_MIGRATION_1_2, CHART_CATALOG_MIGRATION_2_3, CHART_CATALOG_MIGRATION_3_4)
+                .addMigrations(
+                    CHART_CATALOG_MIGRATION_1_2,
+                    CHART_CATALOG_MIGRATION_2_3,
+                    CHART_CATALOG_MIGRATION_3_4,
+                    CHART_CATALOG_MIGRATION_4_5,
+                )
                 .enableMultiInstanceInvalidation()
                 .build()
             return RoomChartCatalogRepository(database)
@@ -237,3 +368,18 @@ private fun ChartAssetEntity.toDomain(membershipIds: List<String>): ChartAsset =
 )
 private fun LegacyChartAssetMapping.toEntity() = LegacyChartMappingEntity(legacyLogicalId, legacyVersionId.orEmpty(), assetId.value)
 private fun ChartManagedCopyRelation.toEntity() = ChartManagedCopyRelationEntity(originalAssetId.value, managedAssetId.value)
+private fun ChartLayer.toEntity() = ChartLayerEntity(id.value, displayName, visible, opacity, stackOrder, role.name)
+private fun ChartLayerEntity.toDomain(sourceIds: List<String>) = ChartLayer(
+    ChartLayerId(id), displayName, sourceIds.mapTo(linkedSetOf(), ::ChartSourceId), visible, opacity, stackOrder,
+    ChartAssetRole.valueOf(role),
+)
+private fun ChartMapView.toEntity() = ChartViewEntity(id.value, displayName, baseStyle.name)
+private fun ChartViewLayer.toEntity(viewId: ChartViewId) = ChartViewLayerEntity(
+    viewId.value, layerId.value, visible, opacity, stackOrder,
+)
+private fun ChartViewEntity.toDomain(layers: List<ChartViewLayerEntity>) = ChartMapView(
+    ChartViewId(id), displayName, ChartBuiltInBaseStyle.valueOf(baseStyle),
+    layers.map { ChartViewLayer(ChartLayerId(it.layerId), it.visible, it.opacity, it.stackOrder) },
+)
+
+private const val DEFAULT_VIEW_ID = "default-view-v1"

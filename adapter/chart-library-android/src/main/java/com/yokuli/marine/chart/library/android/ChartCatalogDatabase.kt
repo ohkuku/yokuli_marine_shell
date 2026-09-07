@@ -19,6 +19,7 @@ internal data class ChartCatalogMetadataEntity(
     @PrimaryKey val id: Int = 0,
     val revision: Long,
     val lastTransactionId: String?,
+    val activeViewId: String?,
 )
 
 @Entity(tableName = "chart_sources")
@@ -140,6 +141,71 @@ internal data class ChartManagedCopyRelationEntity(
     val managedAssetId: String,
 )
 
+@Entity(tableName = "chart_layers")
+internal data class ChartLayerEntity(
+    @PrimaryKey val id: String,
+    val displayName: String,
+    val visible: Boolean,
+    val opacity: Float,
+    val stackOrder: Int,
+    val role: String,
+)
+
+@Entity(
+    tableName = "chart_layer_sources",
+    primaryKeys = ["layerId", "sourceId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ChartLayerEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["layerId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ChartSourceEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sourceId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("layerId"), Index("sourceId")],
+)
+internal data class ChartLayerSourceEntity(val layerId: String, val sourceId: String)
+
+@Entity(tableName = "chart_views", indices = [Index(value = ["displayName"])])
+internal data class ChartViewEntity(
+    @PrimaryKey val id: String,
+    val displayName: String,
+    val baseStyle: String,
+)
+
+@Entity(
+    tableName = "chart_view_layers",
+    primaryKeys = ["viewId", "layerId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ChartViewEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["viewId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = ChartLayerEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["layerId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("viewId"), Index("layerId")],
+)
+internal data class ChartViewLayerEntity(
+    val viewId: String,
+    val layerId: String,
+    val visible: Boolean,
+    val opacity: Float,
+    val stackOrder: Int,
+)
+
 @Entity(tableName = "chart_catalog_transactions")
 internal data class ChartCatalogTransactionEntity(
     @PrimaryKey val transactionId: String,
@@ -159,6 +225,12 @@ internal interface ChartCatalogDao {
 
     @Query("SELECT COUNT(*) FROM chart_assets")
     suspend fun assetCount(): Int
+
+    @Query("SELECT COUNT(*) FROM chart_layers")
+    suspend fun layerCount(): Int
+
+    @Query("SELECT COUNT(*) FROM chart_views")
+    suspend fun viewCount(): Int
 
     @Query("SELECT COALESCE(SUM(issueCount), 0) FROM chart_sources")
     suspend fun issueCount(): Int
@@ -241,6 +313,60 @@ internal interface ChartCatalogDao {
     @Query("DELETE FROM chart_assets WHERE id NOT IN (SELECT DISTINCT assetId FROM chart_memberships)")
     suspend fun deleteOrphanAssets()
 
+    @Query("SELECT * FROM chart_layers ORDER BY stackOrder, displayName COLLATE NOCASE, id LIMIT :limit OFFSET :offset")
+    suspend fun layers(limit: Int, offset: Int): List<ChartLayerEntity>
+
+    @Query("SELECT * FROM chart_layers WHERE id = :id")
+    suspend fun layer(id: String): ChartLayerEntity?
+
+    @Query("SELECT id FROM chart_layers ORDER BY stackOrder, id")
+    suspend fun allLayerIds(): List<String>
+
+    @Query("SELECT layerId FROM chart_layer_sources WHERE sourceId = :sourceId ORDER BY layerId")
+    suspend fun layerIdsForSource(sourceId: String): List<String>
+
+    @Query("SELECT sourceId FROM chart_layer_sources WHERE layerId = :layerId ORDER BY sourceId")
+    suspend fun sourceIdsForLayer(layerId: String): List<String>
+
+    @Upsert
+    suspend fun putLayer(value: ChartLayerEntity)
+
+    @Query("DELETE FROM chart_layers WHERE id = :id")
+    suspend fun deleteLayer(id: String)
+
+    @Query("DELETE FROM chart_layers WHERE id NOT IN (SELECT DISTINCT layerId FROM chart_layer_sources)")
+    suspend fun deleteOrphanLayers()
+
+    @Query("DELETE FROM chart_layer_sources WHERE layerId = :layerId")
+    suspend fun deleteLayerSources(layerId: String)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun putLayerSources(values: List<ChartLayerSourceEntity>)
+
+    @Query("SELECT * FROM chart_views ORDER BY displayName COLLATE NOCASE, id LIMIT :limit OFFSET :offset")
+    suspend fun views(limit: Int, offset: Int): List<ChartViewEntity>
+
+    @Query("SELECT * FROM chart_views WHERE id = :id")
+    suspend fun view(id: String): ChartViewEntity?
+
+    @Query("SELECT id FROM chart_views ORDER BY displayName COLLATE NOCASE, id")
+    suspend fun allViewIds(): List<String>
+
+    @Upsert
+    suspend fun putView(value: ChartViewEntity)
+
+    @Query("DELETE FROM chart_views WHERE id = :id")
+    suspend fun deleteView(id: String)
+
+    @Query("SELECT * FROM chart_view_layers WHERE viewId = :viewId ORDER BY stackOrder, layerId")
+    suspend fun viewLayers(viewId: String): List<ChartViewLayerEntity>
+
+    @Query("DELETE FROM chart_view_layers WHERE viewId = :viewId")
+    suspend fun deleteViewLayers(viewId: String)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putViewLayers(values: List<ChartViewLayerEntity>)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putLegacyMapping(value: LegacyChartMappingEntity)
 
@@ -279,9 +405,13 @@ internal interface ChartCatalogDao {
         ChartMembershipEntity::class,
         LegacyChartMappingEntity::class,
         ChartManagedCopyRelationEntity::class,
+        ChartLayerEntity::class,
+        ChartLayerSourceEntity::class,
+        ChartViewEntity::class,
+        ChartViewLayerEntity::class,
         ChartCatalogTransactionEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 internal abstract class ChartCatalogDatabase : RoomDatabase() {
@@ -314,5 +444,77 @@ internal val CHART_CATALOG_MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(database: SupportSQLiteDatabase) {
         database.execSQL("ALTER TABLE chart_assets ADD COLUMN accessMode TEXT")
         database.execSQL("ALTER TABLE chart_assets ADD COLUMN compatibilityWarnings TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+internal val CHART_CATALOG_MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE chart_catalog_metadata ADD COLUMN activeViewId TEXT")
+        database.execSQL(
+            """CREATE TABLE IF NOT EXISTS `chart_layers` (
+                `id` TEXT NOT NULL,
+                `displayName` TEXT NOT NULL,
+                `visible` INTEGER NOT NULL,
+                `opacity` REAL NOT NULL,
+                `stackOrder` INTEGER NOT NULL,
+                `role` TEXT NOT NULL,
+                PRIMARY KEY(`id`)
+            )""".trimIndent(),
+        )
+        database.execSQL(
+            """CREATE TABLE IF NOT EXISTS `chart_layer_sources` (
+                `layerId` TEXT NOT NULL,
+                `sourceId` TEXT NOT NULL,
+                PRIMARY KEY(`layerId`, `sourceId`),
+                FOREIGN KEY(`layerId`) REFERENCES `chart_layers`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`sourceId`) REFERENCES `chart_sources`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )""".trimIndent(),
+        )
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_chart_layer_sources_layerId` ON `chart_layer_sources` (`layerId`)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_chart_layer_sources_sourceId` ON `chart_layer_sources` (`sourceId`)")
+        database.execSQL(
+            """CREATE TABLE IF NOT EXISTS `chart_views` (
+                `id` TEXT NOT NULL,
+                `displayName` TEXT NOT NULL,
+                `baseStyle` TEXT NOT NULL,
+                PRIMARY KEY(`id`)
+            )""".trimIndent(),
+        )
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_chart_views_displayName` ON `chart_views` (`displayName`)")
+        database.execSQL(
+            """CREATE TABLE IF NOT EXISTS `chart_view_layers` (
+                `viewId` TEXT NOT NULL,
+                `layerId` TEXT NOT NULL,
+                `visible` INTEGER NOT NULL,
+                `opacity` REAL NOT NULL,
+                `stackOrder` INTEGER NOT NULL,
+                PRIMARY KEY(`viewId`, `layerId`),
+                FOREIGN KEY(`viewId`) REFERENCES `chart_views`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`layerId`) REFERENCES `chart_layers`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )""".trimIndent(),
+        )
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_chart_view_layers_viewId` ON `chart_view_layers` (`viewId`)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_chart_view_layers_layerId` ON `chart_view_layers` (`layerId`)")
+        database.execSQL(
+            """INSERT OR IGNORE INTO chart_layers(id,displayName,visible,opacity,stackOrder,role)
+               SELECT 'source-' || id, displayName, enabled, 1.0, 0, defaultRole
+               FROM chart_sources WHERE kind != 'MANAGED'""".trimIndent(),
+        )
+        database.execSQL(
+            """INSERT OR IGNORE INTO chart_layer_sources(layerId,sourceId)
+               SELECT 'source-' || id, id FROM chart_sources WHERE kind != 'MANAGED'""".trimIndent(),
+        )
+        database.execSQL(
+            """INSERT OR IGNORE INTO chart_views(id,displayName,baseStyle)
+               SELECT 'default-view-v1','Sailing','SATELLITE'
+               WHERE EXISTS(SELECT 1 FROM chart_layers)""".trimIndent(),
+        )
+        database.execSQL(
+            """INSERT OR IGNORE INTO chart_view_layers(viewId,layerId,visible,opacity,stackOrder)
+               SELECT 'default-view-v1',id,visible,opacity,stackOrder FROM chart_layers""".trimIndent(),
+        )
+        database.execSQL(
+            "UPDATE chart_catalog_metadata SET activeViewId='default-view-v1' WHERE EXISTS(SELECT 1 FROM chart_views)",
+        )
     }
 }

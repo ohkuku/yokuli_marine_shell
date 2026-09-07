@@ -191,6 +191,10 @@ class ChartLibraryCoordinatorTest {
                     }
                     is ChartCatalogMutation.PutLegacyMapping -> Unit
                     is ChartCatalogMutation.PutManagedCopyRelation -> Unit
+                    is ChartCatalogMutation.PutLayer -> Unit
+                    is ChartCatalogMutation.PutView -> Unit
+                    is ChartCatalogMutation.RemoveView -> Unit
+                    is ChartCatalogMutation.ActivateView -> Unit
                 }
             }
             committedTransactions += 1

@@ -25,6 +25,11 @@ class RoomChartCatalogRepositoryTest {
             ))) as ChartCatalogCommitResult.Committed
             assertEquals(1L, result.snapshot.revision)
             assertEquals(3, result.snapshot.assetCount)
+            assertEquals(1, result.snapshot.layerCount)
+            assertEquals(1, result.snapshot.viewCount)
+            assertNotNull(result.snapshot.activeViewId)
+            assertEquals("source", repository.layers().items.single().displayName)
+            assertEquals(repository.layers().items.single().id, repository.activeView()?.layers?.single()?.layerId)
             val first = repository.assets(offset = 0, limit = 2)
             assertEquals(2, first.items.size)
             assertEquals(3, first.total)
@@ -33,6 +38,46 @@ class RoomChartCatalogRepositoryTest {
         RoomChartCatalogRepository.create(context, file).use { restored ->
             assertEquals(1L, restored.snapshot.value.revision)
             assertEquals(3, restored.assets().total)
+            assertEquals("source", restored.layers().items.single().displayName)
+            assertEquals("Sailing", restored.activeView()?.displayName)
+        }
+    }
+
+    @Test fun logicalLayerRenameViewCompositionAndActivationRoundTrip() = runBlocking {
+        val file = freshDatabase("map-content-roundtrip")
+        val first = source("NZ Hydro")
+        val second = source("Fishing")
+        RoomChartCatalogRepository.create(context, file).use { repository ->
+            repository.transact(ChartCatalogTransaction("sources", mutations = listOf(
+                ChartCatalogMutation.PutSource(first), ChartCatalogMutation.PutSource(second),
+            )))
+            val layers = repository.layers().items
+            assertEquals(2, layers.size)
+            val renamed = layers.first { first.id in it.sourceIds }.copy(displayName = "LINZ 官方海图")
+            val fishing = layers.first { second.id in it.sourceIds }
+            val view = ChartMapView(
+                ChartViewId("fishing-view"),
+                "Fishing",
+                ChartBuiltInBaseStyle.SATELLITE,
+                listOf(
+                    ChartViewLayer(renamed.id, opacity = 1f, stackOrder = 0),
+                    ChartViewLayer(fishing.id, opacity = .65f, stackOrder = 1),
+                ),
+            )
+            val result = repository.transact(ChartCatalogTransaction("content", mutations = listOf(
+                ChartCatalogMutation.PutLayer(renamed),
+                ChartCatalogMutation.PutView(view),
+                ChartCatalogMutation.ActivateView(view.id),
+            )))
+            assertTrue(result is ChartCatalogCommitResult.Committed)
+        }
+        RoomChartCatalogRepository.create(context, file).use { restored ->
+            assertEquals("LINZ 官方海图", restored.layers().items.first { first.id in it.sourceIds }.displayName)
+            val active = requireNotNull(restored.activeView())
+            assertEquals("Fishing", active.displayName)
+            assertEquals(listOf(1f, .65f), active.layers.map(ChartViewLayer::opacity))
+            assertEquals(2, restored.snapshot.value.layerCount)
+            assertEquals(2, restored.snapshot.value.viewCount)
         }
     }
 
