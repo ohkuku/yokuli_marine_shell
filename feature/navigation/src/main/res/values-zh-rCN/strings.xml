@@ -122,4 +122,22 @@
     <string name="navigation_orientation_course">航向</string>
     <string name="navigation_orientation_heading">艏向</string>
     <string name="navigation_recenter">回中</string>
+    <string name="track_start">开始记录航迹</string>
+    <string name="track_idle">航迹</string>
+    <string name="track_recording">航迹 · 记录中</string>
+    <string name="track_paused">航迹 · 已暂停</string>
+    <string name="track_stopped">航迹 · 待保存</string>
+    <string name="track_summary">%1$s · %2$.2f 海里 · %3$d 点</string>
+    <string name="track_summary_metric">%1$s · %2$.2f 千米 · %3$d 点</string>
+    <string name="track_pause">暂停航迹</string>
+    <string name="track_resume">继续航迹</string>
+    <string name="track_stop">停止航迹</string>
+    <string name="track_save">保存航迹</string>
+    <string name="track_discard">丢弃航迹</string>
+    <string name="track_issue_not_recording">当前没有可执行此操作的航迹。</string>
+    <string name="track_issue_already_running">已有航迹会话；请先保存或丢弃。</string>
+    <string name="track_issue_empty">尚未记录有效船位，不能保存空航迹。</string>
+    <string name="track_issue_capacity">已达到安全点数上限，记录已暂停；已有点未丢失。</string>
+    <string name="track_issue_persistence">无法持久保存，记录已安全暂停；请重试。</string>
+    <string name="track_issue_archive">无法写入航迹库；停止的航迹仍保留，可重试或丢弃。</string>
 </resources>

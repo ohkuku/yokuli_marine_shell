@@ -246,6 +246,7 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
     val nmeaRuntimeSnapshot by shellViewModel.nmeaRuntimeState.collectAsState()
     val dataSourcesSnapshot by shellViewModel.marineSourceState.collectAsState()
     val activeNavigationState by shellViewModel.activeNavigationState.collectAsState()
+    val trackRecorderState by shellViewModel.trackRecorderState.collectAsState()
     val navigationState by shellViewModel.navigationState.collectAsState()
     val mapTileSnapshot by application.mapTileSnapshots.snapshots.collectAsState()
     val coroutineScope = rememberCoroutineScope()
@@ -588,6 +589,8 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             onCancelOfflineCoverage = shellViewModel::cancelOfflineCoverage,
             activeNavigationState = activeNavigationState,
             onActiveNavigationCommand = { shellViewModel.onActiveNavigationCommand(it) },
+            trackRecorderState = trackRecorderState,
+            onTrackRecorderCommand = shellViewModel::onTrackRecorderCommand,
             onDirectTo = shellViewModel::startDirectTo,
             onUnsavedRouteDecision = shellViewModel::resolveUnsavedRoute,
             onSaveAndStartRoute = { shellViewModel.saveAndStartActiveRoute() },

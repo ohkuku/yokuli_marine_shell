@@ -31,6 +31,7 @@ import com.yokuli.marine.data.source.MarineSourceRuntimePort
 import com.yokuli.marine.feature.data.DataPhoneDemandRuntime
 import com.yokuli.marine.map.storage.RoomMapPersistence
 import com.yokuli.marine.map.storage.ProtoDataStoreActiveNavigationSessionStore
+import com.yokuli.marine.map.storage.ProtoDataStoreTrackRecordingStore
 import com.yokuli.marine.map.offline.AndroidMbTilesRepository
 import com.yokuli.marine.map.offline.AndroidChartCoverageIndex
 import com.yokuli.marine.map.offline.ChartLoopbackTileGateway
@@ -45,9 +46,11 @@ import com.yokuli.shell.engine.LauncherPersistedState
 import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
 import com.yokuli.marine.navigation.domain.ActiveNavigationRuntimePort
 import com.yokuli.marine.navigation.domain.DefaultActiveNavigationRuntime
+import com.yokuli.marine.navigation.domain.DefaultTrackRecorderRuntime
 import com.yokuli.marine.navigation.domain.NavigationLibraryLoadResult
 import com.yokuli.marine.navigation.domain.NavigationRouteReadPort
 import com.yokuli.marine.navigation.domain.NavigationRuntimeClock
+import com.yokuli.marine.navigation.domain.TrackRecorderRuntimePort
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -159,6 +162,19 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
             scope = applicationScope,
         )
     }
+    private val trackRecordingStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProtoDataStoreTrackRecordingStore.create(this, applicationScope)
+    }
+    val trackRecorderRuntime: TrackRecorderRuntimePort by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        DefaultTrackRecorderRuntime(
+            input = navigationInputPort,
+            activeNavigation = activeNavigationRuntime.state,
+            recordingStore = trackRecordingStore,
+            library = mapPersistence,
+            clock = NavigationRuntimeClock(System::currentTimeMillis),
+            scope = applicationScope,
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -169,7 +185,10 @@ class ShellApplication : Application(), MarineDataRuntimeOwner, ChartLibraryRunt
         marineSourceRuntime
         dataPhoneDemandRuntime
         chartLibraryRuntime
-        applicationScope.launch { activeNavigationRuntime.initialize() }
+        applicationScope.launch {
+            activeNavigationRuntime.initialize()
+            trackRecorderRuntime.initialize()
+        }
         if (BuildConfig.BUILD_TYPE in setOf("benchmark", "nonMinifiedRelease")) {
             // Harnesses repeatedly force-stop/reinstall the target. A first-run LocaleManager
             // recreation would measure platform setup instead of the launcher journey.

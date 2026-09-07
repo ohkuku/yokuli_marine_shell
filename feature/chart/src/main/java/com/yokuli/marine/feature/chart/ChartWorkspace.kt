@@ -158,6 +158,7 @@ fun ChartWorkspace(
     onStartOfflineCoverage: (routeId: String, targetZoom: Int, halfWidthNauticalMiles: Double) -> Unit = { _, _, _ -> },
     onCancelOfflineCoverage: () -> Unit = {},
     activeNavigationStrip: (@Composable () -> Unit)? = null,
+    trackRecorderStrip: (@Composable () -> Unit)? = null,
     onDirectTo: (point: GeoPoint, name: String) -> Unit = { _, _ -> },
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit = {},
     onStartNavigation: (routeId: String, routeRevision: Long) -> Unit = { _, _ -> },
@@ -234,6 +235,7 @@ fun ChartWorkspace(
                 onChartDisplayAction,
                 recoveryExportState,
                 activeNavigationStrip,
+                trackRecorderStrip,
                 onDirectTo,
                 onUnsavedRouteDecision,
                 onSaveAndStartRoute,
@@ -273,6 +275,7 @@ private fun MapRootChrome(
     onChartDisplayAction: (ChartDisplayUiAction) -> Unit,
     recoveryExportState: MapRecoveryExportUiState,
     activeNavigationStrip: (@Composable () -> Unit)?,
+    trackRecorderStrip: (@Composable () -> Unit)?,
     onDirectTo: (point: GeoPoint, name: String) -> Unit,
     onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     onSaveAndStartRoute: () -> Unit,
@@ -319,6 +322,9 @@ private fun MapRootChrome(
             }
             activeNavigationStrip?.let { content ->
                 Box(Modifier.fillMaxWidth().testTag("map-active-navigation-strip")) { content() }
+            }
+            trackRecorderStrip?.let { content ->
+                Box(Modifier.fillMaxWidth().testTag("map-track-recorder-strip")) { content() }
             }
             MapRootSummary(
                 state,

@@ -384,4 +384,37 @@ class RoomMapPersistenceTest {
             }
         }
     }
+
+    @Test
+    fun versionFourAddsRecordedTrackMetadataWithoutReclassifyingImportedTracks() {
+        val databaseName = "map-library-track-origin-migration-${System.nanoTime()}.db"
+        migrationHelper.createDatabase(databaseName, 4).apply {
+            execSQL(
+                "INSERT INTO imported_tracks(id, revision, name, description, sourceDigest, importedAtMillis, editability) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>("legacy-track", 1L, "Legacy", "", "a".repeat(64), 100L, "READ_ONLY"),
+            )
+            execSQL(
+                "INSERT INTO imported_track_segments(trackId, position) VALUES (?, ?)",
+                arrayOf<Any?>("legacy-track", 0),
+            )
+            execSQL(
+                "INSERT INTO imported_track_points(trackId, segmentPosition, pointPosition, latitude, longitude, elevationMeters, time) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>("legacy-track", 0, 0, -36.8, 174.7, null, null),
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(databaseName, 5, true, MIGRATION_4_5).use { migrated ->
+            migrated.query(
+                "SELECT origin, startedAtEpochMillis, navigationSessionId FROM imported_tracks WHERE id = 'legacy-track'",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("IMPORTED", cursor.getString(0))
+                assertTrue(cursor.isNull(1))
+                assertTrue(cursor.isNull(2))
+            }
+        }
+    }
 }

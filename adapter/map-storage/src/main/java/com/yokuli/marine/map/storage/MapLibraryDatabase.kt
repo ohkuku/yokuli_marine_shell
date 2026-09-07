@@ -90,6 +90,14 @@ internal data class ImportedTrackEntity(
     val sourceDigest: String,
     val importedAtMillis: Long,
     val editability: String,
+    @androidx.room.ColumnInfo(defaultValue = "'IMPORTED'") val origin: String,
+    val startedAtEpochMillis: Long?,
+    val endedAtEpochMillis: Long?,
+    val durationMillis: Long?,
+    val distanceNauticalMiles: Double?,
+    val navigationSessionId: String?,
+    val routeId: String?,
+    val routeRevision: Long?,
 )
 
 @Entity(tableName = "imported_track_segments", primaryKeys = ["trackId", "position"])
@@ -110,6 +118,10 @@ internal data class ImportedTrackPointEntity(
     val longitude: Double,
     val elevationMeters: Double?,
     val time: String?,
+    val recordedAtEpochMillis: Long?,
+    val sourceId: String?,
+    val speedOverGroundKnots: Double?,
+    val courseOverGroundTrueDegrees: Double?,
 )
 
 @Entity(tableName = "gpx_import_records")
@@ -286,7 +298,7 @@ internal abstract class MapLibraryDao {
         ImportedTrackPointEntity::class,
         GpxImportRecordEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 internal abstract class MapLibraryDatabase : RoomDatabase() {
@@ -385,5 +397,22 @@ internal val MIGRATION_3_4 = object : Migration(3, 4) {
             )
             """.trimIndent(),
         )
+    }
+}
+
+internal val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL("ALTER TABLE `imported_tracks` ADD COLUMN `origin` TEXT NOT NULL DEFAULT 'IMPORTED'")
+        database.execSQL("ALTER TABLE `imported_tracks` ADD COLUMN `startedAtEpochMillis` INTEGER")
+        database.execSQL("ALTER TABLE `imported_tracks` ADD COLUMN `endedAtEpochMillis` INTEGER")
+        database.execSQL("ALTER TABLE `imported_tracks` ADD COLUMN `durationMillis` INTEGER")
+        database.execSQL("ALTER TABLE `imported_tracks` ADD COLUMN `distanceNauticalMiles` REAL")
+        database.execSQL("ALTER TABLE `imported_tracks` ADD COLUMN `navigationSessionId` TEXT")
+        database.execSQL("ALTER TABLE `imported_tracks` ADD COLUMN `routeId` TEXT")
+        database.execSQL("ALTER TABLE `imported_tracks` ADD COLUMN `routeRevision` INTEGER")
+        database.execSQL("ALTER TABLE `imported_track_points` ADD COLUMN `recordedAtEpochMillis` INTEGER")
+        database.execSQL("ALTER TABLE `imported_track_points` ADD COLUMN `sourceId` TEXT")
+        database.execSQL("ALTER TABLE `imported_track_points` ADD COLUMN `speedOverGroundKnots` REAL")
+        database.execSQL("ALTER TABLE `imported_track_points` ADD COLUMN `courseOverGroundTrueDegrees` REAL")
     }
 }

@@ -220,11 +220,13 @@ internal fun NavigationActiveMap(
     baseState: MapState,
     chartSurface: NavigationMapSurface,
     onAction: (NavigationUiAction) -> Unit,
+    trackRecorderStrip: (@Composable () -> Unit)? = null,
 ) {
     val route = state.active.route ?: return
     NavigationRouteMapFrame(route, baseState, chartSurface, "navigation-active-map") { mapModifier, localMap, onMapAction ->
         Column(mapModifier.fillMaxWidth()) {
             ActiveNavigationStrip(state.active, { onAction(NavigationUiAction.ActiveCommand(it)) })
+            trackRecorderStrip?.invoke()
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 SpatialCommand(
                     stringResource(localMap.navigationCamera.mode.cameraLabel()),
@@ -264,6 +266,7 @@ private fun NavigationRouteMapFrame(
         baseState.position,
         baseState.activeNavigationRoute,
         baseState.activeNavigationLeg,
+        baseState.activeTrackSegments,
     ) {
         val geometry = route.points.map { it.position.toGeoPoint() }
         mapState = mapState.copy(
@@ -274,6 +277,7 @@ private fun NavigationRouteMapFrame(
             activeNavigationLeg = baseState.activeNavigationLeg
                 .takeIf { baseState.activeNavigationRoute == geometry }
                 .orEmpty(),
+            activeTrackSegments = baseState.activeTrackSegments,
         )
     }
     LaunchedEffect(route.id, route.revision) {

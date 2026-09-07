@@ -54,6 +54,7 @@ fun NavigationWorkspace(
     onGpxAction: (NavigationGpxUiAction) -> Unit = {},
     mapState: MapState = MapState(),
     chartSurface: NavigationMapSurface? = null,
+    trackRecorderStrip: (@Composable () -> Unit)? = null,
 ) {
     val currentState by rememberUpdatedState(state)
     val currentAction by rememberUpdatedState(onAction)
@@ -78,7 +79,7 @@ fun NavigationWorkspace(
                 return
             }
             NavigationPage.Root -> if (state.section == NavigationSection.ACTIVE && state.active.session != null) {
-                NavigationActiveMap(state, mapState, chartSurface, onAction)
+                NavigationActiveMap(state, mapState, chartSurface, onAction, trackRecorderStrip)
                 return
             }
             else -> Unit
@@ -97,7 +98,7 @@ fun NavigationWorkspace(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (val page = state.page) {
                 NavigationPage.Root -> when (state.section) {
-                    NavigationSection.OVERVIEW -> OverviewPage(state, onAction)
+                    NavigationSection.OVERVIEW -> OverviewPage(state, onAction, trackRecorderStrip)
                     NavigationSection.WAYPOINTS -> WaypointsPage(state, onAction)
                     NavigationSection.ROUTES -> RoutesPage(state, onAction)
                     NavigationSection.GPX -> NavigationGpxWorkspace(gpxState, onGpxAction)
@@ -145,7 +146,12 @@ private fun SectionStrip(selectedSection: NavigationSection, onAction: (Navigati
 }
 
 @Composable
-private fun OverviewPage(state: NavigationUiState, onAction: (NavigationUiAction) -> Unit) = ScrollBody("navigation-overview") {
+private fun OverviewPage(
+    state: NavigationUiState,
+    onAction: (NavigationUiAction) -> Unit,
+    trackRecorderStrip: (@Composable () -> Unit)?,
+) = ScrollBody("navigation-overview") {
+    trackRecorderStrip?.invoke()
     val session = state.active.session
     if (session != null) {
         Command(stringResource(R.string.navigation_open_active), "navigation-open-active") {

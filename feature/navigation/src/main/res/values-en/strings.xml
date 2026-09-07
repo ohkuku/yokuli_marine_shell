@@ -134,4 +134,22 @@
     <string name="navigation_orientation_course">COURSE</string>
     <string name="navigation_orientation_heading">HEADING</string>
     <string name="navigation_recenter">RECENTER</string>
+    <string name="track_start">start track</string>
+    <string name="track_idle">TRACK</string>
+    <string name="track_recording">TRACK · REC</string>
+    <string name="track_paused">TRACK · PAUSED</string>
+    <string name="track_stopped">TRACK · SAVE PENDING</string>
+    <string name="track_summary">%1$s · %2$.2f NM · %3$d PTS</string>
+    <string name="track_summary_metric">%1$s · %2$.2f KM · %3$d PTS</string>
+    <string name="track_pause">pause track</string>
+    <string name="track_resume">resume track</string>
+    <string name="track_stop">stop track</string>
+    <string name="track_save">save track</string>
+    <string name="track_discard">discard track</string>
+    <string name="track_issue_not_recording">There is no track for this action.</string>
+    <string name="track_issue_already_running">A track session already exists. Save or discard it first.</string>
+    <string name="track_issue_empty">No usable vessel position has been recorded; an empty track cannot be saved.</string>
+    <string name="track_issue_capacity">The safe point limit was reached. Recording is paused and accepted points are preserved.</string>
+    <string name="track_issue_persistence">Persistence failed. Recording is safely paused; try again.</string>
+    <string name="track_issue_archive">The track library write failed. The stopped track is retained for retry or discard.</string>
 </resources>

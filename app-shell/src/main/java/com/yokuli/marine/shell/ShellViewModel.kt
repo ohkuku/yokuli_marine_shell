@@ -52,6 +52,7 @@ import com.yokuli.marine.navigation.domain.ActiveNavigationIssue
 import com.yokuli.marine.navigation.domain.ActiveNavigationRuntimePort
 import com.yokuli.marine.navigation.domain.ActiveNavigationSnapshot
 import com.yokuli.marine.navigation.domain.NavigationPosition
+import com.yokuli.marine.navigation.domain.TrackRecorderCommand
 import com.yokuli.marine.feature.navigation.NavigationCoordinator
 import com.yokuli.marine.feature.navigation.NavigationDestination
 import com.yokuli.marine.feature.navigation.NavigationEffect
@@ -141,6 +142,7 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     val chartLibraryState: StateFlow<ChartLibraryUiState> = chartLibraryCoordinator.state
     val chartLibraryEffects: Flow<ChartLibraryEffect> = chartLibraryCoordinator.effects
     val activeNavigationState = shellApplication.activeNavigationRuntime.state
+    val trackRecorderState = shellApplication.trackRecorderRuntime.state
 
     val persistedPreferences: StateFlow<LauncherPersistedState> = persistence.state
         .map { persisted ->
@@ -252,6 +254,18 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
                 }
         }
         viewModelScope.launch {
+            trackRecorderState.collect { track ->
+                val segments = track.session?.segments.orEmpty().map { segment ->
+                    segment.points.map { point ->
+                        GeoPoint(point.position.latitude, point.position.longitude)
+                    }
+                }
+                if (mapStore.state.value.activeTrackSegments != segments) {
+                    mapStore.dispatch(MapAction.ActiveTrackChanged(segments))
+                }
+            }
+        }
+        viewModelScope.launch {
             gpxImportState.collect { state ->
                 if (state is GpxImportUiState.Succeeded) navigationCoordinator.dispatch(NavigationUiAction.Refresh)
             }
@@ -326,6 +340,10 @@ class ShellViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onChartLibraryAction(action: ChartLibraryUiAction) = chartLibraryCoordinator.dispatch(action)
+
+    fun onTrackRecorderCommand(command: TrackRecorderCommand) {
+        viewModelScope.launch { shellApplication.trackRecorderRuntime.execute(command) }
+    }
 
     fun openChartLibrary(destination: ChartLibraryDestination) = chartLibraryCoordinator.open(destination)
 

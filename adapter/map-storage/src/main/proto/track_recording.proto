@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+option java_package = "com.yokuli.marine.map.storage.proto";
+option java_multiple_files = true;
+
+message TrackRecordingStateProto {
+  int32 schema_version = 1;
+  bool has_session = 2;
+  string id = 3;
+  int64 started_at_epoch_millis = 4;
+  string status = 5;
+  repeated TrackRecordingSegmentProto segments = 6;
+  bool start_new_segment = 7;
+  bool has_active_since = 8;
+  int64 active_since_epoch_millis = 9;
+  int64 accumulated_duration_millis = 10;
+  bool has_stopped_at = 11;
+  int64 stopped_at_epoch_millis = 12;
+  string navigation_session_id = 13;
+  string route_id = 14;
+  int64 route_revision = 15;
+}
+
+message TrackRecordingSegmentProto { repeated TrackRecordingPointProto points = 1; }
+
+message TrackRecordingPointProto {
+  double latitude = 1;
+  double longitude = 2;
+  int64 recorded_at_epoch_millis = 3;
+  string source_id = 4;
+  bool has_speed = 5;
+  double speed_over_ground_knots = 6;
+  bool has_course = 7;
+  double course_over_ground_true_degrees = 8;
+}

@@ -83,13 +83,25 @@ data class NavigationTrackPoint(
     val position: NavigationPosition,
     val elevationMeters: Double? = null,
     val time: String? = null,
+    val recordedAtEpochMillis: Long? = null,
+    val sourceId: String? = null,
+    val speedOverGroundKnots: Double? = null,
+    val courseOverGroundTrueDegrees: Double? = null,
 ) {
-    init { require(elevationMeters == null || elevationMeters.isFinite()) }
+    init {
+        require(elevationMeters == null || elevationMeters.isFinite())
+        require(recordedAtEpochMillis == null || recordedAtEpochMillis >= 0L)
+        require(sourceId == null || sourceId.isNotBlank())
+        require(speedOverGroundKnots == null || speedOverGroundKnots.isFinite() && speedOverGroundKnots >= 0.0)
+        require(courseOverGroundTrueDegrees == null || courseOverGroundTrueDegrees in 0.0..<360.0)
+    }
 }
 
 data class NavigationTrackSegment(val points: List<NavigationTrackPoint>) {
     init { require(points.isNotEmpty()) }
 }
+
+enum class NavigationTrackOrigin { IMPORTED, RECORDED }
 
 data class NavigationTrack(
     val id: String,
@@ -99,12 +111,32 @@ data class NavigationTrack(
     val segments: List<NavigationTrackSegment>,
     val sourceDigest: String,
     val importedAtMillis: Long,
+    val origin: NavigationTrackOrigin = NavigationTrackOrigin.IMPORTED,
+    val startedAtEpochMillis: Long? = null,
+    val endedAtEpochMillis: Long? = null,
+    val durationMillis: Long? = null,
+    val distanceNauticalMiles: Double? = null,
+    val navigationSessionId: String? = null,
+    val routeId: String? = null,
+    val routeRevision: Long? = null,
 ) {
     init {
         require(id.isNotBlank() && revision > 0L && name.isNotBlank())
         require(segments.isNotEmpty())
         require(sourceDigest.matches(Regex("[0-9a-f]{64}")))
         require(importedAtMillis >= 0L)
+        require((routeId == null) == (routeRevision == null))
+        require(routeRevision == null || routeRevision > 0L)
+        require(navigationSessionId == null || navigationSessionId.isNotBlank())
+        require(
+            origin != NavigationTrackOrigin.RECORDED ||
+                startedAtEpochMillis != null && endedAtEpochMillis != null && durationMillis != null &&
+                distanceNauticalMiles != null,
+        ) { "Recorded tracks require typed timing and distance metadata" }
+        require(startedAtEpochMillis == null || startedAtEpochMillis >= 0L)
+        require(endedAtEpochMillis == null || endedAtEpochMillis >= (startedAtEpochMillis ?: 0L))
+        require(durationMillis == null || durationMillis >= 0L)
+        require(distanceNauticalMiles == null || distanceNauticalMiles.isFinite() && distanceNauticalMiles >= 0.0)
     }
 }
 
@@ -132,6 +164,9 @@ data class NavigationLibrary(
         require(importedTracks.map(NavigationTrack::id).distinct().size == importedTracks.size)
         require(gpxImports.map(GpxImportReceipt::id).distinct().size == gpxImports.size)
     }
+
+    /** All durable actual tracks. The old property name remains the wire/storage compatibility field. */
+    val tracks: List<NavigationTrack> get() = importedTracks
 }
 
 data class OfflineCoveragePlan(

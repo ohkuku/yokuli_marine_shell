@@ -21,6 +21,7 @@ sealed interface MapAction {
     ) : MapAction {
         init { require(activeLeg.size <= 2) }
     }
+    data class ActiveTrackChanged(val segments: List<List<GeoPoint>>) : MapAction
     data class QuickMark(val point: GeoPoint) : MapAction
     data class FocusSavedPlace(val placeId: String) : MapAction
     data class BeginMeasurement(val vessel: GeoPoint?, val target: GeoPoint?) : MapAction
@@ -238,6 +239,7 @@ class DefaultMapReducer(
                 state.navigationCamera.mode,
             ),
         )
+        is MapAction.ActiveTrackChanged -> MapReduction(state.copy(activeTrackSegments = action.segments))
         is MapAction.QuickMark -> quickMark(state, action.point)
         is MapAction.FocusSavedPlace -> focusSavedPlace(state, action.placeId)
         is MapAction.BeginMeasurement -> beginMeasurement(state, action.vessel, action.target)

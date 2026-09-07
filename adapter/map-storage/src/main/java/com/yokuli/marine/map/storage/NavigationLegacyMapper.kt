@@ -5,6 +5,7 @@ import com.yokuli.marine.map.domain.GpxImportRecord
 import com.yokuli.marine.map.domain.ImportedTrack
 import com.yokuli.marine.map.domain.ImportedTrackPoint
 import com.yokuli.marine.map.domain.ImportedTrackSegment
+import com.yokuli.marine.map.domain.TrackOrigin
 import com.yokuli.marine.map.domain.ManualRouteDraft
 import com.yokuli.marine.map.domain.MapLibrarySnapshot
 import com.yokuli.marine.map.domain.PlaceCategory
@@ -17,6 +18,7 @@ import com.yokuli.marine.navigation.domain.NavigationPosition
 import com.yokuli.marine.navigation.domain.NavigationTrack
 import com.yokuli.marine.navigation.domain.NavigationTrackPoint
 import com.yokuli.marine.navigation.domain.NavigationTrackSegment
+import com.yokuli.marine.navigation.domain.NavigationTrackOrigin
 import com.yokuli.marine.navigation.domain.RouteDraft
 import com.yokuli.marine.navigation.domain.RoutePlan
 import com.yokuli.marine.navigation.domain.RoutePoint
@@ -142,6 +144,14 @@ internal object NavigationLegacyMapper {
         segments = segments.map { segment -> NavigationTrackSegment(segment.points.map { it.asNavigation() }) },
         sourceDigest = sourceDigest,
         importedAtMillis = importedAtMillis,
+        origin = NavigationTrackOrigin.valueOf(origin.name),
+        startedAtEpochMillis = startedAtEpochMillis,
+        endedAtEpochMillis = endedAtEpochMillis,
+        durationMillis = durationMillis,
+        distanceNauticalMiles = distanceNauticalMiles,
+        navigationSessionId = navigationSessionId,
+        routeId = routeId,
+        routeRevision = routeRevision,
     )
 
     private fun NavigationTrack.asLegacy() = ImportedTrack(
@@ -152,18 +162,34 @@ internal object NavigationLegacyMapper {
         segments = segments.map { segment -> ImportedTrackSegment(segment.points.map { it.asLegacy() }) },
         sourceDigest = sourceDigest,
         importedAtMillis = importedAtMillis,
+        origin = TrackOrigin.valueOf(origin.name),
+        startedAtEpochMillis = startedAtEpochMillis,
+        endedAtEpochMillis = endedAtEpochMillis,
+        durationMillis = durationMillis,
+        distanceNauticalMiles = distanceNauticalMiles,
+        navigationSessionId = navigationSessionId,
+        routeId = routeId,
+        routeRevision = routeRevision,
     )
 
     private fun ImportedTrackPoint.asNavigation() = NavigationTrackPoint(
         position = point.asNavigation(),
         elevationMeters = elevationMeters,
         time = time,
+        recordedAtEpochMillis = recordedAtEpochMillis,
+        sourceId = sourceId,
+        speedOverGroundKnots = speedOverGroundKnots,
+        courseOverGroundTrueDegrees = courseOverGroundTrueDegrees,
     )
 
     private fun NavigationTrackPoint.asLegacy() = ImportedTrackPoint(
         point = position.asLegacy(),
         elevationMeters = elevationMeters,
         time = time,
+        recordedAtEpochMillis = recordedAtEpochMillis,
+        sourceId = sourceId,
+        speedOverGroundKnots = speedOverGroundKnots,
+        courseOverGroundTrueDegrees = courseOverGroundTrueDegrees,
     )
 
     private fun GpxImportRecord.asNavigation() = GpxImportReceipt(id, sha256, importedAtMillis)

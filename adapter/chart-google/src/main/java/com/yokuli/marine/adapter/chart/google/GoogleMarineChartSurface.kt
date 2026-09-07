@@ -431,6 +431,7 @@ fun GoogleMarineChartSurface(
         state.activeRoutePlanId,
         state.activeNavigationRoute,
         state.activeNavigationLeg,
+        state.activeTrackSegments,
         state.savedRoutes,
         state.editGesture,
         state.position.observation,
@@ -474,6 +475,13 @@ fun GoogleMarineChartSurface(
                 domainPolylines += addPolyline(
                     PolylineOptions().addAll(leg.map(GeoPoint::toLatLng)).color(0xfff7b500.toInt()).width(10f),
                 )
+            }
+            state.activeTrackSegments.forEach { segment ->
+                segment.takeIf { it.size >= 2 }?.let { points ->
+                    domainPolylines += addPolyline(
+                        PolylineOptions().addAll(points.map(GeoPoint::toLatLng)).color(0xff00d084.toInt()).width(6f),
+                    )
+                }
             }
             state.position.observation?.let { observation ->
                 addMarker(

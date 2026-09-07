@@ -26,6 +26,10 @@ data class ActiveNavigationSession(
         require(state != NavigationSessionState.STOPPED) { "Stopped navigation is represented by no stored session" }
         require(embeddedRoute == null || embeddedRoute.id == routeId && embeddedRoute.revision == routeRevision)
     }
+
+    /** Stable identity for this passage attempt; restarting the same route creates a different session. */
+    val sessionId: String
+        get() = "$routeId:$routeRevision:$startedAtEpochMillis"
 }
 
 enum class NavigationInputStatus { LIVE, HELD, STALE, INVALID, UNAVAILABLE }

@@ -50,7 +50,19 @@ data class ImportedTrackPoint(
     val point: GeoPoint,
     val elevationMeters: Double? = null,
     val time: String? = null,
-)
+    val recordedAtEpochMillis: Long? = null,
+    val sourceId: String? = null,
+    val speedOverGroundKnots: Double? = null,
+    val courseOverGroundTrueDegrees: Double? = null,
+) {
+    init {
+        require(elevationMeters == null || elevationMeters.isFinite())
+        require(recordedAtEpochMillis == null || recordedAtEpochMillis >= 0L)
+        require(sourceId == null || sourceId.isNotBlank())
+        require(speedOverGroundKnots == null || speedOverGroundKnots.isFinite() && speedOverGroundKnots >= 0.0)
+        require(courseOverGroundTrueDegrees == null || courseOverGroundTrueDegrees in 0.0..<360.0)
+    }
+}
 
 data class ImportedTrackSegment(val points: List<ImportedTrackPoint>)
 
@@ -67,6 +79,7 @@ data class GpxTrack(
 )
 
 enum class ImportedTrackEditability { READ_ONLY }
+enum class TrackOrigin { IMPORTED, RECORDED }
 
 data class ImportedTrack(
     val id: String,
@@ -77,6 +90,14 @@ data class ImportedTrack(
     val importedAtMillis: Long,
     val revision: Long = 1L,
     val editability: ImportedTrackEditability = ImportedTrackEditability.READ_ONLY,
+    val origin: TrackOrigin = TrackOrigin.IMPORTED,
+    val startedAtEpochMillis: Long? = null,
+    val endedAtEpochMillis: Long? = null,
+    val durationMillis: Long? = null,
+    val distanceNauticalMiles: Double? = null,
+    val navigationSessionId: String? = null,
+    val routeId: String? = null,
+    val routeRevision: Long? = null,
 ) {
     init {
         require(id.isNotBlank())
@@ -86,6 +107,18 @@ data class ImportedTrack(
         require(sourceDigest.matches(Regex("[0-9a-f]{64}")))
         require(importedAtMillis >= 0L)
         require(revision > 0L)
+        require((routeId == null) == (routeRevision == null))
+        require(routeRevision == null || routeRevision > 0L)
+        require(navigationSessionId == null || navigationSessionId.isNotBlank())
+        require(
+            origin != TrackOrigin.RECORDED ||
+                startedAtEpochMillis != null && endedAtEpochMillis != null && durationMillis != null &&
+                distanceNauticalMiles != null,
+        )
+        require(startedAtEpochMillis == null || startedAtEpochMillis >= 0L)
+        require(endedAtEpochMillis == null || endedAtEpochMillis >= (startedAtEpochMillis ?: 0L))
+        require(durationMillis == null || durationMillis >= 0L)
+        require(distanceNauticalMiles == null || distanceNauticalMiles.isFinite() && distanceNauticalMiles >= 0.0)
     }
 }
 

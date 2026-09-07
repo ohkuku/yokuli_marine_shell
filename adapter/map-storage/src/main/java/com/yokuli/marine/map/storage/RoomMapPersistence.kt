@@ -133,7 +133,7 @@ class RoomMapPersistence private constructor(
 
         fun create(context: Context, scope: CoroutineScope): RoomMapPersistence {
             val database = Room.databaseBuilder(context, MapLibraryDatabase::class.java, DATABASE_FILE_NAME)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
             return create(context.dataStoreFile(SESSION_FILE_NAME), scope, database)
         }
@@ -246,6 +246,14 @@ private fun encode(snapshot: MapLibrarySnapshot): MapLibraryRecords = MapLibrary
             sourceDigest = track.sourceDigest,
             importedAtMillis = track.importedAtMillis,
             editability = track.editability.name,
+            origin = track.origin.name,
+            startedAtEpochMillis = track.startedAtEpochMillis,
+            endedAtEpochMillis = track.endedAtEpochMillis,
+            durationMillis = track.durationMillis,
+            distanceNauticalMiles = track.distanceNauticalMiles,
+            navigationSessionId = track.navigationSessionId,
+            routeId = track.routeId,
+            routeRevision = track.routeRevision,
         )
     },
     importedTrackSegments = snapshot.importedTracks.flatMap { track ->
@@ -262,6 +270,10 @@ private fun encode(snapshot: MapLibrarySnapshot): MapLibraryRecords = MapLibrary
                     longitude = point.point.longitude,
                     elevationMeters = point.elevationMeters,
                     time = point.time,
+                    recordedAtEpochMillis = point.recordedAtEpochMillis,
+                    sourceId = point.sourceId,
+                    speedOverGroundKnots = point.speedOverGroundKnots,
+                    courseOverGroundTrueDegrees = point.courseOverGroundTrueDegrees,
                 )
             }
         }
@@ -386,6 +398,10 @@ private fun decode(records: MapLibraryRecords): DecodedLibrary {
                                 point = GeoPoint(point.latitude, point.longitude),
                                 elevationMeters = point.elevationMeters,
                                 time = point.time,
+                                recordedAtEpochMillis = point.recordedAtEpochMillis,
+                                sourceId = point.sourceId,
+                                speedOverGroundKnots = point.speedOverGroundKnots,
+                                courseOverGroundTrueDegrees = point.courseOverGroundTrueDegrees,
                             )
                         }
                     ImportedTrackSegment(points)
@@ -399,6 +415,14 @@ private fun decode(records: MapLibraryRecords): DecodedLibrary {
                 importedAtMillis = entity.importedAtMillis,
                 revision = entity.revision,
                 editability = ImportedTrackEditability.valueOf(entity.editability),
+                origin = com.yokuli.marine.map.domain.TrackOrigin.valueOf(entity.origin),
+                startedAtEpochMillis = entity.startedAtEpochMillis,
+                endedAtEpochMillis = entity.endedAtEpochMillis,
+                durationMillis = entity.durationMillis,
+                distanceNauticalMiles = entity.distanceNauticalMiles,
+                navigationSessionId = entity.navigationSessionId,
+                routeId = entity.routeId,
+                routeRevision = entity.routeRevision,
             )
         }.getOrElse {
             quarantined += 1

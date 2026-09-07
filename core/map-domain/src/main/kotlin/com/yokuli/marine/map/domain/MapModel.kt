@@ -457,6 +457,8 @@ data class MapState(
     val activeNavigationLeg: List<GeoPoint> = emptyList(),
     /** Current vessel/leg origin followed by the not-yet-passed route geometry, used only for camera fitting. */
     val activeNavigationRemainingRoute: List<GeoPoint> = emptyList(),
+    /** Runtime-only actual passage geometry. Segments remain separate across pause/resume. */
+    val activeTrackSegments: List<List<GeoPoint>> = emptyList(),
     val navigationCamera: NavigationCameraState = NavigationCameraState(),
     val routeSaveStatus: RouteSaveStatus? = null,
     val routeSaveTransaction: RouteSaveTransaction? = null,

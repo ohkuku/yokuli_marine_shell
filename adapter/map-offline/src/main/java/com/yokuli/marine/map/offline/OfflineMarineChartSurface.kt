@@ -393,6 +393,7 @@ fun OfflineMarineChartSurface(
                 style.addMeasurementLabels()
                 style.addLineOverlay(MapOverlayId.MANUAL_ROUTE, 0xff00a4ef.toInt(), 5f)
                 style.addLineOverlay(MapOverlayId.ACTIVE_NAVIGATION_LEG, 0xfff7b500.toInt(), 7f)
+                style.addLineOverlay(MapOverlayId.ACTIVE_TRACK, 0xff00d084.toInt(), 4f)
                 style.addPointOverlay(MapOverlayId.MANUAL_ROUTE_POINTS, 0xff00a4ef.toInt(), 5f)
                 style.addPointLabels(MapOverlayId.MANUAL_ROUTE_POINTS)
                 style.addLineOverlay(MapOverlayId.IMPORTED_TRACKS, 0xff9b59b6.toInt(), 3f)
@@ -482,6 +483,7 @@ fun OfflineMarineChartSurface(
         state.importedTracks,
         state.editGesture,
         state.activeNavigationLeg,
+        state.activeTrackSegments,
         state.camera.zoom,
         state.position,
     ) {
@@ -530,6 +532,19 @@ fun OfflineMarineChartSurface(
                 state.activeNavigationLeg.toGeodesicFeatureCollection(
                     "active-navigation-leg",
                     state.geodesicMaxSegmentMeters(state.activeNavigationLeg),
+                ),
+            )
+            style.source(MapOverlayId.ACTIVE_TRACK)?.setGeoJson(
+                FeatureCollection.fromFeatures(
+                    state.activeTrackSegments.mapIndexedNotNull { index, segment ->
+                        segment.takeIf { it.size >= 2 }?.let { points ->
+                            Feature.fromGeometry(
+                                LineString.fromLngLats(points.map(GeoPoint::toGeoJsonPoint)),
+                                null,
+                                "active-track:$index",
+                            )
+                        }
+                    },
                 ),
             )
             style.source(MapOverlayId.IMPORTED_TRACKS)?.setGeoJson(trackFeatures)
@@ -795,6 +810,7 @@ private fun MapOverlayId.objectIdPrefix(): String = when (this) {
     MapOverlayId.MANUAL_ROUTE -> "route:"
     MapOverlayId.MANUAL_ROUTE_POINTS -> "route-point:"
     MapOverlayId.ACTIVE_NAVIGATION_LEG -> "active-navigation-leg:"
+    MapOverlayId.ACTIVE_TRACK -> "active-track:"
     MapOverlayId.IMPORTED_TRACKS -> "track:"
     MapOverlayId.POSITION_OBSERVATION -> "position:"
     MapOverlayId.POSITION_HISTORY -> "position:"

@@ -91,7 +91,10 @@ import com.yokuli.marine.map.domain.ChartPackageLease
 import com.yokuli.marine.map.domain.chartlibrary.ChartResourceAccessPort
 import com.yokuli.marine.navigation.domain.ActiveNavigationCommand
 import com.yokuli.marine.navigation.domain.ActiveNavigationSnapshot
+import com.yokuli.marine.navigation.domain.TrackRecorderCommand
+import com.yokuli.marine.navigation.domain.TrackRecorderSnapshot
 import com.yokuli.marine.feature.navigation.ActiveNavigationStrip
+import com.yokuli.marine.feature.navigation.TrackRecorderStrip
 import com.yokuli.marine.feature.navigation.NavigationDestinations
 import com.yokuli.marine.feature.navigation.NavigationShellContribution
 import com.yokuli.marine.feature.navigation.NavigationGpxBounds
@@ -146,6 +149,8 @@ data class ProductionShellRuntime(
     val onCancelOfflineCoverage: () -> Unit,
     val activeNavigationState: ActiveNavigationSnapshot,
     val onActiveNavigationCommand: (ActiveNavigationCommand) -> Unit,
+    val trackRecorderState: TrackRecorderSnapshot,
+    val onTrackRecorderCommand: (TrackRecorderCommand) -> Unit,
     val onDirectTo: (point: com.yokuli.marine.map.domain.GeoPoint, name: String) -> Unit,
     val onUnsavedRouteDecision: (UnsavedRouteDecision) -> Unit,
     val onSaveAndStartRoute: () -> Unit,
@@ -361,6 +366,9 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                         )
                     }
                 },
+                trackRecorderStrip = {
+                    TrackRecorderStrip(runtime.trackRecorderState, runtime.onTrackRecorderCommand)
+                },
                 onDirectTo = runtime.onDirectTo,
                 onUnsavedRouteDecision = runtime.onUnsavedRouteDecision,
                 onStartNavigation = { routeId, routeRevision ->
@@ -464,6 +472,9 @@ val productionInstalledApps: List<InstalledAppBinding<ProductionShellVisualEnvir
                 onGpxAction = { runtime.onGpxImportAction(it.toDocumentAction()) },
                 mapState = runtime.mapState,
                 chartSurface = rememberProductionChartSurface(runtime),
+                trackRecorderStrip = {
+                    TrackRecorderStrip(runtime.trackRecorderState, runtime.onTrackRecorderCommand)
+                },
             )
         },
     ),
