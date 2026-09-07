@@ -131,7 +131,9 @@ class RoomChartCatalogRepository private constructor(
                     }
                     transaction.mutations.forEach { mutation -> applyMutation(mutation, resolved) }
                     ensureDefaultLayersForSources()
-                    val requestedActiveViewId = dao.metadata()?.activeViewId ?: metadata.activeViewId
+                    // `null` is a deliberate, durable selection of an immutable built-in view.
+                    // Do not Elvis it back to the previously active custom view.
+                    val requestedActiveViewId = dao.metadata()?.activeViewId
                     val activeViewId = resolveActiveView(requestedActiveViewId)
                     val newRevision = metadata.revision + 1L
                     dao.putMetadata(
