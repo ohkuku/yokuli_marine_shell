@@ -26,7 +26,9 @@ import com.yokuli.marine.map.domain.chartlibrary.MAX_TILE_BYTES
 import com.yokuli.marine.map.domain.chartlibrary.MAX_VALIDATION_PAGE_SIZE
 import com.yokuli.marine.map.domain.chartlibrary.SUPPORTED_TILE_SIZES
 import com.yokuli.marine.map.domain.chartlibrary.ChartStoredTile
+import com.yokuli.marine.map.domain.chartlibrary.ChartStoredTileExtent
 import com.yokuli.marine.map.domain.chartlibrary.ChartStoredTileKey
+import com.yokuli.marine.map.domain.chartlibrary.MAX_TILE_EXTENT_LEVELS
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong

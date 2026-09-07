@@ -17,6 +17,7 @@ import com.yokuli.marine.map.domain.chartlibrary.ChartReadAccessMode
 import com.yokuli.marine.map.domain.chartlibrary.ChartOpaqueLocator
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadFailure
 import com.yokuli.marine.map.domain.chartlibrary.ChartReadRequest
+import com.yokuli.marine.map.domain.chartlibrary.ChartStoredTileExtent
 import com.yokuli.marine.map.domain.chartlibrary.ChartTileKey
 import java.io.ByteArrayOutputStream
 import java.io.File
