@@ -59,6 +59,78 @@ def combine_acceptance(statuses: list[str]) -> str:
     return "PASS"
 
 
+def write_product_recovery_reports(output: Path, results: dict[str, str]) -> None:
+    """Keep legacy filenames for consumers while refusing any product-acceptance claim."""
+    migration_status = combine_acceptance(
+        [acceptance_status(results["build"]), acceptance_status(results["api34"])]
+    )
+    migration = {
+        "schemaVersion": 1,
+        "workPackage": "PRODUCT_RECOVERY",
+        "status": migration_status,
+        "interpretation": "Protected persistence, migration, and process-restore automation only.",
+        "productAcceptance": "NOT_CLAIMED",
+        "sourceReports": ["jobs/build/JOB_REPORT.md", "jobs/api34/JOB_REPORT.md"],
+    }
+    (output / "MIGRATION_REPORT.json").write_text(
+        json.dumps(migration, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (output / "MIGRATION_REPORT.md").write_text(
+        "\n".join(
+            [
+                "# Product Recovery 迁移证据 / Migration evidence",
+                "",
+                f"状态 / Status: **{migration_status}**",
+                "",
+                "仅代表受保护的 persistence、migration 与 process-restore 自动化；不代表产品人工验收。",
+                "This covers protected persistence, migration and process-restore automation only; it is not product acceptance.",
+            ]
+        ) + "\n",
+        encoding="utf-8",
+    )
+
+    machine_items = [
+        {
+            "id": job,
+            "status": acceptance_status(results[job]),
+            "evidence": f"jobs/{job}/JOB_REPORT.md",
+        }
+        for job in JOBS
+    ]
+    machine_status = combine_acceptance([item["status"] for item in machine_items])
+    ledger = {
+        "schemaVersion": 1,
+        "workPackage": "PRODUCT_RECOVERY",
+        "machineStatus": machine_status,
+        "legacyPresentationContractsAuthoritative": False,
+        "humanAcceptanceStatus": "NOT_RUN",
+        "decision": "AWAITING_HUMAN_ACCEPTANCE",
+        "appsPendingHumanAcceptance": ["shell", "chart", "chart_library", "data", "navigation", "preferences"],
+        "items": {"machine": machine_items},
+    }
+    (output / "FINAL_ACCEPTANCE_LEDGER.json").write_text(
+        json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    ledger_lines = [
+        "# Product Recovery 自动化台账 / Automation ledger",
+        "",
+        f"受保护机器门禁 / Protected machine gates: **{machine_status}**",
+        "产品人工验收 / Product human acceptance: **NOT_RUN**",
+        "决策 / Decision: **AWAITING_HUMAN_ACCEPTANCE**",
+        "",
+        "CI GREEN != PRODUCT ACCEPTED.",
+        "",
+        "| Job | Status | Evidence |",
+        "|---|---|---|",
+    ]
+    ledger_lines.extend(
+        f"| {item['id']} | {item['status']} | `{item['evidence']}` |" for item in machine_items
+    )
+    (output / "FINAL_ACCEPTANCE_LEDGER.md").write_text(
+        "\n".join(ledger_lines) + "\n", encoding="utf-8"
+    )
+
+
 def read_json(path: Path) -> dict | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -410,9 +482,9 @@ def compose(
         "",
     ]
     raw_lines.extend(f"- `{template.format(sha=head_sha)}`" for template in RAW_ARTIFACTS.values())
-    raw_lines.append(f"- `VERIFIED-yokuli-os-alpha-{head_sha}`")
+    raw_lines.append(f"- `HUMAN-ACCEPTANCE-PENDING-yokuli-os-{head_sha}`")
     (output / "RAW_ARTIFACTS.md").write_text("\n".join(raw_lines) + "\n", encoding="utf-8")
-    write_w16_reports(output, results, event_name)
+    write_product_recovery_reports(output, results)
     sha256_inventory(output)
     return manifest
 

@@ -25,6 +25,7 @@ EXPECTED_JOURNEYS = {
 
 STARTUP_JOURNEYS = {"coldStartToStart", "warmStartToStart"}
 INTERACTION_JOURNEYS = EXPECTED_JOURNEYS - STARTUP_JOURNEYS
+PRODUCT_RECOVERY_JOURNEYS = STARTUP_JOURNEYS
 
 
 def abort_with_annotation(message: str) -> None:
@@ -61,6 +62,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--search", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--require-journeys", action="store_true")
+    parser.add_argument("--profile", choices=("stage11", "product-recovery"), default="stage11")
     return parser.parse_args()
 
 
@@ -91,14 +93,20 @@ def main() -> int:
                 }
             )
 
+    expected_journeys = (
+        PRODUCT_RECOVERY_JOURNEYS
+        if getattr(args, "profile", "stage11") == "product-recovery"
+        else EXPECTED_JOURNEYS
+    )
+    interaction_journeys = expected_journeys - STARTUP_JOURNEYS
     present = {result["name"] for result in results}
-    missing = sorted(EXPECTED_JOURNEYS - present)
+    missing = sorted(expected_journeys - present)
     if args.require_journeys and missing:
         abort_with_annotation(f"Missing Stage 11 journeys: {', '.join(missing)}")
     empty_frame_journeys = sorted(
         result["name"]
         for result in results
-        if result["name"] in INTERACTION_JOURNEYS and not has_observed_frames(result)
+        if result["name"] in interaction_journeys and not has_observed_frames(result)
     )
     if args.require_journeys and empty_frame_journeys:
         abort_with_annotation(
@@ -115,7 +123,8 @@ def main() -> int:
             "Android emulator measurements detect relative regressions only; they do not "
             "verify physical 60/90/120 Hz devices or Samsung square hardware."
         ),
-        "expectedJourneys": sorted(EXPECTED_JOURNEYS),
+        "profile": getattr(args, "profile", "stage11"),
+        "expectedJourneys": sorted(expected_journeys),
         "missingJourneys": missing,
         "emptyFrameJourneys": empty_frame_journeys,
         "contexts": contexts,

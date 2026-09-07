@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "phase": "base-apps-human-acceptance-reset",
+  "baseCommit": "b30d12fa8be04a5b41edb34abde8d7df479298c7",
+  "sourceDocumentSha256": "c0443aea42619e56ca3aebbc8379949a411414e94025a1ddbb90de98d560d3d5",
+  "status": "PRODUCT_RECOVERY_WINDOW",
+  "humanAuthority": "REQUIRED_PER_BASE_APP",
+  "ciGreenMeansProductAccepted": false,
+  "legacyPresentationContractsAuthoritative": false,
+  "hardGateFamilies": [
+    "domain_math",
+    "nmea_parser_runtime_source_selection",
+    "persistence_migration",
+    "mbtiles_resource_reading",
+    "runtime_lifecycle_concurrency_safety",
+    "shell_engine",
+    "build_lint_release_surface_api_compatibility"
+  ],
+  "appsPendingHumanAcceptance": ["shell", "chart", "chart_library", "data", "navigation", "preferences"]
+}

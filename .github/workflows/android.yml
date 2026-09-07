@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       final_gate:
-        description: Run the same complete W16 machine gate as a manual acceptance run
+        description: Run the current Product Recovery machine gate; human acceptance remains separate
         required: false
         default: true
         type: boolean
@@ -47,7 +47,7 @@ jobs:
       - name: CI helper unit tests
         id: ci_helpers
         continue-on-error: true
-        run: bash .github/scripts/run_ci_capture.sh ci-helpers -- python3 -m unittest discover .github/scripts 'test_*.py'
+        run: bash .github/scripts/run_ci_capture.sh ci-helpers -- bash .github/scripts/run_ci_helper_tests.sh
       - name: Launcher Stage 0 reference contract
         id: launcher_stage0_contract
         continue-on-error: true
@@ -62,6 +62,7 @@ jobs:
         run: bash .github/scripts/run_ci_capture.sh nmea-sources-p1-contract -- python3 .github/scripts/test_nmea_sources_p1_contract.py
       - name: NMEA Sources P2 real input runtime contract
         id: nmea_sources_p2_contract
+        if: false # PRODUCT_RECOVERY: mixed runtime/UI source-inspection contract; runtime behavior remains gated.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh nmea-sources-p2-contract -- python3 .github/scripts/test_nmea_sources_p2_contract.py
       - name: NMEA Sources P3 unified source-selection contract
@@ -70,18 +71,22 @@ jobs:
         run: bash .github/scripts/run_ci_capture.sh nmea-sources-p3-contract -- python3 .github/scripts/test_nmea_sources_p3_contract.py
       - name: NMEA Sources P4 Data Sources application contract
         id: nmea_sources_p4_contract
+        if: false # PRODUCT_RECOVERY: rejected presentation contract retained only as history.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh nmea-sources-p4-contract -- python3 .github/scripts/test_nmea_sources_p4_contract.py
       - name: NMEA Sources P5 Shell installation contract
         id: nmea_sources_p5_contract
+        if: false # PRODUCT_RECOVERY: superseded standalone-App presentation contract.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh nmea-sources-p5-contract -- python3 .github/scripts/test_nmea_sources_p5_contract.py
       - name: NMEA Sources P6 cross-app and lifecycle contract
         id: nmea_sources_p6_contract
+        if: false # PRODUCT_RECOVERY: mixed UI story contract; lifecycle and cross-App behavior run directly.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh nmea-sources-p6-contract -- python3 .github/scripts/test_nmea_sources_p6_contract.py
       - name: NMEA Sources P7 final delivery contract
         id: nmea_sources_p7_contract
+        if: false # PRODUCT_RECOVERY: old product-completion claims are not authoritative.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh nmea-sources-p7-contract -- python3 .github/scripts/test_nmea_sources_p7_contract.py
       - name: Release metadata contract
@@ -92,6 +97,10 @@ jobs:
         id: ci_contract
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh ci-contract -- bash .github/scripts/test-ci-contract.sh
+      - name: Product Recovery Window test-authority contract
+        id: product_recovery_policy
+        continue-on-error: true
+        run: bash .github/scripts/run_ci_capture.sh product-recovery-policy -- python3 .github/scripts/test_product_recovery_window.py
       - name: Encrypted secrets workflow contract
         id: secrets_contract
         continue-on-error: true
@@ -100,7 +109,7 @@ jobs:
         id: unit_tests
         continue-on-error: true
         timeout-minutes: 20
-        run: bash .github/scripts/run_ci_capture.sh unit-tests -- ./gradlew --no-daemon test --stacktrace
+        run: bash .github/scripts/run_ci_capture.sh unit-tests -- bash .github/scripts/run_product_recovery_unit_tests.sh
       - name: Android lint
         id: lint
         continue-on-error: true
@@ -122,12 +131,15 @@ jobs:
             --build-root app-shell/build \
             --output build/google-maps/configuration.json \
             "${maps_args[@]}"
+      - name: Release manifest and forbidden-code surface audit
+        id: release_surface_audit
+        continue-on-error: true
+        run: bash .github/scripts/run_ci_capture.sh release-surface-audit -- bash .github/scripts/test-release-product-surface.sh
       - name: Launcher Stage 1 product-surface contract
         id: launcher_stage1_contract
+        if: false # PRODUCT_RECOVERY: old exact App/UI strings are not authoritative.
         continue-on-error: true
-        run: >-
-          bash .github/scripts/run_ci_capture.sh launcher-stage1-contract -- bash -c
-          'python3 .github/scripts/test_launcher_stage1_contract.py && bash .github/scripts/test-release-product-surface.sh'
+        run: bash .github/scripts/run_ci_capture.sh launcher-stage1-contract -- python3 .github/scripts/test_launcher_stage1_contract.py
       - name: Launcher Stage 2 engine-boundary contract
         id: launcher_stage2_contract
         continue-on-error: true
@@ -148,56 +160,69 @@ jobs:
         run: bash .github/scripts/run_ci_capture.sh launcher-stage4-contract -- python3 .github/scripts/test_launcher_stage4_contract.py
       - name: Launcher Stage 5 interactive-pager contract
         id: launcher_stage5_contract
+        if: false # PRODUCT_RECOVERY: implementation-specific presentation inspection is retired.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh launcher-stage5-contract -- python3 .github/scripts/test_launcher_stage5_contract.py
       - name: Launcher Stage 6 spatial-grid contract
         id: launcher_stage6_contract
+        if: false # PRODUCT_RECOVERY: core spatial behavior stays gated; concrete Composable inspection does not.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh launcher-stage6-contract -- python3 .github/scripts/test_launcher_stage6_contract.py
       - name: Launcher Stage 7 complete-edit contract
         id: launcher_stage7_contract
+        if: false # PRODUCT_RECOVERY: old edit-surface shape is not product authority.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh launcher-stage7-contract -- python3 .github/scripts/test_launcher_stage7_contract.py
       - name: Launcher Stage 8 pin/unpin contract
         id: launcher_stage8_contract
+        if: false # PRODUCT_RECOVERY: old UI strings and Composable shape are not authoritative.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh launcher-stage8-contract -- python3 .github/scripts/test_launcher_stage8_contract.py
       - name: Launcher Stage 9 navigation and virtual-key contract
         id: launcher_stage9_contract
+        if: false # PRODUCT_RECOVERY: old UI structure is retired; host safety remains directly tested.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh launcher-stage9-contract -- python3 .github/scripts/test_launcher_stage9_contract.py
       - name: Launcher Stage 10 durable-restore and recovery contract
         id: launcher_stage10_contract
+        if: false # PRODUCT_RECOVERY: mixed persistence/UI inspection; persistence tests remain hard.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh launcher-stage10-contract -- python3 .github/scripts/test_launcher_stage10_contract.py
       - name: Launcher Stage 11 performance and fidelity candidate contract
         id: launcher_stage11_contract
+        if: false # PRODUCT_RECOVERY: old fidelity candidate is not a human-approved product surface.
         continue-on-error: true
         run: >-
           bash .github/scripts/run_ci_capture.sh launcher-stage11-contract -- bash -c
           'python3 .github/scripts/test_launcher_stage11_contract.py && python3 .github/scripts/validate_stage11_fidelity.py'
       - name: Shell-App tile installation contract
         id: shell_app_contract
+        if: false # PRODUCT_RECOVERY: exact tile renderer names/sizes are not product authority.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh shell-app-contract -- python3 .github/scripts/test_shell_app_contract.py
       - name: Chart C12 cumulative delivery contract
         id: chart_c12_contract
+        if: false # PRODUCT_RECOVERY: old Chart journeys were rejected by human review.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh chart-c12-contract -- python3 .github/scripts/test_chart_c12_contract.py
       - name: Chart Library CL07 independent application contract
         id: chart_library_cl07_contract
+        if: false # PRODUCT_RECOVERY: source-list-first presentation is rejected.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh chart-library-cl07-contract -- python3 .github/scripts/test_chart_library_cl07_contract.py
       - name: Chart Library CL08 display plan and coverage contract
         id: chart_library_cl08_contract
+        if: false # PRODUCT_RECOVERY: mixed domain/old Chart page inspection; domain behavior runs directly.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh chart-library-cl08-contract -- python3 .github/scripts/test_chart_library_cl08_contract.py
       - name: Chart Library CL09 managed migration and copy contract
         id: chart_library_cl09_contract
+        if: false # PRODUCT_RECOVERY: mixed migration/old workspace inspection; migration tests run directly.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh chart-library-cl09-contract -- python3 .github/scripts/test_chart_library_cl09_contract.py
       - name: Chart Library CL10 Shell installation and linked navigation contract
         id: chart_library_cl10_contract
+        if: false # PRODUCT_RECOVERY: old linked presentation stories are retired.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh chart-library-cl10-contract -- python3 .github/scripts/test_chart_library_cl10_contract.py
       - name: Chart Library CL11 resilience and bounded-resource contract
@@ -206,6 +231,7 @@ jobs:
         run: bash .github/scripts/run_ci_capture.sh chart-library-cl11-contract -- python3 .github/scripts/test_chart_library_cl11_contract.py
       - name: Chart Library CL12 final product and evidence contract
         id: chart_library_cl12_contract
+        if: false # PRODUCT_RECOVERY: CI cannot claim product acceptance.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh chart-library-cl12-contract -- python3 .github/scripts/test_chart_library_cl12_contract.py
       - name: OS Redesign W01 app-model and migration contract
@@ -214,6 +240,7 @@ jobs:
         run: bash .github/scripts/run_ci_capture.sh osr-w01-contract -- python3 .github/scripts/test_osr_w01_contract.py
       - name: OS Redesign W02 live UI foundation contract
         id: osr_w02_contract
+        if: false # PRODUCT_RECOVERY: concrete Composable and test-tag inspection is retired.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w02-contract -- python3 .github/scripts/test_osr_w02_contract.py
       - name: OS Redesign W03 Data domain merge contract
@@ -222,6 +249,7 @@ jobs:
         run: bash .github/scripts/run_ci_capture.sh osr-w03-contract -- python3 .github/scripts/test_osr_w03_contract.py
       - name: OS Redesign W04 complete Data vertical-slice contract
         id: osr_w04_contract
+        if: false # PRODUCT_RECOVERY: old five-section presentation is rejected.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w04-contract -- python3 .github/scripts/test_osr_w04_contract.py
       - name: OS Redesign W08 Google Satellite and owned-overlay contract
@@ -230,6 +258,7 @@ jobs:
         run: bash .github/scripts/run_ci_capture.sh osr-w08-contract -- python3 .github/scripts/test_osr_w08_contract.py
       - name: OS Redesign W09 focused Chart and Quick Layers contract
         id: osr_w09_contract
+        if: false # PRODUCT_RECOVERY: replaced by human map-first acceptance.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w09-contract -- python3 .github/scripts/test_osr_w09_contract.py
       - name: OS Redesign W10 Navigation domain migration contract
@@ -242,30 +271,37 @@ jobs:
         run: bash .github/scripts/run_ci_capture.sh osr-w11-contract -- python3 .github/scripts/test_osr_w11_contract.py
       - name: OS Redesign W12 Navigation application contract
         id: osr_w12_contract
+        if: false # PRODUCT_RECOVERY: CRUD/RouteSketch presentation is rejected.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w12-contract -- python3 .github/scripts/test_osr_w12_contract.py
       - name: OS Redesign W13 Preferences and app-preference registry contract
         id: osr_w13_contract
+        if: false # PRODUCT_RECOVERY: exact Settings section structure awaits human acceptance.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w13-contract -- python3 .github/scripts/test_osr_w13_contract.py
       - name: OS Redesign W14 bounded live-tile contract
         id: osr_w14_contract
+        if: false # PRODUCT_RECOVERY: exact tile presentation policy awaits human acceptance.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w14-contract -- python3 .github/scripts/test_osr_w14_contract.py
       - name: OS Redesign W15 legacy product-surface removal contract
         id: osr_w15_contract
+        if: false # PRODUCT_RECOVERY: exact old UI reachability is not authoritative.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w15-contract -- python3 .github/scripts/test_osr_w15_contract.py
       - name: OS Redesign W16 final evidence contract
         id: osr_w16_contract
+        if: false # PRODUCT_RECOVERY: no final product claim before human acceptance.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh osr-w16-contract -- python3 .github/scripts/test_osr_w16_contract.py
       - name: Chart, Navigation, and Shell UX correction contract
         id: chart_shell_ux_correction
+        if: false # PRODUCT_RECOVERY: this interim static UI shape was not human-approved.
         continue-on-error: true
         run: bash .github/scripts/run_ci_capture.sh chart-shell-ux-correction -- python3 .github/scripts/test_chart_shell_ux_correction.py
       - name: Collect W16 build, migration, release-surface, soak, and Maps evidence
         id: osr_w16_build_evidence
+        if: false # PRODUCT_RECOVERY: W16 final ledger is suspended until the new UX exists.
         continue-on-error: true
         run: |
           w16_args=()
@@ -283,45 +319,27 @@ jobs:
         continue-on-error: true
         env:
           OSR_W01_ONLY_RESULT: ${{ steps.osr_w01_only_contract.outcome }}
-          OSR_W02_RESULT: ${{ steps.osr_w02_contract.outcome }}
           OSR_W03_RESULT: ${{ steps.osr_w03_contract.outcome }}
-          OSR_W04_RESULT: ${{ steps.osr_w04_contract.outcome }}
           OSR_W08_RESULT: ${{ steps.osr_w08_contract.outcome }}
-          OSR_W09_RESULT: ${{ steps.osr_w09_contract.outcome }}
           OSR_W10_RESULT: ${{ steps.osr_w10_contract.outcome }}
           OSR_W11_RESULT: ${{ steps.osr_w11_contract.outcome }}
-          OSR_W12_RESULT: ${{ steps.osr_w12_contract.outcome }}
-          OSR_W13_RESULT: ${{ steps.osr_w13_contract.outcome }}
-          OSR_W14_RESULT: ${{ steps.osr_w14_contract.outcome }}
-          OSR_W15_RESULT: ${{ steps.osr_w15_contract.outcome }}
-          OSR_W16_RESULT: ${{ steps.osr_w16_contract.outcome }}
-          CHART_SHELL_UX_CORRECTION_RESULT: ${{ steps.chart_shell_ux_correction.outcome }}
         run: |
           test "$OSR_W01_ONLY_RESULT" = success
-          test "$OSR_W02_RESULT" = success
           test "$OSR_W03_RESULT" = success
-          test "$OSR_W04_RESULT" = success
           test "$OSR_W08_RESULT" = success
-          test "$OSR_W09_RESULT" = success
           test "$OSR_W10_RESULT" = success
           test "$OSR_W11_RESULT" = success
-          test "$OSR_W12_RESULT" = success
-          test "$OSR_W13_RESULT" = success
-          test "$OSR_W14_RESULT" = success
-          test "$OSR_W15_RESULT" = success
-          test "$OSR_W16_RESULT" = success
-          test "$CHART_SHELL_UX_CORRECTION_RESULT" = success
-      - name: Upload quality-gate candidate APKs
-        if: steps.ci_helpers.outcome == 'success' && steps.launcher_stage0_contract.outcome == 'success' && steps.nmea_sources_p0_contract.outcome == 'success' && steps.nmea_sources_p1_contract.outcome == 'success' && steps.nmea_sources_p2_contract.outcome == 'success' && steps.nmea_sources_p3_contract.outcome == 'success' && steps.nmea_sources_p4_contract.outcome == 'success' && steps.nmea_sources_p5_contract.outcome == 'success' && steps.nmea_sources_p6_contract.outcome == 'success' && steps.nmea_sources_p7_contract.outcome == 'success' && steps.launcher_stage1_contract.outcome == 'success' && steps.launcher_stage2_contract.outcome == 'success' && steps.launcher_stage25_contract.outcome == 'success' && steps.launcher_stage3_contract.outcome == 'success' && steps.launcher_stage4_contract.outcome == 'success' && steps.launcher_stage5_contract.outcome == 'success' && steps.launcher_stage6_contract.outcome == 'success' && steps.launcher_stage7_contract.outcome == 'success' && steps.launcher_stage8_contract.outcome == 'success' && steps.launcher_stage9_contract.outcome == 'success' && steps.launcher_stage10_contract.outcome == 'success' && steps.launcher_stage11_contract.outcome == 'success' && steps.shell_app_contract.outcome == 'success' && steps.chart_c12_contract.outcome == 'success' && steps.chart_library_cl07_contract.outcome == 'success' && steps.chart_library_cl08_contract.outcome == 'success' && steps.chart_library_cl09_contract.outcome == 'success' && steps.chart_library_cl10_contract.outcome == 'success' && steps.chart_library_cl11_contract.outcome == 'success' && steps.chart_library_cl12_contract.outcome == 'success' && steps.osr_w01_contract.outcome == 'success' && steps.osr_w16_build_evidence.outcome == 'success' && steps.google_maps_evidence.outcome == 'success' && steps.release_metadata.outcome == 'success' && steps.ci_contract.outcome == 'success' && steps.secrets_contract.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      - name: Upload human-acceptance-pending Product Recovery APK
+        if: steps.product_recovery_policy.outcome == 'success' && steps.unit_tests.outcome == 'success' && steps.lint.outcome == 'success' && steps.assemble.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@v7
         with:
-          name: yokuli-os-debug-candidate-${{ github.sha }}
+          name: PRODUCT-RECOVERY-yokuli-os-debug-${{ github.sha }}
           path: |
             app-shell/build/outputs/apk/standalone/debug/*.apk
           if-no-files-found: error
           retention-days: 30
       - name: Upload explicitly unverified diagnostic APKs
-        if: steps.assemble.outcome == 'success' && (steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p2_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.nmea_sources_p4_contract.outcome != 'success' || steps.nmea_sources_p5_contract.outcome != 'success' || steps.nmea_sources_p6_contract.outcome != 'success' || steps.nmea_sources_p7_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.chart_c12_contract.outcome != 'success' || steps.chart_library_cl07_contract.outcome != 'success' || steps.chart_library_cl08_contract.outcome != 'success' || steps.chart_library_cl09_contract.outcome != 'success' || steps.chart_library_cl10_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.chart_library_cl12_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.osr_w16_build_evidence.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # Product Recovery already publishes one explicitly pending artifact.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-yokuli-os-debug-${{ github.sha }}
@@ -330,7 +348,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload CL10 diagnostic APK when its product contract fails
-        if: steps.assemble.outcome == 'success' && steps.chart_library_cl10_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # PRODUCT_RECOVERY: CL10 presentation gate is retired.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-CL10-yokuli-os-debug-${{ github.sha }}
@@ -346,7 +364,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload CL12 diagnostic APK when its final contract fails
-        if: steps.assemble.outcome == 'success' && (steps.chart_library_cl12_contract.outcome != 'success' || steps.google_maps_evidence.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # PRODUCT_RECOVERY: CL12 product-completion gate is retired.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-CL12-yokuli-os-debug-${{ github.sha }}
@@ -378,7 +396,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W04 diagnostic APK when its Data vertical-slice contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w04_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # PRODUCT_RECOVERY: old Data presentation gate is retired.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W04-yokuli-os-debug-${{ github.sha }}
@@ -394,7 +412,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W09 diagnostic APK when its focused-Chart contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w09_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # PRODUCT_RECOVERY: old Chart presentation gate is retired.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W09-yokuli-os-debug-${{ github.sha }}
@@ -418,7 +436,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W12 diagnostic APK when its Navigation app contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w12_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # PRODUCT_RECOVERY: old Navigation presentation gate is retired.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W12-yokuli-os-debug-${{ github.sha }}
@@ -442,7 +460,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W15 diagnostic APK when its product-surface contract fails
-        if: steps.assemble.outcome == 'success' && steps.osr_w15_contract.outcome != 'success' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # PRODUCT_RECOVERY: old presentation reachability gate is retired.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W15-yokuli-os-debug-${{ github.sha }}
@@ -450,7 +468,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Upload W16 diagnostic APK when final machine evidence fails
-        if: steps.assemble.outcome == 'success' && (steps.osr_w16_contract.outcome != 'success' || steps.osr_w16_build_evidence.outcome != 'success') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: false # PRODUCT_RECOVERY: final acceptance claim is suspended.
         uses: actions/upload-artifact@v7
         with:
           name: UNVERIFIED-W16-yokuli-os-debug-${{ github.sha }}
@@ -527,10 +545,10 @@ jobs:
           "Android lint=${{ steps.lint.outcome }}"
           "Debug plus release-audit APK compile=${{ steps.assemble.outcome }}"
       - name: Collect build failure diagnostics
-        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p2_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.nmea_sources_p4_contract.outcome != 'success' || steps.nmea_sources_p5_contract.outcome != 'success' || steps.nmea_sources_p6_contract.outcome != 'success' || steps.nmea_sources_p7_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.chart_c12_contract.outcome != 'success' || steps.chart_library_cl07_contract.outcome != 'success' || steps.chart_library_cl08_contract.outcome != 'success' || steps.chart_library_cl09_contract.outcome != 'success' || steps.chart_library_cl10_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.chart_library_cl12_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
+        if: always() && (failure() || steps.product_recovery_policy.outcome != 'success' || steps.ci_helpers.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.release_surface_audit.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
         run: bash .github/scripts/collect_failure_bundle.sh build
       - name: Upload downloadable build failure bundle
-        if: always() && (failure() || steps.ci_helpers.outcome != 'success' || steps.launcher_stage0_contract.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p2_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.nmea_sources_p4_contract.outcome != 'success' || steps.nmea_sources_p5_contract.outcome != 'success' || steps.nmea_sources_p6_contract.outcome != 'success' || steps.nmea_sources_p7_contract.outcome != 'success' || steps.launcher_stage1_contract.outcome != 'success' || steps.launcher_stage2_contract.outcome != 'success' || steps.launcher_stage25_contract.outcome != 'success' || steps.launcher_stage3_contract.outcome != 'success' || steps.launcher_stage4_contract.outcome != 'success' || steps.launcher_stage5_contract.outcome != 'success' || steps.launcher_stage6_contract.outcome != 'success' || steps.launcher_stage7_contract.outcome != 'success' || steps.launcher_stage8_contract.outcome != 'success' || steps.launcher_stage9_contract.outcome != 'success' || steps.launcher_stage10_contract.outcome != 'success' || steps.launcher_stage11_contract.outcome != 'success' || steps.shell_app_contract.outcome != 'success' || steps.chart_c12_contract.outcome != 'success' || steps.chart_library_cl07_contract.outcome != 'success' || steps.chart_library_cl08_contract.outcome != 'success' || steps.chart_library_cl09_contract.outcome != 'success' || steps.chart_library_cl10_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.chart_library_cl12_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
+        if: always() && (failure() || steps.product_recovery_policy.outcome != 'success' || steps.ci_helpers.outcome != 'success' || steps.nmea_sources_p0_contract.outcome != 'success' || steps.nmea_sources_p1_contract.outcome != 'success' || steps.nmea_sources_p3_contract.outcome != 'success' || steps.chart_library_cl11_contract.outcome != 'success' || steps.osr_w01_contract.outcome != 'success' || steps.release_surface_audit.outcome != 'success' || steps.google_maps_evidence.outcome != 'success' || steps.release_metadata.outcome != 'success' || steps.ci_contract.outcome != 'success' || steps.secrets_contract.outcome != 'success' || steps.unit_tests.outcome != 'success' || steps.lint.outcome != 'success' || steps.assemble.outcome != 'success')
         uses: actions/upload-artifact@v7
         with:
           name: FAILURE-build-${{ github.run_id }}-${{ github.run_attempt }}
@@ -544,36 +562,15 @@ jobs:
           LAUNCHER_STAGE0_CONTRACT_RESULT: ${{ steps.launcher_stage0_contract.outcome }}
           NMEA_SOURCES_P0_CONTRACT_RESULT: ${{ steps.nmea_sources_p0_contract.outcome }}
           NMEA_SOURCES_P1_CONTRACT_RESULT: ${{ steps.nmea_sources_p1_contract.outcome }}
-          NMEA_SOURCES_P2_CONTRACT_RESULT: ${{ steps.nmea_sources_p2_contract.outcome }}
           NMEA_SOURCES_P3_CONTRACT_RESULT: ${{ steps.nmea_sources_p3_contract.outcome }}
-          NMEA_SOURCES_P4_CONTRACT_RESULT: ${{ steps.nmea_sources_p4_contract.outcome }}
-          NMEA_SOURCES_P5_CONTRACT_RESULT: ${{ steps.nmea_sources_p5_contract.outcome }}
-          NMEA_SOURCES_P6_CONTRACT_RESULT: ${{ steps.nmea_sources_p6_contract.outcome }}
-          NMEA_SOURCES_P7_CONTRACT_RESULT: ${{ steps.nmea_sources_p7_contract.outcome }}
-          LAUNCHER_STAGE1_CONTRACT_RESULT: ${{ steps.launcher_stage1_contract.outcome }}
           LAUNCHER_STAGE2_CONTRACT_RESULT: ${{ steps.launcher_stage2_contract.outcome }}
           LAUNCHER_STAGE25_CONTRACT_RESULT: ${{ steps.launcher_stage25_contract.outcome }}
           LAUNCHER_STAGE3_CONTRACT_RESULT: ${{ steps.launcher_stage3_contract.outcome }}
           LAUNCHER_STAGE4_CONTRACT_RESULT: ${{ steps.launcher_stage4_contract.outcome }}
-          LAUNCHER_STAGE5_CONTRACT_RESULT: ${{ steps.launcher_stage5_contract.outcome }}
-          LAUNCHER_STAGE6_CONTRACT_RESULT: ${{ steps.launcher_stage6_contract.outcome }}
-          LAUNCHER_STAGE7_CONTRACT_RESULT: ${{ steps.launcher_stage7_contract.outcome }}
-          LAUNCHER_STAGE8_CONTRACT_RESULT: ${{ steps.launcher_stage8_contract.outcome }}
-          LAUNCHER_STAGE9_CONTRACT_RESULT: ${{ steps.launcher_stage9_contract.outcome }}
-          LAUNCHER_STAGE10_CONTRACT_RESULT: ${{ steps.launcher_stage10_contract.outcome }}
-          LAUNCHER_STAGE11_CONTRACT_RESULT: ${{ steps.launcher_stage11_contract.outcome }}
-          SHELL_APP_CONTRACT_RESULT: ${{ steps.shell_app_contract.outcome }}
-          CHART_C12_CONTRACT_RESULT: ${{ steps.chart_c12_contract.outcome }}
-          CHART_LIBRARY_CL07_CONTRACT_RESULT: ${{ steps.chart_library_cl07_contract.outcome }}
-          CHART_LIBRARY_CL08_CONTRACT_RESULT: ${{ steps.chart_library_cl08_contract.outcome }}
-          CHART_LIBRARY_CL09_CONTRACT_RESULT: ${{ steps.chart_library_cl09_contract.outcome }}
-          CHART_LIBRARY_CL10_CONTRACT_RESULT: ${{ steps.chart_library_cl10_contract.outcome }}
           CHART_LIBRARY_CL11_CONTRACT_RESULT: ${{ steps.chart_library_cl11_contract.outcome }}
-          CHART_LIBRARY_CL12_CONTRACT_RESULT: ${{ steps.chart_library_cl12_contract.outcome }}
           OSR_W01_CONTRACT_RESULT: ${{ steps.osr_w01_contract.outcome }}
-          OSR_W16_CONTRACT_RESULT: ${{ steps.osr_w16_contract.outcome }}
-          OSR_W16_BUILD_EVIDENCE_RESULT: ${{ steps.osr_w16_build_evidence.outcome }}
-          CHART_SHELL_UX_CORRECTION_RESULT: ${{ steps.chart_shell_ux_correction.outcome }}
+          PRODUCT_RECOVERY_POLICY_RESULT: ${{ steps.product_recovery_policy.outcome }}
+          RELEASE_SURFACE_AUDIT_RESULT: ${{ steps.release_surface_audit.outcome }}
           GOOGLE_MAPS_EVIDENCE_RESULT: ${{ steps.google_maps_evidence.outcome }}
           RELEASE_METADATA_RESULT: ${{ steps.release_metadata.outcome }}
           CI_CONTRACT_RESULT: ${{ steps.ci_contract.outcome }}
@@ -583,7 +580,7 @@ jobs:
           ASSEMBLE_RESULT: ${{ steps.assemble.outcome }}
         run: |
           failed=0
-          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT NMEA_SOURCES_P0_CONTRACT_RESULT NMEA_SOURCES_P1_CONTRACT_RESULT NMEA_SOURCES_P2_CONTRACT_RESULT NMEA_SOURCES_P3_CONTRACT_RESULT NMEA_SOURCES_P4_CONTRACT_RESULT NMEA_SOURCES_P5_CONTRACT_RESULT NMEA_SOURCES_P6_CONTRACT_RESULT NMEA_SOURCES_P7_CONTRACT_RESULT LAUNCHER_STAGE1_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT LAUNCHER_STAGE5_CONTRACT_RESULT LAUNCHER_STAGE6_CONTRACT_RESULT LAUNCHER_STAGE7_CONTRACT_RESULT LAUNCHER_STAGE8_CONTRACT_RESULT LAUNCHER_STAGE9_CONTRACT_RESULT LAUNCHER_STAGE10_CONTRACT_RESULT LAUNCHER_STAGE11_CONTRACT_RESULT SHELL_APP_CONTRACT_RESULT CHART_C12_CONTRACT_RESULT CHART_LIBRARY_CL07_CONTRACT_RESULT CHART_LIBRARY_CL08_CONTRACT_RESULT CHART_LIBRARY_CL09_CONTRACT_RESULT CHART_LIBRARY_CL10_CONTRACT_RESULT CHART_LIBRARY_CL11_CONTRACT_RESULT CHART_LIBRARY_CL12_CONTRACT_RESULT OSR_W01_CONTRACT_RESULT OSR_W16_CONTRACT_RESULT OSR_W16_BUILD_EVIDENCE_RESULT CHART_SHELL_UX_CORRECTION_RESULT GOOGLE_MAPS_EVIDENCE_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
+          for result in CI_HELPERS_RESULT LAUNCHER_STAGE0_CONTRACT_RESULT NMEA_SOURCES_P0_CONTRACT_RESULT NMEA_SOURCES_P1_CONTRACT_RESULT NMEA_SOURCES_P3_CONTRACT_RESULT LAUNCHER_STAGE2_CONTRACT_RESULT LAUNCHER_STAGE25_CONTRACT_RESULT LAUNCHER_STAGE3_CONTRACT_RESULT LAUNCHER_STAGE4_CONTRACT_RESULT CHART_LIBRARY_CL11_CONTRACT_RESULT OSR_W01_CONTRACT_RESULT PRODUCT_RECOVERY_POLICY_RESULT RELEASE_SURFACE_AUDIT_RESULT GOOGLE_MAPS_EVIDENCE_RESULT RELEASE_METADATA_RESULT CI_CONTRACT_RESULT SECRETS_CONTRACT_RESULT UNIT_TEST_RESULT LINT_RESULT ASSEMBLE_RESULT; do
             if [ "${!result}" != success ]; then echo "::error title=$result failed::Open the job summary and FAILURE artifact."; failed=1; fi
           done
           exit "$failed"
@@ -609,7 +606,7 @@ jobs:
           retention-days: 30
 
   integration:
-    name: All active apps, adapters, migrations, and restore on API 34
+    name: Protected adapters, migrations, and restore on API 34
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -625,7 +622,7 @@ jobs:
           cache-read-only: true
       - name: Enable KVM hardware acceleration
         run: bash .github/scripts/enable_kvm.sh
-      - name: Run MBTiles + Room + Shell device suites with motion enabled
+      - name: Run protected MBTiles, Room, runtime, and restore suites
         id: api34_suite
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
@@ -647,12 +644,9 @@ jobs:
           python3 .github/scripts/report_android_test_failures.py \
             --result-root app-shell/build/outputs/androidTest-results \
             --result-root adapter/marine-data-android/build/outputs/androidTest-results \
+            --result-root adapter/chart-library-android/build/outputs/androidTest-results \
             --result-root adapter/map-offline/build/outputs/androidTest-results \
-            --result-root adapter/map-storage/build/outputs/androidTest-results \
-            --result-root feature/chart-library/build/outputs/androidTest-results \
-            --result-root feature/navigation/build/outputs/androidTest-results \
-            --result-root feature/nmea-input/build/outputs/androidTest-results \
-            --result-root feature/preferences/build/outputs/androidTest-results
+            --result-root adapter/map-storage/build/outputs/androidTest-results
       - name: Extract Chart Library CL11 resource evidence
         if: always()
         run: >-
@@ -662,7 +656,7 @@ jobs:
           --require-complete
       - name: Collect W16 API 34 migration and process-restore evidence
         id: osr_w16_api34_evidence
-        if: always()
+        if: false # PRODUCT_RECOVERY: final W16 acceptance ledger is suspended.
         run: >-
           python3 .github/scripts/collect_w16_machine_evidence.py
           --scope api34
@@ -682,18 +676,12 @@ jobs:
             app-shell/build/outputs/androidTest-results/**
             adapter/marine-data-android/build/reports/androidTests/**
             adapter/marine-data-android/build/outputs/androidTest-results/**
+            adapter/chart-library-android/build/reports/androidTests/**
+            adapter/chart-library-android/build/outputs/androidTest-results/**
             adapter/map-offline/build/reports/androidTests/**
             adapter/map-offline/build/outputs/androidTest-results/**
             adapter/map-storage/build/reports/androidTests/**
             adapter/map-storage/build/outputs/androidTest-results/**
-            feature/chart-library/build/reports/androidTests/**
-            feature/chart-library/build/outputs/androidTest-results/**
-            feature/navigation/build/reports/androidTests/**
-            feature/navigation/build/outputs/androidTest-results/**
-            feature/nmea-input/build/reports/androidTests/**
-            feature/nmea-input/build/outputs/androidTest-results/**
-            feature/preferences/build/reports/androidTests/**
-            feature/preferences/build/outputs/androidTest-results/**
             build/ci-device-tests.log
             build/ci-c12-process-restore.log
             build/ci-nmea-sources-process-restore.log
@@ -818,7 +806,7 @@ jobs:
           retention-days: 30
 
   stage11-performance:
-    name: Stage 11 API 34 emulator performance trend
+    name: Product Recovery API 34 startup performance signal
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -834,7 +822,7 @@ jobs:
           cache-read-only: true
       - name: Enable KVM hardware acceleration
         run: bash .github/scripts/enable_kvm.sh
-      - name: Run Macrobenchmark journeys as a non-hardware trend gate
+      - name: Run presentation-independent startup Macrobenchmarks
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: 34
@@ -858,12 +846,14 @@ jobs:
           python3 .github/scripts/summarize_stage11_performance.py
           --search benchmark/shell/build
           --output build/stage11-performance/summary.json
+          --profile product-recovery
           --require-journeys
       - name: Stage 11 performance summary
         if: always()
         run: >-
-          python3 .github/scripts/write_job_summary.py "Stage 11 emulator performance trend"
-          "Macrobenchmark journeys=${{ job.status }}"
+          python3 .github/scripts/write_job_summary.py "Product Recovery startup performance signal"
+          "Cold and warm startup=${{ job.status }}"
+          "Rejected UI journeys=NOT_AUTHORITATIVE"
           "Physical 60/90/120 Hz and Samsung square=UNVERIFIED_HARDWARE"
       - name: Upload Stage 11 performance traces and trend data
         if: always()
@@ -952,30 +942,30 @@ jobs:
           retention-days: 30
 
   verified-debug:
-    name: Publish fully verified alpha APK
+    name: Publish automation-passed Product Recovery APK
     needs: [build, integration, api-compatibility, stage11-performance]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Download quality-gate candidate with digest verification
+      - name: Download Product Recovery candidate with digest verification
         uses: actions/download-artifact@v8
         with:
-          name: yokuli-os-debug-candidate-${{ github.sha }}
+          name: PRODUCT-RECOVERY-yokuli-os-debug-${{ github.sha }}
           path: verified-apk
-      - name: Upload fully verified installable alpha APK
+      - name: Upload human-acceptance-pending installable APK
         uses: actions/upload-artifact@v7
         with:
-          name: VERIFIED-yokuli-os-alpha-${{ github.sha }}
+          name: HUMAN-ACCEPTANCE-PENDING-yokuli-os-${{ github.sha }}
           path: verified-apk/**/*.apk
           if-no-files-found: error
           retention-days: 30
-      - name: Verified artifact summary
+      - name: Product Recovery artifact summary
         run: |
           {
-            echo '## Fully verified Yokuli OS alpha APK'
-            echo 'TDD contracts, unit tests, lint, Release audit, API 34 MBTiles + Room + Shell suites, API 36 smoke, and emulator performance journeys all passed.'
-            echo 'Download: **VERIFIED-yokuli-os-alpha-${{ github.sha }}**'
+            echo '## Yokuli OS Product Recovery APK — human acceptance pending'
+            echo 'Protected domain/runtime tests, lint, build, API suites and cold/warm startup signals passed. Rejected presentation tests are deliberately not authoritative during the recovery window.'
+            echo 'Download: **HUMAN-ACCEPTANCE-PENDING-yokuli-os-${{ github.sha }}**'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Collect verified-artifact failure diagnostics
         if: failure()

@@ -9,21 +9,12 @@ all_device_tasks=(
   :adapter:chart-library-android:connectedDebugAndroidTest
   :adapter:map-offline:connectedDebugAndroidTest
   :adapter:map-storage:connectedDebugAndroidTest
-  :feature:chart-library:connectedDebugAndroidTest
-  :feature:navigation:connectedDebugAndroidTest
-  :feature:nmea-input:connectedDebugAndroidTest
-  :feature:preferences:connectedDebugAndroidTest
-  :app-shell:connectedStandaloneDebugAndroidTest
 )
 gradle_args=(--no-daemon --stacktrace)
 
 case "$mode" in
   all)
     gradle_args+=("${all_device_tasks[@]}")
-    # This two-process probe is driven separately so a real force-stop occurs between methods.
-    gradle_args+=(
-      '-Pandroid.testInstrumentationRunnerArguments.notClass=com.yokuli.marine.shell.ChartC12ProcessRestartProbeTest,com.yokuli.marine.shell.NmeaP6ProcessRestartProbeTest'
-    )
     ;;
   smoke)
     # A positive class filter is interpreted by every instrumentation task in
@@ -42,20 +33,23 @@ case "$mode" in
     fi
     ./gradlew --no-daemon \
       :app-shell:connectedStandaloneDebugAndroidTest \
-      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#chartTileOpensBrowseOnlySurfaceAndSystemBackReturnsToStart' \
+      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#backAtShellDesktopNeverFinishesHost,com.yokuli.marine.shell.ShellActivityStoryTest#shellActivityIsPortraitOnly' \
       --stacktrace 2>&1 | tee -a build/ci-device-tests.log
     app_status="${PIPESTATUS[0]}"
     set -e
     exit "$app_status"
     ;;
   ui-contract)
-    gradle_args+=(
-      :app-shell:connectedStandaloneDebugAndroidTest
-      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.shell.ShellActivityStoryTest#productionShellExposesFiveAppsWhileDefaultStartStaysMapFirst'
-    )
+    printf 'ui-contract is suspended during the Product Recovery Window\n' >&2
+    exit 3
     ;;
   performance)
-    gradle_args=(--no-daemon :benchmark:shell:connectedStandaloneBenchmarkAndroidTest --stacktrace)
+    gradle_args=(
+      --no-daemon
+      :benchmark:shell:connectedStandaloneBenchmarkAndroidTest
+      '-Pandroid.testInstrumentationRunnerArguments.class=com.yokuli.marine.benchmark.shell.ShellMacrobenchmark#coldStartToStart,com.yokuli.marine.benchmark.shell.ShellMacrobenchmark#warmStartToStart'
+      --stacktrace
+    )
     ;;
   *)
     printf 'Usage: %s all | smoke | ui-contract | performance\n' "$0" >&2

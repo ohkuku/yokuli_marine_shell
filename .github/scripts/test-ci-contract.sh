@@ -5,220 +5,104 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 android="$repo_root/.github/workflows/android.yml"
 release="$repo_root/.github/workflows/release.yml"
 nightly="$repo_root/.github/workflows/nightly.yml"
+device="$repo_root/.github/scripts/run_device_tests.sh"
 
 fail() {
   printf 'CI contract failed: %s\n' "$*" >&2
   exit 1
 }
 
-for required in "$android" "$release" "$nightly"; do
+for required in "$android" "$release" "$nightly" "$device"; do
   [[ -f "$required" ]] || fail "missing ${required#"$repo_root/"}"
 done
 
 workflows=("$android" "$release" "$nightly")
-for action in \
-  'actions/checkout@v6' \
-  'actions/setup-java@v5' \
-  'actions/setup-python@v6' \
-  'gradle/actions/setup-gradle@v6' \
-  'actions/upload-artifact@v7'; do
+for action in actions/checkout@v6 actions/setup-java@v5 gradle/actions/setup-gradle@v6 actions/upload-artifact@v7; do
   grep -Fq "$action" "${workflows[@]}" || fail "current action major not found: $action"
 done
-grep -Fq 'actions/download-artifact@v8' "$android" || fail 'verified artifact must be transferred with digest checking'
+grep -Fq 'actions/download-artifact@v8' "$android" || fail 'artifact transfer must verify the server digest'
 
 for job in 'build:' 'integration:' 'api-compatibility:' 'stage11-performance:' 'codex-report:' 'verified-debug:'; do
   grep -Fq "  $job" "$android" || fail "Android CI missing job $job"
 done
-for check_id in 'ci_helpers' 'release_metadata' 'ci_contract' 'secrets_contract'; do
-  grep -Fq "id: $check_id" "$android" || fail "build feedback must expose the $check_id gate independently"
-done
-grep -Fq 'bash .github/scripts/test-secrets-manager.sh' "$android" || fail 'encrypted secrets workflow contract must run in CI'
-grep -Fq 'id: launcher_stage0_contract' "$android" || fail 'Launcher Stage 0 needs an independent named CI gate'
-grep -Fq 'python3 -m pip install --requirement .github/requirements/stage0-schema.txt' "$android" || fail 'Stage 0 must install its pinned Draft 2020-12 validator'
-grep -Fq 'jsonschema==' "$repo_root/.github/requirements/stage0-schema.txt" || fail 'Stage 0 schema validator must be version-pinned'
-grep -Fq 'python3 .github/scripts/test_launcher_stage0_contract.py' "$android" || fail 'Launcher Stage 0 contract must run in CI'
-grep -Fq 'LAUNCHER_STAGE0_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 0 result must participate in final enforcement'
-grep -Fq 'id: nmea_sources_p0_contract' "$android" || fail 'NMEA Sources P0 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_nmea_sources_p0_contract.py' "$android" || fail 'NMEA Sources P0 contract must run in CI'
-grep -Fq 'NMEA_SOURCES_P0_CONTRACT_RESULT' "$android" || fail 'NMEA Sources P0 result must participate in final enforcement'
-grep -Fq 'id: nmea_sources_p1_contract' "$android" || fail 'NMEA Sources P1 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_nmea_sources_p1_contract.py' "$android" || fail 'NMEA Sources P1 contract must run in CI'
-grep -Fq 'NMEA_SOURCES_P1_CONTRACT_RESULT' "$android" || fail 'NMEA Sources P1 result must participate in final enforcement'
-grep -Fq 'id: nmea_sources_p2_contract' "$android" || fail 'NMEA Sources P2 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_nmea_sources_p2_contract.py' "$android" || fail 'NMEA Sources P2 contract must run in CI'
-grep -Fq 'NMEA_SOURCES_P2_CONTRACT_RESULT' "$android" || fail 'NMEA Sources P2 result must participate in final enforcement'
-grep -Fq 'id: nmea_sources_p3_contract' "$android" || fail 'NMEA Sources P3 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_nmea_sources_p3_contract.py' "$android" || fail 'NMEA Sources P3 contract must run in CI'
-grep -Fq 'NMEA_SOURCES_P3_CONTRACT_RESULT' "$android" || fail 'NMEA Sources P3 result must participate in final enforcement'
-grep -Fq 'id: nmea_sources_p4_contract' "$android" || fail 'NMEA Sources P4 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_nmea_sources_p4_contract.py' "$android" || fail 'NMEA Sources P4 contract must run in CI'
-grep -Fq 'NMEA_SOURCES_P4_CONTRACT_RESULT' "$android" || fail 'NMEA Sources P4 result must participate in final enforcement'
-grep -Fq 'id: nmea_sources_p5_contract' "$android" || fail 'NMEA Sources P5 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_nmea_sources_p5_contract.py' "$android" || fail 'NMEA Sources P5 contract must run in CI'
-grep -Fq 'NMEA_SOURCES_P5_CONTRACT_RESULT' "$android" || fail 'NMEA Sources P5 result must participate in final enforcement'
-grep -Fq 'id: nmea_sources_p6_contract' "$android" || fail 'NMEA Sources P6 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_nmea_sources_p6_contract.py' "$android" || fail 'NMEA Sources P6 contract must run in CI'
-grep -Fq 'NMEA_SOURCES_P6_CONTRACT_RESULT' "$android" || fail 'NMEA Sources P6 result must participate in final enforcement'
-grep -Fq 'id: nmea_sources_p7_contract' "$android" || fail 'NMEA Sources P7 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_nmea_sources_p7_contract.py' "$android" || fail 'NMEA Sources P7 contract must run in CI'
-grep -Fq 'NMEA_SOURCES_P7_CONTRACT_RESULT' "$android" || fail 'NMEA Sources P7 result must participate in final enforcement'
-grep -Fq 'bash .github/scripts/run_nmea_sources_process_restore.sh' "$android" || fail 'API 34 integration must run the external NMEA process-restore probe'
-grep -Fq 'build/ci-nmea-sources-process-restore.log' "$android" || fail 'NMEA process-restore evidence must be downloadable'
-grep -Fq 'id: launcher_stage1_contract' "$android" || fail 'Launcher Stage 1 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_launcher_stage1_contract.py' "$android" || fail 'Launcher Stage 1 static product-surface contract must run in CI'
-grep -Fq 'bash .github/scripts/test-release-product-surface.sh' "$android" || fail 'Launcher Stage 1 must inspect the assembled release APK'
-grep -Fq 'assembleStandaloneDebug assembleStandaloneRelease' "$android" || fail 'Marine Shell CI must assemble standalone Debug and Release for inspection'
-if grep -Eq 'assembleHome|bundleHome|app-shell/build/outputs/apk/home' "$android" "$release"; then
-  fail 'in-app Marine Shell workflows must not build or publish a HOME flavor'
+
+# Recovery authority is explicit: helper discovery and rejected product-shape
+# contracts must never become authoritative by filename convention.
+grep -Fq 'id: product_recovery_policy' "$android" || fail 'Product Recovery policy gate is missing'
+grep -Fq 'bash .github/scripts/run_ci_helper_tests.sh' "$android" || fail 'CI helper allow-list is missing'
+grep -Fq 'bash .github/scripts/run_product_recovery_unit_tests.sh' "$android" || fail 'protected unit-test allow-list is missing'
+if grep -Fq "unittest discover .github/scripts 'test_*.py'" "$android"; then
+  fail 'broad Python test discovery would revive rejected presentation contracts'
 fi
-grep -Fq 'LAUNCHER_STAGE1_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 1 result must participate in final enforcement'
-grep -Fq 'id: launcher_stage2_contract' "$android" || fail 'Launcher Stage 2 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_launcher_stage2_contract.py' "$android" || fail 'Launcher Stage 2 architecture boundary contract must run in CI'
-grep -Fq 'LAUNCHER_STAGE2_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 2 result must participate in final enforcement'
-grep -Fq 'id: launcher_stage25_contract' "$android" || fail 'Launcher Stage 2.5 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_launcher_stage25_contract.py' "$android" || fail 'Launcher Stage 2.5 contract must run in CI'
-grep -Fq 'validate_wp8_reference.py --require-human-review' "$android" || fail 'Stage 2.5 CI must require the hash-bound human review'
-grep -Fq 'LAUNCHER_STAGE25_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 2.5 result must participate in final enforcement'
-grep -Fq 'id: launcher_stage10_contract' "$android" || fail 'Launcher Stage 10 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_launcher_stage10_contract.py' "$android" || fail 'Launcher Stage 10 durable recovery contract must run in CI'
-grep -Fq 'LAUNCHER_STAGE10_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 10 result must participate in final enforcement'
-grep -Fq 'id: launcher_stage11_contract' "$android" || fail 'Launcher Stage 11 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_launcher_stage11_contract.py' "$android" || fail 'Launcher Stage 11 contract must run in CI'
-grep -Fq 'python3 .github/scripts/validate_stage11_fidelity.py' "$android" || fail 'Stage 11 candidate Goldens need semantic validation'
-grep -Fq 'LAUNCHER_STAGE11_CONTRACT_RESULT' "$android" || fail 'Launcher Stage 11 result must participate in final enforcement'
-grep -Fq 'id: chart_library_cl07_contract' "$android" || fail 'Chart Library CL07 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_chart_library_cl07_contract.py' "$android" || fail 'Chart Library CL07 contract must run in CI'
-grep -Fq 'CHART_LIBRARY_CL07_CONTRACT_RESULT' "$android" || fail 'Chart Library CL07 result must participate in final enforcement'
-grep -Fq 'id: chart_library_cl08_contract' "$android" || fail 'Chart Library CL08 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_chart_library_cl08_contract.py' "$android" || fail 'Chart Library CL08 contract must run in CI'
-grep -Fq 'CHART_LIBRARY_CL08_CONTRACT_RESULT' "$android" || fail 'Chart Library CL08 result must participate in final enforcement'
-grep -Fq 'id: chart_library_cl09_contract' "$android" || fail 'Chart Library CL09 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_chart_library_cl09_contract.py' "$android" || fail 'Chart Library CL09 contract must run in CI'
-grep -Fq 'CHART_LIBRARY_CL09_CONTRACT_RESULT' "$android" || fail 'Chart Library CL09 result must participate in final enforcement'
-grep -Fq 'id: chart_library_cl10_contract' "$android" || fail 'Chart Library CL10 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_chart_library_cl10_contract.py' "$android" || fail 'Chart Library CL10 contract must run in CI'
-grep -Fq 'CHART_LIBRARY_CL10_CONTRACT_RESULT' "$android" || fail 'Chart Library CL10 result must participate in final enforcement'
-grep -Fq 'id: chart_library_cl11_contract' "$android" || fail 'Chart Library CL11 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_chart_library_cl11_contract.py' "$android" || fail 'Chart Library CL11 contract must run in CI'
-grep -Fq 'CHART_LIBRARY_CL11_CONTRACT_RESULT' "$android" || fail 'Chart Library CL11 result must participate in final enforcement'
-grep -Fq 'extract_chart_library_cl11_evidence.py' "$android" || fail 'Chart Library CL11 must extract machine-readable device evidence'
-grep -Fq 'id: chart_library_cl12_contract' "$android" || fail 'Chart Library CL12 needs an independent final gate'
-grep -Fq 'python3 .github/scripts/test_chart_library_cl12_contract.py' "$android" || fail 'Chart Library CL12 contract must run in CI'
-grep -Fq 'CHART_LIBRARY_CL12_CONTRACT_RESULT' "$android" || fail 'Chart Library CL12 result must participate in final enforcement'
-grep -Fq 'emit_google_maps_configuration_evidence.py' "$android" || fail 'built Maps configuration must emit secret-free evidence'
-grep -Fq 'GOOGLE_MAPS_EVIDENCE_RESULT' "$android" || fail 'Maps configuration evidence must participate in final enforcement'
-grep -Fq 'id: osr_w01_only_contract' "$android" || fail 'OS Redesign W01 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w01_contract.py' "$android" || fail 'OS Redesign W01 contract must run in CI'
-grep -Fq 'id: osr_w02_contract' "$android" || fail 'OS Redesign W02 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w02_contract.py' "$android" || fail 'OS Redesign W02 contract must run in CI'
-grep -Fq 'steps.osr_w02_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W02'
-grep -Fq 'id: osr_w03_contract' "$android" || fail 'OS Redesign W03 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w03_contract.py' "$android" || fail 'OS Redesign W03 contract must run in CI'
-grep -Fq 'steps.osr_w03_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W03'
-grep -Fq 'id: osr_w04_contract' "$android" || fail 'OS Redesign W04 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w04_contract.py' "$android" || fail 'OS Redesign W04 contract must run in CI'
-grep -Fq 'steps.osr_w04_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W04'
-grep -Fq 'id: osr_w08_contract' "$android" || fail 'OS Redesign W08 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w08_contract.py' "$android" || fail 'OS Redesign W08 contract must run in CI'
-grep -Fq 'steps.osr_w08_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W08'
-grep -Fq 'id: osr_w09_contract' "$android" || fail 'OS Redesign W09 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w09_contract.py' "$android" || fail 'OS Redesign W09 contract must run in CI'
-grep -Fq 'steps.osr_w09_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W09'
-grep -Fq 'id: osr_w10_contract' "$android" || fail 'OS Redesign W10 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w10_contract.py' "$android" || fail 'OS Redesign W10 contract must run in CI'
-grep -Fq 'steps.osr_w10_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W10'
-grep -Fq 'id: osr_w11_contract' "$android" || fail 'OS Redesign W11 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w11_contract.py' "$android" || fail 'OS Redesign W11 contract must run in CI'
-grep -Fq 'steps.osr_w11_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W11'
-grep -Fq 'id: osr_w12_contract' "$android" || fail 'OS Redesign W12 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w12_contract.py' "$android" || fail 'OS Redesign W12 contract must run in CI'
-grep -Fq 'steps.osr_w12_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W12'
-grep -Fq 'id: osr_w13_contract' "$android" || fail 'OS Redesign W13 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w13_contract.py' "$android" || fail 'OS Redesign W13 contract must run in CI'
-grep -Fq 'steps.osr_w13_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W13'
-grep -Fq 'id: osr_w14_contract' "$android" || fail 'OS Redesign W14 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w14_contract.py' "$android" || fail 'OS Redesign W14 contract must run in CI'
-grep -Fq 'steps.osr_w14_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W14'
-grep -Fq 'id: osr_w15_contract' "$android" || fail 'OS Redesign W15 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w15_contract.py' "$android" || fail 'OS Redesign W15 contract must run in CI'
-grep -Fq 'steps.osr_w15_contract.outcome' "$android" || fail 'OS Redesign cumulative enforcement must include W15'
-grep -Fq 'id: osr_w16_contract' "$android" || fail 'OS Redesign W16 needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_osr_w16_contract.py' "$android" || fail 'OS Redesign W16 contract must run in CI'
-grep -Fq 'id: osr_w16_build_evidence' "$android" || fail 'W16 must collect executed build, migration, soak, release, and Maps evidence'
-grep -Fq 'id: osr_w16_api34_evidence' "$android" || fail 'W16 must collect executed API 34 migration and process evidence'
-grep -Fq 'collect_w16_machine_evidence.py' "$android" || fail 'W16 machine evidence collector must run in CI'
-grep -Fq 'OSR_W16_BUILD_EVIDENCE_RESULT' "$android" || fail 'W16 machine evidence must participate in final enforcement'
-grep -Fq 'id: chart_shell_ux_correction' "$android" || fail 'Chart/Shell UX correction needs an independent named CI gate'
-grep -Fq 'python3 .github/scripts/test_chart_shell_ux_correction.py' "$android" || fail 'Chart/Shell UX correction contract must run in CI'
-grep -Fq 'CHART_SHELL_UX_CORRECTION_RESULT' "$android" || fail 'Chart/Shell UX correction must participate in final enforcement'
-grep -Fq -- "--event-name '\${{ github.event_name }}'" "$android" || fail 'final ledger must distinguish push from manual dispatch'
-grep -Fq 'FINAL_ACCEPTANCE_LEDGER.json' "$repo_root/.github/scripts/compose_codex_ci_report.py" || fail 'unified report must include the final acceptance ledger'
-grep -Fq 'MIGRATION_REPORT.md' "$repo_root/.github/scripts/compose_codex_ci_report.py" || fail 'unified report must include the migration report'
-grep -Fq -- '--require-configured' "$android" || fail 'trusted alpha builds must reject a missing Maps key'
-grep -Fq 'OSR_W01_CONTRACT_RESULT' "$android" || fail 'OS Redesign W01 result must participate in final enforcement'
-grep -Fq ':feature:chart-library:connectedDebugAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Chart Library standalone UI stories must run on API 34'
-for active_feature in navigation nmea-input preferences; do
-  grep -Fq ":feature:$active_feature:connectedDebugAndroidTest" "$repo_root/.github/scripts/run_device_tests.sh" || \
-    fail "active Feature device suite missing from API 34: $active_feature"
+
+for retired in \
+  nmea_sources_p2_contract nmea_sources_p4_contract nmea_sources_p5_contract nmea_sources_p6_contract nmea_sources_p7_contract \
+  launcher_stage1_contract launcher_stage5_contract launcher_stage6_contract launcher_stage7_contract \
+  launcher_stage8_contract launcher_stage9_contract launcher_stage10_contract launcher_stage11_contract shell_app_contract \
+  chart_c12_contract chart_library_cl07_contract chart_library_cl08_contract chart_library_cl09_contract \
+  chart_library_cl10_contract chart_library_cl12_contract osr_w02_contract osr_w04_contract osr_w09_contract \
+  osr_w12_contract osr_w13_contract osr_w14_contract osr_w15_contract osr_w16_contract chart_shell_ux_correction; do
+  RETIRED_ID="$retired" ANDROID_WORKFLOW="$android" python3 - <<'PY'
+import os
+from pathlib import Path
+text = Path(os.environ["ANDROID_WORKFLOW"]).read_text()
+step = text.split("id: " + os.environ["RETIRED_ID"], 1)[1].split("- name:", 1)[0]
+raise SystemExit(0 if "if: false" in step else 1)
+PY
 done
-grep -Fq 'bash .github/scripts/run_device_tests.sh performance' "$android" || fail 'Stage 11 Macrobenchmark must use the diagnostic wrapper'
-grep -Fq ':benchmark:shell:connectedStandaloneBenchmarkAndroidTest' "$repo_root/.github/scripts/run_device_tests.sh" || fail 'Stage 11 wrapper must run the real benchmark task'
-grep -Fq 'name: stage11-performance-reports-${{ github.sha }}' "$android" || fail 'Stage 11 measurements and traces must be commit-bound'
+
+for active in \
+  nmea_sources_p1_contract nmea_sources_p3_contract launcher_stage2_contract launcher_stage25_contract \
+  launcher_stage3_contract launcher_stage4_contract chart_library_cl11_contract osr_w01_only_contract \
+  osr_w03_contract osr_w08_contract osr_w10_contract osr_w11_contract; do
+  grep -Fq "id: $active" "$android" || fail "protected gate is missing: $active"
+done
+grep -Fq 'id: release_surface_audit' "$android" || fail 'release manifest/code audit must stay active'
+
+# The device matrix protects runtime, storage, MBTiles and process restoration;
+# rejected Feature presentation suites are deliberately absent.
+for task in \
+  ':adapter:marine-data-android:connectedDebugAndroidTest' \
+  ':adapter:chart-library-android:connectedDebugAndroidTest' \
+  ':adapter:map-offline:connectedDebugAndroidTest' \
+  ':adapter:map-storage:connectedDebugAndroidTest'; do
+  grep -Fq "$task" "$device" || fail "protected device task missing: $task"
+done
+for rejected in ':feature:chart-library:connectedDebugAndroidTest' ':feature:navigation:connectedDebugAndroidTest'; do
+  if grep -Fq "$rejected" "$device"; then fail "rejected presentation suite remains authoritative: $rejected"; fi
+done
+grep -Fq 'run_c12_process_restore.sh' "$android" || fail 'Chart persistence process restore must remain protected'
+grep -Fq 'run_nmea_sources_process_restore.sh' "$android" || fail 'NMEA process restore must remain protected'
+grep -Fq -- '--profile product-recovery' "$android" || fail 'performance job must use the recovery startup profile'
+
 for workflow in "$android" "$release" "$nightly"; do
   grep -Fq 'GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}' "$workflow" || \
     fail "$(basename "$workflow") must inject the optional Google Maps Android key"
 done
-grep -Fq 'ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD' "$release" || fail 'release preflight must still reject missing signing secrets'
-grep -Fq 'needs: [build, integration, api-compatibility, stage11-performance]' "$android" || fail 'verified artifact must wait for every required gate'
-grep -Fq 'UNVERIFIED-' "$android" || fail 'partial build artifacts must be visibly unverified'
-grep -Fq 'VERIFIED-' "$android" || fail 'post-gate artifact must be visibly verified'
+grep -Fq -- '--require-configured' "$android" || fail 'trusted recovery APKs must reject a missing Maps key'
+grep -Fq 'if: false # PRODUCT_RECOVERY: signed product releases resume only after explicit human acceptance.' "$release" || \
+  fail 'signed release must remain blocked until human acceptance'
+
+grep -Fq 'PRODUCT-RECOVERY-yokuli-os-debug-${{ github.sha }}' "$android" || fail 'recovery candidate artifact is missing'
+grep -Fq 'HUMAN-ACCEPTANCE-PENDING-yokuli-os-${{ github.sha }}' "$android" || fail 'pending acceptance artifact is missing'
+if grep -Fq 'VERIFIED-yokuli-os-alpha-' "$android"; then fail 'CI must not claim product acceptance'; fi
+grep -Fq 'CODEX-CI-REPORT-' "$android" || fail 'commit-bound Codex repair report is missing'
+grep -Fq 'FINAL_ACCEPTANCE_LEDGER.json' "$repo_root/.github/scripts/compose_codex_ci_report.py" || fail 'unified evidence ledger is missing'
 
 runner_count="$(grep -h -c 'uses: reactivecircus/android-emulator-runner' "${workflows[@]}" | awk '{ total += $1 } END { print total + 0 }')"
 kvm_count="$(grep -h -c 'run: bash .github/scripts/enable_kvm.sh' "${workflows[@]}" | awk '{ total += $1 } END { print total + 0 }')"
-device_script_count="$(grep -h -c 'bash .github/scripts/run_device_tests.sh' "${workflows[@]}" | awk '{ total += $1 } END { print total + 0 }')"
-[[ "$runner_count" -ge 3 ]] || fail 'CI, compatibility, release, and nightly workflows need emulator coverage'
+[[ "$runner_count" -ge 3 ]] || fail 'protected runtime/device coverage is too narrow'
 [[ "$runner_count" -eq "$kvm_count" ]] || fail 'every emulator runner must explicitly enable KVM'
-[[ "$runner_count" -eq "$device_script_count" ]] || fail 'every emulator runner must use the diagnostic wrapper'
 
 collect_count="$(grep -h -c 'collect_failure_bundle.sh' "${workflows[@]}" | awk '{ total += $1 } END { print total + 0 }')"
 failure_artifact_count="$(grep -h -c 'name: FAILURE-' "${workflows[@]}" | awk '{ total += $1 } END { print total + 0 }')"
 [[ "$collect_count" -ge 4 ]] || fail 'fallible jobs need bounded diagnostic collection'
 [[ "$collect_count" -eq "$failure_artifact_count" ]] || fail 'each collected failure bundle must be uploaded once'
 
-grep -Fq 'GITHUB_STEP_SUMMARY' "$repo_root/.github/scripts/write_job_summary.py" || fail 'job summary writer is missing'
-grep -Fq '::error' "$repo_root/.github/scripts/report_android_test_failures.py" || fail 'device failures need GitHub annotations'
-grep -Fq 'device-logcat.txt' "$repo_root/.github/scripts/collect_failure_bundle.sh" || fail 'failure bundle must capture bounded logcat'
+grep -Fq 'GITHUB_STEP_SUMMARY' "$repo_root/.github/scripts/write_job_summary.py" || fail 'job summaries are missing'
+grep -Fq '::error' "$repo_root/.github/scripts/report_android_test_failures.py" || fail 'device annotations are missing'
 if grep -Eq 'local\.properties|gradle\.properties|ANDROID_SIGNING_KEY|KEYSTORE_PASSWORD' "$repo_root/.github/scripts/collect_failure_bundle.sh"; then
   fail 'failure bundle allow-list references credential-bearing data'
 fi
 
-for helper in run_ci_capture.sh build_codex_job_report.py compose_codex_ci_report.py test_codex_ci_report.py; do
-  [[ -f "$repo_root/.github/scripts/$helper" ]] || fail "Codex report helper missing: $helper"
-done
-for captured_step in ci-helpers launcher-stage0-contract nmea-sources-p7-contract chart-library-cl07-contract chart-library-cl10-contract chart-library-cl11-contract chart-library-cl12-contract osr-w01-contract osr-w02-contract osr-w03-contract osr-w04-contract osr-w08-contract osr-w12-contract osr-w13-contract osr-w14-contract osr-w15-contract osr-w16-contract chart-shell-ux-correction w16-build-evidence google-maps-evidence unit-tests lint assemble; do
-  grep -Fq "run_ci_capture.sh $captured_step --" "$android" || fail "important build step is not captured: $captured_step"
-done
-grep -Fq 'if: always()' "$android" || fail 'Codex reports must be generated even after failures'
-grep -Fq 'needs: [build, integration, api-compatibility, stage11-performance]' "$android" || fail 'unified Codex report must observe every authoritative job'
-for job in build api34 api36 performance; do
-  grep -Fq "CODEX-JOB-$job-" "$android" || fail "missing bounded Codex job artifact for $job"
-done
-grep -Fq 'actions/download-artifact@v8' "$android" || fail 'unified Codex report must download per-job evidence with digest verification'
-grep -Fq 'compose_codex_ci_report.py' "$android" || fail 'unified Codex report composer must run'
-grep -Fq 'CODEX-CI-REPORT-${{ steps.codex_identity.outputs.sha12 }}-${{ github.run_id }}-${{ github.run_attempt }}' "$android" || fail 'unified Codex artifact must bind SHA, run, and attempt'
-grep -Fq 'retention-days: 30' "$android" || fail 'Codex evidence needs a 30-day retention declaration'
-for future_module in core/navigation core/chart-library feature/data feature/chart-library feature/navigation feature/preferences; do
-  grep -Fq "$future_module" "$repo_root/.github/scripts/collect_failure_bundle.sh" || fail "failure allow-list is not ready for $future_module"
-done
-grep -Fq 'CODEX-CI-REPORT-<sha12>-' "$repo_root/docs/CODEX_CI_FIRST_WORKFLOW.md" || fail 'developer handoff must name the unified report discovery key'
-
-grep -Fq 'permissions:' "$release" || fail 'release permissions must be explicit'
-grep -Fq 'contents: write' "$release" || fail 'release publication needs contents write only in release workflow'
-grep -Fq 'apksigner_path" verify' "$release" || fail 'release APK signatures must be verified'
-grep -Fq 'sha256sum' "$release" || fail 'release artifacts need SHA-256 checksums'
-grep -Fq 'gh release create' "$release" || fail 'release workflow must publish through GitHub CLI'
-grep -Fq 'python3 .github/scripts/test_nmea_sources_p7_contract.py' "$release" || fail 'release publication must rerun the NMEA Sources final contract'
-grep -Fq 'bash .github/scripts/test-release-product-surface.sh' "$release" || fail 'release publication must audit the signed product surface'
-grep -Fq 'schedule:' "$nightly" || fail 'nightly compatibility workflow needs a schedule'
-
-printf 'CI and release workflow contracts passed\n'
+printf 'CI contract passed: Product Recovery keeps core evidence hard and presentation acceptance human-owned.\n'

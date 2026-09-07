@@ -8,21 +8,19 @@
 
 | 工作流 | 触发 | 必须证明 | 输出 |
 |---|---|---|---|
-| `android.yml` | PR、`main`／`codex/**` push、手动 | CI helper、版本/拓扑合同、JVM 测试、lint、standalone debug/release audit、API 34 全活动 App/adapter/迁移/恢复、API 36 reduced-motion、NMEA 虚拟 soak、性能趋势 | 统一 Codex 报告、迁移报告、最终验收台账、raw reports、candidate／`UNVERIFIED`、全部机器门禁后的 `VERIFIED` alpha APK |
-| `nightly.yml` | 周二/周五、手动 | JVM 回归及 API 34/36 全 UI 故事 | 30 天兼容性报告或失败证据 |
-| `release.yml` | 语义 tag、手动 | metadata、签名预检、API 36 UI 合同、测试、lint、APK/AAB 签名校验 | 90 天签名制品和不可覆盖 GitHub Release |
+| `android.yml` | PR、`main`／`codex/**` push、手动 | 显式 core/adapter 门禁、lint、standalone debug/release audit、API 34 runtime/MBTiles/迁移/恢复、API 36 宿主安全、冷/热启动信号 | 统一 Codex 报告、raw reports、`PRODUCT-RECOVERY` candidate 与 `HUMAN-ACCEPTANCE-PENDING` APK |
+| `nightly.yml` | 周二/周五、手动 | 受保护的 domain/runtime/storage 回归及 API 34/36 adapter stories | 30 天兼容性报告或失败证据 |
+| `release.yml` | 语义 tag、手动 | Product Recovery Window 内暂停 | 不发布签名产品 Release |
 
-W16 执行四连接、总计 100 Hz、30 分钟虚拟单调时间的 NMEA pipeline soak，并注入坏 checksum 与静默窗口。它证明有界 runtime
-在逻辑负载下不越界，但不能冒充 30 分钟真实船网、锁屏或 OEM 后台验证。
+Chart、Chart Library、Navigation 和 Data visualization 在人工批准前，旧 presentation tests 不具有产品权威性。domain/math、NMEA、source selection、persistence/migration、MBTiles 读取、runtime lifecycle、并发和安全测试仍是硬门禁。详见 `docs/phases/base-apps-human-reset/PRODUCT_RECOVERY_WINDOW.md`。
 
 ### GitHub 反馈与制品可信度
 
 每个质量边界必须是独立命名 job；job summary 汇总结果；失败以 `::error` 注解；HTML/XML、Gradle 设备日志和有限范围 `FAILURE-*` 包可下载。build 中的 `continue-on-error` 只用于收集全部证据，最后的 enforce step 必须使任一失败门禁导致 job 失败。
 
-- `yokuli-os-debug-candidate-*`：JVM/lint/build 已过，设备门禁未完。
-- `UNVERIFIED-yokuli-os-debug-*`：仅供诊断，至少一个质量门禁失败。
-- `VERIFIED-yokuli-os-alpha-*`：build、API 34、API 36、迁移、恢复、soak 与性能趋势机器门禁均通过。
-- `VERIFIED-yokuli-os-vX.Y.Z-signed`：已校验签名的 APK/AAB 与 checksums。
+- `PRODUCT-RECOVERY-yokuli-os-debug-*`：受保护的单元测试、lint 与编译通过，供后续设备门禁传递。
+- `HUMAN-ACCEPTANCE-PENDING-yokuli-os-*`：全部当前机器门禁通过，但明确尚未获得产品人工批准。
+- Product Recovery Window 内禁止生成名称包含 `VERIFIED` 的产品制品。
 
 ### CI-first Codex 返工报告
 
@@ -41,7 +39,7 @@ CODEX-CI-REPORT-<sha12>-<run_id>-<attempt>
 - `yokuli-os-api36-reports-<full sha>`
 - `stage11-performance-reports-<full sha>`
 
-统一报告及 per-job Codex 报告保留 30 天；常规 unit/lint/API raw reports 保留 14 天；性能 trace 和 verified alpha 保留 30 天。捕获器不记录命令参数或环境变量，汇总器也不会读取 `local.properties`、Gradle properties、签名材料或个人 vault。
+统一报告及 per-job Codex 报告保留 30 天；常规 unit/lint/API raw reports 保留 14 天；启动性能 trace 和 human-acceptance-pending APK 保留 30 天。捕获器不记录命令参数或环境变量，汇总器也不会读取 `local.properties`、Gradle properties、签名材料或个人 vault。
 
 `main` 分支应要求 build、API 34 stories、API 36 smoke 三个 check；不要在 PR 要求只对 push/manual 运行的 verified artifact job。
 
@@ -49,18 +47,19 @@ CODEX-CI-REPORT-<sha12>-<run_id>-<attempt>
 
 所有构建都会读取 Repository Secret `GOOGLE_MAPS_ANDROID_API_KEY` 并通过 Android Manifest 注入。GitHub 不向不受信任 PR 提供 secret，因此 PR
 允许 keyless 构建并只验证本地 MapLibre 链路；`codex/**`/`main` push 与手动分发构建若没有同时在 BuildConfig 和 merged manifest 看到非占位
-key，W16 会失败且不发布 verified alpha。这个证据仍只表示配置已注入，不证明 Google API 授权、账单、包名/签名限制、网络或图块加载成功。
+key，配置 Gate 会失败且不发布 recovery APK。这个证据仍只表示配置已注入，不证明 Google API 授权、账单、包名/签名限制、网络或图块加载成功。
 个人加密 vault 的密文可以提交到 GitHub，但 Actions 不持有主口令、不会解密它，也不会自动把密文变成 Actions Secret。
 
 签名发布只需要同一签名库产生的四个 secret：`ANDROID_SIGNING_KEY_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。preflight 必须实际打开 keystore 并恢复私钥。诊断收集使用窄 allow-list，不能包含构建配置、环境转储或签名材料。
 
-支持 `v1.2.3-alpha.1`、`v1.2.3-beta.1`、`v1.2.3`。alpha 可以来自 `codex/*` 或 `main`，beta 来自 `codex/release/*` 或 `main`，stable 只能来自 `main`。已有 tag 必须指向当前提交；已有 Release 不覆盖，必须使用新版本。
+语义 tag 规则保留，但签名发布在 Product Recovery Window 内暂停。恢复发布必须先有仓库所有者明确的人工作品批准，再解除 workflow 中的恢复期阻断。
 
 本地更改 CI 前运行：
 
 ```text
 python3 -m pip install --requirement .github/requirements/stage0-schema.txt
-python3 -m unittest discover .github/scripts 'test_*.py'
+python3 .github/scripts/test_product_recovery_window.py
+bash .github/scripts/run_ci_helper_tests.sh
 python3 .github/scripts/test_launcher_stage2_contract.py
 bash .github/scripts/test-resolve-release-metadata.sh
 bash .github/scripts/test-ci-contract.sh
@@ -76,11 +75,11 @@ This document is the operating contract for pull requests, CI artifacts, diagnos
 
 | Workflow | Trigger | Required proof | Output |
 |---|---|---|---|
-| `android.yml` | PR, `main`/`codex/**` push, manual | CI helper, contracts, JVM, lint, Debug/Release audit, API 34 active apps/adapters/migrations/restore, API 36 reduced motion, virtual NMEA soak, performance trend | unified Codex report, migration report, final ledger, raw reports, candidate/`UNVERIFIED`, and post-machine-gate `VERIFIED` alpha APK |
-| `nightly.yml` | Tue/Fri schedule, manual | JVM regression plus all UI stories on API 34 and 36 | 30-day compatibility reports/failure evidence |
-| `release.yml` | semantic tag, manual | metadata/topology, signing preflight, API 36 UI contract, tests, lint, signed APK/AAB verification | 90-day signed artifact and immutable GitHub Release |
+| `android.yml` | PR, `main`/`codex/**` push, manual | explicit core/adapter gates, lint, Debug/Release audit, API 34 runtime/MBTiles/migration/restore, API 36 host safety, startup signal | unified Codex report, raw reports, `PRODUCT-RECOVERY` candidate and `HUMAN-ACCEPTANCE-PENDING` APK |
+| `nightly.yml` | Tue/Fri schedule, manual | protected domain/runtime/storage regression and adapter stories on API 34/36 | 30-day compatibility reports/failure evidence |
+| `release.yml` | semantic tag, manual | suspended during Product Recovery | no signed product release |
 
-W16 runs the current NMEA parser/catalog pipeline through four connections at an aggregate 100 Hz over 30 minutes of virtual monotonic time, including bad checksums and a silent window. This is bounded machine evidence, not a claim about a 30-minute boat network, lock screen, or OEM background execution.
+Until human approval, old presentation tests for Chart, Chart Library, Navigation and Data visualization are not product-authoritative. Domain/math, NMEA, source selection, persistence/migration, MBTiles reading, lifecycle, concurrency and safety remain hard gates.
 
 ## Feedback in GitHub
 
@@ -95,10 +94,9 @@ The build job uses `continue-on-error` only to gather all independent results an
 
 Artifacts carry trust in their name:
 
-- `yokuli-os-debug-candidate-*`: JVM/lint/build passed; device gates still pending.
-- `UNVERIFIED-yokuli-os-debug-*`: installable diagnostic only; a quality gate failed.
-- `VERIFIED-yokuli-os-alpha-*`: build, API 34, API 36, migration, restore, soak, and emulator performance-trend gates all passed.
-- `VERIFIED-yokuli-os-vX.Y.Z-signed`: signature-checked release APK/AAB assets plus checksums.
+- `PRODUCT-RECOVERY-yokuli-os-debug-*`: protected tests, lint and assembly passed; used to transfer the candidate.
+- `HUMAN-ACCEPTANCE-PENDING-yokuli-os-*`: current machine gates passed, but product acceptance is explicitly pending.
+- No product artifact may use `VERIFIED` during this recovery window.
 
 ### CI-first Codex repair artifact
 
@@ -118,11 +116,11 @@ WP8 shell stories on API 34
 Android 16 / API 36 reduced-motion smoke
 ```
 
-Do not require `Publish fully verified debug APKs` on pull requests; it intentionally runs only for push/manual events.
+Do not require `Publish automation-passed Product Recovery APK` on pull requests; it intentionally runs only for push/manual events and never represents human product acceptance.
 
 ## Release secrets
 
-The offline MapLibre path reads local raster charts without a map secret. Untrusted pull requests remain allowed to build keyless because GitHub withholds secrets. Trusted push/manual distribution builds must inject a non-placeholder `GOOGLE_MAPS_ANDROID_API_KEY` into both BuildConfig and the merged manifest before a verified alpha can be published. This proves configuration only; API authorization, billing, package/signature restrictions, network access, and real tile loading remain a separate physical acceptance item. Actions never decrypts the personal vault. Releases require these four signing secrets, which must come from the same local signing vault:
+The offline MapLibre path reads local raster charts without a map secret. Untrusted pull requests remain allowed to build keyless because GitHub withholds secrets. Trusted push/manual builds must inject a non-placeholder `GOOGLE_MAPS_ANDROID_API_KEY` into both BuildConfig and the merged manifest before a recovery APK can be published. This proves configuration only; API authorization, billing, package/signature restrictions, network access, and real tile loading remain a separate physical acceptance item. Actions never decrypts the personal vault. Signed releases are suspended during Product Recovery; when restored they require these four secrets from the same local signing vault:
 
 ```text
 ANDROID_SIGNING_KEY_BASE64
@@ -141,7 +139,7 @@ The preflight opens the keystore and recovers the private key before allocating 
 
 ## Version and channel policy
 
-Supported tags:
+The semantic tag rules are retained, but signed publishing is suspended during Product Recovery. Restoring release publication requires explicit repository-owner product acceptance before removing the workflow block. The retained tag shapes are:
 
 ```text
 v1.2.3-alpha.1
@@ -165,7 +163,8 @@ Run this before changing CI or release files:
 
 ```text
 python3 -m pip install --requirement .github/requirements/stage0-schema.txt
-python3 -m unittest discover .github/scripts 'test_*.py'
+python3 .github/scripts/test_product_recovery_window.py
+bash .github/scripts/run_ci_helper_tests.sh
 python3 .github/scripts/test_launcher_stage2_contract.py
 bash .github/scripts/test-resolve-release-metadata.sh
 bash .github/scripts/test-ci-contract.sh

@@ -147,6 +147,14 @@ class UnifiedCodexReportTest(unittest.TestCase):
             self.assertEqual(head_sha[:12], manifest["sha12"])
             self.assertEqual("SUCCESS", manifest["overall"])
             self.assertTrue((root / "out" / "jobs" / "build" / "job.json").is_file())
+            ledger = json.loads((root / "out" / "FINAL_ACCEPTANCE_LEDGER.json").read_text())
+            self.assertEqual("PRODUCT_RECOVERY", ledger["workPackage"])
+            self.assertEqual("AWAITING_HUMAN_ACCEPTANCE", ledger["decision"])
+            self.assertFalse(ledger["legacyPresentationContractsAuthoritative"])
+            self.assertIn(
+                "HUMAN-ACCEPTANCE-PENDING-yokuli-os",
+                (root / "out" / "RAW_ARTIFACTS.md").read_text(),
+            )
 
     def test_missing_failed_job_requests_only_the_matching_raw_artifact(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -17,7 +17,7 @@ env:
 
 jobs:
   compatibility:
-    name: Full shell stories on API ${{ matrix.api-level }}
+    name: Protected runtime and storage stories on API ${{ matrix.api-level }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -35,10 +35,12 @@ jobs:
         with:
           cache-read-only: true
       - name: JVM regression gate
-        run: ./gradlew --no-daemon test lintStandaloneDebug --stacktrace
+        run: |
+          bash .github/scripts/run_product_recovery_unit_tests.sh
+          ./gradlew --no-daemon lintStandaloneDebug --stacktrace
       - name: Enable KVM hardware acceleration
         run: bash .github/scripts/enable_kvm.sh
-      - name: Full UI contract matrix
+      - name: Product Recovery protected device matrix
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: ${{ matrix.api-level }}
@@ -56,7 +58,7 @@ jobs:
         run: python3 .github/scripts/report_android_test_failures.py
       - name: Nightly summary
         if: always()
-        run: python3 .github/scripts/write_job_summary.py "Nightly API ${{ matrix.api-level }}" "Full regression=${{ job.status }}"
+        run: python3 .github/scripts/write_job_summary.py "Nightly API ${{ matrix.api-level }}" "Protected regression=${{ job.status }}" "Human acceptance=WAITING"
       - name: Upload nightly reports
         if: always()
         uses: actions/upload-artifact@v7

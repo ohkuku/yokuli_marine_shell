@@ -23,6 +23,7 @@ env:
 jobs:
   validate-release:
     name: Validate tag and release topology
+    if: false # PRODUCT_RECOVERY: signed product releases resume only after explicit human acceptance.
     runs-on: ubuntu-latest
     permissions:
       contents: read
