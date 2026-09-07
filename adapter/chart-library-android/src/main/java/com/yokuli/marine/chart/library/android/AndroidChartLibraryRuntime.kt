@@ -72,14 +72,13 @@ class AndroidChartLibraryRuntime private constructor(
             scope.launch {
                 for (assetId in basicQueue) {
                     mutableMetrics.update { value -> value.copy(queuedBasicChecks = (value.queuedBasicChecks - 1).coerceAtLeast(0)) }
-                    if (catalog.asset(assetId)?.let { asset ->
-                            asset.validation == ChartAssetValidationState.DISCOVERED &&
-                                asset.access in setOf(ChartAssetAccessState.UNCHECKED, ChartAssetAccessState.CHANGED)
-                        } == true
-                    ) validationController.inspectBasic(assetId)
+                    if (catalog.asset(assetId)?.needsBasicInspection() == true) {
+                        validationController.inspectBasic(assetId)
+                    }
                 }
             }
         }
+        scope.launch { enqueueHistoricalAccessRecovery() }
         scope.launch {
             catalog.snapshot.drop(1).collect { invalidateChangedSessions() }
         }
@@ -330,19 +329,34 @@ class AndroidChartLibraryRuntime private constructor(
         var offset = 0
         do {
             val page = catalog.assets(ChartAssetQuery(sourceId = sourceId), offset)
-            page.items.filter {
-                it.validation == ChartAssetValidationState.DISCOVERED &&
-                    it.access in setOf(ChartAssetAccessState.UNCHECKED, ChartAssetAccessState.CHANGED)
-            }
-                .forEach { asset ->
-                    if (basicQueue.trySend(asset.id).isSuccess) {
-                        mutableMetrics.update { value -> value.copy(queuedBasicChecks = value.queuedBasicChecks + 1) }
-                    } else {
-                        mutableMetrics.update { value -> value.copy(rejectedBasicChecks = value.rejectedBasicChecks + 1) }
-                    }
-                }
+            page.items.filter(ChartAsset::needsBasicInspection).forEach(::enqueueBasic)
             offset += page.items.size
         } while (offset < page.total && page.items.isNotEmpty())
+    }
+
+    /**
+     * `DIRECT_READ_UNSUPPORTED` is a historical provider-capability observation, not a content
+     * verdict. Older catalog rows are re-probed on process start so the existing stream/local
+     * fallback can recover them without a rescan, data clear, or source re-import.
+     */
+    private suspend fun enqueueHistoricalAccessRecovery() {
+        var offset = 0
+        do {
+            val page = catalog.assets(
+                query = ChartAssetQuery(access = setOf(ChartAssetAccessState.DIRECT_READ_UNSUPPORTED)),
+                offset = offset,
+            )
+            page.items.forEach(::enqueueBasic)
+            offset += page.items.size
+        } while (offset < page.total && page.items.isNotEmpty())
+    }
+
+    private fun enqueueBasic(asset: ChartAsset) {
+        if (basicQueue.trySend(asset.id).isSuccess) {
+            mutableMetrics.update { value -> value.copy(queuedBasicChecks = value.queuedBasicChecks + 1) }
+        } else {
+            mutableMetrics.update { value -> value.copy(rejectedBasicChecks = value.rejectedBasicChecks + 1) }
+        }
     }
 
     private suspend fun refreshManagedStore() {
@@ -462,14 +476,19 @@ class AndroidChartLibraryRuntime private constructor(
             ChartAssetAccessState.SOURCE_OFFLINE,
             ChartAssetAccessState.MISSING,
             ChartAssetAccessState.PENDING,
-            ChartAssetAccessState.DIRECT_READ_UNSUPPORTED,
         )
     }
 }
 
 private fun ChartAssetAccessState.invalidFor(purpose: ChartReadPurpose): Boolean =
     this in AndroidChartLibraryRuntime.ALWAYS_INVALID_ACCESS ||
-        this == ChartAssetAccessState.CHANGED && purpose != ChartReadPurpose.VALIDATION
+        this in setOf(ChartAssetAccessState.CHANGED, ChartAssetAccessState.DIRECT_READ_UNSUPPORTED) &&
+        purpose != ChartReadPurpose.VALIDATION
+
+private fun ChartAsset.needsBasicInspection(): Boolean =
+    access == ChartAssetAccessState.DIRECT_READ_UNSUPPORTED ||
+        validation == ChartAssetValidationState.DISCOVERED &&
+        access in setOf(ChartAssetAccessState.UNCHECKED, ChartAssetAccessState.CHANGED)
 
 private val ACTIVE_COPY_STATES = setOf(
     ChartManagedCopyStatus.QUEUED,

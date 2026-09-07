@@ -112,6 +112,7 @@ class ChartSourceScanPlanner(private val ids: ChartAssetIdFactory = RandomChartA
         val discoveredPuts = enumeration.documents.distinctBy(ChartDiscoveredDocument::identity).map { document ->
             val prior = existingByIdentity[document.identity]
             val changed = prior != null && prior.revision.cacheKey != document.revision.cacheKey
+            val staleAccessCapability = prior?.access == ChartAssetAccessState.DIRECT_READ_UNSUPPORTED
             val asset = if (prior == null) {
                 ChartAsset(
                     id = ids.next(),
@@ -135,10 +136,16 @@ class ChartSourceScanPlanner(private val ids: ChartAssetIdFactory = RandomChartA
                     access = when {
                         document.pending -> ChartAssetAccessState.PENDING
                         changed -> ChartAssetAccessState.CHANGED
+                        staleAccessCapability -> ChartAssetAccessState.UNCHECKED
                         prior.access == ChartAssetAccessState.MISSING -> ChartAssetAccessState.UNCHECKED
                         else -> prior.access
                     },
-                    validation = if (changed) ChartAssetValidationState.DISCOVERED else prior.validation,
+                    validation = if (changed || staleAccessCapability) {
+                        ChartAssetValidationState.DISCOVERED
+                    } else {
+                        prior.validation
+                    },
+                    accessMode = if (staleAccessCapability) null else prior.accessMode,
                 )
             }
             seen += asset.id
