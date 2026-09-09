@@ -1,109 +1,59 @@
 # Yokuli OS
 
-[![Android CI](https://github.com/ohkuku/yokuli_marine_shell/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/ohkuku/yokuli_marine_shell/actions/workflows/android.yml)
-[![Nightly Compatibility](https://github.com/ohkuku/yokuli_marine_shell/actions/workflows/nightly.yml/badge.svg)](https://github.com/ohkuku/yokuli_marine_shell/actions/workflows/nightly.yml)
-[![Release](https://github.com/ohkuku/yokuli_marine_shell/actions/workflows/release.yml/badge.svg)](https://github.com/ohkuku/yokuli_marine_shell/actions/workflows/release.yml)
+以 Windows Phone 8 的排版、磁贴和滑动体验，重新做一个简单好用的航海应用平台。
 
-## 中文（主文）
+当前是 **0.2.0 experience** 手动体验版，基于 `yokuli_marine_shell` 重建。先验证实际使用，再恢复自动测试、性能门禁和发布工程化。历史实现和文档仍保留，默认构建只编译 `app-shell/src/rebuild` 中的新实现。
 
-Yokuli OS 当前同时包含 Windows Phone 8 Classic 风格应用内 Shell、离线优先地图、统一 Data 应用与独立海图库。Data 把 NMEA 输入、来源选择、真实流向与有界诊断组织在一个产品里，底层仍复用进程持有、类型化且有界的 marine-data runtime；Chart Library 管理只读外部海图来源、目录和验证，Chart 只负责选择与显示。当前有效合同由 [OS Redesign 产品合同](docs/phases/os-redesign/PRODUCT_ENGINEERING_CONTRACT.md)、[Chart Library 产品合同](docs/phases/chart-library/REQUIREMENTS.md)、[NMEA_SOURCES 产品合同](docs/phases/nmea-sources/REQUIREMENTS.md)和[最新 Shell 产品边界修正](docs/phases/shell-product-boundary-correction/REQUIREMENTS.md)共同组成。历史 Stage 与阶段报告保留为证据，不覆盖后续明确的产品演进。
+## 这一版可以做什么
 
-当前分支：
+- **开始屏幕**：全屏运行，左右滑动切换磁贴与应用列表；长按磁贴拖动、切换三种尺寸、取消固定；虚拟返回、开始、搜索，长按返回查看最近应用。
+- **海图**：直接平移缩放、准星选点、一键保存标记、拖动 A/B 图钉测距、在图上添加和拖动航点、保存/编辑/反向复制航线、逐点直线引导。船位跟随可被手动拖图打断。
+- **海图库**：连接用户文件夹或导入离线副本；栅格 PNG/JPEG/WebP MBTiles，256/512 图块，TMS/XYZ，支持 `tiles` 表和视图；缺少中间缩放级别时使用正确父图块区域。文件范围不能代替实际图块覆盖。
+- **我的航行**：标记名称与备注、航线、GPX 导入导出。未保存航线草稿在应用保存时一并保留。
+- **船舶数据**：手机定位与 NMEA 船位由用户明确选源；每个仪表值显示来源和年龄，缺失显示空缺、过期明确降级。
+- **NMEA**：TCP 输入、UDP 接收、TCP 单句发送、沿当前 TCP 连接输出新鲜手机船位、本机独立 TCP 共享服务。服务由进程持有，切换壳内应用不会断开；共享不把过期数据当成新数据发送。
+- **个性化**：中英文即时切换，八种主题色，深浅背景、常亮和减少动画。
 
-```text
-branch: codex/shell-map-contract
-phase: OS Redesign CI-first
-work package: W13
-status: W13 implementation candidate; hosted CI and physical review remain separate
+## 安装和构建
+
+GitHub Actions 的 **Build downloadable human-test APK** 继续提供可安装 APK，不等待旧测试矩阵。下载 `YOKULI-OS-DEBUG-<commit>` 制品。
+
+```bash
+./gradlew assembleStandaloneDebug
+# app-shell/build/outputs/apk/standalone/debug/app-shell-standalone-debug.apk
 ```
 
-Stage 2.5 的 WP8 Reference measurement hash 已由仓库所有者 kuku 批准。Stage 3–10 在各自独立 commit 中完成几何／Start Document、Reducer、逐帧分页、Press/Tilt、编辑拖动、Pin/Context、全屏虚拟键导航以及持久化与应用内恢复。当前生产 All Apps 精确为 Chart、Preferences、Data、Chart Library、Navigation 五项；全新 Start Document 仍只放 Chart 与 Preferences。旧 Settings 身份原位迁移并保留磁贴位置与尺寸。Shell Lab 只在 debug/benchmark classpath。
+需要 Java 17 和 Android SDK 36。包名仍为 `com.yokuli.marine`，使用原有 Gradle wrapper、版本环境变量、签名环境变量和 `standalone` 构建名称。旧应用数据不删除；新体验的数据使用独立文件，旧数据尚未自动迁移。
 
-正式磁贴只允许宽×高 1×1、2×2、4×2；2×1、2×4、4×4 只作为旧持久化值在边界迁移，不得回到生产 UI。Navigation 使用同一持久库管理航点、航线、GPX 导入与活动航行，并只通过明确的内容 handoff 让 Chart 显示指定航线；海图文件夹、单文件来源、受管副本与验证只在 Chart Library 维护。Data 内部的 Inputs 管理连接，Sources 保存可解释的 OS 选源决定，Overview、Flow 与 Diagnostics 只展示真实运行时证据。
+### API Key 原样继承
 
-Yokuli OS 默认沉浸式全屏且只允许竖屏；方屏仍属于适配范围，横屏不属于当前产品能力。壳内虚拟 Back／Start／Search，以及 Activity 实际收到的 Android Back 和可交付键盘／硬件事件，统一进入串行 Launcher Engine。Back 的最远终点是应用内 Shell 桌面，不结束 Yokuli；应用不注册 Android HOME／DEFAULT，也不提供 Android 桌面设置入口。
+`scripts/secrets/yokuli-secrets.sh`、`secrets/identity.age`、`recipient.txt`、`vault.json.age` 原样保留。GitHub 继续通过 `GOOGLE_MAPS_ANDROID_API_KEY` Repository Secret 注入 Manifest。Key 不写入源码、日志或字符串 BuildConfig。
 
-本 Phase 在保留地图能力的基础上实现真实 NMEA 0183 TCP／UDP 输入、手机系统定位候选、统一来源目录、按数据语义选源和本地活动导航；仍禁止 NMEA 输出／转发、自动舵/船网控制、Anchor/Trip/Survey Runtime。模拟器结果不能替代三星方屏、真机 GNSS、OEM 后台行为或实船结论。
-
-当前 Chart 有两条解耦渲染链路：`Standard / Satellite` 在配置了 `GOOGLE_MAPS_ANDROID_API_KEY` 时使用 Google 在线底图，`Marine` 使用用户在 Chart Library 选择的本地海图。旧的本地选择不会再暗中阻止 Standard / Satellite。密钥存在只表示“已配置”，不证明 API 授权、账单、签名限制、网络或图块加载已经成功；本地海图覆盖状态也不会被 Google 底图冒充。
-
-当前文档入口：
-
-- [当前地图收尾规范](docs/phases/chart-wp8-refinement/CODEX_FINAL_PHASE_WP8_CHART_COMPLETION.md)
-- [Chart Library 产品合同](docs/phases/chart-library/REQUIREMENTS.md)
-- [Chart Library 当前支持矩阵](docs/phases/chart-library/CL12_SUPPORT_MATRIX.md)
-- [Chart Library CL12 报告](docs/phases/chart-library/CL12_REPORT.md)
-- [OS Redesign Product & Engineering Contract](docs/phases/os-redesign/PRODUCT_ENGINEERING_CONTRACT.md)
-- [OS Redesign W01 合同](docs/phases/os-redesign/work-packages/W01_PRODUCT_ENGINEERING_CONTRACT.md)
-- [OS Redesign W12 Navigation 合同](docs/phases/os-redesign/work-packages/W12_PRODUCT_ENGINEERING_CONTRACT.md)
-- [OS Redesign W13 Preferences 合同](docs/phases/os-redesign/work-packages/W13_PRODUCT_ENGINEERING_CONTRACT.md)
-- [OS Redesign 执行状态](docs/phases/os-redesign/EXECUTION_STATE.json)
-- [NMEA_SOURCES 产品合同](docs/phases/nmea-sources/REQUIREMENTS.md)
-- [NMEA_SOURCES P0 基线](docs/implementation/NMEA_SOURCES_P0_BASELINE.md)
-- [NMEA_SOURCES P1 字段映射](docs/implementation/NMEA_SOURCES_P1_FIELD_MAPPING.md)
-- [NMEA_SOURCES P1 候选报告](docs/phases/nmea-sources/P1_REPORT.md)
-- [NMEA_SOURCES P2 报告](docs/phases/nmea-sources/P2_REPORT.md)
-- [NMEA_SOURCES P3 报告](docs/phases/nmea-sources/P3_REPORT.md)
-- [NMEA_SOURCES P4 报告](docs/phases/nmea-sources/P4_REPORT.md)
-- [NMEA_SOURCES P5 报告](docs/phases/nmea-sources/P5_REPORT.md)
-- [NMEA_SOURCES P6 报告](docs/phases/nmea-sources/P6_REPORT.md)
-- [NMEA_SOURCES P7 报告](docs/phases/nmea-sources/P7_REPORT.md)
-- [NMEA_SOURCES 最终实施报告](docs/implementation/NMEA_SOURCES_FINAL_REPORT.md)
-- [NMEA_SOURCES TDD 矩阵](docs/implementation/NMEA_SOURCES_TDD_MATRIX.md)
-- [当前任务索引](docs/phases/chart-wp8-refinement/TASK_PLAN.json)
-- [当前执行状态](docs/phases/chart-wp8-refinement/EXECUTION_STATE.json)
-- [当前工作日志](docs/phases/chart-wp8-refinement/WORK_LOG.md)
-- [Shell 产品边界修正](docs/phases/shell-product-boundary-correction/REQUIREMENTS.md)
-- [施工主文档](docs/requirements/LAUNCHER_SHELL_ENGINE_MASTER_SPEC.md)
-- [WP8 Reference Lab](docs/reference/wp8/README.md)
-- [Launcher Engine TDD 规范](docs/TDD_PLAYBOOK.md)
-- [当前 Stage TDD 日志](docs/TDD_LOG.md)
-- [Stage 0 正式报告](docs/stages/stage-0/REPORT.md)
-- [Stage 1 产品表面审计](docs/stages/stage-1/PRODUCT_SURFACE_AUDIT.md)
-- [Stage 1 正式报告](docs/stages/stage-1/REPORT.md)
-- [Stage 2 架构边界审计](docs/stages/stage-2/ARCHITECTURE_AUDIT.md)
-- [Stage 2 正式报告](docs/stages/stage-2/REPORT.md)
-- [Stage 2.5 正式报告](docs/stages/stage-2.5/REPORT.md)
-- [Stage 11 自动化与人工待验报告](docs/stages/stage-11/REPORT.md)
-- [沉浸式全屏与虚拟实体键决定](docs/stages/stage-2.5/FULLSCREEN_NAVIGATION_DECISION.md)
-- [历史需求与 Slice 归档](docs/archive/pre-launcher-engine/README.md)
-- [GitHub 交付](docs/GITHUB_DELIVERY.md)
-- [本地密钥保险库](docs/SECRETS_MANAGEMENT.md)
-
-当前本地合同：
-
-```text
-python3 -m pip install --requirement .github/requirements/stage0-schema.txt
-python3 .github/scripts/test_launcher_stage0_contract.py
-python3 .github/scripts/test_launcher_stage1_contract.py
-python3 .github/scripts/test_launcher_stage2_contract.py
-python3 .github/scripts/test_launcher_stage25_contract.py
-python3 .github/scripts/test_launcher_stage11_contract.py
-python3 .github/scripts/test_osr_w12_contract.py
-python3 .github/scripts/test_osr_w13_contract.py
-python3 .github/scripts/test_nmea_sources_p0_contract.py
-python3 .github/scripts/test_nmea_sources_p1_contract.py
-python3 .github/scripts/test_nmea_sources_p2_contract.py
-python3 .github/scripts/test_nmea_sources_p3_contract.py
-python3 .github/scripts/test_nmea_sources_p4_contract.py
-python3 .github/scripts/test_nmea_sources_p5_contract.py
-python3 .github/scripts/test_nmea_sources_p6_contract.py
-python3 .github/scripts/test_nmea_sources_p7_contract.py
-python3 .github/scripts/test_chart_library_cl12_contract.py
-python3 .github/scripts/test_google_maps_configuration_evidence.py
-python3 .github/scripts/validate_wp8_reference.py --require-human-review
-python3 .github/scripts/validate_stage11_fidelity.py
-python3 -m unittest discover .github/scripts 'test_*.py'
-bash .github/scripts/test-ci-contract.sh
-bash .github/scripts/test-release-product-surface.sh
+```bash
+./scripts/secrets/yokuli-secrets.sh run -- ./gradlew assembleStandaloneDebug
 ```
 
-P7 本地完整 Gate 已通过；Android CI 会在 push 后重新执行托管门禁并生成可下载候选包。Golden 候选是 `CANDIDATE_PENDING_HUMAN_REVIEW`；刷新率、Samsung 方屏和物理 WP8 设备保持 `UNVERIFIED_HARDWARE`／`PENDING_HUMAN_REVIEW`。
+详见 [现有密钥管理说明](docs/SECRETS_MANAGEMENT.md)。无需解锁 vault 即可构建离线海图；没有 Google Key 时普通地图使用 OpenStreetMap，卫星模式不可用。Key 已配置不等于服务授权成功。
 
-## English translation
+## 第一轮手动体验
 
-Yokuli OS currently combines its WP8 Classic in-app Shell with offline-first Chart, unified Data, independent Chart Library, real Navigation, and one Preferences system app. The production All Apps surface is exactly Chart, Preferences, Data, Chart Library, and Navigation; the default Start document remains Chart + Preferences. The legacy Settings identity migrates in place while preserving tile position and size. Navigation manages the shared waypoint/route library and explicit active sessions; Preferences owns appearance, language, display units, motion, Start, app-tile declarations, and build facts. Hosted CI and physical review remain separate; NMEA output/forwarding, autopilot, and vessel-network control remain out of scope.
+1. 左右滑动桌面；长按磁贴并拖动，再改变尺寸。打开设置，试中英文和浅色背景。
+2. 海图库连接真实文件夹，查看海图；缩放跨越原文件的多个级别，并在无覆盖处检查提示。
+3. 拖图选点，标记，再打开收藏修改备注。测距时分别拖 A/B，地图应保持不动。
+4. 新建三点航线，拖动中间航点、保存，退出海图再打开；使用、下一点、结束，然后导出 GPX。
+5. NMEA 输入真实船载地址，查看原始语句及来源；切回桌面再打开，连接应继续。断开服务器，观察数据过期。
+6. 开启共享，用另一台设备连接显示的 IP/端口；单独开启手机 GPS，也可提供独立船位。关闭数据来源后应停止输出过期数据。
 
-The portrait-only immersive shell routes virtual Back/Start/Search and deliverable Android or keyboard input through the serialized Launcher Engine. Back stops at the in-app Shell Desktop and never exits Yokuli. The app does not register Android HOME/DEFAULT or expose Android Home settings; square layouts remain supported, while landscape is outside the current product contract.
+## 当前边界
 
-Chart has two decoupled render adapters. `Standard / Satellite` use Google when `GOOGLE_MAPS_ANDROID_API_KEY` is configured; `Marine` uses the local chart selected in Chart Library. A previous local selection no longer silently masks Standard / Satellite. Key presence means configured only—it does not prove authorization, billing, application restrictions, connectivity, or tile delivery, and it never counts as offline coverage.
+这是实际体验候选，不宣称完成旧版所有业务。锚警报、声呐测绘、完整航迹、AIS、固件和外部应用包安装尚未迁入；没有用占位页面代替。航线提供直线距离与方位，不做避险自动规划或自动舵控制。
+
+海图库目前不读取 S57/S63、PBF、GeoTIFF 或 PMTiles。部分 Android 文件提供器无法被 SQLite 原地读取，此时会创建本机兼容副本并占用空间；外部原件保持不变。支持最多 12 个同时显示的来源。重新扫描后反映目录增减和提供器报告的文件版本变化。
+
+本地已做 APK 构建和模拟器关键流程验证；真实海图文件、船上网络、GNSS、OEM 后台行为和操作手感仍需你的手测。[实现与验证记录](docs/experience/NOTES.md)
+
+## English
+
+Yokuli OS is a WP8-inspired marine shell rebuilt around direct chart interaction. This experience build includes Start/app-list swipes, editable tiles, chart marks and draggable rulers, on-chart route editing, a folder-based MBTiles library, explicit GPS/NMEA sources, bidirectional TCP and standalone NMEA sharing. Chinese and English ship together.
+
+Build with `./gradlew assembleStandaloneDebug`. The existing encrypted secrets vault, `GOOGLE_MAPS_ANDROID_API_KEY`, application ID, signing variables and GitHub human-test APK workflow are retained. Engineering gates are deferred while the owner reviews the experience. The historical implementation is retained for reference, outside the default build.

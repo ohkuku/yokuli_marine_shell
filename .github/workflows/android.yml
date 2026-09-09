@@ -39,6 +39,14 @@ jobs:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Assemble the installable debug APK without waiting for test gates
         run: ./gradlew --no-daemon assembleStandaloneDebug --stacktrace
+      - name: Report key configuration without exposing credentials
+        run: |
+          if [ -n "${GOOGLE_MAPS_ANDROID_API_KEY:-}" ]; then
+            echo 'Google Maps key configured: yes (authorisation still requires a device check).' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Google Maps key configured: no (local charts and OpenStreetMap remain available).' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'Experience build: ready for human review; historical test gates are intentionally deferred.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload the one installable debug APK
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
@@ -50,6 +58,7 @@ jobs:
 
   build:
     name: TDD contract, unit, lint, and in-app Shell APKs
+    if: false # EXPERIENCE_REBUILD: owner requested manual experience review before restoring engineering gates.
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -628,6 +637,7 @@ jobs:
 
   integration:
     name: Protected adapters, migrations, and restore on API 34
+    if: false # Historical implementation; not part of the experience build.
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -752,6 +762,7 @@ jobs:
 
   api-compatibility:
     name: Android 16 / API 36 reduced-motion smoke
+    if: false # Historical implementation; not part of the experience build.
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -836,6 +847,7 @@ jobs:
 
   stage11-performance:
     name: Product Recovery API 34 startup performance signal
+    if: false # Historical implementation; not part of the experience build.
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -930,7 +942,7 @@ jobs:
 
   codex-report:
     name: Compose downloadable Codex repair report
-    if: always()
+    if: false # Experience builds are delivered directly for human review.
     needs: [build, integration, api-compatibility, stage11-performance]
     runs-on: ubuntu-latest
     steps:
@@ -973,7 +985,7 @@ jobs:
   verified-debug:
     name: Publish automation-passed Product Recovery APK
     needs: [human-test-apk, build, integration, api-compatibility, stage11-performance]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: false # Do not label a manual-experience build as automation-passed.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
