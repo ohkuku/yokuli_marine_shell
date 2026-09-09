@@ -53,6 +53,7 @@ class LiveWindRepository @Inject constructor(){
         mwdDirection?.takeIf{elapsed-it.receivedElapsedRealtime<=5_000}?.let{direction->value=value.copy(trueDirection=direction,trueDirectionSource=TrueWindDirectionSource.MWD)}
         _state.value=value
     }
+    fun publishSelected(value:LiveWindState){_state.value=value}
     fun clear(){physicalHeading=null;mwdDirection=null;_state.value=LiveWindState()}
     @Synchronized fun invalidate(event:NmeaSourceInvalidation){
         var value=_state.value

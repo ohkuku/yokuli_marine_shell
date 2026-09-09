@@ -45,6 +45,7 @@ data class NmeaFieldObservation(
     val rawSentence:String,
     val sourceHeartbeatElapsedRealtime:Long=receivedElapsedRealtime,
     val confirmation:NmeaMeasurementConfirmation=NmeaMeasurementConfirmation.NUMERIC_MEASUREMENT,
+    val connectionId:String="",val connectionGeneration:Long=0,val peer:String="",
 ){
     fun isFresh(nowElapsed:Long,maxAgeMillis:Long=30_000L)=nowElapsed-receivedElapsedRealtime in 0L..maxAgeMillis
 }
@@ -170,20 +171,22 @@ object NmeaFieldDecoder {
 @Singleton
 class NmeaFieldRepository @Inject constructor(navigation:NavigationRepository){
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
-    private val retention=NmeaFieldRetentionBuffer(DISCOVERY_RETENTION_MILLIS)
+    private val buffers=linkedMapOf<String,NmeaFieldRetentionBuffer>()
+    private val identities=linkedMapOf<String,Triple<String,Long,String>>()
     private val _fields=MutableStateFlow<List<NmeaFieldObservation>>(emptyList());val fields=_fields.asStateFlow()
     init{
-        scope.launch{navigation.transportDiagnostics.map{it.connectionGeneration}.distinctUntilChanged().drop(1).collect{retention.clear();_fields.value=emptyList()}}
-        scope.launch{navigation.validRawSentences.collect{line->accept(line)}}
-        // Expiry must not depend on another sentence arriving. A quiet or
-        // disconnected stream removes stale generic fields on wall-clock time.
-        scope.launch{while(isActive){delay(1_000L);val expired=retention.expire(SystemClock.elapsedRealtime());if(expired!=_fields.value)_fields.value=expired}}
+        scope.launch{navigation.frames.collect{frame->acceptFrame(frame)}}
+        scope.launch{navigation.connections.collect{connections->synchronized(this@NmeaFieldRepository){val valid=connections.filter{it.requested}.associate{it.spec.id to it.transport.connectionGeneration};identities.keys.toList().forEach{key->val identity=identities.getValue(key);if(valid[identity.first]!=identity.second){buffers.remove(key);identities.remove(key)}};publish(SystemClock.elapsedRealtime())}}}
+        scope.launch{while(isActive){delay(1_000L);synchronized(this@NmeaFieldRepository){publish(SystemClock.elapsedRealtime())}}}
     }
-    fun accept(line:String,elapsed:Long=SystemClock.elapsedRealtime()){
-        val decoded=NmeaFieldDecoder.decode(line,elapsed)
-        val heartbeat=NmeaFieldDecoder.heartbeat(line)
-        _fields.value=retention.accept(decoded,heartbeat,line,elapsed)
+    @Synchronized private fun acceptFrame(frame:NmeaRawFrame){
+        val key="${frame.connectionId}|${frame.generation}|${frame.peer}"
+        identities[key]=Triple(frame.connectionId,frame.generation,frame.peer)
+        buffers.getOrPut(key){NmeaFieldRetentionBuffer(DISCOVERY_RETENTION_MILLIS)}.accept(NmeaFieldDecoder.decode(frame.sentence,frame.receivedElapsedRealtime),NmeaFieldDecoder.heartbeat(frame.sentence),frame.sentence,frame.receivedElapsedRealtime)
+        publish(frame.receivedElapsedRealtime)
     }
+    private fun publish(now:Long){_fields.value=buffers.flatMap{(key,buffer)->val identity=identities.getValue(key);buffer.expire(now).map{it.copy(connectionId=identity.first,connectionGeneration=identity.second,peer=identity.third)}}}
+    fun accept(line:String,elapsed:Long=SystemClock.elapsedRealtime())=acceptFrame(NmeaRawFrame("injected",0,"",line,elapsed))
     fun semantic(value:NmeaFieldSemantic):NmeaFieldObservation?=fields.value.filter{it.key.semantic==value}.maxByOrNull{it.receivedElapsedRealtime}
     companion object{const val DISCOVERY_RETENTION_MILLIS=30_000L}
 }

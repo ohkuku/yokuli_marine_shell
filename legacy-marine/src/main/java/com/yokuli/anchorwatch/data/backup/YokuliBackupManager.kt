@@ -231,7 +231,7 @@ class YokuliBackupManager @Inject constructor(
     private val mountCalibrationRepository:VesselMountCalibrationRepository,
     private val anchorageSpatial:AnchorageSpatialIndexRepository=AnchorageSpatialIndexRepository(database,database.anchorageSpatialDao()),
     private val anchorageSearch:AnchorageSearchRepository=AnchorageSearchRepository(database,database.anchorageSearchDao()),
-    private val navigation:NavigationRepository=NavigationRepository(LiveDepthRepository(settingsRepository),LiveWindRepository(),com.yokuli.anchorwatch.data.nmea.output.NmeaOutboundLoopGuard(),com.yokuli.anchorwatch.data.vessel.VesselSourceRegistry()),
+    private val navigation:NavigationRepository,
     private val mockGps:GlobalMockLocationManager=GlobalMockLocationManager(context,LocationServices.getFusedLocationProviderClient(context)),
     private val sharingServer:NmeaSharingServer=NmeaSharingServer(NetworkAddressProvider()),
 ){

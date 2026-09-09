@@ -8,7 +8,7 @@ import java.io.EOFException
 import java.net.*
 
 enum class Protocol { TCP, UDP }
-data class ConnectionProfile(val name:String="Boat",val protocol:Protocol=Protocol.TCP,val host:String="",val port:Int=0,val requireChecksum:Boolean=true,val autoReconnect:Boolean=false,val connectAutomatically:Boolean=false,val noDataTimeoutSeconds:Int=10,val stableId:String="boat-primary")
+data class ConnectionProfile(val name:String="Boat",val protocol:Protocol=Protocol.TCP,val host:String="",val port:Int=0,val requireChecksum:Boolean=true,val autoReconnect:Boolean=false,val connectAutomatically:Boolean=false,val noDataTimeoutSeconds:Int=10,val stableId:String="boat-primary",val localPort:Int?=null)
 
 data class NmeaConnectionRetryPolicy(
  val openFailureRetryMillis:Long=15_000L,
@@ -75,6 +75,7 @@ class NmeaConnectionManager(
  private var lastManualReconnectElapsed=Long.MIN_VALUE
  @Volatile private var safetyOwnedRetry=false
  private val _state=MutableStateFlow(NmeaConnectionState.DISCONNECTED); val state=_state.asStateFlow()
+ private val _frames=MutableSharedFlow<Pair<String,String>>(extraBufferCapacity=256); val frames=_frames.asSharedFlow()
  private val _lines=MutableSharedFlow<String>(extraBufferCapacity=256); val lines=_lines.asSharedFlow()
  private val _diagnostics=MutableStateFlow(NmeaTransportDiagnostics());val diagnostics=_diagnostics.asStateFlow()
  fun setSafetyOwnedRetry(enabled:Boolean)=synchronized(guard){safetyOwnedRetry=enabled;_diagnostics.value=_diagnostics.value.copy(safetyOwnedRetry=enabled,retryPolicyName=if(enabled)"SAFETY_CONTINUOUS_BOUNDED" else "IDLE_BOUNDED")}
@@ -181,7 +182,7 @@ class NmeaConnectionManager(
      if(n<0)throw EOFException("NMEA source closed")
      val now=monotonicMillis();if(firstByteAt==null)firstByteAt=now
      markBytes(mine,now);setDataState(mine)
-     split.feed(b,n).forEach{line->markSentence(mine,now);_lines.emit(line)}
+     split.feed(b,n).forEach{line->markSentence(mine,now);_lines.emit(line);_frames.emit(line to socket.remoteSocketAddress.toString())}
      if(!stableReported&&now-(firstByteAt?:now)>=STABLE_CONNECTION_RESET_MILLIS){stableReported=true;onStable()}
     }
    }finally{watchdog.cancelAndJoin()}
@@ -190,13 +191,16 @@ class NmeaConnectionManager(
  private suspend fun udp(p:ConnectionProfile,mine:Long,onStable:()->Unit,onConnected:()->Unit){
   val socket=DatagramSocket(null);register(mine,socket)
   try{
-   socket.reuseAddress=true;socket.soTimeout=1_000;socket.bind(InetSocketAddress(p.port));onConnected();markConnected(mine)
-   val split=NmeaStreamSplitter();val b=ByteArray(8192);var firstByteAt:Long?=null;var stableReported=false
+   socket.reuseAddress=true;socket.soTimeout=1_000;socket.bind(InetSocketAddress(p.localPort?:p.port));onConnected();markConnected(mine)
+   val splitters=mutableMapOf<String,NmeaStreamSplitter>();val b=ByteArray(8192);var firstByteAt:Long?=null;var stableReported=false
    while(currentCoroutineContext().isActive){
     val packet=DatagramPacket(b,b.size)
     try{socket.receive(packet)}catch(_:SocketTimeoutException){markNoDataIfExpired(mine,p.noDataTimeoutSeconds);continue}
     val now=monotonicMillis();if(firstByteAt==null)firstByteAt=now;markBytes(mine,now);setDataState(mine)
-    split.feed(packet.data,packet.length).forEach{line->markSentence(mine,now);_lines.emit(line)}
+    val peer="${packet.address.hostAddress}:${packet.port}"
+    val split=splitters.getOrPut(peer){NmeaStreamSplitter()}
+    if(splitters.size>64)splitters.keys.firstOrNull{it!=peer}?.let(splitters::remove)
+    split.feed(packet.data,packet.length).forEach{line->markSentence(mine,now);_lines.emit(line);_frames.emit(line to peer)}
     if(!stableReported&&now-(firstByteAt?:now)>=STABLE_CONNECTION_RESET_MILLIS){stableReported=true;onStable()}
    }
   }finally{unregister(socket);runCatching{socket.close()}}

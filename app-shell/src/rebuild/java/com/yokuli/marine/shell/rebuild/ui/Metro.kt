@@ -95,10 +95,10 @@ val LightFont=FontFamily(androidx.compose.ui.text.font.Typeface(android.graphics
         Label(label,19,if(primary) Color.White else c.fg)
     }
 }
-@Composable fun PageHeader(os:OsStore,title:String,app:String="YOKULI OS",trailing:(@Composable ()->Unit)?=null) {
+@Composable fun PageHeader(os:OsStore,title:String,app:String="YOKULI OS",trailing:(@Composable ()->Unit)?=null,onBack:(()->Unit)?=null) {
     Column(Modifier.fillMaxWidth().padding(start=22.dp,end=16.dp,top=10.dp,bottom=14.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clickable { os.back() },contentAlignment=Alignment.CenterStart) {
+            Box(Modifier.size(44.dp).clickable { (onBack ?: os::back)() },contentAlignment=Alignment.CenterStart) {
                 Box(Modifier.size(30.dp).border(1.5.dp,LocalMetro.current.fg,androidx.compose.foundation.shape.CircleShape),contentAlignment=Alignment.Center) { Glyph("back",Modifier.size(20.dp)) }
             }
             Label(app,12,weight=FontWeight.Medium,modifier=Modifier.weight(1f),maxLines=1)

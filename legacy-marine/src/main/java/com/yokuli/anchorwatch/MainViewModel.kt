@@ -305,12 +305,13 @@ private data class PositionRoutingSnapshot(
     val connection:NmeaConnectionState,
     val connectionStartedElapsed:Long?,
 )
-data class AnchorWatchInput(val placement:AnchorPlacementMode,val rangeMode:AnchorRangeMode,val safetyPreset:AnchorSafetyPreset,val depthMeters:Double?,val rodeMeters:Double,val bowHeightMeters:Double,val boatLengthMeters:Double?,val alarmRadiusMeters:Double,val positionSource:GpsDataSource=GpsDataSource.SYSTEM,val centerSource:AnchorCenterSource=AnchorCenterSource.CURRENT_POSITION,val usePhoneHeading:Boolean=true,val depthSource:AnchorDepthSource=AnchorDepthSource.MANUAL,val conditions:ConditionGuardConfig=ConditionGuardConfig(),val originMode:AnchorOriginMode=AnchorOriginMode.CURRENT_ACCEPTED_POSITION)
+data class AnchorWatchInput(val placement:AnchorPlacementMode,val rangeMode:AnchorRangeMode,val safetyPreset:AnchorSafetyPreset,val depthMeters:Double?,val rodeMeters:Double,val bowHeightMeters:Double,val boatLengthMeters:Double?,val alarmRadiusMeters:Double,val positionSource:GpsDataSource=GpsDataSource.SYSTEM,val centerSource:AnchorCenterSource=AnchorCenterSource.CURRENT_POSITION,val usePhoneHeading:Boolean=true,val depthSource:AnchorDepthSource=AnchorDepthSource.MANUAL,val conditions:ConditionGuardConfig=ConditionGuardConfig(),val originMode:AnchorOriginMode=AnchorOriginMode.CURRENT_ACCEPTED_POSITION,val anchoragePlaceId:Long?=null,val anchorageSpotId:Long?=null)
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val app:Application,
     private val nav:NavigationRepository,
+    private val multiPublisher:com.yokuli.anchorwatch.runtime.output.MultiNmeaPublisher,
     private val dao:AnchorDao,
     private val prefs:SettingsRepository,
     private val mockManager:GlobalMockLocationManager,
@@ -362,6 +363,28 @@ class MainViewModel @Inject constructor(
     private val restoredAnchorSetupDraft=savedStateHandle.get<String>(ANCHOR_SETUP_DRAFT_KEY)?.let{json->runCatching{draftGson.fromJson(json,AnchorSetupDraft::class.java)}.getOrNull()}
     private val restoredTripMapDestination=savedStateHandle.get<String>(TRIP_MAP_TYPE_KEY)?.let{type->savedStateHandle.get<Long>(TRIP_MAP_ID_KEY)?.let{id->TripMapDestination(runCatching{TripMapDestinationType.valueOf(type)}.getOrDefault(TripMapDestinationType.HISTORY),id,savedStateHandle.get<Long>(TRIP_MAP_WAYPOINT_KEY))}}
     private val _ui=MutableStateFlow(MainUiState(anchorSetupDraft=restoredAnchorSetupDraft,tripMapDestination=restoredTripMapDestination));val ui=_ui.asStateFlow()
+    val nmeaConnections=nav.connections
+    val nmeaConnectionSpecs=nav.connectionSpecs
+    fun saveNmeaConnection(spec:com.yokuli.anchorwatch.data.nmea.NmeaConnectionSpec,onSaved:()->Unit={})=viewModelScope.launch{runCatching{nav.saveConnection(spec)}.onSuccess{_ui.update{it.copy(connectionAttempt=ConnectionAttempt())};onSaved()}.onFailure{error->_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,error.message.orEmpty()))}}}
+    fun startNmeaConnection(id:String){nav.startConnection(id);ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction("OS_NETWORK_CHANGED"))}
+    fun stopNmeaConnection(id:String)=viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO){nav.stopConnection(id)}
+    fun selectNmeaPositionConnection(id:String)=selectNmeaPositionSource(id,null)
+    private fun selectNmeaPositionSource(id:String,sourceKey:String?){
+        if(!nav.isConnectionOpen(id)){_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Connect this NMEA input before selecting its position."))};return}
+        ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction("OS_NMEA_POSITION").putExtra("connectionId",id).putExtra("sourceKey",sourceKey))
+    }
+    fun removeNmeaConnection(id:String)=viewModelScope.launch{nav.removeConnection(id)}
+    fun setNmeaMetricSource(metric:com.yokuli.anchorwatch.domain.vessel.VesselMetricId,sourceId:String?)=viewModelScope.launch{
+        if(metric==com.yokuli.anchorwatch.domain.vessel.VesselMetricId.POSITION){
+            if(sourceId==null)return@launch
+            val source=ui.value.vesselData.candidates[metric]?.firstOrNull{com.yokuli.anchorwatch.domain.vessel.VesselSourcePinPolicy.matches(it.source,sourceId)}?.source?:return@launch
+            source.transportProfileId?.let{selectNmeaPositionSource(it,sourceId)}
+            return@launch
+        }
+        val current=vesselSettingsRepository.settings.first();val pins=current.metricSourcePins.toMutableMap()
+        if(sourceId==null)pins.remove(metric.name)else pins[metric.name]=sourceId
+        vesselSettingsRepository.save(current.copy(metricSourcePins=pins))
+    }
     private var pointsJob:Job?=null
     private var observedSessionId:Long?=null
     private var observedEstimationEpochStartedAt:Long?=null
@@ -401,7 +424,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch{
             positionRouting.collect{routing->
                 val lockedSource=routing.active?.takeUnless{it.paused&&routing.settings.gpsDataSource==GpsDataSource.NONE}?.positionSource?.let{runCatching{GpsDataSource.valueOf(it)}.getOrNull()}
-                val effectiveSource=lockedSource?:NewAnchorPositionSourcePolicy.resolve(routing.settings.gpsDataSource,routing.settings.demoMode)
+                val effectiveSource=NewAnchorPositionSourcePolicy.resolve(routing.settings.gpsDataSource,routing.settings.demoMode)
                 systemLocation.setAppEnabled(effectiveSource in setOf(GpsDataSource.SYSTEM,GpsDataSource.DEMO))
                 vesselDataHub.setShellPositionSource(effectiveSource)
             }
@@ -876,49 +899,22 @@ class MainViewModel @Inject constructor(
     fun setMapType(mapType:Int){val value=mapType.takeIf{it in 1..3}?:1;val updated=_ui.value.settings.copy(mapType=value);_ui.update{it.copy(settings=updated)};viewModelScope.launch{prefs.save(updated)}}
     fun setGpsDataSource(source:GpsDataSource)=switchGpsDataSource(source)
     fun switchGpsDataSource(source:GpsDataSource)=viewModelScope.launch{
-        // Source consent changes only on this explicit user action. Connection
-        // and accepted-fix collectors are observational and never persist a
-        // different GPS source behind the user's back.
-        val current=_ui.value.settings
-        if(current.demoMode){
-            if(source!=GpsDataSource.DEMO)_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Demo mode owns the App GPS source. Lift the current anchor and disable Demo mode before choosing System or NMEA."))}
-            return@launch
-        }
-        val activeSession=_ui.value.active
-        val lockedSource=activeSession?.positionSource?.let{runCatching{GpsDataSource.valueOf(it)}.getOrNull()}
-        if(!GpsSourceSafety.allowsSessionSource(activeSession!=null,activeSession?.paused==true,lockedSource,source)){
-            activeSession?.let{dao.insertEvent(AlarmEventEntity(sessionId=it.id,timestamp=System.currentTimeMillis(),type="WATCH_GPS_SOURCE_CHANGE_REJECTED_ACTIVE_SESSION",detail="LOCKED=${it.positionSource};REQUESTED=${source.name}"))}
-            _ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Pause the active anchor watch before changing between System and NMEA GPS. Demo sessions remain locked until Lift anchor."))}
-            return@launch
-        }
-        if(source==GpsDataSource.NONE&&activeSession?.paused==true){
-            prefs.save(current.copy(gpsDataSource=source,mockEnabled=false));systemLocation.setAppEnabled(false);_ui.update{it.copy(connectionAttempt=ConnectionAttempt())};return@launch
-        }
-        if(activeSession!=null&&lockedSource!=source){
-            if(source==GpsDataSource.NMEA){
-                val availability=NmeaSourceSelectionPolicy.availability(_ui.value.connection,_ui.value.nmeaFix,_ui.value.nmeaConnectionStartedElapsed,android.os.SystemClock.elapsedRealtime(),current.gpsLossSeconds*1000L)
-                if(availability!=NmeaSourceAvailability.AVAILABLE){_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Connect the NMEA source and wait for a fresh valid position before selecting NMEA GPS."))};return@launch}
-                if(!NmeaSourceSelectionPolicy.isUsablePosition(_ui.value.connection,_ui.value.nmeaFix,_ui.value.nmeaConnectionStartedElapsed,android.os.SystemClock.elapsedRealtime(),current.gpsLossSeconds*1000L)){_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Wait for NMEA fix quality or HDOP to recover before selecting NMEA GPS."))};return@launch}
-            }
-            if(source==GpsDataSource.SYSTEM&&GpsSourceSafety.blocksSystemGps(current.mockEnabled,mockManager.status.value.state)){
-                _ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Disable the global NMEA GPS proxy first. While Android mock mode is active, System GPS is not an independent source."))};return@launch
-            }
-            _ui.update{it.copy(connectionAttempt=ConnectionAttempt())}
-            ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.SWITCH_WATCH_GPS_SOURCE).putExtra("source",source.name))
-            return@launch
-        }
-        if(source==current.gpsDataSource)return@launch
         if(source==GpsDataSource.NMEA&&!nav.hasOpenTransport()){
-            _ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Connect NMEA before enabling this position source."))};return@launch
+            _ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Connect a NMEA input before choosing NMEA position."))};return@launch
         }
-        if(source==GpsDataSource.DEMO){_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Demo GPS is selected only by enabling Demo mode."))};return@launch}
-        if(source==GpsDataSource.SYSTEM&&GpsSourceSafety.blocksSystemGps(current.mockEnabled,mockManager.status.value.state)){
-            _ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Disable the global NMEA GPS proxy first. While Android mock mode is active, System GPS is not an independent source."))};return@launch
+        if(source==GpsDataSource.SYSTEM&&!systemLocation.hasPermission()){
+            _ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Precise location permission is required."))};return@launch
         }
-        if(source==GpsDataSource.DEMO&&GpsSourceSafety.blocksSystemGps(current.mockEnabled,mockManager.status.value.state)){
-            _ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Disable the global NMEA GPS proxy before selecting Demo. Demo uses the real System GPS as its starting point."))};return@launch
+        if(source==GpsDataSource.SYSTEM&&GpsSourceSafety.blocksSystemGps(_ui.value.settings.mockEnabled,mockManager.status.value.state)){
+            _ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Stop the Android mock GPS proxy before using phone GNSS."))};return@launch
         }
-        if(current.gpsDataSource==GpsDataSource.DEMO&&source!=GpsDataSource.DEMO)demoLocation.stop();prefs.save(current.copy(gpsDataSource=source,mockEnabled=false));_ui.update{it.copy(connectionAttempt=ConnectionAttempt())}
+        if(source==GpsDataSource.NMEA&&_ui.value.vesselSettings.metricSourcePins["POSITION_CONNECTION"]==null){
+            val inputs=nav.connections.value.filter{it.requested&&it.spec.receive&&nav.isConnectionOpen(it.spec.id)}
+            if(inputs.size!=1){_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Choose the position input in NMEA connections."))};return@launch}
+            selectNmeaPositionConnection(inputs.single().spec.id);return@launch
+        }
+        _ui.update{it.copy(connectionAttempt=ConnectionAttempt())}
+        ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction("OS_POSITION_SOURCE").putExtra("source",source.name))
     }
     fun setDemoMode(enabled:Boolean)=viewModelScope.launch{
         val current=_ui.value.settings
@@ -1136,6 +1132,7 @@ class MainViewModel @Inject constructor(
             .putExtra("warning",maxOf(input.alarmRadiusMeters*.8,input.alarmRadiusMeters-10).coerceAtMost(input.alarmRadiusMeters-.1)).putExtra("alarm",input.alarmRadiusMeters).putExtra("placement",input.placement.name).putExtra("rangeMode",input.rangeMode.name).putExtra("safetyPreset",input.safetyPreset.name).putExtra("positionSource",input.positionSource.name).putExtra("centerSource",input.centerSource.name).putExtra("usePhoneHeading",true)
             .putExtra("depthSource",input.depthSource.name)
             .putExtra("originMode",input.originMode.name)
+            .putExtra("anchoragePlaceId",input.anchoragePlaceId?:-1L).putExtra("anchorageSpotId",input.anchorageSpotId?:-1L)
             .putExtra("depthGuard",input.conditions.depthGuardEnabled).putExtra("shallowDepth",input.conditions.shallowDepthAlarmMeters?:Double.NaN).putExtra("deepDepth",input.conditions.deepDepthAlarmMeters?:Double.NaN).putExtra("windGuard",input.conditions.windGuardEnabled).putExtra("windWarning",input.conditions.windWarningKnots?:Double.NaN).putExtra("windAlarm",input.conditions.windAlarmKnots?:Double.NaN).putExtra("windShift",input.conditions.windShiftEnabled).putExtra("windShiftDegrees",input.conditions.windShiftThresholdDegrees?:Double.NaN).putExtra("apparentFallback",input.conditions.windAllowApparentFallback)
         ContextCompat.startForegroundService(app,intent)
     }
@@ -1316,15 +1313,18 @@ class MainViewModel @Inject constructor(
             app.startActivity(Intent.createChooser(send,title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }.onFailure{_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Could not create or share the anchorage QR image."))}}
     }
+    private val _shellDestinations=kotlinx.coroutines.flow.MutableSharedFlow<com.yokuli.anchorwatch.domain.model.MarineDestination>(extraBufferCapacity=8)
+    val shellDestinations=_shellDestinations.asSharedFlow()
+    private fun emitDestination(index:Int){_shellDestinations.tryEmit(when(index){0->com.yokuli.anchorwatch.domain.model.MarineDestination.ANCHOR;1->com.yokuli.anchorwatch.domain.model.MarineDestination.INSTRUMENTS;2->when(_ui.value.dataSection){1->com.yokuli.anchorwatch.domain.model.MarineDestination.NMEA;2->com.yokuli.anchorwatch.domain.model.MarineDestination.NMEA;3->com.yokuli.anchorwatch.domain.model.MarineDestination.DEPTH;else->com.yokuli.anchorwatch.domain.model.MarineDestination.SOURCES};else->com.yokuli.anchorwatch.domain.model.MarineDestination.SETTINGS})}
     private val _navigationRequests=kotlinx.coroutines.flow.MutableSharedFlow<Int>(extraBufferCapacity=8)
     val navigationRequests=_navigationRequests.asSharedFlow()
-    fun page(index:Int){_ui.update{it.copy(page=index,sonarGridChangedCells=emptySet())};_navigationRequests.tryEmit(index)}
+    fun page(index:Int){_ui.update{it.copy(page=index,sonarGridChangedCells=emptySet())};_navigationRequests.tryEmit(index);emitDestination(index)}
     fun rememberAnchorSection(index:Int)=_ui.update{it.copy(anchorSection=index.coerceIn(0,2))}
     fun rememberSailSection(index:Int)=_ui.update{it.copy(sailSection=index.coerceIn(0,1))}
-    fun openDataSection(index:Int){_ui.update{it.copy(page=2,dataSection=index.coerceIn(0,3),sonarGridChangedCells=emptySet())};_navigationRequests.tryEmit(2)}
+    fun openDataSection(index:Int){_ui.update{it.copy(page=2,dataSection=index.coerceIn(0,3),sonarGridChangedCells=emptySet())};_navigationRequests.tryEmit(2);emitDestination(2)}
     fun rememberDataSection(index:Int)=_ui.update{it.copy(dataSection=index.coerceIn(0,3))}
     fun follow(value:Boolean)=_ui.update{it.copy(follow=value)}
-    fun requestRangeEditor(){_ui.update{it.copy(page=0,rangeEditorRequested=true)};_navigationRequests.tryEmit(0)}
+    fun requestRangeEditor(){_ui.update{it.copy(page=0,rangeEditorRequested=true)};_navigationRequests.tryEmit(0);emitDestination(0)}
     fun consumeRangeEditorRequest()=_ui.update{it.copy(rangeEditorRequested=false)}
     fun loadHistoryEvents(sessionId:Long)=viewModelScope.launch{val events=dao.recentEvents(sessionId,30);_ui.update{it.copy(eventsBySession=mapOf(sessionId to events))}}
     fun saveAnchorage(value:SavedAnchorageEntity)=viewModelScope.launch{

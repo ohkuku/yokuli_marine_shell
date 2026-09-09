@@ -5,8 +5,8 @@ import android.content.Context
 import android.util.AtomicFile
 import androidx.compose.runtime.*
 import com.yokuli.marine.shell.rebuild.chart.ChartLibrary
-import com.yokuli.marine.shell.rebuild.chart.FolderTileProvider
-import com.yokuli.anchorwatch.map.SharedChartLayers
+import com.yokuli.marine.shell.rebuild.chart.MapSessionStore
+import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.marine.shell.rebuild.data.DataHub
 import com.yokuli.marine.shell.rebuild.data.MarineRuntime
 import com.yokuli.anchorwatch.MainViewModel
@@ -42,9 +42,13 @@ fun nm(m: Double) = if (m < 185.2) "${m.roundToInt()} m" else String.format(Loca
 fun decimal(v: Double?, digits: Int = 1) = v?.takeIf { it.isFinite() }?.let { String.format(Locale.US, "%.${digits}f", it) } ?: "—"
 fun uid() = UUID.randomUUID().toString()
 
-data class Place(val id: String = uid(), val name: String, val point: GeoPoint, val note: String = "") {
+enum class PlaceKind { MARK, ANCHORAGE, MARINA, HAZARD }
+data class Place(val id: String = uid(), val name: String, val point: GeoPoint, val note: String = "",
+    val kind: PlaceKind = PlaceKind.MARK, val collection: String = "") {
     fun json() = JSONObject().put("id",id).put("name",name).put("point",point.json()).put("note",note)
-    companion object { fun from(j:JSONObject) = Place(j.getString("id"),j.getString("name"),GeoPoint.from(j.getJSONObject("point")),j.optString("note")) }
+        .put("kind",kind.name).put("collection",collection)
+    companion object { fun from(j:JSONObject) = Place(j.getString("id"),j.getString("name"),GeoPoint.from(j.getJSONObject("point")),j.optString("note"),
+        runCatching { PlaceKind.valueOf(j.optString("kind")) }.getOrDefault(PlaceKind.MARK),j.optString("collection")) }
 }
 data class Route(val id: String = uid(), val name: String, val points: List<GeoPoint>) {
     val length get() = points.zipWithNext().sumOf { distance(it.first,it.second) }
@@ -53,13 +57,13 @@ data class Route(val id: String = uid(), val name: String, val points: List<GeoP
 }
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
 data class TileSpec(val app: String, val size: Int = 2) // 1 small, 2 medium, 4 wide
+data class AnchorDraft(val point:GeoPoint,val name:String,val placeId:Long?=null,val spotId:Long?=null,val radiusMeters:Double?=null)
 enum class AppId(val zh: String, val en: String, val icon: String) {
     CHART("海图","chart","chart"), LIBRARY("海图库","chart library","layers"),
-    PLACES("我的航行","my sailing","route"), DATA("船舶数据","boat data","data"),
-    NMEA("NMEA","NMEA","connect"), SETTINGS("设置","settings","settings"),
-    ANCHOR("锚警报","anchor watch","anchor"), TRIP("航行记录","trip recorder","record"),
-    ANCHORAGES("锚地","anchorages","pin"), SONAR("个人水深图","personal sonar","sonar"),
-    INSTRUMENTS("仪表","instruments","data"), VOYAGES("航行日志","logbook","logbook")
+    VOYAGES("航行日志","logbook","logbook"), ANCHOR("锚警","anchor watch","anchor"),
+    PLACES("我的航行","my sailing","route"), INSTRUMENTS("仪表","instruments","data"),
+    NMEA("NMEA 输入及输出","NMEA connections","connect"),
+    LOCAL_NMEA("本机 NMEA 客户端","local NMEA","connect"), SETTINGS("设置","settings","settings")
 }
 
 @HiltAndroidApp
@@ -77,12 +81,14 @@ class OsStore(val context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val file = AtomicFile(File(context.filesDir, "experience-v1.json"))
     private val writes = Channel<String>(Channel.CONFLATED)
-    private val initial = runCatching { JSONObject(file.openRead().bufferedReader().use { it.readText() }) }.getOrDefault(JSONObject())
+    internal val initial = runCatching { JSONObject(file.openRead().bufferedReader().use { it.readText() }) }.getOrDefault(JSONObject())
     var chinese by mutableStateOf(initial.optString("language", Locale.getDefault().language) == "zh")
     var accent by mutableLongStateOf(initial.optLong("accent", 0xFF007F9B))
     var light by mutableStateOf(initial.optBoolean("light", false))
     var keepAwake by mutableStateOf(initial.optBoolean("keepAwake", true))
     var reduceMotion by mutableStateOf(initial.optBoolean("reduceMotion", false))
+    var measurementUnits by mutableStateOf(MeasurementUnitSystem.NAUTICAL)
+    var coordinateFormat by mutableStateOf("DMM")
     var places by mutableStateOf(initial.optJSONArray("places")?.objects()?.mapNotNull { runCatching { Place.from(it) }.getOrNull() } ?: emptyList())
     var routes by mutableStateOf(initial.optJSONArray("routes")?.objects()?.mapNotNull { runCatching { Route.from(it) }.getOrNull() } ?: emptyList())
     var tiles by mutableStateOf(initial.optJSONArray("tiles")?.objects()?.mapNotNull {
@@ -101,12 +107,15 @@ class OsStore(val context: Context) {
     var mapMode by mutableStateOf(initial.optString("mapMode","marine"))
     var follow by mutableStateOf(false)
     var showCrosshair by mutableStateOf(false)
+    var anchorDraft by mutableStateOf<AnchorDraft?>(null)
     var ruler by mutableStateOf<List<GeoPoint>>(emptyList())
     var draftRoute by mutableStateOf(initial.optJSONArray("draft")?.objects()?.mapNotNull {runCatching {GeoPoint.from(it)}.getOrNull()} ?: emptyList())
     var editingRoute by mutableStateOf(draftRoute.isNotEmpty() && initial.optString("activeRoute").isBlank())
     var editingRouteId by mutableStateOf<String?>(initial.optString("editingRoute").takeIf {it.isNotBlank()})
     var displayedRouteId by mutableStateOf<String?>(null)
     var activeRouteId by mutableStateOf<String?>(initial.optString("activeRoute").takeIf { it.isNotBlank() })
+    var navigationRoute by mutableStateOf<Route?>(runCatching { Route.from(initial.getJSONObject("navigationSnapshot")) }.getOrNull()
+        ?: routes.firstOrNull { it.id == activeRouteId }?.copy(points=routes.first { it.id == activeRouteId }.points.toList()))
     var routeLeg by mutableIntStateOf(initial.optInt("routeLeg",0))
     var recordingActive by mutableStateOf(false)
     var recordingPaused by mutableStateOf(false)
@@ -120,6 +129,8 @@ class OsStore(val context: Context) {
     var positionSource by mutableStateOf("none")
     var marine by mutableStateOf<MarineRuntime?>(null)
         private set
+    var systemAction: ((String,String?)->Unit)? = null
+    fun requestService(action:String,extra:String?=null) { systemAction?.invoke(action,extra) }
     fun attachMarine(viewModel: MainViewModel) {
         if (marine?.vm === viewModel) return
         marine?.close()
@@ -127,19 +138,12 @@ class OsStore(val context: Context) {
     }
     val hub = DataHub()
     val library = ChartLibrary(context, scope)
-    private var sharedChartProvider: FolderTileProvider? = null
-    val activeRoute get() = routes.firstOrNull { it.id == activeRouteId }
+    val maps = MapSessionStore(context, scope, library, initial)
+    val sailing by lazy { MySailingRepository(this) }
+    val allPlaces get() = places + sailing.coordinates
+    val activeRoute get() = navigationRoute?.takeIf { it.id == activeRouteId }
     val nextPoint get() = activeRoute?.points?.getOrNull(routeLeg)
     init {
-        scope.launch {
-            snapshotFlow { library.revision to library.selectedLayers }.collect { (revision, layers) ->
-                val provider=layers.takeIf { it.isNotEmpty() }?.let { FolderTileProvider(context,it) }
-                val previous=sharedChartProvider
-                sharedChartProvider=provider
-                SharedChartLayers.update(provider,revision.toLong()) { open("library") }
-                if(previous!=null) scope.launch(Dispatchers.IO) { previous.close() }
-            }
-        }
         scope.launch(Dispatchers.IO) {
             for (snapshot in writes) {
                 val ok = runCatching {
@@ -165,19 +169,19 @@ class OsStore(val context: Context) {
         places = places + Place(name=t("标记 ${places.size+1}","mark ${places.size+1}"),point=center)
         save(); notify("已保存标记","Mark saved")
     }
-    fun startRoute(route: Route) { activeRouteId = route.id; displayedRouteId = route.id; routeLeg = 0; save(); open("chart"); fly(route.points.first()) }
+    fun startRoute(route: Route) { navigationRoute=route.copy(points=route.points.toList()); activeRouteId = route.id; displayedRouteId = route.id; routeLeg = 0; save(); open("chart"); fly(route.points.first()) }
     fun advanceRoute() {
         val route = activeRoute ?: return
         if (routeLeg < route.points.lastIndex) routeLeg++ else { activeRouteId = null; notify("航线已结束","Route ended") }
         save()
     }
     fun save() {
-        val json = JSONObject().put("language",if(chinese) "zh" else "en").put("accent",accent).put("light",light)
-            .put("keepAwake",keepAwake).put("reduceMotion",reduceMotion)
+        val json = JSONObject()
             .put("places",JSONArray(places.map { it.json() })).put("routes",JSONArray(routes.map { it.json() }))
             .put("tiles",JSONArray(tiles.map { JSONObject().put("app",it.app).put("size",it.size) }))
             .put("camera",center.json()).put("zoom",zoom).put("mapMode",mapMode)
             .put("activeRoute",activeRouteId ?: "").put("routeLeg",routeLeg)
+            .put("navigationSnapshot",navigationRoute?.takeIf { activeRouteId != null }?.json())
             .put("draft",JSONArray(draftRoute.map {it.json()})).put("editingRoute",editingRouteId ?: "")
             .put("host",nmeaHost).put("port",nmeaPort).put("protocol",nmeaProtocol).put("serverPort",serverPort).put("positionSource",positionSource)
         writes.trySend(json.toString())

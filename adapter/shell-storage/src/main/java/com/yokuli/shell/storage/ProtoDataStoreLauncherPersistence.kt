@@ -84,6 +84,21 @@ class ProtoDataStoreLauncherPersistence private constructor(
         }
     }
 
+    /** Atomically edits preferences without overwriting a concurrent Start-layout write. */
+    suspend fun updatePreferences(transform: (LauncherPersistedState) -> LauncherPersistedState) {
+        updateCurrent { current ->
+            val requested = transform(current)
+            current.copy(
+                themeModeName = requested.themeModeName,
+                accentName = requested.accentName,
+                languageTag = requested.languageTag,
+                measurementUnitSystemName = requested.measurementUnitSystemName,
+                motionPreferenceName = requested.motionPreferenceName,
+                appPreferenceValues = requested.appPreferenceValues,
+            )
+        }
+    }
+
     override suspend fun beginLaunch(nowEpochMillis: Long): LauncherRecoveryDecision {
         var decision: LauncherRecoveryDecision? = null
         updateCurrent { current ->

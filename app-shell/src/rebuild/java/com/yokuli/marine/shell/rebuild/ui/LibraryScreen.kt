@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.ChartFolder
+import com.yokuli.marine.shell.rebuild.chart.MapSource
 
 @Composable fun LibraryScreen(os:OsStore) {
     val library=os.library
@@ -29,11 +30,11 @@ import com.yokuli.marine.shell.rebuild.chart.ChartFolder
                         Label(os.t("一个文件夹，\n一张自己的图层。","one folder,\nyour own layer."),35)
                         Label(os.t("连接海图文件夹，为图层起个名字。重叠区域按你排好的优先级显示。","Connect a chart folder and name its layer. Overlapping charts follow the priority you choose."),18,LocalMetro.current.muted)
                     } else {
-                        Label(os.t("上方图层优先显示","top layers appear first"),14,LocalMetro.current.muted)
+                        Label(os.t("选择一张命名图层，在所有地图中使用。","choose a named layer for all maps."),14,LocalMetro.current.muted)
                         library.folders.filter {it.layerName!=null}.forEach {entry ->
                             Column(Modifier.fillMaxWidth().padding(vertical=6.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 val included=library.folderFiles(entry).count {it.enabled && it.error==null}
-                                Toggle(entry.layerName!!,entry.enabled,os.t("${folderName(os,entry)} · $included 张海图","${folderName(os,entry)} · $included charts")) {library.toggleLayer(entry)}
+                                MenuRow((if(os.maps.source==MapSource.CustomLayer(entry.id)) "✓  " else "")+entry.layerName,os.t("${folderName(os,entry)} · $included 张海图","${folderName(os,entry)} · $included charts")) {viewLayer(os,entry)}
                                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                     MetroButton(os.t("管理图层","manage layer"),{os.open("library:${entry.id}")},Modifier.weight(1f))
                                     IconAction("chart",os.t("查看","view"),{viewLayer(os,entry)})
@@ -91,7 +92,7 @@ import com.yokuli.marine.shell.rebuild.chart.ChartFolder
                                 MetroButton(os.t("下移","move down"),{library.moveFile(file,1)},Modifier.weight(1f),enabled=index<files.lastIndex)
                             }
                             if(file.error==null) MenuRow(os.t("查看这张海图","view this chart"),coordinates(file.focus)) {
-                                library.showOnly(file);os.mapMode="marine";os.fly(file.focus,file.previewZoom);os.open("chart");os.save()
+                                library.showOnly(file);os.maps.select(MapSource.CustomLayer(folder.id));os.fly(file.focus,file.previewZoom);os.open("chart");os.save()
                             }
                         }
                     }
@@ -102,14 +103,9 @@ import com.yokuli.marine.shell.rebuild.chart.ChartFolder
                         Label(os.t("创建图层后，这个文件夹的海图就能一起显示在地图上。","Create a layer to show this folder's charts together on the map."),19)
                         MetroButton(os.t("创建图层","create layer"),{naming=true},primary=true)
                     } else {
-                        Toggle(os.t("在海图中显示","show on chart"),folder.enabled) {library.toggleLayer(folder)}
+                        Label(if(os.maps.source==MapSource.CustomLayer(folder.id))os.t("当前使用的地图","current map source")else os.t("可从地图来源中选择","available in map sources"),16,c.accent)
                         MetroButton(os.t("查看图层","view layer"),{viewLayer(os,folder)},primary=true,enabled=files.any {it.enabled && it.error==null})
                         MetroButton(os.t("重命名图层","rename layer"),{naming=true})
-                        val layers=library.folders.filter {it.layerName!=null};val position=layers.indexOfFirst {it.id==folder.id}
-                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                            MetroButton(os.t("图层上移","layer up"),{library.moveLayer(folder,-1)},Modifier.weight(1f),enabled=position>0)
-                            MetroButton(os.t("图层下移","layer down"),{library.moveLayer(folder,1)},Modifier.weight(1f),enabled=position<layers.lastIndex)
-                        }
                         MetroButton(os.t("移除图层","remove layer"),{removeLayer=true})
                     }
                     if(folder.uri!="copy") MetroButton(os.t("重新扫描文件夹","rescan folder"),{library.rescan(folder)},enabled=!library.busy)
@@ -120,8 +116,8 @@ import com.yokuli.marine.shell.rebuild.chart.ChartFolder
         }
     }
     if(naming) TextDialog(os,os.t("图层名称","layer name"),folder.layerName ?: folderName(os,folder),{naming=false}) {library.setLayer(folder,it)}
-    if(removeLayer) ConfirmDialog(os,os.t("移除图层？文件夹和海图顺序会保留。","Remove this layer? Keep its folder and chart order."),{removeLayer=false}) {library.removeLayer(folder);removeLayer=false}
-    if(disconnect) ConfirmDialog(os,os.t("断开 ${folderName(os,folder)}？原文件会保留。","Disconnect ${folderName(os,folder)}? Keep original files."),{disconnect=false}) {library.forgetFolder(folder.uri);disconnect=false;os.back()}
+    if(removeLayer) ConfirmDialog(os,os.t("移除图层？若正在使用将切回在线，文件夹和海图顺序会保留。","Remove this layer? An active layer switches to online; keep its folder and chart order."),{removeLayer=false}) {os.maps.removingLayer(folder.id);library.removeLayer(folder);removeLayer=false}
+    if(disconnect) ConfirmDialog(os,os.t("断开 ${folderName(os,folder)}？原文件会保留。","Disconnect ${folderName(os,folder)}? Keep original files."),{disconnect=false}) {os.maps.removingLayer(folder.id);library.forgetFolder(folder.uri);disconnect=false;os.back()}
 }
 
 @Composable private fun LibraryProgress(os:OsStore) {
@@ -132,6 +128,6 @@ import com.yokuli.marine.shell.rebuild.chart.ChartFolder
 }
 private fun folderName(os:OsStore,folder:ChartFolder) = if(folder.uri=="copy") os.t("本机导入","local imports") else folder.name
 private fun viewLayer(os:OsStore,folder:ChartFolder) {
-    val file=os.library.folderFiles(folder).firstOrNull {it.enabled && it.error==null} ?: return
-    os.library.enableLayer(folder);os.mapMode="marine";os.fly(file.focus,file.previewZoom);os.open("chart");os.save()
+    val file=os.library.folderFiles(folder).firstOrNull {it.enabled && it.error==null}
+    os.maps.select(MapSource.CustomLayer(folder.id));file?.let {os.fly(it.focus,it.previewZoom)};os.open("chart");os.save()
 }

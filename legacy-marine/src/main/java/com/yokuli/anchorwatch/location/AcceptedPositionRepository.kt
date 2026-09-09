@@ -124,6 +124,15 @@ class AcceptedPositionRepository @Inject constructor(
         )
     }
 
+    /** Physical NMEA input changes create a new integrity epoch even when the
+     * source category remains NMEA. Keep the session lock, discard old fixes. */
+    @Synchronized
+    fun resetEvidenceEpoch() {
+        val current=_state.value
+        filter.reset();lastSubmissionKey=null
+        _state.value=AcceptedPositionState(selectedSource=current.selectedSource,lockedSessionId=current.lockedSessionId)
+    }
+
     @Synchronized
     fun unlockSource(sessionId: Long?) {
         val current = _state.value

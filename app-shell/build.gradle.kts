@@ -18,8 +18,8 @@ android {
         applicationId = "com.yokuli.marine"
         minSdk = 28
         targetSdk = 36
-        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 3
-        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.3.0-experience.2"
+        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 4
+        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.4.0-domains.1"
         manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = mapsKey.get()
         buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", (mapsKey.get() != "MAPS_API_KEY_NOT_CONFIGURED").toString())
     }
@@ -62,6 +62,8 @@ dependencies {
     implementation(project(":adapter:shell-android"))
     implementation(project(":adapter:shell-storage"))
     implementation(project(":legacy-marine"))
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
     implementation("com.google.dagger:hilt-android:2.56.1")
     ksp("com.google.dagger:hilt-compiler:2.56.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")

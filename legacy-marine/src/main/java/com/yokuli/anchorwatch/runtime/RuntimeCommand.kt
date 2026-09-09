@@ -27,7 +27,12 @@ sealed interface RuntimeCommand {
         val depthSource:AnchorDepthSource=AnchorDepthSource.MANUAL,
         val conditions:ConditionGuardConfig=ConditionGuardConfig(),
         val originMode:AnchorOriginMode=AnchorOriginMode.CURRENT_ACCEPTED_POSITION,
+        val anchoragePlaceId:Long?=null,
+        val anchorageSpotId:Long?=null,
     ):RuntimeCommand
+    data class ChangeSystemPosition(val source:GpsDataSource):RuntimeCommand
+    data class SelectNmeaPosition(val connectionId:String,val sourceKey:String?=null):RuntimeCommand
+    data object NetworkChanged:RuntimeCommand
     data object SnoozeAlarm:RuntimeCommand
     data object PauseWatch:RuntimeCommand
     data object ResumeWatch:RuntimeCommand
@@ -69,6 +74,9 @@ object RuntimeCommandParser {
     fun parse(intent:Intent?):RuntimeCommand{
         if(intent==null)return RuntimeCommand.RestoreOnly
         return when(intent.action){
+            "OS_NETWORK_CHANGED"->RuntimeCommand.NetworkChanged
+            "OS_POSITION_SOURCE"->RuntimeCommand.ChangeSystemPosition(enum(intent,"source",GpsDataSource.NONE))
+            "OS_NMEA_POSITION"->RuntimeCommand.SelectNmeaPosition(intent.getStringExtra("connectionId").orEmpty(),intent.getStringExtra("sourceKey"))
             AnchorForegroundService.ARM->{
                 val config=AnchorConfig(intent.getDoubleExtra("lat",0.0),intent.getDoubleExtra("lon",0.0),intent.getDoubleExtra("rode",0.0),intent.getDoubleExtra("depth",Double.NaN).takeUnless(Double::isNaN),bowRollerHeightMeters=intent.getDoubleExtra("bowHeight",0.0),gpsAntennaOffsetMeters=intent.getDoubleExtra("antennaOffset",0.0),warningRadiusMeters=intent.getDoubleExtra("warning",40.0),alarmRadiusMeters=intent.getDoubleExtra("alarm",50.0))
                 RuntimeCommand.ArmWatch(config,enum(intent,"placement",AnchorPlacementMode.CENTER_DROP),enum(intent,"rangeMode",AnchorRangeMode.BASIC),enum(intent,"safetyPreset",AnchorSafetyPreset.BALANCED),intent.getDoubleExtra("boatLength",Double.NaN).takeUnless(Double::isNaN),intent.getStringExtra("positionSource")?.let{runCatching{GpsDataSource.valueOf(it)}.getOrNull()},enum(intent,"centerSource",AnchorCenterSource.CURRENT_POSITION),intent.getBooleanExtra("usePhoneHeading",false),enum(intent,"depthSource",AnchorDepthSource.MANUAL),ConditionGuardConfig(
@@ -81,7 +89,7 @@ object RuntimeCommandParser {
                     windShiftEnabled=intent.getBooleanExtra("windShift",false),
                     windShiftThresholdDegrees=intent.getDoubleExtra("windShiftDegrees",Double.NaN).takeUnless(Double::isNaN),
                     windAllowApparentFallback=intent.getBooleanExtra("apparentFallback",true),
-                ).validated(),enum(intent,"originMode",AnchorOriginMode.CURRENT_ACCEPTED_POSITION))
+                ).validated(),enum(intent,"originMode",AnchorOriginMode.CURRENT_ACCEPTED_POSITION),intent.getLongExtra("anchoragePlaceId",-1L).takeIf{it>0L},intent.getLongExtra("anchorageSpotId",-1L).takeIf{it>0L})
             }
             AnchorForegroundService.ACK,AnchorForegroundService.SNOOZE->RuntimeCommand.SnoozeAlarm
             AnchorForegroundService.STOP_WATCH,AnchorForegroundService.PAUSE_WATCH->RuntimeCommand.PauseWatch

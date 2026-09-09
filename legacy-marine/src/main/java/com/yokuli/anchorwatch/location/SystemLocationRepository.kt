@@ -16,6 +16,8 @@ import com.yokuli.anchorwatch.BuildConfig
 import com.yokuli.anchorwatch.domain.model.NavigationFix
 import com.yokuli.anchorwatch.domain.model.PositionProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
@@ -24,6 +26,7 @@ import javax.inject.Singleton
 @Singleton
 class SystemLocationRepository @Inject constructor(
     @ApplicationContext private val context: Context,
+    settings:com.yokuli.anchorwatch.data.preferences.SettingsRepository,
 ) {
     private val locationManager = context.getSystemService(LocationManager::class.java)
     private val guard = Any()
@@ -34,6 +37,9 @@ class SystemLocationRepository @Inject constructor(
     private var appEnabled = false
     private var previewEnabled = false
     private var backgroundEnabled = false
+    @Volatile private var sourcePermitsPhone=false
+    private val _sourceConsent=MutableStateFlow(false);val sourceConsent=_sourceConsent.asStateFlow()
+    init{kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.Default).launch{settings.settings.collect{value->synchronized(guard){sourcePermitsPhone=value.gpsDataSource in setOf(com.yokuli.anchorwatch.domain.model.GpsDataSource.SYSTEM,com.yokuli.anchorwatch.domain.model.GpsDataSource.DEMO);_sourceConsent.value=sourcePermitsPhone;reconcileLocked()}}}}
     private var running = false
     private val listener = LocationListener { publish(it) }
 
@@ -86,7 +92,7 @@ class SystemLocationRepository @Inject constructor(
 
     @SuppressLint("MissingPermission")
     private fun reconcileLocked() {
-        val shouldRun = (appEnabled || previewEnabled || backgroundEnabled) && hasPermission()
+        val shouldRun = sourcePermitsPhone && (appEnabled || backgroundEnabled) && hasPermission()
         if (shouldRun && !running) {
             val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
                 .filter { runCatching { locationManager.isProviderEnabled(it) }.getOrDefault(false) }
@@ -100,7 +106,7 @@ class SystemLocationRepository @Inject constructor(
         } else if (!shouldRun && running) {
             locationManager.removeUpdates(listener)
             running = false
-            if (!appEnabled && !previewEnabled && !backgroundEnabled) _fix.value = null
+            _fix.value = null
         }
     }
 

@@ -61,6 +61,7 @@ class TripRuntime @Inject constructor(
     private var positionGapOpen:Boolean?=null
     private var lastImpactElapsed:Long?=null
     private var phoneMotionRecordingAllowed=false
+    @Volatile private var systemPhoneSelected=false
     private var nmeaTransportOwned=false
     private var manualNmeaDisconnected=false
     /** "Expected" is session memory, not an alias for "available now". Once a
@@ -74,7 +75,21 @@ class TripRuntime @Inject constructor(
     @Volatile private var selectedCustomBindings:Map<String,DashboardTileBinding> = emptyMap()
 
     init{
+        scope.launch{appSettings.settings.collect{value->systemPhoneSelected=value.gpsDataSource==com.yokuli.anchorwatch.domain.model.GpsDataSource.SYSTEM;if(active?.paused==false)setResourceRequirement(nmeaTransportOwned)}}
         scope.launch{dashboards.decoded.collect{pages->selectedCustomBindings=TripCustomMetricRecordingPolicy.bindings(pages)}}
+    }
+
+    suspend fun recordAnchorEvent(type:String,anchorId:Long,timestamp:Long=System.currentTimeMillis())=mutex.withLock{
+        val current=active?:return@withLock
+        val updated=current.copy(eventCount=current.eventCount+1)
+        dao.updateSessionAndInsertEvent(updated,TripEventEntity(tripId=current.id,timestamp=timestamp,type=type,severity="INFO",detailJson="{\"anchorSessionId\":$anchorId}"));active=updated
+    }
+
+    suspend fun recordSystemSourceChange(detail:String)=mutex.withLock{
+        val current=active?:return@withLock
+        val updated=current.copy(eventCount=current.eventCount+1)
+        dao.updateSessionAndInsertEvent(updated,TripEventEntity(tripId=current.id,timestamp=System.currentTimeMillis(),type="SYSTEM_POSITION_SOURCE_CHANGED",severity="INFO",detailJson=org.json.JSONObject().put("change",detail).toString()));active=updated
+        lastRecordedPositionSource=null
     }
 
     fun activeSession()=active
@@ -126,7 +141,11 @@ class TripRuntime @Inject constructor(
         val calibration=mountCalibration.calibration.first()
         val motionEnabled=TripStartSensorPolicy.phoneMotionEnabled(phoneMotionRequested,vesselAttitude.capabilities.attitudeAvailable,calibration.calibratedAt)&&calibration.attitudeFrameConfirmed&&vesselAttitude.mountState.value==PhoneVesselMountState.VESSEL_MOUNTED
         val now=System.currentTimeMillis()
-        val safePositionPreference=positionPreference.takeUnless{it==VesselSourcePreference.DERIVED}?:VesselSourcePreference.AUTO
+        val safePositionPreference=when(app.gpsDataSource){
+            com.yokuli.anchorwatch.domain.model.GpsDataSource.SYSTEM->VesselSourcePreference.PHONE
+            com.yokuli.anchorwatch.domain.model.GpsDataSource.NMEA->VesselSourcePreference.BOAT
+            else->return@withLock TripRuntimeResult(false,"Select a system position source before recording.")
+        }
         val value=TripSessionEntity(
             name=name.trim().ifBlank{"Trip · ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(now))}"},
             startedAt=now,
@@ -180,7 +199,7 @@ class TripRuntime @Inject constructor(
             catch(error:Exception){startTicker();throw error}
             active=updated
             releaseOwnedResources()
-            if(current.phoneMotionEnabled)vesselAttitude.setMounted(false)
+
             TripRuntimeResult(true,"Trip paused.",updated)
         }
     }
@@ -248,7 +267,7 @@ class TripRuntime @Inject constructor(
             active=null
             hub.setTripPositionPreference(null)
             releaseOwnedResources()
-            if(latest.phoneMotionEnabled)vesselAttitude.setMounted(false)
+
             eventTransitions.reset()
             nmeaExpected=false;depthExpected=false;windExpected=false
             TripRuntimeResult(true,"Trip ended and saved.",ended)
@@ -270,7 +289,7 @@ class TripRuntime @Inject constructor(
 
     fun shutdown(){
         stopTicker()
-        runBlocking(Dispatchers.IO){withTimeoutOrNull(2_000){mutex.withLock{flushLocked()};vesselAttitude.setMounted(false)}}
+        runBlocking(Dispatchers.IO){withTimeoutOrNull(2_000){mutex.withLock{flushLocked()}}}
         hub.setTripPositionPreference(null)
         releaseOwnedResources()
     }
@@ -303,7 +322,7 @@ class TripRuntime @Inject constructor(
         if(nmeaTransportOwned)nmeaRuntime.ensureConnected(appSettings.settings.first().profile)
     }
     private fun setResourceRequirement(useNmeaTransport:Boolean){
-        resources.set(RuntimeOwner.TRIP_WATCH,RuntimeRequirement(needsSystemLocation=true,needsNmeaTransport=useNmeaTransport,needsWakeLock=true,needsWifiLock=useNmeaTransport,needsPhoneMotion=phoneMotionRecordingAllowed,needsPhoneHeading=true,needsPhonePressure=true))
+        resources.set(RuntimeOwner.TRIP_WATCH,RuntimeRequirement(needsSystemLocation=systemPhoneSelected,needsNmeaTransport=useNmeaTransport,needsWakeLock=true,needsWifiLock=useNmeaTransport,needsPhoneMotion=phoneMotionRecordingAllowed,needsPhoneHeading=true,needsPhonePressure=true))
     }
     /** A phone-only trip may begin using an already connected boat stream
      * later. Claim it at that point so Wi-Fi/NMEA background ownership lasts

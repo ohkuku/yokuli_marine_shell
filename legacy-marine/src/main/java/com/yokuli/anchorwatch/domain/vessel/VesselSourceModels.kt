@@ -26,6 +26,7 @@ data class VesselSourceIdentity(
     val displayName:String,
     /** Physical-source key persisted across transport reconnect generations. */
     val stableKey:String=id,
+    val transportPeer:String?=null,
 )
 
 object VesselSourcePinPolicy{

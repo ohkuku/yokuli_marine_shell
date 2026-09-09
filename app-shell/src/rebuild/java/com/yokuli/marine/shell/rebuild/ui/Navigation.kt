@@ -59,7 +59,7 @@ fun routeGuidance(route:Route,index:Int,fix:Fix?,now:Long):RouteGuidance? {
 
 fun beginNavigation(os:OsStore,route:Route,index:Int,fix:Fix?,now:Long) {
     if(route.points.isEmpty()) return
-    os.routes=if(os.routes.any {it.id==route.id}) os.routes.map {if(it.id==route.id) route else it} else os.routes+route
+    os.navigationRoute=route.copy(points=route.points.toList())
     os.activeRouteId=route.id;os.displayedRouteId=route.id;os.routeLeg=index.coerceIn(route.points.indices)
     os.editingRoute=false;os.ruler=emptyList();os.showCrosshair=false
     val point=fix?.takeIf {it.fresh(now)}?.point ?: route.points[os.routeLeg]
@@ -68,9 +68,9 @@ fun beginNavigation(os:OsStore,route:Route,index:Int,fix:Fix?,now:Long) {
 }
 
 fun endNavigation(os:OsStore,arrived:Boolean=false) {
-    os.activeRouteId=null;os.displayedRouteId=null;os.routeLeg=0;os.follow=false;os.save()
-    if(arrived) os.notify("已确认到达。航线保留在我的航行中。","Arrival confirmed. Your route remains in My Sailing.")
-    else os.notify("导航已结束。航线保留在我的航行中。","Navigation ended. Your route remains in My Sailing.")
+    os.activeRouteId=null;os.navigationRoute=null;os.displayedRouteId=null;os.routeLeg=0;os.follow=false;os.save()
+    if(arrived) os.notify("已确认到达，导航结束。","Arrival confirmed. Navigation ended.")
+    else os.notify("导航已结束。","Navigation ended.")
 }
 
 @Composable fun liveNavigationFix(os:OsStore):Pair<Fix?,Long> {
@@ -83,10 +83,10 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
     g.distanceMeters==null -> os.t("等待新鲜船位","waiting for a fresh position")
     g.index==0 -> os.t("先直线前往第一个目标","direct approach to the first target")
     g.offsetMeters==null -> os.t("此航段无法计算横向偏离","cross-track offset unavailable for this leg")
-    g.outsideSegment -> os.t("距规划航段 ${nm(g.offsetMeters)}","${nm(g.offsetMeters)} from the planned segment")
-    g.offsetSide>0 -> os.t("规划线右侧 ${nm(g.offsetMeters)}","${nm(g.offsetMeters)} right of the planned line")
-    g.offsetSide<0 -> os.t("规划线左侧 ${nm(g.offsetMeters)}","${nm(g.offsetMeters)} left of the planned line")
-    else -> os.t("距规划线 ${nm(g.offsetMeters)}","${nm(g.offsetMeters)} from the planned line")
+    g.outsideSegment -> os.t("距规划航段 ${os.formatDistance(g.offsetMeters)}","${os.formatDistance(g.offsetMeters)} from the planned segment")
+    g.offsetSide>0 -> os.t("规划线右侧 ${os.formatDistance(g.offsetMeters)}","${os.formatDistance(g.offsetMeters)} right of the planned line")
+    g.offsetSide<0 -> os.t("规划线左侧 ${os.formatDistance(g.offsetMeters)}","${os.formatDistance(g.offsetMeters)} left of the planned line")
+    else -> os.t("距规划线 ${os.formatDistance(g.offsetMeters)}","${os.formatDistance(g.offsetMeters)} from the planned line")
 }
 
 @Composable fun RouteSketch(os:OsStore,route:Route,selected:Int?=null) {
@@ -149,13 +149,13 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                         Label(if(i==target) "●" else "○",22,if(i==target) c.accent else c.muted)
                         Column(Modifier.padding(start=12.dp)) {
                             Label(os.t("航点 ${i+1}","waypoint ${i+1}"),20)
-                            Label(live?.let {nm(distance(it.point,p))} ?: coordinates(p),12,c.muted)
+                            Label(live?.let {os.formatDistance(distance(it.point,p))} ?: os.formatCoordinates(p),12,c.muted)
                         }
                     }
                 }
             }
             Label(os.t("按保存的航点依次引导。图上的连接线不判断水深、障碍或通航条件。","Guidance follows your saved waypoints. Connecting lines do not assess depth, obstacles or navigability."),15,c.muted)
-            if(live==null) MenuRow(os.t("尚无可用船位","position unavailable"),os.t("可以先准备导航，距离和方位会在船位恢复后显示。","Prepare navigation now; distances and bearings appear when position becomes available.")) {onDismiss();os.open("data")}
+            if(live==null) MenuRow(os.t("尚无可用船位","position unavailable"),os.t("可以先准备导航，距离和方位会在船位恢复后显示。","Prepare navigation now; distances and bearings appear when position becomes available.")) {onDismiss();os.open("settings:sources")}
             MetroButton(if(live!=null) os.t("开始导航","start navigation") else os.t("开始并等待船位","start and wait for position"),{
                 beginNavigation(os,route,target,fix,now);onDismiss()
             },primary=true,enabled=route.points.isNotEmpty())
@@ -179,15 +179,15 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                 Label(if(navigating) os.t("${route.name} · 目标 ${guidance?.index?.plus(1) ?: 1}/${route.points.size}","${route.name} · target ${guidance?.index?.plus(1) ?: 1}/${route.points.size}")
                     else os.t("已选航线 · ${route.name}","selected route · ${route.name}"),15,c.accent,maxLines=1)
                 if(guidance!=null) {
-                    Label(guidance.distanceMeters?.let {"${nm(it)}   ${decimal(guidance.bearingTrue,0)}°T"} ?: os.t("等待船位","waiting for position"),27)
-                } else Label("${nm(route.length)} · ${route.points.size} "+os.t("个航点","waypoints"),21)
+                    Label(guidance.distanceMeters?.let {"${os.formatDistance(it)}   ${decimal(guidance.bearingTrue,0)}°T"} ?: os.t("等待船位","waiting for position"),27)
+                } else Label("${os.formatDistance(route.length)} · ${route.points.size} "+os.t("个航点","waypoints"),21)
             }
             IconAction(if(navigating) "more" else "play",if(navigating) os.t("导航","navigate") else os.t("开始","start"),{if(navigating) manage=true else start=true})
         }
         if(guidance!=null) {
-            Label(guidance.remainingMeters?.let {os.t("剩余 ${nm(it)} · ${offsetLabel(os,guidance)}","${nm(it)} remaining · ${offsetLabel(os,guidance)}")}
+            Label(guidance.remainingMeters?.let {os.t("剩余 ${os.formatDistance(it)} · ${offsetLabel(os,guidance)}","${os.formatDistance(it)} remaining · ${offsetLabel(os,guidance)}")}
                 ?: os.t("距离与偏离暂停更新 · 点此检查来源","distance and offset paused · check source"),12,c.muted,
-                Modifier.clickable {if(guidance.distanceMeters==null) os.open("data") else manage=true})
+                Modifier.clickable {if(guidance.distanceMeters==null) os.open("settings:sources") else manage=true})
             if(guidance.nearTarget) Label(os.t("目标附近（50 m 内）· 点此确认到达","near target (within 50 m) · confirm arrival"),15,c.accent,Modifier.clickable {manage=true})
         } else if(active!=null) Label(os.t("返回当前导航：${active.name}","return to navigation: ${active.name}"),13,c.muted,Modifier.clickable {
             os.displayedRouteId=active.id;os.showCrosshair=false;os.save()
@@ -218,19 +218,19 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                 Label(os.t("选择后直接前往该点，再按顺序继续。","Head to the selected waypoint, then continue in order."),16,c.muted)
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max=300.dp)) {
                     itemsIndexed(route.points) {i,p -> MenuRow(os.t("航点 ${i+1}","waypoint ${i+1}"),
-                        if(i==guidance.index) os.t("当前目标","current target") else fix?.takeIf {it.fresh(now)}?.let {nm(distance(it.point,p))}) {
+                        if(i==guidance.index) os.t("当前目标","current target") else fix?.takeIf {it.fresh(now)}?.let {os.formatDistance(distance(it.point,p))}) {
                         os.routeLeg=i;os.displayedRouteId=route.id;os.showCrosshair=false;os.save();os.open("chart");onDismiss()
                     } }
                 }
                 MetroButton(os.t("返回","back"),{choose=false})
             } else {
                 Label(os.t("当前目标 ${guidance.index+1} / ${route.points.size}","current target ${guidance.index+1} / ${route.points.size}"),18)
-                Label(guidance.distanceMeters?.let {nm(it)} ?: "—",44,c.accent)
+                Label(guidance.distanceMeters?.let {os.formatDistance(it)} ?: "—",44,c.accent)
                 Label(guidance.bearingTrue?.let {os.t("直线方位 ${decimal(it,0)}°T","direct bearing ${decimal(it,0)}°T")} ?: os.t("等待新鲜船位","waiting for a fresh position"),20)
-                Label(guidance.remainingMeters?.let {os.t("沿后续航点剩余 ${nm(it)}","${nm(it)} remaining via subsequent waypoints")} ?: os.t("剩余距离不可用","remaining distance unavailable"),16,c.muted)
+                Label(guidance.remainingMeters?.let {os.t("沿后续航点剩余 ${os.formatDistance(it)}","${os.formatDistance(it)} remaining via subsequent waypoints")} ?: os.t("剩余距离不可用","remaining distance unavailable"),16,c.muted)
                 Label(offsetLabel(os,guidance),17,c.muted)
                 guidance.accuracy?.let {Label(os.t("船位精度约 ±${it.roundToInt()} m","position accuracy approximately ±${it.roundToInt()} m"),13,c.muted)}
-                if(guidance.distanceMeters==null) MetroButton(os.t("检查船位来源","check position source"),{onDismiss();os.open("data")})
+                if(guidance.distanceMeters==null) MetroButton(os.t("检查船位来源","check position source"),{onDismiss();os.open("settings:sources")})
                 if(guidance.nearTarget) {
                     Label(os.t("目标附近（50 m 内）。到达由你确认。","Within 50 m of the target. You confirm arrival."),16,c.accent)
                     MetroButton(if(guidance.index==route.points.lastIndex) os.t("确认到达终点","confirm final arrival") else os.t("已到达，前往下一点","arrived, go to next"),{

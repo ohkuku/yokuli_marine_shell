@@ -2,6 +2,7 @@ package com.yokuli.marine.shell.rebuild.chart
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
@@ -10,6 +11,11 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import androidx.compose.runtime.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -20,8 +26,10 @@ import com.google.android.gms.maps.MapView as GoogleMapView
 import com.google.android.gms.maps.CameraUpdateFactory as GoogleCamera
 import com.google.android.gms.maps.model.LatLng as GoogleLatLng
 import com.yokuli.marine.shell.BuildConfig
-import com.yokuli.marine.shell.rebuild.*
-import com.yokuli.marine.shell.rebuild.data.Fix
+import com.yokuli.marine.shell.rebuild.GeoPoint
+import com.yokuli.marine.shell.rebuild.distance
+import com.yokuli.marine.shell.rebuild.nm
+import com.yokuli.marine.shell.rebuild.ui.Label
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -37,290 +45,348 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.*
 
 interface ChartCamera {
-    fun project(point:GeoPoint):PointF
-    fun unproject(x:Float,y:Float):GeoPoint
-    fun move(point:GeoPoint,zoom:Double)
-    fun zoom():Double
-    fun fit(points:List<GeoPoint>)
+    fun project(point: GeoPoint): PointF
+    fun unproject(x: Float, y: Float): GeoPoint
+    fun move(point: GeoPoint, zoom: Double)
+    fun zoom(): Double
+    fun fit(points: List<GeoPoint>)
 }
 
-/** Pins intercept only their own DOWN. Every other touch goes straight to the native map. */
-class ChartOverlay(context:Context, private val os:OsStore) : View(context) {
-    var camera:ChartCamera?=null
-    var fix:Fix?=null
-    var scaleBottomOffsetDp=0f
-    private val density=resources.displayMetrics.density
-    private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
-    private var handle:Int?=null
-    private var startX=0f; private var startY=0f
-    private var pinOffset=PointF()
-    var placeClick:((String)->Unit)?=null
-    private fun project(p:GeoPoint)=camera?.project(p) ?: PointF()
-    override fun onDraw(canvas:Canvas) {
-        super.onDraw(canvas); if(camera==null) return
-        fun line(points:List<GeoPoint>,color:Int,width:Float,dashed:Boolean=false) {
-            if(points.isEmpty()) return
-            paint.color=color; paint.style=Paint.Style.STROKE; paint.strokeWidth=width*density
-            paint.pathEffect=if(dashed) android.graphics.DashPathEffect(floatArrayOf(7*density,5*density),0f) else null
-            val path=Path(); points.forEachIndexed { i,p -> val s=project(p); if(i==0) path.moveTo(s.x,s.y) else path.lineTo(s.x,s.y) }
-            canvas.drawPath(path,paint); paint.pathEffect=null
+/** Only draggable handles intercept touches. All other gestures reach the native map. */
+class ChartOverlay(context: Context, private val state: MapViewState) : View(context) {
+    var camera: ChartCamera? = null
+    var scene = MapScene()
+    var onEvent: (MapEvent) -> Unit = {}
+    var scaleBottomOffsetDp = 0f
+    var distanceLabel: (Double) -> String = ::nm
+    private val density = resources.displayMetrics.density
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var handle: MapPoint? = null
+    private var pinOffset = PointF()
+    private fun project(p: GeoPoint) = camera?.project(p) ?: PointF()
+    private fun line(canvas: Canvas, points: List<GeoPoint>, color: Int, width: Float, dashed: Boolean = false) {
+        if (points.isEmpty()) return
+        paint.color = color; paint.style = Paint.Style.STROKE; paint.strokeWidth = width * density
+        paint.pathEffect = if (dashed) android.graphics.DashPathEffect(floatArrayOf(7*density,5*density),0f) else null
+        val path = Path()
+        points.forEachIndexed { index,p -> val s=project(p); if(index==0) path.moveTo(s.x,s.y) else path.lineTo(s.x,s.y) }
+        canvas.drawPath(path,paint); paint.pathEffect=null
+    }
+    private fun pin(canvas: Canvas, item: MapPoint) {
+        val p=project(item.point); if(p.x !in -80f..width+80f || p.y !in -80f..height+80f) return
+        val r=item.radiusDp*density
+        paint.style=Paint.Style.FILL; paint.color=android.graphics.Color.WHITE;canvas.drawCircle(p.x,p.y,r+2*density,paint)
+        paint.color=item.color.toInt();canvas.drawCircle(p.x,p.y,r,paint)
+        if(item.label.isNotBlank()) {
+            paint.color=android.graphics.Color.WHITE;paint.textSize=13*density;paint.typeface=android.graphics.Typeface.create("sans-serif-medium",0);paint.textAlign=Paint.Align.CENTER
+            canvas.drawText(item.label,p.x,p.y+4.5f*density,paint)
         }
-        if(os.recordingActive) os.recordedSegments.forEach {segment ->
-            line(segment,android.graphics.Color.WHITE,4.5f)
-            line(segment,android.graphics.Color.rgb(0,139,142),2.5f)
+    }
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas);val cam=camera ?: return
+        scene.circles.filter {it.radiusMeters.isFinite() && it.radiusMeters>0}.forEach { circle ->
+            val ring=(0..72).map { i -> destination(circle.center,circle.radiusMeters,i*5.0) }
+            val path=Path();ring.forEachIndexed {i,p -> val s=project(p);if(i==0) path.moveTo(s.x,s.y) else path.lineTo(s.x,s.y)};path.close()
+            paint.style=Paint.Style.FILL;paint.color=(circle.color.toInt() and 0xFFFFFF) or 0x18000000;canvas.drawPath(path,paint)
+            line(canvas,ring,android.graphics.Color.WHITE,3.5f,circle.dashed);line(canvas,ring,circle.color.toInt(),1.8f,circle.dashed)
         }
-        val selectedRoute=os.routes.firstOrNull {it.id==(os.displayedRouteId ?: os.activeRouteId)}
-        val navigationVisible=!os.editingRoute && selectedRoute?.id==os.activeRouteId && selectedRoute!=null
-        val route=if(os.editingRoute) os.draftRoute else selectedRoute?.points.orEmpty()
-        line(route,android.graphics.Color.WHITE,5f)
-        line(route,if(navigationVisible) android.graphics.Color.rgb(125,137,140) else os.accent.toInt(),2.6f)
-        if(navigationVisible) line(route.drop((os.routeLeg-1).coerceAtLeast(0)),os.accent.toInt(),3f)
-        fun pin(p:GeoPoint,text:String,accent:Int=os.accent.toInt(),radius:Float=14f) {
-            val s=project(p); if(s.x !in -80f..width+80f || s.y !in -80f..height+80f) return
-            val r=radius*density
-            paint.style=Paint.Style.FILL; paint.color=android.graphics.Color.WHITE; canvas.drawCircle(s.x,s.y,r+2*density,paint)
-            paint.color=accent; canvas.drawCircle(s.x,s.y,r,paint)
-            paint.color=android.graphics.Color.WHITE; paint.textSize=13*density; paint.typeface=android.graphics.Typeface.create("sans-serif-medium",0); paint.textAlign=Paint.Align.CENTER
-            canvas.drawText(text,s.x,s.y+4.5f*density,paint)
+        scene.lines.forEach { item ->line(canvas,item.points,android.graphics.Color.WHITE,item.widthDp+2f,item.dashed);line(canvas,item.points,item.color.toInt(),item.widthDp,item.dashed)}
+        scene.points.forEach {pin(canvas,it)}
+        if(state.ruler.size==2) {
+            line(canvas,state.ruler,android.graphics.Color.WHITE,5f,true);line(canvas,state.ruler,0xFFD74A29.toInt(),2.6f,true)
+            state.ruler.forEachIndexed {i,p ->pin(canvas,MapPoint("ruler:$i",p,if(i==0)"A" else "B",0xFFD74A29,18f,true))}
         }
-        for((index,p) in route.withIndex()) pin(p,(index+1).toString(),
-            accent=if(navigationVisible && index<os.routeLeg) android.graphics.Color.rgb(125,137,140) else os.accent.toInt(),
-            radius=when {os.editingRoute->14f;navigationVisible && index==os.routeLeg->16f;else->10f})
-        os.places.forEach { place ->
-            val p=project(place.point)
-            paint.color=android.graphics.Color.WHITE; paint.strokeWidth=4*density; canvas.drawLine(p.x,p.y,p.x,p.y-16*density,paint)
-            paint.color=os.accent.toInt(); paint.strokeWidth=2*density; canvas.drawLine(p.x,p.y,p.x,p.y-16*density,paint)
-            paint.style=Paint.Style.FILL; canvas.drawCircle(p.x,p.y-18*density,5*density,paint)
+        scene.vessel?.let {f ->
+            val p=project(f.point)
+            paint.style=Paint.Style.FILL;paint.color=android.graphics.Color.WHITE;canvas.drawCircle(p.x,p.y,13*density,paint)
+            paint.color=if(f.fresh) 0xFF007ADC.toInt() else android.graphics.Color.GRAY
+            if(f.fresh && f.courseDegrees!=null) {
+                canvas.save();canvas.rotate(f.courseDegrees.toFloat(),p.x,p.y)
+                val path=Path();path.moveTo(p.x,p.y-17*density);path.lineTo(p.x-9*density,p.y+11*density);path.lineTo(p.x,p.y+6*density);path.lineTo(p.x+9*density,p.y+11*density);path.close();canvas.drawPath(path,paint);canvas.restore()
+            } else {paint.style=if(f.fresh) Paint.Style.FILL else Paint.Style.STROKE;paint.strokeWidth=3*density;canvas.drawCircle(p.x,p.y,9*density,paint)}
         }
-        if(os.ruler.size==2) {
-            line(os.ruler,android.graphics.Color.WHITE,5f); line(os.ruler,android.graphics.Color.rgb(215,74,41),2.6f,true)
-            pin(os.ruler[0],"A",android.graphics.Color.rgb(215,74,41),18f); pin(os.ruler[1],"B",android.graphics.Color.rgb(215,74,41),18f)
-        }
-        fix?.let { f ->
-            val p=project(f.point); val fresh=f.fresh()
-            if(navigationVisible && fresh) os.nextPoint?.let { line(listOf(f.point,it),os.accent.toInt(),2f,true) }
-            paint.color=android.graphics.Color.WHITE; paint.style=Paint.Style.FILL; canvas.drawCircle(p.x,p.y,13*density,paint)
-            paint.color=if(fresh) android.graphics.Color.rgb(0,122,220) else android.graphics.Color.GRAY
-            if(fresh && f.freshCourse()!=null) {
-                canvas.save(); canvas.rotate(f.freshCourse()!!.toFloat(),p.x,p.y)
-                val path=Path(); path.moveTo(p.x,p.y-17*density); path.lineTo(p.x-9*density,p.y+11*density); path.lineTo(p.x,p.y+6*density); path.lineTo(p.x+9*density,p.y+11*density); path.close()
-                canvas.drawPath(path,paint); canvas.restore()
-            } else { paint.style=if(fresh) Paint.Style.FILL else Paint.Style.STROKE; paint.strokeWidth=3*density; canvas.drawCircle(p.x,p.y,9*density,paint) }
-        }
-        if(os.showCrosshair || os.editingRoute) {
-            val x=width/2f; val y=height/2f
-            for((color,w) in listOf(android.graphics.Color.WHITE to 4f,android.graphics.Color.rgb(20,34,43) to 1.5f)) {
-                paint.color=color; paint.strokeWidth=w*density; paint.style=Paint.Style.STROKE
-                canvas.drawCircle(x,y,10*density,paint)
-                canvas.drawLine(x-22*density,y,x-5*density,y,paint); canvas.drawLine(x+5*density,y,x+22*density,y,paint)
-                canvas.drawLine(x,y-22*density,x,y-5*density,paint); canvas.drawLine(x,y+5*density,x,y+22*density,paint)
+        if(state.showCrosshair) {
+            val x=width/2f;val y=height/2f
+            for((color,w) in listOf(android.graphics.Color.WHITE to 4f,0xFF14222B.toInt() to 1.5f)) {
+                paint.color=color;paint.strokeWidth=w*density;paint.style=Paint.Style.STROKE;canvas.drawCircle(x,y,10*density,paint)
+                canvas.drawLine(x-22*density,y,x-5*density,y,paint);canvas.drawLine(x+5*density,y,x+22*density,y,paint)
+                canvas.drawLine(x,y-22*density,x,y-5*density,paint);canvas.drawLine(x,y+5*density,x,y+22*density,paint)
             }
         }
-        val cam=camera ?: return
-        val baseX=18*density; val baseY=height-(18+scaleBottomOffsetDp)*density
-        val meters=distance(cam.unproject(baseX,baseY),cam.unproject(baseX+90*density,baseY))
-        paint.style=Paint.Style.FILL; paint.color=0xDFFFFFFF.toInt(); canvas.drawRect(baseX-6*density,baseY-26*density,baseX+100*density,baseY+6*density,paint)
-        paint.color=android.graphics.Color.rgb(25,37,43); paint.strokeWidth=2*density
-        canvas.drawLine(baseX,baseY,baseX+90*density,baseY,paint); canvas.drawLine(baseX,baseY-4*density,baseX,baseY,paint); canvas.drawLine(baseX+90*density,baseY-4*density,baseX+90*density,baseY,paint)
-        paint.textSize=12*density; paint.textAlign=Paint.Align.LEFT; canvas.drawText(nm(meters),baseX,baseY-8*density,paint)
+        val x=18*density;val y=height-(18+scaleBottomOffsetDp)*density
+        val meters=distance(cam.unproject(x,y),cam.unproject(x+90*density,y))
+        paint.style=Paint.Style.FILL;paint.color=0xDFFFFFFF.toInt();canvas.drawRect(x-6*density,y-26*density,x+100*density,y+6*density,paint)
+        paint.color=0xFF19252B.toInt();paint.strokeWidth=2*density;canvas.drawLine(x,y,x+90*density,y,paint);canvas.drawLine(x,y-4*density,x,y,paint);canvas.drawLine(x+90*density,y-4*density,x+90*density,y,paint)
+        paint.textSize=12*density;paint.textAlign=Paint.Align.LEFT;canvas.drawText(distanceLabel(meters),x,y-8*density,paint)
     }
-    override fun onTouchEvent(event:MotionEvent):Boolean {
+    override fun onTouchEvent(event: MotionEvent): Boolean {
         val cam=camera ?: return false
-        val points=if(os.ruler.size==2) os.ruler else if(os.editingRoute) os.draftRoute else emptyList()
+        if(!state.interactive) return false
         when(event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                startX=event.x; startY=event.y
-                handle=points.indices.minByOrNull { i -> val p=cam.project(points[i]); hypot(p.x-event.x,p.y-event.y) }
-                    ?.takeIf { i -> val p=cam.project(points[i]); hypot(p.x-event.x,p.y-event.y)<32*density }
-                if(handle!=null) {
-                    val p=cam.project(points[handle!!]); pinOffset=PointF(p.x-event.x,p.y-event.y)
-                    parent.requestDisallowInterceptTouchEvent(true); return true
-                }
+                val handles=if(state.ruler.size==2) state.ruler.mapIndexed {i,p ->MapPoint("ruler:$i",p,draggable=true)} else scene.points.filter {it.draggable}
+                handle=handles.minByOrNull {val p=project(it.point);hypot(p.x-event.x,p.y-event.y)}?.takeIf {val p=project(it.point);hypot(p.x-event.x,p.y-event.y)<32*density}
+                handle?.let {val p=project(it.point);pinOffset=PointF(p.x-event.x,p.y-event.y);parent.requestDisallowInterceptTouchEvent(true);return true}
                 return false
             }
             MotionEvent.ACTION_MOVE -> {
-                val index=handle ?: return false
-                val p=cam.unproject(event.x+pinOffset.x,event.y+pinOffset.y)
-                if(os.ruler.size==2) os.ruler=os.ruler.mapIndexed { i,v -> if(i==index) p else v }
-                else os.draftRoute=os.draftRoute.mapIndexed { i,v -> if(i==index) p else v }
-                invalidate(); return true
+                val item=handle ?: return false;val point=cam.unproject(event.x+pinOffset.x,event.y+pinOffset.y)
+                if(item.id.startsWith("ruler:")) {val index=item.id.substringAfter(':').toInt();state.ruler=state.ruler.mapIndexed {i,p ->if(i==index) point else p}}
+                onEvent(MapEvent.PointMoved(item.id,point))
+                invalidate();return true
             }
-            MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL -> {
-                val consumed=handle!=null; handle=null; parent.requestDisallowInterceptTouchEvent(false); return consumed
-            }
+            MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL -> {val used=handle!=null;handle=null;parent.requestDisallowInterceptTouchEvent(false);return used}
         }
         return handle!=null
     }
 }
 
-class ChartHost(context:Context,val os:OsStore,private val mode:String) : FrameLayout(context) {
+private fun destination(p: GeoPoint, meters: Double, degrees: Double): GeoPoint {
+    val d=meters/6371008.8;val b=Math.toRadians(degrees);val lat=Math.toRadians(p.lat);val lon=Math.toRadians(p.lon)
+    val next=asin(sin(lat)*cos(d)+cos(lat)*sin(d)*cos(b))
+    return GeoPoint(Math.toDegrees(next),((Math.toDegrees(lon+atan2(sin(b)*sin(d)*cos(lat),cos(d)-sin(lat)*sin(next)))+540)%360)-180)
+}
+
+class ChartHost(context: Context, private val maps: MapSessionStore, private val state: MapViewState, private val googleEngine: Boolean) : FrameLayout(context) {
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
-    private var native:MapView?=null
-    private var google:GoogleMapView?=null
-    private var gateway:TileGateway?=null
+    private var native: MapView?=null
+    private var google: GoogleMapView?=null
+    private var googleMap: GoogleMap?=null
+    private var libre: MapLibreMap?=null
+    private var gateway: TileGateway?=null
     private var styleRevision=""
-    private var styleJob:Job?=null
-    private var started=false; private var resumed=false; private var destroyed=false
-    val overlay=ChartOverlay(context,os)
-    var camera:ChartCamera?=null
+    private var styleJob: Job?=null
+    private var started=false;private var resumed=false;private var destroyed=false
+    private var sourceGeneration=0L
+    private var lastRequest=0L
+    private var lastFollowPoint: GeoPoint?=null
+    var captureForTile = false
+    private var captureJob: Job? = null
+    val overlay=ChartOverlay(context,state)
+    var camera: ChartCamera?=null
     var error by mutableStateOf<String?>(null)
-    private var libre:MapLibreMap?=null
+        private set
+    var loading by mutableStateOf(true)
+        private set
+    var onEvent: (MapEvent)->Unit={}
     init {
-        setBackgroundColor(android.graphics.Color.rgb(222,233,232))
-        if(mode in listOf("standard","satellite") && BuildConfig.GOOGLE_MAPS_CONFIGURED) {overlay.scaleBottomOffsetDp=28f;initGoogle()} else initLibre()
+        setBackgroundColor(0xFFDEE9E8.toInt())
+        if(googleEngine) {overlay.scaleBottomOffsetDp=28f;initGoogle()} else initLibre()
         addView(overlay,LayoutParams(-1,-1))
     }
-    private fun moved(center:GeoPoint,z:Double) { os.center=center; os.zoom=z; overlay.invalidate() }
-    private fun touch() { os.follow=false; os.showCrosshair=true }
-    private fun pick(point:GeoPoint) {
-        val nearby=os.places.minByOrNull { distance(it.point,point) }
-        if(nearby!=null && !os.editingRoute && os.ruler.isEmpty()) {
-            val a=camera?.project(nearby.point); val b=camera?.project(point)
-            if(a!=null && b!=null && hypot(a.x-b.x,a.y-b.y)<28*resources.displayMetrics.density) { os.open("place:${nearby.id}"); return }
+    override fun dispatchTouchEvent(event:MotionEvent):Boolean {
+        if(event.actionMasked==MotionEvent.ACTION_DOWN && state.interactive)parent?.requestDisallowInterceptTouchEvent(true)
+        val handled=super.dispatchTouchEvent(event)
+        if(event.actionMasked==MotionEvent.ACTION_UP || event.actionMasked==MotionEvent.ACTION_CANCEL)parent?.requestDisallowInterceptTouchEvent(false)
+        return handled
+    }
+    private fun moved(center: GeoPoint,z: Double) {state.center=center;state.zoom=z;overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
+    private fun touch() {if(!state.interactive)return;state.follow=false;state.showCrosshair=true;onEvent(MapEvent.GestureStarted)}
+    private fun pick(point: GeoPoint) {
+        if(!state.interactive) return
+        val nearby=overlay.scene.points.filter {!it.draggable}.minByOrNull {distance(it.point,point)}
+        if(nearby!=null && state.ruler.isEmpty()) {
+            val a=camera?.project(nearby.point);val b=camera?.project(point)
+            if(a!=null && b!=null && hypot(a.x-b.x,a.y-b.y)<28*resources.displayMetrics.density) {onEvent(MapEvent.ItemSelected(nearby.id));return}
         }
-        os.showCrosshair=true; os.fly(point)
+        state.showCrosshair=true;state.fly(point);onEvent(MapEvent.CoordinateSelected(point));updateCamera()
     }
     private fun initGoogle() {
-        google=GoogleMapView(context).also { v ->
-            addView(v,LayoutParams(-1,-1)); v.onCreate(Bundle())
-            v.getMapAsync { map ->
-                if(destroyed) return@getMapAsync
-                map.mapType=if(mode=="satellite") GoogleMap.MAP_TYPE_SATELLITE else GoogleMap.MAP_TYPE_NORMAL
-                map.uiSettings.apply { isMapToolbarEnabled=false; isMyLocationButtonEnabled=false; isCompassEnabled=false; isRotateGesturesEnabled=false; isTiltGesturesEnabled=false }
+        google=GoogleMapView(context).also {v ->
+            addView(v,LayoutParams(-1,-1));v.onCreate(Bundle());v.getMapAsync {map ->
+                if(destroyed)return@getMapAsync
+                googleMap=map
+                map.uiSettings.apply {isMapToolbarEnabled=false;isMyLocationButtonEnabled=false;isCompassEnabled=false;isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
                 val adapter=object:ChartCamera {
-                    override fun project(point:GeoPoint)=map.projection.toScreenLocation(GoogleLatLng(point.lat,point.lon)).let { PointF(it.x.toFloat(),it.y.toFloat()) }
-                    override fun unproject(x:Float,y:Float)=map.projection.fromScreenLocation(android.graphics.Point(x.toInt(),y.toInt())).let { GeoPoint(it.latitude,it.longitude) }
-                    override fun move(point:GeoPoint,zoom:Double) { map.moveCamera(GoogleCamera.newLatLngZoom(GoogleLatLng(point.lat,point.lon),zoom.toFloat())) }
+                    override fun project(point:GeoPoint)=map.projection.toScreenLocation(GoogleLatLng(point.lat,point.lon)).let {PointF(it.x.toFloat(),it.y.toFloat())}
+                    override fun unproject(x:Float,y:Float)=map.projection.fromScreenLocation(android.graphics.Point(x.toInt(),y.toInt())).let {GeoPoint(it.latitude,it.longitude)}
+                    override fun move(point:GeoPoint,zoom:Double) {map.moveCamera(GoogleCamera.newLatLngZoom(GoogleLatLng(point.lat,point.lon),zoom.toFloat()))}
                     override fun zoom()=map.cameraPosition.zoom.toDouble()
-                    override fun fit(points:List<GeoPoint>) {
-                        if(points.size==1) move(points.first(),os.zoom) else {
-                            val bounds=com.google.android.gms.maps.model.LatLngBounds.builder()
-                            points.forEach {bounds.include(GoogleLatLng(it.lat,it.lon))}
-                            map.moveCamera(GoogleCamera.newLatLngBounds(bounds.build(),(48*resources.displayMetrics.density).toInt()))
-                        }
-                    }
+                    override fun fit(points:List<GeoPoint>) {if(points.size==1) move(points.first(),state.zoom) else map.moveCamera(GoogleCamera.newLatLngBounds(com.google.android.gms.maps.model.LatLngBounds.builder().also {b ->points.forEach {b.include(GoogleLatLng(it.lat,it.lon))}}.build(),(48*resources.displayMetrics.density).toInt()))}
                 }
-                camera=adapter; overlay.camera=adapter; adapter.move(os.center,os.zoom)
-                map.setOnCameraMoveListener { val p=map.cameraPosition; moved(GeoPoint(p.target.latitude,p.target.longitude),p.zoom.toDouble()) }
-                map.setOnCameraMoveStartedListener { if(it==GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE) touch() }
-                map.setOnMapClickListener { pick(GeoPoint(it.latitude,it.longitude)) }
-                map.setOnMapLongClickListener { pick(GeoPoint(it.latitude,it.longitude)) }
+                camera=adapter;overlay.camera=adapter;adapter.move(state.center,state.zoom)
+                map.setOnCameraMoveListener {val p=map.cameraPosition;moved(GeoPoint(p.target.latitude,p.target.longitude),p.zoom.toDouble())}
+                map.setOnCameraMoveStartedListener {if(it==GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE)touch()}
+                map.setOnCameraIdleListener { captureSnapshot() }
+                map.setOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude))};map.setOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude))}
+                updateStyle();updateCamera()
             }
         }
     }
     private fun initLibre() {
         MapLibre.getInstance(context)
-        HttpRequestUtil.setOkHttpClient(OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(15,TimeUnit.SECONDS)
-            .addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("User-Agent","YokuliOS/0.2 (+https://github.com/ohkuku/yokuli_marine_shell)").build()) }.build())
-        native=MapView(context).also { v ->
-            addView(v,LayoutParams(-1,-1)); v.onCreate(Bundle())
-            v.getMapAsync { map ->
-                if(destroyed) return@getMapAsync
+        HttpRequestUtil.setOkHttpClient(OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(15,TimeUnit.SECONDS).addInterceptor {chain ->chain.proceed(chain.request().newBuilder().header("User-Agent","YokuliOS/0.4 (+https://github.com/ohkuku/yokuli_marine_shell)").build())}.build())
+        native=MapView(context).also {v ->
+            addView(v,LayoutParams(-1,-1));v.onCreate(Bundle());v.getMapAsync {map ->
+                if(destroyed)return@getMapAsync
                 libre=map
-                map.uiSettings.apply { isLogoEnabled=false; isAttributionEnabled=false; isCompassEnabled=false; isRotateGesturesEnabled=false; isTiltGesturesEnabled=false }
-                map.setPrefetchZoomDelta(0); map.setPrefetchesTiles(false); map.setMaxZoomPreference(22.0); map.setMinZoomPreference(1.0)
+                map.uiSettings.apply {isLogoEnabled=false;isAttributionEnabled=false;isCompassEnabled=false;isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
+                map.setPrefetchZoomDelta(0);map.setPrefetchesTiles(false);map.setMaxZoomPreference(22.0);map.setMinZoomPreference(1.0)
                 val adapter=object:ChartCamera {
                     override fun project(point:GeoPoint)=map.projection.toScreenLocation(LatLng(point.lat,point.lon))
-                    override fun unproject(x:Float,y:Float)=map.projection.fromScreenLocation(PointF(x,y)).let { GeoPoint(it.latitude,it.longitude) }
-                    override fun move(point:GeoPoint,zoom:Double) { map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(point.lat,point.lon),zoom)) }
+                    override fun unproject(x:Float,y:Float)=map.projection.fromScreenLocation(PointF(x,y)).let {GeoPoint(it.latitude,it.longitude)}
+                    override fun move(point:GeoPoint,zoom:Double) {map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(point.lat,point.lon),zoom))}
                     override fun zoom()=map.cameraPosition.zoom
-                    override fun fit(points:List<GeoPoint>) {
-                        if(points.size==1) move(points.first(),os.zoom) else {
-                            val bounds=org.maplibre.android.geometry.LatLngBounds.Builder()
-                            points.forEach {bounds.include(LatLng(it.lat,it.lon))}
-                            map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(),(48*resources.displayMetrics.density).toInt()))
-                        }
-                    }
+                    override fun fit(points:List<GeoPoint>) {if(points.size==1) move(points.first(),state.zoom) else map.moveCamera(CameraUpdateFactory.newLatLngBounds(org.maplibre.android.geometry.LatLngBounds.Builder().also {b ->points.forEach {b.include(LatLng(it.lat,it.lon))}}.build(),(48*resources.displayMetrics.density).toInt()))}
                 }
-                camera=adapter; overlay.camera=adapter; adapter.move(os.center,os.zoom)
-                map.addOnCameraMoveListener { map.cameraPosition.target?.let { moved(GeoPoint(it.latitude,it.longitude),map.cameraPosition.zoom) } }
-                map.addOnCameraMoveStartedListener { if(it==MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) touch() }
-                map.addOnMapClickListener { pick(GeoPoint(it.latitude,it.longitude)); true }
-                map.addOnMapLongClickListener { pick(GeoPoint(it.latitude,it.longitude)); true }
-                updateStyle()
+                camera=adapter;overlay.camera=adapter;adapter.move(state.center,state.zoom)
+                map.addOnCameraMoveListener {map.cameraPosition.target?.let {moved(GeoPoint(it.latitude,it.longitude),map.cameraPosition.zoom)}}
+                map.addOnCameraMoveStartedListener {if(it==MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE)touch()}
+                map.addOnCameraIdleListener { captureSnapshot() }
+                map.addOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude));true};map.addOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude));true}
+                updateStyle();updateCamera()
             }
         }
     }
-    private fun retire(old:TileGateway?) {
-        if(old!=null) os.scope.launch(Dispatchers.IO) {runCatching {old.close()}}
-    }
+    private fun retire(old:TileGateway?) {if(old!=null) maps.scope.launch(Dispatchers.IO) {runCatching {old.close()}}}
     fun updateStyle() {
-        val map=libre ?: return
-        val selected=os.library.selectedLayers
-        val key=mode+selected.joinToString { layer -> layer.id+layer.files.joinToString {"${it.id}:${it.modified}:${it.priority}"} }
-        if(styleRevision==key) return
-        styleRevision=key; styleJob?.cancel(); error=null
+        val source=maps.source
+        val layer=maps.selectedLayer()
+        val revision=if(source is MapSource.CustomLayer) "${source}:${maps.library.revision}" else source.toString()
+        if(styleRevision==revision) return
+        if(googleEngine && googleMap==null || !googleEngine && libre==null) return
+        styleRevision=revision;styleJob?.cancel();val generation=++sourceGeneration;error=null;loading=true
+        if(googleEngine) {
+            googleMap?.apply {
+                mapType=if(source==MapSource.Satellite) GoogleMap.MAP_TYPE_SATELLITE else GoogleMap.MAP_TYPE_NORMAL
+                setOnMapLoadedCallback {if(!destroyed && generation==sourceGeneration){loading=false;error=null;captureSnapshot()}}
+            }
+            styleJob=scope.launch {delay(15000);if(generation==sourceGeneration && loading) {loading=false;error="online"}}
+            return
+        }
         styleJob=scope.launch {
             var proposed:TileGateway?=null
             try {
-                val sources=JSONObject(); val layers=JSONArray().put(JSONObject().put("id","water").put("type","background").put("paint",JSONObject().put("background-color","#dee9e8")))
-                if(mode=="standard") {
-                    sources.put("osm",JSONObject().put("type","raster").put("tileSize",256).put("maxzoom",19)
-                        .put("tiles",JSONArray(listOf("https://tile.openstreetmap.org/{z}/{x}/{y}.png"))))
-                    layers.put(JSONObject().put("id","osm").put("type","raster").put("source","osm"))
-                } else {
-                    val mounted=withContext(Dispatchers.IO) {
-                        TileGateway(context).also { proposed=it }.let { gateway -> selected.asReversed().mapNotNull { layer ->
-                            runCatching { layer to gateway.register(layer) }.getOrElse { withContext(Dispatchers.Main) { error="read" }; null }
-                        } }
+                // Remove the previous source while preparing the new one; no stale chart masquerades as the new layer.
+                val background=JSONObject().put("id","water").put("type","background").put("paint",JSONObject().put("background-color","#dee9e8"))
+                libre?.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",JSONObject()).put("layers",JSONArray().put(background)).toString()))
+                val sources=JSONObject();val layers=JSONArray().put(background)
+                when(source) {
+                    MapSource.Online -> {
+                        sources.put("osm",JSONObject().put("type","raster").put("tileSize",256).put("maxzoom",19).put("tiles",JSONArray(listOf("https://tile.openstreetmap.org/{z}/{x}/{y}.png"))))
+                        layers.put(JSONObject().put("id","osm").put("type","raster").put("source","osm"))
                     }
-                    for((layer,url) in mounted) {
-                        sources.put(layer.id,JSONObject().put("type","raster").put("tileSize",256).put("minzoom",layer.minZoom).put("maxzoom",layer.maxZoom)
-                            .put("tiles",JSONArray(listOf(url))))
-                        layers.put(JSONObject().put("id",layer.id).put("type","raster").put("source",layer.id)
-                            .put("paint",JSONObject().put("raster-fade-duration",0).put("raster-resampling","linear")))
+                    MapSource.Satellite -> error="online"
+                    is MapSource.CustomLayer -> {
+                        if(layer==null || layer.files.isEmpty()) error="empty"
+                        else {
+                            val url=withContext(Dispatchers.IO) {TileGateway(context).also {proposed=it}.register(layer)}
+                            ensureActive()
+                            sources.put(layer.id,JSONObject().put("type","raster").put("tileSize",256).put("minzoom",layer.minZoom).put("maxzoom",layer.maxZoom).put("tiles",JSONArray(listOf(url))))
+                            layers.put(JSONObject().put("id",layer.id).put("type","raster").put("source",layer.id).put("paint",JSONObject().put("raster-fade-duration",0).put("raster-resampling","linear")))
+                        }
                     }
                 }
-                val style=JSONObject().put("version",8).put("sources",sources).put("layers",layers)
-                val old=gateway; gateway=proposed
-                map.setStyle(Style.Builder().fromJson(style.toString()))
-                // Old source URLs leave the style immediately; retain no orphaned gateways if a
-                // rapid second switch cancels the previous style completion callback.
-                retire(old)
-            } catch(e:Exception) { retire(proposed); if(e !is CancellationException) error="read" }
+                ensureActive()
+                if(generation!=sourceGeneration) {retire(proposed);return@launch}
+                val old=gateway;gateway=proposed;retire(old)
+                libre?.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",sources).put("layers",layers).toString())) {
+                    if(!destroyed && generation==sourceGeneration) {loading=false;overlay.invalidate();captureSnapshot()}
+                }
+            } catch(e:Exception) {retire(proposed);if(e !is CancellationException && generation==sourceGeneration) {error="read";loading=false}}
         }
     }
-    fun update(fix:Fix?) {
-        os.recordingActive;os.recordedSegments;os.ruler;os.draftRoute;os.showCrosshair
-        os.places;os.routes;os.displayedRouteId;os.activeRouteId;os.editingRoute;os.routeLeg
-        overlay.fix=fix; overlay.invalidate(); updateStyle()
+    private fun updateCamera() {
+        val cam=camera ?: return
+        state.request?.takeIf {it.id!=lastRequest}?.let {request ->
+            if(width<=0 || height<=0) return@let
+            if(request.point!=null) cam.move(request.point,request.zoom) else if(request.points.isNotEmpty()) cam.fit(request.points)
+            lastRequest=request.id
+            if(state.request?.id==request.id)state.request=null
+        }
+        val vessel=overlay.scene.vessel
+        if(state.follow && vessel?.fresh==true && (lastFollowPoint!=vessel.point || distance(state.center,vessel.point)>1)) {cam.move(vessel.point,state.zoom);lastFollowPoint=vessel.point}
+    }
+    fun captureSnapshot() {
+        if(!captureForTile || destroyed || loading || error!=null || width<=0 || height<=0)return
+        captureJob?.cancel()
+        captureJob=scope.launch {
+            delay(600)
+            val generation=sourceGeneration
+            val center=state.center;val zoom=state.zoom
+            fun save(bitmap:Bitmap?) {
+                if(bitmap==null || destroyed || generation!=sourceGeneration || state.center!=center || state.zoom!=zoom)return
+                val combined=bitmap.copy(Bitmap.Config.ARGB_8888,true) ?: return
+                overlay.draw(Canvas(combined))
+                val w=480.coerceAtMost(combined.width)
+                maps.snapshot=Bitmap.createScaledBitmap(combined,w,(combined.height.toDouble()*w/combined.width).roundToInt().coerceAtLeast(1),true)
+                if(maps.snapshot !== combined)combined.recycle()
+            }
+            if(googleEngine)googleMap?.snapshot {save(it)} else libre?.snapshot {save(it)}
+        }
+    }
+    fun update(scene:MapScene,events:(MapEvent)->Unit) {
+        onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.distanceLabel=maps.distanceLabel;overlay.invalidate()
+        googleMap?.uiSettings?.setAllGesturesEnabled(state.interactive)
+        googleMap?.uiSettings?.apply {isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
+        libre?.uiSettings?.apply {isScrollGesturesEnabled=state.interactive;isZoomGesturesEnabled=state.interactive;isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
+        updateStyle();updateCamera()
         if(gateway?.lastError!=null) error="read"
-        if(camera!=null) os.cameraRequest?.let { (p,z) -> camera?.move(p,z); os.cameraRequest=null }
-        if(camera!=null && width>0 && height>0) os.fitRequest?.takeIf {it.isNotEmpty()}?.let { points ->
-            camera?.fit(points);os.fitRequest=null;os.follow=false
-        }
-        if(os.follow && fix?.fresh()==true) camera?.move(fix.point,os.zoom)
     }
-    fun lifecycle(event:Lifecycle.Event) {
-        when(event) {
-            Lifecycle.Event.ON_START -> if(!started) { native?.onStart(); google?.onStart(); started=true }
-            Lifecycle.Event.ON_RESUME -> if(!resumed) { lifecycle(Lifecycle.Event.ON_START); native?.onResume(); google?.onResume(); resumed=true }
-            Lifecycle.Event.ON_PAUSE -> if(resumed) { native?.onPause(); google?.onPause(); resumed=false }
-            Lifecycle.Event.ON_STOP -> if(started) { lifecycle(Lifecycle.Event.ON_PAUSE); native?.onStop(); google?.onStop(); started=false }
-            else -> Unit
-        }
-    }
-    fun destroy() {
-        if(destroyed) return
-        destroyed=true; lifecycle(Lifecycle.Event.ON_STOP); scope.cancel()
-        native?.onDestroy(); google?.onDestroy(); retire(gateway);gateway=null; camera=null
-    }
+    fun lifecycle(event:Lifecycle.Event) {when(event) {
+        Lifecycle.Event.ON_START ->if(!started){native?.onStart();google?.onStart();started=true}
+        Lifecycle.Event.ON_RESUME ->if(!resumed){lifecycle(Lifecycle.Event.ON_START);native?.onResume();google?.onResume();resumed=true}
+        Lifecycle.Event.ON_PAUSE ->if(resumed){native?.onPause();google?.onPause();resumed=false}
+        Lifecycle.Event.ON_STOP ->if(started){lifecycle(Lifecycle.Event.ON_PAUSE);native?.onStop();google?.onStop();started=false}
+        else ->Unit
+    }}
+    fun destroy() {if(destroyed)return;destroyed=true;lifecycle(Lifecycle.Event.ON_STOP);scope.cancel();native?.onDestroy();google?.onDestroy();retire(gateway);gateway=null;camera=null}
 }
 
-@Composable fun NativeChart(os:OsStore,fix:Fix?,modifier:Modifier=Modifier,onHost:(ChartHost)->Unit) {
+@Composable
+fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Modifier=Modifier,onEvent:(MapEvent)->Unit={},onHost:(ChartHost)->Unit={}) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
-    // The AndroidView node itself must change, not only the value captured by its factory.
-    key(os.mapMode) {
-        val host=remember { ChartHost(context,os,os.mapMode) }
+    val google=maps.source !is MapSource.CustomLayer && BuildConfig.GOOGLE_MAPS_CONFIGURED
+    // Keep the native camera across online/satellite and custom-layer changes.
+    key(google,state) {
+        val host=remember {ChartHost(context,maps,state,google)}
         DisposableEffect(host,lifecycle) {
             onHost(host)
-            val observer=LifecycleEventObserver { _,event -> host.lifecycle(event) }
-            lifecycle.addObserver(observer)
-            if(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) host.lifecycle(Lifecycle.Event.ON_START)
-            if(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) host.lifecycle(Lifecycle.Event.ON_RESUME)
-            onDispose { lifecycle.removeObserver(observer); host.destroy() }
+            val observer=LifecycleEventObserver {_,event ->host.lifecycle(event)};lifecycle.addObserver(observer)
+            if(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))host.lifecycle(Lifecycle.Event.ON_START)
+            if(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))host.lifecycle(Lifecycle.Event.ON_RESUME)
+            onDispose {lifecycle.removeObserver(observer);host.destroy()}
         }
-        AndroidView(factory={host},modifier=modifier,update={ it.update(fix) })
+        // Explicit observation preserves native redraw without recreating its viewport.
+        state.center;state.zoom;state.ruler;state.showCrosshair;state.follow;state.request;maps.source;maps.library.revision
+        var coverage by remember { mutableStateOf<Boolean?>(null) }
+        LaunchedEffect(maps.source,maps.library.revision,state.center,state.zoom) {
+            coverage=null
+            val layer=maps.selectedLayer() ?: return@LaunchedEffect
+            val center=state.center;val zoom=state.zoom
+            delay(600)
+            coverage=withContext(Dispatchers.IO) {
+                layer.files.any { chart ->
+                    ensureActive()
+                    runCatching {
+                        val z=floor(zoom).toInt().coerceAtMost(chart.maxZoom)
+                        if(z<chart.minZoom)false else {
+                            val n=2.0.pow(z);val x=floor((center.lon+180)/360*n).toInt().coerceIn(0,(1 shl z)-1)
+                            val lat=Math.toRadians(center.lat.coerceIn(-85.0511,85.0511));val y=floor((1-asinh(tan(lat))/PI)/2*n).toInt()
+                            ChartReader(context,android.net.Uri.parse(chart.uri)).use {it.coverageZoom(x,y,z,chart)!=null}
+                        }
+                    }.getOrDefault(false)
+                }
+            }
+        }
+        Box(modifier) {
+            AndroidView(factory={host},modifier=Modifier.fillMaxSize(),update={it.update(scene,onEvent)})
+            val zh=maps.chinese
+            val message=when {
+                host.error=="online" ->if(zh)"在线地图暂不可用 · 检查网络或选择自定义图层" else "online map unavailable · check network or choose a custom layer"
+                host.error=="empty" ->if(zh)"图层没有可用文件 · 在海图库检查" else "no available files · check chart library"
+                host.error!=null ->if(zh)"图层读取失败 · 在海图库检查" else "chart read failed · check chart library"
+                host.loading ->if(zh)"正在载入 ${maps.sourceName(true)}…" else "loading ${maps.sourceName(false)}…"
+                coverage==false ->if(zh)"当前位置无本地图块" else "no local chart tile here"
+                else ->null
+            }
+            message?.let {Label(it,13,Color(0xFF19252B),Modifier.align(Alignment.TopCenter).padding(top=54.dp,start=12.dp,end=12.dp).background(Color.White.copy(alpha=.95f)).padding(9.dp))}
+            val credits=if(maps.source==MapSource.Online && !BuildConfig.GOOGLE_MAPS_CONFIGURED)listOf("© OpenStreetMap contributors")
+                else maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()
+            if(credits.isNotEmpty())Column(Modifier.align(Alignment.BottomEnd).widthIn(max=230.dp).background(Color.White.copy(alpha=.92f)).padding(4.dp)) {
+                credits.take(2).forEach {Label(it,10,Color(0xFF19252B),maxLines=3)}
+            }
+        }
     }
 }

@@ -130,11 +130,7 @@ class MarineRuntime(private val os: OsStore, val vm: MainViewModel) {
         val state=vm.ui.value
         if(os.positionSource !in listOf("phone","nmea")) {
             os.notify("请先开启一个船位来源", "Enable a position source first")
-            os.open("data"); return
-        }
-        if(state.active != null) {
-            os.notify("请先结束锚警报，再开始航行记录", "Lift the anchor before starting a trip")
-            os.open("anchor"); return
+            os.open("settings:sources"); return
         }
         vm.startTrip(name, motion, if(os.positionSource=="nmea") VesselSourcePreference.BOAT else VesselSourcePreference.PHONE)
     }

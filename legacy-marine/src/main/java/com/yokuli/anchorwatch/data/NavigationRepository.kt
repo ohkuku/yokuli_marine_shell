@@ -1,22 +1,26 @@
 package com.yokuli.anchorwatch.data
+
 import android.os.SystemClock
 import com.yokuli.anchorwatch.data.nmea.*
-import com.yokuli.anchorwatch.data.nmea.input.NmeaCandidateMapper
-import com.yokuli.anchorwatch.data.nmea.input.ParsedNmeaEnvelope
+import com.yokuli.anchorwatch.data.nmea.input.*
 import com.yokuli.anchorwatch.data.nmea.output.NmeaOutboundLoopGuard
-import com.yokuli.anchorwatch.data.vessel.VesselSourceRegistry
+import com.yokuli.anchorwatch.data.preferences.SettingsRepository
+import com.yokuli.anchorwatch.data.vessel.*
+import com.yokuli.anchorwatch.data.condition.*
 import com.yokuli.anchorwatch.domain.model.*
 import com.yokuli.anchorwatch.domain.sonar.DepthObservation
+import com.yokuli.anchorwatch.domain.vessel.*
+import com.yokuli.anchorwatch.domain.vessel.source.*
 import com.yokuli.anchorwatch.location.NmeaFixQualityPolicy
-import com.yokuli.anchorwatch.data.condition.LiveDepthRepository
-import com.yokuli.anchorwatch.data.condition.LiveWindRepository
+import com.yokuli.anchorwatch.location.PositionIntegrityFilter
+import com.yokuli.anchorwatch.location.PositionIntegrityResult
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 import javax.inject.Inject
 import javax.inject.Singleton
-
-private val POSITION_SENTENCE_TYPES=setOf("RMC","GGA","GNS","GLL")
-private fun nmeaSentenceType(line:String)=line.trim().removePrefix("$").substringBefore('*').substringBefore(',').takeLast(3).uppercase()
 
 data class NmeaInstrumentState(
  val headingTrue:Pair<Double,Long>?=null,
@@ -31,147 +35,276 @@ data class NmeaInstrumentState(
  val pinnedHeadingSourceUnavailable:Boolean=false,
 )
 
+/** Connection-owned ingestion; legacy properties are projections of selected observations. */
 @Singleton class NavigationRepository @Inject constructor(
- private val liveDepth:LiveDepthRepository,
- private val liveWind:LiveWindRepository,
- private val outboundLoopGuard:NmeaOutboundLoopGuard,
- private val sourceRegistry:VesselSourceRegistry,
+    private val liveDepth:LiveDepthRepository,
+    private val liveWind:LiveWindRepository,
+    private val outboundLoopGuard:NmeaOutboundLoopGuard,
+    private val sourceRegistry:VesselSourceRegistry,
+    private val settings:SettingsRepository,
+    private val vesselSettings:VesselSettingsRepository,
+    private val store:NmeaConnectionStore,
 ){
- private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default);private val parser=Nmea0183Parser();private val updateRetainer=NmeaUpdateRetainer();private val headingResolver=NmeaHeadingResolver();private val connection=NmeaConnectionManager(scope,onGenerationStarted=::resetHeldMeasurements)
- private val requestGuard=Any();private var appConnectionRequested=false;private var backgroundConnectionRequested=false;@Volatile private var userDisconnected=false
- private val _fix=MutableStateFlow<NavigationFix?>(null);val fix=_fix.asStateFlow();val connectionState=connection.state
- private val _recentFixes=MutableStateFlow<List<NavigationFix>>(emptyList());val recentFixes=_recentFixes.asStateFlow()
- private val _diagnostics=MutableStateFlow(NmeaDiagnostics());val diagnostics=_diagnostics.asStateFlow()
- private val _connectionStartedElapsed=MutableStateFlow<Long?>(null);val connectionStartedElapsed=_connectionStartedElapsed.asStateFlow()
- private val _validRawSentences=MutableSharedFlow<String>(extraBufferCapacity=512,onBufferOverflow=kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST);val validRawSentences=_validRawSentences.asSharedFlow()
- private val _parsedEnvelopes=MutableSharedFlow<ParsedNmeaEnvelope>(extraBufferCapacity=256,onBufferOverflow=kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST);val parsedEnvelopes=_parsedEnvelopes.asSharedFlow()
- private val _sourceInvalidations=MutableSharedFlow<NmeaSourceInvalidation>(extraBufferCapacity=64,onBufferOverflow=kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST);val sourceInvalidations=_sourceInvalidations.asSharedFlow()
- private val _depthObservations=MutableSharedFlow<DepthObservation>(extraBufferCapacity=64,onBufferOverflow=kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST);val depthObservations=_depthObservations.asSharedFlow()
- private val _instruments=MutableStateFlow(NmeaInstrumentState());val instruments=_instruments.asStateFlow()
- val transportDiagnostics=connection.diagnostics
- @Volatile private var requireChecksum=true
- @Volatile private var activeProfile=ConnectionProfile()
- private var headingTrue:Pair<Double,Long>?=null;private var headingMag:Pair<Double,Long>?=null;private var depth:Pair<Double,Long>?=null;private var speedThroughWater:Pair<Double,Long>?=null;private var sog:Pair<Double,Long>?=null;private var cog:Pair<Double,Long>?=null;private var hdop:Pair<Double,Long>?=null;private var fixQuality:Pair<Int,Long>?=null;private var satellites:Pair<Int,Long>?=null;private var altitude:Pair<Double,Long>?=null;private val wind=WindSnapshotAccumulator()
- @Volatile private var noDataTimeoutMillis=10_000L
- private var headingSampleSequence=0L
- init{
-  scope.launch{connection.lines.collect{accept(it,requireChecksum)}}
-  scope.launch{connection.state.collect{state->when(state){NmeaConnectionState.CONNECTING->if(_connectionStartedElapsed.value==null)_connectionStartedElapsed.value=SystemClock.elapsedRealtime();NmeaConnectionState.RECONNECTING->_connectionStartedElapsed.value=SystemClock.elapsedRealtime();else->Unit}}}
-  scope.launch{while(isActive){delay(1_000);val now=SystemClock.elapsedRealtime();val last=_diagnostics.value.lastFixElapsed;val started=_connectionStartedElapsed.value;val noFreshFix=started!=null&&now-maxOf(started,last?.takeIf{it>=started}?:started)>noDataTimeoutMillis;if(noFreshFix&&connection.state.value in setOf(NmeaConnectionState.CONNECTED,NmeaConnectionState.CONNECTED_NO_FIX))connection.reportStaleFix()}}
- }
- fun connect(p:ConnectionProfile)=synchronized(requestGuard){userDisconnected=false;appConnectionRequested=true;activeProfile=p;requireChecksum=p.requireChecksum;noDataTimeoutMillis=p.noDataTimeoutSeconds.coerceIn(3,120)*1_000L;val previous=_connectionStartedElapsed.value;_connectionStartedElapsed.value=SystemClock.elapsedRealtime();connection.connect(p).also{if(!it)_connectionStartedElapsed.value=previous}}
- fun reconnect(p:ConnectionProfile)=synchronized(requestGuard){userDisconnected=false;appConnectionRequested=true;activeProfile=p;requireChecksum=p.requireChecksum;noDataTimeoutMillis=p.noDataTimeoutSeconds.coerceIn(3,120)*1_000L;val previous=_connectionStartedElapsed.value;_connectionStartedElapsed.value=SystemClock.elapsedRealtime();connection.reconnect(p).also{if(!it)_connectionStartedElapsed.value=previous}}
- fun writeToBoat(sentences:List<String>)=connection.write(sentences)
- fun writeToBoatExpected(sentences:List<String>,expectedGeneration:Long?)=connection.writeExpected(sentences,expectedGeneration)
- @Synchronized fun pinBoatHeadingSource(sourceId:String?,allowFallback:Boolean=false){headingResolver.pin(sourceId,allowFallback);publishInstruments(SystemClock.elapsedRealtime())}
- fun disconnect()=synchronized(requestGuard){appConnectionRequested=false;if(!backgroundConnectionRequested){userDisconnected=true;connection.disconnect();_connectionStartedElapsed.value=null}}
- /** Acquire the shared NMEA stream for a foreground service without replacing a
-  * connection that the user already opened from the Connect page. */
- fun acquireBackgroundConnection(p:ConnectionProfile)=synchronized(requestGuard){
-  if(userDisconnected)return@synchronized false
-  backgroundConnectionRequested=true;activeProfile=p
-  noDataTimeoutMillis=p.noDataTimeoutSeconds.coerceIn(3,120)*1_000L;val previous=_connectionStartedElapsed.value;_connectionStartedElapsed.value=SystemClock.elapsedRealtime();connection.ensureConnected(p).also{started->if(started)requireChecksum=p.requireChecksum else _connectionStartedElapsed.value=previous}
- }
- /** Claims ownership only when the user already has an open NMEA transport.
-  * Source selection must never silently start a saved endpoint. */
- fun claimBackgroundConnectionIfConnected():Boolean=synchronized(requestGuard){
-  if(userDisconnected||!connection.hasOpenTransport())return@synchronized false
-  backgroundConnectionRequested=true
-  true
- }
- fun releaseBackgroundConnection()=synchronized(requestGuard){
-  backgroundConnectionRequested=false
-  if(!appConnectionRequested){connection.disconnect();_connectionStartedElapsed.value=null}
- }
- /** Explicit safety decision: release every owner and close the transport. */
- fun disconnectAll()=synchronized(requestGuard){
-  userDisconnected=true
-  appConnectionRequested=false
-  backgroundConnectionRequested=false
-  connection.disconnect()
-  _connectionStartedElapsed.value=null
- }
- fun clearUserDisconnectLatch()=synchronized(requestGuard){userDisconnected=false}
- fun setSafetyOwnedRetry(enabled:Boolean)=connection.setSafetyOwnedRetry(enabled)
- fun isUserDisconnected()=userDisconnected
- fun hasOpenTransport()=connection.hasOpenTransport()
- fun activeProfileStableId()=activeProfile.stableId
- fun connectionGeneration()=connection.diagnostics.value.connectionGeneration
- fun clearDiagnostics(){_diagnostics.value=NmeaDiagnostics()}
- fun accept(line:String,requireChecksum:Boolean=true){
-  var reportValidFix=false
-  synchronized(this){
-   val normalized=line.trim();val now=SystemClock.elapsedRealtime();val checksumValid=NmeaChecksum.validate(normalized,requireChecksum);val old=_diagnostics.value;val sentenceType=nmeaSentenceType(normalized);val positionSentence=sentenceType in POSITION_SENTENCE_TYPES
-   // Preserve transport diagnostics, but never let an echoed App-generated
-   // sentence become independent boat position/heading/wind evidence.
-   val echoed=checksumValid&&outboundLoopGuard.isRecentExactOutbound(normalized,now)
-   val raw=(old.raw+(if(echoed)"[Echoed App TX] $normalized" else normalized)).takeLast(200)
-   if(echoed){_diagnostics.value=old.copy(bytes=old.bytes+line.length+1,validSentences=old.validSentences+1,lastPacketElapsed=now,raw=raw,echoedAppTxSentences=old.echoedAppTxSentences+1,lastPositionRejectionReason=if(positionSentence)"EXACT_APP_TX_ECHO:$sentenceType" else old.lastPositionRejectionReason);return}
-   if(checksumValid)_validRawSentences.tryEmit(normalized)
-   val parsed=parser.parseEnvelope(normalized,requireChecksum,now)
-   if(parsed==null){val checksumBad=line.contains('*')&&!NmeaChecksum.validate(line,false);val reason=if(positionSentence)when{requireChecksum&&!line.contains('*')->"CHECKSUM_REQUIRED:$sentenceType";checksumBad->"CHECKSUM_MISMATCH:$sentenceType";else->"MALFORMED_POSITION:$sentenceType"}else old.lastPositionRejectionReason;_diagnostics.value=old.copy(bytes=old.bytes+line.length+1,invalidSentences=old.invalidSentences+1,checksumErrors=old.checksumErrors+if(checksumBad)1 else 0,lastPacketElapsed=now,raw=raw,lastPositionRejectionReason=reason);return}
-   val u=updateRetainer.accept(parsed.update,now,normalized);val envelope=parsed.copy(update=u);_parsedEnvelopes.tryEmit(envelope)
-   val generation=connection.diagnostics.value.connectionGeneration
-   val fieldHeartbeat=NmeaFieldDecoder.heartbeat(normalized)
-   if(!u.holdAllowed||fieldHeartbeat?.allowsHold==false){
-    val affected=NmeaInvalidationPolicy.affectedMetrics(envelope.sentenceType)
-    if(affected.isNotEmpty()){
-     val event=NmeaSourceInvalidation("nmea:${activeProfile.stableId}:$generation:${envelope.fullSentenceId}",affected,NmeaInvalidationReason.EXPLICIT_INVALID_STATUS,now,activeProfile.stableId,generation,envelope.fullSentenceId)
-     // The registry can invalidate the exact sentence source. The legacy
-     // aggregate fields below cannot: a multiplexed NMEA stream may contain a
-     // valid RMC from one GPS and an invalid GGA/GLL from another. Clearing the
-     // aggregate here made the map position flicker and could starve Anchor
-     // Watch even while a different GPS kept publishing valid fixes. Preserve
-     // the last valid aggregate and let its receive timestamp expire normally.
-     sourceRegistry.invalidate(event);_sourceInvalidations.tryEmit(event)
+    private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
+    private val guard=Any()
+    private val sessions=linkedMapOf<String,Session>()
+    // UDP listeners with the same local port share a socket. Each logical
+    // connection still has its own peer filter, parser and lifecycle.
+    private val udpListeners=linkedMapOf<Int,NmeaConnectionManager>()
+    private val udpOwners=linkedMapOf<Int,MutableSet<String>>()
+    private val processors=mutableMapOf<String,Processor>()
+    private val positionFixes=mutableMapOf<String,NavigationFix>()
+    private val depthFixes=mutableMapOf<String,DepthObservation>()
+    private val arbiter=VesselSourceArbitrator()
+    private var selectedIdentity:String?=null
+    private var selectedEpoch=0L
+    private var nextConnectionEpoch=0L
+    private var pendingPositionPin:String?=null
+    private var lastDepthKey:String?=null
+    @Volatile private var positionLock:String?=null
+    fun positionSourcePin():String?=positionLock
+    fun positionConnectionId():String?=vessel.metricSourcePins["POSITION_CONNECTION"]
+    private var positionPolicyKey:String?=null
+    @Volatile private var vessel=VesselDataSettings()
+    @Volatile private var loaded=false
+    private val _specs=MutableStateFlow<List<NmeaConnectionSpec>>(emptyList());val connectionSpecs=_specs.asStateFlow()
+    private val _connections=MutableStateFlow<List<NmeaConnectionSnapshot>>(emptyList());val connections=_connections.asStateFlow()
+    private val _frames=MutableSharedFlow<NmeaRawFrame>(extraBufferCapacity=512,onBufferOverflow=kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST);val frames=_frames.asSharedFlow()
+    private val _fix=MutableStateFlow<NavigationFix?>(null);val fix=_fix.asStateFlow()
+    private val _connectionState=MutableStateFlow(NmeaConnectionState.DISCONNECTED);val connectionState=_connectionState.asStateFlow()
+    private val _recentFixes=MutableStateFlow<List<NavigationFix>>(emptyList());val recentFixes=_recentFixes.asStateFlow()
+    private val _diagnostics=MutableStateFlow(NmeaDiagnostics());val diagnostics=_diagnostics.asStateFlow()
+    private val _connectionStartedElapsed=MutableStateFlow<Long?>(null);val connectionStartedElapsed=_connectionStartedElapsed.asStateFlow()
+    private val _transport=MutableStateFlow(NmeaTransportDiagnostics());val transportDiagnostics=_transport.asStateFlow()
+    private val _validRaw=MutableSharedFlow<String>(extraBufferCapacity=512);val validRawSentences=_validRaw.asSharedFlow()
+    private val _parsed=MutableSharedFlow<ParsedNmeaEnvelope>(extraBufferCapacity=256);val parsedEnvelopes=_parsed.asSharedFlow()
+    private val _invalidations=MutableSharedFlow<NmeaSourceInvalidation>(extraBufferCapacity=64);val sourceInvalidations=_invalidations.asSharedFlow()
+    private val _depth=MutableSharedFlow<DepthObservation>(extraBufferCapacity=64);val depthObservations=_depth.asSharedFlow()
+    private val _instruments=MutableStateFlow(NmeaInstrumentState());val instruments=_instruments.asStateFlow()
+    private class Processor { val parser=Nmea0183Parser();val retained=NmeaUpdateRetainer();val positionGates=mutableMapOf<String,PositionIntegrityFilter>() }
+    private data class Session(var spec:NmeaConnectionSpec,var requested:Boolean=false,var generation:Long=0,var started:Long?=null,var manager:NmeaConnectionManager?=null,var reader:Job?=null,var stateReader:Job?=null,var transportReader:Job?=null,var udpWriter:DatagramSocket?=null,var snapshot:NmeaConnectionSnapshot=NmeaConnectionSnapshot(spec),val writeGuard:Any=Any())
+    init {
+        scope.launch {
+            val saved=store.read()
+            val initial=saved?:settings.settings.first().profile.takeIf{it.host.isNotBlank()||it.port>0}?.let{listOf(NmeaConnectionSpec(id=it.stableId,name=it.name,protocol=it.protocol,host=it.host,port=it.port,localPort=it.port,requireChecksum=it.requireChecksum,autoReconnect=it.autoReconnect))}.orEmpty()
+            synchronized(guard){initial.forEach{sessions[it.id]=Session(it)};loaded=true;publishConnections()}
+            if(saved==null)store.save(initial)
+        }
+        scope.launch{vesselSettings.settings.collect{vessel=it;synchronized(guard){arbiter.reset();refreshObservations()}}}
+        scope.launch{while(isActive){delay(250);synchronized(guard){refreshObservations();publishConnections()}}}
     }
-   }
-   sourceRegistry.publishAll(NmeaCandidateMapper.map(envelope,activeProfile.stableId,generation))
-   val headingResolution=headingResolver.accept(u,now)
-   val selectedHeading=headingResolution.selected
-   val previousHeadingSource=_instruments.value.selectedHeadingSourceId
-   headingTrue=selectedHeading?.trueDegrees?.let{it to selectedHeading.receivedElapsedRealtime}
-   headingMag=selectedHeading?.magneticDegrees?.let{it to selectedHeading.receivedElapsedRealtime}
-   if(selectedHeading?.trueDegrees!=null&&(previousHeadingSource!=selectedHeading.sourceId||selectedHeading.receivedElapsedRealtime==now))headingSampleSequence++
-   liveWind.accept(u.copy(trueHeading=selectedHeading?.takeIf{it.receivedElapsedRealtime==now}?.trueDegrees),now)
-   if(u.isNumeric(NmeaMetric.DEPTH))u.depthObservation?.let{liveDepth.accept(it);_depthObservations.tryEmit(it)}
-   fun measured(metric:NmeaMetric)=u.measuredAt(metric)?:now
-   u.depth?.let{depth=it to measured(NmeaMetric.DEPTH)};u.speedThroughWaterKnots?.let{speedThroughWater=it to measured(NmeaMetric.SPEED_THROUGH_WATER)}
-   u.sog?.let{sog=it to measured(NmeaMetric.SOG)};u.cog?.let{cog=it to measured(NmeaMetric.COG)}
-   // Negative GGA/GNS validity clears its source above. Never write quality 0
-   // straight back into the shared cache and poison later valid RMC/GLL fixes.
-   if(u.holdAllowed){u.hdop?.let{hdop=it to measured(NmeaMetric.HDOP)};u.fixQuality?.let{fixQuality=it to measured(NmeaMetric.FIX_QUALITY)};u.satellites?.let{satellites=it to measured(NmeaMetric.SATELLITES)};u.position?.altitudeMeters?.let{altitude=it to measured(NmeaMetric.POSITION)}}
-   wind.update(u,now)
-   _instruments.value=NmeaInstrumentState(headingTrue,headingMag,sog,cog,speedThroughWater,selectedHeading?.sourceId,headingResolution.candidates,headingResolution.conflict,headingResolution.conflictDegrees,headingResolution.pinnedSourceUnavailable)
-   u.position?.takeIf{it.valid}?.let{position->
-    val freshHeading=headingTrue.fresh(now);val windSnapshot=wind.snapshot(now);val freshTrueDirection=windSnapshot.trueDirectionDegrees;val freshTrueSpeed=windSnapshot.trueSpeedKnots;val freshApparentSpeed=windSnapshot.apparentSpeedKnots;val freshApparentAngle=windSnapshot.apparentAngleDegrees;val freshTrueAngle=windSnapshot.trueAngleDegrees
-    val heldHdop=hdop?.first;val heldQuality=fixQuality?.first;val heldSatellites=satellites?.first
-    val freshHdop=hdop.fresh(now,5_000)
-    // A null field in a valid heartbeat means "unchanged", not "invalid".
-    // The same physical sentence source refreshes the held component so an
-    // unchanged instrument remains live without borrowing from another source.
-    val merged=position.copy(sogKnots=sog?.first,cogTrueDegrees=cog?.first,headingTrueDegrees=headingTrue?.first,headingMagneticDegrees=headingMag?.first,sogReceivedElapsedRealtime=sog?.second,cogReceivedElapsedRealtime=cog?.second,headingReceivedElapsedRealtime=headingTrue?.second,headingMagneticReceivedElapsedRealtime=headingMag?.second,depthMeters=depth?.first,depthReceivedElapsedRealtime=depth?.second,speedThroughWaterKnots=speedThroughWater?.first,speedThroughWaterReceivedElapsedRealtime=speedThroughWater?.second,hdop=heldHdop,fixQuality=heldQuality,satellites=heldSatellites,hdopReceivedElapsedRealtime=hdop?.second,fixQualityReceivedElapsedRealtime=fixQuality?.second,satellitesReceivedElapsedRealtime=satellites?.second,altitudeMeters=altitude?.first,altitudeReceivedElapsedRealtime=altitude?.second,horizontalAccuracyMeters=freshHdop?.times(3.0)?.coerceIn(2.5,80.0),positionProvider=PositionProvider.NMEA,headingSource=if(freshHeading!=null)HeadingSource.NMEA_PHYSICAL else HeadingSource.NONE,headingQuality=if(freshHeading!=null)HeadingQuality.STABLE else HeadingQuality.UNAVAILABLE,windDirectionTrueDegrees=freshTrueDirection,windSpeedKnots=freshTrueSpeed?:freshApparentSpeed,apparentWindAngleDegrees=freshApparentAngle,trueWindAngleDegrees=freshTrueAngle,trueWindSpeedKnots=freshTrueSpeed,apparentWindSpeedKnots=freshApparentSpeed,headingSampleSequence=headingSampleSequence.takeIf{freshHeading!=null},windSampleSequence=windSnapshot.sampleSequence)
-    _fix.value=merged
-    if(merged.valid){reportValidFix=true;val cutoff=now-10*60_000L;_recentFixes.value=(_recentFixes.value+merged).filter{it.receivedElapsedRealtime>=cutoff}.takeLast(1_200)}
-   }
-   val positionReason=if(!positionSentence)old.lastPositionRejectionReason else when{
-    u.position?.valid==false->"EXPLICIT_NO_FIX:$sentenceType"
-    u.position==null->"NO_POSITION_UPDATE:$sentenceType"
-    !NmeaFixQualityPolicy.allowsContinuation(_fix.value,now)->when{
-     _fix.value?.fixQuality?.takeIf{_fix.value?.fixQualityReceivedElapsedRealtime?.let{received->now-received in 0..NmeaFixQualityPolicy.QUALITY_FRESH_MILLIS}?:true}==0->"FIX_QUALITY_ZERO:$sentenceType"
-     (_fix.value?.hdop?:0.0)>5.0&&(_fix.value?.hdopReceivedElapsedRealtime?.let{received->now-received in 0..NmeaFixQualityPolicy.QUALITY_FRESH_MILLIS}?:true)->"POOR_HDOP:${_fix.value?.hdop}"
-     else->"QUALITY_REJECTED:$sentenceType"
+    suspend fun saveConnection(spec:NmeaConnectionSpec){
+        while(!loaded)delay(10)
+        require(spec.id.isNotBlank()&&spec.port in 1..65535&&(!spec.receive||spec.protocol!=Protocol.UDP||spec.localPort in 1..65535)){"Invalid NMEA endpoint"}
+        require(spec.protocol==Protocol.UDP||spec.host.isNotBlank()){ "A TCP host is required" }
+        require(!spec.send||spec.host.isNotBlank()){ "An output host is required" }
+        require(spec.id !in spec.forwardFrom){"A connection cannot forward to itself"}
+        synchronized(guard){
+            val previous=sessions[spec.id]
+            val proposed=sessions.values.map{it.spec}.filter{it.id!=spec.id}+spec
+            val edges=proposed.filter{it.send&&it.feed==NmeaFeed.RAW}.flatMap{target->target.forwardFrom.map{it to target.id}}.groupBy({it.first},{it.second})
+            fun cycle(node:String,path:Set<String>):Boolean=if(node in path)true else edges[node].orEmpty().any{cycle(it,path+node)}
+            require(proposed.none{cycle(it.id,emptySet())}){"This forwarding route would create a loop"}
+            require(previous?.requested!=true){"Stop this connection before editing its transport or routing"}
+            sessions[spec.id]=Session(spec.copy(name=spec.name.trim().ifBlank{"NMEA"}),snapshot=previous?.snapshot?.copy(spec=spec)?:NmeaConnectionSnapshot(spec))
+            publishConnections()
+        }
+        store.save(connectionSpecs.value)
     }
-    else->null
-   }
-   _diagnostics.value=old.copy(bytes=old.bytes+line.length+1,validSentences=old.validSentences+1,lastPacketElapsed=now,lastFixElapsed=if(u.position?.valid==true)now else old.lastFixElapsed,lastByType=old.lastByType+(u.type to line),raw=raw,lastPositionRejectionReason=positionReason)
-  }
-  // Never acquire the transport lock while holding the measurement-cache lock:
-  // reconnect/disconnect clears that cache as a generation boundary.
-  if(reportValidFix)connection.reportValidFix()
- }
- private fun Pair<Double,Long>?.fresh(now:Long)=this?.takeIf{now-it.second<=10_000}?.first
- private fun <T> Pair<T,Long>?.fresh(now:Long,maxAge:Long)=this?.takeIf{now-it.second<=maxAge}?.first
- @Synchronized private fun publishInstruments(now:Long){val resolution=headingResolver.resolve(now);val selected=resolution.selected;headingTrue=selected?.trueDegrees?.let{it to selected.receivedElapsedRealtime};headingMag=selected?.magneticDegrees?.let{it to selected.receivedElapsedRealtime};_instruments.value=NmeaInstrumentState(headingTrue,headingMag,sog,cog,speedThroughWater,selected?.sourceId,resolution.candidates,resolution.conflict,resolution.conflictDegrees,resolution.pinnedSourceUnavailable)}
- @Synchronized private fun resetHeldMeasurements(){updateRetainer.clear();headingResolver.reset();sourceRegistry.clearNmea();headingTrue=null;headingMag=null;depth=null;speedThroughWater=null;sog=null;cog=null;hdop=null;fixQuality=null;satellites=null;altitude=null;headingSampleSequence=0;wind.clear();liveDepth.clear();liveWind.clear();_fix.value=null;_instruments.value=NmeaInstrumentState();_diagnostics.value=_diagnostics.value.copy(lastPacketElapsed=null,lastFixElapsed=null,lastByType=emptyMap(),raw=emptyList(),lastPositionRejectionReason=null)}
+    suspend fun removeConnection(id:String){stopConnection(id);synchronized(guard){sessions.remove(id);publishConnections()};store.save(connectionSpecs.value)}
+    fun startConnection(id:String):Boolean=synchronized(guard){
+        val session=sessions[id]?:return@synchronized false
+        if(session.requested)return@synchronized false
+        session.requested=true;session.generation=++nextConnectionEpoch;session.started=SystemClock.elapsedRealtime();invalidateConnection(id)
+        val spec=session.spec
+        if(spec.protocol==Protocol.UDP&&!spec.receive){
+            try{session.udpWriter=DatagramSocket();session.snapshot=session.snapshot.copy(requested=true,state=NmeaConnectionState.CONNECTED_NO_DATA,error=null)}catch(e:Exception){session.requested=false;session.snapshot=session.snapshot.copy(error=e.message,state=NmeaConnectionState.ERROR)}
+            publishConnections();return@synchronized session.requested
+        }
+        var startTransport=spec.protocol==Protocol.TCP
+        val manager=if(spec.protocol==Protocol.UDP){udpOwners.getOrPut(spec.localPort){linkedSetOf()}.add(id);udpListeners.getOrPut(spec.localPort){startTransport=true;NmeaConnectionManager(scope)}}else NmeaConnectionManager(scope)
+        if(spec.protocol==Protocol.UDP&&spec.send)try{session.udpWriter=DatagramSocket()}catch(error:Exception){
+            udpOwners[spec.localPort]?.remove(id);if(udpOwners[spec.localPort].isNullOrEmpty()){udpOwners.remove(spec.localPort);udpListeners.remove(spec.localPort)?.disconnect()}
+            session.requested=false;session.snapshot=session.snapshot.copy(state=NmeaConnectionState.ERROR,error=error.message);publishConnections();return@synchronized false
+        }
+        session.manager=manager
+        session.reader=scope.launch{
+            val peerFilter=if(spec.protocol==Protocol.UDP&&spec.host.isNotBlank()&&spec.host!="0.0.0.0")runCatching{InetAddress.getByName(spec.host).hostAddress}.getOrNull()?:spec.host else null
+            manager.frames.collect{(line,peer)->
+                val peerAddress=peer.removePrefix("/").substringBeforeLast(':')
+                if(peerFilter==null||peerFilter==peerAddress)ingest(id,line,peer,spec.requireChecksum)
+            }
+        }
+        session.stateReader=scope.launch{manager.state.collect{value->synchronized(guard){if(session.requested){session.snapshot=session.snapshot.copy(state=value);if(value in setOf(NmeaConnectionState.ERROR,NmeaConnectionState.DISCONNECTED))invalidateConnection(id);publishConnections();refreshObservations()}}}}
+        session.transportReader=scope.launch{var last=-1L;manager.diagnostics.collect{value->synchronized(guard){if(session.requested){if(last!=value.connectionGeneration){last=value.connectionGeneration;session.generation=++nextConnectionEpoch;session.started=SystemClock.elapsedRealtime();invalidateConnection(id)};session.snapshot=session.snapshot.copy(transport=value.copy(connectionGeneration=session.generation));publishConnections()}}}}
+        if(startTransport)manager.connect(if(spec.protocol==Protocol.UDP)spec.profile().copy(host="")else spec.profile());publishConnections();true
+    }
+    fun stopConnection(id:String){
+        val stopped=synchronized(guard){
+        val session=sessions[id]?:return
+        session.requested=false;session.generation=++nextConnectionEpoch;session.reader?.cancel();session.stateReader?.cancel();session.transportReader?.cancel()
+        if(session.spec.protocol==Protocol.UDP&&session.spec.receive){val owners=udpOwners[session.spec.localPort];owners?.remove(id);if(owners.isNullOrEmpty()){udpListeners.remove(session.spec.localPort)?.disconnect();udpOwners.remove(session.spec.localPort)}}else session.manager?.disconnect()
+        session.manager=null;session.udpWriter?.close();session.udpWriter=null;session.started=null
+        session.snapshot=session.snapshot.copy(requested=false,state=NmeaConnectionState.DISCONNECTED,transport=session.snapshot.transport.copy(connectionGeneration=session.generation,desiredConnected=false))
+        invalidateConnection(id);refreshObservations();publishConnections();session
+        }
+        synchronized(stopped.writeGuard){ /* Every in-flight write finished or failed on the closed transport. */ }
+    }
+    fun reconnectConnection(id:String):Boolean{stopConnection(id);return startConnection(id)}
+    fun connectionEpoch(id:String)=synchronized(guard){sessions[id]?.generation}
+    fun isConnectionOpen(id:String)=synchronized(guard){sessions[id]?.let{it.requested&&(it.udpWriter!=null||it.manager?.hasOpenTransport()==true)}==true}
+    fun inputConnectionIds()=connections.value.filter{it.requested&&it.spec.receive}.mapTo(linkedSetOf()){it.spec.id}
+    fun anyRequested()=connections.value.any{it.requested}
+    fun writeConnection(id:String,expectedGeneration:Long,sentences:List<String>):Boolean {
+        val target=synchronized(guard){sessions[id]?.takeIf{it.requested&&it.generation==expectedGeneration&&it.spec.send}}?:return false
+        val lines=sentences.map{it.trim()+"\r\n"}
+        val address=if(target.spec.protocol==Protocol.UDP)try{InetAddress.getByName(target.spec.host)}catch(e:Exception){return false}else null
+        val attempt=outboundLoopGuard.beginWrite(lines)
+        val result=synchronized(target.writeGuard){
+            val current=synchronized(guard){target.takeIf{it.requested&&it.generation==expectedGeneration}}
+            if(current==null)false else try {
+                if(target.spec.protocol==Protocol.TCP)target.manager?.writeExpected(lines,target.manager?.diagnostics?.value?.connectionGeneration)?.success==true
+                else {
+                    val socket=synchronized(guard){target.udpWriter}?:return@synchronized false
+                    socket.broadcast=target.spec.host.endsWith(".255")||target.spec.host=="255.255.255.255"
+                    lines.forEach{val bytes=it.toByteArray(Charsets.US_ASCII);socket.send(DatagramPacket(bytes,bytes.size,address,target.spec.port))};true
+                }
+            }catch(e:Exception){synchronized(guard){target.snapshot=target.snapshot.copy(error=e.message)};false}
+        }
+        outboundLoopGuard.completeWrite(attempt,result)
+        synchronized(guard){if(target.requested&&target.generation==expectedGeneration){target.snapshot=target.snapshot.copy(writtenSentences=target.snapshot.writtenSentences+if(result)lines.size else 0,droppedSentences=target.snapshot.droppedSentences+if(result)0 else lines.size,lastWrittenElapsed=if(result)SystemClock.elapsedRealtime()else target.snapshot.lastWrittenElapsed,recentWritten=if(result)(target.snapshot.recentWritten+lines.map{it.trim()}).takeLast(80)else target.snapshot.recentWritten,error=if(result)null else target.snapshot.error);publishConnections()}}
+        return result
+    }
+    /** The asynchronous generic field decoder cannot republish a stopped epoch. */
+    fun publishInputCandidates(candidates:List<VesselSourceCandidate<*>>){synchronized(guard){
+        sourceRegistry.publishAll(candidates.filter{candidate->sessions[candidate.source.transportProfileId]?.let{it.requested&&it.spec.receive&&it.generation==candidate.source.connectionGeneration}==true})
+    }}
+    fun recordDroppedOutput(id:String,count:Int){synchronized(guard){sessions[id]?.let{it.snapshot=it.snapshot.copy(droppedSentences=it.snapshot.droppedSentences+count);publishConnections()}}}
+    private fun invalidateConnection(id:String){
+        val sourceIds=sourceRegistry.snapshot.value.values.flatten().filter{it.source.transportProfileId==id}.mapTo(mutableSetOf()){it.source.id}
+        sourceRegistry.removeSources(sourceIds);sourceIds.forEach{positionFixes.remove(it);depthFixes.remove(it)};processors.keys.filter{it.startsWith("$id|")}.forEach(processors::remove)
+    }
+    private fun ingest(id:String,line:String,peer:String,checksum:Boolean)=synchronized(guard){
+        val session=sessions[id]?:return@synchronized
+        if(!session.requested||!session.spec.receive)return@synchronized
+        val now=SystemClock.elapsedRealtime();val normalized=line.trim();val old=session.snapshot.diagnostics
+        val valid=NmeaChecksum.validate(normalized,checksum)
+        val echo=valid&&outboundLoopGuard.isRecentExactOutboundForReceiver(normalized,"$id:${session.generation}:$peer",now)
+        val raw=(old.raw+if(echo)"[echo] $normalized" else normalized).takeLast(160)
+        val processor=processors.getOrPut("$id|${session.generation}|$peer"){Processor()}
+        val parsed=if(valid&&!echo)processor.parser.parseEnvelope(normalized,checksum,now)else null
+        session.snapshot=session.snapshot.copy(diagnostics=old.copy(bytes=old.bytes+line.length+1,validSentences=old.validSentences+if(valid)1 else 0,invalidSentences=old.invalidSentences+if(!valid)1 else 0,lastPacketElapsed=now,raw=raw,echoedAppTxSentences=old.echoedAppTxSentences+if(echo)1 else 0))
+        if(!valid||echo){publishConnections();return@synchronized}
+        _frames.tryEmit(NmeaRawFrame(id,session.generation,peer,normalized,now));_validRaw.tryEmit(normalized)
+        if(parsed==null){publishConnections();return@synchronized}
+        val update=processor.retained.accept(parsed.update,now,normalized);val envelope=parsed.copy(update=update,connectionId=id,connectionGeneration=session.generation,peer=peer);_parsed.tryEmit(envelope)
+        val base=NmeaCandidateMapper.map(envelope,id,session.generation)
+        fun identify(source:VesselSourceIdentity)=source.copy(id="nmea:$id:${session.generation}:$peer:${source.fullSentenceId}",stableKey="nmea:$id:$peer:${source.fullSentenceId}",displayName="${session.spec.name} · ${source.fullSentenceId}",transportPeer=peer)
+        val candidates=base.map{candidate->val identity=identify(candidate.source);candidate.copy(source=identity,provenance=VesselProvenance.Nmea(identity))}
+        if(!update.holdAllowed){
+            val affected=NmeaInvalidationPolicy.affectedMetrics(envelope.sentenceType)
+            val ids=sourceRegistry.snapshot.value.values.flatten().filter{it.metric in affected&&it.source.transportProfileId==id&&it.source.id.contains(":$peer:")&&it.source.fullSentenceId==envelope.fullSentenceId}.mapTo(mutableSetOf()){it.source.id};sourceRegistry.removeSources(ids);ids.forEach{positionFixes.remove(it);depthFixes.remove(it)}
+        }
+        val pos=candidates.firstOrNull{it.metric==VesselMetricId.POSITION}
+        var acceptedPosition=false
+        if(pos!=null&&update.position!=null){
+            val rawFix=update.position.copy(sogKnots=update.sog,cogTrueDegrees=update.cog,sogReceivedElapsedRealtime=update.measuredAt(NmeaMetric.SOG),cogReceivedElapsedRealtime=update.measuredAt(NmeaMetric.COG),hdop=update.hdop?:update.position.hdop,fixQuality=update.fixQuality?:update.position.fixQuality,satellites=update.satellites?:update.position.satellites,positionProvider=PositionProvider.NMEA)
+            val gate=processor.positionGates.getOrPut(envelope.fullSentenceId){PositionIntegrityFilter()}
+            val result=if(NmeaFixQualityPolicy.allowsContinuation(rawFix,now))gate.evaluate(rawFix)else null
+            if(result is PositionIntegrityResult.Accepted){result.fixes.lastOrNull()?.let{positionFixes[pos.source.id]=it.fix;acceptedPosition=true;session.manager?.reportValidFix();session.snapshot=session.snapshot.copy(diagnostics=session.snapshot.diagnostics.copy(lastFixElapsed=now))}}
+        }
+        sourceRegistry.publishAll(candidates.filter{it.metric!=VesselMetricId.POSITION||acceptedPosition})
+        update.depthObservation?.let{observation->candidates.firstOrNull{it.metric==VesselMetricId.DEPTH}?.let{depthFixes[it.source.id]=observation}}
+        refreshObservations();publishConnections()
+    }
+    @Suppress("UNCHECKED_CAST") private fun <T> selected(metric:VesselMetricId,now:Long):VesselSourceCandidate<T>?{
+        val connectionPin=vessel.metricSourcePins["POSITION_CONNECTION"]
+        val all=sourceRegistry.candidates<T>(metric).filter{it.sourceClass==VesselSourceClass.BOAT_NMEA}
+        val raw=if(metric==VesselMetricId.POSITION)all.filter{it.source.transportProfileId==connectionPin}else all
+        val pin=vessel.metricSourcePins[metric.name]?:when(metric){VesselMetricId.POSITION->vessel.pinnedPositionSourceId;VesselMetricId.HEADING_TRUE,VesselMetricId.HEADING_MAGNETIC->vessel.boatHeadingSourceId;else->null}
+        val effectivePin=if(metric==VesselMetricId.POSITION){
+            val policy="$connectionPin|$pin"
+            if(positionPolicyKey!=policy){positionPolicyKey=policy;positionLock=null}
+            if(positionLock==null){
+                positionLock=pin?:raw.firstOrNull{MetricSourceEligibility.evaluate(metric,it,now)==CandidateValidity.ELIGIBLE}?.source?.persistentKey
+                val chosen=positionLock
+                if(pin==null&&chosen!=null&&pendingPositionPin!=chosen){
+                    pendingPositionPin=chosen
+                    scope.launch{
+                        val current=vesselSettings.settings.first()
+                        if(current.metricSourcePins["POSITION_CONNECTION"]==connectionPin&&current.metricSourcePins["POSITION"]==null)
+                            vesselSettings.save(current.copy(metricSourcePins=current.metricSourcePins+("POSITION" to chosen)))
+                    }
+                }
+            }
+            positionLock
+        }else pin
+        val resolved=effectivePin?.let{VesselSourcePinPolicy.resolve(raw,it)?:it}
+        return arbiter.select(metric,raw,MetricSourcePreference(VesselSourcePreference.BOAT,resolved,if(metric==VesselMetricId.POSITION)false else vessel.allowPinnedFallback,connectionPriorities()),now).selected
+    }
+    suspend fun selectPositionConnection(id:String,sourceKey:String?=null){
+        require(isConnectionOpen(id)){"Connect this input before selecting its position"}
+        val current=vesselSettings.settings.first()
+        val pins=current.metricSourcePins.toMutableMap();pins["POSITION_CONNECTION"]=id;if(sourceKey==null)pins.remove("POSITION")else pins["POSITION"]=sourceKey
+        val updated=current.copy(metricSourcePins=pins,pinnedPositionSourceId=null,allowPinnedFallback=false)
+        synchronized(guard){positionLock=null;positionPolicyKey=null;vessel=updated;arbiter.reset();refreshObservations()}
+        vesselSettings.save(updated)
+    }
+    suspend fun ensurePositionConnection(){
+        val current=vesselSettings.settings.first()
+        val pinned=current.metricSourcePins["POSITION_CONNECTION"]
+        if(pinned==null){val id=connections.value.firstOrNull{it.requested&&it.spec.receive}?.spec?.id?:return;selectPositionConnection(id)}
+    }
+    fun connectionPriorities()=connectionSpecs.value.associate{it.id to it.priority}
+    private fun refreshObservations(){
+        val now=SystemClock.elapsedRealtime();val position=selected<VesselPosition>(VesselMetricId.POSITION,now)
+        val identity=position?.source?.id
+        if(identity!=selectedIdentity){selectedIdentity=identity;selectedEpoch++;_connectionStartedElapsed.value=position?.source?.transportProfileId?.let{sessions[it]?.started};_transport.value=NmeaTransportDiagnostics(connectionGeneration=selectedEpoch,connectedAtElapsedRealtime=_connectionStartedElapsed.value)}
+        fun number(metric:VesselMetricId)=selected<Double>(metric,now)?.let{it.value to it.receivedElapsedRealtime}
+        val heading=number(VesselMetricId.HEADING_TRUE);val magnetic=number(VesselMetricId.HEADING_MAGNETIC)
+        val selectedFix=identity?.let(positionFixes::get)?.let{f->f.copy(headingTrueDegrees=heading?.first,headingReceivedElapsedRealtime=heading?.second,headingMagneticDegrees=magnetic?.first,headingMagneticReceivedElapsedRealtime=magnetic?.second,headingSource=if(heading!=null)HeadingSource.NMEA_PHYSICAL else HeadingSource.NONE,headingQuality=if(heading!=null)HeadingQuality.STABLE else HeadingQuality.UNAVAILABLE)}
+        if(_fix.value!=selectedFix){_fix.value=selectedFix;if(selectedFix!=null)_recentFixes.value=(_recentFixes.value+selectedFix).filter{now-it.receivedElapsedRealtime<600_000}.takeLast(1200)}
+        _instruments.value=NmeaInstrumentState(heading,magnetic,number(VesselMetricId.SOG),number(VesselMetricId.COG),number(VesselMetricId.SPEED_THROUGH_WATER),selected<Double>(VesselMetricId.HEADING_TRUE,now)?.source?.persistentKey)
+        val depth=selected<Double>(VesselMetricId.DEPTH,now)
+        val depthObservation=depth?.source?.id?.let(depthFixes::get)
+        val depthKey=depthObservation?.let{"${depth.source.id}:${it.receivedElapsedRealtime}"}
+        if(depthKey!=lastDepthKey){lastDepthKey=depthKey;if(depthObservation==null)liveDepth.clear()else{liveDepth.accept(depthObservation);_depth.tryEmit(depthObservation)}}
+        fun wind(metric:VesselMetricId)=number(metric)?.let{TimedWindValue(it.first,it.second)}
+        liveWind.publishSelected(LiveWindState(trueSpeed=wind(VesselMetricId.TRUE_WIND_SPEED),apparentSpeed=wind(VesselMetricId.APPARENT_WIND_SPEED),trueDirection=wind(VesselMetricId.TRUE_WIND_DIRECTION),trueDirectionSource=com.yokuli.anchorwatch.domain.condition.TrueWindDirectionSource.MWD,apparentAngle=wind(VesselMetricId.APPARENT_WIND_ANGLE),trueAngle=wind(VesselMetricId.TRUE_WIND_ANGLE)))
+        val live=sessions.values.filter{it.requested&&it.spec.receive}
+        _connectionState.value=if(selectedFix!=null)NmeaConnectionState.CONNECTED else when{live.any{it.manager?.hasOpenTransport()==true}->NmeaConnectionState.CONNECTED_NO_FIX;live.any{it.snapshot.state==NmeaConnectionState.RECONNECTING}->NmeaConnectionState.RECONNECTING;live.any{it.snapshot.state==NmeaConnectionState.CONNECTING}->NmeaConnectionState.CONNECTING;live.isNotEmpty()->NmeaConnectionState.ERROR;else->NmeaConnectionState.DISCONNECTED}
+        if(_connectionStartedElapsed.value==null&&live.isNotEmpty())_connectionStartedElapsed.value=live.mapNotNull{it.started}.minOrNull()
+        _transport.value=_transport.value.copy(desiredConnected=live.isNotEmpty(),lastByteReceivedElapsedRealtime=live.mapNotNull{it.snapshot.diagnostics.lastPacketElapsed}.maxOrNull())
+    }
+    private fun publishConnections(){
+        _specs.value=sessions.values.map{it.spec}.sortedByDescending{it.priority}
+        _connections.value=_specs.value.mapNotNull{spec->sessions[spec.id]?.let{it.snapshot.copy(spec=spec,requested=it.requested)}}
+        val d=sessions.values.map{it.snapshot.diagnostics}
+        _diagnostics.value=NmeaDiagnostics(bytes=d.sumOf{it.bytes},validSentences=d.sumOf{it.validSentences},invalidSentences=d.sumOf{it.invalidSentences},checksumErrors=d.sumOf{it.checksumErrors},lastPacketElapsed=d.mapNotNull{it.lastPacketElapsed}.maxOrNull(),lastFixElapsed=d.mapNotNull{it.lastFixElapsed}.maxOrNull(),raw=sessions.values.flatMap{session->session.snapshot.diagnostics.raw.takeLast(40).map{"[${session.spec.name}] $it"}}.takeLast(200))
+    }
+    // Compatibility commands now address one named connection. Feature readers
+    // may claim existing input, but never reconnect saved endpoints implicitly.
+    fun connect(p:ConnectionProfile):Boolean {synchronized(guard){if(!sessions.containsKey(p.stableId))sessions[p.stableId]=Session(NmeaConnectionSpec(id=p.stableId,name=p.name,protocol=p.protocol,host=p.host,port=p.port,localPort=p.localPort?:p.port,autoReconnect=p.autoReconnect,requireChecksum=p.requireChecksum));publishConnections()};scope.launch{store.save(connectionSpecs.value)};return startConnection(p.stableId)}
+    fun reconnect(p:ConnectionProfile)=if(synchronized(guard){sessions.containsKey(p.stableId)})reconnectConnection(p.stableId)else connect(p)
+    fun disconnect(){activeProfileStableId().takeIf{it.isNotBlank()}?.let(::stopConnection)}
+    fun disconnectAll(){connectionSpecs.value.forEach{stopConnection(it.id)}}
+    fun acquireBackgroundConnection(p:ConnectionProfile)=hasOpenTransport()
+    fun claimBackgroundConnectionIfConnected()=hasOpenTransport()
+    fun releaseBackgroundConnection()=Unit
+    fun clearUserDisconnectLatch()=Unit
+    fun setSafetyOwnedRetry(enabled:Boolean){synchronized(guard){sessions.values.filter{it.requested&&it.spec.receive}.forEach{it.manager?.setSafetyOwnedRetry(enabled)}}}
+    fun isUserDisconnected()=!hasOpenTransport()
+    fun hasOpenTransport()=synchronized(guard){sessions.values.any{it.requested&&it.spec.receive&&it.manager?.hasOpenTransport()==true}}
+    fun activeProfileStableId()=selectedIdentity?.let{identity->sourceRegistry.snapshot.value.values.flatten().firstOrNull{it.source.id==identity}?.source?.transportProfileId}?:connectionSpecs.value.firstOrNull()?.id.orEmpty()
+    fun connectionGeneration()=selectedEpoch
+    fun pinBoatHeadingSource(sourceId:String?,allowFallback:Boolean=false)=Unit
+    fun clearDiagnostics(){synchronized(guard){sessions.values.forEach{it.snapshot=it.snapshot.copy(diagnostics=NmeaDiagnostics())};publishConnections()}}
+    fun writeToBoat(sentences:List<String>)=writeToBoatExpected(sentences,null).success
+    fun writeToBoatExpected(sentences:List<String>,expectedGeneration:Long?):NmeaTransportWriteResult {
+        val id=activeProfileStableId();val epoch=connectionEpoch(id)
+        val accepted=expectedGeneration==null||expectedGeneration==selectedEpoch
+        val result=accepted&&epoch!=null&&writeConnection(id,epoch,sentences)
+        return NmeaTransportWriteResult(result,expectedGeneration,selectedEpoch,sentences.size,if(result)sentences.size else 0)
+    }
+    fun accept(line:String,requireChecksum:Boolean=true){val id=activeProfileStableId();ingest(id,line,"injected",requireChecksum)}
 }

@@ -9,4 +9,5 @@ data class ParsedNmeaEnvelope(
     val fullSentenceId:String,
     val receivedElapsedRealtime:Long,
     val update:NmeaUpdate,
+    val connectionId:String="",val connectionGeneration:Long=0,val peer:String="",
 )

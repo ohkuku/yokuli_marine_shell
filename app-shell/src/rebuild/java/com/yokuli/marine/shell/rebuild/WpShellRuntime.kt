@@ -11,14 +11,23 @@ import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import com.yokuli.marine.core.design.WpAccent
-import java.io.File
+import com.yokuli.marine.shell.rebuild.ui.formatDistance
 
 /** The original Shell owns task history, Start editing and navigation. Apps only publish destinations. */
 class WpShellRuntime(private val os: OsStore) {
-    private val restoreOriginalPreferences = !File(os.context.filesDir, "experience-v1.json").exists() &&
-        File(os.context.filesDir, "datastore/launcher_state.pb").exists()
     val inputRouter = InternalAppInputRouter()
     val apps = AppId.entries.map(::ShellApp)
+    val appPreferenceRegistry = AppPreferenceRegistry.compose(apps.map { it.id }.toSet(),
+        listOf(AppPreferenceContribution(LauncherAppId("chart"),listOf(AppPreferenceDefinition.Choice(
+            AppPreferenceKey("chart.tile.mode"),listOf("AUTO","MAP","NAVIGATION","POSITION","STATIC"),AppPreferenceValue.Choice("AUTO"),
+            AppPreferenceLabel("海图磁贴内容","Chart tile content"),mapOf(
+                "AUTO" to AppPreferenceLabel("自动","Automatic"),"MAP" to AppPreferenceLabel("地图快照","Map snapshot"),
+                "NAVIGATION" to AppPreferenceLabel("当前导航","Active navigation"),"POSITION" to AppPreferenceLabel("当前位置","Current position"),
+                "STATIC" to AppPreferenceLabel("静态图标","Static icon")))))) + apps.filter { it.app != AppId.CHART }.map { app ->
+            AppPreferenceContribution(app.id,listOf(AppPreferenceDefinition.Choice(
+                AppPreferenceKey("${app.id.value}.tile.mode"), listOf("LIVE","STATIC"), AppPreferenceValue.Choice("LIVE"),
+                AppPreferenceLabel("磁贴内容","Tile content"),mapOf("LIVE" to AppPreferenceLabel("实时内容","Live content"),"STATIC" to AppPreferenceLabel("静态图标","Static icon")))))
+        })
     val catalog = LauncherCatalogSnapshot(
         revision = 1,
         apps = apps.map { LauncherAppDescriptor(it.id, it.entry) },
@@ -40,6 +49,7 @@ class WpShellRuntime(private val os: OsStore) {
     )
     val persistence = ProtoDataStoreLauncherPersistence.create(
         os.context, os.scope, LauncherPersistedState(document = defaultDocument),
+        productMigration = nineAppMigration(),
         installedEntryIds = apps.map { it.entry }.toSet(),
     )
     private val host = StaticLauncherHostPort(
@@ -50,14 +60,32 @@ class WpShellRuntime(private val os: OsStore) {
     val engine: LauncherEngine = DefaultLauncherEngine(host, persistence, defaultDocument, os.scope)
 
     init {
-        if (restoreOriginalPreferences) os.scope.launch {
-            persistence.load()?.let { preferences ->
-                os.chinese = preferences.languageTag != "en"
-                os.light = preferences.themeModeName == "LIGHT"
-                os.accent = WpAccent.entries.firstOrNull { it.name == preferences.accentName }?.argb ?: WpAccent.CYAN.argb
-                os.reduceMotion = preferences.motionPreferenceName == "REDUCED"
-                os.save()
+        os.scope.launch {
+            persistence.load()
+            persistence.updatePreferences { preferences ->
+                if (preferences.appPreferenceValues["preferences.rebuild.migrated"] == "b:1") preferences else {
+                    val old=os.initial
+                    preferences.copy(
+                        languageTag=if(old.has("language")) if(old.optString("language")=="en") "en" else "zh-CN" else preferences.languageTag,
+                        themeModeName=if(old.has("light")) if(old.optBoolean("light")) "LIGHT" else "DARK" else preferences.themeModeName,
+                        accentName=WpAccent.entries.firstOrNull { old.has("accent") && it.argb==old.optLong("accent") }?.name ?: preferences.accentName,
+                        motionPreferenceName=if(old.has("reduceMotion")) if(old.optBoolean("reduceMotion")) "REDUCED" else "FOLLOW_SYSTEM" else preferences.motionPreferenceName,
+                        appPreferenceValues=preferences.appPreferenceValues + mapOf(
+                            "preferences.rebuild.migrated" to "b:1",
+                            "preferences.display.keep_awake" to (preferences.appPreferenceValues["preferences.display.keep_awake"] ?: if(old.optBoolean("keepAwake",true)) "b:1" else "b:0")),
+                    )
+                }
             }
+            persistence.state.collect { preferences -> preferences?.let {
+                os.chinese=it.languageTag!="en";os.light=it.themeModeName=="LIGHT"
+                os.accent=WpAccent.entries.firstOrNull { a -> a.name==it.accentName }?.argb ?: WpAccent.CYAN.argb
+                os.reduceMotion=it.motionPreferenceName=="REDUCED"
+                os.keepAwake=it.appPreferenceValues["preferences.display.keep_awake"]!="b:0"
+                os.measurementUnits=runCatching { MeasurementUnitSystem.valueOf(it.measurementUnitSystemName) }.getOrDefault(MeasurementUnitSystem.NAUTICAL)
+                os.coordinateFormat=it.appPreferenceValues["preferences.coordinate.format"]?.removePrefix("c:") ?: "DMM"
+                os.maps.chinese=os.chinese
+                os.maps.distanceLabel={meters->os.formatDistance(meters)}
+            } }
         }
         os.scope.launch {
             engine.state.collect { state ->
@@ -74,21 +102,37 @@ class WpShellRuntime(private val os: OsStore) {
         }
     }
 
-    fun pageForToken(token: LaunchToken): String = apps.firstOrNull { it.rootToken == token }?.page ?: token.value
+    fun pageForToken(token: LaunchToken): String = canonicalPage(apps.firstOrNull { it.rootToken == token }?.page ?: token.value)
+
+    fun updateSystemPreferences(transform: (LauncherPersistedState) -> LauncherPersistedState) {
+        os.scope.launch { runCatching { persistence.updatePreferences(transform) }
+            .onFailure { os.notify("设置未保存，请重试","Settings were not saved. Please retry.") } }
+    }
+
+    fun canonicalPage(page: String): String = when {
+        page == "trip" || page == "trip.overview" -> "voyages"
+        page == "anchorages" || page == "anchorages.overview" -> "places:anchorages"
+        page == "data" || page == "data.overview" -> "instruments"
+        page == "sources" || page.startsWith("data.sources") -> "settings:sources"
+        page == "marine-settings" -> "settings:vessel"
+        page == "output" -> "nmea:outputs"
+        page == "sonar" || page == "sonar.overview" -> "chart:depth"
+        page == "local_nmea" -> "local_nmea"
+        else -> page
+    }
 
     fun appForPage(page: String): ShellApp? {
-        val root = when (page.substringBefore(':').substringBefore('/')) {
-            "place", "route" -> "places"
-            "marine-settings" -> "settings"
-            "sources" -> "data"
-            "output" -> "nmea"
+        val canonical=canonicalPage(page)
+        val root = when (canonical.substringBefore(':').substringBefore('/')) {
+            "place", "route", "saved", "spot", "anchorage", "collection" -> "places"
             "voyage", "replay", "report" -> "voyages"
-            else -> page.substringBefore(':').substringBefore('/')
+            else -> canonical.substringBefore(':').substringBefore('/')
         }
         return apps.firstOrNull { it.page == root }
     }
 
-    fun open(page: String) {
+    fun open(destination: String) {
+        val page=canonicalPage(destination)
         when (page) {
             "start" -> home()
             "search" -> input(ShellInput.SEARCH)
@@ -117,6 +161,23 @@ class WpShellRuntime(private val os: OsStore) {
             engine.dispatch(LauncherAction.RestorePersistedDocument(defaultDocument))
         }
     }
+}
+
+/** All migration targets exist in this catalog, including upgrades starting at old model 0/1/2. */
+private fun nineAppMigration(): LauncherProductMigrationPlan {
+    val rules=listOf(
+        "instruments" to setOf("data","data_sources"),
+        "nmea" to setOf("nmea_input","nmea_output"),
+        "voyages" to setOf("trip"),
+        "navigation" to setOf("anchorages"),
+        "chart" to setOf("sonar"),
+        "instruments" to setOf("data","data_sources"),
+        "nmea" to setOf("nmea_input","nmea_output"),
+    )
+    return LauncherProductMigrationPlan(rules.mapIndexed { index,(target,legacy) ->
+        LauncherProductMigrationStep(index+1,LauncherEntryId(target),legacy.map(::LauncherEntryId).toSet(),
+            legacy.map { LauncherTokenAlias("$it.overview", if(target=="nmea") "nmea.root" else if(target=="chart") "chart.browse" else "$target.overview") })
+    })
 }
 
 data class ShellApp(val app: AppId) {

@@ -21,9 +21,9 @@ class VesselPositionRepository @Inject constructor(navigation:NavigationReposito
     private val _acceptedPhoneFix=MutableStateFlow<NavigationFix?>(null);val acceptedPhoneFix=_acceptedPhoneFix.asStateFlow()
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
     init{
-        scope.launch{navigation.fix.filterNotNull().collect{ingestBoat(it)}}
+        scope.launch{navigation.fix.collect{if(it==null)resetBoatGeneration()else ingestBoat(it)}}
         scope.launch{navigation.sourceInvalidations.collect{event->if(VesselMetricId.POSITION in event.affectedMetrics)resetBoatGeneration()}}
-        scope.launch{systemLocation.fix.filterNotNull().collect{ingestPhone(it)}}
+        scope.launch{systemLocation.fix.collect{if(it==null){phoneGate.reset();_phone.value=VesselObservation();_acceptedPhoneFix.value=null}else ingestPhone(it)}}
         scope.launch{navigation.transportDiagnostics.map{it.connectionGeneration}.distinctUntilChanged().drop(1).collect{resetBoatGeneration()}}
     }
     @Synchronized fun ingestBoat(fix:NavigationFix){ingest(fix,VesselDataSource.BOAT_NMEA,boatGate,_boat)}

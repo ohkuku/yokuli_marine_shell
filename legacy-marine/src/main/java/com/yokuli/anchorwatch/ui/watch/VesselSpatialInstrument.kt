@@ -36,7 +36,7 @@ private enum class SpatialReading { HEEL, PITCH, HEADING }
 
 /** A geometric view of the canonical observations, not another sensor owner. */
 @Composable
-internal fun VesselSpatialInstrument(
+fun VesselSpatialInstrument(
     state: MainUiState,
     locked: Boolean,
     confirmFrame: () -> Unit,

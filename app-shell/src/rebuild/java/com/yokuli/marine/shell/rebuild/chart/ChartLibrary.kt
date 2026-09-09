@@ -214,8 +214,6 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     val layers get() = folders.filter {it.layerName!=null}.map {folder ->
         ChartLayer(folder.id,folder.layerName!!,folderFiles(folder).filter {it.enabled && it.error==null})
     }
-    val selectedLayers get() = layers.filter {layer -> folders.any {it.id==layer.id && it.enabled} && layer.files.isNotEmpty()}
-    val selected get() = selectedLayers.flatMap {it.files}
     fun folderFiles(folder:ChartFolder) = files.filter {it.source==folder.uri}.sortedWith(compareBy<ChartFile> {it.priority}.thenBy {it.filename.lowercase()})
     private fun loadFolders():List<ChartFolder> {
         val array=initial.optJSONArray("folders") ?: JSONArray()
@@ -254,15 +252,6 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         folders=folders.map {if(it.id==folder.id) it.copy(layerName=title,enabled=if(it.layerName==null) true else it.enabled) else it};persist()
     }
     fun removeLayer(folder:ChartFolder) {folders=folders.map {if(it.id==folder.id) it.copy(layerName=null) else it};persist()}
-    fun toggleLayer(folder:ChartFolder) {folders=folders.map {if(it.id==folder.id) it.copy(enabled=!it.enabled) else it};persist()}
-    fun enableLayer(folder:ChartFolder) {folders=folders.map {if(it.id==folder.id) it.copy(enabled=true) else it};persist()}
-    fun moveLayer(folder:ChartFolder,delta:Int) {
-        val arranged=folders.toMutableList();val from=arranged.indexOfFirst {it.id==folder.id};if(from<0) return
-        val visible=arranged.indices.filter {arranged[it].layerName!=null};val position=visible.indexOf(from)
-        if(position<0) return
-        val next=(position+delta).coerceIn(0,visible.lastIndex);if(next==position) return
-        val to=visible[next];arranged.add(to,arranged.removeAt(from));folders=arranged;persist()
-    }
     fun moveFile(file:ChartFile,delta:Int) {
         val ordered=files.filter {it.source==file.source}.sortedBy {it.priority}.toMutableList()
         val from=ordered.indexOfFirst {it.id==file.id};if(from<0) return
@@ -270,7 +259,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         ordered.add(to,ordered.removeAt(from));val priorities=ordered.mapIndexed {i,f -> f.id to i}.toMap()
         files=files.map {f -> priorities[f.id]?.let {f.copy(priority=it)} ?: f};persist()
     }
-    /** Viewing one chart enables its folder layer without disabling unrelated chart folders. */
+    /** Make a file available. The map source selection belongs to MapSessionStore. */
     fun showOnly(file: ChartFile) {
         files=files.map {if(it.id==file.id) it.copy(enabled=true) else it}
         folders=folders.map {if(it.uri==file.source) it.copy(enabled=true,layerName=it.layerName ?: it.name) else it};persist()

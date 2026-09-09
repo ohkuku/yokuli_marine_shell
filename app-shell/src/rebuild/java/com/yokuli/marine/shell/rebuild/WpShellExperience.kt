@@ -11,6 +11,7 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -55,23 +58,18 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
         val settingsReady by remember(marine) { marine.vm.ui.map { it.settingsReady }.distinctUntilChanged() }.collectAsState(false)
         LaunchedEffect(os.chinese, marine, settingsReady) { marine.syncLanguage() }
         LaunchedEffect(marine) {
-            marine.vm.navigationRequests.collect { destination ->
-                // The embedded app owns its own nested pages. Notifications and alarm banners
-                // can also request a destination while the user is in Start or another app.
-                val embeddedPages = setOf("anchor", "anchorages", "sonar", "voyages", "instruments", "nmea", "marine-settings", "sources", "output")
-                if (os.page !in embeddedPages) {
-                    os.open(when (destination) {
-                        0 -> "anchor"
-                        1 -> "instruments"
-                        2 -> when (marine.vm.ui.value.dataSection) {
-                            0 -> "sources"
-                            1 -> "nmea"
-                            2 -> "output"
-                            else -> "sonar"
-                        }
-                        else -> "marine-settings"
-                    })
-                }
+            marine.vm.shellDestinations.collect { destination ->
+                os.open(when(destination.name) {
+                    "CHART" -> "chart"
+                    "ANCHOR" -> "anchor"
+                    "LOGBOOK" -> "voyages"
+                    "INSTRUMENTS" -> "instruments"
+                    "SOURCES" -> "settings:sources"
+                    "NMEA" -> "nmea"
+                    "LOCAL_NMEA" -> "local_nmea"
+                    "DEPTH" -> "chart:depth"
+                    else -> "settings"
+                })
             }
         }
     }
@@ -214,9 +212,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                         Label(message, 17, Color.White)
                     }
                 }
-                os.marine?.let { marine ->
-                    com.yokuli.anchorwatch.LegacyMarineAlerts(marine.vm, os.chinese, colors.accent, os.light)
-                }
+                SystemMarineAlerts(os)
             }
             if (os.storageError) Label(os.t("存储失败，改动尚未保存", "Storage error. Changes have not been saved."), 13, colors.warning, Modifier.padding(8.dp))
             key(state.surface, state.transient) {
@@ -232,24 +228,58 @@ private fun ShellAppContent(os: OsStore, page: String, service: (String, String?
         page == "chart" -> ChartAppScreen(os)
         page == "library" -> LibraryScreen(os)
         page.startsWith("library:") -> LibraryFolderScreen(os, page.substringAfter(':'))
-        page == "places" -> PlacesScreen(os)
+        page == "places" || page.startsWith("places:") -> PlacesScreen(os,anchoragesOnly=page=="places:anchorages")
         page.startsWith("place:") -> PlaceScreen(os, page.substringAfter(':'))
         page.startsWith("route:") -> RouteScreen(os, page.substringAfter(':'))
-        page == "data" -> DataScreen(os, service)
-        page == "nmea" -> NmeaScreen(os, service)
-        page == "settings" -> SettingsScreen(os)
-        else -> MarineAppScreen(os, page)
+        page.startsWith("anchorage:") -> SavedLocationScreen(os,page.substringAfter(':').toLongOrNull())
+        page.startsWith("collection:") -> CollectionScreen(os,page.substringAfter(':').toLongOrNull())
+        page == "instruments" || page.startsWith("instruments:") -> InstrumentsScreen(os)
+        page == "voyages" -> LogbookScreen(os)
+        page.substringBefore(':') in setOf("voyage","replay","report") -> LogbookScreen(os,page.substringAfter(':').toLongOrNull())
+        page == "anchor" -> AnchorExperience(os)
+        page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os, service)
+        page == "local_nmea" -> LocalNmeaScreen(os, service)
+        page == "settings" || page.startsWith("settings:") -> SettingsScreen(os,page.substringAfter(':',"overview"))
+        page == "chart:depth" -> DepthSurveyScreen(os)
+        else -> Column { PageHeader(os,os.t("页面已更新","page updated"));PageBody {
+            Label(os.t("这个旧入口已不再使用。你的数据仍保留在所属应用中。","This older destination has moved. Your data remains in its app."),22)
+            MetroButton(os.t("返回应用列表","open apps"),os::home,primary=true)
+        } }
     }
 }
 
 @Composable
 private fun shellVisual(os: OsStore, app: ShellApp): LauncherEntryVisualContribution {
     val title = os.title(app.app)
-    val detail = when (app.app.name) {
-        "CHART" -> os.t("船位 · 标记 · 测距", "position · marks · distance")
+    val preferences by os.shell.persistence.state.collectAsState()
+    val data by os.hub.state.collectAsState()
+    val now=rememberMarineClock()
+    val fix=data.fix(os.positionSource)?.takeIf {it.fresh(now)}
+    val configured=preferences?.appPreferenceValues?.get("${app.id.value}.tile.mode")?.removePrefix("c:")
+    val tileMode=if(app.app==AppId.CHART && (configured==null||configured=="AUTO")) when {
+        os.activeRoute!=null->"NAVIGATION";os.maps.snapshot!=null->"MAP";fix!=null->"POSITION";else->"STATIC"
+    } else configured?:"LIVE"
+    val headline=when(tileMode) {
+        "NAVIGATION"->os.activeRoute?.name?:os.t("尚未导航","no active navigation")
+        "POSITION"->fix?.let{os.formatSpeed(it.speed)}?:os.t("船位不可用","position unavailable")
+        "MAP"->os.maps.sourceName(os.chinese)
+        else->os.t("浏览海图","browse charts")
+    }
+    val detail = if(tileMode=="STATIC"&&app.app!=AppId.CHART) "" else when (app.app.name) {
+        "CHART" -> when(tileMode){
+            "NAVIGATION"->os.nextPoint?.let{point->fix?.let{os.formatDistance(distance(it.point,point))}}?:os.t("等待船位或目标","awaiting position or target")
+            "POSITION"->fix?.let{os.formatCoordinates(it.point)}?:os.t("在设置中选择来源","choose a source in settings")
+            "MAP"->if(os.maps.snapshot==null)os.t("打开海图更新快照","open chart to update snapshot")else os.formatCoordinates(os.center)
+            else->os.t("船位 · 标记 · 测距", "position · marks · distance")
+        }
         "LIBRARY" -> os.t("文件夹与海图图层", "folders and chart layers")
-        "PLACES" -> os.t("${os.places.size} 个标记 · ${os.routes.size} 条航线", "${os.places.size} marks · ${os.routes.size} routes")
-        "SETTINGS" -> os.t("让它成为你的", "make it yours")
+        "PLACES" -> os.t("${os.allPlaces.size} 个坐标 · ${os.routes.size} 条航线", "${os.allPlaces.size} places · ${os.routes.size} routes")
+        "VOYAGES" -> if(os.recordingActive)if(os.recordingPaused)os.t("记录已暂停","recording paused")else os.t("正在记录本次航行","recording this voyage")else os.t("航迹、时刻与回忆","tracks, moments & memories")
+        "ANCHOR" -> os.marine?.vm?.ui?.value?.active?.let{if(it.paused)os.t("值守已暂停","watch paused")else os.t("锚警值守中","anchor watch active")}?:os.t("准备下一次锚泊","prepare your next anchorage")
+        "INSTRUMENTS" -> fix?.let{os.formatSpeed(it.speed)}?:os.t("航速、风与船体运动","speed, wind & vessel motion")
+        "NMEA" -> data.endpoint.takeIf{data.connection!="off"}?:os.t("管理多条连接","manage your connections")
+        "LOCAL_NMEA" -> os.t("${data.clients} 个已连接客户端","${data.clients} connected clients")
+        "SETTINGS" -> os.t("我的船 · 单位 · 应用","my vessel · units · apps")
         else -> ""
     }
     return LauncherEntryVisualContribution(
@@ -267,14 +297,22 @@ private fun shellVisual(os: OsStore, app: ShellApp): LauncherEntryVisualContribu
         title, detail,
         LauncherIconRenderer { tint, modifier -> ShellAppIcon(app, tint, modifier) },
         app.sizes.associateWith { size -> LauncherTileRenderer { context ->
-            if (app.app.name == "CHART" && size == MarineTileSize.WIDE_4X2) {
+            if(app.app==AppId.CHART && tileMode=="MAP" && os.maps.snapshot!=null && size!=MarineTileSize.ICON_1X1) {
+                Box(context.modifier.fillMaxSize()) {
+                    Image(os.maps.snapshot!!.asImageBitmap(),title,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+                    Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color.Black.copy(alpha=.7f)).padding(8.dp)) {
+                        WpText(title,12,color=Color.White,maxLines=1)
+                        WpText(headline,18,color=Color.White,maxLines=1)
+                    }
+                }
+            } else if (app.app.name == "CHART" && size == MarineTileSize.WIDE_4X2) {
                 Row(context.modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxHeight().width(116.dp), contentAlignment = Alignment.Center) {
                         ShellAppIcon(app, context.contentColor, Modifier.size(54.dp))
                     }
                     Column(Modifier.fillMaxHeight().weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
                         WpText(title, 12, color = context.contentColor, maxLines = 1)
-                        WpText(os.t("浏览海图", "browse charts"), 23, color = context.contentColor, weight = FontWeight.Light, maxLines = 2)
+                        WpText(headline, 23, color = context.contentColor, weight = FontWeight.Light, maxLines = 2)
                         WpText(detail, 12, color = context.contentColor.copy(alpha = .84f), maxLines = 2)
                     }
                 }
@@ -284,7 +322,7 @@ private fun shellVisual(os: OsStore, app: ShellApp): LauncherEntryVisualContribu
                         ShellAppIcon(app, context.contentColor, Modifier.size(28.dp))
                         WpText(title, 12, color = context.contentColor, maxLines = 1, modifier = Modifier.padding(start = 7.dp))
                     }
-                    WpText(os.t("浏览海图", "browse charts"), 20, color = context.contentColor, weight = FontWeight.Light, maxLines = 2)
+                    WpText(headline, 20, color = context.contentColor, weight = FontWeight.Light, maxLines = 2)
                     WpText(detail, 11, color = context.contentColor.copy(alpha = .84f), maxLines = 2)
                 }
             } else Box(context.modifier.fillMaxSize()) {
@@ -356,10 +394,10 @@ private fun ShellAppIcon(app: ShellApp, color: Color, modifier: Modifier) {
 
 private fun searchContributions(os: OsStore, query: String): List<LauncherSearchResultContribution> {
     if (query.isBlank()) return emptyList()
-    return os.places.filter { it.name.contains(query, true) }.map {
-        LauncherSearchResultContribution("place-${it.id}", it.name, coordinates(it.point), LaunchToken("place:${it.id}"))
+    return os.allPlaces.filter { it.name.contains(query, true) }.map {
+        LauncherSearchResultContribution("place-${it.id}", it.name, os.formatCoordinates(it.point), LaunchToken("place:${it.id}"))
     } + os.routes.filter { it.name.contains(query, true) }.map {
-        LauncherSearchResultContribution("route-${it.id}", it.name, nm(it.length), LaunchToken("route:${it.id}"))
+        LauncherSearchResultContribution("route-${it.id}", it.name, os.formatDistance(it.length), LaunchToken("route:${it.id}"))
     }
 }
 

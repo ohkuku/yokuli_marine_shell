@@ -2,6 +2,9 @@ package com.yokuli.marine.shell.rebuild
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.Intent
+import android.location.LocationManager
+import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -26,14 +29,22 @@ class MainActivity : ComponentActivity() {
     private val marineVm: MainViewModel by viewModels()
     private var longBackConsumed = false
     private val os get()=(application as YokuliApplication).os
+    private val serviceHandler: (String, String?) -> Unit = { action, extra -> service(action, extra) }
     private val gpsPermission=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         if(result[Manifest.permission.ACCESS_FINE_LOCATION]==true) service("gpsOn")
-        else os.notify("手机 GPS 需要精确位置权限，可在船舶数据中重试","Phone GPS needs precise location permission. Retry in boat data.")
+        else os.notify("手机 GPS 需要精确位置权限，可在设置的数据来源中重试","Phone GPS needs precise location permission. Retry in Settings → data sources.")
+    }
+    private val locationSettings=registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if(getSystemService(LocationManager::class.java).isLocationEnabled) service("gpsOn")
+        else os.notify("定位服务尚未开启，手机船位保持关闭","Location services are still off. Phone position remains disabled.")
     }
     private val notifications=registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
     fun service(action:String,extra:String?=null) {
         if(action=="gpsOn" && ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED) {
             gpsPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION)); return
+        }
+        if(action=="gpsOn" && !getSystemService(LocationManager::class.java).isLocationEnabled) {
+            locationSettings.launch(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)); return
         }
         if(Build.VERSION.SDK_INT>=33 && action in listOf("connect","gpsOn","shareOn") && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
             notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -43,6 +54,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         os.attachMarine(marineVm)
+        os.systemAction=serviceHandler
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) window.attributes = window.attributes.apply {
             layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
@@ -70,4 +82,5 @@ class MainActivity : ComponentActivity() {
         return true
     }
     override fun onPause() { os.save(); super.onPause() }
+    override fun onDestroy() { if(os.systemAction === serviceHandler) os.systemAction=null;super.onDestroy() }
 }

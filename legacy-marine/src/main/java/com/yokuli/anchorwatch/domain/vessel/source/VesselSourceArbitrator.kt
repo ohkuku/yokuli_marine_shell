@@ -9,6 +9,7 @@ data class MetricSourcePreference(
     val preference:VesselSourcePreference=VesselSourcePreference.AUTO,
     val pinnedSourceId:String?=null,
     val allowPinnedFallback:Boolean=false,
+    val connectionPriorities:Map<String,Int> = emptyMap(),
 )
 
 object VesselSourceConflictPolicy{
@@ -52,16 +53,16 @@ class VesselSourceArbitrator{
             candidate.copy(validity=MetricSourceEligibility.evaluate(metric,candidate,now))
         }
         val eligible=candidates.filter{it.validity==CandidateValidity.ELIGIBLE&&matchesPreference(it,settings.preference)}
-        val pinned=settings.pinnedSourceId?.let{id->candidates.firstOrNull{it.source.id==id&&it.validity==CandidateValidity.ELIGIBLE}}
+        val pinned=settings.pinnedSourceId?.let{id->candidates.firstOrNull{it.source.id==id&&it.validity==CandidateValidity.ELIGIBLE&&matchesPreference(it,settings.preference)}}
         val pool=if(settings.pinnedSourceId!=null&&!settings.allowPinnedFallback)listOfNotNull(pinned) else eligible
-        val ranked=pool.sortedWith(compareByDescending<VesselSourceCandidate<T>>{priority(metric,it)}.thenBy{it.source.id})
+        val ranked=pool.sortedWith(compareByDescending<VesselSourceCandidate<T>>{rank(metric,it,settings)}.thenBy{it.source.id})
         val current=state.selectedId?.let{id->ranked.firstOrNull{it.source.id==id}}
         val best=ranked.firstOrNull()
         val selected=when{
             settings.pinnedSourceId!=null&&!settings.allowPinnedFallback->pinned
             current==null->{state.recoveryId=null;state.recoverySince=null;best}
             best==null||best.source.id==current.source.id->{state.recoveryId=null;state.recoverySince=null;current}
-            priority(metric,best)<=priority(metric,current)->{state.recoveryId=null;state.recoverySince=null;current}
+            rank(metric,best,settings)<=rank(metric,current,settings)->{state.recoveryId=null;state.recoverySince=null;current}
             state.recoveryId!=best.source.id->{state.recoveryId=best.source.id;state.recoverySince=now;current}
             now-(state.recoverySince?:now)>=recoveryMillis(metric)->{state.recoveryId=null;state.recoverySince=null;best}
             else->current
@@ -88,6 +89,7 @@ class VesselSourceArbitrator{
         VesselSourcePreference.PHONE->candidate.sourceClass in setOf(VesselSourceClass.PHONE_GNSS,VesselSourceClass.PHONE_DEVICE_COMPASS,VesselSourceClass.PHONE_VESSEL_HEADING,VesselSourceClass.PHONE_IMU,VesselSourceClass.PHONE_BAROMETER)
         VesselSourcePreference.DERIVED->candidate.sourceClass in setOf(VesselSourceClass.DERIVED_WATER,VesselSourceClass.DERIVED_GROUND)
     }
+    private fun <T> rank(metric:VesselMetricId,candidate:VesselSourceCandidate<T>,settings:MetricSourcePreference)=((settings.connectionPriorities[candidate.source.transportProfileId]?:0).coerceIn(-1000,1000)*1000)+priority(metric,candidate)
     private fun <T> priority(metric:VesselMetricId,candidate:VesselSourceCandidate<T>):Int{
         if(metric in setOf(VesselMetricId.HEADING_TRUE,VesselMetricId.HEADING_MAGNETIC))return when{
             candidate.source.sentenceType=="HDT"->500

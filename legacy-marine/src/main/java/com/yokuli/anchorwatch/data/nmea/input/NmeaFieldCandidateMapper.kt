@@ -8,6 +8,7 @@ import com.yokuli.anchorwatch.domain.vessel.*
  * as core navigation sentences. No semantic field is selected at ingest time. */
 object NmeaFieldCandidateMapper{
     fun map(field:NmeaFieldObservation,profileId:String,generation:Long):VesselSourceCandidate<*>?{
+        val actualProfile=field.connectionId.ifBlank{profileId};val actualGeneration=field.connectionGeneration.takeIf{field.connectionId.isNotBlank()}?:generation
         val metric=when(field.key.semantic){
             NmeaFieldSemantic.ROT->VesselMetricId.RATE_OF_TURN
             NmeaFieldSemantic.RUDDER_ANGLE->VesselMetricId.RUDDER_ANGLE
@@ -33,12 +34,12 @@ object NmeaFieldCandidateMapper{
         }
         val value:Any=field.value?:field.text?:return null
         val source=VesselSourceIdentity(
-            id="nmea:$profileId:$generation:field:${field.key.stableId}",
-            transportProfileId=profileId,connectionGeneration=generation,sourceType=VesselSourceType.NMEA_INPUT,
+            id="nmea:$actualProfile:$actualGeneration:${field.peer}:field:${field.key.stableId}",
+            transportProfileId=actualProfile,connectionGeneration=actualGeneration,transportPeer=field.peer,sourceType=VesselSourceType.NMEA_INPUT,
             talkerId=field.key.talker,sentenceType=field.key.sentenceType,fullSentenceId="${field.key.talker}${field.key.sentenceType}",
             transducerName=field.key.transducerName,
             displayName=listOfNotNull("${field.key.talker}${field.key.sentenceType}",field.key.transducerName).joinToString(" · "),
-            stableKey="nmea:$profileId:field:${field.key.stableId}",
+            stableKey="nmea:$actualProfile:${field.peer}:field:${field.key.stableId}",
         )
         val reference=when(field.key.semantic){
             NmeaFieldSemantic.CURRENT_SET_TRUE,NmeaFieldSemantic.BEARING_TO_WAYPOINT,NmeaFieldSemantic.TRUE_WIND_DIRECTION->VesselReference.TrueNorth

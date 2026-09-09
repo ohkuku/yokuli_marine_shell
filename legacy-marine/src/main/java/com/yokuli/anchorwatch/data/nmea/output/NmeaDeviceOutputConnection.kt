@@ -144,6 +144,9 @@ class NmeaOutboundLoopGuard @Inject constructor(){
     private val semanticQuarantineStarted=linkedMapOf<String,Pair<NmeaSemanticFingerprint,Long>>()
     private val pending=linkedMapOf<Long,PendingOutboundAttempt>()
     private var nextAttemptId=0L
+    private var nextOccurrence=0L
+    private val routedOccurrences=linkedMapOf<String,ArrayDeque<Pair<Long,Long>>>()
+    private val receiverMatched=linkedMapOf<String,Long>()
 
     /**
      * Installs the quarantine before the bytes enter the socket. On a fast
@@ -172,6 +175,7 @@ class NmeaOutboundLoopGuard @Inject constructor(){
         prune(nowElapsed)
         sentences.forEach{sentence->
             val key=normalize(sentence);sent.getOrPut(key){ArrayDeque()}.addLast(nowElapsed);exactIdentityLastSent[key]=nowElapsed
+            routedOccurrences.getOrPut(key){ArrayDeque()}.addLast(++nextOccurrence to nowElapsed)
             semanticFingerprint(sentence,nowElapsed)?.let(semantic::addLast)
         }
         while(sent.values.sumOf{it.size}>MAX_ENTRIES){val first=sent.entries.firstOrNull()?:break;first.value.pollFirst();if(first.value.isEmpty())sent.remove(first.key)}
@@ -231,7 +235,18 @@ class NmeaOutboundLoopGuard @Inject constructor(){
         if(pending.values.any{attempt->nowElapsed-attempt.startedElapsedRealtime in 0L..PENDING_WRITE_MILLIS&&exactKey in attempt.sentences})return true
         return false
     }
+    @Synchronized fun isRecentExactOutboundForReceiver(sentence:String,receiver:String,nowElapsed:Long=SystemClock.elapsedRealtime()):Boolean{
+        prune(nowElapsed)
+        val exactKey=normalize(sentence);val receiverKey="$receiver|$exactKey"
+        val previous=receiverMatched[receiverKey]?:0L
+        val occurrence=routedOccurrences[exactKey]?.firstOrNull{it.first>previous}
+        if(occurrence!=null){receiverMatched[receiverKey]=occurrence.first;while(receiverMatched.size>MAX_ENTRIES*8)receiverMatched.remove(receiverMatched.keys.first());return true}
+        return pending.values.any{nowElapsed-it.startedElapsedRealtime in 0L..PENDING_WRITE_MILLIS&&exactKey in it.sentences}
+    }
     private fun prune(now:Long){
+        routedOccurrences.values.forEach{list->while(list.firstOrNull()?.let{now-it.second>QUARANTINE_MILLIS}==true)list.removeFirst()}
+        routedOccurrences.entries.removeAll{it.value.isEmpty()}
+        while(routedOccurrences.values.sumOf{it.size}>MAX_ENTRIES){val entry=routedOccurrences.entries.firstOrNull()?:break;entry.value.removeFirst();if(entry.value.isEmpty())routedOccurrences.remove(entry.key)}
         sent.entries.forEach{(_,occurrences)->while(occurrences.firstOrNull()?.let{now-it>QUARANTINE_MILLIS}==true)occurrences.removeFirst()}
         exactIdentityLastSent.entries.removeAll{now-it.value>QUARANTINE_MILLIS}
         sent.entries.removeAll{it.value.isEmpty()&&it.key !in exactIdentityLastSent}

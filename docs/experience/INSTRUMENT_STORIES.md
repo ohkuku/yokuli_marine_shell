@@ -27,3 +27,9 @@ confirmation uses the established calibration and paused-segment workflow.
 涉及 `WatchWorkspaceScreen.kt` 与新增 `VesselSpatialInstrument.kt`。没有引入
 新的渲染引擎、业务数据存储或另一套仪表 App。本轮编译验证不能代替实船的
 安装轴向、动态姿态或夜间可读性验收。
+
+2026-09-09 最终 APK 界面核对：运动页标题、左上返回、横滑页签、四个视角、
+灰色船体轮廓和“仅示意”提示均正确显示；未确认安装时横倾/纵倾为 `—`，
+NMEA 真船首向为 `084°T`。实际点击船尾视角后，投影相机即时改变；
+原有开始记录按钮为方角。稳定截图：`screenshots/instruments-spatial-v03.png`
+及 `screenshots/instruments-stern-v03.png`。本次没有执行实船动态姿态或安装校准。
