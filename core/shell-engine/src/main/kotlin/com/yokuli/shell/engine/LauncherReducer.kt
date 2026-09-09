@@ -4,6 +4,7 @@ import com.yokuli.shell.contract.LaunchResolution
 import com.yokuli.shell.contract.LaunchToken
 import com.yokuli.shell.contract.LauncherCatalogSnapshot
 import com.yokuli.shell.contract.LauncherEntryId
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.contract.ShellInput
 import com.yokuli.shell.contract.PinPolicy
 import com.yokuli.shell.contract.TileInstanceId
@@ -85,7 +86,7 @@ sealed interface LauncherAction {
     data class OpenEntryContextMenu(val entryId: LauncherEntryId) : LauncherAction
     data object OpenAlphabetJump : LauncherAction
     data object DismissTransient : LauncherAction
-    data class PinEntry(val entryId: LauncherEntryId) : LauncherAction
+    data class PinEntry(val entryId: LauncherEntryId, val size: MarineTileSize? = null) : LauncherAction
     data class UnpinTile(val tileId: TileInstanceId) : LauncherAction
     data class AcknowledgeStartReveal(val tileId: TileInstanceId) : LauncherAction
     data class TogglePin(val entryId: LauncherEntryId) : LauncherAction
@@ -211,7 +212,7 @@ class DefaultLauncherReducer : LauncherReducer {
             state.copy(transient = LauncherTransient.AlphabetJump),
         )
         LauncherAction.DismissTransient -> LauncherReduction(state.copy(transient = null))
-        is LauncherAction.PinEntry -> pinEntry(state, action.entryId)
+        is LauncherAction.PinEntry -> pinEntry(state, action.entryId, action.size)
         is LauncherAction.UnpinTile -> unpinTile(state, action.tileId)
         is LauncherAction.AcknowledgeStartReveal -> acknowledgeReveal(state, action.tileId)
         is LauncherAction.TogglePin -> togglePin(state, action.entryId)
@@ -396,7 +397,7 @@ class DefaultLauncherReducer : LauncherReducer {
     }
 
     private fun activateTask(state: LauncherEngineState, taskId: InternalAppTaskId): LauncherReduction {
-        if (state.tasks.task(taskId) == null) return LauncherReduction(state)
+        val task=state.tasks.task(taskId) ?: return LauncherReduction(state)
         return LauncherReduction(
             state.navigateTo(
                 ShellVisualSurface.Module(taskId),
@@ -404,6 +405,7 @@ class DefaultLauncherReducer : LauncherReducer {
             ).copy(
                 transient = null,
                 recentsReturnSurface = null,
+                tasks = state.tasks.copy(tasks=state.tasks.tasks.filterNot {it.taskId==taskId}+task),
             ),
         )
     }
@@ -825,7 +827,7 @@ class DefaultLauncherReducer : LauncherReducer {
         return LauncherReduction(state.copy(transient = LauncherTransient.ContextMenu(entryId)))
     }
 
-    private fun pinEntry(state: LauncherEngineState, entryId: LauncherEntryId): LauncherReduction {
+    private fun pinEntry(state: LauncherEngineState, entryId: LauncherEntryId, size: MarineTileSize? = null): LauncherReduction {
         val entry = state.catalog.entries.firstOrNull { it.entryId == entryId }
             ?: return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.PIN_UNAVAILABLE)))
         if (entry.pinPolicy != PinPolicy.PINNABLE) {
@@ -834,7 +836,7 @@ class DefaultLauncherReducer : LauncherReducer {
         if (state.start.document.placements.any { it.entryId == entryId }) {
             return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.ALREADY_PINNED)))
         }
-        val proposal = StartLayoutEditor.pin(state.start.document, entryId, state.catalog.entries)
+        val proposal = StartLayoutEditor.pin(state.start.document, entryId, state.catalog.entries, size)
             ?: return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.LAYOUT_UNAVAILABLE)))
         val committed = applyCommitted(state, proposal)
         val transaction = committed.state.start.undoStack.last()

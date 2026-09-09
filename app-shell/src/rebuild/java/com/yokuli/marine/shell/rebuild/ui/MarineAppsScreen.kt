@@ -11,6 +11,9 @@ import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import java.text.DateFormat
 import java.util.Date
 
@@ -69,7 +72,12 @@ import java.util.Date
                 },primary=true)
                 MetroButton(os.t("记录此刻","mark this moment"),{marking=true},enabled=!active.paused)
                 if(active.paused)Label(os.t("记录已暂停；继续后可以保存沿途时刻。","Recording is paused. Resume to mark moments."),15,LocalMetro.current.muted)
-                MetroButton(os.t("结束并保存","finish & save"),{marine.vm.endTrip();onDismiss();os.open("voyages")})
+                MetroButton(os.t("结束并保存","finish & save"),{val endedId=active.id
+                    marine.vm.endTrip();onDismiss()
+                    os.scope.launch {
+                        val saved=withTimeoutOrNull(15_000) { marine.vm.ui.first { ui -> ui.tripSessions.any { it.id==endedId && !it.active && it.endedAt!=null } } }
+                        if(saved!=null)os.notify("航行记录已保存","Voyage recording saved") else os.notify("尚未确认保存，请在日志中查看记录状态","Save not confirmed yet; check the recording in Logbook")
+                    }})
                 MetroButton(os.t("查看本次航行","view this voyage"),{onDismiss();os.open("voyage:${active.id}")})
             }
             MetroButton(if(marking)os.t("返回记录控制","back to recording controls") else os.t("完成","done"),dismiss)

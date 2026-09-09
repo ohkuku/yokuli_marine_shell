@@ -25,16 +25,21 @@ import com.yokuli.marine.shell.rebuild.*
             Label(os.t("警报测试正在响铃","alarm test is sounding"),25,c.accent)
             MetroButton(os.t("我能听见，停止测试","I can hear it · stop test"),{vm.confirmAlarmAudible();vm.stopAlarmTest()},primary=true)
             MetroButton(os.t("停止测试","stop test"),vm::stopAlarmTest)
-        } else state.runtimeDiagnostics.lastUserFeedback?.takeIf {it.highPriority&&it.id>state.dismissedRuntimeFeedbackId}?.let {feedback->
-            val relevant=when(feedback.context){RuntimeFeedbackContext.DEPTH_DATA_UNAVAILABLE->state.conditions.depth.dataUnavailable
-                RuntimeFeedbackContext.WIND_DATA_UNAVAILABLE->state.conditions.windSpeed.dataUnavailable||state.conditions.windShift.dataUnavailable
-                else->true}
-            if(relevant)Column(Modifier.align(Alignment.TopCenter).padding(12.dp).fillMaxWidth().background(c.bg).border(1.dp,c.accent).padding(18.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                Label(feedback.title,24,c.accent);Label(feedback.message,18)
-                MetroButton(os.t("知道了","dismiss"),vm::dismissRuntimeFeedback)
-            }
         }
     }
+    val feedback=state.runtimeDiagnostics.lastUserFeedback
+    LaunchedEffect(feedback?.id){
+        if(feedback!=null&&feedback.id>state.dismissedRuntimeFeedbackId){
+            // Source quality is status, not a modal command failure. Domain
+            // alarms below still own persistent position-loss presentation.
+            if(feedback.highPriority&&feedback.context in setOf(RuntimeFeedbackContext.GENERAL,RuntimeFeedbackContext.ARM_WATCH)){
+                val text="${feedback.title} · ${feedback.message}"
+                os.notify(text,text)
+            }
+            vm.dismissRuntimeFeedback()
+        }
+    }
+
     if(testing||active==null||active.paused)return
     data class Alert(val title:String,val value:String,val detail:String,val source:ConditionAlarmSource,val severity:SafetyAlert.Severity,val sortKey:String)
     val alerts=buildList {

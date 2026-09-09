@@ -101,7 +101,6 @@ import java.util.Date
             Label(os.t("在同一面板中暂停、继续、记录此刻或结束并保存。", "Pause, resume, mark a moment or finish and save in the same panel."), 16, c.muted)
             MetroButton(os.t("查看本次航迹与报告", "view this track & report"), { detail(trip.id) })
         }
-        MenuRow(os.t("海图", "chart"), os.t("船位、坐标与航线", "position, coordinates & routes"), "chart") { os.open("chart") }
     }
 }
 

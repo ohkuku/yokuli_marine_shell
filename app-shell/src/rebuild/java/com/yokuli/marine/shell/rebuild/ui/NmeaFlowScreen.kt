@@ -123,6 +123,7 @@ private fun connectionText(os:OsStore,c:NmeaConnectionSnapshot)=when{
     c.state==NmeaConnectionState.DISCONNECTED->os.t("等待连接","waiting for connection")
     c.state==NmeaConnectionState.CONNECTING->os.t("正在连接","connecting")
     c.state==NmeaConnectionState.RECONNECTING->os.t("正在重连","reconnecting")
+    !c.spec.receive&&c.spec.send&&c.state in setOf(NmeaConnectionState.CONNECTED,NmeaConnectionState.CONNECTED_NO_DATA,NmeaConnectionState.CONNECTED_NO_FIX,NmeaConnectionState.STALE)->os.t("已连接 · 输出就绪","connected · output ready")
     c.state==NmeaConnectionState.STALE->os.t("连接在线 · 数据过期","connected · data expired")
     c.state==NmeaConnectionState.CONNECTED_NO_FIX->os.t("已连接 · 无有效船位","connected · no valid position")
     c.state==NmeaConnectionState.CONNECTED_NO_DATA->os.t("已连接 · 等待数据","connected · waiting for data")

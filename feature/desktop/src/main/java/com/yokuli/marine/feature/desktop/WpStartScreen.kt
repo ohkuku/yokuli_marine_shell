@@ -443,7 +443,7 @@ private fun WpTile(
             }.wpTilt(interactions, enabled = !editing).background(colors.accent)
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
     ) {
-        Box(Modifier.fillMaxSize().padding(if (small) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
+        Box(Modifier.fillMaxSize().padding(if (entry.visual.fullBleed && !small) 0.dp else if (small) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
             entry.tileRenderer(tileSize).Render(
                 LauncherTileRenderContext(tileSize, colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = !editing),
             )

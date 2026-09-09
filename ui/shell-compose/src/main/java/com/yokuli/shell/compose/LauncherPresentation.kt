@@ -43,6 +43,8 @@ data class LauncherEntryVisualContribution(
     val detail: String,
     val icon: LauncherIconRenderer,
     val tileRenderers: Map<MarineTileSize, LauncherTileRenderer>,
+    /** Image-backed tiles may fill their accent rectangle without changing Shell geometry. */
+    val fullBleed: Boolean = false,
 )
 
 /**

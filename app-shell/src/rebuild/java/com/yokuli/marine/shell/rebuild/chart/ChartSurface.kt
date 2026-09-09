@@ -258,9 +258,8 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             var proposed:TileGateway?=null
             try {
                 // Remove the previous source while preparing the new one; no stale chart masquerades as the new layer.
-                val background=JSONObject().put("id","water").put("type","background").put("paint",JSONObject().put("background-color","#dee9e8"))
-                libre?.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",JSONObject()).put("layers",JSONArray().put(background)).toString()))
-                val sources=JSONObject();val layers=JSONArray().put(background)
+                val sources=offlineWorldSources();val layers=offlineWorldLayers()
+                libre?.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",sources).put("layers",layers).toString()))
                 when(source) {
                     MapSource.Online -> {
                         sources.put("osm",JSONObject().put("type","raster").put("tileSize",256).put("maxzoom",19).put("tiles",JSONArray(listOf("https://tile.openstreetmap.org/{z}/{x}/{y}.png"))))
@@ -303,6 +302,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         captureJob=scope.launch {
             delay(600)
             val generation=sourceGeneration
+            val source=maps.source
             val center=state.center;val zoom=state.zoom
             fun save(bitmap:Bitmap?) {
                 if(bitmap==null || destroyed || generation!=sourceGeneration || state.center!=center || state.zoom!=zoom)return
@@ -310,6 +310,9 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 overlay.draw(Canvas(combined))
                 val w=480.coerceAtMost(combined.width)
                 maps.snapshot=Bitmap.createScaledBitmap(combined,w,(combined.height.toDouble()*w/combined.width).roundToInt().coerceAtLeast(1),true)
+                maps.snapshotSource=source
+                maps.snapshotDemo=overlay.scene.demo
+                maps.snapshotCapturedAt=System.currentTimeMillis()
                 if(maps.snapshot !== combined)combined.recycle()
             }
             if(googleEngine)googleMap?.snapshot {save(it)} else libre?.snapshot {save(it)}
@@ -382,11 +385,22 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                 else ->null
             }
             message?.let {Label(it,13,Color(0xFF19252B),Modifier.align(Alignment.TopCenter).padding(top=54.dp,start=12.dp,end=12.dp).background(Color.White.copy(alpha=.95f)).padding(9.dp))}
-            val credits=if(maps.source==MapSource.Online && !BuildConfig.GOOGLE_MAPS_CONFIGURED)listOf("© OpenStreetMap contributors")
-                else maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()
+            val credits=if(maps.source==MapSource.Online && !BuildConfig.GOOGLE_MAPS_CONFIGURED)listOf("© OpenStreetMap contributors · Natural Earth")
+                else maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()+if(!google)listOf("Natural Earth")else emptyList()
             if(credits.isNotEmpty())Column(Modifier.align(Alignment.BottomEnd).widthIn(max=230.dp).background(Color.White.copy(alpha=.92f)).padding(4.dp)) {
-                credits.take(2).forEach {Label(it,10,Color(0xFF19252B),maxLines=3)}
+                Label(credits.joinToString(" · "),10,Color(0xFF19252B),maxLines=2)
             }
         }
     }
 }
+
+/** Packaged geometry sits below every raster. It never participates in user chart priority. */
+private fun offlineWorldSources()=JSONObject().put("natural-earth-land",JSONObject()
+    .put("type","geojson").put("data","asset://maps/ne_50m_land.geojson").put("maxzoom",8).put("tolerance",.375))
+
+private fun offlineWorldLayers()=JSONArray()
+    .put(JSONObject().put("id","water").put("type","background").put("paint",JSONObject().put("background-color","#dee9e8")))
+    .put(JSONObject().put("id","world-land").put("type","fill").put("source","natural-earth-land")
+        .put("paint",JSONObject().put("fill-color","#e9e4d7").put("fill-antialias",true)))
+    .put(JSONObject().put("id","world-coast").put("type","line").put("source","natural-earth-land")
+        .put("paint",JSONObject().put("line-color","#8c978e").put("line-width",.65)))

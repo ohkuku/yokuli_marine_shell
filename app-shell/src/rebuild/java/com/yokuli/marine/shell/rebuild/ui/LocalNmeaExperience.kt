@@ -3,6 +3,7 @@ package com.yokuli.marine.shell.rebuild.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.yokuli.anchorwatch.data.sharing.SharingServerState
@@ -14,8 +15,8 @@ import com.yokuli.marine.shell.rebuild.OsStore
     val state by vm.ui.collectAsState()
     val settings=state.localNmeaServerSettings
     val server=state.nmeaSharing
-    var port by remember(settings.port){mutableStateOf(settings.port.toString())}
-    var pressure by remember(settings.includePressure){mutableStateOf(settings.includePressure)}
+    var port by rememberSaveable(settings.port){mutableStateOf(settings.port.toString())}
+    var pressure by rememberSaveable(settings.includePressure){mutableStateOf(settings.includePressure)}
     Column(Modifier.fillMaxSize()){
         PageHeader(os,os.t("本机服务","local service"))
         Pivot(listOf(os.t("服务","service"),os.t("客户端","clients"),os.t("已发送","sent"))){page->

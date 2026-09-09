@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,16 +32,16 @@ import com.yokuli.marine.shell.rebuild.chart.MapSource
                         Label(os.t("连接海图文件夹，为图层起个名字。重叠区域按你排好的优先级显示。","Connect a chart folder and name its layer. Overlapping charts follow the priority you choose."),18,LocalMetro.current.muted)
                     } else {
                         Label(os.t("选择一张命名图层，在所有地图中使用。","choose a named layer for all maps."),14,LocalMetro.current.muted)
-                        library.folders.filter {it.layerName!=null}.forEach {entry ->
+                        Column(Modifier.selectableGroup()) {library.folders.filter {it.layerName!=null}.forEach {entry ->
                             Column(Modifier.fillMaxWidth().padding(vertical=6.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 val included=library.folderFiles(entry).count {it.enabled && it.error==null}
-                                MenuRow((if(os.maps.source==MapSource.CustomLayer(entry.id)) "✓  " else "")+entry.layerName,os.t("${folderName(os,entry)} · $included 张海图","${folderName(os,entry)} · $included charts")) {viewLayer(os,entry)}
+                                MapSourceOption(os,entry.layerName.orEmpty(),os.maps.source==MapSource.CustomLayer(entry.id),os.t("${folderName(os,entry)} · $included 张海图","${folderName(os,entry)} · $included charts")) {os.maps.select(MapSource.CustomLayer(entry.id))}
                                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                     MetroButton(os.t("管理图层","manage layer"),{os.open("library:${entry.id}")},Modifier.weight(1f))
                                     IconAction("chart",os.t("查看","view"),{viewLayer(os,entry)})
                                 }
                             }
-                        }
+                        }}
                     }
                     MetroButton(os.t("添加文件夹图层","add folder layer"),{folder.launch(null)},primary=true,enabled=!library.busy)
                 } else {

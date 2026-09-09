@@ -27,6 +27,7 @@ data class MapScene(
     val points: List<MapPoint> = emptyList(),
     val lines: List<MapLine> = emptyList(),
     val circles: List<MapCircle> = emptyList(),
+    val demo: Boolean = false,
 )
 
 sealed interface MapEvent {
@@ -68,6 +69,9 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     var distanceLabel: (Double) -> String = ::nm
     var chinese by mutableStateOf(legacy.optString("language", java.util.Locale.getDefault().language) == "zh")
     var snapshot by mutableStateOf<Bitmap?>(null)
+    var snapshotCapturedAt by mutableLongStateOf(0L)
+    var snapshotSource by mutableStateOf<MapSource?>(null)
+    var snapshotDemo by mutableStateOf(false)
     private var saveGeneration = 0L
     private val file = AtomicFile(File(context.filesDir, "map-source-v1.json"))
     private val mutex = Mutex()

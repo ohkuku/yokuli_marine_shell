@@ -363,6 +363,7 @@ class MainViewModel @Inject constructor(
     private val restoredAnchorSetupDraft=savedStateHandle.get<String>(ANCHOR_SETUP_DRAFT_KEY)?.let{json->runCatching{draftGson.fromJson(json,AnchorSetupDraft::class.java)}.getOrNull()}
     private val restoredTripMapDestination=savedStateHandle.get<String>(TRIP_MAP_TYPE_KEY)?.let{type->savedStateHandle.get<Long>(TRIP_MAP_ID_KEY)?.let{id->TripMapDestination(runCatching{TripMapDestinationType.valueOf(type)}.getOrDefault(TripMapDestinationType.HISTORY),id,savedStateHandle.get<Long>(TRIP_MAP_WAYPOINT_KEY))}}
     private val _ui=MutableStateFlow(MainUiState(anchorSetupDraft=restoredAnchorSetupDraft,tripMapDestination=restoredTripMapDestination));val ui=_ui.asStateFlow()
+    val phoneLocationStatus=systemLocation.status
     val nmeaConnections=nav.connections
     val nmeaConnectionSpecs=nav.connectionSpecs
     fun saveNmeaConnection(spec:com.yokuli.anchorwatch.data.nmea.NmeaConnectionSpec,onSaved:()->Unit={})=viewModelScope.launch{runCatching{nav.saveConnection(spec)}.onSuccess{_ui.update{it.copy(connectionAttempt=ConnectionAttempt())};onSaved()}.onFailure{error->_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,error.message.orEmpty()))}}}

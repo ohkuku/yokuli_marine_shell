@@ -5,6 +5,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -20,8 +21,8 @@ fun PlaceKind.label(os:OsStore)=when(this) {
 @Composable fun PlacesScreen(os:OsStore,anchoragesOnly:Boolean=false) {
     val repo=os.sailing;val scope=rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf("") }
-    var kind by remember(anchoragesOnly) { mutableStateOf<PlaceKind?>(if(anchoragesOnly)PlaceKind.ANCHORAGE else null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var kind by rememberSaveable(anchoragesOnly) { mutableStateOf<PlaceKind?>(if(anchoragesOnly)PlaceKind.ANCHORAGE else null) }
     var create by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<Gpx.Contents?>(null) }
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null) scope.launch {

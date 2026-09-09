@@ -11,29 +11,30 @@ import com.yokuli.shell.storage.ProtoDataStoreLauncherPersistence
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import com.yokuli.marine.core.design.WpAccent
-import com.yokuli.marine.shell.rebuild.ui.formatDistance
+import com.yokuli.marine.shell.rebuild.ui.*
+import androidx.compose.runtime.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.yield
 
 /** The original Shell owns task history, Start editing and navigation. Apps only publish destinations. */
 class WpShellRuntime(private val os: OsStore) {
     val inputRouter = InternalAppInputRouter()
     val apps = AppId.entries.map(::ShellApp)
-    val appPreferenceRegistry = AppPreferenceRegistry.compose(apps.map { it.id }.toSet(),
-        listOf(AppPreferenceContribution(LauncherAppId("chart"),listOf(AppPreferenceDefinition.Choice(
-            AppPreferenceKey("chart.tile.mode"),listOf("AUTO","MAP","NAVIGATION","POSITION","STATIC"),AppPreferenceValue.Choice("AUTO"),
-            AppPreferenceLabel("海图磁贴内容","Chart tile content"),mapOf(
-                "AUTO" to AppPreferenceLabel("自动","Automatic"),"MAP" to AppPreferenceLabel("地图快照","Map snapshot"),
-                "NAVIGATION" to AppPreferenceLabel("当前导航","Active navigation"),"POSITION" to AppPreferenceLabel("当前位置","Current position"),
-                "STATIC" to AppPreferenceLabel("静态图标","Static icon")))))) + apps.filter { it.app != AppId.CHART }.map { app ->
-            AppPreferenceContribution(app.id,listOf(AppPreferenceDefinition.Choice(
-                AppPreferenceKey("${app.id.value}.tile.mode"), listOf("LIVE","STATIC"), AppPreferenceValue.Choice("LIVE"),
-                AppPreferenceLabel("磁贴内容","Tile content"),mapOf("LIVE" to AppPreferenceLabel("实时内容","Live content"),"STATIC" to AppPreferenceLabel("静态图标","Static icon")))))
-        })
+    val presets = tilePresets()
+    val appPreferenceRegistry = AppPreferenceRegistry.compose(apps.map {it.id}.toSet(),tilePreferenceContributions(apps))
+    val snapshots = TaskSnapshotStore()
+    var coldOpeningTask by mutableStateOf<InternalAppTaskId?>(null)
+        private set
+    private val navigationQueue=Channel<LauncherAction>(Channel.UNLIMITED)
     val catalog = LauncherCatalogSnapshot(
-        revision = 1,
+        revision = 2,
         apps = apps.map { LauncherAppDescriptor(it.id, it.entry) },
         entries = apps.map { app ->
             LauncherEntryDescriptor(app.entry, app.id, app.rootToken, app.defaultSize,
                 app.sizes, PinPolicy.PINNABLE)
+        } + presets.map {preset ->
+            val owner=apps.first {it.app==preset.app}
+            LauncherEntryDescriptor(preset.entryId,owner.id,preset.launchToken,preset.defaultSize,preset.sizes,PinPolicy.PINNABLE)
         },
     )
     // These are the exact initial placements from codex/shell-map-contract. Existing original
@@ -50,7 +51,7 @@ class WpShellRuntime(private val os: OsStore) {
     val persistence = ProtoDataStoreLauncherPersistence.create(
         os.context, os.scope, LauncherPersistedState(document = defaultDocument),
         productMigration = nineAppMigration(),
-        installedEntryIds = apps.map { it.entry }.toSet(),
+        installedEntryIds = catalog.entries.map {it.entryId}.toSet(),
     )
     private val host = StaticLauncherHostPort(
         catalog,
@@ -60,6 +61,14 @@ class WpShellRuntime(private val os: OsStore) {
     val engine: LauncherEngine = DefaultLauncherEngine(host, persistence, defaultDocument, os.scope)
 
     init {
+        os.scope.launch {
+            for(action in navigationQueue) {
+                val current=(engine.state.value.surface as? ShellVisualSurface.Module)?.taskId
+                if(current!=null)snapshots.captureCurrent(current)
+                deliver(action)
+                yield()
+            }
+        }
         os.scope.launch {
             persistence.load()
             persistence.updatePreferences { preferences ->
@@ -98,6 +107,7 @@ class WpShellRuntime(private val os: OsStore) {
                 }
                 os.editTiles = state.start.interaction !is com.yokuli.shell.engine.interaction.StartInteractionState.Idle
                 os.recent = state.tasks.tasks.map { pageForToken(it.lastLaunchToken) }
+                snapshots.retain(state.tasks.tasks.map {it.taskId}.toSet())
             }
         }
     }
@@ -140,9 +150,28 @@ class WpShellRuntime(private val os: OsStore) {
             else -> {
                 val app = appForPage(page) ?: return
                 val token = if (page == app.page) app.rootToken else LaunchToken(page)
-                engine.dispatch(LauncherAction.Open(token, preserveCaller = engine.state.value.surface is ShellVisualSurface.Module))
+                dispatch(LauncherAction.Open(token, preserveCaller = engine.state.value.surface is ShellVisualSurface.Module))
             }
         }
+    }
+
+    fun dispatch(action:LauncherAction) {
+        val navigates=action is LauncherAction.Open || action is LauncherAction.ActivateTask ||
+            action in listOf(LauncherAction.Back,LauncherAction.ShowDesktop,LauncherAction.ShowRecents,LauncherAction.OpenSearch,LauncherAction.ShowStart,LauncherAction.ShowAllApps)
+        if(navigates && engine.state.value.surface is ShellVisualSurface.Module) navigationQueue.trySend(action)
+        else deliver(action)
+    }
+    private fun deliver(action:LauncherAction) {
+        if(action is LauncherAction.Open) {
+            val app=appForPage(pageForToken(action.token))
+            val existing=engine.state.value.tasks.tasks.firstOrNull {it.appId==app?.id}
+            coldOpeningTask=app?.takeIf {existing==null}?.let {InternalAppTaskId(it.id.value)}
+            // A primary app tile/list entry resumes its current task. Explicit object links still open that object.
+            if(existing!=null && action.token==app?.rootToken) {
+                engine.dispatch(LauncherAction.ActivateTask(existing.taskId));return
+            }
+        } else if(action is LauncherAction.ActivateTask) coldOpeningTask=null
+        engine.dispatch(action)
     }
 
     fun back() = input(ShellInput.BACK)
@@ -153,7 +182,7 @@ class WpShellRuntime(private val os: OsStore) {
             os.showCrosshair = false
             return
         }
-        engine.dispatch(input.toShellAction())
+        dispatch(input.toShellAction())
     }
     fun resetStart() {
         os.scope.launch {
@@ -186,6 +215,7 @@ data class ShellApp(val app: AppId) {
         "LIBRARY" -> "chart_library"
         "PLACES" -> "navigation"
         "SETTINGS" -> "preferences"
+        "TILES" -> "tile_library"
         else -> page
     }
     val id = LauncherAppId(stableName)

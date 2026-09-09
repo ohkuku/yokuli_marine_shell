@@ -68,6 +68,7 @@ val LightFont=FontFamily(androidx.compose.ui.text.font.Typeface(android.graphics
             "folder" -> { line(3f,8f,13f,8f); line(13f,8f,16f,12f); line(16f,12f,29f,12f); line(29f,12f,29f,26f); line(29f,26f,3f,26f); line(3f,26f,3f,8f) }
             "play" -> { val path=Path(); path.moveTo(10*sx,5*sy); path.lineTo(27*sx,16*sy); path.lineTo(10*sx,27*sy); path.close(); drawPath(path,color,style=Stroke(1.8f*sx)) }
             "stop" -> drawRect(color,point(8f,8f),androidx.compose.ui.geometry.Size(16*sx,16*sy),style=Stroke(1.8f*sx))
+            "pause" -> {line(11f,7f,11f,25f,3f);line(21f,7f,21f,25f,3f)}
             "record" -> {circle(16f,16f,11f);drawCircle(color,5*sx,point(16f,16f))}
             "anchor" -> {circle(16f,5f,3f);line(16f,8f,16f,28f);line(8f,13f,24f,13f);line(5f,21f,9f,26f);line(9f,26f,16f,29f);line(16f,29f,23f,26f);line(23f,26f,27f,21f);line(5f,21f,5f,26f);line(27f,21f,27f,26f)}
             "sonar" -> {line(3f,7f,29f,7f);line(16f,7f,7f,23f);line(16f,7f,25f,23f);line(7f,23f,25f,23f);line(3f,29f,10f,27f);line(10f,27f,18f,30f);line(18f,30f,29f,26f)}

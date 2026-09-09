@@ -644,13 +644,14 @@ class YokuliRuntimeCoordinator @Inject constructor(
  }
  private fun notifySeparate(title:String,text:String,high:Boolean,context:RuntimeFeedbackContext=RuntimeFeedbackContext.GENERAL){
   val visibleTitle=serviceMessage(title);val visibleText=serviceMessage(text)
-  diagnostics.recordUserFeedback(visibleTitle,visibleText,high,context)
+  val sourceStatus=title in setOf("NMEA connection lost","NMEA GPS restored","Anchor session created · waiting for GPS","Sonar survey interrupted","Sonar survey resumed")
+  diagnostics.recordUserFeedback(visibleTitle,visibleText,high&&!sourceStatus,if(sourceStatus)RuntimeFeedbackContext.POSITION_STATUS else context)
   val notificationId=when(context){
    RuntimeFeedbackContext.DEPTH_DATA_UNAVAILABLE->NotificationCoordinator.DEPTH_DATA_EVENT_ID
    RuntimeFeedbackContext.WIND_DATA_UNAVAILABLE->NotificationCoordinator.WIND_DATA_EVENT_ID
    else->NotificationCoordinator.EVENT_ID
   }
-  notificationCoordinator.publishEvent(visibleTitle,visibleText,high,notificationId)
+  notificationCoordinator.publishEvent(visibleTitle,visibleText,high&&!sourceStatus,notificationId)
  }
 
  private fun setAlarmSource(source:ConditionAlarmSource,active:Boolean):com.yokuli.anchorwatch.runtime.notification.AlarmPlayback{audioArbiter.setActive(source,active);return reconcileAudio()}

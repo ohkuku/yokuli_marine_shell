@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -54,6 +55,12 @@ import kotlinx.coroutines.flow.collect
 fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
     val shell = os.shell
     val state by shell.engine.state.collectAsState()
+    val savedTasks=rememberSaveableStateHolder()
+    val savedKeys=remember {mutableMapOf<String,InternalAppTaskId>()}
+    LaunchedEffect(state.tasks.tasks.map {it.taskId}) {
+        val open=state.tasks.tasks.map {it.taskId}.toSet()
+        savedKeys.keys.toList().filter {savedKeys[it] !in open}.forEach {savedTasks.removeState(it);savedKeys.remove(it)}
+    }
     os.marine?.let { marine ->
         val settingsReady by remember(marine) { marine.vm.ui.map { it.settingsReady }.distinctUntilChanged() }.collectAsState(false)
         LaunchedEffect(os.chinese, marine, settingsReady) { marine.syncLanguage() }
@@ -109,6 +116,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
         }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
     DisposableEffect(lifecycleOwner, shell) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) shell.engine.dispatch(LauncherAction.CancelTileOperation)
@@ -132,10 +140,13 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
             interaction = state.start.interaction,
             transient = state.transient,
             reveal = state.start.reveal,
-            visualContributions = shell.apps.map { app -> shellVisual(os, app) },
+            visualContributions = shell.apps.map { app -> tilePresentation(os,app,
+                animate=state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==app.entry}) } +
+                shell.presets.map {preset -> presetTilePresentation(os,preset,
+                    animate=state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==preset.entryId}) },
             searchResults = searchContributions(os, query ?: retainedQuery),
         )
-        val dispatch = shell.engine::dispatch
+        val dispatch = shell::dispatch
         val launcherAction: (LauncherUiAction) -> Unit = { action ->
             when (action) {
                 is LauncherUiAction.Open -> dispatch(LauncherAction.Open(action.token))
@@ -168,10 +179,21 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
             .semantics { testTagsAsResourceId = true }) {
             Box(Modifier.weight(1f)) {
                 Column(Modifier.fillMaxSize()) {
-                    WpStatusStrip(windowMetrics = metrics)
+                    Box {
+                        WpStatusStrip(windowMetrics = metrics)
+                        os.toast?.let { message ->
+                            Box(Modifier.matchParentSize().background(colors.background).padding(horizontal=18.dp),contentAlignment=Alignment.CenterStart) {
+                                Label(message,12,colors.accent,maxLines=1)
+                            }
+                        }
+                    }
                     WpSurfaceTransitionHost(
                         targetState = state.motionTarget(),
-                        transitionKind = state.transitionRequest?.kind.toWpKind(),
+                        transitionKind = when {
+                            (state.surface as? ShellVisualSurface.Module)?.taskId?.let {it==shell.coldOpeningTask}==true -> WpSurfaceTransitionKind.DESKTOP_TO_MODULE
+                            state.transitionRequest?.kind in setOf(ShellTransitionKind.DESKTOP_TO_MODULE,ShellTransitionKind.MODULE_LIST_TO_MODULE,ShellTransitionKind.SEARCH_TO_MODULE) -> WpSurfaceTransitionKind.TASK_ACTIVATE
+                            else -> state.transitionRequest?.kind.toWpKind()
+                        },
                         reducedMotion = reducedMotion,
                         timings = timings,
                         modifier = Modifier.weight(1f),
@@ -187,29 +209,33 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                                 if (page == LauncherPagerPage.START) YokuliStartScreen(
                                     launcher.copy(transient = state.transient.takeIf { state.surface == ShellVisualSurface.Desktop }), launcherAction,
                                 ) else WpAppList(
-                                    launcher.copy(transient = state.transient.takeIf { state.surface == ShellVisualSurface.ModuleList }), launcherAction,
+                                    launcher.copy(entries=launcher.entries.filter {entry -> shell.apps.any {it.entry==entry.descriptor.entryId}},
+                                        transient = state.transient.takeIf { state.surface == ShellVisualSurface.ModuleList }), launcherAction,
                                 )
                             }
                             is ShellMotionTarget.App -> {
                                 val page = shell.pageForToken(target.token)
-                                if (heavyContentReady || page != "chart") ShellAppContent(os, page, service)
-                                else Box(Modifier.fillMaxSize().background(colors.background), contentAlignment = Alignment.Center) {
-                                    Glyph("chart", Modifier.size(60.dp), colors.accent)
+                                val app=shell.appForPage(page)
+                                val snapshot=shell.snapshots.images[target.taskId]
+                                if(!heavyContentReady && target.taskId==shell.coldOpeningTask && app!=null) AppLaunchCover(os,app)
+                                else if(!heavyContentReady && snapshot!=null) Image(snapshot.bitmap.asImageBitmap(),null,Modifier.fillMaxSize().background(colors.background),contentScale=ContentScale.Fit)
+                                else {
+                                    val stateKey="${target.taskId.value}:${target.token.value}"
+                                    SideEffect {savedKeys[stateKey]=target.taskId}
+                                    savedTasks.SaveableStateProvider(stateKey) {
+                                        TaskCaptureHost(os,target.taskId,target.token.value,active=target==state.motionTarget() && heavyContentReady) {
+                                            ShellAppContent(os,page,service)
+                                        }
+                                    }
                                 }
                             }
                             ShellMotionTarget.Search -> WpSearchSurface(launcher, retainedQuery, launcherAction)
-                            ShellMotionTarget.Recents -> WpRecentsSurface(
-                                state.tasks.tasks, launcher.entries,
+                            ShellMotionTarget.Recents -> TaskSwitcher(
+                                os, state.tasks.tasks,
                                 onActivate = { dispatch(LauncherAction.ActivateTask(it.taskId)) },
                                 onClose = { dispatch(LauncherAction.CloseTask(it.taskId)) },
                             )
                         }
-                    }
-                }
-                os.toast?.let { message ->
-                    Box(Modifier.align(Alignment.BottomCenter).padding(14.dp).fillMaxWidth()
-                        .background(colors.accent).clickable { os.toast = null }.padding(16.dp)) {
-                        Label(message, 17, Color.White)
                     }
                 }
                 SystemMarineAlerts(os)
@@ -239,6 +265,7 @@ private fun ShellAppContent(os: OsStore, page: String, service: (String, String?
         page == "anchor" -> AnchorExperience(os)
         page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os, service)
         page == "local_nmea" -> LocalNmeaScreen(os, service)
+        page == "tiles" -> TileLibraryScreen(os)
         page == "settings" || page.startsWith("settings:") -> SettingsScreen(os,page.substringAfter(':',"overview"))
         page == "chart:depth" -> DepthSurveyScreen(os)
         else -> Column { PageHeader(os,os.t("页面已更新","page updated"));PageBody {
@@ -248,101 +275,9 @@ private fun ShellAppContent(os: OsStore, page: String, service: (String, String?
     }
 }
 
-@Composable
-private fun shellVisual(os: OsStore, app: ShellApp): LauncherEntryVisualContribution {
-    val title = os.title(app.app)
-    val preferences by os.shell.persistence.state.collectAsState()
-    val data by os.hub.state.collectAsState()
-    val now=rememberMarineClock()
-    val fix=data.fix(os.positionSource)?.takeIf {it.fresh(now)}
-    val configured=preferences?.appPreferenceValues?.get("${app.id.value}.tile.mode")?.removePrefix("c:")
-    val tileMode=if(app.app==AppId.CHART && (configured==null||configured=="AUTO")) when {
-        os.activeRoute!=null->"NAVIGATION";os.maps.snapshot!=null->"MAP";fix!=null->"POSITION";else->"STATIC"
-    } else configured?:"LIVE"
-    val headline=when(tileMode) {
-        "NAVIGATION"->os.activeRoute?.name?:os.t("尚未导航","no active navigation")
-        "POSITION"->fix?.let{os.formatSpeed(it.speed)}?:os.t("船位不可用","position unavailable")
-        "MAP"->os.maps.sourceName(os.chinese)
-        else->os.t("浏览海图","browse charts")
-    }
-    val detail = if(tileMode=="STATIC"&&app.app!=AppId.CHART) "" else when (app.app.name) {
-        "CHART" -> when(tileMode){
-            "NAVIGATION"->os.nextPoint?.let{point->fix?.let{os.formatDistance(distance(it.point,point))}}?:os.t("等待船位或目标","awaiting position or target")
-            "POSITION"->fix?.let{os.formatCoordinates(it.point)}?:os.t("在设置中选择来源","choose a source in settings")
-            "MAP"->if(os.maps.snapshot==null)os.t("打开海图更新快照","open chart to update snapshot")else os.formatCoordinates(os.center)
-            else->os.t("船位 · 标记 · 测距", "position · marks · distance")
-        }
-        "LIBRARY" -> os.t("文件夹与海图图层", "folders and chart layers")
-        "PLACES" -> os.t("${os.allPlaces.size} 个坐标 · ${os.routes.size} 条航线", "${os.allPlaces.size} places · ${os.routes.size} routes")
-        "VOYAGES" -> if(os.recordingActive)if(os.recordingPaused)os.t("记录已暂停","recording paused")else os.t("正在记录本次航行","recording this voyage")else os.t("航迹、时刻与回忆","tracks, moments & memories")
-        "ANCHOR" -> os.marine?.vm?.ui?.value?.active?.let{if(it.paused)os.t("值守已暂停","watch paused")else os.t("锚警值守中","anchor watch active")}?:os.t("准备下一次锚泊","prepare your next anchorage")
-        "INSTRUMENTS" -> fix?.let{os.formatSpeed(it.speed)}?:os.t("航速、风与船体运动","speed, wind & vessel motion")
-        "NMEA" -> data.endpoint.takeIf{data.connection!="off"}?:os.t("管理多条连接","manage your connections")
-        "LOCAL_NMEA" -> os.t("${data.clients} 个已连接客户端","${data.clients} connected clients")
-        "SETTINGS" -> os.t("我的船 · 单位 · 应用","my vessel · units · apps")
-        else -> ""
-    }
-    return LauncherEntryVisualContribution(
-        app.entry, title,
-        when (app.app.name) {
-            "CHART", "LIBRARY", "TRIP", "VOYAGES" -> 'H'
-            "PLACES" -> 'W'
-            "DATA" -> 'C'
-            "SETTINGS" -> 'S'
-            "ANCHOR", "ANCHORAGES" -> 'M'
-            "SONAR" -> 'G'
-            "INSTRUMENTS" -> 'Y'
-            else -> app.app.en.first().uppercaseChar()
-        },
-        title, detail,
-        LauncherIconRenderer { tint, modifier -> ShellAppIcon(app, tint, modifier) },
-        app.sizes.associateWith { size -> LauncherTileRenderer { context ->
-            if(app.app==AppId.CHART && tileMode=="MAP" && os.maps.snapshot!=null && size!=MarineTileSize.ICON_1X1) {
-                Box(context.modifier.fillMaxSize()) {
-                    Image(os.maps.snapshot!!.asImageBitmap(),title,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
-                    Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color.Black.copy(alpha=.7f)).padding(8.dp)) {
-                        WpText(title,12,color=Color.White,maxLines=1)
-                        WpText(headline,18,color=Color.White,maxLines=1)
-                    }
-                }
-            } else if (app.app.name == "CHART" && size == MarineTileSize.WIDE_4X2) {
-                Row(context.modifier.fillMaxSize()) {
-                    Box(Modifier.fillMaxHeight().width(116.dp), contentAlignment = Alignment.Center) {
-                        ShellAppIcon(app, context.contentColor, Modifier.size(54.dp))
-                    }
-                    Column(Modifier.fillMaxHeight().weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                        WpText(title, 12, color = context.contentColor, maxLines = 1)
-                        WpText(headline, 23, color = context.contentColor, weight = FontWeight.Light, maxLines = 2)
-                        WpText(detail, 12, color = context.contentColor.copy(alpha = .84f), maxLines = 2)
-                    }
-                }
-            } else if (app.app.name == "CHART" && size == MarineTileSize.STANDARD_2X2) {
-                Column(context.modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ShellAppIcon(app, context.contentColor, Modifier.size(28.dp))
-                        WpText(title, 12, color = context.contentColor, maxLines = 1, modifier = Modifier.padding(start = 7.dp))
-                    }
-                    WpText(headline, 20, color = context.contentColor, weight = FontWeight.Light, maxLines = 2)
-                    WpText(detail, 11, color = context.contentColor.copy(alpha = .84f), maxLines = 2)
-                }
-            } else Box(context.modifier.fillMaxSize()) {
-                if (size == MarineTileSize.ICON_1X1) {
-                    ShellAppIcon(app, context.contentColor, Modifier.size(44.dp).align(Alignment.Center))
-                } else {
-                    ShellAppIcon(app, context.contentColor, Modifier.size(42.dp).align(Alignment.TopStart))
-                    Column(Modifier.align(Alignment.BottomStart)) {
-                        WpText(title, if (size == MarineTileSize.WIDE_4X2) 26 else 18, color = context.contentColor, weight = FontWeight.Light, maxLines = 1)
-                        if (size == MarineTileSize.WIDE_4X2 && detail.isNotBlank()) WpText(detail, 12, color = context.contentColor, maxLines = 1)
-                    }
-                }
-            }
-        } },
-    )
-}
-
 /** Original app icon paths, shared by tiles and alphabetic app rows. */
 @Composable
-private fun ShellAppIcon(app: ShellApp, color: Color, modifier: Modifier) {
+internal fun ShellAppIcon(app: ShellApp, color: Color, modifier: Modifier) {
     if (app.app.name !in setOf("CHART", "LIBRARY", "PLACES", "DATA", "SETTINGS")) {
         Glyph(app.app.icon, modifier, color)
         return

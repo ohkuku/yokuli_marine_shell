@@ -63,7 +63,8 @@ enum class AppId(val zh: String, val en: String, val icon: String) {
     VOYAGES("航行日志","logbook","logbook"), ANCHOR("锚警","anchor watch","anchor"),
     PLACES("我的航行","my sailing","route"), INSTRUMENTS("仪表","instruments","data"),
     NMEA("NMEA 输入及输出","NMEA connections","connect"),
-    LOCAL_NMEA("本机 NMEA 客户端","local NMEA","connect"), SETTINGS("设置","settings","settings")
+    LOCAL_NMEA("本机 NMEA 客户端","local NMEA","connect"), SETTINGS("设置","settings","settings"),
+    TILES("磁贴库","tile library","start")
 }
 
 @HiltAndroidApp

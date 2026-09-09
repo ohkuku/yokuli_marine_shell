@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -54,15 +55,15 @@ fun AnchorExperience(os: OsStore) {
     val view=os.maps.view("anchor",fix?.point ?: os.center,16.0)
     val referenceKey=os.anchorDraft?.let {"${it.placeId}:${it.spotId}:${it.point.lat}:${it.point.lon}"} ?: "os-watch"
     val restored=state.anchorSetupDraft?.takeIf {it.referenceKey==referenceKey}
-    var page by remember {mutableStateOf(if(restored!=null && active==null)"setup" else "watch")}
+    var page by rememberSaveable {mutableStateOf(if(restored!=null && active==null)"setup" else "watch")}
     var picked by remember {mutableStateOf(restored?.mapLatitude?.let {lat->restored.mapLongitude?.let {lon->GeoPoint(lat,lon)}})}
-    var origin by remember {mutableStateOf(restored?.knownMethod?.let {runCatching {AnchorCenterSource.valueOf(it)}.getOrNull()} ?: AnchorCenterSource.MAP_PICK)}
+    var origin by rememberSaveable {mutableStateOf(restored?.knownMethod?.let {runCatching {AnchorCenterSource.valueOf(it)}.getOrNull()} ?: AnchorCenterSource.MAP_PICK)}
     var picking by remember {mutableStateOf(false)}
-    var estimate by remember {mutableStateOf(restored?.estimate ?: false)}
-    var radius by remember {mutableStateOf(restored?.alarmRadius?.takeIf {it.isNotBlank()} ?: state.settings.preferredAlarmRadiusMeters.toString())}
-    var rode by remember {mutableStateOf(restored?.rode ?: "40")}
-    var depth by remember {mutableStateOf(restored?.depth.orEmpty())}
-    var manual by remember {mutableStateOf(restored?.manualCoordinate.orEmpty())}
+    var estimate by rememberSaveable {mutableStateOf(restored?.estimate ?: false)}
+    var radius by rememberSaveable {mutableStateOf(restored?.alarmRadius?.takeIf {it.isNotBlank()} ?: state.settings.preferredAlarmRadiusMeters.toString())}
+    var rode by rememberSaveable {mutableStateOf(restored?.rode ?: "40")}
+    var depth by rememberSaveable {mutableStateOf(restored?.depth.orEmpty())}
+    var manual by rememberSaveable {mutableStateOf(restored?.manualCoordinate.orEmpty())}
     var editingRadius by remember {mutableStateOf(false)}
     var confirmEnd by remember {mutableStateOf(false)}
     var estimateChoice by remember {mutableStateOf<AnchorEstimateChoice?>(null)}
@@ -72,6 +73,8 @@ fun AnchorExperience(os: OsStore) {
     var endingId by remember {mutableStateOf<Long?>(null)}
     var saveSession by remember {mutableStateOf<AnchorSessionEntity?>(null)}
     var saving by remember {mutableStateOf(false)}
+    var savedAnchorageId by rememberSaveable {mutableStateOf<Long?>(null)}
+    var savedWatchId by rememberSaveable {mutableStateOf<Long?>(null)}
     val scope=rememberCoroutineScope()
     val c=LocalMetro.current
     val source=state.settings.gpsDataSource
@@ -271,6 +274,10 @@ fun AnchorExperience(os: OsStore) {
                     Label(os.formatCoordinates(watchCenter(session)),18)
                     Label(os.t("最大偏移 ${os.formatDistance(session.maxDistanceMeters)} · ${session.alarmCount} 次位置告警","maximum excursion ${os.formatDistance(session.maxDistanceMeters)} · ${session.alarmCount} position alarms"),18)
                     MetroButton(if(saving)os.t("正在保存…","saving…")else os.t("保存为我的锚地","save to my places"),{saveSession=session},primary=true,enabled=!saving)
+                    if(savedWatchId==session.id && savedAnchorageId!=null) {
+                        Label(os.t("已保存到我的航行","saved to my sailing"),17,c.accent)
+                        MenuRow(os.t("查看收藏","view saved place")) {os.open("anchorage:$savedAnchorageId")}
+                    }
                     feedback?.let {Label(it,16)}
                     Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {MetroButton("GPX",{vm.exportGpx(session)},Modifier.weight(1f));MetroButton("CSV",{vm.exportCsv(session)},Modifier.weight(1f))}
                     val events=state.eventsBySession[session.id].orEmpty()
@@ -293,7 +300,7 @@ fun AnchorExperience(os: OsStore) {
     }}
     saveSession?.let {session ->TextDialog(os,os.t("锚地名称","anchorage name"),os.t("我的锚地","my anchorage"),{saveSession=null}) {name ->
         saving=true;saveSession=null
-        scope.launch {runCatching {os.sailing.saveAnchorage(session,name)}.onSuccess {id->os.open("anchorage:$id")}.onFailure {feedback=it.message ?: os.t("保存失败，原记录仍保留","save failed; watch record is retained")};saving=false}
+        scope.launch {runCatching {os.sailing.saveAnchorage(session,name)}.onSuccess {id->savedAnchorageId=id;savedWatchId=session.id;feedback=null}.onFailure {feedback=it.message ?: os.t("保存失败，原记录仍保留","save failed; watch record is retained")};saving=false}
     }}
 }
 

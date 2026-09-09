@@ -34,6 +34,7 @@ data class RuntimeUserFeedback(
 
 enum class RuntimeFeedbackContext {
     GENERAL,
+    POSITION_STATUS,
     ARM_WATCH,
     DEPTH_DATA_UNAVAILABLE,
     WIND_DATA_UNAVAILABLE,

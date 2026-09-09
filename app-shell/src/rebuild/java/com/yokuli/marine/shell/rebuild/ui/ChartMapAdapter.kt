@@ -30,7 +30,8 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
             if(os.editingRoute)14f else if(navigating && i==os.routeLeg)16f else 10f,os.editingRoute))}
         os.allPlaces.forEach {add(MapPoint("place:${it.id}",it.point,"",accent,5f))}
     }
-    MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(),it.fresh())},markers,lines),view,modifier,
+    MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(),it.fresh())},markers,lines,
+        demo=os.positionSource=="demo" || os.marine?.vm?.ui?.value?.settings?.demoMode==true),view,modifier,
         onHost={host -> host.captureForTile=true;onHost(host)},onEvent={event ->when(event) {
             is MapEvent.CameraChanged -> {os.center=event.center;os.zoom=event.zoom}
             MapEvent.GestureStarted -> {os.follow=false;os.showCrosshair=true}

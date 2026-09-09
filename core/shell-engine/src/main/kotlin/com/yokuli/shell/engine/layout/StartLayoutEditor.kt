@@ -3,6 +3,7 @@ package com.yokuli.shell.engine.layout
 import com.yokuli.shell.contract.LauncherEntryDescriptor
 import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileInstanceId
+import com.yokuli.shell.contract.MarineTileSize
 import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 
 /**
@@ -47,13 +48,16 @@ object StartLayoutEditor {
         document: StartDocument,
         entryId: LauncherEntryId,
         entries: Collection<LauncherEntryDescriptor>,
+        size: MarineTileSize? = null,
     ): LayoutProposal? {
         if (document.placements.any { it.entryId == entryId }) return null
         val entry = entries.firstOrNull { it.entryId == entryId } ?: return null
+        val requestedSize = size ?: entry.defaultSize
+        if (requestedSize !in entry.supportedSizes) return null
         val candidate = TilePlacement(
             tileId = TileInstanceId("tile-${entryId.value}"),
             entryId = entryId,
-            size = entry.defaultSize,
+            size = requestedSize,
             rank = (document.placements.map { it.rank } + document.spacers.map { it.rank }).maxOrNull()?.plus(1024L) ?: 0L,
         )
         val profile = WpReferenceProfiles.require(document.profileId)

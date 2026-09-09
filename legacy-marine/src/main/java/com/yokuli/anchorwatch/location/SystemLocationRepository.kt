@@ -3,6 +3,9 @@ package com.yokuli.anchorwatch.location
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
@@ -23,6 +26,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class PhoneLocationPhase { OFF, PERMISSION_REQUIRED, PROVIDER_DISABLED, LISTENING, ERROR }
+data class PhoneLocationStatus(
+    val phase:PhoneLocationPhase=PhoneLocationPhase.OFF,
+    val lastFixElapsedRealtime:Long?=null,
+    val error:String?=null,
+)
+
 @Singleton
 class SystemLocationRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -39,15 +49,36 @@ class SystemLocationRepository @Inject constructor(
     private var backgroundEnabled = false
     @Volatile private var sourcePermitsPhone=false
     private val _sourceConsent=MutableStateFlow(false);val sourceConsent=_sourceConsent.asStateFlow()
-    init{kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.Default).launch{settings.settings.collect{value->synchronized(guard){sourcePermitsPhone=value.gpsDataSource in setOf(com.yokuli.anchorwatch.domain.model.GpsDataSource.SYSTEM,com.yokuli.anchorwatch.domain.model.GpsDataSource.DEMO);_sourceConsent.value=sourcePermitsPhone;reconcileLocked()}}}}
     private var running = false
-    private val listener = LocationListener { publish(it) }
+    private val _status=MutableStateFlow(PhoneLocationStatus());val status=_status.asStateFlow()
+    private val listener = object:LocationListener {
+        override fun onLocationChanged(location:Location){publish(location)}
+        @Deprecated("Required for LocationListener compatibility on Android 9–10")
+        override fun onStatusChanged(provider:String?,status:Int,extras:android.os.Bundle?)=Unit
+        override fun onProviderEnabled(provider:String){if(provider==LocationManager.GPS_PROVIDER)synchronized(guard){reconcileLocked()}}
+        override fun onProviderDisabled(provider:String){if(provider==LocationManager.GPS_PROVIDER)synchronized(guard){_fix.value=null;reconcileLocked()}}
+    }
+    init{
+        ContextCompat.registerReceiver(context,object:BroadcastReceiver(){
+            override fun onReceive(context:Context?,intent:Intent?){synchronized(guard){reconcileLocked()}}
+        },IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION),ContextCompat.RECEIVER_NOT_EXPORTED)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.Default).launch{
+            settings.settings.collect{value->synchronized(guard){
+                sourcePermitsPhone=value.gpsDataSource in setOf(com.yokuli.anchorwatch.domain.model.GpsDataSource.SYSTEM,com.yokuli.anchorwatch.domain.model.GpsDataSource.DEMO)
+                _sourceConsent.value=sourcePermitsPhone;reconcileLocked()
+            }}
+        }
+    }
 
-    private fun publish(location: Location) {
+    private fun publish(location: Location) = synchronized(guard) {
         // A switch away from the NMEA proxy must be backed by a real system
         // position, never by the app's own mock location fed back to itself.
-        if (LocationCompat.isMock(location)) return
-        val received = location.elapsedRealtimeNanos.takeIf { it > 0 }?.div(1_000_000) ?: SystemClock.elapsedRealtime()
+        if (!sourcePermitsPhone || !(appEnabled||backgroundEnabled) || LocationCompat.isMock(location) || location.provider!=LocationManager.GPS_PROVIDER)return@synchronized
+        val now=SystemClock.elapsedRealtime()
+        val received = location.elapsedRealtimeNanos.takeIf { it > 0 }?.div(1_000_000) ?: now
+        // Last-known callbacks and NETWORK fixes can arrive after newer GNSS.
+        // Never let arrival order rewind the selected observation's timestamp.
+        if(received>now||_fix.value?.receivedElapsedRealtime?.let{received<=it}==true)return@synchronized
         val value = NavigationFix(
             latitude = location.latitude,
             longitude = location.longitude,
@@ -71,6 +102,7 @@ class SystemLocationRepository @Inject constructor(
             valid = location.latitude in -90.0..90.0 && location.longitude in -180.0..180.0,
         )
         _fix.value = value
+        _status.value=PhoneLocationStatus(PhoneLocationPhase.LISTENING,received)
         if (value.valid) appendRecent(value)
     }
 
@@ -92,22 +124,27 @@ class SystemLocationRepository @Inject constructor(
 
     @SuppressLint("MissingPermission")
     private fun reconcileLocked() {
-        val shouldRun = sourcePermitsPhone && (appEnabled || backgroundEnabled) && hasPermission()
-        if (shouldRun && !running) {
-            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-                .filter { runCatching { locationManager.isProviderEnabled(it) }.getOrDefault(false) }
-            providers.mapNotNull { provider ->
-                runCatching {
-                    locationManager.getLastKnownLocation(provider)?.let(::publish)
-                    locationManager.requestLocationUpdates(provider, 1_000L, 0f, listener, Looper.getMainLooper())
-                    provider
-                }.getOrNull()
-            }.also { running = it.isNotEmpty() }
-        } else if (!shouldRun && running) {
-            locationManager.removeUpdates(listener)
-            running = false
-            _fix.value = null
+        val requested=sourcePermitsPhone&&(appEnabled||backgroundEnabled)
+        val permission=hasPermission()
+        val providerEnabled=runCatching{locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)}.getOrDefault(false)
+        if(!requested||!permission){
+            if(running)runCatching{locationManager.removeUpdates(listener)}
+            running=false;_fix.value=null
+            _status.value=PhoneLocationStatus(if(requested)PhoneLocationPhase.PERMISSION_REQUIRED else PhoneLocationPhase.OFF)
+            return
         }
+        // Register GNSS once, even while its provider is disabled. Android's
+        // provider callback resumes delivery; a stale fix never restarts it.
+        if(!running){
+            val error=runCatching{
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,1_000L,0f,listener,Looper.getMainLooper())
+                running=true
+                if(providerEnabled)locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let(::publish)
+            }.exceptionOrNull()
+            if(error!=null){_status.value=PhoneLocationStatus(PhoneLocationPhase.ERROR,error=error.message);return}
+        }
+        if(!providerEnabled)_fix.value=null
+        _status.value=PhoneLocationStatus(if(providerEnabled)PhoneLocationPhase.LISTENING else PhoneLocationPhase.PROVIDER_DISABLED,_fix.value?.receivedElapsedRealtime)
     }
 
     private fun appendRecent(fix: NavigationFix) {

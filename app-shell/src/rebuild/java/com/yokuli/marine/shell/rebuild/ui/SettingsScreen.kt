@@ -35,14 +35,16 @@ import com.yokuli.anchorwatch.domain.model.AlarmType
 import com.yokuli.anchorwatch.domain.model.AlarmState
 import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.anchorwatch.data.vessel.anyEnabled
+import com.yokuli.anchorwatch.location.PhoneLocationPhase
 
 @Composable fun SettingsScreen(os: OsStore, initialSection: String = "overview") {
-    var section by rememberSaveable(initialSection) { mutableStateOf(initialSection) }
+    var section by rememberSaveable(initialSection) { mutableStateOf(initialSection.substringBefore(':')) }
     var reset by remember { mutableStateOf(false) }
     val preferences by os.shell.persistence.state.collectAsState()
+    var tileOwner by rememberSaveable(initialSection) { mutableStateOf(initialSection.substringAfter(':', "").takeIf { initialSection.startsWith("tiles:") }) }
     val c = LocalMetro.current
-    val back = { if (section == "overview") os.back() else section = "overview" }
-    BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && section != "overview") { section = "overview"; true } else false }
+    val back = { if (section == "overview") os.back() else { section = "overview"; tileOwner = null } }
+    BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && section != "overview") { section = "overview"; tileOwner = null; true } else false }
     fun title(key: String) = when (key) {
         "appearance" -> os.t("外观与显示", "appearance & display")
         "language" -> os.t("语言", "language")
@@ -125,9 +127,10 @@ import com.yokuli.anchorwatch.data.vessel.anyEnabled
                         Label(os.t("只恢复磁贴布局，不清除海图、连接或航行资料。", "Only the tile layout is restored. Charts, connections and voyage data are kept."), 16, c.muted)
                     }
                     "tiles" -> {
+                        MenuRow(os.t("磁贴库", "tile library"), os.t("预览与固定所需的磁贴", "preview and pin the tiles you need"), "start") { os.open("tiles") }
                         val registry = os.shell.appPreferenceRegistry
                         val resolved = registry.resolve(preferences?.appPreferenceValues.orEmpty())
-                        os.shell.apps.forEach { app ->
+                        os.shell.apps.filter { tileOwner == null || it.id.value == tileOwner }.forEach { app ->
                             val definitions = registry.definitions.filterValues { it.first == app.id && it.first.value != "preferences" }
                             if (definitions.isNotEmpty()) {
                                 Label(os.title(app.app), 28, c.accent)
@@ -145,7 +148,7 @@ import com.yokuli.anchorwatch.data.vessel.anyEnabled
                                 }
                             }
                         }
-                        Label(os.t("这里只列出应用已提供的磁贴内容选项。", "Only tile options provided by an app appear here."), 16, c.muted)
+                        Label(os.t("在磁贴库可预览并固定独立磁贴；这里的轮换选项也应用到同应用的专用磁贴。", "Preview and pin independent tiles in Tile Library. Rotation choices here also apply to this app’s dedicated tiles."), 16, c.muted)
                     }
                     else -> {
                         Label("Yokuli OS", 42, c.accent)
@@ -165,19 +168,41 @@ import com.yokuli.anchorwatch.data.vessel.anyEnabled
     val marine = os.marine ?: return
     val state by marine.vm.ui.collectAsState()
     val connections by marine.vm.nmeaConnections.collectAsState()
+    val phoneLocation by marine.vm.phoneLocationStatus.collectAsState()
     val now = rememberMarineClock()
     val locked = state.active?.paused == false
     val nmeaConnected = connections.any { it.spec.receive && it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }
     PageBody {
         Label(os.t("船位", "position"), 28)
         Toggle(os.t("手机 GPS", "phone GPS"), os.positionSource == "phone", os.t("开启时请求权限并启动定位；关闭时停止。", "Requests access and starts location when switched on; stops when switched off."), enabled = !locked && os.positionSource in listOf("none", "phone")) { os.requestService(if (it) "gpsOn" else "gpsOff") }
+        if (os.positionSource == "phone") Label(when (phoneLocation.phase) {
+            PhoneLocationPhase.OFF -> os.t("定位服务正在准备", "preparing location service")
+            PhoneLocationPhase.PERMISSION_REQUIRED -> os.t("需要精确定位权限", "precise location permission required")
+            PhoneLocationPhase.PROVIDER_DISABLED -> os.t("系统定位已关闭，请开启 Android 定位", "Android location is off; enable location in system settings")
+            PhoneLocationPhase.ERROR -> os.t("定位服务暂不可用", "location service is unavailable")
+            PhoneLocationPhase.LISTENING -> phoneLocation.lastFixElapsedRealtime?.let { received -> if (now - received in 0..10_000) os.t("定位已更新", "position updated") else os.t("等待位置更新 · ", "waiting for position update · ") + readingAge(os, received, now) } ?: os.t("正在等待定位", "waiting for a position")
+        }, 16, LocalMetro.current.muted)
         Toggle(os.t("NMEA 船位", "NMEA position"), os.positionSource == "nmea", if (nmeaConnected) os.t("使用已连接来源中的有效船位", "use a valid fix from connected sources") else os.t("先在 NMEA 中连接一个输入", "connect an input in NMEA first"), enabled = !locked && (os.positionSource == "nmea" || (os.positionSource == "none" && nmeaConnected))) { os.requestService(if (it) "sourceNmea" else "sourceOff") }
         Label(if (locked) os.t("锚警正在值守，暂停后可以更改船位来源。", "Pause the anchor watch before changing its position source.") else os.t("两项都可以关闭。船位来源不会自动切换；NMEA 的其他读数仍可继续更新。", "Both may be off. Position never changes source automatically; other NMEA readings can continue."), 16, LocalMetro.current.muted)
         MenuRow(os.t("NMEA 连接", "NMEA connections"), os.t("管理并行的输入与输出", "manage concurrent inputs and outputs"), "connect") { os.open("nmea") }
         if (os.positionSource != "phone") {
             val selectedConnection = state.vesselSettings.metricSourcePins["POSITION_CONNECTION"]
+            val selected = connections.firstOrNull { it.spec.id == selectedConnection }
+            if (selectedConnection != null) {
+                Label(os.t("已选连接：", "selected connection: ") + (selected?.spec?.name ?: os.t("原连接不可用", "previous connection unavailable")), 23, LocalMetro.current.accent)
+                Label(when {
+                    os.positionSource != "nmea" -> os.t("船位来源已关闭，保留此选择。", "Position is off; this selection is retained.")
+                    selected == null -> os.t("等待原连接恢复；不会自动改用其他连接。", "Waiting for the selected connection; another connection will not take over.")
+                    !selected.requested || selected.state == NmeaConnectionState.DISCONNECTED -> os.t("该连接已停止，船位暂不可用。", "This connection is stopped; position is unavailable.")
+                    selected.state in setOf(NmeaConnectionState.CONNECTING, NmeaConnectionState.RECONNECTING) -> os.t("等待该连接接通。", "Waiting for this connection.")
+                    selected.state == NmeaConnectionState.ERROR -> os.t("该连接受阻，船位暂不可用。", "This connection is unavailable; position is unavailable.")
+                    os.hub.state.value.fix("nmea")?.fresh(now) != true -> os.t("等待该连接的新鲜有效船位。", "Waiting for a fresh valid position from this connection.")
+                    else -> os.t("正在使用此连接的船位。", "Using position from this connection.")
+                }, 17, LocalMetro.current.muted)
+            }
             connections.filter { it.spec.receive && it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }.forEach { connection ->
-                MetroButton(os.t("船位来自：", "position from: ") + connection.spec.name, { marine.vm.selectNmeaPositionConnection(connection.spec.id) }, primary = os.positionSource == "nmea" && selectedConnection == connection.spec.id, enabled = !locked)
+                val current = os.positionSource == "nmea" && selectedConnection == connection.spec.id
+                MetroButton((if (current) os.t("当前连接：", "current connection: ") else os.t("改用：", "switch to: ")) + connection.spec.name, { marine.vm.selectNmeaPositionConnection(connection.spec.id) }, primary = current, enabled = !locked && !current)
             }
             val positions = state.vesselData.candidates[VesselMetricId.POSITION].orEmpty().filter { it.source.transportProfileId == selectedConnection }
             val selectedSource = state.vesselSettings.metricSourcePins[VesselMetricId.POSITION.name]
