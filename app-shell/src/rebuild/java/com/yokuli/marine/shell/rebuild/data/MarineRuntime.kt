@@ -54,6 +54,8 @@ class MarineRuntime(private val os: OsStore, val vm: MainViewModel) {
                 }
             } else emptyList()
         }
+        val selected = state.settings.gpsDataSource
+        val accepted = state.acceptedPosition.takeIf { it.selectedSource == selected }?.acceptedFix
         val readings = buildMap {
             fun add(key: String, value: VesselObservation<Double>, unit: String) {
                 val number = value.value?.takeIf { it.isFinite() } ?: return
@@ -71,9 +73,11 @@ class MarineRuntime(private val os: OsStore, val vm: MainViewModel) {
                 add("pressure", pressureHpa, "hPa")
                 add("ukc", derived.underKeelClearanceMeters, "m")
             }
+            accepted?.asFix(if(selected==GpsDataSource.SYSTEM) "phone GPS" else if(selected==GpsDataSource.DEMO) "DEMO" else "NMEA")?.let { fix ->
+                fix.speed?.let { put("sog",Reading(it,"kn",fix.source,fix.speedElapsed)) }
+                fix.course?.let { put("cog",Reading(it,"°T",fix.source,fix.courseElapsed)) }
+            }
         }
-        val selected = state.settings.gpsDataSource
-        val accepted = state.acceptedPosition.takeIf { it.selectedSource == selected }?.acceptedFix
         os.hub.update {
             it.copy(phone = (if(selected==GpsDataSource.SYSTEM) accepted else state.systemFix)?.asFix("phone"),
                 nmea = (if(selected==GpsDataSource.NMEA) accepted else state.nmeaFix)?.asFix("NMEA"),

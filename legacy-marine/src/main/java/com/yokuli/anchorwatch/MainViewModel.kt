@@ -938,7 +938,7 @@ class MainViewModel @Inject constructor(
     fun setTripLiveDisplayActive(active:Boolean){runtimeResources.set(RuntimeOwner.VESSEL_HUB_UI,if(active)RuntimeRequirement(needsSystemLocation=false,needsPhoneMotion=true,needsPhoneHeading=true,needsPhonePressure=true)else null)}
     fun confirmTripAttitudeFrame(axis:DeviceBowAxis)=viewModelScope.launch{
         if(_ui.value.activeTrip?.paused==true){_ui.update{it.copy(vesselCalibrationFeedback="Resume the trip before confirming a new attitude segment.")};return@launch}
-        runtimeResources.set(RuntimeOwner.VESSEL_HUB_UI,RuntimeRequirement(needsSystemLocation=true,needsPhoneMotion=true,needsPhoneHeading=true,needsPhonePressure=true))
+        runtimeResources.set(RuntimeOwner.VESSEL_HUB_UI,RuntimeRequirement(needsSystemLocation=false,needsPhoneMotion=true,needsPhoneHeading=true,needsPhonePressure=true))
         delay(500)
         val saved=vesselAttitudeRepository.calibrate(axis)
         if(saved){

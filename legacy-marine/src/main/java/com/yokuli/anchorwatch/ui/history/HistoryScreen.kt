@@ -12,7 +12,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import com.yokuli.anchorwatch.ui.theme.Wp8Button as Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -20,9 +20,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import com.yokuli.anchorwatch.ui.theme.Wp8OutlinedButton as OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.yokuli.anchorwatch.ui.theme.Wp8TextButton as TextButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -276,7 +276,12 @@ private fun TripReportDialog(session:TripSessionEntity,vm:MainViewModel,dismiss:
 }
 
 @Composable private fun ReportHeading(value:String){HorizontalDivider();Text(value,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.titleSmall)}
-@Composable private fun ReportLine(label:String,value:String){Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(label,Modifier.weight(1f),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Text(value,style=MaterialTheme.typography.bodySmall)}}
+@Composable private fun ReportLine(label:String,value:String){
+    Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(2.dp)){
+        Text(label,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value,style=MaterialTheme.typography.bodyMedium)
+    }
+}
 private fun durationText(value:Long)="${value/3_600_000}h ${(value/60_000)%60}m"
 private fun coordinatePair(startLat:Double?,startLon:Double?,endLat:Double?,endLon:Double?)=if(startLat!=null&&startLon!=null&&endLat!=null&&endLon!=null)"%.4f, %.4f → %.4f, %.4f".format(startLat,startLon,endLat,endLon)else"—"
 

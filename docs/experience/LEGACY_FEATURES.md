@@ -43,3 +43,22 @@ Device and boat acceptance is still required.
 The Shell now owns language, appearance, app navigation and virtual Back. Legacy
 navigation commands emit transient requests; nested settings, replay, approach
 and anchorage pages consume Back before the application closes.
+
+## 本轮实际操作 / Hands-on verification
+
+2026-09-09，Android 14 模拟器保留原有海图库与航线，覆盖安装当前 APK 后，通过界面完成：
+
+- 手机与 NMEA 船位初始都关闭；仅授权近似位置时手机来源仍关闭；授予精确位置后自动开始定位，关闭后 Android GPS/network 订阅实际撤销。
+- TCP `10.0.2.2:19110` 接收本机测试服务器的 RMC/GGA/HDT/DPT/MWV。输入独立于船位开关：两个来源关闭时风、水深、航向仍更新；启用 NMEA 船位会禁用手机选择；关掉 NMEA 船位仍保持输入连接。
+- 海图“开始记录”→暂停→继续→记录此刻→结束并保存；航行日志持久化 181 个样本及 1 个航点。报告位置、风、水深覆盖均为 100%，起止坐标均为 `51.9443, -130.9570`。测试源固定不移动，0 km 是真实结果。展开日志可进入报告、回放和各格式导出。
+
+Confirmed through the actual UI: explicit location permission and source lifecycle;
+independent connected NMEA input; Chart recording, pause/resume, waypoint and saved
+voyage/report with 181 samples. This was a stationary synthetic input, not a sea trial.
+Export buttons were reached; file export, alarms, QR/camera, physical sensors and
+overnight/background behavior were not exercised in this pass.
+
+截图位于 `screenshots/sources-both-off-v03.png`、`phone-gps-active-v03.png`、
+`nmea-source-active-v03.png`、`nmea-connected-position-off-v03.png` 和
+`nmea-tcp-connected-v03.png`。整理截图发现并修复的显示问题包括：嵌入标题继承
+错误前景色、Material 按钮默认胶囊形，以及报告中长坐标挤压标签。

@@ -6,6 +6,8 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
@@ -28,19 +30,25 @@ import kotlinx.coroutines.*
     } }
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,os.t("我的航行","my sailing"))
-        Pivot(listOf(os.t("标记","marks"),os.t("航线","routes"),os.t("导入导出","files"))) {page ->
+        Pivot(listOf(os.t("航线","routes"),os.t("标记","marks"),os.t("导入导出","files"))) {page ->
             PageBody {
                 when(page) {
-                    0->{
+                    1->{
                         if(os.places.isEmpty()) {Label(os.t("把值得记住的地方\n留在海图上。","keep the places\nworth remembering."),34);Label(os.t("在海图上移动准星，点一次标记即可保存。","Move the crosshair on chart, then tap mark to save."),18,LocalMetro.current.muted)}
                         os.places.forEach {place ->MenuRow(place.name,coordinates(place.point),"pin") {os.open("place:${place.id}")}}
                         MetroButton(os.t("去海图标记","mark on chart"),{os.open("chart");os.showCrosshair=true},primary=true)
                     }
-                    1->{
-                        os.activeRoute?.let {route ->Label(os.t("正在使用：${route.name}","active: ${route.name}"),22,LocalMetro.current.accent);MetroButton(os.t("结束航线","end route"),{os.activeRouteId=null;os.save()})}
+                    0->{
+                        os.activeRoute?.let {route ->
+                            Label(os.t("正在导航","navigating"),15,LocalMetro.current.accent)
+                            MenuRow(route.name,os.t("当前目标 ${os.routeLeg+1} / ${route.points.size} · 点此继续","target ${os.routeLeg+1} / ${route.points.size} · continue"),"locate") {
+                                os.displayedRouteId=route.id;os.showCrosshair=false;os.open("chart")
+                            }
+                        }
+                        if(os.routes.isNotEmpty()) Label(os.t("选择下一段航程","choose your next passage"),31)
                         if(os.routes.isEmpty()) {Label(os.t("下一站，去哪里？","where to next?"),35);Label(os.t("直接在海图上添加航点，拖动调整，再保存你的航线。","Add points directly on chart, drag to adjust, then save your route."),18,LocalMetro.current.muted)}
-                        os.routes.forEach {route ->MenuRow(route.name,"${nm(route.length)} · ${route.points.size} "+os.t("个航点","points"),"route") {os.open("route:${route.id}")}}
-                        MetroButton(if(os.editingRoute) os.t("继续编辑航线","continue editing") else os.t("新建航线","new route"),{
+                        os.routes.forEach {route ->MenuRow(route.name,(if(route.points.size==1) os.t("单点前往","single destination") else nm(route.length))+" · ${route.points.size} "+os.t("个航点","points"),"route") {os.open("route:${route.id}")}}
+                        MetroButton(if(os.draftRoute.isNotEmpty()) os.t("继续编辑航线","continue editing") else os.t("新建航线","new route"),{
                             os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList();os.open("chart")
                         },primary=true)
                     }
@@ -58,57 +66,128 @@ import kotlinx.coroutines.*
 @Composable fun PlaceScreen(os:OsStore,id:String) {
     val place=os.places.firstOrNull {it.id==id}
     if(place==null) {LaunchedEffect(id) {os.back()};return}
-    var name by remember(id) {mutableStateOf(place.name)};var note by remember(id) {mutableStateOf(place.note)};var remove by remember {mutableStateOf(false)}
+    val (fix,now)=liveNavigationFix(os);val live=fix?.takeIf {it.fresh(now)}
+    var name by remember(id) {mutableStateOf(place.name)};var note by remember(id) {mutableStateOf(place.note)}
+    var remove by remember {mutableStateOf(false)};var start by remember {mutableStateOf(false)}
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,place.name,os.t("我的航行","MY SAILING"))
-        PageBody {
-            Label(coordinates(place.point),20,LocalMetro.current.accent)
-            MetroButton(os.t("在海图上查看","show on chart"),{os.fly(place.point);os.showCrosshair=true;os.open("chart")},primary=true)
-            MetroButton(os.t("前往这里","go here"),{
-                val route=Route(name=place.name,points=listOf(place.point));os.routes=os.routes+route;os.startRoute(route)
-            })
-            Field(os.t("名称","name"),name,{name=it.take(100)})
-            Field(os.t("备注","notes"),note,{note=it.take(2000)},multiline=true)
-            MetroButton(os.t("保存修改","save changes"),{os.places=os.places.map {if(it.id==id) it.copy(name=name.trim(),note=note) else it};os.save();os.notify("标记已保存","Mark saved")},enabled=name.isNotBlank())
-            MetroButton(os.t("删除标记","delete mark"),{remove=true})
+        Pivot(listOf(os.t("地点","place"),os.t("备注","notes"))) {page ->
+            PageBody {
+                if(page==0) {
+                    Label(live?.let {nm(distance(it.point,place.point))} ?: os.t("收藏的地点","a saved place"),44,LocalMetro.current.accent)
+                    Label(live?.let {os.t("从船位看 ${decimal(bearing(it.point,place.point),0)}°T","${decimal(bearing(it.point,place.point),0)}°T from your position")} ?: os.t("开启船位后可查看距离与方位","Enable position to see distance and bearing"),18,LocalMetro.current.muted)
+                    Label(coordinates(place.point),20)
+                    if(place.note.isNotBlank()) Label(place.note,20,LocalMetro.current.muted)
+                    MetroButton(os.t("在海图上查看","show on chart"),{os.fly(place.point);os.showCrosshair=true;os.open("chart")},primary=true)
+                    MetroButton(os.t("前往这里","go here"),{start=true})
+                    Label(os.t("前往会先确认目标，再开始直线引导。","Review the destination before starting direct guidance."),15,LocalMetro.current.muted)
+                } else {
+                    Field(os.t("名称","name"),name,{name=it.take(100)})
+                    Field(os.t("泊位、水深、靠岸方式或下次提醒","berth, depth, approach notes or a reminder"),note,{note=it.take(2000)},multiline=true)
+                    MetroButton(os.t("保存备注","save notes"),{os.places=os.places.map {if(it.id==id) it.copy(name=name.trim(),note=note) else it};os.save();os.notify("标记已保存","Mark saved")},primary=true,enabled=name.isNotBlank())
+                    MetroButton(os.t("删除标记","delete mark"),{remove=true})
+                }
+            }
         }
     }
+    if(start) StartNavigationDialog(os,Route(id="goto:${place.id}",name=place.name,points=listOf(place.point))) {start=false}
     if(remove) ConfirmDialog(os,os.t("删除 ${place.name}？","Delete ${place.name}?"),{remove=false}) {os.places=os.places.filter {it.id!=id};os.save();remove=false;os.back()}
 }
+
 @Composable fun RouteScreen(os:OsStore,id:String) {
     val route=os.routes.firstOrNull {it.id==id}
     if(route==null) {LaunchedEffect(id) {os.back()};return}
-    var rename by remember {mutableStateOf(false)};var remove by remember {mutableStateOf(false)}
+    val (fix,now)=liveNavigationFix(os)
+    val c=LocalMetro.current;val context=LocalContext.current;val scope=rememberCoroutineScope()
+    var rename by remember(id) {mutableStateOf(false)};var remove by remember(id) {mutableStateOf(false)}
+    var startAt by remember(id) {mutableStateOf<Int?>(null)};var actions by remember(id) {mutableStateOf(false)}
+    var selectedPoint by remember(id) {mutableStateOf<Int?>(null)}
+    var editConfirm by remember(id) {mutableStateOf(false)};var exporting by remember {mutableStateOf(false)}
+    val exporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) {uri ->if(uri!=null) scope.launch {
+        exporting=true
+        try {withContext(Dispatchers.IO) {context.contentResolver.openOutputStream(uri,"wt")?.use {Gpx.write(it,emptyList(),listOf(route))} ?: error("unwritable")};os.notify("航线已导出","Route exported")}
+        catch(_:Exception) {os.notify("导出失败，请检查所选位置","Export failed. Check the selected location.")} finally {exporting=false}
+    } }
+    fun preview() {os.displayedRouteId=id;os.fitRequest=route.points;os.showCrosshair=false;os.open("chart")}
+    fun edit() {
+        if(os.activeRouteId==id) endNavigation(os)
+        os.editingRouteId=id;os.draftRoute=route.points.toList();os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList()
+        route.points.firstOrNull()?.let {os.fly(it)};os.open("chart")
+    }
+    val navigating=os.activeRouteId==id
+    val guidance=if(navigating) routeGuidance(route,os.routeLeg,fix,now) else null
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,route.name,os.t("我的航行","MY SAILING"))
-        PageBody {
-            Label(nm(route.length),46,LocalMetro.current.accent)
-            Label(os.t("${route.points.size} 个航点 · 距离与方位为直线值","${route.points.size} points · straight-line distances and bearings"),16,LocalMetro.current.muted)
-            MetroButton(if(os.activeRouteId==id) os.t("继续航行","continue") else os.t("使用这条航线","use this route"),{
-                if(os.activeRouteId==id) {os.displayedRouteId=id;os.open("chart")} else os.startRoute(route)
-            },primary=true)
-            MetroButton(os.t("查看整条航线","view route"),{
-                os.displayedRouteId=id;os.fitRequest=route.points;os.open("chart")
-            })
-            if(os.displayedRouteId==id) MetroButton(os.t("从海图隐藏","hide from chart"),{
-                os.displayedRouteId=null
-                if(os.activeRouteId==id) os.activeRouteId=null
-                os.save()
-            })
-            MetroButton(os.t("编辑航点","edit points"),{
-                os.editingRouteId=id;os.draftRoute=route.points.toList();os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList();os.fly(route.points.first());os.open("chart")
-            })
-            Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                MetroButton(os.t("重命名","rename"),{rename=true},Modifier.weight(1f))
-                MetroButton(os.t("反向副本","reverse copy"),{
-                    val reversed=Route(name=route.name+os.t(" · 返航"," · return"),points=route.points.reversed());os.routes=os.routes+reversed;os.save();os.open("route:${reversed.id}")
-                },Modifier.weight(1f))
+        Pivot(listOf(os.t("概览","overview"),os.t("航点","waypoints"),os.t("整理","organize"))) {page ->
+            PageBody {
+                when(page) {
+                    0 -> {
+                        if(navigating) {
+                            Label(os.t("正在导航 · 目标 ${os.routeLeg+1}","navigating · target ${os.routeLeg+1}"),16,c.accent)
+                            Label(guidance?.distanceMeters?.let(::nm) ?: os.t("等待船位","waiting for position"),40)
+                            Label(guidance?.let {offsetLabel(os,it)} ?: "",16,c.muted)
+                        } else {
+                            Label(if(route.points.size==1) os.t("单点前往","one destination") else nm(route.length),44,c.accent)
+                            Label(os.t("${route.points.size} 个航点 · 保存的规划路线","${route.points.size} waypoints · your saved plan"),17,c.muted)
+                        }
+                        RouteSketch(os,route,if(navigating) os.routeLeg else null)
+                        if(route.points.isEmpty()) Label(os.t("这条航线还没有航点。编辑后再开始。","This route has no waypoints. Add some before starting."),18)
+                        MetroButton(if(navigating) os.t("回到海图继续导航","continue navigation on chart") else os.t("在海图上预览","preview on chart"),{
+                            val live=fix?.takeIf {it.fresh(now)}
+                            if(navigating && live!=null) {os.displayedRouteId=id;os.showCrosshair=false;os.fly(live.point);os.follow=true;os.open("chart")} else preview()
+                        },primary=true,enabled=route.points.isNotEmpty())
+                        MetroButton(if(navigating) os.t("当前导航与目标","current guidance & target") else os.t("开始沿线导航","start route navigation"),{if(navigating) actions=true else startAt=0},enabled=route.points.isNotEmpty())
+                        Label(os.t("预览只显示路线。开始导航后，才会根据船位引导你逐点前往。","Preview displays the route. Start navigation to follow its waypoints from your position."),16,c.muted)
+                        route.points.firstOrNull()?.let {p ->MenuRow(os.t("第一个航点","first waypoint"),coordinates(p)) {selectedPoint=0}}
+                        if(route.points.size>1) route.points.lastOrNull()?.let {p ->MenuRow(os.t("终点","destination"),coordinates(p)) {selectedPoint=route.points.lastIndex}}
+                    }
+                    1 -> {
+                        Label(os.t("按顺序认识这条航线","get to know each leg"),29)
+                        Label(os.t("点一个航点，可以查看位置，或将它选为第一个目标。","Tap a waypoint to inspect its position or make it your first target."),17,c.muted)
+                        var cumulative=0.0
+                        route.points.forEachIndexed {i,p ->
+                            val leg=if(i>0) distance(route.points[i-1],p) else 0.0;cumulative+=leg
+                            MenuRow(os.t("${i+1}  "+if(i==route.points.lastIndex) "终点" else "航点","${i+1}  "+if(i==route.points.lastIndex) "destination" else "waypoint"),
+                                if(i==0) coordinates(p) else "${nm(leg)} · ${decimal(bearing(route.points[i-1],p),0)}°T · "+os.t("累计 ${nm(cumulative)}","${nm(cumulative)} total")) {selectedPoint=i}
+                        }
+                    }
+                    else -> {
+                        MetroButton(os.t("编辑航点","edit waypoints"),{
+                            if(navigating || (os.draftRoute.isNotEmpty() && os.editingRouteId!=id)) editConfirm=true else edit()
+                        },primary=true)
+                        MetroButton(os.t("重命名","rename"),{rename=true})
+                        MetroButton(os.t("创建反向返航路线","make a reversed return route"),{
+                            val reversed=Route(name=route.name+os.t(" · 返航"," · return"),points=route.points.reversed());os.routes=os.routes+reversed;os.save();os.open("route:${reversed.id}")
+                        },enabled=route.points.size>1)
+                        MetroButton(if(exporting) os.t("正在导出…","exporting…") else os.t("导出这条航线 GPX","export this route as GPX"),{exporter.launch("Yokuli-route.gpx")},enabled=!exporting && route.points.isNotEmpty())
+                        if(os.displayedRouteId==id && !navigating) MetroButton(os.t("从海图隐藏预览","hide chart preview"),{os.displayedRouteId=null;os.save()})
+                        if(navigating) MetroButton(os.t("管理或结束导航","manage or end navigation"),{actions=true})
+                        MetroButton(os.t("删除航线","delete route"),{remove=true})
+                    }
+                }
             }
-            route.points.forEachIndexed {i,p ->MenuRow("${i+1}   ${coordinates(p)}",if(i>0) "${nm(distance(route.points[i-1],p))} · ${decimal(bearing(route.points[i-1],p),0)}°T" else null) {os.displayedRouteId=id;os.fly(p);os.showCrosshair=true;os.open("chart")}}
-            if(os.activeRouteId==id) MetroButton(os.t("结束航线","end route"),{os.activeRouteId=null;os.save()})
-            MetroButton(os.t("删除航线","delete route"),{remove=true})
         }
     }
+    startAt?.let {index ->StartNavigationDialog(os,route,index) {startAt=null}}
+    if(actions) NavigationActionsDialog(os,route) {actions=false}
+    selectedPoint?.let {index ->route.points.getOrNull(index)?.let {point ->
+        Dialog(onDismissRequest={selectedPoint=null}) {
+            Column(Modifier.fillMaxWidth().background(c.bg).border(1.dp,c.muted).padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
+                Label(os.t("航点 ${index+1}","waypoint ${index+1}"),32)
+                Label(coordinates(point),20,c.accent)
+                fix?.takeIf {it.fresh(now)}?.let {Label(os.t("距船位 ${nm(distance(it.point,point))}","${nm(distance(it.point,point))} from your position"),17,c.muted)}
+                MetroButton(os.t("在海图上查看","show on chart"),{os.displayedRouteId=id;os.fly(point);os.showCrosshair=true;selectedPoint=null;os.open("chart")},primary=true)
+                MetroButton(os.t("从这个目标开始导航","start with this target"),{selectedPoint=null;startAt=index})
+                MetroButton(os.t("关闭","close"),{selectedPoint=null})
+            }
+        }
+    }}
+    if(editConfirm) ConfirmDialog(os,if(navigating) os.t("结束这条航线的导航并编辑航点？","End this route's navigation and edit its waypoints?")
+        else os.t("替换当前未保存的航线草稿？","Replace the current unsaved route draft?"),{editConfirm=false}) {editConfirm=false;edit()}
     if(rename) TextDialog(os,os.t("重命名","rename"),route.name,{rename=false}) {name ->os.routes=os.routes.map {if(it.id==id) it.copy(name=name) else it};os.save()}
-    if(remove) ConfirmDialog(os,os.t("删除 ${route.name}？","Delete ${route.name}?"),{remove=false}) {os.routes=os.routes.filter {it.id!=id};if(os.activeRouteId==id) os.activeRouteId=null;os.save();remove=false;os.back()}
+    if(remove) ConfirmDialog(os,os.t("删除 ${route.name}？"+if(navigating) "当前导航也会结束。" else "","Delete ${route.name}?"+if(navigating) " Current navigation will also end." else ""),{remove=false}) {
+        if(os.activeRouteId==id) endNavigation(os)
+        if(os.displayedRouteId==id) os.displayedRouteId=null
+        os.routes=os.routes.filter {it.id!=id};os.save();remove=false;os.back()
+    }
 }

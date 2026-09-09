@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
+import com.yokuli.anchorwatch.ui.theme.Wp8TextButton as TextButton
+import com.yokuli.anchorwatch.ui.theme.Wp8OutlinedButton as OutlinedButton
+import com.yokuli.anchorwatch.ui.theme.Wp8Button as Button
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment

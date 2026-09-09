@@ -3,7 +3,6 @@ package com.yokuli.marine.shell.rebuild.ui
 import android.os.SystemClock
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -11,90 +10,111 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.data.VesselData
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-@Composable private fun rememberClock():Long {
+@Composable internal fun rememberMarineClock():Long {
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(Unit) { while(true) { delay(1000);now=SystemClock.elapsedRealtime() } }
     return now
 }
-private fun age(os:OsStore,time:Long,now:Long) = if(now-time<2000) os.t("刚刚","now") else os.t("${((now-time)/1000).coerceAtLeast(0)} 秒前","${((now-time)/1000).coerceAtLeast(0)} s ago")
-private fun connection(os:OsStore,data:VesselData,now:Long):String = when(data.connection) {
+internal fun readingAge(os:OsStore,time:Long,now:Long) = if(now-time<2000) os.t("刚刚","now") else os.t("${((now-time)/1000).coerceAtLeast(0)} 秒前","${((now-time)/1000).coerceAtLeast(0)} s ago")
+internal fun connectionLabel(os:OsStore,data:VesselData,now:Long):String = when(data.connection) {
     "off"->os.t("未连接","disconnected")
     "connecting"->os.t("正在连接","connecting")
     "waiting"->os.t("已连接，等待数据","connected, waiting for data")
-    "live"->if(now-data.lastRx<=10000) os.t("正在接收","receiving") else os.t("连接仍在，数据已过期","connected, data stale")
+    "live"->if(now-data.lastRx<=10000) os.t("正在接收","receiving") else os.t("数据已过期","data stale")
     "reconnecting"->os.t("等待重连","reconnecting")
     else->os.t("连接失败","connection failed")
 }
-private fun message(os:OsStore,key:String):String=when(key) {
-    "gps"->os.t("手机定位不可用，请检查权限及系统定位开关。","Phone location unavailable. Check permission and system location.")
-    "mock"->os.t("检测到模拟定位，未作为真实船位使用。","Mock location detected; it is not used as a real boat position.")
-    "endpoint"->os.t("请输入服务器地址和 1–65535 范围内的端口。","Enter a server address and a port between 1 and 65535.")
-    "network"->os.t("无法读取服务器，3 秒后自动重连。","Connection lost. Retrying every 3 seconds.")
-    "loop"->os.t("输入指向了自己的共享服务，请更换地址或端口。","Input points to this device's sharing service. Change the address or port.")
-    "port"->os.t("共享端口应在 1024–65535 范围内。","Sharing port must be between 1024 and 65535.")
-    "server"->os.t("无法启动共享服务，端口可能被占用。","Could not start sharing. The port may be in use.")
-    "sentence"->os.t("只可发送一行有效 NMEA 语句，请检查校验和。","Send one valid NMEA sentence. Check the checksum.")
-    "send"->os.t("发送失败，请先建立 TCP 输入连接。","Send failed. Connect a TCP input first.")
-    "sent"->os.t("已写入 TCP 连接","Written to the TCP connection")
-    else->os.t("服务暂时不可用","Service unavailable")
+internal fun metricName(os:OsStore,key:String)=when(key) {
+    "sog"->os.t("对地航速","speed over ground")
+    "cog"->os.t("对地航向","course over ground")
+    "heading"->os.t("真船首向","true heading")
+    "depth"->os.t("水深","depth")
+    "ukc"->os.t("龙骨下余量","under-keel clearance")
+    "aws"->os.t("视风速","apparent wind speed")
+    "awa"->os.t("视风角","apparent wind angle")
+    "tws"->os.t("真风速","true wind speed")
+    "bsp"->os.t("对水航速","speed through water")
+    "pressure"->os.t("气压","pressure")
+    "water"->os.t("水温","water temperature")
+    else->key
 }
 
 @Composable fun DataScreen(os:OsStore,service:(String,String?)->Unit) {
-    val data by os.hub.state.collectAsState(); val now=rememberClock(); val c=LocalMetro.current
-    val fix=data.fix(os.positionSource)
+    val data by os.hub.state.collectAsState()
+    val history by os.hub.history.collectAsState()
+    val now=rememberMarineClock(); val c=LocalMetro.current
+    val fix=data.fix(os.positionSource)?.takeIf {it.fresh(now)}
+    var selected by remember {mutableStateOf("sog")}
+    val keys=listOf("sog","depth","aws","heading","cog","awa","tws","bsp","ukc","pressure","water")
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,os.t("船舶数据","boat data"))
-        Pivot(listOf(os.t("此刻","now"),os.t("来源","sources"))) { page ->
-            PageBody {
-                if(page==0) {
-                    Label(if(fix?.fresh(now)==true) os.t("船位正在更新","position is live") else os.t("等待可信船位","waiting for a fresh position"),18,c.accent)
-                    Label("${decimal(fix?.takeIf { it.fresh(now) }?.freshSpeed(now))} kn",54)
-                    Label(os.t("对地航速","speed over ground"),15,c.muted)
-                    fix?.let {
-                        Label(coordinates(it.point),20)
-                        Label("${if(it.source=="phone") os.t("手机 GPS","phone GPS") else it.source} · ${age(os,it.elapsed,now)}",14,c.muted)
-                        if(it.accuracy!=null) Label(os.t("定位精度 ±${decimal(it.accuracy,0)} m","accuracy ±${decimal(it.accuracy,0)} m"),14,c.muted)
-                    }
-                    val names=listOf("heading" to os.t("真航向","true heading"),"depth" to os.t("探头下水深","depth below transducer"),"aws" to os.t("视风速","apparent wind"),"awa" to os.t("视风角","apparent wind angle"),"tws" to os.t("真风速","true wind"),"bsp" to os.t("对水航速","speed through water"),"water" to os.t("水温","water temperature"))
-                    for((key,name) in names) data.readings[key]?.let { reading ->
-                        Column(Modifier.fillMaxWidth().padding(vertical=5.dp)) {
-                            Row(verticalAlignment=Alignment.Bottom) { Label(name,20,modifier=Modifier.weight(1f)); Label("${decimal(reading.value)} ${reading.unit}",29,if(reading.fresh(now)) c.fg else c.muted) }
-                            Label("${reading.source} · ${age(os,reading.elapsed,now)}${if(!reading.fresh(now)) os.t(" · 已过期"," · stale") else ""}",12,c.muted,Modifier.padding(top=5.dp))
+        Pivot(listOf(os.t("此刻","now"),os.t("变化","trends"),os.t("来源","sources"))) { page ->
+            val bodyScroll=rememberScrollState()
+            val scope=rememberCoroutineScope()
+            PageBody(bodyScroll) {
+                if(page==2) {
+                    PositionSources(os,data,now,service)
+                } else {
+                    if(page==0) {
+                        Label(if(fix!=null) os.t("船位正在更新","position is live") else if(os.positionSource=="none") os.t("船位已关闭","position is off") else os.t("等待可信船位","waiting for a trusted position"),17,if(fix!=null)c.accent else c.muted)
+                        if(os.positionSource=="demo") Label(os.t("演示数据","DEMO DATA"),18,c.accent)
+                        fix?.let {
+                            Label(coordinates(it.point),20)
+                            Label("${it.source} · ${readingAge(os,it.elapsed,now)}${it.accuracy?.let { a -> " · ±${decimal(a,0)} m" }.orEmpty()}",14,c.muted)
                         }
                     }
-                    if(data.readings.isEmpty()) Label(os.t("连接 NMEA 后，这里会显示实际收到的风、水深和航向。","Connect NMEA to see the wind, depth and heading actually received."),17,c.muted)
-                    MenuRow(os.t("NMEA 连接","NMEA connection"),connection(os,data,now),"connect") {os.open("nmea")}
-                    if(os.positionSource=="none") MetroButton(os.t("开启手机定位","enable phone GPS"),{service("gpsOn",null)},primary=true)
-                    data.message?.let { Label(message(os,it),16,c.muted) }
-                } else {
-                    Label(os.t("谁提供船位","where position comes from"),29)
-                    val nmeaConnected=data.connection in listOf("waiting","live")
-                    val sourceLocked=os.marine?.vm?.ui?.collectAsState()?.value?.active?.paused==false
-                    Toggle(os.t("手机 GPS","phone GPS"),os.positionSource=="phone",
-                        if(os.positionSource=="nmea") os.t("先关闭 NMEA 船位","turn NMEA position off first") else os.t("开启即启动定位，关闭即停止","starts and stops phone location"),
-                        enabled=!sourceLocked && os.positionSource in listOf("none","phone")) {
-                        service(if(it) "gpsOn" else "gpsOff",null)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
+                        keys.filter {it in listOf("sog","depth","aws") || data.readings.containsKey(it) || history.containsKey(it)}.forEach { key ->
+                            Label(metricName(os,key),22,if(selected==key)c.accent else c.muted,Modifier.clickable {selected=key}.padding(vertical=8.dp))
+                        }
                     }
-                    Toggle(os.t("NMEA 船位","NMEA position"),os.positionSource=="nmea",
-                        when {os.positionSource=="phone"->os.t("先关闭手机 GPS","turn phone GPS off first")
-                            !nmeaConnected->os.t("请先连接 NMEA","connect NMEA first")
-                            data.nmea==null->os.t("已连接，等待有效船位","connected, awaiting a valid position")
-                            else->age(os,data.nmea!!.elapsed,now)},
-                        enabled=!sourceLocked && (os.positionSource=="nmea" || (os.positionSource=="none" && nmeaConnected))) {
-                        service(if(it) "sourceNmea" else "sourceOff",null)
+                    val current=data.readings[selected]
+                    Label("${decimal(current?.takeIf {it.fresh(now)}?.value)} ${current?.unit.orEmpty()}",58)
+                    Label(current?.let {"${it.source} · ${readingAge(os,it.elapsed,now)}${if(!it.fresh(now))os.t(" · 已过期"," · stale") else ""}"}
+                        ?: os.t("还没有收到此项数据","no measurement received yet"),15,c.muted)
+                    ReadingTrace(os,history[selected].orEmpty(),selected,now)
+                    if(page==1) {
+                        Label(os.t("最近 15 分钟 · 本次运行期间","last 15 minutes · this app session"),15,c.muted)
+                        Label(os.t("按住曲线查看过去的读数。断线和来源变化会断开曲线；完整航程请在航行记录中保存。","Touch the trace to inspect a reading. Gaps and source changes stay separate. Use trip recording to keep a complete voyage."),17,c.muted)
+                        MenuRow(os.t("记录这段变化","record these conditions"),os.t("把位置与船况保存在一次航行中","save position and conditions in a voyage"),"record") {os.open("trip")}
+                    } else {
+                        Label(os.t("船上正在发生什么","aboard, right now"),26)
+                        keys.filter {it!=selected && data.readings.containsKey(it)}.forEach { key ->
+                            val value=data.readings.getValue(key)
+                            Row(Modifier.fillMaxWidth().clickable {selected=key;scope.launch {bodyScroll.animateScrollTo(0)}}.padding(vertical=7.dp),verticalAlignment=Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {Label(metricName(os,key),21);Label(value.source,12,c.muted)}
+                                Label("${decimal(value.takeIf {it.fresh(now)}?.value)} ${value.unit}",27,if(value.fresh(now))c.fg else c.muted)
+                            }
+                        }
+                        if(data.readings.isEmpty()) Label(os.t("开启手机定位可查看航速；连接船载 NMEA 后，风、水深和船首向会出现在这里。","Phone location provides speed. Connect boat NMEA to bring in wind, depth and heading."),18,c.muted)
+                        MenuRow(os.t("打开仪表","open instruments"),os.t("大字读数、船体姿态与自定义仪表","large readings, vessel attitude & your own instruments"),"data") {os.open("instruments")}
                     }
-                    Label(if(sourceLocked) os.t("锚警报正在值守；暂停后可以更改船位来源。","Pause the active anchor watch before changing its position source.") else
-                        os.t("两项都可以关闭。NMEA 连接可继续提供水深、风与仪表数据；船位不会自动切换来源。","Both can be off. NMEA may still provide depth, wind and instruments. Position never changes source automatically."),17,c.muted)
-                    MenuRow(os.t("更多数据能力","more data capabilities"),os.t("自定义字段、手机传感器、全局 GPS 代理与演示","custom fields, phone sensors, global GPS proxy & demo"),"data") {os.open("sources")}
-                    MenuRow("NMEA",connection(os,data,now),"connect") {os.open("nmea")}
-                    Label(os.t("海图、航线和共享服务订阅同一份数据，每个数值保留来源与接收时间。","Chart, routes and sharing subscribe to the same data. Each reading retains its source and receive time."),16,c.muted)
+                    MenuRow("NMEA",connectionLabel(os,data,now),"connect") {os.open("nmea")}
+                    if(os.positionSource=="none") MetroButton(os.t("开启手机定位","enable phone GPS"),{service("gpsOn",null)})
                 }
             }
         }
     }
 }
 
-@Composable fun NmeaScreen(os:OsStore,service:(String,String?)->Unit) {
-    MarineAppScreen(os,"nmea")
+@Composable private fun PositionSources(os:OsStore,data:VesselData,now:Long,service:(String,String?)->Unit) {
+    val c=LocalMetro.current
+    Label(os.t("谁提供船位","where position comes from"),29)
+    val nmeaConnected=data.connection in listOf("waiting","live")
+    val sourceLocked=os.marine?.vm?.ui?.collectAsState()?.value?.active?.paused==false
+    Toggle(os.t("手机 GPS","phone GPS"),os.positionSource=="phone",
+        if(os.positionSource=="nmea") os.t("先关闭 NMEA 船位","turn NMEA position off first") else os.t("开启即启动定位，关闭即停止","starts and stops phone location"),
+        enabled=!sourceLocked && os.positionSource in listOf("none","phone")) {service(if(it) "gpsOn" else "gpsOff",null)}
+    Toggle(os.t("NMEA 船位","NMEA position"),os.positionSource=="nmea",
+        when {os.positionSource=="phone"->os.t("先关闭手机 GPS","turn phone GPS off first")
+            !nmeaConnected->os.t("请先连接 NMEA","connect NMEA first")
+            data.nmea==null->os.t("已连接，等待有效船位","connected, awaiting a valid position")
+            else->readingAge(os,data.nmea.elapsed,now)},
+        enabled=!sourceLocked && (os.positionSource=="nmea" || (os.positionSource=="none" && nmeaConnected))) {service(if(it) "sourceNmea" else "sourceOff",null)}
+    Label(if(sourceLocked) os.t("锚警报正在值守；暂停后可以更改船位来源。","Pause the active anchor watch before changing its position source.") else
+        os.t("两项都可以关闭。NMEA 仍可提供水深、风与仪表数据；船位不会自动切换来源。","Both can be off. NMEA can still provide depth, wind and instruments. Position never changes source automatically."),17,c.muted)
+    MenuRow(os.t("每个读数从哪里来","inspect measurement sources"),os.t("字段来源、质量、手机传感器与自定义能力","provenance, quality, phone sensors & custom capabilities"),"data") {os.open("sources")}
+    MenuRow("NMEA",connectionLabel(os,data,now),"connect") {os.open("nmea")}
 }

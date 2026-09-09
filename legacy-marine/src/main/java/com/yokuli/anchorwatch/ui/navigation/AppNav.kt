@@ -10,6 +10,8 @@ import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
+import com.yokuli.anchorwatch.ui.theme.Wp8OutlinedButton as OutlinedButton
+import com.yokuli.anchorwatch.ui.theme.Wp8Button as Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState

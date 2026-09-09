@@ -28,6 +28,25 @@ data class VesselData(
 class DataHub {
     private val mutable=MutableStateFlow(VesselData())
     val state=mutable.asStateFlow()
-    fun update(block: (VesselData)->VesselData) = mutable.update(block)
+    private val traces=MutableStateFlow<Map<String,List<Reading>>>(emptyMap())
+    /** Display history for this app process; durable voyage history belongs to the recorder. */
+    val history=traces.asStateFlow()
+    fun update(block: (VesselData)->VesselData) {
+        mutable.update(block)
+        val snapshot=mutable.value
+        val now=SystemClock.elapsedRealtime()
+        traces.update { previous ->
+            buildMap {
+                (previous.keys+snapshot.readings.keys).forEach { key ->
+                    var values=previous[key].orEmpty().dropWhile { now-it.elapsed>15*60_000 }
+                    snapshot.readings[key]?.takeIf { it.fresh(now) && it.value.isFinite() }?.let { value ->
+                        if(values.lastOrNull()?.elapsed?.let { it<value.elapsed }!=false)
+                            values=(values+value).takeLast(1800)
+                    }
+                    if(values.isNotEmpty()) put(key,values)
+                }
+            }
+        }
+    }
     fun resetNmea() = update { it.copy(nmea=null,readings=emptyMap()) }
 }

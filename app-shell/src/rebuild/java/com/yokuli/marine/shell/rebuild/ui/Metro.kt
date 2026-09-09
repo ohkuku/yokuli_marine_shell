@@ -107,8 +107,8 @@ val LightFont=FontFamily(androidx.compose.ui.text.font.Typeface(android.graphics
         Label(title,46,modifier=Modifier.padding(top=6.dp),maxLines=2)
     }
 }
-@Composable fun PageBody(content:@Composable ColumnScope.()->Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal=22.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(18.dp),content=content)
+@Composable fun PageBody(scrollState:ScrollState=rememberScrollState(),content:@Composable ColumnScope.()->Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(horizontal=22.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(18.dp),content=content)
 }
 @Composable fun MenuRow(title:String,subtitle:String?=null,icon:String?=null,onClick:()->Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick=onClick).padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {

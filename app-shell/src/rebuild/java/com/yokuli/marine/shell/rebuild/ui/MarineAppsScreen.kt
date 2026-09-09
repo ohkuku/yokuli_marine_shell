@@ -17,7 +17,7 @@ import java.text.DateFormat
 import java.util.Date
 
 /** Each marine app gets a Shell task; the engine and its background sessions remain shared. */
-@Composable fun MarineAppScreen(os: OsStore, page: String) {
+@Composable fun MarineAppScreen(os: OsStore, page: String, onBack: (() -> Unit)? = null) {
     val marine=os.marine
     if(marine==null) {
         Column { PageHeader(os,os.t("正在准备","getting ready")); Label(os.t("正在打开船舶数据…","Opening boat data…"),modifier=Modifier.padding(22.dp)) }
@@ -29,8 +29,10 @@ import java.util.Date
         TripRecorderScreen(os)
     } else {
         var nestedBack by remember(page) { mutableStateOf<(() -> Boolean)?>(null) }
-        BindInternalAppInputHandler { input -> input == ShellInput.BACK && nestedBack?.invoke() == true }
-        LegacyMarineScreen(page,marine.vm,os.chinese,LocalMetro.current.accent,os.light,os::back,
+        BindInternalAppInputHandler { input ->
+            input == ShellInput.BACK && (nestedBack?.invoke() == true || onBack?.let {it();true} == true)
+        }
+        LegacyMarineScreen(page,marine.vm,os.chinese,LocalMetro.current.accent,os.light,onBack ?: os::back,
             onBackHandler={nestedBack=it})
     }
 }
@@ -45,7 +47,7 @@ import java.util.Date
     if(controls) RecordingDialog(os) {controls=false}
 }
 
-@Composable private fun RecordingDialog(os:OsStore,onDismiss:()->Unit) {
+@Composable internal fun RecordingDialog(os:OsStore,onDismiss:()->Unit) {
     val marine=os.marine ?: return
     val state by marine.vm.ui.collectAsState()
     val active=state.activeTrip
@@ -78,35 +80,4 @@ import java.util.Date
             MetroButton(os.t("返回海图","back to chart"),{onDismiss();os.open("chart")})
         }
     }
-}
-
-@Composable private fun TripRecorderScreen(os:OsStore) {
-    val marine=os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
-    var controls by remember {mutableStateOf(false)}
-    var now by remember {mutableLongStateOf(System.currentTimeMillis())}
-    LaunchedEffect(Unit) {while(true) {delay(1000);now=System.currentTimeMillis()}}
-    Column(Modifier.fillMaxSize()) {
-        PageHeader(os,os.t("航行记录","trip recorder"))
-        PageBody {
-            val trip=state.activeTrip
-            if(trip==null) {
-                Label(os.t("出发吧。","let’s go."),48,LocalMetro.current.accent)
-                Label(os.t("把沿途的风景、航迹和船况，留在同一段航行里。","Keep your track, moments and boat conditions together in one trip."),21)
-                MetroButton(os.t("开始记录","start recording"),{controls=true},primary=true)
-            } else {
-                Label(trip.name,28)
-                Label(nm(trip.distanceMeters),52,LocalMetro.current.accent)
-                val elapsed=((if(trip.paused) trip.pausedAt ?: now else now)-trip.startedAt-trip.accumulatedPausedMillis).coerceAtLeast(0)/1000
-                Label("%02d:%02d:%02d".format(elapsed/3600,elapsed/60%60,elapsed%60),30)
-                Label(if(trip.paused) os.t("已暂停","paused") else os.t("正在记录","recording"),17,LocalMetro.current.muted)
-                MetroButton(os.t("回到海图","back to chart"),{os.open("chart")},primary=true)
-                MetroButton(os.t("管理记录","recording controls"),{controls=true})
-            }
-            MenuRow(os.t("仪表","instruments"),os.t("航行、帆船、运动、天气与自定义","navigation, sailing, motion, weather & custom"),"data") {os.open("instruments")}
-            MenuRow(os.t("航行日志","logbook"),os.t("回放、报告、标记与导出","replay, reports, moments & exports"),"logbook") {os.open("voyages")}
-            MenuRow(os.t("船位与数据","position & data"),os.t("查看当前来源","see current sources"),"locate") {os.open("data")}
-        }
-    }
-    if(controls) RecordingDialog(os) {controls=false}
 }

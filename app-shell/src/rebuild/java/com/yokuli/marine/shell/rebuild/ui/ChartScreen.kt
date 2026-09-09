@@ -25,6 +25,7 @@ import kotlin.math.*
     val fix=data.fix(os.positionSource); val fresh=fix?.fresh(tick)==true
     var host by remember { mutableStateOf<ChartHost?>(null) }
     var layers by remember { mutableStateOf(false) }
+    var manageNavigation by remember {mutableStateOf(false)}
     var naming by remember { mutableStateOf(false) }
     var discard by remember { mutableStateOf(false) }
     var coverage by remember { mutableStateOf<Boolean?>(null) }
@@ -64,7 +65,7 @@ import kotlin.math.*
             Row(Modifier.align(Alignment.TopStart).padding(10.dp).background(c.bg.copy(alpha=.94f)).clickable { os.open("data") }.padding(horizontal=12.dp,vertical=9.dp),verticalAlignment=Alignment.CenterVertically) {
                 Box(Modifier.size(5.dp).background(if(fresh) c.accent else c.muted)); Spacer(Modifier.width(8.dp))
                 Label(if(fresh) "${decimal(fix?.freshSpeed(tick))} kn   ${decimal(fix?.freshCourse(tick),0)}°" else if(fix!=null) os.t("船位已过期","position stale") else os.t("等待船位","waiting for position"),15)
-                Spacer(Modifier.width(8.dp)); Label(when(os.positionSource) {"nmea"->"NMEA";"phone"->"GPS";else->os.t("未选择来源","no source")},11,c.muted)
+                Spacer(Modifier.width(8.dp)); Label(when(os.positionSource) {"nmea"->"NMEA";"phone"->"GPS";"demo"->os.t("演示","DEMO");else->os.t("未选择来源","no source")},11,c.muted)
             }
             Column(Modifier.align(Alignment.CenterEnd).padding(end=10.dp).background(c.bg.copy(alpha=.94f))) {
                 Box(Modifier.size(46.dp).clickable { os.fly(os.center,(os.zoom+1).coerceAtMost(22.0)) },contentAlignment=Alignment.Center) { Glyph("plus",Modifier.size(22.dp)) }
@@ -114,15 +115,8 @@ import kotlin.math.*
                 }
                 Glyph("close",Modifier.size(28.dp).clickable {os.showCrosshair=false})
             }
-        } else if(os.activeRoute!=null) {
-            Row(Modifier.fillMaxWidth().background(c.panel).padding(12.dp),verticalAlignment=Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Label("${os.activeRoute!!.name}  ·  ${os.routeLeg+1}/${os.activeRoute!!.points.size}",17,maxLines=1)
-                    Label(if(fresh && fix!=null && os.nextPoint!=null) "${nm(distance(fix.point,os.nextPoint!!))}   ${decimal(bearing(fix.point,os.nextPoint!!),0)}°T" else os.t("等待新鲜船位","waiting for fresh position"),13,c.muted)
-                }
-                IconAction("next",os.t("下一点","next"),{os.advanceRoute()})
-            }
         }
+        if(!os.editingRoute) ChartNavigationCard(os,fix,tick)
             }
         }
         Row(Modifier.fillMaxWidth().heightIn(min=69.dp).background(c.bg),horizontalArrangement=Arrangement.SpaceEvenly) {
@@ -154,6 +148,7 @@ import kotlin.math.*
             }
         }
     }
+    if(manageNavigation) os.activeRoute?.let {route ->NavigationActionsDialog(os,route) {manageNavigation=false}}
     if(naming) TextDialog(os,os.t("保存航线","save route"),os.routes.firstOrNull {it.id==os.editingRouteId}?.name ?: os.t("航线 ${os.routes.size+1}","route ${os.routes.size+1}"),{naming=false}) { name ->
         val route=Route(id=os.editingRouteId ?: uid(),name=name,points=os.draftRoute.toList()); os.routes=os.routes.filter {it.id!=route.id}+route; os.displayedRouteId=null
         if(os.activeRouteId==route.id) {os.activeRouteId=null;os.routeLeg=0}
@@ -178,10 +173,9 @@ import kotlin.math.*
             }
             os.displayedRouteId?.let {id ->
                 os.routes.firstOrNull {it.id==id}?.let {route ->
-                    MenuRow(os.t("隐藏航线：${route.name}","hide route: ${route.name}")) {
-                        os.displayedRouteId=null
-                        if(os.activeRouteId==id) {os.activeRouteId=null;os.routeLeg=0}
-                        os.save();layers=false
+                    MenuRow(if(os.activeRouteId==id) os.t("导航选项：${route.name}","navigation options: ${route.name}") else os.t("隐藏航线：${route.name}","hide route: ${route.name}")) {
+                        if(os.activeRouteId==id) manageNavigation=true else {os.displayedRouteId=null;os.save()}
+                        layers=false
                     }
                 }
             }

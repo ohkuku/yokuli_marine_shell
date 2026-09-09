@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material3.*
+import com.yokuli.anchorwatch.ui.theme.Wp8TextButton as TextButton
+import com.yokuli.anchorwatch.ui.theme.Wp8Button as Button
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -34,10 +36,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -91,7 +95,6 @@ internal fun TripWatchPage(state:MainUiState,vm:MainViewModel){
     var selectedCustomDashboardId by rememberSaveable{mutableStateOf<String?>(null)}
     var manageDashboards by remember{mutableStateOf(false)}
     var moreActions by remember{mutableStateOf(false)}
-    var pagePicker by remember{mutableStateOf(false)}
     var attitudeFrameDialog by remember{mutableStateOf(false)}
     val trip=state.activeTrip
     val healthNow by produceState(android.os.SystemClock.elapsedRealtime()){while(true){kotlinx.coroutines.delay(1_000L);value=android.os.SystemClock.elapsedRealtime()}}
@@ -100,7 +103,21 @@ internal fun TripWatchPage(state:MainUiState,vm:MainViewModel){
     val selectedDashboard=state.tripDashboards.firstOrNull{it.id==selectedCustomDashboardId}
     val builtIn=state.tripDashboards.filter{it.preset!=TripInstrumentPreset.CUSTOM}.associateBy{it.preset}
     val instrumentPages=listOf(TripWorkspacePage(null))+listOf(TripInstrumentPreset.SAILING,TripInstrumentPreset.NAV,TripInstrumentPreset.MOTION,TripInstrumentPreset.WEATHER).map{TripWorkspacePage(it,builtIn[it])}+state.tripDashboards.filter{it.preset==TripInstrumentPreset.CUSTOM}.map{TripWorkspacePage(TripInstrumentPreset.CUSTOM,it)}
-    val instrumentPager=rememberPagerState(initialPage=0,pageCount={instrumentPages.size});val instrumentScope=rememberCoroutineScope()
+    val instrumentContext=LocalContext.current
+    val pagePreferences=remember(instrumentContext){instrumentContext.getSharedPreferences("vessel_instrument_view",android.content.Context.MODE_PRIVATE)}
+    val savedPage=remember{pagePreferences.getString("page","OVERVIEW")?:"OVERVIEW"}
+    fun pageKey(page:TripWorkspacePage)=if(page.preset==TripInstrumentPreset.CUSTOM)"custom:${page.dashboard?.id}" else page.preset?.name?:"OVERVIEW"
+    val initialIndex=instrumentPages.indexOfFirst{pageKey(it)==savedPage}.coerceAtLeast(0)
+    val instrumentPager=rememberPagerState(initialPage=initialIndex,pageCount={instrumentPages.size});val instrumentScope=rememberCoroutineScope()
+    var restoredSavedPage by remember{mutableStateOf(!savedPage.startsWith("custom:"))}
+    LaunchedEffect(savedPage,state.tripDashboards){
+        if(!restoredSavedPage&&state.tripDashboards.isNotEmpty()){
+            val index=instrumentPages.indexOfFirst{pageKey(it)==savedPage}
+            if(index>=0)instrumentPager.scrollToPage(index)
+            restoredSavedPage=true
+        }
+    }
+    LaunchedEffect(instrumentPager.settledPage,restoredSavedPage){if(restoredSavedPage)instrumentPages.getOrNull(instrumentPager.settledPage)?.let{pagePreferences.edit().putString("page",pageKey(it)).apply()}}
     LaunchedEffect(instrumentPager.currentPage,instrumentPages){instrumentPages.getOrNull(instrumentPager.currentPage)?.let{page->page.preset?.let{preset=it};selectedCustomDashboardId=page.dashboard?.id}}
     LaunchedEffect(selectedCustomDashboardId,state.tripDashboards){selectedCustomDashboardId?.let{id->val index=instrumentPages.indexOfFirst{it.dashboard?.id==id};if(index>=0&&index!=instrumentPager.currentPage)instrumentPager.scrollToPage(index)}}
     LaunchedEffect(selectedCustomDashboardId,state.tripDashboards){if(selectedCustomDashboardId!=null&&selectedDashboard==null){selectedCustomDashboardId=null;preset=TripInstrumentPreset.SAILING}}
@@ -143,13 +160,31 @@ internal fun TripWatchPage(state:MainUiState,vm:MainViewModel){
             if(cockpitMode){
                 Row(Modifier.fillMaxWidth().height(32.dp),horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically){instrumentPages.forEachIndexed{index,_->Text(if(index==instrumentPager.currentPage)"●" else "○",Modifier.padding(horizontal=4.dp),color=if(index==instrumentPager.currentPage)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)}}
             }else{
-                Row(Modifier.fillMaxWidth().height(44.dp),verticalAlignment=Alignment.CenterVertically){Box{TextButton({pagePicker=true},Modifier.testTag("trip_page_picker"),enabled=!touchLocked){Text(instrumentPages.getOrNull(instrumentPager.currentPage)?.let{page->page.dashboard?.title?:page.preset?.let{presetName(it)}?:tr("Overview","总览") }?:"—",fontWeight=FontWeight.SemiBold)};DropdownMenu(pagePicker,{pagePicker=false}){instrumentPages.forEachIndexed{index,page->DropdownMenuItem({Text(page.dashboard?.title?:page.preset?.let{presetName(it)}?:tr("Overview","总览"))},{pagePicker=false;instrumentScope.launch{instrumentPager.scrollToPage(index)}},modifier=Modifier.testTag("trip_page_picker_${page.preset?.name?:"OVERVIEW"}"))}}};Spacer(Modifier.weight(1f));Text("${instrumentPager.currentPage+1} / ${instrumentPages.size}",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant);Spacer(Modifier.width(10.dp));instrumentPages.forEachIndexed{index,_->Text(if(index==instrumentPager.currentPage)"●" else "○",Modifier.padding(horizontal=2.dp),color=if(index==instrumentPager.currentPage)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)}}
+                Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(22.dp),verticalAlignment=Alignment.CenterVertically){
+                    instrumentPages.forEachIndexed{index,page->
+                        Text(page.dashboard?.title?.takeIf{page.preset==TripInstrumentPreset.CUSTOM}?:page.preset?.let{presetName(it)}?:tr("overview","总览"),
+                            Modifier.clickable(enabled=!touchLocked){instrumentScope.launch{instrumentPager.animateScrollToPage(index)}}.testTag("trip_page_picker_${page.preset?.name?:"OVERVIEW"}"),
+                            fontSize=26.sp,fontWeight=FontWeight.Light,color=if(index==instrumentPager.currentPage)MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
             val visiblePage=instrumentPages.getOrNull(instrumentPager.currentPage)
             if(!cockpitMode&&trip!=null&&(visiblePage?.preset==TripInstrumentPreset.MOTION||trip.phoneMotionEnabled&&!imuLive)){
                 TripAttitudeStatusBar(state,openFrame={attitudeFrameDialog=true},pause=vm::pauseTripAttitude)
             }
-            HorizontalPager(instrumentPager,Modifier.fillMaxWidth().weight(1f),userScrollEnabled=!touchLocked){index->val page=instrumentPages[index];if(page.preset==null)TripOverviewPage(state,vm)else TripInstrumentViewport(state,page.preset,page.dashboard){if(!touchLocked)customizeLayout=true}}
+            HorizontalPager(instrumentPager,Modifier.fillMaxWidth().weight(1f),userScrollEnabled=!touchLocked){index->
+                val page=instrumentPages[index]
+                when(page.preset){
+                    null->TripOverviewPage(state,vm)
+                    TripInstrumentPreset.MOTION->Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(vertical=8.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
+                        VesselSpatialInstrument(state,touchLocked,{attitudeFrameDialog=true},{if(trip!=null)vm.pauseTripAttitude()else vm.setPhoneVesselMounted(false)})
+                        HorizontalDivider()
+                        Text(tr("motion instruments","运动读数"),style=MaterialTheme.typography.titleMedium)
+                        TripInstrumentGrid(state,page.preset,page.dashboard,onEdit={if(!touchLocked)customizeLayout=true})
+                    }
+                    else->TripInstrumentViewport(state,page.preset,page.dashboard){if(!touchLocked)customizeLayout=true}
+                }
+            }
             TripCompactControls(
                 state=state,
                 cockpit=cockpitMode,

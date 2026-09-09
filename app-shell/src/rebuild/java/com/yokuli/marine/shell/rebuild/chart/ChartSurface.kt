@@ -68,9 +68,12 @@ class ChartOverlay(context:Context, private val os:OsStore) : View(context) {
             line(segment,android.graphics.Color.WHITE,4.5f)
             line(segment,android.graphics.Color.rgb(0,139,142),2.5f)
         }
-        val route=if(os.editingRoute) os.draftRoute else os.routes.firstOrNull { it.id==(os.displayedRouteId ?: os.activeRouteId) }?.points.orEmpty()
+        val selectedRoute=os.routes.firstOrNull {it.id==(os.displayedRouteId ?: os.activeRouteId)}
+        val navigationVisible=!os.editingRoute && selectedRoute?.id==os.activeRouteId && selectedRoute!=null
+        val route=if(os.editingRoute) os.draftRoute else selectedRoute?.points.orEmpty()
         line(route,android.graphics.Color.WHITE,5f)
-        line(route,os.accent.toInt(),2.6f)
+        line(route,if(navigationVisible) android.graphics.Color.rgb(125,137,140) else os.accent.toInt(),2.6f)
+        if(navigationVisible) line(route.drop((os.routeLeg-1).coerceAtLeast(0)),os.accent.toInt(),3f)
         fun pin(p:GeoPoint,text:String,accent:Int=os.accent.toInt(),radius:Float=14f) {
             val s=project(p); if(s.x !in -80f..width+80f || s.y !in -80f..height+80f) return
             val r=radius*density
@@ -79,7 +82,9 @@ class ChartOverlay(context:Context, private val os:OsStore) : View(context) {
             paint.color=android.graphics.Color.WHITE; paint.textSize=13*density; paint.typeface=android.graphics.Typeface.create("sans-serif-medium",0); paint.textAlign=Paint.Align.CENTER
             canvas.drawText(text,s.x,s.y+4.5f*density,paint)
         }
-        for((index,p) in route.withIndex()) pin(p,(index+1).toString(),radius=if(os.editingRoute) 14f else 10f)
+        for((index,p) in route.withIndex()) pin(p,(index+1).toString(),
+            accent=if(navigationVisible && index<os.routeLeg) android.graphics.Color.rgb(125,137,140) else os.accent.toInt(),
+            radius=when {os.editingRoute->14f;navigationVisible && index==os.routeLeg->16f;else->10f})
         os.places.forEach { place ->
             val p=project(place.point)
             paint.color=android.graphics.Color.WHITE; paint.strokeWidth=4*density; canvas.drawLine(p.x,p.y,p.x,p.y-16*density,paint)
@@ -92,7 +97,7 @@ class ChartOverlay(context:Context, private val os:OsStore) : View(context) {
         }
         fix?.let { f ->
             val p=project(f.point); val fresh=f.fresh()
-            if(os.activeRouteId!=null && fresh) os.nextPoint?.let { line(listOf(f.point,it),os.accent.toInt(),2f,true) }
+            if(navigationVisible && fresh) os.nextPoint?.let { line(listOf(f.point,it),os.accent.toInt(),2f,true) }
             paint.color=android.graphics.Color.WHITE; paint.style=Paint.Style.FILL; canvas.drawCircle(p.x,p.y,13*density,paint)
             paint.color=if(fresh) android.graphics.Color.rgb(0,122,220) else android.graphics.Color.GRAY
             if(fresh && f.freshCourse()!=null) {

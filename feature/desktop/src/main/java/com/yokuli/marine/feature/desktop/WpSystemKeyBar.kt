@@ -5,6 +5,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -222,6 +224,8 @@ fun WpSearchSurface(
         }
     }
     val query = editor.text.trim()
+    val resultsScroll = rememberScrollState()
+    LaunchedEffect(query) { resultsScroll.scrollTo(0) }
     val results = state.entries.filter { entry ->
         query.isEmpty() || entry.title.contains(query, ignoreCase = true) ||
             entry.headline.contains(query, ignoreCase = true)
@@ -264,7 +268,10 @@ fun WpSearchSurface(
                 }
             },
         )
-        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(resultsScroll).padding(horizontal = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             results.forEach { entry ->
                 val interactions = remember(entry.descriptor.entryId) { MutableInteractionSource() }
                 Row(

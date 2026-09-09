@@ -34,6 +34,9 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.yokuli.anchorwatch.ui.theme.Wp8TextButton as TextButton
+import com.yokuli.anchorwatch.ui.theme.Wp8OutlinedButton as OutlinedButton
+import com.yokuli.anchorwatch.ui.theme.Wp8Button as Button
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -289,17 +292,38 @@ private fun signedDepthMeters(value:Double?)=value?.let{"${if(it>=0)"+" else ""}
 
 @Composable private fun NmeaProductsOverview(state:MainUiState,onBoat:()->Unit,onLocal:()->Unit,onStopAll:()->Unit){
  val anySharingActive=state.outputSettings.publicationEnabled||state.phonePositionOutputStatus.enabled||state.localNmeaServerSettings.serverRequested||state.nmeaSharing.state!=com.yokuli.anchorwatch.data.sharing.SharingServerState.STOPPED
+ val statusNow by produceState(android.os.SystemClock.elapsedRealtime()){while(true){kotlinx.coroutines.delay(1_000L);value=android.os.SystemClock.elapsedRealtime()}}
+ val tx=state.phonePositionOutputStatus
+ val txWrittenRecently=tx.lastWriteElapsed?.let{statusNow-it in 0L..5_000L}==true
+ val txLabel=when(tx.connectionState){
+  com.yokuli.anchorwatch.data.nmea.output.NmeaTxConnectionState.STOPPING->tr("Stopping","正在停止")
+  com.yokuli.anchorwatch.data.nmea.output.NmeaTxConnectionState.ERROR->tr("Connection error","连接错误")
+  com.yokuli.anchorwatch.data.nmea.output.NmeaTxConnectionState.CONNECTING->tr("Connecting","连接中")
+  com.yokuli.anchorwatch.data.nmea.output.NmeaTxConnectionState.CONNECTED->if(txWrittenRecently)tr("Writing to the transport","正在写入线路")else tr("Connected · waiting for valid data","已连接 · 等待有效数据")
+  else->if(state.outputSettings.publicationEnabled||tx.enabled)tr("Enabled · waiting for connection","已启用 · 等待连接")else tr("Stopped","已停止")
+ }
+ val localWrittenRecently=state.nmeaSharing.lastOutputElapsed?.let{statusNow-it in 0L..5_000L}==true
+ val localLabel=when(state.nmeaSharing.state){
+  com.yokuli.anchorwatch.data.sharing.SharingServerState.STARTING->tr("Starting listener","正在启动监听")
+  com.yokuli.anchorwatch.data.sharing.SharingServerState.ERROR->tr("Listener error","监听错误")
+  com.yokuli.anchorwatch.data.sharing.SharingServerState.RUNNING->when{
+   state.nmeaSharing.clientCount==0->tr("Listening · waiting for clients","监听中 · 等待客户端")
+   localWrittenRecently->tr("Listening · ${state.nmeaSharing.clientCount} clients · recent data written","监听中 · ${state.nmeaSharing.clientCount} 个客户端 · 最近有数据写出")
+   else->tr("Listening · ${state.nmeaSharing.clientCount} clients · waiting for valid data","监听中 · ${state.nmeaSharing.clientCount} 个客户端 · 等待有效数据")
+  }
+  com.yokuli.anchorwatch.data.sharing.SharingServerState.STOPPED->if(state.localNmeaServerRuntime.requested||state.localNmeaServerSettings.serverRequested)tr("Enabled · preparing listener","已启用 · 正在准备监听")else tr("Stopped","已停止")
+ }
  LazyColumn(Modifier.fillMaxSize().padding(16.dp).testTag("nmea_products_overview"),verticalArrangement=Arrangement.spacedBy(12.dp)){
   item{PageHeader(tr("NMEA sharing","NMEA 数据共享"),tr("Choose the direction first. These are two independent products and may run at the same time.","先选择数据流向。这是两个完全独立的功能，也可以同时运行。"))}
   item{ElevatedCard(onClick=onBoat,modifier=Modifier.fillMaxWidth().testTag("nmea_product_boat_network")){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Icon(Icons.Default.Upload,null,tint=MaterialTheme.colorScheme.primary);Column(Modifier.weight(1f)){Text(tr("Send Phone/App data to the boat network","向船载网络发送手机 / App 数据"),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold);Text(tr("Phone → boat gateway","手机 → 船载网关"),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)};Icon(Icons.Default.ChevronRight,null)}
 	   Text(tr("Continuously writes each selected valid Phone/App-owned measurement into the NMEA network. It never repeats Boat input; receiving instruments choose their preferred source. This optional TX route is isolated from safety RX.","把每个已选择且有效的手机 / App 自有测量值持续写入 NMEA 船网；绝不重复船载输入，由接收端仪表选择来源。这条可选 TX 线路与安全 RX 完全隔离。"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-   AssistChip({},label={Text(if(state.phonePositionOutputStatus.enabled)tr("Running","运行中")else tr("Stopped","已停止"))},leadingIcon={Icon(if(state.phonePositionOutputStatus.enabled)Icons.Default.CheckCircle else Icons.Default.StopCircle,null)})
+   Text(txLabel,style=MaterialTheme.typography.bodyMedium,color=if(txWrittenRecently)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
   }}}
   item{ElevatedCard(onClick=onLocal,modifier=Modifier.fillMaxWidth().testTag("nmea_product_phone_server")){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
    Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)){Icon(Icons.Default.WifiTethering,null,tint=MaterialTheme.colorScheme.primary);Column(Modifier.weight(1f)){Text(tr("Host an NMEA service on this phone","在本机提供 NMEA 服务"),style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold);Text(tr("This phone → connected client devices","本手机 → 已连接的客户端设备"),style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.primary)};Icon(Icons.Default.ChevronRight,null)}
    Text(tr("Opens a listening TCP server for another phone, tablet or dashboard App. It does not connect to the boat gateway and does not depend on NMEA input.","在手机上开启 TCP 监听服务，供另一台手机、平板或仪表 App 连接。它不会连接船载网关，也不依赖 NMEA 输入。"),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-   AssistChip({},label={Text(if(state.localNmeaServerRuntime.requested)tr("Running · ${state.nmeaSharing.clientCount} clients","运行中 · ${state.nmeaSharing.clientCount} 个客户端")else tr("Stopped","已停止"))},leadingIcon={Icon(if(state.localNmeaServerRuntime.requested)Icons.Default.CheckCircle else Icons.Default.StopCircle,null)})
+   Text(localLabel,style=MaterialTheme.typography.bodyMedium,color=if(state.nmeaSharing.state==com.yokuli.anchorwatch.data.sharing.SharingServerState.RUNNING)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
   }}}
   item{Surface(color=MaterialTheme.colorScheme.secondaryContainer,shape=MaterialTheme.shapes.medium){Text(tr("Shared source rules, separate ownership: Boat output may reuse the current full-duplex input socket, while the phone-hosted service owns its own listener. Their configuration, Start/Stop, errors and diagnostics remain independent.","数据规则共享、运行权分离：船载输出可以复用当前全双工输入 Socket；本机服务则独立拥有监听端口。两者的配置、启停、错误和诊断仍完全独立。"),Modifier.padding(12.dp),style=MaterialTheme.typography.bodySmall)}}
   if(anySharingActive)item{OutlinedButton(onStopAll,Modifier.fillMaxWidth().testTag("stop_all_nmea_sharing"),colors=ButtonDefaults.outlinedButtonColors(contentColor=MaterialTheme.colorScheme.error)){Icon(Icons.Default.Stop,null);Spacer(Modifier.width(6.dp));Text(tr("Emergency stop · both sharing products","紧急停止 · 两种 NMEA 分享全部关闭"))}}

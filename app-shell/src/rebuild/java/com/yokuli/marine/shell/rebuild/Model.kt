@@ -103,7 +103,7 @@ class OsStore(val context: Context) {
     var showCrosshair by mutableStateOf(false)
     var ruler by mutableStateOf<List<GeoPoint>>(emptyList())
     var draftRoute by mutableStateOf(initial.optJSONArray("draft")?.objects()?.mapNotNull {runCatching {GeoPoint.from(it)}.getOrNull()} ?: emptyList())
-    var editingRoute by mutableStateOf(draftRoute.isNotEmpty())
+    var editingRoute by mutableStateOf(draftRoute.isNotEmpty() && initial.optString("activeRoute").isBlank())
     var editingRouteId by mutableStateOf<String?>(initial.optString("editingRoute").takeIf {it.isNotBlank()})
     var displayedRouteId by mutableStateOf<String?>(null)
     var activeRouteId by mutableStateOf<String?>(initial.optString("activeRoute").takeIf { it.isNotBlank() })

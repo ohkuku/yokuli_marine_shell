@@ -1,9 +1,9 @@
 package com.yokuli.anchorwatch
 
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import com.yokuli.anchorwatch.ui.theme.Wp8Button as Button
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.yokuli.anchorwatch.ui.theme.Wp8TextButton as TextButton
 import androidx.compose.runtime.Composable
 
 @Composable
