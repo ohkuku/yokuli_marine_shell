@@ -119,7 +119,7 @@ fun AnchorExperience(os: OsStore) {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 MarineMap(os.maps,scene,view,Modifier.fillMaxSize())
                 MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(c.bg))
-                Column(Modifier.align(Alignment.CenterEnd).padding(end=8.dp).background(c.bg)) {
+                Column(Modifier.align(Alignment.TopEnd).padding(top=48.dp,end=8.dp).background(c.bg)) {
                     IconAction("plus",os.t("放大","zoom in"),{view.fly(view.center,view.zoom+1)})
                     IconAction("minus",os.t("缩小","zoom out"),{view.fly(view.center,view.zoom-1)})
                 }
