@@ -96,7 +96,7 @@ import kotlin.math.*
             }
             // Context controls float over a stable native viewport. Showing the crosshair must
             // never resize the map or change its camera/texture resolution during a drag.
-            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom=48.dp)) {
+            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom=if(BuildConfig.GOOGLE_MAPS_CONFIGURED && os.mapMode in listOf("standard","satellite")) 80.dp else 48.dp)) {
         if(os.ruler.size==2) {
             Row(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {

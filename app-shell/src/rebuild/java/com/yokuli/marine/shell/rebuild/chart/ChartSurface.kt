@@ -48,6 +48,7 @@ interface ChartCamera {
 class ChartOverlay(context:Context, private val os:OsStore) : View(context) {
     var camera:ChartCamera?=null
     var fix:Fix?=null
+    var scaleBottomOffsetDp=0f
     private val density=resources.displayMetrics.density
     private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
     private var handle:Int?=null
@@ -116,7 +117,7 @@ class ChartOverlay(context:Context, private val os:OsStore) : View(context) {
             }
         }
         val cam=camera ?: return
-        val baseX=18*density; val baseY=height-18*density
+        val baseX=18*density; val baseY=height-(18+scaleBottomOffsetDp)*density
         val meters=distance(cam.unproject(baseX,baseY),cam.unproject(baseX+90*density,baseY))
         paint.style=Paint.Style.FILL; paint.color=0xDFFFFFFF.toInt(); canvas.drawRect(baseX-6*density,baseY-26*density,baseX+100*density,baseY+6*density,paint)
         paint.color=android.graphics.Color.rgb(25,37,43); paint.strokeWidth=2*density
@@ -166,7 +167,7 @@ class ChartHost(context:Context,val os:OsStore,private val mode:String) : FrameL
     private var libre:MapLibreMap?=null
     init {
         setBackgroundColor(android.graphics.Color.rgb(222,233,232))
-        if(mode in listOf("standard","satellite") && BuildConfig.GOOGLE_MAPS_CONFIGURED) initGoogle() else initLibre()
+        if(mode in listOf("standard","satellite") && BuildConfig.GOOGLE_MAPS_CONFIGURED) {overlay.scaleBottomOffsetDp=28f;initGoogle()} else initLibre()
         addView(overlay,LayoutParams(-1,-1))
     }
     private fun moved(center:GeoPoint,z:Double) { os.center=center; os.zoom=z; overlay.invalidate() }
