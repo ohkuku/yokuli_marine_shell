@@ -38,7 +38,7 @@ import java.util.Date
 @Composable fun ChartAppScreen(os:OsStore) {
     var controls by remember {mutableStateOf(false)}
     Box(Modifier.fillMaxSize()) {
-        ChartScreen(os,recording=os.recordingActive,onRecording={controls=true})
+        ChartScreen(os,recording=os.recordingActive,recordingPaused=os.recordingPaused,onRecording={controls=true})
         if(os.positionSource=="demo") Label(os.t("演示船位","DEMO POSITION"),14,
             modifier=Modifier.align(Alignment.TopCenter).padding(top=64.dp).background(LocalMetro.current.bg).padding(6.dp))
     }

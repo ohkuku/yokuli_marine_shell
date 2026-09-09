@@ -18,7 +18,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
 import kotlinx.coroutines.*
 import kotlin.math.*
 
-@Composable fun ChartScreen(os:OsStore,recording:Boolean=false,onRecording:()->Unit={os.open("trip")}) {
+@Composable fun ChartScreen(os:OsStore,recording:Boolean=false,recordingPaused:Boolean=false,onRecording:()->Unit={os.open("trip")}) {
     val data by os.hub.state.collectAsState()
     var tick by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(Unit) { while(true) { delay(1000); tick=SystemClock.elapsedRealtime() } }
@@ -145,7 +145,11 @@ import kotlin.math.*
                     } }
                 },active=os.ruler.isNotEmpty())
                 IconAction("route",os.t("航线","route"),{os.ruler=emptyList();os.editingRoute=true;os.showCrosshair=true})
-                IconAction(if(recording) "stop" else "play",if(recording) os.t("记录中","recording") else os.t("开始记录","record"),onRecording,active=recording)
+                IconAction(if(recording && !recordingPaused) "stop" else "play",when {
+                    recording && recordingPaused -> os.t("已暂停","paused")
+                    recording -> os.t("记录中","recording")
+                    else -> os.t("开始记录","record")
+                },onRecording,active=recording)
                 IconAction("more",os.t("收藏","saved"),{os.open("places")})
             }
         }
