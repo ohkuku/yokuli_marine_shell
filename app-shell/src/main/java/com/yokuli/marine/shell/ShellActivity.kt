@@ -652,7 +652,14 @@ private fun YokuliShell(shellViewModel: ShellViewModel = viewModel<ShellViewMode
             },
             navigationState = navigationState,
             onNavigationAction = shellViewModel::onNavigationAction,
-            onOpenNavigation = { shellViewModel.openNavigation(it) },
+            onOpenNavigation = { token ->
+                shellViewModel.openNavigation(token)
+                val activeApp = (engineState.surface as? ShellVisualSurface.Module)
+                    ?.let { engineState.tasks.task(it.taskId)?.appId }
+                if (activeApp != com.yokuli.marine.feature.navigation.NavigationShellContribution.AppId) {
+                    dispatch(LauncherAction.Open(token, preserveCaller = true))
+                }
+            },
         )
         CompositionLocalProvider(
             LocalProductionShellRuntime provides runtime,

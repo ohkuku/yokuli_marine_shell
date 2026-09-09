@@ -12,6 +12,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class AndroidChartValidationController(
     private val catalog: RoomChartCatalogRepository,
@@ -79,7 +81,7 @@ class AndroidChartValidationController(
             val epoch = epochCounter.incrementAndGet()
             try {
                 updateJob(ChartValidationJob(assetId, kind, ChartValidationJobStatus.RUNNING))
-                block(asset, generation, epoch)
+                withContext(Dispatchers.IO) { block(asset, generation, epoch) }
             } finally {
                 epochs.remove(assetId.value, epochCounter)
             }

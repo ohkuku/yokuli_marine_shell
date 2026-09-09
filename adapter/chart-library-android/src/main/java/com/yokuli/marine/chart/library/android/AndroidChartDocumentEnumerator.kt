@@ -9,6 +9,8 @@ import android.provider.DocumentsContract.Document
 import android.provider.OpenableColumns
 import com.yokuli.marine.map.domain.chartlibrary.*
 import java.security.MessageDigest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class AndroidChartDocumentEnumerator(
     private val resolver: ContentResolver,
@@ -23,6 +25,11 @@ class AndroidChartDocumentEnumerator(
     }
 
     override suspend fun enumerate(
+        source: ChartLibrarySource,
+        shouldCancel: () -> Boolean,
+    ): ChartEnumerationResult = withContext(Dispatchers.IO) { enumerateBlocking(source, shouldCancel) }
+
+    private fun enumerateBlocking(
         source: ChartLibrarySource,
         shouldCancel: () -> Boolean,
     ): ChartEnumerationResult {

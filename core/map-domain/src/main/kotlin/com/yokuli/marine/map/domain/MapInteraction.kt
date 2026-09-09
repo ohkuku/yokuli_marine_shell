@@ -117,6 +117,7 @@ object MapFeatureBackPolicy {
         state.tool == MapTool.MEASURE -> MapAction.SelectTool(MapTool.BROWSE)
         state.surface != MapSurface.Root -> MapAction.CloseSurface
         state.selection != null -> MapAction.ClearSelection
+        state.activeRoutePlanId != null -> MapAction.SelectTool(MapTool.BROWSE)
         else -> null
     }
 }

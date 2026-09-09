@@ -120,7 +120,7 @@ fun GoogleMarineChartSurface(
     val domainPolylines = remember { mutableListOf<Polyline>() }
     val chartTileOverlays = remember { mutableListOf<TileOverlay>() }
     val mapView = remember(context) {
-        MapView(
+        PointGestureMapView(
             context,
             GoogleMapOptions()
                 .mapColorScheme(if (darkMode) MapColorScheme.DARK else MapColorScheme.LIGHT)
@@ -201,8 +201,11 @@ fun GoogleMarineChartSurface(
         currentAction(
             MapAction.RendererContentChanged(generation, overlay = MapOverlayRenderStatus.OVERLAY_LOADING),
         )
-        val next = try {
-            withContext(Dispatchers.IO) { GoogleChartOverlayPreparer(access).prepare(plan) }
+        var acquired: PreparedGoogleChartDisplay? = null
+        try {
+            withContext(Dispatchers.IO) { acquired = GoogleChartOverlayPreparer(access).prepare(plan) }
+            preparedDisplay = acquired
+            acquired = null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
@@ -210,13 +213,8 @@ fun GoogleMarineChartSurface(
                 MapAction.RendererContentChanged(generation, overlay = MapOverlayRenderStatus.OVERLAY_DEGRADED),
             )
             return@LaunchedEffect
-        }
-        try {
-            currentCoroutineContext().ensureActive()
-            preparedDisplay = next
-        } catch (cancelled: CancellationException) {
-            next.close()
-            throw cancelled
+        } finally {
+            acquired?.close()
         }
     }
 
@@ -302,8 +300,8 @@ fun GoogleMarineChartSurface(
             }
             if (enabled) mapView.parent?.requestDisallowInterceptTouchEvent(false)
         }
-        mapView.setOnTouchListener { view, event ->
-            val port = queryPort ?: return@setOnTouchListener false
+        mapView.pointTouchListener = android.view.View.OnTouchListener { view, event ->
+            val port = queryPort ?: return@OnTouchListener false
             val screen = MapScreenPoint(event.x.toDouble(), event.y.toDouble())
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> port.query(screen, HANDLE_OVERLAYS)
@@ -351,7 +349,7 @@ fun GoogleMarineChartSurface(
         onDispose {
             disposed = true
             setMapGesturesForPointDrag(true)
-            mapView.setOnTouchListener(null)
+            mapView.pointTouchListener = null
             googleMap?.setOnMapClickListener(null)
             googleMap?.setOnMapLongClickListener(null)
         }
@@ -462,6 +460,9 @@ fun GoogleMarineChartSurface(
         state.savedRoutes,
         state.editGesture,
         state.position.observation,
+        state.position.heading,
+        state.position.courseSpeed,
+        state.position.availability,
     ) {
         googleMap?.apply {
             fun icon(key: String, create: () -> Bitmap): BitmapDescriptor =
@@ -530,6 +531,16 @@ fun GoogleMarineChartSurface(
             }
             val positionRender = PositionRenderPolicy.resolve(state.position)
             positionRender.point?.let { point ->
+                positionRender.courseVector?.let { course ->
+                    val end = com.yokuli.marine.map.domain.Wgs84Geodesic.destination(
+                        point, course.trueDegrees, course.speedKnots * 1852.0 / 60.0,
+                    )
+                    domainPolylines += addPolyline(
+                        PolylineOptions().add(point.toLatLng(), end.toLatLng())
+                            .color(0xff00a4ef.toInt()).width(3f)
+                            .pattern(listOf(com.google.android.gms.maps.model.Dash(12f), com.google.android.gms.maps.model.Gap(8f))),
+                    )
+                }
                 addMarker(
                     MarkerOptions()
                         .position(point.toLatLng())
@@ -629,7 +640,7 @@ private fun CameraPosition.toDomainCamera(): MapCamera = MapCamera(
 private fun LatLng.toDomainPoint(): GeoPoint = GeoPoint(latitude, longitude)
 
 private fun measurementHandleBitmap(label: String, density: Float): Bitmap {
-    val size = (56f * density).roundToInt().coerceAtLeast(56)
+    val size = (38f * density).roundToInt().coerceAtLeast(38)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xfff7b500.toInt() }
@@ -660,7 +671,7 @@ private fun measurementHandleBitmap(label: String, density: Float): Bitmap {
 }
 
 private fun waypointBitmap(density: Float): Bitmap {
-    val size = (42f * density).roundToInt().coerceAtLeast(42)
+    val size = (30f * density).roundToInt().coerceAtLeast(30)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xff00a4ef.toInt() }
@@ -685,7 +696,7 @@ private fun waypointBitmap(density: Float): Bitmap {
 }
 
 private fun targetBitmap(density: Float): Bitmap {
-    val size = (44f * density).roundToInt().coerceAtLeast(44)
+    val size = (28f * density).roundToInt().coerceAtLeast(28)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -704,7 +715,7 @@ private fun targetBitmap(density: Float): Bitmap {
 }
 
 private fun vesselBitmap(density: Float, live: Boolean): Bitmap {
-    val size = (48f * density).roundToInt().coerceAtLeast(48)
+    val size = (32f * density).roundToInt().coerceAtLeast(32)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {

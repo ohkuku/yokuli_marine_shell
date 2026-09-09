@@ -446,7 +446,9 @@ class AndroidChartLibraryRuntime private constructor(
     }
 
     companion object {
-        const val MAX_OPEN_READ_SESSIONS = 12
+        // 两个 renderer 在切换期间可能短暂共存，另保留两个验证槽。
+        // Two overlapping display leases plus validation must fit without self-deadlock.
+        const val MAX_OPEN_READ_SESSIONS = MAX_ACTIVE_CHART_ASSETS * 2 + 2
         const val MAX_PENDING_READ_REQUESTS = 12
         const val BASIC_WORKERS = 2
         const val BASIC_QUEUE_CAPACITY = 256

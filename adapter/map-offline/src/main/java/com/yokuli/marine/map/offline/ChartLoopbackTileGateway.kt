@@ -75,7 +75,10 @@ class ChartLoopbackTileGateway : AutoCloseable {
         check(!closed.get()) { "Gateway is closed" }
         require(tileSize == 256 || tileSize == 512)
         require(minZoom in 0..24 && maxZoom in minZoom..24)
-        val route = RouteKey(session.request.assetId.value, session.request.revision.routeKey())
+        val route = RouteKey(
+            session.request.assetId.value,
+            session.request.revision.routeKey() + "-" + session.request.sourceGeneration,
+        )
         val proposed = RegisteredAsset(session, scheme, tileSize, minZoom, maxZoom)
         val asset = try {
             synchronized(registrations) {

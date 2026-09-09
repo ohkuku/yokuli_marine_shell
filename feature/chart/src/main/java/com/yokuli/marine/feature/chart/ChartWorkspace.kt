@@ -170,7 +170,7 @@ fun ChartWorkspace(
     var queryPort by remember { mutableStateOf<MapRendererQueryPort?>(null) }
     val rootInsets = MapViewportInsets(
         leftPx = shellSafeInsets.leftPx,
-        topPx = maxOf(shellSafeInsets.topPx, with(density) { 42.dp.roundToPx() }),
+        topPx = shellSafeInsets.topPx,
         rightPx = shellSafeInsets.rightPx,
         bottomPx = maxOf(shellSafeInsets.bottomPx, with(density) { 60.dp.roundToPx() }),
     )
@@ -276,6 +276,8 @@ private fun MapRootChrome(
     onAction: (MapAction) -> Unit,
     onExportRecovery: () -> Unit,
 ) {
+    var bottomChromeHeight by remember { mutableStateOf(60.dp) }
+    val chromeDensity = LocalDensity.current
     Box(Modifier.fillMaxSize()) {
         MapTruthStrip(
             state,
@@ -285,7 +287,7 @@ private fun MapRootChrome(
                 top = with(LocalDensity.current) { viewportInsets.topPx.toDp() } + 4.dp,
             ),
         )
-        MapEdgeControls(state, viewportInsets, onAction)
+        MapEdgeControls(state, viewportInsets, bottomChromeHeight, onAction)
         MapPersistenceTruth(
             state,
             recoveryExportState,
@@ -295,7 +297,7 @@ private fun MapRootChrome(
                 end = with(LocalDensity.current) { viewportInsets.rightPx.toDp() } + 6.dp,
             ),
         )
-        if (state.crosshairEnabled) {
+        if (state.crosshairEnabled && state.tool != MapTool.MEASURE && state.transient !is MapTransient.SelectedObject) {
             MapCrosshairResolver.screenPoint(viewportSize.width, viewportSize.height, viewportInsets)?.let { point ->
                 MapCrosshair(
                     Modifier.offset {
@@ -327,14 +329,14 @@ private fun MapRootChrome(
             Box(
                 Modifier.align(Alignment.BottomEnd).padding(
                     end = with(LocalDensity.current) { viewportInsets.rightPx.toDp() } + 6.dp,
-                    bottom = if (
-                        activeNavigationStrip != null || state.transient != null ||
-                        state.selection != null || state.tool != MapTool.BROWSE
-                    ) 122.dp else 66.dp,
+                    start = 64.dp,
+                    bottom = bottomChromeHeight + 8.dp,
                 ).testTag("map-track-recorder-strip"),
             ) { content() }
         }
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {
+            bottomChromeHeight = with(chromeDensity) { it.height.toDp() }
+        }) {
             val displayAttribution = state.chartDisplayPlan.layers
                 .mapNotNull { it.attribution?.trim()?.takeIf(String::isNotEmpty) }
                 .distinct()
@@ -847,6 +849,7 @@ private fun RouteRootSummary(state: MapState) {
 private fun MapEdgeControls(
     state: MapState,
     viewportInsets: MapViewportInsets,
+    bottomChromeHeight: androidx.compose.ui.unit.Dp,
     onAction: (MapAction) -> Unit,
 ) {
     val density = LocalDensity.current
@@ -860,7 +863,7 @@ private fun MapEdgeControls(
     }
     val currentOrientation = state.navigationCamera.orientation.takeIf { it in orientationOptions }
         ?: MapOrientationMode.NORTH_UP
-    Box(Modifier.fillMaxSize().padding(bottom = 62.dp)) {
+    Box(Modifier.fillMaxSize().padding(bottom = bottomChromeHeight + 4.dp)) {
         if (state.navigationActive) {
             val cameraMode = state.navigationCamera.mode
             MapEdgeButton(
@@ -882,6 +885,7 @@ private fun MapEdgeControls(
             },
             tag = "map-orientation",
             selected = currentOrientation != MapOrientationMode.NORTH_UP,
+            enabled = orientationOptions.size > 1 || state.camera.bearing != 0.0,
             modifier = Modifier.align(Alignment.TopCenter).padding(
                 top = with(density) { viewportInsets.topPx.toDp() } + 4.dp,
             ),
@@ -989,7 +993,7 @@ private fun MapEdgeButton(
 ) {
     val colors = LocalWpTheme.current
     Box(
-        modifier.size(48.dp).background(
+        modifier.size(44.dp).background(
             if (selected) colors.accent else colors.background.copy(alpha = .9f),
             CircleShape,
         ).border(1.dp, colors.foreground.copy(alpha = .35f), CircleShape)
@@ -998,7 +1002,7 @@ private fun MapEdgeButton(
     ) {
         WpText(
             label,
-            if (label.length > 3) 10 else 20,
+            if (label.length > 3) 10 else 16,
             color = when {
                 !enabled -> colors.muted
                 selected -> colors.onAccent

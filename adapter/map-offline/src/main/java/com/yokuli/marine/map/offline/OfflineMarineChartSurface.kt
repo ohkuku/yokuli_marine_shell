@@ -137,7 +137,7 @@ fun OfflineMarineChartSurface(
     val generation = remember { MapRendererGenerations.next() }
     // The remember calculation may be evaluated by an abandoned composition. Only count a
     // renderer after its lifecycle effect commits and MapView.onCreate has actually run.
-    val mapView = remember(context, generation) { MapView(context) }
+    val mapView = remember(context, generation) { PointGestureMapView(context) }
     val lifecycleDriver = remember(mapView) { OfflineMapLifecycleDriver(mapView) }
     val disposed = remember(mapView) { AtomicBoolean(false) }
     val styleGeneration = remember(mapView) { AtomicLong(0L) }
@@ -181,15 +181,19 @@ fun OfflineMarineChartSurface(
         preparedDisplay?.close()
         preparedDisplay = null
         if (displayPlan.layers.isEmpty() || chartLibraryAccess == null || chartTileGateway == null) return@LaunchedEffect
-        preparedDisplay = try {
+        var acquired: PreparedChartDisplay? = null
+        try {
             withContext(Dispatchers.IO) {
-                ChartDisplayPreparer(chartLibraryAccess, chartTileGateway).prepare(displayPlan)
+                acquired = ChartDisplayPreparer(chartLibraryAccess, chartTileGateway).prepare(displayPlan)
             }
+            preparedDisplay = acquired
+            acquired = null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
             currentAction(MapAction.RendererFailed(generation, MapRendererFailure.PACKAGE_MISSING))
-            null
+        } finally {
+            acquired?.close()
         }
     }
 
@@ -251,7 +255,7 @@ fun OfflineMarineChartSurface(
             }
             if (enabled) mapView.parent?.requestDisallowInterceptTouchEvent(false)
         }
-        mapView.setOnTouchListener { view, event ->
+        mapView.pointTouchListener = android.view.View.OnTouchListener { view, event ->
             val screenPoint = MapScreenPoint(event.x.toDouble(), event.y.toDouble())
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -307,6 +311,9 @@ fun OfflineMarineChartSurface(
         mapView.getMapAsync { readyMap ->
             if (disposed.get()) return@getMapAsync
             map = readyMap
+            // 先恢复相机，再允许 idle 回写；否则新 SDK 的 (0, 0) 会覆盖用户位置。
+            // Restore before idle callbacks can publish the SDK's default camera.
+            readyMap.moveCamera(CameraUpdateFactory.newCameraPosition(currentState.camera.toCameraPosition()))
             currentAction(MapAction.RendererHostReady(generation))
             readyMap.uiSettings.apply {
                 isCompassEnabled = false
@@ -356,7 +363,7 @@ fun OfflineMarineChartSurface(
         onDispose {
             activePointDrag.getAndSet(null)?.let { drag -> currentAction(MapAction.CancelPointDrag(drag.id)) }
             setMapGesturesForPointDrag(true)
-            mapView.setOnTouchListener(null)
+            mapView.pointTouchListener = null
             cameraListener?.let { listener -> map?.removeOnCameraIdleListener(listener) }
             clickListener?.let { listener -> map?.removeOnMapClickListener(listener) }
             longPressListener?.let { listener -> map?.removeOnMapLongClickListener(listener) }
@@ -745,7 +752,7 @@ private fun Style.addMeasurementPinOverlay(displayDensity: Float) {
 }
 
 private fun measurementPinBitmap(label: String, density: Float): Bitmap {
-    val size = (56f * density).toInt().coerceAtLeast(56)
+    val size = (38f * density).toInt().coerceAtLeast(38)
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xfff7b500.toInt() }

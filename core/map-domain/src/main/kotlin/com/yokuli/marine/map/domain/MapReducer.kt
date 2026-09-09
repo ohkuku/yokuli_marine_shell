@@ -507,9 +507,6 @@ class DefaultMapReducer(
             val activeDraftId = result.session.activeRouteDraftId?.takeIf { active ->
                 library.routeDrafts.any { it.id == active }
             } ?: library.routeDrafts.lastOrNull()?.id
-            val activePlanId = result.session.activeRoutePlanId?.takeIf { active ->
-                library.savedRoutes.any { it.id == active }
-            }
             MapReduction(
                 state.copy(
                     camera = result.session.camera,
@@ -521,7 +518,7 @@ class DefaultMapReducer(
                     savedRoutes = library.savedRoutes,
                     importedTracks = library.importedTracks,
                     gpxImportRecords = library.gpxImportRecords,
-                    activeRoutePlanId = activePlanId,
+                    activeRoutePlanId = null,
                     activeChartPackageId = result.session.activeChartPackageId,
                     chartDisplayPreferences = result.session.chartDisplayPreferences,
                     chartDisplayPreferencesInitialized = result.session.chartDisplayPreferencesInitialized,
@@ -694,6 +691,8 @@ class DefaultMapReducer(
         )
         tool == MapTool.MEASURE -> state.copy(
             tool = tool,
+            activeRoutePlanId = null,
+            selection = null,
             transient = null,
             editGesture = null,
             precisePointEdit = null,
@@ -701,6 +700,7 @@ class DefaultMapReducer(
         )
         else -> state.copy(
             tool = tool,
+            activeRoutePlanId = null,
             transient = null,
             editGesture = null,
             precisePointEdit = null,
@@ -1495,7 +1495,7 @@ class DefaultMapReducer(
             routeDrafts = state.routeDrafts.filterNot { it.id == draft.id },
             activeRouteDraftId = null,
             savedRoutes = plans,
-            activeRoutePlanId = plan.id,
+            activeRoutePlanId = null,
             routeSaveStatus = RouteSaveStatus(plan.id, plan.revision, MapSaveState.PENDING),
             routeDeleteUndo = null,
             surface = MapSurface.Root,
