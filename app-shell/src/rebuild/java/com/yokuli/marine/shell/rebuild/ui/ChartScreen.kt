@@ -20,8 +20,7 @@ import kotlin.math.*
 
 @Composable fun ChartScreen(os:OsStore,recording:Boolean=false,recordingPaused:Boolean=false,onRecording:()->Unit={os.open("trip")}) {
     val data by os.hub.state.collectAsState()
-    var tick by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(Unit) { while(true) { delay(1000); tick=SystemClock.elapsedRealtime() } }
+    val tick=rememberMarineClock()
     val fix=data.fix(os.positionSource); val fresh=fix?.fresh(tick)==true
     var host by remember { mutableStateOf<ChartHost?>(null) }
     var layers by remember { mutableStateOf(false) }

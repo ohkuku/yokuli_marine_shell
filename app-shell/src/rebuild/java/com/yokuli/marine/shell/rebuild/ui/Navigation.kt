@@ -75,8 +75,7 @@ fun endNavigation(os:OsStore,arrived:Boolean=false) {
 
 @Composable fun liveNavigationFix(os:OsStore):Pair<Fix?,Long> {
     val data by os.hub.state.collectAsState()
-    var now by remember {mutableLongStateOf(SystemClock.elapsedRealtime())}
-    LaunchedEffect(Unit) {while(true) {delay(1000);now=SystemClock.elapsedRealtime()}}
+    val now=rememberMarineClock()
     return data.fix(os.positionSource) to now
 }
 

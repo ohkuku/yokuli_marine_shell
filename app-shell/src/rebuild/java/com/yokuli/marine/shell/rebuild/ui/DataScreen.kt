@@ -15,9 +15,15 @@ import kotlinx.coroutines.launch
 @Composable internal fun rememberMarineClock():Long {
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(Unit) { while(true) { delay(1000);now=SystemClock.elapsedRealtime() } }
-    return now
+    // A measurement can arrive between timer ticks. Read the monotonic clock again
+    // on that recomposition so a just-received sample is not mistaken for future data.
+    return maxOf(now,SystemClock.elapsedRealtime())
 }
-internal fun readingAge(os:OsStore,time:Long,now:Long) = if(now-time<2000) os.t("刚刚","now") else os.t("${((now-time)/1000).coerceAtLeast(0)} 秒前","${((now-time)/1000).coerceAtLeast(0)} s ago")
+internal fun readingAge(os:OsStore,time:Long,now:Long) = when {
+    time>now -> os.t("接收时间异常","invalid receive time")
+    now-time<2000 -> os.t("刚刚","now")
+    else -> os.t("${(now-time)/1000} 秒前","${(now-time)/1000} s ago")
+}
 internal fun connectionLabel(os:OsStore,data:VesselData,now:Long):String = when(data.connection) {
     "off"->os.t("未连接","disconnected")
     "connecting"->os.t("正在连接","connecting")
