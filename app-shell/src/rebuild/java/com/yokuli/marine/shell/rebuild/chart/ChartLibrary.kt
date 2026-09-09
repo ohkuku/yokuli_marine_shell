@@ -34,17 +34,26 @@ data class ChartFile(
     val id: String, val uri: String, val name: String, val source: String,
     val minZoom: Int, val maxZoom: Int, val tileSize: Int, val scheme: String,
     val focus: GeoPoint, val bytes: Long, val attribution: String = "", val enabled: Boolean = true,
-    val error: String? = null, val modified: Long = 0, val previewZoom:Double = minZoom.toDouble()
+    val error: String? = null, val modified: Long = 0, val previewZoom:Double = minZoom.toDouble(),
+    val priority: Int = 0, val filename: String = name
 ) {
     fun json() = JSONObject().put("id",id).put("uri",uri).put("name",name).put("source",source)
         .put("min",minZoom).put("max",maxZoom).put("size",tileSize).put("scheme",scheme)
         .put("focus",focus.json()).put("bytes",bytes).put("attribution",attribution)
         .put("enabled",enabled).put("error",error ?: "").put("modified",modified).put("previewZoom",previewZoom)
+        .put("priority",priority).put("filename",filename)
     companion object {
         fun from(j: JSONObject) = ChartFile(j.getString("id"),j.getString("uri"),j.getString("name"),j.optString("source"),
             j.getInt("min"),j.getInt("max"),j.getInt("size"),j.getString("scheme"),GeoPoint.from(j.getJSONObject("focus")),
-            j.optLong("bytes"),j.optString("attribution"),j.optBoolean("enabled",true),j.optString("error").takeIf { it.isNotBlank() },j.optLong("modified"),j.optDouble("previewZoom",j.getInt("min").toDouble()))
+            j.optLong("bytes"),j.optString("attribution"),j.optBoolean("enabled",true),j.optString("error").takeIf { it.isNotBlank() },j.optLong("modified"),j.optDouble("previewZoom",j.getInt("min").toDouble()),j.optInt("priority"),j.optString("filename",j.getString("name")))
     }
+}
+
+private fun decodeTile(bytes:ByteArray):Bitmap? {
+    val bounds=BitmapFactory.Options().apply {inJustDecodeBounds=true}
+    BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
+    if(bounds.outWidth !in listOf(256,512) || bounds.outHeight!=bounds.outWidth) return null
+    return BitmapFactory.decodeByteArray(bytes,0,bytes.size)
 }
 
 /** Read the same raster MBTiles table/view and TMS/XYZ conventions as Anchor Watch. */
@@ -95,7 +104,7 @@ class ChartReader(context: Context, uri: Uri) : AutoCloseable {
         }
         return ChartFile(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,
             metadata["name"]?.takeIf { it.isNotBlank() }?.take(120) ?: name,source,min,max,options.outWidth,scheme,focus,bytes,
-            metadata["attribution"]?.take(700) ?: "",modified=modified,previewZoom=previewZoom)
+            metadata["attribution"]?.take(700) ?: "",modified=modified,previewZoom=previewZoom,filename=name)
     }
     @Synchronized fun tile(x: Int, y: Int, z: Int, scheme: String): ByteArray? {
         if (z !in 0..24 || x < 0 || y < 0 || x >= (1 shl z) || y >= (1 shl z)) return null
@@ -121,7 +130,7 @@ class ChartReader(context: Context, uri: Uri) : AutoCloseable {
         if(shift==0) return data
         // Sparse zoom levels are common in real archives. Reuse the correct parent area,
         // never the whole parent tile and never a neighbouring tile.
-        val original=BitmapFactory.decodeByteArray(data,0,data.size) ?: return null
+        val original=decodeTile(data) ?: return null
         val scale=2.0.pow(shift);val mask=(1 shl shift)-1
         val left=floor((x and mask)/scale*original.width).toInt().coerceIn(0,original.width-1)
         val top=floor((y and mask)/scale*original.height).toInt().coerceIn(0,original.height-1)
@@ -167,18 +176,57 @@ private object ChartCache {
     }
 }
 
+data class ChartFolder(
+    val id: String, val uri: String, val name: String,
+    val layerName: String? = null, val enabled: Boolean = true
+) {
+    fun json() = JSONObject().put("id",id).put("uri",uri).put("name",name)
+        .put("layerName",layerName ?: "").put("enabled",enabled)
+    companion object {
+        fun from(j:JSONObject) = ChartFolder(j.getString("id"),j.getString("uri"),j.getString("name"),
+            j.optString("layerName").takeIf {it.isNotBlank()},j.optBoolean("enabled",true))
+        fun linked(uri:String,name:String = Uri.decode(uri.substringAfterLast('/')).substringAfter(':')) =
+            ChartFolder(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,name.ifBlank {"charts"})
+    }
+}
+
+data class ChartLayer(val id:String,val name:String,val files:List<ChartFile>) {
+    val rasterSize get() = files.maxOfOrNull {it.tileSize} ?: 256
+    val minZoom get() = files.minOfOrNull {it.minZoom} ?: 0
+    // A 512-pixel archive contributes one more level of native detail when served as
+    // 256-pixel composite tiles. Keep that level instead of prematurely blurring it.
+    val maxZoom get() = files.maxOfOrNull {(it.maxZoom+if(it.tileSize==512) 1 else 0).coerceAtMost(24)} ?: 24
+}
+
 class ChartLibrary(private val context: Context, private val scope: CoroutineScope) {
     private val index = AtomicFile(File(context.filesDir,"charts-v1.json"))
     private val initial = runCatching { JSONObject(index.openRead().bufferedReader().use { it.readText() }) }.getOrDefault(JSONObject())
     private val writeMutex = Mutex()
-    var files by mutableStateOf(initial.optJSONArray("files")?.objects()?.mapNotNull { runCatching { ChartFile.from(it) }.getOrNull() } ?: emptyList())
-    var folders by mutableStateOf(initial.optJSONArray("folders")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList())
+    var files by mutableStateOf(initial.optJSONArray("files")?.objects()?.mapIndexedNotNull { i,j ->
+        runCatching {ChartFile.from(j).let {if(j.has("priority")) it else it.copy(priority=i)}}.getOrNull()
+    } ?: emptyList())
+    var folders by mutableStateOf(loadFolders())
     var busy by mutableStateOf(false)
     var progress by mutableStateOf("")
     var failure by mutableStateOf<String?>(null)
     var rejected by mutableIntStateOf(0)
     var revision by mutableIntStateOf(0)
-    val selected get() = files.filter { it.enabled && it.error == null }.take(12)
+    val layers get() = folders.filter {it.layerName!=null}.map {folder ->
+        ChartLayer(folder.id,folder.layerName!!,folderFiles(folder).filter {it.enabled && it.error==null})
+    }
+    val selectedLayers get() = layers.filter {layer -> folders.any {it.id==layer.id && it.enabled} && layer.files.isNotEmpty()}
+    val selected get() = selectedLayers.flatMap {it.files}
+    fun folderFiles(folder:ChartFolder) = files.filter {it.source==folder.uri}.sortedWith(compareBy<ChartFile> {it.priority}.thenBy {it.filename.lowercase()})
+    private fun loadFolders():List<ChartFolder> {
+        val array=initial.optJSONArray("folders") ?: JSONArray()
+        val linked=(0 until array.length()).mapNotNull {i -> runCatching {
+            val item=array.get(i)
+            if(item is JSONObject) ChartFolder.from(item) else ChartFolder.linked(item.toString()).let {it.copy(layerName=it.name)}
+        }.getOrNull()}.toMutableList()
+        // Existing imported copies and old flat selections remain available in a named local folder.
+        if(files.any {it.source=="copy"} && linked.none {it.uri=="copy"}) linked.add(ChartFolder("local-copies","copy","imported charts","imported charts"))
+        return linked
+    }
     fun errorText(code: String?, zh: Boolean): String = when(code) {
         "vector" -> if(zh) "这是矢量海图；请使用栅格 MBTiles" else "Vector chart. Use raster MBTiles."
         "empty" -> if(zh) "文件没有图块" else "No tiles in this file"
@@ -191,7 +239,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     }
     private fun persist() {
         revision++
-        val snapshot = JSONObject().put("files",JSONArray(files.map { it.json() })).put("folders",JSONArray(folders)).toString()
+        val snapshot = JSONObject().put("version",2).put("files",JSONArray(files.map { it.json() })).put("folders",JSONArray(folders.map {it.json()})).toString()
         scope.launch(Dispatchers.IO) { writeMutex.withLock {
             runCatching {
                 val out = index.startWrite()
@@ -201,15 +249,46 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         } }
     }
     fun toggle(file: ChartFile) { files = files.map { if(it.id==file.id) it.copy(enabled=!it.enabled) else it }; persist() }
-    fun showOnly(file: ChartFile) { files = files.map { it.copy(enabled=it.id==file.id) }; persist() }
-    fun forget(file: ChartFile) { files = files.filter { it.id!=file.id }; persist() } // Never deletes the source file.
-    fun forgetFolder(uri: String) { folders = folders-uri; files = files.filter { it.source!=uri }; persist() }
-    fun rescan() { if(!busy) scan(folders) }
-    fun linkFolder(uri: Uri) {
-        if(busy) return
+    fun setLayer(folder:ChartFolder,name:String) {
+        val title=name.trim().take(100);if(title.isBlank()) return
+        folders=folders.map {if(it.id==folder.id) it.copy(layerName=title,enabled=if(it.layerName==null) true else it.enabled) else it};persist()
+    }
+    fun removeLayer(folder:ChartFolder) {folders=folders.map {if(it.id==folder.id) it.copy(layerName=null) else it};persist()}
+    fun toggleLayer(folder:ChartFolder) {folders=folders.map {if(it.id==folder.id) it.copy(enabled=!it.enabled) else it};persist()}
+    fun enableLayer(folder:ChartFolder) {folders=folders.map {if(it.id==folder.id) it.copy(enabled=true) else it};persist()}
+    fun moveLayer(folder:ChartFolder,delta:Int) {
+        val arranged=folders.toMutableList();val from=arranged.indexOfFirst {it.id==folder.id};if(from<0) return
+        val visible=arranged.indices.filter {arranged[it].layerName!=null};val position=visible.indexOf(from)
+        if(position<0) return
+        val next=(position+delta).coerceIn(0,visible.lastIndex);if(next==position) return
+        val to=visible[next];arranged.add(to,arranged.removeAt(from));folders=arranged;persist()
+    }
+    fun moveFile(file:ChartFile,delta:Int) {
+        val ordered=files.filter {it.source==file.source}.sortedBy {it.priority}.toMutableList()
+        val from=ordered.indexOfFirst {it.id==file.id};if(from<0) return
+        val to=(from+delta).coerceIn(0,ordered.lastIndex);if(from==to) return
+        ordered.add(to,ordered.removeAt(from));val priorities=ordered.mapIndexed {i,f -> f.id to i}.toMap()
+        files=files.map {f -> priorities[f.id]?.let {f.copy(priority=it)} ?: f};persist()
+    }
+    /** Viewing one chart enables its folder layer without disabling unrelated chart folders. */
+    fun showOnly(file: ChartFile) {
+        files=files.map {if(it.id==file.id) it.copy(enabled=true) else it}
+        folders=folders.map {if(it.uri==file.source) it.copy(enabled=true,layerName=it.layerName ?: it.name) else it};persist()
+    }
+    fun forget(file: ChartFile) { files = files.filter { it.id!=file.id }; persist() }
+    fun forgetFolder(uri: String) { folders = folders.filter {it.uri!=uri}; files = files.filter { it.source!=uri }; persist() }
+    fun rescan(folder:ChartFolder?=null) { if(!busy) scan((folder?.let {listOf(it)} ?: folders).filter {it.uri!="copy"}.map {it.uri}) }
+    fun linkFolder(uri: Uri):ChartFolder? {
+        if(busy) return null
         runCatching { context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            .onFailure { failure="permission"; return }
-        folders = (folders+uri.toString()).distinct(); persist(); scan(listOf(uri.toString()))
+            .onFailure { failure="permission"; return null }
+        val existing=folders.firstOrNull {it.uri==uri.toString()}
+        val folder=existing ?: ChartFolder.linked(uri.toString(),runCatching {
+            val document=Docs.buildDocumentUriUsingTree(uri,Docs.getTreeDocumentId(uri))
+            context.contentResolver.query(document,arrayOf(Docs.Document.COLUMN_DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst()) it.getString(0) else null}
+        }.getOrNull() ?: Uri.decode(uri.toString().substringAfterLast('/')).substringAfter(':'))
+        if(existing==null) folders=folders+folder
+        persist();scan(listOf(uri.toString()));return folder
     }
     private fun scan(trees: List<String>) {
         busy=true; failure=null; rejected=0
@@ -238,14 +317,21 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                                 withContext(Dispatchers.Main) { progress=name }
                                 val result=runCatching { ChartReader(context,uri).use { it.inspect(uri.toString(),name,tree,c.getLong(3),c.getLong(4)) } }
                                 result.onSuccess { collected.add(it) }.onFailure { error ->
-                                    withContext(Dispatchers.Main) { rejected++; failure=error.message?.takeIf { it in listOf("vector","schema","raster","empty","zoom","scheme","tile") } ?: "unreadable" }
+                                    val code=error.message?.takeIf {it in listOf("vector","schema","raster","empty","zoom","scheme","tile")} ?: "unreadable"
+                                    collected.add(ChartFile(java.util.UUID.nameUUIDFromBytes(uri.toString().toByteArray()).toString(),
+                                        uri.toString(),name,tree,0,0,256,"tms",GeoPoint(0.0,0.0),c.getLong(3),error=code,modified=c.getLong(4),filename=name))
+                                    withContext(Dispatchers.Main) { rejected++;failure=code }
                                 }
                             } }
                         }
                     }
-                    // Only reconcile membership after a complete traversal; a failed scan retains prior entries.
+                    // Reconcile only a completed traversal; preserve explicit user priorities on refresh.
                     val previous = files.associateBy { it.id }
-                    files=files.filter { it.source!=tree }+collected.map { f -> f.copy(enabled=previous[f.id]?.enabled ?: true) }
+                    var nextPriority=(files.filter {it.source==tree}.maxOfOrNull {it.priority} ?: -1)+1
+                    val discovered=collected.sortedBy {it.filename.lowercase()}.map {f ->
+                        f.copy(enabled=previous[f.id]?.enabled ?: true,priority=previous[f.id]?.priority ?: nextPriority++)
+                    }
+                    files=files.filter {it.source!=tree}+discovered
                     persist()
                 }
             } catch(e:Exception) { failure=if(e is SecurityException) "permission" else e.message ?: "unreadable" }
@@ -275,7 +361,8 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     check(temp.renameTo(target)) { "space" }
                     checked.copy(id=uid(),uri=Uri.fromFile(target).toString(),modified=target.lastModified())
                 }
-                files=files+chart; persist()
+                if(folders.none {it.uri=="copy"}) folders=folders+ChartFolder("local-copies","copy","imported charts","imported charts")
+                files=files+chart.copy(priority=(files.filter {it.source=="copy"}.maxOfOrNull {it.priority} ?: -1)+1); persist()
             } catch(e:Exception) { failure=e.message ?: "unreadable"; temp.delete() }
             finally { busy=false; progress="" }
         }
@@ -283,21 +370,63 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
 }
 
 /** A bounded, process-private adapter. No document URI or filesystem path is exposed. */
-class TileGateway(private val context: Context) : AutoCloseable {
+class TileGateway(private val context: Context,serveHttp:Boolean=true) : AutoCloseable {
     private val token=uid()
-    private val server=ServerSocket(0,24,InetAddress.getByName("127.0.0.1"))
-    private val entries=ConcurrentHashMap<String,Pair<ChartFile,ChartReader>>()
+    private val server=if(serveHttp) ServerSocket(0,24,InetAddress.getByName("127.0.0.1")) else null
+    private val entries=ConcurrentHashMap<String,ChartLayer>()
+    private val readers=LinkedHashMap<String,ChartReader>(16,.75f,true)
     private val cache=object:android.util.LruCache<String,ByteArray>(24*1024*1024) {override fun sizeOf(key:String,value:ByteArray)=value.size}
     private val workers=ThreadPoolExecutor(4,4,0,TimeUnit.SECONDS,ArrayBlockingQueue(48),{ r -> Thread(r,"chart-tile").apply { isDaemon=true } })
     @Volatile var closed=false
     @Volatile var lastError: String?=null
-    init { Thread({ while(!closed) {
+    init { if(server!=null) Thread({ while(!closed) {
         val socket=try { server.accept() } catch(_:Exception) { break }
         try { workers.execute { socket.use { runCatching { serve(it) } } } } catch(_:Exception) { socket.close() }
     } },"chart-loopback").apply { isDaemon=true; start() } }
-    fun register(file: ChartFile): String {
-        entries[file.id]=file to ChartReader(context,Uri.parse(file.uri))
-        return "http://127.0.0.1:${server.localPort}/$token/${file.id}/{z}/{x}/{y}"
+    fun register(layer: ChartLayer): String {
+        entries[layer.id]=layer
+        return "http://127.0.0.1:${requireNotNull(server).localPort}/$token/${layer.id}/{z}/{x}/{y}"
+    }
+    private fun read(file:ChartFile,x:Int,y:Int,z:Int):ByteArray? = synchronized(readers) {
+        if(closed) return@synchronized null
+        val reader=readers[file.id] ?: ChartReader(context,Uri.parse(file.uri)).also {
+            readers[file.id]=it
+            if(readers.size>12) { val first=readers.entries.iterator();val expired=first.next();expired.value.close();first.remove() }
+        }
+        reader.raster(x,y,z,file)
+    }
+    fun raster(layer:ChartLayer,x:Int,y:Int,z:Int):ByteArray? {
+        if(closed) return null
+        val key="${layer.id}/$z/$x/$y"
+        return cache.get(key) ?: render(layer,x,y,z)?.also {cache.put(key,it)}
+    }
+    private fun render(layer:ChartLayer,x:Int,y:Int,z:Int):ByteArray? {
+        if(z !in 0..24 || x<0 || y<0 || x>=(1 shl z) || y>=(1 shl z)) return null
+        val size=layer.rasterSize
+        val result=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888)
+        var found=false
+        try {
+            val canvas=Canvas(result)
+            val paint=Paint(Paint.FILTER_BITMAP_FLAG).apply {
+                xfermode=android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OVER)
+            }
+            val pixels=IntArray(size*size)
+            // Highest priority first, falling through only where this archive has no coverage.
+            // Drawing beneath the accumulated image preserves transparent chart margins while
+            // bounding memory even for a folder containing many overlapping transparent files.
+            for(file in layer.files) {
+                if(closed) return null
+                if(z<file.minZoom) continue
+                val bytes=try {read(file,x,y,z)} catch(_:Exception) {lastError=file.id;null} ?: continue
+                val bitmap=decodeTile(bytes) ?: continue
+                try {canvas.drawBitmap(bitmap,null,Rect(0,0,size,size),paint)} finally {bitmap.recycle()}
+                found=true
+                result.getPixels(pixels,0,size,0,0,size,size)
+                if(pixels.all {it ushr 24 == 255}) break
+            }
+            if(!found) return null
+            return java.io.ByteArrayOutputStream().use {out -> result.compress(Bitmap.CompressFormat.PNG,100,out);out.toByteArray()}
+        } finally {result.recycle()}
     }
     private fun serve(socket: Socket) {
         socket.soTimeout=4000
@@ -309,14 +438,28 @@ class TileGateway(private val context: Context) : AutoCloseable {
         val p=parts[1].split('/'); if(p.size!=6 || p[1]!=token) return
         val entry=entries[p[2]] ?: return
         val z=p[3].toIntOrNull() ?: return; val x=p[4].toIntOrNull() ?: return; val y=p[5].toIntOrNull() ?: return
-        val key="${p[2]}/$z/$x/$y"
-        val data=try { cache.get(key) ?: if(z in entry.first.minZoom..entry.first.maxZoom) entry.second.raster(x,y,z,entry.first)?.also {cache.put(key,it)} else null }
-            catch(_:Exception) { lastError=entry.first.id; null }
+        val data=try { raster(entry,x,y,z) }
+            catch(_:Exception) { lastError=entry.id; null }
         val status=if(data==null) "404 Not Found" else "200 OK"
         socket.getOutputStream().buffered().use { out ->
             out.write("HTTP/1.1 $status\r\nContent-Type: image/png\r\nContent-Length: ${data?.size ?: 0}\r\nCache-Control: max-age=86400\r\nConnection: close\r\n\r\n".toByteArray())
             if(data!=null) out.write(data)
         }
     }
-    override fun close() { closed=true; server.close(); workers.shutdownNow(); entries.values.forEach { runCatching { it.second.close() } }; entries.clear();cache.evictAll() }
+    override fun close() {
+        closed=true;server?.close();workers.shutdownNow()
+        synchronized(readers) {readers.values.forEach {runCatching {it.close()}};readers.clear()}
+        entries.clear();cache.evictAll()
+    }
+}
+
+/** The same folder ordering and raster compositor powers every legacy monitoring map. */
+class FolderTileProvider(context:Context,layers:List<ChartLayer>) : com.google.android.gms.maps.model.TileProvider,AutoCloseable {
+    private val gateway=TileGateway(context,serveHttp=false)
+    private val composite=ChartLayer("all-folder-layers","folder charts",layers.flatMap {it.files})
+    override fun getTile(x:Int,y:Int,zoom:Int):com.google.android.gms.maps.model.Tile = runCatching {
+        val bytes=gateway.raster(composite,x,y,zoom) ?: return com.google.android.gms.maps.model.TileProvider.NO_TILE
+        com.google.android.gms.maps.model.Tile(composite.rasterSize,composite.rasterSize,bytes)
+    }.getOrDefault(com.google.android.gms.maps.model.TileProvider.NO_TILE)
+    override fun close() = gateway.close()
 }

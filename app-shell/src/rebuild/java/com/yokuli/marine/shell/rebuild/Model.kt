@@ -5,7 +5,12 @@ import android.content.Context
 import android.util.AtomicFile
 import androidx.compose.runtime.*
 import com.yokuli.marine.shell.rebuild.chart.ChartLibrary
+import com.yokuli.marine.shell.rebuild.chart.FolderTileProvider
+import com.yokuli.anchorwatch.map.SharedChartLayers
 import com.yokuli.marine.shell.rebuild.data.DataHub
+import com.yokuli.marine.shell.rebuild.data.MarineRuntime
+import com.yokuli.anchorwatch.MainViewModel
+import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import org.json.JSONArray
@@ -51,12 +56,20 @@ data class TileSpec(val app: String, val size: Int = 2) // 1 small, 2 medium, 4 
 enum class AppId(val zh: String, val en: String, val icon: String) {
     CHART("海图","chart","chart"), LIBRARY("海图库","chart library","layers"),
     PLACES("我的航行","my sailing","route"), DATA("船舶数据","boat data","data"),
-    NMEA("NMEA","NMEA","connect"), SETTINGS("设置","settings","settings")
+    NMEA("NMEA","NMEA","connect"), SETTINGS("设置","settings","settings"),
+    ANCHOR("锚警报","anchor watch","anchor"), TRIP("航行记录","trip recorder","record"),
+    ANCHORAGES("锚地","anchorages","pin"), SONAR("个人水深图","personal sonar","sonar"),
+    INSTRUMENTS("仪表","instruments","data"), VOYAGES("航行日志","logbook","logbook")
 }
 
+@HiltAndroidApp
 class YokuliApplication : Application() {
     lateinit var os: OsStore
-    override fun onCreate() { super.onCreate(); os = OsStore(this) }
+    override fun onCreate() {
+        super.onCreate()
+        com.yokuli.anchorwatch.LegacyMarineRuntime.initialize(this)
+        os = OsStore(this)
+    }
 }
 
 /** One process owns sessions; screens subscribe and never open their own connections. */
@@ -66,7 +79,7 @@ class OsStore(val context: Context) {
     private val writes = Channel<String>(Channel.CONFLATED)
     private val initial = runCatching { JSONObject(file.openRead().bufferedReader().use { it.readText() }) }.getOrDefault(JSONObject())
     var chinese by mutableStateOf(initial.optString("language", Locale.getDefault().language) == "zh")
-    var accent by mutableLongStateOf(initial.optLong("accent", 0xFF00ABA9))
+    var accent by mutableLongStateOf(initial.optLong("accent", 0xFF007F9B))
     var light by mutableStateOf(initial.optBoolean("light", false))
     var keepAwake by mutableStateOf(initial.optBoolean("keepAwake", true))
     var reduceMotion by mutableStateOf(initial.optBoolean("reduceMotion", false))
@@ -75,6 +88,7 @@ class OsStore(val context: Context) {
     var tiles by mutableStateOf(initial.optJSONArray("tiles")?.objects()?.mapNotNull {
         it.optString("app").takeIf { name -> AppId.entries.any { a -> a.name == name } }?.let { name -> TileSpec(name,it.optInt("size",2).takeIf { s -> s in listOf(1,2,4) } ?: 2) }
     } ?: listOf(TileSpec("CHART",4),TileSpec("PLACES"),TileSpec("LIBRARY"),TileSpec("DATA"),TileSpec("NMEA"),TileSpec("SETTINGS",4)))
+    val shell by lazy { WpShellRuntime(this) }
     var page by mutableStateOf("start")
     private val backStack = mutableListOf<String>()
     var recent by mutableStateOf(listOf<String>())
@@ -94,18 +108,38 @@ class OsStore(val context: Context) {
     var displayedRouteId by mutableStateOf<String?>(null)
     var activeRouteId by mutableStateOf<String?>(initial.optString("activeRoute").takeIf { it.isNotBlank() })
     var routeLeg by mutableIntStateOf(initial.optInt("routeLeg",0))
+    var recordingActive by mutableStateOf(false)
+    var recordingPaused by mutableStateOf(false)
+    var recordedSegments by mutableStateOf<List<List<GeoPoint>>>(emptyList())
     var cameraRequest by mutableStateOf<Pair<GeoPoint,Double>?>(null)
     var fitRequest by mutableStateOf<List<GeoPoint>?>(null)
     var nmeaHost by mutableStateOf(initial.optString("host","192.168.4.1"))
     var nmeaPort by mutableStateOf(initial.optString("port","10110"))
     var nmeaProtocol by mutableStateOf(initial.optString("protocol","TCP"))
     var serverPort by mutableStateOf(initial.optString("serverPort","10111"))
-    var positionSource by mutableStateOf(initial.optString("positionSource","phone"))
+    var positionSource by mutableStateOf("none")
+    var marine by mutableStateOf<MarineRuntime?>(null)
+        private set
+    fun attachMarine(viewModel: MainViewModel) {
+        if (marine?.vm === viewModel) return
+        marine?.close()
+        marine = MarineRuntime(this, viewModel)
+    }
     val hub = DataHub()
     val library = ChartLibrary(context, scope)
+    private var sharedChartProvider: FolderTileProvider? = null
     val activeRoute get() = routes.firstOrNull { it.id == activeRouteId }
     val nextPoint get() = activeRoute?.points?.getOrNull(routeLeg)
     init {
+        scope.launch {
+            snapshotFlow { library.revision to library.selectedLayers }.collect { (revision, layers) ->
+                val provider=layers.takeIf { it.isNotEmpty() }?.let { FolderTileProvider(context,it) }
+                val previous=sharedChartProvider
+                sharedChartProvider=provider
+                SharedChartLayers.update(provider,revision.toLong()) { open("library") }
+                if(previous!=null) scope.launch(Dispatchers.IO) { previous.close() }
+            }
+        }
         scope.launch(Dispatchers.IO) {
             for (snapshot in writes) {
                 val ok = runCatching {
@@ -123,20 +157,9 @@ class OsStore(val context: Context) {
         toast = t(zh,en); toastJob?.cancel()
         toastJob = scope.launch { delay(3500); toast = null }
     }
-    fun open(destination: String) {
-        if (destination == page) return
-        backStack.add(page); page = destination; editTiles = false
-        if (AppId.entries.any { it.name.lowercase() == destination }) recent = (listOf(destination)+recent).distinct().take(6)
-    }
-    fun home() { backStack.clear(); page = "start"; editTiles = false; save() }
-    fun back() {
-        when {
-            editTiles -> editTiles = false
-            page == "chart" && showCrosshair -> showCrosshair = false
-            backStack.isNotEmpty() -> page = backStack.removeAt(backStack.lastIndex)
-            else -> home()
-        }
-    }
+    fun open(destination: String) = shell.open(destination)
+    fun home() = shell.home()
+    fun back() = shell.back()
     fun fly(point: GeoPoint, atZoom: Double = zoom) { follow = false; cameraRequest = point to atZoom; center = point; zoom = atZoom }
     fun mark() {
         places = places + Place(name=t("标记 ${places.size+1}","mark ${places.size+1}"),point=center)

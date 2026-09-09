@@ -1,0 +1,52 @@
+package com.yokuli.anchorwatch.domain.vessel
+
+/** BACKUP remains readable only so old DataStore/backup payloads deserialize;
+ * current Phone/App publishers normalize every enabled family to ALWAYS. */
+enum class PublicationPolicy{OFF,BACKUP,ALWAYS}
+enum class NmeaOutputPurpose{
+    /** Publish the complete currently-valid Phone/App-owned feed into the boat
+     * network. Receiving instruments, not this App, own source selection. */
+    BOAT_BUS_INJECTION,
+    /** Complete Phone/App-owned feed served to clients that deliberately
+     * connect to this phone. It is not subject to Boat-source suppression. */
+    CANONICAL_CLIENT_FEED,
+}
+enum class PublisherOwnershipState{STANDBY_EXTERNAL_PRESENT,TAKEOVER_PENDING,PHONE_ACTIVE,SUPPRESSED,SOURCE_CONFLICT,ERROR}
+enum class NmeaStreamReadiness{READY,WAITING_CALIBRATION,WAITING_POSITION,STANDBY,PUBLISHING}
+enum class NmeaSentenceFamily{POSITION,HEADING,MOTION,PRESSURE,DERIVED_WIND,PROPRIETARY_STATUS,CANONICAL_FEED}
+enum class NmeaSuppressionReason{USER_DISABLED,EXTERNAL_SOURCE_PRESENT,TAKEOVER_DELAY,PHONE_NOT_MOUNTED,MOUNT_SUSPECT,NO_DECLINATION_REFERENCE,PHONE_HEADING_STALE,PHONE_GPS_STALE,NO_DERIVED_WIND,OUTPUT_DISCONNECTED,SOURCE_CONFLICT}
+data class PublicationDecision(val publish:Boolean,val ownership:PublisherOwnershipState,val suppression:NmeaSuppressionReason?=null)
+
+data class NmeaPublishedStreamStatus(
+    val family:NmeaSentenceFamily,
+    val policy:PublicationPolicy=PublicationPolicy.OFF,
+    val ownership:PublisherOwnershipState=PublisherOwnershipState.SUPPRESSED,
+    val dataReady:Boolean=false,
+    val readiness:NmeaStreamReadiness=NmeaStreamReadiness.STANDBY,
+    val suppressionReason:NmeaSuppressionReason?=null,
+    val generatedRateHz:Double=0.0,
+    val socketWriteRateHz:Double=0.0,
+    val lastGeneratedElapsed:Long?=null,
+    val lastWrittenElapsed:Long?=null,
+    val generatedCount:Long=0,
+    val writtenCount:Long=0,
+    val droppedCount:Long=0,
+    val lastGeneratedSequence:Long=0,
+    val lastWrittenSequence:Long=0,
+)
+
+enum class NmeaDestinationTransport{DEDICATED_TCP,TCP_SERVER,SAME_AS_INPUT_TCP_SOCKET,UDP_UNICAST,UDP_BROADCAST}
+data class NmeaRetryPolicy(val delaysMillis:List<Long> = listOf(1_000,2_000,5_000,10_000,15_000))
+data class NmeaOutputDestination(
+    val id:String="boat-gateway",
+    val name:String="Boat Gateway",
+    /** The authoritative Boat route may reuse the explicitly connected
+     * full-duplex input socket. [enabled] remains false until an explicit
+     * output session starts. */
+    val transport:NmeaDestinationTransport=NmeaDestinationTransport.SAME_AS_INPUT_TCP_SOCKET,
+    val host:String="",
+    val port:Int=10110,
+    val enabled:Boolean=false,
+    val sentenceFilter:Set<NmeaSentenceFamily> = NmeaSentenceFamily.entries.toSet(),
+    val retryPolicy:NmeaRetryPolicy=NmeaRetryPolicy(),
+)

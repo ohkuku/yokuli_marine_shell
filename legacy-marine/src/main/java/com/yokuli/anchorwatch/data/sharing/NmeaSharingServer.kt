@@ -1,0 +1,201 @@
+package com.yokuli.anchorwatch.data.sharing
+
+import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantLock
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.runBlocking
+import kotlin.concurrent.withLock
+
+enum class SharingServerState { STOPPED, STARTING, RUNNING, ERROR }
+
+data class NmeaSharingClientStatus(
+    val id: Long,
+    val address: String,
+    val connectedAtMillis: Long,
+    val sentSentences: Long = 0,
+)
+
+data class NmeaSharingStatus(
+    val state: SharingServerState = SharingServerState.STOPPED,
+    val port: Int = 10111,
+    val clientCount: Int = 0,
+    val addresses: List<String> = emptyList(),
+    val sentSentences: Long = 0,
+    val droppedSlowClients: Long = 0,
+    val lastOutputElapsed: Long? = null,
+    val clients: List<NmeaSharingClientStatus> = emptyList(),
+    /** Sentences after a client OutputStream flush, never merely queued. */
+    val recentWritten:List<String> = emptyList(),
+    val lastEvent: String = "",
+    val message: String = "",
+)
+
+@Singleton
+class NmeaSharingServer @Inject constructor(private val addresses: NetworkAddressProvider) {
+    private data class Client(val socket: Socket, val queue: Channel<String>, val job: Job, val connectedAtMillis:Long, val address:String, val sent:AtomicLong=AtomicLong())
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Serializes Start/Stop as one lifecycle transaction. The old check →
+     * stop → launch sequence allowed two rapid Start requests to stop each
+     * other's freshly-created listener, which presented as a 1 ms session. */
+    private val lifecycle = ReentrantLock(true)
+    private val clients = ConcurrentHashMap<Long, Client>()
+    private val ids = AtomicLong()
+    private var serverSocket: ServerSocket? = null
+    private var acceptJob: Job? = null
+    private val _status = MutableStateFlow(NmeaSharingStatus())
+    val status = _status.asStateFlow()
+
+    fun start(port: Int) {
+        val safePort = port.takeIf { it in 1024..65535 } ?: 10111
+        lifecycle.withLock {
+            synchronized(this){if(acceptJob?.isActive==true&&_status.value.port==safePort)return}
+            joinStoppedJobs(synchronized(this){stopLocked()})
+            synchronized(this){
+                _status.value=NmeaSharingStatus(SharingServerState.STARTING,safePort,addresses=addresses.localAddresses())
+                acceptJob=scope.launch {
+            while(isActive){
+                try {
+                    val server = ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress("0.0.0.0", safePort), 16) }
+                    serverSocket = server
+                    update(state = SharingServerState.RUNNING, message = "Listening on all interfaces",lastEvent="NMEA_SHARING_STARTED")
+                    while (isActive) addClient(server.accept())
+                } catch (error: Exception) {
+                    if(!isActive)break
+                    update(state = SharingServerState.ERROR, message = error.message ?: "Unable to start NMEA sharing",lastEvent="NMEA_SHARING_BIND_FAILED")
+                    delay(REBIND_DELAY_MILLIS)
+                    if(isActive)update(state=SharingServerState.STARTING,message="Rebinding NMEA Sharing on all interfaces")
+                } finally {
+                    runCatching{serverSocket?.close()};serverSocket=null
+                }
+            }
+                }
+            }
+        }
+    }
+
+    /** Hard stop: close the listener and every client socket, then wait for all
+     * old writer jobs to leave their OutputStream before returning. */
+    fun stop(){
+        lifecycle.withLock { joinStoppedJobs(synchronized(this){stopLocked()}) }
+    }
+
+    private fun joinStoppedJobs(jobs:List<Job>){
+        // Socket close/cancellation interrupts every accept/write first. Do not
+        // turn a timeout into a false OFF acknowledgement: STOP may return only
+        // after every old client writer has actually left its OutputStream.
+        runBlocking{jobs.joinAll()}
+        // A writer's finally block may have captured RUNNING just before Stop
+        // reset the status. Reassert the terminal state after every old job has
+        // joined so no stale coroutine can resurrect presentation state.
+        synchronized(this){_status.value=NmeaSharingStatus(port=_status.value.port,addresses=addresses.localAddresses(),lastEvent="NMEA_SHARING_STOPPED")}
+    }
+
+    internal fun forceRebindForTest(){runCatching{serverSocket?.close()}}
+
+    /** Queue one canonical sentence for each currently connected client.
+     * Returning zero is important: a listening server is not a successful
+     * network write until there is a receiver. */
+    fun publish(sentence: String):Int {
+        if (_status.value.state != SharingServerState.RUNNING) return 0
+        var dropped = 0L
+        var queued = 0
+        clients.forEach { (id, client) ->
+            if (client.queue.trySend(sentence).isFailure) {
+                dropped++
+                closeClient(id, client)
+            } else queued++
+        }
+        _status.update{current->current.copy(
+            clientCount = clients.size,
+            droppedSlowClients = current.droppedSlowClients + dropped,
+            clients = clientStatuses(),
+            lastEvent = if(dropped>0)"NMEA_CLIENT_DROPPED_SLOW" else current.lastEvent,
+        )}
+        return queued
+    }
+
+    private fun addClient(socket: Socket) {
+        if (clients.size >= MAX_CLIENTS) { runCatching { socket.close() }; return }
+        if(runCatching{socket.tcpNoDelay = true;socket.keepAlive = true;socket.sendBufferSize = 16 * 1024}.isFailure){runCatching{socket.close()};update(lastEvent="NMEA_CLIENT_DISCONNECTED");return}
+        val id = ids.incrementAndGet()
+        val queue = Channel<String>(CLIENT_QUEUE_CAPACITY)
+        val connectedAt=System.currentTimeMillis();val address=socket.remoteSocketAddress?.toString()?.removePrefix("/")?:"unknown"
+        val job = scope.launch {
+            try {
+                socket.getOutputStream().buffered().use { output ->
+                    for (sentence in queue) {
+                        output.write(sentence.toByteArray(Charsets.US_ASCII));output.flush()
+                        clients[id]?.sent?.incrementAndGet()
+                        _status.update{current->current.copy(
+                            clientCount=clients.size,
+                            sentSentences=current.sentSentences+1,
+                            lastOutputElapsed=System.nanoTime()/1_000_000L,
+                            clients=clientStatuses(),
+                            recentWritten=(current.recentWritten+sentence.trim()).takeLast(40),
+                        )}
+                    }
+                }
+            } catch (cancelled:CancellationException) {
+                throw cancelled
+            } catch (_:Exception) {
+                // A chartplotter/tablet can disappear between queueing and flush. That is a
+                // per-client transport event, never a process-level failure and never a reason
+                // to interrupt the alarm, upstream NMEA connection, or healthy sharing clients.
+                update(clientCount=clients.size,lastEvent="NMEA_CLIENT_WRITE_FAILED")
+            } finally {
+                clients.remove(id)?.let { runCatching { it.socket.close() } }
+                update(clientCount = clients.size,lastEvent="NMEA_CLIENT_DISCONNECTED")
+            }
+        }
+        clients[id] = Client(socket, queue, job,connectedAt,address)
+        update(clientCount = clients.size,lastEvent="NMEA_CLIENT_CONNECTED")
+    }
+
+    private fun closeClient(id: Long, client: Client) {
+        if (clients.remove(id, client)) {
+            client.queue.close()
+            runCatching { client.socket.close() }
+            client.job.cancel()
+        }
+    }
+
+    @Synchronized
+    private fun stopLocked():List<Job> {
+        val jobs=buildList{acceptJob?.let(::add);clients.values.forEach{add(it.job)}}
+        acceptJob?.cancel(); acceptJob = null
+        runCatching { serverSocket?.close() }; serverSocket = null
+        clients.toMap().forEach { (id, client) -> closeClient(id, client) }
+        _status.value = NmeaSharingStatus(port = _status.value.port, addresses = addresses.localAddresses(),lastEvent="NMEA_SHARING_STOPPED")
+        return jobs
+    }
+
+    private fun update(
+        state: SharingServerState = _status.value.state,
+        clientCount: Int = _status.value.clientCount,
+        message: String = _status.value.message,
+        lastEvent:String = _status.value.lastEvent,
+    ) { _status.update{it.copy(state = state, clientCount = clientCount, addresses = addresses.localAddresses(),clients=clientStatuses(),message = message,lastEvent=lastEvent)} }
+
+    private fun clientStatuses()=clients.map{(id,client)->NmeaSharingClientStatus(id,client.address,client.connectedAtMillis,client.sent.get())}.sortedBy{it.id}
+
+    companion object { const val MAX_CLIENTS = 8; const val CLIENT_QUEUE_CAPACITY = 128;const val REBIND_DELAY_MILLIS=2_000L }
+}

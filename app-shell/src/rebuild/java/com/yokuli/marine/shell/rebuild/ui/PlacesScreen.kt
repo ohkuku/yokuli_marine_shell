@@ -85,10 +85,15 @@ import kotlinx.coroutines.*
             Label(nm(route.length),46,LocalMetro.current.accent)
             Label(os.t("${route.points.size} 个航点 · 距离与方位为直线值","${route.points.size} points · straight-line distances and bearings"),16,LocalMetro.current.muted)
             MetroButton(if(os.activeRouteId==id) os.t("继续航行","continue") else os.t("使用这条航线","use this route"),{
-                if(os.activeRouteId==id) os.open("chart") else os.startRoute(route)
+                if(os.activeRouteId==id) {os.displayedRouteId=id;os.open("chart")} else os.startRoute(route)
             },primary=true)
             MetroButton(os.t("查看整条航线","view route"),{
                 os.displayedRouteId=id;os.fitRequest=route.points;os.open("chart")
+            })
+            if(os.displayedRouteId==id) MetroButton(os.t("从海图隐藏","hide from chart"),{
+                os.displayedRouteId=null
+                if(os.activeRouteId==id) os.activeRouteId=null
+                os.save()
             })
             MetroButton(os.t("编辑航点","edit points"),{
                 os.editingRouteId=id;os.draftRoute=route.points.toList();os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList();os.fly(route.points.first());os.open("chart")
@@ -99,7 +104,7 @@ import kotlinx.coroutines.*
                     val reversed=Route(name=route.name+os.t(" · 返航"," · return"),points=route.points.reversed());os.routes=os.routes+reversed;os.save();os.open("route:${reversed.id}")
                 },Modifier.weight(1f))
             }
-            route.points.forEachIndexed {i,p ->MenuRow("${i+1}   ${coordinates(p)}",if(i>0) "${nm(distance(route.points[i-1],p))} · ${decimal(bearing(route.points[i-1],p),0)}°T" else null) {os.fly(p);os.showCrosshair=true;os.open("chart")}}
+            route.points.forEachIndexed {i,p ->MenuRow("${i+1}   ${coordinates(p)}",if(i>0) "${nm(distance(route.points[i-1],p))} · ${decimal(bearing(route.points[i-1],p),0)}°T" else null) {os.displayedRouteId=id;os.fly(p);os.showCrosshair=true;os.open("chart")}}
             if(os.activeRouteId==id) MetroButton(os.t("结束航线","end route"),{os.activeRouteId=null;os.save()})
             MetroButton(os.t("删除航线","delete route"),{remove=true})
         }

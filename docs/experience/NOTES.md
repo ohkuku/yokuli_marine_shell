@@ -1,3 +1,33 @@
+# Experience 0.3 — WP8 restoration and marine apps
+
+This section supersedes the 0.2 implementation notes below. The original WP8 Shell is compiled directly again; the duplicated prototype desktop, NMEA parser and foreground service have been removed. All marine apps share the old Boat Watch engine through one Activity/ViewModel and one foreground service.
+
+## Implementation and checked boundaries
+
+- The seven original Shell modules own Start, tile documents, app list, search, recents, input and transitions. New app content uses the original task/session contract.
+- Chart crosshair/ruler/route panels are overlays within a stable native map viewport. Mode changes replace the AndroidView node and retire gateways off the UI thread.
+- A folder is a managed source, with an optional named layer. Layer order and file priority are explicit and persisted. Compositing checks actual tiles; transparent margins fall through to lower priority. Native 512-pixel detail is retained. Reader count and bitmap memory remain bounded.
+- SharedChartLayers exposes that same folder compositor to nine existing monitoring, replay and anchorage maps. There is one library selection; the old competing single-file import is hidden in the Shell.
+- Chart position uses the selected source's acceptedFix, including the existing integrity gates. No source returns no boat position. Demo position is labelled separately.
+- Phone selection requests precise location and starts the existing provider; source off stops its source lease. NMEA transport remains independent. The old engine retains ownership for explicitly running watches/recorders/publishers, with their existing stop/review controls.
+- Recording uses the real Trip Watch engine and durable track pipeline. Only the active recorded track is drawn; saved routes appear after explicit selection. Pauses and track gaps retain their segment boundaries.
+- Legacy nested pages receive virtual Back before Shell closes the app. Alarm dialogs and alarm-test controls remain available above all Shell apps.
+- See [the capability and entry-point audit](LEGACY_FEATURES.md). Imported production implementation is not a claim of physical boat, sensor, overnight alarm or OEM background acceptance.
+
+## Validation for this candidate
+
+- Java 17, SDK 36: the full standalone APK assembled, with Hilt and Room code generation.
+- APK manifest: one Yokuli launcher Activity, one marine foreground service; package remains com.yokuli.marine, minimum Android 9.
+- API 34 emulator: actual pan before/after crosshair retained native map bounds [0,383][1080,1993]. Switching to ordinary map rendered without closing/reopening Chart.
+- Actual SAF folder import with overlapping raster fixtures: the highest priority red half-tile rendered over blue; transparent right-hand pixels correctly fell through to blue. Moving the blue archive above it changed the overlapping area to all blue immediately. These fixtures are clearly labelled non-navigation test data and are not shipped in production assets.
+- Chart route creation through the real toolbar saved two points and returned to a map without the route line or edit handles.
+- Original secret-management script, encrypted identity/recipient/vault and documentation were verified byte-for-byte unchanged. Newly imported source contains no literal Google Maps key.
+- Real chart datasets, physical sensor accuracy, audio audibility, gateway-specific output and long background sessions remain owner acceptance work. The broad historical test matrix is intentionally not run during this experience phase.
+
+---
+
+# Historical 0.2 notes (superseded)
+
 # Experience rebuild — 2026-09-09
 
 The owner requested a new WP8 consumer experience based on marine_shell, with Anchor Watch as a source of proven map/NMEA behaviour. This branch starts from the current `codex/shell-map-contract` baseline. Original working directories were not edited.

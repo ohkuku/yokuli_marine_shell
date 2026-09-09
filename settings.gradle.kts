@@ -4,5 +4,7 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "YokuliOS"
-// Historical modules stay available as reference, outside the experience build.
 include(":app-shell")
+include(":core:shell-contract", ":core:shell-engine", ":core:design")
+include(":ui:shell-compose", ":feature:desktop", ":adapter:shell-android", ":adapter:shell-storage")
+include(":legacy-marine")

@@ -18,7 +18,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
 import kotlinx.coroutines.*
 import kotlin.math.*
 
-@Composable fun ChartScreen(os:OsStore) {
+@Composable fun ChartScreen(os:OsStore,recording:Boolean=false,onRecording:()->Unit={os.open("trip")}) {
     val data by os.hub.state.collectAsState()
     var tick by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     LaunchedEffect(Unit) { while(true) { delay(1000); tick=SystemClock.elapsedRealtime() } }
@@ -37,8 +37,10 @@ import kotlin.math.*
             delay(550)
             val center=os.center; val zoom=os.zoom
             coverage=withContext(Dispatchers.IO) {
-                selected.any { chart -> runCatching {
-                    val z=floor(zoom+if(chart.tileSize==256) 1 else 0).toInt().coerceAtMost(chart.maxZoom)
+                selected.any { chart ->
+                    ensureActive()
+                    runCatching {
+                    val z=floor(zoom+1).toInt().coerceAtMost(chart.maxZoom)
                     if(z<chart.minZoom) false else {
                         val n=2.0.pow(z); val x=floor((center.lon+180)/360*n).toInt().coerceIn(0,(1 shl z)-1)
                         val lat=Math.toRadians(center.lat.coerceIn(-85.0511,85.0511)); val y=floor((1-asinh(tan(lat))/PI)/2*n).toInt()
@@ -62,7 +64,7 @@ import kotlin.math.*
             Row(Modifier.align(Alignment.TopStart).padding(10.dp).background(c.bg.copy(alpha=.94f)).clickable { os.open("data") }.padding(horizontal=12.dp,vertical=9.dp),verticalAlignment=Alignment.CenterVertically) {
                 Box(Modifier.size(5.dp).background(if(fresh) c.accent else c.muted)); Spacer(Modifier.width(8.dp))
                 Label(if(fresh) "${decimal(fix?.freshSpeed(tick))} kn   ${decimal(fix?.freshCourse(tick),0)}°" else if(fix!=null) os.t("船位已过期","position stale") else os.t("等待船位","waiting for position"),15)
-                Spacer(Modifier.width(8.dp)); Label(if(os.positionSource=="nmea") "NMEA" else "GPS",11,c.muted)
+                Spacer(Modifier.width(8.dp)); Label(when(os.positionSource) {"nmea"->"NMEA";"phone"->"GPS";else->os.t("未选择来源","no source")},11,c.muted)
             }
             Column(Modifier.align(Alignment.CenterEnd).padding(end=10.dp).background(c.bg.copy(alpha=.94f))) {
                 Box(Modifier.size(46.dp).clickable { os.fly(os.center,(os.zoom+1).coerceAtMost(22.0)) },contentAlignment=Alignment.Center) { Glyph("plus",Modifier.size(22.dp)) }
@@ -87,11 +89,13 @@ import kotlin.math.*
                 if(os.mapMode=="standard" && !BuildConfig.GOOGLE_MAPS_CONFIGURED) Label("© OpenStreetMap contributors",10,Color(0xFF263B43),Modifier.background(Color.White.copy(alpha=.9f)).clickable {
                     context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://www.openstreetmap.org/copyright")))
                 }.padding(4.dp))
-                if(os.mapMode=="marine") selected.map { android.text.Html.fromHtml(it.attribution,0).toString() }.filter { it.isNotBlank() }.distinct().forEach { attribution ->
+                if(os.mapMode=="marine") selected.map { android.text.Html.fromHtml(it.attribution,0).toString() }.filter { it.isNotBlank() }.distinct().take(2).forEach { attribution ->
                     Label(attribution,10,Color(0xFF263B43),Modifier.background(Color.White.copy(alpha=.9f)).padding(3.dp),maxLines=3)
                 }
             }
-        }
+            // Context controls float over a stable native viewport. Showing the crosshair must
+            // never resize the map or change its camera/texture resolution during a drag.
+            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom=48.dp)) {
         if(os.ruler.size==2) {
             Row(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -119,6 +123,8 @@ import kotlin.math.*
                 IconAction("next",os.t("下一点","next"),{os.advanceRoute()})
             }
         }
+            }
+        }
         Row(Modifier.fillMaxWidth().heightIn(min=69.dp).background(c.bg),horizontalArrangement=Arrangement.SpaceEvenly) {
             if(os.editingRoute) {
                 IconAction("undo",os.t("撤销","undo"),{os.draftRoute=os.draftRoute.dropLast(1)})
@@ -139,12 +145,13 @@ import kotlin.math.*
                     } }
                 },active=os.ruler.isNotEmpty())
                 IconAction("route",os.t("航线","route"),{os.ruler=emptyList();os.editingRoute=true;os.showCrosshair=true})
+                IconAction(if(recording) "stop" else "play",if(recording) os.t("记录中","recording") else os.t("开始记录","record"),onRecording,active=recording)
                 IconAction("more",os.t("收藏","saved"),{os.open("places")})
             }
         }
     }
     if(naming) TextDialog(os,os.t("保存航线","save route"),os.routes.firstOrNull {it.id==os.editingRouteId}?.name ?: os.t("航线 ${os.routes.size+1}","route ${os.routes.size+1}"),{naming=false}) { name ->
-        val route=Route(id=os.editingRouteId ?: uid(),name=name,points=os.draftRoute.toList()); os.routes=os.routes.filter {it.id!=route.id}+route; os.displayedRouteId=route.id
+        val route=Route(id=os.editingRouteId ?: uid(),name=name,points=os.draftRoute.toList()); os.routes=os.routes.filter {it.id!=route.id}+route; os.displayedRouteId=null
         if(os.activeRouteId==route.id) {os.activeRouteId=null;os.routeLeg=0}
         os.editingRoute=false;os.editingRouteId=null;os.draftRoute=emptyList();os.showCrosshair=false;os.save();os.notify("航线已保存","Route saved")
     }
@@ -158,11 +165,21 @@ import kotlin.math.*
                     os.mapMode=mode;os.save();layers=false
                 }
             }
-            if(os.library.files.isNotEmpty()) {
-                Label(os.t("跳到海图","go to chart"),14,c.accent)
-                os.library.files.forEach { file -> MenuRow(file.name,"z${file.minZoom}–${file.maxZoom}") {
-                    os.library.showOnly(file);os.mapMode="marine";os.fly(file.focus,file.previewZoom);os.save();layers=false
-                } }
+            if(os.library.layers.isNotEmpty()) {
+                Label(os.t("我的图层 · 上方优先","my layers · top first"),14,c.accent)
+                os.library.folders.filter {it.layerName!=null}.forEach {folder ->
+                    val count=os.library.folderFiles(folder).count {it.enabled && it.error==null}
+                    Toggle(folder.layerName!!,folder.enabled,os.t("$count 张海图","$count charts")) {os.library.toggleLayer(folder)}
+                }
+            }
+            os.displayedRouteId?.let {id ->
+                os.routes.firstOrNull {it.id==id}?.let {route ->
+                    MenuRow(os.t("隐藏航线：${route.name}","hide route: ${route.name}")) {
+                        os.displayedRouteId=null
+                        if(os.activeRouteId==id) {os.activeRouteId=null;os.routeLeg=0}
+                        os.save();layers=false
+                    }
+                }
             }
             MetroButton(os.t("管理海图库","manage chart library"),{layers=false;os.open("library")})
             MetroButton(os.t("关闭","close"),{layers=false})

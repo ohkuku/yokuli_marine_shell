@@ -68,6 +68,10 @@ val LightFont=FontFamily(androidx.compose.ui.text.font.Typeface(android.graphics
             "folder" -> { line(3f,8f,13f,8f); line(13f,8f,16f,12f); line(16f,12f,29f,12f); line(29f,12f,29f,26f); line(29f,26f,3f,26f); line(3f,26f,3f,8f) }
             "play" -> { val path=Path(); path.moveTo(10*sx,5*sy); path.lineTo(27*sx,16*sy); path.lineTo(10*sx,27*sy); path.close(); drawPath(path,color,style=Stroke(1.8f*sx)) }
             "stop" -> drawRect(color,point(8f,8f),androidx.compose.ui.geometry.Size(16*sx,16*sy),style=Stroke(1.8f*sx))
+            "record" -> {circle(16f,16f,11f);drawCircle(color,5*sx,point(16f,16f))}
+            "anchor" -> {circle(16f,5f,3f);line(16f,8f,16f,28f);line(8f,13f,24f,13f);line(5f,21f,9f,26f);line(9f,26f,16f,29f);line(16f,29f,23f,26f);line(23f,26f,27f,21f);line(5f,21f,5f,26f);line(27f,21f,27f,26f)}
+            "sonar" -> {line(3f,7f,29f,7f);line(16f,7f,7f,23f);line(16f,7f,25f,23f);line(7f,23f,25f,23f);line(3f,29f,10f,27f);line(10f,27f,18f,30f);line(18f,30f,29f,26f)}
+            "logbook" -> {line(7f,4f,27f,4f);line(27f,4f,27f,28f);line(27f,28f,7f,28f);line(7f,28f,7f,4f);line(11f,4f,11f,28f);line(15f,11f,23f,11f);line(15f,17f,23f,17f);line(15f,23f,21f,23f)}
             "undo" -> { line(4f,13f,25f,13f); line(25f,13f,25f,25f); line(4f,13f,11f,6f); line(4f,13f,11f,20f) }
             "export" -> { line(6f,18f,6f,28f); line(6f,28f,26f,28f); line(26f,28f,26f,18f); line(16f,22f,16f,3f); line(16f,3f,9f,10f); line(16f,3f,23f,10f) }
             else -> circle(16f,16f,10f)
@@ -122,8 +126,8 @@ val LightFont=FontFamily(androidx.compose.ui.text.font.Typeface(android.graphics
             keyboardOptions=KeyboardOptions(keyboardType=if(number) KeyboardType.Number else KeyboardType.Text))
     }
 }
-@Composable fun Toggle(title:String,checked:Boolean,subtitle:String?=null,onChange:(Boolean)->Unit) {
-    Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }.padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
+@Composable fun Toggle(title:String,checked:Boolean,subtitle:String?=null,enabled:Boolean=true,onChange:(Boolean)->Unit) {
+    Row(Modifier.fillMaxWidth().graphicsLayer { alpha=if(enabled) 1f else .4f }.clickable(enabled=enabled) { onChange(!checked) }.padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end=12.dp)) { Label(title,23); if(subtitle!=null) Label(subtitle,14,LocalMetro.current.muted,Modifier.padding(top=5.dp)) }
         Box(Modifier.size(52.dp,26.dp).border(2.dp,LocalMetro.current.fg).padding(4.dp)) {
             if(checked) Box(Modifier.fillMaxSize().background(LocalMetro.current.accent))

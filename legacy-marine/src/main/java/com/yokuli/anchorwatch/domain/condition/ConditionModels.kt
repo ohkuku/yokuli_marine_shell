@@ -1,0 +1,177 @@
+package com.yokuli.anchorwatch.domain.condition
+
+import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
+
+enum class DepthGuardStatus { OFF, WAITING_FOR_DATA, MONITORING, SHALLOW_ALARM, DEEP_ALARM, DATA_UNAVAILABLE, PAUSED }
+enum class WindSpeedGuardStatus { OFF, WAITING_FOR_DATA, MONITORING, WARNING, ALARM, DATA_UNAVAILABLE, PAUSED }
+enum class WindShiftGuardStatus { OFF, WAITING_FOR_DIRECTION, LEARNING_BASELINE, MONITORING, ALARM, DATA_UNAVAILABLE, PAUSED }
+enum class WindSpeedSource { TRUE, APPARENT }
+enum class TrueWindDirectionSource { MWD, MWV_TRUE_PLUS_HDT }
+enum class ConditionAlarmSource { ANCHOR, DEPTH, WIND_SPEED, WIND_SHIFT, ALARM_TEST }
+
+data class ConditionGuardConfig(
+    val depthGuardEnabled:Boolean=false,
+    val shallowDepthAlarmMeters:Double?=null,
+    val deepDepthAlarmMeters:Double?=null,
+    val windGuardEnabled:Boolean=false,
+    val windWarningKnots:Double?=null,
+    val windAlarmKnots:Double?=null,
+    val windShiftEnabled:Boolean=false,
+    val windShiftThresholdDegrees:Double?=null,
+    val windAllowApparentFallback:Boolean=true,
+){
+    fun validated():ConditionGuardConfig{
+        val shallow=shallowDepthAlarmMeters?.takeIf{it.isFinite()&&it in .1..999.0}
+        val deep=deepDepthAlarmMeters?.takeIf{it.isFinite()&&shallow!=null&&it>=shallow+1.0&&it<=1000.0}
+        val warning=windWarningKnots?.takeIf{it.isFinite()&&it>=0.0}
+        val alarm=windAlarmKnots?.takeIf{it.isFinite()&&warning!=null&&it>=warning+3.0&&it<=200.0}
+        val shift=windShiftThresholdDegrees?.takeIf{it.isFinite()&&it in 15.0..180.0}
+        return copy(
+            depthGuardEnabled=depthGuardEnabled&&shallow!=null,
+            shallowDepthAlarmMeters=shallow,
+            deepDepthAlarmMeters=deep,
+            windGuardEnabled=windGuardEnabled&&warning!=null&&alarm!=null,
+            windWarningKnots=warning,
+            windAlarmKnots=alarm,
+            windShiftEnabled=windShiftEnabled&&shift!=null,
+            windShiftThresholdDegrees=shift,
+        )
+    }
+}
+
+/** Compares the values that would actually be persisted after validation. */
+fun ConditionGuardConfig.hasMeaningfulDiff(other:ConditionGuardConfig):Boolean =
+    validated()!=other.validated()
+
+/**
+ * Instrument alarms are sourced from the boat NMEA stream, even when the
+ * anchor-watch position itself uses Android GNSS. A disconnected stream may
+ * never enable a new guard. Existing guards may still be disabled so a user is
+ * not trapped in a stale configuration. Demo sessions explicitly provide
+ * their own simulated instrument stream.
+ */
+object ConditionGuardAvailability {
+    /** A live instrument stream does not require an NMEA GPS fix. STALE and
+     * CONNECTED_NO_FIX may still be delivering fresh DPT/DBT or wind data;
+     * CONNECTED_NO_DATA explicitly is not. */
+    fun hasInstrumentTraffic(state:NmeaConnectionState):Boolean=state in setOf(
+        NmeaConnectionState.CONNECTED,
+        NmeaConnectionState.CONNECTED_NO_FIX,
+        NmeaConnectionState.STALE,
+    )
+
+    data class Sensors(
+        val instrumentStream:Boolean,
+        val freshDepth:Boolean,
+        val freshWindSpeed:Boolean,
+        val freshTrueWindDirection:Boolean,
+        val demoSession:Boolean=false,
+    ){
+        val depthReady get()=demoSession||(instrumentStream&&freshDepth)
+        val windSpeedReady get()=demoSession||(instrumentStream&&freshWindSpeed)
+        val windShiftReady get()=demoSession||(instrumentStream&&freshTrueWindDirection)
+    }
+
+    fun canApply(current:ConditionGuardConfig,proposed:ConditionGuardConfig,sensors:Sensors):Boolean{
+        val before=current.validated();val after=proposed.validated()
+        // Turning a guard off is always an escape route. Enabling it or changing
+        // a threshold requires fresh data from the exact sensor it protects;
+        // unrelated valid NMEA traffic is not sufficient evidence.
+        // Removing the optional deep boundary is an explicit disable action and
+        // must remain possible during a depth-data outage. Enabling it or
+        // changing either active threshold still requires a fresh sounder.
+        val depthUnchangedOrReduced=before.depthGuardEnabled&&
+            after.shallowDepthAlarmMeters==before.shallowDepthAlarmMeters&&
+            (after.deepDepthAlarmMeters==before.deepDepthAlarmMeters||after.deepDepthAlarmMeters==null)
+        val windUnchanged=before.windGuardEnabled&&after.windWarningKnots==before.windWarningKnots&&after.windAlarmKnots==before.windAlarmKnots&&after.windAllowApparentFallback==before.windAllowApparentFallback
+        val shiftUnchanged=before.windShiftEnabled&&after.windShiftThresholdDegrees==before.windShiftThresholdDegrees
+        val depthAllowed=!after.depthGuardEnabled||depthUnchangedOrReduced||sensors.depthReady
+        val windAllowed=!after.windGuardEnabled||windUnchanged||sensors.windSpeedReady
+        val shiftAllowed=!after.windShiftEnabled||shiftUnchanged||sensors.windShiftReady
+        return depthAllowed&&windAllowed&&shiftAllowed
+    }
+}
+
+data class DepthGuardSnapshot(
+    val status:DepthGuardStatus=DepthGuardStatus.OFF,
+    val filteredDepthMeters:Double?=null,
+    val alarmActive:Boolean=false,
+    val dataUnavailable:Boolean=false,
+)
+
+data class WindSpeedGuardSnapshot(
+    val status:WindSpeedGuardStatus=WindSpeedGuardStatus.OFF,
+    val filteredSpeedKnots:Double?=null,
+    val source:WindSpeedSource?=null,
+    val alarmActive:Boolean=false,
+    val warningActive:Boolean=false,
+    val dataUnavailable:Boolean=false,
+)
+
+data class WindShiftGuardSnapshot(
+    val status:WindShiftGuardStatus=WindShiftGuardStatus.OFF,
+    val baselineDirectionDegrees:Double?=null,
+    val baselineEstablishedAt:Long?=null,
+    val baselineSource:TrueWindDirectionSource?=null,
+    val currentDirectionDegrees:Double?=null,
+    val shiftDegrees:Double?=null,
+    val baselineConcentration:Double?=null,
+    val alarmActive:Boolean=false,
+    val dataUnavailable:Boolean=false,
+)
+
+data class ConditionRuntimeSnapshot(
+    val activeSessionId:Long?=null,
+    val paused:Boolean=false,
+    val config:ConditionGuardConfig=ConditionGuardConfig(),
+    val depth:DepthGuardSnapshot=DepthGuardSnapshot(),
+    val windSpeed:WindSpeedGuardSnapshot=WindSpeedGuardSnapshot(),
+    val windShift:WindShiftGuardSnapshot=WindShiftGuardSnapshot(),
+)
+
+data class ConditionSnoozeState(
+    val depthUntil:Long?=null,
+    val windUntil:Long?=null,
+    val windShiftUntil:Long?=null,
+)
+
+/** One safety-audio policy for both pre-alarm warnings and full alarms. */
+object ConditionAudibilityPolicy{
+    fun audibleSources(value:ConditionRuntimeSnapshot,snooze:ConditionSnoozeState,nowWall:Long):Set<ConditionAlarmSource> = buildSet{
+        if((value.depth.alarmActive||value.depth.dataUnavailable)&&!snoozed(snooze.depthUntil,nowWall))add(ConditionAlarmSource.DEPTH)
+        if((value.windSpeed.warningActive||value.windSpeed.alarmActive||value.windSpeed.dataUnavailable)&&!snoozed(snooze.windUntil,nowWall))add(ConditionAlarmSource.WIND_SPEED)
+        if((value.windShift.alarmActive||value.windShift.dataUnavailable)&&!snoozed(snooze.windShiftUntil,nowWall))add(ConditionAlarmSource.WIND_SHIFT)
+    }
+
+    private fun snoozed(until:Long?,nowWall:Long)=until!=null&&until>nowWall
+
+    /** Escalating from the wind pre-warning to its alarm is a new event. */
+    fun windSnoozeAfterTransition(previous:WindSpeedGuardSnapshot,current:WindSpeedGuardSnapshot,snoozedUntil:Long?):Long? =
+        if(previous.status==WindSpeedGuardStatus.WARNING&&current.status==WindSpeedGuardStatus.ALARM)null else snoozedUntil
+}
+
+data class SafetyAlert(
+    val source:ConditionAlarmSource,
+    val severity:Severity,
+    val title:String,
+    val detail:String,
+){ enum class Severity { INFO, WARNING, ALARM } }
+
+object SafetyAlertAggregator{
+    private val priority=listOf(
+        "SHALLOW", "ANCHOR", "CRITICAL_SOURCE_LOSS", "WIND_SPEED_ALARM",
+        "DEEP", "WIND_SHIFT", "WIND_WARNING", "DATA_LOSS",
+    )
+    fun sorted(alerts:Collection<SafetyAlert>):List<SafetyAlert> = alerts.sortedWith(
+        compareByDescending<SafetyAlert>{it.severity.ordinal}.thenBy{alert->
+            val key=when(alert.source){
+                ConditionAlarmSource.DEPTH->when{alert.title.contains("shallow",true)->"SHALLOW";alert.title.contains("lost",true)||alert.title.contains("unavailable",true)->"DATA_LOSS";else->"DEEP"}
+                ConditionAlarmSource.ANCHOR->if(alert.title.contains("lost",true))"CRITICAL_SOURCE_LOSS" else "ANCHOR"
+                ConditionAlarmSource.WIND_SPEED->if(alert.title.contains("lost",true)||alert.title.contains("unavailable",true))"DATA_LOSS" else if(alert.severity==SafetyAlert.Severity.ALARM)"WIND_SPEED_ALARM" else "WIND_WARNING"
+                ConditionAlarmSource.WIND_SHIFT->if(alert.title.contains("lost",true)||alert.title.contains("unavailable",true))"DATA_LOSS" else "WIND_SHIFT"
+                ConditionAlarmSource.ALARM_TEST->"DATA_LOSS"
+            }
+            priority.indexOf(key).takeIf{it>=0}?:Int.MAX_VALUE
+        }
+    )
+}

@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_FILE").orNull
@@ -14,10 +16,10 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "com.yokuli.marine"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 36
-        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 2
-        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.2.0-experience.1"
+        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 3
+        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.3.0-experience.2"
         manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = mapsKey.get()
         buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", (mapsKey.get() != "MAPS_API_KEY_NOT_CONFIGURED").toString())
     }
@@ -52,6 +54,18 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:shell-contract"))
+    implementation(project(":core:shell-engine"))
+    implementation(project(":core:design"))
+    implementation(project(":ui:shell-compose"))
+    implementation(project(":feature:desktop"))
+    implementation(project(":adapter:shell-android"))
+    implementation(project(":adapter:shell-storage"))
+    implementation(project(":legacy-marine"))
+    implementation("com.google.dagger:hilt-android:2.56.1")
+    ksp("com.google.dagger:hilt-compiler:2.56.1")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

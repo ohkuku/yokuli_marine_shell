@@ -65,17 +65,28 @@ private fun message(os:OsStore,key:String):String=when(key) {
                     }
                     if(data.readings.isEmpty()) Label(os.t("连接 NMEA 后，这里会显示实际收到的风、水深和航向。","Connect NMEA to see the wind, depth and heading actually received."),17,c.muted)
                     MenuRow(os.t("NMEA 连接","NMEA connection"),connection(os,data,now),"connect") {os.open("nmea")}
-                    if(!data.gpsOn && os.positionSource=="phone") MetroButton(os.t("开启手机定位","enable phone GPS"),{service("gpsOn",null)},primary=true)
+                    if(os.positionSource=="none") MetroButton(os.t("开启手机定位","enable phone GPS"),{service("gpsOn",null)},primary=true)
                     data.message?.let { Label(message(os,it),16,c.muted) }
                 } else {
                     Label(os.t("谁提供船位","where position comes from"),29)
-                    for((id,title) in listOf("phone" to os.t("手机 GPS","phone GPS"),"nmea" to os.t("NMEA 服务器","NMEA server"))) {
-                        val candidate=data.fix(id)
-                        Toggle(title,os.positionSource==id,
-                            if(candidate!=null) age(os,candidate.elapsed,now) else os.t("尚无数据","no data yet")) {os.positionSource=id;os.save()}
+                    val nmeaConnected=data.connection in listOf("waiting","live")
+                    val sourceLocked=os.marine?.vm?.ui?.collectAsState()?.value?.active?.paused==false
+                    Toggle(os.t("手机 GPS","phone GPS"),os.positionSource=="phone",
+                        if(os.positionSource=="nmea") os.t("先关闭 NMEA 船位","turn NMEA position off first") else os.t("开启即启动定位，关闭即停止","starts and stops phone location"),
+                        enabled=!sourceLocked && os.positionSource in listOf("none","phone")) {
+                        service(if(it) "gpsOn" else "gpsOff",null)
                     }
-                    Label(os.t("来源由你选择。连接丢失时显示过期状态，不会暗中换用另一来源。","You choose the source. If it disappears, the position becomes stale until that source returns."),17,c.muted)
-                    Toggle(os.t("手机定位服务","phone location service"),data.gpsOn) {service(if(it) "gpsOn" else "gpsOff",null)}
+                    Toggle(os.t("NMEA 船位","NMEA position"),os.positionSource=="nmea",
+                        when {os.positionSource=="phone"->os.t("先关闭手机 GPS","turn phone GPS off first")
+                            !nmeaConnected->os.t("请先连接 NMEA","connect NMEA first")
+                            data.nmea==null->os.t("已连接，等待有效船位","connected, awaiting a valid position")
+                            else->age(os,data.nmea!!.elapsed,now)},
+                        enabled=!sourceLocked && (os.positionSource=="nmea" || (os.positionSource=="none" && nmeaConnected))) {
+                        service(if(it) "sourceNmea" else "sourceOff",null)
+                    }
+                    Label(if(sourceLocked) os.t("锚警报正在值守；暂停后可以更改船位来源。","Pause the active anchor watch before changing its position source.") else
+                        os.t("两项都可以关闭。NMEA 连接可继续提供水深、风与仪表数据；船位不会自动切换来源。","Both can be off. NMEA may still provide depth, wind and instruments. Position never changes source automatically."),17,c.muted)
+                    MenuRow(os.t("更多数据能力","more data capabilities"),os.t("自定义字段、手机传感器、全局 GPS 代理与演示","custom fields, phone sensors, global GPS proxy & demo"),"data") {os.open("sources")}
                     MenuRow("NMEA",connection(os,data,now),"connect") {os.open("nmea")}
                     Label(os.t("海图、航线和共享服务订阅同一份数据，每个数值保留来源与接收时间。","Chart, routes and sharing subscribe to the same data. Each reading retains its source and receive time."),16,c.muted)
                 }
@@ -85,61 +96,5 @@ private fun message(os:OsStore,key:String):String=when(key) {
 }
 
 @Composable fun NmeaScreen(os:OsStore,service:(String,String?)->Unit) {
-    val data by os.hub.state.collectAsState(); val now=rememberClock(); val c=LocalMetro.current
-    var outgoing by remember { mutableStateOf("") }
-    var sendConfirm by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize()) {
-        PageHeader(os,"NMEA")
-        Pivot(listOf(os.t("连接","connect"),os.t("共享","share"),os.t("原始数据","raw"))) { page ->
-            PageBody {
-                when(page) {
-                    0 -> {
-                        Label(connection(os,data,now),29,if(data.connection=="live" && now-data.lastRx<=10000) c.accent else c.fg)
-                        if(data.endpoint.isNotEmpty()) Label(data.endpoint,14,c.muted)
-                        Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                            for(protocol in listOf("TCP","UDP")) MetroButton(protocol,{os.nmeaProtocol=protocol;os.save()},Modifier.weight(1f),primary=os.nmeaProtocol==protocol)
-                        }
-                        if(os.nmeaProtocol=="TCP") Field(os.t("服务器地址","server address"),os.nmeaHost,{os.nmeaHost=it})
-                        Field(if(os.nmeaProtocol=="TCP") os.t("服务器端口","server port") else os.t("本机监听端口","listen on port"),os.nmeaPort,{os.nmeaPort=it.take(5)},number=true)
-                        MetroButton(os.t("保存并连接","save & connect"),{os.save();service("connect",null)},primary=true)
-                        if(data.connection!="off") MetroButton(os.t("断开连接","disconnect"),{service("disconnect",null)})
-                        if(data.endpoint.startsWith("TCP")) Toggle(os.t("向服务器输出手机船位","send phone position to server"),data.upstreamPublishing,
-                            os.t("通过当前 TCP 连接每秒发送新鲜手机 GPS；先在船舶数据中开启定位。","Send fresh phone GPS once a second over this TCP connection. Enable phone location in boat data first.")) {service(if(it) "upstreamOn" else "upstreamOff",null)}
-                        Label(os.t("${data.received} 条校验通过 · ${data.rejected} 条拒绝","${data.received} checksum accepted · ${data.rejected} rejected"),14,c.muted)
-                        Label(os.t("TCP 可双向通信；UDP 在此端口接收。只有收到有效语句才显示正在接收。","TCP supports bidirectional communication. UDP listens on this device. Receiving means valid sentences have arrived."),16,c.muted)
-                    }
-                    1 -> {
-                        Label(os.t("让船上的设备\n共享同一份数据","one source,\nshared on board"),33)
-                        Label(os.t("开启本地 TCP 服务，将所选船位及新鲜的仪表数据生成 NMEA。仅在可信的船内网络开启。","Start a local TCP server to publish the selected position and fresh instrument readings as NMEA. Use a trusted onboard network."),17,c.muted)
-                        Field(os.t("共享端口","sharing port"),os.serverPort,{os.serverPort=it.take(5)},number=true)
-                        Toggle(os.t("NMEA 共享服务","NMEA sharing service"),data.server in listOf("running","starting")) {os.save();service(if(it) "shareOn" else "shareOff",null)}
-                        Label(when(data.server) {"running"->os.t("正在监听 · ${data.clients} 台设备","listening · ${data.clients} clients");"starting"->os.t("正在启动","starting");"error"->os.t("启动失败","could not start");else->os.t("已关闭","off")},23,c.accent)
-                        if(data.server=="running") {
-                            SelectionContainer { Column { data.addresses.forEach { Label("$it:${data.serverPort}",25) } } }
-                            if(data.addresses.isEmpty()) Label(os.t("尚无局域网地址，请连接船上 Wi-Fi。","No LAN address. Connect to the boat's Wi-Fi."),16,c.muted)
-                            Label(os.t("已发送 ${data.transmitted} 条语句","${data.transmitted} sentences sent"),14,c.muted)
-                        }
-                        MenuRow(os.t("船位来源","position source"),if(os.positionSource=="phone") "GPS" else "NMEA") {os.open("data")}
-                        Label(os.t("过期数据停止发送。没有 NMEA 输入时，手机 GPS 也可独立提供船位；不会生成缺失的水深或风。","Stale data stops transmitting. Phone GPS can provide position without an NMEA input. Missing depth and wind stay missing."),16,c.muted)
-                    }
-                    else -> {
-                        Label(os.t("最近收到","recently received"),27)
-                        SelectionContainer {
-                            Column(Modifier.fillMaxWidth().heightIn(max=280.dp).background(c.panel).verticalScroll(rememberScrollState()).padding(10.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                if(data.raw.isEmpty()) Label(os.t("尚未收到语句","no sentences received"),16,c.muted)
-                                data.raw.takeLast(40).reversed().forEach { Label(it,12) }
-                            }
-                        }
-                        Label(os.t("发送到输入服务器","send to input server"),25)
-                        Field(os.t("单条 NMEA 语句","one NMEA sentence"),outgoing,{outgoing=it.take(1024)},multiline=true)
-                        Label(os.t("通过当前 TCP 连接发送。可省略 $ 和校验和。发送前会再次显示原文。","Uses the current TCP connection. You can omit $ and the checksum. Review the text before sending."),15,c.muted)
-                        MetroButton(os.t("查看并发送","review & send"),{sendConfirm=true},enabled=outgoing.isNotBlank() && data.endpoint.startsWith("TCP") && data.connection in listOf("waiting","live"))
-                        if(data.sentToInput>0) Label(os.t("已发送 ${data.sentToInput} 条","${data.sentToInput} sent"),14,c.muted)
-                    }
-                }
-                data.message?.let { Label(message(os,it),16,c.muted) }
-            }
-        }
-    }
-    if(sendConfirm) ConfirmDialog(os,os.t("发送到 ${data.endpoint}？\n\n$outgoing","Send to ${data.endpoint}?\n\n$outgoing"),{sendConfirm=false}) {service("send",outgoing);sendConfirm=false}
+    MarineAppScreen(os,"nmea")
 }

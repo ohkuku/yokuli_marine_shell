@@ -16,7 +16,7 @@ import com.yokuli.marine.shell.rebuild.*
             PageBody {
                 if(page==0) {
                     Label(os.t("主题色","accent colour"),25)
-                    val colors=listOf(0xFF00ABA9,0xFF1BA1E2,0xFF0050EF,0xFF6A00FF,0xFFAA00FF,0xFFA4C400,0xFFD35400,0xFFE51400)
+                    val colors=listOf(0xFF007F9B,0xFF0050EF,0xFF60A917,0xFFD80073,0xFF6A00FF,0xFFA20025,0xFFF0A30A)
                     for(row in colors.chunked(4)) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         for(color in row) Box(Modifier.weight(1f).aspectRatio(1f).background(Color(color)).then(if(os.accent==color) Modifier.border(3.dp,LocalMetro.current.fg) else Modifier).clickable {os.accent=color;os.save()})
                     }
@@ -24,10 +24,11 @@ import com.yokuli.marine.shell.rebuild.*
                     Label(os.t("语言","language"),25)
                     MetroButton("简体中文",{os.chinese=true;os.save()},primary=os.chinese)
                     MetroButton("English",{os.chinese=false;os.save()},primary=!os.chinese)
-                    Label(os.t("磁贴长按可拖动、改尺寸或取消固定。应用列表右侧的图钉可重新固定。","Hold a tile to drag, resize or unpin it. Pin apps again from the app list."),17,LocalMetro.current.muted)
+                    Label(os.t("长按磁贴可拖动、改尺寸或取消固定。长按应用列表中的应用，可固定到开始屏幕。","Hold a tile to drag, resize or unpin it. Hold an app in the app list to pin it to Start."),17,LocalMetro.current.muted)
                 } else {
                     Toggle(os.t("保持屏幕常亮","keep screen awake"),os.keepAwake) {os.keepAwake=it;os.save()}
                     Toggle(os.t("减少动画","reduce motion"),os.reduceMotion) {os.reduceMotion=it;os.save()}
+                    MenuRow(os.t("船舶与值守设置","boat & watch settings"),os.t("船舶尺寸、报警、离线数据、备份与诊断","boat dimensions, alarms, offline data, backup & diagnostics"),"settings") {os.open("marine-settings")}
                     Label("Yokuli OS",38)
                     Label(BuildConfig.VERSION_NAME,16,LocalMetro.current.muted)
                     Label(os.t("海上生活，简单一点。","a little simpler, at sea."),22)

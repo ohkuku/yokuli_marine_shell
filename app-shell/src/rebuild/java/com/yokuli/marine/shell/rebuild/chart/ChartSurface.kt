@@ -64,6 +64,10 @@ class ChartOverlay(context:Context, private val os:OsStore) : View(context) {
             val path=Path(); points.forEachIndexed { i,p -> val s=project(p); if(i==0) path.moveTo(s.x,s.y) else path.lineTo(s.x,s.y) }
             canvas.drawPath(path,paint); paint.pathEffect=null
         }
+        if(os.recordingActive) os.recordedSegments.forEach {segment ->
+            line(segment,android.graphics.Color.WHITE,4.5f)
+            line(segment,android.graphics.Color.rgb(0,139,142),2.5f)
+        }
         val route=if(os.editingRoute) os.draftRoute else os.routes.firstOrNull { it.id==(os.displayedRouteId ?: os.activeRouteId) }?.points.orEmpty()
         line(route,android.graphics.Color.WHITE,5f)
         line(route,os.accent.toInt(),2.6f)
@@ -231,10 +235,13 @@ class ChartHost(context:Context,val os:OsStore,private val mode:String) : FrameL
             }
         }
     }
+    private fun retire(old:TileGateway?) {
+        if(old!=null) os.scope.launch(Dispatchers.IO) {runCatching {old.close()}}
+    }
     fun updateStyle() {
         val map=libre ?: return
-        val selected=os.library.selected
-        val key=mode+selected.joinToString { "${it.id}:${it.modified}" }
+        val selected=os.library.selectedLayers
+        val key=mode+selected.joinToString { layer -> layer.id+layer.files.joinToString {"${it.id}:${it.modified}:${it.priority}"} }
         if(styleRevision==key) return
         styleRevision=key; styleJob?.cancel(); error=null
         styleJob=scope.launch {
@@ -247,25 +254,31 @@ class ChartHost(context:Context,val os:OsStore,private val mode:String) : FrameL
                     layers.put(JSONObject().put("id","osm").put("type","raster").put("source","osm"))
                 } else {
                     val mounted=withContext(Dispatchers.IO) {
-                        TileGateway(context).also { proposed=it }.let { gateway -> selected.mapNotNull { chart ->
-                            runCatching { chart to gateway.register(chart) }.getOrElse { withContext(Dispatchers.Main) { error="read" }; null }
+                        TileGateway(context).also { proposed=it }.let { gateway -> selected.asReversed().mapNotNull { layer ->
+                            runCatching { layer to gateway.register(layer) }.getOrElse { withContext(Dispatchers.Main) { error="read" }; null }
                         } }
                     }
-                    for((chart,url) in mounted) {
-                        sources.put(chart.id,JSONObject().put("type","raster").put("tileSize",chart.tileSize).put("minzoom",chart.minZoom).put("maxzoom",chart.maxZoom)
+                    for((layer,url) in mounted) {
+                        sources.put(layer.id,JSONObject().put("type","raster").put("tileSize",256).put("minzoom",layer.minZoom).put("maxzoom",layer.maxZoom)
                             .put("tiles",JSONArray(listOf(url))))
-                        layers.put(JSONObject().put("id",chart.id).put("type","raster").put("source",chart.id)
+                        layers.put(JSONObject().put("id",layer.id).put("type","raster").put("source",layer.id)
                             .put("paint",JSONObject().put("raster-fade-duration",0).put("raster-resampling","linear")))
                     }
                 }
                 val style=JSONObject().put("version",8).put("sources",sources).put("layers",layers)
                 val old=gateway; gateway=proposed
-                map.setStyle(Style.Builder().fromJson(style.toString())) { old?.close() }
-            } catch(e:Exception) { proposed?.close(); if(e !is CancellationException) error="read" }
+                map.setStyle(Style.Builder().fromJson(style.toString()))
+                // Old source URLs leave the style immediately; retain no orphaned gateways if a
+                // rapid second switch cancels the previous style completion callback.
+                retire(old)
+            } catch(e:Exception) { retire(proposed); if(e !is CancellationException) error="read" }
         }
     }
     fun update(fix:Fix?) {
+        os.recordingActive;os.recordedSegments;os.ruler;os.draftRoute;os.showCrosshair
+        os.places;os.routes;os.displayedRouteId;os.activeRouteId;os.editingRoute;os.routeLeg
         overlay.fix=fix; overlay.invalidate(); updateStyle()
+        if(gateway?.lastError!=null) error="read"
         if(camera!=null) os.cameraRequest?.let { (p,z) -> camera?.move(p,z); os.cameraRequest=null }
         if(camera!=null && width>0 && height>0) os.fitRequest?.takeIf {it.isNotEmpty()}?.let { points ->
             camera?.fit(points);os.fitRequest=null;os.follow=false
@@ -284,21 +297,24 @@ class ChartHost(context:Context,val os:OsStore,private val mode:String) : FrameL
     fun destroy() {
         if(destroyed) return
         destroyed=true; lifecycle(Lifecycle.Event.ON_STOP); scope.cancel()
-        native?.onDestroy(); google?.onDestroy(); gateway?.close(); camera=null
+        native?.onDestroy(); google?.onDestroy(); retire(gateway);gateway=null; camera=null
     }
 }
 
 @Composable fun NativeChart(os:OsStore,fix:Fix?,modifier:Modifier=Modifier,onHost:(ChartHost)->Unit) {
     val context=androidx.compose.ui.platform.LocalContext.current
-    val host=remember(os.mapMode) { ChartHost(context,os,os.mapMode) }
     val lifecycle=LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(host,lifecycle) {
-        onHost(host)
-        val observer=LifecycleEventObserver { _,event -> host.lifecycle(event) }
-        lifecycle.addObserver(observer)
-        if(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) host.lifecycle(Lifecycle.Event.ON_START)
-        if(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) host.lifecycle(Lifecycle.Event.ON_RESUME)
-        onDispose { lifecycle.removeObserver(observer); host.destroy() }
+    // The AndroidView node itself must change, not only the value captured by its factory.
+    key(os.mapMode) {
+        val host=remember { ChartHost(context,os,os.mapMode) }
+        DisposableEffect(host,lifecycle) {
+            onHost(host)
+            val observer=LifecycleEventObserver { _,event -> host.lifecycle(event) }
+            lifecycle.addObserver(observer)
+            if(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) host.lifecycle(Lifecycle.Event.ON_START)
+            if(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) host.lifecycle(Lifecycle.Event.ON_RESUME)
+            onDispose { lifecycle.removeObserver(observer); host.destroy() }
+        }
+        AndroidView(factory={host},modifier=modifier,update={ it.update(fix) })
     }
-    AndroidView(factory={host},modifier=modifier,update={ it.update(fix) })
 }
