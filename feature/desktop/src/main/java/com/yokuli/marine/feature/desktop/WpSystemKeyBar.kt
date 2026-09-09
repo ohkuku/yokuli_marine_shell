@@ -19,7 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -39,6 +42,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.yokuli.marine.core.design.LocalWpTheme
@@ -201,12 +206,27 @@ fun WpSearchSurface(
     val colors = LocalWpTheme.current
     val focusRequester = remember { FocusRequester() }
     val searchFieldLabel = stringResource(R.string.search_hint)
-    val query = searchQuery.trim()
+    var editor by remember { mutableStateOf(TextFieldValue(searchQuery, TextRange(searchQuery.length))) }
+    val pendingQueries = remember { mutableListOf<String>() }
+    LaunchedEffect(searchQuery) {
+        val acknowledged = pendingQueries.indexOf(searchQuery)
+        when {
+            searchQuery == editor.text -> pendingQueries.clear()
+            acknowledged >= 0 -> pendingQueries.subList(0, acknowledged + 1).clear()
+            else -> {
+                // A caller may replace or clear Search. Only a query that is not an echo of
+                // our own editing replaces the local cursor and IME composition.
+                pendingQueries.clear()
+                editor = TextFieldValue(searchQuery, TextRange(searchQuery.length))
+            }
+        }
+    }
+    val query = editor.text.trim()
     val results = state.entries.filter { entry ->
         query.isEmpty() || entry.title.contains(query, ignoreCase = true) ||
             entry.headline.contains(query, ignoreCase = true)
     }
-    val contributedResults = if (query.isEmpty()) emptyList() else state.searchResults
+    val contributedResults = if (query.isEmpty() || query != searchQuery.trim()) emptyList() else state.searchResults
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column(
@@ -218,8 +238,17 @@ fun WpSearchSurface(
             contextLine = stringResource(R.string.search_installed_apps),
         )
         BasicTextField(
-            value = searchQuery,
-            onValueChange = { onAction(LauncherUiAction.UpdateSearchQuery(it)) },
+            value = editor,
+            onValueChange = { next ->
+                val textChanged = next.text != editor.text
+                // BasicTextField must receive text, selection and composition immediately;
+                // the asynchronous Shell reducer cannot own the IME's editing buffer.
+                editor = next
+                if (textChanged) {
+                    pendingQueries += next.text
+                    onAction(LauncherUiAction.UpdateSearchQuery(next.text))
+                }
+            },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)
                 .height(52.dp).background(colors.foreground.copy(alpha = .1f))
                 .padding(horizontal = 12.dp).focusRequester(focusRequester)
@@ -230,7 +259,7 @@ fun WpSearchSurface(
             singleLine = true,
             decorationBox = { field ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                    if (searchQuery.isEmpty()) WpText(stringResource(R.string.search_hint), 18, color = colors.muted)
+                    if (editor.text.isEmpty()) WpText(stringResource(R.string.search_hint), 18, color = colors.muted)
                     field()
                 }
             },
