@@ -27,6 +27,15 @@ for action in actions/checkout@v6 actions/setup-java@v5 gradle/actions/setup-gra
 done
 grep -Fq 'actions/download-artifact@v8' "$android" || fail 'artifact transfer must verify the server digest'
 
+# Google no longer serves the deprecated SDK `tools` package. setup-android@v4
+# requests it by default, so every invocation must opt into the hosted runner's
+# supported platform-tools package explicitly.
+setup_android_count="$(grep -h -c 'uses: android-actions/setup-android@v4' "${workflows[@]}" | awk '{ total += $1 } END { print total + 0 }')"
+platform_tools_count="$(grep -h -c 'packages: platform-tools' "${workflows[@]}" | awk '{ total += $1 } END { print total + 0 }')"
+[[ "$setup_android_count" -gt 0 ]] || fail 'Android SDK setup action is missing'
+[[ "$setup_android_count" -eq "$platform_tools_count" ]] || \
+  fail 'every setup-android step must avoid the retired tools package'
+
 for job in 'build:' 'integration:' 'api-compatibility:' 'stage11-performance:' 'codex-report:' 'verified-debug:'; do
   grep -Fq "  $job" "$android" || fail "Android CI missing job $job"
 done
