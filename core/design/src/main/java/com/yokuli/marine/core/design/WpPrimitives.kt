@@ -49,10 +49,10 @@ fun WpText(
         modifier = modifier,
         style = TextStyle(
             color = resolvedColor,
-            fontSize = size.sp,
+            fontSize = (size * LocalWpTextScale.current).sp,
             fontWeight = weight,
-            fontFamily = FontFamily.SansSerif,
-            lineHeight = (size * 1.08).sp,
+            fontFamily = WpFontFamily,
+            lineHeight = (size * LocalWpTextScale.current * 1.08).sp,
             textMotion = TextMotion.Animated,
         ),
         maxLines = maxLines,

@@ -497,17 +497,7 @@ class MainViewModel @Inject constructor(
             if(value.serverRequested&&!localNmeaServerRuntime.enabled)ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.REFRESH_LOCAL_NMEA_SERVER))
         }}
         viewModelScope.launch{localNmeaServerRuntime.status.collect{value->_ui.update{it.copy(localNmeaServerRuntime=value)}}}
-        viewModelScope.launch{sonarDao.surveys().collect{surveys->
-            val selected=_ui.value.selectedSonarSurveyId?.takeIf{selectedId->selectedId==CORRECTED_SONAR_HISTORY_ID||surveys.any{it.id==selectedId}}?:surveys.firstOrNull()?.id
-            _ui.update{it.copy(sonarSurveys=surveys,selectedSonarSurveyId=selected)}
-            if(_ui.value.activeSonarSurvey==null)observeSonarSamples(selected)
-        }}
-        viewModelScope.launch{sonarRecorder.status.collect{status->
-            val selected=status.activeSurvey?.id?:_ui.value.selectedSonarSurveyId?:_ui.value.sonarSurveys.firstOrNull()?.id
-            _ui.update{it.copy(activeSonarSurvey=status.activeSurvey,sonarRecorder=status,selectedSonarSurveyId=selected)}
-            observeSonarSamples(selected)
-            refreshDepthUi()
-        }}
+        // 当前产品不加载声纳历史网格；正常 NMEA 水深仍由 VesselDataHub 提供。
         viewModelScope.launch{linzDepthRepository.state.collect{value->_ui.update{it.copy(linzDepth=value)};refreshDepthUi()}}
         viewModelScope.launch{linzDepthRepository.diagnostics.collect{value->_ui.update{it.copy(linzDepthDiagnostics=value)}}}
         viewModelScope.launch{backupManager.state.collect{value->_ui.update{it.copy(backup=value)}}}
@@ -772,6 +762,10 @@ class MainViewModel @Inject constructor(
     fun clearConnectionAttempt()=_ui.update{it.copy(connectionAttempt=ConnectionAttempt())}
     fun dismissRuntimeFeedback(){
         val id=_ui.value.runtimeDiagnostics.lastUserFeedback?.id?:return
+        consumeRuntimeFeedback(id)
+    }
+    /** 按 ID 消费已保存到系统通知中心的事件，不会误删同时到达的新反馈。 */
+    fun consumeRuntimeFeedback(id:Long){
         // Dismiss the event at its process-wide owner as well as immediately
         // hiding it in this UI frame. Recreating MainActivity must not bring
         // the same already-acknowledged banner back.
@@ -860,7 +854,7 @@ class MainViewModel @Inject constructor(
             _ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Phone NMEA service port must be between 1024 and 65535."))}
             return@launch
         }
-        localNmeaServerSettingsRepository.saveConfiguration(LocalNmeaServerSettings(port,includePressure,includeDerivedWind,configured=true,serverRequested=false))
+        localNmeaServerSettingsRepository.saveConfiguration(_ui.value.localNmeaServerSettings.copy(port=port,includePressure=includePressure,includeDerivedWind=includeDerivedWind,configured=true,serverRequested=false))
         _ui.update{it.copy(connectionAttempt=ConnectionAttempt())}
     }
 
@@ -876,6 +870,13 @@ class MainViewModel @Inject constructor(
         // several foreground-service starts while DataStore/Flow catches up.
         _ui.update{it.copy(localNmeaServerSettings=it.localNmeaServerSettings.copy(serverRequested=true),connectionAttempt=ConnectionAttempt())}
         ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.REFRESH_LOCAL_NMEA_SERVER))
+    }
+
+    /** 保存本机服务的完整发布策略；运行中不能偷偷改变发给客户的数据。 */
+    fun saveLocalNmeaPublicationPolicy(port:Int,feed:com.yokuli.anchorwatch.data.nmea.NmeaFeed,capabilities:Set<String>,forwardFrom:Set<String>)=viewModelScope.launch{
+        if(_ui.value.localNmeaServerSettings.serverRequested||port !in 1024..65535)return@launch
+        localNmeaServerSettingsRepository.saveConfiguration(_ui.value.localNmeaServerSettings.copy(port=port,configured=true,feed=feed,capabilities=capabilities,forwardFrom=forwardFrom,includePressure="pressure" in capabilities))
+        _ui.update{it.copy(connectionAttempt=ConnectionAttempt())}
     }
 
     fun stopLocalNmeaServer()=viewModelScope.launch{
@@ -1185,6 +1186,9 @@ class MainViewModel @Inject constructor(
     fun endTrip()=app.startService(Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.END_TRIP))
     fun markTripWaypoint(name:String,note:String,type:String)=ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.MARK_TRIP_WAYPOINT).putExtra("name",name).putExtra("note",note).putExtra("type",type))
     fun deleteTrip(session:TripSessionEntity){if(session.active)return;viewModelScope.launch{tripDao.deleteCompleted(session.id)}}
+    /** 已保存航行的用户名称；不改动原始航迹和事件。 */
+    fun renameTrip(id:Long,name:String)=viewModelScope.launch{if(name.isNotBlank())tripDao.renameCompleted(id,name.trim().take(100))}
+    fun editTripMoment(value:com.yokuli.anchorwatch.data.database.TripWaypointEntity,name:String,note:String)=viewModelScope.launch{if(name.isNotBlank())tripDao.updateWaypoint(value.copy(name=name.trim().take(100),note=note.trim().take(2000)))}
     suspend fun tripReport(sessionId:Long):TripReport?=tripReportEngine.generate(sessionId)
     suspend fun anchorReport(sessionId:Long):AnchorReport?=anchorReportEngine.generate(sessionId)
     suspend fun tripReplay(sessionId:Long):TripReplayData=tripReplayLoader.load(sessionId)

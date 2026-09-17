@@ -50,19 +50,26 @@ object StartLayoutEditor {
         entries: Collection<LauncherEntryDescriptor>,
         size: MarineTileSize? = null,
     ): LayoutProposal? {
-        if (document.placements.any { it.entryId == entryId }) return null
         val entry = entries.firstOrNull { it.entryId == entryId } ?: return null
-        val requestedSize = size ?: entry.defaultSize
+        // 中文：同一应用只有一块磁贴；换样式或尺寸沿用原位置和身份。
+        val ownerEntries = entries.filter { it.appId == entry.appId }.map { it.entryId }.toSet()
+        val existing = document.placements.filter { it.entryId in ownerEntries }
+            .minWithOrNull(compareBy<TilePlacement> { it.rank }.thenBy { it.tileId.value })
+        val requestedSize = size ?: existing?.size?.takeIf { it in entry.supportedSizes } ?: entry.defaultSize
         if (requestedSize !in entry.supportedSizes) return null
-        val candidate = TilePlacement(
+        val profile = WpReferenceProfiles.require(document.profileId)
+        val candidate = existing?.copy(
+            entryId = entryId,
+            size = requestedSize,
+            preferredCell = existing.preferredCell?.let { it.copy(column = it.column.coerceIn(0, profile.columnCount - requestedSize.columns)) },
+        ) ?: TilePlacement(
             tileId = TileInstanceId("tile-${entryId.value}"),
             entryId = entryId,
             size = requestedSize,
             rank = (document.placements.map { it.rank } + document.spacers.map { it.rank }).maxOrNull()?.plus(1024L) ?: 0L,
         )
-        val profile = WpReferenceProfiles.require(document.profileId)
         val repaired = StartDocumentRepair.repair(
-            document.copy(placements = document.placements + candidate),
+            document.copy(placements = document.placements.filterNot { it.entryId in ownerEntries } + candidate),
             entries,
             document,
             profile,

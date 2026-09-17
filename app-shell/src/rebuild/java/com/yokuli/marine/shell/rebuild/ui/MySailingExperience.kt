@@ -24,6 +24,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
     var query by rememberSaveable { mutableStateOf("") }
     var kind by rememberSaveable(anchoragesOnly) { mutableStateOf<PlaceKind?>(if(anchoragesOnly)PlaceKind.ANCHORAGE else null) }
     var create by remember { mutableStateOf(false) }
+    var choosingKind by remember {mutableStateOf(false)}
     var pending by remember { mutableStateOf<Gpx.Contents?>(null) }
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null) scope.launch {
         busy=true
@@ -45,10 +46,8 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             when(page) {
                 0 -> {
                     Field(os.t("查找名称或笔记","find a name or note"),query,{query=it})
-                    Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        MetroButton(os.t("全部","all"),{kind=null},primary=kind==null)
-                        PlaceKind.entries.forEach { choice -> MetroButton(choice.label(os),{kind=choice},primary=kind==choice) }
-                    }
+                    Label((kind?.label(os) ?: os.t("全部坐标","all places"))+"  ▾",24,LocalMetro.current.accent,
+                        Modifier.clickable {choosingKind=true}.padding(vertical=8.dp))
                     val local=os.places.filter { (kind==null || kind==it.kind) && (it.name.contains(query,true)||it.note.contains(query,true)) }
                     val saved=repo.locations.filter { (kind==null || kind==PlaceKind.ANCHORAGE) && (it.displayName.contains(query,true)||it.personalNotes.contains(query,true)||repo.spots.any { s -> s.placeId==it.id&&s.name.contains(query,true) }) }
                     if(local.isEmpty()&&saved.isEmpty()) Label(if(query.isBlank()) os.t("把值得记住的地方\n留在这里。","keep the places\nworth remembering.") else os.t("没有匹配的地点","no matching places"),32)
@@ -88,6 +87,14 @@ fun PlaceKind.label(os:OsStore)=when(this) {
                 }
             }
         } }
+    }
+    if(choosingKind)Dialog(onDismissRequest={choosingKind=false}) {
+        Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).padding(22.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            Label(os.t("显示坐标","show places"),33)
+            ChoiceRow(os.t("全部坐标","all places"),kind==null) {kind=null;choosingKind=false}
+            PlaceKind.entries.forEach {choice->ChoiceRow(choice.label(os),kind==choice) {kind=choice;choosingKind=false}}
+            MetroButton(os.t("关闭","close"),{choosingKind=false})
+        }
     }
     if(create) CoordinateEditor(os,null,{create=false}) { place -> repo.put(place);create=false;os.open("place:${place.id}") }
     pending?.let { content -> Dialog(onDismissRequest={pending=null}) {
@@ -142,19 +149,19 @@ fun PlaceKind.label(os:OsStore)=when(this) {
 
 @Composable internal fun CoordinateEditor(os:OsStore,initial:Place?,onDismiss:()->Unit,onSave:(Place)->Unit) {
     var name by remember {mutableStateOf(initial?.name.orEmpty())}
-    var latitude by remember {mutableStateOf(initial?.point?.lat?.toString().orEmpty())}
-    var longitude by remember {mutableStateOf(initial?.point?.lon?.toString().orEmpty())}
+    var latitude by remember {mutableStateOf(initial?.point?.lat?.let(os::formatLatitude).orEmpty())}
+    var longitude by remember {mutableStateOf(initial?.point?.lon?.let(os::formatLongitude).orEmpty())}
     var note by remember {mutableStateOf(initial?.note.orEmpty())}
     var group by remember {mutableStateOf(initial?.collection.orEmpty())}
     var kind by remember {mutableStateOf(initial?.kind?:PlaceKind.MARK)}
-    val point=latitude.toDoubleOrNull()?.let {lat->longitude.toDoubleOrNull()?.let {lon->GeoPoint(lat,lon).takeIf(GeoPoint::valid)}}
+    val point=parseCoordinate(latitude,true)?.let {lat->parseCoordinate(longitude,false)?.let {lon->GeoPoint(lat,lon).takeIf(GeoPoint::valid)}}
     Dialog(onDismissRequest=onDismiss) {
         Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(LocalMetro.current.bg).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Label(os.t("地点资料","place details"),31)
             Field(os.t("名称","name"),name,{name=it.take(100)})
-            Field(os.t("纬度 · 十进制度","latitude · decimal degrees"),latitude,{latitude=it.take(20)})
-            Field(os.t("经度 · 十进制度","longitude · decimal degrees"),longitude,{longitude=it.take(20)})
-            Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {PlaceKind.entries.forEach {choice->MetroButton(choice.label(os),{kind=choice},primary=kind==choice)} }
+            Field(os.t("纬度","latitude")+" · ${os.coordinateFormat}",latitude,{latitude=it.take(60)})
+            Field(os.t("经度","longitude")+" · ${os.coordinateFormat}",longitude,{longitude=it.take(60)})
+            Column {PlaceKind.entries.forEach {choice->ChoiceRow(choice.label(os),kind==choice) {kind=choice}}}
             Field(os.t("集合","collection"),group,{group=it.take(80)})
             Field(os.t("笔记","notes"),note,{note=it.take(20000)},multiline=true)
             if(point==null&&(latitude.isNotBlank()||longitude.isNotBlank())) Label(os.t("纬度须在 -90 到 90，经度须在 -180 到 180","Latitude must be -90…90, longitude -180…180"),15,LocalMetro.current.muted)

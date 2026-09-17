@@ -57,6 +57,7 @@ internal fun metricName(os:OsStore,key:String)=when(key) {
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,os.t("船舶数据","boat data"))
         Pivot(listOf(os.t("此刻","now"),os.t("变化","trends"),os.t("来源","sources"))) { page ->
+            if(page==2){VesselSourceSettings(os);return@Pivot}
             val bodyScroll=rememberScrollState()
             val scope=rememberCoroutineScope()
             PageBody(bodyScroll) {
@@ -67,7 +68,7 @@ internal fun metricName(os:OsStore,key:String)=when(key) {
                         Label(if(fix!=null) os.t("船位正在更新","position is live") else if(os.positionSource=="none") os.t("船位已关闭","position is off") else os.t("等待可信船位","waiting for a trusted position"),17,if(fix!=null)c.accent else c.muted)
                         if(os.positionSource=="demo") Label(os.t("演示数据","DEMO DATA"),18,c.accent)
                         fix?.let {
-                            Label(coordinates(it.point),20)
+                            Label(os.formatCoordinates(it.point),20)
                             Label("${it.source} · ${readingAge(os,it.elapsed,now)}${it.accuracy?.let { a -> " · ±${decimal(a,0)} m" }.orEmpty()}",14,c.muted)
                         }
                     }
@@ -77,7 +78,7 @@ internal fun metricName(os:OsStore,key:String)=when(key) {
                         }
                     }
                     val current=data.readings[selected]
-                    Label("${decimal(current?.takeIf {it.fresh(now)}?.value)} ${current?.unit.orEmpty()}",58)
+                    Label(os.formatMetric(selected,current?.takeIf {it.fresh(now)}?.value),58)
                     Label(current?.let {"${it.source} · ${readingAge(os,it.elapsed,now)}${if(!it.fresh(now))os.t(" · 已过期"," · stale") else ""}"}
                         ?: os.t("还没有收到此项数据","no measurement received yet"),15,c.muted)
                     ReadingTrace(os,history[selected].orEmpty(),selected,now)
@@ -91,7 +92,7 @@ internal fun metricName(os:OsStore,key:String)=when(key) {
                             val value=data.readings.getValue(key)
                             Row(Modifier.fillMaxWidth().clickable {selected=key;scope.launch {bodyScroll.animateScrollTo(0)}}.padding(vertical=7.dp),verticalAlignment=Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {Label(metricName(os,key),21);Label(value.source,12,c.muted)}
-                                Label("${decimal(value.takeIf {it.fresh(now)}?.value)} ${value.unit}",27,if(value.fresh(now))c.fg else c.muted)
+                                Label(os.formatMetric(key,value.takeIf {it.fresh(now)}?.value),27,if(value.fresh(now))c.fg else c.muted)
                             }
                         }
                         if(data.readings.isEmpty()) Label(os.t("开启手机定位可查看航速；连接船载 NMEA 后，风、水深和船首向会出现在这里。","Phone location provides speed. Connect boat NMEA to bring in wind, depth and heading."),18,c.muted)

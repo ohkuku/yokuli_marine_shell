@@ -5,6 +5,10 @@ import android.provider.Settings
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
+import com.yokuli.anchorwatch.data.nmea.NmeaFeed
+import com.yokuli.anchorwatch.data.nmea.NmeaCapability
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -29,6 +33,11 @@ data class LocalNmeaServerSettings(
     val includeDerivedWind:Boolean=false,
     val configured:Boolean=true,
     val serverRequested:Boolean=false,
+    /** 本机监听器与主动发送连接使用同一能力策略。 */
+    val feed:NmeaFeed=NmeaFeed.SYSTEM,
+    val capabilities:Set<String> = NmeaCapability.generated,
+    /** 仅 RAW 模式使用，保存允许转发的输入连接稳定 ID。 */
+    val forwardFrom:Set<String> = emptySet(),
 )
 
 @Singleton
@@ -43,6 +52,9 @@ class LocalNmeaServerSettingsRepository @Inject constructor(
         val configured=booleanPreferencesKey("configured")
         val runRequested=booleanPreferencesKey("run_requested_same_boot")
         val runBootCount=intPreferencesKey("run_requested_boot_count")
+        val feed=stringPreferencesKey("publication_feed")
+        val capabilities=stringSetPreferencesKey("publication_capabilities")
+        val forwardFrom=stringSetPreferencesKey("publication_forward_from")
     }
 
     private fun bootCount()=Settings.Global.getInt(context.contentResolver,Settings.Global.BOOT_COUNT,-1)
@@ -58,6 +70,9 @@ class LocalNmeaServerSettingsRepository @Inject constructor(
             includeDerivedWind=(preferences[K.includeDerivedWindOptIn]?:false)&&(preferences[K.includeDerivedWind]?:false),
             configured=preferences[K.configured]?:true,
             serverRequested=requested,
+            feed=runCatching{NmeaFeed.valueOf(preferences[K.feed]?:"SYSTEM")}.getOrDefault(NmeaFeed.SYSTEM),
+            capabilities=preferences[K.capabilities]?:NmeaCapability.generated.let{if(preferences[K.includePressure]==false)it-NmeaCapability.PRESSURE.id else it},
+            forwardFrom=preferences[K.forwardFrom]?:emptySet(),
         )
     }
 
@@ -72,6 +87,9 @@ class LocalNmeaServerSettingsRepository @Inject constructor(
             preferences[K.includeDerivedWind]=value.includeDerivedWind
             preferences[K.includeDerivedWindOptIn]=value.includeDerivedWind
             preferences[K.configured]=true
+            preferences[K.feed]=value.feed.name
+            preferences[K.capabilities]=value.capabilities
+            preferences[K.forwardFrom]=value.forwardFrom
         }
     }
 

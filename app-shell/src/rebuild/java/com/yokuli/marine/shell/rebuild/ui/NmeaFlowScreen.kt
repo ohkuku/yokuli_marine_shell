@@ -16,7 +16,7 @@ import com.yokuli.shell.contract.ShellInput
 import kotlinx.coroutines.delay
 
 /** One app, named connections, and local object details. No legacy workspace. */
-@Composable fun NmeaScreen(os:OsStore,service:(String,String?)->Unit){
+@Composable fun NmeaScreen(os:OsStore,service:(String,String?)->Unit,initialSources:Boolean=false){
     val vm=os.marine?.vm ?: return
     val connections by vm.nmeaConnections.collectAsState()
     val state by vm.ui.collectAsState()
@@ -24,15 +24,17 @@ import kotlinx.coroutines.delay
     var editing by rememberSaveable{mutableStateOf(false)}
     var creating by rememberSaveable{mutableStateOf(false)}
     var frozen by remember{mutableStateOf<List<String>?>(null)}
+    var sources by rememberSaveable(initialSources){mutableStateOf(initialSources)}
     var now by remember{mutableLongStateOf(SystemClock.elapsedRealtime())}
     LaunchedEffect(Unit){while(true){delay(1000);now=SystemClock.elapsedRealtime()}}
     val current=connections.firstOrNull{it.spec.id==selected}
-    val back={if(editing||creating){editing=false;creating=false}else{selected=null;frozen=null}}
-    BindInternalAppInputHandler{input->if(input==ShellInput.BACK&&(selected!=null||creating)){back();true}else false}
-    BackHandler(selected!=null||creating){back()}
+    val back:()->Unit={if(sources){if(initialSources)os.shell.popRoute()else sources=false}else if(editing||creating){editing=false;creating=false}else{selected=null;frozen=null}}
+    BindInternalAppInputHandler{input->if(input==ShellInput.BACK&&(selected!=null||creating||sources)){back();true}else false}
+    AppBackHandler(selected!=null||creating||sources){back()}
     Column(Modifier.fillMaxSize()){
-        PageHeader(os,when{creating->os.t("新连接","new connection");editing->os.t("编辑连接","edit connection");current!=null->current.spec.name;else->"nmea"},onBack=if(selected!=null||creating)back else null)
+        PageHeader(os,when{sources->os.t("数据来源","data sources");creating->os.t("新连接","new connection");editing->os.t("编辑连接","edit connection");current!=null->current.spec.name;else->"nmea"},onBack=if(selected!=null||creating||sources)back else null)
         when{
+            sources->VesselSourceSettings(os)
             creating||editing->ConnectionEditor(os,if(creating)null else current?.spec,connections.map{it.spec}){spec->vm.saveNmeaConnection(spec){selected=spec.id;editing=false;creating=false}}
             current!=null->Pivot(listOf(os.t("实况","live"),os.t("语句","sentences"),os.t("路由","routing"))){page->
                 when(page){
@@ -50,7 +52,7 @@ import kotlinx.coroutines.delay
                         Label(os.t("只控制这条连接。其他连接和航程会保留；缺少的数据会显示为中断。","This controls this connection. Other connections and your voyage stay open; missing data is shown as a gap."),15,LocalMetro.current.muted)
                         MetroButton(os.t("编辑连接","edit connection"),{editing=true},enabled=!current.requested)
                         if(current.spec.receive)MetroButton(os.t("使用这条连接的船位","use position from this connection"),{vm.selectNmeaPositionConnection(current.spec.id)},enabled=current.requested)
-                        MetroButton(os.t("数据来源","data sources"),{os.open("settings:sources")})
+                        MetroButton(os.t("数据来源","data sources"),{sources=true})
                     }
                     1->PageBody{
                         val live=current.diagnostics.raw.takeLast(60).map{"↓ $it"}+current.recentWritten.takeLast(40).map{"↑ $it"}
@@ -62,9 +64,7 @@ import kotlinx.coroutines.delay
                     else->PageBody{
                         Label(if(current.spec.receive)os.t("接收 → 系统数据","receive → system data")else os.t("不接收数据","input disabled"),24)
                         Label(if(current.spec.send)os.t("输出：","output: ")+feedText(os,current.spec.feed)else os.t("输出已关闭","output disabled"),24)
-                        if(current.spec.feed==NmeaFeed.RAW)current.spec.forwardFrom.forEach{id->Label(connections.firstOrNull{it.spec.id==id}?.spec?.name?:id,18)}
-                        Label(os.t("句型：","Sentences: ")+current.spec.sentenceTypes.takeIf{it.isNotEmpty()}?.joinToString(", ").orEmpty().ifBlank{os.t("全部可用","all available")},17)
-                        Label(os.t("系统编码保留来源；输入报文不会回送原连接。停下后可编辑路由。","System encoding preserves origins; an input is never sent back to its connection. Stop this connection to edit routing."),16,LocalMetro.current.muted)
+                        if(current.spec.send)NmeaPublicationEditor(os,current.spec.feed,{},NmeaPublicationPolicy.selected(current.spec),{},current.spec.forwardFrom,{},connections.map{it.spec},current.spec.id,editable=false,destination=current.spec.name)
                         MetroButton(os.t("编辑路由","edit routing"),{editing=true},enabled=!current.requested)
                         MetroButton(os.t("移除这条连接","remove connection"),{vm.removeNmeaConnection(current.spec.id);selected=null},enabled=!current.requested)
                     }
@@ -75,7 +75,7 @@ import kotlinx.coroutines.delay
                 if(connections.isEmpty())Label(os.t("添加 GPS、风仪或网关。每条连接可以接收、发送，或双向运行。","Add a GPS, wind instrument or gateway. Each connection can receive, send, or do both."),22,LocalMetro.current.muted)
                 connections.forEach{connection->MenuRow(connection.spec.name,"${connection.spec.protocol} · ${connectionText(os,connection)} · ↓ ${connection.diagnostics.validSentences}  ↑ ${connection.writtenSentences}","next"){selected=connection.spec.id}}
                 MetroButton(os.t("添加连接","add connection"),{creating=true},primary=true)
-                MenuRow(os.t("选择数据来源","choose data sources"),os.t("手机和 NMEA 共用一份船位策略","one position policy for phone and NMEA")){os.open("settings:sources")}
+                MenuRow(os.t("数据来源","data sources"),os.t("选择船位与每项读数的提供者","choose who supplies position and each measurement")){sources=true}
             }
         }
         state.connectionAttempt.message.takeIf{state.connectionAttempt.state==com.yokuli.anchorwatch.ConnectionAttemptState.FAILED&&it.isNotBlank()}?.let{Label(it,14,LocalMetro.current.accent,Modifier.padding(horizontal=22.dp,vertical=8.dp))}
@@ -83,37 +83,37 @@ import kotlinx.coroutines.delay
 }
 
 @Composable private fun ConnectionEditor(os:OsStore,initial:NmeaConnectionSpec?,all:List<NmeaConnectionSpec>,save:(NmeaConnectionSpec)->Unit){
-    var name by remember(initial?.id){mutableStateOf(initial?.name.orEmpty())}
-    var host by remember(initial?.id){mutableStateOf(initial?.host.orEmpty())}
-    var port by remember(initial?.id){mutableStateOf((initial?.port?:10110).toString())}
-    var localPort by remember(initial?.id){mutableStateOf((initial?.localPort?:10110).toString())}
-    var protocol by remember(initial?.id){mutableStateOf(initial?.protocol?:Protocol.TCP)}
-    var rx by remember(initial?.id){mutableStateOf(initial?.receive?:true)}
-    var tx by remember(initial?.id){mutableStateOf(initial?.send?:false)}
-    var feed by remember(initial?.id){mutableStateOf(initial?.feed?:NmeaFeed.SYSTEM)}
-    var forwards by remember(initial?.id){mutableStateOf(initial?.forwardFrom.orEmpty())}
-    var filters by remember(initial?.id){mutableStateOf(initial?.sentenceTypes?.joinToString(", ").orEmpty())}
-    var checksum by remember(initial?.id){mutableStateOf(initial?.requireChecksum?:true)}
+    var name by rememberSaveable(initial?.id){mutableStateOf(initial?.name.orEmpty())}
+    var host by rememberSaveable(initial?.id){mutableStateOf(initial?.host.orEmpty())}
+    var port by rememberSaveable(initial?.id){mutableStateOf((initial?.port?:10110).toString())}
+    var localPort by rememberSaveable(initial?.id){mutableStateOf((initial?.localPort?:10110).toString())}
+    var protocol by rememberSaveable(initial?.id){mutableStateOf(initial?.protocol?:Protocol.TCP)}
+    var rx by rememberSaveable(initial?.id){mutableStateOf(initial?.receive?:true)}
+    var tx by rememberSaveable(initial?.id){mutableStateOf(initial?.send?:false)}
+    var feed by rememberSaveable(initial?.id){mutableStateOf(initial?.feed?:NmeaFeed.SYSTEM)}
+    var forwards by rememberSaveable(initial?.id,stateSaver=NmeaStringSetSaver){mutableStateOf(initial?.forwardFrom.orEmpty())}
+    var filters by rememberSaveable(initial?.id){mutableStateOf(initial?.sentenceTypes?.joinToString(", ").orEmpty())}
+    var checksum by rememberSaveable(initial?.id){mutableStateOf(initial?.requireChecksum?:true)}
+    var advanced by rememberSaveable(initial?.id){mutableStateOf(false)}
+    var capabilities by rememberSaveable(initial?.id,stateSaver=NmeaStringSetSaver){mutableStateOf(initial?.let{NmeaPublicationPolicy.selected(it)}?:NmeaCapability.generated)}
     PageBody{
         Field(os.t("名称","name"),name,{name=it.take(80)})
-        Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){Protocol.entries.forEach{value->MetroButton(value.name,{protocol=value},primary=protocol==value)}}
+        Protocol.entries.forEach{value->ChoiceRow(value.name,protocol==value,if(value==Protocol.TCP)os.t("持续连接一台设备","maintains a connection to one device")else os.t("接收或发送网络报文","receives or sends network packets")){protocol=value}}
         Toggle(os.t("接收数据","receive data"),rx){rx=it}
         Toggle(os.t("发送数据","send data"),tx){tx=it}
         Field(if(protocol==Protocol.UDP&&rx&&!tx)os.t("指定发件人 IP（留空接收全部）","sender IP (blank accepts all)")else os.t("设备地址","device address"),host,{host=it.trim()})
         Field(if(protocol==Protocol.UDP)os.t("目标端口","destination port")else os.t("端口","port"),port,{port=it},number=true)
         if(protocol==Protocol.UDP&&rx)Field(os.t("本机接收端口","local receive port"),localPort,{localPort=it},number=true)
-        Toggle(os.t("要求校验和","require checksum"),checksum){checksum=it}
         if(tx){
-            Label(os.t("发送什么","what to send"),27)
-            NmeaFeed.entries.forEach{value->MetroButton(feedText(os,value),{feed=value},primary=feed==value)}
-            if(feed==NmeaFeed.RAW){
-                Label(os.t("转发来源","forward from"),21)
-                all.filter{it.id!=initial?.id&&it.receive}.forEach{input->Toggle(input.name,input.id in forwards){enabled->forwards=if(enabled)forwards+input.id else forwards-input.id}}
-            }
-            Field(os.t("允许的句型，逗号分隔（留空为全部）","sentence filter, comma separated (blank = all)"),filters,{filters=it.uppercase().take(160)})
+            NmeaPublicationEditor(os,feed,{feed=it},capabilities,{capabilities=it},forwards,{forwards=it},all,initial?.id,destination=name.ifBlank{os.t("此连接","this connection")})
+        }
+        MetroButton(if(advanced)os.t("收起高级选项","hide advanced options")else os.t("高级选项","advanced options"),{advanced=!advanced})
+        if(advanced){
+            if(rx){Toggle(os.t("忽略传输中损坏的数据","ignore damaged data"),checksum){checksum=it};Label(os.t("设备附带的校验码可以发现传输错误。默认开启；只有老设备不附带校验码时才关闭。","The device's error-checking code detects damaged packets. Leave this on unless an older device omits the code."),16,LocalMetro.current.muted)}
+            if(tx)Field(os.t("额外句型限制（可留空）","additional sentence filter (optional)"),filters,{filters=it.uppercase().take(160)})
         }
         val valid=name.isNotBlank()&&(rx||tx)&&port.toIntOrNull() in 1..65535&&(protocol==Protocol.UDP||host.isNotBlank())&&(!tx||host.isNotBlank())&&(!(protocol==Protocol.UDP&&rx)||localPort.toIntOrNull() in 1..65535)&&(!tx||feed!=NmeaFeed.RAW||forwards.isNotEmpty())
-        MetroButton(os.t("保存连接","save connection"),{save((initial?:NmeaConnectionSpec()).copy(name=name,host=host,port=port.toInt(),localPort=localPort.toIntOrNull()?:10110,protocol=protocol,receive=rx,send=tx,feed=feed,forwardFrom=forwards,sentenceTypes=filters.split(',',' ').map{it.trim()}.filter{it.length==3}.toSet(),requireChecksum=checksum))},primary=true,enabled=valid)
+        MetroButton(os.t("保存连接","save connection"),{save((initial?:NmeaConnectionSpec()).copy(name=name,host=host,port=port.toInt(),localPort=localPort.toIntOrNull()?:10110,protocol=protocol,receive=rx,send=tx,feed=feed,forwardFrom=forwards,sentenceTypes=filters.split(',',' ').map{it.trim()}.filter{it.length==3}.toSet(),requireChecksum=checksum,capabilities=capabilities))},primary=true,enabled=valid)
     }
 }
 private fun feedText(os:OsStore,feed:NmeaFeed)=when(feed){NmeaFeed.SYSTEM->os.t("系统当前采用的数据","selected system data");NmeaFeed.PHONE->os.t("仅本机传感器","phone sensors only");NmeaFeed.RAW->os.t("指定连接的原始语句","raw sentences from connections")}

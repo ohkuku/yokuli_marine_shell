@@ -87,6 +87,38 @@ class StartDocumentTest {
     }
 
     @Test
+    fun changingAnAppTileStyleKeepsItsIdentityAndPosition() {
+        val cover = chart.copy(entryId = LauncherEntryId("tile.chart.cover"))
+        val catalog = entries + cover
+        val original = default.placements.first().copy(preferredCell = GridCell(0, 4))
+        val source = default.copy(placements = listOf(original, default.placements.last()))
+
+        val changed = StartLayoutEditor.pin(source, cover.entryId, catalog, MarineTileSize.STANDARD_2X2)!!.after
+
+        assertEquals(2, changed.placements.size)
+        val replacement = changed.placements.single { it.entryId == cover.entryId }
+        assertEquals(original.tileId, replacement.tileId)
+        assertEquals(original.rank, replacement.rank)
+        assertEquals(original.preferredCell, replacement.preferredCell)
+        assertEquals(MarineTileSize.STANDARD_2X2, replacement.size)
+        assertTrue(StartDocumentValidator.isValid(changed, catalog, profile))
+    }
+
+    @Test
+    fun repairKeepsOnlyTheEarliestTileOfEachApp() {
+        val cover = chart.copy(entryId = LauncherEntryId("tile.chart.cover"))
+        val catalog = entries + cover
+        val extra = TilePlacement(TileInstanceId("extra-chart"), cover.entryId, MarineTileSize.STANDARD_2X2, 2048L)
+        val source = default.copy(placements = listOf(extra) + default.placements)
+
+        assertFalse(StartDocumentValidator.isValid(source, catalog, profile))
+        val result = StartDocumentRepair.repair(source, catalog, default, profile)
+
+        assertEquals(default, result.document)
+        assertTrue(StartRepairIncident.DUPLICATE_ENTRY_REMOVED in result.incidents)
+    }
+
+    @Test
     fun repairDropsUnknownAndDuplicateEntriesDeterministically() {
         val broken = default.copy(
             placements = default.placements + listOf(

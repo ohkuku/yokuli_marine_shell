@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -30,7 +31,7 @@ import kotlin.math.roundToInt
     val window=LocalContext.current.activity()?.window
     val owner=remember(taskId,token,window) {Any()}
     DisposableEffect(owner,active) { onDispose { if(active)os.shell.snapshots.unbind(owner) } }
-    LaunchedEffect(owner,active) { if(active) {delay(420);os.shell.snapshots.captureCurrent(taskId)} }
+    LaunchedEffect(owner,active) { if(active) {delay(420); while(true) {os.shell.snapshots.captureCurrent(taskId){os.notifications.canCaptureApp}; delay(2500)} } }
     Box(Modifier.fillMaxSize().onGloballyPositioned { coordinates ->
         if(active && window!=null) {
             val b=coordinates.boundsInWindow()
@@ -66,7 +67,8 @@ import kotlin.math.roundToInt
                 val task=ordered[index]
                 val app=os.shell.apps.firstOrNull {it.id==task.appId} ?: return@HorizontalPager
                 val snapshot=os.shell.snapshots.images[task.taskId]
-                Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
+                val distance=kotlin.math.abs((pager.currentPage-index)+pager.currentPageOffsetFraction).coerceIn(0f,1f)
+                Column(Modifier.fillMaxWidth().graphicsLayer { scaleX=1f-distance*.045f;scaleY=scaleX;alpha=1f-distance*.18f },verticalArrangement=Arrangement.spacedBy(16.dp)) {
                     Box(Modifier.fillMaxWidth().height(cardHeight).background(c.panel).border(1.dp,c.muted.copy(alpha=.35f)).clipToBounds()
                         .testTag("recent-task-${task.appId.value}").clickable(role=Role.Button,onClick={onActivate(task)})
                         .semantics {contentDescription=os.t("恢复 ${os.title(app.app)}","resume ${os.title(app.app)}")}) {
@@ -83,7 +85,18 @@ import kotlin.math.roundToInt
                     }
                     Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Box(Modifier.size(32.dp).background(c.accent).padding(6.dp)) {ShellAppIcon(app,Color.White,Modifier.fillMaxSize())}
-                        Label(os.title(app.app),23,maxLines=1)
+                        Column {
+                            Label(os.title(app.app),23,maxLines=1)
+                            val page=os.shell.pageForToken(task.lastLaunchToken)
+                            if(page!=app.page) Label(when(page.substringBefore(':')) {
+                                "place", "anchorage" -> os.t("坐标详情", "saved place")
+                                "route" -> os.t("航线详情", "route details")
+                                "voyage", "replay", "report" -> os.t("航程详情", "voyage details")
+                                "library" -> os.t("文件夹图层", "folder layer")
+                                "settings" -> os.t("系统偏好", "preferences")
+                                else -> os.t("应用内页面", "app page")
+                            },14,c.muted)
+                        }
                     }
                 }
             }

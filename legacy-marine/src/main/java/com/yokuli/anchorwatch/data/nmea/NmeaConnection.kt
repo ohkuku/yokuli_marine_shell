@@ -129,6 +129,8 @@ class NmeaConnectionManager(
   }
  }
  fun hasOpenTransport():Boolean=synchronized(guard){transport!=null&&job?.isActive==true}
+ /** 使用已连接 socket 的真实地址；DNS 变化不能让防回送检查认错当前设备。 */
+ fun remotePeer():String?=synchronized(guard){(transport as? Socket)?.remoteSocketAddress?.toString()}
  fun disconnect(){synchronized(guard){generation++;transportGeneration++;onGenerationStarted();profile=null;job?.cancel();job=null;closeTransportLocked();_state.value=NmeaConnectionState.DISCONNECTED;_diagnostics.value=NmeaTransportDiagnostics(connectionGeneration=transportGeneration,lastDisconnectReason="USER_DISCONNECT",desiredConnected=false,lastOperation="USER_DISCONNECT")}}
  fun reportValidFix(){synchronized(guard){if(job?.isActive==true)_state.value=NmeaConnectionState.CONNECTED}}
  fun reportStaleFix(){synchronized(guard){if(job?.isActive==true&&_state.value!=NmeaConnectionState.CONNECTED_NO_DATA)_state.value=NmeaConnectionState.STALE}}

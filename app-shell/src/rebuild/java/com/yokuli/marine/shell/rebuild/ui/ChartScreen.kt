@@ -9,6 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -29,22 +31,24 @@ import kotlin.math.*
     var naming by remember { mutableStateOf(false) }
     var discard by remember { mutableStateOf(false) }
     val c=LocalMetro.current
+    val density=LocalDensity.current
+    val chartView=os.maps.view("chart")
+    val previewPlace=os.allPlaces.firstOrNull {it.id==chartView.selectedPlaceId}
     val selected=os.maps.selectedLayer()?.files.orEmpty()
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().height(55.dp).padding(horizontal=14.dp),verticalAlignment=Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clickable { os.back() },contentAlignment=Alignment.CenterStart) { Glyph("back",Modifier.size(23.dp)) }
             Label(os.t("海图","chart"),31,modifier=Modifier.weight(1f))
             Label(os.maps.sourceName(os.chinese),13,c.muted,Modifier.clickable { layers=true }.padding(8.dp))
             Glyph("layers",Modifier.size(25.dp).clickable {layers=true})
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             NativeChart(os,fix,Modifier.fillMaxSize()) { host=it }
-            Row(Modifier.align(Alignment.TopStart).padding(10.dp).background(c.bg.copy(alpha=.94f)).clickable { os.open("sources") }.padding(horizontal=12.dp,vertical=9.dp),verticalAlignment=Alignment.CenterVertically) {
+            Row(Modifier.align(Alignment.TopStart).padding(10.dp).background(c.bg.copy(alpha=.94f)).padding(horizontal=12.dp,vertical=9.dp),verticalAlignment=Alignment.CenterVertically) {
                 Box(Modifier.size(5.dp).background(if(fresh) c.accent else c.muted)); Spacer(Modifier.width(8.dp))
                 Label(if(fresh) "${os.formatSpeed(fix?.freshSpeed(tick))}   ${decimal(fix?.freshCourse(tick),0)}°" else if(fix!=null) os.t("船位已过期","position stale") else os.t("等待船位","waiting for position"),15)
                 Spacer(Modifier.width(8.dp)); Label(when(os.positionSource) {"nmea"->"NMEA";"phone"->"GPS";"demo"->os.t("演示","DEMO");else->os.t("未选择来源","no source")},11,c.muted)
             }
-            Column(Modifier.align(Alignment.CenterEnd).padding(end=10.dp).background(c.bg.copy(alpha=.94f))) {
+            Column(Modifier.align(Alignment.TopEnd).padding(top=66.dp,end=10.dp).background(c.bg.copy(alpha=.94f))) {
                 Box(Modifier.size(46.dp).clickable { os.fly(os.center,(os.zoom+1).coerceAtMost(22.0)) },contentAlignment=Alignment.Center) { Glyph("plus",Modifier.size(22.dp)) }
                 Box(Modifier.size(46.dp).clickable { os.fly(os.center,(os.zoom-1).coerceAtLeast(1.0)) },contentAlignment=Alignment.Center) { Glyph("minus",Modifier.size(22.dp)) }
             }
@@ -59,8 +63,20 @@ import kotlin.math.*
             }
             // Context controls float over a stable native viewport. Showing the crosshair must
             // never resize the map or change its camera/texture resolution during a drag.
-            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom=if(BuildConfig.GOOGLE_MAPS_CONFIGURED && os.maps.source !is MapSource.CustomLayer) 80.dp else 48.dp)) {
-        if(os.ruler.size==2) {
+            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().onSizeChanged {chartView.bottomOverlayDp=with(density){it.height.toDp().value}}) {
+        if(previewPlace!=null && !os.editingRoute && os.ruler.isEmpty()) {
+            Column(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                Row(verticalAlignment=Alignment.CenterVertically) {
+                    Label(previewPlace.name,24,modifier=Modifier.weight(1f))
+                    IconAction("close",os.t("关闭预览","close preview"),{chartView.selectedPlaceId=null})
+                }
+                Label(os.formatCoordinates(previewPlace.point),14,c.muted)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+                    Label(os.t("地点详情 ›","place details ›"),18,c.accent,Modifier.clickable {os.open("place:${previewPlace.id}")}.padding(vertical=8.dp))
+                    Label(os.t("我的航行 ›","my sailing ›"),18,c.accent,Modifier.clickable {os.open("places")}.padding(vertical=8.dp))
+                }
+            }
+        } else if(os.ruler.size==2) {
             Row(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Label("${os.formatDistance(distance(os.ruler[0],os.ruler[1]))}   ${decimal(bearing(os.ruler[0],os.ruler[1]),0)}°T",25)
@@ -93,9 +109,9 @@ import kotlin.math.*
             } else {
                 IconAction("locate",os.t("船位","boat"),{
                     if(fresh && fix!=null) { os.follow=true; os.showCrosshair=false; host?.camera?.move(fix.point,os.zoom) }
-                    else { os.open("sources"); os.notify("先开启手机定位或连接 NMEA","Enable phone GPS or connect NMEA first") }
+                    else os.notify("暂无可用船位，请在数据来源中开启定位","No position available. Enable a source in data sources.")
                 },active=os.follow)
-                IconAction("pin",os.t("标记","mark"),{os.mark();os.showCrosshair=true})
+                IconAction("pin",os.t("标记","mark"),{os.mark();chartView.selectedPlaceId=os.places.lastOrNull()?.id;os.showCrosshair=false})
                 IconAction("ruler",os.t("测距","measure"),{
                     if(os.ruler.isNotEmpty()) os.ruler=emptyList() else host?.let { h -> h.camera?.let { camera ->
                         os.ruler=listOf(camera.unproject(h.width*.3f,h.height*.5f),camera.unproject(h.width*.7f,h.height*.5f)); os.showCrosshair=false
@@ -123,7 +139,7 @@ import kotlin.math.*
         Column(Modifier.fillMaxWidth().background(c.bg).border(1.dp,c.muted).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Label(os.t("海图工具","chart tools"),34)
             MenuRow(os.t("我的航行","my sailing"),os.t("收藏地点与航线","saved places and routes")) {tools=false;os.open("places")}
-            MenuRow(os.t("实测水深","measured depth"),os.t("查看自己的测量与调查","your depth measurements and surveys")) {tools=false;os.open("chart:depth")}
+            if(chartView.previewTrack.isNotEmpty()) MenuRow(os.t("结束日志轨迹预览","close logbook track preview"),chartView.previewTitle) {chartView.previewTrack=emptyList();chartView.previewTitle=null;tools=false}
             if(os.activeRoute!=null) MenuRow(os.t("当前导航","current navigation"),os.activeRoute?.name) {tools=false;manageNavigation=true}
             if(os.displayedRouteId!=null && os.displayedRouteId!=os.activeRouteId) MenuRow(os.t("结束路线预览","close route preview")) {os.displayedRouteId=null;os.save();tools=false}
             MetroButton(os.t("关闭","close"),{tools=false})

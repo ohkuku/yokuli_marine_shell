@@ -7,6 +7,10 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -23,6 +27,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -104,38 +109,64 @@ fun WpStatusStrip(
     val battery = BatteryUiState(batteryPercent, chargingValue == 1)
     val time = remember(nowTick) { LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")) }
     val safe = ShellSafeBands.resolve(windowMetrics).status
-    val density = windowMetrics.density.coerceAtLeast(1f)
+    val density = windowMetrics.density.takeIf {it.isFinite() && it>0f} ?: 1f
     val safeTop = (safe.top / density).dp
-    val safeLeft = (safe.left / density).dp
-    val safeRight = (safe.right / density).dp
-    Row(
-        Modifier.fillMaxWidth().height(27.dp + safeTop).background(colors.background)
-            .testTag("shell-status-strip")
-            .padding(start = safeLeft, top = safeTop, end = safeRight),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        WpText(time, 12)
-        Spacer(Modifier.weight(1f))
-        statusItems.take(MAX_APP_STATUS_ITEMS).forEach { item ->
-            WpText(
-                text = item.compactText,
-                size = 10,
-                color = if (item.attention) colors.alarm else colors.muted,
-                modifier = Modifier
-                    .testTag("shell-status-${item.stableId}")
-                    .semantics {
-                        contentDescription = item.expandedDescription
-                    },
-            )
+    val segments = ShellSafeBands.statusSegments(windowMetrics)
+    val clockSegment = segments.firstOrNull { it.width / density >= 40f } ?: segments.maxByOrNull { it.width }
+    val statusSegment = segments.lastOrNull { it.width / density >= 26f } ?: segments.maxByOrNull { it.width }
+    Box(Modifier.fillMaxWidth().height(30.dp + safeTop).background(colors.background).testTag("shell-status-strip")) {
+        if(clockSegment!=null && clockSegment==statusSegment) {
+            Row(Modifier.absoluteOffset(x=(clockSegment.left/density).dp,y=safeTop)
+                .width((clockSegment.width/density).dp).height(30.dp).clipToBounds(),
+                verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                WpText(time,12,Modifier.width(if(clockSegment.width/density>=80f)44.dp else 32.dp),maxLines=1)
+                StatusContents(battery,statusItems,Modifier.weight(1f))
+            }
+        } else {
+            clockSegment?.let {segment ->
+                Box(Modifier.absoluteOffset(x=(segment.left/density).dp,y=safeTop)
+                    .width((segment.width/density).dp).height(30.dp).clipToBounds(),contentAlignment=Alignment.CenterStart) {
+                    WpText(time,12,maxLines=1)
+                }
+            }
+            statusSegment?.let {segment ->
+                StatusContents(battery,statusItems,Modifier.absoluteOffset(x=(segment.left/density).dp,y=safeTop)
+                    .width((segment.width/density).dp).height(30.dp).clipToBounds())
+            }
         }
-        if (battery.charging) WpText(stringResource(R.string.status_charging), 10, color = colors.muted)
-        if (battery.percent >= 0) WpText(stringResource(R.string.status_battery, battery.percent), 11)
-        BatteryIcon(battery.percent, Modifier.size(width = 20.dp, height = 10.dp))
     }
 }
 
 private const val MAX_APP_STATUS_ITEMS = 3
+
+/** 状态内容只能在分配到的区段内测量；充电文字首先让位，长应用状态单行省略。 */
+@Composable
+private fun StatusContents(battery:BatteryUiState,items:List<WpStatusStripItem>,modifier:Modifier=Modifier) {
+    val colors=LocalWpTheme.current
+    BoxWithConstraints(modifier.height(30.dp).clipToBounds()) {
+        val showPercent=battery.percent>=0 && maxWidth>=if(items.isEmpty())64.dp else 112.dp
+        val showCharging=battery.charging && maxWidth>=if(items.isEmpty())150.dp else 260.dp
+        val fixedWidth=20f+(if(showPercent)40f else 0f)+(if(showCharging)45f else 0f)+12f
+        val appWidth=(maxWidth.value-fixedWidth).coerceAtLeast(0f)
+        val appCount=(appWidth/36f).toInt().coerceIn(0,MAX_APP_STATUS_ITEMS)
+        // 运行中的系统会话优先于普通未读计数；挖孔旁的窄区不能把 REC 挤掉。
+        val visible=items.sortedWith(compareBy<WpStatusStripItem> {
+            when(it.stableId) { "voyage" -> 0; "anchor" -> 1; else -> 2 }
+        }.thenByDescending {it.attention}).take(appCount)
+        Row(Modifier.fillMaxSize(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+            if(visible.isNotEmpty())Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.CenterVertically) {
+                visible.forEach {item ->
+                    WpText(item.compactText,10,Modifier.weight(1f).testTag("shell-status-${item.stableId}")
+                        .semantics {contentDescription=item.expandedDescription},
+                        color=if(item.attention)colors.alarm else colors.muted,maxLines=1)
+                }
+            } else Spacer(Modifier.weight(1f))
+            if(showCharging)WpText(stringResource(R.string.status_charging),10,color=colors.muted,maxLines=1)
+            if(showPercent)WpText(stringResource(R.string.status_battery,battery.percent),11,maxLines=1)
+            BatteryIcon(battery.percent,Modifier.size(width=20.dp,height=10.dp))
+        }
+    }
+}
 
 @Composable
 private fun BatteryIcon(percent: Int, modifier: Modifier = Modifier) {

@@ -405,7 +405,8 @@ class DefaultLauncherReducer : LauncherReducer {
             ).copy(
                 transient = null,
                 recentsReturnSurface = null,
-                tasks = state.tasks.copy(tasks=state.tasks.tasks.filterNot {it.taskId==taskId}+task),
+                tasks = state.tasks.copy(tasks=state.tasks.tasks.filterNot {it.taskId==taskId}+task,
+                    linkedReturns=state.tasks.linkedReturns.filterNot {it.targetTaskId==taskId || it.callerTaskId==taskId}),
             ),
         )
     }
@@ -445,23 +446,26 @@ class DefaultLauncherReducer : LauncherReducer {
         is LaunchResolution.Internal -> {
             val taskId = InternalAppTaskId(resolution.appId.value)
             val existing = state.tasks.tasks.firstOrNull { it.appId == resolution.appId }
+            val primaryEntry = state.catalog.apps.firstOrNull { it.appId == resolution.appId }?.rootEntryId
+            val rootToken = state.catalog.entries.firstOrNull { it.entryId == primaryEntry }?.launchToken
+            val objectParent = rootToken?.takeIf { it != resolution.token }?.let(::listOf).orEmpty()
             val task = when {
-                existing == null -> InternalAppTask(taskId, resolution.appId, resolution.token)
-                existing.lastLaunchToken == resolution.token -> existing
+                existing == null -> InternalAppTask(taskId, resolution.appId, resolution.token, backStack = objectParent)
                 // Opening an App from Desktop, All Apps, Search, or another App is a new route
                 // entry, not an invisible continuation of that task's old nested Back stack.
                 // Recents uses ActivateTask and therefore still resumes the exact session.
                 action.replaceTaskRoute || state.surface != ShellVisualSurface.Module(taskId) -> existing.copy(
                     lastLaunchToken = resolution.token,
-                    backStack = emptyList(),
+                    backStack = objectParent,
                 )
+                existing.lastLaunchToken == resolution.token -> existing
                 else -> existing.copy(
                     lastLaunchToken = resolution.token,
                     backStack = existing.backStack + existing.lastLaunchToken,
                 )
             }
             val target = ShellVisualSurface.Module(taskId)
-            if (state.surface == target && existing?.lastLaunchToken == resolution.token) {
+            if (state.surface == target && existing?.lastLaunchToken == resolution.token && !action.replaceTaskRoute) {
                 LauncherReduction(state)
             } else {
                 val trigger = when (state.surface) {
@@ -471,16 +475,19 @@ class DefaultLauncherReducer : LauncherReducer {
                     target -> ShellTransitionTrigger.MODULE_ROUTE_FORWARD
                     else -> ShellTransitionTrigger.TILE
                 }
+                val retainedReturns = if (action.replaceTaskRoute || state.surface != target)
+                    state.tasks.linkedReturns.filterNot {it.targetTaskId==taskId || it.callerTaskId==taskId}
+                    else state.tasks.linkedReturns
                 val linkedReturns = if (
                     action.preserveCaller && state.surface is ShellVisualSurface.Module &&
                     state.surface.taskId != taskId
                 ) {
-                    state.tasks.linkedReturns + LinkedTaskReturn(
+                    retainedReturns + LinkedTaskReturn(
                         callerTaskId = state.surface.taskId,
                         targetTaskId = taskId,
-                        targetBackStackDepth = task.backStack.size,
+                        targetBackStackDepth = 0,
                     )
-                } else state.tasks.linkedReturns
+                } else retainedReturns
                 LauncherReduction(
                     state = state.navigateTo(target, trigger).copy(
                         tasks = state.tasks.copy(
@@ -833,16 +840,14 @@ class DefaultLauncherReducer : LauncherReducer {
         if (entry.pinPolicy != PinPolicy.PINNABLE) {
             return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.PIN_UNAVAILABLE)))
         }
-        if (state.start.document.placements.any { it.entryId == entryId }) {
+        if (size == null && state.start.document.placements.any { it.entryId == entryId }) {
             return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.ALREADY_PINNED)))
         }
         val proposal = StartLayoutEditor.pin(state.start.document, entryId, state.catalog.entries, size)
             ?: return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.LAYOUT_UNAVAILABLE)))
         val committed = applyCommitted(state, proposal)
         val transaction = committed.state.start.undoStack.last()
-        val tileId = transaction.after.placements.single { placement ->
-            transaction.before.placements.none { it.tileId == placement.tileId }
-        }.tileId
+        val tileId = transaction.after.placements.first { it.entryId == entryId }.tileId
         return committed.copy(
             state = committed.state.navigateTo(
                 ShellVisualSurface.Desktop,

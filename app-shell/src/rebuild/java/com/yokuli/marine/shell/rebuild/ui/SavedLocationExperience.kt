@@ -19,6 +19,7 @@ import com.yokuli.marine.shell.rebuild.chart.MapPoint
 import kotlinx.coroutines.*
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 
 @Composable fun SavedLocationScreen(os:OsStore,id:Long?,initialSpot:Long?=null) {
     val repo=os.sailing;val scope=rememberCoroutineScope()
@@ -61,7 +62,7 @@ import java.util.Date
                     CoordinateMapPreview(os,data.spots.map {MapPoint("spot:${it.id}",GeoPoint(it.latitude,it.longitude),it.name,if(it.id==selected?.id)os.accent else 0xFF888888)},
                         selected?.let {GeoPoint(it.latitude,it.longitude)} ?: GeoPoint(data.place.centerLatitude,data.place.centerLongitude))
                     if(data.spots.isEmpty()) Label(os.t("这个地点还没有具体坐标，地点中心不代表实际锚位。","This place has no specific spot. Its center is not an actual anchor position."),19,LocalMetro.current.muted)
-                    data.spots.forEach {spot->MenuRow((if(spot.id==selected?.id)"✓ " else "")+spot.name,os.formatCoordinates(GeoPoint(spot.latitude,spot.longitude)),"pin"){selectedId=spot.id}}
+                    data.spots.forEach {spot->ChoiceRow(spot.name,spot.id==selected?.id,os.formatCoordinates(GeoPoint(spot.latitude,spot.longitude))) {selectedId=spot.id}}
                     MetroButton(os.t("添加另一个具体位置","add another spot"),{addSpot=true})
                     selected?.let {spot->
                         val point=GeoPoint(spot.latitude,spot.longitude)
@@ -98,7 +99,7 @@ import java.util.Date
                     if(data.visits.isEmpty()) Label(os.t("还没有逐次到访记录。","No individual visits recorded yet."),19,LocalMetro.current.muted)
                     if(data.place.legacyVisitCount>0) Label(os.t("另有 ${data.place.legacyVisitCount} 次旧版汇总到访","${data.place.legacyVisitCount} additional visits in the older summary"),16,LocalMetro.current.muted)
                     data.visits.forEach {visit->
-                        Label(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT).format(Date(visit.startedAt)),26,LocalMetro.current.accent)
+                        Label(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(visit.startedAt)),26,LocalMetro.current.accent)
                         Label(if(visit.endedAt!=null)durationLabel(visit.endedAt!!-visit.startedAt)else os.t("未记录结束时间","end time not recorded"),20)
                         Label(os.t("${visit.alarmCount} 次警报","${visit.alarmCount} alarms"),18)
                         if(visit.userNotes.isNotBlank())Label(visit.userNotes,20)
@@ -141,17 +142,17 @@ import java.util.Date
 
 @Composable private fun SpotEditor(os:OsStore,spot:AnchorageSpotEntity,onDismiss:()->Unit,onSave:(AnchorageSpotEntity)->Unit) {
     var name by remember {mutableStateOf(spot.name)};var note by remember {mutableStateOf(spot.personalNotes)}
-    var lat by remember {mutableStateOf(spot.latitude.toString())};var lon by remember {mutableStateOf(spot.longitude.toString())}
+    var lat by remember {mutableStateOf(os.formatLatitude(spot.latitude))};var lon by remember {mutableStateOf(os.formatLongitude(spot.longitude))}
     var depth by remember {mutableStateOf(spot.typicalWaterDepthMeters?.toString().orEmpty())}
     var rode by remember {mutableStateOf(spot.typicalRodeLengthMeters?.toString().orEmpty())}
     var radius by remember {mutableStateOf(spot.preferredAlarmRadiusMeters?.toString().orEmpty())}
-    val point=lat.toDoubleOrNull()?.let {a->lon.toDoubleOrNull()?.let{b->GeoPoint(a,b).takeIf(GeoPoint::valid)}}
+    val point=parseCoordinate(lat,true)?.let {a->parseCoordinate(lon,false)?.let{b->GeoPoint(a,b).takeIf(GeoPoint::valid)}}
     fun valid(value:String)=value.isBlank()||value.toDoubleOrNull()?.let {it.isFinite()&&it>=0}==true
     Dialog(onDismissRequest=onDismiss){Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(LocalMetro.current.bg).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
         Label(os.t("具体坐标","specific spot"),31)
         Field(os.t("名称","name"),name,{name=it.take(200)})
-        Field(os.t("纬度 · 十进制度","latitude · decimal degrees"),lat,{lat=it})
-        Field(os.t("经度 · 十进制度","longitude · decimal degrees"),lon,{lon=it})
+        Field(os.t("纬度","latitude")+" · ${os.coordinateFormat}",lat,{lat=it})
+        Field(os.t("经度","longitude")+" · ${os.coordinateFormat}",lon,{lon=it})
         Field(os.t("水深 · m","depth · m"),depth,{depth=it});Field(os.t("锚链 · m","rode · m"),rode,{rode=it})
         Field(os.t("守望半径 · m","watch radius · m"),radius,{radius=it})
         Field(os.t("笔记","notes"),note,{note=it.take(20000)},multiline=true)

@@ -526,6 +526,8 @@ interface PressureHistoryDao{
 
 @Dao
 interface TripDao{
+ /** 仅重命名已结束的航行，避免覆盖运行时正在累积的统计字段。 */
+ @Query("UPDATE trip_sessions SET name=:name WHERE id=:id AND active=0") suspend fun renameCompleted(id:Long,name:String):Int
  @Insert suspend fun insertSession(value:TripSessionEntity):Long
  @Update suspend fun updateSession(value:TripSessionEntity)
  @Transaction suspend fun insertSessionAndEvent(value:TripSessionEntity,event:TripEventEntity):Long{val id=insertSession(value);insertEvent(event.copy(tripId=id));return id}

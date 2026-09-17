@@ -57,7 +57,7 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
     var camera: ChartCamera? = null
     var scene = MapScene()
     var onEvent: (MapEvent) -> Unit = {}
-    var scaleBottomOffsetDp = 0f
+    var nauticalScale = true
     var distanceLabel: (Double) -> String = ::nm
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -84,27 +84,7 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
     }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas);val cam=camera ?: return
-        scene.circles.filter {it.radiusMeters.isFinite() && it.radiusMeters>0}.forEach { circle ->
-            val ring=(0..72).map { i -> destination(circle.center,circle.radiusMeters,i*5.0) }
-            val path=Path();ring.forEachIndexed {i,p -> val s=project(p);if(i==0) path.moveTo(s.x,s.y) else path.lineTo(s.x,s.y)};path.close()
-            paint.style=Paint.Style.FILL;paint.color=(circle.color.toInt() and 0xFFFFFF) or 0x18000000;canvas.drawPath(path,paint)
-            line(canvas,ring,android.graphics.Color.WHITE,3.5f,circle.dashed);line(canvas,ring,circle.color.toInt(),1.8f,circle.dashed)
-        }
-        scene.lines.forEach { item ->line(canvas,item.points,android.graphics.Color.WHITE,item.widthDp+2f,item.dashed);line(canvas,item.points,item.color.toInt(),item.widthDp,item.dashed)}
-        scene.points.forEach {pin(canvas,it)}
-        if(state.ruler.size==2) {
-            line(canvas,state.ruler,android.graphics.Color.WHITE,5f,true);line(canvas,state.ruler,0xFFD74A29.toInt(),2.6f,true)
-            state.ruler.forEachIndexed {i,p ->pin(canvas,MapPoint("ruler:$i",p,if(i==0)"A" else "B",0xFFD74A29,18f,true))}
-        }
-        scene.vessel?.let {f ->
-            val p=project(f.point)
-            paint.style=Paint.Style.FILL;paint.color=android.graphics.Color.WHITE;canvas.drawCircle(p.x,p.y,13*density,paint)
-            paint.color=if(f.fresh) 0xFF007ADC.toInt() else android.graphics.Color.GRAY
-            if(f.fresh && f.courseDegrees!=null) {
-                canvas.save();canvas.rotate(f.courseDegrees.toFloat(),p.x,p.y)
-                val path=Path();path.moveTo(p.x,p.y-17*density);path.lineTo(p.x-9*density,p.y+11*density);path.lineTo(p.x,p.y+6*density);path.lineTo(p.x+9*density,p.y+11*density);path.close();canvas.drawPath(path,paint);canvas.restore()
-            } else {paint.style=if(f.fresh) Paint.Style.FILL else Paint.Style.STROKE;paint.strokeWidth=3*density;canvas.drawCircle(p.x,p.y,9*density,paint)}
-        }
+        // Geographic geometry is rendered by the map engine, never this screen overlay.
         if(state.showCrosshair) {
             val x=width/2f;val y=height/2f
             for((color,w) in listOf(android.graphics.Color.WHITE to 4f,0xFF14222B.toInt() to 1.5f)) {
@@ -113,11 +93,21 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
                 canvas.drawLine(x,y-22*density,x,y-5*density,paint);canvas.drawLine(x,y+5*density,x,y+22*density,paint)
             }
         }
-        val x=18*density;val y=height-(18+scaleBottomOffsetDp)*density
-        val meters=distance(cam.unproject(x,y),cam.unproject(x+90*density,y))
-        paint.style=Paint.Style.FILL;paint.color=0xDFFFFFFF.toInt();canvas.drawRect(x-6*density,y-26*density,x+100*density,y+6*density,paint)
-        paint.color=0xFF19252B.toInt();paint.strokeWidth=2*density;canvas.drawLine(x,y,x+90*density,y,paint);canvas.drawLine(x,y-4*density,x,y,paint);canvas.drawLine(x+90*density,y-4*density,x+90*density,y,paint)
-        paint.textSize=12*density;paint.textAlign=Paint.Align.LEFT;canvas.drawText(distanceLabel(meters),x,y-8*density,paint)
+        val x=18*density; val y=state.scaleTopDp*density
+        val maximum=distance(cam.unproject(x,y),cam.unproject(x+110*density,y))
+        if(maximum.isFinite() && maximum>0) {
+            // 整数 1 / 2 / 5 比例尺：改变线段宽度适配真实距离，绝不把任意像素宽度标为小数。
+            val unit=if(nauticalScale && maximum>=1852)1852.0 else if(!nauticalScale && maximum>=1000)1000.0 else 1.0
+            val suffix=if(unit==1852.0)"nm" else if(unit==1000.0)"km" else "m"
+            val available=(maximum/unit).coerceAtLeast(1.0)
+            val power=10.0.pow(floor(log10(available)))
+            val nice=listOf(1.0,2.0,5.0).lastOrNull {it*power<=available}?.times(power) ?: power
+            val pixels=(110*density*nice*unit/maximum).toFloat()
+            paint.style=Paint.Style.FILL;paint.color=0xDCFFFFFF.toInt();canvas.drawRect(x-6*density,y-25*density,x+pixels+8*density,y+6*density,paint)
+            paint.color=0xFF19252B.toInt();paint.strokeWidth=2*density
+            canvas.drawLine(x,y,x+pixels,y,paint);canvas.drawLine(x,y-5*density,x,y,paint);canvas.drawLine(x+pixels,y-5*density,x+pixels,y,paint)
+            paint.textSize=12*density;paint.textAlign=Paint.Align.LEFT;canvas.drawText("${nice.roundToLong()} $suffix",x,y-8*density,paint)
+        }
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val cam=camera ?: return false
@@ -141,7 +131,7 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
     }
 }
 
-private fun destination(p: GeoPoint, meters: Double, degrees: Double): GeoPoint {
+internal fun destination(p: GeoPoint, meters: Double, degrees: Double): GeoPoint {
     val d=meters/6371008.8;val b=Math.toRadians(degrees);val lat=Math.toRadians(p.lat);val lon=Math.toRadians(p.lon)
     val next=asin(sin(lat)*cos(d)+cos(lat)*sin(d)*cos(b))
     return GeoPoint(Math.toDegrees(next),((Math.toDegrees(lon+atan2(sin(b)*sin(d)*cos(lat),cos(d)-sin(lat)*sin(next)))+540)%360)-180)
@@ -163,6 +153,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     var captureForTile = false
     private var captureJob: Job? = null
     val overlay=ChartOverlay(context,state)
+    private val nativeScene=NativeSceneRenderer(context)
     var camera: ChartCamera?=null
     var error by mutableStateOf<String?>(null)
         private set
@@ -171,7 +162,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     var onEvent: (MapEvent)->Unit={}
     init {
         setBackgroundColor(0xFFDEE9E8.toInt())
-        if(googleEngine) {overlay.scaleBottomOffsetDp=28f;initGoogle()} else initLibre()
+        if(googleEngine) initGoogle() else initLibre()
         addView(overlay,LayoutParams(-1,-1))
     }
     override fun dispatchTouchEvent(event:MotionEvent):Boolean {
@@ -208,6 +199,11 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 map.setOnCameraMoveListener {val p=map.cameraPosition;moved(GeoPoint(p.target.latitude,p.target.longitude),p.zoom.toDouble())}
                 map.setOnCameraMoveStartedListener {if(it==GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE)touch()}
                 map.setOnCameraIdleListener { captureSnapshot() }
+                map.setOnMarkerClickListener {marker ->
+                    val id=marker.tag as? String
+                    if(id!=null && state.interactive)onEvent(MapEvent.ItemSelected(id))
+                    true
+                }
                 map.setOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude))};map.setOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude))}
                 updateStyle();updateCamera()
             }
@@ -233,6 +229,10 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 map.addOnCameraMoveListener {map.cameraPosition.target?.let {moved(GeoPoint(it.latitude,it.longitude),map.cameraPosition.zoom)}}
                 map.addOnCameraMoveStartedListener {if(it==MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE)touch()}
                 map.addOnCameraIdleListener { captureSnapshot() }
+                map.setOnMarkerClickListener {marker ->
+                    if(state.interactive)marker.title?.let {onEvent(MapEvent.ItemSelected(it))}
+                    true
+                }
                 map.addOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude));true};map.addOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude));true}
                 updateStyle();updateCamera()
             }
@@ -280,7 +280,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 if(generation!=sourceGeneration) {retire(proposed);return@launch}
                 val old=gateway;gateway=proposed;retire(old)
                 libre?.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",sources).put("layers",layers).toString())) {
-                    if(!destroyed && generation==sourceGeneration) {loading=false;overlay.invalidate();captureSnapshot()}
+                    if(!destroyed && generation==sourceGeneration) {loading=false;nativeScene.invalidate();nativeScene.render(googleMap,libre,overlay.scene,state.ruler);overlay.invalidate();captureSnapshot()}
                 }
             } catch(e:Exception) {retire(proposed);if(e !is CancellationException && generation==sourceGeneration) {error="read";loading=false}}
         }
@@ -319,7 +319,8 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         }
     }
     fun update(scene:MapScene,events:(MapEvent)->Unit) {
-        onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.distanceLabel=maps.distanceLabel;overlay.invalidate()
+        onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.distanceLabel=maps.distanceLabel;overlay.nauticalScale=maps.nauticalScale;overlay.invalidate()
+        nativeScene.render(googleMap,libre,scene,state.ruler)
         googleMap?.uiSettings?.setAllGesturesEnabled(state.interactive)
         googleMap?.uiSettings?.apply {isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
         libre?.uiSettings?.apply {isScrollGesturesEnabled=state.interactive;isZoomGesturesEnabled=state.interactive;isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
@@ -352,7 +353,7 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
             onDispose {lifecycle.removeObserver(observer);host.destroy()}
         }
         // Explicit observation preserves native redraw without recreating its viewport.
-        state.center;state.zoom;state.ruler;state.showCrosshair;state.follow;state.request;maps.source;maps.library.revision
+        state.center;state.zoom;state.ruler;state.showCrosshair;state.scaleTopDp;state.follow;state.request;maps.source;maps.library.revision
         var coverage by remember { mutableStateOf<Boolean?>(null) }
         LaunchedEffect(maps.source,maps.library.revision,state.center,state.zoom) {
             coverage=null
@@ -387,7 +388,7 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
             message?.let {Label(it,13,Color(0xFF19252B),Modifier.align(Alignment.TopCenter).padding(top=54.dp,start=12.dp,end=12.dp).background(Color.White.copy(alpha=.95f)).padding(9.dp))}
             val credits=if(maps.source==MapSource.Online && !BuildConfig.GOOGLE_MAPS_CONFIGURED)listOf("© OpenStreetMap contributors · Natural Earth")
                 else maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()+if(!google)listOf("Natural Earth")else emptyList()
-            if(credits.isNotEmpty())Column(Modifier.align(Alignment.BottomEnd).widthIn(max=230.dp).background(Color.White.copy(alpha=.92f)).padding(4.dp)) {
+            if(credits.isNotEmpty())Column(Modifier.align(Alignment.BottomEnd).padding(bottom=state.bottomOverlayDp.dp).widthIn(max=230.dp).background(Color.White.copy(alpha=.92f)).padding(4.dp)) {
                 Label(credits.joinToString(" · "),10,Color(0xFF19252B),maxLines=2)
             }
         }

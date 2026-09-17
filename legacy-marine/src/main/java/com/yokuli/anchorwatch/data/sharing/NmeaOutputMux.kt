@@ -74,10 +74,13 @@ class NmeaOutputMux @Inject constructor() {
         val speed=speedKnots.coerceIn(0.0,200.0)
         return sentence("IIVHW,${trueHeadingDegrees?.let{f(normalizeDegrees(it),2)}.orEmpty()},T,${magneticHeadingDegrees?.let{f(normalizeDegrees(it),2)}.orEmpty()},M,${f(speed,2)},N,${f(speed*1.852,2)},K")
     }
-    fun phoneXdr(attitude:VesselAttitude?,pressureHpa:Double?):String?{
+    fun phoneXdr(attitude:VesselAttitude?,pressureHpa:Double?):String?=xdr(attitude,pressureHpa,"PHONE")
+    /** 系统选中的读数不能被标成手机传感器；原始来源由发布防回送边界追踪。 */
+    fun selectedXdr(attitude:VesselAttitude?,pressureHpa:Double?):String?=xdr(attitude,pressureHpa,"YOKULI")
+    private fun xdr(attitude:VesselAttitude?,pressureHpa:Double?,prefix:String):String?{
         val groups=buildList{
-            attitude?.let{add("A,${f(it.heelDegrees,2)},D,PHONE_HEEL");add("A,${f(it.pitchDegrees,2)},D,PHONE_PITCH")}
-            pressureHpa?.takeIf{it in 800.0..1_200.0}?.let{add("P,${f(it/1_000.0,5)},B,PHONE_BARO")}
+            attitude?.let{add("A,${f(it.heelDegrees,2)},D,${prefix}_HEEL");add("A,${f(it.pitchDegrees,2)},D,${prefix}_PITCH")}
+            pressureHpa?.takeIf{it in 800.0..1_200.0}?.let{add("P,${f(it/1_000.0,5)},B,${prefix}_BARO")}
         }
         return groups.takeIf{it.isNotEmpty()}?.let{sentence("IIXDR,${it.joinToString(",")}")}
     }

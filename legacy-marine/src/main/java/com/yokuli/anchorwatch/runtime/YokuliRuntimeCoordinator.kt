@@ -402,7 +402,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
    RuntimeCommand.PauseTripAttitude->launchTripCommand{tripRuntime.pauseAttitude().also{if(!it.success)notifySeparate("Trip attitude",it.message,true)};refreshNotification()}
    RuntimeCommand.EndTrip->launchTripCommand{tripRuntime.end().also{if(!it.success)notifySeparate("Trip Watch",it.message,true)};refreshNotification();releaseIfIdle()}
    is RuntimeCommand.MarkTripWaypoint->launchTripCommand{tripRuntime.waypoint(command.name,command.note,command.type).also{if(!it.success)notifySeparate("Waypoint not saved",it.message,true)};refreshNotification()}
-   is RuntimeCommand.StartSonar->launchCommand{startSonarSurvey(command.name,command.tideMode,command.manualTideOffsetMeters,command.tideStationId)}
+   // 兼容旧 Intent 的解码，但当前 OS 不再启动声纳测绘。
+   is RuntimeCommand.StartSonar->Unit
    RuntimeCommand.StopSonar->launchCommand{sonarRuntime.stop();incidentLogger.record("sonar","SURVEY_STOPPED");refreshNotification();releaseIfIdle()}
    RuntimeCommand.RestoreOnly,is RuntimeCommand.Unknown->Unit
   }
@@ -645,7 +646,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
  private fun notifySeparate(title:String,text:String,high:Boolean,context:RuntimeFeedbackContext=RuntimeFeedbackContext.GENERAL){
   val visibleTitle=serviceMessage(title);val visibleText=serviceMessage(text)
   val sourceStatus=title in setOf("NMEA connection lost","NMEA GPS restored","Anchor session created · waiting for GPS","Sonar survey interrupted","Sonar survey resumed")
-  diagnostics.recordUserFeedback(visibleTitle,visibleText,high&&!sourceStatus,if(sourceStatus)RuntimeFeedbackContext.POSITION_STATUS else context)
+  diagnostics.recordUserFeedback(visibleTitle,visibleText,high&&!sourceStatus,if(sourceStatus)RuntimeFeedbackContext.POSITION_STATUS else context,
+   chineseTitle=serviceMessage(title,true),chineseMessage=serviceMessage(text,true),englishTitle=title,englishMessage=text)
   val notificationId=when(context){
    RuntimeFeedbackContext.DEPTH_DATA_UNAVAILABLE->NotificationCoordinator.DEPTH_DATA_EVENT_ID
    RuntimeFeedbackContext.WIND_DATA_UNAVAILABLE->NotificationCoordinator.WIND_DATA_EVENT_ID
@@ -734,8 +736,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
  }
  private fun channels()=notificationCoordinator.createChannels(l("Anchor and GPS status","锚警与 GPS 状态"),l("Anchor safety events","锚泊安全事件"),l("Anchor alarms with snooze","带稍后提醒的锚警"))
  private fun l(english:String,chinese:String)=localized(appLanguage,english,chinese)
- private fun serviceMessage(message:String):String{
-  if(!appLanguage.usesChinese())return message
+ private fun serviceMessage(message:String,chinese:Boolean=appLanguage.usesChinese()):String{
+  if(!chinese)return message
   return when{
    message=="Anchor session already open"->"已有锚泊会话"
    message=="Pause, resume or lift the current anchor before starting another session."->"开始新会话前，请暂停、继续或结束当前锚泊。"

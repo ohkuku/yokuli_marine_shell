@@ -114,12 +114,15 @@ class NmeaSharingServer @Inject constructor(private val addresses: NetworkAddres
     /** Queue one canonical sentence for each currently connected client.
      * Returning zero is important: a listening server is not a successful
      * network write until there is a receiver. */
-    fun publish(sentence: String):Int {
+    fun publish(sentence: String, clientId: Long? = null):Int {
         if (_status.value.state != SharingServerState.RUNNING) return 0
+        // 接收帧已去掉行尾；无论重新编码还是 RAW 转发，网络边界都必须恢复 CRLF。
+        val wire = sentence.trimEnd('\r','\n') + "\r\n"
         var dropped = 0L
         var queued = 0
         clients.forEach { (id, client) ->
-            if (client.queue.trySend(sentence).isFailure) {
+            if (clientId != null && clientId != id) return@forEach
+            if (client.queue.trySend(wire).isFailure) {
                 dropped++
                 closeClient(id, client)
             } else queued++

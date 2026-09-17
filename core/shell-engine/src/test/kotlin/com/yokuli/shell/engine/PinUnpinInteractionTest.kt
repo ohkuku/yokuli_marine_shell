@@ -66,6 +66,28 @@ class PinUnpinInteractionTest {
     }
 
     @Test
+    fun applyingTilePreferencesResizesExistingTileAndCanUndo() {
+        val result = reduce(state(), LauncherAction.PinEntry(chart.entryId, MarineTileSize.STANDARD_2X2))
+        val tile = result.state.start.document.placements.single { it.entryId == chart.entryId }
+
+        assertEquals(2, result.state.start.document.placements.size)
+        assertEquals(TileInstanceId("tile-chart"), tile.tileId)
+        assertEquals(0L, tile.rank)
+        assertEquals(MarineTileSize.STANDARD_2X2, tile.size)
+        assertEquals(tile.tileId, result.state.start.reveal?.tileId)
+        assertEquals(document, reduce(result.state, LauncherAction.UndoLayout).state.start.document)
+    }
+
+    @Test
+    fun applyingUnchangedSizeRevealsTheSameTileWithoutDuplicatingIt() {
+        val result = reduce(state(), LauncherAction.PinEntry(chart.entryId, chart.defaultSize))
+
+        assertEquals(document, result.state.start.document)
+        assertEquals(TileInstanceId("tile-chart"), result.state.start.reveal?.tileId)
+        assertEquals(ShellVisualSurface.Desktop, result.state.surface)
+    }
+
+    @Test
     fun unpinDoesNotDeleteApp() {
         val result = reduce(state(), LauncherAction.UnpinTile(TileInstanceId("tile-settings")))
 

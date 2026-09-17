@@ -18,6 +18,7 @@ object StartDocumentValidator {
         if (document.spacers.map { it.spacerId }.distinct().size != document.spacers.size) return false
         if (document.spacers.any { spacer -> document.placements.any { it.tileId == spacer.spacerId } }) return false
         val byId = entries.associateBy { it.entryId }
+        if (document.placements.mapNotNull { byId[it.entryId]?.appId }.distinct().size != document.placements.size) return false
         if (document.placements.any { it.rank < 0 } || document.spacers.any { it.rank < 0 }) return false
         val ranks = document.placements.map { it.rank } + document.spacers.map { it.rank }
         if (ranks.distinct().size != ranks.size) return false
@@ -63,18 +64,22 @@ object StartDocumentRepair {
         val byId = entries.associateBy { it.entryId }
         val incidents = mutableListOf<StartRepairIncident>()
         val seenEntries = mutableSetOf<LauncherEntryId>()
+        val seenApps = mutableSetOf<com.yokuli.shell.contract.LauncherAppId>()
         val seenTiles = mutableSetOf<TileInstanceId>()
         val repairedUnranked = buildList {
-            source.placements.forEach { original ->
+            source.placements.sortedWith(compareBy<TilePlacement> { it.rank }.thenBy { it.tileId.value }).forEach { original ->
                 val descriptor = byId[original.entryId]
                 if (descriptor == null) {
                     incidents += StartRepairIncident.UNKNOWN_ENTRY_REMOVED
                     return@forEach
                 }
-                if (!seenEntries.add(original.entryId) || !seenTiles.add(original.tileId)) {
+                if (original.entryId in seenEntries || original.tileId in seenTiles || descriptor.appId in seenApps) {
                     incidents += StartRepairIncident.DUPLICATE_ENTRY_REMOVED
                     return@forEach
                 }
+                seenEntries.add(original.entryId)
+                seenTiles.add(original.tileId)
+                seenApps.add(descriptor.appId)
                 val sized = if (original.size in descriptor.supportedSizes) {
                     original
                 } else {

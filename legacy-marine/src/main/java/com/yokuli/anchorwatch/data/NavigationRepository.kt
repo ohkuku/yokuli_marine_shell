@@ -152,6 +152,7 @@ data class NmeaInstrumentState(
     }
     fun reconnectConnection(id:String):Boolean{stopConnection(id);return startConnection(id)}
     fun connectionEpoch(id:String)=synchronized(guard){sessions[id]?.generation}
+    fun connectionPeer(id:String)=synchronized(guard){sessions[id]?.manager?.remotePeer()}
     fun isConnectionOpen(id:String)=synchronized(guard){sessions[id]?.let{it.requested&&(it.udpWriter!=null||it.manager?.hasOpenTransport()==true)}==true}
     fun inputConnectionIds()=connections.value.filter{it.requested&&it.spec.receive}.mapTo(linkedSetOf()){it.spec.id}
     fun anyRequested()=connections.value.any{it.requested}

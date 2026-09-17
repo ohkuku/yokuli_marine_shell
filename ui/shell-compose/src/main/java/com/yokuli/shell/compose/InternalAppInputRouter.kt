@@ -19,32 +19,36 @@ class InternalAppInputRouter {
         val handler: (ShellInput) -> Boolean,
     )
 
-    @Volatile
-    private var mounted: MountedHandler? = null
+    private val mounted = mutableListOf<MountedHandler>()
 
     fun register(owner: Any, handler: (ShellInput) -> Boolean): InternalAppInputRegistration {
-        mounted = MountedHandler(owner, handler)
+        synchronized(this) { mounted.removeAll { it.owner === owner }; mounted += MountedHandler(owner, handler) }
         return InternalAppInputRegistration {
             synchronized(this) {
-                if (mounted?.owner === owner) mounted = null
+                mounted.removeAll { it.owner === owner }
             }
         }
     }
 
-    fun dispatch(input: ShellInput): Boolean = mounted?.handler?.invoke(input) == true
+    fun dispatch(input: ShellInput): Boolean = synchronized(this) { mounted.toList() }
+        .asReversed().any { it.handler(input) }
 }
 
 val LocalInternalAppInputRouter = staticCompositionLocalOf<InternalAppInputRouter> {
     InternalAppInputRouter()
 }
 
+/** 转场保留旧画面时，只有当前任务可以接收虚拟键与物理返回。 */
+val LocalInternalAppInputEnabled = staticCompositionLocalOf { true }
+
 @Composable
 fun BindInternalAppInputHandler(handler: (ShellInput) -> Boolean) {
     val router = LocalInternalAppInputRouter.current
     val currentHandler = rememberUpdatedState(handler)
-    DisposableEffect(router) {
+    val enabled = LocalInternalAppInputEnabled.current
+    DisposableEffect(router, enabled) {
         val owner = Any()
-        val registration = router.register(owner) { input -> currentHandler.value(input) }
-        onDispose(registration::close)
+        val registration = if (enabled) router.register(owner) { input -> currentHandler.value(input) } else null
+        onDispose { registration?.close() }
     }
 }

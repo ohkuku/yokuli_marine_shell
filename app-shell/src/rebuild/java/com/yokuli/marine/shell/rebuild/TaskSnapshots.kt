@@ -35,18 +35,19 @@ class TaskSnapshotStore {
     fun unbind(owner:Any) { if(binding?.owner===owner)binding=null }
     fun retain(ids:Set<InternalAppTaskId>) { images.keys.toList().filterNot {it in ids}.forEach(images::remove) }
 
-    suspend fun captureCurrent(expectedTaskId:InternalAppTaskId?=null):Boolean = captureMutex.withLock {
+    suspend fun captureCurrent(expectedTaskId:InternalAppTaskId?=null,contentVisible:()->Boolean={true}):Boolean = captureMutex.withLock {
+        if(!contentVisible())return@withLock false
         val chosen=binding ?: return@withLock false
         if(expectedTaskId!=null && chosen.taskId!=expectedTaskId)return@withLock false
         val rect=Rect(chosen.rect)
         if(!rect.intersect(0,0,chosen.window.decorView.width,chosen.window.decorView.height))return@withLock false
         val scale=minOf(1.0,720.0/maxOf(rect.width(),rect.height()))
         val bitmap=Bitmap.createBitmap((rect.width()*scale).roundToInt().coerceAtLeast(1),(rect.height()*scale).roundToInt().coerceAtLeast(1),Bitmap.Config.ARGB_8888)
-        withTimeoutOrNull(180) {
+        withTimeoutOrNull(64) {
             suspendCancellableCoroutine { continuation ->
                 try {
                     PixelCopy.request(chosen.window,rect,bitmap,{ result ->
-                        val accepted=result==PixelCopy.SUCCESS && binding===chosen && continuation.isActive
+                        val accepted=result==PixelCopy.SUCCESS && binding===chosen && continuation.isActive && contentVisible()
                         if(accepted)images[chosen.taskId]=TaskSnapshot(bitmap,System.currentTimeMillis()) else bitmap.recycle()
                         if(continuation.isActive)continuation.resume(accepted)
                     },Handler(Looper.getMainLooper()))

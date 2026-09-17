@@ -24,7 +24,11 @@ object AndroidShellWindowMetrics {
             widthPx = view.width.takeIf { it > 0 } ?: display.widthPixels,
             heightPx = view.height.takeIf { it > 0 } ?: display.heightPixels,
             density = display.density,
-            safeInsets = windowInsets.getInsets(safeDrawingTypes()).toShellInsets(),
+            // 全屏背景延伸到物理屏幕边缘。刘海与圆角由具体边缘控件横向避让，
+            // 不把隐藏的系统栏/手势区域当作整页上下 padding。
+            safeInsets = windowInsets.displayCutout?.let { cutout ->
+                ShellInsets(left=cutout.safeInsetLeft,right=cutout.safeInsetRight)
+            } ?: ShellInsets(),
             displayCutoutRects = windowInsets.displayCutout?.boundingRects.orEmpty().map { rect ->
                 ShellRect(rect.left, rect.top, rect.right, rect.bottom)
             },

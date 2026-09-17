@@ -18,16 +18,20 @@ sealed interface MapSource {
     data class CustomLayer(val layerId: String) : MapSource
 }
 
+/** 船位和地理图形使用 WGS84；由原生地图在同一渲染帧内投影，禁止屏幕像素位置持久化。 */
 data class MapVessel(val point: GeoPoint, val courseDegrees: Double? = null, val fresh: Boolean = true)
 data class MapPoint(val id: String, val point: GeoPoint, val label: String = "", val color: Long = 0xFF007F9B, val radiusDp: Float = 10f, val draggable: Boolean = false)
 data class MapLine(val id: String, val points: List<GeoPoint>, val color: Long = 0xFF007F9B, val widthDp: Float = 3f, val dashed: Boolean = false)
 data class MapCircle(val id: String, val center: GeoPoint, val radiusMeters: Double, val color: Long = 0xFF007F9B, val dashed: Boolean = false)
+/** 实际观测区域，不表示水深或可安全航行范围。颜色的 alpha 表示观测密度或时间。 */
+data class MapArea(val id: String, val boundary: List<GeoPoint>, val color: Long)
 data class MapScene(
     val vessel: MapVessel? = null,
     val points: List<MapPoint> = emptyList(),
     val lines: List<MapLine> = emptyList(),
     val circles: List<MapCircle> = emptyList(),
     val demo: Boolean = false,
+    val areas: List<MapArea> = emptyList(),
 )
 
 sealed interface MapEvent {
@@ -48,6 +52,14 @@ class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
     var showCrosshair by mutableStateOf(false)
     var ruler by mutableStateOf<List<GeoPoint>>(emptyList())
     var interactive by mutableStateOf(true)
+    /** 点击收藏只在海图预览；明确点按详情才打开拥有该记录的应用。 */
+    var selectedPlaceId by mutableStateOf<String?>(null)
+    /** 航行日志请求的只读轨迹预览，与实时航行记录各自保留。 */
+    var previewTrack by mutableStateOf<List<List<GeoPoint>>>(emptyList())
+    var previewTitle by mutableStateOf<String?>(null)
+    var scaleTopDp by mutableFloatStateOf(118f)
+    /** 仅移动版权文字，保持原生地图视口与镜头尺寸不变。 */
+    var bottomOverlayDp by mutableFloatStateOf(0f)
     internal var request by mutableStateOf<MapCameraRequest?>(null)
     private var requestId = 0L
     fun fly(point: GeoPoint, zoom: Double = this.zoom) {
@@ -67,6 +79,7 @@ class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
 /** Owns map sources and resources only; never owns navigation, watch or recording. */
 class MapSessionStore(val context: Context, val scope: CoroutineScope, val library: ChartLibrary, private val legacy: JSONObject) {
     var distanceLabel: (Double) -> String = ::nm
+    var nauticalScale by mutableStateOf(true)
     var chinese by mutableStateOf(legacy.optString("language", java.util.Locale.getDefault().language) == "zh")
     var snapshot by mutableStateOf<Bitmap?>(null)
     var snapshotCapturedAt by mutableLongStateOf(0L)

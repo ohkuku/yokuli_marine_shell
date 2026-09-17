@@ -20,6 +20,7 @@ import java.util.Locale
 import java.util.UUID
 import kotlin.math.*
 
+/** WGS84 坐标，以十进制度存储；显示格式只由系统偏好决定。 */
 data class GeoPoint(val lat: Double, val lon: Double) {
     fun json() = JSONObject().put("lat", lat).put("lon", lon)
     fun valid() = lat.isFinite() && lon.isFinite() && lat in -90.0..90.0 && lon in -180.0..180.0
@@ -43,6 +44,7 @@ fun decimal(v: Double?, digits: Int = 1) = v?.takeIf { it.isFinite() }?.let { St
 fun uid() = UUID.randomUUID().toString()
 
 enum class PlaceKind { MARK, ANCHORAGE, MARINA, HAZARD }
+/** 我的航行拥有的收藏；锚地是坐标的一种用途，不另建重复位置。 */
 data class Place(val id: String = uid(), val name: String, val point: GeoPoint, val note: String = "",
     val kind: PlaceKind = PlaceKind.MARK, val collection: String = "") {
     fun json() = JSONObject().put("id",id).put("name",name).put("point",point.json()).put("note",note)
@@ -50,14 +52,18 @@ data class Place(val id: String = uid(), val name: String, val point: GeoPoint, 
     companion object { fun from(j:JSONObject) = Place(j.getString("id"),j.getString("name"),GeoPoint.from(j.getJSONObject("point")),j.optString("note"),
         runCatching { PlaceKind.valueOf(j.optString("kind")) }.getOrDefault(PlaceKind.MARK),j.optString("collection")) }
 }
+/** 用户规划的有序折线；保存、预览、导航是三个独立动作。 */
 data class Route(val id: String = uid(), val name: String, val points: List<GeoPoint>) {
     val length get() = points.zipWithNext().sumOf { distance(it.first,it.second) }
     fun json() = JSONObject().put("id",id).put("name",name).put("points",JSONArray(points.map { it.json() }))
     companion object { fun from(j:JSONObject) = Route(j.getString("id"),j.getString("name"),j.getJSONArray("points").objects().map(GeoPoint::from)) }
 }
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
-data class TileSpec(val app: String, val size: Int = 2) // 1 small, 2 medium, 4 wide
+/** 旧版开始布局的兼容输入；1 小、2 中、4 宽，启动时迁移到 Shell 的 StartDocument。 */
+data class TileSpec(val app: String, val size: Int = 2)
+/** 下锚前的未提交草稿；placeId/spotId 引用收藏位置，半径使用米，草稿不等于已值守。 */
 data class AnchorDraft(val point:GeoPoint,val name:String,val placeId:Long?=null,val spotId:Long?=null,val radiusMeters:Double?=null)
+/** 系统安装的应用身份；UI 标签与入口组织不能另建不一致的应用列表。 */
 enum class AppId(val zh: String, val en: String, val icon: String) {
     CHART("海图","chart","chart"), LIBRARY("海图库","chart library","layers"),
     VOYAGES("航行日志","logbook","logbook"), ANCHOR("锚警","anchor watch","anchor"),
@@ -77,7 +83,7 @@ class YokuliApplication : Application() {
     }
 }
 
-/** One process owns sessions; screens subscribe and never open their own connections. */
+/** 进程级组合入口：持有系统偏好读模型及业务适配器；页面只订阅，不自行打开连接或创建会话。 */
 class OsStore(val context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val file = AtomicFile(File(context.filesDir, "experience-v1.json"))
@@ -88,6 +94,7 @@ class OsStore(val context: Context) {
     var light by mutableStateOf(initial.optBoolean("light", false))
     var keepAwake by mutableStateOf(initial.optBoolean("keepAwake", true))
     var reduceMotion by mutableStateOf(initial.optBoolean("reduceMotion", false))
+    var textSize by mutableStateOf("STANDARD")
     var measurementUnits by mutableStateOf(MeasurementUnitSystem.NAUTICAL)
     var coordinateFormat by mutableStateOf("DMM")
     var places by mutableStateOf(initial.optJSONArray("places")?.objects()?.mapNotNull { runCatching { Place.from(it) }.getOrNull() } ?: emptyList())
@@ -100,8 +107,7 @@ class OsStore(val context: Context) {
     private val backStack = mutableListOf<String>()
     var recent by mutableStateOf(listOf<String>())
     var editTiles by mutableStateOf(false)
-    var toast by mutableStateOf<String?>(null)
-    private var toastJob: Job? = null
+    val notifications = SystemNotificationStore(context, scope)
     var storageError by mutableStateOf(false)
     var center by mutableStateOf(runCatching { GeoPoint.from(initial.getJSONObject("camera")) }.getOrDefault(GeoPoint(-36.84,174.77)))
     var zoom by mutableDoubleStateOf(initial.optDouble("zoom",10.0).coerceIn(1.0,22.0))
@@ -158,9 +164,10 @@ class OsStore(val context: Context) {
     }
     fun t(zh: String, en: String) = if (chinese) zh else en
     fun title(app: AppId) = t(app.zh,app.en)
-    fun notify(zh: String, en: String) {
-        toast = t(zh,en); toastJob?.cancel()
-        toastJob = scope.launch { delay(3500); toast = null }
+    fun notify(zh: String, en: String, app: AppId? = shell.appForPage(page)?.app,
+               severity: NoticeSeverity = NoticeSeverity.INFO, destination: String? = null, key: String? = null) {
+        notifications.post(SystemNotice(app = app, chinese = zh, english = en, severity = severity,
+            destination = destination, key = key))
     }
     fun open(destination: String) = shell.open(destination)
     fun home() = shell.home()

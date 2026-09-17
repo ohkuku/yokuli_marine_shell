@@ -40,231 +40,102 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
 @Composable fun SettingsScreen(os: OsStore, initialSection: String = "overview") {
     var section by rememberSaveable(initialSection) { mutableStateOf(initialSection.substringBefore(':')) }
     var reset by remember { mutableStateOf(false) }
-    val preferences by os.shell.persistence.state.collectAsState()
-    var tileOwner by rememberSaveable(initialSection) { mutableStateOf(initialSection.substringAfter(':', "").takeIf { initialSection.startsWith("tiles:") }) }
     val c = LocalMetro.current
-    val back = { if (section == "overview") os.back() else { section = "overview"; tileOwner = null } }
-    BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && section != "overview") { section = "overview"; tileOwner = null; true } else false }
+    val back = { if(initialSection!="overview") os.shell.popRoute() else section = "overview" }
+    BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && section != "overview") { back(); true } else false }
     fun title(key: String) = when (key) {
         "appearance" -> os.t("外观与显示", "appearance & display")
         "language" -> os.t("语言", "language")
         "units" -> os.t("单位与坐标", "units & coordinates")
         "start" -> os.t("开始屏幕", "Start screen")
-        "tiles" -> os.t("应用磁贴", "app tiles")
-        "vessel" -> os.t("船舶资料", "your boat")
+        "vessel" -> os.t("我的船", "my boat")
         "permissions" -> os.t("权限与后台", "permissions & background")
-        "sources" -> os.t("船舶数据来源", "boat data sources")
         "sound" -> os.t("声音与警报", "sound & alarms")
         "backup" -> os.t("备份与恢复", "backup & restore")
         "about" -> os.t("关于", "about")
         else -> os.t("设置", "settings")
     }
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os, title(section), onBack = back)
+        PageHeader(os, title(section), onBack = if(section=="overview") null else back)
         when (section) {
             "vessel" -> VesselProfileSettings(os)
             "permissions" -> SystemAccessSettings(os)
-            "sources" -> VesselSourceSettings(os)
             "sound" -> SystemSoundSettings(os)
             "backup" -> SystemBackupSettings(os)
+            "tiles" -> TileLibraryScreen(os, initialSection.substringAfter("tiles:", "").takeIf {it.isNotBlank()})
             else -> PageBody {
                 when (section) {
                     "overview" -> {
-                        val vesselName = os.marine?.vm?.ui?.collectAsState()?.value?.vesselSettings?.vesselName.orEmpty()
-                        listOf("appearance", "language", "units", "start", "tiles", "vessel", "sources", "sound", "permissions", "backup", "about").forEach { key ->
-                            MenuRow(title(key), when (key) {
-                                "appearance" -> os.t("背景、主题色、动画与屏幕常亮", "background, accent, motion & screen awake")
-                                "language" -> if (os.chinese) "简体中文" else "English"
-                                "units" -> (if (os.measurementUnits == MeasurementUnitSystem.NAUTICAL) os.t("海里 · 节", "nautical miles · knots") else os.t("公里 · 公里/小时", "kilometres · km/h")) + " · ${os.coordinateFormat}"
-                                "start" -> os.t("磁贴布局与恢复默认", "tile layout & restore defaults")
-                                "tiles" -> os.t("选择各应用在开始屏幕显示什么", "choose what apps show on Start")
-                                "vessel" -> vesselName.ifBlank { os.t("船名、船长、吃水与设备位置", "name, length, draft & equipment positions") }
-                                "permissions" -> os.t("定位、通知与后台运行", "location, notifications & background access")
-                                "sources" -> os.t("船位来源与各项读数的选择", "position source & selected measurements")
-                                "sound" -> os.t("警报音、再次提醒与试听", "alarm sound, reminders & audible check")
-                                "backup" -> os.t("保存航行资料与恢复旧备份", "save voyage data & restore backups")
-                                else -> "Yokuli OS · ${BuildConfig.VERSION_NAME}"
-                            }) { section = key }
+                        Label(os.t("系统", "system"), 17, c.accent)
+                        listOf("appearance", "language", "units", "sound", "permissions").forEach { key ->
+                            MenuRow(title(key), when(key) {
+                                "language" -> if(os.chinese) "简体中文" else "English"
+                                "units" -> if(os.measurementUnits==MeasurementUnitSystem.NAUTICAL) os.t("海里 · 节 · ", "nm · kn · ")+os.coordinateFormat else "km · km/h · ${os.coordinateFormat}"
+                                else -> null
+                            }) {section=key}
                         }
+                        Label(os.t("个人偏好", "personal"), 17, c.accent)
+                        MenuRow(title("vessel")) {section="vessel"}
+                        MenuRow(title("start")) {section="start"}
+                        MenuRow(os.t("应用磁贴", "app tiles"), os.t("按应用预览样式与实时内容", "preview styles and live content by app")) {os.open("tiles")}
+                        Label(os.t("资料与系统信息", "data & information"), 17, c.accent)
+                        MenuRow(title("backup")) {section="backup"}
+                        MenuRow(title("about"), BuildConfig.VERSION_NAME) {section="about"}
                     }
                     "appearance" -> {
                         Label(os.t("主题色", "accent colour"), 26)
-                        WpAccent.entries.chunked(4).forEach { row -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        WpAccent.entries.chunked(4).forEach { row -> Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                             row.forEach { accent -> Box(Modifier.size(58.dp).background(androidx.compose.ui.graphics.Color(accent.argb))
-                                .then(if (os.accent == accent.argb) Modifier.border(3.dp, c.fg) else Modifier)
-                                .clickable { os.shell.updateSystemPreferences { it.copy(accentName = accent.name) } }) }
+                                .then(if(os.accent==accent.argb) Modifier.border(3.dp,c.fg) else Modifier)
+                                .clickable {os.shell.updateSystemPreferences {it.copy(accentName=accent.name)}}) {
+                                if(os.accent==accent.argb) Glyph("check",Modifier.size(25.dp).align(androidx.compose.ui.Alignment.Center),androidx.compose.ui.graphics.Color.White)
+                            } }
                         } }
-                        Toggle(os.t("浅色背景", "light background"), os.light) { light -> os.shell.updateSystemPreferences { it.copy(themeModeName = if (light) "LIGHT" else "DARK") } }
-                        Toggle(os.t("保持屏幕常亮", "keep screen awake"), os.keepAwake, os.t("Yokuli OS 在前台时保持屏幕亮着", "keep the display on while Yokuli OS is in front")) { enabled ->
-                            os.shell.updateSystemPreferences { it.copy(appPreferenceValues = it.appPreferenceValues + ("preferences.display.keep_awake" to AppPreferenceRegistry.encode(AppPreferenceValue.Toggle(enabled)))) }
+                        ChoiceRow(os.t("深色背景", "dark background"), !os.light) {os.shell.updateSystemPreferences {it.copy(themeModeName="DARK")}}
+                        ChoiceRow(os.t("浅色背景", "light background"), os.light) {os.shell.updateSystemPreferences {it.copy(themeModeName="LIGHT")}}
+                        Toggle(os.t("保持屏幕常亮", "keep screen awake"),os.keepAwake,os.t("仅在 Yokuli OS 位于前台时", "while Yokuli OS is in front")) {enabled->
+                            os.shell.updateSystemPreferences {it.copy(appPreferenceValues=it.appPreferenceValues+("preferences.display.keep_awake" to AppPreferenceRegistry.encode(AppPreferenceValue.Toggle(enabled))))}
                         }
-                        Toggle(os.t("减少动画", "reduce motion"), os.reduceMotion, os.t("关闭时跟随 Android 的动画设置", "otherwise follow Android’s animation setting")) { reduced -> os.shell.updateSystemPreferences { it.copy(motionPreferenceName = if (reduced) "REDUCED" else "FOLLOW_SYSTEM") } }
+                        Label(os.t("文字大小", "text size"),26)
+                        listOf("COMPACT" to os.t("紧凑", "compact"),"STANDARD" to os.t("标准", "standard"),"LARGE" to os.t("较大", "larger")).forEach {(value,label)->
+                            ChoiceRow(label,os.textSize==value) {os.shell.updateSystemPreferences {it.copy(appPreferenceValues=it.appPreferenceValues+("preferences.display.text_size" to "c:$value"))}}
+                        }
+                        Label(os.t("转场、触控倾斜和动态磁贴使用统一动效。", "Transitions, touch tilt and live tiles share one motion language."),17,c.muted)
                     }
                     "language" -> {
-                        MetroButton("简体中文", { os.shell.updateSystemPreferences { it.copy(languageTag = "zh-CN") } }, primary = os.chinese)
-                        MetroButton("English", { os.shell.updateSystemPreferences { it.copy(languageTag = "en") } }, primary = !os.chinese)
-                        Label(os.t("所有应用使用同一种语言。", "Every app uses the same language."), 17, c.muted)
+                        ChoiceRow("简体中文",os.chinese) {os.shell.updateSystemPreferences {it.copy(languageTag="zh-CN")}}
+                        ChoiceRow("English",!os.chinese) {os.shell.updateSystemPreferences {it.copy(languageTag="en")}}
                     }
                     "units" -> {
-                        Label(os.t("距离与速度", "distance & speed"), 25)
-                        MeasurementUnitSystem.entries.forEach { units ->
-                            MetroButton(if (units == MeasurementUnitSystem.NAUTICAL) os.t("海里 / 节", "nautical miles / knots") else os.t("公里 / 公里每小时", "kilometres / km per hour"),
-                                { os.shell.updateSystemPreferences { it.copy(measurementUnitSystemName = units.name) } }, primary = os.measurementUnits == units)
-                        }
-                        Label(os.t("坐标格式", "coordinate format"), 25)
-                        listOf("DMM" to os.t("度与分", "degrees & minutes"), "DD" to os.t("十进制度", "decimal degrees"), "DMS" to os.t("度、分与秒", "degrees, minutes & seconds")).forEach { (format, label) ->
-                            MetroButton(label, { os.shell.updateSystemPreferences { it.copy(appPreferenceValues = it.appPreferenceValues + ("preferences.coordinate.format" to AppPreferenceRegistry.encode(AppPreferenceValue.Choice(format)))) } }, primary = os.coordinateFormat == format)
-                        }
-                        Label(os.formatCoordinates(GeoPoint(-36.84123, 174.76543)), 20)
-                        Label(os.t("只改变显示方式；保存的数据与 NMEA 原始语句保持各自的原始单位。", "These choices change presentation. Saved data and raw NMEA sentences keep their original units."), 16, c.muted)
-                    }
-                    "start" -> {
-                        val count = os.shell.engine.state.collectAsState().value.start.document.placements.size
-                        Label(os.t("$count 块磁贴", "$count tiles"), 42, c.accent)
-                        Label(os.t("长按磁贴可以移动、改变尺寸或取消固定。应用列表里的应用也可以长按固定。", "Hold a tile to move, resize or unpin it. Hold an app in the app list to pin it."), 20)
-                        MetroButton(os.t("回到开始屏幕", "go to Start"), { os.home() }, primary = true)
-                        MetroButton(os.t("恢复默认布局", "restore default layout"), { reset = true })
-                        Label(os.t("只恢复磁贴布局，不清除海图、连接或航行资料。", "Only the tile layout is restored. Charts, connections and voyage data are kept."), 16, c.muted)
-                    }
-                    "tiles" -> {
-                        MenuRow(os.t("磁贴库", "tile library"), os.t("预览与固定所需的磁贴", "preview and pin the tiles you need"), "start") { os.open("tiles") }
-                        val registry = os.shell.appPreferenceRegistry
-                        val resolved = registry.resolve(preferences?.appPreferenceValues.orEmpty())
-                        os.shell.apps.filter { tileOwner == null || it.id.value == tileOwner }.forEach { app ->
-                            val definitions = registry.definitions.filterValues { it.first == app.id && it.first.value != "preferences" }
-                            if (definitions.isNotEmpty()) {
-                                Label(os.title(app.app), 28, c.accent)
-                                definitions.forEach { (key, owned) ->
-                                    val definition = owned.second
-                                    Label(if (os.chinese) definition.label.chinese else definition.label.english, 21)
-                                    fun change(value: AppPreferenceValue) = os.shell.updateSystemPreferences { it.copy(appPreferenceValues = it.appPreferenceValues + (key.value to AppPreferenceRegistry.encode(value))) }
-                                    when (definition) {
-                                        is AppPreferenceDefinition.Choice -> definition.options.forEach { option ->
-                                            val label = definition.optionLabels[option]?.let { if (os.chinese) it.chinese else it.english } ?: option
-                                            MetroButton(label, { change(AppPreferenceValue.Choice(option)) }, primary = (resolved[key] as? AppPreferenceValue.Choice)?.option == option)
-                                        }
-                                        is AppPreferenceDefinition.Toggle -> Toggle(os.t("启用", "enabled"), (resolved[key] as? AppPreferenceValue.Toggle)?.enabled == true) { change(AppPreferenceValue.Toggle(it)) }
-                                    }
-                                }
+                        Label(os.t("距离与速度", "distance & speed"),25)
+                        MeasurementUnitSystem.entries.forEach {units->
+                            ChoiceRow(if(units==MeasurementUnitSystem.NAUTICAL) os.t("海里 · 节", "nautical miles · knots") else os.t("公里 · 公里/小时", "kilometres · km/h"),os.measurementUnits==units) {
+                                os.shell.updateSystemPreferences {it.copy(measurementUnitSystemName=units.name)}
                             }
                         }
-                        Label(os.t("在磁贴库可预览并固定独立磁贴；这里的轮换选项也应用到同应用的专用磁贴。", "Preview and pin independent tiles in Tile Library. Rotation choices here also apply to this app’s dedicated tiles."), 16, c.muted)
+                        Label(os.t("坐标格式", "coordinate format"),25)
+                        listOf("DMM" to os.t("度与分", "degrees & minutes"),"DD" to os.t("十进制度", "decimal degrees"),"DMS" to os.t("度、分与秒", "degrees, minutes & seconds")).forEach {(format,label)->
+                            ChoiceRow(label,os.coordinateFormat==format) {os.shell.updateSystemPreferences {it.copy(appPreferenceValues=it.appPreferenceValues+("preferences.coordinate.format" to "c:$format"))}}
+                        }
+                        Label(os.formatCoordinates(GeoPoint(-36.84123,174.76543)),20)
+                        Label(os.t("海图、日志、锚警、仪表与磁贴同时生效。原始记录及 NMEA 数据不改变。水深统一使用米，温度统一使用摄氏度。", "Applies to charts, logs, anchor watch, instruments and tiles. Raw records and NMEA remain unchanged. Depth uses metres; temperature uses Celsius."),17,c.muted)
+                    }
+                    "start" -> {
+                        Label(os.t("长按磁贴，拖动位置或调整尺寸。每个应用保留一块磁贴，在磁贴库选择它的内容样式。", "Hold a tile to move or resize it. Each app has one tile; choose its content style in Tile Library."),23)
+                        MetroButton(os.t("选择磁贴样式", "choose tile styles"),{os.open("tiles")},primary=true)
+                        MetroButton(os.t("恢复默认布局", "restore default layout"),{reset=true})
                     }
                     else -> {
-                        Label("Yokuli OS", 42, c.accent)
-                        Label(BuildConfig.VERSION_NAME, 22)
-                        Label(os.t("海上生活，简单一点。", "a little simpler, at sea."), 24)
-                        Label(os.t("地图与海图版权归各数据提供者。", "Maps and charts belong to their respective providers."), 16, c.muted)
-                        Label("© OpenStreetMap contributors · Google Maps · MapLibre", 14, c.muted)
+                        Label("Yokuli OS",42,c.accent); Label(BuildConfig.VERSION_NAME,22)
+                        Label(os.t("海上生活，简单一点。", "a little simpler, at sea."),24)
+                        Label("Selawik · Microsoft · SIL Open Font License 1.1",14,c.muted)
+                        Label("© OpenStreetMap contributors · Google Maps · MapLibre · Natural Earth",14,c.muted)
                     }
                 }
             }
         }
     }
-    if (reset) ConfirmDialog(os, os.t("恢复默认磁贴布局？其他数据会保留。", "Restore the default tile layout? Other data will be kept."), { reset = false }) { os.shell.resetStart(); reset = false }
-}
-
-@Composable private fun VesselSourceSettings(os: OsStore) {
-    val marine = os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
-    val connections by marine.vm.nmeaConnections.collectAsState()
-    val phoneLocation by marine.vm.phoneLocationStatus.collectAsState()
-    val now = rememberMarineClock()
-    val locked = state.active?.paused == false
-    val nmeaConnected = connections.any { it.spec.receive && it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }
-    PageBody {
-        Label(os.t("船位", "position"), 28)
-        Toggle(os.t("手机 GPS", "phone GPS"), os.positionSource == "phone", os.t("开启时请求权限并启动定位；关闭时停止。", "Requests access and starts location when switched on; stops when switched off."), enabled = !locked && os.positionSource in listOf("none", "phone")) { os.requestService(if (it) "gpsOn" else "gpsOff") }
-        if (os.positionSource == "phone") Label(when (phoneLocation.phase) {
-            PhoneLocationPhase.OFF -> os.t("定位服务正在准备", "preparing location service")
-            PhoneLocationPhase.PERMISSION_REQUIRED -> os.t("需要精确定位权限", "precise location permission required")
-            PhoneLocationPhase.PROVIDER_DISABLED -> os.t("系统定位已关闭，请开启 Android 定位", "Android location is off; enable location in system settings")
-            PhoneLocationPhase.ERROR -> os.t("定位服务暂不可用", "location service is unavailable")
-            PhoneLocationPhase.LISTENING -> phoneLocation.lastFixElapsedRealtime?.let { received -> if (now - received in 0..10_000) os.t("定位已更新", "position updated") else os.t("等待位置更新 · ", "waiting for position update · ") + readingAge(os, received, now) } ?: os.t("正在等待定位", "waiting for a position")
-        }, 16, LocalMetro.current.muted)
-        Toggle(os.t("NMEA 船位", "NMEA position"), os.positionSource == "nmea", if (nmeaConnected) os.t("使用已连接来源中的有效船位", "use a valid fix from connected sources") else os.t("先在 NMEA 中连接一个输入", "connect an input in NMEA first"), enabled = !locked && (os.positionSource == "nmea" || (os.positionSource == "none" && nmeaConnected))) { os.requestService(if (it) "sourceNmea" else "sourceOff") }
-        Label(if (locked) os.t("锚警正在值守，暂停后可以更改船位来源。", "Pause the anchor watch before changing its position source.") else os.t("两项都可以关闭。船位来源不会自动切换；NMEA 的其他读数仍可继续更新。", "Both may be off. Position never changes source automatically; other NMEA readings can continue."), 16, LocalMetro.current.muted)
-        MenuRow(os.t("NMEA 连接", "NMEA connections"), os.t("管理并行的输入与输出", "manage concurrent inputs and outputs"), "connect") { os.open("nmea") }
-        if (os.positionSource != "phone") {
-            val selectedConnection = state.vesselSettings.metricSourcePins["POSITION_CONNECTION"]
-            val selected = connections.firstOrNull { it.spec.id == selectedConnection }
-            if (selectedConnection != null) {
-                Label(os.t("已选连接：", "selected connection: ") + (selected?.spec?.name ?: os.t("原连接不可用", "previous connection unavailable")), 23, LocalMetro.current.accent)
-                Label(when {
-                    os.positionSource != "nmea" -> os.t("船位来源已关闭，保留此选择。", "Position is off; this selection is retained.")
-                    selected == null -> os.t("等待原连接恢复；不会自动改用其他连接。", "Waiting for the selected connection; another connection will not take over.")
-                    !selected.requested || selected.state == NmeaConnectionState.DISCONNECTED -> os.t("该连接已停止，船位暂不可用。", "This connection is stopped; position is unavailable.")
-                    selected.state in setOf(NmeaConnectionState.CONNECTING, NmeaConnectionState.RECONNECTING) -> os.t("等待该连接接通。", "Waiting for this connection.")
-                    selected.state == NmeaConnectionState.ERROR -> os.t("该连接受阻，船位暂不可用。", "This connection is unavailable; position is unavailable.")
-                    os.hub.state.value.fix("nmea")?.fresh(now) != true -> os.t("等待该连接的新鲜有效船位。", "Waiting for a fresh valid position from this connection.")
-                    else -> os.t("正在使用此连接的船位。", "Using position from this connection.")
-                }, 17, LocalMetro.current.muted)
-            }
-            connections.filter { it.spec.receive && it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }.forEach { connection ->
-                val current = os.positionSource == "nmea" && selectedConnection == connection.spec.id
-                MetroButton((if (current) os.t("当前连接：", "current connection: ") else os.t("改用：", "switch to: ")) + connection.spec.name, { marine.vm.selectNmeaPositionConnection(connection.spec.id) }, primary = current, enabled = !locked && !current)
-            }
-            val positions = state.vesselData.candidates[VesselMetricId.POSITION].orEmpty().filter { it.source.transportProfileId == selectedConnection }
-            val selectedSource = state.vesselSettings.metricSourcePins[VesselMetricId.POSITION.name]
-            positions.forEach { candidate -> MetroButton(candidate.source.displayName, { marine.vm.setNmeaMetricSource(VesselMetricId.POSITION, candidate.source.persistentKey) }, primary = selectedSource == candidate.source.persistentKey, enabled = !locked && os.positionSource == "nmea") }
-            if (selectedConnection != null) Label(os.t("船位固定在选中的连接与来源；信号丢失时不会自动改用另一条连接。", "Position stays on the selected connection and source. Losing its signal does not select another connection."), 16, LocalMetro.current.muted)
-        }
-
-        Label(os.t("各项读数", "measurements"), 28)
-        val groups = state.vesselData.candidates.filter { it.value.isNotEmpty() || it.key.name in state.vesselSettings.metricSourcePins }.filterKeys { it != VesselMetricId.POSITION }
-        if (groups.isEmpty()) Label(os.t("来源提供有效数据后，可以在这里选择每项读数的来源。", "When sources provide data, choose the source for each measurement here."), 19, LocalMetro.current.muted)
-        groups.forEach { (metric, candidates) ->
-            Label(sourceMetricName(os, metric), 24)
-            val pinned = state.vesselSettings.metricSourcePins[metric.name]
-            MetroButton(os.t("自动选择可用来源", "automatically select an available source"), { marine.vm.setNmeaMetricSource(metric, null) }, primary = pinned == null)
-            candidates.distinctBy { it.source.persistentKey }.forEach { candidate ->
-                val valid = candidate.validity == CandidateValidity.ELIGIBLE
-                MenuRow((if (pinned == candidate.source.persistentKey) "■ " else "□ ") + candidate.source.displayName,
-                    readingAge(os, candidate.receivedElapsedRealtime, now) + " · " + if (valid) os.t("可用", "available") else os.t("当前不可用", "currently unavailable")) { marine.vm.setNmeaMetricSource(metric, candidate.source.persistentKey) }
-            }
-            if (pinned != null && candidates.none { it.source.persistentKey == pinned }) Label(os.t("已选择的来源当前不可用；可重新选择或改为自动。", "The selected source is unavailable. Choose another source or automatic selection."), 15, LocalMetro.current.muted)
-        }
-    }
-}
-
-internal fun sourceMetricName(os: OsStore, metric: VesselMetricId): String = when (metric) {
-    VesselMetricId.POSITION -> os.t("位置", "position")
-    VesselMetricId.SOG -> os.t("对地航速", "speed over ground")
-    VesselMetricId.COG -> os.t("对地航向", "course over ground")
-    VesselMetricId.HEADING_TRUE -> os.t("真船首向", "true heading")
-    VesselMetricId.HEADING_MAGNETIC -> os.t("磁船首向", "magnetic heading")
-    VesselMetricId.DEPTH -> os.t("水深", "depth")
-    VesselMetricId.UKC -> os.t("龙骨下余量", "under-keel clearance")
-    VesselMetricId.SPEED_THROUGH_WATER -> os.t("对水航速", "speed through water")
-    VesselMetricId.APPARENT_WIND_SPEED -> os.t("视风速", "apparent wind speed")
-    VesselMetricId.APPARENT_WIND_ANGLE -> os.t("视风角", "apparent wind angle")
-    VesselMetricId.TRUE_WIND_SPEED -> os.t("真风速", "true wind speed")
-    VesselMetricId.TRUE_WIND_ANGLE -> os.t("真风角", "true wind angle")
-    VesselMetricId.TRUE_WIND_DIRECTION -> os.t("真风向", "true wind direction")
-    VesselMetricId.PRESSURE -> os.t("气压", "pressure")
-    VesselMetricId.HEEL -> os.t("横倾", "heel")
-    VesselMetricId.PITCH -> os.t("纵倾", "pitch")
-    VesselMetricId.WATER_TEMPERATURE -> os.t("水温", "water temperature")
-    VesselMetricId.AIR_TEMPERATURE -> os.t("气温", "air temperature")
-    VesselMetricId.DEVICE_HEADING_TRUE -> os.t("手机真方位", "phone true heading")
-    VesselMetricId.DEVICE_HEADING_MAGNETIC -> os.t("手机磁方位", "phone magnetic heading")
-    VesselMetricId.RATE_OF_TURN -> os.t("转向率", "rate of turn")
-    VesselMetricId.RUDDER_ANGLE -> os.t("舵角", "rudder angle")
-    VesselMetricId.ROLL_RATE -> os.t("横摇角速度", "roll rate")
-    VesselMetricId.PITCH_RATE -> os.t("纵摇角速度", "pitch rate")
-    VesselMetricId.YAW_RATE -> os.t("艏摇角速度", "yaw rate")
-    VesselMetricId.CURRENT_SET -> os.t("流向", "current set")
-    VesselMetricId.CURRENT_DRIFT -> os.t("流速", "current drift")
-    VesselMetricId.XTE -> os.t("横向偏差", "cross-track error")
-    VesselMetricId.WAYPOINT_BEARING -> os.t("目标方位", "waypoint bearing")
-    VesselMetricId.WAYPOINT_DISTANCE -> os.t("目标距离", "waypoint distance")
-    VesselMetricId.DESTINATION_WAYPOINT -> os.t("目标航点", "destination waypoint")
-    VesselMetricId.TOTAL_LOG -> os.t("总航程", "total log")
-    VesselMetricId.TRIP_LOG -> os.t("本次航程", "trip log")
-    VesselMetricId.VMG_WIND -> os.t("迎风有效速度", "VMG to wind")
-    VesselMetricId.VMC_WAYPOINT -> os.t("朝目标有效速度", "VMC to waypoint")
-    VesselMetricId.MOTION_SCORE -> os.t("运动强度", "motion score")
-    VesselMetricId.ROLL_PERIOD -> os.t("横摇周期", "roll period")
+    if(reset) ConfirmDialog(os,os.t("恢复默认磁贴布局？其他资料保留。", "Restore default tiles? Other data stays."),{reset=false}) {os.shell.resetStart();reset=false}
 }
 
 @Composable private fun VesselProfileSettings(os: OsStore) {

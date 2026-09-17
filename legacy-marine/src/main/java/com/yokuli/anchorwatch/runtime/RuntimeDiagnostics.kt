@@ -30,6 +30,11 @@ data class RuntimeUserFeedback(
     val highPriority:Boolean,
     val receivedElapsedRealtime:Long,
     val context:RuntimeFeedbackContext=RuntimeFeedbackContext.GENERAL,
+    /** 保留两种语言，通知中心切换语言时不留下旧语言内容。 */
+    val chineseTitle:String=title,
+    val chineseMessage:String=message,
+    val englishTitle:String=title,
+    val englishMessage:String=message,
 )
 
 enum class RuntimeFeedbackContext {
@@ -131,6 +136,8 @@ data class RuntimeDiagnostics(
     val restoreError:String?=null,
     val lastUserFeedback:RuntimeUserFeedback?=null,
     val lastArmPositionDiagnostic:ArmPositionDiagnostic?=null,
+    /** 尚未投递到系统通知中心的反馈；StateFlow 合并帧不能覆盖未读事件。 */
+    val pendingUserFeedback:List<RuntimeUserFeedback> = emptyList(),
 )
 
 /**
@@ -197,29 +204,34 @@ class RuntimeDiagnosticsRepository @Inject constructor(
 
     /** Mirrors a Service command result into the foreground UI. A safety
      * action must never be observable only through the notification shade. */
-    fun recordUserFeedback(title:String,message:String,highPriority:Boolean,context:RuntimeFeedbackContext=RuntimeFeedbackContext.GENERAL){
+    fun recordUserFeedback(title:String,message:String,highPriority:Boolean,context:RuntimeFeedbackContext=RuntimeFeedbackContext.GENERAL,
+        chineseTitle:String=title,chineseMessage:String=message,englishTitle:String=title,englishMessage:String=message){
         val feedback=RuntimeUserFeedback(
             id=feedbackIds.incrementAndGet(),
             title=title,
             message=message,
             highPriority=highPriority,
             receivedElapsedRealtime=android.os.SystemClock.elapsedRealtime(),
-            context=context,
+            context=context,chineseTitle=chineseTitle,chineseMessage=chineseMessage,englishTitle=englishTitle,englishMessage=englishMessage,
         )
-        _state.update{it.copy(lastUserFeedback=feedback)}
+        _state.update{it.copy(lastUserFeedback=feedback,pendingUserFeedback=(it.pendingUserFeedback+feedback).takeLast(64))}
     }
 
     /** Closing a banner consumes that exact event process-wide. A recreated
      * Activity must not resurrect it; a later event receives a new id. */
     fun dismissUserFeedback(id:Long){
-        _state.update{state->if(state.lastUserFeedback?.id==id)state.copy(lastUserFeedback=null)else state}
+        _state.update{state->state.copy(lastUserFeedback=state.lastUserFeedback?.takeUnless{it.id==id},
+            pendingUserFeedback=state.pendingUserFeedback.filterNot{it.id==id})}
     }
 
     /** Clears only the safety episode that actually recovered/was disabled.
      * Never erase a newer, unrelated command failure. */
     fun clearUserFeedback(context:RuntimeFeedbackContext):Boolean{
-        val candidate=_state.value.lastUserFeedback?.takeIf{it.context==context}?:return false
-        _state.update{state->if(state.lastUserFeedback?.id==candidate.id)state.copy(lastUserFeedback=null)else state}
-        return _state.value.lastUserFeedback?.id!=candidate.id
+        val before=_state.value
+        val candidates=before.pendingUserFeedback.filter{it.context==context}.map{it.id}.toSet()+listOfNotNull(before.lastUserFeedback?.takeIf{it.context==context}?.id)
+        if(candidates.isEmpty())return false
+        _state.update{state->state.copy(lastUserFeedback=state.lastUserFeedback?.takeUnless{it.id in candidates},
+            pendingUserFeedback=state.pendingUserFeedback.filterNot{it.id in candidates})}
+        return true
     }
 }

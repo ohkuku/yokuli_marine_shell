@@ -95,16 +95,8 @@ class SonarSurveyRecorder @Inject constructor(
     private var depthRequiredSinceElapsed:Long?=null
     private val attemptedTideYears=java.util.concurrent.ConcurrentHashMap.newKeySet<Pair<String,Int>>()
 
-    init{
-        scope.launch{mutex.withLock{dao.active()?.let{_status.value=SonarRecorderStatus(activeSurvey=it,message="Recording restored")}}}
-        scope.launch{nmeaPosition.state.collect{position->mutex.withLock{
-            _status.value=_status.value.copy(lastNmeaPositionReceivedElapsedRealtime=position.acceptedFix?.receivedElapsedRealtime)
-        }}}
-        scope.launch{nmeaPosition.acceptedPositions.collect(::onNmeaPosition)}
-        scope.launch{nmeaPosition.connectionGeneration.collect{generation->if(generation>0)mutex.withLock{if(depthHoldTracker.current?.connectionGeneration==generation)return@withLock;depthHoldTracker.clearForConnectionGeneration(generation);depthRequiredSinceElapsed=monotonicClock.elapsedRealtime().takeIf{_status.value.activeSurvey!=null};_status.value=_status.value.copy(lastRawDepthMeters=null,lastNmeaOffsetMeters=null,lastUserOffsetMeters=null,lastMeasuredDepthMeters=null,lastDepthMeters=null,lastDepthReference=null,lastSentenceType=null,lastDepthReceivedElapsedRealtime=null,lastDepthIsDemo=false,lastDepthIsChartDatum=false,lastDisposition=null,depthHoldState=SonarDepthHoldState.NO_DEPTH,depthAgeMillis=0,depthTravelledMeters=0.0,autoStopReason=null,message=if(_status.value.activeSurvey==null)"Waiting for the first valid DPT/DBT depth" else "NMEA reconnected · waiting for the first new DPT/DBT depth")}}}
-        scope.launch{navigation.depthObservations.collect{onDepth(it,allowDemo=false)}}
-        scope.launch{_status.value=_status.value.copy(gridDiagnostics=_status.value.gridDiagnostics.copy(rebuilding=true),message="Rebuilding sonar map…");val diagnostics=gridUpdater.rebuildMissing();_status.value=_status.value.copy(gridDiagnostics=diagnostics,message=if(_status.value.activeSurvey==null)"Not recording" else "Recording restored")}
-    }
+    // 声纳测绘已退出当前产品。保存以前未结束的记录，不恢复采集、网格构建或订阅。
+    init { scope.launch { stop("Archived after sonar survey removal") } }
 
     suspend fun start(name:String,tideMode:TideMode,manualTideOffsetMeters:Double,sounderOffsetMeters:Double,tideStationId:String?=null):Long{
         val position=acceptedPosition.state.value.acceptedFix?.takeIf{it.positionProvider==PositionProvider.DEMO}?:nmeaPosition.state.value.acceptedFix

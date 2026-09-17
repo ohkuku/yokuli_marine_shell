@@ -25,6 +25,8 @@ class WpShellRuntime(private val os: OsStore) {
     val snapshots = TaskSnapshotStore()
     var coldOpeningTask by mutableStateOf<InternalAppTaskId?>(null)
         private set
+    /** 页面重新从应用首页打开时更新代次；最近任务恢复不清空页面状态。 */
+    val entryGenerations = mutableStateMapOf<InternalAppTaskId, Int>()
     private val navigationQueue=Channel<LauncherAction>(Channel.UNLIMITED)
     val catalog = LauncherCatalogSnapshot(
         revision = 2,
@@ -64,7 +66,7 @@ class WpShellRuntime(private val os: OsStore) {
         os.scope.launch {
             for(action in navigationQueue) {
                 val current=(engine.state.value.surface as? ShellVisualSurface.Module)?.taskId
-                if(current!=null)snapshots.captureCurrent(current)
+                if(current!=null) snapshots.captureCurrent(current){os.notifications.canCaptureApp}
                 deliver(action)
                 yield()
             }
@@ -88,12 +90,14 @@ class WpShellRuntime(private val os: OsStore) {
             persistence.state.collect { preferences -> preferences?.let {
                 os.chinese=it.languageTag!="en";os.light=it.themeModeName=="LIGHT"
                 os.accent=WpAccent.entries.firstOrNull { a -> a.name==it.accentName }?.argb ?: WpAccent.CYAN.argb
-                os.reduceMotion=it.motionPreferenceName=="REDUCED"
+                os.reduceMotion=false
+                os.textSize=it.appPreferenceValues["preferences.display.text_size"]?.removePrefix("c:") ?: "STANDARD"
                 os.keepAwake=it.appPreferenceValues["preferences.display.keep_awake"]!="b:0"
                 os.measurementUnits=runCatching { MeasurementUnitSystem.valueOf(it.measurementUnitSystemName) }.getOrDefault(MeasurementUnitSystem.NAUTICAL)
                 os.coordinateFormat=it.appPreferenceValues["preferences.coordinate.format"]?.removePrefix("c:") ?: "DMM"
                 os.maps.chinese=os.chinese
                 os.maps.distanceLabel={meters->os.formatDistance(meters)}
+                os.maps.nauticalScale=os.measurementUnits==MeasurementUnitSystem.NAUTICAL
             } }
         }
         os.scope.launch {
@@ -123,10 +127,10 @@ class WpShellRuntime(private val os: OsStore) {
         page == "trip" || page == "trip.overview" -> "voyages"
         page == "anchorages" || page == "anchorages.overview" -> "places:anchorages"
         page == "data" || page == "data.overview" -> "instruments"
-        page == "sources" || page.startsWith("data.sources") -> "settings:sources"
+        page == "sources" || page.startsWith("data.sources") || page=="settings:sources" -> "nmea:sources"
         page == "marine-settings" -> "settings:vessel"
         page == "output" -> "nmea:outputs"
-        page == "sonar" || page == "sonar.overview" -> "chart:depth"
+        page == "sonar" || page == "sonar.overview" || page=="chart:depth" -> "chart"
         page == "local_nmea" -> "local_nmea"
         else -> page
     }
@@ -150,38 +154,56 @@ class WpShellRuntime(private val os: OsStore) {
             else -> {
                 val app = appForPage(page) ?: return
                 val token = if (page == app.page) app.rootToken else LaunchToken(page)
-                dispatch(LauncherAction.Open(token, preserveCaller = engine.state.value.surface is ShellVisualSurface.Module))
+                dispatch(LauncherAction.Open(token, preserveCaller = page != app.page && engine.state.value.surface is ShellVisualSurface.Module,
+                    replaceTaskRoute = page == app.page))
             }
         }
     }
 
     fun dispatch(action:LauncherAction) {
-        val navigates=action is LauncherAction.Open || action is LauncherAction.ActivateTask ||
+        val navigates=action is LauncherAction.Open || action is LauncherAction.ActivateTask || action is LauncherAction.PinEntry ||
             action in listOf(LauncherAction.Back,LauncherAction.ShowDesktop,LauncherAction.ShowRecents,LauncherAction.OpenSearch,LauncherAction.ShowStart,LauncherAction.ShowAllApps)
         if(navigates && engine.state.value.surface is ShellVisualSurface.Module) navigationQueue.trySend(action)
         else deliver(action)
     }
     private fun deliver(action:LauncherAction) {
+        // 返回在截图队列中可能等待一帧；必须按实际执行时的栈再次判断，
+        // 否则快速连按会让后一个 Back 穿过刚回到的应用首页。
+        if(action==LauncherAction.Back&&atUnlinkedAppRoot())return
         if(action is LauncherAction.Open) {
             val app=appForPage(pageForToken(action.token))
             val existing=engine.state.value.tasks.tasks.firstOrNull {it.appId==app?.id}
             coldOpeningTask=app?.takeIf {existing==null}?.let {InternalAppTaskId(it.id.value)}
-            // A primary app tile/list entry resumes its current task. Explicit object links still open that object.
+            // 普通应用入口打开首页；只有最近任务恢复上次子页。
             if(existing!=null && action.token==app?.rootToken) {
-                engine.dispatch(LauncherAction.ActivateTask(existing.taskId));return
+                entryGenerations[existing.taskId]=(entryGenerations[existing.taskId] ?: 0)+1
+                engine.dispatch(action.copy(replaceTaskRoute=true,preserveCaller=false));return
             }
         } else if(action is LauncherAction.ActivateTask) coldOpeningTask=null
         engine.dispatch(action)
     }
 
     fun back() = input(ShellInput.BACK)
+    private fun atUnlinkedAppRoot():Boolean {
+        val state=engine.state.value
+        if(state.transient!=null)return false
+        val task=(state.surface as? ShellVisualSurface.Module)?.let{state.tasks.task(it.taskId)}?:return false
+        return task.backStack.isEmpty()&&state.tasks.linkedReturns.lastOrNull()?.targetTaskId!=task.taskId
+    }
+    /** 当前 App 的对象地址返回父路径；局部页面处理器调用，避免再次递归分发 Back。 */
+    fun popRoute() = dispatch(LauncherAction.Back)
     fun home() { input(ShellInput.DESKTOP); os.save() }
     fun input(input: ShellInput) {
+        if (os.notifications.expanded) {
+            os.notifications.close()
+            if (input == ShellInput.BACK) return
+        }
         if (inputRouter.dispatch(input)) return
         if (input == ShellInput.BACK && os.page == "chart" && os.showCrosshair) {
             os.showCrosshair = false
             return
         }
+        if(input==ShellInput.BACK&&atUnlinkedAppRoot())return
         dispatch(input.toShellAction())
     }
     fun resetStart() {
@@ -202,7 +224,7 @@ private fun nineAppMigration(): LauncherProductMigrationPlan {
         "chart" to setOf("sonar"),
         "instruments" to setOf("data","data_sources"),
         "nmea" to setOf("nmea_input","nmea_output"),
-    )
+    ) + tilePresets().groupBy { ShellApp(it.app).entry.value }.map { (entry, presets) -> entry to presets.map {it.entryId.value}.toSet() }
     return LauncherProductMigrationPlan(rules.mapIndexed { index,(target,legacy) ->
         LauncherProductMigrationStep(index+1,LauncherEntryId(target),legacy.map(::LauncherEntryId).toSet(),
             legacy.map { LauncherTokenAlias("$it.overview", if(target=="nmea") "nmea.root" else if(target=="chart") "chart.browse" else "$target.overview") })

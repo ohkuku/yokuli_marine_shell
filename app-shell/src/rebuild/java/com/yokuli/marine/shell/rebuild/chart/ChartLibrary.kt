@@ -30,22 +30,24 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.*
 
+/** 用户文件夹里的海图档案；priority 越小越优先，enabled 决定是否参与该文件夹图层。 */
 data class ChartFile(
     val id: String, val uri: String, val name: String, val source: String,
     val minZoom: Int, val maxZoom: Int, val tileSize: Int, val scheme: String,
     val focus: GeoPoint, val bytes: Long, val attribution: String = "", val enabled: Boolean = true,
     val error: String? = null, val modified: Long = 0, val previewZoom:Double = minZoom.toDouble(),
-    val priority: Int = 0, val filename: String = name
+    val priority: Int = 0, val filename: String = name, val label: String = ""
 ) {
+    val displayName get() = label.ifBlank { name.ifBlank { filename } }
     fun json() = JSONObject().put("id",id).put("uri",uri).put("name",name).put("source",source)
         .put("min",minZoom).put("max",maxZoom).put("size",tileSize).put("scheme",scheme)
         .put("focus",focus.json()).put("bytes",bytes).put("attribution",attribution)
         .put("enabled",enabled).put("error",error ?: "").put("modified",modified).put("previewZoom",previewZoom)
-        .put("priority",priority).put("filename",filename)
+        .put("priority",priority).put("filename",filename).put("label",label)
     companion object {
         fun from(j: JSONObject) = ChartFile(j.getString("id"),j.getString("uri"),j.getString("name"),j.optString("source"),
             j.getInt("min"),j.getInt("max"),j.getInt("size"),j.getString("scheme"),GeoPoint.from(j.getJSONObject("focus")),
-            j.optLong("bytes"),j.optString("attribution"),j.optBoolean("enabled",true),j.optString("error").takeIf { it.isNotBlank() },j.optLong("modified"),j.optDouble("previewZoom",j.getInt("min").toDouble()),j.optInt("priority"),j.optString("filename",j.getString("name")))
+            j.optLong("bytes"),j.optString("attribution"),j.optBoolean("enabled",true),j.optString("error").takeIf { it.isNotBlank() },j.optLong("modified"),j.optDouble("previewZoom",j.getInt("min").toDouble()),j.optInt("priority"),j.optString("filename",j.getString("name")),j.optString("label"))
     }
 }
 
@@ -176,6 +178,7 @@ private object ChartCache {
     }
 }
 
+/** 一个持久授权的文件夹对应一个可命名图层；断开连接仅解除目录引用，保留原文件。 */
 data class ChartFolder(
     val id: String, val uri: String, val name: String,
     val layerName: String? = null, val enabled: Boolean = true
@@ -190,6 +193,7 @@ data class ChartFolder(
     }
 }
 
+/** 当前渲染快照，files 已按优先级排序且只包含可读取、已启用的文件。 */
 data class ChartLayer(val id:String,val name:String,val files:List<ChartFile>) {
     val rasterSize get() = files.maxOfOrNull {it.tileSize} ?: 256
     val minZoom get() = files.minOfOrNull {it.minZoom} ?: 0
@@ -202,10 +206,14 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     private val index = AtomicFile(File(context.filesDir,"charts-v1.json"))
     private val initial = runCatching { JSONObject(index.openRead().bufferedReader().use { it.readText() }) }.getOrDefault(JSONObject())
     private val writeMutex = Mutex()
+    private var saveGeneration=0L
     var files by mutableStateOf(initial.optJSONArray("files")?.objects()?.mapIndexedNotNull { i,j ->
         runCatching {ChartFile.from(j).let {if(j.has("priority")) it else it.copy(priority=i)}}.getOrNull()
     } ?: emptyList())
     var folders by mutableStateOf(loadFolders())
+    /** 从目录移除的文件仍记住身份，重新扫描不会偷偷加回来；用户可显式恢复。 */
+    var excludedFiles by mutableStateOf(initial.optJSONArray("excluded")?.objects()?.mapNotNull {runCatching {ChartFile.from(it)}.getOrNull()} ?: emptyList())
+        private set
     var busy by mutableStateOf(false)
     var progress by mutableStateOf("")
     var failure by mutableStateOf<String?>(null)
@@ -237,8 +245,10 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     }
     private fun persist() {
         revision++
-        val snapshot = JSONObject().put("version",2).put("files",JSONArray(files.map { it.json() })).put("folders",JSONArray(folders.map {it.json()})).toString()
+        val generation=++saveGeneration
+        val snapshot = JSONObject().put("version",3).put("files",JSONArray(files.map { it.json() })).put("folders",JSONArray(folders.map {it.json()})).put("excluded",JSONArray(excludedFiles.map {it.json()})).toString()
         scope.launch(Dispatchers.IO) { writeMutex.withLock {
+            if(generation!=saveGeneration)return@withLock
             runCatching {
                 val out = index.startWrite()
                 try { out.write(snapshot.toByteArray()); index.finishWrite(out) }
@@ -264,8 +274,27 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         files=files.map {if(it.id==file.id) it.copy(enabled=true) else it}
         folders=folders.map {if(it.uri==file.source) it.copy(enabled=true,layerName=it.layerName ?: it.name) else it};persist()
     }
-    fun forget(file: ChartFile) { files = files.filter { it.id!=file.id }; persist() }
-    fun forgetFolder(uri: String) { folders = folders.filter {it.uri!=uri}; files = files.filter { it.source!=uri }; persist() }
+    fun renameFile(file:ChartFile,name:String) {
+        val title=name.trim().take(100);if(title.isBlank())return
+        files=files.map {if(it.id==file.id)it.copy(label=title)else it};persist()
+    }
+    fun renameFolder(folder:ChartFolder,name:String) {
+        val title=name.trim().take(100);if(title.isBlank())return
+        folders=folders.map {if(it.id==folder.id)it.copy(name=title)else it};persist()
+    }
+    fun includeAll(folder:ChartFolder,included:Boolean) {
+        files=files.map {if(it.source==folder.uri && it.error==null)it.copy(enabled=included)else it};persist()
+    }
+    fun forget(file: ChartFile) {
+        excludedFiles=excludedFiles.filterNot {it.id==file.id}+file
+        files=files.filterNot {it.id==file.id};persist()
+    }
+    fun restore(file:ChartFile) {
+        excludedFiles=excludedFiles.filterNot {it.id==file.id}
+        if(files.none {it.id==file.id})files=files+file.copy(enabled=true,priority=(files.filter {it.source==file.source}.maxOfOrNull {it.priority} ?: -1)+1)
+        persist()
+    }
+    fun forgetFolder(uri: String) { folders = folders.filter {it.uri!=uri}; files = files.filter { it.source!=uri }; excludedFiles=excludedFiles.filterNot {it.source==uri}; persist() }
     fun rescan(folder:ChartFolder?=null) { if(!busy) scan((folder?.let {listOf(it)} ?: folders).filter {it.uri!="copy"}.map {it.uri}) }
     fun linkFolder(uri: Uri):ChartFolder? {
         if(busy) return null
@@ -317,8 +346,9 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     // Reconcile only a completed traversal; preserve explicit user priorities on refresh.
                     val previous = files.associateBy { it.id }
                     var nextPriority=(files.filter {it.source==tree}.maxOfOrNull {it.priority} ?: -1)+1
-                    val discovered=collected.sortedBy {it.filename.lowercase()}.map {f ->
-                        f.copy(enabled=previous[f.id]?.enabled ?: true,priority=previous[f.id]?.priority ?: nextPriority++)
+                    excludedFiles=excludedFiles.map {old->collected.firstOrNull {it.id==old.id}?.copy(label=old.label,enabled=old.enabled,priority=old.priority) ?: old}
+                    val discovered=collected.filter {candidate->excludedFiles.none {it.id==candidate.id}}.sortedBy {it.filename.lowercase()}.map {f ->
+                        f.copy(enabled=previous[f.id]?.enabled ?: true,priority=previous[f.id]?.priority ?: nextPriority++,label=previous[f.id]?.label.orEmpty())
                     }
                     files=files.filter {it.source!=tree}+discovered
                     persist()

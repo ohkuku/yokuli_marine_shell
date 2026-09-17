@@ -39,6 +39,42 @@ class LauncherNavigationTest {
     private val reducer = DefaultLauncherReducer()
 
     @Test
+    fun objectDeepLinkHasItsOwnAppParentBeforeReturningToCaller() {
+        val chartOpened=open(initial(),chart.appId,chart.launchToken)
+        val detail=LaunchToken("settings.units")
+        val linked=reducer.reduce(chartOpened,LauncherAction.Open(detail,preserveCaller=true),
+            context(LaunchResolution.Internal(settings.appId,detail))).state
+        val parent=reduce(linked,LauncherAction.Back).state
+        assertEquals(ShellVisualSurface.Module(InternalAppTaskId("settings")),parent.surface)
+        assertEquals(settings.launchToken,parent.tasks.task(InternalAppTaskId("settings"))?.lastLaunchToken)
+        assertEquals(ShellVisualSurface.Module(InternalAppTaskId("chart")),reduce(parent,LauncherAction.Back).state.surface)
+    }
+
+    @Test
+    fun normalAppEntryDiscardsItsOldDetailAndCaller() {
+        val chartOpened=open(initial(),chart.appId,chart.launchToken)
+        val detail=LaunchToken("settings.units")
+        val linked=reducer.reduce(chartOpened,LauncherAction.Open(detail,preserveCaller=true),
+            context(LaunchResolution.Internal(settings.appId,detail))).state
+        val root=reducer.reduce(linked,LauncherAction.Open(settings.launchToken,replaceTaskRoute=true),
+            context(LaunchResolution.Internal(settings.appId,settings.launchToken))).state
+        assertEquals(settings.launchToken,root.tasks.task(InternalAppTaskId("settings"))?.lastLaunchToken)
+        assertTrue(root.tasks.task(InternalAppTaskId("settings"))!!.backStack.isEmpty())
+        assertTrue(root.tasks.linkedReturns.isEmpty())
+    }
+
+    @Test
+    fun recentsRestoresDetailButDoesNotResurrectAnOldCallerChain() {
+        val chartOpened=open(initial(),chart.appId,chart.launchToken)
+        val detail=LaunchToken("settings.units")
+        val linked=reducer.reduce(chartOpened,LauncherAction.Open(detail,preserveCaller=true),
+            context(LaunchResolution.Internal(settings.appId,detail))).state
+        val resumed=reduce(reduce(linked,LauncherAction.ShowRecents).state,LauncherAction.ActivateTask(InternalAppTaskId("settings"))).state
+        assertEquals(detail,resumed.tasks.task(InternalAppTaskId("settings"))?.lastLaunchToken)
+        assertTrue(resumed.tasks.linkedReturns.isEmpty())
+    }
+
+    @Test
     fun internalBackPopsOpaqueRouteBeforeReturningToStart() {
         val opened = open(initial(), settings.appId, settings.launchToken)
         val detail = LaunchToken("settings.appearance")

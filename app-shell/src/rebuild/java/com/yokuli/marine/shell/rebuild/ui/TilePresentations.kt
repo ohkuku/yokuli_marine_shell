@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.os.SystemClock
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,9 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -31,13 +35,16 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.yokuli.marine.shell.rebuild.chart.MapSource
 import com.yokuli.marine.shell.rebuild.*
+import com.yokuli.marine.shell.rebuild.data.Reading
 import com.yokuli.shell.compose.*
 import com.yokuli.shell.contract.*
 import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
+import kotlin.math.*
 
-/** Extra tiles have their own stable identity but retain their app's existing launch contract. */
+/** 中文：旧版独立样式入口仅用于迁移；新磁贴使用应用的唯一入口及样式偏好。 */
 data class TilePreset(
     val key: String,
     val app: AppId,
@@ -92,13 +99,15 @@ fun tilePreferenceContributions(apps: List<ShellApp>): List<AppPreferenceContrib
     ))
 }
 
-@Composable fun tilePresentation(os: OsStore, app: ShellApp, animate: Boolean): LauncherEntryVisualContribution = buildTilePresentation(os, app, animate, null)
-@Composable fun presetTilePresentation(os: OsStore, preset: TilePreset, animate: Boolean): LauncherEntryVisualContribution = buildTilePresentation(os, ShellApp(preset.app), animate, preset)
+@Composable fun tilePresentation(os: OsStore, app: ShellApp, animate: Boolean, modeOverride: String? = null): LauncherEntryVisualContribution = buildTilePresentation(os, app, animate, null, modeOverride)
+@Composable fun presetTilePresentation(os: OsStore, preset: TilePreset, animate: Boolean): LauncherEntryVisualContribution = buildTilePresentation(os, ShellApp(preset.app), animate, preset, null)
 
-private data class TileFrame(val key: String, val headline: String, val detail: String, val eyebrow: String = "", val image: Bitmap? = null, val demo: Boolean = false)
-@Composable private fun buildTilePresentation(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?): LauncherEntryVisualContribution {
+/** 中文：磁贴帧只缓存展示形态；值、来源时效、趋势直接订阅系统的同一份观测。 */
+private data class TileFrame(val key: String, val headline: String, val detail: String, val eyebrow: String = "", val image: Bitmap? = null, val demo: Boolean = false, val bearing: Double? = null, val progress: Float? = null, val samples: List<Reading> = emptyList())
+@Composable private fun buildTilePresentation(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?, modeOverride: String?): LauncherEntryVisualContribution {
     val preferences by os.shell.persistence.state.collectAsState()
     val data by os.hub.state.collectAsState()
+    val history by os.hub.history.collectAsState()
     val state = os.marine?.vm?.ui?.collectAsState()?.value
     val connections = os.marine?.vm?.nmeaConnections?.collectAsState()?.value.orEmpty()
     val owner = LocalLifecycleOwner.current
@@ -110,19 +119,21 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     }
     val visible = animate && resumed
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(visible) { if (visible) while (true) { now = SystemClock.elapsedRealtime(); delay(1000) } }
-    val readingNow = if (visible) now else SystemClock.elapsedRealtime()
+    LaunchedEffect(resumed) { if (resumed) while (true) { now = SystemClock.elapsedRealtime(); delay(1000) } }
+    val readingNow = now
     val values = preferences?.appPreferenceValues.orEmpty()
     val savedMode = values["${app.id.value}.tile.mode"]?.removePrefix("c:")
-    val mode = preset?.mode ?: savedMode?.takeIf { value -> tileModes(app).any { it.key == value } } ?: "AUTO"
+    val mode = modeOverride ?: preset?.mode ?: savedMode?.takeIf { value -> tileModes(app).any { it.key == value } } ?: "AUTO"
     val rotate = visible && !os.reduceMotion && !LocalReducedMotion.current && values["${app.id.value}.tile.animate"] != "b:0"
     val interval = values["${app.id.value}.tile.interval"]?.removePrefix("c:")?.toLongOrNull()?.coerceIn(6, 15) ?: 6L
     val title = preset?.title?.let { if (os.chinese) it.chinese else it.english } ?: os.title(app.app)
     val fix = data.fix(os.positionSource)?.takeIf { it.fresh(readingNow) }
     val unavailable = os.t("暂无有效数据", "no valid reading")
     fun reading(observation: VesselObservation<Double>?, format: (Double?) -> String): String = format(observation?.value?.takeIf { observation.freshness == VesselDataFreshness.FRESH && observation.receivedElapsedRealtime?.let { t -> readingNow - t in 0..10000 } == true })
-    fun angle(observation: VesselObservation<Double>?): String = reading(observation) { it?.let { "${decimal(it)}°" } ?: "—" }
-    val snapshotLabel = if (os.maps.snapshotCapturedAt > 0) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(os.maps.snapshotCapturedAt)) else ""
+    fun angle(observation: VesselObservation<Double>?): String = reading(observation, os::formatBearing)
+    fun samples(metric: String): List<Reading> = history[metric].orEmpty().filter { readingNow - it.elapsed in 0..300_000 }
+    val displayLocale = if (os.chinese) Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH
+    val snapshotLabel = if (os.maps.snapshotCapturedAt > 0) DateFormat.getTimeInstance(DateFormat.SHORT, displayLocale).format(Date(os.maps.snapshotCapturedAt)) else ""
     val snapshotCredit = when (os.maps.snapshotSource) {
         MapSource.Satellite -> "© Google"
         MapSource.Online -> if (com.yokuli.marine.shell.BuildConfig.GOOGLE_MAPS_CONFIGURED) "© Google" else "© OpenStreetMap contributors · Natural Earth"
@@ -131,7 +142,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     }
     val frames = when (app.app.name) {
         "CHART" -> listOfNotNull(
-            TileFrame("MAP", os.t("最近查看的海图", "last viewed chart"), listOf(snapshotLabel, snapshotCredit).filter { it.isNotBlank() }.joinToString(" · "), image = os.maps.snapshot?.takeUnless { it.isRecycled }, demo = os.maps.snapshotDemo),
+            TileFrame("MAP", fix?.let { (if (os.positionSource == "demo" || state?.settings?.demoMode == true) os.t("演示 · ", "DEMO · ") else "") + os.formatSpeed(it.freshSpeed(readingNow)) + " · " + os.formatCoordinates(it.point) } ?: os.t("船位不可用", "position unavailable"), listOf(snapshotLabel, snapshotCredit).filter { it.isNotBlank() }.joinToString(" · "), image = os.maps.snapshot?.takeUnless { it.isRecycled }, demo = os.maps.snapshotDemo),
             TileFrame("NAVIGATION", os.activeRoute?.name ?: os.t("未开始导航", "navigation is off"), os.nextPoint?.let { target -> fix?.let { os.formatDistance(distance(it.point, target)) } } ?: os.t("选择航线后明确开始", "select a route, then start"), os.t("当前导航", "active navigation")),
             TileFrame("POSITION", fix?.let { os.formatSpeed(it.freshSpeed(readingNow)) } ?: "—", fix?.let { os.formatCoordinates(it.point) } ?: os.t("船位不可用", "position unavailable"), os.t("船位 · 对地航速", "position · speed over ground")),
         )
@@ -140,16 +151,16 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         "VOYAGES" -> {
             val trip = state?.activeTrip
             val previous = state?.tripSessions?.firstOrNull { !it.active }
-            listOf(TileFrame("RECORDING", trip?.let { os.formatDistance(it.distanceMeters) } ?: os.t("未在记录", "recording is off"), trip?.let { it.name + " · " + os.t("${it.waypointCount} 个时刻", "${it.waypointCount} moments") } ?: os.t("打开日志，记录下一次出发", "open Logbook for your next departure"), if (trip == null) os.t("当前记录", "current recording") else if (trip.paused) os.t("记录已暂停", "recording paused") else os.t("正在记录", "recording")), TileFrame("LAST", previous?.name ?: os.t("还没有完成的航行", "no completed voyages"), previous?.let { os.formatDistance(it.distanceMeters) + " · " + DateFormat.getDateInstance(DateFormat.SHORT).format(Date(it.startedAt)) } ?: os.t("航迹与时刻会留在这里", "tracks and moments will be kept here"), os.t("最近航行", "last voyage")))
+            listOf(TileFrame("RECORDING", trip?.let { os.formatDistance(it.distanceMeters) } ?: os.t("未在记录", "recording is off"), trip?.let { it.name + " · " + os.t("${it.waypointCount} 个时刻", "${it.waypointCount} moments") } ?: os.t("打开日志，记录下一次出发", "open Logbook for your next departure"), if (trip == null) os.t("当前记录", "current recording") else if (trip.paused) os.t("记录已暂停", "recording paused") else os.t("正在记录", "recording")), TileFrame("LAST", previous?.name ?: os.t("还没有完成的航行", "no completed voyages"), previous?.let { os.formatDistance(it.distanceMeters) + " · " + DateFormat.getDateInstance(DateFormat.SHORT, displayLocale).format(Date(it.startedAt)) } ?: os.t("航迹与时刻会留在这里", "tracks and moments will be kept here"), os.t("最近航行", "last voyage")))
         }
         "ANCHOR" -> {
             val watch = state?.active
             val delta = watch?.let { anchor -> fix?.let { distance(it.point, GeoPoint(anchor.anchorLatitude, anchor.anchorLongitude)) } }
-            listOf(TileFrame("WATCH", if (watch == null) os.t("未在值守", "watch is off") else if (watch.paused) os.t("值守已暂停", "watch paused") else if (state?.alarmSnapshot?.state == AlarmState.ALARM && state.alarmSnapshot.type != AlarmType.ALARM_TEST) os.t("警报触发", "alarm active") else if (state?.alarmSnapshot?.state == AlarmState.WARNING) os.t("锚警预警", "anchor warning") else os.t("锚警值守中", "anchor watch active"), if (watch == null) os.t("为下一次锚泊做好准备", "prepare your next anchorage") else os.t("点按查看完整值守状态", "tap for the complete watch status")), TileFrame("DISTANCE", os.formatDistance(delta), if (watch == null) os.t("未开始锚警", "no anchor watch") else os.t("警戒半径 ", "alarm radius ") + os.formatDistance(watch.alarmRadiusMeters), os.t("距离锚位", "distance to anchor")), TileFrame("LIMIT", os.formatDistance(watch?.alarmRadiusMeters), watch?.let { if (it.paused) os.t("已暂停值守", "watch paused") else os.t("当前值守范围", "current watch limit") } ?: os.t("未开始锚警", "no anchor watch"), os.t("警戒半径", "alarm radius")))
+            listOf(TileFrame("WATCH", if (watch == null) os.t("未在值守", "watch is off") else if (watch.paused) os.t("值守已暂停", "watch paused") else if (state?.alarmSnapshot?.state == AlarmState.ALARM && state.alarmSnapshot.type != AlarmType.ALARM_TEST) os.t("警报触发", "alarm active") else if (state?.alarmSnapshot?.state == AlarmState.WARNING) os.t("锚警预警", "anchor warning") else os.t("锚警值守中", "anchor watch active"), if (watch == null) os.t("为下一次锚泊做好准备", "prepare your next anchorage") else os.t("点按查看完整值守状态", "tap for the complete watch status")), TileFrame("DISTANCE", os.formatDistance(delta), if (watch == null) os.t("未开始锚警", "no anchor watch") else os.t("警戒半径 ", "alarm radius ") + os.formatDistance(watch.alarmRadiusMeters), os.t("距离锚位", "distance to anchor"), progress = if (delta != null && watch != null && watch.alarmRadiusMeters > 0) (delta / watch.alarmRadiusMeters).toFloat() else null), TileFrame("LIMIT", os.formatDistance(watch?.alarmRadiusMeters), watch?.let { if (it.paused) os.t("已暂停值守", "watch paused") else os.t("当前值守范围", "current watch limit") } ?: os.t("未开始锚警", "no anchor watch"), os.t("警戒半径", "alarm radius")))
         }
         "INSTRUMENTS" -> {
             val v = state?.vesselData
-            listOf(TileFrame("SPEED", reading(v?.sogKnots, os::formatSpeed), os.t("对地航速", "speed over ground")), TileFrame("HEADING", angle(v?.headingTrueDegrees), os.t("真船首向", "true heading")), TileFrame("DEPTH", reading(v?.depthMeters, os::formatDepth), os.t("龙骨下余量 ", "under-keel ") + reading(v?.derived?.underKeelClearanceMeters, os::formatDepth), os.t("水深", "depth")), TileFrame("WIND", reading(v?.trueWind?.speedKnots, os::formatSpeed), os.t("视风 ", "apparent ") + reading(v?.apparentWind?.speedKnots, os::formatSpeed), os.t("真风", "true wind")))
+            listOf(TileFrame("SPEED", reading(v?.sogKnots, os::formatSpeed), os.t("对地航速", "speed over ground"), samples = samples("sog")), TileFrame("HEADING", angle(v?.headingTrueDegrees), os.t("真船首向", "true heading"), bearing = v?.headingTrueDegrees?.liveNumber()), TileFrame("DEPTH", reading(v?.depthMeters, os::formatDepth), os.t("龙骨下余量 ", "under-keel ") + reading(v?.derived?.underKeelClearanceMeters, os::formatDepth), os.t("水深", "depth"), samples = samples("depth")), TileFrame("WIND", reading(v?.trueWind?.speedKnots, os::formatSpeed), os.t("视风 ", "apparent ") + reading(v?.apparentWind?.speedKnots, os::formatSpeed), os.t("真风", "true wind"), samples = samples("tws")))
         }
         "NMEA" -> {
             val online = connections.count { it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }
@@ -174,7 +185,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     val cover = app.app == AppId.CHART && mode in setOf("AUTO", "MAP")
     val description = selected.first().let { it.eyebrow.ifBlank { it.headline } + " · " + it.detail }
     return LauncherEntryVisualContribution(preset?.entryId ?: app.entry, title,
-        when (app.app.name) { "CHART", "LIBRARY", "VOYAGES" -> 'H'; "PLACES" -> 'W'; "SETTINGS" -> 'S'; "ANCHOR" -> 'M'; "INSTRUMENTS" -> 'Y'; "TILES" -> 'C'; else -> app.app.en.first().uppercaseChar() },
+        when (app.app.name) { "CHART", "LIBRARY", "VOYAGES" -> 'H'; "PLACES" -> 'W'; "SETTINGS" -> 'S'; "ANCHOR" -> 'M'; "INSTRUMENTS" -> 'Y'; "TILES" -> 'C'; "LOCAL_NMEA" -> 'B'; else -> app.app.en.first().uppercaseChar() },
         title, description, LauncherIconRenderer { tint, modifier -> ShellAppIcon(app, tint, modifier) },
         (preset?.sizes ?: app.sizes).associateWith { size -> LauncherTileRenderer { context -> TileFace(os, app, title, selected, size, context, cover, rotate, interval) } }, fullBleed = cover)
 }
@@ -206,20 +217,62 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     if (frame.key == "MAP" && frame.image != null) {
         Box(Modifier.fillMaxSize()) {
             Image(frame.image.asImageBitmap(), os.t("最近海图快照", "last chart snapshot"), Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .85f)))).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                WpText(title, 15, color = Color.White, maxLines = 1)
-                WpText((if (frame.demo) os.t("演示 · ", "DEMO · ") else "") + os.t("海图快照", "chart snapshot") + " · " + frame.detail, 9, color = Color.White.copy(alpha = .9f), maxLines = 2)
+            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .88f)))).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                WpText(title, 16, color = Color.White, maxLines = 1)
+                WpText(frame.headline, 12, color = Color.White, maxLines = if (size == MarineTileSize.WIDE_4X2) 1 else 2)
+                WpText((if (frame.demo) os.t("演示 · ", "DEMO · ") else "") + os.t("海图快照", "chart snapshot") + " · " + frame.detail, 10, color = Color.White.copy(alpha = .9f), maxLines = 2)
             }
         }
-    } else Column(Modifier.fillMaxSize().then(if (cover) Modifier.padding(YokuliMetrics.TileContentInset) else Modifier), verticalArrangement = Arrangement.SpaceBetween) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            ShellAppIcon(app, color, Modifier.size(23.dp)); WpText(title, 12, color = color, maxLines = 1)
+    } else Box(Modifier.fillMaxSize().then(if (cover) Modifier.padding(YokuliMetrics.TileContentInset) else Modifier)) {
+        if (frame.samples.size > 1 || frame.bearing != null || frame.progress != null) {
+            Canvas(Modifier.fillMaxSize()) {
+                if (frame.samples.size > 1) {
+                    val start = frame.samples.first().elapsed
+                    val span = (frame.samples.last().elapsed - start).coerceAtLeast(1)
+                    val low = frame.samples.minOf { it.value }
+                    val high = frame.samples.maxOf { it.value }
+                    val range = (high - low).coerceAtLeast(.1)
+                    val path = Path()
+                    var previous: Reading? = null
+                    frame.samples.forEach { reading ->
+                        val x = ((reading.elapsed - start).toDouble() / span * this.size.width).toFloat()
+                        val y = this.size.height * .8f - ((reading.value - low) / range * this.size.height * .3f).toFloat()
+                        val old = previous
+                        if (old == null || reading.elapsed - old.elapsed > 10_000 || reading.source != old.source) path.moveTo(x, y) else path.lineTo(x, y)
+                        previous = reading
+                    }
+                    drawPath(path, color.copy(alpha = .28f), style = Stroke(2.dp.toPx()))
+                }
+                frame.bearing?.let { bearing ->
+                    val radius = min(this.size.width, this.size.height) * .37f
+                    val origin = Offset(this.size.width * .75f, this.size.height * .55f)
+                    drawCircle(color.copy(alpha = .16f), radius, origin, style = Stroke(1.dp.toPx()))
+                    val radians = Math.toRadians(bearing - 90)
+                    val end = Offset(origin.x + cos(radians).toFloat() * radius, origin.y + sin(radians).toFloat() * radius)
+                    drawLine(color.copy(alpha = .3f), origin, end, 3.dp.toPx())
+                }
+                frame.progress?.let { ratio ->
+                    val left = Offset(0f, this.size.height * .76f)
+                    drawLine(color.copy(alpha = .2f), left, left.copy(x = this.size.width), 4.dp.toPx())
+                    drawLine(color.copy(alpha = .65f), left, left.copy(x = this.size.width * ratio.coerceIn(0f, 1f)), 4.dp.toPx())
+                }
+            }
         }
-        if (frame.key == "STATIC") Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { ShellAppIcon(app, color, Modifier.size(48.dp)) }
-        else Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            if (frame.eyebrow.isNotBlank()) WpText(frame.eyebrow, 11, color = color.copy(alpha = .82f), maxLines = 1)
-            WpText(if (frame.key == "MAP") os.t("打开海图更新封面", "open Chart for a cover") else frame.headline, if (size == MarineTileSize.WIDE_4X2) 31 else 26, color = color, weight = FontWeight.Light, maxLines = 2)
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                ShellAppIcon(app, color, Modifier.size(20.dp)); WpText(title, 12, color = color, maxLines = 1)
+            }
+            if (frame.key == "STATIC") Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { ShellAppIcon(app, color, Modifier.size(48.dp)) }
+            else Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (frame.eyebrow.isNotBlank()) WpText(frame.eyebrow, 11, color = color.copy(alpha = .85f), maxLines = 1)
+                val headline = if (frame.key == "MAP") os.t("打开海图更新封面", "open Chart for a cover") else frame.headline
+                val numeric = Regex("^([−+\\-]?\\d+(?:[.,]\\d+)?)(.*)$").matchEntire(headline)
+                if (numeric != null) Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    WpText(numeric.groupValues[1], if (size == MarineTileSize.WIDE_4X2) 45 else 38, color = color, weight = FontWeight.Light, maxLines = 1)
+                    if (numeric.groupValues[2].isNotBlank()) WpText(numeric.groupValues[2].trim(), 14, color = color, maxLines = 1, modifier = Modifier.padding(bottom = 5.dp))
+                } else WpText(headline, if (size == MarineTileSize.WIDE_4X2) 30 else 24, color = color, weight = FontWeight.Light, maxLines = 2)
+            }
+            if (frame.detail.isNotBlank()) WpText(frame.detail, 12, color = color.copy(alpha = .88f), maxLines = if (size == MarineTileSize.WIDE_4X2) 2 else 1)
         }
-        if (frame.detail.isNotBlank()) WpText(frame.detail, 11, color = color.copy(alpha = .86f), maxLines = if (size == MarineTileSize.WIDE_4X2) 2 else 1)
     }
 }

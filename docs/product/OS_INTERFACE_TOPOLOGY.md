@@ -1,0 +1,167 @@
+# Yokuli OS 0.5：应用边界、接口与数据拓扑
+
+日期：2026-09-17。本文对应 `app-shell/src/rebuild` 实际入口；不是另造一个尚未实现的架构。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
+
+## 这轮实现计划与边界
+
+| 用户反馈 | 实现位置与决定 |
+| --- | --- |
+| 1、2 准星底栏与比例尺 | 准星读数、选中对象与底部命令连在一起；比例尺独立在地图左上，显示 1/2/5 系列整数量级。 |
+| 3、26 WP 排版、控件、动效 | Shell 与应用共用 Selawik 字族、轻标题、方形单选、矩形输入框、横滑 Pivot、按压倾斜；提供全局文字大小。取消产品里的“减少动画”开关，保留 Android 无动画的系统可访问性行为。 |
+| 4 缩放抖动 | 地理点、线、范围交给同一个地图引擎原生绘制；Compose 不再异步投影地图标注。 |
+| 5、6、15、16、22 应用关系 | 地图内先预览坐标，详情为显式动作；应用入口回首页，最近任务恢复原子页；根页不显示“返回 OS”；内部返回处理先于 Shell，失活画面不能抢键。 |
+| 7 声纳 | 移除测深调查产品入口、UI、采样订阅和自动恢复；保留历史数据库和真实 NMEA 水深读数。 |
+| 8、9 航行日志 | `MarineRuntime.voyage` 是统一会话视图；开始/暂停/继续/保存使用同一命令；系统栏、海图、日志和磁贴同步。日志支持当前航迹、时刻、历史、编辑、回放、导出与地图预览。 |
+| 10、21 仪表 | 罗盘、风向、姿态、量表按数据含义可视化；“我的”持久化增删与排序，提供长按拖动和上下移动。 |
+| 11、23 磁贴 | 应用列表 → 该应用的真实样式预览 → 尺寸 → 应用；同一应用一块磁贴，旧重复项迁移合并。读数实时订阅，地图底图快照标记时间。 |
+| 12 全局单位 | 显示统一走 `DisplayFormats`；DD/DMM/DMS 编辑使用同一解析器；原始记录不随显示偏好改写。 |
+| 13、14 锚警 | 地图为主，下锚 → 定位置/范围 → 值守 → 起锚；最近轨迹渐隐，累计停留区域来自本次真实历史。 |
+| 17 设置 | 设置只管系统、个人偏好、船舶、权限、声音、资料备份和关于；来源管理移入 NMEA，样式集中到磁贴库。 |
+| 18 来源与分享 | 输入、字段采用、输出目的地分离；本机服务和主动发送共用能力选择、真实包过滤及逐 IP 防回送。 |
+| 19 通知 | 全局顶部轻提示 + 下拉通知中心；保留应用、时间、正文、级别、已读、重复次数和可选详情；阅读不确认警报。 |
+| 20 海图库 | 文件夹 / 命名图层 / 文件明确分层；创建、扫描、改名、启停、优先级、移除/恢复、解除关联和地图使用均有明确效果。 |
+| 24 数据结构 | 本文总图和边界表；三个子契约细化字段、接口、事件与存储；`API_INDEX.md` 给出源码声明索引。 |
+| 25 全屏 | 系统栏和虚拟键贴近窗口边缘；圆角横向避让，不用整页上下缩进；键盘独立抬升。曲面屏视觉最终以真机为准。 |
+
+## 整体拓扑
+
+```mermaid
+flowchart TB
+    subgraph OS[Shell 系统]
+        Catalog[AppId / ShellApp / LauncherCatalog]
+        Nav[WpShellRuntime / LauncherEngine\n任务、内部路径、最近任务]
+        Prefs[LauncherPersistedState\n系统偏好与开始布局]
+        Notices[SystemNotificationStore\n轻提示、历史、下拉中心]
+        Images[TaskSnapshotStore\n实际窗口截图]
+    end
+    subgraph Apps[应用]
+        Chart[海图]
+        Library[海图库]
+        Log[航行日志]
+        Anchor[锚警]
+        Sailing[我的航行]
+        Gauges[仪表]
+        Nmea[NMEA 输入及输出]
+        Local[本机 NMEA]
+        Settings[设置]
+        Tiles[磁贴库]
+    end
+    Catalog --> Nav
+    Nav --> Apps
+    Prefs --> Nav
+    Nav --> Images
+    Apps --> Notices
+    Settings --> Prefs
+    Tiles --> Prefs
+    Prefs --> Formats[DisplayFormats\n全局单位、坐标、字体]
+    Formats --> Apps
+    subgraph Shared[共享业务状态]
+        Marine[MarineRuntime / MainViewModel\n适配与业务命令]
+        Voyage[VoyageSessionState / TripRuntime]
+        Watch[AnchorSession / AlarmSnapshot]
+        Sources[VesselDataHub / AcceptedPosition\n来源、时效、采纳依据]
+        Saved[MySailingRepository\n坐标、路线、收藏锚地]
+        Maps[MapSessionStore / MapScene\n共享图源、独立视口]
+        Charts[ChartLibrary\n文件夹、文件、图层]
+        Publish[NmeaPublicationPolicy / Encoder\n能力过滤、来源追踪、防回送]
+    end
+    Chart --> Marine
+    Log --> Marine
+    Anchor --> Marine
+    Marine --> Voyage
+    Marine --> Watch
+    Sources --> Marine
+    Sources --> Gauges
+    Sources --> Publish
+    Sources --> Tiles
+    Voyage --> Log
+    Voyage --> Chart
+    Voyage --> Tiles
+    Watch --> Anchor
+    Watch --> Notices
+    Sailing --> Saved
+    Chart --> Saved
+    Anchor --> Saved
+    Library --> Charts
+    Charts --> Maps
+    Maps --> Chart
+    Maps --> Anchor
+    Maps --> Log
+    Maps --> Sailing
+    Nmea --> Sources
+    Local --> Publish
+    Nmea --> Publish
+    Publish --> Wire[TCP / UDP / 本机 TCP clients]
+    subgraph Storage[持久化事实]
+        Room[(Room\n航行、轨迹、事件、锚泊、收藏)]
+        Json[(Atomic JSON\n坐标路线、海图目录、图源、通知)]
+        Store[(DataStore\nShell、来源、连接、分享策略)]
+    end
+    Voyage --> Room
+    Watch --> Room
+    Saved --> Room
+    Saved --> Json
+    Charts --> Json
+    Maps --> Json
+    Notices --> Json
+    Prefs --> Store
+    Sources --> Store
+    Publish --> Store
+```
+
+箭头表示读写/订阅关系，不表示新建进程。后台业务不依赖哪个应用当前可见。通知、开始屏幕和应用内界面不能各维护一份“是否正在航行”的布尔开关。
+
+## 全部应用对外边界
+
+| 应用 | 入口 / 对象地址 | 读取 | 提交的业务动作 | 数据所有权 |
+| --- | --- | --- | --- | --- |
+| 海图 | `chart` | `MapScene`、可信船位、选中坐标/路线、全局航行 | 选点、标记、规划、预览、导航、记录命令 | 独立视口与地图临时工具；收藏交给我的航行 |
+| 海图库 | `library`、`library:<folderId>` | 文件夹扫描、文件状态、命名图层、覆盖 | 授权、扫描、改名、排序、启停、恢复、解除关联、使用图层 | `ChartFolder / ChartFile / ChartLayer` |
+| 航行日志 | `voyages`、`voyage:<id>`、`replay:<id>`、`report:<id>` | 当前 `VoyageSessionState`、历史轨迹/事件/时刻 | 开始、暂停、继续、结束、时刻笔记、改名、导出、历史地图预览 | `TripSession / Sample / Event / Waypoint` |
+| 锚警 | `anchor` | 选中船位、锚点、警戒圈、近期轨迹、累计范围、警报 | 下锚、设点/半径、值守、暂停、起锚、收藏 | `AnchorSession`；收藏引用统一坐标 |
+| 我的航行 | `places`、`place:<id>`、`route:<id>`、`anchorage:<id>`、`collection:<id>` | 收藏坐标、锚地具体位置、集合、路线 | CRUD、GPX、预览、前往、编辑路线、集合整理 | `Place / Route` 与已有 Room anchorage 实体 |
+| 仪表 | `instruments` | 已采纳 `VesselObservation`、趋势、导航 | 选表、详情、增删/排序、安装校准 | 只拥有显示布局；不切换连接 |
+| NMEA | `nmea`、`nmea:sources`、`nmea:outputs` | 多连接、来源候选、流量与报文 | CRUD/连接/停止、字段选源、分享能力与转发输入选择 | `NmeaConnectionSpec`、系统字段来源策略 |
+| 本机 NMEA | `local_nmea` | 本机监听状态、连接客户端、实际输出 | 设置端口、同一分享策略、启动/停止 | `LocalNmeaServerSettings` 与 listener 生命周期 |
+| 设置 | `settings`、`settings:<section>` | 持久化系统/船舶偏好 | 修改语言、单位、坐标、颜色、文字大小、常亮、声音、权限、备份 | `LauncherPersistedState`、`VesselDataSettings` |
+| 磁贴库 | `tiles`、`tiles:<appId>` | 应用声明的样式、当前固定项、真实内容 | 选择样式/尺寸、固定、更新、取消固定 | Shell 的 tile preference 与 `StartDocument` |
+
+`nmea:outputs` 兼容已有入口，连接内部负责读写选择。`settings:sources`、旧 sonar 和 data/trip 路由只作为旧链接迁移，不恢复已移除产品。
+
+## 系统接口与数据结构
+
+| 接口 | 输入 | 状态 / 输出 | 必须遵守 |
+| --- | --- | --- | --- |
+| `OsStore.open(destination)` | 应用根地址或对象地址 | Shell 命令 | 不直接给另一个 App 修改局部选中变量 |
+| `WpShellRuntime.open / dispatch / input` | 根入口、`LauncherAction`、`ShellInput` | `LauncherEngine.state` | 根入口重置该应用页面代次；最近任务用 ActivateTask |
+| `BindInternalAppInputHandler` | 当前画面的返回处理 | 是否消费按键 | `LocalInternalAppInputEnabled=false` 的离场画面不接键；内部工具/子页先处理 |
+| `LauncherAction.Open` | token、preserveCaller、replaceTaskRoute | 任务路径及可选一次调用关系 | 对象深链先回所属应用首页；普通入口不承接旧详情链 |
+| `TaskSnapshotStore.bind / captureCurrent / retain` | 任务、窗口、实际内容区域 | `TaskSnapshot(bitmap,capturedAt)` | 使用 PixelCopy，失败保持旧图；不拿假 UI 代替真实预览 |
+| `updateSystemPreferences` | 当前持久化状态的变换 | DataStore -> 全局偏好 | 原子更新，不写第二份业务设置 |
+| `OsStore.notify` | 中英正文、AppId、级别、详情地址、去重键 | `SystemNotice` | 全部通知留历史；关键异步业务明确传 app |
+| `SystemNotificationStore.open / close / remove / clearRead` | 通知中心操作 | 已读状态、最多 200 条记录 | 阅读/清除通知不确认警报、不停止值守 |
+| `formatDistance / Speed / Depth / Bearing / Angle / Temperature / Coordinates / Metric` | 内部规范数值 | 当前全局格式字符串 | 缺测显示 —；不伪造 0；不更改保存值 |
+| `formatLatitude / Longitude / parseCoordinate` | 当前格式与用户文字 | 十进制度或 null | 支持 DD/DMM/DMS，范围和方向校验，分秒不得 ≥60 |
+
+`SystemNotice` 字段：`id` 稳定通知身份；`app` 发布者；`chinese/english` 双语正文；`createdAt` UTC 毫秒；`severity` 信息/警告/警报；`destination` 可选明确对象；`read` 已读；`key` 去重语义键；`occurrences` 同一短时事件次数。新增领域警报与运行时服务反馈保存中英文原文。升级前已保存的单语历史保留当时原文，不凭空重译。
+
+`GeoPoint` 的 lat/lon 为 WGS84 十进制度。`Place` 包含 id/name/point/note/kind/collection，kind 为 MARK/ANCHORAGE/MARINA/HAZARD。`Route` 包含稳定 id、名称、有序 points；`navigationRoute` 是启动时冻结的版本，`displayedRouteId` 只是地图预览。保存与导航、显示不是同一动作。
+
+`LauncherPersistedState` 是 Shell 布局与偏好的唯一存储：`languageTag`、`themeModeName`、`accentName`、`measurementUnitSystemName`、`appPreferenceValues` 与 `document`。坐标格式和文字大小属于 appPreferenceValues 的 `preferences.coordinate.format`、`preferences.display.text_size`。界面中的 OsStore 字段只是响应式读模型。
+
+## 业务字段、事件、存储的细化
+
+- [海图、海图库、锚警接口与字段](CHART_INTERACTION_CONTRACT.md)：地图事件、原生渲染、文件优先级、渐隐轨迹与累计范围。
+- [航行与 NMEA 接口及数据约定](VOYAGE_AND_NMEA_CONTRACTS.md)：会话状态机、完整分享字段、逐 peer 防回送、关闭语义。
+- [仪表与应用磁贴契约](INSTRUMENT_TILE_CONTRACT.md)：数据质量、实时订阅、布局结构、样式与去重迁移。
+- [源码接口索引](API_INDEX.md)：生产入口、模型、接口与公开方法的实际声明位置；以链接代码为准。
+
+## 全屏与视觉资产
+
+内容背景铺满窗口；圆角半径与两侧切口决定边缘控件横向退让。`ShellSafeBands.statusSegments` 从实际 30 dp 高度中扣除中心/悬浮挖孔，状态栏与通知共用剩余横向区段，不整页下移。底部系统手势区域不额外推高虚拟键，软键盘另行抬升。不同厂商的曲面/挖孔信息存在硬件差异，模拟器结果不能替代所有真机。
+
+字体使用 Microsoft 公开发布的 [Selawik 1.01](https://github.com/microsoft/Selawik/releases/tag/1.01)，是官方开源 Segoe UI 替代字族，不宣称它就是 Segoe WP。授权文本随 APK 保存在 `assets/licenses/Selawik-OFL.txt`。中文由 Android CJK 字体回退；字体、大小、字重和行高在共用组件统一。WP 的参考依据继续使用仓库已确认的录屏与测量，不新增 Material 样式。
+
+## 诚实的实现边界
+
+海图磁贴的地图图像有捕获时间，实时船位/速度另行更新；没有启动一个后台地图渲染器制造“实时地图”。锚泊累计色块表示本次记录到的位置占用，不是测深、海底扫描或可航行水域。曲线是有限历史，完整回放依赖航行记录。声纳历史数据仅保留，当前不采集、不恢复。通知中心是 Yokuli 内部通知，不读取其他 Android App 的通知。真实硬件 GNSS、海上守望、设备兼容性仍需要用户后续实船体验。

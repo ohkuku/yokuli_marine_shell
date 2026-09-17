@@ -10,6 +10,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,27 +20,41 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Dialog
 import com.yokuli.marine.shell.rebuild.OsStore
+import com.yokuli.marine.core.design.WpFontFamily
+import com.yokuli.marine.core.design.LocalWpTextScale
+import com.yokuli.marine.core.design.wpTilt
+import com.yokuli.shell.compose.LocalInternalAppInputEnabled
 import kotlinx.coroutines.launch
 
 data class MetroColors(val bg: Color, val fg: Color, val muted: Color, val panel: Color, val accent: Color)
 val LocalMetro = staticCompositionLocalOf { MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(0xFF00ABA9)) }
-val LightFont=FontFamily(androidx.compose.ui.text.font.Typeface(android.graphics.Typeface.create("sans-serif-light",android.graphics.Typeface.NORMAL)))
+val LocalAppPage = staticCompositionLocalOf<String?> { null }
+val LightFont=WpFontFamily
+
+/** Android 返回与虚拟返回使用同一任务激活约束，离场画面和通知背后的页面不抢键。 */
+@Composable fun AppBackHandler(enabled:Boolean=true,onBack:()->Unit) {
+    androidx.activity.compose.BackHandler(enabled && LocalInternalAppInputEnabled.current,onBack)
+}
 
 @Composable fun MetroTheme(os: OsStore, content: @Composable ()->Unit) {
     val colors=if(os.light) MetroColors(Color(0xFFF7F7F5),Color(0xFF111111),Color(0xFF61615D),Color(0xFFE7E7E2),Color(os.accent))
         else MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(os.accent))
-    CompositionLocalProvider(LocalMetro provides colors) { Box(Modifier.fillMaxSize().background(colors.bg)) { content() } }
+    CompositionLocalProvider(LocalMetro provides colors, LocalWpTextScale provides when(os.textSize) {"COMPACT" -> .92f;"LARGE" -> 1.12f;else -> 1f}) { Box(Modifier.fillMaxSize().background(colors.bg)) { content() } }
 }
-@Composable fun Label(text: String, size: Int=18, color: Color=LocalMetro.current.fg, modifier: Modifier=Modifier, maxLines: Int=Int.MAX_VALUE, weight: FontWeight=FontWeight.Light) {
-    BasicText(text,modifier,style=TextStyle(color=color,fontSize=size.sp,fontFamily=LightFont,fontWeight=weight,lineHeight=(size*1.18).sp),maxLines=maxLines,overflow=TextOverflow.Ellipsis)
+@Composable fun Label(text: String, size: Int=18, color: Color=LocalMetro.current.fg, modifier: Modifier=Modifier, maxLines: Int=Int.MAX_VALUE, weight: FontWeight=if(size>=28) FontWeight.Light else FontWeight.Normal) {
+    val scale=LocalWpTextScale.current
+    BasicText(text,modifier,style=TextStyle(color=color,fontSize=(size*scale).sp,fontFamily=LightFont,fontWeight=weight,lineHeight=(size*scale*1.18).sp,textMotion=TextMotion.Animated),maxLines=maxLines,overflow=TextOverflow.Ellipsis)
 }
 @Composable fun Glyph(name: String, modifier: Modifier=Modifier.size(28.dp), color: Color=LocalMetro.current.fg) {
     Canvas(modifier) {
@@ -97,12 +113,18 @@ val LightFont=FontFamily(androidx.compose.ui.text.font.Typeface(android.graphics
     }
 }
 @Composable fun PageHeader(os:OsStore,title:String,app:String="YOKULI OS",trailing:(@Composable ()->Unit)?=null,onBack:(()->Unit)?=null) {
-    Column(Modifier.fillMaxWidth().padding(start=22.dp,end=16.dp,top=10.dp,bottom=14.dp)) {
+    val page=LocalAppPage.current ?: os.page
+    val owner=os.shell.appForPage(page)
+    val nested=onBack!=null || (owner!=null && os.shell.canonicalPage(page)!=owner.page)
+    val caption=if(app=="YOKULI OS") owner?.let {os.title(it.app)}.orEmpty() else app
+    Column(Modifier.fillMaxWidth().padding(start=22.dp,end=16.dp,top=8.dp,bottom=12.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically) {
+            if(nested) {
             Box(Modifier.size(44.dp).clickable { (onBack ?: os::back)() },contentAlignment=Alignment.CenterStart) {
                 Box(Modifier.size(30.dp).border(1.5.dp,LocalMetro.current.fg,androidx.compose.foundation.shape.CircleShape),contentAlignment=Alignment.Center) { Glyph("back",Modifier.size(20.dp)) }
             }
-            Label(app,12,weight=FontWeight.Medium,modifier=Modifier.weight(1f),maxLines=1)
+            }
+            Label(caption.uppercase(),12,weight=FontWeight.SemiBold,modifier=Modifier.weight(1f),maxLines=1)
             trailing?.invoke()
         }
         Label(title,46,modifier=Modifier.padding(top=6.dp),maxLines=2)
@@ -112,7 +134,8 @@ val LightFont=FontFamily(androidx.compose.ui.text.font.Typeface(android.graphics
     Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(horizontal=22.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(18.dp),content=content)
 }
 @Composable fun MenuRow(title:String,subtitle:String?=null,icon:String?=null,onClick:()->Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick=onClick).padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
+    val interaction=remember {MutableInteractionSource()}
+    Row(Modifier.fillMaxWidth().wpTilt(interaction).clickable(interactionSource=interaction,indication=null,onClick=onClick).padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
         if(icon!=null) { Box(Modifier.size(44.dp).background(LocalMetro.current.accent),contentAlignment=Alignment.Center) { Glyph(icon,color=Color.White) }; Spacer(Modifier.width(14.dp)) }
         Column(Modifier.weight(1f)) { Label(title,25); if(!subtitle.isNullOrBlank()) Label(subtitle,14,LocalMetro.current.muted,Modifier.padding(top=5.dp)) }
         Glyph("next",Modifier.size(18.dp),LocalMetro.current.muted)
@@ -120,20 +143,35 @@ val LightFont=FontFamily(androidx.compose.ui.text.font.Typeface(android.graphics
 }
 @Composable fun Field(label:String,value:String,onChange:(String)->Unit,number:Boolean=false,multiline:Boolean=false) {
     val c=LocalMetro.current
+    var focused by remember {mutableStateOf(false)}
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Label(label,14,c.muted)
-        BasicTextField(value,onChange,Modifier.fillMaxWidth().background(c.panel).border(1.dp,c.muted).padding(12.dp),
-            textStyle=TextStyle(color=c.fg,fontSize=21.sp,fontFamily=LightFont),cursorBrush=SolidColor(c.accent),singleLine=!multiline,
-            keyboardOptions=KeyboardOptions(keyboardType=if(number) KeyboardType.Number else KeyboardType.Text))
+        Label(label,16,c.muted)
+        BasicTextField(value,onChange,Modifier.fillMaxWidth().heightIn(min=46.dp).onFocusChanged {focused=it.isFocused}
+            .background(if(focused)Color.White else Color(0xFFE4E4E4)).border(2.dp,if(focused)c.accent else Color.Transparent).padding(horizontal=12.dp,vertical=9.dp),
+            textStyle=TextStyle(color=Color.Black,fontSize=(21*LocalWpTextScale.current).sp,fontFamily=LightFont),cursorBrush=SolidColor(c.accent),singleLine=!multiline,
+            keyboardOptions=KeyboardOptions(keyboardType=if(number) KeyboardType.Decimal else KeyboardType.Text))
     }
 }
 @Composable fun Toggle(title:String,checked:Boolean,subtitle:String?=null,enabled:Boolean=true,onChange:(Boolean)->Unit) {
-    Row(Modifier.fillMaxWidth().graphicsLayer { alpha=if(enabled) 1f else .4f }.clickable(enabled=enabled) { onChange(!checked) }.padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
+    val thumb by animateFloatAsState(if(checked)1f else 0f,label="switch-thumb")
+    Row(Modifier.fillMaxWidth().graphicsLayer { alpha=if(enabled) 1f else .4f }.toggleable(value=checked,enabled=enabled,role=Role.Switch,onValueChange=onChange).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end=12.dp)) { Label(title,23); if(subtitle!=null) Label(subtitle,14,LocalMetro.current.muted,Modifier.padding(top=5.dp)) }
         Box(Modifier.size(52.dp,26.dp).border(2.dp,LocalMetro.current.fg).padding(4.dp)) {
             if(checked) Box(Modifier.fillMaxSize().background(LocalMetro.current.accent))
-            Box(Modifier.width(12.dp).fillMaxHeight().align(if(checked) Alignment.CenterEnd else Alignment.CenterStart).background(LocalMetro.current.fg))
+            Box(Modifier.offset(x=(32*thumb).dp).width(12.dp).fillMaxHeight().background(LocalMetro.current.fg))
         }
+    }
+}
+/** WP 单选行：行本身可点选，状态由真实选中值决定，不用按钮颜色冒充单选。 */
+@Composable fun ChoiceRow(title:String,selected:Boolean,subtitle:String?=null,enabled:Boolean=true,onClick:()->Unit) {
+    val c=LocalMetro.current
+    Row(Modifier.fillMaxWidth().heightIn(min=52.dp).graphicsLayer {alpha=if(enabled)1f else .4f}
+        .selectable(selected=selected,enabled=enabled,role=Role.RadioButton,onClick=onClick).padding(vertical=8.dp),
+        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+        Box(Modifier.size(26.dp).border(2.dp,c.fg).padding(5.dp)) {
+            if(selected)Box(Modifier.fillMaxSize().background(c.accent))
+        }
+        Column(Modifier.weight(1f)) {Label(title,23);if(subtitle!=null)Label(subtitle,15,c.muted,Modifier.padding(top=4.dp))}
     }
 }
 @Composable fun Pivot(labels:List<String>,content:@Composable (Int)->Unit) {

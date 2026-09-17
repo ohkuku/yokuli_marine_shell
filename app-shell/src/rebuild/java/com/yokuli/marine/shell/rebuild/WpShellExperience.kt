@@ -57,9 +57,12 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
     val state by shell.engine.state.collectAsState()
     val savedTasks=rememberSaveableStateHolder()
     val savedKeys=remember {mutableMapOf<String,InternalAppTaskId>()}
-    LaunchedEffect(state.tasks.tasks.map {it.taskId}) {
+    LaunchedEffect(state.tasks.tasks.map {it.taskId},shell.entryGenerations.toMap()) {
         val open=state.tasks.tasks.map {it.taskId}.toSet()
-        savedKeys.keys.toList().filter {savedKeys[it] !in open}.forEach {savedTasks.removeState(it);savedKeys.remove(it)}
+        savedKeys.keys.toList().filter {key ->
+            val task=savedKeys[key]
+            task !in open || !key.startsWith("${task?.value}:${shell.entryGenerations[task] ?: 0}:")
+        }.forEach {savedTasks.removeState(it);savedKeys.remove(it)}
     }
     os.marine?.let { marine ->
         val settingsReady by remember(marine) { marine.vm.ui.map { it.settingsReady }.distinctUntilChanged() }.collectAsState(false)
@@ -71,10 +74,10 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                     "ANCHOR" -> "anchor"
                     "LOGBOOK" -> "voyages"
                     "INSTRUMENTS" -> "instruments"
-                    "SOURCES" -> "settings:sources"
+                    "SOURCES" -> "nmea:sources"
                     "NMEA" -> "nmea"
                     "LOCAL_NMEA" -> "local_nmea"
-                    "DEPTH" -> "chart:depth"
+                    "DEPTH" -> "chart"
                     else -> "settings"
                 })
             }
@@ -95,7 +98,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
     val colors = WpThemePolicy.resolve(theme).copy(accent = Color(os.accent))
     val metrics = rememberShellWindowMetrics()
     val systemMotionDisabled = rememberPlatformReducedMotion()
-    val reducedMotion = os.reduceMotion || systemMotionDisabled
+    val reducedMotion = systemMotionDisabled
     val motionProfile = WpReferenceProfiles.require(state.start.document.profileId).motion
     val timings = remember(motionProfile) {
         WpMotionTimings(
@@ -142,6 +145,8 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
             reveal = state.start.reveal,
             visualContributions = shell.apps.map { app -> tilePresentation(os,app,
                 animate=state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==app.entry}) } +
+                // 旧样式仍在兼容目录中，必须提供视觉声明以通过 Shell 契约校验；
+                // 应用列表/搜索另行只显示根入口，未固定样式不会启动动画。
                 shell.presets.map {preset -> presetTilePresentation(os,preset,
                     animate=state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==preset.entryId}) },
             searchResults = searchContributions(os, query ?: retainedQuery),
@@ -179,14 +184,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
             .semantics { testTagsAsResourceId = true }) {
             Box(Modifier.weight(1f)) {
                 Column(Modifier.fillMaxSize()) {
-                    Box {
-                        WpStatusStrip(windowMetrics = metrics)
-                        os.toast?.let { message ->
-                            Box(Modifier.matchParentSize().background(colors.background).padding(horizontal=18.dp),contentAlignment=Alignment.CenterStart) {
-                                Label(message,12,colors.accent,maxLines=1)
-                            }
-                        }
-                    }
+                    SystemStatusBar(os, metrics)
                     WpSurfaceTransitionHost(
                         targetState = state.motionTarget(),
                         transitionKind = when {
@@ -220,16 +218,18 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                                 if(!heavyContentReady && target.taskId==shell.coldOpeningTask && app!=null) AppLaunchCover(os,app)
                                 else if(!heavyContentReady && snapshot!=null) Image(snapshot.bitmap.asImageBitmap(),null,Modifier.fillMaxSize().background(colors.background),contentScale=ContentScale.Fit)
                                 else {
-                                    val stateKey="${target.taskId.value}:${target.token.value}"
+                                    val stateKey="${target.taskId.value}:${shell.entryGenerations[target.taskId] ?: 0}:${target.token.value}"
                                     SideEffect {savedKeys[stateKey]=target.taskId}
                                     savedTasks.SaveableStateProvider(stateKey) {
+                                        CompositionLocalProvider(LocalInternalAppInputEnabled provides (target==state.motionTarget() && heavyContentReady && !os.notifications.expanded),LocalAppPage provides page) {
                                         TaskCaptureHost(os,target.taskId,target.token.value,active=target==state.motionTarget() && heavyContentReady) {
                                             ShellAppContent(os,page,service)
+                                        }
                                         }
                                     }
                                 }
                             }
-                            ShellMotionTarget.Search -> WpSearchSurface(launcher, retainedQuery, launcherAction)
+                            ShellMotionTarget.Search -> WpSearchSurface(launcher.copy(entries=launcher.entries.filter {entry -> shell.apps.any {it.entry==entry.descriptor.entryId}}), retainedQuery, launcherAction)
                             ShellMotionTarget.Recents -> TaskSwitcher(
                                 os, state.tasks.tasks,
                                 onActivate = { dispatch(LauncherAction.ActivateTask(it.taskId)) },
@@ -239,6 +239,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                     }
                 }
                 SystemMarineAlerts(os)
+                NotificationCenter(os, Modifier.fillMaxSize())
             }
             if (os.storageError) Label(os.t("存储失败，改动尚未保存", "Storage error. Changes have not been saved."), 13, colors.warning, Modifier.padding(8.dp))
             key(state.surface, state.transient) {
@@ -263,11 +264,10 @@ private fun ShellAppContent(os: OsStore, page: String, service: (String, String?
         page == "voyages" -> LogbookScreen(os)
         page.substringBefore(':') in setOf("voyage","replay","report") -> LogbookScreen(os,page.substringAfter(':').toLongOrNull())
         page == "anchor" -> AnchorExperience(os)
-        page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os, service)
+        page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os, service, initialSources=page=="nmea:sources")
         page == "local_nmea" -> LocalNmeaScreen(os, service)
-        page == "tiles" -> TileLibraryScreen(os)
+        page == "tiles" || page.startsWith("tiles:") -> TileLibraryScreen(os,page.substringAfter(':', "").takeIf {it.isNotBlank()})
         page == "settings" || page.startsWith("settings:") -> SettingsScreen(os,page.substringAfter(':',"overview"))
-        page == "chart:depth" -> DepthSurveyScreen(os)
         else -> Column { PageHeader(os,os.t("页面已更新","page updated"));PageBody {
             Label(os.t("这个旧入口已不再使用。你的数据仍保留在所属应用中。","This older destination has moved. Your data remains in its app."),22)
             MetroButton(os.t("返回应用列表","open apps"),os::home,primary=true)

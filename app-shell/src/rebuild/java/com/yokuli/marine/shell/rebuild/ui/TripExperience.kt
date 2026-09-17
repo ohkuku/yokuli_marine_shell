@@ -25,6 +25,8 @@ import com.yokuli.anchorwatch.domain.report.TripReport
 import com.yokuli.anchorwatch.domain.report.ReportQuality
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
+import com.yokuli.marine.shell.rebuild.data.VoyagePhase
+import androidx.compose.ui.window.Dialog
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import kotlinx.coroutines.*
@@ -37,16 +39,18 @@ import java.util.Date
     val state by marine.vm.ui.collectAsState()
     var selected by rememberSaveable(initialVoyageId) { mutableStateOf(initialVoyageId) }
     var recording by remember { mutableStateOf(false) }
+    var marking by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val c = LocalMetro.current
-    val back = { if (selected != null) selected = null else os.back() }
-    BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && selected != null) { selected = null; true } else false }
+    val back:()->Unit = { if(initialVoyageId!=null&&selected==initialVoyageId)os.shell.popRoute() else if(selected!=null)selected=null }
+    BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && selected != null) { back(); true } else false }
+    AppBackHandler(selected!=null){back()}
     if (selected != null) {
         key(selected) { VoyageDetail(os, selected!!, back, { recording = true }) }
     } else Column(Modifier.fillMaxSize()) {
         PageHeader(os, os.t("航行日志", "logbook"))
         Pivot(listOf(os.t("本次航行", "this voyage"), os.t("所有航行", "all voyages"))) { page ->
-            if (page == 0) CurrentVoyage(os, { recording = true }, { selected = it })
+            if (page == 0) CurrentVoyage(os, { recording = true }, { selected = it }, {marking=true;recording=true})
             else {
                 val sessions = state.tripSessions.sortedByDescending { it.startedAt }.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
                 LazyColumn(Modifier.fillMaxSize().padding(horizontal = 22.dp), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -60,12 +64,13 @@ import java.util.Date
             }
         }
     }
-    if (recording) RecordingDialog(os) { recording = false }
+    if (recording) RecordingDialog(os,initialMarking=marking) { recording = false;marking=false }
 }
 
-@Composable private fun CurrentVoyage(os: OsStore, controls: () -> Unit, detail: (Long) -> Unit) {
+@Composable private fun CurrentVoyage(os: OsStore, controls: () -> Unit, detail: (Long) -> Unit,mark:()->Unit) {
     val marine = os.marine ?: return
     val state by marine.vm.ui.collectAsState()
+    val voyage by marine.voyage.collectAsState()
     val data by os.hub.state.collectAsState()
     val now = rememberMarineClock()
     val trip = state.activeTrip
@@ -75,14 +80,13 @@ import java.util.Date
         if (trip == null) {
             Label(os.t("下一次出发", "your next departure"), 39, c.accent)
             Label(os.t("记录走过的海面，也记住沿途的时刻。", "Keep the waters you travelled and the moments along the way."), 23)
-            Label(when { fix != null -> os.t("船位已准备好，可以开始记录。", "Position is ready to record."); os.positionSource == "none" -> os.t("先选择船位来源。没有船位时不会编造航迹。", "Choose a position source first. Missing positions never become invented tracks."); else -> os.t("等待所选来源提供有效船位。", "Waiting for a valid position from your selected source.") }, 18, c.muted)
+            Label(when { voyage.phase==VoyagePhase.STARTING->os.t("正在准备本次航行…","preparing this voyage…");fix != null -> os.t("船位已准备好，可以开始记录。", "Position is ready to record."); os.positionSource == "none" -> os.t("在 NMEA 的数据来源中开启船位后，即可记录航迹。", "Enable position in NMEA data sources to record a track."); else -> os.t("等待所选来源提供有效船位。", "Waiting for a valid position from your selected source.") }, 18, c.muted)
             if (state.active != null) Label(os.t("锚警继续值守，航行记录可以同时运行。", "The anchor watch continues while voyage recording runs."), 17, c.muted)
-            MetroButton(os.t("开始记录", "start recording"), controls, primary = true)
-            if (fix == null) MenuRow(os.t("船位来源", "position source"), os.t("手机 GPS 或已连接的 NMEA", "phone GPS or connected NMEA"), "locate") { os.open("settings:sources") }
+            MetroButton(if(voyage.commandPending)os.t("正在开始…","starting…")else os.t("开始航行", "start voyage"), controls, primary = true,enabled=!voyage.commandPending)
             state.tripSessions.firstOrNull { !it.active }?.let { last -> MenuRow(os.t("上次航行", "last voyage"), last.name + " · " + voyageDate(last.startedAt), "logbook") { detail(last.id) } }
         } else {
             val wall = System.currentTimeMillis()
-            val duration = ((if (trip.paused) trip.pausedAt ?: wall else wall) - trip.startedAt - trip.accumulatedPausedMillis).coerceAtLeast(0)
+            val duration = voyage.elapsedMillis(wall)
             Label(trip.name, 28)
             Label(os.formatDistance(trip.distanceMeters), 50, c.accent)
             Label(durationLabel(duration) + " · " + if (trip.paused) os.t("已暂停", "paused") else os.t("正在记录", "recording"), 26)
@@ -97,8 +101,12 @@ import java.util.Date
                 Column(Modifier.weight(1f)) { Label(os.formatSpeed(trip.maxSogKnots), 29); Label(os.t("最高航速", "top speed"), 15, c.muted) }
                 Column(Modifier.weight(1f)) { Label(trip.waypointCount.toString(), 29); Label(os.t("沿途时刻", "moments"), 15, c.muted) }
             }
-            MetroButton(os.t("记录控制", "recording controls"), controls, primary = true)
-            Label(os.t("在同一面板中暂停、继续、记录此刻或结束并保存。", "Pause, resume, mark a moment or finish and save in the same panel."), 16, c.muted)
+            MetroButton(if(trip.paused)os.t("继续航行记录","resume recording")else os.t("记录此刻","mark this moment"),if(trip.paused)({marine.resumeRecording()})else mark,primary=true,enabled=!voyage.commandPending)
+            Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                MetroButton(if(trip.paused)os.t("记录控制","recording controls")else os.t("暂停","pause"),if(trip.paused)controls else ({marine.pauseRecording()}),Modifier.weight(1f),enabled=!voyage.commandPending)
+                MetroButton(os.t("结束并保存","finish & save"),{marine.finishRecording()},Modifier.weight(1f),enabled=!voyage.commandPending)
+            }
+            MetroButton(os.t("在海图中查看","view on chart"),{os.open("chart")})
             MetroButton(os.t("查看本次航迹与报告", "view this track & report"), { detail(trip.id) })
         }
     }
@@ -114,8 +122,10 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
     var revision by remember(id) { mutableIntStateOf(0) }
     var sources by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
+    var renaming by remember { mutableStateOf(false) }
+    var editingMoment by remember {mutableStateOf<com.yokuli.anchorwatch.data.database.TripWaypointEntity?>(null)}
     val c = LocalMetro.current
-    LaunchedEffect(id, revision) {
+    LaunchedEffect(id, revision, state.activeTrip?.takeIf{it.id==id}?.sampleCount?.div(30)) {
         error = false
         try {
             loaded = withContext(Dispatchers.IO) {
@@ -140,8 +150,7 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
                 PageBody {
                     if (session.active) {
                         MetroButton(os.t("本次记录控制", "recording controls"), controls, primary = true)
-                        Label(os.t("以下快照更新于 ", "snapshot updated ") + voyageTime(content.loadedAt), 14, c.muted)
-                        MetroButton(os.t("更新快照", "refresh snapshot"), { revision++ })
+                        Label(os.t("自动更新于 ", "updated automatically ") + voyageTime(content.loadedAt), 14, c.muted)
                     }
                     when (page) {
                         0 -> VoyagePlayback(os, id, content) { sources = true }
@@ -154,6 +163,10 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
                                 Label(os.formatCoordinates(GeoPoint(point.latitude, point.longitude)), 20)
                                 if (point.note.isNotBlank()) Label(point.note, 22)
                                 Label(os.t("航速 ", "speed ") + os.formatSpeed(point.sogKnots) + " · " + os.t("水深 ", "depth ") + os.formatDepth(point.depthMeters), 17, c.muted)
+                                Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                    MetroButton(os.t("在海图中查看","view on chart"),{showVoyageOnChart(os,content,GeoPoint(point.latitude,point.longitude))},Modifier.weight(1f))
+                                    MetroButton(os.t("编辑笔记","edit note"),{editingMoment=point},Modifier.weight(1f))
+                                }
                             }
                             Label(os.t("记录事件", "recorded events"), 28)
                             if (content.map.events.isEmpty()) Label(os.t("没有记录事件。", "No recorded events."), 17, c.muted)
@@ -166,7 +179,10 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
                             Label(os.t("把这段航行带走", "take this voyage with you"), 30, c.accent)
                             Label(os.t("航迹适合地图与航海软件；数据文件保留实际读数、来源和事件，方便继续分析。", "Track files work with mapping and navigation apps. Data files retain actual readings, sources and events for further analysis."), 19)
                             listOf("GPX" to { marine.vm.exportTripGpx(session); Unit }, "KML" to { marine.vm.exportTripKml(session); Unit }, "KMZ" to { marine.vm.exportTripKmz(session); Unit }, os.t("全部样本 CSV", "all samples · CSV") to { marine.vm.exportTripCsv(session); Unit }, os.t("沿途时刻 CSV", "moments · CSV") to { marine.vm.exportTripWaypoints(session); Unit }, os.t("事件 CSV", "events · CSV") to { marine.vm.exportTripEvents(session); Unit }, os.t("自定义读数 CSV", "custom readings · CSV") to { marine.vm.exportTripCustomMetrics(session); Unit }, os.t("报告图片", "report image") to { marine.vm.shareTripReportSnapshot(session); Unit }, os.t("完整分析资料 ZIP", "analysis source · ZIP") to { marine.vm.exportTripAiSource(session); Unit }).forEach { (label, action) -> MetroButton(label, action) }
-                            if (!session.active) MetroButton(os.t("删除这次航行", "delete voyage"), { delete = true })
+                            if (!session.active) {
+                                MetroButton(os.t("重命名航行","rename voyage"),{renaming=true})
+                                MetroButton(os.t("删除这次航行", "delete voyage"), { delete = true })
+                            }
                         }
                     }
                 }
@@ -175,6 +191,27 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
     }
     if (sources) MapSourcePicker(os) { sources = false }
     if (delete && session != null && !session.active) ConfirmDialog(os, os.t("删除这次航行及其记录？此操作无法撤销。", "Delete this voyage and its recordings? This cannot be undone."), { delete = false }) { marine.vm.deleteTrip(session); delete = false; back() }
+    if(renaming&&session!=null)VoyageTextEditor(os,os.t("航行名称","voyage name"),session.name,null,{renaming=false}){name,_->marine.vm.renameTrip(id,name);renaming=false}
+    editingMoment?.let{moment->VoyageTextEditor(os,os.t("沿途时刻","voyage moment"),moment.name,moment.note,{editingMoment=null}){name,note->os.scope.launch{marine.vm.editTripMoment(moment,name,note.orEmpty()).join();revision++};editingMoment=null}}
+}
+
+@Composable private fun VoyageTextEditor(os:OsStore,title:String,initialName:String,initialNote:String?,dismiss:()->Unit,save:(String,String?)->Unit) {
+    var name by remember{mutableStateOf(initialName)};var note by remember{mutableStateOf(initialNote.orEmpty())}
+    Dialog(onDismissRequest=dismiss){Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
+        Label(title,30)
+        Field(os.t("名称","name"),name,{name=it.take(100)})
+        if(initialNote!=null)Field(os.t("笔记","note"),note,{note=it.take(2000)},multiline=true)
+        MetroButton(os.t("保存","save"),{save(name.trim(),note.takeIf{initialNote!=null})},primary=true,enabled=name.isNotBlank())
+        MetroButton(os.t("取消","cancel"),dismiss)
+    }}
+}
+
+private fun showVoyageOnChart(os:OsStore,content:VoyageContent,focus:GeoPoint?=null) {
+    val segments=content.map.segments.map{segment->segment.points.filter{it.hasPosition}.map{GeoPoint(it.latitude!!,it.longitude!!)}}.filter{it.isNotEmpty()}
+    os.maps.view("chart").previewTrack=segments
+    os.maps.view("chart").previewTitle=content.map.session?.name?:os.t("历史航行","saved voyage")
+    os.fitRequest=if(focus!=null)listOf(focus)else segments.flatten()
+    os.open("chart")
 }
 
 @Composable private fun VoyagePlayback(os: OsStore, id: Long, content: VoyageContent, sources: () -> Unit) {
@@ -207,6 +244,7 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
     MarineMap(os.maps, scene, view, Modifier.fillMaxWidth().height(290.dp), onEvent = { event ->
         if (event is MapEvent.ItemSelected && event.id.startsWith("moment-")) content.map.waypoints.firstOrNull { "moment-${it.id}" == event.id }?.let { time = it.timestamp.coerceIn(firstTime, lastTime); playing = false }
     })
+    MetroButton(os.t("在海图中查看这段航行","view voyage on chart"),{showVoyageOnChart(os,content)},enabled=all.isNotEmpty())
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         MetroButton(os.t("地图来源", "map source"), sources, Modifier.weight(1f))
         MetroButton(os.t("完整航迹", "fit track"), { view.fit(all) }, Modifier.weight(1f), enabled = all.isNotEmpty())

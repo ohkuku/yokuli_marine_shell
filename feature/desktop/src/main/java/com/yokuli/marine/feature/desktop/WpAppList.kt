@@ -52,7 +52,11 @@ fun WpAppList(
             entry,
             if (locale.language == "zh") entry.chineseIndex else entry.title.firstOrNull()?.uppercaseChar() ?: '#',
         )
-    }.sortedWith { left, right -> collator.compare(left.entry.title, right.entry.title) }
+    }.sortedWith { left, right ->
+        // 中英文混合名称先按跳转字母分组，组内再按当前语言排序；NMEA 不应落在 Y 之后。
+        val group = left.index.compareTo(right.index)
+        if (group != 0) group else collator.compare(left.entry.title, right.entry.title)
+    }
     val groups = indexed.groupBy { it.index }
     val letters = groups.keys.sorted()
     val listState = rememberLazyListState()

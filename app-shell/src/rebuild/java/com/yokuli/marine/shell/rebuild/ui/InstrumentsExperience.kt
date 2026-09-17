@@ -10,16 +10,23 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.yokuli.anchorwatch.MarineContentTheme
-import com.yokuli.anchorwatch.VesselSpatialInstrument
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.zIndex
+import com.yokuli.shell.compose.BindInternalAppInputHandler
+import com.yokuli.shell.contract.ShellInput
 import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.anchorwatch.location.vessel.DeviceBowAxis
 import com.yokuli.marine.shell.rebuild.*
-import com.yokuli.marine.shell.rebuild.data.Reading
-import com.yokuli.shell.contract.MeasurementUnitSystem
 import java.util.Locale
 
-/** Instruments consume the shared vessel observations; opening the app never selects a position source. */
+/** 中文：仪表只消费全局观测；布局属于仪表应用，船位来源和航行会话属于系统。 */
 @Composable fun InstrumentsScreen(os: OsStore) {
     val marine = os.marine ?: return
     val state by marine.vm.ui.collectAsState()
@@ -27,112 +34,209 @@ import java.util.Locale
     val data by os.hub.state.collectAsState()
     val now = rememberMarineClock()
     val owner = LocalLifecycleOwner.current
-    var selected by remember { mutableStateOf<InstrumentTileId?>(null) }
-    var mounting by remember { mutableStateOf(false) }
-    var chooseTiles by remember { mutableStateOf(false) }
+    var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    var mounting by rememberSaveable { mutableStateOf(false) }
+    var chooseTiles by rememberSaveable { mutableStateOf(false) }
+    // 中文：选择弹窗独立编辑草稿；快速连续选择不依赖异步 DataStore 回流。
+    var pickerTileNames by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var editing by rememberSaveable { mutableStateOf(false) }
     var trend by rememberSaveable { mutableStateOf("sog") }
     val c = LocalMetro.current
+    fun closeLayer(): Boolean = when {
+        mounting -> { mounting = false; true }
+        chooseTiles -> { chooseTiles = false; true }
+        selected != null -> { selected = null; true }
+        editing -> { editing = false; true }
+        else -> false
+    }
+    BindInternalAppInputHandler { input -> input == ShellInput.BACK && closeLayer() }
+    AppBackHandler(mounting || chooseTiles || selected != null || editing) { closeLayer() }
     DisposableEffect(marine, owner) {
         fun update() = marine.vm.setTripLiveDisplayActive(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
         val observer = LifecycleEventObserver { _, _ -> update() }
         owner.lifecycle.addObserver(observer); update()
         onDispose { owner.lifecycle.removeObserver(observer); marine.vm.setTripLiveDisplayActive(false) }
     }
+    fun saveLayout(layout: List<InstrumentTileId>) {
+        marine.vm.updateVesselDataSettings(marine.vm.ui.value.vesselSettings.copy(customLayout = layout.distinct()))
+    }
     Column(Modifier.fillMaxSize()) {
         PageHeader(os, os.t("仪表", "instruments"))
-        Pivot(listOf(os.t("航行", "navigation"), os.t("帆航", "sailing"), os.t("空间", "spatial"), os.t("趋势", "trends"), os.t("我的仪表", "my instruments"))) { page ->
-            PageBody {
+        Pivot(listOf(os.t("航行", "navigation"), os.t("帆航", "sailing"), os.t("姿态", "attitude"), os.t("趋势", "trends"), os.t("我的", "mine"))) { page ->
+            if (page == 4) {
+                InstrumentBoard(os, state.vesselData, state.vesselSettings.customLayout, now, editing,
+                    edit = { editing = !editing }, add = {
+                        pickerTileNames = marine.vm.ui.value.vesselSettings.customLayout.map { it.name }
+                        chooseTiles = true
+                    }, save = ::saveLayout,
+                    select = { selected = it.name })
+            } else PageBody {
                 if (state.settings.demoMode) Label(os.t("演示 · 模拟读数", "DEMO · simulated readings"), 17, c.accent)
                 when (page) {
-                    0, 1 -> {
-                        val tiles = if (page == 0) state.vesselSettings.navLayout else state.vesselSettings.sailingLayout
-                        InstrumentGrid(os, state.vesselData, tiles, now) { selected = it }
-                        MenuRow(os.t("读数从哪里来", "where readings come from"), os.t("查看各来源并选择船位或固定某项读数", "inspect sources, select position or pin a measurement"), "connect") { os.open("settings:sources") }
+                    0 -> {
+                        MarineCompass(os, state.vesselData)
+                        InstrumentGrid(os, state.vesselData, state.vesselSettings.navLayout.filterNot { it in setOf(InstrumentTileId.HEADING, InstrumentTileId.COG) }, now) { selected = it.name }
+                    }
+                    1 -> {
+                        WindRose(os, state.vesselData)
+                        InstrumentGrid(os, state.vesselData, listOf(InstrumentTileId.BOAT_SPEED, InstrumentTileId.VMG, InstrumentTileId.SOG, InstrumentTileId.HEEL), now) { selected = it.name }
                     }
                     2 -> {
-                        MarineContentTheme(os.chinese, c.accent, os.light) {
-                            VesselSpatialInstrument(state, locked = false, confirmFrame = { mounting = true }, pauseAttitude = { marine.vm.pauseTripAttitude() })
-                        }
-                        InstrumentGrid(os, state.vesselData, listOf(InstrumentTileId.ROLL_RATE, InstrumentTileId.PITCH_RATE, InstrumentTileId.ROLL_PERIOD, InstrumentTileId.MOTION_SCORE), now) { selected = it }
-                        Label(os.t("手机必须固定在船体上，姿态才代表船体运动。取下或移动手机后，请暂停姿态并重新确认安装。", "Mount the phone on the boat for its attitude to represent vessel motion. After moving it, pause attitude and confirm the mounting again."), 17, c.muted)
-                        MetroButton(os.t("确认手机安装", "confirm phone mounting"), { mounting = true }, enabled = state.activeTrip?.paused != true)
-                        MetroButton(os.t("手机顶部方向设为船首向", "use phone top direction as heading"), { marine.vm.alignPhoneHeadingToBow() })
-                        MetroButton(os.t("用 NMEA 船首向对齐手机", "align phone with NMEA heading"), { marine.vm.alignPhoneHeadingToNmea() })
+                        AttitudeHorizon(os, state.vesselData)
+                        InstrumentGrid(os, state.vesselData, listOf(InstrumentTileId.ROLL_RATE, InstrumentTileId.PITCH_RATE, InstrumentTileId.ROLL_PERIOD, InstrumentTileId.MOTION_SCORE), now) { selected = it.name }
+                        Label(os.t("固定手机并确认零点后，横倾和纵倾才代表船体姿态。", "Secure the phone and confirm zero so heel and pitch represent your boat."), 17, c.muted)
+                        MetroButton(os.t("安装与校准", "mount & calibrate"), { mounting = true })
                         state.vesselCalibrationFeedback?.let { feedback ->
                             Label(when (feedback) {
                                 "Trip attitude frame confirmed." -> os.t("姿态零点已确认。", feedback)
-                                "No rotation-vector sample is available on this phone." -> os.t("当前手机没有可用的旋转向量样本。", feedback)
-                                "Resume the trip before confirming a new attitude segment." -> os.t("请先继续航行记录，再确认新的姿态零点。", feedback)
-                                "Trip attitude capture paused. Heading, GPS and pressure continue." -> os.t("姿态已暂停，船首向、GPS 与气压继续。", feedback)
+                                "No rotation-vector sample is available on this phone." -> os.t("当前手机没有可用的姿态传感器。", feedback)
+                                "Resume the trip before confirming a new attitude segment." -> os.t("请先继续航行，再确认姿态零点。", feedback)
+                                "Trip attitude capture paused. Heading, GPS and pressure continue." -> os.t("姿态采集已暂停。", feedback)
                                 "Trip attitude capture resumed." -> os.t("姿态采集已继续。", feedback)
                                 else -> feedback
-                            }, 18, c.accent)
-                            MetroButton(os.t("关闭提示", "dismiss"), { marine.vm.clearVesselCalibrationFeedback() })
+                            }, 17, c.accent)
                         }
                     }
                     3 -> {
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                            listOf("sog", "depth", "aws", "tws", "pressure").forEach { metric -> Label(metricName(os, metric), 22, if (metric == trend) c.accent else c.muted, Modifier.clickable { trend = metric }.padding(vertical = 8.dp)) }
+                            listOf("sog", "aws", "tws", "pressure").forEach { metric -> Label(metricName(os, metric), 24, if (metric == trend) c.fg else c.muted, Modifier.clickable { trend = metric }.padding(vertical = 8.dp)) }
                         }
-                        val current = data.readings[trend]?.takeIf { it.fresh(now) }?.displayed(os)
-                        Label(current?.let { "${decimal(it.value)} ${it.unit}" } ?: "—", 48, c.accent)
-                        ReadingTrace(os, history[trend].orEmpty().map { it.displayed(os) }, trend, now)
-                        Label(os.t("最近 15 分钟的真实样本。断线和来源切换保留为空隙；没有收到的数据不会补成零。", "Actual samples from the last 15 minutes. Gaps and source changes stay visible; missing readings never become zero."), 17, c.muted)
-                        InstrumentGrid(os, state.vesselData, state.vesselSettings.weatherLayout, now) { selected = it }
-                    }
-                    else -> {
-                        if (state.vesselSettings.customLayout.isEmpty()) {
-                            Label(os.t("只看你关心的读数", "the readings that matter to you"), 32, c.accent)
-                            Label(os.t("把常用的读数放在一起。布局会保留，下次打开直接看到它们。", "Keep your favourite readings together. Your layout is saved for the next visit."), 21)
-                        } else InstrumentGrid(os, state.vesselData, state.vesselSettings.customLayout, now) { selected = it }
-                        MetroButton(os.t("选择仪表", "choose instruments"), { chooseTiles = true }, primary = true)
+                        val current = data.readings[trend]?.takeIf { it.fresh(now) }
+                        Label(os.formatMetric(trend, current?.value), 48, c.accent)
+                        ReadingTrace(os, history[trend].orEmpty(), trend, now)
+                        Label(os.t("最近 15 分钟 · 拖动查看当时的读数与来源", "last 15 minutes · drag to inspect a reading and its source"), 16, c.muted)
+                        InstrumentGrid(os, state.vesselData, state.vesselSettings.weatherLayout, now) { selected = it.name }
                     }
                 }
             }
         }
     }
-    selected?.let { tile ->
+    selected?.let { name -> InstrumentTileId.entries.firstOrNull { it.name == name } }?.let { tile ->
         val value = instrumentValue(os, state.vesselData, tile)
         Dialog(onDismissRequest = { selected = null }) {
-            Column(Modifier.fillMaxWidth().background(c.bg).border(1.dp, c.muted).verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(17.dp)) {
-                Label(instrumentName(os, tile), 29)
-                Label(value.text, if (tile == InstrumentTileId.POSITION) 23 else 46, c.accent)
+            Column(Modifier.fillMaxWidth().background(c.bg).border(2.dp, c.fg).verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(17.dp)) {
+                Label(instrumentName(os, tile), 32)
+                InstrumentGauge(os, state.vesselData, tile)
+                Label(value.text, if (tile == InstrumentTileId.POSITION) 23 else 48, c.accent)
                 Label(observationStatus(os, value.observation, now), 18)
+                Label(os.t("来源", "source"), 14, c.muted)
                 Label(value.observation.sourceIdentity?.displayName ?: sourceName(os, value.observation.source), 21)
-                value.observation.conflict?.let { Label(os.t("来源之间存在差异；可在设置中检查并固定来源。", "Sources disagree. Inspect them or pin a source in settings."), 17, c.muted) }
-                if (tile == InstrumentTileId.UKC) Label(os.t("龙骨下余量使用共享吃水资料；未设置吃水时不计算。", "Under-keel clearance uses the shared draft. It is unavailable until draft is set."), 17, c.muted)
-                MetroButton(os.t("来源设置", "source settings"), { selected = null; os.open("settings:sources") })
-                MetroButton(os.t("完成", "done"), { selected = null })
+                value.observation.conflict?.let { Label(os.t("多个来源的读数有差异。可在 NMEA 的数据来源中检查。", "Sources disagree. Inspect their readings in NMEA data sources."), 17, c.muted) }
+                if (tile == InstrumentTileId.UKC) Label(os.t("龙骨下余量根据水深与船舶吃水计算。", "Under-keel clearance uses measured depth and your boat's draft."), 17, c.muted)
+                if (tile !in state.vesselSettings.customLayout) MetroButton(os.t("添加到我的仪表", "add to my instruments"), { saveLayout(state.vesselSettings.customLayout + tile) })
+                MetroButton(os.t("完成", "done"), { selected = null }, primary = true)
             }
         }
     }
     if (mounting) {
-        var axis by remember { mutableStateOf(DeviceBowAxis.TOP) }
+        var axis by rememberSaveable { mutableStateOf(DeviceBowAxis.TOP) }
         Dialog(onDismissRequest = { mounting = false }) {
-            Column(Modifier.fillMaxWidth().background(c.bg).border(1.dp, c.muted).verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(17.dp)) {
-                Label(os.t("确认安装", "confirm mounting"), 32)
-                Label(os.t("将手机牢固固定在船上，并让船体保持你要作为零点的姿态。手机哪一边朝向船艏？", "Secure the phone to the boat, with the vessel in the attitude you want as zero. Which phone edge faces the bow?"), 20)
-                DeviceBowAxis.entries.forEach { choice -> MetroButton(when (choice) { DeviceBowAxis.TOP -> os.t("顶部", "top"); DeviceBowAxis.BOTTOM -> os.t("底部", "bottom"); DeviceBowAxis.LEFT -> os.t("左侧", "left"); DeviceBowAxis.RIGHT -> os.t("右侧", "right") }, { axis = choice }, primary = axis == choice) }
-                MetroButton(os.t("确认姿态零点", "confirm attitude zero"), { marine.vm.confirmTripAttitudeFrame(axis); mounting = false }, enabled = state.activeTrip?.paused != true)
+            Column(Modifier.fillMaxWidth().background(c.bg).border(2.dp, c.fg).verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(17.dp)) {
+                Label(os.t("安装与校准", "mount & calibrate"), 32)
+                Label(os.t("固定手机，让船保持作为零点的姿态。选择朝向船艏的手机边缘。", "Secure the phone with the boat at your chosen zero attitude. Select the phone edge facing the bow."), 20)
+                DeviceBowAxis.entries.forEach { choice ->
+                    InstrumentChoice(when (choice) { DeviceBowAxis.TOP -> os.t("顶部", "top"); DeviceBowAxis.BOTTOM -> os.t("底部", "bottom"); DeviceBowAxis.LEFT -> os.t("左侧", "left"); DeviceBowAxis.RIGHT -> os.t("右侧", "right") }, axis == choice) { axis = choice }
+                }
+                MetroButton(os.t("确认姿态零点", "confirm attitude zero"), { marine.vm.confirmTripAttitudeFrame(axis); mounting = false }, primary = true, enabled = state.activeTrip?.paused != true)
+                MetroButton(os.t("手机顶部对齐船首向", "align heading with phone top"), { marine.vm.alignPhoneHeadingToBow() })
+                MetroButton(os.t("用 NMEA 船首向校准", "calibrate heading from NMEA"), { marine.vm.alignPhoneHeadingToNmea() })
+                MetroButton(os.t("暂停姿态采集", "pause attitude capture"), { marine.vm.pauseTripAttitude(); mounting = false })
                 MetroButton(os.t("取消", "cancel"), { mounting = false })
             }
         }
     }
     if (chooseTiles) Dialog(onDismissRequest = { chooseTiles = false }) {
-        Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).background(c.bg).border(1.dp, c.muted).padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Label(os.t("我的仪表", "my instruments"), 31)
+        Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).background(c.bg).border(2.dp, c.fg).padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Label(os.t("添加仪表", "add instruments"), 32)
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                InstrumentTileId.entries.forEach { tile -> Toggle(instrumentName(os, tile), tile in state.vesselSettings.customLayout) { add ->
-                    val previous = marine.vm.ui.value.vesselSettings
-                    marine.vm.updateVesselDataSettings(previous.copy(customLayout = if (add) (previous.customLayout + tile).distinct() else previous.customLayout - tile))
-                } }
+                InstrumentTileId.entries.forEach { tile ->
+                    InstrumentChoice(instrumentName(os, tile), tile.name in pickerTileNames) {
+                        pickerTileNames = if (tile.name in pickerTileNames) pickerTileNames - tile.name else pickerTileNames + tile.name
+                    }
+                }
             }
-            MetroButton(os.t("完成", "done"), { chooseTiles = false }, primary = true)
+            MetroButton(os.t("完成", "done"), {
+                saveLayout(pickerTileNames.mapNotNull { name -> InstrumentTileId.entries.firstOrNull { it.name == name } })
+                chooseTiles = false
+            }, primary = true)
+            MetroButton(os.t("取消", "cancel"), { chooseTiles = false })
         }
     }
 }
 
-private fun Reading.displayed(os: OsStore): Reading = if (unit == "kn" && os.measurementUnits == MeasurementUnitSystem.METRIC) copy(value = value * 1.852, unit = "km/h") else this
+@Composable private fun InstrumentChoice(title: String, selected: Boolean, onClick: () -> Unit) {
+    val c = LocalMetro.current
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(15.dp)) {
+        Box(Modifier.size(24.dp).border(2.dp, c.fg).padding(5.dp)) { if (selected) Box(Modifier.fillMaxSize().background(c.accent)) }
+        Label(title, 22)
+    }
+}
+
+/** 中文：编辑时在本地重排，拖动结束一次性保存；稳定的枚举 ID 保证读数不会跟随位置串位。 */
+@Composable private fun InstrumentBoard(os: OsStore, data: VesselDataSnapshot, saved: List<InstrumentTileId>, now: Long, editing: Boolean, edit: () -> Unit, add: () -> Unit, save: (List<InstrumentTileId>) -> Unit, select: (InstrumentTileId) -> Unit) {
+    val c = LocalMetro.current
+    var order by remember(saved) { mutableStateOf(saved.distinct()) }
+    var dragging by remember { mutableStateOf<InstrumentTileId?>(null) }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val currentOrder by rememberUpdatedState(order)
+    val currentSave by rememberUpdatedState(save)
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 22.dp), contentPadding = PaddingValues(bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetroButton(os.t("添加", "add"), add, Modifier.weight(1f), primary = true)
+                if (order.isNotEmpty()) MetroButton(if (editing) os.t("完成", "done") else os.t("排列", "arrange"), edit, Modifier.weight(1f))
+            }
+            if (editing && order.isNotEmpty()) Label(os.t("长按仪表拖动排序，也可使用上移和下移。", "hold and drag to reorder, or use move up / down"), 15, c.muted, Modifier.padding(top = 12.dp))
+            if (order.isEmpty()) {
+                Spacer(Modifier.height(35.dp))
+                Label(os.t("你的驾驶台", "your helm"), 36)
+                Label(os.t("把常看的仪表放在一起。选择、移除与顺序都会保存。", "Keep the instruments you use together. Your selection and order are saved."), 21, c.muted, Modifier.padding(top = 14.dp))
+            }
+        }
+        items(order, key = { it.name }) { tile ->
+            var rowHeight by remember { mutableIntStateOf(1) }
+            val value = instrumentValue(os, data, tile)
+            val isDragging = dragging == tile
+            Column(Modifier.fillMaxWidth().zIndex(if (isDragging) 1f else 0f)
+                .graphicsLayer { translationY = if (isDragging) dragOffset else 0f; alpha = if (isDragging) .86f else 1f }
+                .background(if (isDragging) c.panel else c.bg)
+                .onSizeChanged { rowHeight = it.height }
+                .then(if (editing) Modifier.pointerInput(tile, editing) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { dragging = tile; dragOffset = 0f },
+                        onDragEnd = { currentSave(currentOrder); dragging = null; dragOffset = 0f },
+                        onDragCancel = { currentSave(currentOrder); dragging = null; dragOffset = 0f },
+                    ) { change, amount ->
+                        change.consume(); dragOffset += amount.y
+                        val index = currentOrder.indexOf(tile)
+                        val step = rowHeight + 16.dp.toPx()
+                        val direction = when { dragOffset > step * .6f -> 1; dragOffset < -step * .6f -> -1; else -> 0 }
+                        val next = index + direction
+                        if (direction != 0 && next in currentOrder.indices) {
+                            order = currentOrder.toMutableList().apply { removeAt(index); add(next, tile) }
+                            dragOffset -= step * direction
+                        }
+                    }
+                } else Modifier.clickable { select(tile) }).padding(vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Label(instrumentName(os, tile), 22, modifier = Modifier.weight(1f))
+                    if (editing) Label("≡", 32, c.muted)
+                }
+                Label(value.text, if (tile == InstrumentTileId.POSITION) 22 else 46, if (value.observation.freshness == VesselDataFreshness.FRESH) c.accent else c.muted)
+                InstrumentGauge(os, data, tile)
+                Label(observationStatus(os, value.observation, now), 13, c.muted)
+                if (editing) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    val index = order.indexOf(tile)
+                    if (index > 0) Label(os.t("上移", "up"), 17, c.accent, Modifier.clickable { val changed = order.toMutableList().apply { removeAt(index); add(index - 1, tile) }; order = changed; save(changed) }.padding(vertical = 8.dp))
+                    if (index < order.lastIndex) Label(os.t("下移", "down"), 17, c.accent, Modifier.clickable { val changed = order.toMutableList().apply { removeAt(index); add(index + 1, tile) }; order = changed; save(changed) }.padding(vertical = 8.dp))
+                    Spacer(Modifier.weight(1f))
+                    Label(os.t("移除", "remove"), 17, c.muted, Modifier.clickable { val changed = order - tile; order = changed; save(changed) }.padding(vertical = 8.dp))
+                }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(c.muted.copy(alpha = .2f)))
+            }
+        }
+    }
+}
 
 @Composable private fun InstrumentGrid(os: OsStore, data: VesselDataSnapshot, tiles: List<InstrumentTileId>, now: Long, select: (InstrumentTileId) -> Unit) {
     val c = LocalMetro.current
@@ -143,6 +247,7 @@ private fun Reading.displayed(os: OsStore): Reading = if (unit == "kn" && os.mea
                 Column(Modifier.weight(1f).clickable { select(tile) }.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Label(instrumentName(os, tile), 16, c.muted)
                     Label(value.text, if (tile == InstrumentTileId.POSITION) 18 else 34, if (value.observation.freshness == VesselDataFreshness.FRESH) c.fg else c.muted)
+                    InstrumentGauge(os, data, tile)
                     Label(observationStatus(os, value.observation, now), 12, c.muted)
                 }
             }
@@ -155,41 +260,43 @@ private data class InstrumentValue(val text: String, val observation: VesselObse
 private fun instrumentValue(os: OsStore, d: VesselDataSnapshot, tile: InstrumentTileId): InstrumentValue {
     fun <T> value(o: VesselObservation<T>, format: (T) -> String): InstrumentValue = InstrumentValue(o.value?.takeIf { o.freshness == VesselDataFreshness.FRESH }?.let(format) ?: "—", o)
     fun number(o: VesselObservation<Double>, unit: String = "°") = value(o) { if (it.isFinite()) String.format(Locale.US, "%.1f%s", it, unit) else "—" }
+    fun bearing(o: VesselObservation<Double>) = value(o, os::formatBearing)
+    fun angle(o: VesselObservation<Double>) = value(o, os::formatAngle)
     fun speed(o: VesselObservation<Double>) = value(o, os::formatSpeed)
     fun depth(o: VesselObservation<Double>) = value(o, os::formatDepth)
     fun distance(o: VesselObservation<Double>) = value(o) { os.formatDistance(it * 1852.0) }
     return when (tile) {
         InstrumentTileId.SOG -> speed(d.sogKnots)
-        InstrumentTileId.COG -> number(d.cogTrueDegrees)
-        InstrumentTileId.HEADING -> number(d.headingTrueDegrees)
+        InstrumentTileId.COG -> bearing(d.cogTrueDegrees)
+        InstrumentTileId.HEADING -> bearing(d.headingTrueDegrees)
         InstrumentTileId.DEPTH -> depth(d.depthMeters)
         InstrumentTileId.UKC -> depth(d.derived.underKeelClearanceMeters)
         InstrumentTileId.POSITION -> value(d.position) { os.formatCoordinates(GeoPoint(it.latitude, it.longitude)) }
         InstrumentTileId.BOAT_SPEED -> speed(d.speedThroughWaterKnots)
         InstrumentTileId.TRUE_WIND_SPEED -> speed(d.trueWind.speedKnots)
-        InstrumentTileId.TRUE_WIND_DIRECTION -> number(d.trueWind.directionDegrees)
-        InstrumentTileId.TRUE_WIND_ANGLE -> number(d.trueWind.angleDegrees)
+        InstrumentTileId.TRUE_WIND_DIRECTION -> bearing(d.trueWind.directionDegrees)
+        InstrumentTileId.TRUE_WIND_ANGLE -> angle(d.trueWind.angleDegrees)
         InstrumentTileId.APPARENT_WIND_SPEED -> speed(d.apparentWind.speedKnots)
-        InstrumentTileId.APPARENT_WIND_ANGLE -> number(d.apparentWind.angleDegrees)
-        InstrumentTileId.HEEL -> value(d.attitude) { "${decimal(it.heelDegrees)}°" }
-        InstrumentTileId.PITCH -> value(d.attitude) { "${decimal(it.pitchDegrees)}°" }
+        InstrumentTileId.APPARENT_WIND_ANGLE -> angle(d.apparentWind.angleDegrees)
+        InstrumentTileId.HEEL -> value(d.attitude) { os.formatAngle(it.heelDegrees) }
+        InstrumentTileId.PITCH -> value(d.attitude) { os.formatAngle(it.pitchDegrees) }
         InstrumentTileId.ROLL_RATE -> value(d.attitude) { "${decimal(it.rollRateDegreesPerSecond)}°/s" }
         InstrumentTileId.PITCH_RATE -> value(d.attitude) { "${decimal(it.pitchRateDegreesPerSecond)}°/s" }
         InstrumentTileId.ROLL_PERIOD -> value(d.motion) { it.dominantRollPeriodSeconds?.let { p -> "${decimal(p)} s" } ?: "—" }
         InstrumentTileId.MOTION_SCORE -> value(d.motion) { decimal(it.score) }
         InstrumentTileId.IMPACT_COUNT -> value(d.motion) { it.impactCandidateCount.toString() }
-        InstrumentTileId.PRESSURE -> number(d.pressureHpa, " hPa")
+        InstrumentTileId.PRESSURE -> value(d.pressureHpa) { os.formatMetric("pressure", it) }
         InstrumentTileId.PRESSURE_TREND_1H -> number(d.derived.pressureTrend1hHpa, " hPa")
         InstrumentTileId.PRESSURE_TREND_3H -> number(d.derived.pressureTrend3hHpa, " hPa")
         InstrumentTileId.PRESSURE_TREND_6H -> number(d.derived.pressureTrend6hHpa, " hPa")
         InstrumentTileId.RATE_OF_TURN -> number(d.rateOfTurnDegreesPerMinute, "°/min")
-        InstrumentTileId.RUDDER_ANGLE -> number(d.rudderAngleDegrees)
-        InstrumentTileId.WATER_TEMPERATURE -> number(d.waterTemperatureCelsius, "°C")
-        InstrumentTileId.AIR_TEMPERATURE -> number(d.airTemperatureCelsius, "°C")
-        InstrumentTileId.CURRENT_SET -> number(d.currentSetTrueDegrees)
+        InstrumentTileId.RUDDER_ANGLE -> angle(d.rudderAngleDegrees)
+        InstrumentTileId.WATER_TEMPERATURE -> value(d.waterTemperatureCelsius, os::formatTemperature)
+        InstrumentTileId.AIR_TEMPERATURE -> value(d.airTemperatureCelsius, os::formatTemperature)
+        InstrumentTileId.CURRENT_SET -> bearing(d.currentSetTrueDegrees)
         InstrumentTileId.CURRENT_DRIFT -> speed(d.currentDriftKnots)
         InstrumentTileId.CROSS_TRACK_ERROR -> value(d.crossTrackErrorNauticalMiles) { val side = if (it < 0) "−" else ""; side + os.formatDistance(kotlin.math.abs(it) * 1852.0) }
-        InstrumentTileId.WAYPOINT_BEARING -> number(d.waypointBearingTrueDegrees)
+        InstrumentTileId.WAYPOINT_BEARING -> bearing(d.waypointBearingTrueDegrees)
         InstrumentTileId.WAYPOINT_DISTANCE -> distance(d.waypointDistanceNauticalMiles)
         InstrumentTileId.TOTAL_LOG -> distance(d.totalLogNauticalMiles)
         InstrumentTileId.TRIP_LOG -> distance(d.tripLogNauticalMiles)

@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Stable user identity is independent from endpoint edits and socket generations. */
+/** 用户连接的持久身份不随 IP、端口修改或重连代次改变；每条连接可独立接收、发送或双向。 */
 data class NmeaConnectionSpec(
     val id:String=java.util.UUID.randomUUID().toString(),
     val name:String="NMEA",
@@ -28,11 +28,16 @@ data class NmeaConnectionSpec(
     val autoReconnect:Boolean=true,
     val requireChecksum:Boolean=true,
     val priority:Int=0,
+    /** 此目的地允许分享的能力；空集合为全部关闭，null 兼容旧版本。 */
+    val capabilities:Set<String>?=null,
 ) {
     fun profile()=ConnectionProfile(name,protocol,host,port,requireChecksum,autoReconnect,stableId=id,localPort=if(receive)localPort else 0)
 }
+/** SYSTEM 编码全局选中的数据；PHONE 仅手机能力；RAW 按输入连接转发原始数据。 */
 enum class NmeaFeed { SYSTEM, PHONE, RAW }
+/** 原始报文携带实际发件人和连接代次，能力筛选与防回送不能丢弃这些来源信息。 */
 data class NmeaRawFrame(val connectionId:String,val generation:Long,val peer:String,val sentence:String,val receivedElapsedRealtime:Long)
+/** 连接实况：requested 是用户意图，state 是传输事实，writtenSentences 只计真正写出。 */
 data class NmeaConnectionSnapshot(
     val spec:NmeaConnectionSpec,
     val requested:Boolean=false,
