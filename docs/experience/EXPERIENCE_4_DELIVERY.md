@@ -50,3 +50,7 @@
 [海图与守锚详细矩阵](CHART_ANCHOR_REVIEW_2026-09-18.md) · [接口拓扑](../product/OS_INTERFACE_TOPOLOGY.md) · [声明索引](../product/API_INDEX.md)
 
 控件语义参考微软 [Toggle 指引](https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/toggles)、[Windows Phone 8 Pivot](https://learn.microsoft.com/en-us/previous-versions/windows/apps/ff941137(v=vs.105))。字族使用仓库中有许可证的 Selawik，中文由系统字体回退；不把兼容实现描述为微软原生控件。
+
+## 0.5.0-experience.4.1 键位纠正
+
+此前误将通知放在中间 Home 键。现明确为左侧返回（长按最近任务）、中间 Home 回开始屏幕、右侧通知中心（替换搜索）。通知展开时 Home 直接回开始屏幕，Back 仅收起通知。系统收到硬件 Search 键时同样打开通知，应用内搜索命令仍保留。顶部下拉手势未恢复。版本代码 8。本轮只做本地编译，push 后 CI 自行运行，不等待结果。

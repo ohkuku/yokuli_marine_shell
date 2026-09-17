@@ -253,8 +253,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                 WpSystemKeyBar(
                     windowMetrics = metrics,
                     onInput = shell::input,
-                    centerKey = WpSystemCenterKey.NOTIFICATIONS,
-                    onCenterClick = os.notifications::toggle,
+                    onNotificationsClick = os.notifications::toggle,
                 )
             }
         }

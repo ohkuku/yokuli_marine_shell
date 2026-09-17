@@ -60,11 +60,6 @@ import com.yokuli.shell.compose.LauncherEntryUiState
 
 private val DerivedVirtualKeyBarHeight = 54.dp
 
-enum class WpSystemCenterKey {
-    BRIDGE,
-    NOTIFICATIONS,
-}
-
 /**
  * The recording proves only the Back/Start/Search glyph family. The on-screen
  * height and Android platform haptic are DERIVED_UNVERIFIED product adaptations;
@@ -75,8 +70,7 @@ fun WpSystemKeyBar(
     windowMetrics: ShellWindowMetrics,
     onInput: (ShellInput) -> Unit,
     modifier: Modifier = Modifier,
-    centerKey: WpSystemCenterKey = WpSystemCenterKey.BRIDGE,
-    onCenterClick: (() -> Unit)? = null,
+    onNotificationsClick: (() -> Unit)? = null,
 ) {
     val bands = ShellSafeBands.resolve(windowMetrics)
     val density = windowMetrics.density.coerceAtLeast(1f)
@@ -100,28 +94,17 @@ fun WpSystemKeyBar(
             onLongClick = { onInput(ShellInput.RECENTS) },
         ) { BackGlyph() }
         SystemKey(
-            label = stringResource(
-                if (centerKey == WpSystemCenterKey.NOTIFICATIONS) {
-                    R.string.system_notifications
-                } else {
-                    R.string.system_bridge
-                },
-            ),
-            tag = if (centerKey == WpSystemCenterKey.NOTIFICATIONS) {
-                "virtual-key-notifications"
-            } else {
-                "virtual-key-bridge"
-            },
-            onClick = { onCenterClick?.invoke() ?: onInput(ShellInput.DESKTOP) },
-        ) {
-            if (centerKey == WpSystemCenterKey.NOTIFICATIONS) NotificationGlyph()
-            else CompassBridgeGlyph()
-        }
+            label = stringResource(R.string.system_bridge),
+            tag = "virtual-key-bridge",
+            onClick = { onInput(ShellInput.DESKTOP) },
+        ) { CompassBridgeGlyph() }
         SystemKey(
-            label = stringResource(R.string.system_search),
-            tag = "virtual-key-search",
-            onClick = { onInput(ShellInput.SEARCH) },
-        ) { SearchGlyph() }
+            label = stringResource(if (onNotificationsClick != null) R.string.system_notifications else R.string.system_search),
+            tag = if (onNotificationsClick != null) "virtual-key-notifications" else "virtual-key-search",
+            onClick = { onNotificationsClick?.invoke() ?: onInput(ShellInput.SEARCH) },
+        ) {
+            if (onNotificationsClick != null) NotificationGlyph() else SearchGlyph()
+        }
     }
 }
 

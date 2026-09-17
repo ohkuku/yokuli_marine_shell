@@ -59,8 +59,8 @@
 | `fun onWindowFocusChanged` | [MainActivity.kt:68](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L68) |
 | `fun onResume` | [MainActivity.kt:69](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L69) |
 | `fun dispatchKeyEvent` | [MainActivity.kt:71](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L71) |
-| `fun onPause` | [MainActivity.kt:84](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L84) |
-| `fun onDestroy` | [MainActivity.kt:85](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L85) |
+| `fun onPause` | [MainActivity.kt:85](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L85) |
+| `fun onDestroy` | [MainActivity.kt:86](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L86) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MarineNoticeBridge.kt
 
@@ -175,13 +175,13 @@
 | 声明 | 实现位置 |
 | --- | --- |
 | `fun OsExperience` | [WpShellExperience.kt:55](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L55) |
-| `fun ShellAppIcon` | [WpShellExperience.kt:292](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L292) |
-| `fun getResources` | [WpShellExperience.kt:352](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L352) |
-| `fun onChange` | [WpShellExperience.kt:383](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L383) |
-| `object Launcher : ShellMotionTarget` | [WpShellExperience.kt:394](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L394) |
-| `object Search : ShellMotionTarget` | [WpShellExperience.kt:395](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L395) |
-| `object Recents : ShellMotionTarget` | [WpShellExperience.kt:396](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L396) |
-| `class App` | [WpShellExperience.kt:397](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L397) |
+| `fun ShellAppIcon` | [WpShellExperience.kt:291](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L291) |
+| `fun getResources` | [WpShellExperience.kt:351](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L351) |
+| `fun onChange` | [WpShellExperience.kt:382](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L382) |
+| `object Launcher : ShellMotionTarget` | [WpShellExperience.kt:393](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L393) |
+| `object Search : ShellMotionTarget` | [WpShellExperience.kt:394](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L394) |
+| `object Recents : ShellMotionTarget` | [WpShellExperience.kt:395](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L395) |
+| `class App` | [WpShellExperience.kt:396](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L396) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt
 

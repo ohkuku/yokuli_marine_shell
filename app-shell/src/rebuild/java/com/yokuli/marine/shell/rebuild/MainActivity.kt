@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
             }
         } else if (event.action == KeyEvent.ACTION_UP) {
             if (input == ShellInput.BACK && longBackConsumed) longBackConsumed = false
+            else if (input == ShellInput.SEARCH) os.notifications.toggle()
             else os.shell.input(input)
         }
         return true
