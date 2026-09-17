@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 object NmeaChecksum {
  fun validate(line:String, required:Boolean=true):Boolean {
-  val s=line.trim(); if(!s.startsWith("$")) return false
+  val s=line.trim(); if(s.firstOrNull() !in setOf('$','!')) return false
   val star=s.indexOf('*'); if(star<0) return !required
   if(star+2>=s.length) return false
   var value=0; for(i in 1 until star) value=value xor s[i].code
@@ -25,8 +25,8 @@ class NmeaStreamSplitter(private val maxLength:Int=1024) {
  fun feed(bytes:ByteArray,count:Int=bytes.size):List<String> = feed(String(bytes,0,count,Charsets.US_ASCII))
  fun feed(chunk:String):List<String> {
   buffer.append(chunk); val result=mutableListOf<String>()
-  while(true){ val nl=buffer.indexOf("\n"); if(nl<0) break; val line=buffer.substring(0,nl).trimEnd('\r'); buffer.delete(0,nl+1); if(line.startsWith("$")&&line.length<=maxLength) result+=line }
-  if(buffer.length>maxLength){ val start=buffer.lastIndexOf("$"); val tail=if(start>=0) buffer.substring(start) else ""; buffer.clear().append(tail) }
+  while(true){ val nl=buffer.indexOf("\n"); if(nl<0) break; val line=buffer.substring(0,nl).trimEnd('\r'); buffer.delete(0,nl+1); if(line.firstOrNull() in setOf('$','!')&&line.length<=maxLength) result+=line }
+  if(buffer.length>maxLength){ val start=maxOf(buffer.lastIndexOf("$"),buffer.lastIndexOf("!")); val tail=if(start>=0&&buffer.length-start<=maxLength) buffer.substring(start) else ""; buffer.clear().append(tail) }
   return result
  }
 }

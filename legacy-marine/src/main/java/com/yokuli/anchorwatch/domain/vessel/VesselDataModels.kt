@@ -129,6 +129,12 @@ data class VesselDataSnapshot(
     val candidates:Map<VesselMetricId,List<VesselSourceCandidate<*>>> = emptyMap(),
     val conflicts:Map<VesselMetricId,VesselSourceConflict> = emptyMap(),
     val generatedElapsedRealtime:Long=0L,
+    /** 姿态各字段独立选源；不能用某个字段的更新替另一个续命。 */
+    val heelDegrees:VesselObservation<Double> = VesselObservation(),
+    val pitchDegrees:VesselObservation<Double> = VesselObservation(),
+    val rollRateDegreesPerSecond:VesselObservation<Double> = VesselObservation(),
+    val pitchRateDegreesPerSecond:VesselObservation<Double> = VesselObservation(),
+    val yawRateDegreesPerSecond:VesselObservation<Double> = VesselObservation(),
 )
 
 object VesselSourceSelector {

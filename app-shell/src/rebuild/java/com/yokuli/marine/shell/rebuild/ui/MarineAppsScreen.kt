@@ -66,7 +66,7 @@ import java.util.Date
                 MetroButton(if(voyage.commandPending)os.t("正在开始…","starting…")else os.t("开始记录","start recording"),{
                     marine.startRecording(name.trim(),motion&&canMotion);onDismiss()
                 },primary=true,enabled=!voyage.commandPending && name.isNotBlank() && os.positionSource in listOf("phone","nmea"))
-                if(os.positionSource=="none") Label(os.t("还没有选择船位。在 NMEA 的“数据来源”中开启手机 GPS 或船载来源。","No position source is selected. Enable phone GPS or a boat source under NMEA → data sources."),17,LocalMetro.current.muted)
+                if(os.positionSource=="none") Label(os.t("还没有选择船位。在“数据共享”的“手机”中开启定位，或在“船联网”选择船载来源。","No position source is selected. Enable location in data sharing → phone, or choose a boat source in boat network."),17,LocalMetro.current.muted)
             } else {
                 Label(os.formatDistance(active.distanceMeters),40,LocalMetro.current.accent)
                 MetroButton(if(active.paused) os.t("继续记录","resume recording") else os.t("暂停记录","pause recording"),{

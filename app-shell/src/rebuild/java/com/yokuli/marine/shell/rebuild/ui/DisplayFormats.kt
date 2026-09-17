@@ -29,11 +29,18 @@ fun OsStore.formatTemperature(celsius: Double?): String = celsius?.takeIf { it.i
 /** 读数的键映射内部规范单位；界面禁止把 raw unit 与转换后的值混在一起。 */
 fun OsStore.formatMetric(key: String, value: Double?): String = when(key.lowercase()) {
     "sog", "aws", "tws", "bsp", "stw", "vmg", "vmc", "current_drift" -> formatSpeed(value)
-    "cog", "heading", "twd", "current_set" -> formatBearing(value)
+    "cog", "heading", "twd", "current_set", "waypoint_bearing" -> formatBearing(value)
     "awa", "twa", "heel", "pitch", "rudder" -> formatAngle(value)
     "depth", "ukc" -> formatDepth(value)
     "water", "air", "temperature" -> formatTemperature(value)
     "pressure" -> value?.takeIf {it.isFinite()}?.let {"%.0f hPa".format(Locale.US,it)} ?: "—"
+    "pressure_1h", "pressure_3h", "pressure_6h" -> value?.takeIf {it.isFinite()}?.let {"%+.1f hPa".format(Locale.US,it)} ?: "—"
+    "roll_rate", "pitch_rate" -> value?.takeIf {it.isFinite()}?.let {"%.1f°/s".format(Locale.US,it)} ?: "—"
+    "rot" -> value?.takeIf {it.isFinite()}?.let {"%.1f°/min".format(Locale.US,it)} ?: "—"
+    "roll_period" -> value?.takeIf {it.isFinite()}?.let {"%.1f s".format(Locale.US,it)} ?: "—"
+    "waypoint_distance", "total_log", "trip_log" -> formatDistance(value?.times(1852.0))
+    "xte" -> value?.takeIf {it.isFinite()}?.let { (if(it<0) "−" else "") + formatDistance(abs(it)*1852.0) } ?: "—"
+    "impacts" -> value?.takeIf {it.isFinite()}?.roundToInt()?.toString() ?: "—"
     else -> com.yokuli.marine.shell.rebuild.decimal(value)
 }
 fun OsStore.formatCoordinates(point: GeoPoint): String {

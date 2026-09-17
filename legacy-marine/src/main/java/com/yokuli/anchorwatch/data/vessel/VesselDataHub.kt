@@ -40,6 +40,8 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default);private val _snapshot=MutableStateFlow(VesselDataSnapshot());val snapshot=_snapshot.asStateFlow()
     private var boatPosition=VesselObservation<VesselPosition>();private var phonePosition=VesselObservation<VesselPosition>();private var sog=VesselObservation<Double>();private var cog=VesselObservation<Double>();private var speedThroughWater=VesselObservation<Double>();private var boatHeading=VesselObservation<Double>();private var magneticHeading=VesselObservation<Double>();private var phoneHeadingValue=VesselObservation<Double>();private var phoneMagneticHeadingValue=VesselObservation<Double>();private var depthValue=VesselObservation<Double>();private var trueWindSpeed=VesselObservation<Double>();private var trueWindDirection=VesselObservation<Double>();private var trueWindAngle=VesselObservation<Double>();private var apparentWindSpeed=VesselObservation<Double>();private var apparentWindAngle=VesselObservation<Double>();private var attitudeValue=VesselObservation<VesselAttitude>();private var motionValue=VesselObservation<VesselMotion>();private var pressureValue=VesselObservation<Double>();private var rateOfTurn=VesselObservation<Double>();private var rudderAngle=VesselObservation<Double>();private var waterTemperature=VesselObservation<Double>();private var airTemperature=VesselObservation<Double>();private var currentSet=VesselObservation<Double>();private var currentDrift=VesselObservation<Double>();private var crossTrackError=VesselObservation<Double>();private var waypointBearing=VesselObservation<Double>();private var waypointDistance=VesselObservation<Double>();private var destinationWaypoint=VesselObservation<String>();private var totalLog=VesselObservation<Double>();private var tripLog=VesselObservation<Double>();private val motionAnalyzer=VesselMotionAnalyzer()
     private val connectionPriorities={navigation.connectionPriorities()}
+    private val displayObservations=mutableMapOf<VesselMetricId,VesselObservation<*>>()
+    private val derivedDisplay=mutableMapOf<VesselMetricId,VesselObservation<Double>>()
     private val arbitrator=VesselSourceArbitrator();private val trueWindHysteresis=TrueWindSourceHysteresis()
     @Volatile private var positionPreference=VesselSourcePreference.AUTO;@Volatile private var headingPreference=VesselSourcePreference.AUTO
     @Volatile private var metricSourcePins:Map<String,String> = emptyMap()
@@ -50,12 +52,12 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
     init{
         scope.launch{positions.boat.collect{boatPosition=it}};scope.launch{positions.phone.collect{phonePosition=it}}
         scope.launch{positions.acceptedPhoneFix.collect{fix->
-            sourceRegistry.removeSources(setOf(PHONE_GNSS_ID.id))
+            if(fix==null)sourceRegistry.removeSources(setOf(PHONE_GNSS_ID.id))
             if(fix!=null){
                 val candidates=buildList<VesselSourceCandidate<*>>{
                     add(VesselSourceCandidate(VesselMetricId.POSITION,VesselPosition(fix.latitude,fix.longitude,fix.altitudeMeters,fix.horizontalAccuracyMeters,fix.satellites,fix.hdop),PHONE_GNSS_ID,VesselSourceClass.PHONE_GNSS,receivedElapsedRealtime=fix.receivedElapsedRealtime,observedAtUtcMillis=fix.timestampUtcMillis,provenance=VesselProvenance.PhoneSensor("Android GNSS")))
-                    fix.sogKnots?.let{add(VesselSourceCandidate(VesselMetricId.SOG,it,PHONE_GNSS_ID,VesselSourceClass.PHONE_GNSS,receivedElapsedRealtime=fix.receivedElapsedRealtime,provenance=VesselProvenance.PhoneSensor("Android GNSS")))}
-                    fix.cogTrueDegrees?.let{add(VesselSourceCandidate(VesselMetricId.COG,it,PHONE_GNSS_ID,VesselSourceClass.PHONE_GNSS,VesselReference.TrueNorth,fix.receivedElapsedRealtime,provenance=VesselProvenance.PhoneSensor("Android GNSS")))}
+                    fix.sogKnots?.let{add(VesselSourceCandidate(VesselMetricId.SOG,it,PHONE_GNSS_ID,VesselSourceClass.PHONE_GNSS,receivedElapsedRealtime=fix.sogReceivedElapsedRealtime?:fix.receivedElapsedRealtime,provenance=VesselProvenance.PhoneSensor("Android GNSS")))}
+                    fix.cogTrueDegrees?.let{add(VesselSourceCandidate(VesselMetricId.COG,it,PHONE_GNSS_ID,VesselSourceClass.PHONE_GNSS,VesselReference.TrueNorth,fix.cogReceivedElapsedRealtime?:fix.receivedElapsedRealtime,provenance=VesselProvenance.PhoneSensor("Android GNSS")))}
                 }
                 sourceRegistry.publishAll(candidates)
             }
@@ -102,13 +104,25 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
             numeric(NmeaFieldSemantic.TRUE_WIND_DIRECTION)?.let{trueWindDirection=fieldObservation(it,it.value!!)}
             textual(NmeaFieldSemantic.DESTINATION_WAYPOINT)?.let{destinationWaypoint=fieldObservation(it,it.text!!)}
         }}
-        scope.launch{settings.settings.collect{value->positionPreference=value.positionPreference;metricSourcePins=value.metricSourcePins;headingPreference=value.headingPreference;pinnedPositionSourceId=value.pinnedPositionSourceId?.let(VesselSourcePinPolicy::normalize);pinnedHeadingSourceId=value.boatHeadingSourceId?.let(VesselSourcePinPolicy::normalize);allowPinnedFallback=value.allowPinnedFallback;vesselDraftMeters=value.draftMeters?:0.0;navigation.pinBoatHeadingSource(pinnedHeadingSourceId?.substringAfterLast(':'),allowPinnedFallback)}}
+        scope.launch{settings.settings.collect{value->
+            synchronized(this@VesselDataHub){
+                val positionPin=value.pinnedPositionSourceId?.let(VesselSourcePinPolicy::normalize)
+                val headingPin=value.boatHeadingSourceId?.let(VesselSourcePinPolicy::normalize)
+                if(positionPreference!=value.positionPreference||headingPreference!=value.headingPreference||metricSourcePins!=value.metricSourcePins||pinnedPositionSourceId!=positionPin||pinnedHeadingSourceId!=headingPin||allowPinnedFallback!=value.allowPinnedFallback){
+                    displayObservations.clear();derivedDisplay.clear()
+                }
+                positionPreference=value.positionPreference;metricSourcePins=value.metricSourcePins
+                headingPreference=value.headingPreference;pinnedPositionSourceId=positionPin;pinnedHeadingSourceId=headingPin
+                allowPinnedFallback=value.allowPinnedFallback;vesselDraftMeters=value.draftMeters?:0.0
+            }
+            navigation.pinBoatHeadingSource(pinnedHeadingSourceId?.substringAfterLast(':'),allowPinnedFallback)
+        }}
         scope.launch{while(isActive){publish(SystemClock.elapsedRealtime());delay(250)}}
     }
     @Synchronized fun hasFreshPhonePosition(now:Long)=classify(phonePosition,now,3_000,10_000).let{it.value!=null&&it.freshness==VesselDataFreshness.FRESH}
     @Synchronized fun setTripPositionPreference(value:VesselSourcePreference?){/* Recording never changes the system source. */}
     @Volatile private var shellPositionSource=GpsDataSource.NONE
-    @Synchronized fun setShellPositionSource(source:GpsDataSource){shellPositionSource=source;arbitrator.reset();publish(SystemClock.elapsedRealtime())}
+    @Synchronized fun setShellPositionSource(source:GpsDataSource){if(shellPositionSource!=source){derivedDisplay.clear();listOf(VesselMetricId.POSITION,VesselMetricId.SOG,VesselMetricId.COG).forEach(displayObservations::remove)};shellPositionSource=source;arbitrator.reset();publish(SystemClock.elapsedRealtime())}
     @Synchronized private fun publish(now:Long){
         val effectivePositionPreference=when(shellPositionSource){GpsDataSource.NMEA->VesselSourcePreference.BOAT;GpsDataSource.SYSTEM,GpsDataSource.DEMO->VesselSourcePreference.PHONE;GpsDataSource.NONE->VesselSourcePreference.DERIVED}
         // Output reads its own accepted Phone fix directly. Starting Phone TX
@@ -134,7 +148,7 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
         val derivedWind=if(preferredWind?.reference==TrueWindReference.EXTERNAL)TrueWindResolver.resolve(freshValue(freshAws),freshValue(freshAwa),null,null,null,freshValue(freshStw),freshValue(selectedHeading),freshValue(freshSog),freshValue(freshCog),freshAws.receivedElapsedRealtime,freshAwa.receivedElapsedRealtime,null,null,null,freshStw.receivedElapsedRealtime,selectedHeading.receivedElapsedRealtime,freshSog.receivedElapsedRealtime,freshCog.receivedElapsedRealtime)else preferredWind
         val resolvedWind=trueWindHysteresis.select(preferredWind,derivedWind,now)
         fun resolvedWindField(field:ResolvedWindField,value:Double?):VesselObservation<Double>{
-            if(value==null)return VesselObservation()
+            if(value==null)return when(field){ResolvedWindField.SPEED->externalTws;ResolvedWindField.DIRECTION->externalTwd;ResolvedWindField.ANGLE->externalTwa}
             val sourceClass=when(resolvedWind?.reference){TrueWindReference.EXTERNAL->VesselSourceClass.BOAT_NMEA;TrueWindReference.WATER->VesselSourceClass.DERIVED_WATER;TrueWindReference.GROUND->VesselSourceClass.DERIVED_GROUND;null->VesselSourceClass.NONE}
             val externalDirect=when(field){
                 ResolvedWindField.SPEED->externalTws.takeIf{resolvedWind?.speedProvenance=="external true-wind speed"}
@@ -156,12 +170,15 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
             val detail=externalDirect?.provenanceDetail?:VesselProvenance.Derived(fieldProvenance?:"true wind resolver",inputs.mapNotNull{it.sourceIdentity}.distinctBy{it.id})
             return VesselObservation(value,sourceClass.toLegacySource(),receivedElapsedRealtime=received,quality=if(externalDirect!=null)VesselDataQuality.GOOD else VesselDataQuality.DEGRADED,freshness=VesselDataFreshness.FRESH,provenance=fieldProvenance,sourceIdentity=externalDirect?.sourceIdentity?:DERIVED_WIND_ID,sourceClass=sourceClass,reference=when(field){ResolvedWindField.DIRECTION->VesselReference.TrueNorth;ResolvedWindField.ANGLE->VesselReference.VesselRelative;ResolvedWindField.SPEED->when(resolvedWind?.reference){TrueWindReference.WATER->VesselReference.WaterReferenced;TrueWindReference.GROUND->VesselReference.GroundReferenced;else->null}},provenanceDetail=detail)
         }
-        val freshTwa=resolvedWindField(ResolvedWindField.ANGLE,resolvedWind?.angleDegrees);val freshTwd=resolvedWindField(ResolvedWindField.DIRECTION,resolvedWind?.directionTrueDegrees);val freshTws=resolvedWindField(ResolvedWindField.SPEED,resolvedWind?.speedKnots)
+        val freshTwa=retainDerived(VesselMetricId.TRUE_WIND_ANGLE,resolvedWindField(ResolvedWindField.ANGLE,resolvedWind?.angleDegrees));val freshTwd=retainDerived(VesselMetricId.TRUE_WIND_DIRECTION,resolvedWindField(ResolvedWindField.DIRECTION,resolvedWind?.directionTrueDegrees));val freshTws=retainDerived(VesselMetricId.TRUE_WIND_SPEED,resolvedWindField(ResolvedWindField.SPEED,resolvedWind?.speedKnots))
         // Never combine a water-relative angle with ground-relative speed. Prefer
         // water VMG (STW/TWA); only fall back to a fully ground-referenced vector.
-        val vmg=VmgReferencePolicy.calculate(freshStw.value,freshTwa.value,freshSog.value,freshCog.value,freshTwd.value)?.let{result->projectedSpeed(result.knots,0.0,now,result.provenance)}?:VesselObservation()
-        val vmc=projectedSpeed(freshSog.value,freshCog.value?.let{course->freshWaypointBearing.value?.let{bearing->signedAngle(course-bearing)}},now,"SOG × cos(COG-bearing)")
-        val estimatedCurrent=estimateCurrent(freshSog.value,freshCog.value,freshStw.value,selectedHeading.value,now)
+        val vmg=retainDerived(VesselMetricId.VMG_WIND,VmgReferencePolicy.calculate(freshValue(freshStw),freshValue(freshTwa),freshValue(freshSog),freshValue(freshCog),freshValue(freshTwd))?.let{result->derivedReading(result.knots,if(result.provenance.startsWith("STW"))listOf(freshStw,freshTwa)else listOf(freshSog,freshCog,freshTwd),result.provenance)}?:VesselObservation())
+        val vmcValue=projectedSpeed(freshValue(freshSog),freshValue(freshCog)?.let{course->freshValue(freshWaypointBearing)?.let{bearing->signedAngle(course-bearing)}},now,"SOG × cos(COG-bearing)")
+        val vmc=retainDerived(VesselMetricId.VMC_WAYPOINT,vmcValue.value?.let{derivedReading(it,listOf(freshSog,freshCog,freshWaypointBearing),"SOG × cos(COG-bearing)")}?:VesselObservation())
+        val currentValues=estimateCurrent(freshValue(freshSog),freshValue(freshCog),freshValue(freshStw),freshValue(selectedHeading),now)
+        val currentInputs=listOf(freshSog,freshCog,freshStw,selectedHeading)
+        val estimatedCurrent=retainDerived(VesselMetricId.CURRENT_SET,currentValues?.first?.value?.let{derivedReading(it,currentInputs,"ground velocity minus water velocity: set")}?:VesselObservation()) to retainDerived(VesselMetricId.CURRENT_DRIFT,currentValues?.second?.value?.let{derivedReading(it,currentInputs,"ground velocity minus water velocity: drift")}?:VesselObservation())
         val selectedMagnetic=selectionObservation(registrySelection<Double>(VesselMetricId.HEADING_MAGNETIC,headingPreference,pinnedHeadingSourceId,now))?:VesselObservation<Double>()
         val deviceTrue=selectionObservation(registrySelection<Double>(VesselMetricId.DEVICE_HEADING_TRUE,VesselSourcePreference.PHONE,null,now))?:VesselObservation();val deviceMagnetic=selectionObservation(registrySelection<Double>(VesselMetricId.DEVICE_HEADING_MAGNETIC,VesselSourcePreference.PHONE,null,now))?:VesselObservation()
         val sourceSnapshot=sourceRegistry.snapshot.value
@@ -173,7 +190,9 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
         }
         val evaluatedCandidates=sourceSelections.mapValues{(_,selection)->selection.candidates}
         val conflicts=sourceSelections.mapNotNull{(metric,selection)->selection.conflict.takeIf{it.active}?.let{metric to it}}.toMap()
-        _snapshot.value=VesselDataSnapshot(position=selectedPosition,sogKnots=freshSog,cogTrueDegrees=freshCog,headingTrueDegrees=selectedHeading,headingMagneticDegrees=selectedMagnetic,depthMeters=classifiedDepth,speedThroughWaterKnots=freshStw,trueWind=VesselWindObservation(freshTws,freshTwd,freshTwa),apparentWind=VesselWindObservation(freshAws,VesselObservation(),freshAwa),attitude=classify(attitudeValue,now,1_000,5_000),motion=classify(motionValue,now,2_000,10_000),pressureHpa=classifiedPressure,rateOfTurnDegreesPerMinute=selectedMetric(VesselMetricId.RATE_OF_TURN,rateOfTurn,5_000,30_000),rudderAngleDegrees=selectedMetric(VesselMetricId.RUDDER_ANGLE,rudderAngle,5_000,30_000),waterTemperatureCelsius=selectedMetric(VesselMetricId.WATER_TEMPERATURE,waterTemperature,30_000,5*60_000),airTemperatureCelsius=selectedMetric(VesselMetricId.AIR_TEMPERATURE,airTemperature,30_000,5*60_000),currentSetTrueDegrees=selectedMetric(VesselMetricId.CURRENT_SET,currentSet,10_000,60_000),currentDriftKnots=selectedMetric(VesselMetricId.CURRENT_DRIFT,currentDrift,10_000,60_000),crossTrackErrorNauticalMiles=selectedMetric(VesselMetricId.XTE,crossTrackError,10_000,60_000),waypointBearingTrueDegrees=selectionObservation(registrySelection(VesselMetricId.WAYPOINT_BEARING,VesselSourcePreference.AUTO,null,now))?:freshWaypointBearing,waypointDistanceNauticalMiles=selectedMetric(VesselMetricId.WAYPOINT_DISTANCE,waypointDistance,10_000,60_000),destinationWaypoint=selectionObservation(registrySelection(VesselMetricId.DESTINATION_WAYPOINT,VesselSourcePreference.AUTO,null,now))?:VesselObservation<String>(),totalLogNauticalMiles=selectedMetric(VesselMetricId.TOTAL_LOG,totalLog,30_000,5*60_000),tripLogNauticalMiles=selectedMetric(VesselMetricId.TRIP_LOG,tripLog,30_000,5*60_000),derived=VesselDerivedSnapshot(underKeelClearanceMeters=ukc,headingCogDifferenceDegrees=headingCog,pressureTrend1hHpa=pressureTrend(60*60_000L),pressureTrend3hHpa=pressureTrend(3*60*60_000L),pressureTrend6hHpa=pressureTrend(6*60*60_000L),vmgToWindKnots=vmg,vmcToWaypointKnots=vmc,estimatedCurrentSetTrueDegrees=estimatedCurrent?.first?:VesselObservation(),estimatedCurrentDriftKnots=estimatedCurrent?.second?:VesselObservation()),deviceHeadingTrueDegrees=deviceTrue,deviceHeadingMagneticDegrees=deviceMagnetic,candidates=evaluatedCandidates,conflicts=conflicts,generatedElapsedRealtime=now)
+        fun attitudeField(metric:VesselMetricId)=selectionObservation(registrySelection<Double>(metric,VesselSourcePreference.AUTO,null,now))?:VesselObservation<Double>()
+        val heel=attitudeField(VesselMetricId.HEEL);val pitch=attitudeField(VesselMetricId.PITCH);val roll=attitudeField(VesselMetricId.ROLL_RATE);val pitchRate=attitudeField(VesselMetricId.PITCH_RATE);val yaw=attitudeField(VesselMetricId.YAW_RATE)
+        _snapshot.value=VesselDataSnapshot(position=selectedPosition,sogKnots=freshSog,cogTrueDegrees=freshCog,headingTrueDegrees=selectedHeading,headingMagneticDegrees=selectedMagnetic,depthMeters=classifiedDepth,speedThroughWaterKnots=freshStw,trueWind=VesselWindObservation(freshTws,freshTwd,freshTwa),apparentWind=VesselWindObservation(freshAws,VesselObservation(),freshAwa),attitude=VesselDisplayObservationPolicy.attitude(heel,pitch,roll,pitchRate,yaw),motion=classify(motionValue,now,2_000,10_000),pressureHpa=classifiedPressure,rateOfTurnDegreesPerMinute=selectedMetric(VesselMetricId.RATE_OF_TURN,rateOfTurn,5_000,30_000),rudderAngleDegrees=selectedMetric(VesselMetricId.RUDDER_ANGLE,rudderAngle,5_000,30_000),waterTemperatureCelsius=selectedMetric(VesselMetricId.WATER_TEMPERATURE,waterTemperature,30_000,5*60_000),airTemperatureCelsius=selectedMetric(VesselMetricId.AIR_TEMPERATURE,airTemperature,30_000,5*60_000),currentSetTrueDegrees=selectedMetric(VesselMetricId.CURRENT_SET,currentSet,10_000,60_000),currentDriftKnots=selectedMetric(VesselMetricId.CURRENT_DRIFT,currentDrift,10_000,60_000),crossTrackErrorNauticalMiles=selectedMetric(VesselMetricId.XTE,crossTrackError,10_000,60_000),waypointBearingTrueDegrees=selectionObservation(registrySelection(VesselMetricId.WAYPOINT_BEARING,VesselSourcePreference.AUTO,null,now))?:freshWaypointBearing,waypointDistanceNauticalMiles=selectedMetric(VesselMetricId.WAYPOINT_DISTANCE,waypointDistance,10_000,60_000),destinationWaypoint=selectionObservation(registrySelection(VesselMetricId.DESTINATION_WAYPOINT,VesselSourcePreference.AUTO,null,now))?:VesselObservation<String>(),totalLogNauticalMiles=selectedMetric(VesselMetricId.TOTAL_LOG,totalLog,30_000,5*60_000),tripLogNauticalMiles=selectedMetric(VesselMetricId.TRIP_LOG,tripLog,30_000,5*60_000),derived=VesselDerivedSnapshot(underKeelClearanceMeters=ukc,headingCogDifferenceDegrees=headingCog,pressureTrend1hHpa=pressureTrend(60*60_000L),pressureTrend3hHpa=pressureTrend(3*60*60_000L),pressureTrend6hHpa=pressureTrend(6*60*60_000L),vmgToWindKnots=vmg,vmcToWaypointKnots=vmc,estimatedCurrentSetTrueDegrees=estimatedCurrent?.first?:VesselObservation(),estimatedCurrentDriftKnots=estimatedCurrent?.second?:VesselObservation()),deviceHeadingTrueDegrees=deviceTrue,deviceHeadingMagneticDegrees=deviceMagnetic,candidates=evaluatedCandidates,conflicts=conflicts,generatedElapsedRealtime=now,heelDegrees=heel,pitchDegrees=pitch,rollRateDegreesPerSecond=roll,pitchRateDegreesPerSecond=pitchRate,yawRateDegreesPerSecond=yaw)
     }
     @Synchronized private fun clearBoatGeneration(){boatPosition=VesselObservation();sog=VesselObservation();cog=VesselObservation();speedThroughWater=VesselObservation();boatHeading=VesselObservation();magneticHeading=VesselObservation();depthValue=VesselObservation();depthReference=null;trueWindSpeed=VesselObservation();trueWindDirection=VesselObservation();trueWindAngle=VesselObservation();apparentWindSpeed=VesselObservation();apparentWindAngle=VesselObservation();rateOfTurn=VesselObservation();rudderAngle=VesselObservation();waterTemperature=VesselObservation();airTemperature=VesselObservation();currentSet=VesselObservation();currentDrift=VesselObservation();crossTrackError=VesselObservation();waypointBearing=VesselObservation();waypointDistance=VesselObservation();destinationWaypoint=VesselObservation();totalLog=VesselObservation();tripLog=VesselObservation();arbitrator.reset();trueWindHysteresis.reset()}
     @Synchronized private fun invalidateLegacyBoatFields(event:NmeaSourceInvalidation){event.affectedMetrics.forEach{metric->when(metric){
@@ -193,10 +212,28 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
         val resolvedPin=storedPin?.let{stored->VesselSourcePinPolicy.resolve(candidates,stored)?:stored}
         return arbitrator.select(metric,candidates,MetricSourcePreference(effectivePreference,resolvedPin,if(metric==VesselMetricId.POSITION)false else allowPinnedFallback,connectionPriorities()),now)
     }
-    private fun <T> selectionObservation(selection:VesselSourceSelection<T>):VesselObservation<T>?=selection.selected?.let{candidate->
-        VesselObservation(value=candidate.value,source=candidate.sourceClass.toLegacySource(),observedAtUtcMillis=candidate.observedAtUtcMillis,receivedElapsedRealtime=candidate.receivedElapsedRealtime,quality=candidate.quality,freshness=if(candidate.sourceHeartbeatElapsedRealtime>candidate.receivedElapsedRealtime)VesselDataFreshness.HELD else VesselDataFreshness.FRESH,provenance=candidate.source.displayName,sourceIdentity=candidate.source,sourceClass=candidate.sourceClass,reference=candidate.reference,provenanceDetail=candidate.provenance,conflict=selection.conflict.takeIf{it.active},sourceHeartbeatElapsedRealtime=candidate.sourceHeartbeatElapsedRealtime,selectionReason=selection.reason)
+    @Suppress("UNCHECKED_CAST") private fun <T> selectionObservation(selection:VesselSourceSelection<T>):VesselObservation<T>? {
+        val metric=selection.selected?.metric?:selection.candidates.firstOrNull()?.metric?:return null
+        val value=VesselDisplayObservationPolicy.resolve(selection,displayObservations[metric] as? VesselObservation<T>,SystemClock.elapsedRealtime())
+        if(value!=null)displayObservations[metric]=value else displayObservations.remove(metric)
+        return value
     }
     private fun <T> classify(value:VesselObservation<T>,now:Long,fresh:Long,held:Long)=VesselFreshnessPolicy.classify(value,now,fresh,held)
+    private fun retainDerived(metric:VesselMetricId,next:VesselObservation<Double>):VesselObservation<Double>{
+        if(next.value!=null){derivedDisplay[metric]=next;return next}
+        val previous=derivedDisplay[metric]?:return next
+        val current=sourceRegistry.snapshot.value.values.flatten().filter{it.explicitValidity !in setOf(CandidateValidity.INVALID,CandidateValidity.DISABLED)}.mapTo(mutableSetOf()){it.source.id}
+        val retained=VesselDisplayObservationPolicy.retainDerived(previous,next,current)
+        if(retained.value==null)derivedDisplay.remove(metric)
+        return retained
+    }
+    private fun derivedReading(value:Double,inputs:List<VesselObservation<Double>>,algorithm:String):VesselObservation<Double>{
+        val identity=VesselSourceIdentity("derived:$algorithm:${inputs.mapNotNull{it.sourceIdentity?.id}.joinToString("|")}",sourceType=VesselSourceType.APP_DERIVED,displayName=algorithm)
+        return VesselObservation(value,VesselDataSource.DERIVED,receivedElapsedRealtime=inputs.mapNotNull{it.receivedElapsedRealtime}.minOrNull(),
+            quality=if(inputs.all{it.quality==VesselDataQuality.GOOD})VesselDataQuality.GOOD else VesselDataQuality.DEGRADED,
+            freshness=if(inputs.all{it.freshness==VesselDataFreshness.FRESH})VesselDataFreshness.FRESH else VesselDataFreshness.STALE,
+            provenance=algorithm,sourceIdentity=identity,provenanceDetail=VesselProvenance.Derived(algorithm,inputs.flatMap{(it.provenanceDetail as? VesselProvenance.Derived)?.inputs?:listOfNotNull(it.sourceIdentity)}.distinctBy{it.id}))
+    }
     private fun <T> observation(value:T,source:VesselDataSource,received:Long?,observed:Long?,provenance:String?,quality:VesselDataQuality=VesselDataQuality.GOOD)=VesselObservation(value,source,observed,received,quality,VesselDataFreshness.FRESH,provenance)
     private fun <T> fieldObservation(field:NmeaFieldObservation,value:T)=observation(value,VesselDataSource.BOAT_NMEA,field.receivedElapsedRealtime,null,"${field.key.sentenceType}:${field.key.fieldIndex}${field.key.transducerName?.let{":$it"}.orEmpty()}")
     private fun projectedSpeed(speed:Double?,angle:Double?,now:Long,provenance:String):VesselObservation<Double>{if(speed==null||angle==null)return VesselObservation();return VesselObservation(speed*cos(Math.toRadians(angle)),VesselDataSource.DERIVED,receivedElapsedRealtime=now,quality=VesselDataQuality.GOOD,freshness=VesselDataFreshness.FRESH,provenance=provenance)}

@@ -33,7 +33,10 @@ internal class NativeSceneRenderer(private val context: Context) {
     private val groups=mutableMapOf<String,Group>()
     private var reset=false
     private val density = context.resources.displayMetrics.density
-    private val icons = android.util.LruCache<String, Bitmap>(180)
+    // 按实际像素字节限制，而不是按图标数量；高密度屏幕长期转向也不会无限积累位图。
+    private val icons = object:android.util.LruCache<String,Bitmap>(4*1024*1024) {
+        override fun sizeOf(key:String,value:Bitmap)=value.allocationByteCount
+    }
 
     fun invalidate() { previous = null;reset=true }
 
@@ -94,7 +97,13 @@ internal class NativeSceneRenderer(private val context: Context) {
                 .icon(IconFactory.getInstance(context).fromBitmap(bitmap)))?.let {annotation->removals.add {libre?.removeAnnotation(annotation)}}
         }
         points.forEach {point->item("point:${point.id}",point) {marker(point.point,point.id,pointIcon(point))}}
-        scene.vessel?.let {vessel->item("vessel",vessel) {marker(vessel.point,"vessel",vesselIcon(vessel))}}
+        scene.vessel?.let {vessel ->
+            vesselCourseVector(vessel)?.let {vector -> item("vessel:course",vector) {
+                line(vector, Color.WHITE, 3.5f, true)
+                line(vector, 0xFF007ADC.toInt(), 1.8f, true)
+            }}
+            item("vessel",vessel) {marker(vessel.point,"vessel",vesselIcon(vessel))}
+        }
         (groups.keys-keys).forEach {key->groups.remove(key)?.remove?.forEach {it()}}
     }
 
@@ -119,24 +128,32 @@ internal class NativeSceneRenderer(private val context: Context) {
     }
 
     private fun vesselIcon(vessel: MapVessel): Bitmap {
-        val heading = vessel.courseDegrees?.toFloat() ?: 0f
-        val key = "vessel:${vessel.fresh}:${heading.toInt()}"
+        val heading = vessel.headingDegrees?.toFloat()
+        val key = "vessel:${vessel.fresh}:${heading?.toInt()}"
         icons.get(key)?.let { return it }
-        val size = (40 * density).toInt(); val center = size / 2f
+        val size = (30 * density).toInt(); val center = size / 2f
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888); val canvas = Canvas(bitmap)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
-        canvas.drawCircle(center, center, 12 * density, paint)
-        paint.color = if (vessel.fresh) 0xFF007ADC.toInt() else Color.GRAY
-        if (vessel.fresh && vessel.courseDegrees != null) {
+        val fill = if (vessel.fresh) 0xFF007ADC.toInt() else Color.GRAY
+        if (vessel.fresh && heading != null) {
             canvas.rotate(heading, center, center)
             val shape = Path().apply {
-                moveTo(center, center - 17 * density); lineTo(center - 9 * density, center + 11 * density)
-                lineTo(center, center + 6 * density); lineTo(center + 9 * density, center + 11 * density); close()
+                moveTo(center, center - 12 * density)
+                lineTo(center - 6 * density, center - 3 * density)
+                lineTo(center - 5 * density, center + 10 * density)
+                lineTo(center + 5 * density, center + 10 * density)
+                lineTo(center + 6 * density, center - 3 * density); close()
             }
+            paint.style=Paint.Style.STROKE;paint.strokeWidth=3*density;paint.strokeJoin=Paint.Join.ROUND
             canvas.drawPath(shape, paint)
+            paint.style=Paint.Style.FILL;paint.color=fill;canvas.drawPath(shape,paint)
+            paint.color=Color.WHITE;paint.strokeWidth=1.2f*density
+            canvas.drawLine(center,center-6*density,center,center+5*density,paint)
         } else {
+            canvas.drawCircle(center, center, 6.5f * density, paint)
+            paint.color=fill
             paint.style = if (vessel.fresh) Paint.Style.FILL else Paint.Style.STROKE; paint.strokeWidth = 3 * density
-            canvas.drawCircle(center, center, 9 * density, paint)
+            canvas.drawCircle(center, center, 4.5f * density, paint)
         }
         icons.put(key, bitmap); return bitmap
     }

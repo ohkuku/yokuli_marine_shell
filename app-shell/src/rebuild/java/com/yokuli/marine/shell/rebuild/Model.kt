@@ -65,12 +65,17 @@ data class TileSpec(val app: String, val size: Int = 2)
 data class AnchorDraft(val point:GeoPoint,val name:String,val placeId:Long?=null,val spotId:Long?=null,val radiusMeters:Double?=null)
 /** 系统安装的应用身份；UI 标签与入口组织不能另建不一致的应用列表。 */
 enum class AppId(val zh: String, val en: String, val icon: String) {
-    CHART("海图","chart","chart"), LIBRARY("海图库","chart library","layers"),
-    VOYAGES("航行日志","logbook","logbook"), ANCHOR("锚警","anchor watch","anchor"),
-    PLACES("我的航行","my sailing","route"), INSTRUMENTS("仪表","instruments","data"),
-    NMEA("NMEA 输入及输出","NMEA connections","connect"),
-    LOCAL_NMEA("本机 NMEA 客户端","local NMEA","connect"), SETTINGS("设置","settings","settings"),
-    TILES("磁贴库","tile library","start")
+    CHART("海图","chart","chart"), LIBRARY("图册","chart library","layers"),
+    VOYAGES("航海日志","logbook","logbook"), ANCHOR("守锚","anchor watch","anchor"),
+    PLACES("我的航行","my sailing","route"), INSTRUMENTS("驾驶台","helm","helm"),
+    NMEA("船联网","boat network","connect"),
+    LOCAL_NMEA("数据共享","data sharing","share"), SETTINGS("设置","settings","settings"),
+    TILES("磁贴工坊","tile studio","start");
+    /** 中文应用列表按当前名称的拼音首字母分组，不沿用旧品牌或英文索引。 */
+    val chineseIndex:Char get()=when(this) {
+        CHART,VOYAGES->'H'; LIBRARY->'T'; PLACES->'W'; INSTRUMENTS->'J'
+        NMEA,TILES->'C'; LOCAL_NMEA,SETTINGS,ANCHOR->'S'
+    }
 }
 
 @HiltAndroidApp
@@ -151,6 +156,7 @@ class OsStore(val context: Context) {
     val activeRoute get() = navigationRoute?.takeIf { it.id == activeRouteId }
     val nextPoint get() = activeRoute?.points?.getOrNull(routeLeg)
     init {
+        observeMarineNotices()
         scope.launch(Dispatchers.IO) {
             for (snapshot in writes) {
                 val ok = runCatching {

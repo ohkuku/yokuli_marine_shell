@@ -20,7 +20,7 @@ import com.yokuli.marine.shell.rebuild.data.Reading
 import kotlin.math.abs
 
 /** 中文：输入保持内部规范单位，所有标签统一调用全局格式器，避免转换两次或显示原始 kn。 */
-@Composable internal fun ReadingTrace(os:OsStore,values:List<Reading>,metric:String,now:Long) {
+@Composable internal fun ReadingTrace(os:OsStore,values:List<Reading>,metric:String,now:Long,current:Reading?=null) {
     val c=LocalMetro.current
     val samples=values.filter {now-it.elapsed in 0..900_000 && it.value.isFinite()}.sortedBy { it.elapsed }
     var selectedAt by remember(metric) {mutableStateOf<Long?>(null)}
@@ -50,11 +50,15 @@ import kotlin.math.abs
             val path=Path()
             samples.forEach {value->
                 val p=position(value);val old=previous
-                if(old==null || value.elapsed-old.elapsed>10_000 || value.source!=old.source || (value.unit.startsWith("°") && abs(value.value-old.value)>180))path.moveTo(p.x,p.y) else path.lineTo(p.x,p.y)
+                if(old==null || !readingsAreContinuous(old,value))path.moveTo(p.x,p.y) else path.lineTo(p.x,p.y)
                 previous=value
             }
             drawPath(path,c.accent,style=Stroke(2.dp.toPx()))
-            samples.lastOrNull()?.let {drawCircle(if(it.fresh(now))c.accent else c.muted,3.dp.toPx(),position(it))}
+            // 历史点本身不能证明当前仍是 FRESH；端点颜色只读取当前权威观测。
+            samples.lastOrNull()?.let { last ->
+                val isCurrent=current?.let { it.sourceKey==last.sourceKey && it.elapsed==last.elapsed && it.fresh(now) }==true
+                drawCircle(if(isCurrent)c.accent else c.muted,3.dp.toPx(),position(last))
+            }
             selected?.let {val p=position(it);drawLine(c.fg.copy(alpha=.5f),Offset(p.x,0f),Offset(p.x,size.height),1.dp.toPx());drawCircle(c.fg,4.dp.toPx(),p)}
         }
         if(samples.isEmpty()) Label(os.t("等待第一份读数","waiting for the first reading"),15,c.muted)
@@ -69,3 +73,9 @@ import kotlin.math.abs
         }
     }
 }
+
+/** 中文：按物理来源身份及该字段有效期保留中断；同名设备不会被画成连续数据。 */
+internal fun readingsAreContinuous(previous:Reading,next:Reading):Boolean =
+    next.elapsed>=previous.elapsed && next.elapsed-previous.elapsed<=previous.validForMillis &&
+        next.sourceKey==previous.sourceKey && next.unit==previous.unit &&
+        !(next.unit.startsWith("°") && abs(next.value-previous.value)>180)

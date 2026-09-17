@@ -47,16 +47,20 @@ data class TripTrackSnapshot(
     /** Changes only when the durable/background geometry changes. Live-tail
      * appends therefore never invalidate the entire historical polyline. */
     val historicalRevision:Long=0,
+    /** 持久尾若为定位中断哨兵，下一段 live 数据不能接回此前有效点。 */
+    val lastPersistedPoint:TripTrackPoint?=null,
 ){
     fun rendered(pointBudget:Int):List<TripTrackSegment>{
         if(tripId==null)return emptyList()
         val durable=persistedSegments.flatMap{segment->segment.points}
         val persistedKeys=durable.asSequence().map{it.stableKey}.toHashSet()
-        val liveSegments=TripTrackRenderPolicy.segment(liveTail.filterNot{it.stableKey in persistedKeys})
+        val unpersisted=liveTail.filterNot{it.stableKey in persistedKeys}
+        val liveSegments=TripTrackRenderPolicy.segment(unpersisted)
         val combined=persistedSegments.map{TripTrackSegment(it.points.toList())}.toMutableList()
-        liveSegments.forEach{segment->
+        liveSegments.forEachIndexed{index,segment->
             val last=combined.lastOrNull()?.points?.lastOrNull();val first=segment.points.firstOrNull()
-            if(last!=null&&first!=null&&TripTrackRenderPolicy.segment(listOf(last,first)).size==1){val merged=combined.removeAt(combined.lastIndex).points+segment.points;combined+=TripTrackSegment(merged)}
+            val continuousBoundary=index==0&&unpersisted.firstOrNull()?.hasPosition==true&&lastPersistedPoint?.hasPosition!=false
+            if(continuousBoundary&&last!=null&&first!=null&&TripTrackRenderPolicy.segment(listOf(last,first)).size==1){val merged=combined.removeAt(combined.lastIndex).points+segment.points;combined+=TripTrackSegment(merged)}
             else combined+=segment
         }
         return TripTrackRenderPolicy.withBudget(combined,pointBudget)
@@ -125,17 +129,18 @@ object TripTrackRenderPolicy{
         if(nonEmpty.sumOf{it.points.size}<=budget)return nonEmpty
         if(nonEmpty.size>=budget)return nonEmpty.takeLast(budget).map{TripTrackSegment(listOf(it.points.last()))}
         val last=nonEmpty.last();val recentCount=minOf(RECENT_HIGH_RESOLUTION_POINTS,budget/2,last.points.size);val recent=last.points.takeLast(recentCount)
-        val older=nonEmpty.mapIndexed{index,segment->if(index==nonEmpty.lastIndex)segment.points.dropLast(recentCount)else segment.points}.filter{it.isNotEmpty()}
+        // 保留原始段身份；最近段被 recent 整段取走时，不能拼到上一段。
+        val older=nonEmpty.mapIndexed{index,segment->index to if(index==nonEmpty.lastIndex)segment.points.dropLast(recentCount)else segment.points}.filter{it.second.isNotEmpty()}
         val slots=(budget-recent.size).coerceAtLeast(0)
         if(slots==0)return listOf(TripTrackSegment(recent))
         val chosen=if(older.size>slots)older.takeLast(slots)else older
         val allocations=MutableList(chosen.size){1};var extra=slots-chosen.size
-        val total=chosen.sumOf{it.size}.coerceAtLeast(1)
-        chosen.indices.forEach{index->if(extra>0){val addition=minOf(extra,(slots-chosen.size)*chosen[index].size/total);allocations[index]+=addition;extra-=addition}}
+        val total=chosen.sumOf{it.second.size}.coerceAtLeast(1)
+        chosen.indices.forEach{index->if(extra>0){val addition=minOf(extra,(slots-chosen.size)*chosen[index].second.size/total);allocations[index]+=addition;extra-=addition}}
         var cursor=chosen.lastIndex;while(extra>0&&chosen.isNotEmpty()){allocations[cursor]++;extra--;cursor=if(cursor==0)chosen.lastIndex else cursor-1}
-        val output=chosen.mapIndexed{index,points->TripTrackSegment(sampleEvenly(points,allocations[index].coerceAtMost(points.size)))}.toMutableList()
+        val output=chosen.mapIndexed{index,entry->TripTrackSegment(sampleEvenly(entry.second,allocations[index].coerceAtMost(entry.second.size)))}.toMutableList()
         if(recent.isNotEmpty()){
-            val belongsToLast=chosen.isNotEmpty()&&older.lastOrNull()===chosen.lastOrNull()
+            val belongsToLast=chosen.lastOrNull()?.first==nonEmpty.lastIndex
             if(belongsToLast){val previous=output.removeAt(output.lastIndex).points;output+=TripTrackSegment(previous+recent)}else output+=TripTrackSegment(recent)
         }
         return output
@@ -243,7 +248,7 @@ class TripTrackRepository @Inject constructor(private val dao:TripDao){
         _snapshot.value=TripTrackSnapshot(
             tripId=_snapshot.value.tripId,
             persistedSegments=persistedRendered,
-            liveTail=tail.values.toList(),hydrated=hydrated,historicalRevision=revision,
+            liveTail=tail.values.toList(),hydrated=hydrated,historicalRevision=revision,lastPersistedPoint=persisted.lastOrNull(),
         )
     }
 

@@ -1,7 +1,13 @@
 package com.yokuli.marine.shell.rebuild.ui
 
 import android.graphics.Rect
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -16,6 +22,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -25,6 +32,8 @@ import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.shell.engine.InternalAppTask
 import com.yokuli.shell.engine.InternalAppTaskId
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable internal fun TaskCaptureHost(os:OsStore,taskId:InternalAppTaskId,token:String,active:Boolean,content:@Composable ()->Unit) {
@@ -61,25 +70,45 @@ import kotlin.math.roundToInt
                 Label(os.t("打开的应用会留在这里。","Your open apps will appear here."),20,c.muted)
             }
         } else {
-            val cardHeight=maxHeight*.69f
+            val density=LocalDensity.current
+            val scope=rememberCoroutineScope()
             HorizontalPager(state=pager,contentPadding=PaddingValues(horizontal=maxWidth*.13f),pageSpacing=18.dp,
                 key={ordered[it].taskId.value},modifier=Modifier.align(Alignment.Center).fillMaxWidth()) {index->
                 val task=ordered[index]
                 val app=os.shell.apps.firstOrNull {it.id==task.appId} ?: return@HorizontalPager
                 val snapshot=os.shell.snapshots.images[task.taskId]
+                val ratio=snapshot?.bitmap?.let {it.width.toFloat()/it.height} ?: (maxWidth/maxHeight)
+                val cardHeight=minOf(maxHeight*.73f,(maxWidth*.74f)/ratio)
+                var dragY by remember(task.taskId) {mutableFloatStateOf(0f)}
+                var settling by remember(task.taskId) {mutableStateOf<Job?>(null)}
+                var closing by remember(task.taskId) {mutableStateOf(false)}
+                val heightPx=with(density){cardHeight.toPx()}
+                fun closeCard(velocity:Float=0f) {
+                    if(closing)return
+                    closing=true
+                    settling=scope.launch {
+                        animate(dragY,-heightPx*1.5f,initialVelocity=velocity,animationSpec=tween(190)) {value,_->dragY=value}
+                        onClose(task)
+                    }
+                }
                 val distance=kotlin.math.abs((pager.currentPage-index)+pager.currentPageOffsetFraction).coerceIn(0f,1f)
-                Column(Modifier.fillMaxWidth().graphicsLayer { scaleX=1f-distance*.045f;scaleY=scaleX;alpha=1f-distance*.18f },verticalArrangement=Arrangement.spacedBy(16.dp)) {
-                    Box(Modifier.fillMaxWidth().height(cardHeight).background(c.panel).border(1.dp,c.muted.copy(alpha=.35f)).clipToBounds()
-                        .testTag("recent-task-${task.appId.value}").clickable(role=Role.Button,onClick={onActivate(task)})
+                Column(Modifier.fillMaxWidth().graphicsLayer { translationY=dragY;scaleX=1f-distance*.045f;scaleY=scaleX;alpha=(1f-distance*.18f)*(1f-(-dragY/heightPx).coerceIn(0f,.8f)*.45f) }
+                    .draggable(rememberDraggableState {delta->if(!closing)dragY=(dragY+delta).coerceAtMost(36f*density.density)},Orientation.Vertical,
+                        enabled=!closing,onDragStarted={settling?.cancel()},onDragStopped={velocity->
+                            if(shouldDismissTask(dragY/density.density,velocity/density.density,cardHeight.value))closeCard(velocity)
+                            else settling=scope.launch {animate(dragY,0f,initialVelocity=velocity,animationSpec=spring(dampingRatio=.82f,stiffness=420f)){value,_->dragY=value}}
+                        }),verticalArrangement=Arrangement.spacedBy(16.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                    Box(Modifier.height(cardHeight).aspectRatio(ratio).background(c.panel).clipToBounds()
+                        .testTag("recent-task-${task.appId.value}").clickable(enabled=!closing,role=Role.Button,onClick={onActivate(task)})
                         .semantics {contentDescription=os.t("恢复 ${os.title(app.app)}","resume ${os.title(app.app)}")}) {
-                        if(snapshot!=null)Image(snapshot.bitmap.asImageBitmap(),null,Modifier.fillMaxSize(),contentScale=ContentScale.Fit)
+                        if(snapshot!=null)Image(snapshot.bitmap.asImageBitmap(),null,Modifier.fillMaxSize(),contentScale=ContentScale.FillBounds)
                         else Column(Modifier.align(Alignment.Center).padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(16.dp)) {
                             ShellAppIcon(app,c.accent,Modifier.size(60.dp))
                             Label(os.t("画面尚未就绪","preview unavailable"),17,c.muted)
                         }
                         Box(Modifier.align(Alignment.TopEnd).padding(8.dp).size(42.dp).background(c.bg,androidx.compose.foundation.shape.CircleShape)
                             .border(2.dp,c.fg,androidx.compose.foundation.shape.CircleShape).testTag("recent-close-${task.appId.value}")
-                            .clickable(role=Role.Button,onClick={onClose(task)}).semantics {contentDescription=os.t("关闭 ${os.title(app.app)} 的界面","close ${os.title(app.app)} view")},contentAlignment=Alignment.Center) {
+                            .clickable(enabled=!closing,role=Role.Button,onClick={closeCard()}).semantics {contentDescription=os.t("关闭 ${os.title(app.app)} 的界面","close ${os.title(app.app)} view")},contentAlignment=Alignment.Center) {
                             Glyph("close",Modifier.size(21.dp))
                         }
                     }

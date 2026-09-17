@@ -175,17 +175,19 @@ class AnchorWatchNmeaFeedEncoder @Inject constructor(
     }
 
     private fun localRateOfTurn(snapshot:VesselDataSnapshot,now:Long):EncodedStream{
-        val attitude=localObservation(snapshot.attitude,setOf(com.yokuli.anchorwatch.domain.vessel.VesselSourceClass.PHONE_IMU))
-            ?.let{leases.resolve("LOCAL_ATTITUDE",null,it,emptyList(),now,5_000L,5_000L)}
+        val rotation=resolveLocal(VesselMetricId.YAW_RATE,snapshot.yawRateDegreesPerSecond,snapshot,setOf(VesselSourceClass.PHONE_IMU),now,5_000L,5_000L)
             ?:return EncodedStream(suppressionReason="PHONE_MOTION_STALE")
-        return EncodedStream(listOf(mux.phoneRateOfTurn(attitude.value.yawRateDegreesPerSecond*60.0)),attitude.sourceStableKey,sourceConflict=sourceConflict(snapshot,VesselMetricId.RATE_OF_TURN,setOf(com.yokuli.anchorwatch.domain.vessel.VesselSourceClass.PHONE_IMU)))
+        if(!rotation.value.isFinite())return EncodedStream(suppressionReason="PHONE_MOTION_STALE")
+        return EncodedStream(listOf(mux.phoneRateOfTurn(rotation.value*60.0)),rotation.sourceStableKey,sourceConflict=sourceConflict(snapshot,VesselMetricId.YAW_RATE,setOf(VesselSourceClass.PHONE_IMU)))
     }
 
     private fun localAttitude(snapshot:VesselDataSnapshot,now:Long):EncodedStream{
-        val attitude=localObservation(snapshot.attitude,setOf(com.yokuli.anchorwatch.domain.vessel.VesselSourceClass.PHONE_IMU))
-            ?.let{leases.resolve("LOCAL_ATTITUDE_XDR",null,it,emptyList(),now,5_000L,5_000L)}
-            ?:return EncodedStream(suppressionReason="PHONE_ATTITUDE_STALE")
-        return EncodedStream(mux.phoneXdr(attitude.value,null)?.let(::listOf).orEmpty(),attitude.sourceStableKey)
+        val local=setOf(VesselSourceClass.PHONE_IMU)
+        val heel=resolveLocal(VesselMetricId.HEEL,snapshot.heelDegrees,snapshot,local,now,5_000L,5_000L)
+        val pitch=resolveLocal(VesselMetricId.PITCH,snapshot.pitchDegrees,snapshot,local,now,5_000L,5_000L)
+        if(heel==null||pitch==null)return EncodedStream(suppressionReason="PHONE_ATTITUDE_STALE")
+        val value=com.yokuli.anchorwatch.domain.vessel.VesselAttitude(heel.value,pitch.value,Double.NaN,Double.NaN,Double.NaN)
+        return EncodedStream(mux.phoneXdr(value,null)?.let(::listOf).orEmpty(),listOf(heel.sourceStableKey,pitch.sourceStableKey).distinct().joinToString("+"))
     }
 
     private fun localPressure(snapshot:VesselDataSnapshot,now:Long):EncodedStream{

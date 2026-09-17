@@ -23,6 +23,33 @@ env:
   GOOGLE_MAPS_ANDROID_API_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
 
 jobs:
+  regression-tests:
+    name: Current runtime and experience regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: Run regressions against the modules shipped in this APK
+        run: ./gradlew --no-daemon :core:shell-contract:test :core:shell-engine:test :ui:shell-compose:testDebugUnitTest :legacy-marine:testDebugUnitTest :app-shell:testStandaloneDebugUnitTest --stacktrace
+      - name: Keep actual test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: current-regression-results-${{ github.sha }}
+          path: |
+            **/build/test-results/**/*.xml
+            **/build/reports/tests/**
+          retention-days: 14
   human-test-apk:
     name: Build downloadable human-test APK
     runs-on: ubuntu-latest

@@ -199,7 +199,7 @@ class NmeaConnectionManager(
     val packet=DatagramPacket(b,b.size)
     try{socket.receive(packet)}catch(_:SocketTimeoutException){markNoDataIfExpired(mine,p.noDataTimeoutSeconds);continue}
     val now=monotonicMillis();if(firstByteAt==null)firstByteAt=now;markBytes(mine,now);setDataState(mine)
-    val peer="${packet.address.hostAddress}:${packet.port}"
+    val peer=NmeaPeerGuard.endpoint(packet.address,packet.port)
     val split=splitters.getOrPut(peer){NmeaStreamSplitter()}
     if(splitters.size>64)splitters.keys.firstOrNull{it!=peer}?.let(splitters::remove)
     split.feed(packet.data,packet.length).forEach{line->markSentence(mine,now);_lines.emit(line);_frames.emit(line to peer)}

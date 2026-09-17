@@ -50,7 +50,8 @@ data class NmeaSharingStatus(
 
 @Singleton
 class NmeaSharingServer @Inject constructor(private val addresses: NetworkAddressProvider) {
-    private data class Client(val socket: Socket, val queue: Channel<String>, val job: Job, val connectedAtMillis:Long, val address:String, val sent:AtomicLong=AtomicLong())
+    private data class PendingSentence(val wire:String,val stillValid:()->Boolean)
+    private data class Client(val socket: Socket, val queue: Channel<PendingSentence>, val job: Job, val connectedAtMillis:Long, val address:String, val sent:AtomicLong=AtomicLong())
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** Serializes Start/Stop as one lifecycle transaction. The old check →
@@ -114,7 +115,7 @@ class NmeaSharingServer @Inject constructor(private val addresses: NetworkAddres
     /** Queue one canonical sentence for each currently connected client.
      * Returning zero is important: a listening server is not a successful
      * network write until there is a receiver. */
-    fun publish(sentence: String, clientId: Long? = null):Int {
+    fun publish(sentence: String, clientId: Long? = null,stillValid:()->Boolean = {true}):Int {
         if (_status.value.state != SharingServerState.RUNNING) return 0
         // 接收帧已去掉行尾；无论重新编码还是 RAW 转发，网络边界都必须恢复 CRLF。
         val wire = sentence.trimEnd('\r','\n') + "\r\n"
@@ -122,7 +123,7 @@ class NmeaSharingServer @Inject constructor(private val addresses: NetworkAddres
         var queued = 0
         clients.forEach { (id, client) ->
             if (clientId != null && clientId != id) return@forEach
-            if (client.queue.trySend(wire).isFailure) {
+            if (client.queue.trySend(PendingSentence(wire,stillValid)).isFailure) {
                 dropped++
                 closeClient(id, client)
             } else queued++
@@ -140,12 +141,14 @@ class NmeaSharingServer @Inject constructor(private val addresses: NetworkAddres
         if (clients.size >= MAX_CLIENTS) { runCatching { socket.close() }; return }
         if(runCatching{socket.tcpNoDelay = true;socket.keepAlive = true;socket.sendBufferSize = 16 * 1024}.isFailure){runCatching{socket.close()};update(lastEvent="NMEA_CLIENT_DISCONNECTED");return}
         val id = ids.incrementAndGet()
-        val queue = Channel<String>(CLIENT_QUEUE_CAPACITY)
+        val queue = Channel<PendingSentence>(CLIENT_QUEUE_CAPACITY)
         val connectedAt=System.currentTimeMillis();val address=socket.remoteSocketAddress?.toString()?.removePrefix("/")?:"unknown"
         val job = scope.launch {
             try {
                 socket.getOutputStream().buffered().use { output ->
-                    for (sentence in queue) {
+                    for (pending in queue) {
+                        if(!pending.stillValid())continue
+                        val sentence=pending.wire
                         output.write(sentence.toByteArray(Charsets.US_ASCII));output.flush()
                         clients[id]?.sent?.incrementAndGet()
                         _status.update{current->current.copy(

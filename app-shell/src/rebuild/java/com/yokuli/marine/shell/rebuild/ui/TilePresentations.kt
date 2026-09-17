@@ -63,7 +63,7 @@ fun tilePresets(): List<TilePreset> {
     return listOf(
         preset("chart.cover", AppId.CHART, "海图封面", "chart cover", "整幅最近海图快照；点按回到海图", "Your latest chart snapshot, edge to edge. Tap for Chart.", "MAP", true),
         preset("chart.navigation", AppId.CHART, "当前导航", "active navigation", "当前航线、目标与距离；未导航时明确显示", "Active route, target and distance; shows when navigation is off.", "NAVIGATION", true),
-        preset("instruments.speed", AppId.INSTRUMENTS, "航速", "speed", "真实对地航速；数据过期后显示缺测", "Actual speed over ground; stale readings become unavailable.", "SPEED"),
+        preset("instruments.speed", AppId.INSTRUMENTS, "航速", "speed", "真实对地航速与观测时间", "Actual speed over ground with the time observed.", "SPEED"),
         preset("instruments.heading", AppId.INSTRUMENTS, "船首向", "heading", "真实船首向并注明真北参考", "Actual vessel heading with its true-north reference.", "HEADING"),
         preset("instruments.depth", AppId.INSTRUMENTS, "水深", "depth", "水深与已配置吃水下的龙骨余量", "Depth and under-keel clearance when draft is configured.", "DEPTH"),
         preset("instruments.wind", AppId.INSTRUMENTS, "风", "wind", "实际收到的真风与视风读数", "The true and apparent wind readings actually available.", "WIND"),
@@ -99,12 +99,12 @@ fun tilePreferenceContributions(apps: List<ShellApp>): List<AppPreferenceContrib
     ))
 }
 
-@Composable fun tilePresentation(os: OsStore, app: ShellApp, animate: Boolean, modeOverride: String? = null): LauncherEntryVisualContribution = buildTilePresentation(os, app, animate, null, modeOverride)
-@Composable fun presetTilePresentation(os: OsStore, preset: TilePreset, animate: Boolean): LauncherEntryVisualContribution = buildTilePresentation(os, ShellApp(preset.app), animate, preset, null)
+@Composable fun tilePresentation(os: OsStore, app: ShellApp, animate: Boolean, modeOverride: String? = null, rotateOverride: Boolean? = null, intervalOverride: Long? = null): LauncherEntryVisualContribution = buildTilePresentation(os, app, animate, null, modeOverride, rotateOverride, intervalOverride)
+@Composable fun presetTilePresentation(os: OsStore, preset: TilePreset, animate: Boolean): LauncherEntryVisualContribution = buildTilePresentation(os, ShellApp(preset.app), animate, preset, null, null, null)
 
 /** 中文：磁贴帧只缓存展示形态；值、来源时效、趋势直接订阅系统的同一份观测。 */
-private data class TileFrame(val key: String, val headline: String, val detail: String, val eyebrow: String = "", val image: Bitmap? = null, val demo: Boolean = false, val bearing: Double? = null, val progress: Float? = null, val samples: List<Reading> = emptyList())
-@Composable private fun buildTilePresentation(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?, modeOverride: String?): LauncherEntryVisualContribution {
+private data class TileFrame(val key: String, val headline: String, val detail: String, val eyebrow: String = "", val image: Bitmap? = null, val demo: Boolean = false, val bearing: Double? = null, val progress: Float? = null, val samples: List<Reading> = emptyList(), val live: Boolean = true)
+@Composable private fun buildTilePresentation(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?, modeOverride: String?, rotateOverride: Boolean?, intervalOverride: Long?): LauncherEntryVisualContribution {
     val preferences by os.shell.persistence.state.collectAsState()
     val data by os.hub.state.collectAsState()
     val history by os.hub.history.collectAsState()
@@ -124,13 +124,14 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     val values = preferences?.appPreferenceValues.orEmpty()
     val savedMode = values["${app.id.value}.tile.mode"]?.removePrefix("c:")
     val mode = modeOverride ?: preset?.mode ?: savedMode?.takeIf { value -> tileModes(app).any { it.key == value } } ?: "AUTO"
-    val rotate = visible && !os.reduceMotion && !LocalReducedMotion.current && values["${app.id.value}.tile.animate"] != "b:0"
-    val interval = values["${app.id.value}.tile.interval"]?.removePrefix("c:")?.toLongOrNull()?.coerceIn(6, 15) ?: 6L
+    val rotate = visible && !os.reduceMotion && !LocalReducedMotion.current && (rotateOverride ?: (values["${app.id.value}.tile.animate"] != "b:0"))
+    val interval = (intervalOverride ?: values["${app.id.value}.tile.interval"]?.removePrefix("c:")?.toLongOrNull() ?: 6L).coerceIn(6, 15)
     val title = preset?.title?.let { if (os.chinese) it.chinese else it.english } ?: os.title(app.app)
-    val fix = data.fix(os.positionSource)?.takeIf { it.fresh(readingNow) }
-    val unavailable = os.t("暂无有效数据", "no valid reading")
-    fun reading(observation: VesselObservation<Double>?, format: (Double?) -> String): String = format(observation?.value?.takeIf { observation.freshness == VesselDataFreshness.FRESH && observation.receivedElapsedRealtime?.let { t -> readingNow - t in 0..10000 } == true })
-    fun angle(observation: VesselObservation<Double>?): String = reading(observation, os::formatBearing)
+    val lastFix = data.fix(os.positionSource)
+    val fix = lastFix?.takeIf { it.fresh(readingNow) }
+    val unavailable = os.t("等待读数", "waiting for a reading")
+    fun reading(observation: VesselObservation<Double>?, format: (Double?) -> String): String = format(observation?.displayNumber())
+    fun stamp(observation: VesselObservation<*>?): String = observation?.let { observationStatus(os, it, readingNow) } ?: unavailable
     fun samples(metric: String): List<Reading> = history[metric].orEmpty().filter { readingNow - it.elapsed in 0..300_000 }
     val displayLocale = if (os.chinese) Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH
     val snapshotLabel = if (os.maps.snapshotCapturedAt > 0) DateFormat.getTimeInstance(DateFormat.SHORT, displayLocale).format(Date(os.maps.snapshotCapturedAt)) else ""
@@ -142,9 +143,9 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     }
     val frames = when (app.app.name) {
         "CHART" -> listOfNotNull(
-            TileFrame("MAP", fix?.let { (if (os.positionSource == "demo" || state?.settings?.demoMode == true) os.t("演示 · ", "DEMO · ") else "") + os.formatSpeed(it.freshSpeed(readingNow)) + " · " + os.formatCoordinates(it.point) } ?: os.t("船位不可用", "position unavailable"), listOf(snapshotLabel, snapshotCredit).filter { it.isNotBlank() }.joinToString(" · "), image = os.maps.snapshot?.takeUnless { it.isRecycled }, demo = os.maps.snapshotDemo),
+            TileFrame("MAP", lastFix?.let { (if (os.positionSource == "demo" || state?.settings?.demoMode == true) os.t("演示 · ", "DEMO · ") else "") + os.formatSpeed(data.readings["sog"]?.value) + " · " + os.formatCoordinates(it.point) } ?: os.t("等待船位", "waiting for position"), listOf(snapshotLabel, snapshotCredit, lastFix?.takeUnless { it.fresh(readingNow) }?.let { os.t("船位 ", "position ") + readingAge(os, it.elapsed, readingNow) }.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "), image = os.maps.snapshot?.takeUnless { it.isRecycled }, demo = os.maps.snapshotDemo),
             TileFrame("NAVIGATION", os.activeRoute?.name ?: os.t("未开始导航", "navigation is off"), os.nextPoint?.let { target -> fix?.let { os.formatDistance(distance(it.point, target)) } } ?: os.t("选择航线后明确开始", "select a route, then start"), os.t("当前导航", "active navigation")),
-            TileFrame("POSITION", fix?.let { os.formatSpeed(it.freshSpeed(readingNow)) } ?: "—", fix?.let { os.formatCoordinates(it.point) } ?: os.t("船位不可用", "position unavailable"), os.t("船位 · 对地航速", "position · speed over ground")),
+            TileFrame("POSITION", os.formatSpeed(data.readings["sog"]?.value), lastFix?.let { os.formatCoordinates(it.point) + " · " + readingAge(os, it.elapsed, readingNow) } ?: os.t("等待船位", "waiting for position"), os.t("船位 · 对地航速", "position · speed over ground"), live = data.readings["sog"]?.fresh(readingNow) == true),
         )
         "LIBRARY" -> listOf(TileFrame("LAYERS", os.t("${os.library.layers.size} 个图层", "${os.library.layers.size} layers"), os.maps.sourceName(os.chinese), os.t("当前地图来源", "current map source")), TileFrame("FOLDERS", os.t("${os.library.folders.size} 个文件夹", "${os.library.folders.size} folders"), os.t("${os.library.files.size} 张已登记海图", "${os.library.files.size} indexed charts")))
         "PLACES" -> listOf(TileFrame("PLACES", os.t("${os.allPlaces.size} 个坐标", "${os.allPlaces.size} coordinates"), os.allPlaces.lastOrNull()?.name ?: os.t("标记值得再去的地方", "save somewhere worth returning to")), TileFrame("ROUTES", os.t("${os.routes.size} 条航线", "${os.routes.size} routes"), os.activeRoute?.name ?: os.t("选择后才开始导航", "navigation starts when you choose")))
@@ -160,7 +161,12 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         }
         "INSTRUMENTS" -> {
             val v = state?.vesselData
-            listOf(TileFrame("SPEED", reading(v?.sogKnots, os::formatSpeed), os.t("对地航速", "speed over ground"), samples = samples("sog")), TileFrame("HEADING", angle(v?.headingTrueDegrees), os.t("真船首向", "true heading"), bearing = v?.headingTrueDegrees?.liveNumber()), TileFrame("DEPTH", reading(v?.depthMeters, os::formatDepth), os.t("龙骨下余量 ", "under-keel ") + reading(v?.derived?.underKeelClearanceMeters, os::formatDepth), os.t("水深", "depth"), samples = samples("depth")), TileFrame("WIND", reading(v?.trueWind?.speedKnots, os::formatSpeed), os.t("视风 ", "apparent ") + reading(v?.apparentWind?.speedKnots, os::formatSpeed), os.t("真风", "true wind"), samples = samples("tws")))
+            listOf(
+                TileFrame("SPEED", reading(v?.sogKnots, os::formatSpeed), stamp(v?.sogKnots), os.t("对地航速", "speed over ground"), samples = samples("sog"), live = v?.sogKnots?.displayIsLive() == true),
+                TileFrame("HEADING", os.formatBearing(v?.headingTrueDegrees?.liveNumber()), stamp(v?.headingTrueDegrees), os.t("船首向 · 真北", "heading · true"), bearing = v?.headingTrueDegrees?.liveNumber(), live = v?.headingTrueDegrees?.displayIsLive() == true),
+                TileFrame("DEPTH", reading(v?.depthMeters, os::formatDepth), stamp(v?.depthMeters), os.t("水深 · 余量 ", "depth · UKC ") + reading(v?.derived?.underKeelClearanceMeters, os::formatDepth), samples = samples("depth"), live = v?.depthMeters?.displayIsLive() == true),
+                TileFrame("WIND", reading(v?.trueWind?.speedKnots, os::formatSpeed), stamp(v?.trueWind?.speedKnots), os.t("真风 · 视风 ", "true wind · apparent ") + reading(v?.apparentWind?.speedKnots, os::formatSpeed), samples = samples("tws"), live = v?.trueWind?.speedKnots?.displayIsLive() == true),
+            )
         }
         "NMEA" -> {
             val online = connections.count { it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }
@@ -185,7 +191,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     val cover = app.app == AppId.CHART && mode in setOf("AUTO", "MAP")
     val description = selected.first().let { it.eyebrow.ifBlank { it.headline } + " · " + it.detail }
     return LauncherEntryVisualContribution(preset?.entryId ?: app.entry, title,
-        when (app.app.name) { "CHART", "LIBRARY", "VOYAGES" -> 'H'; "PLACES" -> 'W'; "SETTINGS" -> 'S'; "ANCHOR" -> 'M'; "INSTRUMENTS" -> 'Y'; "TILES" -> 'C'; "LOCAL_NMEA" -> 'B'; else -> app.app.en.first().uppercaseChar() },
+        app.app.chineseIndex,
         title, description, LauncherIconRenderer { tint, modifier -> ShellAppIcon(app, tint, modifier) },
         (preset?.sizes ?: app.sizes).associateWith { size -> LauncherTileRenderer { context -> TileFace(os, app, title, selected, size, context, cover, rotate, interval) } }, fullBleed = cover)
 }
@@ -238,7 +244,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
                         val x = ((reading.elapsed - start).toDouble() / span * this.size.width).toFloat()
                         val y = this.size.height * .8f - ((reading.value - low) / range * this.size.height * .3f).toFloat()
                         val old = previous
-                        if (old == null || reading.elapsed - old.elapsed > 10_000 || reading.source != old.source) path.moveTo(x, y) else path.lineTo(x, y)
+                        if (old == null || !readingsAreContinuous(old, reading)) path.moveTo(x, y) else path.lineTo(x, y)
                         previous = reading
                     }
                     drawPath(path, color.copy(alpha = .28f), style = Stroke(2.dp.toPx()))
@@ -268,7 +274,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
                 val headline = if (frame.key == "MAP") os.t("打开海图更新封面", "open Chart for a cover") else frame.headline
                 val numeric = Regex("^([−+\\-]?\\d+(?:[.,]\\d+)?)(.*)$").matchEntire(headline)
                 if (numeric != null) Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    WpText(numeric.groupValues[1], if (size == MarineTileSize.WIDE_4X2) 45 else 38, color = color, weight = FontWeight.Light, maxLines = 1)
+                    WpText(numeric.groupValues[1], if (size == MarineTileSize.WIDE_4X2) 45 else 38, color = if (frame.live) color else color.copy(alpha = .65f), weight = FontWeight.Light, maxLines = 1)
                     if (numeric.groupValues[2].isNotBlank()) WpText(numeric.groupValues[2].trim(), 14, color = color, maxLines = 1, modifier = Modifier.padding(bottom = 5.dp))
                 } else WpText(headline, if (size == MarineTileSize.WIDE_4X2) 30 else 24, color = color, weight = FontWeight.Light, maxLines = 2)
             }

@@ -44,6 +44,7 @@ data class NmeaInstrumentState(
     private val settings:SettingsRepository,
     private val vesselSettings:VesselSettingsRepository,
     private val store:NmeaConnectionStore,
+    private val manualDisconnect:com.yokuli.anchorwatch.runtime.nmea.NmeaManualDisconnectRepository,
 ){
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
     private val guard=Any()
@@ -86,9 +87,12 @@ data class NmeaInstrumentState(
     init {
         scope.launch {
             val saved=store.read()
+            if(manualDisconnect.current().suppressed)store.clearRequested()
             val initial=saved?:settings.settings.first().profile.takeIf{it.host.isNotBlank()||it.port>0}?.let{listOf(NmeaConnectionSpec(id=it.stableId,name=it.name,protocol=it.protocol,host=it.host,port=it.port,localPort=it.port,requireChecksum=it.requireChecksum,autoReconnect=it.autoReconnect))}.orEmpty()
             synchronized(guard){initial.forEach{sessions[it.id]=Session(it)};loaded=true;publishConnections()}
             if(saved==null)store.save(initial)
+            // 恢复用户意图而非所有已保存端点；手动 Stop 的连接已无租约。
+            restoreRequestedConnections()
         }
         scope.launch{vesselSettings.settings.collect{vessel=it;synchronized(guard){arbiter.reset();refreshObservations()}}}
         scope.launch{while(isActive){delay(250);synchronized(guard){refreshObservations();publishConnections()}}}
@@ -115,6 +119,7 @@ data class NmeaInstrumentState(
     fun startConnection(id:String):Boolean=synchronized(guard){
         val session=sessions[id]?:return@synchronized false
         if(session.requested)return@synchronized false
+        store.setRequested(id,true)
         session.requested=true;session.generation=++nextConnectionEpoch;session.started=SystemClock.elapsedRealtime();invalidateConnection(id)
         val spec=session.spec
         if(spec.protocol==Protocol.UDP&&!spec.receive){
@@ -131,8 +136,8 @@ data class NmeaInstrumentState(
         session.reader=scope.launch{
             val peerFilter=if(spec.protocol==Protocol.UDP&&spec.host.isNotBlank()&&spec.host!="0.0.0.0")runCatching{InetAddress.getByName(spec.host).hostAddress}.getOrNull()?:spec.host else null
             manager.frames.collect{(line,peer)->
-                val peerAddress=peer.removePrefix("/").substringBeforeLast(':')
-                if(peerFilter==null||peerFilter==peerAddress)ingest(id,line,peer,spec.requireChecksum)
+                val peerAddress=NmeaPeerGuard.host(peer)
+                if(peerFilter==null||NmeaPeerGuard.host(peerFilter)==peerAddress)ingest(id,line,peer,spec.requireChecksum)
             }
         }
         session.stateReader=scope.launch{manager.state.collect{value->synchronized(guard){if(session.requested){session.snapshot=session.snapshot.copy(state=value);if(value in setOf(NmeaConnectionState.ERROR,NmeaConnectionState.DISCONNECTED))invalidateConnection(id);publishConnections();refreshObservations()}}}}
@@ -142,6 +147,7 @@ data class NmeaInstrumentState(
     fun stopConnection(id:String){
         val stopped=synchronized(guard){
         val session=sessions[id]?:return
+        store.setRequested(id,false)
         session.requested=false;session.generation=++nextConnectionEpoch;session.reader?.cancel();session.stateReader?.cancel();session.transportReader?.cancel()
         if(session.spec.protocol==Protocol.UDP&&session.spec.receive){val owners=udpOwners[session.spec.localPort];owners?.remove(id);if(owners.isNullOrEmpty()){udpListeners.remove(session.spec.localPort)?.disconnect();udpOwners.remove(session.spec.localPort)}}else session.manager?.disconnect()
         session.manager=null;session.udpWriter?.close();session.udpWriter=null;session.started=null
@@ -156,13 +162,14 @@ data class NmeaInstrumentState(
     fun isConnectionOpen(id:String)=synchronized(guard){sessions[id]?.let{it.requested&&(it.udpWriter!=null||it.manager?.hasOpenTransport()==true)}==true}
     fun inputConnectionIds()=connections.value.filter{it.requested&&it.spec.receive}.mapTo(linkedSetOf()){it.spec.id}
     fun anyRequested()=connections.value.any{it.requested}
-    fun writeConnection(id:String,expectedGeneration:Long,sentences:List<String>):Boolean {
+    fun sourcesCurrent(epochs:Map<String,Long>):Boolean=synchronized(guard){epochs.all{(id,epoch)->sessions[id]?.let{it.requested&&it.spec.receive&&it.generation==epoch}==true}}
+    fun writeConnection(id:String,expectedGeneration:Long,sentences:List<String>,sourceEpochs:Map<String,Long> = emptyMap()):Boolean {
         val target=synchronized(guard){sessions[id]?.takeIf{it.requested&&it.generation==expectedGeneration&&it.spec.send}}?:return false
         val lines=sentences.map{it.trim()+"\r\n"}
         val address=if(target.spec.protocol==Protocol.UDP)try{InetAddress.getByName(target.spec.host)}catch(e:Exception){return false}else null
         val attempt=outboundLoopGuard.beginWrite(lines)
         val result=synchronized(target.writeGuard){
-            val current=synchronized(guard){target.takeIf{it.requested&&it.generation==expectedGeneration}}
+            val current=synchronized(guard){target.takeIf{it.requested&&it.generation==expectedGeneration&&sourcesCurrent(sourceEpochs)}}
             if(current==null)false else try {
                 if(target.spec.protocol==Protocol.TCP)target.manager?.writeExpected(lines,target.manager?.diagnostics?.value?.connectionGeneration)?.success==true
                 else {
@@ -259,10 +266,15 @@ data class NmeaInstrumentState(
     fun connectionPriorities()=connectionSpecs.value.associate{it.id to it.priority}
     private fun refreshObservations(){
         val now=SystemClock.elapsedRealtime();val position=selected<VesselPosition>(VesselMetricId.POSITION,now)
-        val identity=position?.source?.id
+        // 一次超时不是换 GPS；保留同一物理来源及原始测量时间，避免每次迟报都重置完整性门。
+        val identity=position?.source?.id?:selectedIdentity?.takeIf{old->sourceRegistry.candidates<VesselPosition>(VesselMetricId.POSITION).any{candidate->
+            candidate.source.id==old&&candidate.source.transportProfileId==vessel.metricSourcePins["POSITION_CONNECTION"]&&
+                (positionLock==null||VesselSourcePinPolicy.matches(candidate.source,positionLock!!))
+        }}
         if(identity!=selectedIdentity){selectedIdentity=identity;selectedEpoch++;_connectionStartedElapsed.value=position?.source?.transportProfileId?.let{sessions[it]?.started};_transport.value=NmeaTransportDiagnostics(connectionGeneration=selectedEpoch,connectedAtElapsedRealtime=_connectionStartedElapsed.value)}
         fun number(metric:VesselMetricId)=selected<Double>(metric,now)?.let{it.value to it.receivedElapsedRealtime}
-        val heading=number(VesselMetricId.HEADING_TRUE);val magnetic=number(VesselMetricId.HEADING_MAGNETIC)
+        fun currentHeading(metric:VesselMetricId)=selected<Double>(metric,now)?.takeIf{it.sourceHeartbeatElapsedRealtime<=it.receivedElapsedRealtime}?.let{it.value to it.receivedElapsedRealtime}
+        val heading=currentHeading(VesselMetricId.HEADING_TRUE);val magnetic=currentHeading(VesselMetricId.HEADING_MAGNETIC)
         val selectedFix=identity?.let(positionFixes::get)?.let{f->f.copy(headingTrueDegrees=heading?.first,headingReceivedElapsedRealtime=heading?.second,headingMagneticDegrees=magnetic?.first,headingMagneticReceivedElapsedRealtime=magnetic?.second,headingSource=if(heading!=null)HeadingSource.NMEA_PHYSICAL else HeadingSource.NONE,headingQuality=if(heading!=null)HeadingQuality.STABLE else HeadingQuality.UNAVAILABLE)}
         if(_fix.value!=selectedFix){_fix.value=selectedFix;if(selectedFix!=null)_recentFixes.value=(_recentFixes.value+selectedFix).filter{now-it.receivedElapsedRealtime<600_000}.takeLast(1200)}
         _instruments.value=NmeaInstrumentState(heading,magnetic,number(VesselMetricId.SOG),number(VesselMetricId.COG),number(VesselMetricId.SPEED_THROUGH_WATER),selected<Double>(VesselMetricId.HEADING_TRUE,now)?.source?.persistentKey)
@@ -288,13 +300,20 @@ data class NmeaInstrumentState(
     fun connect(p:ConnectionProfile):Boolean {synchronized(guard){if(!sessions.containsKey(p.stableId))sessions[p.stableId]=Session(NmeaConnectionSpec(id=p.stableId,name=p.name,protocol=p.protocol,host=p.host,port=p.port,localPort=p.localPort?:p.port,autoReconnect=p.autoReconnect,requireChecksum=p.requireChecksum));publishConnections()};scope.launch{store.save(connectionSpecs.value)};return startConnection(p.stableId)}
     fun reconnect(p:ConnectionProfile)=if(synchronized(guard){sessions.containsKey(p.stableId)})reconnectConnection(p.stableId)else connect(p)
     fun disconnect(){activeProfileStableId().takeIf{it.isNotBlank()}?.let(::stopConnection)}
-    fun disconnectAll(){connectionSpecs.value.forEach{stopConnection(it.id)}}
-    fun acquireBackgroundConnection(p:ConnectionProfile)=hasOpenTransport()
+    fun disconnectAll(){val ids=synchronized(guard){store.clearRequested();connectionSpecs.value.map{it.id}};ids.forEach(::stopConnection)}
+    private fun restoreRequestedConnections()=synchronized(guard){
+        store.requestedIds().forEach{id->if(sessions[id]?.requested==false)startConnection(id)}
+    }
+    suspend fun acquireBackgroundConnection(p:ConnectionProfile):Boolean {
+        while(!loaded)delay(10)
+        restoreRequestedConnections()
+        return anyRequested()
+    }
     fun claimBackgroundConnectionIfConnected()=hasOpenTransport()
     fun releaseBackgroundConnection()=Unit
     fun clearUserDisconnectLatch()=Unit
     fun setSafetyOwnedRetry(enabled:Boolean){synchronized(guard){sessions.values.filter{it.requested&&it.spec.receive}.forEach{it.manager?.setSafetyOwnedRetry(enabled)}}}
-    fun isUserDisconnected()=!hasOpenTransport()
+    fun isUserDisconnected()=!anyRequested()&&store.requestedIds().isEmpty()
     fun hasOpenTransport()=synchronized(guard){sessions.values.any{it.requested&&it.spec.receive&&it.manager?.hasOpenTransport()==true}}
     fun activeProfileStableId()=selectedIdentity?.let{identity->sourceRegistry.snapshot.value.values.flatten().firstOrNull{it.source.id==identity}?.source?.transportProfileId}?:connectionSpecs.value.firstOrNull()?.id.orEmpty()
     fun connectionGeneration()=selectedEpoch

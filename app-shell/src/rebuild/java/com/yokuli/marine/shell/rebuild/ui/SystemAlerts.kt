@@ -78,14 +78,7 @@ import com.yokuli.marine.shell.rebuild.*
     val chineseAlerts=buildAlerts(true)
     val englishAlerts=buildAlerts(false)
     val alerts=if(os.chinese)chineseAlerts else englishAlerts
-    LaunchedEffect(active.id,alerts.map {it.sortKey to it.severity}) {
-        chineseAlerts.forEach { alert ->
-            val english=englishAlerts.first { it.sortKey==alert.sortKey }
-            os.notify(alert.title+" · "+alert.detail,english.title+" · "+english.detail,
-                app=AppId.ANCHOR,severity=if(alert.severity==SafetyAlert.Severity.ALARM)NoticeSeverity.ALARM else NoticeSeverity.WARNING,
-                destination="anchor",key="anchor:${active.id}:${alert.sortKey}:${alert.severity}")
-        }
-    }
+    // 通知历史由进程级 Room 事件订阅写入；这里仅呈现当前需要用户处理的警报。
     // The retained domain sorter consumes English semantic keys. Display language must not change alarm priority.
     val primary=SafetyAlertAggregator.sorted(alerts.map{SafetyAlert(it.source,it.severity,it.sortKey,it.detail)}).firstOrNull()?.let{sorted->alerts.first{it.source==sorted.source}}?:return
     var end by remember(active.id){mutableStateOf(false)}

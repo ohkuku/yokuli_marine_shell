@@ -179,6 +179,11 @@ class WpShellRuntime(private val os: OsStore) {
                 entryGenerations[existing.taskId]=(entryGenerations[existing.taskId] ?: 0)+1
                 engine.dispatch(action.copy(replaceTaskRoute=true,preserveCaller=false));return
             }
+            // 跨应用对象入口拥有干净的父首页；最近任务 ActivateTask 仍恢复原页面代次。
+            val current=(engine.state.value.surface as? ShellVisualSurface.Module)?.taskId
+            if(existing!=null && current!=existing.taskId) {
+                entryGenerations[existing.taskId]=(entryGenerations[existing.taskId] ?: 0)+1
+            }
         } else if(action is LauncherAction.ActivateTask) coldOpeningTask=null
         engine.dispatch(action)
     }

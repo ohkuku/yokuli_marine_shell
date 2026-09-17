@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.anchorwatch.data.nmea.*
 import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
 import com.yokuli.marine.shell.rebuild.OsStore
+import com.yokuli.marine.shell.rebuild.AppId
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import kotlinx.coroutines.delay
@@ -32,7 +33,7 @@ import kotlinx.coroutines.delay
     BindInternalAppInputHandler{input->if(input==ShellInput.BACK&&(selected!=null||creating||sources)){back();true}else false}
     AppBackHandler(selected!=null||creating||sources){back()}
     Column(Modifier.fillMaxSize()){
-        PageHeader(os,when{sources->os.t("数据来源","data sources");creating->os.t("新连接","new connection");editing->os.t("编辑连接","edit connection");current!=null->current.spec.name;else->"nmea"},onBack=if(selected!=null||creating||sources)back else null)
+        PageHeader(os,when{sources->os.t("NMEA 来源","NMEA sources");creating->os.t("新连接","new connection");editing->os.t("编辑连接","edit connection");current!=null->current.spec.name;else->os.title(AppId.NMEA)},onBack=if(selected!=null||creating||sources)back else null)
         when{
             sources->VesselSourceSettings(os)
             creating||editing->ConnectionEditor(os,if(creating)null else current?.spec,connections.map{it.spec}){spec->vm.saveNmeaConnection(spec){selected=spec.id;editing=false;creating=false}}
@@ -124,7 +125,7 @@ private fun connectionText(os:OsStore,c:NmeaConnectionSnapshot)=when{
     c.state==NmeaConnectionState.CONNECTING->os.t("正在连接","connecting")
     c.state==NmeaConnectionState.RECONNECTING->os.t("正在重连","reconnecting")
     !c.spec.receive&&c.spec.send&&c.state in setOf(NmeaConnectionState.CONNECTED,NmeaConnectionState.CONNECTED_NO_DATA,NmeaConnectionState.CONNECTED_NO_FIX,NmeaConnectionState.STALE)->os.t("已连接 · 输出就绪","connected · output ready")
-    c.state==NmeaConnectionState.STALE->os.t("连接在线 · 数据过期","connected · data expired")
+    c.state==NmeaConnectionState.STALE->os.t("连接在线 · 等待更新","connected · awaiting update")
     c.state==NmeaConnectionState.CONNECTED_NO_FIX->os.t("已连接 · 无有效船位","connected · no valid position")
     c.state==NmeaConnectionState.CONNECTED_NO_DATA->os.t("已连接 · 等待数据","connected · waiting for data")
     else->os.t("已连接","connected")

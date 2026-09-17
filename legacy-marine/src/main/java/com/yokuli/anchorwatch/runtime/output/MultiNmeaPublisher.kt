@@ -16,7 +16,7 @@ import javax.inject.Singleton
     private val resources: RuntimeResourceManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private data class Batch(val epoch: Long, val sentences: List<String>)
+    private data class Batch(val epoch: Long, val sentences: List<String>,val sourceEpochs:Map<String,Long>)
     private data class Writer(val queue: Channel<Batch>, val job: Job)
     private val writers = mutableMapOf<String, Writer>()
     private val guard = Any()
@@ -28,7 +28,10 @@ import javax.inject.Singleton
                 writers.keys.toList().filter { it !in ids }.forEach { writers.remove(it)?.let { writer -> writer.queue.close(); writer.job.cancel() } }
                 ids.forEach { id -> if (id !in writers) {
                     val channel = Channel<Batch>(64)
-                    val job = scope.launch { for (batch in channel) navigation.writeConnection(id, batch.epoch, batch.sentences) }
+                    val job = scope.launch { for (batch in channel) {
+                        if(navigation.sourcesCurrent(batch.sourceEpochs))navigation.writeConnection(id,batch.epoch,batch.sentences,batch.sourceEpochs)
+                        else navigation.recordDroppedOutput(id,batch.sentences.size)
+                    } }
                     writers[id] = Writer(channel, job)
                 } }
             }
@@ -38,21 +41,22 @@ import javax.inject.Singleton
         scope.launch { navigation.frames.collect { frame ->
             navigation.connections.value.filter { it.requested && it.spec.send && it.spec.feed == NmeaFeed.RAW }.forEach { target ->
                 val epoch=navigation.connectionEpoch(target.spec.id)?:return@forEach
-                encoder.forward(target.spec, frame)?.let { queue(target, listOf(it),epoch) }
+                encoder.forward(target.spec, frame)?.let { queue(target, NmeaPublicationBatch(listOf(it),mapOf(frame.connectionId to frame.generation)),epoch) }
             }
         } }
         scope.launch { while (isActive) {
             delay(1_000)
             navigation.connections.value.filter { it.requested && it.spec.send && it.spec.feed != NmeaFeed.RAW }.forEach { target ->
                 val epoch=navigation.connectionEpoch(target.spec.id)?:return@forEach
-                queue(target,encoder.encode(target.spec,SystemClock.elapsedRealtime()),epoch)
+                queue(target,encoder.encodeBatch(target.spec,SystemClock.elapsedRealtime()),epoch)
             }
         } }
     }
-    private fun queue(target: NmeaConnectionSnapshot, lines: List<String>,epoch:Long) {
+    private fun queue(target: NmeaConnectionSnapshot, batch:NmeaPublicationBatch,epoch:Long) {
+        val lines=batch.sentences
         if (lines.isEmpty()) return
         if(navigation.connectionEpoch(target.spec.id)!=epoch)return
-        val accepted = synchronized(guard) { writers[target.spec.id]?.queue?.trySend(Batch(epoch, lines))?.isSuccess == true }
+        val accepted = synchronized(guard) { writers[target.spec.id]?.queue?.trySend(Batch(epoch, lines,batch.sourceEpochs))?.isSuccess == true }
         if (!accepted) navigation.recordDroppedOutput(target.spec.id, lines.size)
     }
 }

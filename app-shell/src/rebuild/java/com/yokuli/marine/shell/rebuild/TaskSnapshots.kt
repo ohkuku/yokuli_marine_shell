@@ -41,9 +41,10 @@ class TaskSnapshotStore {
         if(expectedTaskId!=null && chosen.taskId!=expectedTaskId)return@withLock false
         val rect=Rect(chosen.rect)
         if(!rect.intersect(0,0,chosen.window.decorView.width,chosen.window.decorView.height))return@withLock false
-        val scale=minOf(1.0,720.0/maxOf(rect.width(),rect.height()))
+        // 任务卡显示小字和原生地图，720px 长边会把整页文字缩成不可辨识的像素。
+        val scale=minOf(1.0,1920.0/maxOf(rect.width(),rect.height()))
         val bitmap=Bitmap.createBitmap((rect.width()*scale).roundToInt().coerceAtLeast(1),(rect.height()*scale).roundToInt().coerceAtLeast(1),Bitmap.Config.ARGB_8888)
-        withTimeoutOrNull(64) {
+        withTimeoutOrNull(120) {
             suspendCancellableCoroutine { continuation ->
                 try {
                     PixelCopy.request(chosen.window,rect,bitmap,{ result ->

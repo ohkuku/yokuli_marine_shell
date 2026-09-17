@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.anchorwatch.data.nmea.NmeaFeed
 import com.yokuli.anchorwatch.data.sharing.SharingServerState
 import com.yokuli.marine.shell.rebuild.OsStore
+import com.yokuli.marine.shell.rebuild.AppId
 
 /** 本机是服务器，其他设备是客户端；与主动发送连接共用完整的分享策略。 */
 @Composable fun LocalNmeaScreen(os:OsStore,service:(String,String?)->Unit) {
@@ -24,8 +25,8 @@ import com.yokuli.marine.shell.rebuild.OsStore
     val dirty=port.toIntOrNull()!=settings.port||feed!=settings.feed||capabilities!=settings.capabilities||forwards!=settings.forwardFrom
     val valid=port.toIntOrNull() in 1024..65535&&(feed!=NmeaFeed.RAW||forwards.isNotEmpty())
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os,os.t("本机服务","local service"))
-        Pivot(listOf(os.t("服务","service"),os.t("分享内容","sharing"),os.t("客户端","clients"),os.t("已发送","sent"))) { page ->
+        PageHeader(os,os.title(AppId.LOCAL_NMEA))
+        Pivot(listOf(os.t("共享","sharing"),os.t("内容","content"),os.t("手机","phone"),os.t("设备","devices"),os.t("已发送","sent"))) { page ->
             PageBody {
                 when(page) {
                     0->{
@@ -43,13 +44,16 @@ import com.yokuli.marine.shell.rebuild.OsStore
                             if(dirty)MetroButton(os.t("保存更改","save changes"),{vm.saveLocalNmeaPublicationPolicy(port.toInt(),feed,capabilities,forwards)},enabled=valid)
                             MetroButton(os.t("启动服务","start service"),{vm.startLocalNmeaServer()},primary=true,enabled=settings.configured&&!dirty)
                         }
-                        Label(os.t("在接收设备中选择 TCP 客户端，填写上面的地址与端口。切换到“分享内容”决定它可以收到什么。","Choose TCP client on the receiving device, then enter the address and port above. Choose what it receives under sharing."),17,LocalMetro.current.muted)
+                        Label(os.t("在接收设备中选择 TCP 客户端，填写上面的地址与端口。切换到“内容”决定它可以收到什么。","Choose TCP client on the receiving device, then enter the address and port above. Choose what it receives on the content page."),17,LocalMetro.current.muted)
                     }
                     1->{
                         NmeaPublicationEditor(os,feed,{feed=it},capabilities,{capabilities=it},forwards,{forwards=it},connections.map{it.spec},editable=!settings.serverRequested,destination=os.t("所有客户端","all clients"))
                         if(!settings.serverRequested&&dirty)MetroButton(os.t("保存分享内容","save sharing choices"),{vm.saveLocalNmeaPublicationPolicy(port.toInt(),feed,capabilities,forwards)},primary=true,enabled=valid)
                     }
                     2->{
+                        PhoneSourceSettings(os)
+                    }
+                    3->{
                         Label(os.t("接入本机的设备","connected devices"),28)
                         if(server.clients.isEmpty())Label(os.t("还没有设备接入。启动服务后，让接收设备连接服务页显示的地址。","No devices connected. Start the service and connect receivers to the address shown on the service page."),21,LocalMetro.current.muted)
                         server.clients.forEach{client->Column(verticalArrangement=Arrangement.spacedBy(6.dp)){Label(client.address,24);Label(os.t("已写出 ${client.sentSentences} 条数据","${client.sentSentences} packets written"),16,LocalMetro.current.muted)}}

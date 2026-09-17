@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
     private val serviceHandler: (String, String?) -> Unit = { action, extra -> service(action, extra) }
     private val gpsPermission=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         if(result[Manifest.permission.ACCESS_FINE_LOCATION]==true) service("gpsOn")
-        else os.notify("手机 GPS 需要精确位置权限，可在 NMEA 的数据来源中重试","Phone GPS needs precise location permission. Retry in NMEA → sources.",app=AppId.NMEA,destination="nmea:sources")
+        else os.notify("手机定位需要精确位置权限，可在“数据共享”的“手机”页重试","Phone location needs precise location permission. Retry on the phone page in Data Sharing.",app=AppId.LOCAL_NMEA,destination="local_nmea")
     }
     private val locationSettings=registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if(getSystemService(LocationManager::class.java).isLocationEnabled) service("gpsOn")

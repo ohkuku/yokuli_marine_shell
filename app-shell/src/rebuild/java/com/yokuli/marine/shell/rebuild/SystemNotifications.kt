@@ -41,6 +41,8 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     var expanded by mutableStateOf(false); private set
     private var appCaptureBlockedUntil=0L
     private var historyLoaded=false
+    private val loaded=CompletableDeferred<Unit>()
+    private var lastAnchorEventId=0L
     private var markRestoredRead=false
     private var discardRestoredRead=false
     /** 通知中心及其收起动画覆盖应用时，最近任务保留原应用截图。 */
@@ -49,14 +51,21 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     init {
         scope.launch {
             val saved = withContext(Dispatchers.IO) {
-                runCatching { JSONArray(file.openRead().bufferedReader().use { it.readText() }).objects().mapNotNull { runCatching { SystemNotice.from(it) }.getOrNull() } }.getOrDefault(emptyList())
+                runCatching {
+                    val text=file.openRead().bufferedReader().use {it.readText()}
+                    val root=if(text.trimStart().startsWith("{"))JSONObject(text)else null
+                    val entries=root?.optJSONArray("items") ?: JSONArray(text)
+                    (root?.optLong("anchorEventId") ?: 0L) to entries.objects().mapNotNull {runCatching{SystemNotice.from(it)}.getOrNull()}
+                }.getOrDefault(0L to emptyList())
             }
             // 冷启动读盘期间用户仍可展开或清空中心；这些操作也必须作用于迟到的历史。
-            val restored=saved.map{if(markRestoredRead)it.copy(read=true)else it}.filterNot{discardRestoredRead&&it.read}
+            val restored=saved.second.map{if(markRestoredRead)it.copy(read=true)else it}.filterNot{discardRestoredRead&&it.read}
             items = (items + restored).distinctBy { it.id }.sortedByDescending { it.createdAt }.take(200)
+            lastAnchorEventId=saved.first
             historyLoaded=true
+            loaded.complete(Unit)
             for (signal in writes) {
-                val snapshot=JSONArray(items.map {it.json()}).toString()
+                val snapshot=JSONObject().put("items",JSONArray(items.map {it.json()})).put("anchorEventId",lastAnchorEventId).toString()
                 withContext(Dispatchers.IO) {
                 runCatching {
                     val stream = file.startWrite()
@@ -75,14 +84,22 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
             }
         }
     }
-    fun post(notice: SystemNotice) {
+    fun post(notice: SystemNotice, showBanner:Boolean=true) {
         val previous = items.firstOrNull { notice.key != null && it.key == notice.key }
         // 同一事件短时间反复到达只更新次数；不让弱定位信号反复挤占界面。
         val merge = previous != null && notice.createdAt - previous.createdAt < 30_000
         val entry = if (merge) notice.copy(id = previous!!.id, occurrences = previous.occurrences + 1, read = expanded) else notice.copy(read = expanded)
         items = (listOf(entry) + items.filterNot { it.id == entry.id }).take(200)
         save()
-        if (!expanded && !merge) banners.trySend(entry)
+        if (showBanner && !expanded && !merge) banners.trySend(entry)
+    }
+    suspend fun awaitLoaded()=loaded.await()
+    /** 事件游标和通知一起落盘；已删除的历史不会在下一次 Room 订阅时重新出现。 */
+    fun acceptAnchorEvent(id:Long,notice:SystemNotice?) {
+        if(id<=lastAnchorEventId)return
+        lastAnchorEventId=id
+        if(notice!=null)post(notice,showBanner=System.currentTimeMillis()-notice.createdAt in 0..10_000)
+        else save()
     }
     fun open() { if(!historyLoaded)markRestoredRead=true; expanded = true; banner = null; items = items.map { it.copy(read = true) }; save() }
     fun close() { if(expanded)appCaptureBlockedUntil=android.os.SystemClock.elapsedRealtime()+260L;expanded = false }

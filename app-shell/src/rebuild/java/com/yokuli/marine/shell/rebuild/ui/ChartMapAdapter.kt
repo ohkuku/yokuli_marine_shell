@@ -9,14 +9,15 @@ import com.yokuli.marine.shell.rebuild.data.Fix
 /** Chart owns its route/mark editing; the renderer receives geometry and returns gestures. */
 @Composable
 fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (ChartHost) -> Unit) {
+    val now=rememberMarineClock()
     val view = os.maps.view("chart", os.center, os.zoom)
     view.follow = os.follow
     view.showCrosshair = os.showCrosshair || os.editingRoute
     view.ruler = os.ruler
     os.cameraRequest?.let { (point, zoom) -> view.fly(point, zoom); os.cameraRequest = null }
     os.fitRequest?.takeIf { it.isNotEmpty() }?.let { view.fit(it); os.fitRequest = null; os.follow = false }
-    val route = if(os.displayedRouteId!=null && os.displayedRouteId!=os.activeRouteId) os.routes.firstOrNull {it.id==os.displayedRouteId} else os.activeRoute
-    val navigating = !os.editingRoute && route != null && route.id == os.activeRouteId
+    val route = chartRoute(os)
+    val navigating = !os.editingRoute && route != null && chartIsNavigating(os)
     val points = if (os.editingRoute) os.draftRoute else route?.points.orEmpty()
     val accent = os.accent
     view.scaleTopDp=118f
@@ -25,14 +26,14 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         if(os.recordingActive) os.recordedSegments.forEachIndexed {i,segment -> add(MapLine("recording:$i",segment,0xFF008B8E,2.5f))}
         if(points.isNotEmpty()) add(MapLine("route",points,if(navigating)0xFF7D898C else accent,2.6f))
         if(navigating) add(MapLine("remaining",points.drop((os.routeLeg-1).coerceAtLeast(0)),accent))
-        if(navigating && fix?.fresh()==true) os.nextPoint?.let {add(MapLine("target",listOf(fix.point,it),accent,2f,true))}
+        if(navigating && fix?.fresh(now)==true) os.nextPoint?.let {add(MapLine("target",listOf(fix.point,it),accent,2f,true))}
     }
     val markers = buildList {
         points.forEachIndexed {i,p -> add(MapPoint("route:$i",p,(i+1).toString(),if(navigating && i<os.routeLeg)0xFF7D898C else accent,
             if(os.editingRoute)14f else if(navigating && i==os.routeLeg)16f else 10f,os.editingRoute))}
         os.allPlaces.forEach {add(MapPoint("place:${it.id}",it.point,"",if(view.selectedPlaceId==it.id)0xFFD74A29 else accent,if(view.selectedPlaceId==it.id)12f else 5f))}
     }
-    MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(),it.fresh())},markers,lines,
+    MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(now),it.fresh(now),it.freshHeading(now),it.freshSpeed(now))},markers,lines,
         demo=os.positionSource=="demo" || os.marine?.vm?.ui?.value?.settings?.demoMode==true),view,modifier,
         onHost={host -> host.captureForTile=true;onHost(host)},onEvent={event ->when(event) {
             is MapEvent.CameraChanged -> {os.center=event.center;os.zoom=event.zoom}
@@ -41,7 +42,7 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
             is MapEvent.ItemSelected -> if(event.id.startsWith("place:")) {
                 val id=event.id.removePrefix("place:")
                 os.allPlaces.firstOrNull {it.id==id}?.let {place ->
-                    view.selectedPlaceId=id;os.fly(place.point);os.showCrosshair=false;os.follow=false
+                    view.selectedPlaceId=id;os.showCrosshair=false
                 }
             }
             is MapEvent.PointMoved -> when {

@@ -72,20 +72,22 @@ data class LocalNmeaServerRuntimeStatus(
 
     @Synchronized private fun forward(frame:NmeaRawFrame) {
         if(!running||settings.feed!=NmeaFeed.RAW||server.status.value.state!=SharingServerState.RUNNING)return
-        server.status.value.clients.forEach { client -> encoder.forward(spec(client.address),frame)?.let { publish(it,client.id) } }
+        server.status.value.clients.forEach { client -> encoder.forward(spec(client.address),frame)?.let { publish(it,client.id,mapOf(frame.connectionId to frame.generation)) } }
     }
 
     @Synchronized private fun publishDue(now:Long) {
         if(!running||!settings.serverRequested||server.status.value.state!=SharingServerState.RUNNING)return
         if(settings.feed!=NmeaFeed.RAW)server.status.value.clients.forEach { client ->
-            encoder.encode(spec(client.address),now).forEach { publish(it,client.id) }
+            val batch=encoder.encodeBatch(spec(client.address),now)
+            batch.sentences.forEach { publish(it,client.id,batch.sourceEpochs) }
         }
         _status.value=_status.value.copy(message=if(server.status.value.clientCount==0)"Listening; waiting for a client" else "Serving ${server.status.value.clientCount} client(s)")
     }
 
-    private fun publish(sentence:String,clientId:Long) {
+    private fun publish(sentence:String,clientId:Long,epochs:Map<String,Long>) {
         recent.addLast(sentence.trim());while(recent.size>60)recent.removeFirst()
-        val queued=server.publish(sentence,clientId)
+        val generation=_status.value.generation
+        val queued=server.publish(sentence,clientId){running&&_status.value.generation==generation&&navigation.sourcesCurrent(epochs)}
         _status.value=_status.value.copy(generatedSentences=_status.value.generatedSentences+1,queuedSentences=_status.value.queuedSentences+if(queued>0)1 else 0,recentGenerated=recent.toList())
     }
 

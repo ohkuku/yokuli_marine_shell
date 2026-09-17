@@ -1,13 +1,15 @@
 # Yokuli OS 0.5：应用边界、接口与数据拓扑
 
-日期：2026-09-17。本文对应 `app-shell/src/rebuild` 实际入口；不是另造一个尚未实现的架构。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
+更新：2026-09-18，experience.4。本文对应 `app-shell/src/rebuild` 实际入口。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
+
+本轮审查的代码修复与验证边界见 [experience.4 记录](../experience/EXPERIENCE_4_DELIVERY.md)。表格描述实现约定，不代表所有硬件、后台限制和长时间船上场景均已通过验证。
 
 ## 这轮实现计划与边界
 
 | 用户反馈 | 实现位置与决定 |
 | --- | --- |
 | 1、2 准星底栏与比例尺 | 准星读数、选中对象与底部命令连在一起；比例尺独立在地图左上，显示 1/2/5 系列整数量级。 |
-| 3、26 WP 排版、控件、动效 | Shell 与应用共用 Selawik 字族、轻标题、方形单选、矩形输入框、横滑 Pivot、按压倾斜；提供全局文字大小。取消产品里的“减少动画”开关，保留 Android 无动画的系统可访问性行为。 |
+| 3、26 WP 排版、控件、动效 | Shell 与应用共用 Selawik 字族、48sp 轻标题、32sp Pivot、圆形单选、矩形开关/输入框、水平五点进度、按压倾斜；提供全局文字大小。保留 Android 无动画的系统可访问性行为。 |
 | 4 缩放抖动 | 地理点、线、范围交给同一个地图引擎原生绘制；Compose 不再异步投影地图标注。 |
 | 5、6、15、16、22 应用关系 | 地图内先预览坐标，详情为显式动作；应用入口回首页，最近任务恢复原子页；根页不显示“返回 OS”；内部返回处理先于 Shell，失活画面不能抢键。 |
 | 7 声纳 | 移除测深调查产品入口、UI、采样订阅和自动恢复；保留历史数据库和真实 NMEA 水深读数。 |
@@ -16,7 +18,7 @@
 | 11、23 磁贴 | 应用列表 → 该应用的真实样式预览 → 尺寸 → 应用；同一应用一块磁贴，旧重复项迁移合并。读数实时订阅，地图底图快照标记时间。 |
 | 12 全局单位 | 显示统一走 `DisplayFormats`；DD/DMM/DMS 编辑使用同一解析器；原始记录不随显示偏好改写。 |
 | 13、14 锚警 | 地图为主，下锚 → 定位置/范围 → 值守 → 起锚；最近轨迹渐隐，累计停留区域来自本次真实历史。 |
-| 17 设置 | 设置只管系统、个人偏好、船舶、权限、声音、资料备份和关于；来源管理移入 NMEA，样式集中到磁贴库。 |
+| 17 设置 | 设置只管系统、个人偏好、船舶、权限、声音、资料备份和关于；船上设备来源由船联网管理，手机来源在数据共享中管理；样式集中到磁贴工坊。 |
 | 18 来源与分享 | 输入、字段采用、输出目的地分离；本机服务和主动发送共用能力选择、真实包过滤及逐 IP 防回送。 |
 | 19 通知 | 全局顶部轻提示 + 底部通知键；顶部下滑交给 Android 系统。通知中心保留应用、时间、正文、级别、已读、重复次数和可选详情；阅读不确认警报。 |
 | 20 海图库 | 文件夹 / 命名图层 / 文件明确分层；创建、扫描、改名、启停、优先级、移除/恢复、解除关联和地图使用均有明确效果。 |
@@ -36,15 +38,15 @@ flowchart TB
     end
     subgraph Apps[应用]
         Chart[海图]
-        Library[海图库]
-        Log[航行日志]
-        Anchor[锚警]
+        Library[图册]
+        Log[航海日志]
+        Anchor[守锚]
         Sailing[我的航行]
-        Gauges[仪表]
-        Nmea[NMEA 输入及输出]
-        Local[本机 NMEA]
+        Gauges[驾驶台]
+        Nmea[船联网]
+        Local[数据共享]
         Settings[设置]
-        Tiles[磁贴库]
+        Tiles[磁贴工坊]
     end
     Catalog --> Nav
     Nav --> Apps
@@ -99,6 +101,8 @@ flowchart TB
     end
     Voyage --> Room
     Watch --> Room
+    Room --> EventBridge[MarineNoticeBridge\n事件 ID、真实发生时间、持久游标]
+    EventBridge --> Notices
     Saved --> Room
     Saved --> Json
     Charts --> Json
@@ -116,17 +120,29 @@ flowchart TB
 | 应用 | 入口 / 对象地址 | 读取 | 提交的业务动作 | 数据所有权 |
 | --- | --- | --- | --- | --- |
 | 海图 | `chart` | `MapScene`、可信船位、选中坐标/路线、全局航行 | 选点、标记、规划、预览、导航、记录命令 | 独立视口与地图临时工具；收藏交给我的航行 |
-| 海图库 | `library`、`library:<folderId>` | 文件夹扫描、文件状态、命名图层、覆盖 | 授权、扫描、改名、排序、启停、恢复、解除关联、使用图层 | `ChartFolder / ChartFile / ChartLayer` |
-| 航行日志 | `voyages`、`voyage:<id>`、`replay:<id>`、`report:<id>` | 当前 `VoyageSessionState`、历史轨迹/事件/时刻 | 开始、暂停、继续、结束、时刻笔记、改名、导出、历史地图预览 | `TripSession / Sample / Event / Waypoint` |
-| 锚警 | `anchor` | 选中船位、锚点、警戒圈、近期轨迹、累计范围、警报 | 下锚、设点/半径、值守、暂停、起锚、收藏 | `AnchorSession`；收藏引用统一坐标 |
+| 图册 | `library`、`library:<folderId>` | 文件夹扫描、文件状态、命名图层、覆盖 | 授权、扫描、改名、排序、启停、恢复、解除关联、使用图层 | `ChartFolder / ChartFile / ChartLayer` |
+| 航海日志 | `voyages`、`voyage:<id>`、`replay:<id>`、`report:<id>` | 当前 `VoyageSessionState`、历史轨迹/事件/时刻 | 开始、暂停、继续、结束、时刻笔记、改名、导出、历史地图预览 | `TripSession / Sample / Event / Waypoint` |
+| 守锚 | `anchor` | 选中船位、锚点、警戒圈、近期轨迹、累计范围、警报 | 下锚、设点/半径、值守、暂停、起锚、收藏 | `AnchorSession`；收藏引用统一坐标 |
 | 我的航行 | `places`、`place:<id>`、`route:<id>`、`anchorage:<id>`、`collection:<id>` | 收藏坐标、锚地具体位置、集合、路线 | CRUD、GPX、预览、前往、编辑路线、集合整理 | `Place / Route` 与已有 Room anchorage 实体 |
-| 仪表 | `instruments` | 已采纳 `VesselObservation`、趋势、导航 | 选表、详情、增删/排序、安装校准 | 只拥有显示布局；不切换连接 |
-| NMEA | `nmea`、`nmea:sources`、`nmea:outputs` | 多连接、来源候选、流量与报文 | CRUD/连接/停止、字段选源、分享能力与转发输入选择 | `NmeaConnectionSpec`、系统字段来源策略 |
-| 本机 NMEA | `local_nmea` | 本机监听状态、连接客户端、实际输出 | 设置端口、同一分享策略、启动/停止 | `LocalNmeaServerSettings` 与 listener 生命周期 |
+| 驾驶台 | `instruments` | 已采纳 `VesselObservation`、趋势、导航 | 选表、详情、增删/排序、安装校准 | 只拥有显示布局；不切换连接 |
+| 船联网 | `nmea`、`nmea:sources`、`nmea:outputs` | 多连接、来源候选、流量与报文 | CRUD/连接/停止、字段选源、分享能力与转发输入选择 | `NmeaConnectionSpec`、系统字段来源策略 |
+| 数据共享 | `local_nmea` | 本机监听状态、连接客户端、实际输出 | 设置端口、同一分享策略、启动/停止 | `LocalNmeaServerSettings` 与 listener 生命周期 |
 | 设置 | `settings`、`settings:<section>` | 持久化系统/船舶偏好 | 修改语言、单位、坐标、颜色、文字大小、常亮、声音、权限、备份 | `LauncherPersistedState`、`VesselDataSettings` |
-| 磁贴库 | `tiles`、`tiles:<appId>` | 应用声明的样式、当前固定项、真实内容 | 选择样式/尺寸、固定、更新、取消固定 | Shell 的 tile preference 与 `StartDocument` |
+| 磁贴工坊 | `tiles`、`tiles:<appId>` | 应用声明的样式、当前固定项、真实内容 | 选择样式/尺寸、固定、更新、取消固定 | Shell 的 tile preference 与 `StartDocument` |
 
 `nmea:outputs` 兼容已有入口，连接内部负责读写选择。`settings:sources`、旧 sonar 和 data/trip 路由只作为旧链接迁移，不恢复已移除产品。
+
+### experience.4 的关键读写约定
+
+- 应用稳定 ID、对象路径和已有数据不随品牌名称变化。图册、航海日志、守锚、驾驶台、船联网、数据共享、磁贴工坊分别对应原来的 LIBRARY、VOYAGES、ANCHOR、INSTRUMENTS、NMEA、LOCAL_NMEA、TILES。
+- `Reading` 保留 `freshness / quality / sourceKey / elapsed / validForMillis`。显示来源名与稳定物理来源身份分开。普通数值显示最后观测和年龄；实时船首向/COG/姿态必须采用字段自己的有效性，不能借位置更新时间续命。
+- `Fix` 的位置、SOG、COG、heading 各自计时。`MapVessel` 的 heading 只转船形，COG 只画一分钟对地向量。GGA 的位置与 VTG 的航速/航向通过已采纳字段组合，COG 永不冒充船首向。
+- `navigationRoute` 是启动导航时的冻结路线；`MapViewState.previewRoute` 是另一个明确预览版本。导航卡、地图、目标切换使用相同冻结版本。
+- 当前船位下锚使用开始时可信船位，确认页也显示该语义和实时预览。两个开始入口共用 `anchorWatchInput`，估计模式不丢失锚链、水深及 UNKNOWN 状态。
+- 船联网的来源页仅列实际 NMEA 连接候选。手机定位与手机传感器在数据共享的“手机”页；驾驶台拥有固定手机后的校准交互。分享策略仍独立决定是否以及向谁输出。
+- `NmeaConnectionLeasePolicy` 只恢复同次开机中用户明确开启且未停止的连接；持久连接配置本身不是授权自动连接的开关。RAW 和 SYSTEM 待发批次携带真实来源代次，写出前再次校验。
+- `MarineNoticeBridge` 从 Room 订阅背景警报，以事件 ID 和真实发生时间写入 `SystemNotificationStore`。持久游标防止已删除通知在重启时复活；读取通知不会 acknowledge 或停止警报。
+- 显式跨应用对象入口创建干净的父首页代次；最近任务恢复原代次。任务图像最长边 1920px，卡片按原视口比例展示；上滑逐帧跟手，抬手判定位移和速度，不足则弹回。
 
 ## 系统接口与数据结构
 

@@ -48,7 +48,7 @@ import java.util.Date
     if (selected != null) {
         key(selected) { VoyageDetail(os, selected!!, back, { recording = true }) }
     } else Column(Modifier.fillMaxSize()) {
-        PageHeader(os, os.t("航行日志", "logbook"))
+        PageHeader(os, os.title(AppId.VOYAGES))
         Pivot(listOf(os.t("本次航行", "this voyage"), os.t("所有航行", "all voyages"))) { page ->
             if (page == 0) CurrentVoyage(os, { recording = true }, { selected = it }, {marking=true;recording=true})
             else {
@@ -75,12 +75,18 @@ import java.util.Date
     val now = rememberMarineClock()
     val trip = state.activeTrip
     val c = LocalMetro.current
-    val fix = data.fix(os.positionSource)?.takeIf { it.fresh(now) }
+    val fix = data.fix(os.positionSource)
     PageBody {
         if (trip == null) {
             Label(os.t("下一次出发", "your next departure"), 39, c.accent)
             Label(os.t("记录走过的海面，也记住沿途的时刻。", "Keep the waters you travelled and the moments along the way."), 23)
-            Label(when { voyage.phase==VoyagePhase.STARTING->os.t("正在准备本次航行…","preparing this voyage…");fix != null -> os.t("船位已准备好，可以开始记录。", "Position is ready to record."); os.positionSource == "none" -> os.t("在 NMEA 的数据来源中开启船位后，即可记录航迹。", "Enable position in NMEA data sources to record a track."); else -> os.t("等待所选来源提供有效船位。", "Waiting for a valid position from your selected source.") }, 18, c.muted)
+            Label(when {
+                voyage.phase == VoyagePhase.STARTING -> os.t("正在准备本次航行…", "preparing this voyage…")
+                fix?.fresh(now) == true -> os.t("船位已准备好，可以开始记录。", "Position is ready to record.")
+                fix != null -> os.t("保留上次船位，", "Last position retained, ") + readingAge(os, fix.elapsed, now)
+                os.positionSource == "none" -> os.t("手机定位在“数据共享”中开启；船上设备在“船联网”中连接。", "Enable phone location in Data Sharing, or connect your boat in Boat Network.")
+                else -> os.t("等待所选来源的首次船位。", "Waiting for the first position from your selected source.")
+            }, 18, c.muted)
             if (state.active != null) Label(os.t("锚警继续值守，航行记录可以同时运行。", "The anchor watch continues while voyage recording runs."), 17, c.muted)
             MetroButton(if(voyage.commandPending)os.t("正在开始…","starting…")else os.t("开始航行", "start voyage"), controls, primary = true,enabled=!voyage.commandPending)
             state.tripSessions.firstOrNull { !it.active }?.let { last -> MenuRow(os.t("上次航行", "last voyage"), last.name + " · " + voyageDate(last.startedAt), "logbook") { detail(last.id) } }
@@ -95,8 +101,8 @@ import java.util.Date
             val view = remember(trip.id) { MapViewState(points.firstOrNull() ?: fix?.point ?: GeoPoint(0.0, 0.0), if (points.isEmpty() && fix == null) 1.0 else 13.0) }
             var fitted by remember(trip.id) { mutableStateOf(false) }
             LaunchedEffect(points.isNotEmpty()) { if (!fitted && points.isNotEmpty()) { view.fit(points); fitted = true } }
-            MarineMap(os.maps, MapScene(vessel = fix?.let { MapVessel(it.point, it.freshCourse(now)) }, lines = segments.mapIndexed { index, line -> MapLine("live-$index", line, os.accent) }), view, Modifier.fillMaxWidth().height(240.dp))
-            if (fix == null && !trip.paused) Label(os.t("船位暂不可用。记录继续，缺失的位置保留为航迹间断。", "Position is unavailable. Recording continues, with gaps where position is missing."), 17, c.muted)
+            MarineMap(os.maps, MapScene(vessel = fix?.let { MapVessel(it.point, it.freshCourse(now),it.fresh(now),it.freshHeading(now),it.freshSpeed(now)) }, lines = segments.mapIndexed { index, line -> MapLine("live-$index", line, os.accent) }), view, Modifier.fillMaxWidth().height(240.dp))
+            if (!trip.paused && fix?.fresh(now)!=true) Label(fix?.let {os.t("上次船位：","last position: ")+readingAge(os,it.elapsed,now)} ?: os.t("等待首次船位；记录保留定位中断。", "Waiting for the first position; recording preserves gaps."), 17, c.muted)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 Column(Modifier.weight(1f)) { Label(os.formatSpeed(trip.maxSogKnots), 29); Label(os.t("最高航速", "top speed"), 15, c.muted) }
                 Column(Modifier.weight(1f)) { Label(trip.waypointCount.toString(), 29); Label(os.t("沿途时刻", "moments"), 15, c.muted) }
@@ -144,7 +150,7 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
         val content = loaded
         when {
             error -> PageBody { Label(os.t("暂时无法读取这次航行。", "This voyage could not be loaded."), 23); MetroButton(os.t("重试", "retry"), { revision++ }) }
-            content == null -> PageBody { Label(os.t("正在读取航迹与记录…", "loading track and recordings…"), 22, c.muted) }
+            content == null -> PageBody { MetroProgress(os.t("正在读取航迹与记录…", "loading track and recordings…")) }
             session == null -> PageBody { Label(os.t("这次航行已经不可用。", "This voyage is no longer available."), 23) }
             else -> Pivot(listOf(os.t("航迹", "track"), os.t("报告", "report"), os.t("时刻", "moments"), os.t("导出", "export"))) { page ->
                 PageBody {
@@ -240,7 +246,7 @@ private fun showVoyageOnChart(os:OsStore,content:VoyageContent,focus:GeoPoint?=n
     val index = remember(samples, time) { var lo = 0; var hi = samples.lastIndex; var result = -1; while (lo <= hi) { val mid = (lo + hi) / 2; if (samples[mid].timestamp <= time) { result = mid; lo = mid + 1 } else hi = mid - 1 }; result }
     val frame = samples.getOrNull(index)?.takeIf { time - it.timestamp <= 10_000 }
     val position = frame?.let { p -> val latitude=p.latitude; val longitude=p.longitude; if (latitude != null && longitude != null) GeoPoint(latitude, longitude).takeIf { it.valid() } else null }
-    val scene = MapScene(vessel = position?.let { MapVessel(it, frame?.headingDegrees ?: frame?.cogDegrees) }, lines = track.mapIndexed { i, points -> MapLine("voyage-$id-$i", points, os.accent) }, points = content.map.waypoints.map { MapPoint("moment-${it.id}", GeoPoint(it.latitude, it.longitude), it.name, os.accent) })
+    val scene = MapScene(vessel = position?.let { MapVessel(it, frame?.cogDegrees,true,frame?.headingDegrees,frame?.sogKnots) }, lines = track.mapIndexed { i, points -> MapLine("voyage-$id-$i", points, os.accent) }, points = content.map.waypoints.map { MapPoint("moment-${it.id}", GeoPoint(it.latitude, it.longitude), it.name, os.accent) })
     MarineMap(os.maps, scene, view, Modifier.fillMaxWidth().height(290.dp), onEvent = { event ->
         if (event is MapEvent.ItemSelected && event.id.startsWith("moment-")) content.map.waypoints.firstOrNull { "moment-${it.id}" == event.id }?.let { time = it.timestamp.coerceIn(firstTime, lastTime); playing = false }
     })

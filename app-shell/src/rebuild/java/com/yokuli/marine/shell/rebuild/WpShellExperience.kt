@@ -120,6 +120,13 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
+    val needsHeadingDisplay=lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
+        state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS)
+    DisposableEffect(os.marine,needsHeadingDisplay) {
+        val vm=os.marine?.vm
+        vm?.setMapHeadingDisplayActive(needsHeadingDisplay)
+        onDispose {vm?.setMapHeadingDisplayActive(false)}
+    }
     DisposableEffect(lifecycleOwner, shell) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) shell.engine.dispatch(LauncherAction.CancelTileOperation)
@@ -283,7 +290,7 @@ private fun ShellAppContent(os: OsStore, page: String, service: (String, String?
 /** Original app icon paths, shared by tiles and alphabetic app rows. */
 @Composable
 internal fun ShellAppIcon(app: ShellApp, color: Color, modifier: Modifier) {
-    if (app.app.name !in setOf("CHART", "LIBRARY", "PLACES", "DATA", "SETTINGS")) {
+    if (app.app.name !in setOf("CHART", "LIBRARY")) {
         Glyph(app.app.icon, modifier, color)
         return
     }

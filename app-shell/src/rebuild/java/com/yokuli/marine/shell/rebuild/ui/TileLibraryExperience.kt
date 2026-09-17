@@ -44,8 +44,8 @@ import kotlinx.coroutines.launch
     BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && owner != null) { back(); true } else false }
     AppBackHandler(owner != null) { back() }
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os, selectedApp?.let { os.title(it.app) } ?: os.t("磁贴库", "tile library"),
-            app = if (selectedApp == null) "YOKULI OS" else os.t("磁贴库", "TILE LIBRARY"),
+        PageHeader(os, selectedApp?.let { os.title(it.app) } ?: os.title(AppId.TILES),
+            app = if (selectedApp == null) "YOKULI OS" else os.title(AppId.TILES),
             onBack = if (selectedApp != null) back else null)
         AnimatedContent(selectedApp?.id?.value, transitionSpec = {
             (slideInHorizontally(tween(260)) { it / 5 } + fadeIn(tween(200))) togetherWith
@@ -85,7 +85,7 @@ import kotlinx.coroutines.launch
                 var interval by rememberSaveable(app.id.value) { mutableStateOf(preferences?.appPreferenceValues?.get("${app.id.value}.tile.interval")?.removePrefix("c:") ?: "6") }
                 PageBody {
                     HorizontalPager(pager, Modifier.fillMaxWidth().height(200.dp), beyondViewportPageCount = 1) { index ->
-                        val visual = tilePresentation(os, app, animate = true, modeOverride = modes[index].key)
+                        val visual = tilePresentation(os, app, animate = index == pager.currentPage, modeOverride = modes[index].key, rotateOverride = rotate, intervalOverride = interval.toLongOrNull() ?: 6L)
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TilePreview(visual, size) }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -127,7 +127,7 @@ import kotlinx.coroutines.launch
 @Composable private fun TileChoice(label: String, selected: Boolean, modifier: Modifier = Modifier, choose: () -> Unit) {
     val c = LocalMetro.current
     Row(modifier.fillMaxWidth().selectable(selected = selected, role = Role.RadioButton, onClick = choose).padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-        Box(Modifier.size(24.dp).border(2.dp, c.fg).padding(5.dp)) { if (selected) Box(Modifier.fillMaxSize().background(c.accent)) }
+        Box(Modifier.size(26.dp).border(2.dp, c.fg, androidx.compose.foundation.shape.CircleShape).padding(6.dp)) { if (selected) Box(Modifier.fillMaxSize().background(c.accent, androidx.compose.foundation.shape.CircleShape)) }
         Label(label, 21, if (selected) c.fg else c.muted)
     }
 }

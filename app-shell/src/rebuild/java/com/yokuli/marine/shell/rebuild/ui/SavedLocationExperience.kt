@@ -49,7 +49,9 @@ import java.util.Locale
     val photoPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri->if(uri!=null&&id!=null)mutate{repo.photos.import(id,uri)} }
     val data=bundle
     if(data==null) {
-        Column {PageHeader(os,os.t("地点","place"));Label(if(loading)os.t("正在读取…","loading…")else if(readError)os.t("暂时无法读取，请重试","could not load, please retry")else os.t("这个地点已不可用","this place is unavailable"),22,modifier=Modifier.padding(22.dp))
+        Column {PageHeader(os,os.t("地点","place"))
+            if(loading)MetroProgress(os.t("正在读取…","loading…"),Modifier.padding(22.dp))
+            else Label(if(readError)os.t("暂时无法读取，请重试","could not load, please retry")else os.t("这个地点已不可用","this place is unavailable"),22,modifier=Modifier.padding(22.dp))
             if(readError)MetroButton(os.t("重试","retry"),{revision++})}
         return
     }
@@ -142,11 +144,13 @@ import java.util.Locale
 
 @Composable private fun SpotEditor(os:OsStore,spot:AnchorageSpotEntity,onDismiss:()->Unit,onSave:(AnchorageSpotEntity)->Unit) {
     var name by remember {mutableStateOf(spot.name)};var note by remember {mutableStateOf(spot.personalNotes)}
-    var lat by remember {mutableStateOf(os.formatLatitude(spot.latitude))};var lon by remember {mutableStateOf(os.formatLongitude(spot.longitude))}
+    val initialLat=remember(spot.id){os.formatLatitude(spot.latitude)}
+    val initialLon=remember(spot.id){os.formatLongitude(spot.longitude)}
+    var lat by remember {mutableStateOf(initialLat)};var lon by remember {mutableStateOf(initialLon)}
     var depth by remember {mutableStateOf(spot.typicalWaterDepthMeters?.toString().orEmpty())}
     var rode by remember {mutableStateOf(spot.typicalRodeLengthMeters?.toString().orEmpty())}
     var radius by remember {mutableStateOf(spot.preferredAlarmRadiusMeters?.toString().orEmpty())}
-    val point=parseCoordinate(lat,true)?.let {a->parseCoordinate(lon,false)?.let{b->GeoPoint(a,b).takeIf(GeoPoint::valid)}}
+    val point=preservedCoordinate(GeoPoint(spot.latitude,spot.longitude),initialLat,initialLon,lat,lon)
     fun valid(value:String)=value.isBlank()||value.toDoubleOrNull()?.let {it.isFinite()&&it>=0}==true
     Dialog(onDismissRequest=onDismiss){Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(LocalMetro.current.bg).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
         Label(os.t("具体坐标","specific spot"),31)

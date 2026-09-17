@@ -22,6 +22,23 @@ import kotlin.math.*
 private const val EARTH_METERS = 6_371_008.8
 private const val ARRIVAL_NEAR_METERS = 50.0
 
+/** 同一航线 ID 的收藏可继续编辑；导航和目标索引始终使用开始时冻结的版本。 */
+internal fun chartRoute(os:OsStore):Route? = os.maps.view("chart",os.center,os.zoom).previewRoute?.takeIf {it.id==os.displayedRouteId}
+    ?: resolveChartRoute(os.displayedRouteId,os.activeRoute,os.routes)
+internal fun chartIsNavigating(os:OsStore):Boolean = os.maps.view("chart",os.center,os.zoom).previewRoute?.takeIf {it.id==os.displayedRouteId}==null &&
+    os.activeRoute!=null && (os.displayedRouteId==null || os.displayedRouteId==os.activeRouteId)
+internal fun resolveChartRoute(displayedId:String?,active:Route?,saved:List<Route>):Route? =
+    if(displayedId==null || displayedId==active?.id) active else saved.firstOrNull {it.id==displayedId}
+
+internal fun cancelRouteDraft(os:OsStore) {
+    os.draftRoute=emptyList();os.editingRouteId=null;os.editingRoute=false;os.showCrosshair=false
+}
+
+internal fun resumeOrCreateRouteDraft(os:OsStore) {
+    if(os.draftRoute.isEmpty())os.editingRouteId=null
+    os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList()
+}
+
 data class RouteGuidance(
     val index:Int, val target:GeoPoint, val distanceMeters:Double?, val remainingMeters:Double?,
     val bearingTrue:Double?, val offsetMeters:Double?, val offsetSide:Int,
@@ -60,6 +77,7 @@ fun routeGuidance(route:Route,index:Int,fix:Fix?,now:Long):RouteGuidance? {
 fun beginNavigation(os:OsStore,route:Route,index:Int,fix:Fix?,now:Long) {
     if(route.points.isEmpty()) return
     os.navigationRoute=route.copy(points=route.points.toList())
+    os.maps.view("chart",os.center,os.zoom).previewRoute=null
     os.activeRouteId=route.id;os.displayedRouteId=route.id;os.routeLeg=index.coerceIn(route.points.indices)
     os.editingRoute=false;os.ruler=emptyList();os.showCrosshair=false
     val point=fix?.takeIf {it.fresh(now)}?.point ?: route.points[os.routeLeg]
@@ -68,6 +86,7 @@ fun beginNavigation(os:OsStore,route:Route,index:Int,fix:Fix?,now:Long) {
 }
 
 fun endNavigation(os:OsStore,arrived:Boolean=false) {
+    os.maps.view("chart",os.center,os.zoom).previewRoute=null
     os.activeRouteId=null;os.navigationRoute=null;os.displayedRouteId=null;os.routeLeg=0;os.follow=false;os.save()
     if(arrived) os.notify("已确认到达，导航结束。","Arrival confirmed. Navigation ended.")
     else os.notify("导航已结束。","Navigation ended.")
@@ -145,13 +164,8 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
             })
             LazyColumn(Modifier.fillMaxWidth().heightIn(max=190.dp)) {
                 itemsIndexed(route.points) {i,p ->
-                    Row(Modifier.fillMaxWidth().background(if(i==target) c.panel else Color.Transparent).clickable {target=i}.padding(10.dp),verticalAlignment=Alignment.CenterVertically) {
-                        Label(if(i==target) "●" else "○",22,if(i==target) c.accent else c.muted)
-                        Column(Modifier.padding(start=12.dp)) {
-                            Label(os.t("航点 ${i+1}","waypoint ${i+1}"),20)
-                            Label(live?.let {os.formatDistance(distance(it.point,p))} ?: os.formatCoordinates(p),12,c.muted)
-                        }
-                    }
+                    ChoiceRow(os.t("航点 ${i+1}","waypoint ${i+1}"),i==target,
+                        live?.let {os.formatDistance(distance(it.point,p))} ?: os.formatCoordinates(p)) {target=i}
                 }
             }
             Label(os.t("按保存的航点依次引导。图上的连接线不判断水深、障碍或通航条件。","Guidance follows your saved waypoints. Connecting lines do not assess depth, obstacles or navigability."),15,c.muted)
@@ -167,11 +181,10 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
 @Composable fun ChartNavigationCard(os:OsStore,fix:Fix?,now:Long) {
     val c=LocalMetro.current
     val active=os.activeRoute
-    val preview=os.routes.firstOrNull {it.id==os.displayedRouteId}
-    val route=preview ?: active ?: return
+    val route=chartRoute(os) ?: return
     var start by remember(route.id) {mutableStateOf(false)}
     var manage by remember(route.id) {mutableStateOf(false)}
-    val navigating=active?.id==route.id
+    val navigating=chartIsNavigating(os)
     val guidance=if(navigating) routeGuidance(route,os.routeLeg,fix,now) else null
     Column(Modifier.fillMaxWidth().background(c.bg.copy(alpha=.96f)).padding(horizontal=14.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
@@ -190,7 +203,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                 Modifier.clickable {manage=true})
             if(guidance.nearTarget) Label(os.t("目标附近（50 m 内）· 点此确认到达","near target (within 50 m) · confirm arrival"),15,c.accent,Modifier.clickable {manage=true})
         } else if(active!=null) Label(os.t("返回当前导航：${active.name}","return to navigation: ${active.name}"),13,c.muted,Modifier.clickable {
-            os.displayedRouteId=active.id;os.showCrosshair=false;os.save()
+            os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=active.id;os.showCrosshair=false;os.save()
         })
     }
     if(start) StartNavigationDialog(os,route) {start=false}
@@ -198,6 +211,8 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
 }
 
 @Composable fun NavigationActionsDialog(os:OsStore,route:Route,onDismiss:()->Unit) {
+    val route=os.activeRoute?.takeIf {it.id==route.id} ?: return
+    LaunchedEffect(route.id) {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id}
     val (fix,now)=liveNavigationFix(os)
     val guidance=routeGuidance(route,os.routeLeg,fix,now) ?: return
     val c=LocalMetro.current
@@ -220,6 +235,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                     itemsIndexed(route.points) {i,p -> MenuRow(os.t("航点 ${i+1}","waypoint ${i+1}"),
                         if(i==guidance.index) os.t("当前目标","current target") else fix?.takeIf {it.fresh(now)}?.let {os.formatDistance(distance(it.point,p))}) {
                         os.routeLeg=i;os.displayedRouteId=route.id;os.showCrosshair=false;os.save();os.open("chart");onDismiss()
+                        os.maps.view("chart",os.center,os.zoom).previewRoute=null
                     } }
                 }
                 MetroButton(os.t("返回","back"),{choose=false})
@@ -239,7 +255,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                     },primary=true)
                 }
                 MetroButton(os.t("切换目标航点","change target waypoint"),{choose=true})
-                MetroButton(os.t("查看整条航线","show entire route"),{os.displayedRouteId=route.id;os.fitRequest=route.points;os.showCrosshair=false;os.open("chart");onDismiss()})
+                MetroButton(os.t("查看整条航线","show entire route"),{os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.fitRequest=route.points;os.showCrosshair=false;os.open("chart");onDismiss()})
                 MetroButton(os.t("结束导航","end navigation"),{stopping=true})
                 MetroButton(os.t("关闭","close"),onDismiss)
             }

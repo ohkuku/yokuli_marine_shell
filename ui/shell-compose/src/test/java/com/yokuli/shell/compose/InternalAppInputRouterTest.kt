@@ -12,7 +12,8 @@ class InternalAppInputRouterTest {
         val first = router.register(Any()) { it == ShellInput.BACK }
         val second = router.register(Any()) { it == ShellInput.SEARCH }
 
-        assertFalse(router.dispatch(ShellInput.BACK))
+        // The newest handler gets first refusal; declining SEARCH must not swallow BACK.
+        assertTrue(router.dispatch(ShellInput.BACK))
         assertTrue(router.dispatch(ShellInput.SEARCH))
 
         first.close()

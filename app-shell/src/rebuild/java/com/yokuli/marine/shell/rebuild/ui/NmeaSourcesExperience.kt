@@ -11,23 +11,15 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
     val marine = os.marine ?: return
     val state by marine.vm.ui.collectAsState()
     val connections by marine.vm.nmeaConnections.collectAsState()
-    val phoneLocation by marine.vm.phoneLocationStatus.collectAsState()
     val now = rememberMarineClock()
     var expanded by remember { mutableStateOf<VesselMetricId?>(null) }
     val locked = state.active?.paused == false
     val nmeaConnected = connections.any { it.spec.receive && it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }
     PageBody {
-        Label(os.t("船位", "position"), 28)
-        Toggle(os.t("手机 GPS", "phone GPS"), os.positionSource == "phone", os.t("开启时请求权限并启动定位；关闭时停止。", "Requests access and starts location when switched on; stops when switched off."), enabled = !locked && os.positionSource in listOf("none", "phone")) { os.requestService(if (it) "gpsOn" else "gpsOff") }
-        if (os.positionSource == "phone") Label(when (phoneLocation.phase) {
-            PhoneLocationPhase.OFF -> os.t("定位服务正在准备", "preparing location service")
-            PhoneLocationPhase.PERMISSION_REQUIRED -> os.t("需要精确定位权限", "precise location permission required")
-            PhoneLocationPhase.PROVIDER_DISABLED -> os.t("系统定位已关闭，请开启 Android 定位", "Android location is off; enable location in system settings")
-            PhoneLocationPhase.ERROR -> os.t("定位服务暂不可用", "location service is unavailable")
-            PhoneLocationPhase.LISTENING -> phoneLocation.lastFixElapsedRealtime?.let { received -> if (now - received in 0..10_000) os.t("定位已更新", "position updated") else os.t("等待位置更新 · ", "waiting for position update · ") + readingAge(os, received, now) } ?: os.t("正在等待定位", "waiting for a position")
-        }, 16, LocalMetro.current.muted)
-        Toggle(os.t("NMEA 船位", "NMEA position"), os.positionSource == "nmea", if (nmeaConnected) os.t("使用已连接来源中的有效船位", "use a valid fix from connected sources") else os.t("先在 NMEA 中连接一个输入", "connect an input in NMEA first"), enabled = !locked && (os.positionSource == "nmea" || (os.positionSource == "none" && nmeaConnected))) { os.requestService(if (it) "sourceNmea" else "sourceOff") }
-        Label(if (locked) os.t("锚警正在值守，暂停后可以更改船位来源。", "Pause the anchor watch before changing its position source.") else os.t("两项都可以关闭。船位来源不会自动切换；NMEA 的其他读数仍可继续更新。", "Both may be off. Position never changes source automatically; other NMEA readings can continue."), 16, LocalMetro.current.muted)
+        Label(os.t("船载船位", "boat position"), 28)
+        Label(os.t("这里只列出 NMEA 连接接收到的数据。手机传感器在“数据共享”的“手机”中管理。", "Only data received through NMEA connections appears here. Manage phone sensors in data sharing → phone."), 17, LocalMetro.current.muted)
+        Toggle(os.t("NMEA 船位", "NMEA position"), os.positionSource == "nmea", if (nmeaConnected) os.t("使用已连接来源中的有效船位", "use a valid fix from connected sources") else os.t("先在船联网中连接一个输入", "connect an input in boat network first"), enabled = !locked && (os.positionSource == "nmea" || (os.positionSource == "none" && nmeaConnected))) { os.requestService(if (it) "sourceNmea" else "sourceOff") }
+        Label(if (locked) os.t("守锚进行中，暂停后可以更改船位来源。", "Pause the anchor watch before changing its position source.") else if(os.positionSource=="phone") os.t("当前船位来自手机；关闭手机定位后可选择船载船位。", "Position currently comes from your phone. Turn phone location off before choosing a boat source.") else os.t("船位来源不会自动切换；NMEA 的其他读数独立更新。", "Position never changes source automatically; other NMEA readings update independently."), 16, LocalMetro.current.muted)
 
         if (os.positionSource != "phone") {
             val selectedConnection = state.vesselSettings.metricSourcePins["POSITION_CONNECTION"]
@@ -58,7 +50,7 @@ positions.distinctBy{it.source.persistentKey}.forEach { candidate ->
         }
 
         Label(os.t("各项读数", "measurements"), 28)
-        val groups = state.vesselData.candidates.filter { it.value.isNotEmpty() || it.key.name in state.vesselSettings.metricSourcePins }.filterKeys { it != VesselMetricId.POSITION }
+        val groups = state.vesselData.candidates.mapValues { (_,values)->values.filter {it.source.transportProfileId!=null} }.filter { it.value.isNotEmpty() }.filterKeys { it != VesselMetricId.POSITION }
         if (groups.isEmpty()) Label(os.t("来源提供有效数据后，可以在这里选择每项读数的来源。", "When sources provide data, choose the source for each measurement here."), 19, LocalMetro.current.muted)
         groups.forEach { (metric,candidates) ->
             val pinned=state.vesselSettings.metricSourcePins[metric.name]
@@ -74,6 +66,39 @@ positions.distinctBy{it.source.persistentKey}.forEach { candidate ->
             }
         }
     }
+}
+
+/** 本机采集的管理入口；船联网只管理实际 NMEA 连接，不把手机伪装成网络输入。 */
+@Composable internal fun ColumnScope.PhoneSourceSettings(os:OsStore) {
+    val vm=os.marine?.vm ?: return
+    val state by vm.ui.collectAsState()
+    val location by vm.phoneLocationStatus.collectAsState()
+    val now=rememberMarineClock()
+    val locked=state.active?.paused==false
+    Label(os.t("手机提供的数据","from this phone"),28)
+    Toggle(os.t("手机定位","phone location"),os.positionSource=="phone",
+        if(os.positionSource=="nmea")os.t("当前使用船载船位，先将它关闭。","Boat position is selected; turn it off first.")else os.t("用手机 GPS 提供位置与对地航速。","Use phone GPS for position and speed over ground."),
+        enabled=!locked&&os.positionSource in listOf("none","phone")) {os.requestService(if(it)"gpsOn"else"gpsOff")}
+    if(os.positionSource=="phone") {
+        val last=os.hub.state.collectAsState().value.phone
+        last?.let {Label(os.formatCoordinates(it.point),23);Label(readingAge(os,it.elapsed,now),16,LocalMetro.current.muted)}
+        Label(when(location.phase) {
+            PhoneLocationPhase.PERMISSION_REQUIRED->os.t("请允许精确定位","allow precise location")
+            PhoneLocationPhase.PROVIDER_DISABLED->os.t("请开启 Android 定位服务","turn on Android location")
+            PhoneLocationPhase.ERROR->os.t("定位暂停更新，保留上次位置","location updates paused; last position retained")
+            else->if(last==null)os.t("正在等待第一次定位","waiting for the first position")else os.t("每个读数保留自己的接收时间。","Each reading keeps its own observation time.")
+        },17,LocalMetro.current.muted)
+    }
+    Label(os.t("传感器","sensors"),28)
+    val groups=state.vesselData.candidates.mapValues {(_,values)->values.filter {it.source.transportProfileId==null}}.filter {it.value.isNotEmpty()&&it.key!=VesselMetricId.POSITION}
+    groups.forEach {(metric,values)->
+        Label(sourceMetricName(os,metric),23)
+        values.distinctBy{it.source.persistentKey}.forEach {candidate->
+            Label(sourceCandidateText(os,metric,candidate,now),17,LocalMetro.current.muted)
+        }
+    }
+    if(groups.isEmpty())Label(os.t("手机采集到的气压、方位与姿态会显示在这里。固定手机后，在驾驶台完成船首向与姿态校准。","Phone pressure, direction and attitude appear here when observed. Mount the phone and calibrate heading and attitude in helm."),19,LocalMetro.current.muted)
+    Label(os.t("选择“内容”决定要分享什么；开启定位不会自动向其他设备发送。","Choose content to decide what to share. Turning on location does not automatically transmit to another device."),17,LocalMetro.current.muted)
 }
 
 private fun sourceCandidateText(os:OsStore,metric:VesselMetricId,candidate:VesselSourceCandidate<*>,now:Long):String {

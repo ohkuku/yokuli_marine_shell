@@ -42,6 +42,23 @@ object NmeaPublicationPolicy {
         if (fields.isEmpty()) return null
         val kind = type(sentence)
         fun allowed(capability: NmeaCapability) = capability.id in capabilities
+        if(kind=="VHW"||kind=="MDA"){
+            val result=fields.toMutableList()
+            val groups=if(kind=="VHW")listOf(
+                NmeaCapability.HEADING to (1..4),NmeaCapability.WATER_SPEED to (5..8)
+            )else listOf(
+                NmeaCapability.PRESSURE to (1..4),NmeaCapability.TEMPERATURE to (5..8),
+                NmeaCapability.OTHER to (9..10),NmeaCapability.TEMPERATURE to (11..12),
+                NmeaCapability.TRUE_WIND to (13..20)
+            )
+            var kept=false
+            groups.forEach{(capability,indices)->
+                if(allowed(capability)){if(indices.any{result.getOrNull(it)?.toDoubleOrNull()!=null})kept=true}
+                else indices.forEach{if(it<result.size)result[it]=""}
+            }
+            if(!kept)return null
+            return NmeaChecksum.append(result.joinToString(",").removePrefix("$"))+"\r\n"
+        }
         if (kind == "XDR") {
             val groups = fields.drop(1).chunked(4).filter { group ->
                 group.size == 4 && allowed(when (group[0].uppercase()) {
@@ -98,6 +115,11 @@ class NmeaPeerGuard @Inject constructor() {
     }
 
     companion object {
+        /** Transport 层统一格式化，不能把 IPv6 的最后一段与端口混淆。 */
+        fun endpoint(address:InetAddress,port:Int):String {
+            val host=address.hostAddress.orEmpty()
+            return if(':' in host)"[$host]:$port" else "$host:$port"
+        }
         /** 支持 /ip:port、hostname/ip:port、[IPv6]:port；不把未加括号的 IPv6 尾段误当端口。 */
         fun host(peer: String): String {
             val value = peer.trim().substringAfterLast('/').lowercase()

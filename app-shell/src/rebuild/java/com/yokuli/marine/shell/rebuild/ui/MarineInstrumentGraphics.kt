@@ -28,8 +28,9 @@ import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.marine.shell.rebuild.OsStore
 import kotlin.math.*
 
-/** 中文：仪表只绘制有效观测；缺测时保留刻度、隐藏指针，不将缺测伪装为零。 */
-internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { freshness == VesselDataFreshness.FRESH && it.isFinite() }
+/** 中文：航向与姿态指针仅使用实时观测；普通读数可保留最后观测，但必须呈灰色并标时间。 */
+internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { displayIsLive() && it.isFinite() }
+internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf { it.isFinite() }
 
 /** 中文：跨越正北时走最短角度，避免 359° 到 1° 反向转一整圈。 */
 @Composable private fun animatedBearing(value: Double?): Float {
@@ -50,6 +51,7 @@ internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { f
     val course = data.cogTrueDegrees.liveNumber()
     val headingAngle = animatedBearing(heading)
     val courseAngle = animatedBearing(course)
+    val now = rememberMarineClock()
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
@@ -79,14 +81,18 @@ internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { f
             Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("船首向 · 真北", "heading · true"), 14, c.accent); Label(os.formatBearing(heading), 34) }
             Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("对地航向 · 真北", "course · true"), 14, c.muted); Label(os.formatBearing(course), 34) }
         }
+        Label(observationStatus(os, data.headingTrueDegrees, now), 13, c.muted, Modifier.padding(top = 8.dp))
     }
 }
 
 @Composable internal fun WindRose(os: OsStore, data: VesselDataSnapshot, modifier: Modifier = Modifier) {
     val c = LocalMetro.current
     val typeface = instrumentTypeface()
-    val apparent = data.apparentWind.angleDegrees.liveNumber()
-    val trueAngle = data.trueWind.angleDegrees.liveNumber()
+    val apparent = data.apparentWind.angleDegrees.displayNumber()
+    val trueAngle = data.trueWind.angleDegrees.displayNumber()
+    val apparentColor = if (data.apparentWind.angleDegrees.displayIsLive()) c.accent else c.muted
+    val trueColor = if (data.trueWind.angleDegrees.displayIsLive()) c.fg else c.muted
+    val now = rememberMarineClock()
     val apparentAngle = animatedBearing(apparent)
     val trueAnimatedAngle = animatedBearing(trueAngle)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -105,16 +111,16 @@ internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { f
                 close()
             }
             drawPath(hull, c.fg, style = Stroke(1.5.dp.toPx()))
-            if (trueAngle != null) windArrow(center, r, trueAnimatedAngle, c.fg.copy(alpha = .65f))
-            if (apparent != null) windArrow(center, r, apparentAngle, c.accent)
+            if (trueAngle != null) windArrow(center, r, trueAnimatedAngle, trueColor.copy(alpha = .65f))
+            if (apparent != null) windArrow(center, r, apparentAngle, apparentColor)
             compassLabel("0°", Offset(center.x, center.y - r - 8.dp.toPx()), c.fg, 13.dp.toPx(), typeface)
             compassLabel("90°", Offset(center.x + r + 16.dp.toPx(), center.y + 4.dp.toPx()), c.muted, 11.dp.toPx(), typeface)
             compassLabel("90°", Offset(center.x - r - 16.dp.toPx(), center.y + 4.dp.toPx()), c.muted, 11.dp.toPx(), typeface)
             compassLabel("180°", Offset(center.x, center.y + r + 18.dp.toPx()), c.muted, 11.dp.toPx(), typeface)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("视风", "apparent wind"), 16, c.accent); Label(os.formatSpeed(data.apparentWind.speedKnots.liveNumber()), 30); Label(os.formatAngle(apparent), 18, c.accent) }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("真风", "true wind"), 16, c.muted); Label(os.formatSpeed(data.trueWind.speedKnots.liveNumber()), 30); Label(os.formatAngle(trueAngle), 18, c.muted) }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("视风", "apparent wind"), 16, apparentColor); Label(os.formatSpeed(data.apparentWind.speedKnots.displayNumber()), 30, if (data.apparentWind.speedKnots.displayIsLive()) c.fg else c.muted); Label(os.formatAngle(apparent), 18, apparentColor); Label(observationStatus(os, data.apparentWind.angleDegrees, now), 12, c.muted) }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("真风", "true wind"), 16, trueColor); Label(os.formatSpeed(data.trueWind.speedKnots.displayNumber()), 30, if (data.trueWind.speedKnots.displayIsLive()) c.fg else c.muted); Label(os.formatAngle(trueAngle), 18, trueColor); Label(observationStatus(os, data.trueWind.angleDegrees, now), 12, c.muted) }
         }
         Spacer(Modifier.height(10.dp))
         Label(os.t("箭头表示风从哪一侧吹来 · 船艏朝上", "arrows show where wind comes from · bow up"), 13, c.muted)
@@ -124,15 +130,18 @@ internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { f
 @Composable internal fun AttitudeHorizon(os: OsStore, data: VesselDataSnapshot, modifier: Modifier = Modifier) {
     val c = LocalMetro.current
     val typeface = instrumentTypeface()
-    val attitude = data.attitude.value?.takeIf { data.attitude.freshness == VesselDataFreshness.FRESH }
-    val roll by animateFloatAsState(attitude?.heelDegrees?.toFloat() ?: 0f, tween(250), label = "heel")
-    val pitch by animateFloatAsState(attitude?.pitchDegrees?.toFloat() ?: 0f, tween(250), label = "pitch")
+    val heelValue = data.heelDegrees.liveNumber()
+    val pitchValue = data.pitchDegrees.liveNumber()
+    val attitudeReady = heelValue != null && pitchValue != null
+    val roll by animateFloatAsState(heelValue?.toFloat() ?: 0f, tween(250), label = "heel")
+    val pitch by animateFloatAsState(pitchValue?.toFloat() ?: 0f, tween(250), label = "pitch")
+    val now = rememberMarineClock()
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(Modifier.fillMaxWidth().height(220.dp).clipToBounds()) {
             val radius = min(size.width, size.height) * .44f
             drawArc(c.muted.copy(alpha = .3f), 200f, 140f, false, Offset(center.x - radius, center.y - radius), Size(radius * 2, radius * 2), style = Stroke(1.dp.toPx()))
             for (mark in -60..60 step 15) drawLine(c.muted, radial(center, radius, mark.toFloat()), radial(center, radius * .92f, mark.toFloat()), 1.dp.toPx())
-            if (attitude != null) rotate(-roll, center) {
+            if (attitudeReady) rotate(-roll, center) {
                 val horizonY = center.y + pitch.coerceIn(-45f, 45f) / 45f * radius
                 drawRect(c.accent.copy(alpha = .08f), Offset(0f, horizonY), Size(size.width, (size.height - horizonY).coerceAtLeast(0f)))
                 drawLine(c.accent, Offset(0f, horizonY), Offset(size.width, horizonY), 2.dp.toPx())
@@ -147,10 +156,10 @@ internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { f
             drawCircle(c.fg, 5.dp.toPx(), center, style = Stroke(2.dp.toPx()))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("横倾", "heel"), 15, c.muted); Label(os.formatAngle(attitude?.heelDegrees), 39, c.accent) }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("纵倾", "pitch"), 15, c.muted); Label(os.formatAngle(attitude?.pitchDegrees), 39) }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("横倾", "heel"), 15, c.muted); Label(os.formatAngle(heelValue), 39, c.accent); Label(observationStatus(os, data.heelDegrees, now), 12, c.muted) }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("纵倾", "pitch"), 15, c.muted); Label(os.formatAngle(pitchValue), 39); Label(observationStatus(os, data.pitchDegrees, now), 12, c.muted) }
         }
-        if (attitude == null) Label(os.t("等待已校准的船体姿态", "waiting for calibrated vessel attitude"), 16, c.muted)
+        if (!attitudeReady) Label(os.t("等待实时船体姿态", "waiting for current vessel attitude"), 16, c.muted)
     }
 }
 
@@ -167,48 +176,49 @@ internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { f
         else -> null
     }
     val bearingType = tile in setOf(InstrumentTileId.HEADING, InstrumentTileId.COG, InstrumentTileId.TRUE_WIND_DIRECTION, InstrumentTileId.CURRENT_SET, InstrumentTileId.WAYPOINT_BEARING)
-    val attitude = data.attitude.value?.takeIf { data.attitude.freshness == VesselDataFreshness.FRESH }
     val raw = when (tile) {
-        InstrumentTileId.SOG -> data.sogKnots.liveNumber()
-        InstrumentTileId.BOAT_SPEED -> data.speedThroughWaterKnots.liveNumber()
-        InstrumentTileId.TRUE_WIND_SPEED -> data.trueWind.speedKnots.liveNumber()
-        InstrumentTileId.APPARENT_WIND_SPEED -> data.apparentWind.speedKnots.liveNumber()
-        InstrumentTileId.CURRENT_DRIFT -> data.currentDriftKnots.liveNumber()
-        InstrumentTileId.VMG -> data.derived.vmgToWindKnots.liveNumber()
-        InstrumentTileId.VMC -> data.derived.vmcToWaypointKnots.liveNumber()
-        InstrumentTileId.RUDDER_ANGLE -> data.rudderAngleDegrees.liveNumber()
-        InstrumentTileId.RATE_OF_TURN -> data.rateOfTurnDegreesPerMinute.liveNumber()
-        InstrumentTileId.APPARENT_WIND_ANGLE -> data.apparentWind.angleDegrees.liveNumber()
-        InstrumentTileId.TRUE_WIND_ANGLE -> data.trueWind.angleDegrees.liveNumber()
-        InstrumentTileId.HEEL -> attitude?.heelDegrees
-        InstrumentTileId.PITCH -> attitude?.pitchDegrees
-        InstrumentTileId.ROLL_RATE -> attitude?.rollRateDegreesPerSecond
-        InstrumentTileId.PITCH_RATE -> attitude?.pitchRateDegreesPerSecond
-        InstrumentTileId.CROSS_TRACK_ERROR -> data.crossTrackErrorNauticalMiles.liveNumber()?.times(1852.0)
-        InstrumentTileId.PRESSURE -> data.pressureHpa.liveNumber()
-        InstrumentTileId.PRESSURE_TREND_1H -> data.derived.pressureTrend1hHpa.liveNumber()
-        InstrumentTileId.PRESSURE_TREND_3H -> data.derived.pressureTrend3hHpa.liveNumber()
-        InstrumentTileId.PRESSURE_TREND_6H -> data.derived.pressureTrend6hHpa.liveNumber()
-        InstrumentTileId.WATER_TEMPERATURE -> data.waterTemperatureCelsius.liveNumber()
-        InstrumentTileId.AIR_TEMPERATURE -> data.airTemperatureCelsius.liveNumber()
-        InstrumentTileId.DEPTH -> data.depthMeters.liveNumber()
-        InstrumentTileId.UKC -> data.derived.underKeelClearanceMeters.liveNumber()
+        InstrumentTileId.SOG -> data.sogKnots.displayNumber()
+        InstrumentTileId.BOAT_SPEED -> data.speedThroughWaterKnots.displayNumber()
+        InstrumentTileId.TRUE_WIND_SPEED -> data.trueWind.speedKnots.displayNumber()
+        InstrumentTileId.APPARENT_WIND_SPEED -> data.apparentWind.speedKnots.displayNumber()
+        InstrumentTileId.CURRENT_DRIFT -> data.currentDriftKnots.displayNumber()
+        InstrumentTileId.VMG -> data.derived.vmgToWindKnots.displayNumber()
+        InstrumentTileId.VMC -> data.derived.vmcToWaypointKnots.displayNumber()
+        InstrumentTileId.RUDDER_ANGLE -> data.rudderAngleDegrees.displayNumber()
+        InstrumentTileId.RATE_OF_TURN -> data.rateOfTurnDegreesPerMinute.displayNumber()
+        InstrumentTileId.APPARENT_WIND_ANGLE -> data.apparentWind.angleDegrees.displayNumber()
+        InstrumentTileId.TRUE_WIND_ANGLE -> data.trueWind.angleDegrees.displayNumber()
+        InstrumentTileId.HEEL -> data.heelDegrees.liveNumber()
+        InstrumentTileId.PITCH -> data.pitchDegrees.liveNumber()
+        InstrumentTileId.ROLL_RATE -> data.rollRateDegreesPerSecond.liveNumber()
+        InstrumentTileId.PITCH_RATE -> data.pitchRateDegreesPerSecond.liveNumber()
+        InstrumentTileId.CROSS_TRACK_ERROR -> data.crossTrackErrorNauticalMiles.displayNumber()?.times(1852.0)
+        InstrumentTileId.PRESSURE -> data.pressureHpa.displayNumber()
+        InstrumentTileId.PRESSURE_TREND_1H -> data.derived.pressureTrend1hHpa.displayNumber()
+        InstrumentTileId.PRESSURE_TREND_3H -> data.derived.pressureTrend3hHpa.displayNumber()
+        InstrumentTileId.PRESSURE_TREND_6H -> data.derived.pressureTrend6hHpa.displayNumber()
+        InstrumentTileId.WATER_TEMPERATURE -> data.waterTemperatureCelsius.displayNumber()
+        InstrumentTileId.AIR_TEMPERATURE -> data.airTemperatureCelsius.displayNumber()
+        InstrumentTileId.DEPTH -> data.depthMeters.displayNumber()
+        InstrumentTileId.UKC -> data.derived.underKeelClearanceMeters.displayNumber()
         else -> null
     }
-    val signed = tile in setOf(InstrumentTileId.HEEL, InstrumentTileId.PITCH, InstrumentTileId.RUDDER_ANGLE, InstrumentTileId.RATE_OF_TURN, InstrumentTileId.ROLL_RATE, InstrumentTileId.PITCH_RATE, InstrumentTileId.CROSS_TRACK_ERROR, InstrumentTileId.PRESSURE_TREND_1H, InstrumentTileId.PRESSURE_TREND_3H, InstrumentTileId.PRESSURE_TREND_6H, InstrumentTileId.VMG, InstrumentTileId.VMC)
+    val windAngle = tile in setOf(InstrumentTileId.TRUE_WIND_ANGLE, InstrumentTileId.APPARENT_WIND_ANGLE)
+    val signed = windAngle || tile in setOf(InstrumentTileId.HEEL, InstrumentTileId.PITCH, InstrumentTileId.RUDDER_ANGLE, InstrumentTileId.RATE_OF_TURN, InstrumentTileId.ROLL_RATE, InstrumentTileId.PITCH_RATE, InstrumentTileId.CROSS_TRACK_ERROR, InstrumentTileId.PRESSURE_TREND_1H, InstrumentTileId.PRESSURE_TREND_3H, InstrumentTileId.PRESSURE_TREND_6H, InstrumentTileId.VMG, InstrumentTileId.VMC)
     val supported = bearingType || raw != null || tile in setOf(InstrumentTileId.SOG, InstrumentTileId.BOAT_SPEED, InstrumentTileId.TRUE_WIND_SPEED, InstrumentTileId.APPARENT_WIND_SPEED, InstrumentTileId.RUDDER_ANGLE, InstrumentTileId.HEEL, InstrumentTileId.PITCH)
     if (!supported) return
     val angle = animatedBearing(heading)
     val range = when (tile) {
         InstrumentTileId.HEEL, InstrumentTileId.PITCH, InstrumentTileId.RUDDER_ANGLE -> 45.0
-        InstrumentTileId.TRUE_WIND_ANGLE, InstrumentTileId.APPARENT_WIND_ANGLE -> 360.0
+        InstrumentTileId.TRUE_WIND_ANGLE, InstrumentTileId.APPARENT_WIND_ANGLE -> 180.0
         InstrumentTileId.PRESSURE -> 80.0
         InstrumentTileId.PRESSURE_TREND_1H, InstrumentTileId.PRESSURE_TREND_3H, InstrumentTileId.PRESSURE_TREND_6H -> 10.0
         InstrumentTileId.WATER_TEMPERATURE, InstrumentTileId.AIR_TEMPERATURE -> 50.0
         else -> max(10.0, ceil(abs(raw ?: 0.0) / 10.0) * 10.0)
     }
-    val normalized = ((if (tile == InstrumentTileId.PRESSURE) (raw ?: 970.0) - 970.0 else raw ?: 0.0) / range).toFloat().coerceIn(if (signed) -1f else 0f, 1f)
+    val normalized = if (windAngle) InstrumentReadingPolicy.signedWindFraction(raw ?: 0.0) else ((if (tile == InstrumentTileId.PRESSURE) (raw ?: 970.0) - 970.0 else raw ?: 0.0) / range).toFloat().coerceIn(if (signed) -1f else 0f, 1f)
     val fraction by animateFloatAsState(normalized, tween(350), label = "instrument-scale")
+    val readingColor = if (instrumentObservation(data, tile).displayIsLive()) c.accent else c.muted
     Canvas(modifier.fillMaxWidth().height(if (bearingType) 94.dp else 38.dp)) {
         if (bearingType) {
             val r = min(size.width, size.height) * .43f
@@ -227,8 +237,8 @@ internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { f
             if (raw != null) {
                 val origin = if (signed) center.x else left
                 val endpoint = if (signed) center.x + fraction * (right - left) / 2 else left + fraction * (right - left)
-                drawLine(c.accent, Offset(origin, y), Offset(endpoint, y), 4.dp.toPx())
-                drawLine(c.fg, Offset(endpoint, y - 7.dp.toPx()), Offset(endpoint, y + 7.dp.toPx()), 2.dp.toPx())
+                drawLine(readingColor, Offset(origin, y), Offset(endpoint, y), 4.dp.toPx())
+                drawLine(readingColor, Offset(endpoint, y - 7.dp.toPx()), Offset(endpoint, y + 7.dp.toPx()), 2.dp.toPx())
             }
             fun scaleLabel(v: Double): String = when (tile) {
                 InstrumentTileId.PRESSURE -> (970 + v).toInt().toString()

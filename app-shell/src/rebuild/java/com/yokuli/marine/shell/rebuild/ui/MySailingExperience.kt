@@ -41,7 +41,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
         finally {busy=false}
     } }
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os,os.t("我的航行","my sailing"))
+        PageHeader(os,os.title(AppId.PLACES))
         Pivot(listOf(os.t("坐标","places"),os.t("航线","routes"),os.t("整理","organize"))) { page -> PageBody {
             when(page) {
                 0 -> {
@@ -58,10 +58,10 @@ fun PlaceKind.label(os:OsStore)=when(this) {
                     MetroButton(os.t("在海图上选点","choose on chart"),{os.showCrosshair=true;os.open("chart")})
                 }
                 1 -> {
-                    os.activeRoute?.let { route -> MenuRow(os.t("正在导航 · ${route.name}","navigating · ${route.name}"),os.t("目标 ${os.routeLeg+1}/${route.points.size}","target ${os.routeLeg+1}/${route.points.size}"),"locate") {os.open("chart")} }
+                    os.activeRoute?.let { route -> MenuRow(os.t("正在导航 · ${route.name}","navigating · ${route.name}"),os.t("目标 ${os.routeLeg+1}/${route.points.size}","target ${os.routeLeg+1}/${route.points.size}"),"locate") {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.open("chart")} }
                     if(os.routes.isEmpty()) {Label(os.t("下一站，去哪里？","where to next?"),36);Label(os.t("在海图上规划，保存在这里。选择一条路线后才在地图上预览。","Plan on chart and keep it here. Select a route to preview it on the map."),18,LocalMetro.current.muted)}
                     os.routes.forEach { route -> MenuRow(route.name,"${os.formatDistance(route.length)} · ${route.points.size} "+os.t("个航点","points"),"route") {os.open("route:${route.id}")} }
-                    MetroButton(if(os.draftRoute.isEmpty()) os.t("规划航线","plan a route") else os.t("继续草稿","continue draft"),{os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList();os.open("chart")},primary=true)
+                    MetroButton(if(os.draftRoute.isEmpty()) os.t("规划航线","plan a route") else os.t("继续草稿","continue draft"),{resumeOrCreateRouteDraft(os);os.open("chart")},primary=true)
                 }
                 else -> {
                     Label(os.t("自己的收藏","your collections"),31)
@@ -149,12 +149,14 @@ fun PlaceKind.label(os:OsStore)=when(this) {
 
 @Composable internal fun CoordinateEditor(os:OsStore,initial:Place?,onDismiss:()->Unit,onSave:(Place)->Unit) {
     var name by remember {mutableStateOf(initial?.name.orEmpty())}
-    var latitude by remember {mutableStateOf(initial?.point?.lat?.let(os::formatLatitude).orEmpty())}
-    var longitude by remember {mutableStateOf(initial?.point?.lon?.let(os::formatLongitude).orEmpty())}
+    val initialLatitude=remember(initial?.id){initial?.point?.lat?.let(os::formatLatitude).orEmpty()}
+    val initialLongitude=remember(initial?.id){initial?.point?.lon?.let(os::formatLongitude).orEmpty()}
+    var latitude by remember {mutableStateOf(initialLatitude)}
+    var longitude by remember {mutableStateOf(initialLongitude)}
     var note by remember {mutableStateOf(initial?.note.orEmpty())}
     var group by remember {mutableStateOf(initial?.collection.orEmpty())}
     var kind by remember {mutableStateOf(initial?.kind?:PlaceKind.MARK)}
-    val point=parseCoordinate(latitude,true)?.let {lat->parseCoordinate(longitude,false)?.let {lon->GeoPoint(lat,lon).takeIf(GeoPoint::valid)}}
+    val point=preservedCoordinate(initial?.point,initialLatitude,initialLongitude,latitude,longitude)
     Dialog(onDismissRequest=onDismiss) {
         Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(LocalMetro.current.bg).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Label(os.t("地点资料","place details"),31)

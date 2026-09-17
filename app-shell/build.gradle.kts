@@ -18,8 +18,8 @@ android {
         applicationId = "com.yokuli.marine"
         minSdk = 28
         targetSdk = 36
-        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 6
-        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.5.0-experience.3"
+        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 7
+        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.5.0-experience.4"
         manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = mapsKey.get()
         buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", (mapsKey.get() != "MAPS_API_KEY_NOT_CONFIGURED").toString())
     }
@@ -45,7 +45,7 @@ android {
             res.setSrcDirs(listOf("src/rebuild/res"))
             manifest.srcFile("src/rebuild/AndroidManifest.xml")
         }
-        getByName("test").java.setSrcDirs(emptyList<String>())
+        getByName("test").java.setSrcDirs(listOf("src/rebuildTest/java"))
         getByName("androidTest").java.setSrcDirs(emptyList<String>())
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -54,6 +54,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation(project(":core:shell-contract"))
     implementation(project(":core:shell-engine"))
     implementation(project(":core:design"))

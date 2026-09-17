@@ -13,14 +13,14 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 
-/** 海图库只负责目录和图层；点开目录管理内容，明确“在海图打开”才改变显示来源。 */
+/** 图册只负责目录和图层；点开目录管理内容，明确“在海图打开”才改变显示来源。 */
 @Composable fun LibraryScreen(os:OsStore) {
     val library=os.library
     var naming by remember {mutableStateOf<ChartFolder?>(null)}
     val folder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {uri ->uri?.let(library::linkFolder)?.let {naming=it}}
     val single=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {it?.let(library::importCopy)}
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os,os.t("海图库","chart library"))
+        PageHeader(os,os.title(AppId.LIBRARY))
         PageBody {
             LibraryProgress(os)
             if(library.folders.isEmpty()) {
@@ -66,7 +66,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
     val included=files.count {it.enabled && it.error==null}
     val used=os.maps.source==MapSource.CustomLayer(folder.id)
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os,folder.layerName ?: folderName(os,folder),os.t("海图库","CHART LIBRARY"))
+        PageHeader(os,folder.layerName ?: folderName(os,folder),os.title(AppId.LIBRARY))
         Pivot(listOf(os.t("海图","charts"),os.t("管理","manage"))) {page ->PageBody {
             LibraryProgress(os)
             if(page==0) {
@@ -98,7 +98,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
                                 library.showOnly(file);os.maps.select(MapSource.CustomLayer(folder.id));os.fly(file.focus,file.previewZoom);os.open("chart")
                             }
                             MenuRow(os.t("重命名显示名称","rename display name")) {namingFile=file}
-                            MenuRow(os.t("从海图库移除","remove from library"),os.t("保留原文件，可在管理中恢复","keeps the file; restore from manage")) {removeFile=file}
+                            MenuRow(os.t("从图册移除","remove from library"),os.t("保留原文件，可在管理中恢复","keeps the file; restore from manage")) {removeFile=file}
                         }
                     }
                 }
@@ -119,21 +119,21 @@ import com.yokuli.marine.shell.rebuild.chart.*
                 }
                 if(folder.layerName!=null)MetroButton(os.t("删除图层","delete layer"),{removeLayer=true})
                 MetroButton(os.t("断开文件夹","disconnect folder"),{disconnect=true},enabled=!library.busy)
-                Label(os.t("海图库只管理引用，原文件不会被删除。重新扫描会保留你的排序、显示名称和移除记录。","The library manages references. Original files remain. Rescanning preserves priorities, display names and removed items."),15,c.muted)
+                Label(os.t("图册只管理引用，原文件不会被删除。重新扫描会保留你的排序、显示名称和移除记录。","The library manages references. Original files remain. Rescanning preserves priorities, display names and removed items."),15,c.muted)
             }
         }}
     }
     if(naming)TextDialog(os,os.t("图层名称","layer name"),folder.layerName ?: folderName(os,folder),{naming=false}) {library.setLayer(folder,it);naming=false}
     if(namingFolder)TextDialog(os,os.t("文件夹标签","folder label"),folderName(os,folder),{namingFolder=false}) {library.renameFolder(folder,it);namingFolder=false}
     namingFile?.let {file ->TextDialog(os,os.t("海图显示名称","chart display name"),file.displayName,{namingFile=null}) {library.renameFile(file,it);namingFile=null}}
-    removeFile?.let {file ->ConfirmDialog(os,os.t("从海图库移除 ${file.displayName}？原文件保留。","Remove ${file.displayName} from the library? Keep the original file."),{removeFile=null}) {library.forget(file);removeFile=null;expanded=null}}
+    removeFile?.let {file ->ConfirmDialog(os,os.t("从图册移除 ${file.displayName}？原文件保留。","Remove ${file.displayName} from the library? Keep the original file."),{removeFile=null}) {library.forget(file);removeFile=null;expanded=null}}
     if(removeLayer)ConfirmDialog(os,os.t("删除图层？保留文件夹和海图，当前地图将切回在线。","Delete this layer? Keep its folder and charts; an active layer switches to online."),{removeLayer=false}) {os.maps.removingLayer(folder.id);library.removeLayer(folder);removeLayer=false}
     if(disconnect)ConfirmDialog(os,os.t("断开 ${folderName(os,folder)}？原文件保留。","Disconnect ${folderName(os,folder)}? Keep original files."),{disconnect=false}) {os.maps.removingLayer(folder.id);library.forgetFolder(folder.uri);disconnect=false;os.back()}
 }
 
 @Composable private fun LibraryProgress(os:OsStore) {
     val library=os.library
-    if(library.busy) {Label(os.t("正在读取…","reading…"),25,LocalMetro.current.accent);Label(library.progress,14,LocalMetro.current.muted)}
+    if(library.busy) {MetroProgress(os.t("正在读取…","reading…"));Label(library.progress,14,LocalMetro.current.muted)}
     library.failure?.let {Label(library.errorText(it,os.chinese),17,Color(0xFFE47C4C))}
     if(library.rejected>0)Label(os.t("${library.rejected} 个文件未能读取","${library.rejected} files could not be read"),14,LocalMetro.current.muted)
 }

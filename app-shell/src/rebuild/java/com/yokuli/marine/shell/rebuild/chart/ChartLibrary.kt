@@ -61,20 +61,22 @@ private fun decodeTile(bytes:ByteArray):Bitmap? {
 /** Read the same raster MBTiles table/view and TMS/XYZ conventions as Anchor Watch. */
 class ChartReader(context: Context, uri: Uri) : AutoCloseable {
     private var descriptor: ParcelFileDescriptor? = null
+    private var cacheLease:File? = null
     private val db: SQLiteDatabase
     init {
-        val cache=if(uri.scheme=="content") ChartCache.target(context,uri) else null
+        val cache=if(uri.scheme=="content") ChartCache.target(context,uri,true).also {cacheLease=it} else null
+        db = try {
         val path = if (uri.scheme == "file") requireNotNull(uri.path) else if(cache?.isFile==true) cache.path else {
             descriptor = context.contentResolver.openFileDescriptor(uri,"r") ?: error("unreadable")
             "/proc/self/fd/${descriptor!!.fd}"
         }
-        db = try { SQLiteDatabase.openDatabase(path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS) }
+        try { SQLiteDatabase.openDatabase(path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS) }
         catch (e: Exception) {
             descriptor?.close();descriptor=null
             if(uri.scheme!="content") throw e
             val local=ChartCache.copy(context,uri,requireNotNull(cache))
             SQLiteDatabase.openDatabase(local.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
-        }
+        }} catch(e:Exception) {descriptor?.close();cacheLease?.let(ChartCache::release);cacheLease=null;throw e}
     }
     @Synchronized fun inspect(uri: String, name: String, source: String, bytes: Long, modified: Long): ChartFile {
         val columns = db.rawQuery("PRAGMA table_info(tiles)",null).use { c -> buildSet { while(c.moveToNext()) add(c.getString(c.getColumnIndexOrThrow("name"))) } }
@@ -143,19 +145,38 @@ class ChartReader(context: Context, uri: Uri) : AutoCloseable {
         val bytes=java.io.ByteArrayOutputStream();output.compress(Bitmap.CompressFormat.PNG,100,bytes)
         original.recycle();output.recycle();return bytes.toByteArray()
     }
-    @Synchronized override fun close() { db.close(); descriptor?.close() }
+    @Synchronized override fun close() { try {db.close();descriptor?.close()}finally {cacheLease?.let(ChartCache::release);cacheLease=null} }
 }
 
 /** SAF permission does not grant SQLite a path permission. A versioned read-only copy bridges that gap. */
 private object ChartCache {
     private val locks=Array(16) {Any()}
-    fun target(context:Context,uri:Uri):File {
+    private val readers=mutableMapOf<File,Int>()
+    private val retired=mutableSetOf<File>()
+    private fun path(context:Context,uri:String,stamp:String):File {
+        val id=java.util.UUID.nameUUIDFromBytes((uri+stamp).toByteArray()).toString()
+        return File(File(context.filesDir,"chart-source-cache").apply {mkdirs()},"$id.mbtiles")
+    }
+    fun target(context:Context,uri:Uri,acquire:Boolean=false):File {
         // Querying the provider also verifies that access still exists before using a cached revision.
         val stamp=context.contentResolver.query(uri,arrayOf(Docs.Document.COLUMN_SIZE,Docs.Document.COLUMN_LAST_MODIFIED),null,null,null)?.use {
             require(it.moveToFirst()) {"unreadable"};"${it.getLong(0)}:${it.getLong(1)}"
         } ?: error("unreadable")
-        val id=java.util.UUID.nameUUIDFromBytes((uri.toString()+stamp).toByteArray()).toString()
-        return File(File(context.filesDir,"chart-source-cache").apply {mkdirs()},"$id.mbtiles")
+        return path(context,uri.toString(),stamp).also {file->if(acquire)synchronized(readers){readers[file]=(readers[file] ?: 0)+1}}
+    }
+    fun release(file:File)=synchronized(readers) {
+        val remaining=(readers[file] ?: 1)-1
+        if(remaining>0)readers[file]=remaining else {readers.remove(file);if(retired.remove(file))file.delete()}
+    }
+    /** 元数据已经落盘后才回收旧版本；渲染中的 SQLite reader 持有租约，关闭后再删除。 */
+    fun prune(context:Context,files:List<ChartFile>) {
+        val keep=files.filter {it.uri.startsWith("content:")}.map {path(context,it.uri,"${it.bytes}:${it.modified}")}.toSet()
+        synchronized(readers) {
+            retired.removeAll(keep)
+            File(context.filesDir,"chart-source-cache").listFiles().orEmpty().filter {it.extension=="mbtiles" && it !in keep}.forEach {file->
+                if((readers[file] ?: 0)>0)retired.add(file)else file.delete()
+            }
+        }
     }
     fun copy(context:Context,uri:Uri,target:File):File = synchronized(locks[(uri.hashCode() and Int.MAX_VALUE)%locks.size]) {
         if(target.isFile) return@synchronized target
@@ -246,6 +267,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     private fun persist() {
         revision++
         val generation=++saveGeneration
+        val referencedFiles=files.toList()
         val snapshot = JSONObject().put("version",3).put("files",JSONArray(files.map { it.json() })).put("folders",JSONArray(folders.map {it.json()})).put("excluded",JSONArray(excludedFiles.map {it.json()})).toString()
         scope.launch(Dispatchers.IO) { writeMutex.withLock {
             if(generation!=saveGeneration)return@withLock
@@ -253,7 +275,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                 val out = index.startWrite()
                 try { out.write(snapshot.toByteArray()); index.finishWrite(out) }
                 catch(e:Exception) { index.failWrite(out); throw e }
-            }.onFailure { withContext(Dispatchers.Main) { failure = "save" } }
+            }.onSuccess {ChartCache.prune(context,referencedFiles)}.onFailure { withContext(Dispatchers.Main) { failure = "save" } }
         } }
     }
     fun toggle(file: ChartFile) { files = files.map { if(it.id==file.id) it.copy(enabled=!it.enabled) else it }; persist() }

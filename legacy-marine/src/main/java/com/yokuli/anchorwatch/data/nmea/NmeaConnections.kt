@@ -54,6 +54,22 @@ private val Context.nmeaConnectionsStore by preferencesDataStore("os_nmea_connec
 @Singleton class NmeaConnectionStore @Inject constructor(@ApplicationContext private val context:Context){
     private val key=stringPreferencesKey("connections_v1")
     private val gson=Gson()
+    private val leases=context.getSharedPreferences("nmea_connection_leases",Context.MODE_PRIVATE)
+    private fun bootCount()=android.provider.Settings.Global.getInt(context.contentResolver,android.provider.Settings.Global.BOOT_COUNT,-1)
+    /** 仅恢复本次开机中用户明确开启的连接；重启手机或主动关闭均撤销租约。 */
+    @Synchronized fun requestedIds():Set<String> = NmeaConnectionLeasePolicy.restorable(
+        leases.getInt("boot",-2),bootCount(),leases.getStringSet("requested",emptySet()).orEmpty())
+    @Synchronized fun setRequested(id:String,requested:Boolean){
+        val ids=requestedIds().toMutableSet().apply{if(requested)add(id)else remove(id)}
+        // 先落盘再返回操作，进程在 Stop 后立即退出也不能复活连接。
+        check(leases.edit().putInt("boot",bootCount()).putStringSet("requested",ids).commit()){"Could not save connection intent"}
+    }
+    @Synchronized fun clearRequested(){check(leases.edit().remove("requested").commit()){"Could not stop connection leases"}}
     suspend fun read():List<NmeaConnectionSpec>?=context.nmeaConnectionsStore.data.first()[key]?.let{json->runCatching{gson.fromJson<List<NmeaConnectionSpec>>(json,object:TypeToken<List<NmeaConnectionSpec>>(){}.type)}.getOrNull()}
     suspend fun save(values:List<NmeaConnectionSpec>){context.nmeaConnectionsStore.edit{it[key]=gson.toJson(values)}}
+}
+
+object NmeaConnectionLeasePolicy {
+    fun restorable(savedBoot:Int,currentBoot:Int,requested:Set<String>):Set<String> =
+        if(currentBoot>=0&&savedBoot==currentBoot)requested.toSet() else emptySet()
 }

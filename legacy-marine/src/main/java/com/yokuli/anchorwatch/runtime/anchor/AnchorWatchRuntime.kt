@@ -874,6 +874,10 @@ class AnchorWatchRuntime(
         if(snapshot.state!=AlarmState.ALARM&&snapshot.state!=AlarmState.WARNING&&snapshot.state!=AlarmState.ACKNOWLEDGED&&settled?.alarmSnoozedUntil!=null){val updated=settled.copy(alarmSnoozedUntil=null);active=updated;session=updated;dao.updateSession(updated)}
         val expired=active;if(expired?.alarmSnoozedUntil?.let{it<=now}==true){val updated=expired.copy(alarmSnoozedUntil=null);active=updated;session=updated;dao.updateSession(updated)}
         lastSnapshot=snapshot;alarmUi.publish(snapshot);val critical=snapshot.state==AlarmState.ALARM
+        if(snapshot.state==AlarmState.WARNING&&(previousSnapshot?.state!=AlarmState.WARNING||previousSnapshot.type!=snapshot.type))
+            logEvent("WARNING_TRIGGERED",snapshot.type?.name?:"")
+        if(previousSnapshot?.state in setOf(AlarmState.WARNING,AlarmState.ALARM,AlarmState.ACKNOWLEDGED)&&snapshot.state !in setOf(AlarmState.WARNING,AlarmState.ALARM,AlarmState.ACKNOWLEDGED))
+            logEvent("ALARM_CLEARED",previousSnapshot?.type?.name?:"")
         if(AlarmReminderPolicy.shouldSound(snapshot,active?.paused?:true,active?.alarmSnoozedUntil,now))host.sound()else host.silence()
         if(critical&&snapshot.type!=lastReportedAlarm){lastReportedAlarm=snapshot.type;session?.let{current->val updated=current.copy(alarmCount=current.alarmCount+1);session=updated;dao.updateSession(updated)};logEvent("ALARM_TRIGGERED",snapshot.type?.name?:"")}
         if(!critical&&snapshot.state!=AlarmState.ACKNOWLEDGED)lastReportedAlarm=null

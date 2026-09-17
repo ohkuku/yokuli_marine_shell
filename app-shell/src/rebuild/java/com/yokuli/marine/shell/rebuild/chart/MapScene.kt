@@ -19,7 +19,16 @@ sealed interface MapSource {
 }
 
 /** 船位和地理图形使用 WGS84；由原生地图在同一渲染帧内投影，禁止屏幕像素位置持久化。 */
-data class MapVessel(val point: GeoPoint, val courseDegrees: Double? = null, val fresh: Boolean = true)
+data class MapVessel(
+    val point: GeoPoint,
+    /** 对地航迹向，只用于航迹向量，不代替船首向。 */
+    val courseDegrees: Double? = null,
+    val fresh: Boolean = true,
+    /** 真实船首向；缺少新鲜船首向时，用无方向的船位标记。 */
+    val headingDegrees: Double? = null,
+    /** 航迹向量按一分钟航程绘制；低于 0.5 kn 时不绘制。 */
+    val speedKnots: Double? = null,
+)
 data class MapPoint(val id: String, val point: GeoPoint, val label: String = "", val color: Long = 0xFF007F9B, val radiusDp: Float = 10f, val draggable: Boolean = false)
 data class MapLine(val id: String, val points: List<GeoPoint>, val color: Long = 0xFF007F9B, val widthDp: Float = 3f, val dashed: Boolean = false)
 data class MapCircle(val id: String, val center: GeoPoint, val radiusMeters: Double, val color: Long = 0xFF007F9B, val dashed: Boolean = false)
@@ -57,6 +66,8 @@ class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
     /** 航行日志请求的只读轨迹预览，与实时航行记录各自保留。 */
     var previewTrack by mutableStateOf<List<List<GeoPoint>>>(emptyList())
     var previewTitle by mutableStateOf<String?>(null)
+    /** 收藏路线的只读版本快照；与正在导航的冻结版本拥有不同的显示模式。 */
+    var previewRoute by mutableStateOf<com.yokuli.marine.shell.rebuild.Route?>(null)
     var scaleTopDp by mutableFloatStateOf(118f)
     /** 仅移动版权文字，保持原生地图视口与镜头尺寸不变。 */
     var bottomOverlayDp by mutableFloatStateOf(0f)

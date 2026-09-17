@@ -5,6 +5,8 @@ import com.yokuli.marine.shell.rebuild.GeoPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import com.yokuli.anchorwatch.domain.vessel.VesselDataFreshness
+import com.yokuli.anchorwatch.domain.vessel.VesselDataQuality
 
 /**
  * 界面使用的船位快照：point 为 WGS84，elapsed 为单调时钟毫秒，utc 为 UTC 毫秒。
@@ -13,14 +15,25 @@ import kotlinx.coroutines.flow.update
  */
 data class Fix(val point: GeoPoint, val source: String, val elapsed: Long, val utc: Long,
     val speed: Double?=null, val course: Double?=null, val accuracy: Double?=null,
-    val speedElapsed:Long=elapsed,val courseElapsed:Long=elapsed) {
+    val speedElapsed:Long=elapsed,val courseElapsed:Long=elapsed,
+    val heading:Double?=null,val headingElapsed:Long?=null,
+    val headingFreshness:VesselDataFreshness=VesselDataFreshness.UNAVAILABLE,
+    val speedFreshness:VesselDataFreshness=VesselDataFreshness.FRESH,
+    val courseFreshness:VesselDataFreshness=VesselDataFreshness.FRESH) {
     fun fresh(now: Long=SystemClock.elapsedRealtime()) = now-elapsed in 0..10000
-    fun freshSpeed(now:Long=SystemClock.elapsedRealtime())=speed?.takeIf {now-speedElapsed in 0..10000}
-    fun freshCourse(now:Long=SystemClock.elapsedRealtime())=course?.takeIf {now-courseElapsed in 0..10000}
+    fun freshSpeed(now:Long=SystemClock.elapsedRealtime())=speed?.takeIf {speedFreshness==VesselDataFreshness.FRESH&&now-speedElapsed in 0..5000}
+    fun freshCourse(now:Long=SystemClock.elapsedRealtime())=course?.takeIf {courseFreshness==VesselDataFreshness.FRESH&&now-courseElapsed in 0..5000}
+    /** 船首向绝不使用 COG 替代，过期/空字段心跳不能继续转动船形。 */
+    fun freshHeading(now:Long=SystemClock.elapsedRealtime())=heading?.takeIf {headingFreshness==VesselDataFreshness.FRESH&&headingElapsed?.let{now-it in 0..15000}==true}
 }
 /** 单项读数保留内部规范单位和真实来源；显示走全局格式器，elapsed 为单调时钟毫秒。 */
-data class Reading(val value: Double, val unit: String, val source: String, val elapsed: Long) {
-    fun fresh(now: Long=SystemClock.elapsedRealtime()) = now-elapsed in 0..10000
+data class Reading(val value: Double, val unit: String, val source: String, val elapsed: Long,
+    val freshness:VesselDataFreshness=VesselDataFreshness.FRESH,
+    val quality:VesselDataQuality=VesselDataQuality.GOOD,
+    /** 稳定来源身份与来源显示名分开；同名设备及重连代次不连接历史曲线。 */
+    val sourceKey:String=source,
+    val validForMillis:Long=10_000) {
+    fun fresh(now: Long=SystemClock.elapsedRealtime()) = freshness==VesselDataFreshness.FRESH&&quality!=VesselDataQuality.UNKNOWN&&now-elapsed in 0..validForMillis
 }
 /** 海图、磁贴、趋势共用的进程内快照；连接计数与读数分离，已连接不代表已有可信数据。 */
 data class VesselData(

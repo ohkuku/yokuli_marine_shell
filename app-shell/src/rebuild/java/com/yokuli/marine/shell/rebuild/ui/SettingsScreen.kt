@@ -121,7 +121,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         Label(os.t("海图、日志、锚警、仪表与磁贴同时生效。原始记录及 NMEA 数据不改变。水深统一使用米，温度统一使用摄氏度。", "Applies to charts, logs, anchor watch, instruments and tiles. Raw records and NMEA remain unchanged. Depth uses metres; temperature uses Celsius."),17,c.muted)
                     }
                     "start" -> {
-                        Label(os.t("长按磁贴，拖动位置或调整尺寸。每个应用保留一块磁贴，在磁贴库选择它的内容样式。", "Hold a tile to move or resize it. Each app has one tile; choose its content style in Tile Library."),23)
+                        Label(os.t("长按磁贴，拖动位置或调整尺寸。每个应用保留一块磁贴，在磁贴工坊选择它的内容样式。", "Hold a tile to move or resize it. Each app has one tile; choose its content style in Tile Studio."),23)
                         MetroButton(os.t("选择磁贴样式", "choose tile styles"),{os.open("tiles")},primary=true)
                         MetroButton(os.t("恢复默认布局", "restore default layout"),{reset=true})
                     }
@@ -161,7 +161,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
             marine.vm.updateVesselDataSettings(state.vesselSettings.copy(vesselName = name.trim(), draftMeters = draft.toDoubleOrNull()))
         }, primary = true, enabled = valid && changed)
         if (!changed) Label(os.t("资料已保存", "details saved"), 15, LocalMetro.current.muted)
-        MenuRow(os.t("传感器与船体安装", "sensors & vessel mounting"), os.t("在仪表中确认安装、查看来源和实时姿态", "confirm mounting and see sources and live attitude in instruments"), "data") { os.open("instruments") }
+        MenuRow(os.t("传感器与船体安装", "sensors & vessel mounting"), os.t("在驾驶台中确认安装、查看来源和实时姿态", "confirm mounting and see sources and live attitude in Helm"), "data") { os.open("instruments") }
     }
 }
 

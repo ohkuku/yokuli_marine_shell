@@ -30,6 +30,8 @@ import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.distance
 import com.yokuli.marine.shell.rebuild.nm
 import com.yokuli.marine.shell.rebuild.ui.Label
+import com.yokuli.marine.shell.rebuild.ui.MetroProgress
+import com.yokuli.marine.shell.rebuild.ui.LocalMetro
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -37,6 +39,7 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.module.http.HttpRequestUtil
@@ -180,7 +183,8 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             val a=camera?.project(nearby.point);val b=camera?.project(point)
             if(a!=null && b!=null && hypot(a.x-b.x,a.y-b.y)<28*resources.displayMetrics.density) {onEvent(MapEvent.ItemSelected(nearby.id));return}
         }
-        state.showCrosshair=true;state.fly(point);onEvent(MapEvent.CoordinateSelected(point));updateCamera()
+        // 点按只进入选点模式。准星固定在视口中心，镜头只由拖动、缩放或明确定位按钮移动。
+        state.showCrosshair=true;onEvent(MapEvent.CoordinateSelected(point));overlay.invalidate()
     }
     private fun initGoogle() {
         google=GoogleMapView(context).also {v ->
@@ -212,7 +216,9 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     private fun initLibre() {
         MapLibre.getInstance(context)
         HttpRequestUtil.setOkHttpClient(OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(15,TimeUnit.SECONDS).addInterceptor {chain ->chain.proceed(chain.request().newBuilder().header("User-Agent","YokuliOS/0.4 (+https://github.com/ohkuku/yokuli_marine_shell)").build())}.build())
-        native=MapView(context).also {v ->
+        // Shell 转场与任务卡使用整窗 PixelCopy；TextureView 参与同一窗口合成，
+        // 避免独立 GLSurfaceView 在任务截图中变黑，也让缩放转场带着地图一起运动。
+        native=MapView(context,MapLibreMapOptions.createFromAttributes(context).textureMode(true)).also {v ->
             addView(v,LayoutParams(-1,-1));v.onCreate(Bundle());v.getMapAsync {map ->
                 if(destroyed)return@getMapAsync
                 libre=map
@@ -374,18 +380,25 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                 }
             }
         }
-        Box(modifier) {
+        BoxWithConstraints(modifier) {
+            val compactViewport=maxHeight<300.dp
             AndroidView(factory={host},modifier=Modifier.fillMaxSize(),update={it.update(scene,onEvent)})
             val zh=maps.chinese
             val message=when {
                 host.error=="online" ->if(zh)"在线地图暂不可用 · 检查网络或选择自定义图层" else "online map unavailable · check network or choose a custom layer"
-                host.error=="empty" ->if(zh)"图层没有可用文件 · 在海图库检查" else "no available files · check chart library"
-                host.error!=null ->if(zh)"图层读取失败 · 在海图库检查" else "chart read failed · check chart library"
+                host.error=="empty" ->if(zh)"图层没有可用文件 · 在图册检查" else "no available files · check chart library"
+                host.error!=null ->if(zh)"图层读取失败 · 在图册检查" else "chart read failed · check chart library"
                 host.loading ->if(zh)"正在载入 ${maps.sourceName(true)}…" else "loading ${maps.sourceName(false)}…"
                 coverage==false ->if(zh)"当前位置无本地图块" else "no local chart tile here"
                 else ->null
             }
-            message?.let {Label(it,13,Color(0xFF19252B),Modifier.align(Alignment.TopCenter).padding(top=54.dp,start=12.dp,end=12.dp).background(Color.White.copy(alpha=.95f)).padding(9.dp))}
+            message?.let {
+                // 小型地图把状态放到上沿，并为右上角图源入口留位置；主地图仍避开船位和缩放控件。
+                val statusModifier=Modifier.align(if(compactViewport)Alignment.TopStart else Alignment.TopCenter)
+                    .padding(top=if(compactViewport)8.dp else 166.dp,start=12.dp,end=if(compactViewport)96.dp else 12.dp).widthIn(max=290.dp)
+                if(host.loading && host.error==null)Box(statusModifier.background(LocalMetro.current.bg.copy(alpha=.94f)).padding(10.dp)){MetroProgress(it)}
+                else Label(it,13,Color(0xFF19252B),statusModifier.background(Color.White.copy(alpha=.95f)).padding(9.dp))
+            }
             val credits=if(maps.source==MapSource.Online && !BuildConfig.GOOGLE_MAPS_CONFIGURED)listOf("© OpenStreetMap contributors · Natural Earth")
                 else maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()+if(!google)listOf("Natural Earth")else emptyList()
             if(credits.isNotEmpty())Column(Modifier.align(Alignment.BottomEnd).padding(bottom=state.bottomOverlayDp.dp).widthIn(max=230.dp).background(Color.White.copy(alpha=.92f)).padding(4.dp)) {

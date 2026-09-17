@@ -395,6 +395,8 @@ interface AnchorDao {
     @Query("SELECT COUNT(*) AS pointCount, COALESCE(MAX(id),0) AS maxPointId FROM track_points WHERE sessionId=:id AND timestamp>=:since") suspend fun pointCountSnapshotSince(id:Long,since:Long):AnchorPointCountSnapshot
     @Insert suspend fun insertEvent(value: AlarmEventEntity)
     @Query("SELECT * FROM alarm_events WHERE sessionId=:id ORDER BY timestamp") fun events(id: Long): Flow<List<AlarmEventEntity>>
+    /** 系统通知按事件 ID 去重，用事件发生时间补录后台历史。 */
+    @Query("SELECT * FROM alarm_events ORDER BY id DESC LIMIT :limit") fun observeRecentAlarmEvents(limit:Int):Flow<List<AlarmEventEntity>>
     @Query("SELECT * FROM alarm_events WHERE sessionId=:id ORDER BY timestamp DESC,id DESC LIMIT :limit") suspend fun recentEvents(id:Long,limit:Int):List<AlarmEventEntity>
     @Query("SELECT * FROM alarm_events WHERE sessionId=:sessionId AND (timestamp>:afterTimestamp OR (timestamp=:afterTimestamp AND id>:afterId)) ORDER BY timestamp,id LIMIT :limit") suspend fun eventsPage(sessionId:Long,afterTimestamp:Long,afterId:Long,limit:Int):List<AlarmEventEntity>
     @Query("SELECT * FROM anchor_sessions ORDER BY id") suspend fun allSessionsNow():List<AnchorSessionEntity>

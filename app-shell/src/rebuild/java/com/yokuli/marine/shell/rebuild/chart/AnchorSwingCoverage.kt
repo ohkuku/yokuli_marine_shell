@@ -11,7 +11,8 @@ import kotlin.math.*
  */
 class AnchorSwingCoverage(private val origin: GeoPoint, radiusMeters: Double) {
     private data class Cell(var count: Int, var latest: Long)
-    private var cellMeters = (radiusMeters / 12).coerceIn(3.0, 12.0)
+    // 占用色斑来自观测网格，和用户设定的警戒半径无关；不会把单个位置扩成大圆。
+    private var cellMeters = 3.0
     private val cells = linkedMapOf<Pair<Int, Int>, Cell>()
     var lastTimestamp = Long.MIN_VALUE
         private set

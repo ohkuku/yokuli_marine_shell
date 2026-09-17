@@ -8,7 +8,8 @@ import com.yokuli.anchorwatch.domain.model.AppLanguage
 import com.yokuli.anchorwatch.domain.model.GpsDataSource
 import com.yokuli.anchorwatch.domain.model.NavigationFix
 import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
-import com.yokuli.anchorwatch.domain.vessel.VesselObservation
+import com.yokuli.anchorwatch.domain.vessel.*
+import com.yokuli.anchorwatch.domain.vessel.source.MetricSourceEligibility
 import com.yokuli.anchorwatch.domain.vessel.VesselSourcePreference
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.OsStore
@@ -90,12 +91,17 @@ class MarineRuntime(private val os: OsStore, val vm: MainViewModel) {
 
     fun close() = subscription.cancel()
 
-    private fun NavigationFix.asFix(source: String): Fix? {
+    private fun NavigationFix.asFix(source: String, selected:VesselDataSnapshot?=null): Fix? {
         if (!valid || (isMockLocation && source != "demo")) return null
+        val composed=selected?.let{VesselFixProjection.compose(this,it)}?:this
         return Fix(GeoPoint(latitude, longitude), source, receivedElapsedRealtime,
-            timestampUtcMillis ?: 0L, sogKnots, cogTrueDegrees, horizontalAccuracyMeters,
-            sogReceivedElapsedRealtime ?: receivedElapsedRealtime,
-            cogReceivedElapsedRealtime ?: receivedElapsedRealtime)
+            timestampUtcMillis ?: 0L, composed.sogKnots, composed.cogTrueDegrees, horizontalAccuracyMeters,
+            composed.sogReceivedElapsedRealtime ?: receivedElapsedRealtime,
+            composed.cogReceivedElapsedRealtime ?: receivedElapsedRealtime,
+            selected?.headingTrueDegrees?.value,selected?.headingTrueDegrees?.receivedElapsedRealtime,
+            selected?.headingTrueDegrees?.freshness ?: VesselDataFreshness.UNAVAILABLE,
+            selected?.sogKnots?.freshness ?: VesselDataFreshness.UNAVAILABLE,
+            selected?.cogTrueDegrees?.freshness ?: VesselDataFreshness.UNAVAILABLE)
     }
 
     private fun publish(state: MainUiState) {
@@ -114,31 +120,53 @@ class MarineRuntime(private val os: OsStore, val vm: MainViewModel) {
         val selected = state.settings.gpsDataSource
         val accepted = state.acceptedPosition.takeIf { it.selectedSource == selected }?.acceptedFix
         val readings = buildMap {
-            fun add(key: String, value: VesselObservation<Double>, unit: String) {
-                val number = value.value?.takeIf { it.isFinite() } ?: return
-                val time = value.receivedElapsedRealtime ?: return
-                put(key, Reading(number, unit, value.provenance ?: value.source.name, time))
+            fun add(key:String,value:VesselObservation<Double>,unit:String,metric:VesselMetricId) {
+                val number=value.value?.takeIf{it.isFinite()}?:return
+                val time=value.receivedElapsedRealtime?:return
+                put(key,Reading(number,unit,value.provenance?:value.source.name,time,value.freshness,value.quality,
+                    value.sourceIdentity?.id?:value.provenanceDetail?.toString()?:value.source.name,
+                    MetricSourceEligibility.measurementLeaseMillis(metric)))
             }
             with(state.vesselData) {
-                add("heading", headingTrueDegrees, "°T")
-                add("depth", depthMeters, "m")
-                add("aws", apparentWind.speedKnots, "kn")
-                add("awa", apparentWind.angleDegrees, "°")
-                add("tws", trueWind.speedKnots, "kn")
-                add("bsp", speedThroughWaterKnots, "kn")
-                add("water", waterTemperatureCelsius, "°C")
-                add("pressure", pressureHpa, "hPa")
-                add("ukc", derived.underKeelClearanceMeters, "m")
-            }
-            accepted?.asFix(if(selected==GpsDataSource.SYSTEM) "phone GPS" else if(selected==GpsDataSource.DEMO) "DEMO" else "NMEA")?.let { fix ->
-                fix.speed?.let { put("sog",Reading(it,"kn",fix.source,fix.speedElapsed)) }
-                fix.course?.let { put("cog",Reading(it,"°T",fix.source,fix.courseElapsed)) }
+                add("sog",sogKnots,"kn",VesselMetricId.SOG);add("cog",cogTrueDegrees,"°T",VesselMetricId.COG)
+                add("heading",headingTrueDegrees,"°T",VesselMetricId.HEADING_TRUE)
+                add("depth",depthMeters,"m",VesselMetricId.DEPTH);add("ukc",derived.underKeelClearanceMeters,"m",VesselMetricId.DEPTH)
+                add("aws",apparentWind.speedKnots,"kn",VesselMetricId.APPARENT_WIND_SPEED)
+                add("awa",apparentWind.angleDegrees,"°",VesselMetricId.APPARENT_WIND_ANGLE)
+                add("tws",trueWind.speedKnots,"kn",VesselMetricId.TRUE_WIND_SPEED)
+                add("twa",trueWind.angleDegrees,"°",VesselMetricId.TRUE_WIND_ANGLE)
+                add("twd",trueWind.directionDegrees,"°T",VesselMetricId.TRUE_WIND_DIRECTION)
+                add("bsp",speedThroughWaterKnots,"kn",VesselMetricId.SPEED_THROUGH_WATER)
+                add("water",waterTemperatureCelsius,"°C",VesselMetricId.WATER_TEMPERATURE)
+                add("air",airTemperatureCelsius,"°C",VesselMetricId.AIR_TEMPERATURE)
+                add("pressure",pressureHpa,"hPa",VesselMetricId.PRESSURE)
+                add("pressure_1h",derived.pressureTrend1hHpa,"hPa",VesselMetricId.PRESSURE)
+                add("pressure_3h",derived.pressureTrend3hHpa,"hPa",VesselMetricId.PRESSURE)
+                add("pressure_6h",derived.pressureTrend6hHpa,"hPa",VesselMetricId.PRESSURE)
+                add("heel",heelDegrees,"°",VesselMetricId.HEEL);add("pitch",pitchDegrees,"°",VesselMetricId.PITCH)
+                add("roll_rate",rollRateDegreesPerSecond,"°/s",VesselMetricId.ROLL_RATE)
+                add("pitch_rate",pitchRateDegreesPerSecond,"°/s",VesselMetricId.PITCH_RATE)
+                add("rot",rateOfTurnDegreesPerMinute,"°/min",VesselMetricId.RATE_OF_TURN)
+                add("rudder",rudderAngleDegrees,"°",VesselMetricId.RUDDER_ANGLE)
+                add("vmg",derived.vmgToWindKnots,"kn",VesselMetricId.VMG_WIND)
+                add("vmc",derived.vmcToWaypointKnots,"kn",VesselMetricId.VMC_WAYPOINT)
+                add("current_set",currentSetTrueDegrees,"°T",VesselMetricId.CURRENT_SET)
+                add("current_drift",currentDriftKnots,"kn",VesselMetricId.CURRENT_DRIFT)
+                add("xte",crossTrackErrorNauticalMiles,"nm",VesselMetricId.XTE)
+                add("waypoint_bearing",waypointBearingTrueDegrees,"°T",VesselMetricId.WAYPOINT_BEARING)
+                add("waypoint_distance",waypointDistanceNauticalMiles,"nm",VesselMetricId.WAYPOINT_DISTANCE)
+                add("total_log",totalLogNauticalMiles,"nm",VesselMetricId.TOTAL_LOG)
+                add("trip_log",tripLogNauticalMiles,"nm",VesselMetricId.TRIP_LOG)
+                fun motionReading(value:Double?)=VesselObservation(value,motion.source,motion.observedAtUtcMillis,motion.receivedElapsedRealtime,motion.quality,motion.freshness,motion.provenance,motion.sourceIdentity,motion.sourceClass,provenanceDetail=motion.provenanceDetail)
+                add("roll_period",motionReading(motion.value?.dominantRollPeriodSeconds),"s",VesselMetricId.ROLL_PERIOD)
+                add("motion",motionReading(motion.value?.score),"",VesselMetricId.MOTION_SCORE)
+                add("impacts",motionReading(motion.value?.impactCandidateCount?.toDouble()),"",VesselMetricId.MOTION_SCORE)
             }
         }
         os.hub.update {
-            it.copy(phone = (if(selected==GpsDataSource.SYSTEM) accepted else state.systemFix)?.asFix("phone"),
-                nmea = (if(selected==GpsDataSource.NMEA) accepted else state.nmeaFix)?.asFix("NMEA"),
-                demo = if(selected==GpsDataSource.DEMO) accepted?.asFix("demo") else null,
+            it.copy(phone = (if(selected==GpsDataSource.SYSTEM) accepted else state.systemFix)?.asFix("phone",state.vesselData.takeIf{selected==GpsDataSource.SYSTEM}),
+                nmea = (if(selected==GpsDataSource.NMEA) accepted else state.nmeaFix)?.asFix("NMEA",state.vesselData.takeIf{selected==GpsDataSource.NMEA}),
+                demo = if(selected==GpsDataSource.DEMO) accepted?.asFix("demo",state.vesselData) else null,
                 readings = readings, gpsOn = state.settings.gpsDataSource == GpsDataSource.SYSTEM,
                 connection = when(state.connection) {
                     NmeaConnectionState.DISCONNECTED -> "off"

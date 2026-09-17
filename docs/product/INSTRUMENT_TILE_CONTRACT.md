@@ -4,7 +4,7 @@
 
 ## 领域边界
 
-- 仪表消费系统选好的观测，不能因为打开页面就切换船位来源或创建航行。
+- 驾驶台消费系统选好的观测，不能因为打开页面就切换船位来源或创建航行。
 - 我的仪表只拥有显示顺序、增删与查看读数的交互。来源、吃水、船舶资料和航行仍由各自的共享服务拥有。
 - 磁贴库以应用为入口。一个应用拥有一块主磁贴，样式与尺寸修改这块现有磁贴；样式不是额外的应用或额外的主屏入口。
 - 磁贴和仪表读取同一个 `MainViewModel.ui.vesselData` / `DataHub`，没有独立模拟读数。演示模式必须显示演示标记。
@@ -14,14 +14,16 @@
 | 数据类型 / 字段 | 中文含义 | 单位与约束 | 持久化 |
 | --- | --- | --- | --- |
 | `VesselObservation<T>.value` | 真实观测值 | 缺测为 `null`，不能补成零 | 仪表读取，不拥有 |
-| `VesselObservation<T>.freshness` | `FRESH / HELD / STALE / UNAVAILABLE` 新鲜度 | 活指针和当前数字只使用 `FRESH` | 来源服务拥有 |
+| `VesselObservation<T>.freshness` | `FRESH / HELD / STALE / UNAVAILABLE` 新鲜度 | 航向和姿态数字/指针只使用 `FRESH` 且质量已知；其他读数保留最后观测，灰色并标时间 | 来源服务拥有 |
 | `VesselObservation<T>.receivedElapsedRealtime` | 接收的单调时钟时刻 | 毫秒；仅比较时效，不当 UTC | 来源服务拥有 |
 | `VesselObservation<T>.sourceIdentity` | 具体设备或连接的身份 | 详情原样显示来源名称 | 来源服务拥有 |
 | `VesselObservation<T>.conflict` | 来源之间的不一致 | 详情解释，不擅自切换来源 | 来源服务拥有 |
 | `VesselDataSnapshot` | 同一次融合后的船舶数据快照 | 航速用节，方位和姿态用度，深度用米，温度用摄氏度 | 来源服务拥有 |
 | `VesselDataSettings.customLayout` | 我的仪表的有序 ID 列表 | `List<InstrumentTileId>`，去重，顺序即显示顺序 | `vessel_data_settings` DataStore |
 | `InstrumentTileId` | 仪表稳定身份 | 不用数组索引绑定读数；拖动后 ID 不变 | 枚举名称 |
-| `Reading` | 时间轴中的一份观测 | `value / unit / source / elapsed`；过滤非有限数值 | 进程内，最多 15 分钟 |
+| `Reading` | 时间轴中的一份观测 | `value / unit / source / elapsed / freshness / quality / sourceKey / validForMillis`；物理身份与显示名分开 | 进程内，最多 15 分钟 |
+| `VesselDataSnapshot.heelDegrees / pitchDegrees` | 独立选源的横倾/纵倾 | 两项各自保留时间、来源与质量；同时有效才画地平线 | 来源服务拥有 |
+| `InstrumentReadingPolicy` | 数字与量表共用的展示策略 | 保留读数不等于允许导航/报警继续使用；风角为 -180°～180° | 无持久化 |
 | `ShellApp.id` | 应用身份 | 磁贴去重按照 `LauncherAppId` | 应用目录 |
 | `ShellApp.entry` | 应用唯一主入口 | 旧 `tile.*` 样式入口迁回这里 | 应用目录 |
 | `TilePlacement.tileId` | 桌面位置对象的稳定身份 | 换尺寸或样式时保留 | Shell 文档 |
@@ -43,10 +45,10 @@
 | `WindRose(os, snapshot)` | 真风和视风角度、速度 | 船艏朝上，两组箭头表示来风方向；缺哪组就不画哪组 |
 | `AttitudeHorizon(os, snapshot)` | 已校准的横倾与纵倾 | 2D 地平线；失去观测隐藏动态地平线，明确等待校准观测 |
 | `InstrumentGauge(os, snapshot, tile)` | 某个稳定仪表 ID | 方位罗盘、带中线的有符号偏差或标注范围的刻度；读数单位调用全局格式器 |
-| `ReadingTrace(os, values, metric, now)` | 最近观测样本 | 点按 / 拖动查看真实样本；断线、来源切换、角度跨周时断开线段 |
+| `ReadingTrace(os, values, metric, now, current?)` | 最近观测样本及当前权威观测 | 按稳定来源身份/字段有效期断线；历史端点不自行证明实时有效 |
 | `TileLibraryScreen(os, initialApp?)` | 可选的稳定应用 ID | 应用清单 → 此应用样式预览；硬件和虚拟返回都先回应用清单 |
 | `tileModes(app)` | 应用身份 | 此应用支持的样式清单；应用间不混排 |
-| `tilePresentation(os, app, animate, modeOverride?)` | 真实应用和可选预览样式 | 复用开始屏幕渲染器，预览与实际磁贴同源 |
+| `tilePresentation(os, app, animate, modeOverride?, rotateOverride?, intervalOverride?)` | 真实应用和完整预览草稿 | 样式、轮换开关和间隔立即参与同一个开始屏幕渲染器；保存前不改系统偏好 |
 | `LauncherAction.PinEntry(entry, size)` | 应用主入口及选定尺寸 | 未固定则创建，已固定则更新同一位置；不会创建同应用副本 |
 | `LauncherAction.UnpinTile(tileId)` | 已固定磁贴身份 | 移除主屏入口，保留应用数据和偏好 |
 | `StartLayoutEditor.pin(document, entry, catalog, size)` | 当前布局与应用目录 | 保留同应用最早位置、稳定 tileId，替换入口与尺寸；去掉旧重复项 |
@@ -60,6 +62,12 @@
 3. 看来源：点读数打开观测详情，看来源、时效与冲突说明；无需被带到系统设置。
 4. 选磁贴：磁贴库选择应用 → 左右滑看真实预览 → 选尺寸和样式 → 应用到现有磁贴。静态图标也是样式；轮换开关只控制信息页动画，真实数据仍然刷新。
 5. 旧版本升级：Shell 产品迁移把每个应用旧 `tile.*` 入口合并到主入口。保留最早的 rank / tileId / 可支持尺寸；默认样式为 `AUTO`。旧版若在应用偏好中已明确保存模式，仍按该模式展示。
+6. 看趋势：选择具体仪表 → 只看该仪表的当前/最后读数、历史和来源。水深不会附带无关的气压面板；只有选择气压时才出现 1/3/6 小时气压变化。读数详情同样打开自己的曲线。
+7. 手机作船舶传感器：航行页“固定手机”或姿态页“安装与校准” → 确认手机顶部朝向船艏，或匹配同时收到的船网艏向 → 直接预览手机方向及对齐后的船首向。姿态安装另选船艏边缘并确认，不会把当前横倾归零；没有实时读数时禁止确认艏向。
+
+## 2026-09-18 修订的回归入口
+
+`app-shell/src/rebuildTest/java/com/yokuli/marine/shell/rebuild/ui/InstrumentReadingPolicyTest.kt` 覆盖左右舷风角、30 秒气压连续性、15 秒船首向有效期、HELD 状态、同名设备与重连代次断线、跨北趋势断线、各仪表独立趋势键。这 7 例已在 2026-09-18 本轮统一 Gradle 构建中通过；属于 rebuild 单测的 25 例之一。页面实图和真实传感器验收另行记录，不由 JVM 通过推断。
 
 ## 拓扑
 

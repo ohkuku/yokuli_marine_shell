@@ -12,6 +12,9 @@ import kotlinx.coroutines.*
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** 应用待发送队列保留来源代次；停止/重连后不能写出旧输入产生的排队数据。 */
+data class NmeaPublicationBatch(val sentences:List<String>,val sourceEpochs:Map<String,Long> = emptyMap())
+
 /** 本机服务与各条发送连接共享的编码边界：能力选择、来源真实性、时效和同 IP 防回送全部在此生效。 */
 @Singleton class NmeaPublicationEncoder @Inject constructor(
     private val navigation: NavigationRepository,
@@ -71,20 +74,27 @@ import javax.inject.Singleton
     }
 
     /** 系统模式只编码 App 当前实际采用的观测；不会为了输出完整而编造缺失量。 */
-    fun encode(spec: NmeaConnectionSpec, now: Long): List<String> {
+    fun encode(spec:NmeaConnectionSpec,now:Long):List<String> = encodeBatch(spec,now).sentences
+    fun encodeBatch(spec: NmeaConnectionSpec, now: Long): NmeaPublicationBatch {
         val snapshot = hub.snapshot.value
         val selected = NmeaPublicationPolicy.selected(spec)
         if (spec.feed == NmeaFeed.PHONE) {
             val config = NmeaDeviceOutputSettings(phonePositionEnabled = "position" in selected, phoneHeadingEnabled = "heading" in selected, phoneRateOfTurnEnabled = "rotation" in selected, phoneAttitudeEnabled = "attitude" in selected, phonePressureEnabled = "pressure" in selected)
-            return AnchorWatchNmeaStream.entries.flatMap { stream ->
+            return NmeaPublicationBatch(AnchorWatchNmeaStream.entries.flatMap { stream ->
                 phoneEncoder.encode(stream, snapshot, config, now, positions.acceptedPhoneFix.value, inputProfileId = spec.id, mountCalibration = calibration, runtimeMountState = attitude.mountState.value).sentences
-            }.mapNotNull { NmeaPublicationPolicy.filter(spec, it) }
+            }.mapNotNull { NmeaPublicationPolicy.filter(spec, it) })
         }
-        if (spec.feed == NmeaFeed.RAW) return emptyList()
-        fun number(value: VesselObservation<Double>) = value.value?.takeIf { it.isFinite() && allowed(value, spec, now) }
+        if (spec.feed == NmeaFeed.RAW) return NmeaPublicationBatch(emptyList())
+        val epochs=mutableMapOf<String,Long>()
+        fun allowedAndCapture(value:VesselObservation<*>):Boolean {
+            if(!allowed(value,spec,now))return false
+            ancestry(value).forEach{source->if(source.transportProfileId!=null&&source.connectionGeneration!=null)epochs[source.transportProfileId]=source.connectionGeneration}
+            return true
+        }
+        fun number(value: VesselObservation<Double>) = value.value?.takeIf { it.isFinite() && allowedAndCapture(value) }
         val lines = buildList {
             val position = snapshot.position
-            if ("position" in selected && allowed(position, spec, now) && position.freshness == VesselDataFreshness.FRESH) {
+            if ("position" in selected && allowedAndCapture(position) && position.freshness == VesselDataFreshness.FRESH) {
                 // 必须使用已选观测的原子位置，不能从另一条 NMEA 连接借来位置。
                 val current = position.value
                 val candidate = if (position.source == VesselDataSource.PHONE_GNSS) positions.acceptedPhoneFix.value else navigation.fix.value
@@ -95,8 +105,8 @@ import javax.inject.Singleton
                 }
             }
             if ("heading" in selected) {
-                number(snapshot.headingTrueDegrees)?.let { add(mux.phoneHeading(it)) }
-                number(snapshot.headingMagneticDegrees)?.let { add(mux.phoneMagneticHeading(it, null)) }
+                snapshot.headingTrueDegrees.takeIf{it.freshness==VesselDataFreshness.FRESH}?.let(::number)?.let { add(mux.phoneHeading(it)) }
+                snapshot.headingMagneticDegrees.takeIf{it.freshness==VesselDataFreshness.FRESH}?.let(::number)?.let { add(mux.phoneMagneticHeading(it, null)) }
             }
             if ("water_speed" in selected) number(snapshot.speedThroughWaterKnots)?.let { add(mux.canonicalSpeedThroughWater(it)) }
             if ("depth" in selected) number(snapshot.depthMeters)?.let { depth ->
@@ -113,10 +123,17 @@ import javax.inject.Singleton
             if ("rotation" in selected) number(snapshot.rateOfTurnDegreesPerMinute)?.let { add(mux.phoneRateOfTurn(it)) }
             // 姿态和气压分别编码，关闭任一项后另一项仍可正常发出。
             if ("pressure" in selected) number(snapshot.pressureHpa)?.let { mux.selectedXdr(null, it)?.let(::add) }
-            if ("attitude" in selected) snapshot.attitude.value?.takeIf { allowed(snapshot.attitude, spec, now) }?.let { mux.selectedXdr(it, null)?.let(::add) }
+            if ("attitude" in selected) {
+                // HEEL/PITCH 可选不同设备；每个字段独立防回送，不要求另一个先有数据。
+                val parts=buildList {
+                    number(snapshot.heelDegrees)?.let{add("A,${format(it)},D,YOKULI_HEEL")}
+                    number(snapshot.pitchDegrees)?.let{add("A,${format(it)},D,YOKULI_PITCH")}
+                }
+                if(parts.isNotEmpty())add(NmeaChecksum.append("YXXDR,"+parts.joinToString(","))+"\r\n")
+            }
             if ("temperature" in selected) number(snapshot.waterTemperatureCelsius)?.let { add(NmeaChecksum.append("IIMTW,${format(it)},C") + "\r\n") }
         }
-        return lines.mapNotNull { NmeaPublicationPolicy.filter(spec, it) }
+        return NmeaPublicationBatch(lines.mapNotNull { NmeaPublicationPolicy.filter(spec, it) },epochs.toMap())
     }
     private fun format(value: Double) = String.format(java.util.Locale.US, "%.2f", value)
 }

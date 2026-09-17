@@ -43,10 +43,10 @@ fun MapSourcePicker(os: OsStore, onDismiss: () -> Unit) {
                     MapSourceOption(os,folder.layerName.orEmpty(),os.maps.source==source,os.t("$count 张可用海图","$count available charts")) {choose(source)}
                 }
                 (os.maps.source as? MapSource.CustomLayer)?.takeIf {selected->folders.none {it.id==selected.layerId}}?.let {
-                    MapSourceOption(os,os.t("图层暂不可用","layer unavailable"),true,os.t("在海图库检查原文件夹","check its folder in chart library"),false) {}
+                    MapSourceOption(os,os.t("图层暂不可用","layer unavailable"),true,os.t("在图册检查原文件夹","check its folder in chart library"),false) {}
                 }
             }
-            if(os.library.layers.isEmpty())Label(os.t("在海图库连接文件夹并命名后，它会出现在这里。","Connect and name a folder in chart library to add it here."),16,c.muted)
+            if(os.library.layers.isEmpty())Label(os.t("在图册连接文件夹并命名后，它会出现在这里。","Connect and name a folder in chart library to add it here."),16,c.muted)
             Label(os.t("自定义海图下方始终保留离线全球底图。Natural Earth 提供概略陆地与海岸，不含水深或航行障碍物。","Custom charts retain an offline world background. Natural Earth provides general land and coastlines, without depths or navigation hazards."),14,c.muted)
             if(os.maps.saveFailed)Label(os.t("选择尚未保存到设备","selection could not be saved"),16)
             MetroButton(os.t("关闭","close"),onDismiss)
@@ -54,7 +54,7 @@ fun MapSourcePicker(os: OsStore, onDismiss: () -> Unit) {
     }
 }
 
-/** Same square single-choice geometry as the original WP8 SettingsWorkspace.SelectionRow. */
+/** 图源与系统偏好共用单选控件，以选中圆点表示当前值。 */
 @Composable
 internal fun MapSourceOption(os:OsStore,title:String,selected:Boolean,detail:String?=null,enabled:Boolean=true,onSelect:()->Unit) {
     ChoiceRow(title=title,selected=selected,subtitle=detail,enabled=enabled,onClick=onSelect)

@@ -1,6 +1,6 @@
 package com.yokuli.marine.shell.rebuild.ui
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Dialog
 import com.yokuli.marine.shell.rebuild.OsStore
 import com.yokuli.marine.core.design.WpFontFamily
+import com.yokuli.marine.core.design.WpTypeScale
 import com.yokuli.marine.core.design.LocalWpTextScale
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.compose.LocalInternalAppInputEnabled
@@ -40,6 +41,7 @@ import kotlinx.coroutines.launch
 data class MetroColors(val bg: Color, val fg: Color, val muted: Color, val panel: Color, val accent: Color)
 val LocalMetro = staticCompositionLocalOf { MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(0xFF00ABA9)) }
 val LocalAppPage = staticCompositionLocalOf<String?> { null }
+private val LocalChinese = staticCompositionLocalOf { false }
 val LightFont=WpFontFamily
 
 /** Android 返回与虚拟返回使用同一任务激活约束，离场画面和通知背后的页面不抢键。 */
@@ -50,7 +52,7 @@ val LightFont=WpFontFamily
 @Composable fun MetroTheme(os: OsStore, content: @Composable ()->Unit) {
     val colors=if(os.light) MetroColors(Color(0xFFF7F7F5),Color(0xFF111111),Color(0xFF61615D),Color(0xFFE7E7E2),Color(os.accent))
         else MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(os.accent))
-    CompositionLocalProvider(LocalMetro provides colors, LocalWpTextScale provides when(os.textSize) {"COMPACT" -> .92f;"LARGE" -> 1.12f;else -> 1f}) { Box(Modifier.fillMaxSize().background(colors.bg)) { content() } }
+    CompositionLocalProvider(LocalMetro provides colors, LocalChinese provides os.chinese, LocalWpTextScale provides when(os.textSize) {"COMPACT" -> .92f;"LARGE" -> 1.12f;else -> 1f}) { Box(Modifier.fillMaxSize().background(colors.bg)) { content() } }
 }
 @Composable fun Label(text: String, size: Int=18, color: Color=LocalMetro.current.fg, modifier: Modifier=Modifier, maxLines: Int=Int.MAX_VALUE, weight: FontWeight=if(size>=28) FontWeight.Light else FontWeight.Normal) {
     val scale=LocalWpTextScale.current
@@ -72,6 +74,8 @@ val LightFont=WpFontFamily
             "route" -> { circle(6f,25f,3f); circle(25f,7f,3f); line(9f,25f,23f,25f); line(23f,25f,12f,10f); line(12f,10f,22f,7f) }
             "data" -> { line(5f,26f,5f,17f,3f); line(12f,26f,12f,7f,3f); line(20f,26f,20f,13f,3f); line(27f,26f,27f,3f,3f) }
             "connect" -> { circle(8f,16f,4f); circle(25f,7f,3f); circle(25f,25f,3f); line(12f,14f,22f,8f); line(12f,18f,22f,24f) }
+            "share" -> {line(5f,4f,18f,4f);line(5f,4f,5f,28f);line(5f,28f,18f,28f);line(18f,28f,18f,23f);line(18f,4f,18f,9f);line(12f,16f,29f,16f);line(29f,16f,24f,11f);line(29f,16f,24f,21f)}
+            "helm" -> {circle(16f,16f,11f);line(16f,2f,16f,7f);line(16f,25f,16f,30f);line(2f,16f,7f,16f);line(25f,16f,30f,16f);line(16f,9f,12f,22f);line(12f,22f,21f,17f);line(21f,17f,16f,9f)}
             "settings" -> { circle(16f,16f,8f); circle(16f,16f,3f); for(d in 0..7) { val a=d*Math.PI/4; line(16+10*kotlin.math.cos(a).toFloat(),16+10*kotlin.math.sin(a).toFloat(),16+14*kotlin.math.cos(a).toFloat(),16+14*kotlin.math.sin(a).toFloat(),3f) } }
             "locate" -> { circle(16f,16f,8f); drawCircle(color,2*sx,point(16f,16f)); line(16f,2f,16f,7f); line(16f,25f,16f,30f); line(2f,16f,7f,16f); line(25f,16f,30f,16f) }
             "pin" -> { circle(16f,11f,7f); line(16f,18f,16f,29f); drawCircle(color,2*sx,point(16f,11f)) }
@@ -124,10 +128,10 @@ val LightFont=WpFontFamily
                 Box(Modifier.size(30.dp).border(1.5.dp,LocalMetro.current.fg,androidx.compose.foundation.shape.CircleShape),contentAlignment=Alignment.Center) { Glyph("back",Modifier.size(20.dp)) }
             }
             }
-            Label(caption.uppercase(),12,weight=FontWeight.SemiBold,modifier=Modifier.weight(1f),maxLines=1)
+            Label((if(!nested && caption.equals(title,ignoreCase=true)) "YOKULI" else caption).uppercase(),WpTypeScale.AppCaption,weight=FontWeight.SemiBold,modifier=Modifier.weight(1f),maxLines=1)
             trailing?.invoke()
         }
-        Label(title,46,modifier=Modifier.padding(top=6.dp),maxLines=2)
+        Label(title,WpTypeScale.PageTitle,modifier=Modifier.padding(top=4.dp),maxLines=2)
     }
 }
 @Composable fun PageBody(scrollState:ScrollState=rememberScrollState(),content:@Composable ColumnScope.()->Unit) {
@@ -153,12 +157,19 @@ val LightFont=WpFontFamily
     }
 }
 @Composable fun Toggle(title:String,checked:Boolean,subtitle:String?=null,enabled:Boolean=true,onChange:(Boolean)->Unit) {
-    val thumb by animateFloatAsState(if(checked)1f else 0f,label="switch-thumb")
+    val c=LocalMetro.current
+    val thumb by animateFloatAsState(if(checked)1f else 0f,animationSpec=tween(130),label="switch-thumb")
     Row(Modifier.fillMaxWidth().graphicsLayer { alpha=if(enabled) 1f else .4f }.toggleable(value=checked,enabled=enabled,role=Role.Switch,onValueChange=onChange).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
-        Column(Modifier.weight(1f).padding(end=12.dp)) { Label(title,23); if(subtitle!=null) Label(subtitle,14,LocalMetro.current.muted,Modifier.padding(top=5.dp)) }
-        Box(Modifier.size(52.dp,26.dp).border(2.dp,LocalMetro.current.fg).padding(4.dp)) {
-            if(checked) Box(Modifier.fillMaxSize().background(LocalMetro.current.accent))
-            Box(Modifier.offset(x=(32*thumb).dp).width(12.dp).fillMaxHeight().background(LocalMetro.current.fg))
+        Column(Modifier.weight(1f).padding(end=16.dp)) {
+            Label(title,WpTypeScale.ListTitle)
+            Label(if(LocalChinese.current) {if(checked) "开启" else "关闭"} else {if(checked) "on" else "off"},WpTypeScale.Caption,if(checked)c.accent else c.muted,Modifier.padding(top=3.dp))
+            if(subtitle!=null) Label(subtitle,WpTypeScale.Caption,c.muted,Modifier.padding(top=5.dp))
+        }
+        Box(Modifier.size(60.dp,34.dp),contentAlignment=Alignment.CenterStart) {
+            Box(Modifier.width(60.dp).height(24.dp).border(2.dp,c.fg).padding(5.dp)) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(thumb).background(c.accent))
+            }
+            Box(Modifier.offset(x=(46*thumb).dp).width(14.dp).height(32.dp).background(c.fg).border(2.dp,c.bg))
         }
     }
 }
@@ -168,8 +179,8 @@ val LightFont=WpFontFamily
     Row(Modifier.fillMaxWidth().heightIn(min=52.dp).graphicsLayer {alpha=if(enabled)1f else .4f}
         .selectable(selected=selected,enabled=enabled,role=Role.RadioButton,onClick=onClick).padding(vertical=8.dp),
         verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-        Box(Modifier.size(26.dp).border(2.dp,c.fg).padding(5.dp)) {
-            if(selected)Box(Modifier.fillMaxSize().background(c.accent))
+        Box(Modifier.size(26.dp).border(2.dp,c.fg,androidx.compose.foundation.shape.CircleShape).padding(6.dp)) {
+            if(selected)Box(Modifier.fillMaxSize().background(c.accent,androidx.compose.foundation.shape.CircleShape))
         }
         Column(Modifier.weight(1f)) {Label(title,23);if(subtitle!=null)Label(subtitle,15,c.muted,Modifier.padding(top=4.dp))}
     }
@@ -178,9 +189,26 @@ val LightFont=WpFontFamily
     val pager=rememberPagerState { labels.size }; val scope=rememberCoroutineScope(); val c=LocalMetro.current
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start=22.dp,bottom=18.dp),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
-            labels.forEachIndexed { i,name -> Label(name,29,if(pager.currentPage==i) c.fg else c.muted,Modifier.clickable { scope.launch { pager.animateScrollToPage(i) } }) }
+            labels.forEachIndexed { i,name -> Label(name,WpTypeScale.PivotTitle,if(pager.currentPage==i) c.fg else c.muted,Modifier.clickable { scope.launch { pager.animateScrollToPage(i) } }) }
         }
         HorizontalPager(pager,Modifier.weight(1f),verticalAlignment=Alignment.Top) { content(it) }
+    }
+}
+
+/** WP 的不定进度沿水平方向流动，保留上下文，不覆盖用户操作。 */
+@Composable fun MetroProgress(label:String,modifier:Modifier=Modifier) {
+    val transition=rememberInfiniteTransition(label="metro-progress")
+    val phase by transition.animateFloat(0f,1f,infiniteRepeatable(tween(2100,easing=LinearEasing)),label="progress-dots")
+    val accent=LocalMetro.current.accent
+    Column(modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(6.dp)) {
+            repeat(5) {index->
+                val t=(phase-index*.075f+1f)%1f
+                val x=(t*t*(3f-2f*t)*1.35f-.175f)*size.width
+                if(x in 0f..size.width)drawCircle(accent,2.dp.toPx(),Offset(x,size.height/2))
+            }
+        }
+        Label(label,WpTypeScale.Body,LocalMetro.current.muted)
     }
 }
 @Composable fun TextDialog(os:OsStore,title:String,initial:String="",onDismiss:()->Unit,onSave:(String)->Unit) {

@@ -367,7 +367,11 @@ class MainViewModel @Inject constructor(
     val nmeaConnections=nav.connections
     val nmeaConnectionSpecs=nav.connectionSpecs
     fun saveNmeaConnection(spec:com.yokuli.anchorwatch.data.nmea.NmeaConnectionSpec,onSaved:()->Unit={})=viewModelScope.launch{runCatching{nav.saveConnection(spec)}.onSuccess{_ui.update{it.copy(connectionAttempt=ConnectionAttempt())};onSaved()}.onFailure{error->_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,error.message.orEmpty()))}}}
-    fun startNmeaConnection(id:String){nav.startConnection(id);ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction("OS_NETWORK_CHANGED"))}
+    fun startNmeaConnection(id:String)=viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO){
+        nmeaManualDisconnectRepository.clear()
+        nav.startConnection(id)
+        ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction("OS_NETWORK_CHANGED"))
+    }
     fun stopNmeaConnection(id:String)=viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO){nav.stopConnection(id)}
     fun selectNmeaPositionConnection(id:String)=selectNmeaPositionSource(id,null)
     private fun selectNmeaPositionSource(id:String,sourceKey:String?){
