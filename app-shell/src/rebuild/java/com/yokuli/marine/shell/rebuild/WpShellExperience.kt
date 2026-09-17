@@ -243,7 +243,12 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
             }
             if (os.storageError) Label(os.t("存储失败，改动尚未保存", "Storage error. Changes have not been saved."), 13, colors.warning, Modifier.padding(8.dp))
             key(state.surface, state.transient) {
-                WpSystemKeyBar(windowMetrics = metrics, onInput = shell::input)
+                WpSystemKeyBar(
+                    windowMetrics = metrics,
+                    onInput = shell::input,
+                    centerKey = WpSystemCenterKey.NOTIFICATIONS,
+                    onCenterClick = os.notifications::toggle,
+                )
             }
         }
     }

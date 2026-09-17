@@ -86,6 +86,7 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     }
     fun open() { if(!historyLoaded)markRestoredRead=true; expanded = true; banner = null; items = items.map { it.copy(read = true) }; save() }
     fun close() { if(expanded)appCaptureBlockedUntil=android.os.SystemClock.elapsedRealtime()+260L;expanded = false }
+    fun toggle() { if (expanded) close() else open() }
     fun dismissBanner() { banner = null }
     fun remove(id: String) { items = items.filterNot { it.id == id }; save() }
     fun clearRead() { if(!historyLoaded)discardRestoredRead=true; items = items.filterNot { it.read }; save() }

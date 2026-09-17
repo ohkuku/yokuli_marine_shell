@@ -60,6 +60,11 @@ import com.yokuli.shell.compose.LauncherEntryUiState
 
 private val DerivedVirtualKeyBarHeight = 54.dp
 
+enum class WpSystemCenterKey {
+    BRIDGE,
+    NOTIFICATIONS,
+}
+
 /**
  * The recording proves only the Back/Start/Search glyph family. The on-screen
  * height and Android platform haptic are DERIVED_UNVERIFIED product adaptations;
@@ -70,6 +75,8 @@ fun WpSystemKeyBar(
     windowMetrics: ShellWindowMetrics,
     onInput: (ShellInput) -> Unit,
     modifier: Modifier = Modifier,
+    centerKey: WpSystemCenterKey = WpSystemCenterKey.BRIDGE,
+    onCenterClick: (() -> Unit)? = null,
 ) {
     val bands = ShellSafeBands.resolve(windowMetrics)
     val density = windowMetrics.density.coerceAtLeast(1f)
@@ -93,10 +100,23 @@ fun WpSystemKeyBar(
             onLongClick = { onInput(ShellInput.RECENTS) },
         ) { BackGlyph() }
         SystemKey(
-            label = stringResource(R.string.system_bridge),
-            tag = "virtual-key-bridge",
-            onClick = { onInput(ShellInput.DESKTOP) },
-        ) { CompassBridgeGlyph() }
+            label = stringResource(
+                if (centerKey == WpSystemCenterKey.NOTIFICATIONS) {
+                    R.string.system_notifications
+                } else {
+                    R.string.system_bridge
+                },
+            ),
+            tag = if (centerKey == WpSystemCenterKey.NOTIFICATIONS) {
+                "virtual-key-notifications"
+            } else {
+                "virtual-key-bridge"
+            },
+            onClick = { onCenterClick?.invoke() ?: onInput(ShellInput.DESKTOP) },
+        ) {
+            if (centerKey == WpSystemCenterKey.NOTIFICATIONS) NotificationGlyph()
+            else CompassBridgeGlyph()
+        }
         SystemKey(
             label = stringResource(R.string.system_search),
             tag = "virtual-key-search",
@@ -177,6 +197,49 @@ private fun CompassBridgeGlyph() {
         }
         drawPath(rose, Color.White, style = Stroke(stroke))
         drawCircle(Color.White, radius = stroke * .9f, center = center)
+    }
+}
+
+@Composable
+private fun NotificationGlyph() {
+    Canvas(Modifier.size(29.dp)) {
+        val stroke = size.minDimension * .07f
+        val bell = Path().apply {
+            moveTo(size.width * .23f, size.height * .68f)
+            lineTo(size.width * .31f, size.height * .57f)
+            lineTo(size.width * .31f, size.height * .43f)
+            cubicTo(
+                size.width * .31f,
+                size.height * .25f,
+                size.width * .40f,
+                size.height * .16f,
+                size.width * .50f,
+                size.height * .16f,
+            )
+            cubicTo(
+                size.width * .60f,
+                size.height * .16f,
+                size.width * .69f,
+                size.height * .25f,
+                size.width * .69f,
+                size.height * .43f,
+            )
+            lineTo(size.width * .69f, size.height * .57f)
+            lineTo(size.width * .77f, size.height * .68f)
+            close()
+        }
+        drawPath(bell, Color.White, style = Stroke(stroke))
+        drawLine(
+            Color.White,
+            Offset(size.width * .23f, size.height * .68f),
+            Offset(size.width * .77f, size.height * .68f),
+            strokeWidth = stroke,
+        )
+        drawCircle(
+            Color.White,
+            radius = stroke * .85f,
+            center = Offset(size.width * .50f, size.height * .79f),
+        )
     }
 }
 

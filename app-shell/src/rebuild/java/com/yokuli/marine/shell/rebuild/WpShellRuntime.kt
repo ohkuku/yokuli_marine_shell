@@ -167,8 +167,8 @@ class WpShellRuntime(private val os: OsStore) {
         else deliver(action)
     }
     private fun deliver(action:LauncherAction) {
-        // 返回在截图队列中可能等待一帧；必须按实际执行时的栈再次判断，
-        // 否则快速连按会让后一个 Back 穿过刚回到的应用首页。
+        // Back may wait behind the task-snapshot capture. Re-check when it executes so a rapid
+        // second press from a detail page cannot pass through the root reached by the first press.
         if(action==LauncherAction.Back&&atUnlinkedAppRoot())return
         if(action is LauncherAction.Open) {
             val app=appForPage(pageForToken(action.token))
@@ -203,7 +203,10 @@ class WpShellRuntime(private val os: OsStore) {
             os.showCrosshair = false
             return
         }
-        if(input==ShellInput.BACK&&atUnlinkedAppRoot())return
+        if(input==ShellInput.BACK&&atUnlinkedAppRoot()) {
+            dispatch(LauncherAction.ShowDesktop)
+            return
+        }
         dispatch(input.toShellAction())
     }
     fun resetStart() {

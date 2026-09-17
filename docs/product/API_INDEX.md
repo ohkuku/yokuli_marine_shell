@@ -1,6 +1,6 @@
 # 生产接口与结构声明索引
 
-共 2730 项类型与方法声明；按源文件排序。
+共 2731 项类型与方法声明；按源文件排序。
 
 由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
 
@@ -138,9 +138,10 @@
 | `fun post` | [SystemNotifications.kt:78](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L78) |
 | `fun open` | [SystemNotifications.kt:87](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L87) |
 | `fun close` | [SystemNotifications.kt:88](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L88) |
-| `fun dismissBanner` | [SystemNotifications.kt:89](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L89) |
-| `fun remove` | [SystemNotifications.kt:90](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L90) |
-| `fun clearRead` | [SystemNotifications.kt:91](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L91) |
+| `fun toggle` | [SystemNotifications.kt:89](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L89) |
+| `fun dismissBanner` | [SystemNotifications.kt:90](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L90) |
+| `fun remove` | [SystemNotifications.kt:91](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L91) |
+| `fun clearRead` | [SystemNotifications.kt:92](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt#L92) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/TaskSnapshots.kt
 
@@ -159,13 +160,13 @@
 | 声明 | 实现位置 |
 | --- | --- |
 | `fun OsExperience` | [WpShellExperience.kt:55](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L55) |
-| `fun ShellAppIcon` | [WpShellExperience.kt:280](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L280) |
-| `fun getResources` | [WpShellExperience.kt:340](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L340) |
-| `fun onChange` | [WpShellExperience.kt:371](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L371) |
-| `object Launcher : ShellMotionTarget` | [WpShellExperience.kt:382](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L382) |
-| `object Search : ShellMotionTarget` | [WpShellExperience.kt:383](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L383) |
-| `object Recents : ShellMotionTarget` | [WpShellExperience.kt:384](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L384) |
-| `class App` | [WpShellExperience.kt:385](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L385) |
+| `fun ShellAppIcon` | [WpShellExperience.kt:285](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L285) |
+| `fun getResources` | [WpShellExperience.kt:345](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L345) |
+| `fun onChange` | [WpShellExperience.kt:376](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L376) |
+| `object Launcher : ShellMotionTarget` | [WpShellExperience.kt:387](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L387) |
+| `object Search : ShellMotionTarget` | [WpShellExperience.kt:388](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L388) |
+| `object Recents : ShellMotionTarget` | [WpShellExperience.kt:389](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L389) |
+| `class App` | [WpShellExperience.kt:390](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L390) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt
 
@@ -181,8 +182,8 @@
 | `fun popRoute` | [WpShellRuntime.kt:194](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L194) |
 | `fun home` | [WpShellRuntime.kt:195](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L195) |
 | `fun input` | [WpShellRuntime.kt:196](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L196) |
-| `fun resetStart` | [WpShellRuntime.kt:209](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L209) |
-| `class ShellApp` | [WpShellRuntime.kt:234](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L234) |
+| `fun resetStart` | [WpShellRuntime.kt:212](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L212) |
+| `class ShellApp` | [WpShellRuntime.kt:237](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L237) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/AnchorSwingCoverage.kt
 
@@ -522,8 +523,8 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun SystemStatusBar` | [NotificationCenter.kt:29](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L29) |
-| `fun NotificationCenter` | [NotificationCenter.kt:75](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L75) |
+| `fun SystemStatusBar` | [NotificationCenter.kt:26](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L26) |
+| `fun NotificationCenter` | [NotificationCenter.kt:64](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L64) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PlacesScreen.kt
 

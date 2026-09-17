@@ -208,6 +208,25 @@ class LauncherNavigationTest {
     }
 
     @Test
+    fun backFromAResumedTaskReturnsToStartWithoutDestroyingTheRecentTask() {
+        val opened = open(initial(), settings.appId, settings.launchToken)
+        val taskId = InternalAppTaskId("settings")
+        val recents = reduce(opened, LauncherAction.ShowRecents).state
+        val resumed = reduce(recents, LauncherAction.ActivateTask(taskId)).state
+
+        val start = reduce(resumed, LauncherAction.Back).state
+        assertEquals(ShellVisualSurface.Desktop, start.surface)
+        assertEquals(settings.launchToken, start.tasks.task(taskId)?.lastLaunchToken)
+
+        val resumedAgain = reduce(
+            reduce(start, LauncherAction.ShowRecents).state,
+            LauncherAction.ActivateTask(taskId),
+        ).state
+        assertEquals(ShellVisualSurface.Module(taskId), resumedAgain.surface)
+        assertEquals(settings.launchToken, resumedAgain.tasks.task(taskId)?.lastLaunchToken)
+    }
+
+    @Test
     fun recentsCloseRemovesOnlyTheUiSessionAndEmitsTypedCleanup() {
         val chartOpen = open(initial(), chart.appId, chart.launchToken)
         val settingsOpen = open(chartOpen.copy(surface = ShellVisualSurface.Desktop), settings.appId, settings.launchToken)

@@ -25,6 +25,7 @@
     <string name="layout_unavailable">Start layout could not be changed</string>
     <string name="system_back">back</string>
     <string name="system_bridge">bridge</string>
+    <string name="system_notifications">notification centre</string>
     <string name="system_search">search</string>
     <string name="search_title">search</string>
     <string name="search_installed_apps">installed apps</string>

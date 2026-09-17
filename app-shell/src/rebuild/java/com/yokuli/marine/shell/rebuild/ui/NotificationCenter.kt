@@ -3,7 +3,6 @@ package com.yokuli.marine.shell.rebuild.ui
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,9 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.data.VoyagePhase
@@ -25,7 +22,7 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 
-/** 顶部轻提示只占用固定系统栏；下拉后阅读完整通知，不遮挡地图操作。 */
+/** 顶部轻提示只占用固定系统栏；完整通知由底部通知键打开，不抢占系统下拉手势。 */
 @Composable internal fun SystemStatusBar(os: OsStore, metrics: ShellWindowMetrics) {
     val notices = os.notifications
     val marine = os.marine?.vm?.ui?.collectAsState()?.value
@@ -34,15 +31,7 @@ import java.util.Locale
     val density=metrics.density.takeIf {it.isFinite() && it>0f} ?: 1f
     val bannerSegment=ShellSafeBands.statusSegments(metrics).maxByOrNull {it.width}
     val c = LocalMetro.current
-    Box(Modifier.fillMaxWidth().testTag("notification-pull-handle")
-        .clickable(role = Role.Button, onClickLabel = os.t("打开通知中心", "open notification centre")) { notices.open() }
-        .pointerInput(notices) {
-            var travel = 0f
-            detectVerticalDragGestures(onDragStart = { travel = 0f }, onVerticalDrag = { change, dy ->
-                if (dy > 0 || travel > 0) { travel += dy; change.consume() }
-                if (travel > 32.dp.toPx()) notices.open()
-            })
-        }) {
+    Box(Modifier.fillMaxWidth()) {
         WpStatusStrip(metrics, buildList {
             if (trip != null && trip.phase!=VoyagePhase.IDLE) add(WpStatusStripItem("voyage", when(trip.phase) {
                 VoyagePhase.PAUSED -> os.t("记录暂停", "REC paused")
@@ -112,11 +101,6 @@ import java.util.Locale
                         if (item.destination != null) Label(os.t("查看详情", "view details"), 16, c.accent, Modifier.padding(top = 6.dp))
                     }
                 }
-            }
-            Box(Modifier.fillMaxWidth().height(32.dp).pointerInput(store) {
-                detectVerticalDragGestures { change, dy -> if (dy < 0) { change.consume(); store.close() } }
-            }.clickable { store.close() }, contentAlignment = Alignment.Center) {
-                Box(Modifier.width(42.dp).height(3.dp).background(c.muted))
             }
         }
     }

@@ -25,6 +25,7 @@
     <string name="layout_unavailable">无法更改开始屏幕布局</string>
     <string name="system_back">返回</string>
     <string name="system_bridge">船桥</string>
+    <string name="system_notifications">通知中心</string>
     <string name="system_search">搜索</string>
     <string name="search_title">搜索</string>
     <string name="search_installed_apps">已安装应用</string>

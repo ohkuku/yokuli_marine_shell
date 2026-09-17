@@ -18,7 +18,7 @@
 | 13、14 锚警 | 地图为主，下锚 → 定位置/范围 → 值守 → 起锚；最近轨迹渐隐，累计停留区域来自本次真实历史。 |
 | 17 设置 | 设置只管系统、个人偏好、船舶、权限、声音、资料备份和关于；来源管理移入 NMEA，样式集中到磁贴库。 |
 | 18 来源与分享 | 输入、字段采用、输出目的地分离；本机服务和主动发送共用能力选择、真实包过滤及逐 IP 防回送。 |
-| 19 通知 | 全局顶部轻提示 + 下拉通知中心；保留应用、时间、正文、级别、已读、重复次数和可选详情；阅读不确认警报。 |
+| 19 通知 | 全局顶部轻提示 + 底部通知键；顶部下滑交给 Android 系统。通知中心保留应用、时间、正文、级别、已读、重复次数和可选详情；阅读不确认警报。 |
 | 20 海图库 | 文件夹 / 命名图层 / 文件明确分层；创建、扫描、改名、启停、优先级、移除/恢复、解除关联和地图使用均有明确效果。 |
 | 24 数据结构 | 本文总图和边界表；三个子契约细化字段、接口、事件与存储；`API_INDEX.md` 给出源码声明索引。 |
 | 25 全屏 | 系统栏和虚拟键贴近窗口边缘；圆角横向避让，不用整页上下缩进；键盘独立抬升。曲面屏视觉最终以真机为准。 |
@@ -31,7 +31,7 @@ flowchart TB
         Catalog[AppId / ShellApp / LauncherCatalog]
         Nav[WpShellRuntime / LauncherEngine\n任务、内部路径、最近任务]
         Prefs[LauncherPersistedState\n系统偏好与开始布局]
-        Notices[SystemNotificationStore\n轻提示、历史、下拉中心]
+        Notices[SystemNotificationStore\n轻提示、历史、通知键]
         Images[TaskSnapshotStore\n实际窗口截图]
     end
     subgraph Apps[应用]
@@ -139,7 +139,7 @@ flowchart TB
 | `TaskSnapshotStore.bind / captureCurrent / retain` | 任务、窗口、实际内容区域 | `TaskSnapshot(bitmap,capturedAt)` | 使用 PixelCopy，失败保持旧图；不拿假 UI 代替真实预览 |
 | `updateSystemPreferences` | 当前持久化状态的变换 | DataStore -> 全局偏好 | 原子更新，不写第二份业务设置 |
 | `OsStore.notify` | 中英正文、AppId、级别、详情地址、去重键 | `SystemNotice` | 全部通知留历史；关键异步业务明确传 app |
-| `SystemNotificationStore.open / close / remove / clearRead` | 通知中心操作 | 已读状态、最多 200 条记录 | 阅读/清除通知不确认警报、不停止值守 |
+| `SystemNotificationStore.open / close / toggle / remove / clearRead` | 通知中心操作 | 已读状态、最多 200 条记录 | 阅读/清除通知不确认警报、不停止值守；顶部不注册下滑手势 |
 | `formatDistance / Speed / Depth / Bearing / Angle / Temperature / Coordinates / Metric` | 内部规范数值 | 当前全局格式字符串 | 缺测显示 —；不伪造 0；不更改保存值 |
 | `formatLatitude / Longitude / parseCoordinate` | 当前格式与用户文字 | 十进制度或 null | 支持 DD/DMM/DMS，范围和方向校验，分秒不得 ≥60 |
 
