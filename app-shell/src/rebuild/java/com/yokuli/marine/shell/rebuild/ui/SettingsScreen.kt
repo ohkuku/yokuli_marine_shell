@@ -141,7 +141,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
 
 @Composable private fun VesselProfileSettings(os: OsStore) {
     val marine = os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
+    val state by marine.services.state.collectAsState()
     var name by remember(state.vesselSettings.vesselName) { mutableStateOf(state.vesselSettings.vesselName) }
     var length by remember(state.settings.boatLengthMeters) { mutableStateOf(state.settings.boatLengthMeters.toString()) }
     var draft by remember(state.vesselSettings.draftMeters) { mutableStateOf(state.vesselSettings.draftMeters?.toString().orEmpty()) }
@@ -158,8 +158,8 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         Field(os.t("固定 GPS 天线到船艏滚轮 · m", "fixed GPS antenna to bow roller · m"), antenna, { antenna = it }, number = true)
         Label(os.t("这些资料供相关应用共用。手机定位不会假定手机固定在 GPS 天线位置。", "These details are shared by the apps that need them. Phone positioning does not assume a fixed antenna location."), 16, LocalMetro.current.muted)
         MetroButton(os.t("保存船舶资料", "save boat details"), {
-            marine.vm.updateSettings(state.settings.copy(boatLengthMeters = length.toDouble(), bowRollerHeightMeters = bow.toDouble(), nmeaGpsAntennaToBowMeters = antenna.toDouble()))
-            marine.vm.updateVesselDataSettings(state.vesselSettings.copy(vesselName = name.trim(), draftMeters = draft.toDoubleOrNull()))
+            marine.services.preferences.setVesselGeometry(length.toDouble(), bow.toDouble(), antenna.toDouble())
+            marine.services.preferences.setVesselIdentity(name, draft.toDoubleOrNull())
         }, primary = true, enabled = valid && changed)
         if (!changed) Label(os.t("资料已保存", "details saved"), 15, LocalMetro.current.muted)
         MenuRow(os.t("传感器与船体安装", "sensors & vessel mounting"), os.t("在数据中心确认安装、校准并选择来源", "confirm mounting, calibrate and choose sources in Data Center"), "data") { os.openLinked("data_center:phone") }
@@ -171,11 +171,11 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
     var revision by remember { mutableIntStateOf(0) }
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
-        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) { revision++; os.marine?.vm?.onPermissionsChanged() } }
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) { revision++; os.marine?.services?.sources?.onPermissionsChanged() } }
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
-    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { revision++; os.marine?.vm?.onPermissionsChanged() }
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { revision++; os.marine?.services?.sources?.onPermissionsChanged() }
     val locationGranted = remember(revision) { ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED }
     val notifications = remember(revision) { NotificationManagerCompat.from(context).areNotificationsEnabled() && (Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) }
     val locationEnabled = remember(revision) { context.getSystemService(LocationManager::class.java)?.isLocationEnabled == true }
@@ -197,7 +197,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
 
 @Composable private fun SystemSoundSettings(os: OsStore) {
     val marine = os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
+    val state by marine.services.state.collectAsState()
     val context = LocalContext.current
     val now = rememberMarineClock()
     val audio = context.getSystemService(AudioManager::class.java)
@@ -210,35 +210,35 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
     val choose = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            marine.vm.updateSettings(marine.vm.ui.value.settings.copy(alarmSound = AlarmSound.CUSTOM, customAlarmSoundUri = uri.toString()))
+            marine.services.preferences.setAlarmSound(AlarmSound.CUSTOM, uri.toString())
         }
     }
     PageBody {
         Label(os.t("警报声音", "alarm sound"), 28)
-        MetroButton(os.t("内置循环警报音", "built-in looping alarm"), { marine.vm.updateSettings(state.settings.copy(alarmSound = AlarmSound.SYSTEM_ALARM)) }, primary = state.settings.alarmSound != AlarmSound.CUSTOM)
+        MetroButton(os.t("内置循环警报音", "built-in looping alarm"), { marine.services.preferences.setAlarmSound(AlarmSound.SYSTEM_ALARM) }, primary = state.settings.alarmSound != AlarmSound.CUSTOM)
         MetroButton(os.t("选择音频文件", "choose an audio file"), { choose.launch(arrayOf("audio/*")) }, primary = state.settings.alarmSound == AlarmSound.CUSTOM)
         if (state.settings.alarmSound == AlarmSound.CUSTOM) Label(customName ?: os.t("已选择自定义声音", "custom sound selected"), 18, LocalMetro.current.muted)
         Label(os.t("自定义文件不可用时会回退到内置警报。", "Unavailable custom audio falls back to the built-in alarm."), 17, LocalMetro.current.muted)
         Label(os.t("再次提醒间隔", "remind again after"), 27)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { listOf(5, 10, 15).forEach { minutes ->
-            MetroButton(os.t("$minutes 分钟", "$minutes min"), { marine.vm.updateSettings(state.settings.copy(alarmSnoozeMinutes = minutes)) }, Modifier.weight(1f), primary = state.settings.alarmSnoozeMinutes == minutes)
+            MetroButton(os.t("$minutes 分钟", "$minutes min"), { marine.services.preferences.setAlarmSnoozeMinutes(minutes) }, Modifier.weight(1f), primary = state.settings.alarmSnoozeMinutes == minutes)
         } }
         Label(os.t("稍后提醒会停止声音和振动，但监控继续；危险仍在时会再次响铃。", "Snooze stops sound and vibration while monitoring continues. A persistent danger sounds again after this interval."), 17, LocalMetro.current.muted)
         Label(os.t("Android 警报音量", "Android alarm volume") + " · $volume / $maximum", 24)
         if (volume == 0) Label(os.t("系统警报音量已静音。请先在声音设置中调高。", "System alarm volume is muted. Raise it in sound settings."), 18, LocalMetro.current.accent)
-        MetroButton(if (testing) os.t("停止试听", "stop alarm test") else os.t("试听警报", "test alarm"), { if (testing) marine.vm.stopAlarmTest() else marine.vm.testAlarm() }, primary = true)
-        if (testing) MetroButton(os.t("我能听见警报", "I can hear the alarm"), { marine.vm.confirmAlarmAudible(); marine.vm.stopAlarmTest() })
-        MenuRow(os.t("Android 声音设置", "Android sound settings"), os.t("系统警报音量", "system alarm volume")) { marine.vm.openAlarmSoundSettings() }
-        MenuRow(os.t("勿扰模式", "Do Not Disturb"), os.t("检查 Android 是否允许警报打断", "check whether Android allows alarm interruptions")) { marine.vm.openDoNotDisturbSettings() }
+        MetroButton(if (testing) os.t("停止试听", "stop alarm test") else os.t("试听警报", "test alarm"), { if (testing) marine.services.preferences.stopAlarmTest() else marine.services.preferences.testAlarm() }, primary = true)
+        if (testing) MetroButton(os.t("我能听见警报", "I can hear the alarm"), { marine.services.preferences.confirmAlarmAudible(); marine.services.preferences.stopAlarmTest() })
+        MenuRow(os.t("Android 声音设置", "Android sound settings"), os.t("系统警报音量", "system alarm volume")) { marine.services.preferences.openAlarmSoundSettings() }
+        MenuRow(os.t("勿扰模式", "Do Not Disturb"), os.t("检查 Android 是否允许警报打断", "check whether Android allows alarm interruptions")) { marine.services.preferences.openDoNotDisturbSettings() }
     }
 }
 
 @Composable private fun SystemBackupSettings(os: OsStore) {
     val marine = os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
-    val connections by marine.vm.nmeaConnections.collectAsState()
+    val state by marine.services.state.collectAsState()
+    val connections by marine.services.network.connections.collectAsState()
     var restoreUri by remember { mutableStateOf<Uri?>(null) }
-    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) marine.vm.exportBackup(uri) }
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) marine.services.preferences.exportBackup(uri) }
     val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> restoreUri = uri }
     val running = state.backup.running
     // Manager rechecks its full policy before replacement; this also covers new parallel connections.
@@ -255,8 +255,8 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         if (busy) Label(os.t("仍有任务或连接运行，暂时不能恢复。", "A task or connection is still running. Restore is unavailable."), 17, LocalMetro.current.accent)
         MetroButton(os.t("选择备份文件", "choose backup file"), { restore.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }, enabled = !running && !busy)
         if (running) Label(os.t("正在处理备份，请稍候…", "processing backup…"), 22, LocalMetro.current.accent)
-        state.backup.result?.let { Label(os.t("操作完成", "operation completed"), 22, LocalMetro.current.accent); MetroButton(os.t("关闭结果", "dismiss result"), { marine.vm.clearBackupResult() }) }
-        state.backup.error?.let { error -> Label(os.t("操作未完成。原始错误：", "operation failed: ") + error, 18, LocalMetro.current.accent); MetroButton(os.t("关闭错误", "dismiss error"), { marine.vm.clearBackupResult() }) }
+        state.backup.result?.let { Label(os.t("操作完成", "operation completed"), 22, LocalMetro.current.accent); MetroButton(os.t("关闭结果", "dismiss result"), { marine.services.preferences.clearBackupResult() }) }
+        state.backup.error?.let { error -> Label(os.t("操作未完成。原始错误：", "operation failed: ") + error, 18, LocalMetro.current.accent); MetroButton(os.t("关闭错误", "dismiss error"), { marine.services.preferences.clearBackupResult() }) }
     }
-    restoreUri?.let { uri -> ConfirmDialog(os, os.t("校验并替换本机航行与船舶数据？除非另有备份，否则无法撤销。", "Validate and replace local voyage and vessel data? This cannot be undone without another backup."), { restoreUri = null }) { restoreUri = null; marine.vm.restoreBackup(uri) } }
+    restoreUri?.let { uri -> ConfirmDialog(os, os.t("校验并替换本机航行与船舶数据？除非另有备份，否则无法撤销。", "Validate and replace local voyage and vessel data? This cannot be undone without another backup."), { restoreUri = null }) { restoreUri = null; marine.services.preferences.restoreBackup(uri) } }
 }

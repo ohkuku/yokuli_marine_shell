@@ -1,36 +1,16 @@
 package com.yokuli.marine.shell.rebuild
 
 import androidx.compose.runtime.*
-import com.yokuli.anchorwatch.data.anchorage.*
-import com.yokuli.anchorwatch.data.database.AppDatabase
+import com.yokuli.anchorwatch.api.MarineContentService
+import com.yokuli.anchorwatch.data.database.AnchorSessionEntity
 import com.yokuli.anchorwatch.data.database.entity.*
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
-@EntryPoint
-@InstallIn(SingletonComponent::class)
-interface SailingDataAccess {
-    fun database(): AppDatabase
-    fun library(): AnchorageLibraryRepository
-    fun places(): AnchoragePlaceRepository
-    fun spots(): AnchorageSpotRepository
-    fun photos(): AnchoragePhotoRepository
-    fun saver(): AnchorageSaveRepository
-}
-
-/** One logical catalog over existing user records. Room IDs and visit/media relationships survive. */
+/** 应用显示投影：持久化操作只调用内容端口，沿用原记录 ID 和关系。 */
 class MySailingRepository(private val os: OsStore) {
-    private val saveMutex=Mutex()
-    private val access=EntryPointAccessors.fromApplication(os.context.applicationContext,SailingDataAccess::class.java)
-    val database=access.database()
-    val photos=access.photos()
+    private val content: MarineContentService = os.content
+    val photos = content.photos
     var locations by mutableStateOf<List<AnchoragePlaceEntity>>(emptyList())
         private set
     var spots by mutableStateOf<List<AnchorageSpotEntity>>(emptyList())
@@ -51,50 +31,30 @@ class MySailingRepository(private val os: OsStore) {
     init {
         os.scope.launch {
             runCatching {
-                combine(access.library().places,database.anchorageSpotDao().observeAll(),access.library().collections) { places,points,groups -> Triple(places,points,groups) }
-                    .collect { (places,points,groups) ->
-                        locations=places;spots=points;collections=groups
-                        archivedLocations=database.anchoragePlaceDao().allNow().filter {it.archived}
-                        loaded=true;error=false
-                    }
-            }.onFailure { if(it is CancellationException) throw it;error=true;loaded=true }
+                content.library.collect { catalog ->
+                    locations = catalog.places
+                    spots = catalog.spots
+                    collections = catalog.collections
+                    archivedLocations = catalog.archivedPlaces
+                    loaded = true
+                    error = false
+                }
+            }.onFailure { if (it is CancellationException) throw it; error = true; loaded = true }
         }
     }
-    suspend fun bundle(id:Long)=access.library().bundle(id)
-    suspend fun updatePlace(place:AnchoragePlaceEntity) = access.places().save(place.copy(updatedAt=System.currentTimeMillis()))
-    suspend fun updateSpot(spot:AnchorageSpotEntity) = access.spots().save(spot.copy(updatedAt=System.currentTimeMillis()))
-    suspend fun createSpot(placeId:Long,name:String,point:GeoPoint):Long = access.spots().save(AnchorageSpotEntity(
-        placeId=placeId,name=name,spotType="PLANNED_REFERENCE",latitude=point.lat,longitude=point.lon,
-        coordinateSource="MAP_SELECTED",verificationStatus="PLANNED",createdAt=System.currentTimeMillis(),updatedAt=System.currentTimeMillis()))
-    suspend fun archivePlace(id:Long) {
-        val current=access.places().get(id) ?: return
-        check(database.anchorDao().active()?.anchoragePlaceId!=id) { "Active watch" }
-        updatePlace(current.copy(archived=true))
-    }
-    suspend fun restorePlace(id:Long) { access.places().get(id)?.let {updatePlace(it.copy(archived=false))} }
-    suspend fun createCollection(name:String) {
-        val now=System.currentTimeMillis()
-        database.anchorageCollectionDao().insert(AnchorageCollectionEntity(name=name.trim(),sortOrder=collections.size,createdAt=now,updatedAt=now))
-    }
-    suspend fun toggleCollection(collectionId:Long,placeId:Long) {
-        val dao=database.anchorageCollectionDao()
-        if(dao.forPlace(placeId).any { it.id==collectionId }) dao.removeMembership(collectionId,placeId)
-        else dao.setMembership(AnchorageCollectionPlaceCrossRef(collectionId,placeId,System.currentTimeMillis()))
-    }
-    suspend fun saveAnchorage(session:com.yokuli.anchorwatch.data.database.AnchorSessionEntity,name:String):Long = saveMutex.withLock {
-        database.anchorageVisitDao().bySession(session.id)?.let { return@withLock it.placeId }
-        val existing=session.anchoragePlaceId?.let {access.places().get(it)}
-        val spot=session.anchorageSpotId?.let {access.spots().get(it)}?.takeIf {it.placeId==existing?.id}
-        val place=existing?.let {AnchorageSavePlaceInput(existingPlaceId=it.id,displayName=it.displayName,
-            placeType=runCatching {com.yokuli.anchorwatch.domain.anchorage.AnchoragePlaceType.valueOf(it.placeType)}.getOrDefault(com.yokuli.anchorwatch.domain.anchorage.AnchoragePlaceType.UNKNOWN),
-            primaryRegionId=it.primaryRegionId,description=it.description,personalNotes=it.personalNotes,favorite=it.favorite,
-            contextRegionIds=database.anchorageMetadataDao().regionsForPlace(it.id).map{ref->ref.regionId},
-            planningStatus=runCatching {com.yokuli.anchorwatch.domain.anchorage.AnchoragePlanningStatus.valueOf(it.planningStatus)}.getOrDefault(com.yokuli.anchorwatch.domain.anchorage.AnchoragePlanningStatus.NONE))}
-            ?: AnchorageSavePlaceInput(displayName=name,favorite=true)
-        access.saver().save(AnchorageSaveRequest(AnchorageSaveDraftFactory.fromSession(session),place,
-            AnchorageSaveSpotInput(existingSpotId=spot?.id,name=spot?.name?:os.t("实际锚位","anchor position"),
-                approachNotes=spot?.approachNotes.orEmpty(),personalNotes=spot?.personalNotes.orEmpty()))).placeId
-    }
+    suspend fun bundle(id: Long) = content.bundle(id)
+    suspend fun updatePlace(place: AnchoragePlaceEntity) = content.updatePlace(place)
+    suspend fun updateSpot(spot: AnchorageSpotEntity) = content.updateSpot(spot)
+    suspend fun createSpot(placeId: Long, name: String, point: GeoPoint) = content.createSpot(placeId, name, point.lat, point.lon)
+    suspend fun archivePlace(id: Long) = content.archivePlace(id)
+    suspend fun restorePlace(id: Long) = content.restorePlace(id)
+    suspend fun createCollection(name: String) = content.createCollection(name)
+    suspend fun toggleCollection(collectionId: Long, placeId: Long) = content.toggleCollection(collectionId, placeId)
+    fun observeCollectionMembers(collectionId: Long) = content.observeCollectionMembers(collectionId)
+    suspend fun anchorTrackPage(sessionId: Long, afterTimestamp: Long, afterId: Long, limit: Int = 1000) =
+        content.anchorTrackPage(sessionId, afterTimestamp, afterId, limit)
+    suspend fun saveAnchorage(session: AnchorSessionEntity, name: String) =
+        content.saveAnchorage(session.id, name, os.t("实际锚位", "anchor position"))
     fun put(place:Place) { require(place.point.valid() && place.name.isNotBlank());os.places=os.places.filterNot { it.id==place.id }+place;os.save() }
     fun remove(id:String) { os.places=os.places.filterNot { it.id==id };os.save() }
     fun import(content:Gpx.Contents,skipDuplicates:Boolean):Pair<Int,Int> {

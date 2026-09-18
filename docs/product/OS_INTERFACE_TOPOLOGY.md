@@ -1,8 +1,8 @@
 # Yokuli OS 0.5：应用边界、接口与数据拓扑
 
-更新：2026-09-18，experience.6（versionCode 10）。本文对应 `app-shell/src/rebuild` 实际入口。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
+更新：2026-09-18，experience.7（versionCode 11）。本文对应 `app-shell/src/rebuild` 实际入口。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
 
-本轮审查的代码修复与验证边界见 [experience.6 记录](../experience/EXPERIENCE_6_DELIVERY.md)。表格描述实现约定，不代表所有硬件、后台限制和长时间船上场景均已通过验证。
+本轮进程内系统拆分与验证边界见 [experience.7 记录](../experience/EXPERIENCE_7_DELIVERY.md)，代码分层与当前兼容限制见 [运行时边界](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)。表格描述实现约定，不代表所有硬件、后台限制和长时间船上场景均已通过验证。
 
 ## 这轮实现计划与边界
 
@@ -13,7 +13,7 @@
 | 4 缩放抖动 | 地理点、线、范围交给同一个地图引擎原生绘制；Compose 不再异步投影地图标注。 |
 | 5、6、15、16、22 应用关系 | 地图内先预览坐标，详情为显式动作；普通应用入口回首页，最近任务恢复原页面实例；跨应用对象操作返回原调用页；根页不显示“返回 OS”；内部返回处理先于 Shell，失活画面不能抢键。 |
 | 7 声纳 | 移除测深调查产品入口、UI、采样订阅和自动恢复；保留历史数据库和真实 NMEA 水深读数。 |
-| 8、9 航行日志 | `MarineRuntime.voyage` 是统一会话视图；开始/暂停/继续/保存使用同一命令；系统栏、海图、日志和磁贴同步。日志支持当前航迹、时刻、历史、编辑、回放、导出与地图预览。 |
+| 8、9 航行日志 | `MarineSystem.voyage.state` 是统一会话视图；开始/暂停/继续/保存使用同一命令；系统栏、海图、日志和磁贴同步。日志支持当前航迹、时刻、历史、编辑、回放、导出与地图预览。 |
 | 10、21 仪表 | 罗盘、风向、姿态、量表按数据含义可视化；趋势仅 13 类航行/天气观测，实际收到或有历史才可选；“我的”持久化增删与排序。 |
 | 11、23 磁贴 | 应用列表 → 该应用的真实样式预览 → 尺寸 → 应用；同一应用一块磁贴，旧重复项迁移合并。读数实时订阅，地图底图快照标记时间。 |
 | 12 全局单位 | 显示统一走 `DisplayFormats`；DD/DMM/DMS 编辑使用同一解析器；原始记录不随显示偏好改写。 |
@@ -59,7 +59,9 @@ flowchart TB
     Prefs --> Formats[DisplayFormats\n全局单位、坐标、字体]
     Formats --> Apps
     subgraph Shared[共享业务状态]
-        Marine[MarineRuntime / MainViewModel\n适配与业务命令]
+        Marine[MarineSystem / MarineServices\n领域命令与只读投影]
+        Coordinator[VoyageSessionCoordinator\n全局航行命令与回执]
+        Content[MarineContentService\n内容读取与事务边界]
         Voyage[VoyageSessionState / TripRuntime]
         Watch[AnchorSession / AlarmSnapshot]
         Sources[VesselDataHub / AcceptedPosition\n全候选、时效、采纳依据]
@@ -73,7 +75,7 @@ flowchart TB
     Chart --> Marine
     Log --> Marine
     Anchor --> Marine
-    Marine --> Voyage
+    Marine --> Coordinator --> Voyage
     Marine --> Watch
     Sources --> Marine
     Sources --> Gauges
@@ -109,9 +111,10 @@ flowchart TB
     end
     Voyage --> Room
     Watch --> Room
-    Room --> EventBridge[MarineNoticeBridge\n事件 ID、真实发生时间、持久游标]
+    Room --> Content
+    Content --> EventBridge[MarineNoticeBridge\n事件 ID、真实发生时间、持久游标]
     EventBridge --> Notices
-    Saved --> Room
+    Saved --> Content --> Room
     Saved --> Json
     Charts --> Json
     Maps --> Json
@@ -123,6 +126,14 @@ flowchart TB
 ```
 
 箭头表示读写/订阅关系，不表示新建进程。后台业务不依赖哪个应用当前可见。通知、开始屏幕和应用内界面不能各维护一份“是否正在航行”的布尔开关。
+
+## 进程内系统执行边界（experience.7）
+
+实际依赖方向为 `app-shell → runtime:marine-local → legacy-marine/api + 既有执行层`，纯 `core:runtime-contract` 不依赖 Android 或 legacy。应用调用来源、航行、守锚、联网、分享、偏好、反馈、显示需求和内容九个领域端口；不直接取得 Controller、ViewModel 或业务 DAO。旧 `MainViewModel` 仅为未启用旧页面保留委托，不是新 Shell 的业务宿主。
+
+命令与活动航行由进程级运行时持有，关闭界面不撤销命令。设置的船名、几何、语言、声音和仪表布局按字段更新，不把调用者的旧配置全量写回来源设置。地图和驾驶台的临时传感器显示需求通过独立句柄取得/释放，不能替其他消费者撤销。
+
+这些边界当前运行于同一 APK、UID 与进程。`MainUiState` 和部分旧实体仍是兼容投影，不是可直接用于 Binder 的公开协议；Shell 坐标/路线和图册文件状态也尚未全部迁入系统层。完整实际依赖、生命周期和未完成项见 [10 · 已落代码的进程内系统边界](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)。
 
 ## 全部应用对外边界
 
@@ -142,16 +153,16 @@ flowchart TB
 
 `nmea:outputs` 兼容已有入口，连接内部负责读写选择。`settings:sources`、`nmea:sources`、`sources` 和 `data.sources…` 统一迁移到数据中心。旧 `data` 仍指驾驶台；sonar/trip 等旧链接只作迁移，不恢复已移除产品。
 
-### experience.6 的关键读写约定
+### 当前关键读写约定
 
 - 应用稳定 ID、对象路径和已有数据不随品牌名称变化。图册、航海日志、守锚、驾驶台、船联网、数据共享、磁贴工坊分别对应原来的 LIBRARY、VOYAGES、ANCHOR、INSTRUMENTS、NMEA、LOCAL_NMEA、TILES。
 - `Reading` 保留 `freshness / quality / sourceKey / elapsed / validForMillis`。显示来源名与稳定物理来源身份分开。普通数值显示最后观测和年龄；实时船首向/COG/姿态必须采用字段自己的有效性，不能借位置更新时间续命。
 - `Fix` 的位置、SOG、COG、heading 各自计时。`MapVessel` 的 heading 只转船形，COG 只画一分钟对地向量。GGA 的位置与 VTG 的航速/航向通过已采纳字段组合，COG 永不冒充船首向。
 - `navigationRoute` 是启动导航时的冻结路线；`MapViewState.previewRoute` 是另一个明确预览版本。导航卡、地图、目标切换使用相同冻结版本。
 - 当前船位下锚使用开始时可信船位，确认页也显示该语义和实时预览。两个开始入口共用 `anchorWatchInput`，估计模式不丢失锚链、水深及 UNKNOWN 状态。
-- 数据中心按指标展示 `snapshot.candidates` 中的所有来源及当前采纳结果，不按 NMEA 传输类型过滤掉手机。`MainViewModel.setVesselMetricSource` 是逐指标选源写入口，仍写原 `metricSourcePins`；船位沿用 `GpsDataSource`、`POSITION_CONNECTION` 与现有定位服务。手机安装与校准也写原模型。船联网只管连接和发送，数据共享只管监听与发布；发布内容选择不会重新仲裁来源。
+- 数据中心按指标展示 `snapshot.candidates` 中的所有来源及当前采纳结果，不按 NMEA 传输类型过滤掉手机。`MarineServices.sources.setVesselMetricSource` 是逐指标选源写入口，仍写原 `metricSourcePins`；船位沿用 `GpsDataSource`、`POSITION_CONNECTION` 与现有定位服务。手机安装与校准也写原模型。船联网只管连接和发送，数据共享只管监听与发布；发布内容选择不会重新仲裁来源。
 - `NmeaConnectionLeasePolicy` 只恢复同次开机中用户明确开启且未停止的连接；持久连接配置本身不是授权自动连接的开关。RAW 和 SYSTEM 待发批次携带真实来源代次，写出前再次校验。
-- `MarineNoticeBridge` 从 Room 订阅背景警报，以事件 ID 和真实发生时间写入 `SystemNotificationStore`。消息点击处理与横向移除都不调用警报 acknowledge，不暂停或结束业务会话；原警报事件继续留在业务记录中。持久游标防止已移除消息在重启时复活。
+- `MarineNoticeBridge` 经内容端口订阅持久警报，以事件 ID 和真实发生时间写入 `SystemNotificationStore`。消息点击处理与横向移除都不调用警报 acknowledge，不暂停或结束业务会话；原警报事件继续留在业务记录中。持久游标防止已移除消息在重启时复活。
 - 系统通知目的地与普通应用启动分开：已在同一具体页时只收起通知中心，已有目标页和调用链复用。数据中心、设置、航海日志登记实际局部路径，使“同页”比较不只看到应用根地址。
 - 通知中心首排日夜、手机 GPS、常亮、更多四列；展开后按活动航行/守锚状态显示暂停或恢复，手机姿态重新确认保留实际横倾。命令仍走原运行时，数据中心仍是唯一来源与安装管理入口。
 - `InstrumentTrendCatalog` 白名单为 SOG、STW、COG、真船首向、水深、真/视风速、真/视风角、真风向、气压、气温、水温。只有实际读数或历史进入列表；缺少当前来源时保留历史并显示时间，不把历史方向当作实时罗盘。

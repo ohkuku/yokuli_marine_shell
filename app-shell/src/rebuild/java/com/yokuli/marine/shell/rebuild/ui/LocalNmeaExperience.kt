@@ -12,10 +12,10 @@ import com.yokuli.marine.shell.rebuild.OsStore
 import com.yokuli.marine.shell.rebuild.AppId
 
 /** 本机是服务器，其他设备是客户端；与主动发送连接共用完整的分享策略。 */
-@Composable fun LocalNmeaScreen(os:OsStore,service:(String,String?)->Unit) {
-    val vm=os.marine?.vm?:return
-    val state by vm.ui.collectAsState()
-    val connections by vm.nmeaConnections.collectAsState()
+@Composable fun LocalNmeaScreen(os:OsStore) {
+    val services=os.marine?.services?:return
+    val state by services.state.collectAsState()
+    val connections by services.network.connections.collectAsState()
     val settings=state.localNmeaServerSettings
     val server=state.nmeaSharing
     var port by rememberSaveable(settings.port){mutableStateOf(settings.port.toString())}
@@ -39,18 +39,18 @@ import com.yokuli.marine.shell.rebuild.AppId
                             Label("TCP ${settings.port}",28)
                             SelectionContainer { Column(verticalArrangement=Arrangement.spacedBy(8.dp)){server.addresses.forEach{Label(it,20)}} }
                             Label(os.t("${server.clientCount} 个客户端 · 已写出 ${server.sentSentences} 条数据","${server.clientCount} clients · ${server.sentSentences} packets written"),19)
-                            MetroButton(os.t("停止本机服务","stop local service"),{vm.stopLocalNmeaServer()})
+                            MetroButton(os.t("停止本机服务","stop local service"),{services.sharing.stopLocalNmeaServer()})
                         } else {
                             Field(os.t("监听端口","listening port"),port,{port=it},number=true)
                             if(settings.feed==NmeaFeed.PHONE)Label(os.t("先到“内容”确认采用数据中心的读数，保存后再启动。","Choose Data Center readings under Content and save before starting."),17,LocalMetro.current.muted)
-                            if(needsSave)MetroButton(if(settings.configured)os.t("保存更改","save changes")else os.t("确认共享内容","confirm sharing choices"),{vm.saveLocalNmeaPublicationPolicy(port.toInt(),feed,capabilities,forwards)},enabled=valid)
-                            MetroButton(os.t("启动服务","start service"),{vm.startLocalNmeaServer()},primary=true,enabled=settings.configured&&!dirty&&settings.feed!=NmeaFeed.PHONE)
+                            if(needsSave)MetroButton(if(settings.configured)os.t("保存更改","save changes")else os.t("确认共享内容","confirm sharing choices"),{services.sharing.saveLocalNmeaPublicationPolicy(port.toInt(),feed,capabilities,forwards)},enabled=valid)
+                            MetroButton(os.t("启动服务","start service"),{services.sharing.startLocalNmeaServer()},primary=true,enabled=settings.configured&&!dirty&&settings.feed!=NmeaFeed.PHONE)
                         }
                         Label(os.t("在接收设备中选择 TCP 客户端，填写上面的地址与端口。切换到“内容”决定它可以收到什么。","Choose TCP client on the receiving device, then enter the address and port above. Choose what it receives on the content page."),17,LocalMetro.current.muted)
                     }
                     1->{
                         NmeaPublicationEditor(os,feed,{feed=it},capabilities,{capabilities=it},forwards,{forwards=it},connections.map{it.spec},editable=!settings.serverRequested,destination=os.t("所有客户端","all clients"))
-                        if(!settings.serverRequested&&needsSave)MetroButton(os.t("保存分享内容","save sharing choices"),{vm.saveLocalNmeaPublicationPolicy(port.toInt(),feed,capabilities,forwards)},primary=true,enabled=valid)
+                        if(!settings.serverRequested&&needsSave)MetroButton(os.t("保存分享内容","save sharing choices"),{services.sharing.saveLocalNmeaPublicationPolicy(port.toInt(),feed,capabilities,forwards)},primary=true,enabled=valid)
                     }
                     2->{
                         Label(os.t("接入本机的设备","connected devices"),28)

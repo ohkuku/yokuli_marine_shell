@@ -7,6 +7,8 @@ root = Path(__file__).resolve().parents[1]
 roots = [
     'app-shell/src/rebuild/java', 'core/shell-contract/src/main', 'core/shell-engine/src/main',
     'ui/shell-compose/src/main', 'adapter/shell-storage/src/main',
+    'core/runtime-contract/src/main', 'runtime/marine-local/src/main',
+    'legacy-marine/src/main/java/com/yokuli/anchorwatch/api',
     'legacy-marine/src/main/java/com/yokuli/anchorwatch/domain',
     'legacy-marine/src/main/java/com/yokuli/anchorwatch/data',
     'legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime',
@@ -14,7 +16,8 @@ roots = [
     'legacy-marine/src/main/java/com/yokuli/anchorwatch/service',
 ]
 files = sorted({p for base in roots for p in (root / base).rglob('*.kt')} |
-               {root / 'legacy-marine/src/main/java/com/yokuli/anchorwatch/MainViewModel.kt'})
+               {root / ('legacy-marine/src/main/java/com/yokuli/anchorwatch/' + name)
+                for name in ('MainViewModel.kt', 'LegacyMarineController.kt')})
 pattern = re.compile(r'^\s*(?:@\w+(?:\([^)]*\))?\s*)*(?:(?:public|internal|suspend|override|inline|open|abstract|data|sealed|enum|value)\s+)*(class|interface|object|fun)\s+([^({=]+)')
 lines = ['# 生产接口与结构声明索引', '',
          '由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、Shell 合同和所复用的业务领域/存储/运行时。'

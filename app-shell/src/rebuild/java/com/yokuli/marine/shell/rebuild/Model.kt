@@ -8,8 +8,7 @@ import com.yokuli.marine.shell.rebuild.chart.ChartLibrary
 import com.yokuli.marine.shell.rebuild.chart.MapSessionStore
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.marine.shell.rebuild.data.DataHub
-import com.yokuli.marine.shell.rebuild.data.MarineRuntime
-import com.yokuli.anchorwatch.MainViewModel
+import com.yokuli.marine.shell.rebuild.data.MarinePresentationBridge
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -86,10 +85,15 @@ enum class AppId(val zh: String, val en: String, val icon: String) {
 
 @HiltAndroidApp
 class YokuliApplication : Application() {
+    @javax.inject.Inject lateinit var marineProvider: javax.inject.Provider<com.yokuli.runtime.marine.MarineSystem>
+    @javax.inject.Inject lateinit var contentProvider: javax.inject.Provider<com.yokuli.anchorwatch.api.MarineContentService>
+    // Lazy connection preserves boot/background behavior: observing persisted notices does not open sensors.
+    val marineSystem get() = marineProvider.get()
+    val marineContent get() = contentProvider.get()
     lateinit var os: OsStore
     override fun onCreate() {
         super.onCreate()
-        com.yokuli.anchorwatch.LegacyMarineRuntime.initialize(this)
+        com.yokuli.runtime.marine.MarineSystemBootstrap.initialize(this)
         os = OsStore(this)
     }
 }
@@ -145,14 +149,15 @@ class OsStore(val context: Context) {
     var nmeaProtocol by mutableStateOf(initial.optString("protocol","TCP"))
     var serverPort by mutableStateOf(initial.optString("serverPort","10111"))
     var positionSource by mutableStateOf("none")
-    var marine by mutableStateOf<MarineRuntime?>(null)
+    var marine by mutableStateOf<MarinePresentationBridge?>(null)
         private set
-    var systemAction: ((String,String?)->Unit)? = null
-    fun requestService(action:String,extra:String?=null) { systemAction?.invoke(action,extra) }
-    fun attachMarine(viewModel: MainViewModel) {
-        if (marine?.vm === viewModel) return
+    val content get() = (context.applicationContext as YokuliApplication).marineContent
+    var systemAction: ((com.yokuli.runtime.contract.PositionSourceRequest)->Unit)? = null
+    fun requestPosition(action:com.yokuli.runtime.contract.PositionSourceRequest) { systemAction?.invoke(action) }
+    fun connectSystem(system: com.yokuli.runtime.marine.MarineSystem) {
+        if (marine?.system === system) return
         marine?.close()
-        marine = MarineRuntime(this, viewModel)
+        marine = MarinePresentationBridge(this, system)
     }
     val hub = DataHub()
     val library = ChartLibrary(context, scope)

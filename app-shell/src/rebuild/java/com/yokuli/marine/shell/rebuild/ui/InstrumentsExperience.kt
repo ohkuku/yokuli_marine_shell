@@ -28,7 +28,7 @@ import java.util.Locale
 /** 中文：仪表只消费全局观测；布局属于仪表应用，船位来源和航行会话属于系统。 */
 @Composable fun InstrumentsScreen(os: OsStore) {
     val marine = os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
+    val state by marine.services.state.collectAsState()
     val history by os.hub.history.collectAsState()
     val data by os.hub.state.collectAsState()
     val now = rememberMarineClock()
@@ -56,7 +56,7 @@ import java.util.Locale
     BindInternalAppInputHandler { input -> input == ShellInput.BACK && closeLayer() }
     AppBackHandler(chooseTrend || chooseTiles || selected != null || editing) { closeLayer() }
     fun saveLayout(layout: List<InstrumentTileId>) {
-        marine.vm.updateVesselDataSettings(marine.vm.ui.value.vesselSettings.copy(customLayout = layout.distinct()))
+        marine.services.preferences.setInstrumentLayout(layout)
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader(os, os.title(AppId.INSTRUMENTS))
@@ -64,7 +64,7 @@ import java.util.Locale
             if (page == 4) {
                 InstrumentBoard(os, state.vesselData, state.vesselSettings.customLayout, now, editing,
                     edit = { editing = !editing }, add = {
-                        pickerTileNames = marine.vm.ui.value.vesselSettings.customLayout.map { it.name }
+                        pickerTileNames = marine.services.state.value.vesselSettings.customLayout.map { it.name }
                         chooseTiles = true
                     }, save = ::saveLayout,
                     select = { selected = it.name })

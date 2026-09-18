@@ -23,7 +23,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
-import com.yokuli.marine.shell.rebuild.data.VoyagePhase
+import com.yokuli.runtime.contract.VoyagePhase
 import com.yokuli.shell.contract.ShellWindowMetrics
 import com.yokuli.shell.contract.ShellSafeBands
 import com.yokuli.marine.feature.desktop.WpStatusStrip
@@ -38,7 +38,7 @@ import kotlin.math.roundToInt
 /** 顶部轻提示只占用固定系统栏；完整通知由底部通知键打开，不抢占系统下拉手势。 */
 @Composable internal fun SystemStatusBar(os: OsStore, metrics: ShellWindowMetrics) {
     val notices = os.notifications
-    val marine = os.marine?.vm?.ui?.collectAsState()?.value
+    val marine = os.marine?.services?.state?.collectAsState()?.value
     val trip = os.marine?.voyage?.collectAsState()?.value
     val safe = ShellSafeBands.resolve(metrics).status
     val density=metrics.density.takeIf {it.isFinite() && it>0f} ?: 1f

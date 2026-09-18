@@ -143,6 +143,61 @@ class SettingsRepository(private val context: Context) {
         )
     }
 
+    /** 单字段偏好写入不携带调用者的旧快照，不能覆盖 GPS 选源、连接或正在运行的发布配置。 */
+    suspend fun setLanguage(language: AppLanguage) = context.store.edit { it[K.language] = language.name }
+
+    /** 只修改船体尺寸；已开始的守锚会话仍使用自己保存的几何参数。 */
+    suspend fun setVesselGeometry(lengthMeters: Double, bowRollerHeightMeters: Double, antennaToBowMeters: Double) = context.store.edit { p ->
+        require(lengthMeters.isFinite() && lengthMeters > 0.0) { "Invalid vessel length" }
+        require(bowRollerHeightMeters.isFinite() && bowRollerHeightMeters >= 0.0) { "Invalid bow roller height" }
+        require(antennaToBowMeters.isFinite() && antennaToBowMeters >= 0.0) { "Invalid antenna offset" }
+        p[K.boatLength] = lengthMeters
+        p[K.bowHeight] = bowRollerHeightMeters
+        p[K.antennaToBow] = antennaToBowMeters
+    }
+
+    suspend fun setAlarmSound(sound: AlarmSound, customUri: String? = null) = context.store.edit { p ->
+        require(sound == AlarmSound.SYSTEM_ALARM || sound == AlarmSound.CUSTOM) { "Unsupported alarm sound" }
+        require(sound != AlarmSound.CUSTOM || !customUri.isNullOrBlank()) { "Custom alarm sound needs an audio file" }
+        p[K.alarmSound] = sound.name
+        // 切回内置声音保留用户上一次选择，只有明确选新文件才改 URI。
+        if (sound == AlarmSound.CUSTOM) p[K.customAlarmSound] = requireNotNull(customUri)
+    }
+
+    suspend fun setAlarmSnoozeMinutes(minutes: Int) = context.store.edit { p ->
+        require(minutes in 1..30) { "Invalid alarm snooze interval" }
+        p[K.snooze] = minutes
+    }
+
+    suspend fun setAlarmAudibleConfirmedAt(timestamp: Long) = context.store.edit { p ->
+        require(timestamp >= 0L)
+        p[K.alarmConfirmed] = timestamp
+    }
+
+    /** 运行时选源只改 GPS 与明确要求清除的 mock 标记；保留原 demo 归一化规则。 */
+    suspend fun setPositionSource(source: GpsDataSource, clearMock: Boolean = false) = context.store.edit { p ->
+        val safeSource = if (p[K.demoMode] == true) GpsDataSource.DEMO
+            else if (source == GpsDataSource.DEMO) GpsDataSource.SYSTEM else source
+        p[K.gpsSource] = safeSource.name
+        if (clearMock) p[K.mock] = false
+    }
+
+    /** 停用兼容的旧共享请求不修改监听端口、位置来源或其他偏好。 */
+    suspend fun clearLegacySharingRequested() = context.store.edit { it[K.sharingEnabled] = false }
+
+    /** 网络入口只保存本次已验证的连接配置，不能带回保存前的用户偏好快照。 */
+    suspend fun saveConnectionProfile(profile: ConnectionProfile) = context.store.edit { p ->
+        p[K.profileId] = profile.stableId
+        p[K.name] = profile.name
+        p[K.host] = profile.host
+        p[K.port] = profile.port
+        p[K.protocol] = profile.protocol.name
+        p[K.checksum] = profile.requireChecksum
+        p[K.auto] = profile.autoReconnect
+        p[K.noDataTimeout] = profile.noDataTimeoutSeconds.coerceIn(3, 120)
+    }
+
+    /** 旧页面/备份兼容入口；新产品偏好端口必须调用上面的字段级命令。 */
     suspend fun save(s:AppSettings)=context.store.edit { p ->
         val safeSource=if(s.demoMode)GpsDataSource.DEMO else if(s.gpsDataSource==GpsDataSource.DEMO)GpsDataSource.SYSTEM else s.gpsDataSource
         p[K.onboarding]=s.onboardingCompleted

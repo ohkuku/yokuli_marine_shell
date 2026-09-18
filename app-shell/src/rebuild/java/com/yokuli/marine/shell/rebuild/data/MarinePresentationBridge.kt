@@ -1,16 +1,15 @@
 package com.yokuli.marine.shell.rebuild.data
 
+import com.yokuli.runtime.contract.*
+
 import com.yokuli.anchorwatch.MainUiState
-import com.yokuli.anchorwatch.MainViewModel
-import com.yokuli.anchorwatch.data.nmea.ConnectionProfile
-import com.yokuli.anchorwatch.data.nmea.Protocol
+import com.yokuli.anchorwatch.api.MarineServices
 import com.yokuli.anchorwatch.domain.model.AppLanguage
 import com.yokuli.anchorwatch.domain.model.GpsDataSource
 import com.yokuli.anchorwatch.domain.model.NavigationFix
 import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
 import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.anchorwatch.domain.vessel.source.MetricSourceEligibility
-import com.yokuli.anchorwatch.domain.vessel.VesselSourcePreference
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.OsStore
 import com.yokuli.marine.shell.rebuild.AppId
@@ -18,41 +17,16 @@ import com.yokuli.marine.shell.rebuild.NoticeSeverity
 import com.yokuli.anchorwatch.runtime.RuntimeFeedbackContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
 
-/** 航行是进程级系统会话；海图、日志、状态栏和磁贴读取同一个状态。 */
-enum class VoyagePhase { IDLE, STARTING, RECORDING, PAUSED, SAVING }
-data class VoyageSessionState(
-    /** 持久化航行 ID；尚未开始时为空。 */
-    val id:Long?=null,
-    val phase:VoyagePhase=VoyagePhase.IDLE,
-    val name:String="",
-    /** 内部距离一律为米，界面统一交给系统单位格式化。 */
-    val distanceMeters:Double=0.0,
-    val startedAt:Long?=null,
-    val pausedAt:Long?=null,
-    val accumulatedPausedMillis:Long=0L,
-    val momentCount:Int=0,
-    /** 等待数据库确认时禁止重复发送开始/停止命令。 */
-    val commandPending:Boolean=false,
-) {
-    val active:Boolean get()=id!=null
-    fun elapsedMillis(now:Long)=startedAt?.let{((pausedAt?:now)-it-accumulatedPausedMillis).coerceAtLeast(0)}?:0L
-}
-
-/** Shell subscribes to Boat Watch's existing process-wide engine. It owns no sockets or GPS. */
-class MarineRuntime(private val os: OsStore, val vm: MainViewModel) {
-    private val _voyage=MutableStateFlow(VoyageSessionState())
-    val voyage=_voyage.asStateFlow()
-    private var pendingCommand:String?=null
+/** Shell 的显示投影：订阅唯一运行时，格式化读数/通知；不持有设备、会话或业务执行范围。 */
+class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.runtime.marine.MarineSystem) {
+    val services: MarineServices = system.services
+    val voyage = system.voyage.state
     private val deliveredFeedback=linkedSetOf<Long>()
     private var previousTrack: com.yokuli.anchorwatch.data.trip.TripTrackSnapshot? = null
     private var previousTripId: Long? = null
     private val subscription: Job = os.scope.launch {
-        vm.ui.collect { state ->
+        services.state.collect { state ->
             if (state.settingsReady) {
                 os.positionSource = when (state.settings.gpsDataSource) {
                     GpsDataSource.SYSTEM -> "phone"
@@ -83,13 +57,13 @@ class MarineRuntime(private val os: OsStore, val vm: MainViewModel) {
                     severity=if(feedback.highPriority)NoticeSeverity.WARNING else NoticeSeverity.INFO,
                     key="runtime:${feedback.context}:${feedback.englishTitle}")
             }
-            vm.consumeRuntimeFeedback(feedback.id)
+            services.feedback.consumeRuntimeFeedback(feedback.id)
         }
         // 防止异步 UI 状态在消费确认前再次到达时重复显示；已消费旧 ID 不需无限保留。
         if(deliveredFeedback.size>512)deliveredFeedback.toList().take(256).forEach(deliveredFeedback::remove)
     }
 
-    fun close() = subscription.cancel()
+    fun close() { subscription.cancel(); commandFeedback.cancel() }
 
     private fun NavigationFix.asFix(source: String, selected:VesselDataSnapshot?=null): Fix? {
         if (!valid || (isMockLocation && source != "demo")) return null
@@ -105,8 +79,6 @@ class MarineRuntime(private val os: OsStore, val vm: MainViewModel) {
     }
 
     private fun publish(state: MainUiState) {
-        val trip=state.activeTrip
-        _voyage.value=VoyageSessionState(trip?.id,when{pendingCommand=="start"->VoyagePhase.STARTING;pendingCommand=="finish"->VoyagePhase.SAVING;trip==null->VoyagePhase.IDLE;trip.paused->VoyagePhase.PAUSED;else->VoyagePhase.RECORDING},trip?.name.orEmpty(),trip?.distanceMeters?:0.0,trip?.startedAt,trip?.pausedAt,trip?.accumulatedPausedMillis?:0L,trip?.waypointCount?:0,pendingCommand!=null)
         os.recordingActive = state.activeTrip != null
         os.recordingPaused = state.activeTrip?.paused == true
         if(previousTrack !== state.tripTrack || previousTripId != state.activeTrip?.id) {
@@ -186,55 +158,32 @@ class MarineRuntime(private val os: OsStore, val vm: MainViewModel) {
     }
 
     fun syncLanguage() {
-        val current = vm.ui.value
+        val current = services.state.value
         val language = if(os.chinese) AppLanguage.SIMPLIFIED_CHINESE else AppLanguage.ENGLISH
         if(current.settingsReady && current.settings.appLanguage != language)
-            vm.updateSettings(current.settings.copy(appLanguage = language))
+            services.preferences.setLanguage(language)
     }
 
-    fun action(action: String, extra: String? = null) {
-        when(action) {
-            "gpsOn" -> { vm.onPermissionsChanged(); vm.switchGpsDataSource(GpsDataSource.SYSTEM) }
-            "gpsOff", "sourceOff" -> vm.switchGpsDataSource(GpsDataSource.NONE)
-            "sourceNmea" -> vm.switchGpsDataSource(GpsDataSource.NMEA)
-            "connect" -> vm.saveAndConnect(ConnectionProfile(name="Boat",
-                protocol=if(os.nmeaProtocol=="UDP") Protocol.UDP else Protocol.TCP,
-                host=os.nmeaHost.trim(),port=os.nmeaPort.toIntOrNull() ?: 0,autoReconnect=true))
-            "disconnect" -> vm.disconnect()
-            "shareOn" -> vm.setNmeaSharing(true,os.serverPort.toIntOrNull() ?: 10111)
-            "shareOff" -> vm.stopLocalNmeaServer()
-            "stopAll" -> vm.stopAllNmeaSharing()
-            "tripPause" -> pauseRecording()
-            "tripResume" -> resumeRecording()
-            "tripEnd" -> finishRecording()
-            else -> os.open("nmea")
-        }
-    }
+    // Commands are owned by the system coordinator, never by a page or this read projection.
+    fun startRecording(name: String, motion: Boolean = false) = system.voyage.start(name, motion)
+    fun pauseRecording() = system.voyage.pause()
+    fun resumeRecording() = system.voyage.resume()
+    fun finishRecording() = system.voyage.finish()
 
-    fun startRecording(name: String, motion: Boolean = false) {
-        val state=vm.ui.value
-        if(state.activeTrip!=null||pendingCommand!=null)return
-        if(os.positionSource !in listOf("phone","nmea")) {
-            os.notify("请先开启一个船位来源", "Enable a position source first")
-            return
-        }
-        command("start",{vm.startTrip(name,motion,if(os.positionSource=="nmea")VesselSourcePreference.BOAT else VesselSourcePreference.PHONE)},{it.activeTrip!=null},"航行记录已开始","Voyage recording started")
-    }
-
-    fun pauseRecording(){val id=vm.ui.value.activeTrip?.takeIf{!it.paused}?.id?:return;command("pause",{vm.pauseTrip()},{it.activeTrip?.let{trip->trip.id==id&&trip.paused}==true},"航行记录已暂停","Voyage recording paused")}
-    fun resumeRecording(){val id=vm.ui.value.activeTrip?.takeIf{it.paused}?.id?:return;command("resume",{vm.resumeTrip()},{it.activeTrip?.let{trip->trip.id==id&&!trip.paused}==true},"航行记录已继续","Voyage recording resumed")}
-    fun finishRecording(){val id=vm.ui.value.activeTrip?.id?:return;command("finish",{vm.endTrip()},{it.tripSessions.any{trip->trip.id==id&&!trip.active&&trip.endedAt!=null}},"航行记录已保存","Voyage recording saved")}
-
-    private fun command(kind:String,send:()->Unit,ack:(MainUiState)->Boolean,zh:String,en:String){
-        if(pendingCommand!=null)return
-        pendingCommand=kind;publish(vm.ui.value)
-        os.scope.launch{
-            try{
-                send()
-                val confirmed=withTimeoutOrNull(18_000){vm.ui.first(ack)}
-                if(confirmed!=null)os.notify(zh,en,app=AppId.VOYAGES)
-                else os.notify("操作尚未完成，请查看航行日志中的状态","Operation is not confirmed yet; check its status in Logbook",app=AppId.VOYAGES)
-            }finally{pendingCommand=null;publish(vm.ui.value)}
+    private val commandFeedback = os.scope.launch {
+        system.voyage.events.collect { event ->
+            val message = when(event.status) {
+                VoyageCommandStatus.POSITION_REQUIRED -> "请先开启一个船位来源" to "Enable a position source first"
+                VoyageCommandStatus.NOT_CONFIRMED -> "操作尚未完成，请查看航行日志中的状态" to "Operation is not confirmed yet; check its status in Logbook"
+                VoyageCommandStatus.FAILED -> "航行操作未完成，请查看当前状态" to "Voyage action failed; check the current state"
+                VoyageCommandStatus.CONFIRMED -> when(event.action) {
+                    VoyageAction.START -> "航行记录已开始" to "Voyage recording started"
+                    VoyageAction.PAUSE -> "航行记录已暂停" to "Voyage recording paused"
+                    VoyageAction.RESUME -> "航行记录已继续" to "Voyage recording resumed"
+                    VoyageAction.FINISH -> "航行记录已保存" to "Voyage recording saved"
+                }
+            }
+            os.notify(message.first, message.second, app = AppId.VOYAGES, destination = "voyages")
         }
     }
 }

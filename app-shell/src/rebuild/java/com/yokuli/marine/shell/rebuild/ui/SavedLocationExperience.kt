@@ -184,7 +184,8 @@ private fun spotSource(os:OsStore,value:String)=when(value){
 
 @Composable fun CollectionScreen(os:OsStore,id:Long?) {
     val repo=os.sailing
-    val members by produceState<List<Long>>(emptyList(),id,repo.locations) {value=withContext(Dispatchers.IO){repo.database.anchorageCollectionDao().membershipsNow().filter{it.collectionId==id}.map{it.placeId}}}
+    val memberFlow = remember(repo, id) { id?.let(repo::observeCollectionMembers) ?: kotlinx.coroutines.flow.flowOf(emptyList<Long>()) }
+    val members by memberFlow.collectAsState(initial = emptyList())
     Column(Modifier.fillMaxSize()){PageHeader(os,repo.collections.firstOrNull{it.id==id}?.name?:os.t("集合","collection"));PageBody{
         repo.locations.filter{it.id in members}.forEach{place->MenuRow(place.displayName,place.personalNotes.takeIf(String::isNotBlank),"pin"){os.open("anchorage:${place.id}")}}
         if(members.isEmpty())Label(os.t("在地点资料中把地点加入这个集合。","Add places to this collection from place details."),23)

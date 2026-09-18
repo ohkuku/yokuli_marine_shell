@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell.rebuild.ui
 
+import com.yokuli.runtime.contract.PositionSourceRequest
 import android.os.SystemClock
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -73,7 +74,7 @@ internal fun metricName(os:OsStore,key:String)=when(key) {
     else->key
 }
 
-@Composable fun DataScreen(os:OsStore,service:(String,String?)->Unit) {
+@Composable fun DataScreen(os:OsStore) {
     val data by os.hub.state.collectAsState()
     val history by os.hub.history.collectAsState()
     val now=rememberMarineClock(); val c=LocalMetro.current
@@ -88,7 +89,7 @@ internal fun metricName(os:OsStore,key:String)=when(key) {
             val scope=rememberCoroutineScope()
             PageBody(bodyScroll) {
                 if(page==2) {
-                    PositionSources(os,data,now,service)
+                    PositionSources(os,data,now)
                 } else {
                     if(page==0) {
                         Label(if(fix!=null) os.t("船位正在更新","position is live") else if(os.positionSource=="none") os.t("船位已关闭","position is off") else os.t("等待可信船位","waiting for a trusted position"),17,if(fix!=null)c.accent else c.muted)
@@ -125,27 +126,27 @@ internal fun metricName(os:OsStore,key:String)=when(key) {
                         MenuRow(os.t("打开仪表","open instruments"),os.t("大字读数、船体姿态与自定义仪表","large readings, vessel attitude & your own instruments"),"data") {os.open("instruments")}
                     }
                     MenuRow("NMEA",connectionLabel(os,data,now),"connect") {os.open("nmea")}
-                    if(os.positionSource=="none") MetroButton(os.t("开启手机定位","enable phone GPS"),{service("gpsOn",null)})
+                    if(os.positionSource=="none") MetroButton(os.t("开启手机定位","enable phone GPS"),{os.requestPosition(PositionSourceRequest.ENABLE_PHONE)})
                 }
             }
         }
     }
 }
 
-@Composable private fun PositionSources(os:OsStore,data:VesselData,now:Long,service:(String,String?)->Unit) {
+@Composable private fun PositionSources(os:OsStore,data:VesselData,now:Long) {
     val c=LocalMetro.current
     Label(os.t("谁提供船位","where position comes from"),29)
     val nmeaConnected=data.connection in listOf("waiting","live")
-    val sourceLocked=os.marine?.vm?.ui?.collectAsState()?.value?.active?.paused==false
+    val sourceLocked=os.marine?.services?.state?.collectAsState()?.value?.active?.paused==false
     Toggle(os.t("手机 GPS","phone GPS"),os.positionSource=="phone",
         if(os.positionSource=="nmea") os.t("先关闭 NMEA 船位","turn NMEA position off first") else os.t("开启即启动定位，关闭即停止","starts and stops phone location"),
-        enabled=!sourceLocked && os.positionSource in listOf("none","phone")) {service(if(it) "gpsOn" else "gpsOff",null)}
+        enabled=!sourceLocked && os.positionSource in listOf("none","phone")) {os.requestPosition(if(it) PositionSourceRequest.ENABLE_PHONE else PositionSourceRequest.DISABLE_POSITION)}
     Toggle(os.t("NMEA 船位","NMEA position"),os.positionSource=="nmea",
         when {os.positionSource=="phone"->os.t("先关闭手机 GPS","turn phone GPS off first")
             !nmeaConnected->os.t("请先连接 NMEA","connect NMEA first")
             data.nmea==null->os.t("已连接，等待有效船位","connected, awaiting a valid position")
             else->readingAge(os,data.nmea.elapsed,now)},
-        enabled=!sourceLocked && (os.positionSource=="nmea" || (os.positionSource=="none" && nmeaConnected))) {service(if(it) "sourceNmea" else "sourceOff",null)}
+        enabled=!sourceLocked && (os.positionSource=="nmea" || (os.positionSource=="none" && nmeaConnected))) {os.requestPosition(if(it) PositionSourceRequest.USE_NMEA else PositionSourceRequest.DISABLE_POSITION)}
     Label(if(sourceLocked) os.t("锚警报正在值守；暂停后可以更改船位来源。","Pause the active anchor watch before changing its position source.") else
         os.t("两项都可以关闭。NMEA 仍可提供水深、风与仪表数据；船位不会自动切换来源。","Both can be off. NMEA can still provide depth, wind and instruments. Position never changes source automatically."),17,c.muted)
     MenuRow(os.t("每个读数从哪里来","inspect measurement sources"),os.t("字段来源、质量、手机传感器与自定义能力","provenance, quality, phone sensors & custom capabilities"),"data") {os.open("sources")}

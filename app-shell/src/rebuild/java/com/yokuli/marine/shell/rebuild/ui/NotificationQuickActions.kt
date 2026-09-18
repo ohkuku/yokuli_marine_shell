@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell.rebuild.ui
 
+import com.yokuli.runtime.contract.PositionSourceRequest
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -27,7 +28,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.yokuli.anchorwatch.location.vessel.DeviceBowAxis
 import com.yokuli.marine.shell.rebuild.*
-import com.yokuli.marine.shell.rebuild.data.VoyagePhase
+import com.yokuli.runtime.contract.VoyagePhase
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -38,7 +39,7 @@ import kotlinx.coroutines.withTimeoutOrNull
     val scope = rememberCoroutineScope()
     val insets = LocalShellHorizontalInsets.current
     val marine = os.marine
-    val state = marine?.vm?.ui?.collectAsState()?.value
+    val state = marine?.services?.state?.collectAsState()?.value
     val voyage = marine?.voyage?.collectAsState()?.value
     var expanded by rememberSaveable { mutableStateOf(false) }
     var confirmMount by rememberSaveable { mutableStateOf(false) }
@@ -56,7 +57,7 @@ import kotlinx.coroutines.withTimeoutOrNull
     }
     Column(Modifier.fillMaxWidth().padding(start = insets.topStart, end = insets.topEnd), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            QuickAction(os, if (os.light) "sun" else "moon", os.t("日 / 夜", "day / night"), if (os.light) os.t("日间", "day") else os.t("夜间", "night"), active = !os.light, modifier = Modifier.weight(1f)) {
+            QuickAction(os, if (os.light) "sun" else "moon", os.t("日 / 夜", "day / night"), if (os.light) os.t("日间", "day") else os.t("夜间", "night"), modifier = Modifier.weight(1f)) {
                 os.shell.updateSystemPreferences { it.copy(themeModeName = if (it.themeModeName == "LIGHT") "DARK" else "LIGHT") }
             }
             QuickAction(os, "locate", "GPS", when {
@@ -65,7 +66,7 @@ import kotlinx.coroutines.withTimeoutOrNull
                 os.positionSource == "nmea" -> os.t("船载船位", "boat position")
                 else -> os.t("已关闭", "off")
             }, active = os.positionSource == "phone", enabled = marine != null && !gpsLocked && os.positionSource in listOf("none", "phone"), modifier = Modifier.weight(1f)) {
-                os.requestService(if (os.positionSource == "phone") "gpsOff" else "gpsOn")
+                os.requestPosition(if (os.positionSource == "phone") PositionSourceRequest.DISABLE_POSITION else PositionSourceRequest.ENABLE_PHONE)
             }
             QuickAction(os, "awake", os.t("常亮", "awake"), if (os.keepAwake) os.t("已开启", "on") else os.t("已关闭", "off"), active = os.keepAwake, modifier = Modifier.weight(1f)) {
                 os.shell.updateSystemPreferences { preferences ->
@@ -73,7 +74,7 @@ import kotlinx.coroutines.withTimeoutOrNull
                     preferences.copy(appPreferenceValues = preferences.appPreferenceValues + ("preferences.display.keep_awake" to if (wasOn) "b:0" else "b:1"))
                 }
             }
-            QuickAction(os, if (expanded) "collapse" else "more", os.t("更多", "more"), if (expanded) os.t("收起", "collapse") else os.t("展开", "expand"), active = expanded, modifier = Modifier.weight(1f)) { expanded = !expanded; if (!expanded) confirmMount = false }
+            QuickAction(os, if (expanded) "collapse" else "more", os.t("更多", "more"), if (expanded) os.t("收起", "collapse") else os.t("展开", "expand"), modifier = Modifier.weight(1f)) { expanded = !expanded; if (!expanded) confirmMount = false }
         }
         AnimatedVisibility(expanded, enter = expandVertically(tween(180)), exit = shrinkVertically(tween(160))) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -83,12 +84,12 @@ import kotlinx.coroutines.withTimeoutOrNull
                     active.paused -> os.t("继续", "resume")
                     else -> os.t("暂停", "pause")
                 }, active = active?.paused == false, enabled = active != null && pendingAnchor == null, modifier = Modifier.weight(1f)) {
-                    val vm = marine?.vm
-                    val current = vm?.ui?.value?.active
-                    if (current != null && vm != null) {
+                    val services = marine?.services
+                    val current = services?.state?.value?.active
+                    if (current != null && services != null) {
                         feedback = null
                         pendingAnchor = current.id to !current.paused
-                        runCatching { if (current.paused) vm.resumeWatch() else vm.pauseWatch() }.onFailure {
+                        runCatching { if (current.paused) services.anchor.resumeWatch() else services.anchor.pauseWatch() }.onFailure {
                             pendingAnchor = null; feedback = os.t("守锚操作未完成，请重试。", "Anchor action did not complete; please retry.")
                         }
                     }
@@ -101,7 +102,7 @@ import kotlinx.coroutines.withTimeoutOrNull
                 }, active = voyage?.phase == VoyagePhase.RECORDING, enabled = voyage?.phase in listOf(VoyagePhase.PAUSED, VoyagePhase.RECORDING) && voyage?.commandPending == false, modifier = Modifier.weight(1f)) {
                     when (marine?.voyage?.value?.phase) { VoyagePhase.PAUSED -> marine?.resumeRecording(); VoyagePhase.RECORDING -> marine?.pauseRecording(); else -> Unit }
                 }
-                QuickAction(os, "mount", os.t("姿态", "attitude"), if (confirming) os.t("读取中", "reading") else os.t("重新确认", "reconfirm"), active = state?.vesselMountCalibration?.mountConfirmed == true,
+                QuickAction(os, "mount", os.t("姿态", "attitude"), if (confirming) os.t("读取中", "reading") else os.t("重新确认", "reconfirm"),
                     enabled = state?.phoneSensorCapabilities?.attitudeAvailable == true && state.activeTrip?.paused != true && !confirming, modifier = Modifier.weight(1f)) { feedback = null; confirmMount = !confirmMount }
                 QuickAction(os, "connect", os.t("来源", "sources"), os.t("数据中心", "data center"), modifier = Modifier.weight(1f)) { os.openSystemDestination("data_center") }
             }
@@ -113,12 +114,12 @@ import kotlinx.coroutines.withTimeoutOrNull
             if (confirming) MetroProgress(os.t("正在读取传感器", "reading the sensor"))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 Label(os.t("重新确认", "reconfirm"), 17, if (confirming) c.muted else c.accent, Modifier.clickable(enabled = !confirming) {
-                    marine?.vm?.let { vm ->
-                        confirming = true; feedback = null; vm.clearVesselCalibrationFeedback()
-                        val command = vm.confirmTripAttitudeFrame(vm.ui.value.vesselMountCalibration.bowAxis)
+                    marine?.services?.let { services ->
+                        confirming = true; feedback = null; services.sources.clearVesselCalibrationFeedback()
+                        val command = services.sources.confirmTripAttitudeFrame(services.state.value.vesselMountCalibration.bowAxis)
                         scope.launch {
                             val completed = withTimeoutOrNull(6000) { command.join(); true } == true
-                            val result = if (completed) vm.ui.value.vesselCalibrationFeedback else null
+                            val result = if (completed) services.state.value.vesselCalibrationFeedback else null
                             confirming = false
                             feedback = when (result) {
                                 "Trip attitude frame confirmed." -> { confirmMount = false; os.t("姿态安装已重新确认", "attitude mounting reconfirmed") }
@@ -137,6 +138,7 @@ import kotlinx.coroutines.withTimeoutOrNull
     }
 }
 
+/** active 只表达 GPS、常亮、运行会话等持续状态；切换模式、姿态确认和展开仅是动作。 */
 @Composable private fun QuickAction(os: OsStore, icon: String, title: String, detail: String, active: Boolean = false, enabled: Boolean = true, modifier: Modifier = Modifier, action: () -> Unit) {
     val c = LocalMetro.current
     val interaction = remember { MutableInteractionSource() }

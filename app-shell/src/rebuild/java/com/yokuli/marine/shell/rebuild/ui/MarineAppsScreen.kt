@@ -8,7 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.yokuli.marine.shell.rebuild.*
-import com.yokuli.marine.shell.rebuild.data.VoyagePhase
+import com.yokuli.runtime.contract.VoyagePhase
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import kotlinx.coroutines.delay
@@ -31,7 +31,7 @@ import java.util.Date
 
 @Composable internal fun RecordingDialog(os:OsStore,initialMarking:Boolean=false,onDismiss:()->Unit) {
     val marine=os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
+    val state by marine.services.state.collectAsState()
     val voyage by marine.voyage.collectAsState()
     val active=state.activeTrip
     var name by remember {mutableStateOf(os.t("航行 ","Trip ")+DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(Date()))}
@@ -57,7 +57,7 @@ import java.util.Date
                 }
                 Field(os.t("想记住什么","what happened"),momentNote,{momentNote=it.take(2000)},multiline=true)
                 Label(if(canMark)os.t("保存时记录当时的有效船位与船况。","Saving captures the valid position and conditions at that moment.") else if(active.paused)os.t("请先继续记录，再保存时刻。","Resume recording before marking a moment.") else os.t("等待有效船位后才能保存时刻。","A valid position is needed to mark this moment."),16,LocalMetro.current.muted)
-                MetroButton(os.t("保存时刻","save moment"),{marine.vm.markTripWaypoint(momentName.trim(),momentNote.trim(),momentType);onDismiss()},primary=true,enabled=canMark&&momentName.isNotBlank())
+                MetroButton(os.t("保存时刻","save moment"),{marine.services.voyages.markTripWaypoint(momentName.trim(),momentNote.trim(),momentType);onDismiss()},primary=true,enabled=canMark&&momentName.isNotBlank())
             } else if(active==null) {
                 Field(os.t("名称","name"),name,{name=it.take(100)})
                 Label(os.t("记录船位，以及实际可用的风、水深和航速。完成后可回放、查看报告和导出。","Record position and the wind, depth and speed available. Replay, reports and exports follow when you finish."),16,LocalMetro.current.muted)

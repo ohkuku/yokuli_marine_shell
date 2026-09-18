@@ -2,9 +2,15 @@
 
 **ROM 开发分支：`codex/yokuli-os-rom`。** 系统分层、设备/安全/升级设计与 AOSP 产品配置见 [ROM 总入口](rom/README.md)。本分支从 experience.6 继续开发系统集成；当前可构建 HOME APK，完整 ROM 镜像尚未在 Linux 构建机编译或启动。原手机应用体验分支保留为 `codex/yokuli-os-rebuild`。
 
-以 Windows Phone 8/10 的排版、横滑、磁贴和虚拟键组织的 Android 航海应用平台。当前版本 **0.5.0-experience.6**（versionCode 10）。本轮整理通知中心的消息与快捷操作、系统目的地返回、驾驶台趋势选择，以及紧凑排版和顶部安全区。
+以 Windows Phone 8/10 的排版、横滑、磁贴和虚拟键组织的 Android 航海应用平台。当前开发版本 **0.5.0-experience.7**（versionCode 11）。本轮把业务执行从页面 ViewModel 拆到进程级控制器和领域端口，增加纯 Kotlin 运行时契约与 Android 组合层；全局航行、内容访问、显示资源和偏好命令有明确所有者。
 
-完整结构见 [26 项反馈、全部应用接口与数据拓扑](docs/product/OS_INTERFACE_TOPOLOGY.md)，声明位置见 [API 索引](docs/product/API_INDEX.md)。数据所有权见 [数据中心契约](docs/product/DATA_CENTER_CONTRACT.md)，页面访问与返回见 [应用导航契约](docs/product/APP_NAVIGATION_CONTRACT.md)。实际验证结果与边界见 [本轮交付记录](docs/experience/EXPERIENCE_6_DELIVERY.md)。
+完整结构见 [26 项反馈、全部应用接口与数据拓扑](docs/product/OS_INTERFACE_TOPOLOGY.md)，声明位置见 [API 索引](docs/product/API_INDEX.md)。数据所有权见 [数据中心契约](docs/product/DATA_CENTER_CONTRACT.md)，页面访问与返回见 [应用导航契约](docs/product/APP_NAVIGATION_CONTRACT.md)。实际验证结果与边界见 [本轮交付记录](docs/experience/EXPERIENCE_7_DELIVERY.md)。
+
+## 系统代码的层级
+
+`app-shell` 页面与 Shell → `runtime:marine-local` 组合宿主 / `MarineServices` 领域端口 → `LegacyMarineController` 与内容适配 → 现有领域运行时、仓储和 Android 服务。`core:runtime-contract` 只放纯 Kotlin 的连接、航行状态与命令回执。海图和日志共同调用运行时航行协调器；偏好只提交本次修改的字段，内容读取不把 DAO 交给页面。
+
+这是已落代码的**进程内**分层：各内部应用仍共享 APK、UID 和进程，兼容读投影仍是 `MainUiState`，部分 DTO 仍在 legacy 模块；Binder、独立进程和系统通知/Recents 接管尚未实现。源码图、全部命令方向和边界检查见 [进程内系统边界](docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md)，整体路线见 [OS 文档导航](docs/os/README.md)。
 
 ## 应用
 
@@ -44,7 +50,7 @@
 # app-shell/build/outputs/apk/standalone/debug/app-shell-standalone-debug.apk
 ```
 
-Java 17、Android SDK 36；Android 9 及以上；包名 `com.yokuli.marine`。原 Gradle wrapper、签名参数和 CI 下载制品继续使用。
+Java 17、Android SDK 36、Python 3；Android 9 及以上；包名 `com.yokuli.marine`。原 Gradle wrapper、签名参数和 CI 下载制品继续使用。所有 APK flavor 的 `preBuild` 会执行源码边界检查；也可单独运行 `python3 scripts/check_runtime_boundaries.py` 或 `./gradlew :app-shell:checkRuntimeBoundaries`。
 
 Google 在线/卫星底图的 `GOOGLE_MAPS_ANDROID_API_KEY` 仍由原仓库的密钥管理注入。GitHub 使用同名 Repository Secret；本地使用：
 
@@ -66,6 +72,8 @@ Google 在线/卫星底图的 `GOOGLE_MAPS_ANDROID_API_KEY` 仍由原仓库的�
 
 ## English
 
-Version **0.5.0-experience.6** (versionCode 10) adds consumable and swipe-dismissable notifications, a four-column quick-action row, reusable system destinations, and a focused navigation/weather trend selector. Typography is more compact and top controls follow the rounded-corner safe area. The centre key remains Home and the right key opens notifications. Data Center owns phone and NMEA source selection, phone location and mounting calibration. Boat Network owns connections and outgoing traffic; Data Sharing owns the local publishing service. All three use the existing shared source policy. Linked app operations return to the original caller page; ordinary launches open the app home, while Recents resumes its existing page. Chart annotations render natively with the map camera; anchor watch emphasizes the map and real swing history. Instruments use meaningful live graphics and a reorderable personal layout. Tile Studio presents one app at a time, with one configurable tile per app. Local NMEA and external outputs share actual capability filtering and source-aware IP echo prevention. Sonar survey UI, acquisition and automatic restoration are removed while historical records are retained.
+Development version **0.5.0-experience.7** (versionCode 11) introduces an in-process runtime composition layer, narrow domain commands, a process-scoped controller, shared voyage coordination, and content access without UI-owned DAOs. Preference commands update only their own fields, and display consumers acquire independently released leases. Every APK preBuild runs the source-boundary check. These modules still share one APK, UID and process; legacy DTOs and the MainUiState compatibility projection remain. Binder, process isolation and Android notification/Recents replacement are not implemented.
+
+The centre key remains Home and the right key opens internal notifications. Data Center owns source selection and phone calibration; Boat Network owns connections and outgoing traffic; Data Sharing owns local publishing. Linked app operations return to their caller, ordinary launches open the app home, and internal Recents resumes an existing page. See the OS documentation index for the implemented boundaries and later system integration stages.
 
 See the linked interface topology, contracts and delivery record for implementation and validation boundaries. The original build, Android identity and API-key management remain in use.

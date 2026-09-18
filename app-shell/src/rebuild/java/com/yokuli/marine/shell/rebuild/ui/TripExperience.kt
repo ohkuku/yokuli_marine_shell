@@ -25,7 +25,7 @@ import com.yokuli.anchorwatch.domain.report.TripReport
 import com.yokuli.anchorwatch.domain.report.ReportQuality
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
-import com.yokuli.marine.shell.rebuild.data.VoyagePhase
+import com.yokuli.runtime.contract.VoyagePhase
 import androidx.compose.ui.window.Dialog
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
@@ -36,7 +36,7 @@ import java.util.Date
 /** One app owns the active recording and every saved voyage. RecordingDialog owns all controls. */
 @Composable fun LogbookScreen(os: OsStore, initialVoyageId: Long? = null) {
     val marine = os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
+    val state by marine.services.state.collectAsState()
     var selected by rememberSaveable(initialVoyageId) { mutableStateOf(initialVoyageId) }
     ReportVisibleAppRoute(os, selected?.let { "voyage:$it" } ?: "voyages")
     var recording by remember { mutableStateOf(false) }
@@ -70,7 +70,7 @@ import java.util.Date
 
 @Composable private fun CurrentVoyage(os: OsStore, controls: () -> Unit, detail: (Long) -> Unit,mark:()->Unit) {
     val marine = os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
+    val state by marine.services.state.collectAsState()
     val voyage by marine.voyage.collectAsState()
     val data by os.hub.state.collectAsState()
     val now = rememberMarineClock()
@@ -123,7 +123,7 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
 
 @Composable private fun VoyageDetail(os: OsStore, id: Long, back: () -> Unit, controls: () -> Unit) {
     val marine = os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
+    val state by marine.services.state.collectAsState()
     var loaded by remember(id) { mutableStateOf<VoyageContent?>(null) }
     var error by remember(id) { mutableStateOf(false) }
     var revision by remember(id) { mutableIntStateOf(0) }
@@ -137,9 +137,9 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
         try {
             loaded = withContext(Dispatchers.IO) {
                 coroutineScope {
-                    val map = async { marine.vm.tripMapData(id, 4_000) }
-                    val report = async { marine.vm.tripReport(id) }
-                    val replay = async { marine.vm.tripReplay(id) }
+                    val map = async { marine.services.voyages.tripMapData(id, 4_000) }
+                    val report = async { marine.services.voyages.tripReport(id) }
+                    val replay = async { marine.services.voyages.tripReplay(id) }
                     VoyageContent(map.await(), report.await(), replay.await(), System.currentTimeMillis())
                 }
             }
@@ -185,7 +185,7 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
                         else -> {
                             Label(os.t("把这段航行带走", "take this voyage with you"), 30, c.accent)
                             Label(os.t("航迹适合地图与航海软件；数据文件保留实际读数、来源和事件，方便继续分析。", "Track files work with mapping and navigation apps. Data files retain actual readings, sources and events for further analysis."), 19)
-                            listOf("GPX" to { marine.vm.exportTripGpx(session); Unit }, "KML" to { marine.vm.exportTripKml(session); Unit }, "KMZ" to { marine.vm.exportTripKmz(session); Unit }, os.t("全部样本 CSV", "all samples · CSV") to { marine.vm.exportTripCsv(session); Unit }, os.t("沿途时刻 CSV", "moments · CSV") to { marine.vm.exportTripWaypoints(session); Unit }, os.t("事件 CSV", "events · CSV") to { marine.vm.exportTripEvents(session); Unit }, os.t("自定义读数 CSV", "custom readings · CSV") to { marine.vm.exportTripCustomMetrics(session); Unit }, os.t("报告图片", "report image") to { marine.vm.shareTripReportSnapshot(session); Unit }, os.t("完整分析资料 ZIP", "analysis source · ZIP") to { marine.vm.exportTripAiSource(session); Unit }).forEach { (label, action) -> MetroButton(label, action) }
+                            listOf("GPX" to { marine.services.voyages.exportTripGpx(session); Unit }, "KML" to { marine.services.voyages.exportTripKml(session); Unit }, "KMZ" to { marine.services.voyages.exportTripKmz(session); Unit }, os.t("全部样本 CSV", "all samples · CSV") to { marine.services.voyages.exportTripCsv(session); Unit }, os.t("沿途时刻 CSV", "moments · CSV") to { marine.services.voyages.exportTripWaypoints(session); Unit }, os.t("事件 CSV", "events · CSV") to { marine.services.voyages.exportTripEvents(session); Unit }, os.t("自定义读数 CSV", "custom readings · CSV") to { marine.services.voyages.exportTripCustomMetrics(session); Unit }, os.t("报告图片", "report image") to { marine.services.voyages.shareTripReportSnapshot(session); Unit }, os.t("完整分析资料 ZIP", "analysis source · ZIP") to { marine.services.voyages.exportTripAiSource(session); Unit }).forEach { (label, action) -> MetroButton(label, action) }
                             if (!session.active) {
                                 MetroButton(os.t("重命名航行","rename voyage"),{renaming=true})
                                 MetroButton(os.t("删除这次航行", "delete voyage"), { delete = true })
@@ -197,9 +197,9 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
         }
     }
     if (sources) MapSourcePicker(os) { sources = false }
-    if (delete && session != null && !session.active) ConfirmDialog(os, os.t("删除这次航行及其记录？此操作无法撤销。", "Delete this voyage and its recordings? This cannot be undone."), { delete = false }) { marine.vm.deleteTrip(session); delete = false; back() }
-    if(renaming&&session!=null)VoyageTextEditor(os,os.t("航行名称","voyage name"),session.name,null,{renaming=false}){name,_->marine.vm.renameTrip(id,name);renaming=false}
-    editingMoment?.let{moment->VoyageTextEditor(os,os.t("沿途时刻","voyage moment"),moment.name,moment.note,{editingMoment=null}){name,note->os.scope.launch{marine.vm.editTripMoment(moment,name,note.orEmpty()).join();revision++};editingMoment=null}}
+    if (delete && session != null && !session.active) ConfirmDialog(os, os.t("删除这次航行及其记录？此操作无法撤销。", "Delete this voyage and its recordings? This cannot be undone."), { delete = false }) { marine.services.voyages.deleteTrip(session); delete = false; back() }
+    if(renaming&&session!=null)VoyageTextEditor(os,os.t("航行名称","voyage name"),session.name,null,{renaming=false}){name,_->marine.services.voyages.renameTrip(id,name);renaming=false}
+    editingMoment?.let{moment->VoyageTextEditor(os,os.t("沿途时刻","voyage moment"),moment.name,moment.note,{editingMoment=null}){name,note->os.scope.launch{marine.services.voyages.editTripMoment(moment,name,note.orEmpty()).join();revision++};editingMoment=null}}
 }
 
 @Composable private fun VoyageTextEditor(os:OsStore,title:String,initialName:String,initialNote:String?,dismiss:()->Unit,save:(String,String?)->Unit) {

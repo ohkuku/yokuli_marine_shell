@@ -32,8 +32,8 @@ internal val NmeaStringSetSaver=listSaver<Set<String>,String>(save={it.toList()}
     editable:Boolean=true,
     destination:String=os.t("接收设备","receivers"),
 ) {
-    val vm=os.marine?.vm?:return
-    val state by vm.ui.collectAsState()
+    val services=os.marine?.services?:return
+    val state by services.state.collectAsState()
     val c=LocalMetro.current
     val now=rememberMarineClock()
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {

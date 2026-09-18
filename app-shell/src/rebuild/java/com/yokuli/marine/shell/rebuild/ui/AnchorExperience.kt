@@ -23,7 +23,7 @@ import androidx.core.content.ContextCompat
 import com.yokuli.anchorwatch.AnchorWatchInput
 import com.yokuli.anchorwatch.AnchorSetupDraft
 import com.yokuli.anchorwatch.MainUiState
-import com.yokuli.anchorwatch.MainViewModel
+import com.yokuli.anchorwatch.api.MarineServices
 import com.yokuli.anchorwatch.data.database.AnchorSessionEntity
 import com.yokuli.anchorwatch.domain.anchor.AnchorCentreApplyPolicy
 import com.yokuli.anchorwatch.domain.anchor.AnchorCentreRecalculationStatus
@@ -60,8 +60,8 @@ private val AnchorPickedPointSaver=listSaver<MutableState<GeoPoint?>,Double>(
 fun AnchorExperience(os: OsStore) {
     val marine=os.marine
     if(marine==null) {Column {PageHeader(os,os.title(AppId.ANCHOR));MetroProgress(os.t("正在恢复守锚…","restoring anchor watch…"))};return}
-    val vm=marine.vm
-    val state by vm.ui.collectAsState()
+    val services=marine.services
+    val state by services.state.collectAsState()
     val data by os.hub.state.collectAsState()
     val tick=rememberMarineClock()
     val fix=data.fix(os.positionSource)
@@ -118,7 +118,7 @@ fun AnchorExperience(os: OsStore) {
         if(active==null && restored==null) os.anchorDraft?.let {draft ->picked=draft.point;origin=AnchorCenterSource.MAP_PICK;estimate=false;radius=(draft.radiusMeters ?: state.settings.preferredAlarmRadiusMeters).toString();view.fly(draft.point,16.0);page="setup"}
     }
     LaunchedEffect(referenceKey,picked,origin,estimate,radius,rode,depth,manual,page) {
-        if(active==null && (page=="setup" || page=="advanced")) vm.saveAnchorSetupDraft(AnchorSetupDraft(referenceKey=referenceKey,estimate=estimate,knownMethod=origin.name,manualCoordinate=manual,mapLatitude=picked?.lat,mapLongitude=picked?.lon,alarmRadius=radius,rode=rode,depth=depth))
+        if(active==null && (page=="setup" || page=="advanced")) services.anchor.saveAnchorSetupDraft(AnchorSetupDraft(referenceKey=referenceKey,estimate=estimate,knownMethod=origin.name,manualCoordinate=manual,mapLatitude=picked?.lat,mapLongitude=picked?.lon,alarmRadius=radius,rode=rode,depth=depth))
     }
     var fittedWatchId by rememberSaveable {mutableStateOf<Long?>(null)}
     LaunchedEffect(active?.id) {
@@ -137,7 +137,7 @@ fun AnchorExperience(os: OsStore) {
         val complete=when(operation) {"start"->active!=null;"pause"->active?.paused==true;"resume"->active!=null&&!active.paused;"end"->active==null;else->false}
         if(complete) {
             pending=null
-            if(operation=="start") {page="watch";os.anchorDraft=null;vm.clearAnchorSetupDraft()}
+            if(operation=="start") {page="watch";os.anchorDraft=null;services.anchor.clearAnchorSetupDraft()}
             if(operation=="end") {page="review:${endingId}";endingId=null}
             return@LaunchedEffect
         }
@@ -153,7 +153,7 @@ fun AnchorExperience(os: OsStore) {
         val aggregate=coverage ?: return@LaunchedEffect
         swingAreas=withContext(Dispatchers.IO) {
             while(true) {
-                val batch=os.sailing.database.anchorDao().pointsPage(session.id,aggregate.lastTimestamp,aggregate.lastId,1000)
+                val batch=os.sailing.anchorTrackPage(session.id,aggregate.lastTimestamp,aggregate.lastId,1000)
                 aggregate.add(batch)
                 if(batch.size<1000)break
             }
@@ -172,7 +172,7 @@ fun AnchorExperience(os: OsStore) {
             feedback=when {point==null->os.t("等待可信船位，或拖动地图选择实际锚点。","Wait for an accepted position, or choose the actual anchor on the chart.");!geometry->os.t("请补充实际锚链长度和水深，再开始估计。","Enter deployed rode and water depth before estimation.");!notifications->os.t("请允许守锚通知。","Allow anchor watch notifications.");else->os.t("请检查警戒范围与船位来源。","Check the boundary and position source.")}
             return
         }
-        command("start") {vm.arm(point.lat,point.lon,anchorWatchInput(estimate,origin,radiusValue,rodeValue,depthValue,state.settings.bowRollerHeightMeters,state.settings.boatLengthMeters,source,os.anchorDraft?.placeId,os.anchorDraft?.spotId))}
+        command("start") {services.anchor.arm(point.lat,point.lon,anchorWatchInput(estimate,origin,radiusValue,rodeValue,depthValue,state.settings.bowRollerHeightMeters,state.settings.boatLengthMeters,source,os.anchorDraft?.placeId,os.anchorDraft?.spotId))}
     }
     val scene=anchorScene(os,state,fix?.let {MapVessel(it.point,it.freshCourse(tick),it.fresh(tick)&&readiness.ready,it.freshHeading(tick),it.freshSpeed(tick))},if(active==null)point else null,radiusValue,System.currentTimeMillis(),swingAreas)
     val back={page=if(page=="advanced")"setup" else "watch"}
@@ -207,7 +207,7 @@ fun AnchorExperience(os: OsStore) {
                         }
                         if(state.alarmSnapshot.type!=null) {
                             Label(alarmReason(os,state.alarmSnapshot.type),16)
-                            MetroButton(if(state.alarmSnapshot.acknowledged)os.t("告警已确认","alarm acknowledged")else os.t("确认告警","acknowledge alarm"),vm::acknowledge,enabled=!state.alarmSnapshot.acknowledged)
+                            MetroButton(if(state.alarmSnapshot.acknowledged)os.t("告警已确认","alarm acknowledged")else os.t("确认告警","acknowledge alarm"),services.anchor::acknowledge,enabled=!state.alarmSnapshot.acknowledged)
                         } else if(!readiness.ready)Label(positionReason(os,readiness.reason),13,c.muted)
                         else Label(os.t("细线：最近轨迹 · 色斑：本次到过的范围","line: recent trail · colour: this watch's observed area"),12,c.muted)
                     } else {
@@ -230,7 +230,7 @@ fun AnchorExperience(os: OsStore) {
                 } else if(page=="setup") {
                     IconAction("pin",os.t("锚在准星","anchor here"),{picked=view.center;origin=AnchorCenterSource.MAP_PICK;estimate=false;view.showCrosshair=false})
                     IconAction("check",os.t("开始值守","start watch"),::startWatch,active=ready.canStart)
-                    IconAction("close",os.t("取消","cancel"),{page="watch";picked=null;vm.clearAnchorSetupDraft()})
+                    IconAction("close",os.t("取消","cancel"),{page="watch";picked=null;services.anchor.clearAnchorSetupDraft()})
                 } else {
                     IconAction("anchor",os.t("下锚","drop anchor"),{
                         picked=sourcePoint ?: view.center;origin=if(sourcePoint!=null)AnchorCenterSource.CURRENT_POSITION else AnchorCenterSource.MAP_PICK
@@ -302,13 +302,13 @@ fun AnchorExperience(os: OsStore) {
                         candidatePoint(active)?.let {Label(os.formatCoordinates(it),18)}
                         Label(os.t("不确定范围：${os.formatDistance(active.provisionalRadiusMeters)}","uncertainty: ${os.formatDistance(active.provisionalRadiusMeters)}"),17)
                         MetroButton(os.t("比较并采用候选","review and adopt candidate"),{candidatePoint(active)?.let {estimateChoice=AnchorEstimateChoice(active.id,active.candidateId,it,false)}},primary=true,enabled=active.candidateRadialObservable&&AnchorCentreApplyPolicy.mayApply(state.alarmSnapshot.state))
-                        MetroButton(os.t("继续观察","continue observing"),{vm.continueEstimatingCenter(active)})
-                        MetroButton(os.t("保留当前参考","keep current reference"),{vm.keepCurrentCenter(active)})
+                        MetroButton(os.t("继续观察","continue observing"),{services.anchor.continueEstimatingCenter(active)})
+                        MetroButton(os.t("保留当前参考","keep current reference"),{services.anchor.keepCurrentCenter(active)})
                     }
                 }
                 val trackEvidence=state.points.count {!it.wasQuarantined && it.fixTrust !in listOf("REJECTED","QUARANTINED") && GeoPoint(it.latitude,it.longitude).valid()}
                 val canEstimate=trackEvidence>=3 || state.activeLearningPointCount>=3
-                MetroButton(os.t("从摆动轨迹估计锚点","estimate from swing track"),{vm.recalculateCentreFromTrack(active)},enabled=canEstimate&&!state.centreRecalculation.loading)
+                MetroButton(os.t("从摆动轨迹估计锚点","estimate from swing track"),{services.anchor.recalculateCentreFromTrack(active)},enabled=canEstimate&&!state.centreRecalculation.loading)
                 if(!canEstimate)Label(os.t("先积累真实船位与摆动轨迹。没有轨迹时不能估计或修改中心。","Collect position and swing history first. An estimate cannot change the centre without track evidence."),16,c.muted)
                 val result=state.centreRecalculation.takeIf {it.sessionId==active.id}
                 if(result?.loading==true)MetroProgress(os.t("正在分析真实轨迹…","analysing recorded track…"))
@@ -319,28 +319,28 @@ fun AnchorExperience(os: OsStore) {
                         Label(os.t("相对当前中心移动 ${os.formatDistance(analysis.shiftMeters)}","shift from current centre ${os.formatDistance(analysis.shiftMeters)}"),17)
                     }
                     if(analysis.status==AnchorCentreRecalculationStatus.READY)MetroButton(os.t("比较并采用这次估计","review and adopt this estimate"),{analysis.candidate?.let {estimateChoice=AnchorEstimateChoice(active.id,null,GeoPoint(it.latitude,it.longitude),true)}},enabled=AnchorCentreApplyPolicy.mayApply(state.alarmSnapshot.state),primary=true)
-                    MetroButton(os.t("保留当前锚点","keep current anchor"),vm::keepCurrentRecalculatedCentre)
+                    MetroButton(os.t("保留当前锚点","keep current anchor"),services.anchor::keepCurrentRecalculatedCentre)
                 }
                 feedback?.let {Label(it,16)}
                 MenuRow(os.t("风与水深警戒","wind and depth guards"),os.t("查看并调整本次值守的条件","review conditions for this watch")) {page="conditions"}
                 Label(positionReason(os,readiness.reason),15,c.muted)
-                MetroButton(if(active.paused)os.t("恢复值守","resume watch")else os.t("暂停值守","pause watch"),{if(pending==null)if(active.paused)command("resume",vm::resumeWatch)else command("pause",vm::pauseWatch)})
+                MetroButton(if(active.paused)os.t("恢复值守","resume watch")else os.t("暂停值守","pause watch"),{if(pending==null)if(active.paused)command("resume",services.anchor::resumeWatch)else command("pause",services.anchor::pauseWatch)})
                 MenuRow(os.t("锚泊历史","anchor history")) {page="history"}
             }
         } else if(page=="conditions" && active!=null) {
-            AnchorConditions(os,active,vm) {page="estimate"}
+            AnchorConditions(os,active,services) {page="estimate"}
         } else if(page=="history") {
             PageBody {
                 val history=state.sessions.filter {!it.active}
                 if(history.isEmpty())Label(os.t("结束一次值守后，在这里回顾。","completed watches will appear here."),27,c.muted)
-                history.forEach {session ->MenuRow(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(session.startedAt)),os.t("${durationLabel((session.endedAt ?: session.startedAt)-session.startedAt)} · ${session.alarmCount} 次告警","${durationLabel((session.endedAt ?: session.startedAt)-session.startedAt)} · ${session.alarmCount} alarms")) {vm.loadHistoryEvents(session.id);page="review:${session.id}"}}
+                history.forEach {session ->MenuRow(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(session.startedAt)),os.t("${durationLabel((session.endedAt ?: session.startedAt)-session.startedAt)} · ${session.alarmCount} 次告警","${durationLabel((session.endedAt ?: session.startedAt)-session.startedAt)} · ${session.alarmCount} alarms")) {services.anchor.loadHistoryEvents(session.id);page="review:${session.id}"}}
             }
         } else if(page.startsWith("review:")) {
             val session=state.sessions.firstOrNull {it.id==page.substringAfter(':').toLongOrNull()}
             PageBody {
                 if(session==null)MetroProgress(os.t("正在读取锚泊记录…","loading watch record…"))
                 else {
-                    LaunchedEffect(session.id) {vm.loadHistoryEvents(session.id)}
+                    LaunchedEffect(session.id) {services.anchor.loadHistoryEvents(session.id)}
                     Label(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(session.startedAt)),22)
                     Label(os.t("值守 ${durationLabel((session.endedAt ?: System.currentTimeMillis())-session.startedAt)}","watched for ${durationLabel((session.endedAt ?: System.currentTimeMillis())-session.startedAt)}"),30,c.accent)
                     val preview=os.maps.view("anchor-review:${session.id}",watchCenter(session),16.0).apply {scaleTopDp=80f}
@@ -365,7 +365,7 @@ fun AnchorExperience(os: OsStore) {
                         MenuRow(os.t("查看收藏","view saved place")) {os.open("anchorage:$savedAnchorageId")}
                     }
                     feedback?.let {Label(it,16)}
-                    Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {MetroButton("GPX",{vm.exportGpx(session)},Modifier.weight(1f));MetroButton("CSV",{vm.exportCsv(session)},Modifier.weight(1f))}
+                    Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {MetroButton("GPX",{services.anchor.exportGpx(session)},Modifier.weight(1f));MetroButton("CSV",{services.anchor.exportCsv(session)},Modifier.weight(1f))}
                     val events=state.eventsBySession[session.id].orEmpty()
                     if(events.isNotEmpty())Label(os.t("值守事件","watch events"),25)
                     events.forEach {event ->Label(DateFormat.getTimeInstance(DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(event.timestamp))+" · "+anchorEventLabel(os,event.type),17)}
@@ -375,13 +375,13 @@ fun AnchorExperience(os: OsStore) {
     }
     if(picking)MapPicker(os,picked,MapScene(vessel=scene.vessel),{point ->picked=point;origin=AnchorCenterSource.MAP_PICK;picking=false},{picking=false})
     if(layers)MapSourcePicker(os) {layers=false}
-    if(confirmEnd && active!=null)ConfirmDialog(os,os.t("起锚并结束这次值守？","Lift anchor and end this watch?")+if(state.activeTrip!=null)os.t("航行记录会继续。","Voyage recording continues.")else "",{confirmEnd=false}) {endingId=active.id;confirmEnd=false;command("end",vm::liftAnchor)}
-    if(editingRadius && active!=null)AnchorRadiusDialog(os,active.alarmRadiusMeters,{editingRadius=false}) {meters ->vm.updateAnchorSettings(watchInput(active,meters));editingRadius=false}
+    if(confirmEnd && active!=null)ConfirmDialog(os,os.t("起锚并结束这次值守？","Lift anchor and end this watch?")+if(state.activeTrip!=null)os.t("航行记录会继续。","Voyage recording continues.")else "",{confirmEnd=false}) {endingId=active.id;confirmEnd=false;command("end",services.anchor::liftAnchor)}
+    if(editingRadius && active!=null)AnchorRadiusDialog(os,active.alarmRadiusMeters,{editingRadius=false}) {meters ->services.anchor.updateAnchorSettings(watchInput(active,meters));editingRadius=false}
     estimateChoice?.let {choice ->ConfirmDialog(os,os.t("采用 ${os.formatCoordinates(choice.point)}？这会改变警戒中心。","Adopt ${os.formatCoordinates(choice.point)}? This changes the alarm centre."),{estimateChoice=null}) {
         val result=state.centreRecalculation.result
         val unchanged=active!=null && active.id==choice.sessionId && if(choice.recalculated) state.centreRecalculation.sessionId==choice.sessionId && result?.status==AnchorCentreRecalculationStatus.READY && result.candidate?.let {GeoPoint(it.latitude,it.longitude)==choice.point}==true else active.candidateId==choice.candidateId && candidatePoint(active)==choice.point && active.candidateDecision==CandidateDecision.AVAILABLE.name
         if(unchanged && AnchorCentreApplyPolicy.mayApply(state.alarmSnapshot.state)) {
-            if(choice.recalculated)vm.applyRecalculatedCentre() else active?.let(vm::acceptEstimatedCenter)
+            if(choice.recalculated)services.anchor.applyRecalculatedCentre() else active?.let(services.anchor::acceptEstimatedCenter)
         } else feedback=os.t("候选或值守状态已经改变，请重新查看。","candidate or watch state changed; review it again.")
         estimateChoice=null
     }}
@@ -473,7 +473,7 @@ private fun anchorEventLabel(os:OsStore,type:String)=when {
 private fun watchInput(session:AnchorSessionEntity,radius:Double)=AnchorWatchInput(AnchorPlacementMode.valueOf(session.placementMode),AnchorRangeMode.BASIC,AnchorSafetyPreset.BALANCED,session.waterDepthMeters,session.rodeLengthMeters,session.bowRollerHeightMeters,session.boatLengthMeters,radius,runCatching {GpsDataSource.valueOf(session.positionSource)}.getOrDefault(GpsDataSource.NONE),runCatching {AnchorCenterSource.valueOf(session.centerSource)}.getOrDefault(AnchorCenterSource.UNKNOWN))
 
 @Composable
-private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,vm:MainViewModel,onSaved:()->Unit) {
+private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,services:MarineServices,onSaved:()->Unit) {
     var depthOn by rememberSaveable(session.id){mutableStateOf(session.depthGuardEnabled)}
     var shallow by rememberSaveable(session.id){mutableStateOf(session.shallowDepthAlarmMeters?.toString().orEmpty())}
     var deep by rememberSaveable(session.id){mutableStateOf(session.deepDepthAlarmMeters?.toString().orEmpty())}
@@ -513,7 +513,7 @@ private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,vm:MainViewM
             val config=ConditionGuardConfig(depthOn,shallow.toDoubleOrNull(),deep.toDoubleOrNull(),windOn,storedWind(warning,initialWarning,session.windWarningKnots),storedWind(alarm,initialAlarm,session.windAlarmKnots),shiftOn,shift.toDoubleOrNull(),session.windAllowApparentFallback)
             val checked=config.validated()
             if(checked.depthGuardEnabled!=depthOn||checked.windGuardEnabled!=windOn||checked.windShiftEnabled!=shiftOn || (depthOn&&deep.isNotBlank()&&checked.deepDepthAlarmMeters==null))invalid=true
-            else {timedOut=false;applying=checked;vm.updateConditionGuards(checked)}
+            else {timedOut=false;applying=checked;services.anchor.updateConditionGuards(checked)}
         },primary=true,enabled=applying==null)
     }
 }
@@ -539,7 +539,7 @@ private suspend fun loadAnchorReview(os:OsStore,session:AnchorSessionEntity,gapM
     val aggregate=AnchorSwingCoverage(watchCenter(session),session.alarmRadiusMeters)
     var recent=emptyList<com.yokuli.anchorwatch.data.database.TrackPointEntity>()
     while(true) {
-        val batch=os.sailing.database.anchorDao().pointsPage(session.id,aggregate.lastTimestamp,aggregate.lastId,1000)
+        val batch=os.sailing.anchorTrackPage(session.id,aggregate.lastTimestamp,aggregate.lastId,1000)
         aggregate.add(batch);recent=(recent+batch).takeLast(1200)
         if(batch.size<1000)break
     }

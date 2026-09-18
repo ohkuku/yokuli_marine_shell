@@ -15,15 +15,15 @@ import com.yokuli.marine.shell.rebuild.*
 
 /** A single system presentation of domain alarms. It does not own their thresholds or lifetimes. */
 @Composable fun SystemMarineAlerts(os:OsStore) {
-    val vm=os.marine?.vm?:return;val state by vm.ui.collectAsState()
+    val services=os.marine?.services?:return;val state by services.state.collectAsState()
     val tick=rememberMarineClock();val now=remember(tick){System.currentTimeMillis()}
     val active=state.active;val alarm=state.alarmSnapshot;val c=LocalMetro.current
     val testing=alarm.type==AlarmType.ALARM_TEST&&alarm.state==AlarmState.ALARM
     Box(Modifier.fillMaxSize()) {
         if(testing)Column(Modifier.align(Alignment.TopCenter).padding(12.dp).fillMaxWidth().background(c.bg).border(2.dp,c.accent).padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Label(os.t("警报测试正在响铃","alarm test is sounding"),25,c.accent)
-            MetroButton(os.t("我能听见，停止测试","I can hear it · stop test"),{vm.confirmAlarmAudible();vm.stopAlarmTest()},primary=true)
-            MetroButton(os.t("停止测试","stop test"),vm::stopAlarmTest)
+            MetroButton(os.t("我能听见，停止测试","I can hear it · stop test"),{services.preferences.confirmAlarmAudible();services.preferences.stopAlarmTest()},primary=true)
+            MetroButton(os.t("停止测试","stop test"),services.preferences::stopAlarmTest)
         }
     }
     if(testing||active==null||active.paused)return
@@ -86,12 +86,12 @@ import com.yokuli.marine.shell.rebuild.*
         Column(Modifier.fillMaxWidth().heightIn(max=670.dp).background(c.bg).border(2.dp,Color(0xFFD04848)).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Label(primary.title,32,Color(0xFFD04848));Label(primary.value,42);Label(primary.detail,20)
             alerts.filter{it!=primary}.forEach{Label("${it.title} · ${it.value}",18,c.muted)}
-            MetroButton(os.t("${state.settings.alarmSnoozeMinutes} 分钟后提醒","snooze ${state.settings.alarmSnoozeMinutes} min"),vm::acknowledge,primary=true)
-            MetroButton(os.t("稍后提醒并查看锚警","snooze & open anchor watch"),{vm.acknowledge();os.open("anchor")})
-            MetroButton(os.t("暂停并处理数据来源","pause & check data sources"),{vm.pauseWatch();os.open("nmea:sources")})
-            MetroButton(os.t("暂停锚警","pause watch"),vm::pauseWatch)
+            MetroButton(os.t("${state.settings.alarmSnoozeMinutes} 分钟后提醒","snooze ${state.settings.alarmSnoozeMinutes} min"),services.anchor::acknowledge,primary=true)
+            MetroButton(os.t("稍后提醒并查看锚警","snooze & open anchor watch"),{services.anchor.acknowledge();os.open("anchor")})
+            MetroButton(os.t("暂停并处理数据来源","pause & check data sources"),{services.anchor.pauseWatch();os.open("nmea:sources")})
+            MetroButton(os.t("暂停锚警","pause watch"),services.anchor::pauseWatch)
             MetroButton(os.t("起锚并结束值守","lift anchor & end watch"),{end=true})
         }
     }
-    if(end)ConfirmDialog(os,os.t("结束这次锚警值守？","End this anchor watch?"),{end=false}){vm.liftAnchor();end=false}
+    if(end)ConfirmDialog(os,os.t("结束这次锚警值守？","End this anchor watch?"),{end=false}){services.anchor.liftAnchor();end=false}
 }

@@ -218,9 +218,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
   // stopped phone-hosted service. It must never remain a Boat TX destination.
   scope.launch{startupReady.await();preferences.settings.map{Triple(it.nmeaSharingEnabled,it.nmeaSharingPort,it.gpsDataSource)}.distinctUntilChanged().collect{(enabled,port,source)->
    if(enabled){
-    val legacy=preferences.settings.first();val output=outputSettings.settings.first()
     localNmeaServerSettings.saveConfiguration(localNmeaServerSettings.settings.first().copy(port=port.coerceIn(1024,65535),configured=true,serverRequested=false))
-    preferences.save(legacy.copy(nmeaSharingEnabled=false))
+    preferences.clearLegacySharingRequested()
     incidentLogger.record("local_nmea_server","LEGACY_SHARING_MIGRATED_STOPPED",details=mapOf("port" to port,"source" to source.name))
    }
   }}
@@ -285,7 +284,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
     val previous=preferences.settings.first().gpsDataSource
     val changed=previous!=command.source
     if(changed)anchorActor.execute{conditionRuntime.flush();pause();conditionRuntime.sync(activeSession())}
-    val current=preferences.settings.first();preferences.save(current.copy(gpsDataSource=command.source,mockEnabled=false))
+    preferences.setPositionSource(command.source, clearMock=true)
     systemLocation.setAppEnabled(command.source in setOf(GpsDataSource.SYSTEM,GpsDataSource.DEMO))
     if(changed){
      anchorActor.execute{bindSystemPositionSource(command.source,"${previous.name}_TO_${command.source.name}")}
@@ -299,7 +298,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
     val changed=oldConnection!=command.connectionId||command.sourceKey!=null&&command.sourceKey!=oldKey||preferences.settings.first().gpsDataSource!=GpsDataSource.NMEA
     if(changed)anchorActor.execute{conditionRuntime.flush();pause();conditionRuntime.sync(activeSession())}
     if(changed||oldKey==null)navigation.selectPositionConnection(command.connectionId,command.sourceKey)
-    val current=preferences.settings.first();preferences.save(current.copy(gpsDataSource=GpsDataSource.NMEA,mockEnabled=false));systemLocation.setAppEnabled(false)
+    preferences.setPositionSource(GpsDataSource.NMEA, clearMock=true);systemLocation.setAppEnabled(false)
     if(changed){
      val detail="NMEA_CONNECTION=$oldConnection TO ${command.connectionId};SOURCE=${command.sourceKey?:"FIRST_VALID_INPUT"}"
      anchorActor.execute{bindSystemPositionSource(GpsDataSource.NMEA,detail)}
@@ -375,7 +374,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
    RuntimeCommand.TestAlarm->{val generation=alarmTestGeneration.incrementAndGet();launchCommand{testAlarm(generation)}}
    RuntimeCommand.StopAlarmTest->{alarmTestGeneration.incrementAndGet();setAlarmSource(ConditionAlarmSource.ALARM_TEST,false);launchCommand{stopAlarmTest()}}
    is RuntimeCommand.SetSharing->launchCommand{
-    val current=preferences.settings.first();if(current.nmeaSharingEnabled)preferences.save(current.copy(nmeaSharingEnabled=false))
+    val current=preferences.settings.first();if(current.nmeaSharingEnabled)preferences.clearLegacySharingRequested()
     notifySeparate("NMEA Sharing moved","Use Data → NMEA output. One Phone/App-owned feed now owns every output destination; the old parallel sharing publisher cannot be started.",false)
     refreshNotification();releaseIfIdle()
    }
@@ -528,7 +527,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   }
   val current=preferences.settings.first()
   if(current.nmeaSharingEnabled){
-   preferences.save(current.copy(nmeaSharingEnabled=false))
+   preferences.clearLegacySharingRequested()
    stopped+="legacy NMEA Sharing request"
   }
   if(RuntimeOwner.PHONE_NMEA_OUTPUT in nmeaOwners&&outputSettings.settings.first().anyEnabled){

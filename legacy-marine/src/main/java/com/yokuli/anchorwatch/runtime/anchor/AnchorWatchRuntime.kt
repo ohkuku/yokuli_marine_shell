@@ -701,7 +701,7 @@ class AnchorWatchRuntime(
             detail="${previous.name}_TO_${requested.name};HANDOVER_SEPARATION_METERS=${separation?:Double.NaN}",
         ))
         settings=settings.copy(gpsDataSource=requested)
-        preferences.save(settings)
+        preferences.setPositionSource(requested)
         currentGpsSource=requested
         lastProcessedAcceptedKey=null
         acceptedPosition.lockSource(updated.id,requested)

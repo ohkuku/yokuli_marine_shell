@@ -52,7 +52,7 @@ import kotlinx.coroutines.flow.collect
 
 /** Uses the original production Shell composables and reducer without reimplementing gestures. */
 @Composable
-fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
+fun OsExperience(os: OsStore) {
     val shell = os.shell
     val state by shell.engine.state.collectAsState()
     val savedTasks=rememberSaveableStateHolder()
@@ -62,10 +62,10 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
             .forEach {savedTasks.removeState(it);savedKeys.remove(it)}
     }
     os.marine?.let { marine ->
-        val settingsReady by remember(marine) { marine.vm.ui.map { it.settingsReady }.distinctUntilChanged() }.collectAsState(false)
+        val settingsReady by remember(marine) { marine.services.state.map { it.settingsReady }.distinctUntilChanged() }.collectAsState(false)
         LaunchedEffect(os.chinese, marine, settingsReady) { marine.syncLanguage() }
         LaunchedEffect(marine) {
-            marine.vm.shellDestinations.collect { destination ->
+            marine.services.feedback.destinations.collect { destination ->
                 os.open(when(destination.name) {
                     "CHART" -> "chart"
                     "ANCHOR" -> "anchor"
@@ -120,16 +120,16 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
     val needsHeadingDisplay=lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
         (os.notifications.expanded || state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS,AppId.DATA_CENTER))
     DisposableEffect(os.marine,needsHeadingDisplay) {
-        val vm=os.marine?.vm
-        vm?.setMapHeadingDisplayActive(needsHeadingDisplay)
-        onDispose {vm?.setMapHeadingDisplayActive(false)}
+        val services=os.marine?.services
+        val lease = if (needsHeadingDisplay) services?.display?.acquireMapHeading() else null
+        onDispose { lease?.close() }
     }
     val needsSensorDisplay = lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
         (os.notifications.expanded || state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.INSTRUMENTS,AppId.DATA_CENTER))
     DisposableEffect(os.marine, needsSensorDisplay) {
-        val vm = os.marine?.vm
-        vm?.setTripLiveDisplayActive(needsSensorDisplay)
-        onDispose { vm?.setTripLiveDisplayActive(false) }
+        val services = os.marine?.services
+        val lease = if (needsSensorDisplay) services?.display?.acquireInstruments() else null
+        onDispose { lease?.close() }
     }
     DisposableEffect(lifecycleOwner, shell) {
         val observer = LifecycleEventObserver { _, event ->
@@ -233,7 +233,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                                     savedTasks.SaveableStateProvider(stateKey) {
                                         CompositionLocalProvider(LocalInternalAppInputEnabled provides (target==state.motionTarget() && !os.notifications.expanded),LocalInternalAppPageKey provides target.instanceKey,LocalAppPage provides page) {
                                         TaskCaptureHost(os,target.taskId,target.instanceKey,active=target==state.motionTarget() && heavyContentReady) {
-                                            ShellAppContent(os,page,service)
+                                            ShellAppContent(os,page)
                                         }
                                         }
                                     }
@@ -264,7 +264,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
 }
 
 @Composable
-private fun ShellAppContent(os: OsStore, page: String, service: (String, String?) -> Unit) {
+private fun ShellAppContent(os: OsStore, page: String) {
     when {
         page == "chart" -> ChartAppScreen(os)
         page == "library" -> LibraryScreen(os)
@@ -279,8 +279,8 @@ private fun ShellAppContent(os: OsStore, page: String, service: (String, String?
         page == "voyages" -> LogbookScreen(os)
         page.substringBefore(':') in setOf("voyage","replay","report") -> LogbookScreen(os,page.substringAfter(':').toLongOrNull())
         page == "anchor" -> AnchorExperience(os)
-        page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os, service)
-        page == "local_nmea" -> LocalNmeaScreen(os, service)
+        page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os)
+        page == "local_nmea" -> LocalNmeaScreen(os)
         page == "tiles" || page.startsWith("tiles:") -> TileLibraryScreen(os,page.substringAfter(':', "").takeIf {it.isNotBlank()})
         page == "settings" || page.startsWith("settings:") -> SettingsScreen(os,page.substringAfter(':',"overview"))
         else -> Column { PageHeader(os,os.t("页面已更新","page updated"));PageBody {

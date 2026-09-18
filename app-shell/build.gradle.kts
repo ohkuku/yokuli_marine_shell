@@ -18,8 +18,8 @@ android {
         applicationId = "com.yokuli.marine"
         minSdk = 28
         targetSdk = 36
-        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 10
-        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.5.0-experience.6"
+        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 11
+        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.5.0-experience.7"
         manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = mapsKey.get()
         buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", (mapsKey.get() != "MAPS_API_KEY_NOT_CONFIGURED").toString())
         buildConfigField("boolean", "ROM_HOME", "false")
@@ -73,9 +73,7 @@ dependencies {
     implementation(project(":feature:desktop"))
     implementation(project(":adapter:shell-android"))
     implementation(project(":adapter:shell-storage"))
-    implementation(project(":legacy-marine"))
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
+    implementation(project(":runtime:marine-local"))
     implementation("com.google.dagger:hilt-android:2.56.1")
     ksp("com.google.dagger:hilt-compiler:2.56.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
@@ -92,3 +90,12 @@ dependencies {
     implementation(libs.play.services.maps)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
+
+// 所有 APK flavor 编译前检查完整生产源码，防止页面重新直连业务实现。
+val checkRuntimeBoundaries by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Check Shell, runtime and pure Kotlin contract source boundaries"
+    workingDir(rootProject.projectDir)
+    commandLine("python3", rootProject.file("scripts/check_runtime_boundaries.py").absolutePath)
+}
+tasks.named("preBuild").configure { dependsOn(checkRuntimeBoundaries) }

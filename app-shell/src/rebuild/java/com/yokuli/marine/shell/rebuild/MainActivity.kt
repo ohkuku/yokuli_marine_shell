@@ -12,13 +12,13 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.viewModels
 import androidx.compose.runtime.SideEffect
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.yokuli.anchorwatch.MainViewModel
+import com.yokuli.runtime.contract.PositionSourceRequest
+import com.yokuli.anchorwatch.domain.model.GpsDataSource
 import com.yokuli.marine.shell.BuildConfig
 import com.yokuli.marine.shell.rebuild.ui.MetroTheme
 import com.yokuli.shell.android.AndroidShellKeyAdapter
@@ -28,34 +28,43 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    private val marineVm: MainViewModel by viewModels()
     private var longBackConsumed = false
     private val os get()=(application as YokuliApplication).os
-    private val serviceHandler: (String, String?) -> Unit = { action, extra -> service(action, extra) }
+    private val serviceHandler: (PositionSourceRequest) -> Unit = ::requestPosition
     private val gpsPermission=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        if(result[Manifest.permission.ACCESS_FINE_LOCATION]==true) service("gpsOn")
+        if(result[Manifest.permission.ACCESS_FINE_LOCATION]==true) requestPosition(PositionSourceRequest.ENABLE_PHONE)
         else os.notify("手机定位需要精确位置权限，可在“数据中心”重试","Phone location needs precise location permission. Retry in Data Center.",app=AppId.DATA_CENTER,destination="data_center:phone")
     }
     private val locationSettings=registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if(getSystemService(LocationManager::class.java).isLocationEnabled) service("gpsOn")
+        if(getSystemService(LocationManager::class.java).isLocationEnabled) requestPosition(PositionSourceRequest.ENABLE_PHONE)
         else os.notify("定位服务尚未开启，可在“数据中心”重新开启手机定位","Location services are still off. Enable phone location again in Data Center.",app=AppId.DATA_CENTER,destination="data_center:phone")
     }
     private val notifications=registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
-    fun service(action:String,extra:String?=null) {
-        if(action=="gpsOn" && ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED) {
-            gpsPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION)); return
+    /** 页面只提出明确的船位请求；Android 权限属于宿主，来源选择属于数据服务。 */
+    private fun requestPosition(action: PositionSourceRequest) {
+        if (action == PositionSourceRequest.ENABLE_PHONE) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                gpsPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                return
+            }
+            if (!getSystemService(LocationManager::class.java).isLocationEnabled) {
+                locationSettings.launch(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                return
+            }
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if(action=="gpsOn" && !getSystemService(LocationManager::class.java).isLocationEnabled) {
-            locationSettings.launch(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)); return
+        val source = when (action) {
+            PositionSourceRequest.ENABLE_PHONE -> GpsDataSource.SYSTEM
+            PositionSourceRequest.DISABLE_POSITION -> GpsDataSource.NONE
+            PositionSourceRequest.USE_NMEA -> GpsDataSource.NMEA
         }
-        if(Build.VERSION.SDK_INT>=33 && action in listOf("connect","gpsOn","shareOn") && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
-            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-        runCatching { os.marine?.action(action, extra) }
-            .onFailure { os.notify("无法启动数据服务，请重试","Could not start the data service. Please retry.") }
+        runCatching { (application as YokuliApplication).marineSystem.services.sources.switchGpsDataSource(source) }
+            .onFailure { os.notify("无法切换船位来源，请重试", "Could not change position source. Please retry.", app = AppId.DATA_CENTER) }
     }
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
-        os.attachMarine(marineVm)
+        os.connectSystem((application as YokuliApplication).marineSystem)
         os.systemAction=serviceHandler
         returnHomeFromRomIntent(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) window.attributes = window.attributes.apply {
@@ -65,7 +74,7 @@ class MainActivity : ComponentActivity() {
         immersive()
         setContent {
             SideEffect { if(os.keepAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
-            MetroTheme(os) { OsExperience(os,::service) }
+            MetroTheme(os) { OsExperience(os) }
         }
     }
     override fun onNewIntent(intent: Intent) {
@@ -81,7 +90,7 @@ class MainActivity : ComponentActivity() {
         os.shell.dispatch(LauncherAction.ShowDesktop)
     }
     override fun onWindowFocusChanged(hasFocus:Boolean) { super.onWindowFocusChanged(hasFocus); if(hasFocus) immersive() }
-    override fun onResume() { super.onResume(); marineVm.onPermissionsChanged() }
+    override fun onResume() { super.onResume(); (application as YokuliApplication).marineSystem.services.sources.onPermissionsChanged() }
     private fun immersive() { WindowInsetsControllerCompat(window,window.decorView).apply { hide(WindowInsetsCompat.Type.systemBars()); systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE } }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val input = AndroidShellKeyAdapter.mapKeyCode(event.keyCode) ?: return super.dispatchKeyEvent(event)

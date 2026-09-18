@@ -239,9 +239,7 @@ data class NmeaInstrumentState(
                 if(pin==null&&chosen!=null&&pendingPositionPin!=chosen){
                     pendingPositionPin=chosen
                     scope.launch{
-                        val current=vesselSettings.settings.first()
-                        if(current.metricSourcePins["POSITION_CONNECTION"]==connectionPin&&current.metricSourcePins["POSITION"]==null)
-                            vesselSettings.save(current.copy(metricSourcePins=current.metricSourcePins+("POSITION" to chosen)))
+                        vesselSettings.pinPositionSourceIfUnselected(connectionPin, chosen)
                     }
                 }
             }
@@ -256,7 +254,8 @@ data class NmeaInstrumentState(
         val pins=current.metricSourcePins.toMutableMap();pins["POSITION_CONNECTION"]=id;if(sourceKey==null)pins.remove("POSITION")else pins["POSITION"]=sourceKey
         val updated=current.copy(metricSourcePins=pins,pinnedPositionSourceId=null,allowPinnedFallback=false)
         synchronized(guard){positionLock=null;positionPolicyKey=null;vessel=updated;arbiter.reset();refreshObservations()}
-        vesselSettings.save(updated)
+        // updated 只用于当前读模型；持久化在 edit 内合并船位字段，避免保存旧的仪表/其他来源。
+        vesselSettings.selectPositionConnection(id, sourceKey)
     }
     suspend fun ensurePositionConnection(){
         val current=vesselSettings.settings.first()

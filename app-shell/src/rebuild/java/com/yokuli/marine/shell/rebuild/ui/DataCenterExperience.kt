@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell.rebuild.ui
 
+import com.yokuli.runtime.contract.PositionSourceRequest
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -78,9 +79,9 @@ import com.yokuli.shell.contract.ShellInput
 
 /** 手机采集与发布是两件事。这里控制采集与安装，分享端只决定输出内容。 */
 @Composable internal fun ColumnScope.PhoneSourceSettings(os: OsStore, openMounting: () -> Unit, openPosition: () -> Unit) {
-    val vm = os.marine?.vm ?: return
-    val state by vm.ui.collectAsState()
-    val location by vm.phoneLocationStatus.collectAsState()
+    val services = os.marine?.services ?: return
+    val state by services.state.collectAsState()
+    val location by services.sources.phoneLocationStatus.collectAsState()
     val readings by os.hub.state.collectAsState()
     val now = rememberMarineClock()
     val locked = state.active?.paused == false
@@ -88,7 +89,7 @@ import com.yokuli.shell.contract.ShellInput
     Toggle(os.t("手机定位", "phone location"), os.positionSource == "phone",
         if (os.positionSource == "nmea") os.t("当前使用船载船位，先在“位置”中关闭它。", "Boat position is selected; turn it off in Position first.")
         else os.t("开启时提供船位、对地航速与对地航向。", "Provides position, speed and course over ground while enabled."),
-        enabled = !locked && os.positionSource in listOf("none", "phone")) { os.requestService(if (it) "gpsOn" else "gpsOff") }
+        enabled = !locked && os.positionSource in listOf("none", "phone")) { os.requestPosition(if (it) PositionSourceRequest.ENABLE_PHONE else PositionSourceRequest.DISABLE_POSITION) }
     if (os.positionSource == "nmea") MenuRow(os.t("选择船位来源", "choose position source"), os.t("全船使用同一份位置选择", "one position choice for all apps")) { openPosition() }
     if (locked) Label(os.t("守锚正在使用船位，暂停后可以更改。", "Anchor Watch is using position; pause before changing it."), 17, LocalMetro.current.muted)
     readings.phone?.let { fix -> Label(os.formatCoordinates(fix.point), 23); Label(readingAge(os, fix.elapsed, now), 16, LocalMetro.current.muted) }
@@ -128,8 +129,8 @@ import com.yokuli.shell.contract.ShellInput
 }
 
 @Composable private fun ColumnScope.PhoneMountSettings(os: OsStore) {
-    val vm = os.marine?.vm ?: return
-    val state by vm.ui.collectAsState()
+    val services = os.marine?.services ?: return
+    val state by services.state.collectAsState()
     val now = rememberMarineClock()
     var axis by rememberSaveable { mutableStateOf(state.vesselMountCalibration.bowAxis) }
     var confirming by remember { mutableStateOf(false) }
@@ -147,17 +148,17 @@ import com.yokuli.shell.contract.ShellInput
         Column(Modifier.weight(1f)) { Label(os.t("船首向", "vessel heading"), 14, LocalMetro.current.muted); Label(os.formatBearing(heading?.takeIf { state.vesselMountCalibration.headingAligned }?.plus(state.vesselMountCalibration.headingAlignmentOffsetDegrees)), 36, LocalMetro.current.accent) }
     }
     Label(if (phone.liveTrueHeadingDegrees != null) os.t("真北方向", "true north") else os.t("磁北方向", "magnetic north"), 16, LocalMetro.current.muted)
-    MetroButton(os.t("确认顶部朝向船艏", "align top edge with bow"), { vm.alignPhoneHeadingToBow() }, primary = true, enabled = heading != null)
-    if (match != null) MetroButton(os.t("匹配船载罗盘", "match boat compass"), { vm.alignPhoneHeadingToNmea() })
+    MetroButton(os.t("确认顶部朝向船艏", "align top edge with bow"), { services.sources.alignPhoneHeadingToBow() }, primary = true, enabled = heading != null)
+    if (match != null) MetroButton(os.t("匹配船载罗盘", "match boat compass"), { services.sources.alignPhoneHeadingToNmea() })
     Label(os.t("船体姿态", "vessel attitude"), 30)
     Label(os.t("手机平面与船体平行。选择朝向船艏的边缘，当前横倾不会被当成零。", "Keep the phone plane parallel to the boat. Choose the edge facing the bow; the boat's current heel will be preserved."), 18, LocalMetro.current.muted)
     DeviceBowAxis.entries.forEach { value ->
         ChoiceRow(when (value) { DeviceBowAxis.TOP -> os.t("顶部", "top"); DeviceBowAxis.BOTTOM -> os.t("底部", "bottom"); DeviceBowAxis.LEFT -> os.t("左侧", "left"); DeviceBowAxis.RIGHT -> os.t("右侧", "right") }, axis == value) { axis = value }
     }
     if (confirming) MetroProgress(os.t("正在读取安装方向", "reading mounting direction"))
-    MetroButton(os.t("确认安装方向", "confirm mounting direction"), { vm.clearVesselCalibrationFeedback(); confirming = true; vm.confirmTripAttitudeFrame(axis) }, primary = true,
+    MetroButton(os.t("确认安装方向", "confirm mounting direction"), { services.sources.clearVesselCalibrationFeedback(); confirming = true; services.sources.confirmTripAttitudeFrame(axis) }, primary = true,
         enabled = !confirming && state.activeTrip?.paused != true && state.phoneSensorCapabilities.attitudeAvailable)
     if (state.vesselMountCalibration.mountConfirmed) Label(os.t("姿态安装已确认", "attitude mounting confirmed"), 19, LocalMetro.current.accent)
     if (!confirming && state.vesselCalibrationFeedback == "No rotation-vector sample is available on this phone.") Label(os.t("没有收到姿态读数，请检查手机是否支持姿态传感器。", "No attitude reading received. Check this phone's sensor support."), 17, LocalMetro.current.muted)
-    if (state.vesselMountCalibration.mountConfirmed) MetroButton(os.t("停止采用手机姿态", "stop using phone attitude"), { vm.pauseTripAttitude() })
+    if (state.vesselMountCalibration.mountConfirmed) MetroButton(os.t("停止采用手机姿态", "stop using phone attitude"), { services.voyages.pauseTripAttitude() })
 }

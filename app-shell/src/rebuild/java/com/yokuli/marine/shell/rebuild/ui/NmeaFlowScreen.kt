@@ -17,10 +17,10 @@ import com.yokuli.shell.contract.ShellInput
 import kotlinx.coroutines.delay
 
 /** One app, named connections, and local object details. No legacy workspace. */
-@Composable fun NmeaScreen(os:OsStore,service:(String,String?)->Unit){
-    val vm=os.marine?.vm ?: return
-    val connections by vm.nmeaConnections.collectAsState()
-    val state by vm.ui.collectAsState()
+@Composable fun NmeaScreen(os:OsStore){
+    val services=os.marine?.services ?: return
+    val connections by services.network.connections.collectAsState()
+    val state by services.state.collectAsState()
     var selected by rememberSaveable{mutableStateOf<String?>(null)}
     var editing by rememberSaveable{mutableStateOf(false)}
     var creating by rememberSaveable{mutableStateOf(false)}
@@ -37,7 +37,7 @@ import kotlinx.coroutines.delay
         // 编辑连接后回到原来的实况/语句/路由页；列表滚动也独立保留。
         val pageKey=when{creating->"create";editing->"edit:$selected";current!=null->"connection:$selected";else->"connections"}
         pageStates.SaveableStateProvider(pageKey) { when{
-            creating||editing->ConnectionEditor(os,if(creating)null else current?.spec,connections.map{it.spec}){spec->vm.saveNmeaConnection(spec){selected=spec.id;editing=false;creating=false}}
+            creating||editing->ConnectionEditor(os,if(creating)null else current?.spec,connections.map{it.spec}){spec->services.network.saveNmeaConnection(spec){selected=spec.id;editing=false;creating=false}}
             current!=null->Pivot(listOf(os.t("实况","live"),os.t("语句","sentences"),os.t("路由","routing"))){page->
                 when(page){
                     0->PageBody{
@@ -50,7 +50,7 @@ import kotlinx.coroutines.delay
                         Label(os.t("最近接收：","Last received: ")+frameAge(os,current.diagnostics.lastPacketElapsed,now),16,LocalMetro.current.muted)
                         Label(os.t("最近写出：","Last written: ")+frameAge(os,current.lastWrittenElapsed,now),16,LocalMetro.current.muted)
                         current.error?.let{Label(it,16,LocalMetro.current.accent)}
-                        MetroButton(if(current.requested)os.t("停止这条连接","stop this connection")else os.t("连接","connect"),{if(current.requested)vm.stopNmeaConnection(current.spec.id)else vm.startNmeaConnection(current.spec.id)},primary=!current.requested,enabled=current.requested||current.spec.feed!=NmeaFeed.PHONE||!current.spec.send)
+                        MetroButton(if(current.requested)os.t("停止这条连接","stop this connection")else os.t("连接","connect"),{if(current.requested)services.network.stopNmeaConnection(current.spec.id)else services.network.startNmeaConnection(current.spec.id)},primary=!current.requested,enabled=current.requested||current.spec.feed!=NmeaFeed.PHONE||!current.spec.send)
                         if(!current.requested&&current.spec.send&&current.spec.feed==NmeaFeed.PHONE)Label(os.t("先编辑这条连接，将旧版手机专用输出改为数据中心的读数。","Edit this connection to replace legacy phone-only output with Data Center readings."),17,LocalMetro.current.muted)
                         Label(os.t("只启停这条连接。数据中心保留你的来源选择，其他连接与航行继续运行。","This starts or stops this connection. Data Center keeps your source choices; other connections and your voyage continue."),15,LocalMetro.current.muted)
                         MetroButton(os.t("编辑连接","edit connection"),{editing=true},enabled=!current.requested)
@@ -67,7 +67,7 @@ import kotlinx.coroutines.delay
                         Label(if(current.spec.send)os.t("输出：","output: ")+feedText(os,current.spec.feed)else os.t("输出已关闭","output disabled"),24)
                         if(current.spec.send)NmeaPublicationEditor(os,current.spec.feed,{},NmeaPublicationPolicy.selected(current.spec),{},current.spec.forwardFrom,{},connections.map{it.spec},current.spec.id,editable=false,destination=current.spec.name)
                         MetroButton(os.t("编辑路由","edit routing"),{editing=true},enabled=!current.requested)
-                        MetroButton(os.t("移除这条连接","remove connection"),{vm.removeNmeaConnection(current.spec.id);selected=null},enabled=!current.requested)
+                        MetroButton(os.t("移除这条连接","remove connection"),{services.network.removeNmeaConnection(current.spec.id);selected=null},enabled=!current.requested)
                     }
                 }
             }

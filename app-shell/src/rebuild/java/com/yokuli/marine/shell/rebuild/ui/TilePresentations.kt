@@ -109,8 +109,8 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     val preferences by os.shell.persistence.state.collectAsState()
     val data by os.hub.state.collectAsState()
     val history by os.hub.history.collectAsState()
-    val state = os.marine?.vm?.ui?.collectAsState()?.value
-    val connections = os.marine?.vm?.nmeaConnections?.collectAsState()?.value.orEmpty()
+    val state = os.marine?.services?.state?.collectAsState()?.value
+    val connections = os.marine?.services?.network?.connections?.collectAsState()?.value.orEmpty()
     val owner = LocalLifecycleOwner.current
     var resumed by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(owner) {

@@ -1,14 +1,12 @@
 package com.yokuli.marine.shell.rebuild
 
 import com.yokuli.anchorwatch.data.database.AlarmEventEntity
-import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.launch
 
 /** 进程级订阅：前台服务启动 Application 时即工作，不依赖 Activity 或 Compose 存活。 */
 internal fun OsStore.observeMarineNotices()=scope.launch {
     notifications.awaitLoaded()
-    val database=EntryPointAccessors.fromApplication(context.applicationContext,SailingDataAccess::class.java).database()
-    database.anchorDao().observeRecentAlarmEvents(200).collect {events->
+    content.observeRecentAlarmEvents(200).collect {events->
         events.sortedBy {it.id}.forEach {event->notifications.acceptAnchorEvent(event.id,event.asNotice())}
     }
 }

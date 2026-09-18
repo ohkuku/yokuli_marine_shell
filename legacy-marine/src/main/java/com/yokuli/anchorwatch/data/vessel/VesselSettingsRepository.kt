@@ -130,6 +130,58 @@ class VesselSettingsRepository @Inject constructor(@ApplicationContext private v
         decode(p[K.nav],TripInstrumentPreset.NAV),decode(p[K.sailing],TripInstrumentPreset.SAILING),decode(p[K.motion],TripInstrumentPreset.MOTION),decode(p[K.weather],TripInstrumentPreset.WEATHER),
         decode(p[K.custom],TripInstrumentPreset.CUSTOM),p[K.customFields]?.split('|')?.filter{it.isNotBlank()}?.distinct()?.take(24)?:emptyList(),p[K.boatHeadingSource]?.takeIf{it.isNotBlank()},p[K.pinnedPositionSource]?.takeIf{it.isNotBlank()},p[K.allowPinnedFallback]?:false, p[K.vesselName].orEmpty(), runCatching{com.google.gson.Gson().fromJson<Map<String,String>>(p[K.metricPins],object:com.google.gson.reflect.TypeToken<Map<String,String>>(){}.type)}.getOrNull().orEmpty(),
     )}
+    /** 船名/吃水与数据源无关；在同一 edit 中只写本次用户修改的两个 key。 */
+    suspend fun setVesselIdentity(name: String, draftMeters: Double?) = context.vesselSettingsStore.edit { p ->
+        require(draftMeters == null || (draftMeters.isFinite() && draftMeters >= 0.0)) { "Invalid vessel draft" }
+        p[K.vesselName] = name.trim().take(100)
+        if (draftMeters == null) p.remove(K.draft) else p[K.draft] = draftMeters
+    }
+
+    /** “我的”仪表排列不重写船名、吃水、来源 pin 或其他仪表分组。 */
+    suspend fun setInstrumentLayout(layout: List<InstrumentTileId>) = context.vesselSettingsStore.edit { p ->
+        p[K.custom] = encode(layout.distinct(), TripInstrumentPreset.CUSTOM)
+    }
+
+    /** 逐项选源也在 DataStore 原子边界内合并，不能反向覆盖刚保存的身份或仪表布局。 */
+    suspend fun selectMetricSource(metric: com.yokuli.anchorwatch.domain.vessel.VesselMetricId, sourceId: String?) = context.vesselSettingsStore.edit { p ->
+        val currentPins = runCatching {
+            Gson().fromJson<Map<String, String>>(p[K.metricPins], object : TypeToken<Map<String, String>>() {}.type)
+        }.getOrNull().orEmpty()
+        val selected = VesselMetricSelectionPolicy.choose(VesselDataSettings(metricSourcePins = currentPins), metric, sourceId)
+        p[K.metricPins] = Gson().toJson(selected.metricSourcePins)
+        if (sourceId == null && metric in setOf(
+                com.yokuli.anchorwatch.domain.vessel.VesselMetricId.HEADING_TRUE,
+                com.yokuli.anchorwatch.domain.vessel.VesselMetricId.HEADING_MAGNETIC,
+            )) {
+            p[K.heading] = VesselSourcePreference.AUTO.name
+            p.remove(K.boatHeadingSource)
+        }
+    }
+
+    /** 改船位输入只修改船位 pin，不能覆盖并发选择的其他读数来源、身份或仪表布局。 */
+    suspend fun selectPositionConnection(connectionId: String, sourceKey: String?) = context.vesselSettingsStore.edit { p ->
+        require(connectionId.isNotBlank())
+        val pins = runCatching {
+            Gson().fromJson<Map<String, String>>(p[K.metricPins], object : TypeToken<Map<String, String>>() {}.type)
+        }.getOrNull().orEmpty().toMutableMap()
+        pins["POSITION_CONNECTION"] = connectionId
+        if (sourceKey == null) pins.remove("POSITION") else pins["POSITION"] = sourceKey
+        p[K.metricPins] = Gson().toJson(pins)
+        p.remove(K.pinnedPositionSource)
+        p[K.allowPinnedFallback] = false
+    }
+
+    /** 首个有效报文锁定来源时，比较与写入必须在同一个事务里，防止覆盖用户刚切换的输入。 */
+    suspend fun pinPositionSourceIfUnselected(expectedConnectionId: String?, sourceKey: String) = context.vesselSettingsStore.edit { p ->
+        val pins = runCatching {
+            Gson().fromJson<Map<String, String>>(p[K.metricPins], object : TypeToken<Map<String, String>>() {}.type)
+        }.getOrNull().orEmpty()
+        if (pins["POSITION_CONNECTION"] == expectedConnectionId && pins["POSITION"] == null) {
+            p[K.metricPins] = Gson().toJson(pins + ("POSITION" to sourceKey))
+        }
+    }
+
+    /** 旧页面/备份兼容入口；来源和偏好新调用方使用字段级命令。 */
     suspend fun save(value:VesselDataSettings)=context.vesselSettingsStore.edit{p->p[K.vesselName]=value.vesselName.trim().take(100);p[K.metricPins]=com.google.gson.Gson().toJson(value.metricSourcePins);p[K.position]=value.positionPreference.name;p[K.heading]=value.headingPreference.name;p[K.workspace]=value.watchWorkspace.name;if(value.draftMeters==null)p.remove(K.draft)else p[K.draft]=value.draftMeters.coerceAtLeast(0.0);p[K.nav]=encode(value.navLayout,TripInstrumentPreset.NAV);p[K.sailing]=encode(value.sailingLayout,TripInstrumentPreset.SAILING);p[K.motion]=encode(value.motionLayout,TripInstrumentPreset.MOTION);p[K.weather]=encode(value.weatherLayout,TripInstrumentPreset.WEATHER);p[K.custom]=encode(value.customLayout,TripInstrumentPreset.CUSTOM);p[K.customFields]=value.customNmeaFieldIds.distinct().take(24).joinToString("|");if(value.boatHeadingSourceId.isNullOrBlank())p.remove(K.boatHeadingSource)else p[K.boatHeadingSource]=value.boatHeadingSourceId;if(value.pinnedPositionSourceId.isNullOrBlank())p.remove(K.pinnedPositionSource)else p[K.pinnedPositionSource]=value.pinnedPositionSourceId;p[K.allowPinnedFallback]=value.allowPinnedFallback}
 }
 

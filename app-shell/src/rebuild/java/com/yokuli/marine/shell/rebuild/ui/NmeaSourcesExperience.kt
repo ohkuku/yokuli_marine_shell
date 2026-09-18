@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell.rebuild.ui
 
+import com.yokuli.runtime.contract.PositionSourceRequest
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import com.yokuli.marine.shell.rebuild.*
@@ -14,9 +15,9 @@ import com.yokuli.anchorwatch.domain.vessel.*
 }
 
 @Composable internal fun ColumnScope.SourceOverview(os: OsStore, open: (VesselMetricId) -> Unit) {
-    val vm = os.marine?.vm ?: return
-    val state by vm.ui.collectAsState()
-    val connections by vm.nmeaConnections.collectAsState()
+    val services = os.marine?.services ?: return
+    val state by services.state.collectAsState()
+    val connections by services.network.connections.collectAsState()
     val now = rememberMarineClock()
     Label(os.t("全船共用一份数据", "one set of data aboard"), 28)
     Label(os.t("在这里选择每项读数由谁提供。海图、守锚、驾驶台与共享服务使用同一份选择。", "Choose who supplies each reading. Chart, Anchor Watch, Helm and sharing all use these choices."), 17, LocalMetro.current.muted)
@@ -54,9 +55,9 @@ import com.yokuli.anchorwatch.domain.vessel.*
 }
 
 @Composable internal fun ColumnScope.SourceMetricDetail(os: OsStore, metric: VesselMetricId) {
-    val vm = os.marine?.vm ?: return
-    val state by vm.ui.collectAsState()
-    val connections by vm.nmeaConnections.collectAsState()
+    val services = os.marine?.services ?: return
+    val state by services.state.collectAsState()
+    val connections by services.network.connections.collectAsState()
     val now = rememberMarineClock()
     val observation = sourceObservation(metric, state.vesselData)
     val candidates = state.vesselData.candidates[metric].orEmpty().distinctBy { it.source.persistentKey }
@@ -67,18 +68,18 @@ import com.yokuli.anchorwatch.domain.vessel.*
     observation?.sourceIdentity?.let { Label(sourceDisplayName(os, it, connections), 19, LocalMetro.current.accent) }
     if (metric == VesselMetricId.POSITION) {
         Label(os.t("谁提供船位", "position source"), 28)
-        ChoiceRow(os.t("关闭船位", "position off"), os.positionSource == "none", os.t("停止使用船位，保留其他读数与网络连接。", "Stop using position; keep other readings and network connections."), !locked) { os.requestService("sourceOff") }
-        ChoiceRow(os.t("手机 GPS", "phone GPS"), os.positionSource == "phone", os.t("选择时启动手机定位，关闭时停止；需要精确定位权限。", "Starts phone location when selected and stops when disabled; requires precise location permission."), !locked && os.positionSource in listOf("none", "phone")) { os.requestService("gpsOn") }
+        ChoiceRow(os.t("关闭船位", "position off"), os.positionSource == "none", os.t("停止使用船位，保留其他读数与网络连接。", "Stop using position; keep other readings and network connections."), !locked) { os.requestPosition(PositionSourceRequest.DISABLE_POSITION) }
+        ChoiceRow(os.t("手机 GPS", "phone GPS"), os.positionSource == "phone", os.t("选择时启动手机定位，关闭时停止；需要精确定位权限。", "Starts phone location when selected and stops when disabled; requires precise location permission."), !locked && os.positionSource in listOf("none", "phone")) { os.requestPosition(PositionSourceRequest.ENABLE_PHONE) }
         val selectedConnection = state.vesselSettings.metricSourcePins["POSITION_CONNECTION"]
         connections.filter { it.spec.receive }.forEach { connection ->
             val online = connection.acceptsSourceSelection()
             val same = os.positionSource == "nmea" && selectedConnection == connection.spec.id
             ChoiceRow(connection.spec.name, same,
                 if (online) os.t("NMEA · 已连接", "NMEA · connected") else os.t("NMEA · 尚未连接；在船联网中启动", "NMEA · stopped; start it in Boat Network"),
-                !locked && online && os.positionSource != "phone") { vm.selectNmeaPositionConnection(connection.spec.id) }
+                !locked && online && os.positionSource != "phone") { services.sources.selectNmeaPositionConnection(connection.spec.id) }
             if (same) candidates.filter { it.source.transportProfileId == connection.spec.id }.forEach { candidate ->
                 ChoiceRow(sourceDisplayName(os, candidate.source, connections), (pinned ?: activeKey) == candidate.source.persistentKey,
-                    sourceCandidateText(os, metric, candidate, now), !locked) { vm.setVesselMetricSource(metric, candidate.source.persistentKey) }
+                    sourceCandidateText(os, metric, candidate, now), !locked) { services.sources.setVesselMetricSource(metric, candidate.source.persistentKey) }
             }
         }
         if (connections.none { it.spec.receive }) Label(os.t("还没有船载输入。在船联网中添加连接后，它会出现在这里。", "No boat input yet. Add a connection in Boat Network and it will appear here."), 18, LocalMetro.current.muted)
@@ -108,7 +109,7 @@ import com.yokuli.anchorwatch.domain.vessel.*
     ChoiceRow(os.t("自动", "automatic"), pinned == null && !legacyHeading,
         if (legacyHeading) os.t("清除旧版共用船首向偏好。真、磁船首向将分别按各自选择运行，已有独立指定来源会保留。", "Clear the shared legacy heading preference. True and magnetic heading then use their individual choices; existing per-reading selections are kept.")
         else if (metric in setOf(VesselMetricId.SOG, VesselMetricId.COG)) os.t("默认跟随船位来源；也可以指定下面的独立读数。", "Follows the position source by default; you can select an independent reading below.")
-        else os.t("从已采集的候选中选择；不会开启连接或手机定位。", "Chooses among observed candidates; does not start connections or phone location.")) { vm.setVesselMetricSource(metric, null) }
+        else os.t("从已采集的候选中选择；不会开启连接或手机定位。", "Chooses among observed candidates; does not start connections or phone location.")) { services.sources.setVesselMetricSource(metric, null) }
     candidates.sortedWith(compareBy<VesselSourceCandidate<*>> { it.source.transportProfileId != null }.thenBy { sourceDisplayName(os, it.source, connections) }).forEach { candidate ->
         val connection = candidate.source.transportProfileId?.let { id -> connections.firstOrNull { it.spec.id == id } }
         val selected = pinned == candidate.source.persistentKey
@@ -117,7 +118,7 @@ import com.yokuli.anchorwatch.domain.vessel.*
             if (actual) os.t("当前采用", "in use") else null,
             if (connection != null && !connection.requested) os.t("连接已停止", "connection stopped") else null,
             if (candidate.source.sourceClassIsPhoneGps() && os.positionSource != "phone") os.t("手机定位未被选用", "phone location is not selected") else null).joinToString(" · ")
-        ChoiceRow(sourceDisplayName(os, candidate.source, connections), selected, status) { vm.setVesselMetricSource(metric, candidate.source.persistentKey) }
+        ChoiceRow(sourceDisplayName(os, candidate.source, connections), selected, status) { services.sources.setVesselMetricSource(metric, candidate.source.persistentKey) }
     }
     if (pinned != null && candidates.none { it.source.persistentKey == pinned }) {
         Label(os.t("保留已指定的来源，等待它恢复。不会改用另一个来源。", "Keeping your selected source while it is absent. Another source will not take over."), 18, LocalMetro.current.muted)
