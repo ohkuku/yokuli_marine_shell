@@ -22,9 +22,20 @@ android {
         versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.5.0-experience.6"
         manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = mapsKey.get()
         buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", (mapsKey.get() != "MAPS_API_KEY_NOT_CONFIGURED").toString())
+        buildConfigField("boolean", "ROM_HOME", "false")
     }
     flavorDimensions += "shellMode"
-    productFlavors { create("standalone") { dimension = "shellMode" } }
+    productFlavors {
+        create("standalone") { dimension = "shellMode" }
+        create("rom") {
+            dimension = "shellMode"
+            versionNameSuffix = "-rom"
+            buildConfigField("boolean", "ROM_HOME", "true")
+            // 首个 ROM 面向没有 Google Play services 的纯 AOSP。沿用 MapLibre、离线全球
+            // 参考底图和 OSM；保留 standalone 的 API Key 注入，不把密钥写入 ROM 配置。
+            buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", "false")
+        }
+    }
     signingConfigs {
         if (releaseKeystorePath != null) create("release") {
             storeFile = file(releaseKeystorePath)

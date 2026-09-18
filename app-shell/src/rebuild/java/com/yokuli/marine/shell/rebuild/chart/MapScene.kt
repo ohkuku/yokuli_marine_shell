@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.util.AtomicFile
 import androidx.compose.runtime.*
+import com.yokuli.marine.shell.BuildConfig
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.nm
 import kotlinx.coroutines.*
@@ -101,7 +102,8 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     private val mutex = Mutex()
     private val saved = runCatching { JSONObject(file.openRead().bufferedReader().use { it.readText() }) }.getOrNull()
     private fun restored(): MapSource = when (saved?.optString("type") ?: legacy.optString("mapMode", "standard")) {
-        "satellite" -> MapSource.Satellite
+        // 从同包名应用版升级时，纯 AOSP 不能恢复到依赖 Google Play services 的卫星图。
+        "satellite" -> if (BuildConfig.ROM_HOME) MapSource.Online else MapSource.Satellite
         "custom" -> MapSource.CustomLayer(saved!!.optString("id"))
         "marine" -> library.folders.firstOrNull { it.layerName != null && it.enabled }?.let { MapSource.CustomLayer(it.id) } ?: MapSource.Online
         else -> MapSource.Online

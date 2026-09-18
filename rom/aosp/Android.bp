@@ -1,0 +1,12 @@
+// Yokuli R0: signed HOME APK in /product/app, with its own UID and normal runtime permissions.
+android_app_import {
+    name: "YokuliHome",
+    apk: "prebuilts/YokuliHome.apk",
+    product_specific: true,
+    presigned: true,
+    preprocessed: true,
+    // Keep the Gradle APK byte-for-byte; Soong still validates signature/alignment requirements.
+    dex_preopt: { enabled: false },
+    optional_uses_libs: ["org.apache.http.legacy"],
+    overrides: ["Launcher3", "Launcher3QuickStep"],
+}

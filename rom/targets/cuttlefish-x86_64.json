@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "cuttlefish-x86_64",
+  "maturity": "R0-product-integration-not-boot-verified",
+  "aosp_manifest_url": "https://android.googlesource.com/platform/manifest",
+  "aosp_revision": "android-16.0.0_r4",
+  "aosp_release_config": "trunk_staging",
+  "product": "yokuli_cf_x86_64_phone",
+  "device": "vsoc_x86_64_only",
+  "variant": "userdebug",
+  "lunch": "yokuli_cf_x86_64_phone-trunk_staging-userdebug",
+  "upstream_product": "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk",
+  "app_package": "com.yokuli.marine",
+  "home_component": "com.yokuli.marine/com.yokuli.marine.shell.rebuild.MainActivity",
+  "app_gradle_variant": "rom",
+  "minimum_fresh_disk_gib": 400,
+  "minimum_build_disk_gib": 150,
+  "recommended_ram_gib": 64,
+  "reference_app_commit": "b5fc247",
+  "physical_device_supported": false,
+  "notes_zh": "固定版本用于 R0 集成验证，不代表最新安全补丁。没有提供任何真机分区或刷机命令。",
+  "aosp_manifest_commit": "15128c9e27cfa599c48d294babd39286ee8f1426"
+}

@@ -1,5 +1,7 @@
 # Yokuli OS
 
+**ROM 开发分支：`codex/yokuli-os-rom`。** 系统分层、设备/安全/升级设计与 AOSP 产品配置见 [ROM 总入口](rom/README.md)。本分支从 experience.6 继续开发系统集成；当前可构建 HOME APK，完整 ROM 镜像尚未在 Linux 构建机编译或启动。原手机应用体验分支保留为 `codex/yokuli-os-rebuild`。
+
 以 Windows Phone 8/10 的排版、横滑、磁贴和虚拟键组织的 Android 航海应用平台。当前版本 **0.5.0-experience.6**（versionCode 10）。本轮整理通知中心的消息与快捷操作、系统目的地返回、驾驶台趋势选择，以及紧凑排版和顶部安全区。
 
 完整结构见 [26 项反馈、全部应用接口与数据拓扑](docs/product/OS_INTERFACE_TOPOLOGY.md)，声明位置见 [API 索引](docs/product/API_INDEX.md)。数据所有权见 [数据中心契约](docs/product/DATA_CENTER_CONTRACT.md)，页面访问与返回见 [应用导航契约](docs/product/APP_NAVIGATION_CONTRACT.md)。实际验证结果与边界见 [本轮交付记录](docs/experience/EXPERIENCE_6_DELIVERY.md)。

@@ -1,0 +1,32 @@
+{
+  "revision": "android-16.0.0_r4",
+  "checked_at": "2026-09-18",
+  "note_zh": "仅核对固定版本上游文件；不表示已经执行AOSP构建。",
+  "files": [
+    {
+      "path": "device/google/cuttlefish/AndroidProducts.mk",
+      "sha256": "20fd7172104365e9bc7522d2252820e05b49e87ce80933943cc4c8b380057e5c",
+      "url": "https://android.googlesource.com/device/google/cuttlefish/+/refs/tags/android-16.0.0_r4/AndroidProducts.mk"
+    },
+    {
+      "path": "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk",
+      "sha256": "d3cb6e7285bebc1048b94d717769efabe4d6dd9117b5eb810eed7f68c96ba2cd",
+      "url": "https://android.googlesource.com/device/google/cuttlefish/+/refs/tags/android-16.0.0_r4/vsoc_x86_64_only/phone/aosp_cf.mk"
+    },
+    {
+      "path": "device/google/cuttlefish/vsoc_x86_64_only/BoardConfig.mk",
+      "sha256": "2184f51c63ac1338a8496ec78ffddc21eaa54f0b482999e8a15585a995a6f909",
+      "url": "https://android.googlesource.com/device/google/cuttlefish/+/refs/tags/android-16.0.0_r4/vsoc_x86_64_only/BoardConfig.mk"
+    },
+    {
+      "path": "build/make/core/release_config.mk",
+      "sha256": "833cbde63008e30da3ff201bc4c8134030a32248e4e598ef00d269158ffe1119",
+      "url": "https://android.googlesource.com/platform/build/+/refs/tags/android-16.0.0_r4/core/release_config.mk"
+    },
+    {
+      "path": "build/soong/java/app_import.go",
+      "sha256": "872d75d0a9002e51d1c48b755738426ca3f65021b74e554d8937f8d0bade87c2",
+      "url": "https://android.googlesource.com/platform/build/soong/+/refs/tags/android-16.0.0_r4/java/app_import.go"
+    }
+  ]
+}

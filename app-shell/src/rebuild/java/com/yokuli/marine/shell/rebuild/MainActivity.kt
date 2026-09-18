@@ -19,9 +19,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.yokuli.anchorwatch.MainViewModel
+import com.yokuli.marine.shell.BuildConfig
 import com.yokuli.marine.shell.rebuild.ui.MetroTheme
 import com.yokuli.shell.android.AndroidShellKeyAdapter
 import com.yokuli.shell.contract.ShellInput
+import com.yokuli.shell.engine.LauncherAction
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -55,6 +57,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         os.attachMarine(marineVm)
         os.systemAction=serviceHandler
+        returnHomeFromRomIntent(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) window.attributes = window.attributes.apply {
             layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
@@ -64,6 +67,18 @@ class MainActivity : ComponentActivity() {
             SideEffect { if(os.keepAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
             MetroTheme(os) { OsExperience(os,::service) }
         }
+    }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        returnHomeFromRomIntent(intent)
+    }
+    /** Android 的 Home 是系统级入口：只回桌面，保留内部应用会话和正在运行的航行业务。 */
+    private fun returnHomeFromRomIntent(intent: Intent?) {
+        if (!BuildConfig.ROM_HOME || intent?.action != Intent.ACTION_MAIN || !intent.hasCategory(Intent.CATEGORY_HOME)) return
+        os.notifications.close()
+        // 不经过应用局部输入处理器，避免某个弹窗把系统 Home 吞掉；不启动或停止任何服务。
+        os.shell.dispatch(LauncherAction.ShowDesktop)
     }
     override fun onWindowFocusChanged(hasFocus:Boolean) { super.onWindowFocusChanged(hasFocus); if(hasFocus) immersive() }
     override fun onResume() { super.onResume(); marineVm.onPermissionsChanged() }
