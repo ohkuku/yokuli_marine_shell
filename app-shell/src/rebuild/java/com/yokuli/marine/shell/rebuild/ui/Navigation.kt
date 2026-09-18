@@ -82,7 +82,7 @@ fun beginNavigation(os:OsStore,route:Route,index:Int,fix:Fix?,now:Long) {
     os.editingRoute=false;os.ruler=emptyList();os.showCrosshair=false
     val point=fix?.takeIf {it.fresh(now)}?.point ?: route.points[os.routeLeg]
     os.fly(point,os.zoom.coerceAtLeast(12.0));os.follow=fix?.fresh(now)==true
-    os.save();os.open("chart")
+    os.save();os.openLinked("chart")
 }
 
 fun endNavigation(os:OsStore,arrived:Boolean=false) {
@@ -234,7 +234,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max=300.dp)) {
                     itemsIndexed(route.points) {i,p -> MenuRow(os.t("航点 ${i+1}","waypoint ${i+1}"),
                         if(i==guidance.index) os.t("当前目标","current target") else fix?.takeIf {it.fresh(now)}?.let {os.formatDistance(distance(it.point,p))}) {
-                        os.routeLeg=i;os.displayedRouteId=route.id;os.showCrosshair=false;os.save();os.open("chart");onDismiss()
+                        os.routeLeg=i;os.displayedRouteId=route.id;os.showCrosshair=false;os.save();os.openLinked("chart");onDismiss()
                         os.maps.view("chart",os.center,os.zoom).previewRoute=null
                     } }
                 }
@@ -251,11 +251,11 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                     Label(os.t("目标附近（50 m 内）。到达由你确认。","Within 50 m of the target. You confirm arrival."),16,c.accent)
                     MetroButton(if(guidance.index==route.points.lastIndex) os.t("确认到达终点","confirm final arrival") else os.t("已到达，前往下一点","arrived, go to next"),{
                         if(guidance.index==route.points.lastIndex) {arrival=true;stopping=true}
-                        else {os.routeLeg=guidance.index+1;os.save();os.open("chart");onDismiss()}
+                        else {os.routeLeg=guidance.index+1;os.save();os.openLinked("chart");onDismiss()}
                     },primary=true)
                 }
                 MetroButton(os.t("切换目标航点","change target waypoint"),{choose=true})
-                MetroButton(os.t("查看整条航线","show entire route"),{os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.fitRequest=route.points;os.showCrosshair=false;os.open("chart");onDismiss()})
+                MetroButton(os.t("查看整条航线","show entire route"),{os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.fitRequest=route.points;os.showCrosshair=false;os.openLinked("chart");onDismiss()})
                 MetroButton(os.t("结束导航","end navigation"),{stopping=true})
                 MetroButton(os.t("关闭","close"),onDismiss)
             }

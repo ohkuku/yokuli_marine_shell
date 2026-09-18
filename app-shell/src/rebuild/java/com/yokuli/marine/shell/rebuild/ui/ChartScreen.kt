@@ -6,6 +6,7 @@ import android.os.SystemClock
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,11 +28,11 @@ import kotlin.math.*
     val tick=rememberMarineClock()
     val fix=data.fix(os.positionSource); val fresh=fix?.fresh(tick)==true
     var host by remember { mutableStateOf<ChartHost?>(null) }
-    var layers by remember { mutableStateOf(false) }
-    var tools by remember { mutableStateOf(false) }
-    var manageNavigation by remember { mutableStateOf(false) }
-    var naming by remember { mutableStateOf(false) }
-    var discard by remember { mutableStateOf(false) }
+    var layers by rememberSaveable { mutableStateOf(false) }
+    var tools by rememberSaveable { mutableStateOf(false) }
+    var manageNavigation by rememberSaveable { mutableStateOf(false) }
+    var naming by rememberSaveable { mutableStateOf(false) }
+    var discard by rememberSaveable { mutableStateOf(false) }
     val c=LocalMetro.current
     val density=LocalDensity.current
     val chartView=os.maps.view("chart",os.center,os.zoom)

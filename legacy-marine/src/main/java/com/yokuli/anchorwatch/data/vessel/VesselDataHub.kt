@@ -15,6 +15,7 @@ import com.yokuli.anchorwatch.domain.model.HeadingSource
 import com.yokuli.anchorwatch.domain.sonar.DepthReference
 import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.anchorwatch.domain.vessel.source.MetricSourcePreference
+import com.yokuli.anchorwatch.domain.vessel.source.MetricSourceEligibility
 import com.yokuli.anchorwatch.domain.vessel.source.VesselSourceArbitrator
 import com.yokuli.anchorwatch.location.PhoneHeadingRepository
 import com.yokuli.anchorwatch.location.vessel.PhoneVesselMountState
@@ -170,7 +171,14 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
             val detail=externalDirect?.provenanceDetail?:VesselProvenance.Derived(fieldProvenance?:"true wind resolver",inputs.mapNotNull{it.sourceIdentity}.distinctBy{it.id})
             return VesselObservation(value,sourceClass.toLegacySource(),receivedElapsedRealtime=received,quality=if(externalDirect!=null)VesselDataQuality.GOOD else VesselDataQuality.DEGRADED,freshness=VesselDataFreshness.FRESH,provenance=fieldProvenance,sourceIdentity=externalDirect?.sourceIdentity?:DERIVED_WIND_ID,sourceClass=sourceClass,reference=when(field){ResolvedWindField.DIRECTION->VesselReference.TrueNorth;ResolvedWindField.ANGLE->VesselReference.VesselRelative;ResolvedWindField.SPEED->when(resolvedWind?.reference){TrueWindReference.WATER->VesselReference.WaterReferenced;TrueWindReference.GROUND->VesselReference.GroundReferenced;else->null}},provenanceDetail=detail)
         }
-        val freshTwa=retainDerived(VesselMetricId.TRUE_WIND_ANGLE,resolvedWindField(ResolvedWindField.ANGLE,resolvedWind?.angleDegrees));val freshTwd=retainDerived(VesselMetricId.TRUE_WIND_DIRECTION,resolvedWindField(ResolvedWindField.DIRECTION,resolvedWind?.directionTrueDegrees));val freshTws=retainDerived(VesselMetricId.TRUE_WIND_SPEED,resolvedWindField(ResolvedWindField.SPEED,resolvedWind?.speedKnots))
+        fun selectedTrueWind(metric:VesselMetricId,field:ResolvedWindField,direct:VesselObservation<Double>,value:Double?):VesselObservation<Double> {
+            // 明确固定的外部读数失效时保留它自己的时效，不能用计算值或上一个来源顶替。
+            if(metricSourcePins[metric.name]!=null){derivedDisplay.remove(metric);return direct}
+            return retainDerived(metric,resolvedWindField(field,value))
+        }
+        val freshTwa=selectedTrueWind(VesselMetricId.TRUE_WIND_ANGLE,ResolvedWindField.ANGLE,externalTwa,resolvedWind?.angleDegrees)
+        val freshTwd=selectedTrueWind(VesselMetricId.TRUE_WIND_DIRECTION,ResolvedWindField.DIRECTION,externalTwd,resolvedWind?.directionTrueDegrees)
+        val freshTws=selectedTrueWind(VesselMetricId.TRUE_WIND_SPEED,ResolvedWindField.SPEED,externalTws,resolvedWind?.speedKnots)
         // Never combine a water-relative angle with ground-relative speed. Prefer
         // water VMG (STW/TWA); only fall back to a fully ground-referenced vector.
         val vmg=retainDerived(VesselMetricId.VMG_WIND,VmgReferencePolicy.calculate(freshValue(freshStw),freshValue(freshTwa),freshValue(freshSog),freshValue(freshCog),freshValue(freshTwd))?.let{result->derivedReading(result.knots,if(result.provenance.startsWith("STW"))listOf(freshStw,freshTwa)else listOf(freshSog,freshCog,freshTwd),result.provenance)}?:VesselObservation())
@@ -188,7 +196,10 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
             val pin=when(metric){VesselMetricId.POSITION->pinnedPositionSourceId;VesselMetricId.HEADING_TRUE,VesselMetricId.HEADING_MAGNETIC->pinnedHeadingSourceId;else->null}
             registrySelection<Any>(metric,preference,pin,now)
         }
-        val evaluatedCandidates=sourceSelections.mapValues{(_,selection)->selection.candidates}
+        // 数据中心需要看到所有提供者；“本次采用谁”和“有哪些来源可选”不能混为同一份过滤列表。
+        val evaluatedCandidates=sourceSelections.mapValues{(metric,_)->
+            sourceSnapshot[metric].orEmpty().map{it.copy(validity=MetricSourceEligibility.evaluate(metric,it,now))}
+        }
         val conflicts=sourceSelections.mapNotNull{(metric,selection)->selection.conflict.takeIf{it.active}?.let{metric to it}}.toMap()
         fun attitudeField(metric:VesselMetricId)=selectionObservation(registrySelection<Double>(metric,VesselSourcePreference.AUTO,null,now))?:VesselObservation<Double>()
         val heel=attitudeField(VesselMetricId.HEEL);val pitch=attitudeField(VesselMetricId.PITCH);val roll=attitudeField(VesselMetricId.ROLL_RATE);val pitchRate=attitudeField(VesselMetricId.PITCH_RATE);val yaw=attitudeField(VesselMetricId.YAW_RATE)
@@ -204,17 +215,23 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
         val all=sourceRegistry.candidates<T>(metric)
         val boatPosition=metric==VesselMetricId.POSITION&&preference==VesselSourcePreference.BOAT
         val groundMotion=metric in setOf(VesselMetricId.SOG,VesselMetricId.COG)
-        val effectivePreference=if(groundMotion)when(shellPositionSource){GpsDataSource.SYSTEM->VesselSourcePreference.PHONE;GpsDataSource.NMEA->VesselSourcePreference.BOAT;else->preference}else preference
-        val candidates=if(boatPosition||groundMotion&&shellPositionSource==GpsDataSource.NMEA)all.filter{it.source.transportProfileId==metricSourcePins["POSITION_CONNECTION"]}else all
+        val explicitMetricPin=if(metric==VesselMetricId.POSITION)null else metricSourcePins[metric.name]
+        // 自动航速/COG 跟随船位；用户明确指定某项读数后，以该项来源为准，不能被旧默认偏好覆盖。
+        val effectivePreference=if(explicitMetricPin!=null)VesselSourcePreference.AUTO else if(groundMotion)when(shellPositionSource){GpsDataSource.SYSTEM->VesselSourcePreference.PHONE;GpsDataSource.NMEA->VesselSourcePreference.BOAT;else->preference}else preference
+        val candidates=if(boatPosition||groundMotion&&explicitMetricPin==null&&shellPositionSource==GpsDataSource.NMEA)all.filter{it.source.transportProfileId==metricSourcePins["POSITION_CONNECTION"]}else all
         // The transport repository fixes the exact NMEA position identity. A
         // second arbiter must never silently choose another GPS for Trip/UI.
         val storedPin=if(boatPosition)navigation.positionSourcePin()?:"POSITION_NOT_SELECTED" else if(metric==VesselMetricId.POSITION)null else metricSourcePins[metric.name]?:pinnedId
         val resolvedPin=storedPin?.let{stored->VesselSourcePinPolicy.resolve(candidates,stored)?:stored}
-        return arbitrator.select(metric,candidates,MetricSourcePreference(effectivePreference,resolvedPin,if(metric==VesselMetricId.POSITION)false else allowPinnedFallback,connectionPriorities()),now)
+        return arbitrator.select(metric,candidates,MetricSourcePreference(effectivePreference,resolvedPin,if(metric==VesselMetricId.POSITION||explicitMetricPin!=null)false else allowPinnedFallback,connectionPriorities()),now)
     }
     @Suppress("UNCHECKED_CAST") private fun <T> selectionObservation(selection:VesselSourceSelection<T>):VesselObservation<T>? {
         val metric=selection.selected?.metric?:selection.candidates.firstOrNull()?.metric?:return null
-        val value=VesselDisplayObservationPolicy.resolve(selection,displayObservations[metric] as? VesselObservation<T>,SystemClock.elapsedRealtime())
+        val pin=metricSourcePins[metric.name]
+        val previous=(displayObservations[metric] as? VesselObservation<T>)?.takeIf { observation ->
+            pin==null || observation.sourceIdentity?.let{VesselSourcePinPolicy.matches(it,pin)}==true
+        }
+        val value=VesselDisplayObservationPolicy.resolve(selection,previous,SystemClock.elapsedRealtime())
         if(value!=null)displayObservations[metric]=value else displayObservations.remove(metric)
         return value
     }

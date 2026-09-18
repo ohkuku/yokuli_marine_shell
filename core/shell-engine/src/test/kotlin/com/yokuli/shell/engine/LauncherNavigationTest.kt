@@ -39,15 +39,16 @@ class LauncherNavigationTest {
     private val reducer = DefaultLauncherReducer()
 
     @Test
-    fun objectDeepLinkHasItsOwnAppParentBeforeReturningToCaller() {
+    fun crossAppObjectBackReturnsToCallerWithoutInventingATargetHome() {
         val chartOpened=open(initial(),chart.appId,chart.launchToken)
         val detail=LaunchToken("settings.units")
         val linked=reducer.reduce(chartOpened,LauncherAction.Open(detail,preserveCaller=true),
             context(LaunchResolution.Internal(settings.appId,detail))).state
-        val parent=reduce(linked,LauncherAction.Back).state
-        assertEquals(ShellVisualSurface.Module(InternalAppTaskId("settings")),parent.surface)
-        assertEquals(settings.launchToken,parent.tasks.task(InternalAppTaskId("settings"))?.lastLaunchToken)
-        assertEquals(ShellVisualSurface.Module(InternalAppTaskId("chart")),reduce(parent,LauncherAction.Back).state.surface)
+        val returned=reduce(linked,LauncherAction.Back).state
+        assertEquals(ShellVisualSurface.Module(InternalAppTaskId("chart")),returned.surface)
+        assertEquals(chartOpened.tasks.tasks.single(),returned.tasks.task(InternalAppTaskId("chart")))
+        assertTrue(returned.tasks.linkedReturns.isEmpty())
+        assertEquals(ShellTransitionKind.MODULE_ROUTE_BACK,returned.transitionRequest?.kind)
     }
 
     @Test
@@ -64,14 +65,79 @@ class LauncherNavigationTest {
     }
 
     @Test
-    fun recentsRestoresDetailButDoesNotResurrectAnOldCallerChain() {
+    fun recentsRestoresDetailAndItsStillActiveCaller() {
         val chartOpened=open(initial(),chart.appId,chart.launchToken)
         val detail=LaunchToken("settings.units")
         val linked=reducer.reduce(chartOpened,LauncherAction.Open(detail,preserveCaller=true),
             context(LaunchResolution.Internal(settings.appId,detail))).state
         val resumed=reduce(reduce(linked,LauncherAction.ShowRecents).state,LauncherAction.ActivateTask(InternalAppTaskId("settings"))).state
         assertEquals(detail,resumed.tasks.task(InternalAppTaskId("settings"))?.lastLaunchToken)
-        assertTrue(resumed.tasks.linkedReturns.isEmpty())
+        assertEquals(linked.tasks.linkedReturns,resumed.tasks.linkedReturns)
+        assertEquals(ShellVisualSurface.Module(InternalAppTaskId("chart")),reduce(resumed,LauncherAction.Back).state.surface)
+    }
+
+    @Test
+    fun deepLinkFromStartStillHasAnAppHomeParent() {
+        val detail=LaunchToken("settings.units")
+        val opened=open(initial(),settings.appId,detail)
+        val parent=reduce(opened,LauncherAction.Back).state
+        assertEquals(settings.launchToken,parent.tasks.task(InternalAppTaskId("settings"))?.lastLaunchToken)
+        assertEquals(ShellVisualSurface.Desktop,reduce(parent,LauncherAction.Back).state.surface)
+    }
+
+    @Test
+    fun nestedCrossAppCallsRestoreEachExactPageInstanceEvenWhenReturningToAnAlreadyOpenApp() {
+        val originalA=open(open(initial(),chart.appId,chart.launchToken),chart.appId,LaunchToken("chart.place.home"))
+        val aSnapshot=originalA.tasks.task(InternalAppTaskId("chart"))!!
+        val bToken=LaunchToken("settings.units")
+        val b=reducer.reduce(originalA,LauncherAction.Open(bToken,preserveCaller=true),context(LaunchResolution.Internal(settings.appId,bToken))).state
+        val bSnapshot=b.tasks.task(InternalAppTaskId("settings"))!!
+        val nestedAToken=LaunchToken("chart.place.other")
+        val nestedA=reducer.reduce(b,LauncherAction.Open(nestedAToken,preserveCaller=true),context(LaunchResolution.Internal(chart.appId,nestedAToken))).state
+        assertEquals(2,nestedA.tasks.linkedReturns.size)
+        assertTrue(aSnapshot.currentUiStateKey in nestedA.tasks.retainedUiStateKeys)
+        assertTrue(aSnapshot.currentUiStateKey != nestedA.tasks.task(aSnapshot.taskId)!!.currentUiStateKey)
+        val returnedB=reduce(nestedA,LauncherAction.Back).state
+        assertEquals(bSnapshot,returnedB.tasks.task(bSnapshot.taskId))
+        assertEquals(aSnapshot,returnedB.tasks.task(aSnapshot.taskId))
+        val returnedA=reduce(returnedB,LauncherAction.Back).state
+        assertEquals(ShellVisualSurface.Module(aSnapshot.taskId),returnedA.surface)
+        assertEquals(aSnapshot,returnedA.tasks.task(aSnapshot.taskId))
+        assertTrue(returnedA.tasks.linkedReturns.isEmpty())
+    }
+
+    @Test
+    fun targetInternalChildReturnsToInvokedObjectBeforeReturningToCaller() {
+        val a=open(initial(),chart.appId,chart.launchToken)
+        val objectToken=LaunchToken("settings.units")
+        val invoked=reducer.reduce(a,LauncherAction.Open(objectToken,preserveCaller=true),context(LaunchResolution.Internal(settings.appId,objectToken))).state
+        val child=open(invoked,settings.appId,LaunchToken("settings.units.distance"))
+        val atObject=reduce(child,LauncherAction.Back).state
+        assertEquals(invoked.tasks.task(InternalAppTaskId("settings")),atObject.tasks.task(InternalAppTaskId("settings")))
+        assertEquals(1,atObject.tasks.linkedReturns.size)
+        assertEquals(ShellVisualSurface.Module(InternalAppTaskId("chart")),reduce(atObject,LauncherAction.Back).state.surface)
+    }
+
+    @Test
+    fun newAppEntryDoesNotReuseThePreviousPageInstanceButRecentsDoes() {
+        val first=open(initial(),settings.appId,settings.launchToken)
+        val firstKey=first.tasks.tasks.single().currentUiStateKey
+        val again=reducer.reduce(first,LauncherAction.Open(settings.launchToken,replaceTaskRoute=true),context(LaunchResolution.Internal(settings.appId,settings.launchToken))).state
+        assertTrue(firstKey != again.tasks.tasks.single().currentUiStateKey)
+        val resumed=reduce(reduce(again,LauncherAction.ShowRecents).state,LauncherAction.ActivateTask(InternalAppTaskId("settings"))).state
+        assertEquals(again.tasks.tasks.single().currentUiStateKey,resumed.tasks.tasks.single().currentUiStateKey)
+    }
+
+    @Test
+    fun callingAnAlreadyOpenTargetRestoresItsPreviousSessionOnReturn() {
+        val oldB=open(open(initial(),settings.appId,settings.launchToken),settings.appId,LaunchToken("settings.appearance"))
+        val oldBTask=oldB.tasks.task(InternalAppTaskId("settings"))!!
+        val a=open(reduce(oldB,LauncherAction.ShowDesktop).state,chart.appId,chart.launchToken)
+        val detail=LaunchToken("settings.units")
+        val linked=reducer.reduce(a,LauncherAction.Open(detail,preserveCaller=true),context(LaunchResolution.Internal(settings.appId,detail))).state
+        val returned=reduce(linked,LauncherAction.Back).state
+        assertEquals(oldBTask,returned.tasks.task(oldBTask.taskId))
+        assertTrue(oldBTask.currentUiStateKey in linked.tasks.retainedUiStateKeys)
     }
 
     @Test

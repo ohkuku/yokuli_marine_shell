@@ -84,7 +84,7 @@ import java.util.Date
                 voyage.phase == VoyagePhase.STARTING -> os.t("正在准备本次航行…", "preparing this voyage…")
                 fix?.fresh(now) == true -> os.t("船位已准备好，可以开始记录。", "Position is ready to record.")
                 fix != null -> os.t("保留上次船位，", "Last position retained, ") + readingAge(os, fix.elapsed, now)
-                os.positionSource == "none" -> os.t("手机定位在“数据共享”中开启；船上设备在“船联网”中连接。", "Enable phone location in Data Sharing, or connect your boat in Boat Network.")
+                os.positionSource == "none" -> os.t("在“数据中心”选择船位来源或开启手机定位；船上设备在“船联网”中连接。", "Choose a position source or enable phone location in Data Center. Connect boat equipment in Boat Network.")
                 else -> os.t("等待所选来源的首次船位。", "Waiting for the first position from your selected source.")
             }, 18, c.muted)
             if (state.active != null) Label(os.t("锚警继续值守，航行记录可以同时运行。", "The anchor watch continues while voyage recording runs."), 17, c.muted)
@@ -112,7 +112,7 @@ import java.util.Date
                 MetroButton(if(trip.paused)os.t("记录控制","recording controls")else os.t("暂停","pause"),if(trip.paused)controls else ({marine.pauseRecording()}),Modifier.weight(1f),enabled=!voyage.commandPending)
                 MetroButton(os.t("结束并保存","finish & save"),{marine.finishRecording()},Modifier.weight(1f),enabled=!voyage.commandPending)
             }
-            MetroButton(os.t("在海图中查看","view on chart"),{os.open("chart")})
+            MetroButton(os.t("在海图中查看","view on chart"),{os.openLinked("chart")})
             MetroButton(os.t("查看本次航迹与报告", "view this track & report"), { detail(trip.id) })
         }
     }
@@ -202,7 +202,7 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
 }
 
 @Composable private fun VoyageTextEditor(os:OsStore,title:String,initialName:String,initialNote:String?,dismiss:()->Unit,save:(String,String?)->Unit) {
-    var name by remember{mutableStateOf(initialName)};var note by remember{mutableStateOf(initialNote.orEmpty())}
+    var name by rememberSaveable(initialName){mutableStateOf(initialName)};var note by rememberSaveable(initialNote){mutableStateOf(initialNote.orEmpty())}
     Dialog(onDismissRequest=dismiss){Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
         Label(title,30)
         Field(os.t("名称","name"),name,{name=it.take(100)})
@@ -217,7 +217,7 @@ private fun showVoyageOnChart(os:OsStore,content:VoyageContent,focus:GeoPoint?=n
     os.maps.view("chart").previewTrack=segments
     os.maps.view("chart").previewTitle=content.map.session?.name?:os.t("历史航行","saved voyage")
     os.fitRequest=if(focus!=null)listOf(focus)else segments.flatten()
-    os.open("chart")
+    os.openLinked("chart")
 }
 
 @Composable private fun VoyagePlayback(os: OsStore, id: Long, content: VoyageContent, sources: () -> Unit) {

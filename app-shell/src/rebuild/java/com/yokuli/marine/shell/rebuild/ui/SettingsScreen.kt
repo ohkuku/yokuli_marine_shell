@@ -161,7 +161,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
             marine.vm.updateVesselDataSettings(state.vesselSettings.copy(vesselName = name.trim(), draftMeters = draft.toDoubleOrNull()))
         }, primary = true, enabled = valid && changed)
         if (!changed) Label(os.t("资料已保存", "details saved"), 15, LocalMetro.current.muted)
-        MenuRow(os.t("传感器与船体安装", "sensors & vessel mounting"), os.t("在驾驶台中确认安装、查看来源和实时姿态", "confirm mounting and see sources and live attitude in Helm"), "data") { os.open("instruments") }
+        MenuRow(os.t("传感器与船体安装", "sensors & vessel mounting"), os.t("在数据中心确认安装、校准并选择来源", "confirm mounting, calibrate and choose sources in Data Center"), "data") { os.openLinked("data_center:phone") }
     }
 }
 

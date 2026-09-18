@@ -50,4 +50,14 @@ class ShellTransitionResolverTest {
             ShellTransitionResolver.resolve(module, module, ShellTransitionTrigger.MODULE_ROUTE_BACK).kind,
         )
     }
+
+    @Test
+    fun crossAppStoryHasMatchingForwardAndReturnMotion() {
+        val chart = ShellVisualSurface.Module(InternalAppTaskId("chart"))
+        val places = ShellVisualSurface.Module(InternalAppTaskId("places"))
+        assertEquals(ShellTransitionKind.MODULE_ROUTE_FORWARD,
+            ShellTransitionResolver.resolve(chart, places, ShellTransitionTrigger.MODULE_ROUTE_FORWARD).kind)
+        assertEquals(ShellTransitionKind.MODULE_ROUTE_BACK,
+            ShellTransitionResolver.resolve(places, chart, ShellTransitionTrigger.MODULE_ROUTE_BACK).kind)
+    }
 }

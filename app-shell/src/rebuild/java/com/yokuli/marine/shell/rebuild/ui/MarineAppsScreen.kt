@@ -62,11 +62,11 @@ import java.util.Date
                 Field(os.t("名称","name"),name,{name=it.take(100)})
                 Label(os.t("记录船位，以及实际可用的风、水深和航速。完成后可回放、查看报告和导出。","Record position and the wind, depth and speed available. Replay, reports and exports follow when you finish."),16,LocalMetro.current.muted)
                 Toggle(os.t("同时记录船体运动","record vessel motion"),motion,
-                    os.t("需要把手机固定在船上并在仪表中校准。","Mount the phone on the boat and calibrate it in instruments."),enabled=canMotion) {motion=it}
+                    os.t("需要把手机固定在船上并在数据中心校准。","Mount the phone on the boat and calibrate it in Data Center."),enabled=canMotion) {motion=it}
                 MetroButton(if(voyage.commandPending)os.t("正在开始…","starting…")else os.t("开始记录","start recording"),{
                     marine.startRecording(name.trim(),motion&&canMotion);onDismiss()
                 },primary=true,enabled=!voyage.commandPending && name.isNotBlank() && os.positionSource in listOf("phone","nmea"))
-                if(os.positionSource=="none") Label(os.t("还没有选择船位。在“数据共享”的“手机”中开启定位，或在“船联网”选择船载来源。","No position source is selected. Enable location in data sharing → phone, or choose a boat source in boat network."),17,LocalMetro.current.muted)
+                if(os.positionSource=="none") Label(os.t("还没有选择船位。在“数据中心”开启手机定位，或选择已连接的船载来源。","No position source is selected. Enable phone location or choose a connected boat source in Data Center."),17,LocalMetro.current.muted)
             } else {
                 Label(os.formatDistance(active.distanceMeters),40,LocalMetro.current.accent)
                 MetroButton(if(active.paused) os.t("继续记录","resume recording") else os.t("暂停记录","pause recording"),{

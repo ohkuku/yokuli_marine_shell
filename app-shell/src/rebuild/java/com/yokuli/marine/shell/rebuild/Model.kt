@@ -63,18 +63,24 @@ fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJ
 data class TileSpec(val app: String, val size: Int = 2)
 /** 下锚前的未提交草稿；placeId/spotId 引用收藏位置，半径使用米，草稿不等于已值守。 */
 data class AnchorDraft(val point:GeoPoint,val name:String,val placeId:Long?=null,val spotId:Long?=null,val radiusMeters:Double?=null)
+/** 一次海图访问的临时交互；不包含图源、导航会话、航行记录或用户已保存的数据。 */
+data class ChartInteractionSnapshot(
+    val center: GeoPoint, val zoom: Double, val follow: Boolean, val showCrosshair: Boolean,
+    val ruler: List<GeoPoint>, val selectedPlaceId: String?, val displayedRouteId: String?,
+    val previewTrack: List<List<GeoPoint>>, val previewTitle: String?, val previewRoute: Route?,
+)
 /** 系统安装的应用身份；UI 标签与入口组织不能另建不一致的应用列表。 */
 enum class AppId(val zh: String, val en: String, val icon: String) {
     CHART("海图","chart","chart"), LIBRARY("图册","chart library","layers"),
     VOYAGES("航海日志","logbook","logbook"), ANCHOR("守锚","anchor watch","anchor"),
     PLACES("我的航行","my sailing","route"), INSTRUMENTS("驾驶台","helm","helm"),
-    NMEA("船联网","boat network","connect"),
+    DATA_CENTER("数据中心","data center","data"), NMEA("船联网","boat network","connect"),
     LOCAL_NMEA("数据共享","data sharing","share"), SETTINGS("设置","settings","settings"),
     TILES("磁贴工坊","tile studio","start");
     /** 中文应用列表按当前名称的拼音首字母分组，不沿用旧品牌或英文索引。 */
     val chineseIndex:Char get()=when(this) {
         CHART,VOYAGES->'H'; LIBRARY->'T'; PLACES->'W'; INSTRUMENTS->'J'
-        NMEA,TILES->'C'; LOCAL_NMEA,SETTINGS,ANCHOR->'S'
+        NMEA,TILES->'C'; DATA_CENTER,LOCAL_NMEA,SETTINGS,ANCHOR->'S'
     }
 }
 
@@ -176,14 +182,34 @@ class OsStore(val context: Context) {
             destination = destination, key = key))
     }
     fun open(destination: String) = shell.open(destination)
+    /** 请求另一个应用处理当前对象；完成或返回时恢复调用页，而不是启动一个无关首页。 */
+    fun openLinked(destination: String) = shell.openLinked(destination)
     fun home() = shell.home()
     fun back() = shell.back()
     fun fly(point: GeoPoint, atZoom: Double = zoom) { follow = false; cameraRequest = point to atZoom; center = point; zoom = atZoom }
+    internal fun captureChartInteraction(): ChartInteractionSnapshot {
+        val view = maps.view("chart", center, zoom)
+        return ChartInteractionSnapshot(center, zoom, follow, showCrosshair, ruler.toList(),
+            view.selectedPlaceId, displayedRouteId, view.previewTrack.map { it.toList() }, view.previewTitle,
+            view.previewRoute?.let { it.copy(points = it.points.toList()) })
+    }
+    internal fun restoreChartInteraction(snapshot: ChartInteractionSnapshot) {
+        center = snapshot.center; zoom = snapshot.zoom; follow = snapshot.follow
+        showCrosshair = snapshot.showCrosshair; ruler = snapshot.ruler
+        displayedRouteId = snapshot.displayedRouteId
+        maps.view("chart", center, zoom).apply {
+            center = snapshot.center; zoom = snapshot.zoom; follow = snapshot.follow
+            selectedPlaceId = snapshot.selectedPlaceId
+            previewTrack = snapshot.previewTrack; previewTitle = snapshot.previewTitle; previewRoute = snapshot.previewRoute
+        }
+        // 新请求触发真实原生相机复位，不能仅更新坐标文案。
+        fitRequest = null; cameraRequest = snapshot.center to snapshot.zoom
+    }
     fun mark() {
         places = places + Place(name=t("标记 ${places.size+1}","mark ${places.size+1}"),point=center)
         save(); notify("已保存标记","Mark saved")
     }
-    fun startRoute(route: Route) { navigationRoute=route.copy(points=route.points.toList()); activeRouteId = route.id; displayedRouteId = route.id; routeLeg = 0; save(); open("chart"); fly(route.points.first()) }
+    fun startRoute(route: Route) { navigationRoute=route.copy(points=route.points.toList()); activeRouteId = route.id; displayedRouteId = route.id; routeLeg = 0; save(); openLinked("chart"); fly(route.points.first()) }
     fun advanceRoute() {
         val route = activeRoute ?: return
         if (routeLeg < route.points.lastIndex) routeLeg++ else { activeRouteId = null; notify("航线已结束","Route ended") }

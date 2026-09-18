@@ -83,6 +83,7 @@ fun tileModes(app: ShellApp): List<TileMode> {
         "VOYAGES" -> listOf(mode("RECORDING", "当前记录", "current recording"), mode("LAST", "最近航行", "last voyage"))
         "ANCHOR" -> listOf(mode("WATCH", "值守状态", "watch state"), mode("DISTANCE", "锚位距离", "anchor distance"), mode("LIMIT", "警戒范围", "watch limit"))
         "INSTRUMENTS" -> listOf(mode("SPEED", "航速", "speed"), mode("HEADING", "船首向", "heading"), mode("DEPTH", "水深", "depth"), mode("WIND", "风", "wind"))
+        "DATA_CENTER" -> listOf(mode("SOURCE", "船位来源", "position source"), mode("READINGS", "正在采用的读数", "selected readings"))
         "NMEA" -> listOf(mode("CONNECTIONS", "连接状态", "connections"), mode("TRAFFIC", "实际收发", "actual traffic"))
         "LOCAL_NMEA" -> listOf(mode("SERVICE", "服务状态", "service state"), mode("CLIENTS", "已连接客户端", "connected clients"), mode("TRAFFIC", "实际写出", "actually written"))
         "SETTINGS" -> listOf(mode("VESSEL", "我的船", "my boat"), mode("UNITS", "显示偏好", "display preferences"))
@@ -168,6 +169,27 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
                 TileFrame("WIND", reading(v?.trueWind?.speedKnots, os::formatSpeed), stamp(v?.trueWind?.speedKnots), os.t("真风 · 视风 ", "true wind · apparent ") + reading(v?.apparentWind?.speedKnots, os::formatSpeed), samples = samples("tws"), live = v?.trueWind?.speedKnots?.displayIsLive() == true),
             )
         }
+        "DATA_CENTER" -> {
+            // 只显示系统已采用的同一份快照；磁贴不创建来源配置，也不驱动传感器。
+            val newestReading = data.readings.values.maxOfOrNull { it.elapsed }
+            val sourceName = lastFix?.source ?: when (os.positionSource) {
+                "phone" -> os.t("手机定位", "phone location")
+                "nmea" -> os.t("船载定位", "boat position")
+                "demo" -> os.t("演示船位", "demo position")
+                else -> os.t("船位已关闭", "position is off")
+            }
+            listOf(
+                TileFrame("SOURCE", sourceName,
+                    lastFix?.let { readingAge(os, it.elapsed, maxOf(readingNow, it.elapsed)) }
+                        ?: if (os.positionSource == "none") os.t("打开数据中心选择来源", "choose a source in Data Center")
+                        else os.t("等待首次船位", "waiting for the first position"),
+                    os.t("当前船位来自", "position comes from"), live = fix != null),
+                TileFrame("READINGS", os.t("${data.readings.size} 项读数", "${data.readings.size} readings"),
+                    newestReading?.let { os.t("最近更新 · ", "last updated · ") + readingAge(os, it, maxOf(readingNow, it)) }
+                        ?: os.t("收到读数后显示真实来源与时间", "readings show their actual source and time"),
+                    os.t("系统当前采用", "selected by the system"), live = data.readings.values.any { it.fresh(readingNow) }),
+            )
+        }
         "NMEA" -> {
             val online = connections.count { it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }
             listOf(TileFrame("CONNECTIONS", os.t("$online 条已连接", "$online connected"), os.t("${connections.size} 条已保存连接", "${connections.size} saved connections")), TileFrame("TRAFFIC", "↓ ${connections.sumOf { it.diagnostics.validSentences }}", "↑ ${connections.sumOf { it.writtenSentences }} · " + os.t("实际写出", "actually written"), os.t("有效接收", "valid received")))
@@ -182,7 +204,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
             listOf(TileFrame("COLLECTION", os.t("${shellState.start.document.placements.size} 块磁贴", "${shellState.start.document.placements.size} tiles"), os.t("找到适合你的开始屏幕", "make Start your own")))
         }
     }
-    val demo = (state?.settings?.demoMode == true || os.positionSource == "demo") && app.app.name in setOf("CHART", "INSTRUMENTS", "ANCHOR")
+    val demo = (state?.settings?.demoMode == true || os.positionSource == "demo") && app.app.name in setOf("CHART", "INSTRUMENTS", "ANCHOR", "DATA_CENTER")
     val selectedFrames = if (mode == "STATIC") listOf(TileFrame("STATIC", title, "")) else if (mode == "AUTO") frames else frames.filter { it.key == mode }.ifEmpty { listOf(TileFrame(mode, unavailable, "")) }
     val selected = selectedFrames.map {
         val frameIsDemo=if(it.key=="MAP" && it.image!=null)it.demo else demo

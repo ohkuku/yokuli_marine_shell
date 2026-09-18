@@ -53,9 +53,9 @@ object ShellTransitionResolver {
         trigger: ShellTransitionTrigger,
     ): ShellTransitionKind = when {
         trigger == ShellTransitionTrigger.MODULE_ROUTE_FORWARD &&
-            from is ShellVisualSurface.Module && to == from -> ShellTransitionKind.MODULE_ROUTE_FORWARD
+            from is ShellVisualSurface.Module && to is ShellVisualSurface.Module -> ShellTransitionKind.MODULE_ROUTE_FORWARD
         trigger == ShellTransitionTrigger.MODULE_ROUTE_BACK &&
-            from is ShellVisualSurface.Module && to == from -> ShellTransitionKind.MODULE_ROUTE_BACK
+            from is ShellVisualSurface.Module && to is ShellVisualSurface.Module -> ShellTransitionKind.MODULE_ROUTE_BACK
         from == to -> ShellTransitionKind.NONE
         from == ShellVisualSurface.Desktop && to == ShellVisualSurface.ModuleList ->
             ShellTransitionKind.PAGER_FORWARD

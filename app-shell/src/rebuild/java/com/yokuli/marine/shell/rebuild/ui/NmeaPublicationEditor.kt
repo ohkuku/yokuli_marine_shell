@@ -18,7 +18,7 @@ import com.yokuli.marine.shell.rebuild.*
 /** 分享能力与输入 ID 的草稿用字符串列表保存，不依赖集合实现是否 Serializable。 */
 internal val NmeaStringSetSaver=listSaver<Set<String>,String>(save={it.toList()},restore={it.toSet()})
 
-/** 两个发布端共用同一可视化编辑器：数据来源 → 能力选择 → 接收设备。 */
+/** 两个发布端共用内容编辑器。来源只由数据中心维护；原始转发保留输入身份。 */
 @Composable internal fun NmeaPublicationEditor(
     os:OsStore,
     feed:NmeaFeed,
@@ -39,17 +39,23 @@ internal val NmeaStringSetSaver=listSaver<Set<String>,String>(save={it.toList()}
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
         Glyph("connect",Modifier.size(34.dp),c.accent)
         Column(Modifier.weight(1f).padding(horizontal=12.dp)) {
-            Label(os.t("数据来源","data origin"),13,c.muted)
+            Label(os.t("输出内容","output content"),13,c.muted)
             Label(publicationFeedName(os,feed),22)
         }
         Glyph("next",Modifier.size(20.dp),c.accent)
         Label(destination,17,c.muted,Modifier.padding(start=12.dp).widthIn(max=130.dp),maxLines=2)
     }
-    NmeaFeed.entries.forEach { value ->
+    // 保留正在运行的旧 PHONE 发布，不静默改动发送内容；再次保存须明确采用新策略。
+    if(feed==NmeaFeed.PHONE) {
+        Label(os.t("这是旧版的手机专用输出。全船来源现在统一由数据中心维护。", "This is a legacy phone-only output. Data Center now manages sources for all apps."),18,c.accent)
+        if(editable) MetroButton(os.t("改用数据中心的读数", "use Data Center readings"), {onFeed(NmeaFeed.SYSTEM);onSelected(selected-NmeaCapability.OTHER.id)}, primary=true)
+        else Label(os.t("当前发送内容保持不变。停止后编辑并保存，才会采用数据中心。", "Current output stays unchanged. Stop, edit and save to use Data Center."),16,c.muted)
+    }
+    listOf(NmeaFeed.SYSTEM,NmeaFeed.RAW).forEach { value ->
         ChoiceRow(publicationFeedName(os,value),feed==value,when(value) {
-            NmeaFeed.SYSTEM->os.t("使用全系统选定的可信读数；来源改变时同步更新。","Uses the trusted measurements selected for all apps.")
-            NmeaFeed.PHONE->os.t("只分享这部手机实际提供的位置与传感器。","Shares only position and sensors supplied by this phone.")
-            NmeaFeed.RAW->os.t("保留输入连接的原始报文；按能力筛选后转发。","Forwards input packets after applying your capability choices.")
+            NmeaFeed.SYSTEM->os.t("使用数据中心选定的读数，这里只决定哪些内容可以发出。","Uses readings selected in Data Center; choose only what may be sent here.")
+            NmeaFeed.PHONE->os.t("旧版手机输出","legacy phone output")
+            NmeaFeed.RAW->os.t("按内容筛选后转发原始报文，不改变数据中心的来源选择。","Forwards selected packet content without changing Data Center source choices.")
         },editable) { onFeed(value);onSelected(when(value){NmeaFeed.PHONE->selected.intersect(NmeaCapability.phone);NmeaFeed.SYSTEM->selected-NmeaCapability.OTHER.id;NmeaFeed.RAW->selected}) }
     }
     if(feed==NmeaFeed.RAW) {
@@ -89,8 +95,8 @@ internal val NmeaStringSetSaver=listSaver<Set<String>,String>(save={it.toList()}
 }
 
 internal fun publicationFeedName(os:OsStore,feed:NmeaFeed)=when(feed) {
-    NmeaFeed.SYSTEM->os.t("系统当前数据","selected system data")
-    NmeaFeed.PHONE->os.t("本机传感器","this phone's sensors")
+    NmeaFeed.SYSTEM->os.t("数据中心的读数","Data Center readings")
+    NmeaFeed.PHONE->os.t("手机专用 · 旧配置","phone only · legacy")
     NmeaFeed.RAW->os.t("转发输入连接","forward received data")
 }
 

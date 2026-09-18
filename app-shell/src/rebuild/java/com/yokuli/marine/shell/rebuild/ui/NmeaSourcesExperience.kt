@@ -3,136 +3,199 @@ package com.yokuli.marine.shell.rebuild.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import com.yokuli.marine.shell.rebuild.*
+import com.yokuli.anchorwatch.data.nmea.NmeaConnectionSnapshot
+import com.yokuli.anchorwatch.data.vessel.VesselDataSettings
 import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
 import com.yokuli.anchorwatch.domain.vessel.*
-import com.yokuli.anchorwatch.location.PhoneLocationPhase
 
-@Composable internal fun VesselSourceSettings(os: OsStore) {
-    val marine = os.marine ?: return
-    val state by marine.vm.ui.collectAsState()
-    val connections by marine.vm.nmeaConnections.collectAsState()
-    val now = rememberMarineClock()
-    var expanded by remember { mutableStateOf<VesselMetricId?>(null) }
-    val locked = state.active?.paused == false
-    val nmeaConnected = connections.any { it.spec.receive && it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }
-    PageBody {
-        Label(os.t("船载船位", "boat position"), 28)
-        Label(os.t("这里只列出 NMEA 连接接收到的数据。手机传感器在“数据共享”的“手机”中管理。", "Only data received through NMEA connections appears here. Manage phone sensors in data sharing → phone."), 17, LocalMetro.current.muted)
-        Toggle(os.t("NMEA 船位", "NMEA position"), os.positionSource == "nmea", if (nmeaConnected) os.t("使用已连接来源中的有效船位", "use a valid fix from connected sources") else os.t("先在船联网中连接一个输入", "connect an input in boat network first"), enabled = !locked && (os.positionSource == "nmea" || (os.positionSource == "none" && nmeaConnected))) { os.requestService(if (it) "sourceNmea" else "sourceOff") }
-        Label(if (locked) os.t("守锚进行中，暂停后可以更改船位来源。", "Pause the anchor watch before changing its position source.") else if(os.positionSource=="phone") os.t("当前船位来自手机；关闭手机定位后可选择船载船位。", "Position currently comes from your phone. Turn phone location off before choosing a boat source.") else os.t("船位来源不会自动切换；NMEA 的其他读数独立更新。", "Position never changes source automatically; other NMEA readings update independently."), 16, LocalMetro.current.muted)
-
-        if (os.positionSource != "phone") {
-            val selectedConnection = state.vesselSettings.metricSourcePins["POSITION_CONNECTION"]
-            val selected = connections.firstOrNull { it.spec.id == selectedConnection }
-            if (selectedConnection != null) {
-                Label(os.t("已选连接：", "selected connection: ") + (selected?.spec?.name ?: os.t("原连接不可用", "previous connection unavailable")), 23, LocalMetro.current.accent)
-                Label(when {
-                    os.positionSource != "nmea" -> os.t("船位来源已关闭，保留此选择。", "Position is off; this selection is retained.")
-                    selected == null -> os.t("等待原连接恢复；不会自动改用其他连接。", "Waiting for the selected connection; another connection will not take over.")
-                    !selected.requested || selected.state == NmeaConnectionState.DISCONNECTED -> os.t("该连接已停止，船位暂不可用。", "This connection is stopped; position is unavailable.")
-                    selected.state in setOf(NmeaConnectionState.CONNECTING, NmeaConnectionState.RECONNECTING) -> os.t("等待该连接接通。", "Waiting for this connection.")
-                    selected.state == NmeaConnectionState.ERROR -> os.t("该连接受阻，船位暂不可用。", "This connection is unavailable; position is unavailable.")
-                    os.hub.state.value.fix("nmea")?.fresh(now) != true -> os.t("等待该连接的新鲜有效船位。", "Waiting for a fresh valid position from this connection.")
-                    else -> os.t("正在使用此连接的船位。", "Using position from this connection.")
-                }, 17, LocalMetro.current.muted)
-            }
-connections.filter { it.spec.receive }.forEach { connection ->
-    val current = selectedConnection == connection.spec.id
-    val online = connection.state in setOf(NmeaConnectionState.CONNECTED,NmeaConnectionState.CONNECTED_NO_DATA,NmeaConnectionState.CONNECTED_NO_FIX,NmeaConnectionState.STALE)
-    ChoiceRow(connection.spec.name,current,if(online)os.t("已连接","connected")else os.t("连接停止或暂不可用","stopped or unavailable"),enabled=!locked&&online&&os.positionSource=="nmea") { marine.vm.selectNmeaPositionConnection(connection.spec.id) }
-}
-val positions = state.vesselData.candidates[VesselMetricId.POSITION].orEmpty().filter { it.source.transportProfileId == selectedConnection }
-val selectedSource = state.vesselSettings.metricSourcePins[VesselMetricId.POSITION.name]?:state.vesselData.position.sourceIdentity?.persistentKey
-positions.distinctBy{it.source.persistentKey}.forEach { candidate ->
-    ChoiceRow(candidate.source.displayName,selectedSource==candidate.source.persistentKey,sourceCandidateText(os,VesselMetricId.POSITION,candidate,now),enabled=!locked&&os.positionSource=="nmea") { marine.vm.setNmeaMetricSource(VesselMetricId.POSITION,candidate.source.persistentKey) }
-}
-            if (selectedConnection != null) Label(os.t("船位固定在选中的连接与来源；信号丢失时不会自动改用另一条连接。", "Position stays on the selected connection and source. Losing its signal does not select another connection."), 16, LocalMetro.current.muted)
-        }
-
-        Label(os.t("各项读数", "measurements"), 28)
-        val groups = state.vesselData.candidates.mapValues { (_,values)->values.filter {it.source.transportProfileId!=null} }.filter { it.value.isNotEmpty() }.filterKeys { it != VesselMetricId.POSITION }
-        if (groups.isEmpty()) Label(os.t("来源提供有效数据后，可以在这里选择每项读数的来源。", "When sources provide data, choose the source for each measurement here."), 19, LocalMetro.current.muted)
-        groups.forEach { (metric,candidates) ->
-            val pinned=state.vesselSettings.metricSourcePins[metric.name]
-            val active=sourceObservation(metric,state.vesselData)
-            val actual=candidates.firstOrNull{it.source.persistentKey==(pinned?:active?.sourceIdentity?.persistentKey)}
-            MenuRow(sourceMetricName(os,metric),listOfNotNull(if(pinned==null)os.t("自动","automatic")else os.t("指定来源","selected source"),actual?.source?.displayName,actual?.let{sourceCandidateText(os,metric,it,now)}).joinToString(" · ")) { expanded=if(expanded==metric)null else metric }
-            if(expanded==metric) {
-                ChoiceRow(os.t("自动选择可用来源","automatically select an available source"),pinned==null) { marine.vm.setNmeaMetricSource(metric,null) }
-                candidates.distinctBy{it.source.persistentKey}.forEach { candidate ->
-                    ChoiceRow(candidate.source.displayName,pinned==candidate.source.persistentKey,sourceCandidateText(os,metric,candidate,now)) { marine.vm.setNmeaMetricSource(metric,candidate.source.persistentKey) }
-                }
-                if(pinned!=null&&candidates.none{it.source.persistentKey==pinned})Label(os.t("已选来源当前不可用，系统不会偷偷换成其他来源。","The selected source is unavailable. Another source will not silently take over."),15,LocalMetro.current.muted)
-            }
-        }
-    }
+/** 来源选择只写既有全局配置；连接启停和发布策略不在此处修改。 */
+@Composable internal fun VesselSourceSettings(os: OsStore) = PageBody {
+    SourceOverview(os) { os.open("data_center:${it.name}") }
 }
 
-/** 本机采集的管理入口；船联网只管理实际 NMEA 连接，不把手机伪装成网络输入。 */
-@Composable internal fun ColumnScope.PhoneSourceSettings(os:OsStore) {
-    val vm=os.marine?.vm ?: return
+@Composable internal fun ColumnScope.SourceOverview(os: OsStore, open: (VesselMetricId) -> Unit) {
+    val vm = os.marine?.vm ?: return
     val state by vm.ui.collectAsState()
-    val location by vm.phoneLocationStatus.collectAsState()
-    val now=rememberMarineClock()
-    val locked=state.active?.paused==false
-    Label(os.t("手机提供的数据","from this phone"),28)
-    Toggle(os.t("手机定位","phone location"),os.positionSource=="phone",
-        if(os.positionSource=="nmea")os.t("当前使用船载船位，先将它关闭。","Boat position is selected; turn it off first.")else os.t("用手机 GPS 提供位置与对地航速。","Use phone GPS for position and speed over ground."),
-        enabled=!locked&&os.positionSource in listOf("none","phone")) {os.requestService(if(it)"gpsOn"else"gpsOff")}
-    if(os.positionSource=="phone") {
-        val last=os.hub.state.collectAsState().value.phone
-        last?.let {Label(os.formatCoordinates(it.point),23);Label(readingAge(os,it.elapsed,now),16,LocalMetro.current.muted)}
-        Label(when(location.phase) {
-            PhoneLocationPhase.PERMISSION_REQUIRED->os.t("请允许精确定位","allow precise location")
-            PhoneLocationPhase.PROVIDER_DISABLED->os.t("请开启 Android 定位服务","turn on Android location")
-            PhoneLocationPhase.ERROR->os.t("定位暂停更新，保留上次位置","location updates paused; last position retained")
-            else->if(last==null)os.t("正在等待第一次定位","waiting for the first position")else os.t("每个读数保留自己的接收时间。","Each reading keeps its own observation time.")
-        },17,LocalMetro.current.muted)
-    }
-    Label(os.t("传感器","sensors"),28)
-    val groups=state.vesselData.candidates.mapValues {(_,values)->values.filter {it.source.transportProfileId==null}}.filter {it.value.isNotEmpty()&&it.key!=VesselMetricId.POSITION}
-    groups.forEach {(metric,values)->
-        Label(sourceMetricName(os,metric),23)
-        values.distinctBy{it.source.persistentKey}.forEach {candidate->
-            Label(sourceCandidateText(os,metric,candidate,now),17,LocalMetro.current.muted)
+    val connections by vm.nmeaConnections.collectAsState()
+    val now = rememberMarineClock()
+    Label(os.t("全船共用一份数据", "one set of data aboard"), 28)
+    Label(os.t("在这里选择每项读数由谁提供。海图、守锚、驾驶台与共享服务使用同一份选择。", "Choose who supplies each reading. Chart, Anchor Watch, Helm and sharing all use these choices."), 17, LocalMetro.current.muted)
+    val groups = listOf(
+        os.t("航行", "navigation") to listOf(VesselMetricId.POSITION, VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC, VesselMetricId.SOG, VesselMetricId.COG, VesselMetricId.SPEED_THROUGH_WATER),
+        os.t("风与环境", "wind & environment") to listOf(VesselMetricId.APPARENT_WIND_SPEED, VesselMetricId.APPARENT_WIND_ANGLE, VesselMetricId.TRUE_WIND_SPEED, VesselMetricId.TRUE_WIND_ANGLE, VesselMetricId.TRUE_WIND_DIRECTION, VesselMetricId.DEPTH, VesselMetricId.PRESSURE, VesselMetricId.WATER_TEMPERATURE, VesselMetricId.AIR_TEMPERATURE),
+        os.t("船体姿态", "vessel motion") to listOf(VesselMetricId.HEEL, VesselMetricId.PITCH, VesselMetricId.RATE_OF_TURN, VesselMetricId.ROLL_RATE, VesselMetricId.PITCH_RATE, VesselMetricId.YAW_RATE, VesselMetricId.RUDDER_ANGLE),
+    )
+    groups.forEach { (title, metrics) ->
+        Label(title, 30, LocalMetro.current.accent)
+        metrics.forEach { metric ->
+            val observation = sourceObservation(metric, state.vesselData)
+            val candidates = state.vesselData.candidates[metric].orEmpty()
+            val pin = state.vesselSettings.metricSourcePins[metric.name]
+            val provider = observation?.sourceIdentity?.let { sourceDisplayName(os, it, connections) }
+            val value = observation?.let { sourceObservationText(os, metric, it, now) }
+            val choice = when {
+                metric == VesselMetricId.POSITION && os.positionSource == "none" -> os.t("已关闭", "off")
+                metric == VesselMetricId.POSITION && os.positionSource == "phone" -> os.t("手机 GPS", "phone GPS")
+                metric == VesselMetricId.POSITION -> os.t("指定船位来源", "selected position source")
+                pin == null && hasLegacyHeadingChoice(metric, state.vesselSettings) -> os.t("旧版船首向选择", "legacy heading choice")
+                pin == null -> os.t("自动", "automatic")
+                else -> os.t("指定来源", "selected source")
+            }
+            MenuRow(sourceMetricName(os, metric), listOfNotNull(value, provider ?: choice,
+                if (observation?.value == null && candidates.isEmpty()) os.t("等待来源提供读数", "waiting for a source reading") else null).joinToString(" · ")) { open(metric) }
         }
     }
-    if(groups.isEmpty())Label(os.t("手机采集到的气压、方位与姿态会显示在这里。固定手机后，在驾驶台完成船首向与姿态校准。","Phone pressure, direction and attitude appear here when observed. Mount the phone and calibrate heading and attitude in helm."),19,LocalMetro.current.muted)
-    Label(os.t("选择“内容”决定要分享什么；开启定位不会自动向其他设备发送。","Choose content to decide what to share. Turning on location does not automatically transmit to another device."),17,LocalMetro.current.muted)
-}
-
-private fun sourceCandidateText(os:OsStore,metric:VesselMetricId,candidate:VesselSourceCandidate<*>,now:Long):String {
-    val value=when(val number=candidate.value) {
-        is VesselPosition->os.formatCoordinates(GeoPoint(number.latitude,number.longitude))
-        is Number->when(metric) {
-            VesselMetricId.SOG,VesselMetricId.SPEED_THROUGH_WATER,VesselMetricId.APPARENT_WIND_SPEED,VesselMetricId.TRUE_WIND_SPEED,VesselMetricId.CURRENT_DRIFT,VesselMetricId.VMG_WIND,VesselMetricId.VMC_WAYPOINT->os.formatSpeed(number.toDouble())
-            VesselMetricId.DEPTH,VesselMetricId.UKC->os.formatDepth(number.toDouble())
-            VesselMetricId.COG,VesselMetricId.HEADING_TRUE,VesselMetricId.HEADING_MAGNETIC,VesselMetricId.DEVICE_HEADING_TRUE,VesselMetricId.DEVICE_HEADING_MAGNETIC,VesselMetricId.TRUE_WIND_DIRECTION,VesselMetricId.CURRENT_SET,VesselMetricId.WAYPOINT_BEARING->os.formatBearing(number.toDouble())
-            VesselMetricId.WATER_TEMPERATURE,VesselMetricId.AIR_TEMPERATURE->os.formatTemperature(number.toDouble())
-            VesselMetricId.PRESSURE->os.formatMetric("pressure",number.toDouble())
-            VesselMetricId.WAYPOINT_DISTANCE,VesselMetricId.XTE,VesselMetricId.TOTAL_LOG,VesselMetricId.TRIP_LOG->os.formatDistance(number.toDouble()*1852.0)
-            VesselMetricId.HEEL,VesselMetricId.PITCH,VesselMetricId.APPARENT_WIND_ANGLE,VesselMetricId.TRUE_WIND_ANGLE,VesselMetricId.RUDDER_ANGLE->os.formatAngle(number.toDouble())
-            VesselMetricId.RATE_OF_TURN->"${decimal(number.toDouble())}°/min"
-            VesselMetricId.ROLL_RATE,VesselMetricId.PITCH_RATE,VesselMetricId.YAW_RATE->"${decimal(number.toDouble())}°/s"
-            VesselMetricId.ROLL_PERIOD->"${decimal(number.toDouble())} s"
-            else->decimal(number.toDouble())
-        }
-        else->number.toString()
+    val known = groups.flatMap { it.second }.toSet()
+    val more = state.vesselData.candidates.keys.filter { it !in known && it !in derivedSourceMetrics }.sortedBy { it.ordinal }
+    if (more.isNotEmpty()) {
+        Label(os.t("更多数据", "more measurements"), 30, LocalMetro.current.accent)
+        more.forEach { metric -> MenuRow(sourceMetricName(os, metric), sourceObservation(metric, state.vesselData)?.let { sourceObservationText(os, metric, it, now) }.orEmpty()) { open(metric) } }
     }
-    val quality=when(candidate.validity){CandidateValidity.ELIGIBLE->null;CandidateValidity.LOW_QUALITY->os.t("质量较低","lower quality");CandidateValidity.STALE->os.t("已过期","stale");CandidateValidity.DISABLED->os.t("已关闭","disabled");else->os.t("当前不可用","unavailable")}
-    return listOfNotNull(value,readingAge(os,candidate.receivedElapsedRealtime,now),quality).joinToString(" · ")
 }
 
-private fun sourceObservation(metric:VesselMetricId,s:VesselDataSnapshot):VesselObservation<*>?=when(metric){
-    VesselMetricId.SOG->s.sogKnots;VesselMetricId.COG->s.cogTrueDegrees
-    VesselMetricId.HEADING_TRUE->s.headingTrueDegrees;VesselMetricId.HEADING_MAGNETIC->s.headingMagneticDegrees
-    VesselMetricId.DEPTH->s.depthMeters;VesselMetricId.UKC->s.derived.underKeelClearanceMeters
-    VesselMetricId.APPARENT_WIND_SPEED->s.apparentWind.speedKnots;VesselMetricId.APPARENT_WIND_ANGLE->s.apparentWind.angleDegrees
-    VesselMetricId.TRUE_WIND_SPEED->s.trueWind.speedKnots;VesselMetricId.TRUE_WIND_ANGLE->s.trueWind.angleDegrees;VesselMetricId.TRUE_WIND_DIRECTION->s.trueWind.directionDegrees
-    VesselMetricId.SPEED_THROUGH_WATER->s.speedThroughWaterKnots;VesselMetricId.PRESSURE->s.pressureHpa
-    VesselMetricId.HEEL,VesselMetricId.PITCH->s.attitude;VesselMetricId.RATE_OF_TURN->s.rateOfTurnDegreesPerMinute
-    VesselMetricId.WATER_TEMPERATURE->s.waterTemperatureCelsius;VesselMetricId.AIR_TEMPERATURE->s.airTemperatureCelsius
-    else->null
+@Composable internal fun ColumnScope.SourceMetricDetail(os: OsStore, metric: VesselMetricId) {
+    val vm = os.marine?.vm ?: return
+    val state by vm.ui.collectAsState()
+    val connections by vm.nmeaConnections.collectAsState()
+    val now = rememberMarineClock()
+    val observation = sourceObservation(metric, state.vesselData)
+    val candidates = state.vesselData.candidates[metric].orEmpty().distinctBy { it.source.persistentKey }
+    val pinned = state.vesselSettings.metricSourcePins[metric.name]
+    val locked = state.active?.paused == false
+    val activeKey = observation?.sourceIdentity?.persistentKey
+    Label(observation?.let { sourceObservationText(os, metric, it, now) } ?: os.t("等待第一条读数", "waiting for the first reading"), 30)
+    observation?.sourceIdentity?.let { Label(sourceDisplayName(os, it, connections), 19, LocalMetro.current.accent) }
+    if (metric == VesselMetricId.POSITION) {
+        Label(os.t("谁提供船位", "position source"), 28)
+        ChoiceRow(os.t("关闭船位", "position off"), os.positionSource == "none", os.t("停止使用船位，保留其他读数与网络连接。", "Stop using position; keep other readings and network connections."), !locked) { os.requestService("sourceOff") }
+        ChoiceRow(os.t("手机 GPS", "phone GPS"), os.positionSource == "phone", os.t("选择时启动手机定位，关闭时停止；需要精确定位权限。", "Starts phone location when selected and stops when disabled; requires precise location permission."), !locked && os.positionSource in listOf("none", "phone")) { os.requestService("gpsOn") }
+        val selectedConnection = state.vesselSettings.metricSourcePins["POSITION_CONNECTION"]
+        connections.filter { it.spec.receive }.forEach { connection ->
+            val online = connection.acceptsSourceSelection()
+            val same = os.positionSource == "nmea" && selectedConnection == connection.spec.id
+            ChoiceRow(connection.spec.name, same,
+                if (online) os.t("NMEA · 已连接", "NMEA · connected") else os.t("NMEA · 尚未连接；在船联网中启动", "NMEA · stopped; start it in Boat Network"),
+                !locked && online && os.positionSource != "phone") { vm.selectNmeaPositionConnection(connection.spec.id) }
+            if (same) candidates.filter { it.source.transportProfileId == connection.spec.id }.forEach { candidate ->
+                ChoiceRow(sourceDisplayName(os, candidate.source, connections), (pinned ?: activeKey) == candidate.source.persistentKey,
+                    sourceCandidateText(os, metric, candidate, now), !locked) { vm.setVesselMetricSource(metric, candidate.source.persistentKey) }
+            }
+        }
+        if (connections.none { it.spec.receive }) Label(os.t("还没有船载输入。在船联网中添加连接后，它会出现在这里。", "No boat input yet. Add a connection in Boat Network and it will appear here."), 18, LocalMetro.current.muted)
+        Label(when {
+            locked -> os.t("守锚进行中，暂停后可以更改船位来源。", "Pause Anchor Watch before changing position source.")
+            os.positionSource == "phone" -> os.t("要改用船载船位，先关闭手机船位。其他 NMEA 读数会继续更新。", "Turn phone position off before choosing a boat source. Other NMEA readings keep updating.")
+            os.positionSource == "nmea" -> os.t("要改用手机，先关闭船载船位。选中的连接中断时不会自动换来源。", "Turn boat position off before choosing the phone. If the selected connection stops, another source will not take over.")
+            else -> os.t("选择只影响全船使用的船位，不会启动任何网络连接。", "This chooses position for all apps; it never starts a network connection.")
+        }, 17, LocalMetro.current.muted)
+        return
+    }
+    if (metric in derivedSourceMetrics) {
+        Label(os.t("由系统根据已选读数计算，无需另外指定来源。", "Calculated from the selected readings; no separate source selection is needed."), 18, LocalMetro.current.muted)
+        return
+    }
+    Label(os.t("选择来源", "choose a source"), 28)
+    val legacyHeading = hasLegacyHeadingChoice(metric, state.vesselSettings)
+    if (legacyHeading && pinned == null) {
+        ChoiceRow(os.t("沿用旧版船首向选择", "keep legacy heading choice"), true,
+            listOfNotNull(when (state.vesselSettings.headingPreference) {
+                VesselSourcePreference.BOAT -> os.t("船载数据", "boat data")
+                VesselSourcePreference.PHONE -> os.t("手机数据", "phone data")
+                VesselSourcePreference.DERIVED -> os.t("计算数据", "derived data")
+                VesselSourcePreference.AUTO -> null
+            }, state.vesselSettings.boatHeadingSourceId).joinToString(" · "), enabled = false) {}
+    }
+    ChoiceRow(os.t("自动", "automatic"), pinned == null && !legacyHeading,
+        if (legacyHeading) os.t("清除旧版共用船首向偏好。真、磁船首向将分别按各自选择运行，已有独立指定来源会保留。", "Clear the shared legacy heading preference. True and magnetic heading then use their individual choices; existing per-reading selections are kept.")
+        else if (metric in setOf(VesselMetricId.SOG, VesselMetricId.COG)) os.t("默认跟随船位来源；也可以指定下面的独立读数。", "Follows the position source by default; you can select an independent reading below.")
+        else os.t("从已采集的候选中选择；不会开启连接或手机定位。", "Chooses among observed candidates; does not start connections or phone location.")) { vm.setVesselMetricSource(metric, null) }
+    candidates.sortedWith(compareBy<VesselSourceCandidate<*>> { it.source.transportProfileId != null }.thenBy { sourceDisplayName(os, it.source, connections) }).forEach { candidate ->
+        val connection = candidate.source.transportProfileId?.let { id -> connections.firstOrNull { it.spec.id == id } }
+        val selected = pinned == candidate.source.persistentKey
+        val actual = activeKey == candidate.source.persistentKey
+        val status = listOfNotNull(sourceCandidateText(os, metric, candidate, now),
+            if (actual) os.t("当前采用", "in use") else null,
+            if (connection != null && !connection.requested) os.t("连接已停止", "connection stopped") else null,
+            if (candidate.source.sourceClassIsPhoneGps() && os.positionSource != "phone") os.t("手机定位未被选用", "phone location is not selected") else null).joinToString(" · ")
+        ChoiceRow(sourceDisplayName(os, candidate.source, connections), selected, status) { vm.setVesselMetricSource(metric, candidate.source.persistentKey) }
+    }
+    if (pinned != null && candidates.none { it.source.persistentKey == pinned }) {
+        Label(os.t("保留已指定的来源，等待它恢复。不会改用另一个来源。", "Keeping your selected source while it is absent. Another source will not take over."), 18, LocalMetro.current.muted)
+    }
+    if (candidates.isEmpty()) Label(os.t("尚未收到这项数据。手机采集或已连接的 NMEA 设备提供读数后，会在同一列表中出现。", "No reading received yet. Phone measurements and connected NMEA devices appear together when observed."), 19, LocalMetro.current.muted)
+    if (metric in setOf(VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC)) Label(os.t("手机固定并对齐船艏后，才能作为船首向来源。对地航向不能代替船首向。", "A mounted phone becomes a heading source after bow alignment. Course over ground cannot replace heading."), 17, LocalMetro.current.muted)
+    state.vesselData.conflicts[metric]?.takeIf { it.active }?.let { Label(os.t("来源之间的读数有差异，请核对安装方向和设备。", "Sources disagree. Check device alignment and instruments."), 17, LocalMetro.current.accent) }
+}
+
+private fun hasLegacyHeadingChoice(metric: VesselMetricId, settings: VesselDataSettings) = metric in setOf(VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC) && (settings.headingPreference != VesselSourcePreference.AUTO || settings.boatHeadingSourceId != null)
+
+private fun NmeaConnectionSnapshot.acceptsSourceSelection() = requested && state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE)
+private fun VesselSourceIdentity.sourceClassIsPhoneGps() = sourceType == VesselSourceType.PHONE_SENSOR && (phoneSensorType?.contains("GPS", true) == true || id.contains("gnss", true))
+internal val derivedSourceMetrics = setOf(VesselMetricId.UKC, VesselMetricId.VMG_WIND, VesselMetricId.VMC_WAYPOINT, VesselMetricId.MOTION_SCORE, VesselMetricId.ROLL_PERIOD)
+
+internal fun sourceDisplayName(os: OsStore, source: VesselSourceIdentity, connections: List<NmeaConnectionSnapshot>): String {
+    source.transportProfileId?.let { id ->
+        val name = connections.firstOrNull { it.spec.id == id }?.spec?.name ?: os.t("船载连接", "boat connection")
+        return listOfNotNull(name, source.transducerName ?: source.fullSentenceId ?: source.talkerId).distinct().joinToString(" · ")
+    }
+    if (source.sourceType == VesselSourceType.PHONE_SENSOR) return when {
+        source.id.contains("baro", true) || source.phoneSensorType?.contains("pressure", true) == true -> os.t("手机气压计", "phone barometer")
+        source.id.contains("gnss", true) || source.id.contains("gps", true) -> os.t("手机 GPS", "phone GPS")
+        source.id.contains("vessel-heading", true) -> os.t("手机船首向", "phone vessel heading")
+        source.id.contains("heading", true) || source.id.contains("compass", true) -> os.t("手机罗盘方位", "phone compass direction")
+        source.id.contains("imu", true) -> os.t("手机船体姿态", "phone vessel attitude")
+        else -> os.t("手机传感器", "phone sensor")
+    }
+    return if (source.sourceType == VesselSourceType.APP_DERIVED) os.t("系统计算", "calculated") else source.displayName
+}
+
+internal fun sourceCandidateText(os: OsStore, metric: VesselMetricId, candidate: VesselSourceCandidate<*>, now: Long): String = listOfNotNull(
+    sourceValueText(os, metric, candidate.value), readingAge(os, candidate.receivedElapsedRealtime, now),
+    when (candidate.validity) { CandidateValidity.ELIGIBLE -> null; CandidateValidity.LOW_QUALITY -> os.t("精度较低", "lower accuracy"); CandidateValidity.STALE -> os.t("保留上次读数", "last reading retained"); CandidateValidity.DISABLED -> os.t("已停止", "stopped"); CandidateValidity.INVALID -> os.t("未通过质量检查", "quality check failed") }
+).joinToString(" · ")
+
+internal fun sourceObservationText(os: OsStore, metric: VesselMetricId, observation: VesselObservation<*>, now: Long): String {
+    val direction = metric in setOf(VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC, VesselMetricId.DEVICE_HEADING_TRUE, VesselMetricId.DEVICE_HEADING_MAGNETIC)
+    return listOfNotNull(if (direction && observation.freshness != VesselDataFreshness.FRESH) os.t("等待新方向", "awaiting heading update") else sourceValueText(os, metric, observation.value), observation.receivedElapsedRealtime?.let { readingAge(os, it, now) }).joinToString(" · ")
+}
+
+internal fun sourceValueText(os: OsStore, metric: VesselMetricId, value: Any?): String = when (value) {
+    null -> os.t("还没有读数", "no reading yet")
+    is VesselPosition -> os.formatCoordinates(GeoPoint(value.latitude, value.longitude))
+    is Number -> when (metric) {
+        VesselMetricId.SOG, VesselMetricId.SPEED_THROUGH_WATER, VesselMetricId.APPARENT_WIND_SPEED, VesselMetricId.TRUE_WIND_SPEED, VesselMetricId.CURRENT_DRIFT, VesselMetricId.VMG_WIND, VesselMetricId.VMC_WAYPOINT -> os.formatSpeed(value.toDouble())
+        VesselMetricId.DEPTH, VesselMetricId.UKC -> os.formatDepth(value.toDouble())
+        VesselMetricId.COG, VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC, VesselMetricId.DEVICE_HEADING_TRUE, VesselMetricId.DEVICE_HEADING_MAGNETIC, VesselMetricId.TRUE_WIND_DIRECTION, VesselMetricId.CURRENT_SET, VesselMetricId.WAYPOINT_BEARING -> os.formatBearing(value.toDouble())
+        VesselMetricId.WATER_TEMPERATURE, VesselMetricId.AIR_TEMPERATURE -> os.formatTemperature(value.toDouble())
+        VesselMetricId.PRESSURE -> os.formatMetric("pressure", value.toDouble())
+        VesselMetricId.WAYPOINT_DISTANCE, VesselMetricId.XTE, VesselMetricId.TOTAL_LOG, VesselMetricId.TRIP_LOG -> os.formatDistance(value.toDouble() * 1852.0)
+        VesselMetricId.HEEL, VesselMetricId.PITCH, VesselMetricId.APPARENT_WIND_ANGLE, VesselMetricId.TRUE_WIND_ANGLE, VesselMetricId.RUDDER_ANGLE -> os.formatAngle(value.toDouble())
+        VesselMetricId.RATE_OF_TURN -> "${decimal(value.toDouble())}°/min"
+        VesselMetricId.ROLL_RATE, VesselMetricId.PITCH_RATE, VesselMetricId.YAW_RATE -> "${decimal(value.toDouble())}°/s"
+        VesselMetricId.ROLL_PERIOD -> "${decimal(value.toDouble())} s"
+        else -> decimal(value.toDouble())
+    }
+    else -> value.toString()
+}
+
+internal fun sourceObservation(metric: VesselMetricId, s: VesselDataSnapshot): VesselObservation<*>? = when (metric) {
+    VesselMetricId.POSITION -> s.position
+    VesselMetricId.SOG -> s.sogKnots; VesselMetricId.COG -> s.cogTrueDegrees
+    VesselMetricId.HEADING_TRUE -> s.headingTrueDegrees; VesselMetricId.HEADING_MAGNETIC -> s.headingMagneticDegrees
+    VesselMetricId.DEVICE_HEADING_TRUE -> s.deviceHeadingTrueDegrees; VesselMetricId.DEVICE_HEADING_MAGNETIC -> s.deviceHeadingMagneticDegrees
+    VesselMetricId.DEPTH -> s.depthMeters; VesselMetricId.UKC -> s.derived.underKeelClearanceMeters
+    VesselMetricId.APPARENT_WIND_SPEED -> s.apparentWind.speedKnots; VesselMetricId.APPARENT_WIND_ANGLE -> s.apparentWind.angleDegrees
+    VesselMetricId.TRUE_WIND_SPEED -> s.trueWind.speedKnots; VesselMetricId.TRUE_WIND_ANGLE -> s.trueWind.angleDegrees; VesselMetricId.TRUE_WIND_DIRECTION -> s.trueWind.directionDegrees
+    VesselMetricId.SPEED_THROUGH_WATER -> s.speedThroughWaterKnots; VesselMetricId.PRESSURE -> s.pressureHpa
+    VesselMetricId.HEEL -> s.heelDegrees; VesselMetricId.PITCH -> s.pitchDegrees
+    VesselMetricId.ROLL_RATE -> s.rollRateDegreesPerSecond; VesselMetricId.PITCH_RATE -> s.pitchRateDegreesPerSecond; VesselMetricId.YAW_RATE -> s.yawRateDegreesPerSecond
+    VesselMetricId.RATE_OF_TURN -> s.rateOfTurnDegreesPerMinute; VesselMetricId.RUDDER_ANGLE -> s.rudderAngleDegrees
+    VesselMetricId.WATER_TEMPERATURE -> s.waterTemperatureCelsius; VesselMetricId.AIR_TEMPERATURE -> s.airTemperatureCelsius
+    VesselMetricId.CURRENT_SET -> s.currentSetTrueDegrees; VesselMetricId.CURRENT_DRIFT -> s.currentDriftKnots
+    VesselMetricId.XTE -> s.crossTrackErrorNauticalMiles; VesselMetricId.WAYPOINT_BEARING -> s.waypointBearingTrueDegrees; VesselMetricId.WAYPOINT_DISTANCE -> s.waypointDistanceNauticalMiles
+    VesselMetricId.DESTINATION_WAYPOINT -> s.destinationWaypoint; VesselMetricId.TOTAL_LOG -> s.totalLogNauticalMiles; VesselMetricId.TRIP_LOG -> s.tripLogNauticalMiles
+    VesselMetricId.VMG_WIND -> s.derived.vmgToWindKnots; VesselMetricId.VMC_WAYPOINT -> s.derived.vmcToWaypointKnots
+    VesselMetricId.MOTION_SCORE, VesselMetricId.ROLL_PERIOD -> s.motion
 }
 
 internal fun sourceMetricName(os: OsStore, metric: VesselMetricId): String = when (metric) {

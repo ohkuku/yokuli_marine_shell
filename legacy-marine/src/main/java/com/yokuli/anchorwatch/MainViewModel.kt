@@ -379,17 +379,23 @@ class MainViewModel @Inject constructor(
         ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction("OS_NMEA_POSITION").putExtra("connectionId",id).putExtra("sourceKey",sourceKey))
     }
     fun removeNmeaConnection(id:String)=viewModelScope.launch{nav.removeConnection(id)}
-    fun setNmeaMetricSource(metric:com.yokuli.anchorwatch.domain.vessel.VesselMetricId,sourceId:String?)=viewModelScope.launch{
+    private val vesselSourceWriteMutex = kotlinx.coroutines.sync.Mutex()
+    /** 唯一的逐项选源写入口；手机与 NMEA 都写入同一份用户偏好，不另建应用配置。 */
+    fun setVesselMetricSource(metric:com.yokuli.anchorwatch.domain.vessel.VesselMetricId,sourceId:String?)=viewModelScope.launch{
         if(metric==com.yokuli.anchorwatch.domain.vessel.VesselMetricId.POSITION){
             if(sourceId==null)return@launch
             val source=ui.value.vesselData.candidates[metric]?.firstOrNull{com.yokuli.anchorwatch.domain.vessel.VesselSourcePinPolicy.matches(it.source,sourceId)}?.source?:return@launch
             source.transportProfileId?.let{selectNmeaPositionSource(it,sourceId)}
             return@launch
         }
-        val current=vesselSettingsRepository.settings.first();val pins=current.metricSourcePins.toMutableMap()
-        if(sourceId==null)pins.remove(metric.name)else pins[metric.name]=sourceId
-        vesselSettingsRepository.save(current.copy(metricSourcePins=pins))
+        vesselSourceWriteMutex.lock()
+        try {
+            val current=vesselSettingsRepository.settings.first()
+            vesselSettingsRepository.save(com.yokuli.anchorwatch.data.vessel.VesselMetricSelectionPolicy.choose(current,metric,sourceId))
+        } finally { vesselSourceWriteMutex.unlock() }
     }
+    /** 旧入口兼容；名称保留不代表 NMEA 应用拥有数据源设置。 */
+    fun setNmeaMetricSource(metric:com.yokuli.anchorwatch.domain.vessel.VesselMetricId,sourceId:String?)=setVesselMetricSource(metric,sourceId)
     private var pointsJob:Job?=null
     private var observedSessionId:Long?=null
     private var observedEstimationEpochStartedAt:Long?=null

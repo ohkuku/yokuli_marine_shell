@@ -23,10 +23,13 @@ class WpShellRuntime(private val os: OsStore) {
     val presets = tilePresets()
     val appPreferenceRegistry = AppPreferenceRegistry.compose(apps.map {it.id}.toSet(),tilePreferenceContributions(apps))
     val snapshots = TaskSnapshotStore()
+    /** 调用者与目标旧会话共享已有 Bitmap 引用；恢复页面时也恢复对应任务图。 */
+    private val pageSnapshots = linkedMapOf<String, TaskSnapshot>()
+    private val snapshotPageKeys = mutableMapOf<InternalAppTaskId, String>()
+    private val chartPageStates = mutableMapOf<String, ChartInteractionSnapshot>()
+    private var foregroundChartKey: String? = null
     var coldOpeningTask by mutableStateOf<InternalAppTaskId?>(null)
         private set
-    /** 页面重新从应用首页打开时更新代次；最近任务恢复不清空页面状态。 */
-    val entryGenerations = mutableStateMapOf<InternalAppTaskId, Int>()
     private val navigationQueue=Channel<LauncherAction>(Channel.UNLIMITED)
     val catalog = LauncherCatalogSnapshot(
         revision = 2,
@@ -66,7 +69,14 @@ class WpShellRuntime(private val os: OsStore) {
         os.scope.launch {
             for(action in navigationQueue) {
                 val current=(engine.state.value.surface as? ShellVisualSurface.Module)?.taskId
-                if(current!=null) snapshots.captureCurrent(current){os.notifications.canCaptureApp}
+                // 只有离开应用才拍最近任务图；应用内进退页不等待 PixelCopy，也不切换截图。
+                if(current!=null && leavesTask(action, current)) {
+                    snapshots.captureCurrent(current,engine.state.value.tasks.task(current)?.currentUiStateKey){os.notifications.canCaptureApp}
+                    engine.state.value.tasks.task(current)?.let { task ->
+                        snapshots.images[current]?.takeIf {it.pageInstanceKey==task.currentUiStateKey}
+                            ?.let { retainPageSnapshot(task.currentUiStateKey, it) }
+                    }
+                }
                 deliver(action)
                 yield()
             }
@@ -111,12 +121,42 @@ class WpShellRuntime(private val os: OsStore) {
                 }
                 os.editTiles = state.start.interaction !is com.yokuli.shell.engine.interaction.StartInteractionState.Idle
                 os.recent = state.tasks.tasks.map { pageForToken(it.lastLaunchToken) }
+                val retainedSnapshotKeys = (state.tasks.tasks + state.tasks.linkedReturns.flatMap {
+                    listOfNotNull(it.callerSnapshot, it.targetPreviousTask)
+                }).map { it.currentUiStateKey }.toSet()
+                pageSnapshots.keys.retainAll(retainedSnapshotKeys)
+                state.tasks.tasks.forEach { task ->
+                    if(snapshotPageKeys.put(task.taskId, task.currentUiStateKey) != task.currentUiStateKey) {
+                        restoredPageSnapshot(task.currentUiStateKey)?.let { snapshots.images[task.taskId] = it }
+                            ?: snapshots.images.remove(task.taskId)
+                    }
+                }
+                snapshotPageKeys.keys.retainAll(state.tasks.tasks.map { it.taskId }.toSet())
                 snapshots.retain(state.tasks.tasks.map {it.taskId}.toSet())
+                val foregroundTask = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId) }
+                val chartKey = foregroundTask?.takeIf { appForPage(pageForToken(it.lastLaunchToken))?.app == AppId.CHART }?.currentUiStateKey
+                if(chartKey != null && chartKey != foregroundChartKey) {
+                    chartPageStates[chartKey]?.let(os::restoreChartInteraction)
+                }
+                foregroundChartKey = chartKey
+                chartPageStates.keys.retainAll(state.tasks.retainedUiStateKeys)
             }
         }
     }
 
     fun pageForToken(token: LaunchToken): String = canonicalPage(apps.firstOrNull { it.rootToken == token }?.page ?: token.value)
+
+    private fun retainPageSnapshot(key: String, snapshot: TaskSnapshot) {
+        pageSnapshots.remove(key)
+        pageSnapshots[key] = snapshot
+        // 历史访问最多八张、32 MiB；只移除引用，不能回收仍在当前任务卡使用的 Bitmap。
+        while(pageSnapshots.size > 8 || pageSnapshots.values.sumOf { it.bitmap.allocationByteCount.toLong() } > 32L * 1024 * 1024) {
+            pageSnapshots.remove(pageSnapshots.keys.first())
+        }
+    }
+
+    private fun restoredPageSnapshot(key: String): TaskSnapshot? =
+        pageSnapshots.remove(key)?.also { pageSnapshots[key] = it }
 
     fun updateSystemPreferences(transform: (LauncherPersistedState) -> LauncherPersistedState) {
         os.scope.launch { runCatching { persistence.updatePreferences(transform) }
@@ -127,7 +167,7 @@ class WpShellRuntime(private val os: OsStore) {
         page == "trip" || page == "trip.overview" -> "voyages"
         page == "anchorages" || page == "anchorages.overview" -> "places:anchorages"
         page == "data" || page == "data.overview" -> "instruments"
-        page == "sources" || page.startsWith("data.sources") || page=="settings:sources" -> "nmea:sources"
+        page == "sources" || page.startsWith("data.sources") || page=="settings:sources" || page=="nmea:sources" -> "data_center"
         page == "marine-settings" -> "settings:vessel"
         page == "output" -> "nmea:outputs"
         page == "sonar" || page == "sonar.overview" || page=="chart:depth" -> "chart"
@@ -145,7 +185,10 @@ class WpShellRuntime(private val os: OsStore) {
         return apps.firstOrNull { it.page == root }
     }
 
-    fun open(destination: String) {
+    /** 由业务对象发起的跨应用操作，返回时恢复调用页；普通应用入口仍调用 open。 */
+    fun openLinked(destination: String) = open(destination, linked = true)
+
+    fun open(destination: String, linked: Boolean = false) {
         val page=canonicalPage(destination)
         when (page) {
             "start" -> home()
@@ -154,8 +197,8 @@ class WpShellRuntime(private val os: OsStore) {
             else -> {
                 val app = appForPage(page) ?: return
                 val token = if (page == app.page) app.rootToken else LaunchToken(page)
-                dispatch(LauncherAction.Open(token, preserveCaller = page != app.page && engine.state.value.surface is ShellVisualSurface.Module,
-                    replaceTaskRoute = page == app.page))
+                dispatch(LauncherAction.Open(token, preserveCaller = (linked || page != app.page) && engine.state.value.surface is ShellVisualSurface.Module,
+                    replaceTaskRoute = page == app.page && !linked))
             }
         }
     }
@@ -163,29 +206,40 @@ class WpShellRuntime(private val os: OsStore) {
     fun dispatch(action:LauncherAction) {
         val navigates=action is LauncherAction.Open || action is LauncherAction.ActivateTask || action is LauncherAction.PinEntry ||
             action in listOf(LauncherAction.Back,LauncherAction.ShowDesktop,LauncherAction.ShowRecents,LauncherAction.OpenSearch,LauncherAction.ShowStart,LauncherAction.ShowAllApps)
+        // 在离开海图的操作发起时保存；另一应用准备自己的海图请求以后不可反向覆盖原访问。
+        val currentTask = (engine.state.value.surface as? ShellVisualSurface.Module)?.let { engine.state.value.tasks.task(it.taskId) }
+        if(navigates && currentTask != null && leavesTask(action,currentTask.taskId) && appForPage(pageForToken(currentTask.lastLaunchToken))?.app == AppId.CHART) {
+            chartPageStates[currentTask.currentUiStateKey] = os.captureChartInteraction()
+        }
         if(navigates && engine.state.value.surface is ShellVisualSurface.Module) navigationQueue.trySend(action)
         else deliver(action)
     }
     private fun deliver(action:LauncherAction) {
-        // Back may wait behind the task-snapshot capture. Re-check when it executes so a rapid
-        // second press from a detail page cannot pass through the root reached by the first press.
-        if(action==LauncherAction.Back&&atUnlinkedAppRoot())return
         if(action is LauncherAction.Open) {
             val app=appForPage(pageForToken(action.token))
             val existing=engine.state.value.tasks.tasks.firstOrNull {it.appId==app?.id}
             coldOpeningTask=app?.takeIf {existing==null}?.let {InternalAppTaskId(it.id.value)}
-            // 普通应用入口打开首页；只有最近任务恢复上次子页。
-            if(existing!=null && action.token==app?.rootToken) {
-                entryGenerations[existing.taskId]=(entryGenerations[existing.taskId] ?: 0)+1
+            // 首页入口是新访问；引擎为它分配独立页面实例，不再清空同应用的调用者快照。
+            if(existing!=null && action.token==app?.rootToken && !action.preserveCaller) {
                 engine.dispatch(action.copy(replaceTaskRoute=true,preserveCaller=false));return
             }
-            // 跨应用对象入口拥有干净的父首页；最近任务 ActivateTask 仍恢复原页面代次。
-            val current=(engine.state.value.surface as? ShellVisualSurface.Module)?.taskId
-            if(existing!=null && current!=existing.taskId) {
-                entryGenerations[existing.taskId]=(entryGenerations[existing.taskId] ?: 0)+1
-            }
-        } else if(action is LauncherAction.ActivateTask) coldOpeningTask=null
+        } else if(action is LauncherAction.ActivateTask || action in listOf(
+            LauncherAction.Back, LauncherAction.ShowDesktop, LauncherAction.ShowRecents,
+            LauncherAction.OpenSearch, LauncherAction.ShowStart, LauncherAction.ShowAllApps,
+        )) coldOpeningTask=null
         engine.dispatch(action)
+    }
+
+    private fun leavesTask(action: LauncherAction, current: InternalAppTaskId): Boolean = when (action) {
+        is LauncherAction.Open -> appForPage(pageForToken(action.token))?.id?.value != current.value
+        is LauncherAction.ActivateTask -> action.taskId != current
+        LauncherAction.Back -> engine.state.value.tasks.let { tasks ->
+            tasks.linkedReturns.lastOrNull()?.let { it.targetTaskId == current && (tasks.task(current)?.backStack?.size ?: 0) <= it.targetBackStackDepth } == true ||
+                tasks.task(current)?.backStack?.isEmpty() == true
+        }
+        LauncherAction.ShowDesktop, LauncherAction.ShowRecents, LauncherAction.OpenSearch,
+        LauncherAction.ShowStart, LauncherAction.ShowAllApps -> true
+        else -> false
     }
 
     fun back() = input(ShellInput.BACK)

@@ -38,8 +38,8 @@ android {
         buildConfigField("String", "BUILD_TIMESTAMP_UTC", configuration("BUILD_TIMESTAMP_UTC").quoted())
         buildConfigField("boolean", "BUILD_IN_CI", (configuration("GITHUB_ACTIONS") == "true").toString())
         buildConfigField("int", "DATABASE_SCHEMA_VERSION", "22")
-        buildConfigField("String", "VERSION_NAME", configuration("YOKULI_VERSION_NAME").ifBlank { "0.3.0-experience.2" }.quoted())
-        buildConfigField("int", "VERSION_CODE", configuration("YOKULI_VERSION_CODE").toIntOrNull()?.toString() ?: "3")
+        buildConfigField("String", "VERSION_NAME", configuration("YOKULI_VERSION_NAME").ifBlank { "0.5.0-experience.5" }.quoted())
+        buildConfigField("int", "VERSION_CODE", configuration("YOKULI_VERSION_CODE").toIntOrNull()?.toString() ?: "9")
     }
     buildTypes {
         getByName("debug") { buildConfigField("String", "BUILD_CHANNEL", "debug".quoted()) }

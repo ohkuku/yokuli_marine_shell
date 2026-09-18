@@ -44,7 +44,18 @@ data class InternalAppTask(
     val lastLaunchToken: LaunchToken,
     val backStack: List<LaunchToken> = emptyList(),
     val savedUiStateKey: String? = null,
+    /** 与 backStack 一一对应的页面实例；同一个地址再次打开也不能覆盖调用者的草稿。 */
+    val backStackUiStateKeys: List<String> = emptyList(),
 )
+
+/** 页面地址描述业务对象，实例标识描述这一次访问；两者不可混用。 */
+val InternalAppTask.currentUiStateKey: String
+    get() = savedUiStateKey ?: "${taskId.value}:${lastLaunchToken.value}"
+
+val InternalAppTask.retainedUiStateKeys: Set<String>
+    get() = backStack.mapIndexed { index, token ->
+        backStackUiStateKeys.getOrNull(index) ?: "${taskId.value}:${token.value}"
+    }.toSet() + currentUiStateKey
 
 /**
  * A linked return marks an explicit cross-app hand-off. The target depth is the route depth
@@ -54,6 +65,10 @@ data class LinkedTaskReturn(
     val callerTaskId: InternalAppTaskId,
     val targetTaskId: InternalAppTaskId,
     val targetBackStackDepth: Int,
+    /** 跨应用调用发生时的完整调用者页面，允许 A → B → A 后逐层回到原位置。 */
+    val callerSnapshot: InternalAppTask? = null,
+    /** 被调用应用原来已经打开的会话；调用结束后恢复，避免污染最近任务。 */
+    val targetPreviousTask: InternalAppTask? = null,
 ) {
     init { require(targetBackStackDepth >= 0) }
 }
@@ -61,8 +76,13 @@ data class LinkedTaskReturn(
 data class InternalTaskState(
     val tasks: List<InternalAppTask> = emptyList(),
     val linkedReturns: List<LinkedTaskReturn> = emptyList(),
+    val nextRouteInstance: Long = 1,
 ) {
     fun task(id: InternalAppTaskId): InternalAppTask? = tasks.firstOrNull { it.taskId == id }
+
+    val retainedUiStateKeys: Set<String>
+        get() = (tasks + linkedReturns.flatMap { listOfNotNull(it.callerSnapshot, it.targetPreviousTask) })
+            .flatMap { it.retainedUiStateKeys }.toSet()
 }
 
 sealed interface LauncherTransient {

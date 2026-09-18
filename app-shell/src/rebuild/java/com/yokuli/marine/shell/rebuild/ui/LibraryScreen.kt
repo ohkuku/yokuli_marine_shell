@@ -95,7 +95,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
                                 MetroButton(os.t("下移","move down"),{library.moveFile(file,1)},Modifier.weight(1f),enabled=index<files.lastIndex)
                             }
                             if(file.error==null)MenuRow(os.t("在图层中定位","locate in this layer"),os.formatCoordinates(file.focus)) {
-                                library.showOnly(file);os.maps.select(MapSource.CustomLayer(folder.id));os.fly(file.focus,file.previewZoom);os.open("chart")
+                                library.showOnly(file);os.maps.select(MapSource.CustomLayer(folder.id));os.fly(file.focus,file.previewZoom);os.openLinked("chart")
                             }
                             MenuRow(os.t("重命名显示名称","rename display name")) {namingFile=file}
                             MenuRow(os.t("从图册移除","remove from library"),os.t("保留原文件，可在管理中恢复","keeps the file; restore from manage")) {removeFile=file}
@@ -140,5 +140,5 @@ import com.yokuli.marine.shell.rebuild.chart.*
 private fun folderName(os:OsStore,folder:ChartFolder)=if(folder.uri=="copy" && folder.name=="imported charts")os.t("本机导入","local imports")else folder.name
 private fun viewLayer(os:OsStore,folder:ChartFolder) {
     val file=os.library.folderFiles(folder).firstOrNull {it.enabled && it.error==null}
-    os.maps.select(MapSource.CustomLayer(folder.id));file?.let {os.fly(it.focus,it.previewZoom)};os.open("chart")
+    os.maps.select(MapSource.CustomLayer(folder.id));file?.let {os.fly(it.focus,it.previewZoom)};os.openLinked("chart")
 }

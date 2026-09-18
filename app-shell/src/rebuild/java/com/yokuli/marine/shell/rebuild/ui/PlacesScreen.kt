@@ -5,6 +5,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.Dialog
@@ -18,19 +19,19 @@ import kotlinx.coroutines.*
     if(route==null) {LaunchedEffect(id) {os.back()};return}
     val (fix,now)=liveNavigationFix(os)
     val c=LocalMetro.current;val context=LocalContext.current;val scope=rememberCoroutineScope()
-    var rename by remember(id) {mutableStateOf(false)};var remove by remember(id) {mutableStateOf(false)}
-    var startAt by remember(id) {mutableStateOf<Int?>(null)};var actions by remember(id) {mutableStateOf(false)}
-    var selectedPoint by remember(id) {mutableStateOf<Int?>(null)}
-    var editConfirm by remember(id) {mutableStateOf(false)};var exporting by remember {mutableStateOf(false)}
+    var rename by rememberSaveable(id) {mutableStateOf(false)};var remove by rememberSaveable(id) {mutableStateOf(false)}
+    var startAt by rememberSaveable(id) {mutableStateOf<Int?>(null)};var actions by rememberSaveable(id) {mutableStateOf(false)}
+    var selectedPoint by rememberSaveable(id) {mutableStateOf<Int?>(null)}
+    var editConfirm by rememberSaveable(id) {mutableStateOf(false)};var exporting by remember {mutableStateOf(false)}
     val exporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/gpx+xml")) {uri ->if(uri!=null) scope.launch {
         exporting=true
         try {withContext(Dispatchers.IO) {context.contentResolver.openOutputStream(uri,"wt")?.use {Gpx.write(it,emptyList(),listOf(route))} ?: error("unwritable")};os.notify("航线已导出","Route exported")}
         catch(_:Exception) {os.notify("导出失败，请检查所选位置","Export failed. Check the selected location.")} finally {exporting=false}
     } }
-    fun preview() {os.maps.view("chart",os.center,os.zoom).previewRoute=route.copy(points=route.points.toList());os.displayedRouteId=id;os.fitRequest=route.points;os.showCrosshair=false;os.open("chart")}
+    fun preview() {os.maps.view("chart",os.center,os.zoom).previewRoute=route.copy(points=route.points.toList());os.displayedRouteId=id;os.fitRequest=route.points;os.showCrosshair=false;os.openLinked("chart")}
     fun edit() {
         os.editingRouteId=id;os.draftRoute=route.points.toList();os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList()
-        route.points.firstOrNull()?.let {os.fly(it)};os.open("chart")
+        route.points.firstOrNull()?.let {os.fly(it)};os.openLinked("chart")
     }
     val navigating=os.activeRouteId==id
     val guidance=os.activeRoute?.takeIf{navigating}?.let {routeGuidance(it,os.routeLeg,fix,now)}
@@ -53,7 +54,7 @@ import kotlinx.coroutines.*
                         if(route.points.isEmpty()) Label(os.t("这条航线还没有航点。编辑后再开始。","This route has no waypoints. Add some before starting."),18)
                         MetroButton(if(navigating) os.t("回到海图继续导航","continue navigation on chart") else os.t("在海图上预览","preview on chart"),{
                             val live=fix?.takeIf {it.fresh(now)}
-                            if(navigating) {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=id;os.showCrosshair=false;if(live!=null){os.fly(live.point);os.follow=true}else os.fitRequest=os.activeRoute?.points;os.open("chart")} else preview()
+                            if(navigating) {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=id;os.showCrosshair=false;if(live!=null){os.fly(live.point);os.follow=true}else os.fitRequest=os.activeRoute?.points;os.openLinked("chart")} else preview()
                         },primary=true,enabled=route.points.isNotEmpty())
                         MetroButton(if(navigating) os.t("当前导航与目标","current guidance & target") else os.t("开始沿线导航","start route navigation"),{if(navigating) actions=true else startAt=0},enabled=route.points.isNotEmpty())
                         Label(os.t("预览只显示路线。开始导航后，才会根据船位引导你逐点前往。","Preview displays the route. Start navigation to follow its waypoints from your position."),16,c.muted)
@@ -95,7 +96,7 @@ import kotlinx.coroutines.*
                 Label(os.t("航点 ${index+1}","waypoint ${index+1}"),32)
                 Label(os.formatCoordinates(point),20,c.accent)
                 fix?.takeIf {it.fresh(now)}?.let {Label(os.t("距船位 ${os.formatDistance(distance(it.point,point))}","${os.formatDistance(distance(it.point,point))} from your position"),17,c.muted)}
-                MetroButton(os.t("在海图上查看","show on chart"),{os.maps.view("chart",os.center,os.zoom).previewRoute=route.copy(points=route.points.toList());os.displayedRouteId=id;os.fly(point);os.showCrosshair=true;selectedPoint=null;os.open("chart")},primary=true)
+                MetroButton(os.t("在海图上查看","show on chart"),{os.maps.view("chart",os.center,os.zoom).previewRoute=route.copy(points=route.points.toList());os.displayedRouteId=id;os.fly(point);os.showCrosshair=true;selectedPoint=null;os.openLinked("chart")},primary=true)
                 MetroButton(os.t("从这个目标开始导航","start with this target"),{selectedPoint=null;startAt=index})
                 MetroButton(os.t("关闭","close"),{selectedPoint=null})
             }

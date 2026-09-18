@@ -57,12 +57,9 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
     val state by shell.engine.state.collectAsState()
     val savedTasks=rememberSaveableStateHolder()
     val savedKeys=remember {mutableMapOf<String,InternalAppTaskId>()}
-    LaunchedEffect(state.tasks.tasks.map {it.taskId},shell.entryGenerations.toMap()) {
-        val open=state.tasks.tasks.map {it.taskId}.toSet()
-        savedKeys.keys.toList().filter {key ->
-            val task=savedKeys[key]
-            task !in open || !key.startsWith("${task?.value}:${shell.entryGenerations[task] ?: 0}:")
-        }.forEach {savedTasks.removeState(it);savedKeys.remove(it)}
+    LaunchedEffect(state.tasks.retainedUiStateKeys) {
+        savedKeys.keys.toList().filter { it !in state.tasks.retainedUiStateKeys }
+            .forEach {savedTasks.removeState(it);savedKeys.remove(it)}
     }
     os.marine?.let { marine ->
         val settingsReady by remember(marine) { marine.vm.ui.map { it.settingsReady }.distinctUntilChanged() }.collectAsState(false)
@@ -74,7 +71,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                     "ANCHOR" -> "anchor"
                     "LOGBOOK" -> "voyages"
                     "INSTRUMENTS" -> "instruments"
-                    "SOURCES" -> "nmea:sources"
+                    "SOURCES" -> "data_center"
                     "NMEA" -> "nmea"
                     "LOCAL_NMEA" -> "local_nmea"
                     "DEPTH" -> "chart"
@@ -121,11 +118,18 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
     val needsHeadingDisplay=lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
-        state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS)
+        state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS,AppId.DATA_CENTER)
     DisposableEffect(os.marine,needsHeadingDisplay) {
         val vm=os.marine?.vm
         vm?.setMapHeadingDisplayActive(needsHeadingDisplay)
         onDispose {vm?.setMapHeadingDisplayActive(false)}
+    }
+    val needsSensorDisplay = lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
+        state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.INSTRUMENTS,AppId.DATA_CENTER)
+    DisposableEffect(os.marine, needsSensorDisplay) {
+        val vm = os.marine?.vm
+        vm?.setTripLiveDisplayActive(needsSensorDisplay)
+        onDispose { vm?.setTripLiveDisplayActive(false) }
     }
     DisposableEffect(lifecycleOwner, shell) {
         val observer = LifecycleEventObserver { _, event ->
@@ -221,15 +225,13 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                             is ShellMotionTarget.App -> {
                                 val page = shell.pageForToken(target.token)
                                 val app=shell.appForPage(page)
-                                val snapshot=shell.snapshots.images[target.taskId]
-                                if(!heavyContentReady && target.taskId==shell.coldOpeningTask && app!=null) AppLaunchCover(os,app)
-                                else if(!heavyContentReady && snapshot!=null) Image(snapshot.bitmap.asImageBitmap(),null,Modifier.fillMaxSize().background(colors.background),contentScale=ContentScale.Fit)
+                                if(!heavyContentReady && target==state.motionTarget() && target.taskId==shell.coldOpeningTask && app!=null) AppLaunchCover(os,app)
                                 else {
-                                    val stateKey="${target.taskId.value}:${shell.entryGenerations[target.taskId] ?: 0}:${target.token.value}"
+                                    val stateKey=target.instanceKey
                                     SideEffect {savedKeys[stateKey]=target.taskId}
                                     savedTasks.SaveableStateProvider(stateKey) {
-                                        CompositionLocalProvider(LocalInternalAppInputEnabled provides (target==state.motionTarget() && heavyContentReady && !os.notifications.expanded),LocalAppPage provides page) {
-                                        TaskCaptureHost(os,target.taskId,target.token.value,active=target==state.motionTarget() && heavyContentReady) {
+                                        CompositionLocalProvider(LocalInternalAppInputEnabled provides (target==state.motionTarget() && !os.notifications.expanded),LocalInternalAppPageKey provides target.instanceKey,LocalAppPage provides page) {
+                                        TaskCaptureHost(os,target.taskId,target.instanceKey,active=target==state.motionTarget() && heavyContentReady) {
                                             ShellAppContent(os,page,service)
                                         }
                                         }
@@ -272,10 +274,11 @@ private fun ShellAppContent(os: OsStore, page: String, service: (String, String?
         page.startsWith("anchorage:") -> SavedLocationScreen(os,page.substringAfter(':').toLongOrNull())
         page.startsWith("collection:") -> CollectionScreen(os,page.substringAfter(':').toLongOrNull())
         page == "instruments" || page.startsWith("instruments:") -> InstrumentsScreen(os)
+        page == "data_center" || page.startsWith("data_center:") -> DataCenterScreen(os, page.substringAfter(':', "").takeIf { it.isNotBlank() })
         page == "voyages" -> LogbookScreen(os)
         page.substringBefore(':') in setOf("voyage","replay","report") -> LogbookScreen(os,page.substringAfter(':').toLongOrNull())
         page == "anchor" -> AnchorExperience(os)
-        page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os, service, initialSources=page=="nmea:sources")
+        page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os, service)
         page == "local_nmea" -> LocalNmeaScreen(os, service)
         page == "tiles" || page.startsWith("tiles:") -> TileLibraryScreen(os,page.substringAfter(':', "").takeIf {it.isNotBlank()})
         page == "settings" || page.startsWith("settings:") -> SettingsScreen(os,page.substringAfter(':',"overview"))
@@ -393,13 +396,13 @@ private sealed interface ShellMotionTarget {
     data object Launcher : ShellMotionTarget
     data object Search : ShellMotionTarget
     data object Recents : ShellMotionTarget
-    data class App(val taskId: InternalAppTaskId, val token: LaunchToken) : ShellMotionTarget
+    data class App(val taskId: InternalAppTaskId, val token: LaunchToken, val instanceKey: String) : ShellMotionTarget
 }
 private fun LauncherEngineState.motionTarget(): ShellMotionTarget = when (val current = surface) {
     ShellVisualSurface.Desktop, ShellVisualSurface.ModuleList -> ShellMotionTarget.Launcher
     is ShellVisualSurface.Search -> ShellMotionTarget.Search
     ShellVisualSurface.Recents -> ShellMotionTarget.Recents
-    is ShellVisualSurface.Module -> tasks.task(current.taskId)!!.let { ShellMotionTarget.App(it.taskId, it.lastLaunchToken) }
+    is ShellVisualSurface.Module -> tasks.task(current.taskId)!!.let { ShellMotionTarget.App(it.taskId, it.lastLaunchToken, it.currentUiStateKey) }
 }
 private fun ShellTransitionKind?.toWpKind(): WpSurfaceTransitionKind =
     if (this == null) WpSurfaceTransitionKind.NONE else WpSurfaceTransitionKind.valueOf(name)

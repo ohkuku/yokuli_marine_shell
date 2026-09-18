@@ -8,10 +8,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
@@ -25,8 +21,6 @@ import androidx.compose.ui.zIndex
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import com.yokuli.anchorwatch.domain.vessel.*
-import com.yokuli.anchorwatch.location.vessel.DeviceBowAxis
-import com.yokuli.anchorwatch.location.vessel.PhoneHeadingAlignmentPolicy
 import com.yokuli.marine.shell.rebuild.data.Reading
 import com.yokuli.marine.shell.rebuild.*
 import java.util.Locale
@@ -38,9 +32,7 @@ import java.util.Locale
     val history by os.hub.history.collectAsState()
     val data by os.hub.state.collectAsState()
     val now = rememberMarineClock()
-    val owner = LocalLifecycleOwner.current
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
-    var mounting by rememberSaveable { mutableStateOf(false) }
     var chooseTiles by rememberSaveable { mutableStateOf(false) }
     // 中文：选择弹窗独立编辑草稿；快速连续选择不依赖异步 DataStore 回流。
     var pickerTileNames by rememberSaveable { mutableStateOf(emptyList<String>()) }
@@ -49,7 +41,6 @@ import java.util.Locale
     var chooseTrend by rememberSaveable { mutableStateOf(false) }
     val c = LocalMetro.current
     fun closeLayer(): Boolean = when {
-        mounting -> { mounting = false; true }
         chooseTrend -> { chooseTrend = false; true }
         chooseTiles -> { chooseTiles = false; true }
         selected != null -> { selected = null; true }
@@ -57,13 +48,7 @@ import java.util.Locale
         else -> false
     }
     BindInternalAppInputHandler { input -> input == ShellInput.BACK && closeLayer() }
-    AppBackHandler(mounting || chooseTrend || chooseTiles || selected != null || editing) { closeLayer() }
-    DisposableEffect(marine, owner) {
-        fun update() = marine.vm.setTripLiveDisplayActive(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
-        val observer = LifecycleEventObserver { _, _ -> update() }
-        owner.lifecycle.addObserver(observer); update()
-        onDispose { owner.lifecycle.removeObserver(observer); marine.vm.setTripLiveDisplayActive(false) }
-    }
+    AppBackHandler(chooseTrend || chooseTiles || selected != null || editing) { closeLayer() }
     fun saveLayout(layout: List<InstrumentTileId>) {
         marine.vm.updateVesselDataSettings(marine.vm.ui.value.vesselSettings.copy(customLayout = layout.distinct()))
     }
@@ -92,7 +77,7 @@ import java.util.Locale
                         MarineCompass(os, state.vesselData)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Label(os.t("查看船首向", "heading details"), 17, c.accent, Modifier.clickable { selected = InstrumentTileId.HEADING.name }.padding(vertical = 10.dp))
-                            Label(os.t("固定手机", "mount phone"), 17, c.accent, Modifier.clickable { mounting = true }.padding(vertical = 10.dp))
+                            Label(os.t("固定手机", "mount phone"), 17, c.accent, Modifier.clickable { os.openLinked("data_center:phone") }.padding(vertical = 10.dp))
                         }
                         InstrumentGrid(os, state.vesselData, state.vesselSettings.navLayout.filterNot { it in setOf(InstrumentTileId.HEADING, InstrumentTileId.COG, InstrumentTileId.SOG) }, now) { selected = it.name }
                     }
@@ -104,7 +89,7 @@ import java.util.Locale
                         AttitudeHorizon(os, state.vesselData)
                         InstrumentGrid(os, state.vesselData, listOf(InstrumentTileId.ROLL_RATE, InstrumentTileId.PITCH_RATE, InstrumentTileId.ROLL_PERIOD, InstrumentTileId.MOTION_SCORE), now) { selected = it.name }
                         Label(os.t("手机与船体固定后，确认安装方向；横倾不会被当作零度清除。", "Secure the phone to the boat and confirm its mounting direction. Existing heel is preserved."), 17, c.muted)
-                        MetroButton(os.t("安装与校准", "mount & calibrate"), { mounting = true })
+                        MetroButton(os.t("安装与校准", "mount & calibrate"), { os.openLinked("data_center:phone") })
                         state.vesselCalibrationFeedback?.let { feedback ->
                             Label(when (feedback) {
                                 "Trip attitude frame confirmed." -> os.t("船体安装方向已确认。", "Vessel mounting direction confirmed.")
@@ -149,60 +134,10 @@ import java.util.Locale
                 Label(os.t("来源", "source"), 14, c.muted)
                 Label(value.observation.sourceIdentity?.displayName ?: sourceName(os, value.observation.source), 21)
                 instrumentTrendKey(tile)?.let { key -> ReadingTrace(os, history[key].orEmpty(), key, now, current = data.readings[key]) }
-                value.observation.conflict?.let { Label(os.t("多个来源的读数有差异，可在船联网中检查。", "Sources disagree. Inspect them in Boat Network."), 17, c.muted) }
+                value.observation.conflict?.let { Label(os.t("多个来源的读数有差异，可在数据中心中检查。", "Sources disagree. Inspect them in Data Center."), 17, c.muted) }
                 if (tile == InstrumentTileId.UKC) Label(os.t("龙骨下余量根据水深与船舶吃水计算。", "Under-keel clearance uses measured depth and your boat's draft."), 17, c.muted)
                 if (tile !in state.vesselSettings.customLayout) MetroButton(os.t("添加到我的仪表", "add to my instruments"), { saveLayout(state.vesselSettings.customLayout + tile) })
                 MetroButton(os.t("完成", "done"), { selected = null }, primary = true)
-            }
-        }
-    }
-    if (mounting) {
-        var axis by rememberSaveable { mutableStateOf(state.vesselMountCalibration.bowAxis) }
-        var confirming by remember { mutableStateOf(false) }
-        LaunchedEffect(state.vesselCalibrationFeedback) {
-            if (confirming && state.vesselCalibrationFeedback != null) {
-                confirming = false
-                if (state.vesselCalibrationFeedback == "Trip attitude frame confirmed.") mounting = false
-            }
-        }
-        val phone = state.phoneHeading
-        val phoneFresh = phone.receivedElapsedRealtime?.let { now - it in 0L..2_000L } == true
-        val phoneHeading = (phone.liveTrueHeadingDegrees ?: phone.liveMagneticHeadingDegrees)?.takeIf { phoneFresh }
-        val nmeaTrue = state.nmeaInstruments.headingTrue?.takeIf { now - it.second in 0L..3_000L }?.first
-        val nmeaMagnetic = state.nmeaInstruments.headingMagnetic?.takeIf { now - it.second in 0L..3_000L }?.first
-        val nmeaMatch = if (phoneFresh) PhoneHeadingAlignmentPolicy.matchLiveReference(phone.liveTrueHeadingDegrees, phone.liveMagneticHeadingDegrees, nmeaTrue, nmeaMagnetic) else null
-        Dialog(onDismissRequest = { mounting = false }) {
-            Column(Modifier.fillMaxWidth().background(c.bg).border(2.dp, c.fg).verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(17.dp)) {
-                Label(os.t("固定手机", "mount phone"), 38)
-                Label(os.t("船首向", "heading"), 26)
-                Label(os.t("固定手机，让顶部指向船艏，再确认方向。移动手机后需要重新确认。", "Secure the phone with its top edge pointing toward the bow, then align. Realign after moving the phone."), 18, c.muted)
-                val aligned = phoneHeading?.takeIf { state.vesselMountCalibration.headingAligned }?.let { it + state.vesselMountCalibration.headingAlignmentOffsetDegrees }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Label(os.t("手机方向", "phone direction"), 14, c.muted)
-                        Label(os.formatBearing(phoneHeading), 34)
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Label(os.t("船首向", "vessel heading"), 14, c.muted)
-                        Label(os.formatBearing(aligned), 34, c.accent)
-                    }
-                }
-                Label(if (phone.liveTrueHeadingDegrees != null) os.t("以真北为参考", "true north reference") else os.t("以磁北为参考", "magnetic north reference"), 14, c.muted)
-                if (state.vesselMountCalibration.headingAligned) Label(os.t("船首向已对齐", "heading aligned"), 17, c.accent)
-                if (phoneHeading == null) Label(os.t("正在等待手机罗盘读数", "waiting for a phone compass reading"), 16, c.muted)
-                MetroButton(os.t("确认顶部朝向船艏", "align top edge with bow"), { marine.vm.alignPhoneHeadingToBow() }, primary = true, enabled = phoneHeading != null)
-                if (nmeaMatch != null) MetroButton(os.t("匹配当前船网艏向", "match the boat's current heading"), { marine.vm.alignPhoneHeadingToNmea() })
-                Box(Modifier.fillMaxWidth().height(1.dp).background(c.muted.copy(alpha = .25f)))
-                Label(os.t("船体姿态", "vessel attitude"), 26)
-                Label(os.t("手机平面与船体平行。选择朝向船艏的边缘；当前横倾会保留。", "Keep the phone plane parallel to the boat. Choose the edge facing the bow; existing heel is preserved."), 18, c.muted)
-                DeviceBowAxis.entries.forEach { choice ->
-                    ChoiceRow(when (choice) { DeviceBowAxis.TOP -> os.t("顶部", "top"); DeviceBowAxis.BOTTOM -> os.t("底部", "bottom"); DeviceBowAxis.LEFT -> os.t("左侧", "left"); DeviceBowAxis.RIGHT -> os.t("右侧", "right") }, axis == choice) { axis = choice }
-                }
-                if (confirming) MetroProgress(os.t("正在读取安装方向", "reading the mounting direction"))
-                MetroButton(os.t("确认安装方向", "confirm mounting direction"), { marine.vm.clearVesselCalibrationFeedback(); confirming = true; marine.vm.confirmTripAttitudeFrame(axis) }, primary = true, enabled = !confirming && state.activeTrip?.paused != true && state.phoneSensorCapabilities.attitudeAvailable)
-                if (!confirming && state.vesselCalibrationFeedback == "No rotation-vector sample is available on this phone.") Label(os.t("没有收到手机姿态读数，请确认手机支持姿态传感器。", "No attitude reading received. Check this phone's sensor support."), 16, c.muted)
-                MetroButton(os.t("暂停姿态采集", "pause attitude capture"), { marine.vm.pauseTripAttitude(); mounting = false })
-                MetroButton(os.t("完成", "done"), { mounting = false })
             }
         }
     }

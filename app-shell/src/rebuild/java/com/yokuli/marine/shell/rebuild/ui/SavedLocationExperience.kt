@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -26,13 +27,13 @@ import java.util.Locale
     var bundle by remember(id) {mutableStateOf<AnchoragePlaceBundle?>(null)}
     var revision by remember(id) {mutableIntStateOf(0)}
     var loading by remember(id) {mutableStateOf(true)}
-    var selectedId by remember(id,initialSpot) {mutableStateOf(initialSpot)}
-    var edit by remember(id) {mutableStateOf(false)}
-    var editSpot by remember(id) {mutableStateOf<AnchorageSpotEntity?>(null)}
-    var archive by remember(id) {mutableStateOf(false)}
-    var start by remember(id) {mutableStateOf<Place?>(null)}
-    var collectionName by remember(id) {mutableStateOf("")}
-    var addSpot by remember(id) {mutableStateOf(false)}
+    var selectedId by rememberSaveable(id,initialSpot) {mutableStateOf(initialSpot)}
+    var edit by rememberSaveable(id) {mutableStateOf(false)}
+    var editSpotId by rememberSaveable(id) {mutableStateOf<Long?>(null)}
+    var archive by rememberSaveable(id) {mutableStateOf(false)}
+    var startSpotId by rememberSaveable(id) {mutableStateOf<Long?>(null)}
+    var collectionName by rememberSaveable(id) {mutableStateOf("")}
+    var addSpot by rememberSaveable(id) {mutableStateOf(false)}
     var readError by remember(id) {mutableStateOf(false)}
     LaunchedEffect(id,revision,repo.locations,repo.spots) {
         loading=true
@@ -69,8 +70,8 @@ import java.util.Locale
                     selected?.let {spot->
                         val point=GeoPoint(spot.latitude,spot.longitude)
                         Label(spotSource(os,spot.coordinateSource)+spot.coordinateUncertaintyMeters?.let {" · ±${os.formatDistance(it)}"}.orEmpty(),16,LocalMetro.current.muted)
-                        MetroButton(os.t("在海图上查看","show on chart"),{os.fly(point);os.showCrosshair=true;os.open("chart")},primary=true)
-                        MetroButton(os.t("前往这个坐标","go to this spot"),{start=Place("spot:${spot.id}","${data.place.displayName} · ${spot.name}",point,kind=PlaceKind.ANCHORAGE)})
+                        MetroButton(os.t("在海图上查看","show on chart"),{os.fly(point);os.showCrosshair=true;os.openLinked("chart")},primary=true)
+                        MetroButton(os.t("前往这个坐标","go to this spot"),{startSpotId=spot.id})
                         MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(point,spot.name,data.place.id,spot.id,spot.preferredAlarmRadiusMeters);os.open("anchor")})
                     }
                     if(data.place.description.isNotBlank()) Label(data.place.description,20)
@@ -83,7 +84,7 @@ import java.util.Locale
                             .filter {it.second!=null}.forEach {(label,value)->Label("$label  ${os.formatDepth(value)}",23)}
                         if(spot.approachNotes.isNotBlank()) Label(spot.approachNotes,20)
                         if(spot.personalNotes.isNotBlank()) Label(spot.personalNotes,20)
-                        MetroButton(os.t("编辑这个坐标与参数","edit this spot"),{editSpot=spot})
+                        MetroButton(os.t("编辑这个坐标与参数","edit this spot"),{editSpotId=spot.id})
                     }
                     MetroButton(os.t("编辑地点名称与笔记","edit place name & notes"),{edit=true},primary=true)
                     Label(os.t("集合","collections"),30)
@@ -126,13 +127,15 @@ import java.util.Locale
     if(addSpot)MapPicker(os,selected?.let{GeoPoint(it.latitude,it.longitude)}?:GeoPoint(data.place.centerLatitude,data.place.centerLongitude),onConfirm={point->
         mutate{selectedId=repo.createSpot(data.place.id,os.t("位置 ${data.spots.size+1}","spot ${data.spots.size+1}"),point);addSpot=false}
     },onCancel={addSpot=false})
-    editSpot?.let {spot->SpotEditor(os,spot,{editSpot=null}) {updated->mutate{repo.updateSpot(updated);editSpot=null}}}
-    start?.let {place->StartNavigationDialog(os,Route("goto:${place.id}",place.name,listOf(place.point))){start=null}}
+    data.spots.firstOrNull {it.id==editSpotId}?.let {spot->SpotEditor(os,spot,{editSpotId=null}) {updated->mutate{repo.updateSpot(updated);editSpotId=null}}}
+    data.spots.firstOrNull {it.id==startSpotId}?.let {spot->
+        StartNavigationDialog(os,Route("goto:spot:${spot.id}","${data.place.displayName} · ${spot.name}",listOf(GeoPoint(spot.latitude,spot.longitude)))){startSpotId=null}
+    }
     if(archive)ConfirmDialog(os,os.t("归档 ${data.place.displayName}？历史和照片仍保留。","Archive ${data.place.displayName}? History and photos are retained."),{archive=false}){mutate{repo.archivePlace(data.place.id);archive=false;os.back()}}
 }
 
 @Composable private fun PlaceNotesDialog(os:OsStore,initialName:String,initialNotes:String,onDismiss:()->Unit,onSave:(String,String)->Unit) {
-    var name by remember {mutableStateOf(initialName)};var notes by remember {mutableStateOf(initialNotes)}
+    var name by rememberSaveable(initialName) {mutableStateOf(initialName)};var notes by rememberSaveable(initialName) {mutableStateOf(initialNotes)}
     Dialog(onDismissRequest=onDismiss){Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
         Label(os.t("地点资料","place details"),31)
         Field(os.t("名称","name"),name,{name=it.take(200)})
@@ -143,13 +146,13 @@ import java.util.Locale
 }
 
 @Composable private fun SpotEditor(os:OsStore,spot:AnchorageSpotEntity,onDismiss:()->Unit,onSave:(AnchorageSpotEntity)->Unit) {
-    var name by remember {mutableStateOf(spot.name)};var note by remember {mutableStateOf(spot.personalNotes)}
-    val initialLat=remember(spot.id){os.formatLatitude(spot.latitude)}
-    val initialLon=remember(spot.id){os.formatLongitude(spot.longitude)}
-    var lat by remember {mutableStateOf(initialLat)};var lon by remember {mutableStateOf(initialLon)}
-    var depth by remember {mutableStateOf(spot.typicalWaterDepthMeters?.toString().orEmpty())}
-    var rode by remember {mutableStateOf(spot.typicalRodeLengthMeters?.toString().orEmpty())}
-    var radius by remember {mutableStateOf(spot.preferredAlarmRadiusMeters?.toString().orEmpty())}
+    var name by rememberSaveable(spot.id) {mutableStateOf(spot.name)};var note by rememberSaveable(spot.id) {mutableStateOf(spot.personalNotes)}
+    val initialLat=rememberSaveable(spot.id){os.formatLatitude(spot.latitude)}
+    val initialLon=rememberSaveable(spot.id){os.formatLongitude(spot.longitude)}
+    var lat by rememberSaveable(spot.id) {mutableStateOf(initialLat)};var lon by rememberSaveable(spot.id) {mutableStateOf(initialLon)}
+    var depth by rememberSaveable(spot.id) {mutableStateOf(spot.typicalWaterDepthMeters?.toString().orEmpty())}
+    var rode by rememberSaveable(spot.id) {mutableStateOf(spot.typicalRodeLengthMeters?.toString().orEmpty())}
+    var radius by rememberSaveable(spot.id) {mutableStateOf(spot.preferredAlarmRadiusMeters?.toString().orEmpty())}
     val point=preservedCoordinate(GeoPoint(spot.latitude,spot.longitude),initialLat,initialLon,lat,lon)
     fun valid(value:String)=value.isBlank()||value.toDoubleOrNull()?.let {it.isFinite()&&it>=0}==true
     Dialog(onDismissRequest=onDismiss){Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(LocalMetro.current.bg).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){

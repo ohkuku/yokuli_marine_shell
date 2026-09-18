@@ -52,11 +52,7 @@ sealed interface LauncherAction {
     data class Open(
         val token: LaunchToken,
         val preserveCaller: Boolean = false,
-        /**
-         * Replaces the current route of an already open App instead of creating App-local Back
-         * history. Use this for flat OS surfaces such as Preferences sections whose Back contract
-         * is "return to Start", not "walk through another Settings page".
-         */
+        /** 普通应用入口创建新的首页访问；应用内子页与跨应用对象调用不得使用此标记。 */
         val replaceTaskRoute: Boolean = false,
     ) : LauncherAction
     data class CatalogChanged(val catalog: LauncherCatalogSnapshot) : LauncherAction
@@ -307,12 +303,22 @@ class DefaultLauncherReducer : LauncherReducer {
             it.targetTaskId == taskId && task.backStack.size <= it.targetBackStackDepth
         }
         if (linkedReturn != null) {
-            val caller = state.tasks.task(linkedReturn.callerTaskId)
+            val caller = linkedReturn.callerSnapshot ?: state.tasks.task(linkedReturn.callerTaskId)
             if (caller != null) {
+                val resumedTasks = state.tasks.tasks.map { current ->
+                    when (current.taskId) {
+                        caller.taskId -> caller
+                        linkedReturn.targetTaskId -> linkedReturn.targetPreviousTask ?: current
+                        else -> current
+                    }
+                }
                 return LauncherReduction(
                     state.copy(
                         surface = ShellVisualSurface.Module(caller.taskId),
-                        tasks = state.tasks.copy(linkedReturns = state.tasks.linkedReturns.dropLast(1)),
+                        tasks = state.tasks.copy(
+                            tasks = resumedTasks.filterNot { it.taskId == caller.taskId } + caller,
+                            linkedReturns = state.tasks.linkedReturns.dropLast(1),
+                        ),
                         transitionRequest = ShellTransitionResolver.resolve(
                             state.surface,
                             ShellVisualSurface.Module(caller.taskId),
@@ -328,7 +334,12 @@ class DefaultLauncherReducer : LauncherReducer {
                 state.navigateTo(ShellVisualSurface.Desktop, ShellTransitionTrigger.BACK),
             )
         }
-        val restored = task.copy(lastLaunchToken = previous, backStack = task.backStack.dropLast(1))
+        val restored = task.copy(
+            lastLaunchToken = previous,
+            savedUiStateKey = task.backStackUiStateKeys.lastOrNull(),
+            backStack = task.backStack.dropLast(1),
+            backStackUiStateKeys = task.backStackUiStateKeys.dropLast(1),
+        )
         val request = ShellTransitionResolver.resolve(
             state.surface,
             state.surface,
@@ -398,6 +409,9 @@ class DefaultLauncherReducer : LauncherReducer {
 
     private fun activateTask(state: LauncherEngineState, taskId: InternalAppTaskId): LauncherReduction {
         val task=state.tasks.task(taskId) ?: return LauncherReduction(state)
+        // 最近任务恢复当前调用，不把打开任务管理器本身误当作一次全新启动。
+        // 若用户主动选回调用链上游，则放弃它之后尚未完成的调用。
+        val returnIndex = state.tasks.linkedReturns.indexOfLast { it.targetTaskId == taskId }
         return LauncherReduction(
             state.navigateTo(
                 ShellVisualSurface.Module(taskId),
@@ -406,7 +420,7 @@ class DefaultLauncherReducer : LauncherReducer {
                 transient = null,
                 recentsReturnSurface = null,
                 tasks = state.tasks.copy(tasks=state.tasks.tasks.filterNot {it.taskId==taskId}+task,
-                    linkedReturns=state.tasks.linkedReturns.filterNot {it.targetTaskId==taskId || it.callerTaskId==taskId}),
+                    linkedReturns=state.tasks.linkedReturns.take(returnIndex + 1)),
             ),
         )
     }
@@ -425,7 +439,7 @@ class DefaultLauncherReducer : LauncherReducer {
         return LauncherReduction(
             state.copy(
                 surface = surface,
-                tasks = InternalTaskState(
+                tasks = state.tasks.copy(
                     tasks = remaining,
                     linkedReturns = state.tasks.linkedReturns.filterNot {
                         it.callerTaskId == taskId || it.targetTaskId == taskId
@@ -446,22 +460,34 @@ class DefaultLauncherReducer : LauncherReducer {
         is LaunchResolution.Internal -> {
             val taskId = InternalAppTaskId(resolution.appId.value)
             val existing = state.tasks.tasks.firstOrNull { it.appId == resolution.appId }
+            val caller = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId) }
+            val crossAppCall = action.preserveCaller && caller != null && caller.taskId != taskId
+            val freshInstanceKey = "${taskId.value}:route:${state.tasks.nextRouteInstance}"
             val primaryEntry = state.catalog.apps.firstOrNull { it.appId == resolution.appId }?.rootEntryId
             val rootToken = state.catalog.entries.firstOrNull { it.entryId == primaryEntry }?.launchToken
-            val objectParent = rootToken?.takeIf { it != resolution.token }?.let(::listOf).orEmpty()
+            // 跨应用调用的父页面是调用者；从桌面直接打开对象才补该应用首页。
+            val objectParent = rootToken?.takeIf { !crossAppCall && it != resolution.token }?.let(::listOf).orEmpty()
+            val parentStateKeys = objectParent.map { "$freshInstanceKey:parent" }
             val task = when {
-                existing == null -> InternalAppTask(taskId, resolution.appId, resolution.token, backStack = objectParent)
+                existing == null -> InternalAppTask(taskId, resolution.appId, resolution.token,
+                    backStack = objectParent, savedUiStateKey = freshInstanceKey, backStackUiStateKeys = parentStateKeys)
                 // Opening an App from Desktop, All Apps, Search, or another App is a new route
                 // entry, not an invisible continuation of that task's old nested Back stack.
                 // Recents uses ActivateTask and therefore still resumes the exact session.
                 action.replaceTaskRoute || state.surface != ShellVisualSurface.Module(taskId) -> existing.copy(
                     lastLaunchToken = resolution.token,
                     backStack = objectParent,
+                    savedUiStateKey = freshInstanceKey,
+                    backStackUiStateKeys = parentStateKeys,
                 )
                 existing.lastLaunchToken == resolution.token -> existing
                 else -> existing.copy(
                     lastLaunchToken = resolution.token,
                     backStack = existing.backStack + existing.lastLaunchToken,
+                    savedUiStateKey = freshInstanceKey,
+                    backStackUiStateKeys = existing.backStack.mapIndexed { index, token ->
+                        existing.backStackUiStateKeys.getOrNull(index) ?: "${taskId.value}:${token.value}"
+                    } + existing.currentUiStateKey,
                 )
             }
             val target = ShellVisualSurface.Module(taskId)
@@ -473,19 +499,18 @@ class DefaultLauncherReducer : LauncherReducer {
                     ShellVisualSurface.ModuleList -> ShellTransitionTrigger.MODULE_LIST_ENTRY
                     ShellVisualSurface.Recents -> ShellTransitionTrigger.RECENT_TASK
                     target -> ShellTransitionTrigger.MODULE_ROUTE_FORWARD
+                    is ShellVisualSurface.Module -> ShellTransitionTrigger.MODULE_ROUTE_FORWARD
                     else -> ShellTransitionTrigger.TILE
                 }
-                val retainedReturns = if (action.replaceTaskRoute || state.surface != target)
-                    state.tasks.linkedReturns.filterNot {it.targetTaskId==taskId || it.callerTaskId==taskId}
-                    else state.tasks.linkedReturns
-                val linkedReturns = if (
-                    action.preserveCaller && state.surface is ShellVisualSurface.Module &&
-                    state.surface.taskId != taskId
-                ) {
+                val retainedReturns = if (action.replaceTaskRoute || (state.surface != target && !crossAppCall))
+                    emptyList() else state.tasks.linkedReturns
+                val linkedReturns = if (crossAppCall) {
                     retainedReturns + LinkedTaskReturn(
-                        callerTaskId = state.surface.taskId,
+                        callerTaskId = caller!!.taskId,
                         targetTaskId = taskId,
-                        targetBackStackDepth = 0,
+                        targetBackStackDepth = task.backStack.size,
+                        callerSnapshot = caller,
+                        targetPreviousTask = existing,
                     )
                 } else retainedReturns
                 LauncherReduction(
@@ -493,6 +518,7 @@ class DefaultLauncherReducer : LauncherReducer {
                         tasks = state.tasks.copy(
                             tasks = state.tasks.tasks.filterNot { it.appId == resolution.appId } + task,
                             linkedReturns = linkedReturns,
+                            nextRouteInstance = state.tasks.nextRouteInstance + 1,
                         ),
                         transient = null,
                     ),
@@ -544,7 +570,9 @@ class DefaultLauncherReducer : LauncherReducer {
                 },
             ),
             allApps = AllAppsState(catalog.revision),
-            tasks = InternalTaskState(tasks),
+            tasks = state.tasks.copy(tasks = tasks, linkedReturns = state.tasks.linkedReturns.filter { link ->
+                tasks.any { it.taskId == link.callerTaskId } && tasks.any { it.taskId == link.targetTaskId }
+            }),
             catalog = catalog,
             transient = if (catalogChanged) null else state.transient,
             recentsReturnSurface = recentsReturnSurface,

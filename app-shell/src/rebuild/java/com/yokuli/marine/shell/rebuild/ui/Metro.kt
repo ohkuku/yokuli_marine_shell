@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -21,6 +22,8 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -35,8 +38,13 @@ import com.yokuli.marine.core.design.WpFontFamily
 import com.yokuli.marine.core.design.WpTypeScale
 import com.yokuli.marine.core.design.LocalWpTextScale
 import com.yokuli.marine.core.design.wpTilt
-import com.yokuli.shell.compose.LocalInternalAppInputEnabled
+import com.yokuli.shell.compose.BindInternalAppInputHandler
+import com.yokuli.shell.contract.ShellInput
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 data class MetroColors(val bg: Color, val fg: Color, val muted: Color, val panel: Color, val accent: Color)
 val LocalMetro = staticCompositionLocalOf { MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(0xFF00ABA9)) }
@@ -46,7 +54,9 @@ val LightFont=WpFontFamily
 
 /** Android 返回与虚拟返回使用同一任务激活约束，离场画面和通知背后的页面不抢键。 */
 @Composable fun AppBackHandler(enabled:Boolean=true,onBack:()->Unit) {
-    androidx.activity.compose.BackHandler(enabled && LocalInternalAppInputEnabled.current,onBack)
+    BindInternalAppInputHandler { input ->
+        if(enabled && input == ShellInput.BACK) { onBack(); true } else false
+    }
 }
 
 @Composable fun MetroTheme(os: OsStore, content: @Composable ()->Unit) {
@@ -185,11 +195,36 @@ val LightFont=WpFontFamily
         Column(Modifier.weight(1f)) {Label(title,23);if(subtitle!=null)Label(subtitle,15,c.muted,Modifier.padding(top=4.dp))}
     }
 }
-@Composable fun Pivot(labels:List<String>,content:@Composable (Int)->Unit) {
-    val pager=rememberPagerState { labels.size }; val scope=rememberCoroutineScope(); val c=LocalMetro.current
+@Composable fun Pivot(labels:List<String>,initialPage:Int=0,content:@Composable (Int)->Unit) {
+    if(labels.isEmpty())return
+    val pager=rememberPagerState(initialPage=initialPage.coerceIn(labels.indices)) { labels.size }
+    val scope=rememberCoroutineScope(); val c=LocalMetro.current
+    val headerScroll=rememberScrollState()
+    val widths=remember(labels) {mutableStateMapOf<Int,Int>()}
+    val density=LocalDensity.current
+    val gap=with(density){22.dp.toPx()}
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start=22.dp,bottom=18.dp),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
-            labels.forEachIndexed { i,name -> Label(name,WpTypeScale.PivotTitle,if(pager.currentPage==i) c.fg else c.muted,Modifier.clickable { scope.launch { pager.animateScrollToPage(i) } }) }
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            // 标题条和内容共享同一个连续页位置；拖动到一半，标题也移动到一半。
+            // 尾部留白使最后一个标题也能停在左侧，不会被挤在屏幕右缘。
+            val tail=with(density){(constraints.maxWidth-gap-(widths[labels.lastIndex] ?: 0)).coerceAtLeast(0f).toDp()}
+            LaunchedEffect(pager,headerScroll,labels,gap) {
+                snapshotFlow {
+                    val position=(pager.currentPage+pager.currentPageOffsetFraction).coerceIn(0f,labels.lastIndex.toFloat())
+                    val index=position.toInt()
+                    val prefix=(0 until index).sumOf {widths[it] ?: 0}+gap*index
+                    (prefix+((widths[index] ?: 0)+gap)*(position-index)).roundToInt().coerceIn(0,headerScroll.maxValue)
+                }.distinctUntilChanged().collectLatest {headerScroll.scrollTo(it)}
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(headerScroll).padding(start=22.dp,end=tail,bottom=18.dp),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
+                val position=pager.currentPage+pager.currentPageOffsetFraction
+                labels.forEachIndexed { i,name ->
+                    Label(name,WpTypeScale.PivotTitle,lerp(c.muted,c.fg,1f-abs(position-i).coerceIn(0f,1f)),
+                        Modifier.onSizeChanged {widths[i]=it.width}.clickable {
+                            scope.launch {pager.animateScrollToPage(i,animationSpec=tween(260,easing=FastOutSlowInEasing))}
+                        },maxLines=1)
+                }
+            }
         }
         HorizontalPager(pager,Modifier.weight(1f),verticalAlignment=Alignment.Top) { content(it) }
     }
@@ -212,7 +247,7 @@ val LightFont=WpFontFamily
     }
 }
 @Composable fun TextDialog(os:OsStore,title:String,initial:String="",onDismiss:()->Unit,onSave:(String)->Unit) {
-    var text by remember { mutableStateOf(initial) }
+    var text by rememberSaveable(initial) { mutableStateOf(initial) }
     Dialog(onDismissRequest=onDismiss) {
         Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).border(1.dp,LocalMetro.current.muted).padding(22.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
             Label(title,31); Field(os.t("名称","name"),text,{text=it.take(100)})

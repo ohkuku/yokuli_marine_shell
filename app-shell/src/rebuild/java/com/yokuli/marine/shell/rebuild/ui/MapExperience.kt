@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -62,7 +63,7 @@ internal fun MapSourceOption(os:OsStore,title:String,selected:Boolean,detail:Str
 
 @Composable
 fun MapSourceButton(os:OsStore,modifier:Modifier=Modifier) {
-    var choosing by remember {mutableStateOf(false)}
+    var choosing by rememberSaveable {mutableStateOf(false)}
     Label(os.maps.sourceName(os.chinese)+" ▾",14,LocalMetro.current.accent,modifier.clickable {choosing=true}.padding(10.dp))
     if(choosing)MapSourcePicker(os) {choosing=false}
 }

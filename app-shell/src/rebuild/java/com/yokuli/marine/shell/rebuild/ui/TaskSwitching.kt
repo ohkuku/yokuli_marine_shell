@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.shell.engine.InternalAppTask
 import com.yokuli.shell.engine.InternalAppTaskId
+import com.yokuli.shell.engine.currentUiStateKey
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -40,11 +41,11 @@ import kotlin.math.roundToInt
     val window=LocalContext.current.activity()?.window
     val owner=remember(taskId,token,window) {Any()}
     DisposableEffect(owner,active) { onDispose { if(active)os.shell.snapshots.unbind(owner) } }
-    LaunchedEffect(owner,active) { if(active) {delay(420); while(true) {os.shell.snapshots.captureCurrent(taskId){os.notifications.canCaptureApp}; delay(2500)} } }
+    LaunchedEffect(owner,active) { if(active) {delay(420); while(true) {os.shell.snapshots.captureCurrent(taskId,token){os.notifications.canCaptureApp}; delay(2500)} } }
     Box(Modifier.fillMaxSize().onGloballyPositioned { coordinates ->
         if(active && window!=null) {
             val b=coordinates.boundsInWindow()
-            os.shell.snapshots.bind(owner,taskId,window,Rect(b.left.roundToInt(),b.top.roundToInt(),b.right.roundToInt(),b.bottom.roundToInt()))
+            os.shell.snapshots.bind(owner,taskId,token,window,Rect(b.left.roundToInt(),b.top.roundToInt(),b.right.roundToInt(),b.bottom.roundToInt()))
         }
     }) {content()}
 }
@@ -76,7 +77,7 @@ import kotlin.math.roundToInt
                 key={ordered[it].taskId.value},modifier=Modifier.align(Alignment.Center).fillMaxWidth()) {index->
                 val task=ordered[index]
                 val app=os.shell.apps.firstOrNull {it.id==task.appId} ?: return@HorizontalPager
-                val snapshot=os.shell.snapshots.images[task.taskId]
+                val snapshot=os.shell.snapshots.images[task.taskId]?.takeIf {it.pageInstanceKey==task.currentUiStateKey}
                 val ratio=snapshot?.bitmap?.let {it.width.toFloat()/it.height} ?: (maxWidth/maxHeight)
                 val cardHeight=minOf(maxHeight*.73f,(maxWidth*.74f)/ratio)
                 var dragY by remember(task.taskId) {mutableFloatStateOf(0f)}

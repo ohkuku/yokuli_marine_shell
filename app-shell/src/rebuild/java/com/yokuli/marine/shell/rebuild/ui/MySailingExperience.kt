@@ -23,8 +23,8 @@ fun PlaceKind.label(os:OsStore)=when(this) {
     var busy by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var kind by rememberSaveable(anchoragesOnly) { mutableStateOf<PlaceKind?>(if(anchoragesOnly)PlaceKind.ANCHORAGE else null) }
-    var create by remember { mutableStateOf(false) }
-    var choosingKind by remember {mutableStateOf(false)}
+    var create by rememberSaveable { mutableStateOf(false) }
+    var choosingKind by rememberSaveable {mutableStateOf(false)}
     var pending by remember { mutableStateOf<Gpx.Contents?>(null) }
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null) scope.launch {
         busy=true
@@ -55,13 +55,13 @@ fun PlaceKind.label(os:OsStore)=when(this) {
                     saved.forEach { place -> MenuRow(place.displayName,os.t("锚地 · ${repo.spots.count { it.placeId==place.id }} 个具体位置 · ${place.visitCountCached+place.legacyVisitCount} 次到访","anchorage · ${repo.spots.count { it.placeId==place.id }} spots · ${place.visitCountCached+place.legacyVisitCount} visits"),"anchor") {os.open("anchorage:${place.id}")} }
                     if(repo.error) Label(os.t("部分已存地点暂时无法读取","Some saved places could not be loaded"),16,LocalMetro.current.muted)
                     MetroButton(os.t("输入坐标","enter coordinates"),{create=true},primary=true)
-                    MetroButton(os.t("在海图上选点","choose on chart"),{os.showCrosshair=true;os.open("chart")})
+                    MetroButton(os.t("在海图上选点","choose on chart"),{os.showCrosshair=true;os.openLinked("chart")})
                 }
                 1 -> {
-                    os.activeRoute?.let { route -> MenuRow(os.t("正在导航 · ${route.name}","navigating · ${route.name}"),os.t("目标 ${os.routeLeg+1}/${route.points.size}","target ${os.routeLeg+1}/${route.points.size}"),"locate") {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.open("chart")} }
+                    os.activeRoute?.let { route -> MenuRow(os.t("正在导航 · ${route.name}","navigating · ${route.name}"),os.t("目标 ${os.routeLeg+1}/${route.points.size}","target ${os.routeLeg+1}/${route.points.size}"),"locate") {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.openLinked("chart")} }
                     if(os.routes.isEmpty()) {Label(os.t("下一站，去哪里？","where to next?"),36);Label(os.t("在海图上规划，保存在这里。选择一条路线后才在地图上预览。","Plan on chart and keep it here. Select a route to preview it on the map."),18,LocalMetro.current.muted)}
                     os.routes.forEach { route -> MenuRow(route.name,"${os.formatDistance(route.length)} · ${route.points.size} "+os.t("个航点","points"),"route") {os.open("route:${route.id}")} }
-                    MetroButton(if(os.draftRoute.isEmpty()) os.t("规划航线","plan a route") else os.t("继续草稿","continue draft"),{resumeOrCreateRouteDraft(os);os.open("chart")},primary=true)
+                    MetroButton(if(os.draftRoute.isEmpty()) os.t("规划航线","plan a route") else os.t("继续草稿","continue draft"),{resumeOrCreateRouteDraft(os);os.openLinked("chart")},primary=true)
                 }
                 else -> {
                     Label(os.t("自己的收藏","your collections"),31)
@@ -119,7 +119,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
     }
     val place=os.places.firstOrNull { it.id==id }
     if(place==null) {Column {PageHeader(os,os.t("地点已移除","place removed"))};return}
-    var edit by remember(id) {mutableStateOf(false)};var remove by remember(id) {mutableStateOf(false)};var start by remember(id) {mutableStateOf(false)}
+    var edit by rememberSaveable(id) {mutableStateOf(false)};var remove by rememberSaveable(id) {mutableStateOf(false)};var start by rememberSaveable(id) {mutableStateOf(false)}
     val (fix,now)=liveNavigationFix(os)
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,place.name,os.t("我的航行","MY SAILING"))
@@ -130,7 +130,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             fix?.takeIf {it.fresh(now)}?.let { Label("${os.formatDistance(distance(it.point,place.point))} · ${decimal(bearing(it.point,place.point),0)}°T",31) }
             if(place.collection.isNotBlank()) Label(place.collection,18,LocalMetro.current.muted)
             if(place.note.isNotBlank()) Label(place.note,21)
-            MetroButton(os.t("在海图上查看","show on chart"),{os.fly(place.point);os.showCrosshair=true;os.open("chart")},primary=true)
+            MetroButton(os.t("在海图上查看","show on chart"),{os.fly(place.point);os.showCrosshair=true;os.openLinked("chart")},primary=true)
             MetroButton(os.t("前往这里","go here"),{start=true})
             MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(place.point,place.name);os.open("anchor")})
             MetroButton(os.t("编辑资料","edit place"),{edit=true})
@@ -148,14 +148,14 @@ fun PlaceKind.label(os:OsStore)=when(this) {
 }
 
 @Composable internal fun CoordinateEditor(os:OsStore,initial:Place?,onDismiss:()->Unit,onSave:(Place)->Unit) {
-    var name by remember {mutableStateOf(initial?.name.orEmpty())}
-    val initialLatitude=remember(initial?.id){initial?.point?.lat?.let(os::formatLatitude).orEmpty()}
-    val initialLongitude=remember(initial?.id){initial?.point?.lon?.let(os::formatLongitude).orEmpty()}
-    var latitude by remember {mutableStateOf(initialLatitude)}
-    var longitude by remember {mutableStateOf(initialLongitude)}
-    var note by remember {mutableStateOf(initial?.note.orEmpty())}
-    var group by remember {mutableStateOf(initial?.collection.orEmpty())}
-    var kind by remember {mutableStateOf(initial?.kind?:PlaceKind.MARK)}
+    var name by rememberSaveable(initial?.id) {mutableStateOf(initial?.name.orEmpty())}
+    val initialLatitude=rememberSaveable(initial?.id){initial?.point?.lat?.let(os::formatLatitude).orEmpty()}
+    val initialLongitude=rememberSaveable(initial?.id){initial?.point?.lon?.let(os::formatLongitude).orEmpty()}
+    var latitude by rememberSaveable(initial?.id) {mutableStateOf(initialLatitude)}
+    var longitude by rememberSaveable(initial?.id) {mutableStateOf(initialLongitude)}
+    var note by rememberSaveable(initial?.id) {mutableStateOf(initial?.note.orEmpty())}
+    var group by rememberSaveable(initial?.id) {mutableStateOf(initial?.collection.orEmpty())}
+    var kind by rememberSaveable(initial?.id) {mutableStateOf(initial?.kind?:PlaceKind.MARK)}
     val point=preservedCoordinate(initial?.point,initialLatitude,initialLongitude,latitude,longitude)
     Dialog(onDismissRequest=onDismiss) {
         Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(LocalMetro.current.bg).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {

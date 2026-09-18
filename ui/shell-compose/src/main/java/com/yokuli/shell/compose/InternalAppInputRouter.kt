@@ -40,6 +40,8 @@ val LocalInternalAppInputRouter = staticCompositionLocalOf<InternalAppInputRoute
 
 /** 转场保留旧画面时，只有当前任务可以接收虚拟键与物理返回。 */
 val LocalInternalAppInputEnabled = staticCompositionLocalOf { true }
+/** 当前组合对应的页面访问；原生回调据此拒绝已经离场页面的写入。 */
+val LocalInternalAppPageKey = staticCompositionLocalOf<String?> { null }
 
 @Composable
 fun BindInternalAppInputHandler(handler: (ShellInput) -> Boolean) {

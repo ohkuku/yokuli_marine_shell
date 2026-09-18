@@ -56,10 +56,13 @@ fun <T> WpSurfaceTransitionHost(
         transitionSpec = { plan.contentTransform() },
     ) { surface ->
         val heavyContentReady = surface == transition.targetState && !transition.isRunning
+        // 离场页保留自己的入场参数；下一次导航不能把旧页面重新从零旋转一遍。
+        val entrancePlan = remember(surface) { plan }
+        val animateEntrance = remember(surface) { hasRenderedInitialSurface }
         WpPerspectiveEntrance(
             motionKey = surface as Any,
-            plan = plan,
-            animate = hasRenderedInitialSurface,
+            plan = entrancePlan,
+            animate = animateEntrance,
         ) {
             Box(Modifier.testTag("shell-transition-plane")) {
                 content(surface, heavyContentReady)

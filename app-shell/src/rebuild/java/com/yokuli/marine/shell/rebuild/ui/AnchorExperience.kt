@@ -12,6 +12,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -48,6 +49,12 @@ import java.util.Locale
 import com.yokuli.marine.core.design.MarineDisplayUnits
 import com.yokuli.shell.contract.MeasurementUnitSystem
 
+/** 只保存地图选择草稿的经纬度，不序列化地图宿主或运行中的业务会话。 */
+private val AnchorPickedPointSaver=listSaver<MutableState<GeoPoint?>,Double>(
+    save={state->state.value?.let {listOf(it.lat,it.lon)} ?: listOf(Double.NaN,Double.NaN)},
+    restore={values->mutableStateOf(values.takeIf {it.size==2 && it.all(Double::isFinite)}?.let {GeoPoint(it[0],it[1])})},
+)
+
 /** Anchor owns the watch; the map receives a scene and the engine receives explicit commands. */
 @Composable
 fun AnchorExperience(os: OsStore) {
@@ -64,23 +71,23 @@ fun AnchorExperience(os: OsStore) {
     val referenceKey=os.anchorDraft?.let {"${it.placeId}:${it.spotId}:${it.point.lat}:${it.point.lon}"} ?: "os-watch"
     val restored=state.anchorSetupDraft?.takeIf {it.referenceKey==referenceKey}
     var page by rememberSaveable {mutableStateOf(if(restored!=null && active==null)"setup" else "watch")}
-    var picked by remember {mutableStateOf(restored?.mapLatitude?.let {lat->restored.mapLongitude?.let {lon->GeoPoint(lat,lon)}})}
+    var picked by rememberSaveable(saver=AnchorPickedPointSaver) {mutableStateOf(restored?.mapLatitude?.let {lat->restored.mapLongitude?.let {lon->GeoPoint(lat,lon)}})}
     var origin by rememberSaveable {mutableStateOf(restored?.knownMethod?.let {runCatching {AnchorCenterSource.valueOf(it)}.getOrNull()} ?: AnchorCenterSource.MAP_PICK)}
-    var picking by remember {mutableStateOf(false)}
-    var layers by remember {mutableStateOf(false)}
+    var picking by rememberSaveable {mutableStateOf(false)}
+    var layers by rememberSaveable {mutableStateOf(false)}
     var estimate by rememberSaveable {mutableStateOf(restored?.estimate ?: false)}
     var radius by rememberSaveable {mutableStateOf(restored?.alarmRadius?.takeIf {it.isNotBlank()} ?: state.settings.preferredAlarmRadiusMeters.toString())}
     var rode by rememberSaveable {mutableStateOf(restored?.rode ?: "40")}
     var depth by rememberSaveable {mutableStateOf(restored?.depth.orEmpty())}
     var manual by rememberSaveable {mutableStateOf(restored?.manualCoordinate.orEmpty())}
-    var editingRadius by remember {mutableStateOf(false)}
-    var confirmEnd by remember {mutableStateOf(false)}
+    var editingRadius by rememberSaveable {mutableStateOf(false)}
+    var confirmEnd by rememberSaveable {mutableStateOf(false)}
     var estimateChoice by remember {mutableStateOf<AnchorEstimateChoice?>(null)}
     var pending by remember {mutableStateOf<String?>(null)}
     var feedbackBaseline by remember {mutableLongStateOf(0L)}
     var feedback by remember {mutableStateOf<String?>(null)}
     var endingId by remember {mutableStateOf<Long?>(null)}
-    var saveSession by remember {mutableStateOf<AnchorSessionEntity?>(null)}
+    var saveSessionId by rememberSaveable {mutableStateOf<Long?>(null)}
     var saving by remember {mutableStateOf(false)}
     var savedAnchorageId by rememberSaveable {mutableStateOf<Long?>(null)}
     var savedWatchId by rememberSaveable {mutableStateOf<Long?>(null)}
@@ -113,8 +120,13 @@ fun AnchorExperience(os: OsStore) {
     LaunchedEffect(referenceKey,picked,origin,estimate,radius,rode,depth,manual,page) {
         if(active==null && (page=="setup" || page=="advanced")) vm.saveAnchorSetupDraft(AnchorSetupDraft(referenceKey=referenceKey,estimate=estimate,knownMethod=origin.name,manualCoordinate=manual,mapLatitude=picked?.lat,mapLongitude=picked?.lon,alarmRadius=radius,rode=rode,depth=depth))
     }
+    var fittedWatchId by rememberSaveable {mutableStateOf<Long?>(null)}
     LaunchedEffect(active?.id) {
-        active?.let {session ->view.fit(listOf(destination(watchCenter(session),session.alarmRadiusMeters*1.7,0.0),destination(watchCenter(session),session.alarmRadiusMeters*1.7,180.0)))}
+        // 同一值守离开后返回，沿用 MapSessionStore 中用户已调整的镜头。
+        active?.takeIf {it.id!=fittedWatchId}?.let {session ->
+            view.fit(listOf(destination(watchCenter(session),session.alarmRadiusMeters*1.7,0.0),destination(watchCenter(session),session.alarmRadiusMeters*1.7,180.0)))
+            fittedWatchId=session.id
+        }
     }
     fun command(kind:String,action:()->Unit) {
         feedback=null;feedbackBaseline=state.runtimeDiagnostics.lastUserFeedback?.id ?: 0L
@@ -279,7 +291,7 @@ fun AnchorExperience(os: OsStore) {
             PageBody {
                 Label(if(active.centerStatus==AnchorCenterStatus.RESOLVED.name)os.t("当前锚点已确认","current anchor adopted")else os.t("临时边界正在值守","watching a temporary boundary"),26)
                 Label(os.formatCoordinates(watchCenter(active)),18,c.accent)
-                val preview=remember(active.id) {MapViewState(watchCenter(active),16.0)}
+                val preview=os.maps.view("anchor-estimate:${active.id}",watchCenter(active),16.0)
                 Box(Modifier.fillMaxWidth().height(250.dp)) {MarineMap(os.maps,scene,preview,Modifier.fillMaxSize());MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(c.bg))}
                 if(active.centerStatus!=AnchorCenterStatus.RESOLVED.name) {
                     Label(os.t("橙色是正在使用的临时范围；蓝色是可能的锚位。候选不会自行改变警戒中心。","orange is the active temporary boundary; blue is the possible anchor region. Candidates never move the adopted centre automatically."),17)
@@ -331,19 +343,23 @@ fun AnchorExperience(os: OsStore) {
                     LaunchedEffect(session.id) {vm.loadHistoryEvents(session.id)}
                     Label(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(session.startedAt)),22)
                     Label(os.t("值守 ${durationLabel((session.endedAt ?: System.currentTimeMillis())-session.startedAt)}","watched for ${durationLabel((session.endedAt ?: System.currentTimeMillis())-session.startedAt)}"),30,c.accent)
-                    val preview=remember(session.id) {MapViewState(watchCenter(session),16.0).apply {scaleTopDp=80f}}
-                    val reviewScene by produceState(MapScene(points=listOf(MapPoint("anchor",watchCenter(session),"A",os.accent)),circles=listOf(MapCircle("boundary",watchCenter(session),session.alarmRadiusMeters,os.accent))),session.id) {
+                    val preview=os.maps.view("anchor-review:${session.id}",watchCenter(session),16.0).apply {scaleTopDp=80f}
+                    val loadedScene by produceState<MapScene?>(null,session.id) {
                         value=withContext(Dispatchers.IO) {loadAnchorReview(os,session,state.settings.gpsLossSeconds*1000L)}
                     }
-                    LaunchedEffect(session.id,reviewScene.areas.size) {
+                    val reviewScene=loadedScene ?: MapScene(points=listOf(MapPoint("anchor",watchCenter(session),"A",os.accent)),circles=listOf(MapCircle("boundary",watchCenter(session),session.alarmRadiusMeters,os.accent)))
+                    var reviewFitted by rememberSaveable(session.id) {mutableStateOf(false)}
+                    LaunchedEffect(session.id,loadedScene) {
+                        if(reviewFitted || loadedScene==null)return@LaunchedEffect
                         preview.fit(reviewScene.areas.flatMap {it.boundary}.filterIndexed {index,_->index%4==0}+
                             listOf(destination(watchCenter(session),session.alarmRadiusMeters*1.5,0.0),destination(watchCenter(session),session.alarmRadiusMeters*1.5,180.0)))
+                        reviewFitted=true
                     }
                     Box(Modifier.fillMaxWidth().height(320.dp)) {MarineMap(os.maps,reviewScene,preview,Modifier.fillMaxSize());MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(c.bg))}
                     Label(os.t("本次到过的范围 · 颜色越浓，停留越久","observed area · darker colour means more time spent"),14,c.muted)
                     Label(os.formatCoordinates(watchCenter(session)),18)
                     Label(os.t("最大偏移 ${os.formatDistance(session.maxDistanceMeters)} · ${session.alarmCount} 次位置告警","maximum excursion ${os.formatDistance(session.maxDistanceMeters)} · ${session.alarmCount} position alarms"),18)
-                    MetroButton(if(saving)os.t("正在保存…","saving…")else os.t("保存为我的锚地","save to my places"),{saveSession=session},primary=true,enabled=!saving)
+                    MetroButton(if(saving)os.t("正在保存…","saving…")else os.t("保存为我的锚地","save to my places"),{saveSessionId=session.id},primary=true,enabled=!saving)
                     if(savedWatchId==session.id && savedAnchorageId!=null) {
                         Label(os.t("已保存到我的航行","saved to my sailing"),17,c.accent)
                         MenuRow(os.t("查看收藏","view saved place")) {os.open("anchorage:$savedAnchorageId")}
@@ -369,8 +385,8 @@ fun AnchorExperience(os: OsStore) {
         } else feedback=os.t("候选或值守状态已经改变，请重新查看。","candidate or watch state changed; review it again.")
         estimateChoice=null
     }}
-    saveSession?.let {session ->TextDialog(os,os.t("锚地名称","anchorage name"),os.t("我的锚地","my anchorage"),{saveSession=null}) {name ->
-        saving=true;saveSession=null
+    state.sessions.firstOrNull {it.id==saveSessionId}?.let {session ->TextDialog(os,os.t("锚地名称","anchorage name"),os.t("我的锚地","my anchorage"),{saveSessionId=null}) {name ->
+        saving=true;saveSessionId=null
         scope.launch {runCatching {os.sailing.saveAnchorage(session,name)}.onSuccess {id->savedAnchorageId=id;savedWatchId=session.id;feedback=null}.onFailure {feedback=it.message ?: os.t("保存失败，原记录仍保留","save failed; watch record is retained")};saving=false}
     }}
 }
@@ -458,22 +474,22 @@ private fun watchInput(session:AnchorSessionEntity,radius:Double)=AnchorWatchInp
 
 @Composable
 private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,vm:MainViewModel,onSaved:()->Unit) {
-    var depthOn by remember(session.id){mutableStateOf(session.depthGuardEnabled)}
-    var shallow by remember(session.id){mutableStateOf(session.shallowDepthAlarmMeters?.toString().orEmpty())}
-    var deep by remember(session.id){mutableStateOf(session.deepDepthAlarmMeters?.toString().orEmpty())}
-    var windOn by remember(session.id){mutableStateOf(session.windGuardEnabled)}
+    var depthOn by rememberSaveable(session.id){mutableStateOf(session.depthGuardEnabled)}
+    var shallow by rememberSaveable(session.id){mutableStateOf(session.shallowDepthAlarmMeters?.toString().orEmpty())}
+    var deep by rememberSaveable(session.id){mutableStateOf(session.deepDepthAlarmMeters?.toString().orEmpty())}
+    var windOn by rememberSaveable(session.id){mutableStateOf(session.windGuardEnabled)}
     val units=os.measurementUnits
     val speedUnit=if(units==MeasurementUnitSystem.NAUTICAL)"kn" else "km/h"
     val speedFactor=if(units==MeasurementUnitSystem.NAUTICAL)1.0 else MarineDisplayUnits.NAUTICAL_MILES_TO_KILOMETRES
     fun displayedWind(knots:Double?)=knots?.let {String.format(Locale.US,"%.2f",MarineDisplayUnits.speedFromKnots(it,units)).trimEnd('0').trimEnd('.')}.orEmpty()
     val initialWarning=displayedWind(session.windWarningKnots)
     val initialAlarm=displayedWind(session.windAlarmKnots)
-    var warning by remember(session.id,units){mutableStateOf(initialWarning)}
-    var alarm by remember(session.id,units){mutableStateOf(initialAlarm)}
+    var warning by rememberSaveable(session.id,units){mutableStateOf(initialWarning)}
+    var alarm by rememberSaveable(session.id,units){mutableStateOf(initialAlarm)}
     // 用户编辑使用全局单位，领域层继续保存 kn；未编辑的原值不因显示舍入而改变。
     fun storedWind(text:String,initial:String,original:Double?):Double? = if(text==initial)original else text.toDoubleOrNull()?.div(speedFactor)
-    var shiftOn by remember(session.id){mutableStateOf(session.windShiftEnabled)}
-    var shift by remember(session.id){mutableStateOf(session.windShiftThresholdDegrees?.toString().orEmpty())}
+    var shiftOn by rememberSaveable(session.id){mutableStateOf(session.windShiftEnabled)}
+    var shift by rememberSaveable(session.id){mutableStateOf(session.windShiftThresholdDegrees?.toString().orEmpty())}
     var invalid by remember {mutableStateOf(false)}
     var applying by remember {mutableStateOf<ConditionGuardConfig?>(null)}
     var timedOut by remember {mutableStateOf(false)}
@@ -504,7 +520,7 @@ private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,vm:MainViewM
 
 @Composable
 private fun AnchorRadiusDialog(os:OsStore,initial:Double,onDismiss:()->Unit,onApply:(Double)->Unit) {
-    var value by remember {mutableStateOf(initial.toString())}
+    var value by rememberSaveable(initial) {mutableStateOf(initial.toString())}
     val meters=value.toDoubleOrNull()?.takeIf {it.isFinite()&&it>0}
     Dialog(onDismissRequest=onDismiss) {
         Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).border(1.dp,LocalMetro.current.muted).padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
