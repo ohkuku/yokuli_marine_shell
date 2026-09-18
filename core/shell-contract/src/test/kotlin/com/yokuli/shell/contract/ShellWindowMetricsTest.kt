@@ -67,7 +67,7 @@ class ShellWindowMetricsTest {
         val metrics = ShellWindowMetrics(1080, 2400, 3f,
             displayCutoutRects = listOf(ShellRect(480, 24, 600, 72)))
 
-        assertEquals(listOf(ShellHorizontalSegment(24, 468), ShellHorizontalSegment(612, 1056)),
+        assertEquals(listOf(ShellHorizontalSegment(36, 468), ShellHorizontalSegment(612, 1044)),
             ShellSafeBands.statusSegments(metrics))
         assertEquals(0, ShellSafeBands.resolve(metrics).status.top)
     }
@@ -78,7 +78,7 @@ class ShellWindowMetricsTest {
             displayCutoutRects = listOf(ShellRect(130, 0, 180, 22), ShellRect(170, 8, 230, 26),
                 ShellRect(20, 30, 100, 80)))
 
-        assertEquals(listOf(ShellHorizontalSegment(8, 126), ShellHorizontalSegment(234, 352)),
+        assertEquals(listOf(ShellHorizontalSegment(12, 126), ShellHorizontalSegment(234, 348)),
             ShellSafeBands.statusSegments(metrics))
     }
 
@@ -86,7 +86,7 @@ class ShellWindowMetricsTest {
     fun cornerAndCutoutExclusionsAreCombinedWithoutMovingTheStatusDown() {
         val metrics = roundedSquare(360, 36).copy(displayCutoutRects = listOf(ShellRect(150, 0, 210, 25)))
 
-        assertEquals(listOf(ShellHorizontalSegment(44, 146), ShellHorizontalSegment(214, 316)),
+        assertEquals(listOf(ShellHorizontalSegment(48, 146), ShellHorizontalSegment(214, 312)),
             ShellSafeBands.statusSegments(metrics))
         assertEquals(0, ShellSafeBands.resolve(metrics).status.top)
     }
@@ -96,6 +96,30 @@ class ShellWindowMetricsTest {
         assertTrue(ShellSafeBands.statusSegments(ShellWindowMetrics(100, 200, 1f,
             displayCutoutRects = listOf(ShellRect(0, 0, 100, 30)))).isEmpty())
         assertTrue(ShellSafeBands.statusSegments(ShellWindowMetrics(0, 200, 1f)).isEmpty())
+    }
+
+    @Test
+    fun offsetCornerUsesItsWindowCenterRatherThanAssumingRadiusIsTheInset() {
+        val metrics=ShellWindowMetrics(400,800,1f,roundedCorners=ShellRoundedCorners(
+            topLeft=ShellRoundedCorner(72,60,60),topRight=ShellRoundedCorner(340,60,60)))
+        assertEquals(72,ShellSafeBands.resolve(metrics).status.left)
+        assertEquals(60,ShellSafeBands.resolve(metrics).status.right)
+        assertEquals(ShellInsets(left=21,right=9),ShellSafeBands.horizontalInsets(metrics,30,150))
+    }
+
+    @Test
+    fun headerBelowRoundedTangentDoesNotLoseAnEntireRadiusOfWidth() {
+        val metrics=roundedSquare(360,60)
+        assertEquals(ShellInsets(),ShellSafeBands.horizontalInsets(metrics,60,150))
+        assertEquals(ShellInsets(left=9,right=9),ShellSafeBands.horizontalInsets(metrics,30,150))
+    }
+
+    @Test
+    fun floatingEdgeCutoutAffectsOnlyBandsThatActuallyIntersectIt() {
+        val metrics=ShellWindowMetrics(400,800,1f,displayCutoutRects=listOf(ShellRect(0,35,45,70)))
+        assertEquals(0,ShellSafeBands.resolve(metrics).status.left)
+        assertEquals(45,ShellSafeBands.horizontalInsets(metrics,30,120).left)
+        assertEquals(0,ShellSafeBands.horizontalInsets(metrics,80,120).left)
     }
 
     private fun roundedSquare(size: Int, radius: Int) = ShellWindowMetrics(

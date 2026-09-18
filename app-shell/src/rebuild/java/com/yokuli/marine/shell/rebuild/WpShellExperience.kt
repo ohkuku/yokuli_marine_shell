@@ -118,14 +118,14 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
     val needsHeadingDisplay=lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
-        state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS,AppId.DATA_CENTER)
+        (os.notifications.expanded || state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS,AppId.DATA_CENTER))
     DisposableEffect(os.marine,needsHeadingDisplay) {
         val vm=os.marine?.vm
         vm?.setMapHeadingDisplayActive(needsHeadingDisplay)
         onDispose {vm?.setMapHeadingDisplayActive(false)}
     }
     val needsSensorDisplay = lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
-        state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.INSTRUMENTS,AppId.DATA_CENTER)
+        (os.notifications.expanded || state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.INSTRUMENTS,AppId.DATA_CENTER))
     DisposableEffect(os.marine, needsSensorDisplay) {
         val vm = os.marine?.vm
         vm?.setTripLiveDisplayActive(needsSensorDisplay)
@@ -142,6 +142,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
         LocalWpTheme provides colors,
         LocalReducedMotion provides reducedMotion,
         LocalInternalAppInputRouter provides shell.inputRouter,
+        LocalShellHorizontalInsets provides shellHorizontalInsets(metrics),
         LocalContext provides localizedContext,
         LocalConfiguration provides configuration,
     ) {
@@ -248,7 +249,7 @@ fun OsExperience(os: OsStore, service: (String, String?) -> Unit) {
                     }
                 }
                 SystemMarineAlerts(os)
-                NotificationCenter(os, Modifier.fillMaxSize())
+                NotificationCenter(os, Modifier.fillMaxSize(), metrics)
             }
             if (os.storageError) Label(os.t("存储失败，改动尚未保存", "Storage error. Changes have not been saved."), 13, colors.warning, Modifier.padding(8.dp))
             key(state.surface, state.transient) {

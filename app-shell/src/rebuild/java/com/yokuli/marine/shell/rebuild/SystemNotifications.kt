@@ -45,6 +45,8 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     private var lastAnchorEventId=0L
     private var markRestoredRead=false
     private var discardRestoredRead=false
+    private var discardRestored=false
+    private val removedBeforeLoad=mutableSetOf<String>()
     /** 通知中心及其收起动画覆盖应用时，最近任务保留原应用截图。 */
     val canCaptureApp get()=!expanded&&android.os.SystemClock.elapsedRealtime()>=appCaptureBlockedUntil
     val unreadCount get() = items.count { !it.read }
@@ -59,10 +61,13 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
                 }.getOrDefault(0L to emptyList())
             }
             // 冷启动读盘期间用户仍可展开或清空中心；这些操作也必须作用于迟到的历史。
-            val restored=saved.second.map{if(markRestoredRead)it.copy(read=true)else it}.filterNot{discardRestoredRead&&it.read}
+            val restored=if(discardRestored)emptyList() else saved.second
+                .map{if(markRestoredRead)it.copy(read=true)else it}
+                .filterNot{it.id in removedBeforeLoad || discardRestoredRead&&it.read}
             items = (items + restored).distinctBy { it.id }.sortedByDescending { it.createdAt }.take(200)
             lastAnchorEventId=saved.first
             historyLoaded=true
+            removedBeforeLoad.clear()
             loaded.complete(Unit)
             for (signal in writes) {
                 val snapshot=JSONObject().put("items",JSONArray(items.map {it.json()})).put("anchorEventId",lastAnchorEventId).toString()
@@ -105,7 +110,14 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     fun close() { if(expanded)appCaptureBlockedUntil=android.os.SystemClock.elapsedRealtime()+260L;expanded = false }
     fun toggle() { if (expanded) close() else open() }
     fun dismissBanner() { banner = null }
-    fun remove(id: String) { items = items.filterNot { it.id == id }; save() }
+    fun remove(id: String) {
+        if(!historyLoaded)removedBeforeLoad+=id
+        items = items.filterNot { it.id == id }
+        if(banner?.id==id)banner=null
+        save()
+    }
+    /** 只清消息，不修改守锚警报和后台会话；迟到的读盘结果也不能复活消息。 */
+    fun clearAll() { if(!historyLoaded)discardRestored=true; items=emptyList(); banner=null; save() }
     fun clearRead() { if(!historyLoaded)discardRestoredRead=true; items = items.filterNot { it.read }; save() }
     private fun save() { writes.trySend(Unit) }
 }

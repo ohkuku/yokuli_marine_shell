@@ -1,8 +1,8 @@
 # Yokuli OS
 
-以 Windows Phone 8/10 的排版、横滑、磁贴和虚拟键组织的 Android 航海应用平台。当前版本 **0.5.0-experience.5**（versionCode 9）。本轮恢复中间 Home，将右侧搜索键改为通知；新增独立数据中心统一手机与船上设备的数据来源，并修复跨应用返回与页面恢复。
+以 Windows Phone 8/10 的排版、横滑、磁贴和虚拟键组织的 Android 航海应用平台。当前版本 **0.5.0-experience.6**（versionCode 10）。本轮整理通知中心的消息与快捷操作、系统目的地返回、驾驶台趋势选择，以及紧凑排版和顶部安全区。
 
-完整结构见 [26 项反馈、全部应用接口与数据拓扑](docs/product/OS_INTERFACE_TOPOLOGY.md)，声明位置见 [API 索引](docs/product/API_INDEX.md)。数据所有权见 [数据中心契约](docs/product/DATA_CENTER_CONTRACT.md)，页面访问与返回见 [应用导航契约](docs/product/APP_NAVIGATION_CONTRACT.md)。实际验证结果与边界见 [本轮交付记录](docs/experience/EXPERIENCE_5_DELIVERY.md)。
+完整结构见 [26 项反馈、全部应用接口与数据拓扑](docs/product/OS_INTERFACE_TOPOLOGY.md)，声明位置见 [API 索引](docs/product/API_INDEX.md)。数据所有权见 [数据中心契约](docs/product/DATA_CENTER_CONTRACT.md)，页面访问与返回见 [应用导航契约](docs/product/APP_NAVIGATION_CONTRACT.md)。实际验证结果与边界见 [本轮交付记录](docs/experience/EXPERIENCE_6_DELIVERY.md)。
 
 ## 应用
 
@@ -13,7 +13,7 @@
 | 航海日志 | 当前航程、时刻与笔记、暂停/继续/保存、历史回放/报告/导出、在海图预览。 |
 | 守锚 | 下锚、选点和半径、值守、近期渐隐轨迹、累计停留区域、起锚与收藏。 |
 | 我的航行 | 坐标、航线、收藏锚地、集合、GPX、预览与导航。 |
-| 驾驶台 | 真实罗盘、风向、姿态、量表与趋势；自选仪表、拖动和上下排序。 |
+| 驾驶台 | 真实罗盘、风向、姿态与量表；趋势按航行/天气分组，只列实际收到的 13 类读数；自选仪表与排序。 |
 | 数据中心 | 逐项查看已采用读数、手机与 NMEA 候选、来源和更新时间；选择来源、启停手机定位、固定手机与校准。 |
 | 船联网 | 多连接、报文与流量、发送目的地、按能力发送系统读数或转发指定输入。 |
 | 数据共享 | 本机监听服务、实际连接客户端、选择发布内容与转发输入；采用数据中心选定的读数。 |
@@ -30,8 +30,9 @@
 - 海图、日志、系统栏和磁贴读取同一个航行会话。记录、导航、锚警彼此独立，关闭页面不停止后台工作。
 - 数据中心统一船位与逐项读数来源，展示手机、NMEA 和派生候选及采纳结果；手机定位启停与安装校准也在这里。继续使用原 `VesselSettingsRepository.metricSourcePins` 与船位 `GpsDataSource / POSITION_CONNECTION`，不创建另一套来源配置。选中来源失效不会偷偷切换；GPS 短时未更新只显示时效，不反复遮挡操作。
 - 本机分享与主动发送共用发布规则；按能力筛选实际报文，保留来源与连接代次，禁止给相同 IP 回送其输入数据。
-- 轻提示先出现在系统栏，底部右键（原搜索键）打开通知中心，中间 Home 始终返回开始屏幕；通知中心保留应用、正文、时间和详情；顶部下滑完全交还 Android 系统。阅读通知不解除业务警报。
-- 统一字体、圆形单选、矩形输入框、横滑和细节动效。全局单位、坐标格式、文字大小在应用和磁贴同步。全屏控件按圆角横向避让。
+- 轻提示先出现在系统栏，底部右键（原搜索键）打开通知中心，中间 Home 始终返回开始屏幕。通知可点按处理或横向滑动清除；移除消息不会确认业务警报。系统通知目的地已是当前页时只收起中心；已有目标页和返回关系优先复用。顶部下滑完全交还 Android 系统。
+- 通知中心首排提供日夜、手机 GPS、常亮和更多四个快捷项；展开后按真实会话显示航行/守锚暂停与恢复，以及手机姿态重新确认和数据中心入口。快捷操作调用现有系统命令，没有第二份开关状态。
+- 页面标题、分组、正文与辅助文字保持层级，正文和选择行更紧凑；圆形单选、矩形输入框与横滑仍统一。全局单位、坐标格式、文字大小在应用和磁贴同步。顶部按圆角在当前高度的截面横向避让，并处理挖孔；背景保持全屏。
 - 声纳测深调查的界面、采样与自动恢复已移除；既有数据库保留，真实 NMEA 水深仍可作为仪表和条件警戒输入。
 
 ## 构建和密钥
@@ -63,6 +64,6 @@ Google 在线/卫星底图的 `GOOGLE_MAPS_ANDROID_API_KEY` 仍由原仓库的�
 
 ## English
 
-Version **0.5.0-experience.5** (versionCode 9) restores the centre Home key and puts notifications on the former right-hand Search key. Data Center owns phone and NMEA source selection, phone location and mounting calibration. Boat Network owns connections and outgoing traffic; Data Sharing owns the local publishing service. All three use the existing shared source policy. Linked app operations return to the original caller page; ordinary launches open the app home, while Recents resumes its existing page. Chart annotations render natively with the map camera; anchor watch emphasizes the map and real swing history. Instruments use meaningful live graphics and a reorderable personal layout. Tile Studio presents one app at a time, with one configurable tile per app. Local NMEA and external outputs share actual capability filtering and source-aware IP echo prevention. Sonar survey UI, acquisition and automatic restoration are removed while historical records are retained.
+Version **0.5.0-experience.6** (versionCode 10) adds consumable and swipe-dismissable notifications, a four-column quick-action row, reusable system destinations, and a focused navigation/weather trend selector. Typography is more compact and top controls follow the rounded-corner safe area. The centre key remains Home and the right key opens notifications. Data Center owns phone and NMEA source selection, phone location and mounting calibration. Boat Network owns connections and outgoing traffic; Data Sharing owns the local publishing service. All three use the existing shared source policy. Linked app operations return to the original caller page; ordinary launches open the app home, while Recents resumes its existing page. Chart annotations render natively with the map camera; anchor watch emphasizes the map and real swing history. Instruments use meaningful live graphics and a reorderable personal layout. Tile Studio presents one app at a time, with one configurable tile per app. Local NMEA and external outputs share actual capability filtering and source-aware IP echo prevention. Sonar survey UI, acquisition and automatic restoration are removed while historical records are retained.
 
 See the linked interface topology, contracts and delivery record for implementation and validation boundaries. The original build, Android identity and API-key management remain in use.

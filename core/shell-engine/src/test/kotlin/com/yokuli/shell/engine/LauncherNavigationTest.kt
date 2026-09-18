@@ -38,6 +38,66 @@ class LauncherNavigationTest {
     )
     private val reducer = DefaultLauncherReducer()
 
+    @Test fun notificationForCurrentRouteDoesNotCreateAVisitOrReplayLaunch() {
+        val current=open(initial(),chart.appId,chart.launchToken)
+        val result=reducer.reduce(current,LauncherAction.Open(chart.launchToken,preserveCaller=true,reuseExistingRoute=true),
+            context(LaunchResolution.Internal(chart.appId,chart.launchToken)))
+        assertEquals(current,result.state)
+        assertTrue(result.effects.isEmpty())
+    }
+
+    @Test fun notificationResumesAnExistingObjectAndReturnsToItsCaller() {
+        val detail=LaunchToken("settings.units")
+        val opened=open(open(initial(),settings.appId,settings.launchToken),settings.appId,detail)
+        val existing=opened.tasks.task(InternalAppTaskId("settings"))!!
+        val caller=open(opened,chart.appId,chart.launchToken)
+        val invoked=reducer.reduce(caller,LauncherAction.Open(detail,preserveCaller=true,reuseExistingRoute=true),
+            context(LaunchResolution.Internal(settings.appId,detail))).state
+        assertEquals(existing,invoked.tasks.task(existing.taskId))
+        val returned=reduce(invoked,LauncherAction.Back).state
+        assertEquals(caller.surface,returned.surface)
+        assertEquals(caller.tasks.task(InternalAppTaskId("chart")),returned.tasks.task(InternalAppTaskId("chart")))
+        assertEquals(existing,returned.tasks.task(existing.taskId))
+    }
+
+    @Test fun notificationForRetainedParentReusesItsStateInsteadOfStackingADuplicate() {
+        val home=open(initial(),settings.appId,settings.launchToken)
+        val detail=open(home,settings.appId,LaunchToken("settings.units"))
+        val returned=reducer.reduce(detail,LauncherAction.Open(settings.launchToken,reuseExistingRoute=true),
+            context(LaunchResolution.Internal(settings.appId,settings.launchToken))).state
+        assertEquals(home.tasks.tasks.single(),returned.tasks.tasks.single())
+        assertEquals(ShellTransitionKind.MODULE_ROUTE_BACK,returned.transitionRequest?.kind)
+    }
+
+    @Test fun sameEntryWithDifferentVisibleTabPreservesTheOldVisitForBack() {
+        val caller=open(initial(),chart.appId,chart.launchToken)
+        val detail=LaunchToken("settings.units")
+        val before=reducer.reduce(caller,LauncherAction.Open(detail,preserveCaller=true),
+            context(LaunchResolution.Internal(settings.appId,detail))).state
+        val reentered=reducer.reduce(before,LauncherAction.Open(detail,preserveCaller=true,reuseExistingRoute=true,reenterCurrentRoute=true),
+            context(LaunchResolution.Internal(settings.appId,detail))).state
+        assertTrue(before.tasks.task(InternalAppTaskId("settings"))!!.currentUiStateKey != reentered.tasks.task(InternalAppTaskId("settings"))!!.currentUiStateKey)
+        val back=reduce(reentered,LauncherAction.Back).state
+        assertEquals(before.tasks,back.tasks.copy(nextRouteInstance=before.tasks.nextRouteInstance))
+        assertEquals(caller.surface,reduce(back,LauncherAction.Back).state.surface)
+    }
+
+    @Test fun notificationDoesNotReuseARetainedTokenWhoseLocalPageChanged() {
+        val home=open(initial(),settings.appId,settings.launchToken)
+        val targetToken=LaunchToken("settings.units")
+        val oldTarget=open(home,settings.appId,targetToken)
+        val oldTargetKey=oldTarget.tasks.tasks.single().currentUiStateKey
+        val current=open(oldTarget,settings.appId,LaunchToken("settings.appearance"))
+        val currentTask=current.tasks.tasks.single()
+        // Runtime 已根据候选实例登记的实际子页确认：旧 units 入口现在不是 units 内容。
+        val opened=reducer.reduce(current,LauncherAction.Open(targetToken,preserveCaller=true,
+            reuseExistingRoute=true,reenterCurrentRoute=true),context(LaunchResolution.Internal(settings.appId,targetToken))).state
+        assertEquals(targetToken,opened.tasks.tasks.single().lastLaunchToken)
+        assertTrue(oldTargetKey != opened.tasks.tasks.single().currentUiStateKey)
+        assertEquals(ShellTransitionKind.MODULE_ROUTE_FORWARD,opened.transitionRequest?.kind)
+        assertEquals(currentTask,reduce(opened,LauncherAction.Back).state.tasks.tasks.single())
+    }
+
     @Test
     fun crossAppObjectBackReturnsToCallerWithoutInventingATargetHome() {
         val chartOpened=open(initial(),chart.appId,chart.launchToken)

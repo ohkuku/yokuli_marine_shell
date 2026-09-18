@@ -184,6 +184,17 @@ class OsStore(val context: Context) {
     fun open(destination: String) = shell.open(destination)
     /** 请求另一个应用处理当前对象；完成或返回时恢复调用页，而不是启动一个无关首页。 */
     fun openLinked(destination: String) = shell.openLinked(destination)
+    /** 点开即消费通知；查看消息与业务警报确认是两个独立动作。 */
+    fun openNotification(id: String) {
+        val notice=notifications.items.firstOrNull {it.id==id} ?: return
+        notifications.remove(id)
+        notice.destination?.let(::openSystemDestination) ?: notifications.close()
+    }
+    /** 系统面板定位已有内容，当前页面只收起面板，不重建应用。 */
+    fun openSystemDestination(destination: String) {
+        notifications.close()
+        shell.openSystemDestination(destination)
+    }
     fun home() = shell.home()
     fun back() = shell.back()
     fun fly(point: GeoPoint, atZoom: Double = zoom) { follow = false; cameraRequest = point to atZoom; center = point; zoom = atZoom }

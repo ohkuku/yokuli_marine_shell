@@ -28,6 +28,7 @@ class WpShellRuntime(private val os: OsStore) {
     private val snapshotPageKeys = mutableMapOf<InternalAppTaskId, String>()
     private val chartPageStates = mutableMapOf<String, ChartInteractionSnapshot>()
     private var foregroundChartKey: String? = null
+    private val visiblePageRoutes = mutableMapOf<String, String>()
     var coldOpeningTask by mutableStateOf<InternalAppTaskId?>(null)
         private set
     private val navigationQueue=Channel<LauncherAction>(Channel.UNLIMITED)
@@ -140,6 +141,7 @@ class WpShellRuntime(private val os: OsStore) {
                 }
                 foregroundChartKey = chartKey
                 chartPageStates.keys.retainAll(state.tasks.retainedUiStateKeys)
+                visiblePageRoutes.keys.retainAll(state.tasks.retainedUiStateKeys)
             }
         }
     }
@@ -188,6 +190,36 @@ class WpShellRuntime(private val os: OsStore) {
     /** 由业务对象发起的跨应用操作，返回时恢复调用页；普通应用入口仍调用 open。 */
     fun openLinked(destination: String) = open(destination, linked = true)
 
+    /** 局部子页也报告可见地址，通知不能只看到根 token 就误判为另一个页面。 */
+    fun reportVisibleRoute(instanceKey: String, destination: String) {
+        visiblePageRoutes[instanceKey] = canonicalPage(destination)
+    }
+
+    fun openSystemDestination(destination: String) {
+        val page = canonicalPage(destination)
+        val app = appForPage(page) ?: return
+        val state = engine.state.value
+        val existing = state.tasks.tasks.firstOrNull { it.appId == app.id }
+        val current = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId) }
+        // 应用级通知恢复正在使用的应用；对象级通知定位其具体地址，不重启相同页面。
+        val visibleRoute = existing?.let { visiblePageRoutes[it.currentUiStateKey] ?: pageForToken(it.lastLaunchToken) }
+        val resumeVisible = existing != null && (page == app.page || page == visibleRoute)
+        if(resumeVisible && existing?.taskId == current?.taskId) return
+        val token = if(resumeVisible) existing!!.lastLaunchToken else if(page == app.page) app.rootToken else LaunchToken(page)
+        // 不仅当前入口会切换局部标签，保存在 Back 栈中的同地址实例也可能已经显示别的内容。
+        // 只有实际页面匹配才可复用，否则新建访问，并让 Back 先回到当前页面。
+        val retainedIndex = existing?.backStack?.indexOfLast { it == token } ?: -1
+        val candidateKey = when {
+            existing?.lastLaunchToken == token -> existing.currentUiStateKey
+            retainedIndex >= 0 -> existing?.backStackUiStateKeys?.getOrNull(retainedIndex)
+            else -> null
+        }
+        val candidateVisibleRoute = candidateKey?.let { visiblePageRoutes[it] } ?: pageForToken(token)
+        val resetLocalPage = !resumeVisible && candidateKey != null && candidateVisibleRoute != page
+        dispatch(LauncherAction.Open(token, preserveCaller = current != null,
+            reuseExistingRoute = true, reenterCurrentRoute = resetLocalPage))
+    }
+
     fun open(destination: String, linked: Boolean = false) {
         val page=canonicalPage(destination)
         when (page) {
@@ -220,7 +252,7 @@ class WpShellRuntime(private val os: OsStore) {
             val existing=engine.state.value.tasks.tasks.firstOrNull {it.appId==app?.id}
             coldOpeningTask=app?.takeIf {existing==null}?.let {InternalAppTaskId(it.id.value)}
             // 首页入口是新访问；引擎为它分配独立页面实例，不再清空同应用的调用者快照。
-            if(existing!=null && action.token==app?.rootToken && !action.preserveCaller) {
+            if(existing!=null && action.token==app?.rootToken && !action.preserveCaller && !action.reuseExistingRoute) {
                 engine.dispatch(action.copy(replaceTaskRoute=true,preserveCaller=false));return
             }
         } else if(action is LauncherAction.ActivateTask || action in listOf(

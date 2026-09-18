@@ -12,15 +12,17 @@ import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.chart.MapViewState
 import com.yokuli.marine.shell.rebuild.data.Fix
 import com.yokuli.marine.shell.rebuild.decimal
+import com.yokuli.marine.core.design.WpTypeScale
 
 /** 海图与锚警共享的地图壳：图源入口、缩放手势与船位读数使用相同位置和尺寸。 */
 @Composable internal fun MapPageHeader(os:OsStore,title:String,onSource:()->Unit,onBack:(()->Unit)?=null) {
     val c=LocalMetro.current
-    Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(horizontal=14.dp),verticalAlignment=Alignment.CenterVertically) {
+    val insets=LocalShellHorizontalInsets.current
+    Row(Modifier.fillMaxWidth().heightIn(min=58.dp).padding(start=insets.pageStart,end=insets.pageEnd),verticalAlignment=Alignment.CenterVertically) {
         if(onBack!=null)Box(Modifier.size(42.dp).clickable(onClick=onBack),contentAlignment=Alignment.Center){Glyph("back",Modifier.size(26.dp))}
-        Label(title,48,modifier=Modifier.weight(1f),maxLines=1)
-        Row(Modifier.clickable(onClick=onSource).padding(vertical=14.dp),verticalAlignment=Alignment.CenterVertically) {
-            Label(os.maps.sourceName(os.chinese),13,c.muted,Modifier.padding(end=10.dp),maxLines=1)
+        Label(title,WpTypeScale.PageTitle,modifier=Modifier.weight(1f),maxLines=1)
+        Row(Modifier.widthIn(max=150.dp).heightIn(min=48.dp).clickable(onClick=onSource).padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+            Label(os.maps.sourceName(os.chinese),WpTypeScale.Caption,c.muted,Modifier.weight(1f,fill=false).padding(end=8.dp),maxLines=1)
             Glyph("layers",Modifier.size(24.dp))
         }
     }

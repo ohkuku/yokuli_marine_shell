@@ -39,6 +39,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
 
 @Composable fun SettingsScreen(os: OsStore, initialSection: String = "overview") {
     var section by rememberSaveable(initialSection) { mutableStateOf(initialSection.substringBefore(':')) }
+    ReportVisibleAppRoute(os, if(section == "overview") "settings" else "settings:$section")
     var reset by remember { mutableStateOf(false) }
     val c = LocalMetro.current
     val back = { if(initialSection!="overview") os.shell.popRoute() else section = "overview" }

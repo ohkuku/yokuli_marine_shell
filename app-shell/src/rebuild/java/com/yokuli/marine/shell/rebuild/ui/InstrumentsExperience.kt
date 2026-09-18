@@ -39,6 +39,12 @@ import java.util.Locale
     var editing by rememberSaveable { mutableStateOf(false) }
     var trend by rememberSaveable { mutableStateOf("sog") }
     var chooseTrend by rememberSaveable { mutableStateOf(false) }
+    val availableTrends = InstrumentTrendCatalog.available(data.readings, history, now)
+    val activeTrend = InstrumentTrendCatalog.selected(trend, availableTrends, data.readings, now)
+    LaunchedEffect(activeTrend?.key, trend) {
+        if (activeTrend != null) trend = activeTrend.key
+        else if (InstrumentTrendCatalog.metrics.none { it.key == trend }) trend = "sog"
+    }
     val c = LocalMetro.current
     fun closeLayer(): Boolean = when {
         chooseTrend -> { chooseTrend = false; true }
@@ -102,22 +108,34 @@ import java.util.Locale
                         }
                     }
                     3 -> {
-                        Row(Modifier.fillMaxWidth().clickable { chooseTrend = true }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Label(metricName(os, trend), 30, modifier = Modifier.weight(1f))
-                            Label(os.t("选择", "choose"), 17, c.accent)
+                        val selectedTrend = activeTrend
+                        if (selectedTrend == null) {
+                            Spacer(Modifier.height(26.dp))
+                            Label(os.t("等一份船况", "waiting for conditions"), 32)
+                            Label(os.t("收到航速、风或天气读数后，变化会出现在这里。", "Speed, wind and weather trends appear as readings arrive."), 18, c.muted)
+                            Label(os.t("可在数据中心查看当前来源。", "Check your sources in Data Center."), 14, c.muted)
+                        } else {
+                            val key = selectedTrend.key
+                            val current = data.readings[key]
+                            val last = InstrumentTrendCatalog.lastReading(key, data.readings, history, now)
+                            val live = current != null && current === last && current.fresh(now)
+                            Row(Modifier.fillMaxWidth().clickable { chooseTrend = true }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Label(metricName(os, key), 27, modifier = Modifier.weight(1f))
+                                Label(os.t("切换", "change"), 16, c.accent)
+                            }
+                            // 此页回看观测；过期方向仅以明确的历史读数呈现，不驱动实时罗盘。
+                            Label(os.formatMetric(key, last?.value), 54, if (live) c.accent else c.muted)
+                            last?.let {
+                                Label((if (live) os.t("最新 · ", "latest · ") else os.t("上次记录 · ", "last recorded · ")) + readingAge(os, it.elapsed, now) + " · " + it.source, 13, c.muted)
+                            }
+                            val samples = history[key].orEmpty().filter { now - it.elapsed in 0..900_000 && it.value.isFinite() }
+                            if (samples.isNotEmpty()) {
+                                ReadingTrace(os, samples, key, now, current = current)
+                                Label(os.t("最近 15 分钟 · 拖动查看", "last 15 minutes · drag to inspect"), 13, c.muted)
+                            } else {
+                                Label(os.t("最近 15 分钟还没有趋势样本。", "No trend samples in the last 15 minutes."), 16, c.muted)
+                            }
                         }
-                        val current = data.readings[trend]
-                        val tile = InstrumentTileId.entries.firstOrNull { instrumentTrendKey(it) == trend }
-                        val showCurrent = current?.takeIf { tile == null || !InstrumentReadingPolicy.requiresFresh(tile) || it.fresh(now) }
-                        Label(os.formatMetric(trend, showCurrent?.value), 56, if (current?.fresh(now) == true) c.accent else c.muted)
-                        Label(readingStatus(os, current, now), 15, c.muted)
-                        ReadingTrace(os, history[trend].orEmpty(), trend, now, current = current)
-                        Label(os.t("最近 15 分钟 · 拖动查看当时的读数与来源", "last 15 minutes · drag to inspect a reading and its source"), 16, c.muted)
-                        current?.let {
-                            Label(os.t("数据来源", "source"), 14, c.muted)
-                            Label(it.source, 22)
-                        }
-                        if (trend == "pressure") InstrumentGrid(os, state.vesselData, listOf(InstrumentTileId.PRESSURE_TREND_1H, InstrumentTileId.PRESSURE_TREND_3H, InstrumentTileId.PRESSURE_TREND_6H), now) { selected = it.name }
                     }
                 }
             }
@@ -143,11 +161,21 @@ import java.util.Locale
     }
     if (chooseTrend) Dialog(onDismissRequest = { chooseTrend = false }) {
         Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).background(c.bg).border(2.dp, c.fg).padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Label(os.t("观察趋势", "watch a trend"), 34)
+            Label(os.t("观察趋势", "watch a trend"), 30)
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                InstrumentTileId.entries.filter { instrumentTrendKey(it) != null }.forEach { tile ->
-                    val key = instrumentTrendKey(tile)!!
-                    ChoiceRow(instrumentName(os, tile), trend == key, subtitle = readingStatus(os, data.readings[key], now)) { trend = key; chooseTrend = false }
+                if (availableTrends.isEmpty()) Label(os.t("收到航行或天气读数后，再来选择。", "Choose a trend once navigation or weather readings arrive."), 18, c.muted)
+                InstrumentTrendGroup.entries.forEach { group ->
+                    val choices = availableTrends.filter { it.group == group }
+                    if (choices.isNotEmpty()) {
+                        Label(if (group == InstrumentTrendGroup.NAVIGATION) os.t("航行", "navigation") else os.t("天气", "weather"), 20, c.accent, Modifier.padding(top = 14.dp, bottom = 4.dp))
+                        choices.forEach { metric ->
+                            val last = InstrumentTrendCatalog.lastReading(metric.key, data.readings, history, now)
+                            ChoiceRow(metricName(os, metric.key), activeTrend?.key == metric.key,
+                                subtitle = last?.let { os.formatMetric(metric.key, it.value) + " · " + readingAge(os, it.elapsed, now) }) {
+                                trend = metric.key; chooseTrend = false
+                            }
+                        }
+                    }
                 }
             }
             MetroButton(os.t("完成", "done"), { chooseTrend = false })

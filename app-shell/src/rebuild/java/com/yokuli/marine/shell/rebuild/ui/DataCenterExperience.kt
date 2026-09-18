@@ -31,6 +31,13 @@ import com.yokuli.shell.contract.ShellInput
     var mounting by rememberSaveable { mutableStateOf(false) }
     val pageStates = rememberSaveableStateHolder()
     val directPhone = initialMetric == "phone"
+    var visibleTab by rememberSaveable(initialMetric) { mutableIntStateOf(if(directPhone) 1 else 0) }
+    ReportVisibleAppRoute(os, when {
+        mounting -> "data_center:mount"
+        selected != null -> "data_center:${selected!!.name}"
+        visibleTab == 1 -> "data_center:phone"
+        else -> "data_center"
+    })
     val internalPage = mounting || selected != null
     val back: () -> Unit = {
         when {
@@ -58,7 +65,7 @@ import com.yokuli.shell.contract.ShellInput
             pageStates.SaveableStateProvider(page) { when {
                 page == "mount" -> PageBody { PhoneMountSettings(os) }
                 page != "overview" -> PageBody { SourceMetricDetail(os, VesselMetricId.valueOf(page)) }
-                else -> Pivot(listOf(os.t("读数", "readings"), os.t("手机", "phone")), initialPage = if (directPhone) 1 else 0) { tab ->
+                else -> Pivot(listOf(os.t("读数", "readings"), os.t("手机", "phone")), initialPage = if (directPhone) 1 else 0, onPageSelected = { visibleTab = it }) { tab ->
                     PageBody {
                         if (tab == 0) SourceOverview(os) { selected = it }
                         else PhoneSourceSettings(os, openMounting = { mounting = true }, openPosition = { selected = VesselMetricId.POSITION })

@@ -2,6 +2,8 @@ package com.yokuli.shell.contract
 
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.ceil
+import kotlin.math.sqrt
 
 data class ShellInsets(
     val left: Int = 0,
@@ -55,18 +57,18 @@ object ShellSafeBands {
     fun statusSegments(
         metrics: ShellWindowMetrics,
         heightDp: Float = 30f,
-        edgePaddingDp: Float = 8f,
+        edgePaddingDp: Float = 12f,
         cutoutGapDp: Float = 4f,
     ): List<ShellHorizontalSegment> {
         val density = metrics.density.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val safe = resolve(metrics).status
+        val top = metrics.safeInsets.top.coerceAtLeast(0)
+        val bottom = top + (heightDp.coerceAtLeast(0f) * density).roundToInt()
+        val safe = horizontalInsets(metrics, top, bottom)
         val edgePadding = (edgePaddingDp.coerceAtLeast(0f) * density).roundToInt()
         val gap = (cutoutGapDp.coerceAtLeast(0f) * density).roundToInt()
         val width = metrics.widthPx.coerceAtLeast(0)
         val left = (safe.left + edgePadding).coerceIn(0, width)
         val right = (width - safe.right - edgePadding).coerceIn(0, width)
-        val top = safe.top
-        val bottom = top + (heightDp.coerceAtLeast(0f) * density).roundToInt()
         if (left >= right || bottom <= top) return emptyList()
         val obstacles = metrics.displayCutoutRects
             .filter { it.bottom > top && it.top < bottom && it.right > it.left }
@@ -84,35 +86,55 @@ object ShellSafeBands {
     }
 
     fun resolve(metrics: ShellWindowMetrics): ShellChromeSafeBands {
-        val corners = metrics.roundedCorners
-        val topLeft = corners.topLeft?.radius ?: 0
-        val topRight = corners.topRight?.radius ?: 0
-        val bottomLeft = corners.bottomLeft?.radius ?: 0
-        val bottomRight = corners.bottomRight?.radius ?: 0
-
-        var cutoutLeft = 0
-        var cutoutRight = 0
-        metrics.displayCutoutRects.filter { it.top <= 0 }.forEach { rect ->
-            if (rect.left <= 0) cutoutLeft = max(cutoutLeft, rect.right)
-            if (rect.right >= metrics.widthPx) cutoutRight = max(cutoutRight, metrics.widthPx - rect.left)
-        }
+        val density = metrics.density.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val top = metrics.safeInsets.top.coerceAtLeast(0)
+        val statusEdges = horizontalInsets(metrics, top, top + (30f * density).roundToInt())
+        val bottom = (metrics.heightPx - metrics.safeInsets.bottom).coerceAtLeast(0)
+        val navigationEdges = horizontalInsets(metrics, (bottom - 54f * density).roundToInt(), bottom)
 
         val status = ShellSafeBand(
-            left = maxOf(metrics.safeInsets.left, topLeft, cutoutLeft),
+            left = statusEdges.left,
             // Rounded corners are avoided laterally by edge controls. Treating their radius as a
             // full-width top inset wastes the whole app canvas on square/round displays.
             top = metrics.safeInsets.top,
-            right = maxOf(metrics.safeInsets.right, topRight, cutoutRight),
+            right = statusEdges.right,
             bottom = 0,
         )
         val navigation = ShellSafeBand(
-            left = maxOf(metrics.safeInsets.left, metrics.systemGestureInsets.left, bottomLeft),
+            left = maxOf(navigationEdges.left, metrics.systemGestureInsets.left),
             top = 0,
-            right = maxOf(metrics.safeInsets.right, metrics.systemGestureInsets.right, bottomRight),
+            right = maxOf(navigationEdges.right, metrics.systemGestureInsets.right),
             // As above, bottom corner radii move the edge keys inward; only actual platform and
             // gesture insets consume a full-width bottom band.
             bottom = metrics.safeInsets.bottom,
         )
         return ShellChromeSafeBands(status, navigation, metrics.imeInsets.bottom)
+    }
+
+    /** 指定窗口纵向范围内的横向遮挡。圆角使用真实圆心和半径，不能把半径当成左边距。 */
+    fun horizontalInsets(metrics: ShellWindowMetrics, topPx: Int, bottomPx: Int): ShellInsets {
+        val width = metrics.widthPx.coerceAtLeast(0)
+        val top = topPx.coerceAtLeast(0)
+        val bottom = bottomPx.coerceAtMost(metrics.heightPx.coerceAtLeast(0))
+        if(bottom <= top) return ShellInsets()
+        fun cornerInset(corner: ShellRoundedCorner?, left: Boolean, upper: Boolean): Int {
+            if(corner == null || corner.radius <= 0) return 0
+            val y = if(upper) top else bottom
+            if(upper && y >= corner.centerY || !upper && y <= corner.centerY) {
+                return (if(left) corner.centerX-corner.radius else width-corner.centerX-corner.radius).coerceIn(0,width)
+            }
+            val dy = kotlin.math.abs(y.toDouble() - corner.centerY).coerceAtMost(corner.radius.toDouble())
+            val dx = sqrt((corner.radius.toDouble() * corner.radius - dy * dy).coerceAtLeast(0.0))
+            val inset = if(left) corner.centerX - dx else width - corner.centerX - dx
+            return ceil(inset).toInt().coerceIn(0, width)
+        }
+        val corners = metrics.roundedCorners
+        var left = maxOf(metrics.safeInsets.left, cornerInset(corners.topLeft,true,true), cornerInset(corners.bottomLeft,true,false), 0)
+        var right = maxOf(metrics.safeInsets.right, cornerInset(corners.topRight,false,true), cornerInset(corners.bottomRight,false,false), 0)
+        metrics.displayCutoutRects.filter { it.bottom > top && it.top < bottom }.forEach { rect ->
+            if(rect.left <= 0) left = max(left, rect.right)
+            if(rect.right >= width) right = max(right, width - rect.left)
+        }
+        return ShellInsets(left = left.coerceIn(0,width), right = right.coerceIn(0,width))
     }
 }

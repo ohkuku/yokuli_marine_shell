@@ -38,6 +38,7 @@ import java.util.Date
     val marine = os.marine ?: return
     val state by marine.vm.ui.collectAsState()
     var selected by rememberSaveable(initialVoyageId) { mutableStateOf(initialVoyageId) }
+    ReportVisibleAppRoute(os, selected?.let { "voyage:$it" } ?: "voyages")
     var recording by remember { mutableStateOf(false) }
     var marking by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }

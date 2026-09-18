@@ -54,6 +54,10 @@ sealed interface LauncherAction {
         val preserveCaller: Boolean = false,
         /** 普通应用入口创建新的首页访问；应用内子页与跨应用对象调用不得使用此标记。 */
         val replaceTaskRoute: Boolean = false,
+        /** 通知定位已有对象时复用页面实例；普通桌面入口仍创建新首页。 */
+        val reuseExistingRoute: Boolean = false,
+        /** 入口相同但应用内已切到别的内容时重新进入；保留原访问供 Back 恢复。 */
+        val reenterCurrentRoute: Boolean = false,
     ) : LauncherAction
     data class CatalogChanged(val catalog: LauncherCatalogSnapshot) : LauncherAction
     data class ApplyLayoutProposal(val proposal: LayoutProposal) : LauncherAction
@@ -468,7 +472,16 @@ class DefaultLauncherReducer : LauncherReducer {
             // 跨应用调用的父页面是调用者；从桌面直接打开对象才补该应用首页。
             val objectParent = rootToken?.takeIf { !crossAppCall && it != resolution.token }?.let(::listOf).orEmpty()
             val parentStateKeys = objectParent.map { "$freshInstanceKey:parent" }
+            val retainedIndex = existing?.backStack?.indexOfLast { it == resolution.token } ?: -1
             val task = when {
+                action.reuseExistingRoute && !action.reenterCurrentRoute && existing?.lastLaunchToken == resolution.token -> existing
+                action.reuseExistingRoute && !action.reenterCurrentRoute && existing != null && retainedIndex >= 0 -> existing.copy(
+                    lastLaunchToken = resolution.token,
+                    savedUiStateKey = existing.backStackUiStateKeys.getOrNull(retainedIndex)
+                        ?: "${taskId.value}:${resolution.token.value}",
+                    backStack = existing.backStack.take(retainedIndex),
+                    backStackUiStateKeys = existing.backStackUiStateKeys.take(retainedIndex),
+                )
                 existing == null -> InternalAppTask(taskId, resolution.appId, resolution.token,
                     backStack = objectParent, savedUiStateKey = freshInstanceKey, backStackUiStateKeys = parentStateKeys)
                 // Opening an App from Desktop, All Apps, Search, or another App is a new route
@@ -480,7 +493,7 @@ class DefaultLauncherReducer : LauncherReducer {
                     savedUiStateKey = freshInstanceKey,
                     backStackUiStateKeys = parentStateKeys,
                 )
-                existing.lastLaunchToken == resolution.token -> existing
+                existing.lastLaunchToken == resolution.token && !action.reenterCurrentRoute -> existing
                 else -> existing.copy(
                     lastLaunchToken = resolution.token,
                     backStack = existing.backStack + existing.lastLaunchToken,
@@ -491,14 +504,14 @@ class DefaultLauncherReducer : LauncherReducer {
                 )
             }
             val target = ShellVisualSurface.Module(taskId)
-            if (state.surface == target && existing?.lastLaunchToken == resolution.token && !action.replaceTaskRoute) {
+            if (state.surface == target && existing?.lastLaunchToken == resolution.token && !action.replaceTaskRoute && !action.reenterCurrentRoute) {
                 LauncherReduction(state)
             } else {
                 val trigger = when (state.surface) {
                     is ShellVisualSurface.Search -> ShellTransitionTrigger.SEARCH_RESULT
                     ShellVisualSurface.ModuleList -> ShellTransitionTrigger.MODULE_LIST_ENTRY
                     ShellVisualSurface.Recents -> ShellTransitionTrigger.RECENT_TASK
-                    target -> ShellTransitionTrigger.MODULE_ROUTE_FORWARD
+                    target -> if(action.reuseExistingRoute && !action.reenterCurrentRoute && retainedIndex >= 0) ShellTransitionTrigger.MODULE_ROUTE_BACK else ShellTransitionTrigger.MODULE_ROUTE_FORWARD
                     is ShellVisualSurface.Module -> ShellTransitionTrigger.MODULE_ROUTE_FORWARD
                     else -> ShellTransitionTrigger.TILE
                 }

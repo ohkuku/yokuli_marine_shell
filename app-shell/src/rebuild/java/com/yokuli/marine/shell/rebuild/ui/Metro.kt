@@ -40,7 +40,10 @@ import com.yokuli.marine.core.design.LocalWpTextScale
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
+import com.yokuli.shell.contract.ShellSafeBands
+import com.yokuli.shell.contract.ShellWindowMetrics
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -49,6 +52,18 @@ import kotlin.math.roundToInt
 data class MetroColors(val bg: Color, val fg: Color, val muted: Color, val panel: Color, val accent: Color)
 val LocalMetro = staticCompositionLocalOf { MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(0xFF00ABA9)) }
 val LocalAppPage = staticCompositionLocalOf<String?> { null }
+/** 页面位于状态栏下；通知覆盖位于窗口顶端。只收进左右边缘，不整体下移内容。 */
+data class ShellHorizontalInsets(val pageStart: Dp = 22.dp, val pageEnd: Dp = 22.dp,
+    val topStart: Dp = 22.dp, val topEnd: Dp = 22.dp)
+val LocalShellHorizontalInsets = staticCompositionLocalOf { ShellHorizontalInsets() }
+fun shellHorizontalInsets(metrics: ShellWindowMetrics): ShellHorizontalInsets {
+    val density = metrics.density.takeIf { it.isFinite() && it > 0f } ?: 1f
+    val top = ShellSafeBands.horizontalInsets(metrics,metrics.safeInsets.top,metrics.safeInsets.top+(90f*density).roundToInt())
+    val pageTop = metrics.safeInsets.top+(30f*density).roundToInt()
+    val page = ShellSafeBands.horizontalInsets(metrics,pageTop,pageTop+(120f*density).roundToInt())
+    fun safe(px: Int) = maxOf(22f,px/density+8f).dp
+    return ShellHorizontalInsets(safe(page.left),safe(page.right),safe(top.left),safe(top.right))
+}
 private val LocalChinese = staticCompositionLocalOf { false }
 val LightFont=WpFontFamily
 
@@ -64,7 +79,7 @@ val LightFont=WpFontFamily
         else MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(os.accent))
     CompositionLocalProvider(LocalMetro provides colors, LocalChinese provides os.chinese, LocalWpTextScale provides when(os.textSize) {"COMPACT" -> .92f;"LARGE" -> 1.12f;else -> 1f}) { Box(Modifier.fillMaxSize().background(colors.bg)) { content() } }
 }
-@Composable fun Label(text: String, size: Int=18, color: Color=LocalMetro.current.fg, modifier: Modifier=Modifier, maxLines: Int=Int.MAX_VALUE, weight: FontWeight=if(size>=28) FontWeight.Light else FontWeight.Normal) {
+@Composable fun Label(text: String, size: Int=WpTypeScale.Body, color: Color=LocalMetro.current.fg, modifier: Modifier=Modifier, maxLines: Int=Int.MAX_VALUE, weight: FontWeight=if(size>=28) FontWeight.Light else FontWeight.Normal) {
     val scale=LocalWpTextScale.current
     BasicText(text,modifier,style=TextStyle(color=color,fontSize=(size*scale).sp,fontFamily=LightFont,fontWeight=weight,lineHeight=(size*scale*1.18).sp,textMotion=TextMotion.Animated),maxLines=maxLines,overflow=TextOverflow.Ellipsis)
 }
@@ -123,7 +138,7 @@ val LightFont=WpFontFamily
     Box(modifier.fillMaxWidth().heightIn(min=48.dp).graphicsLayer { scaleX=scale; scaleY=scale; alpha=if(enabled) 1f else .4f }
         .background(if(primary) c.accent else Color.Transparent).border(2.dp,if(primary) c.accent else c.fg)
         .clickable(interactionSource=interaction,indication=null,enabled=enabled,onClick=onClick).padding(horizontal=15.dp,vertical=11.dp),contentAlignment=Alignment.Center) {
-        Label(label,19,if(primary) Color.White else c.fg)
+        Label(label,18,if(primary) Color.White else c.fg)
     }
 }
 @Composable fun PageHeader(os:OsStore,title:String,app:String="YOKULI OS",trailing:(@Composable ()->Unit)?=null,onBack:(()->Unit)?=null) {
@@ -131,7 +146,8 @@ val LightFont=WpFontFamily
     val owner=os.shell.appForPage(page)
     val nested=onBack!=null || (owner!=null && os.shell.canonicalPage(page)!=owner.page)
     val caption=if(app=="YOKULI OS") owner?.let {os.title(it.app)}.orEmpty() else app
-    Column(Modifier.fillMaxWidth().padding(start=22.dp,end=16.dp,top=8.dp,bottom=12.dp)) {
+    val insets=LocalShellHorizontalInsets.current
+    Column(Modifier.fillMaxWidth().padding(start=insets.pageStart,end=insets.pageEnd,top=6.dp,bottom=10.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically) {
             if(nested) {
             Box(Modifier.size(44.dp).clickable { (onBack ?: os::back)() },contentAlignment=Alignment.CenterStart) {
@@ -145,13 +161,14 @@ val LightFont=WpFontFamily
     }
 }
 @Composable fun PageBody(scrollState:ScrollState=rememberScrollState(),content:@Composable ColumnScope.()->Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(horizontal=22.dp).padding(bottom=28.dp),verticalArrangement=Arrangement.spacedBy(18.dp),content=content)
+    val insets=LocalShellHorizontalInsets.current
+    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(14.dp),content=content)
 }
 @Composable fun MenuRow(title:String,subtitle:String?=null,icon:String?=null,onClick:()->Unit) {
     val interaction=remember {MutableInteractionSource()}
-    Row(Modifier.fillMaxWidth().wpTilt(interaction).clickable(interactionSource=interaction,indication=null,onClick=onClick).padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
-        if(icon!=null) { Box(Modifier.size(44.dp).background(LocalMetro.current.accent),contentAlignment=Alignment.Center) { Glyph(icon,color=Color.White) }; Spacer(Modifier.width(14.dp)) }
-        Column(Modifier.weight(1f)) { Label(title,25); if(!subtitle.isNullOrBlank()) Label(subtitle,14,LocalMetro.current.muted,Modifier.padding(top=5.dp)) }
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).wpTilt(interaction).clickable(interactionSource=interaction,indication=null,onClick=onClick).padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+        if(icon!=null) { Box(Modifier.size(36.dp).background(LocalMetro.current.accent),contentAlignment=Alignment.Center) { Glyph(icon,Modifier.size(24.dp),color=Color.White) }; Spacer(Modifier.width(12.dp)) }
+        Column(Modifier.weight(1f)) { Label(title,WpTypeScale.ListTitle); if(!subtitle.isNullOrBlank()) Label(subtitle,WpTypeScale.Caption,LocalMetro.current.muted,Modifier.padding(top=4.dp)) }
         Glyph("next",Modifier.size(18.dp),LocalMetro.current.muted)
     }
 }
@@ -159,17 +176,17 @@ val LightFont=WpFontFamily
     val c=LocalMetro.current
     var focused by remember {mutableStateOf(false)}
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Label(label,16,c.muted)
+        Label(label,14,c.muted)
         BasicTextField(value,onChange,Modifier.fillMaxWidth().heightIn(min=46.dp).onFocusChanged {focused=it.isFocused}
             .background(if(focused)Color.White else Color(0xFFE4E4E4)).border(2.dp,if(focused)c.accent else Color.Transparent).padding(horizontal=12.dp,vertical=9.dp),
-            textStyle=TextStyle(color=Color.Black,fontSize=(21*LocalWpTextScale.current).sp,fontFamily=LightFont),cursorBrush=SolidColor(c.accent),singleLine=!multiline,
+            textStyle=TextStyle(color=Color.Black,fontSize=(18*LocalWpTextScale.current).sp,fontFamily=LightFont),cursorBrush=SolidColor(c.accent),singleLine=!multiline,
             keyboardOptions=KeyboardOptions(keyboardType=if(number) KeyboardType.Decimal else KeyboardType.Text))
     }
 }
 @Composable fun Toggle(title:String,checked:Boolean,subtitle:String?=null,enabled:Boolean=true,onChange:(Boolean)->Unit) {
     val c=LocalMetro.current
     val thumb by animateFloatAsState(if(checked)1f else 0f,animationSpec=tween(130),label="switch-thumb")
-    Row(Modifier.fillMaxWidth().graphicsLayer { alpha=if(enabled) 1f else .4f }.toggleable(value=checked,enabled=enabled,role=Role.Switch,onValueChange=onChange).padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).graphicsLayer { alpha=if(enabled) 1f else .4f }.toggleable(value=checked,enabled=enabled,role=Role.Switch,onValueChange=onChange).padding(vertical=7.dp),verticalAlignment=Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end=16.dp)) {
             Label(title,WpTypeScale.ListTitle)
             Label(if(LocalChinese.current) {if(checked) "开启" else "关闭"} else {if(checked) "on" else "off"},WpTypeScale.Caption,if(checked)c.accent else c.muted,Modifier.padding(top=3.dp))
@@ -186,28 +203,31 @@ val LightFont=WpFontFamily
 /** WP 单选行：行本身可点选，状态由真实选中值决定，不用按钮颜色冒充单选。 */
 @Composable fun ChoiceRow(title:String,selected:Boolean,subtitle:String?=null,enabled:Boolean=true,onClick:()->Unit) {
     val c=LocalMetro.current
-    Row(Modifier.fillMaxWidth().heightIn(min=52.dp).graphicsLayer {alpha=if(enabled)1f else .4f}
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).graphicsLayer {alpha=if(enabled)1f else .4f}
         .selectable(selected=selected,enabled=enabled,role=Role.RadioButton,onClick=onClick).padding(vertical=8.dp),
-        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
-        Box(Modifier.size(26.dp).border(2.dp,c.fg,androidx.compose.foundation.shape.CircleShape).padding(6.dp)) {
+        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(24.dp).border(2.dp,c.fg,androidx.compose.foundation.shape.CircleShape).padding(6.dp)) {
             if(selected)Box(Modifier.fillMaxSize().background(c.accent,androidx.compose.foundation.shape.CircleShape))
         }
-        Column(Modifier.weight(1f)) {Label(title,23);if(subtitle!=null)Label(subtitle,15,c.muted,Modifier.padding(top=4.dp))}
+        Column(Modifier.weight(1f)) {Label(title,WpTypeScale.ListTitle);if(subtitle!=null)Label(subtitle,WpTypeScale.Caption,c.muted,Modifier.padding(top=4.dp))}
     }
 }
-@Composable fun Pivot(labels:List<String>,initialPage:Int=0,content:@Composable (Int)->Unit) {
+@Composable fun Pivot(labels:List<String>,initialPage:Int=0,onPageSelected:((Int)->Unit)?=null,content:@Composable (Int)->Unit) {
     if(labels.isEmpty())return
     val pager=rememberPagerState(initialPage=initialPage.coerceIn(labels.indices)) { labels.size }
     val scope=rememberCoroutineScope(); val c=LocalMetro.current
     val headerScroll=rememberScrollState()
     val widths=remember(labels) {mutableStateMapOf<Int,Int>()}
     val density=LocalDensity.current
+    val insets=LocalShellHorizontalInsets.current
+    val reportPage=rememberUpdatedState(onPageSelected)
+    LaunchedEffect(pager) { snapshotFlow {pager.currentPage}.distinctUntilChanged().collect {reportPage.value?.invoke(it)} }
     val gap=with(density){22.dp.toPx()}
     Column(Modifier.fillMaxSize()) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             // 标题条和内容共享同一个连续页位置；拖动到一半，标题也移动到一半。
             // 尾部留白使最后一个标题也能停在左侧，不会被挤在屏幕右缘。
-            val tail=with(density){(constraints.maxWidth-gap-(widths[labels.lastIndex] ?: 0)).coerceAtLeast(0f).toDp()}
+            val tail=with(density){(constraints.maxWidth-insets.pageStart.toPx()-(widths[labels.lastIndex] ?: 0)).coerceAtLeast(0f).toDp()}
             LaunchedEffect(pager,headerScroll,labels,gap) {
                 snapshotFlow {
                     val position=(pager.currentPage+pager.currentPageOffsetFraction).coerceIn(0f,labels.lastIndex.toFloat())
@@ -216,7 +236,7 @@ val LightFont=WpFontFamily
                     (prefix+((widths[index] ?: 0)+gap)*(position-index)).roundToInt().coerceIn(0,headerScroll.maxValue)
                 }.distinctUntilChanged().collectLatest {headerScroll.scrollTo(it)}
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(headerScroll).padding(start=22.dp,end=tail,bottom=18.dp),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(headerScroll).padding(start=insets.pageStart,end=tail,bottom=14.dp),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
                 val position=pager.currentPage+pager.currentPageOffsetFraction
                 labels.forEachIndexed { i,name ->
                     Label(name,WpTypeScale.PivotTitle,lerp(c.muted,c.fg,1f-abs(position-i).coerceIn(0f,1f)),
