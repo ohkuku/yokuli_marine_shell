@@ -26,7 +26,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.yokuli.anchorwatch.location.vessel.DeviceBowAxis
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.runtime.contract.VoyagePhase
 import kotlinx.coroutines.delay
@@ -109,35 +108,34 @@ import kotlinx.coroutines.withTimeoutOrNull
                 }, active = voyage?.phase == VoyagePhase.RECORDING, enabled = voyage?.phase in listOf(VoyagePhase.PAUSED, VoyagePhase.RECORDING) && voyage?.commandPending == false, modifier = Modifier.weight(1f)) {
                     when (marine?.voyage?.value?.phase) { VoyagePhase.PAUSED -> marine?.resumeRecording(); VoyagePhase.RECORDING -> marine?.pauseRecording(); else -> Unit }
                 }
-                QuickAction(os, "mount", os.t("姿态", "attitude"), if (confirming) os.t("读取中", "reading") else os.t("重新确认", "reconfirm"),
-                    enabled = state?.phoneSensorCapabilities?.attitudeAvailable == true && state.activeTrip?.paused != true && !confirming, modifier = Modifier.weight(1f)) { feedback = null; confirmMount = !confirmMount }
+                QuickAction(os, "mount", os.t("手机校准", "calibrate"), if (confirming) os.t("保存中", "saving") else os.t("重新校准", "recalibrate"),
+                    enabled = state != null && state.activeTrip?.paused != true && !confirming, modifier = Modifier.weight(1f)) { feedback = null; confirmMount = !confirmMount }
                 QuickAction(os, "connect", os.t("来源", "sources"), os.t("数据中心", "data center"), modifier = Modifier.weight(1f)) { os.openSystemDestination("data_center") }
             }
         }
         if (confirmMount && state != null) Column(Modifier.fillMaxWidth().background(c.panel).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            val axis = when (state.vesselMountCalibration.bowAxis) { DeviceBowAxis.TOP -> os.t("顶部", "top"); DeviceBowAxis.BOTTOM -> os.t("底部", "bottom"); DeviceBowAxis.LEFT -> os.t("左侧", "left"); DeviceBowAxis.RIGHT -> os.t("右侧", "right") }
-            Label(os.t("固定手机 · $axis 朝向船艏", "mounted phone · $axis edge toward bow"), 18)
-            Label(os.t("保持手机与船体固定，重新确认当前安装方向。实际横倾会保留。", "Keep the phone fixed to the boat and reconfirm its mounting direction. The boat's actual heel is preserved."), 14, c.muted)
+            Label(os.t("手机顶部朝船艏", "phone top edge toward bow"), 18)
+            Label(os.t("屏幕朝上、与船体基准平面平行固定后确认。船首向微调会归零，真实横倾与纵倾不归零。",
+                "Fix the phone face up, parallel to the boat's reference plane. This clears heading correction and preserves actual heel and pitch."), 14, c.muted)
             if (confirming) MetroProgress(os.t("正在读取传感器", "reading the sensor"))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 Label(os.t("重新确认", "reconfirm"), 17, if (confirming) c.muted else c.accent, Modifier.clickable(enabled = !confirming) {
                     marine?.services?.let { services ->
                         confirming = true; feedback = null; services.sources.clearVesselCalibrationFeedback()
-                        val command = services.sources.confirmTripAttitudeFrame(services.state.value.vesselMountCalibration.bowAxis)
+                        val command = services.sources.confirmFixedPhoneMount()
                         scope.launch {
                             val completed = withTimeoutOrNull(6000) { command.join(); true } == true
                             val result = if (completed) services.state.value.vesselCalibrationFeedback else null
                             confirming = false
-                            feedback = when (result) {
-                                "Trip attitude frame confirmed." -> { confirmMount = false; os.t("姿态安装已重新确认", "attitude mounting reconfirmed") }
-                                "No rotation-vector sample is available on this phone." -> os.t("没有收到新的姿态样本，未修改安装方向。", "No fresh attitude sample received; mounting was not changed.")
-                                "Resume the trip before confirming a new attitude segment." -> os.t("先继续航行，再确认姿态安装。", "Resume the voyage before confirming attitude mounting.")
-                                else -> os.t("尚未确认安装，请检查后重试。", "Mounting is not confirmed; check and retry.")
-                            }
+                            feedback = if (command.isCancelled) os.t("校准被中断，请检查后重试。", "Calibration was interrupted; check and retry.")
+                                else if (result != null) {
+                                    if (result == "Phone mounting and bow alignment saved.") confirmMount = false
+                                    phoneCalibrationFeedback(os, result)
+                                } else os.t("仍在等待校准结果。可在数据中心查看。", "Still awaiting calibration. View the result in Data Center.")
                         }
                     }
                 }.padding(vertical = 7.dp))
-                Label(os.t("更改方向", "change direction"), 17, c.accent, Modifier.clickable(enabled = !confirming) { os.openSystemDestination("data_center:phone") }.padding(vertical = 7.dp))
+                Label(os.t("查看与微调", "view & adjust"), 17, c.accent, Modifier.clickable(enabled = !confirming) { os.openSystemDestination("data_center:mount") }.padding(vertical = 7.dp))
                 Label(os.t("取消", "cancel"), 17, c.muted, Modifier.clickable(enabled = !confirming) { confirmMount = false }.padding(vertical = 7.dp))
             }
         }

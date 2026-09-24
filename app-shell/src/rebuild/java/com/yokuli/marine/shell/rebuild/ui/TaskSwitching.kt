@@ -41,7 +41,8 @@ import kotlin.math.roundToInt
     val window=LocalContext.current.activity()?.window
     val owner=remember(taskId,token,window) {Any()}
     DisposableEffect(owner,active) { onDispose { if(active)os.shell.snapshots.unbind(owner) } }
-    LaunchedEffect(owner,active) { if(active) {delay(420); while(true) {os.shell.snapshots.captureCurrent(taskId,token){os.notifications.canCaptureApp}; delay(2500)} } }
+    // 离开应用时 Shell 会抓取最新合成画面。这里只生成一次后备图，避免每 2.5 秒分配全屏位图、阻塞正在使用的应用。
+    LaunchedEffect(owner,active) { if(active) {delay(420);os.shell.snapshots.captureCurrent(taskId,token){os.notifications.canCaptureApp}} }
     Box(Modifier.fillMaxSize().onGloballyPositioned { coordinates ->
         if(active && window!=null) {
             val b=coordinates.boundsInWindow()

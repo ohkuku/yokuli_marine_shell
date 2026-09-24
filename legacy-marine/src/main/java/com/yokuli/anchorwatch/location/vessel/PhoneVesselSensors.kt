@@ -40,12 +40,16 @@ data class VesselMountCalibration(
     val mountConfirmedVersion:Int=0,
     val headingAlignmentVersion:Int=0,
     val attitudeInvalidatedAt:Long=0,
+    /** 中文：1 表示手机物理顶部；旧版本采用屏幕旋转坐标，升级后必须重新确认 Heading。 */
+    val headingReferenceVersion:Int=1,
+    /** 中文：2 使用船艏、右舷、向下的船体轴；旧版曾交换横倾/纵倾，需重新确认新记录分段。 */
+    val attitudeFrameVersion:Int=2,
 ){
-    val attitudeFrameConfirmed:Boolean get()=calibratedAt>attitudeInvalidatedAt
+    val attitudeFrameConfirmed:Boolean get()=calibratedAt>attitudeInvalidatedAt&&attitudeFrameVersion==2
     val mountConfirmed:Boolean get()=attitudeFrameConfirmed&&mountState==PhoneVesselMountState.VESSEL_MOUNTED&&mountConfirmedVersion==version
     /** Heading alignment is a separate, durable coordinate relationship. A
      * later Trip attitude-frame confirmation must not erase or stale it. */
-    val headingAligned:Boolean get()=headingAlignmentCompletedAt>0L
+    val headingAligned:Boolean get()=headingAlignmentCompletedAt>0L&&headingReferenceVersion==1
 }
 enum class PhoneVesselOutputBlocker{VESSEL_ZERO_REQUIRED,MOUNT_CONFIRMATION_REQUIRED,HEADING_ALIGNMENT_REQUIRED,MOUNT_SUSPECT}
 data class PhoneVesselOutputReadiness(val ready:Boolean,val blockers:Set<PhoneVesselOutputBlocker>)
@@ -92,33 +96,66 @@ data class PhonePressureSample(val pressureHpa:Double?=null,val receivedElapsedR
 object PhoneVesselAttitudeFrame{
     fun resolve(current:SensorQuaternion,gyroValues:DoubleArray,axis:DeviceBowAxis):VesselAttitude{
         val corrected=(current*axisCorrection(axis)).normalized()
-        val sinRoll=2*(corrected.w*corrected.x+corrected.y*corrected.z)
-        val cosRoll=1-2*(corrected.x*corrected.x+corrected.y*corrected.y)
-        val roll=Math.toDegrees(atan2(sinRoll,cosRoll))
-        val sinPitch=2*(corrected.w*corrected.y-corrected.z*corrected.x)
-        val pitch=Math.toDegrees(if(abs(sinPitch)>=1)if(sinPitch>=0)Math.PI/2 else -Math.PI/2 else asin(sinPitch))
-        val rates=mapRates(gyroValues,axis)
-        return VesselAttitude(roll,pitch,Math.toDegrees(rates[0]),Math.toDegrees(rates[1]),Math.toDegrees(rates[2]))
+        // Android 原生轴：X 向手机右侧、Y 向物理顶部、Z 向屏幕外。
+        // 顶部朝艏时，船体轴为 forward=Y、starboard=X、down=-Z。
+        // 取旋转矩阵的重力投影，Heading/yaw 不参与倾斜零位；正横倾是右舷下沉，正纵倾是艏部抬起。
+        val upAtStarboard = 2 * (corrected.x * corrected.z - corrected.w * corrected.y)
+        val upAtBow = 2 * (corrected.y * corrected.z + corrected.w * corrected.x)
+        val upAtScreen = 1 - 2 * (corrected.x * corrected.x + corrected.y * corrected.y)
+        val heel = Math.toDegrees(atan2(-upAtStarboard, upAtScreen))
+        val pitch = Math.toDegrees(asin(upAtBow.coerceIn(-1.0, 1.0)))
+        val rates = mapRates(gyroValues, axis)
+        return VesselAttitude(heel, pitch, Math.toDegrees(rates[1]), Math.toDegrees(rates[0]), -Math.toDegrees(rates[2]))
     }
+
     private fun axisCorrection(axis:DeviceBowAxis):SensorQuaternion{val angle=when(axis){DeviceBowAxis.TOP->0.0;DeviceBowAxis.RIGHT->-Math.PI/2;DeviceBowAxis.BOTTOM->Math.PI;DeviceBowAxis.LEFT->Math.PI/2};return SensorQuaternion(cos(angle/2),0.0,0.0,sin(angle/2))}
-    private fun mapRates(v:DoubleArray,axis:DeviceBowAxis)=when(axis){DeviceBowAxis.TOP->doubleArrayOf(v[0],v[1],v[2]);DeviceBowAxis.BOTTOM->doubleArrayOf(-v[0],-v[1],v[2]);DeviceBowAxis.LEFT->doubleArrayOf(-v[1],v[0],v[2]);DeviceBowAxis.RIGHT->doubleArrayOf(v[1],-v[0],v[2])}
+    private fun mapRates(v:DoubleArray,axis:DeviceBowAxis)=when(axis){DeviceBowAxis.TOP->doubleArrayOf(v[0],v[1],v[2]);DeviceBowAxis.BOTTOM->doubleArrayOf(-v[0],-v[1],v[2]);DeviceBowAxis.LEFT->doubleArrayOf(v[1],-v[0],v[2]);DeviceBowAxis.RIGHT->doubleArrayOf(-v[1],v[0],v[2])}
 }
 
 private val Context.mountStore by preferencesDataStore("vessel_mount_calibration")
 
 @Singleton
 class VesselMountCalibrationRepository @Inject constructor(@ApplicationContext private val context:Context){
-    private object K{val version=intPreferencesKey("calibration_version");val axis=stringPreferencesKey("bow_axis");val w=doublePreferencesKey("neutral_w");val x=doublePreferencesKey("neutral_x");val y=doublePreferencesKey("neutral_y");val z=doublePreferencesKey("neutral_z");val at=longPreferencesKey("calibrated_at");val mount=stringPreferencesKey("mount_state");val mountConfirmedVersion=intPreferencesKey("mount_confirmed_version");val headingOffset=doublePreferencesKey("heading_alignment_offset");val headingAlignedAt=longPreferencesKey("heading_alignment_completed_at");val headingAlignmentVersion=intPreferencesKey("heading_alignment_version");val automaticRecovery=booleanPreferencesKey("automatic_mount_recovery");val attitudeInvalidatedAt=longPreferencesKey("attitude_invalidated_at")}
+    private object K{val attitudeFrameVersion=intPreferencesKey("attitude_frame_version");val version=intPreferencesKey("calibration_version");val axis=stringPreferencesKey("bow_axis");val w=doublePreferencesKey("neutral_w");val x=doublePreferencesKey("neutral_x");val y=doublePreferencesKey("neutral_y");val z=doublePreferencesKey("neutral_z");val at=longPreferencesKey("calibrated_at");val mount=stringPreferencesKey("mount_state");val mountConfirmedVersion=intPreferencesKey("mount_confirmed_version");val headingReferenceVersion=intPreferencesKey("heading_reference_version");val headingOffset=doublePreferencesKey("heading_alignment_offset");val headingAlignedAt=longPreferencesKey("heading_alignment_completed_at");val headingAlignmentVersion=intPreferencesKey("heading_alignment_version");val automaticRecovery=booleanPreferencesKey("automatic_mount_recovery");val attitudeInvalidatedAt=longPreferencesKey("attitude_invalidated_at")}
     val calibration=context.mountStore.data.map{p->
         val at=p[K.at]?:0;val version=p[K.version]?:1
-        VesselMountCalibration(version=version,bowAxis=p[K.axis]?.let{runCatching{DeviceBowAxis.valueOf(it)}.getOrNull()}?:DeviceBowAxis.TOP,neutralQuaternion=SensorQuaternion(p[K.w]?:1.0,p[K.x]?:0.0,p[K.y]?:0.0,p[K.z]?:0.0).normalized(),calibratedAt=at,mountState=p[K.mount]?.let{runCatching{PhoneVesselMountState.valueOf(it)}.getOrNull()}?:if(at>0)PhoneVesselMountState.HANDHELD else PhoneVesselMountState.UNCALIBRATED,headingAlignmentOffsetDegrees=p[K.headingOffset]?:0.0,automaticMountRecovery=false,headingAlignmentCompletedAt=p[K.headingAlignedAt]?:0L,mountConfirmedVersion=p[K.mountConfirmedVersion]?:0,headingAlignmentVersion=p[K.headingAlignmentVersion]?:0,attitudeInvalidatedAt=p[K.attitudeInvalidatedAt]?:0L)
+        VesselMountCalibration(version=version,bowAxis=p[K.axis]?.let{runCatching{DeviceBowAxis.valueOf(it)}.getOrNull()}?:DeviceBowAxis.TOP,neutralQuaternion=SensorQuaternion(p[K.w]?:1.0,p[K.x]?:0.0,p[K.y]?:0.0,p[K.z]?:0.0).normalized(),calibratedAt=at,mountState=p[K.mount]?.let{runCatching{PhoneVesselMountState.valueOf(it)}.getOrNull()}?:if(at>0)PhoneVesselMountState.HANDHELD else PhoneVesselMountState.UNCALIBRATED,headingAlignmentOffsetDegrees=p[K.headingOffset]?:0.0,automaticMountRecovery=false,headingAlignmentCompletedAt=p[K.headingAlignedAt]?:0L,mountConfirmedVersion=p[K.mountConfirmedVersion]?:0,headingAlignmentVersion=p[K.headingAlignmentVersion]?:0,attitudeInvalidatedAt=p[K.attitudeInvalidatedAt]?:0L,headingReferenceVersion=p[K.headingReferenceVersion]?:0,attitudeFrameVersion=p[K.attitudeFrameVersion]?:1)
     }
     /** Confirms the phone-to-vessel attitude axes for a Trip segment. The
      * current boat attitude is not treated as zero; the quaternion is retained
      * only for backward-compatible diagnostics/backups. */
-    suspend fun save(axis:DeviceBowAxis,q:SensorQuaternion){context.mountStore.edit{p->val version=(p[K.version]?:0)+1;p[K.version]=version;p[K.axis]=axis.name;p[K.w]=q.w;p[K.x]=q.x;p[K.y]=q.y;p[K.z]=q.z;p[K.at]=System.currentTimeMillis();p[K.attitudeInvalidatedAt]=0L;p[K.mount]=PhoneVesselMountState.HANDHELD.name;p[K.mountConfirmedVersion]=0}}
+    suspend fun save(axis:DeviceBowAxis,q:SensorQuaternion){context.mountStore.edit{p->p[K.attitudeFrameVersion]=2;val version=(p[K.version]?:0)+1;p[K.version]=version;p[K.axis]=axis.name;p[K.w]=q.w;p[K.x]=q.x;p[K.y]=q.y;p[K.z]=q.z;p[K.at]=System.currentTimeMillis();p[K.attitudeInvalidatedAt]=0L;p[K.mount]=PhoneVesselMountState.HANDHELD.name;p[K.mountConfirmedVersion]=0}}
     suspend fun setMountState(value:PhoneVesselMountState)=context.mountStore.edit{p->p[K.mount]=value.name;p[K.mountConfirmedVersion]=if(value==PhoneVesselMountState.VESSEL_MOUNTED)p[K.version]?:1 else 0}
-    suspend fun setHeadingAlignment(offsetDegrees:Double)=context.mountStore.edit{p->p[K.headingOffset]=((offsetDegrees+540.0)%360.0)-180.0;p[K.headingAlignedAt]=System.currentTimeMillis();p[K.headingAlignmentVersion]=p[K.version]?:1}
+    suspend fun setHeadingAlignment(offsetDegrees:Double)=context.mountStore.edit{p->require(offsetDegrees.isFinite());p[K.headingReferenceVersion]=1;p[K.headingOffset]=((offsetDegrees+540.0)%360.0)-180.0;p[K.headingAlignedAt]=System.currentTimeMillis();p[K.headingAlignmentVersion]=maxOf(p[K.headingAlignmentVersion]?:0,p[K.version]?:1)+1}
+    /** 中文：固定顶部朝艏时，同一笔写入提交安装和船首向；仅保存坐标关系，绝不减掉真实横倾。 */
+    suspend fun confirmFixedMount(q: SensorQuaternion?) = context.mountStore.edit { p ->
+        val version = (p[K.version] ?: 0) + 1
+        val now = System.currentTimeMillis()
+        p[K.version] = version
+        p[K.axis] = DeviceBowAxis.TOP.name
+        p[K.attitudeFrameVersion] = 2
+        p[K.headingOffset] = 0.0
+        p[K.headingReferenceVersion] = 1
+        p[K.headingAlignedAt] = now
+        p[K.headingAlignmentVersion] = maxOf(p[K.headingAlignmentVersion] ?: 0, version) + 1
+        if (q != null) {
+            p[K.w] = q.w; p[K.x] = q.x; p[K.y] = q.y; p[K.z] = q.z
+            p[K.at] = now; p[K.attitudeInvalidatedAt] = 0L
+            p[K.mount] = PhoneVesselMountState.VESSEL_MOUNTED.name
+            p[K.mountConfirmedVersion] = version
+        } else {
+            // 有罗盘但没有姿态传感器的手机仍可提供已对齐的船首向。
+            p[K.at] = 0L; p[K.mountConfirmedVersion] = 0
+            p[K.mount] = PhoneVesselMountState.UNCALIBRATED.name
+        }
+    }
+    suspend fun invalidateFixedMount() = context.mountStore.edit { p ->
+        p[K.headingAlignedAt] = 0L
+        p[K.headingAlignmentVersion] = (p[K.headingAlignmentVersion] ?: 0) + 1
+        p[K.attitudeInvalidatedAt] = maxOf(p[K.attitudeInvalidatedAt] ?: 0L, System.currentTimeMillis())
+        p[K.mount] = PhoneVesselMountState.MOUNT_SUSPECT.name
+        p[K.mountConfirmedVersion] = 0
+    }
     suspend fun invalidateAttitudeSegment(atWallTime:Long)=context.mountStore.edit{p->
         p[K.attitudeInvalidatedAt]=maxOf(p[K.attitudeInvalidatedAt]?:0L,atWallTime)
         p[K.mount]=PhoneVesselMountState.MOUNT_SUSPECT.name
@@ -130,7 +167,7 @@ class VesselMountCalibrationRepository @Inject constructor(@ApplicationContext p
             p[K.version]=value.version.coerceAtLeast(1)
             p[K.axis]=value.bowAxis.name
             p[K.w]=normalized.w;p[K.x]=normalized.x;p[K.y]=normalized.y;p[K.z]=normalized.z
-            p[K.at]=value.calibratedAt.coerceAtLeast(0L);p[K.mount]=value.mountState.name;p[K.mountConfirmedVersion]=value.mountConfirmedVersion;p[K.headingOffset]=value.headingAlignmentOffsetDegrees;p[K.headingAlignedAt]=value.headingAlignmentCompletedAt.coerceAtLeast(0L);p[K.headingAlignmentVersion]=value.headingAlignmentVersion;p[K.automaticRecovery]=false;p[K.attitudeInvalidatedAt]=value.attitudeInvalidatedAt.coerceAtLeast(0L)
+            p[K.at]=value.calibratedAt.coerceAtLeast(0L);p[K.mount]=value.mountState.name;p[K.mountConfirmedVersion]=value.mountConfirmedVersion;p[K.headingOffset]=value.headingAlignmentOffsetDegrees;p[K.headingAlignedAt]=value.headingAlignmentCompletedAt.coerceAtLeast(0L);p[K.headingAlignmentVersion]=value.headingAlignmentVersion;p[K.automaticRecovery]=false;p[K.attitudeInvalidatedAt]=value.attitudeInvalidatedAt.coerceAtLeast(0L);p[K.headingReferenceVersion]=value.headingReferenceVersion.coerceIn(0,1);p[K.attitudeFrameVersion]=value.attitudeFrameVersion.coerceIn(0,2)
         }
     }
 }
@@ -155,6 +192,15 @@ class PhoneVesselAttitudeRepository @Inject constructor(@ApplicationContext cont
         val q=synchronized(this){currentQuaternion?.takeIf{running&&quaternionReceivedElapsed?.let{SystemClock.elapsedRealtime()-it in 0L..2_000L}==true}}?:return false
         calibrationRepository.save(axis,q);return true
     }
+    suspend fun confirmFixedMount(): Boolean {
+        val q = synchronized(this) { currentQuaternion?.takeIf {
+            running && quaternionReceivedElapsed?.let { SystemClock.elapsedRealtime() - it in 0L..2_000L } == true
+        } }
+        if (capabilities.attitudeAvailable && q == null) return false
+        calibrationRepository.confirmFixedMount(q)
+        return true
+    }
+    suspend fun invalidateFixedMount() = calibrationRepository.invalidateFixedMount()
     suspend fun setMounted(mounted:Boolean){calibrationRepository.setMountState(if(mounted)PhoneVesselMountState.VESSEL_MOUNTED else PhoneVesselMountState.HANDHELD);_mountState.value=if(mounted)PhoneVesselMountState.VESSEL_MOUNTED else PhoneVesselMountState.HANDHELD}
     suspend fun alignHeading(offsetDegrees:Double)=calibrationRepository.setHeadingAlignment(offsetDegrees)
     @Synchronized override fun onSensorChanged(event:SensorEvent){if(!running)return;when(event.sensor.type){Sensor.TYPE_GYROSCOPE->{gyroValues=doubleArrayOf(event.values[0].toDouble(),event.values[1].toDouble(),event.values[2].toDouble())};Sensor.TYPE_LINEAR_ACCELERATION->{dynamicG=sqrt(event.values.take(3).sumOf{it.toDouble()*it.toDouble()})/SensorManager.GRAVITY_EARTH};Sensor.TYPE_ROTATION_VECTOR,Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR->{val values=FloatArray(4);SensorManager.getQuaternionFromVector(values,event.values);val current=SensorQuaternion(values[0].toDouble(),values[1].toDouble(),values[2].toDouble(),values[3].toDouble()).normalized();currentQuaternion=current;quaternionReceivedElapsed=event.timestamp/1_000_000L;publish(current)}}}

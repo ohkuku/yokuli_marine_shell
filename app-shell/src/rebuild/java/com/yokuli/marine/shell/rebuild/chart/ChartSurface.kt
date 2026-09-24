@@ -153,6 +153,9 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     private var sourceGeneration=0L
     private var lastRequest=0L
     private var lastFollowPoint: GeoPoint?=null
+    private var countedTraffic:List<MapAisTarget>?=null
+    private var countedWidth=0
+    private var countedHeight=0
     var captureForTile = false
     private var captureJob: Job? = null
     val overlay=ChartOverlay(context,state)
@@ -174,7 +177,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         if(event.actionMasked==MotionEvent.ACTION_UP || event.actionMasked==MotionEvent.ACTION_CANCEL)parent?.requestDisallowInterceptTouchEvent(false)
         return handled
     }
-    private fun moved(center: GeoPoint,z: Double) {state.center=center;state.zoom=z;updateTrafficCount();overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
+    private fun moved(center: GeoPoint,z: Double) {state.center=center;state.zoom=z;updateTrafficCount(force=true);overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
     private fun touch() {if(!state.interactive)return;state.follow=false;state.showCrosshair=true;onEvent(MapEvent.GestureStarted)}
     private fun pick(point: GeoPoint) {
         if(!state.interactive) return
@@ -344,10 +347,13 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             if(googleEngine)googleMap?.snapshot {save(it)} else libre?.snapshot {save(it)}
         }
     }
-    private fun updateTrafficCount() {
+    private fun updateTrafficCount(force:Boolean=false) {
         val projection=camera ?: return
         if(width<=0||height<=0)return
-        state.aisVisibleCount=overlay.scene.aisTargets.count {target->
+        val targets=overlay.scene.aisTargets
+        if(!force&&targets==countedTraffic&&width==countedWidth&&height==countedHeight)return
+        countedTraffic=targets;countedWidth=width;countedHeight=height
+        state.aisVisibleCount=targets.count {target->
             val point=projection.project(target.point)
             point.x in 0f..width.toFloat() && point.y in 0f..height.toFloat()
         }

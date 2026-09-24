@@ -1023,7 +1023,7 @@ class LegacyMarineController @Inject constructor(
         val phoneFresh=state.phoneHeading.receivedElapsedRealtime?.let{now-it in 0L..PHONE_HEADING_ALIGNMENT_FRESH_MILLIS}==true
         val nmeaTrue=state.nmeaInstruments.headingTrue?.takeIf{now-it.second in 0L..NMEA_HEADING_ALIGNMENT_FRESH_MILLIS}?.first
         val nmeaMagnetic=state.nmeaInstruments.headingMagnetic?.takeIf{now-it.second in 0L..NMEA_HEADING_ALIGNMENT_FRESH_MILLIS}?.first
-        val match=if(phoneFresh)PhoneHeadingAlignmentPolicy.matchLiveReference(
+        val match=if(phoneFresh && phoneCompassReadyForAlignment())PhoneHeadingAlignmentPolicy.matchLiveReference(
             phoneTrueDegrees=state.phoneHeading.liveTrueHeadingDegrees,
             phoneMagneticDegrees=state.phoneHeading.liveMagneticHeadingDegrees,
             vesselTrueDegrees=nmeaTrue,
@@ -1033,12 +1033,73 @@ class LegacyMarineController @Inject constructor(
             _ui.update{it.copy(vesselCalibrationFeedback=com.yokuli.anchorwatch.localization.localized(it.settings.appLanguage,"A fresh Phone and NMEA heading with the same north reference is required. Nothing was changed.","需要同时取得采用相同北向基准的新鲜手机艏向与 NMEA 艏向；本次没有修改。"))}
             return@launch
         }
-        vesselAttitudeRepository.alignHeading(match.offsetDegrees)
+        try { vesselAttitudeRepository.alignHeading(match.offsetDegrees) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            _ui.update { it.copy(vesselCalibrationFeedback = "Phone calibration could not be saved. Check storage and try again.") }
+            return@launch
+        }
         val reference=if(match.reference==com.yokuli.anchorwatch.location.vessel.PhoneHeadingAlignmentReference.TRUE_NORTH)"true" else "magnetic"
         _ui.update{it.copy(vesselCalibrationFeedback=com.yokuli.anchorwatch.localization.localized(it.settings.appLanguage,"Aligned to the live NMEA $reference heading. You can realign again at any time.","已按实时 NMEA ${if(reference=="true")"真北" else "磁北"}艏向重新对齐；以后可随时再次操作。"))}
     }
-    /** Source-compatible entry point for older call sites and backup tooling. */
-    fun setPhoneHeadingAlignment(offsetDegrees:Double)=controllerScope.launch{vesselAttitudeRepository.alignHeading(offsetDegrees)}
+    /** 一次确认物理安装，校准 Heading 与姿态是不同坐标关系，不互相充当零点。 */
+    fun confirmFixedPhoneMount() = controllerScope.launch {
+        try {
+            val state = _ui.value
+            if (state.activeTrip?.paused == true) {
+                _ui.update { it.copy(vesselCalibrationFeedback = "Resume the trip before confirming a new attitude segment.") }
+                return@launch
+            }
+            if (!phoneCompassReadyForAlignment()) {
+                _ui.update { it.copy(vesselCalibrationFeedback = "Wait for a fresh, undisturbed phone compass reading.") }
+                return@launch
+            }
+            if (!vesselAttitudeRepository.confirmFixedMount()) {
+                _ui.update { it.copy(vesselCalibrationFeedback = "No rotation-vector sample is available on this phone.") }
+                return@launch
+            }
+            _ui.update { it.copy(vesselCalibrationFeedback = "Phone mounting and bow alignment saved.") }
+            if (state.activeTrip != null && state.phoneSensorCapabilities.attitudeAvailable) {
+                ContextCompat.startForegroundService(app, Intent(app, AnchorForegroundService::class.java)
+                    .setAction(AnchorForegroundService.CONFIRM_TRIP_ATTITUDE_FRAME))
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            _ui.update { it.copy(vesselCalibrationFeedback = "Phone calibration could not be saved. Check storage and try again.") }
+        }
+    }
+    /** 保存用户的角度修正；不修改姿态安装、COG 或当前数据来源。 */
+    fun setPhoneHeadingAlignment(offsetDegrees: Double) = controllerScope.launch {
+        if (!offsetDegrees.isFinite() || offsetDegrees !in -180.0..180.0) {
+            _ui.update { it.copy(vesselCalibrationFeedback = "Enter a correction between -180 and 180 degrees.") }
+            return@launch
+        }
+        if (!_ui.value.vesselMountCalibration.headingAligned || !phoneCompassReadyForAlignment()) {
+            _ui.update { it.copy(vesselCalibrationFeedback = "Confirm the mount with a fresh compass reading before adjusting heading.") }
+            return@launch
+        }
+        try {
+            vesselAttitudeRepository.alignHeading(offsetDegrees)
+            _ui.update { it.copy(vesselCalibrationFeedback = "Heading correction saved. Attitude is unchanged.") }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { _ui.update { it.copy(vesselCalibrationFeedback = "Phone calibration could not be saved. Check storage and try again.") } }
+    }
+    fun invalidateFixedPhoneMount() = controllerScope.launch {
+        try {
+            vesselAttitudeRepository.invalidateFixedMount()
+            _ui.update { it.copy(vesselCalibrationFeedback = "Phone moved. Confirm mounting again before using its vessel heading or attitude.") }
+            if (_ui.value.activeTrip != null) app.startService(Intent(app, AnchorForegroundService::class.java)
+                .setAction(AnchorForegroundService.PAUSE_TRIP_ATTITUDE))
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { _ui.update { it.copy(vesselCalibrationFeedback = "Phone calibration could not be saved. Check storage and try again.") } }
+    }
+    private fun phoneCompassReadyForAlignment(): Boolean {
+        val phone = _ui.value.phoneHeading
+        return phone.receivedElapsedRealtime?.let { android.os.SystemClock.elapsedRealtime() - it in 0L..PHONE_HEADING_ALIGNMENT_FRESH_MILLIS } == true &&
+            (phone.liveTrueHeadingDegrees != null || phone.liveMagneticHeadingDegrees != null) &&
+            phone.presentationQuality in setOf(com.yokuli.anchorwatch.location.PhoneHeadingPresentationQuality.GOOD,
+                com.yokuli.anchorwatch.location.PhoneHeadingPresentationQuality.LOW_ACCURACY)
+    }
     fun clearVesselCalibrationFeedback()=_ui.update{it.copy(vesselCalibrationFeedback=null)}
     fun setNmeaOutputEndpoint(mode:NmeaOutputTransportMode,host:String,port:Int)=controllerScope.launch{
         val current=_ui.value.outputSettings

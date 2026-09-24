@@ -41,21 +41,27 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
     val points = if (os.editingRoute) os.draftRoute else route?.points.orEmpty()
     val accent = os.accent
     view.scaleTopDp=118f
-    val lines = buildList {
+    val allPlaces=remember(os.places,os.sailing.spots,os.sailing.locations){os.allPlaces}
+    val livePosition=fix?.takeIf {it.fresh(now)}?.point
+    val nextPoint=os.nextPoint
+    val lines = remember(sharedView.previewTrack,os.recordingActive,os.recordedSegments,points,navigating,os.routeLeg,livePosition,nextPoint,accent) {buildList {
         sharedView.previewTrack.forEachIndexed { i, segment -> add(MapLine("voyage-preview:$i",segment,0xFFDE8531,3f)) }
         if(os.recordingActive) os.recordedSegments.forEachIndexed {i,segment -> add(MapLine("recording:$i",segment,0xFF008B8E,2.5f))}
         if(points.isNotEmpty()) add(MapLine("route",points,if(navigating)0xFF7D898C else accent,2.6f))
         if(navigating) add(MapLine("remaining",points.drop((os.routeLeg-1).coerceAtLeast(0)),accent))
-        if(navigating && fix?.fresh(now)==true) os.nextPoint?.let {add(MapLine("target",listOf(fix.point,it),accent,2f,true))}
-    }
-    val markers = buildList {
+        if(navigating && livePosition!=null) nextPoint?.let {add(MapLine("target",listOf(livePosition,it),accent,2f,true))}
+    }}
+    val markers = remember(points,os.editingRoute,navigating,os.routeLeg,allPlaces,sharedView.selectedPlaceId,accent) {buildList {
         points.forEachIndexed {i,p -> add(MapPoint("route:$i",p,(i+1).toString(),if(navigating && i<os.routeLeg)0xFF7D898C else accent,
             if(os.editingRoute)14f else if(navigating && i==os.routeLeg)16f else 10f,os.editingRoute))}
-        os.allPlaces.forEach {add(MapPoint("place:${it.id}",it.point,"",if(sharedView.selectedPlaceId==it.id)0xFFD74A29 else accent,if(sharedView.selectedPlaceId==it.id)12f else 5f))}
+        allPlaces.forEach {add(MapPoint("place:${it.id}",it.point,"",if(sharedView.selectedPlaceId==it.id)0xFFD74A29 else accent,if(sharedView.selectedPlaceId==it.id)12f else 5f))}
+    }}
+    val aisTargets=remember(traffic.targets,traffic.preferences.chartLayer,sharedView.previewTrack.isEmpty(),sharedView.selectedAisMmsi) {
+        if(traffic.preferences.chartLayer&&sharedView.previewTrack.isEmpty())aisMapTargets(traffic,sharedView.selectedAisMmsi)else emptyList()
     }
     MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(now),it.fresh(now),it.freshHeading(now),it.freshSpeed(now))},markers,lines,
         demo=os.positionSource=="demo" || os.marine?.services?.state?.value?.settings?.demoMode==true,
-        aisTargets=if(traffic.preferences.chartLayer && sharedView.previewTrack.isEmpty())aisMapTargets(traffic,sharedView.selectedAisMmsi)else emptyList(),
+        aisTargets=aisTargets,
         aisInteractive=!os.editingRoute&&os.ruler.isEmpty()&&sharedView.previewTrack.isEmpty()),view,modifier,
         onHost={host -> nativeHost=host;host.captureForTile=active;onHost(host)},onEvent={event ->if(isCurrent())when(event) {
             is MapEvent.CameraChanged -> {os.center=event.center;os.zoom=event.zoom;sharedView.center=event.center;sharedView.zoom=event.zoom}

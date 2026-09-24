@@ -47,6 +47,12 @@ interface DataSourceService : MarineStateReader {
     fun confirmTripAttitudeFrame(axis: DeviceBowAxis): Job
     fun alignPhoneHeadingToBow(): Job
     fun alignPhoneHeadingToNmea(): Job
+    /** 顶部朝船艏的唯一安装流程；一次保存方向关系与可用的姿态安装，不把当前横倾调成零。 */
+    fun confirmFixedPhoneMount(): Job
+    /** 只修正船首向，不改变横摇、纵摇或来源选择。 */
+    fun setPhoneHeadingAlignment(offsetDegrees: Double): Job
+    /** 用户移动手机后，旧船首向和姿态安装立即失效，等待重新确认。 */
+    fun invalidateFixedPhoneMount(): Job
     fun clearVesselCalibrationFeedback()
 }
 

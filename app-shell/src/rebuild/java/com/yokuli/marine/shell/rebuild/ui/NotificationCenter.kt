@@ -33,14 +33,20 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.math.roundToInt
 
 /** 顶部轻提示只占用固定系统栏；完整通知由底部通知键打开，不抢占系统下拉手势。 */
 @Composable internal fun SystemStatusBar(os: OsStore, metrics: ShellWindowMetrics) {
     val notices = os.notifications
     val persistence by os.persistenceState.collectAsState()
-    val marine = os.marine?.services?.state?.collectAsState()?.value
-    val trip = os.marine?.voyage?.collectAsState()?.value
+    val bridge=os.marine
+    // 状态栏只订阅自己显示的字段，手机姿态、AIS、网络字节不会触发整个顶栏重组。
+    val anchorActive=bridge?.let {remember(it){it.services.state.map {state->state.active!=null}.distinctUntilChanged()}
+        .collectAsState(it.services.state.value.active!=null).value} ?: false
+    val trip=bridge?.let {remember(it){it.voyage.map {state->state.phase to state.name}.distinctUntilChanged()}
+        .collectAsState(it.voyage.value.let {state->state.phase to state.name}).value}
     val safe = ShellSafeBands.resolve(metrics).status
     val density=metrics.density.takeIf {it.isFinite() && it>0f} ?: 1f
     val bannerSegment=ShellSafeBands.statusSegments(metrics).maxByOrNull {it.width}
@@ -50,14 +56,14 @@ import kotlin.math.roundToInt
             if(persistence.saving || persistence.failed) add(WpStatusStripItem("storage",
                 if(persistence.saving) os.t("保存中", "saving") else os.t("未保存", "unsaved"),
                 os.t("通知中心中查看保存状态或重试", "View save status or retry in notifications"), persistence.failed))
-            if (trip != null && trip.phase!=VoyagePhase.IDLE) add(WpStatusStripItem("voyage", when(trip.phase) {
+            if (trip != null && trip.first!=VoyagePhase.IDLE) add(WpStatusStripItem("voyage", when(trip.first) {
                 VoyagePhase.PAUSED -> os.t("记录暂停", "REC paused")
                 VoyagePhase.STARTING -> os.t("记录准备", "REC starting")
                 VoyagePhase.SAVING -> os.t("记录保存", "REC saving")
                 else -> "● REC"
             },
-                os.t("全局航程：", "system voyage: ") + trip.name, false))
-            if (marine?.active != null) add(WpStatusStripItem("anchor", os.t("锚警", "anchor"), os.t("锚警会话仍在运行", "anchor session is running"), false))
+                os.t("全局航程：", "system voyage: ") + trip.second, false))
+            if (anchorActive) add(WpStatusStripItem("anchor", os.t("锚警", "anchor"), os.t("锚警会话仍在运行", "anchor session is running"), false))
             if (notices.unreadCount > 0) add(WpStatusStripItem("notices", "${notices.unreadCount}", os.t("未读通知", "unread notifications"), true))
         })
         AnimatedVisibility(notices.banner != null, enter = slideInVertically(tween(180)) { -it } + fadeIn(),

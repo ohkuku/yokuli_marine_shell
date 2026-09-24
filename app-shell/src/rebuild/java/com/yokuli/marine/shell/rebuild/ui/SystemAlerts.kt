@@ -12,10 +12,16 @@ import androidx.compose.ui.window.DialogProperties
 import com.yokuli.anchorwatch.domain.model.*
 import com.yokuli.anchorwatch.domain.condition.*
 import com.yokuli.marine.shell.rebuild.*
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** A single system presentation of domain alarms. It does not own their thresholds or lifetimes. */
 @Composable fun SystemMarineAlerts(os:OsStore) {
-    val services=os.marine?.services?:return;val state by services.state.collectAsState()
+    val services=os.marine?.services?:return
+    // 系统警报仍即时订阅变化；与警报无关的高频姿态/网络字段无需反复组合覆盖层。
+    val state by remember(services) {services.state.distinctUntilChanged {old,new->
+        old.active==new.active&&old.alarmSnapshot==new.alarmSnapshot&&old.conditions==new.conditions&&
+            old.settings.alarmSnoozeMinutes==new.settings.alarmSnoozeMinutes
+    }}.collectAsState(services.state.value)
     val tick=rememberMarineClock();val now=remember(tick){System.currentTimeMillis()}
     val active=state.active;val alarm=state.alarmSnapshot;val c=LocalMetro.current
     val testing=alarm.type==AlarmType.ALARM_TEST&&alarm.state==AlarmState.ALARM

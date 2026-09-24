@@ -27,6 +27,7 @@ import org.maplibre.android.maps.MapLibreMap
 internal class NativeSceneRenderer(private val context: Context) {
     private val libreGeometry = LibreSceneGeometry()
     private var previous: MapScene? = null
+    private var previousInput:MapScene?=null
     private var previousRuler: List<GeoPoint> = emptyList()
     private data class Group(val value:Any,val remove:List<()->Unit>)
     private val groups=mutableMapOf<String,Group>()
@@ -37,7 +38,7 @@ internal class NativeSceneRenderer(private val context: Context) {
         override fun sizeOf(key:String,value:Bitmap)=value.allocationByteCount
     }
 
-    fun invalidate() { previous = null;reset=true }
+    fun invalidate() { previous = null;previousInput=null;reset=true }
 
     /** 必须在 setStyle / MapView.onDestroy 之前释放当前 style 的自有资源。 */
     fun clear() {
@@ -45,15 +46,19 @@ internal class NativeSceneRenderer(private val context: Context) {
         groups.clear()
         libreGeometry.clear()
         previous = null
+        previousInput=null
         previousRuler = emptyList()
         reset = false
     }
 
     fun render(google: GoogleMap?, libre: MapLibreMap?, input: MapScene, ruler: List<GeoPoint>) {
-        val scene=input.trafficGeometry()
         if (google == null && libre == null) return
         // style 还在加载时不记录 previous，否则下一帧会误判为已经绘制。
         if (libre != null && libre.style?.isFullyLoaded != true) return
+        // 原生几何随地图相机自行投影；拖动/缩放而业务未变时无需重新生成 AIS 线段与 GeoJSON。
+        if(!reset&&input==previousInput&&ruler==previousRuler)return
+        previousInput=input
+        val scene=input.trafficGeometry()
         libre?.let { libreGeometry.render(it, scene, ruler) }
         if (scene == previous && ruler == previousRuler) return
         previous = scene; previousRuler = ruler.toList()

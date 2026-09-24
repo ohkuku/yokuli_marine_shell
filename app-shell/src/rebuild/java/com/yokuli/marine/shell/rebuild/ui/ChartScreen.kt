@@ -19,15 +19,20 @@ import com.yokuli.marine.shell.BuildConfig
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import kotlin.math.*
 
 @Composable fun ChartScreen(os:OsStore,recording:Boolean=false,recordingPaused:Boolean=false,onRecording:()->Unit={os.open("trip")}) {
-    val data by os.hub.state.collectAsState()
+    val positionSource=os.positionSource
+    val currentFix by remember(os.hub,positionSource){os.hub.state.map {it.fix(positionSource)}.distinctUntilChanged()}
+        .collectAsState(os.hub.state.value.fix(positionSource))
+    val fix=currentFix
     val tick=rememberMarineClock()
     val traffic=rememberAisTraffic(os)
-    val fix=data.fix(os.positionSource); val fresh=fix?.fresh(tick)==true
+    val fresh=fix?.fresh(tick)==true
     var host by remember { mutableStateOf<ChartHost?>(null) }
     var layers by rememberSaveable { mutableStateOf(false) }
     var tools by rememberSaveable { mutableStateOf(false) }

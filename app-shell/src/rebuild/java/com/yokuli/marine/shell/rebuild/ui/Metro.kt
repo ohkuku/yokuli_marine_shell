@@ -6,11 +6,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -44,11 +46,9 @@ import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import com.yokuli.shell.contract.ShellSafeBands
 import com.yokuli.shell.contract.ShellWindowMetrics
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 data class MetroColors(val bg: Color, val fg: Color, val muted: Color, val panel: Color, val accent: Color)
@@ -222,38 +222,70 @@ val LightFont=WpFontFamily
 @Composable fun Pivot(labels:List<String>,initialPage:Int=0,onPageSelected:((Int)->Unit)?=null,content:@Composable (Int)->Unit) {
     if(labels.isEmpty())return
     val pager=rememberPagerState(initialPage=initialPage.coerceIn(labels.indices)) { labels.size }
-    val scope=rememberCoroutineScope(); val c=LocalMetro.current
-    val headerScroll=rememberScrollState()
-    val widths=remember(labels) {mutableStateMapOf<Int,Int>()}
-    val density=LocalDensity.current
-    val insets=LocalShellHorizontalInsets.current
     val reportPage=rememberUpdatedState(onPageSelected)
     LaunchedEffect(pager) { snapshotFlow {pager.currentPage}.distinctUntilChanged().collect {reportPage.value?.invoke(it)} }
-    val gap=with(density){22.dp.toPx()}
     Column(Modifier.fillMaxSize()) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            // 标题条和内容共享同一个连续页位置；拖动到一半，标题也移动到一半。
-            // 尾部留白使最后一个标题也能停在左侧，不会被挤在屏幕右缘。
-            val tail=with(density){(constraints.maxWidth-insets.pageStart.toPx()-(widths[labels.lastIndex] ?: 0)).coerceAtLeast(0f).toDp()}
-            LaunchedEffect(pager,headerScroll,labels,gap) {
-                snapshotFlow {
-                    val position=(pager.currentPage+pager.currentPageOffsetFraction).coerceIn(0f,labels.lastIndex.toFloat())
-                    val index=position.toInt()
-                    val prefix=(0 until index).sumOf {widths[it] ?: 0}+gap*index
-                    (prefix+((widths[index] ?: 0)+gap)*(position-index)).roundToInt().coerceIn(0,headerScroll.maxValue)
-                }.distinctUntilChanged().collectLatest {headerScroll.scrollTo(it)}
-            }
-            Row(Modifier.fillMaxWidth().horizontalScroll(headerScroll).padding(start=insets.pageStart,end=tail,bottom=14.dp),horizontalArrangement=Arrangement.spacedBy(22.dp)) {
-                val position=pager.currentPage+pager.currentPageOffsetFraction
-                labels.forEachIndexed { i,name ->
-                    Label(name,WpTypeScale.PivotTitle,lerp(c.muted,c.fg,1f-abs(position-i).coerceIn(0f,1f)),
-                        Modifier.onSizeChanged {widths[i]=it.width}.clickable {
-                            scope.launch {pager.animateScrollToPage(i,animationSpec=tween(260,easing=FastOutSlowInEasing))}
-                        },maxLines=1)
-                }
+        PivotHeaders(labels,pager)
+        HorizontalPager(pager,Modifier.weight(1f),verticalAlignment=Alignment.Top) { content(it) }
+    }
+}
+
+/**
+ * 标题放得下时保持静止；溢出时保留固定顺序，只滚动到足以完整显示新选中标题。
+ * 不把页内拖动进度绑定到标题偏移，不补齐“选中项必须在最左侧”的尾部空白。
+ * 标题状态在这里读取，避免一次滑动的每帧都重新执行整个页面的内容组合。
+ */
+@Composable private fun PivotHeaders(labels:List<String>,pager:PagerState) {
+    val headerScroll=rememberScrollState()
+    val scope=rememberCoroutineScope()
+    val density=LocalDensity.current
+    val insets=LocalShellHorizontalInsets.current
+    val textScale=LocalWpTextScale.current
+    val widths=remember(labels,density.density,density.fontScale,textScale) { mutableStateMapOf<Int,Int>() }
+    var viewportWidth by remember { mutableIntStateOf(0) }
+    val selectedIndex by remember(pager) { derivedStateOf {pager.currentPage} }
+    val measuredWidths=labels.indices.map { widths[it] ?: 0 }
+    val gap=with(density) {22.dp.roundToPx()}
+    val maxScroll=headerScroll.maxValue
+    LaunchedEffect(selectedIndex,measuredWidths,viewportWidth,gap,maxScroll) {
+        if(viewportWidth<=0 || measuredWidths.any {it<=0} || selectedIndex !in labels.indices) return@LaunchedEffect
+        val selectedStart=measuredWidths.take(selectedIndex).sum()+gap*selectedIndex
+        val selectedEnd=selectedStart+measuredWidths[selectedIndex]
+        val visibleStart=headerScroll.value
+        val visibleEnd=visibleStart+viewportWidth
+        val destination=when {
+            selectedStart<visibleStart -> selectedStart
+            selectedEnd>visibleEnd -> selectedEnd-viewportWidth
+            else -> visibleStart
+        }.coerceIn(0,maxScroll)
+        if(destination!=visibleStart) headerScroll.animateScrollTo(destination,tween(240,easing=FastOutSlowInEasing))
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(start=insets.pageStart,end=insets.pageEnd)
+            .clipToBounds().onSizeChanged {viewportWidth=it.width}
+            .horizontalScroll(headerScroll).selectableGroup().padding(bottom=11.dp),
+        horizontalArrangement=Arrangement.spacedBy(22.dp),
+    ) {
+        labels.forEachIndexed {index,name ->
+            PivotHeader(name,index==selectedIndex,
+                Modifier.widthIn(max=if(viewportWidth>0)with(density){viewportWidth.toDp()}else Dp.Infinity)
+                    .onSizeChanged {widths[index]=it.width},
+            ) {
+                scope.launch {pager.animateScrollToPage(index,animationSpec=tween(260,easing=FastOutSlowInEasing))}
             }
         }
-        HorizontalPager(pager,Modifier.weight(1f),verticalAlignment=Alignment.Top) { content(it) }
+    }
+}
+
+@Composable private fun PivotHeader(name:String,selected:Boolean,modifier:Modifier,onClick:()->Unit) {
+    val colors=LocalMetro.current
+    // 仅标题的明暗做短过渡；既保留 Metro 选中反馈，也不驱动页面布局逐帧重排。
+    val color by androidx.compose.animation.animateColorAsState(
+        if(selected)colors.fg else colors.muted,tween(130),label="pivot-header-color",
+    )
+    Box(modifier.heightIn(min=44.dp).selectable(selected=selected,role=Role.Tab,onClick=onClick)
+        .padding(vertical=3.dp),contentAlignment=Alignment.CenterStart) {
+        Label(name,WpTypeScale.PivotTitle,color,maxLines=1)
     }
 }
 

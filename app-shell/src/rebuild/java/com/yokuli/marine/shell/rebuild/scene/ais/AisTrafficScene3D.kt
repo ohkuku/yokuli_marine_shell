@@ -44,6 +44,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlin.math.*
 
@@ -69,7 +70,10 @@ internal fun AisTrafficScene3D(
     val enabled = LocalInternalAppInputEnabled.current && active
     var surfaceSize by remember { mutableStateOf(IntSize.Zero) }
     val aspect = if (surfaceSize.height > 0) surfaceSize.width.toDouble() / surfaceSize.height else 1.1
-    val frame = remember(data, cameraState, aspect) { aisSceneFrame(data, cameraState, aspect) }
+    val localFrameCache = remember { arrayOfNulls<AisLocalFrame>(1) }
+    val frame = remember(data, cameraState, aspect) {
+        aisSceneFrame(data, cameraState, aspect, localFrameCache[0]).also { localFrameCache[0] = it?.local }
+    }
     val currentFrame = rememberUpdatedState(frame)
     val currentCamera = rememberUpdatedState(cameraState)
     val changeCamera = rememberUpdatedState(onCameraChanged)
@@ -150,7 +154,7 @@ internal fun AisTrafficScene3D(
                 }
                 else -> {
                     key(generation) {
-                        NativeTrafficScene(data, cameraState, selectedId, light, enabled, Modifier.fillMaxSize(),
+                        NativeTrafficScene(data, frame, cameraState, selectedId, light, enabled, Modifier.fillMaxSize(),
                             onFailure = { rendererFailure = it; ready = false }, onReady = { ready = true })
                     }
                     val density = LocalDensity.current
@@ -165,7 +169,7 @@ internal fun AisTrafficScene3D(
                                 val f = currentFrame.value
                                 val viewport = currentSize.value
                                 pressedIds = if (!inputEnabled.value || f == null) emptyList() else f.targets.map { target ->
-                                    val p = f.camera.project(f.local.position(target.position))
+                                    val p = f.targetProjections.getValue(target.id)
                                     val distance = hypot(p.x * viewport.width - point.x, p.y * viewport.height - point.y)
                                     target to if (containsReportedHull(target, point, viewport, f)) 0f else distance
                                 }.filter { it.second <= hitRadius }.sortedBy { it.second }.map { it.first.id }
@@ -193,8 +197,12 @@ internal fun AisTrafficScene3D(
                             }
                         }) {
                         SceneReferenceOverlay(data, frame, selectedId, Modifier.fillMaxSize())
-                        val labelLayouts = remember(frame, surfaceSize, selectedId, density.density, density.fontScale) {
-                            arrangeLabels(frame, surfaceSize, selectedId, density.density, density.fontScale)
+                        val prioritizedLabels = remember(frame.targets, selectedId) {
+                            frame.targets.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }
+                                .thenByDescending { it.risk }.thenByDescending { it.followed }.thenBy { it.id })
+                        }
+                        val labelLayouts = remember(frame, surfaceSize, prioritizedLabels, density.density, density.fontScale) {
+                            arrangeLabels(frame, surfaceSize, prioritizedLabels, density.density, density.fontScale)
                         }
                         labelLayouts.forEach { layout ->
                             key(layout.target.id) {
@@ -215,7 +223,7 @@ internal fun AisTrafficScene3D(
                     SceneCompass(frame, Modifier.align(Alignment.TopEnd).padding(8.dp).size(54.dp))
                     Column(Modifier.align(Alignment.TopStart).background(Color(0xbb071720)).padding(7.dp)) {
                         Label(tr("距圈 ${formatDistance(cameraState.rangeMeters / 4.0)}", "rings ${formatDistance(cameraState.rangeMeters / 4.0)}"), 11, Color(0xffb5c9d0))
-                        val visibleCount = frame.targets.count { target -> val point = frame.camera.project(frame.local.position(target.position)); point.x in 0f..1f && point.y in 0f..1f }
+                        val visibleCount = frame.targetProjections.values.count { point -> point.x in 0f..1f && point.y in 0f..1f }
                         Label(tr("视口内 $visibleCount / 有位置 ${frame.targets.size}", "in view $visibleCount / located ${frame.targets.size}"), 11, Color(0xffb5c9d0))
                     }
                     if (!ready) Column(Modifier.align(Alignment.Center).background(Color(0xdd071720)).padding(18.dp)) {
@@ -224,7 +232,7 @@ internal fun AisTrafficScene3D(
                         }
                     }
                     val outside = targets.filter { it.risk || it.id == selectedId }.filter {
-                        val p = frame.camera.project(frame.local.position(it.position)); p.x !in 0f..1f || p.y !in 0f..1f
+                        val p = frame.targetProjections.getValue(it.id); p.x !in 0f..1f || p.y !in 0f..1f
                     }.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }.thenBy { it.id })
                     if (outside.isNotEmpty()) Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0xe6091a23)).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
                         outside.take(6).forEach { target -> SceneAction(tr("视野外 · ${target.label}", "off-screen · ${target.label}"), enabled, foreground = Color.White) { onSelectTarget(target.id) } }
@@ -276,16 +284,17 @@ private fun SceneAction(text: String, enabled: Boolean, selected: Boolean = fals
 
 @Composable
 private fun NativeTrafficScene(
-    data: AisSceneData, state: AisSceneCameraState, selectedId: String?, light: Boolean, active: Boolean, modifier: Modifier,
+    data: AisSceneData, frame: AisSceneFrame, state: AisSceneCameraState, selectedId: String?, light: Boolean, active: Boolean, modifier: Modifier,
     onFailure: (String) -> Unit, onReady: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val failure = rememberUpdatedState(onFailure)
     val ready = rememberUpdatedState(onReady)
+    val currentActive = rememberUpdatedState(active)
     val renderer = remember(context) { AisTrafficRenderer3D(context, { failure.value(it) }, { ready.value() }) }
-    AndroidView(factory = { renderer.textureView.also { renderer.initialize() } }, modifier = modifier,
-        update = { renderer.update(data, state, selectedId, light, active) }, onRelease = { renderer.close() })
+    AndroidView(factory = { renderer.textureView }, modifier = modifier,
+        update = { renderer.update(data, frame, state, selectedId, light, active) }, onRelease = { renderer.close() })
     DisposableEffect(renderer, lifecycle) {
         val observer = LifecycleEventObserver { _, _ -> renderer.setResumed(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
         lifecycle.addObserver(observer)
@@ -294,6 +303,9 @@ private fun NativeTrafficScene(
     }
     LaunchedEffect(renderer) {
         try {
+            // 预组装的不可见应用不能在前台手势中创建 Engine 和 130 个实例。
+            snapshotFlow { currentActive.value }.first { it }
+            renderer.initialize()
             val buffers = withContext(Dispatchers.IO) {
                 listOf("traffic-vessel", "traffic-neutral", "traffic-plane").map { name ->
                     val bytes = context.assets.open("ais/$name.glb").use { it.readBytes() }
@@ -314,7 +326,7 @@ private fun containsReportedHull(target: AisSceneTarget, touch: Offset, viewport
     val dimensions = target.dimensions?.takeIf { it.reliable } ?: return false
     val heading = validAisBearing(target.headingDegrees)?.let(Math::toRadians) ?: return false
     if (target.kind != AisSceneKind.VESSEL) return false
-    val reference = frame.local.position(target.position)
+    val reference = frame.targetPositions.getValue(target.id)
     val vertices = listOf(
         -dimensions.toPort to -dimensions.toStern, dimensions.toStarboard to -dimensions.toStern,
         dimensions.toStarboard to dimensions.toBow, -dimensions.toPort to dimensions.toBow,
@@ -356,17 +368,16 @@ private fun SceneCompass(frame: AisSceneFrame, modifier: Modifier) {
     }
 }
 
-private fun arrangeLabels(frame: AisSceneFrame, size: IntSize, selectedId: String?, density: Float, fontScale: Float): List<SceneLabel> {
+private fun arrangeLabels(frame: AisSceneFrame, size: IntSize, prioritizedTargets: List<AisSceneTarget>, density: Float, fontScale: Float): List<SceneLabel> {
     if (size.width <= 0 || size.height <= 0) return emptyList()
     val result = mutableListOf<SceneLabel>()
     val width = min(size.width * .44f, 142f * density * fontScale.coerceAtMost(1.5f))
     val height = (40f * density * fontScale.coerceAtLeast(1f)).coerceAtLeast(40f * density)
     val inset = 5f * density
     val reserved = listOf(Rect(0f, 0f, min(size.width * .60f, 200f * density), 46f * density), Rect(size.width - 72f * density, 0f, size.width.toFloat(), 72f * density))
-    val targets = frame.targets.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }.thenByDescending { it.risk }.thenByDescending { it.followed }.thenBy { it.id })
-    for (target in targets) {
+    for (target in prioritizedTargets) {
         if (result.size >= 12) break
-        val projected = frame.camera.project(frame.local.position(target.position))
+        val projected = frame.targetProjections.getValue(target.id)
         if (projected.x !in .02f.. .98f || projected.y !in .02f.. .95f) continue
         val p = Offset(projected.x * size.width, projected.y * size.height)
         val choices = listOf(Offset(p.x + 9 * density, p.y - height / 2), Offset(p.x - width - 9 * density, p.y - height / 2), Offset(p.x - width / 2, p.y - height - 12 * density), Offset(p.x - width / 2, p.y + 12 * density))
@@ -413,8 +424,8 @@ private fun SceneReferenceOverlay(data: AisSceneData, frame: AisSceneFrame, sele
             }
         }
         frame.targets.forEach { target ->
-            val point = frame.local.position(target.position)
-            val projected = project(point)
+            val point = frame.targetPositions.getValue(target.id)
+            val projected = frame.targetProjections.getValue(target.id).let { Offset(it.x * size.width, it.y * size.height) }
             val color = when { target.risk -> Color(0xffff7758); target.stale || target.lost -> Color(0xff7e949d); target.id == selectedId -> Color(0xff5bd3ff); else -> Color(0xffc8e9f2) }
             if (data.showTracks && (target.id == selectedId || target.followed || target.risk)) target.track.forEach { segment ->
                 val valid = segment.takeLast(180).filter { it.valid }.map(frame.local::position)

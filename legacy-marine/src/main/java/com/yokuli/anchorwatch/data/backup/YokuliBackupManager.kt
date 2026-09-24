@@ -395,7 +395,7 @@ class YokuliBackupManager @Inject constructor(
             )
             val settingsError=runCatching{settingsRepository.save(imported)}.exceptionOrNull()
             var restoredOutput=NmeaDeviceOutputSettings()
-            val vesselSettingsError=validation.files[YokuliBackupArchive.VESSEL_SETTINGS]?.let{file->runCatching{val value=gson.fromJson(file.readText(),BackupVesselSettingsV3::class.java);require(value.schemaVersion in 1..3);vesselSettingsRepository.save(value.value);restoredOutput=value.output;value.mountCalibration?.let{mountCalibrationRepository.restore(it)}}.exceptionOrNull()}
+            val vesselSettingsError=validation.files[YokuliBackupArchive.VESSEL_SETTINGS]?.let{file->runCatching{val value=decodeVesselSettings(file);require(value.schemaVersion in 1..3);vesselSettingsRepository.save(value.value);restoredOutput=value.output;value.mountCalibration?.let{mountCalibrationRepository.restore(it)}}.exceptionOrNull()}
             // Destination/address choices are configuration and survive restore;
             // publication is an operational decision and is always forced OFF.
             val safeOutput=restoredOutput.copy(phonePositionEnabled=false,phoneHeadingEnabled=false,phoneMotionEnabled=false,phonePressureEnabled=false,proprietaryStatusEnabled=false,positionPolicy=com.yokuli.anchorwatch.domain.vessel.PublicationPolicy.OFF,headingPolicy=com.yokuli.anchorwatch.domain.vessel.PublicationPolicy.OFF,motionPolicy=com.yokuli.anchorwatch.domain.vessel.PublicationPolicy.OFF,pressurePolicy=com.yokuli.anchorwatch.domain.vessel.PublicationPolicy.OFF,derivedWindPolicy=com.yokuli.anchorwatch.domain.vessel.PublicationPolicy.OFF,destinations=restoredOutput.destinations.map{it.copy(enabled=false)},publicationEnabled=false,autoStartOutput=false)
@@ -441,7 +441,7 @@ class YokuliBackupManager @Inject constructor(
         val settings=gson.fromJson(found.getValue(YokuliBackupArchive.SETTINGS).readText(),BackupSettingsV1::class.java);require(settings.schemaVersion==1){"Unsupported settings schema"}
         val decodedSettings=requireNotNull(gson.fromJson(settings.payload,AppSettings::class.java)){"Backup settings payload is invalid"}
         if(manifest.formatVersion>=3){
-            val vessel=gson.fromJson(found.getValue(YokuliBackupArchive.VESSEL_SETTINGS).readText(),BackupVesselSettingsV3::class.java)
+            val vessel=decodeVesselSettings(found.getValue(YokuliBackupArchive.VESSEL_SETTINGS))
             require(vessel.schemaVersion in 1..3){"Unsupported vessel settings schema"}
             vessel.mountCalibration?.let{calibration->
                 val q=calibration.neutralQuaternion
@@ -452,6 +452,37 @@ class YokuliBackupManager @Inject constructor(
         val appSettings=if(manifest.formatVersion==YokuliBackupArchive.LEGACY_VERSION)decodedSettings.copy(defaultDepthGuardEnabled=false,defaultShallowDepthMeters=2.5,defaultDeepDepthEnabled=false,defaultDeepDepthMeters=15.0,defaultWindGuardEnabled=false,defaultWindWarningKnots=25.0,defaultWindAlarmKnots=35.0,defaultWindShiftEnabled=false,defaultWindShiftDegrees=70.0,allowApparentWindFallback=true)else decodedSettings
         validateRecords(found,manifest)
         return BackupValidation(manifest,settings,appSettings,found)
+    }
+
+    /** 中文：先读取归档中的实际字段，再构造运行时类型。旧 JSON 缺失版本时，不能让
+     * Kotlin 无参构造的当前版本默认值冒充已确认的新坐标校准。校验与恢复共用此入口。 */
+    private fun decodeVesselSettings(file: File): BackupVesselSettingsV3 {
+        val root = requireNotNull(gson.fromJson(file.readText(), JsonObject::class.java)) {
+            "Invalid vessel settings payload"
+        }
+        root.get("mountCalibration")?.takeUnless { it.isJsonNull }?.let { encoded ->
+            require(encoded.isJsonObject) { "Invalid vessel mount calibration" }
+            val calibration = encoded.asJsonObject
+            fun normalizeVersion(name: String, legacyVersion: Int, supported: IntRange) {
+                val field = calibration.get(name)
+                if (field == null || field.isJsonNull) {
+                    calibration.addProperty(name, legacyVersion)
+                    return
+                }
+                require(field.isJsonPrimitive && field.asJsonPrimitive.isNumber) {
+                    "Invalid vessel mount calibration version: $name"
+                }
+                val version = field.asString.toIntOrNull()
+                require(version != null && version in supported) {
+                    "Unsupported vessel mount calibration version: $name"
+                }
+            }
+            normalizeVersion("headingReferenceVersion", legacyVersion = 0, supported = 0..1)
+            normalizeVersion("attitudeFrameVersion", legacyVersion = 1, supported = 0..2)
+        }
+        return requireNotNull(gson.fromJson(root, BackupVesselSettingsV3::class.java)) {
+            "Invalid vessel settings payload"
+        }
     }
 
     private fun validateRecords(files:Map<String,File>,manifest:BackupManifestV1){

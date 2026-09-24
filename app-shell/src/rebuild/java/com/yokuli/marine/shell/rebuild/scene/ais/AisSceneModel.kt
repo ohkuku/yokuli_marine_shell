@@ -86,14 +86,23 @@ internal data class AisVector3(val x: Double, val y: Double, val z: Double) {
 internal class AisLocalFrame(val origin: AisScenePosition) {
     private val lat = Math.toRadians(origin.latitude)
     private val lon = Math.toRadians(origin.longitude)
+    private val sinLat = sin(lat)
+    private val cosLat = cos(lat)
+    private val sinLon = sin(lon)
+    private val cosLon = cos(lon)
     private val base = ecef(origin)
+    // 相机旋转不改变局部坐标。保留有界换算结果，避免每一帧为标签、命中和轨迹重复算经纬度。
+    private val positions = object : LinkedHashMap<AisScenePosition, AisVector3>(256, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<AisScenePosition, AisVector3>?) = size > 8192
+    }
     fun position(point: AisScenePosition): AisVector3 {
+        positions[point]?.let { return it }
         val d = ecef(point) - base
-        val east = -sin(lon) * d.x + cos(lon) * d.y
-        val north = -sin(lat) * cos(lon) * d.x - sin(lat) * sin(lon) * d.y + cos(lat) * d.z
+        val east = -sinLon * d.x + cosLon * d.y
+        val north = -sinLat * cosLon * d.x - sinLat * sinLon * d.y + cosLat * d.z
         // AIS 没有可靠水面高度，统一海平面；不会把地球曲率当成船舶下沉。
         // Filament 使用右手坐标：X 东、Y 上、Z 南，避免北向视图左右镜像。
-        return AisVector3(east, 0.0, -north)
+        return AisVector3(east, 0.0, -north).also { positions[point] = it }
     }
     companion object {
         private fun ecef(p: AisScenePosition): AisVector3 {
@@ -120,13 +129,17 @@ internal data class AisSceneCamera(
 
 internal fun validAisBearing(value: Double?) = value?.takeIf { it.isFinite() && it >= 0.0 && it < 360.0 }
 
-internal data class AisSceneFrame(val local: AisLocalFrame, val camera: AisSceneCamera, val targets: List<AisSceneTarget>, val referenceOnly: Boolean)
+internal data class AisSceneFrame(val local: AisLocalFrame, val camera: AisSceneCamera, val targets: List<AisSceneTarget>, val referenceOnly: Boolean) {
+    /** 同一帧的原生模型、文字、拾取、视野计数共用投影，不各自遍历换算。 */
+    val targetPositions = targets.associate { it.id to local.position(it.position) }
+    val targetProjections = targetPositions.mapValues { camera.project(it.value) }
+}
 
-internal fun aisSceneFrame(data: AisSceneData, state: AisSceneCameraState, aspect: Double): AisSceneFrame? {
+internal fun aisSceneFrame(data: AisSceneData, state: AisSceneCameraState, aspect: Double, previousLocal: AisLocalFrame? = null): AisSceneFrame? {
     val own = data.ownPosition?.takeIf { it.valid }
     val manualCenter = if (state.centerLatitude != null && state.centerLongitude != null) AisScenePosition(state.centerLatitude, state.centerLongitude).takeIf { it.valid } else null
     val origin = own ?: manualCenter ?: data.targets.firstOrNull { it.position.valid }?.position ?: return null
-    val local = AisLocalFrame(origin)
+    val local = previousLocal?.takeIf { it.origin == origin } ?: AisLocalFrame(origin)
     val center = if (state.followOwn) own ?: manualCenter ?: origin else manualCenter ?: origin
     val target = local.position(center)
     val safeAspect = aspect.takeIf { it.isFinite() && it > 0 } ?: 1.0

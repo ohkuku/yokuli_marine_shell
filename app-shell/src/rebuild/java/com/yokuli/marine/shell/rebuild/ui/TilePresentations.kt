@@ -108,7 +108,24 @@ fun tilePreferenceContributions(apps: List<ShellApp>): List<AppPreferenceContrib
 
 /** 中文：磁贴帧只缓存展示形态；值、来源时效、趋势直接订阅系统的同一份观测。 */
 private data class TileFrame(val key: String, val headline: String, val detail: String, val eyebrow: String = "", val image: Bitmap? = null, val demo: Boolean = false, val bearing: Double? = null, val progress: Float? = null, val samples: List<Reading> = emptyList(), val live: Boolean = true)
+/** 目录声明只依赖应用及用户偏好。高频船舶数据不能从返回值 Composable 扩散到整个 Shell。 */
 @Composable private fun buildTilePresentation(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?, modeOverride: String?, rotateOverride: Boolean?, intervalOverride: Long?): LauncherEntryVisualContribution {
+    val preferences by os.shell.persistence.state.collectAsState()
+    val savedMode=preferences?.appPreferenceValues?.get("${app.id.value}.tile.mode")?.removePrefix("c:")
+    val mode=modeOverride ?: preset?.mode ?: savedMode?.takeIf {value->tileModes(app).any {it.key==value}} ?: "AUTO"
+    val title=preset?.title?.let {if(os.chinese)it.chinese else it.english} ?: os.title(app.app)
+    val description=preset?.description?.let {if(os.chinese)it.chinese else it.english}
+        ?: if(app.app==AppId.AIS)os.t("周围船舶","surrounding vessels") else title
+    val cover=app.app==AppId.CHART&&mode in setOf("AUTO","MAP")
+    return LauncherEntryVisualContribution(preset?.entryId ?: app.entry,title,app.app.chineseIndex,title,description,
+        LauncherIconRenderer {tint,modifier->ShellAppIcon(app,tint,modifier)},
+        (preset?.sizes ?: app.sizes).associateWith {size->LauncherTileRenderer {context->
+            // 只有真正进入 Compose 树的磁贴才订阅数据；应用内、目录图标和未固定样式不会创建监听。
+            LiveAppTile(os,app,animate,preset,modeOverride,rotateOverride,intervalOverride,size,context)
+        }},fullBleed=cover)
+}
+
+@Composable private fun LiveAppTile(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?, modeOverride: String?, rotateOverride: Boolean?, intervalOverride: Long?,size:MarineTileSize,context:LauncherTileRenderContext) {
     val preferences by os.shell.persistence.state.collectAsState()
     val data by os.hub.state.collectAsState()
     val history by os.hub.history.collectAsState()
@@ -231,11 +248,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         if(frameIsDemo)it.copy(eyebrow=os.t("演示 · ", "DEMO · ")+it.eyebrow,demo=true)else it
     }
     val cover = app.app == AppId.CHART && mode in setOf("AUTO", "MAP")
-    val description = selected.first().let { it.eyebrow.ifBlank { it.headline } + " · " + it.detail }
-    return LauncherEntryVisualContribution(preset?.entryId ?: app.entry, title,
-        app.app.chineseIndex,
-        title, description, LauncherIconRenderer { tint, modifier -> ShellAppIcon(app, tint, modifier) },
-        (preset?.sizes ?: app.sizes).associateWith { size -> LauncherTileRenderer { context -> TileFace(os, app, title, selected, size, context, cover, rotate, interval) } }, fullBleed = cover)
+    TileFace(os,app,title,selected,size,context,cover,rotate,interval)
 }
 
 @Composable private fun TileFace(os: OsStore, app: ShellApp, title: String, frames: List<TileFrame>, size: MarineTileSize, context: LauncherTileRenderContext, cover: Boolean, rotate: Boolean, interval: Long) {

@@ -129,13 +129,17 @@ import kotlin.math.*
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             when(view) {
                                 AisView.RADAR->AisRadar(os,s,selected,showTracks,{selected=it},Modifier.fillMaxSize())
-                                AisView.THREE_D->AisTrafficScene3D(aisSceneData(os,s,showTracks),camera3d,{camera3d=it},selected?.toString(),{selected=it.toIntOrNull()},
-                                    {view=AisView.RADAR;os.aisPreferences {it.copy(lastView=AisView.RADAR)}},enabled&&current==page,os.light,os.chinese,Modifier.fillMaxSize(),formatDistance={os.formatDistance(it)})
+                                AisView.THREE_D->{
+                                    val sceneData=remember(s,showTracks,os.chinese){aisSceneData(os,s,showTracks)}
+                                    AisTrafficScene3D(sceneData,camera3d,{camera3d=it},selected?.toString(),{selected=it.toIntOrNull()},
+                                        {view=AisView.RADAR;os.aisPreferences {it.copy(lastView=AisView.RADAR)}},enabled&&current==page,os.light,os.chinese,Modifier.fillMaxSize(),formatDistance={os.formatDistance(it)})
+                                }
                                 AisView.CHART->{
                                     val own=s.ownship?.takeIf {it.positionValid}
+                                    val mapTargets=remember(s.targets,selected,showTracks){aisMapTargets(s,selected?.toString(),showTracks)}
                                     map.interactive=enabled&&current==page
                                     MarineMap(os.maps,MapScene(vessel=own?.position?.let {MapVessel(it.geo(),own.cogDegrees,true,own.headingDegrees,own.sogMetersPerSecond?.div(.514444))},
-                                        aisTargets=aisMapTargets(s,selected?.toString(),showTracks)),map,Modifier.fillMaxSize(),onEvent={event->
+                                        aisTargets=mapTargets),map,Modifier.fillMaxSize(),onEvent={event->
                                         if(event is MapEvent.ItemSelected && event.id.startsWith("ais:"))selected=event.id.substringAfter(':').toIntOrNull()
                                     })
                                     MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(LocalMetro.current.bg))

@@ -34,7 +34,19 @@ import kotlin.math.*
 private class TrafficModelPool(val asset: FilamentAsset, instances: List<FilamentInstance>) {
     private val available = ArrayDeque(instances)
     val assigned = mutableMapOf<String, FilamentInstance>()
+    private val transforms = mutableMapOf<Int, FloatArray>()
+    private val paints = mutableMapOf<Int, String>()
     fun acquire(id: String): FilamentInstance? = assigned[id] ?: available.removeFirstOrNull()?.also { assigned[id] = it }
+    fun transformChanged(instance: FilamentInstance, transform: FloatArray): Boolean {
+        if (transforms[instance.root]?.contentEquals(transform) == true) return false
+        transforms[instance.root] = transform
+        return true
+    }
+    fun paintChanged(instance: FilamentInstance, paint: String): Boolean {
+        if (paints[instance.root] == paint) return false
+        paints[instance.root] = paint
+        return true
+    }
     fun retain(ids: Set<String>, scene: Scene) {
         assigned.keys.filterNot(ids::contains).forEach { id ->
             assigned.remove(id)?.let { scene.removeEntities(it.entities); available.addLast(it) }
@@ -89,6 +101,11 @@ internal class AisTrafficRenderer3D(
     private var selectedId: String? = null
     private var light = false
     private var contentDirty = false
+    private var cameraDirty = true
+    private var prioritizedTargets = emptyList<AisSceneTarget>()
+    private var planeTransform: FloatArray? = null
+    private var planeVisible = false
+    private var appliedLight: Boolean? = null
 
     val textureView: TextureView = object : TextureView(context) {
         override fun onAttachedToWindow() { super.onAttachedToWindow(); refreshVisibility() }
@@ -159,15 +176,22 @@ internal class AisTrafficRenderer3D(
         }
     }
 
-    fun update(data: AisSceneData, state: AisSceneCameraState, selectedId: String?, light: Boolean, active: Boolean) {
+    fun update(data: AisSceneData, frame: AisSceneFrame, state: AisSceneCameraState, selectedId: String?, light: Boolean, active: Boolean) {
         if (closed) return
         guarded {
-            val changed = this.data != data || cameraState != state || this.selectedId != selectedId || this.light != light
+            // 年龄文字、COG 虚线和轨迹由 Compose 画。它们更新不能让全部原生模型重传材质/变换。
+            val geometryChanged = nativeGeometryChanged(this.data, data)
+            val cameraChanged = this.frame?.camera != frame.camera || this.frame?.local?.origin != frame.local.origin
+            if (geometryChanged || this.selectedId != selectedId) {
+                prioritizedTargets = frame.targets.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }
+                    .thenByDescending { it.risk }.thenByDescending { it.followed }.thenBy { it.id })
+            }
+            val changed = geometryChanged || cameraChanged || cameraState.rangeMeters != state.rangeMeters || this.selectedId != selectedId || this.light != light
             val visibilityChanged = desiredActive != active
-            this.data = data; cameraState = state; this.selectedId = selectedId; this.light = light; desiredActive = active
+            this.data = data; this.frame = frame; cameraState = state; this.selectedId = selectedId; this.light = light; desiredActive = active
             if (changed) {
                 contentDirty = true
-                updateCamera()
+                if (cameraChanged) cameraDirty = true
                 requestDraw()
             }
             if (visibilityChanged) refreshVisibility()
@@ -191,10 +215,10 @@ internal class AisTrafficRenderer3D(
 
     private fun updateCamera() {
         if (width <= 0 || height <= 0) return
-        frame = data?.let { aisSceneFrame(it, cameraState, width.toDouble() / height) }
         val pose = frame?.camera ?: return
         camera?.setProjection(Camera.Projection.ORTHO, -pose.halfWidth, pose.halfWidth, -pose.halfHeight, pose.halfHeight, 0.1, pose.clipFar)
         camera?.lookAt(pose.eye.x, pose.eye.y, pose.eye.z, pose.target.x, pose.target.y, pose.target.z, pose.up.x, pose.up.y, pose.up.z)
+        cameraDirty = false
     }
 
     private fun updateContent() {
@@ -207,8 +231,8 @@ internal class AisTrafficRenderer3D(
             AisSceneTarget(OWN_ID, "", it, current.ownHeadingDegrees, current.ownCogDegrees, current.ownSogMetersPerSecond, current.ownDimensions)
         }
         // 视野和模型预算只影响绘制，不修改领域目标、警报或关注状态。
-        val candidates = (listOfNotNull(own) + f.targets.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }.thenByDescending { it.risk }.thenByDescending { it.followed }.thenBy { it.id }))
-            .filter { val p = f.camera.project(f.local.position(it.position)); p.x in -0.25f..1.25f && p.y in -0.25f..1.25f }
+        val candidates = (listOfNotNull(own) + prioritizedTargets)
+            .filter { val p = f.targetProjections[it.id] ?: f.camera.project(f.local.position(it.position)); p.x in -0.25f..1.25f && p.y in -0.25f..1.25f }
         val ships = candidates.filter { it.kind == AisSceneKind.VESSEL && validAisBearing(it.headingDegrees) != null }.take(65)
         val neutral = candidates.filterNot { it.kind == AisSceneKind.VESSEL && validAisBearing(it.headingDegrees) != null }.take(65)
         vesselPool?.retain(ships.mapTo(mutableSetOf()) { it.id }, s)
@@ -217,10 +241,10 @@ internal class AisTrafficRenderer3D(
         try {
             for (target in ships + neutral) {
                 val isShip = target.kind == AisSceneKind.VESSEL && validAisBearing(target.headingDegrees) != null
-                val pool = if (isShip) vesselPool else neutralPool
-                val alreadyShown = pool?.assigned?.containsKey(target.id) == true
-                val instance = pool?.acquire(target.id) ?: continue
-                val point = f.local.position(target.position)
+                val pool = (if (isShip) vesselPool else neutralPool) ?: continue
+                val alreadyShown = pool.assigned.containsKey(target.id)
+                val instance = pool.acquire(target.id) ?: continue
+                val point = f.targetPositions[target.id] ?: f.local.position(target.position)
                 val dims = target.dimensions?.takeIf { it.reliable && isShip }
                 val symbolicLength = cameraState.rangeMeters.coerceIn(100.0, 59264.0) * .045
                 val length = dims?.let { it.toBow + it.toStern } ?: symbolicLength
@@ -237,18 +261,25 @@ internal class AisTrafficRenderer3D(
                     (-sin(heading) * length).toFloat(), 0f, (cos(heading) * length).toFloat(), 0f,
                     position.x.toFloat(), position.y.toFloat(), position.z.toFloat(), 1f,
                 )
-                tm.setTransform(tm.getInstance(instance.root), matrix)
-                paint(instance, when { target.stale || target.lost -> "old"; target.id == OWN_ID -> "own"; target.risk -> "risk"; target.id == selectedId -> "selected"; else -> "target" })
+                if (pool.transformChanged(instance, matrix)) tm.setTransform(tm.getInstance(instance.root), matrix)
+                val paintKey = when { target.stale || target.lost -> "old"; target.id == OWN_ID -> "own"; target.risk -> "risk"; target.id == selectedId -> "selected"; else -> "target" }
+                if (pool.paintChanged(instance, paintKey)) paint(instance, paintKey)
                 if (!alreadyShown) s.addEntities(instance.entities)
             }
             plane?.let { asset ->
                 val size = max(f.camera.halfHeight, f.camera.halfWidth) * 4.0
                 val matrix = floatArrayOf(size.toFloat(), 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, size.toFloat(), 0f, f.camera.target.x.toFloat(), -1f, f.camera.target.z.toFloat(), 1f)
-                tm.setTransform(tm.getInstance(asset.root), matrix)
-                s.addEntities(asset.entities)
+                if (planeTransform?.contentEquals(matrix) != true) {
+                    tm.setTransform(tm.getInstance(asset.root), matrix)
+                    planeTransform = matrix
+                }
+                if (!planeVisible) { s.addEntities(asset.entities); planeVisible = true }
             }
         } finally { tm.commitLocalTransformTransaction() }
-        if (lightEntity != 0) e.lightManager.setIntensity(e.lightManager.getInstance(lightEntity), if (light) 98_000f else 72_000f)
+        if (lightEntity != 0 && appliedLight != light) {
+            e.lightManager.setIntensity(e.lightManager.getInstance(lightEntity), if (light) 98_000f else 72_000f)
+            appliedLight = light
+        }
         contentDirty = false
     }
 
@@ -289,6 +320,7 @@ internal class AisTrafficRenderer3D(
         scheduled = false
         if (!canDraw() || helper?.isReadyToRender != true || width <= 0 || height <= 0) return
         guarded {
+            if (cameraDirty) updateCamera()
             if (loading) {
                 resourceLoader?.asyncUpdateLoad()
                 check(++loadFrames < 1200) { "Traffic resources timed out" }
@@ -318,12 +350,13 @@ internal class AisTrafficRenderer3D(
     }
     override fun onDetachedFromSurface() { cancelFrames(); guarded { destroySwapChain() } }
     override fun onResized(width: Int, height: Int) {
-        if (closed || width <= 0 || height <= 0) return
+        if (closed || width <= 0 || height <= 0 || this.width == width && this.height == height) return
         guarded {
-            engine?.flushAndWait()
+            // viewport 与绘制指令按顺序入队；改变布局尺寸不需要在 UI 线程等 GPU 清空。
+            // Surface 真正销毁时的 fence 仍由 destroySwapChain 保留。
             this.width = width; this.height = height
             view?.viewport = Viewport(0, 0, width, height)
-            updateCamera(); contentDirty = true; requestDraw()
+            cameraDirty = true; contentDirty = true; requestDraw()
         }
     }
 
@@ -372,4 +405,17 @@ internal class AisTrafficRenderer3D(
     }
 
     companion object { const val OWN_ID = "@own-vessel" }
+}
+
+/** 只比较原生模型真正使用的事实。时间文案变化仍即时显示，不因此提交额外 GPU 帧。 */
+private fun nativeGeometryChanged(previous: AisSceneData?, next: AisSceneData): Boolean {
+    if (previous == null) return true
+    if (previous === next) return false
+    if (previous.ownPosition != next.ownPosition || previous.ownHeadingDegrees != next.ownHeadingDegrees || previous.ownDimensions != next.ownDimensions || previous.targets.size != next.targets.size) return true
+    return previous.targets.indices.any { index ->
+        val a = previous.targets[index]
+        val b = next.targets[index]
+        a.id != b.id || a.position != b.position || a.headingDegrees != b.headingDegrees || a.dimensions != b.dimensions ||
+            a.kind != b.kind || a.stale != b.stale || a.lost != b.lost || a.risk != b.risk || a.followed != b.followed
+    }
 }

@@ -55,6 +55,9 @@ class LocalMarineServices @Inject constructor(
         override fun confirmTripAttitudeFrame(axis: DeviceBowAxis): Job = controller.confirmTripAttitudeFrame(axis)
         override fun alignPhoneHeadingToBow(): Job = controller.alignPhoneHeadingToBow()
         override fun alignPhoneHeadingToNmea(): Job = controller.alignPhoneHeadingToNmea()
+        override fun confirmFixedPhoneMount(): Job = controller.confirmFixedPhoneMount()
+        override fun setPhoneHeadingAlignment(offsetDegrees: Double): Job = controller.setPhoneHeadingAlignment(offsetDegrees)
+        override fun invalidateFixedPhoneMount(): Job = controller.invalidateFixedPhoneMount()
         override fun clearVesselCalibrationFeedback(): Unit = controller.clearVesselCalibrationFeedback()
     }
 

@@ -60,16 +60,22 @@ class DataHub {
         val snapshot=mutable.value
         val now=SystemClock.elapsedRealtime()
         traces.update { previous ->
-            buildMap {
-                (previous.keys+snapshot.readings.keys).forEach { key ->
-                    var values=previous[key].orEmpty().dropWhile { now-it.elapsed>15*60_000 }
-                    snapshot.readings[key]?.takeIf { it.fresh(now) && it.value.isFinite() }?.let { value ->
-                        if(values.lastOrNull()?.elapsed?.let { it<value.elapsed }!=false)
-                            values=(values+value).takeLast(1800)
-                    }
-                    if(values.isNotEmpty()) put(key,values)
+            // 未变更的序列保持原引用；连接计数/别的传感器更新不再复制每条最多 1800 点的曲线。
+            var changed:MutableMap<String,List<Reading>>?=null
+            (previous.keys+snapshot.readings.keys).forEach { key ->
+                val original=previous[key].orEmpty()
+                var values=if(original.firstOrNull()?.let {now-it.elapsed>15*60_000}==true)
+                    original.dropWhile {now-it.elapsed>15*60_000} else original
+                snapshot.readings[key]?.takeIf {it.fresh(now)&&it.value.isFinite()}?.let {value->
+                    if(values.lastOrNull()?.elapsed?.let {it<value.elapsed}!=false)
+                        values=if(values.size>=1800)values.takeLast(1799)+value else values+value
+                }
+                if(values!==original) {
+                    val result=changed ?: previous.toMutableMap().also {changed=it}
+                    if(values.isEmpty())result.remove(key)else result[key]=values
                 }
             }
+            changed ?: previous
         }
     }
     fun resetNmea() = update { it.copy(nmea=null,readings=emptyMap()) }

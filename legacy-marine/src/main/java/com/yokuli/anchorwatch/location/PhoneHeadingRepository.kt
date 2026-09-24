@@ -6,10 +6,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.hardware.GeomagneticField
-import android.hardware.display.DisplayManager
 import android.os.SystemClock
-import android.view.Display
-import android.view.Surface
 import com.yokuli.anchorwatch.domain.model.HeadingQuality
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,7 +49,6 @@ class PhoneHeadingRepository @Inject constructor(
     @ApplicationContext context: Context,
 ) : SensorEventListener {
     private val sensors = context.getSystemService(SensorManager::class.java)
-    private val displays = context.getSystemService(DisplayManager::class.java)
     private val monitor = PhoneHeadingIntegrityMonitor()
     private val rotation = sensors.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         ?: sensors.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
@@ -84,10 +80,8 @@ class PhoneHeadingRepository @Inject constructor(
     private val magnetometerReading = FloatArray(3)
     private var hasAccelerometerReading = false
     private var hasMagnetometerReading = false
-    private var latitude = 0.0
-    private var longitude = 0.0
-    private var altitude = 0.0
-    private var wallTime = System.currentTimeMillis()
+    // 地磁偏角由位置参考更新；传感器每帧只读取同一值，不重复计算地磁模型。
+    @Volatile private var magneticDeclination: Double? = null
     private var sequence = System.currentTimeMillis() * 1_000L
     private var activationEpoch = System.currentTimeMillis()
 
@@ -96,10 +90,9 @@ class PhoneHeadingRepository @Inject constructor(
 
     fun setPosition(latitude: Double, longitude: Double, altitudeMeters: Double?, wallTimeMillis: Long?) {
         if(!latitude.isFinite()||!longitude.isFinite()||latitude !in -90.0..90.0||longitude !in -180.0..180.0)return
-        this.latitude = latitude
-        this.longitude = longitude
-        altitude = altitudeMeters ?: 0.0
-        wallTime = wallTimeMillis ?: System.currentTimeMillis()
+        val wallTime = wallTimeMillis ?: System.currentTimeMillis()
+        magneticDeclination = GeomagneticField(latitude.toFloat(), longitude.toFloat(),
+            (altitudeMeters ?: 0.0).toFloat(), wallTime).declination.toDouble()
         _declinationReference.value=DeclinationReferenceState(true,latitude,longitude,wallTime)
     }
 
@@ -189,7 +182,7 @@ class PhoneHeadingRepository @Inject constructor(
         val nowElapsed = SystemClock.elapsedRealtime()
         if (rotation != null && nowElapsed - lastRotationVectorElapsed <= ROTATION_VECTOR_TIMEOUT_MILLIS) return
         if (nowElapsed - lastRawCompassElapsed <= RAW_COMPASS_TIMEOUT_MILLIS) return
-        val magnetic = ((values[0].toDouble() + displayRotationDegrees()) % 360.0 + 360.0) % 360.0
+        val magnetic = ((values[0].toDouble() % 360.0) + 360.0) % 360.0
         val pitch = values.getOrNull(1)?.toDouble() ?: 0.0
         val roll = values.getOrNull(2)?.toDouble() ?: 0.0
         publishMagneticHeading(
@@ -201,9 +194,9 @@ class PhoneHeadingRepository @Inject constructor(
     }
 
     private fun publishMatrix(deviceMatrix: FloatArray, sensorAccuracy: Int) {
-        val matrix = displayAdjustedMatrix(deviceMatrix)
+        // 船首向以手机物理顶部为固定轴，不能随横竖屏 UI 旋转改变。
         val orientation = FloatArray(3)
-        SensorManager.getOrientation(matrix, orientation)
+        SensorManager.getOrientation(deviceMatrix, orientation)
         val magnetic = (Math.toDegrees(orientation[0].toDouble()) + 360.0) % 360.0
         val tilt = Math.toDegrees(acos(deviceMatrix[8].toDouble().coerceIn(-1.0, 1.0)))
         publishMagneticHeading(magnetic, tilt, sensorAccuracy)
@@ -216,7 +209,7 @@ class PhoneHeadingRepository @Inject constructor(
         allowEstimatorEvidence: Boolean = true,
     ) {
         val referenceReady=_declinationReference.value.ready
-        val declination = if(referenceReady)GeomagneticField(latitude.toFloat(), longitude.toFloat(), altitude.toFloat(), wallTime).declination.toDouble() else null
+        val declination = magneticDeclination.takeIf { referenceReady }
         val trueHeading = declination?.let{(magnetic + it + 360.0) % 360.0}
         val nowElapsed=SystemClock.elapsedRealtime()
         val observation = if (allowEstimatorEvidence&&trueHeading!=null) {
@@ -267,26 +260,6 @@ class PhoneHeadingRepository @Inject constructor(
             declinationReferenceReady = referenceReady,
             magneticDeclinationDegrees = declination,
         )
-    }
-
-    private fun displayAdjustedMatrix(deviceMatrix: FloatArray): FloatArray {
-        val axes = when (displayRotation()) {
-            Surface.ROTATION_90 -> SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X
-            Surface.ROTATION_180 -> SensorManager.AXIS_MINUS_X to SensorManager.AXIS_MINUS_Y
-            Surface.ROTATION_270 -> SensorManager.AXIS_MINUS_Y to SensorManager.AXIS_X
-            else -> return deviceMatrix
-        }
-        val adjusted = FloatArray(9)
-        return if (SensorManager.remapCoordinateSystem(deviceMatrix, axes.first, axes.second, adjusted)) adjusted else deviceMatrix
-    }
-
-    private fun displayRotation(): Int = displays.getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: Surface.ROTATION_0
-
-    private fun displayRotationDegrees(): Double = when (displayRotation()) {
-        Surface.ROTATION_90 -> 90.0
-        Surface.ROTATION_180 -> 180.0
-        Surface.ROTATION_270 -> 270.0
-        else -> 0.0
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
