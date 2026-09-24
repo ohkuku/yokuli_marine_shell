@@ -18,13 +18,13 @@ internal data class PageNavigation(
     val back: () -> Unit,
 )
 
-@Composable internal fun pageNavigation(os: OsStore, title: String, hasLocalBack: Boolean): PageNavigation {
+@Composable internal fun pageNavigation(os: OsStore, title: String, hasLocalBack: Boolean, localBackLabel: String? = null): PageNavigation {
     // Shell 栈发生变化时同步头部；同一地址的不同访问拥有不同的页面 key。
     val shellState by os.shell.engine.state.collectAsState()
     val key = LocalInternalAppPageKey.current
     val destination = os.shell.backDestination(key)
     val owner = os.shell.appForPage(LocalAppPage.current ?: os.page)
     return PageNavigation(owner?.let { os.title(it.app) }.orEmpty(), title,
-        hasLocalBack || destination != null, os.t("返回", "back"), if(hasLocalBack) null else destination,
+        hasLocalBack || destination != null, localBackLabel?.takeIf { hasLocalBack || destination != null } ?: os.t("返回", "back"), if(hasLocalBack) null else destination,
         LocalInternalAppInputEnabled.current && shellState.transient == null, os::back)
 }

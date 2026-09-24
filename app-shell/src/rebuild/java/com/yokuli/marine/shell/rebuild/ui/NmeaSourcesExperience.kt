@@ -54,7 +54,7 @@ import com.yokuli.anchorwatch.domain.vessel.*
     }
 }
 
-@Composable internal fun ColumnScope.SourceMetricDetail(os: OsStore, metric: VesselMetricId) {
+@Composable internal fun ColumnScope.SourceMetricDetail(os: OsStore, metric: VesselMetricId, showObservation: Boolean = true) {
     val services = os.marine?.services ?: return
     val state by services.state.collectAsState()
     val connections by services.network.connections.collectAsState()
@@ -63,9 +63,11 @@ import com.yokuli.anchorwatch.domain.vessel.*
     val candidates = state.vesselData.candidates[metric].orEmpty().distinctBy { it.source.persistentKey }
     val pinned = state.vesselSettings.metricSourcePins[metric.name]
     val locked = state.active?.paused == false
-    val activeKey = observation?.sourceIdentity?.persistentKey
-    Label(observation?.let { sourceObservationText(os, metric, it, now) } ?: os.t("等待第一条读数", "waiting for the first reading"), 30)
-    observation?.sourceIdentity?.let { Label(sourceDisplayName(os, it, connections), 19, LocalMetro.current.accent) }
+    val activeKey = observation?.takeIf { it.value != null && it.freshness in setOf(VesselDataFreshness.FRESH,VesselDataFreshness.HELD) }?.sourceIdentity?.persistentKey
+    if(showObservation) {
+        Label(observation?.let { sourceObservationText(os, metric, it, now) } ?: os.t("等待第一条读数", "waiting for the first reading"), 30)
+        observation?.sourceIdentity?.let { Label(sourceDisplayName(os, it, connections), 19, LocalMetro.current.accent) }
+    }
     if (metric == VesselMetricId.POSITION) {
         Label(os.t("谁提供船位", "position source"), 28)
         ChoiceRow(os.t("关闭船位", "position off"), os.positionSource == "none", os.t("停止使用船位，保留其他读数与网络连接。", "Stop using position; keep other readings and network connections."), !locked) { os.requestPosition(PositionSourceRequest.DISABLE_POSITION) }

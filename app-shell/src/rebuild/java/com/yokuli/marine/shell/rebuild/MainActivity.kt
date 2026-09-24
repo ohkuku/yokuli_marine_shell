@@ -66,7 +66,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         os.connectSystem((application as YokuliApplication).marineSystem)
         os.systemAction=serviceHandler
-        returnHomeFromRomIntent(intent)
+        // 配置变化会重用最初的 HOME intent；旋转只恢复当前任务，不再次执行 Home。
+        if(savedInstanceState == null) returnHomeFromRomIntent(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) window.attributes = window.attributes.apply {
             layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }

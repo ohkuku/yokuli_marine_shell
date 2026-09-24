@@ -143,8 +143,8 @@ val LightFont=WpFontFamily
         Label(label,18,if(primary) Color.White else c.fg)
     }
 }
-@Composable fun PageHeader(os:OsStore,title:String,app:String="",trailing:(@Composable ()->Unit)?=null,hasLocalBack:Boolean=false) {
-    val navigation=pageNavigation(os,title,hasLocalBack)
+@Composable fun PageHeader(os:OsStore,title:String,app:String="",trailing:(@Composable ()->Unit)?=null,hasLocalBack:Boolean=false,localBackLabel:String?=null) {
+    val navigation=pageNavigation(os,title,hasLocalBack,localBackLabel)
     val caption=app.takeUnless { it.isBlank() || it.equals("YOKULI OS",true) || it.equals("YOKULI",true) } ?: navigation.appIdentity
     val insets=LocalShellHorizontalInsets.current
     Column(Modifier.fillMaxWidth().padding(start=insets.pageStart,end=insets.pageEnd,top=6.dp,bottom=10.dp)) {

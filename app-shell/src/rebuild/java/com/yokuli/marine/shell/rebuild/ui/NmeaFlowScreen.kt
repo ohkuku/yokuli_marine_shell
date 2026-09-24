@@ -17,23 +17,41 @@ import com.yokuli.shell.contract.ShellInput
 import kotlinx.coroutines.delay
 
 /** One app, named connections, and local object details. No legacy workspace. */
-@Composable fun NmeaScreen(os:OsStore){
+@Composable fun NmeaScreen(os:OsStore,initialPage:String=""){
     val services=os.marine?.services ?: return
     val connections by services.network.connections.collectAsState()
     val state by services.state.collectAsState()
-    var selected by rememberSaveable{mutableStateOf<String?>(null)}
+    val entryConnection=remember(initialPage){initialPage.takeIf {it.startsWith("connection:")}?.substringAfter("connection:")?.let(android.net.Uri::decode)}
+    val directEntry=entryConnection!=null||initialPage=="create"
+    var selected by rememberSaveable(initialPage){mutableStateOf(entryConnection)}
     var editing by rememberSaveable{mutableStateOf(false)}
-    var creating by rememberSaveable{mutableStateOf(false)}
+    var creating by rememberSaveable(initialPage){mutableStateOf(initialPage=="create")}
     var frozen by remember{mutableStateOf<List<String>?>(null)}
     val pageStates=rememberSaveableStateHolder()
     var now by remember{mutableLongStateOf(SystemClock.elapsedRealtime())}
     LaunchedEffect(Unit){while(true){delay(1000);now=SystemClock.elapsedRealtime()}}
     val current=connections.firstOrNull{it.spec.id==selected}
-    val back:()->Unit={if(editing||creating){editing=false;creating=false}else{selected=null;frozen=null}}
-    BindInternalAppInputHandler{input->if(input==ShellInput.BACK&&(selected!=null||creating)){back();true}else false}
-    AppBackHandler(selected!=null||creating){back()}
+    val back:()->Unit={when {
+        editing->{editing=false}
+        creating && !(initialPage=="create"&&selected==null)->{creating=false}
+        directEntry->os.shell.popRoute()
+        else->{selected=null;creating=false;frozen=null}
+    }}
+    val localBack=selected!=null||creating||editing||directEntry
+    AppBackHandler(localBack){back()}
+    ReportVisibleAppRoute(os,when {
+        creating->"nmea:create"
+        selected!=null->"nmea:connection:${android.net.Uri.encode(selected)}"
+        else->"nmea"
+    })
     Column(Modifier.fillMaxSize()){
-        PageHeader(os,when{creating->os.t("新连接","new connection");editing->os.t("编辑连接","edit connection");current!=null->current.spec.name;else->os.title(AppId.NMEA)},hasLocalBack=selected!=null||creating)
+        PageHeader(os,when{creating->os.t("新连接","new connection");editing->os.t("编辑连接","edit connection");current!=null->current.spec.name;else->os.title(AppId.NMEA)},hasLocalBack=localBack,
+            localBackLabel=when {
+                editing -> os.t("返回 ","back to ") + (current?.spec?.name ?: os.t("连接","connection"))
+                creating && !(initialPage=="create"&&selected==null) -> os.t("返回连接","back to connections")
+                !directEntry && selected!=null -> os.t("返回连接","back to connections")
+                else -> null
+            })
         // 编辑连接后回到原来的实况/语句/路由页；列表滚动也独立保留。
         val pageKey=when{creating->"create";editing->"edit:$selected";current!=null->"connection:$selected";else->"connections"}
         pageStates.SaveableStateProvider(pageKey) { when{
@@ -72,6 +90,7 @@ import kotlinx.coroutines.delay
                 }
             }
             else->PageBody{
+                if(selected!=null)Label(os.t("这条连接正在读取，或已被移除。返回会保留原来的数据详情。","This connection is loading or has been removed. Back keeps your original data detail."),17,LocalMetro.current.muted)
                 Label(os.t("船上的连接","connections aboard"),30)
                 Label(os.t("连接设备、接收与发送。收到的读数汇入数据中心，在那里统一选择每项数据的来源。","Connect devices, receive and transmit. Received measurements arrive in Data Center, where you choose their sources for all apps."),17,LocalMetro.current.muted)
                 if(connections.isEmpty())Label(os.t("添加 GPS、风仪或网关。每条连接可以接收、发送，或双向运行。","Add a GPS, wind instrument or gateway. Each connection can receive, send, or do both."),22,LocalMetro.current.muted)

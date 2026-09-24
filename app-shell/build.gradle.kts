@@ -73,6 +73,7 @@ android {
         getByName("main") {
             java.setSrcDirs(listOf("src/rebuild/java"))
             res.setSrcDirs(listOf("src/rebuild/res"))
+            assets.setSrcDirs(listOf("src/main/assets"))
             manifest.srcFile("src/rebuild/AndroidManifest.xml")
         }
         getByName("test").java.setSrcDirs(listOf("src/rebuildTest/java"))
@@ -81,6 +82,7 @@ android {
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
+    androidResources { noCompress += "glb" }
 }
 
 dependencies {
@@ -108,6 +110,10 @@ dependencies {
     implementation(libs.maplibre.android.opengl)
     implementation(libs.play.services.maps)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // 同版本 JNI：1.75.1 兼容当前 SDK 36 / AGP；1.77 要求 SDK 37，暂不升级工具链。
+    // 模型随 APK 打包，渲染不依赖 GMS、AR 或网络。
+    implementation("com.google.android.filament:filament-android:1.75.1")
+    implementation("com.google.android.filament:gltfio-android:1.75.1")
 }
 
 // 所有 APK flavor 编译前检查完整生产源码，防止页面重新直连业务实现。
