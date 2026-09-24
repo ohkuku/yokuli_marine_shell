@@ -22,7 +22,7 @@ fun gitBuildValue(vararg arguments: String): String? = runCatching {
     if (result.result.get().exitValue == 0) result.standardOutput.asText.get().trim() else null
 }.getOrNull()
 
-val identityVersionCode = buildSetting("YOKULI_VERSION_CODE").ifBlank { "18" }.toInt()
+val identityVersionCode = buildSetting("YOKULI_VERSION_CODE").ifBlank { "19" }.toInt()
 require(identityVersionCode in 1..2_100_000_000) { "YOKULI_VERSION_CODE must be a valid Android version code" }
 val identityGitStatus = gitBuildValue("status", "--porcelain", "--untracked-files=normal")
 val identityTimestamp = buildSetting("BUILD_TIMESTAMP_UTC").takeIf(String::isNotBlank)
@@ -31,7 +31,7 @@ val identityTimestamp = buildSetting("BUILD_TIMESTAMP_UTC").takeIf(String::isNot
     ?: java.time.Instant.now()
 val identityChannel = buildSetting("YOKULI_BUILD_CHANNEL").ifBlank { buildSetting("BUILD_CHANNEL") }
 extra["yokuliBuildIdentity"] = mapOf(
-    "versionName" to buildSetting("YOKULI_VERSION_NAME").ifBlank { "0.5.0-experience.14" },
+    "versionName" to buildSetting("YOKULI_VERSION_NAME").ifBlank { "0.5.0-experience.15" },
     "versionCode" to identityVersionCode.toString(),
     "gitSha" to buildSetting("YOKULI_GIT_SHA").ifBlank {
         gitBuildValue("rev-parse", "HEAD") ?: buildSetting("GITHUB_SHA").ifBlank { "unknown" }

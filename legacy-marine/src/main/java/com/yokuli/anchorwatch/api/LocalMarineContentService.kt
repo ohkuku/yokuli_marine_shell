@@ -21,6 +21,8 @@ import com.yokuli.anchorwatch.domain.anchorage.AnchoragePlaceType
 import com.yokuli.anchorwatch.domain.anchorage.AnchoragePlanningStatus
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -53,6 +55,19 @@ class LocalMarineContentService @Inject constructor(
             )
         }
     }.distinctUntilChanged()
+
+    /** 高频传感器仍按已有仓库写入；历史页面至多每秒查询一次，并限制来源/记录数量。 */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    override fun observePressureSources(sinceUtcMillis: Long, untilUtcMillis: Long) = database.invalidationTracker.createFlow("pressure_history", emitInitialState = true)
+        .conflate().sample(1_000).map {
+            database.pressureHistoryDao().sourcesSince(sinceUtcMillis, untilUtcMillis).map { MarinePressureSource(it.sourceStableKey, it.sourceDisplayName, it.lastObservedUtcMillis) }
+        }.distinctUntilChanged()
+
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    override fun observePressureHistory(sourceKey: String, sinceUtcMillis: Long, untilUtcMillis: Long) = database.invalidationTracker.createFlow("pressure_history", emitInitialState = true)
+        .conflate().sample(1_000).map {
+            database.pressureHistoryDao().sourceSince(sourceKey, sinceUtcMillis, untilUtcMillis).asReversed().map { MarinePressurePoint(it.sampledAtUtcMillis, it.pressureHpa) }
+        }.distinctUntilChanged()
 
     override val photos: MarinePhotoService = object : MarinePhotoService {
         override suspend fun import(placeId: Long, source: Uri, caption: String) = photoRepository.import(placeId, source, caption)

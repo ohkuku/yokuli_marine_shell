@@ -1,6 +1,10 @@
 package com.yokuli.marine.shell.rebuild.ui
 
 import androidx.compose.foundation.*
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import com.yokuli.shell.compose.LocalInternalAppInputEnabled
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -25,115 +29,104 @@ import com.yokuli.marine.shell.rebuild.data.Reading
 import com.yokuli.marine.shell.rebuild.*
 import java.util.Locale
 
-/** 中文：仪表只消费全局观测；布局属于仪表应用，船位来源和航行会话属于系统。 */
-@Composable fun InstrumentsScreen(os: OsStore) {
+/** 仪表消费同一份船况；场景、回看选择与布局只是应用内展示状态。 */
+@Composable fun InstrumentsScreen(os: OsStore, initialSection: String = "") {
     val marine = os.marine ?: return
     val state by marine.services.state.collectAsState()
     val history by os.hub.history.collectAsState()
     val data by os.hub.state.collectAsState()
     val now = rememberMarineClock()
-    var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    val pageKeys = listOf("navigation", "sailing", "attitude", "weather", "history", "mine")
+    val entryMetric = remember(initialSection) {
+        initialSection.removePrefix("metric:").takeIf { initialSection.startsWith("metric:") }
+            ?.let { name -> InstrumentTileId.entries.firstOrNull { it.name == name } }
+    }
+    var selected by rememberSaveable(initialSection) { mutableStateOf(entryMetric?.name) }
+    var currentPage by rememberSaveable(initialSection) { mutableIntStateOf(pageKeys.indexOf(initialSection.removePrefix("tab:")).coerceAtLeast(0)) }
     var chooseTiles by rememberSaveable { mutableStateOf(false) }
-    // 中文：选择弹窗独立编辑草稿；快速连续选择不依赖异步 DataStore 回流。
     var pickerTileNames by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var editing by rememberSaveable { mutableStateOf(false) }
     var trend by rememberSaveable { mutableStateOf("sog") }
     var chooseTrend by rememberSaveable { mutableStateOf(false) }
+    val pageStates = rememberSaveableStateHolder()
     val availableTrends = InstrumentTrendCatalog.available(data.readings, history, now)
     val activeTrend = InstrumentTrendCatalog.selected(trend, availableTrends, data.readings, now)
-    LaunchedEffect(activeTrend?.key, trend) {
-        if (activeTrend != null) trend = activeTrend.key
-        else if (InstrumentTrendCatalog.metrics.none { it.key == trend }) trend = "sog"
-    }
+    val enabled = LocalInternalAppInputEnabled.current
     val c = LocalMetro.current
+    LaunchedEffect(activeTrend?.key) { activeTrend?.let { trend = it.key } }
+    ReportVisibleAppRoute(os, selected?.let { "instruments:metric:$it" } ?: "instruments:tab:${pageKeys[currentPage]}")
     fun closeLayer(): Boolean = when {
         chooseTrend -> { chooseTrend = false; true }
         chooseTiles -> { chooseTiles = false; true }
-        selected != null -> { selected = null; true }
+        selected != null -> { if (entryMetric != null) os.shell.popRoute() else selected = null; true }
         editing -> { editing = false; true }
         else -> false
     }
-    BindInternalAppInputHandler { input -> input == ShellInput.BACK && closeLayer() }
     AppBackHandler(chooseTrend || chooseTiles || selected != null || editing) { closeLayer() }
-    fun saveLayout(layout: List<InstrumentTileId>) {
-        marine.services.preferences.setInstrumentLayout(layout)
-    }
+    fun saveLayout(layout: List<InstrumentTileId>) { marine.services.preferences.setInstrumentLayout(layout) }
+    val select: (InstrumentTileId) -> Unit = { if (enabled) selected = it.name }
+    val target = selected ?: "workspace"
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os, os.title(AppId.INSTRUMENTS))
-        Pivot(listOf(os.t("航行", "navigation"), os.t("帆航", "sailing"), os.t("姿态", "attitude"), os.t("趋势", "trends"), os.t("我的", "mine"))) { page ->
-            if (page == 4) {
-                InstrumentBoard(os, state.vesselData, state.vesselSettings.customLayout, now, editing,
-                    edit = { editing = !editing }, add = {
-                        pickerTileNames = marine.services.state.value.vesselSettings.customLayout.map { it.name }
-                        chooseTiles = true
-                    }, save = ::saveLayout,
-                    select = { selected = it.name })
-            } else PageBody {
-                if (state.settings.demoMode) Label(os.t("演示 · 模拟读数", "DEMO · simulated readings"), 17, c.accent)
-                when (page) {
-                    0 -> {
-                        val speed = instrumentValue(os, state.vesselData, InstrumentTileId.SOG)
-                        Row(Modifier.fillMaxWidth().clickable { selected = InstrumentTileId.SOG.name }, verticalAlignment = Alignment.Bottom) {
-                            Column(Modifier.weight(1f)) {
-                                Label(os.t("对地航速", "speed over ground"), 16, c.muted)
-                                Label(speed.text, 56, if (speed.observation.displayIsLive()) c.accent else c.muted)
-                            }
-                            Label(observationStatus(os, speed.observation, now), 13, c.muted, Modifier.widthIn(max = 145.dp).padding(bottom = 9.dp))
-                        }
-                        MarineCompass(os, state.vesselData)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Label(os.t("查看船首向", "heading details"), 17, c.accent, Modifier.clickable { selected = InstrumentTileId.HEADING.name }.padding(vertical = 10.dp))
-                            Label(os.t("固定手机", "mount phone"), 17, c.accent, Modifier.clickable { os.openLinked("data_center:phone") }.padding(vertical = 10.dp))
-                        }
-                        InstrumentGrid(os, state.vesselData, state.vesselSettings.navLayout.filterNot { it in setOf(InstrumentTileId.HEADING, InstrumentTileId.COG, InstrumentTileId.SOG) }, now) { selected = it.name }
-                    }
-                    1 -> {
-                        WindRose(os, state.vesselData)
-                        InstrumentGrid(os, state.vesselData, listOf(InstrumentTileId.BOAT_SPEED, InstrumentTileId.VMG, InstrumentTileId.SOG, InstrumentTileId.HEEL), now) { selected = it.name }
-                    }
-                    2 -> {
-                        AttitudeHorizon(os, state.vesselData)
-                        InstrumentGrid(os, state.vesselData, listOf(InstrumentTileId.ROLL_RATE, InstrumentTileId.PITCH_RATE, InstrumentTileId.ROLL_PERIOD, InstrumentTileId.MOTION_SCORE), now) { selected = it.name }
-                        Label(os.t("手机与船体固定后，确认安装方向；横倾不会被当作零度清除。", "Secure the phone to the boat and confirm its mounting direction. Existing heel is preserved."), 17, c.muted)
-                        MetroButton(os.t("安装与校准", "mount & calibrate"), { os.openLinked("data_center:phone") })
-                        state.vesselCalibrationFeedback?.let { feedback ->
-                            Label(when (feedback) {
-                                "Trip attitude frame confirmed." -> os.t("船体安装方向已确认。", "Vessel mounting direction confirmed.")
-                                "No rotation-vector sample is available on this phone." -> os.t("当前手机没有可用的姿态传感器。", feedback)
-                                "Resume the trip before confirming a new attitude segment." -> os.t("请先继续航行，再确认安装方向。", feedback)
-                                "Trip attitude capture paused. Heading, GPS and pressure continue." -> os.t("姿态采集已暂停。", feedback)
-                                "Trip attitude capture resumed." -> os.t("姿态采集已继续。", feedback)
-                                else -> feedback
-                            }, 17, c.accent)
-                        }
-                    }
-                    3 -> {
-                        val selectedTrend = activeTrend
-                        if (selectedTrend == null) {
-                            Spacer(Modifier.height(26.dp))
-                            Label(os.t("等一份船况", "waiting for conditions"), 32)
-                            Label(os.t("收到航速、风或天气读数后，变化会出现在这里。", "Speed, wind and weather trends appear as readings arrive."), 18, c.muted)
-                            Label(os.t("可在数据中心查看当前来源。", "Check your sources in Data Center."), 14, c.muted)
-                        } else {
-                            val key = selectedTrend.key
-                            val current = data.readings[key]
-                            val last = InstrumentTrendCatalog.lastReading(key, data.readings, history, now)
-                            val live = current != null && current === last && current.fresh(now)
-                            Row(Modifier.fillMaxWidth().clickable { chooseTrend = true }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Label(metricName(os, key), 27, modifier = Modifier.weight(1f))
-                                Label(os.t("切换", "change"), 16, c.accent)
-                            }
-                            // 此页回看观测；过期方向仅以明确的历史读数呈现，不驱动实时罗盘。
-                            Label(os.formatMetric(key, last?.value), 54, if (live) c.accent else c.muted)
-                            last?.let {
-                                Label((if (live) os.t("最新 · ", "latest · ") else os.t("上次记录 · ", "last recorded · ")) + readingAge(os, it.elapsed, now) + " · " + it.source, 13, c.muted)
-                            }
-                            val samples = history[key].orEmpty().filter { now - it.elapsed in 0..900_000 && it.value.isFinite() }
-                            if (samples.isNotEmpty()) {
-                                ReadingTrace(os, samples, key, now, current = current)
-                                Label(os.t("最近 15 分钟 · 拖动查看", "last 15 minutes · drag to inspect"), 13, c.muted)
-                            } else {
-                                Label(os.t("最近 15 分钟还没有趋势样本。", "No trend samples in the last 15 minutes."), 16, c.muted)
+        PageHeader(os, selected?.let { name -> instrumentName(os, InstrumentTileId.valueOf(name)) } ?: os.title(AppId.INSTRUMENTS),
+            hasLocalBack = selected != null, localBackLabel = if (selected != null && entryMetric == null) os.t("返回仪表", "back to instruments") else null)
+        AnimatedContent(target, transitionSpec = {
+            val forward = targetState != "workspace"
+            (slideInHorizontally(tween(220)) { if (forward) it / 5 else -it / 8 } + fadeIn(tween(180))) togetherWith
+                (slideOutHorizontally(tween(180)) { if (forward) -it / 8 else it / 5 } + fadeOut(tween(140)))
+        }, label = "instrument-page") { visible ->
+            val isActive = enabled && visible == target && !chooseTiles && !chooseTrend
+            CompositionLocalProvider(LocalInternalAppInputEnabled provides isActive) {
+                pageStates.SaveableStateProvider(visible) {
+                    if (visible != "workspace") {
+                        InstrumentDetailPage(os, InstrumentTileId.valueOf(visible), state.vesselData,
+                            state.vesselSettings.customLayout, history, data.readings, now, isActive, ::saveLayout, select)
+                    } else Pivot(listOf(os.t("航行", "navigation"), os.t("帆航", "sailing"), os.t("姿态", "attitude"),
+                        os.t("天气", "weather"), os.t("回看", "history"), os.t("我的", "mine")),
+                        initialPage = currentPage, onPageSelected = { currentPage = it }) { page ->
+                        if (page == 5) InstrumentBoard(os, state.vesselData, state.vesselSettings.customLayout, now, editing,
+                            edit = { editing = !editing }, add = {
+                                pickerTileNames = marine.services.state.value.vesselSettings.customLayout.map { it.name }
+                                chooseTiles = true
+                            }, save = ::saveLayout, select = select)
+                        else PageBody {
+                            if (state.settings.demoMode) Label(os.t("演示 · 模拟读数", "DEMO · simulated readings"), 16, c.accent)
+                            when (page) {
+                                0 -> NavigationInstrumentPanel(os, state.vesselData, now, select)
+                                1 -> SailingInstrumentPanel(os, state.vesselData, now, select)
+                                2 -> {
+                                    InstrumentAttitudePanel(os, active = isActive && currentPage == 2, onMetric = select)
+                                    var axis by rememberSaveable { mutableStateOf("heel") }
+                                    Label(os.t("摆动回看", "motion history"), 25)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                        listOf("heel" to os.t("横倾", "heel"), "pitch" to os.t("纵倾", "pitch")).forEach { (key, label) ->
+                                            MetroButton(label, { axis = key }, Modifier.weight(1f), primary = axis == key)
+                                        }
+                                    }
+                                    ReadingTrace(os, history[axis].orEmpty(), axis, now, data.readings[axis])
+                                }
+                                3 -> InstrumentWeatherPanel(os, state.vesselData, now, select, active = isActive && currentPage == 3)
+                                4 -> {
+                                    val selectedTrend = activeTrend
+                                    if (selectedTrend == null) {
+                                        Spacer(Modifier.height(26.dp))
+                                        Label(os.t("等一份船况", "waiting for conditions"), 30)
+                                        Label(os.t("收到航速、方向、风或天气读数后，在这里回看真实变化。", "Review speed, direction, wind and weather as real readings arrive."), 17, c.muted)
+                                        MetroButton(os.t("检查数据来源", "check data sources"), { os.openLinked("data_center:readings") })
+                                    } else {
+                                        val key = selectedTrend.key
+                                        val current = data.readings[key]
+                                        val last = InstrumentTrendCatalog.lastReading(key, data.readings, history, now)
+                                        val live = current != null && current === last && current.fresh(now)
+                                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { chooseTrend = true }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Label(metricName(os, key), 25, modifier = Modifier.weight(1f))
+                                            Label(os.t("切换", "change"), 16, c.accent)
+                                        }
+                                        Label(os.formatMetric(key, last?.value), 42, if (live) c.accent else c.muted)
+                                        last?.let { Label((if (live) os.t("最新 · ", "latest · ") else os.t("上次记录 · ", "last recorded · ")) + readingAge(os, it.elapsed, now) + " · " + it.source, 13, c.muted) }
+                                        ReadingTrace(os, history[key].orEmpty(), key, now, current)
+                                        if (key == "pressure") MetroButton(os.t("查看长时气压记录", "longer pressure history"), { selected = InstrumentTileId.PRESSURE.name })
+                                    }
+                                }
                             }
                         }
                     }
@@ -141,33 +134,14 @@ import java.util.Locale
             }
         }
     }
-    selected?.let { name -> InstrumentTileId.entries.firstOrNull { it.name == name } }?.let { tile ->
-        val value = instrumentValue(os, state.vesselData, tile)
-        Dialog(onDismissRequest = { selected = null }) {
-            Column(Modifier.fillMaxWidth().background(c.bg).border(2.dp, c.fg).verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(17.dp)) {
-                Label(instrumentName(os, tile), 32)
-                InstrumentGauge(os, state.vesselData, tile)
-                Label(value.text, if (tile == InstrumentTileId.POSITION) 23 else 48, if (value.observation.displayIsLive()) c.accent else c.muted)
-                Label(observationStatus(os, value.observation, now), 18)
-                Label(os.t("来源", "source"), 14, c.muted)
-                Label(value.observation.sourceIdentity?.displayName ?: sourceName(os, value.observation.source), 21)
-                instrumentTrendKey(tile)?.let { key -> ReadingTrace(os, history[key].orEmpty(), key, now, current = data.readings[key]) }
-                value.observation.conflict?.let { Label(os.t("多个来源的读数有差异，可在数据中心中检查。", "Sources disagree. Inspect them in Data Center."), 17, c.muted) }
-                if (tile == InstrumentTileId.UKC) Label(os.t("龙骨下余量根据水深与船舶吃水计算。", "Under-keel clearance uses measured depth and your boat's draft."), 17, c.muted)
-                if (tile !in state.vesselSettings.customLayout) MetroButton(os.t("添加到我的仪表", "add to my instruments"), { saveLayout(state.vesselSettings.customLayout + tile) })
-                MetroButton(os.t("完成", "done"), { selected = null }, primary = true)
-            }
-        }
-    }
     if (chooseTrend) Dialog(onDismissRequest = { chooseTrend = false }) {
         Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).background(c.bg).border(2.dp, c.fg).padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Label(os.t("观察趋势", "watch a trend"), 30)
+            Label(os.t("选择回看内容", "choose a history"), 28)
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                if (availableTrends.isEmpty()) Label(os.t("收到航行或天气读数后，再来选择。", "Choose a trend once navigation or weather readings arrive."), 18, c.muted)
                 InstrumentTrendGroup.entries.forEach { group ->
                     val choices = availableTrends.filter { it.group == group }
                     if (choices.isNotEmpty()) {
-                        Label(if (group == InstrumentTrendGroup.NAVIGATION) os.t("航行", "navigation") else os.t("天气", "weather"), 20, c.accent, Modifier.padding(top = 14.dp, bottom = 4.dp))
+                        Label(if (group == InstrumentTrendGroup.NAVIGATION) os.t("航行", "navigation") else os.t("天气", "weather"), 19, c.accent, Modifier.padding(top = 14.dp))
                         choices.forEach { metric ->
                             val last = InstrumentTrendCatalog.lastReading(metric.key, data.readings, history, now)
                             ChoiceRow(metricName(os, metric.key), activeTrend?.key == metric.key,
@@ -183,7 +157,7 @@ import java.util.Locale
     }
     if (chooseTiles) Dialog(onDismissRequest = { chooseTiles = false }) {
         Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).background(c.bg).border(2.dp, c.fg).padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Label(os.t("添加仪表", "add instruments"), 32)
+            Label(os.t("添加仪表", "add instruments"), 30)
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 InstrumentTileId.entries.forEach { tile ->
                     InstrumentChoice(instrumentName(os, tile), tile.name in pickerTileNames) {
@@ -198,6 +172,52 @@ import java.util.Locale
             MetroButton(os.t("取消", "cancel"), { chooseTiles = false })
         }
     }
+}
+
+/** 详情是仪表自己的子页；修复来源后由 Shell 恢复同一指标、图形窗口和相机。 */
+@Composable private fun InstrumentDetailPage(os: OsStore, tile: InstrumentTileId, data: VesselDataSnapshot,
+    layout: List<InstrumentTileId>, history: Map<String, List<Reading>>, readings: Map<String, Reading>, now: Long,
+    active: Boolean, save: (List<InstrumentTileId>) -> Unit, select: (InstrumentTileId) -> Unit) {
+    val c = LocalMetro.current
+    val value = instrumentValue(os, data, tile)
+    PageBody {
+        when (tile) {
+            InstrumentTileId.HEEL, InstrumentTileId.PITCH -> InstrumentAttitudePanel(os, active, select)
+            InstrumentTileId.DEPTH, InstrumentTileId.UKC -> DepthInstrumentSection(os, data, now, select)
+            InstrumentTileId.PRESSURE -> InstrumentPressureHistory(os, data.pressureHpa, active)
+            else -> {
+                Label(value.text, if (tile == InstrumentTileId.POSITION) 24 else 42, if (value.observation.displayIsLive()) c.accent else c.muted)
+                when (tile) {
+                    InstrumentTileId.HEADING, InstrumentTileId.COG -> MarineCompass(os, data)
+                    InstrumentTileId.TRUE_WIND_SPEED, InstrumentTileId.TRUE_WIND_ANGLE, InstrumentTileId.TRUE_WIND_DIRECTION,
+                    InstrumentTileId.APPARENT_WIND_SPEED, InstrumentTileId.APPARENT_WIND_ANGLE -> WindRose(os, data)
+                    else -> InstrumentGauge(os, data, tile)
+                }
+            }
+        }
+        if (tile == InstrumentTileId.PRESSURE) Label(os.t("当前仪表来源", "current instrument source"), 19)
+        Label(observationStatus(os, value.observation, now), 15, c.muted)
+        Label(os.t("来源 · ", "source · ") + (value.observation.sourceIdentity?.displayName ?: sourceName(os, value.observation.source)), 15, c.muted)
+        if (tile != InstrumentTileId.PRESSURE) instrumentTrendKey(tile)?.let { ReadingTrace(os, history[it].orEmpty(), it, now, readings[it]) }
+        value.observation.conflict?.takeIf { it.active }?.let { Label(os.t("多个来源读数不一致，请检查设备与安装方向。", "Sources disagree; inspect the instruments and alignment."), 16, c.muted) }
+        if (tile !in layout) MetroButton(os.t("添加到我的仪表", "add to my instruments"), { save(layout + tile) })
+        instrumentSourceMetric(tile)?.let { metric ->
+            MetroButton(os.t("检查此项来源", "check this source"), { os.openLinked("data_center:source/${metric.name}") })
+        }
+    }
+}
+
+internal fun instrumentSourceMetric(tile: InstrumentTileId): VesselMetricId? = when (tile) {
+    InstrumentTileId.POSITION -> VesselMetricId.POSITION
+    InstrumentTileId.HEADING -> VesselMetricId.HEADING_TRUE
+    InstrumentTileId.BOAT_SPEED -> VesselMetricId.SPEED_THROUGH_WATER
+    InstrumentTileId.RATE_OF_TURN -> VesselMetricId.RATE_OF_TURN
+    InstrumentTileId.CROSS_TRACK_ERROR -> VesselMetricId.XTE
+    InstrumentTileId.VMG -> VesselMetricId.VMG_WIND
+    InstrumentTileId.VMC -> VesselMetricId.VMC_WAYPOINT
+    InstrumentTileId.PRESSURE_TREND_1H, InstrumentTileId.PRESSURE_TREND_3H, InstrumentTileId.PRESSURE_TREND_6H -> VesselMetricId.PRESSURE
+    InstrumentTileId.MOTION_SCORE, InstrumentTileId.IMPACT_COUNT -> VesselMetricId.MOTION_SCORE
+    else -> VesselMetricId.entries.firstOrNull { it.name == tile.name }
 }
 
 @Composable private fun InstrumentChoice(title: String, selected: Boolean, onClick: () -> Unit) {
@@ -359,7 +379,7 @@ private fun sourceName(os: OsStore, source: VesselDataSource): String = when (so
     VesselDataSource.DERIVED -> os.t("根据可用观测计算", "derived from available observations")
     VesselDataSource.DEMO -> os.t("演示数据", "demo data")
 }
-private fun instrumentName(os: OsStore, tile: InstrumentTileId): String = when (tile) {
+internal fun instrumentName(os: OsStore, tile: InstrumentTileId): String = when (tile) {
     InstrumentTileId.SOG -> os.t("对地航速", "speed over ground")
     InstrumentTileId.COG -> os.t("对地航向", "course over ground")
     InstrumentTileId.HEADING -> os.t("真船首向", "true heading")

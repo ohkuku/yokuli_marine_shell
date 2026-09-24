@@ -274,7 +274,7 @@ private fun ShellAppContent(os: OsStore, page: String) {
         page.startsWith("route:") -> RouteScreen(os, page.substringAfter(':'))
         page.startsWith("anchorage:") -> SavedLocationScreen(os,page.substringAfter(':').toLongOrNull())
         page.startsWith("collection:") -> CollectionScreen(os,page.substringAfter(':').toLongOrNull())
-        page == "instruments" || page.startsWith("instruments:") -> InstrumentsScreen(os)
+        page == "instruments" || page.startsWith("instruments:") -> InstrumentsScreen(os, page.substringAfter(':', ""))
         page == "data_center" || page.startsWith("data_center:") -> DataCenterScreen(os, page.substringAfter(':', "").takeIf { it.isNotBlank() })
         page == "voyages" -> LogbookScreen(os)
         page.substringBefore(':') in setOf("voyage","replay","report") -> LogbookScreen(os,page.substringAfter(':').toLongOrNull())

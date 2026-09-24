@@ -117,15 +117,13 @@ internal fun vesselStatusText(os: OsStore, metric: VesselSceneMetric): String = 
             VesselReadingFacts(os, metric)
             if (selected in windDirectionMetrics) VesselWindDirection(os, metric)
             val key = windTrendKey(selected)
-            val samples = history[key].orEmpty().filter { now - it.elapsed in 0L..900_000L && it.value.isFinite() }
+            val samples = history[key].orEmpty()
             Label(os.t("最近的变化", "recent changes"), 24)
             if (samples.isEmpty()) {
                 Label(os.t("最近 15 分钟没有这项读数的历史。收到真实样本后会显示趋势。",
                     "No history for this reading in the last 15 minutes. A trend appears as actual samples arrive."), 16, c.muted)
             } else {
                 ReadingTrace(os, samples, key, now, current = current.readings[key])
-                Label(os.t("最近 15 分钟 · 拖动查看；来源变化与数据中断会断开曲线。",
-                    "Last 15 minutes · drag to inspect. Source changes and data gaps break the line."), 13, c.muted)
             }
             MenuRow(os.t("检查此项来源", "check this reading's source"),
                 os.t("查看采用、指定与备用来源", "inspect the source in use, your selection and alternatives")) { if(enabled) openSource(selected) }

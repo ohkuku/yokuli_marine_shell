@@ -32,7 +32,9 @@ data class Reading(val value: Double, val unit: String, val source: String, val 
     val quality:VesselDataQuality=VesselDataQuality.GOOD,
     /** 稳定来源身份与来源显示名分开；同名设备及重连代次不连接历史曲线。 */
     val sourceKey:String=source,
-    val validForMillis:Long=10_000) {
+    val validForMillis:Long=10_000,
+    /** 历史连续段还取决于测量基准、校准和推导输入，不能仅凭同一设备连接曲线。 */
+    val continuityKey:String=sourceKey) {
     fun fresh(now: Long=SystemClock.elapsedRealtime()) = freshness==VesselDataFreshness.FRESH&&quality!=VesselDataQuality.UNKNOWN&&now-elapsed in 0..validForMillis
 }
 /** 海图、磁贴、趋势共用的进程内快照；连接计数与读数分离，已连接不代表已有可信数据。 */

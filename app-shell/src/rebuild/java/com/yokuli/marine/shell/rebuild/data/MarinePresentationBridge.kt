@@ -97,7 +97,10 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
                 val time=value.receivedElapsedRealtime?:return
                 put(key,Reading(number,unit,value.provenance?:value.source.name,time,value.freshness,value.quality,
                     value.sourceIdentity?.id?:value.provenanceDetail?.toString()?:value.source.name,
-                    MetricSourceEligibility.measurementLeaseMillis(metric)))
+                    MetricSourceEligibility.measurementLeaseMillis(metric),
+                    // 基准/校准变化不改变来源计数，但须在历史中断开；吃水改变也不能伪装成海底骤变。
+                    "${value.sourceIdentity?.id ?: value.source.name}|${value.reference}|${value.provenanceDetail}" +
+                        if (key == "ukc") "|draft:${state.vesselSettings.draftMeters}" else ""))
             }
             with(state.vesselData) {
                 add("sog",sogKnots,"kn",VesselMetricId.SOG);add("cog",cogTrueDegrees,"°T",VesselMetricId.COG)

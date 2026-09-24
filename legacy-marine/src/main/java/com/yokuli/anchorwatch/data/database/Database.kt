@@ -518,8 +518,14 @@ data class PressureHistoryEntity(
     val sourceDisplayName:String,
 )
 
+data class PressureHistorySourceRow(val sourceStableKey: String, val sourceDisplayName: String, val lastObservedUtcMillis: Long)
+
 @Dao
 interface PressureHistoryDao{
+    @Query("SELECT sourceStableKey, sourceDisplayName, MAX(sampledAtUtcMillis) AS lastObservedUtcMillis FROM pressure_history WHERE sampledAtUtcMillis BETWEEN :sinceUtcMillis AND :untilUtcMillis GROUP BY sourceStableKey ORDER BY lastObservedUtcMillis DESC LIMIT 32")
+    suspend fun sourcesSince(sinceUtcMillis: Long, untilUtcMillis: Long): List<PressureHistorySourceRow>
+    @Query("SELECT * FROM pressure_history WHERE sourceStableKey=:sourceKey AND sampledAtUtcMillis BETWEEN :sinceUtcMillis AND :untilUtcMillis ORDER BY sampledAtUtcMillis DESC LIMIT 1441")
+    suspend fun sourceSince(sourceKey: String, sinceUtcMillis: Long, untilUtcMillis: Long): List<PressureHistoryEntity>
     @Upsert suspend fun upsert(value:PressureHistoryEntity)
     @Query("SELECT * FROM pressure_history WHERE sampledAtUtcMillis>=:sinceUtcMillis ORDER BY sampledAtUtcMillis") suspend fun since(sinceUtcMillis:Long):List<PressureHistoryEntity>
     @Query("DELETE FROM pressure_history WHERE sampledAtUtcMillis<:oldestAllowedUtcMillis") suspend fun prune(oldestAllowedUtcMillis:Long):Int

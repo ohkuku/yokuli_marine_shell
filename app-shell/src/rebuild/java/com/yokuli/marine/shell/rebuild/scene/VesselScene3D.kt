@@ -46,7 +46,7 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 /** 只描述观察视角；不会改变船舶读数或伪造实时姿态。 */
-internal enum class VesselViewPreset { OVERVIEW, TOP, SIDE }
+internal enum class VesselViewPreset { OVERVIEW, TOP, FRONT, SIDE }
 
 /**
  * 本地 GLB 的原生渲染适配器。所有数据、标签、操作和降级界面均由 Compose 宿主管理。
@@ -60,6 +60,7 @@ internal fun VesselScene3D(
     modifier: Modifier = Modifier,
     onFailure: () -> Unit,
     onReady: () -> Unit = {},
+    attitude: VesselAttitudePose? = null,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -71,7 +72,7 @@ internal fun VesselScene3D(
     AndroidView(
         factory = { renderer.textureView.also { renderer.initialize() } },
         modifier = modifier,
-        update = { renderer.update(preset, light, active) },
+        update = { renderer.update(preset, light, active, attitude) },
         onRelease = { renderer.close() },
     )
     DisposableEffect(renderer, lifecycle) {
@@ -150,6 +151,7 @@ private fun vesselCamera(preset: VesselViewPreset, aspect: Double): VesselCamera
     return when (preset) {
         VesselViewPreset.OVERVIEW -> VesselCamera(Vector3(7.0, 5.7, 8.0), Vector3(0.0, 1.2, 0.0), Vector3(0.0, 1.0, 0.0), halfWidth, height)
         VesselViewPreset.TOP -> VesselCamera(Vector3(0.0, 10.0, 0.0), Vector3(0.0, 0.0, 0.0), Vector3(0.0, 0.0, 1.0), halfWidth, height)
+        VesselViewPreset.FRONT -> VesselCamera(Vector3(0.0, 1.15, 10.0), Vector3(0.0, 1.15, 0.0), Vector3(0.0, 1.0, 0.0), halfWidth, height)
         VesselViewPreset.SIDE -> VesselCamera(Vector3(-9.0, 1.3, 0.0), Vector3(0.0, 1.3, 0.0), Vector3(0.0, 1.0, 0.0), halfWidth, height)
     }
 }
@@ -192,6 +194,7 @@ private class VesselSceneRenderer3D(
     private var height = 0
     private var preset = VesselViewPreset.OVERVIEW
     private var light = false
+    private var attitude: VesselAttitudePose? = null
 
     val textureView: TextureView = object : TextureView(context) {
         override fun onAttachedToWindow() {
@@ -265,6 +268,7 @@ private class VesselSceneRenderer3D(
         guarded {
             sourceBuffer = buffer
             asset = requireNotNull(assetLoader?.createAsset(buffer)) { "Unable to load vessel GLB" }
+            applyAttitude()
             require(asset?.resourceUris?.isEmpty() == true) { "Vessel GLB must be self contained" }
             check(resourceLoader?.asyncBeginLoad(requireNotNull(asset)) == true) { "Vessel resources failed to load" }
             loading = true
@@ -272,18 +276,25 @@ private class VesselSceneRenderer3D(
         }
     }
 
-    fun update(preset: VesselViewPreset, light: Boolean, active: Boolean) {
+    fun update(preset: VesselViewPreset, light: Boolean, active: Boolean, attitude: VesselAttitudePose?) {
         if (closed) return
         guarded {
             val changed = this.preset != preset || this.light != light
             val visibilityChanged = desiredActive != active
+            val poseChanged = this.attitude != attitude
             this.preset = preset
             this.light = light
+            this.attitude = attitude
             desiredActive = active
             if (changed) {
                 updateCamera()
                 applyLight()
                 requestDraw()
+            }
+            if (poseChanged) {
+                // 数字与模型使用同一观测：不外推，不跨断源或换源插值，也没有空转动画。
+                applyAttitude()
+                requestDraw(1)
             }
             if (visibilityChanged) refreshVisibility()
         }
@@ -320,6 +331,13 @@ private class VesselSceneRenderer3D(
         indirectLight?.intensity = if (light) 25_000f else 21_000f
     }
 
+    private fun applyAttitude() {
+        val transform = engine?.transformManager ?: return
+        val root = asset?.root ?: return
+        val instance = transform.getInstance(root)
+        if (instance != 0) transform.setTransform(instance, (attitude ?: VesselAttitudePose(0.0, 0.0)).matrix())
+    }
+
     private fun updateCamera() {
         if (width <= 0 || height <= 0) return
         val pose = vesselCamera(preset, width.toDouble() / height)
@@ -327,8 +345,8 @@ private class VesselSceneRenderer3D(
         camera?.lookAt(pose.eye.x, pose.eye.y, pose.eye.z, pose.target.x, pose.target.y, pose.target.z, pose.up.x, pose.up.y, pose.up.z)
     }
 
-    private fun requestDraw() {
-        frameBudget = max(frameBudget, 3)
+    private fun requestDraw(frames: Int = 3) {
+        frameBudget = max(frameBudget, frames)
         if (canDraw() && swapChain != null && !scheduled) {
             scheduled = true
             choreographer.postFrameCallback(this)
