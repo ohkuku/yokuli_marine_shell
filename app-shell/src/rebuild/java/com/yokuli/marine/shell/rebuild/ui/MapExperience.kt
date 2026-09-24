@@ -32,10 +32,15 @@ fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) 
             Label(os.t("地图来源","map source"),40)
             fun choose(source:MapSource) {os.maps.select(source);onDismiss()}
             Column(Modifier.selectableGroup()) {
-                for(source in listOf(MapSource.Online,MapSource.Satellite)) {
-                    val title=if(source==MapSource.Online)os.t("在线","online") else os.t("卫星","satellite")
+                for(source in listOf(MapSource.Offline,MapSource.Satellite)) {
+                    val title=if(source==MapSource.Offline)os.t("地图","map") else os.t("卫星","satellite")
                     val available=source!=MapSource.Satellite || BuildConfig.GOOGLE_MAPS_CONFIGURED
-                    MapSourceOption(os,title,os.maps.source==source,if(!available)os.t("此构建的卫星服务不可用","satellite service unavailable in this build")else null,available) {choose(source)}
+                    val detail=when {
+                        source==MapSource.Offline -> os.t("内置全球地图 · 无需联网","built-in world map · works offline")
+                        !available -> os.t("此构建的卫星服务不可用","satellite service unavailable in this build")
+                        else -> os.t("高清影像与地名 · 需要网络","high-resolution imagery & place names · internet required")
+                    }
+                    MapSourceOption(os,title,os.maps.source==source,detail,available) {choose(source)}
                 }
                 val folders=os.library.folders.filter {it.layerName!=null}
                 folders.forEach {folder ->
@@ -48,7 +53,7 @@ fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) 
                 }
             }
             if(os.library.layers.isEmpty())Label(os.t("在图册连接文件夹并命名后，它会出现在这里。","Connect and name a folder in chart library to add it here."),16,c.muted)
-            Label(os.t("自定义海图下方始终保留离线全球底图。Natural Earth 提供概略陆地与海岸，不含水深或航行障碍物。","Custom charts retain an offline world background. Natural Earth provides general land and coastlines, without depths or navigation hazards."),14,c.muted)
+            Label(os.t("全球地图已内置，自定义海图下方也保留这张离线底图。Natural Earth 提供概略陆地与海岸，不含水深或航行障碍物。","The world map is built in and remains beneath custom charts. Natural Earth provides general land and coastlines, without depths or navigation hazards."),14,c.muted)
             if(os.maps.saveFailed)Label(os.t("选择尚未保存到设备","selection could not be saved"),16)
             aisLayer?.let {AisLayerChoice(os,it)}
             MetroButton(os.t("关闭","close"),onDismiss)

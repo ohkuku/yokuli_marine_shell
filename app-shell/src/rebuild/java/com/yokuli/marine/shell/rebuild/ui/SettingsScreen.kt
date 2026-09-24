@@ -135,7 +135,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         Label(buildIdentity.gitBranch,16,c.muted)
                         Label(buildIdentity.timestampUtc,14,c.muted)
                         Label("Selawik · Microsoft · SIL Open Font License 1.1",14,c.muted)
-                        Label("© OpenStreetMap contributors · Google Maps · MapLibre · Natural Earth",14,c.muted)
+                        Label("Google Maps · MapLibre · Natural Earth",14,c.muted)
                     }
                 }
             }

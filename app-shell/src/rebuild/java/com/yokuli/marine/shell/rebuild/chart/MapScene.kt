@@ -14,7 +14,8 @@ import org.json.JSONObject
 import java.io.File
 
 sealed interface MapSource {
-    data object Online : MapSource
+    /** APK 内置全球底图，不依赖网络或 Google Play services。 */
+    data object Offline : MapSource
     data object Satellite : MapSource
     data class CustomLayer(val layerId: String) : MapSource
 }
@@ -129,32 +130,38 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     private val file = AtomicFile(File(context.filesDir, "map-source-v1.json"))
     private val mutex = Mutex()
     private val saved = runCatching { JSONObject(file.openRead().bufferedReader().use { it.readText() }) }.getOrNull()
-    private fun restored(): MapSource = when (saved?.optString("type") ?: legacy.optString("mapMode", "standard")) {
+    private val savedType = saved?.optString("type") ?: legacy.optString("mapMode", "standard")
+    private fun restored(): MapSource = when (savedType) {
         // 从同包名应用版升级时，纯 AOSP 不能恢复到依赖 Google Play services 的卫星图。
-        "satellite" -> if (BuildConfig.ROM_HOME) MapSource.Online else MapSource.Satellite
-        "custom" -> MapSource.CustomLayer(saved!!.optString("id"))
-        "marine" -> library.folders.firstOrNull { it.layerName != null && it.enabled }?.let { MapSource.CustomLayer(it.id) } ?: MapSource.Online
-        else -> MapSource.Online
+        "satellite" -> if (BuildConfig.ROM_HOME) MapSource.Offline else MapSource.Satellite
+        "custom" -> saved?.optString("id")?.takeIf { it.isNotBlank() }?.let { MapSource.CustomLayer(it) } ?: MapSource.Offline
+        "marine" -> library.folders.firstOrNull { it.layerName != null && it.enabled }?.let { MapSource.CustomLayer(it.id) } ?: MapSource.Offline
+        // online / standard 是升级前的普通地图选择，统一迁移到离线底图。
+        "offline", "online", "standard" -> MapSource.Offline
+        else -> MapSource.Offline
     }
     var source by mutableStateOf(restored())
         private set
     var saveFailed by mutableStateOf(false)
         private set
     private val views = mutableMapOf<String, MapViewState>()
-    init { if (saved == null) select(source) }
+    init {
+        if (saved == null || savedType !in setOf("offline", "satellite", "custom") ||
+            source == MapSource.Offline && savedType != "offline") select(source)
+    }
     fun view(key: String, center: GeoPoint = GeoPoint(-36.84, 174.77), zoom: Double = 13.0) = views.getOrPut(key) { MapViewState(center, zoom) }
     /** 随 Shell 访问实例退出释放 AIS 相机草稿，返回栈仍保留的实例不受影响。 */
     fun retainAisViews(uiStateKeys:Set<String>) { views.keys.removeAll {it.startsWith("ais:")&&it.removePrefix("ais:") !in uiStateKeys} }
     fun selectedLayer(): ChartLayer? = (source as? MapSource.CustomLayer)?.let { selected -> library.layers.firstOrNull { it.id == selected.layerId } }
     fun sourceName(zh: Boolean): String = when (val selected = source) {
-        MapSource.Online -> if (zh) "在线" else "online"
+        MapSource.Offline -> if (zh) "地图" else "map"
         MapSource.Satellite -> if (zh) "卫星" else "satellite"
         is MapSource.CustomLayer -> library.folders.firstOrNull { it.id == selected.layerId }?.layerName ?: if (zh) "图层不可用" else "layer unavailable"
     }
     fun select(value: MapSource) {
         source = value
         val generation = ++saveGeneration
-        val snapshot = JSONObject().put("type", when (value) { MapSource.Online -> "online"; MapSource.Satellite -> "satellite"; is MapSource.CustomLayer -> "custom" })
+        val snapshot = JSONObject().put("type", when (value) { MapSource.Offline -> "offline"; MapSource.Satellite -> "satellite"; is MapSource.CustomLayer -> "custom" })
         if (value is MapSource.CustomLayer) snapshot.put("id", value.layerId)
         scope.launch(Dispatchers.IO) {
             mutex.withLock {
@@ -168,5 +175,5 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
             }
         }
     }
-    fun removingLayer(id: String) { if (source == MapSource.CustomLayer(id)) select(MapSource.Online) }
+    fun removingLayer(id: String) { if (source == MapSource.CustomLayer(id)) select(MapSource.Offline) }
 }

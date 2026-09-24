@@ -12,6 +12,7 @@ import android.view.View
 import android.widget.FrameLayout
 import androidx.compose.runtime.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
@@ -160,6 +161,9 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     private var captureJob: Job? = null
     val overlay=ChartOverlay(context,state)
     private val nativeScene=NativeSceneRenderer(context)
+    private val placeLabels=OfflineMapLabels(context,scope,
+        onError={if(!destroyed){error="labels"}},
+        onUpdated={if(!destroyed){if(error=="labels")error=null;captureSnapshot()}})
     var camera: ChartCamera?=null
     var error by mutableStateOf<String?>(null)
         private set
@@ -177,7 +181,13 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         if(event.actionMasked==MotionEvent.ACTION_UP || event.actionMasked==MotionEvent.ACTION_CANCEL)parent?.requestDisallowInterceptTouchEvent(false)
         return handled
     }
-    private fun moved(center: GeoPoint,z: Double) {state.center=center;state.zoom=z;updateTrafficCount(force=true);overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
+    override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int) {
+        super.onSizeChanged(w,h,oldw,oldh)
+        if(w>0&&h>0)post {
+            if(!destroyed){placeLabels.onCameraIdle();updateCamera();updateTrafficCount(force=true)}
+        }
+    }
+    private fun moved(center: GeoPoint,z: Double) {state.center=center;state.zoom=z;placeLabels.onCameraChanged(center,z);updateTrafficCount(force=true);overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
     private fun touch() {if(!state.interactive)return;state.follow=false;state.showCrosshair=true;onEvent(MapEvent.GestureStarted)}
     private fun pick(point: GeoPoint) {
         if(!state.interactive) return
@@ -230,6 +240,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         // Shell 转场与任务卡使用整窗 PixelCopy；TextureView 参与同一窗口合成，
         // 避免独立 GLSurfaceView 在任务截图中变黑，也让缩放转场带着地图一起运动。
         native=MapView(context,MapLibreMapOptions.createFromAttributes(context).textureMode(true)).also {v ->
+            v.addOnDidFailLoadingMapListener {if(!destroyed&&loading){loading=false;error="base"}}
             addView(v,LayoutParams(-1,-1));v.onCreate(Bundle());v.getMapAsync {map ->
                 if(destroyed)return@getMapAsync
                 libre=map
@@ -245,7 +256,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 camera=adapter;overlay.camera=adapter;adapter.move(state.center,state.zoom)
                 map.addOnCameraMoveListener {map.cameraPosition.target?.let {moved(GeoPoint(it.latitude,it.longitude),map.cameraPosition.zoom)}}
                 map.addOnCameraMoveStartedListener {if(it==MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE)touch()}
-                map.addOnCameraIdleListener { captureSnapshot() }
+                map.addOnCameraIdleListener {placeLabels.onCameraIdle();captureSnapshot()}
                 map.setOnMarkerClickListener {marker ->
                     if(state.interactive)marker.title?.let {if(!it.startsWith("ais:")||overlay.scene.aisInteractive)onEvent(MapEvent.ItemSelected(it))}
                     true
@@ -259,10 +270,14 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     private fun applyLibreStyle(sources: JSONObject, layers: JSONArray, generation: Long, ready: Boolean = false) {
         val map = libre ?: return
         // Style 接管资源前清理自有图层、source 和图钉；加载中的参考底图也重画地理内容。
+        placeLabels.clear()
         nativeScene.clear()
         map.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",sources).put("layers",layers).toString())) { loaded ->
             if (!destroyed && generation == sourceGeneration && map.style === loaded) {
                 if (ready) loading = false
+                if(error=="base"||error=="labels")error=null
+                placeLabels.attach(map,loaded,maps.chinese,
+                    beforeLayerId=(maps.source as? MapSource.CustomLayer)?.layerId)
                 nativeScene.invalidate()
                 nativeScene.render(googleMap, map, overlay.scene, state.ruler)
                 overlay.invalidate()
@@ -273,13 +288,14 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     fun updateStyle() {
         val source=maps.source
         val layer=maps.selectedLayer()
-        val revision=if(source is MapSource.CustomLayer) "${source}:${maps.library.revision}" else source.toString()
+        val revision=(if(source is MapSource.CustomLayer) "${source}:${maps.library.revision}" else source.toString())+":${maps.chinese}"
         if(styleRevision==revision) return
         if(googleEngine && googleMap==null || !googleEngine && libre==null) return
         styleRevision=revision;styleJob?.cancel();val generation=++sourceGeneration;error=null;loading=true
         if(googleEngine) {
             googleMap?.apply {
-                mapType=if(source==MapSource.Satellite) GoogleMap.MAP_TYPE_SATELLITE else GoogleMap.MAP_TYPE_NORMAL
+                // 卫星影像同时显示 SDK 的地名、道路等信息，不再只有一张无标注照片。
+                mapType=GoogleMap.MAP_TYPE_HYBRID
                 setOnMapLoadedCallback {if(!destroyed && generation==sourceGeneration){loading=false;error=null;captureSnapshot()}}
             }
             styleJob=scope.launch {delay(15000);if(generation==sourceGeneration && loading) {loading=false;error="online"}}
@@ -288,14 +304,10 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         styleJob=scope.launch {
             var proposed:TileGateway?=null
             try {
-                // Remove the previous source while preparing the new one; no stale chart masquerades as the new layer.
-                val sources=offlineWorldSources();val layers=offlineWorldLayers()
-                applyLibreStyle(sources, layers, generation)
+                // 一次提交完整离线样式，避免加载同一份全球几何两次造成切换闪动。
+                val sources=OfflineWorldStyle.sources();val layers=OfflineWorldStyle.layers()
                 when(source) {
-                    MapSource.Online -> {
-                        sources.put("osm",JSONObject().put("type","raster").put("tileSize",256).put("maxzoom",19).put("tiles",JSONArray(listOf("https://tile.openstreetmap.org/{z}/{x}/{y}.png"))))
-                        layers.put(JSONObject().put("id","osm").put("type","raster").put("source","osm"))
-                    }
+                    MapSource.Offline -> Unit
                     MapSource.Satellite -> error="online"
                     is MapSource.CustomLayer -> {
                         if(layer==null || layer.files.isEmpty()) error="empty"
@@ -311,7 +323,17 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 if(generation!=sourceGeneration) {retire(proposed);return@launch}
                 val old=gateway;gateway=proposed;retire(old)
                 applyLibreStyle(sources, layers, generation, ready = true)
-            } catch(e:Exception) {retire(proposed);if(e !is CancellationException && generation==sourceGeneration) {error="read";loading=false}}
+            } catch(e:Exception) {
+                retire(proposed)
+                if(e !is CancellationException && generation==sourceGeneration) {
+                    val old=gateway;gateway=null;retire(old)
+                    // 新图层打不开时不继续显示上一张海图，回到明确的本地背景并保留错误提示。
+                    if(source is MapSource.CustomLayer)runCatching {
+                        applyLibreStyle(OfflineWorldStyle.sources(),OfflineWorldStyle.layers(),generation,ready=true)
+                    }
+                    error=if(source==MapSource.Offline)"base" else "read";loading=false
+                }
+            }
         }
     }
     private fun updateCamera() {
@@ -375,15 +397,16 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         Lifecycle.Event.ON_STOP ->if(started){lifecycle(Lifecycle.Event.ON_PAUSE);native?.onStop();google?.onStop();started=false}
         else ->Unit
     }}
-    fun destroy() {if(destroyed)return;destroyed=true;lifecycle(Lifecycle.Event.ON_STOP);scope.cancel();nativeScene.clear();native?.onDestroy();google?.onDestroy();retire(gateway);gateway=null;camera=null}
+    fun retry() {styleRevision="";updateStyle()}
+    fun destroy() {if(destroyed)return;destroyed=true;lifecycle(Lifecycle.Event.ON_STOP);placeLabels.close();scope.cancel();nativeScene.clear();native?.onDestroy();google?.onDestroy();retire(gateway);gateway=null;camera=null}
 }
 
 @Composable
 fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Modifier=Modifier,onEvent:(MapEvent)->Unit={},onHost:(ChartHost)->Unit={}) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
-    val google=maps.source !is MapSource.CustomLayer && BuildConfig.GOOGLE_MAPS_CONFIGURED
-    // Keep the native camera across online/satellite and custom-layer changes.
+    val google=maps.source==MapSource.Satellite && BuildConfig.GOOGLE_MAPS_CONFIGURED
+    // 默认地图与用户海图共用离线引擎；API Key 不会将默认来源切回联网地图。
     key(google,state) {
         val host=remember {ChartHost(context,maps,state,google)}
         DisposableEffect(host,lifecycle) {
@@ -420,7 +443,9 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
             AndroidView(factory={host},modifier=Modifier.fillMaxSize(),update={it.update(scene,onEvent)})
             val zh=maps.chinese
             val message=when {
-                host.error=="online" ->if(zh)"在线地图暂不可用 · 检查网络或选择自定义图层" else "online map unavailable · check network or choose a custom layer"
+                host.error=="online" ->if(zh)"卫星影像暂不可用 · 可切换内置地图" else "satellite imagery unavailable · use the built-in map"
+                host.error=="base" ->if(zh)"内置地图未能载入 · 点按重试" else "built-in map could not load · tap to retry"
+                host.error=="labels" ->if(zh)"地名未能载入 · 点按重试" else "place names could not load · tap to retry"
                 host.error=="empty" ->if(zh)"图层没有可用文件 · 在图册检查" else "no available files · check chart library"
                 host.error!=null ->if(zh)"图层读取失败 · 在图册检查" else "chart read failed · check chart library"
                 host.loading ->if(zh)"正在载入 ${maps.sourceName(true)}…" else "loading ${maps.sourceName(false)}…"
@@ -432,24 +457,13 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                 val statusModifier=Modifier.align(if(compactViewport)Alignment.TopStart else Alignment.TopCenter)
                     .padding(top=if(compactViewport)8.dp else 166.dp,start=12.dp,end=if(compactViewport)96.dp else 12.dp).widthIn(max=290.dp)
                 if(host.loading && host.error==null)Box(statusModifier.background(LocalMetro.current.bg.copy(alpha=.94f)).padding(10.dp)){MetroProgress(it)}
-                else Label(it,13,Color(0xFF19252B),statusModifier.background(Color.White.copy(alpha=.95f)).padding(9.dp))
+                else Label(it,13,Color(0xFF19252B),statusModifier.background(Color.White.copy(alpha=.95f))
+                    .then(if(host.error in setOf("base","labels"))Modifier.clickable {host.retry()}else Modifier).padding(9.dp))
             }
-            val credits=if(maps.source==MapSource.Online && !BuildConfig.GOOGLE_MAPS_CONFIGURED)listOf("© OpenStreetMap contributors · Natural Earth")
-                else maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()+if(!google)listOf("Natural Earth")else emptyList()
+            val credits=maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()+if(!google)listOf("Natural Earth")else emptyList()
             if(credits.isNotEmpty())Column(Modifier.align(Alignment.BottomEnd).padding(bottom=state.bottomOverlayDp.dp).widthIn(max=230.dp).background(Color.White.copy(alpha=.92f)).padding(4.dp)) {
                 Label(credits.joinToString(" · "),10,Color(0xFF19252B),maxLines=2)
             }
         }
     }
 }
-
-/** Packaged geometry sits below every raster. It never participates in user chart priority. */
-private fun offlineWorldSources()=JSONObject().put("natural-earth-land",JSONObject()
-    .put("type","geojson").put("data","asset://maps/ne_50m_land.geojson").put("maxzoom",8).put("tolerance",.375))
-
-private fun offlineWorldLayers()=JSONArray()
-    .put(JSONObject().put("id","water").put("type","background").put("paint",JSONObject().put("background-color","#dee9e8")))
-    .put(JSONObject().put("id","world-land").put("type","fill").put("source","natural-earth-land")
-        .put("paint",JSONObject().put("fill-color","#e9e4d7").put("fill-antialias",true)))
-    .put(JSONObject().put("id","world-coast").put("type","line").put("source","natural-earth-land")
-        .put("paint",JSONObject().put("line-color","#8c978e").put("line-width",.65)))

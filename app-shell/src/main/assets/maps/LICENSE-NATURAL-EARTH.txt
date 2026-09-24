@@ -1,0 +1,22 @@
+Natural Earth — public domain map data
+Made with Natural Earth. https://www.naturalearthdata.com/
+
+All versions of Natural Earth raster and vector map data are in the public
+domain. Natural Earth permits modification and redistribution, including
+personal, educational and commercial use, without requesting permission.
+Authors: Tom Patterson, Nathaniel Vaughn Kelso and Natural Earth contributors.
+Multilingual names include Wikidata data released under CC0.
+
+Official terms: https://www.naturalearthdata.com/about/terms-of-use/
+Official data repository: https://github.com/nvkelso/natural-earth-vector
+Per-file sources, hashes and transformations: world_sources.json
+
+The built-in world map is a general background at 1:10,000,000 map scale.
+It is not a surveyed nautical chart and contains no depth, tide or navigation
+aid data. Natural Earth supplies the data without warranties of accuracy or
+fitness for a particular use.
+
+内置世界地图使用 Natural Earth 公有领域数据；允许修改及商业再分发。
+地名保留源数据中的中英文，不猜测缺失译名；无中文时显示英文原名。
+10m 表示一千万分之一地图比例尺，不表示十米精度。内置底图只提供
+世界地理背景；详细航海信息应使用用户导入且适合所在水域的海图。

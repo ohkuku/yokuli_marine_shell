@@ -52,13 +52,13 @@
 
 Java 17、Android SDK 36、Python 3；Android 9 及以上；包名 `com.yokuli.marine`。原 Gradle wrapper、签名参数和 CI 下载制品继续使用。所有 APK flavor 的 `preBuild` 会执行源码边界检查；也可单独运行 `python3 scripts/check_runtime_boundaries.py` 或 `./gradlew :app-shell:checkRuntimeBoundaries`。
 
-Google 在线/卫星底图的 `GOOGLE_MAPS_ANDROID_API_KEY` 仍由原仓库的密钥管理注入。GitHub 使用同名 Repository Secret；本地使用：
+Google 高清卫星混合地图（含地名与道路）的 `GOOGLE_MAPS_ANDROID_API_KEY` 仍由原仓库的密钥管理注入。普通地图始终读取 APK 内置离线数据，不需要 Key。GitHub 使用同名 Repository Secret；本地使用：
 
 ```bash
 ./scripts/secrets/yokuli-secrets.sh run -- ./gradlew :app-shell:assembleStandaloneDebug
 ```
 
-密钥不写入源码，见 [密钥管理](docs/SECRETS_MANAGEMENT.md)。无 Google Key 时可使用用户本地海图、内置参考底图和联网 OpenStreetMap。
+密钥不写入源码，见 [密钥管理](docs/SECRETS_MANAGEMENT.md)。无 Google Key 时可使用用户本地海图与内置全球地图，包括海岸、湖泊、主要河流、道路及中英文地名；无首次下载或在线字体依赖。高清卫星仍需要网络与有效 Key，不能将内置概略地图当作港湾级航海图。
 
 ## 体验重点与边界
 

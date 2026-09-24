@@ -1,0 +1,110 @@
+{
+  "title": "Yokuli built-in offline world background",
+  "dataset": "Natural Earth",
+  "scale": "1:10,000,000 (10m means ten million map scale, not 10-metre accuracy)",
+  "retrieved_on": "2026-09-25",
+  "license": "Public domain",
+  "license_url": "https://www.naturalearthdata.com/about/terms-of-use/",
+  "attribution": "Made with Natural Earth.",
+  "scope_zh": "世界背景地图：海岸、湖泊、主要河流、国家边界、主干道路和地名。不是港湾级海图，不含测深、潮汐、航标或其他适航保证。",
+  "transformations_zh": [
+    "保留物理面/线的源几何，裁减非渲染属性",
+    "道路仅保留 scalerank <= 6，排除渡轮和小径",
+    "国家使用源标签点；海域和湖泊从源面计算内部标签点",
+    "保留源中英文名称；缺失译名为空，运行时回退到真实英文名称"
+  ],
+  "sources": [
+    {
+      "name": "ne_10m_land",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_land.geojson",
+      "sha256": "1ac90796408bc6ad6911d69448485d3c4dbf2190370080368a09976e1c9f7416",
+      "source_features": 11
+    },
+    {
+      "name": "ne_10m_lakes",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_lakes.geojson",
+      "sha256": "2d036f53dedec578001c5c30c2959ee7d4eebc1306900fa4367c49929ec8f2d9",
+      "source_features": 1355
+    },
+    {
+      "name": "ne_10m_rivers_lake_centerlines",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_rivers_lake_centerlines.geojson",
+      "sha256": "bb854a900ecbd3b408df46d5e16e3e0f974ba55993f9d8b5c26e855273c0905a",
+      "source_features": 1455
+    },
+    {
+      "name": "ne_10m_admin_0_boundary_lines_land",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_boundary_lines_land.geojson",
+      "sha256": "74d9c16229c095fde65943a9919e337682f044bcebccb120764f38edf3b70f4a",
+      "source_features": 515
+    },
+    {
+      "name": "ne_10m_admin_0_countries",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson",
+      "sha256": "239eec57ac17f100a11e2536cffc56752c318b50ae765b0918ff7aab4ce8f255",
+      "source_features": 258
+    },
+    {
+      "name": "ne_10m_populated_places",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_populated_places.geojson",
+      "sha256": "9b8e3de09048ef00dfc70357dbb9fa324493f214b5e0ae4daf1aa79a8d10116b",
+      "source_features": 7342
+    },
+    {
+      "name": "ne_10m_geography_marine_polys",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_geography_marine_polys.geojson",
+      "sha256": "53f865e8ffa966cdd402145c82c5cd14ee7ce974cd0eb9a3f59f03a4cfd2d66c",
+      "source_features": 306
+    },
+    {
+      "name": "ne_10m_roads",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_roads.geojson",
+      "sha256": "66a0c7b438e92fd124822cc5921cfa11042f48c294ade5e0f03f2c6640fd0248",
+      "source_features": 56600
+    }
+  ],
+  "exports": [
+    {
+      "file": "world_land.geojson",
+      "features": 11,
+      "bytes": 10157173,
+      "sha256": "2e13918f1d94a148a71d7e6c09550d4d028aab473f3eb6cf16dca66d82ebfd78"
+    },
+    {
+      "file": "world_lakes.geojson",
+      "features": 1355,
+      "bytes": 3914300,
+      "sha256": "a5fcbb924ee2514645cd522c239a8ed7d87a3b31369ec8bd9b5e59aeb61f466b"
+    },
+    {
+      "file": "world_rivers.geojson",
+      "features": 1455,
+      "bytes": 6001615,
+      "sha256": "b10fafd11880fbe29fbb81cbbbb1a8a6de15835ba47d02a370c8eb0f0978651f"
+    },
+    {
+      "file": "world_boundaries.geojson",
+      "features": 515,
+      "bytes": 1823136,
+      "sha256": "4353a8491e133dd0178f4840e2a5a851d22d0906bb5d6e70245170a760750833"
+    },
+    {
+      "file": "world_roads.geojson",
+      "features": 25573,
+      "bytes": 11145070,
+      "sha256": "a1cddfdcab4952465b28c9f03a80c97b82fec05d68802c7b7539dd8686e91e14"
+    },
+    {
+      "file": "world_labels.geojson",
+      "features": 8640,
+      "bytes": 1776342,
+      "sha256": "11bcc18a74ffeb3d919abf72c8bb594d3e890e6bd8e753c3323dca6794c458ac"
+    }
+  ],
+  "label_kinds": {
+    "country": 258,
+    "city": 7342,
+    "sea": 295,
+    "lake": 745
+  }
+}

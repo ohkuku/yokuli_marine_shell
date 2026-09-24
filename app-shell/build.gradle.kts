@@ -45,7 +45,7 @@ android {
             buildConfigField("boolean", "ROM_HOME", "true")
             manifestPlaceholders["YOKULI_BUILD_FLAVOR"] = "rom"
             // 首个 ROM 面向没有 Google Play services 的纯 AOSP。沿用 MapLibre、离线全球
-            // 参考底图和 OSM；保留 standalone 的 API Key 注入，不把密钥写入 ROM 配置。
+            // 内置底图；保留 standalone 的 API Key 注入，不把密钥写入 ROM 配置。
             buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", "false")
         }
     }

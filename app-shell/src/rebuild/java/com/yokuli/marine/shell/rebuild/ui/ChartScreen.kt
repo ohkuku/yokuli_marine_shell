@@ -74,7 +74,7 @@ import kotlin.math.*
                     Label(os.t("图层暂不可用","layer unavailable"),32)
                     Label(os.t("这个图层当前没有可读取的海图。请检查文件夹授权、文件状态和参与的海图。","This layer has no readable charts. Check folder access, file status and included charts."),17,c.muted)
                     MetroButton(os.t("打开图册","open chart library"),{os.openLinked((os.maps.source as? MapSource.CustomLayer)?.layerId?.takeIf { id -> os.library.folders.any {it.id==id} }?.let { "library:$it" } ?: "library")},primary=true)
-                    MetroButton(os.t("先浏览在线地图","browse online map"),{os.maps.select(MapSource.Online)})
+                    MetroButton(os.t("浏览内置地图","browse built-in map"),{os.maps.select(MapSource.Offline)})
                 }
             }
             // Context controls float over a stable native viewport. Showing the crosshair must

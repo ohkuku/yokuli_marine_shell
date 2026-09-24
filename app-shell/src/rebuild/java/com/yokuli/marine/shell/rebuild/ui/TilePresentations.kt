@@ -159,8 +159,8 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     val snapshotLabel = if (os.maps.snapshotCapturedAt > 0) DateFormat.getTimeInstance(DateFormat.SHORT, displayLocale).format(Date(os.maps.snapshotCapturedAt)) else ""
     val snapshotCredit = when (os.maps.snapshotSource) {
         MapSource.Satellite -> "© Google"
-        MapSource.Online -> if (com.yokuli.marine.shell.BuildConfig.GOOGLE_MAPS_CONFIGURED) "© Google" else "© OpenStreetMap contributors · Natural Earth"
-        is MapSource.CustomLayer -> os.t("用户海图", "user chart")
+        MapSource.Offline -> "Natural Earth"
+        is MapSource.CustomLayer -> os.t("用户海图 · Natural Earth", "user chart · Natural Earth")
         null -> ""
     }
     val frames = when (app.app.name) {
