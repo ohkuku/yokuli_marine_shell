@@ -57,7 +57,11 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         allPlaces.forEach {add(MapPoint("place:${it.id}",it.point,"",if(sharedView.selectedPlaceId==it.id)0xFFD74A29 else accent,if(sharedView.selectedPlaceId==it.id)12f else 5f))}
     }}
     val aisTargets=remember(traffic.targets,traffic.preferences.chartLayer,sharedView.previewTrack.isEmpty(),sharedView.selectedAisMmsi) {
-        if(traffic.preferences.chartLayer&&sharedView.previewTrack.isEmpty())aisMapTargets(traffic,sharedView.selectedAisMmsi)else emptyList()
+        if(sharedView.previewTrack.isNotEmpty())emptyList()
+        else if(traffic.preferences.chartLayer)aisMapTargets(traffic,sharedView.selectedAisMmsi)
+        // 显式查看单船可临时显示该对象；不擅自打开用户关闭的全局图层。
+        else if(sharedView.selectedAisMmsi!=null)aisMapTargets(traffic,sharedView.selectedAisMmsi).filter {it.selected}
+        else emptyList()
     }
     MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(now),it.fresh(now),it.freshHeading(now),it.freshSpeed(now))},markers,lines,
         demo=os.positionSource=="demo" || os.marine?.services?.state?.value?.settings?.demoMode==true,

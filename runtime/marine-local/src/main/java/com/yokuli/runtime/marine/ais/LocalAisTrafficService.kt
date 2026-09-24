@@ -415,7 +415,8 @@ class LocalAisTrafficService @Inject constructor(
 
     private fun validPreferences(value: AisPreferences): Boolean = runCatching {
         value.lastView.name.isNotBlank() && value.orientation.name.isNotBlank() &&
-            value.rangeNauticalMiles.isFinite() && value.rangeNauticalMiles in 0.25..16.0 &&
+            // 仅为观察镜头范围，100 m–32 NM；不会改变近距/会遇警戒阈值。
+            value.rangeNauticalMiles.isFinite() && value.rangeNauticalMiles in (100.0 / 1852.0)..32.0 &&
             (value.ownMmsi == null || value.ownMmsi in 1..999999999) &&
             value.watchedMmsis.size <= 256 && value.watchedMmsis.all { it in 1..999999999 } &&
             value.aliases.size <= 256 && value.aliases.all { (id,name) -> id in 1..999999999 && name.length in 1..80 && name.none(Char::isISOControl) } &&

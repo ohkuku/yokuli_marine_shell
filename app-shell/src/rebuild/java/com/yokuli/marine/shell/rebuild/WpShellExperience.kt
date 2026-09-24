@@ -10,6 +10,11 @@ import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -43,7 +48,6 @@ import com.yokuli.shell.android.AndroidShellWindowMetrics
 import com.yokuli.shell.compose.*
 import com.yokuli.shell.contract.*
 import com.yokuli.shell.engine.*
-import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.interaction.StartInteractionState
 import java.util.Locale
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -55,6 +59,16 @@ import kotlinx.coroutines.flow.collect
 fun OsExperience(os: OsStore) {
     val shell = os.shell
     val state by shell.engine.state.collectAsState()
+    val underlayFocus = remember { FocusRequester() }
+    val shadeBlocked = os.notificationShade.blocksInput
+    var wasShadeBlocked by remember { mutableStateOf(false) }
+    LaunchedEffect(shadeBlocked) {
+        if (shadeBlocked && !wasShadeBlocked) underlayFocus.saveFocusedChild()
+        if (!shadeBlocked && wasShadeBlocked) {
+            if (!underlayFocus.restoreFocusedChild()) underlayFocus.requestFocus()
+        }
+        wasShadeBlocked = shadeBlocked
+    }
     val savedTasks=rememberSaveableStateHolder()
     val savedKeys=remember {mutableMapOf<String,InternalAppTaskId>()}
     LaunchedEffect(state.tasks.retainedUiStateKeys) {
@@ -93,18 +107,12 @@ fun OsExperience(os: OsStore) {
         if (os.light) WpThemeMode.LIGHT else WpThemeMode.DARK,
         WpAccent.entries.firstOrNull { it.argb == os.accent } ?: WpAccent.CYAN,
     )
-    val colors = WpThemePolicy.resolve(theme).copy(accent = Color(os.accent))
+    val colors = WpThemePolicy.resolve(theme, Color(os.accent))
     val metrics = rememberShellWindowMetrics()
     val systemMotionDisabled = rememberPlatformReducedMotion()
     val reducedMotion = systemMotionDisabled
-    val motionProfile = WpReferenceProfiles.require(state.start.document.profileId).motion
-    val timings = remember(motionProfile) {
-        WpMotionTimings(
-            pageSettleVisibleWindowMillis = motionProfile.measuredPageSettleMillis ?: 700,
-            appOpenVisibleWindowMillis = motionProfile.measuredAppOpenMillis ?: 1_000,
-            backReturnVisibleWindowMillis = motionProfile.measuredBackReturnMillis ?: 750,
-        )
-    }
+    // 布局仍使用已保存的 Start profile；转场使用当前 Mobile 规范，不套用 WP8 旧录屏时长。
+    val timings = remember { WpMotionTimings() }
     BackHandler { shell.back() }
     val view = LocalView.current
     LaunchedEffect(shell, view) {
@@ -119,14 +127,14 @@ fun OsExperience(os: OsStore) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
     val needsHeadingDisplay=lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
-        (os.notifications.expanded || state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS,AppId.DATA_CENTER,AppId.AIS))
+        (!shadeBlocked && state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS,AppId.DATA_CENTER,AppId.AIS))
     DisposableEffect(os.marine,needsHeadingDisplay) {
         val services=os.marine?.services
         val lease = if (needsHeadingDisplay) services?.display?.acquireMapHeading() else null
         onDispose { lease?.close() }
     }
     val needsSensorDisplay = lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
-        (os.notifications.expanded || state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.INSTRUMENTS,AppId.DATA_CENTER))
+        (!shadeBlocked && state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.INSTRUMENTS,AppId.DATA_CENTER))
     DisposableEffect(os.marine, needsSensorDisplay) {
         val services = os.marine?.services
         val lease = if (needsSensorDisplay) services?.display?.acquireInstruments() else null
@@ -157,16 +165,16 @@ fun OsExperience(os: OsStore) {
             transient = state.transient,
             reveal = state.start.reveal,
             visualContributions = shell.apps.map { app -> tilePresentation(os,app,
-                animate=state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==app.entry}) } +
+                animate=!shadeBlocked && state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==app.entry}) } +
                 // 旧样式仍在兼容目录中，必须提供视觉声明以通过 Shell 契约校验；
                 // 应用列表/搜索另行只显示根入口，未固定样式不会启动动画。
                 shell.presets.map {preset -> presetTilePresentation(os,preset,
-                    animate=state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==preset.entryId}) },
+                    animate=!shadeBlocked && state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==preset.entryId}) },
             searchResults = searchContributions(os, query ?: retainedQuery),
         )
         val dispatch = shell::dispatch
         val launcherAction: (LauncherUiAction) -> Unit = { action ->
-            when (action) {
+            if (!shadeBlocked) when (action) {
                 is LauncherUiAction.Open -> dispatch(LauncherAction.Open(action.token))
                 LauncherUiAction.ShowAllApps -> dispatch(LauncherAction.ShowAllApps)
                 is LauncherUiAction.ProposeLayout -> dispatch(LauncherAction.ApplyLayoutProposal(action.proposal))
@@ -196,7 +204,8 @@ fun OsExperience(os: OsStore) {
         Column(Modifier.fillMaxSize().background(colors.background).testTag("shell-host")
             .semantics { testTagsAsResourceId = true }) {
             Box(Modifier.weight(1f)) {
-                Column(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().focusRequester(underlayFocus).focusRestorer().focusGroup()
+                    .then(if (shadeBlocked) Modifier.clearAndSetSemantics { } else Modifier)) {
                     SystemStatusBar(os, metrics)
                     WpSurfaceTransitionHost(
                         targetState = state.motionTarget(),
@@ -222,6 +231,7 @@ fun OsExperience(os: OsStore) {
                                 ) else WpAppList(
                                     launcher.copy(entries=launcher.entries.filter {entry -> shell.apps.any {it.entry==entry.descriptor.entryId}},
                                         transient = state.transient.takeIf { state.surface == ShellVisualSurface.ModuleList }), launcherAction,
+                                    onSearch = { if (!shadeBlocked) dispatch(LauncherAction.OpenSearch) },
                                 )
                             }
                             is ShellMotionTarget.App -> {
@@ -232,7 +242,7 @@ fun OsExperience(os: OsStore) {
                                     val stateKey=target.instanceKey
                                     SideEffect {savedKeys[stateKey]=target.taskId}
                                     savedTasks.SaveableStateProvider(stateKey) {
-                                        CompositionLocalProvider(LocalInternalAppInputEnabled provides (target==state.motionTarget() && !os.notifications.expanded),LocalInternalAppPageKey provides target.instanceKey,LocalAppPage provides page) {
+                                        CompositionLocalProvider(LocalInternalAppInputEnabled provides (target==state.motionTarget() && !shadeBlocked),LocalInternalAppPageKey provides target.instanceKey,LocalAppPage provides page) {
                                         TaskCaptureHost(os,target.taskId,target.instanceKey,active=target==state.motionTarget() && heavyContentReady) {
                                             ShellAppContent(os,page)
                                         }
@@ -256,7 +266,7 @@ fun OsExperience(os: OsStore) {
                 WpSystemKeyBar(
                     windowMetrics = metrics,
                     onInput = shell::input,
-                    onNotificationsClick = os.notifications::toggle,
+                    onNotificationsClick = os.notificationShade::toggle,
                 )
             }
         }
@@ -267,6 +277,7 @@ fun OsExperience(os: OsStore) {
 private fun ShellAppContent(os: OsStore, page: String) {
     when {
         page == "chart" -> ChartAppScreen(os)
+        page.startsWith("chart:ais:") -> ChartAppScreen(os,page.substringAfterLast(':').toIntOrNull())
         page == "library" -> LibraryScreen(os)
         page.startsWith("library:") -> LibraryFolderScreen(os, page.substringAfter(':'))
         page == "places" || page.startsWith("places:") -> PlacesScreen(os,anchoragesOnly=page=="places:anchorages")
@@ -285,7 +296,7 @@ private fun ShellAppContent(os: OsStore, page: String) {
         page == "tiles" || page.startsWith("tiles:") -> TileLibraryScreen(os,page.substringAfter(':', "").takeIf {it.isNotBlank()})
         page == "settings" || page.startsWith("settings:") -> SettingsScreen(os,page.substringAfter(':',"overview"))
         else -> Column { PageHeader(os,os.t("页面已更新","page updated"));PageBody {
-            Label(os.t("这个旧入口已不再使用。你的数据仍保留在所属应用中。","This older destination has moved. Your data remains in its app."),22)
+            Label(os.t("这个旧入口已不再使用。你的数据仍保留在所属应用中。","This older destination has moved. Your data remains in its app."),15)
             MetroButton(os.t("返回应用列表","open apps"),os::home,primary=true)
         } }
     }
@@ -300,7 +311,7 @@ internal fun ShellAppIcon(app: ShellApp, color: Color, modifier: Modifier) {
     }
     Canvas(modifier) {
         val unit = minOf(size.width, size.height)
-        val stroke = unit * .075f
+        val stroke = unit * .0625f
         when (app.app.name) {
             "CHART" -> {
                 drawCircle(color, unit * .31f, center, style = Stroke(stroke))

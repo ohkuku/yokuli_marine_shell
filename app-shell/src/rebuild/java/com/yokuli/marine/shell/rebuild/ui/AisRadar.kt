@@ -2,14 +2,10 @@ package com.yokuli.marine.shell.rebuild.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -21,7 +17,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -30,6 +26,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.yokuli.marine.shell.rebuild.OsStore
 import com.yokuli.marine.shell.rebuild.scene.ais.AisLocalFrame
 import com.yokuli.marine.shell.rebuild.scene.ais.AisScenePosition
@@ -37,7 +34,6 @@ import com.yokuli.marine.shell.rebuild.scene.ais.AisVector3
 import com.yokuli.marine.shell.rebuild.scene.ais.validAisBearing
 import com.yokuli.runtime.contract.ais.*
 import com.yokuli.shell.compose.LocalInternalAppInputEnabled
-import com.yokuli.shell.contract.MeasurementUnitSystem
 import kotlin.math.*
 
 /** AIS 距离方位盘，不是实体雷达；显示范围绝不参与交通风险计算。 */
@@ -49,31 +45,45 @@ internal fun AisRadar(
     showTracks: Boolean,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    rangeMeters: Double? = null,
 ) {
     val colors = LocalMetro.current
+    val safe = LocalShellHorizontalInsets.current
     val enabled = LocalInternalAppInputEnabled.current
     val own = s.ownship?.takeIf { it.positionValid && it.position?.radarValid() == true }
     val heading = validAisBearing(own?.headingDegrees)
     val course = validAisBearing(own?.cogDegrees)?.takeIf { (own?.sogMetersPerSecond ?: 0.0) >= .3 }
     val requested = s.preferences.orientation
-    val orientation = when (requested) {
-        AisOrientation.HEADING_UP -> if (heading != null) requested else AisOrientation.NORTH_UP
-        AisOrientation.COURSE_UP -> if (course != null) requested else AisOrientation.NORTH_UP
-        else -> AisOrientation.NORTH_UP
-    }
-    val bearing = when (orientation) { AisOrientation.HEADING_UP -> heading!!; AisOrientation.COURSE_UP -> course!!; else -> 0.0 }
     var fallbackFrom by rememberSaveable { mutableStateOf<AisOrientation?>(null) }
+    val requestedAvailable = when (requested) {
+        AisOrientation.HEADING_UP -> heading != null
+        AisOrientation.COURSE_UP -> course != null
+        AisOrientation.NORTH_UP -> true
+    }
+    // 期望朝向仍由用户偏好拥有。缺数据仅降级本次视图，恢复后由用户明确重新跟随。
+    val restoreAvailable = fallbackFrom == requested && requestedAvailable && requested != AisOrientation.NORTH_UP
+    val orientation = if (requestedAvailable && fallbackFrom != requested) requested else AisOrientation.NORTH_UP
+    val bearing = when (orientation) { AisOrientation.HEADING_UP -> heading!!; AisOrientation.COURSE_UP -> course!!; else -> 0.0 }
     var overlaps by remember { mutableStateOf<List<Int>>(emptyList()) }
     var size by remember { mutableStateOf(IntSize.Zero) }
     var showExplanation by rememberSaveable { mutableStateOf(false) }
-    val rangeMeters = s.preferences.rangeNauticalMiles.coerceIn(.25, 16.0) * 1852.0
+    var showOrientation by rememberSaveable { mutableStateOf(false) }
+    val visibleRange = (rangeMeters?.takeIf { it.isFinite() } ?: (s.preferences.rangeNauticalMiles * 1852.0)).coerceIn(100.0, 59_264.0)
     val frame = remember(own?.position) { own?.position?.let { AisLocalFrame(it.radarPosition()) } }
-    val projection = remember(frame, rangeMeters, bearing, size) { frame?.let { RadarProjection(it, rangeMeters, bearing, size) } }
-    val positioned = s.targets.filter { it.position?.radarValid() == true }
-    val inside = remember(positioned, projection) { if (projection == null) emptyList() else positioned.filter { projection.distance(it.position!!) <= rangeMeters } }
+    val projection = remember(frame, visibleRange, bearing, size) { frame?.let { RadarProjection(it, visibleRange, bearing, size) } }
+    val positioned = remember(s.targets) { s.targets.filter { it.position?.radarValid() == true } }
+    // 距离只随真实位置改变，不能在拖动倍率尺的每一帧重复做经纬度转换。
+    val distances = remember(positioned, frame) { if (frame == null) emptyMap() else positioned.associate { target ->
+        val local = frame.position(target.position!!.radarPosition())
+        target.mmsi to hypot(local.x, local.z)
+    } }
+    val inside = remember(positioned, distances, visibleRange) { positioned.filter { (distances[it.mmsi] ?: Double.POSITIVE_INFINITY) <= visibleRange } }
     val chosen = selected?.let(s::target)
-    val offscreen = positioned.filter { target -> (target.mmsi == selected || target.riskLevel != AisRiskLevel.NONE || target.distress == AisDistressState.ACTIVE) && projection != null && target.position != null && projection.distance(target.position!!) > rangeMeters }
-        .sortedWith(compareByDescending<AisTarget> { it.mmsi == selected }.thenByDescending { it.riskLevel.ordinal }.thenBy { it.mmsi })
+    val offscreen = remember(positioned, distances, visibleRange, selected) {
+        positioned.filter { target -> (target.mmsi == selected || target.riskLevel != AisRiskLevel.NONE || target.distress == AisDistressState.ACTIVE) &&
+            (distances[target.mmsi]?.let { it > visibleRange } == true) }
+            .sortedWith(compareByDescending<AisTarget> { it.mmsi == selected }.thenByDescending { it.riskLevel.ordinal }.thenBy { it.mmsi })
+    }
     val currentProjection = rememberUpdatedState(projection)
     val currentTargets = rememberUpdatedState(positioned)
     val currentSelect = rememberUpdatedState(onSelect)
@@ -82,57 +92,54 @@ internal fun AisRadar(
     val hitRadius = with(density) { 26.dp.toPx() }
     val now = s.generatedElapsed
 
-    AppBackHandler(enabled && (overlaps.isNotEmpty() || showExplanation)) { if (overlaps.isNotEmpty()) overlaps = emptyList() else showExplanation = false }
-    LaunchedEffect(requested, orientation) {
-        if (requested != orientation) {
-            fallbackFrom = requested
-            os.aisPreferences { it.copy(orientation = AisOrientation.NORTH_UP) }
+    AppBackHandler(enabled && (overlaps.isNotEmpty() || showExplanation || showOrientation)) {
+        when { overlaps.isNotEmpty() -> overlaps = emptyList(); showOrientation -> showOrientation = false; else -> showExplanation = false }
+    }
+    LaunchedEffect(enabled) { if (!enabled) { showOrientation = false; showExplanation = false; overlaps = emptyList() } }
+    LaunchedEffect(requested, requestedAvailable) {
+        fallbackFrom = when {
+            requested == AisOrientation.NORTH_UP -> null
+            !requestedAvailable -> requested
+            fallbackFrom != requested -> null
+            else -> fallbackFrom
         }
     }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            Label(os.t("AIS 雷达", "AIS radar"), 18)
-            Label(os.t("非雷达回波 ⓘ", "not radar echoes ⓘ"), 12, colors.muted,
-                Modifier.clickable(enabled = enabled, role = Role.Button) { showExplanation = !showExplanation }.padding(10.dp))
-        }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(17.dp)) {
-            AisOrientation.entries.forEach { mode ->
-                val available = mode == AisOrientation.NORTH_UP || mode == AisOrientation.HEADING_UP && heading != null || mode == AisOrientation.COURSE_UP && course != null
-                val title = when (mode) { AisOrientation.NORTH_UP -> os.t("北向上", "north up"); AisOrientation.HEADING_UP -> os.t("船艏向上", "heading up"); AisOrientation.COURSE_UP -> os.t("航迹向上", "course up") }
-                Label(title, 15, if (!available) colors.muted.copy(alpha = .5f) else if (orientation == mode) colors.accent else colors.fg,
-                    Modifier.heightIn(min = 40.dp).clickable(enabled = enabled && available, role = Role.Button) { fallbackFrom = null; os.aisPreferences { it.copy(orientation = mode) } }.padding(vertical = 9.dp))
-            }
-        }
-        if (fallbackFrom != null) Label(when (fallbackFrom) {
-            AisOrientation.HEADING_UP -> os.t("船首向未更新，已切换北向上", "Heading unavailable; switched to north up")
-            else -> os.t("对地航迹方向不足以定向，已切换北向上", "Course is unavailable or too slow; switched to north up")
-        }, 12, colors.muted, Modifier.padding(horizontal = 14.dp))
-
-        Box(Modifier.fillMaxWidth().weight(1f).onSizeChanged { size = it }) {
+    Box(modifier.onSizeChanged { size = it }) {
             if (projection == null) {
                 Column(Modifier.align(Alignment.Center).padding(26.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Label(os.t("等待本船位置", "waiting for own position"), 27)
-                    Label(os.t("当前没有有效本船位置，不能展示相对距离或 CPA。已收到的目标仍在列表和海图中。", "Without a valid own position, relative ranges and CPA cannot be shown. Received targets remain available in the list and chart."), 16, colors.muted)
-                    s.ownship?.positionElapsed?.let { elapsed -> Label(os.t("上次本船观测 · ", "last own observation · ") + readingAge(os, elapsed, now), 14, colors.muted) }
+                    Label(os.t("等待本船位置", "Waiting for own position"), 20)
+                    Label(os.t("有了本船位置，才能显示与其他船舶的距离。已收到的船舶仍可在列表查看。", "Your position is needed to show nearby traffic. Received vessels are still available in the list."), 15, colors.muted)
+                    s.ownship?.positionElapsed?.let { elapsed -> Label(os.t("上次本船观测 · ", "Last own observation · ") + readingAge(os, elapsed, now), 12, colors.muted) }
+                    MetroButton(os.t("检查船位来源", "Check position source"), { os.openLinked("data_center:source/POSITION") }, enabled = enabled)
                 }
             } else {
                 Canvas(Modifier.fillMaxSize().semantics { contentDescription = os.t("按真实距离和方位排列的 AIS 目标，不是雷达回波", "AIS targets arranged by true range and bearing, not radar echoes") }
                     .pointerInput(Unit) {
-                        var pressedIds = emptyList<Int>()
-                        detectTapGestures(onPress = { tap ->
+                        awaitEachGesture {
+                            // 点击时固定目标身份；不消费按下或横向位移，让父级 Pivot 接管滑页。
+                            val down = awaitFirstDown(requireUnconsumed = false)
                             val p = currentProjection.value
-                            pressedIds = if (!currentEnabled.value || p == null) emptyList() else currentTargets.value.mapNotNull { target ->
+                            val hits = if (!currentEnabled.value || p == null) emptyList() else currentTargets.value.mapNotNull { target ->
                                 val position = target.position ?: return@mapNotNull null
                                 if (p.distance(position) > p.rangeMeters) return@mapNotNull null
-                                val distance = (p.point(position) - tap).getDistance()
+                                val distance = (p.point(position) - down.position).getDistance()
                                 if (distance <= hitRadius) target.mmsi to distance else null
                             }.sortedBy { it.second }.map { it.first }
-                        }, onTap = {
-                            if (!currentEnabled.value) return@detectTapGestures
-                            // 按下时固定身份，报文刷新不在抬手时把另一艘船换进点击结果。
-                            val hits = pressedIds
-                            if (hits.size == 1) currentSelect.value(hits.first()) else if (hits.isNotEmpty()) overlaps = hits
-                        })
+                            var isTap = true
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (change.isConsumed || event.changes.count { it.pressed } > 1 ||
+                                    (change.position - down.position).getDistance() > viewConfiguration.touchSlop) isTap = false
+                                if (!change.pressed) {
+                                    if (isTap && currentEnabled.value && hits.isNotEmpty()) {
+                                        change.consume()
+                                        if (hits.size == 1) currentSelect.value(hits.first()) else overlaps = hits
+                                    }
+                                    break
+                                }
+                            }
+                        }
                     }) {
                     val center = projection.center
                     val radius = projection.radius
@@ -184,7 +191,7 @@ internal fun AisRadar(
                             val pOwn = projection.point(predictedOwn); val pTarget = projection.point(predictedTarget)
                             val predicted = colors.accent.copy(alpha = .75f)
                             val dash = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx()))
-                            if (projection.distance(predictedOwn) <= rangeMeters && projection.distance(predictedTarget) <= rangeMeters) {
+                            if (projection.distance(predictedOwn) <= visibleRange && projection.distance(predictedTarget) <= visibleRange) {
                                 drawLine(predicted, pOwn, pTarget, 1.5.dp.toPx(), pathEffect = dash)
                                 drawCircle(predicted, 5.dp.toPx(), pOwn, style = Stroke(1.4.dp.toPx(), pathEffect = dash))
                                 drawCircle(predicted, 5.dp.toPx(), pTarget, style = Stroke(1.4.dp.toPx(), pathEffect = dash))
@@ -202,12 +209,15 @@ internal fun AisRadar(
                     Label(text, 12, if (degrees == 0) colors.accent else colors.muted,
                         Modifier.offset { IntOffset((p.x - 6 * density.density).roundToInt(), (p.y - 7 * density.density).roundToInt()) })
                 }
-                Column(Modifier.align(Alignment.TopStart).padding(start = 10.dp, top = 3.dp).background(colors.bg.copy(alpha = .8f))) {
-                    Label(os.t("距圈 ", "rings ") + os.formatDistance(rangeMeters / 4.0), 11, colors.muted)
-                    Label(os.t("盘内 ${inside.size} / 有位置 ${positioned.size}", "in view ${inside.size} / located ${positioned.size}"), 11, colors.muted)
+                Label(os.t("每圈 ", "Each ring ") + os.formatDistance(visibleRange / 4.0), 12, colors.muted,
+                    Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = if (offscreen.isEmpty()) 8.dp else 66.dp)
+                        .background(colors.bg.copy(alpha = .86f)).padding(horizontal = 4.dp, vertical = 2.dp))
+                if (inside.isEmpty()) Column(Modifier.align(Alignment.Center).widthIn(max = 300.dp)
+                    .background(colors.bg.copy(alpha = .94f)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Label(if (positioned.isEmpty()) os.t("等待周围船舶", "Waiting for nearby traffic")
+                        else os.t("此范围内尚无目标", "No targets in this range"), 15, colors.muted)
+                    if (positioned.isEmpty()) MetroButton(os.t("检查 AIS 输入", "Check AIS input"), { os.openLinked("nmea") }, enabled = enabled)
                 }
-                if (inside.isEmpty()) Label(os.t("当前范围内没有可显示目标", "no located targets in this range"), 13, colors.muted,
-                    Modifier.align(Alignment.BottomCenter).background(colors.bg.copy(alpha = .9f)).padding(8.dp))
                 if (offscreen.isNotEmpty()) {
                     Canvas(Modifier.fillMaxSize()) {
                         offscreen.take(64).forEach { target ->
@@ -225,49 +235,101 @@ internal fun AisRadar(
                         drawPath(arrow, if (target.mmsi == selected) colors.accent else radarColor(target, colors))
                         }
                     }
-                    Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(colors.bg.copy(alpha = .96f))
+                    Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(min = 48.dp).background(colors.bg.copy(alpha = .96f))
                         .clickable(enabled = enabled, role = Role.Button) { if (offscreen.size == 1) onSelect(offscreen.first().mmsi) else overlaps = offscreen.map { it.mmsi } }.padding(horizontal = 12.dp, vertical = 6.dp)) {
                         val first = offscreen.first()
                         Label(os.t("范围外 ${offscreen.size} 个需关注 · ", "${offscreen.size} targets of interest outside range · ") + first.displayName, 14, colors.accent, maxLines = 1)
                         Label(os.formatDistance(projection.distance(first.position!!)) + " · " + (first.relative.bearingDegrees?.let { os.formatBearing(it) + " T" } ?: aisState(os, first)), 12, colors.muted)
                     }
                 }
-                if (showExplanation) RadarInfo(os, Modifier.align(Alignment.Center).fillMaxWidth(.92f)) { showExplanation = false }
-                if (overlaps.isNotEmpty()) {
-                    Column(Modifier.align(Alignment.Center).fillMaxWidth(.9f).heightIn(max = 260.dp).background(colors.bg).border(1.dp, colors.muted).padding(12.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Label(os.t("选择目标", "choose target"), 23)
-                            IconAction("close", os.t("关闭", "close"), { overlaps = emptyList() })
-                        }
-                        LazyColumn {
-                            items(overlaps, key = { it }) { mmsi ->
-                                val target = s.target(mmsi)
-                                Column(Modifier.fillMaxWidth().clickable(enabled = enabled && target != null) { overlaps = emptyList(); onSelect(mmsi) }.padding(vertical = 10.dp)) {
-                                    Label(target?.displayName ?: aisNumber(mmsi), 17)
-                                    Label(target?.let { aisKind(os, it.kind) + " · " + aisState(os, it) } ?: os.t("目标已退出当前资料", "target no longer retained"), 12, colors.muted)
-                                }
-                            }
-                        }
-                    }
+            }
+        Row(Modifier.align(Alignment.TopStart).fillMaxWidth().padding(start = safe.pageStart, end = safe.pageEnd),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.weight(1f, fill = false).heightIn(min = 48.dp).background(colors.bg.copy(alpha = .9f))
+                .semantics { contentDescription = orientationName(os, orientation) }
+                .clickable(enabled = enabled, role = Role.Button) { showOrientation = true }
+                .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Glyph("helm", Modifier.size(20.dp), colors.fg)
+                Label(orientationName(os, orientation), 12, maxLines = 1)
+                Glyph("chevron_down", Modifier.size(12.dp), colors.muted)
+                if (fallbackFrom != null && !restoreAvailable) Label("!", 12, colors.accentText)
+            }
+            if (restoreAvailable) Label(os.t("恢复跟随", "Resume follow"), 12, colors.accentText,
+                Modifier.widthIn(max = 112.dp).heightIn(min = 48.dp).background(colors.bg.copy(alpha = .9f))
+                    .clickable(enabled = enabled, role = Role.Button) { fallbackFrom = null }.padding(horizontal = 10.dp, vertical = 15.dp))
+            Box(Modifier.size(48.dp).background(colors.bg.copy(alpha = .9f))
+                .semantics { contentDescription = os.t("图例与说明", "Legend and guide") }
+                .clickable(enabled = enabled, role = Role.Button) { showExplanation = true }, contentAlignment = Alignment.Center) {
+                Canvas(Modifier.size(22.dp)) {
+                    val middle = Offset(size.width / 2f, size.height / 2f)
+                    drawCircle(colors.fg, size.width / 2f - 1.dp.toPx(), middle, style = Stroke(1.5.dp.toPx()))
+                    drawCircle(colors.fg, 1.dp.toPx(), Offset(middle.x, middle.y - 4.dp.toPx()))
+                    drawLine(colors.fg, Offset(middle.x, middle.y), Offset(middle.x, middle.y + 5.dp.toPx()), 1.5.dp.toPx())
                 }
             }
         }
-        if (showExplanation && projection == null) RadarInfo(os, Modifier.fillMaxWidth().padding(12.dp)) { showExplanation = false }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            val presets = if (os.measurementUnits == MeasurementUnitSystem.NAUTICAL)
-                listOf(.25, .5, 1.0, 2.0, 4.0, 8.0, 16.0).map { it * 1852.0 }
-                else listOf(500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0, 25000.0)
-            // 换单位不会改变用户的观察范围；旧范围仍作为选中项可见。
-            val ranges = if (presets.any { abs(it - rangeMeters) < .1 }) presets else (presets + rangeMeters).sorted()
-            ranges.forEach { value ->
-                Label(os.formatDistance(value), 14, if (abs(value - rangeMeters) < .1) colors.accent else colors.muted,
-                    Modifier.heightIn(min = 42.dp).clickable(enabled = enabled, role = Role.Button) { os.aisPreferences { it.copy(rangeNauticalMiles = value / 1852.0) } }.padding(vertical = 10.dp))
-            }
-        }
-        val hasPrediction = chosen?.relative?.let { it.state in setOf(AisCpaState.CALCULATED, AisCpaState.ESTIMATED) && (it.tcpaSeconds ?: -1.0) >= 0 && it.ownAtCpa != null && it.targetAtCpa != null } == true
-        Label(if (hasPrediction) os.t("实线：观测轨迹 · 虚线：60 秒对地向量 · 空心圈：会遇推算", "solid: observations · dashed: 60 s ground vector · hollow: CPA estimate")
-            else os.t("实线：观测轨迹 · 虚线：60 秒对地向量", "solid: observations · dashed: 60 s ground vector"), 11, colors.muted, Modifier.padding(horizontal = 14.dp, vertical = 3.dp))
     }
+    if (showOrientation && enabled) Dialog(onDismissRequest = { showOrientation = false }) {
+        AppDialogSurface {
+            AppDialogTitle(os.t("雷达朝向", "Radar orientation"))
+            if (restoreAvailable) MetroButton(os.t("恢复", "Resume ") + orientationName(os, requested),
+                { fallbackFrom = null; showOrientation = false }, primary = true)
+            else if (fallbackFrom != null) Label(when (fallbackFrom) {
+                AisOrientation.HEADING_UP -> os.t("船首向尚未更新，当前朝向正北。", "Heading has not updated; the view is facing north.")
+                else -> os.t("船舶需要有可靠的运动方向，当前朝向正北。", "A reliable course is needed; the view is facing north.")
+            }, 12, colors.muted)
+            AisOrientation.entries.forEach { mode ->
+                val available = mode == AisOrientation.NORTH_UP || mode == AisOrientation.HEADING_UP && heading != null || mode == AisOrientation.COURSE_UP && course != null
+                ChoiceRow(orientationName(os, mode), requested == mode,
+                    subtitle = when {
+                        available -> null
+                        mode == AisOrientation.HEADING_UP -> os.t("等待船首向", "Waiting for heading")
+                        else -> os.t("等待可靠的运动方向", "Waiting for reliable course")
+                    }, enabled = available) {
+                    fallbackFrom = null
+                    os.aisPreferences { it.copy(orientation = mode) }
+                    showOrientation = false
+                }
+            }
+            if (heading == null) MenuRow(os.t("检查船首向来源", "Check heading source"), icon = "next") {
+                showOrientation = false
+                os.openLinked("data_center:source/HEADING_TRUE")
+            }
+            if (course == null && requested == AisOrientation.COURSE_UP) MenuRow(os.t("检查运动方向来源", "Check course source"), icon = "next") {
+                showOrientation = false
+                os.openLinked("data_center:source/COG")
+            }
+            MetroButton(os.t("完成", "Done"), { showOrientation = false })
+        }
+    }
+    if (showExplanation && enabled) Dialog(onDismissRequest = { showExplanation = false }) {
+        RadarInfo(os) { showExplanation = false }
+    }
+    if (overlaps.isNotEmpty() && enabled) Dialog(onDismissRequest = { overlaps = emptyList() }) {
+        AppDialogSurface {
+            AppDialogTitle(os.t("选择船舶", "Choose a vessel"))
+            Label(os.t("这些目标在当前范围内靠得很近。", "These targets are close together at this range."), 12, colors.muted)
+            // 弹层读最新资料，但身份列表固定在按下时，不因报文刷新改变选择对象。
+            overlaps.forEach { mmsi ->
+                val target = s.target(mmsi)
+                Column(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .clickable(enabled = target != null, role = Role.Button) { overlaps = emptyList(); onSelect(mmsi) }
+                    .padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Label(target?.displayName ?: aisNumber(mmsi), 15, if (target == null) colors.disabled else colors.fg)
+                    Label(target?.let { aisKind(os, it.kind) + " · " + aisState(os, it) }
+                        ?: os.t("目标已退出当前资料", "Target no longer retained"), 12, colors.muted)
+                }
+            }
+            MetroButton(os.t("取消", "Cancel"), { overlaps = emptyList() })
+        }
+    }
+}
+
+private fun orientationName(os: OsStore, mode: AisOrientation): String = when (mode) {
+    AisOrientation.NORTH_UP -> os.t("北向上", "North up")
+    AisOrientation.HEADING_UP -> os.t("船艏向上", "Heading up")
+    AisOrientation.COURSE_UP -> os.t("航迹向上", "Course up")
 }
 
 private fun AisPoint.radarPosition() = AisScenePosition(latitude, longitude)
@@ -372,15 +434,14 @@ private fun DrawScope.drawRadarTarget(target: AisTarget, point: Offset, relative
 }
 
 @Composable
-private fun RadarInfo(os: OsStore, modifier: Modifier, close: () -> Unit) {
+private fun RadarInfo(os: OsStore, close: () -> Unit) {
     val colors = LocalMetro.current
-    Column(modifier.background(colors.bg).border(1.dp, colors.muted).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Label(os.t("认识 AIS 雷达", "about AIS radar"), 24)
-            IconAction("close", os.t("关闭", "close"), close)
-        }
-        Label(os.t("这是接收到的 AIS 位置与距离方位盘，没有雷达扫描。没有目标不代表周围安全。", "This is a range-and-bearing plot of received AIS positions, without radar scanning. No targets does not mean clear water."), 15)
-        Label(os.t("船形仅在有效船首向已提供时指向船艏；圆形不声明船首。虚线使用 COG 表示 60 秒对地运动方向，两者独立。", "A vessel symbol asserts bow direction only with valid heading. A circle makes no heading claim. Dashed COG vectors show 60 seconds of ground motion independently."), 14, colors.muted)
-        Label(os.t("实线是分段的实际观测轨迹。若出现空心会遇圈，它们是共享服务的恒速推算，不能当作当前船位。", "Solid tracks are segmented observations. Hollow encounter marks are the shared service's constant-velocity estimate, not current positions."), 14, colors.muted)
+    AppDialogSurface {
+        AppDialogTitle(os.t("认识周围船舶", "Reading the radar"))
+        Label(os.t("显示接收到的 AIS 位置，不是雷达回波。没有目标不代表周围安全。", "This view shows received AIS positions, not radar echoes. No targets does not mean clear water."), 15)
+        Label(os.t("船形指向已知船首，圆点表示尚无可靠船首向。红色需要立即留意，橙色需要关注；灰色是上次收到的位置。", "A vessel shape shows a known heading; a dot means no reliable heading. Red needs immediate attention, amber needs attention, and grey is the last received position."), 15)
+        Label(os.t("实线是实际轨迹，虚线是未来 60 秒的对地运动方向。空心会遇圈是共享服务的恒速估算，不是当前船位。", "Solid lines are observed tracks. Dashed lines show 60 seconds of ground motion. Hollow encounter marks are constant-velocity estimates, not current positions."), 15)
+        Label(os.t("显示范围只改变画面，不改变避碰计算。范围尺拖动可连续缩放，点倍率刻度可快速切换。", "Viewing range only changes the display, never collision calculations. Drag the range scale to zoom smoothly, or tap a zoom mark."), 12, colors.muted)
+        MetroButton(os.t("知道了", "Got it"), close)
     }
 }

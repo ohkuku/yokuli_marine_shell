@@ -1,10 +1,12 @@
 # Yokuli OS 0.5：应用边界、接口与数据拓扑
 
-更新：2026-09-18，experience.7（versionCode 11）。本文对应 `app-shell/src/rebuild` 实际入口。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
+更新：2026-09-25；当前版本以根构建身份为准。本文对应 `app-shell/src/rebuild` 实际入口。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
 
-本轮进程内系统拆分与验证边界见 [experience.7 记录](../experience/EXPERIENCE_7_DELIVERY.md)，代码分层与当前兼容限制见 [运行时边界](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)。表格描述实现约定，不代表所有硬件、后台限制和长时间船上场景均已通过验证。
+当前代码分层、通知 IPC 与兼容限制见 [运行时边界](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)；[通知契约](NOTIFICATION_CENTER_CONTRACT.md) 和 [领域接入指导](../os/02-DOMAIN-AND-CONTRACTS.md#新功能接入路径) 是继续扩展的入口。表格描述实现约定，不代表所有硬件、后台限制和长时间船上场景均已通过验证。
 
 ## 这轮实现计划与边界
+
+页面、Shell 和通知当前统一沿 [Windows 10 Mobile / MDL2](WINDOWS_10_MOBILE_DESIGN.md)；`AppSection`、`AppDialogTitle`、`AppDialogSurface`、`AppCommandBar` 与共同选项指示器只拥有表现和交互，不改变下述领域真值。
 
 | 用户反馈 | 实现位置与决定 |
 | --- | --- |
@@ -14,13 +16,13 @@
 | 5、6、15、16、22 应用关系 | 地图内先预览坐标，详情为显式动作；普通应用入口回首页，最近任务恢复原页面实例；跨应用对象操作返回原调用页；根页不显示“返回 OS”；内部返回处理先于 Shell，失活画面不能抢键。 |
 | 7 声纳 | 移除测深调查产品入口、UI、采样订阅和自动恢复；保留历史数据库和真实 NMEA 水深读数。 |
 | 8、9 航行日志 | `MarineSystem.voyage.state` 是统一会话视图；开始/暂停/继续/保存使用同一命令；系统栏、海图、日志和磁贴同步。日志支持当前航迹、时刻、历史、编辑、回放、导出与地图预览。 |
-| 10、21 仪表 | 罗盘、风向、姿态、量表按数据含义可视化；趋势仅 13 类航行/天气观测，实际收到或有历史才可选；“我的”持久化增删与排序。 |
+| 10、21 仪表 | 真实姿态驱动 3D 船型、航行/帆航关系图；方向玫瑰、速度范围、深度剖面、两侧摆幅、气象缓变与累计增量按数据选择；不虚连换源/中断。 |
 | 11、23 磁贴 | 应用列表 → 该应用的真实样式预览 → 尺寸 → 应用；同一应用一块磁贴，旧重复项迁移合并。读数实时订阅，地图底图快照标记时间。 |
 | 12 全局单位 | 显示统一走 `DisplayFormats`；DD/DMM/DMS 编辑使用同一解析器；原始记录不随显示偏好改写。 |
 | 13、14 锚警 | 地图为主，下锚 → 定位置/范围 → 值守 → 起锚；最近轨迹渐隐，累计停留区域来自本次真实历史。 |
 | 17 设置 | 设置只管系统、个人偏好、船舶、权限、声音、资料备份和关于；手机与 NMEA 来源、手机定位和校准统一由数据中心管理；样式集中到磁贴工坊。 |
 | 18 来源与分享 | 船联网管理连接与发送，数据中心统一字段采用，数据共享管理本机服务；发布共用系统读数、能力选择、真实包过滤及逐 IP 防回送。 |
-| 19 通知 | 顶部轻提示 + 右侧通知键；中间是 Home。点击处理、横向清除只影响消息，不确认业务警报；四列快捷项及展开的会话操作读取真实系统状态；顶部下滑交给 Android。 |
+| 19 通知 | 独立消息 Binder 与 Shell 跟手面板；显示开关/来源连接导航分型，任务/警报/历史分离，可见已读、持久清除、中心返回链；右键通知、中键 Home、顶边下拉交给 Android。 |
 | 20 海图库 | 文件夹 / 命名图层 / 文件明确分层；创建、扫描、改名、启停、优先级、移除/恢复、解除关联和地图使用均有明确效果。 |
 | 24 数据结构 | 本文总图和边界表；各领域子契约细化字段、接口、事件与存储；`API_INDEX.md` 给出源码声明索引。 |
 | 25 全屏 | 系统栏和虚拟键贴近窗口边缘；顶部按圆角在内容高度的截面横向避让并处理挖孔，不用整页上下缩进；键盘独立抬升。曲面屏视觉最终以真机为准。 |
@@ -33,7 +35,8 @@ flowchart TB
         Catalog[AppId / ShellApp / LauncherCatalog]
         Nav[WpShellRuntime / LauncherEngine\n任务、内部路径、最近任务]
         Prefs[LauncherPersistedState\n系统偏好与开始布局]
-        Notices[SystemNotificationStore\n轻提示、历史、通知键]
+        Notices[SystemNotificationStore\n消息投影 / 轻提示]
+        Shade[NotificationShadeState\n触摸、位移、来路]
         Images[TaskSnapshotStore\n实际窗口截图]
     end
     subgraph Apps[应用]
@@ -43,6 +46,7 @@ flowchart TB
         Anchor[守锚]
         Sailing[我的航行]
         Gauges[驾驶台]
+        AisUI[AIS 雷达 / 海图 / 三维]
         DataCenter[数据中心]
         Nmea[船联网]
         Local[数据共享]
@@ -53,6 +57,7 @@ flowchart TB
     Nav --> Apps
     Prefs --> Nav
     Nav --> Images
+    Nav --> Shade
     Apps --> Notices
     Settings --> Prefs
     Tiles --> Prefs
@@ -60,6 +65,8 @@ flowchart TB
     Formats --> Apps
     subgraph Shared[共享业务状态]
         Marine[MarineSystem / MarineServices\n领域命令与只读投影]
+        Traffic[唯一 AIS 交通服务]
+        NoticeClient[NotificationClient\n主进程共享 Binder 客户端]
         Coordinator[VoyageSessionCoordinator\n全局航行命令与回执]
         Content[MarineContentService\n内容读取与事务边界]
         Voyage[VoyageSessionState / TripRuntime]
@@ -79,6 +86,8 @@ flowchart TB
     Marine --> Watch
     Sources --> Marine
     Sources --> Gauges
+    Sources --> Traffic
+    AisUI --> Traffic
     Sources --> DataCenter
     DataCenter --> SourcePolicy
     DataCenter --> PhonePolicy
@@ -106,19 +115,26 @@ flowchart TB
     Publish --> Wire[TCP / UDP / 本机 TCP clients]
     subgraph Storage[持久化事实]
         Room[(Room\n航行、轨迹、事件、锚泊、收藏)]
-        Json[(Atomic JSON\n坐标路线、海图目录、图源、通知)]
+        Json[(Atomic JSON\n坐标路线、海图目录、图源)]
         Store[(DataStore\nShell、来源、连接、分享策略)]
     end
     Voyage --> Room
     Watch --> Room
     Room --> Content
-    Content --> EventBridge[MarineNoticeBridge\n事件 ID、真实发生时间、持久游标]
-    EventBridge --> Notices
+    Content --> EventBridge[MarineNotificationEvents\n守锚 / AIS / 航行回执 / 待确认反馈]
+    Traffic --> EventBridge
+    EventBridge --> NoticeClient
+    Notices --> NoticeClient
+    subgraph NoticeProcess[同 APK / UID 的 notifications 子进程]
+        NoticeHost[NotificationBinderService] --> NoticeStore[NotificationRepository]
+        NoticeStore --> NoticeFile[(独占消息历史/游标/回执文件)]
+    end
+    NoticeClient -->|版本化 Binder| NoticeHost
+    NoticeClient -->|只读快照| Notices
     Saved --> Content --> Room
     Saved --> Json
     Charts --> Json
     Maps --> Json
-    Notices --> Json
     Prefs --> Store
     SourcePolicy --> Store
     PhonePolicy --> Store
@@ -127,13 +143,13 @@ flowchart TB
 
 箭头表示读写/订阅关系，不表示新建进程。后台业务不依赖哪个应用当前可见。通知、开始屏幕和应用内界面不能各维护一份“是否正在航行”的布尔开关。
 
-## 进程内系统执行边界（experience.7）
+## 海事进程内边界与通知 IPC
 
 实际依赖方向为 `app-shell → runtime:marine-local → legacy-marine/api + 既有执行层`，纯 `core:runtime-contract` 不依赖 Android 或 legacy。应用调用来源、航行、守锚、联网、分享、偏好、反馈、显示需求和内容九个领域端口；不直接取得 Controller、ViewModel 或业务 DAO。旧 `MainViewModel` 仅为未启用旧页面保留委托，不是新 Shell 的业务宿主。
 
 命令与活动航行由进程级运行时持有，关闭界面不撤销命令。设置的船名、几何、语言、声音和仪表布局按字段更新，不把调用者的旧配置全量写回来源设置。地图和驾驶台的临时传感器显示需求通过独立句柄取得/释放，不能替其他消费者撤销。
 
-这些边界当前运行于同一 APK、UID 与进程。`MainUiState` 和部分旧实体仍是兼容投影，不是可直接用于 Binder 的公开协议；Shell 坐标/路线和图册文件状态也尚未全部迁入系统层。完整实际依赖、生命周期和未完成项见 [10 · 已落代码的进程内系统边界](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)。
+海事端口仍运行于同一 APK/UID 的默认进程；通知通过实际客户端接到同包消息子进程。`MainUiState` 和部分旧实体仍是兼容投影，不是可直接用于 Binder 的公开协议；Shell 坐标/路线和图册文件状态也尚未全部迁入系统层。完整实际依赖、生命周期和未完成项见 [10 · 系统接入边界](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)。
 
 ## 全部应用对外边界
 
@@ -144,7 +160,8 @@ flowchart TB
 | 航海日志 | `voyages`、`voyage:<id>`、`replay:<id>`、`report:<id>` | 当前 `VoyageSessionState`、历史轨迹/事件/时刻 | 开始、暂停、继续、结束、时刻笔记、改名、导出、历史地图预览 | `TripSession / Sample / Event / Waypoint` |
 | 守锚 | `anchor` | 选中船位、锚点、警戒圈、近期轨迹、累计范围、警报 | 下锚、设点/半径、值守、暂停、起锚、收藏 | `AnchorSession`；收藏引用统一坐标 |
 | 我的航行 | `places`、`place:<id>`、`route:<id>`、`anchorage:<id>`、`collection:<id>` | 收藏坐标、锚地具体位置、集合、路线 | CRUD、GPX、预览、前往、编辑路线、集合整理 | `Place / Route` 与已有 Room anchorage 实体 |
-| 驾驶台 | `instruments` | 已采纳 `VesselObservation`、趋势、导航 | 选表、详情、增删/排序；需要改来源或校准时请求数据中心 | 只拥有显示布局；不切换连接或私建来源策略 |
+| 驾驶台 | `instruments`、`instruments:tab:<key>`、`instruments:metric:<id>` | 已采纳 `VesselObservation`、趋势、导航 | 选表、详情、增删/排序；需要改来源或校准时请求数据中心 | 只拥有显示布局；不切换连接或私建来源策略 |
+| AIS | `ais`、`ais:target:<mmsi>`、`ais:view:<view>:<mmsi>`、`ais:sources`、`ais:settings` | 同一目标、来源、时间、几何和风险快照 | 监控意图、目标筛选、警戒设置、对象跨视图查看；视图关闭不停止监控 | `MarineSystem.ais` 唯一交通服务；各页只持有视图状态 |
 | 数据中心 | `data_center`、`data_center:phone`、`data_center:<VesselMetricId>` | `VesselDataSnapshot.candidates` 全候选、已采纳观测、原来源策略、手机传感器 | `setVesselMetricSource`、船位来源选择、手机 GPS 启停、手机安装/校准 | 复用 `VesselSettingsRepository.metricSourcePins`、`GpsDataSource / POSITION_CONNECTION`；不创建新配置存储 |
 | 船联网 | `nmea`、`nmea:outputs` | 多连接、流量、输入报文、系统发布读数 | CRUD/连接/停止、发送能力与转发输入选择 | `NmeaConnectionSpec` 与连接运行意图；不拥有系统字段来源策略 |
 | 数据共享 | `local_nmea` | 本机监听状态、连接客户端、数据中心采纳结果、实际输出 | 设置端口、发布能力与转发输入、启动/停止 | `LocalNmeaServerSettings` 与 listener 生命周期；不再私有管理手机来源 |
@@ -162,9 +179,9 @@ flowchart TB
 - 当前船位下锚使用开始时可信船位，确认页也显示该语义和实时预览。两个开始入口共用 `anchorWatchInput`，估计模式不丢失锚链、水深及 UNKNOWN 状态。
 - 数据中心按指标展示 `snapshot.candidates` 中的所有来源及当前采纳结果，不按 NMEA 传输类型过滤掉手机。`MarineServices.sources.setVesselMetricSource` 是逐指标选源写入口，仍写原 `metricSourcePins`；船位沿用 `GpsDataSource`、`POSITION_CONNECTION` 与现有定位服务。手机安装与校准也写原模型。船联网只管连接和发送，数据共享只管监听与发布；发布内容选择不会重新仲裁来源。
 - `NmeaConnectionLeasePolicy` 只恢复同次开机中用户明确开启且未停止的连接；持久连接配置本身不是授权自动连接的开关。RAW 和 SYSTEM 待发批次携带真实来源代次，写出前再次校验。
-- `MarineNoticeBridge` 经内容端口订阅持久警报，以事件 ID 和真实发生时间写入 `SystemNotificationStore`。消息点击处理与横向移除都不调用警报 acknowledge，不暂停或结束业务会话；原警报事件继续留在业务记录中。持久游标防止已移除消息在重启时复活。
+- `MarineNotificationEvents` 经内容端口、AIS 服务和航行请求账本发布领域事件；待确认的运行时反馈持久发布完成后才消费，航行回执按同一 requestId 更新原卡。`NotificationClient` 接入唯一消息服务，消息、消费游标与有限回执一并持久化。消息已读/清除不调用警报 acknowledge，不暂停或结束会话；原领域事件继续独立保留。Shell 旧事件桥已退出。
 - 系统通知目的地与普通应用启动分开：已在同一具体页时只收起通知中心，已有目标页和调用链复用。数据中心、设置、航海日志登记实际局部路径，使“同页”比较不只看到应用根地址。
-- 通知中心首排日夜、手机 GPS、常亮、更多四列；展开后按活动航行/守锚状态显示暂停或恢复，手机姿态重新确认保留实际横倾。命令仍走原运行时，数据中心仍是唯一来源与安装管理入口。
+- 通知中心四格为夜间显示/常亮开关与船位来源/船舶连接导航，按宽度/字体统一尺寸。当前任务独立，更多入口不占格，手机安装回完整数据中心；未知任务结果保留原 requestId，不因面板关闭再发。
 - `InstrumentTrendCatalog` 白名单为 SOG、STW、COG、真船首向、水深、真/视风速、真/视风角、真风向、气压、气温、水温。只有实际读数或历史进入列表；缺少当前来源时保留历史并显示时间，不把历史方向当作实时罗盘。
 - 每次页面访问有独立 `savedUiStateKey`，地址相同不代表页面实例相同。跨应用对象访问保留调用者和目标原会话；`openLinked("chart")` 让地图完成后回原调用页。普通 `open` 首页是新访问，最近任务 `ActivateTask` 恢复已有页面；Home 结束跨应用调用链。任务图像最长边 1920px，卡片按原视口比例展示；上滑逐帧跟手，抬手判定位移和速度，不足则弹回。
 
@@ -174,8 +191,9 @@ flowchart TB
 | --- | --- | --- | --- |
 | `OsStore.open(destination)` | 应用根地址或对象地址 | Shell 命令 | 不直接给另一个 App 修改局部选中变量 |
 | `OsStore.openLinked(destination)` | 带调用关系的目标地址，例如 `chart` | `LauncherAction.Open(preserveCaller=true)` | 目标完成后恢复原调用页面实例；普通“打开应用”仍用 open |
-| `OsStore.openNotification(id)` | 消息 ID | 消费消息并定位目标，或只收起中心 | 不调用业务警报确认；无目的地消息也可消费 |
+| `OsStore.openNotification(id)` | 消息 ID | 标记已读并定位目标；无目标则中心详情 | 不自动删除/确认警报；新目标 Back 先恢复通知中心 |
 | `OsStore.openSystemDestination(destination)` | 通知或快捷项的目标地址 | 同页保留或复用目标页/调用关系 | 同一实际局部页不重启、不播放开场；普通桌面入口语义不变 |
+| `OsStore.retryContentRead / exportRecoveredContent` | 显式恢复/系统文件选择器 URI | 原文件重新读取、保留完整恢复副本、合并收藏/航线、真实导出 | 读取/版本失败时唯一写者拒绝覆写；不能以空资料假报恢复或重启会话 |
 | `WpShellRuntime.reportVisibleRoute(instanceKey,destination)` | 页面实例与实际局部地址 | 当前实例的可见路径 | 数据中心、设置、航海日志报告具体子页，避免仅凭根 token 错判目的地 |
 | `WpShellRuntime.open / openLinked / dispatch / input` | 根入口、`LauncherAction`、`ShellInput` | `LauncherEngine.state` | 普通首页创建新页面实例；对象和显式 linked 请求保留调用关系；最近任务用 ActivateTask |
 | `BindInternalAppInputHandler` | 当前画面的返回处理 | 是否消费按键 | `LocalInternalAppInputEnabled=false` 的离场画面不接键；内部工具/子页先处理 |
@@ -185,11 +203,13 @@ flowchart TB
 | `TaskSnapshotStore.bind / captureCurrent / retain` | 任务、窗口、实际内容区域 | `TaskSnapshot(bitmap,capturedAt)` | 使用 PixelCopy，失败保持旧图；不拿假 UI 代替真实预览 |
 | `updateSystemPreferences` | 当前持久化状态的变换 | DataStore -> 全局偏好 | 原子更新，不写第二份业务设置 |
 | `OsStore.notify` | 中英正文、AppId、级别、详情地址、去重键 | `SystemNotice` | 消息保留至用户消费/清除；业务警报事件另由所属业务保留；异步反馈明确发布 app |
-| `SystemNotificationStore.open / close / toggle / remove / clearAll / clearRead` | 通知中心操作 | 消息状态、最多 200 条记录 | 点击处理或横向清除只移除消息；业务警报确认与会话控制由显式独立命令完成；顶部不注册下滑手势 |
+| `NotificationShadeState.open / close / toggle / dragBy / release / attachHost` | Shell 面板操作和 Compose 动画宿主 | 阶段、真实偏移、触摸与访问快照 | 使用宿主帧时钟；与消息/任务状态分离，真实关闭且触摸结束才放开输入 |
+| `NotificationClient.execute / result` | `NoticeCommand`、原 requestId | 持久结果及 epoch/revision 快照 | 消息读/清与业务确认分离；未知结果不自动重发 |
+| `SystemNotificationStore.markRead / remove / clearAll / clearRead / retryPersistence / recheckPending` | 真实消息操作及未知请求查询 | Binder 客户端投影、最多 200 条历史 | 无文件写者、无 expanded、无领域游标；失败保留记录，UNKNOWN 不换 ID 重发 |
 | `formatDistance / Speed / Depth / Bearing / Angle / Temperature / Coordinates / Metric` | 内部规范数值 | 当前全局格式字符串 | 缺测显示 —；不伪造 0；不更改保存值 |
 | `formatLatitude / Longitude / parseCoordinate` | 当前格式与用户文字 | 十进制度或 null | 支持 DD/DMM/DMS，范围和方向校验，分秒不得 ≥60 |
 
-`SystemNotice` 字段：`id` 稳定通知身份；`app` 发布者；`chinese/english` 双语正文；`createdAt` UTC 毫秒；`severity` 信息/警告/警报；`destination` 可选明确对象；`read` 已读；`key` 去重语义键；`occurrences` 同一短时事件次数。新增领域警报与运行时服务反馈保存中英文原文。升级前已保存的单语历史保留当时原文，不凭空重译。
+`NoticeRecord` 是真实消息契约：稳定 id/publisher、结构化 `NoticeText`、UTC 首次/最近时间、level、`NoticeTarget`、domainEventId、aggregationKey、category、dismissible、read 与 occurrences。`SystemNotice` 仅为 Shell 双语兼容投影，旧文本完整保留为正文，不按标点猜标题。协议、能力、错误、分页和迁移见 [通知契约](NOTIFICATION_CENTER_CONTRACT.md)。
 
 `GeoPoint` 的 lat/lon 为 WGS84 十进制度。`Place` 包含 id/name/point/note/kind/collection，kind 为 MARK/ANCHORAGE/MARINA/HAZARD。`Route` 包含稳定 id、名称、有序 points；`navigationRoute` 是启动时冻结的版本，`displayedRouteId` 只是地图预览。保存与导航、显示不是同一动作。
 
@@ -202,6 +222,7 @@ flowchart TB
 - [仪表与应用磁贴契约](INSTRUMENT_TILE_CONTRACT.md)：数据质量、实时订阅、布局结构、样式与去重迁移。
 - [数据中心契约](DATA_CENTER_CONTRACT.md)：全部来源候选、唯一选源策略、手机定位与安装校准、连接和发布边界。
 - [应用导航契约](APP_NAVIGATION_CONTRACT.md)：普通首页、对象请求、调用者恢复、页面实例与最近任务。
+- [通知中心契约](NOTIFICATION_CENTER_CONTRACT.md)：消息/任务/警报、手势与可见已读、来路、Binder 与持久化。
 - [源码接口索引](API_INDEX.md)：生产入口、模型、接口与公开方法的实际声明位置；以链接代码为准。
 
 ## 全屏与视觉资产

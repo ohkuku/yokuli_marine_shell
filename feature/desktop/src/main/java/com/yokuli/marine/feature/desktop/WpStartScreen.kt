@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.design.wpThemeModeName
 import com.yokuli.marine.core.design.wpTileAccentName
@@ -370,12 +371,27 @@ fun YokuliStartScreen(
                         )
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 3.dp), horizontalArrangement = Arrangement.End) {
-                    Box(
-                        Modifier.size(YokuliMetrics.MinTouch).testTag("all-apps-entry").combinedNoRipple {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), horizontalArrangement = Arrangement.End) {
+                    Row(
+                        Modifier.testTag("all-apps-entry").combinedNoRipple {
                             if (editing) onAction(LauncherUiAction.ExitStartEdit) else onAction(LauncherUiAction.ShowAllApps)
-                        }, contentAlignment = Alignment.Center,
-                    ) { MarineIcon(MarineIconKind.APPS, colors.foreground, Modifier.size(28.dp)) }
+                        }.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        WpText(stringResource(if (editing) R.string.start_done else R.string.start_all_apps), 15)
+                        Box(Modifier.size(YokuliMetrics.MinTouch), contentAlignment = Alignment.Center) {
+                            Canvas(Modifier.size(24.dp)) {
+                                val stroke = size.minDimension * .0625f
+                                if (editing) {
+                                    drawLine(colors.foreground, Offset(size.width*.18f, size.height*.50f), Offset(size.width*.40f, size.height*.72f), stroke)
+                                    drawLine(colors.foreground, Offset(size.width*.40f, size.height*.72f), Offset(size.width*.83f, size.height*.25f), stroke)
+                                } else {
+                                    drawLine(colors.foreground, Offset(size.width*.18f, size.height*.50f), Offset(size.width*.82f, size.height*.50f), stroke)
+                                    drawLine(colors.foreground, Offset(size.width*.55f, size.height*.23f), Offset(size.width*.82f, size.height*.50f), stroke)
+                                    drawLine(colors.foreground, Offset(size.width*.82f, size.height*.50f), Offset(size.width*.55f, size.height*.77f), stroke)
+                                }
+                            }
+                        }
+                    }
                 }
             }
             if (controls != null && selectedTile != null) {
@@ -469,8 +485,8 @@ private fun WpTileEditOverlay(controls: TileEditControls, compact: Boolean, onUn
             contentAlignment = Alignment.Center,
         ) {
             Box(
-                Modifier.size(if (compact) 28.dp else 30.dp).background(colors.background, CircleShape)
-                    .border(1.dp, colors.foreground, CircleShape)
+                Modifier.size(if (compact) 30.dp else 32.dp).background(colors.background)
+                    .border(1.dp, colors.foreground)
                     .then(if (resize) Modifier.testTag("resize-affordance-disc") else Modifier),
                 contentAlignment = Alignment.Center,
             ) {

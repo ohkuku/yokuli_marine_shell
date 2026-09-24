@@ -364,6 +364,7 @@ class LegacyMarineController @Inject constructor(
     private val tripDashboardRepository:TripDashboardRepository,
     private val tripReportEngine:TripReportEngine,
     private val anchorReportEngine:AnchorReportEngine,
+    private val voyageCommands:com.yokuli.anchorwatch.runtime.VoyageCommandRegistry,
 ) {
     private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     /**
@@ -1295,6 +1296,30 @@ class LegacyMarineController @Inject constructor(
         ContextCompat.startForegroundService(app,intent)
     }
     fun stopSonarSurvey()=app.startService(Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.STOP_SONAR_SURVEY))
+    val voyageCommandResults get() = voyageCommands.commands
+    fun recheckVoyageCommand(requestId:String) {
+        if(voyageCommands.get(requestId)?.terminal != false)return
+        try {
+            ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java)
+                .setAction(com.yokuli.anchorwatch.runtime.VoyageCommandRegistry.QUERY_ACTION)
+                .putExtra(com.yokuli.anchorwatch.runtime.VoyageCommandRegistry.EXTRA_ID,requestId))
+        } catch(error:Exception) { voyageCommands.unknown(requestId,"QUERY_DELIVERY_FAILED") }
+    }
+    fun requestVoyageCommand(request:com.yokuli.runtime.contract.VoyageRequest):String {
+        if(voyageCommands.register(request)) {
+            val intent=Intent(app,AnchorForegroundService::class.java)
+                .setAction(com.yokuli.anchorwatch.runtime.VoyageCommandRegistry.ACTION)
+                .putExtra(com.yokuli.anchorwatch.runtime.VoyageCommandRegistry.EXTRA_ID,request.requestId)
+            try {
+                if(request.action in setOf(com.yokuli.runtime.contract.VoyageAction.START,com.yokuli.runtime.contract.VoyageAction.RESUME))
+                    ContextCompat.startForegroundService(app,intent)
+                else if(app.startService(intent)==null) voyageCommands.finish(request.requestId,com.yokuli.runtime.contract.VoyageRequestStatus.FAILED,"RUNTIME_UNAVAILABLE")
+            } catch(error:Exception) {
+                voyageCommands.finish(request.requestId,com.yokuli.runtime.contract.VoyageRequestStatus.FAILED,"COMMAND_DELIVERY_FAILED")
+            }
+        }
+        return request.requestId
+    }
     fun startTrip(name:String,phoneMotionEnabled:Boolean,positionPreference:VesselSourcePreference=_ui.value.vesselSettings.positionPreference)=controllerScope.launch{
         val safePreference=when(_ui.value.settings.gpsDataSource){GpsDataSource.SYSTEM->VesselSourcePreference.PHONE;GpsDataSource.NMEA->VesselSourcePreference.BOAT;else->null}
         if(safePreference==null){_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Choose Phone GPS or NMEA before recording a trip."))};return@launch}

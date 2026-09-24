@@ -58,6 +58,10 @@ interface DataSourceService : MarineStateReader {
 
 /** 所有应用控制同一个航行会话；查看、导出和编辑也由航行领域执行。 */
 interface VoyageService : MarineStateReader {
+    /** 实际执行者持有的请求结果；读取或重开页面不会创建命令。 */
+    val commandResults: StateFlow<List<com.yokuli.runtime.contract.VoyageCommandReceipt>>
+    fun requestCommand(request: com.yokuli.runtime.contract.VoyageRequest): String
+    fun recheckCommand(requestId: String)
     fun startTrip(name: String, phoneMotionEnabled: Boolean, positionPreference: VesselSourcePreference = state.value.vesselSettings.positionPreference): Job
     fun pauseTrip(): ComponentName?
     fun resumeTrip()

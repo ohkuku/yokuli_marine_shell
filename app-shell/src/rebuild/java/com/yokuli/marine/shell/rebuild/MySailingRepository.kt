@@ -5,6 +5,9 @@ import com.yokuli.anchorwatch.api.MarineContentService
 import com.yokuli.anchorwatch.data.database.AnchorSessionEntity
 import com.yokuli.anchorwatch.data.database.entity.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 
 /** 我的航行读写门面：旧锚地走内容端口，Shell 坐标与计划航线走文件回执；沿用原 ID 和关系。 */
@@ -28,18 +31,32 @@ class MySailingRepository(private val os: OsStore) {
         Place("spot:${spot.id}",if(spot.name in listOf("Main spot","Chart reference")) parent.displayName else "${parent.displayName} · ${spot.name}",
             GeoPoint(spot.latitude,spot.longitude),listOf(parent.personalNotes,spot.approachNotes,spot.personalNotes).filter(String::isNotBlank).distinct().joinToString("\n"),PlaceKind.ANCHORAGE)
     }
-    init {
-        os.scope.launch {
-            runCatching {
-                content.library.collect { catalog ->
-                    locations = catalog.places
-                    spots = catalog.spots
-                    collections = catalog.collections
-                    archivedLocations = catalog.archivedPlaces
-                    loaded = true
-                    error = false
-                }
-            }.onFailure { if (it is CancellationException) throw it; error = true; loaded = true }
+    private var catalogSubscription: Job? = null
+    init { observeCatalog() }
+
+    /** 只恢复内容订阅，不重建仓库、不清空已读资料，也不重新提交任何写入。 */
+    fun retryLoading() {
+        if (error) observeCatalog()
+    }
+
+    private fun observeCatalog() {
+        catalogSubscription?.cancel()
+        catalogSubscription = os.scope.launch {
+            content.library.retryWhen { cause, attempt ->
+                if (cause is CancellationException) throw cause
+                error = true
+                loaded = true
+                // 暂时的存储故障不会永久终止进程级目录订阅；同时避免紧密重试占用资源。
+                delay((1_000L shl attempt.coerceAtMost(5).toInt()).coerceAtMost(30_000L))
+                true
+            }.collect { catalog ->
+                locations = catalog.places
+                spots = catalog.spots
+                collections = catalog.collections
+                archivedLocations = catalog.archivedPlaces
+                loaded = true
+                error = false
+            }
         }
     }
     suspend fun bundle(id: Long) = content.bundle(id)

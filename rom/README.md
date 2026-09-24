@@ -16,6 +16,12 @@
 | 环境、产品包、构建与验收 | [07 · 构建手册](../docs/os/07-BUILD-AND-VALIDATION.md) |
 | 从桌面到 OS 的交付顺序 | [08 · 路线与门槛](../docs/os/08-ROADMAP-AND-ACCEPTANCE.md) |
 
+## 当前应用侧系统接入
+
+普通 APK 与 ROM HOME 共用 `app-shell/src/rebuild` 和同一海事实现。通知已通过实际 `NotificationClient` → `NotificationBinderService` 进入同包 `:notifications`，协议 1.0、非导出且检查真实同 UID，Application 按角色不在消息进程重建海事资源。消息历史只有一份写者；服务/客户端的版本、重连与持久化边界见 [10 · 系统接入](../docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md) 和 [通知契约](../docs/product/NOTIFICATION_CENTER_CONTRACT.md)。
+
+该 service 来自现有 runtime 模块 Manifest 合并，仍随同一个 APK 交付，不新增独立产品包或平台签名权限。海事核心、导航、完整 SystemUI/Recents、独立 UID、AVB/OTA 和真机/BSP 尚未迁移完成；本轮不构建/运行 AOSP 镜像，不把 APK 编译等同于设备可刷入。
+
 ## 实际配置
 
 - 固定 AOSP `android-16.0.0_r4`，与现有 Android 16 / SDK 36 应用基线一致。它是集成验证基线，**不是当前最新安全版本**；联网产品发布前须完成安全版本升级。

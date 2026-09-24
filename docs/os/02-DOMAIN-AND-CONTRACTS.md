@@ -1,6 +1,6 @@
 # 02 · 领域所有权、数据字典与服务协议
 
-状态：**R1 内部协议设计，尚无已实现的 IPC 服务**；对第三方公开 SDK 属于 R5。阶段统一见 [08 · 交付顺序与验收门槛](08-ROADMAP-AND-ACCEPTANCE.md)。现有 Kotlin 类型继续以 [源码接口索引](../product/API_INDEX.md) 为准。本章代码块是可评审的 schema 草案，不是编译进 APK 的声明。领域边界先在同进程适配，验证后再迁移 Binder。
+本章同时维护**当前所有权/接入路径**与**后续全域协议设计**。通知领域已通过版本化 Binder 接入同包消息进程，完整海事运行时及第三方 SDK 仍未迁移；具体边界见 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。下方标为“计划”的通用 schema 仍是设计，不能冒充已编译声明。实际签名以 [API 索引](../product/API_INDEX.md) 和链接生产代码为准。
 
 ## 一份事实对应一个所有者
 
@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | 原始输入、连接身份及代次 | `NmeaConnectionStore`、连接运行时；手机 repository | Marine Core 的 InputRegistry/Transport 模块 | 船联网管理连接；数据中心查看来源 |
 | 字段选源、候选、可信读数 | `VesselSettingsRepository`、`VesselSourceRegistry / VesselDataHub`、`AcceptedPositionRepository` | Marine Core 的 SourcePolicy/DataHub 模块 | 数据中心修改；其他应用和分享只读 |
-| 手机安装、方向校准、定位意图 | `AppSettings / VesselMountCalibrationRepository` 与资源运行时 | Marine Core 的 DeviceInputPolicy 模块 | 数据中心；通知中心只代理现有命令 |
+| 手机安装、方向校准、定位意图 | `AppSettings / VesselMountCalibrationRepository` 与资源运行时 | Marine Core 的 DeviceInputPolicy 模块 | 数据中心；通知中心只导航到数据中心，不直接执行校准 |
 | 航行会话、样本、事件 | `TripRuntime` + Room | Voyage 模块 | 海图/日志/快捷项都是同一组命令 |
 | 守锚会话、锚点、范围与告警 | `AnchorWatchRuntime` + Room | Anchor 模块 | 守锚主界面；Shell/地图仅反映状态 |
 | 活动导航及冻结路线版本 | `OsStore.activeRouteId/navigationRoute` + JSON | Navigation 模块；R0 保持现状 | 海图和我的航行启动；其他应用只读 |
@@ -17,7 +17,7 @@
 | 对外发送与本机监听 | 连接输出配置、`LocalNmeaServerSettingsRepository` | Publication 模块；每个目的地独立策略 | 船联网管理远端；数据共享管理本机服务器 |
 | 船名、单位、校准等领域偏好 | 现有 DataStore repositories | VesselPreferences；原子更新 | 设置/数据中心按字段授权 |
 | 语言、主题、文字大小、磁贴与布局 | `LauncherPersistedState` / Shell preferences | Shell preference store | 设置与磁贴工坊；不另存同名字段 |
-| 领域事件与 UI 消息 | 业务 Room 事件 / `SystemNotificationStore` | 领域留事件；Shell 留消费游标和消息视图 | 点击清除 UI 消息不确认警报 |
+| 领域事件与通知历史 | 业务 Room/AIS 事件；消息子进程 `NotificationRepository` | 原领域留警报与任务；消息服务单写历史、已读、聚合与消费游标；Shell 只拥有面板/提示 | `NotificationClient` 发布/订阅/清除；清除不确认警报 |
 | 页面、返回链、地图视口与草稿 | Shell task state、各应用 saveable state | Shell / 所属应用 | 不写入航行或守锚的运行状态 |
 
 多个模块可以位于同一个 Marine Core 进程。表格划分的是写入权限，不要求每行建立数据库、服务或远程 API。
@@ -201,7 +201,7 @@ data class DomainError(
 | `SailingContentPort` | list/getPlaces、list/getRoutes、getCollections | CRUD、import/export；地图预览属于 UI 请求不启动业务 |
 | `ChartCatalogPort` | listFolders/files/layers、subscribeScan | grantFolder、scan、rename、reorder、enable、unlink、deleteOwnedCache |
 | `PreferencePort` | getPreferences、observeRevision | patchOwnNamespace；范围/来源等不借通用 preference 绕过领域校验 |
-| `EventPort` | eventsAfterCursor、subscribeEventHint | UI 消费由 Shell 保存游标；领域 acknowledge 是 AnchorPort 命令 |
+| `EventPort` | eventsAfterCursor、subscribeEventHint | 计划中的领域消费游标由对应消费者所有者保存；本轮通知游标实际由消息服务单写，Shell 只保存画面状态；领域 acknowledge 是 AnchorPort 命令 |
 | `HealthPort` | storage/network/provider/runtime health、redactedSupportBundle | exportDiagnostics；无远程 shell、任意路径读取或数据库执行 |
 
 Shell 自己保留 `open / openLinked / openSystemDestination / back / home`，不由 Marine Core 管理 Compose 页面栈。外部应用地址要求 `appId + destination + objectId + callerContinuation`，路由注册白名单验证对象权限，不能把任意字符串当 Intent URI 执行。
@@ -215,3 +215,21 @@ Shell 自己保留 `open / openLinked / openSystemDestination / back / home`，�
 - 数据库 schemaVersion、IPC protocolVersion、ROM buildVersion 分别演进。兼容适配不能借一个数字掩盖三个不同契约。升级前记录三者及数据备份校验信息。
 
 Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代本章的业务兼容、caller 权限和迁移规则。[AOSP Stable AIDL](https://source.android.com/docs/core/architecture/aidl/stable-aidl)
+
+## 新功能接入路径
+
+这是现有架构上的实施指南，不另建示例框架。先从 [真实系统边界](10-INPROCESS-SYSTEM-BOUNDARIES.md) 确认旧路径与当前适配，不能只依据上文拟议的 `*Port` 名称实现。
+
+1. **明确任务和所有者。** 写清用户完成什么、空值/错误/中断怎么结束；选择已有领域所有者。通知不是警报所有者，分享不是选源所有者，地图预览不是导航/记录会话。
+2. **扩展窄契约。** 以不可变类型声明稳定对象 ID、规范单位、时间基准、来源、质量、revision/epoch 和能力原因。命令说明 requestId、必要 expectedRevision、结果是否只是受理或已持久化。历史与原始流走有界分页，不加入高频全系统快照。暂时保留的 legacy DTO 只供原迁移消费者；新远程接口不继续暴露它们。
+3. **唯一执行入口。** 新执行由原 runtime/repository 实现。通过 `MarineSystem`/对应客户端接线，再替换所有真实入口；旧直连调用退出，兼容桥写明剩余调用者和撤除条件。不能既保留本地写文件又让远程服务写同一文件。
+4. **发布真实事件。** 使用领域稳定事件 ID、首次/最近时间、对象描述与结构化标题正文。消息服务聚合与存储，Shell 本地化及呈现。活动任务读取原会话；业务确认/暂停由原命令协调器处理。
+5. **接入真实页面。** 在实际 `app-shell/src/rebuild` 中注册并使用现有页面/地图/仪表组件。`ReportVisibleAppRoute` 报告实际子页；跨应用对象走明确地址与保存调用者的访问。地图、AIS 雷达/三维只读同一对象；历史图不注入当前船位/实时目标。相机和未提交草稿保留在页面实例。
+6. **补齐平台与生命周期。** 传感器或网络交由已授权 adapter，不在 Composable 开 socket。显示需求申请自己的 `DisplayLease`，不可见/关闭释放；长期命令不依赖页面 scope。权限拒绝、服务死锁/断连、数据过期、存储失败都有真实可恢复状态。
+7. **同步接口与边界。** 更新本章所有者、通知/来源/导航子契约及 API 索引；若改进程、协议或平台装配，一并改 03/05/10 与 ROM 入口。只在真实客户端已接通时记录迁移完成；必要编译不能当作设备能力证明。
+
+### 已接入的通知示例
+
+纯类型在 `core:runtime-contract/.../notification/NotificationContract.kt`。消息发布为 `NotificationClient.execute(NoticeCommand(...))`，读方订阅 `snapshot` 和 `connection`；`NoticeTarget(domain, objectType, objectId, section)` 传对象描述，Shell 才把它映射为已有白名单地址。请求与结果都保留 requestId；`COMPLETED` 指落盘完成，`UNKNOWN` 通过 `result(requestId)` 查询原请求，不能自动重新发布。真实消费者为 `SystemNotificationStore` 与 `NotificationCenter`，详情见 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。
+
+此模式不是要求新功能都走通知 Binder：守锚仍使用自身命令回执，AIS 仍使用唯一交通服务，导航仍需另行迁出 Shell。它说明契约、真实执行、客户端和旧路径退出必须一起完成。

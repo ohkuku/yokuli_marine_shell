@@ -15,10 +15,20 @@ import com.yokuli.marine.shell.rebuild.ui.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /** The original Shell owns task history, Start editing and navigation. Apps only publish destinations. */
 class WpShellRuntime(private val os: OsStore) {
     val inputRouter = InternalAppInputRouter()
+    private val preferenceResults = MutableStateFlow<List<SystemPreferenceCommand>>(emptyList())
+    val preferenceCommands = preferenceResults.asStateFlow()
+    // 覆盖层是访问上下文，不伪装成最近任务，也不把页面实例写进消息数据库。
+    private data class ShadeReturn(val callerKey: String?, val callerSurface: ShellVisualSurface,
+        val presentation: NotificationShadePresentation, var entered: Boolean = false)
+    private var shadeReturn: ShadeReturn? = null
     val apps = AppId.entries.map(::ShellApp)
     val presets = tilePresets()
     val appPreferenceRegistry = AppPreferenceRegistry.compose(apps.map {it.id}.toSet(),tilePreferenceContributions(apps))
@@ -72,7 +82,7 @@ class WpShellRuntime(private val os: OsStore) {
                 val current=(engine.state.value.surface as? ShellVisualSurface.Module)?.taskId
                 // 只有离开应用才拍最近任务图；应用内进退页不等待 PixelCopy，也不切换截图。
                 if(current!=null && leavesTask(action, current)) {
-                    snapshots.captureCurrent(current,engine.state.value.tasks.task(current)?.currentUiStateKey){os.notifications.canCaptureApp}
+                    snapshots.captureCurrent(current,engine.state.value.tasks.task(current)?.currentUiStateKey){!os.notificationShade.blocksInput}
                     engine.state.value.tasks.task(current)?.let { task ->
                         snapshots.images[current]?.takeIf {it.pageInstanceKey==task.currentUiStateKey}
                             ?.let { retainPageSnapshot(task.currentUiStateKey, it) }
@@ -117,6 +127,15 @@ class WpShellRuntime(private val os: OsStore) {
         }
         os.scope.launch {
             engine.state.collect { state ->
+                shadeReturn?.let { visit ->
+                    val key = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId)?.currentUiStateKey }
+                    val atCaller = if (visit.callerKey == null) state.surface == visit.callerSurface else key == visit.callerKey
+                    if (!atCaller) visit.entered = true
+                    else if (visit.entered) {
+                        shadeReturn = null
+                        os.notificationShade.open(visit.presentation)
+                    }
+                }
                 os.page = when (val surface = state.surface) {
                     ShellVisualSurface.Desktop, ShellVisualSurface.ModuleList -> "start"
                     ShellVisualSurface.Recents -> "sessions"
@@ -164,9 +183,24 @@ class WpShellRuntime(private val os: OsStore) {
     private fun restoredPageSnapshot(key: String): TaskSnapshot? =
         pageSnapshots.remove(key)?.also { pageSnapshots[key] = it }
 
+    fun requestSystemPreferences(key: String, transform: (LauncherPersistedState) -> LauncherPersistedState): String {
+        preferenceResults.value.lastOrNull { it.key == key && it.status == SystemPreferenceStatus.PENDING }?.let { return it.requestId }
+        val id = uid()
+        preferenceResults.update { (it.filterNot { result -> result.key == key } + SystemPreferenceCommand(id, key, SystemPreferenceStatus.PENDING)).takeLast(32) }
+        os.scope.launch {
+            try {
+                persistence.updatePreferences(transform)
+                preferenceResults.update { values -> values.map { if (it.requestId == id) it.copy(status = SystemPreferenceStatus.SAVED) else it } }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                preferenceResults.update { values -> values.map { if (it.requestId == id) it.copy(status = SystemPreferenceStatus.FAILED, error = error.message?.take(200)) else it } }
+                os.notify("设置未保存，请重试", "Settings were not saved. Please retry.", app = AppId.SETTINGS)
+            }
+        }
+        return id
+    }
     fun updateSystemPreferences(transform: (LauncherPersistedState) -> LauncherPersistedState) {
-        os.scope.launch { runCatching { persistence.updatePreferences(transform) }
-            .onFailure { os.notify("设置未保存，请重试","Settings were not saved. Please retry.") } }
+        requestSystemPreferences("settings:" + uid(), transform)
     }
 
     fun canonicalPage(page: String): String = when {
@@ -203,6 +237,23 @@ class WpShellRuntime(private val os: OsStore) {
     fun visibleRouteForTask(task: InternalAppTask): String =
         visiblePageRoutes[task.currentUiStateKey] ?: pageForToken(task.lastLaunchToken)
 
+    /** 目标回到这次访问入口后，先还原中心，再由用户收起回原页面。 */
+    fun openFromNotification(destination: String) {
+        val page = canonicalPage(destination)
+        if (appForPage(page) == null) { os.notificationShade.showDetail("unavailable"); return }
+        val state = engine.state.value
+        val current = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId) }
+        val same = current != null && (visibleRouteForTask(current) == page ||
+            appForPage(page)?.let { it.page == page && it.id == current.appId } == true)
+        val presentation = os.notificationShade.presentation
+        os.notificationShade.close {
+            if (!same) {
+                shadeReturn = ShadeReturn(current?.currentUiStateKey, state.surface, presentation)
+                openSystemDestination(page)
+            }
+        }
+    }
+
     fun openSystemDestination(destination: String) {
         val page = canonicalPage(destination)
         val app = appForPage(page) ?: return
@@ -230,6 +281,8 @@ class WpShellRuntime(private val os: OsStore) {
 
     fun open(destination: String, linked: Boolean = false) {
         val page=canonicalPage(destination)
+        // 深入本次访问的对象/子页仍保留通知返回链；独立应用首页入口才结束它。
+        if (!linked && (page in setOf("start", "search", "sessions") || appForPage(page)?.page == page)) shadeReturn = null
         when (page) {
             "start" -> home()
             "search" -> input(ShellInput.SEARCH)
@@ -244,6 +297,9 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     fun dispatch(action:LauncherAction) {
+        if (action is LauncherAction.ActivateTask || action is LauncherAction.CloseTask || action in listOf(
+            LauncherAction.ShowDesktop, LauncherAction.ShowStart, LauncherAction.ShowAllApps,
+            LauncherAction.ShowRecents, LauncherAction.OpenSearch)) shadeReturn = null
         val navigates=action is LauncherAction.Open || action is LauncherAction.ActivateTask || action is LauncherAction.PinEntry ||
             action in listOf(LauncherAction.Back,LauncherAction.ShowDesktop,LauncherAction.ShowRecents,LauncherAction.OpenSearch,LauncherAction.ShowStart,LauncherAction.ShowAllApps)
         // 在离开海图的操作发起时保存；另一应用准备自己的海图请求以后不可反向覆盖原访问。
@@ -310,17 +366,26 @@ class WpShellRuntime(private val os: OsStore) {
     fun popRoute() = dispatch(LauncherAction.Back)
     fun home() { input(ShellInput.DESKTOP); os.save() }
     fun input(input: ShellInput) {
-        if (os.notifications.expanded) {
-            os.notifications.close()
-            if (input == ShellInput.BACK) return
+        if (os.notificationShade.blocksInput) {
+            if (input == ShellInput.DESKTOP) {
+                shadeReturn = null
+                os.notificationShade.close()
+                dispatch(LauncherAction.ShowDesktop)
+            } else if (input == ShellInput.BACK) {
+                if (!inputRouter.dispatch(input)) os.notificationShade.back()
+            } else if (input == ShellInput.SEARCH) os.notificationShade.toggle()
+            // 长按 Back 等其他输入也不穿透可见覆盖层。
+            return
         }
+        if (input == ShellInput.DESKTOP) { shadeReturn = null; dispatch(LauncherAction.ShowDesktop); return }
         if (inputRouter.dispatch(input)) return
         if (input == ShellInput.BACK && os.page == "chart" && os.showCrosshair) {
             os.showCrosshair = false
             return
         }
         if(input==ShellInput.BACK&&atUnlinkedAppRoot()) {
-            dispatch(LauncherAction.ShowDesktop)
+            if (shadeReturn?.let { it.entered && it.callerKey == null } == true) navigationQueue.trySend(LauncherAction.ShowDesktop)
+            else dispatch(LauncherAction.ShowDesktop)
             return
         }
         dispatch(input.toShellAction())

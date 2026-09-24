@@ -28,8 +28,8 @@ import com.yokuli.marine.shell.rebuild.chart.*
 fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) {
     val c=LocalMetro.current
     Dialog(onDismissRequest=onDismiss) {
-        Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(c.bg).border(1.dp,c.muted).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-            Label(os.t("地图来源","map source"),40)
+        AppDialogSurface {
+            AppDialogTitle(os.t("地图来源","Map source"))
             fun choose(source:MapSource) {os.maps.select(source);onDismiss()}
             Column(Modifier.selectableGroup()) {
                 for(source in listOf(MapSource.Offline,MapSource.Satellite)) {

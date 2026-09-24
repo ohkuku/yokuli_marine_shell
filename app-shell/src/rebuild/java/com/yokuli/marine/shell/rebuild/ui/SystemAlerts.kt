@@ -3,6 +3,8 @@ package com.yokuli.marine.shell.rebuild.ui
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.yokuli.runtime.contract.AnchorCommandStatus
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,10 +26,33 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     }}.collectAsState(services.state.value)
     val tick=rememberMarineClock();val now=remember(tick){System.currentTimeMillis()}
     val active=state.active;val alarm=state.alarmSnapshot;val c=LocalMetro.current
+    val monitor = os.marine?.system?.anchorCommands ?: return
+    val commands by monitor.commands.collectAsState()
+    val pending = commands.lastOrNull { !it.terminal }
+    var pauseSession by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pauseDestination by rememberSaveable { mutableStateOf<String?>(null) }
+    var requestId by rememberSaveable { mutableStateOf<String?>(null) }
+    var feedback by rememberSaveable { mutableStateOf<String?>(null) }
+    // 回执独立于警报 Dialog 是否仍显示；先等运行时和值守投影确认，再导航。
+    LaunchedEffect(commands, active?.id, active?.paused, requestId) {
+        val result = commands.firstOrNull { it.commandId == requestId } ?: return@LaunchedEffect
+        if(result.status == AnchorCommandStatus.CONFIRMED) {
+            if(result.type == com.yokuli.runtime.contract.AnchorCommandType.PAUSE &&
+                active?.let { it.id == result.sessionId && it.paused } != true) return@LaunchedEffect
+            val destination = pauseDestination
+            requestId = null
+            pauseDestination = null
+            if(destination != null) os.openSystemDestination(destination)
+        } else if(result.terminal) {
+            feedback = os.t("操作未完成，当前值守状态没有得到确认。", "The action did not complete; the current watch state was not confirmed.")
+            requestId = null
+            pauseDestination = null
+        }
+    }
     val testing=alarm.type==AlarmType.ALARM_TEST&&alarm.state==AlarmState.ALARM
     Box(Modifier.fillMaxSize()) {
         if(testing)Column(Modifier.align(Alignment.TopCenter).padding(12.dp).fillMaxWidth().background(c.bg).border(2.dp,c.accent).padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            Label(os.t("警报测试正在响铃","alarm test is sounding"),25,c.accent)
+            AppSection(os.t("警报测试正在响铃","Alarm test is sounding"))
             MetroButton(os.t("我能听见，停止测试","I can hear it · stop test"),{services.preferences.confirmAlarmAudible();services.preferences.stopAlarmTest()},primary=true)
             MetroButton(os.t("停止测试","stop test"),services.preferences::stopAlarmTest)
         }
@@ -89,15 +114,47 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val primary=SafetyAlertAggregator.sorted(alerts.map{SafetyAlert(it.source,it.severity,it.sortKey,it.detail)}).firstOrNull()?.let{sorted->alerts.first{it.source==sorted.source}}?:return
     var end by remember(active.id){mutableStateOf(false)}
     Dialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false)) {
-        Column(Modifier.fillMaxWidth().heightIn(max=670.dp).background(c.bg).border(2.dp,Color(0xFFD04848)).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-            Label(primary.title,32,Color(0xFFD04848));Label(primary.value,42);Label(primary.detail,20)
-            alerts.filter{it!=primary}.forEach{Label("${it.title} · ${it.value}",18,c.muted)}
+        AppDialogSurface {
+            Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                Glyph("warning",Modifier.size(24.dp),Color(0xFFD04848))
+                AppDialogTitle(primary.title,Modifier.weight(1f))
+            }
+            Label(primary.value,42)
+            Label(primary.detail)
+            alerts.filter{it!=primary}.forEach{Label("${it.title} · ${it.value}",15,c.muted)}
             MetroButton(os.t("${state.settings.alarmSnoozeMinutes} 分钟后提醒","snooze ${state.settings.alarmSnoozeMinutes} min"),services.anchor::acknowledge,primary=true)
-            MetroButton(os.t("稍后提醒并查看锚警","snooze & open anchor watch"),{services.anchor.acknowledge();os.open("anchor")})
-            MetroButton(os.t("暂停并处理数据来源","pause & check data sources"),{services.anchor.pauseWatch();os.open("nmea:sources")})
-            MetroButton(os.t("暂停锚警","pause watch"),services.anchor::pauseWatch)
-            MetroButton(os.t("起锚并结束值守","lift anchor & end watch"),{end=true})
+            MetroButton(os.t("稍后提醒并查看锚警","snooze & open anchor watch"),{services.anchor.acknowledge();os.openSystemDestination("anchor")})
+            MetroButton(os.t("稍后提醒并查看船位来源", "snooze & view position source"), { services.anchor.acknowledge(); os.openSystemDestination("data_center:source/POSITION") })
+            MetroButton(os.t("暂停监控并处理来源", "pause monitoring & inspect source"), {
+                pauseSession = active.id; pauseDestination = "data_center:source/POSITION"
+            }, enabled = pending == null)
+            MetroButton(os.t("暂停监控", "pause monitoring"), {
+                pauseSession = active.id; pauseDestination = null
+            }, enabled = pending == null)
+            MetroButton(os.t("起锚并结束值守","lift anchor & end watch"),{end=true}, enabled = pending == null)
+            if(pending != null) {
+                Label(if(pending.status == AnchorCommandStatus.UNKNOWN)
+                    os.t("原操作仍待确认，请勿重复发送。", "The original action is still awaiting confirmation; do not send it again.")
+                    else os.t("正在处理守锚操作…", "Processing the watch action…"), 15, c.muted)
+                if(pending.status == AnchorCommandStatus.UNKNOWN)
+                    MetroButton(os.t("重新查询这次请求", "recheck this request"), { monitor.recheck(pending.commandId) })
+            }
+            feedback?.let { Label(it, 15, c.accentText) }
         }
     }
-    if(end)ConfirmDialog(os,os.t("结束这次锚警值守？","End this anchor watch?"),{end=false}){services.anchor.liftAnchor();end=false}
+    pauseSession?.let { sessionId -> AnchorPauseConfirmation(os, onDismiss = { pauseSession = null; pauseDestination = null }) {
+        pauseSession = null
+        feedback = null
+        runCatching { services.anchor.requestPauseWatch(sessionId) }.onSuccess { requestId = it }.onFailure {
+            pauseDestination = null
+            feedback = os.t("未发送暂停请求，请检查当前值守。", "The pause request was not sent. Check the current watch.")
+        }
+    } }
+    if(end)ConfirmDialog(os,os.t("起锚并结束值守？结束后不再监控此锚位。", "Lift anchor and end the watch? This anchor will no longer be monitored."),{end=false}) {
+        end = false
+        feedback = null
+        runCatching { services.anchor.requestLiftAnchor(active.id) }.onSuccess { requestId = it }.onFailure {
+            feedback = os.t("未发送起锚请求，请检查当前值守。", "The lift request was not sent. Check the current watch.")
+        }
+    }
 }

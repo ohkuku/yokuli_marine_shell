@@ -48,15 +48,15 @@ import kotlinx.coroutines.launch
         Field(os.t("船长", "length") + " · " + os.lengthUnitLabel, length.text, { edit(length, it) }, number = true)
         Field(os.t("吃水", "draft") + " · " + os.depthUnitLabel + os.t("（未知可留空）", " (leave blank if unknown)"),
             draft.text, { edit(draft, it) }, number = true)
-        Label(os.t("设备位置", "equipment positions"), 26)
+        AppSection(os.t("设备位置", "equipment positions"))
         Field(os.t("船艏滚轮距水面高度", "bow roller height above water") + " · " + os.lengthUnitLabel,
             bow.text, { edit(bow, it) }, number = true)
         Field(os.t("固定 GPS 天线到船艏滚轮", "fixed GPS antenna to bow roller") + " · " + os.lengthUnitLabel,
             antenna.text, { edit(antenna, it) }, number = true)
         Label(os.t("这些资料供相关应用共用。手机定位不会假定手机固定在 GPS 天线位置。",
-            "These details are shared by the apps that need them. Phone positioning does not assume a fixed antenna location."), 16, LocalMetro.current.muted)
+            "These details are shared by the apps that need them. Phone positioning does not assume a fixed antenna location."), 15, LocalMetro.current.muted)
         if (!valid) Label(os.t("船长须大于零，其余尺寸不能为负；未知吃水可留空。",
-            "Length must be positive; other dimensions cannot be negative. Leave unknown draft blank."), 16, LocalMetro.current.muted)
+            "Length must be positive; other dimensions cannot be negative. Leave unknown draft blank."), 15, LocalMetro.current.muted)
         MetroButton(os.t("保存船舶资料", "save boat details"), {
             if (!valid || saving || !changed) return@MetroButton
             val lengthMeters = length.value ?: return@MetroButton

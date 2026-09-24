@@ -55,6 +55,8 @@ sealed interface RuntimeCommand {
     data object RefreshPhoneSensorOutput:RuntimeCommand
     data object RefreshLocalNmeaServer:RuntimeCommand
     data object StopAllNmeaSharing:RuntimeCommand
+    data class Voyage(val requestId:String):RuntimeCommand
+    data class QueryVoyage(val requestId:String):RuntimeCommand
     data class StartTrip(val name:String,val phoneMotionEnabled:Boolean=true,val positionPreference:VesselSourcePreference=VesselSourcePreference.AUTO):RuntimeCommand
     data object PauseTrip:RuntimeCommand
     data object ResumeTrip:RuntimeCommand
@@ -74,6 +76,8 @@ object RuntimeCommandParser {
     fun parse(intent:Intent?):RuntimeCommand{
         if(intent==null)return RuntimeCommand.RestoreOnly
         return when(intent.action){
+            VoyageCommandRegistry.ACTION->RuntimeCommand.Voyage(intent.getStringExtra(VoyageCommandRegistry.EXTRA_ID).orEmpty())
+            VoyageCommandRegistry.QUERY_ACTION->RuntimeCommand.QueryVoyage(intent.getStringExtra(VoyageCommandRegistry.EXTRA_ID).orEmpty())
             "OS_NETWORK_CHANGED"->RuntimeCommand.NetworkChanged
             "OS_POSITION_SOURCE"->RuntimeCommand.ChangeSystemPosition(enum(intent,"source",GpsDataSource.NONE))
             "OS_NMEA_POSITION"->RuntimeCommand.SelectNmeaPosition(intent.getStringExtra("connectionId").orEmpty(),intent.getStringExtra("sourceKey"))

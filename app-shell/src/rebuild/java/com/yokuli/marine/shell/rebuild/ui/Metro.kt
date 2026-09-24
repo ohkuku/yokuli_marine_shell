@@ -16,6 +16,10 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -38,6 +42,7 @@ import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Dialog
 import com.yokuli.marine.shell.rebuild.OsStore
+import com.yokuli.marine.core.design.*
 import com.yokuli.marine.core.design.WpFontFamily
 import com.yokuli.marine.core.design.WpTypeScale
 import com.yokuli.marine.core.design.LocalWpTextScale
@@ -51,7 +56,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-data class MetroColors(val bg: Color, val fg: Color, val muted: Color, val panel: Color, val accent: Color)
+/** 保留现有调用名，Shell 与 App 使用同一个 Windows 10 Mobile 语义调色板。 */
+data class MetroColors(val bg: Color, val fg: Color, val muted: Color, val panel: Color, val accent: Color,
+    val controlFill: Color = panel, val controlStroke: Color = muted, val pressed: Color = panel,
+    val subtle: Color = panel, val disabled: Color = muted, val accentText: Color = accent, val onAccent: Color = Color.White)
 val LocalMetro = staticCompositionLocalOf { MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(0xFF00ABA9)) }
 val LocalAppPage = staticCompositionLocalOf<String?> { null }
 /** 页面位于状态栏下；通知覆盖位于窗口顶端。只收进左右边缘，不整体下移内容。 */
@@ -77,21 +85,44 @@ val LightFont=WpFontFamily
 }
 
 @Composable fun MetroTheme(os: OsStore, content: @Composable ()->Unit) {
-    val colors=if(os.light) MetroColors(Color(0xFFF7F7F5),Color(0xFF111111),Color(0xFF61615D),Color(0xFFE7E7E2),Color(os.accent))
-        else MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(os.accent))
-    CompositionLocalProvider(LocalMetro provides colors, LocalChinese provides os.chinese, LocalWpTextScale provides when(os.textSize) {"COMPACT" -> .92f;"LARGE" -> 1.12f;else -> 1f}) { Box(Modifier.fillMaxSize().background(colors.bg)) { content() } }
+    val theme = WpThemePolicy.resolve(WpThemeSpec(if(os.light) WpThemeMode.LIGHT else WpThemeMode.DARK), Color(os.accent))
+    val colors = MetroColors(theme.background, theme.foreground, theme.muted, theme.chrome, theme.accent,
+        theme.controlFill, theme.controlStroke, theme.pressed, theme.subtle, theme.disabled, theme.accentText, theme.onAccent)
+    CompositionLocalProvider(LocalMetro provides colors, LocalWpTheme provides theme, LocalChinese provides os.chinese,
+        LocalWpTextScale provides when(os.textSize) {"COMPACT" -> .92f;"LARGE" -> 1.12f;else -> 1f}) {
+        Box(Modifier.fillMaxSize().background(colors.bg)) { content() }
+    }
 }
-@Composable fun Label(text: String, size: Int=WpTypeScale.Body, color: Color=LocalMetro.current.fg, modifier: Modifier=Modifier, maxLines: Int=Int.MAX_VALUE, weight: FontWeight=if(size>=28) FontWeight.Light else FontWeight.Normal) {
+@Composable fun Label(text: String, size: Int=WpTypeScale.Body, color: Color=LocalMetro.current.fg, modifier: Modifier=Modifier,
+    maxLines: Int=Int.MAX_VALUE, weight: FontWeight=WpTypeScale.weight(size)) {
     val scale=LocalWpTextScale.current
-    BasicText(text,modifier,style=TextStyle(color=color,fontSize=(size*scale).sp,fontFamily=LightFont,fontWeight=weight,lineHeight=(size*scale*1.18).sp,textMotion=TextMotion.Animated),maxLines=maxLines,overflow=TextOverflow.Ellipsis)
+    BasicText(text,modifier,style=TextStyle(color=color,fontSize=(size*scale).sp,fontFamily=LightFont,fontWeight=weight,
+        lineHeight=(WpTypeScale.lineHeight(size)*scale).sp,textMotion=TextMotion.Animated),maxLines=maxLines,overflow=TextOverflow.Ellipsis)
 }
-@Composable fun Glyph(name: String, modifier: Modifier=Modifier.size(28.dp), color: Color=LocalMetro.current.fg) {
+/** 常规内容使用语义层级；仪表主读数可明确指定独立的大字号。 */
+@Composable fun AppSection(title: String, subtitle: String? = null, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Label(title, WpTypeScale.SectionTitle, modifier = Modifier.semantics { heading() })
+        if (!subtitle.isNullOrBlank()) Label(subtitle, WpTypeScale.Caption, LocalMetro.current.muted)
+    }
+}
+@Composable fun AppDialogTitle(title: String, modifier: Modifier = Modifier) {
+    Label(title, WpTypeScale.SectionTitle, modifier = modifier.semantics { heading() }, weight = FontWeight.SemiBold)
+}
+@Composable fun Glyph(name: String, modifier: Modifier=Modifier.size(24.dp), color: Color=LocalMetro.current.fg) {
     Canvas(modifier) {
         val sx=size.width/32; val sy=size.height/32
         fun point(x:Float,y:Float)=Offset(x*sx,y*sy)
-        fun line(x:Float,y:Float,a:Float,b:Float,w:Float=1.8f)=drawLine(color,point(x,y),point(a,b),w*sx,StrokeCap.Square)
+        fun line(x:Float,y:Float,a:Float,b:Float,w:Float=2f)=drawLine(color,point(x,y),point(a,b),w*sx,StrokeCap.Square)
         fun circle(x:Float,y:Float,r:Float)=drawCircle(color,r*sx,point(x,y),style=Stroke(1.8f*sx))
         when(name) {
+            "chevron_right" -> { line(12f,8f,20f,16f); line(20f,16f,12f,24f) }
+            "chevron_down" -> { line(8f,12f,16f,20f); line(16f,20f,24f,12f) }
+            "menu" -> { for(y in listOf(8f,16f,24f))line(4f,y,28f,y) }
+            "warning" -> {
+                line(16f,3f,2f,28f); line(2f,28f,30f,28f); line(30f,28f,16f,3f)
+                line(16f,11f,16f,19f); drawCircle(color,1.1f*sx,point(16f,23f))
+            }
             "back" -> { line(25f,16f,7f,16f); line(7f,16f,16f,7f); line(7f,16f,16f,25f) }
             "next" -> { line(7f,16f,25f,16f); line(25f,16f,16f,7f); line(25f,16f,16f,25f) }
             "start" -> { for(x in listOf(5f,18f)) for(y in listOf(5f,18f)) drawRect(color,point(x,y),androidx.compose.ui.geometry.Size(9*sx,9*sy)) }
@@ -130,103 +161,134 @@ val LightFont=WpFontFamily
 @OptIn(ExperimentalFoundationApi::class)
 @Composable fun IconAction(icon:String,label:String,onClick:()->Unit,modifier:Modifier=Modifier,active:Boolean=false,onLongClick:(()->Unit)?=null) {
     val colors=LocalMetro.current
-    Column(modifier.widthIn(min=52.dp).heightIn(min=52.dp).combinedClickable(onClick=onClick,onLongClick=onLongClick).padding(6.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
-        Box(Modifier.size(32.dp).border(1.5.dp,if(active) colors.accent else colors.fg,androidx.compose.foundation.shape.CircleShape),contentAlignment=Alignment.Center) { Glyph(icon,Modifier.size(21.dp),if(active) colors.accent else colors.fg) }
-        if(label.isNotEmpty()) { Spacer(Modifier.height(4.dp)); Label(label,11,if(active) colors.accent else colors.fg,maxLines=1) }
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Column(modifier.widthIn(min=48.dp).heightIn(min=48.dp)
+        .background(if(pressed) colors.pressed else Color.Transparent)
+        .semantics { if(label.isNotBlank()) contentDescription=label; selected=active }
+        .combinedClickable(interactionSource=interaction,indication=null,role=Role.Button,onClick=onClick,onLongClick=onLongClick)
+        .padding(horizontal=8.dp,vertical=6.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
+        Glyph(icon,Modifier.size(24.dp),if(active) colors.accentText else colors.fg)
+        if(label.isNotEmpty()) { Spacer(Modifier.height(4.dp)); Label(label,12,if(active) colors.accentText else colors.fg,maxLines=2) }
     }
 }
 @Composable fun MetroButton(label:String,onClick:()->Unit,modifier:Modifier=Modifier,primary:Boolean=false,enabled:Boolean=true) {
-    val c=LocalMetro.current; val interaction=remember { MutableInteractionSource() }; val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if(pressed) .97f else 1f,label="button")
-    Box(modifier.fillMaxWidth().heightIn(min=48.dp).graphicsLayer { scaleX=scale; scaleY=scale; alpha=if(enabled) 1f else .4f }
-        .background(if(primary) c.accent else Color.Transparent).border(2.dp,if(primary) c.accent else c.fg)
-        .clickable(interactionSource=interaction,indication=null,enabled=enabled,onClick=onClick).padding(horizontal=15.dp,vertical=11.dp),contentAlignment=Alignment.Center) {
-        Label(label,18,if(primary) Color.White else c.fg)
+    val c=LocalMetro.current
+    val interaction=remember { MutableInteractionSource() }; val pressed by interaction.collectIsPressedAsState()
+    val foreground = if(!enabled) c.disabled else if(primary) c.onAccent else c.fg
+    val fill = when { !enabled -> c.subtle; pressed -> c.pressed; primary -> c.accent; else -> c.controlFill }
+    Box(modifier.fillMaxWidth().heightIn(min=48.dp).background(fill)
+        .border(2.dp,if(pressed && enabled) c.controlStroke else Color.Transparent)
+        .clickable(interactionSource=interaction,indication=null,enabled=enabled,role=Role.Button,onClick=onClick)
+        .padding(horizontal=12.dp,vertical=10.dp),contentAlignment=Alignment.Center) {
+        Label(label,15,if(pressed && enabled) c.fg else foreground)
     }
 }
 @Composable fun PageHeader(os:OsStore,title:String,app:String="",trailing:(@Composable ()->Unit)?=null,hasLocalBack:Boolean=false,localBackLabel:String?=null) {
     val navigation=pageNavigation(os,title,hasLocalBack,localBackLabel)
     val caption=app.takeUnless { it.isBlank() || it.equals("YOKULI OS",true) || it.equals("YOKULI",true) } ?: navigation.appIdentity
     val insets=LocalShellHorizontalInsets.current
-    Column(Modifier.fillMaxWidth().padding(start=insets.pageStart,end=insets.pageEnd,top=6.dp,bottom=10.dp)) {
-        if(navigation.canGoBack || trailing!=null) Row(verticalAlignment=Alignment.CenterVertically) {
-            if(navigation.canGoBack) HeaderBackButton(navigation)
-            Spacer(Modifier.weight(1f))
-            trailing?.invoke()
+    val c=LocalMetro.current
+    Row(Modifier.fillMaxWidth().heightIn(min=56.dp).padding(start=insets.pageStart,end=insets.pageEnd,top=4.dp,bottom=8.dp),
+        verticalAlignment=Alignment.CenterVertically) {
+        if(navigation.canGoBack) HeaderBackButton(navigation,compact=true)
+        Column(Modifier.weight(1f)) {
+            // 次级页保留小号应用归属；不为返回和品牌各占一整行。
+            if(caption.isNotBlank() && !caption.equals(title,ignoreCase=true))
+                Label(caption,WpTypeScale.AppCaption,c.muted,maxLines=1)
+            Label(title,WpTypeScale.PageTitle,modifier=Modifier.semantics { heading() },maxLines=2)
         }
-        // 应用身份独立于返回按钮；首页标题已经说明身份时，不塞系统品牌占位。
-        if(caption.isNotBlank() && !caption.equals(title,ignoreCase=true))
-            Label(caption.uppercase(),WpTypeScale.AppCaption,weight=FontWeight.SemiBold,maxLines=1)
-        Label(title,WpTypeScale.PageTitle,modifier=Modifier.padding(top=4.dp),maxLines=2)
+        trailing?.let { Spacer(Modifier.width(8.dp)); it() }
     }
 }
 @Composable internal fun HeaderBackButton(navigation:PageNavigation,compact:Boolean=false) {
-    Row(Modifier.heightIn(min=44.dp).semantics { contentDescription=navigation.backLabel }.clickable(enabled=navigation.enabled,onClickLabel=navigation.backLabel,onClick=navigation.back)
-        .padding(end=12.dp),verticalAlignment=Alignment.CenterVertically) {
+    val c=LocalMetro.current
+    val interaction=remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Row(Modifier.heightIn(min=48.dp).widthIn(min=48.dp).background(if(pressed)c.pressed else Color.Transparent)
+        .semantics { contentDescription=navigation.backLabel }
+        .clickable(interactionSource=interaction,indication=null,enabled=navigation.enabled,role=Role.Button,onClickLabel=navigation.backLabel,onClick=navigation.back)
+        .padding(end=if(compact)12.dp else 8.dp),verticalAlignment=Alignment.CenterVertically) {
         Glyph("back",Modifier.size(24.dp))
-        if(!compact) Label(navigation.backLabel,16,modifier=Modifier.padding(start=6.dp),maxLines=1)
+        if(!compact) Label(navigation.backLabel,15,modifier=Modifier.padding(start=8.dp),maxLines=1)
     }
 }
 @Composable fun PageBody(scrollState:ScrollState=rememberScrollState(),content:@Composable ColumnScope.()->Unit) {
     val insets=LocalShellHorizontalInsets.current
-    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(14.dp),content=content)
+    Column(Modifier.fillMaxSize().verticalScroll(scrollState).padding(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp),content=content)
 }
 @Composable fun MenuRow(title:String,subtitle:String?=null,icon:String?=null,onClick:()->Unit) {
+    val c=LocalMetro.current
     val interaction=remember {MutableInteractionSource()}
-    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).wpTilt(interaction).clickable(interactionSource=interaction,indication=null,onClick=onClick).padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
-        if(icon!=null) { Box(Modifier.size(36.dp).background(LocalMetro.current.accent),contentAlignment=Alignment.Center) { Glyph(icon,Modifier.size(24.dp),color=Color.White) }; Spacer(Modifier.width(12.dp)) }
-        Column(Modifier.weight(1f)) { Label(title,WpTypeScale.ListTitle); if(!subtitle.isNullOrBlank()) Label(subtitle,WpTypeScale.Caption,LocalMetro.current.muted,Modifier.padding(top=4.dp)) }
-        Glyph("next",Modifier.size(18.dp),LocalMetro.current.muted)
+    val pressed by interaction.collectIsPressedAsState()
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).background(if(pressed)c.pressed else Color.Transparent)
+        .clickable(interactionSource=interaction,indication=null,role=Role.Button,onClick=onClick)
+        .padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
+        // 箭头属于导航提示，不再同时画左侧强调色方块和右侧箭头。
+        if(icon!=null && icon!="next") { Glyph(icon,Modifier.size(24.dp),c.fg); Spacer(Modifier.width(16.dp)) }
+        Column(Modifier.weight(1f)) {
+            Label(title,WpTypeScale.ListTitle)
+            if(!subtitle.isNullOrBlank()) Label(subtitle,WpTypeScale.Caption,c.muted,Modifier.padding(top=4.dp))
+        }
+        Spacer(Modifier.width(12.dp)); Glyph("chevron_right",Modifier.size(16.dp),c.muted)
     }
 }
 @Composable fun Field(label:String,value:String,onChange:(String)->Unit,number:Boolean=false,multiline:Boolean=false) {
     val c=LocalMetro.current
     var focused by remember {mutableStateOf(false)}
-    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Label(label,14,c.muted)
-        BasicTextField(value,onChange,Modifier.fillMaxWidth().heightIn(min=46.dp).onFocusChanged {focused=it.isFocused}
-            .background(if(focused)Color.White else Color(0xFFE4E4E4)).border(2.dp,if(focused)c.accent else Color.Transparent).padding(horizontal=12.dp,vertical=9.dp),
-            textStyle=TextStyle(color=Color.Black,fontSize=(18*LocalWpTextScale.current).sp,fontFamily=LightFont),cursorBrush=SolidColor(c.accent),singleLine=!multiline,
+    Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+        Label(label,15)
+        BasicTextField(value,onChange,Modifier.fillMaxWidth().heightIn(min=48.dp).onFocusChanged {focused=it.isFocused}
+            .semantics { contentDescription=label }
+            .background(if(focused)c.bg else c.subtle).border(2.dp,if(focused)c.accent else c.controlStroke)
+            .padding(horizontal=12.dp,vertical=12.dp),
+            textStyle=TextStyle(color=c.fg,fontSize=(15*LocalWpTextScale.current).sp,lineHeight=(20*LocalWpTextScale.current).sp,fontFamily=LightFont),
+            cursorBrush=SolidColor(c.accentText),singleLine=!multiline,
             keyboardOptions=KeyboardOptions(keyboardType=if(number) KeyboardType.Decimal else KeyboardType.Text))
     }
 }
 @Composable fun Toggle(title:String,checked:Boolean,subtitle:String?=null,enabled:Boolean=true,onChange:(Boolean)->Unit) {
     val c=LocalMetro.current
-    val thumb by animateFloatAsState(if(checked)1f else 0f,animationSpec=tween(130),label="switch-thumb")
-    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).graphicsLayer { alpha=if(enabled) 1f else .4f }.toggleable(value=checked,enabled=enabled,role=Role.Switch,onValueChange=onChange).padding(vertical=7.dp),verticalAlignment=Alignment.CenterVertically) {
+    val interaction=remember {MutableInteractionSource()}
+    val pressed by interaction.collectIsPressedAsState()
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).background(if(pressed)c.pressed else Color.Transparent)
+        .toggleable(value=checked,enabled=enabled,role=Role.Switch,interactionSource=interaction,indication=null,onValueChange=onChange)
+        .padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end=16.dp)) {
-            Label(title,WpTypeScale.ListTitle)
-            Label(if(LocalChinese.current) {if(checked) "开启" else "关闭"} else {if(checked) "on" else "off"},WpTypeScale.Caption,if(checked)c.accent else c.muted,Modifier.padding(top=3.dp))
-            if(subtitle!=null) Label(subtitle,WpTypeScale.Caption,c.muted,Modifier.padding(top=5.dp))
+            Label(title,WpTypeScale.ListTitle,if(enabled)c.fg else c.disabled)
+            if(subtitle!=null) Label(subtitle,WpTypeScale.Caption,if(enabled)c.muted else c.disabled,Modifier.padding(top=4.dp))
         }
-        Box(Modifier.size(60.dp,34.dp),contentAlignment=Alignment.CenterStart) {
-            Box(Modifier.width(60.dp).height(24.dp).border(2.dp,c.fg).padding(5.dp)) {
-                Box(Modifier.fillMaxHeight().fillMaxWidth(thumb).background(c.accent))
-            }
-            Box(Modifier.offset(x=(46*thumb).dp).width(14.dp).height(32.dp).background(c.fg).border(2.dp,c.bg))
-        }
+        Label(if(LocalChinese.current) {if(checked) "开启" else "关闭"} else {if(checked) "On" else "Off"},
+            12,if(enabled)c.muted else c.disabled,Modifier.padding(end=12.dp),maxLines=1)
+        W10ToggleIndicator(checked,enabled)
     }
 }
-/** WP 单选行：行本身可点选，状态由真实选中值决定，不用按钮颜色冒充单选。 */
-@Composable fun ChoiceRow(title:String,selected:Boolean,subtitle:String?=null,enabled:Boolean=true,onClick:()->Unit) {
+/** Windows 10 单选：整行拥有唯一单选语义；指标只负责显示真实状态。 */
+@Composable fun ChoiceRow(title:String,selected:Boolean,subtitle:String?=null,enabled:Boolean=true,modifier:Modifier=Modifier,onClick:()->Unit) {
     val c=LocalMetro.current
-    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).graphicsLayer {alpha=if(enabled)1f else .4f}
-        .selectable(selected=selected,enabled=enabled,role=Role.RadioButton,onClick=onClick).padding(vertical=8.dp),
-        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.size(24.dp).border(2.dp,c.fg,androidx.compose.foundation.shape.CircleShape).padding(6.dp)) {
-            if(selected)Box(Modifier.fillMaxSize().background(c.accent,androidx.compose.foundation.shape.CircleShape))
+    val interaction=remember {MutableInteractionSource()}
+    val pressed by interaction.collectIsPressedAsState()
+    Row(modifier.fillMaxWidth().heightIn(min=48.dp).background(if(pressed)c.pressed else Color.Transparent)
+        .selectable(selected=selected,enabled=enabled,role=Role.RadioButton,interactionSource=interaction,indication=null,onClick=onClick)
+        .padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+        W10RadioIndicator(selected,enabled)
+        Column(Modifier.weight(1f)) {
+            Label(title,WpTypeScale.ListTitle,if(enabled)c.fg else c.disabled)
+            if(subtitle!=null)Label(subtitle,WpTypeScale.Caption,if(enabled)c.muted else c.disabled,Modifier.padding(top=4.dp))
         }
-        Column(Modifier.weight(1f)) {Label(title,WpTypeScale.ListTitle);if(subtitle!=null)Label(subtitle,WpTypeScale.Caption,c.muted,Modifier.padding(top=4.dp))}
     }
 }
 @Composable fun Pivot(labels:List<String>,initialPage:Int=0,onPageSelected:((Int)->Unit)?=null,content:@Composable (Int)->Unit) {
     if(labels.isEmpty())return
     val pager=rememberPagerState(initialPage=initialPage.coerceIn(labels.indices)) { labels.size }
     val reportPage=rememberUpdatedState(onPageSelected)
-    LaunchedEffect(pager) { snapshotFlow {pager.currentPage}.distinctUntilChanged().collect {reportPage.value?.invoke(it)} }
+    LaunchedEffect(pager) { snapshotFlow {pager.settledPage}.distinctUntilChanged().collect {reportPage.value?.invoke(it)} }
     Column(Modifier.fillMaxSize()) {
         PivotHeaders(labels,pager)
-        HorizontalPager(pager,Modifier.weight(1f),verticalAlignment=Alignment.Top) { content(it) }
+        HorizontalPager(pager,Modifier.weight(1f),verticalAlignment=Alignment.Top) { page ->
+            val parentActive = com.yokuli.shell.compose.LocalInternalAppInputEnabled.current
+            CompositionLocalProvider(com.yokuli.shell.compose.LocalInternalAppInputEnabled provides (parentActive && page == pager.settledPage)) { content(page) }
+        }
     }
 }
 
@@ -235,7 +297,8 @@ val LightFont=WpFontFamily
  * 不把页内拖动进度绑定到标题偏移，不补齐“选中项必须在最左侧”的尾部空白。
  * 标题状态在这里读取，避免一次滑动的每帧都重新执行整个页面的内容组合。
  */
-@Composable private fun PivotHeaders(labels:List<String>,pager:PagerState) {
+@Composable internal fun PivotHeaders(labels:List<String>,pager:PagerState,compact:Boolean=false) {
+    val inputEnabled=com.yokuli.shell.compose.LocalInternalAppInputEnabled.current
     val headerScroll=rememberScrollState()
     val scope=rememberCoroutineScope()
     val density=LocalDensity.current
@@ -263,13 +326,14 @@ val LightFont=WpFontFamily
     Row(
         Modifier.fillMaxWidth().padding(start=insets.pageStart,end=insets.pageEnd)
             .clipToBounds().onSizeChanged {viewportWidth=it.width}
-            .horizontalScroll(headerScroll).selectableGroup().padding(bottom=11.dp),
+            .horizontalScroll(headerScroll,enabled=inputEnabled).selectableGroup().padding(bottom=if(compact)0.dp else 11.dp),
         horizontalArrangement=Arrangement.spacedBy(22.dp),
     ) {
         labels.forEachIndexed {index,name ->
             PivotHeader(name,index==selectedIndex,
                 Modifier.widthIn(max=if(viewportWidth>0)with(density){viewportWidth.toDp()}else Dp.Infinity)
                     .onSizeChanged {widths[index]=it.width},
+                compact=compact,
             ) {
                 scope.launch {pager.animateScrollToPage(index,animationSpec=tween(260,easing=FastOutSlowInEasing))}
             }
@@ -277,27 +341,29 @@ val LightFont=WpFontFamily
     }
 }
 
-@Composable private fun PivotHeader(name:String,selected:Boolean,modifier:Modifier,onClick:()->Unit) {
+@Composable private fun PivotHeader(name:String,selected:Boolean,modifier:Modifier,compact:Boolean=false,onClick:()->Unit) {
     val colors=LocalMetro.current
+    val inputEnabled=com.yokuli.shell.compose.LocalInternalAppInputEnabled.current
     // 仅标题的明暗做短过渡；既保留 Metro 选中反馈，也不驱动页面布局逐帧重排。
     val color by androidx.compose.animation.animateColorAsState(
         if(selected)colors.fg else colors.muted,tween(130),label="pivot-header-color",
     )
-    Box(modifier.heightIn(min=44.dp).selectable(selected=selected,role=Role.Tab,onClick=onClick)
+    Box(modifier.heightIn(min=if(compact)44.dp else 48.dp).selectable(selected=selected,enabled=inputEnabled,role=Role.Tab,onClick=onClick)
         .padding(vertical=3.dp),contentAlignment=Alignment.CenterStart) {
-        Label(name,WpTypeScale.PivotTitle,color,maxLines=1)
+        Label(name,if(compact)20 else WpTypeScale.PivotTitle,color,maxLines=1)
     }
 }
 
 /** WP 的不定进度沿水平方向流动，保留上下文，不覆盖用户操作。 */
 @Composable fun MetroProgress(label:String,modifier:Modifier=Modifier) {
-    val transition=rememberInfiniteTransition(label="metro-progress")
-    val phase by transition.animateFloat(0f,1f,infiniteRepeatable(tween(2100,easing=LinearEasing)),label="progress-dots")
-    val accent=LocalMetro.current.accent
+    val animated=com.yokuli.shell.compose.LocalInternalAppInputEnabled.current && !LocalReducedMotion.current
+    val transition=if(animated)rememberInfiniteTransition(label="metro-progress")else null
+    val phase=transition?.animateFloat(0f,1f,infiniteRepeatable(tween(2100,easing=LinearEasing)),label="progress-dots")
+    val accent=LocalMetro.current.accentText
     Column(modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-        Canvas(Modifier.fillMaxWidth().height(6.dp)) {
+        Canvas(Modifier.fillMaxWidth().height(6.dp).semantics { progressBarRangeInfo=ProgressBarRangeInfo.Indeterminate }) {
             repeat(5) {index->
-                val t=(phase-index*.075f+1f)%1f
+                val t=((phase?.value ?: .55f)-index*.075f+1f)%1f
                 val x=(t*t*(3f-2f*t)*1.35f-.175f)*size.width
                 if(x in 0f..size.width)drawCircle(accent,2.dp.toPx(),Offset(x,size.height/2))
             }
@@ -308,10 +374,13 @@ val LightFont=WpFontFamily
 @Composable fun TextDialog(os:OsStore,title:String,initial:String="",onDismiss:()->Unit,onSave:(String)->Unit) {
     var text by rememberSaveable(initial) { mutableStateOf(initial) }
     Dialog(onDismissRequest=onDismiss) {
-        Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).border(1.dp,LocalMetro.current.muted).padding(22.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
-            Label(title,31); Field(os.t("名称","name"),text,{text=it.take(100)})
-            MetroButton(os.t("保存","save"),{ onSave(text.trim()); onDismiss() },primary=true,enabled=text.isNotBlank())
-            MetroButton(os.t("取消","cancel"),onDismiss)
+        AppDialogSurface {
+            AppDialogTitle(title)
+            Field(os.t("名称","name"),text,{text=it.take(100)})
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                MetroButton(os.t("保存","save"),{ onSave(text.trim()); onDismiss() },Modifier.weight(1f),primary=true,enabled=text.isNotBlank())
+                MetroButton(os.t("取消","cancel"),onDismiss,Modifier.weight(1f))
+            }
         }
     }
 }

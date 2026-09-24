@@ -1,6 +1,6 @@
 # 数据中心：全系统统一的来源选择
 
-更新：2026-09-18
+更新：2026-09-25
 
 数据中心回答“这项读数是什么、来自谁、最后何时更新、要用谁的”。船联网回答“与哪些设备建立连接、如何收发”。数据共享回答“本机开放什么内容给哪些接收设备”。三个应用操作不同业务对象，不互相代替。
 
@@ -37,7 +37,7 @@ flowchart LR
 | --- | --- |
 | `VesselSettingsRepository.metricSourcePins` | 每项指标指定的稳定来源键。数据中心编辑，其他应用读取；不在 UI 创建第二份副本。 |
 | 系统 `GpsDataSource` 与 `POSITION_CONNECTION` | 全局船位模式与固定 NMEA 输入；保留显式选择与守锚锁。 |
-| `MainViewModel.setVesselMetricSource(metric, sourceId)` | 统一修改指标来源；非船位字段传 `null` 还原自动选择。船位指定 NMEA 来源需有效连接，手机/关闭使用显式定位命令，不能以 `POSITION + null` 自动换船位。旧 `setNmeaMetricSource` 仅为兼容委托。 |
+| `MarineServices.sources.setVesselMetricSource(metric, sourceId)` | 统一修改指标来源；非船位字段传 `null` 还原自动选择。船位指定 NMEA 来源需有效连接，手机/关闭使用显式定位命令，不能以 `POSITION + null` 自动换船位。旧 `setNmeaMetricSource` 仅为兼容委托。 |
 | `VesselMetricSelectionPolicy.choose(settings, metric, sourceKey)` | 对现有配置应用逐字段选择；仅在用户点自动时清除旧船首向共用偏好，不覆盖其他字段。 |
 | `VesselDataSnapshot.candidates` | 所有登记来源的候选及各自时效；不能只暴露当前采用的那一个连接。 |
 | `VesselObservation.sourceIdentity` | 实际采用的物理来源，与用户 pin 分开显示；连接重连不改变稳定来源键。 |
@@ -62,3 +62,11 @@ flowchart LR
 数据中心内部展开指标或安装页，返回时还原原来的滚动位置与 pivot。外部应用直接打开 `data_center:POSITION` 或 `data_center:phone` 时，首层返回交给 Shell，还原调用应用的具体页面。深链进入手机页后再进入安装或位置页，先返回手机页，再返回调用者。
 
 数据中心不会使用任何连接或服务的“启动”动作刷新列表。前台传感器显示资源由 Shell 统一持有，避免离场动画里的旧应用释放新应用正在使用的传感器。
+
+## 通知中心的来源与连接摘要
+
+通知中心“船位来源”只读当前全局 `GpsDataSource`、已采纳 `VesselObservation`、来源年龄/质量与守锚锁；它不是 GPS 开关，打开不会启停定位或更换来源。来源详情再明确进入 `data_center:POSITION`，手机安装进入 `data_center:mount`，沿用同一配置和返回关系。
+
+“船舶连接”读取 `MarineServices.network.connections` 的真实数量、连接/异常状态和具体连接 ID；网络在线不等于船位有效。查看摘要不连接 socket，进入对应 `nmea:connection:<id>` 才处理该连接。中心不持有第二份来源/连接策略，也不因为打开中心申请全部仪表或航向显示租约。
+
+守锚使用中的来源限制由原领域执行。来源摘要不会自动暂停保护；任务卡明确暂停并等候命令回执后，用户才可按来源流程修改。关闭中心、历史已读或移除都不改变来源、连接、发布或守锚状态。

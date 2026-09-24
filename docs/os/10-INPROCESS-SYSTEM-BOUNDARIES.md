@@ -1,16 +1,16 @@
-# 10 · 已落代码的进程内系统边界
+# 10 · 已接入的运行时与通知系统边界
 
-这轮先把“应用页面直接控制一个大 ViewModel”改成“应用调用领域端口，运行时拥有业务执行”。它是实际的源码与生命周期分层，**仍在同一个 APK、UID 和进程内**。没有新增 Binder 服务、独立进程或故障隔离，也没有让普通 HOME 获得 Android 系统权限。
+本页维护当前生产代码边界，文件名保留以兼容已有链接。海事运行时仍在默认进程，通知历史已迁到同 APK/UID 的 `:notifications` 进程，并有真实发布者、Binder 客户端和通知页面消费者。**通知 IPC 不等于完整 Marine Core 隔离或 Android 系统通知接管**。
 
-本页描述本轮运行时重构，补充 [01 · 分层架构](01-ARCHITECTURE.md) 中以 R0 提交为基线的旧拓扑。编译与设备验证应查本次交付记录，不能从下面的设计说明推定已经通过。
+实际入口以 `app-shell/build.gradle.kts` 的 `src/rebuild` sourceSet 与 rebuild Manifest 为准。[主实施规则](../product/YOKULI_MASTER_EXECUTION.md)、[领域接入指导](02-DOMAIN-AND-CONTRACTS.md#新功能接入路径)、[通知专项](../product/NOTIFICATION_CENTER_CONTRACT.md) 分别维护任务约束、扩展路径与通知产品决策。编译/镜像/设备状态独立陈述，不从接口存在推定能力已运行。
 
 ## 1. 模块按实际依赖分层
 
 ```mermaid
 flowchart TB
-    subgraph ONE[同一 APK / UID / 默认进程]
+    subgraph ONE[默认进程：Shell 与海事运行时]
         APP[app-shell：Shell 与业务页面]
-        BRIDGE[MarinePresentationBridge：UI 读数与通知投影]
+        BRIDGE[MarinePresentationBridge：UI 读数与操作反馈]
         HOST[runtime:marine-local：MarineSystem / 航行命令协调]
         CORE[core:runtime-contract：纯 Kotlin 状态与回执]
         API[legacy-marine api：MarineServices 窄端口]
@@ -29,18 +29,26 @@ flowchart TB
         LOCAL --> DOMAIN
         VM --> CONTROLLER
         CONTROLLER --> DOMAIN --> STORE
+        EVENTS[MarineNotificationEvents：领域事件发布] --> NCLIENT[NotificationClient / BinderNotificationClient]
+        APP --> NCLIENT
+        DOMAIN --> EVENTS
     end
+    subgraph NOTICES[同 APK / UID 的 notifications 子进程]
+        BINDER[NotificationBinderService] --> NREPO[NotificationRepository]
+        NREPO --> NFILE[(唯一消息历史文件)]
+    end
+    NCLIENT -->|版本 1.0 Binder| BINDER
 ```
 
 | 位置 | 当前代码职责 | 明确不承担 |
 | --- | --- | --- |
-| `core:runtime-contract` | 纯 Kotlin 的运行时连接状态、传输类型、位置请求、航程录制状态与守锚命令回执 | Android API、legacy DTO、数据库、UI 文案、实际服务启动 |
-| `runtime:marine-local` | Android 组合层，提供 `MarineSystem`，绑定本地服务并拥有共享航行命令协调器 | Shell 页面、磁贴、通知文案或反向依赖 `app-shell`；应用不能直接实例化/注入本地实现 |
+| `core:runtime-contract` | 纯 Kotlin 的连接/位置/录制/守锚/AIS 契约，以及通知记录、目标、请求、结果和订阅快照 | Android API、legacy DTO、数据库、UI 文案、实际服务启动 |
+| `runtime:marine-local` | `MarineSystem`、共享航行命令协调、AIS 及通知 Binder 服务/客户端、持久事件到通知桥 | Shell 页面、磁贴、Compose 动画或反向依赖 `app-shell`；UI 不取得业务实现和 DAO |
 | `legacy-marine/api` | 当前迁移用的领域命令端口与兼容读投影 | 宣称自己已经是稳定公共 SDK / Binder schema |
 | `LocalMarineServices` | 将窄端口委托给同一个控制器和内容服务 | 创建第二份数据来源、活动航行、守锚或数据库 |
 | `LegacyMarineController` | 原 ViewModel 中的执行、订阅和服务编排，使用应用进程范围 | Activity 生命周期、Compose 选择/草稿、系统权限弹窗 |
 | `MainViewModel` | 旧页面的转发兼容入口 | 新 Shell 的服务定位器、业务状态所有者或第二个控制器 |
-| `app-shell` | 应用用户故事、页面状态、Shell 导航、显示格式与通知投影 | 直接获取 ViewModel/Controller/本地实现/业务 DAO |
+| `app-shell` | 用户故事、页面状态、Shell 导航、通知面板/提示投影、显示格式 | 直接获取业务 Controller/DAO、写通知历史或按面板生命周期启动领域任务 |
 
 **仍然存在的编译依赖：** `runtime:marine-local` 当前通过 `api(project(":legacy-marine"))` 暴露迁移所需类型。服务接口也暂在 legacy 模块中，因此 Shell 仍能编译期看到部分 legacy 类型。本轮不是“已经移除 legacy 依赖”，而是约束活动调用方只经过明确端口；脚本帮助阻止重新直连实现。
 
@@ -60,7 +68,7 @@ flowchart TB
 
 接口位置：[MarineServices.kt](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt)。调用者应把动作交给对应端口，而不是向一个万能字符串命令入口发送方法名。
 
-这些是同进程代码边界，不是基于调用方 UID 的安全授权。多个应用可以通过同一个端口参与完整故事，例如海图和日志都操作同一个航行，通知快捷项与数据中心都向来源端口发出明确命令。端口决定“哪一领域拥有状态”，不要求用户只能从某一个页面操作。
+这些是同进程代码边界，不是基于调用方 UID 的安全授权。多个应用可以通过同一个端口参与完整故事，例如海图和日志都操作同一个航行；通知快捷项读取来源摘要并导航到数据中心，由数据中心明确修改同一来源策略。端口决定“哪一领域拥有状态”，不要求用户只能从某一个页面操作。
 
 ### 偏好不再回写整份旧快照
 
@@ -87,27 +95,31 @@ flowchart TB
 
 本地组合层当前用设置加载完成推进运行时 `READY`。这表示兼容运行时的初始化阶段，不表示 GPS 已定位、NMEA 已连接、警报一定可响或所有硬件正常。这些能力仍需读取各领域的真实状态。
 
-`RuntimeTransport.BINDER` 只是预留枚举值；`RuntimeBindings.resolve(BINDER)` 明确返回 `ROM_BINDER_NOT_IMPLEMENTED`。不能因为类型里出现 Binder 就宣称存在远程服务。
+`RuntimeBindings.resolve(BINDER)` 仍返回 `ROM_BINDER_NOT_IMPLEMENTED`，这里特指**完整 MarineSystem**。通知已独立接入 `NotificationClient` 的版本化 Binder，不通过这个全域占位枚举冒充所有端口已远程化。完整海事端口和第三方授权仍未完成。
 
 ## 4. 生命周期从页面中移出什么
 
 **控制器：** `LegacyMarineController` 使用 `@Singleton` 和自身 `CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)`。`MainViewModel` 只转发同一个控制器，不以页面 `onCleared` 作为停止船位、航行、守锚或 NMEA 的信号。
 
-**系统组合：** `InProcessMarineSystem` 为本地 `MarineServices` 和航行协调提供进程内宿主。具体接线见 [MarineSystem.kt](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt)。应用只取得 `MarineSystem` 接口；`MarineSystemBootstrap` 是合法宿主初始化入口，承担一次性的旧后端诊断初始化，不启动 GPS/连接/业务会话。应用不能直接引用本地系统实现、协调器、DI 绑定或 `LegacyMarineRuntime`。普通 APK 与 ROM HOME 复用这一路径，不维护两套运行时。
+**系统组合：** 默认进程的 `InProcessMarineSystem` 为本地 `MarineServices` 和航行协调提供进程内宿主。具体接线见 [MarineSystem.kt](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt)。应用只取得 `MarineSystem` 接口；`MarineSystemBootstrap` 是合法宿主初始化入口，承担一次性的旧后端诊断初始化，不启动 GPS/连接/业务会话。应用不能直接引用本地系统实现、协调器、DI 绑定或 `LegacyMarineRuntime`。普通 APK 与 ROM HOME 复用这一路径，不维护两套运行时。
 
 **显示需求：** `acquireMapHeading()`、`acquireInstruments()` 各返回独立的 `DisplayLease`。第一个消费者申请才开启对应显示需求，最后一个消费者释放才关闭；`close()` 幂等，关闭一个页面不会撤销另一个页面仍持有的需求。Shell 在 `DisposableEffect` 中持有和释放句柄。这是同进程引用计数，不是 Binder 死亡通知或跨进程资源租约；显示句柄关闭也不停止全局航行/守锚。
 
-**仍然会中断的情况：** 应用进程崩溃、被系统终止或设备重启仍会影响这些对象。`@Singleton` 只限定进程内实例；`SupervisorJob` 不是故障隔离、持久任务日志或后台存活保证。后台限制、前台服务、持久资料和恢复判断仍由 Android 及既有业务执行层承担，参见 [03 · 生命周期与恢复](03-LIFECYCLE-AND-RECOVERY.md)。
+**仍然会中断的情况：** 默认进程崩溃、被系统终止或设备重启仍会影响海事对象。通知进程故障只隔离消息历史，不能替海事运行时维持守锚或记录。`@Singleton` 只限定进程内实例；`SupervisorJob` 不是故障隔离、持久任务日志或后台存活保证。后台限制、前台服务、持久资料和恢复判断仍由 Android 及既有业务执行层承担，参见 [03 · 生命周期与恢复](03-LIFECYCLE-AND-RECOVERY.md)。
 
 ## 5. 航程录制状态属于运行时，UI 只作投影
 
-[VoyageSessionCoordinator](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt) 将航行的共享状态与命令等待放在运行时层。`MarineSystem.voyage` 对应用暴露纯契约中的 `VoyageSessionService`，不暴露协调器实现类。活动会话来自服务读投影，包含 ID、名称、距离、起始/暂停时间和时刻数；Shell 再按用户单位和语言呈现。
+[VoyageSessionCoordinator](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt) 是航行窄客户端/投影；唯一执行账本由 legacy 运行时的 `VoyageCommandRegistry` 持有。`MarineSystem.voyage` 对应用暴露纯契约中的 `VoyageSessionService`，不暴露协调器实现类。活动会话来自服务读投影，包含 ID、名称、距离、起始/暂停时间和时刻数；Shell 再按用户单位和语言呈现。
 
-开始、暂停、继续、结束不因按钮被点击就立即宣布成功。协调器发出领域命令，等待读模型中对应会话状态确认，返回 `CONFIRMED`、`NOT_CONFIRMED`、`POSITION_REQUIRED` 或 `FAILED`。当前实现的等待上限为 18 秒；“未确认”不等于后台必然失败或已取消，UI 继续依据真实状态显示，不能自动重发制造重复航行。
+开始、暂停、继续、结束通过 `VoyageSessionService.request(VoyageRequest)` 或兼容便利方法进入同一协调器，`VoyageRequest` 保留 requestId、动作、expectedSessionId、名称和姿态记录意图。`commands: StateFlow<List<VoyageCommandReceipt>>` 直接投影 `MarineServices.voyages.commandResults`，由 `VoyageCommandRegistry` 保留有界进程内账本，状态为 QUEUED / EXECUTING / UNKNOWN / CONFIRMED / REJECTED / FAILED。Controller 投递带 requestId 的 `RuntimeCommand.Voyage`，`YokuliRuntimeCoordinator.launchTrackedVoyage` 在原 trip actor 中校验来源/目标会话、执行并读取 TripDao 的持久结果，再写终态；不再仅依据 MainUiState 的某个变化推断成功。
+
+18 秒未确认变为 UNKNOWN 后保留原请求，不释放并行命令锁，也不自动再发 Start/Finish。`VoyageSessionService.recheck` → `MarineServices.voyages.recheckCommand` → Controller → `RuntimeCommand.QueryVoyage` → `queryTrackedVoyage` 在原 trip actor 内只读 TripDao 并更新原回执。Start 成功先关联实际 sessionId 再核对落盘事实；若中断前尚未关联，不把其他活动会话猜成本请求结果。执行中断或执行后异常保留 UNKNOWN，尚未执行的 QUEUED 在服务关闭时明确 FAILED，实际业务拒绝为 REJECTED。用户明确 FINISH 可在旧 UNKNOWN 后排队，结束真正落盘后才替代旧请求，避免界面永久无法结束会话。
+
+晚到的原执行及持久结果仍能完成原回执；投影本身不以旧状态完成它。关闭通知/页面不丢失等待；当前任务卡从这份账本及 `VoyageSessionState` 显示正在处理/结果未确认。`VoyageCommandFeedback` 已在记录对话框及日志入口接入原请求查询。`MarineNotificationEvents` 直接订阅 `commands`，按 requestId 更新同一通知卡；`events` 仅保留兼容反馈队列，不是请求或通知状态的唯一记录。
 
 Shell 的所有航行启停经 `MarinePresentationBridge` 转发到共享 `VoyageSessionService`。`services.voyages.startTrip/pauseTrip/resumeTrip/endTrip` 仅供运行时适配调用，页面不能直接调用或取方法引用，否则新按钮会绕过全局命令等待与确认。静态守卫明确检查这四个旧入口；历史编辑和导出等命令仍走相应领域端口。
 
-这仍不是持久幂等命令协议。进程重启后的命令追踪、调用方身份、跨进程订阅与可恢复回执都还需要独立设计。命令反馈的双语文案由 Shell 决定，纯契约只携带业务代码。
+这仍是**进程内**账本，不是持久幂等航行协议。进程重启后的请求追踪、调用方身份及航行 IPC 仍未完成；通知持久回执不扩大成航行的保证。纯契约保留业务代码，Shell 决定用户反馈。
 
 这里的 `VoyageSessionCoordinator` 负责轨迹录制。实际路线导航的冻结路线、目标索引和引导计算目前仍在 `OsStore` / UI `Navigation.kt` 中，不能把录制协调器称为已完成的 `NavigationSessionService`。两者是独立生命周期，导航领域迁移属于后续工作。
 
@@ -128,6 +140,8 @@ Shell 的所有航行启停经 `MarinePresentationBridge` 转发到共享 `Voyag
 实体值类型暂可作为参数和返回值保留；这不意味着 UI 可以通过 entity 包任意取得 DAO。另一方面，Shell 中仍有自己的页面、磁贴、地图选择以及部分坐标/航线文件状态，本轮并没有把所有持久资料搬到新的统一 OS 数据库。
 
 experience.9 将 Shell 坐标和计划航线的写操作集中到 `MySailingRepository`，通过 `DurableSnapshotStore` 保存原 `experience-v1.json`。内存投影与 `DurableCommit` 分离，用户成功反馈等待真实落盘。失败后重试当前快照，不重复导入或新增对象；这不包含 Room 锚地资料与 Shell 文件之间的跨存储原子事务。
+
+当前读取通过 `readShellContent` 完整校验旧格式/版本与所有收藏、航线、草稿元素；无法读取时 `PersistenceState.readFailure` 使唯一写者拒绝覆写。`OsStore.retryContentRead` 从原文件重新读取，先保留完整独立恢复副本再合并当前收藏/航线，当前非空草稿优先；恢复副本可经真实系统文件选择器导出。`ContentRecoveryStatus` 是通知中心和失效对象页的实际恢复入口。文件仍损坏时继续保护，不冒充已恢复；这条恢复链不自动执行导航、记录或守锚。
 
 ## 7. 可执行的源码边界检查
 
@@ -157,10 +171,26 @@ python3 scripts/check_runtime_boundaries.py
 
 检查退出码 `0` 表示这些静态规则通过，`1` 表示需要修复。它是词法边界检查，不是 Kotlin 类型分析：不会证明隐藏在反射中的调用、所有传递依赖、并发正确性、完整权限边界或 UI 行为。构建、必要的业务验证与实际设备检查仍各自记录。不能把脚本通过写成“OS 分层已经全部完成”。
 
-## 8. 下一步按真实缺口推进
+## 8. 通知的真实 S1–S4 接入闭环
 
-1. 继续把使用频率高、语义稳定的读 DTO 从 legacy 投影迁出，逐领域替换 `MainUiState`。
-2. 继续迁移仍使用大控制器/整对象方法的旧兼容调用方，最终删除不再使用的兼容入口；新 Shell 已使用字段级偏好命令。
-3. 为显示句柄补充后续跨进程断开语义；当前本地多消费者计数不能直接当作远程客户端死亡恢复。
-4. 若实际需要进程隔离，再实现 Binder 端口、调用者验证、订阅限流、持久命令身份和死亡/重连恢复；先完成这些，再把 `processIsolated` 标为真。
-5. 为新端口的真实失败路径补必要验证。源码检查负责防止回退为直连实现，不代替产品验收。
+| 所有者 / 文件 | 实际职责 |
+| --- | --- |
+| `core/runtime-contract/.../notification/NotificationContract.kt` | 不依赖 Android/legacy 的记录、文本、类型化目标、命令、结果、连接状态及 NotificationClient |
+| `runtime/marine-local/.../notification/MarineNotificationEvents.kt` | 默认进程唯一守锚/AIS 事件发布桥，订阅内容/交通服务，以领域 ID 与游标发布；不依赖 OsStore 或通知页面 |
+| `NotificationRepository.kt` | 子进程唯一写者；历史、聚合、已读、清除、幂等去重、回执与故障恢复 |
+| `NotificationBinderService.kt` | 非导出同 UID 服务、协议检查、分页、有限订阅与 client death 清理 |
+| `BinderNotificationClient.kt` | 主进程共享连接、IO 传输、握手/重连、epoch/revision 快照与未知结果查询 |
+| `SystemNotifications.kt` | NotificationClient 的 Shell 兼容投影及 toast 队列；无文件写入、无业务事件游标、无 expanded 状态 |
+| `NotificationShadeState.kt` / `NotificationCenter.kt` | Shell 面板状态、跟手动画、输入/焦点、可见已读和历史操作；不拥有领域任务 |
+| `NotificationQuickActions.kt` / `NotificationTasks.kt` | 显示偏好结果、来源/连接只读摘要、原领域当前任务与命令入口 |
+| `WpShellRuntime.kt` / `WpShellExperience.kt` | 统一关闭/Back/Home、通知交接、原实例恢复、输入屏蔽、显示租约与截图资格 |
+
+`YokuliApplication` 按进程角色装配：`:notifications` 不初始化 Shell、海事 runtime、Room、定位或 socket。消息服务用 `notifications/history-v1.json`，旧 `system-notifications.json` 留作只读迁移输入，旧 Shell 直接写入与 `MarineNoticeBridge` 的领域订阅路径已退出。服务使用普通版本化 Binder 1.0，非 Stable AIDL；同 UID 不是独立安全边界。细节见 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)、[03](03-LIFECYCLE-AND-RECOVERY.md)、[05](05-SECURITY-AND-UPDATES.md)。
+
+## 9. 按真实缺口继续
+
+1. 逐领域迁出兼容 `MainUiState`/legacy entity，不整体搬到 core 改名；新契约必须有真实消费者。
+2. 路线导航状态仍在 OsStore/Navigation.kt，内容仍跨 Room 与 Shell JSON；这两项尚未完成独立领域/跨存储原子迁移。
+3. 记录、守锚、AIS 和显示租约仍在默认进程，尚无完整 Marine Core Binder、独立 UID、持久幂等会话命令或统一 boot 恢复屏障。
+4. 通知不读取第三方通知，不替换 Android SystemUI/Recents，不迁移航海服务到 system_server。
+5. ROM 产品输入和 HOME flavor 已有，完整镜像、Cuttlefish 启动、真机/BSP、AVB/OTA 与发行密钥仍各有外部依赖，不能以本轮消息 IPC 或必要编译推断完成。

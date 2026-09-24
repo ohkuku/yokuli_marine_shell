@@ -27,7 +27,7 @@ object YokuliMetrics {
     val TileContentInset = 10.dp
     val TileSmallContentInset = 8.dp
     val StatusHeight = 27.dp
-    val AppBarHeight = 70.dp
+    val AppBarHeight = W10MobileMetrics.CommandBar
     val MinTouch = 48.dp
-    val PageMargin = 18.dp
+    val PageMargin = W10MobileMetrics.PageInset
 }

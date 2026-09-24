@@ -76,7 +76,7 @@ internal fun vesselStatusText(os: OsStore, metric: VesselSceneMetric): String = 
 @Composable internal fun VesselWindDetail(os: OsStore, openSource: (VesselMetricId) -> Unit) {
     val scene = rememberVesselScene(os)
     if (scene == null) {
-        PageBody { Label(os.t("船况服务正在连接", "connecting to boat data"), 20) }
+        PageBody { Label(os.t("船况服务正在连接", "connecting to boat data"), 15) }
         return
     }
     val history by os.hub.history.collectAsState()
@@ -113,15 +113,15 @@ internal fun vesselStatusText(os: OsStore, metric: VesselSceneMetric): String = 
                     if (active) Glyph("check", Modifier.size(18.dp), c.accent)
                 }
             }
-            Label(sourceMetricName(os, selected), 25, c.accent)
+            AppSection(sourceMetricName(os, selected))
             VesselReadingFacts(os, metric)
             if (selected in windDirectionMetrics) VesselWindDirection(os, metric)
             val key = windTrendKey(selected)
             val samples = history[key].orEmpty()
-            Label(os.t("最近的变化", "recent changes"), 24)
+            AppSection(os.t("最近的变化", "recent changes"))
             if (samples.isEmpty()) {
                 Label(os.t("最近 15 分钟没有这项读数的历史。收到真实样本后会显示趋势。",
-                    "No history for this reading in the last 15 minutes. A trend appears as actual samples arrive."), 16, c.muted)
+                    "No history for this reading in the last 15 minutes. A trend appears as actual samples arrive."), 15, c.muted)
             } else {
                 ReadingTrace(os, samples, key, now, current = current.readings[key])
             }
@@ -147,7 +147,7 @@ internal fun vesselStatusText(os: OsStore, metric: VesselSceneMetric): String = 
         }
         if (metric in setOf(VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC))
             Label(os.t("船首向表示船艏朝向；对地航向表示移动方向，两者分开使用。",
-                "Heading is where the bow points; course over ground is the direction of travel. They remain separate."), 16, c.muted)
+                "Heading is where the bow points; course over ground is the direction of travel. They remain separate."), 15, c.muted)
         return
     }
     val services = os.marine?.services ?: return
@@ -177,7 +177,7 @@ internal fun vesselStatusText(os: OsStore, metric: VesselSceneMetric): String = 
     val c = LocalMetro.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Label(vesselStatusText(os, metric), 17, if (metric.isCurrent) c.accent else c.muted, Modifier.weight(1f))
+        Label(vesselStatusText(os, metric), 17, if (metric.isCurrent) c.accentText else c.muted, Modifier.weight(1f))
         metric.receivedElapsedRealtime?.let { Label(readingAge(os, it, now), 14, c.muted, Modifier.widthIn(max = 150.dp)) }
     }
     if (metric.freshness != VesselDataFreshness.FRESH && metric.hasValue && metric.status != VesselSceneStatus.LAST_READING)
@@ -201,9 +201,9 @@ internal fun vesselStatusText(os: OsStore, metric: VesselSceneMetric): String = 
         VesselSourcePreference.AUTO -> os.t("自动采用符合条件的来源", "automatically uses an eligible source")
     }, 14, c.muted)
     if (metric.connectionContinuesWithoutMeasurement) Label(os.t("连接仍在接收其他消息，这项读数没有更新。",
-        "The connection is receiving other messages, but this reading has not updated."), 16, c.muted)
+        "The connection is receiving other messages, but this reading has not updated."), 15, c.muted)
     metric.conflict?.let {
-        Label(os.t("多个来源提供了不同的读数，请检查设备与安装方向。", "Sources provide different readings. Check the instruments and their alignment."), 16, c.muted)
+        Label(os.t("多个来源提供了不同的读数，请检查设备与安装方向。", "Sources provide different readings. Check the instruments and their alignment."), 15, c.muted)
     }
     if (metric.quality != VesselDataQuality.GOOD && metric.hasValue && metric.status != VesselSceneStatus.LOW_QUALITY)
         Label(os.t("读数质量受限", "reading quality is limited"), 14, c.muted)
@@ -265,13 +265,13 @@ internal fun vesselStatusText(os: OsStore, metric: VesselSceneMetric): String = 
     if (phoneHeading) MenuRow(os.t("确认手机安装与船艏", "confirm phone mounting and bow"),
         os.t("检查固定方向和船首向对齐", "check mounting orientation and heading alignment")) { if(enabled) openMounting() }
     if (relevant.isNotEmpty()) {
-        Label(os.t("检查连接", "inspect connection"), 24)
+        AppSection(os.t("检查连接", "inspect connection"))
         relevant.forEach { connection -> ConnectionAction(os, connection, currentSource, inputs) }
     } else if (allIdentities.none { it.sourceType == VesselSourceType.PHONE_SENSOR } &&
         metric !in derivedSourceMetrics) {
         val receivers = connections.filter { it.spec.receive }
         if (receivers.isNotEmpty()) {
-            Label(os.t("检查输入设备", "inspect an input"), 24)
+            AppSection(os.t("检查输入设备", "inspect an input"))
             receivers.forEach { connection -> ConnectionAction(os, connection, null, null) }
         }
     }

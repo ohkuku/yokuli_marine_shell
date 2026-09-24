@@ -1,13 +1,6 @@
 package com.yokuli.marine.shell.rebuild.ui
 
 import com.yokuli.runtime.contract.PositionSourceRequest
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -83,13 +76,8 @@ import java.util.Locale
                 hasInlineDetail -> os.t("收起详情", "close detail")
                 else -> null
             })
-        AnimatedContent(path, transitionSpec = {
-            val forward = targetState.size > initialState.size
-            (slideInHorizontally(tween(220)) { if (forward) it / 5 else -it / 8 } + fadeIn(tween(180))) togetherWith
-                (slideOutHorizontally(tween(180)) { if (forward) -it / 8 else it / 5 } + fadeOut(tween(140)))
-        }, label = "source-page") { visitPath ->
+        AppPageTransition(path, pageKey = { it.last() }, pageDepth = { it.size }, modifier = Modifier.weight(1f)) { visitPath ->
             val page = visitPath.last()
-            CompositionLocalProvider(LocalInternalAppInputEnabled provides (LocalInternalAppInputEnabled.current && visitPath == path)) {
             pageStates.SaveableStateProvider(page) { when {
                 page == "mount" -> PageBody { PhoneMountSettings(os) }
                 page == "wind" -> VesselWindDetail(os, openSource={navigate("source/${it.name}")})
@@ -114,7 +102,7 @@ import java.util.Locale
                         PhoneSourceSettings(os, openMounting = { navigate("mount") }, openPosition = { navigate(VesselMetricId.POSITION.name) })
                     }
                 }
-            } } }
+            } }
         }
     }
 }
@@ -127,13 +115,13 @@ import java.util.Locale
     val readings by os.hub.state.collectAsState()
     val now = rememberMarineClock()
     val locked = state.active?.paused == false
-    Label(os.t("手机提供什么", "what this phone provides"), 28)
+    AppSection(os.t("手机提供什么", "what this phone provides"))
     Toggle(os.t("手机定位", "phone location"), os.positionSource == "phone",
         if (os.positionSource == "nmea") os.t("当前使用船载船位，先在“位置”中关闭它。", "Boat position is selected; turn it off in Position first.")
         else os.t("开启时提供船位、对地航速与对地航向。", "Provides position, speed and course over ground while enabled."),
         enabled = !locked && os.positionSource in listOf("none", "phone")) { os.requestPosition(if (it) PositionSourceRequest.ENABLE_PHONE else PositionSourceRequest.DISABLE_POSITION) }
     if (os.positionSource == "nmea") MenuRow(os.t("选择船位来源", "choose position source"), os.t("全船使用同一份位置选择", "one position choice for all apps")) { openPosition() }
-    if (locked) Label(os.t("守锚正在使用船位，暂停后可以更改。", "Anchor Watch is using position; pause before changing it."), 17, LocalMetro.current.muted)
+    if (locked) Label(os.t("守锚正在使用船位，暂停后可以更改。", "Anchor Watch is using position; pause before changing it."), 15, LocalMetro.current.muted)
     readings.phone?.let { fix -> Label(os.formatCoordinates(fix.point), 23); Label(readingAge(os, fix.elapsed, now), 16, LocalMetro.current.muted) }
     if (os.positionSource == "phone") Label(when (location.phase) {
         PhoneLocationPhase.PERMISSION_REQUIRED -> os.t("请允许精确定位", "allow precise location")
@@ -141,7 +129,7 @@ import java.util.Locale
         PhoneLocationPhase.ERROR -> os.t("定位暂停更新，保留上次位置与时间", "location updates paused; last position and time retained")
         else -> if (readings.phone == null) os.t("正在等待第一次定位", "waiting for the first position") else os.t("定位已启用", "location enabled")
     }, 17, LocalMetro.current.muted)
-    Label(os.t("罗盘与姿态", "compass & motion"), 28)
+    AppSection(os.t("罗盘与姿态", "compass & motion"))
     MenuRow(os.t("固定手机", "mount this phone"), when {
         state.vesselMountCalibration.bowAxis != DeviceBowAxis.TOP || state.vesselMountCalibration.headingReferenceVersion != 1 && state.vesselMountCalibration.headingAlignmentCompletedAt > 0 -> os.t("旧安装需要重新确认", "reconfirm the previous mount")
         state.vesselMountCalibration.headingAligned && state.vesselMountCalibration.mountConfirmed -> os.t("船首向和姿态已确认", "heading and attitude confirmed")
@@ -156,19 +144,19 @@ import java.util.Locale
         os.t("气压", "pressure") to capabilities.pressureAvailable,
     ).forEach { (label, available) ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Label(label, 22)
+            Label(label, 15)
             Label(if (available) os.t("可采集", "supported") else os.t("手机未提供", "not provided"), 17, LocalMetro.current.muted)
         }
     }
     val phoneCandidates = state.vesselData.candidates.values.flatten().filter { it.source.sourceType == VesselSourceType.PHONE_SENSOR }
     if (phoneCandidates.isNotEmpty()) {
-        Label(os.t("最近采集", "last observed"), 28)
+        AppSection(os.t("最近采集", "last observed"))
         phoneCandidates.distinctBy { it.metric }.sortedBy { it.metric.ordinal }.forEach { candidate ->
-            Label(sourceMetricName(os, candidate.metric), 21)
+            Label(sourceMetricName(os, candidate.metric), 15)
             Label(sourceCandidateText(os, candidate.metric, candidate, now), 16, LocalMetro.current.muted)
         }
     }
-    Label(os.t("这些读数进入同一个数据中心。要采用哪一个，在“读数”中选择；采集不会自动向其他设备发送。", "These readings enter the same Data Center. Choose their use under Readings; collecting them never automatically sends data to another device."), 17, LocalMetro.current.muted)
+    Label(os.t("这些读数进入同一个数据中心。要采用哪一个，在“读数”中选择；采集不会自动向其他设备发送。", "These readings enter the same Data Center. Choose their use under Readings; collecting them never automatically sends data to another device."), 15, LocalMetro.current.muted)
 }
 
 /** 中文：安装只有一种解释。船首向修正与重力测得的横倾、纵倾互相独立。 */
@@ -212,16 +200,16 @@ import java.util.Locale
     LaunchedEffect(mount.headingAlignmentOffsetDegrees, correcting) {
         if (!correcting) correction = String.format(Locale.US, "%.1f", mount.headingAlignmentOffsetDegrees)
     }
-    Label(os.t("顶部朝船艏，固定后校准", "point toward the bow, then calibrate"), 24)
+    AppSection(os.t("顶部朝船艏，固定后校准", "point toward the bow, then calibrate"))
     PhoneMountDiagram(os)
     Label(os.t("手机顶部指向船艏，屏幕朝上，与船体基准平面平行固定。斜放或竖装的支架不能代表船体姿态；移动手机或改变支架后，需要重新校准。",
-        "Point the phone's physical top edge toward the bow. Fix it face up, parallel to the boat's reference plane. A tilted or upright mount cannot represent vessel attitude. Recalibrate after moving it."), 17, LocalMetro.current.muted)
+        "Point the phone's physical top edge toward the bow. Fix it face up, parallel to the boat's reference plane. A tilted or upright mount cannot represent vessel attitude. Recalibrate after moving it."), 15, LocalMetro.current.muted)
     Label(when {
         legacyMount -> os.t("旧安装需重新确认：按图固定后校准。", "Previous mounting needs confirmation. Follow the diagram and recalibrate.")
         frameSuspect -> os.t("安装需要重新确认", "mounting needs reconfirmation")
         installed -> os.t("已固定 · 全船共用这份校准", "mounted · one calibration for all apps")
         else -> os.t("尚未确认固定", "mounting not yet confirmed")
-    }, 18, if (installed) LocalMetro.current.accent else LocalMetro.current.fg)
+    }, 18, if (installed) LocalMetro.current.accentText else LocalMetro.current.fg)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         Column(Modifier.weight(1f)) {
             Label(os.t("手机顶部方向", "phone top-edge direction"), 14, LocalMetro.current.muted)
@@ -277,7 +265,7 @@ import java.util.Locale
             val phoneAttitude = state.vesselData.candidates.values.flatten().filter { it.source.sourceType == VesselSourceType.PHONE_SENSOR }
             val heel = phoneAttitude.firstOrNull { it.metric == VesselMetricId.HEEL }
             val pitch = phoneAttitude.firstOrNull { it.metric == VesselMetricId.PITCH }
-            Label(os.t("手机测得的船体姿态", "attitude from this phone"), 22)
+            AppSection(os.t("手机测得的船体姿态", "attitude from this phone"))
             Label(os.t("横倾 ", "heel ") + os.formatAngle((heel?.value as? Number)?.toDouble()) + "   ·   " +
                 os.t("纵倾 ", "pitch ") + os.formatAngle((pitch?.value as? Number)?.toDouble()), 22)
             listOfNotNull(heel?.receivedElapsedRealtime, pitch?.receivedElapsedRealtime).minOrNull()?.let { Label(readingAge(os, it, now), 14, LocalMetro.current.muted) }

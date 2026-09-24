@@ -21,13 +21,14 @@ enum class WpSurfaceTransitionKind {
     SAFETY_CRITICAL,
 }
 
-enum class WpMotionFamily { NONE, TURNSTILE, SWIVEL, FADE }
+enum class WpMotionFamily { NONE, TURNSTILE, SWIVEL, FADE, SLIDE, CONTINUUM }
 
 enum class WpMotionEvidence {
     DERIVED_FROM_REVIEWED_SAMPLES,
     DERIVED_UNVERIFIED,
     REDUCED_MOTION,
     NOT_APPLICABLE,
+    MDL2_ADAPTATION,
 }
 
 data class WpMotionPlan(
@@ -41,6 +42,8 @@ data class WpMotionPlan(
     val initialTranslationXFraction: Float = 0f,
     val transformOriginX: Float = .5f,
     val evidence: WpMotionEvidence,
+    val initialTranslationYDp: Float = 0f,
+    val initialScale: Float = 1f,
 ) {
     val durationMillis: Int = max(
         contentExitMillis,
@@ -55,17 +58,14 @@ data class WpMotionPlan(
     }
 }
 
-/**
- * Approved values are visible recording windows, not input latency or universal animation constants.
- * The derived values cover product-only transitions that the Stage 2.5 video did not observe.
- */
+/** 兼容旧调用字段；默认值已改为 W10M 短位移/缩放过渡，不再重播 WP8 的秒级翻页录屏。 */
 data class WpMotionTimings(
-    val pageSettleVisibleWindowMillis: Int = 700,
-    val appOpenVisibleWindowMillis: Int = 1_000,
-    val backReturnVisibleWindowMillis: Int = 750,
-    val derivedModuleTransitionMillis: Int = 480,
-    val derivedSearchTransitionMillis: Int = 360,
-    val derivedTransientMillis: Int = 220,
+    val pageSettleVisibleWindowMillis: Int = W10MobileMotion.PageMillis,
+    val appOpenVisibleWindowMillis: Int = W10MobileMotion.AppMillis,
+    val backReturnVisibleWindowMillis: Int = W10MobileMotion.PageMillis,
+    val derivedModuleTransitionMillis: Int = W10MobileMotion.PageMillis,
+    val derivedSearchTransitionMillis: Int = W10MobileMotion.ContentMillis,
+    val derivedTransientMillis: Int = W10MobileMotion.OverlayMillis,
     val reducedMotionMillis: Int = 120,
 )
 
@@ -80,130 +80,50 @@ object WpPressPolicy {
         normalizedX: Float,
         normalizedY: Float,
         pressProgress: Float,
-        maximumDegrees: Float = 5f,
+        maximumDegrees: Float = 0f,
     ): WpPressPlan {
         val progress = pressProgress.coerceIn(0f, 1f)
         if (progress == 0f) return WpPressPlan(0f, 0f, 1f)
         val horizontal = normalizedX.coerceIn(0f, 1f) - .5f
         val vertical = normalizedY.coerceIn(0f, 1f) - .5f
+        // 默认是 MDL2 平面按压；旧磁贴显式要求的触点倾斜也不能恢复 3–5 度的大透视。
+        val tilt = maximumDegrees.coerceIn(0f, 1.5f)
         return WpPressPlan(
-            rotationXDegrees = -vertical * maximumDegrees * 2f * progress,
-            rotationYDegrees = horizontal * maximumDegrees * 2f * progress,
-            scale = 1f - .025f * progress,
+            rotationXDegrees = -vertical * tilt * 2f * progress,
+            rotationYDegrees = horizontal * tilt * 2f * progress,
+            scale = 1f - .015f * progress,
         )
     }
 }
 
 object WpMotionPolicy {
-    fun resolve(
-        transition: WpSurfaceTransitionKind,
-        reducedMotion: Boolean = false,
-        timings: WpMotionTimings = WpMotionTimings(),
-    ): WpMotionPlan {
-        if (
-            transition == WpSurfaceTransitionKind.SAFETY_CRITICAL ||
-            transition == WpSurfaceTransitionKind.NONE ||
-            transition == WpSurfaceTransitionKind.PAGER_FORWARD ||
-            transition == WpSurfaceTransitionKind.PAGER_BACK
-        ) return none()
-        if (reducedMotion) {
-            return WpMotionPlan(
-                family = WpMotionFamily.FADE,
-                contentExitMillis = timings.reducedMotionMillis / 2,
-                targetEntranceMillis = timings.reducedMotionMillis,
-                evidence = WpMotionEvidence.REDUCED_MOTION,
-            )
-        }
+    fun resolve(transition: WpSurfaceTransitionKind, reducedMotion: Boolean = false, timings: WpMotionTimings = WpMotionTimings()): WpMotionPlan {
+        if (transition in setOf(WpSurfaceTransitionKind.SAFETY_CRITICAL, WpSurfaceTransitionKind.NONE,
+                WpSurfaceTransitionKind.PAGER_FORWARD, WpSurfaceTransitionKind.PAGER_BACK)) return none()
+        if (reducedMotion) return WpMotionPlan(WpMotionFamily.FADE,
+            contentExitMillis = timings.reducedMotionMillis / 2, targetEntranceMillis = timings.reducedMotionMillis,
+            evidence = WpMotionEvidence.REDUCED_MOTION)
         return when (transition) {
-            WpSurfaceTransitionKind.DESKTOP_TO_MODULE -> reviewedAppOpen(timings.appOpenVisibleWindowMillis)
-            WpSurfaceTransitionKind.MODULE_TO_DESKTOP -> reviewedBackReturn(timings.backReturnVisibleWindowMillis)
-            WpSurfaceTransitionKind.MODULE_LIST_TO_MODULE -> forward(
-                timings.derivedModuleTransitionMillis,
-                WpMotionEvidence.DERIVED_UNVERIFIED,
-            )
-            WpSurfaceTransitionKind.SEARCH_TO_MODULE -> forward(
-                timings.derivedSearchTransitionMillis,
-                WpMotionEvidence.DERIVED_UNVERIFIED,
-                rotation = -10f,
-            )
-            WpSurfaceTransitionKind.MODULE_ROUTE_FORWARD -> forward(
-                timings.derivedSearchTransitionMillis,
-                WpMotionEvidence.DERIVED_UNVERIFIED,
-            )
-            WpSurfaceTransitionKind.MODULE_ROUTE_BACK -> backward(
-                timings.derivedSearchTransitionMillis,
-                WpMotionEvidence.DERIVED_UNVERIFIED,
-            )
-            WpSurfaceTransitionKind.TASK_ACTIVATE -> forward(
-                timings.derivedModuleTransitionMillis,
-                WpMotionEvidence.DERIVED_UNVERIFIED,
-            )
-            WpSurfaceTransitionKind.SEARCH_PRESENT,
-            WpSurfaceTransitionKind.SEARCH_DISMISS,
-            WpSurfaceTransitionKind.RECENTS_PRESENT,
-            WpSurfaceTransitionKind.RECENTS_DISMISS -> WpMotionPlan(
-                family = WpMotionFamily.SWIVEL,
-                contentExitMillis = timings.derivedTransientMillis / 2,
-                targetEntranceMillis = timings.derivedTransientMillis,
-                initialRotationXDegrees = 14f,
-                evidence = WpMotionEvidence.DERIVED_UNVERIFIED,
-            )
-            WpSurfaceTransitionKind.NONE,
-            WpSurfaceTransitionKind.PAGER_FORWARD,
-            WpSurfaceTransitionKind.PAGER_BACK,
+            WpSurfaceTransitionKind.DESKTOP_TO_MODULE, WpSurfaceTransitionKind.MODULE_LIST_TO_MODULE,
+            WpSurfaceTransitionKind.SEARCH_TO_MODULE -> WpMotionPlan(WpMotionFamily.CONTINUUM,
+                contentExitMillis = 120, targetEntranceMillis = timings.appOpenVisibleWindowMillis.coerceIn(120, W10MobileMotion.AppMillis),
+                initialTranslationYDp = 20f, initialScale = .96f, evidence = WpMotionEvidence.MDL2_ADAPTATION)
+            WpSurfaceTransitionKind.MODULE_ROUTE_FORWARD -> slide(1f, timings.derivedModuleTransitionMillis)
+            WpSurfaceTransitionKind.MODULE_ROUTE_BACK -> slide(-1f, timings.derivedModuleTransitionMillis)
+            WpSurfaceTransitionKind.MODULE_TO_DESKTOP, WpSurfaceTransitionKind.TASK_ACTIVATE -> WpMotionPlan(WpMotionFamily.CONTINUUM,
+                contentExitMillis = 100, targetEntranceMillis = timings.backReturnVisibleWindowMillis.coerceIn(120, W10MobileMotion.PageMillis),
+                initialScale = .985f, evidence = WpMotionEvidence.MDL2_ADAPTATION)
+            WpSurfaceTransitionKind.SEARCH_PRESENT, WpSurfaceTransitionKind.RECENTS_PRESENT -> WpMotionPlan(WpMotionFamily.SLIDE,
+                contentExitMillis = 80, targetEntranceMillis = timings.derivedTransientMillis.coerceIn(100, W10MobileMotion.OverlayMillis),
+                initialTranslationYDp = 16f, evidence = WpMotionEvidence.MDL2_ADAPTATION)
+            WpSurfaceTransitionKind.SEARCH_DISMISS, WpSurfaceTransitionKind.RECENTS_DISMISS -> WpMotionPlan(WpMotionFamily.FADE,
+                contentExitMillis = 100, targetEntranceMillis = 120, evidence = WpMotionEvidence.MDL2_ADAPTATION)
+            WpSurfaceTransitionKind.NONE, WpSurfaceTransitionKind.PAGER_FORWARD, WpSurfaceTransitionKind.PAGER_BACK,
             WpSurfaceTransitionKind.SAFETY_CRITICAL -> none()
         }
     }
-
-    /** Reviewed samples: departure at 0, focused plane at 20%, target plane at 80%, stable at 100%. */
-    private fun reviewedAppOpen(windowMillis: Int): WpMotionPlan = WpMotionPlan(
-        family = WpMotionFamily.TURNSTILE,
-        contentExitMillis = windowMillis / 5,
-        targetEntranceDelayMillis = windowMillis / 5,
-        targetEntranceMillis = windowMillis * 3 / 5,
-        settleMillis = windowMillis / 5,
-        initialRotationYDegrees = -22f,
-        initialTranslationXFraction = .12f,
-        transformOriginX = 0f,
-        evidence = WpMotionEvidence.DERIVED_FROM_REVIEWED_SAMPLES,
-    )
-
-    /** Reviewed samples: leaving app at 0, incoming Start plane at 2/3, stable at 100%. */
-    private fun reviewedBackReturn(windowMillis: Int): WpMotionPlan = WpMotionPlan(
-        family = WpMotionFamily.TURNSTILE,
-        contentExitMillis = windowMillis / 3,
-        targetEntranceMillis = windowMillis * 2 / 3,
-        settleMillis = windowMillis / 3,
-        initialRotationYDegrees = 22f,
-        initialTranslationXFraction = -.12f,
-        transformOriginX = 1f,
-        evidence = WpMotionEvidence.DERIVED_FROM_REVIEWED_SAMPLES,
-    )
-
-    private fun forward(totalMillis: Int, evidence: WpMotionEvidence, rotation: Float = -18f) = WpMotionPlan(
-        family = WpMotionFamily.TURNSTILE,
-        contentExitMillis = totalMillis / 3,
-        targetEntranceMillis = totalMillis * 3 / 4,
-        settleMillis = totalMillis / 4,
-        initialRotationYDegrees = rotation,
-        initialTranslationXFraction = .08f,
-        transformOriginX = 0f,
-        evidence = evidence,
-    )
-
-    private fun backward(totalMillis: Int, evidence: WpMotionEvidence) = WpMotionPlan(
-        family = WpMotionFamily.TURNSTILE,
-        contentExitMillis = totalMillis / 3,
-        targetEntranceMillis = totalMillis * 3 / 4,
-        settleMillis = totalMillis / 4,
-        initialRotationYDegrees = 18f,
-        initialTranslationXFraction = -.08f,
-        transformOriginX = 1f,
-        evidence = evidence,
-    )
-
-    private fun none() = WpMotionPlan(
-        family = WpMotionFamily.NONE,
-        evidence = WpMotionEvidence.NOT_APPLICABLE,
-    )
+    private fun slide(direction: Float, duration: Int) = WpMotionPlan(WpMotionFamily.SLIDE,
+        contentExitMillis = 100, targetEntranceMillis = duration.coerceIn(120, W10MobileMotion.PageMillis),
+        initialTranslationXFraction = .045f * direction, evidence = WpMotionEvidence.MDL2_ADAPTATION)
+    private fun none() = WpMotionPlan(WpMotionFamily.NONE, evidence = WpMotionEvidence.NOT_APPLICABLE)
 }

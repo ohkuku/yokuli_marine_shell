@@ -2,6 +2,7 @@ package com.yokuli.marine.feature.desktop
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -11,7 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.LocalWpTheme
@@ -43,6 +45,7 @@ private data class IndexedLauncherEntry(val entry: LauncherEntryUiState, val ind
 fun WpAppList(
     state: LauncherUiState,
     onAction: (LauncherUiAction) -> Unit,
+    onSearch: (() -> Unit)? = null,
 ) {
     val colors = LocalWpTheme.current
     val locale = LocalConfiguration.current.locales[0]
@@ -62,62 +65,77 @@ fun WpAppList(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val groupIndexes = remember(groups) {
-        var index = 1
+        var index = 0
         buildMap {
             groups.forEach { (letter, entries) -> put(letter, index); index += entries.size + 1 }
         }
     }
 
     Box(Modifier.fillMaxSize().background(colors.background).testTag("all-apps-list")) {
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            state = listState,
-            contentPadding = PaddingValues(start = 20.dp, end = 14.dp, bottom = 36.dp),
-        ) {
-            item {
-                WpText(
-                    stringResource(R.string.page_apps),
-                    44,
-                    weight = FontWeight.Light,
-                    modifier = Modifier.padding(top = 10.dp, bottom = 18.dp),
-                )
-            }
-            groups.forEach { (letter, groupEntries) ->
-                item {
-                    val interactions = remember(letter) { MutableInteractionSource() }
-                    Box(
-                        Modifier.padding(vertical = 6.dp).size(YokuliMetrics.MinTouch)
-                            .testTag("alphabet-group-${letter.lowercaseChar()}")
-                            .wpTilt(interactions, maximumDegrees = 4f).background(colors.accent)
-                            .combinedClickable(
-                                interactionSource = interactions,
-                                indication = null,
-                                onClick = { onAction(LauncherUiAction.OpenAlphabetJump) },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) { WpText(letter.lowercase(), 24, color = colors.onAccent, weight = FontWeight.Light) }
+        Column(Modifier.fillMaxSize()) {
+            if (onSearch != null) {
+                val interactions = remember { MutableInteractionSource() }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                        .heightIn(min = 48.dp).background(colors.foreground.copy(alpha = .08f))
+                        .border(1.dp, colors.muted.copy(alpha = .65f)).testTag("all-apps-search")
+                        .combinedClickable(interactionSource = interactions, indication = null,
+                            role = Role.Button, onClick = onSearch).padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    SearchGlyph(color = colors.foreground)
+                    WpText(stringResource(R.string.apps_search), 15, color = colors.muted)
                 }
-                items(groupEntries, key = { it.entry.descriptor.entryId.value }) { indexedEntry ->
-                    val entry = indexedEntry.entry
-                    val interactions = remember(entry.descriptor.entryId) { MutableInteractionSource() }
-                    Row(
-                        Modifier.fillMaxWidth().height(64.dp)
-                            .testTag("launcher-entry-${entry.descriptor.entryId.value}")
-                            .wpTilt(interactions)
-                            .combinedClickable(
-                                interactionSource = interactions,
-                                indication = null,
-                                onClick = { onAction(LauncherUiAction.Open(entry.descriptor.launchToken)) },
-                                onLongClick = {
-                                    onAction(LauncherUiAction.OpenEntryContextMenu(entry.descriptor.entryId))
-                                },
-                            ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(Modifier.size(48.dp).background(colors.accent), contentAlignment = Alignment.Center) {
-                            entry.icon.Render(colors.onAccent, Modifier.size(25.dp))
+            } else WpText(stringResource(R.string.page_apps), 24,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+            LazyColumn(
+                Modifier.weight(1f).fillMaxWidth(),
+                state = listState,
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            ) {
+                groups.forEach { (letter, groupEntries) ->
+                    item {
+                        val interactions = remember(letter) { MutableInteractionSource() }
+                        Box(
+                            Modifier.padding(top = 8.dp, bottom = 2.dp).size(YokuliMetrics.MinTouch)
+                                .testTag("alphabet-group-${letter.lowercaseChar()}")
+                                .wpTilt(interactions, maximumDegrees = 4f)
+                                .combinedClickable(
+                                    interactionSource = interactions,
+                                    indication = null,
+                                    onClick = { onAction(LauncherUiAction.OpenAlphabetJump) },
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(Modifier.size(34.dp).border(1.dp, colors.accentText), contentAlignment = Alignment.Center) {
+                                WpText(letter.lowercase(), 20, color = colors.accentText)
+                            }
                         }
-                        WpText(entry.title, 20, weight = FontWeight.Light, modifier = Modifier.padding(start = 14.dp))
+                    }
+                    items(groupEntries, key = { it.entry.descriptor.entryId.value }) { indexedEntry ->
+                        val entry = indexedEntry.entry
+                        val interactions = remember(entry.descriptor.entryId) { MutableInteractionSource() }
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 60.dp)
+                                .testTag("launcher-entry-${entry.descriptor.entryId.value}")
+                                .wpTilt(interactions)
+                                .combinedClickable(
+                                    interactionSource = interactions,
+                                    indication = null,
+                                    onClick = { onAction(LauncherUiAction.Open(entry.descriptor.launchToken)) },
+                                    onLongClick = {
+                                        onAction(LauncherUiAction.OpenEntryContextMenu(entry.descriptor.entryId))
+                                    },
+                                ).padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.size(40.dp).background(colors.accent), contentAlignment = Alignment.Center) {
+                                entry.icon.Render(colors.onAccent, Modifier.size(24.dp))
+                            }
+                            WpText(entry.title, 18, weight = FontWeight.Normal,
+                                modifier = Modifier.weight(1f).padding(start = 12.dp), maxLines = 2)
+                        }
                     }
                 }
             }
@@ -174,8 +192,8 @@ private fun WpLauncherContextMenu(
             .testTag("launcher-context-menu").contextClick(onDismiss),
         contentAlignment = Alignment.Center,
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp)) {
-            WpText(entry.title, 34, weight = FontWeight.Light, modifier = Modifier.padding(bottom = 20.dp))
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+            WpText(entry.title, 24, weight = FontWeight.Normal, modifier = Modifier.padding(bottom = 16.dp))
             if (pinActionAvailable) {
                 ContextAction(
                     title = stringResource(if (pinned) R.string.context_unpin else R.string.context_pin),
@@ -199,12 +217,13 @@ private fun ContextAction(title: String, icon: MarineIconKind, tag: String, onCl
     val colors = LocalWpTheme.current
     val interactions = remember { MutableInteractionSource() }
     Row(
-        Modifier.fillMaxWidth().height(64.dp).testTag(tag).wpTilt(interactions)
-            .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick),
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(tag).wpTilt(interactions)
+            .combinedClickable(interactionSource = interactions, indication = null, onClick = onClick)
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MarineIcon(icon, colors.accent, Modifier.size(28.dp))
-        WpText(title, 20, modifier = Modifier.padding(start = 16.dp))
+        MarineIcon(icon, colors.foreground, Modifier.size(24.dp))
+        WpText(title, 18, modifier = Modifier.padding(start = 16.dp))
     }
 }
 

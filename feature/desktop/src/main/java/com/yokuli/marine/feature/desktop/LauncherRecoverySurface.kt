@@ -59,7 +59,7 @@ private fun RecoveryCommand(label: String, tag: String, onClick: () -> Unit) {
         label,
         22,
         weight = FontWeight.Light,
-        color = colors.accent,
+        color = colors.accentText,
         modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 18.dp, vertical = 12.dp)
             .testTag(tag)
             .semantics { role = Role.Button }

@@ -21,31 +21,33 @@ import com.yokuli.marine.shell.rebuild.chart.*
     val single=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {it?.let(library::importCopy)}
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,os.title(AppId.LIBRARY))
-        PageBody {
+        Box(Modifier.weight(1f)) { PageBody {
             LibraryProgress(os)
             if(library.folders.isEmpty()) {
-                Label(os.t("一个文件夹，\n一张自己的海图。","one folder,\nyour own chart."),37)
-                Label(os.t("连接海图文件夹，为图层命名。重叠的地方，优先显示你排在前面的海图。","Connect a folder and name its layer. Where charts overlap, the first chart takes priority."),19,LocalMetro.current.muted)
+                Label(os.t("一个文件夹，\n一张自己的海图。","one folder,\nyour own chart."),24)
+                Label(os.t("连接海图文件夹，为图层命名。重叠的地方，优先显示你排在前面的海图。","Connect a folder and name its layer. Where charts overlap, the first chart takes priority."),15,LocalMetro.current.muted)
             }
             library.folders.forEach {entry ->
                 val charts=library.folderFiles(entry)
                 val used=os.maps.source==MapSource.CustomLayer(entry.id)
-                Row(Modifier.fillMaxWidth().clickable {os.open("library:${entry.id}")}.padding(vertical=17.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Glyph("folder",Modifier.size(35.dp),if(used)LocalMetro.current.accent else LocalMetro.current.fg)
+                Row(Modifier.fillMaxWidth().heightIn(min=64.dp).clickable {os.open("library:${entry.id}")}.padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Glyph("folder",Modifier.size(32.dp),if(used)LocalMetro.current.accent else LocalMetro.current.fg)
                     Column(Modifier.weight(1f).padding(start=16.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                        Label(entry.layerName ?: folderName(os,entry),28)
+                        Label(entry.layerName ?: folderName(os,entry),20)
                         Label(os.t("${charts.count {it.enabled && it.error==null}} / ${charts.size} 张参与显示","${charts.count {it.enabled && it.error==null}} / ${charts.size} charts included"),15,LocalMetro.current.muted)
-                        if(used)Label(os.t("海图正在使用","in use on chart"),14,LocalMetro.current.accent)
+                        if(used)Label(os.t("海图正在使用","in use on chart"),14,LocalMetro.current.accentText)
                         else if(entry.layerName==null)Label(os.t("点开创建图层","open to create a layer"),14,LocalMetro.current.muted)
                     }
-                    Label("›",28,LocalMetro.current.muted)
+                    Glyph("chevron_right",Modifier.size(20.dp),LocalMetro.current.muted)
                 }
             }
             Spacer(Modifier.height(8.dp))
-            MetroButton(os.t("连接海图文件夹","connect chart folder"),{folder.launch(null)},primary=true,enabled=!library.busy)
-            MetroButton(os.t("导入单个海图文件","import a chart file"),{single.launch(arrayOf("*/*"))},enabled=!library.busy)
             Label(os.t("支持栅格 MBTiles。连接后，原文件仍由你的文件夹保存。","Raster MBTiles. Linked files stay in your own folder."),15,LocalMetro.current.muted)
-        }
+        } }
+        AppCommandBar(os,listOf(
+            AppCommand("link-folder","folder",os.t("连接海图文件夹","Connect chart folder"),{folder.launch(null)},enabled=!library.busy),
+            AppCommand("import-chart","plus",os.t("导入海图文件","Import chart file"),{single.launch(arrayOf("*/*"))},enabled=!library.busy),
+        ))
     }
     naming?.let {entry ->TextDialog(os,os.t("命名这个图层","name this layer"),entry.layerName ?: folderName(os,entry),{naming=null}) {library.setLayer(entry,it);naming=null;os.open("library:${entry.id}")}}
 }
@@ -70,19 +72,19 @@ import com.yokuli.marine.shell.rebuild.chart.*
         Pivot(listOf(os.t("海图","charts"),os.t("管理","manage"))) {page ->PageBody {
             LibraryProgress(os)
             if(page==0) {
-                Label(os.t("$included 张正在参与图层","$included charts included in layer"),23,c.accent)
+                Label(os.t("$included 张正在参与图层","$included charts included in layer"),20,c.accentText)
                 if(folder.layerName!=null) {
                     MetroButton(if(used)os.t("回到海图查看","view current chart")else os.t("在海图中使用此图层","use this layer on chart"),{viewLayer(os,folder)},primary=true,enabled=included>0)
                 } else MetroButton(os.t("创建命名图层","create a named layer"),{naming=true},primary=true)
                 Label(os.t("上方优先，空白处显示下一张。开关决定是否参与渲染；点文件名展开操作。","Top first; uncovered areas show the next chart. Switch inclusion on or off; tap a name for actions."),15,c.muted)
-                if(files.isEmpty() && !library.busy)Label(os.t("文件夹里还没有海图","no charts in this folder yet"),28,c.muted)
+                if(files.isEmpty() && !library.busy)Label(os.t("文件夹里还没有海图","no charts in this folder yet"),20,c.muted)
                 files.forEachIndexed {index,file ->
                     Column(Modifier.fillMaxWidth().padding(vertical=9.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.fillMaxWidth().clickable {expanded=if(expanded==file.id)null else file.id}.padding(vertical=5.dp),verticalAlignment=Alignment.CenterVertically) {
-                            Label("${index+1}".padStart(2,'0'),25,if(file.enabled)c.accent else c.muted,Modifier.width(42.dp))
+                            Label("${index+1}".padStart(2,'0'),20,if(file.enabled)c.accentText else c.muted,Modifier.width(42.dp))
                             Column(Modifier.weight(1f)) {
-                                Label(file.displayName,23)
-                                Label(if(file.error!=null)library.errorText(file.error,os.chinese)else if(file.enabled)os.t("参与显示","included")else os.t("已隐藏","hidden"),14,if(file.enabled)c.accent else c.muted)
+                                Label(file.displayName,15)
+                                Label(if(file.error!=null)library.errorText(file.error,os.chinese)else if(file.enabled)os.t("参与显示","included")else os.t("已隐藏","hidden"),14,if(file.enabled)c.accentText else c.muted)
                             }
                             Glyph(if(expanded==file.id)"minus"else "plus",Modifier.size(22.dp),c.muted)
                         }
@@ -104,8 +106,8 @@ import com.yokuli.marine.shell.rebuild.chart.*
                 }
                 if(folder.uri!="copy")MetroButton(os.t("扫描新增或替换的文件","scan added or replaced files"),{library.rescan(folder)},enabled=!library.busy)
             } else {
-                Label(folderName(os,folder),28,c.accent)
-                Label(os.t("${files.size} 张海图 · ${decimal(files.sumOf {it.bytes}/1_000_000.0)} MB","${files.size} charts · ${decimal(files.sumOf {it.bytes}/1_000_000.0)} MB"),16,c.muted)
+                Label(folderName(os,folder),20,c.accentText)
+                Label(os.t("${files.size} 张海图 · ${decimal(files.sumOf {it.bytes}/1_000_000.0)} MB","${files.size} charts · ${decimal(files.sumOf {it.bytes}/1_000_000.0)} MB"),15,c.muted)
                 MetroButton(if(folder.layerName==null)os.t("创建图层","create layer")else os.t("重命名图层","rename layer"),{naming=true},primary=true)
                 MetroButton(os.t("重命名文件夹标签","rename folder label"),{namingFolder=true})
                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -114,7 +116,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
                 }
                 val excluded=library.excludedFiles.filter {it.source==folder.uri}
                 if(excluded.isNotEmpty()) {
-                    Label(os.t("已移除的海图","removed charts"),28)
+                    AppSection(os.t("已移除的海图","removed charts"))
                     excluded.forEach {file ->MenuRow(file.displayName,os.t("点按恢复到图层末尾","tap to restore at the end"),"plus") {library.restore(file)}}
                 }
                 if(folder.layerName!=null)MetroButton(os.t("删除图层","delete layer"),{removeLayer=true})
@@ -127,7 +129,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
     if(namingFolder)TextDialog(os,os.t("文件夹标签","folder label"),folderName(os,folder),{namingFolder=false}) {library.renameFolder(folder,it);namingFolder=false}
     namingFile?.let {file ->TextDialog(os,os.t("海图显示名称","chart display name"),file.displayName,{namingFile=null}) {library.renameFile(file,it);namingFile=null}}
     removeFile?.let {file ->ConfirmDialog(os,os.t("从图册移除 ${file.displayName}？原文件保留。","Remove ${file.displayName} from the library? Keep the original file."),{removeFile=null}) {library.forget(file);removeFile=null;expanded=null}}
-    if(removeLayer)ConfirmDialog(os,os.t("删除图层？保留文件夹和海图，当前地图将切回在线。","Delete this layer? Keep its folder and charts; an active layer switches to online."),{removeLayer=false}) {os.maps.removingLayer(folder.id);library.removeLayer(folder);removeLayer=false}
+    if(removeLayer)ConfirmDialog(os,os.t("删除图层？保留文件夹和海图，正在使用此图层的地图将切回离线底图。","Delete this layer? Keep its folder and charts; an active layer switches to the offline basemap."),{removeLayer=false}) {os.maps.removingLayer(folder.id);library.removeLayer(folder);removeLayer=false}
     if(disconnect)ConfirmDialog(os,os.t("断开 ${folderName(os,folder)}？原文件保留。","Disconnect ${folderName(os,folder)}? Keep original files."),{disconnect=false}) {os.maps.removingLayer(folder.id);library.forgetFolder(folder.uri);disconnect=false;os.back()}
 }
 

@@ -15,7 +15,7 @@ import kotlin.math.min
 fun MarineIcon(kind: MarineIconKind, color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         val unit = min(size.width, size.height)
-        val stroke = unit * .075f
+        val stroke = unit * .0625f
         val center = center
         when (kind) {
             MarineIconKind.APPS -> repeat(3) { row -> repeat(3) { column ->
@@ -25,9 +25,11 @@ fun MarineIcon(kind: MarineIconKind, color: Color, modifier: Modifier = Modifier
                 drawLine(color, Offset(unit * .22f, unit * .22f), Offset(unit * .78f, unit * .78f), stroke)
                 drawLine(color, Offset(unit * .78f, unit * .22f), Offset(unit * .22f, unit * .78f), stroke)
             }
-            MarineIconKind.UNPIN -> {
-                drawCircle(color, unit * .38f, center, style = Stroke(stroke))
-                drawLine(color, Offset(unit * .27f, center.y), Offset(unit * .73f, center.y), stroke)
+            MarineIconKind.UNPIN -> rotate(45f, center) {
+                drawRect(color, Offset(unit*.35f, unit*.19f), Size(unit*.30f, unit*.29f), style=Stroke(stroke))
+                drawLine(color, Offset(unit*.28f, unit*.49f), Offset(unit*.72f, unit*.49f), stroke)
+                drawLine(color, Offset(unit*.50f, unit*.49f), Offset(unit*.50f, unit*.80f), stroke)
+                drawLine(color, Offset(unit*.12f, unit*.15f), Offset(unit*.87f, unit*.86f), stroke)
             }
             MarineIconKind.RESIZE -> {
                 drawLine(color, Offset(unit * .18f, unit * .82f), Offset(unit * .82f, unit * .18f), stroke)
@@ -37,8 +39,9 @@ fun MarineIcon(kind: MarineIconKind, color: Color, modifier: Modifier = Modifier
                 drawLine(color, Offset(unit * .82f, unit * .18f), Offset(unit * .82f, unit * .43f), stroke)
             }
             MarineIconKind.PIN -> rotate(45f, center) {
-                drawLine(color, Offset(unit * .50f, unit * .16f), Offset(unit * .50f, unit * .78f), stroke)
-                drawLine(color, Offset(unit * .28f, unit * .36f), Offset(unit * .72f, unit * .36f), stroke * 1.5f)
+                drawRect(color, Offset(unit*.35f, unit*.19f), Size(unit*.30f, unit*.29f), style=Stroke(stroke))
+                drawLine(color, Offset(unit*.28f, unit*.49f), Offset(unit*.72f, unit*.49f), stroke)
+                drawLine(color, Offset(unit*.50f, unit*.49f), Offset(unit*.50f, unit*.80f), stroke)
             }
             MarineIconKind.INFO -> {
                 drawCircle(color, unit * .38f, center, style = Stroke(stroke))

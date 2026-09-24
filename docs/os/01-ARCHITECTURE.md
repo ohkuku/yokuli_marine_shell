@@ -1,6 +1,6 @@
 # 01 · 分层架构与迁移边界
 
-状态：设计决策。R0 仅建立 AOSP 产品和 HOME 预置入口；后续运行时、系统交互与外部 SDK 能力尚未实现。现状基线 `b5fc247`。阶段编号统一见 [08 · 交付顺序与验收门槛](08-ROADMAP-AND-ACCEPTANCE.md)。
+状态：当前源码边界与后续设计分开维护。真实入口是 `app-shell/src/rebuild`；默认进程持有 Shell 与海事运行时，通知历史已接入同 APK/UID 的 `:notifications` Binder 服务。HOME/AOSP 产品输入已存在，完整 Marine Core 隔离、SystemUI、第三方 SDK 和 ROM 镜像仍未完成。最新详细接线见 [10 · 系统边界](10-INPROCESS-SYSTEM-BOUNDARIES.md)，阶段路线仍见 [08](08-ROADMAP-AND-ACCEPTANCE.md)。
 
 ## 产品边界
 
@@ -45,36 +45,39 @@ flowchart TB
 
 Android 原生架构已经提供 kernel/HAL/framework/服务与应用边界；Yokuli 应在这些边界上扩展，而不是以全局单例模拟所有系统能力。[AOSP 架构](https://source.android.com/docs/core/architecture)
 
-## 当前进程拓扑：不是未来架构
+## 当前进程拓扑：真实接入与剩余边界
 
 ```mermaid
 flowchart LR
-    subgraph APK[com.yokuli.marine · 同一个应用 UID 与默认进程]
-        Application[YokuliApplication]
-        UI[MainActivity / Compose 应用]
-        Shell[OsStore / WpShellRuntime]
-        VM[MainViewModel]
-        Bridge[MarineRuntime 读模型桥接]
-        FGS[AnchorForegroundService]
-        Runtime[YokuliRuntimeCoordinator + 领域 runtimes]
-        Hub[VesselSourceRegistry / VesselDataHub]
-        DB[(Room / DataStore / Atomic JSON)]
-        Application --> Shell
-        UI --> Shell
-        UI --> VM
-        VM --> Bridge
-        Bridge --> Shell
-        VM --> FGS
-        FGS --> Runtime
-        Runtime --> Hub
-        Runtime --> DB
-        Shell --> DB
+    subgraph APK[com.yokuli.marine · 一个 APK / 一个 UID]
+        subgraph MAIN[默认进程]
+            Application[YokuliApplication：按进程角色装配]
+            UI[MainActivity / WpShellRuntime / 内置应用]
+            Client[MarineSystem / MarineServices 窄端口]
+            Runtime[LegacyMarineController / 领域 runtime]
+            Events[MarineNotificationEvents]
+            NoticeClient[BinderNotificationClient]
+            DomainDB[(Room / DataStore / 领域文件)]
+            Application --> Client
+            UI --> Client --> Runtime --> DomainDB
+            Application --> Events --> NoticeClient
+            UI --> NoticeClient
+        end
+        subgraph NOTIFY[:notifications 进程]
+            Service[NotificationBinderService]
+            Repo[NotificationRepository：唯一消息写者]
+            History[(notifications/history-v1.json)]
+            Service --> Repo --> History
+        end
+        NoticeClient -->|版本化 Binder / 实际 UID 校验| Service
     end
-    Platform[Android 平台 API] --> Hub
-    Runtime --> Platform
+    Runtime --> Android[Android GNSS / Sensors / Network / Foreground Service]
+    UI --> Android
 ```
 
-FGS 是 Android 组件，仍在此 APK 的默认进程。现有 `@Singleton`、Flow、内部应用注册表都不是 UID 隔离或公开 IPC 保证。Compose 最近任务卡片也不是 Android Recents 的完整替代。
+通知子进程的 Application 不创建 OsStore、MarineSystem、海事 Room、传感器或网络连接。消息服务由真实客户端绑定启动；主进程的领域事件桥与通知页面共享同一 Binder 客户端。消息历史单写，旧 `system-notifications.json` 只作为保留的迁移输入；Shell 不再写该文件，也不再持有领域事件消费游标。
+
+这闭合了一个通知领域的 S1–S4 路径，不代表完整 Marine Core 已移走：来源、记录、守锚、AIS 仍在默认进程；导航冻结路线及索引仍由 OsStore 持有。主进程退出会影响这些运行时，消息进程不能替它们保持监控。两进程同 UID，不具有相互安全沙箱；普通 Binder 协议也不是 Stable AIDL 或第三方 SDK。最近任务仍是内部页面快照，不是 Android Recents 接管。
 
 ## R0：预置 HOME，不越级接管整个平台
 
@@ -119,11 +122,11 @@ flowchart LR
 
 1. 在同进程实现 `MarineClient` 领域端口，移除页面对 `MainViewModel` 具体实现与 DAO 的直接依赖；返回不可变快照。
 2. 将恢复、资源持有与命令调度从 UI 生命周期移出，明确每个状态的唯一持久化所有者。
-3. 通过本地适配和 IPC 适配的同一契约验证后，再引入 Binder 和独立服务 APK/UID。
+3. 已以通知领域实现真实同 UID 子进程 Binder；其他领域按同样的契约/真实客户端/恢复闭环逐步迁移。独立服务 APK/UID 仍需另做授权与资料迁移。
 4. 建立一次性数据迁移：旧 UID 导出带版本清单，受权新服务校验并导入，成功后写迁移标记；中断可重试，未成功前旧库不删。禁止让两个 UID 同时直接读写同一个 SQLite/DataStore 文件。
 5. 迁移成功后 UI 只读接口；服务故障只影响实时能力，Shell 留在可恢复状态。领域健康不能由“Binder 已连接”代替。
 
-同包 `:marine` 子进程可作为过渡隔离 UI 崩溃，但它仍是同 UID，且 Hilt 单例会按进程重复；直接给现有 Service 增加 `android:process` 会制造重复资源持有者和 DataStore/Room 协调问题，**不是允许的快捷实现**。
+同包子进程可隔离部分进程崩溃，但仍同 UID，Hilt 单例按进程重复。通知已经使用角色化 Application 和唯一文件写者；今后不能只给现有海事 Service 增加 `android:process`，否则会重复初始化连接、传感器及 DataStore/Room 所有者。
 
 ## 服务授权和系统边界
 
@@ -143,4 +146,4 @@ Binder 接口设计见 [02](02-DOMAIN-AND-CONTRACTS.md)。跨独立更新组件�
 
 ## 可实施的迁移完成标准
 
-一次领域迁移须同时留下：所有者表、状态机、命令/错误定义、源码适配位置、数据迁移与回滚办法、实际故障证据。若只完成 UI 重排，记录为 UI 工作；若只有 AIDL/schema，记录为协议草案；只有运行时、生命周期与调用方均接通后才能标记“服务完成”。
+一次领域迁移须同时更新：所有者、状态机、命令/错误定义、真实客户端、源码适配位置、持久化迁移与故障恢复。编译和设备运行状态独立陈述；本轮不制作验收材料。若只完成 UI 重排，记录为 UI 工作；若只有 AIDL/schema，记录为协议草案；只有运行时、生命周期与调用方均接通后才能标记“服务完成”。

@@ -50,7 +50,25 @@ data class VoyageSessionState(
 enum class VoyageAction { START, PAUSE, RESUME, FINISH }
 enum class VoyageCommandStatus { CONFIRMED, NOT_CONFIRMED, POSITION_REQUIRED, FAILED }
 /** 命令回执只携带业务代码；双语文案由 Shell 的通知投影决定。 */
-data class VoyageCommandEvent(val action: VoyageAction, val status: VoyageCommandStatus)
+data class VoyageCommandEvent(val action: VoyageAction, val status: VoyageCommandStatus, val requestId: String = "")
+
+/** 命令账本的状态与航行阶段分开；UNKNOWN 不代表失败或允许再次发送。 */
+enum class VoyageRequestStatus { QUEUED, EXECUTING, UNKNOWN, CONFIRMED, REJECTED, FAILED }
+data class VoyageRequest(
+    val action: VoyageAction,
+    val expectedSessionId: Long? = null,
+    val name: String = "",
+    val motion: Boolean = false,
+    val requestId: String = java.util.UUID.randomUUID().toString(),
+)
+data class VoyageCommandReceipt(
+    val request: VoyageRequest,
+    val status: VoyageRequestStatus = VoyageRequestStatus.EXECUTING,
+    val reason: String? = null,
+    val sessionId: Long? = request.expectedSessionId,
+) {
+    val terminal: Boolean get() = status in setOf(VoyageRequestStatus.CONFIRMED, VoyageRequestStatus.REJECTED, VoyageRequestStatus.FAILED)
+}
 
 /**
  * 各应用共享的航行会话契约。状态可以多处订阅；events 是 Shell 通知中心的单消费队列，
@@ -59,6 +77,11 @@ data class VoyageCommandEvent(val action: VoyageAction, val status: VoyageComman
 interface VoyageSessionService {
     val state: StateFlow<VoyageSessionState>
     val events: Flow<VoyageCommandEvent>
+    /** 有界、进程级结果账本；通知面板和业务页重新进入后读取同一请求。 */
+    val commands: StateFlow<List<VoyageCommandReceipt>>
+    fun request(command: VoyageRequest): String
+    /** 只查询原请求涉及的持久状态，不重新执行开始、暂停、继续或结束。 */
+    fun recheck(requestId: String)
     fun start(name: String, motion: Boolean = false)
     fun pause()
     fun resume()

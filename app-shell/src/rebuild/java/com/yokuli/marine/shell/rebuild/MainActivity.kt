@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
     /** Android 的 Home 是系统级入口：只回桌面，保留内部应用会话和正在运行的航行业务。 */
     private fun returnHomeFromRomIntent(intent: Intent?) {
         if (!BuildConfig.ROM_HOME || intent?.action != Intent.ACTION_MAIN || !intent.hasCategory(Intent.CATEGORY_HOME)) return
-        os.notifications.close()
+        os.notificationShade.close()
         // 不经过应用局部输入处理器，避免某个弹窗把系统 Home 吞掉；不启动或停止任何服务。
         os.shell.dispatch(LauncherAction.ShowDesktop)
     }
@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
             }
         } else if (event.action == KeyEvent.ACTION_UP) {
             if (input == ShellInput.BACK && longBackConsumed) longBackConsumed = false
-            else if (input == ShellInput.SEARCH) os.notifications.toggle()
+            else if (input == ShellInput.SEARCH) os.notificationShade.toggle()
             else os.shell.input(input)
         }
         return true

@@ -154,9 +154,15 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     private var sourceGeneration=0L
     private var lastRequest=0L
     private var lastFollowPoint: GeoPoint?=null
-    private var countedTraffic:List<MapAisTarget>?=null
-    private var countedWidth=0
-    private var countedHeight=0
+    /** 全量事实在 overlay.scene，viewportTraffic 是预算后的候选，renderedTraffic 只含实际交给原生引擎的身份。 */
+    private var viewportTraffic:List<MapAisTarget> = emptyList()
+    private var renderedTraffic:List<MapAisTarget> = emptyList()
+    private var renderedTrafficIds:Set<String> = emptySet()
+    private var projectedTrafficSource:List<MapAisTarget>? = null
+    private var trafficProjectionDirty = true
+    private var projectedVisibleCount = 0
+    private var trafficRenderJob:Job?=null
+    private var lastTrafficRenderAt=0L
     var captureForTile = false
     private var captureJob: Job? = null
     val overlay=ChartOverlay(context,state)
@@ -184,25 +190,41 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int) {
         super.onSizeChanged(w,h,oldw,oldh)
         if(w>0&&h>0)post {
-            if(!destroyed){placeLabels.onCameraIdle();updateCamera();updateTrafficCount(force=true)}
+            if(!destroyed){trafficProjectionDirty=true;placeLabels.onCameraIdle();updateCamera();renderViewportScene(force=true)}
         }
     }
-    private fun moved(center: GeoPoint,z: Double) {state.center=center;state.zoom=z;placeLabels.onCameraChanged(center,z);updateTrafficCount(force=true);overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
+    private fun moved(center: GeoPoint,z: Double) {if(destroyed)return;state.center=center;state.zoom=z;trafficProjectionDirty=true;placeLabels.onCameraChanged(center,z);renderViewportScene();overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
     private fun touch() {if(!state.interactive)return;state.follow=false;state.showCrosshair=true;onEvent(MapEvent.GestureStarted)}
+    private fun aisPickingEnabled() = state.interactive && overlay.scene.aisInteractive && state.ruler.isEmpty() && overlay.scene.points.none { it.draggable }
+    private fun selectMarker(id:String) {
+        if (destroyed || !state.interactive) return
+        if (id.startsWith("ais:")) {
+            val mmsi = id.removePrefix("ais:")
+            // 原生点击与地图空白点击走同一工具规则，不接受样式加载/裁剪后留下的旧 marker 回调。
+            if (!aisPickingEnabled() || mmsi !in renderedTrafficIds || overlay.scene.aisTargets.none { it.mmsi == mmsi && it.point.valid() }) return
+        } else if (state.ruler.isNotEmpty() || overlay.scene.points.none { it.id == id && !it.draggable && it.point.valid() }) return
+        onEvent(MapEvent.ItemSelected(id))
+    }
     private fun pick(point: GeoPoint) {
-        if(!state.interactive) return
-        val nearby=overlay.scene.points.filter {!it.draggable}.minByOrNull {distance(it.point,point)}
-        if(nearby!=null && state.ruler.isEmpty()) {
-            val a=camera?.project(nearby.point);val b=camera?.project(point)
-            if(a!=null && b!=null && hypot(a.x-b.x,a.y-b.y)<28*resources.displayMetrics.density) {onEvent(MapEvent.ItemSelected(nearby.id));return}
+        if(destroyed || !state.interactive || !point.valid()) return
+        val projection = camera ?: return
+        val click = projection.project(point)
+        if (!click.x.isFinite() || !click.y.isFinite()) return
+        val radius = 28 * resources.displayMetrics.density
+        fun screenDistance(candidate:GeoPoint):Float {
+            val pixel = projection.project(candidate)
+            return if (pixel.x.isFinite() && pixel.y.isFinite()) hypot(pixel.x-click.x,pixel.y-click.y) else Float.POSITIVE_INFINITY
         }
-        if(overlay.scene.aisInteractive && state.ruler.isEmpty() && overlay.scene.points.none {it.draggable}) {
-            val click=camera?.project(point)
-            val target=overlay.scene.aisTargets.minByOrNull {distance(it.point,point)}
-            val projected=target?.let {camera?.project(it.point)}
-            if(target!=null&&click!=null&&projected!=null&&hypot(click.x-projected.x,click.y-projected.y)<28*resources.displayMetrics.density) {
-                onEvent(MapEvent.ItemSelected("ais:${target.mmsi}"));return
-            }
+        if(state.ruler.isEmpty()) {
+            val nearby=overlay.scene.points.asSequence().filter {!it.draggable&&it.point.valid()}
+                .map {it to screenDistance(it.point)}.filter {it.second<radius}.minByOrNull {it.second}?.first
+            if(nearby!=null) {selectMarker(nearby.id);return}
+        }
+        if(aisPickingEnabled()) {
+            val currentIds = overlay.scene.aisTargets.mapTo(hashSetOf()) { it.mmsi }
+            val target=renderedTraffic.asSequence().filter {it.mmsi in currentIds}
+                .map {it to screenDistance(it.point)}.filter {it.second<radius}.minByOrNull {it.second}?.first
+            if(target!=null) {selectMarker("ais:${target.mmsi}");return}
         }
         // 点按只进入选点模式。准星固定在视口中心，镜头只由拖动、缩放或明确定位按钮移动。
         state.showCrosshair=true;onEvent(MapEvent.CoordinateSelected(point));overlay.invalidate()
@@ -220,17 +242,18 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                     override fun zoom()=map.cameraPosition.zoom.toDouble()
                     override fun fit(points:List<GeoPoint>) {if(points.size==1) move(points.first(),state.zoom) else map.moveCamera(GoogleCamera.newLatLngBounds(com.google.android.gms.maps.model.LatLngBounds.builder().also {b ->points.forEach {b.include(GoogleLatLng(it.lat,it.lon))}}.build(),(48*resources.displayMetrics.density).toInt()))}
                 }
-                camera=adapter;overlay.camera=adapter;adapter.move(state.center,state.zoom)
+                camera=adapter;overlay.camera=adapter;trafficProjectionDirty=true;adapter.move(state.center,state.zoom)
                 map.setOnCameraMoveListener {val p=map.cameraPosition;moved(GeoPoint(p.target.latitude,p.target.longitude),p.zoom.toDouble())}
                 map.setOnCameraMoveStartedListener {if(it==GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE)touch()}
-                map.setOnCameraIdleListener { captureSnapshot() }
+                map.setOnCameraIdleListener { renderViewportScene(force=true);captureSnapshot() }
                 map.setOnMarkerClickListener {marker ->
                     val id=marker.tag as? String
-                    if(id!=null && state.interactive && (!id.startsWith("ais:")||overlay.scene.aisInteractive))onEvent(MapEvent.ItemSelected(id))
+                    if(id?.startsWith("ais:")==true && !aisPickingEnabled()) pick(GeoPoint(marker.position.latitude,marker.position.longitude))
+                    else if(id!=null) selectMarker(id)
                     true
                 }
                 map.setOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude))};map.setOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude))}
-                updateStyle();updateCamera()
+                updateStyle();updateCamera();renderViewportScene(force=true)
             }
         }
     }
@@ -253,16 +276,18 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                     override fun zoom()=map.cameraPosition.zoom
                     override fun fit(points:List<GeoPoint>) {if(points.size==1) move(points.first(),state.zoom) else map.moveCamera(CameraUpdateFactory.newLatLngBounds(org.maplibre.android.geometry.LatLngBounds.Builder().also {b ->points.forEach {b.include(LatLng(it.lat,it.lon))}}.build(),(48*resources.displayMetrics.density).toInt()))}
                 }
-                camera=adapter;overlay.camera=adapter;adapter.move(state.center,state.zoom)
+                camera=adapter;overlay.camera=adapter;trafficProjectionDirty=true;adapter.move(state.center,state.zoom)
                 map.addOnCameraMoveListener {map.cameraPosition.target?.let {moved(GeoPoint(it.latitude,it.longitude),map.cameraPosition.zoom)}}
                 map.addOnCameraMoveStartedListener {if(it==MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE)touch()}
-                map.addOnCameraIdleListener {placeLabels.onCameraIdle();captureSnapshot()}
+                map.addOnCameraIdleListener {placeLabels.onCameraIdle();renderViewportScene(force=true);captureSnapshot()}
                 map.setOnMarkerClickListener {marker ->
-                    if(state.interactive)marker.title?.let {if(!it.startsWith("ais:")||overlay.scene.aisInteractive)onEvent(MapEvent.ItemSelected(it))}
+                    val id=marker.title
+                    if(id?.startsWith("ais:")==true && !aisPickingEnabled()) pick(GeoPoint(marker.position.latitude,marker.position.longitude))
+                    else if(id!=null) selectMarker(id)
                     true
                 }
                 map.addOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude));true};map.addOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude));true}
-                updateStyle();updateCamera()
+                updateStyle();updateCamera();renderViewportScene(force=true)
             }
         }
     }
@@ -272,6 +297,8 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         // Style 接管资源前清理自有图层、source 和图钉；加载中的参考底图也重画地理内容。
         placeLabels.clear()
         nativeScene.clear()
+        renderedTraffic=emptyList();renderedTrafficIds=emptySet();state.aisVisibleCount=0
+        trafficProjectionDirty=true
         map.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",sources).put("layers",layers).toString())) { loaded ->
             if (!destroyed && generation == sourceGeneration && map.style === loaded) {
                 if (ready) loading = false
@@ -279,7 +306,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 placeLabels.attach(map,loaded,maps.chinese,
                     beforeLayerId=(maps.source as? MapSource.CustomLayer)?.layerId)
                 nativeScene.invalidate()
-                nativeScene.render(googleMap, map, overlay.scene, state.ruler)
+                renderViewportScene(force=true)
                 overlay.invalidate()
                 if (ready) captureSnapshot()
             }
@@ -296,7 +323,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             googleMap?.apply {
                 // 卫星影像同时显示 SDK 的地名、道路等信息，不再只有一张无标注照片。
                 mapType=GoogleMap.MAP_TYPE_HYBRID
-                setOnMapLoadedCallback {if(!destroyed && generation==sourceGeneration){loading=false;error=null;captureSnapshot()}}
+                setOnMapLoadedCallback {if(!destroyed && generation==sourceGeneration){loading=false;error=null;renderViewportScene(force=true);captureSnapshot()}}
             }
             styleJob=scope.launch {delay(15000);if(generation==sourceGeneration && loading) {loading=false;error="online"}}
             return
@@ -369,21 +396,58 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             if(googleEngine)googleMap?.snapshot {save(it)} else libre?.snapshot {save(it)}
         }
     }
-    private fun updateTrafficCount(force:Boolean=false) {
-        val projection=camera ?: return
-        if(width<=0||height<=0)return
-        val targets=overlay.scene.aisTargets
-        if(!force&&targets==countedTraffic&&width==countedWidth&&height==countedHeight)return
-        countedTraffic=targets;countedWidth=width;countedHeight=height
-        state.aisVisibleCount=targets.count {target->
-            val point=projection.project(target.point)
-            point.x in 0f..width.toFloat() && point.y in 0f..height.toFloat()
+    /** 先按实际投影与缓冲区筛选，再预算普通目标；场景事实和风险规则不被裁剪。 */
+    private fun renderViewportScene(force:Boolean=false) {
+        if(destroyed)return
+        val source=overlay.scene
+        if (source.aisTargets != projectedTrafficSource) trafficProjectionDirty=true
+        val now=android.os.SystemClock.elapsedRealtime()
+        if (trafficProjectionDirty) {
+            val remaining = 100L - (now-lastTrafficRenderAt)
+            if (!force && remaining>0L && source.aisTargets.isNotEmpty()) {
+                if(trafficRenderJob?.isActive!=true)trafficRenderJob=scope.launch {
+                    delay(remaining);trafficRenderJob=null;renderViewportScene(force=true)
+                }
+            } else {
+                trafficRenderJob?.cancel();trafficRenderJob=null;lastTrafficRenderAt=now
+                val projection=camera
+                val validTargets=source.aisTargets.filter {it.point.valid()}
+                val important=validTargets.filter {it.selected||it.watched||it.risk||it.distress=="ACTIVE"}
+                val importantIds=important.mapTo(hashSetOf()){it.mmsi}
+                val inViewIds=hashSetOf<String>()
+                val nearby=if(projection!=null&&width>0&&height>0) {
+                    val buffer=max(96f*resources.displayMetrics.density,min(width,height)*.25f)
+                    // 距中心平方距离只算一次；日期变更线和地理投影由原生引擎决定。
+                    data class Candidate(val target:MapAisTarget,val distanceSquared:Float)
+                    validTargets.asSequence().mapNotNull { target ->
+                        val point=projection.project(target.point)
+                        if(!point.x.isFinite()||!point.y.isFinite())return@mapNotNull null
+                        if(point.x in 0f..width.toFloat()&&point.y in 0f..height.toFloat())inViewIds+=target.mmsi
+                        if(target.mmsi in importantIds||point.x !in -buffer..(width+buffer)||point.y !in -buffer..(height+buffer))return@mapNotNull null
+                        val dx=point.x-width/2f;val dy=point.y-height/2f
+                        Candidate(target,dx*dx+dy*dy)
+                    }.sortedWith(compareBy<Candidate> {it.distanceSquared}.thenBy {it.target.mmsi})
+                        .take(512).map {it.target}.toList()
+                } else emptyList()
+                viewportTraffic=(important+nearby).distinctBy {it.mmsi}.sortedBy {it.mmsi}
+                projectedVisibleCount=viewportTraffic.count {it.mmsi in inViewIds}
+                projectedTrafficSource=source.aisTargets
+                trafficProjectionDirty=false
+            }
+        }
+        // 非 AIS 的船位、测距和航线立即交给原生绘制；相机回写到 Compose 不再强制重复全量投影。
+        if(nativeScene.render(googleMap,libre,source.copy(aisTargets=viewportTraffic),state.ruler)) {
+            if(renderedTraffic !== viewportTraffic) {
+                renderedTraffic=viewportTraffic
+                renderedTrafficIds=viewportTraffic.mapTo(hashSetOf()){it.mmsi}
+            }
+            state.aisVisibleCount=projectedVisibleCount
         }
     }
     fun update(scene:MapScene,events:(MapEvent)->Unit) {
+        if(destroyed)return
         onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.nauticalScale=maps.nauticalScale;overlay.shortScaleFeet=maps.shortScaleFeet;overlay.invalidate()
-        nativeScene.render(googleMap,libre,scene,state.ruler)
-        updateTrafficCount()
+        renderViewportScene()
         googleMap?.uiSettings?.setAllGesturesEnabled(state.interactive)
         googleMap?.uiSettings?.apply {isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
         libre?.uiSettings?.apply {isScrollGesturesEnabled=state.interactive;isZoomGesturesEnabled=state.interactive;isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
@@ -398,7 +462,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         else ->Unit
     }}
     fun retry() {styleRevision="";updateStyle()}
-    fun destroy() {if(destroyed)return;destroyed=true;lifecycle(Lifecycle.Event.ON_STOP);placeLabels.close();scope.cancel();nativeScene.clear();native?.onDestroy();google?.onDestroy();retire(gateway);gateway=null;camera=null}
+    fun destroy() {if(destroyed)return;destroyed=true;lifecycle(Lifecycle.Event.ON_STOP);placeLabels.close();scope.cancel();nativeScene.clear();native?.onDestroy();google?.onDestroy();retire(gateway);gateway=null;camera=null;overlay.camera=null;renderedTraffic=emptyList();renderedTrafficIds=emptySet();state.aisVisibleCount=0}
 }
 
 @Composable

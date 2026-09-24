@@ -19,15 +19,15 @@ import com.yokuli.anchorwatch.domain.vessel.*
     val state by services.state.collectAsState()
     val connections by services.network.connections.collectAsState()
     val now = rememberMarineClock()
-    Label(os.t("全船共用一份数据", "one set of data aboard"), 28)
-    Label(os.t("在这里选择每项读数由谁提供。海图、守锚、驾驶台与共享服务使用同一份选择。", "Choose who supplies each reading. Chart, Anchor Watch, Helm and sharing all use these choices."), 17, LocalMetro.current.muted)
+    AppSection(os.t("全船共用一份数据", "one set of data aboard"))
+    Label(os.t("在这里选择每项读数由谁提供。海图、守锚、驾驶台与共享服务使用同一份选择。", "Choose who supplies each reading. Chart, Anchor Watch, Helm and sharing all use these choices."), 15, LocalMetro.current.muted)
     val groups = listOf(
         os.t("航行", "navigation") to listOf(VesselMetricId.POSITION, VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC, VesselMetricId.SOG, VesselMetricId.COG, VesselMetricId.SPEED_THROUGH_WATER),
         os.t("风与环境", "wind & environment") to listOf(VesselMetricId.APPARENT_WIND_SPEED, VesselMetricId.APPARENT_WIND_ANGLE, VesselMetricId.TRUE_WIND_SPEED, VesselMetricId.TRUE_WIND_ANGLE, VesselMetricId.TRUE_WIND_DIRECTION, VesselMetricId.DEPTH, VesselMetricId.PRESSURE, VesselMetricId.WATER_TEMPERATURE, VesselMetricId.AIR_TEMPERATURE),
         os.t("船体姿态", "vessel motion") to listOf(VesselMetricId.HEEL, VesselMetricId.PITCH, VesselMetricId.RATE_OF_TURN, VesselMetricId.ROLL_RATE, VesselMetricId.PITCH_RATE, VesselMetricId.YAW_RATE, VesselMetricId.RUDDER_ANGLE),
     )
     groups.forEach { (title, metrics) ->
-        Label(title, 30, LocalMetro.current.accent)
+        AppSection(title)
         metrics.forEach { metric ->
             val observation = sourceObservation(metric, state.vesselData)
             val candidates = state.vesselData.candidates[metric].orEmpty()
@@ -49,7 +49,7 @@ import com.yokuli.anchorwatch.domain.vessel.*
     val known = groups.flatMap { it.second }.toSet()
     val more = state.vesselData.candidates.keys.filter { it !in known && it !in derivedSourceMetrics }.sortedBy { it.ordinal }
     if (more.isNotEmpty()) {
-        Label(os.t("更多数据", "more measurements"), 30, LocalMetro.current.accent)
+        AppSection(os.t("更多数据", "more measurements"))
         more.forEach { metric -> MenuRow(sourceMetricName(os, metric), sourceObservation(metric, state.vesselData)?.let { sourceObservationText(os, metric, it, now) }.orEmpty()) { open(metric) } }
     }
 }
@@ -66,10 +66,10 @@ import com.yokuli.anchorwatch.domain.vessel.*
     val activeKey = observation?.takeIf { it.value != null && it.freshness in setOf(VesselDataFreshness.FRESH,VesselDataFreshness.HELD) }?.sourceIdentity?.persistentKey
     if(showObservation) {
         Label(observation?.let { sourceObservationText(os, metric, it, now) } ?: os.t("等待第一条读数", "waiting for the first reading"), 30)
-        observation?.sourceIdentity?.let { Label(sourceDisplayName(os, it, connections), 19, LocalMetro.current.accent) }
+        observation?.sourceIdentity?.let { Label(sourceDisplayName(os, it, connections), 19, LocalMetro.current.accentText) }
     }
     if (metric == VesselMetricId.POSITION) {
-        Label(os.t("谁提供船位", "position source"), 28)
+        AppSection(os.t("谁提供船位", "position source"))
         ChoiceRow(os.t("关闭船位", "position off"), os.positionSource == "none", os.t("停止使用船位，保留其他读数与网络连接。", "Stop using position; keep other readings and network connections."), !locked) { os.requestPosition(PositionSourceRequest.DISABLE_POSITION) }
         ChoiceRow(os.t("手机 GPS", "phone GPS"), os.positionSource == "phone", os.t("选择时启动手机定位，关闭时停止；需要精确定位权限。", "Starts phone location when selected and stops when disabled; requires precise location permission."), !locked && os.positionSource in listOf("none", "phone")) { os.requestPosition(PositionSourceRequest.ENABLE_PHONE) }
         val selectedConnection = state.vesselSettings.metricSourcePins["POSITION_CONNECTION"]
@@ -84,7 +84,7 @@ import com.yokuli.anchorwatch.domain.vessel.*
                     sourceCandidateText(os, metric, candidate, now), !locked) { services.sources.setVesselMetricSource(metric, candidate.source.persistentKey) }
             }
         }
-        if (connections.none { it.spec.receive }) Label(os.t("还没有船载输入。在船联网中添加连接后，它会出现在这里。", "No boat input yet. Add a connection in Boat Network and it will appear here."), 18, LocalMetro.current.muted)
+        if (connections.none { it.spec.receive }) Label(os.t("还没有船载输入。在船联网中添加连接后，它会出现在这里。", "No boat input yet. Add a connection in Boat Network and it will appear here."), 15, LocalMetro.current.muted)
         Label(when {
             locked -> os.t("守锚进行中，暂停后可以更改船位来源。", "Pause Anchor Watch before changing position source.")
             os.positionSource == "phone" -> os.t("要改用船载船位，先关闭手机船位。其他 NMEA 读数会继续更新。", "Turn phone position off before choosing a boat source. Other NMEA readings keep updating.")
@@ -94,10 +94,10 @@ import com.yokuli.anchorwatch.domain.vessel.*
         return
     }
     if (metric in derivedSourceMetrics) {
-        Label(os.t("由系统根据已选读数计算，无需另外指定来源。", "Calculated from the selected readings; no separate source selection is needed."), 18, LocalMetro.current.muted)
+        Label(os.t("由系统根据已选读数计算，无需另外指定来源。", "Calculated from the selected readings; no separate source selection is needed."), 15, LocalMetro.current.muted)
         return
     }
-    Label(os.t("选择来源", "choose a source"), 28)
+    AppSection(os.t("选择来源", "choose a source"))
     val legacyHeading = hasLegacyHeadingChoice(metric, state.vesselSettings)
     if (legacyHeading && pinned == null) {
         ChoiceRow(os.t("沿用旧版船首向选择", "keep legacy heading choice"), true,
@@ -123,11 +123,11 @@ import com.yokuli.anchorwatch.domain.vessel.*
         ChoiceRow(sourceDisplayName(os, candidate.source, connections), selected, status) { services.sources.setVesselMetricSource(metric, candidate.source.persistentKey) }
     }
     if (pinned != null && candidates.none { it.source.persistentKey == pinned }) {
-        Label(os.t("保留已指定的来源，等待它恢复。不会改用另一个来源。", "Keeping your selected source while it is absent. Another source will not take over."), 18, LocalMetro.current.muted)
+        Label(os.t("保留已指定的来源，等待它恢复。不会改用另一个来源。", "Keeping your selected source while it is absent. Another source will not take over."), 15, LocalMetro.current.muted)
     }
-    if (candidates.isEmpty()) Label(os.t("尚未收到这项数据。手机采集或已连接的 NMEA 设备提供读数后，会在同一列表中出现。", "No reading received yet. Phone measurements and connected NMEA devices appear together when observed."), 19, LocalMetro.current.muted)
-    if (metric in setOf(VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC)) Label(os.t("手机固定并对齐船艏后，才能作为船首向来源。对地航向不能代替船首向。", "A mounted phone becomes a heading source after bow alignment. Course over ground cannot replace heading."), 17, LocalMetro.current.muted)
-    state.vesselData.conflicts[metric]?.takeIf { it.active }?.let { Label(os.t("来源之间的读数有差异，请核对安装方向和设备。", "Sources disagree. Check device alignment and instruments."), 17, LocalMetro.current.accent) }
+    if (candidates.isEmpty()) Label(os.t("尚未收到这项数据。手机采集或已连接的 NMEA 设备提供读数后，会在同一列表中出现。", "No reading received yet. Phone measurements and connected NMEA devices appear together when observed."), 15, LocalMetro.current.muted)
+    if (metric in setOf(VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC)) Label(os.t("手机固定并对齐船艏后，才能作为船首向来源。对地航向不能代替船首向。", "A mounted phone becomes a heading source after bow alignment. Course over ground cannot replace heading."), 15, LocalMetro.current.muted)
+    state.vesselData.conflicts[metric]?.takeIf { it.active }?.let { Label(os.t("来源之间的读数有差异，请核对安装方向和设备。", "Sources disagree. Check device alignment and instruments."), 15, LocalMetro.current.accentText) }
 }
 
 private fun hasLegacyHeadingChoice(metric: VesselMetricId, settings: VesselDataSettings) = metric in setOf(VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC) && (settings.headingPreference != VesselSourcePreference.AUTO || settings.boatHeadingSourceId != null)

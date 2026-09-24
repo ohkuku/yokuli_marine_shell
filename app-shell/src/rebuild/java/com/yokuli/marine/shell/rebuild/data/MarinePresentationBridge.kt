@@ -12,9 +12,6 @@ import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.anchorwatch.domain.vessel.source.MetricSourceEligibility
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.OsStore
-import com.yokuli.marine.shell.rebuild.AppId
-import com.yokuli.marine.shell.rebuild.NoticeSeverity
-import com.yokuli.anchorwatch.runtime.RuntimeFeedbackContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -22,7 +19,6 @@ import kotlinx.coroutines.launch
 class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.runtime.marine.MarineSystem) {
     val services: MarineServices = system.services
     val voyage = system.voyage.state
-    private val deliveredFeedback=linkedSetOf<Long>()
     private var previousTrack: com.yokuli.anchorwatch.data.trip.TripTrackSnapshot? = null
     private var previousTripId: Long? = null
     private val subscription: Job = os.scope.launch {
@@ -36,34 +32,10 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
                 }
             }
             publish(state)
-            publishFeedback(state)
         }
     }
 
-    /** 反馈订阅与应用页面生命周期无关，短时间多个运行时事件逐条进入通知中心。 */
-    private fun publishFeedback(state:MainUiState) {
-        state.runtimeDiagnostics.pendingUserFeedback.sortedBy{it.id}.forEach { feedback ->
-            if(deliveredFeedback.add(feedback.id)&&feedback.context!=RuntimeFeedbackContext.POSITION_STATUS) {
-                val title=feedback.englishTitle.lowercase()
-                val app=when {
-                    feedback.context in setOf(RuntimeFeedbackContext.ARM_WATCH,RuntimeFeedbackContext.DEPTH_DATA_UNAVAILABLE,RuntimeFeedbackContext.WIND_DATA_UNAVAILABLE)->AppId.ANCHOR
-                    title.startsWith("trip")||title.startsWith("recording")||title=="waypoint not saved"->AppId.VOYAGES
-                    title.startsWith("nmea")||title.startsWith("phone/app")||title.startsWith("phone sensor output")||title.startsWith("phone vessel output")->AppId.NMEA
-                    title.startsWith("approach")->AppId.PLACES
-                    title.startsWith("anchor")||title.startsWith("alarm")||title.startsWith("safety")||title.startsWith("wind")||title.startsWith("high wind")||title.startsWith("condition")||title.startsWith("required nmea instrument")->AppId.ANCHOR
-                    else->null
-                }
-                os.notify("${feedback.chineseTitle} · ${feedback.chineseMessage}","${feedback.englishTitle} · ${feedback.englishMessage}",app=app,
-                    severity=if(feedback.highPriority)NoticeSeverity.WARNING else NoticeSeverity.INFO,
-                    key="runtime:${feedback.context}:${feedback.englishTitle}")
-            }
-            services.feedback.consumeRuntimeFeedback(feedback.id)
-        }
-        // 防止异步 UI 状态在消费确认前再次到达时重复显示；已消费旧 ID 不需无限保留。
-        if(deliveredFeedback.size>512)deliveredFeedback.toList().take(256).forEach(deliveredFeedback::remove)
-    }
-
-    fun close() { subscription.cancel(); commandFeedback.cancel() }
+    fun close() { subscription.cancel() }
 
     private fun NavigationFix.asFix(source: String, selected:VesselDataSnapshot?=null): Fix? {
         if (!valid || (isMockLocation && source != "demo")) return null
@@ -173,20 +145,4 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
     fun resumeRecording() = system.voyage.resume()
     fun finishRecording() = system.voyage.finish()
 
-    private val commandFeedback = os.scope.launch {
-        system.voyage.events.collect { event ->
-            val message = when(event.status) {
-                VoyageCommandStatus.POSITION_REQUIRED -> "请先开启一个船位来源" to "Enable a position source first"
-                VoyageCommandStatus.NOT_CONFIRMED -> "操作尚未完成，请查看航行日志中的状态" to "Operation is not confirmed yet; check its status in Logbook"
-                VoyageCommandStatus.FAILED -> "航行操作未完成，请查看当前状态" to "Voyage action failed; check the current state"
-                VoyageCommandStatus.CONFIRMED -> when(event.action) {
-                    VoyageAction.START -> "航行记录已开始" to "Voyage recording started"
-                    VoyageAction.PAUSE -> "航行记录已暂停" to "Voyage recording paused"
-                    VoyageAction.RESUME -> "航行记录已继续" to "Voyage recording resumed"
-                    VoyageAction.FINISH -> "航行记录已保存" to "Voyage recording saved"
-                }
-            }
-            os.notify(message.first, message.second, app = AppId.VOYAGES, destination = "voyages")
-        }
-    }
 }

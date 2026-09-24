@@ -58,6 +58,8 @@ import com.yokuli.anchorwatch.runtime.proxy.ProxyRuntimeResult
 import com.yokuli.anchorwatch.runtime.health.BatteryHealthMonitor
 import com.yokuli.runtime.contract.AnchorCommandType
 import com.yokuli.runtime.contract.AnchorCommandStatus
+import com.yokuli.runtime.contract.VoyageAction
+import com.yokuli.runtime.contract.VoyageRequestStatus
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -82,6 +84,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
  private val resources:RuntimeResourceManager,
  private val diagnostics:RuntimeDiagnosticsRepository,
  private val anchorCommands:AnchorCommandRegistry,
+ private val voyageCommands:VoyageCommandRegistry,
+ private val tripDao:com.yokuli.anchorwatch.data.database.TripDao,
  private val incidentLogger:IncidentLogger,
  private val nmeaRuntime:NmeaRuntime,
  private val monotonicClock:MonotonicClock,
@@ -399,6 +403,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
     incidentLogger.record("nmea_output","ALL_SHARING_STOPPED")
     refreshNotification();releaseIfIdle()
    }
+   is RuntimeCommand.Voyage->launchTrackedVoyage(command.requestId)
+   is RuntimeCommand.QueryVoyage->queryTrackedVoyage(command.requestId)
    is RuntimeCommand.StartTrip->launchTripCommand{
     if(preferences.settings.first().demoMode)notifySeparate("Trip Watch not started","Developer Demo mode simulates Anchor Watch only. Disable Demo mode before recording a real Trip.",true)
         else{ensureLocationForeground("Starting Trip Watch…");val result=tripRuntime.start(command.name,navigation.connectionState.value,command.phoneMotionEnabled,command.positionPreference);if(!result.success)notifySeparate("Trip Watch not started",result.message,true);refreshNotification()}
@@ -475,6 +481,103 @@ class YokuliRuntimeCoordinator @Inject constructor(
   pendingCommands.incrementAndGet()
   if(!commandActor.submit{try{action()}catch(error:Throwable){incidentLogger.exception("service","COMMAND_FAILED",error,anchorRuntime.activeSession()?.id);notifySeparate("Safety command failed",error.message?:error.javaClass.simpleName,true)}finally{if(pendingCommands.decrementAndGet()==0)releaseIfIdle()}}){
    pendingCommands.decrementAndGet()
+  }
+ }
+
+ /** 航行动作由同一个 trip actor 检查会话、执行并读取持久化结果，不按 UI 状态猜测成功。 */
+ private fun launchTrackedVoyage(id:String) {
+  if(voyageCommands.get(id)?.terminal != false)return
+  pendingCommands.incrementAndGet()
+  val accepted=tripActor.submit {
+   var executionStarted=false
+   try {
+    val request=voyageCommands.begin(id) ?: return@submit
+    if(!diagnostics.state.value.serviceReady) {
+     voyageCommands.finish(id,VoyageRequestStatus.REJECTED,"RUNTIME_NOT_READY");return@submit
+    }
+    val previous=tripDao.active()
+    val settings=preferences.settings.first()
+    if(request.action==VoyageAction.START) {
+     if(previous!=null) {voyageCommands.finish(id,VoyageRequestStatus.REJECTED,"RECORDING_ALREADY_ACTIVE");return@submit}
+     if(settings.demoMode) {voyageCommands.finish(id,VoyageRequestStatus.REJECTED,"DEMO_ACTIVE");return@submit}
+     if(settings.gpsDataSource !in setOf(GpsDataSource.SYSTEM,GpsDataSource.NMEA)) {
+      voyageCommands.finish(id,VoyageRequestStatus.REJECTED,"POSITION_REQUIRED");return@submit
+     }
+    } else if(previous?.id != request.expectedSessionId || previous==null || tripRuntime.activeSession()?.id!=previous.id) {
+     voyageCommands.finish(id,VoyageRequestStatus.REJECTED,"SESSION_CHANGED");return@submit
+    }
+    executionStarted=true
+    val result=when(request.action) {
+     VoyageAction.START->{
+      ensureLocationForeground("Starting Trip Watch…")
+      tripRuntime.start(request.name,navigation.connectionState.value,request.motion,
+       if(settings.gpsDataSource==GpsDataSource.NMEA)com.yokuli.anchorwatch.domain.vessel.VesselSourcePreference.BOAT
+       else com.yokuli.anchorwatch.domain.vessel.VesselSourcePreference.PHONE)
+     }
+     VoyageAction.PAUSE->tripRuntime.pause()
+     VoyageAction.RESUME->{ensureLocationForeground("Resuming Trip Watch…");tripRuntime.resume()}
+     VoyageAction.FINISH->tripRuntime.end()
+    }
+    if(!result.success) {
+     voyageCommands.finish(id,VoyageRequestStatus.REJECTED,result.message,result.session?.id ?: previous?.id)
+     return@submit
+    }
+    val sessionId=result.session?.id ?: previous?.id
+    sessionId?.let { voyageCommands.associateSession(id,it) }
+    val persisted=sessionId?.let { tripDao.session(it) }
+    val confirmed=when(request.action) {
+     VoyageAction.START->persisted?.active==true && !persisted.paused
+     VoyageAction.PAUSE->persisted?.let {it.id==request.expectedSessionId&&it.active&&it.paused}==true
+     VoyageAction.RESUME->persisted?.let {it.id==request.expectedSessionId&&it.active&&!it.paused}==true
+     VoyageAction.FINISH->persisted?.let {it.id==request.expectedSessionId&&!it.active&&it.endedAt!=null}==true
+    }
+    if(confirmed)voyageCommands.finish(id,VoyageRequestStatus.CONFIRMED,sessionId=sessionId)
+    else voyageCommands.unknown(id,"PERSISTED_STATE_NOT_CONFIRMED")
+    refreshNotification()
+   } catch(cancelled:CancellationException) {
+    voyageCommands.unknown(id,"RUNTIME_INTERRUPTED");throw cancelled
+   } catch(error:Exception) {
+    if(executionStarted)voyageCommands.unknown(id,"EXECUTION_STATE_NOT_CONFIRMED")
+    else voyageCommands.finish(id,VoyageRequestStatus.FAILED,"PREPARATION_FAILED")
+    incidentLogger.exception("voyage_command","EXECUTION_FAILED",error)
+   } finally {if(pendingCommands.decrementAndGet()==0)releaseIfIdle()}
+  }
+  if(!accepted) {
+   pendingCommands.decrementAndGet()
+   voyageCommands.finish(id,VoyageRequestStatus.FAILED,"COMMAND_QUEUE_UNAVAILABLE")
+   releaseIfIdle()
+  }
+ }
+
+ /** 在原 actor 顺序中只读核对，绝不把“查询”变为一次新的 start/pause/resume/end。 */
+ private fun queryTrackedVoyage(id:String) {
+  if(voyageCommands.get(id)?.terminal != false)return
+  pendingCommands.incrementAndGet()
+  val accepted=tripActor.submit {
+   try {
+    val receipt=voyageCommands.get(id)?.takeUnless {it.terminal} ?: return@submit
+    val sessionId=receipt.sessionId ?: receipt.request.expectedSessionId
+    if(sessionId==null) {
+     voyageCommands.unknown(id,"START_SESSION_ID_NOT_CONFIRMED");return@submit
+    }
+    val saved=tripDao.session(sessionId)
+    val confirmed=when(receipt.request.action) {
+     VoyageAction.START->saved!=null
+     VoyageAction.PAUSE->saved?.let {it.active&&it.paused}==true
+     VoyageAction.RESUME->saved?.let {it.active&&!it.paused}==true
+     VoyageAction.FINISH->saved?.let {!it.active&&it.endedAt!=null}==true
+    }
+    when {
+     confirmed->voyageCommands.finish(id,VoyageRequestStatus.CONFIRMED,sessionId=sessionId)
+     saved?.let {!it.active&&it.endedAt!=null}==true->voyageCommands.finish(id,VoyageRequestStatus.REJECTED,"SESSION_ENDED",sessionId)
+     else->voyageCommands.unknown(id,"PERSISTED_STATE_NOT_CONFIRMED")
+    }
+   } catch(cancelled:CancellationException) {throw cancelled}
+   catch(error:Exception) {voyageCommands.unknown(id,"QUERY_FAILED");incidentLogger.exception("voyage_command","QUERY_FAILED",error)}
+   finally {if(pendingCommands.decrementAndGet()==0)releaseIfIdle()}
+  }
+  if(!accepted) {
+   pendingCommands.decrementAndGet();voyageCommands.unknown(id,"QUERY_QUEUE_UNAVAILABLE");releaseIfIdle()
   }
  }
 
@@ -794,6 +897,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   if(!started)return
   started=false
   anchorCommands.serviceInterrupted()
+  voyageCommands.serviceInterrupted()
   foregroundLocationType=false
   idleStopJob?.cancel();idleStopJob=null
   incidentLogger.record("service","STOPPED");commandActor.shutdown();tripActor.shutdown();anchorActor.shutdown();proxyActor.shutdown();phonePositionOutput.shutdown();localNmeaServer.shutdown();tripRuntime.shutdown();anchorTelemetry.shutdown();scope.cancel();navigation.releaseBackgroundConnection();runBlocking(Dispatchers.IO){withTimeoutOrNull(2000){proxyRuntime.shutdown()}};cleanup();diagnostics.serviceStopped()

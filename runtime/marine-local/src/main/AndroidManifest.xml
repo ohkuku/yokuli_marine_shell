@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <service android:name="com.yokuli.runtime.marine.notification.NotificationBinderService"
+            android:process=":notifications" android:exported="false" android:stopWithTask="false" />
         <service android:name="com.yokuli.runtime.marine.ais.AisMonitoringService"
             android:exported="false" android:stopWithTask="false" android:foregroundServiceType="connectedDevice|location" />
         <receiver android:name="com.yokuli.runtime.marine.ais.AisRestoreReceiver" android:enabled="true" android:exported="true">

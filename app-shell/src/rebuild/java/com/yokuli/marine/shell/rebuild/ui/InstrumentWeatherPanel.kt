@@ -41,7 +41,7 @@ import kotlin.math.abs
     val c = LocalMetro.current
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         InstrumentPressureHistory(os, data.pressureHpa, active)
-        Label(os.t("温度与风", "temperature & wind"), 25)
+        AppSection(os.t("温度与风", "temperature & wind"))
         listOf(InstrumentTileId.AIR_TEMPERATURE to data.airTemperatureCelsius,
             InstrumentTileId.WATER_TEMPERATURE to data.waterTemperatureCelsius,
             InstrumentTileId.TRUE_WIND_SPEED to data.trueWind.speedKnots).forEach { (tile, observation) ->
@@ -105,7 +105,7 @@ private data class PressureLoad<T>(val data: T? = null, val failed: Boolean = fa
     val display = selected ?: samples.lastOrNull()
     val nowUtc = System.currentTimeMillis()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Label(os.t("气压记录", "pressure history"), 25)
+        AppSection(os.t("气压记录", "pressure history"))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Label(os.formatPressure(display?.pressureHpa), 38, c.accent, Modifier.weight(1f))
             Label(os.t("历史观测", "recorded observations"), 13, c.muted, Modifier.padding(bottom = 7.dp))
@@ -119,11 +119,11 @@ private data class PressureLoad<T>(val data: T? = null, val failed: Boolean = fa
         if (pinnedSource != null && pinnedSource != liveKey) Label(os.t("正在回看此来源；实时来源没有改变。", "Reviewing this source; your live source is unchanged."), 13, c.muted)
         when {
             sources.failed || points.failed -> {
-                Label(os.t("气压历史暂时未能读取，实时仪表继续工作。", "Could not read pressure history. Live instruments continue."), 16, c.muted)
+                Label(os.t("气压历史暂时未能读取，实时仪表继续工作。", "Could not read pressure history. Live instruments continue."), 15, c.muted)
                 MetroButton(os.t("重试", "retry"), { retry++ })
             }
             sources.data == null || (sourceKey != null && points.data == null) -> Label(os.t("正在读取气压记录…", "loading pressure records…"), 15, c.muted)
-            samples.isEmpty() -> Label(os.t("这个时间范围没有该来源的记录。收到气压后按分钟保留，重启也可回看。", "No records from this source in this period. Received pressure is retained by minute and survives restart."), 16, c.muted)
+            samples.isEmpty() -> Label(os.t("这个时间范围没有该来源的记录。收到气压后按分钟保留，重启也可回看。", "No records from this source in this period. Received pressure is retained by minute and survives restart."), 15, c.muted)
             else -> {
                 PressureRecordGraph(os, samples, start, end, selected, onSelect = { selectedAt = it })
                 display?.let { point ->
@@ -148,7 +148,7 @@ private data class PressureLoad<T>(val data: T? = null, val failed: Boolean = fa
     if (choosing) Dialog(onDismissRequest = { choosing = false }) {
         AppBackHandler { choosing = false }
         Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).background(c.bg).border(1.dp, c.muted).verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Label(os.t("回看哪个来源", "choose history source"), 26)
+            AppSection(os.t("回看哪个来源", "choose history source"))
             if (liveKey != null) ChoiceRow(os.t("跟随实时来源", "follow the live source"), pinnedSource == null, live.sourceIdentity?.displayName) { pinnedSource = null; selectedAt = null; choosing = false }
             known.forEach { source -> ChoiceRow(source.name, pinnedSource == source.key) { pinnedSource = source.key; selectedAt = null; choosing = false } }
             if (known.isEmpty()) Label(os.t("还没有保存的气压来源。", "No pressure sources recorded yet."), 16, c.muted)

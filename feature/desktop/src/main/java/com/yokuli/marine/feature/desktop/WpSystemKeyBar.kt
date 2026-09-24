@@ -8,6 +8,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
@@ -47,8 +49,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.LocalWpTextScale
+import com.yokuli.marine.core.design.WpFontFamily
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.wpTilt
@@ -61,9 +66,8 @@ import com.yokuli.shell.compose.LauncherEntryUiState
 private val DerivedVirtualKeyBarHeight = 54.dp
 
 /**
- * The recording proves only the Back/Start/Search glyph family. The on-screen
- * height and Android platform haptic are DERIVED_UNVERIFIED product adaptations;
- * there is deliberately no invented WP key-light or press animation.
+ * Windows 10 Mobile 的紧凑线形系统键；保留 Yokuli 已确认的 Back / Home / 通知含义。
+ * 触控栏沿用 Shell 安全区几何，Android 触感是本机适配，不冒称为原设备的物理测量值。
  */
 @Composable
 fun WpSystemKeyBar(
@@ -119,8 +123,10 @@ private fun RowScope.SystemKey(
 ) {
     val view = LocalView.current
     val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
     Box(
         Modifier.weight(1f).fillMaxSize().testTag(tag)
+            .background(if (pressed) Color.White.copy(alpha = .16f) else Color.Transparent)
             .semantics { contentDescription = label; role = Role.Button }
             .combinedClickable(
                 interactionSource = interactions,
@@ -142,8 +148,8 @@ private fun RowScope.SystemKey(
 
 @Composable
 private fun BackGlyph() {
-    Canvas(Modifier.size(30.dp)) {
-        val stroke = size.minDimension * .09f
+    Canvas(Modifier.size(24.dp)) {
+        val stroke = size.minDimension * .0625f
         val path = Path().apply {
             moveTo(size.width * .72f, size.height * .24f)
             lineTo(size.width * .34f, size.height * .5f)
@@ -161,7 +167,7 @@ private fun BackGlyph() {
 
 @Composable
 private fun CompassBridgeGlyph() {
-    Canvas(Modifier.size(29.dp)) {
+    Canvas(Modifier.size(24.dp)) {
         val center = Offset(size.width / 2f, size.height / 2f)
         val radius = size.minDimension * .39f
         val stroke = size.minDimension * .055f
@@ -185,59 +191,38 @@ private fun CompassBridgeGlyph() {
 
 @Composable
 private fun NotificationGlyph() {
-    Canvas(Modifier.size(29.dp)) {
-        val stroke = size.minDimension * .07f
-        val bell = Path().apply {
-            moveTo(size.width * .23f, size.height * .68f)
-            lineTo(size.width * .31f, size.height * .57f)
-            lineTo(size.width * .31f, size.height * .43f)
-            cubicTo(
-                size.width * .31f,
-                size.height * .25f,
-                size.width * .40f,
-                size.height * .16f,
-                size.width * .50f,
-                size.height * .16f,
-            )
-            cubicTo(
-                size.width * .60f,
-                size.height * .16f,
-                size.width * .69f,
-                size.height * .25f,
-                size.width * .69f,
-                size.height * .43f,
-            )
-            lineTo(size.width * .69f, size.height * .57f)
-            lineTo(size.width * .77f, size.height * .68f)
+    Canvas(Modifier.size(24.dp)) {
+        val stroke = size.minDimension * .0625f
+        val bubble = Path().apply {
+            moveTo(size.width * .17f, size.height * .18f)
+            lineTo(size.width * .83f, size.height * .18f)
+            lineTo(size.width * .83f, size.height * .67f)
+            lineTo(size.width * .46f, size.height * .67f)
+            lineTo(size.width * .26f, size.height * .84f)
+            lineTo(size.width * .26f, size.height * .67f)
+            lineTo(size.width * .17f, size.height * .67f)
             close()
         }
-        drawPath(bell, Color.White, style = Stroke(stroke))
-        drawLine(
-            Color.White,
-            Offset(size.width * .23f, size.height * .68f),
-            Offset(size.width * .77f, size.height * .68f),
-            strokeWidth = stroke,
-        )
-        drawCircle(
-            Color.White,
-            radius = stroke * .85f,
-            center = Offset(size.width * .50f, size.height * .79f),
-        )
+        drawPath(bubble, Color.White, style = Stroke(stroke))
+        listOf(.35f, .50f).forEach { y ->
+            drawLine(Color.White, Offset(size.width * .30f, size.height * y),
+                Offset(size.width * .70f, size.height * y), stroke)
+        }
     }
 }
 
 @Composable
-private fun SearchGlyph() {
-    Canvas(Modifier.size(29.dp)) {
-        val stroke = size.minDimension * .08f
+internal fun SearchGlyph(color: Color = Color.White, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(24.dp)) {
+        val stroke = size.minDimension * .0625f
         drawCircle(
-            Color.White,
+            color,
             radius = size.minDimension * .27f,
             center = Offset(size.width * .43f, size.height * .4f),
             style = Stroke(stroke),
         )
         drawLine(
-            Color.White,
+            color,
             Offset(size.width * .62f, size.height * .6f),
             Offset(size.width * .84f, size.height * .83f),
             strokeWidth = stroke,
@@ -300,16 +285,17 @@ fun WpSearchSurface(
                 }
             },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)
-                .height(52.dp).background(colors.foreground.copy(alpha = .1f))
-                .padding(horizontal = 12.dp).focusRequester(focusRequester)
+                .heightIn(min = 48.dp).background(colors.foreground.copy(alpha = .1f))
+                .padding(horizontal = 12.dp, vertical = 12.dp).focusRequester(focusRequester)
                 .semantics { contentDescription = searchFieldLabel }
                 .testTag("launcher-search-field"),
-            textStyle = androidx.compose.ui.text.TextStyle(color = colors.foreground),
-            cursorBrush = SolidColor(colors.accent),
+            textStyle = androidx.compose.ui.text.TextStyle(color = colors.foreground,
+                fontFamily = WpFontFamily, fontSize = (15 * LocalWpTextScale.current).sp),
+            cursorBrush = SolidColor(colors.accentText),
             singleLine = true,
             decorationBox = { field ->
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                    if (editor.text.isEmpty()) WpText(stringResource(R.string.search_hint), 18, color = colors.muted)
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+                    if (editor.text.isEmpty()) WpText(stringResource(R.string.search_hint), 15, color = colors.muted)
                     field()
                 }
             },
@@ -321,42 +307,44 @@ fun WpSearchSurface(
             results.forEach { entry ->
                 val interactions = remember(entry.descriptor.entryId) { MutableInteractionSource() }
                 Row(
-                    Modifier.fillMaxWidth().height(58.dp)
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp)
                         .testTag("search-result-${entry.descriptor.entryId.value}")
                         .wpTilt(interactions)
                         .combinedClickable(
                             interactionSource = interactions,
                             indication = null,
                             onClick = { onAction(LauncherUiAction.Open(entry.descriptor.launchToken)) },
-                        ),
+                        ).padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(Modifier.size(9.dp).background(colors.accent))
-                    WpText(entry.title, 21, modifier = Modifier.padding(start = 12.dp))
+                    Box(Modifier.size(40.dp).background(colors.accent), contentAlignment = Alignment.Center) {
+                        entry.icon.Render(colors.onAccent, Modifier.size(24.dp))
+                    }
+                    WpText(entry.title, 18, modifier = Modifier.weight(1f).padding(start = 12.dp), maxLines = 2)
                 }
             }
             contributedResults.forEach { result ->
                 val interactions = remember(result.stableId) { MutableInteractionSource() }
                 Row(
-                    Modifier.fillMaxWidth().height(64.dp)
+                    Modifier.fillMaxWidth().heightIn(min = 60.dp)
                         .testTag("search-result-${result.stableId}")
                         .wpTilt(interactions)
                         .combinedClickable(
                             interactionSource = interactions,
                             indication = null,
                             onClick = { onAction(LauncherUiAction.Open(result.launchToken)) },
-                        ),
+                        ).padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(Modifier.size(9.dp).background(colors.accent))
+                    Box(Modifier.size(9.dp).background(colors.accentText))
                     Column(Modifier.padding(start = 12.dp)) {
-                        WpText(result.title, 20, maxLines = 1)
+                        WpText(result.title, 18, maxLines = 2)
                         if (result.detail.isNotBlank()) WpText(result.detail, 12, color = colors.muted, maxLines = 1)
                     }
                 }
             }
             if (results.isEmpty() && contributedResults.isEmpty()) {
-                WpText(stringResource(R.string.search_no_results), 18, color = colors.muted)
+                WpText(stringResource(R.string.search_no_results), 15, color = colors.muted)
             }
         }
     }
@@ -394,7 +382,7 @@ fun WpRecentsSurface(
                         .padding(14.dp),
                     contentAlignment = Alignment.BottomStart,
                 ) {
-                    WpText(entry.title, 22, color = Color.White, weight = FontWeight.Light)
+                    WpText(entry.title, 22, color = colors.onAccent, weight = FontWeight.Light)
                     Box(
                         Modifier.align(Alignment.TopEnd).size(48.dp)
                             .testTag("recent-close-${task.appId.value}")
@@ -409,7 +397,7 @@ fun WpRecentsSurface(
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        WpText("×", 28, color = Color.White, weight = FontWeight.Light)
+                        WpText("×", 28, color = colors.onAccent, weight = FontWeight.Light)
                     }
                 }
             }

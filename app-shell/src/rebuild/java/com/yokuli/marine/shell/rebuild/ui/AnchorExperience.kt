@@ -20,6 +20,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import com.yokuli.anchorwatch.AnchorWatchInput
 import com.yokuli.anchorwatch.AnchorSetupDraft
 import com.yokuli.anchorwatch.MainUiState
@@ -44,6 +46,7 @@ import com.yokuli.runtime.contract.AnchorCommandStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -191,18 +194,28 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
         observedCommandId=null
     }
     val coverage=remember(active?.id) {active?.let {AnchorSwingCoverage(watchCenter(it),it.alarmRadiusMeters)}}
+    val coverageLock=remember(active?.id) {Mutex()}
+    var coverageError by remember(active?.id) {mutableStateOf(false)}
+    var coverageRevision by remember(active?.id) {mutableIntStateOf(0)}
     var swingAreas by remember(active?.id) {mutableStateOf<List<MapArea>>(emptyList())}
-    LaunchedEffect(active?.id,state.points.lastOrNull()?.id) {
+    LaunchedEffect(active?.id,state.points.lastOrNull()?.id,coverageRevision) {
         val session=active ?: return@LaunchedEffect
         val aggregate=coverage ?: return@LaunchedEffect
-        swingAreas=withContext(Dispatchers.IO) {
-            while(true) {
-                val batch=os.sailing.anchorTrackPage(session.id,aggregate.lastTimestamp,aggregate.lastId,1000)
-                aggregate.add(batch)
-                if(batch.size<1000)break
+        try {
+            swingAreas=withContext(Dispatchers.IO) {
+                // 新位置会取消旧查询；同一累计器不允许取消中的旧任务与新任务并发修改。
+                coverageLock.withLock {
+                    while(true) {
+                        val batch=os.sailing.anchorTrackPage(session.id,aggregate.lastTimestamp,aggregate.lastId,1000)
+                        aggregate.add(batch)
+                        if(batch.size<1000)break
+                    }
+                    aggregate.areas()
+                }
             }
-            aggregate.areas()
-        }
+            coverageError=false
+        } catch(cancelled:CancellationException) {throw cancelled}
+        catch(_:Exception) {coverageError=true}
     }
     val point=effectiveAnchorPoint(picked,sourcePoint,origin,estimate)
     val radiusValue=radius.value?.takeIf {it>0}
@@ -231,36 +244,37 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                 })
                 MapPositionReadout(os,fix,tick,Modifier.align(Alignment.TopStart).padding(10.dp))
                 if(page=="watch")AisMapStatus(os,traffic,!traffic.preferences.anchorLayer,Modifier.align(Alignment.TopStart).padding(start=10.dp,top=62.dp))
-                MapZoomControls(view,Modifier.align(Alignment.TopEnd).padding(top=66.dp,end=10.dp))
+                MapZoomControls(os,view,Modifier.align(Alignment.TopEnd).padding(top=66.dp,end=10.dp))
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {view.bottomOverlayDp=with(density){it.height.toDp().value}}.background(c.bg).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     selectedAis?.takeIf {page=="watch"}?.let {AisCompactDetail(os,traffic,it){selectedAis=null}}
                     if(view.showCrosshair)MapCrosshairReadout(os,view.center) {view.showCrosshair=false}
                     if(page=="setup" && active==null) {
-                        Label(if(estimate)os.t("先值守，再估计锚点","watch, then estimate")else if(origin==AnchorCenterSource.CURRENT_POSITION)os.t("以开始时船位下锚","drop at the start position")else os.t("在选定位置下锚","drop at selected position"),25)
+                        Label(if(estimate)os.t("先值守，再估计锚点","watch, then estimate")else if(origin==AnchorCenterSource.CURRENT_POSITION)os.t("以开始时船位下锚","drop at the start position")else os.t("在选定位置下锚","drop at selected position"),20)
                         Label(point?.let(os::formatCoordinates) ?: os.t("等待船位，或拖动地图选择锚点","wait for a position, or select the anchor on the map"),14,c.muted)
                         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                             IconAction("minus",os.t("缩小范围","smaller boundary"),{radius.setCanonical(((radius.value ?: 30.0)-os.lengthMeters(5.0)).coerceAtLeast(5.0))})
                             Label(os.formatLength(radius.value),30,c.accent,Modifier.weight(1f))
                             IconAction("plus",os.t("扩大范围","larger boundary"),{radius.setCanonical((radius.value ?: 30.0)+os.lengthMeters(5.0))})
-                            Label(os.t("选项 ›","options ›"),16,c.accent,Modifier.clickable {page="advanced"}.padding(8.dp))
+                            Label(os.t("选项 ›","options ›"),16,c.accentText,Modifier.clickable {page="advanced"}.padding(8.dp))
                         }
                         Label(if(estimate)os.t("虚线参考中心 · 候选经确认后才采用","temporary reference · estimated anchor needs confirmation")else os.t("圆线是你设定的警戒半径，不是 GPS 误差","circle is your alarm radius, not GPS error"),12,c.muted)
-                        if(!geometry)Label(os.t("到选项填写锚链长度与水深","enter rode and depth in options"),13,c.accent)
+                        if(!geometry)Label(os.t("到选项填写锚链长度与水深","enter rode and depth in options"),13,c.accentText)
                         if(!notifications)MetroButton(os.t("允许守锚通知","allow watch notifications"),{if(Build.VERSION.SDK_INT>=33)notificationRequest.launch(Manifest.permission.POST_NOTIFICATIONS)})
                         if(!readiness.ready)Label(positionReason(os,readiness.reason),13,c.muted)
                     } else if(active!=null) {
                         Row(verticalAlignment=Alignment.CenterVertically) {
-                            Label(watchTitle(os,state),21,if(state.alarmSnapshot.type!=null)c.accent else c.fg,Modifier.weight(1f))
+                            Label(watchTitle(os,state),20,if(state.alarmSnapshot.type!=null)c.accentText else c.fg,Modifier.weight(1f))
                             val distanceNow=if(readiness.ready)sourcePoint?.let {distance(it,watchCenter(active))} else null
-                            Label("${os.formatLength(distanceNow)} / ${os.formatLength(active.alarmRadiusMeters)}",17,c.accent)
+                            Label("${os.formatLength(distanceNow)} / ${os.formatLength(active.alarmRadiusMeters)}",17,c.accentText)
                         }
                         if(state.alarmSnapshot.type!=null) {
                             Label(alarmReason(os,state.alarmSnapshot.type),16)
                             MetroButton(if(state.alarmSnapshot.acknowledged)os.t("告警已确认","alarm acknowledged")else os.t("确认告警","acknowledge alarm"),services.anchor::acknowledge,enabled=!state.alarmSnapshot.acknowledged)
                         } else if(!readiness.ready)Label(positionReason(os,readiness.reason),13,c.muted)
                         else Label(os.t("细线：最近轨迹 · 色斑：本次到过的范围","line: recent trail · colour: this watch's observed area"),12,c.muted)
+                        if(coverageError)MenuRow(os.t("摆动范围暂未更新","swing area update interrupted"),os.t("点按重新读取；不会改变值守状态。","Tap to reload; watch state is unchanged.")) {coverageRevision++}
                     } else {
-                        Label(os.t("在这里安心停泊","settle in here"),28)
+                        Label(os.t("在这里安心停泊","settle in here"),24)
                         Label(os.t("下锚 → 确认范围 → 开始值守","drop → set boundary → watch"),15,c.muted)
                     }
                     if(pending!=null)MetroProgress(if(pending.status==AnchorCommandStatus.UNKNOWN)os.t("继续等待确认…","awaiting confirmation…")else os.t("正在更新值守…","updating watch…"))
@@ -292,10 +306,10 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
         } else if(page=="advanced") {
             PageBody {
                 if(active!=null) {
-                    Label(os.t("已有一次锚泊正在值守","a watch is already active"),27)
+                    Label(os.t("已有一次锚泊正在值守","a watch is already active"),20)
                     MetroButton(os.t("回到当前值守","return to watch"),{page="watch"},primary=true)
                 } else {
-                    Toggle(os.t("锚点待确认","anchor position unknown"),estimate,os.t("使用临时范围值守，并从真实摆动中估计。","watch a temporary boundary while learning from actual swing.")) {estimate=it;if(it){picked=sourcePoint;origin=AnchorCenterSource.CURRENT_POSITION}}
+                    AppCheckRow(os.t("锚点待确认","anchor position unknown"),estimate,os.t("使用临时范围值守，并从真实摆动中估计。","watch a temporary boundary while learning from actual swing.")) {estimate=!estimate;if(estimate){picked=sourcePoint;origin=AnchorCenterSource.CURRENT_POSITION}}
                     if(!estimate) {
                         MetroButton(os.t("使用当前可信船位","use accepted boat position"),{picked=sourcePoint;origin=AnchorCenterSource.CURRENT_POSITION;sourcePoint?.let {view.fly(it)}},enabled=readiness.ready)
                         MetroButton(os.t("在地图上选点","choose on map"),{picking=true})
@@ -310,15 +324,15 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                         }
                     }
                     point?.let {
-                        Label(os.formatCoordinates(it),22,c.accent)
+                        Label(os.formatCoordinates(it),20,c.accentText)
                         val preview=remember {MapViewState(it,16.0).apply {interactive=false}}
                         LaunchedEffect(it) {preview.fly(it)}
                         Box(Modifier.fillMaxWidth().height(180.dp)) {MarineMap(os.maps,MapScene(points=listOf(MapPoint("draft",it,"A",os.accent)),circles=radiusValue?.let {r->listOf(MapCircle("draft",it,r,os.accent))}.orEmpty()),preview,Modifier.fillMaxSize());MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(c.bg))}
                     }
-                    if(os.anchorDraft!=null)Label(os.t("来自收藏：${os.anchorDraft?.name}。请确认这是本次实际锚点。","from saved place: ${os.anchorDraft?.name}. Confirm this watch's actual anchor."),16,c.muted)
+                    if(os.anchorDraft!=null)Label(os.t("来自收藏：${os.anchorDraft?.name}。请确认这是本次实际锚点。","from saved place: ${os.anchorDraft?.name}. Confirm this watch's actual anchor."),15,c.muted)
                     Field(os.t(if(estimate)"临时警戒半径" else "警戒半径",if(estimate)"temporary boundary radius" else "alarm radius")+" · ${os.lengthUnitLabel}",radius.text,radius::edit,number=true)
                     if(estimate) {
-                        Label(os.t("中心仍是参考位置，不是已确认锚点。候选需要你确认才采用。","the centre is a reference, not a confirmed anchor. Adoption requires your confirmation."),16)
+                        Label(os.t("中心仍是参考位置，不是已确认锚点。候选需要你确认才采用。","the centre is a reference, not a confirmed anchor. Adoption requires your confirmation."),15)
                         Field(os.t("实际放出的锚链／缆绳","deployed rode length")+" · ${os.lengthUnitLabel}",rode.text,rode::edit,number=true)
                         Field(os.t("当前水深","current water depth")+" · ${os.depthUnitLabel}",depth.text,depth::edit,number=true)
                         Label(os.t("船艏高度 ${os.formatLength(state.settings.bowRollerHeightMeters)} · 可在设置中修改","bow height ${os.formatLength(state.settings.bowRollerHeightMeters)} · edit in settings"),14,c.muted)
@@ -326,12 +340,12 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                     Label(os.t("船位来源：","position source: ")+sourceLabel(os,source),18)
                     if(!readiness.ready)Label(positionReason(os,readiness.reason),16)
                     if(!notifications) {
-                        Label(os.t("守锚需要通知权限来呈现后台告警。","notification permission is required for background alerts."),16)
+                        Label(os.t("守锚需要通知权限来呈现后台告警。","notification permission is required for background alerts."),15)
                         MetroButton(os.t("允许通知","allow notifications"),{if(Build.VERSION.SDK_INT>=33)notificationRequest.launch(Manifest.permission.POST_NOTIFICATIONS)})
                         MenuRow(os.t("系统通知设置","system notification settings")) {os.context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,os.context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}
                     }
                     if(!geometry)Label(os.t("估计需要有效水深和锚链长度；锚链必须长于水深加船艏高度。","estimation needs valid depth and rode; rode must exceed depth plus bow height."),15)
-                    if(ready.willWaitForGps)Label(os.t("确认后将等待可信定位，尚不会执行位置监控。","the session will wait for accepted position; movement monitoring is not active yet."),16)
+                    if(ready.willWaitForGps)Label(os.t("确认后将等待可信定位，尚不会执行位置监控。","the session will wait for accepted position; movement monitoring is not active yet."),15)
                     feedback?.let {Label(it,16)}
                     if(pending?.status==AnchorCommandStatus.UNKNOWN)MetroButton(os.t("重新确认这次操作","check this action again"),{marine.system.anchorCommands.recheck(pending.commandId)})
                     MetroButton(if(pending!=null)os.t("正在建立值守…","starting watch…")else if(ready.willWaitForGps)os.t("确认锚点并等待定位","confirm and wait for position")else os.t("确认并开始值守","confirm and start watch"),::startWatch,primary=true,enabled=ready.canStart&&pending==null)
@@ -340,18 +354,18 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
             }
         } else if(page=="estimate" && active!=null) {
             PageBody {
-                Label(if(active.centerStatus==AnchorCenterStatus.RESOLVED.name)os.t("当前锚点已确认","current anchor adopted")else os.t("临时边界正在值守","watching a temporary boundary"),26)
-                Label(os.formatCoordinates(watchCenter(active)),18,c.accent)
+                Label(if(active.centerStatus==AnchorCenterStatus.RESOLVED.name)os.t("当前锚点已确认","current anchor adopted")else os.t("临时边界正在值守","watching a temporary boundary"),20)
+                Label(os.formatCoordinates(watchCenter(active)),18,c.accentText)
                 val preview=os.maps.view("anchor-estimate:${active.id}",watchCenter(active),16.0)
                 Box(Modifier.fillMaxWidth().height(250.dp)) {MarineMap(os.maps,scene,preview,Modifier.fillMaxSize());MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(c.bg))}
                 if(active.centerStatus!=AnchorCenterStatus.RESOLVED.name) {
-                    Label(os.t("橙色是正在使用的临时范围；蓝色是可能的锚位。候选不会自行改变警戒中心。","orange is the active temporary boundary; blue is the possible anchor region. Candidates never move the adopted centre automatically."),17)
-                    Label(os.t("已接受 ${state.activeLearningPointCount} 个位置样本","${state.activeLearningPointCount} accepted position samples"),18)
+                    Label(os.t("橙色是正在使用的临时范围；蓝色是可能的锚位。候选不会自行改变警戒中心。","orange is the active temporary boundary; blue is the possible anchor region. Candidates never move the adopted centre automatically."),15)
+                    Label(os.t("已接受 ${state.activeLearningPointCount} 个位置样本","${state.activeLearningPointCount} accepted position samples"),15)
                     Label(if(active.candidateRadialObservable)os.t("已观察到可用于估计的摆动范围","swing extent is observable")else os.t("仍需更多真实摆动；不会用低速漂移猜测锚点。","more actual swing is needed; slow drift alone does not locate the anchor."),16,c.muted)
                     if(active.candidateDecision==CandidateDecision.AVAILABLE.name) {
-                        Label(os.t("候选待确认","candidate ready for review"),26,c.accent)
+                        Label(os.t("候选待确认","candidate ready for review"),20,c.accentText)
                         candidatePoint(active)?.let {Label(os.formatCoordinates(it),18)}
-                        Label(os.t("不确定范围：${os.formatLength(active.provisionalRadiusMeters)}","uncertainty: ${os.formatLength(active.provisionalRadiusMeters)}"),17)
+                        Label(os.t("不确定范围：${os.formatLength(active.provisionalRadiusMeters)}","uncertainty: ${os.formatLength(active.provisionalRadiusMeters)}"),15)
                         MetroButton(os.t("比较并采用候选","review and adopt candidate"),{candidatePoint(active)?.let {estimateChoice=AnchorEstimateChoice(active.id,active.candidateId,it,false)}},primary=true,enabled=active.candidateRadialObservable&&AnchorCentreApplyPolicy.mayApply(state.alarmSnapshot.state))
                         MetroButton(os.t("继续观察","continue observing"),{services.anchor.continueEstimatingCenter(active)})
                         MetroButton(os.t("保留当前参考","keep current reference"),{services.anchor.keepCurrentCenter(active)})
@@ -360,14 +374,14 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                 val trackEvidence=state.points.count {!it.wasQuarantined && it.fixTrust !in listOf("REJECTED","QUARANTINED") && GeoPoint(it.latitude,it.longitude).valid()}
                 val canEstimate=trackEvidence>=3 || state.activeLearningPointCount>=3
                 MetroButton(os.t("从摆动轨迹估计锚点","estimate from swing track"),{services.anchor.recalculateCentreFromTrack(active)},enabled=canEstimate&&!state.centreRecalculation.loading)
-                if(!canEstimate)Label(os.t("先积累真实船位与摆动轨迹。没有轨迹时不能估计或修改中心。","Collect position and swing history first. An estimate cannot change the centre without track evidence."),16,c.muted)
+                if(!canEstimate)Label(os.t("先积累真实船位与摆动轨迹。没有轨迹时不能估计或修改中心。","Collect position and swing history first. An estimate cannot change the centre without track evidence."),15,c.muted)
                 val result=state.centreRecalculation.takeIf {it.sessionId==active.id}
                 if(result?.loading==true)MetroProgress(os.t("正在分析真实轨迹…","analysing recorded track…"))
                 result?.result?.let {analysis ->
-                    Label(when(analysis.status) {AnchorCentreRecalculationStatus.READY->os.t("可比较的候选已准备好","candidate ready to compare");AnchorCentreRecalculationStatus.DATA_QUALITY_INSUFFICIENT->os.t("定位质量不足，不能采用估计","position quality insufficient for adoption");AnchorCentreRecalculationStatus.RADIAL_NOT_OBSERVABLE->os.t("尚不能从摆动确定锚点距离","swing does not yet establish anchor distance");else->os.t("轨迹时长或摆动证据不足","insufficient time or swing evidence")},22)
+                    Label(when(analysis.status) {AnchorCentreRecalculationStatus.READY->os.t("可比较的候选已准备好","candidate ready to compare");AnchorCentreRecalculationStatus.DATA_QUALITY_INSUFFICIENT->os.t("定位质量不足，不能采用估计","position quality insufficient for adoption");AnchorCentreRecalculationStatus.RADIAL_NOT_OBSERVABLE->os.t("尚不能从摆动确定锚点距离","swing does not yet establish anchor distance");else->os.t("轨迹时长或摆动证据不足","insufficient time or swing evidence")},20)
                     analysis.candidate?.let {candidate ->
                         Label(os.formatCoordinates(GeoPoint(candidate.latitude,candidate.longitude)),18)
-                        Label(os.t("相对当前中心移动 ${os.formatLength(analysis.shiftMeters)}","shift from current centre ${os.formatLength(analysis.shiftMeters)}"),17)
+                        Label(os.t("相对当前中心移动 ${os.formatLength(analysis.shiftMeters)}","shift from current centre ${os.formatLength(analysis.shiftMeters)}"),15)
                     }
                     if(analysis.status==AnchorCentreRecalculationStatus.READY)MetroButton(os.t("比较并采用这次估计","review and adopt this estimate"),{analysis.candidate?.let {estimateChoice=AnchorEstimateChoice(active.id,null,GeoPoint(it.latitude,it.longitude),true)}},enabled=AnchorCentreApplyPolicy.mayApply(state.alarmSnapshot.state),primary=true)
                     MetroButton(os.t("保留当前锚点","keep current anchor"),services.anchor::keepCurrentRecalculatedCentre)
@@ -386,7 +400,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
         } else if(page=="history") {
             PageBody {
                 val history=state.sessions.filter {!it.active}
-                if(history.isEmpty())Label(os.t("结束一次值守后，在这里回顾。","completed watches will appear here."),27,c.muted)
+                if(history.isEmpty())Label(os.t("结束一次值守后，在这里回顾。","completed watches will appear here."),15,c.muted)
                 history.forEach {session ->MenuRow(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(session.startedAt)),os.t("${durationLabel((session.endedAt ?: session.startedAt)-session.startedAt)} · ${session.alarmCount} 次告警","${durationLabel((session.endedAt ?: session.startedAt)-session.startedAt)} · ${session.alarmCount} alarms")) {services.anchor.loadHistoryEvents(session.id);page="review:${session.id}"}}
             }
         } else if(page.startsWith("review:")) {
@@ -395,11 +409,16 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                 if(session==null)MetroProgress(os.t("正在读取锚泊记录…","loading watch record…"))
                 else {
                     LaunchedEffect(session.id) {services.anchor.loadHistoryEvents(session.id)}
-                    Label(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(session.startedAt)),22)
+                    Label(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(session.startedAt)),20)
                     Label(os.t("值守 ${durationLabel((session.endedAt ?: System.currentTimeMillis())-session.startedAt)}","watched for ${durationLabel((session.endedAt ?: System.currentTimeMillis())-session.startedAt)}"),30,c.accent)
                     val preview=os.maps.view("anchor-review:${session.id}",watchCenter(session),16.0).apply {scaleTopDp=80f}
-                    val loadedScene by produceState<MapScene?>(null,session.id) {
-                        value=withContext(Dispatchers.IO) {loadAnchorReview(os,session,state.settings.gpsLossSeconds*1000L)}
+                    var reviewRevision by remember(session.id) {mutableIntStateOf(0)}
+                    var reviewError by remember(session.id) {mutableStateOf(false)}
+                    val loadedScene by produceState<MapScene?>(null,session.id,reviewRevision) {
+                        reviewError=false
+                        try {value=withContext(Dispatchers.IO) {loadAnchorReview(os,session,state.settings.gpsLossSeconds*1000L)}}
+                        catch(cancelled:CancellationException) {throw cancelled}
+                        catch(_:Exception) {reviewError=true}
                     }
                     val reviewScene=loadedScene ?: MapScene(points=listOf(MapPoint("anchor",watchCenter(session),"A",os.accent)),circles=listOf(MapCircle("boundary",watchCenter(session),session.alarmRadiusMeters,os.accent)))
                     var reviewFitted by rememberSaveable(session.id) {mutableStateOf(false)}
@@ -410,18 +429,25 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                         reviewFitted=true
                     }
                     Box(Modifier.fillMaxWidth().height(320.dp)) {MarineMap(os.maps,reviewScene,preview,Modifier.fillMaxSize());MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(c.bg))}
-                    Label(os.t("本次到过的范围 · 颜色越浓，停留越久","observed area · darker colour means more time spent"),14,c.muted)
+                    when {
+                        reviewError -> {
+                            Label(os.t("摆动记录暂时无法读取；图中仅保留已存锚点与警戒范围。","Swing records could not be loaded; the map retains the saved anchor and alarm boundary."),15,c.muted)
+                            MetroButton(os.t("重新读取轨迹","reload track"),{reviewRevision++})
+                        }
+                        loadedScene==null -> MetroProgress(os.t("正在读取摆动记录…","loading swing records…"))
+                        else -> Label(os.t("本次到过的范围 · 颜色越浓，停留越久","observed area · darker colour means more time spent"),14,c.muted)
+                    }
                     Label(os.formatCoordinates(watchCenter(session)),18)
-                    Label(os.t("最大偏移 ${os.formatLength(session.maxDistanceMeters)} · ${session.alarmCount} 次位置告警","maximum excursion ${os.formatLength(session.maxDistanceMeters)} · ${session.alarmCount} position alarms"),18)
+                    Label(os.t("最大偏移 ${os.formatLength(session.maxDistanceMeters)} · ${session.alarmCount} 次位置告警","maximum excursion ${os.formatLength(session.maxDistanceMeters)} · ${session.alarmCount} position alarms"),15)
                     MetroButton(if(saving)os.t("正在保存…","saving…")else os.t("保存为我的锚地","save to my places"),{saveSessionId=session.id},primary=true,enabled=!saving)
                     if(savedWatchId==session.id && savedAnchorageId!=null) {
-                        Label(os.t("已保存到我的航行","saved to my sailing"),17,c.accent)
+                        Label(os.t("已保存到我的航行","saved to my sailing"),17,c.accentText)
                         MenuRow(os.t("查看收藏","view saved place")) {os.openLinked("anchorage:$savedAnchorageId")}
                     }
                     feedback?.let {Label(it,16)}
                     Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {MetroButton("GPX",{services.anchor.exportGpx(session)},Modifier.weight(1f));MetroButton("CSV",{services.anchor.exportCsv(session)},Modifier.weight(1f))}
                     val events=state.eventsBySession[session.id].orEmpty()
-                    if(events.isNotEmpty())Label(os.t("值守事件","watch events"),25)
+                    if(events.isNotEmpty())AppSection(os.t("值守事件","watch events"))
                     events.forEach {event ->Label(DateFormat.getTimeInstance(DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(event.timestamp))+" · "+anchorEventLabel(os,event.type),17)}
                 }
             }
@@ -441,7 +467,12 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     }}
     state.sessions.firstOrNull {it.id==saveSessionId}?.let {session ->TextDialog(os,os.t("锚地名称","anchorage name"),os.t("我的锚地","my anchorage"),{saveSessionId=null}) {name ->
         saving=true;saveSessionId=null
-        scope.launch {runCatching {os.sailing.saveAnchorage(session,name)}.onSuccess {id->savedAnchorageId=id;savedWatchId=session.id;feedback=null}.onFailure {feedback=it.message ?: os.t("保存失败，原记录仍保留","save failed; watch record is retained")};saving=false}
+        scope.launch {
+            try {val id=os.sailing.saveAnchorage(session,name);savedAnchorageId=id;savedWatchId=session.id;feedback=null}
+            catch(cancelled:CancellationException) {throw cancelled}
+            catch(error:Exception) {feedback=error.message ?: os.t("保存失败，原记录仍保留","save failed; watch record is retained")}
+            finally {saving=false}
+        }
     }}
 }
 
@@ -545,16 +576,16 @@ private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,services:Mar
         if(stored==expected) {applying=null;onSaved()} else {delay(9000);applying=null;timedOut=true}
     }
     PageBody {
-        Label(os.t("本次值守的条件","conditions for this watch"),28)
-        Label(os.t("缺少真实风或水深数据时会显示等待，不会把零当作测量。","missing wind or depth remains unavailable, never a zero measurement."),16,LocalMetro.current.muted)
-        Toggle(os.t("水深警戒","depth guard"),depthOn) {depthOn=it}
+        AppSection(os.t("本次值守的条件","conditions for this watch"))
+        Label(os.t("缺少真实风或水深数据时会显示等待，不会把零当作测量。","missing wind or depth remains unavailable, never a zero measurement."),15,LocalMetro.current.muted)
+        AppCheckRow(os.t("水深警戒","depth guard"),depthOn,enabled=applying==null) {depthOn=!depthOn}
         if(depthOn) {Field(os.t("过浅阈值","shallow limit")+" · ${os.depthUnitLabel}",shallow.text,shallow::edit,true);Field(os.t("过深阈值（可留空）","deep limit (optional)")+" · ${os.depthUnitLabel}",deep.text,deep::edit,true)}
-        Toggle(os.t("风速警戒","wind speed guard"),windOn) {windOn=it}
+        AppCheckRow(os.t("风速警戒","wind speed guard"),windOn,enabled=applying==null) {windOn=!windOn}
         if(windOn) {Field(os.t("风速预警","wind warning")+" · ${os.speedUnitLabel}",warning.text,warning::edit,true);Field(os.t("风速告警","wind alarm")+" · ${os.speedUnitLabel}",alarm.text,alarm::edit,true)}
-        Toggle(os.t("风向变化警戒","wind shift guard"),shiftOn) {shiftOn=it}
+        AppCheckRow(os.t("风向变化警戒","wind shift guard"),shiftOn,enabled=applying==null) {shiftOn=!shiftOn}
         if(shiftOn)Field(os.t("变化角度 · °","shift threshold · °"),shift,{shift=it},true)
-        if(invalid)Label(os.t("请填写有效阈值：深水至少比浅水多 ${os.formatDepth(1.0)}；风速告警至少比预警多 ${os.formatSpeed(3.0)}，不超过 ${os.formatSpeed(200.0)}；风向变化 15–180°。","enter valid limits: deep ≥ shallow + ${os.formatDepth(1.0)}; wind alarm ≥ warning + ${os.formatSpeed(3.0)}, up to ${os.formatSpeed(200.0)}; shift 15–180°."),16)
-        if(timedOut)Label(os.t("尚未收到应用确认，请查看当前值守状态。","application not confirmed; check the current watch state."),16)
+        if(invalid)Label(os.t("请填写有效阈值：深水至少比浅水多 ${os.formatDepth(1.0)}；风速告警至少比预警多 ${os.formatSpeed(3.0)}，不超过 ${os.formatSpeed(200.0)}；风向变化 15–180°。","enter valid limits: deep ≥ shallow + ${os.formatDepth(1.0)}; wind alarm ≥ warning + ${os.formatSpeed(3.0)}, up to ${os.formatSpeed(200.0)}; shift 15–180°."),15)
+        if(timedOut)Label(os.t("尚未收到应用确认，请查看当前值守状态。","application not confirmed; check the current watch state."),15)
         MetroButton(if(applying!=null)os.t("正在应用…","applying…")else os.t("保存本次警戒条件","save watch conditions"),{
             val config=ConditionGuardConfig(depthOn,shallow.value,deep.value,windOn,warning.value,alarm.value,shiftOn,shift.toDoubleOrNull(),session.windAllowApparentFallback)
             val checked=config.validated()
@@ -569,8 +600,8 @@ private fun AnchorRadiusDialog(os:OsStore,initial:Double,onDismiss:()->Unit,onAp
     val value=rememberUnitNumberDraft(initial,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,initial)
     val meters=value.value?.takeIf {it>0}
     Dialog(onDismissRequest=onDismiss) {
-        Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).border(1.dp,LocalMetro.current.muted).padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
-            Label(os.t("警戒范围","watch boundary"),32)
+        AppDialogSurface() {
+            AppDialogTitle(os.t("警戒范围","watch boundary"))
             Field(os.t("距锚点的半径","radius from anchor")+" · ${os.lengthUnitLabel}",value.text,value::edit,number=true)
             if(meters==null)Label(os.t("请输入大于零的距离","enter a positive distance"),16)
             MetroButton(os.t("应用到当前值守","apply to current watch"),{meters?.let(onApply)},primary=true,enabled=meters!=null)

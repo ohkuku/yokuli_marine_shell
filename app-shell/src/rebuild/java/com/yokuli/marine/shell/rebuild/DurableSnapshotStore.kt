@@ -23,9 +23,10 @@ data class PersistenceState(
     val durableRevision: Long = 0,
     val pendingWrites: Int = 0,
     val failedRevision: Long? = null,
+    val readFailure: String? = null,
 ) {
     val saving get() = pendingWrites > 0
-    val failed get() = failedRevision != null && durableRevision < requestedRevision
+    val failed get() = readFailure != null || failedRevision != null && durableRevision < requestedRevision
 }
 
 /**
@@ -33,11 +34,11 @@ data class PersistenceState(
  * 有回执的快照不能被 CONFLATED 吞掉：每次成功对应确实完成的那份写入。
  * 有界队列满时明确失败；页面可对当前读模型重试，不能无上限积压整份收藏。
  */
-internal class DurableSnapshotStore(private val file: AtomicFile, scope: CoroutineScope) {
+internal class DurableSnapshotStore(private val file: AtomicFile, scope: CoroutineScope, initialReadFailure: String? = null) {
     private data class Write(val revision: Long, val snapshot: String, val result: CompletableDeferred<DurableCommitResult>)
     private val sequence = AtomicLong()
     private val writes = Channel<Write>(32)
-    private val mutableState = MutableStateFlow(PersistenceState())
+    private val mutableState = MutableStateFlow(PersistenceState(readFailure = initialReadFailure, failedRevision = initialReadFailure?.let { 0L }))
     val state = mutableState.asStateFlow()
 
     init {
@@ -69,10 +70,20 @@ internal class DurableSnapshotStore(private val file: AtomicFile, scope: Corouti
         }
     }
 
+    /** 仅在原文件完整读取且 UI 合并完成后解除写保护；重试保存不能自行绕过读取失败。 */
+    @Synchronized fun contentReadRestored() {
+        mutableState.update { it.copy(readFailure = null, failedRevision = null) }
+    }
+
     @Synchronized
     fun submit(snapshot: String): DurableCommit {
         val revision = sequence.incrementAndGet()
         val result = CompletableDeferred<DurableCommitResult>()
+        if (mutableState.value.readFailure != null) {
+            mutableState.update { it.copy(requestedRevision = revision, failedRevision = revision) }
+            result.complete(DurableCommitResult.FAILED)
+            return DurableCommit(revision, result)
+        }
         mutableState.update { it.copy(requestedRevision = revision, pendingWrites = it.pendingWrites + 1) }
         if (writes.trySend(Write(revision, snapshot, result)).isFailure) {
             mutableState.update { it.copy(pendingWrites = it.pendingWrites - 1, failedRevision = revision) }

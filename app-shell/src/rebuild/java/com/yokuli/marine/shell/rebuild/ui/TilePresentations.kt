@@ -14,11 +14,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.runtime.contract.ais.*
@@ -31,6 +33,7 @@ import com.yokuli.anchorwatch.data.sharing.SharingServerState
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.design.LocalReducedMotion
+import com.yokuli.marine.core.design.LocalWpTextScale
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -44,6 +47,12 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.*
+
+/** 只处理本地定义的英文模式标签，不改用户命名的航线、船名或收藏坐标。 */
+private fun tileLabelCase(text: String): String = text.split(' ').joinToString(" ") { word ->
+    word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ENGLISH) else it.toString() }
+}
+private val TileNumericHeadline = Regex("^([−+\\-]?\\d+(?:[.,]\\d+)?)(.*)$")
 
 /** 中文：旧版独立样式入口仅用于迁移；新磁贴使用应用的唯一入口及样式偏好。 */
 data class TilePreset(
@@ -60,7 +69,7 @@ data class TilePreset(
 }
 fun tilePresets(): List<TilePreset> {
     val sizes = listOf(MarineTileSize.STANDARD_2X2, MarineTileSize.WIDE_4X2)
-    fun preset(key: String, app: AppId, zh: String, en: String, detailZh: String, detailEn: String, mode: String, wide: Boolean = false) = TilePreset(key, app, AppPreferenceLabel(zh, en), AppPreferenceLabel(detailZh, detailEn), mode, if (wide) MarineTileSize.WIDE_4X2 else MarineTileSize.STANDARD_2X2, sizes)
+    fun preset(key: String, app: AppId, zh: String, en: String, detailZh: String, detailEn: String, mode: String, wide: Boolean = false) = TilePreset(key, app, AppPreferenceLabel(zh, tileLabelCase(en)), AppPreferenceLabel(detailZh, detailEn), mode, if (wide) MarineTileSize.WIDE_4X2 else MarineTileSize.STANDARD_2X2, sizes)
     return listOf(
         preset("chart.cover", AppId.CHART, "海图封面", "chart cover", "整幅最近海图快照；点按回到海图", "Your latest chart snapshot, edge to edge. Tap for Chart.", "MAP", true),
         preset("chart.navigation", AppId.CHART, "当前导航", "active navigation", "当前航线、目标与距离；未导航时明确显示", "Active route, target and distance; shows when navigation is off.", "NAVIGATION", true),
@@ -77,7 +86,7 @@ fun tilePresets(): List<TilePreset> {
 
 data class TileMode(val key: String, val title: AppPreferenceLabel)
 fun tileModes(app: ShellApp): List<TileMode> {
-    fun mode(key: String, zh: String, en: String) = TileMode(key, AppPreferenceLabel(zh, en))
+    fun mode(key: String, zh: String, en: String) = TileMode(key, AppPreferenceLabel(zh, tileLabelCase(en)))
     val specifics = when (app.app.name) {
         "CHART" -> listOf(mode("MAP", "海图封面", "chart cover"), mode("NAVIGATION", "当前导航", "active navigation"), mode("POSITION", "船位", "position"))
         "LIBRARY" -> listOf(mode("LAYERS", "海图图层", "chart layers"), mode("FOLDERS", "已授权文件夹", "authorised folders"))
@@ -267,7 +276,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     SideEffect { if (context.liveContentEnabled) heldFrame = currentFrame }
     val frame = if (context.liveContentEnabled) currentFrame else heldFrame
     Box(context.modifier.fillMaxSize().clipToBounds()) {
-        if (size == MarineTileSize.ICON_1X1) ShellAppIcon(app, context.contentColor, Modifier.size(44.dp).align(Alignment.Center))
+        if (size == MarineTileSize.ICON_1X1) ShellAppIcon(app, context.contentColor, Modifier.size(36.dp).align(Alignment.Center))
         else if (!active) TileFrameContent(os, app, title, frame, size, context.contentColor, cover)
         else AnimatedContent(frame.key, modifier = Modifier.fillMaxSize(), transitionSpec = {
             (slideInVertically(tween(420)) { it } + fadeIn(tween(240))) togetherWith (slideOutVertically(tween(420)) { -it } + fadeOut(tween(200)))
@@ -278,14 +287,18 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
 @Composable private fun TileFrameContent(os: OsStore, app: ShellApp, title: String, frame: TileFrame, size: MarineTileSize, color: Color, cover: Boolean) {
     if (frame.key == "MAP" && frame.image != null) {
         Box(Modifier.fillMaxSize()) {
-            Image(frame.image.asImageBitmap(), os.t("最近海图快照", "last chart snapshot"), Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .88f)))).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                WpText(title, 16, color = Color.White, maxLines = 1)
+            Image(frame.image.asImageBitmap(), os.t("最近海图快照", "Latest chart snapshot"), Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop, filterQuality = FilterQuality.Medium)
+            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .6f), Color.Black.copy(alpha = .9f)))).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 WpText(frame.headline, 12, color = Color.White, maxLines = if (size == MarineTileSize.WIDE_4X2) 1 else 2)
-                WpText((if (frame.demo) os.t("演示 · ", "DEMO · ") else "") + os.t("海图快照", "chart snapshot") + " · " + frame.detail, 10, color = Color.White.copy(alpha = .9f), maxLines = 2)
+                WpText((if (frame.demo) os.t("演示 · ", "DEMO · ") else "") + os.t("海图快照", "Chart snapshot") + " · " + frame.detail, 12, color = Color.White.copy(alpha = .9f), maxLines = 2)
+                WpText(title, 12, color = Color.White, maxLines = 1, weight = FontWeight.SemiBold)
             }
         }
-    } else Box(Modifier.fillMaxSize().then(if (cover) Modifier.padding(YokuliMetrics.TileContentInset) else Modifier)) {
+    } else BoxWithConstraints(Modifier.fillMaxSize().then(if (cover) Modifier.padding(YokuliMetrics.TileContentInset) else Modifier)) {
+        val wide = size == MarineTileSize.WIDE_4X2
+        val textScale = LocalDensity.current.fontScale * LocalWpTextScale.current
+        val compactContent = maxHeight < (128f * textScale).dp
         if (frame.samples.size > 1 || frame.bearing != null || frame.progress != null) {
             Canvas(Modifier.fillMaxSize()) {
                 if (frame.samples.size > 1) {
@@ -320,21 +333,34 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
                 }
             }
         }
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                ShellAppIcon(app, color, Modifier.size(20.dp)); WpText(title, 12, color = color, maxLines = 1)
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (frame.key == "STATIC") Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                ShellAppIcon(app, color, Modifier.size(48.dp))
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (frame.eyebrow.isNotBlank()) WpText(
+                        if (os.chinese) frame.eyebrow else tileLabelCase(frame.eyebrow),
+                        12, color = color, maxLines = 1, modifier = Modifier.weight(1f))
+                    else Spacer(Modifier.weight(1f))
+                    ShellAppIcon(app, color, Modifier.size(20.dp))
+                }
+                Column(Modifier.weight(1f).fillMaxWidth().clipToBounds(), verticalArrangement = Arrangement.Center) {
+                    val headline = if (frame.key == "MAP") os.t("打开海图更新封面", "Open Chart for a cover") else frame.headline
+                    val numeric = TileNumericHeadline.matchEntire(headline)?.takeIf {
+                        it.groupValues[2].trim().length <= 18 && '·' !in it.groupValues[2]
+                    }
+                    if (numeric != null) Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        WpText(numeric.groupValues[1], if (compactContent) 24 else if (wide) 46 else 34,
+                            color = color,
+                            weight = FontWeight.Light, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        if (numeric.groupValues[2].isNotBlank()) WpText(numeric.groupValues[2].trim(), 12,
+                            color = color, maxLines = 1, modifier = Modifier.padding(bottom = 4.dp))
+                    } else WpText(headline, if (compactContent) 18 else 20, color = color, maxLines = 2)
+                }
+                if (frame.detail.isNotBlank()) WpText(frame.detail, 12, color = color,
+                    maxLines = if (wide && !compactContent) 2 else 1)
             }
-            if (frame.key == "STATIC") Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { ShellAppIcon(app, color, Modifier.size(48.dp)) }
-            else Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (frame.eyebrow.isNotBlank()) WpText(frame.eyebrow, 11, color = color.copy(alpha = .85f), maxLines = 1)
-                val headline = if (frame.key == "MAP") os.t("打开海图更新封面", "open Chart for a cover") else frame.headline
-                val numeric = Regex("^([−+\\-]?\\d+(?:[.,]\\d+)?)(.*)$").matchEntire(headline)
-                if (numeric != null) Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    WpText(numeric.groupValues[1], if (size == MarineTileSize.WIDE_4X2) 45 else 38, color = if (frame.live) color else color.copy(alpha = .65f), weight = FontWeight.Light, maxLines = 1)
-                    if (numeric.groupValues[2].isNotBlank()) WpText(numeric.groupValues[2].trim(), 14, color = color, maxLines = 1, modifier = Modifier.padding(bottom = 5.dp))
-                } else WpText(headline, if (size == MarineTileSize.WIDE_4X2) 30 else 24, color = color, weight = FontWeight.Light, maxLines = 2)
-            }
-            if (frame.detail.isNotBlank()) WpText(frame.detail, 12, color = color.copy(alpha = .88f), maxLines = if (size == MarineTileSize.WIDE_4X2) 2 else 1)
+            WpText(title, 12, color = color, maxLines = 1, weight = FontWeight.SemiBold)
         }
     }
 }

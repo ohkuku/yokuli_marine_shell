@@ -31,6 +31,13 @@ internal class NativeSceneRenderer(private val context: Context) {
     private var previousRuler: List<GeoPoint> = emptyList()
     private data class Group(val value:Any,val remove:List<()->Unit>)
     private val groups=mutableMapOf<String,Group>()
+    /** 图钉身份与报文元数据分开；移动/改色更新现有原生对象，不删除后重建。 */
+    private data class MarkerGroup(
+        var point: GeoPoint, var iconKey: String,
+        val move: (GeoPoint) -> Unit, val icon: (Bitmap) -> Unit, val remove: () -> Unit,
+    )
+    private val markers = mutableMapOf<String, MarkerGroup>()
+    private fun clearMarkers() { markers.values.forEach { it.remove() }; markers.clear() }
     private var reset=false
     private val density = context.resources.displayMetrics.density
     // 按实际像素字节限制，而不是按图标数量；高密度屏幕长期转向也不会无限积累位图。
@@ -44,6 +51,7 @@ internal class NativeSceneRenderer(private val context: Context) {
     fun clear() {
         groups.values.forEach { group -> group.remove.forEach { it() } }
         groups.clear()
+        clearMarkers()
         libreGeometry.clear()
         previous = null
         previousInput=null
@@ -51,18 +59,18 @@ internal class NativeSceneRenderer(private val context: Context) {
         reset = false
     }
 
-    fun render(google: GoogleMap?, libre: MapLibreMap?, input: MapScene, ruler: List<GeoPoint>) {
-        if (google == null && libre == null) return
+    fun render(google: GoogleMap?, libre: MapLibreMap?, input: MapScene, ruler: List<GeoPoint>): Boolean {
+        if (google == null && libre == null) return false
         // style 还在加载时不记录 previous，否则下一帧会误判为已经绘制。
-        if (libre != null && libre.style?.isFullyLoaded != true) return
+        if (libre != null && libre.style?.isFullyLoaded != true) return false
         // 原生几何随地图相机自行投影；拖动/缩放而业务未变时无需重新生成 AIS 线段与 GeoJSON。
-        if(!reset&&input==previousInput&&ruler==previousRuler)return
+        if(!reset&&input==previousInput&&ruler==previousRuler)return true
         previousInput=input
         val scene=input.trafficGeometry()
         libre?.let { libreGeometry.render(it, scene, ruler) }
-        if (scene == previous && ruler == previousRuler) return
+        if (scene == previous && ruler == previousRuler) return true
         previous = scene; previousRuler = ruler.toList()
-        if(reset){groups.values.forEach {group->group.remove.forEach {it()}};groups.clear();reset=false}
+        if(reset){groups.values.forEach {group->group.remove.forEach {it()}};groups.clear();clearMarkers();reset=false}
         val keys=mutableSetOf<String>()
         var removals=mutableListOf<()->Unit>()
         fun item(key:String,value:Any,draw:()->Unit) {
@@ -108,30 +116,53 @@ internal class NativeSceneRenderer(private val context: Context) {
             }
             ruler.forEachIndexed { index, point -> points.add(MapPoint("ruler:$index", point, if(index == 0) "A" else "B", 0xFFD74A29, 17f, true)) }
         }
-        fun marker(point: GeoPoint, id: String, bitmap: Bitmap) {
-            google?.addMarker(GoogleMarkerOptions().position(GoogleLatLng(point.lat, point.lon)).anchor(.5f, .5f)
-                .icon(BitmapDescriptorFactory.fromBitmap(bitmap)).zIndex(6f))?.let { it.tag = id; removals.add(it::remove) }
-            libre?.addMarker(MarkerOptions().position(LatLng(point.lat, point.lon)).title(id)
-                .icon(IconFactory.getInstance(context).fromBitmap(bitmap)))?.let {annotation->removals.add {libre?.removeAnnotation(annotation)}}
+        val markerKeys = mutableSetOf<String>()
+        fun marker(point: GeoPoint, id: String, iconKey: String, bitmap: () -> Bitmap) {
+            if (!point.valid()) return
+            markerKeys += id
+            val existing = markers[id]
+            if (existing != null) {
+                if (existing.point != point) { existing.move(point); existing.point = point }
+                if (existing.iconKey != iconKey) { existing.icon(bitmap()); existing.iconKey = iconKey }
+                return
+            }
+            val image = bitmap()
+            val googleMarker = google?.addMarker(GoogleMarkerOptions().position(GoogleLatLng(point.lat, point.lon)).anchor(.5f, .5f)
+                .icon(BitmapDescriptorFactory.fromBitmap(image)).zIndex(6f))?.also { it.tag = id }
+            val libreMarker = libre?.addMarker(MarkerOptions().position(LatLng(point.lat, point.lon)).title(id)
+                .icon(IconFactory.getInstance(context).fromBitmap(image)))
+            if (googleMarker == null && libreMarker == null) return
+            markers[id] = MarkerGroup(point, iconKey,
+                move = { next -> googleMarker?.position = GoogleLatLng(next.lat, next.lon); libreMarker?.position = LatLng(next.lat, next.lon) },
+                icon = { next -> googleMarker?.setIcon(BitmapDescriptorFactory.fromBitmap(next)); libreMarker?.icon = IconFactory.getInstance(context).fromBitmap(next) },
+                remove = { googleMarker?.remove(); if (libreMarker != null) libre?.removeAnnotation(libreMarker) },
+            )
         }
-        points.forEach {point->item("point:${point.id}",point) {marker(point.point,point.id,pointIcon(point))}}
-        scene.aisTargets.forEach { target -> item("ais:${target.mmsi}",target) {
-            marker(target.point,"ais:${target.mmsi}",aisIcon(target))
-        } }
+        points.forEach { point -> marker(point.point, point.id, pointIconKey(point)) { pointIcon(point) } }
+        scene.aisTargets.forEach { target -> marker(target.point, "ais:${target.mmsi}", aisIconKey(target)) { aisIcon(target) } }
         scene.vessel?.let {vessel ->
             vesselCourseVector(vessel)?.let {vector -> item("vessel:course",vector) {
                 line(vector, Color.WHITE, 3.5f, true)
                 line(vector, 0xFF007ADC.toInt(), 1.8f, true)
             }}
-            item("vessel",vessel) {marker(vessel.point,"vessel",vesselIcon(vessel))}
+            marker(vessel.point,"vessel",vesselIconKey(vessel)) { vesselIcon(vessel) }
         }
         (groups.keys-keys).forEach {key->groups.remove(key)?.remove?.forEach {it()}}
+        (markers.keys-markerKeys).forEach { key -> markers.remove(key)?.remove?.invoke() }
+        return true
     }
+
+    private fun pointIconKey(point: MapPoint) = "point:${point.color}:${point.radiusDp}:${point.label.takeIf { it.length <= 3 }.orEmpty()}"
+    private fun aisIconKey(target: MapAisTarget): String {
+        val angle = target.heading?.takeIf { it.isFinite() && it in 0.0..360.0 }?.toInt()
+        return "ais:${target.kind}:$angle:${target.stale}:${target.lost}:${target.risk}:${target.selected}:${target.distress}"
+    }
+    private fun vesselIconKey(vessel: MapVessel) = "vessel:${vessel.fresh}:${vessel.headingDegrees?.takeIf { it.isFinite() && it in 0.0..360.0 }?.toInt()}"
 
     private fun pointIcon(point: MapPoint): Bitmap {
         // MapLibre centres the bitmap; transparent margins remain symmetrical at every zoom.
         val label = point.label.takeIf { it.length <= 3 }.orEmpty()
-        val key = "${point.color}:${point.radiusDp}:$label"
+        val key = pointIconKey(point)
         icons.get(key)?.let { return it }
         val radius = point.radiusDp * density
         val size = ((radius + 3 * density) * 2).toInt().coerceAtLeast(8)
@@ -150,7 +181,7 @@ internal class NativeSceneRenderer(private val context: Context) {
 
     private fun aisIcon(target:MapAisTarget):Bitmap {
         val angle=target.heading?.takeIf {it.isFinite()&&it in 0.0..360.0}?.toInt()
-        val key="ais:${target.kind}:$angle:${target.stale}:${target.lost}:${target.risk}:${target.selected}:${target.distress}"
+        val key=aisIconKey(target)
         icons.get(key)?.let{return it}
         val size=(48*density).toInt();val center=size/2f
         val image=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888)
@@ -190,8 +221,8 @@ internal class NativeSceneRenderer(private val context: Context) {
     }
 
     private fun vesselIcon(vessel: MapVessel): Bitmap {
-        val heading = vessel.headingDegrees?.toFloat()
-        val key = "vessel:${vessel.fresh}:${heading?.toInt()}"
+        val heading = vessel.headingDegrees?.takeIf { it.isFinite() && it in 0.0..360.0 }?.toFloat()
+        val key = vesselIconKey(vessel)
         icons.get(key)?.let { return it }
         val size = (30 * density).toInt(); val center = size / 2f
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888); val canvas = Canvas(bitmap)

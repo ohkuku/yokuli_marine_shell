@@ -36,6 +36,18 @@ private class TrafficModelPool(val asset: FilamentAsset, instances: List<Filamen
     val assigned = mutableMapOf<String, FilamentInstance>()
     private val transforms = mutableMapOf<Int, FloatArray>()
     private val paints = mutableMapOf<Int, String>()
+    private var capacity = instances.size
+    private var sourceReleased = false
+    /** 每帧只补一小批，避免繁忙水域首次打开时在 UI 线程创建最大实例池。 */
+    fun growFor(required: Int, loader: AssetLoader): Boolean {
+        val target = required.coerceIn(0, 65)
+        repeat(min(4, (target - capacity).coerceAtLeast(0))) {
+            val instance = requireNotNull(loader.createInstance(asset)) { "Traffic instance could not be created" }
+            available.addLast(instance); capacity++
+        }
+        if (capacity == 65 && !sourceReleased) { asset.releaseSourceData(); sourceReleased = true }
+        return capacity < target
+    }
     fun acquire(id: String): FilamentInstance? = assigned[id] ?: available.removeFirstOrNull()?.also { assigned[id] = it }
     fun transformChanged(instance: FilamentInstance, transform: FloatArray): Boolean {
         if (transforms[instance.root]?.contentEquals(transform) == true) return false
@@ -59,6 +71,7 @@ internal class AisTrafficRenderer3D(
     context: Context,
     private val onFailure: (String) -> Unit,
     private val onReady: () -> Unit,
+    private val onPresentedTargets: (Set<String>) -> Unit,
 ) : UiHelper.RendererCallback, Choreographer.FrameCallback {
     private val handler = Handler(Looper.getMainLooper())
     private val choreographer = Choreographer.getInstance()
@@ -106,6 +119,10 @@ internal class AisTrafficRenderer3D(
     private var planeTransform: FloatArray? = null
     private var planeVisible = false
     private var appliedLight: Boolean? = null
+    private var failureStage = "initialization"
+    private var restoring = false
+    private var presentedTargets = emptySet<String>()
+    private val displayDensity = context.resources.displayMetrics.density.coerceAtLeast(1f)
 
     val textureView: TextureView = object : TextureView(context) {
         override fun onAttachedToWindow() { super.onAttachedToWindow(); refreshVisibility() }
@@ -118,7 +135,17 @@ internal class AisTrafficRenderer3D(
     }
 
     private val surfaceTimeout = Runnable {
-        if (canDraw() && (swapChain == null || !ready)) fail(IllegalStateException("Traffic renderer surface timeout"))
+        if (!canDraw()) return@Runnable
+        val stage = when {
+            width <= 0 || height <= 0 -> "layout"
+            swapChain == null -> if (ready) "resume-surface" else "surface"
+            loading -> "asset-upload"
+            assets.isEmpty() -> "asset-read"
+            restoring -> "resume-frame"
+            !ready -> "first-frame"
+            else -> return@Runnable
+        }
+        fail(IllegalStateException("Traffic renderer timed out at $stage"), stage)
     }
 
     fun initialize() {
@@ -151,18 +178,21 @@ internal class AisTrafficRenderer3D(
         }
     }
 
+    fun beginAssetRead() { if (!closed) failureStage = "asset-read" }
+
     fun load(buffers: List<ByteBuffer>) {
         if (closed) return
         guarded {
+            failureStage = "asset-upload"
             check(buffers.size == 3)
             sourceBuffers.addAll(buffers)
             val loader = requireNotNull(assetLoader)
-            // 预分配池有明确上限；更多目标仍由同一投影的平面符号保留，不消失。
-            val vessels = arrayOfNulls<FilamentInstance>(65)
+            // 先装小批，只有进入视野的目标才驱动扩充；全部目标仍有可拾取平面符号。
+            val vessels = arrayOfNulls<FilamentInstance>(4)
             val vesselAsset = requireNotNull(loader.createInstancedAsset(buffers[0], vessels))
             assets.add(vesselAsset)
             vesselPool = TrafficModelPool(vesselAsset, vessels.filterNotNull())
-            val neutral = arrayOfNulls<FilamentInstance>(65)
+            val neutral = arrayOfNulls<FilamentInstance>(4)
             val neutralAsset = requireNotNull(loader.createInstancedAsset(buffers[1], neutral))
             assets.add(neutralAsset)
             neutralPool = TrafficModelPool(neutralAsset, neutral.filterNotNull())
@@ -194,13 +224,17 @@ internal class AisTrafficRenderer3D(
                 if (cameraChanged) cameraDirty = true
                 requestDraw()
             }
-            if (visibilityChanged) refreshVisibility()
+            if (visibilityChanged) {
+                if (active && ready) restoring = true
+                refreshVisibility()
+            }
         }
     }
 
     fun setResumed(value: Boolean) {
         if (closed || resumed == value) return
         resumed = value
+        if (value && ready) restoring = true
         refreshVisibility()
     }
 
@@ -208,7 +242,7 @@ internal class AisTrafficRenderer3D(
     private fun refreshVisibility() {
         if (closed) return
         if (canDraw()) {
-            if (swapChain == null || !ready) { handler.removeCallbacks(surfaceTimeout); handler.postDelayed(surfaceTimeout, 10_000L) }
+            if (swapChain == null || !ready || restoring) { handler.removeCallbacks(surfaceTimeout); handler.postDelayed(surfaceTimeout, 10_000L) }
             requestDraw()
         } else { cancelFrames(); handler.removeCallbacks(surfaceTimeout) }
     }
@@ -216,7 +250,8 @@ internal class AisTrafficRenderer3D(
     private fun updateCamera() {
         if (width <= 0 || height <= 0) return
         val pose = frame?.camera ?: return
-        camera?.setProjection(Camera.Projection.ORTHO, -pose.halfWidth, pose.halfWidth, -pose.halfHeight, pose.halfHeight, 0.1, pose.clipFar)
+        if (pose.verticalFovDegrees != null) camera?.setProjection(pose.verticalFovDegrees, pose.aspect, pose.clipNear, pose.clipFar, Camera.Fov.VERTICAL)
+        else camera?.setProjection(Camera.Projection.ORTHO, -pose.halfWidth, pose.halfWidth, -pose.halfHeight, pose.halfHeight, pose.clipNear, pose.clipFar)
         camera?.lookAt(pose.eye.x, pose.eye.y, pose.eye.z, pose.target.x, pose.target.y, pose.target.z, pose.up.x, pose.up.y, pose.up.z)
         cameraDirty = false
     }
@@ -231,12 +266,18 @@ internal class AisTrafficRenderer3D(
             AisSceneTarget(OWN_ID, "", it, current.ownHeadingDegrees, current.ownCogDegrees, current.ownSogMetersPerSecond, current.ownDimensions)
         }
         // 视野和模型预算只影响绘制，不修改领域目标、警报或关注状态。
-        val candidates = (listOfNotNull(own) + prioritizedTargets)
-            .filter { val p = f.targetProjections[it.id] ?: f.camera.project(f.local.position(it.position)); p.x in -0.25f..1.25f && p.y in -0.25f..1.25f }
-        val ships = candidates.filter { it.kind == AisSceneKind.VESSEL && validAisBearing(it.headingDegrees) != null }.take(65)
-        val neutral = candidates.filterNot { it.kind == AisSceneKind.VESSEL && validAisBearing(it.headingDegrees) != null }.take(65)
+        fun visible(target: AisSceneTarget): Boolean {
+            val p = f.targetProjections[target.id] ?: f.camera.project(f.local.position(target.position))
+            return p.x in -.25f..1.25f && p.y in -.25f..1.25f
+        }
+        val candidates = listOfNotNull(own?.takeUnless { f.camera.verticalFovDegrees != null }?.takeIf(::visible)) + prioritizedTargets.filter(::visible).take(64)
+        val ships = candidates.filter { it.kind == AisSceneKind.VESSEL && validAisBearing(it.headingDegrees) != null }
+        val neutral = candidates.filterNot { it.kind == AisSceneKind.VESSEL && validAisBearing(it.headingDegrees) != null }
         vesselPool?.retain(ships.mapTo(mutableSetOf()) { it.id }, s)
         neutralPool?.retain(neutral.mapTo(mutableSetOf()) { it.id }, s)
+        val loader = requireNotNull(assetLoader)
+        val growingShips = vesselPool?.growFor(ships.size, loader) == true
+        val growingNeutral = neutralPool?.growFor(neutral.size, loader) == true
         tm.openLocalTransformTransaction()
         try {
             for (target in ships + neutral) {
@@ -244,23 +285,8 @@ internal class AisTrafficRenderer3D(
                 val pool = (if (isShip) vesselPool else neutralPool) ?: continue
                 val alreadyShown = pool.assigned.containsKey(target.id)
                 val instance = pool.acquire(target.id) ?: continue
-                val point = f.targetPositions[target.id] ?: f.local.position(target.position)
-                val dims = target.dimensions?.takeIf { it.reliable && isShip }
-                val symbolicLength = cameraState.rangeMeters.coerceIn(100.0, 59264.0) * .045
-                val length = dims?.let { it.toBow + it.toStern } ?: symbolicLength
-                val beam = dims?.let { it.toPort + it.toStarboard } ?: if (isShip) length * .34 else length * .56
-                val heading = Math.toRadians(if (isShip) target.headingDegrees!! else 0.0)
-                // 原始地理报告点不动，广播偏移只移动船体几何中心。
-                val xOffset = dims?.let { (it.toStarboard - it.toPort) * .5 } ?: 0.0
-                val zOffset = dims?.let { (it.toBow - it.toStern) * .5 } ?: 0.0
-                val position = point + AisVector3(cos(heading) * xOffset + sin(heading) * zOffset, 0.0, sin(heading) * xOffset - cos(heading) * zOffset)
-                val heightScale = if (isShip) length.coerceAtMost(140.0) else symbolicLength * .65
-                val matrix = floatArrayOf(
-                    (cos(heading) * beam).toFloat(), 0f, (sin(heading) * beam).toFloat(), 0f,
-                    0f, heightScale.toFloat(), 0f, 0f,
-                    (-sin(heading) * length).toFloat(), 0f, (cos(heading) * length).toFloat(), 0f,
-                    position.x.toFloat(), position.y.toFloat(), position.z.toFloat(), 1f,
-                )
+                val geometry = aisDisplayGeometry(target, f, width, displayDensity)
+                val matrix = geometry.matrix()
                 if (pool.transformChanged(instance, matrix)) tm.setTransform(tm.getInstance(instance.root), matrix)
                 val paintKey = when { target.stale || target.lost -> "old"; target.id == OWN_ID -> "own"; target.risk -> "risk"; target.id == selectedId -> "selected"; else -> "target" }
                 if (pool.paintChanged(instance, paintKey)) paint(instance, paintKey)
@@ -280,7 +306,8 @@ internal class AisTrafficRenderer3D(
             e.lightManager.setIntensity(e.lightManager.getInstance(lightEntity), if (light) 98_000f else 72_000f)
             appliedLight = light
         }
-        contentDirty = false
+        contentDirty = growingShips || growingNeutral
+        if (contentDirty) frameBudget = max(frameBudget, 2)
     }
 
     private fun paint(instance: FilamentInstance, key: String) {
@@ -320,23 +347,40 @@ internal class AisTrafficRenderer3D(
         scheduled = false
         if (!canDraw() || helper?.isReadyToRender != true || width <= 0 || height <= 0) return
         guarded {
+            failureStage = when {
+                loading -> "asset-upload"
+                restoring -> "resume-frame"
+                assets.isEmpty() -> "asset-read"
+                !ready -> "first-frame"
+                else -> "frame"
+            }
             if (cameraDirty) updateCamera()
             if (loading) {
                 resourceLoader?.asyncUpdateLoad()
                 check(++loadFrames < 1200) { "Traffic resources timed out" }
                 if ((resourceLoader?.asyncGetLoadProgress() ?: 0f) >= 1f) {
-                    assets[loadingAsset].releaseSourceData()
+                    // 池的 glTF 层级保留给后续 createInstance；仅平面可立即释放。
+                    if (loadingAsset == 2) assets[loadingAsset].releaseSourceData()
                     loadingAsset++
                     if (loadingAsset < assets.size) check(resourceLoader?.asyncBeginLoad(assets[loadingAsset]) == true)
-                    else { loading = false; sourceBuffers.clear(); contentDirty = true; frameBudget = 2 }
+                    else { loading = false; failureStage = if (restoring) "resume-frame" else "first-frame"; contentDirty = true; frameBudget = 2 }
                 }
             }
             if (!loading && assets.isNotEmpty() && contentDirty) updateContent()
+            if (!loading) failureStage = if (restoring) "resume-frame" else if (!ready) "first-frame" else "frame"
             val r = requireNotNull(renderer)
             if (r.beginFrame(requireNotNull(swapChain), frameTimeNanos)) {
                 try { r.render(requireNotNull(view)) } finally { r.endFrame() }
                 frameAttempts = 0
+                if (!loading && assets.isNotEmpty()) {
+                    val drawn = (vesselPool?.assigned.orEmpty().keys + neutralPool?.assigned.orEmpty().keys).filterNot { it == OWN_ID }.toSet()
+                    if (drawn != presentedTargets) {
+                        presentedTargets = drawn
+                        handler.post { if (!closed) onPresentedTargets(drawn) }
+                    }
+                }
                 frameBudget--
+                if (!loading && assets.isNotEmpty() && restoring) { restoring = false; handler.removeCallbacks(surfaceTimeout) }
                 if (!loading && assets.isNotEmpty() && !ready) { ready = true; handler.removeCallbacks(surfaceTimeout); handler.post { if (!closed) onReady() } }
             } else check(++frameAttempts < 120) { "Traffic frame unavailable" }
             // 静态观测不需要持续帧循环；新观测、手势与资源上传才申请绘制。
@@ -346,9 +390,21 @@ internal class AisTrafficRenderer3D(
 
     override fun onNativeWindowChanged(surface: Surface) {
         if (closed) return
-        guarded { destroySwapChain(); swapChain = requireNotNull(engine).createSwapChain(surface, helper?.swapChainFlags ?: SwapChainFlags.CONFIG_DEFAULT); refreshVisibility() }
+        guarded {
+            restoring = ready
+            failureStage = if (restoring) "resume-surface" else "surface"
+            destroySwapChain(); swapChain = requireNotNull(engine).createSwapChain(surface, helper?.swapChainFlags ?: SwapChainFlags.CONFIG_DEFAULT)
+            refreshVisibility()
+        }
     }
-    override fun onDetachedFromSurface() { cancelFrames(); guarded { destroySwapChain() } }
+    override fun onDetachedFromSurface() {
+        if (closed) return
+        cancelFrames()
+        restoring = ready
+        guarded { destroySwapChain() }
+        // 可见页面丢失 Surface 后也必须有恢复期限，不能一直留着旧画面。
+        if (canDraw()) { handler.removeCallbacks(surfaceTimeout); handler.postDelayed(surfaceTimeout, 10_000L) }
+    }
     override fun onResized(width: Int, height: Int) {
         if (closed || width <= 0 || height <= 0 || this.width == width && this.height == height) return
         guarded {
@@ -364,17 +420,15 @@ internal class AisTrafficRenderer3D(
     private inline fun guarded(block: () -> Unit) {
         try { block() } catch (error: Exception) { fail(error) } catch (error: LinkageError) { fail(error) }
     }
-    fun fail(error: Throwable) {
+    fun fail(error: Throwable, stageOverride: String? = null) {
         if (closed || failed) return
         failed = true
-        Log.w("YokuliAis3D", "Native traffic scene unavailable", error)
-        val reason = when {
+        val reason = stageOverride ?: when {
             error is LinkageError -> "native-library"
-            engine == null -> "graphics-device"
-            error.message?.contains("surface", ignoreCase = true) == true -> "surface-timeout"
-            loading || assets.isEmpty() -> "local-model"
-            else -> "graphics-frame"
+            engine == null -> "initialization"
+            else -> failureStage
         }
+        Log.w("YokuliAis3D", "Native traffic scene unavailable at $reason", error)
         releaseResources()
         handler.post { if (!released) onFailure(reason) }
     }

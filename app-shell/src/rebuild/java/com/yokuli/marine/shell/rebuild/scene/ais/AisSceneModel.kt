@@ -55,7 +55,7 @@ internal data class AisSceneCameraState(
     val preset: AisScenePreset = AisScenePreset.OVERVIEW,
     val rangeMeters: Double = 1852.0,
     val bearingDegrees: Double = 0.0,
-    val elevationDegrees: Double = 52.0,
+    val elevationDegrees: Double = 48.0,
     val centerLatitude: Double? = null,
     val centerLongitude: Double? = null,
     val followOwn: Boolean = true,
@@ -65,8 +65,9 @@ internal data class AisSceneCameraState(
             save = { listOf(it.preset.name, it.rangeMeters, it.bearingDegrees, it.elevationDegrees, it.centerLatitude ?: Double.NaN, it.centerLongitude ?: Double.NaN, it.followOwn) },
             restore = { AisSceneCameraState(
                 preset = runCatching { AisScenePreset.valueOf(it[0] as String) }.getOrDefault(AisScenePreset.OVERVIEW),
-                rangeMeters = (it[1] as Double).coerceIn(100.0, 59264.0),
-                bearingDegrees = it[2] as Double, elevationDegrees = it[3] as Double,
+                rangeMeters = (it[1] as Double).takeIf(Double::isFinite)?.coerceIn(100.0, 59264.0) ?: 1852.0,
+                bearingDegrees = (it[2] as Double).takeIf(Double::isFinite)?.let { value -> (value % 360.0 + 360.0) % 360.0 } ?: 0.0,
+                elevationDegrees = (it[3] as Double).takeIf(Double::isFinite)?.coerceIn(20.0, 78.0) ?: 48.0,
                 centerLatitude = (it[4] as Double).takeIf(Double::isFinite), centerLongitude = (it[5] as Double).takeIf(Double::isFinite), followOwn = it[6] as Boolean,
             ) },
         )
@@ -117,13 +118,39 @@ internal class AisLocalFrame(val origin: AisScenePosition) {
 internal data class AisSceneCamera(
     val eye: AisVector3, val target: AisVector3, val up: AisVector3,
     val halfWidth: Double, val halfHeight: Double, val clipFar: Double,
+    /** 非空时为本船视点的真实透视视角；海图式概览仍用正交。 */
+    val verticalFovDegrees: Double? = null,
+    val aspect: Double = 1.0,
+    val clipNear: Double = .1,
 ) {
     val forward = (target - eye).normalized()
     val right = forward.cross(up).normalized()
     val screenUp = right.cross(forward)
+    fun depth(point: AisVector3) = (point - eye).dot(forward)
     fun project(point: AisVector3): Offset {
-        val p = point - target
-        return Offset((0.5 + p.dot(right) / (2.0 * halfWidth)).toFloat(), (0.5 - p.dot(screenUp) / (2.0 * halfHeight)).toFloat())
+        val p = point - eye
+        val depth = p.dot(forward)
+        // 与 GPU 相同的前后裁面。不可见点不能再参与标签、拾取、视野计数或连线。
+        if (!depth.isFinite() || depth <= clipNear || depth >= clipFar) return Offset(Float.NaN, Float.NaN)
+        val height = verticalFovDegrees?.let { depth * tan(Math.toRadians(it * .5)) } ?: halfHeight
+        val width = if (verticalFovDegrees != null) height * aspect else halfWidth
+        return Offset((.5 + p.dot(right) / (2.0 * width)).toFloat(), (.5 - p.dot(screenUp) / (2.0 * height)).toFloat())
+    }
+    /** 在该深度下的屏幕像素比例，同一相机供原生船模与平面符号使用。 */
+    fun metersPerPixel(point: AisVector3, viewportWidth: Int): Double {
+        val width = verticalFovDegrees?.let { depth(point).coerceAtLeast(clipNear) * tan(Math.toRadians(it * .5)) * aspect } ?: halfWidth
+        return 2.0 * width / viewportWidth.coerceAtLeast(1)
+    }
+    fun clipSegment(start: AisVector3, end: AisVector3): Pair<AisVector3, AisVector3>? {
+        val from = depth(start); val to = depth(end)
+        if (!from.isFinite() || !to.isFinite()) return null
+        val delta = to - from
+        var low = 0.0; var high = 1.0
+        val near = clipNear + .001; val far = clipFar - .001
+        if (abs(delta) < 1e-9) return if (from in near..far) start to end else null
+        val enter = (near - from) / delta; val leave = (far - from) / delta
+        low = max(low, min(enter, leave)); high = min(high, max(enter, leave))
+        return if (low <= high) (start + (end - start) * low) to (start + (end - start) * high) else null
     }
 }
 
@@ -146,13 +173,80 @@ internal fun aisSceneFrame(data: AisSceneData, state: AisSceneCameraState, aspec
     val range = state.rangeMeters.takeIf { it.isFinite() }?.coerceIn(100.0, 59264.0) ?: 1852.0
     val halfWidth = range * max(1.0, safeAspect)
     val halfHeight = range * max(1.0, 1.0 / safeAspect)
-    val isForward = state.preset == AisScenePreset.BOW_FORWARD && validAisBearing(data.ownHeadingDegrees) != null
-    val bearing = if (isForward && state.followOwn) data.ownHeadingDegrees!! else state.bearingDegrees
-    val elevation = if (state.preset == AisScenePreset.NORTH_TOP) 89.95 else if (isForward) 23.0 else state.elevationDegrees.coerceIn(28.0, 78.0)
-    val angle = Math.toRadians(bearing); val pitch = Math.toRadians(elevation)
-    val distance = range * 3.2
-    val eye = target + AisVector3(-sin(angle) * cos(pitch) * distance, sin(pitch) * distance, cos(angle) * cos(pitch) * distance)
-    return AisSceneFrame(local, AisSceneCamera(eye, target, AisVector3(0.0, 1.0, 0.0), halfWidth, halfHeight, range * 12.0), data.targets.filter { it.position.valid }.distinctBy { it.id }, own == null)
+    val wantsForward = state.preset == AisScenePreset.BOW_FORWARD
+    val isForward = wantsForward && own != null && validAisBearing(data.ownHeadingDegrees) != null
+    val bearing = if (isForward) data.ownHeadingDegrees!! else if (wantsForward) 0.0 else state.bearingDegrees.takeIf(Double::isFinite) ?: 0.0
+    val angle = Math.toRadians(bearing)
+    val pose = if (isForward) {
+        // 船桥视点固定在本船，不再把低角度正交概览叫作前视。视点高度为示意，
+        // 不作为传感器事实；缺少实际艏向时仅当前绘制降级，不覆写用户相机偏好。
+        val reference = local.position(own!!)
+        val eyeHeight = data.ownDimensions?.takeIf { it.reliable }?.let { (it.toBow + it.toStern) * .12 }?.coerceIn(4.0, 18.0) ?: 6.0
+        val eye = reference + AisVector3(0.0, eyeHeight, 0.0)
+        val aim = eye + AisVector3(sin(angle) * range, -tan(Math.toRadians(6.0)) * range, -cos(angle) * range)
+        AisSceneCamera(eye, aim, AisVector3(0.0, 1.0, 0.0), halfWidth, halfHeight, max(1000.0, range * 4.0),
+            verticalFovDegrees = (58.0 * (range / 1852.0).pow(.25)).coerceIn(25.0, 85.0), aspect = safeAspect, clipNear = .5)
+    } else {
+        val elevation = if (state.preset == AisScenePreset.NORTH_TOP || wantsForward) 89.95 else state.elevationDegrees.takeIf(Double::isFinite)?.coerceIn(20.0, 78.0) ?: 48.0
+        val pitch = Math.toRadians(elevation)
+        val distance = range * 3.2
+        val eye = target + AisVector3(-sin(angle) * cos(pitch) * distance, sin(pitch) * distance, cos(angle) * cos(pitch) * distance)
+        AisSceneCamera(eye, target, AisVector3(0.0, 1.0, 0.0), halfWidth, halfHeight, range * 12.0)
+    }
+    return AisSceneFrame(local, pose, data.targets.filter { it.position.valid }.distinctBy { it.id }, own == null)
+}
+
+/** 显示用几何。GPU 模型、屏幕命中体积共用同一尺寸；不参与距离或风险计算。 */
+internal data class AisDisplayGeometry(
+    val isShip: Boolean,
+    val position: AisVector3,
+    val headingRadians: Double,
+    val length: Double,
+    val beam: Double,
+    val heightScale: Double,
+) {
+    fun transform(point: AisVector3) = position + AisVector3(
+        cos(headingRadians) * point.x * beam - sin(headingRadians) * point.z * length,
+        point.y * heightScale,
+        sin(headingRadians) * point.x * beam + cos(headingRadians) * point.z * length,
+    )
+    fun matrix() = floatArrayOf(
+        (cos(headingRadians) * beam).toFloat(), 0f, (sin(headingRadians) * beam).toFloat(), 0f,
+        0f, heightScale.toFloat(), 0f, 0f,
+        (-sin(headingRadians) * length).toFloat(), 0f, (cos(headingRadians) * length).toFloat(), 0f,
+        position.x.toFloat(), position.y.toFloat(), position.z.toFloat(), 1f,
+    )
+    /** 对应包内 GLB 的边界；包含甲板/船桥高度，而非只接受海平面上的点击。 */
+    fun boundsFaces(): List<List<AisVector3>> {
+        val bottom = if (isShip) -.1 else 0.0
+        val top = if (isShip) .32 else .65
+        val vertices = listOf(
+            AisVector3(-.5, bottom, -.5), AisVector3(.5, bottom, -.5), AisVector3(.5, bottom, .5), AisVector3(-.5, bottom, .5),
+            AisVector3(-.5, top, -.5), AisVector3(.5, top, -.5), AisVector3(.5, top, .5), AisVector3(-.5, top, .5),
+        ).map(::transform)
+        return listOf(listOf(0, 1, 2, 3), listOf(4, 5, 6, 7), listOf(0, 1, 5, 4), listOf(1, 2, 6, 5), listOf(2, 3, 7, 6), listOf(3, 0, 4, 7))
+            .map { face -> face.map(vertices::get) }
+    }
+}
+
+internal fun aisDisplayGeometry(target: AisSceneTarget, frame: AisSceneFrame, viewportWidth: Int, density: Float): AisDisplayGeometry {
+    val isShip = target.kind == AisSceneKind.VESSEL && validAisBearing(target.headingDegrees) != null
+    val point = frame.targetPositions[target.id] ?: frame.local.position(target.position)
+    val dims = target.dimensions?.takeIf { it.reliable && isShip }
+    val heading = Math.toRadians(if (isShip) target.headingDegrees!! else 0.0)
+    val metersPerPixel = frame.camera.metersPerPixel(point, viewportWidth).coerceAtLeast(.01)
+    val forward = AisVector3(sin(heading), 0.0, -cos(heading))
+    val screenLength = hypot(forward.dot(frame.camera.right), forward.dot(frame.camera.screenUp)).coerceAtLeast(.28)
+    val symbolicLength = (26.0 * density.coerceAtLeast(1f) * metersPerPixel / screenLength).coerceAtLeast(3.0)
+    val reportedLength = dims?.let { it.toBow + it.toStern }
+    val length = max(reportedLength ?: 0.0, symbolicLength)
+    val actualSize = reportedLength != null && reportedLength >= symbolicLength
+    val beam = if (actualSize) dims!!.toPort + dims.toStarboard else length * if (isShip) .34 else .56
+    val xOffset = dims?.takeIf { actualSize }?.let { (it.toStarboard - it.toPort) * .5 } ?: 0.0
+    val zOffset = dims?.takeIf { actualSize }?.let { (it.toBow - it.toStern) * .5 } ?: 0.0
+    val position = point + AisVector3(cos(heading) * xOffset + sin(heading) * zOffset, 0.0, sin(heading) * xOffset - cos(heading) * zOffset)
+    val heightScale = if (isShip) if (actualSize) length.coerceAtMost(140.0) else length * .6 else symbolicLength * .45
+    return AisDisplayGeometry(isShip, position, heading, length, beam, heightScale)
 }
 
 /** 仅用于用户镜头中心，不写回 AIS 仓库。跨日界线取短方向。 */

@@ -89,17 +89,17 @@ import java.util.Locale
                                 chooseTiles = true
                             }, save = ::saveLayout, select = select)
                         else PageBody {
-                            if (state.settings.demoMode) Label(os.t("演示 · 模拟读数", "DEMO · simulated readings"), 16, c.accent)
+                            if (state.settings.demoMode) Label(os.t("演示 · 模拟读数", "DEMO · simulated readings"), 16, c.accentText)
                             when (page) {
                                 0 -> NavigationInstrumentPanel(os, state.vesselData, now, select)
                                 1 -> SailingInstrumentPanel(os, state.vesselData, now, select)
                                 2 -> {
                                     InstrumentAttitudePanel(os, active = isActive && currentPage == 2, onMetric = select)
                                     var axis by rememberSaveable { mutableStateOf("heel") }
-                                    Label(os.t("摆动回看", "motion history"), 25)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    AppSection(os.t("摆动回看", "motion history"))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                         listOf("heel" to os.t("横倾", "heel"), "pitch" to os.t("纵倾", "pitch")).forEach { (key, label) ->
-                                            MetroButton(label, { axis = key }, Modifier.weight(1f), primary = axis == key)
+                                            ChoiceRow(label, axis == key, modifier = Modifier.weight(1f)) { axis = key }
                                         }
                                     }
                                     ReadingTrace(os, history[axis].orEmpty(), axis, now, data.readings[axis])
@@ -109,8 +109,8 @@ import java.util.Locale
                                     val selectedTrend = activeTrend
                                     if (selectedTrend == null) {
                                         Spacer(Modifier.height(26.dp))
-                                        Label(os.t("等一份船况", "waiting for conditions"), 30)
-                                        Label(os.t("收到航速、方向、风或天气读数后，在这里回看真实变化。", "Review speed, direction, wind and weather as real readings arrive."), 17, c.muted)
+                                        Label(os.t("等一份船况", "waiting for conditions"), 24)
+                                        Label(os.t("收到航速、方向、风或天气读数后，在这里回看真实变化。", "Review speed, direction, wind and weather as real readings arrive."), 15, c.muted)
                                         MetroButton(os.t("检查数据来源", "check data sources"), { os.openLinked("data_center:readings") })
                                     } else {
                                         val key = selectedTrend.key
@@ -118,8 +118,8 @@ import java.util.Locale
                                         val last = InstrumentTrendCatalog.lastReading(key, data.readings, history, now)
                                         val live = current != null && current === last && current.fresh(now)
                                         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { chooseTrend = true }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Label(metricName(os, key), 25, modifier = Modifier.weight(1f))
-                                            Label(os.t("切换", "change"), 16, c.accent)
+                                            Label(metricName(os, key), 20, modifier = Modifier.weight(1f))
+                                            Label(os.t("切换", "change"), 16, c.accentText)
                                         }
                                         Label(os.formatMetric(key, last?.value), 42, if (live) c.accent else c.muted)
                                         last?.let { Label((if (live) os.t("最新 · ", "latest · ") else os.t("上次记录 · ", "last recorded · ")) + readingAge(os, it.elapsed, now) + " · " + it.source, 13, c.muted) }
@@ -135,13 +135,13 @@ import java.util.Locale
         }
     }
     if (chooseTrend) Dialog(onDismissRequest = { chooseTrend = false }) {
-        Column(Modifier.fillMaxWidth().heightIn(max = 640.dp).background(c.bg).border(2.dp, c.fg).padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Label(os.t("选择回看内容", "choose a history"), 28)
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        AppDialogSurface() {
+            AppDialogTitle(os.t("选择回看内容", "choose a history"))
+            Column {
                 InstrumentTrendGroup.entries.forEach { group ->
                     val choices = availableTrends.filter { it.group == group }
                     if (choices.isNotEmpty()) {
-                        Label(if (group == InstrumentTrendGroup.NAVIGATION) os.t("航行", "navigation") else os.t("天气", "weather"), 19, c.accent, Modifier.padding(top = 14.dp))
+                        Label(if (group == InstrumentTrendGroup.NAVIGATION) os.t("航行", "navigation") else os.t("天气", "weather"), 19, c.accentText, Modifier.padding(top = 14.dp))
                         choices.forEach { metric ->
                             val last = InstrumentTrendCatalog.lastReading(metric.key, data.readings, history, now)
                             ChoiceRow(metricName(os, metric.key), activeTrend?.key == metric.key,
@@ -156,9 +156,9 @@ import java.util.Locale
         }
     }
     if (chooseTiles) Dialog(onDismissRequest = { chooseTiles = false }) {
-        Column(Modifier.fillMaxWidth().heightIn(max = 620.dp).background(c.bg).border(2.dp, c.fg).padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Label(os.t("添加仪表", "add instruments"), 30)
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        AppDialogSurface() {
+            AppDialogTitle(os.t("添加仪表", "add instruments"))
+            Column {
                 InstrumentTileId.entries.forEach { tile ->
                     InstrumentChoice(instrumentName(os, tile), tile.name in pickerTileNames) {
                         pickerTileNames = if (tile.name in pickerTileNames) pickerTileNames - tile.name else pickerTileNames + tile.name
@@ -199,7 +199,7 @@ import java.util.Locale
         Label(observationStatus(os, value.observation, now), 15, c.muted)
         Label(os.t("来源 · ", "source · ") + (value.observation.sourceIdentity?.displayName ?: sourceName(os, value.observation.source)), 15, c.muted)
         if (tile != InstrumentTileId.PRESSURE) instrumentTrendKey(tile)?.let { ReadingTrace(os, history[it].orEmpty(), it, now, readings[it]) }
-        value.observation.conflict?.takeIf { it.active }?.let { Label(os.t("多个来源读数不一致，请检查设备与安装方向。", "Sources disagree; inspect the instruments and alignment."), 16, c.muted) }
+        value.observation.conflict?.takeIf { it.active }?.let { Label(os.t("多个来源读数不一致，请检查设备与安装方向。", "Sources disagree; inspect the instruments and alignment."), 15, c.muted) }
         if (tile !in layout) MetroButton(os.t("添加到我的仪表", "add to my instruments"), { save(layout + tile) })
         instrumentSourceMetric(tile)?.let { metric ->
             MetroButton(os.t("检查此项来源", "check this source"), { os.openLinked("data_center:source/${metric.name}") })
@@ -221,11 +221,7 @@ internal fun instrumentSourceMetric(tile: InstrumentTileId): VesselMetricId? = w
 }
 
 @Composable private fun InstrumentChoice(title: String, selected: Boolean, onClick: () -> Unit) {
-    val c = LocalMetro.current
-    Row(Modifier.fillMaxWidth().toggleable(value = selected, role = Role.Checkbox, onValueChange = { onClick() }).padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(15.dp)) {
-        Box(Modifier.size(26.dp).border(2.dp, c.fg), contentAlignment = Alignment.Center) { if (selected) Glyph("check", Modifier.size(18.dp), c.fg) }
-        Label(title, 22)
-    }
+    AppCheckRow(title, selected, onClick = onClick)
 }
 
 /** 中文：编辑时在本地重排，拖动结束一次性保存；稳定的枚举 ID 保证读数不会跟随位置串位。 */
@@ -236,7 +232,7 @@ internal fun instrumentSourceMetric(tile: InstrumentTileId): VesselMetricId? = w
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val currentOrder by rememberUpdatedState(order)
     val currentSave by rememberUpdatedState(save)
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 22.dp), contentPadding = PaddingValues(bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(Modifier.fillMaxSize().padding(start = LocalShellHorizontalInsets.current.pageStart, end = LocalShellHorizontalInsets.current.pageEnd), contentPadding = PaddingValues(bottom = 30.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 MetroButton(os.t("添加", "add"), add, Modifier.weight(1f), primary = true)
@@ -245,8 +241,8 @@ internal fun instrumentSourceMetric(tile: InstrumentTileId): VesselMetricId? = w
             if (editing && order.isNotEmpty()) Label(os.t("长按仪表拖动排序，也可使用上移和下移。", "hold and drag to reorder, or use move up / down"), 15, c.muted, Modifier.padding(top = 12.dp))
             if (order.isEmpty()) {
                 Spacer(Modifier.height(35.dp))
-                Label(os.t("你的驾驶台", "your helm"), 36)
-                Label(os.t("把常看的仪表放在一起。选择、移除与顺序都会保存。", "Keep the instruments you use together. Your selection and order are saved."), 21, c.muted, Modifier.padding(top = 14.dp))
+                Label(os.t("你的驾驶台", "your helm"), 24)
+                Label(os.t("把常看的仪表放在一起。选择、移除与顺序都会保存。", "Keep the instruments you use together. Your selection and order are saved."), 15, c.muted, Modifier.padding(top = 14.dp))
             }
         }
         items(order, key = { it.name }) { tile ->
@@ -275,8 +271,8 @@ internal fun instrumentSourceMetric(tile: InstrumentTileId): VesselMetricId? = w
                     }
                 } else Modifier.clickable { select(tile) }).padding(vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Label(instrumentName(os, tile), 22, modifier = Modifier.weight(1f))
-                    if (editing) Label("≡", 32, c.muted)
+                    Label(instrumentName(os, tile), 15, modifier = Modifier.weight(1f))
+                    if (editing) Glyph("menu", Modifier.size(24.dp), c.muted)
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     Label(value.text, if (tile == InstrumentTileId.POSITION) 22 else 44, if (value.observation.displayIsLive()) c.accent else c.muted, Modifier.weight(1f))
@@ -285,8 +281,8 @@ internal fun instrumentSourceMetric(tile: InstrumentTileId): VesselMetricId? = w
                 Label(observationStatus(os, value.observation, now), 13, c.muted)
                 if (editing) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     val index = order.indexOf(tile)
-                    if (index > 0) Label(os.t("上移", "up"), 17, c.accent, Modifier.clickable { val changed = order.toMutableList().apply { removeAt(index); add(index - 1, tile) }; order = changed; save(changed) }.padding(vertical = 8.dp))
-                    if (index < order.lastIndex) Label(os.t("下移", "down"), 17, c.accent, Modifier.clickable { val changed = order.toMutableList().apply { removeAt(index); add(index + 1, tile) }; order = changed; save(changed) }.padding(vertical = 8.dp))
+                    if (index > 0) Label(os.t("上移", "up"), 17, c.accentText, Modifier.clickable { val changed = order.toMutableList().apply { removeAt(index); add(index - 1, tile) }; order = changed; save(changed) }.padding(vertical = 8.dp))
+                    if (index < order.lastIndex) Label(os.t("下移", "down"), 17, c.accentText, Modifier.clickable { val changed = order.toMutableList().apply { removeAt(index); add(index + 1, tile) }; order = changed; save(changed) }.padding(vertical = 8.dp))
                     Spacer(Modifier.weight(1f))
                     Label(os.t("移除", "remove"), 17, c.muted, Modifier.clickable { val changed = order - tile; order = changed; save(changed) }.padding(vertical = 8.dp))
                 }

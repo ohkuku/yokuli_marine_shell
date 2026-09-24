@@ -2,6 +2,8 @@
 
 R0 的安全边界是：**把 Yokuli 作为普通 HOME APK 预置到 AOSP 产品中，保留 Android 的权限、安装、锁屏和系统服务边界。** 本轮交付产品配置与 APK，不是已签发、已启动或可刷入真机的 ROM 镜像。
 
+通知服务新增同 UID 的非导出子进程 Binder 接入；它不是平台权限、独立 UID、第三方通知访问或完整 SystemUI。
+
 本文中的“现有”表示代码已有，“本轮配置”表示已定义构建输入，“后续计划”表示尚未实现或验证的发行要求。`userdebug`、APK `debug/release` 和设备 bootloader 锁定状态是不同概念，不能混用。
 
 ## 1. 基线与信任边界
@@ -18,6 +20,14 @@ R0 的安全边界是：**把 Yokuli 作为普通 HOME APK 预置到 AOSP 产品
 预置、privileged 与平台签名是不同维度。特权权限有专门的授予规则；SELinux 仍约束进程，不能把“系统应用”解释为全权访问。R0 不新增特权权限白名单，不通过 permissive 绕过设备适配问题。[特权权限白名单](https://source.android.com/docs/core/permissions/perms-allowlist)、[SELinux](https://source.android.com/docs/security/features/selinux)
 
 **现有代码待持续审计：** 合并 Manifest 中仍包含继承的前台服务、开机恢复、模拟定位等声明。声明权限不等于已获授权或所有场景可用。发行前以各 variant 的最终合并 Manifest 为准，移除不需要的入口，验证导出组件、FileProvider、URI 授权和后台启动行为。
+
+### 通知 IPC 的当前授权和存储
+
+`runtime/marine-local/src/main/AndroidManifest.xml` 声明 `NotificationBinderService`：`android:process=":notifications"`、`exported=false`、`stopWithTask=false`。每个已知事务与回调依据 `Binder.getCallingUid() == Process.myUid()` 检查真实调用身份；publisher、domain、appId 不当作凭证。同 UID 内各模块仍不是独立安全主体，尚无按第三方应用授予读历史/发布/控制的 SDK。
+
+传输协议为普通 Binder 1.0，检查 descriptor/major/载荷长度，消息每页最多 20 条且按 96k 字符载荷边界缩小、历史最多 200 条，订阅上限 8。握手仅声明本消息领域的读历史/改历史/发布事件/读回执能力，不授权位置、会话控制或外发数据。回调仅发送 epoch/revision 提示，不广播完整敏感历史；Client death 移除回调。`NoticeTarget` 为受限领域对象描述，Shell 映射既有地址，不执行任意 Intent URI 或请求闭包。
+
+消息文件位于本应用 CE 私有目录 `notifications/history-v1.json`；仅子进程写入。旧 `system-notifications.json` 只读迁入，原文件保留，未知 schema 或校验失败不自动覆盖/清库。消息历史不是领域警报的唯一存储，也不提供跨 UID 文件共享。没有新增通知监听、Accessibility、平台 shared UID、全局 exported 或 SELinux 例外。
 
 ## 2. 四种密钥不要混成一种
 

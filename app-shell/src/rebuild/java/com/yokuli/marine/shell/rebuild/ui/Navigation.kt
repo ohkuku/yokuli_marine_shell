@@ -151,9 +151,8 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
     val live=fix?.takeIf {it.fresh(now)}
     val c=LocalMetro.current
     Dialog(onDismissRequest=onDismiss) {
-        Column(Modifier.fillMaxWidth().heightIn(max=660.dp).background(c.bg).border(1.dp,c.muted)
-            .verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-            Label(os.t("开始沿线导航","start route navigation"),31)
+        AppDialogSurface {
+            AppDialogTitle(os.t("开始沿线导航","Start route navigation"))
             Label(route.name,21,c.accent)
             os.activeRoute?.takeIf {it.id!=route.id}?.let {
                 Label(os.t("将替换当前导航：${it.name}","This replaces current navigation: ${it.name}"),16,c.muted)
@@ -220,9 +219,8 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
     var stopping by remember {mutableStateOf(false)}
     var arrival by remember {mutableStateOf(false)}
     Dialog(onDismissRequest=onDismiss) {
-        Column(Modifier.fillMaxWidth().heightIn(max=660.dp).background(c.bg).border(1.dp,c.muted)
-            .verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(15.dp)) {
-            Label(if(stopping) os.t("结束导航？","end navigation?") else if(choose) os.t("切换目标","change target") else os.t("正在导航","navigating"),31)
+        AppDialogSurface {
+            AppDialogTitle(if(stopping) os.t("结束导航？","End navigation?") else if(choose) os.t("切换目标","Change target") else os.t("正在导航","Navigating"))
             Label(route.name,20,c.accent)
             if(stopping) {
                 Label(if(arrival) os.t("确认已到达终点后结束导航。","Confirm arrival at the final waypoint and end navigation.")

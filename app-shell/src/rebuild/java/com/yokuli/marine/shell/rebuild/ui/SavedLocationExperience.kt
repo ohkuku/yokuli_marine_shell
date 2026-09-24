@@ -52,19 +52,27 @@ import java.util.Locale
     if(data==null) {
         Column {PageHeader(os,os.t("地点","place"))
             if(loading)MetroProgress(os.t("正在读取…","loading…"),Modifier.padding(22.dp))
-            else Label(if(readError)os.t("暂时无法读取，请重试","could not load, please retry")else os.t("这个地点已不可用","this place is unavailable"),22,modifier=Modifier.padding(22.dp))
-            if(readError)MetroButton(os.t("重试","retry"),{revision++})}
+            else if(readError) {
+                Label(os.t("暂时无法读取，请重试","could not load, please retry"),15,modifier=Modifier.padding(22.dp))
+                MetroButton(os.t("重试","retry"),{revision++})
+            } else PageBody {MissingSailingObject(os)}
+        }
         return
     }
-    val selected=data.spots.firstOrNull {it.id==selectedId}?:data.spots.firstOrNull()
+    val selected=if(selectedId==null)data.spots.firstOrNull() else data.spots.firstOrNull {it.id==selectedId}
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,data.place.displayName,os.t("我的航行","MY SAILING"))
         Pivot(listOf(os.t("地点","place"),os.t("资料","details"),os.t("到访","visits"),os.t("照片","photos"))) { page -> PageBody {
+            if(readError) {
+                Label(os.t("更新失败，以下是此前读取的资料。","Update failed. Previously loaded information is shown below."),15,LocalMetro.current.muted)
+                MetroButton(os.t("重新读取","reload"),{revision++})
+            }
+            if(selectedId!=null && selected==null)Label(os.t("选择的坐标已不存在，请选择本地点的另一个坐标。","The selected coordinate no longer exists. Select another spot at this place."),15,LocalMetro.current.muted)
             when(page) {
                 0->{
                     CoordinateMapPreview(os,data.spots.map {MapPoint("spot:${it.id}",GeoPoint(it.latitude,it.longitude),it.name,if(it.id==selected?.id)os.accent else 0xFF888888)},
                         selected?.let {GeoPoint(it.latitude,it.longitude)} ?: GeoPoint(data.place.centerLatitude,data.place.centerLongitude))
-                    if(data.spots.isEmpty()) Label(os.t("这个地点还没有具体坐标，地点中心不代表实际锚位。","This place has no specific spot. Its center is not an actual anchor position."),19,LocalMetro.current.muted)
+                    if(data.spots.isEmpty()) Label(os.t("这个地点还没有具体坐标，地点中心不代表实际锚位。","This place has no specific spot. Its center is not an actual anchor position."),15,LocalMetro.current.muted)
                     data.spots.forEach {spot->ChoiceRow(spot.name,spot.id==selected?.id,os.formatCoordinates(GeoPoint(spot.latitude,spot.longitude))) {selectedId=spot.id}}
                     MetroButton(os.t("添加另一个具体位置","add another spot"),{addSpot=true})
                     selected?.let {spot->
@@ -74,51 +82,51 @@ import java.util.Locale
                         MetroButton(os.t("前往这个坐标","go to this spot"),{startSpotId=spot.id})
                         MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(point,spot.name,data.place.id,spot.id,spot.preferredAlarmRadiusMeters);os.openLinked("anchor:setup")})
                     }
-                    if(data.place.description.isNotBlank()) Label(data.place.description,20)
+                    if(data.place.description.isNotBlank()) Label(data.place.description,15)
                 }
                 1->{
-                    if(data.place.personalNotes.isNotBlank()) Label(data.place.personalNotes,22)
+                    if(data.place.personalNotes.isNotBlank()) Label(data.place.personalNotes,15)
                     selected?.let {spot->
-                        Label(spot.name,30,LocalMetro.current.accent)
-                        spot.typicalWaterDepthMeters?.let { Label(os.t("水深","depth")+"  "+os.formatDepth(it),23) }
-                        spot.typicalRodeLengthMeters?.let { Label(os.t("锚链长度","rode")+"  "+os.formatLength(it),23) }
-                        spot.preferredAlarmRadiusMeters?.let { Label(os.t("守望半径","watch radius")+"  "+os.formatLength(it),23) }
-                        if(spot.approachNotes.isNotBlank()) Label(spot.approachNotes,20)
-                        if(spot.personalNotes.isNotBlank()) Label(spot.personalNotes,20)
+                        Label(spot.name,20,LocalMetro.current.accentText)
+                        spot.typicalWaterDepthMeters?.let { Label(os.t("水深","depth")+"  "+os.formatDepth(it),20) }
+                        spot.typicalRodeLengthMeters?.let { Label(os.t("锚链长度","rode")+"  "+os.formatLength(it),20) }
+                        spot.preferredAlarmRadiusMeters?.let { Label(os.t("守望半径","watch radius")+"  "+os.formatLength(it),20) }
+                        if(spot.approachNotes.isNotBlank()) Label(spot.approachNotes,15)
+                        if(spot.personalNotes.isNotBlank()) Label(spot.personalNotes,15)
                         MetroButton(os.t("编辑这个坐标与参数","edit this spot"),{editSpotId=spot.id})
                     }
                     MetroButton(os.t("编辑地点名称与笔记","edit place name & notes"),{edit=true},primary=true)
-                    Label(os.t("集合","collections"),30)
+                    AppSection(os.t("集合","collections"))
                     repo.collections.forEach {group->MenuRow((if(data.collections.any{it.id==group.id})"✓ " else "")+group.name,null,"pin"){mutate{repo.toggleCollection(group.id,data.place.id)}}}
                     Field(os.t("新集合名称","new collection name"),collectionName,{collectionName=it.take(80)})
                     MetroButton(os.t("创建集合","create collection"),{mutate{repo.createCollection(collectionName);collectionName=""}},enabled=collectionName.isNotBlank())
                     if(data.protection.isNotEmpty()) {
-                        Label(os.t("避风与遮蔽记录","shelter notes"),29)
+                        AppSection(os.t("避风与遮蔽记录","shelter notes"))
                         data.protection.forEach {Label("${it.sector} · ${it.medium} · ${it.rating}${if(it.notes.isNotBlank()) " · ${it.notes}" else ""}",18)}
                     }
                     MetroButton(os.t("归档这个地点","archive this place"),{archive=true})
                 }
                 2->{
-                    Label(os.t("在这里发生过的事","time spent here"),31)
+                    AppSection(os.t("在这里发生过的事","time spent here"))
                     if(data.visits.isEmpty()) Label(os.t("还没有逐次到访记录。","No individual visits recorded yet."),19,LocalMetro.current.muted)
-                    if(data.place.legacyVisitCount>0) Label(os.t("另有 ${data.place.legacyVisitCount} 次旧版汇总到访","${data.place.legacyVisitCount} additional visits in the older summary"),16,LocalMetro.current.muted)
+                    if(data.place.legacyVisitCount>0) Label(os.t("另有 ${data.place.legacyVisitCount} 次旧版汇总到访","${data.place.legacyVisitCount} additional visits in the older summary"),15,LocalMetro.current.muted)
                     data.visits.forEach {visit->
-                        Label(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(visit.startedAt)),26,LocalMetro.current.accent)
-                        Label(if(visit.endedAt!=null)durationLabel(visit.endedAt!!-visit.startedAt)else os.t("未记录结束时间","end time not recorded"),20)
-                        Label(os.t("${visit.alarmCount} 次警报","${visit.alarmCount} alarms"),18)
-                        if(visit.userNotes.isNotBlank())Label(visit.userNotes,20)
-                        visit.maxExcursionMeters?.let {Label(os.t("最大偏移 ${os.formatLength(it)}","maximum excursion ${os.formatLength(it)}"),18)}
+                        Label(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(visit.startedAt)),20,LocalMetro.current.accentText)
+                        Label(if(visit.endedAt!=null)durationLabel(visit.endedAt!!-visit.startedAt)else os.t("未记录结束时间","end time not recorded"),15)
+                        Label(os.t("${visit.alarmCount} 次警报","${visit.alarmCount} alarms"),15)
+                        if(visit.userNotes.isNotBlank())Label(visit.userNotes,15)
+                        visit.maxExcursionMeters?.let {Label(os.t("最大偏移 ${os.formatLength(it)}","maximum excursion ${os.formatLength(it)}"),15)}
                     }
                 }
                 else->{
-                    Label(os.t("记住这个地方","remember this place"),31)
+                    AppSection(os.t("记住这个地方","remember this place"))
                     data.photos.forEach {photo->
                         val path=repo.photos.file(photo,true).absolutePath
                         val bitmap by produceState<ImageBitmap?>(null,path) {value=withContext(Dispatchers.IO){BitmapFactory.decodeFile(path)?.asImageBitmap()}}
                         bitmap?.let {Image(it,photo.caption.ifBlank{data.place.displayName},Modifier.fillMaxWidth().height(240.dp),contentScale=ContentScale.Crop)}
                         if(photo.caption.isNotBlank())Label(photo.caption,19)
                     }
-                    if(data.photos.isEmpty())Label(os.t("照片会跟随地点保存，不是另一份收藏。","Photos stay with this place."),19,LocalMetro.current.muted)
+                    if(data.photos.isEmpty())Label(os.t("照片会跟随地点保存，不是另一份收藏。","Photos stay with this place."),15,LocalMetro.current.muted)
                     MetroButton(os.t("添加照片","add photo"),{photoPicker.launch(arrayOf("image/jpeg","image/png","image/webp"))},primary=true)
                 }
             }
@@ -137,8 +145,8 @@ import java.util.Locale
 
 @Composable private fun PlaceNotesDialog(os:OsStore,initialName:String,initialNotes:String,onDismiss:()->Unit,onSave:(String,String)->Unit) {
     var name by rememberSaveable(initialName) {mutableStateOf(initialName)};var notes by rememberSaveable(initialName) {mutableStateOf(initialNotes)}
-    Dialog(onDismissRequest=onDismiss){Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)){
-        Label(os.t("地点资料","place details"),31)
+    Dialog(onDismissRequest=onDismiss){AppDialogSurface() {
+        AppDialogTitle(os.t("地点资料","place details"))
         Field(os.t("名称","name"),name,{name=it.take(200)})
         Field(os.t("笔记","notes"),notes,{notes=it.take(20000)},multiline=true)
         MetroButton(os.t("保存","save"),{onSave(name.trim(),notes)},primary=true,enabled=name.isNotBlank())
@@ -157,8 +165,8 @@ import java.util.Locale
     val radius=rememberUnitNumberDraft(spot.preferredAlarmRadiusMeters,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,spot.id)
     val point=preservedCoordinate(GeoPoint(spot.latitude,spot.longitude),initialLat,initialLon,lat,lon)
     fun valid(value:UnitNumberDraft)=value.text.isBlank()||value.value?.let {it>=0}==true
-    Dialog(onDismissRequest=onDismiss){Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(LocalMetro.current.bg).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
-        Label(os.t("具体坐标","specific spot"),31)
+    Dialog(onDismissRequest=onDismiss){AppDialogSurface() {
+        AppDialogTitle(os.t("具体坐标","specific spot"))
         Field(os.t("名称","name"),name,{name=it.take(200)})
         Field(os.t("纬度","latitude")+" · ${os.coordinateFormat}",lat,{lat=it})
         Field(os.t("经度","longitude")+" · ${os.coordinateFormat}",lon,{lon=it})
@@ -187,10 +195,32 @@ private fun spotSource(os:OsStore,value:String)=when(value){
 
 @Composable fun CollectionScreen(os:OsStore,id:Long?) {
     val repo=os.sailing
-    val memberFlow = remember(repo, id) { id?.let(repo::observeCollectionMembers) ?: kotlinx.coroutines.flow.flowOf(emptyList<Long>()) }
-    val members by memberFlow.collectAsState(initial = emptyList())
-    Column(Modifier.fillMaxSize()){PageHeader(os,repo.collections.firstOrNull{it.id==id}?.name?:os.t("集合","collection"));PageBody{
-        repo.locations.filter{it.id in members}.forEach{place->MenuRow(place.displayName,place.personalNotes.takeIf(String::isNotBlank),"pin"){os.open("anchorage:${place.id}")}}
-        if(members.isEmpty())Label(os.t("在地点资料中把地点加入这个集合。","Add places to this collection from place details."),23)
-    }}
+    var revision by remember(id) {mutableIntStateOf(0)}
+    var members by remember(id) {mutableStateOf<List<Long>?>(null)}
+    var readError by remember(id) {mutableStateOf(false)}
+    LaunchedEffect(repo,id,revision) {
+        readError=false
+        if(id==null) {members=emptyList();return@LaunchedEffect}
+        try {repo.observeCollectionMembers(id).collect {members=it;readError=false}}
+        catch(cancelled:CancellationException) {throw cancelled}
+        catch(_:Exception) {readError=true}
+    }
+    val collection=repo.collections.firstOrNull {it.id==id}
+    Column(Modifier.fillMaxSize()) {
+        PageHeader(os,collection?.name ?: os.t("集合","collection"))
+        PageBody {
+            when {
+                readError || repo.error -> {
+                    Label(os.t("暂时无法更新集合，已读资料仍保留。","Collection updates are unavailable; previously loaded places are retained."),15)
+                    MetroButton(os.t("重新读取","reload"),{repo.retryLoading();revision++})
+                }
+                !repo.loaded || members==null -> MetroProgress(os.t("正在读取集合…","loading collection…"))
+                collection==null -> MissingSailingObject(os)
+                members.orEmpty().isEmpty() -> Label(os.t("在地点资料中把地点加入这个集合。","Add places to this collection from place details."),15)
+            }
+            if(collection!=null)repo.locations.filter {it.id in members.orEmpty()}.forEach {place ->
+                MenuRow(place.displayName,place.personalNotes.takeIf(String::isNotBlank),"pin") {os.open("anchorage:${place.id}")}
+            }
+        }
+    }
 }

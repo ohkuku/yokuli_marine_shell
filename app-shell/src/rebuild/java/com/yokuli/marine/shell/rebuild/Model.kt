@@ -69,13 +69,13 @@ data class ChartInteractionSnapshot(
 )
 /** 系统安装的应用身份；UI 标签与入口组织不能另建不一致的应用列表。 */
 enum class AppId(val zh: String, val en: String, val icon: String) {
-    CHART("海图","chart","chart"), LIBRARY("图册","chart library","layers"),
-    VOYAGES("航海日志","logbook","logbook"), ANCHOR("守锚","anchor watch","anchor"),
-    PLACES("我的航行","my sailing","route"), INSTRUMENTS("驾驶台","helm","helm"),
-    DATA_CENTER("数据中心","data center","data"), NMEA("船联网","boat network","connect"),
+    CHART("海图","Chart","chart"), LIBRARY("图册","Chart Library","layers"),
+    VOYAGES("航海日志","Logbook","logbook"), ANCHOR("守锚","Anchor Watch","anchor"),
+    PLACES("我的航行","My Sailing","route"), INSTRUMENTS("驾驶台","Helm","helm"),
+    DATA_CENTER("数据中心","Data Center","data"), NMEA("船联网","Boat Network","connect"),
     AIS("AIS","AIS","ais"),
-    LOCAL_NMEA("数据共享","data sharing","share"), SETTINGS("设置","settings","settings"),
-    TILES("磁贴工坊","tile studio","start");
+    LOCAL_NMEA("数据共享","Data Sharing","share"), SETTINGS("设置","Settings","settings"),
+    TILES("磁贴工坊","Tile Studio","start");
     /** 中文应用列表按当前名称的拼音首字母分组，不沿用旧品牌或英文索引。 */
     val chineseIndex:Char get()=when(this) {
         CHART,VOYAGES->'H'; LIBRARY->'T'; PLACES->'W'; INSTRUMENTS->'J'
@@ -87,16 +87,19 @@ enum class AppId(val zh: String, val en: String, val icon: String) {
 class YokuliApplication : Application() {
     @javax.inject.Inject lateinit var marineProvider: javax.inject.Provider<com.yokuli.runtime.marine.MarineSystem>
     @javax.inject.Inject lateinit var contentProvider: javax.inject.Provider<com.yokuli.anchorwatch.api.MarineContentService>
-    @javax.inject.Inject lateinit var notificationCoordinator: com.yokuli.anchorwatch.runtime.notification.NotificationCoordinator
+    @javax.inject.Inject lateinit var notificationCoordinatorProvider: javax.inject.Provider<com.yokuli.anchorwatch.runtime.notification.NotificationCoordinator>
+    @javax.inject.Inject lateinit var noticeEventsProvider: javax.inject.Provider<com.yokuli.runtime.marine.notification.MarineNotificationEvents>
     // Lazy connection preserves boot/background behavior: observing persisted notices does not open sensors.
     val marineSystem get() = marineProvider.get()
     val marineContent get() = contentProvider.get()
     lateinit var os: OsStore
     override fun onCreate() {
         super.onCreate()
+        if (com.yokuli.runtime.marine.notification.NotificationProcessRole.isNotificationProcess()) return
         com.yokuli.runtime.marine.MarineSystemBootstrap.initialize(this)
         os = OsStore(this)
-        os.observeNotificationUnits(notificationCoordinator)
+        os.observeNotificationUnits(notificationCoordinatorProvider.get())
+        noticeEventsProvider.get().start()
     }
 }
 
@@ -104,9 +107,23 @@ class YokuliApplication : Application() {
 class OsStore(val context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val file = AtomicFile(File(context.filesDir, "experience-v1.json"))
-    private val persistence = DurableSnapshotStore(file, scope)
+    private val initialRead = readShellContent(file)
+    private val persistence = DurableSnapshotStore(file, scope, initialRead.failure)
     val persistenceState = persistence.state
-    internal val initial = runCatching { JSONObject(file.openRead().bufferedReader().use { it.readText() }) }.getOrDefault(JSONObject())
+    internal var initial = initialRead.document ?: JSONObject()
+        private set
+    var contentReadInProgress by mutableStateOf(false)
+        private set
+    var contentRecoveryFailure by mutableStateOf<String?>(null)
+        private set
+    var recoveredContentFile by mutableStateOf(file.baseFile.parentFile?.listFiles { candidate ->
+        candidate.isFile && candidate.name.startsWith("experience-recovered-") && candidate.extension == "json"
+    }?.maxByOrNull { it.lastModified() })
+        private set
+    var contentExportInProgress by mutableStateOf(false)
+        private set
+    var contentExportFailed by mutableStateOf(false)
+        private set
     var chinese by mutableStateOf(initial.optString("language", Locale.getDefault().language) == "zh")
     var accent by mutableLongStateOf(initial.optLong("accent", 0xFF007F9B))
     var light by mutableStateOf(initial.optBoolean("light", false))
@@ -132,6 +149,7 @@ class OsStore(val context: Context) {
     private val backStack = mutableListOf<String>()
     var recent by mutableStateOf(listOf<String>())
     var editTiles by mutableStateOf(false)
+    val notificationShade = NotificationShadeState()
     val notifications = SystemNotificationStore(context, scope)
     var center by mutableStateOf(runCatching { GeoPoint.from(initial.getJSONObject("camera")) }.getOrDefault(GeoPoint(-36.84,174.77)))
     var zoom by mutableDoubleStateOf(initial.optDouble("zoom",10.0).coerceIn(1.0,22.0))
@@ -167,7 +185,6 @@ class OsStore(val context: Context) {
         if (marine?.system === system) return
         marine?.close()
         marine = MarinePresentationBridge(this, system)
-        notifications.connectAis(system.ais)
     }
     val hub = DataHub()
     val library = ChartLibrary(context, scope)
@@ -177,14 +194,13 @@ class OsStore(val context: Context) {
     val activeRoute get() = navigationRoute?.takeIf { it.id == activeRouteId }
     val nextPoint get() = activeRoute?.points?.getOrNull(routeLeg)
     init {
-        observeMarineNotices()
         scope.launch {
             var reportedFailure: Long? = null
             persistenceState.collect { state ->
                 if (state.failed && !state.saving && reportedFailure != state.failedRevision) {
                     reportedFailure = state.failedRevision
-                    notify("保存未完成，改动暂留本次运行中。打开通知中心重试。",
-                        "Save did not complete. Changes are kept in this running app. Open notifications to retry.",
+                    notify(if(state.readFailure != null) "原有资料未能读取，已停止写入以保护原文件。打开通知中心重新读取。" else "保存未完成，改动暂留本次运行中。打开通知中心重试。",
+                        if(state.readFailure != null) "Existing content could not be read. Writes are blocked to preserve the original file. Open notifications to reload." else "Save did not complete. Changes are kept in this running app. Open notifications to retry.",
                         app=AppId.PLACES, severity=NoticeSeverity.WARNING, key="sailing-storage")
                 } else if (!state.saving && state.requestedRevision > 0 && state.durableRevision == state.requestedRevision) {
                     // 重试或后续完整快照已落盘，解除过时的“仍未保存”操作提示。
@@ -203,20 +219,26 @@ class OsStore(val context: Context) {
     fun open(destination: String) = shell.open(destination)
     /** 请求另一个应用处理当前对象；完成或返回时恢复调用页，而不是启动一个无关首页。 */
     fun openLinked(destination: String) = shell.openLinked(destination)
-    /** 点开即消费通知；查看消息与业务警报确认是两个独立动作。 */
+    /** 阅读、移除和业务确认分开；无目的地消息在中心展开全文。 */
     fun openNotification(id: String) {
-        val notice=notifications.items.firstOrNull {it.id==id} ?: return
-        notifications.remove(id)
+        val notice = notifications.items.firstOrNull { it.id == id } ?: return
+        notifications.markRead(id)
         if (notice.key == "sailing-storage" && persistenceState.value.failed) {
-            notifications.open()
+            notificationShade.open()
             return
         }
-        notice.destination?.let(::openSystemDestination) ?: notifications.close()
+        if (notice.destination != null) {
+            if (notificationShade.blocksInput) shell.openFromNotification(notice.destination)
+            else shell.openSystemDestination(notice.destination)
+        } else {
+            notificationShade.showDetail("message:$id")
+            notificationShade.open()
+        }
     }
-    /** 系统面板定位已有内容，当前页面只收起面板，不重建应用。 */
+    /** 从系统覆盖层进入应用会保存面板来路；相同对象只收起，不重复建页。 */
     fun openSystemDestination(destination: String) {
-        notifications.close()
-        shell.openSystemDestination(destination)
+        if (notificationShade.blocksInput) shell.openFromNotification(destination)
+        else shell.openSystemDestination(destination)
     }
     fun home() = shell.home()
     fun back() = shell.back()
@@ -251,7 +273,7 @@ class OsStore(val context: Context) {
     }
     /** 只排队，不代表已保存。需要用户成功反馈的操作必须等待返回的 DurableCommit。 */
     fun save(): DurableCommit {
-        val json = JSONObject()
+        val json = JSONObject(initial.toString()).put("schemaVersion",1)
             .put("places",JSONArray(places.map { it.json() })).put("routes",JSONArray(routes.map { it.json() }))
             .put("tiles",JSONArray(tiles.map { JSONObject().put("app",it.app).put("size",it.size) }))
             .put("camera",center.json()).put("zoom",zoom).put("mapMode",mapMode)
@@ -261,6 +283,65 @@ class OsStore(val context: Context) {
             .put("host",nmeaHost).put("port",nmeaPort).put("protocol",nmeaProtocol).put("serverPort",serverPort).put("positionSource",positionSource)
         return persistence.submit(json.toString())
     }
+    /** 真正重读原资料，不把“重试保存”当作允许用当前空投影覆盖旧文件。 */
+    fun retryContentRead() {
+        if (persistenceState.value.readFailure == null || contentReadInProgress) return
+        contentReadInProgress = true
+        contentRecoveryFailure = null
+        scope.launch {
+            try {
+                val recovered = withContext(Dispatchers.IO) {
+                    val read = readShellContent(file)
+                    val document = read.document ?: error(read.failure ?: "CONTENT_READ_FAILED")
+                    // 文件仍在时才可恢复；故障后突然消失不能当作新建空库解除保护。
+                    require(file.baseFile.exists()) { "ORIGINAL_CONTENT_MISSING" }
+                    document to preserveRecoveredShellContent(file, document)
+                }
+                val document = recovered.first
+                val storedPlaces = document.optJSONArray("places")?.objects()?.map(Place::from).orEmpty()
+                val storedRoutes = document.optJSONArray("routes")?.objects()?.map(Route::from).orEmpty()
+                places = (storedPlaces + places).associateBy { it.id }.values.toList()
+                routes = (storedRoutes + routes).associateBy { it.id }.values.toList()
+                if (draftRoute.isEmpty()) {
+                    draftRoute = document.optJSONArray("draft")?.objects()?.map(GeoPoint::from).orEmpty()
+                    editingRouteId = document.optString("editingRoute").takeIf { it.isNotBlank() }
+                    editingRoute = draftRoute.isNotEmpty() && activeRouteId == null
+                }
+                // 内容恢复不移动当前地图、不替用户重启旧导航/记录/守锚；完整原始快照保留供导出。
+                initial = document
+                recoveredContentFile = recovered.second
+                persistence.contentReadRestored()
+                saveWithFeedback("原有资料已恢复，当前改动已合并保存。", "Existing content was restored and current changes were merged and saved.")
+            } catch(cancelled:CancellationException) {throw cancelled}
+            catch(error:Exception) { contentRecoveryFailure = error.message ?: "CONTENT_READ_FAILED" }
+            finally { contentReadInProgress = false }
+        }
+    }
+
+    /** 用户通过系统文件选择器导出恢复副本；任务不依赖通知面板是否还可见。 */
+    fun exportRecoveredContent(uri: android.net.Uri) {
+        if (contentExportInProgress) return
+        val source = recoveredContentFile ?: return
+        contentExportInProgress = true
+        contentExportFailed = false
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    require(uri.scheme == "content") { "INVALID_EXPORT_DESTINATION" }
+                    source.inputStream().use { input ->
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { output -> input.copyTo(output) }
+                            ?: error("EXPORT_DESTINATION_UNAVAILABLE")
+                    }
+                }
+                notify("原始资料副本已导出", "Original content copy exported", app = AppId.PLACES)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                contentExportFailed = true
+                notify("资料副本未能导出，请重新选择保存位置。", "The content copy could not be exported. Choose a save location again.", app = AppId.PLACES)
+            } finally { contentExportInProgress = false }
+        }
+    }
+
     /** 由进程等待回执，切换页面不会取消保存。失败保留内存中的对象，统一入口可重试。 */
     fun saveWithFeedback(zh: String, en: String, destination: String? = null): DurableCommit {
         val commit = save()

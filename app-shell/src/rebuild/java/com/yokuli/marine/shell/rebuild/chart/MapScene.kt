@@ -42,6 +42,8 @@ data class MapAisTarget(
     val stale:Boolean=false, val lost:Boolean=false, val risk:Boolean=false, val selected:Boolean=false,
     val distress:String="NONE",
     val tracks:List<List<GeoPoint>> = emptyList(),
+    /** 关注是显示优先级，不替代风险计算；视口裁剪时与选中/风险目标一起保留。 */
+    val watched:Boolean = false,
 )
 data class MapScene(
     val vessel: MapVessel? = null,
@@ -58,12 +60,12 @@ data class MapScene(
 /** 两个地图引擎消费同一份 AIS 轨迹和一分钟航迹向量；历史/预测用不同线型。 */
 internal fun MapScene.trafficGeometry():MapScene = if(aisTargets.isEmpty()) this else copy(lines=lines+buildList {
     aisTargets.forEach { target ->
-        val color=when {target.risk->0xFFD74A29;target.selected->0xFFAC4DDD;target.stale->0xFF84898C;else->0xFF168B76}
-        target.tracks.forEachIndexed {index,segment->if(segment.size>=2)add(MapLine("ais:track:${target.mmsi}:$index",segment,color,1.5f,false))}
-        if(!target.stale&&!target.lost) {
+        val color=when {target.risk||target.distress=="ACTIVE"->0xFFD74A29;target.selected->0xFFAC4DDD;target.stale->0xFF84898C;else->0xFF168B76}
+        target.tracks.forEachIndexed {index,segment->if(segment.size>=2&&segment.all {it.valid()})add(MapLine("ais:track:${target.mmsi}:$index",segment,color,1.5f,false))}
+        if(!target.stale&&!target.lost&&target.point.valid()) {
             val speed=target.speedMetersPerSecond
             val course=target.course
-            if(speed!=null&&speed.isFinite()&&speed>0.25&&course!=null&&course.isFinite())
+            if(speed!=null&&speed.isFinite()&&speed>0.25&&speed<1000&&course!=null&&course.isFinite()&&course in 0.0..360.0)
                 add(MapLine("ais:vector:${target.mmsi}",listOf(target.point,destination(target.point,speed*60.0,course)),color,1.7f,true))
         }
     }

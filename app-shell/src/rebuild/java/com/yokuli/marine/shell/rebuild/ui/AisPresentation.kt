@@ -68,28 +68,35 @@ internal fun aisRiskName(os:OsStore,kind:AisRiskKind)=when(kind) {
     AisRiskKind.DISTRESS->os.t("遇险设备报告","distress-device report")
     AisRiskKind.TARGET_LOST->os.t("关注目标失去更新","target of concern lost updates")
 }
-internal fun aisInputSummary(os:OsStore,s:TrafficSnapshot):String = when {
+internal fun aisInputSummary(os:OsStore,s:TrafficSnapshot):String {
+    val receiving=s.inputs.filter {it.state==AisInputState.ONLINE&&it.lastAisElapsed!=null}
+    val unavailable=s.inputs.count {it.state !in setOf(AisInputState.ONLINE,AisInputState.DISABLED)}
+    if(receiving.isNotEmpty()) {
+        val recent=receiving.mapNotNull {it.lastAisElapsed}.maxOrNull()?.let {s.generatedElapsed-it<=60_000}==true
+        val status=if(recent)os.t("正在接收 AIS","Receiving AIS")else os.t("暂无新报告 · 保留上次观测","No new reports · last observations retained")
+        return status+if(unavailable>0)os.t(" · $unavailable 路连接异常"," · $unavailable connections unavailable")else ""
+    }
+    return when {
     s.inputs.isEmpty()->os.t("尚未配置 AIS 输入","no AIS input configured")
     s.inputs.all {it.state==AisInputState.DISABLED}->os.t("输入已关闭","inputs are off")
-    s.inputs.any {it.state==AisInputState.CONNECTING}->os.t("正在连接输入","connecting input")
+    s.inputs.none {it.state==AisInputState.ONLINE}&&s.inputs.any {it.state==AisInputState.CONNECTING}->os.t("正在连接输入","connecting input")
     s.inputs.none {it.state==AisInputState.ONLINE}->os.t("输入中断 · 保留上次观测","input interrupted · last observations retained")
     s.inputs.filter {it.state==AisInputState.ONLINE}.none {it.lastAisElapsed!=null}->os.t("连接在线 · 等待 AIS 报文","connected · waiting for AIS messages")
     s.targets.none {it.position!=null}->os.t("已收到 AIS · 等待目标位置","AIS received · waiting for target positions")
     s.inputs.mapNotNull {it.lastAisElapsed}.maxOrNull()?.let {s.generatedElapsed-it>60_000}==true->os.t("AIS 暂无更新 · 保留上次观测","no recent AIS updates · last observations retained")
     else->os.t("正在接收本地 AIS","receiving local AIS")
 }
+}
 
 /** 保留关键目标；普通绘制上限只影响画面，绝不更改运行时的风险规则。 */
 internal fun aisMapTargets(s:TrafficSnapshot,selected:String?,showTracks:Boolean=false):List<MapAisTarget> {
-    val positioned=s.targets.filter {it.position!=null}
-    val critical=positioned.filter {it.mmsi.toString()==selected||it.watched||it.riskLevel!=AisRiskLevel.NONE||it.distress==AisDistressState.ACTIVE}
-    val visible=(critical+positioned.filter {it !in critical}.take(512)).distinctBy {it.mmsi}
-    return visible.map {target->
+    // 这里不按仓库顺序截断；原生地图知道实际视口后再应用显示预算。
+    return s.targets.filter {it.position!=null}.map {target->
         val fresh=target.state==AisTargetState.CURRENT&&!target.cached&&!target.positionInvalidated
         MapAisTarget(target.mmsi.toString(),target.position!!.geo(),target.displayName,target.kind.name,
             heading=target.dynamic?.headingDegrees?.takeIf {fresh},course=target.dynamic?.cogDegrees?.takeIf {fresh},
             speedMetersPerSecond=target.dynamic?.sogMetersPerSecond?.takeIf {fresh&&"sog_lower_bound" !in target.dynamic?.invalidFields.orEmpty()},stale=!fresh,lost=target.state==AisTargetState.LOST,distress=target.distress.name,
-            risk=target.riskLevel!=AisRiskLevel.NONE,selected=target.mmsi.toString()==selected,
+            risk=target.riskLevel!=AisRiskLevel.NONE,selected=target.mmsi.toString()==selected,watched=target.watched,
             tracks=if(showTracks||target.mmsi.toString()==selected)target.track.groupBy {it.segment}.values.map {segment->segment.map {it.position.geo()}} else emptyList())
     }
 }

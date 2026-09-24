@@ -14,10 +14,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationManagerCompat
@@ -42,6 +48,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
     var section by rememberSaveable(initialSection) { mutableStateOf(initialSection.substringBefore(':')) }
     ReportVisibleAppRoute(os, if(section == "overview") "settings" else "settings:$section")
     var reset by remember { mutableStateOf(false) }
+    val pageStates = rememberSaveableStateHolder()
     val c = LocalMetro.current
     val back = { if(initialSection!="overview") os.shell.popRoute() else section = "overview" }
     BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && section != "overview") { back(); true } else false }
@@ -58,17 +65,20 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         else -> os.t("设置", "settings")
     }
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os, title(section), hasLocalBack = section!="overview")
-        when (section) {
+        if (section != "tiles") PageHeader(os, title(section), hasLocalBack = section!="overview")
+        AppPageTransition(section, pageKey = { it }, pageDepth = { if (it == "overview") 0 else 1 },
+            modifier = Modifier.weight(1f)) { page ->
+        pageStates.SaveableStateProvider(page) {
+        when (page) {
             "vessel" -> VesselProfileSettings(os)
             "permissions" -> SystemAccessSettings(os)
             "sound" -> SystemSoundSettings(os)
             "backup" -> SystemBackupSettings(os)
             "tiles" -> TileLibraryScreen(os, initialSection.substringAfter("tiles:", "").takeIf {it.isNotBlank()})
             else -> PageBody {
-                when (section) {
+                when (page) {
                     "overview" -> {
-                        Label(os.t("系统", "system"), 17, c.accent)
+                        AppSection(os.t("系统", "system"))
                         listOf("appearance", "language", "units", "sound", "permissions").forEach { key ->
                             MenuRow(title(key), when(key) {
                                 "language" -> if(os.chinese) "简体中文" else "English"
@@ -76,33 +86,42 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                                 else -> null
                             }) {section=key}
                         }
-                        Label(os.t("个人偏好", "personal"), 17, c.accent)
+                        AppSection(os.t("个人偏好", "personal"))
                         MenuRow(title("vessel")) {section="vessel"}
                         MenuRow(title("start")) {section="start"}
                         MenuRow(os.t("应用磁贴", "app tiles"), os.t("按应用预览样式与实时内容", "preview styles and live content by app")) {os.openLinked("tiles")}
-                        Label(os.t("资料与系统信息", "data & information"), 17, c.accent)
+                        AppSection(os.t("资料与系统信息", "data & information"))
                         MenuRow(title("backup")) {section="backup"}
                         MenuRow(title("about"), buildIdentity.appVersionName) {section="about"}
                     }
                     "appearance" -> {
-                        Label(os.t("主题色", "accent colour"), 26)
-                        WpAccent.entries.chunked(4).forEach { row -> Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                            row.forEach { accent -> Box(Modifier.size(58.dp).background(androidx.compose.ui.graphics.Color(accent.argb))
-                                .then(if(os.accent==accent.argb) Modifier.border(3.dp,c.fg) else Modifier)
-                                .clickable {os.shell.updateSystemPreferences {it.copy(accentName=accent.name)}}) {
-                                if(os.accent==accent.argb) Glyph("check",Modifier.size(25.dp).align(androidx.compose.ui.Alignment.Center),androidx.compose.ui.graphics.Color.White)
+                        AppSection(os.t("主题色", "accent colour"))
+                        Column(Modifier.selectableGroup(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            WpAccent.entries.chunked(4).forEach { row -> Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                row.forEach { accent ->
+                                    val name = os.t(when(accent) {
+                                        WpAccent.COBALT->"钴蓝"; WpAccent.CYAN->"青色"; WpAccent.EMERALD->"翡翠绿"
+                                        WpAccent.MAGENTA->"品红"; WpAccent.VIOLET->"紫色"; WpAccent.CRIMSON->"深红"; WpAccent.AMBER->"琥珀"
+                                    },accent.displayName)
+                                    Box(Modifier.size(56.dp).background(androidx.compose.ui.graphics.Color(accent.argb))
+                                        .then(if(os.accent==accent.argb) Modifier.border(2.dp,c.fg) else Modifier)
+                                        .semantics {contentDescription=name}
+                                        .selectable(os.accent==accent.argb,role=Role.RadioButton) {os.shell.updateSystemPreferences {it.copy(accentName=accent.name)}}) {
+                                        if(os.accent==accent.argb) Glyph("check",Modifier.size(24.dp).align(androidx.compose.ui.Alignment.Center),c.onAccent)
+                                    }
+                                }
                             } }
-                        } }
+                        }
                         ChoiceRow(os.t("深色背景", "dark background"), !os.light) {os.shell.updateSystemPreferences {it.copy(themeModeName="DARK")}}
                         ChoiceRow(os.t("浅色背景", "light background"), os.light) {os.shell.updateSystemPreferences {it.copy(themeModeName="LIGHT")}}
                         Toggle(os.t("保持屏幕常亮", "keep screen awake"),os.keepAwake,os.t("仅在 Yokuli OS 位于前台时", "while Yokuli OS is in front")) {enabled->
                             os.shell.updateSystemPreferences {it.copy(appPreferenceValues=it.appPreferenceValues+("preferences.display.keep_awake" to AppPreferenceRegistry.encode(AppPreferenceValue.Toggle(enabled))))}
                         }
-                        Label(os.t("文字大小", "text size"),26)
+                        AppSection(os.t("文字大小", "text size"))
                         listOf("COMPACT" to os.t("紧凑", "compact"),"STANDARD" to os.t("标准", "standard"),"LARGE" to os.t("较大", "larger")).forEach {(value,label)->
                             ChoiceRow(label,os.textSize==value) {os.shell.updateSystemPreferences {it.copy(appPreferenceValues=it.appPreferenceValues+("preferences.display.text_size" to "c:$value"))}}
                         }
-                        Label(os.t("转场、触控倾斜和动态磁贴使用统一动效。", "Transitions, touch tilt and live tiles share one motion language."),17,c.muted)
+                        Label(os.t("转场、轻按反馈和动态磁贴使用统一动效。", "Transitions, touch feedback and live tiles share one motion language."),15,c.muted)
                     }
                     "language" -> {
                         ChoiceRow("简体中文",os.chinese) {os.shell.updateSystemPreferences {it.copy(languageTag="zh-CN")}}
@@ -110,13 +129,13 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                     }
                     "units" -> UnitSettings(os)
                     "start" -> {
-                        Label(os.t("长按磁贴，拖动位置或调整尺寸。每个应用保留一块磁贴，在磁贴工坊选择它的内容样式。", "Hold a tile to move or resize it. Each app has one tile; choose its content style in Tile Studio."),23)
+                        Label(os.t("长按磁贴，拖动位置或调整尺寸。每个应用保留一块磁贴，在磁贴工坊选择它的内容样式。", "Hold a tile to move or resize it. Each app has one tile; choose its content style in Tile Studio."),15)
                         MetroButton(os.t("选择磁贴样式", "choose tile styles"),{os.openLinked("tiles")},primary=true)
                         MetroButton(os.t("恢复默认布局", "restore default layout"),{reset=true})
                     }
                     else -> {
-                        Label("Yokuli OS",42,c.accent); Label(buildIdentity.appVersionName,22)
-                        Label(os.t("海上生活，简单一点。", "a little simpler, at sea."),24)
+                        Label("Yokuli OS",24,c.accentText); Label(buildIdentity.appVersionName,24)
+                        Label(os.t("海上生活，简单一点。", "a little simpler, at sea."),20)
                         Label("${buildIdentity.flavor} · ${buildIdentity.channel} · ${buildIdentity.appVersionCode}",16,c.muted)
                         Label("Git ${buildIdentity.gitSha.take(12)} · ${buildIdentity.gitState}",16,c.muted)
                         Label(buildIdentity.gitBranch,16,c.muted)
@@ -126,6 +145,8 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                     }
                 }
             }
+        }
+        }
         }
     }
     if(reset) ConfirmDialog(os,os.t("恢复默认磁贴布局？其他资料保留。", "Restore default tiles? Other data stays."),{reset=false}) {os.shell.resetStart();reset=false}
@@ -155,7 +176,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
             if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) request.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) else open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
         }
         MenuRow(os.t("后台运行", "background operation"), if (unrestricted) os.t("电池优化未限制本应用", "not restricted by battery optimisation") else os.t("受 Android 电池优化管理", "managed by Android battery optimisation")) { open(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
-        Label(os.t("值守、记录与数据连接会说明各自需要的权限。离开页面不会自动结束正在运行的任务。", "Watch, recording and connection screens explain the access they need. Leaving a screen does not automatically end a running task."), 18, LocalMetro.current.muted)
+        Label(os.t("值守、记录与数据连接会说明各自需要的权限。离开页面不会自动结束正在运行的任务。", "Watch, recording and connection screens explain the access they need. Leaving a screen does not automatically end a running task."), 15, LocalMetro.current.muted)
         MetroButton(os.t("打开应用系统设置", "open Android app settings"), { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) })
     }
 }
@@ -179,18 +200,26 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         }
     }
     PageBody {
-        Label(os.t("警报声音", "alarm sound"), 28)
-        MetroButton(os.t("内置循环警报音", "built-in looping alarm"), { marine.services.preferences.setAlarmSound(AlarmSound.SYSTEM_ALARM) }, primary = state.settings.alarmSound != AlarmSound.CUSTOM)
-        MetroButton(os.t("选择音频文件", "choose an audio file"), { choose.launch(arrayOf("audio/*")) }, primary = state.settings.alarmSound == AlarmSound.CUSTOM)
-        if (state.settings.alarmSound == AlarmSound.CUSTOM) Label(customName ?: os.t("已选择自定义声音", "custom sound selected"), 18, LocalMetro.current.muted)
-        Label(os.t("自定义文件不可用时会回退到内置警报。", "Unavailable custom audio falls back to the built-in alarm."), 17, LocalMetro.current.muted)
-        Label(os.t("再次提醒间隔", "remind again after"), 27)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { listOf(5, 10, 15).forEach { minutes ->
-            MetroButton(os.t("$minutes 分钟", "$minutes min"), { marine.services.preferences.setAlarmSnoozeMinutes(minutes) }, Modifier.weight(1f), primary = state.settings.alarmSnoozeMinutes == minutes)
-        } }
-        Label(os.t("稍后提醒会停止声音和振动，但监控继续；危险仍在时会再次响铃。", "Snooze stops sound and vibration while monitoring continues. A persistent danger sounds again after this interval."), 17, LocalMetro.current.muted)
-        Label(os.t("Android 警报音量", "Android alarm volume") + " · $volume / $maximum", 24)
-        if (volume == 0) Label(os.t("系统警报音量已静音。请先在声音设置中调高。", "System alarm volume is muted. Raise it in sound settings."), 18, LocalMetro.current.accent)
+        AppSection(os.t("警报声音", "alarm sound"))
+        ChoiceRow(os.t("内置循环警报音", "built-in looping alarm"), state.settings.alarmSound != AlarmSound.CUSTOM) {
+            marine.services.preferences.setAlarmSound(AlarmSound.SYSTEM_ALARM)
+        }
+        ChoiceRow(os.t("自定义声音", "custom sound"), state.settings.alarmSound == AlarmSound.CUSTOM,
+            subtitle = customName ?: os.t("选择一个音频文件", "choose an audio file")) { choose.launch(arrayOf("audio/*")) }
+        if (state.settings.alarmSound == AlarmSound.CUSTOM) MetroButton(os.t("更换音频文件", "change audio file"), { choose.launch(arrayOf("audio/*")) })
+        Label(os.t("自定义文件不可用时会回退到内置警报。", "Unavailable custom audio falls back to the built-in alarm."), 15, LocalMetro.current.muted)
+        AppSection(os.t("再次提醒间隔", "remind again after"))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Label(os.t("${state.settings.alarmSnoozeMinutes} 分钟", "${state.settings.alarmSnoozeMinutes} min"), 20, modifier = Modifier.weight(1f))
+            MetroButton("−", { marine.services.preferences.setAlarmSnoozeMinutes((state.settings.alarmSnoozeMinutes - 5).coerceAtLeast(5)) },
+                Modifier.width(56.dp), enabled = state.settings.alarmSnoozeMinutes > 5)
+            MetroButton("+", { marine.services.preferences.setAlarmSnoozeMinutes((state.settings.alarmSnoozeMinutes + 5).coerceAtMost(15)) },
+                Modifier.width(56.dp), enabled = state.settings.alarmSnoozeMinutes < 15)
+        }
+        Label(os.t("稍后提醒会停止声音和振动，但监控继续；危险仍在时会再次响铃。", "Snooze stops sound and vibration while monitoring continues. A persistent danger sounds again after this interval."), 15, LocalMetro.current.muted)
+        Label(os.t("Android 警报音量", "Android alarm volume") + " · $volume / $maximum", 20)
+        if (volume == 0) Label(os.t("系统警报音量已静音。请先在声音设置中调高。", "System alarm volume is muted. Raise it in sound settings."), 15, LocalMetro.current.accentText)
         MetroButton(if (testing) os.t("停止试听", "stop alarm test") else os.t("试听警报", "test alarm"), { if (testing) marine.services.preferences.stopAlarmTest() else marine.services.preferences.testAlarm() }, primary = true)
         if (testing) MetroButton(os.t("我能听见警报", "I can hear the alarm"), { marine.services.preferences.confirmAlarmAudible(); marine.services.preferences.stopAlarmTest() })
         MenuRow(os.t("Android 声音设置", "Android sound settings"), os.t("系统警报音量", "system alarm volume")) { marine.services.preferences.openAlarmSoundSettings() }
@@ -209,19 +238,19 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
     // Manager rechecks its full policy before replacement; this also covers new parallel connections.
     val busy = state.active != null || state.activeTrip != null || state.activeSonarSurvey != null || connections.any { it.requested } || state.settings.mockEnabled || state.settings.nmeaSharingEnabled || state.outputSettings.anyEnabled
     PageBody {
-        Label(os.t("航行记录与船舶数据", "voyage & vessel data"), 31)
-        Label(os.t("备份已有航行记录、航迹、时刻、事件、船舶设置，以及原有锚泊与测深数据。", "Back up voyage recordings, tracks, moments, events, vessel settings and existing anchoring and sounding data."), 20)
-        Label(os.t("这是航行数据备份：不包含开始磁贴、系统偏好、海图文件夹，或“我的航行”里的坐标与航线。坐标与航线请在“我的航行”中导出 GPX；海图原文件仍在你选择的文件夹中。", "This is a voyage-data backup. It does not include Start tiles, system preferences, chart folders or coordinates and routes in My Sailing. Export those as GPX in My Sailing; chart files remain in your chosen folders."), 17, LocalMetro.current.muted)
-        Label(os.t("备份包含精确位置历史，文件未加密。", "The backup contains precise location history and is not encrypted."), 16, LocalMetro.current.muted)
+        AppSection(os.t("航行记录与船舶数据", "voyage & vessel data"))
+        Label(os.t("备份已有航行记录、航迹、时刻、事件、船舶设置，以及原有锚泊与测深数据。", "Back up voyage recordings, tracks, moments, events, vessel settings and existing anchoring and sounding data."), 15)
+        Label(os.t("这是航行数据备份：不包含开始磁贴、系统偏好、海图文件夹，或“我的航行”里的坐标与航线。坐标与航线请在“我的航行”中导出 GPX；海图原文件仍在你选择的文件夹中。", "This is a voyage-data backup. It does not include Start tiles, system preferences, chart folders or coordinates and routes in My Sailing. Export those as GPX in My Sailing; chart files remain in your chosen folders."), 15, LocalMetro.current.muted)
+        Label(os.t("备份包含精确位置历史，文件未加密。", "The backup contains precise location history and is not encrypted."), 15, LocalMetro.current.muted)
         MetroButton(os.t("保存备份文件", "save backup file"), { export.launch("Yokuli-Voyage-${java.time.LocalDate.now()}.yokuli-backup") }, primary = true, enabled = !running)
         state.backup.lastBackupAt?.let { Label(os.t("上次备份：", "last backup: ") + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(it)), 16, LocalMetro.current.muted) }
-        Label(os.t("从备份替换恢复", "replace from a backup"), 29)
-        Label(os.t("恢复会先校验文件，再替换本机航行与船舶数据。恢复前请先结束所有值守、记录和调查，并关闭 NMEA 连接、输出及定位代理。", "The backup is validated before replacing local voyage and vessel data. First end watches, recordings and surveys, then stop NMEA connections, outputs and the location proxy."), 18)
-        if (busy) Label(os.t("仍有任务或连接运行，暂时不能恢复。", "A task or connection is still running. Restore is unavailable."), 17, LocalMetro.current.accent)
+        AppSection(os.t("从备份替换恢复", "replace from a backup"))
+        Label(os.t("恢复会先校验文件，再替换本机航行与船舶数据。恢复前请先结束所有值守、记录和调查，并关闭 NMEA 连接、输出及定位代理。", "The backup is validated before replacing local voyage and vessel data. First end watches, recordings and surveys, then stop NMEA connections, outputs and the location proxy."), 15)
+        if (busy) Label(os.t("仍有任务或连接运行，暂时不能恢复。", "A task or connection is still running. Restore is unavailable."), 15, LocalMetro.current.accentText)
         MetroButton(os.t("选择备份文件", "choose backup file"), { restore.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) }, enabled = !running && !busy)
-        if (running) Label(os.t("正在处理备份，请稍候…", "processing backup…"), 22, LocalMetro.current.accent)
-        state.backup.result?.let { Label(os.t("操作完成", "operation completed"), 22, LocalMetro.current.accent); MetroButton(os.t("关闭结果", "dismiss result"), { marine.services.preferences.clearBackupResult() }) }
-        state.backup.error?.let { error -> Label(os.t("操作未完成。原始错误：", "operation failed: ") + error, 18, LocalMetro.current.accent); MetroButton(os.t("关闭错误", "dismiss error"), { marine.services.preferences.clearBackupResult() }) }
+        if (running) Label(os.t("正在处理备份，请稍候…", "processing backup…"), 15, LocalMetro.current.accentText)
+        state.backup.result?.let { Label(os.t("操作完成", "operation completed"), 15, LocalMetro.current.accentText); MetroButton(os.t("关闭结果", "dismiss result"), { marine.services.preferences.clearBackupResult() }) }
+        state.backup.error?.let { error -> Label(os.t("操作未完成。原始错误：", "operation failed: ") + error, 18, LocalMetro.current.accentText); MetroButton(os.t("关闭错误", "dismiss error"), { marine.services.preferences.clearBackupResult() }) }
     }
     restoreUri?.let { uri -> ConfirmDialog(os, os.t("校验并替换本机航行与船舶数据？除非另有备份，否则无法撤销。", "Validate and replace local voyage and vessel data? This cannot be undone without another backup."), { restoreUri = null }) { restoreUri = null; marine.services.preferences.restoreBackup(uri) } }
 }

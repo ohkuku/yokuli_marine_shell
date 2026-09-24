@@ -67,7 +67,7 @@ fun WpSpatialStartLayout(
             insertionMarker?.let { placement ->
                 Box(
                     Modifier.offset { IntOffset(placement.cell.column * pitchPx, placement.cell.row * pitchPx) }
-                        .border(2.dp, colors.accent).testTag("tile-insertion-marker"),
+                        .border(2.dp, colors.accentText).testTag("tile-insertion-marker"),
                 )
             }
             visualPlacements.forEach { placement ->

@@ -34,6 +34,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -41,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.LocalWpTextScale
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.shell.contract.ShellSafeBands
 import com.yokuli.shell.contract.ShellWindowMetrics
@@ -111,6 +113,7 @@ fun WpStatusStrip(
     val safe = ShellSafeBands.resolve(windowMetrics).status
     val density = windowMetrics.density.takeIf {it.isFinite() && it>0f} ?: 1f
     val safeTop = (safe.top / density).dp
+    val textScale = (LocalDensity.current.fontScale * LocalWpTextScale.current).coerceAtLeast(1f)
     val segments = ShellSafeBands.statusSegments(windowMetrics)
     val clockSegment = segments.firstOrNull { it.width / density >= 40f } ?: segments.maxByOrNull { it.width }
     val statusSegment = segments.lastOrNull { it.width / density >= 26f } ?: segments.maxByOrNull { it.width }
@@ -119,7 +122,7 @@ fun WpStatusStrip(
             Row(Modifier.absoluteOffset(x=(clockSegment.left/density).dp,y=safeTop)
                 .width((clockSegment.width/density).dp).height(30.dp).clipToBounds(),
                 verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                WpText(time,12,Modifier.width(if(clockSegment.width/density>=80f)44.dp else 32.dp),maxLines=1)
+                WpText(time,12,Modifier.width((42f*textScale).dp.coerceAtMost((clockSegment.width/density*.55f).dp)),maxLines=1)
                 StatusContents(battery,statusItems,Modifier.weight(1f))
             }
         } else {
@@ -143,12 +146,13 @@ private const val MAX_APP_STATUS_ITEMS = 3
 @Composable
 private fun StatusContents(battery:BatteryUiState,items:List<WpStatusStripItem>,modifier:Modifier=Modifier) {
     val colors=LocalWpTheme.current
+    val textScale=(LocalDensity.current.fontScale*LocalWpTextScale.current).coerceAtLeast(1f)
     BoxWithConstraints(modifier.height(30.dp).clipToBounds()) {
-        val showPercent=battery.percent>=0 && maxWidth>=if(items.isEmpty())64.dp else 112.dp
-        val showCharging=battery.charging && maxWidth>=if(items.isEmpty())150.dp else 260.dp
-        val fixedWidth=20f+(if(showPercent)40f else 0f)+(if(showCharging)45f else 0f)+12f
+        val showPercent=battery.percent>=0 && maxWidth >= ((if(items.isEmpty())64f else 118f)*textScale).dp
+        val showCharging=battery.charging && maxWidth >= ((if(items.isEmpty())150f else 260f)*textScale).dp
+        val fixedWidth=20f+(if(showPercent)40f*textScale else 0f)+(if(showCharging)50f*textScale else 0f)+12f
         val appWidth=(maxWidth.value-fixedWidth).coerceAtLeast(0f)
-        val appCount=(appWidth/36f).toInt().coerceIn(0,MAX_APP_STATUS_ITEMS)
+        val appCount=(appWidth/(40f*textScale)).toInt().coerceIn(0,MAX_APP_STATUS_ITEMS)
         // 运行中的系统会话优先于普通未读计数；挖孔旁的窄区不能把 REC 挤掉。
         val visible=items.sortedWith(compareBy<WpStatusStripItem> {
             when(it.stableId) { "voyage" -> 0; "anchor" -> 1; else -> 2 }
@@ -156,13 +160,13 @@ private fun StatusContents(battery:BatteryUiState,items:List<WpStatusStripItem>,
         Row(Modifier.fillMaxSize(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
             if(visible.isNotEmpty())Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(5.dp),verticalAlignment=Alignment.CenterVertically) {
                 visible.forEach {item ->
-                    WpText(item.compactText,10,Modifier.weight(1f).testTag("shell-status-${item.stableId}")
+                    WpText(item.compactText,12,Modifier.weight(1f).testTag("shell-status-${item.stableId}")
                         .semantics {contentDescription=item.expandedDescription},
-                        color=if(item.attention)colors.alarm else colors.muted,maxLines=1)
+                        color=if(item.attention)colors.alarm else colors.foreground,maxLines=1)
                 }
             } else Spacer(Modifier.weight(1f))
-            if(showCharging)WpText(stringResource(R.string.status_charging),10,color=colors.muted,maxLines=1)
-            if(showPercent)WpText(stringResource(R.string.status_battery,battery.percent),11,maxLines=1)
+            if(showCharging)WpText(stringResource(R.string.status_charging),12,color=colors.muted,maxLines=1)
+            if(showPercent)WpText(stringResource(R.string.status_battery,battery.percent),12,maxLines=1)
             BatteryIcon(battery.percent,Modifier.size(width=20.dp,height=10.dp))
         }
     }

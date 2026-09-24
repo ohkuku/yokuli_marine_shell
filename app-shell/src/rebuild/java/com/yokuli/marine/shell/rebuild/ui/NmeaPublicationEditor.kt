@@ -40,16 +40,16 @@ internal val NmeaStringSetSaver=listSaver<Set<String>,String>(save={it.toList()}
         Glyph("connect",Modifier.size(34.dp),c.accent)
         Column(Modifier.weight(1f).padding(horizontal=12.dp)) {
             Label(os.t("输出内容","output content"),13,c.muted)
-            Label(publicationFeedName(os,feed),22)
+            Label(publicationFeedName(os,feed),20)
         }
         Glyph("next",Modifier.size(20.dp),c.accent)
         Label(destination,17,c.muted,Modifier.padding(start=12.dp).widthIn(max=130.dp),maxLines=2)
     }
     // 保留正在运行的旧 PHONE 发布，不静默改动发送内容；再次保存须明确采用新策略。
     if(feed==NmeaFeed.PHONE) {
-        Label(os.t("这是旧版的手机专用输出。全船来源现在统一由数据中心维护。", "This is a legacy phone-only output. Data Center now manages sources for all apps."),18,c.accent)
+        Label(os.t("这是旧版的手机专用输出。全船来源现在统一由数据中心维护。", "This is a legacy phone-only output. Data Center now manages sources for all apps."),15,c.accentText)
         if(editable) MetroButton(os.t("改用数据中心的读数", "use Data Center readings"), {onFeed(NmeaFeed.SYSTEM);onSelected(selected-NmeaCapability.OTHER.id)}, primary=true)
-        else Label(os.t("当前发送内容保持不变。停止后编辑并保存，才会采用数据中心。", "Current output stays unchanged. Stop, edit and save to use Data Center."),16,c.muted)
+        else Label(os.t("当前发送内容保持不变。停止后编辑并保存，才会采用数据中心。", "Current output stays unchanged. Stop, edit and save to use Data Center."),15,c.muted)
     }
     listOf(NmeaFeed.SYSTEM,NmeaFeed.RAW).forEach { value ->
         ChoiceRow(publicationFeedName(os,value),feed==value,when(value) {
@@ -59,13 +59,13 @@ internal val NmeaStringSetSaver=listSaver<Set<String>,String>(save={it.toList()}
         },editable) { onFeed(value);onSelected(when(value){NmeaFeed.PHONE->selected.intersect(NmeaCapability.phone);NmeaFeed.SYSTEM->selected-NmeaCapability.OTHER.id;NmeaFeed.RAW->selected}) }
     }
     if(feed==NmeaFeed.RAW) {
-        Label(os.t("转发哪些连接","forward these inputs"),28,c.accent)
+        AppSection(os.t("转发哪些连接","forward these inputs"))
         val inputs=connections.filter{it.receive&&it.id!=ownId}
         if(inputs.isEmpty())Label(os.t("先添加一条接收连接。","Add a receiving connection first."),18,c.muted)
         inputs.forEach { input -> PublicationChoice(input.name,input.id in forwardFrom,editable,"${input.protocol} · ${input.host.ifBlank{os.t("所有发件人","all senders")}}") { onForwardFrom(if(input.id in forwardFrom)forwardFrom-input.id else forwardFrom+input.id) } }
         Label(os.t("与输入设备相同的 IP 不会收到自己的数据，即使端口不同。","A device never receives its own data back, even on a different port."),15,c.muted)
     }
-    Label(os.t("分享什么","what to share"),28,c.accent)
+    AppSection(os.t("分享什么","what to share"))
     val choices=NmeaCapability.entries.filter{when(feed){NmeaFeed.PHONE->it.id in NmeaCapability.phone;NmeaFeed.SYSTEM->it!=NmeaCapability.OTHER;NmeaFeed.RAW->true}}
     Label(os.t("已选 ${choices.count{it.id in selected}} / ${choices.size} 项","${choices.count{it.id in selected}} / ${choices.size} selected"),15,c.muted)
     choices.forEach { capability ->
@@ -77,21 +77,12 @@ internal val NmeaStringSetSaver=listSaver<Set<String>,String>(save={it.toList()}
             onSelected(if(capability.id in selected)selected-capability.id else selected+capability.id)
         }
     }
-    if(selected.isEmpty())Label(os.t("没有选择任何数据；连接可以保持在线，但不会发送内容。","Nothing selected. The connection may stay online without publishing any data."),16,c.muted)
+    if(selected.isEmpty())Label(os.t("没有选择任何数据；连接可以保持在线，但不会发送内容。","Nothing selected. The connection may stay online without publishing any data."),15,c.muted)
     if(!editable)Label(os.t("停止服务后可以更改分享内容。","Stop the service to change what is shared."),15,c.muted)
 }
 
 @Composable internal fun PublicationChoice(title:String,selected:Boolean,enabled:Boolean=true,detail:String?=null,onClick:()->Unit) {
-    val c=LocalMetro.current
-    Row(Modifier.fillMaxWidth().selectable(selected=selected,enabled=enabled,role=Role.Checkbox,onClick=onClick).padding(vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
-        Box(Modifier.size(26.dp).border(2.dp,if(selected)c.accent else c.fg).background(if(selected)c.accent else c.bg),contentAlignment=Alignment.Center) {
-            if(selected)Glyph("check",Modifier.size(22.dp),c.bg)
-        }
-        Column(Modifier.weight(1f).padding(start=16.dp)) {
-            Label(title,23,if(enabled)c.fg else c.muted)
-            if(!detail.isNullOrBlank())Label(detail,14,c.muted,Modifier.padding(top=5.dp))
-        }
-    }
+    AppCheckRow(title, selected, detail, enabled, onClick = onClick)
 }
 
 internal fun publicationFeedName(os:OsStore,feed:NmeaFeed)=when(feed) {

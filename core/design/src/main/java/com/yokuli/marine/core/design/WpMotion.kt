@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -34,8 +33,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 
 /**
- * 中文：Shell 级 WP 动效宿主；AnimatedContent 保留离场内容，绘制层补充透视进场。
- * English: Shell-level WP motion host with retained exit content and perspective entrance.
+ * W10M Shell 过渡宿主：保留离场页面，当前默认短位移/连续缩放。
+ * 旧 TURNSTILE/SWIVEL 只为已有显式调用兼容，不再作为页面默认动画。
  */
 @Composable
 fun <T> WpSurfaceTransitionHost(
@@ -83,6 +82,9 @@ private fun WpMotionPlan.contentTransform(): ContentTransform = when (family) {
     WpMotionFamily.SWIVEL ->
         fadeIn(tween(targetEntranceMillis, easing = LinearOutSlowInEasing)) togetherWith
             fadeOut(tween(contentExitMillis))
+    WpMotionFamily.SLIDE, WpMotionFamily.CONTINUUM ->
+        fadeIn(tween(targetEntranceMillis, easing = W10MobileMotion.EntranceEasing)) togetherWith
+            fadeOut(tween(contentExitMillis, easing = W10MobileMotion.ExitEasing))
     WpMotionFamily.FADE -> fadeIn(tween(targetEntranceMillis)) togetherWith fadeOut(tween(contentExitMillis))
     WpMotionFamily.NONE -> EnterTransition.None togetherWith ExitTransition.None
 }
@@ -104,7 +106,7 @@ private fun WpPerspectiveEntrance(
             progress.snapTo(0f)
             progress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(plan.durationMillis, easing = FastOutSlowInEasing),
+                animationSpec = tween(plan.durationMillis, easing = W10MobileMotion.EntranceEasing),
             )
         }
     }
@@ -113,8 +115,14 @@ private fun WpPerspectiveEntrance(
         Modifier
             .onSizeChanged { measuredSize = it }
             .graphicsLayer {
+                val remaining = 1f - progress.value
+                if (plan.family == WpMotionFamily.SLIDE || plan.family == WpMotionFamily.CONTINUUM) {
+                    translationX = measuredSize.width * plan.initialTranslationXFraction * remaining
+                    translationY = plan.initialTranslationYDp * density * remaining
+                    scaleX = 1f - (1f - plan.initialScale) * remaining
+                    scaleY = scaleX
+                }
                 if (perspectiveEnabled) {
-                    val remaining = 1f - progress.value
                     alpha = .32f + .68f * progress.value
                     rotationX = plan.initialRotationXDegrees * remaining
                     rotationY = plan.initialRotationYDegrees * remaining
@@ -126,7 +134,7 @@ private fun WpPerspectiveEntrance(
     ) { content() }
 }
 
-/** 中文：可错峰的 WP 短进场动效。 English: Short, staggerable WP content entrance. */
+/** MDL2 的轻量错峰内容进场；改变资料不应更换 motionKey 来反复播放。 */
 @Composable
 fun Modifier.wpEntrance(motionKey: Any, order: Int = 0): Modifier {
     val reducedMotion = LocalReducedMotion.current
@@ -136,43 +144,41 @@ fun Modifier.wpEntrance(motionKey: Any, order: Int = 0): Modifier {
         if (reducedMotion) progress.snapTo(1f) else progress.animateTo(
             targetValue = 1f,
             animationSpec = tween(
-                durationMillis = 210,
-                delayMillis = order.coerceIn(0, 6) * 34,
-                easing = LinearOutSlowInEasing,
+                durationMillis = W10MobileMotion.ContentMillis,
+                delayMillis = order.coerceIn(0, 5) * W10MobileMotion.StaggerMillis,
+                easing = W10MobileMotion.EntranceEasing,
             ),
         )
     }
     return graphicsLayer {
         alpha = progress.value
-        translationX = (1f - progress.value) * 34f * density
-        rotationY = (1f - progress.value) * -4f
-        transformOrigin = TransformOrigin(0f, .5f)
-        cameraDistance = 12f * density
+        translationY = (1f - progress.value) * 16f * density
     }
 }
 
 /**
- * 中文：按触点位置倾斜；必须与点击动作共用 interactionSource，以保留无障碍语义。
- * English: Position-aware tilt sharing the clickable interaction source for accessibility.
+ * 默认平面按压缩放；只有显式启用倾斜的磁贴才追踪触点位置，旧角度限制到轻微透视。
+ * 必须与点击动作共用 interactionSource，以保留取消、焦点和无障碍语义。
  */
 @Composable
 fun Modifier.wpTilt(
     interactionSource: MutableInteractionSource,
     enabled: Boolean = true,
-    maximumDegrees: Float = 5f,
+    maximumDegrees: Float = 0f,
 ): Modifier {
     val reducedMotion = LocalReducedMotion.current
     val pressed by interactionSource.collectIsPressedAsState()
     val pressProgress by animateFloatAsState(
         targetValue = if (enabled && !reducedMotion && pressed) 1f else 0f,
-        animationSpec = tween(if (pressed) 70 else 115, easing = FastOutSlowInEasing),
+        animationSpec = tween(if (pressed) W10MobileMotion.PressMillis else W10MobileMotion.ReleaseMillis, easing = W10MobileMotion.EntranceEasing),
         label = "wp-pointer-tilt",
     )
     var measuredSize by remember { mutableStateOf(IntSize.Zero) }
     var pointerPosition by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current.density
+    val tilt = maximumDegrees.coerceIn(0f, 1.5f)
 
-    return this
+    val tracked = if (tilt == 0f) this else this
         .onSizeChanged {
             measuredSize = it
             if (pointerPosition == Offset.Zero) {
@@ -188,19 +194,17 @@ fun Modifier.wpTilt(
                 }
             }
         }
-        .graphicsLayer {
-            if (measuredSize.width > 0 && measuredSize.height > 0) {
-                val plan = WpPressPolicy.resolve(
-                    normalizedX = pointerPosition.x / measuredSize.width,
-                    normalizedY = pointerPosition.y / measuredSize.height,
-                    pressProgress = pressProgress,
-                    maximumDegrees = maximumDegrees,
-                )
-                rotationX = plan.rotationXDegrees
-                rotationY = plan.rotationYDegrees
-                scaleX = plan.scale
-                scaleY = plan.scale
-                cameraDistance = 12f * density
-            }
-        }
+    return tracked.graphicsLayer {
+        val plan = WpPressPolicy.resolve(
+            normalizedX = if (measuredSize.width > 0) pointerPosition.x / measuredSize.width else .5f,
+            normalizedY = if (measuredSize.height > 0) pointerPosition.y / measuredSize.height else .5f,
+            pressProgress = pressProgress,
+            maximumDegrees = tilt,
+        )
+        rotationX = plan.rotationXDegrees
+        rotationY = plan.rotationYDegrees
+        scaleX = plan.scale
+        scaleY = plan.scale
+        if (tilt > 0f) cameraDistance = 12f * density
+    }
 }

@@ -47,43 +47,46 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             when(page) {
                 0 -> {
                     Field(os.t("查找名称或笔记","find a name or note"),query,{query=it})
-                    Label((kind?.label(os) ?: os.t("全部坐标","all places"))+"  ▾",24,LocalMetro.current.accent,
+                    Label((kind?.label(os) ?: os.t("全部坐标","all places"))+"  ▾",15,LocalMetro.current.accentText,
                         Modifier.clickable {choosingKind=true}.padding(vertical=8.dp))
                     val local=os.places.filter { (kind==null || kind==it.kind) && (it.name.contains(query,true)||it.note.contains(query,true)) }
                     val saved=repo.locations.filter { (kind==null || kind==PlaceKind.ANCHORAGE) && (it.displayName.contains(query,true)||it.personalNotes.contains(query,true)||repo.spots.any { s -> s.placeId==it.id&&s.name.contains(query,true) }) }
-                    if(local.isEmpty()&&saved.isEmpty()) Label(if(query.isBlank()) os.t("把值得记住的地方\n留在这里。","keep the places\nworth remembering.") else os.t("没有匹配的地点","no matching places"),32)
+                    if(local.isEmpty()&&saved.isEmpty()) Label(if(query.isBlank()) os.t("把值得记住的地方\n留在这里。","keep the places\nworth remembering.") else os.t("没有匹配的地点","no matching places"),24)
                     local.forEach { place -> MenuRow(place.name,"${place.kind.label(os)} · ${os.formatCoordinates(place.point)}","pin") {os.open("place:${place.id}")} }
                     saved.forEach { place -> MenuRow(place.displayName,os.t("锚地 · ${repo.spots.count { it.placeId==place.id }} 个具体位置 · ${place.visitCountCached+place.legacyVisitCount} 次到访","anchorage · ${repo.spots.count { it.placeId==place.id }} spots · ${place.visitCountCached+place.legacyVisitCount} visits"),"anchor") {os.open("anchorage:${place.id}")} }
-                    if(repo.error) Label(os.t("部分已存地点暂时无法读取","Some saved places could not be loaded"),16,LocalMetro.current.muted)
+                    if(repo.error) {
+                        Label(os.t("地点目录更新中断，已读资料仍保留。","Place updates were interrupted; previously loaded places are retained."),15,LocalMetro.current.muted)
+                        MetroButton(os.t("重新读取地点","reload places"),repo::retryLoading)
+                    }
                     MetroButton(os.t("输入坐标","enter coordinates"),{create=true},primary=true)
                     MetroButton(os.t("在海图上选点","choose on chart"),{os.showCrosshair=true;os.openLinked("chart")})
                 }
                 1 -> {
                     os.activeRoute?.let { route -> MenuRow(os.t("正在导航 · ${route.name}","navigating · ${route.name}"),os.t("目标 ${os.routeLeg+1}/${route.points.size}","target ${os.routeLeg+1}/${route.points.size}"),"locate") {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.openLinked("chart")} }
-                    if(os.routes.isEmpty()) {Label(os.t("下一站，去哪里？","where to next?"),36);Label(os.t("在海图上规划，保存在这里。选择一条路线后才在地图上预览。","Plan on chart and keep it here. Select a route to preview it on the map."),18,LocalMetro.current.muted)}
+                    if(os.routes.isEmpty()) {Label(os.t("下一站，去哪里？","where to next?"),24);Label(os.t("在海图上规划，保存在这里。选择一条路线后才在地图上预览。","Plan on chart and keep it here. Select a route to preview it on the map."),24,LocalMetro.current.muted)}
                     os.routes.forEach { route -> MenuRow(route.name,"${os.formatDistance(route.length)} · ${route.points.size} "+os.t("个航点","points"),"route") {os.open("route:${route.id}")} }
                     MetroButton(if(os.draftRoute.isEmpty()) os.t("规划航线","plan a route") else os.t("继续草稿","continue draft"),{resumeOrCreateRouteDraft(os);os.openLinked("chart")},primary=true)
                 }
                 else -> {
-                    Label(os.t("自己的收藏","your collections"),31)
+                    AppSection(os.t("自己的收藏","your collections"))
                     val localCollections=os.places.map { it.collection }.filter(String::isNotBlank).distinct()
-                    if(localCollections.isEmpty() && repo.collections.isEmpty()) Label(os.t("在地点详情中填写集合名称，把泊位、补给点或计划归到一起。","Give a place a collection name to group berths, supplies or plans."),18,LocalMetro.current.muted)
+                    if(localCollections.isEmpty() && repo.collections.isEmpty()) Label(os.t("在地点详情中填写集合名称，把泊位、补给点或计划归到一起。","Give a place a collection name to group berths, supplies or plans."),15,LocalMetro.current.muted)
                     localCollections.forEach { group ->
-                        Label(group,25,LocalMetro.current.accent)
+                        Label(group,20,LocalMetro.current.accentText)
                         os.places.filter {it.collection==group}.forEach { place -> MenuRow(place.name,os.formatCoordinates(place.point),"pin") {os.open("place:${place.id}")} }
                     }
                     repo.collections.forEach { group -> MenuRow(group.name,group.description,"pin") {os.open("collection:${group.id}")} }
                     if(repo.archivedLocations.isNotEmpty()) {
-                        Label(os.t("已归档地点","archived places"),31)
+                        AppSection(os.t("已归档地点","archived places"))
                         repo.archivedLocations.forEach {place ->
                             MenuRow(place.displayName,os.t("点按恢复，保留原来的位置、照片和到访","Tap to restore its spots, photos and visits"),"pin") {
                                 scope.launch {try {repo.restorePlace(place.id)} catch(cancelled:CancellationException) {throw cancelled} catch(_:Exception) {os.notify("恢复失败，请重试","Could not restore. Please retry.")}}
                             }
                         }
                     }
-                    Label(os.t("导入与导出","import & export"),31)
-                    Label(os.t("GPX 交换坐标和路线。照片、到访与锚地资料使用设置中的航行与船舶数据备份。","GPX exchanges coordinates and routes. Back up photos, visits and anchorage records in Settings → sailing and vessel data."),17,LocalMetro.current.muted)
-                    Label(os.t("暂不导入历史轨迹，也不会把轨迹转换成计划航线。", "Recorded tracks are not supported for import and are never converted into planned routes."),16,LocalMetro.current.muted)
+                    AppSection(os.t("导入与导出","import & export"))
+                    Label(os.t("GPX 交换坐标和路线。照片、到访与锚地资料使用设置中的航行与船舶数据备份。","GPX exchanges coordinates and routes. Back up photos, visits and anchorage records in Settings → sailing and vessel data."),15,LocalMetro.current.muted)
+                    Label(os.t("暂不导入历史轨迹，也不会把轨迹转换成计划航线。", "Recorded tracks are not supported for import and are never converted into planned routes."),15,LocalMetro.current.muted)
                     MetroButton(if(busy) os.t("正在处理…","working…") else os.t("导入 GPX","import GPX"),{importer.launch(arrayOf("*/*"))},primary=true,enabled=!busy)
                     MetroButton(os.t("导出坐标与航线","export places & routes"),{exporter.launch("Yokuli-sailing.gpx")},enabled=!busy&&(os.allPlaces.isNotEmpty()||os.routes.isNotEmpty()))
                 }
@@ -91,8 +94,8 @@ fun PlaceKind.label(os:OsStore)=when(this) {
         } }
     }
     if(choosingKind)Dialog(onDismissRequest={choosingKind=false}) {
-        Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).padding(22.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            Label(os.t("显示坐标","show places"),33)
+        AppDialogSurface() {
+            AppDialogTitle(os.t("显示坐标","show places"))
             ChoiceRow(os.t("全部坐标","all places"),kind==null) {kind=null;choosingKind=false}
             PlaceKind.entries.forEach {choice->ChoiceRow(choice.label(os),kind==choice) {kind=choice;choosingKind=false}}
             MetroButton(os.t("关闭","close"),{choosingKind=false})
@@ -100,10 +103,10 @@ fun PlaceKind.label(os:OsStore)=when(this) {
     }
     if(create) CoordinateEditor(os,null,{create=false}) { place -> repo.put(place);create=false;os.open("place:${place.id}") }
     pending?.let { content -> Dialog(onDismissRequest={pending=null}) {
-        Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).padding(22.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-            Label(os.t("导入这份 GPX","import this GPX"),31)
-            Label(os.t("${content.places.size} 个坐标，${content.routes.size} 条路线","${content.places.size} places, ${content.routes.size} routes"),21)
-            Label(os.t("同名且位置相同的坐标、相同点序列的航线可以跳过。","Skip places with the same name and position, and routes with the same name and points."),17,LocalMetro.current.muted)
+        AppDialogSurface() {
+            AppDialogTitle(os.t("导入这份 GPX","import this GPX"))
+            Label(os.t("${content.places.size} 个坐标，${content.routes.size} 条路线","${content.places.size} places, ${content.routes.size} routes"),15)
+            Label(os.t("同名且位置相同的坐标、相同点序列的航线可以跳过。","Skip places with the same name and position, and routes with the same name and points."),15,LocalMetro.current.muted)
             fun apply(skip:Boolean) {repo.import(content,skip);pending=null}
             MetroButton(os.t("跳过重复并导入","import, skip duplicates"),{apply(true)},primary=true)
             MetroButton(os.t("全部作为新资料导入","import all as new"),{apply(false)})
@@ -116,22 +119,37 @@ fun PlaceKind.label(os:OsStore)=when(this) {
     if(id.startsWith("spot:")) {
         val spot=os.sailing.spots.firstOrNull { it.id==id.substringAfter(':').toLongOrNull() }
         if(spot!=null) SavedLocationScreen(os,spot.placeId,spot.id)
-        else Column { PageHeader(os,os.t("坐标","place"));Label(os.t("正在读取地点，或该坐标已被移除","Loading place, or this coordinate has been removed"),20,modifier=Modifier.padding(22.dp)) }
+        else Column(Modifier.fillMaxSize()) {
+            PageHeader(os,os.t("坐标","place"))
+            PageBody {
+                when {
+                    !os.sailing.loaded -> MetroProgress(os.t("正在读取地点…","loading place…"))
+                    os.sailing.error -> {
+                        Label(os.t("暂时无法确认这个坐标，请重新读取。","This coordinate could not be checked. Reload the places."),15)
+                        MetroButton(os.t("重新读取","reload"),os.sailing::retryLoading)
+                    }
+                    else -> MissingSailingObject(os)
+                }
+            }
+        }
         return
     }
     val place=os.places.firstOrNull { it.id==id }
-    if(place==null) {Column {PageHeader(os,os.t("地点已移除","place removed"))};return}
+    if(place==null) {
+        Column(Modifier.fillMaxSize()) {PageHeader(os,os.t("地点","place"));PageBody {MissingSailingObject(os)}}
+        return
+    }
     var edit by rememberSaveable(id) {mutableStateOf(false)};var remove by rememberSaveable(id) {mutableStateOf(false)};var start by rememberSaveable(id) {mutableStateOf(false)}
     val (fix,now)=liveNavigationFix(os)
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,place.name,os.t("我的航行","MY SAILING"))
         PageBody {
             CoordinateMapPreview(os,listOf(MapPoint(place.id,place.point,place.name,os.accent)),place.point)
-            Label(place.kind.label(os),17,LocalMetro.current.accent)
-            Label(os.formatCoordinates(place.point),23)
+            Label(place.kind.label(os),17,LocalMetro.current.accentText)
+            Label(os.formatCoordinates(place.point),20)
             fix?.takeIf {it.fresh(now)}?.let { Label("${os.formatDistance(distance(it.point,place.point))} · ${os.formatBearing(bearing(it.point,place.point))}T",31) }
             if(place.collection.isNotBlank()) Label(place.collection,18,LocalMetro.current.muted)
-            if(place.note.isNotBlank()) Label(place.note,21)
+            if(place.note.isNotBlank()) Label(place.note,15)
             MetroButton(os.t("在海图上查看","show on chart"),{os.fly(place.point);os.showCrosshair=true;os.openLinked("chart")},primary=true)
             MetroButton(os.t("前往这里","go here"),{start=true})
             MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(place.point,place.name);os.openLinked("anchor:setup")})
@@ -161,8 +179,8 @@ fun PlaceKind.label(os:OsStore)=when(this) {
     var kind by rememberSaveable(initial?.id) {mutableStateOf(initial?.kind?:PlaceKind.MARK)}
     val point=preservedCoordinate(initial?.point,initialLatitude,initialLongitude,latitude,longitude)
     Dialog(onDismissRequest=onDismiss) {
-        Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(LocalMetro.current.bg).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-            Label(os.t("地点资料","place details"),31)
+        AppDialogSurface() {
+            AppDialogTitle(os.t("地点资料","place details"))
             Field(os.t("名称","name"),name,{name=it.take(100)})
             Field(os.t("纬度","latitude")+" · ${os.coordinateFormat}",latitude,{latitude=it.take(60)})
             Field(os.t("经度","longitude")+" · ${os.coordinateFormat}",longitude,{longitude=it.take(60)})
@@ -174,4 +192,16 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             MetroButton(os.t("取消","cancel"),onDismiss)
         }
     }
+}
+
+/** 对象失效不是一次成功跳转；保留这次访问的返回关系，列表仅在用户明确选择时进入。 */
+@Composable internal fun MissingSailingObject(os:OsStore) {
+    val persistence by os.persistenceState.collectAsState()
+    if (persistence.readFailure != null) {
+        ContentRecoveryStatus(os, showRecoveredCopy = false)
+        return
+    }
+    Label(os.t("对象已不存在","This item no longer exists"),20)
+    Label(os.t("它可能已被删除或归档。返回可回到刚才的页面，也可以查看我的航行。","It may have been deleted or archived. Go back to your previous page, or open My Sailing."),15,LocalMetro.current.muted)
+    MetroButton(os.t("查看我的航行","open My Sailing"),{os.openLinked("places")})
 }

@@ -13,10 +13,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -166,24 +167,28 @@ fun WpLiveField(
     label: String? = null,
     structuralKey: Any? = Unit,
     cadence: PresentationCadence = PresentationCadence.DataOverview,
-    size: Int = 16,
+    size: Int = WpTypeScale.Body,
     color: Color? = null,
     minValueWidth: Dp = 112.dp,
     maxLines: Int = 1,
 ) {
     val visible = rememberCadencedLiveValue(value, structuralKey, cadence)
     val colors = LocalWpTheme.current
+    val textScale = LocalWpTextScale.current
     Column(modifier) {
-        if (label != null) WpText(label, 10, color = colors.muted, maxLines = 1)
+        if (label != null) WpText(label, WpTypeScale.Caption, color = colors.muted, maxLines = 1)
         BasicText(
             text = visible,
             modifier = Modifier.widthIn(min = minValueWidth),
             style = TextStyle(
                 color = color ?: colors.foreground,
-                fontSize = size.sp,
-                fontWeight = FontWeight.Normal,
-                fontFamily = FontFamily.Monospace,
-                lineHeight = (size * 1.12).sp,
+                fontSize = (size * textScale).sp,
+                fontWeight = WpTypeScale.weight(size),
+                fontFamily = WpFontFamily,
+                fontFeatureSettings = "tnum",
+                lineHeight = (WpTypeScale.lineHeight(size) * textScale).sp,
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                textMotion = TextMotion.Static,
             ),
             maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
@@ -206,6 +211,7 @@ fun WpLiveConsole(
     val bounded = newestFirstLines.take(maxEntries)
     val visible = rememberCadencedLiveValue(bounded, structuralKey, cadence)
     val colors = LocalWpTheme.current
+    val textScale = LocalWpTextScale.current
     Column(modifier) {
         if (visible.isEmpty()) {
             emptyContent?.invoke(this)
@@ -215,9 +221,11 @@ fun WpLiveConsole(
                     text = line,
                     style = TextStyle(
                         color = colors.foreground,
-                        fontSize = lineSize.sp,
+                        fontSize = (lineSize * textScale).sp,
                         fontFamily = FontFamily.Monospace,
-                        lineHeight = (lineSize * 1.25).sp,
+                        lineHeight = (WpTypeScale.lineHeight(lineSize) * textScale).sp,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                        textMotion = TextMotion.Static,
                     ),
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
