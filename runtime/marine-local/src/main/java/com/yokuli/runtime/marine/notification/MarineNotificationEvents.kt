@@ -70,7 +70,7 @@ class MarineNotificationEvents @Inject constructor(
             content.observeRecentAlarmEvents(200).retryWhen { _, _ -> delay(5000); true }.collect { events ->
                 events.sortedBy { it.id }.forEach { event ->
                     if (event.id > acceptedCursor) {
-                        publish(NoticeCommand("anchor-event:${event.id}", NoticeOperation.PUBLISH, event.record(), eventStream = "anchor", eventSequence = event.id))
+                        publish(NoticeCommand("anchor-event:${event.id}", NoticeOperation.PUBLISH, event.toNoticeRecord(), eventStream = "anchor", eventSequence = event.id))
                         acceptedCursor = event.id
                     }
                 }
@@ -117,7 +117,8 @@ private fun AisNotice.record() = NoticeRecord(
     level = when (level) { AisRiskLevel.NONE -> NoticeLevel.INFO; AisRiskLevel.ATTENTION -> NoticeLevel.WARNING; AisRiskLevel.WARNING, AisRiskLevel.URGENT -> NoticeLevel.ALARM },
     target = NoticeTarget("ais", "target", mmsi.toString()), domainEventId = id, aggregationKey = "ais-notice:$id", category = "traffic",
 )
-private fun AlarmEventEntity.record(): NoticeRecord? {
+/** 守锚事件的唯一纯消息映射；运行时发布和旧客户端投影共用，不创建订阅或持久化写者。 */
+fun AlarmEventEntity.toNoticeRecord(): NoticeRecord? {
     val title = when (type) {
         "ALARM_TRIGGERED" -> when (detail) {
             "ANCHOR_RADIUS_EXCEEDED" -> "超出守锚范围" to "anchor boundary exceeded"

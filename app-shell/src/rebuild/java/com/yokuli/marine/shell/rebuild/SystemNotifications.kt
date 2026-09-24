@@ -30,7 +30,7 @@ data class SystemNotice(
         createdAt, updatedAt, NoticeLevel.valueOf(severity.name), destination?.let(::legacyNoticeTarget), domainEventId, key,
         dismissible = dismissible, read = read, occurrences = occurrences)
 }
-private fun NoticeRecord.present() = SystemNotice(id, AppId.entries.firstOrNull { it.name == publisher }, text.bodyZh, text.bodyEn,
+internal fun NoticeRecord.asNotice() = SystemNotice(id, AppId.entries.firstOrNull { it.name == publisher }, text.bodyZh, text.bodyEn,
     occurredAtUtcMillis, NoticeSeverity.valueOf(level.name), primaryAction?.target?.legacyRoute(), read, aggregationKey, occurrences,
     text.titleZh, text.titleEn, text.bodyZh, text.bodyEn, dismissible, updatedAtUtcMillis, domainEventId)
 
@@ -73,7 +73,7 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
         } }
         scope.launch { client.snapshot.collect { snapshot ->
             val previous = items.associateBy { it.id }
-            items = snapshot.records.map { it.present() }
+            items = snapshot.records.map { it.asNotice() }
             persistenceFailure = snapshot.persistenceFailure
             if (snapshot.revision != projectedRevision) {
                 projectedRevision = snapshot.revision
