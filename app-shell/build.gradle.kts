@@ -18,8 +18,8 @@ android {
         applicationId = "com.yokuli.marine"
         minSdk = 28
         targetSdk = 36
-        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 11
-        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.5.0-experience.7"
+        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 12
+        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.5.0-experience.8"
         manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = mapsKey.get()
         buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", (mapsKey.get() != "MAPS_API_KEY_NOT_CONFIGURED").toString())
         buildConfigField("boolean", "ROM_HOME", "false")

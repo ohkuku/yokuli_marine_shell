@@ -2,9 +2,9 @@
 
 **ROM 开发分支：`codex/yokuli-os-rom`。** 系统分层、设备/安全/升级设计与 AOSP 产品配置见 [ROM 总入口](rom/README.md)。本分支从 experience.6 继续开发系统集成；当前可构建 HOME APK，完整 ROM 镜像尚未在 Linux 构建机编译或启动。原手机应用体验分支保留为 `codex/yokuli-os-rebuild`。
 
-以 Windows Phone 8/10 的排版、横滑、磁贴和虚拟键组织的 Android 航海应用平台。当前开发版本 **0.5.0-experience.7**（versionCode 11）。本轮把业务执行从页面 ViewModel 拆到进程级控制器和领域端口，增加纯 Kotlin 运行时契约与 Android 组合层；全局航行、内容访问、显示资源和偏好命令有明确所有者。
+以 Windows Phone 8/10 的排版、横滑、磁贴和虚拟键组织的 Android 航海应用平台。当前开发版本 **0.5.0-experience.8**（versionCode 12）。本轮统一页面头部与实际返回路径，修复地点进入下锚、设置进入磁贴、海图进入图层修复的交接边界。业务执行继续采用上一轮的进程级领域端口。
 
-完整结构见 [26 项反馈、全部应用接口与数据拓扑](docs/product/OS_INTERFACE_TOPOLOGY.md)，声明位置见 [API 索引](docs/product/API_INDEX.md)。数据所有权见 [数据中心契约](docs/product/DATA_CENTER_CONTRACT.md)，页面访问与返回见 [应用导航契约](docs/product/APP_NAVIGATION_CONTRACT.md)。实际验证结果与边界见 [本轮交付记录](docs/experience/EXPERIENCE_7_DELIVERY.md)。
+完整结构见 [26 项反馈、全部应用接口与数据拓扑](docs/product/OS_INTERFACE_TOPOLOGY.md)，声明位置见 [API 索引](docs/product/API_INDEX.md)。数据所有权见 [数据中心契约](docs/product/DATA_CENTER_CONTRACT.md)，页面访问与返回见 [应用导航契约](docs/product/APP_NAVIGATION_CONTRACT.md)。实际验证结果与边界见 [本轮交付记录](docs/experience/EXPERIENCE_8_DELIVERY.md)。
 
 ## 系统代码的层级
 
@@ -72,7 +72,7 @@ Google 在线/卫星底图的 `GOOGLE_MAPS_ANDROID_API_KEY` 仍由原仓库的�
 
 ## English
 
-Development version **0.5.0-experience.7** (versionCode 11) introduces an in-process runtime composition layer, narrow domain commands, a process-scoped controller, shared voyage coordination, and content access without UI-owned DAOs. Preference commands update only their own fields, and display consumers acquire independently released leases. Every APK preBuild runs the source-boundary check. These modules still share one APK, UID and process; legacy DTOs and the MainUiState compatibility projection remain. Binder, process isolation and Android notification/Recents replacement are not implemented.
+Development version **0.5.0-experience.8** (versionCode 12) introduces an in-process runtime composition layer, narrow domain commands, a process-scoped controller, shared voyage coordination, and content access without UI-owned DAOs. Preference commands update only their own fields, and display consumers acquire independently released leases. Every APK preBuild runs the source-boundary check. These modules still share one APK, UID and process; legacy DTOs and the MainUiState compatibility projection remain. Binder, process isolation and Android notification/Recents replacement are not implemented.
 
 The centre key remains Home and the right key opens internal notifications. Data Center owns source selection and phone calibration; Boat Network owns connections and outgoing traffic; Data Sharing owns local publishing. Linked app operations return to their caller, ordinary launches open the app home, and internal Recents resumes an existing page. See the OS documentation index for the implemented boundaries and later system integration stages.
 

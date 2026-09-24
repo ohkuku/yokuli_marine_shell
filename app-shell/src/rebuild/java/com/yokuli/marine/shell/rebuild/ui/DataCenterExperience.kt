@@ -56,7 +56,7 @@ import com.yokuli.shell.contract.ShellInput
             mounting -> os.t("固定手机", "mount phone")
             selected != null -> sourceMetricName(os, selected!!)
             else -> os.title(AppId.DATA_CENTER)
-        }, onBack = if (internalPage || directPhone) back else null)
+        }, hasLocalBack = internalPage || directPhone)
         val target = if (mounting) "mount" else selected?.name ?: "overview"
         AnimatedContent(target, transitionSpec = {
             val forward = targetState != "overview" && targetState != entryMetric?.name

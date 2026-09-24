@@ -140,5 +140,12 @@ import com.yokuli.marine.shell.rebuild.chart.*
 private fun folderName(os:OsStore,folder:ChartFolder)=if(folder.uri=="copy" && folder.name=="imported charts")os.t("本机导入","local imports")else folder.name
 private fun viewLayer(os:OsStore,folder:ChartFolder) {
     val file=os.library.folderFiles(folder).firstOrNull {it.enabled && it.error==null}
-    os.maps.select(MapSource.CustomLayer(folder.id));file?.let {os.fly(it.focus,it.previewZoom)};os.openLinked("chart")
+    os.maps.select(MapSource.CustomLayer(folder.id))
+    if(os.shell.backDestination(null)=="chart") {
+        // 这次访问是海图交来的修复任务：恢复原海图实例，不再嵌套打开第二次海图。
+        os.back()
+    } else {
+        file?.let {os.fly(it.focus,it.previewZoom)}
+        os.openLinked("chart")
+    }
 }

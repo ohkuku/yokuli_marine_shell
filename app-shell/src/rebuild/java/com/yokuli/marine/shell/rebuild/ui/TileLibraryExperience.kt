@@ -46,7 +46,7 @@ import kotlinx.coroutines.launch
     Column(Modifier.fillMaxSize()) {
         PageHeader(os, selectedApp?.let { os.title(it.app) } ?: os.title(AppId.TILES),
             app = if (selectedApp == null) "YOKULI OS" else os.title(AppId.TILES),
-            onBack = if (selectedApp != null) back else null)
+            hasLocalBack = selectedApp != null)
         AnimatedContent(selectedApp?.id?.value, transitionSpec = {
             (slideInHorizontally(tween(260)) { it / 5 } + fadeIn(tween(200))) togetherWith
                 (slideOutHorizontally(tween(220)) { -it / 7 } + fadeOut(tween(170)))

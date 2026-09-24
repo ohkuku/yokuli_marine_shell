@@ -54,7 +54,7 @@ import kotlin.math.*
     AppBackHandler(toolOpen) {closeTool()}
     BindInternalAppInputHandler {input->input==ShellInput.BACK && closeTool()}
     Column(Modifier.fillMaxSize()) {
-        MapPageHeader(os,os.title(AppId.CHART),{layers=true})
+        MapPageHeader(os,os.title(AppId.CHART),{layers=true},hasLocalBack=toolOpen)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             NativeChart(os,fix,Modifier.fillMaxSize()) { host=it }
             MapPositionReadout(os,fix,tick,Modifier.align(Alignment.TopStart).padding(10.dp))
@@ -64,7 +64,7 @@ import kotlin.math.*
                     Glyph("chart",Modifier.size(44.dp),c.accent)
                     Label(os.t("图层暂不可用","layer unavailable"),32)
                     Label(os.t("这个图层当前没有可读取的海图。请检查文件夹授权、文件状态和参与的海图。","This layer has no readable charts. Check folder access, file status and included charts."),17,c.muted)
-                    MetroButton(os.t("打开图册","open chart library"),{os.open("library")},primary=true)
+                    MetroButton(os.t("打开图册","open chart library"),{os.openLinked((os.maps.source as? MapSource.CustomLayer)?.layerId?.takeIf { id -> os.library.folders.any {it.id==id} }?.let { "library:$it" } ?: "library")},primary=true)
                     MetroButton(os.t("先浏览在线地图","browse online map"),{os.maps.select(MapSource.Online)})
                 }
             }
@@ -136,7 +136,6 @@ import kotlin.math.*
     if(tools) Dialog(onDismissRequest={tools=false}) {
         Column(Modifier.fillMaxWidth().background(c.bg).border(1.dp,c.muted).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Label(os.t("海图工具","chart tools"),34)
-            MenuRow(os.t("我的航行","my sailing"),os.t("收藏地点与航线","saved places and routes")) {tools=false;os.open("places")}
             if(chartView.previewTrack.isNotEmpty()) MenuRow(os.t("结束日志轨迹预览","close logbook track preview"),chartView.previewTitle) {chartView.previewTrack=emptyList();chartView.previewTitle=null;tools=false}
             if(os.activeRoute!=null) MenuRow(os.t("当前导航","current navigation"),os.activeRoute?.name) {tools=false;manageNavigation=true}
             if(chartView.previewRoute!=null || os.displayedRouteId!=null && os.displayedRouteId!=os.activeRouteId) MenuRow(os.t("结束路线预览","close route preview")) {chartView.previewRoute=null;os.displayedRouteId=null;os.save();tools=false}

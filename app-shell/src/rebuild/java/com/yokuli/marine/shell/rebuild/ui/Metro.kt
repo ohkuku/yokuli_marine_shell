@@ -12,6 +12,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -141,23 +143,27 @@ val LightFont=WpFontFamily
         Label(label,18,if(primary) Color.White else c.fg)
     }
 }
-@Composable fun PageHeader(os:OsStore,title:String,app:String="YOKULI OS",trailing:(@Composable ()->Unit)?=null,onBack:(()->Unit)?=null) {
-    val page=LocalAppPage.current ?: os.page
-    val owner=os.shell.appForPage(page)
-    val nested=onBack!=null || (owner!=null && os.shell.canonicalPage(page)!=owner.page)
-    val caption=if(app=="YOKULI OS") owner?.let {os.title(it.app)}.orEmpty() else app
+@Composable fun PageHeader(os:OsStore,title:String,app:String="",trailing:(@Composable ()->Unit)?=null,hasLocalBack:Boolean=false) {
+    val navigation=pageNavigation(os,title,hasLocalBack)
+    val caption=app.takeUnless { it.isBlank() || it.equals("YOKULI OS",true) || it.equals("YOKULI",true) } ?: navigation.appIdentity
     val insets=LocalShellHorizontalInsets.current
     Column(Modifier.fillMaxWidth().padding(start=insets.pageStart,end=insets.pageEnd,top=6.dp,bottom=10.dp)) {
-        Row(verticalAlignment=Alignment.CenterVertically) {
-            if(nested) {
-            Box(Modifier.size(44.dp).clickable { (onBack ?: os::back)() },contentAlignment=Alignment.CenterStart) {
-                Box(Modifier.size(30.dp).border(1.5.dp,LocalMetro.current.fg,androidx.compose.foundation.shape.CircleShape),contentAlignment=Alignment.Center) { Glyph("back",Modifier.size(20.dp)) }
-            }
-            }
-            Label((if(!nested && caption.equals(title,ignoreCase=true)) "YOKULI" else caption).uppercase(),WpTypeScale.AppCaption,weight=FontWeight.SemiBold,modifier=Modifier.weight(1f),maxLines=1)
+        if(navigation.canGoBack || trailing!=null) Row(verticalAlignment=Alignment.CenterVertically) {
+            if(navigation.canGoBack) HeaderBackButton(navigation)
+            Spacer(Modifier.weight(1f))
             trailing?.invoke()
         }
+        // 应用身份独立于返回按钮；首页标题已经说明身份时，不塞系统品牌占位。
+        if(caption.isNotBlank() && !caption.equals(title,ignoreCase=true))
+            Label(caption.uppercase(),WpTypeScale.AppCaption,weight=FontWeight.SemiBold,maxLines=1)
         Label(title,WpTypeScale.PageTitle,modifier=Modifier.padding(top=4.dp),maxLines=2)
+    }
+}
+@Composable internal fun HeaderBackButton(navigation:PageNavigation,compact:Boolean=false) {
+    Row(Modifier.heightIn(min=44.dp).semantics { contentDescription=navigation.backLabel }.clickable(enabled=navigation.enabled,onClickLabel=navigation.backLabel,onClick=navigation.back)
+        .padding(end=12.dp),verticalAlignment=Alignment.CenterVertically) {
+        Glyph("back",Modifier.size(24.dp))
+        if(!compact) Label(navigation.backLabel,16,modifier=Modifier.padding(start=6.dp),maxLines=1)
     }
 }
 @Composable fun PageBody(scrollState:ScrollState=rememberScrollState(),content:@Composable ColumnScope.()->Unit) {

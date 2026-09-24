@@ -33,7 +33,7 @@ import kotlinx.coroutines.delay
     BindInternalAppInputHandler{input->if(input==ShellInput.BACK&&(selected!=null||creating)){back();true}else false}
     AppBackHandler(selected!=null||creating){back()}
     Column(Modifier.fillMaxSize()){
-        PageHeader(os,when{creating->os.t("新连接","new connection");editing->os.t("编辑连接","edit connection");current!=null->current.spec.name;else->os.title(AppId.NMEA)},onBack=if(selected!=null||creating)back else null)
+        PageHeader(os,when{creating->os.t("新连接","new connection");editing->os.t("编辑连接","edit connection");current!=null->current.spec.name;else->os.title(AppId.NMEA)},hasLocalBack=selected!=null||creating)
         // 编辑连接后回到原来的实况/语句/路由页；列表滚动也独立保留。
         val pageKey=when{creating->"create";editing->"edit:$selected";current!=null->"connection:$selected";else->"connections"}
         pageStates.SaveableStateProvider(pageKey) { when{

@@ -274,6 +274,23 @@ class WpShellRuntime(private val os: OsStore) {
         else -> false
     }
 
+    /** 返回依据本次访问栈，而不是页面归属；调用者快照保留地图和列表的原实例。 */
+    fun backDestination(instanceKey: String?): String? {
+        val state = engine.state.value
+        val task = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId) } ?: return null
+        if (instanceKey != null && task.currentUiStateKey != instanceKey) return null
+        val handoff = state.tasks.linkedReturns.lastOrNull()?.takeIf {
+            it.targetTaskId == task.taskId && task.backStack.size <= it.targetBackStackDepth
+        }
+        if (handoff != null) {
+            val caller = handoff.callerSnapshot ?: state.tasks.task(handoff.callerTaskId) ?: return null
+            return visiblePageRoutes[caller.currentUiStateKey] ?: pageForToken(caller.lastLaunchToken)
+        }
+        return task.backStack.lastOrNull()?.let { token ->
+            task.backStackUiStateKeys.lastOrNull()?.let { visiblePageRoutes[it] } ?: pageForToken(token)
+        }
+    }
+
     fun back() = input(ShellInput.BACK)
     private fun atUnlinkedAppRoot():Boolean {
         val state=engine.state.value

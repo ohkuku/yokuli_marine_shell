@@ -57,7 +57,7 @@ private val AnchorPickedPointSaver=listSaver<MutableState<GeoPoint?>,Double>(
 
 /** Anchor owns the watch; the map receives a scene and the engine receives explicit commands. */
 @Composable
-fun AnchorExperience(os: OsStore) {
+fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     val marine=os.marine
     if(marine==null) {Column {PageHeader(os,os.title(AppId.ANCHOR));MetroProgress(os.t("正在恢复守锚…","restoring anchor watch…"))};return}
     val services=marine.services
@@ -68,9 +68,12 @@ fun AnchorExperience(os: OsStore) {
     val active=state.active
     val view=os.maps.view("anchor",fix?.point ?: os.center,16.0)
     view.scaleTopDp=118f
-    val referenceKey=os.anchorDraft?.let {"${it.placeId}:${it.spotId}:${it.point.lat}:${it.point.lon}"} ?: "os-watch"
+    val entryDraft=remember {os.anchorDraft.takeIf {initialPage=="setup"}}
+    val referenceKey=rememberSaveable { entryDraft?.let {"${it.placeId}:${it.spotId}:${it.point.lat}:${it.point.lon}"} ?: "os-watch" }
+    val draftPlaceId by rememberSaveable {mutableStateOf(entryDraft?.placeId)}
+    val draftSpotId by rememberSaveable {mutableStateOf(entryDraft?.spotId)}
     val restored=state.anchorSetupDraft?.takeIf {it.referenceKey==referenceKey}
-    var page by rememberSaveable {mutableStateOf(if(restored!=null && active==null)"setup" else "watch")}
+    var page by rememberSaveable {mutableStateOf(if((initialPage=="setup" || restored!=null) && active==null)"setup" else "watch")}
     var picked by rememberSaveable(saver=AnchorPickedPointSaver) {mutableStateOf(restored?.mapLatitude?.let {lat->restored.mapLongitude?.let {lon->GeoPoint(lat,lon)}})}
     var origin by rememberSaveable {mutableStateOf(restored?.knownMethod?.let {runCatching {AnchorCenterSource.valueOf(it)}.getOrNull()} ?: AnchorCenterSource.MAP_PICK)}
     var picking by rememberSaveable {mutableStateOf(false)}
@@ -109,13 +112,22 @@ fun AnchorExperience(os: OsStore) {
         confirmEnd->{confirmEnd=false;true}
         estimateChoice!=null->{estimateChoice=null;true}
         view.showCrosshair->{view.showCrosshair=false;true}
+        page=="setup" && initialPage=="setup"->{os.shell.popRoute();true}
         page!="watch"->{page=if(page=="advanced")"setup"else if(page=="conditions")"estimate"else "watch";true}
         else->false
     }
     AppBackHandler(enabled=page!="watch"||view.showCrosshair||layers||picking||editingRadius||confirmEnd||estimateChoice!=null) {backInside()}
     BindInternalAppInputHandler {input->input==ShellInput.BACK && backInside()}
-    LaunchedEffect(os.anchorDraft,active?.id) {
-        if(active==null && restored==null) os.anchorDraft?.let {draft ->picked=draft.point;origin=AnchorCenterSource.MAP_PICK;estimate=false;radius=(draft.radiusMeters ?: state.settings.preferredAlarmRadiusMeters).toString();view.fly(draft.point,16.0);page="setup"}
+    var entryApplied by rememberSaveable {mutableStateOf(false)}
+    LaunchedEffect(Unit) {
+        if(!entryApplied && initialPage=="setup" && active==null && restored==null) entryDraft?.let {draft ->
+            picked=draft.point;origin=AnchorCenterSource.MAP_PICK;estimate=false
+            radius=(draft.radiusMeters ?: state.settings.preferredAlarmRadiusMeters).toString()
+            view.fly(draft.point,16.0);page="setup"
+        }
+        entryApplied=true
+        // 输入只属于本次访问，不能让以后从桌面独立打开守锚时继承这个地点。
+        if(entryDraft!=null && os.anchorDraft===entryDraft)os.anchorDraft=null
     }
     LaunchedEffect(referenceKey,picked,origin,estimate,radius,rode,depth,manual,page) {
         if(active==null && (page=="setup" || page=="advanced")) services.anchor.saveAnchorSetupDraft(AnchorSetupDraft(referenceKey=referenceKey,estimate=estimate,knownMethod=origin.name,manualCoordinate=manual,mapLatitude=picked?.lat,mapLongitude=picked?.lon,alarmRadius=radius,rode=rode,depth=depth))
@@ -172,13 +184,13 @@ fun AnchorExperience(os: OsStore) {
             feedback=when {point==null->os.t("等待可信船位，或拖动地图选择实际锚点。","Wait for an accepted position, or choose the actual anchor on the chart.");!geometry->os.t("请补充实际锚链长度和水深，再开始估计。","Enter deployed rode and water depth before estimation.");!notifications->os.t("请允许守锚通知。","Allow anchor watch notifications.");else->os.t("请检查警戒范围与船位来源。","Check the boundary and position source.")}
             return
         }
-        command("start") {services.anchor.arm(point.lat,point.lon,anchorWatchInput(estimate,origin,radiusValue,rodeValue,depthValue,state.settings.bowRollerHeightMeters,state.settings.boatLengthMeters,source,os.anchorDraft?.placeId,os.anchorDraft?.spotId))}
+        command("start") {services.anchor.arm(point.lat,point.lon,anchorWatchInput(estimate,origin,radiusValue,rodeValue,depthValue,state.settings.bowRollerHeightMeters,state.settings.boatLengthMeters,source,draftPlaceId,draftSpotId))}
     }
     val scene=anchorScene(os,state,fix?.let {MapVessel(it.point,it.freshCourse(tick),it.fresh(tick)&&readiness.ready,it.freshHeading(tick),it.freshSpeed(tick))},if(active==null)point else null,radiusValue,System.currentTimeMillis(),swingAreas)
-    val back={page=if(page=="advanced")"setup" else "watch"}
+    ReportVisibleAppRoute(os, if(page=="watch") "anchor" else "anchor:$page")
     Column(Modifier.fillMaxSize()) {
-        if(page=="watch" || page=="setup")MapPageHeader(os,if(page=="setup")os.t("下锚","drop anchor")else os.title(AppId.ANCHOR),{layers=true},if(page=="setup")back else null)
-        else PageHeader(os,when {page=="advanced"->os.t("下锚选项","drop options");page=="history"->os.t("锚泊历史","anchor history");page=="estimate"->os.t("这次锚泊","this watch");page.startsWith("review:")->os.t("锚泊回顾","watch review");else->os.t("守锚","anchor watch")},onBack=back)
+        if(page=="watch" || page=="setup")MapPageHeader(os,if(page=="setup")os.t("下锚","drop anchor")else os.title(AppId.ANCHOR),{layers=true},hasLocalBack=page=="setup")
+        else PageHeader(os,when {page=="advanced"->os.t("下锚选项","drop options");page=="history"->os.t("锚泊历史","anchor history");page=="estimate"->os.t("这次锚泊","this watch");page.startsWith("review:")->os.t("锚泊回顾","watch review");else->os.t("守锚","anchor watch")},hasLocalBack=true)
         if(page=="watch" || page=="setup") {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 MarineMap(os.maps,scene,view,Modifier.fillMaxSize())
@@ -230,7 +242,7 @@ fun AnchorExperience(os: OsStore) {
                 } else if(page=="setup") {
                     IconAction("pin",os.t("锚在准星","anchor here"),{picked=view.center;origin=AnchorCenterSource.MAP_PICK;estimate=false;view.showCrosshair=false})
                     IconAction("check",os.t("开始值守","start watch"),::startWatch,active=ready.canStart)
-                    IconAction("close",os.t("取消","cancel"),{page="watch";picked=null;services.anchor.clearAnchorSetupDraft()})
+                    IconAction("close",os.t("取消","cancel"),{page="watch";picked=null;os.anchorDraft=null;services.anchor.clearAnchorSetupDraft();if(initialPage=="setup")os.shell.popRoute()})
                 } else {
                     IconAction("anchor",os.t("下锚","drop anchor"),{
                         picked=sourcePoint ?: view.center;origin=if(sourcePoint!=null)AnchorCenterSource.CURRENT_POSITION else AnchorCenterSource.MAP_PICK
@@ -362,7 +374,7 @@ fun AnchorExperience(os: OsStore) {
                     MetroButton(if(saving)os.t("正在保存…","saving…")else os.t("保存为我的锚地","save to my places"),{saveSessionId=session.id},primary=true,enabled=!saving)
                     if(savedWatchId==session.id && savedAnchorageId!=null) {
                         Label(os.t("已保存到我的航行","saved to my sailing"),17,c.accent)
-                        MenuRow(os.t("查看收藏","view saved place")) {os.open("anchorage:$savedAnchorageId")}
+                        MenuRow(os.t("查看收藏","view saved place")) {os.openLinked("anchorage:$savedAnchorageId")}
                     }
                     feedback?.let {Label(it,16)}
                     Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {MetroButton("GPX",{services.anchor.exportGpx(session)},Modifier.weight(1f));MetroButton("CSV",{services.anchor.exportCsv(session)},Modifier.weight(1f))}

@@ -57,7 +57,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         else -> os.t("设置", "settings")
     }
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os, title(section), onBack = if(section=="overview") null else back)
+        PageHeader(os, title(section), hasLocalBack = section!="overview")
         when (section) {
             "vessel" -> VesselProfileSettings(os)
             "permissions" -> SystemAccessSettings(os)
@@ -78,7 +78,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         Label(os.t("个人偏好", "personal"), 17, c.accent)
                         MenuRow(title("vessel")) {section="vessel"}
                         MenuRow(title("start")) {section="start"}
-                        MenuRow(os.t("应用磁贴", "app tiles"), os.t("按应用预览样式与实时内容", "preview styles and live content by app")) {os.open("tiles")}
+                        MenuRow(os.t("应用磁贴", "app tiles"), os.t("按应用预览样式与实时内容", "preview styles and live content by app")) {os.openLinked("tiles")}
                         Label(os.t("资料与系统信息", "data & information"), 17, c.accent)
                         MenuRow(title("backup")) {section="backup"}
                         MenuRow(title("about"), BuildConfig.VERSION_NAME) {section="about"}
@@ -123,7 +123,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                     }
                     "start" -> {
                         Label(os.t("长按磁贴，拖动位置或调整尺寸。每个应用保留一块磁贴，在磁贴工坊选择它的内容样式。", "Hold a tile to move or resize it. Each app has one tile; choose its content style in Tile Studio."),23)
-                        MetroButton(os.t("选择磁贴样式", "choose tile styles"),{os.open("tiles")},primary=true)
+                        MetroButton(os.t("选择磁贴样式", "choose tile styles"),{os.openLinked("tiles")},primary=true)
                         MetroButton(os.t("恢复默认布局", "restore default layout"),{reset=true})
                     }
                     else -> {

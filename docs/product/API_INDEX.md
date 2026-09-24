@@ -1,6 +1,6 @@
 # 生产接口与结构声明索引
 
-共 3240 项类型与方法声明；按源文件排序。
+共 3244 项类型与方法声明；按源文件排序。
 
 由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
 
@@ -198,12 +198,13 @@
 | `fun openSystemDestination` | [WpShellRuntime.kt:198](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L198) |
 | `fun open` | [WpShellRuntime.kt:223](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L223) |
 | `fun dispatch` | [WpShellRuntime.kt:238](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L238) |
-| `fun back` | [WpShellRuntime.kt:277](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L277) |
-| `fun popRoute` | [WpShellRuntime.kt:285](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L285) |
-| `fun home` | [WpShellRuntime.kt:286](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L286) |
-| `fun input` | [WpShellRuntime.kt:287](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L287) |
-| `fun resetStart` | [WpShellRuntime.kt:303](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L303) |
-| `class ShellApp` | [WpShellRuntime.kt:328](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L328) |
+| `fun backDestination` | [WpShellRuntime.kt:278](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L278) |
+| `fun back` | [WpShellRuntime.kt:294](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L294) |
+| `fun popRoute` | [WpShellRuntime.kt:302](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L302) |
+| `fun home` | [WpShellRuntime.kt:303](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L303) |
+| `fun input` | [WpShellRuntime.kt:304](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L304) |
+| `fun resetStart` | [WpShellRuntime.kt:320](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L320) |
+| `class ShellApp` | [WpShellRuntime.kt:345](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L345) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/AnchorSwingCoverage.kt
 
@@ -372,13 +373,13 @@
 | 声明 | 实现位置 |
 | --- | --- |
 | `fun AnchorExperience` | [AnchorExperience.kt:60](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L60) |
-| `fun backInside` | [AnchorExperience.kt:105](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L105) |
-| `fun command` | [AnchorExperience.kt:131](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L131) |
-| `fun startWatch` | [AnchorExperience.kt:169](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L169) |
-| `fun displayedWind` | [AnchorExperience.kt:484](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L484) |
-| `fun storedWind` | [AnchorExperience.kt:490](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L490) |
-| `fun flush` | [AnchorExperience.kt:548](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L548) |
-| `fun anchorSamplesConnected` | [AnchorExperience.kt:562](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L562) |
+| `fun backInside` | [AnchorExperience.kt:108](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L108) |
+| `fun command` | [AnchorExperience.kt:143](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L143) |
+| `fun startWatch` | [AnchorExperience.kt:181](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L181) |
+| `fun displayedWind` | [AnchorExperience.kt:496](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L496) |
+| `fun storedWind` | [AnchorExperience.kt:502](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L502) |
+| `fun flush` | [AnchorExperience.kt:560](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L560) |
+| `fun anchorSamplesConnected` | [AnchorExperience.kt:574](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorExperience.kt#L574) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AnchorSetupPolicy.kt
 
@@ -400,7 +401,7 @@
 | --- | --- |
 | `fun ChartScreen` | [ChartScreen.kt:26](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L26) |
 | `fun closeTool` | [ChartScreen.kt:41](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L41) |
-| `fun ConfirmDialog` | [ChartScreen.kt:149](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L149) |
+| `fun ConfirmDialog` | [ChartScreen.kt:148](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L148) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/CoordinateEditPolicy.kt
 
@@ -531,37 +532,38 @@
 | 声明 | 实现位置 |
 | --- | --- |
 | `fun MapPageHeader` | [MarineMapControls.kt:18](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L18) |
-| `fun MapCrosshairReadout` | [MarineMapControls.kt:31](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L31) |
-| `fun MapZoomControls` | [MarineMapControls.kt:39](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L39) |
-| `fun MapPositionReadout` | [MarineMapControls.kt:50](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L50) |
-| `fun age` | [MarineMapControls.kt:53](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L53) |
+| `fun MapCrosshairReadout` | [MarineMapControls.kt:32](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L32) |
+| `fun MapZoomControls` | [MarineMapControls.kt:40](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L40) |
+| `fun MapPositionReadout` | [MarineMapControls.kt:51](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L51) |
+| `fun age` | [MarineMapControls.kt:54](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L54) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class MetroColors` | [Metro.kt:52](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L52) |
-| `class ShellHorizontalInsets` | [Metro.kt:56](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L56) |
-| `fun shellHorizontalInsets` | [Metro.kt:59](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L59) |
-| `fun safe` | [Metro.kt:64](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L64) |
-| `fun AppBackHandler` | [Metro.kt:71](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L71) |
-| `fun MetroTheme` | [Metro.kt:77](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L77) |
-| `fun Label` | [Metro.kt:82](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L82) |
-| `fun Glyph` | [Metro.kt:86](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L86) |
-| `fun point` | [Metro.kt:89](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L89) |
-| `fun line` | [Metro.kt:90](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L90) |
-| `fun circle` | [Metro.kt:91](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L91) |
-| `fun IconAction` | [Metro.kt:128](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L128) |
-| `fun MetroButton` | [Metro.kt:135](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L135) |
-| `fun PageHeader` | [Metro.kt:144](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L144) |
-| `fun PageBody` | [Metro.kt:163](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L163) |
-| `fun MenuRow` | [Metro.kt:167](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L167) |
-| `fun Field` | [Metro.kt:175](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L175) |
-| `fun Toggle` | [Metro.kt:186](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L186) |
-| `fun ChoiceRow` | [Metro.kt:204](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L204) |
-| `fun Pivot` | [Metro.kt:215](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L215) |
-| `fun MetroProgress` | [Metro.kt:254](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L254) |
-| `fun TextDialog` | [Metro.kt:269](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L269) |
+| `class MetroColors` | [Metro.kt:54](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L54) |
+| `class ShellHorizontalInsets` | [Metro.kt:58](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L58) |
+| `fun shellHorizontalInsets` | [Metro.kt:61](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L61) |
+| `fun safe` | [Metro.kt:66](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L66) |
+| `fun AppBackHandler` | [Metro.kt:73](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L73) |
+| `fun MetroTheme` | [Metro.kt:79](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L79) |
+| `fun Label` | [Metro.kt:84](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L84) |
+| `fun Glyph` | [Metro.kt:88](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L88) |
+| `fun point` | [Metro.kt:91](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L91) |
+| `fun line` | [Metro.kt:92](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L92) |
+| `fun circle` | [Metro.kt:93](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L93) |
+| `fun IconAction` | [Metro.kt:130](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L130) |
+| `fun MetroButton` | [Metro.kt:137](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L137) |
+| `fun PageHeader` | [Metro.kt:146](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L146) |
+| `fun HeaderBackButton` | [Metro.kt:162](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L162) |
+| `fun PageBody` | [Metro.kt:169](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L169) |
+| `fun MenuRow` | [Metro.kt:173](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L173) |
+| `fun Field` | [Metro.kt:181](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L181) |
+| `fun Toggle` | [Metro.kt:192](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L192) |
+| `fun ChoiceRow` | [Metro.kt:210](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L210) |
+| `fun Pivot` | [Metro.kt:221](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L221) |
+| `fun MetroProgress` | [Metro.kt:260](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L260) |
+| `fun TextDialog` | [Metro.kt:275](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt#L275) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MySailingExperience.kt
 
@@ -635,8 +637,15 @@
 | 声明 | 实现位置 |
 | --- | --- |
 | `fun NotificationQuickActions` | [NotificationQuickActions.kt:37](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationQuickActions.kt#L37) |
-| `fun point` | [NotificationQuickActions.kt:162](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationQuickActions.kt#L162) |
-| `fun line` | [NotificationQuickActions.kt:163](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationQuickActions.kt#L163) |
+| `fun point` | [NotificationQuickActions.kt:163](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationQuickActions.kt#L163) |
+| `fun line` | [NotificationQuickActions.kt:164](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationQuickActions.kt#L164) |
+
+## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PageNavigation.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class PageNavigation` | [PageNavigation.kt:11](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PageNavigation.kt#L11) |
+| `fun pageNavigation` | [PageNavigation.kt:21](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PageNavigation.kt#L21) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PlacesScreen.kt
 

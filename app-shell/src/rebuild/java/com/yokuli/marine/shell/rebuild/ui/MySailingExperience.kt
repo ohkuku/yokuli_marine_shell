@@ -132,7 +132,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             if(place.note.isNotBlank()) Label(place.note,21)
             MetroButton(os.t("在海图上查看","show on chart"),{os.fly(place.point);os.showCrosshair=true;os.openLinked("chart")},primary=true)
             MetroButton(os.t("前往这里","go here"),{start=true})
-            MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(place.point,place.name);os.open("anchor")})
+            MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(place.point,place.name);os.openLinked("anchor:setup")})
             MetroButton(os.t("编辑资料","edit place"),{edit=true})
             MetroButton(os.t("删除收藏","delete saved place"),{remove=true})
         }

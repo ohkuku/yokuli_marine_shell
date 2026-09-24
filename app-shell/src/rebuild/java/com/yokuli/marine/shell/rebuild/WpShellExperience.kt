@@ -278,7 +278,7 @@ private fun ShellAppContent(os: OsStore, page: String) {
         page == "data_center" || page.startsWith("data_center:") -> DataCenterScreen(os, page.substringAfter(':', "").takeIf { it.isNotBlank() })
         page == "voyages" -> LogbookScreen(os)
         page.substringBefore(':') in setOf("voyage","replay","report") -> LogbookScreen(os,page.substringAfter(':').toLongOrNull())
-        page == "anchor" -> AnchorExperience(os)
+        page == "anchor" || page.startsWith("anchor:") -> AnchorExperience(os,page.substringAfter(':',"watch"))
         page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os)
         page == "local_nmea" -> LocalNmeaScreen(os)
         page == "tiles" || page.startsWith("tiles:") -> TileLibraryScreen(os,page.substringAfter(':', "").takeIf {it.isNotBlank()})

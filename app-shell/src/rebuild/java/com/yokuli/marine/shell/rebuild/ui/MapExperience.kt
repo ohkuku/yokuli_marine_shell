@@ -76,7 +76,7 @@ fun MapPicker(os:OsStore,initialPoint:GeoPoint?,referenceScene:MapScene=MapScene
     Dialog(onDismissRequest=onCancel,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
         AppBackHandler(onBack=onCancel)
         Column(Modifier.fillMaxSize().background(LocalMetro.current.bg)) {
-            PageHeader(os,os.t("选择位置","choose position"),onBack=onCancel)
+            PageHeader(os,os.t("选择位置","choose position"),hasLocalBack=true)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 MarineMap(os.maps,referenceScene,view,Modifier.fillMaxSize())
                 MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(LocalMetro.current.bg))

@@ -72,7 +72,7 @@ import java.util.Locale
                         Label(spotSource(os,spot.coordinateSource)+spot.coordinateUncertaintyMeters?.let {" · ±${os.formatDistance(it)}"}.orEmpty(),16,LocalMetro.current.muted)
                         MetroButton(os.t("在海图上查看","show on chart"),{os.fly(point);os.showCrosshair=true;os.openLinked("chart")},primary=true)
                         MetroButton(os.t("前往这个坐标","go to this spot"),{startSpotId=spot.id})
-                        MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(point,spot.name,data.place.id,spot.id,spot.preferredAlarmRadiusMeters);os.open("anchor")})
+                        MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(point,spot.name,data.place.id,spot.id,spot.preferredAlarmRadiusMeters);os.openLinked("anchor:setup")})
                     }
                     if(data.place.description.isNotBlank()) Label(data.place.description,20)
                 }

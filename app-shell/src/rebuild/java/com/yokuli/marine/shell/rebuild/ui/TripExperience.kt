@@ -147,7 +147,7 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
     }
     val session = state.tripSessions.firstOrNull { it.id == id } ?: loaded?.map?.session
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os, session?.name ?: os.t("航行详情", "voyage"), onBack = back)
+        PageHeader(os, session?.name ?: os.t("航行详情", "voyage"), hasLocalBack = true)
         val content = loaded
         when {
             error -> PageBody { Label(os.t("暂时无法读取这次航行。", "This voyage could not be loaded."), 23); MetroButton(os.t("重试", "retry"), { revision++ }) }
