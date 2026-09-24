@@ -37,7 +37,6 @@ fun coordinates(p: GeoPoint): String {
     fun value(v: Double, positive: String, negative: String) = String.format(Locale.US, "%d° %06.3f′ %s", abs(v).toInt(), (abs(v)%1)*60, if(v>=0) positive else negative)
     return value(p.lat,"N","S")+"  "+value(p.lon,"E","W")
 }
-fun nm(m: Double) = if (m < 185.2) "${m.roundToInt()} m" else String.format(Locale.US, "%.2f nm", m/1852)
 fun decimal(v: Double?, digits: Int = 1) = v?.takeIf { it.isFinite() }?.let { String.format(Locale.US, "%.${digits}f", it) } ?: "—"
 fun uid() = UUID.randomUUID().toString()
 
@@ -88,6 +87,7 @@ enum class AppId(val zh: String, val en: String, val icon: String) {
 class YokuliApplication : Application() {
     @javax.inject.Inject lateinit var marineProvider: javax.inject.Provider<com.yokuli.runtime.marine.MarineSystem>
     @javax.inject.Inject lateinit var contentProvider: javax.inject.Provider<com.yokuli.anchorwatch.api.MarineContentService>
+    @javax.inject.Inject lateinit var notificationCoordinator: com.yokuli.anchorwatch.runtime.notification.NotificationCoordinator
     // Lazy connection preserves boot/background behavior: observing persisted notices does not open sensors.
     val marineSystem get() = marineProvider.get()
     val marineContent get() = contentProvider.get()
@@ -96,6 +96,7 @@ class YokuliApplication : Application() {
         super.onCreate()
         com.yokuli.runtime.marine.MarineSystemBootstrap.initialize(this)
         os = OsStore(this)
+        os.observeNotificationUnits(notificationCoordinator)
     }
 }
 
@@ -113,6 +114,13 @@ class OsStore(val context: Context) {
     var reduceMotion by mutableStateOf(initial.optBoolean("reduceMotion", false))
     var textSize by mutableStateOf("STANDARD")
     var measurementUnits by mutableStateOf(MeasurementUnitSystem.NAUTICAL)
+    var lengthUnit by mutableStateOf(com.yokuli.shell.contract.LengthUnit.METERS)
+    var depthUnit by mutableStateOf(com.yokuli.shell.contract.DepthUnit.METERS)
+    var temperatureUnit by mutableStateOf(com.yokuli.shell.contract.TemperatureUnit.CELSIUS)
+    var pressureUnit by mutableStateOf(com.yokuli.shell.contract.PressureUnit.HECTOPASCALS)
+    val unitPreferences get()=com.yokuli.shell.contract.MarineUnitPreferences(
+        measurementUnits,lengthUnit,depthUnit,temperatureUnit,pressureUnit)
+    val unitFormats by derivedStateOf { com.yokuli.marine.core.design.MarineUnitFormats(unitPreferences) }
     var coordinateFormat by mutableStateOf("DMM")
     var places by mutableStateOf(initial.optJSONArray("places")?.objects()?.mapNotNull { runCatching { Place.from(it) }.getOrNull() } ?: emptyList())
     var routes by mutableStateOf(initial.optJSONArray("routes")?.objects()?.mapNotNull { runCatching { Route.from(it) }.getOrNull() } ?: emptyList())

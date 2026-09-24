@@ -171,7 +171,8 @@ internal fun sourceValueText(os: OsStore, metric: VesselMetricId, value: Any?): 
         VesselMetricId.COG, VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC, VesselMetricId.DEVICE_HEADING_TRUE, VesselMetricId.DEVICE_HEADING_MAGNETIC, VesselMetricId.TRUE_WIND_DIRECTION, VesselMetricId.CURRENT_SET, VesselMetricId.WAYPOINT_BEARING -> os.formatBearing(value.toDouble())
         VesselMetricId.WATER_TEMPERATURE, VesselMetricId.AIR_TEMPERATURE -> os.formatTemperature(value.toDouble())
         VesselMetricId.PRESSURE -> os.formatMetric("pressure", value.toDouble())
-        VesselMetricId.WAYPOINT_DISTANCE, VesselMetricId.XTE, VesselMetricId.TOTAL_LOG, VesselMetricId.TRIP_LOG -> os.formatDistance(value.toDouble() * 1852.0)
+        VesselMetricId.WAYPOINT_DISTANCE, VesselMetricId.TOTAL_LOG, VesselMetricId.TRIP_LOG -> os.formatDistance(value.toDouble() * 1852.0)
+        VesselMetricId.XTE -> os.formatMetric("xte", value.toDouble())
         VesselMetricId.HEEL, VesselMetricId.PITCH, VesselMetricId.APPARENT_WIND_ANGLE, VesselMetricId.TRUE_WIND_ANGLE, VesselMetricId.RUDDER_ANGLE -> os.formatAngle(value.toDouble())
         VesselMetricId.RATE_OF_TURN -> "${decimal(value.toDouble())}°/min"
         VesselMetricId.ROLL_RATE, VesselMetricId.PITCH_RATE, VesselMetricId.YAW_RATE -> "${decimal(value.toDouble())}°/s"

@@ -130,14 +130,15 @@ private fun publicationReading(os:OsStore,capability:NmeaCapability,feed:NmeaFee
         else observation.freshness in setOf(VesselDataFreshness.FRESH,VesselDataFreshness.HELD)
     val text=when(value) {
         is VesselPosition->os.formatCoordinates(GeoPoint(value.latitude,value.longitude))
-        is VesselAttitude->"${decimal(value.heelDegrees)}° / ${decimal(value.pitchDegrees)}°"
+        is VesselAttitude->"${os.formatAngle(value.heelDegrees)} / ${os.formatAngle(value.pitchDegrees)}"
         is Double->when(capability) {
             NmeaCapability.APPARENT_WIND,NmeaCapability.TRUE_WIND,NmeaCapability.WATER_SPEED->os.formatSpeed(value)
             NmeaCapability.DEPTH->os.formatDepth(value)
-            NmeaCapability.PRESSURE->"${decimal(value,0)} hPa"
-            NmeaCapability.TEMPERATURE->"${decimal(value)} °C"
-            NmeaCapability.ROTATION->"${decimal(value)}°/min"
-            else->"${decimal(value)}°"
+            NmeaCapability.PRESSURE->os.formatPressure(value)
+            NmeaCapability.TEMPERATURE->os.formatTemperature(value)
+            NmeaCapability.ROTATION->os.formatMetric("rot", value)
+            NmeaCapability.HEADING->os.formatBearing(value)
+            else->os.formatAngle(value)
         }
         else->os.t("等待有效数据","waiting for valid data")
     }

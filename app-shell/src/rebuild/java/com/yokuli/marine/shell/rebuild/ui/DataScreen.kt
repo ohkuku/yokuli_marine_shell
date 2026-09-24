@@ -96,7 +96,7 @@ internal fun metricName(os:OsStore,key:String)=when(key) {
                         if(os.positionSource=="demo") Label(os.t("演示数据","DEMO DATA"),18,c.accent)
                         fix?.let {
                             Label(os.formatCoordinates(it.point),20)
-                            Label("${it.source} · ${readingAge(os,it.elapsed,now)}${it.accuracy?.let { a -> " · ±${decimal(a,0)} m" }.orEmpty()}",14,c.muted)
+                            Label("${it.source} · ${readingAge(os,it.elapsed,now)}${it.accuracy?.let { a -> " · ±${os.formatLength(a)}" }.orEmpty()}",14,c.muted)
                         }
                     }
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(22.dp)) {

@@ -6,7 +6,6 @@ import android.util.AtomicFile
 import androidx.compose.runtime.*
 import com.yokuli.marine.shell.BuildConfig
 import com.yokuli.marine.shell.rebuild.GeoPoint
-import com.yokuli.marine.shell.rebuild.nm
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -119,8 +118,8 @@ class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
 
 /** Owns map sources and resources only; never owns navigation, watch or recording. */
 class MapSessionStore(val context: Context, val scope: CoroutineScope, val library: ChartLibrary, private val legacy: JSONObject) {
-    var distanceLabel: (Double) -> String = ::nm
     var nauticalScale by mutableStateOf(true)
+    var shortScaleFeet by mutableStateOf(false)
     var chinese by mutableStateOf(legacy.optString("language", java.util.Locale.getDefault().language) == "zh")
     var snapshot by mutableStateOf<Bitmap?>(null)
     var snapshotCapturedAt by mutableLongStateOf(0L)

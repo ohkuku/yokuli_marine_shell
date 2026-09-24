@@ -58,7 +58,7 @@ import com.yokuli.marine.core.design.WpTypeScale
     Column(modifier.background(c.bg.copy(alpha=.94f)).padding(horizontal=12.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(3.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically) {
             Box(Modifier.size(5.dp).background(if(fresh)c.accent else c.muted));Spacer(Modifier.width(8.dp))
-            Label(fix?.let {os.formatSpeed(it.speed)+it.freshCourse(now)?.let {course->"   COG ${decimal(course,0)}°"}.orEmpty()} ?: os.t("等待首次船位","waiting for first position"),15)
+            Label(fix?.let {os.formatSpeed(it.speed)+it.freshCourse(now)?.let {course->"   COG ${os.formatBearing(course)}"}.orEmpty()} ?: os.t("等待首次船位","waiting for first position"),15)
         }
         Label(fix?.let {os.t("船位 ","position ")+age(it.elapsed)} ?: os.t("开启定位后显示船位","position appears when a source is enabled"),11,c.muted)
         fix?.let {

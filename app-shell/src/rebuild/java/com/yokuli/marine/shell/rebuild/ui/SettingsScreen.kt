@@ -72,7 +72,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         listOf("appearance", "language", "units", "sound", "permissions").forEach { key ->
                             MenuRow(title(key), when(key) {
                                 "language" -> if(os.chinese) "简体中文" else "English"
-                                "units" -> if(os.measurementUnits==MeasurementUnitSystem.NAUTICAL) os.t("海里 · 节 · ", "nm · kn · ")+os.coordinateFormat else "km · km/h · ${os.coordinateFormat}"
+                                "units" -> "${os.distanceUnitLabel} · ${os.speedUnitLabel} · " + os.t("水深 ", "depth ") + os.depthUnitLabel
                                 else -> null
                             }) {section=key}
                         }
@@ -108,20 +108,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         ChoiceRow("简体中文",os.chinese) {os.shell.updateSystemPreferences {it.copy(languageTag="zh-CN")}}
                         ChoiceRow("English",!os.chinese) {os.shell.updateSystemPreferences {it.copy(languageTag="en")}}
                     }
-                    "units" -> {
-                        Label(os.t("距离与速度", "distance & speed"),25)
-                        MeasurementUnitSystem.entries.forEach {units->
-                            ChoiceRow(if(units==MeasurementUnitSystem.NAUTICAL) os.t("海里 · 节", "nautical miles · knots") else os.t("公里 · 公里/小时", "kilometres · km/h"),os.measurementUnits==units) {
-                                os.shell.updateSystemPreferences {it.copy(measurementUnitSystemName=units.name)}
-                            }
-                        }
-                        Label(os.t("坐标格式", "coordinate format"),25)
-                        listOf("DMM" to os.t("度与分", "degrees & minutes"),"DD" to os.t("十进制度", "decimal degrees"),"DMS" to os.t("度、分与秒", "degrees, minutes & seconds")).forEach {(format,label)->
-                            ChoiceRow(label,os.coordinateFormat==format) {os.shell.updateSystemPreferences {it.copy(appPreferenceValues=it.appPreferenceValues+("preferences.coordinate.format" to "c:$format"))}}
-                        }
-                        Label(os.formatCoordinates(GeoPoint(-36.84123,174.76543)),20)
-                        Label(os.t("海图、日志、锚警、仪表与磁贴同时生效。原始记录及 NMEA 数据不改变。水深统一使用米，温度统一使用摄氏度。", "Applies to charts, logs, anchor watch, instruments and tiles. Raw records and NMEA remain unchanged. Depth uses metres; temperature uses Celsius."),17,c.muted)
-                    }
+                    "units" -> UnitSettings(os)
                     "start" -> {
                         Label(os.t("长按磁贴，拖动位置或调整尺寸。每个应用保留一块磁贴，在磁贴工坊选择它的内容样式。", "Hold a tile to move or resize it. Each app has one tile; choose its content style in Tile Studio."),23)
                         MetroButton(os.t("选择磁贴样式", "choose tile styles"),{os.openLinked("tiles")},primary=true)
@@ -142,33 +129,6 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         }
     }
     if(reset) ConfirmDialog(os,os.t("恢复默认磁贴布局？其他资料保留。", "Restore default tiles? Other data stays."),{reset=false}) {os.shell.resetStart();reset=false}
-}
-
-@Composable private fun VesselProfileSettings(os: OsStore) {
-    val marine = os.marine ?: return
-    val state by marine.services.state.collectAsState()
-    var name by remember(state.vesselSettings.vesselName) { mutableStateOf(state.vesselSettings.vesselName) }
-    var length by remember(state.settings.boatLengthMeters) { mutableStateOf(state.settings.boatLengthMeters.toString()) }
-    var draft by remember(state.vesselSettings.draftMeters) { mutableStateOf(state.vesselSettings.draftMeters?.toString().orEmpty()) }
-    var bow by remember(state.settings.bowRollerHeightMeters) { mutableStateOf(state.settings.bowRollerHeightMeters.toString()) }
-    var antenna by remember(state.settings.nmeaGpsAntennaToBowMeters) { mutableStateOf(state.settings.nmeaGpsAntennaToBowMeters.toString()) }
-    val valid = length.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true && (draft.isBlank() || draft.toDoubleOrNull()?.let { it.isFinite() && it >= 0 } == true) && listOf(bow, antenna).all { text -> text.toDoubleOrNull()?.let { it.isFinite() && it >= 0 } == true }
-    val changed = name != state.vesselSettings.vesselName || length.toDoubleOrNull() != state.settings.boatLengthMeters || draft.toDoubleOrNull() != state.vesselSettings.draftMeters || bow.toDoubleOrNull() != state.settings.bowRollerHeightMeters || antenna.toDoubleOrNull() != state.settings.nmeaGpsAntennaToBowMeters
-    PageBody {
-        Field(os.t("船名", "boat name"), name, { name = it.take(100) })
-        Field(os.t("船长 · m", "length · m"), length, { length = it }, number = true)
-        Field(os.t("吃水 · m（未知可留空）", "draft · m (leave blank if unknown)"), draft, { draft = it }, number = true)
-        Label(os.t("设备位置", "equipment positions"), 26)
-        Field(os.t("船艏滚轮距水面高度 · m", "bow roller height above water · m"), bow, { bow = it }, number = true)
-        Field(os.t("固定 GPS 天线到船艏滚轮 · m", "fixed GPS antenna to bow roller · m"), antenna, { antenna = it }, number = true)
-        Label(os.t("这些资料供相关应用共用。手机定位不会假定手机固定在 GPS 天线位置。", "These details are shared by the apps that need them. Phone positioning does not assume a fixed antenna location."), 16, LocalMetro.current.muted)
-        MetroButton(os.t("保存船舶资料", "save boat details"), {
-            marine.services.preferences.setVesselGeometry(length.toDouble(), bow.toDouble(), antenna.toDouble())
-            marine.services.preferences.setVesselIdentity(name, draft.toDoubleOrNull())
-        }, primary = true, enabled = valid && changed)
-        if (!changed) Label(os.t("资料已保存", "details saved"), 15, LocalMetro.current.muted)
-        MenuRow(os.t("传感器与船体安装", "sensors & vessel mounting"), os.t("在数据中心确认安装、校准并选择来源", "confirm mounting, calibrate and choose sources in Data Center"), "data") { os.openLinked("data_center:phone") }
-    }
 }
 
 @Composable private fun SystemAccessSettings(os: OsStore) {

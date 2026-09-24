@@ -69,7 +69,7 @@ import java.util.Locale
                     MetroButton(os.t("添加另一个具体位置","add another spot"),{addSpot=true})
                     selected?.let {spot->
                         val point=GeoPoint(spot.latitude,spot.longitude)
-                        Label(spotSource(os,spot.coordinateSource)+spot.coordinateUncertaintyMeters?.let {" · ±${os.formatDistance(it)}"}.orEmpty(),16,LocalMetro.current.muted)
+                        Label(spotSource(os,spot.coordinateSource)+spot.coordinateUncertaintyMeters?.let {" · ±${os.formatLength(it)}"}.orEmpty(),16,LocalMetro.current.muted)
                         MetroButton(os.t("在海图上查看","show on chart"),{os.fly(point);os.showCrosshair=true;os.openLinked("chart")},primary=true)
                         MetroButton(os.t("前往这个坐标","go to this spot"),{startSpotId=spot.id})
                         MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(point,spot.name,data.place.id,spot.id,spot.preferredAlarmRadiusMeters);os.openLinked("anchor:setup")})
@@ -80,8 +80,9 @@ import java.util.Locale
                     if(data.place.personalNotes.isNotBlank()) Label(data.place.personalNotes,22)
                     selected?.let {spot->
                         Label(spot.name,30,LocalMetro.current.accent)
-                        listOf(os.t("水深","depth") to spot.typicalWaterDepthMeters,os.t("锚链长度","rode") to spot.typicalRodeLengthMeters,os.t("守望半径","watch radius") to spot.preferredAlarmRadiusMeters)
-                            .filter {it.second!=null}.forEach {(label,value)->Label("$label  ${os.formatDepth(value)}",23)}
+                        spot.typicalWaterDepthMeters?.let { Label(os.t("水深","depth")+"  "+os.formatDepth(it),23) }
+                        spot.typicalRodeLengthMeters?.let { Label(os.t("锚链长度","rode")+"  "+os.formatLength(it),23) }
+                        spot.preferredAlarmRadiusMeters?.let { Label(os.t("守望半径","watch radius")+"  "+os.formatLength(it),23) }
                         if(spot.approachNotes.isNotBlank()) Label(spot.approachNotes,20)
                         if(spot.personalNotes.isNotBlank()) Label(spot.personalNotes,20)
                         MetroButton(os.t("编辑这个坐标与参数","edit this spot"),{editSpotId=spot.id})
@@ -106,7 +107,7 @@ import java.util.Locale
                         Label(if(visit.endedAt!=null)durationLabel(visit.endedAt!!-visit.startedAt)else os.t("未记录结束时间","end time not recorded"),20)
                         Label(os.t("${visit.alarmCount} 次警报","${visit.alarmCount} alarms"),18)
                         if(visit.userNotes.isNotBlank())Label(visit.userNotes,20)
-                        visit.maxExcursionMeters?.let {Label(os.t("最大偏移 ${os.formatDistance(it)}","maximum excursion ${os.formatDistance(it)}"),18)}
+                        visit.maxExcursionMeters?.let {Label(os.t("最大偏移 ${os.formatLength(it)}","maximum excursion ${os.formatLength(it)}"),18)}
                     }
                 }
                 else->{
@@ -150,23 +151,25 @@ import java.util.Locale
     val initialLat=rememberSaveable(spot.id){os.formatLatitude(spot.latitude)}
     val initialLon=rememberSaveable(spot.id){os.formatLongitude(spot.longitude)}
     var lat by rememberSaveable(spot.id) {mutableStateOf(initialLat)};var lon by rememberSaveable(spot.id) {mutableStateOf(initialLon)}
-    var depth by rememberSaveable(spot.id) {mutableStateOf(spot.typicalWaterDepthMeters?.toString().orEmpty())}
-    var rode by rememberSaveable(spot.id) {mutableStateOf(spot.typicalRodeLengthMeters?.toString().orEmpty())}
-    var radius by rememberSaveable(spot.id) {mutableStateOf(spot.preferredAlarmRadiusMeters?.toString().orEmpty())}
+    // 显示偏好只转换编辑文字，收藏仍精确保留米值；切换单位不清空未保存的草稿。
+    val depth=rememberUnitNumberDraft(spot.typicalWaterDepthMeters,os.depthUnitLabel,os::depthValue,os::depthMeters,spot.id)
+    val rode=rememberUnitNumberDraft(spot.typicalRodeLengthMeters,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,spot.id)
+    val radius=rememberUnitNumberDraft(spot.preferredAlarmRadiusMeters,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,spot.id)
     val point=preservedCoordinate(GeoPoint(spot.latitude,spot.longitude),initialLat,initialLon,lat,lon)
-    fun valid(value:String)=value.isBlank()||value.toDoubleOrNull()?.let {it.isFinite()&&it>=0}==true
+    fun valid(value:UnitNumberDraft)=value.text.isBlank()||value.value?.let {it>=0}==true
     Dialog(onDismissRequest=onDismiss){Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(LocalMetro.current.bg).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
         Label(os.t("具体坐标","specific spot"),31)
         Field(os.t("名称","name"),name,{name=it.take(200)})
         Field(os.t("纬度","latitude")+" · ${os.coordinateFormat}",lat,{lat=it})
         Field(os.t("经度","longitude")+" · ${os.coordinateFormat}",lon,{lon=it})
-        Field(os.t("水深 · m","depth · m"),depth,{depth=it});Field(os.t("锚链 · m","rode · m"),rode,{rode=it})
-        Field(os.t("守望半径 · m","watch radius · m"),radius,{radius=it})
+        Field(os.t("水深","depth")+" · "+os.depthUnitLabel,depth.text,depth::edit,number=true)
+        Field(os.t("锚链","rode")+" · "+os.lengthUnitLabel,rode.text,rode::edit,number=true)
+        Field(os.t("守望半径","watch radius")+" · "+os.lengthUnitLabel,radius.text,radius::edit,number=true)
         Field(os.t("笔记","notes"),note,{note=it.take(20000)},multiline=true)
         MetroButton(os.t("保存收藏资料","save place details"),{point?.let {onSave(spot.copy(name=name.trim(),latitude=it.lat,longitude=it.lon,personalNotes=note,
             coordinateSource=if(it==GeoPoint(spot.latitude,spot.longitude))spot.coordinateSource else "USER_EDITED",
             coordinateUncertaintyMeters=if(it==GeoPoint(spot.latitude,spot.longitude))spot.coordinateUncertaintyMeters else null,
-            typicalWaterDepthMeters=depth.toDoubleOrNull(),typicalRodeLengthMeters=rode.toDoubleOrNull(),preferredAlarmRadiusMeters=radius.toDoubleOrNull()))}},
+            typicalWaterDepthMeters=depth.value,typicalRodeLengthMeters=rode.value,preferredAlarmRadiusMeters=radius.value))}},
             primary=true,enabled=name.isNotBlank()&&point!=null&&valid(depth)&&valid(rode)&&valid(radius))
         Label(os.t("编辑收藏不改变当前锚警的中心和范围。","Editing this saved spot leaves the active watch unchanged."),15,LocalMetro.current.muted)
         MetroButton(os.t("取消","cancel"),onDismiss)

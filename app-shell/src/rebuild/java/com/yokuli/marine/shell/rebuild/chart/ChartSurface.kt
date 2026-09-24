@@ -29,7 +29,6 @@ import com.google.android.gms.maps.model.LatLng as GoogleLatLng
 import com.yokuli.marine.shell.BuildConfig
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.distance
-import com.yokuli.marine.shell.rebuild.nm
 import com.yokuli.marine.shell.rebuild.ui.Label
 import com.yokuli.marine.shell.rebuild.ui.MetroProgress
 import com.yokuli.marine.shell.rebuild.ui.LocalMetro
@@ -62,7 +61,7 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
     var scene = MapScene()
     var onEvent: (MapEvent) -> Unit = {}
     var nauticalScale = true
-    var distanceLabel: (Double) -> String = ::nm
+    var shortScaleFeet = false
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var handle: MapPoint? = null
@@ -101,8 +100,9 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
         val maximum=distance(cam.unproject(x,y),cam.unproject(x+110*density,y))
         if(maximum.isFinite() && maximum>0) {
             // 整数 1 / 2 / 5 比例尺：改变线段宽度适配真实距离，绝不把任意像素宽度标为小数。
-            val unit=if(nauticalScale && maximum>=1852)1852.0 else if(!nauticalScale && maximum>=1000)1000.0 else 1.0
-            val suffix=if(unit==1852.0)"nm" else if(unit==1000.0)"km" else "m"
+            // 大范围沿用航程单位；近距比例尺与尺寸设置共用 m/ft，不固定写死米。
+            val unit=if(nauticalScale && maximum>=1852)1852.0 else if(!nauticalScale && maximum>=1000)1000.0 else if(shortScaleFeet).3048 else 1.0
+            val suffix=if(unit==1852.0)"nm" else if(unit==1000.0)"km" else if(shortScaleFeet)"ft" else "m"
             val available=(maximum/unit).coerceAtLeast(1.0)
             val power=10.0.pow(floor(log10(available)))
             val nice=listOf(1.0,2.0,5.0).lastOrNull {it*power<=available}?.times(power) ?: power
@@ -381,7 +381,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         }
     }
     fun update(scene:MapScene,events:(MapEvent)->Unit) {
-        onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.distanceLabel=maps.distanceLabel;overlay.nauticalScale=maps.nauticalScale;overlay.invalidate()
+        onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.nauticalScale=maps.nauticalScale;overlay.shortScaleFeet=maps.shortScaleFeet;overlay.invalidate()
         nativeScene.render(googleMap,libre,scene,state.ruler)
         updateTrafficCount()
         googleMap?.uiSettings?.setAllGesturesEnabled(state.interactive)

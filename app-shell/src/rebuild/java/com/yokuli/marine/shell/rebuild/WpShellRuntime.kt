@@ -105,10 +105,14 @@ class WpShellRuntime(private val os: OsStore) {
                 os.textSize=it.appPreferenceValues["preferences.display.text_size"]?.removePrefix("c:") ?: "STANDARD"
                 os.keepAwake=it.appPreferenceValues["preferences.display.keep_awake"]!="b:0"
                 os.measurementUnits=runCatching { MeasurementUnitSystem.valueOf(it.measurementUnitSystemName) }.getOrDefault(MeasurementUnitSystem.NAUTICAL)
+                os.lengthUnit=runCatching {com.yokuli.shell.contract.LengthUnit.valueOf(it.appPreferenceValues["preferences.units.length"]?.removePrefix("c:").orEmpty())}.getOrDefault(com.yokuli.shell.contract.LengthUnit.METERS)
+                os.depthUnit=runCatching {com.yokuli.shell.contract.DepthUnit.valueOf(it.appPreferenceValues["preferences.units.depth"]?.removePrefix("c:").orEmpty())}.getOrDefault(com.yokuli.shell.contract.DepthUnit.METERS)
+                os.temperatureUnit=runCatching {com.yokuli.shell.contract.TemperatureUnit.valueOf(it.appPreferenceValues["preferences.units.temperature"]?.removePrefix("c:").orEmpty())}.getOrDefault(com.yokuli.shell.contract.TemperatureUnit.CELSIUS)
+                os.pressureUnit=runCatching {com.yokuli.shell.contract.PressureUnit.valueOf(it.appPreferenceValues["preferences.units.pressure"]?.removePrefix("c:").orEmpty())}.getOrDefault(com.yokuli.shell.contract.PressureUnit.HECTOPASCALS)
                 os.coordinateFormat=it.appPreferenceValues["preferences.coordinate.format"]?.removePrefix("c:") ?: "DMM"
                 os.maps.chinese=os.chinese
-                os.maps.distanceLabel={meters->os.formatDistance(meters)}
                 os.maps.nauticalScale=os.measurementUnits==MeasurementUnitSystem.NAUTICAL
+                os.maps.shortScaleFeet=os.lengthUnit==com.yokuli.shell.contract.LengthUnit.FEET
             } }
         }
         os.scope.launch {

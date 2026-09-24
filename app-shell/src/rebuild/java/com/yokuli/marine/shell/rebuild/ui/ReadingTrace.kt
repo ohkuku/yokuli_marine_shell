@@ -30,36 +30,52 @@ import kotlin.math.abs
     val span=(end-start).coerceAtLeast(1)
     val minimum=samples.minOfOrNull {it.value} ?: 0.0
     val maximum=samples.maxOfOrNull {it.value} ?: 1.0
-    val padding=((maximum-minimum)*.12).coerceAtLeast(if(samples.firstOrNull()?.unit=="hPa") .1 else .5)
-    val lower=minimum-padding;val upper=maximum+padding
+    val displayedMinimum=os.displayMetricValue(metric,minimum)
+    val displayedMaximum=os.displayMetricValue(metric,maximum)
+    val minimumCanonicalPadding=when(metric) {
+        "pressure", "pressure_1h", "pressure_3h", "pressure_6h" -> .1
+        "xte", "waypoint_distance", "total_log", "trip_log" -> .001
+        else -> .5
+    }
+    // 差值转换不能带温度的零点偏移；历史本身仍是规范单位，不写回显示值。
+    val minimumDisplayPadding=abs(os.displayMetricValue(metric,minimumCanonicalPadding)-os.displayMetricValue(metric,0.0))
+    val padding=((displayedMaximum-displayedMinimum)*.12).coerceAtLeast(minimumDisplayPadding)
+    val lower=displayedMinimum-padding;val upper=displayedMaximum+padding
     val selected=selectedAt?.let { time -> samples.minByOrNull {abs(it.elapsed-time)} }
     val pick:(Float)->Unit={x->selectedAt=start+(x/width.coerceAtLeast(1)).coerceIn(0f,1f).times(span).toLong()}
     val pickCurrent by rememberUpdatedState(pick)
     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-            Label(metricName(os,metric),13,c.muted)
+            Label(listOf(metricName(os,metric),os.displayMetricUnit(metric)).filter {it.isNotBlank()}.joinToString(" · "),13,c.muted)
             Label(os.t("${samples.size} 个样本","${samples.size} samples"),13,c.muted)
         }
-        Canvas(Modifier.fillMaxWidth().height(178.dp).clipToBounds().onSizeChanged {width=it.width}
-            .semantics { contentDescription = os.t("真实读数趋势，点按或拖动查看样本", "Actual reading history. Tap or drag to inspect a sample") }
-            .pointerInput(metric) {detectTapGestures {pickCurrent(it.x)}}
-            .pointerInput(metric) {detectDragGestures(onDragStart={pickCurrent(it.x)}) {change,_->change.consume();pickCurrent(change.position.x)}}) {
-            for(i in 0..3) {val y=size.height*i/3;drawLine(c.muted.copy(alpha=.18f),Offset(0f,y),Offset(size.width,y),1.dp.toPx())}
-            fun position(v:Reading)=Offset(((v.elapsed-start).toDouble()/span*size.width).toFloat(),(size.height-(v.value-lower)/(upper-lower)*size.height).toFloat())
-            var previous:Reading?=null
-            val path=Path()
-            samples.forEach {value->
-                val p=position(value);val old=previous
-                if(old==null || !readingsAreContinuous(old,value))path.moveTo(p.x,p.y) else path.lineTo(p.x,p.y)
-                previous=value
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            if(samples.isNotEmpty()) Column(Modifier.width(56.dp).height(178.dp),verticalArrangement=Arrangement.SpaceBetween) {
+                listOf(upper,lower+(upper-lower)*2/3,lower+(upper-lower)/3,lower).forEach {
+                    Label(gaugeScaleNumber(it,upper-lower),11,c.muted)
+                }
             }
-            drawPath(path,c.accent,style=Stroke(2.dp.toPx()))
-            // 历史点本身不能证明当前仍是 FRESH；端点颜色只读取当前权威观测。
-            samples.lastOrNull()?.let { last ->
-                val isCurrent=current?.let { it.sourceKey==last.sourceKey && it.elapsed==last.elapsed && it.fresh(now) }==true
-                drawCircle(if(isCurrent)c.accent else c.muted,3.dp.toPx(),position(last))
+            Canvas(Modifier.weight(1f).height(178.dp).clipToBounds().onSizeChanged {width=it.width}
+                .semantics { contentDescription = os.t("真实读数趋势，点按或拖动查看样本", "Actual reading history. Tap or drag to inspect a sample") }
+                .pointerInput(metric) {detectTapGestures {pickCurrent(it.x)}}
+                .pointerInput(metric) {detectDragGestures(onDragStart={pickCurrent(it.x)}) {change,_->change.consume();pickCurrent(change.position.x)}}) {
+                for(i in 0..3) {val y=size.height*i/3;drawLine(c.muted.copy(alpha=.18f),Offset(0f,y),Offset(size.width,y),1.dp.toPx())}
+                fun position(v:Reading)=Offset(((v.elapsed-start).toDouble()/span*size.width).toFloat(),(size.height-(os.displayMetricValue(metric,v.value)-lower)/(upper-lower)*size.height).toFloat())
+                var previous:Reading?=null
+                val path=Path()
+                samples.forEach {value->
+                    val p=position(value);val old=previous
+                    if(old==null || !readingsAreContinuous(old,value))path.moveTo(p.x,p.y) else path.lineTo(p.x,p.y)
+                    previous=value
+                }
+                drawPath(path,c.accent,style=Stroke(2.dp.toPx()))
+                // 历史点本身不能证明当前仍是 FRESH；端点颜色只读取当前权威观测。
+                samples.lastOrNull()?.let { last ->
+                    val isCurrent=current?.let { it.sourceKey==last.sourceKey && it.elapsed==last.elapsed && it.fresh(now) }==true
+                    drawCircle(if(isCurrent)c.accent else c.muted,3.dp.toPx(),position(last))
+                }
+                selected?.let {val p=position(it);drawLine(c.fg.copy(alpha=.5f),Offset(p.x,0f),Offset(p.x,size.height),1.dp.toPx());drawCircle(c.fg,4.dp.toPx(),p)}
             }
-            selected?.let {val p=position(it);drawLine(c.fg.copy(alpha=.5f),Offset(p.x,0f),Offset(p.x,size.height),1.dp.toPx());drawCircle(c.fg,4.dp.toPx(),p)}
         }
         if(samples.isEmpty()) Label(os.t("等待第一份读数","waiting for the first reading"),15,c.muted)
         else if(selected!=null) Label("${os.formatMetric(metric,selected.value)} · ${readingAge(os,selected.elapsed,now)} · ${selected.source}",15,c.accent)

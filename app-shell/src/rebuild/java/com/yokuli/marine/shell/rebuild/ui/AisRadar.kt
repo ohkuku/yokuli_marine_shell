@@ -37,6 +37,7 @@ import com.yokuli.marine.shell.rebuild.scene.ais.AisVector3
 import com.yokuli.marine.shell.rebuild.scene.ais.validAisBearing
 import com.yokuli.runtime.contract.ais.*
 import com.yokuli.shell.compose.LocalInternalAppInputEnabled
+import com.yokuli.shell.contract.MeasurementUnitSystem
 import kotlin.math.*
 
 /** AIS 距离方位盘，不是实体雷达；显示范围绝不参与交通风险计算。 */
@@ -253,10 +254,14 @@ internal fun AisRadar(
         }
         if (showExplanation && projection == null) RadarInfo(os, Modifier.fillMaxWidth().padding(12.dp)) { showExplanation = false }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            listOf(.25, .5, 1.0, 2.0, 4.0, 8.0, 16.0).forEach { nm ->
-                val value = nm * 1852.0
-                Label(os.formatDistance(value), 14, if (abs(s.preferences.rangeNauticalMiles - nm) < .001) colors.accent else colors.muted,
-                    Modifier.heightIn(min = 42.dp).clickable(enabled = enabled, role = Role.Button) { os.aisPreferences { it.copy(rangeNauticalMiles = nm) } }.padding(vertical = 10.dp))
+            val presets = if (os.measurementUnits == MeasurementUnitSystem.NAUTICAL)
+                listOf(.25, .5, 1.0, 2.0, 4.0, 8.0, 16.0).map { it * 1852.0 }
+                else listOf(500.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0, 25000.0)
+            // 换单位不会改变用户的观察范围；旧范围仍作为选中项可见。
+            val ranges = if (presets.any { abs(it - rangeMeters) < .1 }) presets else (presets + rangeMeters).sorted()
+            ranges.forEach { value ->
+                Label(os.formatDistance(value), 14, if (abs(value - rangeMeters) < .1) colors.accent else colors.muted,
+                    Modifier.heightIn(min = 42.dp).clickable(enabled = enabled, role = Role.Button) { os.aisPreferences { it.copy(rangeNauticalMiles = value / 1852.0) } }.padding(vertical = 10.dp))
             }
         }
         val hasPrediction = chosen?.relative?.let { it.state in setOf(AisCpaState.CALCULATED, AisCpaState.ESTIMATED) && (it.tcpaSeconds ?: -1.0) >= 0 && it.ownAtCpa != null && it.targetAtCpa != null } == true

@@ -179,7 +179,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         "ANCHOR" -> {
             val watch = state?.active
             val delta = watch?.let { anchor -> fix?.let { distance(it.point, GeoPoint(anchor.anchorLatitude, anchor.anchorLongitude)) } }
-            listOf(TileFrame("WATCH", if (watch == null) os.t("未在值守", "watch is off") else if (watch.paused) os.t("值守已暂停", "watch paused") else if (state?.alarmSnapshot?.state == AlarmState.ALARM && state.alarmSnapshot.type != AlarmType.ALARM_TEST) os.t("警报触发", "alarm active") else if (state?.alarmSnapshot?.state == AlarmState.WARNING) os.t("锚警预警", "anchor warning") else os.t("锚警值守中", "anchor watch active"), if (watch == null) os.t("为下一次锚泊做好准备", "prepare your next anchorage") else os.t("点按查看完整值守状态", "tap for the complete watch status")), TileFrame("DISTANCE", os.formatDistance(delta), if (watch == null) os.t("未开始锚警", "no anchor watch") else os.t("警戒半径 ", "alarm radius ") + os.formatDistance(watch.alarmRadiusMeters), os.t("距离锚位", "distance to anchor"), progress = if (delta != null && watch != null && watch.alarmRadiusMeters > 0) (delta / watch.alarmRadiusMeters).toFloat() else null), TileFrame("LIMIT", os.formatDistance(watch?.alarmRadiusMeters), watch?.let { if (it.paused) os.t("已暂停值守", "watch paused") else os.t("当前值守范围", "current watch limit") } ?: os.t("未开始锚警", "no anchor watch"), os.t("警戒半径", "alarm radius")))
+            listOf(TileFrame("WATCH", if (watch == null) os.t("未在值守", "watch is off") else if (watch.paused) os.t("值守已暂停", "watch paused") else if (state?.alarmSnapshot?.state == AlarmState.ALARM && state.alarmSnapshot.type != AlarmType.ALARM_TEST) os.t("警报触发", "alarm active") else if (state?.alarmSnapshot?.state == AlarmState.WARNING) os.t("锚警预警", "anchor warning") else os.t("锚警值守中", "anchor watch active"), if (watch == null) os.t("为下一次锚泊做好准备", "prepare your next anchorage") else os.t("点按查看完整值守状态", "tap for the complete watch status")), TileFrame("DISTANCE", os.formatLength(delta), if (watch == null) os.t("未开始锚警", "no anchor watch") else os.t("警戒半径 ", "alarm radius ") + os.formatLength(watch.alarmRadiusMeters), os.t("距离锚位", "distance to anchor"), progress = if (delta != null && watch != null && watch.alarmRadiusMeters > 0) (delta / watch.alarmRadiusMeters).toFloat() else null), TileFrame("LIMIT", os.formatLength(watch?.alarmRadiusMeters), watch?.let { if (it.paused) os.t("已暂停值守", "watch paused") else os.t("当前值守范围", "current watch limit") } ?: os.t("未开始锚警", "no anchor watch"), os.t("警戒半径", "alarm radius")))
         }
         "INSTRUMENTS" -> {
             val v = state?.vesselData
@@ -235,7 +235,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
             val server = state?.nmeaSharing
             listOf(TileFrame("SERVICE", when (server?.state) { SharingServerState.RUNNING -> os.t("正在监听", "listening"); SharingServerState.STARTING -> os.t("正在启动", "starting"); SharingServerState.ERROR -> os.t("服务受阻", "service unavailable"); else -> os.t("已停止", "stopped") }, os.t("本机数据服务", "local data service")), TileFrame("CLIENTS", os.t("${server?.clientCount ?: 0} 个客户端", "${server?.clientCount ?: 0} clients"), os.t("当前实际连接", "currently connected")), TileFrame("TRAFFIC", (server?.sentSentences ?: 0).toString(), os.t("实际写出的 NMEA 语句", "NMEA sentences actually written")))
         }
-        "SETTINGS" -> listOf(TileFrame("VESSEL", state?.vesselSettings?.vesselName?.ifBlank { null } ?: os.t("我的船", "my boat"), os.t("船舶资料与系统偏好", "boat details & system preferences")), TileFrame("UNITS", if (os.measurementUnits == MeasurementUnitSystem.NAUTICAL) os.t("海里 · 节", "nm · kn") else os.t("公里 · 公里/小时", "km · km/h"), os.coordinateFormat + " · " + if (os.chinese) "简体中文" else "English"))
+        "SETTINGS" -> listOf(TileFrame("VESSEL", state?.vesselSettings?.vesselName?.ifBlank { null } ?: os.t("我的船", "my boat"), os.t("船舶资料与系统偏好", "boat details & system preferences")), TileFrame("UNITS", os.distanceUnitLabel + " · " + os.speedUnitLabel, os.t("长度 ", "length ") + os.lengthUnitLabel + " · " + os.t("水深 ", "depth ") + os.depthUnitLabel + " · " + os.coordinateFormat, os.t("全局显示单位", "global display units")))
         else -> {
             val shellState by os.shell.engine.state.collectAsState()
             listOf(TileFrame("COLLECTION", os.t("${shellState.start.document.placements.size} 块磁贴", "${shellState.start.document.placements.size} tiles"), os.t("找到适合你的开始屏幕", "make Start your own")))
@@ -262,7 +262,8 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         }
     }
     val currentFrame = frames[page.mod(frames.size)]
-    var heldFrame by remember(app.id, title, keys) { mutableStateOf(currentFrame) }
+    // 冻结实时内容不冻结显示偏好；切换单位、坐标或语言时立刻刷新同一帧的文案。
+    var heldFrame by remember(app.id, title, keys, os.unitPreferences, os.coordinateFormat, os.chinese) { mutableStateOf(currentFrame) }
     SideEffect { if (context.liveContentEnabled) heldFrame = currentFrame }
     val frame = if (context.liveContentEnabled) currentFrame else heldFrame
     Box(context.modifier.fillMaxSize().clipToBounds()) {

@@ -129,7 +129,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             CoordinateMapPreview(os,listOf(MapPoint(place.id,place.point,place.name,os.accent)),place.point)
             Label(place.kind.label(os),17,LocalMetro.current.accent)
             Label(os.formatCoordinates(place.point),23)
-            fix?.takeIf {it.fresh(now)}?.let { Label("${os.formatDistance(distance(it.point,place.point))} · ${decimal(bearing(it.point,place.point),0)}°T",31) }
+            fix?.takeIf {it.fresh(now)}?.let { Label("${os.formatDistance(distance(it.point,place.point))} · ${os.formatBearing(bearing(it.point,place.point))}T",31) }
             if(place.collection.isNotBlank()) Label(place.collection,18,LocalMetro.current.muted)
             if(place.note.isNotBlank()) Label(place.note,21)
             MetroButton(os.t("在海图上查看","show on chart"),{os.fly(place.point);os.showCrosshair=true;os.openLinked("chart")},primary=true)

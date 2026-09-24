@@ -1,31 +1,67 @@
 package com.yokuli.marine.shell.rebuild.ui
 
-import com.yokuli.marine.core.design.MarineDisplayUnits
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.OsStore
-import com.yokuli.shell.contract.MeasurementUnitSystem
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
-fun OsStore.formatDistance(meters: Double?): String {
-    val value = meters?.takeIf { it.isFinite() && it >= 0 } ?: return "—"
-    val nautical = measurementUnits == MeasurementUnitSystem.NAUTICAL
-    if (value < if (nautical) 185.2 else 1000.0) return "${value.roundToInt()} m"
-    return String.format(Locale.US, "%.2f %s", MarineDisplayUnits.distanceFromMeters(value, measurementUnits), if (nautical) "nm" else "km")
-}
-fun OsStore.formatSpeed(knots: Double?): String {
-    val value = knots?.takeIf { it.isFinite() } ?: return "—"
-    return String.format(Locale.US, "%.1f %s", MarineDisplayUnits.speedFromKnots(value, measurementUnits), if (measurementUnits == MeasurementUnitSystem.NAUTICAL) "kn" else "km/h")
-}
-fun OsStore.formatDepth(meters: Double?): String = meters?.takeIf { it.isFinite() }?.let { String.format(Locale.US, "%.1f m", it) } ?: "—"
+/** 所有可见读数共用进程级单位格式器，后台通知也使用同一不可变实现。 */
+val OsStore.distanceUnitLabel get() = unitFormats.distanceUnit
+val OsStore.speedUnitLabel get() = unitFormats.speedUnit
+val OsStore.lengthUnitLabel get() = unitFormats.lengthUnit
+val OsStore.depthUnitLabel get() = unitFormats.depthUnit
+val OsStore.temperatureUnitLabel get() = unitFormats.temperatureUnit
+val OsStore.pressureUnitLabel get() = unitFormats.pressureUnit
+
+fun OsStore.distanceValue(meters: Double) = unitFormats.distanceValue(meters)
+fun OsStore.distanceMeters(value: Double) = unitFormats.distanceMeters(value)
+fun OsStore.speedValue(knots: Double) = unitFormats.speedValue(knots)
+fun OsStore.speedKnots(value: Double) = unitFormats.speedKnots(value)
+fun OsStore.lengthValue(meters: Double) = unitFormats.lengthValue(meters)
+fun OsStore.lengthMeters(value: Double) = unitFormats.lengthMeters(value)
+fun OsStore.depthValue(meters: Double) = unitFormats.depthValue(meters)
+fun OsStore.depthMeters(value: Double) = unitFormats.depthMeters(value)
+fun OsStore.temperatureValue(celsius: Double) = unitFormats.temperatureValue(celsius)
+fun OsStore.temperatureCelsius(value: Double) = unitFormats.temperatureCelsius(value)
+fun OsStore.pressureValue(hpa: Double) = unitFormats.pressureValue(hpa)
+fun OsStore.pressureHpa(value: Double) = unitFormats.pressureHpa(value)
+
+fun OsStore.formatDistance(meters: Double?) = unitFormats.distance(meters)
+fun OsStore.formatLength(meters: Double?) = unitFormats.length(meters)
+fun OsStore.formatDepth(meters: Double?) = unitFormats.depth(meters)
+fun OsStore.formatSpeed(knots: Double?) = unitFormats.speed(knots)
+fun OsStore.formatTemperature(celsius: Double?) = unitFormats.temperature(celsius)
+fun OsStore.formatPressure(hpa: Double?, signed: Boolean = false) = unitFormats.pressure(hpa, signed)
+fun OsStore.formatPressureChange(hpa: Double?) = unitFormats.pressure(hpa, signed = true)
 /** 方向统一归一化为 0..359，避免四舍五入后出现 360°。 */
 fun OsStore.formatBearing(degrees: Double?): String = degrees?.takeIf { it.isFinite() }?.let {
     "%03d°".format(Locale.US, (((it % 360 + 360) % 360).roundToInt()) % 360)
 } ?: "—"
 fun OsStore.formatAngle(degrees: Double?): String = degrees?.takeIf { it.isFinite() }?.let { "%.1f°".format(Locale.US, it) } ?: "—"
-fun OsStore.formatTemperature(celsius: Double?): String = celsius?.takeIf { it.isFinite() }?.let { "%.1f °C".format(Locale.US, it) } ?: "—"
+
+/** 图表刻度先在显示空间选取整刻度；这些输入仍为 DataHub 声明的规范单位。 */
+fun OsStore.displayMetricValue(key:String,raw:Double):Double=when(key.lowercase()) {
+    "sog","aws","tws","bsp","stw","vmg","vmc","current_drift"->speedValue(raw)
+    "depth","ukc"->depthValue(raw)
+    "water","air","temperature"->temperatureValue(raw)
+    "pressure","pressure_1h","pressure_3h","pressure_6h"->pressureValue(raw)
+    "waypoint_distance","total_log","trip_log","xte"->distanceValue(raw*1852.0)
+    else->raw
+}
+fun OsStore.displayMetricUnit(key:String):String=when(key.lowercase()) {
+    "sog","aws","tws","bsp","stw","vmg","vmc","current_drift"->speedUnitLabel
+    "depth","ukc"->depthUnitLabel
+    "water","air","temperature"->temperatureUnitLabel
+    "pressure","pressure_1h","pressure_3h","pressure_6h"->pressureUnitLabel
+    "waypoint_distance","total_log","trip_log","xte"->distanceUnitLabel
+    "cog","heading","twd","current_set","waypoint_bearing","awa","twa","heel","pitch","rudder"->"°"
+    "roll_rate","pitch_rate"->"°/s"
+    "rot"->"°/min"
+    "roll_period"->"s"
+    else->""
+}
 /** 读数的键映射内部规范单位；界面禁止把 raw unit 与转换后的值混在一起。 */
 fun OsStore.formatMetric(key: String, value: Double?): String = when(key.lowercase()) {
     "sog", "aws", "tws", "bsp", "stw", "vmg", "vmc", "current_drift" -> formatSpeed(value)
@@ -33,8 +69,8 @@ fun OsStore.formatMetric(key: String, value: Double?): String = when(key.lowerca
     "awa", "twa", "heel", "pitch", "rudder" -> formatAngle(value)
     "depth", "ukc" -> formatDepth(value)
     "water", "air", "temperature" -> formatTemperature(value)
-    "pressure" -> value?.takeIf {it.isFinite()}?.let {"%.0f hPa".format(Locale.US,it)} ?: "—"
-    "pressure_1h", "pressure_3h", "pressure_6h" -> value?.takeIf {it.isFinite()}?.let {"%+.1f hPa".format(Locale.US,it)} ?: "—"
+    "pressure" -> formatPressure(value)
+    "pressure_1h", "pressure_3h", "pressure_6h" -> formatPressureChange(value)
     "roll_rate", "pitch_rate" -> value?.takeIf {it.isFinite()}?.let {"%.1f°/s".format(Locale.US,it)} ?: "—"
     "rot" -> value?.takeIf {it.isFinite()}?.let {"%.1f°/min".format(Locale.US,it)} ?: "—"
     "roll_period" -> value?.takeIf {it.isFinite()}?.let {"%.1f s".format(Locale.US,it)} ?: "—"

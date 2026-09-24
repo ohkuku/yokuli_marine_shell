@@ -280,7 +280,7 @@ import kotlin.math.*
         AisStaticFact(os,s,os.t("广播目的地","broadcast destination"),static.destination,now)
         AisStaticFact(os,s,os.t("广播 ETA（与 TCPA 无关）","broadcast ETA (not TCPA)"),static.eta,now)
         static.draughtMeters?.let {AisFact(os,os.t("广播吃水","broadcast draught"),os.formatDepth(it.value))}
-        static.dimensions?.let {value->val d=value.value;AisFact(os,os.t("广播长 × 宽","broadcast length × beam"),os.formatDistance(d.lengthMeters.toDouble())+" × "+os.formatDistance(d.beamMeters.toDouble()));Label(os.t("定位点至船艏/艉/左舷/右舷：","antenna to bow / stern / port / starboard: ")+listOf(d.toBowMeters,d.toSternMeters,d.toPortMeters,d.toStarboardMeters).joinToString(" / "){os.formatDistance(it.toDouble())},14,LocalMetro.current.muted)}
+        static.dimensions?.let {value->val d=value.value;AisFact(os,os.t("广播长 × 宽","broadcast length × beam"),os.formatLength(d.lengthMeters.toDouble())+" × "+os.formatLength(d.beamMeters.toDouble()));Label(os.t("定位点至船艏/艉/左舷/右舷：","antenna to bow / stern / port / starboard: ")+listOf(d.toBowMeters,d.toSternMeters,d.toPortMeters,d.toStarboardMeters).joinToString(" / "){os.formatLength(it.toDouble())},14,LocalMetro.current.muted)}
         AisStaticFact(os,s,os.t("母船 MMSI","mother ship MMSI"),static.motherShipMmsi,now)
         if(target.safetyMessages.isNotEmpty()) {
             Label(os.t("收到的安全文本","received safety text"),27)
@@ -332,10 +332,10 @@ import kotlin.math.*
 @Composable private fun AisSettings(os:OsStore,s:TrafficSnapshot) {
     val p=s.preferences
     val request=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){}
-    var cpa by rememberSaveable(p.cpaDistanceMeters){mutableStateOf(decimal(p.cpaDistanceMeters,0))}
-    var minutes by rememberSaveable(p.cpaTimeSeconds){mutableStateOf(decimal(p.cpaTimeSeconds/60,0))}
-    var near by rememberSaveable(p.proximityMeters){mutableStateOf(decimal(p.proximityMeters,0))}
-    var anchor by rememberSaveable(p.anchorProximityMeters){mutableStateOf(decimal(p.anchorProximityMeters,0))}
+    val cpa=rememberUnitNumberDraft(p.cpaDistanceMeters,os.distanceUnitLabel,os::distanceValue,os::distanceMeters,p.cpaDistanceMeters)
+    val minutes=rememberUnitNumberDraft(p.cpaTimeSeconds,"min",{it/60.0},{it*60.0},p.cpaTimeSeconds)
+    val near=rememberUnitNumberDraft(p.proximityMeters,os.distanceUnitLabel,os::distanceValue,os::distanceMeters,p.proximityMeters)
+    val anchor=rememberUnitNumberDraft(p.anchorProximityMeters,os.distanceUnitLabel,os::distanceValue,os::distanceMeters,p.anchorProximityMeters)
     var ownMmsi by rememberSaveable(p.ownMmsi){mutableStateOf(p.ownMmsi?.let(::aisNumber).orEmpty())}
     var saved by remember {mutableStateOf(false)}
     fun permissions(enable:Boolean){if(enable&&Build.VERSION.SDK_INT>=33)request.launch(Manifest.permission.POST_NOTIFICATIONS)}
@@ -343,22 +343,23 @@ import kotlin.math.*
         Label(os.t("全船共用的交通规则","traffic rules shared across the boat"),24)
         Label(os.t("AIS 无法发现所有船。没有目标不代表周围安全；这些阈值是可调整初值，不是操船建议。","AIS does not detect every vessel. No targets does not mean clear surroundings. Limits are adjustable defaults, not manoeuvring advice."),16,LocalMetro.current.muted)
         Toggle(os.t("近距会遇提醒","closest-approach alerts"),p.cpaEnabled,os.t("CPA ${os.formatDistance(p.cpaDistanceMeters)} / ${decimal(p.cpaTimeSeconds/60,0)} 分钟","CPA ${os.formatDistance(p.cpaDistanceMeters)} / ${decimal(p.cpaTimeSeconds/60,0)} min")){enable->os.aisPreferences {it.copy(cpaEnabled=enable)};permissions(enable)}
-        Field(os.t("CPA 距离（米）","CPA distance (metres)"),cpa,{cpa=it;saved=false},number=true)
-        Field(os.t("未来时间窗口（分钟）","future window (minutes)"),minutes,{minutes=it;saved=false},number=true)
+        Field(os.t("CPA 距离","CPA distance")+" · ${os.distanceUnitLabel}",cpa.text,{cpa.edit(it);saved=false},number=true)
+        Field(os.t("未来时间窗口（分钟）","future window (minutes)"),minutes.text,{minutes.edit(it);saved=false},number=true)
         Toggle(os.t("当前近距离提醒","current-distance alerts"),p.proximityEnabled,os.formatDistance(p.proximityMeters)){enable->os.aisPreferences {it.copy(proximityEnabled=enable)};permissions(enable)}
-        Field(os.t("近距离范围（米）","proximity distance (metres)"),near,{near=it;saved=false},number=true)
+        Field(os.t("近距离范围","proximity distance")+" · ${os.distanceUnitLabel}",near.text,{near.edit(it);saved=false},number=true)
         Toggle(os.t("锚泊交通警戒","anchor traffic watch"),p.anchorProximityEnabled,os.t("独立于走锚报警，仅在本船锚泊时使用。","Independent from drag alarms; used while your vessel is anchored.")){enable->os.aisPreferences {it.copy(anchorProximityEnabled=enable)};permissions(enable)}
-        Field(os.t("锚泊交通范围（米）","anchor traffic distance (metres)"),anchor,{anchor=it;saved=false},number=true)
+        Field(os.t("锚泊交通范围","anchor traffic distance")+" · ${os.distanceUnitLabel}",anchor.text,{anchor.edit(it);saved=false},number=true)
         ChoiceRow(os.t("相对当前船位","relative to current own position"),!p.anchorUsesAnchorPoint){os.aisPreferences {it.copy(anchorUsesAnchorPoint=false)}}
         ChoiceRow(os.t("锚点区域警戒","anchor-centred area watch"),p.anchorUsesAnchorPoint,os.t("显示锚点到目标的距离，不称为船间距离。","Distance is measured from the anchor, not between vessels.")){os.aisPreferences {it.copy(anchorUsesAnchorPoint=true)}}
         Toggle(os.t("关注目标丢失提醒","alert when a target of concern is lost"),p.lostTargetAlerts){value->os.aisPreferences {it.copy(lostTargetAlerts=value)}}
         Toggle(os.t("提醒声音","alert sound"),p.soundEnabled){value->os.aisPreferences {it.copy(soundEnabled=value)};permissions(value)}
         Field(os.t("本船 MMSI（可留空）","own MMSI (optional)"),ownMmsi,{ownMmsi=it.filter(Char::isDigit).take(9);saved=false},number=true)
-        val valid=listOf(cpa,near,anchor).all {it.toDoubleOrNull()?.let {v->v.isFinite()&&v in 10.0..92600.0}==true}&&minutes.toDoubleOrNull()?.let {it.isFinite()&&it in 1.0..120.0}==true&&(ownMmsi.isBlank()||ownMmsi.length==9&&ownMmsi.toIntOrNull()?.let {it>0}==true)
+        val valid=listOf(cpa,near,anchor).all {it.value?.let {v->v in 10.0..92600.0}==true}&&minutes.value?.let {it in 60.0..7200.0}==true&&(ownMmsi.isBlank()||ownMmsi.length==9&&ownMmsi.toIntOrNull()?.let {it>0}==true)
         MetroButton(os.t("保存阈值与本船身份","save limits and own identity"),{
-            val distance=cpa.toDouble();val window=minutes.toDouble()*60;val proximity=near.toDouble();val anchoring=anchor.toDouble();val identity=ownMmsi.toIntOrNull()
+            val distance=cpa.value ?: return@MetroButton;val window=minutes.value ?: return@MetroButton;val proximity=near.value ?: return@MetroButton;val anchoring=anchor.value ?: return@MetroButton;val identity=ownMmsi.toIntOrNull()
             os.aisPreferences(onSaved={saved=true}) {it.copy(cpaDistanceMeters=distance,cpaTimeSeconds=window,proximityMeters=proximity,anchorProximityMeters=anchoring,ownMmsi=identity)}
         },primary=true,enabled=valid)
+        if(!valid)Label(os.t("距离应为 ${os.formatDistance(10.0)}–${os.formatDistance(92600.0)}，时间为 1–120 分钟；MMSI 为 9 位数字或留空。","Distances must be ${os.formatDistance(10.0)}–${os.formatDistance(92600.0)}, time 1–120 minutes; MMSI must contain 9 digits or be empty."),14,LocalMetro.current.muted)
         if(saved)Label(os.t("已保存","saved"),16,LocalMetro.current.accent)
         AisLayerChoice(os,false);AisLayerChoice(os,true)
         Label(os.t("运行状态","runtime status"),27)

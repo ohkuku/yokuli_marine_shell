@@ -64,7 +64,7 @@ internal fun AisTrafficScene3D(
     light: Boolean,
     chinese: Boolean,
     modifier: Modifier = Modifier,
-    formatDistance: (Double) -> String = { "${"%.2f".format(java.util.Locale.ROOT, it / 1852.0)} nm" },
+    formatDistance: (Double) -> String,
 ) {
     val colors = LocalMetro.current
     val enabled = LocalInternalAppInputEnabled.current && active

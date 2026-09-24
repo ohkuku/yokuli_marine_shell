@@ -324,16 +324,16 @@ private fun instrumentValue(os: OsStore, d: VesselDataSnapshot, tile: Instrument
         InstrumentTileId.MOTION_SCORE -> value(d.motion) { decimal(it.score) }
         InstrumentTileId.IMPACT_COUNT -> value(d.motion) { it.impactCandidateCount.toString() }
         InstrumentTileId.PRESSURE -> value(d.pressureHpa) { os.formatMetric("pressure", it) }
-        InstrumentTileId.PRESSURE_TREND_1H -> number(d.derived.pressureTrend1hHpa, " hPa")
-        InstrumentTileId.PRESSURE_TREND_3H -> number(d.derived.pressureTrend3hHpa, " hPa")
-        InstrumentTileId.PRESSURE_TREND_6H -> number(d.derived.pressureTrend6hHpa, " hPa")
+        InstrumentTileId.PRESSURE_TREND_1H -> value(d.derived.pressureTrend1hHpa) { os.formatMetric("pressure_1h", it) }
+        InstrumentTileId.PRESSURE_TREND_3H -> value(d.derived.pressureTrend3hHpa) { os.formatMetric("pressure_3h", it) }
+        InstrumentTileId.PRESSURE_TREND_6H -> value(d.derived.pressureTrend6hHpa) { os.formatMetric("pressure_6h", it) }
         InstrumentTileId.RATE_OF_TURN -> number(d.rateOfTurnDegreesPerMinute, "°/min")
         InstrumentTileId.RUDDER_ANGLE -> angle(d.rudderAngleDegrees)
         InstrumentTileId.WATER_TEMPERATURE -> value(d.waterTemperatureCelsius, os::formatTemperature)
         InstrumentTileId.AIR_TEMPERATURE -> value(d.airTemperatureCelsius, os::formatTemperature)
         InstrumentTileId.CURRENT_SET -> bearing(d.currentSetTrueDegrees)
         InstrumentTileId.CURRENT_DRIFT -> speed(d.currentDriftKnots)
-        InstrumentTileId.CROSS_TRACK_ERROR -> value(d.crossTrackErrorNauticalMiles) { val side = if (it < 0) "−" else ""; side + os.formatDistance(kotlin.math.abs(it) * 1852.0) }
+        InstrumentTileId.CROSS_TRACK_ERROR -> value(d.crossTrackErrorNauticalMiles) { os.formatMetric("xte", it) }
         InstrumentTileId.WAYPOINT_BEARING -> bearing(d.waypointBearingTrueDegrees)
         InstrumentTileId.WAYPOINT_DISTANCE -> distance(d.waypointDistanceNauticalMiles)
         InstrumentTileId.TOTAL_LOG -> distance(d.totalLogNauticalMiles)

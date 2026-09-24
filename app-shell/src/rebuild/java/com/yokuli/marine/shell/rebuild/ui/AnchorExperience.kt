@@ -48,8 +48,6 @@ import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
-import com.yokuli.marine.core.design.MarineDisplayUnits
-import com.yokuli.shell.contract.MeasurementUnitSystem
 
 /** 只保存地图选择草稿的经纬度，不序列化地图宿主或运行中的业务会话。 */
 private val AnchorPickedPointSaver=listSaver<MutableState<GeoPoint?>,Double>(
@@ -84,9 +82,9 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     var picking by rememberSaveable {mutableStateOf(false)}
     var layers by rememberSaveable {mutableStateOf(false)}
     var estimate by rememberSaveable {mutableStateOf(restored?.estimate ?: false)}
-    var radius by rememberSaveable {mutableStateOf(restored?.alarmRadius?.takeIf {it.isNotBlank()} ?: state.settings.preferredAlarmRadiusMeters.toString())}
-    var rode by rememberSaveable {mutableStateOf(restored?.rode ?: "40")}
-    var depth by rememberSaveable {mutableStateOf(restored?.depth.orEmpty())}
+    val radius=rememberUnitNumberDraft(restored?.alarmRadius?.takeIf {it.isNotBlank()} ?: state.settings.preferredAlarmRadiusMeters.toString(),os.lengthUnitLabel,os::lengthValue,os::lengthMeters,referenceKey)
+    val rode=rememberUnitNumberDraft(restored?.rode ?: "40",os.lengthUnitLabel,os::lengthValue,os::lengthMeters,referenceKey)
+    val depth=rememberUnitNumberDraft(restored?.depth.orEmpty(),os.depthUnitLabel,os::depthValue,os::depthMeters,referenceKey)
     var manual by rememberSaveable {mutableStateOf(restored?.manualCoordinate.orEmpty())}
     var editingRadius by rememberSaveable {mutableStateOf(false)}
     var confirmEnd by rememberSaveable {mutableStateOf(false)}
@@ -128,15 +126,15 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     LaunchedEffect(Unit) {
         if(!entryApplied && initialPage=="setup" && active==null && restored==null) entryDraft?.let {draft ->
             picked=draft.point;origin=AnchorCenterSource.MAP_PICK;estimate=false
-            radius=(draft.radiusMeters ?: state.settings.preferredAlarmRadiusMeters).toString()
+            radius.setCanonical(draft.radiusMeters ?: state.settings.preferredAlarmRadiusMeters)
             view.fly(draft.point,16.0);page="setup"
         }
         entryApplied=true
         // 输入只属于本次访问，不能让以后从桌面独立打开守锚时继承这个地点。
         if(entryDraft!=null && os.anchorDraft===entryDraft)os.anchorDraft=null
     }
-    LaunchedEffect(referenceKey,picked,origin,estimate,radius,rode,depth,manual,page) {
-        if(active==null && (page=="setup" || page=="advanced")) services.anchor.saveAnchorSetupDraft(AnchorSetupDraft(referenceKey=referenceKey,estimate=estimate,knownMethod=origin.name,manualCoordinate=manual,mapLatitude=picked?.lat,mapLongitude=picked?.lon,alarmRadius=radius,rode=rode,depth=depth))
+    LaunchedEffect(referenceKey,picked,origin,estimate,radius.canonicalText,rode.canonicalText,depth.canonicalText,manual,page) {
+        if(active==null && (page=="setup" || page=="advanced")) services.anchor.saveAnchorSetupDraft(AnchorSetupDraft(referenceKey=referenceKey,estimate=estimate,knownMethod=origin.name,manualCoordinate=manual,mapLatitude=picked?.lat,mapLongitude=picked?.lon,alarmRadius=radius.canonicalText,rode=rode.canonicalText,depth=depth.canonicalText))
     }
     var fittedWatchId by rememberSaveable {mutableStateOf<Long?>(null)}
     LaunchedEffect(active?.id) {
@@ -207,8 +205,8 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
         }
     }
     val point=effectiveAnchorPoint(picked,sourcePoint,origin,estimate)
-    val radiusValue=radius.toDoubleOrNull()?.takeIf {it.isFinite()&&it>0}
-    val rodeValue=rode.toDoubleOrNull();val depthValue=depth.toDoubleOrNull()
+    val radiusValue=radius.value?.takeIf {it>0}
+    val rodeValue=rode.value;val depthValue=depth.value
     val geometry=!estimate || (rodeValue!=null&&rodeValue.isFinite()&&rodeValue>0&&depthValue!=null&&depthValue.isFinite()&&depthValue>=0&&state.settings.bowRollerHeightMeters>0&&rodeValue>depthValue+state.settings.bowRollerHeightMeters)
     val originMode=when {estimate->AnchorOriginMode.BACKDOWN_FROM_ACCEPTED_POSITION;origin==AnchorCenterSource.CURRENT_POSITION->AnchorOriginMode.CURRENT_ACCEPTED_POSITION;origin==AnchorCenterSource.MANUAL_COORDINATES->AnchorOriginMode.MANUAL_COORDINATE;else->AnchorOriginMode.MAP_PICK}
     val ready=AnchorSetupReadinessEvaluator.evaluate(AnchorSetupReadinessInput(originMode,readiness.ready,point?.valid()==true,notifications,source in listOf(GpsDataSource.SYSTEM,GpsDataSource.NMEA)&&!(source==GpsDataSource.SYSTEM&&GpsSourceSafety.blocksSystemGps(state.settings.mockEnabled,state.mockGps.state)),geometry,radiusValue!=null))
@@ -241,9 +239,9 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                         Label(if(estimate)os.t("先值守，再估计锚点","watch, then estimate")else if(origin==AnchorCenterSource.CURRENT_POSITION)os.t("以开始时船位下锚","drop at the start position")else os.t("在选定位置下锚","drop at selected position"),25)
                         Label(point?.let(os::formatCoordinates) ?: os.t("等待船位，或拖动地图选择锚点","wait for a position, or select the anchor on the map"),14,c.muted)
                         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                            IconAction("minus",os.t("缩小范围","smaller boundary"),{radius=((radius.toDoubleOrNull() ?: 30.0)-5).coerceAtLeast(5.0).toString()})
-                            Label(os.formatDistance(radius.toDoubleOrNull()),30,c.accent,Modifier.weight(1f))
-                            IconAction("plus",os.t("扩大范围","larger boundary"),{radius=((radius.toDoubleOrNull() ?: 30.0)+5).toString()})
+                            IconAction("minus",os.t("缩小范围","smaller boundary"),{radius.setCanonical(((radius.value ?: 30.0)-os.lengthMeters(5.0)).coerceAtLeast(5.0))})
+                            Label(os.formatLength(radius.value),30,c.accent,Modifier.weight(1f))
+                            IconAction("plus",os.t("扩大范围","larger boundary"),{radius.setCanonical((radius.value ?: 30.0)+os.lengthMeters(5.0))})
                             Label(os.t("选项 ›","options ›"),16,c.accent,Modifier.clickable {page="advanced"}.padding(8.dp))
                         }
                         Label(if(estimate)os.t("虚线参考中心 · 候选经确认后才采用","temporary reference · estimated anchor needs confirmation")else os.t("圆线是你设定的警戒半径，不是 GPS 误差","circle is your alarm radius, not GPS error"),12,c.muted)
@@ -254,7 +252,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                         Row(verticalAlignment=Alignment.CenterVertically) {
                             Label(watchTitle(os,state),21,if(state.alarmSnapshot.type!=null)c.accent else c.fg,Modifier.weight(1f))
                             val distanceNow=if(readiness.ready)sourcePoint?.let {distance(it,watchCenter(active))} else null
-                            Label("${os.formatDistance(distanceNow)} / ${os.formatDistance(active.alarmRadiusMeters)}",17,c.accent)
+                            Label("${os.formatLength(distanceNow)} / ${os.formatLength(active.alarmRadiusMeters)}",17,c.accent)
                         }
                         if(state.alarmSnapshot.type!=null) {
                             Label(alarmReason(os,state.alarmSnapshot.type),16)
@@ -315,15 +313,15 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                         Label(os.formatCoordinates(it),22,c.accent)
                         val preview=remember {MapViewState(it,16.0).apply {interactive=false}}
                         LaunchedEffect(it) {preview.fly(it)}
-                        Box(Modifier.fillMaxWidth().height(180.dp)) {MarineMap(os.maps,MapScene(points=listOf(MapPoint("draft",it,"A",os.accent)),circles=radius.toDoubleOrNull()?.takeIf {r->r>0}?.let {r->listOf(MapCircle("draft",it,r,os.accent))}.orEmpty()),preview,Modifier.fillMaxSize());MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(c.bg))}
+                        Box(Modifier.fillMaxWidth().height(180.dp)) {MarineMap(os.maps,MapScene(points=listOf(MapPoint("draft",it,"A",os.accent)),circles=radiusValue?.let {r->listOf(MapCircle("draft",it,r,os.accent))}.orEmpty()),preview,Modifier.fillMaxSize());MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(c.bg))}
                     }
                     if(os.anchorDraft!=null)Label(os.t("来自收藏：${os.anchorDraft?.name}。请确认这是本次实际锚点。","from saved place: ${os.anchorDraft?.name}. Confirm this watch's actual anchor."),16,c.muted)
-                    Field(os.t(if(estimate)"临时警戒半径 · m" else "警戒半径 · m",if(estimate)"temporary boundary radius · m" else "alarm radius · m"),radius,{radius=it},number=true)
+                    Field(os.t(if(estimate)"临时警戒半径" else "警戒半径",if(estimate)"temporary boundary radius" else "alarm radius")+" · ${os.lengthUnitLabel}",radius.text,radius::edit,number=true)
                     if(estimate) {
                         Label(os.t("中心仍是参考位置，不是已确认锚点。候选需要你确认才采用。","the centre is a reference, not a confirmed anchor. Adoption requires your confirmation."),16)
-                        Field(os.t("实际放出的锚链／缆绳 · m","deployed rode length · m"),rode,{rode=it},number=true)
-                        Field(os.t("当前水深 · m","current water depth · m"),depth,{depth=it},number=true)
-                        Label(os.t("船艏高度 ${os.formatDepth(state.settings.bowRollerHeightMeters)} · 可在设置中修改","bow height ${os.formatDepth(state.settings.bowRollerHeightMeters)} · edit in settings"),14,c.muted)
+                        Field(os.t("实际放出的锚链／缆绳","deployed rode length")+" · ${os.lengthUnitLabel}",rode.text,rode::edit,number=true)
+                        Field(os.t("当前水深","current water depth")+" · ${os.depthUnitLabel}",depth.text,depth::edit,number=true)
+                        Label(os.t("船艏高度 ${os.formatLength(state.settings.bowRollerHeightMeters)} · 可在设置中修改","bow height ${os.formatLength(state.settings.bowRollerHeightMeters)} · edit in settings"),14,c.muted)
                     }
                     Label(os.t("船位来源：","position source: ")+sourceLabel(os,source),18)
                     if(!readiness.ready)Label(positionReason(os,readiness.reason),16)
@@ -353,7 +351,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                     if(active.candidateDecision==CandidateDecision.AVAILABLE.name) {
                         Label(os.t("候选待确认","candidate ready for review"),26,c.accent)
                         candidatePoint(active)?.let {Label(os.formatCoordinates(it),18)}
-                        Label(os.t("不确定范围：${os.formatDistance(active.provisionalRadiusMeters)}","uncertainty: ${os.formatDistance(active.provisionalRadiusMeters)}"),17)
+                        Label(os.t("不确定范围：${os.formatLength(active.provisionalRadiusMeters)}","uncertainty: ${os.formatLength(active.provisionalRadiusMeters)}"),17)
                         MetroButton(os.t("比较并采用候选","review and adopt candidate"),{candidatePoint(active)?.let {estimateChoice=AnchorEstimateChoice(active.id,active.candidateId,it,false)}},primary=true,enabled=active.candidateRadialObservable&&AnchorCentreApplyPolicy.mayApply(state.alarmSnapshot.state))
                         MetroButton(os.t("继续观察","continue observing"),{services.anchor.continueEstimatingCenter(active)})
                         MetroButton(os.t("保留当前参考","keep current reference"),{services.anchor.keepCurrentCenter(active)})
@@ -369,7 +367,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                     Label(when(analysis.status) {AnchorCentreRecalculationStatus.READY->os.t("可比较的候选已准备好","candidate ready to compare");AnchorCentreRecalculationStatus.DATA_QUALITY_INSUFFICIENT->os.t("定位质量不足，不能采用估计","position quality insufficient for adoption");AnchorCentreRecalculationStatus.RADIAL_NOT_OBSERVABLE->os.t("尚不能从摆动确定锚点距离","swing does not yet establish anchor distance");else->os.t("轨迹时长或摆动证据不足","insufficient time or swing evidence")},22)
                     analysis.candidate?.let {candidate ->
                         Label(os.formatCoordinates(GeoPoint(candidate.latitude,candidate.longitude)),18)
-                        Label(os.t("相对当前中心移动 ${os.formatDistance(analysis.shiftMeters)}","shift from current centre ${os.formatDistance(analysis.shiftMeters)}"),17)
+                        Label(os.t("相对当前中心移动 ${os.formatLength(analysis.shiftMeters)}","shift from current centre ${os.formatLength(analysis.shiftMeters)}"),17)
                     }
                     if(analysis.status==AnchorCentreRecalculationStatus.READY)MetroButton(os.t("比较并采用这次估计","review and adopt this estimate"),{analysis.candidate?.let {estimateChoice=AnchorEstimateChoice(active.id,null,GeoPoint(it.latitude,it.longitude),true)}},enabled=AnchorCentreApplyPolicy.mayApply(state.alarmSnapshot.state),primary=true)
                     MetroButton(os.t("保留当前锚点","keep current anchor"),services.anchor::keepCurrentRecalculatedCentre)
@@ -414,7 +412,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                     Box(Modifier.fillMaxWidth().height(320.dp)) {MarineMap(os.maps,reviewScene,preview,Modifier.fillMaxSize());MapSourceButton(os,Modifier.align(Alignment.TopEnd).background(c.bg))}
                     Label(os.t("本次到过的范围 · 颜色越浓，停留越久","observed area · darker colour means more time spent"),14,c.muted)
                     Label(os.formatCoordinates(watchCenter(session)),18)
-                    Label(os.t("最大偏移 ${os.formatDistance(session.maxDistanceMeters)} · ${session.alarmCount} 次位置告警","maximum excursion ${os.formatDistance(session.maxDistanceMeters)} · ${session.alarmCount} position alarms"),18)
+                    Label(os.t("最大偏移 ${os.formatLength(session.maxDistanceMeters)} · ${session.alarmCount} 次位置告警","maximum excursion ${os.formatLength(session.maxDistanceMeters)} · ${session.alarmCount} position alarms"),18)
                     MetroButton(if(saving)os.t("正在保存…","saving…")else os.t("保存为我的锚地","save to my places"),{saveSessionId=session.id},primary=true,enabled=!saving)
                     if(savedWatchId==session.id && savedAnchorageId!=null) {
                         Label(os.t("已保存到我的航行","saved to my sailing"),17,c.accent)
@@ -531,19 +529,11 @@ private fun watchInput(session:AnchorSessionEntity,radius:Double)=AnchorWatchInp
 @Composable
 private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,services:MarineServices,onSaved:()->Unit) {
     var depthOn by rememberSaveable(session.id){mutableStateOf(session.depthGuardEnabled)}
-    var shallow by rememberSaveable(session.id){mutableStateOf(session.shallowDepthAlarmMeters?.toString().orEmpty())}
-    var deep by rememberSaveable(session.id){mutableStateOf(session.deepDepthAlarmMeters?.toString().orEmpty())}
+    val shallow=rememberUnitNumberDraft(session.shallowDepthAlarmMeters,os.depthUnitLabel,os::depthValue,os::depthMeters,session.id)
+    val deep=rememberUnitNumberDraft(session.deepDepthAlarmMeters,os.depthUnitLabel,os::depthValue,os::depthMeters,session.id)
     var windOn by rememberSaveable(session.id){mutableStateOf(session.windGuardEnabled)}
-    val units=os.measurementUnits
-    val speedUnit=if(units==MeasurementUnitSystem.NAUTICAL)"kn" else "km/h"
-    val speedFactor=if(units==MeasurementUnitSystem.NAUTICAL)1.0 else MarineDisplayUnits.NAUTICAL_MILES_TO_KILOMETRES
-    fun displayedWind(knots:Double?)=knots?.let {String.format(Locale.US,"%.2f",MarineDisplayUnits.speedFromKnots(it,units)).trimEnd('0').trimEnd('.')}.orEmpty()
-    val initialWarning=displayedWind(session.windWarningKnots)
-    val initialAlarm=displayedWind(session.windAlarmKnots)
-    var warning by rememberSaveable(session.id,units){mutableStateOf(initialWarning)}
-    var alarm by rememberSaveable(session.id,units){mutableStateOf(initialAlarm)}
-    // 用户编辑使用全局单位，领域层继续保存 kn；未编辑的原值不因显示舍入而改变。
-    fun storedWind(text:String,initial:String,original:Double?):Double? = if(text==initial)original else text.toDoubleOrNull()?.div(speedFactor)
+    val warning=rememberUnitNumberDraft(session.windWarningKnots,os.speedUnitLabel,os::speedValue,os::speedKnots,session.id)
+    val alarm=rememberUnitNumberDraft(session.windAlarmKnots,os.speedUnitLabel,os::speedValue,os::speedKnots,session.id)
     var shiftOn by rememberSaveable(session.id){mutableStateOf(session.windShiftEnabled)}
     var shift by rememberSaveable(session.id){mutableStateOf(session.windShiftThresholdDegrees?.toString().orEmpty())}
     var invalid by remember {mutableStateOf(false)}
@@ -558,17 +548,17 @@ private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,services:Mar
         Label(os.t("本次值守的条件","conditions for this watch"),28)
         Label(os.t("缺少真实风或水深数据时会显示等待，不会把零当作测量。","missing wind or depth remains unavailable, never a zero measurement."),16,LocalMetro.current.muted)
         Toggle(os.t("水深警戒","depth guard"),depthOn) {depthOn=it}
-        if(depthOn) {Field(os.t("过浅阈值 · m","shallow limit · m"),shallow,{shallow=it},true);Field(os.t("过深阈值 · m（可留空）","deep limit · m (optional)"),deep,{deep=it},true)}
+        if(depthOn) {Field(os.t("过浅阈值","shallow limit")+" · ${os.depthUnitLabel}",shallow.text,shallow::edit,true);Field(os.t("过深阈值（可留空）","deep limit (optional)")+" · ${os.depthUnitLabel}",deep.text,deep::edit,true)}
         Toggle(os.t("风速警戒","wind speed guard"),windOn) {windOn=it}
-        if(windOn) {Field(os.t("风速预警","wind warning")+" · $speedUnit",warning,{warning=it},true);Field(os.t("风速告警","wind alarm")+" · $speedUnit",alarm,{alarm=it},true)}
+        if(windOn) {Field(os.t("风速预警","wind warning")+" · ${os.speedUnitLabel}",warning.text,warning::edit,true);Field(os.t("风速告警","wind alarm")+" · ${os.speedUnitLabel}",alarm.text,alarm::edit,true)}
         Toggle(os.t("风向变化警戒","wind shift guard"),shiftOn) {shiftOn=it}
         if(shiftOn)Field(os.t("变化角度 · °","shift threshold · °"),shift,{shift=it},true)
-        if(invalid)Label(os.t("请填写有效阈值：深水至少比浅水多 1 m；风速告警至少比预警多 ${os.formatSpeed(3.0)}，不超过 ${os.formatSpeed(200.0)}；风向变化 15–180°。","enter valid limits: deep ≥ shallow + 1 m; wind alarm ≥ warning + ${os.formatSpeed(3.0)}, up to ${os.formatSpeed(200.0)}; shift 15–180°."),16)
+        if(invalid)Label(os.t("请填写有效阈值：深水至少比浅水多 ${os.formatDepth(1.0)}；风速告警至少比预警多 ${os.formatSpeed(3.0)}，不超过 ${os.formatSpeed(200.0)}；风向变化 15–180°。","enter valid limits: deep ≥ shallow + ${os.formatDepth(1.0)}; wind alarm ≥ warning + ${os.formatSpeed(3.0)}, up to ${os.formatSpeed(200.0)}; shift 15–180°."),16)
         if(timedOut)Label(os.t("尚未收到应用确认，请查看当前值守状态。","application not confirmed; check the current watch state."),16)
         MetroButton(if(applying!=null)os.t("正在应用…","applying…")else os.t("保存本次警戒条件","save watch conditions"),{
-            val config=ConditionGuardConfig(depthOn,shallow.toDoubleOrNull(),deep.toDoubleOrNull(),windOn,storedWind(warning,initialWarning,session.windWarningKnots),storedWind(alarm,initialAlarm,session.windAlarmKnots),shiftOn,shift.toDoubleOrNull(),session.windAllowApparentFallback)
+            val config=ConditionGuardConfig(depthOn,shallow.value,deep.value,windOn,warning.value,alarm.value,shiftOn,shift.toDoubleOrNull(),session.windAllowApparentFallback)
             val checked=config.validated()
-            if(checked.depthGuardEnabled!=depthOn||checked.windGuardEnabled!=windOn||checked.windShiftEnabled!=shiftOn || (depthOn&&deep.isNotBlank()&&checked.deepDepthAlarmMeters==null))invalid=true
+            if(checked.depthGuardEnabled!=depthOn||checked.windGuardEnabled!=windOn||checked.windShiftEnabled!=shiftOn || (depthOn&&deep.text.isNotBlank()&&checked.deepDepthAlarmMeters==null))invalid=true
             else {timedOut=false;applying=checked;services.anchor.updateConditionGuards(checked)}
         },primary=true,enabled=applying==null)
     }
@@ -576,13 +566,13 @@ private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,services:Mar
 
 @Composable
 private fun AnchorRadiusDialog(os:OsStore,initial:Double,onDismiss:()->Unit,onApply:(Double)->Unit) {
-    var value by rememberSaveable(initial) {mutableStateOf(initial.toString())}
-    val meters=value.toDoubleOrNull()?.takeIf {it.isFinite()&&it>0}
+    val value=rememberUnitNumberDraft(initial,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,initial)
+    val meters=value.value?.takeIf {it>0}
     Dialog(onDismissRequest=onDismiss) {
         Column(Modifier.fillMaxWidth().background(LocalMetro.current.bg).border(1.dp,LocalMetro.current.muted).padding(22.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
             Label(os.t("警戒范围","watch boundary"),32)
-            Field(os.t("距锚点的半径 · m","radius from anchor · m"),value,{value=it},number=true)
-            if(meters==null)Label(os.t("请输入大于零的米数","enter a positive distance in metres"),16)
+            Field(os.t("距锚点的半径","radius from anchor")+" · ${os.lengthUnitLabel}",value.text,value::edit,number=true)
+            if(meters==null)Label(os.t("请输入大于零的距离","enter a positive distance"),16)
             MetroButton(os.t("应用到当前值守","apply to current watch"),{meters?.let(onApply)},primary=true,enabled=meters!=null)
             MetroButton(os.t("取消","cancel"),onDismiss)
         }

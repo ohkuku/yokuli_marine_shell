@@ -144,7 +144,7 @@ internal fun vesselStatusText(os: OsStore, metric: VesselSceneMetric): String = 
         VesselReadingFacts(os, item)
         if (metric == VesselMetricId.POSITION) {
             item.position?.horizontalAccuracyMeters?.takeIf { it.isFinite() && it >= 0.0 }?.let {
-                Label(os.t("定位精度约 ", "reported accuracy about ") + os.formatDepth(it), 15, c.muted)
+                Label(os.t("定位精度约 ", "reported accuracy about ") + os.formatLength(it), 15, c.muted)
             }
         }
         if (metric in setOf(VesselMetricId.HEADING_TRUE, VesselMetricId.HEADING_MAGNETIC))

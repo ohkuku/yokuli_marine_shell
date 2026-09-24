@@ -192,7 +192,7 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
         InstrumentTileId.PITCH -> data.pitchDegrees.liveNumber()
         InstrumentTileId.ROLL_RATE -> data.rollRateDegreesPerSecond.liveNumber()
         InstrumentTileId.PITCH_RATE -> data.pitchRateDegreesPerSecond.liveNumber()
-        InstrumentTileId.CROSS_TRACK_ERROR -> data.crossTrackErrorNauticalMiles.displayNumber()?.times(1852.0)
+        InstrumentTileId.CROSS_TRACK_ERROR -> data.crossTrackErrorNauticalMiles.displayNumber()
         InstrumentTileId.PRESSURE -> data.pressureHpa.displayNumber()
         InstrumentTileId.PRESSURE_TREND_1H -> data.derived.pressureTrend1hHpa.displayNumber()
         InstrumentTileId.PRESSURE_TREND_3H -> data.derived.pressureTrend3hHpa.displayNumber()
@@ -208,15 +208,29 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
     val supported = bearingType || raw != null || tile in setOf(InstrumentTileId.SOG, InstrumentTileId.BOAT_SPEED, InstrumentTileId.TRUE_WIND_SPEED, InstrumentTileId.APPARENT_WIND_SPEED, InstrumentTileId.RUDDER_ANGLE, InstrumentTileId.HEEL, InstrumentTileId.PITCH)
     if (!supported) return
     val angle = animatedBearing(heading)
-    val range = when (tile) {
+    // 刻度先进入用户选择的显示单位，再选整洁的数值范围；内部观测仍保留规范单位。
+    val metric = instrumentTrendKey(tile).orEmpty()
+    val displayed = raw?.let { os.displayMetricValue(metric, it) }?.let {
+        if (windAngle) InstrumentReadingPolicy.signedWindFraction(it) * 180.0 else it
+    }
+    val unit = os.displayMetricUnit(metric)
+    val defaultExtent = when (tile) {
         InstrumentTileId.HEEL, InstrumentTileId.PITCH, InstrumentTileId.RUDDER_ANGLE -> 45.0
         InstrumentTileId.TRUE_WIND_ANGLE, InstrumentTileId.APPARENT_WIND_ANGLE -> 180.0
-        InstrumentTileId.PRESSURE -> 80.0
-        InstrumentTileId.PRESSURE_TREND_1H, InstrumentTileId.PRESSURE_TREND_3H, InstrumentTileId.PRESSURE_TREND_6H -> 10.0
-        InstrumentTileId.WATER_TEMPERATURE, InstrumentTileId.AIR_TEMPERATURE -> 50.0
-        else -> max(10.0, ceil(abs(raw ?: 0.0) / 10.0) * 10.0)
+        InstrumentTileId.CROSS_TRACK_ERROR -> .1
+        else -> 10.0
     }
-    val normalized = if (windAngle) InstrumentReadingPolicy.signedWindFraction(raw ?: 0.0) else ((if (tile == InstrumentTileId.PRESSURE) (raw ?: 970.0) - 970.0 else raw ?: 0.0) / range).toFloat().coerceIn(if (signed) -1f else 0f, 1f)
+    val extent = if (windAngle || tile in setOf(InstrumentTileId.HEEL, InstrumentTileId.PITCH, InstrumentTileId.RUDDER_ANGLE))
+        max(defaultExtent, abs(displayed ?: 0.0))
+    else niceGaugeCeiling(max(abs(os.displayMetricValue(metric, defaultExtent)), abs(displayed ?: 0.0)))
+    val limits = when (tile) {
+        InstrumentTileId.PRESSURE -> gaugeBounds(os.displayMetricValue(metric, 970.0), os.displayMetricValue(metric, 1050.0), displayed)
+        InstrumentTileId.WATER_TEMPERATURE, InstrumentTileId.AIR_TEMPERATURE -> gaugeBounds(os.displayMetricValue(metric, 0.0), os.displayMetricValue(metric, 50.0), displayed)
+        else -> (if (signed) -extent else min(0.0, displayed ?: 0.0)) to extent
+    }
+    val lower = limits.first
+    val upper = limits.second
+    val normalized = (((displayed ?: lower) - lower) / (upper - lower)).toFloat().coerceIn(0f, 1f)
     val fraction by animateFloatAsState(normalized, tween(350), label = "instrument-scale")
     val readingColor = if (instrumentObservation(data, tile).displayIsLive()) c.accent else c.muted
     Canvas(modifier.fillMaxWidth().height(if (bearingType) 94.dp else 38.dp)) {
@@ -235,24 +249,37 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
                 drawLine(c.muted.copy(alpha = .5f), Offset(x, y - if (tick % 5 == 0) 7.dp.toPx() else 3.dp.toPx()), Offset(x, y + 3.dp.toPx()), 1.dp.toPx())
             }
             if (raw != null) {
-                val origin = if (signed) center.x else left
-                val endpoint = if (signed) center.x + fraction * (right - left) / 2 else left + fraction * (right - left)
+                val origin = if (signed) left + ((-lower) / (upper - lower)).toFloat() * (right - left) else left
+                val endpoint = left + fraction * (right - left)
                 drawLine(readingColor, Offset(origin, y), Offset(endpoint, y), 4.dp.toPx())
                 drawLine(readingColor, Offset(endpoint, y - 7.dp.toPx()), Offset(endpoint, y + 7.dp.toPx()), 2.dp.toPx())
             }
-            fun scaleLabel(v: Double): String = when (tile) {
-                InstrumentTileId.PRESSURE -> (970 + v).toInt().toString()
-                InstrumentTileId.SOG, InstrumentTileId.BOAT_SPEED, InstrumentTileId.TRUE_WIND_SPEED, InstrumentTileId.APPARENT_WIND_SPEED, InstrumentTileId.CURRENT_DRIFT, InstrumentTileId.VMG, InstrumentTileId.VMC -> os.formatSpeed(v)
-                InstrumentTileId.DEPTH, InstrumentTileId.UKC -> os.formatDepth(v)
-                InstrumentTileId.CROSS_TRACK_ERROR -> (if (v < 0) "−" else "") + os.formatDistance(abs(v))
-                InstrumentTileId.WATER_TEMPERATURE, InstrumentTileId.AIR_TEMPERATURE -> os.formatTemperature(v)
-                else -> v.toInt().toString()
-            }
-            compassLabel(scaleLabel(if (signed) -range else 0.0), Offset(left + 25.dp.toPx(), size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), typeface)
+            fun scaleLabel(v: Double): String = gaugeScaleNumber(v, upper - lower) + if (unit.isBlank()) "" else " $unit"
+            compassLabel(scaleLabel(lower), Offset(left + 25.dp.toPx(), size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), typeface)
             if (signed) compassLabel("0", Offset(center.x, size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), typeface)
-            compassLabel(scaleLabel(range), Offset(right - 25.dp.toPx(), size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), typeface)
+            compassLabel(scaleLabel(upper), Offset(right - 25.dp.toPx(), size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), typeface)
         }
     }
+}
+
+/** 以显示单位生成 1/2/5 等级，单位切换后不会出现 18.52 或 32.81 之类的刻度上限。 */
+private fun niceGaugeCeiling(value: Double): Double {
+    val positive = value.coerceAtLeast(.001)
+    val power = 10.0.pow(floor(log10(positive)))
+    val fraction = positive / power
+    return power * when { fraction <= 1.0 -> 1.0; fraction <= 2.0 -> 2.0; fraction <= 5.0 -> 5.0; else -> 10.0 }
+}
+
+private fun gaugeBounds(defaultLower: Double, defaultUpper: Double, value: Double?): Pair<Double, Double> {
+    val lower = min(defaultLower, value ?: defaultLower)
+    val upper = max(defaultUpper, value ?: defaultUpper)
+    val step = niceGaugeCeiling((upper - lower) / 4.0)
+    return floor(lower / step) * step to ceil(upper / step) * step
+}
+
+internal fun gaugeScaleNumber(value: Double, span: Double): String {
+    val decimals = when { span < .1 -> 3; span < 1 -> 2; span < 10 -> 1; else -> 0 }
+    return String.format(java.util.Locale.US, "%.${decimals}f", value)
 }
 
 private fun radial(center: Offset, radius: Float, degrees: Float): Offset {

@@ -12,11 +12,17 @@ import com.yokuli.anchorwatch.service.AnchorForegroundService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** Owns every notification channel and notification-manager mutation used by the runtime. */
 @Singleton
 class NotificationCoordinator @Inject constructor(@ApplicationContext private val context:Context){
     private val manager get()=context.getSystemService(NotificationManager::class.java)
+    private val unitFormatsState = MutableStateFlow(NotificationUnitFormats.CANONICAL)
+    val unitFormats = unitFormatsState.asStateFlow()
+    fun installUnitFormats(formats: NotificationUnitFormats) { unitFormatsState.value = formats }
+
 
     fun createChannels(statusName:String,eventName:String,alarmName:String){
         manager.createNotificationChannels(

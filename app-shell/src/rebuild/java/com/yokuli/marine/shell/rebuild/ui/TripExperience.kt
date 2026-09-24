@@ -289,7 +289,7 @@ private fun showVoyageOnChart(os:OsStore,content:VoyageContent,focus:GeoPoint?=n
     ReportValue(os.t("最低水深 / 龙骨下余量", "minimum depth / under-keel clearance"), os.formatDepth(report.minDepthMeters) + " / " + os.formatDepth(report.minUkcMeters))
     ReportValue(os.t("平均 / 最大真风速", "average / maximum true wind"), os.formatSpeed(report.trueWindMeanKnots) + " / " + os.formatSpeed(report.maximumTrueWindKnots))
     ReportValue(os.t("平均横倾 / 横摇周期", "average heel / roll period"), (report.averageAbsHeelDegrees?.let { "${decimal(it)}°" } ?: "—") + " / " + (report.dominantRollPeriodSeconds?.let { "${decimal(it)} s" } ?: "—"))
-    ReportValue(os.t("气压变化", "pressure change"), report.pressureChangeHpa?.let { "${decimal(it)} hPa" } ?: "—")
+    ReportValue(os.t("气压变化", "pressure change"), os.formatPressureChange(report.pressureChangeHpa))
     Label(os.t("记录完整度", "recording coverage"), 29)
     Label(when (report.quality) { ReportQuality.GOOD -> os.t("主要数据完整", "main observations are well covered"); ReportQuality.PARTIAL -> os.t("部分数据缺失", "some observations are missing"); ReportQuality.LIMITED -> os.t("可用数据有限", "limited observations available") }, 21, c.accent)
     listOf(os.t("位置", "position") to report.positionCoveragePercent, os.t("水深", "depth") to report.depthCoveragePercent, os.t("风", "wind") to report.windCoveragePercent, os.t("姿态", "attitude") to report.attitudeCoveragePercent).forEach { (label, coverage) -> ReportValue(label, "${decimal(coverage)}%") }

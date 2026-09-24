@@ -94,7 +94,7 @@ import kotlin.math.*
         } else if(os.ruler.size==2) {
             Row(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Label("${os.formatDistance(distance(os.ruler[0],os.ruler[1]))}   ${decimal(bearing(os.ruler[0],os.ruler[1]),0)}°T",25)
+                    Label("${os.formatDistance(distance(os.ruler[0],os.ruler[1]))}   ${os.formatBearing(bearing(os.ruler[0],os.ruler[1]))}T",25)
                     Label(os.t("拖动 A / B 图钉测距","drag pins A / B to measure"),12,c.muted)
                 }
                 Glyph("close",Modifier.size(34.dp).clickable {os.ruler=emptyList()})

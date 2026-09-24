@@ -130,6 +130,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
    override fun notificationPermissionGranted()=host.notificationPermissionGranted()
    override fun enableSystemGps()=this@YokuliRuntimeCoordinator.enableSystemGps()
    override fun notify(title:String,message:String,high:Boolean)=notifySeparate(title,message,high)
+   override fun displayLength(meters:Double)=notificationCoordinator.unitFormats.value.length(meters)
    override fun notifyArmFailure(title:String,message:String,high:Boolean)=notifySeparate(title,message,high,RuntimeFeedbackContext.ARM_WATCH)
    override fun refresh()=refreshNotification()
    override fun sound(){setAlarmSource(ConditionAlarmSource.ANCHOR,true)}
@@ -217,6 +218,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
    reconcileAudio()
   }}
   scope.launch{preferences.settings.map{it.appLanguage}.distinctUntilChanged().collect{appLanguage=it;channels();refreshNotification()}}
+  // 同一后台服务正在运行时，换单位立即重呈现通知；不重启会话或重新触发警报。
+  scope.launch{startupReady.await();notificationCoordinator.unitFormats.collect{anchorActor.submit{refreshNotification()}}}
   // Migrate every historical TCP-server/Sharing value into the independent,
   // stopped phone-hosted service. It must never remain a Boat TX destination.
   scope.launch{startupReady.await();preferences.settings.map{Triple(it.nmeaSharingEnabled,it.nmeaSharingPort,it.gpsDataSource)}.distinctUntilChanged().collect{(enabled,port,source)->
@@ -648,29 +651,30 @@ class YokuliRuntimeCoordinator @Inject constructor(
  }
 
  private fun refreshNotification(){
+  val formats=notificationCoordinator.unitFormats.value
   val anchor=anchorRuntime.snapshot();val snapshot=anchor.alarm;val active=anchor.session;val proxy=proxyRuntime.status.value;val now=wallClock.currentTimeMillis();val condition=conditionRuntime.state.value;val sonarContinuity=sonarContinuity();val anchorSafetyAlert=active?.paused==false&&(snapshot?.state==AlarmState.WARNING||snapshot?.type!=null&&snapshot.state in setOf(AlarmState.ALARM,AlarmState.ACKNOWLEDGED));val depthSafetyAlert=condition.depth.alarmActive||condition.depth.dataUnavailable;val windSafetyAlert=condition.windSpeed.warningActive||condition.windSpeed.alarmActive||condition.windSpeed.dataUnavailable;val shiftSafetyAlert=condition.windShift.alarmActive||condition.windShift.dataUnavailable;val conditionAlert=active?.paused==false&&(depthSafetyAlert||windSafetyAlert||shiftSafetyAlert);val safetyAlert=anchorSafetyAlert||conditionAlert;val audible=audioArbiter.snapshot(now).shouldSound;val snoozed=safetyAlert&&!audible;val remaining=listOfNotNull(active?.alarmSnoozedUntil,active?.depthAlarmSnoozedUntil,active?.windAlarmSnoozedUntil,active?.windShiftAlarmSnoozedUntil).filter{it>now}.minOrNull()?.let{((it-now+59_999)/60_000).coerceAtLeast(1)}
   val base=when{
    alarmTestActive->l("Alarm test sounding • open the App to confirm or stop","警报测试正在响铃 · 打开应用确认或停止")
-   condition.depth.status==DepthGuardStatus.SHALLOW_ALARM->l("SHALLOW WATER ${condition.depth.filteredDepthMeters?.let{"%.1f m".format(it)}?:""}","浅水警报 ${condition.depth.filteredDepthMeters?.let{"%.1f 米".format(it)}?:""}")
+   condition.depth.status==DepthGuardStatus.SHALLOW_ALARM->l("SHALLOW WATER ${formats.depth(condition.depth.filteredDepthMeters)}","浅水警报 ${formats.depth(condition.depth.filteredDepthMeters)}")
    snapshot?.type==AlarmType.GPS_DATA_LOST&&active?.paused==false->l("GPS DATA LOST","GPS 数据丢失")
    snapshot?.type==AlarmType.GPS_QUALITY_BAD&&active?.paused==false->l("GPS QUALITY DEGRADED: ${anchor.positionDegradedReason?:"unknown"}","GPS 质量下降：${anchor.positionDegradedReason?:"未知原因"}")
-   snapshot?.type==AlarmType.ANCHOR_RADIUS_EXCEEDED&&active?.paused==false->l("ANCHOR ALARM ${snapshot.distanceMeters?.toInt()} m","锚警：距离 ${snapshot.distanceMeters?.toInt()} 米")
-   condition.windSpeed.status==WindSpeedGuardStatus.ALARM->l("HIGH WIND ${condition.windSpeed.filteredSpeedKnots?.let{"%.1f kn".format(it)}?:""}","大风警报 ${condition.windSpeed.filteredSpeedKnots?.let{"%.1f 节".format(it)}?:""}")
-   condition.depth.status==DepthGuardStatus.DEEP_ALARM->l("DEEP WATER ${condition.depth.filteredDepthMeters?.let{"%.1f m".format(it)}?:""}","深水警报 ${condition.depth.filteredDepthMeters?.let{"%.1f 米".format(it)}?:""}")
+   snapshot?.type==AlarmType.ANCHOR_RADIUS_EXCEEDED&&active?.paused==false->l("ANCHOR ALARM ${formats.length(snapshot.distanceMeters)}","锚警：距离 ${formats.length(snapshot.distanceMeters)}")
+   condition.windSpeed.status==WindSpeedGuardStatus.ALARM->l("HIGH WIND ${formats.speed(condition.windSpeed.filteredSpeedKnots)}","大风警报 ${formats.speed(condition.windSpeed.filteredSpeedKnots)}")
+   condition.depth.status==DepthGuardStatus.DEEP_ALARM->l("DEEP WATER ${formats.depth(condition.depth.filteredDepthMeters)}","深水警报 ${formats.depth(condition.depth.filteredDepthMeters)}")
    condition.windShift.status==WindShiftGuardStatus.ALARM->l("WIND SHIFT ${condition.windShift.shiftDegrees?.toInt()?:"—"}°","风向突变 ${condition.windShift.shiftDegrees?.toInt()?:"—"}°")
    condition.depth.dataUnavailable->l("DEPTH DATA LOST • guard cannot evaluate","水深数据丢失 · 警戒无法判断")
    condition.windSpeed.dataUnavailable||condition.windShift.dataUnavailable->l("WIND DATA LOST • guard cannot evaluate","风数据丢失 · 警戒无法判断")
-   snapshot?.state==AlarmState.WARNING&&active?.paused==false->l("ANCHOR WARNING ${snapshot.distanceMeters?.toInt()} m • alarm at ${active.alarmRadiusMeters.toInt()} m","锚警预警：距离 ${snapshot.distanceMeters?.toInt()} 米 · ${active.alarmRadiusMeters.toInt()} 米触发警报")
-   condition.windSpeed.status==WindSpeedGuardStatus.WARNING->l("HIGH WIND WARNING ${condition.windSpeed.filteredSpeedKnots?.let{"%.1f kn".format(it)}?:""}","大风预警 ${condition.windSpeed.filteredSpeedKnots?.let{"%.1f 节".format(it)}?:""}")
+   snapshot?.state==AlarmState.WARNING&&active?.paused==false->l("ANCHOR WARNING ${formats.length(snapshot.distanceMeters)} • alarm at ${formats.length(active.alarmRadiusMeters)}","锚警预警：距离 ${formats.length(snapshot.distanceMeters)} · ${formats.length(active.alarmRadiusMeters)}触发警报")
+   condition.windSpeed.status==WindSpeedGuardStatus.WARNING->l("HIGH WIND WARNING ${formats.speed(condition.windSpeed.filteredSpeedKnots)}","大风预警 ${formats.speed(condition.windSpeed.filteredSpeedKnots)}")
    active?.paused==true&&proxy.state==MockGpsState.ACTIVE->l("Anchor session paused • NMEA GPS proxy active","锚泊监控已暂停 · NMEA GPS 代理运行中")
    active?.paused==true->l("Anchor session paused","锚泊监控已暂停")
    active?.monitoringPhase==com.yokuli.anchorwatch.domain.model.AnchorMonitoringPhase.WAITING_FOR_GPS.name->l("Anchor session saved • waiting for accepted ${if(anchor.gpsSource==GpsDataSource.NMEA)"NMEA GPS" else "Phone GNSS"} • movement not monitored","锚泊会话已保存 · 等待可信${if(anchor.gpsSource==GpsDataSource.NMEA)" NMEA GPS" else "手机 GNSS"} · 尚未监测船位移动")
    active?.centerStatus==AnchorCenterStatus.CANDIDATE_READY.name->l("Watch active • estimated centre awaits approval","锚警监控中 · 估算中心等待确认")
    active?.centerStatus==AnchorCenterStatus.LEARNING.name->l("Watch active • temporary boundary armed • ${anchor.learningSampleCount} fixes","锚警监控中 · 临时边界已布防 · ${anchor.learningSampleCount} 个定位点")
    active!=null&&anchor.gpsSource==GpsDataSource.NMEA&&anchor.nmeaLossAnnounced->l("Watch active • NMEA connection lost • recovery required","锚警监控中 · NMEA 连接丢失 · 需要恢复")
-   active!=null&&anchor.gpsSource==GpsDataSource.SYSTEM->l("Watch ${snapshot?.distanceMeters?.toInt()?:"--"} m • SYSTEM GPS","锚警 ${snapshot?.distanceMeters?.toInt()?:"--"} 米 · 系统 GPS")
-   active!=null&&anchor.gpsSource==GpsDataSource.DEMO->l("Watch ${snapshot?.distanceMeters?.toInt()?:"--"} m • DEMO ${demoLocation.status.value.scenario.name}","锚警 ${snapshot?.distanceMeters?.toInt()?:"--"} 米 · 演示 ${demoLocation.status.value.scenario.name}")
-   active!=null->l("Watch ${snapshot?.distanceMeters?.toInt()?:"--"} m • NMEA ${navigation.connectionState.value.name}","锚警 ${snapshot?.distanceMeters?.toInt()?:"--"} 米 · NMEA ${navigation.connectionState.value.name}")
+   active!=null&&anchor.gpsSource==GpsDataSource.SYSTEM->l("Watch ${formats.length(snapshot?.distanceMeters)} • SYSTEM GPS","锚警 ${formats.length(snapshot?.distanceMeters)} · 系统 GPS")
+   active!=null&&anchor.gpsSource==GpsDataSource.DEMO->l("Watch ${formats.length(snapshot?.distanceMeters)} • DEMO ${demoLocation.status.value.scenario.name}","锚警 ${formats.length(snapshot?.distanceMeters)} · 演示 ${demoLocation.status.value.scenario.name}")
+   active!=null->l("Watch ${formats.length(snapshot?.distanceMeters)} • NMEA ${navigation.connectionState.value.name}","锚警 ${formats.length(snapshot?.distanceMeters)} · NMEA ${navigation.connectionState.value.name}")
    sonarContinuity==SonarSurveyContinuityState.REAL_INTERRUPTED->l("Sonar survey waiting • NMEA recovery required","声呐调查等待中 · 需要恢复 NMEA")
    proxy.state==MockGpsState.ACTIVE->l("NMEA → Android GPS active • ${proxy.publishedFixes} fixes","NMEA → Android GPS 已开启 · ${proxy.publishedFixes} 个定位点")
    phonePositionOutput.enabled->l("Phone/App data output active","手机 / App 数据发送中")
@@ -683,7 +687,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   val activeAlertCount=(if(anchorSafetyAlert)1 else 0)+(if(depthSafetyAlert)1 else 0)+(if(windSafetyAlert)1 else 0)+(if(shiftSafetyAlert)1 else 0)
   val countedBase=if(activeAlertCount>1)l("$base • +${activeAlertCount-1} other active alert${if(activeAlertCount>2)"s" else ""}","$base · 另有 ${activeAlertCount-1} 项警报")else base
   val tripSuffix=if(active!=null&&tripRuntime.activeSession()!=null)l(" • trip ${if(tripRuntime.activeSession()?.paused==true)"paused" else "recording"}"," · 航行记录${if(tripRuntime.activeSession()?.paused==true)"已暂停" else "中"}")else ""
-  val text=(if(snoozed&&safetyAlert)l("$countedBase • snoozed, remind in ${remaining?:alarmSnoozeMinutes}m","$countedBase · 已暂停响铃，${remaining?:alarmSnoozeMinutes} 分钟后再次提醒")else countedBase)+tripSuffix
+  val text=(if(snoozed&&safetyAlert)l("$countedBase • snoozed, remind in ${remaining?:alarmSnoozeMinutes} min","$countedBase · 已暂停响铃，${remaining?:alarmSnoozeMinutes} 分钟后再次提醒")else countedBase)+tripSuffix
   // Updating through startForeground keeps the active service-type mask in
   // sync with background GNSS ownership; NotificationManager.notify alone
   // cannot promote an existing connected-device service to location use.
@@ -862,7 +866,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
    message=="Anchor range updated"->"锚警范围已更新"
    message=="Anchor range not updated"->"锚警范围未更新"
    message.startsWith("The selected setup still requires valid water depth")->"当前设置仍需要有效的水深、锚链、船艏高度和船长。"
-   message.startsWith("Alarm radius is now ")->message.replace("Alarm radius is now ","本次会话的报警半径现为 ").replace(" m for this session."," 米。")
+   message.startsWith("Alarm radius is now ")->message.replace("Alarm radius is now ","本次会话的报警半径现为 ").replace(" for this session.","。")
    message=="Phone heading enabled"->"手机船首向证据已开启"
    message=="Phone heading disabled"->"手机船首向证据已关闭"
    message=="Phone heading unavailable"->"手机船首向不可用"

@@ -106,6 +106,7 @@ interface AnchorRuntimeHost{
     fun notificationPermissionGranted():Boolean
     fun enableSystemGps():Boolean
     fun notify(title:String,message:String,high:Boolean)
+    fun displayLength(meters:Double):String=com.yokuli.anchorwatch.runtime.notification.NotificationUnitFormats.CANONICAL.length(meters)
     fun notifyArmFailure(title:String,message:String,high:Boolean)=notify(title,message,high)
     fun refresh()
     fun sound()
@@ -790,7 +791,7 @@ class AnchorWatchRuntime(
         // boundary without the event that explains who changed it and when.
         dao.updateSessionAndInsertEvent(updated,rangeChangedEvent);session=updated;lastReportedAlarm=preservedAlarmType
         if(!updated.paused){lastSnapshot=engine.updateConfig(if(updated.centerStatus!=AnchorCenterStatus.RESOLVED.name)updated.learningConfig()else updated.config(),preservedAlarmType);if(preservedAlarmType==null||preservedAlarmType==AlarmType.ANCHOR_RADIUS_EXCEEDED)freshAcceptedFix?.let{fix->lastSnapshot=engine.onFix(fix,resetAt)};updateAlarm(lastSnapshot!!)}
-        if(hadRadiusAlarm&&!dangerStillRemains)dao.insertEvent(AlarmEventEntity(sessionId=updated.id,timestamp=wallClock.currentTimeMillis(),type="ALARM_CLEARED_BY_RANGE_CHANGE",detail="${alarm.toInt()}m"));host.notify("Anchor range updated","Alarm radius is now ${alarm.toInt()} m for this session.",false);host.refresh();host.releaseIfIdle()
+        if(hadRadiusAlarm&&!dangerStillRemains)dao.insertEvent(AlarmEventEntity(sessionId=updated.id,timestamp=wallClock.currentTimeMillis(),type="ALARM_CLEARED_BY_RANGE_CHANGE",detail="${alarm.toInt()}m"));host.notify("Anchor range updated","Alarm radius is now ${host.displayLength(alarm)} for this session.",false);host.refresh();host.releaseIfIdle()
     }
 
     suspend fun watchdog(){

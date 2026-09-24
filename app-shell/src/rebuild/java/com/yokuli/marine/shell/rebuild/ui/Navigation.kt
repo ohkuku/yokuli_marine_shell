@@ -192,7 +192,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                 Label(if(navigating) os.t("${route.name} · 目标 ${guidance?.index?.plus(1) ?: 1}/${route.points.size}","${route.name} · target ${guidance?.index?.plus(1) ?: 1}/${route.points.size}")
                     else os.t("已选航线 · ${route.name}","selected route · ${route.name}"),15,c.accent,maxLines=1)
                 if(guidance!=null) {
-                    Label(guidance.distanceMeters?.let {"${os.formatDistance(it)}   ${decimal(guidance.bearingTrue,0)}°T"} ?: os.t("等待船位","waiting for position"),27)
+                    Label(guidance.distanceMeters?.let {"${os.formatDistance(it)}   ${os.formatBearing(guidance.bearingTrue)}T"} ?: os.t("等待船位","waiting for position"),27)
                 } else Label("${os.formatDistance(route.length)} · ${route.points.size} "+os.t("个航点","waypoints"),21)
             }
             IconAction(if(navigating) "more" else "play",if(navigating) os.t("导航","navigate") else os.t("开始","start"),{if(navigating) manage=true else start=true})
@@ -201,7 +201,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
             Label(guidance.remainingMeters?.let {os.t("剩余 ${os.formatDistance(it)} · ${offsetLabel(os,guidance)}","${os.formatDistance(it)} remaining · ${offsetLabel(os,guidance)}")}
                 ?: os.t("距离与偏离暂停更新 · 点此检查来源","distance and offset paused · check source"),12,c.muted,
                 Modifier.clickable {manage=true})
-            if(guidance.nearTarget) Label(os.t("目标附近（50 m 内）· 点此确认到达","near target (within 50 m) · confirm arrival"),15,c.accent,Modifier.clickable {manage=true})
+            if(guidance.nearTarget) Label(os.t("目标附近（${os.formatLength(ARRIVAL_NEAR_METERS)} 内）· 点此确认到达","near target (within ${os.formatLength(ARRIVAL_NEAR_METERS)}) · confirm arrival"),15,c.accent,Modifier.clickable {manage=true})
         } else if(active!=null) Label(os.t("返回当前导航：${active.name}","return to navigation: ${active.name}"),13,c.muted,Modifier.clickable {
             os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=active.id;os.showCrosshair=false;os.save()
         })
@@ -242,13 +242,13 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
             } else {
                 Label(os.t("当前目标 ${guidance.index+1} / ${route.points.size}","current target ${guidance.index+1} / ${route.points.size}"),18)
                 Label(guidance.distanceMeters?.let {os.formatDistance(it)} ?: "—",44,c.accent)
-                Label(guidance.bearingTrue?.let {os.t("直线方位 ${decimal(it,0)}°T","direct bearing ${decimal(it,0)}°T")} ?: os.t("等待新鲜船位","waiting for a fresh position"),20)
+                Label(guidance.bearingTrue?.let {os.t("直线方位 ${os.formatBearing(it)}T","direct bearing ${os.formatBearing(it)}T")} ?: os.t("等待新鲜船位","waiting for a fresh position"),20)
                 Label(guidance.remainingMeters?.let {os.t("沿后续航点剩余 ${os.formatDistance(it)}","${os.formatDistance(it)} remaining via subsequent waypoints")} ?: os.t("剩余距离不可用","remaining distance unavailable"),16,c.muted)
                 Label(offsetLabel(os,guidance),17,c.muted)
-                guidance.accuracy?.let {Label(os.t("船位精度约 ±${it.roundToInt()} m","position accuracy approximately ±${it.roundToInt()} m"),13,c.muted)}
+                guidance.accuracy?.let {Label(os.t("船位精度约 ±${os.formatLength(it)}","position accuracy approximately ±${os.formatLength(it)}"),13,c.muted)}
                 if(guidance.distanceMeters==null) MetroButton(os.t("管理船位来源","manage position sources"),{onDismiss();os.open("nmea:sources")})
                 if(guidance.nearTarget) {
-                    Label(os.t("目标附近（50 m 内）。到达由你确认。","Within 50 m of the target. You confirm arrival."),16,c.accent)
+                    Label(os.t("目标附近（${os.formatLength(ARRIVAL_NEAR_METERS)} 内）。到达由你确认。","Within ${os.formatLength(ARRIVAL_NEAR_METERS)} of the target. You confirm arrival."),16,c.accent)
                     MetroButton(if(guidance.index==route.points.lastIndex) os.t("确认到达终点","confirm final arrival") else os.t("已到达，前往下一点","arrived, go to next"),{
                         if(guidance.index==route.points.lastIndex) {arrival=true;stopping=true}
                         else {os.routeLeg=guidance.index+1;os.save();os.openLinked("chart");onDismiss()}

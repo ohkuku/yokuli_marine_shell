@@ -48,11 +48,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             val radial=alarm.state==AlarmState.WARNING||alarm.type==AlarmType.ANCHOR_RADIUS_EXCEEDED
             val source=when(active.positionSource){GpsDataSource.SYSTEM.name->tr("手机 GPS","phone GPS");GpsDataSource.NMEA.name->"NMEA";GpsDataSource.DEMO.name->tr("演示数据","demo data");else->tr("所选船位来源","selected position source")}
             val detail=when {
-                alarm.state==AlarmState.WARNING->tr("已越过 ${os.formatDistance(active.warningRadiusMeters)} 预警范围；正式警戒半径 ${os.formatDistance(active.alarmRadiusMeters)}。","Beyond the ${os.formatDistance(active.warningRadiusMeters)} warning boundary; full alarm radius ${os.formatDistance(active.alarmRadiusMeters)}.")
-                alarm.type==AlarmType.ANCHOR_RADIUS_EXCEEDED->tr("警戒半径 ${os.formatDistance(active.alarmRadiusMeters)}。请核对船况和周围环境。","Alarm radius ${os.formatDistance(active.alarmRadiusMeters)}. Check the vessel and surroundings.")
+                alarm.state==AlarmState.WARNING->tr("已越过 ${os.formatLength(active.warningRadiusMeters)} 预警范围；正式警戒半径 ${os.formatLength(active.alarmRadiusMeters)}。","Beyond the ${os.formatLength(active.warningRadiusMeters)} warning boundary; full alarm radius ${os.formatLength(active.alarmRadiusMeters)}.")
+                alarm.type==AlarmType.ANCHOR_RADIUS_EXCEEDED->tr("警戒半径 ${os.formatLength(active.alarmRadiusMeters)}。请核对船况和周围环境。","Alarm radius ${os.formatLength(active.alarmRadiusMeters)}. Check the vessel and surroundings.")
                 else->tr("缺失或可疑位置不进入监控计算。恢复可信船位前，不能判断船是否仍在范围内。","Missing or suspect positions are excluded from monitoring. Whether the vessel remains inside cannot be evaluated until accepted position returns.")
             }
-            add(Alert(title,if(radial)os.formatDistance(alarm.distanceMeters)else "—",detail+tr(" 船位来源：$source。"," Position source: $source."),ConditionAlarmSource.ANCHOR,
+            add(Alert(title,if(radial)os.formatLength(alarm.distanceMeters)else "—",detail+tr(" 船位来源：$source。"," Position source: $source."),ConditionAlarmSource.ANCHOR,
                 if(alarm.state==AlarmState.WARNING)SafetyAlert.Severity.WARNING else SafetyAlert.Severity.ALARM,if(radial)"anchor" else "critical source lost"))
         }
         val depth=state.conditions.depth
@@ -74,9 +74,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
         val shift=state.conditions.windShift
         if((shift.alarmActive||shift.dataUnavailable)&&(active.windShiftAlarmSnoozedUntil?:0L)<=now)add(Alert(
             if(shift.dataUnavailable)tr("风向数据丢失","wind direction data lost")else tr("风向发生变化","wind shift"),
-            if(shift.dataUnavailable)"—" else "${decimal(shift.shiftDegrees,0)}°",
+            if(shift.dataUnavailable)"—" else os.formatAngle(shift.shiftDegrees),
             if(shift.dataUnavailable)tr("风向警戒仍开启，但缺少新鲜真风方向，无法与基线比较。请恢复 NMEA 风向来源，或明确关闭该警戒。","The wind-direction guard remains enabled, but cannot compare with its baseline without fresh true-wind direction. Restore its NMEA source or explicitly disable this guard.")
-            else tr("固定基线 ${decimal(shift.baselineDirectionDegrees,0)}°T → 当前 ${decimal(shift.currentDirectionDegrees,0)}°T；变化阈值 ${decimal(active.windShiftThresholdDegrees,0)}°。","Fixed baseline ${decimal(shift.baselineDirectionDegrees,0)}°T → current ${decimal(shift.currentDirectionDegrees,0)}°T; shift limit ${decimal(active.windShiftThresholdDegrees,0)}°.")+when(shift.baselineSource){TrueWindDirectionSource.MWD->" NMEA MWD";TrueWindDirectionSource.MWV_TRUE_PLUS_HDT->" NMEA MWV + HDT";else->""},
+            else tr("固定基线 ${os.formatBearing(shift.baselineDirectionDegrees)} T → 当前 ${os.formatBearing(shift.currentDirectionDegrees)} T；变化阈值 ${os.formatAngle(active.windShiftThresholdDegrees)}。","Fixed baseline ${os.formatBearing(shift.baselineDirectionDegrees)} T → current ${os.formatBearing(shift.currentDirectionDegrees)} T; shift limit ${os.formatAngle(active.windShiftThresholdDegrees)}.")+when(shift.baselineSource){TrueWindDirectionSource.MWD->" NMEA MWD";TrueWindDirectionSource.MWV_TRUE_PLUS_HDT->" NMEA MWV + HDT";else->""},
             ConditionAlarmSource.WIND_SHIFT,SafetyAlert.Severity.ALARM,if(shift.dataUnavailable)"wind direction lost"else "wind shift"))
     }
     }
