@@ -25,7 +25,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.yokuli.marine.core.design.WpAccent
-import com.yokuli.marine.shell.BuildConfig
+import com.yokuli.anchorwatch.platform.HostBuildIdentity
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.*
@@ -38,6 +38,7 @@ import com.yokuli.anchorwatch.data.vessel.anyEnabled
 import com.yokuli.anchorwatch.location.PhoneLocationPhase
 
 @Composable fun SettingsScreen(os: OsStore, initialSection: String = "overview") {
+    val buildIdentity = remember(os.context) { HostBuildIdentity.read(os.context) }
     var section by rememberSaveable(initialSection) { mutableStateOf(initialSection.substringBefore(':')) }
     ReportVisibleAppRoute(os, if(section == "overview") "settings" else "settings:$section")
     var reset by remember { mutableStateOf(false) }
@@ -81,7 +82,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         MenuRow(os.t("应用磁贴", "app tiles"), os.t("按应用预览样式与实时内容", "preview styles and live content by app")) {os.openLinked("tiles")}
                         Label(os.t("资料与系统信息", "data & information"), 17, c.accent)
                         MenuRow(title("backup")) {section="backup"}
-                        MenuRow(title("about"), BuildConfig.VERSION_NAME) {section="about"}
+                        MenuRow(title("about"), buildIdentity.appVersionName) {section="about"}
                     }
                     "appearance" -> {
                         Label(os.t("主题色", "accent colour"), 26)
@@ -127,8 +128,12 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         MetroButton(os.t("恢复默认布局", "restore default layout"),{reset=true})
                     }
                     else -> {
-                        Label("Yokuli OS",42,c.accent); Label(BuildConfig.VERSION_NAME,22)
+                        Label("Yokuli OS",42,c.accent); Label(buildIdentity.appVersionName,22)
                         Label(os.t("海上生活，简单一点。", "a little simpler, at sea."),24)
+                        Label("${buildIdentity.flavor} · ${buildIdentity.channel} · ${buildIdentity.appVersionCode}",16,c.muted)
+                        Label("Git ${buildIdentity.gitSha.take(12)} · ${buildIdentity.gitState}",16,c.muted)
+                        Label(buildIdentity.gitBranch,16,c.muted)
+                        Label(buildIdentity.timestampUtc,14,c.muted)
                         Label("Selawik · Microsoft · SIL Open Font License 1.1",14,c.muted)
                         Label("© OpenStreetMap contributors · Google Maps · MapLibre · Natural Earth",14,c.muted)
                     }

@@ -34,7 +34,7 @@ flowchart TB
 
 | 位置 | 当前代码职责 | 明确不承担 |
 | --- | --- | --- |
-| `core:runtime-contract` | 纯 Kotlin 的运行时连接状态、传输类型、位置请求及航行状态/命令回执 | Android API、legacy DTO、数据库、UI 文案、实际服务启动 |
+| `core:runtime-contract` | 纯 Kotlin 的运行时连接状态、传输类型、位置请求、航程录制状态与守锚命令回执 | Android API、legacy DTO、数据库、UI 文案、实际服务启动 |
 | `runtime:marine-local` | Android 组合层，提供 `MarineSystem`，绑定本地服务并拥有共享航行命令协调器 | Shell 页面、磁贴、通知文案或反向依赖 `app-shell`；应用不能直接实例化/注入本地实现 |
 | `legacy-marine/api` | 当前迁移用的领域命令端口与兼容读投影 | 宣称自己已经是稳定公共 SDK / Binder schema |
 | `LocalMarineServices` | 将窄端口委托给同一个控制器和内容服务 | 创建第二份数据来源、活动航行、守锚或数据库 |
@@ -99,7 +99,7 @@ flowchart TB
 
 **仍然会中断的情况：** 应用进程崩溃、被系统终止或设备重启仍会影响这些对象。`@Singleton` 只限定进程内实例；`SupervisorJob` 不是故障隔离、持久任务日志或后台存活保证。后台限制、前台服务、持久资料和恢复判断仍由 Android 及既有业务执行层承担，参见 [03 · 生命周期与恢复](03-LIFECYCLE-AND-RECOVERY.md)。
 
-## 5. 航行状态属于运行时，UI 只作投影
+## 5. 航程录制状态属于运行时，UI 只作投影
 
 [VoyageSessionCoordinator](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt) 将航行的共享状态与命令等待放在运行时层。`MarineSystem.voyage` 对应用暴露纯契约中的 `VoyageSessionService`，不暴露协调器实现类。活动会话来自服务读投影，包含 ID、名称、距离、起始/暂停时间和时刻数；Shell 再按用户单位和语言呈现。
 
@@ -109,6 +109,16 @@ Shell 的所有航行启停经 `MarinePresentationBridge` 转发到共享 `Voyag
 
 这仍不是持久幂等命令协议。进程重启后的命令追踪、调用方身份、跨进程订阅与可恢复回执都还需要独立设计。命令反馈的双语文案由 Shell 决定，纯契约只携带业务代码。
 
+这里的 `VoyageSessionCoordinator` 负责轨迹录制。实际路线导航的冻结路线、目标索引和引导计算目前仍在 `OsStore` / UI `Navigation.kt` 中，不能把录制协调器称为已完成的 `NavigationSessionService`。两者是独立生命周期，导航领域迁移属于后续工作。
+
+### 守锚回执（experience.9）
+
+`MarineSystem.anchorCommands` 暴露纯 Kotlin 的 `AnchorCommandMonitor`。`AnchorCommandSnapshot` 携带 commandId、操作类型、expectedSessionId、实际 sessionId、状态和原因代码；进程内 `AnchorCommandRegistry` 保存请求账本，执行层按相同 ID 写回结果。页面及通知快捷项只订阅，NMEA 等通用通知不参与命令确认。
+
+`requestArm`、`requestPauseWatch`、`requestResumeWatch`、`requestLiftAnchor` 提交命令后返回 ID。运行时在同一个串行执行块中校验目标会话、执行并读取数据库事实；45 秒未收到终态只变为 UNKNOWN，仍允许真实回执迟到。清除通知、显示回执、关闭页面都不能解除值守。
+
+该账本仍是进程内机制，不承诺进程被杀或重启后的持久请求去重，也不是独立 Binder 运行时。
+
 ## 6. 内容访问与数据库边界
 
 地点、锚地、集合、历史轨迹与警报事件需要共享，但 UI 不应为了显示一个列表就拿到 `AppDatabase`。本轮通过 [MarineContentService](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineContentService.kt) 暴露实际用户故事需要的读取和修改，由本地实现调用已有 repository/DAO。
@@ -116,6 +126,8 @@ Shell 的所有航行启停经 `MarinePresentationBridge` 转发到共享 `Voyag
 `MySailingRepository` 是 UI 内容投影/调用门面，不再用 Hilt EntryPoint 取得业务数据库。守锚的轨迹读取、地点集合成员读取和内部警报通知订阅也应走内容端口。通知消费仍不解除业务警报，数据库访问位置改变不改变这一语义。
 
 实体值类型暂可作为参数和返回值保留；这不意味着 UI 可以通过 entity 包任意取得 DAO。另一方面，Shell 中仍有自己的页面、磁贴、地图选择以及部分坐标/航线文件状态，本轮并没有把所有持久资料搬到新的统一 OS 数据库。
+
+experience.9 将 Shell 坐标和计划航线的写操作集中到 `MySailingRepository`，通过 `DurableSnapshotStore` 保存原 `experience-v1.json`。内存投影与 `DurableCommit` 分离，用户成功反馈等待真实落盘。失败后重试当前快照，不重复导入或新增对象；这不包含 Room 锚地资料与 Shell 文件之间的跨存储原子事务。
 
 ## 7. 可执行的源码边界检查
 

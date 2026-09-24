@@ -2,9 +2,9 @@
 
 **ROM 开发分支：`codex/yokuli-os-rom`。** 系统分层、设备/安全/升级设计与 AOSP 产品配置见 [ROM 总入口](rom/README.md)。本分支从 experience.6 继续开发系统集成；当前可构建 HOME APK，完整 ROM 镜像尚未在 Linux 构建机编译或启动。原手机应用体验分支保留为 `codex/yokuli-os-rebuild`。
 
-以 Windows Phone 8/10 的排版、横滑、磁贴和虚拟键组织的 Android 航海应用平台。当前开发版本 **0.5.0-experience.8**（versionCode 12）。本轮统一页面头部与实际返回路径，修复地点进入下锚、设置进入磁贴、海图进入图层修复的交接边界。业务执行继续采用上一轮的进程级领域端口。
+以 Windows Phone 8/10 的排版、横滑、磁贴和虚拟键组织的 Android 航海应用平台。当前开发版本 **0.5.0-experience.9**（versionCode 13）。本轮修复 GPX 轨迹误转航线、保存早报成功、MapLibre 虚线丢失、守锚命令反馈串线和构建身份不一致，保留已有访问返回关系与进程级领域端口。
 
-完整结构见 [26 项反馈、全部应用接口与数据拓扑](docs/product/OS_INTERFACE_TOPOLOGY.md)，声明位置见 [API 索引](docs/product/API_INDEX.md)。数据所有权见 [数据中心契约](docs/product/DATA_CENTER_CONTRACT.md)，页面访问与返回见 [应用导航契约](docs/product/APP_NAVIGATION_CONTRACT.md)。实际验证结果与边界见 [本轮交付记录](docs/experience/EXPERIENCE_8_DELIVERY.md)。
+完整结构见 [26 项反馈、全部应用接口与数据拓扑](docs/product/OS_INTERFACE_TOPOLOGY.md)，声明位置见 [API 索引](docs/product/API_INDEX.md)。数据所有权见 [数据中心契约](docs/product/DATA_CENTER_CONTRACT.md)，页面访问与返回见 [应用导航契约](docs/product/APP_NAVIGATION_CONTRACT.md)。实际验证结果与边界见 [本轮交付记录](docs/experience/EXPERIENCE_9_DELIVERY.md)。
 
 ## 系统代码的层级
 
@@ -66,13 +66,13 @@ Google 在线/卫星底图的 `GOOGLE_MAPS_ANDROID_API_KEY` 仍由原仓库的�
 
 当前支持栅格 PNG/JPEG/WebP MBTiles；S57/S63、PBF、GeoTIFF、PMTiles 未接入。导航为用户手动规划与几何引导。锚泊色块表示实际记录到的停留范围，不是声纳或安全水域推断。
 
-任务截图与趋势有各自的进程内保留周期。资料备份覆盖原航行、锚地、照片和船舶资料；不宣称是包含所有 Shell/连接/文件夹授权的一键整机备份。新坐标和路线可 GPX 导出。
+任务截图与趋势有各自的进程内保留周期。资料备份覆盖原航行、锚地、照片和船舶资料；不宣称是包含所有 Shell/连接/文件夹授权的一键整机备份。新坐标和路线可 GPX 导出；GPX 导入支持坐标和计划航线，含历史轨迹的文件整份拒绝，不隐式转成航线。收藏保存等待磁盘回执，失败时在通知中心重试；重试不会重复创建对象。
 
 真实船网、GNSS、报警声、厂商后台和曲面屏仍需真机体验；构建和模拟器检查不替代这些条件。字体使用 Microsoft 开源 Selawik（许可证随包附带），中文采用平台 CJK 回退，不宣称完全等同于 Segoe WP。
 
 ## English
 
-Development version **0.5.0-experience.8** (versionCode 12) introduces an in-process runtime composition layer, narrow domain commands, a process-scoped controller, shared voyage coordination, and content access without UI-owned DAOs. Preference commands update only their own fields, and display consumers acquire independently released leases. Every APK preBuild runs the source-boundary check. These modules still share one APK, UID and process; legacy DTOs and the MainUiState compatibility projection remain. Binder, process isolation and Android notification/Recents replacement are not implemented.
+Development version **0.5.0-experience.9** (versionCode 13) adds durable save receipts, correlated anchor command results, native MapLibre dashed geometry and consistent host build identity. GPX files containing recorded tracks are explicitly rejected instead of silently converted into planned routes. The existing in-process runtime and visit-aware Shell navigation remain. Every APK preBuild runs the source-boundary check. These modules still share one APK, UID and process; legacy DTOs and the MainUiState compatibility projection remain. Binder, process isolation and Android notification/Recents replacement are not implemented.
 
 The centre key remains Home and the right key opens internal notifications. Data Center owns source selection and phone calibration; Boat Network owns connections and outgoing traffic; Data Sharing owns local publishing. Linked app operations return to their caller, ordinary launches open the app home, and internal Recents resumes an existing page. See the OS documentation index for the implemented boundaries and later system integration stages.
 

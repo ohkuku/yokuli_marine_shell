@@ -80,6 +80,11 @@ interface AnchorService : MarineStateReader {
     fun saveAnchorSetupDraft(value: AnchorSetupDraft)
     fun clearAnchorSetupDraft()
     fun arm(lat: Double, lon: Double, input: AnchorWatchInput)
+    /** 返回请求 ID；接收 ID 不代表值守已建立，最终结果订阅系统 anchorCommands。 */
+    fun requestArm(lat: Double, lon: Double, input: AnchorWatchInput): String
+    fun requestPauseWatch(sessionId: Long): String
+    fun requestResumeWatch(sessionId: Long): String
+    fun requestLiftAnchor(sessionId: Long): String
     fun updateAnchorSettings(input: AnchorWatchInput)
     fun updateConditionGuards(config: ConditionGuardConfig)
     fun pauseWatch(): ComponentName?

@@ -38,6 +38,7 @@ import kotlin.math.roundToInt
 /** 顶部轻提示只占用固定系统栏；完整通知由底部通知键打开，不抢占系统下拉手势。 */
 @Composable internal fun SystemStatusBar(os: OsStore, metrics: ShellWindowMetrics) {
     val notices = os.notifications
+    val persistence by os.persistenceState.collectAsState()
     val marine = os.marine?.services?.state?.collectAsState()?.value
     val trip = os.marine?.voyage?.collectAsState()?.value
     val safe = ShellSafeBands.resolve(metrics).status
@@ -46,6 +47,9 @@ import kotlin.math.roundToInt
     val c = LocalMetro.current
     Box(Modifier.fillMaxWidth()) {
         WpStatusStrip(metrics, buildList {
+            if(persistence.saving || persistence.failed) add(WpStatusStripItem("storage",
+                if(persistence.saving) os.t("保存中", "saving") else os.t("未保存", "unsaved"),
+                os.t("通知中心中查看保存状态或重试", "View save status or retry in notifications"), persistence.failed))
             if (trip != null && trip.phase!=VoyagePhase.IDLE) add(WpStatusStripItem("voyage", when(trip.phase) {
                 VoyagePhase.PAUSED -> os.t("记录暂停", "REC paused")
                 VoyagePhase.STARTING -> os.t("记录准备", "REC starting")
@@ -107,6 +111,16 @@ import kotlin.math.roundToInt
                 }
             }
             NotificationQuickActions(os)
+            val persistence by os.persistenceState.collectAsState()
+            if(persistence.saving || persistence.failed) Column(Modifier.fillMaxWidth()
+                .padding(start=insets.topStart,end=insets.topEnd,top=8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                Label(if(persistence.saving) os.t("正在保存改动…", "saving changes…") else os.t("改动尚未保存", "changes are not saved"),18,c.accent)
+                if(persistence.failed && !persistence.saving) {
+                    Label(os.t("改动暂留在本次运行中。请释放存储空间后重试；退出或被系统结束前需要保存。",
+                        "Changes remain in this running app. Free storage and retry before the app exits or is stopped."),14,c.muted)
+                    MetroButton(os.t("重试保存", "retry save"),{os.saveWithFeedback("改动已保存", "Changes saved")})
+                }
+            }
             Row(Modifier.fillMaxWidth().padding(start = insets.topStart, end = insets.topEnd, top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Label(os.t("${store.items.size} 条通知", "${store.items.size} notifications"), 13, c.muted)
                 Label(os.t("全部清除", "clear all"), 15, if (store.items.isEmpty()) c.muted else c.accent,

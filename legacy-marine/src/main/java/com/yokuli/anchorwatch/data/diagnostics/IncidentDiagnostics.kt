@@ -6,6 +6,7 @@ import android.os.SystemClock
 import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.yokuli.anchorwatch.BuildConfig
+import com.yokuli.anchorwatch.platform.HostBuildIdentity
 import com.yokuli.anchorwatch.data.database.DATABASE_SCHEMA_VERSION
 import com.yokuli.anchorwatch.data.database.AnchorDao
 import com.yokuli.anchorwatch.data.database.AppDatabase
@@ -212,19 +213,23 @@ class SupportBundleManager @Inject constructor(
             mapOf("regions" to database.anchorageRegionDao().count(),"places" to database.anchoragePlaceDao().count(),"spots" to database.anchorageSpotDao().count(),"visits" to database.anchorageVisitDao().count(),"photos" to count("anchorage_photos"),"rtreePlaces" to count("anchorage_place_rtree"),"rtreeSpots" to count("anchorage_spot_rtree"),"ftsRows" to count("anchorage_search_fts"),"migrationVerifiedAt" to database.anchorageMetadataDao().meta("MIGRATION_VERIFIED_AT")?.longValue)
         }
         val output = context.contentResolver.openOutputStream(uri, "w") ?: error("Android could not open the selected diagnostics file")
+        val identity = HostBuildIdentity.read(context)
         output.use { raw -> ZipOutputStream(BufferedOutputStream(raw)).use { zip ->
             write(zip, "manifest.json", gson.toJson(mapOf(
                 "format" to "YOKULI_SUPPORT_BUNDLE",
                 "formatVersion" to 1,
                 "createdAtUtc" to Instant.ofEpochMilli(now).toString(),
-                "appVersionName" to BuildConfig.VERSION_NAME,
-                "appVersionCode" to BuildConfig.VERSION_CODE,
-                "buildGitSha" to BuildConfig.BUILD_GIT_SHA,
-                "buildGitBranch" to BuildConfig.BUILD_GIT_BRANCH,
-                "buildGitDirty" to BuildConfig.BUILD_GIT_DIRTY,
-                "buildTimestampUtc" to BuildConfig.BUILD_TIMESTAMP_UTC,
-                "buildChannel" to BuildConfig.BUILD_CHANNEL,
-                "buildInCi" to BuildConfig.BUILD_IN_CI,
+                "appVersionName" to identity.appVersionName,
+                "appVersionCode" to identity.appVersionCode,
+                "applicationId" to identity.applicationId,
+                "buildFlavor" to identity.flavor,
+                "buildGitSha" to identity.gitSha,
+                "buildGitBranch" to identity.gitBranch,
+                "buildGitDirty" to identity.gitDirty,
+                "buildGitState" to identity.gitState,
+                "buildTimestampUtc" to identity.timestampUtc,
+                "buildChannel" to identity.channel,
+                "buildInCi" to identity.inCi,
                 "databaseSchemaVersion" to BuildConfig.DATABASE_SCHEMA_VERSION,
                 "roomSchemaVersion" to DATABASE_SCHEMA_VERSION,
                 "privacy" to "No raw NMEA, API credentials, or exact positions",

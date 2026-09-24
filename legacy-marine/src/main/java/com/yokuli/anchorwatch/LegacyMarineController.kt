@@ -336,6 +336,7 @@ class LegacyMarineController @Inject constructor(
     private val linzDepthRepository:LinzDepthReferenceRepository,
     private val backupManager:YokuliBackupManager,
     private val runtimeDiagnostics:RuntimeDiagnosticsRepository,
+    private val anchorCommands:com.yokuli.anchorwatch.runtime.AnchorCommandRegistry,
     private val safetyProbe:DeviceSafetyProbe,
     private val storageHealthRepository:StorageHealthRepository,
     private val supportBundleManager:SupportBundleManager,
@@ -523,18 +524,20 @@ class LegacyMarineController @Inject constructor(
         controllerScope.launch{combine(acceptedPosition.state.map{it.acceptedFix}.distinctUntilChanged(),prefs.settings.map{it.showLinzDepthReference}.distinctUntilChanged()){fix,enabled->fix to enabled}.conflate().collect{(fix,enabled)->delay(2_000);if(enabled&&fix?.valid==true)linzDepthRepository.refresh(fix.latitude,fix.longitude)}}
         controllerScope.launch{while(true){refreshDepthUi();refreshWatchSafety();refreshAnchorageApproach();delay(1_000)}}
         controllerScope.launch{while(true){refreshStorageHealth();delay(30_000)}}
+        val buildIdentity=com.yokuli.anchorwatch.platform.HostBuildIdentity.read(app)
         incidentLogger.record(
             "app",
             "MARINE_CONTROLLER_STARTED",
             details=mapOf(
-                "versionName" to BuildConfig.VERSION_NAME,
-                "versionCode" to BuildConfig.VERSION_CODE,
-                "gitSha" to BuildConfig.BUILD_GIT_SHA,
-                "gitBranch" to BuildConfig.BUILD_GIT_BRANCH,
-                "gitDirty" to BuildConfig.BUILD_GIT_DIRTY,
-                "buildTimestampUtc" to BuildConfig.BUILD_TIMESTAMP_UTC,
-                "buildChannel" to BuildConfig.BUILD_CHANNEL,
-                "buildInCi" to BuildConfig.BUILD_IN_CI,
+                "versionName" to buildIdentity.appVersionName,
+                "versionCode" to buildIdentity.appVersionCode,
+                "gitSha" to buildIdentity.gitSha,
+                "gitBranch" to buildIdentity.gitBranch,
+                "gitDirty" to buildIdentity.gitDirty,
+                "buildTimestampUtc" to buildIdentity.timestampUtc,
+                "buildChannel" to buildIdentity.channel,
+                "buildFlavor" to buildIdentity.flavor,
+                "buildInCi" to buildIdentity.inCi,
                 "databaseSchemaVersion" to BuildConfig.DATABASE_SCHEMA_VERSION,
             ),
         )
@@ -1165,7 +1168,8 @@ class LegacyMarineController @Inject constructor(
     }
 
     fun clearDiagnostics()=nav.clearDiagnostics()
-    fun arm(lat:Double,lon:Double,input:AnchorWatchInput){
+    fun arm(lat:Double,lon:Double,input:AnchorWatchInput){ requestArm(lat,lon,input) }
+    fun requestArm(lat:Double,lon:Double,input:AnchorWatchInput):String{
         val intent=Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.ARM)
             .putExtra("lat",lat).putExtra("lon",lon).putExtra("rode",input.rodeMeters).putExtra("depth",input.depthMeters?:Double.NaN).putExtra("bowHeight",input.bowHeightMeters).putExtra("boatLength",input.boatLengthMeters?:Double.NaN)
             .putExtra("antennaOffset",if(input.positionSource==GpsDataSource.NMEA)_ui.value.settings.nmeaGpsAntennaToBowMeters else 0.0)
@@ -1174,7 +1178,7 @@ class LegacyMarineController @Inject constructor(
             .putExtra("originMode",input.originMode.name)
             .putExtra("anchoragePlaceId",input.anchoragePlaceId?:-1L).putExtra("anchorageSpotId",input.anchorageSpotId?:-1L)
             .putExtra("depthGuard",input.conditions.depthGuardEnabled).putExtra("shallowDepth",input.conditions.shallowDepthAlarmMeters?:Double.NaN).putExtra("deepDepth",input.conditions.deepDepthAlarmMeters?:Double.NaN).putExtra("windGuard",input.conditions.windGuardEnabled).putExtra("windWarning",input.conditions.windWarningKnots?:Double.NaN).putExtra("windAlarm",input.conditions.windAlarmKnots?:Double.NaN).putExtra("windShift",input.conditions.windShiftEnabled).putExtra("windShiftDegrees",input.conditions.windShiftThresholdDegrees?:Double.NaN).putExtra("apparentFallback",input.conditions.windAllowApparentFallback)
-        ContextCompat.startForegroundService(app,intent)
+        return dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.START,null,intent).first
     }
     fun updateAnchorSettings(input:AnchorWatchInput){val intent=Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.UPDATE_RADIUS).putExtra("alarm",input.alarmRadiusMeters);ContextCompat.startForegroundService(app,intent)}
     fun updateConditionGuards(config:ConditionGuardConfig){val value=config.validated();ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.UPDATE_CONDITION_GUARDS).putExtra("depthGuard",value.depthGuardEnabled).putExtra("shallowDepth",value.shallowDepthAlarmMeters?:Double.NaN).putExtra("deepDepth",value.deepDepthAlarmMeters?:Double.NaN).putExtra("windGuard",value.windGuardEnabled).putExtra("windWarning",value.windWarningKnots?:Double.NaN).putExtra("windAlarm",value.windAlarmKnots?:Double.NaN).putExtra("windShift",value.windShiftEnabled).putExtra("windShiftDegrees",value.windShiftThresholdDegrees?:Double.NaN).putExtra("apparentFallback",value.windAllowApparentFallback))}
@@ -1182,6 +1186,27 @@ class LegacyMarineController @Inject constructor(
     fun pauseWatch()=app.startService(Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.PAUSE_WATCH))
     fun resumeWatch()=ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.RESUME_WATCH))
     fun liftAnchor()=ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.LIFT_ANCHOR))
+    fun requestPauseWatch(sessionId:Long?)=dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.PAUSE,sessionId,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.PAUSE_WATCH)).first
+    fun requestResumeWatch(sessionId:Long?)=dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.RESUME,sessionId,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.RESUME_WATCH)).first
+    fun requestLiftAnchor(sessionId:Long?)=dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.LIFT,sessionId,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.LIFT_ANCHOR)).first
+    private fun dispatchAnchorCommand(type:com.yokuli.runtime.contract.AnchorCommandType,sessionId:Long?,intent:Intent):Pair<String,android.content.ComponentName?>{
+        val request=anchorCommands.create(type,sessionId)
+        intent.putExtra(com.yokuli.anchorwatch.runtime.AnchorCommandRegistry.COMMAND_ID_EXTRA,request.commandId)
+        fun deliver():android.content.ComponentName? {
+            val component=if(type==com.yokuli.runtime.contract.AnchorCommandType.PAUSE)app.startService(intent) else {ContextCompat.startForegroundService(app,intent);null}
+            if(type==com.yokuli.runtime.contract.AnchorCommandType.PAUSE && component==null)error("ANCHOR_SERVICE_NOT_STARTED")
+            return component
+        }
+        anchorCommands.retainDelivery(request.commandId) { deliver() }
+        try {
+            val component=deliver()
+            if(type==com.yokuli.runtime.contract.AnchorCommandType.PAUSE && component==null)error("ANCHOR_SERVICE_NOT_STARTED")
+            return request.commandId to component
+        }catch(error:Exception){
+            anchorCommands.finish(request.commandId,com.yokuli.runtime.contract.AnchorCommandStatus.FAILED,sessionId,"DISPATCH_FAILED")
+            throw error
+        }
+    }
     fun stop()=pauseWatch()
     fun acknowledge()=app.startService(Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.ACK))
     fun acceptEstimatedCenter(session:AnchorSessionEntity)=session.candidateId?.let{candidateId->ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.ACCEPT_ESTIMATED_CENTER).putExtra("sessionId",session.id).putExtra("candidateId",candidateId))}

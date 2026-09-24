@@ -30,6 +30,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
         busy=true
         try { pending=withContext(Dispatchers.IO) { os.context.contentResolver.openInputStream(uri)?.use(Gpx::read) ?: error("unreadable") } }
         catch(cancelled:CancellationException) {throw cancelled}
+        catch(_:Gpx.UnsupportedTracks) {os.notify("这份 GPX 包含历史轨迹。目前仅支持坐标与计划航线，整份文件未导入。","This GPX contains recorded tracks. Only places and planned routes are supported; nothing was imported.")}
         catch(_:Exception) {os.notify("无法导入，请选择有效 GPX（最大 8 MB）","Choose a valid GPX file up to 8 MB.")}
         finally {busy=false}
     } }
@@ -82,6 +83,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
                     }
                     Label(os.t("导入与导出","import & export"),31)
                     Label(os.t("GPX 交换坐标和路线。照片、到访与锚地资料使用设置中的航行与船舶数据备份。","GPX exchanges coordinates and routes. Back up photos, visits and anchorage records in Settings → sailing and vessel data."),17,LocalMetro.current.muted)
+                    Label(os.t("暂不导入历史轨迹，也不会把轨迹转换成计划航线。", "Recorded tracks are not supported for import and are never converted into planned routes."),16,LocalMetro.current.muted)
                     MetroButton(if(busy) os.t("正在处理…","working…") else os.t("导入 GPX","import GPX"),{importer.launch(arrayOf("*/*"))},primary=true,enabled=!busy)
                     MetroButton(os.t("导出坐标与航线","export places & routes"),{exporter.launch("Yokuli-sailing.gpx")},enabled=!busy&&(os.allPlaces.isNotEmpty()||os.routes.isNotEmpty()))
                 }
@@ -102,7 +104,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             Label(os.t("导入这份 GPX","import this GPX"),31)
             Label(os.t("${content.places.size} 个坐标，${content.routes.size} 条路线","${content.places.size} places, ${content.routes.size} routes"),21)
             Label(os.t("同名且位置相同的坐标、相同点序列的航线可以跳过。","Skip places with the same name and position, and routes with the same name and points."),17,LocalMetro.current.muted)
-            fun apply(skip:Boolean) {val (places,routes)=repo.import(content,skip);pending=null;os.notify("已导入 $places 个坐标、$routes 条路线","Imported $places places and $routes routes")}
+            fun apply(skip:Boolean) {repo.import(content,skip);pending=null}
             MetroButton(os.t("跳过重复并导入","import, skip duplicates"),{apply(true)},primary=true)
             MetroButton(os.t("全部作为新资料导入","import all as new"),{apply(false)})
             MetroButton(os.t("取消","cancel"),{pending=null})
@@ -148,6 +150,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
 }
 
 @Composable internal fun CoordinateEditor(os:OsStore,initial:Place?,onDismiss:()->Unit,onSave:(Place)->Unit) {
+    val placeId=rememberSaveable(initial?.id) {initial?.id ?: uid()}
     var name by rememberSaveable(initial?.id) {mutableStateOf(initial?.name.orEmpty())}
     val initialLatitude=rememberSaveable(initial?.id){initial?.point?.lat?.let(os::formatLatitude).orEmpty()}
     val initialLongitude=rememberSaveable(initial?.id){initial?.point?.lon?.let(os::formatLongitude).orEmpty()}
@@ -167,7 +170,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             Field(os.t("集合","collection"),group,{group=it.take(80)})
             Field(os.t("笔记","notes"),note,{note=it.take(20000)},multiline=true)
             if(point==null&&(latitude.isNotBlank()||longitude.isNotBlank())) Label(os.t("纬度须在 -90 到 90，经度须在 -180 到 180","Latitude must be -90…90, longitude -180…180"),15,LocalMetro.current.muted)
-            MetroButton(os.t("保存","save"),{point?.let {onSave(Place(initial?.id?:uid(),name.trim(),it,note,kind,group.trim()))}},primary=true,enabled=name.isNotBlank()&&point!=null)
+            MetroButton(os.t("保存","save"),{point?.let {onSave(Place(placeId,name.trim(),it,note,kind,group.trim()))}},primary=true,enabled=name.isNotBlank()&&point!=null)
             MetroButton(os.t("取消","cancel"),onDismiss)
         }
     }

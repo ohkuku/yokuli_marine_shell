@@ -7,7 +7,7 @@ import com.yokuli.anchorwatch.data.database.entity.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** 应用显示投影：持久化操作只调用内容端口，沿用原记录 ID 和关系。 */
+/** 我的航行读写门面：旧锚地走内容端口，Shell 坐标与计划航线走文件回执；沿用原 ID 和关系。 */
 class MySailingRepository(private val os: OsStore) {
     private val content: MarineContentService = os.content
     val photos = content.photos
@@ -55,9 +55,26 @@ class MySailingRepository(private val os: OsStore) {
         content.anchorTrackPage(sessionId, afterTimestamp, afterId, limit)
     suspend fun saveAnchorage(session: AnchorSessionEntity, name: String) =
         content.saveAnchorage(session.id, name, os.t("实际锚位", "anchor position"))
-    fun put(place:Place) { require(place.point.valid() && place.name.isNotBlank());os.places=os.places.filterNot { it.id==place.id }+place;os.save() }
-    fun remove(id:String) { os.places=os.places.filterNot { it.id==id };os.save() }
-    fun import(content:Gpx.Contents,skipDuplicates:Boolean):Pair<Int,Int> {
+    /** 地点和计划航线的写入口；读模型可先显示，只有 DurableCommit 成功才提示已保存。 */
+    fun put(place:Place):DurableCommit {
+        require(place.point.valid() && place.name.isNotBlank())
+        os.places=os.places.filterNot { it.id==place.id }+place
+        return os.saveWithFeedback("地点已保存", "Place saved", "place:${place.id}")
+    }
+    fun remove(id:String):DurableCommit {
+        os.places=os.places.filterNot { it.id==id }
+        return os.saveWithFeedback("地点已删除", "Place deleted")
+    }
+    fun putRoute(route:Route):DurableCommit {
+        require(route.name.isNotBlank() && route.points.isNotEmpty() && route.points.all(GeoPoint::valid))
+        os.routes=os.routes.filterNot { it.id==route.id }+route.copy(points=route.points.toList())
+        return os.saveWithFeedback("航线已保存", "Route saved", "route:${route.id}")
+    }
+    fun removeRoute(id:String):DurableCommit {
+        os.routes=os.routes.filterNot { it.id==id }
+        return os.saveWithFeedback("航线已删除", "Route deleted")
+    }
+    fun import(content:Gpx.Contents,skipDuplicates:Boolean):DurableCommit {
         val newPlaces=mutableListOf<Place>(); val newRoutes=mutableListOf<Route>()
         content.places.forEach { candidate ->
             if(!skipDuplicates || (os.allPlaces+newPlaces).none { it.name==candidate.name && distance(it.point,candidate.point)<1.0 }) newPlaces+=candidate
@@ -65,7 +82,8 @@ class MySailingRepository(private val os: OsStore) {
         content.routes.forEach { candidate ->
             if(!skipDuplicates || (os.routes+newRoutes).none { it.name==candidate.name && it.points==candidate.points }) newRoutes+=candidate
         }
-        os.places=os.places+newPlaces;os.routes=os.routes+newRoutes;os.save()
-        return newPlaces.size to newRoutes.size
+        os.places=os.places+newPlaces;os.routes=os.routes+newRoutes
+        return os.saveWithFeedback("已导入 ${newPlaces.size} 个坐标、${newRoutes.size} 条路线",
+            "Imported ${newPlaces.size} places and ${newRoutes.size} routes", "places")
     }
 }

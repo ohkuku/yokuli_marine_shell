@@ -126,9 +126,9 @@ import kotlin.math.*
         }
     }
     if(naming) TextDialog(os,os.t("保存航线","save route"),os.routes.firstOrNull {it.id==os.editingRouteId}?.name ?: os.t("航线 ${os.routes.size+1}","route ${os.routes.size+1}"),{naming=false}) { name ->
-        val route=Route(id=os.editingRouteId ?: uid(),name=name,points=os.draftRoute.toList()); os.routes=os.routes.filter {it.id!=route.id}+route; os.displayedRouteId=null
+        val route=Route(id=os.editingRouteId ?: uid(),name=name,points=os.draftRoute.toList()); os.displayedRouteId=null
         // Saving edits never changes the frozen route of an active navigation session.
-        os.editingRoute=false;os.editingRouteId=null;os.draftRoute=emptyList();os.showCrosshair=false;os.save();os.notify("航线已保存","Route saved")
+        os.editingRoute=false;os.editingRouteId=null;os.draftRoute=emptyList();os.showCrosshair=false;os.sailing.putRoute(route)
     }
     if(discard) ConfirmDialog(os,os.t("放弃这条未保存的航线？","Discard this unsaved route?"),{discard=false}) {cancelRouteDraft(os);discard=false}
     if(layers) MapSourcePicker(os) {layers=false}

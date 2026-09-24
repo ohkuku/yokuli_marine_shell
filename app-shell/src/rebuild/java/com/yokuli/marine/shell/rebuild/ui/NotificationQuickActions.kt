@@ -44,16 +44,22 @@ import kotlinx.coroutines.withTimeoutOrNull
     var expanded by rememberSaveable { mutableStateOf(false) }
     var confirmMount by rememberSaveable { mutableStateOf(false) }
     var confirming by remember { mutableStateOf(false) }
-    var pendingAnchor by remember { mutableStateOf<Pair<Long, Boolean>?>(null) }
+    val anchorCommands = marine?.system?.anchorCommands?.commands?.collectAsState()?.value.orEmpty()
+    val pendingAnchor = anchorCommands.lastOrNull { !it.terminal }
+    var anchorRequestId by rememberSaveable { mutableStateOf<String?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     val active = state?.active
     val gpsLocked = active?.paused == false
-    LaunchedEffect(pendingAnchor, active?.id, active?.paused) {
-        val request = pendingAnchor ?: return@LaunchedEffect
-        if (active == null || active.id != request.first || active.paused == request.second) { pendingAnchor = null; return@LaunchedEffect }
-        delay(8000)
-        pendingAnchor = null
-        feedback = os.t("守锚状态尚未确认，请检查当前值守。", "Anchor state is not confirmed; check the current watch.")
+    LaunchedEffect(anchorCommands, anchorRequestId) {
+        val result = anchorCommands.firstOrNull { it.commandId == anchorRequestId } ?: return@LaunchedEffect
+        if (result.status == com.yokuli.runtime.contract.AnchorCommandStatus.UNKNOWN) {
+            feedback = os.t("守锚还在等待运行时确认，请勿重复操作。", "Still awaiting the anchor result; do not repeat the action.")
+        } else if (result.terminal) {
+            feedback = if (result.status == com.yokuli.runtime.contract.AnchorCommandStatus.CONFIRMED) null
+                else os.t("这次守锚操作未完成，请核对当前值守状态。", "The anchor action did not complete. Review the current watch state.")
+            marine?.system?.anchorCommands?.acknowledgeResult(result.commandId)
+            anchorRequestId = null
+        }
     }
     Column(Modifier.fillMaxWidth().padding(start = insets.topStart, end = insets.topEnd), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -88,9 +94,10 @@ import kotlinx.coroutines.withTimeoutOrNull
                     val current = services?.state?.value?.active
                     if (current != null && services != null) {
                         feedback = null
-                        pendingAnchor = current.id to !current.paused
-                        runCatching { if (current.paused) services.anchor.resumeWatch() else services.anchor.pauseWatch() }.onFailure {
-                            pendingAnchor = null; feedback = os.t("守锚操作未完成，请重试。", "Anchor action did not complete; please retry.")
+                        runCatching {
+                            if (current.paused) services.anchor.requestResumeWatch(current.id) else services.anchor.requestPauseWatch(current.id)
+                        }.onSuccess { anchorRequestId = it }.onFailure {
+                            feedback = os.t("守锚操作尚未发送，请检查当前状态。", "The anchor action was not sent. Check the current state.")
                         }
                     }
                 }

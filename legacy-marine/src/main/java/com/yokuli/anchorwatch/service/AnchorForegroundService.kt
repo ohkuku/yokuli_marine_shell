@@ -64,7 +64,7 @@ class AnchorForegroundService : Service() {
         // acknowledgement, including commands racing an idle self-stop. The
         // coordinator replaces this starter notification with live state.
         runtime.ensureCommandForeground()
-        runtime.submit(RuntimeCommandParser.parse(intent))
+        runtime.submit(RuntimeCommandParser.parse(intent), intent?.getStringExtra(com.yokuli.anchorwatch.runtime.AnchorCommandRegistry.COMMAND_ID_EXTRA))
         return START_STICKY
     }
 

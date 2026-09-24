@@ -56,6 +56,8 @@ import com.yokuli.anchorwatch.runtime.sonar.SonarRuntime
 import com.yokuli.anchorwatch.runtime.proxy.GpsProxyRuntime
 import com.yokuli.anchorwatch.runtime.proxy.ProxyRuntimeResult
 import com.yokuli.anchorwatch.runtime.health.BatteryHealthMonitor
+import com.yokuli.runtime.contract.AnchorCommandType
+import com.yokuli.runtime.contract.AnchorCommandStatus
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -79,6 +81,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
  private val sonarRuntime:SonarRuntime,
  private val resources:RuntimeResourceManager,
  private val diagnostics:RuntimeDiagnosticsRepository,
+ private val anchorCommands:AnchorCommandRegistry,
  private val incidentLogger:IncidentLogger,
  private val nmeaRuntime:NmeaRuntime,
  private val monotonicClock:MonotonicClock,
@@ -269,7 +272,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   scope.launch{while(isActive){delay(30_000);batteryWatchdog()}}
  }
 
- fun submit(command:RuntimeCommand){
+ fun submit(command:RuntimeCommand, anchorCommandId:String?=null){
   // A newly delivered Android start request owns this service generation. An
   // idle-stop scheduled by the previous command must never race this command
   // and stop the Service before Android sees its foreground acknowledgement.
@@ -306,7 +309,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
     }
     refreshNotification()
    }
-   is RuntimeCommand.ArmWatch->{armPending=true;val request=ArmRequest(command.config,command.placement,command.rangeMode,command.safetyPreset,command.boatLength,command.positionSource,command.centerSource,command.usePhoneHeading,command.depthSource,command.conditions,command.originMode,command.anchoragePlaceId,command.anchorageSpotId);launchCommand{try{
+   is RuntimeCommand.ArmWatch->launchAnchorCommand(anchorCommandId,AnchorCommandType.START){
+    val request=ArmRequest(command.config,command.placement,command.rangeMode,command.safetyPreset,command.boatLength,command.positionSource,command.centerSource,command.usePhoneHeading,command.depthSource,command.conditions,command.originMode,command.anchoragePlaceId,command.anchorageSpotId)
     val now=monotonicClock.elapsedRealtime();val demo=command.positionSource==GpsDataSource.DEMO
     val sensors=com.yokuli.anchorwatch.domain.condition.ConditionGuardAvailability.Sensors(
      instrumentStream=com.yokuli.anchorwatch.domain.condition.ConditionGuardAvailability.hasInstrumentTraffic(navigation.connectionState.value),
@@ -315,19 +319,20 @@ class YokuliRuntimeCoordinator @Inject constructor(
      freshTrueWindDirection=liveWind.state.value.direction(now)!=null,
      demoSession=demo,
     )
-    when{
-          !com.yokuli.anchorwatch.domain.condition.ConditionGuardAvailability.canApply(com.yokuli.anchorwatch.domain.condition.ConditionGuardConfig(),command.conditions,sensors)->notifySeparate("Anchor Watch not started","An enabled environmental alert does not have fresh data from its exact depth or wind instrument.",true)
-     else->anchorActor.execute{arm(request);conditionRuntime.sync(activeSession());anchorEvent("ANCHOR_STARTED",activeSession()?.id)}
+    if(!com.yokuli.anchorwatch.domain.condition.ConditionGuardAvailability.canApply(com.yokuli.anchorwatch.domain.condition.ConditionGuardConfig(),command.conditions,sensors)){
+     notifySeparate("Anchor Watch not started","An enabled environmental alert does not have fresh data from its exact depth or wind instrument.",true)
+    }else{
+     arm(request);conditionRuntime.sync(activeSession());anchorEvent("ANCHOR_STARTED",activeSession()?.id)
     }
-   }finally{armPending=false;releaseIfIdle()}}}
+   }
    RuntimeCommand.SnoozeAlarm->launchCommand{val until=wallClock.currentTimeMillis()+alarmSnoozeMinutes*60_000L;anchorActor.execute{snooze();conditionRuntime.snooze(until);refreshSessionFromDatabase()};audioArbiter.snoozeActive(wallClock.currentTimeMillis(),until);reconcileAudio()}
-   RuntimeCommand.PauseWatch->launchCommand{anchorActor.execute{conditionRuntime.flush();refreshSessionFromDatabase();pause();conditionRuntime.sync(activeSession())};clearConditionSources()}
-   RuntimeCommand.ResumeWatch->launchCommand{anchorActor.execute{resume();conditionRuntime.sync(activeSession())}}
+   RuntimeCommand.PauseWatch->launchAnchorCommand(anchorCommandId,AnchorCommandType.PAUSE){conditionRuntime.flush();refreshSessionFromDatabase();pause();conditionRuntime.sync(activeSession());clearConditionSources()}
+   RuntimeCommand.ResumeWatch->launchAnchorCommand(anchorCommandId,AnchorCommandType.RESUME){resume();conditionRuntime.sync(activeSession())}
    is RuntimeCommand.SwitchWatchGpsSource->submit(RuntimeCommand.ChangeSystemPosition(command.source))
-   RuntimeCommand.LiftAnchor->launchCommand{
+   RuntimeCommand.LiftAnchor->launchAnchorCommand(anchorCommandId,AnchorCommandType.LIFT){
     anchorEvent("ANCHOR_ENDED",anchorRuntime.activeSession()?.id)
     val demoSurvey=anchorRuntime.activeSession()?.let{it.positionSource==GpsDataSource.DEMO.name}==true&&sonarRuntime.status.value.activeSurvey!=null
-    anchorActor.execute{conditionRuntime.flush();refreshSessionFromDatabase();lift();conditionRuntime.sync(null)}
+    conditionRuntime.flush();refreshSessionFromDatabase();lift();conditionRuntime.sync(null)
     clearConditionSources()
     if(demoSurvey){sonarRuntime.stop();incidentLogger.record("sonar","DEMO_SURVEY_STOPPED_WITH_ANCHOR");notifySeparate("Demo sonar survey saved","The Demo position source ended with Lift anchor, so its sonar survey was stopped and saved.",false)}
    }
@@ -405,6 +410,61 @@ class YokuliRuntimeCoordinator @Inject constructor(
    is RuntimeCommand.StartSonar->Unit
    RuntimeCommand.StopSonar->launchCommand{sonarRuntime.stop();incidentLogger.record("sonar","SURVEY_STOPPED");refreshNotification();releaseIfIdle()}
    RuntimeCommand.RestoreOnly,is RuntimeCommand.Unknown->Unit
+  }
+ }
+
+
+ /** 同一个串行执行块校验目标会话、执行操作并写回回执；通知不是命令结果。 */
+ private fun launchAnchorCommand(commandId:String?,type:AnchorCommandType,action:suspend AnchorWatchRuntime.()->Unit){
+  val request=if(commandId!=null)anchorCommands.get(commandId) else runCatching{anchorCommands.create(type,anchorRuntime.activeSession()?.id)}.getOrNull()
+  if(request==null || !anchorCommands.begin(request.commandId,type)){releaseIfIdle();return}
+  pendingCommands.incrementAndGet()
+  val accepted=commandActor.submit{
+   try{
+    anchorActor.execute{
+     // begin 只是接受投递。排队期间起锚可能已撤销本请求，真正执行前必须再核对账本。
+     // return 仍退出到外层 finally，释放这次队列计数，不恢复或重建已经结束的值守。
+     if(anchorCommands.get(request.commandId)?.terminal != false)return@execute
+     refreshSessionFromDatabase()
+     val before=activeSession()
+     val expectedId=if(commandId==null)before?.id else request.expectedSessionId
+     // 同 ID 再确认一次已经完成的起锚，只读取原会话归档，不结束另一场值守。
+     if(type==AnchorCommandType.LIFT && expectedId!=null && before==null){
+      val ended=dao.session(expectedId)
+      if(ended?.active==false && ended.endedAt!=null){
+       anchorCommands.finish(request.commandId,AnchorCommandStatus.CONFIRMED,expectedId)
+       return@execute
+      }
+     }
+     val valid=if(type==AnchorCommandType.START)before==null else expectedId!=null && before?.id==expectedId
+     if(!valid){
+      anchorCommands.finish(request.commandId,AnchorCommandStatus.REJECTED,before?.id,"SESSION_CHANGED")
+      return@execute
+     }
+     action()
+     // 操作返回后再次读取数据库事实，避免将 UI 投影延迟或内存中的预更新当成确认。
+     val persisted=dao.active()
+     val confirmed=when(type){
+      AnchorCommandType.START->persisted!=null && persisted.id==activeSession()?.id
+      AnchorCommandType.PAUSE->persisted?.let {it.id==expectedId && it.paused}==true
+      AnchorCommandType.RESUME->persisted?.let {it.id==expectedId && !it.paused}==true
+      AnchorCommandType.LIFT->persisted==null && activeSession()==null
+     }
+     anchorCommands.finish(request.commandId,if(confirmed)AnchorCommandStatus.CONFIRMED else AnchorCommandStatus.REJECTED,
+      if(type==AnchorCommandType.LIFT)expectedId else persisted?.id ?: expectedId,if(confirmed)null else "PRECONDITION_NOT_MET")
+    }
+   }catch(cancelled:CancellationException){
+    anchorCommands.unknown(request.commandId,"RUNTIME_INTERRUPTED");throw cancelled
+   }catch(error:Exception){
+    anchorCommands.finish(request.commandId,AnchorCommandStatus.FAILED,request.expectedSessionId,"EXECUTION_FAILED")
+    incidentLogger.exception("anchor_command",type.name,error,request.expectedSessionId)
+    notifySeparate("Safety command failed",error.message?:error.javaClass.simpleName,true)
+   }finally{if(pendingCommands.decrementAndGet()==0)releaseIfIdle()}
+  }
+  if(!accepted){
+   pendingCommands.decrementAndGet()
+   anchorCommands.finish(request.commandId,AnchorCommandStatus.FAILED,request.expectedSessionId,"COMMAND_QUEUE_UNAVAILABLE")
+   releaseIfIdle()
   }
  }
 
@@ -729,6 +789,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
  @Synchronized fun shutdown(){
   if(!started)return
   started=false
+  anchorCommands.serviceInterrupted()
   foregroundLocationType=false
   idleStopJob?.cancel();idleStopJob=null
   incidentLogger.record("service","STOPPED");commandActor.shutdown();tripActor.shutdown();anchorActor.shutdown();proxyActor.shutdown();phonePositionOutput.shutdown();localNmeaServer.shutdown();tripRuntime.shutdown();anchorTelemetry.shutdown();scope.cancel();navigation.releaseBackgroundConnection();runBlocking(Dispatchers.IO){withTimeoutOrNull(2000){proxyRuntime.shutdown()}};cleanup();diagnostics.serviceStopped()

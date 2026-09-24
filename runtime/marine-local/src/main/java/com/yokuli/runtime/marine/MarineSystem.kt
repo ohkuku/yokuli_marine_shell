@@ -21,11 +21,15 @@ import javax.inject.Singleton
 interface MarineSystem : RuntimeEndpoint {
     val services: MarineServices
     val voyage: VoyageSessionService
+    val anchorCommands: AnchorCommandMonitor
 }
 
 /** ROM 与普通 APK 共用此实现；可替换传输，但当前仍是同进程、同 UID。 */
 @Singleton
-class InProcessMarineSystem @Inject constructor(override val services: LocalMarineServices) : MarineSystem {
+class InProcessMarineSystem @Inject constructor(
+    override val services: LocalMarineServices,
+    override val anchorCommands: com.yokuli.anchorwatch.runtime.AnchorCommandRegistry,
+) : MarineSystem {
     private val systemScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val identity = RuntimeConnection("yokuli.marine", RuntimeTransport.IN_PROCESS, RuntimeReadiness.INITIALIZING)
     override val connection: StateFlow<RuntimeConnection> = services.state.map {

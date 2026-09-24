@@ -10,6 +10,9 @@ val releaseKeystorePath = providers.environmentVariable("ANDROID_KEYSTORE_FILE")
 val mapsKey = providers.environmentVariable("GOOGLE_MAPS_ANDROID_API_KEY")
     .map { it.trim().ifEmpty { "MAPS_API_KEY_NOT_CONFIGURED" } }
     .orElse("MAPS_API_KEY_NOT_CONFIGURED")
+@Suppress("UNCHECKED_CAST")
+val buildIdentity = rootProject.extra["yokuliBuildIdentity"] as Map<String, String>
+fun String.buildQuoted() = "\"" + replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r") + "\""
 
 android {
     namespace = "com.yokuli.marine.shell"
@@ -18,19 +21,29 @@ android {
         applicationId = "com.yokuli.marine"
         minSdk = 28
         targetSdk = 36
-        versionCode = providers.environmentVariable("YOKULI_VERSION_CODE").orNull?.toIntOrNull() ?: 12
-        versionName = providers.environmentVariable("YOKULI_VERSION_NAME").orNull ?: "0.5.0-experience.8"
+        versionCode = buildIdentity.getValue("versionCode").toInt()
+        versionName = buildIdentity.getValue("versionName")
         manifestPlaceholders["GOOGLE_MAPS_ANDROID_API_KEY"] = mapsKey.get()
         buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", (mapsKey.get() != "MAPS_API_KEY_NOT_CONFIGURED").toString())
         buildConfigField("boolean", "ROM_HOME", "false")
+        buildConfigField("String", "BUILD_GIT_SHA", buildIdentity.getValue("gitSha").buildQuoted())
+        buildConfigField("String", "BUILD_GIT_BRANCH", buildIdentity.getValue("gitBranch").buildQuoted())
+        buildConfigField("boolean", "BUILD_GIT_DIRTY", buildIdentity.getValue("gitDirty"))
+        buildConfigField("String", "BUILD_GIT_STATE", buildIdentity.getValue("gitState").buildQuoted())
+        buildConfigField("String", "BUILD_TIMESTAMP_UTC", buildIdentity.getValue("timestampUtc").buildQuoted())
+        buildConfigField("boolean", "BUILD_IN_CI", buildIdentity.getValue("inCi"))
     }
     flavorDimensions += "shellMode"
     productFlavors {
-        create("standalone") { dimension = "shellMode" }
+        create("standalone") {
+            dimension = "shellMode"
+            manifestPlaceholders["YOKULI_BUILD_FLAVOR"] = "standalone"
+        }
         create("rom") {
             dimension = "shellMode"
             versionNameSuffix = "-rom"
             buildConfigField("boolean", "ROM_HOME", "true")
+            manifestPlaceholders["YOKULI_BUILD_FLAVOR"] = "rom"
             // 首个 ROM 面向没有 Google Play services 的纯 AOSP。沿用 MapLibre、离线全球
             // 参考底图和 OSM；保留 standalone 的 API Key 注入，不把密钥写入 ROM 配置。
             buildConfigField("boolean", "GOOGLE_MAPS_CONFIGURED", "false")
@@ -45,7 +58,13 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            buildConfigField("String", "BUILD_CHANNEL", buildIdentity.getValue("debugChannel").buildQuoted())
+            manifestPlaceholders["YOKULI_BUILD_CHANNEL"] = buildIdentity.getValue("debugChannel")
+        }
         getByName("release") {
+            buildConfigField("String", "BUILD_CHANNEL", buildIdentity.getValue("releaseChannel").buildQuoted())
+            manifestPlaceholders["YOKULI_BUILD_CHANNEL"] = buildIdentity.getValue("releaseChannel")
             isMinifyEnabled = false
             if (releaseKeystorePath != null) signingConfig = signingConfigs.getByName("release")
         }

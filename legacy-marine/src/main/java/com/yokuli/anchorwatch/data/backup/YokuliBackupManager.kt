@@ -8,7 +8,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.google.android.gms.location.LocationServices
-import com.yokuli.anchorwatch.BuildConfig
+import com.yokuli.anchorwatch.platform.HostBuildIdentity
 import com.yokuli.anchorwatch.data.NavigationRepository
 import com.yokuli.anchorwatch.data.database.AnchorDao
 import com.yokuli.anchorwatch.data.database.DATABASE_SCHEMA_VERSION
@@ -82,6 +82,8 @@ data class BackupManifestV1(
     val recordCounts:Map<String,Long>,
     val files:List<String>,
     val device:Map<String,String> = mapOf("platform" to "Android"),
+    /** 可选扩展：旧 v1 备份没有此字段，仍可恢复；新备份记录实际宿主及源码身份。 */
+    val buildIdentity:HostBuildIdentity? = null,
 )
 
 /**
@@ -319,10 +321,12 @@ class YokuliBackupManager @Inject constructor(
                     mediaEntries+=entryName
                 }
             }
+            val identity=HostBuildIdentity.read(context)
             val manifest=BackupManifestV1(
-                createdAtUtc=Instant.now().toString(),appVersionName=BuildConfig.VERSION_NAME,
-                appVersionCode=BuildConfig.VERSION_CODE,recordCounts=written.mapValues{it.value.recordCount},
+                createdAtUtc=Instant.now().toString(),appVersionName=identity.appVersionName,
+                appVersionCode=identity.appVersionCode,recordCounts=written.mapValues{it.value.recordCount},
                 files=listOf(YokuliBackupArchive.SETTINGS,YokuliBackupArchive.VESSEL_SETTINGS)+YokuliBackupArchive.dataFiles+mediaEntries,
+                buildIdentity=identity,
             )
             completedManifest=manifest
             checksums[YokuliBackupArchive.MANIFEST]=writeTextEntry(zip,YokuliBackupArchive.MANIFEST,gson.toJson(manifest))

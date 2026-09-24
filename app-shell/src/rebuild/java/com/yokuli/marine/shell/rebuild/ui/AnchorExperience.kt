@@ -39,6 +39,8 @@ import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
+import com.yokuli.runtime.contract.AnchorCommandType
+import com.yokuli.runtime.contract.AnchorCommandStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
@@ -86,10 +88,10 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     var editingRadius by rememberSaveable {mutableStateOf(false)}
     var confirmEnd by rememberSaveable {mutableStateOf(false)}
     var estimateChoice by remember {mutableStateOf<AnchorEstimateChoice?>(null)}
-    var pending by remember {mutableStateOf<String?>(null)}
-    var feedbackBaseline by remember {mutableLongStateOf(0L)}
+    val commandRecords by marine.system.anchorCommands.commands.collectAsState()
+    val pending=commandRecords.lastOrNull {!it.terminal}
+    var observedCommandId by rememberSaveable {mutableStateOf(commandRecords.lastOrNull()?.takeUnless {it.resultPresented}?.commandId)}
     var feedback by remember {mutableStateOf<String?>(null)}
-    var endingId by remember {mutableStateOf<Long?>(null)}
     var saveSessionId by rememberSaveable {mutableStateOf<Long?>(null)}
     var saving by remember {mutableStateOf(false)}
     var savedAnchorageId by rememberSaveable {mutableStateOf<Long?>(null)}
@@ -140,23 +142,51 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
             fittedWatchId=session.id
         }
     }
-    fun command(kind:String,action:()->Unit) {
-        feedback=null;feedbackBaseline=state.runtimeDiagnostics.lastUserFeedback?.id ?: 0L
-        runCatching {action()}.onSuccess {pending=kind}.onFailure {feedback=it.message ?: os.t("操作未完成","operation failed")}
+    fun command(allowLift:Boolean=false,action:()->String) {
+        if(pending!=null && !allowLift)return
+        feedback=null
+        runCatching(action).onSuccess {observedCommandId=it}.onFailure {
+            feedback=if(it.message=="ANCHOR_COMMAND_PENDING")os.t("上一项守锚操作仍在等待确认。","The previous anchor action is still awaiting confirmation.")else os.t("操作未能发送，请检查当前值守状态。","The action could not be sent. Check the current watch state.")
+        }
     }
-    LaunchedEffect(pending,active?.id,active?.paused,active?.monitoringPhase,state.runtimeDiagnostics.lastUserFeedback?.id) {
-        val operation=pending ?: return@LaunchedEffect
-        val complete=when(operation) {"start"->active!=null;"pause"->active?.paused==true;"resume"->active!=null&&!active.paused;"end"->active==null;else->false}
-        if(complete) {
-            pending=null
-            if(operation=="start") {page="watch";os.anchorDraft=null;services.anchor.clearAnchorSetupDraft()}
-            if(operation=="end") {page="review:${endingId}";endingId=null}
+    LaunchedEffect(commandRecords,observedCommandId,active?.id,active?.paused,state.sessions) {
+        // 返回页面时继续订阅原请求。只消费自己的终态，NMEA/定位通知不参与确认。
+        val receipt=commandRecords.firstOrNull {it.commandId==observedCommandId}
+            ?: commandRecords.lastOrNull()?.takeUnless {it.resultPresented}?.also {observedCommandId=it.commandId}
+            ?: return@LaunchedEffect
+        if(receipt.status==AnchorCommandStatus.UNKNOWN){
+            feedback=os.t("运行时还未确认结果，正在继续等待。请勿重复操作；当前值守状态仍显示在地图上。","Still awaiting the runtime result. Do not repeat the action; the map continues to show the current watch state.")
             return@LaunchedEffect
         }
-        val latest=state.runtimeDiagnostics.lastUserFeedback
-        if(latest!=null && latest.id>feedbackBaseline) {feedback=latest.message;pending=null;return@LaunchedEffect}
-        delay(9000)
-        if(pending==operation) {pending=null;feedback=os.t("尚未收到状态确认。当前状态如下，可检查后重试。","No confirmation received. Check the current state before retrying.")}
+        if(!receipt.terminal)return@LaunchedEffect
+        // 旧页面回来时若已完成更新的命令，只保留现在的业务状态，不重放旧命令的页面跳转。
+        val receiptIndex=commandRecords.indexOfFirst {it.commandId==receipt.commandId}
+        if(commandRecords.drop(receiptIndex+1).any {it.terminal}){
+            marine.system.anchorCommands.acknowledgeResult(receipt.commandId)
+            observedCommandId=null
+            return@LaunchedEffect
+        }
+        if(receipt.status==AnchorCommandStatus.CONFIRMED){
+            // 回执以数据库写入为准；界面还需等自己的只读投影赶上同一会话。
+            val visible=when(receipt.type){
+                AnchorCommandType.START->active?.id==receipt.sessionId
+                AnchorCommandType.PAUSE->active?.let {it.id==receipt.sessionId&&it.paused}==true
+                AnchorCommandType.RESUME->active?.let {it.id==receipt.sessionId&&!it.paused}==true
+                AnchorCommandType.LIFT->active==null&&state.sessions.any {it.id==receipt.sessionId&&!it.active}
+            }
+            if(!visible)return@LaunchedEffect
+            feedback=null
+            if(receipt.type==AnchorCommandType.START){page="watch";os.anchorDraft=null;services.anchor.clearAnchorSetupDraft()}
+            if(receipt.type==AnchorCommandType.LIFT)page="review:${receipt.sessionId}"
+        }else{
+            feedback=when(receipt.reason){
+                "SESSION_CHANGED"->os.t("这次值守已经变化，请查看当前状态后再操作。","This watch has changed. Review its current state before acting.")
+                "PRECONDITION_NOT_MET"->os.t("操作条件尚未满足，请检查当前船位、权限及值守状态。","The action's requirements are not met. Check position, permissions and the current watch state.")
+                else->os.t("这次操作没有完成，请先核对当前值守状态。","This action did not complete. Review the current watch state first.")
+            }
+        }
+        marine.system.anchorCommands.acknowledgeResult(receipt.commandId)
+        observedCommandId=null
     }
     val coverage=remember(active?.id) {active?.let {AnchorSwingCoverage(watchCenter(it),it.alarmRadiusMeters)}}
     var swingAreas by remember(active?.id) {mutableStateOf<List<MapArea>>(emptyList())}
@@ -184,7 +214,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
             feedback=when {point==null->os.t("等待可信船位，或拖动地图选择实际锚点。","Wait for an accepted position, or choose the actual anchor on the chart.");!geometry->os.t("请补充实际锚链长度和水深，再开始估计。","Enter deployed rode and water depth before estimation.");!notifications->os.t("请允许守锚通知。","Allow anchor watch notifications.");else->os.t("请检查警戒范围与船位来源。","Check the boundary and position source.")}
             return
         }
-        command("start") {services.anchor.arm(point.lat,point.lon,anchorWatchInput(estimate,origin,radiusValue,rodeValue,depthValue,state.settings.bowRollerHeightMeters,state.settings.boatLengthMeters,source,draftPlaceId,draftSpotId))}
+        command {services.anchor.requestArm(point.lat,point.lon,anchorWatchInput(estimate,origin,radiusValue,rodeValue,depthValue,state.settings.bowRollerHeightMeters,state.settings.boatLengthMeters,source,draftPlaceId,draftSpotId))}
     }
     val scene=anchorScene(os,state,fix?.let {MapVessel(it.point,it.freshCourse(tick),it.fresh(tick)&&readiness.ready,it.freshHeading(tick),it.freshSpeed(tick))},if(active==null)point else null,radiusValue,System.currentTimeMillis(),swingAreas)
     ReportVisibleAppRoute(os, if(page=="watch") "anchor" else "anchor:$page")
@@ -226,8 +256,9 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                         Label(os.t("在这里安心停泊","settle in here"),28)
                         Label(os.t("下锚 → 确认范围 → 开始值守","drop → set boundary → watch"),15,c.muted)
                     }
-                    if(pending!=null)MetroProgress(os.t("正在更新值守…","updating watch…"))
+                    if(pending!=null)MetroProgress(if(pending.status==AnchorCommandStatus.UNKNOWN)os.t("继续等待确认…","awaiting confirmation…")else os.t("正在更新值守…","updating watch…"))
                     feedback?.let {Label(it,14)}
+                    if(pending?.status==AnchorCommandStatus.UNKNOWN)MetroButton(os.t("重新确认这次操作","check this action again"),{marine.system.anchorCommands.recheck(pending.commandId)})
                 }
             }
             Row(Modifier.fillMaxWidth().heightIn(min=69.dp),horizontalArrangement=Arrangement.SpaceEvenly) {
@@ -295,6 +326,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                     if(!geometry)Label(os.t("估计需要有效水深和锚链长度；锚链必须长于水深加船艏高度。","estimation needs valid depth and rode; rode must exceed depth plus bow height."),15)
                     if(ready.willWaitForGps)Label(os.t("确认后将等待可信定位，尚不会执行位置监控。","the session will wait for accepted position; movement monitoring is not active yet."),16)
                     feedback?.let {Label(it,16)}
+                    if(pending?.status==AnchorCommandStatus.UNKNOWN)MetroButton(os.t("重新确认这次操作","check this action again"),{marine.system.anchorCommands.recheck(pending.commandId)})
                     MetroButton(if(pending!=null)os.t("正在建立值守…","starting watch…")else if(ready.willWaitForGps)os.t("确认锚点并等待定位","confirm and wait for position")else os.t("确认并开始值守","confirm and start watch"),::startWatch,primary=true,enabled=ready.canStart&&pending==null)
                     Label(os.t("离开页面不会暂停值守。暂停和起锚是明确的独立操作。","leaving this page does not pause the watch. Pause and lift anchor are explicit actions."),15,c.muted)
                 }
@@ -336,7 +368,8 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                 feedback?.let {Label(it,16)}
                 MenuRow(os.t("风与水深警戒","wind and depth guards"),os.t("查看并调整本次值守的条件","review conditions for this watch")) {page="conditions"}
                 Label(positionReason(os,readiness.reason),15,c.muted)
-                MetroButton(if(active.paused)os.t("恢复值守","resume watch")else os.t("暂停值守","pause watch"),{if(pending==null)if(active.paused)command("resume",services.anchor::resumeWatch)else command("pause",services.anchor::pauseWatch)})
+                if(pending?.status==AnchorCommandStatus.UNKNOWN)MetroButton(os.t("重新确认这次操作","check this action again"),{marine.system.anchorCommands.recheck(pending.commandId)})
+                MetroButton(if(active.paused)os.t("恢复值守","resume watch")else os.t("暂停值守","pause watch"),{if(pending==null)if(active.paused)command {services.anchor.requestResumeWatch(active.id)}else command {services.anchor.requestPauseWatch(active.id)}})
                 MenuRow(os.t("锚泊历史","anchor history")) {page="history"}
             }
         } else if(page=="conditions" && active!=null) {
@@ -387,7 +420,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     }
     if(picking)MapPicker(os,picked,MapScene(vessel=scene.vessel),{point ->picked=point;origin=AnchorCenterSource.MAP_PICK;picking=false},{picking=false})
     if(layers)MapSourcePicker(os) {layers=false}
-    if(confirmEnd && active!=null)ConfirmDialog(os,os.t("起锚并结束这次值守？","Lift anchor and end this watch?")+if(state.activeTrip!=null)os.t("航行记录会继续。","Voyage recording continues.")else "",{confirmEnd=false}) {endingId=active.id;confirmEnd=false;command("end",services.anchor::liftAnchor)}
+    if(confirmEnd && active!=null)ConfirmDialog(os,os.t("起锚并结束这次值守？","Lift anchor and end this watch?")+if(state.activeTrip!=null)os.t("航行记录会继续。","Voyage recording continues.")else "",{confirmEnd=false}) {confirmEnd=false;command(allowLift=true) {services.anchor.requestLiftAnchor(active.id)}}
     if(editingRadius && active!=null)AnchorRadiusDialog(os,active.alarmRadiusMeters,{editingRadius=false}) {meters ->services.anchor.updateAnchorSettings(watchInput(active,meters));editingRadius=false}
     estimateChoice?.let {choice ->ConfirmDialog(os,os.t("采用 ${os.formatCoordinates(choice.point)}？这会改变警戒中心。","Adopt ${os.formatCoordinates(choice.point)}? This changes the alarm centre."),{estimateChoice=null}) {
         val result=state.centreRecalculation.result

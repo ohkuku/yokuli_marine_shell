@@ -11,7 +11,6 @@ import com.yokuli.marine.shell.rebuild.data.DataHub
 import com.yokuli.marine.shell.rebuild.data.MarinePresentationBridge
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -102,7 +101,8 @@ class YokuliApplication : Application() {
 class OsStore(val context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val file = AtomicFile(File(context.filesDir, "experience-v1.json"))
-    private val writes = Channel<String>(Channel.CONFLATED)
+    private val persistence = DurableSnapshotStore(file, scope)
+    val persistenceState = persistence.state
     internal val initial = runCatching { JSONObject(file.openRead().bufferedReader().use { it.readText() }) }.getOrDefault(JSONObject())
     var chinese by mutableStateOf(initial.optString("language", Locale.getDefault().language) == "zh")
     var accent by mutableLongStateOf(initial.optLong("accent", 0xFF007F9B))
@@ -123,7 +123,6 @@ class OsStore(val context: Context) {
     var recent by mutableStateOf(listOf<String>())
     var editTiles by mutableStateOf(false)
     val notifications = SystemNotificationStore(context, scope)
-    var storageError by mutableStateOf(false)
     var center by mutableStateOf(runCatching { GeoPoint.from(initial.getJSONObject("camera")) }.getOrDefault(GeoPoint(-36.84,174.77)))
     var zoom by mutableDoubleStateOf(initial.optDouble("zoom",10.0).coerceIn(1.0,22.0))
     var mapMode by mutableStateOf(initial.optString("mapMode","marine"))
@@ -168,14 +167,18 @@ class OsStore(val context: Context) {
     val nextPoint get() = activeRoute?.points?.getOrNull(routeLeg)
     init {
         observeMarineNotices()
-        scope.launch(Dispatchers.IO) {
-            for (snapshot in writes) {
-                val ok = runCatching {
-                    val stream = file.startWrite()
-                    try { stream.write(snapshot.toByteArray()); file.finishWrite(stream) }
-                    catch (e: Exception) { file.failWrite(stream); throw e }
-                }.isSuccess
-                withContext(Dispatchers.Main) { storageError = !ok }
+        scope.launch {
+            var reportedFailure: Long? = null
+            persistenceState.collect { state ->
+                if (state.failed && !state.saving && reportedFailure != state.failedRevision) {
+                    reportedFailure = state.failedRevision
+                    notify("保存未完成，改动暂留本次运行中。打开通知中心重试。",
+                        "Save did not complete. Changes are kept in this running app. Open notifications to retry.",
+                        app=AppId.PLACES, severity=NoticeSeverity.WARNING, key="sailing-storage")
+                } else if (!state.saving && state.requestedRevision > 0 && state.durableRevision == state.requestedRevision) {
+                    // 重试或后续完整快照已落盘，解除过时的“仍未保存”操作提示。
+                    notifications.items.filter { it.key == "sailing-storage" }.forEach { notifications.remove(it.id) }
+                }
             }
         }
     }
@@ -193,6 +196,10 @@ class OsStore(val context: Context) {
     fun openNotification(id: String) {
         val notice=notifications.items.firstOrNull {it.id==id} ?: return
         notifications.remove(id)
+        if (notice.key == "sailing-storage" && persistenceState.value.failed) {
+            notifications.open()
+            return
+        }
         notice.destination?.let(::openSystemDestination) ?: notifications.close()
     }
     /** 系统面板定位已有内容，当前页面只收起面板，不重建应用。 */
@@ -222,8 +229,7 @@ class OsStore(val context: Context) {
         fitRequest = null; cameraRequest = snapshot.center to snapshot.zoom
     }
     fun mark() {
-        places = places + Place(name=t("标记 ${places.size+1}","mark ${places.size+1}"),point=center)
-        save(); notify("已保存标记","Mark saved")
+        sailing.put(Place(name=t("标记 ${places.size+1}","mark ${places.size+1}"),point=center))
     }
     fun startRoute(route: Route) { navigationRoute=route.copy(points=route.points.toList()); activeRouteId = route.id; displayedRouteId = route.id; routeLeg = 0; save(); openLinked("chart"); fly(route.points.first()) }
     fun advanceRoute() {
@@ -231,7 +237,8 @@ class OsStore(val context: Context) {
         if (routeLeg < route.points.lastIndex) routeLeg++ else { activeRouteId = null; notify("航线已结束","Route ended") }
         save()
     }
-    fun save() {
+    /** 只排队，不代表已保存。需要用户成功反馈的操作必须等待返回的 DurableCommit。 */
+    fun save(): DurableCommit {
         val json = JSONObject()
             .put("places",JSONArray(places.map { it.json() })).put("routes",JSONArray(routes.map { it.json() }))
             .put("tiles",JSONArray(tiles.map { JSONObject().put("app",it.app).put("size",it.size) }))
@@ -240,6 +247,17 @@ class OsStore(val context: Context) {
             .put("navigationSnapshot",navigationRoute?.takeIf { activeRouteId != null }?.json())
             .put("draft",JSONArray(draftRoute.map {it.json()})).put("editingRoute",editingRouteId ?: "")
             .put("host",nmeaHost).put("port",nmeaPort).put("protocol",nmeaProtocol).put("serverPort",serverPort).put("positionSource",positionSource)
-        writes.trySend(json.toString())
+        return persistence.submit(json.toString())
+    }
+    /** 由进程等待回执，切换页面不会取消保存。失败保留内存中的对象，统一入口可重试。 */
+    fun saveWithFeedback(zh: String, en: String, destination: String? = null): DurableCommit {
+        val commit = save()
+        scope.launch {
+            when (commit.result.await()) {
+                DurableCommitResult.SAVED -> notify(zh, en, app=AppId.PLACES, destination=destination)
+                DurableCommitResult.FAILED -> Unit // 统一存储状态给出可重试提示，避免同一次失败弹两条通知。
+            }
+        }
+        return commit
     }
 }

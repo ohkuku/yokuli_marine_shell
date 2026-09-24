@@ -10,6 +10,8 @@ plugins {
 // second credential file or import private local.properties from the old app.
 fun configuration(name: String) = providers.environmentVariable(name).orElse(providers.gradleProperty(name)).orNull?.trim().orEmpty()
 fun String.quoted() = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+@Suppress("UNCHECKED_CAST")
+val buildIdentity = rootProject.extra["yokuliBuildIdentity"] as Map<String, String>
 val mapsConfigured = configuration("GOOGLE_MAPS_ANDROID_API_KEY").let { it.isNotBlank() && it != "MAPS_API_KEY_NOT_CONFIGURED" }
 val linzKey = configuration("LINZ_API_KEY").ifBlank { configuration("YOKULI_LINZ_API_KEY") }
 val linzOverride = configuration("LINZ_HYDRO_TILE_TEMPLATE")
@@ -32,18 +34,19 @@ android {
         buildConfigField("String", "YOKULI_CONTACT_EMAIL", configuration("YOKULI_CONTACT_EMAIL").ifBlank { "kuku.the.developer@gmail.com" }.quoted())
         buildConfigField("String", "YOKULI_PRIVACY_URL", configuration("YOKULI_PRIVACY_URL").quoted())
         buildConfigField("String", "YOKULI_SOURCE_CODE_URL", "https://github.com/ohkuku/yokuli_marine_shell".quoted())
-        buildConfigField("String", "BUILD_GIT_SHA", configuration("GITHUB_SHA").ifBlank { "local" }.quoted())
-        buildConfigField("String", "BUILD_GIT_BRANCH", configuration("GITHUB_REF_NAME").ifBlank { "local" }.quoted())
-        buildConfigField("boolean", "BUILD_GIT_DIRTY", "false")
-        buildConfigField("String", "BUILD_TIMESTAMP_UTC", configuration("BUILD_TIMESTAMP_UTC").quoted())
-        buildConfigField("boolean", "BUILD_IN_CI", (configuration("GITHUB_ACTIONS") == "true").toString())
+        buildConfigField("String", "BUILD_GIT_SHA", buildIdentity.getValue("gitSha").quoted())
+        buildConfigField("String", "BUILD_GIT_BRANCH", buildIdentity.getValue("gitBranch").quoted())
+        buildConfigField("boolean", "BUILD_GIT_DIRTY", buildIdentity.getValue("gitDirty"))
+        buildConfigField("String", "BUILD_GIT_STATE", buildIdentity.getValue("gitState").quoted())
+        buildConfigField("String", "BUILD_TIMESTAMP_UTC", buildIdentity.getValue("timestampUtc").quoted())
+        buildConfigField("boolean", "BUILD_IN_CI", buildIdentity.getValue("inCi"))
         buildConfigField("int", "DATABASE_SCHEMA_VERSION", "22")
-        buildConfigField("String", "VERSION_NAME", configuration("YOKULI_VERSION_NAME").ifBlank { "0.5.0-experience.6" }.quoted())
-        buildConfigField("int", "VERSION_CODE", configuration("YOKULI_VERSION_CODE").toIntOrNull()?.toString() ?: "10")
+        buildConfigField("String", "VERSION_NAME", buildIdentity.getValue("versionName").quoted())
+        buildConfigField("int", "VERSION_CODE", buildIdentity.getValue("versionCode"))
     }
     buildTypes {
-        getByName("debug") { buildConfigField("String", "BUILD_CHANNEL", "debug".quoted()) }
-        getByName("release") { buildConfigField("String", "BUILD_CHANNEL", "release".quoted()) }
+        getByName("debug") { buildConfigField("String", "BUILD_CHANNEL", buildIdentity.getValue("debugChannel").quoted()) }
+        getByName("release") { buildConfigField("String", "BUILD_CHANNEL", buildIdentity.getValue("releaseChannel").quoted()) }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -51,6 +54,7 @@ android {
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 dependencies {
+    implementation(project(":core:runtime-contract"))
     testImplementation(libs.junit)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

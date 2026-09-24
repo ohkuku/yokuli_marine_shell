@@ -15,8 +15,6 @@ import com.google.android.gms.maps.model.PolygonOptions as GooglePolygonOptions
 import com.google.android.gms.maps.model.PolylineOptions as GooglePolylineOptions
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import org.maplibre.android.annotations.MarkerOptions
-import org.maplibre.android.annotations.PolygonOptions
-import org.maplibre.android.annotations.PolylineOptions
 import org.maplibre.android.annotations.IconFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
@@ -27,6 +25,7 @@ import org.maplibre.android.maps.MapLibreMap
  * 屏幕 Canvas 只保留准星与比例尺；业务状态不从渲染对象反向推断。
  */
 internal class NativeSceneRenderer(private val context: Context) {
+    private val libreGeometry = LibreSceneGeometry()
     private var previous: MapScene? = null
     private var previousRuler: List<GeoPoint> = emptyList()
     private data class Group(val value:Any,val remove:List<()->Unit>)
@@ -40,8 +39,21 @@ internal class NativeSceneRenderer(private val context: Context) {
 
     fun invalidate() { previous = null;reset=true }
 
+    /** 必须在 setStyle / MapView.onDestroy 之前释放当前 style 的自有资源。 */
+    fun clear() {
+        groups.values.forEach { group -> group.remove.forEach { it() } }
+        groups.clear()
+        libreGeometry.clear()
+        previous = null
+        previousRuler = emptyList()
+        reset = false
+    }
+
     fun render(google: GoogleMap?, libre: MapLibreMap?, scene: MapScene, ruler: List<GeoPoint>) {
         if (google == null && libre == null) return
+        // style 还在加载时不记录 previous，否则下一帧会误判为已经绘制。
+        if (libre != null && libre.style?.isFullyLoaded != true) return
+        libre?.let { libreGeometry.render(it, scene, ruler) }
         if (scene == previous && ruler == previousRuler) return
         previous = scene; previousRuler = ruler.toList()
         if(reset){groups.values.forEach {group->group.remove.forEach {it()}};groups.clear();reset=false}
@@ -57,18 +69,18 @@ internal class NativeSceneRenderer(private val context: Context) {
             groups[key]=Group(value,removals.toList())
         }
         fun polygon(points: List<GeoPoint>, fill: Int, stroke: Int = Color.TRANSPARENT, width: Float = 0f) {
+            val map = google ?: return
             if (points.size < 3) return
-            google?.addPolygon(GooglePolygonOptions().addAll(points.map { GoogleLatLng(it.lat, it.lon) })
+            map.addPolygon(GooglePolygonOptions().addAll(points.map { GoogleLatLng(it.lat, it.lon) })
                 .fillColor(fill).strokeColor(stroke).strokeWidth(width * density).geodesic(true).zIndex(1f))?.let { removals.add(it::remove) }
-            libre?.addPolygon(PolygonOptions().addAll(points.map { LatLng(it.lat, it.lon) }).fillColor(fill).strokeColor(stroke))?.let {annotation->removals.add {libre?.removeAnnotation(annotation)}}
         }
         fun line(points: List<GeoPoint>, color: Int, width: Float, dashed: Boolean) {
+            val map = google ?: return
             if (points.size < 2) return
             val option = GooglePolylineOptions().addAll(points.map { GoogleLatLng(it.lat, it.lon) }).color(color)
                 .width(width * density).geodesic(true).zIndex(3f)
             if (dashed) option.pattern(listOf(com.google.android.gms.maps.model.Dash(9 * density), com.google.android.gms.maps.model.Gap(6 * density)))
-            google?.addPolyline(option)?.let { removals.add(it::remove) }
-            libre?.addPolyline(PolylineOptions().addAll(points.map { LatLng(it.lat, it.lon) }).color(color).width(width))?.let {annotation->removals.add {libre?.removeAnnotation(annotation)}}
+            map.addPolyline(option).let { removals.add(it::remove) }
         }
         scene.areas.forEach {area->item("area:${area.id}",area) {polygon(area.boundary,area.color.toInt())}}
         scene.circles.filter { it.radiusMeters.isFinite() && it.radiusMeters > 0 }.forEach { circle ->

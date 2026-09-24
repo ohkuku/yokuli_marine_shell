@@ -77,7 +77,7 @@ import kotlinx.coroutines.*
                         },primary=true)
                         MetroButton(os.t("重命名","rename"),{rename=true})
                         MetroButton(os.t("创建反向返航路线","make a reversed return route"),{
-                            val reversed=Route(name=route.name+os.t(" · 返航"," · return"),points=route.points.reversed());os.routes=os.routes+reversed;os.save();os.open("route:${reversed.id}")
+                            val reversed=Route(name=route.name+os.t(" · 返航"," · return"),points=route.points.reversed());os.sailing.putRoute(reversed);os.open("route:${reversed.id}")
                         },enabled=route.points.size>1)
                         MetroButton(if(exporting) os.t("正在导出…","exporting…") else os.t("导出这条航线 GPX","export this route as GPX"),{exporter.launch("Yokuli-route.gpx")},enabled=!exporting && route.points.isNotEmpty())
                         if(os.displayedRouteId==id && !navigating) MetroButton(os.t("从海图隐藏预览","hide chart preview"),{os.displayedRouteId=null;os.save()})
@@ -103,9 +103,9 @@ import kotlinx.coroutines.*
         }
     }}
     if(editConfirm) ConfirmDialog(os,os.t("替换当前未保存的航线草稿？","Replace the current unsaved route draft?"),{editConfirm=false}) {editConfirm=false;edit()}
-    if(rename) TextDialog(os,os.t("重命名","rename"),route.name,{rename=false}) {name ->os.routes=os.routes.map {if(it.id==id) it.copy(name=name) else it};os.save()}
+    if(rename) TextDialog(os,os.t("重命名","rename"),route.name,{rename=false}) {name ->os.sailing.putRoute(route.copy(name=name))}
     if(remove) ConfirmDialog(os,os.t("删除 ${route.name}？"+if(navigating) "当前导航继续使用启动时的路线。" else "","Delete ${route.name}?"+if(navigating) " Active guidance keeps its original route snapshot." else ""),{remove=false}) {
         if(os.displayedRouteId==id) os.displayedRouteId=null
-        os.routes=os.routes.filter {it.id!=id};os.save();remove=false;os.back()
+        os.sailing.removeRoute(id);remove=false;os.back()
     }
 }

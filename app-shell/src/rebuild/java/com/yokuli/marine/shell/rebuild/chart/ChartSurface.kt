@@ -245,6 +245,20 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         }
     }
     private fun retire(old:TileGateway?) {if(old!=null) maps.scope.launch(Dispatchers.IO) {runCatching {old.close()}}}
+    private fun applyLibreStyle(sources: JSONObject, layers: JSONArray, generation: Long, ready: Boolean = false) {
+        val map = libre ?: return
+        // Style 接管资源前清理自有图层、source 和图钉；加载中的参考底图也重画地理内容。
+        nativeScene.clear()
+        map.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",sources).put("layers",layers).toString())) { loaded ->
+            if (!destroyed && generation == sourceGeneration && map.style === loaded) {
+                if (ready) loading = false
+                nativeScene.invalidate()
+                nativeScene.render(googleMap, map, overlay.scene, state.ruler)
+                overlay.invalidate()
+                if (ready) captureSnapshot()
+            }
+        }
+    }
     fun updateStyle() {
         val source=maps.source
         val layer=maps.selectedLayer()
@@ -265,7 +279,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             try {
                 // Remove the previous source while preparing the new one; no stale chart masquerades as the new layer.
                 val sources=offlineWorldSources();val layers=offlineWorldLayers()
-                libre?.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",sources).put("layers",layers).toString()))
+                applyLibreStyle(sources, layers, generation)
                 when(source) {
                     MapSource.Online -> {
                         sources.put("osm",JSONObject().put("type","raster").put("tileSize",256).put("maxzoom",19).put("tiles",JSONArray(listOf("https://tile.openstreetmap.org/{z}/{x}/{y}.png"))))
@@ -285,9 +299,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 ensureActive()
                 if(generation!=sourceGeneration) {retire(proposed);return@launch}
                 val old=gateway;gateway=proposed;retire(old)
-                libre?.setStyle(Style.Builder().fromJson(JSONObject().put("version",8).put("sources",sources).put("layers",layers).toString())) {
-                    if(!destroyed && generation==sourceGeneration) {loading=false;nativeScene.invalidate();nativeScene.render(googleMap,libre,overlay.scene,state.ruler);overlay.invalidate();captureSnapshot()}
-                }
+                applyLibreStyle(sources, layers, generation, ready = true)
             } catch(e:Exception) {retire(proposed);if(e !is CancellationException && generation==sourceGeneration) {error="read";loading=false}}
         }
     }
@@ -340,7 +352,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         Lifecycle.Event.ON_STOP ->if(started){lifecycle(Lifecycle.Event.ON_PAUSE);native?.onStop();google?.onStop();started=false}
         else ->Unit
     }}
-    fun destroy() {if(destroyed)return;destroyed=true;lifecycle(Lifecycle.Event.ON_STOP);scope.cancel();native?.onDestroy();google?.onDestroy();retire(gateway);gateway=null;camera=null}
+    fun destroy() {if(destroyed)return;destroyed=true;lifecycle(Lifecycle.Event.ON_STOP);scope.cancel();nativeScene.clear();native?.onDestroy();google?.onDestroy();retire(gateway);gateway=null;camera=null}
 }
 
 @Composable
