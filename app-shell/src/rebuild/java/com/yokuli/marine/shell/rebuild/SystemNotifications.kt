@@ -3,6 +3,7 @@ package com.yokuli.marine.shell.rebuild
 import android.content.Context
 import android.util.AtomicFile
 import androidx.compose.runtime.*
+import com.yokuli.runtime.contract.ais.AisTrafficService
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import org.json.JSONArray
@@ -43,6 +44,9 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     private var historyLoaded=false
     private val loaded=CompletableDeferred<Unit>()
     private var lastAnchorEventId=0L
+    private val acceptedAisIds=linkedSetOf<String>()
+    private var aisSource:AisTrafficService?=null
+    private var aisSubscription:Job?=null
     private var markRestoredRead=false
     private var discardRestoredRead=false
     private var discardRestored=false
@@ -57,8 +61,13 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
                     val text=file.openRead().bufferedReader().use {it.readText()}
                     val root=if(text.trimStart().startsWith("{"))JSONObject(text)else null
                     val entries=root?.optJSONArray("items") ?: JSONArray(text)
-                    (root?.optLong("anchorEventId") ?: 0L) to entries.objects().mapNotNull {runCatching{SystemNotice.from(it)}.getOrNull()}
-                }.getOrDefault(0L to emptyList())
+                    val ids=root?.optJSONArray("aisNoticeIds")?.let {array ->
+                        (maxOf(0,array.length()-512) until array.length()).mapNotNull {index->
+                            array.optString(index).takeIf {it.isNotBlank()&&it.length<=256}
+                        }
+                    }.orEmpty()
+                    Triple(root?.optLong("anchorEventId") ?: 0L,entries.objects().mapNotNull {runCatching{SystemNotice.from(it)}.getOrNull()},ids)
+                }.getOrDefault(Triple(0L,emptyList(),emptyList()))
             }
             // 冷启动读盘期间用户仍可展开或清空中心；这些操作也必须作用于迟到的历史。
             val restored=if(discardRestored)emptyList() else saved.second
@@ -66,11 +75,13 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
                 .filterNot{it.id in removedBeforeLoad || discardRestoredRead&&it.read}
             items = (items + restored).distinctBy { it.id }.sortedByDescending { it.createdAt }.take(200)
             lastAnchorEventId=saved.first
+            acceptedAisIds.addAll(saved.third)
             historyLoaded=true
             removedBeforeLoad.clear()
             loaded.complete(Unit)
             for (signal in writes) {
-                val snapshot=JSONObject().put("items",JSONArray(items.map {it.json()})).put("anchorEventId",lastAnchorEventId).toString()
+                val snapshot=JSONObject().put("items",JSONArray(items.map {it.json()})).put("anchorEventId",lastAnchorEventId)
+                    .put("aisNoticeIds",JSONArray(acceptedAisIds.toList())).toString()
                 withContext(Dispatchers.IO) {
                 runCatching {
                     val stream = file.startWrite()
@@ -99,6 +110,26 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
         if (showBanner && !expanded && !merge) banners.trySend(entry)
     }
     suspend fun awaitLoaded()=loaded.await()
+    /** 单个进程级订阅；更换运行时会取消旧订阅，页面和 Activity 关闭不停止消息接收。 */
+    internal fun connectAis(source:AisTrafficService) {
+        if(aisSource===source)return
+        aisSubscription?.cancel()
+        aisSource=source
+        aisSubscription=scope.launch {
+            awaitLoaded()
+            source.snapshot.collect {traffic ->
+                traffic.notices.sortedBy {it.issuedAtUtcMillis}.forEach {notice ->
+                    if(notice.mmsi in 1..999_999_999)acceptAisNotice(notice.id,notice.asNotice())
+                }
+            }
+        }
+    }
+    /** 收到过的 ID 与消息在同一 AtomicFile 写入；删除/读取不会被下一秒快照复活。 */
+    private fun acceptAisNotice(id:String,notice:SystemNotice) {
+        if(id.isBlank()||id.length>256||!acceptedAisIds.add(id))return
+        while(acceptedAisIds.size>512)acceptedAisIds.remove(acceptedAisIds.first())
+        post(notice,showBanner=System.currentTimeMillis()-notice.createdAt in 0..10_000)
+    }
     /** 事件游标和通知一起落盘；已删除的历史不会在下一次 Room 订阅时重新出现。 */
     fun acceptAnchorEvent(id:Long,notice:SystemNotice?) {
         if(id<=lastAnchorEventId)return

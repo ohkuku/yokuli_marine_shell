@@ -25,7 +25,7 @@ import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 
 @Composable
-fun MapSourcePicker(os: OsStore, onDismiss: () -> Unit) {
+fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) {
     val c=LocalMetro.current
     Dialog(onDismissRequest=onDismiss) {
         Column(Modifier.fillMaxWidth().heightIn(max=650.dp).background(c.bg).border(1.dp,c.muted).verticalScroll(rememberScrollState()).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
@@ -50,6 +50,7 @@ fun MapSourcePicker(os: OsStore, onDismiss: () -> Unit) {
             if(os.library.layers.isEmpty())Label(os.t("在图册连接文件夹并命名后，它会出现在这里。","Connect and name a folder in chart library to add it here."),16,c.muted)
             Label(os.t("自定义海图下方始终保留离线全球底图。Natural Earth 提供概略陆地与海岸，不含水深或航行障碍物。","Custom charts retain an offline world background. Natural Earth provides general land and coastlines, without depths or navigation hazards."),14,c.muted)
             if(os.maps.saveFailed)Label(os.t("选择尚未保存到设备","selection could not be saved"),16)
+            aisLayer?.let {AisLayerChoice(os,it)}
             MetroButton(os.t("关闭","close"),onDismiss)
         }
     }

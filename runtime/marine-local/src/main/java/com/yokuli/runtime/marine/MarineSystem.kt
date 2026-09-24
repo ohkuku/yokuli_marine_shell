@@ -22,6 +22,7 @@ interface MarineSystem : RuntimeEndpoint {
     val services: MarineServices
     val voyage: VoyageSessionService
     val anchorCommands: AnchorCommandMonitor
+    val ais: com.yokuli.runtime.contract.ais.AisTrafficService
 }
 
 /** ROM 与普通 APK 共用此实现；可替换传输，但当前仍是同进程、同 UID。 */
@@ -29,6 +30,7 @@ interface MarineSystem : RuntimeEndpoint {
 class InProcessMarineSystem @Inject constructor(
     override val services: LocalMarineServices,
     override val anchorCommands: com.yokuli.anchorwatch.runtime.AnchorCommandRegistry,
+    override val ais: com.yokuli.runtime.marine.ais.LocalAisTrafficService,
 ) : MarineSystem {
     private val systemScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val identity = RuntimeConnection("yokuli.marine", RuntimeTransport.IN_PROCESS, RuntimeReadiness.INITIALIZING)

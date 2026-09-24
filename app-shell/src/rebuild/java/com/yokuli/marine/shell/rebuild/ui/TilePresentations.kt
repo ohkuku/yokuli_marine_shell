@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.yokuli.runtime.contract.ais.*
 import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
 import com.yokuli.anchorwatch.domain.model.AlarmState
 import com.yokuli.anchorwatch.domain.model.AlarmType
@@ -69,6 +70,7 @@ fun tilePresets(): List<TilePreset> {
         preset("instruments.wind", AppId.INSTRUMENTS, "风", "wind", "实际收到的真风与视风读数", "The true and apparent wind readings actually available.", "WIND"),
         preset("anchor.distance", AppId.ANCHOR, "锚位距离", "anchor distance", "当前船位到锚位的距离与警戒半径", "Distance from the current position to your anchor and its limit.", "DISTANCE"),
         preset("voyages.recording", AppId.VOYAGES, "当前记录", "current recording", "本次记录的状态、航程和沿途时刻", "Recording status, distance and moments from this voyage.", "RECORDING", true),
+        preset("ais.traffic", AppId.AIS, "周围交通", "nearby traffic", "接收中的真实目标、警戒状态与最近目标，沿用全局单位", "Received traffic, monitoring status and nearest target in your chosen units.", "TRAFFIC", true),
         preset("nmea.traffic", AppId.NMEA, "NMEA 收发", "NMEA traffic", "实际接收与写出计数，连接独立运行", "Actual received and written counts from independent connections.", "TRAFFIC", true),
     )
 }
@@ -84,6 +86,7 @@ fun tileModes(app: ShellApp): List<TileMode> {
         "ANCHOR" -> listOf(mode("WATCH", "值守状态", "watch state"), mode("DISTANCE", "锚位距离", "anchor distance"), mode("LIMIT", "警戒范围", "watch limit"))
         "INSTRUMENTS" -> listOf(mode("SPEED", "航速", "speed"), mode("HEADING", "船首向", "heading"), mode("DEPTH", "水深", "depth"), mode("WIND", "风", "wind"))
         "DATA_CENTER" -> listOf(mode("SOURCE", "船位来源", "position source"), mode("READINGS", "正在采用的读数", "selected readings"))
+        "AIS" -> listOf(mode("TRAFFIC", "周围交通", "nearby traffic"), mode("WATCH", "交通警戒", "traffic watch"), mode("NEAREST", "最近目标", "nearest target"))
         "NMEA" -> listOf(mode("CONNECTIONS", "连接状态", "connections"), mode("TRAFFIC", "实际收发", "actual traffic"))
         "LOCAL_NMEA" -> listOf(mode("SERVICE", "服务状态", "service state"), mode("CLIENTS", "已连接客户端", "connected clients"), mode("TRAFFIC", "实际写出", "actually written"))
         "SETTINGS" -> listOf(mode("VESSEL", "我的船", "my boat"), mode("UNITS", "显示偏好", "display preferences"))
@@ -111,6 +114,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     val history by os.hub.history.collectAsState()
     val state = os.marine?.services?.state?.collectAsState()?.value
     val connections = os.marine?.services?.network?.connections?.collectAsState()?.value.orEmpty()
+    val traffic=if(app.app==AppId.AIS)rememberAisTraffic(os)else null
     val owner = LocalLifecycleOwner.current
     var resumed by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     DisposableEffect(owner) {
@@ -193,6 +197,22 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         "NMEA" -> {
             val online = connections.count { it.state in setOf(NmeaConnectionState.CONNECTED, NmeaConnectionState.CONNECTED_NO_DATA, NmeaConnectionState.CONNECTED_NO_FIX, NmeaConnectionState.STALE) }
             listOf(TileFrame("CONNECTIONS", os.t("$online 条已连接", "$online connected"), os.t("${connections.size} 条已保存连接", "${connections.size} saved connections")), TileFrame("TRAFFIC", "↓ ${connections.sumOf { it.diagnostics.validSentences }}", "↑ ${connections.sumOf { it.writtenSentences }} · " + os.t("实际写出", "actually written"), os.t("有效接收", "valid received")))
+        }
+        "AIS" -> {
+            val snapshot=traffic ?: TrafficSnapshot()
+            val latest=snapshot.inputs.mapNotNull {it.lastAisElapsed}.maxOrNull()
+            val current=snapshot.targets.count {it.state==AisTargetState.CURRENT&&!it.cached}
+            val concern=snapshot.targets.count {it.riskLevel!=AisRiskLevel.NONE}
+            val nearest=snapshot.targets.filter {it.relative.distanceMeters!=null&&it.state==AisTargetState.CURRENT}.minByOrNull {it.relative.distanceMeters!!}
+            val input=aisInputSummary(os,snapshot)
+            listOf(
+                TileFrame("TRAFFIC",if(latest==null)os.t("等待 AIS", "waiting for AIS")else os.t("$current 个当前目标", "$current current targets"),
+                    input+ (latest?.let {" · "+readingAge(os,it,readingNow)} ?: ""),os.t("周围交通", "nearby traffic"),live=current>0),
+                TileFrame("WATCH",if(concern>0)os.t("$concern 个需关注", "$concern need attention")else if(snapshot.preferences.monitoringEnabled)os.t("交通警戒已启用", "traffic watch enabled")else os.t("交通警戒关闭", "traffic watch off"),
+                    if(snapshot.preferences.monitoringEnabled&&(snapshot.backgroundLimitations.isNotEmpty()||snapshot.inputs.none {it.state==AisInputState.ONLINE}))os.t("运行条件受限 · 点按检查", "monitoring limited · tap to inspect")else os.t("AIS 不代表完整周围交通", "AIS does not show all surrounding traffic")),
+                TileFrame("NEAREST",nearest?.relative?.distanceMeters?.let {os.formatDistance(it)} ?: os.t("等待有效相对位置", "waiting for relative position"),
+                    nearest?.let {it.displayName+" · "+aisState(os,it)} ?: input,os.t("最近已观测目标", "nearest observed target"),bearing=nearest?.relative?.bearingDegrees,live=nearest!=null),
+            )
         }
         "LOCAL_NMEA" -> {
             val server = state?.nmeaSharing

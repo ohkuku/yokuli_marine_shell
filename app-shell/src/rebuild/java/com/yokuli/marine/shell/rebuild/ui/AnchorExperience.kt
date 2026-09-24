@@ -66,6 +66,9 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     val state by services.state.collectAsState()
     val data by os.hub.state.collectAsState()
     val tick=rememberMarineClock()
+    val traffic=rememberAisTraffic(os)
+    var selectedAis by rememberSaveable {mutableStateOf<String?>(null)}
+    AisRetainSelection(os,selectedAis?.toIntOrNull())
     val fix=data.fix(os.positionSource)
     val active=state.active
     val view=os.maps.view("anchor",fix?.point ?: os.center,16.0)
@@ -108,6 +111,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     val notificationRequest=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {notifications=it}
     LaunchedEffect(tick) {notifications=Build.VERSION.SDK_INT<33 || ContextCompat.checkSelfPermission(os.context,Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED}
     fun backInside():Boolean=when {
+        selectedAis!=null->{selectedAis=null;true}
         layers->{layers=false;true}
         picking->{picking=false;true}
         editingRadius->{editingRadius=false;true}
@@ -118,7 +122,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
         page!="watch"->{page=if(page=="advanced")"setup"else if(page=="conditions")"estimate"else "watch";true}
         else->false
     }
-    AppBackHandler(enabled=page!="watch"||view.showCrosshair||layers||picking||editingRadius||confirmEnd||estimateChoice!=null) {backInside()}
+    AppBackHandler(enabled=selectedAis!=null||page!="watch"||view.showCrosshair||layers||picking||editingRadius||confirmEnd||estimateChoice!=null) {backInside()}
     BindInternalAppInputHandler {input->input==ShellInput.BACK && backInside()}
     var entryApplied by rememberSaveable {mutableStateOf(false)}
     LaunchedEffect(Unit) {
@@ -223,10 +227,15 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
         else PageHeader(os,when {page=="advanced"->os.t("下锚选项","drop options");page=="history"->os.t("锚泊历史","anchor history");page=="estimate"->os.t("这次锚泊","this watch");page.startsWith("review:")->os.t("锚泊回顾","watch review");else->os.t("守锚","anchor watch")},hasLocalBack=true)
         if(page=="watch" || page=="setup") {
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                MarineMap(os.maps,scene,view,Modifier.fillMaxSize())
+                MarineMap(os.maps,scene.copy(aisTargets=if(page=="watch"&&traffic.preferences.anchorLayer)aisMapTargets(traffic,selectedAis)else emptyList(),
+                    aisInteractive=page=="watch"&&!editingRadius&&!picking),view,Modifier.fillMaxSize(),onEvent={event->
+                    if(event is MapEvent.ItemSelected && event.id.startsWith("ais:") && page=="watch"){selectedAis=event.id.substringAfter(':');view.showCrosshair=false}
+                })
                 MapPositionReadout(os,fix,tick,Modifier.align(Alignment.TopStart).padding(10.dp))
+                if(page=="watch")AisMapStatus(os,traffic,!traffic.preferences.anchorLayer,Modifier.align(Alignment.TopStart).padding(start=10.dp,top=62.dp))
                 MapZoomControls(view,Modifier.align(Alignment.TopEnd).padding(top=66.dp,end=10.dp))
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {view.bottomOverlayDp=with(density){it.height.toDp().value}}.background(c.bg).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    selectedAis?.takeIf {page=="watch"}?.let {AisCompactDetail(os,traffic,it){selectedAis=null}}
                     if(view.showCrosshair)MapCrosshairReadout(os,view.center) {view.showCrosshair=false}
                     if(page=="setup" && active==null) {
                         Label(if(estimate)os.t("先值守，再估计锚点","watch, then estimate")else if(origin==AnchorCenterSource.CURRENT_POSITION)os.t("以开始时船位下锚","drop at the start position")else os.t("在选定位置下锚","drop at selected position"),25)
@@ -367,6 +376,8 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                 }
                 feedback?.let {Label(it,16)}
                 MenuRow(os.t("风与水深警戒","wind and depth guards"),os.t("查看并调整本次值守的条件","review conditions for this watch")) {page="conditions"}
+                MenuRow(os.t("锚泊交通警戒","anchor traffic monitoring"),os.t("独立管理附近 AIS 目标，与走锚报警分开","AIS neighbours, independent from anchor drag alarms")){os.openLinked("ais:settings")}
+                AisMonitoringSummary(os,traffic,!traffic.preferences.anchorLayer)
                 Label(positionReason(os,readiness.reason),15,c.muted)
                 if(pending?.status==AnchorCommandStatus.UNKNOWN)MetroButton(os.t("重新确认这次操作","check this action again"),{marine.system.anchorCommands.recheck(pending.commandId)})
                 MetroButton(if(active.paused)os.t("恢复值守","resume watch")else os.t("暂停值守","pause watch"),{if(pending==null)if(active.paused)command {services.anchor.requestResumeWatch(active.id)}else command {services.anchor.requestPauseWatch(active.id)}})
@@ -419,7 +430,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
         } else {LaunchedEffect(page,active?.id) {page="watch"}}
     }
     if(picking)MapPicker(os,picked,MapScene(vessel=scene.vessel),{point ->picked=point;origin=AnchorCenterSource.MAP_PICK;picking=false},{picking=false})
-    if(layers)MapSourcePicker(os) {layers=false}
+    if(layers)MapSourcePicker(os,aisLayer=true) {layers=false}
     if(confirmEnd && active!=null)ConfirmDialog(os,os.t("起锚并结束这次值守？","Lift anchor and end this watch?")+if(state.activeTrip!=null)os.t("航行记录会继续。","Voyage recording continues.")else "",{confirmEnd=false}) {confirmEnd=false;command(allowLift=true) {services.anchor.requestLiftAnchor(active.id)}}
     if(editingRadius && active!=null)AnchorRadiusDialog(os,active.alarmRadiusMeters,{editingRadius=false}) {meters ->services.anchor.updateAnchorSettings(watchInput(active,meters));editingRadius=false}
     estimateChoice?.let {choice ->ConfirmDialog(os,os.t("采用 ${os.formatCoordinates(choice.point)}？这会改变警戒中心。","Adopt ${os.formatCoordinates(choice.point)}? This changes the alarm centre."),{estimateChoice=null}) {

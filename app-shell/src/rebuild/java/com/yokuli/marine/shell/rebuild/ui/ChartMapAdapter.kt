@@ -14,6 +14,7 @@ import com.yokuli.shell.engine.currentUiStateKey
 @Composable
 fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (ChartHost) -> Unit) {
     val now=rememberMarineClock()
+    val traffic=rememberAisTraffic(os)
     val instanceKey = LocalInternalAppPageKey.current
     val shellState by os.shell.engine.state.collectAsState()
     fun isCurrent(): Boolean = os.shell.engine.state.value.let { state ->
@@ -53,15 +54,19 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         os.allPlaces.forEach {add(MapPoint("place:${it.id}",it.point,"",if(sharedView.selectedPlaceId==it.id)0xFFD74A29 else accent,if(sharedView.selectedPlaceId==it.id)12f else 5f))}
     }
     MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(now),it.fresh(now),it.freshHeading(now),it.freshSpeed(now))},markers,lines,
-        demo=os.positionSource=="demo" || os.marine?.services?.state?.value?.settings?.demoMode==true),view,modifier,
+        demo=os.positionSource=="demo" || os.marine?.services?.state?.value?.settings?.demoMode==true,
+        aisTargets=if(traffic.preferences.chartLayer && sharedView.previewTrack.isEmpty())aisMapTargets(traffic,sharedView.selectedAisMmsi)else emptyList(),
+        aisInteractive=!os.editingRoute&&os.ruler.isEmpty()&&sharedView.previewTrack.isEmpty()),view,modifier,
         onHost={host -> nativeHost=host;host.captureForTile=active;onHost(host)},onEvent={event ->if(isCurrent())when(event) {
             is MapEvent.CameraChanged -> {os.center=event.center;os.zoom=event.zoom;sharedView.center=event.center;sharedView.zoom=event.zoom}
-            MapEvent.GestureStarted -> {os.follow=false;os.showCrosshair=true;sharedView.selectedPlaceId=null}
+            MapEvent.GestureStarted -> {os.follow=false;os.showCrosshair=true;sharedView.selectedPlaceId=null;sharedView.selectedAisMmsi=null}
             is MapEvent.CoordinateSelected -> {os.follow=false;os.showCrosshair=true}
-            is MapEvent.ItemSelected -> if(event.id.startsWith("place:")) {
+            is MapEvent.ItemSelected -> if(event.id.startsWith("ais:")&&!os.editingRoute&&os.ruler.isEmpty()) {
+                sharedView.selectedAisMmsi=event.id.substringAfter(':');sharedView.selectedPlaceId=null;os.showCrosshair=false
+            } else if(event.id.startsWith("place:")) {
                 val id=event.id.removePrefix("place:")
                 os.allPlaces.firstOrNull {it.id==id}?.let {place ->
-                    sharedView.selectedPlaceId=id;os.showCrosshair=false
+                    sharedView.selectedPlaceId=id;sharedView.selectedAisMmsi=null;os.showCrosshair=false
                 }
             }
             is MapEvent.PointMoved -> when {

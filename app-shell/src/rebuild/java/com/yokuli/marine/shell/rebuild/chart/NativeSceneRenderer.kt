@@ -49,7 +49,8 @@ internal class NativeSceneRenderer(private val context: Context) {
         reset = false
     }
 
-    fun render(google: GoogleMap?, libre: MapLibreMap?, scene: MapScene, ruler: List<GeoPoint>) {
+    fun render(google: GoogleMap?, libre: MapLibreMap?, input: MapScene, ruler: List<GeoPoint>) {
+        val scene=input.trafficGeometry()
         if (google == null && libre == null) return
         // style 还在加载时不记录 previous，否则下一帧会误判为已经绘制。
         if (libre != null && libre.style?.isFullyLoaded != true) return
@@ -109,6 +110,9 @@ internal class NativeSceneRenderer(private val context: Context) {
                 .icon(IconFactory.getInstance(context).fromBitmap(bitmap)))?.let {annotation->removals.add {libre?.removeAnnotation(annotation)}}
         }
         points.forEach {point->item("point:${point.id}",point) {marker(point.point,point.id,pointIcon(point))}}
+        scene.aisTargets.forEach { target -> item("ais:${target.mmsi}",target) {
+            marker(target.point,"ais:${target.mmsi}",aisIcon(target))
+        } }
         scene.vessel?.let {vessel ->
             vesselCourseVector(vessel)?.let {vector -> item("vessel:course",vector) {
                 line(vector, Color.WHITE, 3.5f, true)
@@ -137,6 +141,47 @@ internal class NativeSceneRenderer(private val context: Context) {
             canvas.drawText(label, center, center - (paint.ascent() + paint.descent()) / 2, paint)
         }
         icons.put(key, bitmap); return bitmap
+    }
+
+    private fun aisIcon(target:MapAisTarget):Bitmap {
+        val angle=target.heading?.takeIf {it.isFinite()&&it in 0.0..360.0}?.toInt()
+        val key="ais:${target.kind}:$angle:${target.stale}:${target.lost}:${target.risk}:${target.selected}:${target.distress}"
+        icons.get(key)?.let{return it}
+        val size=(48*density).toInt();val center=size/2f
+        val image=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888)
+        val canvas=Canvas(image)
+        val color=when {target.risk||target.distress=="ACTIVE"->0xFFD74A29.toInt();target.selected->0xFFAC4DDD.toInt();target.stale->Color.GRAY;else->0xFF168B76.toInt()}
+        val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply {this.color=color;strokeWidth=2*density;strokeJoin=Paint.Join.ROUND}
+        if(target.selected){paint.style=Paint.Style.STROKE;canvas.drawCircle(center,center,19*density,paint)}
+        canvas.save()
+        val shape=Path()
+        when {
+            target.kind in setOf("VESSEL_A","VESSEL_B","VESSEL","CLASS_A","CLASS_B") && angle!=null -> {
+                canvas.rotate(angle.toFloat(),center,center)
+                shape.moveTo(center,center-12*density);shape.lineTo(center-6*density,center+9*density)
+                shape.lineTo(center+6*density,center+9*density);shape.close()
+            }
+            target.kind.contains("ATON") || target.kind.contains("AID") -> {
+                shape.moveTo(center,center-10*density);shape.lineTo(center-8*density,center)
+                shape.lineTo(center,center+10*density);shape.lineTo(center+8*density,center);shape.close()
+            }
+            target.kind in setOf("SART","MOB","EPIRB") -> {
+                shape.addCircle(center,center,9*density,Path.Direction.CW)
+                shape.moveTo(center-12*density,center);shape.lineTo(center+12*density,center)
+                shape.moveTo(center,center-12*density);shape.lineTo(center,center+12*density)
+            }
+            target.kind.contains("BASE") -> shape.addRect(center-7*density,center-7*density,center+7*density,center+7*density,Path.Direction.CW)
+            target.kind.contains("SAR") || target.kind.contains("AIRCRAFT") -> {
+                shape.moveTo(center-10*density,center);shape.lineTo(center+10*density,center)
+                shape.moveTo(center,center-10*density);shape.lineTo(center,center+10*density)
+            }
+            else -> shape.addCircle(center,center,7*density,Path.Direction.CW)
+        }
+        paint.color=Color.WHITE;paint.style=Paint.Style.STROKE;paint.strokeWidth=4*density;canvas.drawPath(shape,paint)
+        paint.color=color;paint.strokeWidth=2*density;paint.style=if(target.stale||target.kind=="VIRTUAL_AID"||target.distress in setOf("TEST","INACTIVE","UNKNOWN"))Paint.Style.STROKE else Paint.Style.FILL_AND_STROKE;canvas.drawPath(shape,paint)
+        canvas.restore()
+        if(target.lost){paint.color=color;paint.style=Paint.Style.STROKE;canvas.drawLine(center-12*density,center+12*density,center+12*density,center-12*density,paint)}
+        icons.put(key,image);return image
     }
 
     private fun vesselIcon(vessel: MapVessel): Bitmap {

@@ -66,6 +66,7 @@ data class ChartInteractionSnapshot(
     val center: GeoPoint, val zoom: Double, val follow: Boolean, val showCrosshair: Boolean,
     val ruler: List<GeoPoint>, val selectedPlaceId: String?, val displayedRouteId: String?,
     val previewTrack: List<List<GeoPoint>>, val previewTitle: String?, val previewRoute: Route?,
+    val selectedAisMmsi:String?=null,
 )
 /** 系统安装的应用身份；UI 标签与入口组织不能另建不一致的应用列表。 */
 enum class AppId(val zh: String, val en: String, val icon: String) {
@@ -73,12 +74,13 @@ enum class AppId(val zh: String, val en: String, val icon: String) {
     VOYAGES("航海日志","logbook","logbook"), ANCHOR("守锚","anchor watch","anchor"),
     PLACES("我的航行","my sailing","route"), INSTRUMENTS("驾驶台","helm","helm"),
     DATA_CENTER("数据中心","data center","data"), NMEA("船联网","boat network","connect"),
+    AIS("AIS","AIS","ais"),
     LOCAL_NMEA("数据共享","data sharing","share"), SETTINGS("设置","settings","settings"),
     TILES("磁贴工坊","tile studio","start");
     /** 中文应用列表按当前名称的拼音首字母分组，不沿用旧品牌或英文索引。 */
     val chineseIndex:Char get()=when(this) {
         CHART,VOYAGES->'H'; LIBRARY->'T'; PLACES->'W'; INSTRUMENTS->'J'
-        NMEA,TILES->'C'; DATA_CENTER,LOCAL_NMEA,SETTINGS,ANCHOR->'S'
+        NMEA,TILES->'C'; DATA_CENTER,LOCAL_NMEA,SETTINGS,ANCHOR->'S';AIS->'A'
     }
 }
 
@@ -157,6 +159,7 @@ class OsStore(val context: Context) {
         if (marine?.system === system) return
         marine?.close()
         marine = MarinePresentationBridge(this, system)
+        notifications.connectAis(system.ais)
     }
     val hub = DataHub()
     val library = ChartLibrary(context, scope)
@@ -214,7 +217,7 @@ class OsStore(val context: Context) {
         val view = maps.view("chart", center, zoom)
         return ChartInteractionSnapshot(center, zoom, follow, showCrosshair, ruler.toList(),
             view.selectedPlaceId, displayedRouteId, view.previewTrack.map { it.toList() }, view.previewTitle,
-            view.previewRoute?.let { it.copy(points = it.points.toList()) })
+            view.previewRoute?.let { it.copy(points = it.points.toList()) },view.selectedAisMmsi)
     }
     internal fun restoreChartInteraction(snapshot: ChartInteractionSnapshot) {
         center = snapshot.center; zoom = snapshot.zoom; follow = snapshot.follow
@@ -223,6 +226,7 @@ class OsStore(val context: Context) {
         maps.view("chart", center, zoom).apply {
             center = snapshot.center; zoom = snapshot.zoom; follow = snapshot.follow
             selectedPlaceId = snapshot.selectedPlaceId
+            selectedAisMmsi = snapshot.selectedAisMmsi
             previewTrack = snapshot.previewTrack; previewTitle = snapshot.previewTitle; previewRoute = snapshot.previewRoute
         }
         // 新请求触发真实原生相机复位，不能仅更新坐标文案。

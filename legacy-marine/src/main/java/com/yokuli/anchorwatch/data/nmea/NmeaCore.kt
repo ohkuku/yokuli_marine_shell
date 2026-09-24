@@ -25,9 +25,42 @@ class NmeaStreamSplitter(private val maxLength:Int=1024) {
  fun feed(bytes:ByteArray,count:Int=bytes.size):List<String> = feed(String(bytes,0,count,Charsets.US_ASCII))
  fun feed(chunk:String):List<String> {
   buffer.append(chunk); val result=mutableListOf<String>()
-  while(true){ val nl=buffer.indexOf("\n"); if(nl<0) break; val line=buffer.substring(0,nl).trimEnd('\r'); buffer.delete(0,nl+1); if(line.firstOrNull() in setOf('$','!')&&line.length<=maxLength) result+=line }
-  if(buffer.length>maxLength){ val start=maxOf(buffer.lastIndexOf("$"),buffer.lastIndexOf("!")); val tail=if(start>=0&&buffer.length-start<=maxLength) buffer.substring(start) else ""; buffer.clear().append(tail) }
+  while(true){ val nl=buffer.indexOf("\n"); if(nl<0) break; val line=buffer.substring(0,nl).trimEnd('\r'); buffer.delete(0,nl+1); if(line.firstOrNull() in setOf('$','!','\\')&&line.length<=maxLength) result+=line }
+  // Never salvage the body of an overlong tagged packet: doing so would erase
+  // a corrupt tag and let it bypass the independent envelope validation.
+  if(buffer.length>maxLength)buffer.clear()
   return result
+ }
+}
+
+/** 合法标签与正文分别校验；保留完整原帧给 AIS，仪表只接收已校验正文。 */
+data class NmeaWireEnvelope(val sentence:String,val original:String) {
+ companion object {
+  fun decode(line:String,requireChecksum:Boolean):NmeaWireEnvelope? {
+   val original=line.trim()
+   if(original.length !in 7..1024||original.any{it.code !in 32..126})return null
+   var body=original
+   var count=0
+   while(body.startsWith('\\')) {
+    if(++count>4)return null
+    val end=body.indexOf('\\',1)
+    if(end !in 5..256)return null
+    val tag=body.substring(1,end)
+    val star=tag.lastIndexOf('*')
+    if(star<1||star+3!=tag.length)return null
+    val expected=tag.substring(star+1).toIntOrNull(16)?:return null
+    var actual=0
+    tag.substring(0,star).forEach{actual=actual xor it.code}
+    if(actual!=expected)return null
+    body=body.substring(end+1)
+   }
+   if(!NmeaChecksum.validate(body,requireChecksum))return null
+   // AIS always requires a real checksum even when legacy instrument input
+   // allows unchecked sentences; decoder validates formatter/payload next.
+   val formatter=body.substringBefore(',').takeLast(3)
+   if(formatter in setOf("VDM","VDO")&&!NmeaChecksum.validate(body,true))return null
+   return NmeaWireEnvelope(body,original)
+  }
  }
 }
 

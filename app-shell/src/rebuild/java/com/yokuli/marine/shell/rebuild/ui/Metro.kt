@@ -96,6 +96,7 @@ val LightFont=WpFontFamily
             "next" -> { line(7f,16f,25f,16f); line(25f,16f,16f,7f); line(25f,16f,16f,25f) }
             "start" -> { for(x in listOf(5f,18f)) for(y in listOf(5f,18f)) drawRect(color,point(x,y),androidx.compose.ui.geometry.Size(9*sx,9*sy)) }
             "search" -> { circle(13f,13f,8f); line(19f,19f,28f,28f,2.4f) }
+            "ais" -> {circle(16f,16f,12f);circle(16f,16f,6f);line(16f,2f,16f,30f);line(2f,16f,30f,16f);drawCircle(color,2.5f*sx,point(23f,9f));drawCircle(color,2*sx,point(11f,21f))}
             "chart" -> { line(16f,3f,5f,24f); line(5f,24f,14f,24f); line(14f,24f,14f,5f); line(18f,10f,27f,24f); line(27f,24f,18f,24f); line(18f,24f,18f,10f); line(3f,28f,28f,28f) }
             "layers" -> { for(y in listOf(4f,11f,18f)) { line(3f,y+5,16f,y); line(16f,y,29f,y+5); line(29f,y+5,16f,y+10); line(16f,y+10,3f,y+5) } }
             "route" -> { circle(6f,25f,3f); circle(25f,7f,3f); line(9f,25f,23f,25f); line(23f,25f,12f,10f); line(12f,10f,22f,7f) }

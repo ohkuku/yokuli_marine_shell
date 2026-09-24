@@ -36,7 +36,13 @@ data class NmeaConnectionSpec(
 /** SYSTEM 编码全局选中的数据；PHONE 仅手机能力；RAW 按输入连接转发原始数据。 */
 enum class NmeaFeed { SYSTEM, PHONE, RAW }
 /** 原始报文携带实际发件人和连接代次，能力筛选与防回送不能丢弃这些来源信息。 */
-data class NmeaRawFrame(val connectionId:String,val generation:Long,val peer:String,val sentence:String,val receivedElapsedRealtime:Long)
+data class NmeaRawFrame(
+    val connectionId:String,val generation:Long,val peer:String,
+    /** 已校验正文，保持现有字段路由与转发能力筛选语义。 */
+    val sentence:String,val receivedElapsedRealtime:Long,
+    /** 含已校验 NMEA tag block 的原始封装；AIS 保留分组与来源元数据。 */
+    val originalSentence:String=sentence,
+)
 /** 连接实况：requested 是用户意图，state 是传输事实，writtenSentences 只计真正写出。 */
 data class NmeaConnectionSnapshot(
     val spec:NmeaConnectionSpec,
@@ -49,6 +55,8 @@ data class NmeaConnectionSnapshot(
     val lastWrittenElapsed:Long?=null,
     val recentWritten:List<String> = emptyList(),
     val error:String?=null,
+    /** 正文通过校验的接收时刻；不与收到字节或本船 GPS 修正混同。 */
+    val lastLegalSentenceElapsed:Long?=null,
 )
 private val Context.nmeaConnectionsStore by preferencesDataStore("os_nmea_connections")
 @Singleton class NmeaConnectionStore @Inject constructor(@ApplicationContext private val context:Context){

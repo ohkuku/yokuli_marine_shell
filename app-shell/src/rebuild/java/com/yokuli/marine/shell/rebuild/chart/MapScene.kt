@@ -35,6 +35,14 @@ data class MapLine(val id: String, val points: List<GeoPoint>, val color: Long =
 data class MapCircle(val id: String, val center: GeoPoint, val radiusMeters: Double, val color: Long = 0xFF007F9B, val dashed: Boolean = false)
 /** 实际观测区域，不表示水深或可安全航行范围。颜色的 alpha 表示观测密度或时间。 */
 data class MapArea(val id: String, val boundary: List<GeoPoint>, val color: Long)
+/** AIS 是独立交通实体；报告点保持真实位置，Heading 缺失时不能用 COG 冒充船艏。 */
+data class MapAisTarget(
+    val mmsi:String, val point:GeoPoint, val name:String, val kind:String,
+    val heading:Double?=null, val course:Double?=null, val speedMetersPerSecond:Double?=null,
+    val stale:Boolean=false, val lost:Boolean=false, val risk:Boolean=false, val selected:Boolean=false,
+    val distress:String="NONE",
+    val tracks:List<List<GeoPoint>> = emptyList(),
+)
 data class MapScene(
     val vessel: MapVessel? = null,
     val points: List<MapPoint> = emptyList(),
@@ -42,7 +50,24 @@ data class MapScene(
     val circles: List<MapCircle> = emptyList(),
     val demo: Boolean = false,
     val areas: List<MapArea> = emptyList(),
+    val aisTargets:List<MapAisTarget> = emptyList(),
+    /** 工具模式保留显示但不接管航点、测距或放锚的交互。 */
+    val aisInteractive:Boolean=true,
 )
+
+/** 两个地图引擎消费同一份 AIS 轨迹和一分钟航迹向量；历史/预测用不同线型。 */
+internal fun MapScene.trafficGeometry():MapScene = if(aisTargets.isEmpty()) this else copy(lines=lines+buildList {
+    aisTargets.forEach { target ->
+        val color=when {target.risk->0xFFD74A29;target.selected->0xFFAC4DDD;target.stale->0xFF84898C;else->0xFF168B76}
+        target.tracks.forEachIndexed {index,segment->if(segment.size>=2)add(MapLine("ais:track:${target.mmsi}:$index",segment,color,1.5f,false))}
+        if(!target.stale&&!target.lost) {
+            val speed=target.speedMetersPerSecond
+            val course=target.course
+            if(speed!=null&&speed.isFinite()&&speed>0.25&&course!=null&&course.isFinite())
+                add(MapLine("ais:vector:${target.mmsi}",listOf(target.point,destination(target.point,speed*60.0,course)),color,1.7f,true))
+        }
+    }
+})
 
 sealed interface MapEvent {
     data class CameraChanged(val center: GeoPoint, val zoom: Double) : MapEvent
@@ -64,6 +89,9 @@ class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
     var interactive by mutableStateOf(true)
     /** 点击收藏只在海图预览；明确点按详情才打开拥有该记录的应用。 */
     var selectedPlaceId by mutableStateOf<String?>(null)
+    var selectedAisMmsi by mutableStateOf<String?>(null)
+    /** 当前宿主的投影计数，仅用于说明视口裁剪，不改变运行时目标。 */
+    var aisVisibleCount by mutableIntStateOf(0)
     /** 航行日志请求的只读轨迹预览，与实时航行记录各自保留。 */
     var previewTrack by mutableStateOf<List<List<GeoPoint>>>(emptyList())
     var previewTitle by mutableStateOf<String?>(null)
@@ -115,6 +143,8 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     private val views = mutableMapOf<String, MapViewState>()
     init { if (saved == null) select(source) }
     fun view(key: String, center: GeoPoint = GeoPoint(-36.84, 174.77), zoom: Double = 13.0) = views.getOrPut(key) { MapViewState(center, zoom) }
+    /** 随 Shell 访问实例退出释放 AIS 相机草稿，返回栈仍保留的实例不受影响。 */
+    fun retainAisViews(uiStateKeys:Set<String>) { views.keys.removeAll {it.startsWith("ais:")&&it.removePrefix("ais:") !in uiStateKeys} }
     fun selectedLayer(): ChartLayer? = (source as? MapSource.CustomLayer)?.let { selected -> library.layers.firstOrNull { it.id == selected.layerId } }
     fun sourceName(zh: Boolean): String = when (val selected = source) {
         MapSource.Online -> if (zh) "在线" else "online"

@@ -785,7 +785,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   }
  }
  private fun isIdle()=!navigation.anyRequested()&&pendingCommands.get()==0&&!alarmTestActive&&anchorRuntime.activeSession()?.paused!=false&&tripRuntime.activeSession()?.paused!=false&&proxyRuntime.status.value.state!=MockGpsState.ACTIVE&&!phonePositionOutput.enabled&&!localNmeaServer.enabled&&sonarRuntime.status.value.activeSurvey==null&&!armPending
- private fun cleanup(){alarmTestGeneration.incrementAndGet();alarmTestActive=false;audioArbiter.clearAll();alarmAudio.stop();resources.releaseAll()}
+ private fun cleanup(){alarmTestGeneration.incrementAndGet();alarmTestActive=false;audioArbiter.clearAll();alarmAudio.stop();resources.releaseLegacyServiceOwners()}
  @Synchronized fun shutdown(){
   if(!started)return
   started=false

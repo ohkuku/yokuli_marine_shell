@@ -174,7 +174,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         if(event.actionMasked==MotionEvent.ACTION_UP || event.actionMasked==MotionEvent.ACTION_CANCEL)parent?.requestDisallowInterceptTouchEvent(false)
         return handled
     }
-    private fun moved(center: GeoPoint,z: Double) {state.center=center;state.zoom=z;overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
+    private fun moved(center: GeoPoint,z: Double) {state.center=center;state.zoom=z;updateTrafficCount();overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
     private fun touch() {if(!state.interactive)return;state.follow=false;state.showCrosshair=true;onEvent(MapEvent.GestureStarted)}
     private fun pick(point: GeoPoint) {
         if(!state.interactive) return
@@ -182,6 +182,14 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         if(nearby!=null && state.ruler.isEmpty()) {
             val a=camera?.project(nearby.point);val b=camera?.project(point)
             if(a!=null && b!=null && hypot(a.x-b.x,a.y-b.y)<28*resources.displayMetrics.density) {onEvent(MapEvent.ItemSelected(nearby.id));return}
+        }
+        if(overlay.scene.aisInteractive && state.ruler.isEmpty() && overlay.scene.points.none {it.draggable}) {
+            val click=camera?.project(point)
+            val target=overlay.scene.aisTargets.minByOrNull {distance(it.point,point)}
+            val projected=target?.let {camera?.project(it.point)}
+            if(target!=null&&click!=null&&projected!=null&&hypot(click.x-projected.x,click.y-projected.y)<28*resources.displayMetrics.density) {
+                onEvent(MapEvent.ItemSelected("ais:${target.mmsi}"));return
+            }
         }
         // 点按只进入选点模式。准星固定在视口中心，镜头只由拖动、缩放或明确定位按钮移动。
         state.showCrosshair=true;onEvent(MapEvent.CoordinateSelected(point));overlay.invalidate()
@@ -205,7 +213,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 map.setOnCameraIdleListener { captureSnapshot() }
                 map.setOnMarkerClickListener {marker ->
                     val id=marker.tag as? String
-                    if(id!=null && state.interactive)onEvent(MapEvent.ItemSelected(id))
+                    if(id!=null && state.interactive && (!id.startsWith("ais:")||overlay.scene.aisInteractive))onEvent(MapEvent.ItemSelected(id))
                     true
                 }
                 map.setOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude))};map.setOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude))}
@@ -236,7 +244,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 map.addOnCameraMoveStartedListener {if(it==MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE)touch()}
                 map.addOnCameraIdleListener { captureSnapshot() }
                 map.setOnMarkerClickListener {marker ->
-                    if(state.interactive)marker.title?.let {onEvent(MapEvent.ItemSelected(it))}
+                    if(state.interactive)marker.title?.let {if(!it.startsWith("ais:")||overlay.scene.aisInteractive)onEvent(MapEvent.ItemSelected(it))}
                     true
                 }
                 map.addOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude));true};map.addOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude));true}
@@ -336,9 +344,18 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             if(googleEngine)googleMap?.snapshot {save(it)} else libre?.snapshot {save(it)}
         }
     }
+    private fun updateTrafficCount() {
+        val projection=camera ?: return
+        if(width<=0||height<=0)return
+        state.aisVisibleCount=overlay.scene.aisTargets.count {target->
+            val point=projection.project(target.point)
+            point.x in 0f..width.toFloat() && point.y in 0f..height.toFloat()
+        }
+    }
     fun update(scene:MapScene,events:(MapEvent)->Unit) {
         onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.distanceLabel=maps.distanceLabel;overlay.nauticalScale=maps.nauticalScale;overlay.invalidate()
         nativeScene.render(googleMap,libre,scene,state.ruler)
+        updateTrafficCount()
         googleMap?.uiSettings?.setAllGesturesEnabled(state.interactive)
         googleMap?.uiSettings?.apply {isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
         libre?.uiSettings?.apply {isScrollGesturesEnabled=state.interactive;isZoomGesturesEnabled=state.interactive;isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}

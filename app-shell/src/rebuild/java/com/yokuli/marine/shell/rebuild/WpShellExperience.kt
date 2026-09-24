@@ -58,6 +58,7 @@ fun OsExperience(os: OsStore) {
     val savedTasks=rememberSaveableStateHolder()
     val savedKeys=remember {mutableMapOf<String,InternalAppTaskId>()}
     LaunchedEffect(state.tasks.retainedUiStateKeys) {
+        os.maps.retainAisViews(state.tasks.retainedUiStateKeys.toSet())
         savedKeys.keys.toList().filter { it !in state.tasks.retainedUiStateKeys }
             .forEach {savedTasks.removeState(it);savedKeys.remove(it)}
     }
@@ -118,7 +119,7 @@ fun OsExperience(os: OsStore) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val lifecycleState by lifecycleOwner.lifecycle.currentStateFlow.collectAsState()
     val needsHeadingDisplay=lifecycleState.isAtLeast(Lifecycle.State.RESUMED) &&
-        (os.notifications.expanded || state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS,AppId.DATA_CENTER))
+        (os.notifications.expanded || state.surface is ShellVisualSurface.Module && shell.appForPage(os.page)?.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS,AppId.DATA_CENTER,AppId.AIS))
     DisposableEffect(os.marine,needsHeadingDisplay) {
         val services=os.marine?.services
         val lease = if (needsHeadingDisplay) services?.display?.acquireMapHeading() else null
@@ -279,6 +280,7 @@ private fun ShellAppContent(os: OsStore, page: String) {
         page.substringBefore(':') in setOf("voyage","replay","report") -> LogbookScreen(os,page.substringAfter(':').toLongOrNull())
         page == "anchor" || page.startsWith("anchor:") -> AnchorExperience(os,page.substringAfter(':',"watch"))
         page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os,page.substringAfter(':', ""))
+        page == "ais" || page.startsWith("ais:") -> AisScreen(os,page.substringAfter(':', ""))
         page == "local_nmea" -> LocalNmeaScreen(os)
         page == "tiles" || page.startsWith("tiles:") -> TileLibraryScreen(os,page.substringAfter(':', "").takeIf {it.isNotBlank()})
         page == "settings" || page.startsWith("settings:") -> SettingsScreen(os,page.substringAfter(':',"overview"))
@@ -341,11 +343,23 @@ internal fun ShellAppIcon(app: ShellApp, color: Color, modifier: Modifier) {
     }
 }
 
+@Composable
 private fun searchContributions(os: OsStore, query: String): List<LauncherSearchResultContribution> {
-    if (query.isBlank()) return emptyList()
-    return os.allPlaces.filter { it.name.contains(query, true) }.map {
+    val term=query.trim()
+    if (term.isBlank()) return emptyList()
+    val traffic=rememberAisTraffic(os)
+    val aisApp=if(!os.title(AppId.AIS).contains(term,true)&&listOf("AIS","周围船舶","船舶交通","交通警戒","雷达","三维","CPA","TCPA","surrounding vessels","nearby traffic","radar","3D").any {it.contains(term,true)})listOf(
+        LauncherSearchResultContribution("ais-application-search",os.title(AppId.AIS),os.t("周围船舶 · 雷达、三维与海图","surrounding vessels · radar, 3D and chart"),os.shell.apps.first {it.app==AppId.AIS}.rootToken),
+    )else emptyList()
+    val targets=traffic.targets.filter {target->
+        listOf(target.displayName,target.staticData.name?.value.orEmpty(),target.staticData.callSign?.value.orEmpty(),aisNumber(target.mmsi)).any {it.contains(term,true)}
+    }.take(80).map {target->
+        LauncherSearchResultContribution("ais-target-${target.mmsi}",target.displayName,
+            "AIS · ${aisNumber(target.mmsi)} · ${aisState(os,target)}",LaunchToken("ais:target:${target.mmsi}"))
+    }
+    return aisApp + targets + os.allPlaces.filter { it.name.contains(term, true) }.map {
         LauncherSearchResultContribution("place-${it.id}", it.name, os.formatCoordinates(it.point), LaunchToken("place:${it.id}"))
-    } + os.routes.filter { it.name.contains(query, true) }.map {
+    } + os.routes.filter { it.name.contains(term, true) }.map {
         LauncherSearchResultContribution("route-${it.id}", it.name, os.formatDistance(it.length), LaunchToken("route:${it.id}"))
     }
 }

@@ -117,13 +117,21 @@ import kotlin.math.roundToInt
                         Box(Modifier.size(32.dp).background(c.accent).padding(6.dp)) {ShellAppIcon(app,Color.White,Modifier.fillMaxSize())}
                         Column {
                             Label(os.title(app.app),23,maxLines=1)
-                            val page=os.shell.pageForToken(task.lastLaunchToken)
+                            val page=os.shell.visibleRouteForTask(task)
                             if(page!=app.page) Label(when(page.substringBefore(':')) {
                                 "place", "anchorage" -> os.t("坐标详情", "saved place")
                                 "route" -> os.t("航线详情", "route details")
                                 "voyage", "replay", "report" -> os.t("航程详情", "voyage details")
                                 "library" -> os.t("文件夹图层", "folder layer")
                                 "settings" -> os.t("系统偏好", "preferences")
+                                "ais" -> when {
+                                    page.startsWith("ais:target:") -> page.substringAfterLast(':').toIntOrNull()?.let {mmsi->os.marine?.system?.ais?.snapshot?.value?.target(mmsi)?.displayName ?: aisNumber(mmsi)} ?: os.t("目标详情","target detail")
+                                    page=="ais:settings" -> os.t("交通警戒","traffic watch")
+                                    page=="ais:sources" -> os.t("AIS 输入","AIS inputs")
+                                    page.startsWith("ais:view:THREE_D") -> os.t("三维交通","3D traffic")
+                                    page.startsWith("ais:view:CHART") -> os.t("交通海图","traffic chart")
+                                    else -> os.t("AIS 雷达","AIS radar")
+                                }
                                 else -> os.t("应用内页面", "app page")
                             },14,c.muted)
                         }

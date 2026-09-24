@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
         os.connectSystem((application as YokuliApplication).marineSystem)
         os.systemAction=serviceHandler
         // 配置变化会重用最初的 HOME intent；旋转只恢复当前任务，不再次执行 Home。
-        if(savedInstanceState == null) returnHomeFromRomIntent(intent)
+        if(savedInstanceState == null) handleSystemIntent(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) window.attributes = window.attributes.apply {
             layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
@@ -81,7 +81,23 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        returnHomeFromRomIntent(intent)
+        handleSystemIntent(intent)
+    }
+    /** 通知交接携带稳定 MMSI。仅接受本应用的目标路由，忽略任意外部页面字符串。 */
+    private fun handleSystemIntent(intent:Intent?) {
+        if(intent==null)return
+        // ROM 系统 Home 有独立优先级；不会因残留通知参数进入业务页面。
+        if(BuildConfig.ROM_HOME&&intent.action==Intent.ACTION_MAIN&&intent.hasCategory(Intent.CATEGORY_HOME)) {
+            returnHomeFromRomIntent(intent)
+            return
+        }
+        val target=runCatching {intent.getIntExtra("yokuli.ais.target",0)}.getOrDefault(0).takeIf {it in 1..999_999_999}
+        val route=runCatching {intent.getStringExtra("yokuli.ais.route")}.getOrNull()
+        val routedMmsi=route?.takeIf {it.length<=24&&it.startsWith("ais:target:")}
+            ?.substringAfter("ais:target:")?.takeIf {it.length in 1..9&&it.all(Char::isDigit)}?.toIntOrNull()?.takeIf {it in 1..999_999_999}
+        val mmsi=target?:routedMmsi
+        if(mmsi!=null)os.openSystemDestination("ais:target:$mmsi")
+        else if(route=="ais")os.openSystemDestination("ais")
     }
     /** Android 的 Home 是系统级入口：只回桌面，保留内部应用会话和正在运行的航行业务。 */
     private fun returnHomeFromRomIntent(intent: Intent?) {

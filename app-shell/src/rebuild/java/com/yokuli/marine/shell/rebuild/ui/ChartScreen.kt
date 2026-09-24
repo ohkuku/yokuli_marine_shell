@@ -26,6 +26,7 @@ import kotlin.math.*
 @Composable fun ChartScreen(os:OsStore,recording:Boolean=false,recordingPaused:Boolean=false,onRecording:()->Unit={os.open("trip")}) {
     val data by os.hub.state.collectAsState()
     val tick=rememberMarineClock()
+    val traffic=rememberAisTraffic(os)
     val fix=data.fix(os.positionSource); val fresh=fix?.fresh(tick)==true
     var host by remember { mutableStateOf<ChartHost?>(null) }
     var layers by rememberSaveable { mutableStateOf(false) }
@@ -36,6 +37,7 @@ import kotlin.math.*
     val c=LocalMetro.current
     val density=LocalDensity.current
     val chartView=os.maps.view("chart",os.center,os.zoom)
+    AisRetainSelection(os,chartView.selectedAisMmsi?.toIntOrNull())
     val previewPlace=os.allPlaces.firstOrNull {it.id==chartView.selectedPlaceId}
     val selected=os.maps.selectedLayer()?.files.orEmpty()
     fun closeTool():Boolean = when {
@@ -44,13 +46,14 @@ import kotlin.math.*
         naming->{naming=false;true}
         discard->{discard=false;true}
         manageNavigation->{manageNavigation=false;true}
+        chartView.selectedAisMmsi!=null->{chartView.selectedAisMmsi=null;true}
         chartView.selectedPlaceId!=null->{chartView.selectedPlaceId=null;true}
         os.ruler.isNotEmpty()->{os.ruler=emptyList();true}
         os.editingRoute->{if(os.draftRoute.isEmpty())cancelRouteDraft(os)else discard=true;true}
         os.showCrosshair->{os.showCrosshair=false;true}
         else->false
     }
-    val toolOpen=layers||tools||naming||discard||manageNavigation||chartView.selectedPlaceId!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
+    val toolOpen=layers||tools||naming||discard||manageNavigation||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
     AppBackHandler(toolOpen) {closeTool()}
     BindInternalAppInputHandler {input->input==ShellInput.BACK && closeTool()}
     Column(Modifier.fillMaxSize()) {
@@ -58,6 +61,7 @@ import kotlin.math.*
         Box(Modifier.weight(1f).fillMaxWidth()) {
             NativeChart(os,fix,Modifier.fillMaxSize()) { host=it }
             MapPositionReadout(os,fix,tick,Modifier.align(Alignment.TopStart).padding(10.dp))
+            if(chartView.previewTrack.isEmpty())AisMapStatus(os,traffic,!traffic.preferences.chartLayer,Modifier.align(Alignment.TopStart).padding(start=10.dp,top=62.dp))
             MapZoomControls(chartView,Modifier.align(Alignment.TopEnd).padding(top=66.dp,end=10.dp)) {zoom->os.fly(os.center,zoom)}
             if(os.maps.source is MapSource.CustomLayer && selected.isEmpty()) {
                 Column(Modifier.align(Alignment.Center).padding(30.dp).widthIn(max=350.dp).background(c.bg).padding(24.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
@@ -71,7 +75,9 @@ import kotlin.math.*
             // Context controls float over a stable native viewport. Showing the crosshair must
             // never resize the map or change its camera/texture resolution during a drag.
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().onSizeChanged {chartView.bottomOverlayDp=with(density){it.height.toDp().value}}) {
-        if(previewPlace!=null && !os.editingRoute && os.ruler.isEmpty()) {
+        if(chartView.selectedAisMmsi!=null && !os.editingRoute && os.ruler.isEmpty()) {
+            AisCompactDetail(os,traffic,chartView.selectedAisMmsi!!){chartView.selectedAisMmsi=null}
+        } else if(previewPlace!=null && !os.editingRoute && os.ruler.isEmpty()) {
             Column(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                 Row(verticalAlignment=Alignment.CenterVertically) {
                     Label(previewPlace.name,24,modifier=Modifier.weight(1f))
@@ -131,11 +137,14 @@ import kotlin.math.*
         os.editingRoute=false;os.editingRouteId=null;os.draftRoute=emptyList();os.showCrosshair=false;os.sailing.putRoute(route)
     }
     if(discard) ConfirmDialog(os,os.t("放弃这条未保存的航线？","Discard this unsaved route?"),{discard=false}) {cancelRouteDraft(os);discard=false}
-    if(layers) MapSourcePicker(os) {layers=false}
+    if(layers) MapSourcePicker(os,aisLayer=false) {layers=false}
     if(manageNavigation) os.activeRoute?.let { NavigationActionsDialog(os,it) {manageNavigation=false} }
     if(tools) Dialog(onDismissRequest={tools=false}) {
         Column(Modifier.fillMaxWidth().background(c.bg).border(1.dp,c.muted).padding(22.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
             Label(os.t("海图工具","chart tools"),34)
+            AisLayerChoice(os,anchor=false)
+            AisMonitoringSummary(os,traffic,!traffic.preferences.chartLayer)
+            MenuRow(os.t("周围船舶","surrounding traffic"),aisInputSummary(os,traffic)){tools=false;os.openLinked("ais")}
             if(chartView.previewTrack.isNotEmpty()) MenuRow(os.t("结束日志轨迹预览","close logbook track preview"),chartView.previewTitle) {chartView.previewTrack=emptyList();chartView.previewTitle=null;tools=false}
             if(os.activeRoute!=null) MenuRow(os.t("当前导航","current navigation"),os.activeRoute?.name) {tools=false;manageNavigation=true}
             if(chartView.previewRoute!=null || os.displayedRouteId!=null && os.displayedRouteId!=os.activeRouteId) MenuRow(os.t("结束路线预览","close route preview")) {chartView.previewRoute=null;os.displayedRouteId=null;os.save();tools=false}

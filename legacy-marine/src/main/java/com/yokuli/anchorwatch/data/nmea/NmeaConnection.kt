@@ -133,6 +133,8 @@ class NmeaConnectionManager(
  fun remotePeer():String?=synchronized(guard){(transport as? Socket)?.remoteSocketAddress?.toString()}
  fun disconnect(){synchronized(guard){generation++;transportGeneration++;onGenerationStarted();profile=null;job?.cancel();job=null;closeTransportLocked();_state.value=NmeaConnectionState.DISCONNECTED;_diagnostics.value=NmeaTransportDiagnostics(connectionGeneration=transportGeneration,lastDisconnectReason="USER_DISCONNECT",desiredConnected=false,lastOperation="USER_DISCONNECT")}}
  fun reportValidFix(){synchronized(guard){if(job?.isActive==true)_state.value=NmeaConnectionState.CONNECTED}}
+ /** AIS-only receivers are usable without an own-vessel RMC/GGA report. */
+ fun reportValidMarineData(){synchronized(guard){if(job?.isActive==true)_state.value=NmeaConnectionState.CONNECTED}}
  fun reportStaleFix(){synchronized(guard){if(job?.isActive==true&&_state.value!=NmeaConnectionState.CONNECTED_NO_DATA)_state.value=NmeaConnectionState.STALE}}
  private fun startLocked(p:ConnectionProfile,delayBeforeOpenMillis:Long=0L,initialState:NmeaConnectionState=NmeaConnectionState.CONNECTING,operation:String):Boolean{
   generation++;val mine=generation;transportGeneration++;onGenerationStarted();job?.cancel();closeTransportLocked();profile=p

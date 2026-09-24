@@ -1,0 +1,10 @@
+Yokuli AIS procedural traffic geometry, 2026.
+
+The accompanying generate_models.py and traffic-*.glb models are original
+procedural work released under CC0 1.0 Universal (public domain dedication).
+https://creativecommons.org/publicdomain/zero/1.0/
+
+No third-party meshes, textures, terrain or nautical chart data are included.
+Ship appearance and vertical dimensions are symbolic, not measured identity.
+Horizontal dimensions and antenna offsets are applied only when received and
+usable; unknown heading uses an orientation-neutral geometry.

@@ -195,6 +195,10 @@ class WpShellRuntime(private val os: OsStore) {
         visiblePageRoutes[instanceKey] = canonicalPage(destination)
     }
 
+    /** 最近任务和系统跳转读取实际可见子页，不把首次启动 token 当成当前页面。 */
+    fun visibleRouteForTask(task: InternalAppTask): String =
+        visiblePageRoutes[task.currentUiStateKey] ?: pageForToken(task.lastLaunchToken)
+
     fun openSystemDestination(destination: String) {
         val page = canonicalPage(destination)
         val app = appForPage(page) ?: return

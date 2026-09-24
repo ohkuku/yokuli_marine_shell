@@ -195,17 +195,22 @@ data class NmeaInstrumentState(
     private fun ingest(id:String,line:String,peer:String,checksum:Boolean)=synchronized(guard){
         val session=sessions[id]?:return@synchronized
         if(!session.requested||!session.spec.receive)return@synchronized
-        val now=SystemClock.elapsedRealtime();val normalized=line.trim();val old=session.snapshot.diagnostics
-        val valid=NmeaChecksum.validate(normalized,checksum)
+        val now=SystemClock.elapsedRealtime();val wire=NmeaWireEnvelope.decode(line,checksum);val normalized=wire?.sentence?:line.trim();val old=session.snapshot.diagnostics
+        val valid=wire!=null
+        val ais=normalized.substringBefore(',').takeLast(3) in setOf("VDM","VDO")
         val echo=valid&&outboundLoopGuard.isRecentExactOutboundForReceiver(normalized,"$id:${session.generation}:$peer",now)
         val raw=(old.raw+if(echo)"[echo] $normalized" else normalized).takeLast(160)
-        val processor=processors.getOrPut("$id|${session.generation}|$peer"){Processor()}
-        val parsed=if(valid&&!echo)processor.parser.parseEnvelope(normalized,checksum,now)else null
+        // AIS has its own bounded decoder. A gateway emitting AIS from many
+        // peers must not create an unused instrument parser for every peer.
+        val processor=if(ais||!valid||echo)null else processors.getOrPut("$id|${session.generation}|$peer"){Processor()}
+        val parsed=processor?.parser?.parseEnvelope(normalized,checksum,now)
         session.snapshot=session.snapshot.copy(diagnostics=old.copy(bytes=old.bytes+line.length+1,validSentences=old.validSentences+if(valid)1 else 0,invalidSentences=old.invalidSentences+if(!valid)1 else 0,lastPacketElapsed=now,raw=raw,echoedAppTxSentences=old.echoedAppTxSentences+if(echo)1 else 0))
         if(!valid||echo){publishConnections();return@synchronized}
-        _frames.tryEmit(NmeaRawFrame(id,session.generation,peer,normalized,now));_validRaw.tryEmit(normalized)
+        session.snapshot=session.snapshot.copy(lastLegalSentenceElapsed=now)
+        _frames.tryEmit(NmeaRawFrame(id,session.generation,peer,normalized,now,wire!!.original));_validRaw.tryEmit(normalized)
+        if(ais)session.manager?.reportValidMarineData()
         if(parsed==null){publishConnections();return@synchronized}
-        val update=processor.retained.accept(parsed.update,now,normalized);val envelope=parsed.copy(update=update,connectionId=id,connectionGeneration=session.generation,peer=peer);_parsed.tryEmit(envelope)
+        val update=processor!!.retained.accept(parsed.update,now,normalized);val envelope=parsed.copy(update=update,connectionId=id,connectionGeneration=session.generation,peer=peer);_parsed.tryEmit(envelope)
         val base=NmeaCandidateMapper.map(envelope,id,session.generation)
         fun identify(source:VesselSourceIdentity)=source.copy(id="nmea:$id:${session.generation}:$peer:${source.fullSentenceId}",stableKey="nmea:$id:$peer:${source.fullSentenceId}",displayName="${session.spec.name} · ${source.fullSentenceId}",transportPeer=peer)
         val candidates=base.map{candidate->val identity=identify(candidate.source);candidate.copy(source=identity,provenance=VesselProvenance.Nmea(identity))}

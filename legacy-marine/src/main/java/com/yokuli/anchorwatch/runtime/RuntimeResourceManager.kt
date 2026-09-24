@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class RuntimeOwner { NMEA_CONNECTIONS, ANCHOR_STARTUP, ANCHOR_WATCH, ANCHOR_TELEMETRY, CONDITION_MONITOR, NMEA_SHARING, GPS_PROXY, SONAR_MAPPING, PHONE_NMEA_OUTPUT, VESSEL_HUB_UI, TRIP_WATCH }
+enum class RuntimeOwner { NMEA_CONNECTIONS, ANCHOR_STARTUP, ANCHOR_WATCH, ANCHOR_TELEMETRY, CONDITION_MONITOR, NMEA_SHARING, GPS_PROXY, SONAR_MAPPING, PHONE_NMEA_OUTPUT, VESSEL_HUB_UI, TRIP_WATCH, AIS_TRAFFIC }
 data class RuntimeRequirement(
     val needsSystemLocation:Boolean=false,
     val needsNmeaTransport:Boolean=false,
@@ -100,6 +100,11 @@ class RuntimeResourceManager @Inject constructor(
     @Synchronized fun set(owner:RuntimeOwner,requirement:RuntimeRequirement?){registry.set(owner,requirement);reconcile()}
     @Synchronized fun release(owner:RuntimeOwner){set(owner,null)}
     @Synchronized fun releaseAll(){registry.clear();reconcile()}
+    /** 旧服务退出只撤销自己拥有的需求，不能关闭独立 AIS 监控。 */
+    @Synchronized fun releaseLegacyServiceOwners(){
+        registry.snapshot().owners.filter{it!=RuntimeOwner.AIS_TRAFFIC}.forEach{registry.set(it,null)}
+        reconcile()
+    }
     @Synchronized fun updateKeepWifiAwake(enabled:Boolean){registry.updateKeepWifiAwake(enabled);reconcile()}
     @Synchronized fun snapshot()=_state.value
 

@@ -1,6 +1,8 @@
 package com.yokuli.marine.shell.rebuild
 
 import com.yokuli.anchorwatch.data.database.AlarmEventEntity
+import com.yokuli.runtime.contract.ais.AisNotice
+import com.yokuli.runtime.contract.ais.AisRiskLevel
 import kotlinx.coroutines.launch
 
 /** 进程级订阅：前台服务启动 Application 时即工作，不依赖 Activity 或 Compose 存活。 */
@@ -10,6 +12,19 @@ internal fun OsStore.observeMarineNotices()=scope.launch {
         events.sortedBy {it.id}.forEach {event->notifications.acceptAnchorEvent(event.id,event.asNotice())}
     }
 }
+
+/** 交通通知只投影已由共享运行时确定的事件，不重新计算风险或确认后台警报。 */
+internal fun AisNotice.asNotice(): SystemNotice = SystemNotice(
+    id = "ais-notice:$id", app = AppId.AIS,
+    chinese = "$titleZh · $messageZh", english = "$titleEn · $messageEn",
+    createdAt = issuedAtUtcMillis,
+    severity = when (level) {
+        AisRiskLevel.NONE -> NoticeSeverity.INFO
+        AisRiskLevel.ATTENTION -> NoticeSeverity.WARNING
+        AisRiskLevel.WARNING, AisRiskLevel.URGENT -> NoticeSeverity.ALARM
+    },
+    destination = "ais:target:$mmsi", key = "ais-notice:$id",
+)
 
 internal fun AlarmEventEntity.asNotice():SystemNotice? {
     val title=when(type) {
