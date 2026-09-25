@@ -13,12 +13,15 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 
-/** 海图管理显示图层，数据管理可查询对象；两类各有导入、详情与管理流程。 */
+/** 图册统一配置两类来源：海图文件夹供显示，数据目录供查询与规划。 */
 @Composable fun LibraryScreen(os:OsStore,initialPage:Int=0) {
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,os.title(AppId.LIBRARY))
         Pivot(listOf(os.t("海图","Charts"),os.t("数据","Data")),initialPage=initialPage) {page->
-            if(page==0)RasterLibraryPane(os)else StructuredChartLibraryPane(os)
+            if(page==0)RasterLibraryPane(os)else Column(Modifier.fillMaxSize()) {
+                LibraryDataSettings(os)
+                Box(Modifier.weight(1f).fillMaxWidth()){StructuredChartLibraryPane(os)}
+            }
         }
     }
 }
@@ -31,11 +34,11 @@ import com.yokuli.marine.shell.rebuild.chart.*
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { PageBody {
             LibraryProgress(os)
-            Label(os.t("显示图层","Map layers"),18)
-            Label(os.t("MBTiles 海图 · 按文件夹管理","MBTiles charts · Organised by folder"),13,LocalMetro.current.muted)
+            LibraryBackgroundSettings(os)
+            Label(os.t("MBTiles 海图 · 只提供显示画面","MBTiles charts · Display background only"),13,LocalMetro.current.muted)
             if(library.folders.isEmpty()) {
                 Label(os.t("添加你的第一张海图","Add your first chart"),20)
-                Label(os.t("连接文件夹，或导入 MBTiles 文件。每个文件夹对应一个命名图层，重叠时按你的排序显示。","Connect a folder or import an MBTiles file. Each folder becomes a named layer; your order controls overlapping charts."),15,LocalMetro.current.muted)
+                Label(os.t("连接海图文件夹，或导入 MBTiles 文件。每个文件夹对应一个命名背景，重叠时按你的排序显示。","Connect a chart folder or import an MBTiles file. Each folder becomes a named background; your order controls overlapping charts."),15,LocalMetro.current.muted)
             }
             library.folders.forEach {entry ->
                 val charts=library.folderFiles(entry)
@@ -45,21 +48,21 @@ import com.yokuli.marine.shell.rebuild.chart.*
                     Column(Modifier.weight(1f).padding(start=16.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                         Label(entry.layerName ?: folderName(os,entry),20)
                         Label(os.t("${charts.count {it.enabled && it.error==null}} / ${charts.size} 张参与显示","${charts.count {it.enabled && it.error==null}} / ${charts.size} charts included"),15,LocalMetro.current.muted)
-                        if(used)Label(os.t("海图正在使用","in use on chart"),14,LocalMetro.current.accentText)
-                        else if(entry.layerName==null)Label(os.t("点开创建图层","open to create a layer"),14,LocalMetro.current.muted)
+                        if(used)Label(os.t("当前显示背景","Current display background"),14,LocalMetro.current.accentText)
+                        else if(entry.layerName==null)Label(os.t("点开命名海图背景","Open to name this chart background"),14,LocalMetro.current.muted)
                     }
                     Glyph("chevron_right",Modifier.size(20.dp),LocalMetro.current.muted)
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Label(os.t("水深、障碍等可查询内容，在“数据”页单独管理。","Manage queryable depths and hazards separately in Data."),13,LocalMetro.current.muted)
+            Label(os.t("水深、障碍和自动规划使用的数据，请在“数据”页指定。更换海图背景不更换航行数据。","Configure depths, hazards and automatic-routing data in Data. Changing the chart background does not change navigation data."),13,LocalMetro.current.muted)
         } }
         AppCommandBar(os,listOf(
             AppCommand("link-folder","folder",os.t("连接海图文件夹","Connect chart folder"),{folder.launch(null)},enabled=!library.busy),
             AppCommand("import-chart","plus",os.t("导入海图文件","Import chart file"),{single.launch(arrayOf("*/*"))},enabled=!library.busy),
         ))
     }
-    naming?.let {entry ->TextDialog(os,os.t("命名这个图层","name this layer"),entry.layerName ?: folderName(os,entry),{naming=null}) {library.setLayer(entry,it);naming=null;os.open("library:${entry.id}")}}
+    naming?.let {entry ->TextDialog(os,os.t("命名海图背景","Name chart background"),entry.layerName ?: folderName(os,entry),{naming=null}) {library.setLayer(entry,it);naming=null;os.open("library:${entry.id}")}}
 }
 
 @Composable fun LibraryFolderScreen(os:OsStore,folderId:String) {
@@ -82,10 +85,10 @@ import com.yokuli.marine.shell.rebuild.chart.*
         Pivot(listOf(os.t("海图","charts"),os.t("管理","manage"))) {page ->PageBody {
             LibraryProgress(os)
             if(page==0) {
-                Label(os.t("$included 张正在参与图层","$included charts included in layer"),20,c.accentText)
+                Label(os.t("$included 张参与海图显示","$included charts included in background"),20,c.accentText)
                 if(folder.layerName!=null) {
-                    MetroButton(if(used)os.t("回到海图查看","view current chart")else os.t("在海图中使用此图层","use this layer on chart"),{viewLayer(os,folder)},primary=true,enabled=included>0)
-                } else MetroButton(os.t("创建命名图层","create a named layer"),{naming=true},primary=true)
+                    MetroButton(if(used)os.t("回到海图查看","view current chart")else os.t("设为海图背景","Use as chart background"),{viewLayer(os,folder)},primary=true,enabled=included>0)
+                } else MetroButton(os.t("命名海图背景","Name chart background"),{naming=true},primary=true)
                 Label(os.t("上方优先，空白处显示下一张。开关决定是否参与渲染；点文件名展开操作。","Top first; uncovered areas show the next chart. Switch inclusion on or off; tap a name for actions."),15,c.muted)
                 if(files.isEmpty() && !library.busy)Label(os.t("文件夹里还没有海图","no charts in this folder yet"),20,c.muted)
                 files.forEachIndexed {index,file ->
@@ -107,7 +110,6 @@ import com.yokuli.marine.shell.rebuild.chart.*
                                 MetroButton(os.t("下移","move down"),{library.moveFile(file,1)},Modifier.weight(1f),enabled=index<files.lastIndex)
                             }
                             if(file.error==null)MenuRow(os.t("在海图查看此范围","view this extent on chart"),os.formatCoordinates(file.focus)) {
-                                // 查看位置不重新打开已隐藏的文件，也不悄悄创建或修改图层。
                                 if(folder.layerName!=null)os.maps.select(MapSource.CustomLayer(folder.id))
                                 os.fly(file.focus,file.previewZoom);os.openLinked("chart")
                             }
@@ -156,7 +158,6 @@ private fun viewLayer(os:OsStore,folder:ChartFolder) {
     val file=os.library.folderFiles(folder).firstOrNull {it.enabled && it.error==null}
     os.maps.select(MapSource.CustomLayer(folder.id))
     if(os.shell.backDestination(null)=="chart") {
-        // 这次访问是海图交来的修复任务：恢复原海图实例，不再嵌套打开第二次海图。
         os.back()
     } else {
         file?.let {os.fly(it.focus,it.previewZoom)}

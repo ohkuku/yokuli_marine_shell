@@ -35,8 +35,11 @@ import kotlinx.coroutines.*
     } }
     fun preview() {os.maps.view("chart",os.center,os.zoom).previewRoute=route.copy(points=route.points.toList());os.displayedRouteId=id;os.fitRequest=route.points;os.showCrosshair=false;os.openLinked("chart")}
     fun edit() {
-        os.editingRouteId=id;os.draftRoute=route.points.toList();os.draftNavigationTargetIndices=route.navigationTargetIndices;os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList()
-        route.points.firstOrNull()?.let {os.fly(it)};os.openLinked("chart")
+        // 同一条航线已有未保存编辑时继续它，不用收藏中的旧版本覆盖草稿。
+        if(os.editingRouteId==id&&os.draftRoute.isNotEmpty()) {
+            resumeOrCreateRouteDraft(os);os.follow=false;os.fitRequest=os.draftRoute
+        } else loadRouteDraft(os,route)
+        os.openLinked("chart")
     }
     val navigating=os.activeRouteId==id
     val guidance=if(navigating)currentRouteGuidance(os) else null
@@ -87,7 +90,7 @@ import kotlinx.coroutines.*
                             },primary=true)
                             MetroButton(os.t("管理或结束导航","manage or end navigation"),{actions=true})
                         } else {
-                        MetroButton(os.t("编辑航点","edit waypoints"),{
+                        MetroButton(if(os.editingRouteId==id&&os.draftRoute.isNotEmpty())os.t("继续编辑草稿","Continue editing draft")else os.t("编辑航线","Edit route"),{
                             if(os.draftRoute.isNotEmpty() && os.editingRouteId!=id) editConfirm=true else edit()
                         },primary=true)
                         MetroButton(os.t("重命名","rename"),{rename=true})

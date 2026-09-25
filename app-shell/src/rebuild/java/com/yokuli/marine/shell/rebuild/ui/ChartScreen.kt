@@ -13,7 +13,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -45,14 +44,10 @@ import kotlin.math.*
     var tools by rememberSaveable { mutableStateOf(false) }
     var manageNavigation by rememberSaveable { mutableStateOf(false) }
     var externalNavigation by rememberSaveable { mutableStateOf(false) }
+    // 检查面板只显示当前草稿；不存在另一份规划输入或独立规划入口。
     var planning by rememberSaveable { mutableStateOf(false) }
-    val planningStates=rememberSaveableStateHolder()
-    var planningEntryKey by rememberSaveable {mutableStateOf(passagePlanningContext(os))}
-    fun openPlanning(){
-        val key=passagePlanningContext(os)
-        if(key!=planningEntryKey){planningStates.removeState(planningEntryKey);planningEntryKey=key}
-        planning=true
-    }
+    fun openPlanning(){planning=true}
+    LaunchedEffect(os.editingRoute){if(!os.editingRoute)planning=false}
     var spatialVisible by rememberSaveable { mutableStateOf(false) }
     var liftOffer by rememberSaveable { mutableStateOf(false) }
     var manualMapEpoch by rememberSaveable { mutableLongStateOf(0L) }
@@ -65,8 +60,6 @@ import kotlin.math.*
     val mounted=mountedFlow?.collectAsState(false)?.value?:false
     fun openSpatial(){spatialVisible=true;liftOffer=false}
     fun returnToMap(){spatialVisible=false;spatialInteraction=false;liftOffer=false;manualMapEpoch++}
-    var naming by rememberSaveable { mutableStateOf(false) }
-    var discard by rememberSaveable { mutableStateOf(false) }
     var startingPlaceId by rememberSaveable {mutableStateOf<String?>(null)}
     var editingPlaceId by rememberSaveable {mutableStateOf<String?>(null)}
     var morePlaceId by rememberSaveable {mutableStateOf<String?>(null)}
@@ -90,7 +83,6 @@ import kotlin.math.*
     }
     LaunchedEffect(initialAisMmsi,aisEntrySelected,requestedTarget?.position,chartView.selectedAisMmsi,chartInputEnabled,os.editingRoute) {
         if(initialAisMmsi!=null&&aisEntrySelected&&chartInputEnabled&&!aisFocusApplied) {
-            // 晚到的位置可以完成这次明确的查看请求；用户已拖动、取消或改选后，绝不抢镜头。
             if(chartView.selectedAisMmsi!=initialAisMmsi.toString())aisFocusApplied=true
             else if(!os.editingRoute) requestedTarget?.position?.let {
                 aisFocusApplied=true
@@ -109,8 +101,6 @@ import kotlin.math.*
         morePlaceId!=null->{morePlaceId=null;true}
         layers->{layers=false;true}
         tools->{tools=false;true}
-        naming->{naming=false;true}
-        discard->{discard=false;true}
         manageNavigation->{manageNavigation=false;true}
         externalNavigation->{externalNavigation=false;true}
         planning->{planning=false;true}
@@ -118,11 +108,11 @@ import kotlin.math.*
         chartView.selectedAisMmsi!=null->{if(initialAisMmsi?.toString()==chartView.selectedAisMmsi)os.shell.popRoute()else chartView.selectedAisMmsi=null;true}
         chartView.selectedPlaceId!=null->{chartView.selectedPlaceId=null;true}
         os.ruler.isNotEmpty()->{os.ruler=emptyList();true}
-        os.editingRoute->{if(os.draftRoute.isEmpty())cancelRouteDraft(os)else discard=true;true}
+        os.editingRoute->{leaveRouteDraft(os);true}
         os.showCrosshair->{os.showCrosshair=false;true}
         else->false
     }
-    val toolOpen=layers||tools||naming||discard||manageNavigation||externalNavigation||planning||startingPlaceId!=null||editingPlaceId!=null||morePlaceId!=null||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
+    val toolOpen=layers||tools||manageNavigation||externalNavigation||planning||startingPlaceId!=null||editingPlaceId!=null||morePlaceId!=null||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
     if(display!=null)NavigationLiftObserver(display,active=chartInputEnabled&&os.navigationState.guidance!=null,
         inhibited=toolOpen||interactionBlocked||mapTouched||spatialInteraction,
         spatialVisible=spatialVisible,autoEnabled=liftEnabled,mounted=mounted,manuallyReturnedToMapEpoch=manualMapEpoch,
@@ -133,15 +123,14 @@ import kotlin.math.*
         if(spatialVisible)Row(Modifier.fillMaxWidth().heightIn(min=48.dp).padding(start=LocalShellHorizontalInsets.current.pageStart,end=LocalShellHorizontalInsets.current.pageEnd),verticalAlignment=Alignment.CenterVertically){
             Label(os.t("立体方向","Direction view"),22,modifier=Modifier.weight(1f),maxLines=1)
             MetroButton(os.t("地图","Map"),{returnToMap()})
-        }else MapPageHeader(os,os.title(AppId.CHART),{layers=true},hasLocalBack=toolOpen)
+        }else MapPageHeader(os,if(os.editingRoute)os.t("规划航线","Plan a route")else os.title(AppId.CHART),{layers=true},hasLocalBack=toolOpen)
         if(spatialVisible&&display!=null) {
             ChartNavigationSpatial(os,fix,tick,chartInputEnabled&&!interactionBlocked&&!manageNavigation&&!externalNavigation,Modifier.weight(1f).fillMaxWidth(),
                 onOpenMap={returnToMap()},onOpenTarget={id->
                     val point=os.navigationState.session?.route?.waypoints?.firstOrNull{it.id==id}?.point
                     if(point!=null){returnToMap();os.fly(GeoPoint(point.lat,point.lon),os.zoom.coerceAtLeast(13.0))}
                     else if(os.navigationState.session?.source==com.yokuli.runtime.contract.navigation.NavigationSource.EXTERNAL_NMEA)externalNavigation=true else manageNavigation=true
-                },
-                onAutomaticSwitchInhibited={spatialInteraction=it})
+                },onAutomaticSwitchInhibited={spatialInteraction=it})
         } else {
         Box(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit){
             awaitEachGesture {
@@ -169,118 +158,98 @@ import kotlin.math.*
                     MetroButton(os.t("浏览内置地图","browse built-in map"),{os.maps.select(MapSource.Offline)})
                 }
             }
-            // Context controls float over a stable native viewport. Showing the crosshair must
-            // never resize the map or change its camera/texture resolution during a drag.
+            // 控件覆盖稳定地图视口，显示编辑器不能改变原生地图尺寸。
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().onSizeChanged {chartView.bottomOverlayDp=with(density){it.height.toDp().value}}) {
-        chartView.libraryPreview?.let {preview->
-            Row(Modifier.fillMaxWidth().background(c.panel).padding(start=16.dp,end=8.dp,top=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Label(featureTitle(os,preview.feature),16,maxLines=1)
-                    Label(chartView.libraryPreviewNote ?: preview.feature.depth?.let {depthEvidenceText(os,it)} ?: os.t("图册对象预览","Library object preview"),12,c.muted,maxLines=2)
-                }
-                IconAction("close",os.t("关闭对象预览","Close object preview"),{chartView.libraryPreview=null})
-            }
-        }
-        if(chartView.selectedAisMmsi!=null && !os.editingRoute && os.ruler.isEmpty()) {
-            AisCompactDetail(os,traffic,chartView.selectedAisMmsi!!){chartView.selectedAisMmsi=null}
-        } else if(os.ruler.size==2) {
-            Row(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Label("${os.formatDistance(distance(os.ruler[0],os.ruler[1]))}   ${os.formatBearing(bearing(os.ruler[0],os.ruler[1]))}T",25)
-                    Label(os.t("拖动 A / B 图钉测距","drag pins A / B to measure"),12,c.muted)
-                }
-                IconAction("close",os.t("结束测距","End measurement"),{os.ruler=emptyList()})
-            }
-        } else if(os.editingRoute) {
-            Label(os.t("${os.draftRoute.size} 个航点 · 准星选点，拖动圆点调整","${os.draftRoute.size} points · aim, add, drag to adjust"),13,c.muted,Modifier.fillMaxWidth().background(c.panel).padding(10.dp))
-        } else if(os.showCrosshair&&previewPlace==null) {
-            MapCrosshairReadout(os,os.center) {os.showCrosshair=false}
-        }
-        val visiblePlace=previewPlace?.takeIf {chartView.selectedAisMmsi==null&&!os.editingRoute&&os.ruler.isEmpty()}
-        // 只移动对象摘要；原生地图始终是上方同一个宿主，尺寸与相机不参与动画。
-        AnimatedContent(visiblePlace,contentKey={it?.id ?: "no-place"},transitionSpec={
-            ((slideInVertically(tween(220)){it/4}+fadeIn(tween(220))) togetherWith
-                (slideOutVertically(tween(160)){it/4}+fadeOut(tween(160)))).using(SizeTransform(clip=false))
-        },label="chart-place-preview") {place->
-            if(place!=null)CompositionLocalProvider(com.yokuli.shell.compose.LocalInternalAppInputEnabled provides (chartInputEnabled&&visiblePlace?.id==place.id)) {
-                Column(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                    Row(verticalAlignment=Alignment.CenterVertically) {
-                        Label(place.name,20,modifier=Modifier.weight(1f),maxLines=1)
-                        IconAction("close",os.t("关闭预览","Close preview"),{chartView.selectedPlaceId=null})
-                    }
-                    Label(listOfNotNull(os.formatCoordinates(place.point),fix?.takeIf {it.fresh(tick)}?.let {os.formatDistance(distance(it.point,place.point))}).joinToString(" · "),12,c.muted)
-                    if(place.note.isNotBlank())Label(place.note,15,c.muted,maxLines=2)
-                    PlaceSaveFeedback(os,place)
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        MetroButton(os.t("前往这里","Go here"),{startingPlaceId=place.id},Modifier.weight(1f),primary=true)
-                        IconAction("edit",os.t("编辑收藏","Edit saved place"),{if(place.id.startsWith("spot:"))os.openLinked("place:${place.id}")else editingPlaceId=place.id})
-                        IconAction("more",os.t("地点操作","Place actions"),{morePlaceId=place.id})
+                chartView.libraryPreview?.let {preview->
+                    Row(Modifier.fillMaxWidth().background(c.panel).padding(start=16.dp,end=8.dp,top=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Label(featureTitle(os,preview.feature),16,maxLines=1)
+                            Label(chartView.libraryPreviewNote ?: preview.feature.depth?.let {depthEvidenceText(os,it)} ?: os.t("图册对象预览","Library object preview"),12,c.muted,maxLines=2)
+                        }
+                        IconAction("close",os.t("关闭对象预览","Close object preview"),{chartView.libraryPreview=null})
                     }
                 }
+                if(chartView.selectedAisMmsi!=null && !os.editingRoute && os.ruler.isEmpty()) {
+                    AisCompactDetail(os,traffic,chartView.selectedAisMmsi!!){chartView.selectedAisMmsi=null}
+                } else if(os.ruler.size==2) {
+                    Row(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Label("${os.formatDistance(distance(os.ruler[0],os.ruler[1]))}   ${os.formatBearing(bearing(os.ruler[0],os.ruler[1]))}T",25)
+                            Label(os.t("拖动 A / B 图钉测距","drag pins A / B to measure"),12,c.muted)
+                        }
+                        IconAction("close",os.t("结束测距","End measurement"),{os.ruler=emptyList()})
+                    }
+                } else if(os.editingRoute) {
+                    RouteDraftSummary(os){openPlanning()}
+                } else if(os.showCrosshair&&previewPlace==null) {
+                    MapCrosshairReadout(os,os.center) {os.showCrosshair=false}
+                }
+                val visiblePlace=previewPlace?.takeIf {chartView.selectedAisMmsi==null&&!os.editingRoute&&os.ruler.isEmpty()}
+                AnimatedContent(visiblePlace,contentKey={it?.id ?: "no-place"},transitionSpec={
+                    ((slideInVertically(tween(220)){it/4}+fadeIn(tween(220))) togetherWith
+                        (slideOutVertically(tween(160)){it/4}+fadeOut(tween(160)))).using(SizeTransform(clip=false))
+                },label="chart-place-preview") {place->
+                    if(place!=null)CompositionLocalProvider(com.yokuli.shell.compose.LocalInternalAppInputEnabled provides (chartInputEnabled&&visiblePlace?.id==place.id)) {
+                        Column(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                            Row(verticalAlignment=Alignment.CenterVertically) {
+                                Label(place.name,20,modifier=Modifier.weight(1f),maxLines=1)
+                                IconAction("close",os.t("关闭预览","Close preview"),{chartView.selectedPlaceId=null})
+                            }
+                            Label(listOfNotNull(os.formatCoordinates(place.point),fix?.takeIf {it.fresh(tick)}?.let {os.formatDistance(distance(it.point,place.point))}).joinToString(" · "),12,c.muted)
+                            if(place.note.isNotBlank())Label(place.note,15,c.muted,maxLines=2)
+                            PlaceSaveFeedback(os,place)
+                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                MetroButton(os.t("前往这里","Go here"),{startingPlaceId=place.id},Modifier.weight(1f),primary=true)
+                                IconAction("edit",os.t("编辑收藏","Edit saved place"),{if(place.id.startsWith("spot:"))os.openLinked("place:${place.id}")else editingPlaceId=place.id})
+                                IconAction("more",os.t("地点操作","Place actions"),{morePlaceId=place.id})
+                            }
+                        }
+                    }
+                }
+                if(!os.editingRoute) {
+                    ChartNavigationCard(os,fix,tick)
+                    if(os.navigationState.guidance!=null&&display!=null&&!toolOpen)Row(Modifier.fillMaxWidth().background(c.bg.copy(alpha=.96f)).padding(horizontal=14.dp),verticalAlignment=Alignment.CenterVertically){
+                        if(liftOffer)Label(os.t("抬起了手机，查看目标方向？","Raised your phone? See the target direction."),12,c.muted,Modifier.weight(1f))else Spacer(Modifier.weight(1f))
+                        MetroButton(os.t("立体方向","3D direction"),{openSpatial()})
+                        if(liftOffer)IconAction("close",os.t("暂不查看","Not now"),{liftOffer=false;manualMapEpoch++})
+                    }
+                }
             }
         }
-        if(!os.editingRoute) {
-            ChartNavigationCard(os,fix,tick)
-            if(os.navigationState.guidance!=null&&display!=null&&!toolOpen)Row(Modifier.fillMaxWidth().background(c.bg.copy(alpha=.96f)).padding(horizontal=14.dp),verticalAlignment=Alignment.CenterVertically){
-                if(liftOffer)Label(os.t("抬起了手机，查看目标方向？","Raised your phone? See the target direction."),12,c.muted,Modifier.weight(1f))else Spacer(Modifier.weight(1f))
-                MetroButton(os.t("立体方向","3D direction"),{openSpatial()})
-                if(liftOffer)IconAction("close",os.t("暂不查看","Not now"),{liftOffer=false;manualMapEpoch++})
-            }
-        }
-            }
-        }
-        if(os.editingRoute) AppCommandBar(os, listOf(
-            AppCommand("undo", "undo", os.t("撤销航点", "Undo waypoint"), {os.draftRoute=os.draftRoute.dropLast(1)}, enabled=os.draftRoute.isNotEmpty()),
-            AppCommand("add", "plus", os.t("添加航点", "Add waypoint"), {
-                if(os.draftRoute.lastOrNull()?.let { distance(it,os.center)<1 }!=true) os.draftRoute=os.draftRoute+os.center
-            }),
-            AppCommand("save", "check", os.t("保存航线", "Save route"), {naming=true}, enabled=os.draftRoute.size>=2),
-            AppCommand("cancel", "close", os.t("取消编辑", "Cancel editing"), {if(os.draftRoute.isEmpty()) cancelRouteDraft(os) else discard=true}),
-        ),secondaryActions=listOf(
-            AppCommand("passage", "route", os.t("检查与自动规划", "Check & find a route"), {openPlanning()},enabled=os.draftRoute.size>=2),
-        )) else AppCommandBar(os, listOf(
-            AppCommand("position", "locate", os.t("回到船位", "Go to boat"), {
-                if(fix!=null) { os.follow=fresh; os.showCrosshair=false; host?.camera?.move(fix.point,os.zoom) }
-                else os.notify("暂无船位，请在数据中心查看来源", "No position yet. Check the source in Data Center.")
-            }, active=os.follow),
-            AppCommand("mark", "pin", when {os.showCrosshair->os.t("标记此处","Mark here");fresh->os.t("记录当前船位","Mark boat position");else->os.t("选择标记位置","Choose a position")}, {
-                // 坐标、时刻和来源在点下时固定。读不到船位时先明确进入准星选点，不偷偷换对象。
+        if(os.editingRoute)RouteDraftControls(os){openPlanning()}else AppCommandBar(os,listOf(
+            AppCommand("position","locate",os.t("回到船位","Go to boat"),{
+                if(fix!=null){os.follow=fresh;os.showCrosshair=false;host?.camera?.move(fix.point,os.zoom)}
+                else os.notify("暂无船位，请在数据中心查看来源","No position yet. Check the source in Data Center.")
+            },active=os.follow),
+            AppCommand("mark","pin",when {os.showCrosshair->os.t("标记此处","Mark here");fresh->os.t("记录当前船位","Mark boat position");else->os.t("选择标记位置","Choose a position")},{
                 val capturedAt=System.currentTimeMillis()
                 val current=os.hub.state.value.fix(os.positionSource)?.takeIf {it.fresh(SystemClock.elapsedRealtime())&&it.point.valid()}
-                if(os.showCrosshair) {
-                    chartView.selectedPlaceId=os.mark(os.center,PlaceCapture(capturedAt)).id;os.showCrosshair=false
-                } else if(fresh&&current!=null) {
-                    chartView.selectedPlaceId=os.mark(current.point,PlaceCapture(capturedAt,current.utc.takeIf {it>0},current.source)).id
-                } else {chartView.selectedPlaceId=null;os.showCrosshair=true;os.follow=false}
+                if(os.showCrosshair){chartView.selectedPlaceId=os.mark(os.center,PlaceCapture(capturedAt)).id;os.showCrosshair=false}
+                else if(fresh&&current!=null){chartView.selectedPlaceId=os.mark(current.point,PlaceCapture(capturedAt,current.utc.takeIf {it>0},current.source)).id}
+                else {chartView.selectedPlaceId=null;os.showCrosshair=true;os.follow=false}
                 chartView.selectedAisMmsi=null
             }),
-            AppCommand("record", if(recording && !recordingPaused) "record" else "play", when {
-                recording && recordingPaused -> os.t("管理暂停的记录", "Manage paused recording")
-                recording -> os.t("管理当前记录", "Manage recording")
-                else -> os.t("开始记录", "Start recording")
-            }, onRecording, active=recording),
-            AppCommand("measure", "ruler", os.t("测量距离", "Measure distance"), {
-                if(os.ruler.isNotEmpty()) os.ruler=emptyList() else host?.let { h -> h.camera?.let { camera ->
-                    os.ruler=listOf(camera.unproject(h.width*.3f,h.height*.5f),camera.unproject(h.width*.7f,h.height*.5f)); os.showCrosshair=false
-                } }
-            }, enabled=host?.camera!=null, active=os.ruler.isNotEmpty()),
-        ), secondaryActions=listOf(
-            AppCommand("route", "route", os.t("规划航线", "Plan a route"), {resumeOrCreateRouteDraft(os)}),
-            AppCommand("tools", "settings", os.t("海图工具", "Chart tools"), {tools=true}),
-            AppCommand("direction", "compass", os.t("立体方向", "3D direction"), {openSpatial()}, enabled=display!=null),
+            AppCommand("record",if(recording&&!recordingPaused)"record"else"play",when {
+                recording&&recordingPaused->os.t("管理暂停的记录","Manage paused recording")
+                recording->os.t("管理当前记录","Manage recording")
+                else->os.t("开始记录","Start recording")
+            },onRecording,active=recording),
+            AppCommand("measure","ruler",os.t("测量距离","Measure distance"),{
+                if(os.ruler.isNotEmpty())os.ruler=emptyList()else host?.let {h->h.camera?.let {camera->
+                    os.ruler=listOf(camera.unproject(h.width*.3f,h.height*.5f),camera.unproject(h.width*.7f,h.height*.5f));os.showCrosshair=false
+                }}
+            },enabled=host?.camera!=null,active=os.ruler.isNotEmpty()),
+        ),secondaryActions=listOf(
+            AppCommand("route","route",if(os.draftRoute.isEmpty())os.t("规划航线","Plan a route")else os.t("继续航线草稿","Continue route draft"),{resumeOrCreateRouteDraft(os);os.follow=false}),
+            AppCommand("tools","settings",os.t("海图工具","Chart tools"),{tools=true}),
+            AppCommand("direction","compass",os.t("立体方向","3D direction"),{openSpatial()},enabled=display!=null),
         ))
         }
     }
-    if(naming) TextDialog(os,os.t("保存航线","save route"),os.routes.firstOrNull {it.id==os.editingRouteId}?.name ?: os.t("航线 ${os.routes.size+1}","route ${os.routes.size+1}"),{naming=false}) { name ->
-        val route=Route(id=os.editingRouteId ?: uid(),name=name,points=os.draftRoute.toList(),navigationTargetIndices=os.draftNavigationTargetIndices); os.displayedRouteId=null
-        // Saving edits never changes the frozen route of an active navigation session.
-        os.editingRoute=false;os.editingRouteId=null;os.draftRoute=emptyList();os.showCrosshair=false;os.sailing.putRoute(route)
-    }
-    if(discard) ConfirmDialog(os,os.t("放弃这条未保存的航线？","Discard this unsaved route?"),{discard=false}) {cancelRouteDraft(os);discard=false}
-    if(layers) MapSourcePicker(os,aisLayer=false) {layers=false}
-    if(planning) planningStates.SaveableStateProvider(planningEntryKey){PassagePlanningPanel(os){planning=false}}
-    if(externalNavigation) ExternalNavigationDialog(os){externalNavigation=false}
-    if(manageNavigation) os.activeRoute?.let { NavigationActionsDialog(os,it) {manageNavigation=false} }
+    if(layers)MapSourcePicker(os,aisLayer=false){layers=false}
+    if(planning&&os.editingRoute)PassagePlanningPanel(os){planning=false}
+    if(externalNavigation)ExternalNavigationDialog(os){externalNavigation=false}
+    if(manageNavigation)os.activeRoute?.let {NavigationActionsDialog(os,it){manageNavigation=false}}
     startingPlaceId?.let {id->os.allPlaces.firstOrNull {it.id==id}?.let {place->StartNavigationDialog(os,Route("goto:${place.id}",place.name,listOf(place.point))){startingPlaceId=null}}}
     editingPlaceId?.let {id->os.places.firstOrNull {it.id==id}?.let {place->CoordinateEditor(os,place,{editingPlaceId=null}){os.sailing.put(it);editingPlaceId=null}}}
     morePlaceId?.takeIf {chartInputEnabled}?.let {id->os.allPlaces.firstOrNull {it.id==id}?.let {place->AppDialog(onDismissRequest={morePlaceId=null}) {AppDialogSurface {
@@ -292,39 +261,33 @@ import kotlin.math.*
         }
         MetroButton(os.t("完成","Done"),{morePlaceId=null})
     }}}}
-    if(tools) AppDialog(onDismissRequest={tools=false}) {
-        AppDialogSurface {
-            AppDialogTitle(os.t("海图工具","Chart tools"))
-            MenuRow(os.t("航线规划","Route planning")){tools=false;openPlanning()}
-            MenuRow(os.t("立体方向","3D direction")){tools=false;openSpatial()}
-            NavigationLiftPreference(liftEnabled,os.chinese){value->
-                os.shell.requestSystemPreferences("chart.lift_to_direction"){before->before.copy(appPreferenceValues=before.appPreferenceValues+("chart.lift_to_direction" to if(value)"b:1"else"b:0"))}
-            }
-            MenuRow(os.t("外部导航","External navigation")){tools=false;externalNavigation=true}
-            AppSection(os.t("地图朝向","Map orientation"))
-            MapOrientationMode.entries.forEach{mode->ChoiceRow(when(mode){MapOrientationMode.NORTH_UP->os.t("北向朝上","North up");MapOrientationMode.HEADING_UP->os.t("船艏朝上","Heading up");MapOrientationMode.COURSE_UP->os.t("航迹向朝上","Course up")},chartView.orientationMode==mode){
-                os.shell.requestSystemPreferences("chart.orientation"){before->before.copy(appPreferenceValues=before.appPreferenceValues+("chart.orientation" to "c:${mode.name}"))}
-            }}
-            AisLayerChoice(os,anchor=false)
-            AisMonitoringSummary(os,traffic,!traffic.preferences.chartLayer)
-            MenuRow(os.t("周围船舶","surrounding traffic"),aisInputSummary(os,traffic)){tools=false;os.openLinked("ais")}
-            if(chartView.previewTrack.isNotEmpty()) MenuRow(os.t("结束日志轨迹预览","close logbook track preview"),chartView.previewTitle) {chartView.previewTrack=emptyList();chartView.previewTitle=null;tools=false}
-            if(os.activeRoute!=null) MenuRow(os.t("当前导航","current navigation"),os.activeRoute?.name) {tools=false;manageNavigation=true}
-            if(chartView.previewRoute!=null || os.displayedRouteId!=null && os.displayedRouteId!=os.activeRouteId) MenuRow(os.t("结束路线预览","close route preview")) {chartView.previewRoute=null;os.displayedRouteId=null;os.save();tools=false}
-            MetroButton(os.t("关闭","close"),{tools=false})
+    if(tools)AppDialog(onDismissRequest={tools=false}) {AppDialogSurface {
+        AppDialogTitle(os.t("海图工具","Chart tools"))
+        MenuRow(os.t("立体方向","3D direction")){tools=false;openSpatial()}
+        NavigationLiftPreference(liftEnabled,os.chinese){value->
+            os.shell.requestSystemPreferences("chart.lift_to_direction"){before->before.copy(appPreferenceValues=before.appPreferenceValues+("chart.lift_to_direction" to if(value)"b:1"else"b:0"))}
         }
-    }
-
+        MenuRow(os.t("外部导航","External navigation")){tools=false;externalNavigation=true}
+        AppSection(os.t("地图朝向","Map orientation"))
+        MapOrientationMode.entries.forEach{mode->ChoiceRow(when(mode){MapOrientationMode.NORTH_UP->os.t("北向朝上","North up");MapOrientationMode.HEADING_UP->os.t("船艏朝上","Heading up");MapOrientationMode.COURSE_UP->os.t("航迹向朝上","Course up")},chartView.orientationMode==mode){
+            os.shell.requestSystemPreferences("chart.orientation"){before->before.copy(appPreferenceValues=before.appPreferenceValues+("chart.orientation" to "c:${mode.name}"))}
+        }}
+        AisLayerChoice(os,anchor=false)
+        AisMonitoringSummary(os,traffic,!traffic.preferences.chartLayer)
+        MenuRow(os.t("周围船舶","surrounding traffic"),aisInputSummary(os,traffic)){tools=false;os.openLinked("ais")}
+        if(chartView.previewTrack.isNotEmpty())MenuRow(os.t("结束日志轨迹预览","close logbook track preview"),chartView.previewTitle){chartView.previewTrack=emptyList();chartView.previewTitle=null;tools=false}
+        if(os.activeRoute!=null)MenuRow(os.t("当前导航","current navigation"),os.activeRoute?.name){tools=false;manageNavigation=true}
+        if(chartView.previewRoute!=null||os.displayedRouteId!=null&&os.displayedRouteId!=os.activeRouteId)MenuRow(os.t("结束路线预览","close route preview")){chartView.previewRoute=null;os.displayedRouteId=null;os.save();tools=false}
+        MetroButton(os.t("关闭","close"),{tools=false})
+    }}
 }
 
 @Composable fun ConfirmDialog(os:OsStore,title:String,onDismiss:()->Unit,onConfirm:()->Unit) {
-    AppDialog(onDismissRequest=onDismiss) {
-        AppDialogSurface {
-            AppDialogTitle(title)
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                MetroButton(os.t("确认","Confirm"),onConfirm,Modifier.weight(1f),primary=true)
-                MetroButton(os.t("取消","Cancel"),onDismiss,Modifier.weight(1f))
-            }
+    AppDialog(onDismissRequest=onDismiss) {AppDialogSurface {
+        AppDialogTitle(title)
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            MetroButton(os.t("确认","Confirm"),onConfirm,Modifier.weight(1f),primary=true)
+            MetroButton(os.t("取消","Cancel"),onDismiss,Modifier.weight(1f))
         }
-    }
+    }}
 }
