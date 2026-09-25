@@ -172,6 +172,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             MenuRow(os.t("接收状态","Reception"),aisInputSummary(os,s)){showMenu=false;go("sources")}
             MenuRow(os.t("雷达图例","Radar guide")){showMenu=false;radarHelp=true}
             MenuRow(os.t("在海图查看","Open Chart")){openChart()}
+            PinTileAction(os, aisOverviewTileBinding()) { showMenu = false }
             MetroButton(os.t("完成","Done"),{showMenu=false})
         }
     }

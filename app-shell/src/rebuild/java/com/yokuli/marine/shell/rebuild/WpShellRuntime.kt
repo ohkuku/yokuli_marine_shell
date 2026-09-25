@@ -42,7 +42,7 @@ class WpShellRuntime(private val os: OsStore) {
     var coldOpeningTask by mutableStateOf<InternalAppTaskId?>(null)
         private set
     private val navigationQueue=Channel<LauncherAction>(Channel.UNLIMITED)
-    val catalog = LauncherCatalogSnapshot(
+    private val baseCatalog = LauncherCatalogSnapshot(
         revision = 2,
         apps = apps.map { LauncherAppDescriptor(it.id, it.entry) },
         entries = apps.map { app ->
@@ -53,6 +53,11 @@ class WpShellRuntime(private val os: OsStore) {
             LauncherEntryDescriptor(preset.entryId,owner.id,preset.launchToken,preset.defaultSize,preset.sizes,PinPolicy.PINNABLE)
         },
     )
+    var catalog = baseCatalog
+        private set
+    private var candidateTile: TilePlacement? = null
+    val tileWorkshop by lazy { TileWorkshopController(os, this) }
+
     // These are the exact initial placements from codex/shell-map-contract. Existing original
     // launcher_state.pb documents retain their identity, position, pinning and custom sizes.
     val defaultDocument = StartDocument(
@@ -82,7 +87,7 @@ class WpShellRuntime(private val os: OsStore) {
                 val current=(engine.state.value.surface as? ShellVisualSurface.Module)?.taskId
                 // 只有离开应用才拍最近任务图；应用内进退页不等待 PixelCopy，也不切换截图。
                 if(current!=null && leavesTask(action, current)) {
-                    snapshots.captureCurrent(current,engine.state.value.tasks.task(current)?.currentUiStateKey){!os.notificationShade.blocksInput}
+                    snapshots.captureCurrent(current,engine.state.value.tasks.task(current)?.currentUiStateKey){!os.notificationShade.blocksInput && !tileWorkshop.blocksInput}
                     engine.state.value.tasks.task(current)?.let { task ->
                         snapshots.images[current]?.takeIf {it.pageInstanceKey==task.currentUiStateKey}
                             ?.let { retainPageSnapshot(task.currentUiStateKey, it) }
@@ -122,6 +127,8 @@ class WpShellRuntime(private val os: OsStore) {
         }
         os.scope.launch {
             engine.state.collect { state ->
+                refreshTileCatalog(state.start.document)
+                tileWorkshop.onShellState(state)
                 shadeReturn?.let { visit ->
                     val key = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId)?.currentUiStateKey }
                     val atCaller = if (visit.callerKey == null) state.surface == visit.callerSurface else key == visit.callerKey
@@ -164,6 +171,31 @@ class WpShellRuntime(private val os: OsStore) {
         }
     }
 
+    /** 中文：只有数据身份进入目录。标题与实时值由提供者渲染，不触发目录重建。 */
+    fun ensureTileContent(binding: TileBinding, size: MarineTileSize) {
+        candidateTile = TilePlacement(TileInstanceId("editor-candidate"), binding.startEntryId, size, 0, binding = binding)
+        refreshTileCatalog(engine.state.value.start.document)
+    }
+    fun placementForEntry(entryId: LauncherEntryId): TilePlacement? =
+        engine.state.value.start.document.placements.firstOrNull { it.entryId == entryId }
+            ?: candidateTile?.takeIf { it.entryId == entryId }
+
+    private fun refreshTileCatalog(document: StartDocument) {
+        val dynamic = (document.placements + listOfNotNull(candidateTile)).groupBy { it.entryId }.map { (entryId, placements) ->
+            val tile = placements.first()
+            val choice = tileContentDescriptor(os, tileBinding(tile))
+            val owner = ShellApp(choice.owner)
+            LauncherEntryDescriptor(entryId, owner.id, LaunchToken(choice.launchToken),
+                choice.defaultSize, (choice.sizes + placements.map { it.size }).distinct(), PinPolicy.PINNABLE)
+        }
+        val entries = (baseCatalog.entries.filter { base -> dynamic.none { it.entryId == base.entryId } } + dynamic).sortedBy { it.entryId.value }
+        if (catalog.entries == entries) return
+        catalog = baseCatalog.copy(revision = catalog.revision + 1, entries = entries)
+        // 与随后保存同一队列有序；host流也可安全重放同一目录。
+        engine.dispatch(LauncherAction.CatalogChanged(catalog))
+        host.updateCatalog(catalog)
+    }
+
     fun pageForToken(token: LaunchToken): String = canonicalPage(apps.firstOrNull { it.rootToken == token }?.page ?: token.value)
 
     private fun retainPageSnapshot(key: String, snapshot: TaskSnapshot) {
@@ -199,6 +231,8 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     fun canonicalPage(page: String): String = when {
+        page == "settings:tiles" -> "tiles"
+        page.startsWith("settings:tiles:") -> "tiles:" + page.substringAfter("settings:tiles:")
         page == "trip" || page == "trip.overview" -> "voyages"
         page == "anchorages" || page == "anchorages.overview" -> "places:anchorages"
         page == "data" || page == "data.overview" -> "instruments"
@@ -212,10 +246,15 @@ class WpShellRuntime(private val os: OsStore) {
 
     fun appForPage(page: String): ShellApp? {
         val canonical=canonicalPage(page)
-        val root = when (canonical.substringBefore(':').substringBefore('/')) {
-            "place", "route", "saved", "spot", "anchorage", "collection" -> "places"
+        val root = when {
+            canonical == "task:navigation" -> "chart"
+            canonical == "task:anchorWatch" -> "anchor"
+            canonical == "task:recording" -> "voyages"
+            else -> when (canonical.substringBefore(':').substringBefore('/')) {
+            "place", "route", "tileplace", "tileroute", "saved", "spot", "anchorage", "collection" -> "places"
             "voyage", "replay", "report" -> "voyages"
             else -> canonical.substringBefore(':').substringBefore('/')
+            }
         }
         return apps.firstOrNull { it.page == root }
     }
@@ -292,10 +331,16 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     fun dispatch(action:LauncherAction) {
+        if (action is LauncherAction.PinEntry) {
+            engine.dispatch(LauncherAction.DismissTransient)
+            tileWorkshop.beginAdd(TileBinding("yokuli", TileBindingKind.APP, action.entryId.value))
+            return
+        }
+        if (action is LauncherAction.UnpinTile) { tileWorkshop.unpin(action.tileId); return }
         if (action is LauncherAction.ActivateTask || action is LauncherAction.CloseTask || action in listOf(
             LauncherAction.ShowDesktop, LauncherAction.ShowStart, LauncherAction.ShowAllApps,
             LauncherAction.ShowRecents, LauncherAction.OpenSearch)) shadeReturn = null
-        val navigates=action is LauncherAction.Open || action is LauncherAction.ActivateTask || action is LauncherAction.PinEntry ||
+        val navigates=action is LauncherAction.Open || action is LauncherAction.ActivateTask || action is LauncherAction.RevealTile ||
             action in listOf(LauncherAction.Back,LauncherAction.ShowDesktop,LauncherAction.ShowRecents,LauncherAction.OpenSearch,LauncherAction.ShowStart,LauncherAction.ShowAllApps)
         // 在离开海图的操作发起时保存；另一应用准备自己的海图请求以后不可反向覆盖原访问。
         val currentTask = (engine.state.value.surface as? ShellVisualSurface.Module)?.let { engine.state.value.tasks.task(it.taskId) }
@@ -324,6 +369,7 @@ class WpShellRuntime(private val os: OsStore) {
     private fun leavesTask(action: LauncherAction, current: InternalAppTaskId): Boolean = when (action) {
         is LauncherAction.Open -> appForPage(pageForToken(action.token))?.id?.value != current.value
         is LauncherAction.ActivateTask -> action.taskId != current
+        is LauncherAction.RevealTile -> true
         LauncherAction.Back -> engine.state.value.tasks.let { tasks ->
             tasks.linkedReturns.lastOrNull()?.let { it.targetTaskId == current && (tasks.task(current)?.backStack?.size ?: 0) <= it.targetBackStackDepth } == true ||
                 tasks.task(current)?.backStack?.isEmpty() == true
@@ -370,6 +416,16 @@ class WpShellRuntime(private val os: OsStore) {
                 if (!inputRouter.dispatch(input)) os.notificationShade.back()
             } else if (input == ShellInput.SEARCH) os.notificationShade.toggle()
             // 长按 Back 等其他输入也不穿透可见覆盖层。
+            return
+        }
+        if (tileWorkshop.blocksInput) {
+            when (input) {
+                ShellInput.BACK -> if (!inputRouter.dispatch(input)) tileWorkshop.requestClose()
+                ShellInput.DESKTOP -> { tileWorkshop.suspendEditor(); shadeReturn = null; dispatch(LauncherAction.ShowDesktop) }
+                ShellInput.RECENTS -> { tileWorkshop.suspendEditor(); dispatch(LauncherAction.ShowRecents) }
+                ShellInput.SEARCH -> os.notificationShade.toggle()
+                else -> Unit
+            }
             return
         }
         if (input == ShellInput.DESKTOP) { shadeReturn = null; dispatch(LauncherAction.ShowDesktop); return }

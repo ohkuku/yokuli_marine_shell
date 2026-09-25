@@ -21,25 +21,15 @@ object StartLayoutEditor {
         val cycle = entry.supportedSizes
         val next = cycle[(cycle.indexOf(current.size) + 1).mod(cycle.size)]
         val profile = WpReferenceProfiles.require(document.profileId)
-        val resizedCell = current.preferredCell?.copy(
-            column = current.preferredCell.column.coerceIn(0, profile.columnCount - next.columns),
-        )
-        return transaction(
-            document,
-            document.copy(
-                placements = document.placements.map {
-                    if (it.tileId == tileId) it.copy(size = next, preferredCell = resizedCell) else it
-                },
-            ),
-            LayoutChangeReason.RESIZE,
-        )
+        val resized = TileLayoutPreview.place(document, current.copy(size = next))
+        return transaction(document, resized, LayoutChangeReason.RESIZE)
     }
 
     fun unpin(document: StartDocument, tileId: TileInstanceId): LayoutProposal? {
         if (document.placements.none { it.tileId == tileId }) return null
         return transaction(
             document,
-            document.copy(placements = document.placements.filterNot { it.tileId == tileId }),
+            TileLayoutPreview.remove(document, tileId),
             LayoutChangeReason.UNPIN,
         )
     }
@@ -51,10 +41,8 @@ object StartLayoutEditor {
         size: MarineTileSize? = null,
     ): LayoutProposal? {
         val entry = entries.firstOrNull { it.entryId == entryId } ?: return null
-        // 中文：同一应用只有一块磁贴；换样式或尺寸沿用原位置和身份。
-        val ownerEntries = entries.filter { it.appId == entry.appId }.map { it.entryId }.toSet()
-        val existing = document.placements.filter { it.entryId in ownerEntries }
-            .minWithOrNull(compareBy<TilePlacement> { it.rank }.thenBy { it.tileId.value })
+        // 同一内容只固定一次；同一应用的其他内容互不影响。
+        val existing = document.placements.firstOrNull { it.entryId == entryId }
         val requestedSize = size ?: existing?.size?.takeIf { it in entry.supportedSizes } ?: entry.defaultSize
         if (requestedSize !in entry.supportedSizes) return null
         val profile = WpReferenceProfiles.require(document.profileId)
@@ -66,10 +54,11 @@ object StartLayoutEditor {
             tileId = TileInstanceId("tile-${entryId.value}"),
             entryId = entryId,
             size = requestedSize,
+            binding = com.yokuli.shell.contract.TileBinding("yokuli", com.yokuli.shell.contract.TileBindingKind.APP, entryId.value),
             rank = (document.placements.map { it.rank } + document.spacers.map { it.rank }).maxOrNull()?.plus(1024L) ?: 0L,
         )
         val repaired = StartDocumentRepair.repair(
-            document.copy(placements = document.placements.filterNot { it.entryId in ownerEntries } + candidate),
+            document.copy(placements = document.placements.filterNot { it.tileId == candidate.tileId } + candidate),
             entries,
             document,
             profile,

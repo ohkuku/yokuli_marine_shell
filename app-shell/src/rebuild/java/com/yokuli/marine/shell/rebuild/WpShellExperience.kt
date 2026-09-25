@@ -28,6 +28,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import com.yokuli.shell.engine.geometry.StartViewport
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -61,7 +64,15 @@ fun OsExperience(os: OsStore) {
     val startBackdrop = rememberStartBackdrop(os)
     val state by shell.engine.state.collectAsState()
     val underlayFocus = remember { FocusRequester() }
-    val shadeBlocked = os.notificationShade.blocksInput
+    val tileSession by shell.tileWorkshop.session.collectAsState()
+    val shadeBlocked = os.notificationShade.blocksInput || tileSession?.visible == true
+    var statusHeight by remember { mutableIntStateOf(0) }
+    var hostSize by remember { mutableStateOf(IntSize.Zero) }
+    val shellDensity = LocalDensity.current
+    LaunchedEffect(hostSize, statusHeight, shellDensity.density, shellDensity.fontScale) {
+        if (hostSize.width > 0 && hostSize.height > statusHeight) shell.tileWorkshop.viewport =
+            StartViewport(hostSize.width, hostSize.height - statusHeight, shellDensity.density, 0, 0, shellDensity.fontScale)
+    }
     var wasShadeBlocked by remember { mutableStateOf(false) }
     LaunchedEffect(shadeBlocked) {
         if (shadeBlocked && !wasShadeBlocked) underlayFocus.saveFocusedChild()
@@ -170,12 +181,19 @@ fun OsExperience(os: OsStore) {
             interaction = state.start.interaction,
             transient = state.transient,
             reveal = state.start.reveal,
-            visualContributions = shell.apps.map { app -> tilePresentation(os,app,
-                animate=!shadeBlocked && state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==app.entry}) } +
-                // 旧样式仍在兼容目录中，必须提供视觉声明以通过 Shell 契约校验；
-                // 应用列表/搜索另行只显示根入口，未固定样式不会启动动画。
-                shell.presets.map {preset -> presetTilePresentation(os,preset,
-                    animate=!shadeBlocked && state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==preset.entryId}) },
+            visualContributions = state.catalog.entries.map { descriptor ->
+                key(descriptor.entryId) {
+                    val placement = state.start.document.placements.firstOrNull { it.entryId == descriptor.entryId }
+                        ?: shell.placementForEntry(descriptor.entryId)
+                    val visual = if (placement != null) instanceTilePresentation(os, placement,
+                        !shadeBlocked && state.surface == ShellVisualSurface.Desktop && lifecycleState.isAtLeast(Lifecycle.State.RESUMED))
+                    else shell.apps.firstOrNull { it.entry == descriptor.entryId }?.let { tilePresentation(os, it, false) }
+                        ?: presetTilePresentation(os, shell.presets.first { it.entryId == descriptor.entryId }, false)
+                    visual.copy(tileRenderers = descriptor.supportedSizes.associateWith { size ->
+                        visual.tileRenderers[size] ?: visual.tileRenderers.values.first()
+                    })
+                }
+            },
             // 搜索退出时保留输入草稿，但不让旧查询继续订阅 AIS 并重组整个 Shell。
             searchResults = searchResults,
         )
@@ -199,7 +217,7 @@ fun OsExperience(os: OsStore) {
                 LauncherUiAction.OpenAlphabetJump -> dispatch(LauncherAction.OpenAlphabetJump)
                 LauncherUiAction.DismissTransient -> dispatch(LauncherAction.DismissTransient)
                 is LauncherUiAction.PinEntry -> dispatch(LauncherAction.PinEntry(action.entryId))
-                is LauncherUiAction.UnpinTile -> dispatch(LauncherAction.UnpinTile(action.tileId))
+                is LauncherUiAction.UnpinTile -> shell.tileWorkshop.unpin(action.tileId)
                 is LauncherUiAction.AcknowledgeStartReveal -> dispatch(LauncherAction.AcknowledgeStartReveal(action.tileId))
                 LauncherUiAction.UndoLayout -> dispatch(LauncherAction.UndoLayout)
                 is LauncherUiAction.UpdateSearchQuery -> dispatch(LauncherAction.UpdateSearchQuery(action.query))
@@ -210,10 +228,10 @@ fun OsExperience(os: OsStore) {
         }
         Column(Modifier.fillMaxSize().background(colors.background).testTag("shell-host")
             .semantics { testTagsAsResourceId = true }) {
-            Box(Modifier.weight(1f)) {
+            Box(Modifier.weight(1f).onSizeChanged { hostSize = it }) {
                 Column(Modifier.fillMaxSize().focusRequester(underlayFocus).focusRestorer().focusGroup()
                     .then(if (shadeBlocked) Modifier.clearAndSetSemantics { } else Modifier)) {
-                    SystemStatusBar(os, metrics)
+                    Box(Modifier.onSizeChanged { statusHeight = it.height }) { SystemStatusBar(os, metrics) }
                     WpSurfaceTransitionHost(
                         targetState = state.motionTarget(),
                         transitionKind = when {
@@ -228,10 +246,10 @@ fun OsExperience(os: OsStore) {
                         when (target) {
                             ShellMotionTarget.Launcher -> InteractiveLauncherPager(
                                 requestedPage = if (state.surface == ShellVisualSurface.ModuleList) LauncherPagerPage.ALL_APPS else LauncherPagerPage.START,
-                                userScrollEnabled = state.start.interaction is StartInteractionState.Idle,
+                                userScrollEnabled = !shadeBlocked && state.start.interaction is StartInteractionState.Idle,
                                 programmaticSettleMillis = timings.pageSettleVisibleWindowMillis,
                                 reducedMotion = reducedMotion,
-                                onPageSettled = { dispatch(if (it == LauncherPagerPage.START) LauncherAction.ShowStart else LauncherAction.ShowAllApps) },
+                                onPageSettled = { if (!shadeBlocked) dispatch(if (it == LauncherPagerPage.START) LauncherAction.ShowStart else LauncherAction.ShowAllApps) },
                             ) { page ->
                                 if (page == LauncherPagerPage.START) YokuliStartScreen(
                                     launcher.copy(transient = state.transient.takeIf { state.surface == ShellVisualSurface.Desktop }), launcherAction,
@@ -241,6 +259,14 @@ fun OsExperience(os: OsStore) {
                                             os.openLinked("settings:start")
                                         }
                                     },
+                                    onEditTile = { id ->
+                                        if (!shadeBlocked) {
+                                            dispatch(LauncherAction.ExitStartEdit)
+                                            shell.tileWorkshop.beginEdit(id)
+                                        }
+                                    },
+                                    editTileLabel = os.t("编辑内容", "Edit content"),
+                                    onViewport = { shell.tileWorkshop.viewport = it },
                                     personalizeStartLabel = os.t("背景与透明磁贴","Background & transparent tiles"),
                                 ) else WpAppList(
                                     launcher.copy(entries=launcher.entries.filter {entry -> shell.apps.any {it.entry==entry.descriptor.entryId}},
@@ -273,6 +299,19 @@ fun OsExperience(os: OsStore) {
                         }
                     }
                 }
+                if (state.recoveryMode == LauncherRecoveryMode.RESTORING) {
+                    Column(Modifier.fillMaxSize().background(colors.background).padding(top = with(shellDensity) { statusHeight.toDp() })) {
+                        PageHeader(os, os.t("开始屏幕", "Start"))
+                        PageBody {
+                            MetroProgress(os.t("正在读取你的磁贴…", "Reading your tiles…"))
+                            if (state.incidentLog.isNotEmpty()) Label(os.t("暂时无法读取，系统会继续重试。原来的布局仍保留。", "Reading is taking longer. Retrying while keeping your saved layout."), 15)
+                        }
+                    }
+                }
+                CompositionLocalProvider(LocalInternalAppInputEnabled provides !os.notificationShade.blocksInput) {
+                    TileEditorHost(os, Modifier.fillMaxSize().padding(top = with(shellDensity) { statusHeight.toDp() }))
+                    if (!os.notificationShade.blocksInput) TileWorkshopFeedbackHost(os, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+                }
                 SystemMarineAlerts(os)
                 NotificationCenter(os, Modifier.fillMaxSize(), metrics)
             }
@@ -290,6 +329,11 @@ fun OsExperience(os: OsStore) {
 @Composable
 private fun ShellAppContent(os: OsStore, page: String) {
     when {
+        page == "task:navigation" -> CurrentNavigationTileDestination(os)
+        page == "task:anchorWatch" -> AnchorExperience(os, "current")
+        page == "task:recording" -> LogbookScreen(os)
+        page.startsWith("tileplace:") -> SavedTileDestination(os, TileBinding("yokuli", TileBindingKind.SAVED_PLACE, page.substringAfter(':')))
+        page.startsWith("tileroute:") -> SavedTileDestination(os, TileBinding("yokuli", TileBindingKind.SAVED_ROUTE, page.substringAfter(':')))
         page == "chart" -> ChartAppScreen(os)
         page.startsWith("chart:ais:") -> ChartAppScreen(os,page.substringAfterLast(':').toIntOrNull())
         page == "library" -> LibraryScreen(os)

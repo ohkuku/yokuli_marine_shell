@@ -218,6 +218,7 @@ import kotlin.math.*
             MenuRow(os.t("周围船舶","surrounding traffic"),aisInputSummary(os,traffic)){tools=false;os.openLinked("ais")}
             if(chartView.previewTrack.isNotEmpty()) MenuRow(os.t("结束日志轨迹预览","close logbook track preview"),chartView.previewTitle) {chartView.previewTrack=emptyList();chartView.previewTitle=null;tools=false}
             if(os.activeRoute!=null) MenuRow(os.t("当前导航","current navigation"),os.activeRoute?.name) {tools=false;manageNavigation=true}
+            PinTileAction(os, currentTaskTileBinding("navigation")) { tools = false }
             if(chartView.previewRoute!=null || os.displayedRouteId!=null && os.displayedRouteId!=os.activeRouteId) MenuRow(os.t("结束路线预览","close route preview")) {chartView.previewRoute=null;os.displayedRouteId=null;os.save();tools=false}
             MetroButton(os.t("关闭","close"),{tools=false})
         }

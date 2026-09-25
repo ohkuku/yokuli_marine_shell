@@ -16,7 +16,8 @@
 | 海图文件夹、索引、优先级图层 | `ChartLibrary` | ChartCatalog 模块 | 图册管理；地图按版本读取 |
 | 对外发送与本机监听 | 连接输出配置、`LocalNmeaServerSettingsRepository` | Publication 模块；每个目的地独立策略 | 船联网管理远端；数据共享管理本机服务器 |
 | 船名、单位、校准等领域偏好 | 现有 DataStore repositories | VesselPreferences；原子更新 | 设置/数据中心按字段授权 |
-| 语言、主题、文字大小、磁贴与布局 | `LauncherPersistedState` / Shell preferences | Shell preference store | 设置与磁贴工坊；不另存同名字段 |
+| 语言、主题、文字大小 | `LauncherPersistedState` / Shell preferences | Shell preference store | 设置管理系统偏好 |
+| 磁贴内容、表现与布局 | `TileBinding` / `TilePresentation` / `StartDocument` | Shell 引擎与原 Proto DataStore | 三入口共用临时编辑器，按内容去重、按实例提交；工坊管内容、Start 管布局 |
 | 领域事件与通知历史 | 业务 Room/AIS 事件；消息子进程 `NotificationRepository` | 原领域留警报与任务；消息服务单写历史、已读、聚合与消费游标；Shell 只拥有面板/提示 | `NotificationClient` 发布/订阅/清除；清除不确认警报 |
 | 页面、返回链、地图视口与草稿 | Shell task state、各应用 saveable state | Shell / 所属应用 | 不写入航行或守锚的运行状态 |
 

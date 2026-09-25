@@ -20,7 +20,8 @@ class StaticLauncherHostPort(
     private val launches: Map<LaunchToken, LauncherAppId>,
     private val dynamicLaunches: List<Pair<LauncherAppId, (LaunchToken) -> Boolean>> = emptyList(),
 ) : LauncherHostPort {
-    override val catalog: StateFlow<LauncherCatalogSnapshot> = MutableStateFlow(catalog)
+    private val catalogState = MutableStateFlow(catalog)
+    override val catalog: StateFlow<LauncherCatalogSnapshot> = catalogState
     override val tileContents: StateFlow<Map<LauncherEntryId, TileContentSnapshot>> = MutableStateFlow(emptyMap())
     override val systemStatus: StateFlow<LauncherSystemStatus> = MutableStateFlow(LauncherSystemStatus())
 
@@ -33,6 +34,14 @@ class StaticLauncherHostPort(
         require(dynamicLaunches.all { it.first in installedApps }) {
             "Dynamic launch matcher belongs to an app outside the catalog"
         }
+    }
+
+    /** 中文：宿主为持久化内容实例发布查看入口；不创建新的应用或业务状态。 */
+    fun updateCatalog(snapshot: LauncherCatalogSnapshot) {
+        require(snapshot.apps.map { it.appId }.toSet() == catalogState.value.apps.map { it.appId }.toSet())
+        require(snapshot.entries.all { entry -> launches[entry.launchToken] == entry.appId ||
+            dynamicLaunches.any { (owner, matches) -> owner == entry.appId && matches(entry.launchToken) } })
+        catalogState.value = snapshot
     }
 
     override suspend fun resolveLaunch(token: LaunchToken): LaunchResolution {

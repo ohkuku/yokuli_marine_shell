@@ -79,7 +79,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     val draftPlaceId by rememberSaveable {mutableStateOf(entryDraft?.placeId)}
     val draftSpotId by rememberSaveable {mutableStateOf(entryDraft?.spotId)}
     val restored=state.anchorSetupDraft?.takeIf {it.referenceKey==referenceKey}
-    var page by rememberSaveable {mutableStateOf(if(active==null&&initialPage in setOf("setup","start","advanced"))initialPage else if(restored!=null&&active==null)"setup" else "watch")}
+    var page by rememberSaveable {mutableStateOf(if(initialPage=="current")"watch" else if(active==null&&initialPage in setOf("setup","start","advanced"))initialPage else if(restored!=null&&active==null)"setup" else "watch")}
     var setupScenario by rememberSaveable {mutableStateOf(restored?.setupScenario ?: "selected")}
     var referenceCapturedAt by rememberSaveable {mutableStateOf(restored?.referenceCapturedAt)}
     var referencePositionSource by rememberSaveable {mutableStateOf(restored?.referencePositionSource)}
@@ -414,12 +414,14 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                 Label(positionReason(os,readiness.reason),15,c.muted)
                 if(pending?.status==AnchorCommandStatus.UNKNOWN)MetroButton(os.t("重新确认这次操作","check this action again"),{marine.system.anchorCommands.recheck(pending.commandId)})
                 MetroButton(if(active.paused)os.t("恢复值守","resume watch")else os.t("暂停值守","pause watch"),{if(pending==null)if(active.paused)command {services.anchor.requestResumeWatch(active.id)}else command {services.anchor.requestPauseWatch(active.id)}})
+                PinTileAction(os, currentTaskTileBinding("anchorWatch"))
                 MenuRow(os.t("锚泊历史","anchor history")) {page="history"}
             }
         } else if(page=="conditions" && active!=null) {
             AnchorConditions(os,active,services) {page="estimate"}
         } else if(page=="history") {
             PageBody {
+                PinTileAction(os, currentTaskTileBinding("anchorWatch"))
                 val history=state.sessions.filter {!it.active}
                 if(history.isEmpty())Label(os.t("结束一次值守后，在这里回顾。","completed watches will appear here."),15,c.muted)
                 history.forEach {session ->MenuRow(DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.US).format(Date(session.startedAt)),os.t("${durationLabel((session.endedAt ?: session.startedAt)-session.startedAt)} · ${session.alarmCount} 次告警","${durationLabel((session.endedAt ?: session.startedAt)-session.startedAt)} · ${session.alarmCount} alarms")) {services.anchor.loadHistoryEvents(session.id);page="review:${session.id}"}}

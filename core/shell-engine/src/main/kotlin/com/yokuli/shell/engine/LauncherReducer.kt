@@ -89,6 +89,8 @@ sealed interface LauncherAction {
     data class PinEntry(val entryId: LauncherEntryId, val size: MarineTileSize? = null) : LauncherAction
     data class UnpinTile(val tileId: TileInstanceId) : LauncherAction
     data class AcknowledgeStartReveal(val tileId: TileInstanceId) : LauncherAction
+    /** 显式定位与任何保存分开，只有用户请求才回到 Start。 */
+    data class RevealTile(val tileId: TileInstanceId) : LauncherAction
     data class TogglePin(val entryId: LauncherEntryId) : LauncherAction
     data object ResetStartDocument : LauncherAction
     data class PersistenceIncidentObserved(val incident: LauncherPersistenceIncident) : LauncherAction
@@ -215,6 +217,11 @@ class DefaultLauncherReducer : LauncherReducer {
         is LauncherAction.PinEntry -> pinEntry(state, action.entryId, action.size)
         is LauncherAction.UnpinTile -> unpinTile(state, action.tileId)
         is LauncherAction.AcknowledgeStartReveal -> acknowledgeReveal(state, action.tileId)
+        is LauncherAction.RevealTile -> if (state.start.document.placements.none { it.tileId == action.tileId })
+            LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.LAYOUT_UNAVAILABLE)))
+            else LauncherReduction(state.copy(surface = ShellVisualSurface.Desktop, transitionRequest = null,
+                start = state.start.copy(reveal = StartReveal(action.tileId, "reveal-${state.nextTransactionId}"), interaction = StartInteractionState.Idle),
+                transient = null, nextTransactionId = state.nextTransactionId + 1), listOf(LauncherEffect.ScrollStartToReveal(action.tileId)))
         is LauncherAction.TogglePin -> togglePin(state, action.entryId)
         LauncherAction.ResetStartDocument -> applyCommitted(
             state,
@@ -845,26 +852,37 @@ class DefaultLauncherReducer : LauncherReducer {
 
     private fun undo(state: LauncherEngineState): LauncherReduction {
         val transaction = state.start.undoStack.lastOrNull() ?: return LauncherReduction(state)
-        val document = transaction.before
-        val restoredTile = if (transaction.reason == LayoutChangeReason.UNPIN) {
-            transaction.before.placements.firstOrNull { before ->
-                transaction.after.placements.none { it.tileId == before.tileId }
-            }?.tileId
-        } else null
-        return LauncherReduction(
-            state.copy(
-                start = state.start.copy(
-                    document = document,
-                    undoStack = state.start.undoStack.dropLast(1),
-                    reveal = restoredTile?.let { StartReveal(it, transaction.id) },
-                ),
-                transient = null,
-            ),
-            buildList {
-                add(LauncherEffect.PersistDocument(document))
-                restoredTile?.let { add(LauncherEffect.ScrollStartToReveal(it)) }
-            },
-        )
+        val current = state.start.document
+        val beforeById = transaction.before.placements.associateBy { it.tileId }
+        val afterById = transaction.after.placements.associateBy { it.tileId }
+        val removed = transaction.before.placements.filter { it.tileId !in afterById }
+        val duplicates = removed.firstNotNullOfOrNull { original -> current.placements.firstOrNull { it.effectiveContentKey == original.effectiveContentKey } }
+        if (duplicates != null) return LauncherReduction(state.copy(
+            start = state.start.copy(undoStack = state.start.undoStack.dropLast(1)),
+            transient = LauncherTransient.Notice(LauncherNotice.ALREADY_PINNED),
+        ))
+        fun sameFields(a: com.yokuli.shell.engine.layout.TileDocumentEntry, b: com.yokuli.shell.engine.layout.TileDocumentEntry) =
+            a.copy(revision = b.revision, preservedProto = b.preservedProto) == b && a.revision == b.revision
+        var document = current.copy(placements = current.placements.mapNotNull { entry ->
+            val after = afterById[entry.tileId]
+            val before = beforeById[entry.tileId]
+            when {
+                after == null || !sameFields(entry, after) -> entry
+                before == null -> null // 只撤掉这次固定且随后未变的实例。
+                else -> before
+            }
+        }, spacers = if (current.spacers == transaction.after.spacers) transaction.before.spacers else current.spacers)
+        removed.forEach { original ->
+            if (document.placements.none { it.tileId == original.tileId }) {
+                val cell = AdaptiveTilePacker.pack(transaction.before, WpReferenceProfiles.require(current.profileId).columnCount).tile(original.tileId)?.cell
+                document = com.yokuli.shell.engine.layout.TileCommitPolicy.restoreEntry(document, original.copy(preferredCell = cell ?: original.preferredCell))
+            }
+        }
+        val profile = WpReferenceProfiles.require(current.profileId)
+        document = StartDocumentRepair.repair(document, state.catalog.entries, current, profile).document
+        return LauncherReduction(state.copy(start = state.start.copy(document = document,
+            undoStack = state.start.undoStack.dropLast(1)), transient = null),
+            if (document == current) emptyList() else listOf(LauncherEffect.PersistDocument(document)))
     }
 
     private fun openEntryContextMenu(
@@ -890,17 +908,10 @@ class DefaultLauncherReducer : LauncherReducer {
         val transaction = committed.state.start.undoStack.last()
         val tileId = transaction.after.placements.first { it.entryId == entryId }.tileId
         return committed.copy(
-            state = committed.state.navigateTo(
-                ShellVisualSurface.Desktop,
-                ShellTransitionTrigger.PAGE_SETTLED,
-            ).copy(
-                start = committed.state.start.copy(
-                    interaction = StartInteractionState.Idle,
-                    reveal = StartReveal(tileId, transaction.id),
-                ),
+            state = committed.state.copy(
+                start = committed.state.start.copy(interaction = StartInteractionState.Idle),
                 transient = LauncherTransient.UndoLayout(transaction.id, LayoutChangeReason.PIN, entryId),
             ),
-            effects = committed.effects + LauncherEffect.ScrollStartToReveal(tileId),
         )
     }
 
@@ -908,7 +919,7 @@ class DefaultLauncherReducer : LauncherReducer {
         val placement = state.start.document.placements.firstOrNull { it.tileId == tileId }
             ?: return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.LAYOUT_UNAVAILABLE)))
         val entry = state.catalog.entries.firstOrNull { it.entryId == placement.entryId }
-        if (entry?.pinPolicy != PinPolicy.PINNABLE) {
+        if (entry?.pinPolicy == PinPolicy.FIXED) {
             return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.PIN_UNAVAILABLE)))
         }
         val proposal = StartLayoutEditor.unpin(state.start.document, tileId)

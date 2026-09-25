@@ -65,7 +65,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         else -> os.t("设置", "settings")
     }
     Column(Modifier.fillMaxSize()) {
-        if (section != "tiles") PageHeader(os, title(section), hasLocalBack = section!="overview")
+        PageHeader(os, title(section), hasLocalBack = section!="overview")
         AppPageTransition(section, pageKey = { it }, pageDepth = { if (it == "overview") 0 else 1 },
             modifier = Modifier.weight(1f)) { page ->
         pageStates.SaveableStateProvider(page) {
@@ -74,7 +74,6 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
             "permissions" -> SystemAccessSettings(os)
             "sound" -> SystemSoundSettings(os)
             "backup" -> SystemBackupSettings(os)
-            "tiles" -> TileLibraryScreen(os, initialSection.substringAfter("tiles:", "").takeIf {it.isNotBlank()})
             else -> PageBody {
                 when (page) {
                     "overview" -> {

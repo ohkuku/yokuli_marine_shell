@@ -17,6 +17,7 @@ message LauncherStateProto {
   string measurement_unit_system = 11;
   string motion_preference = 12;
   map<string, string> app_preferences = 13;
+  string workshop_draft = 14;
 }
 
 message StartDocumentProto {
@@ -25,6 +26,10 @@ message StartDocumentProto {
   int32 default_layout_version = 3;
   repeated TilePlacementProto placements = 4;
   repeated SpacerProto spacers = 5;
+  int64 revision = 6;
+  repeated TileCommitReceiptProto receipts = 7;
+  repeated TileRemovalRecordProto removed_tiles = 8;
+  repeated string recovery_notes = 9;
 }
 
 message TilePlacementProto {
@@ -37,6 +42,9 @@ message TilePlacementProto {
   int32 preferred_column = 8;
   int32 preferred_row = 9;
   bool has_preferred_cell = 10;
+  TileBindingProto binding = 11;
+  TilePresentationProto presentation = 12;
+  int64 revision = 13;
 }
 
 message SpacerProto {
@@ -44,6 +52,9 @@ message SpacerProto {
   string size = 2;
   int64 rank = 3;
   string group_id = 4;
+  int32 preferred_column = 5;
+  int32 preferred_row = 6;
+  bool has_preferred_cell = 7;
 }
 
 message LauncherRecoveryProto {
@@ -51,4 +62,30 @@ message LauncherRecoveryProto {
   bool launch_pending = 2;
   int64 last_launch_epoch_millis = 3;
   bool safe_mode = 4;
+}
+
+message TileBindingProto {
+  string provider_id = 1;
+  string kind = 2;
+  string content_id = 3;
+}
+message TilePresentationProto {
+  string style = 1;
+  string legacy_mode = 2;
+  bool rotate = 3;
+  bool has_rotate = 4;
+  int32 interval_seconds = 5;
+}
+message TileCommitReceiptProto {
+  string request_id = 1;
+  string tile_id = 2;
+  int64 revision = 3;
+  int64 document_revision = 4;
+  string operation = 5;
+  bool relocated = 6;
+}
+message TileRemovalRecordProto {
+  string request_id = 1;
+  TilePlacementProto entry = 2;
+  int64 document_revision = 3;
 }

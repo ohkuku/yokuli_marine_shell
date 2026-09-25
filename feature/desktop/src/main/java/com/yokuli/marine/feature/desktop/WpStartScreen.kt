@@ -33,6 +33,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -123,6 +125,11 @@ fun YokuliStartScreen(
     /** 宿主提供唯一设置页的访问入口，不在桌面复制背景设置。 */
     onPersonalizeStart: (() -> Unit)? = null,
     personalizeStartLabel: String = "Background & transparent tiles",
+    /** Shell 临时编辑会话，保持当前桌面访问，不打开工坊应用。 */
+    onEditTile: ((TileInstanceId) -> Unit)? = null,
+    editTileLabel: String = "Edit content",
+    /** 预览复用当前桌面的真实几何输入。 */
+    onViewport: (StartViewport) -> Unit = {},
 ) {
     val colors = LocalWpTheme.current
     val byId = remember(state.entries) { state.entries.associateBy { it.descriptor.entryId } }
@@ -147,7 +154,7 @@ fun YokuliStartScreen(
     var feedbackBounds by remember { mutableStateOf<Rect?>(null) }
     var personalisationBounds by remember {mutableStateOf<Rect?>(null)}
     val latestFeedbackBounds by rememberUpdatedState(feedbackBounds.takeIf { state.transient != null })
-    val canPersonalize=editing&&localTileDrag==null&&dragging==null&&state.transient==null&&onPersonalizeStart!=null
+    val canPersonalize=editing&&localTileDrag==null&&dragging==null&&state.transient==null&&(onPersonalizeStart!=null || (selectedTile!=null && onEditTile!=null))
     val latestPersonalisationBounds by rememberUpdatedState(personalisationBounds.takeIf {canPersonalize})
 
     LaunchedEffect(editing) { onEditModeChanged(editing) }
@@ -194,9 +201,11 @@ fun YokuliStartScreen(
         val availableWidthPx = with(density) { maxWidth.toPx().roundToInt() }
         val availableHeightPx = with(density) { maxHeight.toPx().roundToInt() }
         if (availableWidthPx <= 0 || availableHeightPx <= 0) return@StartWallpaperSurface
-        val geometry = remember(availableWidthPx, availableHeightPx, density.density, density.fontScale) {
-            WpStartGeometryCalculator.calculate(StartViewport(availableWidthPx, availableHeightPx, density.density, 0, 0, density.fontScale))
+        val viewport = remember(availableWidthPx, availableHeightPx, density.density, density.fontScale) {
+            StartViewport(availableWidthPx, availableHeightPx, density.density, 0, 0, density.fontScale)
         }
+        SideEffect { onViewport(viewport) }
+        val geometry = remember(viewport) { WpStartGeometryCalculator.calculate(viewport) }
         val cell = with(density) { geometry.smallCellPx.toDp() }
         val seam = with(density) { geometry.seamPx.toDp() }
         val pitchPx = (geometry.smallCellPx + geometry.seamPx).toFloat()
@@ -221,7 +230,7 @@ fun YokuliStartScreen(
         val controls = if (editing && localTileDrag == null && selectedBounds != null) {
             TileEditControlGeometry.resolve(
                 selectedBounds.toEditRect(), availableWidthPx.toFloat(),
-                latestFeedbackBounds?.top?.coerceIn(0f, availableHeightPx.toFloat()) ?: availableHeightPx.toFloat(),
+                listOfNotNull(latestFeedbackBounds?.top, latestPersonalisationBounds?.top).minOrNull()?.coerceIn(0f, availableHeightPx.toFloat()) ?: availableHeightPx.toFloat(),
                 touchPx, compact, (selectedEntry?.descriptor?.supportedSizes?.size ?: 0) > 1,
             )
         } else null
@@ -373,11 +382,20 @@ fun YokuliStartScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) { placement ->
                         val entry = byId[placement.entryId] ?: return@WpSpatialStartLayout
+                        // 仅跨过可视边缘时使磁贴重组；不把连续滚动像素向数据订阅传播。
+                        val visible by remember(placement.tileId, availableWidthPx, availableHeightPx) {
+                            derivedStateOf {
+                                tileBounds[placement.tileId]?.let { bounds ->
+                                    bounds.bottom > 0f && bounds.top < availableHeightPx &&
+                                        bounds.right > 0f && bounds.left < availableWidthPx
+                                } == true
+                            }
+                        }
                         WpTile(
                             tileId = placement.tileId, entry = entry, tileSize = placement.size,
                             width = cell * placement.size.columns + seam * (placement.size.columns - 1),
                             height = cell * placement.size.rows + seam * (placement.size.rows - 1),
-                            editing = editing, selected = selectedTile == placement.tileId,
+                            editing = editing, selected = selectedTile == placement.tileId, liveContentEnabled = visible && !editing,
                             canResize = entry.descriptor.supportedSizes.size > 1,
                             revealing = state.reveal?.tileId == placement.tileId,
                             revealProgress = { if (state.reveal?.tileId == placement.tileId) revealPulse.value else 0f },
@@ -388,6 +406,7 @@ fun YokuliStartScreen(
                             onLongClick = { onAction(LauncherUiAction.EnterStartEdit(placement.tileId)) },
                             onUnpin = { onAction(LauncherUiAction.UnpinTile(placement.tileId)) },
                             onResize = { onAction(LauncherUiAction.ResizeTile(placement.tileId)) },
+                            onEditContent = onEditTile?.let { edit -> { edit(placement.tileId) } }, editContentLabel = editTileLabel,
                             onMoveBy = { columns, rowDelta -> onAction(LauncherUiAction.MoveTileBy(placement.tileId, columns, rowDelta)) },
                             modifier = Modifier.onGloballyPositioned { coordinates ->
                                 val viewport = viewportCoordinates
@@ -427,13 +446,26 @@ fun YokuliStartScreen(
                     onResize = { onAction(LauncherUiAction.ResizeTile(selectedTile)) })
             }
             if(canPersonalize) {
-                Box(Modifier.align(Alignment.BottomCenter).zIndex(3.5f).fillMaxWidth()
+                Row(Modifier.align(Alignment.BottomCenter).zIndex(3.5f).fillMaxWidth()
                     .onGloballyPositioned {coordinates->
-                        val viewport=viewportCoordinates
-                        if(viewport!=null&&viewport.isAttached&&coordinates.isAttached)personalisationBounds=viewport.localBoundingBoxOf(coordinates,clipBounds=false)
-                    }.background(colors.background).clickable(interactionSource=remember {MutableInteractionSource()},indication=null,role=Role.Button) {onPersonalizeStart?.invoke()}
-                    .padding(horizontal=20.dp,vertical=14.dp),contentAlignment=Alignment.Center) {
-                    WpText(personalizeStartLabel,15,color=colors.foreground,maxLines=2)
+                        val currentViewport = viewportCoordinates
+                        if(currentViewport!=null&&currentViewport.isAttached&&coordinates.isAttached)
+                            personalisationBounds=currentViewport.localBoundingBoxOf(coordinates,clipBounds=false)
+                    }.background(colors.background), verticalAlignment = Alignment.CenterVertically) {
+                    if (selectedTile != null && onEditTile != null) {
+                        Box(Modifier.weight(1f).clickable(interactionSource=remember {MutableInteractionSource()},indication=null,role=Role.Button) {
+                            onEditTile(selectedTile)
+                        }.padding(horizontal=16.dp,vertical=14.dp),contentAlignment=Alignment.Center) {
+                            WpText(editTileLabel,15,color=colors.foreground,maxLines=2)
+                        }
+                    }
+                    if (onPersonalizeStart != null) {
+                        Box(Modifier.weight(1f).clickable(interactionSource=remember {MutableInteractionSource()},indication=null,role=Role.Button) {
+                            onPersonalizeStart()
+                        }.padding(horizontal=16.dp,vertical=14.dp),contentAlignment=Alignment.Center) {
+                            WpText(personalizeStartLabel,15,color=colors.foreground,maxLines=2)
+                        }
+                    }
                 }
             }
             WpLauncherFeedback(
@@ -465,8 +497,9 @@ private suspend fun AwaitPointerEventScope.awaitSelectedDragSlop(down: PointerIn
 @Composable
 private fun WpTile(
     tileId: TileInstanceId, entry: LauncherEntryUiState, tileSize: MarineTileSize, width: Dp, height: Dp,
-    editing: Boolean, selected: Boolean, canResize: Boolean, revealing: Boolean, revealProgress: () -> Float,
+    editing: Boolean, selected: Boolean, canResize: Boolean, revealing: Boolean, revealProgress: () -> Float, liveContentEnabled: Boolean,
     onClick: () -> Unit, onLongClick: () -> Unit, onUnpin: () -> Unit, onResize: () -> Unit,
+    onEditContent: (() -> Unit)?, editContentLabel: String,
     onMoveBy: (Int, Int) -> Unit, modifier: Modifier = Modifier,
 ) {
     val colors = LocalWpTheme.current
@@ -474,6 +507,7 @@ private fun WpTile(
     val scale by animateFloatAsState(if (selected) 1.025f else 1f, spring(), label = "wp-tile-selected")
     val small = tileSize.columns == 1 && tileSize.rows == 1
     val accessibilityMoves = if (editing && selected) buildList {
+        if (onEditContent != null) add(CustomAccessibilityAction(editContentLabel) { onEditContent(); true })
         add(CustomAccessibilityAction(stringResource(R.string.context_unpin)) { onUnpin(); true })
         if (canResize) add(CustomAccessibilityAction(stringResource(R.string.resize_tile)) { onResize(); true })
         add(CustomAccessibilityAction(stringResource(R.string.move_tile_left)) { onMoveBy(-1, 0); true })
@@ -500,7 +534,7 @@ private fun WpTile(
     ) {
         Box(Modifier.fillMaxSize().padding(if (entry.visual.fullBleed && !small) 0.dp else if (small) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
             entry.tileRenderer(tileSize).Render(
-                LauncherTileRenderContext(tileSize, if (LocalStartBackdrop.current.image != null && LocalStartBackdrop.current.mode != StartBackdropMode.NONE && LocalStartBackdrop.current.tileOpacity < .7f) androidx.compose.ui.graphics.Color.White else colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = !editing),
+                LauncherTileRenderContext(tileSize, if (LocalStartBackdrop.current.image != null && LocalStartBackdrop.current.mode != StartBackdropMode.NONE && LocalStartBackdrop.current.tileOpacity < .7f) androidx.compose.ui.graphics.Color.White else colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = liveContentEnabled),
             )
         }
         if (revealing) Box(Modifier.fillMaxSize().graphicsLayer { alpha = revealProgress().coerceIn(0f, 1f) }

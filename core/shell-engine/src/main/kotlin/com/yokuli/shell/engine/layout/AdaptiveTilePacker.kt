@@ -37,7 +37,7 @@ object AdaptiveTilePacker {
         val tiles = mutableListOf<PackedTilePlacement>()
         val spacers = mutableListOf<PackedSpacerPlacement>()
         orderedItems(document).forEach { item ->
-            val preferred = (item as? RankedItem.Tile)?.entry?.preferredCell
+            val preferred = when (item) { is RankedItem.Tile -> item.entry.preferredCell; is RankedItem.Gap -> item.spacer.preferredCell }
             val cell = preferred
                 ?.takeIf { fits(it, item.size, columns) && occupiedCells(it, item.size).none(occupied::contains) }
                 ?: firstAvailableCell(item.size, columns, occupied)

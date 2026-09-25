@@ -204,3 +204,13 @@ python3 scripts/check_runtime_boundaries.py
 3. 记录、守锚、AIS 和显示租约仍在默认进程，尚无完整 Marine Core Binder、独立 UID、持久幂等会话命令或统一 boot 恢复屏障。
 4. 通知不读取第三方通知，不替换 Android SystemUI/Recents，不迁移航海服务到 system_server。
 5. ROM 产品输入和 HOME flavor 已有，完整镜像、Cuttlefish 启动、真机/BSP、AVB/OTA 与发行密钥仍各有外部依赖，不能以本轮消息 IPC 或必要编译推断完成。
+
+## 内容磁贴接入闭环（2026-09-25）
+
+普通 APK 与 ROM HOME 均由 rebuild 的 `WpShellRuntime` 安装同一内容提供者目录；动态内容仅是既有 App 的查看入口，不扩充应用身份。App/工坊/Start 发起 `TileWorkshopController` 临时会话，经 `LauncherEngine.commitTile/removeTile/undoTile`、原 `ProtoDataStoreLauncherPersistence` 更新唯一 `launcher_state.pb`，真实桌面读取已落盘 `StartDocument`。静态 Host 可更新内容入口目录；All Apps 和搜索仍只展示正式 App。
+
+合同层 `TileBinding/TilePresentation` 不依赖 Android/Compose/OsStore。引擎只校验身份、内容键、版本、尺寸与排布；业务对象是否存在由 UI 组合层只读提供者处理，不能在结构恢复阶段据此删磁贴。`TileLayoutPreview.place` 与正式保存共用纯排布规则；未知提供者及未来字段保留，旧 App 偏好一次性迁入实例。
+
+存储格式 LauncherPersistedState schema 5；StartDocument 延续 schema 2 并追加实例/文档版本、32 条近期回执、32 条移除逆操作、恢复说明。草稿纯配置最多 64 KiB，与文档同属原 DataStore。实例移除/撤销不修改业务数据；撤销或扩尺寸时原格被占，只安排目标的最近空位并说明，保留其他实例与 Spacer 的实际位置。慢写期间导航仍可处理，正式布局必须待回执发布。
+
+呈现通过现有系统快照与 DataHub，不创建传感器订阅源、后台地图或航行会话；只在可见且 RESUMED 时观察所需字段。此能力为当前进程内系统边界的完整接入，不宣称已经有磁贴 Binder 服务、独立进程隔离或新 ROM 镜像。

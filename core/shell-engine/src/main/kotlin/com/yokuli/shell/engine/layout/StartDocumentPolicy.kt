@@ -14,17 +14,15 @@ object StartDocumentValidator {
         if (document.schemaVersion <= 0 || document.defaultLayoutVersion <= 0) return false
         if (document.profileId != profile.id) return false
         if (document.placements.map { it.tileId }.distinct().size != document.placements.size) return false
-        if (document.placements.map { it.entryId }.distinct().size != document.placements.size) return false
         if (document.spacers.map { it.spacerId }.distinct().size != document.spacers.size) return false
         if (document.spacers.any { spacer -> document.placements.any { it.tileId == spacer.spacerId } }) return false
         val byId = entries.associateBy { it.entryId }
-        if (document.placements.mapNotNull { byId[it.entryId]?.appId }.distinct().size != document.placements.size) return false
         if (document.placements.any { it.rank < 0 } || document.spacers.any { it.rank < 0 }) return false
         val ranks = document.placements.map { it.rank } + document.spacers.map { it.rank }
         if (ranks.distinct().size != ranks.size) return false
         return document.placements.all { placement ->
-            val entry = byId[placement.entryId] ?: return@all false
-            if (placement.size !in entry.supportedSizes) return@all false
+            val entry = byId[placement.entryId]
+            if (entry != null && placement.size !in entry.supportedSizes) return@all false
             placement.size.columns <= profile.columnCount && placement.preferredCell?.let { cell ->
                 cell.column >= 0 && cell.row >= 0 && cell.column + placement.size.columns <= profile.columnCount
             } != false
@@ -40,6 +38,9 @@ enum class StartRepairIncident {
     UNSUPPORTED_SIZE_REPLACED,
     INVALID_RANK_NORMALIZED,
     FALLBACK_TO_DEFAULT,
+    UNKNOWN_ENTRY_RETAINED,
+    DUPLICATE_CONTENT_RETAINED,
+    DUPLICATE_ID_REASSIGNED,
 }
 
 data class StartRepairResult(
@@ -63,28 +64,24 @@ object StartDocumentRepair {
         }
         val byId = entries.associateBy { it.entryId }
         val incidents = mutableListOf<StartRepairIncident>()
-        val seenEntries = mutableSetOf<LauncherEntryId>()
-        val seenApps = mutableSetOf<com.yokuli.shell.contract.LauncherAppId>()
+        val seenContent = mutableSetOf<String>()
         val seenTiles = mutableSetOf<TileInstanceId>()
         val repairedUnranked = buildList {
             source.placements.sortedWith(compareBy<TilePlacement> { it.rank }.thenBy { it.tileId.value }).forEach { original ->
                 val descriptor = byId[original.entryId]
-                if (descriptor == null) {
-                    incidents += StartRepairIncident.UNKNOWN_ENTRY_REMOVED
-                    return@forEach
+                if (descriptor == null) incidents += StartRepairIncident.UNKNOWN_ENTRY_RETAINED
+                if (!seenContent.add(original.effectiveContentKey)) incidents += StartRepairIncident.DUPLICATE_CONTENT_RETAINED
+                var uniqueId = original.tileId
+                var suffix = 1
+                while (!seenTiles.add(uniqueId)) {
+                    uniqueId = TileInstanceId("${original.tileId.value}-recovered-${suffix++}")
+                    incidents += StartRepairIncident.DUPLICATE_ID_REASSIGNED
                 }
-                if (original.entryId in seenEntries || original.tileId in seenTiles || descriptor.appId in seenApps) {
-                    incidents += StartRepairIncident.DUPLICATE_ENTRY_REMOVED
-                    return@forEach
-                }
-                seenEntries.add(original.entryId)
-                seenTiles.add(original.tileId)
-                seenApps.add(descriptor.appId)
-                val sized = if (original.size in descriptor.supportedSizes) {
-                    original
+                val sized = if (descriptor == null || original.size in descriptor.supportedSizes) {
+                    original.copy(tileId = uniqueId)
                 } else {
                     incidents += StartRepairIncident.UNSUPPORTED_SIZE_REPLACED
-                    original.copy(size = descriptor.defaultSize)
+                    original.copy(tileId = uniqueId, size = descriptor.defaultSize)
                 }
                 add(
                     sized.copy(
@@ -107,6 +104,7 @@ object StartDocumentRepair {
             repairedSpacers.map { it.rank to it.spacerId.value }).sortedWith(compareBy({ it.first }, { it.second }))
         val normalizedRanks = ordered.mapIndexed { index, (_, id) -> id to index * 1024L }.toMap()
         val document = source.copy(
+            recoveryNotes = (source.recoveryNotes + incidents.map { it.name }).distinct().takeLast(32),
             placements = repairedUnranked
                 .sortedWith(compareBy({ it.rank }, { it.tileId.value }))
                 .map { entry -> entry.copy(rank = if (normalizeRanks) normalizedRanks.getValue(entry.tileId.value) else entry.rank) },

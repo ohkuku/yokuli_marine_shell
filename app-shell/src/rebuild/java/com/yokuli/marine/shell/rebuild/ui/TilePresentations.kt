@@ -43,6 +43,12 @@ import com.yokuli.marine.shell.rebuild.data.Reading
 import com.yokuli.shell.compose.*
 import com.yokuli.shell.contract.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import com.yokuli.anchorwatch.MainUiState
+import com.yokuli.marine.shell.rebuild.data.VesselData
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -116,10 +122,10 @@ fun tilePreferenceContributions(apps: List<ShellApp>): List<AppPreferenceContrib
 @Composable fun presetTilePresentation(os: OsStore, preset: TilePreset, animate: Boolean): LauncherEntryVisualContribution = buildTilePresentation(os, ShellApp(preset.app), animate, preset, null, null, null)
 
 /** 中文：磁贴帧只缓存展示形态；值、来源时效、趋势直接订阅系统的同一份观测。 */
-private data class TileFrame(val key: String, val headline: String, val detail: String, val eyebrow: String = "", val image: Bitmap? = null, val demo: Boolean = false, val bearing: Double? = null, val progress: Float? = null, val samples: List<Reading> = emptyList(), val live: Boolean = true)
+internal data class TileFrame(val key: String, val headline: String, val detail: String, val eyebrow: String = "", val image: Bitmap? = null, val demo: Boolean = false, val bearing: Double? = null, val progress: Float? = null, val live: Boolean = true, val priorityLine:String="", val history:InstrumentHistoryFrame?=null, val historyCaption:String="")
 /** 目录声明只依赖应用及用户偏好。高频船舶数据不能从返回值 Composable 扩散到整个 Shell。 */
 @Composable private fun buildTilePresentation(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?, modeOverride: String?, rotateOverride: Boolean?, intervalOverride: Long?): LauncherEntryVisualContribution {
-    val preferences by os.shell.persistence.state.collectAsState()
+    val preferences=if(modeOverride==null)os.shell.persistence.state.value else null
     val savedMode=preferences?.appPreferenceValues?.get("${app.id.value}.tile.mode")?.removePrefix("c:")
     val mode=modeOverride ?: preset?.mode ?: savedMode?.takeIf {value->tileModes(app).any {it.key==value}} ?: "AUTO"
     val title=preset?.title?.let {if(os.chinese)it.chinese else it.english} ?: os.title(app.app)
@@ -134,36 +140,71 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         }},fullBleed=cover)
 }
 
+/** 中文：兼容实例仍复用同一真实磁贴，不再读取或覆写另一个实例的模式。 */
+@Composable internal fun LegacyInstanceTile(os:OsStore,app:ShellApp,active:Boolean,mode:String,rotate:Boolean,interval:Long,size:MarineTileSize,context:LauncherTileRenderContext,preset:TilePreset?=null) =
+    LiveAppTile(os,app,active,preset,mode,rotate,interval,size,context)
+
+/** 旧 App 摘要只观察本 App 使用的字段；不因传感器列表、调平或无关网络包重组。 */
+private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?> = when(app) {
+    AppId.CHART->listOf(state.settings.demoMode)
+    AppId.ANCHOR->listOf(state.active,state.alarmSnapshot,state.settings.demoMode)
+    AppId.INSTRUMENTS->with(state.vesselData) {when(mode) {
+        "SPEED"->listOf(sogKnots);"HEADING"->listOf(headingTrueDegrees)
+        "DEPTH"->listOf(depthMeters,derived.underKeelClearanceMeters)
+        "WIND"->listOf(trueWind.speedKnots,apparentWind.speedKnots)
+        else->listOf(sogKnots,headingTrueDegrees,depthMeters,derived.underKeelClearanceMeters,trueWind.speedKnots,apparentWind.speedKnots)
+    }+state.settings.demoMode}
+    AppId.VOYAGES->listOf(state.activeTrip,state.tripSessions.firstOrNull {!it.active})
+    AppId.LOCAL_NMEA->listOf(state.nmeaSharing.state,state.nmeaSharing.clientCount,state.nmeaSharing.sentSentences)
+    AppId.SETTINGS->listOf(state.vesselSettings.vesselName)
+    else->emptyList()
+}
+
 @Composable private fun LiveAppTile(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?, modeOverride: String?, rotateOverride: Boolean?, intervalOverride: Long?,size:MarineTileSize,context:LauncherTileRenderContext) {
-    val preferences by os.shell.persistence.state.collectAsState()
-    val data by os.hub.state.collectAsState()
-    val history by os.hub.history.collectAsState()
-    val state = os.marine?.services?.state?.collectAsState()?.value
-    val connections = os.marine?.services?.network?.connections?.collectAsState()?.value.orEmpty()
-    val traffic=if(app.app==AppId.AIS)rememberAisTraffic(os)else null
-    val owner = LocalLifecycleOwner.current
-    var resumed by remember(owner) { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
-    DisposableEffect(owner) {
-        val observer = LifecycleEventObserver { _, _ -> resumed = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
-        owner.lifecycle.addObserver(observer)
-        onDispose { owner.lifecycle.removeObserver(observer) }
-    }
-    val visible = animate && resumed
-    var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(resumed) { if (resumed) while (true) { now = SystemClock.elapsedRealtime(); delay(1000) } }
-    val readingNow = now
-    val values = preferences?.appPreferenceValues.orEmpty()
+    val visible=tilePresentationActive(animate&&context.liveContentEnabled)
+    val preferenceFlow=remember(os.shell,app.id) {os.shell.persistence.state.map {state->state?.appPreferenceValues.orEmpty().filterKeys {it.startsWith("${app.id.value}.tile.")}}.distinctUntilChanged()}
+    val preferenceValues=activeTileValue(preferenceFlow,os.shell.persistence.state.value?.appPreferenceValues.orEmpty(),visible&&modeOverride==null)
+    val values = preferenceValues
     val savedMode = values["${app.id.value}.tile.mode"]?.removePrefix("c:")
     val mode = modeOverride ?: preset?.mode ?: savedMode?.takeIf { value -> tileModes(app).any { it.key == value } } ?: "AUTO"
     val rotate = visible && !os.reduceMotion && !LocalReducedMotion.current && (rotateOverride ?: (values["${app.id.value}.tile.animate"] != "b:0"))
     val interval = (intervalOverride ?: values["${app.id.value}.tile.interval"]?.removePrefix("c:")?.toLongOrNull() ?: 6L).coerceIn(6, 15)
     val title = preset?.title?.let { if (os.chinese) it.chinese else it.english } ?: os.title(app.app)
+    if(mode=="STATIC"||size==MarineTileSize.ICON_1X1) {
+        TileFace(os,app,title,listOf(TileFrame("STATIC",title,"")),size,context,false,false,interval)
+        return
+    }
+    val dataFlow=remember(os.hub,app.app,os.positionSource) {
+        if(app.app in setOf(AppId.CHART,AppId.DATA_CENTER,AppId.ANCHOR))os.hub.state.map {value->
+            if(app.app==AppId.DATA_CENTER)VesselData(phone=value.phone,nmea=value.nmea,demo=value.demo,readings=value.readings)
+            else VesselData(phone=value.phone,nmea=value.nmea,demo=value.demo,readings=if(app.app==AppId.CHART)value.readings.filterKeys {it=="sog"}else emptyMap())
+        }.distinctUntilChanged() else null
+    }
+    val data=activeTileValue(dataFlow,if(dataFlow!=null)os.hub.state.value else VesselData(),visible)
+    val ownerState=os.marine?.services?.state
+    val stateFlow=remember(ownerState,app.app,mode) {ownerState?.takeIf {app.app in setOf(AppId.CHART,AppId.ANCHOR,AppId.INSTRUMENTS,AppId.VOYAGES,AppId.LOCAL_NMEA,AppId.SETTINGS)}
+        ?.distinctUntilChanged {old,new->legacyTileFields(old,app.app,mode)==legacyTileFields(new,app.app,mode)}}
+    val state=activeTileValue(stateFlow,ownerState?.value,visible)
+    val connectionSource=os.marine?.services?.network?.connections
+    val connectionFlow=remember(connectionSource,app.app) {connectionSource?.takeIf {app.app==AppId.NMEA}}
+    val connections=activeTileValue(connectionFlow,if(app.app==AppId.NMEA)connectionSource?.value.orEmpty()else emptyList(),visible)
+    val trafficSource=os.marine?.system?.ais?.snapshot
+    val traffic=activeTileValue(if(app.app==AppId.AIS)trafficSource else null,if(app.app==AppId.AIS)trafficSource?.value else null,visible)
+    val readingNow=tileElapsed(visible)
     val lastFix = data.fix(os.positionSource)
     val fix = lastFix?.takeIf { it.fresh(readingNow) }
     val unavailable = os.t("等待读数", "waiting for a reading")
     fun reading(observation: VesselObservation<Double>?, format: (Double?) -> String): String = format(observation?.displayNumber())
     fun stamp(observation: VesselObservation<*>?): String = observation?.let { observationStatus(os, it, readingNow) } ?: unavailable
-    fun samples(metric: String): List<Reading> = history[metric].orEmpty().filter { readingNow - it.elapsed in 0..300_000 }
+    val miniHistories=if(app.app==AppId.INSTRUMENTS)listOf("SPEED" to "sog","HEADING" to "heading","DEPTH" to "depth","WIND" to "tws")
+        .filter {mode=="AUTO"||it.first==mode}.associate {it.second to rememberTileHistory(os,it.second,visible,readingNow)} else emptyMap()
+    val historyCaptions=remember(miniHistories,os.chinese) {miniHistories.mapValues {(_,frame)->
+        if(frame.points.isEmpty())""else {
+            val utc=frame.points.lastOrNull()?.reading?.observedUtcMillis ?: (System.currentTimeMillis()-(SystemClock.elapsedRealtime()-frame.end))
+            os.t("近 5 分钟 · 截至 ","5 min · through ")+DateFormat.getTimeInstance(DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH).format(Date(utc))
+        }
+    }}
+    fun historyCaption(metric:String)=historyCaptions[metric].orEmpty()
     val displayLocale = if (os.chinese) Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH
     val snapshotLabel = if (os.maps.snapshotCapturedAt > 0) DateFormat.getTimeInstance(DateFormat.SHORT, displayLocale).format(Date(os.maps.snapshotCapturedAt)) else ""
     val snapshotCredit = when (os.maps.snapshotSource) {
@@ -193,10 +234,10 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         "INSTRUMENTS" -> {
             val v = state?.vesselData
             listOf(
-                TileFrame("SPEED", reading(v?.sogKnots, os::formatSpeed), stamp(v?.sogKnots), os.t("对地航速", "speed over ground"), samples = samples("sog"), live = v?.sogKnots?.displayIsLive() == true),
-                TileFrame("HEADING", os.formatBearing(v?.headingTrueDegrees?.liveNumber()), stamp(v?.headingTrueDegrees), os.t("船首向 · 真北", "heading · true"), bearing = v?.headingTrueDegrees?.liveNumber(), live = v?.headingTrueDegrees?.displayIsLive() == true),
-                TileFrame("DEPTH", reading(v?.depthMeters, os::formatDepth), stamp(v?.depthMeters), os.t("水深 · 余量 ", "depth · UKC ") + reading(v?.derived?.underKeelClearanceMeters, os::formatDepth), samples = samples("depth"), live = v?.depthMeters?.displayIsLive() == true),
-                TileFrame("WIND", reading(v?.trueWind?.speedKnots, os::formatSpeed), stamp(v?.trueWind?.speedKnots), os.t("真风 · 视风 ", "true wind · apparent ") + reading(v?.apparentWind?.speedKnots, os::formatSpeed), samples = samples("tws"), live = v?.trueWind?.speedKnots?.displayIsLive() == true),
+                TileFrame("SPEED", reading(v?.sogKnots, os::formatSpeed), stamp(v?.sogKnots), os.t("对地航速", "speed over ground"), history = miniHistories["sog"], historyCaption=historyCaption("sog"), live = v?.sogKnots?.displayIsLive() == true),
+                TileFrame("HEADING", os.formatBearing(v?.headingTrueDegrees?.liveNumber()), stamp(v?.headingTrueDegrees), os.t("船首向 · 真北", "heading · true"), history=miniHistories["heading"],historyCaption=historyCaption("heading"),bearing=if(miniHistories["heading"]==null)v?.headingTrueDegrees?.liveNumber()else null, live = v?.headingTrueDegrees?.displayIsLive() == true),
+                TileFrame("DEPTH", reading(v?.depthMeters, os::formatDepth), stamp(v?.depthMeters), os.t("水深 · 余量 ", "depth · UKC ") + reading(v?.derived?.underKeelClearanceMeters, os::formatDepth), history = miniHistories["depth"], historyCaption=historyCaption("depth"), live = v?.depthMeters?.displayIsLive() == true),
+                TileFrame("WIND", reading(v?.trueWind?.speedKnots, os::formatSpeed), stamp(v?.trueWind?.speedKnots), os.t("真风 · 视风 ", "true wind · apparent ") + reading(v?.apparentWind?.speedKnots, os::formatSpeed), history = miniHistories["tws"], historyCaption=historyCaption("tws"), live = v?.trueWind?.speedKnots?.displayIsLive() == true),
             )
         }
         "DATA_CENTER" -> {
@@ -246,13 +287,22 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         }
         "SETTINGS" -> listOf(TileFrame("VESSEL", state?.vesselSettings?.vesselName?.ifBlank { null } ?: os.t("我的船", "my boat"), os.t("船舶资料与系统偏好", "boat details & system preferences")), TileFrame("UNITS", os.distanceUnitLabel + " · " + os.speedUnitLabel, os.t("长度 ", "length ") + os.lengthUnitLabel + " · " + os.t("水深 ", "depth ") + os.depthUnitLabel + " · " + os.coordinateFormat, os.t("全局显示单位", "global display units")))
         else -> {
-            val shellState by os.shell.engine.state.collectAsState()
-            listOf(TileFrame("COLLECTION", os.t("${shellState.start.document.placements.size} 块磁贴", "${shellState.start.document.placements.size} tiles"), os.t("找到适合你的开始屏幕", "make Start your own")))
+            val countFlow=remember(os.shell) {os.shell.engine.state.map {it.start.document.placements.size}.distinctUntilChanged()}
+            val count=activeTileValue(countFlow,os.shell.engine.state.value.start.document.placements.size,visible)
+            listOf(TileFrame("COLLECTION", os.t("$count 块磁贴", "$count tiles"), os.t("找到适合你的开始屏幕", "make Start your own")))
         }
     }
     val demo = (state?.settings?.demoMode == true || os.positionSource == "demo") && app.app.name in setOf("CHART", "INSTRUMENTS", "ANCHOR", "DATA_CENTER")
     val selectedFrames = if (mode == "STATIC") listOf(TileFrame("STATIC", title, "")) else if (mode == "AUTO") frames else frames.filter { it.key == mode }.ifEmpty { listOf(TileFrame(mode, unavailable, "")) }
-    val selected = selectedFrames.map {
+    val permanentState=when(app.app) {
+        AppId.ANCHOR->frames.firstOrNull {it.key=="WATCH"}?.headline.orEmpty()+
+            if(state?.active!=null)" · "+(lastFix?.let {readingAge(os,it.elapsed,readingNow)} ?: os.t("等待船位","Waiting for position"))else ""
+        AppId.AIS->frames.firstOrNull {it.key=="WATCH"}?.headline.orEmpty()
+        AppId.VOYAGES->frames.firstOrNull {it.key=="RECORDING"}?.eyebrow.orEmpty()
+        else->""
+    }
+    val selected = selectedFrames.map {original->
+        val it=if(mode!="STATIC"&&permanentState.isNotBlank())original.copy(priorityLine=permanentState)else original
         val frameIsDemo=if(it.key=="MAP" && it.image!=null)it.demo else demo
         if(frameIsDemo)it.copy(eyebrow=os.t("演示 · ", "DEMO · ")+it.eyebrow,demo=true)else it
     }
@@ -260,7 +310,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     TileFace(os,app,title,selected,size,context,cover,rotate,interval)
 }
 
-@Composable private fun TileFace(os: OsStore, app: ShellApp, title: String, frames: List<TileFrame>, size: MarineTileSize, context: LauncherTileRenderContext, cover: Boolean, rotate: Boolean, interval: Long) {
+@Composable internal fun TileFace(os: OsStore, app: ShellApp, title: String, frames: List<TileFrame>, size: MarineTileSize, context: LauncherTileRenderContext, cover: Boolean, rotate: Boolean, interval: Long) {
     var page by remember(app.id, title) { mutableIntStateOf(0) }
     val keys = frames.map { it.key }
     val active = rotate && context.liveContentEnabled && size != MarineTileSize.ICON_1X1 && frames.size > 1
@@ -275,11 +325,13 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
     var heldFrame by remember(app.id, title, keys, os.unitPreferences, os.coordinateFormat, os.chinese) { mutableStateOf(currentFrame) }
     SideEffect { if (context.liveContentEnabled) heldFrame = currentFrame }
     val frame = if (context.liveContentEnabled) currentFrame else heldFrame
-    Box(context.modifier.fillMaxSize().clipToBounds()) {
+    Box(context.modifier.fillMaxSize().clipToBounds().semantics(mergeDescendants=true) {
+        contentDescription=listOf(title,frame.eyebrow,frame.headline,frame.priorityLine,frame.detail,frame.historyCaption).filter {it.isNotBlank()}.joinToString(" · ")
+    }) {
         if (size == MarineTileSize.ICON_1X1) ShellAppIcon(app, context.contentColor, Modifier.size(36.dp).align(Alignment.Center))
         else if (!active) TileFrameContent(os, app, title, frame, size, context.contentColor, cover)
         else AnimatedContent(frame.key, modifier = Modifier.fillMaxSize(), transitionSpec = {
-            (slideInVertically(tween(420)) { it } + fadeIn(tween(240))) togetherWith (slideOutVertically(tween(420)) { -it } + fadeOut(tween(200)))
+            ((slideInVertically(tween(420)) { it } + fadeIn(tween(240))) togetherWith (slideOutVertically(tween(420)) { -it } + fadeOut(tween(200)))).using(null)
         }, label = "live-tile") { key -> TileFrameContent(os, app, title, frames.firstOrNull { it.key == key } ?: frame, size, context.contentColor, cover) }
     }
 }
@@ -299,25 +351,9 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
         val wide = size == MarineTileSize.WIDE_4X2
         val textScale = LocalDensity.current.fontScale * LocalWpTextScale.current
         val compactContent = maxHeight < (128f * textScale).dp
-        if (frame.samples.size > 1 || frame.bearing != null || frame.progress != null) {
+        val showHistory=frame.history?.points?.isNotEmpty()==true&&maxHeight>=(112f*textScale).dp
+        if (frame.bearing != null || frame.progress != null) {
             Canvas(Modifier.fillMaxSize()) {
-                if (frame.samples.size > 1) {
-                    val start = frame.samples.first().elapsed
-                    val span = (frame.samples.last().elapsed - start).coerceAtLeast(1)
-                    val low = frame.samples.minOf { it.value }
-                    val high = frame.samples.maxOf { it.value }
-                    val range = (high - low).coerceAtLeast(.1)
-                    val path = Path()
-                    var previous: Reading? = null
-                    frame.samples.forEach { reading ->
-                        val x = ((reading.elapsed - start).toDouble() / span * this.size.width).toFloat()
-                        val y = this.size.height * .8f - ((reading.value - low) / range * this.size.height * .3f).toFloat()
-                        val old = previous
-                        if (old == null || !readingsAreContinuous(old, reading)) path.moveTo(x, y) else path.lineTo(x, y)
-                        previous = reading
-                    }
-                    drawPath(path, color.copy(alpha = .28f), style = Stroke(2.dp.toPx()))
-                }
                 frame.bearing?.let { bearing ->
                     val radius = min(this.size.width, this.size.height) * .37f
                     val origin = Offset(this.size.width * .75f, this.size.height * .55f)
@@ -337,7 +373,7 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
             if (frame.key == "STATIC") Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 ShellAppIcon(app, color, Modifier.size(48.dp))
             } else {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if(frame.eyebrow.isNotBlank())Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (frame.eyebrow.isNotBlank()) WpText(
                         if (os.chinese) frame.eyebrow else tileLabelCase(frame.eyebrow),
                         12, color = color, maxLines = 1, modifier = Modifier.weight(1f))
@@ -357,7 +393,13 @@ private data class TileFrame(val key: String, val headline: String, val detail: 
                             color = color, maxLines = 1, modifier = Modifier.padding(bottom = 4.dp))
                     } else WpText(headline, if (compactContent) 18 else 20, color = color, maxLines = 2)
                 }
-                if (frame.detail.isNotBlank()) WpText(frame.detail, 12, color = color,
+                if(frame.priorityLine.isNotBlank())WpText(frame.priorityLine,12,color=color,weight=FontWeight.SemiBold,maxLines=2)
+                if(showHistory&&frame.history!=null) {
+                    val palette=MetroColors(Color.Transparent,color,color.copy(alpha=.6f),Color.Transparent,color.copy(alpha=.8f))
+                    Canvas(Modifier.fillMaxWidth().height(if(wide&&!compactContent)34.dp else 24.dp).clipToBounds()) {drawInstrumentHistory(frame.history,palette,null,false)}
+                    if(frame.historyCaption.isNotBlank())WpText(frame.historyCaption,11,color=color,maxLines=1)
+                }
+                if (frame.detail.isNotBlank()&&(!showHistory||wide&&!compactContent)) WpText(frame.detail, 12, color = color,
                     maxLines = if (wide && !compactContent) 2 else 1)
             }
             WpText(title, 12, color = color, maxLines = 1, weight = FontWeight.SemiBold)

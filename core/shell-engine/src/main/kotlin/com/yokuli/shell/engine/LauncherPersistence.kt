@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 
-const val CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 4
+const val CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 5
 /** 包含系统、磁贴展示和应用偏好，不等同于最多64个注册控件定义。仍限制总存储规模。 */
 const val MAX_PERSISTED_APP_PREFERENCES = 256
 
@@ -34,6 +34,9 @@ data class LauncherPersistedState(
     val lastForegroundToken: String? = null,
     val productModelVersion: Int = 0,
     val recovery: LauncherStartupHealth = LauncherStartupHealth(),
+    /** Shell 临时编辑纯配置，上限 64 KiB；不包含业务状态或图片。 */
+    val workshopDraft: String? = null,
+    val preservedProto: String = "",
 )
 
 enum class LauncherPersistenceIncident {
@@ -43,6 +46,7 @@ enum class LauncherPersistenceIncident {
     INVALID_PREFERENCE_REPLACED,
     INVALID_PRODUCT_MODEL_VERSION_REPLACED,
     PRODUCT_MODEL_MIGRATED,
+    STORAGE_READ_FAILED,
 }
 
 data class LauncherPersistenceMigrationResult(
@@ -64,7 +68,7 @@ object LauncherPersistedStateMigration {
         installedEntryIds: Set<LauncherEntryId> = emptySet(),
     ): LauncherPersistenceMigrationResult {
         if (source == null) {
-            val product = productMigration.migrate(defaults, installedEntryIds)
+            val product = productMigration.migrate(LegacyTileInstanceMigration.migrate(defaults), installedEntryIds)
             return LauncherPersistenceMigrationResult(
                 product.state,
                 if (product.appliedVersions.isEmpty()) emptyList()
@@ -73,7 +77,7 @@ object LauncherPersistedStateMigration {
         }
         if (source.schemaVersion > CURRENT_LAUNCHER_PERSISTENCE_SCHEMA) {
             return LauncherPersistenceMigrationResult(
-                defaults,
+                source,
                 listOf(LauncherPersistenceIncident.FUTURE_SCHEMA_REJECTED),
             )
         }
@@ -114,7 +118,7 @@ object LauncherPersistedStateMigration {
                 appPreferenceValues = normalizedAppPreferences,
                 productModelVersion = productModelVersion,
             )
-        val product = productMigration.migrate(normalizedState, installedEntryIds)
+        val product = productMigration.migrate(LegacyTileInstanceMigration.migrate(normalizedState), installedEntryIds)
         if (product.appliedVersions.isNotEmpty()) {
             incidents += LauncherPersistenceIncident.PRODUCT_MODEL_MIGRATED
         }
@@ -194,22 +198,16 @@ class LauncherProductMigrationPlan(
     private fun LauncherPersistedState.apply(step: LauncherProductMigrationStep): LauncherPersistedState {
         val aliases = step.legacyEntryIds + step.targetEntryId
         val migratedDocument = document?.let { current ->
-            val candidates = current.placements.filter { it.entryId in aliases }
-            if (candidates.isEmpty()) current else {
-                val survivor = candidates.minWith(
-                    compareBy<com.yokuli.shell.engine.layout.TilePlacement> { it.rank }
-                        .thenBy { it.tileId.value },
-                )
-                current.copy(
-                    placements = current.placements.mapNotNull { placement ->
-                        when {
-                            placement.tileId == survivor.tileId -> placement.copy(entryId = step.targetEntryId)
-                            placement.entryId in aliases -> null
-                            else -> placement
-                        }
+            // 先前已捕获 preset 身份。旧样式保留自身入口，不能按 App 吞掉其他内容。
+            current.copy(placements = current.placements.map { placement ->
+                if (placement.entryId !in aliases || placement.entryId.value.startsWith("tile.")) placement
+                else placement.copy(
+                    entryId = step.targetEntryId,
+                    binding = placement.binding?.let { binding ->
+                        if (binding.kind == com.yokuli.shell.contract.TileBindingKind.APP) binding.copy(contentId = step.targetEntryId.value) else binding
                     },
                 )
-            }
+            })
         }
         val migratedToken = lastForegroundToken?.let { token ->
             step.tokenAliases.firstNotNullOfOrNull { alias -> alias.migrate(token) } ?: token
@@ -268,6 +266,17 @@ interface LauncherPersistencePort {
     suspend fun load(): LauncherPersistedState?
     suspend fun save(state: LauncherPersistedState)
     suspend fun reset()
+
+    suspend fun updateDocument(transform: (StartDocument?) -> StartDocument): StartDocument {
+        val updated = transform(load()?.document)
+        saveDocument(updated)
+        return updated
+    }
+
+    suspend fun saveTileDraft(payload: String?) {
+        require(payload == null || payload.toByteArray(Charsets.UTF_8).size <= 65_536) { "Tile draft too large" }
+        save((load() ?: LauncherPersistedState()).copy(workshopDraft = payload))
+    }
 
     suspend fun saveDocument(document: StartDocument) {
         save((load() ?: LauncherPersistedState()).copy(document = document))

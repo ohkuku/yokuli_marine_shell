@@ -160,6 +160,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             MetroButton(os.t("前往这里","Go here"),{start=true},primary=true)
             MetroButton(os.t("在海图上查看","Show on chart"),{os.maps.view("chart",os.center,os.zoom).apply {selectedPlaceId=place.id;selectedAisMmsi=null};os.fly(place.point);os.showCrosshair=false;os.openLinked("chart")})
             MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(place.point,place.name);os.openLinked("anchor:setup")})
+            PinTileAction(os, savedPlaceTileBinding(place.id))
             MetroButton(os.t("编辑资料","edit place"),{edit=true})
             MetroButton(os.t("删除收藏","delete saved place"),{remove=true})
         }

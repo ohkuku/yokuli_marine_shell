@@ -63,6 +63,7 @@ import kotlinx.coroutines.*
                         },primary=true,enabled=route.points.isNotEmpty())
                         MetroButton(if(navigating) os.t("当前导航与目标","current guidance & target") else os.t("开始沿线导航","start route navigation"),{if(navigating) actions=true else startAt=0},enabled=route.points.isNotEmpty())
                         Label(os.t("预览只显示路线。开始导航后，才会根据船位引导你逐点前往。","Preview displays the route. Start navigation to follow its waypoints from your position."),15,c.muted)
+                        if (savedRoute != null) PinTileAction(os, savedRouteTileBinding(savedRoute.id))
                         route.points.firstOrNull()?.let {p ->MenuRow(os.t("第一个航点","first waypoint"),os.formatCoordinates(p)) {selectedPoint=0}}
                         if(route.points.size>1) route.points.lastOrNull()?.let {p ->MenuRow(os.t("终点","destination"),os.formatCoordinates(p)) {selectedPoint=route.points.lastIndex}}
                     }

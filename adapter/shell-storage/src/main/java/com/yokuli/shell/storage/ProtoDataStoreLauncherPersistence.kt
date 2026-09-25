@@ -17,6 +17,9 @@ import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.storage.proto.LauncherStateProto
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,14 +47,32 @@ class ProtoDataStoreLauncherPersistence private constructor(
 
     init {
         scope.launch {
-            dataStore.data.collect { proto ->
+            var retryMillis = 500L
+            while (isActive) {
+                try {
+                    dataStore.data.collect { proto ->
                 val result = LauncherPersistedStateMigration.migrate(
                     LauncherProtoMapper.decode(proto), defaults, productMigration, installedEntryIds,
                 )
-                publish(result.state)
+                val encoded = LauncherProtoMapper.encode(result.state)
+                val committed = if (encoded != proto) dataStore.updateData { latest ->
+                    // migration 与偏好写入并发时重新读取，不能把先前观察的旧偏好写回。
+                    val current = LauncherPersistedStateMigration.migrate(
+                        LauncherProtoMapper.decode(latest), defaults, productMigration, installedEntryIds,
+                    ).state
+                    LauncherProtoMapper.encode(current)
+                } else proto
+                publish(LauncherProtoMapper.decode(committed))
                 result.incidents.forEach { mutableIncidents.emit(it) }
-                if (LauncherProtoMapper.encode(result.state) != proto) {
-                    dataStore.updateData { LauncherProtoMapper.encode(result.state) }
+                retryMillis = 500L
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // 不将无法读取/迁移的旧桌面替换成默认桌面；保留存储并重试。
+                    mutableIncidents.emit(LauncherPersistenceIncident.STORAGE_READ_FAILED)
+                    delay(retryMillis)
+                    retryMillis = (retryMillis * 2).coerceAtMost(10_000L)
                 }
             }
         }
@@ -68,6 +89,16 @@ class ProtoDataStoreLauncherPersistence private constructor(
         ).state
         val written = dataStore.updateData { LauncherProtoMapper.encode(migrated) }
         publish(LauncherProtoMapper.decode(written))
+    }
+
+    override suspend fun updateDocument(transform: (StartDocument?) -> StartDocument): StartDocument {
+        val written = updateCurrent { current -> current.copy(document = transform(current.document)) }
+        return requireNotNull(written.document)
+    }
+
+    override suspend fun saveTileDraft(payload: String?) {
+        require(payload == null || payload.toByteArray(Charsets.UTF_8).size <= 65_536) { "Tile draft too large" }
+        updateCurrent { current -> current.copy(workshopDraft = payload) }
     }
 
     override suspend fun saveDocument(document: StartDocument) {
@@ -131,7 +162,7 @@ class ProtoDataStoreLauncherPersistence private constructor(
         mutableLoaded.value = true
     }
 
-    private suspend fun updateCurrent(transform: (LauncherPersistedState) -> LauncherPersistedState) {
+    private suspend fun updateCurrent(transform: (LauncherPersistedState) -> LauncherPersistedState): LauncherPersistedState {
         val written = dataStore.updateData { currentProto ->
             val current = LauncherPersistedStateMigration.migrate(
                 LauncherProtoMapper.decode(currentProto), defaults, productMigration, installedEntryIds,
@@ -142,7 +173,9 @@ class ProtoDataStoreLauncherPersistence private constructor(
                 ).state,
             )
         }
-        publish(LauncherProtoMapper.decode(written))
+        val decoded = LauncherProtoMapper.decode(written)
+        publish(decoded)
+        return decoded
     }
 
     companion object {
