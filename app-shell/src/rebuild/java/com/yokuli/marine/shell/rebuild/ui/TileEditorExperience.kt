@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -55,12 +56,26 @@ import kotlin.math.roundToInt
 @Composable fun TileEditorHost(os: OsStore, modifier: Modifier = Modifier) {
     val workshop = os.shell.tileWorkshop
     val session by workshop.session.collectAsState()
+    val visits = rememberSaveableStateHolder()
+    var retainedKey by remember { mutableStateOf<String?>(null) }
+    val key = session?.tileId?.value
+    LaunchedEffect(key) {
+        retainedKey?.takeIf { it != key }?.let(visits::removeState)
+        retainedKey = key
+    }
     val edit = session?.takeIf { it.visible } ?: return
+    // Home/最近任务暂时卸载编辑界面，但同一草稿的筛选和两个滚动位置仍属于这次访问。
+    visits.SaveableStateProvider(edit.tileId.value) { TileEditorContent(os, edit, modifier) }
+}
+
+@Composable private fun TileEditorContent(os: OsStore, edit: TileEditorSession, modifier: Modifier) {
+    val workshop = os.shell.tileWorkshop
     val state by os.shell.engine.state.collectAsState()
     val c = LocalMetro.current
-    var selecting by rememberSaveable(edit.id) { mutableStateOf(false) }
-    var query by rememberSaveable(edit.id) { mutableStateOf("") }
-    var group by rememberSaveable(edit.id) { mutableStateOf<String?>(null) }
+    val selecting = edit.page == TileEditorPage.CHOOSE_CONTENT
+    var query by rememberSaveable(edit.tileId.value) { mutableStateOf("") }
+    var group by rememberSaveable(edit.tileId.value) { mutableStateOf<String?>(null) }
+    var previewedContent by rememberSaveable { mutableStateOf(edit.binding.contentKey) }
     val pickerScroll = rememberLazyListState()
     val editingScroll = rememberScrollState()
     val choice = tileContentDescriptor(os, edit.binding)
@@ -70,8 +85,15 @@ import kotlin.math.roundToInt
     val canConfigure = !busy && inputEnabled && edit.phase != TileEditorPhase.CONFLICT
     val focusManager = LocalFocusManager.current
     LaunchedEffect(inputEnabled) { if (!inputEnabled) focusManager.clearFocus(force = true) }
-    val back = { if (selecting) selecting = false else workshop.requestClose() }
+    // 与虚拟 Back 的 Shell fallback 共用页层级，不能只有标题箭头知道内容选择页。
+    val back = workshop::requestClose
     AppBackHandler(inputEnabled) { back() }
+    LaunchedEffect(edit.binding.contentKey) {
+        if (previewedContent != edit.binding.contentKey) {
+            editingScroll.scrollTo(0)
+            previewedContent = edit.binding.contentKey
+        }
+    }
     Column(modifier.fillMaxSize().background(c.bg).imePadding()
         .then(if (inputEnabled) Modifier else Modifier.clearAndSetSemantics { })
         .pointerInput(inputEnabled) {
@@ -87,9 +109,9 @@ import kotlin.math.roundToInt
             if (selecting) os.t("磁贴内容", "Tile content") else if (edit.isNew) os.t("固定到开始屏幕", "Pin to Start") else os.t("编辑磁贴", "Edit tile"), inputEnabled, back)
         if (selecting) {
             TileContentPicker(os, tileContentChoices(os), state.start.document.placements.map { tileBinding(it).contentKey }.toSet(),
-                query, { query = it }, group, { group = it }, listState = pickerScroll) { selected ->
+                query, { query = it }, group, { group = it }, listState = pickerScroll,
+                selectedKey = edit.binding.contentKey) { selected ->
                 workshop.setBinding(selected.binding)
-                selecting = false
             }
         } else {
             val insets = LocalShellHorizontalInsets.current
@@ -106,7 +128,7 @@ import kotlin.math.roundToInt
                         os.t("这项内容只需要一块磁贴。现有样式不会被覆盖。", "This content already has a tile. Its appearance is unchanged."))
                     MetroButton(os.t("编辑这块磁贴", "Edit existing tile"), { workshop.editExisting() }, primary = true)
                     edit.existingTileId?.let { id -> MetroButton(os.t("查看位置", "Show on Start"), { workshop.reveal(id) }) }
-                    MenuRow(os.t("更换内容", "Choose other content"), icon = "start") { selecting = true }
+                    MenuRow(os.t("更换内容", "Choose other content"), icon = "start") { workshop.chooseContent() }
                     MetroButton(os.t("返回", "Back"), { workshop.requestClose() })
                 } else {
                     Label(os.t("尺寸", "Size"), 15, c.muted, Modifier.semantics { heading() })
@@ -115,15 +137,21 @@ import kotlin.math.roundToInt
                             ChoiceRow(tileSizeName(os, size), edit.size == size, enabled = canConfigure, modifier = Modifier.weight(1f)) { workshop.setSize(size) }
                         }
                     }
-                    if (choice.styles.size > 1) {
+                    val iconOnly = edit.size == MarineTileSize.ICON_1X1
+                    if (iconOnly) {
+                        Label(os.t("小磁贴显示应用图标；放大后显示你选定的内容样式。", "Small tiles show the app icon. A larger tile uses your selected appearance."), 13, c.muted)
+                    } else if (choice.styles.size > 1) {
                         Column {
                             Label(os.t("显示方式", "Appearance"), 15, c.muted, Modifier.semantics { heading() })
                             choice.styles.forEach { style ->
                                 ChoiceRow(tileText(os, style.title), edit.presentation.style == style.key, enabled = canConfigure) {
-                                    workshop.setPresentation(TilePresentation(style = style.key))
+                                    workshop.chooseStyle(style.key)
                                 }
                             }
                         }
+                    }
+                    if (!iconOnly && canConfigure) {
+                        TileMetricConfiguration(os, choice, edit.presentation, workshop::setPresentation)
                     }
                     if (edit.presentation.legacyMode != null) {
                         Label(os.t("保留原有内容、轮换和点击去向。选择新表现或更换内容后才转换。", "Original content, rotation and destination are preserved until you choose a new appearance or content."), 13, c.muted)
@@ -146,7 +174,7 @@ import kotlin.math.roundToInt
                             MetroButton(os.t("载入最新磁贴", "Reload latest tile"), { workshop.reloadConflict() }, enabled = inputEnabled)
                         } else {
                             Label(os.t("原磁贴已移除。草稿仍保留；重新选择内容可创建一块新磁贴。", "The original tile was removed. Your draft is kept; choose content to create a new tile."), 13, c.muted)
-                            MetroButton(os.t("选择内容，重新固定", "Choose content to pin again"), { selecting = true }, enabled = inputEnabled)
+                            MetroButton(os.t("选择内容，重新固定", "Choose content to pin again"), { workshop.chooseContent() }, enabled = inputEnabled)
                         }
                     }
                     if (busy) {
@@ -160,7 +188,7 @@ import kotlin.math.roundToInt
                         }, { workshop.save() }, primary = true,
                             enabled = inputEnabled && (edit.isNew || edit.dirty || edit.phase == TileEditorPhase.FAILED) && edit.existingTileId == null && edit.phase != TileEditorPhase.CONFLICT)
                     }
-                    if (!busy && edit.phase != TileEditorPhase.CONFLICT) MenuRow(os.t("更换内容", "Choose other content"), icon = "start") { selecting = true }
+                    if (!busy && edit.phase != TileEditorPhase.CONFLICT) MenuRow(os.t("更换内容", "Choose other content"), icon = "start") { workshop.chooseContent() }
                     if (!edit.isNew && originalExists && !busy) MenuRow(os.t("从开始屏幕移除", "Unpin from Start"),
                         os.t("只移除磁贴，保留内容与正在运行的任务", "Keeps the content and any running task"), "minus") { workshop.unpin(edit.tileId) }
                 }
@@ -254,8 +282,11 @@ import kotlin.math.roundToInt
                         }.clipToBounds().startTileBackground()) {
                         Box(Modifier.fillMaxSize().padding(if (visual.fullBleed && draft.size != MarineTileSize.ICON_1X1) 0.dp
                             else if (draft.size == MarineTileSize.ICON_1X1) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
-                            visual.tileRenderers.getValue(draft.size).Render(LauncherTileRenderContext(draft.size, foreground, Modifier.fillMaxSize(),
-                                liveContentEnabled = active && visible && resumed))
+                            // 配置变化立即得到新渲染实例；离屏/暂停只冻结数据，不得把旧样式的 heldFrame 带回来。
+                            key(draft.tileId, draft.binding, draft.presentation) {
+                                visual.tileRenderers.getValue(draft.size).Render(LauncherTileRenderContext(draft.size, foreground, Modifier.fillMaxSize(),
+                                    liveContentEnabled = active && visible && resumed))
+                            }
                         }
                     }
                 }

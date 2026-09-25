@@ -51,7 +51,7 @@ Android 宿主通过 `preferredRefreshRate` 在前台请求当前分辨率可用
 
 参考微软 [WP8.1 Start 背景说明](https://blogs.windows.com/devices/2014/04/29/deep-dive-windows-phone-8-1-start-screen-backgrounds/) 的跨磁贴照片，以及 [Lumia 550 / Windows 10 Mobile 官方指南](https://msftstories.thesourcemediaassets.com/2016/04/Microsoft-LUMIA-550-Reviewers-Guide-FINAL.pdf) 的个性化和实时预览。资料不提供我们设备上的逐帧物理参数，以下视差与时长为明确适配。
 
-`StartWallpaperSurface` 和 `startTileBackground` 使用同一解码图像及视口投影，支持全屏照片、仅磁贴内照片、纯色三种模式。矩形滑块调节底色透明度，文字及图形不整体降低 alpha；海图等 full-bleed 实时磁贴仍保留自己的内容。滚动背景有 12% 取景余量、共享连续视差，状态只在绘制读取，不随每帧重新执行 Shell 与数据订阅。所有元素作为同一个开始屏幕参加恢复的 Home 翻转。
+`LauncherWallpaperSurface` 位于生产 `InteractiveLauncherPager` 内，开始屏幕与应用列表共用一张全屏壁纸，业务应用不使用这层壁纸。`StartWallpaperSurface` 和 `startTileBackground` 复用同一解码图像及视口投影，独立预览也使用同一取景公式；仍保留全屏照片、仅磁贴内照片、纯色三种模式。矩形滑块调节底色透明度，文字及图形不整体降低 alpha；海图等 full-bleed 实时磁贴仍保留自己的内容。照片横向保留 6%、纵向保留 12% 的最小取景余量；左右切页只移动至多视口宽度的 2.5%，以分页的连续进度平滑映射，接近用户选定取景边缘时缩小位移，绝不露空。应用列表随进度轻微加深遮罩，照片上的前景与菜单保持对比度。逐帧状态只在绘制读取，使用亚像素平移，不生成加宽位图，不重新执行 Shell 与数据订阅。共同背景与页面仍作为同一 Launcher 参加经典 Home 翻转，用户焦点、缩放和透明度保留在原系统偏好中。
 
 “背景与透明磁贴”是设置首页的首项，也可从桌面磁贴长按和磁贴工坊进入同一个 `settings:start`。三种模式与透明度始终可见；尚无照片时，选择照片模式直接打开选择器，并保留所选模式。磁贴工坊预览复用真实背景与透明度，跨应用返回恢复原磁贴样式页。读写失败区分照片权限、文件缺失、解码、储存空间、偏好提交和取景照片已更换，不能只给笼统成功或静默退回纯色。
 

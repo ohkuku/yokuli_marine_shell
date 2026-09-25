@@ -13,11 +13,11 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 
-/** 图册统一维护显示用底图与可查询的航行资料；浏览不改变地图选用组合。 */
+/** 海图管理显示图层，数据管理可查询对象；两类各有导入、详情与管理流程。 */
 @Composable fun LibraryScreen(os:OsStore,initialPage:Int=0) {
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,os.title(AppId.LIBRARY))
-        Pivot(listOf(os.t("底图","Maps"),os.t("航行数据","Navigation data")),initialPage=initialPage) {page->
+        Pivot(listOf(os.t("海图","Charts"),os.t("数据","Data")),initialPage=initialPage) {page->
             if(page==0)RasterLibraryPane(os)else StructuredChartLibraryPane(os)
         }
     }
@@ -31,9 +31,11 @@ import com.yokuli.marine.shell.rebuild.chart.*
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) { PageBody {
             LibraryProgress(os)
+            Label(os.t("显示图层","Map layers"),18)
+            Label(os.t("MBTiles 海图 · 按文件夹管理","MBTiles charts · Organised by folder"),13,LocalMetro.current.muted)
             if(library.folders.isEmpty()) {
-                Label(os.t("一个文件夹，\n一张自己的海图。","one folder,\nyour own chart."),24)
-                Label(os.t("连接海图文件夹，为图层命名。重叠的地方，优先显示你排在前面的海图。","Connect a folder and name its layer. Where charts overlap, the first chart takes priority."),15,LocalMetro.current.muted)
+                Label(os.t("添加你的第一张海图","Add your first chart"),20)
+                Label(os.t("连接文件夹，或导入 MBTiles 文件。每个文件夹对应一个命名图层，重叠时按你的排序显示。","Connect a folder or import an MBTiles file. Each folder becomes a named layer; your order controls overlapping charts."),15,LocalMetro.current.muted)
             }
             library.folders.forEach {entry ->
                 val charts=library.folderFiles(entry)
@@ -50,7 +52,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Label(os.t("MBTiles 提供地图画面；水深、障碍等资料在“航行数据”中管理。两者可以搭配使用。","MBTiles provides the map image. Manage depths and hazards in Navigation data and use both together."),15,LocalMetro.current.muted)
+            Label(os.t("水深、障碍等可查询内容，在“数据”页单独管理。","Manage queryable depths and hazards separately in Data."),13,LocalMetro.current.muted)
         } }
         AppCommandBar(os,listOf(
             AppCommand("link-folder","folder",os.t("连接海图文件夹","Connect chart folder"),{folder.launch(null)},enabled=!library.busy),
@@ -104,8 +106,10 @@ import com.yokuli.marine.shell.rebuild.chart.*
                                 MetroButton(os.t("上移","move up"),{library.moveFile(file,-1)},Modifier.weight(1f),enabled=index>0)
                                 MetroButton(os.t("下移","move down"),{library.moveFile(file,1)},Modifier.weight(1f),enabled=index<files.lastIndex)
                             }
-                            if(file.error==null)MenuRow(os.t("在图层中定位","locate in this layer"),os.formatCoordinates(file.focus)) {
-                                library.showOnly(file);os.maps.select(MapSource.CustomLayer(folder.id));os.fly(file.focus,file.previewZoom);os.openLinked("chart")
+                            if(file.error==null)MenuRow(os.t("在海图查看此范围","view this extent on chart"),os.formatCoordinates(file.focus)) {
+                                // 查看位置不重新打开已隐藏的文件，也不悄悄创建或修改图层。
+                                if(folder.layerName!=null)os.maps.select(MapSource.CustomLayer(folder.id))
+                                os.fly(file.focus,file.previewZoom);os.openLinked("chart")
                             }
                             MenuRow(os.t("重命名显示名称","rename display name")) {namingFile=file}
                             MenuRow(os.t("从图册移除","remove from library"),os.t("保留原文件，可在管理中恢复","keeps the file; restore from manage")) {removeFile=file}

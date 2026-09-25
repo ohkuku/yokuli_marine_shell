@@ -255,6 +255,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         return linked
     }
     fun errorText(code: String?, zh: Boolean): String = when(code) {
+        "data-package" -> if(zh) "这是航行数据包，请在图册的“数据”页导入。这里仅管理 MBTiles 海图。" else "Import this navigation dataset in the library's Data tab. Charts manages MBTiles files."
         "vector" -> if(zh) "这是矢量海图；请使用栅格 MBTiles" else "Vector chart. Use raster MBTiles."
         "empty" -> if(zh) "文件没有图块" else "No tiles in this file"
         "space" -> if(zh) "空间不足，未完成导入" else "Not enough storage to import"
@@ -388,6 +389,8 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
             try {
                 val chart=withContext(Dispatchers.IO) {
                     val name=context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use { if(it.moveToFirst()) it.getString(0) else null } ?: "chart.mbtiles"
+                    val extension=name.substringAfterLast('.',"").lowercase(java.util.Locale.ROOT)
+                    require(extension !in setOf("gpkg","zip") && !(extension.length==3 && extension.all(Char::isDigit))) { "data-package" }
                     withContext(Dispatchers.Main) { progress=name }
                     context.contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().buffered().use { output ->
                         val buffer=ByteArray(1024*1024); var total=0L

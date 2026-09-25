@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -30,10 +31,13 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.LocalWpTheme
+import com.yokuli.marine.core.design.LocalLauncherWallpaperProvided
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.contract.PinPolicy
+import com.yokuli.shell.contract.TileBinding
+import com.yokuli.shell.contract.TileBindingKind
 import com.yokuli.shell.engine.LauncherTransient
 import com.yokuli.shell.compose.LauncherEntryUiState
 import java.text.Collator
@@ -71,7 +75,7 @@ fun WpAppList(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(colors.background).testTag("all-apps-list")) {
+    Box(Modifier.fillMaxSize().background(if (LocalLauncherWallpaperProvided.current) Color.Transparent else colors.background).testTag("all-apps-list")) {
         Column(Modifier.fillMaxSize()) {
             if (onSearch != null) {
                 val interactions = remember { MutableInteractionSource() }
@@ -154,18 +158,18 @@ fun WpAppList(
             state.entries.firstOrNull { it.descriptor.entryId == entryId }
         }
         contextEntry?.let { entry ->
-            val placement = state.document.placements.firstOrNull { it.entryId == entry.descriptor.entryId }
+            val contentKey = TileBinding("yokuli", TileBindingKind.APP, entry.descriptor.entryId.value).contentKey
+            val pinned = state.document.placements.any {
+                it.binding?.contentKey == contentKey || (it.binding == null && it.entryId == entry.descriptor.entryId)
+            }
             WpLauncherContextMenu(
                 entry = entry,
-                pinned = placement != null,
+                pinned = pinned,
                 pinActionAvailable = entry.descriptor.pinPolicy == PinPolicy.PINNABLE,
                 onDismiss = { onAction(LauncherUiAction.DismissTransient) },
                 onPinAction = {
-                    if (placement == null) {
-                        onAction(LauncherUiAction.PinEntry(entry.descriptor.entryId))
-                    } else {
-                        onAction(LauncherUiAction.UnpinTile(placement.tileId))
-                    }
+                    // 固定入口统一交给现有编辑会话去重；已固定时提供编辑/定位，不把入口变成移除动作。
+                    onAction(LauncherUiAction.PinEntry(entry.descriptor.entryId))
                 },
                 onAppInfo = {
                     onAction(LauncherUiAction.DismissTransient)
@@ -196,8 +200,8 @@ private fun WpLauncherContextMenu(
             WpText(entry.title, 24, weight = FontWeight.Normal, modifier = Modifier.padding(bottom = 16.dp))
             if (pinActionAvailable) {
                 ContextAction(
-                    title = stringResource(if (pinned) R.string.context_unpin else R.string.context_pin),
-                    icon = if (pinned) MarineIconKind.UNPIN else MarineIconKind.PIN,
+                    title = stringResource(if (pinned) R.string.context_manage_tile else R.string.context_pin),
+                    icon = MarineIconKind.PIN,
                     tag = "launcher-context-pin",
                     onClick = onPinAction,
                 )

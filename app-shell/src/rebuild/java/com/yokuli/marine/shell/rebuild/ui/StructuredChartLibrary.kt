@@ -33,12 +33,15 @@ import java.util.UUID
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             item {ChartDataProgress(os,service,data)}
+            item {Column(verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                Label(os.t("水深 · 航标 · 障碍","Depths · Marks · Hazards"),18)
+                Label(os.t("S-57 / GeoPackage · 独立于海图图层","S-57 / GeoPackage · Separate from map layers"),13,LocalMetro.current.muted)
+            }}
             message?.let {item {Label(it,14,LocalMetro.current.accentText)}}
             if(data.datasets.isEmpty()&&!data.loading)item {
                 Column(verticalArrangement=Arrangement.spacedBy(12.dp),modifier=Modifier.padding(vertical=24.dp)) {
-                    Glyph("layers",Modifier.size(38.dp),LocalMetro.current.accent)
-                    Label(os.t("水深、航标、障碍，都在这里","Depths, marks and hazards"),24)
-                    Label(os.t("导入 S-57 海图或 GeoPackage 数据包，查看具体对象，并与 MBTiles 底图搭配使用。有足够的有效资料，才能自动规划航线。","Import S-57 charts or GeoPackage data, explore their objects and pair them with MBTiles maps. Automatic routing needs sufficient usable data."),15,LocalMetro.current.muted)
+                    Label(os.t("添加第一份航行数据","Add your first dataset"),20)
+                    Label(os.t("导入后可查看具体内容，并与任意海图搭配。没有足够的有效数据时，仍可手动规划航线。","Explore imported objects and pair them with any chart. When usable data is insufficient, plan routes manually."),15,LocalMetro.current.muted)
                 }
             }
             items(data.datasets,key={it.id}) {dataset->
@@ -55,7 +58,7 @@ import java.util.UUID
                 }
             }
             item {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                MenuRow(os.t("支持哪些海图？","Supported charts"),"S-57 · GeoPackage",if(formatDetails)"minus"else"plus") {formatDetails=!formatDetails}
+                MenuRow(os.t("支持哪些数据？","Supported data"),"S-57 · GeoPackage",if(formatDetails)"minus"else"plus") {formatDetails=!formatDetails}
                 if(formatDetails) {
                 Label(os.t("GeoPackage（.gpkg）是可用 QGIS 等工具维护的开放地理数据包。支持 WGS84 / Web Mercator 矢量对象；水深、覆盖等字段需要明确声明，不会从地图颜色或三维高度推算。", "GeoPackage (.gpkg) is an open geodata package editable with tools such as QGIS. WGS84 / Web Mercator vector features are supported. Depth and coverage need explicit fields; neither map colours nor 3D elevation imply depth."),13,LocalMetro.current.muted)
                 Label(os.t("支持未加密 S-57 .000、连续更新、ZIP 交换集或文件夹。原文件不修改，索引安装失败保留上一完整版本。","Supports unencrypted S-57 base cells, sequential updates, ZIP exchange sets and folders. Source files stay untouched; a failed installation preserves the previous complete version."),13,LocalMetro.current.muted)
@@ -65,8 +68,8 @@ import java.util.UUID
             }}
         }
         AppCommandBar(os,listOf(
-            AppCommand("import-data","plus",os.t("导入数据海图","Import data chart"),{file.launch(arrayOf("*/*"))},enabled=service!=null&&!data.loading&&!data.jobRunning),
-            AppCommand("import-exchange-folder","folder",os.t("选择交换集文件夹","Choose exchange folder"),{folder.launch(null)},enabled=service!=null&&!data.loading&&!data.jobRunning),
+            AppCommand("import-data","plus",os.t("导入数据包","Import dataset"),{file.launch(arrayOf("*/*"))},enabled=service!=null&&!data.loading&&!data.jobRunning),
+            AppCommand("import-exchange-folder","folder",os.t("从文件夹导入","Import data folder"),{folder.launch(null)},enabled=service!=null&&!data.loading&&!data.jobRunning),
         ))
     }
     importUri?.let {uri->ChartImportDialog(os,uri,null,onDismiss={importUri=null}) {request->service?.importPackage(request)}}
@@ -90,11 +93,12 @@ import java.util.UUID
     val insets=LocalShellHorizontalInsets.current
     fun feedback(result:ChartCommandResult?) {message=when(result) {is ChartCommandResult.Failed->chartDataError(os,result.reason);ChartCommandResult.Busy->os.t("请等当前导入完成，或先取消","Wait for the import or cancel it first");else->null}}
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os,dataset?.name ?: os.t("数据海图","Data chart"),os.title(AppId.LIBRARY))
+        PageHeader(os,dataset?.name ?: os.t("数据包","Dataset"),os.title(AppId.LIBRARY)+" · "+os.t("数据","Data"))
         if(dataset==null)PageBody {
             ChartDataProgress(os,service,data)
             if(!data.loading) {Label(os.t("这份资料已不在图册中","This dataset is no longer in your library"),20);Label(os.t("地图保留原来的选用记录，补回资料或重新选择后恢复。","Chart keeps its selection. Restore this dataset or choose another."),14,LocalMetro.current.muted)}
-        }else LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        }else Pivot(listOf(os.t("内容","Contents"),os.t("管理","Manage"))) {page->
+        if(page==0)LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             item {Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 ChartDataProgress(os,service,data)
                 message?.let {Label(it,14,LocalMetro.current.accentText)}
@@ -102,16 +106,11 @@ import java.util.UUID
                 MenuRow(os.t("浏览资料内容","Explore contents"),os.t("${dataset.cells.sumOf {it.featureCount}} 个对象 · 水深、航标、障碍…","${dataset.cells.sumOf {it.featureCount}} objects · depths, marks, hazards…"),"layers") {os.open("chartobjects:${dataset.id}")}
                 Label((if(dataset.format=="GPKG")"GeoPackage"else dataset.format)+" · "+chartUseLabel(os,dataset.eligibility),14,LocalMetro.current.muted)
                 if(dataset.eligibility.provider.isNotBlank())Label(dataset.eligibility.provider,14,LocalMetro.current.muted)
-                MetroButton(if(selected)os.t("已选用 · 在海图查看","Selected · View in Chart")else os.t("在海图与规划中选用","Use in Chart and planning"),{
-                    os.maps.includeDataset(dataset.id,true)
-                    os.fitRequest=dataset.cells.filterNot {it.cancelled}.flatMap {it.bounds}.flatMap {it.chartCorners()}
-                    os.openLinked("chart")
+                MetroButton(if(selected)os.t("已选用 · 在海图查看","Selected · View in Chart")else os.t("加入当前海图","Add to current chart"),{
+                    if(!selected)os.maps.includeDataset(dataset.id,true)
+                    openDatasetOnChart(os,dataset)
                 },primary=true,enabled=dataset.offlineReadable)
-                Label(os.t("加入当前地图的资料组合。参考资料可查看，但不能证明航线可通行。","Adds to the data selected for this map. Reference data is viewable but cannot prove a route passable."),13,LocalMetro.current.muted)
-                MenuRow(os.t("来源与资料用途","Source and permitted use"),os.t("提供方、许可依据与有效期","Provider, permission and validity"),"settings") {message=null;permission=true}
-                MenuRow(os.t("重命名","Rename"),icon="edit") {editedName=dataset.name;message=null;rename=true}
-                MenuRow(os.t("导入新版或连续更新","Import a new edition or updates"),os.t("S-57 连续更新，或替换 GeoPackage 完整版本","S-57 updates or a complete GeoPackage replacement"),"plus") {update.launch(arrayOf("*/*"))}
-                MenuRow(os.t("从文件夹更新","Update from a folder"),icon="folder") {folder.launch(null)}
+                Label(os.t("保留当前海图图层，仅叠加这份数据。参考资料不用于自动规划。","Keeps the current map layer and adds this data. Reference-only data is excluded from automatic planning."),13,LocalMetro.current.muted)
                 AppSection(if(dataset.format=="GPKG")os.t("资料范围","Dataset extent")else os.t("图幅与覆盖","Cells and coverage"))
             }}
             items(dataset.cells,key={it.cellId}) {cell->Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -134,22 +133,33 @@ import java.util.UUID
                     })
                 }
             }}
-            item {Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                Spacer(Modifier.height(14.dp))
-                MetroButton(os.t("从图册移除","Remove from library"),{removing=true},enabled=!data.jobRunning)
-                Label(os.t("删除本应用的索引与记录副本，原海图文件保留。正在运行的分析保留自己的版本直到释放。","Removes the app's index and record copy. Original chart files remain. Running analyses keep their version until released."),13,LocalMetro.current.muted)
-            }}
+        }else PageBody {
+            ChartDataProgress(os,service,data)
+            message?.let {Label(it,14,LocalMetro.current.accentText)}
+            Label(dataset.name,18)
+            Label((if(dataset.format=="GPKG")"GeoPackage"else dataset.format)+" · "+chartUseLabel(os,dataset.eligibility),13,LocalMetro.current.muted)
+            MenuRow(os.t("重命名数据包","Rename dataset"),icon="edit") {editedName=dataset.name;message=null;rename=true}
+            MenuRow(os.t("来源与用途","Source and use"),os.t("提供方、许可与有效期","Provider, permission and validity"),"settings") {message=null;permission=true}
+            AppSection(os.t("更新内容","Update contents"))
+            MetroButton(os.t("导入新版或更新文件","Import replacement or update"),{update.launch(arrayOf("*/*"))},primary=true,enabled=!data.jobRunning)
+            MetroButton(os.t("从文件夹更新","Update from folder"),{folder.launch(null)},enabled=!data.jobRunning)
+            Label(os.t("S-57 按顺序追加更新；GeoPackage 替换完整数据包。导入未完成时保留旧版本。","Apply S-57 updates in sequence or replace a complete GeoPackage. The previous version remains until import finishes."),13,LocalMetro.current.muted)
+            AppSection(os.t("移除","Remove"))
+            if(dataset.id in os.maps.selectedDatasetIds)MetroButton(os.t("从当前海图取消选用","Remove from current chart"),{os.maps.includeDataset(dataset.id,false)})
+            MetroButton(os.t("删除本机数据包","Delete local dataset"),{removing=true},enabled=!data.jobRunning)
+            Label(os.t("只删除本机索引与副本，原文件保留。取消选用不会删除数据包。","Deleting removes the local index and copy; source files remain. Removing from Chart keeps this dataset in the library."),13,LocalMetro.current.muted)
+        }
         }
     }
     if(rename&&dataset!=null)AppDialog(onDismissRequest={rename=false}) {AppDialogSurface {
-        AppDialogTitle(os.t("图集名称","Dataset name"))
+        AppDialogTitle(os.t("数据包名称","Dataset name"))
         Field(os.t("名称","Name"),editedName,{editedName=it.take(120)})
         message?.let {Label(it,14,LocalMetro.current.accentText)}
         MetroButton(os.t("保存","Save"),{renaming=true;scope.launch {try {val result=service?.rename(dataset.id,editedName);feedback(result);if(result is ChartCommandResult.Saved)rename=false}finally {renaming=false}}},primary=true,enabled=editedName.isNotBlank()&&!renaming)
         MetroButton(os.t("取消","Cancel"),{rename=false})
     }}
     if(permission&&dataset!=null)ChartEligibilityDialog(os,dataset.eligibility,{permission=false},error=message) {eligibility->scope.launch {val result=service?.updateEligibility(dataset.id,eligibility);feedback(result);if(result is ChartCommandResult.Saved)permission=false}}
-    if(removing&&dataset!=null)ConfirmDialog(os,os.t("移除 ${dataset.name}？原文件保留。","Remove ${dataset.name}? Original files remain."),{removing=false}) {scope.launch {val result=service?.remove(dataset.id);feedback(result);removing=false;if(result is ChartCommandResult.Saved)os.back()}}
+    if(removing&&dataset!=null)ConfirmDialog(os,os.t("删除本机数据包 ${dataset.name}？原文件保留。","Delete local dataset ${dataset.name}? Original files remain."),{removing=false}) {scope.launch {val result=service?.remove(dataset.id);feedback(result);removing=false;if(result is ChartCommandResult.Saved)os.back()}}
     if(importUri!=null&&dataset!=null)ChartImportDialog(os,requireNotNull(importUri),dataset,{importUri=null}) {request->service?.importPackage(request)}
 }
 
@@ -157,17 +167,17 @@ import java.util.UUID
     val scope=rememberCoroutineScope()
     var retryError by remember {mutableStateOf<String?>(null)}
     retryError?.let {Label(it,14,LocalMetro.current.accentText)}
-    if(state.loading)MetroProgress(os.t("正在读取图册","Reading chart library"))
+    if(state.loading||service==null)MetroProgress(os.t("正在读取数据目录","Reading data catalogue"))
     state.error?.let {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {Label(chartDataError(os,it),14,LocalMetro.current.accentText);MetroButton(os.t("重新读取","Read again"),{scope.launch {service?.retryRestore()}})}}
     state.activeJob?.let {job->Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         val title=when(job.phase) {
             ChartImportPhase.COPYING->os.t("正在复制资料","Copying data")
-            ChartImportPhase.PARSING->os.t("正在读取海图","Reading charts")
+            ChartImportPhase.PARSING->os.t("正在读取数据对象","Reading data objects")
             ChartImportPhase.INDEXING->os.t("正在建立离线索引","Building offline index")
             ChartImportPhase.COMMITTING->os.t("正在安装完整版本","Installing complete version")
             ChartImportPhase.COMPLETE->os.t("已安装 · ","Installed · ")+job.name
             ChartImportPhase.CANCELLED->os.t("导入已取消","Import cancelled")
-            ChartImportPhase.INTERRUPTED->os.t("上次导入中断，原图集保留","Import interrupted; previous charts preserved")
+            ChartImportPhase.INTERRUPTED->os.t("上次导入中断，原数据包保留","Import interrupted; previous dataset preserved")
             ChartImportPhase.FAILED->os.t("导入未完成","Import did not finish")
         }
         if(state.jobRunning)MetroProgress(title)else Label(title,15,LocalMetro.current.accentText)
@@ -185,7 +195,7 @@ import java.util.UUID
 private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImportPhase.COPYING,ChartImportPhase.PARSING,ChartImportPhase.INDEXING,ChartImportPhase.COMMITTING)
 
 @Composable private fun ChartImportDialog(os:OsStore,uri:String,existing:ChartDataset?,onDismiss:()->Unit,onImport:suspend (ChartImportRequest)->ChartCommandResult?) {
-    var name by rememberSaveable(uri) {mutableStateOf(existing?.name ?: os.t("我的数据海图","My data chart"))}
+    var name by rememberSaveable(uri) {mutableStateOf(existing?.name ?: os.t("我的航行数据","My navigation data"))}
     var eligibility by remember(uri) {mutableStateOf(existing?.eligibility ?: DataEligibility(ChartUse.REFERENCE_ONLY))}
     var editingEligibility by remember {mutableStateOf(false)}
     val requestId=rememberSaveable(uri) {UUID.randomUUID().toString()}
@@ -193,8 +203,8 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
     var submitting by remember {mutableStateOf(false)}
     var error by remember(uri) {mutableStateOf<String?>(null)}
     AppDialog(onDismissRequest=onDismiss) {AppDialogSurface {
-        AppDialogTitle(if(existing==null)os.t("导入数据海图","Import data chart")else os.t("更新图集","Update dataset"))
-        Field(os.t("图集名称","Dataset name"),name,{name=it.take(120)})
+        AppDialogTitle(if(existing==null)os.t("导入数据包","Import dataset")else os.t("更新数据包","Update dataset"))
+        Field(os.t("数据包名称","Dataset name"),name,{name=it.take(120)})
         MenuRow(os.t("资料用途","Permitted use"),chartUseLabel(os,eligibility),"settings") {editingEligibility=true}
         Label(os.t("确认后在后台复制、解析并建立索引。只有完整成功才替换，导入后再选择要在海图中使用的资料。","The app copies, reads and indexes the data in the background. A complete version is installed atomically; select it in Chart when ready."),14,LocalMetro.current.muted)
         error?.let {Label(it,14,LocalMetro.current.accentText)}
@@ -256,7 +266,7 @@ internal fun chartDataError(os:OsStore,code:String):String=when {
     code=="SURVEY_QUALITY_UNSPECIFIED"->os.t("测量质量未提供","Survey quality is unspecified")
     code.startsWith("UNINTERPRETED")||code.startsWith("UNSUPPORTED")->os.t("存在尚未解释的对象或语义，不能当作无障碍：","Uninterpreted objects or semantics cannot be treated as clear water: ")+code.substringAfter(':',code)
     code=="CHART_CHANGED_DURING_IMPORT"->os.t("导入期间图集被修改，已保留原图集。检查后重试。","The dataset changed during import. The original is preserved; review and retry.")
-    code=="CHART_NO_SUPPORTED_DATA"->os.t("没有找到 S-57 .000 / 更新文件或 GeoPackage .gpkg。MBTiles 请在底图页导入。","No S-57 base / update or GeoPackage .gpkg found. Import MBTiles in Maps.")
+    code=="CHART_NO_SUPPORTED_DATA"->os.t("没有找到 S-57 .000 / 更新文件或 GeoPackage .gpkg。MBTiles 请在图册的“海图”页导入。","No S-57 base / update or GeoPackage .gpkg found. Import MBTiles in the library's Charts tab.")
     code=="CHART_MIXED_PACKAGE"->os.t("请分别导入 S-57 海图包与 GeoPackage，每个数据包独立维护。","Import S-57 and GeoPackage separately so each dataset can be maintained independently.")
     code=="CHART_FORMAT_CHANGED"->os.t("更新必须使用相同格式；不同格式请作为新数据包导入。","Update with the same format. Import another format as a new dataset.")
     code.startsWith("GPKG_SRS_UNSUPPORTED")->os.t("这个坐标系暂不支持。请将矢量图层导出为 WGS84（EPSG:4326）或 Web Mercator（EPSG:3857）。","This coordinate system is unsupported. Export vector layers as WGS84 (EPSG:4326) or Web Mercator (EPSG:3857).")

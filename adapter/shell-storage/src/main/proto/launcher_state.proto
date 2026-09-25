@@ -75,6 +75,12 @@ message TilePresentationProto {
   bool rotate = 3;
   bool has_rotate = 4;
   int32 interval_seconds = 5;
+  int32 history_minutes = 6;
+  double range_minimum = 7;
+  double range_maximum = 8;
+  bool has_fixed_range = 9;
+  bool hide_source = 10;
+  bool hide_reference = 11;
 }
 message TileCommitReceiptProto {
   string request_id = 1;

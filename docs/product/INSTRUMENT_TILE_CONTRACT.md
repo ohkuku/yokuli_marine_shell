@@ -2,13 +2,14 @@
 
 本文件对应 `InstrumentsExperience.kt`、`MarineInstrumentGraphics.kt`、`ReadingTrace.kt`、`InstrumentHistoryModel.kt`、`InstrumentHistoryDrawing.kt`、`InstrumentWeatherPanel.kt`、`TileLibraryExperience.kt`、`TileEditorExperience.kt`、`TileContentCatalog.kt`、`ContentTileRendering.kt`、`TilePresentationState.kt`、`TilePresentations.kt` 和 Shell 的布局编辑器。内容描述实际实现，不表示已经完成真机验收。
 
-2026-09-25：用户确认 [本轮施工故事](../phases/tile-workshop/IMPLEMENTATION.md) 后，磁贴改为“内容绑定 + 独立实例”。工坊管理可固定内容和表现，桌面管理布局，应用提供只读摘要及完整操作。下文记录本轮生产入口，不把编译与实际设备表现混同。
+2026-09-25：用户确认 [本轮施工故事](../phases/tile-workshop/IMPLEMENTATION.md) 后，磁贴改为“内容绑定 + 独立实例”。工坊管理可固定内容和表现，桌面管理布局，应用提供只读摘要及完整操作。按最新用户规则，新固定只从应用列表和工坊发起，业务 App 内固定按钮已移除；桌面长按仍管理已有实例。下文记录本轮生产入口，不把编译与实际设备表现混同。
 
 ## 领域边界
 
 - 驾驶台消费系统选好的观测，不能因为打开页面就切换船位来源或创建航行。
 - 我的仪表只拥有显示顺序、增删与查看读数的交互。来源、吃水、船舶资料和航行仍由各自的共享服务拥有。
 - 磁贴工坊按航行与值守、常看读数、我的收藏、应用入口组织；一个应用可提供多种内容，同一规范内容只固定一次。水深与对地航速属于驾驶台的不同内容，不新增 AppId。修改/移除按 tileId 定位。
+- 应用列表只固定正式应用入口；长按已固定应用显示“编辑或查看磁贴”，进入共同编辑/定位流程，不在列表菜单直接移除。工坊可固定读数、任务、收藏及应用入口。桌面长按只编辑、改尺寸、移动或移除既有实例。各业务应用声明真实内容和目的地，不提供分散的“固定到开始屏幕”按钮。
 - 磁贴和仪表读取同一 `MarineServices.state.vesselData` / `DataHub`，没有独立采集或模拟读数。演示来源必须显示演示标记；磁贴点击仅进入查看，不开始导航、值守、记录或连接。
 
 ## 数据结构
@@ -55,7 +56,7 @@
 | `TileLibraryScreen(os, initialApp?)` | 工坊来路与可选旧应用筛选 | 添加 / 已固定两个 Pivot；应用名旧入口只做筛选，不创建第二个编辑任务 |
 | `tileContentChoices(os)` / `tileContentDescriptor(os,binding)` | 规范绑定与已有收藏缓存 | 静态目录不收集船舶数据；对象或提供者失效仍返回可解释描述，保留实例 |
 | `instanceTilePresentation(os, placement, active)` | 实例的全部配置与可见性 | 桌面和唯一预览调用同一渲染器；显式实例配置优先，不从 App 偏好覆写 |
-| `TileEditorHost(os)` | Shell 临时编辑会话 | 三入口共用草稿、真实几何预览和来路；不启动工坊最近任务 |
+| `TileEditorHost(os)` | Shell 临时编辑会话 | 应用列表/工坊的新固定与桌面既有实例编辑共用草稿、真实几何预览和来路；不启动额外工坊最近任务 |
 | `LauncherEngine.commitTile(request)` | requestId、稳定 tileId、绑定/表现/尺寸、预期版本 | 返回 Saved / AlreadyPinned / Conflict / Failed；落盘后才发布正式布局 |
 | `LauncherEngine.removeTile(...) / undoTile(...)` | 请求 ID、目标实例/版本或原移除请求 | 移除和撤销按实例；不删除应用内容或停止业务任务，不覆盖后续桌面变动 |
 | `LauncherAction.RevealTile(tileId)` | 已固定实例身份 | 显式进入真实 Start 并定位；保存本身不强制去桌面 |
@@ -67,7 +68,7 @@
 1. 看仪表：打开即可看到船首向 / 航向图形；切到帆航看真风、视风相对船艏方向。缺测是缺测，不显示默认航向或虚构海况。
 2. 定制驾驶台：进入“我的” → 添加常用仪表 → 排列 → 长按拖动或点上移 / 下移 → 完成。添加弹窗使用独立草稿，快速连续选中或取消选中只修改草稿，“完成”一次保存，“取消”、返回或点遮罩丢弃草稿；不从异步 DataStore 结果反复读取并覆盖。长按手势结束才提交重排；显式上移、下移和移除立即保存。详情也能添加到我的仪表。
 3. 看来源：点读数打开观测详情，看来源、时效与冲突说明；无需被带到系统设置。
-4. 固定内容：工坊添加目录或应用里的“固定到开始屏幕” → 已绑定内容的 Shell 编辑器 → 一块真实预览、合法尺寸与少量表现 → 确认添加 → 真正保存后回原处。同内容已固定时提供编辑/查看位置，不重复添加；已固定清单按实际桌面顺序管理。
+4. 固定内容：应用列表长按正式应用，或工坊添加目录选择具体内容 → 已绑定内容的 Shell 编辑器 → 一块真实预览、合法尺寸与少量表现 → 确认添加 → 真正保存后回原应用列表/工坊位置。收藏地点、航线先在所属应用保存，再从工坊“我的收藏”选择；业务详情不放固定按钮。应用列表和工坊识别已固定内容后都提供编辑/查看位置，不重复添加；已固定清单按实际桌面顺序管理，桌面长按只管理已有实例。
 5. 旧版本升级：先把旧应用/preset 的内容、明确模式和轮换设置迁成独立实例，保留 tileId、位置、rank 与尺寸；旧 preset 保留原 App 根点击含义，不先按 App 合并。迁移后的实例不再被 App 偏好覆盖。已经被旧版删掉的历史实例无法凭空恢复。
 6. 看趋势：选择具体仪表 → 只看该仪表的当前/最后读数、历史和来源。水深不会附带无关的气压面板；只有选择气压时才出现 1/3/6 小时气压变化。读数详情同样打开自己的曲线。
 7. 手机作船舶传感器：航行页“固定手机”或姿态页“安装与校准” → 确认手机顶部朝向船艏，或匹配同时收到的船网艏向 → 直接预览手机方向及对齐后的船首向。姿态安装另选船艏边缘并确认，不会把当前横倾归零；没有实时读数时禁止确认艏向。
@@ -130,9 +131,9 @@ flowchart LR
     Fixed --> Projection
     Shared[导航 / 记录 / 守锚 / AIS / 用户资料] --> Projection
     Catalog[TileContentCatalog 声明 + 收藏缓存] --> Workshop[工坊 添加 / 已固定]
-    Instruments --> Editor[Shell 临时编辑会话]
-    Workshop --> Editor
-    Start[真实开始屏幕] --> Editor
+    AllApps[应用列表 正式应用固定] --> Editor[Shell 临时编辑会话]
+    Workshop -->|添加或编辑| Editor
+    Start[真实开始屏幕] -->|只编辑既有实例| Editor
     Editor --> Commit[commitTile + 版本 / 请求回执]
     Commit --> Store[单一 StartDocument / Proto DataStore]
     Store --> Start

@@ -3,6 +3,8 @@ package com.yokuli.marine.shell.rebuild.ui
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.shell.contract.*
 import com.yokuli.shell.engine.layout.TileDocumentEntry
+import com.yokuli.anchorwatch.domain.vessel.InstrumentTileId
+import com.yokuli.anchorwatch.domain.vessel.MetricLabelRegistry
 
 /** 中文：工坊的稳定目录，只描述内容和查看去向，不订阅仪表或创建业务任务。 */
 enum class TileContentGroup { WATCH, READINGS, SAVED, APPS }
@@ -37,10 +39,34 @@ fun tileBinding(placement:TileDocumentEntry):TileBinding=placement.binding
     ?: TileBinding("yokuli",TileBindingKind.APP,placement.entryId.value)
 
 private fun staticTileContentChoices():List<TileContentChoice> {
-    fun reading(id:String,zh:String,en:String,detailZh:String,detailEn:String,styleZh:String="读数与短趋势",styleEn:String="Reading and recent history")=
-        TileContentChoice(tileReadingBinding(id),label(zh,en),label(detailZh,detailEn),AppId.INSTRUMENTS,TileContentGroup.READINGS,
-            contentSizes,contentStyles(styleZh,styleEn),MarineTileSize.STANDARD_2X2,"instruments:metric:${if(id=="HEADING_TRUE")"HEADING" else id}",
-            label("驾驶台 · $zh","Helm · $en"))
+    fun reading(id:String):TileContentChoice {
+        val tile=tileInstrumentId(id) ?: error("Unsupported reading $id")
+        val name=MetricLabelRegistry.get(tile)
+        val historyTitle=when(instrumentHistoryKind(instrumentTrendKey(tile).orEmpty())) {
+            InstrumentHistoryKind.BEARING->label("方位变化带","Bearing history")
+            InstrumentHistoryKind.DIRECTION->label("方位分布","Direction distribution")
+            InstrumentHistoryKind.DEPTH->label("水深剖面","Depth profile")
+            InstrumentHistoryKind.DEVIATION->label("偏差范围","Deviation history")
+            InstrumentHistoryKind.WEATHER->label("观测趋势","Observed trend")
+            InstrumentHistoryKind.COUNT->label("次数分布","Count history")
+            InstrumentHistoryKind.COUNTER->label("实际增量","Measured increments")
+            else->label("变化范围","Range history")
+        }
+        val styles=when {
+            id=="POSITION"->listOf(TileContentStyle("simple",label("坐标","Coordinates")),TileContentStyle("detail",label("坐标与精度","Position and accuracy")))
+            id in TileReadingPresentationPolicy.windIds->listOf(TileContentStyle("simple",label("风速","Wind speed")),TileContentStyle("detail",label("风速与方向","Speed and direction")),TileContentStyle("trend",historyTitle))
+            else->listOf(TileContentStyle("simple",label("读数","Reading")),TileContentStyle("detail",historyTitle))+when {
+                id in TileReadingPresentationPolicy.directionIds->listOf(TileContentStyle("compass",label("方位盘","Compass")))
+                id in TileReadingPresentationPolicy.attitudeIds->listOf(TileContentStyle("attitude",label(if(id=="HEEL")"横倾示意"else"纵倾示意",if(id=="HEEL")"Heel view"else"Pitch view")))
+                id in TileReadingPresentationPolicy.counterIds->emptyList()
+                else->listOf(TileContentStyle("gauge",label("刻度量表","Gauge")))
+            }
+        }
+        return TileContentChoice(tileReadingBinding(id),label(name.simplifiedChinese,name.english),
+            label("系统选用的${name.simplifiedChinese} · 保留来源与观测时间","Selected ${name.english.lowercase()} · Actual source and observation time"),
+            AppId.INSTRUMENTS,TileContentGroup.READINGS,contentSizes,styles,MarineTileSize.STANDARD_2X2,
+            "instruments:metric:${tile.name}",label("驾驶台 · ${name.simplifiedChinese}","Helm · ${name.english}"))
+    }
     fun task(id:String,owner:AppId,zh:String,en:String,detailZh:String,detailEn:String)=TileContentChoice(
         TileBinding("yokuli",TileBindingKind.CURRENT_TASK,id),label(zh,en),label(detailZh,detailEn),owner,TileContentGroup.WATCH,
         contentSizes,contentStyles(),MarineTileSize.WIDE_4X2,"task:$id",label("${owner.zh} · 当前任务","${owner.en} · Current task"))
@@ -51,13 +77,7 @@ private fun staticTileContentChoices():List<TileContentChoice> {
         TileContentChoice(TileBinding("yokuli",TileBindingKind.OVERVIEW,"aisTraffic"),label("周围交通","Nearby traffic"),
             label("收到的 AIS 目标与交通警戒","Received AIS traffic and watch status"),AppId.AIS,TileContentGroup.WATCH,
             contentSizes,contentStyles(),MarineTileSize.WIDE_4X2,ShellApp(AppId.AIS).rootToken.value,label("AIS · 观察","AIS · Observe")),
-        reading("SOG","对地航速","Speed over ground","船相对于地面的速度","Vessel speed relative to the ground"),
-        reading("HEADING_TRUE","真船首向","True heading","船艏指向；不使用对地航向替代","Bow direction, never replaced by course over ground","方位与近期变化","Bearing and recent history"),
-        reading("DEPTH","水深","Depth","测深值与测量参考","Measured depth with its reference"),
-        reading("TRUE_WIND_SPEED","真风","True wind","实际采用的真风速与风向","Selected true wind speed and direction","速度与方向","Speed and direction"),
-        reading("APPARENT_WIND_SPEED","视风","Apparent wind","船上感受到的风速与船体风角","Wind speed and angle relative to the vessel","速度与船体风角","Speed and relative angle"),
-        reading("PRESSURE","气压","Pressure","气压实测值与近期历史","Measured pressure and recent history"),
-    )+AppId.entries.map {id->
+    )+TileReadingPresentationPolicy.supportedIds.map(::reading)+AppId.entries.map {id->
         val app=ShellApp(id)
         val useful=id!=AppId.TILES
         TileContentChoice(TileBinding("yokuli",TileBindingKind.APP,app.entry.value),label(id.zh,id.en),

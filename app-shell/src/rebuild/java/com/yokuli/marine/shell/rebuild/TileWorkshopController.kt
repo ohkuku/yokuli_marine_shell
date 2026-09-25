@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 enum class TileEditorPhase { EDITING, ALREADY_PINNED, SAVING, FAILED, CONFLICT }
+/** 编辑器内部页面；Shell 返回和重建恢复必须知道是在挑选内容还是离开草稿。 */
+enum class TileEditorPage { EDITOR, CHOOSE_CONTENT }
 
 /** 中文：来路只引用现有页面；此编辑器不是应用，也没有自己的应用返回栈。 */
 data class TileEditorOrigin(val surface:String,val taskId:String?=null,val pageKey:String?=null)
@@ -40,6 +42,7 @@ data class TileEditorSession(
     val showDiscardConfirmation:Boolean=false,
     val visible:Boolean=true,
     val returnAutomatically:Boolean=true,
+    val page:TileEditorPage=TileEditorPage.EDITOR,
 ) {
     val isNew get()=originalRevision==null
     val dirty get()=binding!=originalBinding||presentation!=originalPresentation||size!=originalSize
@@ -150,6 +153,10 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
         write(TileEditorSession(uid(),tileId,binding,tile.presentation,tile.size,tile.revision,binding,tile.presentation,tile.size,origin()))
     }
     private fun find(binding:TileBinding)=shell.engine.state.value.start.document.placements.firstOrNull {tileBinding(it).contentKey==binding.contentKey}
+    fun chooseContent() {
+        val draft=current.value?.takeUnless {it.phase==TileEditorPhase.SAVING}?:return
+        write(draft.copy(page=TileEditorPage.CHOOSE_CONTENT,showDiscardConfirmation=false))
+    }
     fun setBinding(binding:TileBinding) {
         val previous=current.value?.takeUnless {it.phase==TileEditorPhase.SAVING}?:return
         val draft=if(previous.phase==TileEditorPhase.CONFLICT&&shell.engine.state.value.start.document.placements.none {it.tileId==previous.tileId})
@@ -159,11 +166,17 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
         val existing=find(binding)?.takeUnless {it.tileId==draft.tileId}
         write(draft.copy(id=if(draft.phase==TileEditorPhase.FAILED&&draft.binding!=binding)uid()else draft.id,binding=binding,size=draft.size.takeIf {it in choice.sizes}?:choice.defaultSize,
             presentation=if(binding==draft.binding)draft.presentation else choice.defaultPresentation,
-            phase=TileEditorPhase.EDITING,
+            phase=TileEditorPhase.EDITING,page=TileEditorPage.EDITOR,showDiscardConfirmation=false,
             existingTileId=existing?.tileId,errorText=null))
     }
     fun setSize(size:MarineTileSize) {modify {it.copy(size=size)}}
     fun setPresentation(presentation:TilePresentation) {modify {it.copy(presentation=presentation)}}
+    fun chooseStyle(style:String) {
+        val draft=current.value?:return
+        if(tileContentDescriptor(os,draft.binding).styles.none {it.key==style})return
+        // 改显示方式不是重新创建配置：量程、来源等本次选择保留，旧模式不再压过新样式。
+        setPresentation(draft.presentation.copy(style=style,legacyMode=null,rotate=null,intervalSeconds=null))
+    }
     private fun modify(transform:(TileEditorSession)->TileEditorSession) {
         val draft=current.value?.takeUnless {it.phase==TileEditorPhase.SAVING}?:return
         val next=transform(draft)
@@ -171,6 +184,10 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
     }
     fun requestClose() {
         val draft=current.value?:return
+        if(draft.showDiscardConfirmation) {keepEditing();return}
+        if(draft.page==TileEditorPage.CHOOSE_CONTENT) {
+            write(draft.copy(page=TileEditorPage.EDITOR));return
+        }
         if(draft.phase==TileEditorPhase.SAVING) {suspendEditor();return}
         if(draft.dirty)write(draft.copy(showDiscardConfirmation=true))else write(null)
     }
@@ -293,20 +310,29 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
 
     private fun bindingJson(value:TileBinding)=JSONObject().put("provider",value.providerId).put("kind",value.unknownKind?:value.kind.name).put("content",value.contentId)
     private fun presentationJson(value:TilePresentation)=JSONObject().put("style",value.style).put("legacy",value.legacyMode).put("rotate",value.rotate).put("interval",value.intervalSeconds)
+        .put("historyMinutes",value.historyMinutes).put("rangeMinimum",value.rangeMinimum).put("rangeMaximum",value.rangeMaximum)
+        .put("showSource",value.showSource).put("showReference",value.showReference)
     private fun encode(value:TileEditorSession)=JSONObject().put("schema",1).put("id",value.id).put("tile",value.tileId.value)
         .put("binding",bindingJson(value.binding)).put("presentation",presentationJson(value.presentation)).put("size",value.size.name)
         .put("revision",value.originalRevision).put("originalBinding",bindingJson(value.originalBinding))
         .put("originalPresentation",presentationJson(value.originalPresentation)).put("originalSize",value.originalSize.name)
         .put("surface",value.origin.surface).put("task",value.origin.taskId).put("page",value.origin.pageKey)
-        .put("phase",value.phase.name).put("existing",value.existingTileId?.value).toString()
+        .put("phase",value.phase.name).put("editorPage",value.page.name).put("existing",value.existingTileId?.value).toString()
     private fun decode(payload:String):TileEditorSession {
         val json=JSONObject(payload);require(json.getInt("schema")==1)
         fun binding(key:String):TileBinding {val b=json.getJSONObject(key);val raw=b.getString("kind");val kind=TileBindingKind.entries.firstOrNull {it.name==raw}?:TileBindingKind.UNKNOWN
             return TileBinding(b.getString("provider"),kind,b.getString("content"),raw.takeIf {kind==TileBindingKind.UNKNOWN}).also {require(it.isStructurallyValid)}}
-        fun presentation(key:String):TilePresentation {val p=json.getJSONObject(key);return TilePresentation(p.getString("style"),p.optString("legacy").takeIf {it.isNotBlank()},if(p.has("rotate"))p.getBoolean("rotate")else null,if(p.has("interval"))p.getInt("interval")else null)}
+        fun presentation(key:String):TilePresentation {val p=json.getJSONObject(key);return TilePresentation(
+            style=p.getString("style"),legacyMode=p.optString("legacy").takeIf {it.isNotBlank()},
+            rotate=if(p.has("rotate"))p.getBoolean("rotate")else null,intervalSeconds=if(p.has("interval"))p.getInt("interval")else null,
+            historyMinutes=if(p.has("historyMinutes"))p.getInt("historyMinutes")else null,
+            rangeMinimum=if(p.has("rangeMinimum"))p.getDouble("rangeMinimum")else null,
+            rangeMaximum=if(p.has("rangeMaximum"))p.getDouble("rangeMaximum")else null,
+            showSource=p.optBoolean("showSource",true),showReference=p.optBoolean("showReference",true))}
         return TileEditorSession(json.getString("id"),TileInstanceId(json.getString("tile")),binding("binding"),presentation("presentation"),MarineTileSize.valueOf(json.getString("size")),
             if(json.has("revision"))json.getLong("revision")else null,binding("originalBinding"),presentation("originalPresentation"),MarineTileSize.valueOf(json.getString("originalSize")),
             TileEditorOrigin(json.getString("surface"),json.optString("task").takeIf {it.isNotBlank()},json.optString("page").takeIf {it.isNotBlank()}),
-            TileEditorPhase.valueOf(json.getString("phase")),existingTileId=json.optString("existing").takeIf {it.isNotBlank()}?.let(::TileInstanceId),visible=false,returnAutomatically=false)
+            TileEditorPhase.valueOf(json.getString("phase")),existingTileId=json.optString("existing").takeIf {it.isNotBlank()}?.let(::TileInstanceId),visible=false,returnAutomatically=false,
+            page=TileEditorPage.entries.firstOrNull {it.name==json.optString("editorPage")}?:TileEditorPage.EDITOR)
     }
 }

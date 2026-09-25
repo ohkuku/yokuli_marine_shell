@@ -1628,13 +1628,14 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class StartBackdropMode` | [StartBackdrop.kt:25](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L25) |
-| `class StartBackdrop` | [StartBackdrop.kt:26](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L26) |
-| `fun StartWallpaperSurface` | [StartBackdrop.kt:48](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L48) |
-| `fun Modifier.startTileBackground` | [StartBackdrop.kt:70](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L70) |
-| `class StartBackdropPlacement` | [StartBackdrop.kt:94](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L94) |
-| `fun overflow` | [StartBackdrop.kt:95](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L95) |
-| `fun startBackdropPlacement` | [StartBackdrop.kt:97](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L97) |
+| `class StartBackdropMode` | [StartBackdrop.kt:26](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L26) |
+| `class StartBackdrop` | [StartBackdrop.kt:27](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L27) |
+| `fun LauncherWallpaperSurface` | [StartBackdrop.kt:52](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L52) |
+| `fun StartWallpaperSurface` | [StartBackdrop.kt:62](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L62) |
+| `fun Modifier.startTileBackground` | [StartBackdrop.kt:112](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L112) |
+| `class StartBackdropPlacement` | [StartBackdrop.kt:136](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L136) |
+| `fun overflow` | [StartBackdrop.kt:137](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L137) |
+| `fun startBackdropPlacement` | [StartBackdrop.kt:139](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L139) |
 
 ## core/design/src/main/java/com/yokuli/marine/core/design/W10MobileControls.kt
 

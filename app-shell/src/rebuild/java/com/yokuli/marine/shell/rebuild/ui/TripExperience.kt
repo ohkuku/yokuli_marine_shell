@@ -125,7 +125,6 @@ import java.util.Date
             MetroButton(os.t("在海图中查看","view on chart"),{os.openLinked("chart")})
             MetroButton(os.t("查看本次航迹与报告", "view this track & report"), { detail(trip.id) })
         }
-        PinTileAction(os, currentTaskTileBinding("recording"))
     }
 }
 

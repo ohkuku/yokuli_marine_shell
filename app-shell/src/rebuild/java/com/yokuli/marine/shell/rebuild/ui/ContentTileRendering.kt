@@ -8,12 +8,14 @@ import com.yokuli.anchorwatch.domain.model.AlarmType
 import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.data.Reading
+import com.yokuli.marine.shell.rebuild.data.withNavigation
 import com.yokuli.runtime.contract.ais.*
 import com.yokuli.shell.compose.*
 import com.yokuli.shell.contract.*
 import com.yokuli.shell.engine.layout.TileDocumentEntry
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -54,7 +56,7 @@ private enum class TileContentAvailability { LOADING, AVAILABLE, MISSING, FAILED
 @Composable private fun contentTileFrame(os:OsStore,binding:TileBinding,presentation:TilePresentation,active:Boolean):TileFrame {
     if(binding.providerId!="yokuli")return unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
     return when(binding.kind) {
-        TileBindingKind.READING->readingTileFrame(os,binding.contentId,presentation.style=="detail",active)
+        TileBindingKind.READING->readingTileFrame(os,binding.contentId,presentation,active)
         TileBindingKind.CURRENT_TASK->taskTileFrame(os,binding.contentId,presentation.style=="detail",active)
         TileBindingKind.OVERVIEW->if(binding.contentId=="aisTraffic")trafficTileFrame(os,presentation.style=="detail",active)else unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
         TileBindingKind.SAVED_PLACE,TileBindingKind.SAVED_ROUTE->savedTileFrame(os,binding)
@@ -82,35 +84,46 @@ private fun savedTileFrame(os:OsStore,binding:TileBinding):TileFrame {
     if(status!=TileContentAvailability.AVAILABLE)return unavailableTileFrame(os,status)
     if(binding.kind==TileBindingKind.SAVED_ROUTE) {
         val route=os.routes.firstOrNull {it.id==binding.contentId} ?: return unavailableTileFrame(os,TileContentAvailability.MISSING)
-        return TileFrame("route",route.name,os.formatDistance(route.length)+" · "+os.t("${route.points.size} 个航点","${route.points.size} waypoints"),os.t("收藏航线","Saved route"))
+        return TileFrame("route",route.name,os.formatDistance(route.length)+" · "+os.t("${route.navigationTargetIndices?.size ?: route.points.size} 个航点","${route.navigationTargetIndices?.size ?: route.points.size} waypoints"),os.t("收藏航线","Saved route"))
     }
     val place=os.allPlaces.firstOrNull {it.id==binding.contentId} ?: return unavailableTileFrame(os,TileContentAvailability.MISSING)
     return TileFrame("place",place.name,os.formatCoordinates(place.point),os.t("收藏地点","Saved place"))
 }
 
-private data class ReadingTileProjection(val value:VesselObservation<Double> = VesselObservation(),val auxiliary:VesselObservation<Double>?=null)
-private fun readingTileProjection(state:MainUiState,id:String,detail:Boolean):ReadingTileProjection=with(state.vesselData) {
-    when(id) {
-        "SOG"->ReadingTileProjection(sogKnots)
-        "HEADING_TRUE"->ReadingTileProjection(headingTrueDegrees)
-        "DEPTH"->ReadingTileProjection(depthMeters)
-        "TRUE_WIND_SPEED"->ReadingTileProjection(trueWind.speedKnots,trueWind.directionDegrees.takeIf {detail})
-        "APPARENT_WIND_SPEED"->ReadingTileProjection(apparentWind.speedKnots,apparentWind.angleDegrees.takeIf {detail})
-        "PRESSURE"->ReadingTileProjection(pressureHpa)
-        else->ReadingTileProjection()
-    }
+private data class ReadingTileProjection(val observation:VesselObservation<*> = VesselObservation<Double>(),val number:Double?=null,val auxiliary:VesselObservation<Double>?=null)
+private fun readingTileProjection(state:VesselDataSnapshot,tile:InstrumentTileId,auxiliary:Boolean):ReadingTileProjection {
+    val observation=instrumentObservation(state,tile)
+    val number=when(tile) {
+        InstrumentTileId.ROLL_PERIOD->(observation.value as? VesselMotion)?.dominantRollPeriodSeconds
+        InstrumentTileId.MOTION_SCORE->(observation.value as? VesselMotion)?.score
+        InstrumentTileId.IMPACT_COUNT->(observation.value as? VesselMotion)?.impactCandidateCount?.toDouble()
+        else->(observation.value as? Number)?.toDouble()
+    }?.takeIf(Double::isFinite)
+    return ReadingTileProjection(observation,number,if(!auxiliary)null else when(tile) {
+        InstrumentTileId.TRUE_WIND_SPEED->state.trueWind.directionDegrees
+        InstrumentTileId.APPARENT_WIND_SPEED->state.apparentWind.angleDegrees
+        else->null
+    })
 }
-private fun tileMetric(id:String)=when(id) {"SOG"->"sog";"HEADING_TRUE"->"heading";"DEPTH"->"depth";"TRUE_WIND_SPEED"->"tws";"APPARENT_WIND_SPEED"->"aws";"PRESSURE"->"pressure";else->null}
 
-@Composable private fun readingTileFrame(os:OsStore,id:String,detail:Boolean,active:Boolean):TileFrame {
-    val metric=tileMetric(id) ?: return unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
+@Composable private fun readingTileFrame(os:OsStore,id:String,config:TilePresentation,active:Boolean):TileFrame {
+    val tile=tileInstrumentId(id) ?: return unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
+    val metric=instrumentTrendKey(tile).orEmpty()
+    val directionStyle=config.style=="compass"||config.style=="detail"&&id in TileReadingPresentationPolicy.windIds
     val state=os.marine?.services?.state
-    val projectionFlow=remember(state,id,detail) {state?.map {readingTileProjection(it,id,detail)}?.distinctUntilChanged()}
-    val data=activeTileValue(projectionFlow,state?.value?.let {readingTileProjection(it,id,detail)} ?: ReadingTileProjection(),active)
+    val navigation=os.marine?.system?.navigation?.state
+    val navigationMetric=id in setOf("WAYPOINT_BEARING","WAYPOINT_DISTANCE","CROSS_TRACK_ERROR","VMC")
+    val projectionFlow=remember(state,navigation,tile,directionStyle) {
+        if(state==null)null else if(navigationMetric&&navigation!=null)combine(state,navigation) {values,nav->readingTileProjection(values.vesselData.withNavigation(nav),tile,directionStyle)}.distinctUntilChanged()
+        else state.map {readingTileProjection(it.vesselData,tile,directionStyle)}.distinctUntilChanged()
+    }
+    val initial=state?.value?.vesselData?.let {if(navigationMetric&&navigation!=null)it.withNavigation(navigation.value)else it}
+    val data=activeTileValue(projectionFlow,initial?.let {readingTileProjection(it,tile,directionStyle)} ?: ReadingTileProjection(),active)
+    tileReadingDisplayDemand(os,id,active)
     val now=tileElapsed(active)
-    val observation=data.value
-    val heading=id=="HEADING_TRUE"
-    val number=if(heading)observation.liveNumber()else observation.displayNumber()
+    val observation=data.observation
+    val number=data.number?.takeIf {!InstrumentReadingPolicy.requiresFresh(tile)||observation.displayIsLive()}
+        ?.let {if(id in setOf("TRUE_WIND_ANGLE","APPARENT_WIND_ANGLE"))signedHistoryAngle(it)else it}
     val reference=when(val ref=observation.reference) {
         VesselReference.TrueNorth->os.t("真北","True north")
         VesselReference.WaterReferenced->os.t("相对于水","Water referenced")
@@ -124,29 +137,41 @@ private fun tileMetric(id:String)=when(id) {"SOG"->"sog";"HEADING_TRUE"->"headin
         }
         else->if(id=="DEPTH")os.t("测深参考未提供","Depth reference unspecified")else ""
     }
-    val source=observation.sourceIdentity?.displayName.orEmpty()
+    val source=observation.sourceIdentity?.displayName ?: observation.provenance.orEmpty()
     val status=observationStatus(os,observation,now)
     val aux=data.auxiliary
-    val extra=if(detail&&aux?.value!=null) {
+    val extra=if(directionStyle&&aux!=null) {
         val angle=aux.liveNumber()
         val angleText=if(id=="APPARENT_WIND_SPEED")angle?.let {os.formatMetric("awa",signedHistoryAngle(it))} ?: "—"else os.formatBearing(angle)
         os.t(if(id=="APPARENT_WIND_SPEED")"船体风角 "else"风向 ",if(id=="APPARENT_WIND_SPEED")"Relative angle "else"Direction ")+angleText+" · "+observationStatus(os,aux,now)
     }else ""
-    val showHistory=detail&&id in setOf("SOG","HEADING_TRUE","DEPTH","PRESSURE")
-    val history=if(showHistory)rememberTileHistory(os,metric,active,now)else null
-    val time=history?.points?.lastOrNull()?.reading?.observedUtcMillis
+    val history=if(tileHasHistory(id,config.style))rememberTileHistory(os,metric,active,now,tileHistoryMinutes(id,config),config.rangeMinimum,config.rangeMaximum)else null
     val historyCaption=remember(history,os.chinese) {history?.takeIf {it.points.isNotEmpty()}?.let {
-        val end=time ?: (System.currentTimeMillis()-(SystemClock.elapsedRealtime()-it.end))
-        os.t("近 5 分钟 · 截至 ","5 min · through ")+DateFormat.getTimeInstance(DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH).format(Date(end))
+        val end=it.points.lastOrNull()?.reading?.observedUtcMillis ?: (System.currentTimeMillis()-(SystemClock.elapsedRealtime()-it.end))
+        os.t("近 ${tileHistoryMinutes(id,config)} 分钟 · 截至 ","${tileHistoryMinutes(id,config)} min · through ")+DateFormat.getTimeInstance(DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH).format(Date(end))
     }.orEmpty()}
-    return TileFrame(id,os.formatMetric(metric,number),listOf(reference,source).filter {it.isNotBlank()}.joinToString(" · "),
+    val fixedMinimum=config.rangeMinimum;val fixedMaximum=config.rangeMaximum
+    val range=if(fixedMinimum!=null&&fixedMaximum!=null&&fixedMinimum<fixedMaximum)fixedMinimum to fixedMaximum else tileDefaultRange(id,number)
+    val rangeOut=number!=null&&fixedMinimum!=null&&fixedMaximum!=null&&(number<fixedMinimum||number>fixedMaximum)
+    val graphic=when {
+        directionStyle->TileMetricGraphic(TileMetricGraphicKind.COMPASS,if(id in TileReadingPresentationPolicy.windIds)aux?.liveNumber()else number,relative=id=="APPARENT_WIND_SPEED")
+        config.style=="attitude"->TileMetricGraphic(if(id=="PITCH")TileMetricGraphicKind.PITCH else TileMetricGraphicKind.HEEL,number,range.first,range.second)
+        config.style=="gauge"->TileMetricGraphic(TileMetricGraphicKind.GAUGE,number?.let {os.displayMetricValue(metric,it)},
+            os.displayMetricValue(metric,range.first),os.displayMetricValue(metric,range.second),os.formatMetric(metric,range.first),os.formatMetric(metric,range.second))
+        else->null
+    }
+    val position=observation.value as? VesselPosition
+    val positionDetail=if(id=="POSITION"&&config.style=="detail")listOfNotNull(position?.horizontalAccuracyMeters?.let {os.t("精度 ±","Accuracy ±")+os.formatLength(it)},position?.satellites?.let {os.t("$it 颗卫星","$it satellites")}).joinToString(" · ")else ""
+    val headline=if(id=="POSITION")position?.let {os.formatCoordinates(GeoPoint(it.latitude,it.longitude))} ?: "—"else os.formatMetric(metric,number)
+    val details=listOf(reference.takeIf {config.showReference}.orEmpty(),source.takeIf {config.showSource}.orEmpty(),positionDetail).filter {it.isNotBlank()}.joinToString(" · ")
+    return TileFrame(id,headline,details,
         if(observation.source==VesselDataSource.DEMO)os.t("演示读数","Demo reading")else extra,
-        bearing=if(heading&&history==null)number else if(detail&&id=="TRUE_WIND_SPEED")aux?.liveNumber()else null,
-        live=observation.displayIsLive(),priorityLine=status+if(id=="DEPTH"&&reference.isNotBlank())" · "+reference else "",history=history,historyCaption=historyCaption)
+        live=observation.displayIsLive(),priorityLine=status+if(rangeOut)os.t(" · 超出显示量程"," · Outside display range")else "",
+        history=history,historyCaption=historyCaption,graphic=graphic)
 }
 
 /** 主读数持续更新；五分钟历史只在分钟边界且确有新观测时替换，尺寸改变不重采样。 */
-@Composable internal fun rememberTileHistory(os:OsStore,metric:String,active:Boolean,now:Long):InstrumentHistoryFrame {
+@Composable internal fun rememberTileHistory(os:OsStore,metric:String,active:Boolean,now:Long,minutes:Int=5,minimum:Double?=null,maximum:Double?=null):InstrumentHistoryFrame {
     data class Capture(val end:Long,val samples:List<Reading>)
     // 历史已有唯一 DataHub 所有者；这里按共用时钟读取不可变快照，不为每个新样本重组磁贴。
     var capture by remember(metric) {mutableStateOf(Capture(now,os.hub.history.value[metric].orEmpty().toList()))}
@@ -159,7 +184,11 @@ private fun tileMetric(id:String)=when(id) {"SOG"->"sog";"HEADING_TRUE"->"headin
                 capture=Capture(now,values.toList())
         }
     }
-    return remember(metric,capture,os.unitPreferences) {buildInstrumentHistory(os,metric,capture.samples,capture.end,5)}
+    return remember(metric,capture,os.unitPreferences,minutes,minimum,maximum) {
+        val history=buildInstrumentHistory(os,metric,capture.samples,capture.end,minutes)
+        if(minimum!=null&&maximum!=null&&minimum<maximum&&history.kind !in setOf(InstrumentHistoryKind.DIRECTION,InstrumentHistoryKind.BEARING,InstrumentHistoryKind.COUNTER,InstrumentHistoryKind.COUNT))
+            history.copy(lower=os.displayMetricValue(metric,minimum),upper=os.displayMetricValue(metric,maximum))else history
+    }
 }
 
 @Composable private fun taskTileFrame(os:OsStore,id:String,detail:Boolean,active:Boolean):TileFrame {

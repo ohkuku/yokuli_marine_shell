@@ -13,6 +13,7 @@
     <string name="tile_settings_light">LIGHT</string>
     <string name="tile_settings_accent">accent · %1$s</string>
     <string name="context_pin">Pin to Start</string>
+    <string name="context_manage_tile">Edit or locate tile</string>
     <string name="context_unpin">Unpin from Start</string>
     <string name="context_app_info">App info</string>
     <string name="move_tile_left">move tile left</string>

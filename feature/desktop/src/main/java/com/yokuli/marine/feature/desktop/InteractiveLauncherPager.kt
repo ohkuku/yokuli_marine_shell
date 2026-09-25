@@ -12,6 +12,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import com.yokuli.marine.core.design.LauncherWallpaperSurface
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 enum class LauncherPagerPage(val index: Int) {
@@ -64,14 +65,19 @@ fun InteractiveLauncherPager(
             }
     }
 
-    HorizontalPager(
-        state = pagerState,
-        modifier = modifier.fillMaxSize().testTag("interactive-launcher-pager"),
-        userScrollEnabled = userScrollEnabled,
-        beyondViewportPageCount = 1,
-        overscrollEffect = null,
-        key = { page -> LauncherPagerPage.from(page).name },
-    ) { page ->
-        content(LauncherPagerPage.from(page))
+    LauncherWallpaperSurface(
+        modifier = modifier.fillMaxSize(),
+        pageFraction = { pagerState.currentPage + pagerState.currentPageOffsetFraction },
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize().testTag("interactive-launcher-pager"),
+            userScrollEnabled = userScrollEnabled,
+            beyondViewportPageCount = 1,
+            overscrollEffect = null,
+            key = { page -> LauncherPagerPage.from(page).name },
+        ) { page ->
+            content(LauncherPagerPage.from(page))
+        }
     }
 }

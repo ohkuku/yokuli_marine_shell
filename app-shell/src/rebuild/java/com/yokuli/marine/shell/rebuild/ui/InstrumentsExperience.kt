@@ -201,9 +201,6 @@ import java.util.Locale
         Label(os.t("来源 · ", "source · ") + (value.observation.sourceIdentity?.displayName ?: sourceName(os, value.observation.source)), 15, c.muted)
         if (tile != InstrumentTileId.PRESSURE) instrumentTrendKey(tile)?.let { ReadingTrace(os, history[it].orEmpty(), it, now, readings[it]) }
         value.observation.conflict?.takeIf { it.active }?.let { Label(os.t("多个来源读数不一致，请检查设备与安装方向。", "Sources disagree; inspect the instruments and alignment."), 15, c.muted) }
-        if (tile in setOf(InstrumentTileId.SOG, InstrumentTileId.HEADING, InstrumentTileId.DEPTH,
-                InstrumentTileId.TRUE_WIND_SPEED, InstrumentTileId.APPARENT_WIND_SPEED, InstrumentTileId.PRESSURE))
-            PinTileAction(os, tileReadingBinding(tile.name))
         if (tile !in layout) MetroButton(os.t("添加到我的仪表", "add to my instruments"), { save(layout + tile) })
         instrumentSourceMetric(tile)?.let { metric ->
             MetroButton(os.t("检查此项来源", "check this source"), { os.openLinked("data_center:source/${metric.name}") })

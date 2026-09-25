@@ -13,6 +13,7 @@
     <string name="tile_settings_light">浅色</string>
     <string name="tile_settings_accent">主题色 · %1$s</string>
     <string name="context_pin">固定到开始屏幕</string>
+    <string name="context_manage_tile">编辑或查看磁贴</string>
     <string name="context_unpin">从开始屏幕取消固定</string>
     <string name="context_app_info">应用信息</string>
     <string name="move_tile_left">向左移动磁贴</string>

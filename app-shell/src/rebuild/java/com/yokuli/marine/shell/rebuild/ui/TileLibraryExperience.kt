@@ -93,6 +93,7 @@ import com.yokuli.shell.engine.layout.TileDocumentEntry
     ownerFilter: String? = null,
     clearOwner: () -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
+    selectedKey: String? = null,
     onChoose: (TileContentChoice) -> Unit,
 ) {
     val insets = LocalShellHorizontalInsets.current
@@ -124,7 +125,8 @@ import com.yokuli.shell.engine.layout.TileDocumentEntry
                         Modifier.padding(top = 20.dp, bottom = 4.dp).semantics { heading() })
                 }
                 items(members, key = { it.binding.contentKey }) { choice ->
-                    TileContentRow(os, choice, choice.binding.contentKey in pinnedKeys) { onChoose(choice) }
+                    TileContentRow(os, choice, choice.binding.contentKey in pinnedKeys,
+                        selected = choice.binding.contentKey == selectedKey, choosing = selectedKey != null) { onChoose(choice) }
                 }
             }
         }
@@ -139,18 +141,21 @@ import com.yokuli.shell.engine.layout.TileDocumentEntry
     }
 }
 
-@Composable private fun TileContentRow(os: OsStore, choice: TileContentChoice, pinned: Boolean, onClick: () -> Unit) {
+@Composable private fun TileContentRow(os: OsStore, choice: TileContentChoice, pinned: Boolean,
+    selected: Boolean = false, choosing: Boolean = false, onClick: () -> Unit) {
     val c = LocalMetro.current
-    Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(vertical = 14.dp),
+    Row(Modifier.fillMaxWidth().then(if (choosing) Modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+        else Modifier.clickable(role = Role.Button, onClick = onClick)).padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         TileIdentityIcon(choice, Modifier.size(44.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Label(tileText(os, choice.title), 18)
             Label(tileText(os, choice.subtitle), 13, c.muted, maxLines = 2)
-            Label(if (pinned) os.t("已在开始屏幕", "On Start") else os.t("来自 ", "From ") + os.title(choice.owner),
-                12, if (pinned) c.accentText else c.muted)
+            Label(when { selected -> os.t("当前内容", "Current content"); pinned -> os.t("已在开始屏幕", "On Start")
+                else -> os.t("来自 ", "From ") + os.title(choice.owner) },
+                12, if (selected || pinned) c.accentText else c.muted)
         }
-        Glyph(if (pinned) "check" else "chevron_right", Modifier.size(18.dp), if (pinned) c.accentText else c.muted)
+        Glyph(if (selected || pinned) "check" else "chevron_right", Modifier.size(18.dp), if (selected || pinned) c.accentText else c.muted)
     }
 }
 

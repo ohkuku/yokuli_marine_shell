@@ -24,4 +24,12 @@ data class TilePresentation(
     val legacyMode: String? = null,
     val rotate: Boolean? = null,
     val intervalSeconds: Int? = null,
+    /** 历史窗口使用真实已保留样本；null 由该读数的目录默认值决定，不生成缺失历史。 */
+    val historyMinutes:Int? = null,
+    /** 固定量程采用该读数的规范单位；显示单位切换只转换坐标，不修改这些原值。两端同时为空表示自动。 */
+    val rangeMinimum:Double? = null,
+    val rangeMaximum:Double? = null,
+    /** 来源、参考系是可选补充；警报、任务阶段和数据时效始终显示，不受这两个选项隐藏。 */
+    val showSource:Boolean = true,
+    val showReference:Boolean = true,
 )

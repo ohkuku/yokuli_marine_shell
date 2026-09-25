@@ -91,7 +91,7 @@ fun StartBackgroundSettings(os: OsStore) {
     MetroButton(if(hasPhoto)os.t("更换背景照片", "change background photo")else os.t("选择背景照片", "choose a background photo"),{choosePhoto()},primary=true,enabled=!write.busy)
     if(current.imageLoading)MetroProgress(os.t("正在载入照片…","loading photo…"))
     if(current.imageFailed)Label(backgroundFailureMessage(os,current.imageFailureReason?.let {runCatching {StartBackgroundFailure.valueOf(it)}.getOrNull()}),14,c.muted)
-    if(!hasPhoto)Label(os.t("选一张照片，让它显示在整个开始屏幕，或只透过磁贴显示。", "Choose a photo for the whole Start screen, or show it only through the tiles."),15,c.muted)
+    if(!hasPhoto)Label(os.t("选一张照片作为开始屏幕与应用列表的共同背景，也可以只透过磁贴显示。", "Choose a photo for Start and the app list, or show it only through the tiles."),15,c.muted)
     AppSection(os.t("背景显示方式","show your background"))
     listOf(
         StartBackdropMode.FULL to os.t("全屏照片 + 透明磁贴", "full-screen photo + transparent tiles"),
@@ -102,6 +102,7 @@ fun StartBackgroundSettings(os: OsStore) {
             if(mode!=StartBackdropMode.NONE&&(!hasPhoto||current.imageFailed))choosePhoto(mode) else os.startBackground.mode(mode)
         }
     }
+    if(current.mode==StartBackdropMode.FULL&&hasPhoto)Label(os.t("开始屏幕与应用列表共用这张照片，滑动切换时背景会轻微移动。", "Start and the app list share this photo, with a subtle shift as you swipe."),14,c.muted)
     Label(os.t("磁贴透明度", "tile transparency")+" · ${(100-opacity*100).roundToInt()}%",15)
     BackgroundOpacitySlider(1f-opacity,os.t("磁贴透明度","tile transparency"),hasPhoto&&current.image!=null&&current.mode!=StartBackdropMode.NONE&&!write.busy,
         {opacity=1f-it},{os.startBackground.opacity(opacity)})

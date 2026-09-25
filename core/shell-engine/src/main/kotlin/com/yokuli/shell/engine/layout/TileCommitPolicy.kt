@@ -26,9 +26,14 @@ internal object TileCommitPolicy {
             ?: listOf(MarineTileSize.ICON_1X1, MarineTileSize.STANDARD_2X2, MarineTileSize.WIDE_4X2)
             else listOf(MarineTileSize.STANDARD_2X2, MarineTileSize.WIDE_4X2)
         if (request.size !in allowedSizes && request.size != existing?.size) return failed(document, "Unsupported tile size")
-        val allowedStyles = if (request.binding.kind == TileBindingKind.APP) setOf("default", "summary", "static") else setOf("default", "simple", "detail")
+        val allowedStyles = when(request.binding.kind) {
+            TileBindingKind.APP->setOf("default","summary","static")
+            TileBindingKind.READING->TileReadingPresentationPolicy.styles(request.binding.contentId)+"default"
+            else->setOf("default","simple","detail")
+        }
         if (request.presentation.style !in allowedStyles && request.presentation != existing?.presentation) return failed(document, "Unsupported tile presentation")
         if ((request.presentation.legacyMode?.length ?: 0) > 64 || request.presentation.intervalSeconds?.let { it !in 1..120 } == true) return failed(document, "Invalid tile presentation")
+        if (!TileReadingPresentationPolicy.hasValidOptions(request.presentation)) return failed(document,"Invalid tile reading options")
         val columns = WpReferenceProfiles.require(document.profileId).columnCount
         val updated = existing?.copy(
             entryId = request.binding.startEntryId, binding = request.binding, presentation = request.presentation,
@@ -117,7 +122,7 @@ internal object TileCommitPolicy {
     private fun failed(document: StartDocument, reason: String) = Decision(document, TileCommitResult.Failed(reason))
     private fun supportedBinding(binding: TileBinding): Boolean = binding.providerId == "yokuli" && when (binding.kind) {
         TileBindingKind.APP -> true
-        TileBindingKind.READING -> binding.contentId in setOf("SOG", "HEADING_TRUE", "DEPTH", "TRUE_WIND_SPEED", "APPARENT_WIND_SPEED", "PRESSURE")
+        TileBindingKind.READING -> binding.contentId in TileReadingPresentationPolicy.supportedIds
         TileBindingKind.CURRENT_TASK -> binding.contentId in setOf("navigation", "anchorWatch", "recording")
         TileBindingKind.OVERVIEW -> binding.contentId == "aisTraffic"
         TileBindingKind.SAVED_PLACE, TileBindingKind.SAVED_ROUTE -> true
