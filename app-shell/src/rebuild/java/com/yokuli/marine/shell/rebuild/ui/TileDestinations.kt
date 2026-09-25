@@ -16,6 +16,9 @@ import com.yokuli.shell.contract.*
                 previewRoute = null; previewTrack = emptyList(); previewTitle = null
                 selectedPlaceId = null; selectedAisMmsi = null
             }
+            // 只收起原访问的临时工具；不丢弃已有航线草稿，返回原访问时由Shell恢复。
+            os.editingRoute = false
+            os.ruler = emptyList()
             os.displayedRouteId = os.activeRouteId
             os.showCrosshair = false
             entered = true

@@ -71,6 +71,8 @@ data class ChartInteractionSnapshot(
     val ruler: List<GeoPoint>, val selectedPlaceId: String?, val displayedRouteId: String?,
     val previewTrack: List<List<GeoPoint>>, val previewTitle: String?, val previewRoute: Route?,
     val selectedAisMmsi:String?=null,
+    /** 本次海图是否展示航线编辑工具；草稿内容仍由原唯一编辑状态持有。 */
+    val editingRoute:Boolean=false,
 )
 /** 系统安装的应用身份；UI 标签与入口组织不能另建不一致的应用列表。 */
 enum class AppId(val zh: String, val en: String, val icon: String) {
@@ -254,12 +256,13 @@ class OsStore(val context: Context) {
         val view = maps.view("chart", center, zoom)
         return ChartInteractionSnapshot(center, zoom, follow, showCrosshair, ruler.toList(),
             view.selectedPlaceId, displayedRouteId, view.previewTrack.map { it.toList() }, view.previewTitle,
-            view.previewRoute?.let { it.copy(points = it.points.toList()) },view.selectedAisMmsi)
+            view.previewRoute?.let { it.copy(points = it.points.toList()) },view.selectedAisMmsi,editingRoute)
     }
     internal fun restoreChartInteraction(snapshot: ChartInteractionSnapshot) {
         center = snapshot.center; zoom = snapshot.zoom; follow = snapshot.follow
         showCrosshair = snapshot.showCrosshair; ruler = snapshot.ruler
         displayedRouteId = snapshot.displayedRouteId
+        editingRoute = snapshot.editingRoute
         maps.view("chart", center, zoom).apply {
             center = snapshot.center; zoom = snapshot.zoom; follow = snapshot.follow
             selectedPlaceId = snapshot.selectedPlaceId

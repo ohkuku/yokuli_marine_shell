@@ -107,4 +107,4 @@ AIS 的 48dp 紧凑应用栏同样消费 `PageNavigation`。真实跨应用来�
 
 编辑发起时记录 surface/taskId/pageKey。Home 暂存纯配置，原页回来才恢复；进程重建或原页面丢失时只在工坊提供显式继续入口，不重造历史栈。保存中离开不取消已接受写入，后台成功只关闭匹配草稿，不抢前台。成功反馈的“查看位置”才发送 `RevealTile(tileId)`，不把保存和导航捆绑。
 
-内容磁贴仍走既有 `LauncherAction.Open`：普通 App 入口到根；读数进入真实指标详情；当前任务采用角色 token，在访问时读取当前任务；收藏对象先经 `SavedTileDestination` 存在性守卫，失败和已删明确分开。`task:anchorWatch` 不因有旧设置草稿而进入设置，`task:navigation` 清除本次旧预览，不改变导航会话或自动移动相机。当前记录进入日志“本次航行”，不引用固定磁贴时的会话 ID。
+内容磁贴仍走既有 `LauncherAction.Open`：普通 App 入口到根；读数进入真实指标详情；当前任务采用角色 token，在访问时读取当前任务；收藏对象先经 `SavedTileDestination` 存在性守卫，失败和已删明确分开。`task:anchorWatch` 不因有旧设置草稿而进入设置，`task:navigation` 清除本次旧预览，收起本次测距/编辑工具但保留航线草稿；海图访问快照包含编辑工具状态，恢复原访问时还原。不改变导航会话或自动移动相机。当前记录进入日志“本次航行”，不引用固定磁贴时的会话 ID。
