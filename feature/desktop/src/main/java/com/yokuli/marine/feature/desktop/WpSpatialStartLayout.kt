@@ -40,6 +40,8 @@ fun WpSpatialStartLayout(
     modifier: Modifier = Modifier,
     selectedTileId: TileInstanceId? = floatingTileId,
     floatingOffsetPx: ShellOffset = ShellOffset(0f, 0f),
+    /** 中文：手指位置在 placement 阶段读取，不以每个像素驱动整张开始屏幕重组。 */
+    floatingOffsetProvider: (() -> ShellOffset)? = null,
     tileContent: @Composable (TileDocumentEntry) -> Unit,
 ) {
     val colors = LocalWpTheme.current
@@ -47,14 +49,18 @@ fun WpSpatialStartLayout(
     val proposedPacked = remember(proposedDocument, geometry.columns) {
         proposedDocument?.let { AdaptiveTilePacker.pack(it, geometry.columns) }
     }
-    val proposedById = proposedPacked?.tiles?.associateBy { it.entry.tileId }.orEmpty()
+    val proposedById = remember(proposedPacked) { proposedPacked?.tiles?.associateBy { it.entry.tileId }.orEmpty() }
     val pitchPx = geometry.smallCellPx + geometry.seamPx
-    val visualPlacements = packed.tiles.map { placement ->
-        if (placement.entry.tileId == floatingTileId) placement else proposedById[placement.entry.tileId] ?: placement
+    val visualPlacements = remember(packed, proposedById, floatingTileId) {
+        packed.tiles.map { placement ->
+            if (placement.entry.tileId == floatingTileId) placement else proposedById[placement.entry.tileId] ?: placement
+        }
     }
     val floatingPlacement = floatingTileId?.let(packed::tile)
     val insertionMarker = proposedPacked?.tiles?.firstOrNull { it.entry.tileId == floatingTileId }
-    val measurementPlacements = listOfNotNull(floatingPlacement, insertionMarker) + visualPlacements
+    val measurementPlacements = remember(floatingPlacement, insertionMarker, visualPlacements) {
+        listOfNotNull(floatingPlacement, insertionMarker) + visualPlacements
+    }
     Layout(
         modifier = modifier,
         content = {
@@ -91,7 +97,8 @@ fun WpSpatialStartLayout(
                             if (floating) 2f else if (placement.entry.tileId == selectedTileId) 1f else 0f,
                         ).offset {
                             val position = if (floating) {
-                                (target + Offset(floatingOffsetPx.x, floatingOffsetPx.y)).also { heldPosition.lastDrawn = it }
+                                val offset = floatingOffsetProvider?.invoke() ?: floatingOffsetPx
+                                (target + Offset(offset.x, offset.y)).also { heldPosition.lastDrawn = it }
                             } else heldPosition.lastDrawn ?: animated.value
                             IntOffset(position.x.roundToInt(), position.y.roundToInt())
                         },

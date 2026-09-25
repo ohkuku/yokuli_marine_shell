@@ -65,7 +65,7 @@ import kotlin.math.roundToInt
 
 /** Windows 10 Mobile：真实任务画面上方保留应用身份，关闭是独立命令，拖动始终连续跟手。 */
 @Composable internal fun TaskSwitcher(os:OsStore,tasks:List<InternalAppTask>,onActivate:(InternalAppTask)->Unit,onClose:(InternalAppTask)->Unit) {
-    val ordered=tasks.asReversed()
+    val ordered=remember(tasks) { tasks.asReversed() }
     val pager=rememberPagerState {ordered.size}
     val c=LocalMetro.current
     BoxWithConstraints(Modifier.fillMaxSize().background(c.bg).testTag("launcher-recents")) {
@@ -84,6 +84,7 @@ import kotlin.math.roundToInt
                 val task=ordered[index]
                 val app=os.shell.apps.firstOrNull {it.id==task.appId} ?: return@HorizontalPager
                 val snapshot=os.shell.snapshots.images[task.taskId]?.takeIf {it.pageInstanceKey==task.currentUiStateKey}
+                val preview=remember(snapshot?.bitmap) {snapshot?.bitmap?.asImageBitmap()}
                 val ratio=snapshot?.bitmap?.let {it.width.toFloat()/it.height} ?: (maxWidth/maxHeight)
                 val cardHeight=minOf((maxHeight-headerHeight-32.dp).coerceAtLeast(1.dp),(maxWidth*.78f)/ratio)
                 var dragY by remember(task.taskId) {mutableFloatStateOf(0f)}
@@ -97,19 +98,30 @@ import kotlin.math.roundToInt
                     settling?.cancel()
                     closing=true
                     settling=scope.launch {
-                        animate(dragY,-heightPx-headerHeight.value*density.density-48f*density.density,
-                            initialVelocity=velocity,animationSpec=spring(dampingRatio=1f,stiffness=420f)) {value,_->dragY=value}
-                        onClose(task)
+                        val ownJob=coroutineContext[Job]
+                        try {
+                            animate(dragY,-heightPx-headerHeight.value*density.density-48f*density.density,
+                                initialVelocity=velocity,animationSpec=spring(dampingRatio=1f,stiffness=420f)) {value,_->dragY=value}
+                            onClose(task)
+                        } finally {if(settling===ownJob)settling=null}
                     }
                 }
                 DisposableEffect(task.taskId) { onDispose { settling?.cancel() } }
-                val distance=kotlin.math.abs((pager.currentPage-index)+pager.currentPageOffsetFraction).coerceIn(0f,1f)
-                Column(Modifier.fillMaxWidth().graphicsLayer { translationY=dragY;scaleX=1f-distance*.045f;scaleY=scaleX;alpha=(1f-distance*.18f)*(1f-(-dragY/heightPx).coerceIn(0f,.8f)*.45f) }
+                Column(Modifier.fillMaxWidth().graphicsLayer {
+                    // 页间比例、手指位置只改变缓存图层，不重组整张截图卡及其应用文字。
+                    val distance=kotlin.math.abs((pager.currentPage-index)+pager.currentPageOffsetFraction).coerceIn(0f,1f)
+                    translationY=dragY;scaleX=1f-distance*.045f;scaleY=scaleX
+                    alpha=(1f-distance*.18f)*(1f-(-dragY/heightPx).coerceIn(0f,.8f)*.45f)
+                }
                     .draggable(rememberDraggableState {delta->dragY=(dragY+delta).coerceAtMost(36f*density.density)},Orientation.Vertical,
                         startDragImmediately=settling?.isActive==true,
-                        onDragStarted={settling?.cancel();closing=false},onDragStopped={velocity->
+                        onDragStarted={settling?.cancel();settling=null;closing=false},onDragStopped={velocity->
                             if(shouldDismissTask(dragY/density.density,velocity/density.density,cardHeight.value))closeCard(velocity)
-                            else settling=scope.launch {animate(dragY,0f,initialVelocity=velocity,animationSpec=spring(dampingRatio=.82f,stiffness=420f)){value,_->dragY=value}}
+                            else settling=scope.launch {
+                                val ownJob=coroutineContext[Job]
+                                try {animate(dragY,0f,initialVelocity=velocity,animationSpec=spring(dampingRatio=.82f,stiffness=420f)){value,_->dragY=value}}
+                                finally {if(settling===ownJob)settling=null}
+                            }
                         }),verticalArrangement=Arrangement.spacedBy(8.dp),horizontalAlignment=Alignment.CenterHorizontally) {
                     Row(Modifier.fillMaxWidth().heightIn(min=headerHeight),
                         verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -127,7 +139,7 @@ import kotlin.math.roundToInt
                     Box(Modifier.height(cardHeight).aspectRatio(ratio).background(c.panel).clipToBounds()
                         .testTag("recent-task-${task.appId.value}").clickable(enabled=!closing,role=Role.Button,onClick={onActivate(task)})
                         .semantics {contentDescription=os.t("恢复 ${os.title(app.app)}","resume ${os.title(app.app)}")}) {
-                        if(snapshot!=null)Image(snapshot.bitmap.asImageBitmap(),null,Modifier.fillMaxSize(),
+                        if(preview!=null)Image(preview,null,Modifier.fillMaxSize(),
                             contentScale=ContentScale.FillBounds,filterQuality=FilterQuality.Medium)
                         else Column(Modifier.align(Alignment.Center).padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(16.dp)) {
                             ShellAppIcon(app,c.accentText,Modifier.size(48.dp))

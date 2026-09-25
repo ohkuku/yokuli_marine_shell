@@ -36,8 +36,10 @@ internal object InstrumentTrendCatalog {
     fun available(readings: Map<String, Reading>, history: Map<String, List<Reading>>, now: Long): List<InstrumentTrendMetric> =
         metrics.filter { lastReading(it.key, readings, history, now) != null }
 
-    fun selected(key: String, available: List<InstrumentTrendMetric>, readings: Map<String, Reading>, now: Long): InstrumentTrendMetric? =
-        available.firstOrNull { it.key == key }
+    fun selected(key: String, available: List<InstrumentTrendMetric>, readings: Map<String, Reading>, now: Long,
+        preserveSelection:Boolean=false): InstrumentTrendMetric? =
+        metrics.firstOrNull { preserveSelection && it.key==key }
+            ?: available.firstOrNull { it.key == key }
             ?: available.firstOrNull { readings[it.key]?.fresh(now) == true }
             ?: available.firstOrNull()
 }

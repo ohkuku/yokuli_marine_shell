@@ -22,9 +22,22 @@ class NotificationShadeState {
     var phase by mutableStateOf(NotificationShadePhase.CLOSED); private set
     var offsetPx by mutableFloatStateOf(0f); private set
     var heightPx by mutableFloatStateOf(0f); private set
-    var presentation by mutableStateOf(NotificationShadePresentation())
+    private var visiblePresentation by mutableStateOf(NotificationShadePresentation())
+    private var savedListIndex = 0
+    private var savedListOffset = 0
+    /** 中文：滚动位置属于恢复记录，不是需要让整个通知中心逐像素重组的页面状态。 */
+    var presentation: NotificationShadePresentation
+        get() = visiblePresentation.let { current ->
+            if (current.listIndex == savedListIndex && current.listOffset == savedListOffset) current
+            else current.copy(listIndex = savedListIndex, listOffset = savedListOffset)
+        }
+        set(value) {
+            rememberListPosition(value.listIndex, value.listOffset)
+            visiblePresentation = value.copy(listIndex = 0, listOffset = 0)
+        }
     private var touchCount by mutableIntStateOf(0)
     private var motion: Job? = null
+    private var motionVelocityPx = 0f
     private var wantsOpen = false
     private var afterClose: (() -> Unit)? = null
     val visible get() = phase != NotificationShadePhase.CLOSED
@@ -32,19 +45,24 @@ class NotificationShadeState {
     val settledOpen get() = phase == NotificationShadePhase.OPEN && touchCount == 0
     val progress get() = if (heightPx > 0) (1f + offsetPx / heightPx).coerceIn(0f, 1f) else 0f
 
+    fun rememberListPosition(index: Int, offset: Int) {
+        savedListIndex = index.coerceAtLeast(0)
+        savedListOffset = offset.coerceAtLeast(0)
+    }
+
     fun open(restored: NotificationShadePresentation? = null) {
         afterClose = null
         restored?.let { presentation = it }
         val wasClosed = !visible
         wantsOpen = true
-        if (wasClosed) offsetPx = -heightPx
+        if (wasClosed) { offsetPx = -heightPx; motionVelocityPx = 0f }
         phase = NotificationShadePhase.OPENING
         if (heightPx > 0) settle(true)
     }
     fun close(onClosed: (() -> Unit)? = null) {
         afterClose = onClosed
         wantsOpen = false
-        if (heightPx <= 0 || !visible) { motion?.cancel(); phase = NotificationShadePhase.CLOSED; finishClose() }
+        if (heightPx <= 0 || !visible) { motion?.cancel(); motionVelocityPx = 0f; phase = NotificationShadePhase.CLOSED; finishClose() }
         else settle(false)
     }
     fun toggle() { if (wantsOpen) close() else open() }
@@ -58,6 +76,7 @@ class NotificationShadeState {
         val oldHeight = heightPx
         motion?.cancel()
         heightPx = height
+        motionVelocityPx = if (oldHeight > 0f) motionVelocityPx * height / oldHeight else 0f
         offsetPx = when { !visible -> -height; oldHeight <= 0 -> -height; else -> (oldProgress - 1f) * height }
         // 旋转/IME 改变锚点时按当前意图收敛，不保留不可交互的半开状态。
         if (visible && phase != NotificationShadePhase.DRAGGING) settle(wantsOpen)
@@ -66,6 +85,7 @@ class NotificationShadeState {
     fun touchFinished() { touchCount = (touchCount - 1).coerceAtLeast(0); finishClose() }
     fun beginDrag() {
         motion?.cancel(); afterClose = null
+        motionVelocityPx = 0f
         if (visible) phase = NotificationShadePhase.DRAGGING
     }
     fun dragBy(delta: Float): Float {
@@ -90,10 +110,11 @@ class NotificationShadeState {
     }
     fun hostDetached() {
         motion?.cancel(); animationScope = null; touchCount = 0
+        motionVelocityPx = 0f
         if (visible) { offsetPx = if (wantsOpen) 0f else -heightPx; phase = if (wantsOpen) NotificationShadePhase.OPEN else NotificationShadePhase.CLOSED }
         finishClose()
     }
-    private fun settle(open: Boolean, velocity: Float = 0f) {
+    private fun settle(open: Boolean, velocity: Float = motionVelocityPx) {
         motion?.cancel()
         wantsOpen = open
         phase = if (open && offsetPx <= -heightPx) NotificationShadePhase.OPENING else NotificationShadePhase.SETTLING
@@ -103,8 +124,10 @@ class NotificationShadeState {
             if (abs(offsetPx - target) > .1f) Animatable(offsetPx).animateTo(target,
                 spring(dampingRatio = 1f, stiffness = 520f), initialVelocity = velocity) {
                 offsetPx = value.coerceIn(-heightPx, 0f)
+                motionVelocityPx = if (value in -heightPx..0f) this.velocity else 0f
             }
             offsetPx = target
+            motionVelocityPx = 0f
             phase = if (open) NotificationShadePhase.OPEN else NotificationShadePhase.CLOSED
             finishClose()
         }

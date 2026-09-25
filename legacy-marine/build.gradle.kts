@@ -40,7 +40,7 @@ android {
         buildConfigField("String", "BUILD_GIT_STATE", buildIdentity.getValue("gitState").quoted())
         buildConfigField("String", "BUILD_TIMESTAMP_UTC", buildIdentity.getValue("timestampUtc").quoted())
         buildConfigField("boolean", "BUILD_IN_CI", buildIdentity.getValue("inCi"))
-        buildConfigField("int", "DATABASE_SCHEMA_VERSION", "22")
+        buildConfigField("int", "DATABASE_SCHEMA_VERSION", "23")
         buildConfigField("String", "VERSION_NAME", buildIdentity.getValue("versionName").quoted())
         buildConfigField("int", "VERSION_CODE", buildIdentity.getValue("versionCode"))
     }

@@ -34,7 +34,9 @@ data class Reading(val value: Double, val unit: String, val source: String, val 
     val sourceKey:String=source,
     val validForMillis:Long=10_000,
     /** 历史连续段还取决于测量基准、校准和推导输入，不能仅凭同一设备连接曲线。 */
-    val continuityKey:String=sourceKey) {
+    val continuityKey:String=sourceKey,
+    /** 中文：观测发生的 UTC 时间；只在采纳该观测时转换一次，刷新页面不重盖时间。 */
+    val observedUtcMillis:Long?=null) {
     fun fresh(now: Long=SystemClock.elapsedRealtime()) = freshness==VesselDataFreshness.FRESH&&quality!=VesselDataQuality.UNKNOWN&&now-elapsed in 0..validForMillis
 }
 /** 海图、磁贴、趋势共用的进程内快照；连接计数与读数分离，已连接不代表已有可信数据。 */
@@ -57,9 +59,12 @@ class DataHub {
     private val traces=MutableStateFlow<Map<String,List<Reading>>>(emptyMap())
     /** 最近 15 分钟的有限显示历史；重启后不伪造连续数据，持久历史由记录器承担。 */
     val history=traces.asStateFlow()
-    fun update(block: (VesselData)->VesselData) {
-        mutable.update(block)
-        val snapshot=mutable.value
+    @Synchronized fun update(block: (VesselData)->VesselData) {
+        val before=mutable.value
+        val snapshot=block(before)
+        mutable.value=snapshot
+        // 网络计数与服务状态不会重新采样仪表历史；调用者可在后台独立投影两者。
+        if(before.readings==snapshot.readings)return
         val now=SystemClock.elapsedRealtime()
         traces.update { previous ->
             // 未变更的序列保持原引用；连接计数/别的传感器更新不再复制每条最多 1800 点的曲线。
@@ -69,7 +74,9 @@ class DataHub {
                 var values=if(original.firstOrNull()?.let {now-it.elapsed>15*60_000}==true)
                     original.dropWhile {now-it.elapsed>15*60_000} else original
                 snapshot.readings[key]?.takeIf {it.fresh(now)&&it.value.isFinite()}?.let {value->
-                    if(values.lastOrNull()?.elapsed?.let {it<value.elapsed}!=false)
+                    val last=values.lastOrNull()
+                    if(last==null||last.elapsed<value.elapsed||
+                        (last.elapsed==value.elapsed&&last.continuityKey!=value.continuityKey))
                         values=if(values.size>=1800)values.takeLast(1799)+value else values+value
                 }
                 if(values!==original) {

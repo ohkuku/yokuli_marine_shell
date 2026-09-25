@@ -14,7 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -188,6 +188,8 @@ internal class OfflineMapLabels(
                 // 避免高 DPI 手机上首屏或跨城市移动时一次复制整个字库。
                 var cursor = 0
                 while (cursor < missing.size) {
+                    // 真正按显示帧分摊 native 上传，不用固定 16ms 定时器与 90/120Hz 屏幕错拍。
+                    awaitFrame()
                     if (!isCurrent(version, currentStyle)) return@launch
                     val images = HashMap<String, Bitmap>()
                     var batchBytes = 0
@@ -200,7 +202,6 @@ internal class OfflineMapLabels(
                     }
                     currentStyle.addImages(images)
                     images.forEach { (key, bitmap) -> uploaded[key] = bitmap.allocationByteCount }
-                    delay(16)
                 }
                 if (!isCurrent(version, currentStyle)) return@launch
                 val data = withContext(Dispatchers.Default) {

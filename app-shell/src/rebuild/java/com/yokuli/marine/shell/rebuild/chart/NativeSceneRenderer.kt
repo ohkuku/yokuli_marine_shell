@@ -109,6 +109,11 @@ internal class NativeSceneRenderer(private val context: Context) {
             line(path.points, path.color.toInt(), path.widthDp, path.dashed)
         }}
         val points = scene.points.toMutableList()
+        // 连续性未知的历史位置仍可回顾；单点段不能因 Polyline 至少需要两点而消失。
+        // MapLibre 使用下方共享样式中的批量 CircleLayer，避免为大量旧点生成标注位图。
+        if(google!=null)scene.lines.filter {it.points.size==1}.forEach { path ->
+            points.add(MapPoint("history-point:${path.id}",path.points.first(),color=path.color,radiusDp=path.widthDp.coerceAtLeast(2.5f)))
+        }
         if (ruler.size == 2) {
             item("ruler:line",ruler) {
                 line(ruler, Color.WHITE, 4.5f, false)

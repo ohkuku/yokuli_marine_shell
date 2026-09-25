@@ -33,6 +33,20 @@
 - 开始屏幕保留 Live Tile 真实订阅与图快照，应用名和辅助信息服从共享缩放；应用列表采用紧凑图标、名称与实际搜索入口。搜索留在应用列表，系统右键始终为通知。
 - 圆角/挖孔通过现有横向安全区避让；自定义列表与页头共享安全边界，不靠把整个应用向下移动解决。
 
+## 全局运动的帧与状态边界
+
+应用与 Home 继续使用上述经典 turnstile，不靠缩短时长制造“更快”。`WpSurfaceTransitionHost` 的淡入、几何变换与 `heavyContentReady` 现在共用 AnimatedContent 的可见性 Transition；取消独立启动后从零播放的旋转协程和重复 alpha。固定 Shell 视口关闭默认 SizeTransform，避免转场过程中要求原生地图/三维重复调整尺寸。中途再次导航由原 Transition 接续，离场页不重放自己的进场。
+
+位置、缩放和颜色的连续状态应尽量在绘制或 placement 阶段读取，不能传一个每帧变化的 Float 让整页重组。当前接线包括：最近任务的 Pager 距离/向上拖动直接更新截图图层；通知横滑直接平移消息图层，清除按钮可用性只观察跨阈值的布尔变化；Pivot 标题颜色由 BasicText 的 ColorProducer 读取。Pivot 标题仍只在新选中标题被遮挡时滚动，不追随每一帧页面位移。对话框、按压、切页依然沿系统帧时钟执行既有缓动。
+
+通知滚动游标独立于需要重组的详情/展开状态，逐像素滚动不再 copy 整份可观察 presentation；关闭及跨应用返回仍读取最新游标。面板反向关闭或重新打开时沿用当前弹簧速度，接管拖动后使用真实抬手速度；通知行和任务卡的回弹结束显式释放 animation job，不靠下一次界面重组偶然更新 `startDragImmediately`。成功落盘才移除通知、关闭任务不停止业务等语义保持不变。
+
+桌面磁贴的选择缩放、揭示脉冲在图层读取。拖动位置交给 `WpSpatialStartLayout` 的 placement 回调，开始、跨格、结束才更新页面组合；同一格内不重复运行 insertion packer。边缘滚动以边缘方向决定启动/停止，运行中按实际帧间隔和当前手指位置取速度，不在每次像素变化时取消并重建帧循环。网格仍按真实位置进行命中、吸附及提交，松手从最后跟手位置回弹。
+
+实时仪表的罗盘、风向、偏航、表盘与速度/VMG 图形统一消费 `InstrumentDisplayMotion` 的 `State<Float>`，动画值只在 Canvas 中读取；临界阻尼弹簧连接有效目标，换来源、基准、单位、失效或离场直接呈现相应状态。LifecycleEventObserver 在离开前台时同步撤销动画资格，不依赖后台停止收集的生命周期 Flow 缓存。普通数字、历史与领域依据仍采用原始事实，不为视觉平滑改写观测时间；复用绘图 Paint、船体 Path、虚线 PathEffect 与刻度标签。离线海图文字的分批上传使用实际帧回调，不再以 `delay(16)` 假定设备为 60Hz。
+
+Android 宿主通过 `preferredRefreshRate` 在前台请求当前分辨率可用的最高刷新率，以至少 60Hz 为目标；后台清除请求并注销 DisplayListener，不锁定显示模式、不用定时器制造空帧。依据见 [Android 帧率说明](https://developer.android.com/media/optimize/performance/frame-rate?hl=en)。窗口常亮等属性只在值变化时提交。上述是生产绘制链与刷新请求，不能据此宣称每台设备实测稳定 60/90/120fps；硬件能力、省电、温控、地图/GPU 负载及系统调度仍决定实际帧率。
+
 ## 开始屏幕照片与透明磁贴
 
 参考微软 [WP8.1 Start 背景说明](https://blogs.windows.com/devices/2014/04/29/deep-dive-windows-phone-8-1-start-screen-backgrounds/) 的跨磁贴照片，以及 [Lumia 550 / Windows 10 Mobile 官方指南](https://msftstories.thesourcemediaassets.com/2016/04/Microsoft-LUMIA-550-Reviewers-Guide-FINAL.pdf) 的个性化和实时预览。资料不提供我们设备上的逐帧物理参数，以下视差与时长为明确适配。

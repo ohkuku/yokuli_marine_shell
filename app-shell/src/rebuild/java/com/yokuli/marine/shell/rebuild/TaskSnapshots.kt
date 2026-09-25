@@ -12,6 +12,9 @@ import android.view.Window
 import androidx.compose.runtime.*
 import com.yokuli.shell.engine.InternalAppTaskId
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -26,6 +29,7 @@ class TaskSnapshotStore {
     private data class Binding(val owner:Any,val taskId:InternalAppTaskId,val pageInstanceKey:String,val window:Window,val rect:Rect)
     private var binding:Binding?=null
     private val captureMutex=Mutex()
+    private val callbackHandler=Handler(Looper.getMainLooper())
 
     fun bind(owner:Any,taskId:InternalAppTaskId,pageInstanceKey:String,window:Window,rect:Rect) {
         if(rect.width()<=0 || rect.height()<=0)return
@@ -44,20 +48,35 @@ class TaskSnapshotStore {
         if(!rect.intersect(0,0,chosen.window.decorView.width,chosen.window.decorView.height))return@withLock false
         // 任务卡显示小字和原生地图，720px 长边会把整页文字缩成不可辨识的像素。
         val scale=minOf(1.0,1920.0/maxOf(rect.width(),rect.height()))
-        val bitmap=Bitmap.createBitmap((rect.width()*scale).roundToInt().coerceAtLeast(1),(rect.height()*scale).roundToInt().coerceAtLeast(1),Bitmap.Config.ARGB_8888)
-        withTimeoutOrNull(120) {
-            suspendCancellableCoroutine { continuation ->
-                try {
-                    PixelCopy.request(chosen.window,rect,bitmap,{ result ->
-                        val accepted=result==PixelCopy.SUCCESS && binding===chosen && continuation.isActive && contentVisible()
-                        if(accepted)images[chosen.taskId]=TaskSnapshot(bitmap,System.currentTimeMillis(),chosen.pageInstanceKey) else bitmap.recycle()
-                        if(continuation.isActive)continuation.resume(accepted)
-                    },Handler(Looper.getMainLooper()))
-                } catch(_:IllegalArgumentException) {
-                    bitmap.recycle();if(continuation.isActive)continuation.resume(false)
-                }
+        // 分配/清零整页高分辨率图像不占用 UI 帧；不降低任务卡文字和原生地图的清晰度。
+        var allocated:Bitmap?=null
+        val bitmap=try {
+            withContext(Dispatchers.Default) {
+                try { Bitmap.createBitmap((rect.width()*scale).roundToInt().coerceAtLeast(1),(rect.height()*scale).roundToInt().coerceAtLeast(1),Bitmap.Config.ARGB_8888).also {allocated=it} }
+                catch(_:OutOfMemoryError) { null }
             }
-        } ?: false
+        } catch(cancelled:CancellationException) {allocated?.recycle();throw cancelled} ?: return@withLock false
+        if(binding!==chosen || !contentVisible()) {bitmap.recycle();return@withLock false}
+        var submitted=false
+        try {
+            withTimeoutOrNull(120) {
+                suspendCancellableCoroutine { continuation ->
+                    try {
+                        PixelCopy.request(chosen.window,rect,bitmap,{ result ->
+                            val accepted=result==PixelCopy.SUCCESS && binding===chosen && continuation.isActive && contentVisible()
+                            if(accepted)images[chosen.taskId]=TaskSnapshot(bitmap,System.currentTimeMillis(),chosen.pageInstanceKey) else bitmap.recycle()
+                            if(continuation.isActive)continuation.resume(accepted)
+                        },callbackHandler)
+                        submitted=true
+                    } catch(_:IllegalArgumentException) {
+                        bitmap.recycle();if(continuation.isActive)continuation.resume(false)
+                    }
+                }
+            } ?: false
+        } finally {
+            // 分配返回后、PixelCopy 接管前也可能取消。接管之后只能由回调回收，不能回收正在写入的位图。
+            if(!submitted && !bitmap.isRecycled)bitmap.recycle()
+        }
     }
 }
 

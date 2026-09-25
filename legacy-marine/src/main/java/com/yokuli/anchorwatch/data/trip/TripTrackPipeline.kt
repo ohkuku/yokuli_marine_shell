@@ -23,6 +23,10 @@ data class TripTrackPoint(
     val longitude:Double?,
     /** Non-null only for an already segmented, display-only compacted path. */
     val compactedSegmentKey:Long?=null,
+    /** 中文：采录时采用的真实船位来源；切换来源不能靠几何距离掩盖连续段边界。 */
+    val positionSourceKey:String?=null,
+    /** 中文：旧记录缺少年龄或质量元数据时保留离散位置，不能补造连续测量。 */
+    val positionContinuityKnown:Boolean=true,
 ){
     val stableKey:String get()="$tripId:$recordingSequence"
     val hasPosition:Boolean get()=latitude?.isFinite()==true&&longitude?.isFinite()==true&&latitude in -90.0..90.0&&longitude in -180.0..180.0
@@ -151,10 +155,12 @@ object TripTrackRenderPolicy{
         fun flush(){if(current.isNotEmpty())output+=TripTrackSegment(current.toList());current=mutableListOf()}
         values.forEach{point->
             if(!point.hasPosition){flush();previous=null;return@forEach}
+            if(!point.positionContinuityKnown){flush();output+=TripTrackSegment(listOf(point));previous=null;return@forEach}
             val prior=previous
             val alreadySegmented=prior?.compactedSegmentKey!=null&&prior.compactedSegmentKey==point.compactedSegmentKey
             val discontinuity=prior!=null&&!alreadySegmented&&(
                 point.timestamp-prior.timestamp !in 0L..GAP_MILLIS||
+                    point.positionSourceKey!=prior.positionSourceKey||
                     AnchorGeometry.distanceMeters(requireNotNull(prior.latitude),requireNotNull(prior.longitude),requireNotNull(point.latitude),requireNotNull(point.longitude))>
                     maxOf(ABSOLUTE_JUMP_METERS,(point.timestamp-prior.timestamp).coerceAtLeast(1L)/1_000.0*50.0)
                 )
@@ -256,7 +262,13 @@ class TripTrackRepository @Inject constructor(private val dao:TripDao){
         return TripTrackRenderPolicy.compact(values,limit)
     }
 
-    private fun TripSampleEntity.trackPoint()=TripTrackPoint(tripId,recordingSequence,timestamp,latitude,longitude)
+    private fun TripSampleEntity.trackPoint():TripTrackPoint {
+        // 原表是定期会话快照，保留旧值和年龄便于回顾；地图不能把失联旧坐标当成新航迹。
+        val knownRejected=positionAgeMillis?.let {it !in 0L..10_000L}==true||positionQuality=="UNKNOWN"
+        val continuityKnown=positionAgeMillis!=null&&positionQuality in setOf("GOOD","DEGRADED")
+        return TripTrackPoint(tripId,recordingSequence,timestamp,latitude.takeUnless {knownRejected},longitude.takeUnless {knownRejected},
+            positionSourceKey=positionSourceId?:positionSource,positionContinuityKnown=continuityKnown)
+    }
 
     companion object{
         const val MAX_LIVE_TAIL_POINTS=240

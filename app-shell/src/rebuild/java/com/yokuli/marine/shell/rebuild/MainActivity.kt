@@ -7,12 +7,15 @@ import android.location.LocationManager
 import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.hardware.display.DisplayManager
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -29,6 +32,15 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private var longBackConsumed = false
+    private var foregroundFrames = false
+    private val displayManager by lazy { getSystemService(DisplayManager::class.java) }
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = requestSmoothFrames()
+        override fun onDisplayRemoved(displayId: Int) = requestSmoothFrames()
+        override fun onDisplayChanged(displayId: Int) {
+            if (window.decorView.display?.displayId == displayId) requestSmoothFrames()
+        }
+    }
     private val os get()=(application as YokuliApplication).os
     private val serviceHandler: (PositionSourceRequest) -> Unit = ::requestPosition
     private val gpsPermission=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
@@ -74,7 +86,11 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window,false)
         immersive()
         setContent {
-            SideEffect { if(os.keepAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+            val keepAwake = os.keepAwake
+            LaunchedEffect(keepAwake) {
+                if(keepAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
             MetroTheme(os) { OsExperience(os) }
         }
     }
@@ -106,8 +122,35 @@ class MainActivity : ComponentActivity() {
         // 不经过应用局部输入处理器，避免某个弹窗把系统 Home 吞掉；不启动或停止任何服务。
         os.shell.dispatch(LauncherAction.ShowDesktop)
     }
-    override fun onWindowFocusChanged(hasFocus:Boolean) { super.onWindowFocusChanged(hasFocus); if(hasFocus) immersive() }
-    override fun onResume() { super.onResume(); (application as YokuliApplication).marineSystem.services.sources.onPermissionsChanged() }
+    override fun onWindowFocusChanged(hasFocus:Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if(hasFocus) { immersive(); requestSmoothFrames() }
+    }
+    override fun onResume() {
+        super.onResume()
+        foregroundFrames = true
+        displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
+        requestSmoothFrames()
+        (application as YokuliApplication).marineSystem.services.sources.onPermissionsChanged()
+    }
+    /**
+     * 中文：前台窗口请求当前分辨率支持的最高刷新率，至少表达 60Hz 的渲染意图。
+     * 不锁显示模式、不改分辨率；Compose/Choreographer 仍用系统 vsync，不用 delay(16) 造帧。
+     * 省电、温控及系统调度仍可能限制实际帧率，不能把此请求当成性能测量结果。
+     */
+    private fun requestSmoothFrames() {
+        if (!foregroundFrames) return
+        val display = window.decorView.display ?: return
+        val mode = display.mode
+        val preferred = display.supportedModes.asSequence()
+            .filter { it.physicalWidth == mode.physicalWidth && it.physicalHeight == mode.physicalHeight }
+            .map { it.refreshRate }.filter { it.isFinite() && it > 0f }.maxOrNull()?.coerceAtLeast(60f) ?: 60f
+        val attributes = window.attributes
+        if (attributes.preferredRefreshRate != preferred) {
+            attributes.preferredRefreshRate = preferred
+            window.attributes = attributes
+        }
+    }
     private fun immersive() { WindowInsetsControllerCompat(window,window.decorView).apply { hide(WindowInsetsCompat.Type.systemBars()); systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE } }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val input = AndroidShellKeyAdapter.mapKeyCode(event.keyCode) ?: return super.dispatchKeyEvent(event)
@@ -123,6 +166,16 @@ class MainActivity : ComponentActivity() {
         }
         return true
     }
-    override fun onPause() { os.save(); super.onPause() }
+    override fun onPause() {
+        foregroundFrames = false
+        displayManager?.unregisterDisplayListener(displayListener)
+        val attributes = window.attributes
+        if (attributes.preferredRefreshRate != 0f) {
+            attributes.preferredRefreshRate = 0f
+            window.attributes = attributes
+        }
+        os.save()
+        super.onPause()
+    }
     override fun onDestroy() { if(os.systemAction === serviceHandler) os.systemAction=null;super.onDestroy() }
 }

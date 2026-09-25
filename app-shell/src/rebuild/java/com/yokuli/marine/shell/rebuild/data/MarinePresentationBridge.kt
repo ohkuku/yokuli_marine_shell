@@ -12,30 +12,62 @@ import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.anchorwatch.domain.vessel.source.MetricSourceEligibility
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.OsStore
-import kotlinx.coroutines.Job
+import android.os.SystemClock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /** Shell 的显示投影：订阅唯一运行时，格式化读数/通知；不持有设备、会话或业务执行范围。 */
 class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.runtime.marine.MarineSystem) {
     val services: MarineServices = system.services
     val voyage = system.voyage.state
-    private var previousTrack: com.yokuli.anchorwatch.data.trip.TripTrackSnapshot? = null
-    private var previousTripId: Long? = null
-    private val subscription: Job = os.scope.launch {
-        services.state.collect { state ->
-            if (state.settingsReady) {
-                os.positionSource = when (state.settings.gpsDataSource) {
-                    GpsDataSource.SYSTEM -> "phone"
-                    GpsDataSource.NMEA -> "nmea"
-                    GpsDataSource.DEMO -> "demo"
-                    else -> "none"
+    private data class ShellProjection(val ready:Boolean,val source:GpsDataSource,val recording:Boolean,val paused:Boolean)
+    private data class ReadingProjection(val vessel:VesselDataSnapshot,val draft:Double?)
+    private var previousReadings:Map<String,Reading> = emptyMap()
+    private var utcOffset=System.currentTimeMillis()-SystemClock.elapsedRealtime()
+    private var clockEpoch=0L
+    private val subscriptions=listOf(
+        os.scope.launch {
+            services.state.map { ShellProjection(it.settingsReady,it.settings.gpsDataSource,it.activeTrip!=null,it.activeTrip?.paused==true) }
+                .distinctUntilChanged().collect { state ->
+                    if(state.ready)os.positionSource=when(state.source) {
+                        GpsDataSource.SYSTEM->"phone";GpsDataSource.NMEA->"nmea";GpsDataSource.DEMO->"demo";else->"none"
+                    }
+                    os.recordingActive=state.recording
+                    os.recordingPaused=state.paused
                 }
+        },
+        os.scope.launch {
+            // 地理轨迹整理属于读模型计算；主线程只接收结果，不随网络计数重算 3000 个点。
+            services.state.map { it.activeTrip?.id to it.tripTrack }.distinctUntilChanged()
+                .map { (tripId,track) ->
+                    if(tripId==null)emptyList() else track.rendered(3000).map { segment ->
+                        segment.points.mapNotNull { point ->
+                            if(point.hasPosition)GeoPoint(point.latitude!!,point.longitude!!)else null
+                        }
+                    }
+                }.flowOn(Dispatchers.Default).collect { os.recordedSegments=it }
+        },
+        os.scope.launch(Dispatchers.Default) {
+            services.state.map { state ->
+                // 注册候选、发送计数、快照生成时间不是新观测；不能推动显示历史采样。
+                ReadingProjection(state.vesselData.copy(candidates=emptyMap(),conflicts=emptyMap(),generatedElapsedRealtime=0),state.vesselSettings.draftMeters)
+            }.distinctUntilChanged().collect { projection ->
+                val readings=projectReadings(projection.vessel,projection.draft)
+                os.hub.update { it.copy(readings=readings) }
             }
-            publish(state)
-        }
-    }
+        },
+        os.scope.launch(Dispatchers.Default) {
+            services.state.map(::projectTransport).distinctUntilChanged().collect { projection ->
+                os.hub.update { projection.copy(readings=it.readings,message=it.message,sentToInput=it.sentToInput) }
+            }
+        },
+    )
 
-    fun close() { subscription.cancel() }
+    fun close() { subscriptions.forEach { it.cancel() } }
 
     private fun NavigationFix.asFix(source: String, selected:VesselDataSnapshot?=null): Fix? {
         if (!valid || (isMockLocation && source != "demo")) return null
@@ -50,31 +82,24 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
             selected?.cogTrueDegrees?.freshness ?: VesselDataFreshness.UNAVAILABLE)
     }
 
-    private fun publish(state: MainUiState) {
-        os.recordingActive = state.activeTrip != null
-        os.recordingPaused = state.activeTrip?.paused == true
-        if(previousTrack !== state.tripTrack || previousTripId != state.activeTrip?.id) {
-            previousTrack=state.tripTrack;previousTripId=state.activeTrip?.id
-            os.recordedSegments = if (state.activeTrip != null) state.tripTrack.rendered(3000).map { segment ->
-                segment.points.mapNotNull { point ->
-                    if (point.hasPosition) GeoPoint(point.latitude!!, point.longitude!!) else null
-                }
-            } else emptyList()
-        }
-        val selected = state.settings.gpsDataSource
-        val accepted = state.acceptedPosition.takeIf { it.selectedSource == selected }?.acceptedFix
+    private fun projectReadings(vessel:VesselDataSnapshot,draft:Double?):Map<String,Reading> {
+        val offset=System.currentTimeMillis()-SystemClock.elapsedRealtime()
+        if(abs(offset-utcOffset)>2_000L) { utcOffset=offset;clockEpoch++ }
         val readings = buildMap {
             fun add(key:String,value:VesselObservation<Double>,unit:String,metric:VesselMetricId) {
                 val number=value.value?.takeIf{it.isFinite()}?:return
                 val time=value.receivedElapsedRealtime?:return
+                val sourceKey=value.sourceIdentity?.id?:value.provenanceDetail?.toString()?:value.source.name
+                val basis="$sourceKey|${value.reference}|${value.provenanceDetail}" + if(key=="ukc")"|draft:$draft" else ""
+                val previous=previousReadings[key]?.takeIf {
+                    it.elapsed==time&&it.sourceKey==sourceKey&&it.continuityKey.substringBeforeLast("|clock:")==basis
+                }
                 put(key,Reading(number,unit,value.provenance?:value.source.name,time,value.freshness,value.quality,
-                    value.sourceIdentity?.id?:value.provenanceDetail?.toString()?:value.source.name,
-                    MetricSourceEligibility.measurementLeaseMillis(metric),
-                    // 基准/校准变化不改变来源计数，但须在历史中断开；吃水改变也不能伪装成海底骤变。
-                    "${value.sourceIdentity?.id ?: value.source.name}|${value.reference}|${value.provenanceDetail}" +
-                        if (key == "ukc") "|draft:${state.vesselSettings.draftMeters}" else ""))
+                    sourceKey,MetricSourceEligibility.measurementLeaseMillis(metric),
+                    previous?.continuityKey?:"$basis|clock:$clockEpoch",
+                    previous?.observedUtcMillis?:value.observedAtUtcMillis?:time+utcOffset))
             }
-            with(state.vesselData) {
+            with(vessel) {
                 add("sog",sogKnots,"kn",VesselMetricId.SOG);add("cog",cogTrueDegrees,"°T",VesselMetricId.COG)
                 add("heading",headingTrueDegrees,"°T",VesselMetricId.HEADING_TRUE)
                 add("depth",depthMeters,"m",VesselMetricId.DEPTH);add("ukc",derived.underKeelClearanceMeters,"m",VesselMetricId.DEPTH)
@@ -110,11 +135,17 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
                 add("impacts",motionReading(motion.value?.impactCandidateCount?.toDouble()),"",VesselMetricId.MOTION_SCORE)
             }
         }
-        os.hub.update {
-            it.copy(phone = (if(selected==GpsDataSource.SYSTEM) accepted else state.systemFix)?.asFix("phone",state.vesselData.takeIf{selected==GpsDataSource.SYSTEM}),
+        previousReadings=readings
+        return readings
+    }
+
+    private fun projectTransport(state:MainUiState):VesselData {
+        val selected=state.settings.gpsDataSource
+        val accepted=state.acceptedPosition.takeIf {it.selectedSource==selected}?.acceptedFix
+        return VesselData(phone = (if(selected==GpsDataSource.SYSTEM) accepted else state.systemFix)?.asFix("phone",state.vesselData.takeIf{selected==GpsDataSource.SYSTEM}),
                 nmea = (if(selected==GpsDataSource.NMEA) accepted else state.nmeaFix)?.asFix("NMEA",state.vesselData.takeIf{selected==GpsDataSource.NMEA}),
                 demo = if(selected==GpsDataSource.DEMO) accepted?.asFix("demo",state.vesselData) else null,
-                readings = readings, gpsOn = state.settings.gpsDataSource == GpsDataSource.SYSTEM,
+                gpsOn = state.settings.gpsDataSource == GpsDataSource.SYSTEM,
                 connection = when(state.connection) {
                     NmeaConnectionState.DISCONNECTED -> "off"
                     NmeaConnectionState.CONNECTING -> "connecting"
@@ -129,7 +160,6 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
                 clients = state.nmeaSharing.clientCount, addresses = state.nmeaSharing.addresses,
                 transmitted = state.nmeaSharing.sentSentences,
                 upstreamPublishing = state.outputSettings.publicationEnabled)
-        }
     }
 
     fun syncLanguage() {

@@ -47,13 +47,15 @@ import java.util.Locale
     var pickerTileNames by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var editing by rememberSaveable { mutableStateOf(false) }
     var trend by rememberSaveable { mutableStateOf("sog") }
+    var trendChosen by rememberSaveable { mutableStateOf(false) }
     var chooseTrend by rememberSaveable { mutableStateOf(false) }
     val pageStates = rememberSaveableStateHolder()
     val availableTrends = InstrumentTrendCatalog.available(data.readings, history, now)
-    val activeTrend = InstrumentTrendCatalog.selected(trend, availableTrends, data.readings, now)
+    val activeTrend = InstrumentTrendCatalog.selected(trend, availableTrends, data.readings, now, preserveSelection=trendChosen)
     val enabled = LocalInternalAppInputEnabled.current
     val c = LocalMetro.current
-    LaunchedEffect(activeTrend?.key) { activeTrend?.let { trend = it.key } }
+    // 已开始回看某个指标后，来源离线或短期缓存到期不能把用户跳到另一个指标。
+    LaunchedEffect(activeTrend?.key) { activeTrend?.let { trend = it.key; trendChosen=true } }
     ReportVisibleAppRoute(os, selected?.let { "instruments:metric:$it" } ?: "instruments:tab:${pageKeys[currentPage]}")
     fun closeLayer(): Boolean = when {
         chooseTrend -> { chooseTrend = false; true }
@@ -142,7 +144,7 @@ import java.util.Locale
                             val last = InstrumentTrendCatalog.lastReading(metric.key, data.readings, history, now)
                             ChoiceRow(metricName(os, metric.key), activeTrend?.key == metric.key,
                                 subtitle = last?.let { os.formatMetric(metric.key, it.value) + " · " + readingAge(os, it.elapsed, now) }) {
-                                trend = metric.key; chooseTrend = false
+                                trend = metric.key; trendChosen=true; chooseTrend = false
                             }
                         }
                     }

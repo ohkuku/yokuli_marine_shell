@@ -94,10 +94,11 @@ val LightFont=WpFontFamily
     }
 }
 @Composable fun Label(text: String, size: Int=WpTypeScale.Body, color: Color=LocalMetro.current.fg, modifier: Modifier=Modifier,
-    maxLines: Int=Int.MAX_VALUE, weight: FontWeight=WpTypeScale.weight(size)) {
+    maxLines: Int=Int.MAX_VALUE, weight: FontWeight=WpTypeScale.weight(size), colorProducer: ColorProducer? = null) {
     val scale=LocalWpTextScale.current
     BasicText(text,modifier,style=TextStyle(color=color,fontSize=(size*scale).sp,fontFamily=LightFont,fontWeight=weight,
-        lineHeight=(WpTypeScale.lineHeight(size)*scale).sp,textMotion=TextMotion.Animated),maxLines=maxLines,overflow=TextOverflow.Ellipsis)
+        lineHeight=(WpTypeScale.lineHeight(size)*scale).sp,textMotion=TextMotion.Animated),maxLines=maxLines,
+        overflow=TextOverflow.Ellipsis,color=colorProducer)
 }
 /** 常规内容使用语义层级；仪表主读数可明确指定独立的大字号。 */
 @Composable fun AppSection(title: String, subtitle: String? = null, modifier: Modifier = Modifier) {
@@ -350,7 +351,8 @@ val LightFont=WpFontFamily
     )
     Box(modifier.heightIn(min=if(compact)44.dp else 48.dp).selectable(selected=selected,enabled=inputEnabled,role=Role.Tab,onClick=onClick)
         .padding(vertical=3.dp),contentAlignment=Alignment.CenterStart) {
-        Label(name,if(compact)20 else WpTypeScale.PivotTitle,color,maxLines=1)
+        // 文本颜色由绘制节点读取；淡入一帧不重建 TextStyle、不重新布局整排标题。
+        Label(name,if(compact)20 else WpTypeScale.PivotTitle,maxLines=1,colorProducer={color})
     }
 }
 

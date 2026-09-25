@@ -16,7 +16,7 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
-const val DATABASE_SCHEMA_VERSION = 22
+const val DATABASE_SCHEMA_VERSION = 23
 
 @Entity(tableName = "anchor_sessions")
 data class AnchorSessionEntity(
@@ -516,6 +516,10 @@ data class PressureHistoryEntity(
     val sampledAtUtcMillis:Long,
     val pressureHpa:Double,
     val sourceDisplayName:String,
+    /** 中文：采集进程、时钟基准与来源连接共同确定连续段；旧记录未知，不补造。 */
+    val continuityKey:String?=null,
+    /** 中文：真实测量的 Android 单调时间，不是写库或页面刷新时间。 */
+    val measuredElapsedRealtime:Long?=null,
 )
 
 data class PressureHistorySourceRow(val sourceStableKey: String, val sourceDisplayName: String, val lastObservedUtcMillis: Long)
@@ -526,7 +530,10 @@ interface PressureHistoryDao{
     suspend fun sourcesSince(sinceUtcMillis: Long, untilUtcMillis: Long): List<PressureHistorySourceRow>
     @Query("SELECT * FROM pressure_history WHERE sourceStableKey=:sourceKey AND sampledAtUtcMillis BETWEEN :sinceUtcMillis AND :untilUtcMillis ORDER BY sampledAtUtcMillis DESC LIMIT 1441")
     suspend fun sourceSince(sourceKey: String, sinceUtcMillis: Long, untilUtcMillis: Long): List<PressureHistoryEntity>
-    @Upsert suspend fun upsert(value:PressureHistoryEntity)
+    /** 已发布的分钟观测不可覆盖；后续同分钟数值只用于当前读数。 */
+    @Insert(onConflict=OnConflictStrategy.IGNORE) suspend fun insertObservation(value:PressureHistoryEntity):Long
+    @Query("SELECT * FROM pressure_history WHERE sourceStableKey=:sourceKey AND bucketUtcMinute=:bucket LIMIT 1")
+    suspend fun observation(sourceKey:String,bucket:Long):PressureHistoryEntity?
     @Query("SELECT * FROM pressure_history WHERE sampledAtUtcMillis>=:sinceUtcMillis ORDER BY sampledAtUtcMillis") suspend fun since(sinceUtcMillis:Long):List<PressureHistoryEntity>
     @Query("DELETE FROM pressure_history WHERE sampledAtUtcMillis<:oldestAllowedUtcMillis") suspend fun prune(oldestAllowedUtcMillis:Long):Int
     @Query("SELECT COUNT(*) FROM pressure_history") suspend fun count():Long

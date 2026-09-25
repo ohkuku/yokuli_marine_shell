@@ -24,25 +24,25 @@ internal fun DrawScope.drawInstrumentHistory(frame: InstrumentHistoryFrame, colo
     fun x(point: HistoryPoint)=point.time*size.width
     val zero=y(0.0)
     val dash=PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx()))
-    for(index in 0..3) {
-        val yy=size.height*index/3f
+    val gridSteps=if(frame.kind==InstrumentHistoryKind.COUNT&&frame.upper<=1.0)1 else 3
+    for(index in 0..gridSteps) {
+        val yy=size.height*index/gridSteps
         drawLine(colors.muted.copy(alpha=.15f), Offset(0f, yy), Offset(size.width, yy), 1.dp.toPx())
     }
     if(frame.kind==InstrumentHistoryKind.DEVIATION || frame.kind==InstrumentHistoryKind.DEPTH)
         drawLine(colors.fg.copy(alpha=.5f), Offset(0f, zero), Offset(size.width, zero), 1.dp.toPx())
     // 缺口只作标记，不把其前后的数据填充成连续航行。
-    frame.breakBuckets.forEach { bucket ->
-        val xx=(bucket+.5f)/frame.bucketCount*size.width
+    frame.breaks.forEach { time ->
+        val xx=time*size.width
         drawLine(colors.muted.copy(alpha=.24f), Offset(xx,0f), Offset(xx,size.height), 1.dp.toPx(), pathEffect=dash)
     }
     val halfWidth=(size.width/frame.bucketCount*.30f).coerceAtLeast(1.dp.toPx())
-    var previousBucket: HistoryBucket?=null
     frame.buckets.forEach { bucket ->
         val last=bucket.last
         val xx=x(last)
         val alpha=if(bucket.degraded) .50f else .88f
         val color=colors.accent.copy(alpha=alpha)
-        if(!bucket.uninterrupted && frame.kind!=InstrumentHistoryKind.COUNTER) {
+        if(!bucket.uninterrupted && frame.kind !in setOf(InstrumentHistoryKind.COUNTER,InstrumentHistoryKind.WEATHER,InstrumentHistoryKind.BEARING,InstrumentHistoryKind.COUNT)) {
             // 一个时间桶含多来源或断点时，不产生跨来源均值带；只画实际首末与极值。
             listOf(bucket.first, last, bucket.minimumPoint, bucket.maximumPoint)
                 .distinct().forEach { point -> drawCircle(colors.muted, 1.8.dp.toPx(), Offset(x(point),y(point.value))) }
@@ -69,14 +69,8 @@ internal fun DrawScope.drawInstrumentHistory(frame: InstrumentHistoryFrame, colo
                 if(bucket.minimum<0)drawRect(colors.muted.copy(alpha=alpha), Offset(xx-halfWidth,zero), Size(halfWidth*2,(low-zero).coerceAtLeast(1.dp.toPx())))
                 drawLine(colors.fg, Offset(xx-halfWidth,y(bucket.mean)), Offset(xx+halfWidth,y(bucket.mean)), 1.dp.toPx())
             }
-            InstrumentHistoryKind.WEATHER -> {
-                val high=y(bucket.maximum); val low=y(bucket.minimum)
-                drawRect(color.copy(alpha=.22f), Offset(xx-halfWidth,high), Size(halfWidth*2,(low-high).coerceAtLeast(1.dp.toPx())))
-                val previous=previousBucket
-                if(previous?.uninterrupted==true && readingsAreContinuous(previous.last.reading,bucket.first.reading))
-                    drawLine(color, Offset(x(previous.last),y(previous.last.value)), Offset(xx,y(last.value)), 1.7.dp.toPx())
-                drawCircle(color, 2.dp.toPx(), Offset(xx,y(last.value)))
-            }
+            // 天气与方位在下面按真实观测时间逐点绘制，不拿时段末值代替整段样本。
+            InstrumentHistoryKind.WEATHER, InstrumentHistoryKind.BEARING, InstrumentHistoryKind.COUNT -> Unit
             InstrumentHistoryKind.COUNTER -> bucket.increment?.let { increment ->
                 val top=y(increment)
                 val origin=Offset((bucket.index+.18f)/frame.bucketCount*size.width, top)
@@ -88,7 +82,23 @@ internal fun DrawScope.drawInstrumentHistory(frame: InstrumentHistoryFrame, colo
             }
             else -> Unit
         }
-        previousBucket=bucket
+    }
+    if(frame.kind in setOf(InstrumentHistoryKind.WEATHER,InstrumentHistoryKind.BEARING,InstrumentHistoryKind.COUNT)) {
+        var previous: HistoryPoint?=null
+        frame.points.forEach { point ->
+            val color=colors.accent.copy(alpha=if(point.reading.quality==com.yokuli.anchorwatch.domain.vessel.VesselDataQuality.DEGRADED).5f else .88f)
+            val p=Offset(x(point),y(point.value))
+            previous?.takeIf { readingsAreContinuous(it.reading,point.reading) &&
+                (frame.kind!=InstrumentHistoryKind.BEARING || abs(point.value-it.value)<=180) }?.let {
+                if(frame.kind==InstrumentHistoryKind.COUNT) {
+                    // 滚动计数显示采样时的整数状态，不能画分数或由相邻差推算新事件。
+                    drawLine(color,Offset(x(it),y(it.value)),Offset(p.x,y(it.value)),1.5.dp.toPx())
+                    drawLine(color,Offset(p.x,y(it.value)),p,1.5.dp.toPx())
+                } else drawLine(color,Offset(x(it),y(it.value)),p,1.5.dp.toPx())
+            }
+            drawCircle(color,1.7.dp.toPx(),p)
+            previous=point
+        }
     }
     if(frame.kind==InstrumentHistoryKind.DEPTH)frame.minimum?.let { minimum ->
         val point=Offset(x(minimum),y(minimum.value))

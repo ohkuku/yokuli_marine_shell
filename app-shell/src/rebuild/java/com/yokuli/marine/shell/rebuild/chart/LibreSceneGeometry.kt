@@ -6,6 +6,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.Layer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
@@ -65,7 +66,7 @@ internal class LibreSceneGeometry {
         if (geometry == previous) return
         val batches = linkedMapOf<PaintKey, MutableList<Shape>>()
         fun add(stage: Int, points: List<GeoPoint>, color: Int, width: Float = 0f, dashed: Boolean = false) {
-            if (points.size < (if (stage == 0) 3 else 2) || !width.isFinite() || width < 0f) return
+            if (points.size < (when(stage) {0->3;8->1;else->2}) || !width.isFinite() || width < 0f) return
             batches.getOrPut(PaintKey(stage, width, dashed)) { mutableListOf() }.add(Shape(points, color))
         }
         scene.areas.forEach { add(0, it.boundary, it.color.toInt()) }
@@ -75,6 +76,10 @@ internal class LibreSceneGeometry {
             add(1, ring, circle.color.toInt(), 1.6f, circle.dashed)
         }
         scene.lines.forEach { path ->
+            if(path.points.size==1) {
+                add(8,path.points,path.color.toInt(),path.widthDp.coerceAtLeast(2.5f))
+                return@forEach
+            }
             if (Color.alpha(path.color.toInt()) == 255) add(2, path.points, 0xBBFFFFFF.toInt(), path.widthDp + 1.5f, path.dashed)
             add(3, path.points, path.color.toInt(), path.widthDp, path.dashed)
         }
@@ -100,7 +105,11 @@ internal class LibreSceneGeometry {
             val shapes = batches.getValue(key)
             if (values[key] != shapes) {
                 val features = shapes.mapIndexedNotNull { index, shape ->
-                    val coordinates = if (key.stage == 0) polygonGeometry(shape.points) else lineGeometry(shape.points)
+                    val coordinates = when(key.stage) {
+                        0->polygonGeometry(shape.points)
+                        8->shape.points.firstOrNull()?.takeIf(::valid)?.let {Point.fromLngLat(it.lon,it.lat)}
+                        else->lineGeometry(shape.points)
+                    }
                     coordinates?.let { Feature.fromGeometry(it).apply {
                         addStringProperty("color", "rgba(${Color.red(shape.color)},${Color.green(shape.color)},${Color.blue(shape.color)},${Color.alpha(shape.color) / 255.0})")
                         addNumberProperty("order", index)
@@ -124,6 +133,9 @@ internal class LibreSceneGeometry {
                 val layer: Layer = if (key.stage == 0) FillLayer(key.id, key.id).withProperties(
                     PropertyFactory.fillColor(color), PropertyFactory.fillOutlineColor(Color.TRANSPARENT),
                     PropertyFactory.fillSortKey(Expression.get("order")),
+                ) else if(key.stage==8) CircleLayer(key.id,key.id).withProperties(
+                    PropertyFactory.circleColor(color),PropertyFactory.circleRadius(key.width),
+                    PropertyFactory.circleStrokeColor(Color.WHITE),PropertyFactory.circleStrokeWidth(1f),
                 ) else LineLayer(key.id, key.id).withProperties(
                     PropertyFactory.lineColor(color), PropertyFactory.lineWidth(key.width),
                     PropertyFactory.lineSortKey(Expression.get("order")),

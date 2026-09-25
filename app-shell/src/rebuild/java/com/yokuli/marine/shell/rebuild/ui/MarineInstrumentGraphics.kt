@@ -2,9 +2,6 @@ package com.yokuli.marine.shell.rebuild.ui
 
 import android.graphics.Paint
 import android.graphics.Typeface
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -32,32 +29,21 @@ import kotlin.math.*
 internal fun VesselObservation<Double>.liveNumber(): Double? = value?.takeIf { displayIsLive() && it.isFinite() }
 internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf { it.isFinite() }
 
-/** 中文：跨越正北时走最短角度，避免 359° 到 1° 反向转一整圈。 */
-@Composable private fun animatedBearing(value: Double?): Float {
-    val angle = remember { Animatable(value?.toFloat() ?: 0f) }
-    LaunchedEffect(value) {
-        value?.let {
-            val delta = ((it.toFloat() - angle.value) % 360f + 540f) % 360f - 180f
-            angle.animateTo(angle.value + delta, tween(450))
-        }
-    }
-    return angle.value
-}
-
 @Composable internal fun MarineCompass(os: OsStore, data: VesselDataSnapshot, modifier: Modifier = Modifier) {
     val c = LocalMetro.current
-    val typeface = instrumentTypeface()
+    val textPaint = instrumentTextPaint()
+    val bowPath = remember { Path() }
     val heading = data.headingTrueDegrees.liveNumber()
     val course = data.cogTrueDegrees.liveNumber()
-    val headingAngle = animatedBearing(heading)
-    val courseAngle = animatedBearing(course)
+    val headingAngle by rememberInstrumentMotion(data.headingTrueDegrees, heading, circular = true)
+    val courseAngle by rememberInstrumentMotion(data.cogTrueDegrees, course, circular = true)
     val now = rememberMarineClock()
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
                 val r = min(size.width, size.height) * .43f
                 val center = center
-                compassScale(center, r, c.fg, c.muted, typeface)
+                compassScale(center, r, c.fg, c.muted, textPaint)
                 if (course != null) {
                     val end = radial(center, r * .76f, courseAngle)
                     drawLine(c.muted, center, end, 2.dp.toPx())
@@ -65,7 +51,8 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
                 }
                 if (heading != null) {
                     rotate(headingAngle, center) {
-                        val bow = Path().apply {
+                        val bow = bowPath.apply {
+                            reset()
                             moveTo(center.x, center.y - r * .67f)
                             lineTo(center.x + r * .16f, center.y + r * .2f)
                             lineTo(center.x, center.y + r * .08f)
@@ -87,14 +74,15 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
 
 @Composable internal fun WindRose(os: OsStore, data: VesselDataSnapshot, modifier: Modifier = Modifier) {
     val c = LocalMetro.current
-    val typeface = instrumentTypeface()
+    val textPaint = instrumentTextPaint()
+    val hullPath = remember { Path() }
     val apparent = data.apparentWind.angleDegrees.displayNumber()
     val trueAngle = data.trueWind.angleDegrees.displayNumber()
     val apparentColor = if (data.apparentWind.angleDegrees.displayIsLive()) c.accent else c.muted
     val trueColor = if (data.trueWind.angleDegrees.displayIsLive()) c.fg else c.muted
     val now = rememberMarineClock()
-    val apparentAngle = animatedBearing(apparent)
-    val trueAnimatedAngle = animatedBearing(trueAngle)
+    val apparentAngle by rememberInstrumentMotion(data.apparentWind.angleDegrees, apparent, circular = true)
+    val trueAnimatedAngle by rememberInstrumentMotion(data.trueWind.angleDegrees, trueAngle, circular = true)
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(Modifier.fillMaxWidth().height(270.dp)) {
             val r = min(size.width, size.height) * .42f
@@ -103,7 +91,8 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
                 drawLine(c.muted.copy(alpha = .65f), radial(center, r, degrees.toFloat()), radial(center, r * if (degrees % 45 == 0) .88f else .94f, degrees.toFloat()), 1.dp.toPx())
             }
             drawLine(c.muted.copy(alpha = .4f), Offset(center.x, center.y - r), Offset(center.x, center.y + r), 1.dp.toPx())
-            val hull = Path().apply {
+            val hull = hullPath.apply {
+                reset()
                 moveTo(center.x, center.y - r * .34f)
                 cubicTo(center.x + r * .25f, center.y - r * .07f, center.x + r * .17f, center.y + r * .26f, center.x + r * .12f, center.y + r * .34f)
                 lineTo(center.x - r * .12f, center.y + r * .34f)
@@ -113,10 +102,10 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
             drawPath(hull, c.fg, style = Stroke(1.5.dp.toPx()))
             if (trueAngle != null) windArrow(center, r, trueAnimatedAngle, trueColor.copy(alpha = .65f))
             if (apparent != null) windArrow(center, r, apparentAngle, apparentColor)
-            compassLabel("0°", Offset(center.x, center.y - r - 8.dp.toPx()), c.fg, 13.dp.toPx(), typeface)
-            compassLabel("90°", Offset(center.x + r + 16.dp.toPx(), center.y + 4.dp.toPx()), c.muted, 11.dp.toPx(), typeface)
-            compassLabel("90°", Offset(center.x - r - 16.dp.toPx(), center.y + 4.dp.toPx()), c.muted, 11.dp.toPx(), typeface)
-            compassLabel("180°", Offset(center.x, center.y + r + 18.dp.toPx()), c.muted, 11.dp.toPx(), typeface)
+            compassLabel("0°", Offset(center.x, center.y - r - 8.dp.toPx()), c.fg, 13.dp.toPx(), textPaint)
+            compassLabel("90°", Offset(center.x + r + 16.dp.toPx(), center.y + 4.dp.toPx()), c.muted, 11.dp.toPx(), textPaint)
+            compassLabel("90°", Offset(center.x - r - 16.dp.toPx(), center.y + 4.dp.toPx()), c.muted, 11.dp.toPx(), textPaint)
+            compassLabel("180°", Offset(center.x, center.y + r + 18.dp.toPx()), c.muted, 11.dp.toPx(), textPaint)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) { Label(os.t("视风", "apparent wind"), 16, apparentColor); Label(os.formatSpeed(data.apparentWind.speedKnots.displayNumber()), 30, if (data.apparentWind.speedKnots.displayIsLive()) c.fg else c.muted); Label(os.formatAngle(apparent), 18, apparentColor); Label(observationStatus(os, data.apparentWind.angleDegrees, now), 12, c.muted) }
@@ -129,12 +118,11 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
 
 @Composable internal fun AttitudeHorizon(os: OsStore, data: VesselDataSnapshot, modifier: Modifier = Modifier) {
     val c = LocalMetro.current
-    val typeface = instrumentTypeface()
     val heelValue = data.heelDegrees.liveNumber()
     val pitchValue = data.pitchDegrees.liveNumber()
     val attitudeReady = heelValue != null && pitchValue != null
-    val roll by animateFloatAsState(heelValue?.toFloat() ?: 0f, tween(250), label = "heel")
-    val pitch by animateFloatAsState(pitchValue?.toFloat() ?: 0f, tween(250), label = "pitch")
+    val roll by rememberInstrumentMotion(data.heelDegrees, heelValue)
+    val pitch by rememberInstrumentMotion(data.pitchDegrees, pitchValue)
     val now = rememberMarineClock()
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Canvas(Modifier.fillMaxWidth().height(220.dp).clipToBounds()) {
@@ -166,7 +154,7 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
 /** 中文：可比较的量使用刻度；方位使用罗盘；正负偏差使用中线，不渲染无意义的 3D 装饰。 */
 @Composable internal fun InstrumentGauge(os: OsStore, data: VesselDataSnapshot, tile: InstrumentTileId, modifier: Modifier = Modifier) {
     val c = LocalMetro.current
-    val typeface = instrumentTypeface()
+    val textPaint = instrumentTextPaint()
     val heading = when (tile) {
         InstrumentTileId.HEADING -> data.headingTrueDegrees.liveNumber()
         InstrumentTileId.COG -> data.cogTrueDegrees.liveNumber()
@@ -207,7 +195,8 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
     val signed = windAngle || tile in setOf(InstrumentTileId.HEEL, InstrumentTileId.PITCH, InstrumentTileId.RUDDER_ANGLE, InstrumentTileId.RATE_OF_TURN, InstrumentTileId.ROLL_RATE, InstrumentTileId.PITCH_RATE, InstrumentTileId.CROSS_TRACK_ERROR, InstrumentTileId.PRESSURE_TREND_1H, InstrumentTileId.PRESSURE_TREND_3H, InstrumentTileId.PRESSURE_TREND_6H, InstrumentTileId.VMG, InstrumentTileId.VMC)
     val supported = bearingType || raw != null || tile in setOf(InstrumentTileId.SOG, InstrumentTileId.BOAT_SPEED, InstrumentTileId.TRUE_WIND_SPEED, InstrumentTileId.APPARENT_WIND_SPEED, InstrumentTileId.RUDDER_ANGLE, InstrumentTileId.HEEL, InstrumentTileId.PITCH)
     if (!supported) return
-    val angle = animatedBearing(heading)
+    val observation = instrumentObservation(data, tile)
+    val angle by rememberInstrumentMotion(observation, heading, circular = true)
     // 刻度先进入用户选择的显示单位，再选整洁的数值范围；内部观测仍保留规范单位。
     val metric = instrumentTrendKey(tile).orEmpty()
     val displayed = raw?.let { os.displayMetricValue(metric, it) }?.let {
@@ -231,14 +220,16 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
     val lower = limits.first
     val upper = limits.second
     val normalized = (((displayed ?: lower) - lower) / (upper - lower)).toFloat().coerceIn(0f, 1f)
-    val fraction by animateFloatAsState(normalized, tween(350), label = "instrument-scale")
+    val fraction by rememberInstrumentMotion(observation, normalized.toDouble(), scaleKey = Triple(unit, lower, upper))
     val readingColor = if (instrumentObservation(data, tile).displayIsLive()) c.accent else c.muted
+    val lowerLabel = remember(lower, upper, unit) { gaugeScaleNumber(lower, upper - lower) + if (unit.isBlank()) "" else " $unit" }
+    val upperLabel = remember(lower, upper, unit) { gaugeScaleNumber(upper, upper - lower) + if (unit.isBlank()) "" else " $unit" }
     Canvas(modifier.fillMaxWidth().height(if (bearingType) 94.dp else 38.dp)) {
         if (bearingType) {
             val r = min(size.width, size.height) * .43f
             drawCircle(c.muted.copy(alpha = .35f), r, center, style = Stroke(1.dp.toPx()))
             for (mark in 0 until 360 step 30) drawLine(c.muted, radial(center, r, mark.toFloat()), radial(center, r * .88f, mark.toFloat()), 1.dp.toPx())
-            compassLabel("N", Offset(center.x, center.y - r - 3.dp.toPx()), c.muted, 10.dp.toPx(), typeface)
+            compassLabel("N", Offset(center.x, center.y - r - 3.dp.toPx()), c.muted, 10.dp.toPx(), textPaint)
             if (heading != null) drawLine(c.accent, center, radial(center, r * .8f, angle), 3.dp.toPx())
         } else {
             val y = size.height * .42f
@@ -254,10 +245,9 @@ internal fun VesselObservation<Double>.displayNumber(): Double? = value?.takeIf 
                 drawLine(readingColor, Offset(origin, y), Offset(endpoint, y), 4.dp.toPx())
                 drawLine(readingColor, Offset(endpoint, y - 7.dp.toPx()), Offset(endpoint, y + 7.dp.toPx()), 2.dp.toPx())
             }
-            fun scaleLabel(v: Double): String = gaugeScaleNumber(v, upper - lower) + if (unit.isBlank()) "" else " $unit"
-            compassLabel(scaleLabel(lower), Offset(left + 25.dp.toPx(), size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), typeface)
-            if (signed) compassLabel("0", Offset(center.x, size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), typeface)
-            compassLabel(scaleLabel(upper), Offset(right - 25.dp.toPx(), size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), typeface)
+            compassLabel(lowerLabel, Offset(left + 25.dp.toPx(), size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), textPaint)
+            if (signed) compassLabel("0", Offset(center.x, size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), textPaint)
+            compassLabel(upperLabel, Offset(right - 25.dp.toPx(), size.height - 1.dp.toPx()), c.muted, 10.dp.toPx(), textPaint)
         }
     }
 }
@@ -295,7 +285,7 @@ private fun DrawScope.windArrow(center: Offset, radius: Float, angle: Float, col
         drawLine(color, end, Offset(end.x + 7.dp.toPx(), end.y - 9.dp.toPx()), 2.dp.toPx())
     }
 }
-private fun DrawScope.compassScale(center: Offset, radius: Float, fg: Color, muted: Color, typeface: Typeface?) {
+private fun DrawScope.compassScale(center: Offset, radius: Float, fg: Color, muted: Color, textPaint: Paint) {
     drawCircle(muted.copy(alpha = .18f), radius, center, style = Stroke(1.dp.toPx()))
     for (degree in 0 until 360 step 5) {
         val factor = if (degree % 30 == 0) .87f else if (degree % 10 == 0) .92f else .96f
@@ -303,15 +293,19 @@ private fun DrawScope.compassScale(center: Offset, radius: Float, fg: Color, mut
     }
     listOf("N", "E", "S", "W").forEachIndexed { i, letter ->
         val pos = radial(center, radius * .73f, i * 90f)
-        compassLabel(letter, pos + Offset(0f, 5.dp.toPx()), fg, 17.dp.toPx(), typeface)
+        compassLabel(letter, pos + Offset(0f, 5.dp.toPx()), fg, 17.dp.toPx(), textPaint)
     }
 }
-private fun DrawScope.compassLabel(text: String, position: Offset, color: Color, pixels: Float, font: Typeface?) {
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb(); textSize = pixels; textAlign = Paint.Align.CENTER; typeface = font ?: Typeface.DEFAULT }
+private fun DrawScope.compassLabel(text: String, position: Offset, color: Color, pixels: Float, paint: Paint) {
+    paint.color = color.toArgb(); paint.textSize = pixels
     drawContext.canvas.nativeCanvas.drawText(text, position.x, position.y, paint)
 }
 
-@Composable private fun instrumentTypeface(): Typeface? {
+/** 中文：一幅仪表复用文本 Paint，指针每帧绘制不反复分配 native Paint。 */
+@Composable private fun instrumentTextPaint(): Paint {
     val context = LocalContext.current
-    return remember(context) { ResourcesCompat.getFont(context, R.font.selawik_light) }
+    return remember(context) { Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        typeface = ResourcesCompat.getFont(context, R.font.selawik_light) ?: Typeface.DEFAULT
+    } }
 }

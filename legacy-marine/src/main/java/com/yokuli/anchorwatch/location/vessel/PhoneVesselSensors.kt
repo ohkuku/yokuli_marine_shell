@@ -91,7 +91,9 @@ object PhoneHeadingAlignmentPolicy{
 }
 data class PhoneSensorCapabilities(val attitudeAvailable:Boolean=false,val gyroAvailable:Boolean=false,val magnetometerAvailable:Boolean=false,val pressureAvailable:Boolean=false,val linearAccelerationAvailable:Boolean=false)
 data class PhoneVesselAttitudeSample(val attitude:VesselAttitude?=null,val dynamicAccelerationG:Double=0.0,val mountSuspect:Boolean=false,val receivedElapsedRealtime:Long?=null)
-data class PhonePressureSample(val pressureHpa:Double?=null,val receivedElapsedRealtime:Long?=null)
+data class PhonePressureSample(val pressureHpa:Double?=null,val receivedElapsedRealtime:Long?=null,
+    /** 中文：每次重新注册传感器开始新连续段，不跨停采区间连接。 */
+    val generation:Long=0)
 
 /** 中文：安装确认捕获当前手机姿态作为船体零点；之后在固定船体轴中解释转动。
  * 世界航向仍由磁北参考决定，不能把相对 yaw 当作船首向。 */
@@ -262,10 +264,35 @@ class PhoneVesselAttitudeRepository @Inject constructor(@ApplicationContext cont
 }
 
 @Singleton
-class PhonePressureRepository @Inject constructor(@ApplicationContext context:Context):SensorEventListener{
-    private val manager=context.getSystemService(SensorManager::class.java);private val sensor=manager.getDefaultSensor(Sensor.TYPE_PRESSURE);private val _sample=MutableStateFlow(PhonePressureSample());val sample=_sample.asStateFlow();private var running=false
-    fun start():Boolean{if(running)return sensor!=null;running=sensor?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_NORMAL)}?:false;return running}
-    fun stop(){if(running)manager.unregisterListener(this);running=false;_sample.value=PhonePressureSample()}
-    override fun onSensorChanged(event:SensorEvent){event.values.firstOrNull()?.takeIf{it in 800f..1_200f}?.let{_sample.value=PhonePressureSample(it.toDouble(),SystemClock.elapsedRealtime())}}
+class PhonePressureRepository @Inject constructor(@ApplicationContext context:Context):SensorEventListener {
+    private val manager=context.getSystemService(SensorManager::class.java)
+    private val sensor=manager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+    private val _sample=MutableStateFlow(PhonePressureSample())
+    val sample=_sample.asStateFlow()
+    @Volatile private var running=false
+    private var generation=0L
+    private var startedElapsed=0L
+    @Synchronized fun start():Boolean {
+        if(running)return true
+        startedElapsed=SystemClock.elapsedRealtime()
+        running=sensor?.let { manager.registerListener(this,it,SensorManager.SENSOR_DELAY_NORMAL) }?:false
+        if(running)generation++
+        return running
+    }
+    @Synchronized fun stop() {
+        running=false
+        manager.unregisterListener(this)
+        _sample.value=PhonePressureSample(generation=generation)
+    }
+    @Synchronized override fun onSensorChanged(event:SensorEvent) {
+        if(!running||event.sensor.type!=Sensor.TYPE_PRESSURE)return
+        // Android SensorEvent 与 elapsedRealtime 使用同一开机时基；排队回调不能刷新旧数据。
+        val measured=event.timestamp/1_000_000L
+        if(measured<startedElapsed||measured>SystemClock.elapsedRealtime()||
+            _sample.value.receivedElapsedRealtime?.let {measured<=it}==true)return
+        event.values.firstOrNull()?.takeIf { it.isFinite()&&it in 800f..1_200f }?.let {
+            _sample.value=PhonePressureSample(it.toDouble(),measured,generation)
+        }
+    }
     override fun onAccuracyChanged(sensor:Sensor?,accuracy:Int)=Unit
 }

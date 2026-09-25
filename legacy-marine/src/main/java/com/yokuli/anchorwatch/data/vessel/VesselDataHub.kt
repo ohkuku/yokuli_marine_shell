@@ -88,17 +88,41 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
         }}
         scope.launch{mountCalibration.calibration.collect{value->calibration=value;if(!value.headingAligned){phoneHeadingValue=VesselObservation();phoneMagneticHeadingValue=VesselObservation();sourceRegistry.removeSources(setOf(PHONE_VESSEL_HEADING_ID.id))}}}
         scope.launch{attitude.sample.collect{sample->val value=sample.attitude;if(value!=null&&sample.receivedElapsedRealtime!=null){val quality=if(sample.mountSuspect)VesselDataQuality.DEGRADED else VesselDataQuality.GOOD;attitudeValue=observation(value,VesselDataSource.PHONE_IMU,sample.receivedElapsedRealtime,null,if(sample.mountSuspect)"PHONE_MOVED_OR_MOUNT_SUSPECT" else "calibrated vessel frame",quality);sourceRegistry.publishAll(listOf(VesselSourceCandidate(VesselMetricId.HEEL,value.heelDegrees,PHONE_IMU_ID,VesselSourceClass.PHONE_IMU,receivedElapsedRealtime=sample.receivedElapsedRealtime,quality=quality,provenance=VesselProvenance.PhoneSensor("Mounted phone IMU",calibration.version)),VesselSourceCandidate(VesselMetricId.PITCH,value.pitchDegrees,PHONE_IMU_ID,VesselSourceClass.PHONE_IMU,receivedElapsedRealtime=sample.receivedElapsedRealtime,quality=quality,provenance=VesselProvenance.PhoneSensor("Mounted phone IMU",calibration.version)),VesselSourceCandidate(VesselMetricId.ROLL_RATE,value.rollRateDegreesPerSecond,PHONE_IMU_ID,VesselSourceClass.PHONE_IMU,receivedElapsedRealtime=sample.receivedElapsedRealtime,quality=quality,provenance=VesselProvenance.PhoneSensor("Mounted phone IMU",calibration.version)),VesselSourceCandidate(VesselMetricId.PITCH_RATE,value.pitchRateDegreesPerSecond,PHONE_IMU_ID,VesselSourceClass.PHONE_IMU,receivedElapsedRealtime=sample.receivedElapsedRealtime,quality=quality,provenance=VesselProvenance.PhoneSensor("Mounted phone IMU",calibration.version)),VesselSourceCandidate(VesselMetricId.YAW_RATE,value.yawRateDegreesPerSecond,PHONE_IMU_ID,VesselSourceClass.PHONE_IMU,receivedElapsedRealtime=sample.receivedElapsedRealtime,quality=quality,provenance=VesselProvenance.PhoneSensor("Mounted phone IMU",calibration.version))));if(!sample.mountSuspect){val motion=motionAnalyzer.add(VesselMotionPoint(sample.receivedElapsedRealtime,value.heelDegrees,value.pitchDegrees,value.rollRateDegreesPerSecond,value.pitchRateDegreesPerSecond,sample.dynamicAccelerationG));motionValue=observation(motion,VesselDataSource.DERIVED,sample.receivedElapsedRealtime,null,VesselMotionAnalyzer.ALGORITHM_VERSION);motion.score?.let{sourceRegistry.publish(VesselSourceCandidate(VesselMetricId.MOTION_SCORE,it,PHONE_IMU_ID,VesselSourceClass.PHONE_IMU,receivedElapsedRealtime=sample.receivedElapsedRealtime,quality=quality,provenance=VesselProvenance.PhoneSensor("Mounted phone IMU",calibration.version)))}}}}}
-        scope.launch{pressure.sample.collect{sample->sample.pressureHpa?.let{value->pressureHistory.record(PHONE_PRESSURE_ID.persistentKey,PHONE_PRESSURE_ID.displayName,value);pressureValue=observation(value,VesselDataSource.PHONE_BAROMETER,sample.receivedElapsedRealtime,null,"TYPE_PRESSURE");sourceRegistry.publish(VesselSourceCandidate(VesselMetricId.PRESSURE,value,PHONE_PRESSURE_ID,VesselSourceClass.PHONE_BAROMETER,receivedElapsedRealtime=sample.receivedElapsedRealtime?:SystemClock.elapsedRealtime(),quality=VesselDataQuality.GOOD,provenance=VesselProvenance.PhoneSensor("Android pressure sensor")))}}}
+        scope.launch {
+            var registeredSourceId:String?=null
+            pressure.sample.collect { sample ->
+                val value=sample.pressureHpa
+                val measured=sample.receivedElapsedRealtime
+                val identity=PHONE_PRESSURE_ID.copy(id="${PHONE_PRESSURE_ID.id}:${sample.generation}",stableKey=PHONE_PRESSURE_ID.persistentKey)
+                if(registeredSourceId!=identity.id||value==null||measured==null) {
+                    registeredSourceId?.let { sourceRegistry.removeSources(setOf(it)) }
+                    registeredSourceId=null
+                }
+                if(value!=null&&measured!=null) {
+                    pressureHistory.record(identity.persistentKey,identity.displayName,value,measured,identity.id)
+                    pressureValue=observation(value,VesselDataSource.PHONE_BAROMETER,measured,null,"TYPE_PRESSURE")
+                    sourceRegistry.publish(VesselSourceCandidate(VesselMetricId.PRESSURE,value,identity,VesselSourceClass.PHONE_BAROMETER,
+                        receivedElapsedRealtime=measured,quality=VesselDataQuality.GOOD,provenance=VesselProvenance.PhoneSensor("Android pressure sensor")))
+                    registeredSourceId=identity.id
+                }
+            }
+        }
         scope.launch{nmeaFields.fields.collect{fields->
-            navigation.publishInputCandidates(fields.mapNotNull{NmeaFieldCandidateMapper.map(it,navigation.activeProfileStableId(),navigation.connectionGeneration())})
+            val candidates=fields.mapNotNull { NmeaFieldCandidateMapper.map(it,navigation.activeProfileStableId(),navigation.connectionGeneration()) }
+            navigation.publishInputCandidates(candidates)
+            // 每个真实连接/发送方均独立记录。字段列表重发旧值时由原测量身份去重。
+            candidates.filter { it.metric==VesselMetricId.PRESSURE }.forEach { candidate ->
+                (candidate.value as? Double)?.let { value ->
+                    pressureHistory.record(candidate.source.persistentKey,candidate.source.displayName,value,
+                        candidate.receivedElapsedRealtime,candidate.source.id,candidate.observedAtUtcMillis)
+                }
+            }
             fun numeric(semantic:NmeaFieldSemantic)=fields.filter{it.key.semantic==semantic&&it.value!=null}.maxByOrNull{it.receivedElapsedRealtime}
-            fun newlyMeasured(semantic:NmeaFieldSemantic)=fields.filter{it.key.semantic==semantic&&it.value!=null&&it.confirmation==NmeaMeasurementConfirmation.NUMERIC_MEASUREMENT}.maxByOrNull{it.receivedElapsedRealtime}
             fun textual(semantic:NmeaFieldSemantic)=fields.filter{it.key.semantic==semantic&&!it.text.isNullOrBlank()}.maxByOrNull{it.receivedElapsedRealtime}
             fun update(current:VesselObservation<Double>,semantic:NmeaFieldSemantic)=numeric(semantic)?.let{fieldObservation(it,it.value!!)}?:current
             rateOfTurn=update(rateOfTurn,NmeaFieldSemantic.ROT);rudderAngle=update(rudderAngle,NmeaFieldSemantic.RUDDER_ANGLE);waterTemperature=update(waterTemperature,NmeaFieldSemantic.WATER_TEMPERATURE);airTemperature=update(airTemperature,NmeaFieldSemantic.AIR_TEMPERATURE)
             currentSet=update(currentSet,NmeaFieldSemantic.CURRENT_SET_TRUE);currentDrift=update(currentDrift,NmeaFieldSemantic.CURRENT_DRIFT);crossTrackError=update(crossTrackError,NmeaFieldSemantic.CROSS_TRACK_ERROR);waypointBearing=update(waypointBearing,NmeaFieldSemantic.BEARING_TO_WAYPOINT);waypointDistance=update(waypointDistance,NmeaFieldSemantic.DISTANCE_TO_WAYPOINT);totalLog=update(totalLog,NmeaFieldSemantic.TOTAL_LOG);tripLog=update(tripLog,NmeaFieldSemantic.TRIP_LOG)
             numeric(NmeaFieldSemantic.AIR_PRESSURE)?.let{field->pressureValue=fieldObservation(field,field.value!!)}
-            newlyMeasured(NmeaFieldSemantic.AIR_PRESSURE)?.let{field->val sourceKey="nmea:${navigation.activeProfileStableId()}:field:${field.key.stableId}";pressureHistory.record(sourceKey,listOfNotNull("${field.key.talker}${field.key.sentenceType}",field.key.transducerName).joinToString(" · "),field.value!!)}
             numeric(NmeaFieldSemantic.APPARENT_WIND_ANGLE)?.let{apparentWindAngle=fieldObservation(it,it.value!!)};numeric(NmeaFieldSemantic.APPARENT_WIND_SPEED)?.let{apparentWindSpeed=fieldObservation(it,it.value!!)}
             numeric(NmeaFieldSemantic.TRUE_WIND_ANGLE)?.let{trueWindAngle=fieldObservation(it,it.value!!)};numeric(NmeaFieldSemantic.TRUE_WIND_SPEED)?.let{trueWindSpeed=fieldObservation(it,it.value!!)}
             numeric(NmeaFieldSemantic.TRUE_WIND_DIRECTION)?.let{trueWindDirection=fieldObservation(it,it.value!!)}
@@ -132,7 +156,7 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
         val headingSelection=registrySelection<Double>(VesselMetricId.HEADING_TRUE,headingPreference,pinnedHeadingSourceId,now)
         val selectedHeading=selectionObservation(headingSelection)?:VesselObservation<Double>()
         val freshCog=selectionObservation(registrySelection<Double>(VesselMetricId.COG,VesselSourcePreference.AUTO,null,now))?:VesselObservation<Double>()
-        val headingCog=if(selectedHeading.value!=null&&freshCog.value!=null){val difference=abs(((selectedHeading.value-freshCog.value+540.0)%360.0)-180.0);VesselObservation(difference,VesselDataSource.DERIVED,receivedElapsedRealtime=now,quality=if(selectedHeading.freshness==VesselDataFreshness.FRESH&&freshCog.freshness==VesselDataFreshness.FRESH)VesselDataQuality.GOOD else VesselDataQuality.DEGRADED,freshness=if(selectedHeading.freshness==VesselDataFreshness.FRESH&&freshCog.freshness==VesselDataFreshness.FRESH)VesselDataFreshness.FRESH else VesselDataFreshness.HELD,provenance="heading minus COG")}else VesselObservation()
+        val headingCog=if(selectedHeading.value!=null&&freshCog.value!=null){val difference=abs(((selectedHeading.value-freshCog.value+540.0)%360.0)-180.0);derivedReading(difference,listOf(selectedHeading,freshCog),"heading minus COG")}else VesselObservation()
         val classifiedDepth=selectionObservation(registrySelection<Double>(VesselMetricId.DEPTH,VesselSourcePreference.AUTO,null,now))?:VesselObservation<Double>();val classifiedPressure=selectionObservation(registrySelection<Double>(VesselMetricId.PRESSURE,VesselSourcePreference.AUTO,null,now))?:VesselObservation<Double>()
         // 中文：数值和基准必须来自同一个已选观测；旁路安全水深的基准不能替另一个来源背书。
         val selectedDepthReference=(classifiedDepth.reference as? VesselReference.Depth)?.reference
@@ -151,9 +175,9 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
         }else VesselObservation()
         fun pressureTrend(window:Long):VesselObservation<Double>{
             val sourceKey=classifiedPressure.sourceIdentity?.persistentKey?:return VesselObservation()
-            val value=pressureHistory.trend(sourceKey,window)?:return VesselObservation()
+            val value=pressureHistory.trend(sourceKey,window,classifiedPressure.sourceIdentity.id)?:return VesselObservation()
             val sourceName=classifiedPressure.sourceIdentity.displayName
-            return VesselObservation(value.changeHpa,classifiedPressure.source,receivedElapsedRealtime=classifiedPressure.receivedElapsedRealtime,quality=classifiedPressure.quality,freshness=classifiedPressure.freshness,provenance="$sourceName · linear pressure trend · coverage=${"%.0f".format(value.coverage*100)}%",sourceIdentity=classifiedPressure.sourceIdentity,sourceClass=classifiedPressure.sourceClass,provenanceDetail=classifiedPressure.provenanceDetail)
+            return VesselObservation(value.changeHpa,classifiedPressure.source,observedAtUtcMillis=value.observedAtUtcMillis,receivedElapsedRealtime=value.measuredElapsedRealtime,quality=classifiedPressure.quality,freshness=classifiedPressure.freshness,provenance="$sourceName · linear pressure trend · coverage=${"%.0f".format(value.coverage*100)}%",sourceIdentity=classifiedPressure.sourceIdentity,sourceClass=classifiedPressure.sourceClass,provenanceDetail=VesselProvenance.Derived("pressure trend ${value.continuityKey}",listOf(classifiedPressure.sourceIdentity)))
         }
         val freshSog=selectionObservation(registrySelection<Double>(VesselMetricId.SOG,VesselSourcePreference.AUTO,null,now))?:VesselObservation<Double>();val freshStw=selectionObservation(registrySelection<Double>(VesselMetricId.SPEED_THROUGH_WATER,VesselSourcePreference.AUTO,null,now))?:VesselObservation<Double>();val externalTws=selectionObservation(registrySelection<Double>(VesselMetricId.TRUE_WIND_SPEED,VesselSourcePreference.BOAT,null,now))?:VesselObservation<Double>();val externalTwa=selectionObservation(registrySelection<Double>(VesselMetricId.TRUE_WIND_ANGLE,VesselSourcePreference.BOAT,null,now))?:VesselObservation<Double>();val externalTwd=selectionObservation(registrySelection<Double>(VesselMetricId.TRUE_WIND_DIRECTION,VesselSourcePreference.BOAT,null,now))?:VesselObservation<Double>();val freshWaypointBearing=selectionObservation(registrySelection<Double>(VesselMetricId.WAYPOINT_BEARING,VesselSourcePreference.AUTO,null,now))?:VesselObservation<Double>();val freshAws=selectionObservation(registrySelection<Double>(VesselMetricId.APPARENT_WIND_SPEED,VesselSourcePreference.BOAT,null,now))?:VesselObservation<Double>();val freshAwa=selectionObservation(registrySelection<Double>(VesselMetricId.APPARENT_WIND_ANGLE,VesselSourcePreference.BOAT,null,now))?:VesselObservation<Double>()
         fun freshValue(value:VesselObservation<Double>)=value.value.takeIf{value.freshness==VesselDataFreshness.FRESH}
@@ -258,7 +282,7 @@ class VesselDataHub @Inject constructor(private val navigation:NavigationReposit
     }
     private fun derivedReading(value:Double,inputs:List<VesselObservation<Double>>,algorithm:String):VesselObservation<Double>{
         val identity=VesselSourceIdentity("derived:$algorithm:${inputs.mapNotNull{it.sourceIdentity?.id}.joinToString("|")}",sourceType=VesselSourceType.APP_DERIVED,displayName=algorithm)
-        return VesselObservation(value,VesselDataSource.DERIVED,receivedElapsedRealtime=inputs.mapNotNull{it.receivedElapsedRealtime}.minOrNull(),
+        return VesselObservation(value,VesselDataSource.DERIVED,observedAtUtcMillis=inputs.minByOrNull { it.receivedElapsedRealtime?:Long.MAX_VALUE }?.observedAtUtcMillis,receivedElapsedRealtime=inputs.mapNotNull{it.receivedElapsedRealtime}.minOrNull(),
             quality=if(inputs.all{it.quality==VesselDataQuality.GOOD})VesselDataQuality.GOOD else VesselDataQuality.DEGRADED,
             freshness=if(inputs.all{it.freshness==VesselDataFreshness.FRESH})VesselDataFreshness.FRESH else VesselDataFreshness.STALE,
             provenance=algorithm,sourceIdentity=identity,provenanceDetail=VesselProvenance.Derived(algorithm,inputs.flatMap{(it.provenanceDetail as? VesselProvenance.Derived)?.inputs?:listOfNotNull(it.sourceIdentity)}.distinctBy{it.id}))

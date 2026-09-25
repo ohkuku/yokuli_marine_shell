@@ -3,11 +3,14 @@ package com.yokuli.marine.core.design
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Transition
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -33,8 +36,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 
 /**
- * W10M Shell 过渡宿主：保留离场页面，当前默认短位移/连续缩放。
- * 旧 TURNSTILE/SWIVEL 只为已有显式调用兼容，不再作为页面默认动画。
+ * W10M Shell 过渡宿主：保留经典应用/Home 翻转与紧凑子页转场。
+ * 可见性、旋转与重内容就绪共用一个 Transition；业务页面不自行计时猜测动画结束。
  */
 @Composable
 fun <T> WpSurfaceTransitionHost(
@@ -45,23 +48,20 @@ fun <T> WpSurfaceTransitionHost(
     modifier: Modifier = Modifier,
     content: @Composable (surface: T, heavyContentReady: Boolean) -> Unit,
 ) {
-    val plan = WpMotionPolicy.resolve(transitionKind, reducedMotion, timings)
-    var hasRenderedInitialSurface by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { hasRenderedInitialSurface = true }
+    val plan = remember(transitionKind, reducedMotion, timings) { WpMotionPolicy.resolve(transitionKind, reducedMotion, timings) }
     val transition = updateTransition(targetState, label = "wp-surface-transition-state")
 
     transition.AnimatedContent(
         modifier = modifier,
-        transitionSpec = { plan.contentTransform() },
+        // Shell 页具有固定视口；默认 SizeTransform 会让原生地图/三维在转场中重复调整尺寸。
+        transitionSpec = { plan.contentTransform().using(null) },
     ) { surface ->
         val heavyContentReady = surface == transition.targetState && !transition.isRunning
         // 离场页保留自己的入场参数；下一次导航不能把旧页面重新从零旋转一遍。
         val entrancePlan = remember(surface) { plan }
-        val animateEntrance = remember(surface) { hasRenderedInitialSurface }
         WpPerspectiveEntrance(
-            motionKey = surface as Any,
+            transition = this.transition,
             plan = entrancePlan,
-            animate = animateEntrance,
         ) {
             Box(Modifier.testTag("shell-transition-plane")) {
                 content(surface, heavyContentReady)
@@ -91,25 +91,19 @@ private fun WpMotionPlan.contentTransform(): ContentTransform = when (family) {
 
 @Composable
 private fun WpPerspectiveEntrance(
-    motionKey: Any,
+    transition: Transition<EnterExitState>,
     plan: WpMotionPlan,
-    animate: Boolean,
     content: @Composable () -> Unit,
 ) {
-    val progress = remember(motionKey) { Animatable(if (animate) 0f else 1f) }
+    // 几何与透明度都属于 AnimatedContent 的同一个帧时钟。取消独立 LaunchedEffect + snapTo，
+    // 这样中途返回不会重新从零播放，heavyContentReady 也会等待真实旋转收敛。
+    val progress = transition.animateFloat(
+        transitionSpec = { tween(plan.targetEntranceMillis + plan.settleMillis,
+            delayMillis = plan.targetEntranceDelayMillis, easing = W10MobileMotion.EntranceEasing) },
+        label = "wp-surface-geometry",
+    ) { state -> if (state == EnterExitState.PreEnter) 0f else 1f }
     val density = LocalDensity.current.density
-    var measuredSize by remember(motionKey) { mutableStateOf(IntSize.Zero) }
-    LaunchedEffect(motionKey, animate, plan) {
-        if (!animate || plan.durationMillis == 0) {
-            progress.snapTo(1f)
-        } else {
-            progress.snapTo(0f)
-            progress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(plan.durationMillis, easing = W10MobileMotion.EntranceEasing),
-            )
-        }
-    }
+    var measuredSize by remember { mutableStateOf(IntSize.Zero) }
     val perspectiveEnabled = plan.family == WpMotionFamily.TURNSTILE || plan.family == WpMotionFamily.SWIVEL
     Box(
         Modifier
@@ -123,7 +117,6 @@ private fun WpPerspectiveEntrance(
                     scaleY = scaleX
                 }
                 if (perspectiveEnabled) {
-                    alpha = .32f + .68f * progress.value
                     rotationX = plan.initialRotationXDegrees * remaining
                     rotationY = plan.initialRotationYDegrees * remaining
                     translationX = measuredSize.width * plan.initialTranslationXFraction * remaining
@@ -195,16 +188,14 @@ fun Modifier.wpTilt(
             }
         }
     return tracked.graphicsLayer {
-        val plan = WpPressPolicy.resolve(
-            normalizedX = if (measuredSize.width > 0) pointerPosition.x / measuredSize.width else .5f,
-            normalizedY = if (measuredSize.height > 0) pointerPosition.y / measuredSize.height else .5f,
-            pressProgress = pressProgress,
-            maximumDegrees = tilt,
-        )
-        rotationX = plan.rotationXDegrees
-        rotationY = plan.rotationYDegrees
-        scaleX = plan.scale
-        scaleY = plan.scale
+        // 直接在绘制层消费按压进度；不在每帧为每个磁贴分配 WpPressPlan。
+        val progress = pressProgress.coerceIn(0f, 1f)
+        val horizontal = (if (measuredSize.width > 0) pointerPosition.x / measuredSize.width else .5f).coerceIn(0f, 1f) - .5f
+        val vertical = (if (measuredSize.height > 0) pointerPosition.y / measuredSize.height else .5f).coerceIn(0f, 1f) - .5f
+        rotationX = -vertical * tilt * 2f * progress
+        rotationY = horizontal * tilt * 2f * progress
+        scaleX = 1f - .015f * progress
+        scaleY = scaleX
         if (tilt > 0f) cameraDistance = 12f * density
     }
 }

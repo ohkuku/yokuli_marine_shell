@@ -158,8 +158,12 @@ fun OsExperience(os: OsStore) {
         LocalConfiguration provides configuration,
     ) {
         var retainedQuery by remember { mutableStateOf("") }
+        val retainedSearch = remember { RetainedSearchResults() }
         val query = (state.surface as? ShellVisualSurface.Search)?.query
         LaunchedEffect(query) { if (query != null) retainedQuery = query }
+        val searchResults = if (query != null) searchContributions(os, query).also { current ->
+            SideEffect { retainedSearch.values = current }
+        } else retainedSearch.values
         val launcher = productionLauncherUiState(
             catalog = state.catalog,
             document = state.start.document,
@@ -172,7 +176,8 @@ fun OsExperience(os: OsStore) {
                 // 应用列表/搜索另行只显示根入口，未固定样式不会启动动画。
                 shell.presets.map {preset -> presetTilePresentation(os,preset,
                     animate=!shadeBlocked && state.surface==ShellVisualSurface.Desktop && state.start.interaction is StartInteractionState.Idle && lifecycleState.isAtLeast(Lifecycle.State.RESUMED) && state.start.document.placements.any {it.entryId==preset.entryId}) },
-            searchResults = searchContributions(os, query ?: retainedQuery),
+            // 搜索退出时保留输入草稿，但不让旧查询继续订阅 AIS 并重组整个 Shell。
+            searchResults = searchResults,
         )
         val dispatch = shell::dispatch
         val launcherAction: (LauncherUiAction) -> Unit = { action ->
@@ -383,6 +388,9 @@ private fun searchContributions(os: OsStore, query: String): List<LauncherSearch
         LauncherSearchResultContribution("route-${it.id}", it.name, os.formatDistance(it.length), LaunchToken("route:${it.id}"))
     }
 }
+
+/** 只保留搜索退场画面；离开后不继续订阅目标或重建结果。 */
+private class RetainedSearchResults(var values: List<LauncherSearchResultContribution> = emptyList())
 
 private class ShellLanguageContext(base: Context, private val localizedResources: Resources) : ContextWrapper(base) {
     override fun getResources(): Resources = localizedResources

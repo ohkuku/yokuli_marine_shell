@@ -40,12 +40,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
@@ -94,6 +94,8 @@ import com.yokuli.shell.engine.layout.GridCell
 import com.yokuli.shell.engine.layout.StartDocument
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 // DERIVED_UNVERIFIED product feedback, not an observed WP8 measurement.
 private const val DERIVED_REVEAL_SCALE = .06f
@@ -137,6 +139,8 @@ fun YokuliStartScreen(
     val latestAction by rememberUpdatedState(onAction)
     val revealPulse = remember { Animatable(0f) }
     var localTileDrag by remember { mutableStateOf<LocalTileDrag?>(null) }
+    // 连续坐标只供拖动与 placement 读取；LocalTileDrag 仅发布开始、跨格和结束等离散变化。
+    var pointerCoordinates by remember { mutableStateOf<TileDragCoordinates?>(null) }
     var nextDragSessionId by remember { mutableStateOf(0L) }
     var viewportCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val tileBounds = remember { mutableStateMapOf<TileInstanceId, Rect>() }
@@ -212,7 +216,7 @@ fun YokuliStartScreen(
         val gridHeight = if (rows == 0) 0.dp else cell * rows + seam * (rows - 1)
         val selectedPlacement = packedDocument.tiles.firstOrNull { it.entry.tileId == selectedTile }
         val selectedEntry = selectedPlacement?.entry?.entryId?.let(byId::get)
-        val selectedBounds = selectedTile?.let(tileBounds::get)
+        val selectedBounds = if (editing && localTileDrag == null) selectedTile?.let(tileBounds::get) else null
         val compact = selectedPlacement?.entry?.size?.let { it.columns == 1 && it.rows == 1 } == true
         val controls = if (editing && localTileDrag == null && selectedBounds != null) {
             TileEditControlGeometry.resolve(
@@ -226,36 +230,44 @@ fun YokuliStartScreen(
         fun updateDrag(sessionId: Long, position: Offset? = null) {
             val current = localTileDrag?.takeIf { it.sessionId == sessionId } ?: return
             if (current.finishing || current.sourceDocument != latestDocument) return
-            val coordinates = position?.let { current.coordinates.movedTo(ShellOffset(it.x, it.y)) } ?: current.coordinates
+            val previousCoordinates = pointerCoordinates ?: current.coordinates
+            val coordinates = position?.let { previousCoordinates.movedTo(ShellOffset(it.x, it.y)) } ?: previousCoordinates
+            pointerCoordinates = coordinates
             val hasMoved = current.hasMoved || coordinates.hasMovedBeyond(touchSlop)
             if (!hasMoved) {
-                localTileDrag = current.copy(coordinates = coordinates)
                 return
             }
             val offset = coordinates.contentOffset(scroll.value.toFloat())
             val target = hysteresis.resolve(current.originCell, offset, pitchPx, current.targetCell)
-            val index = AdaptiveTilePacker.insertionIndexForCell(current.sourceDocument, geometry.columns, target, current.tileId)
-            localTileDrag = current.copy(coordinates = coordinates, hasMoved = true, targetCell = target, insertionIndex = index)
+            val index = if (target == current.targetCell) current.insertionIndex
+                else AdaptiveTilePacker.insertionIndexForCell(current.sourceDocument, geometry.columns, target, current.tileId)
+            if (!current.hasMoved || target != current.targetCell || index != current.insertionIndex)
+                localTileDrag = current.copy(hasMoved = true, targetCell = target, insertionIndex = index)
             if (target != current.targetCell) {
                 latestAction(LauncherUiAction.TileCellTargetChanged(current.tileId, target, geometry.columns))
             }
         }
         val latestUpdateDrag by rememberUpdatedState<(Long, Offset?) -> Unit>({ session, point -> updateDrag(session, point) })
-        val scrollVelocity = localTileDrag?.takeIf { it.hasMoved && !it.finishing }
-            ?.let { autoScroll.velocity(it.coordinates.pointer.y, availableHeightPx.toFloat()) } ?: 0f
-        LaunchedEffect(localTileDrag?.sessionId, pitchPx, availableHeightPx, scrollVelocity, scroll.maxValue) {
-            if (scrollVelocity == 0f) return@LaunchedEffect
+        LaunchedEffect(localTileDrag?.sessionId, pitchPx, availableHeightPx, scroll.maxValue) {
             val session = localTileDrag?.sessionId ?: return@LaunchedEffect
-            var lastFrame = withFrameNanos { it }
-            while (true) {
-                val frame = withFrameNanos { it }
-                val current = localTileDrag?.takeIf { it.sessionId == session && !it.finishing } ?: break
-                val elapsed = (frame - lastFrame).coerceIn(0L, 50_000_000L) / 1_000_000_000f
-                lastFrame = frame
-                val requested = autoScroll.velocity(current.coordinates.pointer.y, availableHeightPx.toFloat()) * elapsed
-                if (requested == 0f || scroll.scrollBy(requested) == 0f) break
-                // Re-read after suspension; generation matching prevents resurrecting a cancelled gesture.
-                latestUpdateDrag(session, null)
+            snapshotFlow {
+                val current = localTileDrag?.takeIf { it.sessionId == session && it.hasMoved && !it.finishing }
+                val velocity = current?.let { autoScroll.velocity((pointerCoordinates ?: it.coordinates).pointer.y, availableHeightPx.toFloat()) } ?: 0f
+                when { velocity < 0f -> -1; velocity > 0f -> 1; else -> 0 }
+            }.distinctUntilChanged().collectLatest { direction ->
+                if (direction == 0) return@collectLatest
+                var lastFrame = withFrameNanos { it }
+                while (true) {
+                    val frame = withFrameNanos { it }
+                    val current = localTileDrag?.takeIf { it.sessionId == session && !it.finishing } ?: break
+                    val elapsed = (frame - lastFrame).coerceIn(0L, 50_000_000L) / 1_000_000_000f
+                    lastFrame = frame
+                    val coordinates = pointerCoordinates ?: current.coordinates
+                    val requested = autoScroll.velocity(coordinates.pointer.y, availableHeightPx.toFloat()) * elapsed
+                    if (requested == 0f || scroll.scrollBy(requested) == 0f) break
+                    // 速度大小随手指连续变化，不重启每帧时钟；代次仍防止取消后恢复旧拖动。
+                    latestUpdateDrag(session, null)
+                }
             }
         }
         LaunchedEffect(state.reveal?.transactionId, pitchPx, availableHeightPx) {
@@ -304,6 +316,7 @@ fun YokuliStartScreen(
                             origin.cell, origin.cell, AdaptiveTilePacker.insertionIndexOf(source, tileId), source,
                             sessionId = session, hasMoved = direct,
                         )
+                        pointerCoordinates = localTileDrag?.coordinates
                         latestAction(LauncherUiAction.BeginTileDrag(tileId, dragStart.id.value, ShellOffset(grab.x, grab.y)))
                         latestUpdateDrag(session, dragStart.position)
                         var completed = false
@@ -354,7 +367,9 @@ fun YokuliStartScreen(
                         document = state.document, proposedDocument = proposedDocument, geometry = geometry,
                         floatingTileId = renderDrag?.tileId ?: dragging?.tileId,
                         selectedTileId = selectedTile,
-                        floatingOffsetPx = renderDrag?.coordinates?.contentOffset(scroll.value.toFloat()) ?: ShellOffset(0f, 0f),
+                        floatingOffsetProvider = {
+                            renderDrag?.let { (pointerCoordinates ?: it.coordinates).contentOffset(scroll.value.toFloat()) } ?: ShellOffset(0f, 0f)
+                        },
                         modifier = Modifier.fillMaxSize(),
                     ) { placement ->
                         val entry = byId[placement.entryId] ?: return@WpSpatialStartLayout
@@ -365,7 +380,7 @@ fun YokuliStartScreen(
                             editing = editing, selected = selectedTile == placement.tileId,
                             canResize = entry.descriptor.supportedSizes.size > 1,
                             revealing = state.reveal?.tileId == placement.tileId,
-                            revealProgress = if (state.reveal?.tileId == placement.tileId) revealPulse.value else 0f,
+                            revealProgress = { if (state.reveal?.tileId == placement.tileId) revealPulse.value else 0f },
                             onClick = {
                                 if (editing) onAction(LauncherUiAction.SelectStartTile(placement.tileId))
                                 else onAction(LauncherUiAction.Open(entry.descriptor.launchToken))
@@ -450,7 +465,7 @@ private suspend fun AwaitPointerEventScope.awaitSelectedDragSlop(down: PointerIn
 @Composable
 private fun WpTile(
     tileId: TileInstanceId, entry: LauncherEntryUiState, tileSize: MarineTileSize, width: Dp, height: Dp,
-    editing: Boolean, selected: Boolean, canResize: Boolean, revealing: Boolean, revealProgress: Float,
+    editing: Boolean, selected: Boolean, canResize: Boolean, revealing: Boolean, revealProgress: () -> Float,
     onClick: () -> Unit, onLongClick: () -> Unit, onUnpin: () -> Unit, onResize: () -> Unit,
     onMoveBy: (Int, Int) -> Unit, modifier: Modifier = Modifier,
 ) {
@@ -467,8 +482,10 @@ private fun WpTile(
         add(CustomAccessibilityAction(stringResource(R.string.move_tile_down)) { onMoveBy(0, 1); true })
     } else emptyList()
     Box(
-        modifier.width(width).height(height).scale(scale * (1f + revealProgress * DERIVED_REVEAL_SCALE))
-            .alpha(if (editing && !selected) .55f else 1f).testTag(tileId.value)
+        modifier.width(width).height(height).graphicsLayer {
+                scaleX = scale * (1f + revealProgress() * DERIVED_REVEAL_SCALE); scaleY = scaleX
+                alpha = if (editing && !selected) .55f else 1f
+            }.testTag(tileId.value)
             .semantics {
                 wpTileAccentName = colors.spec.accent.displayName
                 contentDescription = entry.title
@@ -486,7 +503,8 @@ private fun WpTile(
                 LauncherTileRenderContext(tileSize, if (LocalStartBackdrop.current.image != null && LocalStartBackdrop.current.mode != StartBackdropMode.NONE && LocalStartBackdrop.current.tileOpacity < .7f) androidx.compose.ui.graphics.Color.White else colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = !editing),
             )
         }
-        if (revealing) Box(Modifier.fillMaxSize().border(3.dp, colors.onAccent).alpha(revealProgress.coerceIn(0f, 1f)).testTag("tile-reveal-highlight"))
+        if (revealing) Box(Modifier.fillMaxSize().graphicsLayer { alpha = revealProgress().coerceIn(0f, 1f) }
+            .border(3.dp, colors.onAccent).testTag("tile-reveal-highlight"))
     }
 }
 

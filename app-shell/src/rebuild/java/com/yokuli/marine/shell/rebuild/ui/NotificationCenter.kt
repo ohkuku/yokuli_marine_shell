@@ -33,7 +33,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.dismiss
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import com.yokuli.marine.shell.rebuild.*
@@ -51,7 +50,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlin.math.roundToInt
 
 /** 顶部轻提示只占用固定系统栏；完整通知由底部通知键打开，不抢占系统下拉手势。 */
 @Composable internal fun SystemStatusBar(os: OsStore, metrics: ShellWindowMetrics) {
@@ -127,8 +125,11 @@ import kotlin.math.roundToInt
     }
     LaunchedEffect(list) {
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }.collect { (index, offset) ->
-            shade.presentation = shade.presentation.copy(listIndex = index, listOffset = offset)
+            shade.rememberListPosition(index, offset)
         }
+    }
+    DisposableEffect(list, shade) {
+        onDispose { shade.rememberListPosition(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset) }
     }
     // 只把稳定展开且至少半行可见400ms的记录标为已读。动画、滑过、离屏消息不消费。
     LaunchedEffect(list, shade, store) {
@@ -355,6 +356,9 @@ import kotlin.math.roundToInt
     var width by remember { mutableIntStateOf(1) }
     var motion by remember { mutableStateOf<Job?>(null) }
     var submitting by remember(item.id) { mutableStateOf(false) }
+    val revealAction by remember(item.id) { derivedStateOf { kotlin.math.abs(offset) > 1f } }
+    val revealFromStart by remember(item.id) { derivedStateOf { offset > 0f } }
+    val atRest by remember(item.id) { derivedStateOf { kotlin.math.abs(offset) < 4f } }
     val activate by rememberUpdatedState(onActivate)
     val removeNotice by rememberUpdatedState(onDismiss)
     val drag = rememberDraggableState { delta -> offset = (offset + delta).coerceIn(-width.toFloat(), width.toFloat()) }
@@ -364,19 +368,27 @@ import kotlin.math.roundToInt
             if (os.chinese) Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH).format(Date(item.updatedAt))
     }
     val pending = submitting || item.id in os.notifications.pendingIds
+    DisposableEffect(item.id) { onDispose { motion?.cancel() } }
+    fun returnToRest(velocity: Float = 0f) {
+        motion?.cancel()
+        motion = scope.launch {
+            val ownJob = coroutineContext[Job]
+            try {
+                Animatable(offset).animateTo(0f, spring(dampingRatio = .95f, stiffness = 480f), initialVelocity = velocity) { offset = value }
+            } finally { if (motion === ownJob) motion = null }
+        }
+    }
     fun dismiss() {
         if (!item.dismissible || pending) return
         submitting = true
         removeNotice { success ->
             submitting = false
-            if (!success) motion = scope.launch {
-                Animatable(offset).animateTo(0f, spring(dampingRatio = 1f, stiffness = 480f)) { offset = value }
-            }
+            if (!success) returnToRest()
         }
     }
     Box(modifier.fillMaxWidth().onSizeChanged { width = it.width.coerceAtLeast(1) }.clipToBounds()) {
-        if (kotlin.math.abs(offset) > 1f) Row(Modifier.matchParentSize().background(c.panel).padding(horizontal = 14.dp),
-            horizontalArrangement = if (offset > 0f) Arrangement.Start else Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        if (revealAction) Row(Modifier.matchParentSize().background(c.panel).padding(horizontal = 14.dp),
+            horizontalArrangement = if (revealFromStart) Arrangement.Start else Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             Glyph("close", Modifier.size(22.dp), c.accent)
             Label(when {
                 pending && os.notifications.hasUnknownCommands -> os.t("结果未确认", "result unconfirmed")
@@ -384,21 +396,21 @@ import kotlin.math.roundToInt
                 else -> os.t("清除记录", "clear record")
             }, 14, c.accentText, Modifier.padding(start = 8.dp))
         }
-        Column(Modifier.fillMaxWidth().offset { IntOffset(offset.roundToInt(), 0) }.background(c.panel)
+        Column(Modifier.fillMaxWidth().graphicsLayer { translationX = offset }.background(c.panel)
             .draggable(drag, Orientation.Horizontal, enabled = item.dismissible && !pending,
-                startDragImmediately = motion?.isActive == true, onDragStarted = { motion?.cancel() }, onDragStopped = { velocity ->
+                startDragImmediately = motion?.isActive == true, onDragStarted = { motion?.cancel(); motion = null }, onDragStopped = { velocity ->
                 val minimum = with(density) { 28.dp.toPx() }; val speed = with(density) { 850.dp.toPx() }
                 val reversing = velocity * offset < 0f && kotlin.math.abs(velocity) >= speed
                 val remove = !reversing && (kotlin.math.abs(offset) >= width * .35f ||
                     kotlin.math.abs(offset) >= minimum && kotlin.math.abs(velocity) >= speed && velocity * offset > 0f)
                 if (remove) dismiss()
-                else motion = scope.launch { Animatable(offset).animateTo(0f, spring(dampingRatio = .95f, stiffness = 480f), initialVelocity = velocity) { offset = value } }
+                else returnToRest(velocity)
             })
             .semantics(mergeDescendants = true) {
                 contentDescription = (item.app?.let(os::title) ?: os.t("系统", "system")) + ". " + item.title(os) + ". " + body
                 if (item.dismissible && !pending) dismiss { dismiss(); true }
             }
-            .clickable(enabled = kotlin.math.abs(offset) < 4f && !pending, onClickLabel = os.t("查看通知", "view notification")) { activate() }
+            .clickable(enabled = atRest && !pending, onClickLabel = os.t("查看通知", "view notification")) { activate() }
             .padding(vertical = 10.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (!item.read) Box(Modifier.size(6.dp).background(c.accent))

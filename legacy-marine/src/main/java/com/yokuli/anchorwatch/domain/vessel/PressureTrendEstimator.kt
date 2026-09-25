@@ -1,6 +1,8 @@
 package com.yokuli.anchorwatch.domain.vessel
 
-data class PressureTrend(val changeHpa:Double,val spanMillis:Long,val coverage:Double)
+data class PressureTrend(val changeHpa:Double,val spanMillis:Long,val coverage:Double,
+    /** 中文：趋势由截至此实际观测的历史计算；没有新样本时结果和时间均保持不变。 */
+    val observedAtUtcMillis:Long?=null,val measuredElapsedRealtime:Long?=null,val continuityKey:String?=null)
 
 /** Bounded, down-sampled pressure history used only for display/report observations. */
 class PressureTrendEstimator(
@@ -19,7 +21,7 @@ class PressureTrendEstimator(
         // so crossing a UTC-minute boundary always creates new trend evidence.
         if(last!=null&&elapsed<last.elapsed)return
         if(last!=null&&Math.floorDiv(elapsed,bucketMillis)==Math.floorDiv(last.elapsed,bucketMillis)){
-            points.removeLast()
+            return
         }
         points.addLast(Point(elapsed,hpa))
         val cutoff=elapsed-retentionMillis
@@ -32,7 +34,7 @@ class PressureTrendEstimator(
         if(window.size<2)return null
         val span=window.last().elapsed-window.first().elapsed
         val expectedBuckets=(windowMillis.toDouble()/bucketMillis).coerceAtLeast(1.0)
-        val coverage=(window.map{(it.elapsed-(nowElapsed-windowMillis))/bucketMillis}.distinct().size/expectedBuckets).coerceIn(0.0,1.0)
+        val coverage=(window.map{Math.floorDiv(it.elapsed,bucketMillis)}.distinct().size/expectedBuckets).coerceIn(0.0,1.0)
         if(span<windowMillis*.8||coverage<.70)return null
         val origin=window.first().elapsed.toDouble();val xs=window.map{(it.elapsed-origin)/1000.0};val xMean=xs.average();val yMean=window.map{it.hpa}.average()
         val denominator=xs.sumOf{(it-xMean)*(it-xMean)}

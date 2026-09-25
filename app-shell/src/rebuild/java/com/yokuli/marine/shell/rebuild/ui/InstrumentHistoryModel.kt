@@ -6,14 +6,17 @@ import com.yokuli.marine.shell.rebuild.data.Reading
 import kotlin.math.*
 
 /** 历史表达按量的物理意义选择；不能把跨越北向的方位或累计计数画成普通折线。 */
-internal enum class InstrumentHistoryKind { DIRECTION, RANGE, DEPTH, DEVIATION, WEATHER, COUNTER }
+internal enum class InstrumentHistoryKind { DIRECTION, BEARING, RANGE, DEPTH, DEVIATION, WEATHER, COUNT, COUNTER }
 
 internal fun instrumentHistoryKind(key: String): InstrumentHistoryKind = when (key) {
-    "heading", "cog", "twd", "current_set", "waypoint_bearing" -> InstrumentHistoryKind.DIRECTION
+    "heading", "cog", "waypoint_bearing" -> InstrumentHistoryKind.BEARING
+    "twd", "current_set" -> InstrumentHistoryKind.DIRECTION
     "depth", "ukc" -> InstrumentHistoryKind.DEPTH
-    "heel", "pitch", "rudder", "awa", "twa", "xte", "roll_rate", "pitch_rate", "rot", "vmg", "vmc" -> InstrumentHistoryKind.DEVIATION
-    "pressure", "pressure_1h", "pressure_3h", "pressure_6h", "air", "water", "temperature" -> InstrumentHistoryKind.WEATHER
-    "total_log", "trip_log", "impacts" -> InstrumentHistoryKind.COUNTER
+    "heel", "pitch", "rudder", "awa", "twa", "xte", "roll_rate", "pitch_rate", "rot", "vmg", "vmc",
+    "pressure_1h", "pressure_3h", "pressure_6h" -> InstrumentHistoryKind.DEVIATION
+    "pressure", "air", "water", "temperature" -> InstrumentHistoryKind.WEATHER
+    "impacts" -> InstrumentHistoryKind.COUNT
+    "total_log", "trip_log" -> InstrumentHistoryKind.COUNTER
     else -> InstrumentHistoryKind.RANGE
 }
 
@@ -63,16 +66,20 @@ private fun sameHistoryRun(a: Reading, b: Reading): Boolean =
 
 internal fun buildInstrumentHistory(os: OsStore, key: String, readings: List<Reading>, now: Long, minutes: Int): InstrumentHistoryFrame {
     val kind = instrumentHistoryKind(key)
-    val span = minutes * 60_000L
+    val span = minutes.coerceIn(1, 15) * 60_000L
     val start = now - span
     val points = readings.asSequence()
         .filter { it.elapsed in maxOf(0L, start)..now && it.value.isFinite() && it.quality != VesselDataQuality.UNKNOWN }
         .sortedBy { it.elapsed }
         .map { reading ->
             // 风角用船体相对的有符号半圈；不把 350° 误当成右侧大角度。
-            val canonical = if (key == "awa" || key == "twa") signedHistoryAngle(reading.value) else reading.value
+            val canonical = when {
+                key == "awa" || key == "twa" -> signedHistoryAngle(reading.value)
+                kind == InstrumentHistoryKind.BEARING || kind == InstrumentHistoryKind.DIRECTION -> normalizedHistoryAngle(reading.value)
+                else -> reading.value
+            }
             HistoryPoint(reading, os.displayMetricValue(key, canonical), ((reading.elapsed - start).toDouble() / span).toFloat())
-        }.toList()
+        }.filter { it.value.isFinite() }.toList()
     val count = 36
     val breaks = mutableListOf<Float>()
     var runStart = 0
@@ -113,11 +120,12 @@ internal fun buildInstrumentHistory(os: OsStore, key: String, readings: List<Rea
     val deltaUnit = abs(os.displayMetricValue(key, canonicalStep) - os.displayMetricValue(key, 0.0)).coerceAtLeast(.000001)
     val padding = ((high - low) * .12).coerceAtLeast(deltaUnit)
     val bounds = when (kind) {
-        InstrumentHistoryKind.DIRECTION -> 0.0 to 360.0
+        InstrumentHistoryKind.DIRECTION, InstrumentHistoryKind.BEARING -> 0.0 to 360.0
         InstrumentHistoryKind.DEPTH -> minOf(0.0, low - if (low < 0) padding else 0.0) to maxOf(high + padding, deltaUnit)
         InstrumentHistoryKind.DEVIATION -> maxOf(abs(low), abs(high), deltaUnit).times(1.15).let { -it to it }
         InstrumentHistoryKind.COUNTER -> 0.0 to maxOf(increments.maxOrNull() ?: 0.0, deltaUnit).times(1.15)
-        InstrumentHistoryKind.RANGE -> minOf(0.0, low - if (low < 0) padding else 0.0) to maxOf(high + padding, deltaUnit)
+        InstrumentHistoryKind.COUNT -> 0.0 to if(high<=1.0)1.0 else ceil(high/3.0)*3.0
+        InstrumentHistoryKind.RANGE -> if(key=="motion")0.0 to 100.0 else minOf(0.0, low - if (low < 0) padding else 0.0) to maxOf(high + padding, deltaUnit)
         InstrumentHistoryKind.WEATHER -> low - padding to high + padding
     }
     val latestRun = points.drop(runStart)

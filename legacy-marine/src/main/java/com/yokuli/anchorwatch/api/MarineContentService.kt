@@ -23,7 +23,9 @@ data class MarineLibrarySnapshot(
 
 /** 持久气压历史只描述原始来源的观测；查看其它来源不改变实时采用策略。 */
 data class MarinePressureSource(val key: String, val name: String, val lastObservedUtcMillis: Long)
-data class MarinePressurePoint(val observedUtcMillis: Long, val pressureHpa: Double)
+data class MarinePressurePoint(val observedUtcMillis: Long, val pressureHpa: Double,
+    /** 中文：已落盘连续段；null 表示旧数据没有来源代次/时基证据，只能画独立点。 */
+    val continuityKey:String?=null)
 
 /** 照片导入仍由已有媒体仓库验证格式、尺寸和文件归属；调用者拿不到数据库或仓库。 */
 interface MarinePhotoService {
@@ -40,6 +42,8 @@ interface MarinePhotoService {
 interface MarineContentService {
     val library: Flow<MarineLibrarySnapshot>
     val photos: MarinePhotoService
+    /** 实际历史存储故障；非 null 时页面明确显示读取/保存仍待恢复。 */
+    val pressureStorageIssue: Flow<String?>
     /** 现有 pressure_history 的只读投影；时间为 UTC，绝不冒充实时单调时钟读数。 */
     fun observePressureSources(sinceUtcMillis: Long, untilUtcMillis: Long): Flow<List<MarinePressureSource>>
     fun observePressureHistory(sourceKey: String, sinceUtcMillis: Long, untilUtcMillis: Long): Flow<List<MarinePressurePoint>>

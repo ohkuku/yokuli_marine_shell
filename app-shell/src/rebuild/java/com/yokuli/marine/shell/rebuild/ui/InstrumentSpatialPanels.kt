@@ -1,14 +1,12 @@
 package com.yokuli.marine.shell.rebuild.ui
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -64,12 +62,14 @@ import kotlin.math.*
 
 @Composable private fun NavigationDirections(os: OsStore, data: VesselDataSnapshot, now: Long, onMetric: (InstrumentTileId) -> Unit) {
     val c = LocalMetro.current
+    val hullPath = remember { Path() }
+    val dash = rememberInstrumentDash()
     val heading = data.headingTrueDegrees.liveNumber()
     val course = data.cogTrueDegrees.liveNumber()
     val bearing = data.waypointBearingTrueDegrees.liveNumber()
-    val headingAngle = spatialBearing(data.headingTrueDegrees)
-    val courseAngle = spatialBearing(data.cogTrueDegrees)
-    val targetAngle = spatialBearing(data.waypointBearingTrueDegrees)
+    val headingAngle by rememberInstrumentMotion(data.headingTrueDegrees, data.headingTrueDegrees.liveNumber(), circular = true)
+    val courseAngle by rememberInstrumentMotion(data.cogTrueDegrees, data.cogTrueDegrees.liveNumber(), circular = true)
+    val targetAngle by rememberInstrumentMotion(data.waypointBearingTrueDegrees, data.waypointBearingTrueDegrees.liveNumber(), circular = true)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Label(os.t("船朝哪，往哪走", "heading & movement"), 23)
@@ -85,13 +85,14 @@ import kotlin.math.*
                     spatialRadial(center, r, degree.toFloat()), spatialRadial(center, r * if (degree % 90 == 0) .88f else .96f, degree.toFloat()), 1.dp.toPx())
                 if (bearing != null) {
                     val end = spatialRadial(center, r * .94f, targetAngle)
-                    drawLine(c.muted, center, end, 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())))
+                    drawLine(c.muted, center, end, 1.5.dp.toPx(), pathEffect = dash)
                     drawCircle(c.fg, 4.dp.toPx(), end, style = Stroke(1.5.dp.toPx()))
                 }
                 if (course != null) spatialArrow(center, spatialRadial(center, r * .83f, courseAngle), c.fg, 2.dp.toPx())
                 if (heading != null) rotate(headingAngle, center) {
-                    drawPath(spatialHull(center, r * .27f, r * .49f), c.accent.copy(alpha = .18f))
-                    drawPath(spatialHull(center, r * .27f, r * .49f), c.accent, style = Stroke(2.dp.toPx()))
+                    val hull = spatialHull(center, r * .27f, r * .49f, hullPath)
+                    drawPath(hull, c.accent.copy(alpha = .18f))
+                    drawPath(hull, c.accent, style = Stroke(2.dp.toPx()))
                     drawLine(c.accent, Offset(center.x, center.y - r * .5f), Offset(center.x, center.y - r * .72f), 2.dp.toPx())
                 } else drawCircle(c.muted.copy(alpha = .5f), 5.dp.toPx(), center, style = Stroke(1.5.dp.toPx()))
             }
@@ -129,7 +130,7 @@ import kotlin.math.*
     val c = LocalMetro.current
     val number = observation.displayNumber()
     val readingColor = if (observation.displayIsLive()) color else c.muted
-    val ratio by animateFloatAsState((number?.let { abs(os.speedValue(it)) / extent } ?: 0.0).toFloat().coerceIn(0f, 1f), tween(260), label = "speed comparison")
+    val ratio by rememberInstrumentMotion(observation, number?.let { (abs(os.speedValue(it)) / extent).coerceIn(0.0, 1.0) }, scaleKey = os.speedUnitLabel to extent)
     Column(Modifier.fillMaxWidth().heightIn(min = 58.dp).clickable(role = Role.Button, onClick = onClick), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Label(name, 16, c.muted, Modifier.weight(1f))
@@ -151,7 +152,7 @@ import kotlin.math.*
     val live = observation.liveNumber()
     val displayed = os.displayMetricValue("xte", value)
     val extent = spatialScale(abs(displayed).coerceAtLeast(.01))
-    val fraction by animateFloatAsState(((live?.let { os.displayMetricValue("xte", it) } ?: 0.0) / extent).toFloat().coerceIn(-1f, 1f), tween(280), label = "cross track")
+    val fraction by rememberInstrumentMotion(observation, live?.let { (os.displayMetricValue("xte", it) / extent).coerceIn(-1.0, 1.0) }, scaleKey = os.distanceUnitLabel to extent)
     Column(Modifier.fillMaxWidth().heightIn(min = 76.dp).clickable(role = Role.Button) { onMetric(InstrumentTileId.CROSS_TRACK_ERROR) }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Label(os.t("航线偏差", "cross-track deviation"), 16, c.muted)
@@ -181,10 +182,12 @@ import kotlin.math.*
     os: OsStore, data: VesselDataSnapshot, now: Long, onMetric: (InstrumentTileId) -> Unit,
 ) {
     val c = LocalMetro.current
+    val hullPath = remember { Path() }
+    val dash = rememberInstrumentDash()
     val apparent = data.apparentWind.angleDegrees.liveNumber()
     val trueAngle = data.trueWind.angleDegrees.liveNumber()
-    val apparentAngle = spatialBearing(data.apparentWind.angleDegrees)
-    val trueAngleAnimated = spatialBearing(data.trueWind.angleDegrees)
+    val apparentAngle by rememberInstrumentMotion(data.apparentWind.angleDegrees, data.apparentWind.angleDegrees.liveNumber(), circular = true)
+    val trueAngleAnimated by rememberInstrumentMotion(data.trueWind.angleDegrees, data.trueWind.angleDegrees.liveNumber(), circular = true)
     val apparentWind = data.apparentWind.speedKnots.liveNumber()
     val trueWind = data.trueWind.speedKnots.liveNumber()
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
@@ -201,10 +204,11 @@ import kotlin.math.*
                 for (degrees in 0 until 360 step 15) drawLine(c.muted.copy(alpha = .55f), spatialRadial(center, r, degrees.toFloat()),
                     spatialRadial(center, r * if (degrees % 45 == 0) .9f else .96f, degrees.toFloat()), 1.dp.toPx())
                 drawLine(c.muted.copy(alpha = .3f), Offset(center.x, center.y - r), Offset(center.x, center.y + r), 1.dp.toPx())
-                drawPath(spatialHull(center, r * .23f, r * .4f), c.fg.copy(alpha = .08f))
-                drawPath(spatialHull(center, r * .23f, r * .4f), c.fg, style = Stroke(1.5.dp.toPx()))
-                if (trueAngle != null && trueWind != 0.0) spatialWindArrow(center, r, trueAngleAnimated, c.fg, dashed = true)
-                if (apparent != null && apparentWind != 0.0) spatialWindArrow(center, r * .88f, apparentAngle, c.accent, dashed = false)
+                val hull = spatialHull(center, r * .23f, r * .4f, hullPath)
+                drawPath(hull, c.fg.copy(alpha = .08f))
+                drawPath(hull, c.fg, style = Stroke(1.5.dp.toPx()))
+                if (trueAngle != null && trueWind != 0.0) spatialWindArrow(center, r, trueAngleAnimated, c.fg, dash)
+                if (apparent != null && apparentWind != 0.0) spatialWindArrow(center, r * .88f, apparentAngle, c.accent)
             }
             Label(os.t("船艏 · 0°", "bow · 0°"), 13, c.muted, Modifier.align(Alignment.TopCenter))
             Label(os.t("船艉 · 180°", "stern · 180°"), 13, c.muted, Modifier.align(Alignment.BottomCenter))
@@ -260,7 +264,7 @@ import kotlin.math.*
     val value = observation.displayNumber()
     val displayed = value?.let(os::speedValue)
     val extent = spatialScale(max(abs(displayed ?: 0.0), abs(os.speedValue(data.speedThroughWaterKnots.displayNumber() ?: 0.0))).coerceAtLeast(1.0))
-    val fraction by animateFloatAsState(((displayed ?: 0.0) / extent).toFloat().coerceIn(-1f, 1f), tween(260), label = "wind progress")
+    val fraction by rememberInstrumentMotion(observation, displayed?.let { (it / extent).coerceIn(-1.0, 1.0) }, scaleKey = os.speedUnitLabel to extent)
     Column(Modifier.fillMaxWidth().heightIn(min = 84.dp).clickable(role = Role.Button) { onMetric(InstrumentTileId.VMG) }, verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Label(os.t("对风有效速度 · VMG", "windward velocity · VMG"), 18, modifier = Modifier.weight(1f))
@@ -429,37 +433,6 @@ private fun spatialObservationStatus(os: OsStore, observation: VesselObservation
     return observationStatus(os, observation, now) + source?.let { " · $it" }.orEmpty()
 }
 
-/** 中文：换源、重连代次、推导输入或手机校准改变，均开始新的方向段，不能跨段插值。 */
-private data class SpatialBearingSource(
-    val identity: VesselSourceIdentity?,
-    val source: VesselDataSource,
-    val sourceClass: VesselSourceClass,
-    val reference: VesselReference?,
-    val provenance: VesselProvenance?,
-)
-
-@Composable private fun spatialBearing(observation: VesselObservation<Double>): Float {
-    val value = observation.liveNumber()
-    val sourceKey = SpatialBearingSource(observation.sourceIdentity, observation.source,
-        observation.sourceClass, observation.reference, observation.provenanceDetail)
-    val angle = remember(sourceKey) { Animatable(value?.toFloat() ?: 0f) }
-    var hasReading by remember(sourceKey) { mutableStateOf(value != null) }
-    LaunchedEffect(sourceKey, value) {
-        if (value == null) {
-            // 数据中断后隐藏方向并结束连续段；恢复首帧必须定位，不跨缺口转动。
-            hasReading = false
-            angle.stop()
-        } else if (!hasReading) {
-            angle.snapTo(value.toFloat())
-            hasReading = true
-        } else {
-            val difference = ((value.toFloat() - angle.value) % 360f + 540f) % 360f - 180f
-            angle.animateTo(angle.value + difference, tween(300))
-        }
-    }
-    return if (value != null && !hasReading) value.toFloat() else angle.value
-}
-
 private fun spatialScale(value: Double): Double {
     val positive = value.coerceAtLeast(.001)
     val power = 10.0.pow(floor(log10(positive)))
@@ -470,25 +443,30 @@ private fun spatialRadial(origin: Offset, radius: Float, angle: Float): Offset {
     val radians = Math.toRadians(angle.toDouble() - 90)
     return origin + Offset(cos(radians).toFloat() * radius, sin(radians).toFloat() * radius)
 }
-private fun spatialHull(origin: Offset, width: Float, height: Float) = Path().apply {
+private fun spatialHull(origin: Offset, width: Float, height: Float, path: Path) = path.apply {
+    reset()
     moveTo(origin.x, origin.y - height)
     cubicTo(origin.x + width * 1.2f, origin.y - height * .2f, origin.x + width, origin.y + height * .6f, origin.x + width * .65f, origin.y + height)
     lineTo(origin.x - width * .65f, origin.y + height)
     cubicTo(origin.x - width, origin.y + height * .6f, origin.x - width * 1.2f, origin.y - height * .2f, origin.x, origin.y - height)
     close()
 }
-private fun DrawScope.spatialArrow(start: Offset, end: Offset, color: Color, width: Float, dashed: Boolean = false) {
+@Composable private fun rememberInstrumentDash(): PathEffect {
+    val density = LocalDensity.current.density
+    return remember(density) { PathEffect.dashPathEffect(floatArrayOf(5f * density, 4f * density)) }
+}
+private fun DrawScope.spatialArrow(start: Offset, end: Offset, color: Color, width: Float, pathEffect: PathEffect? = null) {
     val delta = end - start
     val length = delta.getDistance().coerceAtLeast(1f)
     val direction = delta / length
     val perpendicular = Offset(-direction.y, direction.x)
-    drawLine(color, start, end, width, pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())) else null)
+    drawLine(color, start, end, width, pathEffect = pathEffect)
     val arrow = 8.dp.toPx()
     drawLine(color, end, end - direction * arrow + perpendicular * arrow * .5f, width)
     drawLine(color, end, end - direction * arrow - perpendicular * arrow * .5f, width)
 }
-private fun DrawScope.spatialWindArrow(origin: Offset, radius: Float, angle: Float, color: Color, dashed: Boolean) {
-    spatialArrow(spatialRadial(origin, radius * .94f, angle), spatialRadial(origin, radius * .43f, angle), color, 2.dp.toPx(), dashed)
+private fun DrawScope.spatialWindArrow(origin: Offset, radius: Float, angle: Float, color: Color, pathEffect: PathEffect? = null) {
+    spatialArrow(spatialRadial(origin, radius * .94f, angle), spatialRadial(origin, radius * .43f, angle), color, 2.dp.toPx(), pathEffect)
 }
 private fun DrawScope.spatialDimension(x: Float, top: Float, bottom: Float, color: Color) {
     drawLine(color, Offset(x, top), Offset(x, bottom), 1.5.dp.toPx())

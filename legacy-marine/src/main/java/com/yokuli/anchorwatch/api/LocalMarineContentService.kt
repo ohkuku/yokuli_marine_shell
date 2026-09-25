@@ -23,6 +23,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -37,8 +43,10 @@ class LocalMarineContentService @Inject constructor(
     private val spotRepository: AnchorageSpotRepository,
     private val photoRepository: AnchoragePhotoRepository,
     private val saver: AnchorageSaveRepository,
+    private val pressureHistory: com.yokuli.anchorwatch.data.vessel.PressureHistoryRepository,
 ) : MarineContentService {
     private val saveMutex = Mutex()
+    override val pressureStorageIssue = pressureHistory.storageIssue
 
     override val library = database.invalidationTracker.createFlow(
         "anchorage_places", "anchorage_spots", "anchorage_collections", "anchorage_collection_places",
@@ -56,18 +64,26 @@ class LocalMarineContentService @Inject constructor(
         }
     }.distinctUntilChanged()
 
-    /** 高频传感器仍按已有仓库写入；历史页面至多每秒查询一次，并限制来源/记录数量。 */
+    /** 只返回真实落盘观测，保持原时刻/数值/来源段；查询与映射不占用主线程。 */
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     override fun observePressureSources(sinceUtcMillis: Long, untilUtcMillis: Long) = database.invalidationTracker.createFlow("pressure_history", emitInitialState = true)
         .conflate().sample(1_000).map {
             database.pressureHistoryDao().sourcesSince(sinceUtcMillis, untilUtcMillis).map { MarinePressureSource(it.sourceStableKey, it.sourceDisplayName, it.lastObservedUtcMillis) }
-        }.distinctUntilChanged()
+        }.onEach { pressureHistory.historyReadRecovered("sources") }
+        .retryWhen { error,_ ->
+            if(error is CancellationException)throw error
+            pressureHistory.historyReadFailed("sources",error);delay(2_000);true
+        }.distinctUntilChanged().flowOn(Dispatchers.IO)
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     override fun observePressureHistory(sourceKey: String, sinceUtcMillis: Long, untilUtcMillis: Long) = database.invalidationTracker.createFlow("pressure_history", emitInitialState = true)
         .conflate().sample(1_000).map {
-            database.pressureHistoryDao().sourceSince(sourceKey, sinceUtcMillis, untilUtcMillis).asReversed().map { MarinePressurePoint(it.sampledAtUtcMillis, it.pressureHpa) }
-        }.distinctUntilChanged()
+            database.pressureHistoryDao().sourceSince(sourceKey, sinceUtcMillis, untilUtcMillis).asReversed().map { MarinePressurePoint(it.sampledAtUtcMillis, it.pressureHpa,it.continuityKey) }
+        }.onEach { pressureHistory.historyReadRecovered("history:$sourceKey") }
+        .retryWhen { error,_ ->
+            if(error is CancellationException)throw error
+            pressureHistory.historyReadFailed("history:$sourceKey",error);delay(2_000);true
+        }.distinctUntilChanged().flowOn(Dispatchers.IO)
 
     override val photos: MarinePhotoService = object : MarinePhotoService {
         override suspend fun import(placeId: Long, source: Uri, caption: String) = photoRepository.import(placeId, source, caption)

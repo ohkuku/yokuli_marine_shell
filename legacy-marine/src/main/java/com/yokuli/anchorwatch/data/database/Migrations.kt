@@ -377,3 +377,11 @@ object Migration21To22:Migration(21,22){
   db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_trip_samples_tripId_recordingSequence ON trip_samples(tripId,recordingSequence)")
  }
 }
+
+/** Preserve existing pressure values and times; their recording continuity was not stored. */
+object Migration22To23:Migration(22,23){
+ override fun migrate(db:SupportSQLiteDatabase){
+  db.execSQL("ALTER TABLE pressure_history ADD COLUMN continuityKey TEXT")
+  db.execSQL("ALTER TABLE pressure_history ADD COLUMN measuredElapsedRealtime INTEGER")
+ }
+}
