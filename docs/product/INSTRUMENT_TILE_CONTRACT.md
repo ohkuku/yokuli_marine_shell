@@ -2,6 +2,8 @@
 
 本文件对应 `InstrumentsExperience.kt`、`MarineInstrumentGraphics.kt`、`ReadingTrace.kt`、`InstrumentHistoryModel.kt`、`InstrumentHistoryDrawing.kt`、`InstrumentWeatherPanel.kt`、`TileLibraryExperience.kt`、`TilePresentations.kt` 和 Shell 的布局编辑器。内容描述实际实现，不表示已经完成真机验收。
 
+2026-09-25：磁贴工坊的内容/实例重构已完成用户故事和源码评审，见 [待确认施工文档](../phases/tile-workshop/IMPLEMENTATION.md)。当前下文“每应用一块”和 App 级样式仍是 `da81de3` 的实现事实；重构尚未落地，不能将拟议多内容能力当作已有功能。用户确认后按施工文档替换这些旧约束，再回写本契约。
+
 ## 领域边界
 
 - 驾驶台消费系统选好的观测，不能因为打开页面就切换船位来源或创建航行。
