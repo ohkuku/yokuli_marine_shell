@@ -20,6 +20,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.core.design.YokuliMetrics
+import com.yokuli.marine.core.design.StartWallpaperSurface
+import com.yokuli.marine.core.design.startTileBackground
+import com.yokuli.marine.core.design.LocalStartBackdrop
+import com.yokuli.marine.core.design.StartBackdropMode
+import androidx.compose.ui.draw.clipToBounds
 import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.compose.LauncherEntryVisualContribution
 import com.yokuli.shell.compose.LauncherTileRenderContext
@@ -34,6 +39,7 @@ import kotlinx.coroutines.launch
     val c = LocalMetro.current
     var owner by rememberSaveable(initialApp) { mutableStateOf(initialApp) }
     val selectedApp = os.shell.apps.firstOrNull { it.id.value == owner }
+    ReportVisibleAppRoute(os,selectedApp?.let {"tiles:${it.id.value}"} ?: "tiles")
     val pageStates = rememberSaveableStateHolder()
     val back = { if(initialApp!=null) os.shell.popRoute() else owner = null }
     BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && owner != null) { back(); true } else false }
@@ -48,6 +54,7 @@ import kotlinx.coroutines.launch
             val app = os.shell.apps.firstOrNull { it.id.value == selected }
             if (app == null) {
                 LazyColumn(Modifier.fillMaxSize().padding(start = LocalShellHorizontalInsets.current.pageStart, end = LocalShellHorizontalInsets.current.pageEnd), contentPadding = PaddingValues(bottom = 28.dp)) {
+                    item { MenuRow(os.t("背景与透明磁贴","background & transparent tiles"),os.t("整张开始屏幕的照片、透明度与取景","photo, transparency and framing for all of Start"),"settings") {os.openLinked("settings:start")} }
                     item { Label(os.t("让每个应用展示你关心的内容", "choose what each app shows"), 15, c.muted, Modifier.padding(bottom = 20.dp)) }
                     items(os.shell.apps, key = { it.id.value }) { entry ->
                         val placement = state.start.document.placements.firstOrNull { p -> state.catalog.entries.firstOrNull { it.entryId == p.entryId }?.appId == entry.id }
@@ -78,6 +85,7 @@ import kotlinx.coroutines.launch
                 var rotate by rememberSaveable(app.id.value) { mutableStateOf(preferences?.appPreferenceValues?.get("${app.id.value}.tile.animate") != "b:0") }
                 var interval by rememberSaveable(app.id.value) { mutableStateOf(preferences?.appPreferenceValues?.get("${app.id.value}.tile.interval")?.removePrefix("c:") ?: "6") }
                 PageBody {
+                    MenuRow(os.t("背景与透明磁贴","background & transparent tiles"),os.t("此处预览沿用开始屏幕背景","previews use your Start background"),"settings") {os.openLinked("settings:start")}
                     HorizontalPager(pager, Modifier.fillMaxWidth().height(200.dp), beyondViewportPageCount = 1) { index ->
                         val visual = tilePresentation(os, app, animate = index == pager.currentPage, modeOverride = modes[index].key, rotateOverride = rotate, intervalOverride = interval.toLongOrNull() ?: 6L)
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TilePreview(visual, size) }
@@ -131,8 +139,12 @@ import kotlinx.coroutines.launch
         val medium = (wide - 12.dp) / 2
         val small = (medium - 12.dp) / 2
         val shape = when (size) { MarineTileSize.ICON_1X1 -> Modifier.size(small); MarineTileSize.STANDARD_2X2 -> Modifier.size(medium); MarineTileSize.WIDE_4X2 -> Modifier.width(wide).height(medium) }
-        Box(shape.background(c.accent).padding(if (visual.fullBleed && size != MarineTileSize.ICON_1X1) 0.dp else if (size == MarineTileSize.ICON_1X1) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
-            visual.tileRenderers.getValue(size).Render(LauncherTileRenderContext(size, c.onAccent, Modifier.fillMaxSize(), liveContentEnabled = true))
+        StartWallpaperSurface(shape) {
+            val background=LocalStartBackdrop.current
+            val foreground=if(background.image!=null&&background.mode!=StartBackdropMode.NONE&&background.tileOpacity<.7f)Color.White else c.onAccent
+            Box(Modifier.fillMaxSize().clipToBounds().startTileBackground().padding(if (visual.fullBleed && size != MarineTileSize.ICON_1X1) 0.dp else if (size == MarineTileSize.ICON_1X1) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
+                visual.tileRenderers.getValue(size).Render(LauncherTileRenderContext(size,foreground,Modifier.fillMaxSize(),liveContentEnabled=true))
+            }
         }
     }
 }

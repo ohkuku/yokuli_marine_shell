@@ -120,8 +120,7 @@ class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
 
 /** Owns map sources and resources only; never owns navigation, watch or recording. */
 class MapSessionStore(val context: Context, val scope: CoroutineScope, val library: ChartLibrary, private val legacy: JSONObject) {
-    var nauticalScale by mutableStateOf(true)
-    var shortScaleFeet by mutableStateOf(false)
+    var unitPreferences by mutableStateOf(com.yokuli.shell.contract.MarineUnitPreferences())
     var chinese by mutableStateOf(legacy.optString("language", java.util.Locale.getDefault().language) == "zh")
     var snapshot by mutableStateOf<Bitmap?>(null)
     var snapshotCapturedAt by mutableLongStateOf(0L)

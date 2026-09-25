@@ -1,6 +1,8 @@
 package com.yokuli.marine.shell.rebuild.scene
 
 import android.content.Context
+import android.graphics.Rect
+import android.view.ViewTreeObserver
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -60,14 +62,15 @@ internal fun VesselScene3D(
     modifier: Modifier = Modifier,
     onFailure: () -> Unit,
     onReady: () -> Unit = {},
-    attitude: VesselAttitudePose? = null,
+    attitude: VesselAttitudeProjection,
+    motion: VesselAttitudeMotion,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val failure = rememberUpdatedState(onFailure)
     val ready = rememberUpdatedState(onReady)
-    val renderer = remember(context) {
-        VesselSceneRenderer3D(context, { failure.value() }, { ready.value() })
+    val renderer = remember(context, motion) {
+        VesselSceneRenderer3D(context, motion, { failure.value() }, { ready.value() })
     }
     AndroidView(
         factory = { renderer.textureView.also { renderer.initialize() } },
@@ -114,15 +117,36 @@ internal fun vesselScenePoint(
     y: Float,
     z: Float,
 ): Offset {
-    val pose = vesselCamera(preset, aspect.toDouble())
-    val forward = (pose.target - pose.eye).normalized()
-    val right = forward.cross(pose.up).normalized()
-    val up = right.cross(forward)
-    val point = Vector3(x.toDouble(), y.toDouble(), z.toDouble()) - pose.target
-    return Offset(
-        (0.5 + point.dot(right) / (2.0 * pose.halfWidth)).toFloat(),
-        (0.5 - point.dot(up) / (2.0 * pose.halfHeight)).toFloat(),
-    )
+    return VesselSceneProjector(preset, aspect).point(x, y, z)
+}
+
+/** 中文：画布尺寸/观察方向不变时复用投影基，方向标记每帧不再重建相机向量。 */
+internal class VesselSceneProjectionCache {
+    private var preset: VesselViewPreset? = null
+    private var aspect = 0f
+    private var projector: VesselSceneProjector? = null
+    fun get(preset: VesselViewPreset, aspect: Float): VesselSceneProjector {
+        val safeAspect = aspect.takeIf { it.isFinite() && it > 0f } ?: 1f
+        if (this.preset != preset || this.aspect != safeAspect) {
+            this.preset = preset; this.aspect = safeAspect
+            projector = VesselSceneProjector(preset, safeAspect)
+        }
+        return requireNotNull(projector)
+    }
+}
+
+internal class VesselSceneProjector(preset: VesselViewPreset, aspect: Float) {
+    private val camera = vesselCamera(preset, aspect.toDouble())
+    private val forward = (camera.target - camera.eye).normalized()
+    private val right = forward.cross(camera.up).normalized()
+    private val up = right.cross(forward)
+    fun point(x: Float, y: Float, z: Float): Offset {
+        val dx = x - camera.target.x; val dy = y - camera.target.y; val dz = z - camera.target.z
+        return Offset(
+            (.5 + (dx * right.x + dy * right.y + dz * right.z) / (2 * camera.halfWidth)).toFloat(),
+            (.5 - (dx * up.x + dy * up.y + dz * up.z) / (2 * camera.halfHeight)).toFloat(),
+        )
+    }
 }
 
 private data class Vector3(val x: Double, val y: Double, val z: Double) {
@@ -159,6 +183,7 @@ private fun vesselCamera(preset: VesselViewPreset, aspect: Double): VesselCamera
 /** 单个场景拥有全部 GPU 资源，不共享 Engine，也不拥有任何业务会话。 */
 private class VesselSceneRenderer3D(
     context: Context,
+    private val motion: VesselAttitudeMotion,
     private val onFailure: () -> Unit,
     private val onReady: () -> Unit,
 ) : UiHelper.RendererCallback, Choreographer.FrameCallback {
@@ -194,15 +219,27 @@ private class VesselSceneRenderer3D(
     private var height = 0
     private var preset = VesselViewPreset.OVERVIEW
     private var light = false
-    private var attitude: VesselAttitudePose? = null
+    private var attitude: VesselAttitudeProjection? = null
+    private var rootTransformInstance = 0
+    private var wasVisible = false
+    private val visibleBounds = Rect()
+    private val scrollListener = ViewTreeObserver.OnScrollChangedListener { refreshVisibility() }
 
     val textureView: TextureView = object : TextureView(context) {
         override fun onAttachedToWindow() {
             super.onAttachedToWindow()
+            viewTreeObserver.addOnScrollChangedListener(scrollListener)
             refreshVisibility()
+        }
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            syncSurfaceSize(w, h)
         }
         override fun onDetachedFromWindow() {
             cancelFrames()
+            motion.resetClock()
+            wasVisible = false
+            if (viewTreeObserver.isAlive) viewTreeObserver.removeOnScrollChangedListener(scrollListener)
             handler.removeCallbacks(surfaceTimeout)
             super.onDetachedFromWindow()
         }
@@ -259,7 +296,9 @@ private class VesselSceneRenderer3D(
                 it.isOpaque = false
                 it.renderCallback = this
             }
+            syncSurfaceSize(textureView.width, textureView.height)
             helper?.attachTo(textureView)
+            refreshVisibility()
         }
     }
 
@@ -268,6 +307,7 @@ private class VesselSceneRenderer3D(
         guarded {
             sourceBuffer = buffer
             asset = requireNotNull(assetLoader?.createAsset(buffer)) { "Unable to load vessel GLB" }
+            rootTransformInstance = requireNotNull(engine).transformManager.getInstance(requireNotNull(asset).root)
             applyAttitude()
             require(asset?.resourceUris?.isEmpty() == true) { "Vessel GLB must be self contained" }
             check(resourceLoader?.asyncBeginLoad(requireNotNull(asset)) == true) { "Vessel resources failed to load" }
@@ -276,7 +316,7 @@ private class VesselSceneRenderer3D(
         }
     }
 
-    fun update(preset: VesselViewPreset, light: Boolean, active: Boolean, attitude: VesselAttitudePose?) {
+    fun update(preset: VesselViewPreset, light: Boolean, active: Boolean, attitude: VesselAttitudeProjection) {
         if (closed) return
         guarded {
             val changed = this.preset != preset || this.light != light
@@ -292,8 +332,7 @@ private class VesselSceneRenderer3D(
                 requestDraw()
             }
             if (poseChanged) {
-                // 数字与模型使用同一观测：不外推，不跨断源或换源插值，也没有空转动画。
-                applyAttitude()
+                // 这里只唤醒帧时钟；连续姿态在实际显示帧中推进，不以数据到达频率限制帧率。
                 requestDraw(1)
             }
             if (visibilityChanged) refreshVisibility()
@@ -307,17 +346,38 @@ private class VesselSceneRenderer3D(
         refreshVisibility()
     }
 
-    private fun canDraw() = !closed && desiredActive && resumed && textureView.isAttachedToWindow && textureView.windowVisibility == PlatformView.VISIBLE
+    private fun canDraw() = !closed && desiredActive && resumed && textureView.isAttachedToWindow &&
+        textureView.windowVisibility == PlatformView.VISIBLE && textureView.isShown &&
+        textureView.getGlobalVisibleRect(visibleBounds) && !visibleBounds.isEmpty
+
+    /** 中文：延迟挂接已测量 TextureView 也必须传实际尺寸，不能等待一次不会发生的 resize。 */
+    private fun syncSurfaceSize(w: Int, h: Int) {
+        if (closed || w <= 0 || h <= 0) return
+        val currentHelper = helper ?: return
+        guarded {
+            if (currentHelper.desiredWidth != w || currentHelper.desiredHeight != h) currentHelper.setDesiredSize(w, h)
+            onResized(w, h)
+        }
+    }
 
     private fun refreshVisibility() {
         if (closed) return
         if (canDraw()) {
+            syncSurfaceSize(textureView.width, textureView.height)
+            if (!wasVisible) {
+                // 恢复画面直接使用最新真实目标，不回放后台积压姿态。
+                motion.snapToTarget()
+                applyAttitude()
+                wasVisible = true
+            }
             if (swapChain == null || !ready) {
                 handler.removeCallbacks(surfaceTimeout)
                 handler.postDelayed(surfaceTimeout, 8_000L)
             }
             requestDraw()
         } else {
+            wasVisible = false
+            motion.resetClock()
             cancelFrames()
             handler.removeCallbacks(surfaceTimeout)
         }
@@ -332,10 +392,8 @@ private class VesselSceneRenderer3D(
     }
 
     private fun applyAttitude() {
-        val transform = engine?.transformManager ?: return
-        val root = asset?.root ?: return
-        val instance = transform.getInstance(root)
-        if (instance != 0) transform.setTransform(instance, (attitude ?: VesselAttitudePose(0.0, 0.0)).matrix())
+        if (rootTransformInstance == 0) return
+        engine?.transformManager?.setTransform(rootTransformInstance, motion.matrix)
     }
 
     private fun updateCamera() {
@@ -362,6 +420,9 @@ private class VesselSceneRenderer3D(
         scheduled = false
         if (!canDraw() || helper?.isReadyToRender != true || width <= 0 || height <= 0) return
         guarded {
+            // Native 与 Compose 方向标记共享这一次推进；矩阵数组及 transform instance 均复用。
+            motion.advance(frameTimeNanos)
+            applyAttitude()
             if (loading) {
                 resourceLoader?.asyncUpdateLoad()
                 check(++loadFrames < 600) { "Vessel resources did not finish loading" }
@@ -391,8 +452,8 @@ private class VesselSceneRenderer3D(
             } else {
                 check(++frameAttempts < 120) { "Vessel frame could not be rendered" }
             }
-            // 只有资源上传和失效的少量缓冲帧继续运行；静止模型不占用持续帧循环。
-            if ((loading || frameBudget > 0) && canDraw()) {
+            // 真实目标之间平滑时逐帧渲染；收敛后停止，失效读数不会维持动画。
+            if ((loading || frameBudget > 0 || motion.isMoving) && canDraw()) {
                 scheduled = true
                 choreographer.postFrameCallback(this)
             }
@@ -419,7 +480,7 @@ private class VesselSceneRenderer3D(
     }
 
     override fun onResized(width: Int, height: Int) {
-        if (closed || width <= 0 || height <= 0) return
+        if (closed || width <= 0 || height <= 0 || this.width == width && this.height == height) return
         guarded {
             // 先清空旧尺寸的待提交绘制，再切换 viewport；不改变源模型坐标。
             engine?.flushAndWait()
@@ -479,6 +540,7 @@ private class VesselSceneRenderer3D(
         resourceLoader = null
         runCatching { asset?.let { scene?.removeEntities(it.entities); assetLoader?.destroyAsset(it) } }
         asset = null
+        rootTransformInstance = 0
         sourceBuffer = null
         runCatching { assetLoader?.destroy() }
         assetLoader = null

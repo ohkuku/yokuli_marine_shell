@@ -56,7 +56,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         "appearance" -> os.t("外观与显示", "appearance & display")
         "language" -> os.t("语言", "language")
         "units" -> os.t("单位与坐标", "units & coordinates")
-        "start" -> os.t("开始屏幕", "Start screen")
+        "start" -> os.t("背景与透明磁贴", "background & transparent tiles")
         "vessel" -> os.t("我的船", "my boat")
         "permissions" -> os.t("权限与后台", "permissions & background")
         "sound" -> os.t("声音与警报", "sound & alarms")
@@ -79,8 +79,9 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                 when (page) {
                     "overview" -> {
                         AppSection(os.t("系统", "system"))
-                        listOf("appearance", "language", "units", "sound", "permissions").forEach { key ->
+                        listOf("start", "appearance", "language", "units", "sound", "permissions").forEach { key ->
                             MenuRow(title(key), when(key) {
+                                "start" -> os.t("选择背景照片、调整透明度与取景", "choose a photo, adjust transparency and framing")
                                 "language" -> if(os.chinese) "简体中文" else "English"
                                 "units" -> "${os.distanceUnitLabel} · ${os.speedUnitLabel} · " + os.t("水深 ", "depth ") + os.depthUnitLabel
                                 else -> null
@@ -88,13 +89,13 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         }
                         AppSection(os.t("个人偏好", "personal"))
                         MenuRow(title("vessel")) {section="vessel"}
-                        MenuRow(title("start")) {section="start"}
                         MenuRow(os.t("应用磁贴", "app tiles"), os.t("按应用预览样式与实时内容", "preview styles and live content by app")) {os.openLinked("tiles")}
                         AppSection(os.t("资料与系统信息", "data & information"))
                         MenuRow(title("backup")) {section="backup"}
                         MenuRow(title("about"), buildIdentity.appVersionName) {section="about"}
                     }
                     "appearance" -> {
+                        MenuRow(title("start"),os.t("自定义开始屏幕的照片与磁贴底色", "personalise Start’s photo and tile backgrounds")) {os.openLinked("settings:start")}
                         AppSection(os.t("主题色", "accent colour"))
                         Column(Modifier.selectableGroup(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             WpAccent.entries.chunked(4).forEach { row -> Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {

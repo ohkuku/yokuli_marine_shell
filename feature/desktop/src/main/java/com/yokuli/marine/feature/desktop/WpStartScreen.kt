@@ -118,6 +118,9 @@ fun YokuliStartScreen(
     state: LauncherUiState,
     onAction: (LauncherUiAction) -> Unit,
     onEditModeChanged: (Boolean) -> Unit = {},
+    /** 宿主提供唯一设置页的访问入口，不在桌面复制背景设置。 */
+    onPersonalizeStart: (() -> Unit)? = null,
+    personalizeStartLabel: String = "Background & transparent tiles",
 ) {
     val colors = LocalWpTheme.current
     val byId = remember(state.entries) { state.entries.associateBy { it.descriptor.entryId } }
@@ -138,7 +141,10 @@ fun YokuliStartScreen(
     var viewportCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val tileBounds = remember { mutableStateMapOf<TileInstanceId, Rect>() }
     var feedbackBounds by remember { mutableStateOf<Rect?>(null) }
+    var personalisationBounds by remember {mutableStateOf<Rect?>(null)}
     val latestFeedbackBounds by rememberUpdatedState(feedbackBounds.takeIf { state.transient != null })
+    val canPersonalize=editing&&localTileDrag==null&&dragging==null&&state.transient==null&&onPersonalizeStart!=null
+    val latestPersonalisationBounds by rememberUpdatedState(personalisationBounds.takeIf {canPersonalize})
 
     LaunchedEffect(editing) { onEditModeChanged(editing) }
     LaunchedEffect(interaction, state.document) {
@@ -276,7 +282,7 @@ fun YokuliStartScreen(
                         // Once accepted, movement wins Initial, before the scrolling child.
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
                         if (localTileDrag != null || latestControls?.contains(down.position.x, down.position.y) == true ||
-                            latestFeedbackBounds?.contains(down.position) == true) return@awaitEachGesture
+                            latestFeedbackBounds?.contains(down.position) == true || latestPersonalisationBounds?.contains(down.position)==true) return@awaitEachGesture
                         val selected = latestInteraction.selectedTile()
                         val hit = tileBounds.entries.sortedByDescending { it.key == selected }
                             .firstOrNull { it.value.contains(down.position) } ?: return@awaitEachGesture
@@ -404,6 +410,16 @@ fun YokuliStartScreen(
                 WpTileEditOverlay(controls, compact,
                     onUnpin = { onAction(LauncherUiAction.UnpinTile(selectedTile)) },
                     onResize = { onAction(LauncherUiAction.ResizeTile(selectedTile)) })
+            }
+            if(canPersonalize) {
+                Box(Modifier.align(Alignment.BottomCenter).zIndex(3.5f).fillMaxWidth()
+                    .onGloballyPositioned {coordinates->
+                        val viewport=viewportCoordinates
+                        if(viewport!=null&&viewport.isAttached&&coordinates.isAttached)personalisationBounds=viewport.localBoundingBoxOf(coordinates,clipBounds=false)
+                    }.background(colors.background).clickable(interactionSource=remember {MutableInteractionSource()},indication=null,role=Role.Button) {onPersonalizeStart?.invoke()}
+                    .padding(horizontal=20.dp,vertical=14.dp),contentAlignment=Alignment.Center) {
+                    WpText(personalizeStartLabel,15,color=colors.foreground,maxLines=2)
+                }
             }
             WpLauncherFeedback(
                 state.transient, onAction,

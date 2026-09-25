@@ -20,13 +20,7 @@ import kotlinx.coroutines.launch
  */
 internal fun OsStore.observeNotificationUnits(notifications: NotificationCoordinator) = scope.launch {
     shell.persistence.state.filterNotNull().map { saved ->
-        MarineUnitPreferences(
-            navigation = runCatching { MeasurementUnitSystem.valueOf(saved.measurementUnitSystemName) }.getOrDefault(MeasurementUnitSystem.NAUTICAL),
-            length = runCatching { LengthUnit.valueOf(saved.appPreferenceValues["preferences.units.length"]?.removePrefix("c:").orEmpty()) }.getOrDefault(LengthUnit.METERS),
-            depth = runCatching { DepthUnit.valueOf(saved.appPreferenceValues["preferences.units.depth"]?.removePrefix("c:").orEmpty()) }.getOrDefault(DepthUnit.METERS),
-            temperature = runCatching { TemperatureUnit.valueOf(saved.appPreferenceValues["preferences.units.temperature"]?.removePrefix("c:").orEmpty()) }.getOrDefault(TemperatureUnit.CELSIUS),
-            pressure = runCatching { PressureUnit.valueOf(saved.appPreferenceValues["preferences.units.pressure"]?.removePrefix("c:").orEmpty()) }.getOrDefault(PressureUnit.HECTOPASCALS),
-        )
+        MarineUnitPreferences.fromStored(saved.measurementUnitSystemName,saved.appPreferenceValues)
     }.distinctUntilChanged().collect { snapshot ->
         val formats = MarineUnitFormats(snapshot)
         notifications.installUnitFormats(NotificationUnitFormats(formats::length, formats::depth, formats::speed))

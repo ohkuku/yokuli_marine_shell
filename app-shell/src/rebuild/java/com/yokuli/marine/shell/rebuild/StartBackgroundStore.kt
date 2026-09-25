@@ -21,7 +21,21 @@ internal const val START_OPACITY = "preferences.start.opacity"
 internal const val START_CROP_SCALE = "preferences.start.crop.scale"
 internal const val START_FOCUS_X = "preferences.start.crop.x"
 internal const val START_FOCUS_Y = "preferences.start.crop.y"
-data class StartBackgroundWrite(val busy: Boolean = false, val failed: Boolean = false)
+enum class StartBackgroundFailure { PHOTO_ACCESS, PHOTO_MISSING, PHOTO_FORMAT, STORAGE_FULL, STORAGE_WRITE, PREFERENCE_WRITE, PHOTO_CHANGED, PICKER_UNAVAILABLE }
+data class StartBackgroundWrite(val busy: Boolean = false, val failed: Boolean = false, val reason:StartBackgroundFailure?=null)
+private class StartBackgroundOperationFailure(val reason:StartBackgroundFailure,cause:Throwable):Exception(cause)
+internal fun startBackgroundFailure(error:Throwable,fallback:StartBackgroundFailure):StartBackgroundFailure {
+    val causes=generateSequence(error) {it.cause}.take(8).toList()
+    return when {
+        causes.any {it is StartBackgroundOperationFailure}->(causes.first {it is StartBackgroundOperationFailure} as StartBackgroundOperationFailure).reason
+        causes.any {it is android.system.ErrnoException&&it.errno==android.system.OsConstants.ENOSPC}->StartBackgroundFailure.STORAGE_FULL
+        causes.any {it is SecurityException}->StartBackgroundFailure.PHOTO_ACCESS
+        causes.any {it is java.io.FileNotFoundException}->StartBackgroundFailure.PHOTO_MISSING
+        causes.any {it is ImageDecoder.DecodeException}->StartBackgroundFailure.PHOTO_FORMAT
+        causes.any {it.message=="BACKGROUND_CHANGED"}->StartBackgroundFailure.PHOTO_CHANGED
+        else->fallback
+    }
+}
 
 /** 背景是系统偏好：照片复制进私有存储，再提交同一 Launcher DataStore，离开设置不会取消写入。 */
 class StartBackgroundStore(private val os: OsStore) {
@@ -31,7 +45,7 @@ class StartBackgroundStore(private val os: OsStore) {
     private val directory get() = File(os.context.filesDir, "start-backgrounds")
     internal fun imageFile(name: String?): File? = name?.takeIf { it.matches(Regex("[a-f0-9-]{36}\\.jpg")) }?.let { File(directory, it) }
 
-    fun choose(uri: Uri) = submit {
+    fun choose(uri: Uri,preferredMode:StartBackdropMode?=null) = submit(StartBackgroundFailure.STORAGE_WRITE) {
         val created = withContext(Dispatchers.IO) {
             check(directory.isDirectory || directory.mkdirs())
             val destination = File(directory, "${UUID.randomUUID()}.jpg")
@@ -55,11 +69,15 @@ class StartBackgroundStore(private val os: OsStore) {
             os.shell.persistence.updatePreferences { current -> current.copy(appPreferenceValues = current.appPreferenceValues + mapOf(
                 START_IMAGE to created.name,
                 START_CROP_SCALE to "1.0", START_FOCUS_X to "0.5", START_FOCUS_Y to "0.5",
-                START_MODE to (current.appPreferenceValues[START_MODE]?.takeUnless { it == StartBackdropMode.NONE.name } ?: StartBackdropMode.FULL.name),
+                START_MODE to (preferredMode?.takeUnless {it==StartBackdropMode.NONE}?.name ?: current.appPreferenceValues[START_MODE]?.takeIf {it in setOf(StartBackdropMode.FULL.name,StartBackdropMode.TILES.name)} ?: StartBackdropMode.FULL.name),
             )) }
-        } catch (failure: Throwable) { withContext(Dispatchers.IO) { created.delete() }; throw failure }
+        } catch (cancelled:kotlinx.coroutines.CancellationException) {throw cancelled}
+        catch (failure: Exception) {
+            withContext(Dispatchers.IO) {created.delete()}
+            throw StartBackgroundOperationFailure(startBackgroundFailure(failure,StartBackgroundFailure.PREFERENCE_WRITE),failure)
+        }
         // 提交后只清理由本功能拥有的旧图片；绝不删除仍被偏好指向的图片。
-        withContext(Dispatchers.IO) { directory.listFiles()?.filter { it != created && imageFile(it.name) != null }?.forEach { it.delete() } }
+        withContext(Dispatchers.IO) { runCatching {directory.listFiles()?.filter { it != created && imageFile(it.name) != null }?.forEach { it.delete() }} }
     }
 
     fun mode(value: StartBackdropMode) = option(START_MODE, value.name)
@@ -75,17 +93,19 @@ class StartBackgroundStore(private val os: OsStore) {
     }
     fun remove() = submit {
         os.shell.persistence.updatePreferences { it.copy(appPreferenceValues = it.appPreferenceValues - setOf(START_IMAGE,START_CROP_SCALE,START_FOCUS_X,START_FOCUS_Y) + (START_MODE to StartBackdropMode.NONE.name)) }
-        withContext(Dispatchers.IO) { directory.listFiles()?.filter { imageFile(it.name) != null }?.forEach { it.delete() } }
+        withContext(Dispatchers.IO) { runCatching {directory.listFiles()?.filter { imageFile(it.name) != null }?.forEach { it.delete() }} }
     }
     private fun option(key: String, value: String) = submit {
         os.shell.persistence.updatePreferences { it.copy(appPreferenceValues = it.appPreferenceValues + (key to value)) }
     }
-    private fun submit(action: suspend () -> Unit) = os.scope.launch {
+    fun pickerFailed(error:Exception) {if(!mutableWrite.value.busy)mutableWrite.value=StartBackgroundWrite(failed=true,reason=startBackgroundFailure(error,StartBackgroundFailure.PICKER_UNAVAILABLE))}
+    fun clearFailure() {if(!mutableWrite.value.busy)mutableWrite.value=StartBackgroundWrite()}
+    private fun submit(fallback:StartBackgroundFailure=StartBackgroundFailure.PREFERENCE_WRITE,action: suspend () -> Unit) = os.scope.launch {
             mutex.withLock {
                 mutableWrite.value = StartBackgroundWrite(busy = true)
                 try { action(); mutableWrite.value = StartBackgroundWrite() }
                 catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                catch (_: Exception) { mutableWrite.value = StartBackgroundWrite(failed = true) }
+                catch (error: Exception) { mutableWrite.value = StartBackgroundWrite(failed = true,reason=startBackgroundFailure(error,fallback)) }
             }
     }
     internal suspend fun load(name: String): Bitmap? = withContext(Dispatchers.IO) {

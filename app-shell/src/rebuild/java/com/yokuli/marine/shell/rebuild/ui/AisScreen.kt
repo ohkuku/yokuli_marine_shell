@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.unit.dp
@@ -59,6 +60,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     var viewRestored by rememberSaveable(initialPage){mutableStateOf(requestedView!=null||initialPage=="targets")}
     var showTracks by rememberSaveable{mutableStateOf(false)}
     var showMenu by rememberSaveable{mutableStateOf(false)}
+    var radarHelp by rememberSaveable{mutableStateOf(false)}
     var detailExpanded by rememberSaveable {mutableStateOf(false)}
     var targetFilter by rememberSaveable{mutableStateOf("all")}
     val pageState=rememberSaveableStateHolder()
@@ -117,8 +119,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
         scope.launch {pager.scrollToPage(if(mode==AisView.THREE_D)1 else 0)}
         viewRestored=true
     }
-    fun back(){when {showMenu->showMenu=false;path.size>1->path=path.dropLast(1);detailExpanded->detailExpanded=false;selected!=null&&current=="traffic"->selected=null;else->os.shell.popRoute()}}
-    AppBackHandler(path.size>1||showMenu||detailExpanded||selected!=null&&current=="traffic"){back()}
+    fun back(){when {radarHelp->radarHelp=false;showMenu->showMenu=false;path.size>1->path=path.dropLast(1);detailExpanded->detailExpanded=false;selected!=null&&current=="traffic"->selected=null;else->os.shell.popRoute()}}
+    AppBackHandler(path.size>1||showMenu||radarHelp||detailExpanded||selected!=null&&current=="traffic"){back()}
     ReportVisibleAppRoute(os,if(current!="traffic")"ais:$current" else if(pager.settledPage==2)"ais:targets" else "ais:view:${if(pager.settledPage==1)AisView.THREE_D.name else AisView.RADAR.name}"+(selected?.let {":$it"} ?: ""))
     AisRetainSelection(os,selected)
     Column(Modifier.fillMaxSize()) {
@@ -133,7 +135,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                 else->Column(Modifier.fillMaxSize()) {
                     PivotHeaders(listOf(os.t("雷达","Radar"),os.t("三维","3D"),os.t("船舶","Vessels")),pager,compact=true)
                     // 每个场景持有固定的画布与范围尺，横滑到船舶页时不会突然改动三维 Surface 高度。
-                    HorizontalPager(pager,Modifier.weight(1f).fillMaxWidth(),userScrollEnabled=enabled&&!detailExpanded,verticalAlignment=Alignment.Top) {tab->
+                    // Android 默认 EdgeEffect 会在翻页边缘画弧光；交通画布不叠加这类无数据装饰。
+                    HorizontalPager(pager,Modifier.weight(1f).fillMaxWidth().clipToBounds(),userScrollEnabled=enabled&&!detailExpanded,verticalAlignment=Alignment.Top,overscrollEffect=null) {tab->
                         val active=enabled&&pager.settledPage==tab&&!pager.isScrollInProgress
                         CompositionLocalProvider(LocalInternalAppInputEnabled provides active) {
                             if(tab==2) AisTargetList(os,s,selected,targetFilter,{if(active)targetFilter=it}){mmsi->if(active){selected=mmsi;go("target:$mmsi")}}
@@ -167,10 +170,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             Toggle(os.t("显示观测轨迹","Show observed tracks"),showTracks){showTracks=it}
             MenuRow(os.t("交通提醒","Traffic alerts"),if(s.preferences.monitoringEnabled)os.t("已开启 · 查看提醒规则","On · review alert rules")else os.t("设置会遇与接近提醒","Set approach and proximity alerts")){showMenu=false;go("settings")}
             MenuRow(os.t("接收状态","Reception"),aisInputSummary(os,s)){showMenu=false;go("sources")}
+            MenuRow(os.t("雷达图例","Radar guide")){showMenu=false;radarHelp=true}
             MenuRow(os.t("在海图查看","Open Chart")){openChart()}
             MetroButton(os.t("完成","Done"),{showMenu=false})
         }
     }
+    if(radarHelp&&enabled)AppDialog(onDismissRequest={radarHelp=false}) {RadarInfo(os){radarHelp=false}}
 }
 
 @Composable private fun AisHeaderAction(icon:String,label:String,enabled:Boolean=true,onClick:()->Unit) {

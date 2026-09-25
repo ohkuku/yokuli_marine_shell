@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -49,6 +50,7 @@ internal fun AisRadar(
 ) {
     val colors = LocalMetro.current
     val safe = LocalShellHorizontalInsets.current
+    val density = LocalDensity.current
     val enabled = LocalInternalAppInputEnabled.current
     val own = s.ownship?.takeIf { it.positionValid && it.position?.radarValid() == true }
     val heading = validAisBearing(own?.headingDegrees)
@@ -66,11 +68,9 @@ internal fun AisRadar(
     val bearing = when (orientation) { AisOrientation.HEADING_UP -> heading!!; AisOrientation.COURSE_UP -> course!!; else -> 0.0 }
     var overlaps by remember { mutableStateOf<List<Int>>(emptyList()) }
     var size by remember { mutableStateOf(IntSize.Zero) }
-    var showExplanation by rememberSaveable { mutableStateOf(false) }
     var showOrientation by rememberSaveable { mutableStateOf(false) }
     val visibleRange = (rangeMeters?.takeIf { it.isFinite() } ?: (s.preferences.rangeNauticalMiles * 1852.0)).coerceIn(100.0, 59_264.0)
     val frame = remember(own?.position) { own?.position?.let { AisLocalFrame(it.radarPosition()) } }
-    val projection = remember(frame, visibleRange, bearing, size) { frame?.let { RadarProjection(it, visibleRange, bearing, size) } }
     val positioned = remember(s.targets) { s.targets.filter { it.position?.radarValid() == true } }
     // 距离只随真实位置改变，不能在拖动倍率尺的每一帧重复做经纬度转换。
     val distances = remember(positioned, frame) { if (frame == null) emptyMap() else positioned.associate { target ->
@@ -84,18 +84,24 @@ internal fun AisRadar(
             (distances[target.mmsi]?.let { it > visibleRange } == true) }
             .sortedWith(compareByDescending<AisTarget> { it.mmsi == selected }.thenByDescending { it.riskLevel.ordinal }.thenBy { it.mmsi })
     }
+    val projection = remember(frame, visibleRange, bearing, size, density.density, safe.pageStart, safe.pageEnd) {
+        // 底部提示是否出现不改变圆心和比例；缩放跨越盘外目标时，船舶不会突然移位。
+        frame?.let { RadarProjection(it, visibleRange, bearing, size,
+            with(density) { safe.pageStart.toPx() + 20.dp.toPx() },
+            with(density) { safe.pageEnd.toPx() + 20.dp.toPx() },
+            with(density) { 68.dp.toPx() }, with(density) { 82.dp.toPx() }) }
+    }
     val currentProjection = rememberUpdatedState(projection)
     val currentTargets = rememberUpdatedState(positioned)
     val currentSelect = rememberUpdatedState(onSelect)
     val currentEnabled = rememberUpdatedState(enabled)
-    val density = LocalDensity.current
     val hitRadius = with(density) { 26.dp.toPx() }
     val now = s.generatedElapsed
 
-    AppBackHandler(enabled && (overlaps.isNotEmpty() || showExplanation || showOrientation)) {
-        when { overlaps.isNotEmpty() -> overlaps = emptyList(); showOrientation -> showOrientation = false; else -> showExplanation = false }
+    AppBackHandler(enabled && (overlaps.isNotEmpty() || showOrientation)) {
+        if(overlaps.isNotEmpty())overlaps=emptyList()else showOrientation=false
     }
-    LaunchedEffect(enabled) { if (!enabled) { showOrientation = false; showExplanation = false; overlaps = emptyList() } }
+    LaunchedEffect(enabled) { if (!enabled) { showOrientation = false; overlaps = emptyList() } }
     LaunchedEffect(requested, requestedAvailable) {
         fallbackFrom = when {
             requested == AisOrientation.NORTH_UP -> null
@@ -104,7 +110,7 @@ internal fun AisRadar(
             else -> fallbackFrom
         }
     }
-    Box(modifier.onSizeChanged { size = it }) {
+    Box(modifier.clipToBounds().onSizeChanged { size = it }) {
             if (projection == null) {
                 Column(Modifier.align(Alignment.Center).padding(26.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Label(os.t("等待本船位置", "Waiting for own position"), 20)
@@ -215,7 +221,7 @@ internal fun AisRadar(
                         Modifier.offset { IntOffset((p.x - 6 * density.density).roundToInt(), (p.y - 7 * density.density).roundToInt()) })
                 }
                 Label(os.t("每圈 ", "Each ring ") + os.formatDistance(visibleRange / 4.0), 12, colors.muted,
-                    Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = if (offscreen.isEmpty()) 8.dp else 66.dp)
+                    Modifier.align(Alignment.BottomStart).padding(start = safe.pageStart, bottom = 66.dp)
                         .background(colors.bg.copy(alpha = .86f)).padding(horizontal = 4.dp, vertical = 2.dp))
                 if (inside.isEmpty()) Column(Modifier.align(Alignment.Center).widthIn(max = 300.dp)
                     .background(colors.bg.copy(alpha = .94f)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -241,7 +247,8 @@ internal fun AisRadar(
                         }
                     }
                     Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(min = 48.dp).background(colors.bg.copy(alpha = .96f))
-                        .clickable(enabled = enabled, role = Role.Button) { if (offscreen.size == 1) onSelect(offscreen.first().mmsi) else overlaps = offscreen.map { it.mmsi } }.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        .clickable(enabled = enabled, role = Role.Button) { if (offscreen.size == 1) onSelect(offscreen.first().mmsi) else overlaps = offscreen.map { it.mmsi } }
+                        .padding(start = safe.pageStart, end = safe.pageEnd, top = 6.dp, bottom = 6.dp)) {
                         val first = offscreen.first()
                         Label(os.t("范围外 ${offscreen.size} 个需关注 · ", "${offscreen.size} targets of interest outside range · ") + first.displayName, 14, colors.accent, maxLines = 1)
                         Label(os.formatDistance(projection.distance(first.position!!)) + " · " + (first.relative.bearingDegrees?.let { os.formatBearing(it) + " T" } ?: aisState(os, first)), 12, colors.muted)
@@ -263,16 +270,6 @@ internal fun AisRadar(
             if (restoreAvailable) Label(os.t("恢复跟随", "Resume follow"), 12, colors.accentText,
                 Modifier.widthIn(max = 112.dp).heightIn(min = 48.dp).background(colors.bg.copy(alpha = .9f))
                     .clickable(enabled = enabled, role = Role.Button) { fallbackFrom = null }.padding(horizontal = 10.dp, vertical = 15.dp))
-            Box(Modifier.size(48.dp).background(colors.bg.copy(alpha = .9f))
-                .semantics { contentDescription = os.t("图例与说明", "Legend and guide") }
-                .clickable(enabled = enabled, role = Role.Button) { showExplanation = true }, contentAlignment = Alignment.Center) {
-                Canvas(Modifier.size(22.dp)) {
-                    val middle = Offset(size.width / 2f, size.height / 2f)
-                    drawCircle(colors.fg, size.width / 2f - 1.dp.toPx(), middle, style = Stroke(1.5.dp.toPx()))
-                    drawCircle(colors.fg, 1.dp.toPx(), Offset(middle.x, middle.y - 4.dp.toPx()))
-                    drawLine(colors.fg, Offset(middle.x, middle.y), Offset(middle.x, middle.y + 5.dp.toPx()), 1.5.dp.toPx())
-                }
-            }
         }
     }
     if (showOrientation && enabled) AppDialog(onDismissRequest = { showOrientation = false }) {
@@ -308,9 +305,6 @@ internal fun AisRadar(
             MetroButton(os.t("完成", "Done"), { showOrientation = false })
         }
     }
-    if (showExplanation && enabled) AppDialog(onDismissRequest = { showExplanation = false }) {
-        RadarInfo(os) { showExplanation = false }
-    }
     if (overlaps.isNotEmpty() && enabled) AppDialog(onDismissRequest = { overlaps = emptyList() }) {
         AppDialogSurface {
             AppDialogTitle(os.t("选择船舶", "Choose a vessel"))
@@ -342,9 +336,17 @@ private fun AisPoint.radarValid() = latitude.isFinite() && longitude.isFinite() 
 private fun AisTarget.radarCurrent() = state == AisTargetState.CURRENT && !cached && !positionInvalidated
 
 /** 米制比例只乘一个线性屏幕系数；盘外目标不压缩进距离环。 */
-private class RadarProjection(val frame: AisLocalFrame, val rangeMeters: Double, bearing: Double, size: IntSize) {
-    val center = Offset(size.width / 2f, size.height / 2f)
-    val radius = (min(size.width, size.height) * .43f).coerceAtLeast(0f)
+private class RadarProjection(
+    val frame: AisLocalFrame, val rangeMeters: Double, bearing: Double, size: IntSize,
+    startInset: Float, endInset: Float, topInset: Float, bottomInset: Float,
+) {
+    // 地理圆、目标符号和方位文字共用这个完整安全矩形，不让屏幕边缘或工具条切去半个圆。
+    private val left = startInset.coerceIn(0f, size.width.toFloat())
+    private val right = (size.width - endInset).coerceAtLeast(left)
+    private val top = topInset.coerceIn(0f, size.height.toFloat())
+    private val bottom = (size.height - bottomInset).coerceAtLeast(top)
+    val center = Offset((left + right) / 2f, (top + bottom) / 2f)
+    val radius = (min(right - left, bottom - top) / 2f).coerceAtLeast(0f)
     private val angle = Math.toRadians(bearing)
     fun distance(point: AisPoint): Double { val p = frame.position(point.radarPosition()); return hypot(p.x, p.z) }
     fun point(point: AisPoint): Offset = point(frame.position(point.radarPosition()))
@@ -439,7 +441,7 @@ private fun DrawScope.drawRadarTarget(target: AisTarget, point: Offset, relative
 }
 
 @Composable
-private fun RadarInfo(os: OsStore, close: () -> Unit) {
+internal fun RadarInfo(os: OsStore, close: () -> Unit) {
     val colors = LocalMetro.current
     AppDialogSurface {
         AppDialogTitle(os.t("认识周围船舶", "Reading the radar"))

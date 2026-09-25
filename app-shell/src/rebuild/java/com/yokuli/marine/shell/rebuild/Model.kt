@@ -135,13 +135,12 @@ class OsStore(val context: Context) {
     var keepAwake by mutableStateOf(initial.optBoolean("keepAwake", true))
     var reduceMotion by mutableStateOf(initial.optBoolean("reduceMotion", false))
     var textSize by mutableStateOf("STANDARD")
-    var measurementUnits by mutableStateOf(MeasurementUnitSystem.NAUTICAL)
-    var lengthUnit by mutableStateOf(com.yokuli.shell.contract.LengthUnit.METERS)
-    var depthUnit by mutableStateOf(com.yokuli.shell.contract.DepthUnit.METERS)
-    var temperatureUnit by mutableStateOf(com.yokuli.shell.contract.TemperatureUnit.CELSIUS)
-    var pressureUnit by mutableStateOf(com.yokuli.shell.contract.PressureUnit.HECTOPASCALS)
-    val unitPreferences get()=com.yokuli.shell.contract.MarineUnitPreferences(
-        measurementUnits,lengthUnit,depthUnit,temperatureUnit,pressureUnit)
+    internal var unitPreferences by mutableStateOf(com.yokuli.shell.contract.MarineUnitPreferences())
+    val measurementUnits get() = unitPreferences.navigation
+    val lengthUnit get() = unitPreferences.length
+    val depthUnit get() = unitPreferences.depth
+    val temperatureUnit get() = unitPreferences.temperature
+    val pressureUnit get() = unitPreferences.pressure
     val unitFormats by derivedStateOf { com.yokuli.marine.core.design.MarineUnitFormats(unitPreferences) }
     var coordinateFormat by mutableStateOf("DMM")
     var places by mutableStateOf(initial.optJSONArray("places")?.objects()?.mapNotNull { runCatching { Place.from(it) }.getOrNull() } ?: emptyList())

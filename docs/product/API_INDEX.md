@@ -1,6 +1,6 @@
 # 生产接口与结构声明索引
 
-共 3848 项类型与方法声明；按源文件排序。
+共 3871 项类型与方法声明；按源文件排序。
 
 由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
 
@@ -32,11 +32,11 @@
 | `fun saveDocument` | [ProtoDataStoreLauncherPersistence.kt:73](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L73) |
 | `fun savePreferences` | [ProtoDataStoreLauncherPersistence.kt:77](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L77) |
 | `fun updatePreferences` | [ProtoDataStoreLauncherPersistence.kt:88](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L88) |
-| `fun beginLaunch` | [ProtoDataStoreLauncherPersistence.kt:102](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L102) |
-| `fun markLaunchHealthy` | [ProtoDataStoreLauncherPersistence.kt:113](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L113) |
-| `fun reset` | [ProtoDataStoreLauncherPersistence.kt:117](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L117) |
-| `fun create` | [ProtoDataStoreLauncherPersistence.kt:148](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L148) |
-| `fun create` | [ProtoDataStoreLauncherPersistence.kt:158](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L158) |
+| `fun beginLaunch` | [ProtoDataStoreLauncherPersistence.kt:105](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L105) |
+| `fun markLaunchHealthy` | [ProtoDataStoreLauncherPersistence.kt:116](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L116) |
+| `fun reset` | [ProtoDataStoreLauncherPersistence.kt:120](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L120) |
+| `fun create` | [ProtoDataStoreLauncherPersistence.kt:151](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L151) |
+| `fun create` | [ProtoDataStoreLauncherPersistence.kt:161](../../adapter/shell-storage/src/main/java/com/yokuli/shell/storage/ProtoDataStoreLauncherPersistence.kt#L161) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/DurableSnapshotStore.kt
 
@@ -108,27 +108,27 @@
 | `class YokuliApplication : Application` | [Model.kt:92](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L92) |
 | `fun onCreate` | [Model.kt:101](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L101) |
 | `class OsStore` | [Model.kt:112](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L112) |
-| `fun requestPosition` | [Model.kt:191](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L191) |
-| `fun connectSystem` | [Model.kt:192](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L192) |
-| `fun t` | [Model.kt:220](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L220) |
-| `fun title` | [Model.kt:221](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L221) |
-| `fun notify` | [Model.kt:222](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L222) |
-| `fun open` | [Model.kt:227](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L227) |
-| `fun openLinked` | [Model.kt:229](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L229) |
-| `fun openNotification` | [Model.kt:231](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L231) |
-| `fun openSystemDestination` | [Model.kt:247](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L247) |
-| `fun home` | [Model.kt:251](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L251) |
-| `fun back` | [Model.kt:252](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L252) |
-| `fun fly` | [Model.kt:253](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L253) |
-| `fun captureChartInteraction` | [Model.kt:254](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L254) |
-| `fun restoreChartInteraction` | [Model.kt:260](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L260) |
-| `fun mark` | [Model.kt:274](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L274) |
-| `fun startRoute` | [Model.kt:279](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L279) |
-| `fun advanceRoute` | [Model.kt:280](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L280) |
-| `fun save` | [Model.kt:286](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L286) |
-| `fun retryContentRead` | [Model.kt:299](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L299) |
-| `fun exportRecoveredContent` | [Model.kt:334](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L334) |
-| `fun saveWithFeedback` | [Model.kt:358](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L358) |
+| `fun requestPosition` | [Model.kt:190](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L190) |
+| `fun connectSystem` | [Model.kt:191](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L191) |
+| `fun t` | [Model.kt:219](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L219) |
+| `fun title` | [Model.kt:220](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L220) |
+| `fun notify` | [Model.kt:221](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L221) |
+| `fun open` | [Model.kt:226](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L226) |
+| `fun openLinked` | [Model.kt:228](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L228) |
+| `fun openNotification` | [Model.kt:230](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L230) |
+| `fun openSystemDestination` | [Model.kt:246](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L246) |
+| `fun home` | [Model.kt:250](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L250) |
+| `fun back` | [Model.kt:251](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L251) |
+| `fun fly` | [Model.kt:252](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L252) |
+| `fun captureChartInteraction` | [Model.kt:253](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L253) |
+| `fun restoreChartInteraction` | [Model.kt:259](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L259) |
+| `fun mark` | [Model.kt:273](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L273) |
+| `fun startRoute` | [Model.kt:278](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L278) |
+| `fun advanceRoute` | [Model.kt:279](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L279) |
+| `fun save` | [Model.kt:285](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L285) |
+| `fun retryContentRead` | [Model.kt:298](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L298) |
+| `fun exportRecoveredContent` | [Model.kt:333](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L333) |
+| `fun saveWithFeedback` | [Model.kt:357](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L357) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MySailingRepository.kt
 
@@ -193,14 +193,18 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class StartBackgroundWrite` | [StartBackgroundStore.kt:24](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L24) |
-| `fun imageFile` | [StartBackgroundStore.kt:32](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L32) |
-| `fun choose` | [StartBackgroundStore.kt:34](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L34) |
-| `fun mode` | [StartBackgroundStore.kt:65](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L65) |
-| `fun opacity` | [StartBackgroundStore.kt:66](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L66) |
-| `fun crop` | [StartBackgroundStore.kt:68](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L68) |
-| `fun remove` | [StartBackgroundStore.kt:76](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L76) |
-| `fun load` | [StartBackgroundStore.kt:91](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L91) |
+| `class StartBackgroundFailure` | [StartBackgroundStore.kt:24](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L24) |
+| `class StartBackgroundWrite` | [StartBackgroundStore.kt:25](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L25) |
+| `fun startBackgroundFailure` | [StartBackgroundStore.kt:27](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L27) |
+| `fun imageFile` | [StartBackgroundStore.kt:46](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L46) |
+| `fun choose` | [StartBackgroundStore.kt:48](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L48) |
+| `fun mode` | [StartBackgroundStore.kt:83](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L83) |
+| `fun opacity` | [StartBackgroundStore.kt:84](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L84) |
+| `fun crop` | [StartBackgroundStore.kt:86](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L86) |
+| `fun remove` | [StartBackgroundStore.kt:94](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L94) |
+| `fun pickerFailed` | [StartBackgroundStore.kt:101](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L101) |
+| `fun clearFailure` | [StartBackgroundStore.kt:102](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L102) |
+| `fun load` | [StartBackgroundStore.kt:111](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/StartBackgroundStore.kt#L111) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/SystemNotifications.kt
 
@@ -255,37 +259,37 @@
 | 声明 | 实现位置 |
 | --- | --- |
 | `fun OsExperience` | [WpShellExperience.kt:59](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L59) |
-| `fun ShellAppIcon` | [WpShellExperience.kt:309](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L309) |
-| `fun getResources` | [WpShellExperience.kt:381](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L381) |
-| `fun onChange` | [WpShellExperience.kt:412](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L412) |
-| `object Launcher : ShellMotionTarget` | [WpShellExperience.kt:423](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L423) |
-| `object Search : ShellMotionTarget` | [WpShellExperience.kt:424](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L424) |
-| `object Recents : ShellMotionTarget` | [WpShellExperience.kt:425](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L425) |
-| `class App` | [WpShellExperience.kt:426](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L426) |
+| `fun ShellAppIcon` | [WpShellExperience.kt:316](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L316) |
+| `fun getResources` | [WpShellExperience.kt:388](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L388) |
+| `fun onChange` | [WpShellExperience.kt:419](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L419) |
+| `object Launcher : ShellMotionTarget` | [WpShellExperience.kt:430](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L430) |
+| `object Search : ShellMotionTarget` | [WpShellExperience.kt:431](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L431) |
+| `object Recents : ShellMotionTarget` | [WpShellExperience.kt:432](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L432) |
+| `class App` | [WpShellExperience.kt:433](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellExperience.kt#L433) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun pageForToken` | [WpShellRuntime.kt:172](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L172) |
-| `fun requestSystemPreferences` | [WpShellRuntime.kt:186](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L186) |
-| `fun updateSystemPreferences` | [WpShellRuntime.kt:202](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L202) |
-| `fun canonicalPage` | [WpShellRuntime.kt:206](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L206) |
-| `fun appForPage` | [WpShellRuntime.kt:218](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L218) |
-| `fun openLinked` | [WpShellRuntime.kt:229](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L229) |
-| `fun reportVisibleRoute` | [WpShellRuntime.kt:232](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L232) |
-| `fun visibleRouteForTask` | [WpShellRuntime.kt:237](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L237) |
-| `fun openFromNotification` | [WpShellRuntime.kt:241](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L241) |
-| `fun openSystemDestination` | [WpShellRuntime.kt:257](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L257) |
-| `fun open` | [WpShellRuntime.kt:282](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L282) |
-| `fun dispatch` | [WpShellRuntime.kt:299](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L299) |
-| `fun backDestination` | [WpShellRuntime.kt:342](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L342) |
-| `fun back` | [WpShellRuntime.kt:358](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L358) |
-| `fun popRoute` | [WpShellRuntime.kt:366](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L366) |
-| `fun home` | [WpShellRuntime.kt:367](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L367) |
-| `fun input` | [WpShellRuntime.kt:368](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L368) |
-| `fun resetStart` | [WpShellRuntime.kt:393](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L393) |
-| `class ShellApp` | [WpShellRuntime.kt:418](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L418) |
+| `fun pageForToken` | [WpShellRuntime.kt:167](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L167) |
+| `fun requestSystemPreferences` | [WpShellRuntime.kt:181](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L181) |
+| `fun updateSystemPreferences` | [WpShellRuntime.kt:197](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L197) |
+| `fun canonicalPage` | [WpShellRuntime.kt:201](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L201) |
+| `fun appForPage` | [WpShellRuntime.kt:213](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L213) |
+| `fun openLinked` | [WpShellRuntime.kt:224](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L224) |
+| `fun reportVisibleRoute` | [WpShellRuntime.kt:227](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L227) |
+| `fun visibleRouteForTask` | [WpShellRuntime.kt:232](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L232) |
+| `fun openFromNotification` | [WpShellRuntime.kt:236](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L236) |
+| `fun openSystemDestination` | [WpShellRuntime.kt:252](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L252) |
+| `fun open` | [WpShellRuntime.kt:277](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L277) |
+| `fun dispatch` | [WpShellRuntime.kt:294](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L294) |
+| `fun backDestination` | [WpShellRuntime.kt:337](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L337) |
+| `fun back` | [WpShellRuntime.kt:353](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L353) |
+| `fun popRoute` | [WpShellRuntime.kt:361](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L361) |
+| `fun home` | [WpShellRuntime.kt:362](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L362) |
+| `fun input` | [WpShellRuntime.kt:363](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L363) |
+| `fun resetStart` | [WpShellRuntime.kt:388](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L388) |
+| `class ShellApp` | [WpShellRuntime.kt:413](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L413) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/AnchorSwingCoverage.kt
 
@@ -349,7 +353,7 @@
 | `fun move` | [ChartSurface.kt:53](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartSurface.kt#L53) |
 | `fun zoom` | [ChartSurface.kt:54](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartSurface.kt#L54) |
 | `fun fit` | [ChartSurface.kt:55](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartSurface.kt#L55) |
-| `fun onDraw` | [ChartSurface.kt:88](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartSurface.kt#L88) |
+| `fun onDraw` | [ChartSurface.kt:87](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartSurface.kt#L87) |
 | `fun onTouchEvent` | [ChartSurface.kt:116](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartSurface.kt#L116) |
 | `fun destination` | [ChartSurface.kt:138](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartSurface.kt#L138) |
 | `fun dispatchTouchEvent` | [ChartSurface.kt:184](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartSurface.kt#L184) |
@@ -412,12 +416,12 @@
 | `class MapViewState` | [MapScene.kt:85](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L85) |
 | `fun fly` | [MapScene.kt:107](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L107) |
 | `fun fit` | [MapScene.kt:113](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L113) |
-| `fun view` | [MapScene.kt:153](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L153) |
-| `fun retainAisViews` | [MapScene.kt:155](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L155) |
-| `fun selectedLayer` | [MapScene.kt:156](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L156) |
-| `fun sourceName` | [MapScene.kt:157](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L157) |
-| `fun select` | [MapScene.kt:162](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L162) |
-| `fun removingLayer` | [MapScene.kt:179](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L179) |
+| `fun view` | [MapScene.kt:152](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L152) |
+| `fun retainAisViews` | [MapScene.kt:154](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L154) |
+| `fun selectedLayer` | [MapScene.kt:155](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L155) |
+| `fun sourceName` | [MapScene.kt:156](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L156) |
+| `fun select` | [MapScene.kt:161](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L161) |
+| `fun removingLayer` | [MapScene.kt:178](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/MapScene.kt#L178) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/NativeSceneRenderer.kt
 
@@ -493,40 +497,57 @@
 | `fun update` | [Nmea.kt:60](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/data/Nmea.kt#L60) |
 | `fun resetNmea` | [Nmea.kt:83](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/data/Nmea.kt#L83) |
 
+## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeMotion.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class VesselAttitudeMotion` | [VesselAttitudeMotion.kt:18](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeMotion.kt#L18) |
+| `fun setTarget` | [VesselAttitudeMotion.kt:33](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeMotion.kt#L33) |
+| `fun readDrawFrame` | [VesselAttitudeMotion.kt:62](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeMotion.kt#L62) |
+| `fun resetClock` | [VesselAttitudeMotion.kt:64](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeMotion.kt#L64) |
+| `fun snapToTarget` | [VesselAttitudeMotion.kt:67](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeMotion.kt#L67) |
+| `fun advance` | [VesselAttitudeMotion.kt:75](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeMotion.kt#L75) |
+| `fun transform` | [VesselAttitudeMotion.kt:106](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeMotion.kt#L106) |
+
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class VesselAttitudePose` | [VesselAttitudeProjection.kt:18](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L18) |
-| `fun transform` | [VesselAttitudeProjection.kt:19](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L19) |
-| `fun matrix` | [VesselAttitudeProjection.kt:31](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L31) |
-| `class VesselAttitudeDisplayState` | [VesselAttitudeProjection.kt:40](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L40) |
-| `class VesselAttitudeProjection` | [VesselAttitudeProjection.kt:43](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L43) |
-| `fun from` | [VesselAttitudeProjection.kt:49](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L49) |
+| `class VesselAttitudePose` | [VesselAttitudeProjection.kt:21](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L21) |
+| `fun transform` | [VesselAttitudeProjection.kt:22](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L22) |
+| `fun matrix` | [VesselAttitudeProjection.kt:34](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L34) |
+| `class VesselAttitudeDisplayState` | [VesselAttitudeProjection.kt:43](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L43) |
+| `class VesselAttitudeProjection` | [VesselAttitudeProjection.kt:46](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L46) |
+| `fun from` | [VesselAttitudeProjection.kt:60](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselAttitudeProjection.kt#L60) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class VesselViewPreset` | [VesselScene3D.kt:49](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L49) |
-| `fun VesselScene3D` | [VesselScene3D.kt:56](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L56) |
-| `fun vesselScenePoint` | [VesselScene3D.kt:110](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L110) |
-| `fun dot` | [VesselScene3D.kt:130](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L130) |
-| `fun cross` | [VesselScene3D.kt:131](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L131) |
-| `fun normalized` | [VesselScene3D.kt:132](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L132) |
-| `fun onAttachedToWindow` | [VesselScene3D.kt:200](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L200) |
-| `fun onDetachedFromWindow` | [VesselScene3D.kt:204](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L204) |
-| `fun onWindowVisibilityChanged` | [VesselScene3D.kt:209](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L209) |
-| `fun initialize` | [VesselScene3D.kt:224](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L224) |
-| `fun load` | [VesselScene3D.kt:266](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L266) |
-| `fun update` | [VesselScene3D.kt:279](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L279) |
-| `fun setResumed` | [VesselScene3D.kt:303](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L303) |
-| `fun doFrame` | [VesselScene3D.kt:361](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L361) |
-| `fun onNativeWindowChanged` | [VesselScene3D.kt:402](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L402) |
-| `fun onDetachedFromSurface` | [VesselScene3D.kt:412](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L412) |
-| `fun onResized` | [VesselScene3D.kt:421](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L421) |
-| `fun fail` | [VesselScene3D.kt:453](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L453) |
-| `fun close` | [VesselScene3D.kt:461](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L461) |
+| `class VesselViewPreset` | [VesselScene3D.kt:51](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L51) |
+| `fun VesselScene3D` | [VesselScene3D.kt:58](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L58) |
+| `fun vesselScenePoint` | [VesselScene3D.kt:113](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L113) |
+| `class VesselSceneProjectionCache` | [VesselScene3D.kt:124](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L124) |
+| `fun get` | [VesselScene3D.kt:128](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L128) |
+| `class VesselSceneProjector` | [VesselScene3D.kt:138](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L138) |
+| `fun point` | [VesselScene3D.kt:143](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L143) |
+| `fun dot` | [VesselScene3D.kt:154](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L154) |
+| `fun cross` | [VesselScene3D.kt:155](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L155) |
+| `fun normalized` | [VesselScene3D.kt:156](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L156) |
+| `fun onAttachedToWindow` | [VesselScene3D.kt:229](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L229) |
+| `fun onSizeChanged` | [VesselScene3D.kt:234](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L234) |
+| `fun onDetachedFromWindow` | [VesselScene3D.kt:238](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L238) |
+| `fun onWindowVisibilityChanged` | [VesselScene3D.kt:246](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L246) |
+| `fun initialize` | [VesselScene3D.kt:261](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L261) |
+| `fun load` | [VesselScene3D.kt:305](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L305) |
+| `fun update` | [VesselScene3D.kt:319](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L319) |
+| `fun setResumed` | [VesselScene3D.kt:342](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L342) |
+| `fun doFrame` | [VesselScene3D.kt:419](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L419) |
+| `fun onNativeWindowChanged` | [VesselScene3D.kt:463](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L463) |
+| `fun onDetachedFromSurface` | [VesselScene3D.kt:473](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L473) |
+| `fun onResized` | [VesselScene3D.kt:482](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L482) |
+| `fun fail` | [VesselScene3D.kt:514](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L514) |
+| `fun close` | [VesselScene3D.kt:522](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselScene3D.kt#L522) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/scene/VesselSceneModel.kt
 
@@ -650,11 +671,12 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun AisRadar` | [AisRadar.kt:41](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L41) |
-| `fun observedTrack` | [AisRadar.kt:162](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L162) |
-| `fun distance` | [AisRadar.kt:349](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L349) |
-| `fun point` | [AisRadar.kt:350](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L350) |
-| `fun point` | [AisRadar.kt:351](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L351) |
+| `fun AisRadar` | [AisRadar.kt:42](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L42) |
+| `fun observedTrack` | [AisRadar.kt:168](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L168) |
+| `fun distance` | [AisRadar.kt:351](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L351) |
+| `fun point` | [AisRadar.kt:352](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L352) |
+| `fun point` | [AisRadar.kt:353](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L353) |
+| `fun RadarInfo` | [AisRadar.kt:444](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRadar.kt#L444) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisRangeZoom.kt
 
@@ -666,17 +688,17 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun AisScreen` | [AisScreen.kt:50](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L50) |
-| `fun setRange` | [AisScreen.kt:73](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L73) |
-| `fun saveRange` | [AisScreen.kt:78](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L78) |
-| `fun go` | [AisScreen.kt:106](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L106) |
-| `fun openChart` | [AisScreen.kt:107](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L107) |
-| `fun viewTarget` | [AisScreen.kt:108](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L108) |
-| `fun back` | [AisScreen.kt:120](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L120) |
-| `fun sorted` | [AisScreen.kt:214](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L214) |
-| `fun AisRetainSelection` | [AisScreen.kt:261](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L261) |
-| `fun permissions` | [AisScreen.kt:304](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L304) |
-| `fun AisPoint.scene` | [AisScreen.kt:342](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L342) |
+| `fun AisScreen` | [AisScreen.kt:51](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L51) |
+| `fun setRange` | [AisScreen.kt:75](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L75) |
+| `fun saveRange` | [AisScreen.kt:80](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L80) |
+| `fun go` | [AisScreen.kt:108](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L108) |
+| `fun openChart` | [AisScreen.kt:109](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L109) |
+| `fun viewTarget` | [AisScreen.kt:110](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L110) |
+| `fun back` | [AisScreen.kt:122](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L122) |
+| `fun sorted` | [AisScreen.kt:219](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L219) |
+| `fun AisRetainSelection` | [AisScreen.kt:266](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L266) |
+| `fun permissions` | [AisScreen.kt:309](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L309) |
+| `fun AisPoint.scene` | [AisScreen.kt:347](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisScreen.kt#L347) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/AisTargetDetail.kt
 
@@ -830,11 +852,10 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun InstrumentAttitudePanel` | [InstrumentAttitudePanel.kt:31](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentAttitudePanel.kt#L31) |
-| `fun p` | [InstrumentAttitudePanel.kt:186](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentAttitudePanel.kt#L186) |
-| `fun p` | [InstrumentAttitudePanel.kt:199](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentAttitudePanel.kt#L199) |
-| `fun p` | [InstrumentAttitudePanel.kt:224](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentAttitudePanel.kt#L224) |
-| `fun polygon` | [InstrumentAttitudePanel.kt:229](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentAttitudePanel.kt#L229) |
+| `fun InstrumentAttitudePanel` | [InstrumentAttitudePanel.kt:39](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentAttitudePanel.kt#L39) |
+| `fun p` | [InstrumentAttitudePanel.kt:216](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentAttitudePanel.kt#L216) |
+| `fun p` | [InstrumentAttitudePanel.kt:233](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentAttitudePanel.kt#L233) |
+| `fun p` | [InstrumentAttitudePanel.kt:265](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentAttitudePanel.kt#L265) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/InstrumentHistoryDrawing.kt
 
@@ -1140,15 +1161,16 @@
 | --- | --- |
 | `fun SettingsScreen` | [SettingsScreen.kt:46](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L46) |
 | `fun title` | [SettingsScreen.kt:55](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L55) |
-| `fun open` | [SettingsScreen.kt:170](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L170) |
+| `fun open` | [SettingsScreen.kt:171](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L171) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StartBackgroundSettings.kt
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun rememberStartBackdrop` | [StartBackgroundSettings.kt:34](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StartBackgroundSettings.kt#L34) |
-| `fun number` | [StartBackgroundSettings.kt:47](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StartBackgroundSettings.kt#L47) |
-| `fun StartBackgroundSettings` | [StartBackgroundSettings.kt:54](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StartBackgroundSettings.kt#L54) |
+| `fun rememberStartBackdrop` | [StartBackgroundSettings.kt:35](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StartBackgroundSettings.kt#L35) |
+| `fun number` | [StartBackgroundSettings.kt:51](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StartBackgroundSettings.kt#L51) |
+| `fun StartBackgroundSettings` | [StartBackgroundSettings.kt:59](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StartBackgroundSettings.kt#L59) |
+| `fun choosePhoto` | [StartBackgroundSettings.kt:71](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StartBackgroundSettings.kt#L71) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SystemAlerts.kt
 
@@ -1172,7 +1194,7 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun TileLibraryScreen` | [TileLibraryExperience.kt:31](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TileLibraryExperience.kt#L31) |
+| `fun TileLibraryScreen` | [TileLibraryExperience.kt:36](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TileLibraryExperience.kt#L36) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TilePresentations.kt
 
@@ -1214,7 +1236,9 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun ColumnScope.UnitSettings` | [UnitSettings.kt:18](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/UnitSettings.kt#L18) |
+| `fun ColumnScope.UnitSettings` | [UnitSettings.kt:13](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/UnitSettings.kt#L13) |
+| `fun distanceName` | [UnitSettings.kt:17](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/UnitSettings.kt#L17) |
+| `fun speedName` | [UnitSettings.kt:25](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/UnitSettings.kt#L25) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/VesselDataDetail.kt
 
@@ -1518,7 +1542,11 @@
 | `class DepthUnit` | [MarineUnitPreferences.kt:5](../../core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineUnitPreferences.kt#L5) |
 | `class TemperatureUnit` | [MarineUnitPreferences.kt:6](../../core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineUnitPreferences.kt#L6) |
 | `class PressureUnit` | [MarineUnitPreferences.kt:7](../../core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineUnitPreferences.kt#L7) |
-| `class MarineUnitPreferences` | [MarineUnitPreferences.kt:14](../../core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineUnitPreferences.kt#L14) |
+| `class DistanceUnit` | [MarineUnitPreferences.kt:9](../../core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineUnitPreferences.kt#L9) |
+| `class SpeedUnit` | [MarineUnitPreferences.kt:14](../../core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineUnitPreferences.kt#L14) |
+| `class MarineUnitPreferences` | [MarineUnitPreferences.kt:23](../../core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineUnitPreferences.kt#L23) |
+| `fun fromStored` | [MarineUnitPreferences.kt:36](../../core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineUnitPreferences.kt#L36) |
+| `fun value` | [MarineUnitPreferences.kt:39](../../core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/MarineUnitPreferences.kt#L39) |
 
 ## core/shell-contract/src/main/kotlin/com/yokuli/shell/contract/ShellInput.kt
 
@@ -1557,36 +1585,36 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class PersistedLauncherPage` | [LauncherPersistence.kt:12](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L12) |
-| `class LauncherStartupHealth` | [LauncherPersistence.kt:14](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L14) |
-| `class LauncherPersistedState` | [LauncherPersistence.kt:21](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L21) |
-| `class LauncherPersistenceIncident` | [LauncherPersistence.kt:37](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L37) |
-| `class LauncherPersistenceMigrationResult` | [LauncherPersistence.kt:46](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L46) |
-| `object LauncherPersistedStateMigration` | [LauncherPersistence.kt:51](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L51) |
-| `fun migrate` | [LauncherPersistence.kt:58](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L58) |
-| `fun normalized` | [LauncherPersistence.kt:82](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L82) |
-| `class LauncherTokenAlias` | [LauncherPersistence.kt:127](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L127) |
-| `fun migrate` | [LauncherPersistence.kt:137](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L137) |
-| `class LauncherProductMigrationStep` | [LauncherPersistence.kt:144](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L144) |
-| `class LauncherProductMigrationResult` | [LauncherPersistence.kt:157](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L157) |
-| `class LauncherProductMigrationPlan` | [LauncherPersistence.kt:166](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L166) |
-| `fun migrate` | [LauncherPersistence.kt:177](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L177) |
-| `class LauncherRecoveryDecision` | [LauncherPersistence.kt:227](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L227) |
-| `object LauncherRecoveryPolicy` | [LauncherPersistence.kt:232](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L232) |
-| `fun beginLaunch` | [LauncherPersistence.kt:236](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L236) |
-| `fun markHealthy` | [LauncherPersistence.kt:251](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L251) |
-| `interface LauncherPersistencePort` | [LauncherPersistence.kt:259](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L259) |
-| `fun load` | [LauncherPersistence.kt:266](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L266) |
-| `fun save` | [LauncherPersistence.kt:267](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L267) |
-| `fun reset` | [LauncherPersistence.kt:268](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L268) |
-| `fun saveDocument` | [LauncherPersistence.kt:270](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L270) |
-| `fun savePreferences` | [LauncherPersistence.kt:274](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L274) |
-| `fun beginLaunch` | [LauncherPersistence.kt:284](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L284) |
-| `fun markLaunchHealthy` | [LauncherPersistence.kt:291](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L291) |
-| `class InMemoryLauncherPersistence` | [LauncherPersistence.kt:297](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L297) |
-| `fun load` | [LauncherPersistence.kt:309](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L309) |
-| `fun save` | [LauncherPersistence.kt:311](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L311) |
-| `fun reset` | [LauncherPersistence.kt:316](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L316) |
+| `class PersistedLauncherPage` | [LauncherPersistence.kt:14](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L14) |
+| `class LauncherStartupHealth` | [LauncherPersistence.kt:16](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L16) |
+| `class LauncherPersistedState` | [LauncherPersistence.kt:23](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L23) |
+| `class LauncherPersistenceIncident` | [LauncherPersistence.kt:39](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L39) |
+| `class LauncherPersistenceMigrationResult` | [LauncherPersistence.kt:48](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L48) |
+| `object LauncherPersistedStateMigration` | [LauncherPersistence.kt:53](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L53) |
+| `fun migrate` | [LauncherPersistence.kt:60](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L60) |
+| `fun normalized` | [LauncherPersistence.kt:84](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L84) |
+| `class LauncherTokenAlias` | [LauncherPersistence.kt:129](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L129) |
+| `fun migrate` | [LauncherPersistence.kt:139](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L139) |
+| `class LauncherProductMigrationStep` | [LauncherPersistence.kt:146](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L146) |
+| `class LauncherProductMigrationResult` | [LauncherPersistence.kt:159](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L159) |
+| `class LauncherProductMigrationPlan` | [LauncherPersistence.kt:168](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L168) |
+| `fun migrate` | [LauncherPersistence.kt:179](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L179) |
+| `class LauncherRecoveryDecision` | [LauncherPersistence.kt:229](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L229) |
+| `object LauncherRecoveryPolicy` | [LauncherPersistence.kt:234](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L234) |
+| `fun beginLaunch` | [LauncherPersistence.kt:238](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L238) |
+| `fun markHealthy` | [LauncherPersistence.kt:253](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L253) |
+| `interface LauncherPersistencePort` | [LauncherPersistence.kt:261](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L261) |
+| `fun load` | [LauncherPersistence.kt:268](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L268) |
+| `fun save` | [LauncherPersistence.kt:269](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L269) |
+| `fun reset` | [LauncherPersistence.kt:270](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L270) |
+| `fun saveDocument` | [LauncherPersistence.kt:272](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L272) |
+| `fun savePreferences` | [LauncherPersistence.kt:276](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L276) |
+| `fun beginLaunch` | [LauncherPersistence.kt:286](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L286) |
+| `fun markLaunchHealthy` | [LauncherPersistence.kt:293](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L293) |
+| `class InMemoryLauncherPersistence` | [LauncherPersistence.kt:299](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L299) |
+| `fun load` | [LauncherPersistence.kt:311](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L311) |
+| `fun save` | [LauncherPersistence.kt:313](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L313) |
+| `fun reset` | [LauncherPersistence.kt:318](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherPersistence.kt#L318) |
 
 ## core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/LauncherReducer.kt
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -28,7 +29,7 @@ import com.yokuli.marine.core.design.*
 import com.yokuli.marine.shell.rebuild.*
 import kotlin.math.roundToInt
 
-private data class StartImageLoad(val name:String?,val image:androidx.compose.ui.graphics.ImageBitmap?=null,val finished:Boolean=false)
+private data class StartImageLoad(val name:String?,val image:androidx.compose.ui.graphics.ImageBitmap?=null,val finished:Boolean=false,val failure:StartBackgroundFailure?=null)
 
 @Composable
 fun rememberStartBackdrop(os: OsStore): StartBackdrop {
@@ -38,8 +39,11 @@ fun rememberStartBackdrop(os: OsStore): StartBackdrop {
     val loaded by produceState(StartImageLoad(name),os,name) {
         value=StartImageLoad(name)
         if(name!=null) {
-            val image=try {os.startBackground.load(name)?.asImageBitmap()} catch(cancelled:CancellationException){throw cancelled} catch(_:Exception){null}
-            value=StartImageLoad(name,image,true)
+            value=try {
+                val image=os.startBackground.load(name)?.asImageBitmap()
+                StartImageLoad(name,image,true,if(image==null)StartBackgroundFailure.PHOTO_MISSING else null)
+            } catch(cancelled:CancellationException){throw cancelled}
+            catch(error:Exception){StartImageLoad(name,finished=true,failure=startBackgroundFailure(error,StartBackgroundFailure.PHOTO_FORMAT))}
         } else value=StartImageLoad(null,finished=true)
     }
     val image=loaded.takeIf {it.name==name}?.image
@@ -47,7 +51,8 @@ fun rememberStartBackdrop(os: OsStore): StartBackdrop {
     fun number(key:String,fallback:Float,range:ClosedFloatingPointRange<Float>)=preferences[key]?.toFloatOrNull()?.takeIf {it.isFinite()}?.coerceIn(range) ?: fallback
     return StartBackdrop(image,mode,number(START_OPACITY,.35f,0f..1f),number(START_CROP_SCALE,1f,1f..3f),
         number(START_FOCUS_X,.5f,0f..1f),number(START_FOCUS_Y,.5f,0f..1f),
-        imageLoading=name!=null&&(loaded.name!=name||!loaded.finished),imageFailed=name!=null&&loaded.name==name&&loaded.finished&&image==null)
+        imageLoading=name!=null&&(loaded.name!=name||!loaded.finished),imageFailed=name!=null&&loaded.name==name&&loaded.finished&&image==null,
+        imageFailureReason=loaded.takeIf {it.name==name}?.failure?.name)
 }
 
 @Composable
@@ -55,12 +60,23 @@ fun StartBackgroundSettings(os: OsStore) {
     val current = LocalStartBackdrop.current
     val preferences by os.shell.persistence.state.collectAsState()
     val write by os.startBackground.write.collectAsState()
+    val hasPhoto=preferences?.appPreferenceValues?.containsKey(START_IMAGE)==true
     var opacity by remember(current.tileOpacity) { mutableFloatStateOf(current.tileOpacity) }
-    val choose = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let(os.startBackground::choose) }
+    var requestedMode by rememberSaveable {mutableStateOf<String?>(null)}
+    val choose=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {uri->
+        val mode=requestedMode?.let {runCatching {StartBackdropMode.valueOf(it)}.getOrNull()}
+        requestedMode=null
+        if(uri!=null)os.startBackground.choose(uri,mode)
+    }
+    fun choosePhoto(mode:StartBackdropMode?=null) {
+        requestedMode=mode?.name
+        os.startBackground.clearFailure()
+        try {choose.launch("image/*")}
+        catch(error:Exception) {requestedMode=null;os.startBackground.pickerFailed(error)}
+    }
     val c = LocalMetro.current
     var adjusting by remember {mutableStateOf(false)}
-    AppSection(os.t("你的开始屏幕", "make Start yours"))
-    // 预览复用真实桌面投影，避免预览透明而桌面不透明的两套实现。
+    AppSection(os.t("开始屏幕预览", "Start preview"))
     CompositionLocalProvider(LocalStartBackdrop provides current.copy(tileOpacity = opacity)) {
         StartWallpaperSurface(Modifier.fillMaxWidth().height(210.dp)) {
             Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -72,29 +88,50 @@ fun StartBackgroundSettings(os: OsStore) {
             }
         }
     }
-    MetroButton(os.t("选择背景照片", "choose a photo"), { choose.launch("image/*") }, enabled = !write.busy)
-    if (preferences?.appPreferenceValues?.containsKey(START_IMAGE) == true) {
-        if(current.imageLoading)MetroProgress(os.t("正在载入照片…","loading photo…"))
-        if(current.imageFailed)Label(os.t("照片未能载入，请重新选择。","Your photo could not be loaded. Choose it again."),14,c.muted)
+    MetroButton(if(hasPhoto)os.t("更换背景照片", "change background photo")else os.t("选择背景照片", "choose a background photo"),{choosePhoto()},primary=true,enabled=!write.busy)
+    if(current.imageLoading)MetroProgress(os.t("正在载入照片…","loading photo…"))
+    if(current.imageFailed)Label(backgroundFailureMessage(os,current.imageFailureReason?.let {runCatching {StartBackgroundFailure.valueOf(it)}.getOrNull()}),14,c.muted)
+    if(!hasPhoto)Label(os.t("选一张照片，让它显示在整个开始屏幕，或只透过磁贴显示。", "Choose a photo for the whole Start screen, or show it only through the tiles."),15,c.muted)
+    AppSection(os.t("背景显示方式","show your background"))
+    listOf(
+        StartBackdropMode.FULL to os.t("全屏照片 + 透明磁贴", "full-screen photo + transparent tiles"),
+        StartBackdropMode.TILES to os.t("照片只在磁贴内显示", "photo inside tiles only"),
+        StartBackdropMode.NONE to os.t("纯色磁贴", "solid-colour tiles"),
+    ).forEach {(mode,label)->
+        ChoiceRow(label,current.mode==mode,enabled=!write.busy) {
+            if(mode!=StartBackdropMode.NONE&&(!hasPhoto||current.imageFailed))choosePhoto(mode) else os.startBackground.mode(mode)
+        }
+    }
+    Label(os.t("磁贴透明度", "tile transparency")+" · ${(100-opacity*100).roundToInt()}%",15)
+    BackgroundOpacitySlider(1f-opacity,os.t("磁贴透明度","tile transparency"),hasPhoto&&current.image!=null&&current.mode!=StartBackdropMode.NONE&&!write.busy,
+        {opacity=1f-it},{os.startBackground.opacity(opacity)})
+    Label(when {
+        !hasPhoto->os.t("先选择照片即可调整透明度；图标与文字保持清晰。","Choose a photo to adjust transparency. Icons and text stay clear.")
+        current.mode==StartBackdropMode.NONE->os.t("选择上方任一照片模式，透明度就会应用到磁贴底色。","Choose either photo mode above to apply transparency to tile backgrounds.")
+        else->os.t("只改变磁贴底色的透明度。海图封面保留它自己的海图画面。","Only tile backgrounds become transparent. Chart cover tiles retain their chart image.")
+    },14,c.muted)
+    if(hasPhoto) {
         MetroButton(os.t("调整照片位置","adjust photo position"),{adjusting=true},enabled=current.image!=null&&!write.busy)
-        listOf(StartBackdropMode.FULL to os.t("全屏背景", "full-screen picture"),
-            StartBackdropMode.TILES to os.t("磁贴内背景", "tile picture"), StartBackdropMode.NONE to os.t("纯色磁贴", "solid tiles")).forEach { (mode, label) ->
-            ChoiceRow(label, current.mode == mode) { if (!write.busy) os.startBackground.mode(mode) }
-        }
-        if (current.mode != StartBackdropMode.NONE) {
-            Label(os.t("磁贴透明度", "tile transparency") + " · ${(100 - opacity * 100).roundToInt()}%", 15)
-            BackgroundOpacitySlider(1f - opacity, os.t("磁贴透明度", "tile transparency"), !write.busy,
-                { opacity = 1f - it }, { os.startBackground.opacity(opacity) })
-            Label(os.t("文字与实时内容保持清晰，背景随桌面轻轻移动。照片磁贴保留自己的画面。", "Text and live content stay clear as your background moves with Start. Photo tiles keep their own image."), 14, c.muted)
-        }
-        MetroButton(os.t("移除背景照片", "remove photo"), {os.startBackground.remove()}, enabled = !write.busy)
+        MetroButton(os.t("移除背景照片","remove background photo"),{os.startBackground.remove()},enabled=!write.busy)
     }
     if(adjusting) {
         val imageName=preferences?.appPreferenceValues?.get(START_IMAGE)
         if(imageName!=null&&current.image!=null)StartPhotoFramingDialog(os,current,imageName) {adjusting=false}
     }
-    if (write.busy) MetroProgress(os.t("正在保存开始屏幕…", "saving Start…"))
-    if (write.failed) Label(os.t("未能保存更改，原背景仍然保留。请检查储存空间后重试。", "Could not save the change. Your previous background is kept. Check storage and try again."), 14, c.muted)
+    if(write.busy)MetroProgress(os.t("正在保存开始屏幕…","saving Start…"))
+    if(write.failed)Label(backgroundFailureMessage(os,write.reason),14,c.muted)
+}
+
+private fun backgroundFailureMessage(os:OsStore,reason:StartBackgroundFailure?):String=when(reason) {
+    StartBackgroundFailure.PHOTO_ACCESS->os.t("无法读取这张照片。请重新选择，并允许照片应用提供读取权限。","This photo cannot be read. Choose it again and allow your photo app to provide access.")
+    StartBackgroundFailure.PHOTO_MISSING->os.t("照片文件已不可用。请重新选择本机上可打开的照片。","The photo file is no longer available. Choose a photo that can be opened on this device.")
+    StartBackgroundFailure.PHOTO_FORMAT->os.t("无法解码这张照片。请尝试另一张 JPEG、PNG 或 HEIF 照片。","This photo could not be decoded. Try another JPEG, PNG or HEIF image.")
+    StartBackgroundFailure.STORAGE_FULL->os.t("储存空间不足，背景未保存。请释放空间后重试。","Storage is full. Free some space and try again; the background was not saved.")
+    StartBackgroundFailure.STORAGE_WRITE->os.t("无法将照片写入本机储存，背景未更改。请检查储存状态后重试。","The photo could not be written to device storage. Your background is unchanged; check storage and retry.")
+    StartBackgroundFailure.PREFERENCE_WRITE->os.t("开始屏幕设置未能保存。原设置仍保留，请重试。","Start settings could not be saved. Your previous settings are retained; try again.")
+    StartBackgroundFailure.PHOTO_CHANGED->os.t("背景照片已更换，请重新调整新照片的位置。","The background photo changed. Reopen framing for the new photo.")
+    StartBackgroundFailure.PICKER_UNAVAILABLE->os.t("手机上没有可用的照片选择器，请启用系统文件或照片应用后重试。","No photo picker is available. Enable the system Files or Photos app and retry.")
+    null->os.t("背景未能载入或保存，请重新选择照片后重试。","The background could not be loaded or saved. Choose your photo again and retry.")
 }
 
 @Composable
@@ -193,7 +230,7 @@ private fun BackgroundOpacitySlider(value: Float, label: String, enabled: Boolea
         }
         MetroButton(os.t("重新居中","centre photo"),{draft=draft.copy(cropScale=1f,focusX=.5f,focusY=.5f)},enabled=enabled)
         if(submitting)MetroProgress(os.t("正在保存取景…","saving photo framing…"))
-        if(write.failed&&!submitting)Label(os.t("未能保存取景，调整仍保留在这里。","Could not save. Your framing remains here."),14,LocalMetro.current.muted)
+        if(write.failed&&!submitting)Label(backgroundFailureMessage(os,write.reason),14,LocalMetro.current.muted)
         MetroButton(os.t("保存取景","save framing"),{
             submitting=true
             val submitted=draft

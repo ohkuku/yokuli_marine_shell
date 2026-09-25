@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 
 const val CURRENT_LAUNCHER_PERSISTENCE_SCHEMA = 4
+/** 包含系统、磁贴展示和应用偏好，不等同于最多64个注册控件定义。仍限制总存储规模。 */
+const val MAX_PERSISTED_APP_PREFERENCES = 256
 
 enum class PersistedLauncherPage { START, ALL_APPS }
 
@@ -92,7 +94,7 @@ object LauncherPersistedStateMigration {
             .filter { (key, value) ->
                 key.matches(Regex("[a-z0-9][a-z0-9_.-]{2,95}")) && value.length <= 128
             }
-            .take(64)
+            .take(MAX_PERSISTED_APP_PREFERENCES)
             .associate { it.toPair() }
         if (normalizedAppPreferences != source.appPreferenceValues) {
             incidents += LauncherPersistenceIncident.INVALID_PREFERENCE_REPLACED

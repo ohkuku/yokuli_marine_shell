@@ -60,8 +60,7 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
     var camera: ChartCamera? = null
     var scene = MapScene()
     var onEvent: (MapEvent) -> Unit = {}
-    var nauticalScale = true
-    var shortScaleFeet = false
+    var unitFormats = com.yokuli.marine.core.design.MarineUnitFormats(com.yokuli.shell.contract.MarineUnitPreferences())
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var handle: MapPoint? = null
@@ -97,20 +96,21 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
             }
         }
         val x=18*density; val y=state.scaleTopDp*density
-        val maximum=distance(cam.unproject(x,y),cam.unproject(x+110*density,y))
-        if(maximum.isFinite() && maximum>0) {
-            // 整数 1 / 2 / 5 比例尺：改变线段宽度适配真实距离，绝不把任意像素宽度标为小数。
-            // 大范围沿用航程单位；近距比例尺与尺寸设置共用 m/ft，不固定写死米。
-            val unit=if(nauticalScale && maximum>=1852)1852.0 else if(!nauticalScale && maximum>=1000)1000.0 else if(shortScaleFeet).3048 else 1.0
-            val suffix=if(unit==1852.0)"nm" else if(unit==1000.0)"km" else if(shortScaleFeet)"ft" else "m"
-            val available=(maximum/unit).coerceAtLeast(1.0)
-            val power=10.0.pow(floor(log10(available)))
-            val nice=listOf(1.0,2.0,5.0).lastOrNull {it*power<=available}?.times(power) ?: power
-            val pixels=(110*density*nice*unit/maximum).toFloat()
-            paint.style=Paint.Style.FILL;paint.color=0xDCFFFFFF.toInt();canvas.drawRect(x-6*density,y-25*density,x+pixels+8*density,y+6*density,paint)
+        val availablePixels=(width-x-12*density).coerceAtLeast(0f)
+        val maximumPixels=min(110*density,availablePixels)
+        if(maximumPixels<=0f)return
+        val maximum=distance(cam.unproject(x,y),cam.unproject(x+maximumPixels,y))
+        unitFormats.scaleBar(maximum)?.let { scale ->
+            // 先求无量纲比例，防止极端投影值在乘像素时溢出；窄视口同步缩短实际采样线段。
+            val pixels=(maximumPixels*(scale.meters/maximum).coerceIn(0.0,1.0)).toFloat()
+            paint.textSize=12*density
+            val fullLabelWidth=paint.measureText(scale.label)
+            if(fullLabelWidth>availablePixels)paint.textSize*=availablePixels/fullLabelWidth
+            val labelWidth=paint.measureText(scale.label)
+            paint.style=Paint.Style.FILL;paint.color=0xDCFFFFFF.toInt();canvas.drawRect(x-6*density,y-25*density,x+max(pixels,labelWidth)+8*density,y+6*density,paint)
             paint.color=0xFF19252B.toInt();paint.strokeWidth=2*density
             canvas.drawLine(x,y,x+pixels,y,paint);canvas.drawLine(x,y-5*density,x,y,paint);canvas.drawLine(x+pixels,y-5*density,x+pixels,y,paint)
-            paint.textSize=12*density;paint.textAlign=Paint.Align.LEFT;canvas.drawText("${nice.roundToLong()} $suffix",x,y-8*density,paint)
+            paint.textAlign=Paint.Align.LEFT;canvas.drawText(scale.label,x,y-8*density,paint)
         }
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -446,7 +446,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     }
     fun update(scene:MapScene,events:(MapEvent)->Unit) {
         if(destroyed)return
-        onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.nauticalScale=maps.nauticalScale;overlay.shortScaleFeet=maps.shortScaleFeet;overlay.invalidate()
+        onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.unitFormats=com.yokuli.marine.core.design.MarineUnitFormats(maps.unitPreferences);overlay.invalidate()
         renderViewportScene()
         googleMap?.uiSettings?.setAllGesturesEnabled(state.interactive)
         googleMap?.uiSettings?.apply {isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}

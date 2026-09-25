@@ -88,6 +88,9 @@ class ProtoDataStoreLauncherPersistence private constructor(
     suspend fun updatePreferences(transform: (LauncherPersistedState) -> LauncherPersistedState) {
         updateCurrent { current ->
             val requested = transform(current)
+            // 新写入必须完整成功或失败，不能截掉末尾背景/单位键后仍回报成功。
+            require(requested.appPreferenceValues.size <= com.yokuli.shell.engine.MAX_PERSISTED_APP_PREFERENCES) { "Too many saved preferences" }
+            require(requested.appPreferenceValues.all { (key,value) -> key.matches(Regex("[a-z0-9][a-z0-9_.-]{2,95}")) && value.length <= 128 }) { "Invalid preference value" }
             current.copy(
                 themeModeName = requested.themeModeName,
                 accentName = requested.accentName,

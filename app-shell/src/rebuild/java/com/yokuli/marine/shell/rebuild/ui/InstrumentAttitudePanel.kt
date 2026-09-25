@@ -7,6 +7,14 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -34,7 +42,7 @@ import kotlin.math.abs
     onMetric: (InstrumentTileId) -> Unit,
 ) {
     val services = os.marine?.services ?: return
-    val state by services.state.collectAsState()
+    val state by services.state.collectAsStateWithLifecycle()
     val data = state.vesselData
     val projection = remember(data.heelDegrees, data.pitchDegrees) { VesselAttitudeProjection.from(data) }
     val c = LocalMetro.current
@@ -44,7 +52,27 @@ import kotlin.math.abs
     val preset = runCatching { VesselViewPreset.valueOf(viewName) }.getOrDefault(VesselViewPreset.OVERVIEW)
     var failed by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) }
-    LaunchedEffect(active) { if (!active) ready = false }
+    var sceneOpened by remember { mutableStateOf(active) }
+    var canvasVisible by remember { mutableStateOf(false) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    val motion = remember { VesselAttitudeMotion() }
+    val animateBoat = enabled && resumed && canvasVisible
+    SideEffect {
+        if (active) sceneOpened = true
+        motion.setTarget(projection, animateBoat)
+    }
+    // 原生可用时只有 Choreographer 推进姿态；二维降级才接管同一显示状态的帧时钟。
+    LaunchedEffect(motion, animateBoat, failed) {
+        if (animateBoat && failed) snapshotFlow { motion.targetVersion }.collectLatest {
+            while (motion.isMoving) withFrameNanos { motion.advance(it) }
+        }
+    }
     val mode = when (projection.state) {
         VesselAttitudeDisplayState.LIVE -> os.t("当前姿态", "current attitude")
         VesselAttitudeDisplayState.LAST -> os.t("上次姿态", "last attitude")
@@ -64,27 +92,29 @@ import kotlin.math.abs
             }
         }
         Label(mode, 15, if (projection.state == VesselAttitudeDisplayState.LIVE) c.accent else c.muted)
-        Box(Modifier.fillMaxWidth().height(286.dp).semantics {
+        Box(Modifier.fillMaxWidth().height(286.dp).onGloballyPositioned { coordinates ->
+            val visible = coordinates.boundsInWindow(); canvasVisible = visible.width > 0f && visible.height > 0f
+        }.semantics {
             contentDescription = mode + ", " + attitudeDirection(os, data.heelDegrees.attitudeDisplayValue(), true) + ", " +
                 attitudeDirection(os, data.pitchDegrees.attitudeDisplayValue(), false)
         }) {
             AttitudeReferencePlane(preset, Modifier.fillMaxSize())
             // 尚未 ready 时保留完整二维读数与船体；不以无限 loading 挡住仪表。
-            if (failed || !ready || !active) {
-                AttitudeVessel2D(preset, projection.pose, projection.state, Modifier.fillMaxSize())
+            if (failed || !ready) {
+                AttitudeVessel2D(preset, motion, projection.state, Modifier.fillMaxSize())
             }
-            if (!failed && active) {
+            if (!failed && (active || sceneOpened)) {
                 // 只降低船体的存在感，水平参考与方向标签仍保持清晰；无动画假装恢复实时。
-                VesselScene3D(preset, os.light, enabled, Modifier.fillMaxSize().graphicsLayer {
+                VesselScene3D(preset, os.light, animateBoat, Modifier.fillMaxSize().graphicsLayer {
                     alpha = when (projection.state) {
                         VesselAttitudeDisplayState.LIVE -> 1f
                         VesselAttitudeDisplayState.LAST -> .52f
                         VesselAttitudeDisplayState.REFERENCE -> .34f
                     }
                 },
-                    onFailure = { failed = true }, onReady = { ready = true }, attitude = projection.pose)
+                    onFailure = { failed = true; ready = false }, onReady = { ready = true }, attitude = projection, motion = motion)
             }
-            AttitudeLandmarks(preset, projection.pose, Modifier.fillMaxSize())
+            AttitudeLandmarks(preset, motion, Modifier.fillMaxSize())
             Label(os.t("水平参考", "level reference"), 12, c.muted,
                 Modifier.align(Alignment.BottomStart).padding(bottom = 5.dp))
             if (failed) Label(os.t("二维姿态", "2D attitude"), 12, c.muted,
@@ -193,12 +223,16 @@ private fun attitudeDirection(os: OsStore, value: Double?, heel: Boolean): Strin
 }
 
 /** 三个语义点使用真实模型的同一变换和投影；颜色对应下方文字，标签本身保持水平。 */
-@Composable private fun AttitudeLandmarks(preset: VesselViewPreset, pose: VesselAttitudePose?, modifier: Modifier) {
+@Composable private fun AttitudeLandmarks(preset: VesselViewPreset, motion: VesselAttitudeMotion, modifier: Modifier) {
     val c = LocalMetro.current
+    val transformed = remember { FloatArray(3) }
+    val cameras = remember { VesselSceneProjectionCache() }
     Canvas(modifier) {
+        motion.readDrawFrame()
+        val camera = cameras.get(preset, size.width / size.height)
         fun p(x: Float, y: Float, z: Float): Offset {
-            val a = pose?.transform(x, y, z) ?: floatArrayOf(x, y, z)
-            return vesselScenePoint(preset, size.width / size.height, a[0], a[1], a[2])
+            motion.transform(x, y, z, transformed)
+            return camera.point(transformed[0], transformed[1], transformed[2])
                 .let { Offset(it.x * size.width, it.y * size.height) }
         }
         val port = p(-.64f, .4f, -.1f)
@@ -212,35 +246,58 @@ private fun attitudeDirection(os: OsStore, value: Double?, heel: Boolean): Strin
 
 /** 原生资源失败时使用同一坐标的投影轮廓，仍显示准确双轴、固定水平线和全部入口。 */
 @Composable private fun AttitudeVessel2D(
-    preset: VesselViewPreset, pose: VesselAttitudePose?, state: VesselAttitudeDisplayState, modifier: Modifier,
+    preset: VesselViewPreset, motion: VesselAttitudeMotion, state: VesselAttitudeDisplayState, modifier: Modifier,
 ) {
     val c = LocalMetro.current
+    val transformed = remember { FloatArray(3) }
+    val cameras = remember { VesselSceneProjectionCache() }
+    val path = remember { Path() }
+    val density = LocalDensity.current.density
+    val edge = remember(density) { Stroke(1.4f * density) }
     Canvas(modifier) {
+        motion.readDrawFrame()
+        val camera = cameras.get(preset, size.width / size.height)
         val alpha = when (state) {
             VesselAttitudeDisplayState.LIVE -> 1f
             VesselAttitudeDisplayState.LAST -> .52f
             VesselAttitudeDisplayState.REFERENCE -> .34f
         }
         fun p(x: Float, y: Float, z: Float): Offset {
-            val a = pose?.transform(x, y, z) ?: floatArrayOf(x, y, z)
-            return vesselScenePoint(preset, size.width / size.height, a[0], a[1], a[2])
+            motion.transform(x, y, z, transformed)
+            return camera.point(transformed[0], transformed[1], transformed[2])
                 .let { Offset(it.x * size.width, it.y * size.height) }
         }
-        fun polygon(points: List<Offset>, color: Color) {
-            val path = Path().apply { moveTo(points.first().x, points.first().y); points.drop(1).forEach { lineTo(it.x, it.y) }; close() }
+        attitudeHullFaces.forEachIndexed { index, vertices ->
+            path.reset()
+            var vertex = 0
+            while (vertex < vertices.size) {
+                val point = p(vertices[vertex], vertices[vertex + 1], vertices[vertex + 2])
+                if (vertex == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
+                vertex += 3
+            }
+            path.close()
+            val color = when (index) {
+                0 -> c.muted
+                1, 2 -> c.accent.copy(alpha = .65f)
+                3 -> c.panel
+                4 -> c.muted.copy(alpha = .3f)
+                5 -> c.fg.copy(alpha = .16f)
+                else -> c.fg.copy(alpha = .12f)
+            }
             drawPath(path, color.copy(alpha = color.alpha * alpha))
-            drawPath(path, c.fg.copy(alpha = alpha), style = Stroke(1.4.dp.toPx()))
+            drawPath(path, c.fg.copy(alpha = alpha), style = edge)
         }
-        polygon(listOf(p(0f, -.1f, .25f), p(0f, -1.2f, 0f), p(0f, -1.2f, -.55f), p(0f, -.1f, -.7f)), c.muted)
-        polygon(listOf(p(-.5f, .3f, -1.9f), p(-.65f, .3f, -.3f), p(-.45f, .3f, 1f), p(0f, .3f, 2f),
-            p(0f, -.25f, 1.1f), p(-.38f, -.35f, -1.65f)), c.accent.copy(alpha = .65f))
-        polygon(listOf(p(.5f, .3f, -1.9f), p(.65f, .3f, -.3f), p(.45f, .3f, 1f), p(0f, .3f, 2f),
-            p(0f, -.25f, 1.1f), p(.38f, -.35f, -1.65f)), c.accent.copy(alpha = .65f))
-        polygon(listOf(p(0f, .3f, 2f), p(-.45f, .3f, 1f), p(-.65f, .3f, -.3f), p(-.5f, .3f, -1.9f),
-            p(.5f, .3f, -1.9f), p(.65f, .3f, -.3f), p(.45f, .3f, 1f)), c.panel)
-        polygon(listOf(p(-.28f, .4f, .3f), p(-.28f, .4f, -.7f), p(.28f, .4f, -.7f), p(.28f, .4f, .3f)), c.muted.copy(alpha = .3f))
-        polygon(listOf(p(0f, 3.65f, 0f), p(0f, .8f, -1.5f), p(0f, .8f, 0f)), c.fg.copy(alpha = .16f))
-        polygon(listOf(p(0f, 3.4f, .05f), p(0f, .55f, 1.75f), p(0f, .65f, .3f)), c.fg.copy(alpha = .12f))
         drawLine(c.fg.copy(alpha = alpha), p(0f, .3f, 0f), p(0f, 3.8f, 0f), 2.dp.toPx())
     }
 }
+
+/** 中文：二维降级轮廓固定建模点；逐帧复用顶点/Path，不重新分配多层 List。 */
+private val attitudeHullFaces = arrayOf(
+    floatArrayOf(0f,-.1f,.25f, 0f,-1.2f,0f, 0f,-1.2f,-.55f, 0f,-.1f,-.7f),
+    floatArrayOf(-.5f,.3f,-1.9f, -.65f,.3f,-.3f, -.45f,.3f,1f, 0f,.3f,2f, 0f,-.25f,1.1f, -.38f,-.35f,-1.65f),
+    floatArrayOf(.5f,.3f,-1.9f, .65f,.3f,-.3f, .45f,.3f,1f, 0f,.3f,2f, 0f,-.25f,1.1f, .38f,-.35f,-1.65f),
+    floatArrayOf(0f,.3f,2f, -.45f,.3f,1f, -.65f,.3f,-.3f, -.5f,.3f,-1.9f, .5f,.3f,-1.9f, .65f,.3f,-.3f, .45f,.3f,1f),
+    floatArrayOf(-.28f,.4f,.3f, -.28f,.4f,-.7f, .28f,.4f,-.7f, .28f,.4f,.3f),
+    floatArrayOf(0f,3.65f,0f, 0f,.8f,-1.5f, 0f,.8f,0f),
+    floatArrayOf(0f,3.4f,.05f, 0f,.55f,1.75f, 0f,.65f,.3f),
+)

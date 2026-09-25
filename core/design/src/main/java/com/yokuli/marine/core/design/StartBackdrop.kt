@@ -33,6 +33,7 @@ data class StartBackdrop(
     val focusY: Float = .5f,
     val imageLoading: Boolean = false,
     val imageFailed: Boolean = false,
+    val imageFailureReason:String?=null,
 )
 val LocalStartBackdrop = staticCompositionLocalOf { StartBackdrop() }
 private class BackdropViewport {

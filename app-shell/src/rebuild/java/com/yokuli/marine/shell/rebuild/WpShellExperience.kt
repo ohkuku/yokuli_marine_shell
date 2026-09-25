@@ -230,6 +230,13 @@ fun OsExperience(os: OsStore) {
                             ) { page ->
                                 if (page == LauncherPagerPage.START) YokuliStartScreen(
                                     launcher.copy(transient = state.transient.takeIf { state.surface == ShellVisualSurface.Desktop }), launcherAction,
+                                    onPersonalizeStart = {
+                                        if(!shadeBlocked) {
+                                            dispatch(LauncherAction.ExitStartEdit)
+                                            os.openLinked("settings:start")
+                                        }
+                                    },
+                                    personalizeStartLabel = os.t("背景与透明磁贴","Background & transparent tiles"),
                                 ) else WpAppList(
                                     launcher.copy(entries=launcher.entries.filter {entry -> shell.apps.any {it.entry==entry.descriptor.entryId}},
                                         transient = state.transient.takeIf { state.surface == ShellVisualSurface.ModuleList }), launcherAction,

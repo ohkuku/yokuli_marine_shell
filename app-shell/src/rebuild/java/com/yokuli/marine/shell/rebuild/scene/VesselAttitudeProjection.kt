@@ -3,6 +3,9 @@ package com.yokuli.marine.shell.rebuild.scene
 import com.yokuli.anchorwatch.domain.vessel.VesselDataFreshness
 import com.yokuli.anchorwatch.domain.vessel.VesselDataQuality
 import com.yokuli.anchorwatch.domain.vessel.VesselDataSnapshot
+import com.yokuli.anchorwatch.domain.vessel.VesselObservation
+import com.yokuli.anchorwatch.domain.vessel.VesselProvenance
+import com.yokuli.anchorwatch.domain.vessel.persistentKey
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -44,8 +47,16 @@ internal data class VesselAttitudeProjection(
     val pose: VesselAttitudePose?,
     val state: VesselAttitudeDisplayState,
     val samplesAligned: Boolean,
+    /** 中文：仅用于防止跨来源、连接代次或校准版本插值，不决定业务来源。 */
+    val continuityKey: String? = null,
+    val sampleElapsedRealtime: Long? = null,
 ) {
     companion object {
+        private fun continuity(observation: VesselObservation<Double>): String {
+            val source = observation.sourceIdentity
+            val calibration = (observation.provenanceDetail as? VesselProvenance.PhoneSensor)?.calibrationVersion
+            return "${source?.persistentKey ?: observation.source.name}:${source?.connectionGeneration}:$calibration"
+        }
         fun from(data: VesselDataSnapshot): VesselAttitudeProjection {
             val heel = data.heelDegrees
             val pitch = data.pitchDegrees
@@ -63,7 +74,9 @@ internal data class VesselAttitudeProjection(
             }
             val current = heelLive && pitchLive
             return VesselAttitudeProjection(VesselAttitudePose(h, p),
-                if (current) VesselAttitudeDisplayState.LIVE else VesselAttitudeDisplayState.LAST, aligned)
+                if (current) VesselAttitudeDisplayState.LIVE else VesselAttitudeDisplayState.LAST, aligned,
+                continuityKey = continuity(heel) + "/" + continuity(pitch),
+                sampleElapsedRealtime = maxOf(requireNotNull(hAt), requireNotNull(pAt)))
         }
     }
 }
