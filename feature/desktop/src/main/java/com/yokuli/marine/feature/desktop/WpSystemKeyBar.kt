@@ -56,6 +56,7 @@ import com.yokuli.marine.core.design.LocalWpTextScale
 import com.yokuli.marine.core.design.WpFontFamily
 import com.yokuli.marine.core.design.WpPageHeader
 import com.yokuli.marine.core.design.WpText
+import com.yokuli.marine.core.design.YokuliBrandMark
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.contract.ShellInput
 import com.yokuli.shell.contract.ShellSafeBands
@@ -101,7 +102,7 @@ fun WpSystemKeyBar(
             label = stringResource(R.string.system_bridge),
             tag = "virtual-key-bridge",
             onClick = { onInput(ShellInput.DESKTOP) },
-        ) { CompassBridgeGlyph() }
+        ) { YokuliBrandMark(Modifier.size(24.dp), color = Color.White) }
         SystemKey(
             label = stringResource(if (onNotificationsClick != null) R.string.system_notifications else R.string.system_search),
             tag = if (onNotificationsClick != null) "virtual-key-notifications" else "virtual-key-search",
@@ -162,30 +163,6 @@ private fun BackGlyph() {
             Offset(size.width * .86f, size.height * .5f),
             strokeWidth = stroke,
         )
-    }
-}
-
-@Composable
-private fun CompassBridgeGlyph() {
-    Canvas(Modifier.size(24.dp)) {
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = size.minDimension * .39f
-        val stroke = size.minDimension * .055f
-        drawCircle(Color.White, radius, center, style = Stroke(stroke))
-        val rose = Path().apply {
-            moveTo(center.x, center.y - radius * .82f)
-            lineTo(center.x + radius * .23f, center.y)
-            lineTo(center.x, center.y + radius * .82f)
-            lineTo(center.x - radius * .23f, center.y)
-            close()
-            moveTo(center.x - radius * .82f, center.y)
-            lineTo(center.x, center.y - radius * .23f)
-            lineTo(center.x + radius * .82f, center.y)
-            lineTo(center.x, center.y + radius * .23f)
-            close()
-        }
-        drawPath(rose, Color.White, style = Stroke(stroke))
-        drawCircle(Color.White, radius = stroke * .9f, center = center)
     }
 }
 

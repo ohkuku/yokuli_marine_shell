@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import com.yokuli.marine.shell.rebuild.*
+import com.yokuli.marine.core.design.YokuliBrandMark
 import com.yokuli.runtime.contract.VoyagePhase
 import com.yokuli.runtime.contract.notification.NoticeConnection
 import com.yokuli.runtime.contract.notification.NoticeCommandStatus
@@ -91,7 +92,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                     .clickable(onClickLabel=os.t("处理通知","open notification")) {os.openNotification(banner.id)}
                     .padding(horizontal=4.dp),verticalAlignment=Alignment.CenterVertically,
                     horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    if(bannerSegment.width/density>=64f)Glyph(banner.app?.icon ?: "connect",Modifier.size(18.dp),c.accentText)
+                    if(bannerSegment.width/density>=64f) {
+                        val app=banner.app
+                        if(app==null)YokuliBrandMark(Modifier.size(18.dp),color=c.fg)
+                        else Glyph(app.icon,Modifier.size(18.dp),c.accentText)
+                    }
                     Label((banner.app?.let(os::title) ?: "Yokuli OS")+" · "+banner.text(os),13,
                         c.fg,Modifier.weight(1f),maxLines=1)
                 }
@@ -217,7 +222,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                     groups.forEach { (publisher, messages) ->
                         item("publisher:${publisher?.name ?: "system"}") {
                             Row(Modifier.fillMaxWidth().padding(top=12.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically) {
-                                Glyph(publisher?.icon ?: "start",Modifier.size(20.dp),c.fg)
+                                if(publisher==null)YokuliBrandMark(Modifier.size(20.dp),color=c.fg)
+                                else Glyph(publisher.icon,Modifier.size(20.dp),c.fg)
                                 Label(publisher?.let(os::title) ?: os.t("系统", "System"),15,c.fg,
                                     Modifier.weight(1f).padding(start=12.dp),weight=FontWeight.SemiBold)
                                 Label(messages.size.toString(),12,c.muted)

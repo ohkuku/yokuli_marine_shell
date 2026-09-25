@@ -1,8 +1,8 @@
 # 生产接口与结构声明索引
 
-共 4310 项类型与方法声明；按源文件排序。
+共 4449 项类型与方法声明；按源文件排序。
 
-由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
+由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、共享设计/桌面、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
 
 本索引是源码定位工具，包含类型与方法声明，并非所有声明都是跨应用公共 API。完整参数、中文业务语义、公开边界和生命周期见 [总拓扑](OS_INTERFACE_TOPOLOGY.md) 及链接源码。显式 private 声明、旧 UI 和 Gradle 依赖 API 不在本索引范围。
 
@@ -67,17 +67,17 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class MainActivity : ComponentActivity` | [MainActivity.kt:33](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L33) |
-| `fun onDisplayAdded` | [MainActivity.kt:38](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L38) |
-| `fun onDisplayRemoved` | [MainActivity.kt:39](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L39) |
-| `fun onDisplayChanged` | [MainActivity.kt:40](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L40) |
-| `fun onCreate` | [MainActivity.kt:77](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L77) |
-| `fun onNewIntent` | [MainActivity.kt:97](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L97) |
-| `fun onWindowFocusChanged` | [MainActivity.kt:125](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L125) |
-| `fun onResume` | [MainActivity.kt:129](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L129) |
-| `fun dispatchKeyEvent` | [MainActivity.kt:155](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L155) |
-| `fun onPause` | [MainActivity.kt:169](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L169) |
-| `fun onDestroy` | [MainActivity.kt:180](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L180) |
+| `class MainActivity : ComponentActivity` | [MainActivity.kt:34](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L34) |
+| `fun onDisplayAdded` | [MainActivity.kt:39](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L39) |
+| `fun onDisplayRemoved` | [MainActivity.kt:40](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L40) |
+| `fun onDisplayChanged` | [MainActivity.kt:41](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L41) |
+| `fun onCreate` | [MainActivity.kt:78](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L78) |
+| `fun onNewIntent` | [MainActivity.kt:101](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L101) |
+| `fun onWindowFocusChanged` | [MainActivity.kt:129](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L129) |
+| `fun onResume` | [MainActivity.kt:133](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L133) |
+| `fun dispatchKeyEvent` | [MainActivity.kt:159](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L159) |
+| `fun onPause` | [MainActivity.kt:173](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L173) |
+| `fun onDestroy` | [MainActivity.kt:184](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MainActivity.kt#L184) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MarineNoticeBridge.kt
 
@@ -1291,10 +1291,10 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun SystemStatusBar` | [NotificationCenter.kt:55](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L55) |
-| `fun NotificationCenter` | [NotificationCenter.kt:104](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L104) |
-| `fun returnToRest` | [NotificationCenter.kt:372](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L372) |
-| `fun dismiss` | [NotificationCenter.kt:381](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L381) |
+| `fun SystemStatusBar` | [NotificationCenter.kt:56](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L56) |
+| `fun NotificationCenter` | [NotificationCenter.kt:109](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L109) |
+| `fun returnToRest` | [NotificationCenter.kt:378](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L378) |
+| `fun dismiss` | [NotificationCenter.kt:387](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationCenter.kt#L387) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/NotificationQuickActions.kt
 
@@ -1395,9 +1395,9 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun SettingsScreen` | [SettingsScreen.kt:46](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L46) |
-| `fun title` | [SettingsScreen.kt:55](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L55) |
-| `fun open` | [SettingsScreen.kt:170](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L170) |
+| `fun SettingsScreen` | [SettingsScreen.kt:47](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L47) |
+| `fun title` | [SettingsScreen.kt:56](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L56) |
+| `fun open` | [SettingsScreen.kt:172](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SettingsScreen.kt#L172) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StartBackgroundSettings.kt
 
@@ -1431,10 +1431,10 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun TaskCaptureHost` | [TaskSwitching.kt:43](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TaskSwitching.kt#L43) |
-| `fun AppLaunchCover` | [TaskSwitching.kt:57](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TaskSwitching.kt#L57) |
-| `fun TaskSwitcher` | [TaskSwitching.kt:67](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TaskSwitching.kt#L67) |
-| `fun closeCard` | [TaskSwitching.kt:96](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TaskSwitching.kt#L96) |
+| `fun TaskCaptureHost` | [TaskSwitching.kt:44](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TaskSwitching.kt#L44) |
+| `fun AppLaunchCover` | [TaskSwitching.kt:58](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TaskSwitching.kt#L58) |
+| `fun TaskSwitcher` | [TaskSwitching.kt:72](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TaskSwitching.kt#L72) |
+| `fun closeCard` | [TaskSwitching.kt:101](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TaskSwitching.kt#L101) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/TileContentCatalog.kt
 
@@ -1585,6 +1585,162 @@
 | --- | --- |
 | `fun VoyageShareActions` | [VoyageShareActions.kt:12](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/VoyageShareActions.kt#L12) |
 | `fun export` | [VoyageShareActions.kt:17](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/VoyageShareActions.kt#L17) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class MarineUnitFormats` | [MarineUnitFormats.kt:10](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L10) |
+| `fun distanceValue` | [MarineUnitFormats.kt:22](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L22) |
+| `fun distanceMeters` | [MarineUnitFormats.kt:23](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L23) |
+| `fun speedValue` | [MarineUnitFormats.kt:24](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L24) |
+| `fun speedKnots` | [MarineUnitFormats.kt:25](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L25) |
+| `fun lengthValue` | [MarineUnitFormats.kt:26](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L26) |
+| `fun lengthMeters` | [MarineUnitFormats.kt:27](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L27) |
+| `fun depthValue` | [MarineUnitFormats.kt:28](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L28) |
+| `fun depthMeters` | [MarineUnitFormats.kt:29](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L29) |
+| `fun temperatureValue` | [MarineUnitFormats.kt:30](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L30) |
+| `fun temperatureCelsius` | [MarineUnitFormats.kt:31](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L31) |
+| `fun pressureValue` | [MarineUnitFormats.kt:32](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L32) |
+| `fun pressureHpa` | [MarineUnitFormats.kt:33](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L33) |
+| `fun distance` | [MarineUnitFormats.kt:36](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L36) |
+| `fun length` | [MarineUnitFormats.kt:41](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L41) |
+| `fun speed` | [MarineUnitFormats.kt:42](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L42) |
+| `fun depth` | [MarineUnitFormats.kt:43](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L43) |
+| `fun temperature` | [MarineUnitFormats.kt:44](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L44) |
+| `fun pressure` | [MarineUnitFormats.kt:45](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L45) |
+| `fun scaleBar` | [MarineUnitFormats.kt:55](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L55) |
+| `class DistanceScaleBar` | [MarineUnitFormats.kt:82](../../core/design/src/main/java/com/yokuli/marine/core/design/MarineUnitFormats.kt#L82) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class StartBackdropMode` | [StartBackdrop.kt:25](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L25) |
+| `class StartBackdrop` | [StartBackdrop.kt:26](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L26) |
+| `fun StartWallpaperSurface` | [StartBackdrop.kt:48](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L48) |
+| `fun Modifier.startTileBackground` | [StartBackdrop.kt:70](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L70) |
+| `class StartBackdropPlacement` | [StartBackdrop.kt:94](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L94) |
+| `fun overflow` | [StartBackdrop.kt:95](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L95) |
+| `fun startBackdropPlacement` | [StartBackdrop.kt:97](../../core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt#L97) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/W10MobileControls.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun W10ToggleIndicator` | [W10MobileControls.kt:32](../../core/design/src/main/java/com/yokuli/marine/core/design/W10MobileControls.kt#L32) |
+| `fun W10RadioIndicator` | [W10MobileControls.kt:51](../../core/design/src/main/java/com/yokuli/marine/core/design/W10MobileControls.kt#L51) |
+| `fun W10CheckIndicator` | [W10MobileControls.kt:63](../../core/design/src/main/java/com/yokuli/marine/core/design/W10MobileControls.kt#L63) |
+| `fun W10ProgressRing` | [W10MobileControls.kt:86](../../core/design/src/main/java/com/yokuli/marine/core/design/W10MobileControls.kt#L86) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/W10MobileDesign.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `object W10MobileMetrics` | [W10MobileDesign.kt:7](../../core/design/src/main/java/com/yokuli/marine/core/design/W10MobileDesign.kt#L7) |
+| `object W10MobileMotion` | [W10MobileDesign.kt:24](../../core/design/src/main/java/com/yokuli/marine/core/design/W10MobileDesign.kt#L24) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/WpDisplayPreferences.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `object MarineDisplayUnits` | [WpDisplayPreferences.kt:13](../../core/design/src/main/java/com/yokuli/marine/core/design/WpDisplayPreferences.kt#L13) |
+| `fun distanceFromNauticalMiles` | [WpDisplayPreferences.kt:16](../../core/design/src/main/java/com/yokuli/marine/core/design/WpDisplayPreferences.kt#L16) |
+| `fun distanceFromMeters` | [WpDisplayPreferences.kt:21](../../core/design/src/main/java/com/yokuli/marine/core/design/WpDisplayPreferences.kt#L21) |
+| `fun speedFromKnots` | [WpDisplayPreferences.kt:26](../../core/design/src/main/java/com/yokuli/marine/core/design/WpDisplayPreferences.kt#L26) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class PresentationCadence` | [WpLive.kt:31](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L31) |
+| `fun interface PresentationClock` | [WpLive.kt:45](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L45) |
+| `fun nowMillis` | [WpLive.kt:46](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L46) |
+| `class PresentationChange` | [WpLive.kt:49](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L49) |
+| `interface PresentationDecision<out T>` | [WpLive.kt:60](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L60) |
+| `class Presented<T>` | [WpLive.kt:61](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L61) |
+| `class Deferred` | [WpLive.kt:62](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L62) |
+| `object Unchanged : PresentationDecision<Nothing>` | [WpLive.kt:63](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L63) |
+| `class CadencedPresentation<T>` | [WpLive.kt:70](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L70) |
+| `fun submit` | [WpLive.kt:84](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L84) |
+| `fun flush` | [WpLive.kt:96](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L96) |
+| `class LatestWinsBatchBuffer<T>` | [WpLive.kt:120](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L120) |
+| `fun submit` | [WpLive.kt:132](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L132) |
+| `fun flush` | [WpLive.kt:137](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L137) |
+| `fun <T> rememberCadencedLiveValue` | [WpLive.kt:145](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L145) |
+| `fun WpLiveField` | [WpLive.kt:164](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L164) |
+| `fun WpLiveConsole` | [WpLive.kt:201](../../core/design/src/main/java/com/yokuli/marine/core/design/WpLive.kt#L201) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/WpMotion.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun <T> WpSurfaceTransitionHost` | [WpMotion.kt:43](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotion.kt#L43) |
+| `fun Modifier.wpEntrance` | [WpMotion.kt:132](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotion.kt#L132) |
+| `fun Modifier.wpTilt` | [WpMotion.kt:157](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotion.kt#L157) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class WpSurfaceTransitionKind` | [WpMotionContract.kt:6](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L6) |
+| `class WpMotionFamily` | [WpMotionContract.kt:24](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L24) |
+| `class WpMotionEvidence` | [WpMotionContract.kt:26](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L26) |
+| `class WpMotionPlan` | [WpMotionContract.kt:34](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L34) |
+| `class WpMotionTimings` | [WpMotionContract.kt:62](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L62) |
+| `class WpPressPlan` | [WpMotionContract.kt:72](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L72) |
+| `object WpPressPolicy` | [WpMotionContract.kt:78](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L78) |
+| `fun resolve` | [WpMotionContract.kt:79](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L79) |
+| `object WpMotionPolicy` | [WpMotionContract.kt:99](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L99) |
+| `fun resolve` | [WpMotionContract.kt:100](../../core/design/src/main/java/com/yokuli/marine/core/design/WpMotionContract.kt#L100) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/WpPrimitives.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun WpText` | [WpPrimitives.kt:34](../../core/design/src/main/java/com/yokuli/marine/core/design/WpPrimitives.kt#L34) |
+| `fun WpPageHeader` | [WpPrimitives.kt:48](../../core/design/src/main/java/com/yokuli/marine/core/design/WpPrimitives.kt#L48) |
+| `class WpAppBarAction` | [WpPrimitives.kt:61](../../core/design/src/main/java/com/yokuli/marine/core/design/WpPrimitives.kt#L61) |
+| `fun WpApplicationBar` | [WpPrimitives.kt:68](../../core/design/src/main/java/com/yokuli/marine/core/design/WpPrimitives.kt#L68) |
+| `fun WpCircleButton` | [WpPrimitives.kt:102](../../core/design/src/main/java/com/yokuli/marine/core/design/WpPrimitives.kt#L102) |
+| `fun line` | [WpPrimitives.kt:127](../../core/design/src/main/java/com/yokuli/marine/core/design/WpPrimitives.kt#L127) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/WpTheme.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class WpThemeMode` | [WpTheme.kt:12](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTheme.kt#L12) |
+| `class WpAccent` | [WpTheme.kt:14](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTheme.kt#L14) |
+| `class WpThemeSpec` | [WpTheme.kt:18](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTheme.kt#L18) |
+| `class WpColorScheme` | [WpTheme.kt:21](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTheme.kt#L21) |
+| `object WpThemePolicy` | [WpTheme.kt:32](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTheme.kt#L32) |
+| `fun resolve` | [WpTheme.kt:34](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTheme.kt#L34) |
+| `fun foregroundFraction` | [WpTheme.kt:39](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTheme.kt#L39) |
+| `fun YokuliTheme` | [WpTheme.kt:68](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTheme.kt#L68) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/WpTypography.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `object WpTypeScale` | [WpTypography.kt:22](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTypography.kt#L22) |
+| `fun lineHeight` | [WpTypography.kt:36](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTypography.kt#L36) |
+| `fun weight` | [WpTypography.kt:46](../../core/design/src/main/java/com/yokuli/marine/core/design/WpTypography.kt#L46) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/YokuliBrand.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `object YokuliBrandColors` | [YokuliBrand.kt:17](../../core/design/src/main/java/com/yokuli/marine/core/design/YokuliBrand.kt#L17) |
+| `fun YokuliBrandMark` | [YokuliBrand.kt:28](../../core/design/src/main/java/com/yokuli/marine/core/design/YokuliBrand.kt#L28) |
+| `fun YokuliBrandWordmark` | [YokuliBrand.kt:44](../../core/design/src/main/java/com/yokuli/marine/core/design/YokuliBrand.kt#L44) |
+| `fun YokuliBrandSignature` | [YokuliBrand.kt:55](../../core/design/src/main/java/com/yokuli/marine/core/design/YokuliBrand.kt#L55) |
+
+## core/design/src/main/java/com/yokuli/marine/core/design/YokuliDesign.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `object YokuliColors` | [YokuliDesign.kt:6](../../core/design/src/main/java/com/yokuli/marine/core/design/YokuliDesign.kt#L6) |
+| `object YokuliMetrics` | [YokuliDesign.kt:24](../../core/design/src/main/java/com/yokuli/marine/core/design/YokuliDesign.kt#L24) |
 
 ## core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/AnchorCommands.kt
 
@@ -2317,6 +2473,104 @@
 | `object TileLayoutPreview` | [TileLayoutPreview.kt:4](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/layout/TileLayoutPreview.kt#L4) |
 | `fun remove` | [TileLayoutPreview.kt:6](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/layout/TileLayoutPreview.kt#L6) |
 | `fun place` | [TileLayoutPreview.kt:18](../../core/shell-engine/src/main/kotlin/com/yokuli/shell/engine/layout/TileLayoutPreview.kt#L18) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/InteractiveLauncherPager.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class LauncherPagerPage` | [InteractiveLauncherPager.kt:17](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/InteractiveLauncherPager.kt#L17) |
+| `fun from` | [InteractiveLauncherPager.kt:23](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/InteractiveLauncherPager.kt#L23) |
+| `fun InteractiveLauncherPager` | [InteractiveLauncherPager.kt:37](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/InteractiveLauncherPager.kt#L37) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherRecoverySurface.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun LauncherRecoverySurface` | [LauncherRecoverySurface.kt:26](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherRecoverySurface.kt#L26) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class MarineIconKind` | [LauncherUiContract.kt:22](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L22) |
+| `class LauncherUiState` | [LauncherUiContract.kt:24](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L24) |
+| `interface LauncherUiAction` | [LauncherUiContract.kt:35](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L35) |
+| `class Open` | [LauncherUiContract.kt:36](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L36) |
+| `object ShowAllApps : LauncherUiAction` | [LauncherUiContract.kt:37](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L37) |
+| `class ProposeLayout` | [LauncherUiContract.kt:38](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L38) |
+| `class EnterStartEdit` | [LauncherUiContract.kt:39](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L39) |
+| `class SelectStartTile` | [LauncherUiContract.kt:40](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L40) |
+| `object ExitStartEdit : LauncherUiAction` | [LauncherUiContract.kt:41](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L41) |
+| `class BeginTileDrag` | [LauncherUiContract.kt:42](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L42) |
+| `class InsertionTargetChanged` | [LauncherUiContract.kt:43](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L43) |
+| `class TileCellTargetChanged` | [LauncherUiContract.kt:44](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L44) |
+| `class DropTile` | [LauncherUiContract.kt:45](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L45) |
+| `object CancelTileOperation : LauncherUiAction` | [LauncherUiContract.kt:46](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L46) |
+| `class ResizeTile` | [LauncherUiContract.kt:47](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L47) |
+| `class MoveTileBy` | [LauncherUiContract.kt:48](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L48) |
+| `class OpenEntryContextMenu` | [LauncherUiContract.kt:49](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L49) |
+| `object OpenAlphabetJump : LauncherUiAction` | [LauncherUiContract.kt:50](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L50) |
+| `object DismissTransient : LauncherUiAction` | [LauncherUiContract.kt:51](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L51) |
+| `class PinEntry` | [LauncherUiContract.kt:52](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L52) |
+| `class UnpinTile` | [LauncherUiContract.kt:53](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L53) |
+| `class AcknowledgeStartReveal` | [LauncherUiContract.kt:54](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L54) |
+| `object UndoLayout : LauncherUiAction` | [LauncherUiContract.kt:55](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L55) |
+| `class UpdateSearchQuery` | [LauncherUiContract.kt:56](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L56) |
+| `class ActivateTask` | [LauncherUiContract.kt:57](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L57) |
+| `class CloseTask` | [LauncherUiContract.kt:58](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L58) |
+| `class ShowAppInfo` | [LauncherUiContract.kt:59](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L59) |
+| `fun productionLauncherUiState` | [LauncherUiContract.kt:67](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/LauncherUiContract.kt#L67) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/MarineIcon.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun MarineIcon` | [MarineIcon.kt:15](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/MarineIcon.kt#L15) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpAppList.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun WpAppList` | [WpAppList.kt:45](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpAppList.kt#L45) |
+| `fun WpAlphabetJumpOverlay` | [WpAppList.kt:231](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpAppList.kt#L231) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpLauncherFeedback.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun WpLauncherFeedback` | [WpLauncherFeedback.kt:35](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpLauncherFeedback.kt#L35) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSpatialStartLayout.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun WpSpatialStartLayout` | [WpSpatialStartLayout.kt:35](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSpatialStartLayout.kt#L35) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun YokuliStartScreen` | [WpStartScreen.kt:129](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt#L129) |
+| `fun updateDrag` | [WpStartScreen.kt:247](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt#L247) |
+| `fun Control` | [WpStartScreen.kt:574](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStartScreen.kt#L574) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStatusStrip.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class WpStatusStripItem` | [WpStatusStrip.kt:59](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStatusStrip.kt#L59) |
+| `fun WpStatusStrip` | [WpStatusStrip.kt:73](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStatusStrip.kt#L73) |
+| `fun update` | [WpStatusStrip.kt:91](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStatusStrip.kt#L91) |
+| `fun onReceive` | [WpStatusStrip.kt:99](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpStatusStrip.kt#L99) |
+
+## feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSystemKeyBar.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun WpSystemKeyBar` | [WpSystemKeyBar.kt:74](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSystemKeyBar.kt#L74) |
+| `fun SearchGlyph` | [WpSystemKeyBar.kt:192](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSystemKeyBar.kt#L192) |
+| `fun WpSearchSurface` | [WpSystemKeyBar.kt:211](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSystemKeyBar.kt#L211) |
+| `fun WpRecentsSurface` | [WpSystemKeyBar.kt:331](../../feature/desktop/src/main/java/com/yokuli/marine/feature/desktop/WpSystemKeyBar.kt#L331) |
 
 ## legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt
 

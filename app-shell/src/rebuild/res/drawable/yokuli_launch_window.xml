@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 9–11 的系统起始窗口；首帧就交给主 Activity，不创建第二个开屏页面。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/yokuli_launch_background" />
+    <item android:width="288dp" android:height="288dp" android:gravity="center" android:drawable="@drawable/yokuli_splash_symbol" />
+    <item android:width="200dp" android:height="80dp" android:gravity="bottom|center_horizontal" android:bottom="40dp" android:drawable="@drawable/yokuli_splash_wordmark" />
+</layer-list>

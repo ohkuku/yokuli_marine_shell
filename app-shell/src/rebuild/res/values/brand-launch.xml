@@ -1,0 +1,15 @@
+<resources>
+    <color name="yokuli_launch_background">#081E29</color>
+    <color name="yokuli_launch_foreground">#27D3C2</color>
+    <!-- 未支持自适应图标的宿主使用完整方图；新系统由限定目录提供遮罩图标。 -->
+    <item name="yokuli_launcher" type="mipmap">@drawable/yokuli_legacy_icon</item>
+    <item name="yokuli_launcher_round" type="mipmap">@drawable/yokuli_legacy_icon</item>
+    <item name="ic_yokuli_os" type="drawable">@drawable/yokuli_legacy_icon</item>
+    <style name="Theme.YokuliOS.Starting" parent="Theme.YokuliOS">
+        <item name="android:windowBackground">@drawable/yokuli_launch_window</item>
+        <item name="android:statusBarColor">@color/yokuli_launch_background</item>
+        <item name="android:navigationBarColor">@color/yokuli_launch_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Yokuli — split-keel Y</title>
+  <desc>An original Y formed by two bows and a keel. The open channel and detached leading edge remain visible in one colour.</desc>
+  <path id="body" fill="#FFFFFF" d="M7,10H21L31,26L24,37Z M32,28H47L38,43V58H24V43Z"/>
+  <path id="beacon" fill="#27D3C2" d="M43,10H59L51,22H36Z"/>
+</svg>

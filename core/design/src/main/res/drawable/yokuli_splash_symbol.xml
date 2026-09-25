@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from design/brand SVG masters; run scripts/generate_brand_assets.py. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="288dp" android:height="288dp" android:viewportWidth="96" android:viewportHeight="96">
+    <group android:scaleX="0.9" android:scaleY="0.9" android:translateX="18.3" android:translateY="17.4">
+        <path android:name="body" android:fillColor="#FFFFFF" android:fillType="nonZero" android:pathData="M7,10H21L31,26L24,37Z M32,28H47L38,43V58H24V43Z" />
+        <path android:name="beacon" android:fillColor="#27D3C2" android:fillType="nonZero" android:pathData="M43,10H59L51,22H36Z" />
+    </group>
+</vector>

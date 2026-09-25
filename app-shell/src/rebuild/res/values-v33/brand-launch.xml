@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.YokuliOS.Starting" parent="Theme.YokuliOS">
+        <item name="android:windowBackground">@color/yokuli_launch_background</item>
+        <item name="android:windowSplashScreenBackground">@color/yokuli_launch_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/yokuli_splash_symbol</item>
+        <item name="android:windowSplashScreenBrandingImage">@drawable/yokuli_splash_wordmark</item>
+        <item name="android:windowSplashScreenBehavior">icon_preferred</item>
+        <item name="android:statusBarColor">@color/yokuli_launch_background</item>
+        <item name="android:navigationBarColor">@color/yokuli_launch_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

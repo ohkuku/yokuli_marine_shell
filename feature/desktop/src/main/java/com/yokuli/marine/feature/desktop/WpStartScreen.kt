@@ -16,6 +16,8 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
 import com.yokuli.marine.core.design.StartWallpaperSurface
 import com.yokuli.marine.core.design.startTileBackground
 import com.yokuli.marine.core.design.LocalStartBackdrop
@@ -70,9 +72,15 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.zIndex
 import com.yokuli.marine.core.design.LocalWpTheme
 import com.yokuli.marine.core.design.WpText
+import com.yokuli.marine.core.design.WpFontFamily
+import com.yokuli.marine.core.design.LocalWpTextScale
+import com.yokuli.marine.core.design.YokuliBrandWordmark
 import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.design.wpThemeModeName
 import com.yokuli.marine.core.design.wpTileAccentName
@@ -417,23 +425,37 @@ fun YokuliStartScreen(
                         )
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), horizontalArrangement = Arrangement.End) {
-                    Row(
-                        Modifier.testTag("all-apps-entry").combinedNoRipple {
-                            if (editing) onAction(LauncherUiAction.ExitStartEdit) else onAction(LauncherUiAction.ShowAllApps)
-                        }.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        WpText(stringResource(if (editing) R.string.start_done else R.string.start_all_apps), 15)
-                        Box(Modifier.size(YokuliMetrics.MinTouch), contentAlignment = Alignment.Center) {
-                            Canvas(Modifier.size(24.dp)) {
-                                val stroke = size.minDimension * .0625f
-                                if (editing) {
-                                    drawLine(colors.foreground, Offset(size.width*.18f, size.height*.50f), Offset(size.width*.40f, size.height*.72f), stroke)
-                                    drawLine(colors.foreground, Offset(size.width*.40f, size.height*.72f), Offset(size.width*.83f, size.height*.25f), stroke)
-                                } else {
-                                    drawLine(colors.foreground, Offset(size.width*.18f, size.height*.50f), Offset(size.width*.82f, size.height*.50f), stroke)
-                                    drawLine(colors.foreground, Offset(size.width*.55f, size.height*.23f), Offset(size.width*.82f, size.height*.50f), stroke)
-                                    drawLine(colors.foreground, Offset(size.width*.82f, size.height*.50f), Offset(size.width*.55f, size.height*.77f), stroke)
+                BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp)) {
+                    val actionLabel = stringResource(if (editing) R.string.start_done else R.string.start_all_apps)
+                    val textMeasurer = rememberTextMeasurer()
+                    val actionTextStyle = TextStyle(fontFamily = WpFontFamily, fontSize = (15 * LocalWpTextScale.current).sp)
+                    val actionWidth = with(density) {
+                        textMeasurer.measure(actionLabel, actionTextStyle, maxLines = 1).size.width.toDp()
+                    } + YokuliMetrics.MinTouch + 16.dp
+                    val showBrand = maxWidth >= actionWidth + 132.dp
+                    // 品牌只用原页脚的余白；字体放大或窄屏时先让出全部应用的入口。
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        if (showBrand) YokuliBrandWordmark(
+                            Modifier.width(112.dp).height(24.dp), color = colors.foreground,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Row(
+                            Modifier.testTag("all-apps-entry").combinedNoRipple {
+                                if (editing) onAction(LauncherUiAction.ExitStartEdit) else onAction(LauncherUiAction.ShowAllApps)
+                            }.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            WpText(actionLabel, 15)
+                            Box(Modifier.size(YokuliMetrics.MinTouch), contentAlignment = Alignment.Center) {
+                                Canvas(Modifier.size(24.dp)) {
+                                    val stroke = size.minDimension * .0625f
+                                    if (editing) {
+                                        drawLine(colors.foreground, Offset(size.width*.18f, size.height*.50f), Offset(size.width*.40f, size.height*.72f), stroke)
+                                        drawLine(colors.foreground, Offset(size.width*.40f, size.height*.72f), Offset(size.width*.83f, size.height*.25f), stroke)
+                                    } else {
+                                        drawLine(colors.foreground, Offset(size.width*.18f, size.height*.50f), Offset(size.width*.82f, size.height*.50f), stroke)
+                                        drawLine(colors.foreground, Offset(size.width*.55f, size.height*.23f), Offset(size.width*.82f, size.height*.50f), stroke)
+                                        drawLine(colors.foreground, Offset(size.width*.82f, size.height*.50f), Offset(size.width*.55f, size.height*.77f), stroke)
+                                    }
                                 }
                             }
                         }

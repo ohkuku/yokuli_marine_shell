@@ -23,6 +23,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.yokuli.runtime.contract.PositionSourceRequest
 import com.yokuli.anchorwatch.domain.model.GpsDataSource
 import com.yokuli.marine.shell.BuildConfig
+import com.yokuli.marine.shell.R
 import com.yokuli.marine.shell.rebuild.ui.MetroTheme
 import com.yokuli.shell.android.AndroidShellKeyAdapter
 import com.yokuli.shell.contract.ShellInput
@@ -75,6 +76,9 @@ class MainActivity : ComponentActivity() {
             .onFailure { os.notify("无法切换船位来源，请重试", "Could not change position source. Please retry.", app = AppId.DATA_CENTER) }
     }
     override fun onCreate(savedInstanceState:Bundle?) {
+        // 起始窗口使用 Manifest 的品牌主题；实际 Activity 首帧立即切回正常 UI。
+        // Android 12+ 的系统 splash 由系统自行移除，不等待标志动画、不拦截首帧。
+        setTheme(R.style.Theme_YokuliOS)
         super.onCreate(savedInstanceState)
         os.connectSystem((application as YokuliApplication).marineSystem)
         os.systemAction=serviceHandler

@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.LocalWpTextScale
+import com.yokuli.marine.core.design.YokuliBrandWordmark
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.shell.engine.InternalAppTask
 import com.yokuli.shell.engine.InternalAppTaskId
@@ -60,6 +61,10 @@ import kotlin.math.roundToInt
             ShellAppIcon(app,LocalMetro.current.accentText,Modifier.size(64.dp))
             Label(os.title(app.app),24)
         }
+        // 只在已有冷启动遮罩中署名；持续时间和热切换仍由原任务状态机决定。
+        YokuliBrandWordmark(Modifier.align(Alignment.BottomStart)
+            .padding(start=LocalShellHorizontalInsets.current.pageStart,bottom=20.dp)
+            .width(104.dp).height(24.dp),LocalMetro.current.muted,contentDescription=null)
     }
 }
 

@@ -85,6 +85,19 @@ AIS Pager 关闭 Android 默认边缘弧光；雷达图例移入更多菜单，�
 
 原生可用时由一个 Choreographer 帧时钟推进；二维降级才改由 Compose 帧时钟推进同一状态。收敛后停帧，后台、失去输入资格或滚出可见区域停帧，返回直接取最新目标，不重放后台数据。短暂失活保留当前访问中已建立的 GLB/Engine；真正离开组合树时仍完整释放资源。宿主同步 TextureView 实际尺寸，尺寸没变时不再次等待 GPU flush。该实现不保证设备固定帧率，也不改传感器采样、导航或风险计算。
 
+## Yokuli 品牌标记与字标（2026-09-25）
+
+参考 [Raymarine 官方站的字标与产品视觉](https://www.raymarine.com/en-gb)：稳定的横向字标、清楚的字形轮廓和少量强调色，在硬件与软件之间形成连续身份。这里的提取属于设计判断，不是复刻其字体或商标。Yokuli 使用原创的分舷 Y 标记：两条斜向轮廓与下方龙骨相接，舷间留白和分离前缘在单色下仍可辨认。独立品牌画面使用深海色 `#081E29`、白色与青色 `#27D3C2`；应用中服从当前主题/夜间前景色，不把品牌颜色当成数据状态。
+
+`yokuli os` 是原创轮廓字标，重新设计 y/k 的斜切、o/u 的开阔字腔和 i 的切角点，os 使用更轻的视觉重量；它不是新增正文字体。业务文字继续使用 Selawik 与系统中文回退，保留 W10M 字阶和全局字号偏好。
+
+- SVG 母版在 `design/brand/yokuli-mark.svg` 与 `yokuli-wordmark.svg`；`scripts/generate_brand_assets.py` 生成 `core/design/res/drawable` 的实际资源及组合标识。Compose 的 `YokuliBrandMark / Wordmark / Signature` 与 Android 图标、起始窗口复用这份几何，不在页面分别画帆船、罗盘或四方块来代表 OS。
+- 安装图标用主标，不塞入不可辨的小字。自适应前景/单色层为 108dp，全部轮廓落在中央直径 66dp 区域；Android 13 主题图标保留负空间。遵循 [Android 自适应图标规范](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive)。
+- 启动页在 Android 12+ 使用系统持有的 288dp 静态标志与 200×80dp 底部字标，标志落在中央直径 192dp 区域；Android 9–11 使用同几何的起始窗口。遵循 [系统 Splash 规范](https://developer.android.com/develop/ui/views/launch/splash-screen)。不新增 SplashActivity、等待条件、假进度或持续循环。主 Activity 首帧切回实际主题，系统进出动画保持原生。
+- 桌面只在原“所有应用”页脚空位加入 112×24dp 小字标；按中英文本与字号实际宽度判断空间，不够就让出入口，不挤掉磁贴行。Home 使用 24dp 单色主标，仍发送 DESKTOP，Back/长按最近任务/通知键不改含义。
+- 关于页使用完整横排签名与较轻版本信息。已有内部应用冷启动遮罩底部加入小字签名，应用自己的图标和名称仍占主位；播放时机和时长继续由原任务状态机决定，热切换不追加开屏。
+- 系统通知使用主标；应用发布的通知仍用原应用图标。普通应用标题、地图、数据读数和可自定义壁纸不加品牌水印。ROM HOME 与普通 APK 共用此实现，尚未实现独立 ROM bootanimation。
+
 ## 实际生产入口
 
 | 层级 | 代码入口 | 约束 |

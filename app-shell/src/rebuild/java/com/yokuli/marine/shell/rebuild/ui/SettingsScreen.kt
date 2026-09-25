@@ -31,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.yokuli.marine.core.design.WpAccent
+import com.yokuli.marine.core.design.YokuliBrandSignature
 import com.yokuli.anchorwatch.platform.HostBuildIdentity
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.shell.compose.BindInternalAppInputHandler
@@ -135,7 +136,8 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         MetroButton(os.t("恢复默认布局", "restore default layout"),{reset=true})
                     }
                     else -> {
-                        Label("Yokuli OS",24,c.accentText); Label(buildIdentity.appVersionName,24)
+                        YokuliBrandSignature(Modifier.size(width=208.dp,height=44.dp),color=c.fg,accent=c.accentText)
+                        Label(buildIdentity.appVersionName,15,c.muted)
                         Label(os.t("海上生活，简单一点。", "a little simpler, at sea."),20)
                         Label("${buildIdentity.flavor} · ${buildIdentity.channel} · ${buildIdentity.appVersionCode}",16,c.muted)
                         Label("Git ${buildIdentity.gitSha.take(12)} · ${buildIdentity.gitState}",16,c.muted)
