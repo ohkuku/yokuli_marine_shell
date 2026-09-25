@@ -13,11 +13,11 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 
-/** 图册只负责目录和图层；点开目录管理内容，明确“在海图打开”才改变显示来源。 */
-@Composable fun LibraryScreen(os:OsStore) {
+/** 图册统一维护显示用底图与可查询的航行资料；浏览不改变地图选用组合。 */
+@Composable fun LibraryScreen(os:OsStore,initialPage:Int=0) {
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,os.title(AppId.LIBRARY))
-        Pivot(listOf(os.t("海图","Charts"),os.t("数据","Data"))) {page->
+        Pivot(listOf(os.t("底图","Maps"),os.t("航行数据","Navigation data")),initialPage=initialPage) {page->
             if(page==0)RasterLibraryPane(os)else StructuredChartLibraryPane(os)
         }
     }
@@ -50,7 +50,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Label(os.t("支持栅格 MBTiles。原文件仍在你的文件夹中；结构化 S-57 海图在“数据”中导入。","Raster MBTiles. Linked files stay in your own folder. Use Data for structured S-57 charts."),15,LocalMetro.current.muted)
+            Label(os.t("MBTiles 提供地图画面；水深、障碍等资料在“航行数据”中管理。两者可以搭配使用。","MBTiles provides the map image. Manage depths and hazards in Navigation data and use both together."),15,LocalMetro.current.muted)
         } }
         AppCommandBar(os,listOf(
             AppCommand("link-folder","folder",os.t("连接海图文件夹","Connect chart folder"),{folder.launch(null)},enabled=!library.busy),

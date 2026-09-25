@@ -6,7 +6,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.database.sqlite.SQLiteDatabase
-import android.content.ContentValues
+import android.os.CancellationSignal
 import android.util.AtomicFile
 import com.google.gson.Gson
 import com.yokuli.runtime.contract.chart.*
@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.*
 import java.util.UUID
+import java.util.PriorityQueue
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipInputStream
@@ -102,8 +103,18 @@ import kotlin.math.*
             val original=mutex.withLock {catalogue.datasets.firstOrNull {it.dataset.id==request.replaceDatasetId}}
             val source=File(stage,"source").apply {mkdirs()}
             val incoming=copyPackage(Uri.parse(request.sourceUri),source,::check)
-            require(incoming.isNotEmpty()) {"S57_NO_BASE_OR_UPDATES_FOUND"}
+            require(incoming.isNotEmpty()) {"CHART_NO_SUPPORTED_DATA"}
             val datasetId=original?.dataset?.id ?: UUID.nameUUIDFromBytes(request.requestId.toByteArray()).toString()
+            val geopackages=incoming.filter {it.extension.equals("gpkg",ignoreCase=true)}
+            require(geopackages.isEmpty()||geopackages.size==1&&incoming.size==1) {"CHART_MIXED_PACKAGE"}
+            val format=if(geopackages.isEmpty())"S57"else"GPKG"
+            require(original==null||original.dataset.format==format) {"CHART_FORMAT_CHANGED"}
+            val revisions=if(format=="GPKG") {
+                // GeoPackage 由用户在原文件中维护；每次读取完整版本，失败不动已安装的资料。
+                GeoPackageChartImporter.prepare(geopackages.single(),stage,datasetId,::check,objectClasses=dictionaries.objects) {done,total,detail->
+                    progress(ChartImportPhase.INDEXING,done,total,detail)
+                }.associateBy {it.cellId}.toMutableMap()
+            } else {
             val reader=S57Reader(dictionaries,::check)
             val raw=File(stage,"records").apply {mkdirs()}
             if(original!=null)File(File(root,original.directory),"records").listFiles().orEmpty().forEach {file->check();file.copyTo(File(raw,file.name),overwrite=false)}
@@ -135,13 +146,10 @@ import kotlin.math.*
             val database=File(stage,"features.sqlite")
             SQLiteDatabase.openOrCreateDatabase(database,null).use {db->
                 db.execSQL("PRAGMA journal_mode=DELETE")
-                db.execSQL("CREATE TABLE features (rowid INTEGER PRIMARY KEY, feature_id TEXT NOT NULL UNIQUE, cell TEXT NOT NULL, payload TEXT NOT NULL)")
-                db.execSQL("CREATE VIRTUAL TABLE spatial USING rtree(id,min_x,max_x,min_y,max_y)")
-                db.execSQL("CREATE TABLE spatial_feature (id INTEGER PRIMARY KEY,feature_row INTEGER NOT NULL)")
-                db.execSQL("CREATE INDEX spatial_feature_row ON spatial_feature(feature_row)")
+                ChartFeatureIndex.create(db)
                 db.beginTransaction()
                 try {
-                    var index=0L;var spatialId=0L
+                    var index=0L
                     val total=revisions.size
                     for((cellIndex,cellFile) in raw.listFiles().orEmpty().sortedBy {it.name}.withIndex()) {
                         check();val cell=readCell(cellFile,::check);var count=0
@@ -149,10 +157,7 @@ import kotlin.math.*
                         progress(ChartImportPhase.INDEXING,cellIndex,total,cell.header.cell)
                         for(feature in reader.features(cell,datasetId)) {
                             check();count++;index++;require(index<=2_000_000) {"CHART_FEATURE_LIMIT"}
-                            val payload=gson.toJson(feature);require(payload.length<=8_000_000) {"CHART_FEATURE_GEOMETRY_LIMIT:${feature.id}"}
-                            db.insertOrThrow("features",null,ContentValues().apply {put("rowid",index);put("feature_id",feature.id);put("cell",feature.cellId);put("payload",payload)})
-                            val featureBounds=geometryBounds(feature.geometry);allBounds=coalesceBounds(allBounds+featureBounds)
-                            featureBounds.forEach {bound->spatialId++;db.execSQL("INSERT INTO spatial VALUES (?,?,?,?,?)",arrayOf(spatialId,bound.west,bound.east,bound.south,bound.north));db.execSQL("INSERT INTO spatial_feature VALUES (?,?)",arrayOf(spatialId,index))}
+                            val featureBounds=ChartFeatureIndex.insert(db,index,feature,gson);allBounds=coalesceBounds(allBounds+featureBounds)
                             if(feature.kind==NauticalFeatureKind.COVERAGE) {
                                 coverage+=CoverageEvidence(feature.id,feature.cellId,feature.geometry,feature.attributes["CATCOV"]=="1",feature.source.compilationScale)
                                 bounds+=featureBounds
@@ -170,6 +175,8 @@ import kotlin.math.*
                 }finally {db.endTransaction()}
                 db.execSQL("PRAGMA optimize")
             }
+            revisions
+            }
             // 原文件从不修改。只保留本应用已解析的未加密记录与只读索引。
             source.deleteRecursively()
             check()
@@ -179,7 +186,7 @@ import kotlin.math.*
                 val directory="version-${UUID.randomUUID()}";val target=File(root,directory)
                 require(stage.renameTo(target)) {"CHART_ATOMIC_RENAME_FAILED"}
                 val revision=catalogue.revision+1
-                val dataset=ChartDataset(datasetId,request.name.trim(),revision=revision,installedAtUtc=System.currentTimeMillis(),eligibility=request.eligibility,cells=revisions.values.sortedBy {it.cellId})
+                val dataset=ChartDataset(datasetId,request.name.trim(),format=format,revision=revision,installedAtUtc=System.currentTimeMillis(),eligibility=request.eligibility,cells=revisions.values.sortedBy {it.cellId})
                 val next=catalogue.copy(revision=revision,datasets=catalogue.datasets.filterNot {it.dataset.id==datasetId}+Stored(dataset,directory),receipts=(catalogue.receipts+Receipt(request.requestId,datasetId,revision)).takeLast(64))
                 writeAtomic(manifest,gson.toJson(next));catalogue=next
                 pending=Pending(request,ChartImportJob(request.requestId,request.name,ChartImportPhase.COMPLETE,revisions.size,revisions.size,"",datasetId))
@@ -220,41 +227,149 @@ import kotlin.math.*
         ChartDataSnapshot(id,catalogue.revision,selected.map {it.dataset},ids.filter {wanted->selected.none {it.dataset.id==wanted}})
     }
     override suspend fun releaseSnapshot(snapshotId:String)=withContext(NonCancellable+Dispatchers.IO) {mutex.withLock {leases.remove(snapshotId);cleanup()}}
-    override suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int,afterId:String?):ChartFeaturePage=withContext(Dispatchers.IO) {
-        require(bounds.valid) {"CHART_QUERY_BOUNDS_INVALID"};require(limit in 1..10_000) {"CHART_QUERY_LIMIT_INVALID"}
-        // 在同一锁内复制租约，防止查询刚取出版本时被并发 release 删除文件。
-        val queryLease=UUID.randomUUID().toString()
-        val selected=mutex.withLock {(leases[snapshotId]?.toList() ?: error("CHART_SNAPSHOT_EXPIRED")).also {leases[queryLease]=it}}
+    private data class IndexedFeature(val stored:Stored,val id:String,val rowId:Long,val length:Int)
+
+    /** 一次读取单独保留版本：调用方离开页面释放快照时，正在关闭的 SQLite 仍不能被删掉。 */
+    private suspend fun <T> withSnapshotRead(snapshotId:String,block:suspend (List<Stored>,CancellationSignal)->T):T=withContext(Dispatchers.IO) {
+        val readLease=UUID.randomUUID().toString()
+        val selected=mutex.withLock {(leases[snapshotId]?.toList() ?: error("CHART_SNAPSHOT_EXPIRED")).also {leases[readLease]=it}}
         try {
-            val found=ArrayList<NauticalFeature>();var more=false;var bytes=0
-            for(stored in selected.sortedBy {it.dataset.id}) {
+            coroutineScope {
+                val signal=CancellationSignal()
+                // SQLite 的排序/旧索引搜索也能被取消，不必等阻塞中的 moveToNext 返回。
+                val cancellation=launch(Dispatchers.Default,start=CoroutineStart.UNDISPATCHED) {
+                    try {awaitCancellation()}finally {signal.cancel()}
+                }
+                try {block(selected,signal)}finally {withContext(NonCancellable) {cancellation.cancelAndJoin()}}
+            }
+        }finally {withContext(NonCancellable) {mutex.withLock {leases.remove(readLease);cleanup()}}}
+    }
+
+    private fun openIndex(stored:Stored):SQLiteDatabase {
+        val file=File(File(root,stored.directory),"features.sqlite")
+        require(file.isFile) {"CHART_INDEX_MISSING:${stored.dataset.id}"}
+        return SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
+    }
+
+    /** Android CursorWindow 有单行容量上限；长几何分段读取，绝不以截断 JSON 代替对象。 */
+    private suspend fun readIndexedFeature(db:SQLiteDatabase,row:IndexedFeature,signal:CancellationSignal):NauticalFeature {
+        require(row.length in 1..8_000_000) {"CHART_FEATURE_PAYLOAD_INVALID"}
+        val payload=StringBuilder(row.length)
+        var position=1
+        while(position<=row.length) {
+            currentCoroutineContext().ensureActive()
+            db.rawQuery("SELECT substr(payload,?,?) FROM features WHERE rowid=?",arrayOf(position.toString(),"128000",row.rowId.toString()),signal).use {part->
+                require(part.moveToFirst()) {"CHART_FEATURE_ROW_MISSING"}
+                val text=part.getString(0)
+                require(!text.isNullOrEmpty()) {"CHART_FEATURE_PAYLOAD_TRUNCATED"}
+                payload.append(text)
+            }
+            position+=128_000
+        }
+        currentCoroutineContext().ensureActive()
+        val feature=requireNotNull(gson.fromJson(payload.toString(),NauticalFeature::class.java)) {"CHART_FEATURE_PAYLOAD_INVALID"}
+        require(feature.id==row.id&&feature.datasetId==row.stored.dataset.id) {"CHART_FEATURE_ID_MISMATCH"}
+        return feature
+    }
+
+    /** 保留至多一页加一个轻量索引行，跨数据集也按实际 ID 排序，不依赖文件或目录顺序。 */
+    private fun pageCandidates(limit:Int)=PriorityQueue<IndexedFeature>(minOf(limit+1,256),compareByDescending {it.id})
+    private fun retainCandidate(rows:PriorityQueue<IndexedFeature>,row:IndexedFeature,limit:Int) {
+        rows.add(row)
+        if(rows.size>limit+1)rows.poll()
+    }
+    private suspend fun readPage(rows:Collection<IndexedFeature>,limit:Int,signal:CancellationSignal):ChartFeaturePage {
+        val ordered=rows.sortedBy {it.id};val found=ArrayList<NauticalFeature>();var bytes=0;var more=false
+        var db:SQLiteDatabase?=null;var directory:String?=null
+        try {
+            for(row in ordered) {
                 currentCoroutineContext().ensureActive()
-                val file=File(File(root,stored.directory),"features.sqlite");require(file.isFile) {"CHART_INDEX_MISSING:${stored.dataset.id}"}
-                SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {db->
+                require(row.length in 1..8_000_000) {"CHART_FEATURE_PAYLOAD_INVALID"}
+                if(found.size>=limit||(found.isNotEmpty()&&bytes+row.length>12_000_000)) {more=true;break}
+                if(directory!=row.stored.directory) {
+                    db?.close();db=null
+                    db=openIndex(row.stored);directory=row.stored.directory
+                }
+                found+=readIndexedFeature(requireNotNull(db),row,signal);bytes+=row.length
+            }
+        }finally {db?.close()}
+        return ChartFeaturePage(found,if(more)found.lastOrNull()?.id else null,more)
+    }
+
+    override suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int,afterId:String?):ChartFeaturePage {
+        require(bounds.valid) {"CHART_QUERY_BOUNDS_INVALID"};require(limit in 1..10_000) {"CHART_QUERY_LIMIT_INVALID"}
+        return withSnapshotRead(snapshotId) {selected,signal->
+            val rows=pageCandidates(limit)
+            for(stored in selected) {
+                currentCoroutineContext().ensureActive()
+                openIndex(stored).use {db->
                     val predicate=bounds.split().joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
                     val args=mutableListOf<String>();bounds.split().forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)};args+=afterId.orEmpty();args+=(limit+1).toString()
-                    db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.feature_id>? ORDER BY f.feature_id LIMIT ?",args.toTypedArray()).use {cursor->
+                    db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.feature_id>? ORDER BY f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
                         while(cursor.moveToNext()) {
                             currentCoroutineContext().ensureActive()
-                            val rowId=cursor.getLong(1);val length=cursor.getInt(2)
-                            require(length in 1..8_000_000) {"CHART_FEATURE_PAYLOAD_INVALID"}
-                            if(found.size>=limit||bytes+length>12_000_000&&found.isNotEmpty()) {more=true;break}
-                            // Android CursorWindow 有单行容量上限；长边界的 JSON 分段读取，几何本身不截断。
-                            val payload=StringBuilder(length)
-                            var position=1
-                            while(position<=length) {
-                                currentCoroutineContext().ensureActive()
-                                db.rawQuery("SELECT substr(payload,?,?) FROM features WHERE rowid=?",arrayOf(position.toString(),"128000",rowId.toString())).use {part->require(part.moveToFirst()) {"CHART_FEATURE_ROW_MISSING"};val text=part.getString(0);require(text.isNotEmpty()) {"CHART_FEATURE_PAYLOAD_TRUNCATED"};payload.append(text)}
-                                position+=128_000
-                            }
-                            bytes+=length;found+=gson.fromJson(payload.toString(),NauticalFeature::class.java)
+                            retainCandidate(rows,IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2)),limit)
                         }
                     }
                 }
-                if(more)break
             }
-            ChartFeaturePage(found,if(more)found.lastOrNull()?.id else null,more)
-        }finally {withContext(NonCancellable) {mutex.withLock {leases.remove(queryLease);cleanup()}}}
+            readPage(rows,limit,signal)
+        }
+    }
+
+    override suspend fun browse(snapshotId:String,filter:ChartFeatureFilter,limit:Int,afterId:String?):ChartFeaturePage {
+        require(limit in 1..1_000) {"CHART_BROWSE_LIMIT_INVALID"}
+        require(filter.text.length<=512) {"CHART_SEARCH_TOO_LONG"}
+        val normalizedQuery=ChartFeatureIndex.normalized(filter.text)
+        return withSnapshotRead(snapshotId) {selected,signal->
+            val rows=pageCandidates(limit)
+            for(stored in selected) {
+                currentCoroutineContext().ensureActive()
+                if(filter.cellId!=null&&stored.dataset.cells.none {it.cellId==filter.cellId})continue
+                openIndex(stored).use {db->
+                    val columns=mutableSetOf<String>()
+                    db.rawQuery("PRAGMA table_info(features)",null,signal).use {cursor->while(cursor.moveToNext())columns+=cursor.getString(1)}
+                    val indexed=columns.containsAll(setOf("kind","search"))
+                    val conditions=mutableListOf("f.feature_id>?");val args=mutableListOf(afterId.orEmpty())
+                    filter.cellId?.let {cell->conditions+="f.cell=?";args+=cell}
+                    if(rows.size>limit)rows.peek()?.let {last->conditions+="f.feature_id<?";args+=last.id}
+                    if(indexed&&filter.kinds.isNotEmpty()) {
+                        val kinds=filter.kinds.sortedBy {it.name};conditions+="f.kind IN (${kinds.joinToString(",") {"?"}})";args+=kinds.map {it.name}
+                    }
+                    if(indexed&&normalizedQuery.isNotEmpty()) {conditions+="instr(f.search,?)>0";args+=normalizedQuery}
+                    val needsLegacyFilter=!indexed&&(filter.kinds.isNotEmpty()||normalizedQuery.isNotEmpty())
+                    val limitClause=if(needsLegacyFilter)"" else " LIMIT ?".also {args+=(limit+1).toString()}
+                    val sql="SELECT f.feature_id,f.rowid,length(f.payload) FROM features f WHERE ${conditions.joinToString(" AND ")} ORDER BY f.feature_id$limitClause"
+                    var matches=0
+                    db.rawQuery(sql,args.toTypedArray(),signal).use {cursor->
+                        while(cursor.moveToNext()) {
+                            currentCoroutineContext().ensureActive()
+                            val row=IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2))
+                            // 旧版本不可原地升级：按主键游标逐条解析，最多持有一个候选对象，不把全库装进内存。
+                            if(needsLegacyFilter&&!ChartFeatureIndex.matches(readIndexedFeature(db,row,signal),filter,normalizedQuery))continue
+                            retainCandidate(rows,row,limit)
+                            if(++matches>=limit+1)break
+                        }
+                    }
+                }
+            }
+            readPage(rows,limit,signal)
+        }
+    }
+
+    override suspend fun readFeature(snapshotId:String,featureId:String):NauticalFeature? {
+        require(featureId.isNotBlank()) {"CHART_FEATURE_ID_REQUIRED"}
+        return withSnapshotRead(snapshotId) {selected,signal->
+            for(stored in selected) {
+                currentCoroutineContext().ensureActive()
+                openIndex(stored).use {db->
+                    db.rawQuery("SELECT feature_id,rowid,length(payload) FROM features WHERE feature_id=?",arrayOf(featureId),signal).use {cursor->
+                        if(cursor.moveToFirst())return@withSnapshotRead readIndexedFeature(db,IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2)),signal)
+                    }
+                }
+            }
+            null
+        }
     }
     private fun copyPackage(uri:Uri,directory:File,check:()->Unit):List<File> {
         val entries=mutableListOf<Pair<String,Uri>>()
@@ -279,7 +394,7 @@ import kotlin.math.*
             check();require(++fileCount<=10_000) {"CHART_PACKAGE_FILE_LIMIT"}
             val safe=name.substringAfterLast('/').substringAfterLast('\\')
             if(safe.equals("PERMIT.TXT",true)||safe.endsWith(".pmt",true))error("S63_REQUIRES_LICENSED_CLIENT_AND_DEVICE_USER_PERMIT")
-            if(!safe.matches(Regex("[A-Za-z0-9_]+\\.[0-9]{3}"))||safe.equals("CATALOG.031",true)) {
+            if((!safe.matches(Regex("[A-Za-z0-9_]+\\.[0-9]{3}"))||safe.equals("CATALOG.031",true))&&!safe.endsWith(".gpkg",true)) {
                 val buffer=ByteArray(64*1024)
                 while(true) {check();val n=input.read(buffer);if(n<0)break;total+=n;require(total<=2_000_000_000L) {"CHART_PACKAGE_SIZE_LIMIT"}}
                 return

@@ -229,4 +229,8 @@ python3 scripts/check_runtime_boundaries.py
 
 `LocalChartDataService` 的文档读取、解析、SQLite 版本安装和许可状态不放在页面；地图只查询选中数据集的快照。`LocalPassagePlanningService` 的检查、搜索、取消与结果持久化不随页面离开而结束。它们并未因此成为独立 UID 或 Marine Core IPC 服务；ROM HOME 与普通 APK 注入同一套本地能力。
 
+图库的资料浏览也接入上述所有者：MBTiles 仍走显示目录，S-57 与 GeoPackage 进入同一版本索引；资料包 / 图幅 / 分类搜索对象 / 对象详情只调用 `charts` 的 `browse/readFeature/query`。只读地图预览不改变当前资料选择或开始业务任务。页面的快照与一次 SQLite 读取的临时租约分别释放，包更新 / 移除不能破坏尚在读取的版本。GeoPackage 支持范围和字段映射由 [profile](../GEOPACKAGE_CHART_PROFILE.md) 维护；QGIS 等工具编辑原包后整包原子更新，App 没有官方深度编辑写端口。
+
+自动规划已接入共享 `PassagePlanningEligibility` 与实际区域证据门槛：明确选中的多个包共同提供覆盖和深度；无数据、不可读、用途不允许或缺实际支持时返回原因与零候选，不能进入搜索。规划页共享该状态禁用自动操作，并提供资料管理和不覆盖现有草稿的手动编辑入口。这个闭环不新增 S-63 / S-101 解码、潮汐或天气能力，也不把普通 GIS 参考包当成获认可的导航资料。
+
 显示用设备视线由独立 `DisplayDemandService.deviceViewOrientation` 租约提供，只观察现有旋转矢量源，不修改船艏来源或安装校准。真北转换缺乏位置/时间依据时，立体视图降级到明确的二维方向信息。显示补间不改写原始四元数、采样时间或导航指导。

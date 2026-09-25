@@ -37,8 +37,8 @@ import java.util.UUID
             if(data.datasets.isEmpty()&&!data.loading)item {
                 Column(verticalArrangement=Arrangement.spacedBy(12.dp),modifier=Modifier.padding(vertical=24.dp)) {
                     Glyph("layers",Modifier.size(38.dp),LocalMetro.current.accent)
-                    Label(os.t("把海图变成可查询的资料","Your charts, ready to explore"),24)
-                    Label(os.t("导入合法取得的 S-57 海图包，查看水深、障碍和覆盖。选用后，海图与路线规划使用同一份离线数据。","Import a lawfully obtained S-57 package to inspect depths, hazards and coverage. Chart and route planning use the same selected offline data."),15,LocalMetro.current.muted)
+                    Label(os.t("水深、航标、障碍，都在这里","Depths, marks and hazards"),24)
+                    Label(os.t("导入 S-57 海图或 GeoPackage 数据包，查看具体对象，并与 MBTiles 底图搭配使用。有足够的有效资料，才能自动规划航线。","Import S-57 charts or GeoPackage data, explore their objects and pair them with MBTiles maps. Automatic routing needs sufficient usable data."),15,LocalMetro.current.muted)
                 }
             }
             items(data.datasets,key={it.id}) {dataset->
@@ -47,7 +47,7 @@ import java.util.UUID
                     Glyph("layers",Modifier.size(28.dp),if(selected)LocalMetro.current.accent else LocalMetro.current.fg)
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                         Label(dataset.name,19)
-                        Label(os.t("${dataset.cells.count {!it.cancelled}} 个图幅","${dataset.cells.count {!it.cancelled}} cells")+" · "+chartUseLabel(os,dataset.eligibility),13,LocalMetro.current.muted)
+                        Label(os.t("${dataset.cells.sumOf {it.featureCount}} 个对象 · ${dataset.format}","${dataset.cells.sumOf {it.featureCount}} objects · ${dataset.format}")+" · "+chartUseLabel(os,dataset.eligibility),13,LocalMetro.current.muted)
                         if(selected)Label(os.t("海图与规划当前选用","Selected for Chart and planning"),13,LocalMetro.current.accentText)
                         if(!dataset.offlineReadable)Label(os.t("离线索引缺失 · 重新导入恢复","Offline index missing · Import again to restore"),13,LocalMetro.current.accentText)
                     }
@@ -55,8 +55,9 @@ import java.util.UUID
                 }
             }
             item {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                MenuRow(os.t("支持哪些海图？","Supported charts"),"S-57 · .000 · ZIP",if(formatDetails)"minus"else"plus") {formatDetails=!formatDetails}
+                MenuRow(os.t("支持哪些海图？","Supported charts"),"S-57 · GeoPackage",if(formatDetails)"minus"else"plus") {formatDetails=!formatDetails}
                 if(formatDetails) {
+                Label(os.t("GeoPackage（.gpkg）是可用 QGIS 等工具维护的开放地理数据包。支持 WGS84 / Web Mercator 矢量对象；水深、覆盖等字段需要明确声明，不会从地图颜色或三维高度推算。", "GeoPackage (.gpkg) is an open geodata package editable with tools such as QGIS. WGS84 / Web Mercator vector features are supported. Depth and coverage need explicit fields; neither map colours nor 3D elevation imply depth."),13,LocalMetro.current.muted)
                 Label(os.t("支持未加密 S-57 .000、连续更新、ZIP 交换集或文件夹。原文件不修改，索引安装失败保留上一完整版本。","Supports unencrypted S-57 base cells, sequential updates, ZIP exchange sets and folders. Source files stay untouched; a failed installation preserves the previous complete version."),13,LocalMetro.current.muted)
                 Label(os.t("新西兰 NZ ENC 使用 S-63：目前缺少正式 OEM/设备 User Permit 与获许可客户端接入，不能读取其加密包。LINZ 普通水文下载仅作参考，不能替代 ENC。","NZ ENC uses S-63. A licensed client integration and production OEM/device User Permit are not present, so encrypted packages cannot be read. General LINZ hydrographic downloads are reference data and do not replace ENCs."),13,LocalMetro.current.muted)
                 Label(os.t("地图显示可查询的海图对象与基本色彩，尚未包含完整的标准电子海图符号。","The map shows queryable chart objects and basic colours. The complete standard electronic-chart symbol set is not included."),13,LocalMetro.current.muted)
@@ -98,25 +99,26 @@ import java.util.UUID
                 ChartDataProgress(os,service,data)
                 message?.let {Label(it,14,LocalMetro.current.accentText)}
                 val selected=dataset.id in os.maps.selectedDatasetIds
-                Label(chartUseLabel(os,dataset.eligibility),16,LocalMetro.current.accentText)
+                MenuRow(os.t("浏览资料内容","Explore contents"),os.t("${dataset.cells.sumOf {it.featureCount}} 个对象 · 水深、航标、障碍…","${dataset.cells.sumOf {it.featureCount}} objects · depths, marks, hazards…"),"layers") {os.open("chartobjects:${dataset.id}")}
+                Label((if(dataset.format=="GPKG")"GeoPackage"else dataset.format)+" · "+chartUseLabel(os,dataset.eligibility),14,LocalMetro.current.muted)
                 if(dataset.eligibility.provider.isNotBlank())Label(dataset.eligibility.provider,14,LocalMetro.current.muted)
                 MetroButton(if(selected)os.t("已选用 · 在海图查看","Selected · View in Chart")else os.t("在海图与规划中选用","Use in Chart and planning"),{
-                    os.maps.selectDataset(dataset.id)
-                    dataset.cells.firstOrNull {!it.cancelled}?.bounds?.firstOrNull()?.let {bounds->os.fly(bounds.chartCenter(),11.0)}
+                    os.maps.includeDataset(dataset.id,true)
+                    os.fitRequest=dataset.cells.filterNot {it.cancelled}.flatMap {it.bounds}.flatMap {it.chartCorners()}
                     os.openLinked("chart")
                 },primary=true,enabled=dataset.offlineReadable)
-                Label(os.t("选用只改变资料组合，不开始导航；参考资料不会被自动规划当作可通行依据。","Selecting data does not start navigation. Reference data cannot prove a route passable."),13,LocalMetro.current.muted)
-                MenuRow(os.t("名称与资料用途","Name and permitted use"),os.t("提供方、许可依据与有效期","Provider, permission and validity"),"settings") {message=null;permission=true}
+                Label(os.t("加入当前地图的资料组合。参考资料可查看，但不能证明航线可通行。","Adds to the data selected for this map. Reference data is viewable but cannot prove a route passable."),13,LocalMetro.current.muted)
+                MenuRow(os.t("来源与资料用途","Source and permitted use"),os.t("提供方、许可依据与有效期","Provider, permission and validity"),"settings") {message=null;permission=true}
                 MenuRow(os.t("重命名","Rename"),icon="edit") {editedName=dataset.name;message=null;rename=true}
-                MenuRow(os.t("导入新版或连续更新","Import a new edition or updates"),os.t("选择 ZIP 或更新文件","Choose a ZIP or update file"),"plus") {update.launch(arrayOf("*/*"))}
+                MenuRow(os.t("导入新版或连续更新","Import a new edition or updates"),os.t("S-57 连续更新，或替换 GeoPackage 完整版本","S-57 updates or a complete GeoPackage replacement"),"plus") {update.launch(arrayOf("*/*"))}
                 MenuRow(os.t("从文件夹更新","Update from a folder"),icon="folder") {folder.launch(null)}
-                AppSection(os.t("图幅与覆盖","Cells and coverage"))
+                AppSection(if(dataset.format=="GPKG")os.t("资料范围","Dataset extent")else os.t("图幅与覆盖","Cells and coverage"))
             }}
             items(dataset.cells,key={it.cellId}) {cell->Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth().clickable {expanded=if(expanded==cell.cellId)null else cell.cellId}.padding(vertical=12.dp),verticalAlignment=Alignment.CenterVertically) {
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                        Label(cell.cellId,17)
-                        Label(if(cell.cancelled)os.t("提供方已取消此图幅","Cell cancelled by provider")else os.t("第 ${cell.edition} 版 · 更新 ${cell.update}","Edition ${cell.edition} · Update ${cell.update}"),13,LocalMetro.current.muted)
+                        Label(if(dataset.format=="GPKG")dataset.name else cell.cellId,17)
+                        Label(if(cell.cancelled)os.t("提供方已取消此图幅","Cell cancelled by provider")else if(dataset.format=="GPKG")os.t("${cell.featureCount} 个对象 · 离线副本","${cell.featureCount} objects · offline copy")else os.t("第 ${cell.edition} 版 · 更新 ${cell.update}","Edition ${cell.edition} · Update ${cell.update}"),13,LocalMetro.current.muted)
                     }
                     Glyph(if(expanded==cell.cellId)"minus"else"plus",Modifier.size(18.dp),LocalMetro.current.muted)
                 }
@@ -126,8 +128,9 @@ import java.util.UUID
                     Label(os.t("${cell.coverage.count {it.covered}} 个有效覆盖面；${cell.coverage.count {!it.covered}} 个无覆盖面","${cell.coverage.count {it.covered}} coverage areas; ${cell.coverage.count {!it.covered}} exclusion areas"),13,LocalMetro.current.muted)
                     if(cell.quality.isNotEmpty())Label(os.t("测量质量 · ","Survey quality · ")+cell.quality.joinToString(" · "),13,LocalMetro.current.muted)
                     cell.issues.forEach {Label(chartDataError(os,it),13,LocalMetro.current.accentText)}
-                    if(cell.bounds.isNotEmpty())MetroButton(os.t("查看此图幅","View this cell"),{
-                        os.maps.selectDataset(dataset.id);val b=cell.bounds.first();os.fly(b.chartCenter(),11.0);os.openLinked("chart")
+                    MetroButton(os.t("查看对象","Explore objects"),{os.open("chartobjects:${dataset.id}:${Uri.encode(cell.cellId)}")},enabled=!cell.cancelled&&cell.featureCount>0)
+                    if(cell.bounds.isNotEmpty())MetroButton(os.t("在海图查看范围","View extent on chart"),{
+                        os.fitRequest=cell.bounds.flatMap {it.chartCorners()};os.openLinked("chart")
                     })
                 }
             }}
@@ -253,11 +256,21 @@ internal fun chartDataError(os:OsStore,code:String):String=when {
     code=="SURVEY_QUALITY_UNSPECIFIED"->os.t("测量质量未提供","Survey quality is unspecified")
     code.startsWith("UNINTERPRETED")||code.startsWith("UNSUPPORTED")->os.t("存在尚未解释的对象或语义，不能当作无障碍：","Uninterpreted objects or semantics cannot be treated as clear water: ")+code.substringAfter(':',code)
     code=="CHART_CHANGED_DURING_IMPORT"->os.t("导入期间图集被修改，已保留原图集。检查后重试。","The dataset changed during import. The original is preserved; review and retry.")
+    code=="CHART_NO_SUPPORTED_DATA"->os.t("没有找到 S-57 .000 / 更新文件或 GeoPackage .gpkg。MBTiles 请在底图页导入。","No S-57 base / update or GeoPackage .gpkg found. Import MBTiles in Maps.")
+    code=="CHART_MIXED_PACKAGE"->os.t("请分别导入 S-57 海图包与 GeoPackage，每个数据包独立维护。","Import S-57 and GeoPackage separately so each dataset can be maintained independently.")
+    code=="CHART_FORMAT_CHANGED"->os.t("更新必须使用相同格式；不同格式请作为新数据包导入。","Update with the same format. Import another format as a new dataset.")
+    code.startsWith("GPKG_SRS_UNSUPPORTED")->os.t("这个坐标系暂不支持。请将矢量图层导出为 WGS84（EPSG:4326）或 Web Mercator（EPSG:3857）。","This coordinate system is unsupported. Export vector layers as WGS84 (EPSG:4326) or Web Mercator (EPSG:3857).")
+    code=="GPKG_NO_FEATURE_TABLES"||code=="GPKG_NO_FEATURES"->os.t("这个包没有矢量对象。仅有地图图片不能提供水深与覆盖资料。","This package has no vector features. Map images alone do not provide depth and coverage data.")
+    code=="GPKG_DEPTH_MINIMUM_MISSING"->os.t("该深度区域没有最浅值，不能证明整片区域可通行。","This depth area has no minimum depth and cannot establish passage clearance.")
+    code=="GPKG_SOUNDING_DEPTH_MISSING"->os.t("该测深点没有明确的水深值；几何高度不会自动当作水深。","This sounding has no explicit depth. Geometry elevation is not treated as water depth.")
+    code=="GPKG_VERTICAL_DATUM_MISSING"->os.t("该水深资料没有深度基准，暂不能用于自动规划。","This depth has no vertical datum and cannot be used for automatic planning.")
+    code=="GPKG_MORE_OBJECT_ISSUES"->os.t("更多对象存在资料问题，请查看具体对象。","More objects have data issues. Open their details to review.")
+    code=="GEOMETRY_MISSING"->os.t("对象缺少可定位的几何资料。","This object has no usable location geometry.")
+    code.startsWith("GPKG_")->os.t("数据包未能完整读取，原版本保留。请检查坐标系、几何与资料字段。详细原因：","The dataset could not be fully read. The previous version is preserved. Check its CRS, geometry and data fields. Detail: ")+code
+    code.startsWith("CHART_QUERY")||code=="CHART_READ_FAILED"->os.t("资料读取未完成，请重试。","Data could not be read. Try again.")
     code.startsWith("S57_")->os.t("图包未能完整解析，原版本保留。详细原因：","The package could not be fully read. Previous charts are preserved. Detail: ")+code
     else->code
 }
 
-private fun ChartBounds.chartCenter():GeoPoint {
-    val longitude=if(west<=east)(west+east)/2 else ((west+east+360)/2+540)%360-180
-    return GeoPoint((south+north)/2,longitude)
-}
+/** 保留日期变更线两侧边界，由原生地图按整组坐标取景。 */
+private fun ChartBounds.chartCorners():List<GeoPoint> = listOf(GeoPoint(south,west),GeoPoint(north,west),GeoPoint(north,east),GeoPoint(south,east))

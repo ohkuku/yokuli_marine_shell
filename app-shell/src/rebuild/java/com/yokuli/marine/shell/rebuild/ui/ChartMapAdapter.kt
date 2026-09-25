@@ -9,6 +9,10 @@ import com.yokuli.shell.compose.LocalInternalAppInputEnabled
 import com.yokuli.shell.compose.LocalInternalAppPageKey
 import com.yokuli.shell.engine.ShellVisualSurface
 import com.yokuli.shell.engine.currentUiStateKey
+import kotlinx.coroutines.*
+import com.yokuli.runtime.contract.chart.ChartGeometryKind
+import com.yokuli.runtime.contract.chart.NauticalFeature
+import com.yokuli.runtime.contract.chart.NauticalFeatureKind
 
 /** Chart owns its route/mark editing; the renderer receives geometry and returns gestures. */
 @Composable
@@ -26,6 +30,66 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
     val sharedView = os.maps.view("chart", os.center, os.zoom)
     // 原生地图在转场期间仍会回调相机位置。每次访问用自己的相机状态，离场页不能写回新页。
     val view = remember(instanceKey) { MapViewState(os.center, os.zoom) }
+    val chartData by os.maps.charts.state.collectAsState()
+    val libraryPreview=sharedView.libraryPreview
+    val previewDataset=chartData.datasets.firstOrNull {it.id==libraryPreview?.feature?.datasetId}
+    val previewValid=libraryPreview!=null&&!chartData.loading&&chartData.error==null&&previewDataset?.let {it.revision==libraryPreview.datasetRevision&&it.offlineReadable}==true
+    var libraryScene by remember(libraryPreview?.requestId) {mutableStateOf(MapScene())}
+    LaunchedEffect(active,libraryPreview?.requestId,previewDataset?.revision,previewDataset?.offlineReadable,chartData.loading,chartData.error) {
+        if(!active||libraryPreview==null)return@LaunchedEffect
+        if(chartData.loading||chartData.error!=null)return@LaunchedEffect
+        if(!previewValid) {
+            sharedView.libraryPreview=null;sharedView.libraryPreviewNote=null;return@LaunchedEffect
+        }
+        if(sharedView.libraryPreviewCameraRequestId!=libraryPreview.requestId) {
+            val extent=withContext(Dispatchers.Default) {libraryObjectExtent(libraryPreview.feature)}
+            if(!isCurrent()||sharedView.libraryPreview?.requestId!=libraryPreview.requestId)return@LaunchedEffect
+            sharedView.libraryPreviewCameraRequestId=libraryPreview.requestId
+            if(extent.size==1)os.fly(extent.first(),os.zoom.coerceAtLeast(14.0))else if(extent.isNotEmpty())os.fitRequest=extent
+        }
+    }
+    val previewAccent=os.accent
+    val previewUnits=os.maps.unitPreferences
+    val soundingViewport=if(libraryPreview?.feature?.kind==NauticalFeatureKind.SOUNDING)view.center to view.zoom else null
+    LaunchedEffect(active,libraryPreview?.requestId,previewValid,soundingViewport,previewAccent,previewUnits,os.chinese) {
+        if(!active||libraryPreview==null||!previewValid) {libraryScene=MapScene();return@LaunchedEffect}
+        delay(120)
+        val feature=libraryPreview.feature
+        val center=view.center;val zoom=view.zoom
+        val rendered=withContext(Dispatchers.Default) {
+            when {
+                feature.kind==NauticalFeatureKind.SOUNDING-> {
+                    val drawing=structuredScene(listOf(feature),center,zoom,previewUnits)
+                    drawing.scene.copy(points=drawing.scene.points.map {it.copy(id="library-object:${it.id}",color=previewAccent)}) to drawing.soundingsSimplified
+                }
+                feature.geometry.kind in setOf(ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT)-> {
+                    val count=feature.geometry.parts.sumOf {it.points.size}
+                    val stride=((count+159)/160).coerceAtLeast(1);var index=0
+                    val markers=buildList {
+                        for(part in feature.geometry.parts)for(point in part.points) {
+                            if(index%256==0)currentCoroutineContext().ensureActive()
+                            if(index++%stride==0)add(MapPoint("library-object:$index",GeoPoint(point.latitude,point.longitude),"",previewAccent,6f))
+                        }
+                    }
+                    MapScene(points=markers) to (count>markers.size)
+                }
+                else-> {
+                    val lines=feature.geometry.parts.mapIndexed {index,part->
+                        currentCoroutineContext().ensureActive()
+                        MapLine("library-object:$index",part.points.map {GeoPoint(it.latitude,it.longitude)},previewAccent,3f)
+                    }
+                    MapScene(lines=lines) to false
+                }
+            }
+        }
+        if(sharedView.libraryPreview?.requestId!=libraryPreview.requestId)return@LaunchedEffect
+        libraryScene=rendered.first
+        sharedView.libraryPreviewNote=when {
+            !rendered.second->null
+            feature.kind==NauticalFeatureKind.SOUNDING->os.t("测深点已简化 · 放大查看，完整资料保留在图册","Depth labels simplified · Zoom in; full data remains in Library")
+            else->os.t("点位仅作概览 · 完整资料保留在图册","Point overview · Full data remains in Library")
+        }
+    }
     var nativeHost by remember(instanceKey) { mutableStateOf<ChartHost?>(null) }
     view.interactive = active && LocalInternalAppInputEnabled.current
     if(active) {
@@ -82,7 +146,7 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         else if(sharedView.selectedAisMmsi!=null)aisMapTargets(traffic,sharedView.selectedAisMmsi).filter {it.selected}
         else emptyList()
     }
-    MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(now),it.fresh(now),it.freshHeading(now),it.freshSpeed(now))},markers,lines,
+    MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(now),it.fresh(now),it.freshHeading(now),it.freshSpeed(now))},markers+libraryScene.points,lines+libraryScene.lines,
         demo=os.positionSource=="demo" || os.marine?.services?.state?.value?.settings?.demoMode==true,
         aisTargets=aisTargets,
         aisInteractive=!os.editingRoute&&os.ruler.isEmpty()&&sharedView.previewTrack.isEmpty()),view,modifier,
@@ -105,4 +169,26 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
                 event.id.startsWith("route:") && os.editingRoute -> {val index=event.id.substringAfter(':').toIntOrNull();os.draftRoute=os.draftRoute.mapIndexed {i,p ->if(i==index)event.point else p}}
             }
         }})
+}
+
+/** 相机只接收边界极值，不将十万测深点送到主线程取景；日期变更线使用最小经度弧。 */
+private suspend fun libraryObjectExtent(feature:NauticalFeature):List<GeoPoint> {
+    var south=90.0;var north=-90.0
+    val longitudes=ArrayList<Double>()
+    for(part in feature.geometry.parts)for((index,point) in part.points.withIndex()) {
+        if(index%256==0)currentCoroutineContext().ensureActive()
+        if(!point.latitude.isFinite()||!point.longitude.isFinite()||point.latitude !in -90.0..90.0||point.longitude !in -180.0..180.0)continue
+        south=minOf(south,point.latitude);north=maxOf(north,point.latitude);longitudes+=point.longitude
+    }
+    if(longitudes.isEmpty())return emptyList()
+    longitudes.sort()
+    if(longitudes.first()==longitudes.last()&&south==north)return listOf(GeoPoint(south,longitudes.first()))
+    var gapIndex=longitudes.lastIndex;var largest=longitudes.first()+360.0-longitudes.last()
+    for(index in 0 until longitudes.lastIndex) {
+        if(index%256==0)currentCoroutineContext().ensureActive()
+        val gap=longitudes[index+1]-longitudes[index]
+        if(gap>largest){largest=gap;gapIndex=index}
+    }
+    val west=longitudes[(gapIndex+1)%longitudes.size];val east=longitudes[gapIndex]
+    return listOf(GeoPoint(south,west),GeoPoint(north,west),GeoPoint(north,east),GeoPoint(south,east))
 }

@@ -85,6 +85,9 @@ data class MapCameraRequest(val id: Long, val point: GeoPoint? = null, val zoom:
 
 enum class MapOrientationMode { NORTH_UP, HEADING_UP, COURSE_UP }
 
+/** 图册发起的只读对象预览；版本变化后失效，不能混入规划所选数据。 */
+data class LibraryObjectPreview(val feature:com.yokuli.runtime.contract.chart.NauticalFeature,val datasetRevision:Long,val requestId:String=java.util.UUID.randomUUID().toString())
+
 /** View state is local to the task. A replay cannot move the chart's camera. */
 class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
     /** 用户选项与本次实际可用模式分开；拖图不改选项，数据恢复后自然恢复朝向。 */
@@ -103,6 +106,10 @@ class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
     /** 对象查询的实际点按位置；不移动准星，也不冒充船位。 */
     var selectedChartCoordinate by mutableStateOf<GeoPoint?>(null)
     var selectedChartObjects by mutableStateOf<List<com.yokuli.runtime.contract.chart.NauticalFeature>>(emptyList())
+    var libraryPreview by mutableStateOf<LibraryObjectPreview?>(null)
+    /** 只消费用户这一次“在海图查看”的定位请求；返回本次访问不能重新抢走镜头。 */
+    var libraryPreviewCameraRequestId by mutableStateOf<String?>(null)
+    var libraryPreviewNote by mutableStateOf<String?>(null)
     var planningLines by mutableStateOf<List<MapLine>>(emptyList())
     var planningPoints by mutableStateOf<List<MapPoint>>(emptyList())
     var planningAreas by mutableStateOf<List<MapArea>>(emptyList())
@@ -163,6 +170,19 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
         private set
     val charts get() = (context.applicationContext as com.yokuli.marine.shell.rebuild.YokuliApplication).marineSystem.charts
     fun selectDataset(id:String?) { selectedDatasetIds = id?.takeIf { it.isNotBlank() }?.let { listOf(it) }.orEmpty(); select(source) }
+    /** 多份相邻资料可共同选用；显式取消仍保留其他选择，不把浏览当成选用。 */
+    fun includeDataset(id:String,included:Boolean) {
+        if(id.isBlank())return
+        selectedDatasetIds=if(included)(selectedDatasetIds+id).distinct()else selectedDatasetIds.filterNot {it==id}
+        select(source)
+    }
+    /** 仅调整已选集合顺序；越界、重复或夹带其他数据集的请求不改变当前选择。 */
+    fun reorderDatasets(ids:List<String>) {
+        if(ids.size!=selectedDatasetIds.size||ids.toSet()!=selectedDatasetIds.toSet()||ids.distinct().size!=ids.size)return
+        if(ids==selectedDatasetIds)return
+        selectedDatasetIds=ids.toList()
+        select(source)
+    }
     var saveFailed by mutableStateOf(false)
         private set
     private val views = mutableMapOf<String, MapViewState>()

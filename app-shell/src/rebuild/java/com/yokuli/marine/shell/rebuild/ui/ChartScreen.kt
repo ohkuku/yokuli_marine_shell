@@ -172,6 +172,15 @@ import kotlin.math.*
             // Context controls float over a stable native viewport. Showing the crosshair must
             // never resize the map or change its camera/texture resolution during a drag.
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().onSizeChanged {chartView.bottomOverlayDp=with(density){it.height.toDp().value}}) {
+        chartView.libraryPreview?.let {preview->
+            Row(Modifier.fillMaxWidth().background(c.panel).padding(start=16.dp,end=8.dp,top=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Label(featureTitle(os,preview.feature),16,maxLines=1)
+                    Label(chartView.libraryPreviewNote ?: preview.feature.depth?.let {depthEvidenceText(os,it)} ?: os.t("图册对象预览","Library object preview"),12,c.muted,maxLines=2)
+                }
+                IconAction("close",os.t("关闭对象预览","Close object preview"),{chartView.libraryPreview=null})
+            }
+        }
         if(chartView.selectedAisMmsi!=null && !os.editingRoute && os.ruler.isEmpty()) {
             AisCompactDetail(os,traffic,chartView.selectedAisMmsi!!){chartView.selectedAisMmsi=null}
         } else if(os.ruler.size==2) {

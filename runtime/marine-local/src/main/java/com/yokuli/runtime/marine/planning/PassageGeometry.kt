@@ -62,22 +62,48 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val features=ArrayList<NauticalFeature>();var cursor:String?=null
         do {currentCoroutineContext().ensureActive();val page=charts.query(snapshot.id,bounds,2000,cursor);require(!page.truncated){"Chart query is incomplete"};features.addAll(page.features);require(features.size<=120_000){"Area contains too many chart objects; use a shorter passage"};require(!page.hasMore||page.nextAfterId!=null&&page.nextAfterId!=cursor){"Chart query cursor did not advance"};cursor=if(page.hasMore)page.nextAfterId else null}while(cursor!=null)
         val malformed=mutableListOf<String>()
+        // 和搜索网格相同的局部矩形；远方图幅及已被上层覆盖的单元不能污染本区域质量状态。
+        val region=projection.line(points).envelope.buffer(max(1.0,padding)).envelope
         var occupied:Geometry=factory.createPolygon()
         val masks=mutableMapOf<String,Geometry>()
+        fun touchesQuery(box:ChartBounds)=box.split().any{part->bounds.split().any{query->part.west<=query.east&&part.east>=query.west&&part.south<=query.north&&part.north>=query.south}}
+        fun hintArea(cell:ChartCellRevision):Geometry {
+            // 连可定位边界都缺失时无法证明问题在远方，保守保留本区未知状态。
+            if(cell.bounds.none {it.valid})return region
+            val shapes=cell.bounds.filter{it.valid&&touchesQuery(it)}.flatMap{it.split()}.mapNotNull { box ->
+                if(box.east-box.west>=180.0)return@mapNotNull region
+                runCatching { projection.line(listOf(ChartPoint(box.south,box.west),ChartPoint(box.south,box.east),
+                    ChartPoint(box.north,box.east),ChartPoint(box.north,box.west),ChartPoint(box.south,box.west))).envelope.intersection(region) }.getOrNull()
+            }
+            return union(shapes,factory)
+        }
         val cells=snapshot.datasets.flatMapIndexed{index,dataset->dataset.cells.groupBy{it.cellId}.values.map{versions->versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})}.filterNot{it.cancelled}.map{Triple(index,dataset,it)}}.sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.thenBy{it.third.compilationScale?:Int.MAX_VALUE}.thenByDescending{it.third.edition}.thenByDescending{it.third.update})
         for((_,dataset,cell) in cells){
             currentCoroutineContext().ensureActive()
             if(!dataset.eligibility.allowsAnalysis(System.currentTimeMillis())||!dataset.offlineReadable||dataset.issue!=null)continue
-            val valid=cell.coverage.filter{it.covered}.mapNotNull{runCatching{projection.geometry(it.geometry)}.onFailure{malformed.add(cell.cellId)}.getOrNull()}
-            val gaps=cell.coverage.filterNot{it.covered}.mapNotNull{runCatching{projection.geometry(it.geometry)}.onFailure{malformed.add(cell.cellId)}.getOrNull()}
+            val declaredBounds=cell.bounds.filter{it.valid}
+            if(declaredBounds.isNotEmpty()&&declaredBounds.none(::touchesQuery))continue
+            var brokenCoverage=false
+            fun coverageGeometry(evidence:CoverageEvidence):Geometry? = runCatching {
+                projection.geometry(evidence.geometry).intersection(region)
+            }.onFailure{brokenCoverage=true}.getOrNull()
+            val valid=cell.coverage.filter{it.covered}.mapNotNull(::coverageGeometry)
+            val gaps=cell.coverage.filterNot{it.covered}.mapNotNull(::coverageGeometry)
             val coverage=union(valid,factory).difference(union(gaps,factory))
-            masks["${dataset.id}/${cell.cellId}"]=coverage.difference(occupied)
+            val effective=coverage.difference(occupied)
+            masks["${dataset.id}/${cell.cellId}"]=effective
+            // 缺少/损坏覆盖时只用边界判断“可能影响本区”，绝不把边界当作已知覆盖。
+            val uncertain=if(brokenCoverage||cell.coverage.none{it.covered})hintArea(cell).difference(occupied)else factory.createPolygon()
+            if((!effective.isEmpty||!uncertain.isEmpty)&&(brokenCoverage||cell.hasUnsupportedSemantic||cell.issues.isNotEmpty()||cell.coverage.none{it.covered}))malformed.add(cell.cellId)
             occupied=occupied.union(coverage)
-            if(cell.hasUnsupportedSemantic||cell.issues.isNotEmpty())malformed.add(cell.cellId)
         }
         val projected=features.mapNotNull{feature->
             val mask=masks["${feature.datasetId}/${feature.cellId}"]?:return@mapNotNull null
             if(mask.isEmpty)return@mapNotNull null
+            // 查询包围框内的对象也可能落在已被遮盖的部分。仅相关对象解析失败影响本区。
+            val envelope=Envelope()
+            feature.geometry.parts.forEach{part->part.points.forEach{point->if(point.latitude.isFinite()&&point.longitude.isFinite())envelope.expandToInclude(projection.xy(point))}}
+            if(!envelope.isNull&&!factory.toGeometry(envelope).intersects(mask))return@mapNotNull null
             runCatching{FeatureGeometry(feature,projection.geometry(feature.geometry).intersection(mask))}.onFailure{malformed.add(feature.id)}.getOrNull()?.takeUnless{it.geometry.isEmpty}
         }
         val vessel=request.vessel
@@ -104,18 +130,23 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         return PassageWorld(projection,projected,occupied,navigable,malformed.distinct(),margin)
     }
 
-    suspend fun analyze(snapshot:ChartDataSnapshot,request:PassageRequest,onProgress:(Float)->Unit={}):PassageAnalysis {
+    fun validateRequest(request:PassageRequest) {
         require(request.route.points.size in 2..2000){"Choose at least two points"}
         request.route.navigationTargetIndices?.let { targets ->
             require(targets.isNotEmpty() && targets==targets.distinct().sorted() && targets.all{it in request.route.points.indices} && targets.last()==request.route.points.lastIndex){"Invalid destination mapping"}
         }
         require(request.route.points.all{it.latitude.isFinite()&&it.longitude.isFinite()&&it.latitude in -89.9..89.9&&it.longitude in -180.0..180.0}){"Invalid route coordinates"}
+        val v=request.vessel
+        require(listOf(v.draftMeters,v.beamMeters,v.airDraftMeters,v.minimumUnderKeelMeters,v.clearanceMarginMeters,v.corridorHalfWidthMeters,v.turnRadiusMeters,v.plannedSpeedMetersPerSecond).all{it==null||it.isFinite()&&it>=0}){"Invalid vessel dimensions"}
+    }
+
+    suspend fun analyze(snapshot:ChartDataSnapshot,request:PassageRequest,onProgress:(Float)->Unit={}):PassageAnalysis {
+        validateRequest(request)
         val issues=mutableListOf<PassageIssue>();val strips=mutableListOf<PassageStripSpan>();var total=0.0
         fun issue(kind:PassageIssueKind,severity:PassageSeverity,message:String,leg:Int=0,p:ChartPoint?=null,along:Double=0.0,f:NauticalFeature?=null){issues.add(PassageIssue(passageHash("$kind/$leg/${f?.id}/$along/$message"),severity,kind,leg,p,along,message,f?.id,f?.cellId,f?.depth))}
         if(snapshot.missingDatasetIds.isNotEmpty()||snapshot.datasets.isEmpty())issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"所选数据集尚未安装或已移除 / Selected data is missing")
         snapshot.datasets.filterNot{it.eligibility.allowsAnalysis(System.currentTimeMillis())&&it.offlineReadable&&it.issue==null}.forEach{issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"${it.name}：尚未确认分析用途 / Analysis use not confirmed")}
         val v=request.vessel
-        require(listOf(v.draftMeters,v.beamMeters,v.airDraftMeters,v.minimumUnderKeelMeters,v.clearanceMarginMeters,v.corridorHalfWidthMeters,v.turnRadiusMeters,v.plannedSpeedMetersPerSecond).all{it==null||it.isFinite()&&it>=0}){"Invalid vessel dimensions"}
         if(v.draftMeters?.let{it.isFinite()&&it>0}!=true||v.minimumUnderKeelMeters?.let{it.isFinite()&&it>=0}!=true)issue(PassageIssueKind.VESSEL,PassageSeverity.INSUFFICIENT,"设置吃水和富余水深后可检查深度 / Set draft and under-keel margin")
         if(v.beamMeters?.let{it.isFinite()&&it>0}!=true||v.clearanceMarginMeters?.let{it.isFinite()&&it>=0}!=true||v.corridorHalfWidthMeters?.let{it.isFinite()&&it>0}!=true)issue(PassageIssueKind.VESSEL,PassageSeverity.INSUFFICIENT,"设置船宽和避让距离后可检查航行走廊 / Set beam and clearance")
         val required=v.draftMeters?.let{d->v.minimumUnderKeelMeters?.let{d+it}}

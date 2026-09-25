@@ -5,7 +5,7 @@
 - 当前视觉基线为 [Windows 10 Mobile / MDL2](docs/product/WINDOWS_10_MOBILE_DESIGN.md)，以当期官方资料及共享语义控件实现。WP8 资料保留作历史参考；用户明确保留经典应用开合/Home 翻转与倾斜磁贴，控件仍为 W10M。不要复原超大普通标题、圆圈动作按钮或套用 Win11 Fluent 样式。大字号只保留给实际关键读数。
 - OS 标识使用 `core/design/YokuliBrand` 与 `design/brand` SVG 母版；更新母版后运行 `scripts/generate_brand_assets.py`。遵守[品牌接入规则](docs/product/WINDOWS_10_MOBILE_DESIGN.md#yokuli-品牌标记与字标2026-09-25)，不在业务页堆品牌、不改变 Home/通知含义或加入开屏等待。
 - UI 只拥有展示与本次访问状态；来源、导航、记录、守锚、AIS、内容、通知各有唯一所有者。禁止页面直连 DAO/控制器、重复采集或新增平行业务状态。现存兼容桥不能成为新功能的捷径。
-- 图册维护结构化资料，规划只使用地图明确选择的数据集版本；绘制隐藏不改变分析。导航由 `MarineSystem.navigation` 单写，页面不自建活动目标。格式、快照租约、未知水域与规划约束见 [海图契约](docs/product/CHART_INTERACTION_CONTRACT.md#数据图册与自动规划2026-09-25)。
+- 图库分开管理显示用 MBTiles 与可浏览的 S-57 / GeoPackage 航行资料；规划只使用地图明确选择的数据集版本，通过实际覆盖、深度和用途门槛才搜索，无资料仍能手动绘线。对象浏览只走快照端口，不在 App 内改写提供方水深；开放包按 [GeoPackage profile](docs/GEOPACKAGE_CHART_PROFILE.md) 编辑原文件并整包更新。绘制隐藏不改变分析。导航由 `MarineSystem.navigation` 单写，页面不自建活动目标。格式、快照租约、未知水域与规划约束见 [海图契约](docs/product/CHART_INTERACTION_CONTRACT.md#数据图册与自动规划2026-09-25)。
 - 对象动作必须带稳定 ID 与来路；点击捕获时刻后才能编辑描述，成功提示等待真实落盘，同 ID 重试。原生地图/三维场景保持单实例，覆盖面板与退出页不能抢输入。
 - 单位统一使用 `MarineUnitPreferences` / `MarineUnitFormats`，禁止地图或页面按数值自行换单位；显示平滑不改传感器时间、质量与业务依据。
 - 动画用系统帧时钟，连续位移/旋转在绘制层读状态，不按帧重组整页；历史图不补间原始点，测量时间、来源连续段与固定回看轴遵循 [来源契约](docs/product/DATA_CENTER_CONTRACT.md) 及 [仪表契约](docs/product/INSTRUMENT_TILE_CONTRACT.md)。

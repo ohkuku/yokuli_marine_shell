@@ -86,6 +86,10 @@ data class ChartInteractionSnapshot(
     val selectedAisMmsi:String?=null,
     /** 本次海图是否展示航线编辑工具；草稿内容仍由原唯一编辑状态持有。 */
     val editingRoute:Boolean=false,
+    /** 图册的只读预览属于来路页面；返回其他海图访问时不能泄漏过去。 */
+    val libraryPreview:com.yokuli.marine.shell.rebuild.chart.LibraryObjectPreview?=null,
+    val libraryPreviewCameraRequestId:String?=null,
+    val libraryPreviewNote:String?=null,
 )
 /** 系统安装的应用身份；UI 标签与入口组织不能另建不一致的应用列表。 */
 enum class AppId(val zh: String, val en: String, val icon: String) {
@@ -334,7 +338,8 @@ class OsStore(val context: Context) {
         val view = maps.view("chart", center, zoom)
         return ChartInteractionSnapshot(center, zoom, follow, showCrosshair, ruler.toList(),
             view.selectedPlaceId, displayedRouteId, view.previewTrack.map { it.toList() }, view.previewTitle,
-            view.previewRoute?.let { it.copy(points = it.points.toList()) },view.selectedAisMmsi,editingRoute)
+            view.previewRoute?.let { it.copy(points = it.points.toList()) },view.selectedAisMmsi,editingRoute,
+            view.libraryPreview,view.libraryPreviewCameraRequestId,view.libraryPreviewNote)
     }
     internal fun restoreChartInteraction(snapshot: ChartInteractionSnapshot) {
         center = snapshot.center; zoom = snapshot.zoom; follow = snapshot.follow
@@ -346,6 +351,7 @@ class OsStore(val context: Context) {
             selectedPlaceId = snapshot.selectedPlaceId
             selectedAisMmsi = snapshot.selectedAisMmsi
             previewTrack = snapshot.previewTrack; previewTitle = snapshot.previewTitle; previewRoute = snapshot.previewRoute
+            libraryPreview=snapshot.libraryPreview;libraryPreviewCameraRequestId=snapshot.libraryPreviewCameraRequestId;libraryPreviewNote=snapshot.libraryPreviewNote
         }
         // 新请求触发真实原生相机复位，不能仅更新坐标文案。
         fitRequest = null; cameraRequest = snapshot.center to snapshot.zoom

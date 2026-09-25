@@ -168,7 +168,7 @@ flowchart TB
 | 应用 | 入口 / 对象地址 | 读取 | 提交的业务动作 | 数据所有权 |
 | --- | --- | --- | --- | --- |
 | 海图 | `chart` | `MapScene`、可信船位、选中坐标/路线、全局航行 | 选点、标记、规划、预览、导航、记录命令 | 独立视口与地图临时工具；收藏交给我的航行 |
-| 图册 | `library`、`library:<folderId>` | 文件夹扫描、文件状态、命名图层、覆盖 | 授权、扫描、改名、排序、启停、恢复、解除关联、使用图层 | `ChartFolder / ChartFile / ChartLayer` |
+| 图册 | `library`、`library:data`、`library:<folderId>`、`chartdataset:<id>`、`chartobjects:<id>[:cell]` | MBTiles 图层；S-57 / GeoPackage 版本、具体水深/障碍/航标、覆盖和用途 | 导入、改名、更新、移除；分类、搜索、分页与对象详情；只读地图预览；显式选用与优先顺序 | 栅格 `ChartLibrary`；结构化数据唯一所有者 `MarineSystem.charts` |
 | 航海日志 | `voyages`、`voyage:<id>`、`replay:<id>`、`report:<id>` | 当前 `VoyageSessionState`、历史轨迹/事件/时刻 | 开始、暂停、继续、结束、时刻笔记、改名、导出、历史地图预览 | `TripSession / Sample / Event / Waypoint` |
 | 守锚 | `anchor` | 选中船位、锚点、警戒圈、近期轨迹、累计范围、警报 | 下锚、设点/半径、值守、暂停、起锚、收藏 | `AnchorSession`；收藏引用统一坐标 |
 | 我的航行 | `places`、`place:<id>`、`route:<id>`、`anchorage:<id>`、`collection:<id>` | 收藏坐标、锚地具体位置、集合、路线 | CRUD、GPX、预览、前往、编辑路线、集合整理 | `Place / Route` 与已有 Room anchorage 实体 |
@@ -258,15 +258,23 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  LIB[图册：海图 / 数据] -->|导入 更新 用途 移除| CD[MarineSystem.charts]
+  MB[MBTiles 底图] --> VIEW
+  ENC[S-57 基图与连续更新] --> CD
+  GPKG[GeoPackage 矢量对象与显式属性] --> CD
+  LIB[图册：底图 / 航行数据] -->|导入 更新 用途 移除| CD[MarineSystem.charts]
   CD --> DB[(不可变 SQLite / RTree 版本)]
   SELECT[MapSessionStore 背景 + 数据集] -->|显式 IDs| LEASE[ChartDataSnapshot 租约]
   DB --> LEASE
   LEASE --> VIEW[共享 MarineMap / 对象查询]
+  LEASE -->|分类 搜索 分页 对象详情| BROWSE[图册内容浏览]
+  BROWSE -->|明确只读预览 不改选用| VIEW
   LEASE --> ANALYZE[MarineSystem.analysis]
   SHIP[原 VesselSettingsRepository] --> ANALYZE
   DRAFT[现有航线或草稿] --> ANALYZE
-  ANALYZE --> PLAN[MarineSystem.planning]
+  LEASE --> GATE{覆盖 深度 用途是否足够}
+  GATE -->|不足| MANUAL[仅手动绘线与参考分析]
+  GATE -->|可用| PLAN[MarineSystem.planning]
+  ANALYZE --> PLAN
   PLAN --> CANDIDATE[候选 / 沿程证据 / 问题位置]
   CANDIDATE -->|确认采用| DRAFT
   CANDIDATE -->|确认替换 + expectedRevision| NAV[MarineSystem.navigation]
@@ -277,3 +285,5 @@ flowchart LR
 ```
 
 合同入口分别是 `navigation/NavigationContract.kt`、`chart/ChartDataContract.kt`、`planning/PassageContract.kt`。对象身份、经纬度/深度单位、图幅版本、数据用途、租约、命令比较和沿程证据在代码保留中文语义注释。详细字段与当前不支持的加密/环境能力见 [海图契约](CHART_INTERACTION_CONTRACT.md)，具体声明见 [API 索引](API_INDEX.md)。
+
+MBTiles 只负责画面，不能凭瓦片颜色推算深度；S-57 与 GeoPackage 共用对象索引、版本租约和规划门槛。GeoPackage 的显式字段与 QGIS 维护规则见 [开放资料格式](../GEOPACKAGE_CHART_PROFILE.md)。用户自有资料更新原文件后导入完整新版；不在图册里静默改写官方 ENC 测量证据。未选用的数据不参与规划，缺资料时保留手动画线。

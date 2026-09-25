@@ -28,6 +28,12 @@ import com.yokuli.marine.shell.rebuild.chart.*
 fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) {
     val c=LocalMetro.current
     val chartData by os.maps.charts.state.collectAsState()
+    var ordering by rememberSaveable {mutableStateOf(false)}
+    val selectedIds=os.maps.selectedDatasetIds
+    val orderedDatasets=remember(chartData.datasets,selectedIds) {
+        val byId=chartData.datasets.associateBy {it.id}
+        selectedIds.mapNotNull(byId::get)+chartData.datasets.filterNot {it.id in selectedIds}
+    }
     AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface {
             AppDialogTitle(os.t("地图来源","Map source"))
@@ -56,24 +62,54 @@ fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) 
             }
             if(os.library.layers.isEmpty())Label(os.t("在图册连接文件夹并命名后，它会出现在这里。","Connect and name a folder in chart library to add it here."),16,c.muted)
             AppSection(os.t("海图数据","Chart data"))
-            Column(Modifier.selectableGroup()) {
-                MapSourceOption(os,os.t("无","None"),os.maps.selectedDatasetIds.isEmpty()) {os.maps.selectDataset(null);onDismiss()}
-                chartData.datasets.forEach { dataset ->
-                    MapSourceOption(os,dataset.name,dataset.id in os.maps.selectedDatasetIds,
-                        if(!dataset.offlineReadable)os.t("离线索引缺失 · 在图册恢复","Offline index missing · Restore in Library")else chartUseLabel(os,dataset.eligibility),enabled=dataset.offlineReadable) {os.maps.selectDataset(dataset.id);onDismiss()}
+            Column {
+                if(chartData.datasets.isEmpty()&&!chartData.loading)Label(os.t("还没有航行数据。底图仍可查看，也可手动画线。","No navigation data yet. You can still view maps and draw routes manually."),14,c.muted)
+                orderedDatasets.forEach { dataset ->
+                    val priority=selectedIds.indexOf(dataset.id)
+                    val selected=priority>=0
+                    val detail=if(!dataset.offlineReadable)os.t("离线索引缺失 · 在图册恢复","Offline index missing · Restore in Library")else chartUseLabel(os,dataset.eligibility)
+                    AppCheckRow(dataset.name,selected,
+                        (if(selected)os.t("优先 ${priority+1} · ","Priority ${priority+1} · ")else "")+detail,enabled=selected||dataset.offlineReadable) {os.maps.includeDataset(dataset.id,!selected)}
                 }
-                os.maps.selectedDatasetIds.filter {id->chartData.datasets.none {it.id==id}}.forEach {
-                    MapSourceOption(os,os.t("所选数据已移除","Selected dataset is missing"),true,os.t("在图册重新导入或选择另一份资料","Restore it in Library or choose another dataset"),false) {}
+                if(!chartData.loading&&chartData.error==null)selectedIds.filter {id->chartData.datasets.none {it.id==id}}.forEach {id->
+                    AppCheckRow(os.t("所选数据已移除","Selected dataset is missing")+" · "+id.take(8),true,
+                        os.t("优先 ${selectedIds.indexOf(id)+1} · 取消选用，或在图册重新导入","Priority ${selectedIds.indexOf(id)+1} · Deselect or restore in Library")) {os.maps.includeDataset(id,false)}
                 }
                 if(chartData.loading)MetroProgress(os.t("正在读取数据图册","Reading chart data"))
                 chartData.error?.let {Label(chartDataError(os,it),13,c.accentText)}
             }
+            if(selectedIds.size>1)MenuRow(os.t("优先顺序","Priority order"),os.t("上方优先，未覆盖处使用后续资料","Earlier data takes priority; later data fills uncovered areas"),"layers") {ordering=true}
+            MenuRow(os.t("管理与导入数据","Manage and import data"),icon="folder") {onDismiss();os.openLinked("library:data")}
 
             if(os.maps.saveFailed)Label(os.t("选择尚未保存到设备","selection could not be saved"),16)
             aisLayer?.let {AisLayerChoice(os,it)}
             MetroButton(os.t("关闭","close"),onDismiss)
         }
     }
+    if(ordering)AppDialog(onDismissRequest={ordering=false}) {AppDialogSurface {
+        AppDialogTitle(os.t("资料优先顺序","Data priority"))
+        Label(os.t("覆盖重叠时优先使用上方资料，空白处使用后续资料。只调整已选资料，不改变它们的用途许可。","Earlier datasets take priority where coverage overlaps; later datasets fill uncovered areas. Reordering does not change permitted use."),14,c.muted)
+        if(selectedIds.isEmpty())Label(os.t("当前没有选用资料","No data selected"),15,c.muted)
+        selectedIds.forEachIndexed {index,id->
+            val dataset=chartData.datasets.firstOrNull {it.id==id}
+            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                Label("${index+1}. "+(dataset?.name ?: os.t("暂不可用","Unavailable")+" · "+id.take(8)),17)
+                fun move(offset:Int) {
+                    val current=os.maps.selectedDatasetIds
+                    val from=current.indexOf(id);val to=from+offset
+                    if(from<0||to !in current.indices)return
+                    val next=current.toMutableList();next[from]=current[to];next[to]=id
+                    os.maps.reorderDatasets(next)
+                }
+                Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                    MetroButton(os.t("上移","Move up"),{move(-1)},Modifier.weight(1f),enabled=index>0)
+                    MetroButton(os.t("下移","Move down"),{move(1)},Modifier.weight(1f),enabled=index<selectedIds.lastIndex)
+                }
+            }
+        }
+        if(os.maps.saveFailed)Label(os.t("顺序尚未保存到设备","Order could not be saved to this device"),14,c.accentText)
+        MetroButton(os.t("完成","Done"),{ordering=false})
+    }}
 }
 
 /** 图源与系统偏好共用单选控件，以选中圆点表示当前值。 */

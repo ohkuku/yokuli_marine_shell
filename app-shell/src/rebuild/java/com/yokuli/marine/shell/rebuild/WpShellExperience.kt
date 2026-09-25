@@ -337,6 +337,8 @@ private fun ShellAppContent(os: OsStore, page: String) {
         page == "chart" -> ChartAppScreen(os)
         page.startsWith("chart:ais:") -> ChartAppScreen(os,page.substringAfterLast(':').toIntOrNull())
         page == "library" -> LibraryScreen(os)
+        page == "library:data" -> LibraryScreen(os,initialPage=1)
+        page.startsWith("chartobjects:") -> LibraryObjectsScreen(os,page.substringAfter(':').substringBefore(':'),page.substringAfter(':').substringAfter(':',"").takeIf {it.isNotBlank()}?.let(android.net.Uri::decode))
         page.startsWith("chartdataset:") -> LibraryDatasetScreen(os,page.substringAfter(':'))
         page.startsWith("library:") -> LibraryFolderScreen(os, page.substringAfter(':'))
         page == "places" || page.startsWith("places:") -> PlacesScreen(os,anchoragesOnly=page=="places:anchorages")

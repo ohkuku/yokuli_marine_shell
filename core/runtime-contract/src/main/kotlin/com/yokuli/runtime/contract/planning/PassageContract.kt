@@ -31,7 +31,9 @@ data class PassageReview(val analysisKey:String,val issueId:String,val note:Stri
 data class PassageState(val job:PassageJob?=null,val analysis:PassageAnalysis?=null,val plan:PassagePlan?=null,val avoidances:List<PassageAvoidance> = emptyList(),val storageIssue:String?=null,val ready:Boolean=false,
     /** 冻结的最近提交及种类；失败/中断后可原样重试，恢复不自动启动计算。 */
     val pendingRequest:PassageRequest?=null,val planning:Boolean=false,val detourLeg:Int?=null,
-    val reviews:List<PassageReview> = emptyList())
+    val reviews:List<PassageReview> = emptyList(),
+    /** 最近自动规划的资料门槛；手工分析不受此门槛阻断。 */
+    val planningReadiness:PassagePlanningReadiness?=null)
 interface RouteAnalysisService {
     val state:StateFlow<PassageState>
     fun analyze(request:PassageRequest)

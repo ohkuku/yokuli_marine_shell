@@ -33,6 +33,8 @@ data class ChartDataSnapshot(val id:String,val revision:Long,val datasets:List<C
     val cells get()=datasets.flatMap {it.cells}
 }
 data class ChartFeaturePage(val features:List<NauticalFeature>,val nextAfterId:String?,val hasMore:Boolean,val truncated:Boolean=false)
+/** 图册对象筛选；空类别表示全部，text 匹配真实名称、类别、图幅与来源图层，不改变分析资格。 */
+data class ChartFeatureFilter(val cellId:String?=null,val kinds:Set<NauticalFeatureKind> = emptySet(),val text:String="")
 enum class ChartImportPhase { COPYING, PARSING, INDEXING, COMMITTING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
 data class ChartImportJob(val requestId:String,val name:String,val phase:ChartImportPhase,val completed:Int=0,val total:Int=0,val detail:String="",val datasetId:String?=null)
 data class ChartDataState(val revision:Long=0,val datasets:List<ChartDataset> = emptyList(),val activeJob:ChartImportJob?=null,val loading:Boolean=true,val error:String?=null)
@@ -55,6 +57,10 @@ interface ChartDataService {
     suspend fun remove(datasetId:String):ChartCommandResult
     suspend fun acquireSnapshot(datasetIds:List<String>):ChartDataSnapshot
     suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int=2_000,afterId:String?=null):ChartFeaturePage
+    /** 只浏览快照选定版本；按稳定对象 ID 分页，取消会释放本次读取租约，不释放调用方持有的快照。 */
+    suspend fun browse(snapshotId:String,filter:ChartFeatureFilter=ChartFeatureFilter(),limit:Int=100,afterId:String?=null):ChartFeaturePage
+    /** 读取同一快照中的完整对象；不存在返回 null，失效快照或损坏索引抛出错误，不伪装为空对象。 */
+    suspend fun readFeature(snapshotId:String,featureId:String):NauticalFeature?
     suspend fun releaseSnapshot(snapshotId:String)
     suspend fun retryRestore()
 }

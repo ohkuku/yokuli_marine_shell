@@ -118,16 +118,23 @@ private fun verdict(os:OsStore,level:PassageSeverity)=when(level){PassageSeverit
     val targetIndices=if(activeRemainder)os.activeRoute?.targetIndices?.filter{it>=os.routeLeg}?.map{it-os.routeLeg+1}
         else if(useExisting)when{pickedRoute!=null->pickedRoute.navigationTargetIndices;os.editingRoute->os.draftNavigationTargetIndices;else->currentRoute?.navigationTargetIndices}else null
     val analysis=state.analysis
-    val stale=analysis!=null&&(analysis.request.route.points!=template.map{it.chartPoint()}||analysis.request.route.navigationTargetIndices!=targetIndices||analysis.request.vessel!=os.passageVessel()||analysis.request.datasetIds!=os.maps.selectedDatasetIds||analysis.request.backgroundKey!=os.backgroundKey()||analysis.datasetRevisions.any{(id,revision)->
+    val readiness=PassagePlanningEligibility.evaluate(os.maps.selectedDatasetIds,chartData.datasets,wallNow)
+    val currentDatasetRevisions=os.maps.selectedDatasetIds.mapNotNull{id->chartData.datasets.firstOrNull{it.id==id}?.let{it.id to it.revision}}.toMap()
+    val canRequestPlan=readiness.canRequestPlanning&&!chartData.loading
+    val stale=analysis!=null&&(analysis.request.route.points!=template.map{it.chartPoint()}||analysis.request.route.navigationTargetIndices!=targetIndices||analysis.request.vessel!=os.passageVessel()||analysis.request.datasetIds!=os.maps.selectedDatasetIds||analysis.request.backgroundKey!=os.backgroundKey()||analysis.datasetRevisions!=currentDatasetRevisions||analysis.datasetRevisions.any{(id,revision)->
         val dataset=chartData.datasets.firstOrNull{it.id==id}
-        dataset==null||dataset.revision!=revision||!dataset.offlineReadable||dataset.issue!=null||!dataset.eligibility.allowsAnalysis(wallNow)
+        dataset==null||dataset.revision!=revision||analysis.severity!=PassageSeverity.INSUFFICIENT&&(!dataset.offlineReadable||dataset.issue!=null||!dataset.eligibility.allowsAnalysis(wallNow))
     }||analysis.request.avoidances!=state.avoidances||(state.planning&&state.detourLeg!=selectedLeg))
     val busy=state.job?.phase in setOf(PassageJobPhase.LOADING,PassageJobPhase.ANALYZING,PassageJobPhase.SEARCHING)
+    val regionReadiness=state.planningReadiness?.takeIf{state.planning&&!stale&&analysis!=null}
+    fun canUseCandidate(candidate:PassageCandidate)=canRequestPlan&&!stale&&!busy&&state.plan?.original?.key==analysis?.key&&
+        regionReadiness?.canSearch!=false&&candidate.analysis.complete&&candidate.analysis.severity in setOf(PassageSeverity.REVIEW,PassageSeverity.NO_CONFLICT_FOUND)&&
+        candidate.analysis.request.datasetIds==os.maps.selectedDatasetIds&&candidate.analysis.datasetRevisions==currentDatasetRevisions
     LaunchedEffect(analysis?.id,stale){reviewing=false}
     if(reviewing&&!stale)analysis?.let{result->PassageReviewDialog(os,result){reviewing=false}}
     fun showRoute(points:List<ChartPoint>,candidate:List<ChartPoint>?=null){view.planningLines=listOf(MapLine("planning:original",points.map{it.geo()},0xFF7E8995,3f))+candidate?.let{listOf(MapLine("planning:candidate",it.map{p->p.geo()},os.accent,4f))}.orEmpty();os.fitRequest=(points+candidate.orEmpty()).map{it.geo()};onDismiss()}
     fun locate(issue:PassageIssue){issue.point?.let{p->view.planningPoints=listOf(MapPoint("planning:issue",p.geo(),"",severityColor(issue.severity).toArgb().toLong(),10f));os.fly(p.geo(),os.zoom.coerceAtLeast(14.0));onDismiss()}}
-    fun calculate(plan:Boolean){if(template.size<2)return;os.planningRequest(template,routeId,routeName,targetIndices)?.let{request->if(plan)system.planning.plan(request,selectedLeg)else system.analysis.analyze(request)}}
+    fun calculate(plan:Boolean){if(template.size<2||busy||!state.ready)return;if(plan&&!canRequestPlan){feedback=os.t(readiness.messageZh,readiness.messageEn);return};os.planningRequest(template,routeId,routeName,targetIndices)?.let{request->if(plan)system.planning.plan(request,selectedLeg)else system.analysis.analyze(request)}}
     fun restoreRequest(pending:PassageRequest){
         // 显式恢复只改本次规划输入，不更改草稿、收藏或正在执行的导航。
         pickedRouteId=null
@@ -136,25 +143,32 @@ private fun verdict(os:OsStore,level:PassageSeverity)=when(level){PassageSeverit
         useExisting=true;activeRemainder=false;selectedLeg=state.detourLeg
         feedback=os.t("已继续这次规划；重新计算使用当前资料和船体参数","Plan restored; recalculation uses the current charts and boat settings")
     }
-    fun persistCurrentDraft(successText:String){
+    fun persistCurrentDraft(successText:String,onSaved:(()->Unit)?=null){
         saving=true
         val receipt=os.save()
         os.scope.launch{
-            feedback=if(receipt.result.await()==DurableCommitResult.SAVED)successText else os.t("设备尚未保存当前草稿，可重试保存","Current draft is not saved on this device. Retry saving.")
+            val saved=receipt.result.await()==DurableCommitResult.SAVED
+            feedback=if(saved)successText else os.t("设备尚未保存当前草稿，可重试保存","Current draft is not saved on this device. Retry saving.")
             saving=false
+            if(saved)onSaved?.invoke()
         }
     }
     if(choosing!=null){val kind=choosing!!;MapPicker(os,if(kind=="from")from else if(kind=="to")to else os.center,onCancel={choosing=null},onConfirm={p->if(kind=="from"){from=p;useExisting=false;activeRemainder=false;selectedLeg=null}else if(kind=="to"){to=p;useExisting=false;activeRemainder=false;selectedLeg=null}else avoidanceCenter=p;choosing=null});return}
     if(chooseData)MapSourcePicker(os){chooseData=false}
     replanCommand?.let { command -> ConfirmDialog(os,os.t("用此方案替换正在执行的导航路线？","Replace the active navigation route with this candidate?"),{replanCommand=null}) {
         replanCommand=null
-        if(stale){feedback=os.t("条件已变化，请重新计算","Conditions changed; recalculate");return@ConfirmDialog}
+        val candidate=state.plan?.candidates?.firstOrNull{it.analysis.key==command.analysisReference}
+        if(candidate==null||!canUseCandidate(candidate)){feedback=os.t("资料或条件已变化，请重新计算后采用","Data or conditions changed. Recalculate before using this candidate.");return@ConfirmDialog}
         saving=true
         os.scope.launch { val receipt=os.commitNavigation(command);feedback=if(receipt.result==NavigationResult.SAVED)os.t("当前导航已更新","Navigation updated")else if(receipt.reason=="REPLAN_START_MOVED")os.t("船位已变化，请从船位重新规划余程","Your boat has moved. Replan the remaining passage from its current position.")else os.t("导航未更改，请重新计算或重试","Navigation unchanged; recalculate or retry");saving=false }
     }}
     AppDialog(onDismissRequest=onDismiss){AppDialogSurface{
         AppDialogTitle(os.t("航线规划","Route planning"))
-        MenuRow(os.maps.sourceName(os.chinese),os.maps.selectedDatasetIds.mapNotNull{id->chartData.datasets.firstOrNull{it.id==id}?.name}.joinToString(" · ").ifBlank{os.t("选择数据集","Choose data set")}){chooseData=true}
+        MenuRow(os.t("选择航行数据","Choose navigation data"),os.maps.selectedDatasetIds.mapNotNull{id->chartData.datasets.firstOrNull{it.id==id}?.name}.joinToString(" · ").ifBlank{os.t("尚未选择","Not selected")}){chooseData=true}
+        if(!readiness.canRequestPlanning)Label(os.t(readiness.messageZh,readiness.messageEn),14,LocalMetro.current.muted)
+        else regionReadiness?.takeIf{!it.canSearch}?.let{Label(os.t(it.messageZh,it.messageEn),14,LocalMetro.current.muted)}
+        // 保持本次访问及弹窗输入；返回图库后继续原起终点，不重新创建规划页面。
+        MenuRow(os.t("管理 / 导入数据","Manage / import data")){os.openLinked("library:data")}
         if(os.navigationState.session?.source==NavigationSource.LOCAL&&os.navigationState.session?.ongoing==true) {
             val currentFix=os.hub.state.value.fix(os.positionSource)
             MenuRow(os.t("从船位重新规划余程","Replan remaining passage from boat"),if(activeRemainder)os.t("已选择","Selected")else null) {
@@ -178,19 +192,29 @@ private fun verdict(os:OsStore,level:PassageSeverity)=when(level){PassageSeverit
         if(template.size>2){MenuRow(selectedLeg?.let{os.t("只绕行第 ${it+1} 段","Detour leg ${it+1}")}?:os.t("规划全线","Plan whole route")){selectedLeg=if(selectedLeg==null)0 else if(selectedLeg!!>=template.lastIndex-1)null else selectedLeg!!+1}}
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
             MetroButton(os.t("检查航线","Check route"),{calculate(false)},Modifier.weight(1f),enabled=template.size>=2&&!busy&&state.ready)
-            MetroButton(os.t("自动规划","Find a route"),{calculate(true)},Modifier.weight(1f),primary=true,enabled=template.size>=2&&!busy&&state.ready)
+            MetroButton(os.t("自动规划","Find a route"),{calculate(true)},Modifier.weight(1f),primary=true,enabled=template.size>=2&&!busy&&state.ready&&canRequestPlan)
         }
+        MetroButton(if(os.draftRoute.isNotEmpty())os.t("继续手动编辑","Continue manual editing")else os.t("手动绘线","Draw route manually"),{
+            if(saving||persistence.saving||persistence.readFailure!=null)return@MetroButton
+            // 只在没有现存草稿时使用明确选出的起终点；现有草稿永不被这个入口替换。
+            if(os.draftRoute.isEmpty()&&!useExisting&&!activeRemainder&&from!=null&&to!=null){
+                os.draftRoute=listOfNotNull(from,to);os.draftNavigationTargetIndices=null;os.editingRouteId=null
+                os.fitRequest=os.draftRoute
+            }
+            resumeOrCreateRouteDraft(os)
+            persistCurrentDraft(os.t("手工草稿已保存","Manual draft saved"),onDismiss)
+        },enabled=!saving&&!persistence.saving&&persistence.readFailure==null)
         if(busy){MetroProgress(os.t("正在计算…","Calculating…"));MetroButton(os.t("取消计算","Cancel"),{state.job?.requestId?.let(system.analysis::cancel)})}
         state.job?.takeIf{it.phase in setOf(PassageJobPhase.FAILED,PassageJobPhase.INTERRUPTED,PassageJobPhase.CANCELLED)}?.let{job->
             Label(issueText(os,job.detail?:"计算已停止 / Calculation stopped"),14)
-            MetroButton(os.t("重新计算","Retry"),{calculate(state.planning)},enabled=template.size>=2)
+            MetroButton(os.t("重新计算","Retry"),{calculate(state.planning)},enabled=template.size>=2&&!busy&&state.ready&&(!state.planning||canRequestPlan))
         }
         state.storageIssue?.let{Label(os.t("结果未能保存到设备","Result could not be saved"),14);MetroButton(os.t("重新读取已保存资料","Reload saved workspace"),{system.analysis.retryRestore()},enabled=!busy)}
         analysis?.let {result->
             AppSection(if(stale)os.t("上次结果 · 条件已变化","Previous result · conditions changed")else verdict(os,result.severity))
             Label(os.formatDistance(result.distanceMeters)+result.arrivalUtc?.let{" · "+os.t("计划抵达 ","Planned arrival ")+DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(Date(it))}.orEmpty(),15)
             if(stale)Label(os.t("重新计算后才能采用方案","Recalculate before using a candidate"),14,LocalMetro.current.muted)
-            PassageEvidenceStrip(os,result){along->
+            if(result.complete)PassageEvidenceStrip(os,result){along->
                 val points=result.request.route.points
                 var remaining=along;var chosen=points.lastOrNull()
                 for((a,b) in points.zipWithNext()){val len=distance(a.geo(),b.geo());if(remaining<=len){chosen=destination(a.geo(),remaining,bearing(a.geo(),b.geo())).chartPoint();break};remaining-=len}
@@ -217,7 +241,7 @@ private fun verdict(os:OsStore,level:PassageSeverity)=when(level){PassageSeverit
                 Label(verdict(os,candidate.analysis.severity),14,LocalMetro.current.muted)
                 MetroButton(os.t("在海图比较","Compare on chart"),{showRoute(plan.original.request.route.points,candidate.route.points)})
                 MetroButton(os.t("采用为草稿","Use as draft"),{
-                    if(stale||saving||persistence.saving)return@MetroButton
+                    if(!canUseCandidate(candidate)||saving||persistence.saving||persistence.readFailure!=null)return@MetroButton
                     val points=candidate.route.points.map{it.geo()}
                     val appliedRouteId=if(routeId=="point-to-point")null else routeId.takeUnless{it=="draft"}
                     if(os.editingRoute&&os.draftRoute==points&&os.editingRouteId==appliedRouteId&&os.draftNavigationTargetIndices==candidate.navigationTargetIndices){feedback=os.t("这份方案已在草稿中","This candidate is already in the draft");return@MetroButton}
@@ -226,13 +250,13 @@ private fun verdict(os:OsStore,level:PassageSeverity)=when(level){PassageSeverit
                     os.draftRoute=points;os.draftNavigationTargetIndices=candidate.navigationTargetIndices
                     os.editingRouteId=appliedRouteId;os.editingRoute=true
                     persistCurrentDraft(os.t("草稿已保存","Draft saved"))
-                },primary=true,enabled=!stale&&!saving&&!persistence.saving&&persistence.readFailure==null)
+                },primary=true,enabled=canUseCandidate(candidate)&&!saving&&!persistence.saving&&persistence.readFailure==null)
                 if(activeRemainder&&os.navigationState.session?.ongoing==true)MetroButton(os.t("替换当前导航路线…","Replace active route…"),{
-                    if(stale||saving)return@MetroButton
+                    if(!canUseCandidate(candidate)||saving)return@MetroButton
                     val route=Route(id=candidate.route.id,name=candidate.route.name,points=candidate.route.points.map{it.geo()},navigationTargetIndices=candidate.navigationTargetIndices)
                     val command=os.navigationCommand(NavigationAction.REPLAN,route=route.navigationSnapshot(),targetIndex=candidate.navigationTargetIndices?.firstOrNull()?:1,analysisReference=candidate.analysis.key)
                     replanCommand=command
-                },enabled=!stale&&!saving)
+                },enabled=canUseCandidate(candidate)&&!saving)
             }
         }
         undo?.let{old->MetroButton(os.t("撤销采用方案","Undo candidate"),{

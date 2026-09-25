@@ -253,7 +253,7 @@ class WpShellRuntime(private val os: OsStore) {
             else -> when (canonical.substringBefore(':').substringBefore('/')) {
             "place", "route", "tileplace", "tileroute", "saved", "spot", "anchorage", "collection" -> "places"
             "voyage", "replay", "report" -> "voyages"
-            "chartdataset" -> "library"
+            "chartdataset", "chartobjects" -> "library"
             else -> canonical.substringBefore(':').substringBefore('/')
             }
         }

@@ -108,7 +108,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         if(request.requestId in saved.completed||running?.isActive==true&&mutable.value.job?.requestId==request.requestId)return@withLock
         running?.cancelAndJoin()
         val frozen=request.copy(route=request.route.copy(points=request.route.points.toList(),navigationTargetIndices=request.route.navigationTargetIndices?.toList()),datasetIds=request.datasetIds.toList(),avoidances=request.avoidances.map{it.copy(boundary=it.boundary.toList())})
-        if(!commit(Pending(frozen,leg,planning)){it.copy(job=PassageJob(request.requestId,PassageJobPhase.LOADING),plan=null)})return@withLock
+        if(!commit(Pending(frozen,leg,planning)){it.copy(job=PassageJob(request.requestId,PassageJobPhase.LOADING),plan=null,planningReadiness=null)})return@withLock
         running=scope.launch{run(frozen,leg,planning)}
     }}}
     override fun cancel(requestId:String){scope.launch{ready.await();commands.withLock{
@@ -122,27 +122,72 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     private suspend fun run(request:PassageRequest,leg:Int?,planning:Boolean){
         var snapshot:ChartDataSnapshot?=null
         try{
+            geometry.validateRequest(request)
+            require(leg==null||leg in 0 until request.route.points.lastIndex){"Choose an existing leg"}
             snapshot=charts.acquireSnapshot(request.datasetIds.distinct())
-            val original=geometry.analyze(snapshot,request){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
-            var plan:PassagePlan?=null
-            if(planning){
+            // 无数据/不可用数据在这里结束；不先扫完整航线，更不进入搜索或生成候选。
+            val readiness=if(planning)planningReadiness(snapshot,request,leg)else null
+            val original=if(readiness?.canSearch==false)readinessAnalysis(snapshot,request,readiness)
+                else geometry.analyze(snapshot,request){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
+            val plan=if(planning){
                 val v=request.vessel
                 val missing=v.draftMeters==null||v.beamMeters==null||v.minimumUnderKeelMeters==null||v.clearanceMarginMeters==null||v.corridorHalfWidthMeters==null
-                val invalid=snapshot.datasets.isEmpty()||snapshot.missingDatasetIds.isNotEmpty()||snapshot.datasets.any{!it.eligibility.allowsAnalysis(System.currentTimeMillis())||!it.offlineReadable||it.issue!=null}
-                plan=when{
+                when {
+                    readiness?.canSearch!=true->PassagePlan(request.requestId,original,emptyList(),readiness?.message)
                     missing->PassagePlan(request.requestId,original,emptyList(),"先补齐船体和避让参数 / Complete vessel and clearance settings")
-                    invalid->PassagePlan(request.requestId,original,emptyList(),"选用允许分析的数据集 / Select data with analysis permission")
                     else->createPlan(snapshot,request,original,leg)
                 }
-            }
+            }else null
             currentCoroutineContext().ensureActive()
             val completed=commit(completedId=request.requestId){
-                if(it.job?.requestId!=request.requestId)it else it.copy(job=PassageJob(request.requestId,PassageJobPhase.COMPLETE,1f),analysis=original,plan=plan)
+                if(it.job?.requestId!=request.requestId)it else it.copy(job=PassageJob(request.requestId,PassageJobPhase.COMPLETE,1f),analysis=original,plan=plan,planningReadiness=readiness)
             }
             if(!completed)mutable.update{if(it.job?.requestId==request.requestId)it.copy(job=PassageJob(request.requestId,PassageJobPhase.FAILED,detail="计算结果尚未保存，请重试 / Result not saved; calculate again"))else it}
         }catch(e:CancellationException){throw e}catch(e:Exception){
             commit{if(it.job?.requestId==request.requestId)it.copy(job=PassageJob(request.requestId,PassageJobPhase.FAILED,detail=e.message?.take(250)?:"Unable to calculate"))else it}
         }finally{snapshot?.let{withContext(NonCancellable){runCatching{charts.releaseSnapshot(it.id)}}}}
+    }
+    /** 目录检查通过后，逐个计划搜索区域读取真实对象；不把覆盖元数据当作深度支持。 */
+    private suspend fun planningReadiness(snapshot:ChartDataSnapshot,request:PassageRequest,leg:Int?):PassagePlanningReadiness {
+        fun evaluate(evidence:PassagePlanningEvidence?=null)=PassagePlanningEligibility.evaluate(
+            request.datasetIds,snapshot.datasets,System.currentTimeMillis(),snapshot.missingDatasetIds,evidence)
+        val metadata=evaluate()
+        if(!metadata.canRequestPlanning)return metadata
+        val legs=if(leg==null)(0 until request.route.points.lastIndex).toList()else listOf(leg)
+        for((order,index) in legs.withIndex()) {
+            currentCoroutineContext().ensureActive()
+            val start=request.route.points[index];val end=request.route.points[index+1]
+            val length=distance(start,end)
+            require(length<=80_000){"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg"}
+            val world=geometry.world(snapshot,request,listOf(start,end),max(2000.0,length*.6).coerceAtMost(20_000.0))
+            val factory=world.projection.factory
+            val endpoints=listOf(start,end).map{factory.createPoint(world.projection.xy(it))}
+            val depths=world.features.filter { item ->
+                val feature=item.feature;val depth=feature.depth
+                feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
+                    feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.issues.isEmpty()&&
+                    depth?.kind==DepthEvidenceKind.INTERVAL&&!depth.datum.isNullOrBlank()&&depth.lowerMeters?.isFinite()==true
+            }.map{it.geometry}
+            val knownDepth=union(depths,factory)
+            val result=evaluate(PassagePlanningEvidence(endpoints.all{world.coverage.covers(it)},endpoints.all{knownDepth.covers(it)},world.malformed.isEmpty()))
+            if(!result.canSearch)return result
+            progress(request.requestId,PassageJobPhase.LOADING,(order+1f)/legs.size)
+        }
+        // 长作业中用途许可可能刚好过期；最终进入分析/搜索前再检查冻结元数据的时间条件。
+        return evaluate(PassagePlanningEvidence(coverageConfirmed=true,depthAreasConfirmed=true))
+    }
+    /** 这是门槛结果，不是全线分析；不伪造水深条带、到达时间或“未发现冲突”。 */
+    private fun readinessAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest,readiness:PassagePlanningReadiness):PassageAnalysis {
+        val key=passageHash(listOf("planning-readiness-1",request.route,request.vessel,request.datasetIds,snapshot.datasets.map{it.id to it.revision},readiness.reason))
+        val kind=when(readiness.reason){
+            PassageReadinessReason.NO_STRUCTURED_COVERAGE,PassageReadinessReason.REGION_NOT_COVERED->PassageIssueKind.COVERAGE
+            PassageReadinessReason.DEPTH_NOT_SUPPORTED->PassageIssueKind.DEPTH
+            PassageReadinessReason.UNSUPPORTED_DATA->PassageIssueKind.QUALITY
+            else->PassageIssueKind.DATA
+        }
+        val issue=PassageIssue("$key:eligibility",PassageSeverity.INSUFFICIENT,kind,0,request.route.points.firstOrNull(),0.0,readiness.message)
+        return PassageAnalysis(request.requestId,key,request,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},System.currentTimeMillis(),
+            request.route.points.zipWithNext().sumOf{distance(it.first,it.second)},null,PassageSeverity.INSUFFICIENT,listOf(issue),emptyList(),"planning-readiness-1",complete=false)
     }
     private suspend fun createPlan(snapshot:ChartDataSnapshot,request:PassageRequest,original:PassageAnalysis,leg:Int?):PassagePlan {
         val points=request.route.points
