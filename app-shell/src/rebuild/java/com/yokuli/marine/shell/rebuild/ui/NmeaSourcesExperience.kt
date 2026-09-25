@@ -59,6 +59,7 @@ import com.yokuli.anchorwatch.domain.vessel.*
     val state by services.state.collectAsState()
     val connections by services.network.connections.collectAsState()
     val now = rememberMarineClock()
+    val location by services.sources.phoneLocationStatus.collectAsState()
     val observation = sourceObservation(metric, state.vesselData)
     val candidates = state.vesselData.candidates[metric].orEmpty().distinctBy { it.source.persistentKey }
     val pinned = state.vesselSettings.metricSourcePins[metric.name]
@@ -71,24 +72,27 @@ import com.yokuli.anchorwatch.domain.vessel.*
     if (metric == VesselMetricId.POSITION) {
         AppSection(os.t("谁提供船位", "position source"))
         ChoiceRow(os.t("关闭船位", "position off"), os.positionSource == "none", os.t("停止使用船位，保留其他读数与网络连接。", "Stop using position; keep other readings and network connections."), !locked) { os.requestPosition(PositionSourceRequest.DISABLE_POSITION) }
-        ChoiceRow(os.t("手机 GPS", "phone GPS"), os.positionSource == "phone", os.t("选择时启动手机定位，关闭时停止；需要精确定位权限。", "Starts phone location when selected and stops when disabled; requires precise location permission."), !locked && os.positionSource in listOf("none", "phone")) { os.requestPosition(PositionSourceRequest.ENABLE_PHONE) }
+        ChoiceRow(os.t("手机 GPS", "phone GPS"), os.positionSource == "phone", os.t("取得有效手机船位后一次替换当前来源；需要精确定位权限。", "Replace the current source once a valid phone position is ready; requires precise location permission."), !locked && !location.selectionPending) { os.requestPosition(PositionSourceRequest.ENABLE_PHONE) }
         val selectedConnection = state.vesselSettings.metricSourcePins["POSITION_CONNECTION"]
         connections.filter { it.spec.receive }.forEach { connection ->
             val online = connection.acceptsSourceSelection()
             val same = os.positionSource == "nmea" && selectedConnection == connection.spec.id
             ChoiceRow(connection.spec.name, same,
                 if (online) os.t("NMEA · 已连接", "NMEA · connected") else os.t("NMEA · 尚未连接；在船联网中启动", "NMEA · stopped; start it in Boat Network"),
-                !locked && online && os.positionSource != "phone") { services.sources.selectNmeaPositionConnection(connection.spec.id) }
+                !locked && online && !location.selectionPending) { services.sources.selectNmeaPositionConnection(connection.spec.id) }
+            if(!online) MenuRow(os.t("连接 ","connect ")+connection.spec.name,os.t("打开这条连接，返回后继续采用船位。","Open this connection, then return to select its position.")){os.openLinked("nmea:connection:${connection.spec.id}")}
             if (same) candidates.filter { it.source.transportProfileId == connection.spec.id }.forEach { candidate ->
                 ChoiceRow(sourceDisplayName(os, candidate.source, connections), (pinned ?: activeKey) == candidate.source.persistentKey,
                     sourceCandidateText(os, metric, candidate, now), !locked) { services.sources.setVesselMetricSource(metric, candidate.source.persistentKey) }
             }
         }
-        if (connections.none { it.spec.receive }) Label(os.t("还没有船载输入。在船联网中添加连接后，它会出现在这里。", "No boat input yet. Add a connection in Boat Network and it will appear here."), 15, LocalMetro.current.muted)
+        if (connections.none { it.spec.receive }) MenuRow(os.t("连接船载设备", "connect a boat instrument"),os.t("添加连接后，返回这里选择它提供的船位。", "Add an input, then return here to select its position.")){os.openLinked("nmea")}
+        if(location.selectionPending)MetroProgress(os.t("等待手机船位 · 当前来源仍在使用", "waiting for phone position · current source remains active"))
+        if(locked)MenuRow(os.t("查看当前守锚","view Anchor Watch"),os.t("需要明确暂停后才可更换来源；不会自动暂停。","Pause explicitly before replacing the source; switching never pauses automatically.")){os.openLinked("anchor")}
         Label(when {
-            locked -> os.t("守锚进行中，暂停后可以更改船位来源。", "Pause Anchor Watch before changing position source.")
-            os.positionSource == "phone" -> os.t("要改用船载船位，先关闭手机船位。其他 NMEA 读数会继续更新。", "Turn phone position off before choosing a boat source. Other NMEA readings keep updating.")
-            os.positionSource == "nmea" -> os.t("要改用手机，先关闭船载船位。选中的连接中断时不会自动换来源。", "Turn boat position off before choosing the phone. If the selected connection stops, another source will not take over.")
+            locked -> os.t("当前守锚依赖此船位来源。", "Anchor Watch depends on the current position source.")
+            os.positionSource == "phone" -> os.t("直接选择船载连接，系统检查船位后替换；其他读数继续更新。", "Choose a boat connection directly; position is checked before replacement. Other readings keep updating.")
+            os.positionSource == "nmea" -> os.t("可以直接改用手机；替换完成后仍保留网络连接。来源断开时不会偷偷换源。", "You can switch directly to the phone and keep the network connection. A disconnected source is never silently replaced.")
             else -> os.t("选择只影响全船使用的船位，不会启动任何网络连接。", "This chooses position for all apps; it never starts a network connection.")
         }, 17, LocalMetro.current.muted)
         return

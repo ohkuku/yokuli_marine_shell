@@ -145,7 +145,7 @@ import java.util.Locale
 
 @Composable private fun PlaceNotesDialog(os:OsStore,initialName:String,initialNotes:String,onDismiss:()->Unit,onSave:(String,String)->Unit) {
     var name by rememberSaveable(initialName) {mutableStateOf(initialName)};var notes by rememberSaveable(initialName) {mutableStateOf(initialNotes)}
-    Dialog(onDismissRequest=onDismiss){AppDialogSurface() {
+    AppDialog(onDismissRequest=onDismiss){AppDialogSurface() {
         AppDialogTitle(os.t("地点资料","place details"))
         Field(os.t("名称","name"),name,{name=it.take(200)})
         Field(os.t("笔记","notes"),notes,{notes=it.take(20000)},multiline=true)
@@ -165,7 +165,7 @@ import java.util.Locale
     val radius=rememberUnitNumberDraft(spot.preferredAlarmRadiusMeters,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,spot.id)
     val point=preservedCoordinate(GeoPoint(spot.latitude,spot.longitude),initialLat,initialLon,lat,lon)
     fun valid(value:UnitNumberDraft)=value.text.isBlank()||value.value?.let {it>=0}==true
-    Dialog(onDismissRequest=onDismiss){AppDialogSurface() {
+    AppDialog(onDismissRequest=onDismiss){AppDialogSurface() {
         AppDialogTitle(os.t("具体坐标","specific spot"))
         Field(os.t("名称","name"),name,{name=it.take(200)})
         Field(os.t("纬度","latitude")+" · ${os.coordinateFormat}",lat,{lat=it})

@@ -105,7 +105,7 @@ import kotlinx.coroutines.*
     startAt?.let {index ->StartNavigationDialog(os,route,index) {startAt=null}}
     if(actions) NavigationActionsDialog(os,os.activeRoute?:route) {actions=false}
     selectedPoint?.let {index ->route.points.getOrNull(index)?.let {point ->
-        Dialog(onDismissRequest={selectedPoint=null}) {
+        AppDialog(onDismissRequest={selectedPoint=null}) {
             AppDialogSurface() {
                 AppDialogTitle(os.t("航点 ${index+1}","waypoint ${index+1}"))
                 Label(os.formatCoordinates(point),15,c.accentText)

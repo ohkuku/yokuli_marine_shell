@@ -83,6 +83,8 @@ flowchart TB
 
 普通 APK 的 Android 顶边下拉和底部系统导航仍归平台。只有已打开的 Yokuli 面板接收本轮关闭手势，不新增通知监听/Accessibility 来模拟 SystemUI。
 
+系统栏轻提示采用 W10M 主题面板、强调色发布者图标与共享字阶，只占用既有 30dp 栏位，并用 polite live region 通知辅助技术，不覆盖应用底部命令。这里是 Android 内嵌 Shell 的空间适配；完整历史仍在通知中心。
+
 ## 阅读、清除和导航
 
 打开中心不全量已读；新消息不因面板存在而已读。只有连接已 READY、面板稳定展开、无子详情且列表停止滚动时，约一半消息行进入可视区域持续约 400ms 才标记已读。显式打开详情也标记已读。滚动中新增记录不强制滚顶，提供“有新消息”入口。
@@ -110,7 +112,7 @@ flowchart TB
 
 每页最多 20 条并按 96k 字符传输上限动态缩小，历史最多 200 条、订阅最多 8，callback 只提示 epoch/revision。消息文件读取硬上限 32MB，结构化 arguments 最多 16 项且每值最多 256 字符。客户端初次/断连后重新握手、注册回调、按同 revision 分页；分页中有变化重取，不拼混不同版本。服务死亡公布 DISCONNECTED、保留历史，Client death 清订阅，重连不自动执行未知 UI 命令。协议不兼容或权限拒绝明确受限；这些不是有效船位、可用声音或系统安全状态。
 
-`NotificationRepository` 以 AtomicFile 保存 schema/revision、记录、领域去重窗口 512、守锚事件游标和最近 128 请求回执及参数摘要。同 requestId 相同命令返回原结果，不同内容拒绝。去重及回执有界，不能描述成无限期恰好一次保证；领域原始事件仍由原存储保留。
+`NotificationRepository` 以 AtomicFile 保存 schema/revision、记录、领域去重窗口 512、守锚事件游标和最近 128 请求回执及参数摘要。同 requestId 相同命令返回原结果，不同内容拒绝。写入成功检查比较完整文件与待提交 UTF-8 字节，按缓冲区读取，不再假设 JSON 的 revision 位于前 256 字节；ART 的字段排序差异和较长历史不能被误判为保存失败。去重及回执有界，不能描述成无限期恰好一次保证；领域原始事件仍由原存储保留。
 
 先提交文件再发布新 revision/成功结果。写失败保留旧快照与一份 pending 完整事务，独立 persistenceFailure + 显式 retry；读取失败保护原历史并提供重新读取，不能用空投影覆盖。两种故障在中心分别说明。不在同一失败仓储递归发布失败消息。客户端最多 32 个在途请求，等待 12 秒仍未回则 UNKNOWN，但客户端 scope 中的真实调用继续，最近 64 条 results 回执允许晚到结果回流；页面关闭不会取消已提交事务。Shell 的 `hasUnknownCommands` 保留未知操作锁，`recheckPending()` 查询同一 requestId，只有原请求晚到/查询确认才解除，不自动换 ID 重发。只有运行时领域发布桥可对有稳定事件 ID/游标的 PUBLISH 幂等重送。
 

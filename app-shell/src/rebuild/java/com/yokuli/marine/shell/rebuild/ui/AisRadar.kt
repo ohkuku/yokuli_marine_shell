@@ -174,15 +174,13 @@ internal fun AisRadar(
                     inside.forEach { target ->
                         val color = radarColor(target, colors)
                         observedTrack(target, color)
-                        val point = projection.point(target.position!!)
                         val dynamic = target.dynamic
                         val current = target.radarCurrent()
                         if (current && dynamic?.invalidFields?.contains("sog_lower_bound") != true) drawGroundVector(projection, target.position!!, dynamic?.cogDegrees, dynamic?.sogMetersPerSecond, color.copy(alpha = .8f))
-                        drawRadarTarget(target, point, validAisBearing(dynamic?.headingDegrees)?.takeIf { current }?.minus(bearing), color, target.mmsi == selected)
                     }
                     val ownPoint = own?.position
                     if (ownPoint != null) drawGroundVector(projection, ownPoint, own.cogDegrees, own.sogMetersPerSecond, colors.fg)
-                    drawOwnRadar(center, heading?.minus(bearing), colors.fg)
+                    }
                     // 预测只取共享服务已算出的同一时刻坐标，不在 Canvas 中另算一套 CPA。
                     chosen?.takeIf { it.relative.state in setOf(AisCpaState.CALCULATED, AisCpaState.ESTIMATED) && (it.relative.tcpaSeconds ?: -1.0) >= 0.0 }?.relative?.let { relative ->
                         val predictedOwn = relative.ownAtCpa?.takeIf { it.radarValid() }
@@ -198,7 +196,14 @@ internal fun AisRadar(
                             }
                         }
                     }
+                    // 距离圆只裁观测轨迹与向量。船舶的圆形/选中环属于位置符号，
+                    // 位于范围边缘时也必须完整呈现，不能变成没有含义的半圈。
+                    inside.forEach { target ->
+                        drawRadarTarget(target, projection.point(target.position!!),
+                            validAisBearing(target.dynamic?.headingDegrees)?.takeIf { target.radarCurrent() }?.minus(bearing),
+                            radarColor(target, colors), target.mmsi == selected)
                     }
+                    drawOwnRadar(center, heading?.minus(bearing), colors.fg)
                 }
 
                 // 文字是原生平面 UI，不随盘面旋转；数字与所有应用共用单位格式。
@@ -270,7 +275,7 @@ internal fun AisRadar(
             }
         }
     }
-    if (showOrientation && enabled) Dialog(onDismissRequest = { showOrientation = false }) {
+    if (showOrientation && enabled) AppDialog(onDismissRequest = { showOrientation = false }) {
         AppDialogSurface {
             AppDialogTitle(os.t("雷达朝向", "Radar orientation"))
             if (restoreAvailable) MetroButton(os.t("恢复", "Resume ") + orientationName(os, requested),
@@ -303,10 +308,10 @@ internal fun AisRadar(
             MetroButton(os.t("完成", "Done"), { showOrientation = false })
         }
     }
-    if (showExplanation && enabled) Dialog(onDismissRequest = { showExplanation = false }) {
+    if (showExplanation && enabled) AppDialog(onDismissRequest = { showExplanation = false }) {
         RadarInfo(os) { showExplanation = false }
     }
-    if (overlaps.isNotEmpty() && enabled) Dialog(onDismissRequest = { overlaps = emptyList() }) {
+    if (overlaps.isNotEmpty() && enabled) AppDialog(onDismissRequest = { overlaps = emptyList() }) {
         AppDialogSurface {
             AppDialogTitle(os.t("选择船舶", "Choose a vessel"))
             Label(os.t("这些目标在当前范围内靠得很近。", "These targets are close together at this range."), 12, colors.muted)
@@ -439,7 +444,7 @@ private fun RadarInfo(os: OsStore, close: () -> Unit) {
     AppDialogSurface {
         AppDialogTitle(os.t("认识周围船舶", "Reading the radar"))
         Label(os.t("显示接收到的 AIS 位置，不是雷达回波。没有目标不代表周围安全。", "This view shows received AIS positions, not radar echoes. No targets does not mean clear water."), 15)
-        Label(os.t("船形指向已知船首，圆点表示尚无可靠船首向。红色需要立即留意，橙色需要关注；灰色是上次收到的位置。", "A vessel shape shows a known heading; a dot means no reliable heading. Red needs immediate attention, amber needs attention, and grey is the last received position."), 15)
+        Label(os.t("船形指向已知船首，完整的小圆表示尚无可靠船首向；较大的外环标出当前选中的船。红色需要立即留意，橙色需要关注；灰色是上次收到的位置。", "A vessel shape shows a known heading; a small circle means no reliable heading. A larger ring marks the selected vessel. Red needs immediate attention, amber needs attention, and grey is the last received position."), 15)
         Label(os.t("实线是实际轨迹，虚线是未来 60 秒的对地运动方向。空心会遇圈是共享服务的恒速估算，不是当前船位。", "Solid lines are observed tracks. Dashed lines show 60 seconds of ground motion. Hollow encounter marks are constant-velocity estimates, not current positions."), 15)
         Label(os.t("显示范围只改变画面，不改变避碰计算。范围尺拖动可连续缩放，点倍率刻度可快速切换。", "Viewing range only changes the display, never collision calculations. Drag the range scale to zoom smoothly, or tap a zoom mark."), 12, colors.muted)
         MetroButton(os.t("知道了", "Got it"), close)

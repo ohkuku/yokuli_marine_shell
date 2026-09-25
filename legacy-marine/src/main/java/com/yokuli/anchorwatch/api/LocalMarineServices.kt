@@ -41,6 +41,7 @@ import javax.inject.Singleton
 class LocalMarineServices @Inject constructor(
     private val controller: LegacyMarineController,
     contentService: LocalMarineContentService,
+    private val tripRuntime: com.yokuli.anchorwatch.runtime.trip.TripRuntime,
 ) : MarineServices {
     override val state: StateFlow<MainUiState> get() = controller.ui
     override val content: MarineContentService = contentService
@@ -57,6 +58,7 @@ class LocalMarineServices @Inject constructor(
         override fun alignPhoneHeadingToNmea(): Job = controller.alignPhoneHeadingToNmea()
         override fun confirmFixedPhoneMount(): Job = controller.confirmFixedPhoneMount()
         override fun setPhoneHeadingAlignment(offsetDegrees: Double): Job = controller.setPhoneHeadingAlignment(offsetDegrees)
+        override fun setPhoneAttitudeAlignment(heelDegrees: Double, pitchDegrees: Double): Job = controller.setPhoneAttitudeAlignment(heelDegrees, pitchDegrees)
         override fun invalidateFixedPhoneMount(): Job = controller.invalidateFixedPhoneMount()
         override fun clearVesselCalibrationFeedback(): Unit = controller.clearVesselCalibrationFeedback()
     }
@@ -71,6 +73,11 @@ class LocalMarineServices @Inject constructor(
         override fun resumeTrip(): Unit = controller.resumeTrip()
         override fun pauseTripAttitude(): Job = controller.pauseTripAttitude()
         override fun endTrip(): ComponentName? = controller.endTrip()
+        override val capturedMoments get() = tripRuntime.capturedMoments
+        override fun captureMoment(sessionId:Long,defaultName:String) = tripRuntime.captureMoment(sessionId,defaultName)
+        override fun restoreMoment(requestId:String) = tripRuntime.restoreMoment(requestId)
+        override fun retryMoment(requestId:String) = tripRuntime.retryMoment(requestId)
+        override fun editCapturedMoment(requestId:String,name:String,note:String,kind:String) = tripRuntime.editCapturedMoment(requestId,name,note,kind)
         override fun markTripWaypoint(name: String, note: String, type: String): Unit = controller.markTripWaypoint(name, note, type)
         override fun deleteTrip(session: TripSessionEntity): Unit = controller.deleteTrip(session)
         override fun renameTrip(id: Long, name: String): Job = controller.renameTrip(id, name)

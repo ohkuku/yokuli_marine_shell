@@ -75,11 +75,14 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     val view=os.maps.view("anchor",fix?.point ?: os.center,16.0)
     view.scaleTopDp=118f
     val entryDraft=remember {os.anchorDraft.takeIf {initialPage=="setup"}}
-    val referenceKey=rememberSaveable { entryDraft?.let {"${it.placeId}:${it.spotId}:${it.point.lat}:${it.point.lon}"} ?: "os-watch" }
+    val referenceKey=rememberSaveable { entryDraft?.let {"${it.placeId}:${it.spotId}:${it.point.lat}:${it.point.lon}"} ?: state.anchorSetupDraft?.referenceKey ?: "os-watch" }
     val draftPlaceId by rememberSaveable {mutableStateOf(entryDraft?.placeId)}
     val draftSpotId by rememberSaveable {mutableStateOf(entryDraft?.spotId)}
     val restored=state.anchorSetupDraft?.takeIf {it.referenceKey==referenceKey}
-    var page by rememberSaveable {mutableStateOf(if((initialPage=="setup" || restored!=null) && active==null)"setup" else "watch")}
+    var page by rememberSaveable {mutableStateOf(if(active==null&&initialPage in setOf("setup","start","advanced"))initialPage else if(restored!=null&&active==null)"setup" else "watch")}
+    var setupScenario by rememberSaveable {mutableStateOf(restored?.setupScenario ?: "selected")}
+    var referenceCapturedAt by rememberSaveable {mutableStateOf(restored?.referenceCapturedAt)}
+    var referencePositionSource by rememberSaveable {mutableStateOf(restored?.referencePositionSource)}
     var picked by rememberSaveable(saver=AnchorPickedPointSaver) {mutableStateOf(restored?.mapLatitude?.let {lat->restored.mapLongitude?.let {lon->GeoPoint(lat,lon)}})}
     var origin by rememberSaveable {mutableStateOf(restored?.knownMethod?.let {runCatching {AnchorCenterSource.valueOf(it)}.getOrNull()} ?: AnchorCenterSource.MAP_PICK)}
     var picking by rememberSaveable {mutableStateOf(false)}
@@ -136,8 +139,8 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
         // 输入只属于本次访问，不能让以后从桌面独立打开守锚时继承这个地点。
         if(entryDraft!=null && os.anchorDraft===entryDraft)os.anchorDraft=null
     }
-    LaunchedEffect(referenceKey,picked,origin,estimate,radius.canonicalText,rode.canonicalText,depth.canonicalText,manual,page) {
-        if(active==null && (page=="setup" || page=="advanced")) services.anchor.saveAnchorSetupDraft(AnchorSetupDraft(referenceKey=referenceKey,estimate=estimate,knownMethod=origin.name,manualCoordinate=manual,mapLatitude=picked?.lat,mapLongitude=picked?.lon,alarmRadius=radius.canonicalText,rode=rode.canonicalText,depth=depth.canonicalText))
+    LaunchedEffect(referenceKey,picked,origin,estimate,radius.canonicalText,rode.canonicalText,depth.canonicalText,manual,page,setupScenario,referenceCapturedAt,referencePositionSource) {
+        if(active==null && (page=="setup" || page=="advanced")) services.anchor.saveAnchorSetupDraft(AnchorSetupDraft(setupScenario=setupScenario,referenceCapturedAt=referenceCapturedAt,referencePositionSource=referencePositionSource,referenceKey=referenceKey,estimate=estimate,knownMethod=origin.name,manualCoordinate=manual,mapLatitude=picked?.lat,mapLongitude=picked?.lon,alarmRadius=radius.canonicalText,rode=rode.canonicalText,depth=depth.canonicalText))
     }
     var fittedWatchId by rememberSaveable {mutableStateOf<Long?>(null)}
     LaunchedEffect(active?.id) {
@@ -235,7 +238,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
     ReportVisibleAppRoute(os, if(page=="watch") "anchor" else "anchor:$page")
     Column(Modifier.fillMaxSize()) {
         if(page=="watch" || page=="setup")MapPageHeader(os,if(page=="setup")os.t("下锚","drop anchor")else os.title(AppId.ANCHOR),{layers=true},hasLocalBack=page=="setup")
-        else PageHeader(os,when {page=="advanced"->os.t("下锚选项","drop options");page=="history"->os.t("锚泊历史","anchor history");page=="estimate"->os.t("这次锚泊","this watch");page.startsWith("review:")->os.t("锚泊回顾","watch review");else->os.t("守锚","anchor watch")},hasLocalBack=true)
+        else PageHeader(os,when {page=="start"->os.t("开始这次停泊","begin this stop");page=="advanced"->os.t("下锚选项","drop options");page=="history"->os.t("锚泊历史","anchor history");page=="estimate"->os.t("这次锚泊","this watch");page.startsWith("review:")->os.t("锚泊回顾","watch review");else->os.t("守锚","anchor watch")},hasLocalBack=true)
         if(page=="watch" || page=="setup") {
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 MarineMap(os.maps,scene.copy(aisTargets=if(page=="watch"&&traffic.preferences.anchorLayer)aisMapTargets(traffic,selectedAis)else emptyList(),
@@ -249,7 +252,8 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                     selectedAis?.takeIf {page=="watch"}?.let {AisCompactDetail(os,traffic,it){selectedAis=null}}
                     if(view.showCrosshair)MapCrosshairReadout(os,view.center) {view.showCrosshair=false}
                     if(page=="setup" && active==null) {
-                        Label(if(estimate)os.t("先值守，再估计锚点","watch, then estimate")else if(origin==AnchorCenterSource.CURRENT_POSITION)os.t("以开始时船位下锚","drop at the start position")else os.t("在选定位置下锚","drop at selected position"),20)
+                        Label(if(estimate)os.t("临时边界 · 锚点待确认","temporary boundary · anchor unconfirmed")else if(setupScenario=="dropping")os.t("下锚时的参考船位","position recorded when dropping")else os.t("确认地图锚点","confirm anchor on chart"),20)
+                        referenceCapturedAt?.takeIf{setupScenario=="dropping"}?.let{at->Label(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(at))+" · "+os.t("船位参考，不是海底锚点；可拖图修正偏移。","boat reference, not the seabed anchor; adjust on chart for the offset."),12,c.muted)}
                         Label(point?.let(os::formatCoordinates) ?: os.t("等待船位，或拖动地图选择锚点","wait for a position, or select the anchor on the map"),14,c.muted)
                         Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                             IconAction("minus",os.t("缩小范围","smaller boundary"),{radius.setCanonical(((radius.value ?: 30.0)-os.lengthMeters(5.0)).coerceAtLeast(5.0))})
@@ -260,7 +264,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                         Label(if(estimate)os.t("虚线参考中心 · 候选经确认后才采用","temporary reference · estimated anchor needs confirmation")else os.t("圆线是你设定的警戒半径，不是 GPS 误差","circle is your alarm radius, not GPS error"),12,c.muted)
                         if(!geometry)Label(os.t("到选项填写锚链长度与水深","enter rode and depth in options"),13,c.accentText)
                         if(!notifications)MetroButton(os.t("允许守锚通知","allow watch notifications"),{if(Build.VERSION.SDK_INT>=33)notificationRequest.launch(Manifest.permission.POST_NOTIFICATIONS)})
-                        if(!readiness.ready)Label(positionReason(os,readiness.reason),13,c.muted)
+                        if(!readiness.ready)MenuRow(os.t("检查船位","check position"),positionReason(os,readiness.reason)){os.openLinked("data_center:source/POSITION")}
                     } else if(active!=null) {
                         Row(verticalAlignment=Alignment.CenterVertically) {
                             Label(watchTitle(os,state),20,if(state.alarmSnapshot.type!=null)c.accentText else c.fg,Modifier.weight(1f))
@@ -270,13 +274,14 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                         if(state.alarmSnapshot.type!=null) {
                             Label(alarmReason(os,state.alarmSnapshot.type),16)
                             MetroButton(if(state.alarmSnapshot.acknowledged)os.t("告警已确认","alarm acknowledged")else os.t("确认告警","acknowledge alarm"),services.anchor::acknowledge,enabled=!state.alarmSnapshot.acknowledged)
-                        } else if(!readiness.ready)Label(positionReason(os,readiness.reason),13,c.muted)
+                        } else if(!readiness.ready)MenuRow(os.t("检查船位","check position"),positionReason(os,readiness.reason)){os.openLinked("data_center:source/POSITION")}
                         else Label(os.t("细线：最近轨迹 · 色斑：本次到过的范围","line: recent trail · colour: this watch's observed area"),12,c.muted)
                         if(coverageError)MenuRow(os.t("摆动范围暂未更新","swing area update interrupted"),os.t("点按重新读取；不会改变值守状态。","Tap to reload; watch state is unchanged.")) {coverageRevision++}
                     } else {
                         Label(os.t("在这里安心停泊","settle in here"),24)
                         Label(os.t("下锚 → 确认范围 → 开始值守","drop → set boundary → watch"),15,c.muted)
                     }
+                    if(state.anchorDraftSaveError)MenuRow(os.t("草稿尚未保存 · 重试","draft not saved · retry"),os.t("当前内容仍保留，点按重新保存到存储。","Entries remain here; tap to retry saving to storage.")){state.anchorSetupDraft?.let(services.anchor::saveAnchorSetupDraft)}
                     if(pending!=null)MetroProgress(if(pending.status==AnchorCommandStatus.UNKNOWN)os.t("继续等待确认…","awaiting confirmation…")else os.t("正在更新值守…","updating watch…"))
                     feedback?.let {Label(it,14)}
                     if(pending?.status==AnchorCommandStatus.UNKNOWN)MetroButton(os.t("重新确认这次操作","check this action again"),{marine.system.anchorCommands.recheck(pending.commandId)})
@@ -292,16 +297,32 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                     IconAction("stop",os.t("起锚","lift anchor"),{confirmEnd=true})
                     IconAction("more",os.t("详情","details"),{page="estimate"})
                 } else if(page=="setup") {
-                    IconAction("pin",os.t("锚在准星","anchor here"),{picked=view.center;origin=AnchorCenterSource.MAP_PICK;estimate=false;view.showCrosshair=false})
+                    IconAction("pin",os.t("锚在准星","anchor here"),{picked=view.center;origin=AnchorCenterSource.MAP_PICK;estimate=false;setupScenario="selected";referenceCapturedAt=null;referencePositionSource=null;view.showCrosshair=false})
                     IconAction("check",os.t("开始值守","start watch"),::startWatch,active=ready.canStart)
                     IconAction("close",os.t("取消","cancel"),{page="watch";picked=null;os.anchorDraft=null;services.anchor.clearAnchorSetupDraft();if(initialPage=="setup")os.shell.popRoute()})
                 } else {
-                    IconAction("anchor",os.t("下锚","drop anchor"),{
-                        picked=sourcePoint ?: view.center;origin=if(sourcePoint!=null)AnchorCenterSource.CURRENT_POSITION else AnchorCenterSource.MAP_PICK
-                        estimate=false;view.fly(requireNotNull(picked),17.0);view.showCrosshair=false;page="setup"
-                    })
+                    IconAction("anchor",os.t("下锚","drop anchor"),{page="start"})
                     IconAction("more",os.t("历史","history"),{page="history"})
                 }
+            }
+        } else if(page=="start") {
+            PageBody {
+                AppSection(os.t("你正在下锚，还是已经锚好？","dropping now, or already anchored?"))
+                MenuRow(os.t("正在下锚 · 记住这一刻","dropping now · keep this position"),os.t("先固定当前可信船位，再调整警戒范围。","Keep this accepted position, then adjust the boundary.")) {
+                    if(readiness.ready&&sourcePoint!=null) {
+                        picked=sourcePoint;origin=AnchorCenterSource.MAP_PICK;estimate=false;setupScenario="dropping"
+                        referenceCapturedAt=state.acceptedPosition.acceptedFix?.timestampUtcMillis ?: System.currentTimeMillis()
+                        referencePositionSource=source.name;view.fly(sourcePoint,17.0);view.showCrosshair=false;page="setup"
+                    } else feedback=os.t("先取得可信船位，或选择已经锚好后在图上选点。","Get an accepted position first, or choose Already anchored and select a point on the chart.")
+                }
+                MenuRow(os.t("已经锚好 · 我知道锚点","already anchored · I know the anchor"),os.t("在地图上确认实际锚点。","Confirm the actual anchor on the chart.")) {
+                    picked=view.center;origin=AnchorCenterSource.MAP_PICK;estimate=false;setupScenario="selected";referenceCapturedAt=null;referencePositionSource=null;view.showCrosshair=true;page="setup"
+                }
+                MenuRow(os.t("已经锚好 · 锚点不确定","already anchored · anchor uncertain"),os.t("先确认临时边界，真实摆动积累后再估计锚点。","Confirm a temporary boundary; estimate the anchor after real swing is recorded.")) {
+                    picked=sourcePoint;origin=AnchorCenterSource.CURRENT_POSITION;estimate=true;setupScenario="estimating";referenceCapturedAt=null;referencePositionSource=null;page="advanced"
+                }
+                if(!readiness.ready)MenuRow(os.t("检查船位","check position"),positionReason(os,readiness.reason)){os.openLinked("data_center:source/POSITION")}
+                feedback?.let{Label(it,14,c.muted)}
             }
         } else if(page=="advanced") {
             PageBody {
@@ -338,7 +359,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                         Label(os.t("船艏高度 ${os.formatLength(state.settings.bowRollerHeightMeters)} · 可在设置中修改","bow height ${os.formatLength(state.settings.bowRollerHeightMeters)} · edit in settings"),14,c.muted)
                     }
                     Label(os.t("船位来源：","position source: ")+sourceLabel(os,source),18)
-                    if(!readiness.ready)Label(positionReason(os,readiness.reason),16)
+                    if(!readiness.ready)MenuRow(os.t("检查船位","check position"),positionReason(os,readiness.reason)){os.openLinked("data_center:source/POSITION")}
                     if(!notifications) {
                         Label(os.t("守锚需要通知权限来呈现后台告警。","notification permission is required for background alerts."),15)
                         MetroButton(os.t("允许通知","allow notifications"),{if(Build.VERSION.SDK_INT>=33)notificationRequest.launch(Manifest.permission.POST_NOTIFICATIONS)})
@@ -599,7 +620,7 @@ private fun AnchorConditions(os:OsStore,session:AnchorSessionEntity,services:Mar
 private fun AnchorRadiusDialog(os:OsStore,initial:Double,onDismiss:()->Unit,onApply:(Double)->Unit) {
     val value=rememberUnitNumberDraft(initial,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,initial)
     val meters=value.value?.takeIf {it>0}
-    Dialog(onDismissRequest=onDismiss) {
+    AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface() {
             AppDialogTitle(os.t("警戒范围","watch boundary"))
             Field(os.t("距锚点的半径","radius from anchor")+" · ${os.lengthUnitLabel}",value.text,value::edit,number=true)

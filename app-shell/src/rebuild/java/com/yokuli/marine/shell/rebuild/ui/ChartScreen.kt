@@ -3,6 +3,8 @@ package com.yokuli.marine.shell.rebuild.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -39,6 +41,9 @@ import kotlin.math.*
     var manageNavigation by rememberSaveable { mutableStateOf(false) }
     var naming by rememberSaveable { mutableStateOf(false) }
     var discard by rememberSaveable { mutableStateOf(false) }
+    var startingPlaceId by rememberSaveable {mutableStateOf<String?>(null)}
+    var editingPlaceId by rememberSaveable {mutableStateOf<String?>(null)}
+    var morePlaceId by rememberSaveable {mutableStateOf<String?>(null)}
     val c=LocalMetro.current
     val density=LocalDensity.current
     val chartView=os.maps.view("chart",os.center,os.zoom)
@@ -70,6 +75,9 @@ import kotlin.math.*
     val previewPlace=os.allPlaces.firstOrNull {it.id==chartView.selectedPlaceId}
     val selected=os.maps.selectedLayer()?.files.orEmpty()
     fun closeTool():Boolean = when {
+        startingPlaceId!=null->{startingPlaceId=null;true}
+        editingPlaceId!=null->{editingPlaceId=null;true}
+        morePlaceId!=null->{morePlaceId=null;true}
         layers->{layers=false;true}
         tools->{tools=false;true}
         naming->{naming=false;true}
@@ -82,7 +90,7 @@ import kotlin.math.*
         os.showCrosshair->{os.showCrosshair=false;true}
         else->false
     }
-    val toolOpen=layers||tools||naming||discard||manageNavigation||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
+    val toolOpen=layers||tools||naming||discard||manageNavigation||startingPlaceId!=null||editingPlaceId!=null||morePlaceId!=null||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
     AppBackHandler(toolOpen) {closeTool()}
     BindInternalAppInputHandler {input->input==ShellInput.BACK && closeTool()}
     Column(Modifier.fillMaxSize()) {
@@ -106,15 +114,6 @@ import kotlin.math.*
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().onSizeChanged {chartView.bottomOverlayDp=with(density){it.height.toDp().value}}) {
         if(chartView.selectedAisMmsi!=null && !os.editingRoute && os.ruler.isEmpty()) {
             AisCompactDetail(os,traffic,chartView.selectedAisMmsi!!){chartView.selectedAisMmsi=null}
-        } else if(previewPlace!=null && !os.editingRoute && os.ruler.isEmpty()) {
-            Column(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                Row(verticalAlignment=Alignment.CenterVertically) {
-                    Label(previewPlace.name,24,modifier=Modifier.weight(1f))
-                    IconAction("close",os.t("关闭预览","close preview"),{chartView.selectedPlaceId=null})
-                }
-                Label(os.formatCoordinates(previewPlace.point),12,c.muted)
-                MenuRow(os.t("地点详情","Place details")) {os.open("place:${previewPlace.id}")}
-            }
         } else if(os.ruler.size==2) {
             Row(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -125,8 +124,31 @@ import kotlin.math.*
             }
         } else if(os.editingRoute) {
             Label(os.t("${os.draftRoute.size} 个航点 · 准星选点，拖动圆点调整","${os.draftRoute.size} points · aim, add, drag to adjust"),13,c.muted,Modifier.fillMaxWidth().background(c.panel).padding(10.dp))
-        } else if(os.showCrosshair) {
+        } else if(os.showCrosshair&&previewPlace==null) {
             MapCrosshairReadout(os,os.center) {os.showCrosshair=false}
+        }
+        val visiblePlace=previewPlace?.takeIf {chartView.selectedAisMmsi==null&&!os.editingRoute&&os.ruler.isEmpty()}
+        // 只移动对象摘要；原生地图始终是上方同一个宿主，尺寸与相机不参与动画。
+        AnimatedContent(visiblePlace,contentKey={it?.id ?: "no-place"},transitionSpec={
+            ((slideInVertically(tween(220)){it/4}+fadeIn(tween(220))) togetherWith
+                (slideOutVertically(tween(160)){it/4}+fadeOut(tween(160)))).using(SizeTransform(clip=false))
+        },label="chart-place-preview") {place->
+            if(place!=null)CompositionLocalProvider(com.yokuli.shell.compose.LocalInternalAppInputEnabled provides (chartInputEnabled&&visiblePlace?.id==place.id)) {
+                Column(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                    Row(verticalAlignment=Alignment.CenterVertically) {
+                        Label(place.name,20,modifier=Modifier.weight(1f),maxLines=1)
+                        IconAction("close",os.t("关闭预览","Close preview"),{chartView.selectedPlaceId=null})
+                    }
+                    Label(listOfNotNull(os.formatCoordinates(place.point),fix?.takeIf {it.fresh(tick)}?.let {os.formatDistance(distance(it.point,place.point))}).joinToString(" · "),12,c.muted)
+                    if(place.note.isNotBlank())Label(place.note,15,c.muted,maxLines=2)
+                    PlaceSaveFeedback(os,place)
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        MetroButton(os.t("前往这里","Go here"),{startingPlaceId=place.id},Modifier.weight(1f),primary=true)
+                        IconAction("edit",os.t("编辑收藏","Edit saved place"),{if(place.id.startsWith("spot:"))os.openLinked("place:${place.id}")else editingPlaceId=place.id})
+                        IconAction("more",os.t("地点操作","Place actions"),{morePlaceId=place.id})
+                    }
+                }
+            }
         }
         if(!os.editingRoute) ChartNavigationCard(os,fix,tick)
             }
@@ -143,7 +165,17 @@ import kotlin.math.*
                 if(fix!=null) { os.follow=fresh; os.showCrosshair=false; host?.camera?.move(fix.point,os.zoom) }
                 else os.notify("暂无船位，请在数据中心查看来源", "No position yet. Check the source in Data Center.")
             }, active=os.follow),
-            AppCommand("mark", "pin", os.t("标记位置", "Mark position"), {os.mark();chartView.selectedPlaceId=os.places.lastOrNull()?.id;os.showCrosshair=false}),
+            AppCommand("mark", "pin", when {os.showCrosshair->os.t("标记此处","Mark here");fresh->os.t("记录当前船位","Mark boat position");else->os.t("选择标记位置","Choose a position")}, {
+                // 坐标、时刻和来源在点下时固定。读不到船位时先明确进入准星选点，不偷偷换对象。
+                val capturedAt=System.currentTimeMillis()
+                val current=os.hub.state.value.fix(os.positionSource)?.takeIf {it.fresh(SystemClock.elapsedRealtime())&&it.point.valid()}
+                if(os.showCrosshair) {
+                    chartView.selectedPlaceId=os.mark(os.center,PlaceCapture(capturedAt)).id;os.showCrosshair=false
+                } else if(fresh&&current!=null) {
+                    chartView.selectedPlaceId=os.mark(current.point,PlaceCapture(capturedAt,current.utc.takeIf {it>0},current.source)).id
+                } else {chartView.selectedPlaceId=null;os.showCrosshair=true;os.follow=false}
+                chartView.selectedAisMmsi=null
+            }),
             AppCommand("record", if(recording && !recordingPaused) "record" else "play", when {
                 recording && recordingPaused -> os.t("管理暂停的记录", "Manage paused recording")
                 recording -> os.t("管理当前记录", "Manage recording")
@@ -156,7 +188,6 @@ import kotlin.math.*
             }, enabled=host?.camera!=null, active=os.ruler.isNotEmpty()),
         ), secondaryActions=listOf(
             AppCommand("route", "route", os.t("规划航线", "Plan a route"), {resumeOrCreateRouteDraft(os)}),
-            AppCommand("source", "layers", os.t("地图来源", "Map source"), {layers=true}),
             AppCommand("tools", "settings", os.t("海图工具", "Chart tools"), {tools=true}),
         ))
     }
@@ -168,7 +199,18 @@ import kotlin.math.*
     if(discard) ConfirmDialog(os,os.t("放弃这条未保存的航线？","Discard this unsaved route?"),{discard=false}) {cancelRouteDraft(os);discard=false}
     if(layers) MapSourcePicker(os,aisLayer=false) {layers=false}
     if(manageNavigation) os.activeRoute?.let { NavigationActionsDialog(os,it) {manageNavigation=false} }
-    if(tools) Dialog(onDismissRequest={tools=false}) {
+    startingPlaceId?.let {id->os.allPlaces.firstOrNull {it.id==id}?.let {place->StartNavigationDialog(os,Route("goto:${place.id}",place.name,listOf(place.point))){startingPlaceId=null}}}
+    editingPlaceId?.let {id->os.places.firstOrNull {it.id==id}?.let {place->CoordinateEditor(os,place,{editingPlaceId=null}){os.sailing.put(it);editingPlaceId=null}}}
+    morePlaceId?.takeIf {chartInputEnabled}?.let {id->os.allPlaces.firstOrNull {it.id==id}?.let {place->AppDialog(onDismissRequest={morePlaceId=null}) {AppDialogSurface {
+        AppDialogTitle(place.name)
+        MenuRow(os.t("完整资料","Full details")){morePlaceId=null;os.openLinked("place:${place.id}")}
+        MenuRow(os.t("在这里设置守锚","Prepare anchor watch here")){
+            val spot=place.id.takeIf {it.startsWith("spot:")}?.substringAfter(':')?.toLongOrNull()?.let {id->os.sailing.spots.firstOrNull {it.id==id}}
+            morePlaceId=null;os.anchorDraft=AnchorDraft(place.point,place.name,spot?.placeId,spot?.id);os.openLinked("anchor:setup")
+        }
+        MetroButton(os.t("完成","Done"),{morePlaceId=null})
+    }}}}
+    if(tools) AppDialog(onDismissRequest={tools=false}) {
         AppDialogSurface {
             AppDialogTitle(os.t("海图工具","Chart tools"))
             AisLayerChoice(os,anchor=false)
@@ -184,7 +226,7 @@ import kotlin.math.*
 }
 
 @Composable fun ConfirmDialog(os:OsStore,title:String,onDismiss:()->Unit,onConfirm:()->Unit) {
-    Dialog(onDismissRequest=onDismiss) {
+    AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface {
             AppDialogTitle(title)
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {

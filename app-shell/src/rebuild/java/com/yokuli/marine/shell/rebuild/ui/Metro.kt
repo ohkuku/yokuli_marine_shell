@@ -373,7 +373,7 @@ val LightFont=WpFontFamily
 }
 @Composable fun TextDialog(os:OsStore,title:String,initial:String="",onDismiss:()->Unit,onSave:(String)->Unit) {
     var text by rememberSaveable(initial) { mutableStateOf(initial) }
-    Dialog(onDismissRequest=onDismiss) {
+    AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface {
             AppDialogTitle(title)
             Field(os.t("名称","name"),text,{text=it.take(100)})

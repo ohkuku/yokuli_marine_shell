@@ -131,6 +131,16 @@ Shell 的所有航行启停经 `MarinePresentationBridge` 转发到共享 `Voyag
 
 该账本仍是进程内机制，不承诺进程被杀或重启后的持久请求去重，也不是独立 Binder 运行时。
 
+### 点击捕获与补记（experience.19）
+
+`MarineServices.voyages.captureMoment/restoreMoment/retryMoment/editCapturedMoment` 经 `LocalMarineServices` 委托同一 `TripRuntime`。点击入口冻结航程 ID、UTC 与 Hub 快照，返回稳定 requestId；`capturedMoments` 给 UI 发布 SAVING / SAVED / UPDATING / FAILED / REJECTED / NOT_RECOVERABLE。没有另建采集器或航行会话。
+
+`TripMomentJournal` 用 AtomicFile 保存未完成捕获及用户明确提交的文字草稿；`TripDao.insertCapturedMoment` 在原 Room 事务中插入 USER_MOMENT 并更新原航程计数。重启重放已写入日志的同一 ID，已在数据库存在时读取原事件，不能再次取时间与位置。尚未写到日志即遭进程终止的点击不能承诺恢复，UI 此时仍显示保存中。缺合格位置为 null，采集证据保留来源、观察 UTC、接收 elapsed、质量、时效与参考；备注只改用户字段。
+
+该能力仍是同进程 `VoyageService` 接线，使用既有 legacy 事件 DTO，并非独立 IPC 或新的 Marine Core 进程。日志、地图回看与原多格式导出已消费这份事件；页面离开不取消写入。当前仅支持文字/类型，不引入未接入的照片模型。
+
+开始屏幕图片由宿主 `StartBackgroundStore` 管理：只拥有系统外观，不拥有海事状态。照片缩小解码并写入私有文件后，原 Launcher DataStore 原子更新引用；后续选项和布局继续共享原偏好所有者。普通 APK 与 ROM HOME 使用同一绘制与存储实现。
+
 ## 6. 内容访问与数据库边界
 
 地点、锚地、集合、历史轨迹与警报事件需要共享，但 UI 不应为了显示一个列表就拿到 `AppDatabase`。本轮通过 [MarineContentService](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineContentService.kt) 暴露实际用户故事需要的读取和修改，由本地实现调用已有 repository/DAO。

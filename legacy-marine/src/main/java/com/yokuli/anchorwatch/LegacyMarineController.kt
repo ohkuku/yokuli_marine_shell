@@ -208,6 +208,10 @@ data class AnchorSetupDraft(
     val windAlarm:String="",
     val windShift:Boolean=false,
     val windShiftDegrees:String="",
+    /** 中文：当前下锚/已锚好是访问草稿；不代表守锚已经开始。 */
+    val setupScenario:String="selected",
+    val referenceCapturedAt:Long?=null,
+    val referencePositionSource:String?=null,
 )
 
 data class MainUiState(
@@ -295,6 +299,7 @@ data class MainUiState(
     val vesselCalibrationFeedback:String?=null,
     val runtimeResources:RuntimeResourceSnapshot=RuntimeResourceSnapshot(),
     val anchorSetupDraft:AnchorSetupDraft?=null,
+    val anchorDraftSaveError:Boolean=false,
 )
 
 private data class PositionSources(val selected:NavigationFix?,val nmea:NavigationFix?,val system:NavigationFix?,val settings:AppSettings)
@@ -369,10 +374,20 @@ class LegacyMarineController @Inject constructor(
     private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     /**
      * 聚合状态以及编辑草稿只在当前进程内保存；Activity 重建继续使用同一个实例。
-     * anchorSetupDraft / tripMapDestination 不落盘、不冒充已保存记录，进程重建会清空。
+     * anchorSetupDraft 作为未启动草稿单独保存；tripMapDestination 仅存在本次访问，不能冒充记录。
      * 已开始的航行、锚警会话和配置仍从各自的持久化 repository 恢复。
      */
-    private val _ui = MutableStateFlow(MainUiState())
+    private val anchorDraftStorage=app.getSharedPreferences("anchor_setup_draft",android.content.Context.MODE_PRIVATE)
+    private val anchorDraftJson=com.google.gson.Gson()
+    private val anchorDraftWrites=kotlinx.coroutines.channels.Channel<AnchorSetupDraft?>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    private val restoredAnchorDraft=runCatching{anchorDraftStorage.getString("draft",null)?.let{anchorDraftJson.fromJson(it,AnchorSetupDraft::class.java)}}.getOrNull()
+    private val _ui = MutableStateFlow(MainUiState(anchorSetupDraft=restoredAnchorDraft))
+    init { controllerScope.launch(Dispatchers.IO) {
+        for(draft in anchorDraftWrites){
+            val saved=runCatching{val edit=anchorDraftStorage.edit();if(draft==null)edit.remove("draft")else edit.putString("draft",anchorDraftJson.toJson(draft));edit.commit()}.getOrDefault(false)
+            _ui.update{it.copy(anchorDraftSaveError=!saved)}
+        }
+    } }
     val ui = _ui.asStateFlow()
     val phoneLocationStatus=systemLocation.status
     val nmeaConnections=nav.connections
@@ -1000,7 +1015,7 @@ class LegacyMarineController @Inject constructor(
             return@launch
         }
         if(mounted&&!_ui.value.vesselMountCalibration.attitudeFrameConfirmed){
-            _ui.update{it.copy(vesselCalibrationFeedback="The previous attitude segment was invalidated. Place the phone flat relative to the vessel and confirm a new segment.")}
+            _ui.update{it.copy(vesselCalibrationFeedback="The previous attitude segment was invalidated. Secure the phone in its mount and confirm the current installation as zero.")}
             return@launch
         }
         vesselAttitudeRepository.setMounted(mounted)
@@ -1025,8 +1040,8 @@ class LegacyMarineController @Inject constructor(
         val nmeaTrue=state.nmeaInstruments.headingTrue?.takeIf{now-it.second in 0L..NMEA_HEADING_ALIGNMENT_FRESH_MILLIS}?.first
         val nmeaMagnetic=state.nmeaInstruments.headingMagnetic?.takeIf{now-it.second in 0L..NMEA_HEADING_ALIGNMENT_FRESH_MILLIS}?.first
         val match=if(phoneFresh && phoneCompassReadyForAlignment())PhoneHeadingAlignmentPolicy.matchLiveReference(
-            phoneTrueDegrees=state.phoneHeading.liveTrueHeadingDegrees,
-            phoneMagneticDegrees=state.phoneHeading.liveMagneticHeadingDegrees,
+            phoneTrueDegrees=state.phoneHeading.liveVesselTrueHeadingDegrees?.minus(state.vesselMountCalibration.headingAlignmentOffsetDegrees)?.let{(it+360.0)%360.0},
+            phoneMagneticDegrees=state.phoneHeading.liveVesselMagneticHeadingDegrees?.minus(state.vesselMountCalibration.headingAlignmentOffsetDegrees)?.let{(it+360.0)%360.0},
             vesselTrueDegrees=nmeaTrue,
             vesselMagneticDegrees=nmeaMagnetic,
         )else null
@@ -1043,14 +1058,10 @@ class LegacyMarineController @Inject constructor(
         val reference=if(match.reference==com.yokuli.anchorwatch.location.vessel.PhoneHeadingAlignmentReference.TRUE_NORTH)"true" else "magnetic"
         _ui.update{it.copy(vesselCalibrationFeedback=com.yokuli.anchorwatch.localization.localized(it.settings.appLanguage,"Aligned to the live NMEA $reference heading. You can realign again at any time.","已按实时 NMEA ${if(reference=="true")"真北" else "磁北"}艏向重新对齐；以后可随时再次操作。"))}
     }
-    /** 一次确认物理安装，校准 Heading 与姿态是不同坐标关系，不互相充当零点。 */
+    /** 中文：用户明确确认当前固定安装为姿态零点，船首向保持磁北/真北参考。 */
     fun confirmFixedPhoneMount() = controllerScope.launch {
         try {
             val state = _ui.value
-            if (state.activeTrip?.paused == true) {
-                _ui.update { it.copy(vesselCalibrationFeedback = "Resume the trip before confirming a new attitude segment.") }
-                return@launch
-            }
             if (!phoneCompassReadyForAlignment()) {
                 _ui.update { it.copy(vesselCalibrationFeedback = "Wait for a fresh, undisturbed phone compass reading.") }
                 return@launch
@@ -1060,7 +1071,7 @@ class LegacyMarineController @Inject constructor(
                 return@launch
             }
             _ui.update { it.copy(vesselCalibrationFeedback = "Phone mounting and bow alignment saved.") }
-            if (state.activeTrip != null && state.phoneSensorCapabilities.attitudeAvailable) {
+            if (state.activeTrip?.paused == false && state.phoneSensorCapabilities.attitudeAvailable) {
                 ContextCompat.startForegroundService(app, Intent(app, AnchorForegroundService::class.java)
                     .setAction(AnchorForegroundService.CONFIRM_TRIP_ATTITUDE_FRAME))
             }
@@ -1084,6 +1095,21 @@ class LegacyMarineController @Inject constructor(
             _ui.update { it.copy(vesselCalibrationFeedback = "Heading correction saved. Attitude is unchanged.") }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { _ui.update { it.copy(vesselCalibrationFeedback = "Phone calibration could not be saved. Check storage and try again.") } }
+    }
+    fun setPhoneAttitudeAlignment(heelDegrees:Double,pitchDegrees:Double)=controllerScope.launch {
+        if(!heelDegrees.isFinite()||!pitchDegrees.isFinite()||heelDegrees !in -45.0..45.0||pitchDegrees !in -45.0..45.0){
+            _ui.update{it.copy(vesselCalibrationFeedback="Enter attitude corrections between -45 and 45 degrees.")};return@launch
+        }
+        if(!_ui.value.vesselMountCalibration.mountConfirmed){
+            _ui.update{it.copy(vesselCalibrationFeedback="Confirm the fixed installation first.")};return@launch
+        }
+        try {
+            vesselAttitudeRepository.alignAttitude(heelDegrees,pitchDegrees)
+            _ui.update{it.copy(vesselCalibrationFeedback="Attitude correction saved.")}
+            if(_ui.value.activeTrip?.paused==false) ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java)
+                .setAction(AnchorForegroundService.CONFIRM_TRIP_ATTITUDE_FRAME))
+        } catch(cancelled:CancellationException){throw cancelled}
+        catch(error:Exception){_ui.update{it.copy(vesselCalibrationFeedback="Phone calibration could not be saved. Check storage and try again.")}}
     }
     fun invalidateFixedPhoneMount() = controllerScope.launch {
         try {
@@ -1223,10 +1249,13 @@ class LegacyMarineController @Inject constructor(
     fun onPermissionsChanged(){systemLocation.refreshPermission()}
     fun setAnchorSetupGpsPreview(enabled:Boolean)=systemLocation.setPreviewEnabled(enabled)
     fun saveAnchorSetupDraft(value:AnchorSetupDraft){
+        if(value==_ui.value.anchorSetupDraft&&!_ui.value.anchorDraftSaveError)return
         _ui.update{it.copy(anchorSetupDraft=value)}
+        anchorDraftWrites.trySend(value)
     }
     fun clearAnchorSetupDraft(){
         _ui.update{it.copy(anchorSetupDraft=null)}
+        anchorDraftWrites.trySend(null)
     }
 
     fun clearDiagnostics()=nav.clearDiagnostics()

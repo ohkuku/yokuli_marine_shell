@@ -166,7 +166,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 }
 
 @Composable internal fun AnchorPauseConfirmation(os: OsStore, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
+    AppDialog(onDismissRequest = onDismiss) {
         AppDialogSurface {
             AppDialogTitle(os.t("暂停守锚监控？", "Pause anchor monitoring?"))
             Label(os.t("暂停后不再检查船舶是否越过警戒范围，守锚保护与相关监控会停止。锚点和已记录的轨迹会保留，之后可明确继续监控。", "Pausing stops boundary checks and the associated anchor protection. The anchor and recorded track are retained; you can explicitly resume monitoring later."))

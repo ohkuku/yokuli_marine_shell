@@ -69,11 +69,7 @@ import java.util.Locale
     Column(Modifier.fillMaxSize()) {
         PageHeader(os, selected?.let { name -> instrumentName(os, InstrumentTileId.valueOf(name)) } ?: os.title(AppId.INSTRUMENTS),
             hasLocalBack = selected != null, localBackLabel = if (selected != null && entryMetric == null) os.t("返回仪表", "back to instruments") else null)
-        AnimatedContent(target, transitionSpec = {
-            val forward = targetState != "workspace"
-            (slideInHorizontally(tween(220)) { if (forward) it / 5 else -it / 8 } + fadeIn(tween(180))) togetherWith
-                (slideOutHorizontally(tween(180)) { if (forward) -it / 8 else it / 5 } + fadeOut(tween(140)))
-        }, label = "instrument-page") { visible ->
+        AppPageTransition(target, pageKey = { it }, pageDepth = { if (it == "workspace") 0 else 1 }, modifier = Modifier.weight(1f)) { visible ->
             val isActive = enabled && visible == target && !chooseTiles && !chooseTrend
             CompositionLocalProvider(LocalInternalAppInputEnabled provides isActive) {
                 pageStates.SaveableStateProvider(visible) {
@@ -134,7 +130,7 @@ import java.util.Locale
             }
         }
     }
-    if (chooseTrend) Dialog(onDismissRequest = { chooseTrend = false }) {
+    if (chooseTrend) AppDialog(onDismissRequest = { chooseTrend = false }) {
         AppDialogSurface() {
             AppDialogTitle(os.t("选择回看内容", "choose a history"))
             Column {
@@ -155,7 +151,7 @@ import java.util.Locale
             MetroButton(os.t("完成", "done"), { chooseTrend = false })
         }
     }
-    if (chooseTiles) Dialog(onDismissRequest = { chooseTiles = false }) {
+    if (chooseTiles) AppDialog(onDismissRequest = { chooseTiles = false }) {
         AppDialogSurface() {
             AppDialogTitle(os.t("添加仪表", "add instruments"))
             Column {
@@ -195,6 +191,7 @@ import java.util.Locale
                 }
             }
         }
+        if (tile == InstrumentTileId.BOAT_SPEED) Label(os.t("这是船相对水的速度，来自船上的计程仪，适合看帆航表现。平时看对地航速即可；二者相减不能直接当作流速。", "This is speed relative to the water, measured by a boat log and useful for sailing performance. Use speed over ground for everyday navigation; subtracting them does not directly measure current."), 15, c.muted)
         if (tile == InstrumentTileId.PRESSURE) Label(os.t("当前仪表来源", "current instrument source"), 19)
         Label(observationStatus(os, value.observation, now), 15, c.muted)
         Label(os.t("来源 · ", "source · ") + (value.observation.sourceIdentity?.displayName ?: sourceName(os, value.observation.source)), 15, c.muted)

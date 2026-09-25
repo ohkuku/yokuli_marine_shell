@@ -446,7 +446,7 @@ class YokuliBackupManager @Inject constructor(
             vessel.mountCalibration?.let{calibration->
                 val q=calibration.neutralQuaternion
                 val normSquared=q.w*q.w+q.x*q.x+q.y*q.y+q.z*q.z
-                require(calibration.version>=1&&calibration.calibratedAt>=0L&&listOf(q.w,q.x,q.y,q.z,normSquared).all(Double::isFinite)&&normSquared>1e-12){"Invalid vessel mount calibration"}
+                require(calibration.version>=1&&calibration.calibratedAt>=0L&&listOf(q.w,q.x,q.y,q.z,normSquared,calibration.heelOffsetDegrees,calibration.pitchOffsetDegrees,calibration.headingAlignmentOffsetDegrees).all(Double::isFinite)&&normSquared>1e-12&&calibration.heelOffsetDegrees in -45.0..45.0&&calibration.pitchOffsetDegrees in -45.0..45.0){"Invalid vessel mount calibration"}
             }
         }
         val appSettings=if(manifest.formatVersion==YokuliBackupArchive.LEGACY_VERSION)decodedSettings.copy(defaultDepthGuardEnabled=false,defaultShallowDepthMeters=2.5,defaultDeepDepthEnabled=false,defaultDeepDepthMeters=15.0,defaultWindGuardEnabled=false,defaultWindWarningKnots=25.0,defaultWindAlarmKnots=35.0,defaultWindShiftEnabled=false,defaultWindShiftDegrees=70.0,allowApparentWindFallback=true)else decodedSettings
@@ -478,7 +478,7 @@ class YokuliBackupManager @Inject constructor(
                 }
             }
             normalizeVersion("headingReferenceVersion", legacyVersion = 0, supported = 0..1)
-            normalizeVersion("attitudeFrameVersion", legacyVersion = 1, supported = 0..2)
+            normalizeVersion("attitudeFrameVersion", legacyVersion = 1, supported = 0..3)
         }
         return requireNotNull(gson.fromJson(root, BackupVesselSettingsV3::class.java)) {
             "Invalid vessel settings payload"

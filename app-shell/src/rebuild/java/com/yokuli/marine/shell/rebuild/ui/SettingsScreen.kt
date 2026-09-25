@@ -129,6 +129,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                     }
                     "units" -> UnitSettings(os)
                     "start" -> {
+                        StartBackgroundSettings(os)
                         Label(os.t("长按磁贴，拖动位置或调整尺寸。每个应用保留一块磁贴，在磁贴工坊选择它的内容样式。", "Hold a tile to move or resize it. Each app has one tile; choose its content style in Tile Studio."),15)
                         MetroButton(os.t("选择磁贴样式", "choose tile styles"),{os.openLinked("tiles")},primary=true)
                         MetroButton(os.t("恢复默认布局", "restore default layout"),{reset=true})

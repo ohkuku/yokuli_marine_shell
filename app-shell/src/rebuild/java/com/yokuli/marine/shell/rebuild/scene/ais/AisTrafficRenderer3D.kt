@@ -128,6 +128,10 @@ internal class AisTrafficRenderer3D(
         override fun onAttachedToWindow() { super.onAttachedToWindow(); refreshVisibility() }
         override fun onDetachedFromWindow() { cancelFrames(); handler.removeCallbacks(surfaceTimeout); super.onDetachedFromWindow() }
         override fun onWindowVisibilityChanged(visibility: Int) { super.onWindowVisibilityChanged(visibility); handler.post { refreshVisibility() } }
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            syncSurfaceSize(w, h)
+        }
     }.apply {
         isClickable = false
         isFocusable = false
@@ -174,7 +178,12 @@ internal class AisTrafficRenderer3D(
             indirectLight = IndirectLight.Builder().irradiance(1, floatArrayOf(0.8f, 0.88f, 1f)).intensity(24_000f).build(e)
             scene?.indirectLight = indirectLight
             helper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK).also { it.isOpaque = true; it.renderCallback = this }
+            // Pager 可先测量/创建 TextureView，再激活本页、启动引擎。
+            // UiHelper 1.75 在 attach 到已有 SurfaceTexture 时用 desiredSize 回调，
+            // 默认值为 0，不能指望之后再发生一次 Android 尺寸变化来补救。
+            syncSurfaceSize(textureView.width, textureView.height)
             helper?.attachTo(textureView)
+            refreshVisibility()
         }
     }
 
@@ -239,9 +248,22 @@ internal class AisTrafficRenderer3D(
     }
 
     private fun canDraw() = !closed && desiredActive && resumed && textureView.isAttachedToWindow && textureView.windowVisibility == PlatformView.VISIBLE
+    /** 渲染缓冲始终跟随真实宿主尺寸；页面预组装、重入和旋转走同一路径。 */
+    private fun syncSurfaceSize(viewWidth: Int, viewHeight: Int) {
+        if (closed || viewWidth <= 0 || viewHeight <= 0) return
+        val currentHelper = helper ?: return
+        guarded {
+            if (currentHelper.desiredWidth != viewWidth || currentHelper.desiredHeight != viewHeight) {
+                currentHelper.setDesiredSize(viewWidth, viewHeight)
+            }
+            // attach 前尚无 RenderSurface，因此 setDesiredSize 可能不会发 onResized。
+            onResized(viewWidth, viewHeight)
+        }
+    }
     private fun refreshVisibility() {
         if (closed) return
         if (canDraw()) {
+            syncSurfaceSize(textureView.width, textureView.height)
             if (swapChain == null || !ready || restoring) { handler.removeCallbacks(surfaceTimeout); handler.postDelayed(surfaceTimeout, 10_000L) }
             requestDraw()
         } else { cancelFrames(); handler.removeCallbacks(surfaceTimeout) }
@@ -394,6 +416,7 @@ internal class AisTrafficRenderer3D(
             restoring = ready
             failureStage = if (restoring) "resume-surface" else "surface"
             destroySwapChain(); swapChain = requireNotNull(engine).createSwapChain(surface, helper?.swapChainFlags ?: SwapChainFlags.CONFIG_DEFAULT)
+            syncSurfaceSize(textureView.width, textureView.height)
             refreshVisibility()
         }
     }

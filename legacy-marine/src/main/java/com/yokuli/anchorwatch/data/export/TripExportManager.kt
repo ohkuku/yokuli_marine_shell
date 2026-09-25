@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import com.google.gson.Gson
 import com.yokuli.anchorwatch.BuildConfig
+import com.yokuli.anchorwatch.runtime.trip.TripMomentContent
+import org.json.JSONObject
 import com.yokuli.anchorwatch.data.database.*
 import com.yokuli.anchorwatch.domain.report.AnchorReportEngine
 import com.yokuli.anchorwatch.domain.report.TripReportEngine
@@ -37,6 +39,10 @@ class TripExportManager @Inject constructor(
         writer.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
         writer.appendLine("<gpx version=\"1.1\" creator=\"Boat Watch\" xmlns=\"http://www.topografix.com/GPX/1/1\">")
         pageTripWaypoints(session.id){waypoint->writer.appendLine("<wpt lat=\"${waypoint.latitude}\" lon=\"${waypoint.longitude}\"><time>${Instant.ofEpochMilli(waypoint.timestamp)}</time><name>${xml(waypoint.name)}</name><desc>${xml(waypoint.note)}</desc><type>${xml(waypoint.type)}</type></wpt>")}
+        pageTripEvents(session.id){event->
+            val moment=TripMomentContent.from(event)
+            if(moment!=null&&event.latitude!=null&&event.longitude!=null)writer.appendLine("<wpt lat=\"${event.latitude}\" lon=\"${event.longitude}\"><time>${Instant.ofEpochMilli(event.timestamp)}</time><name>${xml(moment.name)}</name><desc>${xml(moment.note)}</desc><type>${xml(moment.kind)}</type></wpt>")
+        }
         writer.appendLine("<trk><name>${xml(session.name)}</name><trkseg>")
         forEachTripSample(session.id){s->if(s.latitude!=null&&s.longitude!=null)writer.appendLine("<trkpt lat=\"${s.latitude}\" lon=\"${s.longitude}\"><time>${Instant.ofEpochMilli(s.timestamp)}</time></trkpt>")}
         writer.appendLine("</trkseg></trk></gpx>")
@@ -85,7 +91,21 @@ class TripExportManager @Inject constructor(
         forEachTripSample(id){s->w.row(Instant.ofEpochMilli(s.timestamp),s.timestamp,s.latitude,s.longitude,s.positionSource,s.positionSourceId,s.positionQuality,s.positionAgeMillis,s.sogKnots,s.sogAgeMillis,s.cogTrueDegrees,s.cogAgeMillis,s.headingTrueDegrees,s.headingSource,s.headingSourceId,s.headingReference,s.headingAgeMillis,s.depthMeters,s.depthSource,s.depthSourceId,s.depthAgeMillis,s.speedThroughWaterKnots,s.stwSource,s.stwSourceId,s.stwAgeMillis,s.trueWindSpeedKnots,s.trueWindSpeedSourceId,s.trueWindSpeedAgeMillis,s.trueWindDirectionDegrees,s.trueWindDirectionSourceId,s.trueWindDirectionAgeMillis,s.trueWindAngleDegrees,s.trueWindAngleSourceId,s.trueWindAngleAgeMillis,s.trueWindProvenance,s.trueWindReference,s.apparentWindSpeedKnots,s.apparentWindSpeedSourceId,s.apparentWindSpeedAgeMillis,s.apparentWindAngleDegrees,s.apparentWindAngleSourceId,s.apparentWindAngleAgeMillis,s.windSource,s.windAgeMillis,s.heelDegrees,s.pitchDegrees,s.rollRateDegPerSec,s.pitchRateDegPerSec,s.yawRateDegPerSec,s.motionScore,s.rollPeriodSeconds,s.rollPeriodConfidence,s.attitudeAgeMillis,s.attitudeQuality,s.attitudeMountSuspect,s.pressureHpa,s.pressureAgeMillis,s.ukcMeters,s.publicationOwnershipState,s.sourceFlags)}
     }
     private suspend fun writeTripEvents(target:File,id:Long)=target.bufferedWriter().use{w->w.appendLine("timestamp_utc,timestamp_epoch_ms,type,severity,latitude,longitude,detail_json");pageTripEvents(id){e->w.row(Instant.ofEpochMilli(e.timestamp),e.timestamp,e.type,e.severity,e.latitude,e.longitude,e.detailJson)}}
-    private suspend fun writeTripWaypoints(target:File,id:Long)=target.bufferedWriter().use{w->w.appendLine("timestamp_utc,timestamp_epoch_ms,type,name,note,latitude,longitude,position_source,position_source_id,sog_knots,cog_true_deg,heading_true_deg,heading_source_id,heading_reference,stw_knots,stw_source_id,depth_m,depth_source_id,true_wind_knots,true_wind_speed_source_id,true_wind_angle_deg,true_wind_angle_source_id,true_wind_direction_source_id,true_wind_provenance,true_wind_reference,apparent_wind_knots,apparent_wind_speed_source_id,apparent_wind_angle_deg,apparent_wind_angle_source_id,heel_deg,pitch_deg,pressure_hpa");pageTripWaypoints(id){p->w.row(Instant.ofEpochMilli(p.timestamp),p.timestamp,p.type,p.name,p.note,p.latitude,p.longitude,p.positionSource,p.positionSourceId,p.sogKnots,p.cogTrueDegrees,p.headingTrueDegrees,p.headingSourceId,p.headingReference,p.speedThroughWaterKnots,p.stwSourceId,p.depthMeters,p.depthSourceId,p.trueWindSpeedKnots,p.trueWindSpeedSourceId,p.trueWindAngleDegrees,p.trueWindAngleSourceId,p.trueWindDirectionSourceId,p.trueWindProvenance,p.trueWindReference,p.apparentWindSpeedKnots,p.apparentWindSpeedSourceId,p.apparentWindAngleDegrees,p.apparentWindAngleSourceId,p.heelDegrees,p.pitchDegrees,p.pressureHpa)}}
+    private suspend fun writeTripWaypoints(target:File,id:Long)=target.bufferedWriter().use{w->w.appendLine("timestamp_utc,timestamp_epoch_ms,type,name,note,latitude,longitude,position_source,position_source_id,sog_knots,cog_true_deg,heading_true_deg,heading_source_id,heading_reference,stw_knots,stw_source_id,depth_m,depth_source_id,true_wind_knots,true_wind_speed_source_id,true_wind_angle_deg,true_wind_angle_source_id,true_wind_direction_source_id,true_wind_provenance,true_wind_reference,apparent_wind_knots,apparent_wind_speed_source_id,apparent_wind_angle_deg,apparent_wind_angle_source_id,heel_deg,pitch_deg,pressure_hpa,capture_details_json");pageTripWaypoints(id){p->w.row(Instant.ofEpochMilli(p.timestamp),p.timestamp,p.type,p.name,p.note,p.latitude,p.longitude,p.positionSource,p.positionSourceId,p.sogKnots,p.cogTrueDegrees,p.headingTrueDegrees,p.headingSourceId,p.headingReference,p.speedThroughWaterKnots,p.stwSourceId,p.depthMeters,p.depthSourceId,p.trueWindSpeedKnots,p.trueWindSpeedSourceId,p.trueWindAngleDegrees,p.trueWindAngleSourceId,p.trueWindDirectionSourceId,p.trueWindProvenance,p.trueWindReference,p.apparentWindSpeedKnots,p.apparentWindSpeedSourceId,p.apparentWindAngleDegrees,p.apparentWindAngleSourceId,p.heelDegrees,p.pitchDegrees,p.pressureHpa,null)}
+        pageTripEvents(id){event->
+            val moment=TripMomentContent.from(event)
+            if(moment!=null){
+                val data=JSONObject(event.detailJson).optJSONObject("data") ?: JSONObject()
+                fun value(key:String):Any?=data.optJSONObject(key)?.opt("value")?.takeUnless {it==JSONObject.NULL}
+                fun source(key:String):String?=data.optJSONObject(key)?.optString("sourceId")
+                val heading=data.optJSONObject("headingTrueDegrees")
+                w.row(Instant.ofEpochMilli(event.timestamp),event.timestamp,moment.kind,moment.name,moment.note,event.latitude,event.longitude,
+                    source("position"),source("position"),value("sogKnots"),value("cogTrueDegrees"),value("headingTrueDegrees"),source("headingTrueDegrees"),heading?.optString("reference"),
+                    value("speedThroughWaterKnots"),source("speedThroughWaterKnots"),value("depthMeters"),source("depthMeters"),value("windSpeedKnots"),source("windSpeedKnots"),value("windAngleDegrees"),source("windAngleDegrees"),null,null,null,
+                    value("apparentWindSpeedKnots"),source("apparentWindSpeedKnots"),value("apparentWindAngleDegrees"),source("apparentWindAngleDegrees"),value("heelDegrees"),value("pitchDegrees"),value("pressureHpa"),event.detailJson)
+            }
+        }
+    }
 
     private suspend fun writeKml(target:File,session:TripSessionEntity)=target.bufferedWriter().use{writer->
         writer.appendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");writer.appendLine("<kml xmlns=\"http://www.opengis.net/kml/2.2\"><Document><name>${xml(session.name)}</name>")
@@ -93,7 +113,10 @@ class TripExportManager @Inject constructor(
         forEachTripSample(session.id){sample->if(sample.latitude!=null&&sample.longitude!=null)writer.appendLine("${sample.longitude},${sample.latitude},0")}
         writer.appendLine("</coordinates></LineString></Placemark>")
         pageTripWaypoints(session.id){point->writer.appendLine("<Placemark><name>${xml(point.name)}</name><description>${xml(point.note)}</description><Point><coordinates>${point.longitude},${point.latitude},0</coordinates></Point></Placemark>")}
-        pageTripEvents(session.id){event->if(event.latitude!=null&&event.longitude!=null)writer.appendLine("<Placemark><name>${xml(event.type)}</name><description>${xml(event.detailJson)}</description><Point><coordinates>${event.longitude},${event.latitude},0</coordinates></Point></Placemark>")}
+        pageTripEvents(session.id){event->if(event.latitude!=null&&event.longitude!=null){
+            val moment=TripMomentContent.from(event)
+            writer.appendLine("<Placemark><name>${xml(moment?.name?:event.type)}</name><description>${xml(moment?.note?:event.detailJson)}</description><Point><coordinates>${event.longitude},${event.latitude},0</coordinates></Point></Placemark>")
+        }}
         writer.appendLine("</Document></kml>")
     }
 

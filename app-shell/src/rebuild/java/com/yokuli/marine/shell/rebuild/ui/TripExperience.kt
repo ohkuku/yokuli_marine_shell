@@ -41,7 +41,9 @@ import java.util.Date
     var selected by rememberSaveable(initialVoyageId) { mutableStateOf(initialVoyageId) }
     ReportVisibleAppRoute(os, selected?.let { "voyage:$it" } ?: "voyages")
     var recording by remember { mutableStateOf(false) }
-    var marking by remember { mutableStateOf(false) }
+    var capturedMomentId by rememberSaveable { mutableStateOf<String?>(null) }
+    val captures by marine.services.voyages.capturedMoments.collectAsState()
+    val pendingCaptures=captures.filter {it.status==com.yokuli.anchorwatch.runtime.trip.TripMomentStatus.FAILED}
     var query by rememberSaveable { mutableStateOf("") }
     val c = LocalMetro.current
     val back:()->Unit = { if(initialVoyageId!=null&&selected==initialVoyageId)os.shell.popRoute() else if(selected!=null)selected=null }
@@ -51,8 +53,11 @@ import java.util.Date
         key(selected) { VoyageDetail(os, selected!!, back, { recording = true }) }
     } else Column(Modifier.fillMaxSize()) {
         PageHeader(os, os.title(AppId.VOYAGES))
+        if(pendingCaptures.isNotEmpty())MenuRow(os.t("${pendingCaptures.size} 条随记待保存","${pendingCaptures.size} moments need saving"),os.t("原时刻与备注已保留，点此重试","Original time and notes retained · tap to retry"),"logbook") {
+            capturedMomentId=pendingCaptures.first().requestId;recording=true
+        }
         Pivot(listOf(os.t("本次航行", "this voyage"), os.t("所有航行", "all voyages"))) { page ->
-            if (page == 0) CurrentVoyage(os, { recording = true }, { selected = it }, {marking=true;recording=true})
+            if (page == 0) CurrentVoyage(os, { recording = true }, { selected = it }, {state.activeTrip?.let {capturedMomentId=captureVoyageMoment(os,it.id);recording=true}})
             else {
                 val sessions = state.tripSessions.sortedByDescending { it.startedAt }.filter { query.isBlank() || it.name.contains(query.trim(), ignoreCase = true) }
                 LazyColumn(Modifier.fillMaxSize().padding(start = LocalShellHorizontalInsets.current.pageStart, end = LocalShellHorizontalInsets.current.pageEnd), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -66,7 +71,7 @@ import java.util.Date
             }
         }
     }
-    if (recording) RecordingDialog(os,initialMarking=marking) { recording = false;marking=false }
+    if (recording) RecordingDialog(os,initialMomentRequestId=capturedMomentId) { recording = false;capturedMomentId=null }
 }
 
 @Composable private fun CurrentVoyage(os: OsStore, controls: () -> Unit, detail: (Long) -> Unit,mark:()->Unit) {
@@ -93,7 +98,7 @@ import java.util.Date
                 else -> os.t("等待所选来源的首次船位。", "Waiting for the first position from your selected source.")
             }, 18, c.muted)
             if (state.active != null) Label(os.t("锚警继续值守，航行记录可以同时运行。", "The anchor watch continues while voyage recording runs."), 15, c.muted)
-            MetroButton(if(currentCommand?.status==VoyageRequestStatus.UNKNOWN)os.t("结果未确认","result unconfirmed")else if(voyage.commandPending)os.t("正在开始…","starting…")else os.t("开始航行", "start voyage"), controls, primary = true,enabled=!voyage.commandPending)
+            MetroButton(if(currentCommand?.status==VoyageRequestStatus.UNKNOWN)os.t("结果未确认","result unconfirmed")else if(voyage.commandPending)os.t("正在开始…","starting…")else os.t("开始记录", "start recording"), controls, primary = true,enabled=!voyage.commandPending)
             state.tripSessions.firstOrNull { !it.active }?.let { last -> MenuRow(os.t("上次航行", "last voyage"), last.name + " · " + voyageDate(last.startedAt), "logbook") { detail(last.id) } }
         } else {
             val wall = System.currentTimeMillis()
@@ -112,9 +117,9 @@ import java.util.Date
                 Column(Modifier.weight(1f)) { Label(os.formatSpeed(trip.maxSogKnots), 29); Label(os.t("最高航速", "top speed"), 15, c.muted) }
                 Column(Modifier.weight(1f)) { Label(trip.waypointCount.toString(), 29); Label(os.t("沿途时刻", "moments"), 15, c.muted) }
             }
-            MetroButton(if(trip.paused)os.t("继续航行记录","resume recording")else os.t("记录此刻","mark this moment"),if(trip.paused)({marine.resumeRecording()})else mark,primary=true,enabled=!voyage.commandPending)
+            MetroButton(os.t("记一笔","capture a moment"),mark,primary=true,enabled=!voyage.commandPending)
             Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                MetroButton(if(trip.paused)os.t("记录控制","recording controls")else os.t("暂停","pause"),if(trip.paused)controls else ({marine.pauseRecording()}),Modifier.weight(1f),enabled=!voyage.commandPending)
+                MetroButton(if(trip.paused)os.t("继续记录","resume recording")else os.t("暂停记录","pause recording"),if(trip.paused)({marine.resumeRecording()}) else ({marine.pauseRecording()}),Modifier.weight(1f),enabled=!voyage.commandPending)
                 MetroButton(os.t("结束并保存","finish & save"),{marine.finishRecording()},Modifier.weight(1f),enabled=mayFinishVoyage(commands))
             }
             MetroButton(os.t("在海图中查看","view on chart"),{os.openLinked("chart")})
@@ -135,8 +140,9 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
     var delete by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var editingMoment by remember {mutableStateOf<com.yokuli.anchorwatch.data.database.TripWaypointEntity?>(null)}
+    var capturedMoment by rememberSaveable {mutableStateOf<String?>(null)}
     val c = LocalMetro.current
-    LaunchedEffect(id, revision, state.activeTrip?.takeIf{it.id==id}?.sampleCount?.div(30)) {
+    LaunchedEffect(id, revision, state.activeTrip?.takeIf{it.id==id}?.sampleCount?.div(30), state.tripSessions.firstOrNull {it.id==id}?.waypointCount) {
         error = false
         try {
             loaded = withContext(Dispatchers.IO) {
@@ -167,7 +173,23 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
                         0 -> VoyagePlayback(os, id, content) { sources = true }
                         1 -> VoyageReport(os, content.report)
                         2 -> {
-                            if (content.map.waypoints.isEmpty()) Label(os.t("这次航行没有手动标记。记录时选择“记录此刻”，会保存当时的位置和船况。", "No moments were marked on this voyage. “Mark this moment” saves the position and conditions while recording."), 15)
+                            val moments=content.map.events.filter {it.type=="USER_MOMENT"}
+                            if (content.map.waypoints.isEmpty()&&moments.isEmpty()) Label(os.t("这次航行还没有随记。点“记一笔”会立即保存当时的时刻及可用船况。", "No moments yet. Capture a moment to save its time and available readings immediately."), 15)
+                            moments.sortedByDescending {it.timestamp}.forEach {event ->
+                                val moment=com.yokuli.anchorwatch.runtime.trip.TripMomentContent.from(event)
+                                if(moment!=null) {
+                                    Label(moment.name,20,c.accentText)
+                                    Label(voyageDate(event.timestamp),14,c.muted)
+                                    val position=event.latitude?.let {lat->event.longitude?.let {lon->GeoPoint(lat,lon)}}
+                                    Label(position?.let {os.formatCoordinates(it)} ?: os.t("位置未记录","position not recorded"),15)
+                                    if(moment.note.isNotBlank())Label(moment.note,15)
+                                    if(moment.paused)Label(os.t("暂停期间的随记","captured while paused"),12,c.muted)
+                                    Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                        if(position!=null)MetroButton(os.t("在海图中查看","view on chart"),{showVoyageOnChart(os,content,position)},Modifier.weight(1f))
+                                        MetroButton(os.t("查看 / 编辑随记","view / edit moment"),{capturedMoment=moment.requestId},Modifier.weight(1f))
+                                    }
+                                }
+                            }
                             content.map.waypoints.forEach { point ->
                                 Label(point.name, 20, c.accentText)
                                 Label(voyageDate(point.timestamp), 14, c.muted)
@@ -180,16 +202,14 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
                                 }
                             }
                             AppSection(os.t("记录事件", "recorded events"))
-                            if (content.map.events.isEmpty()) Label(os.t("没有记录事件。", "No recorded events."), 17, c.muted)
-                            content.map.events.sortedBy { it.timestamp }.forEach { event ->
+                            if (content.map.events.none {it.type!="USER_MOMENT"}) Label(os.t("没有记录事件。", "No recorded events."), 17, c.muted)
+                            content.map.events.filterNot {it.type=="USER_MOMENT"}.sortedBy { it.timestamp }.forEach { event ->
                                 Label(eventName(os, event.type), 15)
                                 Label(voyageDate(event.timestamp), 14, c.muted)
                             }
                         }
                         else -> {
-                            AppSection(os.t("把这段航行带走", "take this voyage with you"))
-                            Label(os.t("航迹适合地图与航海软件；数据文件保留实际读数、来源和事件，方便继续分析。", "Track files work with mapping and navigation apps. Data files retain actual readings, sources and events for further analysis."), 15)
-                            listOf("GPX" to { marine.services.voyages.exportTripGpx(session); Unit }, "KML" to { marine.services.voyages.exportTripKml(session); Unit }, "KMZ" to { marine.services.voyages.exportTripKmz(session); Unit }, os.t("全部样本 CSV", "all samples · CSV") to { marine.services.voyages.exportTripCsv(session); Unit }, os.t("沿途时刻 CSV", "moments · CSV") to { marine.services.voyages.exportTripWaypoints(session); Unit }, os.t("事件 CSV", "events · CSV") to { marine.services.voyages.exportTripEvents(session); Unit }, os.t("自定义读数 CSV", "custom readings · CSV") to { marine.services.voyages.exportTripCustomMetrics(session); Unit }, os.t("报告图片", "report image") to { marine.services.voyages.shareTripReportSnapshot(session); Unit }, os.t("完整分析资料 ZIP", "analysis source · ZIP") to { marine.services.voyages.exportTripAiSource(session); Unit }).forEach { (label, action) -> MetroButton(label, action) }
+                            VoyageShareActions(os,session)
                             if (!session.active) {
                                 MetroButton(os.t("重命名航行","rename voyage"),{renaming=true})
                                 MetroButton(os.t("删除这次航行", "delete voyage"), { delete = true })
@@ -200,6 +220,13 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
             }
         }
     }
+    capturedMoment?.let {requestId ->
+        AppDialog(onDismissRequest={capturedMoment=null;revision++}) {AppDialogSurface {
+            AppDialogTitle(os.t("沿途随记","voyage moment"))
+            CapturedMomentContent(os,requestId)
+            MetroButton(os.t("完成","done"),{capturedMoment=null;revision++})
+        }}
+    }
     if (sources) MapSourcePicker(os) { sources = false }
     if (delete && session != null && !session.active) ConfirmDialog(os, os.t("删除这次航行及其记录？此操作无法撤销。", "Delete this voyage and its recordings? This cannot be undone."), { delete = false }) { marine.services.voyages.deleteTrip(session); delete = false; back() }
     if(renaming&&session!=null)VoyageTextEditor(os,os.t("航行名称","voyage name"),session.name,null,{renaming=false}){name,_->marine.services.voyages.renameTrip(id,name);renaming=false}
@@ -208,7 +235,7 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
 
 @Composable private fun VoyageTextEditor(os:OsStore,title:String,initialName:String,initialNote:String?,dismiss:()->Unit,save:(String,String?)->Unit) {
     var name by rememberSaveable(initialName){mutableStateOf(initialName)};var note by rememberSaveable(initialNote){mutableStateOf(initialNote.orEmpty())}
-    Dialog(onDismissRequest=dismiss){AppDialogSurface() {
+    AppDialog(onDismissRequest=dismiss){AppDialogSurface() {
         AppDialogTitle(title)
         Field(os.t("名称","name"),name,{name=it.take(100)})
         if(initialNote!=null)Field(os.t("笔记","note"),note,{note=it.take(2000)},multiline=true)
@@ -251,9 +278,14 @@ private fun showVoyageOnChart(os:OsStore,content:VoyageContent,focus:GeoPoint?=n
     val index = remember(samples, time) { var lo = 0; var hi = samples.lastIndex; var result = -1; while (lo <= hi) { val mid = (lo + hi) / 2; if (samples[mid].timestamp <= time) { result = mid; lo = mid + 1 } else hi = mid - 1 }; result }
     val frame = samples.getOrNull(index)?.takeIf { time - it.timestamp <= 10_000 }
     val position = frame?.let { p -> val latitude=p.latitude; val longitude=p.longitude; if (latitude != null && longitude != null) GeoPoint(latitude, longitude).takeIf { it.valid() } else null }
-    val scene = MapScene(vessel = position?.let { MapVessel(it, frame?.cogDegrees,true,frame?.headingDegrees,frame?.sogKnots) }, lines = track.mapIndexed { i, points -> MapLine("voyage-$id-$i", points, os.accent) }, points = content.map.waypoints.map { MapPoint("moment-${it.id}", GeoPoint(it.latitude, it.longitude), it.name, os.accent) })
+    val capturedPoints=content.map.events.filter {it.type=="USER_MOMENT"}.mapNotNull {event->
+        val lat=event.latitude;val lon=event.longitude
+        if(lat==null||lon==null)null else MapPoint("captured-${event.id}",GeoPoint(lat,lon),com.yokuli.anchorwatch.runtime.trip.TripMomentContent.from(event)?.name.orEmpty(),os.accent)
+    }
+    val scene = MapScene(vessel = position?.let { MapVessel(it, frame?.cogDegrees,true,frame?.headingDegrees,frame?.sogKnots) }, lines = track.mapIndexed { i, points -> MapLine("voyage-$id-$i", points, os.accent) }, points = content.map.waypoints.map { MapPoint("moment-${it.id}", GeoPoint(it.latitude, it.longitude), it.name, os.accent) } + capturedPoints)
     MarineMap(os.maps, scene, view, Modifier.fillMaxWidth().height(290.dp), onEvent = { event ->
         if (event is MapEvent.ItemSelected && event.id.startsWith("moment-")) content.map.waypoints.firstOrNull { "moment-${it.id}" == event.id }?.let { time = it.timestamp.coerceIn(firstTime, lastTime); playing = false }
+        if (event is MapEvent.ItemSelected && event.id.startsWith("captured-")) content.map.events.firstOrNull { "captured-${it.id}" == event.id }?.let { time=it.timestamp.coerceIn(firstTime,lastTime);playing=false }
     })
     MetroButton(os.t("在海图中查看这段航行","view voyage on chart"),{showVoyageOnChart(os,content)},enabled=all.isNotEmpty())
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

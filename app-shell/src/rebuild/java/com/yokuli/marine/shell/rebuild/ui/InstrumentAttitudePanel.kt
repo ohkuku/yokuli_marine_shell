@@ -121,8 +121,8 @@ import kotlin.math.abs
         if (failed) Label(os.t("重新加载三维船体", "reload 3D hull"), 15, c.accent,
             Modifier.heightIn(min = 48.dp).clickable(enabled = enabled) { ready = false; failed = false }.padding(vertical = 12.dp))
         MenuRow(os.t("手机安装与校准", "phone mounting & calibration"),
-            os.t("手机顶部朝船艏并固定；确认方向不会清除实际横倾。", "Secure the phone with its top towards the bow. Confirming alignment preserves actual heel.")) {
-            if (enabled) os.openLinked("data_center:phone")
+            os.t("固定在实际使用的位置，确认当前零点，再微调倾角与船首向。", "Secure the phone where you use it, set its reference, then fine-tune attitude and heading.")) {
+            if (enabled) os.openLinked("data_center:mount")
         }
     }
 }

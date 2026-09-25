@@ -27,7 +27,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
 @Composable
 fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) {
     val c=LocalMetro.current
-    Dialog(onDismissRequest=onDismiss) {
+    AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface {
             AppDialogTitle(os.t("地图来源","Map source"))
             fun choose(source:MapSource) {os.maps.select(source);onDismiss()}
@@ -79,7 +79,7 @@ fun MapSourceButton(os:OsStore,modifier:Modifier=Modifier) {
 fun MapPicker(os:OsStore,initialPoint:GeoPoint?,referenceScene:MapScene=MapScene(),onConfirm:(GeoPoint)->Unit,onCancel:()->Unit) {
     val density=LocalDensity.current
     val view=remember {MapViewState(initialPoint ?: referenceScene.vessel?.point ?: os.center,16.0).apply {showCrosshair=true}}
-    Dialog(onDismissRequest=onCancel,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
+    AppDialog(onDismissRequest=onCancel,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
         AppBackHandler(onBack=onCancel)
         Column(Modifier.fillMaxSize().background(LocalMetro.current.bg)) {
             PageHeader(os,os.t("选择位置","choose position"),hasLocalBack=true)

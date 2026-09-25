@@ -16,7 +16,10 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
+import com.yokuli.marine.core.design.StartWallpaperSurface
+import com.yokuli.marine.core.design.startTileBackground
+import com.yokuli.marine.core.design.LocalStartBackdrop
+import com.yokuli.marine.core.design.StartBackdropMode
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +42,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
@@ -171,13 +175,15 @@ fun YokuliStartScreen(
         tileBounds.keys.toList().filterNot(ids::contains).forEach { tileBounds.remove(it) }
     }
 
-    BoxWithConstraints(
-        Modifier.fillMaxSize().background(colors.background).testTag("start-screen")
+    StartWallpaperSurface(
+        Modifier.fillMaxSize().testTag("start-screen")
             .semantics { wpThemeModeName = colors.spec.mode.name.lowercase() },
+        scrollFraction = { if (scroll.maxValue > 0) scroll.value.toFloat() / scroll.maxValue else 0f },
     ) {
+        val colors = LocalWpTheme.current
         val availableWidthPx = with(density) { maxWidth.toPx().roundToInt() }
         val availableHeightPx = with(density) { maxHeight.toPx().roundToInt() }
-        if (availableWidthPx <= 0 || availableHeightPx <= 0) return@BoxWithConstraints
+        if (availableWidthPx <= 0 || availableHeightPx <= 0) return@StartWallpaperSurface
         val geometry = remember(availableWidthPx, availableHeightPx, density.density, density.fontScale) {
             WpStartGeometryCalculator.calculate(StartViewport(availableWidthPx, availableHeightPx, density.density, 0, 0, density.fontScale))
         }
@@ -456,12 +462,12 @@ private fun WpTile(
                 }
                 customActions = accessibilityMoves
                 onLongClick { onLongClick(); true }
-            }.wpTilt(interactions, enabled = !editing).background(colors.accent)
+            }.wpTilt(interactions, enabled = !editing, maximumDegrees = 1.5f).clipToBounds().startTileBackground()
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
     ) {
         Box(Modifier.fillMaxSize().padding(if (entry.visual.fullBleed && !small) 0.dp else if (small) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
             entry.tileRenderer(tileSize).Render(
-                LauncherTileRenderContext(tileSize, colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = !editing),
+                LauncherTileRenderContext(tileSize, if (LocalStartBackdrop.current.image != null && LocalStartBackdrop.current.mode != StartBackdropMode.NONE && LocalStartBackdrop.current.tileOpacity < .7f) androidx.compose.ui.graphics.Color.White else colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = !editing),
             )
         }
         if (revealing) Box(Modifier.fillMaxSize().border(3.dp, colors.onAccent).alpha(revealProgress.coerceIn(0f, 1f)).testTag("tile-reveal-highlight"))

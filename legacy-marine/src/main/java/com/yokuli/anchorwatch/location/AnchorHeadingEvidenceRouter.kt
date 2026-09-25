@@ -41,7 +41,7 @@ object AnchorHeadingEvidenceRouter{
         }?.let{value->
             AnchorHeadingEvidence(value,HeadingSource.NMEA_PHYSICAL,HeadingQuality.STABLE,null,selected.receivedElapsedRealtime,"VESSEL_ROUTING_BOAT_PHYSICAL_TRUE_HEADING",selected.sourceIdentity?.id)
         }
-        val phoneEvidence=phone.trueHeadingDegrees?.takeIf{phone.quality==HeadingQuality.STABLE&&alignment.aligned}?.let{value->AnchorHeadingEvidence(normalize(value+alignment.offsetDegrees),HeadingSource.PHONE,phone.quality,phone.epoch,phone.sequence,"PHONE_ALIGNED_INTEGRITY_ACCEPTED","phone:vessel-heading")}
+        val phoneEvidence=phone.vesselTrueHeadingDegrees?.takeIf{alignment.aligned&&phone.vesselHeadingQuality==HeadingQuality.STABLE}?.let{value->AnchorHeadingEvidence(value,HeadingSource.PHONE,phone.vesselHeadingQuality,phone.epoch,phone.sequence,"PHONE_ALIGNED_INTEGRITY_ACCEPTED","phone:vessel-heading")}
         return when(preference){
             VesselSourcePreference.BOAT->boat?:AnchorHeadingEvidence(reason="SELECTED_BOAT_HEADING_UNAVAILABLE")
             VesselSourcePreference.PHONE->phoneEvidence?:AnchorHeadingEvidence(reason=if(alignment.aligned)"SELECTED_PHONE_HEADING_NOT_STABLE" else "PHONE_HEADING_NOT_ALIGNED")
@@ -52,7 +52,7 @@ object AnchorHeadingEvidenceRouter{
 
     fun route(preference:VesselSourcePreference,boatFix:NavigationFix,phone:PhoneHeadingSample,alignment:PhoneVesselHeadingAlignment=PhoneVesselHeadingAlignment()):AnchorHeadingEvidence{
         val boat=boatFix.headingTrueDegrees?.takeIf{boatFix.headingSource==HeadingSource.NMEA_PHYSICAL}?.let{AnchorHeadingEvidence(it,HeadingSource.NMEA_PHYSICAL,boatFix.headingQuality,boatFix.headingEpoch,boatFix.headingSampleSequence,"BOAT_PHYSICAL_HEADING",boatFix.sourceSentence)}
-        val phoneEvidence=phone.trueHeadingDegrees?.takeIf{phone.quality==HeadingQuality.STABLE&&alignment.aligned}?.let{value->AnchorHeadingEvidence(normalize(value+alignment.offsetDegrees),HeadingSource.PHONE,phone.quality,phone.epoch,phone.sequence,"PHONE_ALIGNED_INTEGRITY_ACCEPTED","phone:vessel-heading")}
+        val phoneEvidence=phone.vesselTrueHeadingDegrees?.takeIf{alignment.aligned&&phone.vesselHeadingQuality==HeadingQuality.STABLE}?.let{value->AnchorHeadingEvidence(value,HeadingSource.PHONE,phone.vesselHeadingQuality,phone.epoch,phone.sequence,"PHONE_ALIGNED_INTEGRITY_ACCEPTED","phone:vessel-heading")}
         return when(preference){
             VesselSourcePreference.BOAT->boat?:AnchorHeadingEvidence(reason="SELECTED_BOAT_HEADING_UNAVAILABLE")
             VesselSourcePreference.PHONE->phoneEvidence?:AnchorHeadingEvidence(reason=if(alignment.aligned)"SELECTED_PHONE_HEADING_NOT_STABLE" else "PHONE_HEADING_NOT_ALIGNED")

@@ -164,12 +164,21 @@ internal class NotificationRepository(context: Context) {
         val stream = file.startWrite()
         try {
             stream.write(bytes); stream.fd.sync(); file.finishWrite(stream)
-            // 部分平台 AtomicFile 的 rename 失败只记日志；核对提交头，不能据此假报成功。
+            // ART/JVM 的反射字段顺序并不相同，revision 不保证在 JSON 前 256 字节。
+            // 逐字节核对完整已提交内容，既不误判长历史，也不忽略静默 rename 失败。
             check(file.baseFile.length() == bytes.size.toLong()) { "HISTORY_COMMIT_INCOMPLETE" }
-            val prefix = ByteArray(256)
-            val length = file.openRead().use { it.read(prefix) }
-            val header = prefix.copyOf(length.coerceAtLeast(0)).toString(Charsets.UTF_8)
-            check(Regex("\"revision\":([0-9]+)").find(header)?.groupValues?.get(1)?.toLongOrNull() == value.revision) { "HISTORY_COMMIT_INCOMPLETE" }
+            file.openRead().use { input ->
+                val buffer = ByteArray(8192)
+                var offset = 0
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    check(offset + count <= bytes.size) { "HISTORY_COMMIT_INCOMPLETE" }
+                    for (index in 0 until count) check(buffer[index] == bytes[offset + index]) { "HISTORY_COMMIT_INCOMPLETE" }
+                    offset += count
+                }
+                check(offset == bytes.size) { "HISTORY_COMMIT_INCOMPLETE" }
+            }
         } catch (error: Exception) { file.failWrite(stream); throw error }
     }
     private fun rejected(command: NoticeCommand, reason: String) = NoticeCommandResult(command.requestId, NoticeCommandStatus.REJECTED, disk.revision, reason)

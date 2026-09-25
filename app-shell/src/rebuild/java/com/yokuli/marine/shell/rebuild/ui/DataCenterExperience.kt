@@ -1,26 +1,18 @@
 package com.yokuli.marine.shell.rebuild.ui
 
 import com.yokuli.runtime.contract.PositionSourceRequest
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.scene.VesselHotspot
 import com.yokuli.anchorwatch.domain.vessel.VesselMetricId
 import com.yokuli.anchorwatch.domain.vessel.VesselSourceType
 import com.yokuli.anchorwatch.location.PhoneLocationPhase
 import com.yokuli.anchorwatch.location.PhoneHeadingPresentationQuality
-import com.yokuli.anchorwatch.location.vessel.DeviceBowAxis
 import com.yokuli.anchorwatch.location.vessel.PhoneVesselMountState
 import com.yokuli.anchorwatch.location.vessel.PhoneHeadingAlignmentPolicy
 import com.yokuli.marine.shell.rebuild.*
@@ -117,9 +109,10 @@ import java.util.Locale
     val locked = state.active?.paused == false
     AppSection(os.t("手机提供什么", "what this phone provides"))
     Toggle(os.t("手机定位", "phone location"), os.positionSource == "phone",
-        if (os.positionSource == "nmea") os.t("当前使用船载船位，先在“位置”中关闭它。", "Boat position is selected; turn it off in Position first.")
+        if (os.positionSource == "nmea") os.t("明确改用手机；定位就绪后替换当前船位来源。", "Use this phone instead; replace the source once a position is ready.")
         else os.t("开启时提供船位、对地航速与对地航向。", "Provides position, speed and course over ground while enabled."),
-        enabled = !locked && os.positionSource in listOf("none", "phone")) { os.requestPosition(if (it) PositionSourceRequest.ENABLE_PHONE else PositionSourceRequest.DISABLE_POSITION) }
+        enabled = !locked && !location.selectionPending) { os.requestPosition(if (it) PositionSourceRequest.ENABLE_PHONE else PositionSourceRequest.DISABLE_POSITION) }
+    if(location.selectionPending)MetroProgress(os.t("等待手机船位 · 当前来源仍在使用","waiting for phone position · current source remains active"))
     if (os.positionSource == "nmea") MenuRow(os.t("选择船位来源", "choose position source"), os.t("全船使用同一份位置选择", "one position choice for all apps")) { openPosition() }
     if (locked) Label(os.t("守锚正在使用船位，暂停后可以更改。", "Anchor Watch is using position; pause before changing it."), 15, LocalMetro.current.muted)
     readings.phone?.let { fix -> Label(os.formatCoordinates(fix.point), 23); Label(readingAge(os, fix.elapsed, now), 16, LocalMetro.current.muted) }
@@ -131,10 +124,10 @@ import java.util.Locale
     }, 17, LocalMetro.current.muted)
     AppSection(os.t("罗盘与姿态", "compass & motion"))
     MenuRow(os.t("固定手机", "mount this phone"), when {
-        state.vesselMountCalibration.bowAxis != DeviceBowAxis.TOP || state.vesselMountCalibration.headingReferenceVersion != 1 && state.vesselMountCalibration.headingAlignmentCompletedAt > 0 -> os.t("旧安装需要重新确认", "reconfirm the previous mount")
+        state.vesselMountCalibration.calibratedAt > 0 && state.vesselMountCalibration.attitudeFrameVersion != 3 -> os.t("旧安装需要重新确认", "reconfirm the previous mount")
         state.vesselMountCalibration.headingAligned && state.vesselMountCalibration.mountConfirmed -> os.t("船首向和姿态已确认", "heading and attitude confirmed")
         state.vesselMountCalibration.headingAligned -> os.t("船首向已确认", "heading aligned")
-        else -> os.t("顶部指向船艏，固定后校准", "top edge toward bow, then calibrate")
+        else -> os.t("固定到支架，将当前位置设为零点", "secure it in its mount, then set zero")
     }) { openMounting() }
     val capabilities = state.phoneSensorCapabilities
     listOf(
@@ -159,7 +152,7 @@ import java.util.Locale
     Label(os.t("这些读数进入同一个数据中心。要采用哪一个，在“读数”中选择；采集不会自动向其他设备发送。", "These readings enter the same Data Center. Choose their use under Readings; collecting them never automatically sends data to another device."), 15, LocalMetro.current.muted)
 }
 
-/** 中文：安装只有一种解释。船首向修正与重力测得的横倾、纵倾互相独立。 */
+/** 中文：当前固定安装是用户确认的零点；艏向、横倾、纵倾分别可微调。 */
 @Composable private fun ColumnScope.PhoneMountSettings(os: OsStore) {
     val services = os.marine?.services ?: return
     val state by services.state.collectAsState()
@@ -171,15 +164,20 @@ import java.util.Locale
     val compassReady = fresh && heading != null && phone.presentationQuality in setOf(
         PhoneHeadingPresentationQuality.GOOD, PhoneHeadingPresentationQuality.LOW_ACCURACY)
     val frameSuspect = state.phoneVesselMountState == PhoneVesselMountState.MOUNT_SUSPECT
-    val legacyMount = mount.bowAxis != DeviceBowAxis.TOP || mount.headingReferenceVersion != 1 && mount.headingAlignmentCompletedAt > 0
+    val legacyMount = mount.calibratedAt > 0 && mount.attitudeFrameVersion != 3
     val installed = mount.headingAligned && !frameSuspect && !legacyMount
     val nmeaTrue = state.nmeaInstruments.headingTrue?.takeIf { now - it.second in 0L..3_000L }?.first
     val nmeaMagnetic = state.nmeaInstruments.headingMagnetic?.takeIf { now - it.second in 0L..3_000L }?.first
     val match = if (compassReady) PhoneHeadingAlignmentPolicy.matchLiveReference(
-        phone.liveTrueHeadingDegrees, phone.liveMagneticHeadingDegrees, nmeaTrue, nmeaMagnetic) else null
+        phone.liveVesselTrueHeadingDegrees, phone.liveVesselMagneticHeadingDegrees, nmeaTrue, nmeaMagnetic) else null
     var pending by remember { mutableStateOf(false) }
     var interrupted by remember { mutableStateOf(false) }
     var correcting by rememberSaveable { mutableStateOf(false) }
+    var correctingAttitude by rememberSaveable { mutableStateOf(false) }
+    var heelCorrection by rememberSaveable { mutableStateOf(String.format(Locale.US,"%.1f",mount.heelOffsetDegrees)) }
+    var pitchCorrection by rememberSaveable { mutableStateOf(String.format(Locale.US,"%.1f",mount.pitchOffsetDegrees)) }
+    fun angle(text:String)=text.trim().replace(',','.').toDoubleOrNull()?.takeIf{it.isFinite()&&it in -45.0..45.0}
+    val heelValue=angle(heelCorrection);val pitchValue=angle(pitchCorrection)
     var correction by rememberSaveable { mutableStateOf(String.format(Locale.US, "%.1f", mount.headingAlignmentOffsetDegrees)) }
     val correctionValue = correction.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() && it in -180.0..180.0 }
     val scope = rememberCoroutineScope()
@@ -200,12 +198,16 @@ import java.util.Locale
     LaunchedEffect(mount.headingAlignmentOffsetDegrees, correcting) {
         if (!correcting) correction = String.format(Locale.US, "%.1f", mount.headingAlignmentOffsetDegrees)
     }
-    AppSection(os.t("顶部朝船艏，固定后校准", "point toward the bow, then calibrate"))
-    PhoneMountDiagram(os)
-    Label(os.t("手机顶部指向船艏，屏幕朝上，与船体基准平面平行固定。斜放或竖装的支架不能代表船体姿态；移动手机或改变支架后，需要重新校准。",
-        "Point the phone's physical top edge toward the bow. Fix it face up, parallel to the boat's reference plane. A tilted or upright mount cannot represent vessel attitude. Recalibrate after moving it."), 15, LocalMetro.current.muted)
+    LaunchedEffect(mount.heelOffsetDegrees,mount.pitchOffsetDegrees,correctingAttitude) {
+        if(!correctingAttitude){heelCorrection=String.format(Locale.US,"%.1f",mount.heelOffsetDegrees);pitchCorrection=String.format(Locale.US,"%.1f",mount.pitchOffsetDegrees)}
+    }
+    AppSection(os.t("固定好，就以现在为零点", "secure the phone, then set zero"))
+    Label(os.t("手机可以斜装或竖装，不必放平。固定在实际使用的支架上，确认后把现在的姿态记为横倾、纵倾零点。船本身已有倾角时，可在下面补上这个偏差。",
+        "A tilted or upright mount is fine. Secure the phone where you use it, then confirm this pose as heel and pitch zero. If the boat is already inclined, add that offset below."),15,LocalMetro.current.muted)
+    Label(os.t("尽量让手机顶部朝向船艏；竖装时以屏幕朝向作为初始艏向，再与船载罗盘核对并微调。移动手机或支架后重新设零点。",
+        "Point the top toward the bow where possible. An upright mount uses the screen-facing direction initially; compare with the boat compass and fine-tune. Set zero again after moving the phone or mount."),14,LocalMetro.current.muted)
     Label(when {
-        legacyMount -> os.t("旧安装需重新确认：按图固定后校准。", "Previous mounting needs confirmation. Follow the diagram and recalibrate.")
+        legacyMount -> os.t("旧安装需重新确认：重新确认当前位置为零点。", "Previous mounting needs confirmation. Confirm the current installation as zero.")
         frameSuspect -> os.t("安装需要重新确认", "mounting needs reconfirmation")
         installed -> os.t("已固定 · 全船共用这份校准", "mounted · one calibration for all apps")
         else -> os.t("尚未确认固定", "mounting not yet confirmed")
@@ -217,7 +219,7 @@ import java.util.Locale
         }
         Column(Modifier.weight(1f)) {
             Label(os.t("校准后的船首向", "calibrated vessel heading"), 14, LocalMetro.current.muted)
-            Label(os.formatBearing(heading?.takeIf { installed }?.plus(mount.headingAlignmentOffsetDegrees)), 30, LocalMetro.current.accent)
+            Label(os.formatBearing((phone.liveVesselTrueHeadingDegrees ?: phone.liveVesselMagneticHeadingDegrees)?.takeIf { installed }), 30, LocalMetro.current.accent)
         }
     }
     Label(if (phone.liveTrueHeadingDegrees != null) os.t("真北 · 使用位置计算磁偏角", "true north · declination from position")
@@ -232,14 +234,13 @@ import java.util.Locale
     }
     quality?.let { Label(it, 15, LocalMetro.current.muted) }
     if (pending) MetroProgress(os.t("正在保存校准", "saving calibration"))
-    MetroButton(if (installed) os.t("重新校准", "recalibrate") else os.t("确认已固定", "confirm mounted"),
+    MetroButton(if (installed) os.t("以现在重新设零点", "set zero here again") else os.t("已固定，设为零点", "mounted · set zero"),
         { runCommand { services.sources.confirmFixedPhoneMount() } }, primary = true,
-        enabled = enabled && compassReady && state.activeTrip?.paused != true)
-    if (state.activeTrip?.paused == true) Label(os.t("请先继续航行，再确认新的安装。", "Resume the voyage before confirming a new mount."), 15, LocalMetro.current.muted)
-    Label(os.t("重新校准会清除船首向微调，不会把当前横倾或纵倾当作零，也不会切换数据来源。",
-        "Recalibrating clears the heading correction. It preserves actual heel and pitch and keeps your source choices."), 14, LocalMetro.current.muted)
-    if (!state.phoneSensorCapabilities.attitudeAvailable) Label(os.t("这部手机没有姿态传感器；可校准船首向，不能提供船体横倾与纵倾。",
-        "This phone has no attitude sensor. It can provide calibrated heading, but not vessel heel or pitch."), 15, LocalMetro.current.muted)
+        enabled = enabled && compassReady && state.phoneSensorCapabilities.attitudeAvailable)
+    Label(os.t("设零点会清除三项微调；数据来源保持不变，暂停中的记录不会被自动继续。",
+        "Setting zero clears all three corrections. Source choices stay unchanged; paused recording stays paused."),14,LocalMetro.current.muted)
+    if (!state.phoneSensorCapabilities.attitudeAvailable) Label(os.t("这部手机没有可用的姿态传感器，无法建立固定安装零点。",
+        "This phone has no attitude sensor for a fixed installation reference."), 15, LocalMetro.current.muted)
     if (installed) {
         MenuRow(os.t("船首向微调", "fine-tune heading"), os.t("当前修正 ", "current correction ") + os.formatAngle(mount.headingAlignmentOffsetDegrees)) {
             if (enabled) correcting = !correcting
@@ -252,7 +253,7 @@ import java.util.Locale
                 MetroButton("−0.5°", { correction = String.format(Locale.US, "%.1f", ((correctionValue ?: 0.0) - .5).coerceAtLeast(-180.0)) }, Modifier.weight(1f), enabled = enabled)
                 MetroButton("+0.5°", { correction = String.format(Locale.US, "%.1f", ((correctionValue ?: 0.0) + .5).coerceAtMost(180.0)) }, Modifier.weight(1f), enabled = enabled)
             }
-            Label(os.t("修正后 ", "after correction ") + os.formatBearing(heading?.let { h -> correctionValue?.let { h + it } }), 26, LocalMetro.current.accent)
+            Label(os.t("修正后 ", "after correction ") + os.formatBearing((phone.liveVesselTrueHeadingDegrees ?: phone.liveVesselMagneticHeadingDegrees)?.let { h -> correctionValue?.let { h - mount.headingAlignmentOffsetDegrees + it } }), 26, LocalMetro.current.accent)
             if (correctionValue == null) Label(os.t("请输入 −180° 到 180°。", "Enter a value from −180° to 180°."), 14, LocalMetro.current.muted)
             MetroButton(os.t("保存微调", "save correction"), {
                 correctionValue?.let { value -> runCommand { services.sources.setPhoneHeadingAlignment(value) } }
@@ -269,7 +270,20 @@ import java.util.Locale
             Label(os.t("横倾 ", "heel ") + os.formatAngle((heel?.value as? Number)?.toDouble()) + "   ·   " +
                 os.t("纵倾 ", "pitch ") + os.formatAngle((pitch?.value as? Number)?.toDouble()), 22)
             listOfNotNull(heel?.receivedElapsedRealtime, pitch?.receivedElapsedRealtime).minOrNull()?.let { Label(readingAge(os, it, now), 14, LocalMetro.current.muted) }
-            Label(os.t("根据重力测量真实倾斜；船首向微调不改变这两个读数。", "Measured against gravity; heading correction does not change these readings."), 14, LocalMetro.current.muted)
+            Label(os.t("相对已确认安装零点的倾角，加上你保存的偏差。", "Angles relative to the confirmed installation, plus your saved corrections."),14,LocalMetro.current.muted)
+            MenuRow(os.t("左右与前后倾角微调","fine-tune heel & pitch"),os.t("修正 ","correction ")+os.formatAngle(mount.heelOffsetDegrees)+" · "+os.formatAngle(mount.pitchOffsetDegrees)){if(enabled)correctingAttitude=!correctingAttitude}
+            if(correctingAttitude) {
+                Field(os.t("横倾修正（°）","heel correction (°)"),heelCorrection,{heelCorrection=it},number=true)
+                Label(os.t("正值：右舷下沉；负值：左舷下沉。","Positive: starboard down; negative: port down."),12,LocalMetro.current.muted)
+                Field(os.t("纵倾修正（°）","pitch correction (°)"),pitchCorrection,{pitchCorrection=it},number=true)
+                Label(os.t("正值：船艏抬起；负值：船艏压下。","Positive: bow up; negative: bow down."),12,LocalMetro.current.muted)
+                if(heelValue==null||pitchValue==null) Label(os.t("请输入 −45° 到 45°。","Enter values from −45° to 45°."),14,LocalMetro.current.muted)
+                val previewHeel=(heel?.value as? Number)?.toDouble()?.let{value->heelValue?.let{value-mount.heelOffsetDegrees+it}}
+                val previewPitch=(pitch?.value as? Number)?.toDouble()?.let{value->pitchValue?.let{value-mount.pitchOffsetDegrees+it}}
+                Label(os.t("预览 ","preview ")+os.formatAngle(previewHeel)+" · "+os.formatAngle(previewPitch),22)
+                MetroButton(os.t("保存倾角微调","save attitude corrections"),{if(heelValue!=null&&pitchValue!=null)runCommand{services.sources.setPhoneAttitudeAlignment(heelValue,pitchValue)}},primary=true,enabled=enabled&&heelValue!=null&&pitchValue!=null)
+                MetroButton(os.t("收起","done"),{correctingAttitude=false},enabled=enabled)
+            }
         }
         MetroButton(os.t("我移动了手机", "I moved the phone"), {
             correcting = false
@@ -280,38 +294,11 @@ import java.util.Locale
     if (!pending) state.vesselCalibrationFeedback?.let { Label(phoneCalibrationFeedback(os, it), 15, LocalMetro.current.muted) }
 }
 
-/** 安装示意不使用传感器动画：顶部箭头始终表示用户应实际对齐的船艏。 */
-@Composable private fun PhoneMountDiagram(os: OsStore) {
-    val c = LocalMetro.current
-    val description = os.t("俯视：手机顶部与船艏朝向相同，屏幕朝上固定。", "Top view: phone top edge and bow point the same way; mount the phone face up.")
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Label(os.t("船艏", "bow"), 14, c.muted)
-        Canvas(Modifier.fillMaxWidth().height(140.dp).semantics { contentDescription = description }) {
-            val mid = size.width / 2
-            val width = 46.dp.toPx()
-            val y0 = 9.dp.toPx()
-            val bottom = size.height - 6.dp.toPx()
-            val hull = Path().apply {
-                moveTo(mid, y0)
-                cubicTo(mid - width, y0 + 30.dp.toPx(), mid - width, bottom - 28.dp.toPx(), mid - width * .75f, bottom)
-                lineTo(mid + width * .75f, bottom)
-                cubicTo(mid + width, bottom - 28.dp.toPx(), mid + width, y0 + 30.dp.toPx(), mid, y0)
-                close()
-            }
-            drawPath(hull, c.muted, style = Stroke(1.4.dp.toPx()))
-            val phoneWidth = 29.dp.toPx()
-            val top = 48.dp.toPx()
-            drawRect(c.fg, Offset(mid - phoneWidth / 2, top), androidx.compose.ui.geometry.Size(phoneWidth, 65.dp.toPx()), style = Stroke(2.dp.toPx()))
-            drawLine(c.accent, Offset(mid, top + 9.dp.toPx()), Offset(mid, y0 + 11.dp.toPx()), 2.dp.toPx(), StrokeCap.Round)
-            drawLine(c.accent, Offset(mid, y0 + 11.dp.toPx()), Offset(mid - 5.dp.toPx(), y0 + 18.dp.toPx()), 2.dp.toPx(), StrokeCap.Round)
-            drawLine(c.accent, Offset(mid, y0 + 11.dp.toPx()), Offset(mid + 5.dp.toPx(), y0 + 18.dp.toPx()), 2.dp.toPx(), StrokeCap.Round)
-            drawLine(c.muted, Offset(mid - 6.dp.toPx(), top + 57.dp.toPx()), Offset(mid + 6.dp.toPx(), top + 57.dp.toPx()), 1.5.dp.toPx())
-        }
-    }
-}
-
 internal fun phoneCalibrationFeedback(os: OsStore, feedback: String): String = when (feedback) {
-    "Phone mounting and bow alignment saved." -> os.t("已保存固定方式与船首向校准。", "Mounting and heading calibration saved.")
+    "Phone mounting and bow alignment saved." -> os.t("已把当前固定安装设为零点，船首向已校准。", "Current installation saved as zero; heading calibrated.")
+    "Attitude correction saved." -> os.t("倾角微调已保存，全船应用。","Attitude corrections saved for all apps.")
+    "Enter attitude corrections between -45 and 45 degrees." -> os.t("倾角微调须在 −45° 到 45°。","Attitude corrections must be between −45° and 45°.")
+    "Confirm the fixed installation first." -> os.t("先固定手机并确认当前零点。","Secure the phone and confirm zero first.")
     "Heading correction saved. Attitude is unchanged." -> os.t("船首向微调已保存，横倾与纵倾保持不变。", "Heading correction saved; heel and pitch are unchanged.")
     "Phone moved. Confirm mounting again before using its vessel heading or attitude." -> os.t("已停止采用旧安装的船首向与姿态。固定后重新校准。", "Previous heading and attitude calibration retired. Mount the phone and recalibrate.")
     "Wait for a fresh, undisturbed phone compass reading." -> os.t("请等待新的、未受干扰的手机罗盘读数。", "Wait for a fresh compass reading without interference.")
@@ -320,6 +307,6 @@ internal fun phoneCalibrationFeedback(os: OsStore, feedback: String): String = w
     "No rotation-vector sample is available on this phone." -> os.t("未收到新的姿态读数。保持此页打开，待传感器更新后重试。", "No fresh attitude reading. Keep this page open and retry after the sensor updates.")
     "Resume the trip before confirming a new attitude segment." -> os.t("请先继续航行，再确认新的安装。", "Resume the voyage before confirming a new mount.")
     "Phone calibration could not be saved. Check storage and try again." -> os.t("校准操作未完成。请检查当前校准状态与存储后重试。", "Calibration did not complete. Check the current calibration and storage, then retry.")
-    "Trip attitude frame confirmed." -> os.t("姿态安装已保存，真实横倾与纵倾保持不变。", "Attitude mounting saved; actual heel and pitch are preserved.")
+    "Trip attitude frame confirmed." -> os.t("姿态安装零点已保存。", "Attitude installation reference saved.")
     else -> feedback
 }

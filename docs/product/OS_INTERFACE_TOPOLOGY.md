@@ -11,7 +11,7 @@
 | 用户反馈 | 实现位置与决定 |
 | --- | --- |
 | 1、2 准星底栏与比例尺 | 准星读数、选中对象与底部命令连在一起；比例尺独立在地图左上，显示 1/2/5 系列整数量级。 |
-| 3、26 WP 排版、控件、动效 | Shell 与应用共用 Selawik 字族；标题、分组、正文与辅助文字分级，正文和选择行更紧凑；统一圆形单选、矩形开关/输入框、水平五点进度、按压倾斜与全局文字大小。保留 Android 无动画的系统可访问性行为。 |
+| 3、26 WP 排版、控件、动效 | Shell 与应用共用 Selawik 字族；标题、分组、正文与辅助文字分级，正文和选择行更紧凑；统一 MDL2 单选、圆轨开关、矩形输入框、点状进度、磁贴倾斜与全局文字大小。保留 Android 无动画的系统可访问性行为。 |
 | 4 缩放抖动 | 地理点、线、范围交给同一个地图引擎原生绘制；Compose 不再异步投影地图标注。 |
 | 5、6、15、16、22 应用关系 | 地图内先预览坐标，详情为显式动作；普通应用入口回首页，最近任务恢复原页面实例；跨应用对象操作返回原调用页；根页不显示“返回 OS”；内部返回处理先于 Shell，失活画面不能抢键。 |
 | 7 声纳 | 移除测深调查产品入口、UI、采样订阅和自动恢复；保留历史数据库和真实 NMEA 水深读数。 |
@@ -46,7 +46,7 @@ flowchart TB
         Anchor[守锚]
         Sailing[我的航行]
         Gauges[驾驶台]
-        AisUI[AIS 雷达 / 海图 / 三维]
+        AisUI[AIS 雷达 / 三维 / 船舶]
         DataCenter[数据中心]
         Nmea[船联网]
         Local[数据共享]
@@ -60,6 +60,8 @@ flowchart TB
     Nav --> Shade
     Apps --> Notices
     Settings --> Prefs
+    Settings --> Backdrop[StartBackgroundStore\n私有照片 / 取景偏好]
+    Backdrop --> Prefs
     Tiles --> Prefs
     Prefs --> Formats[DisplayFormats\n全局单位、坐标、字体]
     Formats --> Apps
@@ -70,6 +72,7 @@ flowchart TB
         Coordinator[VoyageSessionCoordinator\n全局航行命令与回执]
         Content[MarineContentService\n内容读取与事务边界]
         Voyage[VoyageSessionState / TripRuntime]
+        Moment[TripMomentJournal / TripEventEntity\n点击快照、同 ID 回执、补记]
         Watch[AnchorSession / AlarmSnapshot]
         Sources[VesselDataHub / AcceptedPosition\n全候选、时效、采纳依据]
         SourcePolicy[VesselSettingsRepository\nmetricSourcePins / POSITION_CONNECTION]
@@ -83,6 +86,9 @@ flowchart TB
     Log --> Marine
     Anchor --> Marine
     Marine --> Coordinator --> Voyage
+    Marine -->|voyages.captureMoment| Moment
+    Sources -->|单次规范快照| Moment
+    Moment --> Voyage
     Marine --> Watch
     Sources --> Marine
     Sources --> Gauges

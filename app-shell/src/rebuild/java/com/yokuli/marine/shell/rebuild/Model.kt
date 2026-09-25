@@ -41,13 +41,18 @@ fun decimal(v: Double?, digits: Int = 1) = v?.takeIf { it.isFinite() }?.let { St
 fun uid() = UUID.randomUUID().toString()
 
 enum class PlaceKind { MARK, ANCHORAGE, MARINA, HAZARD }
+/** 标记时冻结的依据；地图选点没有船位来源，船位观测时间与点击时间分别保留。 */
+data class PlaceCapture(val capturedAtUtc:Long,val positionObservedAtUtc:Long?=null,val positionSource:String?=null) {
+    fun json()=JSONObject().put("capturedAtUtc",capturedAtUtc).put("positionObservedAtUtc",positionObservedAtUtc).put("positionSource",positionSource)
+    companion object {fun from(j:JSONObject)=PlaceCapture(j.getLong("capturedAtUtc"),if(j.isNull("positionObservedAtUtc"))null else j.optLong("positionObservedAtUtc"),j.optString("positionSource").takeIf {it.isNotBlank()&&it!="null"})}
+}
 /** 我的航行拥有的收藏；锚地是坐标的一种用途，不另建重复位置。 */
 data class Place(val id: String = uid(), val name: String, val point: GeoPoint, val note: String = "",
-    val kind: PlaceKind = PlaceKind.MARK, val collection: String = "") {
+    val kind: PlaceKind = PlaceKind.MARK, val collection: String = "",val capture:PlaceCapture?=null) {
     fun json() = JSONObject().put("id",id).put("name",name).put("point",point.json()).put("note",note)
-        .put("kind",kind.name).put("collection",collection)
+        .put("kind",kind.name).put("collection",collection).put("capture",capture?.json())
     companion object { fun from(j:JSONObject) = Place(j.getString("id"),j.getString("name"),GeoPoint.from(j.getJSONObject("point")),j.optString("note"),
-        runCatching { PlaceKind.valueOf(j.optString("kind")) }.getOrDefault(PlaceKind.MARK),j.optString("collection")) }
+        runCatching { PlaceKind.valueOf(j.optString("kind")) }.getOrDefault(PlaceKind.MARK),j.optString("collection"),j.optJSONObject("capture")?.let {runCatching{PlaceCapture.from(it)}.getOrNull()}) }
 }
 /** 用户规划的有序折线；保存、预览、导航是三个独立动作。 */
 data class Route(val id: String = uid(), val name: String, val points: List<GeoPoint>) {
@@ -145,6 +150,7 @@ class OsStore(val context: Context) {
         it.optString("app").takeIf { name -> AppId.entries.any { a -> a.name == name } }?.let { name -> TileSpec(name,it.optInt("size",2).takeIf { s -> s in listOf(1,2,4) } ?: 2) }
     } ?: listOf(TileSpec("CHART",4),TileSpec("PLACES"),TileSpec("LIBRARY"),TileSpec("DATA"),TileSpec("NMEA"),TileSpec("SETTINGS",4)))
     val shell by lazy { WpShellRuntime(this) }
+    val startBackground by lazy { StartBackgroundStore(this) }
     var page by mutableStateOf("start")
     private val backStack = mutableListOf<String>()
     var recent by mutableStateOf(listOf<String>())
@@ -166,6 +172,8 @@ class OsStore(val context: Context) {
     var navigationRoute by mutableStateOf<Route?>(runCatching { Route.from(initial.getJSONObject("navigationSnapshot")) }.getOrNull()
         ?: routes.firstOrNull { it.id == activeRouteId }?.copy(points=routes.first { it.id == activeRouteId }.points.toList()))
     var routeLeg by mutableIntStateOf(initial.optInt("routeLeg",0))
+    /** 用户明确选择的启动偏好；导航和航行记录仍由两条独立命令控制。 */
+    var recordWhenNavigating by mutableStateOf(initial.optBoolean("recordWhenNavigating",false))
     var recordingActive by mutableStateOf(false)
     var recordingPaused by mutableStateOf(false)
     var recordedSegments by mutableStateOf<List<List<GeoPoint>>>(emptyList())
@@ -262,8 +270,11 @@ class OsStore(val context: Context) {
         // 新请求触发真实原生相机复位，不能仅更新坐标文案。
         fitRequest = null; cameraRequest = snapshot.center to snapshot.zoom
     }
-    fun mark() {
-        sailing.put(Place(name=t("标记 ${places.size+1}","mark ${places.size+1}"),point=center))
+    /** 调用者明确传入准星或本船快照；提交后读同一对象的写入回执，不重新采样。 */
+    fun mark(point:GeoPoint, capture:PlaceCapture):Place {
+        val place=Place(name=t("标记 ${places.size+1}","Mark ${places.size+1}"),point=point,capture=capture)
+        sailing.put(place)
+        return place
     }
     fun startRoute(route: Route) { navigationRoute=route.copy(points=route.points.toList()); activeRouteId = route.id; displayedRouteId = route.id; routeLeg = 0; save(); openLinked("chart"); fly(route.points.first()) }
     fun advanceRoute() {
@@ -278,6 +289,7 @@ class OsStore(val context: Context) {
             .put("tiles",JSONArray(tiles.map { JSONObject().put("app",it.app).put("size",it.size) }))
             .put("camera",center.json()).put("zoom",zoom).put("mapMode",mapMode)
             .put("activeRoute",activeRouteId ?: "").put("routeLeg",routeLeg)
+            .put("recordWhenNavigating",recordWhenNavigating)
             .put("navigationSnapshot",navigationRoute?.takeIf { activeRouteId != null }?.json())
             .put("draft",JSONArray(draftRoute.map {it.json()})).put("editingRoute",editingRouteId ?: "")
             .put("host",nmeaHost).put("port",nmeaPort).put("protocol",nmeaProtocol).put("serverPort",serverPort).put("positionSource",positionSource)

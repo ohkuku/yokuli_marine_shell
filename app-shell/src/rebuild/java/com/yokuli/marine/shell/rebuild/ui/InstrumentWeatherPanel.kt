@@ -145,9 +145,9 @@ private data class PressureLoad<T>(val data: T? = null, val failed: Boolean = fa
             }
         }
     }
-    if (choosing) Dialog(onDismissRequest = { choosing = false }) {
+    if (choosing) AppDialog(onDismissRequest = { choosing = false }) {
         AppBackHandler { choosing = false }
-        Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).background(c.bg).border(1.dp, c.muted).verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        AppDialogSurface {
             AppSection(os.t("回看哪个来源", "choose history source"))
             if (liveKey != null) ChoiceRow(os.t("跟随实时来源", "follow the live source"), pinnedSource == null, live.sourceIdentity?.displayName) { pinnedSource = null; selectedAt = null; choosing = false }
             known.forEach { source -> ChoiceRow(source.name, pinnedSource == source.key) { pinnedSource = source.key; selectedAt = null; choosing = false } }

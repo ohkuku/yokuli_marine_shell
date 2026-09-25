@@ -88,13 +88,14 @@ import kotlin.math.roundToInt
             Box(Modifier.fillMaxWidth().height(30.dp+(safe.top/density).dp)) {
                 if(banner!=null && bannerSegment!=null)Row(Modifier
                     .absoluteOffset(x=(bannerSegment.left/density).dp,y=(safe.top/density).dp)
-                    .width((bannerSegment.width/density).dp).height(30.dp).clipToBounds().background(c.accent)
+                    .width((bannerSegment.width/density).dp).height(30.dp).clipToBounds().background(c.panel)
+                    .semantics { liveRegion = LiveRegionMode.Polite }
                     .clickable(onClickLabel=os.t("处理通知","open notification")) {os.openNotification(banner.id)}
                     .padding(horizontal=4.dp),verticalAlignment=Alignment.CenterVertically,
                     horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    if(bannerSegment.width/density>=64f)Glyph(banner.app?.icon ?: "connect",Modifier.size(18.dp),c.onAccent)
+                    if(bannerSegment.width/density>=64f)Glyph(banner.app?.icon ?: "connect",Modifier.size(18.dp),c.accentText)
                     Label((banner.app?.let(os::title) ?: "Yokuli OS")+" · "+banner.text(os),13,
-                        c.onAccent,Modifier.weight(1f),maxLines=1)
+                        c.fg,Modifier.weight(1f),maxLines=1)
                 }
             }
         }

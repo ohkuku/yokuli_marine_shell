@@ -547,6 +547,10 @@ interface TripDao{
  @Query("SELECT * FROM trip_sessions ORDER BY id") suspend fun allSessionsNow():List<TripSessionEntity>
  @Query("SELECT * FROM trip_sessions WHERE id=:id LIMIT 1") suspend fun session(id:Long):TripSessionEntity?
  @Insert suspend fun insertSamples(values:List<TripSampleEntity>)
+ /** USER_MOMENT 的请求 ID 只允许规范 UUID；精确 JSON token 查询保留同 ID 幂等性。 */
+ @Query("SELECT * FROM trip_events WHERE type='USER_MOMENT' AND detailJson LIKE :requestToken LIMIT 1") suspend fun capturedMoment(requestToken:String):TripEventEntity?
+ @Query("UPDATE trip_events SET detailJson=:detail WHERE id=:id AND tripId=:tripId AND type='USER_MOMENT'") suspend fun updateCapturedMoment(id:Long,tripId:Long,detail:String):Int
+ @Transaction suspend fun insertCapturedMoment(session:TripSessionEntity,event:TripEventEntity):TripEventEntity { updateSession(session); return event.copy(id=insertEvent(event)) }
  @Insert suspend fun insertEvent(value:TripEventEntity):Long
  @Insert suspend fun insertWaypoint(value:TripWaypointEntity):Long
  @Update suspend fun updateWaypoint(value:TripWaypointEntity)

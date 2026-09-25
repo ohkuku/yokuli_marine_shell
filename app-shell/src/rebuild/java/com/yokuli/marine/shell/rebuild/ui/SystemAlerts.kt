@@ -113,7 +113,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     // The retained domain sorter consumes English semantic keys. Display language must not change alarm priority.
     val primary=SafetyAlertAggregator.sorted(alerts.map{SafetyAlert(it.source,it.severity,it.sortKey,it.detail)}).firstOrNull()?.let{sorted->alerts.first{it.source==sorted.source}}?:return
     var end by remember(active.id){mutableStateOf(false)}
-    Dialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false)) {
+    AppDialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false)) {
         AppDialogSurface {
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 Glyph("warning",Modifier.size(24.dp),Color(0xFFD04848))

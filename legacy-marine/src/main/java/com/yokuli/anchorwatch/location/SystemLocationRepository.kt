@@ -20,6 +20,8 @@ import com.yokuli.anchorwatch.domain.model.NavigationFix
 import com.yokuli.anchorwatch.domain.model.PositionProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +33,7 @@ data class PhoneLocationStatus(
     val phase:PhoneLocationPhase=PhoneLocationPhase.OFF,
     val lastFixElapsedRealtime:Long?=null,
     val error:String?=null,
+    val selectionPending:Boolean=false,
 )
 
 @Singleton
@@ -45,6 +48,9 @@ class SystemLocationRepository @Inject constructor(
     private val _recentFixes = MutableStateFlow<List<NavigationFix>>(emptyList())
     val recentFixes = _recentFixes.asStateFlow()
     private var appEnabled = false
+    /** 中文：用户明确请求替换船位后的临时采集租约；未提交前不发布为全船船位。 */
+    private var preparingSelection = false
+    private val preparedLocation = MutableStateFlow<Location?>(null)
     private var previewEnabled = false
     private var backgroundEnabled = false
     @Volatile private var sourcePermitsPhone=false
@@ -73,7 +79,13 @@ class SystemLocationRepository @Inject constructor(
     private fun publish(location: Location) = synchronized(guard) {
         // A switch away from the NMEA proxy must be backed by a real system
         // position, never by the app's own mock location fed back to itself.
-        if (!sourcePermitsPhone || !(appEnabled||backgroundEnabled) || LocationCompat.isMock(location) || location.provider!=LocationManager.GPS_PROVIDER)return@synchronized
+        if (LocationCompat.isMock(location) || location.provider!=LocationManager.GPS_PROVIDER)return@synchronized
+        if(preparingSelection) {
+            val received=location.elapsedRealtimeNanos/1_000_000L
+            if(location.latitude.isFinite()&&location.longitude.isFinite()&&location.latitude in -90.0..90.0&&location.longitude in -180.0..180.0&&
+                SystemClock.elapsedRealtime()-received in 0L..10_000L&&location.hasAccuracy()&&location.accuracy<=100f) preparedLocation.value=Location(location)
+        }
+        if (!sourcePermitsPhone || !(appEnabled||backgroundEnabled))return@synchronized
         val now=SystemClock.elapsedRealtime()
         val received = location.elapsedRealtimeNanos.takeIf { it > 0 }?.div(1_000_000) ?: now
         // Last-known callbacks and NETWORK fixes can arrive after newer GNSS.
@@ -116,6 +128,25 @@ class SystemLocationRepository @Inject constructor(
         publish(location)
     }
 
+    suspend fun preparePositionSelection():Boolean {
+        synchronized(guard){
+            check(hasPermission()){ "Phone position requires precise location permission." }
+            check(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){ "Turn on Android location before choosing phone position." }
+            preparedLocation.value=null;preparingSelection=true;reconcileLocked()
+            check(_status.value.phase!=PhoneLocationPhase.ERROR){ "Phone location could not start." }
+        }
+        return withTimeoutOrNull(20_000L){preparedLocation.first{it!=null}}!=null
+    }
+    fun preparedPositionIsReady():Boolean=synchronized(guard) {
+        preparedLocation.value?.let { SystemClock.elapsedRealtime()-it.elapsedRealtimeNanos/1_000_000L in 0L..10_000L }==true
+    }
+    fun finishPositionSelection(adopted:Boolean)=synchronized(guard) {
+        val position=preparedLocation.value
+        if(adopted){sourcePermitsPhone=true;_sourceConsent.value=true;appEnabled=true}
+        preparingSelection=false;preparedLocation.value=null
+        if(adopted&&position!=null)publish(position)
+        reconcileLocked()
+    }
     fun hasPermission(): Boolean = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
     fun setAppEnabled(enabled: Boolean) = synchronized(guard) { appEnabled = enabled; reconcileLocked() }
     fun setPreviewEnabled(enabled: Boolean) = synchronized(guard) { previewEnabled = enabled; reconcileLocked() }
@@ -124,7 +155,7 @@ class SystemLocationRepository @Inject constructor(
 
     @SuppressLint("MissingPermission")
     private fun reconcileLocked() {
-        val requested=sourcePermitsPhone&&(appEnabled||backgroundEnabled)
+        val requested=preparingSelection||sourcePermitsPhone&&(appEnabled||backgroundEnabled)
         val permission=hasPermission()
         val providerEnabled=runCatching{locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)}.getOrDefault(false)
         if(!requested||!permission){
@@ -141,10 +172,10 @@ class SystemLocationRepository @Inject constructor(
                 running=true
                 if(providerEnabled)locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let(::publish)
             }.exceptionOrNull()
-            if(error!=null){_status.value=PhoneLocationStatus(PhoneLocationPhase.ERROR,error=error.message);return}
+            if(error!=null){_status.value=PhoneLocationStatus(PhoneLocationPhase.ERROR,error=error.message,selectionPending=preparingSelection);return}
         }
         if(!providerEnabled)_fix.value=null
-        _status.value=PhoneLocationStatus(if(providerEnabled)PhoneLocationPhase.LISTENING else PhoneLocationPhase.PROVIDER_DISABLED,_fix.value?.receivedElapsedRealtime)
+        _status.value=PhoneLocationStatus(if(providerEnabled)PhoneLocationPhase.LISTENING else PhoneLocationPhase.PROVIDER_DISABLED,_fix.value?.receivedElapsedRealtime,selectionPending=preparingSelection)
     }
 
     private fun appendRecent(fix: NavigationFix) {

@@ -6,11 +6,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -77,12 +79,12 @@ fun routeGuidance(route:Route,index:Int,fix:Fix?,now:Long):RouteGuidance? {
 fun beginNavigation(os:OsStore,route:Route,index:Int,fix:Fix?,now:Long) {
     if(route.points.isEmpty()) return
     os.navigationRoute=route.copy(points=route.points.toList())
-    os.maps.view("chart",os.center,os.zoom).previewRoute=null
+    os.maps.view("chart",os.center,os.zoom).apply {previewRoute=null;selectedPlaceId=null;selectedAisMmsi=null}
     os.activeRouteId=route.id;os.displayedRouteId=route.id;os.routeLeg=index.coerceIn(route.points.indices)
     os.editingRoute=false;os.ruler=emptyList();os.showCrosshair=false
     val point=fix?.takeIf {it.fresh(now)}?.point ?: route.points[os.routeLeg]
     os.fly(point,os.zoom.coerceAtLeast(12.0));os.follow=fix?.fresh(now)==true
-    os.save();os.openLinked("chart")
+    os.save();if(os.shell.appForPage(os.page)?.app!=AppId.CHART)os.openLinked("chart")
 }
 
 fun endNavigation(os:OsStore,arrived:Boolean=false) {
@@ -90,6 +92,13 @@ fun endNavigation(os:OsStore,arrived:Boolean=false) {
     os.activeRouteId=null;os.navigationRoute=null;os.displayedRouteId=null;os.routeLeg=0;os.follow=false;os.save()
     if(arrived) os.notify("已确认到达，导航结束。","Arrival confirmed. Navigation ended.")
     else os.notify("导航已结束。","Navigation ended.")
+}
+
+/** 只推进用户刚才看到的那个目标；另一页面已改目标时，旧面板不能多跳一段。 */
+private fun advanceNavigationTarget(os:OsStore,route:Route,expectedIndex:Int):Boolean {
+    if(os.activeRouteId!=route.id||os.routeLeg!=expectedIndex||expectedIndex>=route.points.lastIndex)return false
+    os.routeLeg=expectedIndex+1;os.displayedRouteId=route.id;os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.save()
+    return true
 }
 
 @Composable fun liveNavigationFix(os:OsStore):Pair<Fix?,Long> {
@@ -108,15 +117,15 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
     else -> os.t("距规划线 ${os.formatDistance(g.offsetMeters)}","${os.formatDistance(g.offsetMeters)} from the planned line")
 }
 
-@Composable fun RouteSketch(os:OsStore,route:Route,selected:Int?=null) {
+@Composable fun RouteSketch(os:OsStore,route:Route,selected:Int?=null,ownPosition:GeoPoint?=null) {
     val c=LocalMetro.current
     Column(Modifier.fillMaxWidth().background(c.panel).padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Label(os.t("航线草图 · 北向上","route sketch · north up"),12,c.muted)
+        Label(if(route.points.size==1)os.t("直线引导预览 · 北向上","Direct guidance · north up")else os.t("航线预览 · 北向上","Route preview · north up"),12,c.muted)
         Canvas(Modifier.fillMaxWidth().height(150.dp)) {
             if(route.points.isEmpty()) return@Canvas
             // Unwrap longitude so a route across ±180° does not span the entire sketch.
             var previous=route.points.first().lon
-            val coords=route.points.map {p ->
+            val coords=(route.points+listOfNotNull(ownPosition)).map {p ->
                 var lon=p.lon
                 while(lon-previous>180) lon-=360
                 while(lon-previous < -180) lon+=360
@@ -131,63 +140,83 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                 val p=coords[index]
                 return Offset((size.width/2+(p.first-(minX+maxX)/2)*scale).toFloat(),(size.height/2+(p.second-(minY+maxY)/2)*scale).toFloat())
             }
-            val path=Path();coords.indices.forEach {i -> val p=at(i);if(i==0) path.moveTo(p.x,p.y) else path.lineTo(p.x,p.y)}
+            val path=Path();route.points.indices.forEach {i -> val p=at(i);if(i==0) path.moveTo(p.x,p.y) else path.lineTo(p.x,p.y)}
             drawPath(path,c.accent,style=Stroke(3.dp.toPx()))
-            val visible=if(coords.size<=50) coords.indices.toList() else listOf(0,coords.lastIndex)+listOfNotNull(selected?.takeIf {it in coords.indices})
+            if(ownPosition!=null) {
+                val own=at(coords.lastIndex);val target=at((selected?:0).coerceIn(route.points.indices))
+                drawLine(c.fg.copy(alpha=.8f),own,target,1.5.dp.toPx(),pathEffect=PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(),4.dp.toPx())))
+                drawCircle(c.bg,7.dp.toPx(),own);drawCircle(c.fg,5.dp.toPx(),own,style=Stroke(2.dp.toPx()))
+            }
+            val visible=if(route.points.size<=50) route.points.indices.toList() else listOf(0,route.points.lastIndex)+listOfNotNull(selected?.takeIf {it in route.points.indices})
             visible.distinct().forEach {i ->
                 val p=at(i);drawCircle(c.bg,7.dp.toPx(),p);drawCircle(if(i==selected) c.accent else c.fg,4.dp.toPx(),p)
             }
         }
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-            Label(os.t("出发 1","start 1"),12,c.muted)
-            Label(os.t("终点 ${route.points.size}","finish ${route.points.size}"),12,c.muted)
+            Label(if(ownPosition!=null)os.t("空心圆：本船","Open circle: your boat")else os.t("保存的航点","Saved waypoints"),12,c.muted)
+            Label(if(route.points.size==1)os.t("实心点：目的地","Dot: destination")else os.t("目标 ${(selected?:0)+1} / ${route.points.size}","Target ${(selected?:0)+1} / ${route.points.size}"),12,c.muted)
         }
     }
 }
 
 @Composable fun StartNavigationDialog(os:OsStore,route:Route,initialTarget:Int=0,onDismiss:()->Unit) {
     val (fix,now)=liveNavigationFix(os)
-    var target by remember(route.id,initialTarget) {mutableIntStateOf(initialTarget.coerceIn(0,(route.points.size-1).coerceAtLeast(0)))}
-    val live=fix?.takeIf {it.fresh(now)}
+    var target by rememberSaveable(route.id,initialTarget) {mutableIntStateOf(initialTarget.coerceIn(0,(route.points.size-1).coerceAtLeast(0)))}
+    var choosing by rememberSaveable(route.id){mutableStateOf(false)}
+    val live=fix?.takeIf {it.fresh(now)&&it.point.valid()}
     val c=LocalMetro.current
-    Dialog(onDismissRequest=onDismiss) {
+    val voyage=os.marine?.voyage?.collectAsState()?.value
+    val single=route.points.size==1
+    val targetPoint=route.points.getOrNull(target)
+    val nearest=live?.let {position->route.points.indices.minByOrNull {distance(position.point,route.points[it])}}
+    val canStartRecording=voyage!=null&&!voyage.active&&!voyage.commandPending&&live!=null&&os.positionSource in listOf("phone","nmea")
+    if(com.yokuli.shell.compose.LocalInternalAppInputEnabled.current)AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface {
-            AppDialogTitle(os.t("开始沿线导航","Start route navigation"))
-            Label(route.name,21,c.accent)
+            AppDialogTitle(if(single)os.t("前往这里","Go here")else os.t("开始沿线导航","Start route navigation"))
+            Label(route.name,20,c.accentText)
             os.activeRoute?.takeIf {it.id!=route.id}?.let {
-                Label(os.t("将替换当前导航：${it.name}","This replaces current navigation: ${it.name}"),16,c.muted)
+                Label(os.t("将替换当前导航：${it.name}","This replaces current navigation: ${it.name}"),15,c.muted)
             }
-            Label(os.t("先去哪个航点？","which waypoint first?"),19)
-            if(live!=null && route.points.size>1) MetroButton(os.t("选择最近的航点","choose nearest waypoint"),{
-                target=route.points.indices.minByOrNull {distance(live.point,route.points[it])} ?: 0
-            })
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max=190.dp)) {
-                itemsIndexed(route.points) {i,p ->
-                    ChoiceRow(os.t("航点 ${i+1}","waypoint ${i+1}"),i==target,
-                        live?.let {os.formatDistance(distance(it.point,p))} ?: os.formatCoordinates(p)) {target=i}
+            RouteSketch(os,route,target,live?.point)
+            if(targetPoint!=null)Label(live?.let {os.t("距本船 ","From your boat ")+os.formatDistance(distance(it.point,targetPoint))} ?: os.formatCoordinates(targetPoint),20)
+            if(!single) {
+                MenuRow(os.t("先到航点 ${target+1}","Start with waypoint ${target+1}"),os.t("按保存顺序到终点 · 更改起点","Then follow the saved order · change start")){choosing=!choosing}
+                if(target>0)Label(os.t("本次会跳过前 $target 个航点。","The first $target waypoints will be skipped."),12,c.accentText)
+                if(choosing) {
+                    if(nearest!=null)Label(os.t("最近的是航点 ${nearest+1}；是否跳过前面的航段由你决定。","Waypoint ${nearest+1} is nearest; you decide whether to skip earlier legs."),12,c.muted)
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max=190.dp)) {
+                        itemsIndexed(route.points) {i,p ->ChoiceRow(os.t("航点 ${i+1}","Waypoint ${i+1}"),i==target,
+                            live?.let {os.formatDistance(distance(it.point,p))} ?: os.formatCoordinates(p)){target=i;choosing=false}}
+                    }
                 }
             }
-            Label(os.t("按保存的航点依次引导。图上的连接线不判断水深、障碍或通航条件。","Guidance follows your saved waypoints. Connecting lines do not assess depth, obstacles or navigability."),15,c.muted)
-            if(live==null) Label(os.t("尚无可用船位；可以先准备航线，定位恢复后显示距离与方位。","Position unavailable. Prepare the route now; distance and bearing appear when position returns."),17,LocalMetro.current.muted)
-            MetroButton(if(live!=null) os.t("开始导航","start navigation") else os.t("开始并等待船位","start and wait for position"),{
+            Label(os.t("这里只是几何引导，不会自动避开浅水或障碍。","This is geometric guidance; it does not route around shallow water or obstacles."),12,c.muted)
+            if(live==null)MenuRow(os.t("等待更新船位","Waiting for a position update"),os.t("检查船位来源","Check position source")){os.openLinked("data_center:source/POSITION")}
+            if(voyage?.active==true)Label(if(voyage.phase==com.yokuli.runtime.contract.VoyagePhase.PAUSED)os.t("现有记录保持暂停；导航不会改变它。","Existing recording stays paused; navigation does not change it.")else os.t("航行记录正在进行，将继续使用本次记录。","Your current voyage recording continues."),12,c.muted)
+            else AppCheckRow(os.t("同时开始航行记录","Also start voyage recording"),os.recordWhenNavigating&&canStartRecording,
+                if(canStartRecording)os.t("记住这次选择；导航与记录可分别结束。","Remember this choice; guidance and recording end separately.")else os.t("收到船位后，可从海图单独开始记录。","Start recording separately from Chart once position is available."),enabled=canStartRecording){os.recordWhenNavigating=!os.recordWhenNavigating;os.save()}
+            MetroButton(if(live!=null) os.t("开始导航","Start navigation") else os.t("开始并等待船位","Start and wait for position"),{
+                if(os.recordWhenNavigating&&canStartRecording)os.marine?.startRecording(route.name)
                 beginNavigation(os,route,target,fix,now);onDismiss()
-            },primary=true,enabled=route.points.isNotEmpty())
-            MetroButton(os.t("取消","cancel"),onDismiss)
+            },primary=true,enabled=route.points.isNotEmpty()&&route.points.all(GeoPoint::valid))
+            MetroButton(os.t("取消","Cancel"),onDismiss)
         }
     }
 }
 
 @Composable fun ChartNavigationCard(os:OsStore,fix:Fix?,now:Long) {
     val c=LocalMetro.current
+    val inputEnabled=com.yokuli.shell.compose.LocalInternalAppInputEnabled.current
     val active=os.activeRoute
     val route=chartRoute(os) ?: return
-    var start by remember(route.id) {mutableStateOf(false)}
-    var manage by remember(route.id) {mutableStateOf(false)}
+    var start by rememberSaveable(route.id) {mutableStateOf(false)}
+    var manage by rememberSaveable(route.id) {mutableStateOf(false)}
+    var confirmTarget by rememberSaveable(route.id){mutableStateOf<Int?>(null)}
     val navigating=chartIsNavigating(os)
     val guidance=if(navigating) routeGuidance(route,os.routeLeg,fix,now) else null
     Column(Modifier.fillMaxWidth().background(c.bg.copy(alpha=.96f)).padding(horizontal=14.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-            Column(Modifier.weight(1f).clickable {os.open("route:${route.id}")}) {
+            Column(Modifier.weight(1f).clickable(enabled=inputEnabled) {os.open("route:${route.id}")}) {
                 Label(if(navigating) os.t("${route.name} · 目标 ${guidance?.index?.plus(1) ?: 1}/${route.points.size}","${route.name} · target ${guidance?.index?.plus(1) ?: 1}/${route.points.size}")
                     else os.t("已选航线 · ${route.name}","selected route · ${route.name}"),15,c.accent,maxLines=1)
                 if(guidance!=null) {
@@ -198,27 +227,44 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
         }
         if(guidance!=null) {
             Label(guidance.remainingMeters?.let {os.t("剩余 ${os.formatDistance(it)} · ${offsetLabel(os,guidance)}","${os.formatDistance(it)} remaining · ${offsetLabel(os,guidance)}")}
-                ?: os.t("距离与偏离暂停更新 · 点此检查来源","distance and offset paused · check source"),12,c.muted,
-                Modifier.clickable {manage=true})
-            if(guidance.nearTarget) Label(os.t("目标附近（${os.formatLength(ARRIVAL_NEAR_METERS)} 内）· 点此确认到达","near target (within ${os.formatLength(ARRIVAL_NEAR_METERS)}) · confirm arrival"),15,c.accent,Modifier.clickable {manage=true})
-        } else if(active!=null) Label(os.t("返回当前导航：${active.name}","return to navigation: ${active.name}"),13,c.muted,Modifier.clickable {
+                ?: os.t("距离与偏离暂停更新 · 点此检查来源","Distance and offset paused · check source"),12,c.muted,
+                if(guidance.distanceMeters==null)Modifier.clickable(enabled=inputEnabled) {os.openLinked("data_center:source/POSITION")}else Modifier)
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                if(guidance.nearTarget)Label(os.t("已到目标附近","Near the target"),12,c.muted,Modifier.weight(1f))else Spacer(Modifier.weight(1f))
+                MetroButton(when {guidance.index==route.points.lastIndex->os.t("确认到达","Confirm arrival");guidance.nearTarget->os.t("已到达，下一点","Arrived · next point");else->os.t("下一航点","Next waypoint")},{
+                    if(guidance.nearTarget&&guidance.index<route.points.lastIndex)advanceNavigationTarget(os,route,guidance.index)
+                    else confirmTarget=guidance.index
+                })
+            }
+        } else if(active!=null) Label(os.t("返回当前导航：${active.name}","return to navigation: ${active.name}"),13,c.muted,Modifier.clickable(enabled=inputEnabled) {
             os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=active.id;os.showCrosshair=false;os.save()
         })
     }
     if(start) StartNavigationDialog(os,route) {start=false}
     if(manage) NavigationActionsDialog(os,route) {manage=false}
+    confirmTarget?.takeIf {inputEnabled}?.let {expected->AppDialog(onDismissRequest={confirmTarget=null}){AppDialogSurface {
+        val final=expected==route.points.lastIndex
+        AppDialogTitle(if(final)os.t("到达并结束导航？","Arrive and end navigation?")else os.t("跳过当前航点？","Skip the current waypoint?"))
+        Label(if(final)os.t("由你确认已到达目的地。航行记录会继续独立运行。","Confirm you have arrived. Voyage recording continues independently.")else os.t("尚未确认到达航点 ${expected+1}。继续将直接引导至航点 ${expected+2}。","Arrival at waypoint ${expected+1} is not confirmed. Continue directly to waypoint ${expected+2}."),15)
+        MetroButton(if(final)os.t("确认到达并结束","Confirm arrival and finish")else os.t("前往下一航点","Go to next waypoint"),{
+            if(os.activeRouteId==route.id&&os.routeLeg==expected){if(final)endNavigation(os,true)else advanceNavigationTarget(os,route,expected)}
+            confirmTarget=null
+        },primary=true)
+        MetroButton(os.t("继续当前导航","Keep current guidance"),{confirmTarget=null})
+    }}}
 }
 
 @Composable fun NavigationActionsDialog(os:OsStore,route:Route,onDismiss:()->Unit) {
     val route=os.activeRoute?.takeIf {it.id==route.id} ?: return
-    LaunchedEffect(route.id) {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id}
+    val inputEnabled=com.yokuli.shell.compose.LocalInternalAppInputEnabled.current
+    LaunchedEffect(route.id,inputEnabled) {if(inputEnabled){os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id}}
     val (fix,now)=liveNavigationFix(os)
     val guidance=routeGuidance(route,os.routeLeg,fix,now) ?: return
     val c=LocalMetro.current
-    var choose by remember {mutableStateOf(false)}
-    var stopping by remember {mutableStateOf(false)}
-    var arrival by remember {mutableStateOf(false)}
-    Dialog(onDismissRequest=onDismiss) {
+    var choose by rememberSaveable(route.id) {mutableStateOf(false)}
+    var stopping by rememberSaveable(route.id) {mutableStateOf(false)}
+    var arrival by rememberSaveable(route.id) {mutableStateOf(false)}
+    if(inputEnabled)AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface {
             AppDialogTitle(if(stopping) os.t("结束导航？","End navigation?") else if(choose) os.t("切换目标","Change target") else os.t("正在导航","Navigating"))
             Label(route.name,20,c.accent)
@@ -232,7 +278,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max=300.dp)) {
                     itemsIndexed(route.points) {i,p -> MenuRow(os.t("航点 ${i+1}","waypoint ${i+1}"),
                         if(i==guidance.index) os.t("当前目标","current target") else fix?.takeIf {it.fresh(now)}?.let {os.formatDistance(distance(it.point,p))}) {
-                        os.routeLeg=i;os.displayedRouteId=route.id;os.showCrosshair=false;os.save();os.openLinked("chart");onDismiss()
+                        os.routeLeg=i;os.displayedRouteId=route.id;os.showCrosshair=false;os.save();if(os.shell.appForPage(os.page)?.app!=AppId.CHART)os.openLinked("chart");onDismiss()
                         os.maps.view("chart",os.center,os.zoom).previewRoute=null
                     } }
                 }
@@ -244,16 +290,16 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                 Label(guidance.remainingMeters?.let {os.t("沿后续航点剩余 ${os.formatDistance(it)}","${os.formatDistance(it)} remaining via subsequent waypoints")} ?: os.t("剩余距离不可用","remaining distance unavailable"),16,c.muted)
                 Label(offsetLabel(os,guidance),17,c.muted)
                 guidance.accuracy?.let {Label(os.t("船位精度约 ±${os.formatLength(it)}","position accuracy approximately ±${os.formatLength(it)}"),13,c.muted)}
-                if(guidance.distanceMeters==null) MetroButton(os.t("管理船位来源","manage position sources"),{onDismiss();os.open("nmea:sources")})
+                if(guidance.distanceMeters==null) MetroButton(os.t("检查船位来源","Check position source"),{os.openLinked("data_center:source/POSITION")})
                 if(guidance.nearTarget) {
                     Label(os.t("目标附近（${os.formatLength(ARRIVAL_NEAR_METERS)} 内）。到达由你确认。","Within ${os.formatLength(ARRIVAL_NEAR_METERS)} of the target. You confirm arrival."),16,c.accent)
                     MetroButton(if(guidance.index==route.points.lastIndex) os.t("确认到达终点","confirm final arrival") else os.t("已到达，前往下一点","arrived, go to next"),{
                         if(guidance.index==route.points.lastIndex) {arrival=true;stopping=true}
-                        else {os.routeLeg=guidance.index+1;os.save();os.openLinked("chart");onDismiss()}
+                        else {advanceNavigationTarget(os,route,guidance.index);onDismiss()}
                     },primary=true)
                 }
                 MetroButton(os.t("切换目标航点","change target waypoint"),{choose=true})
-                MetroButton(os.t("查看整条航线","show entire route"),{os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.fitRequest=route.points;os.showCrosshair=false;os.openLinked("chart");onDismiss()})
+                MetroButton(os.t("查看整条航线","show entire route"),{os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.fitRequest=route.points;os.showCrosshair=false;if(os.shell.appForPage(os.page)?.app!=AppId.CHART)os.openLinked("chart");onDismiss()})
                 MetroButton(os.t("结束导航","end navigation"),{stopping=true})
                 MetroButton(os.t("关闭","close"),onDismiss)
             }

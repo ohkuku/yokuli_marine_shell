@@ -105,6 +105,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
  private val tripRuntime:TripRuntime,
  private val anchorTelemetry:AnchorTelemetryRuntime,
 ){
+ private val phoneSourceGeneration=AtomicLong(0L)
+ private var phoneSourcePreparation:Job?=null
  private lateinit var host:RuntimeServiceHost
  private lateinit var tripActor:SerialRuntimeActor
  private lateinit var commandActor:SerialRuntimeActor
@@ -287,33 +289,57 @@ class YokuliRuntimeCoordinator @Inject constructor(
   when(command){
    RuntimeCommand.NetworkChanged->{refreshNotification()}
    is RuntimeCommand.ChangeSystemPosition->launchCommand{
-    if(command.source==GpsDataSource.NMEA){
-     val pin=navigation.positionConnectionId()
-     require(pin!=null&&navigation.isConnectionOpen(pin)){"Connect the selected NMEA position input first"}
-    }
+    val generation=phoneSourceGeneration.incrementAndGet()
+    phoneSourcePreparation?.cancel();systemLocation.finishPositionSelection(false)
     val previous=preferences.settings.first().gpsDataSource
     val changed=previous!=command.source
-    if(changed)anchorActor.execute{conditionRuntime.flush();pause();conditionRuntime.sync(activeSession())}
-    preferences.setPositionSource(command.source, clearMock=true)
-    systemLocation.setAppEnabled(command.source in setOf(GpsDataSource.SYSTEM,GpsDataSource.DEMO))
-    if(changed){
-     anchorActor.execute{bindSystemPositionSource(command.source,"${previous.name}_TO_${command.source.name}")}
-     scope.launch{tripRuntime.recordSystemSourceChange("${previous.name}_TO_${command.source.name}")}
+    if(changed) anchorActor.execute { check(activeSession()?.paused!=false) {
+     l("Anchor Watch depends on this source. Pause it explicitly before changing position.","当前守锚依赖此船位来源，请先在守锚中明确暂停。")
+    } }
+    if(command.source==GpsDataSource.NMEA){
+     val pin=navigation.positionConnectionId()
+     require(pin!=null&&navigation.positionSelectionReady(pin,navigation.positionSourcePin())){
+      l("Wait for a valid position from the selected NMEA input; the current source is unchanged.","等待所选 NMEA 连接提供有效船位，当前来源保持不变。")
+     }
     }
+    if(changed&&command.source==GpsDataSource.SYSTEM){
+     check(systemLocation.hasPermission()){ l("Phone position requires precise location permission.","手机定位需要精确位置权限。") }
+     check(ensureLocationForeground(l("Preparing phone position…","正在准备手机船位…"))){ "Android did not allow phone location to start." }
+     // 采集等待不占用控制命令队列；暂停守锚、确认警报等仍可立即处理。
+     preparePhoneSource(previous,generation)
+     return@launchCommand
+    }
+    anchorActor.execute {
+     if(changed)check(activeSession()?.paused!=false){l("Anchor Watch depends on this source. Pause it explicitly before changing position.","当前守锚依赖此船位来源，请先在守锚中明确暂停。")}
+     preferences.setPositionSource(command.source, clearMock=true)
+     systemLocation.setAppEnabled(command.source in setOf(GpsDataSource.SYSTEM,GpsDataSource.DEMO))
+     if(changed)bindSystemPositionSource(command.source,"${previous.name}_TO_${command.source.name}")
+    }
+    if(changed)scope.launch{tripRuntime.recordSystemSourceChange("${previous.name}_TO_${command.source.name}")}
     refreshNotification()
    }
    is RuntimeCommand.SelectNmeaPosition->launchCommand{
-    require(navigation.isConnectionOpen(command.connectionId)){"Connect the selected NMEA input first"}
+    phoneSourceGeneration.incrementAndGet();phoneSourcePreparation?.cancel();systemLocation.finishPositionSelection(false)
     val oldConnection=navigation.positionConnectionId();val oldKey=navigation.positionSourcePin()
-    val changed=oldConnection!=command.connectionId||command.sourceKey!=null&&command.sourceKey!=oldKey||preferences.settings.first().gpsDataSource!=GpsDataSource.NMEA
-    if(changed)anchorActor.execute{conditionRuntime.flush();pause();conditionRuntime.sync(activeSession())}
-    if(changed||oldKey==null)navigation.selectPositionConnection(command.connectionId,command.sourceKey)
-    preferences.setPositionSource(GpsDataSource.NMEA, clearMock=true);systemLocation.setAppEnabled(false)
-    if(changed){
-     val detail="NMEA_CONNECTION=$oldConnection TO ${command.connectionId};SOURCE=${command.sourceKey?:"FIRST_VALID_INPUT"}"
-     anchorActor.execute{bindSystemPositionSource(GpsDataSource.NMEA,detail)}
-     scope.launch{tripRuntime.recordSystemSourceChange(detail)}
+    val previous=preferences.settings.first().gpsDataSource
+    val changed=oldConnection!=command.connectionId||command.sourceKey!=null&&command.sourceKey!=oldKey||previous!=GpsDataSource.NMEA
+    val detail="NMEA_CONNECTION=$oldConnection TO ${command.connectionId};SOURCE=${command.sourceKey?:"FIRST_VALID_INPUT"}"
+    // 最后检查与采用在守锚的同一个串行片段，不能在检查后被 ArmWatch 插入。
+    anchorActor.execute {
+     if(changed)check(activeSession()?.paused!=false){l("Anchor Watch depends on this source. Pause it explicitly before changing position.","当前守锚依赖此船位来源，请先在守锚中明确暂停。")}
+     require(navigation.positionSelectionReady(command.connectionId,command.sourceKey)) {
+      l("This input has no valid position yet; the current source is unchanged.","该连接尚无有效船位，当前来源保持不变。")
+     }
+     if(changed||oldKey==null)navigation.selectPositionConnection(command.connectionId,command.sourceKey)
+     try { if(previous!=GpsDataSource.NMEA)preferences.setPositionSource(GpsDataSource.NMEA, clearMock=true) }
+     catch(error:Exception){
+      if(oldConnection!=null)runCatching{navigation.selectPositionConnection(oldConnection,oldKey)}
+      throw error
+     }
+     systemLocation.setAppEnabled(false)
+     if(changed)bindSystemPositionSource(GpsDataSource.NMEA,detail)
     }
+    if(changed)scope.launch{tripRuntime.recordSystemSourceChange(detail)}
     refreshNotification()
    }
    is RuntimeCommand.ArmWatch->launchAnchorCommand(anchorCommandId,AnchorCommandType.START){
@@ -477,6 +503,36 @@ class YokuliRuntimeCoordinator @Inject constructor(
   }
  }
 
+ /** 中文：替换请求只拥有临时 GNSS 租约。采用关系仍在同一个串行运行时提交。 */
+ private fun preparePhoneSource(previous:GpsDataSource,generation:Long) {
+  pendingCommands.incrementAndGet()
+  phoneSourcePreparation=scope.launch {
+   var adopted=false
+   try {
+    check(systemLocation.preparePositionSelection()) {
+     l("No valid phone position yet; the current source is unchanged. Retry with a clear sky view.","手机尚未取得有效船位，当前来源保持不变。请到开阔位置重试。")
+    }
+    withContext(NonCancellable) { commandActor.execute {
+     if(generation!=phoneSourceGeneration.get())return@execute
+     check(preferences.settings.first().gpsDataSource==previous){l("Position selection changed; choose again.","船位选择已改变，请重新选择。")}
+     anchorActor.execute {
+      check(activeSession()?.paused!=false){l("Anchor Watch now depends on the current source; replacement was cancelled.","当前守锚依赖原船位来源，未执行替换。")}
+      check(systemLocation.preparedPositionIsReady()){l("Prepared phone position expired; the current source is unchanged.","准备的手机船位已过期，原来源保持不变。")}
+      preferences.setPositionSource(GpsDataSource.SYSTEM,clearMock=true)
+      adopted=true;systemLocation.finishPositionSelection(true)
+      bindSystemPositionSource(GpsDataSource.SYSTEM,"${previous.name}_TO_SYSTEM")
+     }
+     scope.launch{tripRuntime.recordSystemSourceChange("${previous.name}_TO_SYSTEM")}
+    } }
+   } catch(cancelled:CancellationException){throw cancelled}
+   catch(error:Exception){notifySeparate(l("Position source unchanged","船位来源未更改"),error.message?:l("Try again.","请重试。"),false)}
+   finally {
+    if(generation==phoneSourceGeneration.get())systemLocation.finishPositionSelection(adopted)
+    refreshNotification()
+    if(pendingCommands.decrementAndGet()==0)releaseIfIdle()
+   }
+  }
+ }
  private fun launchCommand(action:suspend ()->Unit){
   pendingCommands.incrementAndGet()
   if(!commandActor.submit{try{action()}catch(error:Throwable){incidentLogger.exception("service","COMMAND_FAILED",error,anchorRuntime.activeSession()?.id);notifySeparate("Safety command failed",error.message?:error.javaClass.simpleName,true)}finally{if(pendingCommands.decrementAndGet()==0)releaseIfIdle()}}){
@@ -780,7 +836,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
    active!=null->l("Watch ${formats.length(snapshot?.distanceMeters)} • NMEA ${navigation.connectionState.value.name}","锚警 ${formats.length(snapshot?.distanceMeters)} · NMEA ${navigation.connectionState.value.name}")
    sonarContinuity==SonarSurveyContinuityState.REAL_INTERRUPTED->l("Sonar survey waiting • NMEA recovery required","声呐调查等待中 · 需要恢复 NMEA")
    proxy.state==MockGpsState.ACTIVE->l("NMEA → Android GPS active • ${proxy.publishedFixes} fixes","NMEA → Android GPS 已开启 · ${proxy.publishedFixes} 个定位点")
-   phonePositionOutput.enabled->l("Phone/App data output active","手机 / App 数据发送中")
+   phonePositionOutput.enabled->l("Phone/App data output active",l("App 数据发送中","手机"))
    localNmeaServer.enabled->l("Phone NMEA service active","本机 NMEA 服务运行中")
    sonarRuntime.status.value.activeSurvey!=null->l("Sonar survey recording • ${sonarRuntime.status.value.activeSurvey?.sampleCount?:0} samples","声呐调查记录中 · ${sonarRuntime.status.value.activeSurvey?.sampleCount?:0} 个样本")
    tripRuntime.activeSession()?.paused==false->l("Trip Watch recording • ${tripRuntime.activeSession()?.sampleCount?:0} samples","航程监控记录中 · ${tripRuntime.activeSession()?.sampleCount?:0} 个样本")
@@ -795,7 +851,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   // sync with background GNSS ownership; NotificationManager.notify alone
   // cannot promote an existing connected-device service to location use.
   val currentNotification=notification(text,safetyAlert,snoozed)
-  val needsLocationType=resources.snapshot().needsSystemLocation&&systemLocation.hasPermission()
+  val needsLocationType=(resources.snapshot().needsSystemLocation||systemLocation.status.value.selectionPending)&&systemLocation.hasPermission()
   if(needsLocationType!=foregroundLocationType)promoteForeground(currentNotification,needsLocationType)
   else notificationCoordinator.publishForeground(currentNotification)
  }

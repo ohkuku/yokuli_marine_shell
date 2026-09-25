@@ -58,11 +58,11 @@ data class WpMotionPlan(
     }
 }
 
-/** 兼容旧调用字段；默认值已改为 W10M 短位移/缩放过渡，不再重播 WP8 的秒级翻页录屏。 */
+/** W10M 控件配合用户选择保留的经典 Shell 翻转；内部子页仍使用紧凑转场。 */
 data class WpMotionTimings(
     val pageSettleVisibleWindowMillis: Int = W10MobileMotion.PageMillis,
-    val appOpenVisibleWindowMillis: Int = W10MobileMotion.AppMillis,
-    val backReturnVisibleWindowMillis: Int = W10MobileMotion.PageMillis,
+    val appOpenVisibleWindowMillis: Int = 520,
+    val backReturnVisibleWindowMillis: Int = 440,
     val derivedModuleTransitionMillis: Int = W10MobileMotion.PageMillis,
     val derivedSearchTransitionMillis: Int = W10MobileMotion.ContentMillis,
     val derivedTransientMillis: Int = W10MobileMotion.OverlayMillis,
@@ -104,15 +104,12 @@ object WpMotionPolicy {
             contentExitMillis = timings.reducedMotionMillis / 2, targetEntranceMillis = timings.reducedMotionMillis,
             evidence = WpMotionEvidence.REDUCED_MOTION)
         return when (transition) {
-            WpSurfaceTransitionKind.DESKTOP_TO_MODULE, WpSurfaceTransitionKind.MODULE_LIST_TO_MODULE,
-            WpSurfaceTransitionKind.SEARCH_TO_MODULE -> WpMotionPlan(WpMotionFamily.CONTINUUM,
-                contentExitMillis = 120, targetEntranceMillis = timings.appOpenVisibleWindowMillis.coerceIn(120, W10MobileMotion.AppMillis),
-                initialTranslationYDp = 20f, initialScale = .96f, evidence = WpMotionEvidence.MDL2_ADAPTATION)
+            WpSurfaceTransitionKind.DESKTOP_TO_MODULE -> turnstile(-22f, .12f, 0f, timings.appOpenVisibleWindowMillis)
+            WpSurfaceTransitionKind.MODULE_LIST_TO_MODULE, WpSurfaceTransitionKind.SEARCH_TO_MODULE,
+            WpSurfaceTransitionKind.TASK_ACTIVATE -> turnstile(-18f, .08f, 0f, 360)
             WpSurfaceTransitionKind.MODULE_ROUTE_FORWARD -> slide(1f, timings.derivedModuleTransitionMillis)
             WpSurfaceTransitionKind.MODULE_ROUTE_BACK -> slide(-1f, timings.derivedModuleTransitionMillis)
-            WpSurfaceTransitionKind.MODULE_TO_DESKTOP, WpSurfaceTransitionKind.TASK_ACTIVATE -> WpMotionPlan(WpMotionFamily.CONTINUUM,
-                contentExitMillis = 100, targetEntranceMillis = timings.backReturnVisibleWindowMillis.coerceIn(120, W10MobileMotion.PageMillis),
-                initialScale = .985f, evidence = WpMotionEvidence.MDL2_ADAPTATION)
+            WpSurfaceTransitionKind.MODULE_TO_DESKTOP -> turnstile(22f, -.12f, 1f, timings.backReturnVisibleWindowMillis)
             WpSurfaceTransitionKind.SEARCH_PRESENT, WpSurfaceTransitionKind.RECENTS_PRESENT -> WpMotionPlan(WpMotionFamily.SLIDE,
                 contentExitMillis = 80, targetEntranceMillis = timings.derivedTransientMillis.coerceIn(100, W10MobileMotion.OverlayMillis),
                 initialTranslationYDp = 16f, evidence = WpMotionEvidence.MDL2_ADAPTATION)
@@ -122,6 +119,11 @@ object WpMotionPolicy {
             WpSurfaceTransitionKind.SAFETY_CRITICAL -> none()
         }
     }
+    private fun turnstile(rotation: Float, shift: Float, pivot: Float, duration: Int) = WpMotionPlan(
+        WpMotionFamily.TURNSTILE, contentExitMillis = duration / 4,
+        targetEntranceMillis = duration * 3 / 4, settleMillis = duration / 4,
+        initialRotationYDegrees = rotation, initialTranslationXFraction = shift, transformOriginX = pivot,
+        evidence = WpMotionEvidence.DERIVED_FROM_REVIEWED_SAMPLES)
     private fun slide(direction: Float, duration: Int) = WpMotionPlan(WpMotionFamily.SLIDE,
         contentExitMillis = 100, targetEntranceMillis = duration.coerceIn(120, W10MobileMotion.PageMillis),
         initialTranslationXFraction = .045f * direction, evidence = WpMotionEvidence.MDL2_ADAPTATION)

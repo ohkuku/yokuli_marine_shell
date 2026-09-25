@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.W10MobileMotion
+import com.yokuli.marine.core.design.LocalReducedMotion
 import com.yokuli.shell.compose.LocalInternalAppInputEnabled
 
 /**
@@ -34,6 +35,7 @@ internal fun <T> AppPageTransition(
     modifier: Modifier = Modifier,
     content: @Composable (T) -> Unit,
 ) {
+    val reduced = LocalReducedMotion.current
     val distance = with(LocalDensity.current) { 32.dp.roundToPx() }
     val activePageKey = pageKey(targetState)
     val parentInputEnabled = LocalInternalAppInputEnabled.current
@@ -43,13 +45,16 @@ internal fun <T> AppPageTransition(
             modifier = Modifier.fillMaxSize(),
             contentKey = pageKey,
             transitionSpec = {
-                val direction = if (pageDepth(this.targetState) < pageDepth(this.initialState)) -1 else 1
-                ((slideInHorizontally(tween(W10MobileMotion.PageMillis, easing = W10MobileMotion.EntranceEasing)) {
+                val from = pageDepth(this.initialState)
+                val to = pageDepth(this.targetState)
+                // 同层对象替换不伪装为进入子页面；Pivot 的跟手位移仍只归 Pager 所有。
+                val direction = if (from == to || reduced) 0 else if (to < from) -1 else 1
+                ((slideInHorizontally(tween(if (reduced) 0 else W10MobileMotion.PageMillis, easing = W10MobileMotion.EntranceEasing)) {
                     direction * distance
-                } + fadeIn(tween(W10MobileMotion.ContentMillis))) togetherWith
-                    (slideOutHorizontally(tween(W10MobileMotion.ContentMillis, easing = W10MobileMotion.ExitEasing)) {
+                } + fadeIn(tween(if (reduced) 0 else W10MobileMotion.ContentMillis))) togetherWith
+                    (slideOutHorizontally(tween(if (reduced) 0 else W10MobileMotion.ContentMillis, easing = W10MobileMotion.ExitEasing)) {
                         -direction * distance / 2
-                    } + fadeOut(tween(W10MobileMotion.ContentMillis)))).using(null)
+                    } + fadeOut(tween(if (reduced) 0 else W10MobileMotion.ContentMillis)))).using(null)
             },
             label = "app-page",
         ) { page ->

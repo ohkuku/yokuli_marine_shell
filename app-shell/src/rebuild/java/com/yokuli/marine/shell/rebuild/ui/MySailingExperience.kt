@@ -6,6 +6,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -93,7 +94,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             }
         } }
     }
-    if(choosingKind)Dialog(onDismissRequest={choosingKind=false}) {
+    if(choosingKind)AppDialog(onDismissRequest={choosingKind=false}) {
         AppDialogSurface() {
             AppDialogTitle(os.t("显示坐标","show places"))
             ChoiceRow(os.t("全部坐标","all places"),kind==null) {kind=null;choosingKind=false}
@@ -102,7 +103,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
         }
     }
     if(create) CoordinateEditor(os,null,{create=false}) { place -> repo.put(place);create=false;os.open("place:${place.id}") }
-    pending?.let { content -> Dialog(onDismissRequest={pending=null}) {
+    pending?.let { content -> AppDialog(onDismissRequest={pending=null}) {
         AppDialogSurface() {
             AppDialogTitle(os.t("导入这份 GPX","import this GPX"))
             Label(os.t("${content.places.size} 个坐标，${content.routes.size} 条路线","${content.places.size} places, ${content.routes.size} routes"),15)
@@ -147,11 +148,17 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             CoordinateMapPreview(os,listOf(MapPoint(place.id,place.point,place.name,os.accent)),place.point)
             Label(place.kind.label(os),17,LocalMetro.current.accentText)
             Label(os.formatCoordinates(place.point),20)
-            fix?.takeIf {it.fresh(now)}?.let { Label("${os.formatDistance(distance(it.point,place.point))} · ${os.formatBearing(bearing(it.point,place.point))}T",31) }
+            fix?.takeIf {it.fresh(now)}?.let { Label("${os.formatDistance(distance(it.point,place.point))} · ${os.formatBearing(bearing(it.point,place.point))}T",24) }
+            PlaceSaveFeedback(os,place)
+            place.capture?.let {capture->
+                val formatter=java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.MEDIUM,if(os.chinese)java.util.Locale.SIMPLIFIED_CHINESE else java.util.Locale.ENGLISH)
+                Label(os.t("标记于 ","Marked ")+formatter.format(java.util.Date(capture.capturedAtUtc)),12,LocalMetro.current.muted)
+                Label(capture.positionSource?.let {source->os.t("船位来源：","Position source: ")+source+(capture.positionObservedAtUtc?.let {" · "+formatter.format(java.util.Date(it))} ?: "")} ?: os.t("地图上选择的位置","Position chosen on the chart"),12,LocalMetro.current.muted)
+            }
             if(place.collection.isNotBlank()) Label(place.collection,18,LocalMetro.current.muted)
             if(place.note.isNotBlank()) Label(place.note,15)
-            MetroButton(os.t("在海图上查看","show on chart"),{os.fly(place.point);os.showCrosshair=true;os.openLinked("chart")},primary=true)
-            MetroButton(os.t("前往这里","go here"),{start=true})
+            MetroButton(os.t("前往这里","Go here"),{start=true},primary=true)
+            MetroButton(os.t("在海图上查看","Show on chart"),{os.maps.view("chart",os.center,os.zoom).apply {selectedPlaceId=place.id;selectedAisMmsi=null};os.fly(place.point);os.showCrosshair=false;os.openLinked("chart")})
             MetroButton(os.t("在此设置锚警","prepare anchor watch here"),{os.anchorDraft=AnchorDraft(place.point,place.name);os.openLinked("anchor:setup")})
             MetroButton(os.t("编辑资料","edit place"),{edit=true})
             MetroButton(os.t("删除收藏","delete saved place"),{remove=true})
@@ -178,7 +185,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
     var group by rememberSaveable(initial?.id) {mutableStateOf(initial?.collection.orEmpty())}
     var kind by rememberSaveable(initial?.id) {mutableStateOf(initial?.kind?:PlaceKind.MARK)}
     val point=preservedCoordinate(initial?.point,initialLatitude,initialLongitude,latitude,longitude)
-    Dialog(onDismissRequest=onDismiss) {
+    if(com.yokuli.shell.compose.LocalInternalAppInputEnabled.current)AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface() {
             AppDialogTitle(os.t("地点资料","place details"))
             Field(os.t("名称","name"),name,{name=it.take(100)})
@@ -188,8 +195,24 @@ fun PlaceKind.label(os:OsStore)=when(this) {
             Field(os.t("集合","collection"),group,{group=it.take(80)})
             Field(os.t("笔记","notes"),note,{note=it.take(20000)},multiline=true)
             if(point==null&&(latitude.isNotBlank()||longitude.isNotBlank())) Label(os.t("纬度须在 -90 到 90，经度须在 -180 到 180","Latitude must be -90…90, longitude -180…180"),15,LocalMetro.current.muted)
-            MetroButton(os.t("保存","save"),{point?.let {onSave(Place(placeId,name.trim(),it,note,kind,group.trim()))}},primary=true,enabled=name.isNotBlank()&&point!=null)
+            MetroButton(os.t("保存","save"),{point?.let {newPoint->onSave(Place(placeId,name.trim(),newPoint,note,kind,group.trim(),initial?.takeIf {it.point==newPoint}?.capture))}},primary=true,enabled=name.isNotBlank()&&point!=null)
             MetroButton(os.t("取消","cancel"),onDismiss)
+        }
+    }
+}
+
+/** 同一地点在海图和详情使用相同落盘回执；失败原地重试不产生第二个地点。 */
+@Composable internal fun PlaceSaveFeedback(os:OsStore,place:Place) {
+    val commit=os.sailing.placeCommit(place.id) ?: return
+    val persistence by os.persistenceState.collectAsState()
+    var result by remember(commit){mutableStateOf<DurableCommitResult?>(null)}
+    LaunchedEffect(commit){result=commit.result.await()}
+    when {
+        result==DurableCommitResult.SAVED||persistence.durableRevision>=commit.revision->Label(os.t("已保存","Saved"),12,LocalMetro.current.muted)
+        result==null->MetroProgress(os.t("正在保存位置…","Saving position…"))
+        else->Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+            Label(os.t("尚未保存","Not saved yet"),12,LocalMetro.current.accentText,Modifier.weight(1f))
+            MetroButton(os.t("重试保存","Retry save"),{os.sailing.put(os.places.firstOrNull {it.id==place.id} ?: place)})
         }
     }
 }

@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.collect
 @Composable
 fun OsExperience(os: OsStore) {
     val shell = os.shell
+    val startBackdrop = rememberStartBackdrop(os)
     val state by shell.engine.state.collectAsState()
     val underlayFocus = remember { FocusRequester() }
     val shadeBlocked = os.notificationShade.blocksInput
@@ -111,7 +112,7 @@ fun OsExperience(os: OsStore) {
     val metrics = rememberShellWindowMetrics()
     val systemMotionDisabled = rememberPlatformReducedMotion()
     val reducedMotion = systemMotionDisabled
-    // 布局仍使用已保存的 Start profile；转场使用当前 Mobile 规范，不套用 WP8 旧录屏时长。
+    // 控件遵循 W10M；应用开合与 Home 保留用户喜欢的经典翻转关系。
     val timings = remember { WpMotionTimings() }
     BackHandler { shell.back() }
     val view = LocalView.current
@@ -149,6 +150,7 @@ fun OsExperience(os: OsStore) {
     }
     CompositionLocalProvider(
         LocalWpTheme provides colors,
+        LocalStartBackdrop provides startBackdrop,
         LocalReducedMotion provides reducedMotion,
         LocalInternalAppInputRouter provides shell.inputRouter,
         LocalShellHorizontalInsets provides shellHorizontalInsets(metrics),

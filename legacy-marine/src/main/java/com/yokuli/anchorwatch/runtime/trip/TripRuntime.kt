@@ -25,6 +25,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -47,6 +48,7 @@ class TripRuntime @Inject constructor(
     private val dashboards:TripDashboardRepository,
     private val publisher:PhonePositionNmeaOutputRuntime,
     private val tripTrack:TripTrackRepository,
+    private val momentJournal:TripMomentJournal,
 ){
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
     private val mutex=Mutex()
@@ -285,6 +287,125 @@ class TripRuntime @Inject constructor(
         dao.updateSessionAndInsertEventAndWaypoint(updated,TripEventEntity(tripId=current.id,timestamp=now,type="USER_WAYPOINT",severity="INFO",latitude=position.latitude,longitude=position.longitude),TripWaypointEntity(tripId=current.id,timestamp=now,latitude=position.latitude,longitude=position.longitude,name=name.trim().ifBlank{"Waypoint ${current.waypointCount+1}"},note=note.trim(),type=type,positionSource=snapshot.position.source.name,sogKnots=snapshot.sogKnots.currentOrHeldValue(),cogTrueDegrees=snapshot.cogTrueDegrees.currentOrHeldValue(),headingTrueDegrees=snapshot.headingTrueDegrees.currentOrHeldValue(),speedThroughWaterKnots=snapshot.speedThroughWaterKnots.currentOrHeldValue(),depthMeters=snapshot.depthMeters.currentOrHeldValue(),trueWindSpeedKnots=snapshot.trueWind.speedKnots.currentOrHeldValue(),trueWindAngleDegrees=snapshot.trueWind.angleDegrees.currentOrHeldValue(),apparentWindSpeedKnots=snapshot.apparentWind.speedKnots.currentOrHeldValue(),apparentWindAngleDegrees=snapshot.apparentWind.angleDegrees.currentOrHeldValue(),heelDegrees=snapshot.attitude.currentOrHeldValue()?.heelDegrees,pitchDegrees=snapshot.attitude.currentOrHeldValue()?.pitchDegrees,pressureHpa=snapshot.pressureHpa.currentOrHeldValue(),positionSourceId=snapshot.position.sourceId(),headingSourceId=snapshot.headingTrueDegrees.sourceId(),headingReference=snapshot.headingTrueDegrees.referenceLabel(),stwSourceId=snapshot.speedThroughWaterKnots.sourceId(),apparentWindAngleSourceId=snapshot.apparentWind.angleDegrees.sourceId(),apparentWindSpeedSourceId=snapshot.apparentWind.speedKnots.sourceId(),trueWindAngleSourceId=snapshot.trueWind.angleDegrees.sourceId(),trueWindSpeedSourceId=snapshot.trueWind.speedKnots.sourceId(),trueWindDirectionSourceId=snapshot.trueWind.directionDegrees.sourceId(),trueWindProvenance=snapshot.trueWind.speedKnots.provenanceLabel(),trueWindReference=snapshot.trueWind.speedKnots.referenceLabel(),depthSourceId=snapshot.depthMeters.sourceId()))
         active=updated
         TripRuntimeResult(true,"Waypoint saved.",updated)
+    }
+
+    private val momentReceipts = kotlinx.coroutines.flow.MutableStateFlow<List<TripMomentReceipt>>(emptyList())
+    val capturedMoments = momentReceipts.asStateFlow()
+    private val momentOperations = mutableSetOf<String>()
+    private val momentLock = Any()
+    init {
+        // 上次退出若发生在日志已落盘、事件事务之前，恢复同一请求，而非重新采样。
+        scope.launch(Dispatchers.IO) { runCatching {momentJournal.pendingIds()}.getOrDefault(emptyList()).forEach(::restoreMoment) }
+    }
+    private fun publishMoment(receipt: TripMomentReceipt) = synchronized(momentLock) {
+        val receipts=momentReceipts.value.filterNot {it.requestId==receipt.requestId}+receipt
+        val finished=setOf(TripMomentStatus.SAVED,TripMomentStatus.REJECTED,TripMomentStatus.NOT_RECOVERABLE)
+        // 已完成条目可从 Room 恢复。未落盘捕获可能只有此处仍持有原数据，不能被历史上限挤掉。
+        val recentFinished=receipts.filter {it.status in finished}.takeLast(64).mapTo(mutableSetOf()){it.requestId}
+        momentReceipts.value=receipts.filter {it.status !in finished||it.requestId in recentFinished}
+    }
+    private fun momentToken(id:String):String {
+        require(java.util.UUID.fromString(id).toString() == id)
+        return "%\"requestId\":\"$id\"%"
+    }
+
+    /** 点击即捕获，页面不提供船位/时间；暂停只补记，不启动采集或恢复记录。 */
+    fun captureMoment(sessionId:Long, name:String):String {
+        val id = java.util.UUID.randomUUID().toString()
+        val current = active
+        val event = captureTripMoment(id, sessionId, name, current?.takeIf { it.id == sessionId }?.paused ?: true, hub.snapshot.value)
+        publishMoment(TripMomentReceipt(id, event))
+        persistMoment(id, event)
+        return id
+    }
+
+    /** 恢复访问只查询或重放已有持久捕获，绝不重新读取当前位置。 */
+    fun restoreMoment(id:String) {
+        if (momentReceipts.value.any { it.requestId == id }) return
+        publishMoment(TripMomentReceipt(id))
+        persistMoment(id, null)
+    }
+    fun retryMoment(id:String) {
+        val receipt = momentReceipts.value.firstOrNull { it.requestId == id }
+        if (receipt?.status in setOf(TripMomentStatus.SAVING, TripMomentStatus.UPDATING, TripMomentStatus.SAVED)) return
+        persistMoment(id, receipt?.event)
+    }
+    private fun persistMoment(id:String, captured:TripEventEntity?) {
+        synchronized(momentLock) { if (!momentOperations.add(id)) return }
+        scope.launch(Dispatchers.IO) {
+            try {
+                mutex.withLock {
+                    val capturedEvent = captured ?: momentJournal.read(id)
+                    if(captured!=null)momentJournal.save(id,captured)
+                    val existing = dao.capturedMoment(momentToken(id))
+                    if (existing != null) {
+                        // 已接受的备注保存也有持久草稿；恢复时仅合并用户字段，保留数据库原始观测。
+                        val draft=capturedEvent?.takeIf {it.id==existing.id && it.id>0}?.let(TripMomentContent::from)
+                        val saved=if(draft!=null) {
+                            val detail=org.json.JSONObject(existing.detailJson).put("name",draft.name).put("note",draft.note).put("kind",draft.kind)
+                            check(dao.updateCapturedMoment(existing.id,existing.tripId,detail.toString())==1)
+                            existing.copy(detailJson=detail.toString())
+                        } else existing
+                        publishMoment(TripMomentReceipt(id,saved,TripMomentStatus.SAVED))
+                        runCatching { momentJournal.remove(id) }
+                        return@withLock
+                    }
+                    val event = capturedEvent
+                    if (event == null) {
+                        publishMoment(TripMomentReceipt(id,status=TripMomentStatus.NOT_RECOVERABLE,reason="CAPTURE_NOT_FOUND"))
+                        return@withLock
+                    }
+                    check(TripMomentContent.from(event)?.requestId==id && event.tripId>0 && event.timestamp>0) {"CAPTURE_PAYLOAD_MISMATCH"}
+                    publishMoment(TripMomentReceipt(id,event,TripMomentStatus.SAVING))
+                    val session = active?.takeIf {it.id==event.tripId} ?: dao.session(event.tripId)
+                    if (session == null || event.timestamp < session.startedAt || session.endedAt?.let { event.timestamp > it } == true) {
+                        publishMoment(TripMomentReceipt(id,event,TripMomentStatus.REJECTED,"SESSION_CHANGED"))
+                        runCatching { momentJournal.remove(id) }
+                        return@withLock
+                    }
+                    // 先写捕获日志，再写同一航行的事件事务；退出页面或结束航行均不会把它归到新会话。
+                    momentJournal.save(id,event)
+                    val updated = session.copy(waypointCount=session.waypointCount+1,eventCount=session.eventCount+1)
+                    val saved = dao.insertCapturedMoment(updated,event)
+                    if (active?.id == session.id) active = updated
+                    publishMoment(TripMomentReceipt(id,saved,TripMomentStatus.SAVED))
+                    runCatching { momentJournal.remove(id) }
+                }
+            } catch (cancelled:CancellationException) { throw cancelled }
+            catch (_:Exception) { publishMoment(TripMomentReceipt(id,captured ?: momentReceipts.value.firstOrNull { it.requestId==id }?.event,TripMomentStatus.FAILED,"STORAGE_WRITE_FAILED")) }
+            finally { synchronized(momentLock) { momentOperations.remove(id) } }
+        }
+    }
+
+    /** 只修改已落盘事件的用户文字。读回原事件后替换三个内容字段，保留所有采样依据。 */
+    fun editCapturedMoment(id:String,name:String,note:String,kind:String) {
+        synchronized(momentLock) { if (!momentOperations.add(id)) return }
+        val previous = momentReceipts.value.firstOrNull { it.requestId==id }
+        publishMoment(TripMomentReceipt(id,previous?.event,TripMomentStatus.UPDATING))
+        fun amended(event:TripEventEntity):TripEventEntity {
+            val detail=org.json.JSONObject(event.detailJson).put("name",name.trim().take(100).ifBlank {TripMomentContent.from(event)?.name.orEmpty()})
+                .put("note",note.trim().take(2000)).put("kind",kind.takeIf {it in setOf("GENERAL","SAIL_CHANGE","WEATHER","HAZARD")} ?: "GENERAL")
+            return event.copy(detailJson=detail.toString())
+        }
+        scope.launch(Dispatchers.IO) {
+            var attempted=previous?.event
+            try {
+                attempted=attempted?.let(::amended)
+                mutex.withLock {
+                    // 数据库读取也可能失败；先保留用户本次提交，重试不能写回旧备注冒充成功。
+                    attempted?.takeIf {it.id>0}?.let {momentJournal.save(id,it)}
+                    val event = dao.capturedMoment(momentToken(id))
+                    if(event==null) { publishMoment(TripMomentReceipt(id,status=TripMomentStatus.NOT_RECOVERABLE,reason="CAPTURE_NOT_FOUND"));return@withLock }
+                    attempted=amended(event)
+                    momentJournal.save(id,attempted!!)
+                    check(dao.updateCapturedMoment(event.id,event.tripId,attempted!!.detailJson)==1)
+                    publishMoment(TripMomentReceipt(id,attempted,TripMomentStatus.SAVED))
+                    runCatching {momentJournal.remove(id)}
+                }
+            } catch (cancelled:CancellationException) { throw cancelled }
+            catch (_:Exception) { publishMoment(TripMomentReceipt(id,attempted,TripMomentStatus.FAILED,"CONTENT_WRITE_FAILED")) }
+            finally { synchronized(momentLock) { momentOperations.remove(id) } }
+        }
     }
 
     fun shutdown(){

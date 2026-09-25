@@ -159,7 +159,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             }
         }
     }
-    if(showMenu&&enabled)Dialog(onDismissRequest={showMenu=false}) {
+    if(showMenu&&enabled)AppDialog(onDismissRequest={showMenu=false}) {
         AppDialogSurface {
             AppDialogTitle(os.t("周围船舶","Surrounding vessels"))
             val attention=s.targets.count {it.riskLevel!=AisRiskLevel.NONE||it.distress==AisDistressState.ACTIVE}
@@ -184,8 +184,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 @Composable private fun AisWorkspaceHeader(os:OsStore,s:TrafficSnapshot,onSources:()->Unit,onChart:()->Unit,onMore:()->Unit) {
     val c=LocalMetro.current
     val insets=LocalShellHorizontalInsets.current
+    val navigation=pageNavigation(os,os.title(AppId.AIS),hasLocalBack=false)
     val risks=s.targets.count {it.riskLevel!=AisRiskLevel.NONE||it.distress==AisDistressState.ACTIVE}
     Row(Modifier.fillMaxWidth().heightIn(min=48.dp).padding(start=insets.pageStart,end=insets.pageEnd),verticalAlignment=Alignment.CenterVertically) {
+        // 紧凑工作区也消费同一访问返回关系；不按 AIS 归属猜测调用者。
+        if(navigation.canGoBack)AisHeaderAction("back",navigation.backLabel,navigation.enabled,navigation.back)
         Label(os.title(AppId.AIS),20,modifier=Modifier.weight(1f),maxLines=1)
         Box {
             AisHeaderAction("connect",aisInputSummary(os,s),onClick=onSources)
@@ -246,7 +249,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             }
         }
     }
-    if(sorting&&enabled)Dialog(onDismissRequest={sorting=false}) {AppDialogSurface {
+    if(sorting&&enabled)AppDialog(onDismissRequest={sorting=false}) {AppDialogSurface {
         AppDialogTitle(os.t("排列船舶","Sort vessels"))
         listOf("risk" to os.t("需关注的优先","Attention first"),"distance" to os.t("由近到远","Nearest first"),"name" to os.t("按船名","By name")).forEach {(value,label)->
             ChoiceRow(label,sort==value){sort=value;order=sorted();sorting=false}

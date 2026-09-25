@@ -48,7 +48,7 @@ import com.yokuli.shell.contract.*
             "temperature"->listOf("CELSIUS" to os.t("摄氏度 · °C","Celsius · °C"),"FAHRENHEIT" to os.t("华氏度 · °F","Fahrenheit · °F"))
             else->listOf("HECTOPASCALS" to os.t("百帕 · hPa","hectopascals · hPa"),"KILOPASCALS" to os.t("千帕 · kPa","kilopascals · kPa"),"INCHES_OF_MERCURY" to os.t("英寸汞柱 · inHg","inches of mercury · inHg"))
         }
-        Dialog(onDismissRequest={choosing=null}) {
+        AppDialog(onDismissRequest={choosing=null}) {
             AppBackHandler {choosing=null}
             AppDialogSurface() {
                 AppDialogTitle(title)

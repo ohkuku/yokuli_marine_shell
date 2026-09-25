@@ -211,7 +211,7 @@ class TripReportEngine @Inject constructor(private val dao:TripDao){
 
         val eventCounts=mutableMapOf<String,Int>();var totalEvents=0;afterTimestamp=Long.MIN_VALUE;afterId=Long.MIN_VALUE
         while(true){val page=dao.eventsPage(sessionId,afterTimestamp,afterId,PAGE_SIZE);if(page.isEmpty())break;page.forEach{event->eventCounts[event.type]=(eventCounts[event.type]?:0)+1;totalEvents++;if(event.type in SOURCE_TIMELINE_EVENTS)sourceTimeline+=TripSourceTimelineEntry(event.timestamp,event.type,event.detailJson)};val last=page.last();afterTimestamp=last.timestamp;afterId=last.id}
-        val waypointCount=waypoints.size
+        val waypointCount=waypoints.size+(eventCounts["USER_MOMENT"]?:0)
         val impactCount=eventCounts["IMPACT_CANDIDATE"]?:0;val gapCount=eventCounts["POSITION_GAP_STARTED"]?:0;val nmeaGapCount=eventCounts["NMEA_DATA_GAP"]?:0;val depthGapCount=eventCounts["DEPTH_DATA_UNAVAILABLE"]?:0;val windGapCount=eventCounts["WIND_DATA_UNAVAILABLE"]?:0;val phoneMotionGapCount=eventCounts["PHONE_MOTION_UNAVAILABLE"]?:0;val highMotionCount=eventCounts["HIGH_MOTION"]?:0;val positionSourceChangeCount=eventCounts["POSITION_SOURCE_CHANGED"]?:0;val headingSourceChangeCount=eventCounts["HEADING_SOURCE_CHANGED"]?:0
         val positionCoverage=percent(positionCount,count);val depthCoverage=percent(depthCount,count);val attitudeCoverage=percent(attitudeCount,count);val windCoverage=percent(windCount,count);val trueWindCoverage=percent(trueWindCount,count);val apparentWindCoverage=percent(apparentWindCount,count)
         val externalTrueWindCoverage=percent(externalTrueWindCount,count);val derivedWaterTrueWindCoverage=percent(derivedWaterTrueWindCount,count);val derivedGroundTrueWindCoverage=percent(derivedGroundTrueWindCount,count)

@@ -34,7 +34,7 @@ import kotlin.math.*
 ) {
     val c = LocalMetro.current
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
-        SpeedComparison(os, data, now, onMetric)
+        SpeedComparison(os, data, now, onMetric, includeWater = false)
         NavigationDirections(os, data, now, onMetric)
         val difference = data.derived.headingCogDifferenceDegrees.liveNumber()
         if (difference != null) Label(
@@ -109,15 +109,15 @@ import kotlin.math.*
 }
 
 /** 中文：两条速度轴只做比较，不把 SOG-STW 当作测得的流速。 */
-@Composable private fun SpeedComparison(os: OsStore, data: VesselDataSnapshot, now: Long, onMetric: (InstrumentTileId) -> Unit) {
+@Composable private fun SpeedComparison(os: OsStore, data: VesselDataSnapshot, now: Long, onMetric: (InstrumentTileId) -> Unit, includeWater: Boolean = true) {
     val c = LocalMetro.current
     val sog = data.sogKnots.displayNumber()
-    val stw = data.speedThroughWaterKnots.displayNumber()
+    val stw = data.speedThroughWaterKnots.displayNumber().takeIf { includeWater }
     val extent = spatialScale(max(abs(os.speedValue(sog ?: 0.0)), abs(os.speedValue(stw ?: 0.0))).coerceAtLeast(1.0))
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Label(os.t("航速", "speed"), 23)
         SpatialSpeedRow(os, os.t("对地", "over ground"), data.sogKnots, now, extent, c.accent) { onMetric(InstrumentTileId.SOG) }
-        SpatialSpeedRow(os, os.t("对水", "through water"), data.speedThroughWaterKnots, now, extent, c.fg) { onMetric(InstrumentTileId.BOAT_SPEED) }
+        if (stw != null) SpatialSpeedRow(os, os.t("对水", "through water"), data.speedThroughWaterKnots, now, extent, c.fg) { onMetric(InstrumentTileId.BOAT_SPEED) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Label("0", 12, c.muted)
             Label(gaugeScaleNumber(extent, extent) + " " + os.speedUnitLabel, 12, c.muted)

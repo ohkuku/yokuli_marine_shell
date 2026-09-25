@@ -253,14 +253,24 @@ data class NmeaInstrumentState(
         val resolved=effectivePin?.let{VesselSourcePinPolicy.resolve(raw,it)?:it}
         return arbiter.select(metric,raw,MetricSourcePreference(VesselSourcePreference.BOAT,resolved,if(metric==VesselMetricId.POSITION)false else vessel.allowPinnedFallback,connectionPriorities()),now).selected
     }
+    /** 中文：在采用前检查指定物理连接的真实船位候选；不为修复再启动一个 socket。 */
+    fun positionSelectionReady(id:String,sourceKey:String?=null):Boolean=synchronized(guard) {
+        if(!isConnectionOpen(id))return@synchronized false
+        val now=android.os.SystemClock.elapsedRealtime()
+        sourceRegistry.candidates<VesselPosition>(VesselMetricId.POSITION).any{candidate->
+            candidate.source.transportProfileId==id&&(sourceKey==null||VesselSourcePinPolicy.matches(candidate.source,sourceKey))&&
+                candidate.value.latitude.isFinite()&&candidate.value.longitude.isFinite()&&
+                candidate.value.latitude in -90.0..90.0&&candidate.value.longitude in -180.0..180.0&&
+                candidate.quality!=VesselDataQuality.UNKNOWN&&candidate.validity in setOf(CandidateValidity.ELIGIBLE,CandidateValidity.LOW_QUALITY)&&
+                candidate.source.connectionGeneration==sessions[id]?.generation&&now-candidate.receivedElapsedRealtime in 0L..15_000L
+        }
+    }
     suspend fun selectPositionConnection(id:String,sourceKey:String?=null){
         require(isConnectionOpen(id)){"Connect this input before selecting its position"}
-        val current=vesselSettings.settings.first()
-        val pins=current.metricSourcePins.toMutableMap();pins["POSITION_CONNECTION"]=id;if(sourceKey==null)pins.remove("POSITION")else pins["POSITION"]=sourceKey
-        val updated=current.copy(metricSourcePins=pins,pinnedPositionSourceId=null,allowPinnedFallback=false)
-        synchronized(guard){positionLock=null;positionPolicyKey=null;vessel=updated;arbiter.reset();refreshObservations()}
-        // updated 只用于当前读模型；持久化在 edit 内合并船位字段，避免保存旧的仪表/其他来源。
+        // 编辑只合并船位字段；磁盘提交后读取完整新配置，避免覆盖并发修改的其他指标偏好。
         vesselSettings.selectPositionConnection(id, sourceKey)
+        val committed=vesselSettings.settings.first()
+        synchronized(guard){positionLock=null;positionPolicyKey=null;vessel=committed;arbiter.reset();refreshObservations()}
     }
     suspend fun ensurePositionConnection(){
         val current=vesselSettings.settings.first()

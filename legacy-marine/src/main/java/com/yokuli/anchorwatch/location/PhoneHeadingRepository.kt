@@ -15,6 +15,9 @@ import kotlin.math.acos
 import kotlin.math.sqrt
 import javax.inject.Inject
 import javax.inject.Singleton
+import com.yokuli.anchorwatch.location.vessel.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collect
 
 data class PhoneHeadingSample(
     /** Responsive true heading. Null until a real geomagnetic reference exists. */
@@ -32,6 +35,11 @@ data class PhoneHeadingSample(
     /** HDT may only be emitted when this is true. */
     val declinationReferenceReady: Boolean = false,
     val magneticDeclinationDegrees:Double?=null,
+    /** 中文：按固定安装零点转换的物理船首向；未确认或轴退化时为空，不能用 COG 顶替。 */
+    val liveVesselTrueHeadingDegrees:Double?=null,
+    val liveVesselMagneticHeadingDegrees:Double?=null,
+    val vesselTrueHeadingDegrees:Double?=null,
+    val vesselHeadingQuality:HeadingQuality=HeadingQuality.UNAVAILABLE,
 )
 
 enum class PhoneHeadingPresentationQuality { GOOD, LOW_ACCURACY, DISTURBED, UNAVAILABLE }
@@ -47,9 +55,15 @@ data class DeclinationReferenceState(
 @Singleton
 class PhoneHeadingRepository @Inject constructor(
     @ApplicationContext context: Context,
+    mountCalibration: VesselMountCalibrationRepository,
 ) : SensorEventListener {
     private val sensors = context.getSystemService(SensorManager::class.java)
     private val monitor = PhoneHeadingIntegrityMonitor()
+    private val vesselMonitor = PhoneHeadingIntegrityMonitor()
+    @Volatile private var mount = VesselMountCalibration()
+    init { CoroutineScope(SupervisorJob()+Dispatchers.Default).launch { mountCalibration.calibration.collect { value ->
+        synchronized(this@PhoneHeadingRepository) { if(value!=mount) vesselMonitor.reset();mount=value }
+    } } }
     private val rotation = sensors.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         ?: sensors.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
     private val accelerometer = sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -109,7 +123,7 @@ class PhoneHeadingRepository @Inject constructor(
         val wanted=runtimeDemand||displayDemand||approachDemand
         if(!wanted){
             if(running)sensors.unregisterListener(this)
-            running=false;monitor.reset();lastPublishedElapsed=0L;lastPublishedHeading=null
+            running=false;monitor.reset();vesselMonitor.reset();lastPublishedElapsed=0L;lastPublishedHeading=null
             lastRotationVectorElapsed=0L;lastRawCompassElapsed=0L
             hasAccelerometerReading=false;hasMagnetometerReading=false;_sample.value=PhoneHeadingSample()
             return false
@@ -194,12 +208,17 @@ class PhoneHeadingRepository @Inject constructor(
     }
 
     private fun publishMatrix(deviceMatrix: FloatArray, sensorAccuracy: Int) {
-        // 船首向以手机物理顶部为固定轴，不能随横竖屏 UI 旋转改变。
+        // 原始罗盘固定于设备坐标；船首向另经安装坐标转换。无效传感器帧不刷新时效。
+        if(deviceMatrix.size!=9||deviceMatrix.any{!it.isFinite()})return
         val orientation = FloatArray(3)
         SensorManager.getOrientation(deviceMatrix, orientation)
         val magnetic = (Math.toDegrees(orientation[0].toDouble()) + 360.0) % 360.0
         val tilt = Math.toDegrees(acos(deviceMatrix[8].toDouble().coerceIn(-1.0, 1.0)))
-        publishMagneticHeading(magnetic, tilt, sensorAccuracy)
+        val fixed = mount.takeIf { it.mountConfirmed && it.headingAligned }
+        val mounted = fixed?.let { runCatching{PhoneVesselAttitudeFrame.magneticHeading(PhoneVesselAttitudeFrame.fromMatrix(deviceMatrix),it)}.getOrNull() }
+        publishMagneticHeading(magnetic, tilt, sensorAccuracy, mountedMagnetic = mounted?.let {
+            (it+fixed!!.headingAlignmentOffsetDegrees+360.0)%360.0
+        })
     }
 
     private fun publishMagneticHeading(
@@ -207,6 +226,7 @@ class PhoneHeadingRepository @Inject constructor(
         tilt: Double,
         sensorAccuracy: Int,
         allowEstimatorEvidence: Boolean = true,
+        mountedMagnetic: Double? = null,
     ) {
         val referenceReady=_declinationReference.value.ready
         val declination = magneticDeclination.takeIf { referenceReady }
@@ -224,6 +244,10 @@ class PhoneHeadingRepository @Inject constructor(
         } else {
             PhoneHeadingObservation(HeadingQuality.UNAVAILABLE, null, 0L)
         }
+        val mountedTrue=mountedMagnetic?.let { magneticValue -> declination?.let { (magneticValue+it+360.0)%360.0 } }
+        val vesselObservation=if(allowEstimatorEvidence&&mountedTrue!=null) vesselMonitor.observe(
+            nowElapsed, mountedTrue, 0.0, angularVelocity, acceleration, sensorAccuracy)
+            else PhoneHeadingObservation(HeadingQuality.UNAVAILABLE,null,0L)
         val previous=lastPublishedHeading
         val delta=previous?.let{kotlin.math.abs(((magnetic-it+540.0)%360.0)-180.0)}?:Double.POSITIVE_INFINITY
         if(nowElapsed-lastPublishedElapsed<50L&&delta<1.0)return
@@ -259,6 +283,10 @@ class PhoneHeadingRepository @Inject constructor(
             receivedElapsedRealtime = nowElapsed,
             declinationReferenceReady = referenceReady,
             magneticDeclinationDegrees = declination,
+            liveVesselTrueHeadingDegrees = mountedTrue,
+            liveVesselMagneticHeadingDegrees = mountedMagnetic,
+            vesselTrueHeadingDegrees = vesselObservation.headingTrueDegrees,
+            vesselHeadingQuality = vesselObservation.quality,
         )
     }
 

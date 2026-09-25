@@ -47,10 +47,12 @@ interface DataSourceService : MarineStateReader {
     fun confirmTripAttitudeFrame(axis: DeviceBowAxis): Job
     fun alignPhoneHeadingToBow(): Job
     fun alignPhoneHeadingToNmea(): Job
-    /** 顶部朝船艏的唯一安装流程；一次保存方向关系与可用的姿态安装，不把当前横倾调成零。 */
+    /** 顶部朝船艏的唯一安装流程；一次保存当前固定姿态作为零点。 */
     fun confirmFixedPhoneMount(): Job
     /** 只修正船首向，不改变横摇、纵摇或来源选择。 */
     fun setPhoneHeadingAlignment(offsetDegrees: Double): Job
+    /** 中文：修改固定零点上的横倾/纵倾补偿，不重新采样，不更换数据来源。 */
+    fun setPhoneAttitudeAlignment(heelDegrees: Double, pitchDegrees: Double): Job
     /** 用户移动手机后，旧船首向和姿态安装立即失效，等待重新确认。 */
     fun invalidateFixedPhoneMount(): Job
     fun clearVesselCalibrationFeedback()
@@ -67,6 +69,12 @@ interface VoyageService : MarineStateReader {
     fun resumeTrip()
     fun pauseTripAttitude(): Job
     fun endTrip(): ComponentName?
+    /** 运行时固定点击时刻/会话/快照；页面离开不会取消写入。 */
+    val capturedMoments: StateFlow<List<com.yokuli.anchorwatch.runtime.trip.TripMomentReceipt>>
+    fun captureMoment(sessionId: Long, defaultName: String): String
+    fun restoreMoment(requestId: String)
+    fun retryMoment(requestId: String)
+    fun editCapturedMoment(requestId: String, name: String, note: String, kind: String)
     fun markTripWaypoint(name: String, note: String, type: String)
     fun deleteTrip(session: TripSessionEntity)
     fun renameTrip(id: Long, name: String): Job

@@ -13,6 +13,9 @@ import kotlinx.coroutines.launch
 /** 我的航行读写门面：旧锚地走内容端口，Shell 坐标与计划航线走文件回执；沿用原 ID 和关系。 */
 class MySailingRepository(private val os: OsStore) {
     private val content: MarineContentService = os.content
+    // 写入回执属于现有内容门面。切页后仍可查询，UI 不另造“已保存”状态。
+    private val placeCommits=mutableStateMapOf<String,DurableCommit>()
+    fun placeCommit(id:String):DurableCommit?=placeCommits[id]
     val photos = content.photos
     var locations by mutableStateOf<List<AnchoragePlaceEntity>>(emptyList())
         private set
@@ -76,9 +79,10 @@ class MySailingRepository(private val os: OsStore) {
     fun put(place:Place):DurableCommit {
         require(place.point.valid() && place.name.isNotBlank())
         os.places=os.places.filterNot { it.id==place.id }+place
-        return os.saveWithFeedback("地点已保存", "Place saved", "place:${place.id}")
+        return os.saveWithFeedback("地点已保存", "Place saved", "place:${place.id}").also {placeCommits[place.id]=it}
     }
     fun remove(id:String):DurableCommit {
+        placeCommits.remove(id)
         os.places=os.places.filterNot { it.id==id }
         return os.saveWithFeedback("地点已删除", "Place deleted")
     }
