@@ -2,7 +2,7 @@
 
 - 先核对当前 HEAD、未提交修改、目录级规则与 `app-shell/build.gradle.kts` 的 sourceSets。当前手机与 ROM HOME 共用 `app-shell/src/rebuild/java`、`src/rebuild/res` 和 rebuild Manifest；旧 `src/main/java` 页面不是生产入口。
 - 主实施规则：[YOKULI_MASTER_EXECUTION](docs/product/YOKULI_MASTER_EXECUTION.md)。真实边界：[系统接入现状](docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md)；新功能沿 [领域接入指导](docs/os/02-DOMAIN-AND-CONTRACTS.md#新功能接入路径) 实施。
-- 当前控件与交互基线为 [Windows 10 Mobile / MDL2](docs/product/WINDOWS_10_MOBILE_DESIGN.md)，品牌与共享配色采用下条用户后续附件。WP8 资料保留作历史参考；用户明确保留经典应用开合/Home 翻转与倾斜磁贴，控件仍为 W10M。不要复原超大普通标题、圆圈动作按钮或套用 Win11 Fluent 样式。大字号只保留给实际关键读数。
+- 当前控件与交互基线为 [Windows 10 Mobile / MDL2](docs/product/WINDOWS_10_MOBILE_DESIGN.md)。用户明确只更换图标与 Logo，不改系统主题：保留纯黑 / 纯白背景、原 W10M 磁贴强调色与控件状态色；`CYAN` 仍为 `#007F9B`，不能改成品牌帆绿。附件配色仅属于品牌资产，不得接入 `WpThemePolicy` 或覆盖用户的主题、壁纸、透明度与颜色选择。WP8 资料保留作历史参考；用户明确保留经典应用开合/Home 翻转与倾斜磁贴，控件仍为 W10M。不要复原超大普通标题、圆圈动作按钮或套用 Win11 Fluent 样式。大字号只保留给实际关键读数。
 - 品牌以用户后续提供的 **YOKULI 大写字标、O 中帆、水线、右下 OS** 为准，替代旧独立 Y。唯一母版为 `design/brand/yokuli-wordmark.svg`，运行 `scripts/generate_brand_assets.py` 更新全部资源；接入与旧描述优先级见 [品牌资产](design/brand/README.md)。`YokuliBrandMark / Wordmark / Signature` 共用几何，不在业务页堆品牌、不改变 Home/通知含义或加入开屏等待。
 - UI 只拥有展示与本次访问状态；来源、导航、记录、守锚、AIS、内容、通知各有唯一所有者。禁止页面直连 DAO/控制器、重复采集或新增平行业务状态。现存兼容桥不能成为新功能的捷径。
 - 图库分开管理显示用 MBTiles 与可浏览的 S-57 / GeoPackage 航行资料；规划只使用地图明确选择的数据集版本，通过实际覆盖、深度和用途门槛才搜索，无资料仍能手动绘线。对象浏览只走快照端口，不在 App 内改写提供方水深；开放包按 [GeoPackage profile](docs/GEOPACKAGE_CHART_PROFILE.md) 编辑原文件并整包更新。绘制隐藏不改变分析。导航由 `MarineSystem.navigation` 单写，页面不自建活动目标。格式、快照租约、未知水域与规划约束见 [海图契约](docs/product/CHART_INTERACTION_CONTRACT.md#数据图册与自动规划2026-09-25)。
