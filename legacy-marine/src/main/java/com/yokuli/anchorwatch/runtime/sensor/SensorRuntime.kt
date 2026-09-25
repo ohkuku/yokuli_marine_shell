@@ -11,6 +11,7 @@ data class SensorRuntimeState(
     val phoneMotionActive: Boolean = false,
     val phoneHeadingActive: Boolean = false,
     val phonePressureActive: Boolean = false,
+    val deviceViewOrientationActive: Boolean = false,
 )
 
 /**
@@ -29,16 +30,12 @@ class SensorRuntime @Inject constructor(
     private val phonePressure:PhonePressureRepository,
 ) {
     @Synchronized
-    fun reconcile(needsPhoneMotion: Boolean, needsPhoneHeading: Boolean, needsPhonePressure: Boolean): SensorRuntimeState {
-        val motionActive = if (needsPhoneMotion) {
-            val integrity=phoneMotion.start()
-            val attitude=vesselAttitude.start()
-            integrity||attitude
-        } else {
-            phoneMotion.stop()
-            vesselAttitude.stop()
-            false
-        }
+    fun reconcile(needsPhoneMotion: Boolean, needsPhoneHeading: Boolean, needsPhonePressure: Boolean, needsDeviceViewOrientation: Boolean = false): SensorRuntimeState {
+        // 同一个旋转矢量监听器供安装姿态与临时视线共享；视线不会启用Heading、定位或发布。
+        val attitudeActive = if (needsPhoneMotion || needsDeviceViewOrientation) vesselAttitude.start()
+            else { vesselAttitude.stop(); false }
+        val integrityActive = if (needsPhoneMotion) phoneMotion.start() else { phoneMotion.stop(); false }
+        val motionActive = needsPhoneMotion && (integrityActive || attitudeActive)
         val headingActive = if (needsPhoneHeading) {
             phoneHeading.start()
         } else {
@@ -46,7 +43,7 @@ class SensorRuntime @Inject constructor(
             false
         }
         val pressureActive=if(needsPhonePressure)phonePressure.start() else{phonePressure.stop();false}
-        return SensorRuntimeState(motionActive, headingActive, pressureActive)
+        return SensorRuntimeState(motionActive, headingActive, pressureActive, needsDeviceViewOrientation && attitudeActive)
     }
 
     @Synchronized

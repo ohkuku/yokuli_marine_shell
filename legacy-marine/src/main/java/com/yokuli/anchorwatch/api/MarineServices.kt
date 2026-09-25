@@ -148,6 +148,7 @@ interface VesselPreferencesService : MarineStateReader {
     fun setLanguage(language: AppLanguage): Job
     fun setVesselGeometry(lengthMeters: Double, bowRollerHeightMeters: Double, antennaToBowMeters: Double): Job
     fun setVesselIdentity(name: String, draftMeters: Double?): Job
+    fun setPassageGeometry(value: com.yokuli.anchorwatch.data.vessel.PassageGeometry): Job
     fun setAlarmSound(sound: AlarmSound, customUri: String? = null): Job
     fun setAlarmSnoozeMinutes(minutes: Int): Job
     fun setInstrumentLayout(layout: List<InstrumentTileId>): Job
@@ -176,6 +177,9 @@ interface DisplayLease : AutoCloseable {
 interface DisplayDemandService {
     fun acquireMapHeading(): DisplayLease
     fun acquireInstruments(): DisplayLease
+    /** 显示专属设备姿态；不能作为全船Heading、COG或校准输入。 */
+    val deviceViewOrientation: StateFlow<com.yokuli.anchorwatch.location.vessel.DeviceViewOrientationSample>
+    fun acquireDeviceViewOrientation(): DisplayLease
 }
 
 /**

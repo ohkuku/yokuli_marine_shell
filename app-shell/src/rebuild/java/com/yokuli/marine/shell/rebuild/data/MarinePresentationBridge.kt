@@ -15,6 +15,7 @@ import com.yokuli.marine.shell.rebuild.OsStore
 import android.os.SystemClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -52,9 +53,9 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
                 }.flowOn(Dispatchers.Default).collect { os.recordedSegments=it }
         },
         os.scope.launch(Dispatchers.Default) {
-            services.state.map { state ->
+            combine(services.state, system.navigation.state) { state, navigation ->
                 // 注册候选、发送计数、快照生成时间不是新观测；不能推动显示历史采样。
-                ReadingProjection(state.vesselData.copy(candidates=emptyMap(),conflicts=emptyMap(),generatedElapsedRealtime=0),state.vesselSettings.draftMeters)
+                ReadingProjection(state.vesselData.withNavigation(navigation).copy(candidates=emptyMap(),conflicts=emptyMap(),generatedElapsedRealtime=0),state.vesselSettings.draftMeters)
             }.distinctUntilChanged().collect { projection ->
                 val readings=projectReadings(projection.vessel,projection.draft)
                 os.hub.update { it.copy(readings=readings) }

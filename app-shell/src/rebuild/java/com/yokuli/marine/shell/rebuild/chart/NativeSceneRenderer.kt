@@ -24,8 +24,9 @@ import org.maplibre.android.maps.MapLibreMap
  * 因此航线、图钉、测距和海图始终处于同一帧、同一地理坐标系。
  * 屏幕 Canvas 只保留准星与比例尺；业务状态不从渲染对象反向推断。
  */
-internal class NativeSceneRenderer(private val context: Context) {
+internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.coroutines.CoroutineScope,onSoundingFailure:(Boolean)->Unit) {
     private val libreGeometry = LibreSceneGeometry()
+    private val soundingLayer = NativeSoundingLayer(scope,onSoundingFailure)
     private var previous: MapScene? = null
     private var previousInput:MapScene?=null
     private var previousRuler: List<GeoPoint> = emptyList()
@@ -53,6 +54,7 @@ internal class NativeSceneRenderer(private val context: Context) {
         groups.clear()
         clearMarkers()
         libreGeometry.clear()
+        soundingLayer.clear()
         previous = null
         previousInput=null
         previousRuler = emptyList()
@@ -67,7 +69,10 @@ internal class NativeSceneRenderer(private val context: Context) {
         if(!reset&&input==previousInput&&ruler==previousRuler)return true
         previousInput=input
         val scene=input.trafficGeometry()
-        libre?.let { libreGeometry.render(it, scene, ruler) }
+        libre?.let {
+            libreGeometry.render(it, scene, ruler)
+            soundingLayer.render(it,scene.points.filter {point->point.style==MapPointStyle.SOUNDING},::pointIcon)
+        }
         if (scene == previous && ruler == previousRuler) return true
         previous = scene; previousRuler = ruler.toList()
         if(reset){groups.values.forEach {group->group.remove.forEach {it()}};groups.clear();clearMarkers();reset=false}
@@ -82,11 +87,11 @@ internal class NativeSceneRenderer(private val context: Context) {
             draw()
             groups[key]=Group(value,removals.toList())
         }
-        fun polygon(points: List<GeoPoint>, fill: Int, stroke: Int = Color.TRANSPARENT, width: Float = 0f) {
+        fun polygon(points: List<GeoPoint>, fill: Int, stroke: Int = Color.TRANSPARENT, width: Float = 0f, holes:List<List<GeoPoint>> = emptyList()) {
             val map = google ?: return
             if (points.size < 3) return
             map.addPolygon(GooglePolygonOptions().addAll(points.map { GoogleLatLng(it.lat, it.lon) })
-                .fillColor(fill).strokeColor(stroke).strokeWidth(width * density).geodesic(true).zIndex(1f))?.let { removals.add(it::remove) }
+                .also { options -> holes.filter { it.size>=3 }.forEach { hole -> options.addHole(hole.map { GoogleLatLng(it.lat,it.lon) }) } }.fillColor(fill).strokeColor(stroke).strokeWidth(width * density).geodesic(true).zIndex(1f))?.let { removals.add(it::remove) }
         }
         fun line(points: List<GeoPoint>, color: Int, width: Float, dashed: Boolean) {
             val map = google ?: return
@@ -96,7 +101,7 @@ internal class NativeSceneRenderer(private val context: Context) {
             if (dashed) option.pattern(listOf(com.google.android.gms.maps.model.Dash(9 * density), com.google.android.gms.maps.model.Gap(6 * density)))
             map.addPolyline(option).let { removals.add(it::remove) }
         }
-        scene.areas.forEach {area->item("area:${area.id}",area) {polygon(area.boundary,area.color.toInt())}}
+        scene.areas.forEach {area->item("area:${area.id}",area) {polygon(area.boundary,area.color.toInt(),holes=area.holes)}}
         scene.circles.filter { it.radiusMeters.isFinite() && it.radiusMeters > 0 }.forEach { circle ->
             item("circle:${circle.id}",circle) {
                 val ring = (0..72).map { destination(circle.center, circle.radiusMeters, it * 5.0) }
@@ -143,7 +148,10 @@ internal class NativeSceneRenderer(private val context: Context) {
                 remove = { googleMarker?.remove(); if (libreMarker != null) libre?.removeAnnotation(libreMarker) },
             )
         }
-        points.forEach { point -> marker(point.point, point.id, pointIconKey(point)) { pointIcon(point) } }
+        points.forEach { point ->
+            // MapLibre 的测深标签已由单一 SymbolLayer 批量绘制；卫星引擎最多接收同一有界绘制集。
+            if(libre==null||point.style!=MapPointStyle.SOUNDING)marker(point.point, point.id, pointIconKey(point)) { pointIcon(point) }
+        }
         scene.aisTargets.forEach { target -> marker(target.point, "ais:${target.mmsi}", aisIconKey(target)) { aisIcon(target) } }
         scene.vessel?.let {vessel ->
             vesselCourseVector(vessel)?.let {vector -> item("vessel:course",vector) {
@@ -157,7 +165,7 @@ internal class NativeSceneRenderer(private val context: Context) {
         return true
     }
 
-    private fun pointIconKey(point: MapPoint) = "point:${point.color}:${point.radiusDp}:${point.label.takeIf { it.length <= 3 }.orEmpty()}"
+    private fun pointIconKey(point: MapPoint) = "point:${point.style}:${point.color}:${point.radiusDp}:${if(point.style==MapPointStyle.SOUNDING)point.label else point.label.takeIf { it.length <= 3 }.orEmpty()}"
     private fun aisIconKey(target: MapAisTarget): String {
         val angle = target.heading?.takeIf { it.isFinite() && it in 0.0..360.0 }?.toInt()
         return "ais:${target.kind}:$angle:${target.stale}:${target.lost}:${target.risk}:${target.selected}:${target.distress}"
@@ -166,9 +174,19 @@ internal class NativeSceneRenderer(private val context: Context) {
 
     private fun pointIcon(point: MapPoint): Bitmap {
         // MapLibre centres the bitmap; transparent margins remain symmetrical at every zoom.
-        val label = point.label.takeIf { it.length <= 3 }.orEmpty()
+        val label = if(point.style==MapPointStyle.SOUNDING)point.label else point.label.takeIf { it.length <= 3 }.orEmpty()
         val key = pointIconKey(point)
         icons.get(key)?.let { return it }
+        if(point.style==MapPointStyle.SOUNDING) {
+            val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply {textSize=11*density;typeface=Typeface.create("sans-serif",Typeface.NORMAL);textAlign=Paint.Align.CENTER}
+            val width=(paint.measureText(label)+8*density).toInt().coerceAtLeast(8)
+            val height=(20*density).toInt().coerceAtLeast(8)
+            val bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888).apply {this.density=context.resources.displayMetrics.densityDpi}
+            val canvas=Canvas(bitmap);val x=width/2f;val y=height/2f-(paint.ascent()+paint.descent())/2
+            paint.style=Paint.Style.STROKE;paint.strokeWidth=3*density;paint.color=0xEFFFFFFF.toInt();canvas.drawText(label,x,y,paint)
+            paint.style=Paint.Style.FILL;paint.color=point.color.toInt();canvas.drawText(label,x,y,paint)
+            icons.put(key,bitmap);return bitmap
+        }
         val radius = point.radiusDp * density
         val size = ((radius + 3 * density) * 2).toInt().coerceAtLeast(8)
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)

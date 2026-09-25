@@ -63,9 +63,9 @@ fun PlaceKind.label(os:OsStore)=when(this) {
                     MetroButton(os.t("在海图上选点","choose on chart"),{os.showCrosshair=true;os.openLinked("chart")})
                 }
                 1 -> {
-                    os.activeRoute?.let { route -> MenuRow(os.t("正在导航 · ${route.name}","navigating · ${route.name}"),os.t("目标 ${os.routeLeg+1}/${route.points.size}","target ${os.routeLeg+1}/${route.points.size}"),"locate") {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.openLinked("chart")} }
+                    os.activeRoute?.let { route -> MenuRow(os.t("正在导航 · ${route.name}","navigating · ${route.name}"),os.t("目标 ${route.targetIndices.indexOf(os.navigationState.session?.targetIndex).plus(1).coerceAtLeast(1)}/${route.targetIndices.size}","target ${route.targetIndices.indexOf(os.navigationState.session?.targetIndex).plus(1).coerceAtLeast(1)}/${route.targetIndices.size}"),"locate") {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.openLinked("chart")} }
                     if(os.routes.isEmpty()) {Label(os.t("下一站，去哪里？","where to next?"),24);Label(os.t("在海图上规划，保存在这里。选择一条路线后才在地图上预览。","Plan on chart and keep it here. Select a route to preview it on the map."),24,LocalMetro.current.muted)}
-                    os.routes.forEach { route -> MenuRow(route.name,"${os.formatDistance(route.length)} · ${route.points.size} "+os.t("个航点","points"),"route") {os.open("route:${route.id}")} }
+                    os.routes.forEach { route -> MenuRow(route.name,"${os.formatDistance(route.length)} · ${route.targetIndices.size} "+os.t("个航点","points"),"route") {os.open("route:${route.id}")} }
                     MetroButton(if(os.draftRoute.isEmpty()) os.t("规划航线","plan a route") else os.t("继续草稿","continue draft"),{resumeOrCreateRouteDraft(os);os.openLinked("chart")},primary=true)
                 }
                 else -> {

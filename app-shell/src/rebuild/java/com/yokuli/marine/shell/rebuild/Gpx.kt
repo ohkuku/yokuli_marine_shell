@@ -30,6 +30,7 @@ object Gpx {
         var routeName="";var markName="";var note="";var mark:GeoPoint?=null;var count=0
         var rootNamespace:String?=null;var rootDepth=0;var routeDepth=0;var markDepth=0
         var kind=PlaceKind.MARK;var collection=""
+        var navigationTargets:List<Int>?=null
         fun readPoint():GeoPoint {
             require(++count<=15000) {"large"}
             return GeoPoint(parser.getAttributeValue(null,"lat").toDouble(),parser.getAttributeValue(null,"lon").toDouble())
@@ -44,7 +45,7 @@ object Gpx {
                 // 先完整解析才返回 Contents；即使 trk 位于合法坐标/航线之后，也不会提交前半份资料。
                 if(parser.name=="trk" && parser.namespace.orEmpty() in GPX_NAMESPACES) throw UnsupportedTracks()
                 if(parser.namespace.orEmpty()==rootNamespace) when(parser.name) {
-                    "rte"->if(parser.depth==rootDepth+1) {routeDepth=parser.depth;points=mutableListOf();routeName=""}
+                    "rte"->if(parser.depth==rootDepth+1) {routeDepth=parser.depth;points=mutableListOf();routeName="";navigationTargets=null}
                     "wpt"->if(parser.depth==rootDepth+1) {
                         mark=readPoint();markDepth=parser.depth;markName="";note="";kind=PlaceKind.MARK;collection=""
                     }
@@ -59,6 +60,10 @@ object Gpx {
                         kind=runCatching {PlaceKind.valueOf(value)}.getOrDefault(PlaceKind.MARK)
                     }
                 }
+                if(routeDepth>0 && parser.name=="navigationTargets" && parser.namespace==YOKULI_NAMESPACE && parser.depth==routeDepth+2) {
+                    require(navigationTargets==null) {"duplicate-navigation-targets"}
+                    navigationTargets=parser.nextText().split(',').map {it.trim().toInt()}
+                }
                 if(mark!=null && parser.name=="collection" && parser.namespace==YOKULI_NAMESPACE && parser.depth==markDepth+2) {
                     collection=parser.nextText().take(80)
                 }
@@ -69,7 +74,8 @@ object Gpx {
                     mark=null;markDepth=0
                 }
                 "rte"->if(parser.depth==routeDepth) {
-                    if(points.size>=2) routes+=Route(name=routeName.ifBlank {"GPX ${routes.size+1}"},points=points.toList())
+                    navigationTargets?.let {targets->require(targets.isNotEmpty()&&targets==targets.distinct().sorted()&&targets.all {it in points.indices}&&targets.last()==points.lastIndex) {"invalid-navigation-targets"}}
+                    if(points.size>=2) routes+=Route(name=routeName.ifBlank {"GPX ${routes.size+1}"},points=points.toList(),navigationTargetIndices=navigationTargets)
                     routeDepth=0
                 }
             }
@@ -101,7 +107,15 @@ object Gpx {
             x.endTag(null,tag)
         }
         places.forEach {point("wpt",it.point,it.name,it.note,it)}
-        routes.forEach {route ->x.startTag(null,"rte");element("name",route.name);route.points.forEach {point("rtept",it)};x.endTag(null,"rte")}
+        routes.forEach {route ->
+            x.startTag(null,"rte");element("name",route.name)
+            route.navigationTargetIndices?.let {targets->
+                x.startTag(null,"extensions");x.setPrefix("yokuli",YOKULI_NAMESPACE)
+                x.startTag(YOKULI_NAMESPACE,"navigationTargets").text(targets.joinToString(",")).endTag(YOKULI_NAMESPACE,"navigationTargets")
+                x.endTag(null,"extensions")
+            }
+            route.points.forEach {point("rtept",it)};x.endTag(null,"rte")
+        }
         x.endTag(null,"gpx");x.endDocument();x.flush()
     }
 }

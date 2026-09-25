@@ -167,17 +167,21 @@ private fun tileMetric(id:String)=when(id) {"SOG"->"sog";"HEADING_TRUE"->"headin
     val state=os.marine?.services?.state
     return when(id) {
         "navigation"->{
-            val source=os.positionSource
-            val flow=remember(os.hub,source) {os.hub.state.map {it.fix(source)}.distinctUntilChanged()}
-            val fix=activeTileValue(flow,os.hub.state.value.fix(source),active)
-            val route=os.activeRoute
-            val target=os.nextPoint
-            val remaining=target?.let {point->fix?.takeIf {it.fresh(now)}?.let {distance(it.point,point)}}
-            TileFrame("navigation",route?.name ?: os.t("未在导航","Navigation is off"),
-                if(route==null)os.t("打开海图选择航线","Open Chart to choose a route")else
-                    (remaining?.let {os.formatDistance(it)+" · "} ?: "")+os.t("第 ${os.routeLeg+1}/${route.points.size} 个航点","Waypoint ${os.routeLeg+1}/${route.points.size}"),
+            val flow=os.marine?.system?.navigation?.state
+            val nav=activeTileValue(flow,flow?.value?:os.navigationState,active)
+            val session=nav.session?.takeIf {it.ongoing}
+            val guide=nav.guidance
+            val route=session?.route
+            TileFrame("navigation",route?.name ?: if(session!=null)os.t("外部设备导航","External navigation")else os.t("未在导航","Navigation is off"),
+                if(session==null)os.t("打开海图选择航线","Open Chart to choose a route")else
+                    (guide?.distanceMeters?.let {os.formatDistance(it)+" · "} ?: "")+(route?.let {os.t("第 ${it.targetIndices.indexOf(session.targetIndex)+1}/${it.targetIndices.size} 个航点","Waypoint ${it.targetIndices.indexOf(session.targetIndex)+1}/${it.targetIndices.size}")}?:guide?.targetName.orEmpty()),
                 if(detail)os.t("当前导航","Current navigation")else "",
-                priorityLine=if(route==null)""else fix?.let {os.t("船位 · ","Position · ")+readingAge(os,it.elapsed,now)} ?: os.t("等待船位","Waiting for position"))
+                priorityLine=when(session?.phase){
+                    com.yokuli.runtime.contract.navigation.NavigationPhase.PAUSED->os.t("引导已暂停","Guidance paused")
+                    com.yokuli.runtime.contract.navigation.NavigationPhase.RECOVERY_REQUIRED->os.t("点按继续上次导航","Resume previous navigation")
+                    null->""
+                    else->guide?.positionElapsedMillis?.let {os.t("船位 · ","Position · ")+readingAge(os,it,now)}?:os.t("等待船位","Waiting for position")
+                })
         }
         "recording"->{
             val flow=remember(state) {state?.map {it.activeTrip}?.distinctUntilChanged()}

@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <service android:name="com.yokuli.runtime.marine.navigation.NavigationTrackingService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="connectedDevice|location" />
         <service android:name="com.yokuli.runtime.marine.notification.NotificationBinderService"
             android:process=":notifications" android:exported="false" android:stopWithTask="false" />
         <service android:name="com.yokuli.runtime.marine.ais.AisMonitoringService"

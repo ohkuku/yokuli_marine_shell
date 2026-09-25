@@ -93,7 +93,7 @@ object NmeaFieldDecoder {
             "ROT"->fields.getOrNull(2).equals("V",true)
             "RSA"->fields.getOrNull(2).equals("V",true)&&fields.getOrNull(4).equals("V",true)
             "RMB"->fields.getOrNull(1).equals("V",true)
-            "XTE","APB"->fields.getOrNull(2).equals("V",true)
+            "XTE","APB"->fields.getOrNull(1).equals("V",true)||fields.getOrNull(2).equals("V",true)
             else->false
         }
         return NmeaFieldHeartbeat(talker,type,!explicitlyInvalid)
@@ -110,6 +110,13 @@ object NmeaFieldDecoder {
         }
         fun text(index:Int,semantic:NmeaFieldSemantic):NmeaFieldObservation?=fields.getOrNull(index)?.trim()?.takeIf{it.isNotEmpty()}?.let{NmeaFieldObservation(NmeaFieldKey(talker,type,index,semantic),text=it,receivedElapsedRealtime=elapsed,rawSentence=raw)}
         fun signed(index:Int,sideIndex:Int,semantic:NmeaFieldSemantic,unit:String):NmeaFieldObservation?=number(index,semantic,unit){value->if(fields.getOrNull(sideIndex)?.uppercase(Locale.US) in setOf("L","P"))-kotlin.math.abs(value) else kotlin.math.abs(value)}
+        // APB uses boat-to-destination bearing (11/12), not fixed leg bearing (8/9).
+        fun trueBearing(index:Int,referenceIndex:Int)=if(fields.getOrNull(referenceIndex).equals("T",true))number(index,NmeaFieldSemantic.BEARING_TO_WAYPOINT,"degT")else null
+        fun crossTrack(index:Int,sideIndex:Int,unitIndex:Int):NmeaFieldObservation? {
+            val scale=when(fields.getOrNull(unitIndex)?.uppercase(Locale.US)){"N"->1.0;"M"->1.0/1852;"F"->.3048/1852;else->return null}
+            if(fields.getOrNull(sideIndex)?.uppercase(Locale.US) !in setOf("L","R"))return null
+            return signed(index,sideIndex,NmeaFieldSemantic.CROSS_TRACK_ERROR,"NM")?.let {it.copy(value=it.value?.times(scale))}
+        }
         val known=when(type){
             "VLW"->listOfNotNull(number(1,NmeaFieldSemantic.TOTAL_LOG,"NM"),number(3,NmeaFieldSemantic.TRIP_LOG,"NM"))
             "VWR"->listOfNotNull(signed(1,2,NmeaFieldSemantic.APPARENT_WIND_ANGLE,"deg"),number(3,NmeaFieldSemantic.APPARENT_WIND_SPEED,"kn"))
@@ -126,10 +133,10 @@ object NmeaFieldDecoder {
             )
             "VDR"->listOfNotNull(number(1,NmeaFieldSemantic.CURRENT_SET_TRUE,"degT"),number(5,NmeaFieldSemantic.CURRENT_DRIFT,"kn"))
             "RMB"->if(fields.getOrNull(1)?.uppercase(Locale.US)=="A")listOfNotNull(signed(2,3,NmeaFieldSemantic.CROSS_TRACK_ERROR,"NM"),text(5,NmeaFieldSemantic.DESTINATION_WAYPOINT),number(10,NmeaFieldSemantic.DISTANCE_TO_WAYPOINT,"NM"),number(11,NmeaFieldSemantic.BEARING_TO_WAYPOINT,"degT"))else emptyList()
-            "BWC","BWR"->listOfNotNull(number(6,NmeaFieldSemantic.BEARING_TO_WAYPOINT,"degT"),number(10,NmeaFieldSemantic.DISTANCE_TO_WAYPOINT,"NM"),text(12,NmeaFieldSemantic.DESTINATION_WAYPOINT))
-            "BOD"->listOfNotNull(number(1,NmeaFieldSemantic.BEARING_TO_WAYPOINT,"degT"),text(5,NmeaFieldSemantic.DESTINATION_WAYPOINT))
-            "XTE"->if(fields.getOrNull(2)?.uppercase(Locale.US)=="A")listOfNotNull(signed(3,4,NmeaFieldSemantic.CROSS_TRACK_ERROR,"NM"))else emptyList()
-            "APB"->if(fields.getOrNull(2)?.uppercase(Locale.US)=="A")listOfNotNull(signed(3,4,NmeaFieldSemantic.CROSS_TRACK_ERROR,"NM"),number(8,NmeaFieldSemantic.BEARING_TO_WAYPOINT,"degT"),text(10,NmeaFieldSemantic.DESTINATION_WAYPOINT))else emptyList()
+            "BWC","BWR"->listOfNotNull(trueBearing(6,7),number(10,NmeaFieldSemantic.DISTANCE_TO_WAYPOINT,"NM"),text(12,NmeaFieldSemantic.DESTINATION_WAYPOINT))
+            "BOD"->listOfNotNull(trueBearing(1,2),text(5,NmeaFieldSemantic.DESTINATION_WAYPOINT))
+            "XTE"->if(fields.getOrNull(1).equals("A",true)&&fields.getOrNull(2).equals("A",true))listOfNotNull(crossTrack(3,4,5))else emptyList()
+            "APB"->if(fields.getOrNull(1).equals("A",true)&&fields.getOrNull(2).equals("A",true))listOfNotNull(crossTrack(3,4,5),trueBearing(11,12),text(10,NmeaFieldSemantic.DESTINATION_WAYPOINT))else emptyList()
             "XDR"->decodeTransducers(talker,type,fields,raw,elapsed)
             else->emptyList()
         }

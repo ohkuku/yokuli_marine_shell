@@ -11,9 +11,11 @@
 | 手机安装、方向校准、定位意图 | `AppSettings / VesselMountCalibrationRepository` 与资源运行时 | Marine Core 的 DeviceInputPolicy 模块 | 数据中心；通知中心只导航到数据中心，不直接执行校准 |
 | 航行会话、样本、事件 | `TripRuntime` + Room | Voyage 模块 | 海图/日志/快捷项都是同一组命令 |
 | 守锚会话、锚点、范围与告警 | `AnchorWatchRuntime` + Room | Anchor 模块 | 守锚主界面；Shell/地图仅反映状态 |
-| 活动导航及冻结路线版本 | `OsStore.activeRouteId/navigationRoute` + JSON | Navigation 模块；R0 保持现状 | 海图和我的航行启动；其他应用只读 |
+| 活动导航及冻结路线版本 | `LocalNavigationSessionService` + 原子文件 | `MarineSystem.navigation` | 海图和我的航行发命令；驾驶台、地图和磁贴读取同一会话 |
 | 坐标、路线、收藏锚地 | `MySailingRepository`、JSON/Room | SailingContent 模块 | 我的航行主编辑；地图提交标记；锚地只是坐标类型 |
-| 海图文件夹、索引、优先级图层 | `ChartLibrary` | ChartCatalog 模块 | 图册管理；地图按版本读取 |
+| 海图文件夹、索引、优先级图层 | `ChartLibrary` | ChartCatalog 模块 | 图册海图页管理；地图按版本读取 |
+| 结构化数据集、图幅、更新链、用途和索引 | `LocalChartDataService` + 版本化 SQLite/RTree | `MarineSystem.charts` | 图册数据页管理；当前地图显式选择，绘制与分析持有快照租约 |
+| 航线检查、候选、避让区、作业结果 | `LocalPassagePlanningService` + 原子工作区 | `MarineSystem.analysis/planning` 同一实例 | 海图提交不可变请求，确认候选才写现有草稿或导航会话 |
 | 对外发送与本机监听 | 连接输出配置、`LocalNmeaServerSettingsRepository` | Publication 模块；每个目的地独立策略 | 船联网管理远端；数据共享管理本机服务器 |
 | 船名、单位、校准等领域偏好 | 现有 DataStore repositories | VesselPreferences；原子更新 | 设置/数据中心按字段授权 |
 | 语言、主题、文字大小 | `LauncherPersistedState` / Shell preferences | Shell preference store | 设置管理系统偏好 |
@@ -41,6 +43,12 @@ flowchart LR
     Guard --> Out[远端连接 / 本机客户端]
     Places[坐标路线库] --> Nav
     Charts[海图库] --> Views
+    Charts --> Snapshot[当前选择的数据版本租约]
+    Snapshot --> Planner[全航线检查 / 有界离线自动规划]
+    Vessel[原船体偏好] --> Planner
+    Planner --> Candidate[候选方案及证据]
+    Candidate -->|明确采用| Places
+    Candidate -->|修订校验并确认替换| Nav
     Anchor --> Events[持久领域事件]
     Trip --> Events
     Nav --> Events
@@ -234,3 +242,11 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 纯类型在 `core:runtime-contract/.../notification/NotificationContract.kt`。消息发布为 `NotificationClient.execute(NoticeCommand(...))`，读方订阅 `snapshot` 和 `connection`；`NoticeTarget(domain, objectType, objectId, section)` 传对象描述，Shell 才把它映射为已有白名单地址。请求与结果都保留 requestId；`COMPLETED` 指落盘完成，`UNKNOWN` 通过 `result(requestId)` 查询原请求，不能自动重新发布。真实消费者为 `SystemNotificationStore` 与 `NotificationCenter`，详情见 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。
 
 此模式不是要求新功能都走通知 Binder：守锚仍使用自身命令回执，AIS 仍使用唯一交通服务，导航仍需另行迁出 Shell。它说明契约、真实执行、客户端和旧路径退出必须一起完成。
+
+
+## 当前导航与数据规划窄端口
+
+- `NavigationSessionService` 的状态、命令和终态回执均在纯 Kotlin contract；保存航线变化不反写导航冻结路线。外部 NMEA 目标只通过用户明确选择进入同一个导航会话，不能默默覆盖本地目标。
+- `ChartDataService.acquireSnapshot(datasetIds)` 显式参数是当前选中列表，空列表代表没有分析资料。禁止把全部安装数据、当前视口截取或栅格像素作为隐式输入。图册负责资料生命周期，`MapSessionStore` 只负责当前背景与选择。
+- `RouteAnalysisService` 与 `RoutePlanningService` 由同一个持久工作区提供。候选接受是内容/导航原有写端口的操作，规划服务没有开启导航、记录、AIS 发送或操舵的权限。
+- 当前导航、图册数据和规划均接入 `InProcessMarineSystem`。窄合同已经实际消费；仍是同进程实现，尚未提供对应 Binder 服务。完整格式、图幅语义与未知条件规则见 [海图契约](../product/CHART_INTERACTION_CONTRACT.md)。

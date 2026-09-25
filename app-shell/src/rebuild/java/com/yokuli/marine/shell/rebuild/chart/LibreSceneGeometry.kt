@@ -35,7 +35,7 @@ internal class LibreSceneGeometry {
     private data class PaintKey(val stage: Int, val width: Float = 0f, val dashed: Boolean = false) {
         val id get() = "yokuli-scene-$stage-${width.toBits()}-$dashed"
     }
-    private data class Shape(val points: List<GeoPoint>, val color: Int)
+    private data class Shape(val points: List<GeoPoint>, val color: Int,val holes:List<List<GeoPoint>> = emptyList())
     private data class GeometryState(
         val areas: List<MapArea>, val circles: List<MapCircle>, val lines: List<MapLine>,
         val ruler: List<GeoPoint>, val course: List<GeoPoint>?,
@@ -65,11 +65,11 @@ internal class LibreSceneGeometry {
         val geometry = GeometryState(scene.areas, scene.circles, scene.lines, ruler.toList(), scene.vessel?.let(::vesselCourseVector))
         if (geometry == previous) return
         val batches = linkedMapOf<PaintKey, MutableList<Shape>>()
-        fun add(stage: Int, points: List<GeoPoint>, color: Int, width: Float = 0f, dashed: Boolean = false) {
+        fun add(stage: Int, points: List<GeoPoint>, color: Int, width: Float = 0f, dashed: Boolean = false, holes:List<List<GeoPoint>> = emptyList()) {
             if (points.size < (when(stage) {0->3;8->1;else->2}) || !width.isFinite() || width < 0f) return
-            batches.getOrPut(PaintKey(stage, width, dashed)) { mutableListOf() }.add(Shape(points, color))
+            batches.getOrPut(PaintKey(stage, width, dashed)) { mutableListOf() }.add(Shape(points, color, holes))
         }
-        scene.areas.forEach { add(0, it.boundary, it.color.toInt()) }
+        scene.areas.forEach { add(0, it.boundary, it.color.toInt(),holes=it.holes) }
         scene.circles.filter { it.radiusMeters.isFinite() && it.radiusMeters > 0 }.forEach { circle ->
             val ring = (0..72).map { destination(circle.center, circle.radiusMeters, it * 5.0) }
             add(0, ring, (circle.color.toInt() and 0xFFFFFF) or 0x10000000)
@@ -106,7 +106,7 @@ internal class LibreSceneGeometry {
             if (values[key] != shapes) {
                 val features = shapes.mapIndexedNotNull { index, shape ->
                     val coordinates = when(key.stage) {
-                        0->polygonGeometry(shape.points)
+                        0->polygonGeometry(shape.points,shape.holes)
                         8->shape.points.firstOrNull()?.takeIf(::valid)?.let {Point.fromLngLat(it.lon,it.lat)}
                         else->lineGeometry(shape.points)
                     }
@@ -190,7 +190,7 @@ internal class LibreSceneGeometry {
     }
 
     /** 覆盖面同样按日期变更线裁开；只裁地理几何，不引入屏幕坐标或缩放重投影。 */
-    private fun polygonGeometry(points: List<GeoPoint>): Geometry? {
+    private fun polygonGeometry(points: List<GeoPoint>, holes:List<List<GeoPoint>>): Geometry? {
         if (points.size < 3 || points.any { !valid(it) }) return null
         val ring = mutableListOf(points.first())
         points.drop(1).forEach { p ->
@@ -220,7 +220,12 @@ internal class LibreSceneGeometry {
         val polygons = (firstWorld..lastWorld).mapNotNull { world ->
             val clipped = clip(clip(ring, -180.0 + world * 360.0, true), 180.0 + world * 360.0, false)
                 .distinct().map { point(it.copy(lon = it.lon - world * 360.0)) }
-            if (clipped.size < 3) null else listOf(clipped + clipped.first())
+            if (clipped.size < 3) null else listOf(clipped + clipped.first()) + holes.mapNotNull { hole ->
+                if(hole.size<3||hole.any { !valid(it) }) return@mapNotNull null
+                val unwrapped=hole.map { p -> var lon=p.lon;while(lon-ring.first().lon>180)lon-=360;while(lon-ring.first().lon< -180)lon+=360;p.copy(lon=lon) }
+                val cut=clip(clip(unwrapped,-180.0+world*360,true),180.0+world*360,false).distinct().map { point(it.copy(lon=it.lon-world*360)) }
+                cut.takeIf {it.size>=3}?.let {it+it.first()}
+            }
         }
         return polygons.takeIf { it.isNotEmpty() }?.let(MultiPolygon::fromLngLats)
     }

@@ -224,11 +224,16 @@ class PhoneVesselAttitudeRepository @Inject constructor(@ApplicationContext cont
     val capabilities=PhoneSensorCapabilities(rotation!=null,gyro!=null,magnetometer!=null,manager.getDefaultSensor(Sensor.TYPE_PRESSURE)!=null,linear!=null)
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
     private val _sample=MutableStateFlow(PhoneVesselAttitudeSample());val sample=_sample.asStateFlow()
+    // 原始设备->磁北ENU旋转：完全独立于船体安装和调平，仅供临时观察视线读取。
+    private val _deviceOrientation=MutableStateFlow(DeviceViewOrientationSample(sensorAvailable=rotation!=null))
+    val deviceOrientation=_deviceOrientation.asStateFlow()
+    private var orientationGeneration=0L
+    private var orientationStartedElapsed=0L
     private val _mountState=MutableStateFlow(PhoneVesselMountState.UNCALIBRATED);val mountState=_mountState.asStateFlow()
     @Volatile private var calibration=VesselMountCalibration();private var currentQuaternion:SensorQuaternion?=null;private var quaternionReceivedElapsed:Long?=null;private var gyroValues=DoubleArray(3);private var dynamicG=0.0;private var running=false
     init{scope.launch{calibrationRepository.calibration.collect{calibration=it;_mountState.value=when{it.calibratedAt<=0->PhoneVesselMountState.UNCALIBRATED;!it.attitudeFrameConfirmed->PhoneVesselMountState.MOUNT_SUSPECT;else->it.mountState}}}}
-    @Synchronized fun start():Boolean{if(running)return capabilities.attitudeAvailable;val a=rotation?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_GAME)}?:false;if(a){gyro?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_GAME)};linear?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_GAME)}};running=a;return running}
-    @Synchronized fun stop(){if(running)manager.unregisterListener(this);running=false;currentQuaternion=null;quaternionReceivedElapsed=null;gyroValues=DoubleArray(3);_sample.value=PhoneVesselAttitudeSample()}
+    @Synchronized fun start():Boolean{if(running)return capabilities.attitudeAvailable;orientationStartedElapsed=SystemClock.elapsedRealtime();orientationGeneration++;val a=rotation?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_GAME)}?:false;if(a){gyro?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_GAME)};linear?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_GAME)}};running=a;return running}
+    @Synchronized fun stop(){if(running)manager.unregisterListener(this);running=false;currentQuaternion=null;quaternionReceivedElapsed=null;gyroValues=DoubleArray(3);_sample.value=PhoneVesselAttitudeSample();_deviceOrientation.value=DeviceViewOrientationSample(sensorAvailable=rotation!=null,generation=orientationGeneration)}
     suspend fun calibrate(axis:DeviceBowAxis):Boolean{
         // 确認安裝方向需要正在運作的真實傳感器樣本，不能重用停止前的姿態。
         val q=synchronized(this){currentQuaternion?.takeIf{running&&quaternionReceivedElapsed?.let{SystemClock.elapsedRealtime()-it in 0L..2_000L}==true}}?:return false
@@ -246,7 +251,11 @@ class PhoneVesselAttitudeRepository @Inject constructor(@ApplicationContext cont
     suspend fun setMounted(mounted:Boolean){calibrationRepository.setMountState(if(mounted)PhoneVesselMountState.VESSEL_MOUNTED else PhoneVesselMountState.HANDHELD);_mountState.value=if(mounted)PhoneVesselMountState.VESSEL_MOUNTED else PhoneVesselMountState.HANDHELD}
     suspend fun alignHeading(offsetDegrees:Double)=calibrationRepository.setHeadingAlignment(offsetDegrees)
     suspend fun alignAttitude(heel:Double,pitch:Double)=calibrationRepository.setAttitudeOffsets(heel,pitch)
-    @Synchronized override fun onSensorChanged(event:SensorEvent){if(!running)return;when(event.sensor.type){Sensor.TYPE_GYROSCOPE->{gyroValues=doubleArrayOf(event.values[0].toDouble(),event.values[1].toDouble(),event.values[2].toDouble())};Sensor.TYPE_LINEAR_ACCELERATION->{dynamicG=sqrt(event.values.take(3).sumOf{it.toDouble()*it.toDouble()})/SensorManager.GRAVITY_EARTH};Sensor.TYPE_ROTATION_VECTOR,Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR->{val values=FloatArray(4);SensorManager.getQuaternionFromVector(values,event.values);val current=runCatching{SensorQuaternion(values[0].toDouble(),values[1].toDouble(),values[2].toDouble(),values[3].toDouble()).normalized()}.getOrNull()?:return;currentQuaternion=current;quaternionReceivedElapsed=event.timestamp/1_000_000L;publish(current)}}}
+    @Synchronized override fun onSensorChanged(event:SensorEvent){if(!running)return;when(event.sensor.type){Sensor.TYPE_GYROSCOPE->{gyroValues=doubleArrayOf(event.values[0].toDouble(),event.values[1].toDouble(),event.values[2].toDouble())};Sensor.TYPE_LINEAR_ACCELERATION->{dynamicG=sqrt(event.values.take(3).sumOf{it.toDouble()*it.toDouble()})/SensorManager.GRAVITY_EARTH};Sensor.TYPE_ROTATION_VECTOR,Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR->{val values=FloatArray(4);SensorManager.getQuaternionFromVector(values,event.values);val current=runCatching{SensorQuaternion(values[0].toDouble(),values[1].toDouble(),values[2].toDouble(),values[3].toDouble()).normalized()}.getOrNull()?:return;val measured=event.timestamp/1_000_000L
+        if(measured<orientationStartedElapsed||measured>SystemClock.elapsedRealtime()||_deviceOrientation.value.elapsedRealtimeMillis?.let{measured<=it}==true)return
+        currentQuaternion=current;quaternionReceivedElapsed=measured
+        _deviceOrientation.value=DeviceViewOrientationSample(current,measured,orientationGeneration,rotation?.name.orEmpty(),event.accuracy,event.values.getOrNull(4)?.takeIf{it.isFinite()&&it>=0f}?.let{Math.toDegrees(it.toDouble())},sensorAvailable=true)
+        publish(current)}}}
     private fun publish(current:SensorQuaternion){
         val now=SystemClock.elapsedRealtime()
         // Keep currentQuaternion available so the user can calibrate, but never

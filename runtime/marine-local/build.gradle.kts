@@ -20,6 +20,8 @@ dependencies {
     api(project(":legacy-marine"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation(libs.androidx.core.ktx)
+    implementation(libs.geographiclib)
+    implementation("org.locationtech.jts:jts-core:1.20.0")
     implementation("com.google.code.gson:gson:2.13.1")
     implementation("com.google.dagger:hilt-android:2.56.1")
     ksp("com.google.dagger:hilt-compiler:2.56.1")

@@ -9,6 +9,7 @@ import com.yokuli.marine.shell.rebuild.chart.MapSessionStore
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.marine.shell.rebuild.data.DataHub
 import com.yokuli.marine.shell.rebuild.data.MarinePresentationBridge
+import com.yokuli.runtime.contract.navigation.*
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.*
 import org.json.JSONArray
@@ -55,11 +56,23 @@ data class Place(val id: String = uid(), val name: String, val point: GeoPoint, 
         runCatching { PlaceKind.valueOf(j.optString("kind")) }.getOrDefault(PlaceKind.MARK),j.optString("collection"),j.optJSONObject("capture")?.let {runCatching{PlaceCapture.from(it)}.getOrNull()}) }
 }
 /** 用户规划的有序折线；保存、预览、导航是三个独立动作。 */
-data class Route(val id: String = uid(), val name: String, val points: List<GeoPoint>) {
+data class Route(val id: String = uid(), val name: String, val points: List<GeoPoint>,
+    /** null为旧路线每点目标；非空列表只标记用户需确认的业务目标。 */
+    val navigationTargetIndices:List<Int>?=null) {
+    init { require(navigationTargetIndices==null || navigationTargetIndices.isNotEmpty() &&
+        navigationTargetIndices==navigationTargetIndices.distinct().sorted() &&
+        navigationTargetIndices.all{it in points.indices} && navigationTargetIndices.last()==points.lastIndex) {"Invalid navigation target mapping"} }
+    val targetIndices get()=navigationTargetIndices ?: points.indices.toList()
     val length get() = points.zipWithNext().sumOf { distance(it.first,it.second) }
-    fun json() = JSONObject().put("id",id).put("name",name).put("points",JSONArray(points.map { it.json() }))
-    companion object { fun from(j:JSONObject) = Route(j.getString("id"),j.getString("name"),j.getJSONArray("points").objects().map(GeoPoint::from)) }
+    fun json() = JSONObject().put("id",id).put("name",name).put("points",JSONArray(points.map { it.json() })).put("navigationTargetIndices",navigationTargetIndices?.let{JSONArray(it)})
+    companion object { fun from(j:JSONObject) = Route(j.getString("id"),j.getString("name"),j.getJSONArray("points").objects().map(GeoPoint::from),j.optJSONArray("navigationTargetIndices")?.ints()) }
 }
+/** 采用规划方案的单步撤销与草稿同一次原子保存；后续手工编辑不能被旧撤销静默覆盖。 */
+data class PlanningDraftUndo(val points:List<GeoPoint>,val routeId:String?,val editing:Boolean,val appliedPoints:List<GeoPoint>,val appliedRouteId:String?=null,val previousNavigationTargetIndices:List<Int>?=null,val appliedNavigationTargetIndices:List<Int>?=null) {
+    fun json()=JSONObject().put("points",JSONArray(points.map {it.json()})).put("routeId",routeId).put("editing",editing).put("applied",JSONArray(appliedPoints.map {it.json()})).put("appliedRouteId",appliedRouteId).put("previousNavigationTargetIndices",previousNavigationTargetIndices?.let{JSONArray(it)}).put("appliedNavigationTargetIndices",appliedNavigationTargetIndices?.let{JSONArray(it)})
+    companion object {fun from(j:JSONObject)=PlanningDraftUndo(j.getJSONArray("points").objects().map(GeoPoint::from),j.optString("routeId").takeUnless {it.isBlank()||it=="null"},j.optBoolean("editing"),j.getJSONArray("applied").objects().map(GeoPoint::from),j.optString("appliedRouteId").takeUnless {it.isBlank()||it=="null"},j.optJSONArray("previousNavigationTargetIndices")?.ints(),j.optJSONArray("appliedNavigationTargetIndices")?.ints())}
+}
+fun JSONArray.ints():List<Int> = (0 until length()).map{getInt(it)}
 fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
 /** 旧版开始布局的兼容输入；1 小、2 中、4 宽，启动时迁移到 Shell 的 StartDocument。 */
 data class TileSpec(val app: String, val size: Int = 2)
@@ -165,14 +178,38 @@ class OsStore(val context: Context) {
     var showCrosshair by mutableStateOf(false)
     var anchorDraft by mutableStateOf<AnchorDraft?>(null)
     var ruler by mutableStateOf<List<GeoPoint>>(emptyList())
-    var draftRoute by mutableStateOf(initial.optJSONArray("draft")?.objects()?.mapNotNull {runCatching {GeoPoint.from(it)}.getOrNull()} ?: emptyList())
+    private var draftRouteValue by mutableStateOf(initial.optJSONArray("draft")?.objects()?.mapNotNull {runCatching {GeoPoint.from(it)}.getOrNull()} ?: emptyList())
+    var draftRoute:List<GeoPoint>
+        get()=draftRouteValue
+        set(value) {
+            val previous=draftRouteValue
+            val targets=draftNavigationTargetIndices
+            if(targets!=null&&value!=previous) {
+                draftNavigationTargetIndices=when {
+                    value.isEmpty()->null
+                    value.size==previous.size->targets
+                    value.size==previous.size+1->{val insertion=value.indices.firstOrNull {index->value.filterIndexed{i,_->i!=index}==previous}
+                        insertion?.let{at->(targets.map{if(it>=at)it+1 else it}+at+value.lastIndex).distinct().sorted()}}
+                    value.size==previous.size-1->{val removed=previous.indices.firstOrNull {index->previous.filterIndexed{i,_->i!=index}==value}
+                        removed?.let{at->(targets.filterNot{it==at}.map{if(it>at)it-1 else it}+value.lastIndex).distinct().sorted()}}
+                    else->null
+                }
+            }
+            draftRouteValue=value
+        }
+    var draftNavigationTargetIndices by mutableStateOf(initial.optJSONArray("draftNavigationTargetIndices")?.ints())
+    var planningDraftUndo by mutableStateOf(initial.optJSONObject("planningDraftUndo")?.let { runCatching { PlanningDraftUndo.from(it) }.getOrNull() })
     var editingRoute by mutableStateOf(draftRoute.isNotEmpty() && initial.optString("activeRoute").isBlank())
     var editingRouteId by mutableStateOf<String?>(initial.optString("editingRoute").takeIf {it.isNotBlank()})
     var displayedRouteId by mutableStateOf<String?>(null)
-    var activeRouteId by mutableStateOf<String?>(initial.optString("activeRoute").takeIf { it.isNotBlank() })
-    var navigationRoute by mutableStateOf<Route?>(runCatching { Route.from(initial.getJSONObject("navigationSnapshot")) }.getOrNull()
-        ?: routes.firstOrNull { it.id == activeRouteId }?.copy(points=routes.first { it.id == activeRouteId }.points.toList()))
-    var routeLeg by mutableIntStateOf(initial.optInt("routeLeg",0))
+    /** 唯一导航运行时的只读投影，页面不持有可写的导航目标。 */
+    var navigationState by mutableStateOf(NavigationState())
+        private set
+    val navigationRoute by derivedStateOf { navigationState.session?.takeIf { it.ongoing }?.route?.asRoute() }
+    val activeRouteId get() = navigationRoute?.id
+    val routeLeg get() = navigationState.guidance?.geometryIndex ?: navigationState.session?.geometryIndex ?: navigationState.session?.targetIndex ?: 0
+    private var navigationSubscription: Job? = null
+    private var navigationImported = false
     /** 用户明确选择的启动偏好；导航和航行记录仍由两条独立命令控制。 */
     var recordWhenNavigating by mutableStateOf(initial.optBoolean("recordWhenNavigating",false))
     var recordingActive by mutableStateOf(false)
@@ -194,6 +231,47 @@ class OsStore(val context: Context) {
         if (marine?.system === system) return
         marine?.close()
         marine = MarinePresentationBridge(this, system)
+        navigationSubscription?.cancel()
+        navigationSubscription = scope.launch {
+            launch {
+                var lastIssue:String?=null
+                system.navigation.state.collect { state ->
+                    navigationState = state
+                    val issue=state.storageIssue ?: state.backgroundIssue
+                    if(issue!=null&&issue!=lastIssue)notify(
+                        if(state.storageIssue!=null)"导航记录未能保存或读取，请打开海图检查。"else"后台导航受到系统限制，请保持应用打开并检查定位权限。",
+                        if(state.storageIssue!=null)"The navigation record could not be saved or read. Open Chart to review."else"Android restricted background navigation. Keep the app open and review location permission.",
+                        app=AppId.CHART,destination="chart",severity=NoticeSeverity.WARNING,key="navigation-runtime")
+                    lastIssue=issue
+                }
+            }
+            importLegacyNavigation(system)
+        }
+    }
+    private suspend fun importLegacyNavigation(system: com.yokuli.runtime.marine.MarineSystem) {
+        if (persistenceState.value.readFailure != null) return
+        val legacyId = initial.optString("activeRoute").takeIf { it.isNotBlank() }
+        val legacy = legacyId?.let { id -> runCatching { Route.from(initial.getJSONObject("navigationSnapshot")) }.getOrNull()?.takeIf { it.id == id }
+            ?: routes.firstOrNull { it.id == id } }
+        try {
+            system.navigation.importLegacy(legacy?.navigationSnapshot(), initial.optInt("routeLeg", 0))
+            navigationImported = true
+            save()
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { notify("旧导航暂未迁移，原记录已保留。", "Previous navigation could not be restored; its original record is retained.", app = AppId.CHART, severity = NoticeSeverity.WARNING, key = "navigation-migration") }
+    }
+    /** 接受后由运行时队列负责；这里只在持久化回执返回后更新界面投影。 */
+    suspend fun commitNavigation(command: NavigationCommand): NavigationReceipt {
+        val service = marine?.system?.navigation ?: return NavigationReceipt(command.requestId, command.action, NavigationResult.FAILED, reason = "RUNTIME_NOT_READY")
+        val receipt = service.execute(command)
+        navigationState = service.state.value
+        return receipt
+    }
+    fun navigationCommand(action: NavigationAction, requestId: String = uid(), targetIndex: Int? = null,
+        route: NavigationRouteSnapshot? = null, settings: NavigationSettings? = null,
+        externalSourceId: String? = null, analysisReference: String? = null): NavigationCommand {
+        val current = navigationState.session
+        return NavigationCommand(requestId, action, current?.id, current?.revision, route, targetIndex, settings, externalSourceId, analysisReference)
     }
     val hub = DataHub()
     val library = ChartLibrary(context, scope)
@@ -201,7 +279,7 @@ class OsStore(val context: Context) {
     val sailing by lazy { MySailingRepository(this) }
     val allPlaces get() = places + sailing.coordinates
     val activeRoute get() = navigationRoute?.takeIf { it.id == activeRouteId }
-    val nextPoint get() = activeRoute?.points?.getOrNull(routeLeg)
+    val nextPoint get() = navigationState.session?.target?.point?.let {GeoPoint(it.lat,it.lon)}
     init {
         scope.launch {
             var reportedFailure: Long? = null
@@ -278,11 +356,14 @@ class OsStore(val context: Context) {
         sailing.put(place)
         return place
     }
-    fun startRoute(route: Route) { navigationRoute=route.copy(points=route.points.toList()); activeRouteId = route.id; displayedRouteId = route.id; routeLeg = 0; save(); openLinked("chart"); fly(route.points.first()) }
+    fun startRoute(route: Route) { com.yokuli.marine.shell.rebuild.ui.beginNavigation(this, route, route.targetIndices.firstOrNull()?:0, hub.state.value.fix(positionSource), android.os.SystemClock.elapsedRealtime()) }
     fun advanceRoute() {
-        val route = activeRoute ?: return
-        if (routeLeg < route.points.lastIndex) routeLeg++ else { activeRouteId = null; notify("航线已结束","Route ended") }
-        save()
+        val current = navigationState.session ?: return
+        val command = navigationCommand(if (current.targetIndex == current.route?.targetIndices?.lastOrNull()) NavigationAction.ARRIVE else NavigationAction.ADVANCE)
+        scope.launch {
+            val result = commitNavigation(command)
+            if (result.result != NavigationResult.SAVED) notify("导航未更改，请重新打开导航操作。", "Navigation was not changed; reopen navigation controls.", app = AppId.CHART, severity = NoticeSeverity.WARNING)
+        }
     }
     /** 只排队，不代表已保存。需要用户成功反馈的操作必须等待返回的 DurableCommit。 */
     fun save(): DurableCommit {
@@ -290,11 +371,10 @@ class OsStore(val context: Context) {
             .put("places",JSONArray(places.map { it.json() })).put("routes",JSONArray(routes.map { it.json() }))
             .put("tiles",JSONArray(tiles.map { JSONObject().put("app",it.app).put("size",it.size) }))
             .put("camera",center.json()).put("zoom",zoom).put("mapMode",mapMode)
-            .put("activeRoute",activeRouteId ?: "").put("routeLeg",routeLeg)
             .put("recordWhenNavigating",recordWhenNavigating)
-            .put("navigationSnapshot",navigationRoute?.takeIf { activeRouteId != null }?.json())
-            .put("draft",JSONArray(draftRoute.map {it.json()})).put("editingRoute",editingRouteId ?: "")
+            .put("draftNavigationTargetIndices",draftNavigationTargetIndices?.let{JSONArray(it)}).put("planningDraftUndo",planningDraftUndo?.json()).put("draft",JSONArray(draftRoute.map {it.json()})).put("editingRoute",editingRouteId ?: "")
             .put("host",nmeaHost).put("port",nmeaPort).put("protocol",nmeaProtocol).put("serverPort",serverPort).put("positionSource",positionSource)
+        if (navigationImported) { json.remove("activeRoute"); json.remove("routeLeg"); json.remove("navigationSnapshot") }
         return persistence.submit(json.toString())
     }
     /** 真正重读原资料，不把“重试保存”当作允许用当前空投影覆盖旧文件。 */
@@ -318,6 +398,8 @@ class OsStore(val context: Context) {
                 routes = (storedRoutes + routes).associateBy { it.id }.values.toList()
                 if (draftRoute.isEmpty()) {
                     draftRoute = document.optJSONArray("draft")?.objects()?.map(GeoPoint::from).orEmpty()
+                    draftNavigationTargetIndices = document.optJSONArray("draftNavigationTargetIndices")?.ints()
+                    planningDraftUndo = document.optJSONObject("planningDraftUndo")?.let(PlanningDraftUndo::from)
                     editingRouteId = document.optString("editingRoute").takeIf { it.isNotBlank() }
                     editingRoute = draftRoute.isNotEmpty() && activeRouteId == null
                 }
@@ -325,6 +407,7 @@ class OsStore(val context: Context) {
                 initial = document
                 recoveredContentFile = recovered.second
                 persistence.contentReadRestored()
+                marine?.system?.let { importLegacyNavigation(it) }
                 saveWithFeedback("原有资料已恢复，当前改动已合并保存。", "Existing content was restored and current changes were merged and saved.")
             } catch(cancelled:CancellationException) {throw cancelled}
             catch(error:Exception) { contentRecoveryFailure = error.message ?: "CONTENT_READ_FAILED" }

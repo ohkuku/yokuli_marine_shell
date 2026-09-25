@@ -24,7 +24,7 @@ import java.util.Date
     var controls by remember {mutableStateOf(false)}
     val voyage=os.marine?.voyage?.collectAsState()?.value
     Box(Modifier.fillMaxSize()) {
-        ChartScreen(os,recording=voyage?.active==true,recordingPaused=voyage?.phase==VoyagePhase.PAUSED,onRecording={controls=true},initialAisMmsi=initialAisMmsi)
+        ChartScreen(os,recording=voyage?.active==true,recordingPaused=voyage?.phase==VoyagePhase.PAUSED,onRecording={controls=true},initialAisMmsi=initialAisMmsi,interactionBlocked=controls)
         if(os.positionSource=="demo") Label(os.t("演示船位","DEMO POSITION"),14,
             modifier=Modifier.align(Alignment.TopCenter).padding(top=64.dp).background(LocalMetro.current.bg).padding(6.dp))
     }

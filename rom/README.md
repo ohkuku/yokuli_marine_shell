@@ -38,3 +38,8 @@
 4. `bash rom/tools/build.sh /path/to/aosp` 构建镜像和 target-files；随后在 Cuttlefish 启动并收集证据。
 
 完整命令、限制和交付状态见构建手册。没有脚本会自动解锁、刷机、清除设备或付费创建服务器。
+
+
+### 当前导航与图册规划
+
+HOME flavor 与普通 APK 共用 `MarineSystem.navigation/charts/analysis/planning`。S-57 离线导入/索引、导航会话前台服务和离线候选规划位于生产 runtime；HOME 不需要 Google 服务即可使用内置地图与本地资料。S-63 客户端许可和完整 Marine Core IPC 没有因 HOME flavor 而获得；本轮仍未构建或刷入 ROM 系统镜像。生命周期和用途边界见 [系统接入现状](../docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [海图契约](../docs/product/CHART_INTERACTION_CONTRACT.md)。

@@ -26,6 +26,7 @@ import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.marine.shell.rebuild.data.Reading
+import com.yokuli.marine.shell.rebuild.data.withNavigation
 import com.yokuli.marine.shell.rebuild.*
 import java.util.Locale
 
@@ -33,6 +34,7 @@ import java.util.Locale
 @Composable fun InstrumentsScreen(os: OsStore, initialSection: String = "") {
     val marine = os.marine ?: return
     val state by marine.services.state.collectAsState()
+    val vesselData = remember(state.vesselData, os.navigationState) { state.vesselData.withNavigation(os.navigationState) }
     val history by os.hub.history.collectAsState()
     val data by os.hub.state.collectAsState()
     val now = rememberMarineClock()
@@ -76,12 +78,12 @@ import java.util.Locale
             CompositionLocalProvider(LocalInternalAppInputEnabled provides isActive) {
                 pageStates.SaveableStateProvider(visible) {
                     if (visible != "workspace") {
-                        InstrumentDetailPage(os, InstrumentTileId.valueOf(visible), state.vesselData,
+                        InstrumentDetailPage(os, InstrumentTileId.valueOf(visible), vesselData,
                             state.vesselSettings.customLayout, history, data.readings, now, isActive, ::saveLayout, select)
                     } else Pivot(listOf(os.t("航行", "navigation"), os.t("帆航", "sailing"), os.t("姿态", "attitude"),
                         os.t("天气", "weather"), os.t("回看", "history"), os.t("我的", "mine")),
                         initialPage = currentPage, onPageSelected = { currentPage = it }) { page ->
-                        if (page == 5) InstrumentBoard(os, state.vesselData, state.vesselSettings.customLayout, now, editing,
+                        if (page == 5) InstrumentBoard(os, vesselData, state.vesselSettings.customLayout, now, editing,
                             edit = { editing = !editing }, add = {
                                 pickerTileNames = marine.services.state.value.vesselSettings.customLayout.map { it.name }
                                 chooseTiles = true
@@ -89,7 +91,7 @@ import java.util.Locale
                         else PageBody {
                             if (state.settings.demoMode) Label(os.t("演示 · 模拟读数", "DEMO · simulated readings"), 16, c.accentText)
                             when (page) {
-                                0 -> NavigationInstrumentPanel(os, state.vesselData, now, select)
+                                0 -> NavigationInstrumentPanel(os, vesselData, now, select)
                                 1 -> SailingInstrumentPanel(os, state.vesselData, now, select)
                                 2 -> {
                                     InstrumentAttitudePanel(os, active = isActive && currentPage == 2, onMetric = select)

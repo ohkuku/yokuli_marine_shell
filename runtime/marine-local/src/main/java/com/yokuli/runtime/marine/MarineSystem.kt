@@ -19,6 +19,10 @@ import javax.inject.Singleton
 
 /** 系统组合接口：应用通过窄领域端口工作，不取得本地控制器。 */
 interface MarineSystem : RuntimeEndpoint {
+    val charts: com.yokuli.runtime.contract.chart.ChartDataService
+    val navigation: com.yokuli.runtime.contract.navigation.NavigationSessionService
+    val analysis: com.yokuli.runtime.contract.planning.RouteAnalysisService
+    val planning: com.yokuli.runtime.contract.planning.RoutePlanningService
     val services: MarineServices
     val voyage: VoyageSessionService
     val anchorCommands: AnchorCommandMonitor
@@ -29,9 +33,14 @@ interface MarineSystem : RuntimeEndpoint {
 @Singleton
 class InProcessMarineSystem @Inject constructor(
     override val services: LocalMarineServices,
+    override val charts: com.yokuli.runtime.marine.chart.LocalChartDataService,
+    override val navigation: com.yokuli.runtime.marine.navigation.LocalNavigationSessionService,
+    private val passages: com.yokuli.runtime.marine.planning.LocalPassagePlanningService,
     override val anchorCommands: com.yokuli.anchorwatch.runtime.AnchorCommandRegistry,
     override val ais: com.yokuli.runtime.marine.ais.LocalAisTrafficService,
 ) : MarineSystem {
+    override val analysis: com.yokuli.runtime.contract.planning.RouteAnalysisService get() = passages
+    override val planning: com.yokuli.runtime.contract.planning.RoutePlanningService get() = passages
     private val systemScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val identity = RuntimeConnection("yokuli.marine", RuntimeTransport.IN_PROCESS, RuntimeReadiness.INITIALIZING)
     override val connection: StateFlow<RuntimeConnection> = services.state.map {

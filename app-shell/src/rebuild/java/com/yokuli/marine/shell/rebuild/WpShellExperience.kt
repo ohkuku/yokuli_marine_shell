@@ -337,6 +337,7 @@ private fun ShellAppContent(os: OsStore, page: String) {
         page == "chart" -> ChartAppScreen(os)
         page.startsWith("chart:ais:") -> ChartAppScreen(os,page.substringAfterLast(':').toIntOrNull())
         page == "library" -> LibraryScreen(os)
+        page.startsWith("chartdataset:") -> LibraryDatasetScreen(os,page.substringAfter(':'))
         page.startsWith("library:") -> LibraryFolderScreen(os, page.substringAfter(':'))
         page == "places" || page.startsWith("places:") -> PlacesScreen(os,anchoragesOnly=page=="places:anchorages")
         page.startsWith("place:") -> PlaceScreen(os, page.substringAfter(':'))

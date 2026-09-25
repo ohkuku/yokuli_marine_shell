@@ -13,6 +13,7 @@ import com.yokuli.shell.engine.currentUiStateKey
 /** Chart owns its route/mark editing; the renderer receives geometry and returns gestures. */
 @Composable
 fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (ChartHost) -> Unit) {
+    DraftPassageAnalysis(os)
     val now=rememberMarineClock()
     val traffic=rememberAisTraffic(os)
     val instanceKey = LocalInternalAppPageKey.current
@@ -28,6 +29,11 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
     var nativeHost by remember(instanceKey) { mutableStateOf<ChartHost?>(null) }
     view.interactive = active && LocalInternalAppInputEnabled.current
     if(active) {
+        view.objectPickingEnabled = !os.editingRoute&&os.ruler.isEmpty()
+        view.orientationMode = sharedView.orientationMode
+        view.planningLines = sharedView.planningLines
+        view.planningPoints = sharedView.planningPoints
+        view.planningAreas = sharedView.planningAreas
         view.follow = os.follow
         view.showCrosshair = os.showCrosshair || os.editingRoute
         view.ruler = os.ruler
@@ -35,7 +41,12 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         os.cameraRequest?.let { (point, zoom) -> view.fly(point, zoom); os.cameraRequest = null }
         os.fitRequest?.takeIf { it.isNotEmpty() }?.let { view.fit(it); os.fitRequest = null; os.follow = false }
     }
-    SideEffect { nativeHost?.captureForTile = active }
+    val effectiveOrientation=view.effectiveOrientationMode
+    val orientationIssue=view.orientationIssue
+    SideEffect {
+        nativeHost?.captureForTile = active
+        if(active){sharedView.effectiveOrientationMode=effectiveOrientation;sharedView.orientationIssue=orientationIssue}
+    }
     val route = chartRoute(os)
     val navigating = !os.editingRoute && route != null && chartIsNavigating(os)
     val points = if (os.editingRoute) os.draftRoute else route?.points.orEmpty()
@@ -51,9 +62,17 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         if(navigating) add(MapLine("remaining",points.drop((os.routeLeg-1).coerceAtLeast(0)),accent))
         if(navigating && livePosition!=null) nextPoint?.let {add(MapLine("target",listOf(livePosition,it),accent,2f,true))}
     }}
-    val markers = remember(points,os.editingRoute,navigating,os.routeLeg,allPlaces,sharedView.selectedPlaceId,accent) {buildList {
-        points.forEachIndexed {i,p -> add(MapPoint("route:$i",p,(i+1).toString(),if(navigating && i<os.routeLeg)0xFF7D898C else accent,
-            if(os.editingRoute)14f else if(navigating && i==os.routeLeg)16f else 10f,os.editingRoute))}
+    val logicalTargets=(if(os.editingRoute)os.draftNavigationTargetIndices else route?.navigationTargetIndices) ?: points.indices.toList()
+    val currentTarget=os.navigationState.session?.targetIndex
+    val markers = remember(points,logicalTargets,currentTarget,os.editingRoute,navigating,os.routeLeg,allPlaces,sharedView.selectedPlaceId,accent) {buildList {
+        val labels=logicalTargets.withIndex().associate {it.value to (it.index+1).toString()}
+        points.forEachIndexed {i,p ->
+            val label=labels[i]
+            if(label!=null)add(MapPoint("route:$i",p,label,if(navigating && i<os.routeLeg)0xFF7D898C else accent,
+                if(os.editingRoute)14f else if(navigating && i==currentTarget)16f else 10f,os.editingRoute))
+            // 圆弧和搜索形状点留在线几何中；仅把当前沿线引导点画成无编号的小点。
+            else if(i==0||navigating&&i==os.routeLeg)add(MapPoint("route:$i",p,"",accent,4f,false))
+        }
         allPlaces.forEach {add(MapPoint("place:${it.id}",it.point,"",if(sharedView.selectedPlaceId==it.id)0xFFD74A29 else accent,if(sharedView.selectedPlaceId==it.id)12f else 5f))}
     }}
     val aisTargets=remember(traffic.targets,traffic.preferences.chartLayer,sharedView.previewTrack.isEmpty(),sharedView.selectedAisMmsi) {
@@ -71,7 +90,9 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
             is MapEvent.CameraChanged -> {os.center=event.center;os.zoom=event.zoom;sharedView.center=event.center;sharedView.zoom=event.zoom}
             MapEvent.GestureStarted -> {os.follow=false;os.showCrosshair=true;sharedView.selectedPlaceId=null;sharedView.selectedAisMmsi=null}
             is MapEvent.CoordinateSelected -> {os.follow=false;os.showCrosshair=true}
-            is MapEvent.ItemSelected -> if(event.id.startsWith("ais:")&&!os.editingRoute&&os.ruler.isEmpty()) {
+            is MapEvent.ItemSelected -> if(event.id.startsWith("enc:")) {
+                sharedView.selectedPlaceId=null;sharedView.selectedAisMmsi=null;os.showCrosshair=false
+            }else if(event.id.startsWith("ais:")&&!os.editingRoute&&os.ruler.isEmpty()) {
                 sharedView.selectedAisMmsi=event.id.substringAfter(':');sharedView.selectedPlaceId=null;os.showCrosshair=false
             } else if(event.id.startsWith("place:")) {
                 val id=event.id.removePrefix("place:")

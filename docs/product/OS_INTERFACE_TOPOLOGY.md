@@ -252,3 +252,28 @@ flowchart TB
 ## 诚实的实现边界
 
 海图磁贴的地图图像有捕获时间，实时船位/速度另行更新；没有启动一个后台地图渲染器制造“实时地图”。锚泊累计色块表示本次记录到的位置占用，不是测深、海底扫描或可航行水域。曲线是有限历史，完整回放依赖航行记录。声纳历史数据仅保留，当前不采集、不恢复。通知中心是 Yokuli 内部通知，不读取其他 Android App 的通知。真实硬件 GNSS、海上守望、设备兼容性仍需要用户后续实船体验。
+
+
+## 结构化数据图册与路线规划拓扑
+
+```mermaid
+flowchart LR
+  LIB[图册：海图 / 数据] -->|导入 更新 用途 移除| CD[MarineSystem.charts]
+  CD --> DB[(不可变 SQLite / RTree 版本)]
+  SELECT[MapSessionStore 背景 + 数据集] -->|显式 IDs| LEASE[ChartDataSnapshot 租约]
+  DB --> LEASE
+  LEASE --> VIEW[共享 MarineMap / 对象查询]
+  LEASE --> ANALYZE[MarineSystem.analysis]
+  SHIP[原 VesselSettingsRepository] --> ANALYZE
+  DRAFT[现有航线或草稿] --> ANALYZE
+  ANALYZE --> PLAN[MarineSystem.planning]
+  PLAN --> CANDIDATE[候选 / 沿程证据 / 问题位置]
+  CANDIDATE -->|确认采用| DRAFT
+  CANDIDATE -->|确认替换 + expectedRevision| NAV[MarineSystem.navigation]
+  NMEA[NMEA 目标候选] -->|明确选用| NAV
+  DRAFT -->|开始并冻结版本| NAV
+  NAV --> MAP[海图 / 立体方向 / 驾驶台 / 磁贴]
+  PHONE[临时设备视线显示租约] --> MAP
+```
+
+合同入口分别是 `navigation/NavigationContract.kt`、`chart/ChartDataContract.kt`、`planning/PassageContract.kt`。对象身份、经纬度/深度单位、图幅版本、数据用途、租约、命令比较和沿程证据在代码保留中文语义注释。详细字段与当前不支持的加密/环境能力见 [海图契约](CHART_INTERACTION_CONTRACT.md)，具体声明见 [API 索引](API_INDEX.md)。

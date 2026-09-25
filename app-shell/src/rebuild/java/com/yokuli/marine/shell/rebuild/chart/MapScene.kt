@@ -30,11 +30,12 @@ data class MapVessel(
     /** 航迹向量按一分钟航程绘制；低于 0.5 kn 时不绘制。 */
     val speedKnots: Double? = null,
 )
-data class MapPoint(val id: String, val point: GeoPoint, val label: String = "", val color: Long = 0xFF007F9B, val radiusDp: Float = 10f, val draggable: Boolean = false)
+enum class MapPointStyle { PIN, SOUNDING }
+data class MapPoint(val id: String, val point: GeoPoint, val label: String = "", val color: Long = 0xFF007F9B, val radiusDp: Float = 10f, val draggable: Boolean = false,val style:MapPointStyle=MapPointStyle.PIN)
 data class MapLine(val id: String, val points: List<GeoPoint>, val color: Long = 0xFF007F9B, val widthDp: Float = 3f, val dashed: Boolean = false)
 data class MapCircle(val id: String, val center: GeoPoint, val radiusMeters: Double, val color: Long = 0xFF007F9B, val dashed: Boolean = false)
 /** 实际观测区域，不表示水深或可安全航行范围。颜色的 alpha 表示观测密度或时间。 */
-data class MapArea(val id: String, val boundary: List<GeoPoint>, val color: Long)
+data class MapArea(val id: String, val boundary: List<GeoPoint>, val color: Long, val holes:List<List<GeoPoint>> = emptyList())
 /** AIS 是独立交通实体；报告点保持真实位置，Heading 缺失时不能用 COG 冒充船艏。 */
 data class MapAisTarget(
     val mmsi:String, val point:GeoPoint, val name:String, val kind:String,
@@ -73,7 +74,8 @@ internal fun MapScene.trafficGeometry():MapScene = if(aisTargets.isEmpty()) this
 
 sealed interface MapEvent {
     data class CameraChanged(val center: GeoPoint, val zoom: Double) : MapEvent
-    data class ItemSelected(val id: String) : MapEvent
+    /** hitPoint是本次手指点按的地理坐标；不可用时不能用对象中心冒充。 */
+    data class ItemSelected(val id: String, val hitPoint: GeoPoint? = null) : MapEvent
     data class PointMoved(val id: String, val point: GeoPoint) : MapEvent
     data class CoordinateSelected(val point: GeoPoint) : MapEvent
     data object GestureStarted : MapEvent
@@ -81,15 +83,29 @@ sealed interface MapEvent {
 
 data class MapCameraRequest(val id: Long, val point: GeoPoint? = null, val zoom: Double = 13.0, val points: List<GeoPoint> = emptyList())
 
+enum class MapOrientationMode { NORTH_UP, HEADING_UP, COURSE_UP }
+
 /** View state is local to the task. A replay cannot move the chart's camera. */
 class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
+    /** 用户选项与本次实际可用模式分开；拖图不改选项，数据恢复后自然恢复朝向。 */
+    var orientationMode by mutableStateOf(MapOrientationMode.NORTH_UP)
+    var effectiveOrientationMode by mutableStateOf(MapOrientationMode.NORTH_UP)
+    var orientationIssue by mutableStateOf<String?>(null)
     var center by mutableStateOf(center)
     var zoom by mutableDoubleStateOf(zoom)
     var follow by mutableStateOf(false)
     var showCrosshair by mutableStateOf(false)
     var ruler by mutableStateOf<List<GeoPoint>>(emptyList())
     var interactive by mutableStateOf(true)
+    /** 放锚、选点和编辑航线等工具可关闭对象查询，保持地图手势本身可用。 */
+    var objectPickingEnabled by mutableStateOf(true)
     /** 点击收藏只在海图预览；明确点按详情才打开拥有该记录的应用。 */
+    /** 对象查询的实际点按位置；不移动准星，也不冒充船位。 */
+    var selectedChartCoordinate by mutableStateOf<GeoPoint?>(null)
+    var selectedChartObjects by mutableStateOf<List<com.yokuli.runtime.contract.chart.NauticalFeature>>(emptyList())
+    var planningLines by mutableStateOf<List<MapLine>>(emptyList())
+    var planningPoints by mutableStateOf<List<MapPoint>>(emptyList())
+    var planningAreas by mutableStateOf<List<MapArea>>(emptyList())
     var selectedPlaceId by mutableStateOf<String?>(null)
     var selectedAisMmsi by mutableStateOf<String?>(null)
     /** 当前宿主的投影计数，仅用于说明视口裁剪，不改变运行时目标。 */
@@ -142,6 +158,11 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     }
     var source by mutableStateOf(restored())
         private set
+    /** 背景与数据集分别选择；选择卫星或隐藏图形不改变分析数据。 */
+    var selectedDatasetIds by mutableStateOf(saved?.optJSONArray("datasetIds")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.distinct() }.orEmpty())
+        private set
+    val charts get() = (context.applicationContext as com.yokuli.marine.shell.rebuild.YokuliApplication).marineSystem.charts
+    fun selectDataset(id:String?) { selectedDatasetIds = id?.takeIf { it.isNotBlank() }?.let { listOf(it) }.orEmpty(); select(source) }
     var saveFailed by mutableStateOf(false)
         private set
     private val views = mutableMapOf<String, MapViewState>()
@@ -163,6 +184,7 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
         val generation = ++saveGeneration
         val snapshot = JSONObject().put("type", when (value) { MapSource.Offline -> "offline"; MapSource.Satellite -> "satellite"; is MapSource.CustomLayer -> "custom" })
         if (value is MapSource.CustomLayer) snapshot.put("id", value.layerId)
+        snapshot.put("datasetIds", org.json.JSONArray(selectedDatasetIds))
         scope.launch(Dispatchers.IO) {
             mutex.withLock {
                 if (generation != saveGeneration) return@withLock

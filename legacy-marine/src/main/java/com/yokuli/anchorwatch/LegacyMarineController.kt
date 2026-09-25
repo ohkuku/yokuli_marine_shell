@@ -808,6 +808,10 @@ class LegacyMarineController @Inject constructor(
         require(antennaToBowMeters.isFinite() && antennaToBowMeters >= 0.0) { "Invalid antenna offset" }
         return controllerScope.launch { prefs.setVesselGeometry(lengthMeters, bowRollerHeightMeters, antennaToBowMeters) }
     }
+    fun setPassageGeometry(value: com.yokuli.anchorwatch.data.vessel.PassageGeometry): Job {
+        value.requireValid()
+        return controllerScope.launch { vesselSettingsRepository.setPassageGeometry(value) }
+    }
     fun setVesselIdentity(name: String, draftMeters: Double?): Job {
         require(draftMeters == null || (draftMeters.isFinite() && draftMeters >= 0.0)) { "Invalid vessel draft" }
         return controllerScope.launch { vesselSettingsRepository.setVesselIdentity(name, draftMeters) }

@@ -15,12 +15,20 @@ import com.yokuli.marine.shell.rebuild.chart.*
 
 /** 图册只负责目录和图层；点开目录管理内容，明确“在海图打开”才改变显示来源。 */
 @Composable fun LibraryScreen(os:OsStore) {
+    Column(Modifier.fillMaxSize()) {
+        PageHeader(os,os.title(AppId.LIBRARY))
+        Pivot(listOf(os.t("海图","Charts"),os.t("数据","Data"))) {page->
+            if(page==0)RasterLibraryPane(os)else StructuredChartLibraryPane(os)
+        }
+    }
+}
+
+@Composable private fun RasterLibraryPane(os:OsStore) {
     val library=os.library
     var naming by remember {mutableStateOf<ChartFolder?>(null)}
     val folder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {uri ->uri?.let(library::linkFolder)?.let {naming=it}}
     val single=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {it?.let(library::importCopy)}
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os,os.title(AppId.LIBRARY))
         Box(Modifier.weight(1f)) { PageBody {
             LibraryProgress(os)
             if(library.folders.isEmpty()) {
@@ -42,7 +50,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Label(os.t("支持栅格 MBTiles。连接后，原文件仍由你的文件夹保存。","Raster MBTiles. Linked files stay in your own folder."),15,LocalMetro.current.muted)
+            Label(os.t("支持栅格 MBTiles。原文件仍在你的文件夹中；结构化 S-57 海图在“数据”中导入。","Raster MBTiles. Linked files stay in your own folder. Use Data for structured S-57 charts."),15,LocalMetro.current.muted)
         } }
         AppCommandBar(os,listOf(
             AppCommand("link-folder","folder",os.t("连接海图文件夹","Connect chart folder"),{folder.launch(null)},enabled=!library.busy),

@@ -27,9 +27,11 @@ import com.yokuli.marine.shell.rebuild.chart.*
 @Composable
 fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) {
     val c=LocalMetro.current
+    val chartData by os.maps.charts.state.collectAsState()
     AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface {
             AppDialogTitle(os.t("地图来源","Map source"))
+            AppSection(os.t("底图","Background"))
             fun choose(source:MapSource) {os.maps.select(source);onDismiss()}
             Column(Modifier.selectableGroup()) {
                 for(source in listOf(MapSource.Offline,MapSource.Satellite)) {
@@ -53,7 +55,20 @@ fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) 
                 }
             }
             if(os.library.layers.isEmpty())Label(os.t("在图册连接文件夹并命名后，它会出现在这里。","Connect and name a folder in chart library to add it here."),16,c.muted)
-            Label(os.t("全球地图已内置，自定义海图下方也保留这张离线底图。Natural Earth 提供概略陆地与海岸，不含水深或航行障碍物。","The world map is built in and remains beneath custom charts. Natural Earth provides general land and coastlines, without depths or navigation hazards."),14,c.muted)
+            AppSection(os.t("海图数据","Chart data"))
+            Column(Modifier.selectableGroup()) {
+                MapSourceOption(os,os.t("无","None"),os.maps.selectedDatasetIds.isEmpty()) {os.maps.selectDataset(null);onDismiss()}
+                chartData.datasets.forEach { dataset ->
+                    MapSourceOption(os,dataset.name,dataset.id in os.maps.selectedDatasetIds,
+                        if(!dataset.offlineReadable)os.t("离线索引缺失 · 在图册恢复","Offline index missing · Restore in Library")else chartUseLabel(os,dataset.eligibility),enabled=dataset.offlineReadable) {os.maps.selectDataset(dataset.id);onDismiss()}
+                }
+                os.maps.selectedDatasetIds.filter {id->chartData.datasets.none {it.id==id}}.forEach {
+                    MapSourceOption(os,os.t("所选数据已移除","Selected dataset is missing"),true,os.t("在图册重新导入或选择另一份资料","Restore it in Library or choose another dataset"),false) {}
+                }
+                if(chartData.loading)MetroProgress(os.t("正在读取数据图册","Reading chart data"))
+                chartData.error?.let {Label(chartDataError(os,it),13,c.accentText)}
+            }
+
             if(os.maps.saveFailed)Label(os.t("选择尚未保存到设备","selection could not be saved"),16)
             aisLayer?.let {AisLayerChoice(os,it)}
             MetroButton(os.t("关闭","close"),onDismiss)
@@ -78,7 +93,7 @@ fun MapSourceButton(os:OsStore,modifier:Modifier=Modifier) {
 @Composable
 fun MapPicker(os:OsStore,initialPoint:GeoPoint?,referenceScene:MapScene=MapScene(),onConfirm:(GeoPoint)->Unit,onCancel:()->Unit) {
     val density=LocalDensity.current
-    val view=remember {MapViewState(initialPoint ?: referenceScene.vessel?.point ?: os.center,16.0).apply {showCrosshair=true}}
+    val view=remember {MapViewState(initialPoint ?: referenceScene.vessel?.point ?: os.center,16.0).apply {showCrosshair=true;objectPickingEnabled=false}}
     AppDialog(onDismissRequest=onCancel,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
         AppBackHandler(onBack=onCancel)
         Column(Modifier.fillMaxSize().background(LocalMetro.current.bg)) {

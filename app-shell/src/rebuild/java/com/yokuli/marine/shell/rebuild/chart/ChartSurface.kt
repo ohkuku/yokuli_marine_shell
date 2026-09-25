@@ -52,6 +52,8 @@ interface ChartCamera {
     fun unproject(x: Float, y: Float): GeoPoint
     fun move(point: GeoPoint, zoom: Double)
     fun zoom(): Double
+    fun orientation(): Double
+    fun orient(bearingDegrees: Double, animated: Boolean)
     fun fit(points: List<GeoPoint>)
 }
 
@@ -154,6 +156,8 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     private var sourceGeneration=0L
     private var lastRequest=0L
     private var lastFollowPoint: GeoPoint?=null
+    private var lastOrientationRequest: Double?=null
+    private var cameraGestureActive=false
     /** 全量事实在 overlay.scene，viewportTraffic 是预算后的候选，renderedTraffic 只含实际交给原生引擎的身份。 */
     private var viewportTraffic:List<MapAisTarget> = emptyList()
     private var renderedTraffic:List<MapAisTarget> = emptyList()
@@ -166,7 +170,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     var captureForTile = false
     private var captureJob: Job? = null
     val overlay=ChartOverlay(context,state)
-    private val nativeScene=NativeSceneRenderer(context)
+    private val nativeScene=NativeSceneRenderer(context,scope) {failed->if(!destroyed){if(failed)error="depthLabels"else if(error=="depthLabels")error=null}}
     private val placeLabels=OfflineMapLabels(context,scope,
         onError={if(!destroyed){error="labels"}},
         onUpdated={if(!destroyed){if(error=="labels")error=null;captureSnapshot()}})
@@ -181,7 +185,21 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         if(googleEngine) initGoogle() else initLibre()
         addView(overlay,LayoutParams(-1,-1))
     }
+    private var tapDown:PointF?=null
+    private var nativeTapPoint:GeoPoint?=null
+    private var nativeTapAt=0L
     override fun dispatchTouchEvent(event:MotionEvent):Boolean {
+        when(event.actionMasked) {
+            MotionEvent.ACTION_DOWN->{tapDown=PointF(event.x,event.y);nativeTapPoint=null}
+            MotionEvent.ACTION_POINTER_DOWN,MotionEvent.ACTION_CANCEL->{tapDown=null;nativeTapPoint=null}
+            MotionEvent.ACTION_UP->{
+                val down=tapDown
+                nativeTapPoint=if(down!=null&&event.eventTime-event.downTime<=600&&
+                    hypot(event.x-down.x,event.y-down.y)<=8*resources.displayMetrics.density)
+                    camera?.unproject(event.x,event.y)?.takeIf{it.valid()} else null
+                nativeTapAt=android.os.SystemClock.uptimeMillis();tapDown=null
+            }
+        }
         if(event.actionMasked==MotionEvent.ACTION_DOWN && state.interactive)parent?.requestDisallowInterceptTouchEvent(true)
         val handled=super.dispatchTouchEvent(event)
         if(event.actionMasked==MotionEvent.ACTION_UP || event.actionMasked==MotionEvent.ACTION_CANCEL)parent?.requestDisallowInterceptTouchEvent(false)
@@ -194,16 +212,18 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         }
     }
     private fun moved(center: GeoPoint,z: Double) {if(destroyed)return;state.center=center;state.zoom=z;trafficProjectionDirty=true;placeLabels.onCameraChanged(center,z);renderViewportScene();overlay.invalidate();onEvent(MapEvent.CameraChanged(center,z))}
-    private fun touch() {if(!state.interactive)return;state.follow=false;state.showCrosshair=true;onEvent(MapEvent.GestureStarted)}
+    private fun touch() {if(!state.interactive)return;cameraGestureActive=true;state.follow=false;state.showCrosshair=true;onEvent(MapEvent.GestureStarted)}
     private fun aisPickingEnabled() = state.interactive && overlay.scene.aisInteractive && state.ruler.isEmpty() && overlay.scene.points.none { it.draggable }
-    private fun selectMarker(id:String) {
+    private fun selectMarker(id:String,hitPoint:GeoPoint?=null) {
         if (destroyed || !state.interactive) return
+        if(id.startsWith("enc:")&&!state.objectPickingEnabled)return
         if (id.startsWith("ais:")) {
             val mmsi = id.removePrefix("ais:")
             // 原生点击与地图空白点击走同一工具规则，不接受样式加载/裁剪后留下的旧 marker 回调。
             if (!aisPickingEnabled() || mmsi !in renderedTrafficIds || overlay.scene.aisTargets.none { it.mmsi == mmsi && it.point.valid() }) return
         } else if (state.ruler.isNotEmpty() || overlay.scene.points.none { it.id == id && !it.draggable && it.point.valid() }) return
-        onEvent(MapEvent.ItemSelected(id))
+        val touchPoint=hitPoint ?: nativeTapPoint?.takeIf{android.os.SystemClock.uptimeMillis()-nativeTapAt in 0..1000}
+        onEvent(MapEvent.ItemSelected(id,touchPoint))
     }
     private fun pick(point: GeoPoint) {
         if(destroyed || !state.interactive || !point.valid()) return
@@ -216,18 +236,18 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             return if (pixel.x.isFinite() && pixel.y.isFinite()) hypot(pixel.x-click.x,pixel.y-click.y) else Float.POSITIVE_INFINITY
         }
         if(state.ruler.isEmpty()) {
-            val nearby=overlay.scene.points.asSequence().filter {!it.draggable&&it.point.valid()}
+            val nearby=overlay.scene.points.asSequence().filter {!it.draggable&&it.point.valid()&&(state.objectPickingEnabled||!it.id.startsWith("enc:"))}
                 .map {it to screenDistance(it.point)}.filter {it.second<radius}.minByOrNull {it.second}?.first
-            if(nearby!=null) {selectMarker(nearby.id);return}
+            if(nearby!=null) {selectMarker(nearby.id,point);return}
         }
         if(aisPickingEnabled()) {
             val currentIds = overlay.scene.aisTargets.mapTo(hashSetOf()) { it.mmsi }
             val target=renderedTraffic.asSequence().filter {it.mmsi in currentIds}
                 .map {it to screenDistance(it.point)}.filter {it.second<radius}.minByOrNull {it.second}?.first
-            if(target!=null) {selectMarker("ais:${target.mmsi}");return}
+            if(target!=null) {selectMarker("ais:${target.mmsi}",point);return}
         }
         // 点按只进入选点模式。准星固定在视口中心，镜头只由拖动、缩放或明确定位按钮移动。
-        state.showCrosshair=true;onEvent(MapEvent.CoordinateSelected(point));overlay.invalidate()
+        onEvent(MapEvent.CoordinateSelected(point));overlay.invalidate()
     }
     private fun initGoogle() {
         google=GoogleMapView(context).also {v ->
@@ -238,14 +258,19 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 val adapter=object:ChartCamera {
                     override fun project(point:GeoPoint)=map.projection.toScreenLocation(GoogleLatLng(point.lat,point.lon)).let {PointF(it.x.toFloat(),it.y.toFloat())}
                     override fun unproject(x:Float,y:Float)=map.projection.fromScreenLocation(android.graphics.Point(x.toInt(),y.toInt())).let {GeoPoint(it.latitude,it.longitude)}
-                    override fun move(point:GeoPoint,zoom:Double) {map.moveCamera(GoogleCamera.newLatLngZoom(GoogleLatLng(point.lat,point.lon),zoom.toFloat()))}
+                    override fun move(point:GeoPoint,zoom:Double) {map.moveCamera(GoogleCamera.newCameraPosition(com.google.android.gms.maps.model.CameraPosition.builder(map.cameraPosition).target(GoogleLatLng(point.lat,point.lon)).zoom(zoom.toFloat()).build()))}
                     override fun zoom()=map.cameraPosition.zoom.toDouble()
+                    override fun orientation()=map.cameraPosition.bearing.toDouble()
+                    override fun orient(bearingDegrees:Double,animated:Boolean){
+                        val update=GoogleCamera.newCameraPosition(com.google.android.gms.maps.model.CameraPosition.builder(map.cameraPosition).bearing(bearingDegrees.toFloat()).build())
+                        if(animated)map.animateCamera(update,180,null)else map.moveCamera(update)
+                    }
                     override fun fit(points:List<GeoPoint>) {if(points.size==1) move(points.first(),state.zoom) else map.moveCamera(GoogleCamera.newLatLngBounds(com.google.android.gms.maps.model.LatLngBounds.builder().also {b ->points.forEach {b.include(GoogleLatLng(it.lat,it.lon))}}.build(),(48*resources.displayMetrics.density).toInt()))}
                 }
                 camera=adapter;overlay.camera=adapter;trafficProjectionDirty=true;adapter.move(state.center,state.zoom)
                 map.setOnCameraMoveListener {val p=map.cameraPosition;moved(GeoPoint(p.target.latitude,p.target.longitude),p.zoom.toDouble())}
                 map.setOnCameraMoveStartedListener {if(it==GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE)touch()}
-                map.setOnCameraIdleListener { renderViewportScene(force=true);captureSnapshot() }
+                map.setOnCameraIdleListener { orientationAtRest();renderViewportScene(force=true);captureSnapshot() }
                 map.setOnMarkerClickListener {marker ->
                     val id=marker.tag as? String
                     if(id?.startsWith("ais:")==true && !aisPickingEnabled()) pick(GeoPoint(marker.position.latitude,marker.position.longitude))
@@ -272,14 +297,19 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 val adapter=object:ChartCamera {
                     override fun project(point:GeoPoint)=map.projection.toScreenLocation(LatLng(point.lat,point.lon))
                     override fun unproject(x:Float,y:Float)=map.projection.fromScreenLocation(PointF(x,y)).let {GeoPoint(it.latitude,it.longitude)}
-                    override fun move(point:GeoPoint,zoom:Double) {map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(point.lat,point.lon),zoom))}
+                    override fun move(point:GeoPoint,zoom:Double) {map.moveCamera(CameraUpdateFactory.newCameraPosition(org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition).target(LatLng(point.lat,point.lon)).zoom(zoom).build()))}
                     override fun zoom()=map.cameraPosition.zoom
+                    override fun orientation()=map.cameraPosition.bearing
+                    override fun orient(bearingDegrees:Double,animated:Boolean){
+                        val update=CameraUpdateFactory.newCameraPosition(org.maplibre.android.camera.CameraPosition.Builder(map.cameraPosition).bearing(bearingDegrees).build())
+                        if(animated)map.easeCamera(update,180)else map.moveCamera(update)
+                    }
                     override fun fit(points:List<GeoPoint>) {if(points.size==1) move(points.first(),state.zoom) else map.moveCamera(CameraUpdateFactory.newLatLngBounds(org.maplibre.android.geometry.LatLngBounds.Builder().also {b ->points.forEach {b.include(LatLng(it.lat,it.lon))}}.build(),(48*resources.displayMetrics.density).toInt()))}
                 }
                 camera=adapter;overlay.camera=adapter;trafficProjectionDirty=true;adapter.move(state.center,state.zoom)
                 map.addOnCameraMoveListener {map.cameraPosition.target?.let {moved(GeoPoint(it.latitude,it.longitude),map.cameraPosition.zoom)}}
                 map.addOnCameraMoveStartedListener {if(it==MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE)touch()}
-                map.addOnCameraIdleListener {placeLabels.onCameraIdle();renderViewportScene(force=true);captureSnapshot()}
+                map.addOnCameraIdleListener {placeLabels.onCameraIdle();orientationAtRest();renderViewportScene(force=true);captureSnapshot()}
                 map.setOnMarkerClickListener {marker ->
                     val id=marker.title
                     if(id?.startsWith("ais:")==true && !aisPickingEnabled()) pick(GeoPoint(marker.position.latitude,marker.position.longitude))
@@ -363,16 +393,39 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             }
         }
     }
+    private fun orientationAtRest(){
+        val requested=lastOrientationRequest
+        val actual=camera?.orientation()
+        if(requested!=null&&actual!=null&&abs(((requested-actual+540)%360)-180)>1.0)lastOrientationRequest=null
+        cameraGestureActive=false
+        updateCamera()
+    }
     private fun updateCamera() {
         val cam=camera ?: return
         state.request?.takeIf {it.id!=lastRequest}?.let {request ->
             if(width<=0 || height<=0) return@let
             if(request.point!=null) cam.move(request.point,request.zoom) else if(request.points.isNotEmpty()) cam.fit(request.points)
+            lastOrientationRequest=null
             lastRequest=request.id
             if(state.request?.id==request.id)state.request=null
         }
         val vessel=overlay.scene.vessel
         if(state.follow && vessel?.fresh==true && (lastFollowPoint!=vessel.point || distance(state.center,vessel.point)>1)) {cam.move(vessel.point,state.zoom);lastFollowPoint=vessel.point}
+        val direction=when(state.orientationMode){
+            MapOrientationMode.NORTH_UP->0.0
+            MapOrientationMode.HEADING_UP->vessel?.headingDegrees?.takeIf{it.isFinite()}
+            MapOrientationMode.COURSE_UP->vessel?.takeIf{(it.speedKnots?:0.0)>=.5}?.courseDegrees?.takeIf{it.isFinite()}
+        }
+        state.effectiveOrientationMode=if(direction==null)MapOrientationMode.NORTH_UP else state.orientationMode
+        state.orientationIssue=if(direction!=null)null else when(state.orientationMode){MapOrientationMode.HEADING_UP->"heading";MapOrientationMode.COURSE_UP->"course";else->null}
+        if(cameraGestureActive)return
+        val desired=((direction?:0.0)%360+360)%360
+        fun difference(a:Double,b:Double)=abs(((a-b+540)%360)-180)
+        if(lastOrientationRequest?.let{difference(desired,it)<.25}!=true){
+            // 先记录请求防止相机回调重入；北向降级直接到事实，不播放伪航向。
+            lastOrientationRequest=desired
+            if(difference(desired,cam.orientation())>.2)cam.orient(desired,animated=direction!=null&&state.orientationMode!=MapOrientationMode.NORTH_UP)
+        }
     }
     fun captureSnapshot() {
         if(!captureForTile || destroyed || loading || error!=null || width<=0 || height<=0)return
@@ -469,8 +522,34 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
 fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Modifier=Modifier,onEvent:(MapEvent)->Unit={},onHost:(ChartHost)->Unit={}) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
+    val structured=rememberStructuredChart(maps,state)
+    val combined=scene.copy(points=structured.scene.points+scene.points+state.planningPoints,lines=structured.scene.lines+scene.lines+state.planningLines,areas=structured.scene.areas+scene.areas+state.planningAreas)
+    val handleEvent:(MapEvent)->Unit={ event ->
+        if(state.interactive) {
+            val markerPoint=(event as? MapEvent.ItemSelected)?.id?.takeIf {it.startsWith("enc:")}?.let {id->structured.scene.points.firstOrNull {it.id==id}?.point}
+            val queryPoint=markerPoint ?: (event as? MapEvent.CoordinateSelected)?.point
+            val canQuery=state.objectPickingEnabled&&state.ruler.isEmpty()&&scene.points.none {it.draggable}
+            val objects=when {
+                event is MapEvent.ItemSelected&&event.id.startsWith("enc:")&&canQuery&&queryPoint!=null->chartObjectsAt(structured.features,queryPoint,state.zoom)
+                event is MapEvent.CoordinateSelected&&canQuery->chartObjectsAt(structured.features,event.point,state.zoom)
+                else->emptyList()
+            }
+            if(objects.isNotEmpty()) {
+                state.selectedChartObjects=objects
+                state.selectedChartCoordinate=when(event){is MapEvent.ItemSelected->event.hitPoint;is MapEvent.CoordinateSelected->event.point;else->null}
+                state.showCrosshair=false
+                // 同步宿主的选点展示状态；不派发空白地图点按，不触发相机/准星动作。
+                onEvent(MapEvent.ItemSelected("enc:${objects.first().id}"))
+            }else {
+                if(event is MapEvent.CoordinateSelected)state.showCrosshair=true
+                if(event !is MapEvent.CameraChanged){state.selectedChartObjects=emptyList();state.selectedChartCoordinate=null}
+                onEvent(event)
+            }
+        }
+    }
     val google=maps.source==MapSource.Satellite && BuildConfig.GOOGLE_MAPS_CONFIGURED
     // 默认地图与用户海图共用离线引擎；API Key 不会将默认来源切回联网地图。
+    if(state.interactive&&state.selectedChartObjects.isNotEmpty()) com.yokuli.marine.shell.rebuild.ui.ChartObjectSheet((context.applicationContext as com.yokuli.marine.shell.rebuild.YokuliApplication).os,state)
     key(google,state) {
         val host=remember {ChartHost(context,maps,state,google)}
         DisposableEffect(host,lifecycle) {
@@ -504,11 +583,13 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
         }
         BoxWithConstraints(modifier) {
             val compactViewport=maxHeight<300.dp
-            AndroidView(factory={host},modifier=Modifier.fillMaxSize(),update={it.update(scene,onEvent)})
+            AndroidView(factory={host},modifier=Modifier.fillMaxSize(),update={it.update(combined,handleEvent)})
             val zh=maps.chinese
             val message=when {
+                structured.issue!=null -> structured.issue
                 host.error=="online" ->if(zh)"卫星影像暂不可用 · 可切换内置地图" else "satellite imagery unavailable · use the built-in map"
                 host.error=="base" ->if(zh)"内置地图未能载入 · 点按重试" else "built-in map could not load · tap to retry"
+                host.error=="depthLabels" ->if(zh)"测深标签未能显示 · 点按重试" else "depth labels could not load · tap to retry"
                 host.error=="labels" ->if(zh)"地名未能载入 · 点按重试" else "place names could not load · tap to retry"
                 host.error=="empty" ->if(zh)"图层没有可用文件 · 在图册检查" else "no available files · check chart library"
                 host.error!=null ->if(zh)"图层读取失败 · 在图册检查" else "chart read failed · check chart library"

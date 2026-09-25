@@ -121,7 +121,7 @@ R1 计划顺序：
 | [TripRuntime.restore](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/trip/TripRuntime.kt) | 恢复会话和历史期待字段；未暂停则申请资源并启动 ticker；失败转暂停；姿态要求重新确认 | 区分同次开机与设备重启；统一执行授权和恢复状态 |
 | [NmeaConnectionStore](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/data/nmea/NmeaConnections.kt) | 连接租约绑定 BOOT_COUNT，Stop 同步撤销后可防复活 | 与锚警安全连接、本机 listener、发布队列共用恢复判断 |
 | [LocalNmeaServerSettingsRepository](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/data/sharing/LocalNmeaServerSettingsRepository.kt) | 本机 listener 运行意图也按 boot count 失效 | 对外协议、客户端授权和完整恢复 UI |
-| [OsStore](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt) | activeRoute/navigationSnapshot 从 JSON 自动恢复 | 独立导航所有者及恢复为待确认的迁移 |
+| [LocalNavigationSessionService](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/navigation/LocalNavigationSessionService.kt) | 独立持久导航会话；恢复为 RECOVERY_REQUIRED；命令修订检查和持久回执 | 独立核心进程/IPC 与设备级后台存活仍未实现 |
 | [AnchorForegroundService](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/service/AnchorForegroundService.kt) | START_STICKY、stopWithTask=false、资源协调 | UI/业务分进程、Binder death/重连、可验证后台存活 |
 
 这些缺口应作为 R1 实现工作，不在 R0 文档里改写成已经完成的事实。R0 的虚拟设备没有真实守锚能力认证。
@@ -144,3 +144,20 @@ R1 计划顺序：
 | 模拟满盘与迁移失败 | 不显示已保存，不删除旧库；可导出诊断并恢复 | 存储错误、事务结果、文件校验与恢复记录 |
 
 长时间屏灭、温升、GNSS 遮挡、Wi-Fi 漫游、音量/勿扰、低电压重启和外置介质断连属于 R3 真机阶段。没有这些证据，不把“后台前台服务存在”解释为可靠航海设备已经完成。
+
+
+## 导航执行运行时（2026-09-25）
+
+`core/runtime-contract/navigation/NavigationContract.kt` 公开纯值会话、观测、指导与命令端口。`MarineSystem.navigation` 装配 `LocalNavigationSessionService`，Android 前台容器为 `NavigationTrackingService`。导航不归海图 Compose scope 所有，也不借日志的 trip 当导航状态。
+
+会话、冻结路线、当前目标、设置、分析引用、最后指导检查点和最近 32 条命令回执保存到 `filesDir/navigation/session-v1.json` 的 AtomicFile。读取失败阻止写入并保留原文件；重新读取是明确操作。旧 `experience-v1.json` 的 activeRoute/navigationSnapshot/routeLeg 仅在首次迁移时导入，迁移成功后才移除旧写入字段。没有可读原资料时不以空状态覆盖。进行中的检查点约每 30 秒保存，不把观测 age 当成新测量。
+
+恢复 ACTIVE 或 PAUSED 的持久会话统一进入 `RECOVERY_REQUIRED`；不依据旧 elapsedRealtime 恢复实时观测，不申请导航资源、不重放 START。用户核对后提交 RESUME，本地导航还要求当前可信船位。服务使用 `START_NOT_STICKY`，没有导航开机接收器；强杀/重启后由真实恢复入口继续。
+
+用户明确开始/继续导航且持久提交成功后，前台容器申请 `NAVIGATION_SESSION` 资源 owner。GPS、NMEA、唤醒和 Wi-Fi 需求通过现有 `RuntimeResourceManager` 合并，不创建另一定位监听或网络 socket，也不自行切换全船来源。前台服务注册 `connectedDevice|location`，只在当前选择手机位置且 Android 允许时启用 location 类型。系统拒绝后台定位/前台启动或容器被终止时，保留会话与目标，释放本 owner 租约并通过共享状态/通知明确后台受限；不声称依旧持续采集。暂停/结束释放导航 owner，其他记录、守锚、连接 owner 仍按各自意图运行。
+
+START、SELECT_TARGET、ADVANCE、ARRIVE、PAUSE、RESUME、END、REPLAN、SELECT_EXTERNAL、SETTINGS 在同一进程级命令队列中处理。命令必须匹配预期会话和修订；状态与回执一起落盘后才更新 UI。页面离场不取消队列接受的命令；同请求重试返回原结果。路线收藏改动不会更换导航副本。冻结副本同时保存完整几何、业务目标映射与当前几何段游标；形状点不会变成需要逐个确认的目的地，重启恢复也不从零重复经过已确认的业务目标。自动推进还需要新鲜且精度明确的连续位置、接近/通过线依据、滞回与冷却，来源或修订改变立即重新建立证据。
+
+航行记录仍由独立 `VoyageSessionService` 控制。“导航时同时记录”仅是用户明确选择的两项命令：已有/暂停记录保持原状态，开始记录失败不能伪装成导航失败或反向结束导航；停止导航、确认到达、Home 或关闭海图都不替用户停止记录。
+
+本轮不包含自动驾驶输出、潮汐/天气路由、跨设备会话复制或独立 Binder 核心进程。Android 前台容器和运行时边界已经接入生产入口，但没有设备级持续运行保证；本节不把 ROM 架构目标当成已经完成的系统权限能力。

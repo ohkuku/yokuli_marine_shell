@@ -42,7 +42,40 @@ data class VesselDataSettings(
     val allowPinnedFallback:Boolean=false,
     val vesselName:String="",
     val metricSourcePins:Map<String,String> = emptyMap(),
+    /** 船宽，未知为空；不是船长。 */
+    val beamMeters:Double?=null,
+    /** 水面至最高固定点净空需求，未知为空。 */
+    val airDraftMeters:Double?=null,
+    /** 用户要求的龙骨下最小余量。 */
+    val minimumUnderKeelMeters:Double?=null,
+    /** 障碍横向附加余量。 */
+    val clearanceMarginMeters:Double?=null,
+    /** 分析走廊半宽。 */
+    val corridorHalfWidthMeters:Double?=null,
+    /** 规划最小转弯半径。 */
+    val turnRadiusMeters:Double?=null,
+    /** 规划航速，米/秒；不伪装成实时SOG。 */
+    val plannedSpeedMetersPerSecond:Double?=null,
+
 )
+
+/** 航线规划偏好是同一船舶资料中的字段组，不另建影子配置。 */
+data class PassageGeometry(
+    val beamMeters:Double?=null,
+    val airDraftMeters:Double?=null,
+    val minimumUnderKeelMeters:Double?=null,
+    val clearanceMarginMeters:Double?=null,
+    val corridorHalfWidthMeters:Double?=null,
+    val turnRadiusMeters:Double?=null,
+    val plannedSpeedMetersPerSecond:Double?=null,
+) {
+    fun requireValid() {
+        require(listOf(beamMeters,corridorHalfWidthMeters,turnRadiusMeters).all {it==null||it.isFinite()&&it>0&&it<=100_000}) {"Invalid passage geometry"}
+        require(listOf(airDraftMeters,minimumUnderKeelMeters,clearanceMarginMeters).all {it==null||it.isFinite()&&it>=0&&it<=10_000}) {"Invalid passage clearance"}
+        require(plannedSpeedMetersPerSecond?.let {it.isFinite()&&it in .25..60.0}!=false) {"Invalid passage speed"}
+    }
+}
+fun VesselDataSettings.passageGeometry()=PassageGeometry(beamMeters,airDraftMeters,minimumUnderKeelMeters,clearanceMarginMeters,corridorHalfWidthMeters,turnRadiusMeters,plannedSpeedMetersPerSecond)
 
 fun VesselDataSettings.layout(preset:TripInstrumentPreset)=when(preset){TripInstrumentPreset.NAV->navLayout;TripInstrumentPreset.SAILING->sailingLayout;TripInstrumentPreset.MOTION->motionLayout;TripInstrumentPreset.WEATHER->weatherLayout;TripInstrumentPreset.CUSTOM->customLayout}
 fun VesselDataSettings.withLayout(preset:TripInstrumentPreset,value:List<InstrumentTileId>)=when(preset){
@@ -116,7 +149,7 @@ object NmeaOutputLeasePolicy{
 }
 @Singleton
 class VesselSettingsRepository @Inject constructor(@ApplicationContext private val context:Context){
-    private object K{val vesselName=stringPreferencesKey("vessel_name");val metricPins=stringPreferencesKey("metric_source_pins");val position=stringPreferencesKey("position_preference");val heading=stringPreferencesKey("heading_preference");val workspace=stringPreferencesKey("watch_workspace");val draft=doublePreferencesKey("vessel_draft_m");val nav=stringPreferencesKey("instrument_layout_nav");val sailing=stringPreferencesKey("instrument_layout_sailing");val motion=stringPreferencesKey("instrument_layout_motion");val weather=stringPreferencesKey("instrument_layout_weather");val custom=stringPreferencesKey("instrument_layout_custom");val customFields=stringPreferencesKey("instrument_custom_nmea_fields");val boatHeadingSource=stringPreferencesKey("boat_heading_source_id");val pinnedPositionSource=stringPreferencesKey("pinned_position_source_id");val allowPinnedFallback=booleanPreferencesKey("allow_pinned_source_fallback")}
+    private object K{val beamMeters=doublePreferencesKey("passage_beamMeters");val airDraftMeters=doublePreferencesKey("passage_airDraftMeters");val minimumUnderKeelMeters=doublePreferencesKey("passage_minimumUnderKeelMeters");val clearanceMarginMeters=doublePreferencesKey("passage_clearanceMarginMeters");val corridorHalfWidthMeters=doublePreferencesKey("passage_corridorHalfWidthMeters");val turnRadiusMeters=doublePreferencesKey("passage_turnRadiusMeters");val plannedSpeedMetersPerSecond=doublePreferencesKey("passage_plannedSpeedMetersPerSecond");val vesselName=stringPreferencesKey("vessel_name");val metricPins=stringPreferencesKey("metric_source_pins");val position=stringPreferencesKey("position_preference");val heading=stringPreferencesKey("heading_preference");val workspace=stringPreferencesKey("watch_workspace");val draft=doublePreferencesKey("vessel_draft_m");val nav=stringPreferencesKey("instrument_layout_nav");val sailing=stringPreferencesKey("instrument_layout_sailing");val motion=stringPreferencesKey("instrument_layout_motion");val weather=stringPreferencesKey("instrument_layout_weather");val custom=stringPreferencesKey("instrument_layout_custom");val customFields=stringPreferencesKey("instrument_custom_nmea_fields");val boatHeadingSource=stringPreferencesKey("boat_heading_source_id");val pinnedPositionSource=stringPreferencesKey("pinned_position_source_id");val allowPinnedFallback=booleanPreferencesKey("allow_pinned_source_fallback")}
     private fun decode(value:String?,preset:TripInstrumentPreset):List<InstrumentTileId>{
         if(value==null)return InstrumentLayoutPolicy.defaults(preset)
         return InstrumentLayoutPolicy.normalized(preset,value.split(',').mapNotNull{runCatching{InstrumentTileId.valueOf(it)}.getOrNull()})
@@ -129,12 +162,32 @@ class VesselSettingsRepository @Inject constructor(@ApplicationContext private v
         p[K.draft]?.takeIf{it>0},
         decode(p[K.nav],TripInstrumentPreset.NAV),decode(p[K.sailing],TripInstrumentPreset.SAILING),decode(p[K.motion],TripInstrumentPreset.MOTION),decode(p[K.weather],TripInstrumentPreset.WEATHER),
         decode(p[K.custom],TripInstrumentPreset.CUSTOM),p[K.customFields]?.split('|')?.filter{it.isNotBlank()}?.distinct()?.take(24)?:emptyList(),p[K.boatHeadingSource]?.takeIf{it.isNotBlank()},p[K.pinnedPositionSource]?.takeIf{it.isNotBlank()},p[K.allowPinnedFallback]?:false, p[K.vesselName].orEmpty(), runCatching{com.google.gson.Gson().fromJson<Map<String,String>>(p[K.metricPins],object:com.google.gson.reflect.TypeToken<Map<String,String>>(){}.type)}.getOrNull().orEmpty(),
+        beamMeters=p[K.beamMeters]?.takeIf {it.isFinite()},
+        airDraftMeters=p[K.airDraftMeters]?.takeIf {it.isFinite()},
+        minimumUnderKeelMeters=p[K.minimumUnderKeelMeters]?.takeIf {it.isFinite()},
+        clearanceMarginMeters=p[K.clearanceMarginMeters]?.takeIf {it.isFinite()},
+        corridorHalfWidthMeters=p[K.corridorHalfWidthMeters]?.takeIf {it.isFinite()},
+        turnRadiusMeters=p[K.turnRadiusMeters]?.takeIf {it.isFinite()},
+        plannedSpeedMetersPerSecond=p[K.plannedSpeedMetersPerSecond]?.takeIf {it.isFinite()},
     )}
     /** 船名/吃水与数据源无关；在同一 edit 中只写本次用户修改的两个 key。 */
     suspend fun setVesselIdentity(name: String, draftMeters: Double?) = context.vesselSettingsStore.edit { p ->
         require(draftMeters == null || (draftMeters.isFinite() && draftMeters >= 0.0)) { "Invalid vessel draft" }
         p[K.vesselName] = name.trim().take(100)
         if (draftMeters == null) p.remove(K.draft) else p[K.draft] = draftMeters
+    }
+
+    /** 仅写规划字段，同事务保留并发来源/仪表/船舶身份修改。 */
+    suspend fun setPassageGeometry(value:PassageGeometry)=context.vesselSettingsStore.edit {p->writePassage(p,value)}
+    private fun writePassage(p:MutablePreferences,value:PassageGeometry) {
+        value.requireValid()
+        value.beamMeters?.let {p[K.beamMeters]=it}?:p.remove(K.beamMeters)
+        value.airDraftMeters?.let {p[K.airDraftMeters]=it}?:p.remove(K.airDraftMeters)
+        value.minimumUnderKeelMeters?.let {p[K.minimumUnderKeelMeters]=it}?:p.remove(K.minimumUnderKeelMeters)
+        value.clearanceMarginMeters?.let {p[K.clearanceMarginMeters]=it}?:p.remove(K.clearanceMarginMeters)
+        value.corridorHalfWidthMeters?.let {p[K.corridorHalfWidthMeters]=it}?:p.remove(K.corridorHalfWidthMeters)
+        value.turnRadiusMeters?.let {p[K.turnRadiusMeters]=it}?:p.remove(K.turnRadiusMeters)
+        value.plannedSpeedMetersPerSecond?.let {p[K.plannedSpeedMetersPerSecond]=it}?:p.remove(K.plannedSpeedMetersPerSecond)
     }
 
     /** “我的”仪表排列不重写船名、吃水、来源 pin 或其他仪表分组。 */
@@ -182,7 +235,7 @@ class VesselSettingsRepository @Inject constructor(@ApplicationContext private v
     }
 
     /** 旧页面/备份兼容入口；来源和偏好新调用方使用字段级命令。 */
-    suspend fun save(value:VesselDataSettings)=context.vesselSettingsStore.edit{p->p[K.vesselName]=value.vesselName.trim().take(100);p[K.metricPins]=com.google.gson.Gson().toJson(value.metricSourcePins);p[K.position]=value.positionPreference.name;p[K.heading]=value.headingPreference.name;p[K.workspace]=value.watchWorkspace.name;if(value.draftMeters==null)p.remove(K.draft)else p[K.draft]=value.draftMeters.coerceAtLeast(0.0);p[K.nav]=encode(value.navLayout,TripInstrumentPreset.NAV);p[K.sailing]=encode(value.sailingLayout,TripInstrumentPreset.SAILING);p[K.motion]=encode(value.motionLayout,TripInstrumentPreset.MOTION);p[K.weather]=encode(value.weatherLayout,TripInstrumentPreset.WEATHER);p[K.custom]=encode(value.customLayout,TripInstrumentPreset.CUSTOM);p[K.customFields]=value.customNmeaFieldIds.distinct().take(24).joinToString("|");if(value.boatHeadingSourceId.isNullOrBlank())p.remove(K.boatHeadingSource)else p[K.boatHeadingSource]=value.boatHeadingSourceId;if(value.pinnedPositionSourceId.isNullOrBlank())p.remove(K.pinnedPositionSource)else p[K.pinnedPositionSource]=value.pinnedPositionSourceId;p[K.allowPinnedFallback]=value.allowPinnedFallback}
+    suspend fun save(value:VesselDataSettings)=context.vesselSettingsStore.edit{p->writePassage(p,value.passageGeometry());p[K.vesselName]=value.vesselName.trim().take(100);p[K.metricPins]=com.google.gson.Gson().toJson(value.metricSourcePins);p[K.position]=value.positionPreference.name;p[K.heading]=value.headingPreference.name;p[K.workspace]=value.watchWorkspace.name;if(value.draftMeters==null)p.remove(K.draft)else p[K.draft]=value.draftMeters.coerceAtLeast(0.0);p[K.nav]=encode(value.navLayout,TripInstrumentPreset.NAV);p[K.sailing]=encode(value.sailingLayout,TripInstrumentPreset.SAILING);p[K.motion]=encode(value.motionLayout,TripInstrumentPreset.MOTION);p[K.weather]=encode(value.weatherLayout,TripInstrumentPreset.WEATHER);p[K.custom]=encode(value.customLayout,TripInstrumentPreset.CUSTOM);p[K.customFields]=value.customNmeaFieldIds.distinct().take(24).joinToString("|");if(value.boatHeadingSourceId.isNullOrBlank())p.remove(K.boatHeadingSource)else p[K.boatHeadingSource]=value.boatHeadingSourceId;if(value.pinnedPositionSourceId.isNullOrBlank())p.remove(K.pinnedPositionSource)else p[K.pinnedPositionSource]=value.pinnedPositionSourceId;p[K.allowPinnedFallback]=value.allowPinnedFallback}
 }
 
 @Singleton

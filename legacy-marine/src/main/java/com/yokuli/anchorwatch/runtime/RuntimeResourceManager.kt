@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class RuntimeOwner { NMEA_CONNECTIONS, ANCHOR_STARTUP, ANCHOR_WATCH, ANCHOR_TELEMETRY, CONDITION_MONITOR, NMEA_SHARING, GPS_PROXY, SONAR_MAPPING, PHONE_NMEA_OUTPUT, VESSEL_HUB_UI, TRIP_WATCH, AIS_TRAFFIC }
+enum class RuntimeOwner { NMEA_CONNECTIONS, ANCHOR_STARTUP, ANCHOR_WATCH, ANCHOR_TELEMETRY, CONDITION_MONITOR, NMEA_SHARING, GPS_PROXY, SONAR_MAPPING, PHONE_NMEA_OUTPUT, VESSEL_HUB_UI, TRIP_WATCH, AIS_TRAFFIC, NAVIGATION_SESSION, DEVICE_VIEW_UI }
 data class RuntimeRequirement(
     val needsSystemLocation:Boolean=false,
     val needsNmeaTransport:Boolean=false,
@@ -23,6 +23,8 @@ data class RuntimeRequirement(
     val needsPhoneMotion:Boolean=false,
     val needsPhoneHeading:Boolean=false,
     val needsPhonePressure:Boolean=false,
+    /** 临时观察视线，只读设备姿态，不申请全船Heading或手机定位。 */
+    val needsDeviceViewOrientation:Boolean=false,
 )
 data class RuntimeResourceSnapshot(
     val owners:Set<RuntimeOwner> = emptySet(),
@@ -36,11 +38,14 @@ data class RuntimeResourceSnapshot(
     val needsPhoneMotion:Boolean=false,
     val needsPhoneHeading:Boolean=false,
     val needsPhonePressure:Boolean=false,
+    /** 临时观察视线，只读设备姿态，不申请全船Heading或手机定位。 */
+    val needsDeviceViewOrientation:Boolean=false,
     val wakeLockHeld:Boolean=false,
     val wifiLockHeld:Boolean=false,
     val phoneMotionActive:Boolean=false,
     val phoneHeadingActive:Boolean=false,
     val phonePressureActive:Boolean=false,
+    val deviceViewOrientationActive:Boolean=false,
 ){
     val nmeaOwners:Set<RuntimeOwner> get()=ownerRequirements.filterValues{it.needsNmeaTransport}.keys
 }
@@ -76,6 +81,7 @@ class RuntimeOwnerRegistry {
             needsPhoneMotion=values.any{it.needsPhoneMotion},
             needsPhoneHeading=values.any{it.needsPhoneHeading},
             needsPhonePressure=values.any{it.needsPhonePressure},
+            needsDeviceViewOrientation=values.any{it.needsDeviceViewOrientation},
         )
     }
 }
@@ -102,7 +108,7 @@ class RuntimeResourceManager @Inject constructor(
     @Synchronized fun releaseAll(){registry.clear();reconcile()}
     /** 旧服务退出只撤销自己拥有的需求，不能关闭独立 AIS 监控。 */
     @Synchronized fun releaseLegacyServiceOwners(){
-        registry.snapshot().owners.filter{it!=RuntimeOwner.AIS_TRAFFIC}.forEach{registry.set(it,null)}
+        registry.snapshot().owners.filter{it !in setOf(RuntimeOwner.AIS_TRAFFIC,RuntimeOwner.NAVIGATION_SESSION,RuntimeOwner.DEVICE_VIEW_UI)}.forEach{registry.set(it,null)}
         reconcile()
     }
     @Synchronized fun updateKeepWifiAwake(enabled:Boolean){registry.updateKeepWifiAwake(enabled);reconcile()}
@@ -126,7 +132,7 @@ class RuntimeResourceManager @Inject constructor(
             lowLatencyWifiLock?.takeIf{it.isHeld}?.release();lowLatencyWifiLock=null
         }
         systemLocation.setBackgroundEnabled(wanted.needsSystemLocation)
-        val sensorState=sensors.reconcile(wanted.needsPhoneMotion,wanted.needsPhoneHeading,wanted.needsPhonePressure)
-        _state.value=wanted.copy(wakeLockHeld=wakeLock?.isHeld==true,wifiLockHeld=highPerformanceWifiLock?.isHeld==true||lowLatencyWifiLock?.isHeld==true,phoneMotionActive=sensorState.phoneMotionActive,phoneHeadingActive=sensorState.phoneHeadingActive,phonePressureActive=sensorState.phonePressureActive)
+        val sensorState=sensors.reconcile(wanted.needsPhoneMotion,wanted.needsPhoneHeading,wanted.needsPhonePressure,wanted.needsDeviceViewOrientation)
+        _state.value=wanted.copy(wakeLockHeld=wakeLock?.isHeld==true,wifiLockHeld=highPerformanceWifiLock?.isHeld==true||lowLatencyWifiLock?.isHeld==true,phoneMotionActive=sensorState.phoneMotionActive,phoneHeadingActive=sensorState.phoneHeadingActive,phonePressureActive=sensorState.phonePressureActive,deviceViewOrientationActive=sensorState.deviceViewOrientationActive)
     }
 }

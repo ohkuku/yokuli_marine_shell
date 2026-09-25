@@ -7,8 +7,13 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,7 +32,7 @@ import com.yokuli.shell.compose.BindInternalAppInputHandler
 import com.yokuli.shell.contract.ShellInput
 import kotlin.math.*
 
-@Composable fun ChartScreen(os:OsStore,recording:Boolean=false,recordingPaused:Boolean=false,onRecording:()->Unit={os.open("trip")},initialAisMmsi:Int?=null) {
+@Composable fun ChartScreen(os:OsStore,recording:Boolean=false,recordingPaused:Boolean=false,onRecording:()->Unit={os.open("trip")},initialAisMmsi:Int?=null,interactionBlocked:Boolean=false) {
     val positionSource=os.positionSource
     val currentFix by remember(os.hub,positionSource){os.hub.state.map {it.fix(positionSource)}.distinctUntilChanged()}
         .collectAsState(os.hub.state.value.fix(positionSource))
@@ -39,6 +44,27 @@ import kotlin.math.*
     var layers by rememberSaveable { mutableStateOf(false) }
     var tools by rememberSaveable { mutableStateOf(false) }
     var manageNavigation by rememberSaveable { mutableStateOf(false) }
+    var externalNavigation by rememberSaveable { mutableStateOf(false) }
+    var planning by rememberSaveable { mutableStateOf(false) }
+    val planningStates=rememberSaveableStateHolder()
+    var planningEntryKey by rememberSaveable {mutableStateOf(passagePlanningContext(os))}
+    fun openPlanning(){
+        val key=passagePlanningContext(os)
+        if(key!=planningEntryKey){planningStates.removeState(planningEntryKey);planningEntryKey=key}
+        planning=true
+    }
+    var spatialVisible by rememberSaveable { mutableStateOf(false) }
+    var liftOffer by rememberSaveable { mutableStateOf(false) }
+    var manualMapEpoch by rememberSaveable { mutableLongStateOf(0L) }
+    var spatialInteraction by remember { mutableStateOf(false) }
+    var mapTouched by remember { mutableStateOf(false) }
+    val savedPreferences by os.shell.persistence.state.collectAsState()
+    val liftEnabled=savedPreferences?.appPreferenceValues?.get("chart.lift_to_direction")=="b:1"
+    val display=os.marine?.services?.display
+    val mountedFlow=remember(os.marine){os.marine?.services?.state?.map{it.vesselMountCalibration.mountConfirmed&&it.phoneVesselMountState==com.yokuli.anchorwatch.location.vessel.PhoneVesselMountState.VESSEL_MOUNTED}?.distinctUntilChanged()}
+    val mounted=mountedFlow?.collectAsState(false)?.value?:false
+    fun openSpatial(){spatialVisible=true;liftOffer=false}
+    fun returnToMap(){spatialVisible=false;spatialInteraction=false;liftOffer=false;manualMapEpoch++}
     var naming by rememberSaveable { mutableStateOf(false) }
     var discard by rememberSaveable { mutableStateOf(false) }
     var startingPlaceId by rememberSaveable {mutableStateOf<String?>(null)}
@@ -47,6 +73,8 @@ import kotlin.math.*
     val c=LocalMetro.current
     val density=LocalDensity.current
     val chartView=os.maps.view("chart",os.center,os.zoom)
+    val savedOrientation=savedPreferences?.appPreferenceValues?.get("chart.orientation")?.removePrefix("c:")
+    LaunchedEffect(savedOrientation){chartView.orientationMode=runCatching{MapOrientationMode.valueOf(savedOrientation.orEmpty())}.getOrDefault(MapOrientationMode.NORTH_UP)}
     var aisEntrySelected by rememberSaveable(initialAisMmsi){mutableStateOf(false)}
     var aisFocusApplied by rememberSaveable(initialAisMmsi){mutableStateOf(false)}
     val requestedTarget=initialAisMmsi?.let(traffic::target)
@@ -72,6 +100,7 @@ import kotlin.math.*
     }
     ReportVisibleAppRoute(os,chartView.selectedAisMmsi?.let {"chart:ais:$it"} ?: "chart")
     AisRetainSelection(os,chartView.selectedAisMmsi?.toIntOrNull())
+    LaunchedEffect(spatialVisible){if(spatialVisible){host=null;mapTouched=false}}
     val previewPlace=os.allPlaces.firstOrNull {it.id==chartView.selectedPlaceId}
     val selected=os.maps.selectedLayer()?.files.orEmpty()
     fun closeTool():Boolean = when {
@@ -83,6 +112,9 @@ import kotlin.math.*
         naming->{naming=false;true}
         discard->{discard=false;true}
         manageNavigation->{manageNavigation=false;true}
+        externalNavigation->{externalNavigation=false;true}
+        planning->{planning=false;true}
+        spatialVisible->{returnToMap();true}
         chartView.selectedAisMmsi!=null->{if(initialAisMmsi?.toString()==chartView.selectedAisMmsi)os.shell.popRoute()else chartView.selectedAisMmsi=null;true}
         chartView.selectedPlaceId!=null->{chartView.selectedPlaceId=null;true}
         os.ruler.isNotEmpty()->{os.ruler=emptyList();true}
@@ -90,15 +122,43 @@ import kotlin.math.*
         os.showCrosshair->{os.showCrosshair=false;true}
         else->false
     }
-    val toolOpen=layers||tools||naming||discard||manageNavigation||startingPlaceId!=null||editingPlaceId!=null||morePlaceId!=null||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
-    AppBackHandler(toolOpen) {closeTool()}
+    val toolOpen=layers||tools||naming||discard||manageNavigation||externalNavigation||planning||startingPlaceId!=null||editingPlaceId!=null||morePlaceId!=null||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
+    if(display!=null)NavigationLiftObserver(display,active=chartInputEnabled&&os.navigationState.guidance!=null,
+        inhibited=toolOpen||interactionBlocked||mapTouched||spatialInteraction,
+        spatialVisible=spatialVisible,autoEnabled=liftEnabled,mounted=mounted,manuallyReturnedToMapEpoch=manualMapEpoch,
+        onOfferSpatial={liftOffer=true},onRequestSpatial={openSpatial()},onRequestMap={spatialVisible=false;spatialInteraction=false})
+    AppBackHandler(toolOpen||spatialVisible) {closeTool()}
     BindInternalAppInputHandler {input->input==ShellInput.BACK && closeTool()}
     Column(Modifier.fillMaxSize()) {
-        MapPageHeader(os,os.title(AppId.CHART),{layers=true},hasLocalBack=toolOpen)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        if(spatialVisible)Row(Modifier.fillMaxWidth().heightIn(min=48.dp).padding(start=LocalShellHorizontalInsets.current.pageStart,end=LocalShellHorizontalInsets.current.pageEnd),verticalAlignment=Alignment.CenterVertically){
+            Label(os.t("立体方向","Direction view"),22,modifier=Modifier.weight(1f),maxLines=1)
+            MetroButton(os.t("地图","Map"),{returnToMap()})
+        }else MapPageHeader(os,os.title(AppId.CHART),{layers=true},hasLocalBack=toolOpen)
+        if(spatialVisible&&display!=null) {
+            ChartNavigationSpatial(os,fix,tick,chartInputEnabled&&!interactionBlocked&&!manageNavigation&&!externalNavigation,Modifier.weight(1f).fillMaxWidth(),
+                onOpenMap={returnToMap()},onOpenTarget={id->
+                    val point=os.navigationState.session?.route?.waypoints?.firstOrNull{it.id==id}?.point
+                    if(point!=null){returnToMap();os.fly(GeoPoint(point.lat,point.lon),os.zoom.coerceAtLeast(13.0))}
+                    else if(os.navigationState.session?.source==com.yokuli.runtime.contract.navigation.NavigationSource.EXTERNAL_NMEA)externalNavigation=true else manageNavigation=true
+                },
+                onAutomaticSwitchInhibited={spatialInteraction=it})
+        } else {
+        Box(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit){
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed=false,pass=PointerEventPass.Initial)
+                mapTouched=true
+                try { do { val event=awaitPointerEvent(PointerEventPass.Initial) } while(event.changes.any{it.pressed}) }
+                finally {mapTouched=false}
+            }
+        }) {
             NativeChart(os,fix,Modifier.fillMaxSize()) { host=it }
             MapPositionReadout(os,fix,tick,Modifier.align(Alignment.TopStart).padding(10.dp))
             if(chartView.previewTrack.isEmpty())AisMapStatus(os,traffic,!traffic.preferences.chartLayer,Modifier.align(Alignment.TopStart).padding(start=10.dp,top=62.dp))
+            if(chartView.orientationMode!=MapOrientationMode.NORTH_UP)Label(when(chartView.orientationIssue){
+                "heading"->os.t("北向朝上 · 等待船首向","North up · waiting for heading")
+                "course"->os.t("北向朝上 · 等待稳定航迹向","North up · waiting for a steady course")
+                else->if(chartView.effectiveOrientationMode==MapOrientationMode.HEADING_UP)os.t("船艏朝上","Heading up")else os.t("航迹向朝上","Course up")
+            },12,c.muted,Modifier.align(Alignment.TopEnd).padding(top=12.dp,end=10.dp).widthIn(max=150.dp).background(c.bg.copy(alpha=.92f)).padding(horizontal=8.dp,vertical=5.dp),maxLines=2)
             MapZoomControls(os,chartView,Modifier.align(Alignment.TopEnd).padding(top=66.dp,end=10.dp)) {zoom->os.fly(os.center,zoom)}
             if(os.maps.source is MapSource.CustomLayer && selected.isEmpty()) {
                 Column(Modifier.align(Alignment.Center).padding(30.dp).widthIn(max=350.dp).background(c.bg).padding(24.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
@@ -150,7 +210,14 @@ import kotlin.math.*
                 }
             }
         }
-        if(!os.editingRoute) ChartNavigationCard(os,fix,tick)
+        if(!os.editingRoute) {
+            ChartNavigationCard(os,fix,tick)
+            if(os.navigationState.guidance!=null&&display!=null&&!toolOpen)Row(Modifier.fillMaxWidth().background(c.bg.copy(alpha=.96f)).padding(horizontal=14.dp),verticalAlignment=Alignment.CenterVertically){
+                if(liftOffer)Label(os.t("抬起了手机，查看目标方向？","Raised your phone? See the target direction."),12,c.muted,Modifier.weight(1f))else Spacer(Modifier.weight(1f))
+                MetroButton(os.t("立体方向","3D direction"),{openSpatial()})
+                if(liftOffer)IconAction("close",os.t("暂不查看","Not now"),{liftOffer=false;manualMapEpoch++})
+            }
+        }
             }
         }
         if(os.editingRoute) AppCommandBar(os, listOf(
@@ -160,6 +227,8 @@ import kotlin.math.*
             }),
             AppCommand("save", "check", os.t("保存航线", "Save route"), {naming=true}, enabled=os.draftRoute.size>=2),
             AppCommand("cancel", "close", os.t("取消编辑", "Cancel editing"), {if(os.draftRoute.isEmpty()) cancelRouteDraft(os) else discard=true}),
+        ),secondaryActions=listOf(
+            AppCommand("passage", "route", os.t("检查与自动规划", "Check & find a route"), {openPlanning()},enabled=os.draftRoute.size>=2),
         )) else AppCommandBar(os, listOf(
             AppCommand("position", "locate", os.t("回到船位", "Go to boat"), {
                 if(fix!=null) { os.follow=fresh; os.showCrosshair=false; host?.camera?.move(fix.point,os.zoom) }
@@ -189,15 +258,19 @@ import kotlin.math.*
         ), secondaryActions=listOf(
             AppCommand("route", "route", os.t("规划航线", "Plan a route"), {resumeOrCreateRouteDraft(os)}),
             AppCommand("tools", "settings", os.t("海图工具", "Chart tools"), {tools=true}),
+            AppCommand("direction", "compass", os.t("立体方向", "3D direction"), {openSpatial()}, enabled=display!=null),
         ))
+        }
     }
     if(naming) TextDialog(os,os.t("保存航线","save route"),os.routes.firstOrNull {it.id==os.editingRouteId}?.name ?: os.t("航线 ${os.routes.size+1}","route ${os.routes.size+1}"),{naming=false}) { name ->
-        val route=Route(id=os.editingRouteId ?: uid(),name=name,points=os.draftRoute.toList()); os.displayedRouteId=null
+        val route=Route(id=os.editingRouteId ?: uid(),name=name,points=os.draftRoute.toList(),navigationTargetIndices=os.draftNavigationTargetIndices); os.displayedRouteId=null
         // Saving edits never changes the frozen route of an active navigation session.
         os.editingRoute=false;os.editingRouteId=null;os.draftRoute=emptyList();os.showCrosshair=false;os.sailing.putRoute(route)
     }
     if(discard) ConfirmDialog(os,os.t("放弃这条未保存的航线？","Discard this unsaved route?"),{discard=false}) {cancelRouteDraft(os);discard=false}
     if(layers) MapSourcePicker(os,aisLayer=false) {layers=false}
+    if(planning) planningStates.SaveableStateProvider(planningEntryKey){PassagePlanningPanel(os){planning=false}}
+    if(externalNavigation) ExternalNavigationDialog(os){externalNavigation=false}
     if(manageNavigation) os.activeRoute?.let { NavigationActionsDialog(os,it) {manageNavigation=false} }
     startingPlaceId?.let {id->os.allPlaces.firstOrNull {it.id==id}?.let {place->StartNavigationDialog(os,Route("goto:${place.id}",place.name,listOf(place.point))){startingPlaceId=null}}}
     editingPlaceId?.let {id->os.places.firstOrNull {it.id==id}?.let {place->CoordinateEditor(os,place,{editingPlaceId=null}){os.sailing.put(it);editingPlaceId=null}}}
@@ -213,6 +286,16 @@ import kotlin.math.*
     if(tools) AppDialog(onDismissRequest={tools=false}) {
         AppDialogSurface {
             AppDialogTitle(os.t("海图工具","Chart tools"))
+            MenuRow(os.t("航线规划","Route planning")){tools=false;openPlanning()}
+            MenuRow(os.t("立体方向","3D direction")){tools=false;openSpatial()}
+            NavigationLiftPreference(liftEnabled,os.chinese){value->
+                os.shell.requestSystemPreferences("chart.lift_to_direction"){before->before.copy(appPreferenceValues=before.appPreferenceValues+("chart.lift_to_direction" to if(value)"b:1"else"b:0"))}
+            }
+            MenuRow(os.t("外部导航","External navigation")){tools=false;externalNavigation=true}
+            AppSection(os.t("地图朝向","Map orientation"))
+            MapOrientationMode.entries.forEach{mode->ChoiceRow(when(mode){MapOrientationMode.NORTH_UP->os.t("北向朝上","North up");MapOrientationMode.HEADING_UP->os.t("船艏朝上","Heading up");MapOrientationMode.COURSE_UP->os.t("航迹向朝上","Course up")},chartView.orientationMode==mode){
+                os.shell.requestSystemPreferences("chart.orientation"){before->before.copy(appPreferenceValues=before.appPreferenceValues+("chart.orientation" to "c:${mode.name}"))}
+            }}
             AisLayerChoice(os,anchor=false)
             AisMonitoringSummary(os,traffic,!traffic.preferences.chartLayer)
             MenuRow(os.t("周围船舶","surrounding traffic"),aisInputSummary(os,traffic)){tools=false;os.openLinked("ais")}

@@ -11,7 +11,7 @@ flowchart TB
     subgraph ONE[默认进程：Shell 与海事运行时]
         APP[app-shell：Shell 与业务页面]
         BRIDGE[MarinePresentationBridge：UI 读数与操作反馈]
-        HOST[runtime:marine-local：MarineSystem / 航行命令协调]
+        HOST[runtime:marine-local：MarineSystem / 领域组合]
         CORE[core:runtime-contract：纯 Kotlin 状态与回执]
         API[legacy-marine api：MarineServices 窄端口]
         LOCAL[LocalMarineServices / 内容服务适配]
@@ -22,6 +22,13 @@ flowchart TB
         APP --> BRIDGE
         APP --> HOST
         BRIDGE --> API
+        HOST --> NAV[NavigationSessionService / 冻结路线与回执]
+        HOST --> CHART[ChartDataService / 图幅与版本租约]
+        HOST --> PLAN[RouteAnalysis / RoutePlanning 同一工作区]
+        CHART --> PLAN
+        PLAN --> STORE
+        NAV --> STORE
+        CHART --> STORE
         HOST --> CORE
         HOST --> API
         API -. 本地实现 .-> LOCAL
@@ -43,7 +50,7 @@ flowchart TB
 | 位置 | 当前代码职责 | 明确不承担 |
 | --- | --- | --- |
 | `core:runtime-contract` | 纯 Kotlin 的连接/位置/录制/守锚/AIS 契约，以及通知记录、目标、请求、结果和订阅快照 | Android API、legacy DTO、数据库、UI 文案、实际服务启动 |
-| `runtime:marine-local` | `MarineSystem`、共享航行命令协调、AIS 及通知 Binder 服务/客户端、持久事件到通知桥 | Shell 页面、磁贴、Compose 动画或反向依赖 `app-shell`；UI 不取得业务实现和 DAO |
+| `runtime:marine-local` | `MarineSystem`、共享航行命令协调、导航会话、结构化海图数据、离线规划、AIS 及通知 Binder 服务/客户端、持久事件到通知桥 | Shell 页面、磁贴、Compose 动画或反向依赖 `app-shell`；UI 不取得业务实现和 DAO |
 | `legacy-marine/api` | 当前迁移用的领域命令端口与兼容读投影 | 宣称自己已经是稳定公共 SDK / Binder schema |
 | `LocalMarineServices` | 将窄端口委托给同一个控制器和内容服务 | 创建第二份数据来源、活动航行、守锚或数据库 |
 | `LegacyMarineController` | 原 ViewModel 中的执行、订阅和服务编排，使用应用进程范围 | Activity 生命周期、Compose 选择/草稿、系统权限弹窗 |
@@ -214,3 +221,12 @@ python3 scripts/check_runtime_boundaries.py
 存储格式 LauncherPersistedState schema 5；StartDocument 延续 schema 2 并追加实例/文档版本、32 条近期回执、32 条移除逆操作、恢复说明。草稿纯配置最多 64 KiB，与文档同属原 DataStore。实例移除/撤销不修改业务数据；撤销或扩尺寸时原格被占，只安排目标的最近空位并说明，保留其他实例与 Spacer 的实际位置。慢写期间导航仍可处理，正式布局必须待回执发布。
 
 呈现通过现有系统快照与 DataHub，不创建传感器订阅源、后台地图或航行会话；只在可见且 RESUMED 时观察所需字段。此能力为当前进程内系统边界的完整接入，不宣称已经有磁贴 Binder 服务、独立进程隔离或新 ROM 镜像。
+
+
+## 导航、图册数据和自动规划迁移闭环
+
+`MarineSystem.navigation/charts/analysis/planning` 已由 `InProcessMarineSystem` 注入真实所有者。海图的工具菜单、自动规划面板、图册数据页、驾驶台导航读数和磁贴均已接入。导航从 OsStore 活动路线 JSON 迁移为 `LocalNavigationSessionService` 的持久会话，旧字段仅一次性导入，兼容 getter 为只读；导航 FGS 持有独立 NAVIGATION_SESSION 租约，不借用页面寿命或录制状态。
+
+`LocalChartDataService` 的文档读取、解析、SQLite 版本安装和许可状态不放在页面；地图只查询选中数据集的快照。`LocalPassagePlanningService` 的检查、搜索、取消与结果持久化不随页面离开而结束。它们并未因此成为独立 UID 或 Marine Core IPC 服务；ROM HOME 与普通 APK 注入同一套本地能力。
+
+显示用设备视线由独立 `DisplayDemandService.deviceViewOrientation` 租约提供，只观察现有旋转矢量源，不修改船艏来源或安装校准。真北转换缺乏位置/时间依据时，立体视图降级到明确的二维方向信息。显示补间不改写原始四元数、采样时间或导航指导。

@@ -35,11 +35,12 @@ import kotlinx.coroutines.*
     } }
     fun preview() {os.maps.view("chart",os.center,os.zoom).previewRoute=route.copy(points=route.points.toList());os.displayedRouteId=id;os.fitRequest=route.points;os.showCrosshair=false;os.openLinked("chart")}
     fun edit() {
-        os.editingRouteId=id;os.draftRoute=route.points.toList();os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList()
+        os.editingRouteId=id;os.draftRoute=route.points.toList();os.draftNavigationTargetIndices=route.navigationTargetIndices;os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList()
         route.points.firstOrNull()?.let {os.fly(it)};os.openLinked("chart")
     }
     val navigating=os.activeRouteId==id
-    val guidance=os.activeRoute?.takeIf{navigating}?.let {routeGuidance(it,os.routeLeg,fix,now)}
+    val guidance=if(navigating)currentRouteGuidance(os) else null
+    val activeOrdinal=os.activeRoute?.targetIndices?.indexOf(os.navigationState.session?.targetIndex)?.plus(1)?:1
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,route.name,os.t("我的航行","MY SAILING"))
         Pivot(listOf(os.t("概览","overview"),os.t("航点","waypoints"),os.t("整理","organize"))) {page ->
@@ -47,14 +48,14 @@ import kotlinx.coroutines.*
                 when(page) {
                     0 -> {
                         if(navigating) {
-                            Label(os.t("正在导航 · 目标 ${os.routeLeg+1}","navigating · target ${os.routeLeg+1}"),15,c.accentText)
+                            Label(os.t("正在导航 · 目标 ${activeOrdinal}","navigating · target ${activeOrdinal}"),15,c.accentText)
                             Label(guidance?.distanceMeters?.let(os::formatDistance) ?: os.t("等待船位","waiting for position"),40)
                             Label(guidance?.let {offsetLabel(os,it)} ?: "",16,c.muted)
                         } else {
                             Label(if(route.points.size==1) os.t("单点前往","one destination") else os.formatDistance(route.length),44,c.accent)
-                            Label(os.t("${route.points.size} 个航点 · 保存的规划路线","${route.points.size} waypoints · your saved plan"),15,c.muted)
+                            Label(os.t("${route.targetIndices.size} 个航点 · 保存的规划路线","${route.targetIndices.size} waypoints · your saved plan"),15,c.muted)
                         }
-                        RouteSketch(os,if(navigating)os.activeRoute ?: route else route,if(navigating) os.routeLeg else null)
+                        RouteSketch(os,if(navigating)os.activeRoute ?: route else route,if(navigating) os.navigationState.session?.targetIndex else null)
                         if(navigating && os.activeRoute?.points!=route.points)Label(os.t("收藏已编辑。本次导航继续使用出发时的路线。","Saved plan edited. This navigation keeps the route used at departure."),15,c.muted)
                         if(route.points.isEmpty()) Label(os.t("这条航线还没有航点。编辑后再开始。","This route has no waypoints. Add some before starting."),15)
                         MetroButton(if(navigating) os.t("回到海图继续导航","continue navigation on chart") else os.t("在海图上预览","preview on chart"),{
@@ -64,17 +65,18 @@ import kotlinx.coroutines.*
                         MetroButton(if(navigating) os.t("当前导航与目标","current guidance & target") else os.t("开始沿线导航","start route navigation"),{if(navigating) actions=true else startAt=0},enabled=route.points.isNotEmpty())
                         Label(os.t("预览只显示路线。开始导航后，才会根据船位引导你逐点前往。","Preview displays the route. Start navigation to follow its waypoints from your position."),15,c.muted)
                         if (savedRoute != null) PinTileAction(os, savedRouteTileBinding(savedRoute.id))
-                        route.points.firstOrNull()?.let {p ->MenuRow(os.t("第一个航点","first waypoint"),os.formatCoordinates(p)) {selectedPoint=0}}
-                        if(route.points.size>1) route.points.lastOrNull()?.let {p ->MenuRow(os.t("终点","destination"),os.formatCoordinates(p)) {selectedPoint=route.points.lastIndex}}
+                        route.targetIndices.firstOrNull()?.let {first ->MenuRow(os.t("第一个目标","first destination"),os.formatCoordinates(route.points[first])) {selectedPoint=first}}
+                        if(route.targetIndices.size>1) route.points.lastOrNull()?.let {p ->MenuRow(os.t("终点","destination"),os.formatCoordinates(p)) {selectedPoint=route.points.lastIndex}}
                     }
                     1 -> {
                         AppSection(os.t("按顺序认识这条航线","get to know each leg"))
                         Label(os.t("点一个航点，可以查看位置，或将它选为第一个目标。","Tap a waypoint to inspect its position or make it your first target."),15,c.muted)
-                        var cumulative=0.0
-                        route.points.forEachIndexed {i,p ->
-                            val leg=if(i>0) distance(route.points[i-1],p) else 0.0;cumulative+=leg
-                            MenuRow(os.t("${i+1}  "+if(i==route.points.lastIndex) "终点" else "航点","${i+1}  "+if(i==route.points.lastIndex) "destination" else "waypoint"),
-                                if(i==0) os.formatCoordinates(p) else "${os.formatDistance(leg)} · ${decimal(bearing(route.points[i-1],p),0)}°T · "+os.t("累计 ${os.formatDistance(cumulative)}","${os.formatDistance(cumulative)} total")) {selectedPoint=i}
+                        val cumulative=remember(route.points){buildList {add(0.0);route.points.zipWithNext().forEach{(a,b)->add(last()+distance(a,b))}}}
+                        route.targetIndices.forEachIndexed {ordinal,i ->
+                            val p=route.points[i];val previous=route.targetIndices.getOrNull(ordinal-1)?:0
+                            val leg=cumulative[i]-cumulative[previous]
+                            MenuRow(os.t("${ordinal+1}  "+if(i==route.points.lastIndex) "终点" else "航点","${ordinal+1}  "+if(i==route.points.lastIndex) "destination" else "waypoint"),
+                                if(i==0) os.formatCoordinates(p) else os.t("沿线 ${os.formatDistance(leg)} · 累计 ${os.formatDistance(cumulative[i])}","${os.formatDistance(leg)} along route · ${os.formatDistance(cumulative[i])} total")) {selectedPoint=i}
                         }
                     }
                     else -> {
@@ -91,7 +93,7 @@ import kotlinx.coroutines.*
                         },primary=true)
                         MetroButton(os.t("重命名","rename"),{rename=true})
                         MetroButton(os.t("创建反向返航路线","make a reversed return route"),{
-                            val reversed=Route(name=route.name+os.t(" · 返航"," · return"),points=route.points.reversed());os.sailing.putRoute(reversed);os.open("route:${reversed.id}")
+                            val reversed=Route(name=route.name+os.t(" · 返航"," · return"),points=route.points.reversed(),navigationTargetIndices=route.navigationTargetIndices?.let{indices->(indices.map{route.points.lastIndex-it}.filter{it>0}+route.points.lastIndex).distinct().sorted()});os.sailing.putRoute(reversed);os.open("route:${reversed.id}")
                         },enabled=route.points.size>1)
                         MetroButton(if(exporting) os.t("正在导出…","exporting…") else os.t("导出这条航线 GPX","export this route as GPX"),{exporter.launch("Yokuli-route.gpx")},enabled=!exporting && route.points.isNotEmpty())
                         if(os.displayedRouteId==id && !navigating) MetroButton(os.t("从海图隐藏预览","hide chart preview"),{os.displayedRouteId=null;os.save()})
@@ -108,7 +110,7 @@ import kotlinx.coroutines.*
     selectedPoint?.let {index ->route.points.getOrNull(index)?.let {point ->
         AppDialog(onDismissRequest={selectedPoint=null}) {
             AppDialogSurface() {
-                AppDialogTitle(os.t("航点 ${index+1}","waypoint ${index+1}"))
+                AppDialogTitle(os.t("航点 ${route.targetIndices.indexOf(index)+1}","waypoint ${route.targetIndices.indexOf(index)+1}"))
                 Label(os.formatCoordinates(point),15,c.accentText)
                 fix?.takeIf {it.fresh(now)}?.let {Label(os.t("距船位 ${os.formatDistance(distance(it.point,point))}","${os.formatDistance(distance(it.point,point))} from your position"),15,c.muted)}
                 MetroButton(os.t("在海图上查看","show on chart"),{os.maps.view("chart",os.center,os.zoom).previewRoute=route.copy(points=route.points.toList());os.displayedRouteId=id;os.fly(point);os.showCrosshair=true;selectedPoint=null;os.openLinked("chart")},primary=true)

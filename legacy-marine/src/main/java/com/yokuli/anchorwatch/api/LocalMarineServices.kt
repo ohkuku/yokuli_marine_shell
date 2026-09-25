@@ -41,6 +41,7 @@ import javax.inject.Singleton
 class LocalMarineServices @Inject constructor(
     private val controller: LegacyMarineController,
     contentService: LocalMarineContentService,
+    private val deviceViewOrientationProvider: com.yokuli.anchorwatch.location.vessel.DeviceViewOrientationProvider,
     private val tripRuntime: com.yokuli.anchorwatch.runtime.trip.TripRuntime,
 ) : MarineServices {
     override val state: StateFlow<MainUiState> get() = controller.ui
@@ -148,6 +149,7 @@ class LocalMarineServices @Inject constructor(
         override fun setVesselGeometry(lengthMeters: Double, bowRollerHeightMeters: Double, antennaToBowMeters: Double): Job =
             controller.setVesselGeometry(lengthMeters, bowRollerHeightMeters, antennaToBowMeters)
         override fun setVesselIdentity(name: String, draftMeters: Double?): Job = controller.setVesselIdentity(name, draftMeters)
+        override fun setPassageGeometry(value: com.yokuli.anchorwatch.data.vessel.PassageGeometry): Job = controller.setPassageGeometry(value)
         override fun setAlarmSound(sound: AlarmSound, customUri: String?): Job = controller.setAlarmSound(sound, customUri)
         override fun setAlarmSnoozeMinutes(minutes: Int): Job = controller.setAlarmSnoozeMinutes(minutes)
         override fun setInstrumentLayout(layout: List<InstrumentTileId>): Job = controller.setInstrumentLayout(layout)
@@ -172,5 +174,7 @@ class LocalMarineServices @Inject constructor(
         private val instruments = DisplayLeaseRegistry(controller::setTripLiveDisplayActive)
         override fun acquireMapHeading(): DisplayLease = heading.acquire()
         override fun acquireInstruments(): DisplayLease = instruments.acquire()
+        override val deviceViewOrientation get() = deviceViewOrientationProvider.orientation
+        override fun acquireDeviceViewOrientation(): DisplayLease = deviceViewOrientationProvider.acquire()
     }
 }
