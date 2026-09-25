@@ -2,7 +2,6 @@ package com.yokuli.marine.shell.rebuild.ui
 
 import android.os.SystemClock
 import androidx.compose.runtime.*
-import com.yokuli.anchorwatch.MainUiState
 import com.yokuli.anchorwatch.domain.model.AlarmState
 import com.yokuli.anchorwatch.domain.model.AlarmType
 import com.yokuli.anchorwatch.domain.vessel.*
@@ -20,7 +19,7 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 
-/** 中文：桌面与唯一编辑预览使用同一入口；实例配置优先，不修改旧应用偏好。 */
+/** 桌面与编辑器共用实际渲染；表现变更不再被旧帧或迁移模式遮住。 */
 @Composable fun instanceTilePresentation(os:OsStore,placement:TileDocumentEntry,active:Boolean):LauncherEntryVisualContribution {
     val binding=tileBinding(placement)
     val choice=tileContentDescriptor(os,binding)
@@ -28,35 +27,43 @@ import java.util.Locale
     val config=placement.presentation
     if(binding.kind==TileBindingKind.APP&&choice.supported) {
         val preset=tilePresets().firstOrNull {it.entryId.value==binding.contentId||it.entryId==placement.entryId}
-        val mode=when(config.style) {
-            "static"->"STATIC"
-            else->config.legacyMode ?: preset?.mode ?: if(config.style=="summary")"AUTO"else"STATIC"
+        val legacyMode=config.legacyMode
+        val mode=when {
+            config.style=="static"->"STATIC"
+            legacyMode!=null->legacyMode
+            config.style=="summary"->"AUTO"
+            else->preset?.mode ?: "STATIC"
         }
-        // 声明本身不执行 LiveAppTile；只在真正组成到屏幕的 renderer 内观察数据。
         return LauncherEntryVisualContribution(placement.entryId,choice.title.text(os),choice.owner.chineseIndex,
             choice.title.text(os),choice.subtitle.text(os),LauncherIconRenderer {color,modifier->ShellAppIcon(app,color,modifier)},
             (choice.sizes+placement.size).distinct().associateWith {size->LauncherTileRenderer {context->
-                LegacyInstanceTile(os,app,active,mode,config.rotate ?: (mode=="AUTO"),config.intervalSeconds?.toLong() ?: 6L,size,context,preset)
+                key(binding.contentKey,config,size) {
+                    LegacyInstanceTile(os,app,active,mode,config.rotate ?: (mode=="AUTO"),config.intervalSeconds?.toLong() ?: 6L,size,context,preset)
+                }
             }},fullBleed=choice.owner==AppId.CHART&&mode in setOf("AUTO","MAP"))
     }
     return LauncherEntryVisualContribution(placement.entryId,choice.title.text(os),choice.owner.chineseIndex,
         choice.title.text(os),choice.subtitle.text(os),LauncherIconRenderer {color,modifier->ShellAppIcon(app,color,modifier)},
         (choice.sizes+placement.size).distinct().associateWith {size->LauncherTileRenderer {context->
-            val live=tilePresentationActive(active&&context.liveContentEnabled)
-            val frame=contentTileFrame(os,binding,config,live)
-            TileFace(os,app,choice.title.text(os),listOf(frame),size,context,false,false,6)
+            key(binding.contentKey,config,size) {
+                val live=tilePresentationActive(active&&context.liveContentEnabled)
+                if(binding.providerId=="yokuli"&&binding.kind==TileBindingKind.READING) {
+                    val content=readingTileFrame(os,binding.contentId,config,live)
+                    ReadingTileFace(os,app,choice.title.text(os),content,size,context,live)
+                } else {
+                    val frame=contentTileFrame(os,binding,config,live)
+                    TileFace(os,app,choice.title.text(os),listOf(frame),size,context,false,false,6)
+                }
+            }
         }})
 }
 
 private fun AppPreferenceLabel.text(os:OsStore)=if(os.chinese)chinese else english
-
-/** 内容可解析性与观测时效是两个维度；缺失对象不是“读数过期”。 */
 private enum class TileContentAvailability { LOADING, AVAILABLE, MISSING, FAILED, UNSUPPORTED }
 
 @Composable private fun contentTileFrame(os:OsStore,binding:TileBinding,presentation:TilePresentation,active:Boolean):TileFrame {
     if(binding.providerId!="yokuli")return unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
     return when(binding.kind) {
-        TileBindingKind.READING->readingTileFrame(os,binding.contentId,presentation,active)
         TileBindingKind.CURRENT_TASK->taskTileFrame(os,binding.contentId,presentation.style=="detail",active)
         TileBindingKind.OVERVIEW->if(binding.contentId=="aisTraffic")trafficTileFrame(os,presentation.style=="detail",active)else unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
         TileBindingKind.SAVED_PLACE,TileBindingKind.SAVED_ROUTE->savedTileFrame(os,binding)
@@ -106,10 +113,12 @@ private fun readingTileProjection(state:VesselDataSnapshot,tile:InstrumentTileId
     })
 }
 
-@Composable private fun readingTileFrame(os:OsStore,id:String,config:TilePresentation,active:Boolean):TileFrame {
-    val tile=tileInstrumentId(id) ?: return unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
+@Composable private fun readingTileFrame(os:OsStore,id:String,config:TilePresentation,active:Boolean):ReadingTileContent {
+    val tile=tileInstrumentId(id) ?: return ReadingTileContent(unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED))
     val metric=instrumentTrendKey(tile).orEmpty()
-    val directionStyle=config.style=="compass"||config.style=="detail"&&id in TileReadingPresentationPolicy.windIds
+    val relative=id in TileReadingPresentationPolicy.relativeDirectionIds||id=="APPARENT_WIND_SPEED"
+    val directionStyle=config.style=="compass"||config.style=="detail"&&
+        (id in TileReadingPresentationPolicy.windIds||id in TileReadingPresentationPolicy.directionIds||id in TileReadingPresentationPolicy.relativeDirectionIds)
     val state=os.marine?.services?.state
     val navigation=os.marine?.system?.navigation?.state
     val navigationMetric=id in setOf("WAYPOINT_BEARING","WAYPOINT_DISTANCE","CROSS_TRACK_ERROR","VMC")
@@ -123,7 +132,7 @@ private fun readingTileProjection(state:VesselDataSnapshot,tile:InstrumentTileId
     val now=tileElapsed(active)
     val observation=data.observation
     val number=data.number?.takeIf {!InstrumentReadingPolicy.requiresFresh(tile)||observation.displayIsLive()}
-        ?.let {if(id in setOf("TRUE_WIND_ANGLE","APPARENT_WIND_ANGLE"))signedHistoryAngle(it)else it}
+        ?.let {if(id in TileReadingPresentationPolicy.relativeDirectionIds)signedHistoryAngle(it)else it}
     val reference=when(val ref=observation.reference) {
         VesselReference.TrueNorth->os.t("真北","True north")
         VesselReference.WaterReferenced->os.t("相对于水","Water referenced")
@@ -135,7 +144,13 @@ private fun readingTileProjection(state:VesselDataSnapshot,tile:InstrumentTileId
             "BELOW_TRANSDUCER"->os.t("换能器以下","Below transducer")
             else->os.t("测深参考未提供","Depth reference unspecified")
         }
-        else->if(id=="DEPTH")os.t("测深参考未提供","Depth reference unspecified")else ""
+        else->when {
+            id=="DEPTH"->os.t("测深参考未提供","Depth reference unspecified")
+            id=="UKC"->os.t("龙骨以下","Below keel")
+            relative->os.t("船艏 0° · 左负右正","Bow 0° · port − / starboard +")
+            id in TileReadingPresentationPolicy.directionIds->os.t("真北","True north")
+            else->""
+        }
     }
     val source=observation.sourceIdentity?.displayName ?: observation.provenance.orEmpty()
     val status=observationStatus(os,observation,now)
@@ -146,36 +161,38 @@ private fun readingTileProjection(state:VesselDataSnapshot,tile:InstrumentTileId
         os.t(if(id=="APPARENT_WIND_SPEED")"船体风角 "else"风向 ",if(id=="APPARENT_WIND_SPEED")"Relative angle "else"Direction ")+angleText+" · "+observationStatus(os,aux,now)
     }else ""
     val history=if(tileHasHistory(id,config.style))rememberTileHistory(os,metric,active,now,tileHistoryMinutes(id,config),config.rangeMinimum,config.rangeMaximum)else null
-    val historyCaption=remember(history,os.chinese) {history?.takeIf {it.points.isNotEmpty()}?.let {
+    val historyCaption=remember(history,os.chinese) {history?.let {
         val end=it.points.lastOrNull()?.reading?.observedUtcMillis ?: (System.currentTimeMillis()-(SystemClock.elapsedRealtime()-it.end))
         os.t("近 ${tileHistoryMinutes(id,config)} 分钟 · 截至 ","${tileHistoryMinutes(id,config)} min · through ")+DateFormat.getTimeInstance(DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH).format(Date(end))
     }.orEmpty()}
     val fixedMinimum=config.rangeMinimum;val fixedMaximum=config.rangeMaximum
     val range=if(fixedMinimum!=null&&fixedMaximum!=null&&fixedMinimum<fixedMaximum)fixedMinimum to fixedMaximum else tileDefaultRange(id,number)
     val rangeOut=number!=null&&fixedMinimum!=null&&fixedMaximum!=null&&(number<fixedMinimum||number>fixedMaximum)
+    val graphicObservation=if(directionStyle&&id in TileReadingPresentationPolicy.windIds)aux ?: VesselObservation<Double>()else observation
     val graphic=when {
-        directionStyle->TileMetricGraphic(TileMetricGraphicKind.COMPASS,if(id in TileReadingPresentationPolicy.windIds)aux?.liveNumber()else number,relative=id=="APPARENT_WIND_SPEED")
+        directionStyle->TileMetricGraphic(TileMetricGraphicKind.COMPASS,if(id in TileReadingPresentationPolicy.windIds)aux?.liveNumber()else number?.takeIf {observation.displayIsLive()},relative=relative)
         config.style=="attitude"->TileMetricGraphic(if(id=="PITCH")TileMetricGraphicKind.PITCH else TileMetricGraphicKind.HEEL,number,range.first,range.second)
         config.style=="gauge"->TileMetricGraphic(TileMetricGraphicKind.GAUGE,number?.let {os.displayMetricValue(metric,it)},
             os.displayMetricValue(metric,range.first),os.displayMetricValue(metric,range.second),os.formatMetric(metric,range.first),os.formatMetric(metric,range.second))
         else->null
-    }
+    }?.copy(observation=graphicObservation)
     val position=observation.value as? VesselPosition
     val positionDetail=if(id=="POSITION"&&config.style=="detail")listOfNotNull(position?.horizontalAccuracyMeters?.let {os.t("精度 ±","Accuracy ±")+os.formatLength(it)},position?.satellites?.let {os.t("$it 颗卫星","$it satellites")}).joinToString(" · ")else ""
     val headline=if(id=="POSITION")position?.let {os.formatCoordinates(GeoPoint(it.latitude,it.longitude))} ?: "—"else os.formatMetric(metric,number)
-    val details=listOf(reference.takeIf {config.showReference}.orEmpty(),source.takeIf {config.showSource}.orEmpty(),positionDetail).filter {it.isNotBlank()}.joinToString(" · ")
-    return TileFrame(id,headline,details,
-        if(observation.source==VesselDataSource.DEMO)os.t("演示读数","Demo reading")else extra,
+    val details=listOf(reference.takeIf {config.showReference||id in TileReadingPresentationPolicy.requiredReferenceIds}.orEmpty(),
+        source.takeIf {config.showSource}.orEmpty(),positionDetail).filter {it.isNotBlank()}.joinToString(" · ")
+    return ReadingTileContent(TileFrame(id,headline,details,
+        if(observation.source==VesselDataSource.DEMO)os.t("演示读数","Demo reading")else extra.takeIf {config.style=="detail"}.orEmpty(),
         live=observation.displayIsLive(),priorityLine=status+if(rangeOut)os.t(" · 超出显示量程"," · Outside display range")else "",
-        history=history,historyCaption=historyCaption,graphic=graphic)
+        history=history,historyCaption=historyCaption),graphic,config.style)
 }
 
-/** 主读数持续更新；五分钟历史只在分钟边界且确有新观测时替换，尺寸改变不重采样。 */
+/** 历史只展示既有观测；同分钟内首次到达的样本也立即进入空图，不补造点。 */
 @Composable internal fun rememberTileHistory(os:OsStore,metric:String,active:Boolean,now:Long,minutes:Int=5,minimum:Double?=null,maximum:Double?=null):InstrumentHistoryFrame {
     data class Capture(val end:Long,val samples:List<Reading>)
-    // 历史已有唯一 DataHub 所有者；这里按共用时钟读取不可变快照，不为每个新样本重组磁贴。
     var capture by remember(metric) {mutableStateOf(Capture(now,os.hub.history.value[metric].orEmpty().toList()))}
-    LaunchedEffect(active,now/60_000L,metric) {
+    val empty=capture.samples.isEmpty()
+    LaunchedEffect(active,if(empty)now/1_000L else now/60_000L,metric) {
         if(active) {
             val values=os.hub.history.value[metric].orEmpty()
             val newest=values.lastOrNull()

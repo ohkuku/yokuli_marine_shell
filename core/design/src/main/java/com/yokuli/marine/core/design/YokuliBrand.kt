@@ -3,7 +3,6 @@ package com.yokuli.marine.core.design
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -13,17 +12,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
-/** 品牌原色仅用于独立品牌画面；应用内由调用者提供主题色，夜间/高对比优先。 */
+/** Approved artwork colours; never substitutes for alarm, quality or chart semantics. */
 object YokuliBrandColors {
-    val Ink = Color(0xFF081E29)
-    val Signal = Color(0xFF27D3C2)
+    val Ink = Color(0xFF1F2A30)
+    val Signal = Color(0xFF69877F)
+    val Wake = Color(0xFF5C706D)
+    val Paper = Color(0xFFFAF9F6)
+    val Secondary = Color(0xFF757D80)
 }
 
-/**
- * 舷间留白构成Y的航迹；分离的前缘是同一主标的组成部分，不表示数据状态。
- * 所有场景共用SVG母版生成的矢量资源，不在页面重复画路径。
- * 单色用accent=color，24dp系统键仍保留完整轮廓；纯装饰不要重复朗读品牌名。
- */
+/** Small surfaces extract the same O, sail and wake. There is no independent Y mark. */
 @Composable
 fun YokuliBrandMark(
     modifier: Modifier = Modifier.size(24.dp),
@@ -39,10 +37,10 @@ fun YokuliBrandMark(
     }
 }
 
-/** 原创轮廓字标，字形不会随设备字体改变；正文仍用系统Selawik字阶。 */
+/** Complete monochrome wordmark, retaining the sail inside O and subordinate OS. */
 @Composable
 fun YokuliBrandWordmark(
-    modifier: Modifier = Modifier.width(112.dp).height(24.dp),
+    modifier: Modifier = Modifier.width(112.dp).height(30.dp),
     color: Color = Color.White,
     contentDescription: String? = "Yokuli OS",
 ) {
@@ -50,20 +48,19 @@ fun YokuliBrandWordmark(
         contentScale = ContentScale.Fit, colorFilter = ColorFilter.tint(color))
 }
 
-/** 横排品牌签名：按同一比例缩放，调用者给定狭窄空间时不裁字或挤压标记。 */
+/** Full signature; never adds a second mark to the left of the integrated wordmark. */
 @Composable
 fun YokuliBrandSignature(
     modifier: Modifier = Modifier,
     color: Color = Color.White,
-    accent: Color = color,
+    accent: Color = YokuliBrandColors.Signal,
 ) {
-    BoxWithConstraints(modifier.size(172.dp, 36.dp).semantics { contentDescription = "Yokuli OS" },
-        contentAlignment = Alignment.CenterStart) {
-        val unit = minOf(maxHeight, maxWidth / 4.9375f)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            YokuliBrandMark(Modifier.size(unit), color, accent)
-            Spacer(Modifier.width(unit * .3125f))
-            YokuliBrandWordmark(Modifier.size(unit * 3.625f, unit * 3.625f * 60f / 296f), color, null)
-        }
+    Box(modifier.size(172.dp, 46.dp).semantics { contentDescription = "Yokuli OS" }) {
+        Image(painterResource(R.drawable.yokuli_wordmark_body), null, Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit, colorFilter = ColorFilter.tint(color))
+        Image(painterResource(R.drawable.yokuli_wordmark_sail), null, Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit, colorFilter = ColorFilter.tint(accent))
+        Image(painterResource(R.drawable.yokuli_wordmark_os), null, Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit, colorFilter = ColorFilter.tint(color.copy(alpha = .65f)))
     }
 }

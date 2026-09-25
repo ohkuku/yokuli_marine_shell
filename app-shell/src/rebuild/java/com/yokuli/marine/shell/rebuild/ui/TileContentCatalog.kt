@@ -3,10 +3,9 @@ package com.yokuli.marine.shell.rebuild.ui
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.shell.contract.*
 import com.yokuli.shell.engine.layout.TileDocumentEntry
-import com.yokuli.anchorwatch.domain.vessel.InstrumentTileId
 import com.yokuli.anchorwatch.domain.vessel.MetricLabelRegistry
 
-/** 中文：工坊的稳定目录，只描述内容和查看去向，不订阅仪表或创建业务任务。 */
+/** Stable content declarations, not another instrument subscription or task owner. */
 enum class TileContentGroup { WATCH, READINGS, SAVED, APPS }
 data class TileContentStyle(val key:String,val title:AppPreferenceLabel)
 data class TileContentChoice(
@@ -20,20 +19,16 @@ data class TileContentChoice(
     val defaultSize:MarineTileSize,
     val launchToken:String,
     val destinationLabel:AppPreferenceLabel,
-    /** 未识别提供者和被删除的对象仍有可呈现描述，不能因此清掉布局。 */
     val supported:Boolean=true,
 ) {
     val description get()=subtitle
     val ownerTitle get()=AppPreferenceLabel(owner.zh,owner.en)
     val defaultPresentation get()=TilePresentation(style=styles.firstOrNull()?.key ?: "simple")
 }
-
 private val contentSizes=listOf(MarineTileSize.STANDARD_2X2,MarineTileSize.WIDE_4X2)
 private fun label(zh:String,en:String)=AppPreferenceLabel(zh,en)
 private fun contentStyles(detailZh:String="详细",detailEn:String="Detail")=listOf(
     TileContentStyle("simple",label("简洁","Simple")),TileContentStyle("detail",label(detailZh,detailEn)))
-
-/** 中文：所有真实入口使用相同的规范绑定；语言、单位、当前来源不参与内容身份。 */
 fun tileReadingBinding(metric:String)=TileBinding("yokuli",TileBindingKind.READING,if(metric=="HEADING")"HEADING_TRUE" else metric)
 fun tileBinding(placement:TileDocumentEntry):TileBinding=placement.binding
     ?: TileBinding("yokuli",TileBindingKind.APP,placement.entryId.value)
@@ -52,16 +47,23 @@ private fun staticTileContentChoices():List<TileContentChoice> {
             InstrumentHistoryKind.COUNTER->label("实际增量","Measured increments")
             else->label("变化范围","Range history")
         }
-        val styles=when {
-            id=="POSITION"->listOf(TileContentStyle("simple",label("坐标","Coordinates")),TileContentStyle("detail",label("坐标与精度","Position and accuracy")))
-            id in TileReadingPresentationPolicy.windIds->listOf(TileContentStyle("simple",label("风速","Wind speed")),TileContentStyle("detail",label("风速与方向","Speed and direction")),TileContentStyle("trend",historyTitle))
-            else->listOf(TileContentStyle("simple",label("读数","Reading")),TileContentStyle("detail",historyTitle))+when {
-                id in TileReadingPresentationPolicy.directionIds->listOf(TileContentStyle("compass",label("方位盘","Compass")))
-                id in TileReadingPresentationPolicy.attitudeIds->listOf(TileContentStyle("attitude",label(if(id=="HEEL")"横倾示意"else"纵倾示意",if(id=="HEEL")"Heel view"else"Pitch view")))
-                id in TileReadingPresentationPolicy.counterIds->emptyList()
-                else->listOf(TileContentStyle("gauge",label("刻度量表","Gauge")))
+        // Capability policy and picker agree; every listed style has a production renderer.
+        val styles=TileReadingPresentationPolicy.styles(id).map {style->TileContentStyle(style,when(style) {
+            "simple"->if(id=="POSITION")label("坐标","Coordinates")else label("读数","Reading")
+            "compass"->when {
+                id in TileReadingPresentationPolicy.relativeDirectionIds||id=="APPARENT_WIND_SPEED"->label("船艏相对方位","Bow-relative dial")
+                id=="TRUE_WIND_SPEED"->label("风速与真风向","Speed and true direction")
+                else->label("真北方位盘","True-north compass")
             }
-        }
+            "attitude"->label(if(id=="HEEL")"横倾示意"else"纵倾示意",if(id=="HEEL")"Heel view"else"Pitch view")
+            "gauge"->label("刻度量表","Gauge")
+            "trend"->historyTitle
+            else->when {
+                id=="POSITION"->label("坐标与精度","Position and accuracy")
+                id in TileReadingPresentationPolicy.windIds->label("风速、方向与来源","Wind details")
+                else->label("读数与历史","Reading and history")
+            }
+        })}
         return TileContentChoice(tileReadingBinding(id),label(name.simplifiedChinese,name.english),
             label("系统选用的${name.simplifiedChinese} · 保留来源与观测时间","Selected ${name.english.lowercase()} · Actual source and observation time"),
             AppId.INSTRUMENTS,TileContentGroup.READINGS,contentSizes,styles,MarineTileSize.STANDARD_2X2,
@@ -88,13 +90,10 @@ private fun staticTileContentChoices():List<TileContentChoice> {
     }
 }
 private val declaredTileChoices by lazy(::staticTileContentChoices)
-
-/** 动态项取自既有资料库的只读缓存；固定顺序不随实时风险、速度或连接改变。 */
 fun tileContentChoices(os:OsStore):List<TileContentChoice> = declaredTileChoices.filter {it.group!=TileContentGroup.APPS}+
     os.allPlaces.sortedWith(compareBy<Place> {it.name.lowercase()}.thenBy {it.id}).map {savedPlaceChoice(it)}+
     os.routes.sortedWith(compareBy<Route> {it.name.lowercase()}.thenBy {it.id}).map {savedRouteChoice(it)}+
     declaredTileChoices.filter {it.group==TileContentGroup.APPS}
-
 private fun savedPlaceChoice(place:Place)=TileContentChoice(TileBinding("yokuli",TileBindingKind.SAVED_PLACE,place.id),
     label(place.name,place.name),label("收藏地点 · 查看位置和笔记","Saved place · Position and notes"),AppId.PLACES,TileContentGroup.SAVED,
     contentSizes,listOf(TileContentStyle("simple",label("地点摘要","Place summary"))),MarineTileSize.STANDARD_2X2,
@@ -104,7 +103,7 @@ private fun savedRouteChoice(route:Route)=TileContentChoice(TileBinding("yokuli"
     contentSizes,listOf(TileContentStyle("simple",label("航线摘要","Route summary"))),MarineTileSize.WIDE_4X2,
     "tileroute:${route.id}",label("我的航行 · 航线详情","My Sailing · Route details"))
 
-/** 描述失败仍返回占位身份；实际 Loading/Failed/Missing 由提供者分开呈现，不猜测对象存在。 */
+/** Missing objects retain their tile identity; navigation snapshots do not revive saved routes. */
 fun tileContentDescriptor(os:OsStore,binding:TileBinding):TileContentChoice {
     declaredTileChoices.firstOrNull {it.binding.contentKey==binding.contentKey}?.let {return it}
     if(binding.providerId=="yokuli" && binding.kind==TileBindingKind.APP) {
@@ -117,7 +116,6 @@ fun tileContentDescriptor(os:OsStore,binding:TileBinding):TileContentChoice {
     }
     if(binding.providerId=="yokuli")when(binding.kind) {
         TileBindingKind.SAVED_PLACE->os.allPlaces.firstOrNull {it.id==binding.contentId}?.let {return savedPlaceChoice(it)}
-        // 当前导航持有自己的快照，不能替代已删除的收藏路线。
         TileBindingKind.SAVED_ROUTE->os.routes.firstOrNull {it.id==binding.contentId}?.let {return savedRouteChoice(it)}
         else->Unit
     }

@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <title>Yokuli — split-keel Y</title>
-  <desc>An original Y formed by two bows and a keel. The open channel and detached leading edge remain visible in one colour.</desc>
-  <path id="body" fill="#FFFFFF" d="M7,10H21L31,26L24,37Z M32,28H47L38,43V58H24V43Z"/>
-  <path id="beacon" fill="#27D3C2" d="M43,10H59L51,22H36Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="150 0 320 240">
+  <title>YOKULI OS — sail-in-O compact mark</title>
+  <path id="ring" fill="#1F2A30" d="M353 32C294 22 247 44 223 88C208 114 207 143 220 170L253 166C234 134 246 92 276 71C296 57 322 52 346 57Z M380 41L379 69C400 85 413 105 413 131C413 158 398 181 373 197L412 202C435 180 447 158 447 133C447 90 420 59 380 41Z" />
+  <path id="sail" fill="#69877F" d="M370 10C369 81 365 130 344 187C325 178 305 172 284 168C326 132 355 69 370 10Z" />
+  <path id="wake" fill="#5C706D" d="M165 204C209 176 248 169 286 178C329 187 355 211 400 211C416 213 434 210 447 206C418 222 396 228 368 227C327 227 304 211 265 198C225 186 196 192 165 204Z" />
 </svg>

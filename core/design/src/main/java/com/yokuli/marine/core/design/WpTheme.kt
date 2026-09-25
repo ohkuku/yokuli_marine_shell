@@ -12,12 +12,13 @@ import androidx.compose.runtime.staticCompositionLocalOf
 enum class WpThemeMode { DARK, LIGHT }
 
 enum class WpAccent(val displayName: String, val argb: Long) {
-    COBALT("cobalt", 0xFF0050EFL), CYAN("cyan", 0xFF007F9BL), EMERALD("emerald", 0xFF60A917L),
+    // Keep the stored key compatible. The default marine accent follows the approved sail.
+    COBALT("cobalt", 0xFF0050EFL), CYAN("sea glass", 0xFF69877FL), EMERALD("emerald", 0xFF60A917L),
     MAGENTA("magenta", 0xFFD80073L), VIOLET("violet", 0xFF6A00FFL), CRIMSON("crimson", 0xFFA20025L), AMBER("amber", 0xFFF0A30AL),
 }
 data class WpThemeSpec(val mode: WpThemeMode = WpThemeMode.DARK, val accent: WpAccent = WpAccent.CYAN)
 
-/** MDL2 的面板、文字、控件状态共享调色板；海图/领域业务颜色不从这里改写。 */
+/** Shared ink, paper and sail palette; chart and safety colours remain semantic. */
 data class WpColorScheme(
     val spec: WpThemeSpec, val background: Color, val foreground: Color, val muted: Color, val chrome: Color,
     val accent: Color, val onAccent: Color, val safe: Color, val warning: Color, val alarm: Color, val stale: Color,
@@ -30,23 +31,23 @@ data class WpColorScheme(
 )
 
 object WpThemePolicy {
-    /** 自定义强调色只在显示层派生可读前景，绝不改写用户保存的配色。 */
+    /** Derive legible text without rewriting the user's explicitly selected accent. */
     fun resolve(spec: WpThemeSpec, accentOverride: Color? = null): WpColorScheme {
         val dark = spec.mode == WpThemeMode.DARK
-        val background = if (dark) Color.Black else Color.White
-        val foreground = if (dark) Color.White else Color.Black
+        val background = if (dark) Color(0xFF172127) else YokuliBrandColors.Paper
+        val foreground = if (dark) YokuliBrandColors.Paper else YokuliBrandColors.Ink
         val accent = (accentOverride ?: Color(spec.accent.argb)).copy(alpha = 1f)
         fun foregroundFraction(alpha: Float) = foreground.copy(alpha = alpha).compositeOver(background)
-        val muted = foregroundFraction(.6f)
+        val muted = foregroundFraction(.65f)
         return WpColorScheme(
             spec = spec, background = background, foreground = foreground, muted = muted,
-            chrome = if (dark) Color(0xFF1F1F1F) else Color(0xFFF2F2F2),
+            chrome = if (dark) Color(0xFF263239) else Color(0xFFEFEFED),
             accent = accent, onAccent = if (contrast(Color.White, accent) >= contrast(Color.Black, accent)) Color.White else Color.Black,
             safe = if (dark) Color(0xFF6CCB5F) else Color(0xFF107C10),
             warning = if (dark) Color(0xFFFCE100) else Color(0xFF8A5700),
             alarm = if (dark) Color(0xFFFF7B7B) else Color(0xFFC42B1C), stale = muted,
-            controlFill = foregroundFraction(.2f), controlStroke = foregroundFraction(.6f),
-            pressed = foregroundFraction(.4f), subtle = foregroundFraction(.08f), disabled = foregroundFraction(.4f),
+            controlFill = foregroundFraction(.07f), controlStroke = foregroundFraction(.55f),
+            pressed = foregroundFraction(.14f), subtle = accent.copy(alpha = .10f).compositeOver(background), disabled = foregroundFraction(.4f),
             accentText = readableAccent(accent, background, foreground),
         )
     }
