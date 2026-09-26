@@ -326,30 +326,30 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun ensureTileContent` | [WpShellRuntime.kt:190](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L190) |
-| `fun placementForEntry` | [WpShellRuntime.kt:194](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L194) |
-| `fun pageForToken` | [WpShellRuntime.kt:214](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L214) |
-| `fun finishChartRouteEditing` | [WpShellRuntime.kt:229](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L229) |
-| `fun showChartRoutePreview` | [WpShellRuntime.kt:242](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L242) |
-| `fun hideChartRoutePreview` | [WpShellRuntime.kt:253](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L253) |
-| `fun requestSystemPreferences` | [WpShellRuntime.kt:299](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L299) |
-| `fun updateSystemPreferences` | [WpShellRuntime.kt:315](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L315) |
-| `fun canonicalPage` | [WpShellRuntime.kt:319](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L319) |
-| `fun appForPage` | [WpShellRuntime.kt:333](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L333) |
-| `fun openLinked` | [WpShellRuntime.kt:350](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L350) |
-| `fun reportVisibleRoute` | [WpShellRuntime.kt:383](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L383) |
-| `fun visibleRouteForTask` | [WpShellRuntime.kt:388](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L388) |
-| `fun openFromNotification` | [WpShellRuntime.kt:392](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L392) |
-| `fun openSystemDestination` | [WpShellRuntime.kt:408](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L408) |
-| `fun open` | [WpShellRuntime.kt:433](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L433) |
-| `fun dispatch` | [WpShellRuntime.kt:450](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L450) |
-| `fun backDestination` | [WpShellRuntime.kt:501](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L501) |
-| `fun back` | [WpShellRuntime.kt:517](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L517) |
-| `fun popRoute` | [WpShellRuntime.kt:525](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L525) |
-| `fun home` | [WpShellRuntime.kt:526](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L526) |
-| `fun input` | [WpShellRuntime.kt:527](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L527) |
-| `fun resetStart` | [WpShellRuntime.kt:562](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L562) |
-| `class ShellApp` | [WpShellRuntime.kt:587](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L587) |
+| `fun ensureTileContent` | [WpShellRuntime.kt:198](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L198) |
+| `fun placementForEntry` | [WpShellRuntime.kt:202](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L202) |
+| `fun pageForToken` | [WpShellRuntime.kt:222](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L222) |
+| `fun finishChartRouteEditing` | [WpShellRuntime.kt:237](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L237) |
+| `fun showChartRoutePreview` | [WpShellRuntime.kt:250](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L250) |
+| `fun hideChartRoutePreview` | [WpShellRuntime.kt:261](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L261) |
+| `fun requestSystemPreferences` | [WpShellRuntime.kt:307](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L307) |
+| `fun updateSystemPreferences` | [WpShellRuntime.kt:323](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L323) |
+| `fun canonicalPage` | [WpShellRuntime.kt:327](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L327) |
+| `fun appForPage` | [WpShellRuntime.kt:341](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L341) |
+| `fun openLinked` | [WpShellRuntime.kt:358](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L358) |
+| `fun reportVisibleRoute` | [WpShellRuntime.kt:391](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L391) |
+| `fun visibleRouteForTask` | [WpShellRuntime.kt:396](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L396) |
+| `fun openFromNotification` | [WpShellRuntime.kt:400](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L400) |
+| `fun openSystemDestination` | [WpShellRuntime.kt:416](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L416) |
+| `fun open` | [WpShellRuntime.kt:441](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L441) |
+| `fun dispatch` | [WpShellRuntime.kt:458](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L458) |
+| `fun backDestination` | [WpShellRuntime.kt:509](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L509) |
+| `fun back` | [WpShellRuntime.kt:525](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L525) |
+| `fun popRoute` | [WpShellRuntime.kt:533](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L533) |
+| `fun home` | [WpShellRuntime.kt:534](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L534) |
+| `fun input` | [WpShellRuntime.kt:535](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L535) |
+| `fun resetStart` | [WpShellRuntime.kt:570](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L570) |
+| `class ShellApp` | [WpShellRuntime.kt:595](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/WpShellRuntime.kt#L595) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/AnchorSwingCoverage.kt
 

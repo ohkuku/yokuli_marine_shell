@@ -130,4 +130,3 @@ private fun overviewObservations(data:VesselDataSnapshot,id:String):List<VesselO
     }
     if(!item.live&&showAge)WpText(item.status,10,color=ink,maxLines=1)
 }
-

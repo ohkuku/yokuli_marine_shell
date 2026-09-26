@@ -99,6 +99,7 @@ class WpShellRuntime(private val os: OsStore) {
         }
         os.scope.launch {
             persistence.load()
+            try {
             persistence.updatePreferences { preferences ->
                 if (preferences.appPreferenceValues["preferences.rebuild.migrated"] == "b:1") preferences else {
                     val old=os.initial
@@ -118,6 +119,13 @@ class WpShellRuntime(private val os: OsStore) {
                 if (preferences.appPreferenceValues["preferences.design.monochrome_v1"] == "b:1") preferences
                 else preferences.copy(accentName=WpAccent.MONOCHROME.name,
                     appPreferenceValues=preferences.appPreferenceValues+("preferences.design.monochrome_v1" to "b:1"))
+            }
+            } catch(cancelled: CancellationException) {
+                throw cancelled
+            } catch(_: Exception) {
+                // 外观迁移写失败不能终止偏好投影，更不能用默认值盖过用户已有设置。
+                os.notify("外观更新尚未保存，继续使用当前设置。", "Appearance changes could not be saved. Your existing settings remain.",
+                    app=AppId.SETTINGS, severity=NoticeSeverity.WARNING, destination="settings:appearance", key="shell-appearance-migration")
             }
             persistence.state.collect { preferences -> preferences?.let {
                 os.chinese=it.languageTag!="en";os.light=it.themeModeName=="LIGHT"
