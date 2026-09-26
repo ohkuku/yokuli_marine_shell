@@ -13,25 +13,26 @@ import kotlinx.coroutines.launch
 
 @Composable internal fun RouteDraftSaveDialog(os:OsStore,route:Route,onDismiss:()->Unit) {
     var name by rememberSaveable(route.id){mutableStateOf(route.name)}
+    val sourceRouteId=rememberSaveable(route.id){os.editingRouteId.orEmpty()}
     var saving by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf<String?>(null)}
     val persistence by os.persistenceState.collectAsState()
     AppDialog(onDismissRequest={if(!saving)onDismiss()}) {AppDialogSurface {
         AppDialogTitle(os.t("保存航线","Save route"))
         Field(os.t("名称","Name"),name,{name=it.take(120)})
-        Label(os.t("保存到我的航行，不会开始或替换导航。","Save to My Sailing without starting or replacing navigation."),13,LocalMetro.current.muted)
+        Label(os.t("保存到我的航行，不会开始导航或常驻地图。需要时可从“我的航线”打开预览。","Save to My Sailing without starting navigation or keeping the route on the map. Open My routes to preview it later."),13,LocalMetro.current.muted)
         error?.let {Label(it,14,LocalMetro.current.accentText)}
         MetroButton(if(saving)os.t("正在保存…","Saving…")else os.t("保存","Save"),{
-            if(os.draftRoute!=route.points||os.draftNavigationTargetIndices!=route.navigationTargetIndices){error=os.t("草稿已有新修改，请返回后重新保存。","The draft changed. Go back and save its current version.");return@MetroButton}
+            if(os.editingRouteId.orEmpty()!=sourceRouteId||os.draftRoute!=route.points||os.draftNavigationTargetIndices!=route.navigationTargetIndices){error=os.t("草稿已有新修改，请返回后重新保存。","The draft changed. Go back and save its current version.");return@MetroButton}
             val savedRoute=route.copy(name=name.trim())
             saving=true;error=null
             os.scope.launch {try {
                 val receipt=os.sailing.putRoute(savedRoute)
                 if(receipt.result.await()!=DurableCommitResult.SAVED){error=os.t("保存失败，草稿保留，可重试。","Save failed. The draft is retained; retry.");return@launch}
-                // 先确认航线落盘，再清理相同草稿；后来的编辑不被覆盖。
-                if(os.draftRoute==route.points&&os.draftNavigationTargetIndices==route.navigationTargetIndices&&os.editingRoute) {
-                    os.editingRoute=false;os.showCrosshair=false;os.draftRoute=emptyList();os.draftNavigationTargetIndices=null;os.editingRouteId=null;os.planningDraftUndo=null
-                    os.maps.view("chart",os.center,os.zoom).previewRoute=savedRoute;os.displayedRouteId=savedRoute.id
+                // 先确认航线落盘。关闭编辑同时更新返回快照，不自动留下预览或空编辑器。
+                if(os.editingRouteId.orEmpty()==sourceRouteId&&os.draftRoute==route.points&&os.draftNavigationTargetIndices==route.navigationTargetIndices) {
+                    os.shell.hideChartRoutePreview()
+                    os.draftRoute=emptyList();os.draftNavigationTargetIndices=null;os.editingRouteId=null;os.planningDraftUndo=null
                     os.save()
                 }
                 onDismiss()

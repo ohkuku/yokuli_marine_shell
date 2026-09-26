@@ -207,7 +207,8 @@ import kotlin.math.*
                     }
                 }
                 if(!os.editingRoute) {
-                    ChartNavigationCard(os,fix,tick)
+                    // 预览和执行共用地图但有不同操作：预览直接 X，导航继续使用任务操作。
+                    if(chartIsNavigating(os))ChartNavigationCard(os,fix,tick)else RoutePreviewCard(os)
                     if(os.navigationState.guidance!=null&&display!=null&&!toolOpen)Row(Modifier.fillMaxWidth().background(c.bg.copy(alpha=.96f)).padding(horizontal=14.dp),verticalAlignment=Alignment.CenterVertically){
                         if(liftOffer)Label(os.t("抬起了手机，查看目标方向？","Raised your phone? See the target direction."),12,c.muted,Modifier.weight(1f))else Spacer(Modifier.weight(1f))
                         MetroButton(os.t("立体方向","3D direction"),{openSpatial()})
@@ -241,6 +242,7 @@ import kotlin.math.*
             },enabled=host?.camera!=null,active=os.ruler.isNotEmpty()),
         ),secondaryActions=listOf(
             AppCommand("route","route",if(os.draftRoute.isEmpty())os.t("规划航线","Plan a route")else os.t("继续航线草稿","Continue route draft"),{resumeOrCreateRouteDraft(os);os.follow=false}),
+            AppCommand("my-routes","folder",os.t("我的航线","My routes"),{os.openLinked("places:routes")}),
             AppCommand("tools","settings",os.t("海图工具","Chart tools"),{tools=true}),
             AppCommand("direction","compass",os.t("立体方向","3D direction"),{openSpatial()},enabled=display!=null),
         ))

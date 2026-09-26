@@ -2,16 +2,14 @@ package com.yokuli.marine.shell.rebuild.ui
 
 import com.yokuli.marine.shell.rebuild.*
 
-/** 返回结束的是编辑状态，不是销毁草稿或停止导航。 */
+/** 退出编辑回到正常地图；草稿仍保留，返回快照不能恢复已结束的编辑状态。 */
 internal fun leaveRouteDraft(os:OsStore) {
-    os.editingRoute=false;os.showCrosshair=false
-    os.maps.view("chart",os.center,os.zoom).apply {planningLines=emptyList();planningPoints=emptyList()}
+    os.shell.hideChartRoutePreview()
     os.saveWithFeedback("草稿已保留，可从规划航线继续", "Draft retained; continue from Plan a route")
 }
 internal fun discardRouteDraft(os:OsStore) {
+    os.shell.hideChartRoutePreview()
     os.draftRoute=emptyList();os.draftNavigationTargetIndices=null;os.editingRouteId=null;os.planningDraftUndo=null
-    os.editingRoute=false;os.showCrosshair=false
-    os.maps.view("chart",os.center,os.zoom).apply {planningLines=emptyList();planningPoints=emptyList()}
     os.saveWithFeedback("已丢弃未保存的航线草稿", "Unsaved route draft discarded")
 }
 /** 调用者先确认替换现存草稿；不改收藏和运行中的导航。 */

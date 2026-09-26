@@ -210,27 +210,60 @@ class WpShellRuntime(private val os: OsStore) {
     private fun restoredPageSnapshot(key: String): TaskSnapshot? =
         pageSnapshots.remove(key)?.also { pageSnapshots[key] = it }
 
-    /**
-     * 隐藏是显式的预览可见性操作，必须同时更新返回栈中的海图快照。
-     * 只移除对应路线的预览字段，保留镜头、地点、草稿和活动导航；重新点预览仍可显示。
-     */
+    /** 只结束地图编辑展示。草稿数据仍可继续，导航会话不变；旧返回页也不能复活编辑栏。 */
+    fun finishChartRouteEditing() {
+        os.editingRoute = false
+        os.showCrosshair = false
+        os.maps.view("chart", os.center, os.zoom).apply {
+            planningLines = emptyList()
+            planningPoints = emptyList()
+        }
+        updateChartReturnSnapshots { previous ->
+            if (previous.editingRoute) previous.copy(editingRoute = false, showCrosshair = false) else previous
+        }
+    }
+
+    /** 预览有明确入口，与草稿编辑互斥；不改写或丢弃任何草稿。 */
+    fun showChartRoutePreview(route: Route) {
+        hideChartRoutePreview()
+        os.maps.view("chart", os.center, os.zoom).previewRoute = route.copy(
+            points = route.points.toList(), navigationTargetIndices = route.navigationTargetIndices?.toList(),
+        )
+        os.displayedRouteId = route.id
+        os.follow = false
+        os.ruler = emptyList()
+    }
+
+    /** 隐藏同步清理预览和编辑展示，不能只删线却把编辑工具栏留在地图。 */
     fun hideChartRoutePreview(routeId: String? = null) {
         val view = os.maps.view("chart", os.center, os.zoom)
-        val id = routeId ?: os.displayedRouteId ?: view.previewRoute?.id ?: return
+        val id = routeId ?: os.displayedRouteId ?: view.previewRoute?.id
+        val current = routeId == null || os.displayedRouteId == id || view.previewRoute?.id == id || os.editingRouteId == id
+        if (current) finishChartRouteEditing()
+        if (id == null) return
         if (os.displayedRouteId == id) os.displayedRouteId = null
         if (view.previewRoute?.id == id) view.previewRoute = null
+        updateChartReturnSnapshots { previous ->
+            if (previous.displayedRouteId == id || previous.previewRoute?.id == id) previous.copy(
+                displayedRouteId = previous.displayedRouteId?.takeUnless { it == id },
+                previewRoute = previous.previewRoute?.takeUnless { it.id == id },
+                editingRoute = false,
+                showCrosshair = false,
+            ) else previous
+        }
+    }
+
+    private fun updateChartReturnSnapshots(transform: (ChartInteractionSnapshot) -> ChartInteractionSnapshot) {
         val affectedKeys = mutableSetOf<String>()
         chartPageStates.entries.forEach { entry ->
             val previous = entry.value
-            if (previous.displayedRouteId == id || previous.previewRoute?.id == id) {
-                entry.setValue(previous.copy(
-                    displayedRouteId = previous.displayedRouteId?.takeUnless { it == id },
-                    previewRoute = previous.previewRoute?.takeUnless { it.id == id },
-                ))
+            val next = transform(previous)
+            if (next != previous) {
+                entry.setValue(next)
                 affectedKeys += entry.key
             }
         }
-        // 不再用含已隐藏航线的旧任务图绘制返回动画；不回收其他页面仍引用的 Bitmap。
+        // 放弃旧任务图引用，不回收其他页面仍使用的 Bitmap。
         pageSnapshots.keys.removeAll(affectedKeys)
         snapshots.images.entries.filter { it.value.pageInstanceKey in affectedKeys }
             .map { it.key }.forEach { snapshots.images.remove(it) }

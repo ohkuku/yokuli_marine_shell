@@ -21,6 +21,9 @@ fun PlaceKind.label(os:OsStore)=when(this) {
 
 @Composable fun PlacesScreen(os:OsStore,anchoragesOnly:Boolean=false) {
     val repo=os.sailing;val scope=rememberCoroutineScope()
+    // 地图的“我的航线”直接进入航线页签，而不是让用户再从坐标页找一次。
+    val entryPage=LocalAppPage.current ?: os.page
+    val initialTab=if(entryPage=="places:routes")1 else 0
     var busy by remember { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var kind by rememberSaveable(anchoragesOnly) { mutableStateOf<PlaceKind?>(if(anchoragesOnly)PlaceKind.ANCHORAGE else null) }
@@ -44,7 +47,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
     } }
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,os.title(AppId.PLACES))
-        Pivot(listOf(os.t("坐标","places"),os.t("航线","routes"),os.t("整理","organize"))) { page -> PageBody {
+        Pivot(listOf(os.t("坐标","places"),os.t("航线","routes"),os.t("整理","organize")),initialPage=initialTab) { page -> PageBody {
             when(page) {
                 0 -> {
                     Field(os.t("查找名称或笔记","find a name or note"),query,{query=it})
@@ -63,7 +66,7 @@ fun PlaceKind.label(os:OsStore)=when(this) {
                     MetroButton(os.t("在海图上选点","choose on chart"),{os.showCrosshair=true;os.openLinked("chart")})
                 }
                 1 -> {
-                    os.activeRoute?.let { route -> MenuRow(os.t("正在导航 · ${route.name}","navigating · ${route.name}"),os.t("目标 ${route.targetIndices.indexOf(os.navigationState.session?.targetIndex).plus(1).coerceAtLeast(1)}/${route.targetIndices.size}","target ${route.targetIndices.indexOf(os.navigationState.session?.targetIndex).plus(1).coerceAtLeast(1)}/${route.targetIndices.size}"),"locate") {os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.openLinked("chart")} }
+                    os.activeRoute?.let { route -> MenuRow(os.t("正在导航 · ${route.name}","navigating · ${route.name}"),os.t("目标 ${route.targetIndices.indexOf(os.navigationState.session?.targetIndex).plus(1).coerceAtLeast(1)}/${route.targetIndices.size}","target ${route.targetIndices.indexOf(os.navigationState.session?.targetIndex).plus(1).coerceAtLeast(1)}/${route.targetIndices.size}"),"locate") {os.shell.finishChartRouteEditing();os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.openLinked("chart")} }
                     if(os.routes.isEmpty()) {Label(os.t("下一站，去哪里？","where to next?"),24);Label(os.t("在海图上规划，保存在这里。选择一条路线后才在地图上预览。","Plan on chart and keep it here. Select a route to preview it on the map."),24,LocalMetro.current.muted)}
                     os.routes.forEach { route -> MenuRow(route.name,"${os.formatDistance(route.length)} · ${route.targetIndices.size} "+os.t("个航点","points"),"route") {os.open("route:${route.id}")} }
                     MetroButton(if(os.draftRoute.isEmpty()) os.t("规划航线","plan a route") else os.t("继续草稿","continue draft"),{resumeOrCreateRouteDraft(os);os.openLinked("chart")},primary=true)
