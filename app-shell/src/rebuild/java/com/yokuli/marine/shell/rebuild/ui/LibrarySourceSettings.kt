@@ -5,24 +5,15 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.yokuli.marine.shell.BuildConfig
 import com.yokuli.marine.shell.rebuild.OsStore
-import com.yokuli.marine.shell.rebuild.chart.MapSource
 
-/** 沿用既有持久化来源配置；图册是唯一选择入口，不为每条航线复制设置。 */
+/** 复用海图的三选一和即时生效行为；不为每条航线复制来源设置。 */
 @Composable internal fun LibraryBackgroundSettings(os:OsStore) {
-    val c=LocalMetro.current
     AppSection(os.t("当前海图背景","Chart background"))
-    Label(os.maps.sourceName(os.chinese),17,c.accentText)
-    ChoiceRow(os.t("内置地图","Built-in map"),os.maps.source==MapSource.Offline,
-        os.t("无须海图文件夹，可离线查看","No chart folder needed; works offline")) {os.maps.select(MapSource.Offline)}
-    ChoiceRow(os.t("卫星影像","Satellite imagery"),os.maps.source==MapSource.Satellite,
-        os.t("仅作为背景，不参与水深或航线计算","Background only; not depth or routing data"),enabled=BuildConfig.GOOGLE_MAPS_CONFIGURED) {os.maps.select(MapSource.Satellite)}
-    Label(os.t("使用自己的海图：打开下方海图文件夹，设为显示背景。航行数据在另一个页签配置，不受背景切换影响。","For your own charts, open a chart folder below and use it as the background. Navigation data is configured in the other tab and is independent of this choice."),13,c.muted)
-    if(os.maps.saveFailed) {
-        Label(os.t("背景设置尚未保存","Background settings are not saved"),13,c.accentText)
-        MetroButton(os.t("重试保存来源","Retry saving sources"),{os.maps.select(os.maps.source)})
-    }
+    ChartBackgroundChoices(os)
+    CustomChartFolderSetting(os)
+    ChartSourceSaveStatus(os)
+    Label(os.t("点选立即切换背景，管理按钮只打开文件夹。航行数据在“数据”页配置，不随背景切换。","Selections change the background immediately; Manage only opens the folder. Navigation data stays configured in Data."),13,LocalMetro.current.muted)
     AppSection(os.t("海图文件夹","Chart folders"))
 }
 

@@ -53,7 +53,7 @@ import kotlinx.coroutines.*
                         if(navigating) {
                             Label(os.t("正在导航 · 目标 ${activeOrdinal}","navigating · target ${activeOrdinal}"),15,c.accentText)
                             Label(guidance?.distanceMeters?.let(os::formatDistance) ?: os.t("等待船位","waiting for position"),40)
-                            Label(guidance?.let {offsetLabel(os,it)} ?: "",16,c.muted)
+                            Label(guidance?.let {offsetLabel(os,guidance)} ?: "",16,c.muted)
                         } else {
                             Label(if(route.points.size==1) os.t("单点前往","one destination") else os.formatDistance(route.length),44,c.accent)
                             Label(os.t("${route.targetIndices.size} 个航点 · 保存的规划路线","${route.targetIndices.size} waypoints · your saved plan"),15,c.muted)
@@ -98,7 +98,7 @@ import kotlinx.coroutines.*
                             val reversed=Route(name=route.name+os.t(" · 返航"," · return"),points=route.points.reversed(),navigationTargetIndices=route.navigationTargetIndices?.let{indices->(indices.map{route.points.lastIndex-it}.filter{it>0}+route.points.lastIndex).distinct().sorted()});os.sailing.putRoute(reversed);os.open("route:${reversed.id}")
                         },enabled=route.points.size>1)
                         MetroButton(if(exporting) os.t("正在导出…","exporting…") else os.t("导出这条航线 GPX","export this route as GPX"),{exporter.launch("Yokuli-route.gpx")},enabled=!exporting && route.points.isNotEmpty())
-                        if(os.displayedRouteId==id && !navigating) MetroButton(os.t("从海图隐藏预览","hide chart preview"),{os.displayedRouteId=null;os.save()})
+                        if(os.displayedRouteId==id && !navigating) MetroButton(os.t("从海图隐藏预览","hide chart preview"),{os.shell.hideChartRoutePreview(id);os.save()})
                         if(navigating) MetroButton(os.t("管理或结束导航","manage or end navigation"),{actions=true})
                         MetroButton(os.t("删除航线","delete route"),{remove=true})
                         }
@@ -124,7 +124,7 @@ import kotlinx.coroutines.*
     if(editConfirm) ConfirmDialog(os,os.t("替换当前未保存的航线草稿？","Replace the current unsaved route draft?"),{editConfirm=false}) {editConfirm=false;edit()}
     if(rename) TextDialog(os,os.t("重命名","rename"),route.name,{rename=false}) {name ->os.sailing.putRoute(route.copy(name=name))}
     if(remove) ConfirmDialog(os,os.t("删除 ${route.name}？"+if(navigating) "当前导航继续使用启动时的路线。" else "","Delete ${route.name}?"+if(navigating) " Active guidance keeps its original route snapshot." else ""),{remove=false}) {
-        if(os.displayedRouteId==id) os.displayedRouteId=null
+        os.shell.hideChartRoutePreview(id)
         os.sailing.removeRoute(id);remove=false;os.back()
     }
 }

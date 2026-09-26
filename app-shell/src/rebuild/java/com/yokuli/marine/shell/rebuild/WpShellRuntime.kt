@@ -210,6 +210,32 @@ class WpShellRuntime(private val os: OsStore) {
     private fun restoredPageSnapshot(key: String): TaskSnapshot? =
         pageSnapshots.remove(key)?.also { pageSnapshots[key] = it }
 
+    /**
+     * 隐藏是显式的预览可见性操作，必须同时更新返回栈中的海图快照。
+     * 只移除对应路线的预览字段，保留镜头、地点、草稿和活动导航；重新点预览仍可显示。
+     */
+    fun hideChartRoutePreview(routeId: String? = null) {
+        val view = os.maps.view("chart", os.center, os.zoom)
+        val id = routeId ?: os.displayedRouteId ?: view.previewRoute?.id ?: return
+        if (os.displayedRouteId == id) os.displayedRouteId = null
+        if (view.previewRoute?.id == id) view.previewRoute = null
+        val affectedKeys = mutableSetOf<String>()
+        chartPageStates.entries.forEach { entry ->
+            val previous = entry.value
+            if (previous.displayedRouteId == id || previous.previewRoute?.id == id) {
+                entry.setValue(previous.copy(
+                    displayedRouteId = previous.displayedRouteId?.takeUnless { it == id },
+                    previewRoute = previous.previewRoute?.takeUnless { it.id == id },
+                ))
+                affectedKeys += entry.key
+            }
+        }
+        // 不再用含已隐藏航线的旧任务图绘制返回动画；不回收其他页面仍引用的 Bitmap。
+        pageSnapshots.keys.removeAll(affectedKeys)
+        snapshots.images.entries.filter { it.value.pageInstanceKey in affectedKeys }
+            .map { it.key }.forEach { snapshots.images.remove(it) }
+    }
+
     fun requestSystemPreferences(key: String, transform: (LauncherPersistedState) -> LauncherPersistedState): String {
         preferenceResults.value.lastOrNull { it.key == key && it.status == SystemPreferenceStatus.PENDING }?.let { return it.requestId }
         val id = uid()

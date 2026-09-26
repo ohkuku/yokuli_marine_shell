@@ -13,23 +13,15 @@ import androidx.compose.ui.window.DialogProperties
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 
-/** 地图只消费图册已配置的来源；这里不再维护另一套数据选择器。 */
+/** 这里只切换显示背景；水深、障碍等航行数据仍由图册统一配置。 */
 @Composable
 fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) {
-    val c=LocalMetro.current
-    val chartData by os.maps.charts.state.collectAsState()
-    val names=os.maps.selectedDatasetIds.map {id->chartData.datasets.firstOrNull {it.id==id}?.name ?: os.t("资料暂不可用","Data unavailable")}
     AppDialog(onDismissRequest=onDismiss) {
         AppDialogSurface {
-            AppDialogTitle(os.t("图册来源","Library sources"))
-            MenuRow(os.t("海图背景","Chart background"),os.maps.sourceName(os.chinese),"folder") {
-                onDismiss();os.openLinked("library")
-            }
-            MenuRow(os.t("航行数据","Navigation data"),names.joinToString(" · ").ifBlank {os.t("尚未在图册启用","Not enabled in Library")},"layers") {
-                onDismiss();os.openLinked("library:data")
-            }
-            Label(os.t("海图文件夹提供画面；数据文件夹提供水深、障碍和航标。来源在图册配置一次，规划直接使用。","Chart folders provide the picture. Data folders provide depths, hazards and marks. Configure sources once in Library; route planning uses them directly."),14,c.muted)
-            if(os.maps.saveFailed)Label(os.t("来源设置尚未保存，请在图册重试。","Source settings are not saved. Retry in Library."),14,c.accentText)
+            AppDialogTitle(os.t("切换海图","Chart background"))
+            ChartBackgroundChoices(os,onSelected=onDismiss)
+            CustomChartFolderSetting(os,onSelected=onDismiss)
+            ChartSourceSaveStatus(os)
             aisLayer?.let {AisLayerChoice(os,it)}
             MetroButton(os.t("关闭","Close"),onDismiss)
         }

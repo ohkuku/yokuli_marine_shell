@@ -150,12 +150,12 @@ import kotlin.math.*
             },12,c.muted,Modifier.align(Alignment.TopEnd).padding(top=12.dp,end=10.dp).widthIn(max=150.dp).background(c.bg.copy(alpha=.92f)).padding(horizontal=8.dp,vertical=5.dp),maxLines=2)
             MapZoomControls(os,chartView,Modifier.align(Alignment.TopEnd).padding(top=66.dp,end=10.dp)) {zoom->os.fly(os.center,zoom)}
             if(os.maps.source is MapSource.CustomLayer && selected.isEmpty()) {
-                Column(Modifier.align(Alignment.Center).padding(30.dp).widthIn(max=350.dp).background(c.bg).padding(24.dp),verticalArrangement=Arrangement.spacedBy(18.dp)) {
-                    Glyph("chart",Modifier.size(44.dp),c.accent)
-                    AppSection(os.t("图层暂不可用","Layer unavailable"))
-                    Label(os.t("这个图层当前没有可读取的海图。请检查文件夹授权、文件状态和参与的海图。","This layer has no readable charts. Check folder access, file status and included charts."),15,c.muted)
-                    MetroButton(os.t("打开图册","open chart library"),{os.openLinked((os.maps.source as? MapSource.CustomLayer)?.layerId?.takeIf { id -> os.library.folders.any {it.id==id} }?.let { "library:$it" } ?: "library")},primary=true)
-                    MetroButton(os.t("浏览内置地图","browse built-in map"),{os.maps.select(MapSource.Offline)})
+                val noFolder=(os.maps.source as? MapSource.CustomLayer)?.layerId.isNullOrBlank()
+                Column(Modifier.align(Alignment.Center).padding(30.dp).widthIn(max=350.dp).background(c.bg).padding(24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
+                    AppSection(if(noFolder)os.t("自定义背景为空","Custom background is empty")else os.t("自定义海图暂无内容","No custom charts available"))
+                    Label(if(noFolder)os.t("尚未选择海图文件夹。选择后显示其中的海图，也可以保持为空。","No chart folder is selected. Choose one to display its charts, or leave the background empty.")else os.t("选定文件夹当前没有可读取的海图。请检查文件夹授权和参与显示的文件。","The selected folder has no readable charts. Check its access and included files."),14,c.muted)
+                    CustomChartFolderSetting(os)
+                    MenuRow(os.t("在图册管理文件夹","Manage folders in Library"),icon="settings") {os.openLinked((os.maps.source as? MapSource.CustomLayer)?.layerId?.takeIf { id -> os.library.folders.any {it.id==id} }?.let { "library:$it" } ?: "library")}
                 }
             }
             // 控件覆盖稳定地图视口，显示编辑器不能改变原生地图尺寸。
@@ -277,7 +277,7 @@ import kotlin.math.*
         MenuRow(os.t("周围船舶","surrounding traffic"),aisInputSummary(os,traffic)){tools=false;os.openLinked("ais")}
         if(chartView.previewTrack.isNotEmpty())MenuRow(os.t("结束日志轨迹预览","close logbook track preview"),chartView.previewTitle){chartView.previewTrack=emptyList();chartView.previewTitle=null;tools=false}
         if(os.activeRoute!=null)MenuRow(os.t("当前导航","current navigation"),os.activeRoute?.name){tools=false;manageNavigation=true}
-        if(chartView.previewRoute!=null||os.displayedRouteId!=null&&os.displayedRouteId!=os.activeRouteId)MenuRow(os.t("结束路线预览","close route preview")){chartView.previewRoute=null;os.displayedRouteId=null;os.save();tools=false}
+        if(chartView.previewRoute!=null||os.displayedRouteId!=null&&os.displayedRouteId!=os.activeRouteId)MenuRow(os.t("结束路线预览","close route preview")){os.shell.hideChartRoutePreview();os.save();tools=false}
         MetroButton(os.t("关闭","close"),{tools=false})
     }}
 }
