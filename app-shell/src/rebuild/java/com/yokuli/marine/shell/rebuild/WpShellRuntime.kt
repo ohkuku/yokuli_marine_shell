@@ -113,9 +113,16 @@ class WpShellRuntime(private val os: OsStore) {
                     )
                 }
             }
+            // 用户明确采用新的黑白视觉语言；只迁移一次，保留每块磁贴的显式自定义。
+            persistence.updatePreferences { preferences ->
+                if (preferences.appPreferenceValues["preferences.design.monochrome_v1"] == "b:1") preferences
+                else preferences.copy(accentName=WpAccent.MONOCHROME.name,
+                    appPreferenceValues=preferences.appPreferenceValues+("preferences.design.monochrome_v1" to "b:1"))
+            }
             persistence.state.collect { preferences -> preferences?.let {
                 os.chinese=it.languageTag!="en";os.light=it.themeModeName=="LIGHT"
-                os.accent=WpAccent.entries.firstOrNull { a -> a.name==it.accentName }?.argb ?: WpAccent.CYAN.argb
+                os.notifications.presentationLanguage=if(os.chinese)"zh-CN"else"en"
+                os.accent=WpAccent.entries.firstOrNull { a -> a.name==it.accentName }?.argb ?: WpAccent.MONOCHROME.argb
                 os.reduceMotion=false
                 os.textSize=it.appPreferenceValues["preferences.display.text_size"]?.removePrefix("c:") ?: "STANDARD"
                 os.keepAwake=it.appPreferenceValues["preferences.display.keep_awake"]!="b:0"
@@ -163,7 +170,15 @@ class WpShellRuntime(private val os: OsStore) {
                 val chartKey = foregroundTask?.takeIf { appForPage(pageForToken(it.lastLaunchToken))?.app == AppId.CHART }?.currentUiStateKey
                 if(chartKey != null && chartKey != foregroundChartKey) {
                     chartPageStates[chartKey]?.let(os::restoreChartInteraction)
+                    chartReturnResult?.takeIf { it.key == chartKey }?.let { result ->
+                        os.restoreChartInteraction(result.interaction)
+                        os.cameraRequest = result.camera
+                        os.fitRequest = result.fit
+                        chartPageStates[chartKey] = result.interaction
+                        chartReturnResult = null
+                    }
                 }
+                chartReturnResult?.takeIf { it.key !in state.tasks.retainedUiStateKeys }?.let { chartReturnResult = null }
                 foregroundChartKey = chartKey
                 chartPageStates.keys.retainAll(state.tasks.retainedUiStateKeys)
                 visiblePageRoutes.keys.retainAll(state.tasks.retainedUiStateKeys)
@@ -261,7 +276,26 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     /** 由业务对象发起的跨应用操作，返回时恢复调用页；普通应用入口仍调用 open。 */
-    fun openLinked(destination: String) = open(destination, linked = true)
+    fun openLinked(destination: String) {
+        if (canonicalPage(destination) == "chart" && completeChartVisit()) return
+        open(destination, linked = true)
+    }
+
+    private data class ChartReturnResult(val key: String, val interaction: ChartInteractionSnapshot,
+        val camera: Pair<GeoPoint, Double>?, val fit: List<GeoPoint>?)
+    private var chartReturnResult: ChartReturnResult? = null
+
+    /** 路线/坐标查看属于对原海图请求的响应，复用原访问并交付当前预览。 */
+    private fun completeChartVisit(): Boolean {
+        val state = engine.state.value
+        val current = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId) } ?: return false
+        val handoff = state.tasks.linkedReturns.lastOrNull()?.takeIf { it.targetTaskId == current.taskId } ?: return false
+        val caller = handoff.callerSnapshot ?: state.tasks.task(handoff.callerTaskId) ?: return false
+        if (appForPage(pageForToken(caller.lastLaunchToken))?.app != AppId.CHART) return false
+        chartReturnResult = ChartReturnResult(caller.currentUiStateKey, os.captureChartInteraction(), os.cameraRequest, os.fitRequest)
+        dispatch(LauncherAction.CompleteLinkedVisit(caller.taskId, current.currentUiStateKey))
+        return true
+    }
 
     /** 局部子页也报告可见地址，通知不能只看到根 token 就误判为另一个页面。 */
     fun reportVisibleRoute(instanceKey: String, destination: String) {
@@ -341,7 +375,7 @@ class WpShellRuntime(private val os: OsStore) {
         if (action is LauncherAction.ActivateTask || action is LauncherAction.CloseTask || action in listOf(
             LauncherAction.ShowDesktop, LauncherAction.ShowStart, LauncherAction.ShowAllApps,
             LauncherAction.ShowRecents, LauncherAction.OpenSearch)) shadeReturn = null
-        val navigates=action is LauncherAction.Open || action is LauncherAction.ActivateTask || action is LauncherAction.RevealTile ||
+        val navigates=action is LauncherAction.Open || action is LauncherAction.CompleteLinkedVisit || action is LauncherAction.ActivateTask || action is LauncherAction.RevealTile ||
             action in listOf(LauncherAction.Back,LauncherAction.ShowDesktop,LauncherAction.ShowRecents,LauncherAction.OpenSearch,LauncherAction.ShowStart,LauncherAction.ShowAllApps)
         // 在离开海图的操作发起时保存；另一应用准备自己的海图请求以后不可反向覆盖原访问。
         val currentTask = (engine.state.value.surface as? ShellVisualSurface.Module)?.let { engine.state.value.tasks.task(it.taskId) }
@@ -360,7 +394,7 @@ class WpShellRuntime(private val os: OsStore) {
             if(existing!=null && action.token==app?.rootToken && !action.preserveCaller && !action.reuseExistingRoute) {
                 engine.dispatch(action.copy(replaceTaskRoute=true,preserveCaller=false));return
             }
-        } else if(action is LauncherAction.ActivateTask || action in listOf(
+        } else if(action is LauncherAction.CompleteLinkedVisit || action is LauncherAction.ActivateTask || action in listOf(
             LauncherAction.Back, LauncherAction.ShowDesktop, LauncherAction.ShowRecents,
             LauncherAction.OpenSearch, LauncherAction.ShowStart, LauncherAction.ShowAllApps,
         )) coldOpeningTask=null
@@ -368,6 +402,7 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     private fun leavesTask(action: LauncherAction, current: InternalAppTaskId): Boolean = when (action) {
+        is LauncherAction.CompleteLinkedVisit -> true
         is LauncherAction.Open -> appForPage(pageForToken(action.token))?.id?.value != current.value
         is LauncherAction.ActivateTask -> action.taskId != current
         is LauncherAction.RevealTile -> true

@@ -33,20 +33,23 @@ import java.util.Locale
 import kotlin.math.*
 
 /**
- * 真实的 15 分钟进程内读数历史。方向、偏差、测深、速度和累计量使用各自的表达，
+ * 真实的 15 分钟有界读数历史；同次设备开机可恢复缓存，进程边界明确断线。方向、偏差、测深、速度和累计量使用各自的表达，
  * 不采集第二份数据、不补点。本次回看固定样本和坐标；明确更新或换窗口才重新取快照。
  */
 @Composable internal fun ReadingTrace(os: OsStore, values: List<Reading>, metric: String, now: Long, current: Reading? = null) {
     val c = LocalMetro.current
+    val persistence by os.hub.historyStorage.collectAsState()
+    var initialRestore by remember(metric) {mutableStateOf(persistence.loading)}
+    LaunchedEffect(persistence.loading) {if(initialRestore&&!persistence.loading)initialRestore=false}
     var minutes by rememberSaveable(metric) { mutableIntStateOf(5) }
     var revision by rememberSaveable(metric) { mutableIntStateOf(0) }
     var selectedId by rememberSaveable(metric) { mutableStateOf<String?>(null) }
     var canvasSize by remember { mutableStateOf(IntSize(1, 1)) }
-    val captureClock=remember(metric,minutes,revision) {android.os.SystemClock.elapsedRealtime() to System.currentTimeMillis()}
+    val captureClock=remember(metric,minutes,revision,initialRestore) {android.os.SystemClock.elapsedRealtime() to System.currentTimeMillis()}
     val capturedAt=captureClock.first
     val capturedUtc=captureClock.second
     // 仅缓存本次查看的不可变列表，采集和长期保留仍属于 DataHub / 日志服务。
-    val captured = remember(metric, minutes, revision) { values.filter { it.elapsed in maxOf(0L,capturedAt-minutes*60_000L)..capturedAt }.toList() }
+    val captured = remember(metric, minutes, revision,initialRestore) { values.filter { it.elapsed in maxOf(0L,capturedAt-minutes*60_000L)..capturedAt }.toList() }
     val frame = remember(captured, metric, minutes, capturedAt, os.unitPreferences) {
         buildInstrumentHistory(os, metric, captured, capturedAt, minutes)
     }
@@ -81,6 +84,12 @@ import kotlin.math.*
     }
     val pickCurrent by rememberUpdatedState(pick)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if(persistence.loading)MetroProgress(os.t("正在恢复最近读数…","Restoring recent readings…"))
+        if(persistence.readIssue!=null||persistence.writeIssue!=null) {
+            Label(if(persistence.readIssue!=null)os.t("历史缓存暂未读出，原文件仍保留。","History could not be restored. The original file is preserved.")
+                else os.t("最近读数尚未保存，当前画面仍可查看。","Recent readings have not been saved. They remain available in this session."),13,c.muted)
+            MetroButton(os.t("重试历史存储","Retry history storage"),{os.hub.retryHistoryStorage()},enabled=!persistence.loading)
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
             Label(chartTitle, 19, c.fg, Modifier.weight(1f))
             Row(Modifier.selectableGroup(), horizontalArrangement=Arrangement.spacedBy(4.dp)) {

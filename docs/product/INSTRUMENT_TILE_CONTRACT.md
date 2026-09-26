@@ -8,7 +8,7 @@
 
 - 驾驶台消费系统选好的观测，不能因为打开页面就切换船位来源或创建航行。
 - 我的仪表只拥有显示顺序、增删与查看读数的交互。来源、吃水、船舶资料和航行仍由各自的共享服务拥有。
-- 磁贴工坊按航行与值守、常看读数、我的收藏、应用入口组织；一个应用可提供多种内容，同一规范内容只固定一次。水深与对地航速属于驾驶台的不同内容，不新增 AppId。修改/移除按 tileId 定位。
+- 磁贴工坊优先提供完整的航行组合、值守任务、收藏和应用入口。单项读数仍可在“单项读数”或搜索中明确添加，旧实例保持原绑定；同一规范内容只固定一次。组合不新增 AppId。修改/移除按 tileId 定位。
 - 应用列表只固定正式应用入口；长按已固定应用显示“编辑或查看磁贴”，进入共同编辑/定位流程，不在列表菜单直接移除。工坊可固定读数、任务、收藏及应用入口。桌面长按只编辑、改尺寸、移动或移除既有实例。各业务应用声明真实内容和目的地，不提供分散的“固定到开始屏幕”按钮。
 - 磁贴和仪表读取同一 `MarineServices.state.vesselData` / `DataHub`，没有独立采集或模拟读数。演示来源必须显示演示标记；磁贴点击仅进入查看，不开始导航、值守、记录或连接。
 
@@ -24,7 +24,7 @@
 | `VesselDataSnapshot` | 同一次融合后的船舶数据快照 | 航速用节，方位和姿态用度，深度用米，温度用摄氏度 | 来源服务拥有 |
 | `VesselDataSettings.customLayout` | 我的仪表的有序 ID 列表 | `List<InstrumentTileId>`，去重，顺序即显示顺序 | `vessel_data_settings` DataStore |
 | `InstrumentTileId` | 仪表稳定身份 | 不用数组索引绑定读数；拖动后 ID 不变 | 枚举名称 |
-| `Reading` | 时间轴中的一份观测 | `value / unit / source / elapsed / observedUtcMillis / freshness / quality / sourceKey / continuityKey / validForMillis`；物理身份与显示名分开，UTC 捕获后不随刷新改写 | DataHub 最近 15 分钟；回看可保留本次固定快照 |
+| `Reading` | 时间轴中的一份观测 | `value / unit / source / elapsed / observedUtcMillis / freshness / quality / sourceKey / continuityKey / validForMillis / historySessionKey`；物理身份与显示名分开，UTC 捕获后不随刷新改写，进程代次令重开应用的观测断线 | DataHub 最近 15 分钟及同次开机磁盘缓存；回看保留固定快照 |
 | `VesselDataSnapshot.heelDegrees / pitchDegrees` | 独立选源的横倾/纵倾 | 两项各自保留时间、来源与质量；同时有效才画地平线 | 来源服务拥有 |
 | `InstrumentReadingPolicy` | 数字与量表共用的展示策略 | 保留读数不等于允许导航/报警继续使用；风角为 -180°～180° | 无持久化 |
 | `ShellApp.id` / `entry` | 正式应用身份 / 根入口 | All Apps 仅收正式应用，不把内容登记成应用 | 应用目录 |
@@ -56,6 +56,8 @@
 | `TileLibraryScreen(os, initialApp?)` | 工坊来路与可选旧应用筛选 | 添加 / 已固定两个 Pivot；应用名旧入口只做筛选，不创建第二个编辑任务 |
 | `tileContentChoices(os)` / `tileContentDescriptor(os,binding)` | 规范绑定与已有收藏缓存 | 静态目录不收集船舶数据；对象或提供者失效仍返回可解释描述，保留实例 |
 | `instanceTilePresentation(os, placement, active)` | 实例的全部配置与可见性 | 桌面和唯一预览调用同一渲染器；显式实例配置优先，不从 App 偏好覆写 |
+| `navigationOverviewTileFrame(os,id,config,active)` | 航行、风况、气象、水深余量或船姿组合 | 只投影所需的规范观测，相关读数共用一块磁贴；缺测保留空值，各字段独立保留时效 |
+| `StartTilePreviewSurface(viewportSize,tileOrigin,scrollFraction)` | 实际 Start 几何及预览磁贴原点 | 只测量单块磁贴，用同一壁纸投影绘制其背景；不将全屏视图嵌入缩小父布局 |
 | `TileEditorHost(os)` | Shell 临时编辑会话 | 应用列表/工坊的新固定与桌面既有实例编辑共用草稿、真实几何预览和来路；不启动额外工坊最近任务 |
 | `LauncherEngine.commitTile(request)` | requestId、稳定 tileId、绑定/表现/尺寸、预期版本 | 返回 Saved / AlreadyPinned / Conflict / Failed；落盘后才发布正式布局 |
 | `LauncherEngine.removeTile(...) / undoTile(...)` | 请求 ID、目标实例/版本或原移除请求 | 移除和撤销按实例；不删除应用内容或停止业务任务，不覆盖后续桌面变动 |
@@ -152,3 +154,27 @@ flowchart LR
 - 趋势属于当前进程的短期观测；长期航行回放属于航行日志，不由仪表伪造或另存一份。
 - 自定义仪表目前支持增删和顺序；不把缺少来源的数据类型自动隐藏，用户可以保留待接入的仪表并看到缺测状态。
 - 拖动排序支持当前可见列表区域；长列表也提供上移 / 下移的明确操作。
+
+## 2026-09-27 航行组合与单块预览
+
+工坊默认不再铺满全部传感器字段。推荐内容以实际用途组织：
+
+| 组合绑定（`OVERVIEW`） | 同屏内容 | 图形与点击去向 |
+| --- | --- | --- |
+| `navigationReadings` | 对地航速、船首向、对地航向 | 真北方位盘，实线船首/虚线航向；打开驾驶台航行页 |
+| `windConditions` | 真风、视风、视风角 | 船艏朝上的两种风箭头；打开帆航页 |
+| `environment` | 气压、气温、水温 | 已观测气压固定短历史，可选 5/15 分钟；打开天气读数页，不提供无数据的预报 |
+| `depthClearance` | 水深、龙骨下余量 | 实测深度示意并注明原测深基准；不拼造海床/吃水剖面 |
+| `vesselAttitude` | 校准船体横倾、纵倾 | 2D 地平线，使用船体来源，不使用观看手机的临时视角；打开姿态页 |
+
+组合只提供“图形与读数 / 只看读数”，气象图形额外选择真实历史窗口；不再把每个内部字段都做成必选设置。已有单项和其详细量程、来源配置继续兼容，显式筛选或搜索仍能固定。方向/姿态仅绘制有效实时指针；其他读数可灰色保留最后观测并标时刻，组合不互相续时效。屏幕阅读器包含各项来源时效，缺少观测不补零。
+
+可见图形通过 `DisplayDemandService.acquireInstruments / acquireMapHeading` 的独立可关闭租约请求及时呈现，离屏/暂停释放自己的租约；系统后台基础采集由常驻运行时管理，磁贴不创建采集器、业务任务或来源配置。单项量表、方位和组合图形共用 `TileMetricDrawing`，连续值在 Canvas 读物理缓动，真实数字与历史点不补间。
+
+透明预览直接按实际磁贴宽高测量内容，以 Start 的视口/原点/滚动投影照片并仅绘制一次底色。缩放发生在整个单块结果上；没有大磁贴包小磁贴的装饰容器，也没有被父尺寸强制居中的全屏壁纸子树。
+
+`CURRENT_TASK/systemExit` 是“退出 Yokuli”的查看入口，点击只进入 `settings:exit` 确认页。停止运行由设置页和系统常驻端口执行，预览和一次磁贴点击不会悄悄终止守锚或后台共享。
+
+### 短历史在后台与重开应用后的呈现
+
+仪表短图继续消费唯一 `DataHub.history`。显示缓存后台30秒批写、首次恢复完成后再固定本次窗口；恢复只加入历史，不给当前仪表恢复读数。各图型和累计差值的连续段额外检查 `Reading.historySessionKey`，因此重开进程不会把停采区间连成观测。缓存读写故障在真实 `ReadingTrace` 显示并可重试，来源/时间/原值不因落盘或恢复变更。缓存限制与明确退出刷批见[数据中心契约](DATA_CENTER_CONTRACT.md#2026-09-27-后台显示历史缓存)。

@@ -91,7 +91,10 @@ internal fun AisTrafficScene3D(
     val frame = remember(data, displayCamera, aspect) {
         aisSceneFrame(data, displayCamera, aspect, localFrameCache[0]).also { localFrameCache[0] = it?.local }
     }
-    val currentFrame = rememberUpdatedState(frame)
+    val desiredFrame = rememberUpdatedState(frame)
+    // 出帧状态仅由绘制、布局偏移与命中读取，不触发整页重组。
+    val presentedFrame = remember { mutableStateOf<AisSceneFrame?>(null) }
+    val currentFrame = remember { derivedStateOf { presentedFrame.value ?: desiredFrame.value } }
     val currentCamera = rememberUpdatedState(cameraState)
     val changeCamera = rememberUpdatedState(onCameraChanged)
     val selectTarget = rememberUpdatedState(onSelectTarget)
@@ -128,23 +131,23 @@ internal fun AisTrafficScene3D(
                 val center = aisSceneMidpoint(base, other)
                 val relative = AisLocalFrame(base).position(other)
                 val range = max(180.0, sqrt(relative.x * relative.x + relative.z * relative.z) * .75).coerceAtMost(59264.0)
-                onCameraChanged(AisSceneCameraState(preset, range, 0.0, 48.0, center.latitude, center.longitude, false))
+                onCameraChanged(AisSceneCameraState(preset, range, 0.0, 32.0, center.latitude, center.longitude, false))
             }
             AisScenePreset.BOW_FORWARD -> if (hasHeading && own != null) {
                 onCameraChanged(AisSceneCameraState(preset, cameraState.rangeMeters, data.ownHeadingDegrees!!, 23.0, own.latitude, own.longitude, true))
             }
-            else -> onCameraChanged(AisSceneCameraState(preset, cameraState.rangeMeters, 0.0, 48.0,
+            else -> onCameraChanged(AisSceneCameraState(preset, cameraState.rangeMeters, 0.0, 32.0,
                 own?.latitude ?: cameraState.centerLatitude, own?.longitude ?: cameraState.centerLongitude, own != null))
         }
         cameraGestureFinished.value()
     }
 
     // 工具浮在场景上，显示状态、帮助与相机操作均不能重新测量原生画布。
-    Box(modifier.clipToBounds().background(Color(0xff071720)).onSizeChanged { surfaceSize = it }) {
+    Box(modifier.clipToBounds().background(Color(0xff101010)).onSizeChanged { surfaceSize = it }) {
         when {
             frame == null -> Column(Modifier.align(Alignment.Center).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Label(tr("等待船位", "Waiting for a position"), 20, Color.White)
-                Label(tr("收到本船或附近船舶的位置后，这里会显示它们的空间关系。", "Nearby traffic appears here when a vessel position arrives."), 15, Color(0xffb5c9d0))
+                Label(tr("收到本船或附近船舶的位置后，这里会显示它们的空间关系。", "Nearby traffic appears here when a vessel position arrives."), 15, Color(0xffbbbbbb))
                 SceneAction(tr("检查本船定位", "Check own position"), enabled, foreground = Color.White, onClick = onOpenPositionSources)
                 SceneAction(tr("连接船舶信号", "Connect AIS input"), enabled, foreground = Color.White, onClick = onOpenAisSources)
             }
@@ -160,7 +163,7 @@ internal fun AisTrafficScene3D(
                     "first-frame" -> tr("船模已读入，但首帧未能完成。可以重新载入。", "The models loaded, but the first frame did not complete. Try reloading.")
                     "resume-surface", "resume-frame" -> tr("返回应用后，三维显示未能恢复。可以重新载入。", "The 3D view could not resume after returning to the app. Try reloading.")
                     else -> tr("绘图暂时中断，可以重新载入。", "Drawing was interrupted. Try loading it again.")
-                }, 15, Color(0xffb5c9d0))
+                }, 15, Color(0xffbbbbbb))
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     SceneAction(tr("查看雷达", "Open radar"), enabled, foreground = Color.White, onClick = onOpen2D)
                     SceneAction(tr("重新载入", "Retry"), enabled, foreground = Color.White) { rendererFailure = null; ready = false; presentedTargets = emptySet(); generation++ }
@@ -170,11 +173,11 @@ internal fun AisTrafficScene3D(
                 key(generation) {
                     NativeTrafficScene(data, frame, cameraState, selectedId, light, enabled, Modifier.fillMaxSize(),
                         onFailure = { rendererFailure = it; ready = false; presentedTargets = emptySet() }, onReady = { ready = true },
-                        onPresentedTargets = { presentedTargets = it })
+                        onPresentedTargets = { presentedTargets = it }, onPresentedFrame = { presentedFrame.value = it })
                 }
                 val density = LocalDensity.current
                 val hitRadius = with(density) { 30.dp.toPx() }
-                val inputEnabled = rememberUpdatedState(enabled)
+                val inputEnabled = rememberUpdatedState(enabled && ready)
                 val currentSize = rememberUpdatedState(surfaceSize)
                 Box(Modifier.fillMaxSize()
                     .pointerInput(Unit) {
@@ -238,11 +241,11 @@ internal fun AisTrafficScene3D(
                             if (transformed) cameraGestureFinished.value()
                         }
                     }) {
-                    SceneReferenceOverlay(data, frame, selectedId, Modifier.fillMaxSize())
+                    SceneReferenceOverlay(data, { currentFrame.value ?: frame }, selectedId, presentedTargets, Modifier.fillMaxSize())
                     val prioritizedLabels = remember(frame.targets, selectedId) {
-                        frame.targets.filter { it.id == selectedId || it.risk || it.followed }
-                            .sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }
-                                .thenByDescending { it.risk }.thenByDescending { it.followed }.thenBy { it.id })
+                        frame.targets.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }
+                                .thenByDescending { it.risk }.thenByDescending { it.followed }
+                                .thenBy { target -> frame.targetPositions.getValue(target.id).let { hypot(it.x, it.z) } }.thenBy { it.id }).take(5)
                     }
                     val labelLayouts = remember(frame, surfaceSize, prioritizedLabels, density.density, density.fontScale) {
                         arrangeLabels(frame, surfaceSize, prioritizedLabels, density.density, density.fontScale)
@@ -250,23 +253,29 @@ internal fun AisTrafficScene3D(
                     labelLayouts.forEach { layout ->
                         key(layout.target.id) {
                             val target = layout.target
-                            val tint = when { target.risk -> Color(0xffffa089); target.stale || target.lost -> Color(0xffa8b1b7); target.id == selectedId -> Color(0xff6dd4ff); else -> Color(0xffe0f4ff) }
-                            Column(Modifier.offset { IntOffset(layout.rect.left.roundToInt(), layout.rect.top.roundToInt()) }
+                            val tint = when { target.risk -> Color(0xffffa089); target.stale || target.lost -> Color(0xffa8b1b7); target.id == selectedId -> Color(0xffffffff); else -> Color(0xffeeeeee) }
+                            Column(Modifier.offset {
+                                val now = currentFrame.value?.targetProjections?.get(target.id)
+                                val before = frame.targetProjections[target.id]
+                                val delta = if (now != null && before != null && now.x.isFinite() && now.y.isFinite())
+                                    Offset((now.x - before.x) * surfaceSize.width, (now.y - before.y) * surfaceSize.height) else Offset.Zero
+                                IntOffset((layout.rect.left + delta.x).roundToInt(), (layout.rect.top + delta.y).roundToInt())
+                            }
                                 .width(with(density) { layout.rect.width.toDp() }).heightIn(min = 40.dp)
-                                .background(Color(0xe6091a23))
+                                .background(Color(0xe6151515))
                                 .clickable(enabled = enabled, role = Role.Button) { onSelectTarget(target.id) }
                                 .semantics { contentDescription = "${target.label}, ${target.ageLabel}, ${target.statusLabel}" }
                                 .padding(horizontal = 6.dp, vertical = 3.dp)) {
                                 Label(target.label, 14, tint, maxLines = 1)
-                                Label(listOf(target.ageLabel, target.statusLabel).filter(String::isNotBlank).joinToString(" · "), 11, Color(0xffabc0ca), maxLines = 1)
+                                Label(listOf(sceneRelativeLabel(data, target, formatDistance, chinese), target.ageLabel).filter(String::isNotBlank).joinToString(" · "), 11, Color(0xffbbbbbb), maxLines = 1)
                             }
                         }
                     }
                 }
-                SceneCompass(frame, Modifier.align(Alignment.TopEnd).padding(8.dp).size(48.dp)
+                SceneCompass({ currentFrame.value ?: frame }, Modifier.align(Alignment.TopEnd).padding(8.dp).size(48.dp)
                     .clickable(enabled = enabled, role = Role.Button) { reset(AisScenePreset.NORTH_TOP) })
-                if (!ready) Column(Modifier.align(Alignment.Center).background(Color(0xdd071720)).padding(18.dp)) {
-                    CompositionLocalProvider(LocalMetro provides colors.copy(fg = Color.White, muted = Color(0xffb5c9d0))) {
+                if (!ready) Column(Modifier.align(Alignment.Center).background(Color(0xdd101010)).padding(18.dp)) {
+                    CompositionLocalProvider(LocalMetro provides colors.copy(fg = Color.White, muted = Color(0xffbbbbbb))) {
                         MetroProgress(tr("载入三维视图", "Loading 3D"))
                     }
                 }
@@ -275,11 +284,16 @@ internal fun AisTrafficScene3D(
                 }.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }.thenBy { it.id })
                 if (outside.isNotEmpty()) SceneAction(
                     tr("${outside.size} 艘关注船在视野外", "${outside.size} vessels of interest off screen"), enabled,
-                    foreground = Color(0xffb5dbea), modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)
-                        .background(Color(0xc9071720)),
+                    foreground = Color(0xffdddddd), modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)
+                        .background(Color(0xc9101010)),
                 ) { overlapIds = outside.map { it.id } }
-                Column(Modifier.align(Alignment.TopStart).padding(8.dp).widthIn(max = 220.dp).background(Color(0xb3071720)).padding(horizontal = 6.dp, vertical = 4.dp)) {
-                    Label(tr("每圈 ${formatDistance(cameraState.rangeMeters / 4.0)}", "Rings ${formatDistance(cameraState.rangeMeters / 4.0)}"), 11, Color(0xffb5c9d0))
+                Column(Modifier.align(Alignment.TopStart).padding(8.dp).widthIn(max = 220.dp).background(Color(0xb3101010)).padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    Label(when (cameraState.preset) {
+                        AisScenePreset.BOW_FORWARD -> tr("船艏前方", "Look ahead")
+                        AisScenePreset.ENCOUNTER -> tr("两船之间", "Between vessels")
+                        else -> tr("周围交通", "Surrounding traffic")
+                    }, 12, Color.White)
+                    if (data.targets.isEmpty() && data.ownPosition != null) Label(tr("范围内尚无船舶报告", "No traffic reports yet"), 11, Color(0xffbbbbbb))
                     if (frame.referenceOnly) Label(tr("设置本船定位 ›", "Set own position ›"), 11, Color(0xffffc790),
                         Modifier.heightIn(min = 36.dp).clickable(enabled = enabled, role = Role.Button, onClick = onOpenPositionSources).padding(vertical = 8.dp), maxLines = 1)
                     else if (headingFallback) Label(if (hasHeading) tr("前视待恢复 · 轻点箭头", "Tap look ahead to resume") else tr("暂用北向 · 等待船首向", "North up · waiting for heading"), 11, Color(0xffffc790), maxLines = 1)
@@ -287,7 +301,7 @@ internal fun AisTrafficScene3D(
             }
         }
         if (frame != null && rendererFailure == null) {
-            Row(Modifier.align(Alignment.BottomStart).padding(8.dp).background(Color(0xd9071720)), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.align(Alignment.BottomStart).padding(8.dp).background(Color(0xd9101010)), verticalAlignment = Alignment.CenterVertically) {
                 SceneTool("boat", tr("回本船", "Own vessel"), enabled && own != null, cameraState.followOwn && cameraState.preset == AisScenePreset.OVERVIEW) { reset(AisScenePreset.OVERVIEW) }
                 if (selected != null) SceneTool("locate", tr("观察选中船舶", "Observe selected vessel"), enabled, cameraState.preset == AisScenePreset.ENCOUNTER) {
                     if (own != null) reset(AisScenePreset.ENCOUNTER)
@@ -299,18 +313,18 @@ internal fun AisTrafficScene3D(
                 }
             }
         }
-        SceneTool("info", tr("三维操作说明", "3D help"), enabled, helpVisible, Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color(0xd9071720))) { helpVisible = !helpVisible }
+        SceneTool("more", tr("视角与操作", "View and controls"), enabled, helpVisible, Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color(0xd9101010))) { helpVisible = !helpVisible }
         if (helpVisible) Column(Modifier.align(Alignment.Center).padding(horizontal = 20.dp).widthIn(max = 420.dp)
-            .heightIn(max = 360.dp).background(Color(0xf5081b26)).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            .heightIn(max = 360.dp).background(Color(0xf5151515)).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Label(tr("看清附近船舶", "Explore nearby traffic"), 20, Color.White, Modifier.weight(1f))
                 SceneTool("close", tr("关闭说明", "Close help"), enabled) { helpVisible = false }
             }
-            Label(tr("单指左右滑动切换页面。双指拖动旋转、调整俯仰，张合缩放。轻点船舶查看资料。", "Swipe with one finger to change pages. Use two fingers to orbit, tilt and pinch to zoom. Tap a vessel for details."), 15, Color(0xffd6e7ed))
-            Label(tr("船的位置取自已收到的报告。远处的小船会放大为易辨认的示意模型；拉近后，有可靠尺寸的船恢复实际比例。外观和高度仅供辨识。", "Positions come from received reports. Small vessels use a readable symbolic model at a distance; zooming in reveals reported dimensions when known. Appearance and height are illustrative."), 15, Color(0xffb5c9d0))
-            Label(tr("前视从本船的示意船桥位置向真实船首向观察。视点高度仅为呈现用途；无有效定位或船首向时暂用北向，恢复数据后轻点前视继续。", "Look ahead uses a perspective view from an illustrative bridge height and the real heading. Without position or heading, north up is used temporarily; tap look ahead to resume once data returns."), 15, Color(0xffb5c9d0))
-            Label(tr("实线是已观测轨迹，虚线是 ${data.vectorSeconds.toInt()} 秒对地运动方向。船艏朝向只用船首向，不把对地航向当作船首向。", "Solid lines are observed tracks; dashed lines show ${data.vectorSeconds.toInt()} seconds of ground motion. Vessel orientation uses heading, never course over ground."), 15, Color(0xffb5c9d0))
-            if (data.targets.size > 64) Label(tr("繁忙水域优先呈现选中、关注和风险船舶的立体模型，其余目标仍保留可点击的位置标记。", "In busy areas, selected, followed and risk vessels take priority for 3D models. Other targets keep tappable position markers."), 15, Color(0xffb5c9d0))
+            Label(tr("单指左右滑动切换页面。双指拖动旋转、调整俯仰，张合缩放。轻点船舶查看资料。", "Swipe with one finger to change pages. Use two fingers to orbit, tilt and pinch to zoom. Tap a vessel for details."), 15, Color(0xffdddddd))
+            Label(tr("船的位置取自已收到的报告。远处的小船会放大为易辨认的示意模型；拉近后，有可靠尺寸的船恢复实际比例。外观和高度仅供辨识。", "Positions come from received reports. Small vessels use a readable symbolic model at a distance; zooming in reveals reported dimensions when known. Appearance and height are illustrative."), 15, Color(0xffbbbbbb))
+            Label(tr("前视从本船的示意船桥位置向真实船首向观察。视点高度仅为呈现用途；无有效定位或船首向时暂用北向，恢复数据后轻点前视继续。", "Look ahead uses a perspective view from an illustrative bridge height and the real heading. Without position or heading, north up is used temporarily; tap look ahead to resume once data returns."), 15, Color(0xffbbbbbb))
+            Label(tr("实线是已观测轨迹，虚线是 ${data.vectorSeconds.toInt()} 秒对地运动方向。船艏朝向只用船首向，不把对地航向当作船首向。", "Solid lines are observed tracks; dashed lines show ${data.vectorSeconds.toInt()} seconds of ground motion. Vessel orientation uses heading, never course over ground."), 15, Color(0xffbbbbbb))
+            if (data.targets.size > 64) Label(tr("繁忙水域优先呈现选中、关注和风险船舶的立体模型，其余目标仍保留可点击的位置标记。", "In busy areas, selected, followed and risk vessels take priority for 3D models. Other targets keep tappable position markers."), 15, Color(0xffbbbbbb))
         }
         if (overlapIds.isNotEmpty()) Column(Modifier.align(Alignment.Center).padding(20.dp).fillMaxWidth().heightIn(max = 320.dp)
             .background(colors.panel).border(1.dp, colors.controlStroke).padding(16.dp)) {
@@ -335,7 +349,7 @@ internal fun AisTrafficScene3D(
 private fun SceneTool(icon: String, description: String, enabled: Boolean, selected: Boolean = false, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(modifier.size(48.dp).semantics { contentDescription = description; this.selected = selected }
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
-        val tint = if (!enabled) Color(0xff6c808a) else if (selected) Color(0xff6dd4ff) else Color(0xffe1f3fa)
+        val tint = if (!enabled) Color(0xff666666) else if (selected) Color(0xffffffff) else Color(0xffeeeeee)
         if (icon == "boat" || icon == "heading" || icon == "info") Canvas(Modifier.size(24.dp)) {
             val unit = size.minDimension / 24f
             fun point(x: Float, y: Float) = Offset(x * unit, y * unit)
@@ -363,15 +377,16 @@ private fun SceneAction(text: String, enabled: Boolean, selected: Boolean = fals
 @Composable
 private fun NativeTrafficScene(
     data: AisSceneData, frame: AisSceneFrame, state: AisSceneCameraState, selectedId: String?, light: Boolean, active: Boolean, modifier: Modifier,
-    onFailure: (String) -> Unit, onReady: () -> Unit, onPresentedTargets: (Set<String>) -> Unit,
+    onFailure: (String) -> Unit, onReady: () -> Unit, onPresentedTargets: (Set<String>) -> Unit, onPresentedFrame: (AisSceneFrame) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val failure = rememberUpdatedState(onFailure)
     val ready = rememberUpdatedState(onReady)
     val presented = rememberUpdatedState(onPresentedTargets)
+    val presentFrame = rememberUpdatedState(onPresentedFrame)
     val currentActive = rememberUpdatedState(active)
-    val renderer = remember(context) { AisTrafficRenderer3D(context, { failure.value(it) }, { ready.value() }, { presented.value(it) }) }
+    val renderer = remember(context) { AisTrafficRenderer3D(context, { failure.value(it) }, { ready.value() }, { presented.value(it) }, { presentFrame.value(it) }) }
     AndroidView(factory = { renderer.textureView }, modifier = modifier,
         update = { renderer.update(data, frame, state, selectedId, light, active) }, onRelease = { renderer.close() })
     DisposableEffect(renderer, lifecycle) {
@@ -435,15 +450,16 @@ private fun containsDisplayModel(target: AisSceneTarget, touch: Offset, viewport
 
 /** 指北针独立于船首向，手动旋转后仍标记地理真北。 */
 @Composable
-private fun SceneCompass(frame: AisSceneFrame, modifier: Modifier) {
-    val north = AisVector3(0.0, 0.0, -1.0)
-    val direction = Offset(north.dot(frame.camera.right).toFloat(), -north.dot(frame.camera.screenUp).toFloat())
-        .let { it / it.getDistance().coerceAtLeast(.00001f) }
-    Box(modifier.background(Color(0xbb071720)).semantics { contentDescription = "N · true north" }) {
+private fun SceneCompass(frameProvider: () -> AisSceneFrame, modifier: Modifier) {
+    Box(modifier.background(Color(0xbb101010)).semantics { contentDescription = "N · true north" }) {
         Canvas(Modifier.fillMaxSize()) {
+            val frame = frameProvider()
+            val north = AisVector3(0.0, 0.0, -1.0)
+            val direction = Offset(north.dot(frame.camera.right).toFloat(), -north.dot(frame.camera.screenUp).toFloat())
+                .let { it / it.getDistance().coerceAtLeast(.00001f) }
             val origin = Offset(size.width * .5f, size.height * .5f)
             val tip = origin + direction * (size.minDimension * .30f)
-            drawLine(Color(0xffc8e9f2), origin - direction * (size.minDimension * .12f), tip, 1.5.dp.toPx())
+            drawLine(Color(0xffdddddd), origin - direction * (size.minDimension * .12f), tip, 1.5.dp.toPx())
             val cross = Offset(-direction.y, direction.x)
             val path = Path().apply {
                 moveTo(tip.x, tip.y)
@@ -482,8 +498,9 @@ private fun arrangeLabels(frame: AisSceneFrame, size: IntSize, prioritizedTarget
 }
 
 @Composable
-private fun SceneReferenceOverlay(data: AisSceneData, frame: AisSceneFrame, selectedId: String?, modifier: Modifier) {
+private fun SceneReferenceOverlay(data: AisSceneData, frameProvider: () -> AisSceneFrame, selectedId: String?, visibleModels: Set<String>, modifier: Modifier) {
     Canvas(modifier) {
+        val frame = frameProvider()
         fun project(point: AisVector3): Offset = frame.camera.project(point).let { Offset(it.x * size.width, it.y * size.height) }
         fun path(points: List<AisVector3>): Path = Path().apply {
             points.zipWithNext().forEach { (start, end) ->
@@ -495,16 +512,14 @@ private fun SceneReferenceOverlay(data: AisSceneData, frame: AisSceneFrame, sele
         }
         val own = data.ownPosition?.takeIf { it.valid }?.let(frame.local::position)
         val reference = own ?: frame.camera.target
-        // 距离环与地平面共同投影，不画雷达扫描或没有来源的海浪。
+        // 海面只保留少量平行尺度线；绝不再把雷达圆环倾斜当作三维。
         val radius = min(frame.camera.halfWidth, frame.camera.halfHeight)
-        for (fraction in listOf(.25, .5, .75, 1.0)) {
-            val points = (0..96).map { i -> val angle = i * 2.0 * PI / 96; reference + AisVector3(sin(angle) * radius * fraction, 0.0, -cos(angle) * radius * fraction) }
-            drawPath(path(points), Color(0xff5e8a9b).copy(alpha = .42f), style = Stroke(1.dp.toPx()))
-        }
-        for (bearing in listOf(0, 90, 180, 270)) {
-            val angle = Math.toRadians(bearing.toDouble())
-            val end = reference + AisVector3(sin(angle) * radius, 0.0, -cos(angle) * radius)
-            drawPath(path(listOf(reference, end)), Color(0xff5e8a9b).copy(alpha = .28f), style = Stroke(1.dp.toPx()))
+        val forward = AisVector3(frame.camera.forward.x, 0.0, frame.camera.forward.z).normalized()
+        val right = AisVector3(-forward.z, 0.0, forward.x)
+        for (fraction in listOf(.25, .5, 1.0, 2.0, 4.0)) {
+            val center = reference + forward * (radius * fraction)
+            drawPath(path(listOf(center - right * radius * 4.0, center + right * radius * 4.0)),
+                Color.White.copy(alpha = .08f), style = Stroke(.7.dp.toPx()))
         }
         fun vector(point: AisVector3, cog: Double?, speed: Double?, color: Color) {
             val bearing = validAisBearing(cog) ?: return
@@ -524,17 +539,17 @@ private fun SceneReferenceOverlay(data: AisSceneData, frame: AisSceneFrame, sele
                 drawPath(head, color)
             }
         }
-        frame.targets.forEach { target ->
-            val point = frame.targetPositions.getValue(target.id)
-            val projected = frame.targetProjections.getValue(target.id).let { Offset(it.x * size.width, it.y * size.height) }
-            val color = when { target.risk -> Color(0xffff7758); target.stale || target.lost -> Color(0xff7e949d); target.id == selectedId -> Color(0xff5bd3ff); else -> Color(0xffc8e9f2) }
+        data.targets.filter { it.position.valid }.forEach { target ->
+            val point = frame.targetPositions[target.id] ?: frame.local.position(target.position)
+            val projected = (frame.targetProjections[target.id] ?: frame.camera.project(point)).let { Offset(it.x * size.width, it.y * size.height) }
+            val color = when { target.risk -> Color(0xffff7758); target.stale || target.lost -> Color(0xff777777); target.id == selectedId -> Color(0xffffffff); else -> Color(0xffdddddd) }
             if (data.showTracks && (target.id == selectedId || target.followed || target.risk)) target.track.forEach { segment ->
                 val valid = segment.takeLast(180).filter { it.valid }.map(frame.local::position)
                 if (valid.size > 1) drawPath(path(valid), color.copy(alpha = .65f), style = Stroke(1.5.dp.toPx()))
             }
             if (!target.stale && !target.lost) vector(point, target.cogDegrees, target.sogMetersPerSecond, color.copy(alpha = .75f))
             if (projected.x in -8f..(size.width + 8f) && projected.y in -8f..(size.height + 8f)) {
-                drawCircle(Color(0xff061219), 4.dp.toPx(), projected)
+                if (target.id !in visibleModels) drawCircle(Color(0xff151515), 4.dp.toPx(), projected)
                 when (target.kind) {
                     AisSceneKind.AID_TO_NAVIGATION, AisSceneKind.UNKNOWN -> {
                         val r = 4.dp.toPx()
@@ -547,7 +562,8 @@ private fun SceneReferenceOverlay(data: AisSceneData, frame: AisSceneFrame, sele
                         drawLine(color, projected - Offset(3.dp.toPx(), 0f), projected + Offset(3.dp.toPx(), 0f), 1.5.dp.toPx())
                         drawLine(color, projected - Offset(0f, 3.dp.toPx()), projected + Offset(0f, 3.dp.toPx()), 1.5.dp.toPx())
                     }
-                    else -> drawCircle(color, 3.dp.toPx(), projected)
+                    else -> if (target.id !in visibleModels)
+                        drawCircle(color, 3.dp.toPx(), projected)
                 }
                 if (target.id == selectedId) drawCircle(color, 11.dp.toPx(), projected, style = Stroke(1.8.dp.toPx()))
             }
@@ -557,8 +573,26 @@ private fun SceneReferenceOverlay(data: AisSceneData, frame: AisSceneFrame, sele
             val point = project(own)
             if (point.x.isFinite() && point.y.isFinite()) {
                 drawCircle(Color.White, 4.dp.toPx(), point, style = Stroke(1.5.dp.toPx()))
-                drawCircle(Color(0xff071720), 2.dp.toPx(), point)
+                drawCircle(Color(0xff101010), 2.dp.toPx(), point)
             }
         }
     }
+}
+
+/** 报告点到本船的真实平面关系；显示放大的船模不参与此计算。 */
+private fun sceneRelativeLabel(data: AisSceneData, target: AisSceneTarget, format: (Double) -> String, chinese: Boolean): String {
+    val own = data.ownPosition?.takeIf { it.valid } ?: return target.statusLabel
+    val delta = AisLocalFrame(own).position(target.position)
+    val range = hypot(delta.x, delta.z)
+    val trueBearing = (Math.toDegrees(atan2(delta.x, -delta.z)) + 360.0) % 360.0
+    val heading = validAisBearing(data.ownHeadingDegrees)
+    val relative = heading?.let { (trueBearing - it + 540.0) % 360.0 - 180.0 }
+    val direction = when {
+        relative == null -> "${trueBearing.roundToInt()}° T"
+        abs(relative) < 10.0 -> if (chinese) "前方" else "ahead"
+        abs(relative) > 165.0 -> if (chinese) "后方" else "astern"
+        relative < 0.0 -> if (chinese) "左舷 ${abs(relative).roundToInt()}°" else "port ${abs(relative).roundToInt()}°"
+        else -> if (chinese) "右舷 ${relative.roundToInt()}°" else "starboard ${relative.roundToInt()}°"
+    }
+    return "${format(range)} · $direction"
 }

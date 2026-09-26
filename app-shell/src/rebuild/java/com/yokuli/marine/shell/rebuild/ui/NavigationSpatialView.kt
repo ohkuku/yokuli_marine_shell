@@ -50,6 +50,7 @@ fun NavigationSpatialView(
     onOpenMap: () -> Unit,
     onOpenTarget: (String) -> Unit,
     onAutomaticSwitchInhibited: (Boolean) -> Unit = {},
+    onOpenSources: () -> Unit,
 ) {
     fun tr(zh:String,en:String)=if(chinese)zh else en
     val c=LocalMetro.current
@@ -101,7 +102,7 @@ fun NavigationSpatialView(
         "stale"->tr("等待新的手机姿态", "Waiting for a phone orientation update")
         "magnetic"->tr("罗盘受干扰，方向暂以真北显示", "Compass interference · directions use true north")
         "north"->tr("需要近期位置才能将罗盘换算为真北", "A recent position is needed to align the compass with true north")
-        "vertical"->tr("抬起手机，朝向你想看的方向", "Raise your phone toward the direction you want to see")
+        "mount"->tr("手机安装已变化，请重新确认固定位置", "The phone mount changed. Confirm its position again")
         "heading"->tr("等待船首向；对地航向不代替船首向", "Waiting for vessel heading; course does not replace heading")
         else->null
     }
@@ -114,7 +115,7 @@ fun NavigationSpatialView(
                     delta!=null->(if(snapshot.steering!=null)tr("沿线 · ","Route · ")else tr("目标 · ","Target · "))+if(abs(delta)<3)tr("前方","Ahead")else tr("${if(delta<0)"向左"else"向右"} ${abs(delta).roundToInt()}°","${if(delta<0)"Left"else"Right"} ${abs(delta).roundToInt()}°")
                     free->tr("自由查看 · 不跟随手机","Free view · not following your phone")
                     snapshot.mountMode==SpatialMountMode.VESSEL_MOUNTED->tr("随船艏观察","Following vessel heading")
-                    else->tr("手机视线 · 目标以船位计算","Phone view · bearings from your vessel")
+                    else->tr("随手机观察 · 以船位指向目标","Phone view · bearings from your vessel")
                 }).joinToString(" · "),12,c.muted,maxLines=2)
             }
             SpatialTextAction(tr("依据","Details"),enabled){details=!details}
@@ -131,6 +132,7 @@ fun NavigationSpatialView(
                         else->reason?:tr("真北方向","True north reference")
                     },13,c.muted,Modifier.padding(horizontal=24.dp,vertical=10.dp))
                     if(target!=null&&target.nearTarget.not()&&(!planar||failed))Row(horizontalArrangement=Arrangement.spacedBy(16.dp)){
+                        if(camera.issue!=null)SpatialTextAction(if(camera.issue=="mount")tr("确认安装","Confirm mount")else tr("方向来源","Direction source"),enabled,onOpenSources)
                         SpatialTextAction(tr("自由查看","Explore"),enabled){failed=false;free=true;planar=false}
                         if(failed)SpatialTextAction(tr("重新载入","Retry"),enabled){failed=false}
                     }
@@ -148,6 +150,11 @@ fun NavigationSpatialView(
                     view.update(input,enabled&&!details&&inspected==null)
                 },onRelease={view->view.close();if(surface===view)surface=null})
             }
+            if(!fallback)Row(Modifier.align(Alignment.BottomStart).padding(12.dp).background(c.bg.copy(alpha=.82f)).padding(horizontal=8.dp,vertical=5.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                snapshot.vesselHeading?.let { Label(tr("船艏 ","HDG ")+"${it.trueDegrees.roundToInt()}°",12,c.fg) }
+                snapshot.vesselHeelDegrees?.takeIf { it.isFinite() }?.let { Label(tr("横倾 ","Heel ")+"${abs(it).roundToInt()}° "+(if(it<0)tr("左","P")else tr("右","S")),12,c.muted) }
+                snapshot.vesselPitchDegrees?.takeIf { it.isFinite() }?.let { Label(tr("纵倾 ","Pitch ")+"${if(it>0)"+"else""}${it.roundToInt()}°",12,c.muted) }
+            }
             if(!fallback&&shownFrame==null)MetroProgress(tr("正在展开方向视图","Opening direction view"),Modifier.align(Alignment.Center).padding(24.dp))
             if(inspected!=null&&!details)Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(c.bg).padding(18.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
                 Label(if(inspected.steering)tr("沿线引导","Route guidance")else if(inspected.id==snapshot.current?.id)tr("当前目标","Current target")else tr("下一站预览","Next target preview"),12,c.muted)
@@ -162,7 +169,7 @@ fun NavigationSpatialView(
             }
             if(details)Column(Modifier.fillMaxSize().background(c.bg.copy(alpha=.96f)).verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
                 Label(tr("方向的依据","Direction reference"),20)
-                Label(if(snapshot.mountMode==SpatialMountMode.HANDHELD)tr("视线穿过手机屏幕朝向远处，不是手机顶部，也不改变船首向。目标从全船选用的船位计算；这不是相机画面的精确叠加。","The view looks through the screen toward the distance. It is not the phone's top edge and does not change vessel heading. Targets use the selected vessel position; this is not a camera overlay.")else tr("当前视角跟随全船选用的船首向。手机固定位置和安装零点保持不变。","This view follows the selected vessel heading. The confirmed phone mount and zero point stay unchanged."),14,c.muted)
+                Label(if(snapshot.mountMode==SpatialMountMode.HANDHELD)tr("手机平放、倾斜或竖起都能观察。平放沿屏幕上沿看，抬起后转向屏幕前方；这个镜头不改变船首向。","Explore with the phone flat, tilted or upright. The view follows the screen's top when flat, then looks forward as you raise it. This does not change vessel heading.")else tr("跟随数据中心选用的船首向、横倾和纵倾。手机安装零点与微调已在来源中应用，这里不重复校准。","Following heading, heel and pitch selected in Data Center. Mount zero and corrections are already applied by the source."),14,c.muted)
                 if(snapshot.mountMode==SpatialMountMode.HANDHELD){
                     Label(tr("手机方向","Phone orientation")+" · "+(raw.sourceName.ifBlank{tr("等待传感器","Waiting for sensor")}),13)
                     raw.elapsedRealtimeMillis?.let{Label(tr("更新于 ${(elapsed-it).coerceAtLeast(0)/1000} 秒前","Updated ${(elapsed-it).coerceAtLeast(0)/1000}s ago"),12,c.muted)}
@@ -170,7 +177,8 @@ fun NavigationSpatialView(
                 }
                 snapshot.vesselHeading?.let{Label(tr("船首向","Heading")+" · ${it.source} · ${it.ageMillis.coerceAtLeast(0)/1000}s",13)}
                 snapshot.courseOverGround?.let{Label("COG · ${it.source} · ${it.ageMillis.coerceAtLeast(0)/1000}s",13)}
-                Label(tr("环和指示柱表达方向与先后关系，不表示地形、障碍物高度或真实距离比例。","The ring and markers show direction and target order, not terrain, obstacle height or distance scale."),13,c.muted)
+                Label(tr("箭头指向当前沿线引导，门形标记是目标。地平仅用于定向，不显示水深、障碍或可通行水域。","Arrows follow route guidance; the gate marks your target. The horizon is an orientation aid, not depth, hazards or safe water."),13,c.muted)
+                SpatialTextAction(tr("管理方向来源","Direction sources"),enabled,onOpenSources)
                 SpatialTextAction(tr("返回观察","Back to view"),enabled){details=false}
             }
         }

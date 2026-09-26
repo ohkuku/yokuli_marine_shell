@@ -2,6 +2,6 @@
 <!-- Generated from design/brand SVG masters; run scripts/generate_brand_assets.py. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
     <group android:scaleX="1" android:scaleY="1" android:translateX="0" android:translateY="0">
-        <path android:name="beacon" android:fillColor="#FFFFFF" android:fillType="nonZero" android:pathData="M43,10H59L51,22H36Z" />
+        <path android:name="beacon" android:fillColor="#FFFFFF" android:fillType="nonZero" android:pathData="M49,1C50,21 48,40 42,51C36,48 30,46 25,46C37,36 45,17 49,1Z M2,56C18,44 33,48 44,54C52,58 59,59 64,56C51,66 35,59 26,57C16,54 9,53 2,56Z" />
     </group>
 </vector>

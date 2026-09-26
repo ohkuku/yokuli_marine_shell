@@ -46,6 +46,7 @@ class LocalAisTrafficService @Inject constructor(
     private val marine: LocalMarineServices,
     private val notifications: NotificationCoordinator,
     private val resources: RuntimeResourceManager,
+    private val residency: com.yokuli.anchorwatch.runtime.RuntimeResidencyRepository,
 ) : AisTrafficService {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val guard = Mutex()
@@ -246,7 +247,7 @@ class LocalAisTrafficService @Inject constructor(
         ContextCompat.checkSelfPermission(context,Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
 
     private fun reconcileService(retry: Boolean) {
-        if (!saved.preferences.monitoringEnabled) {
+        if (residency.explicitlyStopped || !saved.preferences.monitoringEnabled) {
             serviceRequested = false
             foregroundError = null
             context.stopService(Intent(context, AisMonitoringService::class.java))

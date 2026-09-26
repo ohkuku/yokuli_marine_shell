@@ -32,6 +32,7 @@ sealed interface RuntimeCommand {
     ):RuntimeCommand
     data class ChangeSystemPosition(val source:GpsDataSource):RuntimeCommand
     data class SelectNmeaPosition(val connectionId:String,val sourceKey:String?=null):RuntimeCommand
+    data object RefreshResidency:RuntimeCommand
     data object NetworkChanged:RuntimeCommand
     data object SnoozeAlarm:RuntimeCommand
     data object PauseWatch:RuntimeCommand
@@ -78,6 +79,7 @@ object RuntimeCommandParser {
         return when(intent.action){
             VoyageCommandRegistry.ACTION->RuntimeCommand.Voyage(intent.getStringExtra(VoyageCommandRegistry.EXTRA_ID).orEmpty())
             VoyageCommandRegistry.QUERY_ACTION->RuntimeCommand.QueryVoyage(intent.getStringExtra(VoyageCommandRegistry.EXTRA_ID).orEmpty())
+            "OS_RUNTIME_START"->RuntimeCommand.RefreshResidency
             "OS_NETWORK_CHANGED"->RuntimeCommand.NetworkChanged
             "OS_POSITION_SOURCE"->RuntimeCommand.ChangeSystemPosition(enum(intent,"source",GpsDataSource.NONE))
             "OS_NMEA_POSITION"->RuntimeCommand.SelectNmeaPosition(intent.getStringExtra("connectionId").orEmpty(),intent.getStringExtra("sourceKey"))

@@ -70,13 +70,26 @@ private fun staticTileContentChoices():List<TileContentChoice> {
     fun task(id:String,owner:AppId,zh:String,en:String,detailZh:String,detailEn:String)=TileContentChoice(
         TileBinding("yokuli",TileBindingKind.CURRENT_TASK,id),label(zh,en),label(detailZh,detailEn),owner,TileContentGroup.WATCH,
         contentSizes,contentStyles(),MarineTileSize.WIDE_4X2,"task:$id",label("${owner.zh} · 当前任务","${owner.en} · Current task"))
+    fun instruments(id:String,zh:String,en:String,summaryZh:String,summaryEn:String,section:String)=TileContentChoice(
+        TileBinding("yokuli",TileBindingKind.OVERVIEW,id),label(zh,en),label(summaryZh,summaryEn),AppId.INSTRUMENTS,TileContentGroup.WATCH,
+        contentSizes,listOf(TileContentStyle("detail",label("图形与读数","Visual")),TileContentStyle("simple",label("只看读数","Readings"))),
+        MarineTileSize.WIDE_4X2,"instruments:tab:$section",label("驾驶台 · $zh","Helm · $en"))
     return listOf(
+        instruments("navigationReadings","航行","Under way","航速、船首向与对地航向","Speed, heading and course over ground","navigation"),
+        instruments("windConditions","风况","Wind","真风、视风与相对船艏的来风方向","True and apparent wind, relative to the bow","sailing"),
+        instruments("depthClearance","水深与余量","Depth & clearance","实测水深与龙骨下余量","Measured depth and under-keel clearance","navigation"),
+        instruments("vesselAttitude","船姿","Vessel attitude","已校准的横倾与纵倾","Calibrated heel and pitch","attitude"),
+        instruments("environment","气象","Weather readings","气压变化、气温与水温","Pressure history, air and water temperature","weather"),
         task("navigation",AppId.CHART,"当前导航","Current navigation","查看此刻的导航与目标，不自动开始","View the current navigation and target; never starts navigation"),
         task("anchorWatch",AppId.ANCHOR,"当前守锚","Current anchor watch","值守、警报和船位时效常驻","Watch state, alarms and position age stay visible"),
         task("recording",AppId.VOYAGES,"当前记录","Current recording","查看本次记录的进度和暂停状态","View the active recording and its paused state"),
         TileContentChoice(TileBinding("yokuli",TileBindingKind.OVERVIEW,"aisTraffic"),label("周围交通","Nearby traffic"),
             label("收到的 AIS 目标与交通警戒","Received AIS traffic and watch status"),AppId.AIS,TileContentGroup.WATCH,
             contentSizes,contentStyles(),MarineTileSize.WIDE_4X2,ShellApp(AppId.AIS).rootToken.value,label("AIS · 观察","AIS · Observe")),
+        TileContentChoice(TileBinding("yokuli",TileBindingKind.CURRENT_TASK,"systemExit"),label("退出 Yokuli","Exit Yokuli"),
+            label("确认后停止后台运行","Stop background operation after confirmation"),AppId.SETTINGS,TileContentGroup.APPS,
+            contentSizes,listOf(TileContentStyle("simple",label("退出入口","Exit shortcut"))),MarineTileSize.STANDARD_2X2,
+            "settings:exit",label("设置 · 确认退出","Settings · Confirm exit")),
     )+TileReadingPresentationPolicy.supportedIds.map(::reading)+AppId.entries.map {id->
         val app=ShellApp(id)
         val useful=id!=AppId.TILES

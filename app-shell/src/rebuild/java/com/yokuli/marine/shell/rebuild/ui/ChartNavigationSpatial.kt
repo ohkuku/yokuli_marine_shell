@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 /** 只抽取此画面需要的事实，船体连续姿态不使整个Chart页反复重组。 */
-private data class SpatialVesselReading(val vessel:VesselDataSnapshot,val mounted:Boolean)
+private data class SpatialVesselReading(val vessel:VesselDataSnapshot,val mounted:Boolean,val mountNeedsConfirmation:Boolean)
 
 @Composable
 internal fun ChartNavigationSpatial(
@@ -29,9 +29,11 @@ internal fun ChartNavigationSpatial(
     onAutomaticSwitchInhibited:(Boolean)->Unit,
 ){
     val marine=os.marine?:return
-    val stream=remember(marine){marine.services.state.map{state->SpatialVesselReading(state.vesselData,state.vesselMountCalibration.mountConfirmed&&state.phoneVesselMountState==PhoneVesselMountState.VESSEL_MOUNTED)}.distinctUntilChanged()}
+    val stream=remember(marine){marine.services.state.map{state->SpatialVesselReading(state.vesselData,state.vesselMountCalibration.mountConfirmed&&state.phoneVesselMountState==PhoneVesselMountState.VESSEL_MOUNTED,
+            state.vesselMountCalibration.calibratedAt>0&&state.phoneVesselMountState==PhoneVesselMountState.MOUNT_SUSPECT)}.distinctUntilChanged()}
     val data by stream.collectAsState(SpatialVesselReading(marine.services.state.value.vesselData,
-        marine.services.state.value.vesselMountCalibration.mountConfirmed&&marine.services.state.value.phoneVesselMountState==PhoneVesselMountState.VESSEL_MOUNTED))
+        marine.services.state.value.vesselMountCalibration.mountConfirmed&&marine.services.state.value.phoneVesselMountState==PhoneVesselMountState.VESSEL_MOUNTED,
+        marine.services.state.value.vesselMountCalibration.calibratedAt>0&&marine.services.state.value.phoneVesselMountState==PhoneVesselMountState.MOUNT_SUSPECT))
     val nav=os.navigationState
     val guidance=nav.guidance
     val current=guidance?.let{SpatialNavigationTarget(it.targetId?:"external-current",it.targetName?:os.t("当前目标","Current target"),it.bearingTrueDegrees,it.distanceMeters,it.nearTarget)}
@@ -53,8 +55,8 @@ internal fun ChartNavigationSpatial(
     }
     val heading=direction(data.vessel.headingTrueDegrees)?:conversion?.let{direction(data.vessel.headingMagneticDegrees,it.declinationDegrees)?.let{d->d.copy(source=d.source+os.t(" · 磁北换算"," · converted from magnetic north"))}}
     NavigationSpatialView(NavigationSpatialSnapshot(current,next,heading,direction(data.vessel.cogTrueDegrees),
-        if(data.mounted)SpatialMountMode.VESSEL_MOUNTED else SpatialMountMode.HANDHELD,position,
+        if(data.mounted||data.mountNeedsConfirmation)SpatialMountMode.VESSEL_MOUNTED else SpatialMountMode.HANDHELD,position,
         data.vessel.heelDegrees.takeIf{it.displayIsLive()}?.value,data.vessel.pitchDegrees.takeIf{it.displayIsLive()}?.value,
-        guidance?.live==true,if(guidance?.issue!=null)os.t("导航保留上次观测，等待新位置","Navigation is holding the last observation while waiting for a position")else null,steering=steering),
-        marine.services.display,os.unitPreferences,os.chinese,active,modifier,onOpenMap,onOpenTarget,onAutomaticSwitchInhibited)
+        guidance?.live==true,if(guidance?.issue!=null)os.t("导航保留上次观测，等待新位置","Navigation is holding the last observation while waiting for a position")else null,steering=steering,mountNeedsConfirmation=data.mountNeedsConfirmation),
+        marine.services.display,os.unitPreferences,os.chinese,active,modifier,onOpenMap,onOpenTarget,onAutomaticSwitchInhibited, onOpenSources={os.openLinked(if(data.mountNeedsConfirmation)"data_center:mount" else "data_center:source/HEADING_TRUE")})
 }

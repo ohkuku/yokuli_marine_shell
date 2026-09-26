@@ -206,8 +206,8 @@ class LocalNavigationSessionService @Inject constructor(
                 if (route == null || !validRoute(route)) rejection = "INVALID_ROUTE"
                 else if (command.action == NavigationAction.REPLAN && current?.ongoing != true) rejection = "NAVIGATION_NOT_ACTIVE"
                 else if (command.action == NavigationAction.REPLAN && current?.source != NavigationSource.LOCAL) rejection = "EXTERNAL_DEVICE_OWNS_ROUTE"
-                else if (command.action == NavigationAction.REPLAN && livePosition == null) rejection = "POSITION_REQUIRED"
-                else if (command.action == NavigationAction.REPLAN && livePosition != null && NavigationGeometry.distance(route.waypoints.first().point,livePosition.point)>max(10.0,livePosition.accuracyMeters?:10.0)) rejection = "REPLAN_START_MOVED"
+                else if (livePosition == null) rejection = "POSITION_REQUIRED"
+                else if (command.action == NavigationAction.REPLAN && NavigationGeometry.distance(route.waypoints.first().point,livePosition.point)>max(10.0,livePosition.accuracyMeters?:10.0)) rejection = "REPLAN_START_MOVED"
                 else if ((command.targetIndex ?: route.targetIndices.first()) !in route.targetIndices) rejection = "INVALID_TARGET"
                 else candidate = NavigationSession(
                     if (command.action == NavigationAction.START) "nav-${command.requestId}" else current!!.id,

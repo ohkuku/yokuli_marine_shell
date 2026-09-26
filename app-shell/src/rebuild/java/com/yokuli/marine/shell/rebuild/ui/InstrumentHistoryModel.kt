@@ -62,7 +62,8 @@ internal data class InstrumentHistoryFrame(
 /** 方位不因 359°→1° 被误判为来源中断；所有量仍保留采样间隔、来源身份、单位断点。 */
 private fun sameHistoryRun(a: Reading, b: Reading): Boolean =
     b.elapsed >= a.elapsed && b.elapsed - a.elapsed <= a.validForMillis &&
-        b.sourceKey == a.sourceKey && b.continuityKey == a.continuityKey && b.unit == a.unit
+        b.sourceKey == a.sourceKey && b.continuityKey == a.continuityKey && b.unit == a.unit &&
+        b.historySessionKey == a.historySessionKey
 
 internal fun buildInstrumentHistory(os: OsStore, key: String, readings: List<Reading>, now: Long, minutes: Int): InstrumentHistoryFrame {
     val kind = instrumentHistoryKind(key)

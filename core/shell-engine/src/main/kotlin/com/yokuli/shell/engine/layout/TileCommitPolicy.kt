@@ -123,8 +123,8 @@ internal object TileCommitPolicy {
     private fun supportedBinding(binding: TileBinding): Boolean = binding.providerId == "yokuli" && when (binding.kind) {
         TileBindingKind.APP -> true
         TileBindingKind.READING -> binding.contentId in TileReadingPresentationPolicy.supportedIds
-        TileBindingKind.CURRENT_TASK -> binding.contentId in setOf("navigation", "anchorWatch", "recording")
-        TileBindingKind.OVERVIEW -> binding.contentId == "aisTraffic"
+        TileBindingKind.CURRENT_TASK -> binding.contentId in setOf("navigation", "anchorWatch", "recording", "systemExit")
+        TileBindingKind.OVERVIEW -> binding.contentId in setOf("aisTraffic", "navigationReadings", "windConditions", "environment", "depthClearance", "vesselAttitude")
         TileBindingKind.SAVED_PLACE, TileBindingKind.SAVED_ROUTE -> true
         TileBindingKind.UNKNOWN -> false
     }

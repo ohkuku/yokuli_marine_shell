@@ -98,7 +98,7 @@ internal class NotificationRepository(context: Context) {
             return@withContext NoticeCommandResult(command.requestId, NoticeCommandStatus.COMPLETED, disk.revision)
         }
         if (!loaded) return@withContext failed(command, "HISTORY_READ_FAILED")
-        if (command.operation in setOf(NoticeOperation.MARK_READ, NoticeOperation.REMOVE) && command.noticeId.orEmpty().length !in 1..256) return@withContext rejected(command, "MISSING_NOTICE_ID")
+        if (command.operation in setOf(NoticeOperation.MARK_READ, NoticeOperation.REMOVE, NoticeOperation.RESOLVE) && command.noticeId.orEmpty().length !in 1..256) return@withContext rejected(command, "MISSING_NOTICE_ID")
         if (command.eventStream != null && (command.operation != NoticeOperation.PUBLISH || command.eventStream != "anchor" || (command.eventSequence ?: 0) <= 0)) return@withContext rejected(command, "INVALID_EVENT_CURSOR")
         if (command.eventSequence != null && command.eventStream == null) return@withContext rejected(command, "MISSING_EVENT_STREAM")
         if (disk.revision == Long.MAX_VALUE) return@withContext rejected(command, "REVISION_LIMIT")
@@ -114,6 +114,8 @@ internal class NotificationRepository(context: Context) {
         val duplicateAnchor = command.operation == NoticeOperation.PUBLISH && command.eventStream == "anchor" && eventSequence != null && eventSequence <= disk.anchorCursor
         if (duplicateEvent || duplicateAnchor) return@withContext NoticeCommandResult(command.requestId, NoticeCommandStatus.COMPLETED, disk.revision)
         var records = disk.records
+        if (command.operation == NoticeOperation.RESOLVE && records.none { it.id == command.noticeId && !it.dismissible })
+            return@withContext NoticeCommandResult(command.requestId, NoticeCommandStatus.COMPLETED, disk.revision)
         when (command.operation) {
             NoticeOperation.PUBLISH -> {
                 if (!duplicateEvent && !duplicateAnchor && record != null) {
@@ -127,6 +129,7 @@ internal class NotificationRepository(context: Context) {
             }
             NoticeOperation.MARK_READ -> records = records.map { if (it.id == command.noticeId) it.copy(read = true) else it }
             NoticeOperation.REMOVE -> records = records.filterNot { it.id == command.noticeId && it.dismissible }
+            NoticeOperation.RESOLVE -> records = records.filterNot { it.id == command.noticeId && !it.dismissible }
             NoticeOperation.CLEAR_ALL -> records = records.filterNot { it.dismissible }
             NoticeOperation.CLEAR_READ -> records = records.filterNot { it.read && it.dismissible }
             NoticeOperation.RESTORE -> {
@@ -156,7 +159,7 @@ internal class NotificationRepository(context: Context) {
         failed(command, "HISTORY_WRITE_FAILED")
     }
     private fun fingerprint(command: NoticeCommand): String = java.security.MessageDigest.getInstance("SHA-256")
-        .digest(gson.toJson(command).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        .digest(gson.toJson(command.copy(record=command.record?.copy(presentationLanguage=null))).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     private fun persist(value: Disk) {
         file.baseFile.parentFile?.let { require(it.isDirectory || it.mkdirs()) }
         val bytes = gson.toJson(value).toByteArray(Charsets.UTF_8)
@@ -191,6 +194,7 @@ internal fun validRecord(value: NoticeRecord): Boolean = runCatching {
         value.text.bodyZh.length <= 4000 && value.text.bodyEn.length <= 4000 && value.text.code.orEmpty().length <= 128 &&
         value.text.arguments.orEmpty().size <= 16 && value.text.arguments.orEmpty().all { (key, text) -> key.length in 1..64 && text.length <= 256 } &&
         value.level.name.isNotBlank() && value.domainEventId.orEmpty().length <= 256 && value.aggregationKey.orEmpty().length <= 256 && value.category.length <= 64 &&
+        value.presentationLanguage in setOf(null,"en","zh-CN") &&
         value.occurredAtUtcMillis > 0 && value.updatedAtUtcMillis >= value.occurredAtUtcMillis && value.occurrences in 1..1_000_000 &&
         (target == null || (target.domain.length in 1..64 && target.objectId.orEmpty().length <= 256 && target.objectType.orEmpty().length <= 64 && target.section.orEmpty().length <= 256))
 }.getOrDefault(false)

@@ -457,7 +457,7 @@ class LegacyMarineController @Inject constructor(
             positionRouting.collect{routing->
                 val lockedSource=routing.active?.takeUnless{it.paused&&routing.settings.gpsDataSource==GpsDataSource.NONE}?.positionSource?.let{runCatching{GpsDataSource.valueOf(it)}.getOrNull()}
                 val effectiveSource=NewAnchorPositionSourcePolicy.resolve(routing.settings.gpsDataSource,routing.settings.demoMode)
-                systemLocation.setAppEnabled(effectiveSource in setOf(GpsDataSource.SYSTEM,GpsDataSource.DEMO))
+                // 手机定位由系统常驻/导航/值守资源租约持有，UI投影不能绕过前台服务重新启动它。
                 vesselDataHub.setShellPositionSource(effectiveSource)
             }
         }

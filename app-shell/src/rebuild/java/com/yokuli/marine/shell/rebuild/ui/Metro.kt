@@ -60,7 +60,7 @@ import kotlin.math.roundToInt
 data class MetroColors(val bg: Color, val fg: Color, val muted: Color, val panel: Color, val accent: Color,
     val controlFill: Color = panel, val controlStroke: Color = muted, val pressed: Color = panel,
     val subtle: Color = panel, val disabled: Color = muted, val accentText: Color = accent, val onAccent: Color = Color.White)
-val LocalMetro = staticCompositionLocalOf { MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color(0xFF00ABA9)) }
+val LocalMetro = staticCompositionLocalOf { MetroColors(Color.Black,Color.White,Color(0xFFAAAAAA),Color(0xFF191919),Color.White) }
 val LocalAppPage = staticCompositionLocalOf<String?> { null }
 /** 页面位于状态栏下；通知覆盖位于窗口顶端。只收进左右边缘，不整体下移内容。 */
 data class ShellHorizontalInsets(val pageStart: Dp = 22.dp, val pageEnd: Dp = 22.dp,
@@ -85,7 +85,8 @@ val LightFont=WpFontFamily
 }
 
 @Composable fun MetroTheme(os: OsStore, content: @Composable ()->Unit) {
-    val theme = WpThemePolicy.resolve(WpThemeSpec(if(os.light) WpThemeMode.LIGHT else WpThemeMode.DARK), Color(os.accent))
+    val theme = WpThemePolicy.resolve(WpThemeSpec(if(os.light) WpThemeMode.LIGHT else WpThemeMode.DARK,
+        WpAccent.entries.firstOrNull { it.argb == os.accent } ?: WpAccent.MONOCHROME), Color(os.accent))
     val colors = MetroColors(theme.background, theme.foreground, theme.muted, theme.chrome, theme.accent,
         theme.controlFill, theme.controlStroke, theme.pressed, theme.subtle, theme.disabled, theme.accentText, theme.onAccent)
     CompositionLocalProvider(LocalMetro provides colors, LocalWpTheme provides theme, LocalChinese provides os.chinese,

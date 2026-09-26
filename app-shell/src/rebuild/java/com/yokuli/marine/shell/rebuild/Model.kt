@@ -122,6 +122,7 @@ class YokuliApplication : Application() {
         if (com.yokuli.runtime.marine.notification.NotificationProcessRole.isNotificationProcess()) return
         com.yokuli.runtime.marine.MarineSystemBootstrap.initialize(this)
         os = OsStore(this)
+        os.connectSystem(marineSystem)
         os.observeNotificationUnits(notificationCoordinatorProvider.get())
         noticeEventsProvider.get().start()
     }
@@ -149,7 +150,7 @@ class OsStore(val context: Context) {
     var contentExportFailed by mutableStateOf(false)
         private set
     var chinese by mutableStateOf(initial.optString("language", Locale.getDefault().language) == "zh")
-    var accent by mutableLongStateOf(initial.optLong("accent", 0xFF007F9B))
+    var accent by mutableLongStateOf(initial.optLong("accent", 0xFFE5E5E5))
     var light by mutableStateOf(initial.optBoolean("light", false))
     var keepAwake by mutableStateOf(initial.optBoolean("keepAwake", true))
     var reduceMotion by mutableStateOf(initial.optBoolean("reduceMotion", false))
@@ -277,7 +278,7 @@ class OsStore(val context: Context) {
         val current = navigationState.session
         return NavigationCommand(requestId, action, current?.id, current?.revision, route, targetIndex, settings, externalSourceId, analysisReference)
     }
-    val hub = DataHub()
+    val hub = DataHub(context, scope)
     val library = ChartLibrary(context, scope)
     val maps = MapSessionStore(context, scope, library, initial)
     val sailing by lazy { MySailingRepository(this) }

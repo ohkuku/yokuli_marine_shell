@@ -12,10 +12,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 enum class WpThemeMode { DARK, LIGHT }
 
 enum class WpAccent(val displayName: String, val argb: Long) {
+    MONOCHROME("monochrome", 0xFFE5E5E5L),
     COBALT("cobalt", 0xFF0050EFL), CYAN("cyan", 0xFF007F9BL), EMERALD("emerald", 0xFF60A917L),
     MAGENTA("magenta", 0xFFD80073L), VIOLET("violet", 0xFF6A00FFL), CRIMSON("crimson", 0xFFA20025L), AMBER("amber", 0xFFF0A30AL),
 }
-data class WpThemeSpec(val mode: WpThemeMode = WpThemeMode.DARK, val accent: WpAccent = WpAccent.CYAN)
+data class WpThemeSpec(val mode: WpThemeMode = WpThemeMode.DARK, val accent: WpAccent = WpAccent.MONOCHROME)
 
 /** MDL2 的面板、文字、控件状态共享调色板；海图/领域业务颜色不从这里改写。 */
 data class WpColorScheme(
@@ -35,18 +36,18 @@ object WpThemePolicy {
         val dark = spec.mode == WpThemeMode.DARK
         val background = if (dark) Color.Black else Color.White
         val foreground = if (dark) Color.White else Color.Black
-        val accent = (accentOverride ?: Color(spec.accent.argb)).copy(alpha = 1f)
+        val accent = if (spec.accent == WpAccent.MONOCHROME) foreground else (accentOverride ?: Color(spec.accent.argb)).copy(alpha = 1f)
         fun foregroundFraction(alpha: Float) = foreground.copy(alpha = alpha).compositeOver(background)
         val muted = foregroundFraction(.6f)
         return WpColorScheme(
             spec = spec, background = background, foreground = foreground, muted = muted,
-            chrome = if (dark) Color(0xFF1F1F1F) else Color(0xFFF2F2F2),
+            chrome = if (dark) Color(0xFF17191B) else Color(0xFFF4F4F3),
             accent = accent, onAccent = if (contrast(Color.White, accent) >= contrast(Color.Black, accent)) Color.White else Color.Black,
             safe = if (dark) Color(0xFF6CCB5F) else Color(0xFF107C10),
             warning = if (dark) Color(0xFFFCE100) else Color(0xFF8A5700),
             alarm = if (dark) Color(0xFFFF7B7B) else Color(0xFFC42B1C), stale = muted,
-            controlFill = foregroundFraction(.2f), controlStroke = foregroundFraction(.6f),
-            pressed = foregroundFraction(.4f), subtle = foregroundFraction(.08f), disabled = foregroundFraction(.4f),
+            controlFill = foregroundFraction(.10f), controlStroke = foregroundFraction(.48f),
+            pressed = foregroundFraction(.18f), subtle = foregroundFraction(.05f), disabled = foregroundFraction(.36f),
             accentText = readableAccent(accent, background, foreground),
         )
     }

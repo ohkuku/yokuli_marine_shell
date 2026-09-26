@@ -2,6 +2,6 @@
 <!-- Generated from design/brand SVG masters; run scripts/generate_brand_assets.py. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="64dp" android:height="64dp" android:viewportWidth="64" android:viewportHeight="64">
     <group android:scaleX="1" android:scaleY="1" android:translateX="0" android:translateY="0">
-        <path android:name="body" android:fillColor="#FFFFFF" android:fillType="nonZero" android:pathData="M7,10H21L31,26L24,37Z M32,28H47L38,43V58H24V43Z" />
+        <path android:name="body" android:fillColor="#FFFFFF" android:fillType="nonZero" android:pathData="M10,47C4,33 9,19 19,12C27,6 37,5 47,7L45,14C36,12 28,14 22,19C15,25 12,37 17,45Z M52,9C69,20 67,42 57,55L46,54C61,44 64,29 52,17Z" />
     </group>
 </vector>

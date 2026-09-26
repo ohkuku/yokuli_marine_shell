@@ -338,6 +338,7 @@ private fun languageLabel(language: AppLanguage): String =
 @Composable
 private fun accentLabel(accent: WpAccent): String = stringResource(
     when (accent) {
+        WpAccent.MONOCHROME -> R.string.accent_monochrome
         WpAccent.COBALT -> R.string.accent_cobalt
         WpAccent.CYAN -> R.string.accent_cyan
         WpAccent.EMERALD -> R.string.accent_emerald

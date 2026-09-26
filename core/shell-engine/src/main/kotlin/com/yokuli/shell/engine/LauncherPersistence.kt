@@ -24,7 +24,7 @@ data class LauncherPersistedState(
     val schemaVersion: Int = CURRENT_LAUNCHER_PERSISTENCE_SCHEMA,
     val document: StartDocument? = null,
     val themeModeName: String = "DARK",
-    val accentName: String = "CYAN",
+    val accentName: String = "MONOCHROME",
     val languageTag: String = "zh-CN",
     val measurementUnitSystemName: String = "NAUTICAL",
     val motionPreferenceName: String = "FOLLOW_SYSTEM",
@@ -56,7 +56,7 @@ data class LauncherPersistenceMigrationResult(
 
 object LauncherPersistedStateMigration {
     private val themes = setOf("DARK", "LIGHT")
-    private val accents = setOf("COBALT", "CYAN", "EMERALD", "MAGENTA", "VIOLET", "CRIMSON", "AMBER")
+    private val accents = setOf("COBALT", "MONOCHROME", "EMERALD", "MAGENTA", "VIOLET", "CRIMSON", "AMBER")
     private val languages = setOf("zh-CN", "en")
     private val unitSystems = setOf("NAUTICAL", "METRIC")
     private val motionPreferences = setOf("FOLLOW_SYSTEM", "REDUCED")

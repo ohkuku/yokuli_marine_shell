@@ -67,6 +67,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 
+@javax.inject.Singleton
 class YokuliRuntimeCoordinator @Inject constructor(
  @ApplicationContext private val context:Context,
  private val navigation:NavigationRepository,
@@ -104,6 +105,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
  private val vesselAttitude:PhoneVesselAttitudeRepository,
  private val tripRuntime:TripRuntime,
  private val anchorTelemetry:AnchorTelemetryRuntime,
+ private val residency:RuntimeResidencyRepository,
 ){
  private val phoneSourceGeneration=AtomicLong(0L)
  private var phoneSourcePreparation:Job?=null
@@ -256,7 +258,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
      // UNCALIBRATED emission; unavailable streams suppress themselves while
      // Position/pressure and the listener continue.
      if(settings.serverRequested)promoteForeground(notification(l("Restoring Phone NMEA service…","正在恢复本机 NMEA 服务…"),false),location=systemLocation.hasPermission())
-     localNmeaServer.configure(settings)
+     localNmeaServer.configure(if(residency.explicitlyStopped)settings.copy(serverRequested=false)else settings)
      if(settings.serverRequested&&!readiness.ready)incidentLogger.record("local_nmea_server","RESTORED_WITH_HEADING_DEGRADED",IncidentSeverity.WARNING)
      refreshNotification()
     }
@@ -279,6 +281,16 @@ class YokuliRuntimeCoordinator @Inject constructor(
    }
   }
   scope.launch{while(isActive){delay(30_000);batteryWatchdog()}}
+  // 系统采集与任何页面无关；只复用唯一手机传感器与来源，绝不借常驻打开连接或共享。
+  scope.launch {
+   startupReady.await()
+   combine(residency.state.map { it.requested }.distinctUntilChanged(), preferences.settings.map { it.gpsDataSource }.distinctUntilChanged()) { requested, source -> requested to source }
+    .collect { (requested, source) -> reconcileResidency(requested, source) }
+  }
+  scope.launch {
+   combine(resources.state, navigation.connections, localNmeaServer.status) { resource, connections, _ -> resource to connections }
+    .collect { (resource, connections) -> residency.resources(resource.copy(needsSystemLocation=resource.needsSystemLocation&&foregroundLocationType&&systemLocation.status.value.phase==PhoneLocationPhase.LISTENING), connections.count{it.requested&&it.spec.receive}, connections.count{it.requested&&it.spec.send}, localNmeaServer.enabled || phonePositionOutput.enabled) }
+  }
  }
 
  fun submit(command:RuntimeCommand, anchorCommandId:String?=null){
@@ -286,7 +298,9 @@ class YokuliRuntimeCoordinator @Inject constructor(
   // idle-stop scheduled by the previous command must never race this command
   // and stop the Service before Android sees its foreground acknowledgement.
   idleStopJob?.cancel();idleStopJob=null
+  if(residency.explicitlyStopped||residency.state.value.phase==com.yokuli.runtime.contract.RuntimeResidencyPhase.STOPPING)return
   when(command){
+   RuntimeCommand.RefreshResidency->launchCommand { reconcileResidency(residency.state.value.requested, preferences.settings.first().gpsDataSource) }
    RuntimeCommand.NetworkChanged->{refreshNotification()}
    is RuntimeCommand.ChangeSystemPosition->launchCommand{
     val generation=phoneSourceGeneration.incrementAndGet()
@@ -810,6 +824,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
  }
 
  private fun refreshNotification(){
+  if(!started||residency.explicitlyStopped)return
   val formats=notificationCoordinator.unitFormats.value
   val anchor=anchorRuntime.snapshot();val snapshot=anchor.alarm;val active=anchor.session;val proxy=proxyRuntime.status.value;val now=wallClock.currentTimeMillis();val condition=conditionRuntime.state.value;val sonarContinuity=sonarContinuity();val anchorSafetyAlert=active?.paused==false&&(snapshot?.state==AlarmState.WARNING||snapshot?.type!=null&&snapshot.state in setOf(AlarmState.ALARM,AlarmState.ACKNOWLEDGED));val depthSafetyAlert=condition.depth.alarmActive||condition.depth.dataUnavailable;val windSafetyAlert=condition.windSpeed.warningActive||condition.windSpeed.alarmActive||condition.windSpeed.dataUnavailable;val shiftSafetyAlert=condition.windShift.alarmActive||condition.windShift.dataUnavailable;val conditionAlert=active?.paused==false&&(depthSafetyAlert||windSafetyAlert||shiftSafetyAlert);val safetyAlert=anchorSafetyAlert||conditionAlert;val audible=audioArbiter.snapshot(now).shouldSound;val snoozed=safetyAlert&&!audible;val remaining=listOfNotNull(active?.alarmSnoozedUntil,active?.depthAlarmSnoozedUntil,active?.windAlarmSnoozedUntil,active?.windShiftAlarmSnoozedUntil).filter{it>now}.minOrNull()?.let{((it-now+59_999)/60_000).coerceAtLeast(1)}
   val base=when{
@@ -841,7 +856,8 @@ class YokuliRuntimeCoordinator @Inject constructor(
    sonarRuntime.status.value.activeSurvey!=null->l("Sonar survey recording • ${sonarRuntime.status.value.activeSurvey?.sampleCount?:0} samples","声呐调查记录中 · ${sonarRuntime.status.value.activeSurvey?.sampleCount?:0} 个样本")
    tripRuntime.activeSession()?.paused==false->l("Trip Watch recording • ${tripRuntime.activeSession()?.sampleCount?:0} samples","航程监控记录中 · ${tripRuntime.activeSession()?.sampleCount?:0} 个样本")
    tripRuntime.activeSession()?.paused==true->l("Trip Watch paused","航程监控已暂停")
-   else->l("Safety monitor idle","安全监控待命")
+   residency.state.value.requested->l("Collecting vessel data · ${navigation.connections.value.count{it.requested}} connections", "船舶数据采集中 · ${navigation.connections.value.count{it.requested}} 个连接")
+   else->l("System data paused","系统数据已暂停")
   }
   val activeAlertCount=(if(anchorSafetyAlert)1 else 0)+(if(depthSafetyAlert)1 else 0)+(if(windSafetyAlert)1 else 0)+(if(shiftSafetyAlert)1 else 0)
   val countedBase=if(activeAlertCount>1)l("$base • +${activeAlertCount-1} other active alert${if(activeAlertCount>2)"s" else ""}","$base · 另有 ${activeAlertCount-1} 项警报")else base
@@ -854,8 +870,10 @@ class YokuliRuntimeCoordinator @Inject constructor(
   val needsLocationType=(resources.snapshot().needsSystemLocation||systemLocation.status.value.selectionPending)&&systemLocation.hasPermission()
   if(needsLocationType!=foregroundLocationType)promoteForeground(currentNotification,needsLocationType)
   else notificationCoordinator.publishForeground(currentNotification)
+  val resource=resources.snapshot();val connections=navigation.connections.value
+  residency.resources(resource.copy(needsSystemLocation=resource.needsSystemLocation&&foregroundLocationType&&systemLocation.status.value.phase==PhoneLocationPhase.LISTENING),connections.count{it.requested&&it.spec.receive},connections.count{it.requested&&it.spec.send},localNmeaServer.enabled||phonePositionOutput.enabled)
  }
- private fun notification(text:String,alarm:Boolean,silent:Boolean=false):Notification=notificationCoordinator.foregroundNotification(text,alarm,silent,if(alarm)l("Anchor Watch alarm","Anchor Watch 锚警") else if(mockGps.status.value.state==MockGpsState.ACTIVE)l("NMEA GPS Proxy","NMEA GPS 代理") else l("Anchor Watch active","Anchor Watch 运行中"),l("SNOOZE ${alarmSnoozeMinutes} MIN","${alarmSnoozeMinutes} 分钟后提醒"))
+ private fun notification(text:String,alarm:Boolean,silent:Boolean=false):Notification=notificationCoordinator.foregroundNotification(text,alarm,silent,if(alarm)l("Anchor Watch alarm","Anchor Watch 锚警") else if(mockGps.status.value.state==MockGpsState.ACTIVE)l("NMEA GPS Proxy","NMEA GPS 代理") else l("Yokuli OS · running","Yokuli OS · 运行中"),l("SNOOZE ${alarmSnoozeMinutes} MIN","${alarmSnoozeMinutes} 分钟后提醒"))
  fun ensureCommandForeground():Boolean{
   idleStopJob?.cancel();idleStopJob=null
   return started&&promoteForeground(notification(l("Processing safety action…","正在处理安全操作…"),false),location=foregroundLocationType||resources.snapshot().needsSystemLocation&&systemLocation.hasPermission())
@@ -900,7 +918,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
  }
  private suspend fun configurePhoneOutput(rawRequested:NmeaDeviceOutputSettings,knownReadiness:PhoneVesselOutputReadiness?=null){
   val appSettings=preferences.settings.first()
-  val requested=NmeaOutputEndpointPolicy.automatic(rawRequested,appSettings.profile)
+  val requested=NmeaOutputEndpointPolicy.automatic(if(residency.explicitlyStopped)rawRequested.copy(publicationEnabled=false)else rawRequested,appSettings.profile)
   if(!requested.anyEnabled){phonePositionOutput.configure(requested,appSettings.profile,knownReadiness);nmeaRuntime.releaseIfUnowned();return}
   if(requested.transportMode==NmeaOutputTransportMode.TCP_SERVER){
    outputSettings.requestStop();phonePositionOutput.configure(requested.copy(publicationEnabled=false),appSettings.profile,knownReadiness)
@@ -927,6 +945,17 @@ class YokuliRuntimeCoordinator @Inject constructor(
   }
   refreshNotification()
  }
+ private fun reconcileResidency(requested:Boolean, source:GpsDataSource) {
+  if(residency.state.value.phase==com.yokuli.runtime.contract.RuntimeResidencyPhase.STOPPING||requested!=residency.state.value.requested)return
+  val phone=source in setOf(GpsDataSource.SYSTEM,GpsDataSource.DEMO)
+  // 先由Android确认location前台类型，再取得定位租约；后台恢复遭拒不会假装GNSS还在采样。
+  val locationAllowed=requested&&phone&&systemLocation.hasPermission()&&promoteForeground(notification(l("Collecting vessel data","船舶数据采集中"),false),true)
+  resources.set(RuntimeOwner.SYSTEM_RESIDENT,if(requested&&!residency.explicitlyStopped)RuntimeRequirement(
+   needsSystemLocation=locationAllowed,needsWakeLock=true,needsPhoneMotion=true,needsPhoneHeading=true,needsPhonePressure=true,
+  )else null)
+  if(requested)residency.capabilitiesReady(if(phone&&!locationAllowed)"PHONE_BACKGROUND_LOCATION_NOT_ALLOWED"else null)
+  refreshNotification();releaseIfIdle()
+ }
  private fun releaseIfIdle(){
   // An empty in-memory runtime before restore is not evidence that the service
   // is idle: Room may still contain an armed watch. This guard also protects
@@ -947,8 +976,39 @@ class YokuliRuntimeCoordinator @Inject constructor(
    }
   }
  }
- private fun isIdle()=!navigation.anyRequested()&&pendingCommands.get()==0&&!alarmTestActive&&anchorRuntime.activeSession()?.paused!=false&&tripRuntime.activeSession()?.paused!=false&&proxyRuntime.status.value.state!=MockGpsState.ACTIVE&&!phonePositionOutput.enabled&&!localNmeaServer.enabled&&sonarRuntime.status.value.activeSurvey==null&&!armPending
+ private fun isIdle()=!residency.state.value.requested&&!navigation.anyRequested()&&pendingCommands.get()==0&&!alarmTestActive&&anchorRuntime.activeSession()?.paused!=false&&tripRuntime.activeSession()?.paused!=false&&proxyRuntime.status.value.state!=MockGpsState.ACTIVE&&!phonePositionOutput.enabled&&!localNmeaServer.enabled&&sonarRuntime.status.value.activeSurvey==null&&!armPending
  private fun cleanup(){alarmTestGeneration.incrementAndGet();alarmTestActive=false;audioArbiter.clearAll();alarmAudio.stop();resources.releaseLegacyServiceOwners()}
+ /** 完全退出通过领域自己的暂停/落盘路径，不丢弃尚未写入的航程批次。 */
+ suspend fun stopForExplicitExit() {
+  if (started) {
+   stateReady.await()
+   commandActor.execute {
+    phoneSourceGeneration.incrementAndGet(); phoneSourcePreparation?.cancel(); systemLocation.finishPositionSelection(false)
+    tripActor.execute { if(tripRuntime.activeSession()?.paused==false) { val result=tripRuntime.pause(); check(result.success) { result.message } } }
+    anchorActor.execute { pause() }
+    proxyActor.execute { proxyRuntime.stop("Yokuli OS exited") }
+    sonarRuntime.stop()
+    outputSettings.requestStop()
+    localNmeaServerSettings.requestStop()
+    phonePositionOutput.shutdown(); localNmeaServer.shutdown()
+    navigation.disconnectAll()
+    residency.stopRequest()
+    systemLocation.setAppEnabled(false)
+    resources.releaseAll()
+   }
+   shutdown()
+   host.stopForegroundAndSelf()
+  } else {
+   // 服务已经被 Android 回收时，仅冻结存储会话，绝不为退出重新布防。
+   tripRuntime.restore()?.takeIf { !it.paused }?.let { val result=tripRuntime.pause(); check(result.success) { result.message } }
+   dao.active()?.takeIf { !it.paused }?.let { dao.updateSession(it.copy(paused=true,alarmSnoozedUntil=null,monitoringPhase=AnchorMonitoringPhase.PAUSED.name)) }
+   outputSettings.requestStop(); localNmeaServerSettings.requestStop()
+   phonePositionOutput.shutdown(); localNmeaServer.shutdown(); proxyRuntime.stop("Yokuli OS exited")
+   navigation.disconnectAll(); residency.stopRequest(); systemLocation.setAppEnabled(false); resources.releaseAll()
+  }
+  residency.resources(RuntimeResourceSnapshot(),0,0,false)
+  residency.phase(com.yokuli.runtime.contract.RuntimeResidencyPhase.STOPPED)
+ }
  @Synchronized fun shutdown(){
   if(!started)return
   started=false
@@ -956,6 +1016,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   voyageCommands.serviceInterrupted()
   foregroundLocationType=false
   idleStopJob?.cancel();idleStopJob=null
+  systemLocation.setAppEnabled(false)
   incidentLogger.record("service","STOPPED");commandActor.shutdown();tripActor.shutdown();anchorActor.shutdown();proxyActor.shutdown();phonePositionOutput.shutdown();localNmeaServer.shutdown();tripRuntime.shutdown();anchorTelemetry.shutdown();scope.cancel();navigation.releaseBackgroundConnection();runBlocking(Dispatchers.IO){withTimeoutOrNull(2000){proxyRuntime.shutdown()}};cleanup();diagnostics.serviceStopped()
  }
  private fun channels()=notificationCoordinator.createChannels(l("Anchor and GPS status","锚警与 GPS 状态"),l("Anchor safety events","锚泊安全事件"),l("Anchor alarms with snooze","带稍后提醒的锚警"))

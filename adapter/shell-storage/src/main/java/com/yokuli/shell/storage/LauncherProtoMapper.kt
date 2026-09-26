@@ -69,7 +69,7 @@ object LauncherProtoMapper {
             preservedProto = Base64.getEncoder().encodeToString(proto.toByteArray()),
             document = if (proto.hasStartDocument()) decodeDocument(proto.startDocument) else null,
             themeModeName = proto.themeMode.ifBlank { "DARK" },
-            accentName = proto.accent.ifBlank { "CYAN" },
+            accentName = proto.accent.ifBlank { "MONOCHROME" },
             languageTag = proto.languageTag.ifBlank { "zh-CN" },
             measurementUnitSystemName = proto.measurementUnitSystem.ifBlank { "NAUTICAL" },
             motionPreferenceName = proto.motionPreference.ifBlank { "FOLLOW_SYSTEM" },

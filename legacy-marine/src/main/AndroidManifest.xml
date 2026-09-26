@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -22,7 +23,9 @@
         <package android:name="com.google.android.apps.maps" />
     </queries>
     <application>
-        <service android:name="com.yokuli.anchorwatch.service.AnchorForegroundService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="connectedDevice|location" />
+        <service android:name="com.yokuli.anchorwatch.service.AnchorForegroundService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse|connectedDevice|location">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-started marine instrument session: continuously observe phone motion, heading and pressure for local navigation history until explicit exit; retain only user-enabled marine connections and sharing." />
+        </service>
         <receiver android:name="com.yokuli.anchorwatch.service.BootRestoreReceiver" android:enabled="true" android:exported="true">
             <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
         </receiver>

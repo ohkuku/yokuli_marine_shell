@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class RuntimeOwner { NMEA_CONNECTIONS, ANCHOR_STARTUP, ANCHOR_WATCH, ANCHOR_TELEMETRY, CONDITION_MONITOR, NMEA_SHARING, GPS_PROXY, SONAR_MAPPING, PHONE_NMEA_OUTPUT, VESSEL_HUB_UI, TRIP_WATCH, AIS_TRAFFIC, NAVIGATION_SESSION, DEVICE_VIEW_UI }
+enum class RuntimeOwner { SYSTEM_RESIDENT, NMEA_CONNECTIONS, ANCHOR_STARTUP, ANCHOR_WATCH, ANCHOR_TELEMETRY, CONDITION_MONITOR, NMEA_SHARING, GPS_PROXY, SONAR_MAPPING, PHONE_NMEA_OUTPUT, VESSEL_HUB_UI, TRIP_WATCH, AIS_TRAFFIC, NAVIGATION_SESSION, DEVICE_VIEW_UI }
 data class RuntimeRequirement(
     val needsSystemLocation:Boolean=false,
     val needsNmeaTransport:Boolean=false,
@@ -92,6 +92,7 @@ class RuntimeResourceManager @Inject constructor(
     @ApplicationContext context:Context,
     private val systemLocation:SystemLocationRepository,
     private val sensors:SensorRuntime,
+    private val residency:RuntimeResidencyRepository,
 ){
     private val power=context.getSystemService(PowerManager::class.java)
     private val wifiManager=context.applicationContext.getSystemService(WifiManager::class.java)
@@ -101,7 +102,11 @@ class RuntimeResourceManager @Inject constructor(
     private var lowLatencyWifiLock:WifiManager.WifiLock?=null
     private val _state=MutableStateFlow(RuntimeResourceSnapshot())
     val state=_state.asStateFlow()
-    init{kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.Default).launch{systemLocation.sourceConsent.collect{synchronized(this@RuntimeResourceManager){reconcile()}}}}
+    init {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+        scope.launch { systemLocation.sourceConsent.collect { synchronized(this@RuntimeResourceManager) { reconcile() } } }
+        scope.launch { residency.state.collect { synchronized(this@RuntimeResourceManager) { reconcile() } } }
+    }
 
     @Synchronized fun set(owner:RuntimeOwner,requirement:RuntimeRequirement?){registry.set(owner,requirement);reconcile()}
     @Synchronized fun release(owner:RuntimeOwner){set(owner,null)}
@@ -115,7 +120,7 @@ class RuntimeResourceManager @Inject constructor(
     @Synchronized fun snapshot()=_state.value
 
     private fun reconcile(){
-        val raw=registry.snapshot()
+        val raw=if(residency.explicitlyStopped)RuntimeResourceSnapshot()else registry.snapshot()
         val wanted=raw.copy(needsSystemLocation=raw.needsSystemLocation&&systemLocation.sourceConsent.value)
         if(wanted.needsWakeLock){if(wakeLock?.isHeld!=true)wakeLock=power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"anchorwatch:runtime").apply{setReferenceCounted(false);acquire()}}
         else{wakeLock?.takeIf{it.isHeld}?.release();wakeLock=null}

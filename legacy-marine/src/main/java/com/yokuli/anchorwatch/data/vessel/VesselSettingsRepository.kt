@@ -242,7 +242,10 @@ class VesselSettingsRepository @Inject constructor(@ApplicationContext private v
 class OutputSettingsRepository @Inject constructor(@ApplicationContext private val context:Context){
     private object K{val purpose=stringPreferencesKey("output_purpose");val autoStart=booleanPreferencesKey("output_auto_start");val phonePosition=booleanPreferencesKey("phone_position_enabled");val phonePositionOptIn=booleanPreferencesKey("phone_position_publish_opt_in_v2");val phoneHeading=booleanPreferencesKey("phone_heading_enabled");val phoneHeadingOptIn=booleanPreferencesKey("phone_heading_publish_opt_in_v3");val phoneMotion=booleanPreferencesKey("phone_motion_enabled");val phoneRot=booleanPreferencesKey("phone_rot_enabled");val phoneRotOptIn=booleanPreferencesKey("phone_rot_publish_opt_in_v3");val phoneAttitude=booleanPreferencesKey("phone_attitude_enabled");val phoneAttitudeOptIn=booleanPreferencesKey("phone_attitude_publish_opt_in_v3");val phonePressure=booleanPreferencesKey("phone_pressure_enabled");val phonePressureOptIn=booleanPreferencesKey("phone_pressure_publish_opt_in_v3");val proprietary=booleanPreferencesKey("phone_proprietary_enabled");val mode=stringPreferencesKey("transport_mode");val host=stringPreferencesKey("output_host");val port=intPreferencesKey("output_port");val headingFormat=stringPreferencesKey("phone_heading_format");val transportConfigured=booleanPreferencesKey("transport_configured");val publicationEnabled=booleanPreferencesKey("publication_enabled");val positionPolicy=stringPreferencesKey("publication_position_policy");val headingPolicy=stringPreferencesKey("publication_heading_policy");val motionPolicy=stringPreferencesKey("publication_motion_policy");val rotPolicy=stringPreferencesKey("publication_rot_policy");val attitudePolicy=stringPreferencesKey("publication_attitude_policy");val pressurePolicy=stringPreferencesKey("publication_pressure_policy");val windPolicy=stringPreferencesKey("publication_derived_wind_policy");val destinations=stringPreferencesKey("output_destinations_json");val includePressure=booleanPreferencesKey("canonical_feed_include_pressure");val includeDerivedWind=booleanPreferencesKey("canonical_feed_include_derived_wind");val derivedWindOptIn=booleanPreferencesKey("derived_wind_publish_opt_in_v2")}
     private val gson=Gson();private val destinationType=object:TypeToken<List<NmeaOutputDestination>>(){}.type
-    private val outputRunning=MutableStateFlow(false)
+    private val lease=context.getSharedPreferences("phone_output_run_lease",Context.MODE_PRIVATE)
+    private fun bootCount()=android.provider.Settings.Global.getInt(context.contentResolver,android.provider.Settings.Global.BOOT_COUNT,-1)
+    private fun restoredLease()=bootCount()>=0&&lease.getInt("boot",-2)==bootCount()&&lease.getBoolean("requested",false)
+    private val outputRunning=MutableStateFlow(restoredLease())
     private val persistedSettings=context.outputSettingsStore.data.map{p->
         // A first-run setup explicitly skips NMEA Output. Existing saved
         // policies are preserved, but a fresh install never publishes merely
@@ -285,7 +288,7 @@ class OutputSettingsRepository @Inject constructor(@ApplicationContext private v
         )
     }
     val settings=combine(persistedSettings,outputRunning){persisted,running->persisted.copy(publicationEnabled=running)}
-    suspend fun activateAutoStart(){outputRunning.value=NmeaOutputLeasePolicy.shouldAutoStart(persistedSettings.first())}
+    suspend fun activateAutoStart(){/* 仅恢复同次开机中用户明确开始的输出租约，不由配置自动开始。 */ outputRunning.value=restoredLease()}
     private fun canonical(value:NmeaDeviceOutputSettings)=value.copy(
             purpose=NmeaOutputPurpose.BOAT_BUS_INJECTION,
             phonePositionEnabled=value.phonePositionEnabled,phoneHeadingEnabled=value.phoneHeadingEnabled,phoneMotionEnabled=value.phoneRateOfTurnEnabled||value.phoneAttitudeEnabled,phoneRateOfTurnEnabled=value.phoneRateOfTurnEnabled,phoneAttitudeEnabled=value.phoneAttitudeEnabled,phonePressureEnabled=value.phonePressureEnabled,
@@ -304,14 +307,20 @@ class OutputSettingsRepository @Inject constructor(@ApplicationContext private v
 
     /** Configuration persistence never mutates the live boat-network lease. */
     suspend fun saveConfiguration(value:NmeaDeviceOutputSettings)=persist(canonical(value))
-    fun requestStart(){outputRunning.value=true}
-    fun requestStop(){outputRunning.value=false}
+    fun requestStart(){
+        check(lease.edit().putInt("boot",bootCount()).putBoolean("requested",true).commit()) { "Output start could not be saved" }
+        outputRunning.value=true
+    }
+    fun requestStop(){
+        check(lease.edit().putBoolean("requested",false).commit()) { "Output stop could not be saved" }
+        outputRunning.value=false
+    }
 
     /** Compatibility entry point for restore/tests. Product UI uses the
      * explicit configuration and lease methods above. */
     suspend fun save(value:NmeaDeviceOutputSettings){
         val canonical=canonical(value)
-        outputRunning.value=canonical.publicationEnabled
+        if(canonical.publicationEnabled)requestStart()else requestStop()
         persist(canonical)
     }
 

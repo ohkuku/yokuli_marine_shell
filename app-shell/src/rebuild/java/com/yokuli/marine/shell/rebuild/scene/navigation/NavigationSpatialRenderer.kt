@@ -167,11 +167,6 @@ private class SpatialGlRenderer(surfaceTexture: SurfaceTexture, private val dens
     private var behindSide = 1f
     private val scratch=ByteBuffer.allocateDirect(8192*4).order(ByteOrder.nativeOrder()).asFloatBuffer()
     private val uvBuffer=ByteBuffer.allocateDirect(8*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(floatArrayOf(0f,0f,0f,1f,1f,0f,1f,1f));position(0)}
-    private val tickVertices=FloatArray(72*6).also{points->
-        for(i in 0 until 72){val bearing=i*5.0;val outer=bearingVector(bearing,8.0,0.0);val inner=bearingVector(bearing,if(i%6==0)7.35 else 7.75,0.0)
-            points[i*6]=inner.x.toFloat();points[i*6+2]=inner.z.toFloat();points[i*6+3]=outer.x.toFloat();points[i*6+5]=outer.z.toFloat()}
-    }
-    private val ringVertices=mutableMapOf<Pair<Double,Double>,FloatArray>()
     private var cameraDriven=false
     val moving get() = if(cameraDriven)cameraMotion.moving else motion.moving
     private data class TextTexture(val id: Int, val width: Int, val height: Int)
@@ -199,15 +194,29 @@ private class SpatialGlRenderer(surfaceTexture: SurfaceTexture, private val dens
         val camera=if(cameraDriven)
             cameraMotion.present(desiredCamera,if(input.freeYaw!=null)"free"else "heading:${input.snapshot.vesselHeading?.source}",input.snapshot.vesselHeading?.observedElapsedMillis?.takeIf{input.freeYaw==null}?:SystemClock.elapsedRealtime(),nanos)else desiredCamera
         val projection=SpatialProjection(width,height,camera)
-        GLES20.glViewport(0,0,width,height);GLES20.glClearColor(.018f,.047f,.071f,1f)
+        GLES20.glViewport(0,0,width,height);GLES20.glClearColor(.022f,.022f,.022f,1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         GLES20.glEnable(GLES20.GL_DEPTH_TEST);GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA)
+        // 地平与少量地面线提供纵深；没有雷达环，也不伪造地形/可航水域。
         val subdued=camera.issue!=null
-        val ringColor=if(subdued)floatArrayOf(.2f,.3f,.34f,.6f)else floatArrayOf(.3f,.57f,.63f,.7f)
-        circle(8.0,0.0,projection.matrix,ringColor)
-        circle(8.35,0.0,projection.matrix,floatArrayOf(.16f,.3f,.36f,.45f))
-        circle(70.0,1.6,projection.matrix,floatArrayOf(.38f,.67f,.75f,.55f))
-        mesh(tickVertices,GLES20.GL_LINES,projection.matrix,ringColor)
+        val referenceColor=floatArrayOf(.45f,.45f,.45f,if(subdued).22f else .42f)
+        val centerBearing=camera.trueBearing?:0.0
+        val forward=bearingVector(centerBearing,1.0,0.0)
+        val right=SpatialVector(-forward.z,0.0,forward.x)
+        for(distance in listOf(3.0,6.0,12.0,24.0,48.0,90.0)) {
+            val center=forward.scale(distance)
+            val left=center+right.scale(-100.0);val end=center+right.scale(100.0)
+            mesh(floatArrayOf(left.x.toFloat(),-.03f,left.z.toFloat(),end.x.toFloat(),-.03f,end.z.toFloat()),GLES20.GL_LINES,projection.matrix,referenceColor)
+        }
+        val guide=input.snapshot.steering?:input.snapshot.current
+        guide?.bearingTrueDegrees?.takeIf{it.isFinite()&&input.snapshot.live&&!guide.nearTarget&&camera.issue==null}?.let { bearing ->
+            val f=bearingVector(bearing,1.0,0.0);val side=SpatialVector(-f.z,0.0,f.x)
+            for(distance in listOf(3.0,4.8,7.0)) {
+                val tip=f.scale(distance+.35)
+                val left=f.scale(distance)+side.scale(-.28);val rightPoint=f.scale(distance)+side.scale(.28)
+                mesh(floatArrayOf(left.x.toFloat(),.02f,left.z.toFloat(),tip.x.toFloat(),.02f,tip.z.toFloat(),rightPoint.x.toFloat(),.02f,rightPoint.z.toFloat()),GLES20.GL_LINE_STRIP,projection.matrix,floatArrayOf(.94f,.94f,.94f,.8f))
+            }
+        }
         val hits=mutableListOf<SpatialHit>()
         val live = input.snapshot.live && camera.issue == null
         val current=input.snapshot.current
@@ -217,21 +226,26 @@ private class SpatialGlRenderer(surfaceTexture: SurfaceTexture, private val dens
         input.snapshot.steering?.let{target->target(target,8.8,true,projection,camera,input,hits,live)}
         input.snapshot.vesselHeading?.takeIf{it.ageMillis in 0..10_000L&&it.trueDegrees.isFinite()}?.let {
             val p=projection.project(bearingVector(it.trueDegrees,9.0,.85))
-            if(p.inside) label(if(input.chinese)"船艏" else "BOW",p.x,p.y,13f,0xff7acfe8.toInt(),width,height)
+            if(p.inside) label(if(input.chinese)"船艏" else "BOW",p.x,p.y,13f,0xffeeeeee.toInt(),width,height)
         }
         input.snapshot.courseOverGround?.takeIf{it.ageMillis in 0..10_000L&&it.trueDegrees.isFinite()}?.let {
             val p=projection.project(bearingVector(it.trueDegrees,9.0,.3))
-            if(p.inside) label("COG",p.x,p.y,12f,0xff9dabba.toInt(),width,height)
+            if(p.inside) label("COG",p.x,p.y,12f,0xff999999.toInt(),width,height)
         }
-        for (bearing in 0 until 360 step 30) {
-            val p=projection.project(bearingVector(bearing.toDouble(),7.0,-.18))
-            if(p.inside) label(when(bearing){0->"N";90->"E";180->"S";270->"W";else->"$bearing°"},p.x,p.y,if(bearing%90==0)18f else 12f,if(bearing==0)0xff77d7df.toInt()else 0xffa0bac3.toInt(),width,height)
+        val pixelsPerDegree=(width-32*density).coerceAtLeast(1f)/90f
+        val tapeY=26*density
+        for(bearing in 0 until 360 step 10) {
+            val delta=signedBearing(bearing-centerBearing)
+            if(abs(delta)>43)continue
+            val x=width/2f+delta.toFloat()*pixelsPerDegree
+            screenLines(floatArrayOf(x,tapeY+12*density,x,tapeY+(if(bearing%30==0)19 else 16)*density),width,height,floatArrayOf(.65f,.65f,.65f,.8f))
+            if(bearing%30==0)label(when(bearing){0->"N";90->"E";180->"S";270->"W";else->"$bearing°"},x,tapeY-2*density,12f,0xffbcbcbc.toInt(),width,height)
         }
+        label("${centerBearing.roundToInt()}° T",width/2f,tapeY+40*density,13f,0xffeeeeee.toInt(),width,height)
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         // 中央准线属于视线，不表示船艏；不同图元均不使用另一套方位计算。
         val cx=width/2f;val cy=height/2f;val r=7*density
-        screenLines(floatArrayOf(cx-r,cy,cx+r,cy,cx,cy-r,cx,cy+r),width,height,floatArrayOf(.83f,.93f,.97f,.65f))
-        val guide=input.snapshot.steering?:current
+        screenLines(floatArrayOf(cx-r,cy,cx+r,cy,cx,cy-r,cx,cy+r),width,height,floatArrayOf(.85f,.85f,.85f,.65f))
         val delta=guide?.bearingTrueDegrees?.takeIf{it.isFinite()&&!guide.nearTarget}?.let{ b->camera.trueBearing?.let{signedBearing(b-it)}}
         check(EGL14.eglSwapBuffers(display,surface))
         if(textures.size>80){textures.entries.take(textures.size-64).toList().forEach{(key,t)->GLES20.glDeleteTextures(1,intArrayOf(t.id),0);textures.remove(key)}}
@@ -243,20 +257,30 @@ private class SpatialGlRenderer(surfaceTexture: SurfaceTexture, private val dens
         if(target.nearTarget)return
         val point=bearingVector(bearing,radius,1.6)
         val projected=p.project(point)
-        val color=if(target.steering)floatArrayOf(.35f,.91f,.73f,if(live)1f else .45f)else if(primary)floatArrayOf(.99f,.69f,.3f,if(live)1f else .45f)else floatArrayOf(.4f,.68f,.76f,if(live).7f else .3f)
+        val color=if(primary)floatArrayOf(.95f,.95f,.95f,if(live)1f else .45f)else floatArrayOf(.56f,.56f,.56f,if(live).7f else .3f)
         if(projected.inside){
-            val a=if(primary).23f else .14f;val x=point.x.toFloat();val y=point.y.toFloat();val z=point.z.toFloat()
-            mesh(floatArrayOf(x,y+.5f,z,x-a,y,z-a,x+a,y,z-a,x,y+.5f,z,x+a,y,z-a,x+a,y,z+a,x,y+.5f,z,x+a,y,z+a,x-a,y,z+a,x,y+.5f,z,x-a,y,z+a,x-a,y,z-a),GLES20.GL_TRIANGLES,p.matrix,color)
-            mesh(floatArrayOf(x,0f,z,x,y,z),GLES20.GL_LINES,p.matrix,color)
+            val a=if(primary).55f else .38f;val x=point.x.toFloat();val z=point.z.toFloat()
+            val angle=Math.toRadians(bearing);val rx=cos(angle).toFloat()*a;val rz=sin(angle).toFloat()*a
+            if(target.steering) {
+                mesh(floatArrayOf(x-rx,1.15f,z-rz,x,1.5f,z,x+rx,1.15f,z+rz),GLES20.GL_LINE_STRIP,p.matrix,color)
+            } else {
+                // 目标门是抽象方向符号，其高度不是物理障碍物的高度。
+                mesh(floatArrayOf(x-rx,.1f,z-rz,x-rx,2.05f,z-rz,x+rx,2.05f,z+rz,x+rx,.1f,z+rz),GLES20.GL_LINE_STRIP,p.matrix,color)
+                mesh(floatArrayOf(x-rx,.1f,z-rz,x+rx,.1f,z+rz),GLES20.GL_LINES,p.matrix,floatArrayOf(color[0],color[1],color[2],.3f))
+            }
+            if (target.steering) {
+                hits+=SpatialHit(target.id,RectF(projected.x-28*density,projected.y-28*density,projected.x+28*density,projected.y+28*density))
+                return
+            }
             val caption=(if(primary)"" else if(input.chinese)"下一站 · " else "Next · ")+target.name.take(26)
-            val textY=projected.y+26*density
-            val bounds=label(caption,projected.x,textY,if(primary)17f else 13f,if(target.steering)0xff72e8bd.toInt()else if(primary)0xffffc477.toInt()else 0xff87b5c2.toInt(),p.width,p.height)
-            input.distanceLabels[target.id]?.let{label(it,projected.x,textY+22*density,13f,0xffd3e0e5.toInt(),p.width,p.height)}
+            val textY=projected.y+(if(primary)-40 else 42)*density
+            val bounds=label(caption,projected.x,textY,if(primary)17f else 13f,if(primary)0xffeeeeee.toInt()else 0xffaaaaaa.toInt(),p.width,p.height)
+            input.distanceLabels[target.id]?.takeUnless{target.steering}?.let{label(it,projected.x,textY+22*density,13f,0xffcccccc.toInt(),p.width,p.height)}
             bounds.union(projected.x-28*density,projected.y-28*density,projected.x+28*density,projected.y+28*density)
             hits+=SpatialHit(target.id,bounds)
         }else if(primary){
             var dx=projected.nx;var dy=-projected.ny
-            val relative=target.bearingTrueDegrees?.let{b->camera.trueBearing?.let{signedBearing(b-it)}}
+            val relative=camera.trueBearing?.let{signedBearing(bearing-it)}
             if(projected.behind){
                 if(relative!=null && abs(relative)<172)behindSide=if(relative<0)-1f else 1f
                 else if(relative!=null && abs(relative)<178 && abs(dx)>.2f)behindSide=if(dx<0)-1f else 1f
@@ -267,14 +291,9 @@ private class SpatialGlRenderer(surfaceTexture: SurfaceTexture, private val dens
             val scale=min((p.width/2f-margin)/abs(dx).coerceAtLeast(.001f),(p.height/2f-margin)/abs(dy).coerceAtLeast(.001f)).coerceAtLeast(0f)
             val x=p.width/2f+dx*scale;val y=p.height/2f+dy*scale;val size=10*density
             screenLines(floatArrayOf(x-dx*size-dy*size,y-dy*size+dx*size,x,y,x,y,x-dx*size+dy*size,y-dy*size-dx*size),p.width,p.height,color)
-            label(if(projected.behind){if(input.chinese)"身后"else"Behind"}else target.name.take(16),x-dx*22*density,y-dy*22*density,13f,0xffffc477.toInt(),p.width,p.height)
+            label(if(projected.behind){if(input.chinese)"身后"else"Behind"}else target.name.take(16),x-dx*22*density,y-dy*22*density,13f,0xffeeeeee.toInt(),p.width,p.height)
             hits+=SpatialHit(target.id,RectF(x-30*density,y-30*density,x+30*density,y+30*density))
         }
-    }
-    private fun circle(radius:Double,y:Double,m:FloatArray,color:FloatArray){
-        val points=ringVertices.getOrPut(radius to y){FloatArray(361*3).also{points->
-        for(i in 0..360){val a=Math.toRadians(i.toDouble());points[i*3]=(sin(a)*radius).toFloat();points[i*3+1]=y.toFloat();points[i*3+2]=(-cos(a)*radius).toFloat()}}}
-        mesh(points,GLES20.GL_LINE_STRIP,m,color)
     }
     private fun screenLines(points:FloatArray,w:Int,h:Int,color:FloatArray){
         val vertices=FloatArray(points.size/2*3)

@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             before.runtimeDiagnostics.activeOwners == after.runtimeDiagnostics.activeOwners
     } }.collectAsState(services.state.value)
     val voyage by marine.system.voyage.state.collectAsState()
+    val residency by marine.system.residency.state.collectAsState()
     val anchorCommands by marine.system.anchorCommands.commands.collectAsState()
     val voyageCommands by marine.system.voyage.commands.collectAsState()
     val traffic by remember(marine.system.ais) { marine.system.ais.snapshot.distinctUntilChanged { before, after ->
@@ -50,12 +51,31 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val hasAnchor = active != null || pendingAnchor != null
     val hasVoyage = voyage.active || voyage.commandPending
     val hasTraffic = traffic.preferences.monitoringEnabled
-    if(!hasAnchor && !hasVoyage && !hasTraffic) return
+    if(!hasAnchor && !hasVoyage && !hasTraffic && !residency.requested) return
     val c = LocalMetro.current
     val tick = rememberMarineClock()
     val nowUtc = remember(tick) { System.currentTimeMillis() }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Label(os.t("当前任务", "current tasks"), 20)
+        if(residency.requested)TaskCard(os,"Yokuli OS",when(residency.phase) {
+            RuntimeResidencyPhase.RUNNING -> os.t("后台运行中", "Running in background")
+            RuntimeResidencyPhase.STARTING -> os.t("正在启动", "Starting")
+            RuntimeResidencyPhase.STOPPING -> os.t("正在退出", "Stopping")
+            RuntimeResidencyPhase.BLOCKED -> os.t("运行受限", "Needs attention")
+            RuntimeResidencyPhase.STOPPED -> os.t("已停止", "Stopped")
+        },"settings:permissions",onOpenDestination) {
+            val capabilities=buildList {
+                if(residency.phoneLocation)add(os.t("船位", "Position"))
+                if(residency.phoneHeading)add(os.t("方向", "Heading"))
+                if(residency.phoneMotion)add(os.t("姿态", "Attitude"))
+                if(residency.phonePressure)add(os.t("气压", "Pressure"))
+                if(residency.inputConnections>0)add(os.t("${residency.inputConnections} 路输入", "${residency.inputConnections} inputs"))
+                if(residency.outputConnections>0)add(os.t("${residency.outputConnections} 路输出", "${residency.outputConnections} outputs"))
+                if(residency.sharing)add(os.t("共享中", "Sharing"))
+            }
+            Label(capabilities.joinToString(" · ").ifBlank {os.t("等待启用的数据来源", "Waiting for enabled sources")},13,c.muted)
+            if(residency.problem!=null)Label(os.t("查看权限与后台运行状态", "Review permissions and background status"),13,c.accentText)
+        }
         if(hasAnchor) {
             val recovery = active?.paused == false && (!state.runtimeDiagnostics.serviceReady ||
                 com.yokuli.anchorwatch.runtime.RuntimeOwner.ANCHOR_WATCH !in state.runtimeDiagnostics.activeOwners)

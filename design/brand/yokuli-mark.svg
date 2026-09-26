@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <title>Yokuli — split-keel Y</title>
-  <desc>An original Y formed by two bows and a keel. The open channel and detached leading edge remain visible in one colour.</desc>
-  <path id="body" fill="#FFFFFF" d="M7,10H21L31,26L24,37Z M32,28H47L38,43V58H24V43Z"/>
-  <path id="beacon" fill="#27D3C2" d="M43,10H59L51,22H36Z"/>
+  <title>Yokuli sail O</title>
+  <desc>The open O, sail and wake from the approved YOKULI OS wordmark, simplified only for small icon sizes.</desc>
+  <path id="body" fill="#FFFFFF" d="M10,47C4,33 9,19 19,12C27,6 37,5 47,7L45,14C36,12 28,14 22,19C15,25 12,37 17,45Z M52,9C69,20 67,42 57,55L46,54C61,44 64,29 52,17Z"/>
+  <path id="beacon" fill="#FFFFFF" d="M49,1C50,21 48,40 42,51C36,48 30,46 25,46C37,36 45,17 49,1Z M2,56C18,44 33,48 44,54C52,58 59,59 64,56C51,66 35,59 26,57C16,54 9,53 2,56Z"/>
 </svg>

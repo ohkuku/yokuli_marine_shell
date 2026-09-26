@@ -19,6 +19,7 @@ import javax.inject.Singleton
 
 /** 系统组合接口：应用通过窄领域端口工作，不取得本地控制器。 */
 interface MarineSystem : RuntimeEndpoint {
+    val residency: RuntimeResidencyService
     val charts: com.yokuli.runtime.contract.chart.ChartDataService
     val navigation: com.yokuli.runtime.contract.navigation.NavigationSessionService
     val analysis: com.yokuli.runtime.contract.planning.RouteAnalysisService
@@ -32,6 +33,7 @@ interface MarineSystem : RuntimeEndpoint {
 /** ROM 与普通 APK 共用此实现；可替换传输，但当前仍是同进程、同 UID。 */
 @Singleton
 class InProcessMarineSystem @Inject constructor(
+    override val residency: LocalRuntimeResidencyService,
     override val services: LocalMarineServices,
     override val charts: com.yokuli.runtime.marine.chart.LocalChartDataService,
     override val navigation: com.yokuli.runtime.marine.navigation.LocalNavigationSessionService,

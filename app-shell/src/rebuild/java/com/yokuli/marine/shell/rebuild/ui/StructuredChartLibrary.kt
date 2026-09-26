@@ -284,3 +284,9 @@ internal fun chartDataError(os:OsStore,code:String):String=when {
 
 /** 保留日期变更线两侧边界，由原生地图按整组坐标取景。 */
 private fun ChartBounds.chartCorners():List<GeoPoint> = listOf(GeoPoint(south,west),GeoPoint(north,west),GeoPoint(north,east),GeoPoint(south,east))
+
+private fun openDatasetOnChart(os: OsStore, dataset: ChartDataset) {
+    dataset.cells.filterNot { it.cancelled }.flatMap { it.bounds }.flatMap { it.chartCorners() }
+        .takeIf { it.isNotEmpty() }?.let { os.fitRequest = it }
+    os.openLinked("chart")
+}

@@ -122,7 +122,7 @@ fun tilePreferenceContributions(apps: List<ShellApp>): List<AppPreferenceContrib
 @Composable fun presetTilePresentation(os: OsStore, preset: TilePreset, animate: Boolean): LauncherEntryVisualContribution = buildTilePresentation(os, ShellApp(preset.app), animate, preset, null, null, null)
 
 /** 中文：磁贴帧只缓存展示形态；值、来源时效、趋势直接订阅系统的同一份观测。 */
-internal data class TileFrame(val key: String, val headline: String, val detail: String, val eyebrow: String = "", val image: Bitmap? = null, val demo: Boolean = false, val bearing: Double? = null, val progress: Float? = null, val live: Boolean = true, val priorityLine:String="", val history:InstrumentHistoryFrame?=null, val historyCaption:String="")
+internal data class TileFrame(val key: String, val headline: String, val detail: String, val eyebrow: String = "", val image: Bitmap? = null, val demo: Boolean = false, val bearing: Double? = null, val progress: Float? = null, val live: Boolean = true, val priorityLine:String="", val history:InstrumentHistoryFrame?=null, val historyCaption:String="", val graphic:TileMetricGraphic?=null,val overview:TileOverviewFrame?=null)
 /** 目录声明只依赖应用及用户偏好。高频船舶数据不能从返回值 Composable 扩散到整个 Shell。 */
 @Composable private fun buildTilePresentation(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?, modeOverride: String?, rotateOverride: Boolean?, intervalOverride: Long?): LauncherEntryVisualContribution {
     val preferences=if(modeOverride==null)os.shell.persistence.state.value else null
@@ -162,6 +162,7 @@ private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?>
 
 @Composable private fun LiveAppTile(os: OsStore, app: ShellApp, animate: Boolean, preset: TilePreset?, modeOverride: String?, rotateOverride: Boolean?, intervalOverride: Long?,size:MarineTileSize,context:LauncherTileRenderContext) {
     val visible=tilePresentationActive(animate&&context.liveContentEnabled)
+    tileInstrumentDisplayDemand(os,visible&&app.app==AppId.INSTRUMENTS,heading=true)
     val preferenceFlow=remember(os.shell,app.id) {os.shell.persistence.state.map {state->state?.appPreferenceValues.orEmpty().filterKeys {it.startsWith("${app.id.value}.tile.")}}.distinctUntilChanged()}
     val preferenceValues=activeTileValue(preferenceFlow,os.shell.persistence.state.value?.appPreferenceValues.orEmpty(),visible&&modeOverride==null)
     val values = preferenceValues
@@ -326,7 +327,8 @@ private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?>
     SideEffect { if (context.liveContentEnabled) heldFrame = currentFrame }
     val frame = if (context.liveContentEnabled) currentFrame else heldFrame
     Box(context.modifier.fillMaxSize().clipToBounds().semantics(mergeDescendants=true) {
-        contentDescription=listOf(title,frame.eyebrow,frame.headline,frame.priorityLine,frame.detail,frame.historyCaption).filter {it.isNotBlank()}.joinToString(" · ")
+        contentDescription=(listOf(title,frame.eyebrow,frame.headline,frame.priorityLine,frame.detail,frame.historyCaption)+
+            frame.overview?.readings.orEmpty().map {"${it.label} ${it.value} ${it.status}"}).filter {it.isNotBlank()}.joinToString(" · ")
     }) {
         if (size == MarineTileSize.ICON_1X1) ShellAppIcon(app, context.contentColor, Modifier.size(36.dp).align(Alignment.Center))
         else if (!active) TileFrameContent(os, app, title, frame, size, context.contentColor, cover)
@@ -337,6 +339,10 @@ private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?>
 }
 
 @Composable private fun TileFrameContent(os: OsStore, app: ShellApp, title: String, frame: TileFrame, size: MarineTileSize, color: Color, cover: Boolean) {
+    if(frame.overview!=null) {
+        NavigationTileContent(os,title,frame,size,color)
+        return
+    }
     if (frame.key == "MAP" && frame.image != null) {
         Box(Modifier.fillMaxSize()) {
             Image(frame.image.asImageBitmap(), os.t("最近海图快照", "Latest chart snapshot"), Modifier.fillMaxSize(),
@@ -387,19 +393,26 @@ private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?>
                     }
                     if (numeric != null) Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         WpText(numeric.groupValues[1], if (compactContent) 24 else if (wide) 46 else 34,
-                            color = color,
+                            color = if(frame.live)color else color.copy(alpha=.65f),
                             weight = FontWeight.Light, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
                         if (numeric.groupValues[2].isNotBlank()) WpText(numeric.groupValues[2].trim(), 12,
                             color = color, maxLines = 1, modifier = Modifier.padding(bottom = 4.dp))
                     } else WpText(headline, if (compactContent) 18 else 20, color = color, maxLines = 2)
                 }
                 if(frame.priorityLine.isNotBlank())WpText(frame.priorityLine,12,color=color,weight=FontWeight.SemiBold,maxLines=2)
+                if(frame.graphic!=null) {
+                    TileMetricDrawing(frame.graphic,color,Modifier.fillMaxWidth().height(if(wide&&!compactContent)38.dp else 26.dp))
+                    if(frame.graphic.kind==TileMetricGraphicKind.GAUGE)Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                        WpText(frame.graphic.minimumLabel,10,color=color.copy(alpha=.75f),maxLines=1)
+                        WpText(frame.graphic.maximumLabel,10,color=color.copy(alpha=.75f),maxLines=1)
+                    }
+                }
                 if(showHistory&&frame.history!=null) {
                     val palette=MetroColors(Color.Transparent,color,color.copy(alpha=.6f),Color.Transparent,color.copy(alpha=.8f))
                     Canvas(Modifier.fillMaxWidth().height(if(wide&&!compactContent)34.dp else 24.dp).clipToBounds()) {drawInstrumentHistory(frame.history,palette,null,false)}
                     if(frame.historyCaption.isNotBlank())WpText(frame.historyCaption,11,color=color,maxLines=1)
                 }
-                if (frame.detail.isNotBlank()&&(!showHistory||wide&&!compactContent)) WpText(frame.detail, 12, color = color,
+                if (frame.detail.isNotBlank()&&(!showHistory||wide&&!compactContent)&&(frame.graphic==null||wide&&!compactContent)) WpText(frame.detail, 12, color = color,
                     maxLines = if (wide && !compactContent) 2 else 1)
             }
             WpText(title, 12, color = color, maxLines = 1, weight = FontWeight.SemiBold)

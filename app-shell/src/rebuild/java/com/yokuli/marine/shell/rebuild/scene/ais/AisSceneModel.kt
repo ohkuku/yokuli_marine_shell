@@ -55,7 +55,7 @@ internal data class AisSceneCameraState(
     val preset: AisScenePreset = AisScenePreset.OVERVIEW,
     val rangeMeters: Double = 1852.0,
     val bearingDegrees: Double = 0.0,
-    val elevationDegrees: Double = 48.0,
+    val elevationDegrees: Double = 32.0,
     val centerLatitude: Double? = null,
     val centerLongitude: Double? = null,
     val followOwn: Boolean = true,
@@ -118,7 +118,7 @@ internal class AisLocalFrame(val origin: AisScenePosition) {
 internal data class AisSceneCamera(
     val eye: AisVector3, val target: AisVector3, val up: AisVector3,
     val halfWidth: Double, val halfHeight: Double, val clipFar: Double,
-    /** 非空时为本船视点的真实透视视角；海图式概览仍用正交。 */
+    /** 所有交通视角采用透视；距离尺度由相机目标平面的米制范围决定。 */
     val verticalFovDegrees: Double? = null,
     val aspect: Double = 1.0,
     val clipNear: Double = .1,
@@ -187,11 +187,13 @@ internal fun aisSceneFrame(data: AisSceneData, state: AisSceneCameraState, aspec
         AisSceneCamera(eye, aim, AisVector3(0.0, 1.0, 0.0), halfWidth, halfHeight, max(1000.0, range * 4.0),
             verticalFovDegrees = (58.0 * (range / 1852.0).pow(.25)).coerceIn(25.0, 85.0), aspect = safeAspect, clipNear = .5)
     } else {
-        val elevation = if (state.preset == AisScenePreset.NORTH_TOP || wantsForward) 89.95 else state.elevationDegrees.takeIf(Double::isFinite)?.coerceIn(20.0, 78.0) ?: 48.0
+        val elevation = if (state.preset == AisScenePreset.NORTH_TOP || wantsForward) 52.0 else state.elevationDegrees.takeIf(Double::isFinite)?.coerceIn(20.0, 78.0) ?: 32.0
         val pitch = Math.toRadians(elevation)
-        val distance = range * 3.2
+        val fov = 48.0
+        val distance = halfHeight / tan(Math.toRadians(fov * .5))
         val eye = target + AisVector3(-sin(angle) * cos(pitch) * distance, sin(pitch) * distance, cos(angle) * cos(pitch) * distance)
-        AisSceneCamera(eye, target, AisVector3(0.0, 1.0, 0.0), halfWidth, halfHeight, range * 12.0)
+        AisSceneCamera(eye, target, AisVector3(0.0, 1.0, 0.0), halfWidth, halfHeight, range * 14.0,
+            verticalFovDegrees = fov, aspect = safeAspect, clipNear = .5)
     }
     return AisSceneFrame(local, pose, data.targets.filter { it.position.valid }.distinctBy { it.id }, own == null)
 }
@@ -257,4 +259,35 @@ internal fun aisSceneMidpoint(a: AisScenePosition, b: AisScenePosition): AisScen
     val lat = atan2(sin(lat1) + sin(lat2), sqrt((cos(lat1) + bx).pow(2) + by * by))
     val lon = Math.toRadians(a.longitude) + atan2(by, cos(lat1) + bx)
     return AisScenePosition(Math.toDegrees(lat), (Math.toDegrees(lon) + 540.0) % 360.0 - 180.0)
+}
+
+/** 相机缓动只改变投影，不补算船位；原生模型、覆盖线、文字命中共用出帧相机。 */
+internal class AisSceneCameraMotion {
+    private var shown: AisSceneCamera? = null
+    private var lastFrameNanos = 0L
+    var moving = false; private set
+    fun advance(target: AisSceneCamera, nanos: Long): AisSceneCamera {
+        val previous = shown
+        if (previous == null || lastFrameNanos == 0L) {
+            shown = target; lastFrameNanos = nanos; moving = false; return target
+        }
+        val dt = if (nanos - lastFrameNanos > 500_000_000L) 1.0 / 60.0 else ((nanos - lastFrameNanos) / 1e9).coerceIn(0.0, .05)
+        lastFrameNanos = nanos
+        val amount = 1.0 - exp(-dt / .11)
+        fun mix(a: Double, b: Double) = a + (b - a) * amount
+        fun vector(a: AisVector3, b: AisVector3) = a + (b - a) * amount
+        val tolerance = max(.005, target.halfHeight * .00002)
+        val error = (target.eye - previous.eye).let { sqrt(it.dot(it)) } +
+            (target.target - previous.target).let { sqrt(it.dot(it)) } + abs(target.halfHeight - previous.halfHeight)
+        moving = error > tolerance || abs((target.verticalFovDegrees ?: 48.0) - (previous.verticalFovDegrees ?: 48.0)) > .005
+        val result = if (!moving) target else target.copy(
+            eye = vector(previous.eye, target.eye), target = vector(previous.target, target.target),
+            up = vector(previous.up, target.up).normalized(),
+            halfWidth = mix(previous.halfWidth, target.halfWidth), halfHeight = mix(previous.halfHeight, target.halfHeight),
+            verticalFovDegrees = mix(previous.verticalFovDegrees ?: 48.0, target.verticalFovDegrees ?: 48.0),
+            clipFar = max(previous.clipFar, target.clipFar),
+        )
+        shown = result
+        return result
+    }
 }

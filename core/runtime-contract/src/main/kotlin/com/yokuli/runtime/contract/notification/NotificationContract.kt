@@ -3,7 +3,7 @@ package com.yokuli.runtime.contract.notification
 import kotlinx.coroutines.flow.StateFlow
 
 /** 普通版本化 Binder 协议；不是 Stable AIDL，不授权第三方 UID。 */
-object NotificationProtocol { const val MAJOR = 1; const val MINOR = 0; const val MAX_HISTORY = 200; const val PAGE_SIZE = 20 }
+object NotificationProtocol { const val MAJOR = 1; const val MINOR = 1; const val MAX_HISTORY = 200; const val PAGE_SIZE = 20 }
 enum class NoticeCapability { READ_HISTORY, UPDATE_HISTORY, PUBLISH_EVENTS, READ_RECEIPTS }
 data class NoticeServiceInfo(val protocolMajor: Int, val protocolMinor: Int, val epoch: String, val capabilities: Set<NoticeCapability>)
 enum class NoticeLevel { INFO, WARNING, ALARM }
@@ -18,6 +18,8 @@ data class NoticeRecord(
     val updatedAtUtcMillis: Long = occurredAtUtcMillis, val level: NoticeLevel = NoticeLevel.INFO,
     val target: NoticeTarget? = null, val domainEventId: String? = null, val aggregationKey: String? = null,
     val category: String = "message", val dismissible: Boolean = true, val read: Boolean = false, val occurrences: Int = 1,
+    /** 发布时系统语言的只读投影；Android 通知与应用选定语言一致，不成为新偏好所有者。 */
+    val presentationLanguage: String? = null,
 ) {
     /** 当前只支持明确的对象查看动作；不把确认警报或停止任务偷藏在通知点击里。 */
     val primaryAction: NoticeAction? get() = target?.let { NoticeAction(NoticeActionKind.OPEN_TARGET, it) }
@@ -28,7 +30,9 @@ data class NotificationSnapshot(val epoch: String = "", val revision: Long = 0, 
 enum class NoticeCommandStatus { COMPLETED, REJECTED, PERSISTENCE_FAILED, UNKNOWN, NOT_SENT }
 data class NoticeCommandResult(val requestId: String, val status: NoticeCommandStatus, val revision: Long = 0, val reason: String? = null)
 enum class NoticePublishMode { OCCURRENCE, STATE_UPDATE }
-enum class NoticeOperation { PUBLISH, MARK_READ, REMOVE, CLEAR_ALL, CLEAR_READ, RESTORE, RETRY_STORAGE }
+enum class NoticeOperation { PUBLISH, MARK_READ, REMOVE, CLEAR_ALL, CLEAR_READ, RESTORE, RETRY_STORAGE,
+    /** 领域确认持续问题已结束；清除历史不能替代此动作。 */
+    RESOLVE }
 data class NoticeCommand(
     val requestId: String, val operation: NoticeOperation, val record: NoticeRecord? = null, val noticeId: String? = null,
     val expectedRevision: Long? = null, val expectedEpoch: String? = null,

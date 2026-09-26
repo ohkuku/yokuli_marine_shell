@@ -2,6 +2,8 @@ package com.yokuli.marine.core.design
 
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxWithConstraintsScope
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -129,6 +131,37 @@ fun Modifier.startTileBackground(): Modifier {
             }
             drawRect(accent.copy(alpha = backdrop.tileOpacity.coerceIn(0f, 1f)))
         }
+    }
+}
+
+/**
+ * 编辑器只测量一块磁贴。照片沿用 Start 的视口、滚动与磁贴原点投影，
+ * 不再把一整页壁纸放进小尺寸父布局，避免 Compose 约束居中造成“磁贴套磁贴”。
+ */
+@Composable
+fun StartTilePreviewSurface(
+    viewportSize: Size,
+    tileOrigin: Offset,
+    modifier: Modifier = Modifier,
+    scrollFraction: Float = 0f,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val backdrop = LocalStartBackdrop.current
+    val colors = LocalWpTheme.current
+    val photo=backdrop.image!=null&&backdrop.mode==StartBackdropMode.FULL
+    // 全屏照片会令真实Start使用暗色前景；预览也必须采用同一解析结果，黑白主题尤为明显。
+    val startColors=if(photo)WpThemePolicy.resolve(colors.spec.copy(mode=WpThemeMode.DARK),colors.accent)
+        .copy(spec=colors.spec,muted=Color.White.copy(alpha=.75f))else colors
+    CompositionLocalProvider(LocalWpTheme provides startColors) {
+        Box(modifier.clipToBounds().drawBehind {
+            if (backdrop.image == null || backdrop.mode == StartBackdropMode.NONE) {
+                drawRect(startColors.accent)
+            } else {
+                // FULL 的母图本来画在页底，TILES 画在磁贴内；裁为单块后两者投影相同。
+                drawBackdrop(backdrop, viewportSize, scrollFraction, tileOrigin)
+                drawRect(startColors.accent.copy(alpha = backdrop.tileOpacity.coerceIn(0f, 1f)))
+            }
+        }, content = content)
     }
 }
 

@@ -103,6 +103,8 @@ import com.yokuli.shell.engine.layout.TileDocumentEntry
         val owner = ShellApp(choice.owner)
         (ownerFilter == null || owner.id.value == ownerFilter || owner.page == ownerFilter) &&
             (group == null || choice.group.name == group) &&
+            // 首页先给航行故事完整的一块内容；旧单项仍可搜索、编辑或显式筛选添加。
+            (choice.group != TileContentGroup.READINGS || group == TileContentGroup.READINGS.name || needle.isNotEmpty() || selectedKey == choice.binding.contentKey) &&
             (needle.isEmpty() || listOf(choice.title.chinese, choice.title.english, choice.subtitle.chinese,
                 choice.subtitle.english, os.title(choice.owner), choice.owner.name).any { it.contains(needle, ignoreCase = true) })
     }
@@ -112,7 +114,7 @@ import com.yokuli.shell.engine.layout.TileDocumentEntry
             Field(os.t("查找内容", "Find content"), query, { onQuery(it.take(100)) })
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                TileGroupChoice(os.t("全部", "All"), group == null) { onGroup(null) }
+                TileGroupChoice(os.t("推荐", "For you"), group == null) { onGroup(null) }
                 TileContentGroup.entries.forEach { item -> TileGroupChoice(tileGroupTitle(os, item), group == item.name) { onGroup(item.name) } }
             }
             if (ownerFilter != null) MenuRow(os.t("显示所有应用的内容", "Show content from all apps"), icon = "close") { clearOwner() }
@@ -147,13 +149,11 @@ import com.yokuli.shell.engine.layout.TileDocumentEntry
     Row(Modifier.fillMaxWidth().then(if (choosing) Modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
         else Modifier.clickable(role = Role.Button, onClick = onClick)).padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        TileIdentityIcon(choice, Modifier.size(44.dp))
+        TileIdentityIcon(choice, Modifier.size(32.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Label(tileText(os, choice.title), 18)
+            Label(tileText(os, choice.title), 17)
             Label(tileText(os, choice.subtitle), 13, c.muted, maxLines = 2)
-            Label(when { selected -> os.t("当前内容", "Current content"); pinned -> os.t("已在开始屏幕", "On Start")
-                else -> os.t("来自 ", "From ") + os.title(choice.owner) },
-                12, if (selected || pinned) c.accentText else c.muted)
+            if(selected || pinned) Label(if(selected) os.t("当前内容", "Current content") else os.t("已在开始屏幕", "On Start"),12,c.fg)
         }
         Glyph(if (selected || pinned) "check" else "chevron_right", Modifier.size(18.dp), if (selected || pinned) c.accentText else c.muted)
     }
@@ -193,7 +193,7 @@ import com.yokuli.shell.engine.layout.TileDocumentEntry
 
 @Composable internal fun TileIdentityIcon(choice: TileContentChoice, modifier: Modifier = Modifier) {
     val c = LocalMetro.current
-    Box(modifier.background(c.panel), contentAlignment = Alignment.Center) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         when (choice.binding.kind) {
             TileBindingKind.READING -> Canvas(Modifier.size(28.dp)) {
                 val u = size.width / 32f
@@ -235,7 +235,7 @@ internal fun tileSizeName(os: OsStore, size: MarineTileSize): String = when (siz
 }
 private fun tileGroupTitle(os: OsStore, group: TileContentGroup): String = when (group) {
     TileContentGroup.WATCH -> os.t("航行与值守", "On board")
-    TileContentGroup.READINGS -> os.t("常看读数", "Readings")
+    TileContentGroup.READINGS -> os.t("单项读数", "Single readings")
     TileContentGroup.SAVED -> os.t("我的收藏", "Saved")
     TileContentGroup.APPS -> os.t("应用入口", "Apps")
 }

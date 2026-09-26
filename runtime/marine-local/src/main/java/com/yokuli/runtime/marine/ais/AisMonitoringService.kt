@@ -14,10 +14,12 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class AisMonitoringService : Service() {
     @Inject lateinit var traffic: LocalAisTrafficService
+    @Inject lateinit var residency: com.yokuli.anchorwatch.runtime.RuntimeResidencyRepository
     @Inject lateinit var notifications: NotificationCoordinator
     private var startFailure:String?=null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if(residency.explicitlyStopped){stopSelf();return START_NOT_STICKY}
         var location=traffic.wantsLocation()
         fun start(locationType:Boolean) {
             notifications.createAisChannels(traffic.chinese())

@@ -21,9 +21,9 @@ val LocalWpTextScale = staticCompositionLocalOf { 1f }
  */
 object WpTypeScale {
     const val AppCaption = 12
-    const val PageTitle = 24
-    const val PivotTitle = 24
-    const val SectionTitle = 20
+    const val PageTitle = 22
+    const val PivotTitle = 20
+    const val SectionTitle = 18
     const val ListTitle = 15
     const val Body = 15
     const val Caption = 12
@@ -45,7 +45,7 @@ object WpTypeScale {
     }
     fun weight(size: Int): FontWeight = when {
         size >= 34 -> FontWeight.Light
-        size >= 24 -> FontWeight(350)
+        size >= 20 -> FontWeight.SemiBold
         else -> FontWeight.Normal
     }
 }

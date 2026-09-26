@@ -2,6 +2,16 @@
 
 更新：2026-09-25。本文维护当前生产规则；主实施约束见 [YOKULI_MASTER_EXECUTION](YOKULI_MASTER_EXECUTION.md)，系统所有者和剩余兼容边界见 [10](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)。本轮接入消息 Binder 与应用内面板，不表示完整 Android 通知/SystemUI 已被接管。
 
+## Android 呈现与船位健康（2026-09-27）
+
+`AndroidNoticePresenter` 在消息服务内订阅同一份已持久快照，向 Android 发布普通消息/注意两个通知频道；默认使用系统通知音，用户在“设置 → 声音与警报”直接管理其声音、振动及系统横幅。消息语言是发布时偏好的只读投影。权限、勿扰与用户频道设置仍由 Android 决定，不绕过静音；守锚/AIS 已有持续警报音由原领域所有者播放，镜像不叠加另一轮报警。
+
+Android 点击只携带消息 ID，Shell 从自己存储的记录读取目的地；不接受外部任意 route。系统划走与应用内移除走同一幂等命令，不确认领域警报。阅读/移除后撤掉对应 Android 卡片；恢复历史不重放旧声音。通知小图标来自用户确认的帆船母版。
+
+`PositionAvailabilityNotices` 随系统事件桥运行，观察正式常驻意图、可信船位、导航/航程/守锚/AIS。选定来源或活动任务需要位置但没有可用观测时，留30秒恢复宽限，之后保留一条不可清除的待处理状态，两分钟至多提醒一次。正文带来源和上次观测年龄；滑走横幅或阅读不等于修复，回前台重新呈现未解决状态。船位恢复，或明确关闭船位且没有位置任务，由领域 `RESOLVE` 结束该状态，不改观测时间、不静默换源。普通地图浏览、资料查看和手动画线不依赖GPS；本地导航开始/恢复、守锚与航程开始仍由运行时检查船位。
+
+通知中心的系统任务卡读取 `MarineSystem.residency`，呈现实际手机采集、输入/输出连接和共享能力；页面不创建采集器，也不持有后台生命周期。
+
 ## 所有者与真实接线
 
 ```mermaid
@@ -108,13 +118,13 @@ flowchart TB
 | `NoticeAction` | 当前只支持 OPEN_TARGET，由记录 target 派生 primaryAction；警报确认/暂停不能藏在消息点击里 |
 | 结果 | COMPLETED=持久完成；REJECTED=拒绝；PERSISTENCE_FAILED=保留待恢复；NOT_SENT=未发送；UNKNOWN=通信中断可能已执行 |
 
-协议是普通 Binder descriptor/版本 1.0，非 Stable AIDL。服务在 runtime Manifest 中 `exported=false`，每笔事务/回调检查真实同 UID，不相信 publisher 自报身份。页面、事件桥共享主进程客户端；服务进程只有一个仓储。
+协议是普通 Binder descriptor/版本 1.1，非 Stable AIDL。服务在 runtime Manifest 中 `exported=false`，每笔事务/回调检查真实同 UID，不相信 publisher 自报身份。页面、事件桥共享主进程客户端；服务进程只有一个仓储。
 
 每页最多 20 条并按 96k 字符传输上限动态缩小，历史最多 200 条、订阅最多 8，callback 只提示 epoch/revision。消息文件读取硬上限 32MB，结构化 arguments 最多 16 项且每值最多 256 字符。客户端初次/断连后重新握手、注册回调、按同 revision 分页；分页中有变化重取，不拼混不同版本。服务死亡公布 DISCONNECTED、保留历史，Client death 清订阅，重连不自动执行未知 UI 命令。协议不兼容或权限拒绝明确受限；这些不是有效船位、可用声音或系统安全状态。
 
 `NotificationRepository` 以 AtomicFile 保存 schema/revision、记录、领域去重窗口 512、守锚事件游标和最近 128 请求回执及参数摘要。同 requestId 相同命令返回原结果，不同内容拒绝。写入成功检查比较完整文件与待提交 UTF-8 字节，按缓冲区读取，不再假设 JSON 的 revision 位于前 256 字节；ART 的字段排序差异和较长历史不能被误判为保存失败。去重及回执有界，不能描述成无限期恰好一次保证；领域原始事件仍由原存储保留。
 
-先提交文件再发布新 revision/成功结果。写失败保留旧快照与一份 pending 完整事务，独立 persistenceFailure + 显式 retry；读取失败保护原历史并提供重新读取，不能用空投影覆盖。两种故障在中心分别说明。不在同一失败仓储递归发布失败消息。客户端最多 32 个在途请求，等待 12 秒仍未回则 UNKNOWN，但客户端 scope 中的真实调用继续，最近 64 条 results 回执允许晚到结果回流；页面关闭不会取消已提交事务。Shell 的 `hasUnknownCommands` 保留未知操作锁，`recheckPending()` 查询同一 requestId，只有原请求晚到/查询确认才解除，不自动换 ID 重发。只有运行时领域发布桥可对有稳定事件 ID/游标的 PUBLISH 幂等重送。
+先提交文件再发布新 revision/成功结果。写失败保留旧快照与一份 pending 完整事务，独立 persistenceFailure + 显式 retry；读取失败保护原历史并提供重新读取，不能用空投影覆盖。两种故障在中心分别说明。不在同一失败仓储递归发布失败消息。客户端最多 32 个在途请求，等待 12 秒仍未回则 UNKNOWN，但客户端 scope 中的真实调用继续，最近 64 条 results 回执允许晚到结果回流；页面关闭不会取消已提交事务。Shell 的 `hasUnknownCommands` 保留未知操作锁，`recheckPending()` 查询同一 requestId，只有原请求晚到/查询确认才解除，不自动换 ID 重发。只有运行时领域发布桥可对有稳定事件 ID/游标的 PUBLISH 幂等重送。持续船位状态在每次真正持有传输锁发送前重新核对领域事实，退出或恢复后放弃过时提醒；RESOLVE 同样不能越过更新后的缺失状态。Android 呈现异常不会中断历史订阅，失败重试不重复已成功消息的声音；系统划除经默认进程的共享客户端提交，消息子进程不绑定自己。
 
 `MarineNotificationEvents` 直接订阅运行时 `pendingUserFeedback`，持久发布完成后才消费，避免 UI 异步提示发出就丢掉原反馈。船位时效继续由数据读模型表达，不把更新间隔转换成通知风暴。航行通知直接订阅 `voyage.commands`，使用稳定 `voyage-command:<requestId>` 与 `STATE_UPDATE`，UNKNOWN → CONFIRMED 更新同一消息而不增加发生次数。旧反馈的发布者归属推断仍集中在运行时兼容转换；新 AIS、守锚、航行发布者提供明确身份、目标与语义参数。
 

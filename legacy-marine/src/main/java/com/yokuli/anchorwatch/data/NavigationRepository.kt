@@ -44,6 +44,7 @@ data class NmeaInstrumentState(
     private val settings:SettingsRepository,
     private val vesselSettings:VesselSettingsRepository,
     private val store:NmeaConnectionStore,
+    private val residency:com.yokuli.anchorwatch.runtime.RuntimeResidencyRepository,
     private val manualDisconnect:com.yokuli.anchorwatch.runtime.nmea.NmeaManualDisconnectRepository,
 ){
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
@@ -117,6 +118,7 @@ data class NmeaInstrumentState(
     }
     suspend fun removeConnection(id:String){stopConnection(id);synchronized(guard){sessions.remove(id);publishConnections()};store.save(connectionSpecs.value)}
     fun startConnection(id:String):Boolean=synchronized(guard){
+        if(residency.explicitlyStopped)return@synchronized false
         val session=sessions[id]?:return@synchronized false
         if(session.requested)return@synchronized false
         store.setRequested(id,true)
@@ -316,7 +318,7 @@ data class NmeaInstrumentState(
     fun disconnect(){activeProfileStableId().takeIf{it.isNotBlank()}?.let(::stopConnection)}
     fun disconnectAll(){val ids=synchronized(guard){store.clearRequested();connectionSpecs.value.map{it.id}};ids.forEach(::stopConnection)}
     private fun restoreRequestedConnections()=synchronized(guard){
-        store.requestedIds().forEach{id->if(sessions[id]?.requested==false)startConnection(id)}
+        if(!residency.explicitlyStopped)store.requestedIds().forEach{id->if(sessions[id]?.requested==false)startConnection(id)}
     }
     suspend fun acquireBackgroundConnection(p:ConnectionProfile):Boolean {
         while(!loaded)delay(10)

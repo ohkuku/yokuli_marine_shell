@@ -9,6 +9,8 @@
 | 原始输入、连接身份及代次 | `NmeaConnectionStore`、连接运行时；手机 repository | Marine Core 的 InputRegistry/Transport 模块 | 船联网管理连接；数据中心查看来源 |
 | 字段选源、候选、可信读数 | `VesselSettingsRepository`、`VesselSourceRegistry / VesselDataHub`、`AcceptedPositionRepository` | Marine Core 的 SourcePolicy/DataHub 模块 | 数据中心修改；其他应用和分享只读 |
 | 手机安装、方向校准、定位意图 | `AppSettings / VesselMountCalibrationRepository` 与资源运行时 | Marine Core 的 DeviceInputPolicy 模块 | 数据中心；通知中心只导航到数据中心，不直接执行校准 |
+| 系统常驻意图与显式停止 | `RuntimeResidencyRepository` + 原 `YokuliRuntimeCoordinator` | `MarineSystem.residency` | 前台进入申请常驻，Settings/退出磁贴共用完整退出；页面关闭不释放系统采集 |
+| 仪表短历史 | 同一 `DataHub` + `ReadingHistoryCache` | 现有可信快照的有界只读投影 | 后台持续保留 15 分钟实际样本；同设备开机恢复，不能冒充当前值或接续跨进程曲线 |
 | 航行会话、样本、事件 | `TripRuntime` + Room | Voyage 模块 | 海图/日志/快捷项都是同一组命令 |
 | 守锚会话、锚点、范围与告警 | `AnchorWatchRuntime` + Room | Anchor 模块 | 守锚主界面；Shell/地图仅反映状态 |
 | 活动导航及冻结路线版本 | `LocalNavigationSessionService` + 原子文件 | `MarineSystem.navigation` | 海图和我的航行发命令；驾驶台、地图和磁贴读取同一会话 |
@@ -19,14 +21,17 @@
 | 对外发送与本机监听 | 连接输出配置、`LocalNmeaServerSettingsRepository` | Publication 模块；每个目的地独立策略 | 船联网管理远端；数据共享管理本机服务器 |
 | 船名、单位、校准等领域偏好 | 现有 DataStore repositories | VesselPreferences；原子更新 | 设置/数据中心按字段授权 |
 | 语言、主题、文字大小 | `LauncherPersistedState` / Shell preferences | Shell preference store | 设置管理系统偏好 |
-| 磁贴内容、表现与布局 | `TileBinding` / `TilePresentation` / `StartDocument` | Shell 引擎与原 Proto DataStore | 三入口共用临时编辑器，按内容去重、按实例提交；工坊管内容、Start 管布局 |
-| 领域事件与通知历史 | 业务 Room/AIS 事件；消息子进程 `NotificationRepository` | 原领域留警报与任务；消息服务单写历史、已读、聚合与消费游标；Shell 只拥有面板/提示 | `NotificationClient` 发布/订阅/清除；清除不确认警报 |
+| 磁贴内容、表现与布局 | `TileBinding` / `TilePresentation` / `StartDocument` | Shell 引擎与原 Proto DataStore | 应用列表/工坊固定内容，Start 编辑既有实例，共用临时编辑器；工坊默认提供航行组合，按内容去重、按实例提交 |
+| 领域事件与通知历史 | 业务 Room/AIS 事件；消息子进程 `NotificationRepository` | 原领域留警报与任务；消息服务单写历史、已读、聚合与消费游标；Shell/Android 只作呈现 | `NotificationClient` 发布/订阅/清除；领域 RESOLVE 解除持续状态，清除不确认警报；声音尊重 Android 频道设置 |
 | 页面、返回链、地图视口与草稿 | Shell task state、各应用 saveable state | Shell / 所属应用 | 不写入航行或守锚的运行状态 |
 
 多个模块可以位于同一个 Marine Core 进程。表格划分的是写入权限，不要求每行建立数据库、服务或远程 API。
 
 ```mermaid
 flowchart LR
+    Resident[系统常驻意图 / 显式停止] --> Resources[原资源协调器]
+    Resources --> Phone
+    Resources --> Nmea
     Phone[手机 GNSS / IMU / 气压] --> Input[输入注册：sourceId + generation]
     Nmea[NMEA 多连接] --> Input
     Input --> Candidates[每指标候选与有效性]
@@ -36,6 +41,8 @@ flowchart LR
     Accepted --> Trip[航行会话]
     Accepted --> Nav[导航会话]
     Accepted --> Views[海图 / 驾驶台 / 磁贴]
+    Accepted --> History[同一 DataHub / 有界短历史缓存]
+    History --> Views
     Accepted --> Pub[发布策略：能力 + 来源追踪]
     Input --> Raw[原始转发：来源连接与实际 peer]
     Raw --> Pub
@@ -54,6 +61,10 @@ flowchart LR
     Trip --> Events
     Nav --> Events
     Events --> Notices[通知投影与消费游标]
+    Accepted --> PositionHealth[船位健康 / 宽限与提醒冷却]
+    PositionHealth --> Notices
+    Notices --> AppNotices[应用通知中心]
+    Notices --> AndroidNotices[Android 通知 / 声音频道]
 ```
 
 ## 公共语义

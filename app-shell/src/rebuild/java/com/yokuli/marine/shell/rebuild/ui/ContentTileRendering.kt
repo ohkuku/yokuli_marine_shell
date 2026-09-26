@@ -58,7 +58,11 @@ private enum class TileContentAvailability { LOADING, AVAILABLE, MISSING, FAILED
     return when(binding.kind) {
         TileBindingKind.READING->readingTileFrame(os,binding.contentId,presentation,active)
         TileBindingKind.CURRENT_TASK->taskTileFrame(os,binding.contentId,presentation.style=="detail",active)
-        TileBindingKind.OVERVIEW->if(binding.contentId=="aisTraffic")trafficTileFrame(os,presentation.style=="detail",active)else unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
+        TileBindingKind.OVERVIEW->when(binding.contentId) {
+            "aisTraffic"->trafficTileFrame(os,presentation.style=="detail",active)
+            "navigationReadings","windConditions","environment","depthClearance","vesselAttitude"->navigationOverviewTileFrame(os,binding.contentId,presentation,active)
+            else->unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
+        }
         TileBindingKind.SAVED_PLACE,TileBindingKind.SAVED_ROUTE->savedTileFrame(os,binding)
         else->unavailableTileFrame(os,TileContentAvailability.UNSUPPORTED)
     }
@@ -119,7 +123,7 @@ private fun readingTileProjection(state:VesselDataSnapshot,tile:InstrumentTileId
     }
     val initial=state?.value?.vesselData?.let {if(navigationMetric&&navigation!=null)it.withNavigation(navigation.value)else it}
     val data=activeTileValue(projectionFlow,initial?.let {readingTileProjection(it,tile,directionStyle)} ?: ReadingTileProjection(),active)
-    tileReadingDisplayDemand(os,id,active)
+    tileInstrumentDisplayDemand(os,active,id in TileReadingPresentationPolicy.directionIds || id in TileReadingPresentationPolicy.windIds || id in TileReadingPresentationPolicy.attitudeIds)
     val now=tileElapsed(active)
     val observation=data.observation
     val number=data.number?.takeIf {!InstrumentReadingPolicy.requiresFresh(tile)||observation.displayIsLive()}
@@ -154,10 +158,11 @@ private fun readingTileProjection(state:VesselDataSnapshot,tile:InstrumentTileId
     val range=if(fixedMinimum!=null&&fixedMaximum!=null&&fixedMinimum<fixedMaximum)fixedMinimum to fixedMaximum else tileDefaultRange(id,number)
     val rangeOut=number!=null&&fixedMinimum!=null&&fixedMaximum!=null&&(number<fixedMinimum||number>fixedMaximum)
     val graphic=when {
-        directionStyle->TileMetricGraphic(TileMetricGraphicKind.COMPASS,if(id in TileReadingPresentationPolicy.windIds)aux?.liveNumber()else number,relative=id=="APPARENT_WIND_SPEED")
-        config.style=="attitude"->TileMetricGraphic(if(id=="PITCH")TileMetricGraphicKind.PITCH else TileMetricGraphicKind.HEEL,number,range.first,range.second)
+        directionStyle->TileMetricGraphic(TileMetricGraphicKind.COMPASS,if(id in TileReadingPresentationPolicy.windIds)aux?.liveNumber()else number,relative=id=="APPARENT_WIND_SPEED",
+            observation=if(id in TileReadingPresentationPolicy.windIds)aux ?: VesselObservation<Double>()else observation)
+        config.style=="attitude"->TileMetricGraphic(if(id=="PITCH")TileMetricGraphicKind.PITCH else TileMetricGraphicKind.HEEL,number,range.first,range.second,observation=observation)
         config.style=="gauge"->TileMetricGraphic(TileMetricGraphicKind.GAUGE,number?.let {os.displayMetricValue(metric,it)},
-            os.displayMetricValue(metric,range.first),os.displayMetricValue(metric,range.second),os.formatMetric(metric,range.first),os.formatMetric(metric,range.second))
+            os.displayMetricValue(metric,range.first),os.displayMetricValue(metric,range.second),os.formatMetric(metric,range.first),os.formatMetric(metric,range.second),observation=observation)
         else->null
     }
     val position=observation.value as? VesselPosition
@@ -195,6 +200,7 @@ private fun readingTileProjection(state:VesselDataSnapshot,tile:InstrumentTileId
     val now=tileElapsed(active)
     val state=os.marine?.services?.state
     return when(id) {
+        "systemExit"->TileFrame("systemExit",os.t("退出 Yokuli","Exit Yokuli"),os.t("停止后台运行","Stop background operation"),priorityLine=os.t("点按后确认","Confirmation required"))
         "navigation"->{
             val flow=os.marine?.system?.navigation?.state
             val nav=activeTileValue(flow,flow?.value?:os.navigationState,active)

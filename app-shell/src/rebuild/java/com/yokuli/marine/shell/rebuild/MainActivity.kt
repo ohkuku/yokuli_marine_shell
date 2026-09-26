@@ -1,5 +1,7 @@
 package com.yokuli.marine.shell.rebuild
 
+import kotlinx.coroutines.launch
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.Intent
@@ -32,6 +34,9 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private var automaticResidencySuspended = false
+    /** 显式退出保存未完成时，权限返回/旋转不能重新打开已关闭的采集。 */
+    fun holdAutomaticResidencyForExit(hold: Boolean) { automaticResidencySuspended = hold }
     private var longBackConsumed = false
     private var foregroundFrames = false
     private val displayManager by lazy { getSystemService(DisplayManager::class.java) }
@@ -80,6 +85,7 @@ class MainActivity : ComponentActivity() {
         // Android 12+ 的系统 splash 由系统自行移除，不等待标志动画、不拦截首帧。
         setTheme(R.style.Theme_YokuliOS)
         super.onCreate(savedInstanceState)
+        automaticResidencySuspended = savedInstanceState?.getBoolean("yokuli.explicit_exit_pending") == true
         os.connectSystem((application as YokuliApplication).marineSystem)
         os.systemAction=serviceHandler
         // 配置变化会重用最初的 HOME intent；旋转只恢复当前任务，不再次执行 Home。
@@ -111,6 +117,15 @@ class MainActivity : ComponentActivity() {
             returnHomeFromRomIntent(intent)
             return
         }
+        intent.getStringExtra("yokuli.notice.id")?.takeIf { it.length in 1..256 }?.let { id ->
+            // Android通知仅携带持久消息身份；目的地取自自己的消息服务，不信任外部route字符串。
+            intent.removeExtra("yokuli.notice.id")
+            os.scope.launch {
+                kotlinx.coroutines.withTimeoutOrNull(8000) { os.notifications.awaitLoaded() }
+                os.openNotification(id)
+            }
+            return
+        }
         val target=runCatching {intent.getIntExtra("yokuli.ais.target",0)}.getOrDefault(0).takeIf {it in 1..999_999_999}
         val route=runCatching {intent.getStringExtra("yokuli.ais.route")}.getOrNull()
         val routedMmsi=route?.takeIf {it.length<=24&&it.startsWith("ais:target:")}
@@ -132,6 +147,10 @@ class MainActivity : ComponentActivity() {
     }
     override fun onResume() {
         super.onResume()
+        val residency = (application as YokuliApplication).marineSystem.residency
+        val returningHomeAfterExit = BuildConfig.ROM_HOME && intent?.hasCategory(Intent.CATEGORY_HOME) == true && residency.state.value.explicitlyStopped
+        if (!isFinishing && !isDestroyed && !returningHomeAfterExit && !automaticResidencySuspended) residency.startFromForeground()
+        os.scope.launch { kotlinx.coroutines.withTimeoutOrNull(10_000) { os.notifications.onAppForeground() } }
         foregroundFrames = true
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         requestSmoothFrames()
@@ -180,6 +199,10 @@ class MainActivity : ComponentActivity() {
         }
         os.save()
         super.onPause()
+    }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("yokuli.explicit_exit_pending", automaticResidencySuspended)
+        super.onSaveInstanceState(outState)
     }
     override fun onDestroy() { if(os.systemAction === serviceHandler) os.systemAction=null;super.onDestroy() }
 }

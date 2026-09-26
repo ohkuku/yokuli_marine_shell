@@ -4,6 +4,8 @@ R0 的安全边界是：**把 Yokuli 作为普通 HOME APK 预置到 AOSP 产品
 
 通知服务新增同 UID 的非导出子进程 Binder 接入；它不是平台权限、独立 UID、第三方通知访问或完整 SystemUI。
 
+系统常驻复用现有非导出前台服务，Android 14+ 声明 `FOREGROUND_SERVICE_SPECIAL_USE` 和持续本地海事仪表用途；所选手机定位另需既有精确定位与 `location` 前台类型，不新增后台定位授权，不从不可见页面绕过 while-in-use 限制。APK 分发到应用商店时仍需按商店要求申报该用途，Manifest 声明不是审核通过。系统完全退出先保存领域暂停与连接关闭，再持久化退出闩锁；服务恢复入口不得绕过它。详见 [常驻生命周期](03-LIFECYCLE-AND-RECOVERY.md#当前系统常驻与完全退出2026-09-27)。
+
 本文中的“现有”表示代码已有，“本轮配置”表示已定义构建输入，“后续计划”表示尚未实现或验证的发行要求。`userdebug`、APK `debug/release` 和设备 bootloader 锁定状态是不同概念，不能混用。
 
 ## 1. 基线与信任边界

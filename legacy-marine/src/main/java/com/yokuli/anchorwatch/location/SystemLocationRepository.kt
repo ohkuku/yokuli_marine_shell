@@ -40,6 +40,7 @@ data class PhoneLocationStatus(
 class SystemLocationRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     settings:com.yokuli.anchorwatch.data.preferences.SettingsRepository,
+    private val residency:com.yokuli.anchorwatch.runtime.RuntimeResidencyRepository,
 ) {
     private val locationManager = context.getSystemService(LocationManager::class.java)
     private val guard = Any()
@@ -69,7 +70,7 @@ class SystemLocationRepository @Inject constructor(
             override fun onReceive(context:Context?,intent:Intent?){synchronized(guard){reconcileLocked()}}
         },IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION),ContextCompat.RECEIVER_NOT_EXPORTED)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob()+kotlinx.coroutines.Dispatchers.Default).launch{
-            settings.settings.collect{value->synchronized(guard){
+            kotlinx.coroutines.flow.combine(settings.settings,residency.state){settings,_->settings}.collect{value->synchronized(guard){
                 sourcePermitsPhone=value.gpsDataSource in setOf(com.yokuli.anchorwatch.domain.model.GpsDataSource.SYSTEM,com.yokuli.anchorwatch.domain.model.GpsDataSource.DEMO)
                 _sourceConsent.value=sourcePermitsPhone;reconcileLocked()
             }}
@@ -155,7 +156,7 @@ class SystemLocationRepository @Inject constructor(
 
     @SuppressLint("MissingPermission")
     private fun reconcileLocked() {
-        val requested=preparingSelection||sourcePermitsPhone&&(appEnabled||backgroundEnabled)
+        val requested=!residency.explicitlyStopped&&(preparingSelection||sourcePermitsPhone&&(appEnabled||backgroundEnabled))
         val permission=hasPermission()
         val providerEnabled=runCatching{locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)}.getOrDefault(false)
         if(!requested||!permission){

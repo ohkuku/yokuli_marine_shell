@@ -39,6 +39,9 @@ data class NavigationSpatialSnapshot(
     val live: Boolean = false,
     val issueText: String? = null,
     val steering: SpatialNavigationTarget? = null,
+    /** 已确认过安装但关系失效时，不能悄悄切回未经校准的手持视角。 */
+    val mountNeedsConfirmation: Boolean = false,
+
 )
 
 /**
@@ -101,12 +104,19 @@ internal fun resolveSpatialCamera(
     }
     if (freeYaw != null) return at(wrapBearing(freeYaw), freePitch.coerceIn(-60.0, 50.0), free = true)
     if (snapshot.mountMode == SpatialMountMode.VESSEL_MOUNTED) {
-        val heading = snapshot.vesselHeading?.takeIf { it.trueDegrees.isFinite() && it.ageMillis in 0..10_000L }
+        if (snapshot.mountNeedsConfirmation) return at(0.0, -8.0, "mount")
+        val heading = snapshot.vesselHeading?.takeIf {
+            it.trueDegrees.isFinite() && (it.observedElapsedMillis?.let { at -> nowElapsed - at } ?: it.ageMillis) in 0..10_000L
+        }
         return if (heading != null) {
             val base = at(heading.trueDegrees, (snapshot.vesselPitchDegrees ?: 0.0).coerceIn(-60.0, 60.0))
             val heel = Math.toRadians((snapshot.vesselHeelDegrees ?: 0.0).coerceIn(-70.0, 70.0))
             val a = Math.toRadians(heading.trueDegrees)
-            base.copy(up = SpatialVector(cos(a) * sin(heel), cos(heel), sin(a) * sin(heel)))
+            val pitch = Math.toRadians((snapshot.vesselPitchDegrees ?: 0.0).coerceIn(-60.0, 60.0))
+            // 先从规范艏向/纵倾构造正交船体，再绕船艏轴施加横倾。不能把屏幕重力当作船体零点。
+            val right = SpatialVector(cos(a), 0.0, sin(a))
+            val levelUp = SpatialVector(-sin(a) * sin(pitch), cos(pitch), cos(a) * sin(pitch))
+            base.copy(up = levelUp.scale(cos(heel)) + right.scale(sin(heel)))
         } else at(0.0, -12.0, "heading")
     }
     if (!sample.sensorAvailable) return at(0.0, -12.0, "sensor")
@@ -114,17 +124,24 @@ internal fun resolveSpatialCamera(
     if (sample.accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE || sample.headingAccuracyDegrees?.let { it > 35.0 } == true)
         return at(0.0, -12.0, "magnetic")
     if (conversion == null) return at(0.0, -12.0, "north")
-    // -Z 是穿过屏幕朝远处的视线；物理顶部/安装船艏不能替代它。
-    val forward = worldVector(shown.rotate(0.0, 0.0, -1.0), conversion.declinationDegrees)
-    if (hypot(forward.x, forward.z) < .18) return at(0.0, -12.0, "vertical")
+    // 手持不是必须举起的 AR：平放使用屏幕上沿，抬起后平滑过渡到穿过屏幕的观察方向。
+    // 这些轴只决定观察镜头，不能写回已校准船艏或覆盖数据中心来源。
     val upAxis = when (rotation) {
         Surface.ROTATION_90 -> SpatialVector(-1.0, 0.0, 0.0)
         Surface.ROTATION_180 -> SpatialVector(0.0, -1.0, 0.0)
         Surface.ROTATION_270 -> SpatialVector(1.0, 0.0, 0.0)
         else -> SpatialVector(0.0, 1.0, 0.0)
     }
-    return SpatialCamera(forward, worldVector(shown.rotate(upAxis.x, upAxis.y, upAxis.z), conversion.declinationDegrees),
-        wrapBearing(Math.toDegrees(atan2(forward.x, -forward.z))))
+    val through = worldVector(shown.rotate(0.0, 0.0, -1.0), conversion.declinationDegrees)
+    val screenTop = worldVector(shown.rotate(upAxis.x, upAxis.y, upAxis.z), conversion.declinationDegrees)
+    val horizontal = hypot(through.x, through.z)
+    val amount = ((horizontal - .25) / .55).coerceIn(0.0, 1.0).let { it * it * (3.0 - 2.0 * it) }
+    val direction = through.scale(amount) + screenTop.scale(1.0 - amount)
+    if (hypot(direction.x, direction.z) < .03) return at(0.0, -8.0, "magnetic")
+    val bearing = wrapBearing(Math.toDegrees(atan2(direction.x, -direction.z)))
+    // 导向地平不跟着手机看向天空或脚下；固定支架模式仍完整使用船体姿态。
+    return at(bearing, -8.0)
+
 }
 
 /** 同一列主序PV矩阵用于GL网格、标注、边缘与点击命中。 */

@@ -124,11 +124,17 @@ class BinderNotificationClient private constructor(context: Context) : Notificat
         withTimeoutOrNull(10_000) { connection.first { it == NoticeConnection.READY || it == NoticeConnection.CLOSED || it == NoticeConnection.UNSUPPORTED } }
         return remote?.takeIf { connection.value == NoticeConnection.READY }
     }
-    override suspend fun execute(command: NoticeCommand): NoticeCommandResult {
+    override suspend fun execute(command: NoticeCommand): NoticeCommandResult = executeGuarded(command, null)
+
+    /** 持续状态提示在真正发送前再次核对领域事实；不让等待连接的旧提示越过退出/恢复。 */
+    internal suspend fun executeIfCurrent(command: NoticeCommand, stillCurrent: () -> Boolean): NoticeCommandResult =
+        executeGuarded(command, stillCurrent)
+
+    private suspend fun executeGuarded(command: NoticeCommand, stillCurrent: (() -> Boolean)?): NoticeCommandResult {
         if (closed || !commandSlots.tryAcquire()) return NoticeCommandResult(command.requestId, NoticeCommandStatus.NOT_SENT, reason = "CLIENT_QUEUE_FULL_OR_CLOSED")
         // task 属于进程级客户端。调用方/面板离开或等待超时都不取消已进入 Binder 的事务。
         val task = scope.async {
-            try { executeConnected(command).also(::rememberResult) }
+            try { executeConnected(command, stillCurrent).also(::rememberResult) }
             finally { commandSlots.release() }
         }
         return withTimeoutOrNull(12_000) { task.await() }
@@ -137,10 +143,11 @@ class BinderNotificationClient private constructor(context: Context) : Notificat
     @Synchronized private fun rememberResult(result: NoticeCommandResult) {
         _results.value = (_results.value.filterKeys { it != result.requestId } + (result.requestId to result)).entries.toList().takeLast(64).associate { it.key to it.value }
     }
-    private suspend fun executeConnected(command: NoticeCommand): NoticeCommandResult {
+    private suspend fun executeConnected(command: NoticeCommand, stillCurrent: (() -> Boolean)?): NoticeCommandResult {
         val binder = connected() ?: return NoticeCommandResult(command.requestId, NoticeCommandStatus.NOT_SENT, reason = "SERVICE_NOT_CONNECTED")
         return withContext(Dispatchers.IO) { transport.withLock {
             if (remote !== binder) return@withLock NoticeCommandResult(command.requestId, NoticeCommandStatus.NOT_SENT, reason = "SERVICE_CHANGED")
+            if (stillCurrent?.invoke() == false) return@withLock NoticeCommandResult(command.requestId, NoticeCommandStatus.REJECTED, reason = "CONDITION_CHANGED")
             try {
                 val raw = NoticeWire.gson.toJson(command)
                 if (raw.length > NoticeWire.MAX_PAYLOAD) return@withLock NoticeCommandResult(command.requestId, NoticeCommandStatus.REJECTED, reason = "COMMAND_TOO_LARGE")

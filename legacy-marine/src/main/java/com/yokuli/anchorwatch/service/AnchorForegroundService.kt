@@ -23,6 +23,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class AnchorForegroundService : Service() {
     @Inject lateinit var runtime: YokuliRuntimeCoordinator
+    @Inject lateinit var residency: com.yokuli.anchorwatch.runtime.RuntimeResidencyRepository
 
     private val runtimeHost = object : RuntimeServiceHost {
         override fun notificationPermissionGranted(): Boolean =
@@ -35,7 +36,7 @@ class AnchorForegroundService : Service() {
         override fun startForeground(notification: Notification, location: Boolean): Boolean =
             runCatching {
                 val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+                    (if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) or
                         if (location) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
                 } else {
                     0
@@ -56,20 +57,25 @@ class AnchorForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        runtime.start(runtimeHost)
+        if (!residency.explicitlyStopped) runtime.start(runtimeHost)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Every startForegroundService request gets a synchronous foreground
         // acknowledgement, including commands racing an idle self-stop. The
         // coordinator replaces this starter notification with live state.
-        runtime.ensureCommandForeground()
+        if (residency.explicitlyStopped) { stopSelf(); return START_NOT_STICKY }
+        if (!runtime.ensureCommandForeground()) {
+            residency.phase(com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED, "BACKGROUND_START_NOT_ALLOWED")
+            stopSelf(); return START_NOT_STICKY
+        }
         runtime.submit(RuntimeCommandParser.parse(intent), intent?.getStringExtra(com.yokuli.anchorwatch.runtime.AnchorCommandRegistry.COMMAND_ID_EXTRA))
         return START_STICKY
     }
 
     override fun onDestroy() {
         runtime.shutdown()
+        if (residency.state.value.requested) residency.phase(com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED, "BACKGROUND_SERVICE_INTERRUPTED")
         super.onDestroy()
     }
 

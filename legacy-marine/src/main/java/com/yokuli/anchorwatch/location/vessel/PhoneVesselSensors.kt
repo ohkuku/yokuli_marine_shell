@@ -57,9 +57,12 @@ data class VesselMountCalibration(
 enum class PhoneVesselOutputBlocker{VESSEL_ZERO_REQUIRED,MOUNT_CONFIRMATION_REQUIRED,HEADING_ALIGNMENT_REQUIRED,MOUNT_SUSPECT}
 data class PhoneVesselOutputReadiness(val ready:Boolean,val blockers:Set<PhoneVesselOutputBlocker>)
 object PhoneVesselOutputReadinessPolicy{
-    fun evaluate(calibration:VesselMountCalibration,@Suppress("UNUSED_PARAMETER") runtimeMountState:PhoneVesselMountState):PhoneVesselOutputReadiness{
+    fun evaluate(calibration:VesselMountCalibration,runtimeMountState:PhoneVesselMountState):PhoneVesselOutputReadiness{
         val blockers=buildSet{
             if(!calibration.headingAligned)add(PhoneVesselOutputBlocker.HEADING_ALIGNMENT_REQUIRED)
+            if(!calibration.attitudeFrameConfirmed)add(PhoneVesselOutputBlocker.VESSEL_ZERO_REQUIRED)
+            if(!calibration.mountConfirmed||runtimeMountState!=PhoneVesselMountState.VESSEL_MOUNTED)add(PhoneVesselOutputBlocker.MOUNT_CONFIRMATION_REQUIRED)
+            if(runtimeMountState==PhoneVesselMountState.MOUNT_SUSPECT||calibration.mountState==PhoneVesselMountState.MOUNT_SUSPECT)add(PhoneVesselOutputBlocker.MOUNT_SUSPECT)
         }
         return PhoneVesselOutputReadiness(blockers.isEmpty(),blockers)
     }

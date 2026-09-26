@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.layout
@@ -271,15 +273,10 @@ import kotlin.math.roundToInt
                 val rect = it.boundsInWindow()
                 visible = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < view.height
             }.semantics { contentDescription = os.t("磁贴预览，不执行操作", "Tile preview; no action is performed") }, content = {
-                StartWallpaperSurface(Modifier.requiredSize(with(density) { viewport.widthPx.toDp() }, with(density) { viewport.heightPx.toDp() }),
-                    scrollFraction = { scrollFraction }) {
+                StartTilePreviewSurface(Size(viewport.widthPx.toFloat(), viewport.heightPx.toFloat()),
+                    Offset(originX.toFloat(), originY.toFloat()), Modifier.fillMaxSize(), scrollFraction) {
                     val backdrop = LocalStartBackdrop.current
-                    val foreground = if (backdrop.image != null && backdrop.mode != StartBackdropMode.NONE && backdrop.tileOpacity < .7f) Color.White else c.onAccent
-                    Box(Modifier.offset(with(density) { originX.toDp() }, with(density) { originY.toDp() })
-                        .layout { measurable, _ ->
-                            val child = measurable.measure(Constraints.fixed(widthState.value.coerceAtLeast(1), heightState.value.coerceAtLeast(1)))
-                            layout(child.width, child.height) { child.place(0, 0) }
-                        }.clipToBounds().startTileBackground()) {
+                    val foreground = if (backdrop.image != null && backdrop.mode != StartBackdropMode.NONE && backdrop.tileOpacity < .7f) Color.White else LocalWpTheme.current.onAccent
                         Box(Modifier.fillMaxSize().padding(if (visual.fullBleed && draft.size != MarineTileSize.ICON_1X1) 0.dp
                             else if (draft.size == MarineTileSize.ICON_1X1) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
                             // 配置变化立即得到新渲染实例；离屏/暂停只冻结数据，不得把旧样式的 heldFrame 带回来。
@@ -288,14 +285,13 @@ import kotlin.math.roundToInt
                                     liveContentEnabled = active && visible && resumed))
                             }
                         }
-                    }
                 }
             }) { children, constraints ->
-                val child = children.single().measure(Constraints.fixed(viewport.widthPx, viewport.heightPx))
+                val child = children.single().measure(Constraints.fixed(widthState.value.coerceAtLeast(1), heightState.value.coerceAtLeast(1)))
                 val width = (widthState.value * scale).roundToInt().coerceAtLeast(1)
                 val height = (heightState.value * scale).roundToInt().coerceAtLeast(1)
                 layout(constraints.constrainWidth(width), constraints.constrainHeight(height)) {
-                    child.placeWithLayer((-originX * scale).roundToInt(), (-originY * scale).roundToInt()) {
+                    child.placeWithLayer(0, 0) {
                         transformOrigin = TransformOrigin(0f, 0f)
                         scaleX = scale; scaleY = scale
                     }

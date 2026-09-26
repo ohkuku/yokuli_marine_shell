@@ -35,6 +35,7 @@ class MarineNotificationEvents @Inject constructor(
     @Synchronized fun start() {
         if (started) return
         started = true
+        scope.launch { watchPositionAvailability(systemProvider.get(), ::publish) }
         scope.launch {
             val services = systemProvider.get().services
             val accepted = linkedSetOf<Long>()
@@ -90,9 +91,19 @@ class MarineNotificationEvents @Inject constructor(
         }
     }
     private suspend fun publish(command: NoticeCommand): Boolean {
+        val language = when(systemProvider.get().services.state.value.settings.appLanguage) {
+            com.yokuli.anchorwatch.domain.model.AppLanguage.SIMPLIFIED_CHINESE -> "zh-CN"
+            com.yokuli.anchorwatch.domain.model.AppLanguage.ENGLISH -> "en"
+            else -> null
+        }
+        val localized = command.copy(record=command.record?.copy(presentationLanguage=language))
         var delayMillis = 1000L
         while (currentCoroutineContext().isActive) {
-            val result = client.execute(command)
+            val isPositionUpdate = command.operation == NoticeOperation.PUBLISH && command.record?.id == "system:position-required"
+            val isPositionResolve = command.operation == NoticeOperation.RESOLVE && command.noticeId == "system:position-required"
+            val result = if(isPositionUpdate || isPositionResolve) client.executeIfCurrent(localized) {
+                positionNeedsAttention(systemProvider.get()) == isPositionUpdate
+            } else client.execute(localized)
             when (result.status) {
                 NoticeCommandStatus.COMPLETED -> return true
                 NoticeCommandStatus.REJECTED -> return false // 畸形领域事件不能永久阻塞后续合法事件。

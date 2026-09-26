@@ -13,6 +13,7 @@ import java.io.File
 class AisRestoreReceiver : BroadcastReceiver() {
     override fun onReceive(context:Context,intent:Intent) {
         if(intent.action!=Intent.ACTION_BOOT_COMPLETED)return
+        if(context.getSharedPreferences("system_runtime_residency",Context.MODE_PRIVATE).getBoolean("explicit_stop",false))return
         val pending=goAsync()
         val app=context.applicationContext
         CoroutineScope(SupervisorJob()+Dispatchers.IO).launch {

@@ -47,6 +47,13 @@ internal fun tileDefaultRange(id:String,value:Double?=null):Pair<Double,Double> 
         }
         return
     }
+    if(binding.kind==TileBindingKind.OVERVIEW) {
+        if(binding.contentId=="environment"&&presentation.style=="detail") {
+            AppSection(os.t("气压回看","Pressure history"))
+            listOf(5,15).forEach {minutes->ChoiceRow(os.t("近 $minutes 分钟","Last $minutes minutes"),(presentation.historyMinutes ?: 15)==minutes) {onChange(presentation.copy(historyMinutes=minutes))}}
+        }
+        return
+    }
     if(binding.kind!=TileBindingKind.READING)return
     val id=binding.contentId
     val tile=tileInstrumentId(id) ?: return

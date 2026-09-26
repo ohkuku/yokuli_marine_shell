@@ -41,10 +41,19 @@ class NotificationBinderService : Service() {
         super.onCreate()
         check(NotificationProcessRole.isNotificationProcess()) { "Notification writer requires its dedicated process" }
         repository = NotificationRepository(applicationContext)
+        val presentation = AndroidNoticePresenter(applicationContext)
+        scope.launch {
+            initialized.await()
+            while (isActive) {
+                delay(30_000)
+                if(presentation.needsRetry) presentation.present(repository.snapshot.value)
+            }
+        }
         scope.launch {
             try { repository.initialize(); initialized.complete(Unit) }
             catch (failure: Throwable) { initialized.completeExceptionally(failure); throw failure }
             repository.snapshot.collect { value ->
+                presentation.present(value)
                 callbacks.keys.forEach { listener ->
                     val parcel = Parcel.obtain()
                     try {

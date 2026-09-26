@@ -36,6 +36,7 @@ internal fun NoticeRecord.asNotice() = SystemNotice(id, AppId.entries.firstOrNul
 
 /** 只拥有 Shell 消息投影与 toast 排队；唯一持久化写者在 :notifications 服务进程。 */
 class SystemNotificationStore(context: Context, private val scope: CoroutineScope) {
+    var presentationLanguage: String? = null
     private val client = BinderNotificationClient.shared(context)
     private val userCommands = Mutex()
     private val pendingRequests = linkedMapOf<String, NoticeCommand>()
@@ -99,7 +100,7 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
                 while (acknowledgedBanners.size > 256) acknowledgedBanners.remove(acknowledgedBanners.first())
                 initialized = true
             }
-            banner?.let { current -> if (items.none { it.id == current.id && !it.read }) banner = null }
+            banner?.let { current -> if (items.none { it.id == current.id && (!it.read || !it.dismissible) }) banner = null }
         } }
         scope.launch { for (notice in banners) {
             if (presentationVisible || items.none { it.id == notice.id && it.updatedAt == notice.updatedAt && !it.read }) continue
@@ -109,7 +110,19 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
         } }
     }
     fun setPresentationVisible(visible: Boolean) { presentationVisible = visible; if (visible) banner = null }
+    /** 回前台时展示尚未解决的系统状态；后台已经响过的声音不在这里重播。 */
+    suspend fun onAppForeground() {
+        awaitLoaded()
+        if (!presentationVisible) items.firstOrNull { !it.dismissible }?.let { current ->
+            // 已读仅指看过，持续问题仍需要处理。直接呈现而不制造新的历史事件。
+            banner = current
+            delay(6000)
+            if (banner?.id == current.id && banner?.updatedAt == current.updatedAt) banner = null
+        }
+    }
     suspend fun awaitLoaded() { client.snapshot.first { it.epoch.isNotBlank() } }
+    /** 仅供明确退出后收束系统状态；普通删除/已读仍不能消除未解决的问题。 */
+    suspend fun resolvePositionAfterExit() = client.execute(NoticeCommand(uid(), NoticeOperation.RESOLVE, noticeId="system:position-required"))
     fun dismissBanner() { banner = null }
     fun post(notice: SystemNotice, showBanner: Boolean = true) {
         if (showBanner) {
@@ -117,7 +130,7 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
             while (bannerCandidates.size > 64) bannerCandidates.remove(bannerCandidates.keys.first())
         }
         scope.launch {
-            val command = NoticeCommand(uid(), NoticeOperation.PUBLISH, record = notice.record())
+            val command = NoticeCommand(uid(), NoticeOperation.PUBLISH, record = notice.record().copy(presentationLanguage=presentationLanguage))
             var result = client.execute(command)
             repeat(2) {
                 if (result.status == NoticeCommandStatus.NOT_SENT) { delay(2000); result = client.execute(command) }

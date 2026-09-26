@@ -23,6 +23,8 @@ flowchart TB
         APP --> HOST
         BRIDGE --> API
         HOST --> NAV[NavigationSessionService / 冻结路线与回执]
+        HOST --> RESIDENT[RuntimeResidencyService / 常驻意图与彻底退出]
+        RESIDENT --> DOMAIN
         HOST --> CHART[ChartDataService / 图幅与版本租约]
         HOST --> PLAN[RouteAnalysis / RoutePlanning 同一工作区]
         CHART --> PLAN
@@ -43,8 +45,10 @@ flowchart TB
     subgraph NOTICES[同 APK / UID 的 notifications 子进程]
         BINDER[NotificationBinderService] --> NREPO[NotificationRepository]
         NREPO --> NFILE[(唯一消息历史文件)]
+        NREPO --> MIRROR[AndroidNoticePresenter / 已提交消息镜像]
     end
-    NCLIENT -->|版本 1.0 Binder| BINDER
+    MIRROR --> ANDROID[Android NotificationManager / 声音与系统通知]
+    NCLIENT -->|版本 1.1 Binder| BINDER
 ```
 
 | 位置 | 当前代码职责 | 明确不承担 |
@@ -112,6 +116,8 @@ flowchart TB
 
 **显示需求：** `acquireMapHeading()`、`acquireInstruments()` 各返回独立的 `DisplayLease`。第一个消费者申请才开启对应显示需求，最后一个消费者释放才关闭；`close()` 幂等，关闭一个页面不会撤销另一个页面仍持有的需求。Shell 在 `DisposableEffect` 中持有和释放句柄。这是同进程引用计数，不是 Binder 死亡通知或跨进程资源租约；显示句柄关闭也不停止全局航行/守锚。
 
+**系统常驻：** `MarineSystem.residency` 是已接入的纯契约入口。`LocalRuntimeResidencyService` 将启动/退出意图交给原 `YokuliRuntimeCoordinator`，`SYSTEM_RESIDENT` 资源所有者继续采集可用手机传感器和用户选中的定位；页面显示句柄释放不再撤销该需求。NMEA 输入、远端输出和本机共享仍由原所有者管理，不因常驻擅自开启。`RuntimeResidencyRepository` 持久保存显式停止闩锁，彻底退出先暂停实际任务并停止资源，再等待短历史与通知解除提交；Settings 和退出磁贴共用该流程。具体权限、恢复和失败处理见 [生命周期](03-LIFECYCLE-AND-RECOVERY.md)。
+
 **仍然会中断的情况：** 默认进程崩溃、被系统终止或设备重启仍会影响海事对象。通知进程故障只隔离消息历史，不能替海事运行时维持守锚或记录。`@Singleton` 只限定进程内实例；`SupervisorJob` 不是故障隔离、持久任务日志或后台存活保证。后台限制、前台服务、持久资料和恢复判断仍由 Android 及既有业务执行层承担，参见 [03 · 生命周期与恢复](03-LIFECYCLE-AND-RECOVERY.md)。
 
 ## 5. 航程录制状态属于运行时，UI 只作投影
@@ -128,7 +134,7 @@ Shell 的所有航行启停经 `MarinePresentationBridge` 转发到共享 `Voyag
 
 这仍是**进程内**账本，不是持久幂等航行协议。进程重启后的请求追踪、调用方身份及航行 IPC 仍未完成；通知持久回执不扩大成航行的保证。纯契约保留业务代码，Shell 决定用户反馈。
 
-这里的 `VoyageSessionCoordinator` 负责轨迹录制。实际路线导航的冻结路线、目标索引和引导计算目前仍在 `OsStore` / UI `Navigation.kt` 中，不能把录制协调器称为已完成的 `NavigationSessionService`。两者是独立生命周期，导航领域迁移属于后续工作。
+这里的 `VoyageSessionCoordinator` 负责轨迹录制；实际路线导航由已接入的 `MarineSystem.navigation` / `LocalNavigationSessionService` 独立持有冻结路线、目标索引和引导计算。`OsStore` 保留只读兼容投影，不能把录制与导航当成同一个会话。迁移闭环见本页末节。
 
 ### 守锚回执（experience.9）
 
@@ -196,18 +202,20 @@ python3 scripts/check_runtime_boundaries.py
 | `runtime/marine-local/.../notification/MarineNotificationEvents.kt` | 默认进程唯一守锚/AIS 事件发布桥，订阅内容/交通服务，以领域 ID 与游标发布；不依赖 OsStore 或通知页面 |
 | `NotificationRepository.kt` | 子进程唯一写者；历史、聚合、已读、清除、幂等去重、回执与故障恢复 |
 | `NotificationBinderService.kt` | 非导出同 UID 服务、协议检查、分页、有限订阅与 client death 清理 |
+| `AndroidNoticePresenter.kt` | 将已落盘通知镜像到 Android 通知栏和声音频道；系统划除仍经唯一消息服务，不确认领域警报 |
+| `PositionAvailabilityNotices.kt` | 读取唯一船位和活动任务，启动宽限后按冷却更新同一待处理记录；恢复或明确关闭后提交 RESOLVE |
 | `BinderNotificationClient.kt` | 主进程共享连接、IO 传输、握手/重连、epoch/revision 快照与未知结果查询 |
 | `SystemNotifications.kt` | NotificationClient 的 Shell 兼容投影及 toast 队列；无文件写入、无业务事件游标、无 expanded 状态 |
 | `NotificationShadeState.kt` / `NotificationCenter.kt` | Shell 面板状态、跟手动画、输入/焦点、可见已读和历史操作；不拥有领域任务 |
 | `NotificationQuickActions.kt` / `NotificationTasks.kt` | 显示偏好结果、来源/连接只读摘要、原领域当前任务与命令入口 |
 | `WpShellRuntime.kt` / `WpShellExperience.kt` | 统一关闭/Back/Home、通知交接、原实例恢复、输入屏蔽、显示租约与截图资格 |
 
-`YokuliApplication` 按进程角色装配：`:notifications` 不初始化 Shell、海事 runtime、Room、定位或 socket。消息服务用 `notifications/history-v1.json`，旧 `system-notifications.json` 留作只读迁移输入，旧 Shell 直接写入与 `MarineNoticeBridge` 的领域订阅路径已退出。服务使用普通版本化 Binder 1.0，非 Stable AIDL；同 UID 不是独立安全边界。细节见 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)、[03](03-LIFECYCLE-AND-RECOVERY.md)、[05](05-SECURITY-AND-UPDATES.md)。
+`YokuliApplication` 按进程角色装配：`:notifications` 不初始化 Shell、海事 runtime、Room、定位或 socket。消息服务用 `notifications/history-v1.json`，旧 `system-notifications.json` 留作只读迁移输入，旧 Shell 直接写入与 `MarineNoticeBridge` 的领域订阅路径已退出。服务使用普通版本化 Binder 1.1，非 Stable AIDL；同 UID 不是独立安全边界。细节见 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)、[03](03-LIFECYCLE-AND-RECOVERY.md)、[05](05-SECURITY-AND-UPDATES.md)。
 
 ## 9. 按真实缺口继续
 
 1. 逐领域迁出兼容 `MainUiState`/legacy entity，不整体搬到 core 改名；新契约必须有真实消费者。
-2. 路线导航状态仍在 OsStore/Navigation.kt，内容仍跨 Room 与 Shell JSON；这两项尚未完成独立领域/跨存储原子迁移。
+2. 导航已迁出 Shell，但内容仍跨 Room 与 Shell JSON；尚未完成统一内容所有者及跨存储原子迁移。短历史缓存是同次设备开机的有界读投影，不是长期全量数据档案。
 3. 记录、守锚、AIS 和显示租约仍在默认进程，尚无完整 Marine Core Binder、独立 UID、持久幂等会话命令或统一 boot 恢复屏障。
 4. 通知不读取第三方通知，不替换 Android SystemUI/Recents，不迁移航海服务到 system_server。
 5. ROM 产品输入和 HOME flavor 已有，完整镜像、Cuttlefish 启动、真机/BSP、AVB/OTA 与发行密钥仍各有外部依赖，不能以本轮消息 IPC 或必要编译推断完成。

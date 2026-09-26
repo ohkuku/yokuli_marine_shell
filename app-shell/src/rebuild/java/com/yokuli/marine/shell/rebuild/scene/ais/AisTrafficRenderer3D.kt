@@ -72,6 +72,7 @@ internal class AisTrafficRenderer3D(
     private val onFailure: (String) -> Unit,
     private val onReady: () -> Unit,
     private val onPresentedTargets: (Set<String>) -> Unit,
+    private val onPresentedFrame: (AisSceneFrame) -> Unit,
 ) : UiHelper.RendererCallback, Choreographer.FrameCallback {
     private val handler = Handler(Looper.getMainLooper())
     private val choreographer = Choreographer.getInstance()
@@ -110,6 +111,8 @@ internal class AisTrafficRenderer3D(
     private var height = 0
     private var data: AisSceneData? = null
     private var frame: AisSceneFrame? = null
+    private var desiredFrame: AisSceneFrame? = null
+    private val cameraMotion = AisSceneCameraMotion()
     private var cameraState = AisSceneCameraState()
     private var selectedId: String? = null
     private var light = false
@@ -157,7 +160,7 @@ internal class AisTrafficRenderer3D(
         guarded {
             Gltfio.init()
             val e = Engine.create(Engine.Backend.OPENGL).also { engine = it }
-            renderer = e.createRenderer().apply { clearOptions = Renderer.ClearOptions().apply { clear = true; clearColor = doubleArrayOf(0.01, 0.025, 0.035, 1.0) } }
+            renderer = e.createRenderer().apply { clearOptions = Renderer.ClearOptions().apply { clear = true; clearColor = doubleArrayOf(0.018, 0.018, 0.018, 1.0) } }
             scene = e.createScene()
             view = e.createView().apply {
                 scene = this@AisTrafficRenderer3D.scene
@@ -172,10 +175,10 @@ internal class AisTrafficRenderer3D(
             resourceLoader = ResourceLoader(e)
             lightEntity = EntityManager.get().create()
             LightManager.Builder(LightManager.Type.DIRECTIONAL)
-                .color(0.95f, 0.98f, 1f).intensity(90_000f).direction(-0.6f, -1f, -0.5f)
+                .color(1f, 1f, 1f).intensity(90_000f).direction(-0.6f, -1f, -0.5f)
                 .castShadows(false).build(e, lightEntity)
             scene?.addEntity(lightEntity)
-            indirectLight = IndirectLight.Builder().irradiance(1, floatArrayOf(0.8f, 0.88f, 1f)).intensity(24_000f).build(e)
+            indirectLight = IndirectLight.Builder().irradiance(1, floatArrayOf(.9f, .9f, .9f)).intensity(24_000f).build(e)
             scene?.indirectLight = indirectLight
             helper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK).also { it.isOpaque = true; it.renderCallback = this }
             // Pager 可先测量/创建 TextureView，再激活本页、启动引擎。
@@ -220,14 +223,14 @@ internal class AisTrafficRenderer3D(
         guarded {
             // 年龄文字、COG 虚线和轨迹由 Compose 画。它们更新不能让全部原生模型重传材质/变换。
             val geometryChanged = nativeGeometryChanged(this.data, data)
-            val cameraChanged = this.frame?.camera != frame.camera || this.frame?.local?.origin != frame.local.origin
+            val cameraChanged = desiredFrame?.camera != frame.camera || desiredFrame?.local?.origin != frame.local.origin
             if (geometryChanged || this.selectedId != selectedId) {
                 prioritizedTargets = frame.targets.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }
                     .thenByDescending { it.risk }.thenByDescending { it.followed }.thenBy { it.id })
             }
             val changed = geometryChanged || cameraChanged || cameraState.rangeMeters != state.rangeMeters || this.selectedId != selectedId || this.light != light
             val visibilityChanged = desiredActive != active
-            this.data = data; this.frame = frame; cameraState = state; this.selectedId = selectedId; this.light = light; desiredActive = active
+            this.data = data; desiredFrame = frame; if (this.frame == null) this.frame = frame; cameraState = state; this.selectedId = selectedId; this.light = light; desiredActive = active
             if (changed) {
                 contentDirty = true
                 if (cameraChanged) cameraDirty = true
@@ -292,7 +295,7 @@ internal class AisTrafficRenderer3D(
             val p = f.targetProjections[target.id] ?: f.camera.project(f.local.position(target.position))
             return p.x in -.25f..1.25f && p.y in -.25f..1.25f
         }
-        val candidates = listOfNotNull(own?.takeUnless { f.camera.verticalFovDegrees != null }?.takeIf(::visible)) + prioritizedTargets.filter(::visible).take(64)
+        val candidates = listOfNotNull(own?.takeUnless { cameraState.preset == AisScenePreset.BOW_FORWARD }?.takeIf(::visible)) + prioritizedTargets.filter(::visible).take(64)
         val ships = candidates.filter { it.kind == AisSceneKind.VESSEL && validAisBearing(it.headingDegrees) != null }
         val neutral = candidates.filterNot { it.kind == AisSceneKind.VESSEL && validAisBearing(it.headingDegrees) != null }
         vesselPool?.retain(ships.mapTo(mutableSetOf()) { it.id }, s)
@@ -315,13 +318,24 @@ internal class AisTrafficRenderer3D(
                 if (!alreadyShown) s.addEntities(instance.entities)
             }
             plane?.let { asset ->
-                val size = max(f.camera.halfHeight, f.camera.halfWidth) * 4.0
+                val size = max(f.camera.halfHeight, f.camera.halfWidth) * 20.0
                 val matrix = floatArrayOf(size.toFloat(), 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, size.toFloat(), 0f, f.camera.target.x.toFloat(), -1f, f.camera.target.z.toFloat(), 1f)
                 if (planeTransform?.contentEquals(matrix) != true) {
                     tm.setTransform(tm.getInstance(asset.root), matrix)
                     planeTransform = matrix
                 }
-                if (!planeVisible) { s.addEntities(asset.entities); planeVisible = true }
+                if (!planeVisible) {
+                    val rm = e.renderableManager
+                    asset.entities.forEach { entity ->
+                        val instance = rm.getInstance(entity)
+                        if (instance != 0) for (index in 0 until rm.getPrimitiveCount(instance)) {
+                            val material = rm.getMaterialInstanceAt(instance, index)
+                            if (material.material.hasParameter("baseColorFactor")) material.setParameter("baseColorFactor", .055f, .055f, .055f, 1f)
+                            if (material.material.hasParameter("roughnessFactor")) material.setParameter("roughnessFactor", .9f)
+                        }
+                    }
+                    s.addEntities(asset.entities); planeVisible = true
+                }
             }
         } finally { tm.commitLocalTransformTransaction() }
         if (lightEntity != 0 && appliedLight != light) {
@@ -339,18 +353,21 @@ internal class AisTrafficRenderer3D(
             val renderable = rm.getInstance(entity)
             if (renderable == 0) continue
             for (primitive in 0 until rm.getPrimitiveCount(renderable)) {
-                val material = materials.getOrPut(key) {
+                val material = materials.getOrPut("$key:$primitive") {
                     val source = rm.getMaterialInstanceAt(renderable, primitive)
                     MaterialInstance.duplicate(source, "ais-$key").apply {
                         if (getMaterial().hasParameter("baseColorFactor")) {
                             val color = when (key) {
-                                "old" -> floatArrayOf(.28f, .31f, .34f, 1f)
-                                "own" -> floatArrayOf(.95f, .98f, 1f, 1f)
+                                "old" -> floatArrayOf(.25f, .25f, .25f, 1f)
+                                "own" -> floatArrayOf(.98f, .98f, .98f, 1f)
                                 "risk" -> floatArrayOf(1f, .27f, .10f, 1f)
-                                "selected" -> floatArrayOf(.16f, .75f, 1f, 1f)
-                                else -> floatArrayOf(.56f, .78f, .86f, 1f)
+                                "selected" -> floatArrayOf(1f, 1f, 1f, 1f)
+                                else -> floatArrayOf(.6f, .6f, .6f, 1f)
                             }
-                            setParameter("baseColorFactor", color[0], color[1], color[2], color[3])
+                            // GLB 共享母版的顺序为船体/甲板/玻璃/配件。状态着色保留玻璃与甲板层次。
+                            val shade = when (primitive) { 1 -> .86f; 2 -> .10f; 3 -> .52f; else -> 1f }
+                            if (primitive == 2) setParameter("baseColorFactor", shade, shade, shade, 1f)
+                            else setParameter("baseColorFactor", color[0] * shade, color[1] * shade, color[2] * shade, color[3])
                         }
                     }
                 }
@@ -376,6 +393,13 @@ internal class AisTrafficRenderer3D(
                 !ready -> "first-frame"
                 else -> "frame"
             }
+            desiredFrame?.let { requested ->
+                val pose = cameraMotion.advance(requested.camera, frameTimeNanos)
+                if (frame?.camera != pose || frame?.local !== requested.local || frame?.targets !== requested.targets) {
+                    frame = requested.copy(camera = pose)
+                    cameraDirty = true; contentDirty = true
+                }
+            }
             if (cameraDirty) updateCamera()
             if (loading) {
                 resourceLoader?.asyncUpdateLoad()
@@ -394,6 +418,7 @@ internal class AisTrafficRenderer3D(
             if (r.beginFrame(requireNotNull(swapChain), frameTimeNanos)) {
                 try { r.render(requireNotNull(view)) } finally { r.endFrame() }
                 frameAttempts = 0
+                frame?.let(onPresentedFrame)
                 if (!loading && assets.isNotEmpty()) {
                     val drawn = (vesselPool?.assigned.orEmpty().keys + neutralPool?.assigned.orEmpty().keys).filterNot { it == OWN_ID }.toSet()
                     if (drawn != presentedTargets) {
@@ -406,7 +431,7 @@ internal class AisTrafficRenderer3D(
                 if (!loading && assets.isNotEmpty() && !ready) { ready = true; handler.removeCallbacks(surfaceTimeout); handler.post { if (!closed) onReady() } }
             } else check(++frameAttempts < 120) { "Traffic frame unavailable" }
             // 静态观测不需要持续帧循环；新观测、手势与资源上传才申请绘制。
-            if ((loading || frameBudget > 0) && canDraw()) { scheduled = true; choreographer.postFrameCallback(this) }
+            if ((loading || frameBudget > 0 || cameraMotion.moving) && canDraw()) { scheduled = true; choreographer.postFrameCallback(this) }
         }
     }
 

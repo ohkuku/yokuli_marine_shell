@@ -1,12 +1,14 @@
 # Yokuli OS 0.5：应用边界、接口与数据拓扑
 
-更新：2026-09-25；当前版本以根构建身份为准。本文对应 `app-shell/src/rebuild` 实际入口。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
+更新：2026-09-27；当前版本以根构建身份为准。本文对应 `app-shell/src/rebuild` 实际入口。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
 
 当前代码分层、通知 IPC 与兼容限制见 [运行时边界](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)；[通知契约](NOTIFICATION_CENTER_CONTRACT.md) 和 [领域接入指导](../os/02-DOMAIN-AND-CONTRACTS.md#新功能接入路径) 是继续扩展的入口。表格描述实现约定，不代表所有硬件、后台限制和长时间船上场景均已通过验证。
 
 ## 这轮实现计划与边界
 
 页面、Shell 和通知当前统一沿 [Windows 10 Mobile / MDL2](WINDOWS_10_MOBILE_DESIGN.md)；`AppSection`、`AppDialogTitle`、`AppDialogSurface`、`AppCommandBar` 与共同选项指示器只拥有表现和交互，不改变下述领域真值。
+
+当前增量：视觉采用用户提供的帆船 O 字标与黑白扁平主题，普通标题缩小并突出文字；磁贴工坊默认提供航行读数、风况、环境、水深余量和船姿组合。跨应用“在海图显示”可完成原访问并交回展示结果。`MarineSystem.residency` 持有后台运行意图，Settings 与退出磁贴共用显式停止；已有 NMEA/传感器所有者继续采集，短历史通过同一 DataHub 有界保存。消息进程把同一持久通知镜像到 Android，船位失联按宽限和冷却汇总。具体职责、权限和真实限制由对应子契约维护。
 
 | 用户反馈 | 实现位置与决定 |
 | --- | --- |
@@ -73,6 +75,8 @@ flowchart TB
     Formats --> Apps
     subgraph Shared[共享业务状态]
         Marine[MarineSystem / MarineServices\n领域命令与只读投影]
+        Residency[RuntimeResidencyService\n常驻、显式停止与资源状态]
+        Resources[原 YokuliRuntimeCoordinator\n系统采集与领域租约]
         Traffic[唯一 AIS 交通服务]
         NoticeClient[NotificationClient\n主进程共享 Binder 客户端]
         Coordinator[VoyageSessionCoordinator\n全局航行命令与回执]
@@ -91,6 +95,10 @@ flowchart TB
     Chart --> Marine
     Log --> Marine
     Anchor --> Marine
+    Marine --> Residency --> Resources
+    Settings --> Residency
+    Tiles -->|退出确认入口| Residency
+    Resources --> Sources
     Marine --> Coordinator --> Voyage
     Marine -->|voyages.captureMoment| Moment
     Sources -->|单次规范快照| Moment
@@ -98,6 +106,9 @@ flowchart TB
     Marine --> Watch
     Sources --> Marine
     Sources --> Gauges
+    Sources --> History[DataHub / ReadingHistoryCache\n同次开机 15 分钟实际样本]
+    History --> Gauges
+    History --> Tiles
     Sources --> Traffic
     AisUI --> Traffic
     Sources --> DataCenter
@@ -140,6 +151,7 @@ flowchart TB
     subgraph NoticeProcess[同 APK / UID 的 notifications 子进程]
         NoticeHost[NotificationBinderService] --> NoticeStore[NotificationRepository]
         NoticeStore --> NoticeFile[(独占消息历史/游标/回执文件)]
+        NoticeStore --> AndroidMirror[AndroidNoticePresenter\nAndroid 通知与声音频道]
     end
     NoticeClient -->|版本化 Binder| NoticeHost
     NoticeClient -->|只读快照| Notices

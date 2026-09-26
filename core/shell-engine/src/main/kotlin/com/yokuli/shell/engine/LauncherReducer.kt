@@ -39,6 +39,8 @@ sealed interface LauncherAction {
     data object ShowStart : LauncherAction
     data object ShowAllApps : LauncherAction
     data object Back : LauncherAction
+    /** 子应用完成一次请求并把展示结果交回调用页；不会再打开调用应用的新访问。 */
+    data class CompleteLinkedVisit(val callerTaskId: InternalAppTaskId, val targetUiStateKey: String) : LauncherAction
     data object ShowDesktop : LauncherAction
     data object OpenSearch : LauncherAction
     data class UpdateSearchQuery(val query: String) : LauncherAction
@@ -161,6 +163,13 @@ class DefaultLauncherReducer : LauncherReducer {
             return LauncherReduction(state)
         }
         return when (action) {
+        is LauncherAction.CompleteLinkedVisit -> {
+            val task = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId) }
+            val handoff = state.tasks.linkedReturns.lastOrNull()
+            if (task == null || task.currentUiStateKey != action.targetUiStateKey || handoff?.targetTaskId != task.taskId || handoff.callerTaskId != action.callerTaskId)
+                LauncherReduction(state)
+            else backWithinTask(state, task.taskId, completeVisit = true)
+        }
         LauncherAction.ShowStart -> LauncherReduction(
             state.copy(transient = null).navigateTo(
                 ShellVisualSurface.Desktop,
@@ -305,13 +314,13 @@ class DefaultLauncherReducer : LauncherReducer {
         }
     }
 
-    private fun backWithinTask(state: LauncherEngineState, taskId: InternalAppTaskId): LauncherReduction {
+    private fun backWithinTask(state: LauncherEngineState, taskId: InternalAppTaskId, completeVisit: Boolean = false): LauncherReduction {
         val task = state.tasks.task(taskId)
             ?: return LauncherReduction(
                 state.navigateTo(ShellVisualSurface.Desktop, ShellTransitionTrigger.BACK),
             )
         val linkedReturn = state.tasks.linkedReturns.lastOrNull()?.takeIf {
-            it.targetTaskId == taskId && task.backStack.size <= it.targetBackStackDepth
+            it.targetTaskId == taskId && (completeVisit || task.backStack.size <= it.targetBackStackDepth)
         }
         if (linkedReturn != null) {
             val caller = linkedReturn.callerSnapshot ?: state.tasks.task(linkedReturn.callerTaskId)

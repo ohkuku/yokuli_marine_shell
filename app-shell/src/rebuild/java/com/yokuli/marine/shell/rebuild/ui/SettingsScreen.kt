@@ -63,6 +63,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         "sound" -> os.t("声音与警报", "sound & alarms")
         "backup" -> os.t("备份与恢复", "backup & restore")
         "about" -> os.t("关于", "about")
+        "exit" -> os.t("退出 Yokuli", "exit Yokuli")
         else -> os.t("设置", "settings")
     }
     Column(Modifier.fillMaxSize()) {
@@ -75,6 +76,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
             "permissions" -> SystemAccessSettings(os)
             "sound" -> SystemSoundSettings(os)
             "backup" -> SystemBackupSettings(os)
+            "exit" -> RuntimeExitSettings(os)
             else -> PageBody {
                 when (page) {
                     "overview" -> {
@@ -89,30 +91,18 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         }
                         AppSection(os.t("个人偏好", "personal"))
                         MenuRow(title("vessel")) {section="vessel"}
-                        MenuRow(os.t("应用磁贴", "app tiles"), os.t("按应用预览样式与实时内容", "preview styles and live content by app")) {os.openLinked("tiles")}
                         AppSection(os.t("资料与系统信息", "data & information"))
                         MenuRow(title("backup")) {section="backup"}
                         MenuRow(title("about"), buildIdentity.appVersionName) {section="about"}
+                        MenuRow(title("exit"), os.t("暂停任务并停止后台采集与共享", "pause tasks and stop background collection & sharing"), "close") {section="exit"}
                     }
                     "appearance" -> {
                         MenuRow(title("start"),os.t("自定义开始屏幕的照片与磁贴底色", "personalise Start’s photo and tile backgrounds")) {os.openLinked("settings:start")}
-                        AppSection(os.t("主题色", "accent colour"))
-                        Column(Modifier.selectableGroup(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                            WpAccent.entries.chunked(4).forEach { row -> Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                row.forEach { accent ->
-                                    val name = os.t(when(accent) {
-                                        WpAccent.COBALT->"钴蓝"; WpAccent.CYAN->"青色"; WpAccent.EMERALD->"翡翠绿"
-                                        WpAccent.MAGENTA->"品红"; WpAccent.VIOLET->"紫色"; WpAccent.CRIMSON->"深红"; WpAccent.AMBER->"琥珀"
-                                    },accent.displayName)
-                                    Box(Modifier.size(56.dp).background(androidx.compose.ui.graphics.Color(accent.argb))
-                                        .then(if(os.accent==accent.argb) Modifier.border(2.dp,c.fg) else Modifier)
-                                        .semantics {contentDescription=name}
-                                        .selectable(os.accent==accent.argb,role=Role.RadioButton) {os.shell.updateSystemPreferences {it.copy(accentName=accent.name)}}) {
-                                        if(os.accent==accent.argb) Glyph("check",Modifier.size(24.dp).align(androidx.compose.ui.Alignment.Center),c.onAccent)
-                                    }
-                                }
-                            } }
-                        }
+                        AppSection(os.t("黑白界面", "Monochrome"))
+                        Label(os.t("文字与内容为主，颜色只用于必要提示。磁贴仍可单独设置。", "Content first. Colour is reserved for meaningful signals; tiles can be personalised."), 13, c.muted)
+                        if(os.accent != WpAccent.MONOCHROME.argb) MetroButton(os.t("使用黑白主色", "Use monochrome"), {
+                            os.shell.updateSystemPreferences { it.copy(accentName=WpAccent.MONOCHROME.name) }
+                        })
                         ChoiceRow(os.t("深色背景", "dark background"), !os.light) {os.shell.updateSystemPreferences {it.copy(themeModeName="DARK")}}
                         ChoiceRow(os.t("浅色背景", "light background"), os.light) {os.shell.updateSystemPreferences {it.copy(themeModeName="LIGHT")}}
                         Toggle(os.t("保持屏幕常亮", "keep screen awake"),os.keepAwake,os.t("仅在 Yokuli OS 位于前台时", "while Yokuli OS is in front")) {enabled->
@@ -157,6 +147,8 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
 
 @Composable private fun SystemAccessSettings(os: OsStore) {
     val context = LocalContext.current
+    val residency = os.marine?.system?.residency
+    val runtime = residency?.state?.collectAsState()?.value
     var revision by remember { mutableIntStateOf(0) }
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
@@ -171,6 +163,28 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
     val unrestricted = remember(revision) { context.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(context.packageName) == true }
     fun open(intent: Intent) { runCatching { context.startActivity(intent) }.onFailure { os.notify("无法打开系统设置", "Could not open Android settings") } }
     PageBody {
+        runtime?.let { status ->
+            AppSection(os.t("系统采集", "system collection"))
+            Label(when(status.phase) {
+                com.yokuli.runtime.contract.RuntimeResidencyPhase.RUNNING -> os.t("后台运行中", "running in the background")
+                com.yokuli.runtime.contract.RuntimeResidencyPhase.STARTING -> os.t("正在启动", "starting")
+                com.yokuli.runtime.contract.RuntimeResidencyPhase.STOPPING -> os.t("正在保存并停止", "saving and stopping")
+                com.yokuli.runtime.contract.RuntimeResidencyPhase.STOPPED -> os.t("已停止", "stopped")
+                com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED -> os.t("后台运行受限", "background operation restricted")
+            }, 22)
+            val capabilities = buildList {
+                if(status.phoneLocation)add(os.t("手机定位", "phone position"))
+                if(status.phoneHeading)add(os.t("罗盘", "compass"))
+                if(status.phoneMotion)add(os.t("姿态与运动", "attitude & motion"))
+                if(status.phonePressure)add(os.t("气压", "pressure"))
+            }
+            Label(capabilities.joinToString(" · ").ifBlank { os.t("尚无正在采集的手机传感器", "no phone sensor currently collecting") }, 15, LocalMetro.current.muted)
+            if(status.problem == "PHONE_BACKGROUND_LOCATION_NOT_ALLOWED") Label(os.t("手机后台定位尚未获准；检查精确定位权限，并在此页重试。其他采集继续。", "Phone background position is not available. Check precise location access, then retry here. Other collection continues."), 14, LocalMetro.current.muted)
+            Label(os.t("输入 ${status.inputConnections} · 输出 ${status.outputConnections} · 共享${if(status.sharing)"开启" else "关闭"}", "${status.inputConnections} inputs · ${status.outputConnections} outputs · sharing ${if(status.sharing)"on" else "off"}"), 15, LocalMetro.current.muted)
+            Label(os.t("仅保留你已开启的定位、连接与共享；查看磁贴或关闭页面不会切换来源。", "Only your enabled position source, connections and sharing continue. Tiles and page changes never switch sources."), 14, LocalMetro.current.muted)
+            if(status.phase == com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED || status.problem != null) MetroButton(os.t("重试后台运行", "retry background operation"), { residency?.startFromForeground() })
+            AppSection(os.t("Android 访问权限", "Android access"))
+        }
         MenuRow(os.t("精确定位权限", "precise location permission"), if (locationGranted) os.t("已允许", "allowed") else os.t("未允许 · 点按请求", "not allowed · tap to request"), "locate") {
             if (locationGranted) open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) else request.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
@@ -203,6 +217,14 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         }
     }
     PageBody {
+        AppSection(os.t("消息提示音", "Notification sounds"))
+        listOf("yokuli.messages.v1" to os.t("普通消息", "Messages"), "yokuli.attention.v1" to os.t("需要注意", "Needs attention")).forEach { (channel, label) ->
+            MenuRow(label, os.t("提示音、振动与系统横幅", "Sound, vibration and system banners"), "notification") {
+                runCatching { context.startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName).putExtra(Settings.EXTRA_CHANNEL_ID, channel)) }
+                    .onFailure { os.notify("无法打开通知设置", "Could not open notification settings", app=AppId.SETTINGS) }
+            }
+        }
         AppSection(os.t("警报声音", "alarm sound"))
         ChoiceRow(os.t("内置循环警报音", "built-in looping alarm"), state.settings.alarmSound != AlarmSound.CUSTOM) {
             marine.services.preferences.setAlarmSound(AlarmSound.SYSTEM_ALARM)
