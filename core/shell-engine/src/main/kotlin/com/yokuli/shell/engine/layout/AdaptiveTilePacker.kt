@@ -27,7 +27,7 @@ enum class InsertionSide { BEFORE, AFTER }
 /** A visual hit names an item, never an index into a differently ordered list. */
 data class TileInsertionTarget(val anchorId: TileInstanceId, val side: InsertionSide)
 
-/** Deterministic packing that preserves a valid user-authored cell and adapts legacy rank-only entries. */
+/** Grid placement preserves horizontal space, but never creates an empty vertical band. */
 object AdaptiveTilePacker {
     private const val RANK_STEP = 1024L
 
@@ -47,33 +47,72 @@ object AdaptiveTilePacker {
                 is RankedItem.Gap -> spacers += PackedSpacerPlacement(item.spacer, cell)
             }
         }
-        return AdaptivePackedLayout(columns, tiles, spacers)
+        return compactRows(AdaptivePackedLayout(columns, tiles, spacers))
     }
 
     /**
-     * Move one tile to an actual grid cell. Rank remains the collision tie-breaker, while the
-     * preferred cell is the durable spatial truth. This is what permits two 1x1 tiles to be
-     * either horizontal or vertical neighbours.
+     * The pointer proposes a grid cell, not a free-form canvas position. The frozen source
+     * bounds the last insertion row. Reserve the moving tile first and push only colliding
+     * neighbours down, retaining their columns; preview and commit use this same result.
      */
-    fun place(
-        document: StartDocument,
-        tileId: TileInstanceId,
-        target: GridCell,
-        columns: Int,
-    ): StartDocument {
-        val moving = document.placements.firstOrNull { it.tileId == tileId } ?: return document
+    fun place(document: StartDocument, tileId: TileInstanceId, target: GridCell, columns: Int): StartDocument {
+        val packed = pack(document, columns)
+        val moving = packed.tile(tileId) ?: return document
         val bounded = GridCell(
-            column = target.column.coerceIn(0, columns - moving.size.columns),
-            row = target.row.coerceAtLeast(0),
+            target.column.coerceIn(0, columns - moving.entry.size.columns),
+            target.row.coerceIn(0, packed.documentHeightRows),
         )
+        if (bounded == moving.cell) return document
+        val occupied = occupiedCells(bounded, moving.entry.size).toMutableSet()
+        val positions = mutableMapOf(tileId to bounded)
+        val remaining = buildList {
+            packed.tiles.filterNot { it.entry.tileId == tileId }
+                .forEach { add(PositionedItem(it.entry.tileId, it.cell, it.entry.size)) }
+            packed.spacers.forEach { add(PositionedItem(it.spacer.spacerId, it.cell, it.spacer.size)) }
+        }.sortedWith(compareBy({ it.cell.row }, { it.cell.column }, { it.id.value }))
+        remaining.forEach { item ->
+            var cell = item.cell
+            while (true) {
+                val blocked = occupiedCells(cell, item.size).filter(occupied::contains)
+                if (blocked.isEmpty()) break
+                cell = cell.copy(row = blocked.maxOf { it.row } + 1)
+            }
+            positions[item.id] = cell
+            occupied += occupiedCells(cell, item.size)
+        }
         val index = insertionIndexForCell(document, columns, bounded, tileId)
         val reordered = insert(document, tileId, index)
         val placed = reordered.copy(
-            placements = reordered.placements.map { entry ->
-                if (entry.tileId == tileId) entry.copy(preferredCell = bounded) else entry
-            },
+            placements = reordered.placements.map { it.copy(preferredCell = positions.getValue(it.tileId)) },
+            spacers = reordered.spacers.mapNotNull { spacer -> positions[spacer.spacerId]?.let { spacer.copy(preferredCell = it) } },
         )
-        return if (placed == document) document else placed
+        val result = pack(placed, columns)
+        // Appending the last tile or returning to the original position is a true no-op.
+        if (result.occupiedCellsByItem == packed.occupiedCellsByItem) return document
+        val cells = result.tiles.associate { it.entry.tileId to it.cell }
+        val spacerCells = result.spacers.associate { it.spacer.spacerId to it.cell }
+        return placed.copy(
+            placements = placed.placements.map { it.copy(preferredCell = cells.getValue(it.tileId)) },
+            spacers = placed.spacers.mapNotNull { spacer -> spacerCells[spacer.spacerId]?.let { spacer.copy(preferredCell = it) } },
+        )
+    }
+
+    /** Collapse entire blank rows, including legacy far-away anchors, without scanning them.
+     * Individual holes and empty columns survive. A spacer cannot keep a tile-free band alive.
+     * Read-time normalization is non-destructive; the next explicit move stores resolved cells.
+     */
+    private fun compactRows(layout: AdaptivePackedLayout): AdaptivePackedLayout {
+        val rows = layout.tiles.flatMap { tile ->
+            (tile.cell.row until tile.cell.row + tile.entry.size.rows).toList()
+        }.distinct().sorted()
+        val rowIndex = rows.withIndex().associate { it.value to it.index }
+        if (rows.isEmpty()) return AdaptivePackedLayout(layout.columns, emptyList(), emptyList())
+        val tiles = layout.tiles.map { it.copy(cell = it.cell.copy(row = rowIndex.getValue(it.cell.row))) }
+        val spacers = layout.spacers.mapNotNull { spacer ->
+            if ((spacer.cell.row until spacer.cell.row + spacer.spacer.size.rows).all(rowIndex::containsKey))
+                spacer.copy(cell = spacer.cell.copy(row = rowIndex.getValue(spacer.cell.row))) else null
+        }
+        return AdaptivePackedLayout(layout.columns, tiles, spacers)
     }
 
     fun insert(document: StartDocument, tileId: TileInstanceId, insertionIndex: Int): StartDocument {
@@ -180,7 +219,8 @@ object AdaptiveTilePacker {
     }
 
     private fun fits(cell: GridCell, size: MarineTileSize, columns: Int): Boolean =
-        cell.column >= 0 && cell.row >= 0 && cell.column + size.columns <= columns
+        cell.column >= 0 && cell.row >= 0 && cell.column.toLong() + size.columns <= columns &&
+            cell.row.toLong() + size.rows <= Int.MAX_VALUE
 
     private sealed interface RankedItem {
         val rank: Long

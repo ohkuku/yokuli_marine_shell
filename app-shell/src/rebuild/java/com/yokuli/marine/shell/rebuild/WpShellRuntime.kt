@@ -225,6 +225,77 @@ class WpShellRuntime(private val os: OsStore) {
     private fun restoredPageSnapshot(key: String): TaskSnapshot? =
         pageSnapshots.remove(key)?.also { pageSnapshots[key] = it }
 
+    /** 只结束地图编辑展示。草稿数据仍可继续，导航会话不变；旧返回页也不能复活编辑栏。 */
+    fun finishChartRouteEditing() {
+        os.editingRoute = false
+        os.showCrosshair = false
+        os.maps.view("chart", os.center, os.zoom).apply {
+            planningLines = emptyList()
+            planningPoints = emptyList()
+        }
+        updateChartReturnSnapshots { previous ->
+            if (previous.editingRoute) previous.copy(editingRoute = false, showCrosshair = false) else previous
+        }
+    }
+
+    /** 预览有明确入口，与草稿编辑互斥；不改写或丢弃任何草稿。 */
+    fun showChartRoutePreview(route: Route) {
+        hideChartRoutePreview()
+        os.maps.view("chart", os.center, os.zoom).previewRoute = route.copy(
+            points = route.points.toList(), navigationTargetIndices = route.navigationTargetIndices?.toList(),
+        )
+        os.displayedRouteId = route.id
+        os.follow = false
+        os.ruler = emptyList()
+    }
+
+    /** 隐藏同步清理预览和编辑展示，不能只删线却把编辑工具栏留在地图。 */
+    fun hideChartRoutePreview(routeId: String? = null) {
+        val view = os.maps.view("chart", os.center, os.zoom)
+        val current = routeId == null || os.displayedRouteId == routeId || view.previewRoute?.id == routeId || os.editingRouteId == routeId
+        if (current) finishChartRouteEditing()
+        if (routeId == null || os.displayedRouteId == routeId) os.displayedRouteId = null
+        if (routeId == null || view.previewRoute?.id == routeId) view.previewRoute = null
+        updateChartReturnSnapshots { previous ->
+            // 无 ID 是结束全部临时预览，即使当前页面已清空，也要撤回队列中尚未交付的结果。
+            if ((routeId == null && (previous.displayedRouteId != null || previous.previewRoute != null || previous.editingRoute)) ||
+                (routeId != null && (previous.displayedRouteId == routeId || previous.previewRoute?.id == routeId))) previous.copy(
+                displayedRouteId = previous.displayedRouteId?.takeUnless { routeId == null || it == routeId },
+                previewRoute = previous.previewRoute?.takeUnless { routeId == null || it.id == routeId },
+                editingRoute = false,
+                showCrosshair = false,
+            ) else previous
+        }
+    }
+
+    private fun updateChartReturnSnapshots(transform: (ChartInteractionSnapshot) -> ChartInteractionSnapshot) {
+        val affectedKeys = mutableSetOf<String>()
+        chartPageStates.entries.forEach { entry ->
+            val previous = entry.value
+            val next = transform(previous)
+            if (next != previous) {
+                entry.setValue(next)
+                affectedKeys += entry.key
+            }
+        }
+        chartReturnResult?.let { pending ->
+            val next = transform(pending.interaction)
+            if (next != pending.interaction) {
+                // 关联返回可能仍在等待任务图捕获。关闭预览/保存/退出编辑必须同时修改这份结果，
+                // 否则 CompleteLinkedVisit 随后会在原海图恢复已关闭的路线或编辑工具。
+                val routeClosed = (pending.interaction.previewRoute != null && next.previewRoute == null) ||
+                    (pending.interaction.displayedRouteId != null && next.displayedRouteId == null) ||
+                    (pending.interaction.editingRoute && !next.editingRoute)
+                chartReturnResult = pending.copy(interaction = next, fit = pending.fit.takeUnless { routeClosed })
+                affectedKeys += pending.key
+            }
+        }
+        // 放弃旧任务图引用，不回收其他页面仍使用的 Bitmap。
+        pageSnapshots.keys.removeAll(affectedKeys)
+        snapshots.images.entries.filter { it.value.pageInstanceKey in affectedKeys }
+            .map { it.key }.forEach { snapshots.images.remove(it) }
+    }
+
     fun requestSystemPreferences(key: String, transform: (LauncherPersistedState) -> LauncherPersistedState): String {
         preferenceResults.value.lastOrNull { it.key == key && it.status == SystemPreferenceStatus.PENDING }?.let { return it.requestId }
         val id = uid()
@@ -277,8 +348,19 @@ class WpShellRuntime(private val os: OsStore) {
 
     /** 由业务对象发起的跨应用操作，返回时恢复调用页；普通应用入口仍调用 open。 */
     fun openLinked(destination: String) {
-        if (canonicalPage(destination) == "chart" && completeChartVisit()) return
-        open(destination, linked = true)
+        val page = canonicalPage(destination)
+        if (page == "chart" && completeChartVisit()) return
+        val state = engine.state.value
+        val current = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId) }
+        val handoff = state.tasks.linkedReturns.lastOrNull()?.takeIf { it.targetTaskId == current?.taskId }
+        val caller = handoff?.let { it.callerSnapshot ?: state.tasks.task(it.callerTaskId) }
+        // 从航线详情进入海图后，再点预览卡里的同一航线，就是回原详情。
+        // 精确匹配可见地址；其他对象或应用根入口仍创建正常关联访问。
+        if (current != null && caller != null && visibleRouteForTask(caller) == page) {
+            dispatch(LauncherAction.CompleteLinkedVisit(caller.taskId, current.currentUiStateKey))
+            return
+        }
+        open(page, linked = true)
     }
 
     private data class ChartReturnResult(val key: String, val interaction: ChartInteractionSnapshot,

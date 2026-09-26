@@ -6,14 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.anchorwatch.domain.vessel.*
@@ -26,22 +19,7 @@ import kotlinx.coroutines.flow.map
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.*
 
-/** 只读图形描述；任何插值只用于画布，数字、来源时间和历史不被改写。 */
-internal enum class TileMetricGraphicKind { COMPASS, GAUGE, HEEL, PITCH, WIND, ATTITUDE, DEPTH }
-internal data class TileMetricGraphic(
-    val kind:TileMetricGraphicKind,
-    val value:Double?,
-    val minimum:Double=0.0,
-    val maximum:Double=100.0,
-    val minimumLabel:String="",
-    val maximumLabel:String="",
-    val relative:Boolean=false,
-    val secondary:Double?=null,
-    val observation:VesselObservation<*> = VesselObservation<Double>(),
-    val secondaryObservation:VesselObservation<*> = VesselObservation<Double>(),
-)
 internal data class TileOverviewReading(val label:String,val value:String,val status:String,val live:Boolean)
 internal data class TileOverviewFrame(
     val readings:List<TileOverviewReading>,
@@ -64,7 +42,7 @@ private fun overviewObservations(data:VesselDataSnapshot,id:String):List<VesselO
     val state=os.marine?.services?.state
     val projection=remember(state,id) {state?.map {overviewObservations(it.vesselData,id)}?.distinctUntilChanged()}
     val values=activeTileValue(projection,overviewObservations(state?.value?.vesselData ?: VesselDataSnapshot(),id),active)
-    tileInstrumentDisplayDemand(os,active,id in setOf("navigationReadings","windConditions","vesselAttitude"))
+    tileInstrumentDisplayDemand(os,active,id in setOf("navigationReadings","windConditions","vesselAttitude"),sensors=id in setOf("environment","vesselAttitude"))
     val now=tileElapsed(active)
     val visual=config.style=="detail"
     fun at(index:Int):VesselObservation<Double> = values.getOrNull(index) ?: VesselObservation()
@@ -111,7 +89,7 @@ private fun overviewObservations(data:VesselDataSnapshot,id:String):List<VesselO
 }
 
 /** 组合磁贴让多个相关观测共用一个视图；保持扁平文字层级，不再为每项套独立小磁贴。 */
-@Composable internal fun NavigationTileContent(os:OsStore,title:String,frame:TileFrame,tileSize:MarineTileSize,color:Color) {
+@Composable internal fun NavigationTileContent(os:OsStore,title:String,frame:TileFrame,tileSize:MarineTileSize,color:Color,active:Boolean) {
     val content=frame.overview ?: return
     val wide=tileSize==MarineTileSize.WIDE_4X2
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -130,7 +108,7 @@ private fun overviewObservations(data:VesselDataSnapshot,id:String):List<VesselO
                     }
                     if(wide)content.readings.drop(1).forEach {TileOverviewReadout(it,color,generous)}
                 }
-                content.graphic?.let {TileMetricDrawing(it,color,if(wide)Modifier.weight(.85f).fillMaxHeight()else Modifier.width(46.dp).fillMaxHeight())}
+                content.graphic?.let {TileMetricGraphicView(it,color,active,if(wide)Modifier.weight(.85f).fillMaxHeight()else Modifier.width(46.dp).fillMaxHeight())}
             }
             if(!wide)content.readings.drop(1).forEach {TileOverviewReadout(it,color,false)}
             val history=frame.history
@@ -153,75 +131,3 @@ private fun overviewObservations(data:VesselDataSnapshot,id:String):List<VesselO
     if(!item.live&&showAge)WpText(item.status,10,color=ink,maxLines=1)
 }
 
-/** 指针在绘制阶段读取共享物理缓动；缺测不画零度指针，既有历史绝不做动画。 */
-@Composable internal fun TileMetricDrawing(graphic:TileMetricGraphic,color:Color,modifier:Modifier=Modifier) {
-    val circular=graphic.kind in setOf(TileMetricGraphicKind.COMPASS,TileMetricGraphicKind.WIND)
-    val primary=rememberInstrumentMotion(graphic.observation,graphic.value,circular,scaleKey=graphic.minimumLabel to graphic.maximumLabel)
-    val secondary=rememberInstrumentMotion(graphic.secondaryObservation,graphic.secondary,circular)
-    Canvas(modifier.clipToBounds()) {
-        val faint=color.copy(alpha=.22f)
-        val weight=1.5.dp.toPx()
-        val mid=Offset(size.width/2,size.height/2)
-        val radius=min(size.width,size.height)*.4f
-        fun pointer(angle:Float,dashed:Boolean=false,length:Float=radius) {
-            val rad=Math.toRadians(angle.toDouble()-90)
-            val end=mid+Offset(cos(rad).toFloat()*length,sin(rad).toFloat()*length)
-            drawLine(color.copy(alpha=if(dashed).62f else 1f),mid,end,weight,
-                pathEffect=if(dashed)PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(),3.dp.toPx()))else null)
-            if(!dashed) {
-                val back=end-Offset(cos(rad).toFloat(),sin(rad).toFloat())*7.dp.toPx()
-                val wing=Offset(-sin(rad).toFloat(),cos(rad).toFloat())*3.dp.toPx()
-                drawPath(Path().apply {moveTo(end.x,end.y);lineTo((back+wing).x,(back+wing).y);lineTo((back-wing).x,(back-wing).y);close()},color)
-            }
-        }
-        when(graphic.kind) {
-            TileMetricGraphicKind.COMPASS,TileMetricGraphicKind.WIND->{
-                drawCircle(faint,radius,mid,style=Stroke(weight))
-                repeat(4) {index->val r=Math.toRadians(index*90.0);val direction=Offset(cos(r).toFloat(),sin(r).toFloat());drawLine(color.copy(alpha=.4f),mid+direction*(radius*.87f),mid+direction*radius,weight)}
-                if(graphic.kind==TileMetricGraphicKind.WIND||graphic.relative) {
-                    val boat=Path().apply {moveTo(mid.x,mid.y-radius*.45f);lineTo(mid.x-radius*.17f,mid.y+radius*.3f);lineTo(mid.x+radius*.17f,mid.y+radius*.3f);close()}
-                    drawPath(boat,faint,style=Stroke(weight))
-                }
-                if(graphic.secondary!=null)pointer(secondary.value,true)
-                if(graphic.value!=null)pointer(primary.value)
-            }
-            TileMetricGraphicKind.HEEL,TileMetricGraphicKind.PITCH,TileMetricGraphicKind.ATTITUDE->{
-                drawLine(faint,Offset(0f,mid.y),Offset(size.width,mid.y),weight)
-                drawLine(faint,Offset(mid.x,mid.y-radius),Offset(mid.x,mid.y+radius),weight)
-                if(graphic.value!=null&&(graphic.kind!=TileMetricGraphicKind.ATTITUDE||graphic.secondary!=null)) {
-                    val heel=if(graphic.kind==TileMetricGraphicKind.PITCH)0f else primary.value
-                    val pitch=if(graphic.kind==TileMetricGraphicKind.PITCH)primary.value else if(graphic.kind==TileMetricGraphicKind.ATTITUDE)secondary.value else 0f
-                    val offset=pitch.coerceIn(-45f,45f)/45f*radius*.6f
-                    rotate(-heel,mid) {
-                        val horizon=Offset(mid.x,mid.y+offset)
-                        drawLine(color,horizon-Offset(radius,0f),horizon+Offset(radius,0f),weight*1.5f)
-                        listOf(-1,1).forEach {side->drawLine(color.copy(alpha=.45f),horizon+Offset(-radius*.25f,side*radius*.33f),horizon+Offset(radius*.25f,side*radius*.33f),weight)}
-                    }
-                }
-                drawCircle(color,2.dp.toPx(),mid)
-            }
-            TileMetricGraphicKind.GAUGE->{
-                val start=Offset(size.width*.06f,size.height*.55f);val end=Offset(size.width*.94f,start.y)
-                drawLine(faint,start,end,weight*2)
-                repeat(5) {index->val x=start.x+(end.x-start.x)*index/4f;drawLine(faint,Offset(x,start.y-4.dp.toPx()),Offset(x,start.y+4.dp.toPx()),weight)}
-                if(graphic.value!=null&&graphic.maximum>graphic.minimum) {
-                    val ratio=((primary.value-graphic.minimum)/(graphic.maximum-graphic.minimum)).toFloat().coerceIn(0f,1f)
-                    val marker=Offset(start.x+(end.x-start.x)*ratio,start.y)
-                    drawLine(color,start,marker,weight*2);drawCircle(color,3.dp.toPx(),marker)
-                }
-            }
-            TileMetricGraphicKind.DEPTH->{
-                val surface=size.height*.12f;val bed=size.height*.86f
-                drawLine(faint,Offset(size.width*.1f,surface),Offset(size.width*.9f,surface),weight)
-                if(graphic.value!=null&&graphic.value>0.0) {
-                    val x=size.width*.68f
-                    drawLine(color,Offset(x,surface),Offset(x,bed),weight)
-                    drawLine(color,Offset(x-5.dp.toPx(),bed-5.dp.toPx()),Offset(x,bed),weight)
-                    drawLine(color,Offset(x+5.dp.toPx(),bed-5.dp.toPx()),Offset(x,bed),weight)
-                    drawLine(faint,Offset(size.width*.1f,bed),Offset(size.width*.9f,bed),weight)
-                    // 这里只表达实测水深，不把未知测深基准和 UKC 拼成虚构船体/海床几何。
-                }
-            }
-        }
-    }
-}

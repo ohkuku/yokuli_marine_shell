@@ -93,7 +93,7 @@ AIS Pager 关闭 Android 默认边缘弧光；雷达图例移入更多菜单，�
 
 界面以黑白为主：默认 `MONOCHROME` 随明暗主题使用相反前景；已有装机只迁移一次，不覆盖单块磁贴显式配置。旧彩色枚举仅保留兼容读取。主要页面标题22sp、Pivot20sp、节标题18sp、正文15sp，标题用更明确的字重，少用占地巨大的图标和说明。船位/航迹、警报和风险颜色仍表达领域语义。文字继续用 Selawik 与系统中文回退；不把品牌字形当正文字体。
 
-- SVG 母版在 `design/brand/yokuli-mark.svg` 与 `yokuli-wordmark.svg`；`scripts/generate_brand_assets.py` 生成 `core/design/res/drawable`、运行时通知图标的实际资源及组合标识。Compose 的 `YokuliBrandMark / Wordmark / Signature` 与 Android 图标、起始窗口复用这份几何，不在页面分别画帆船、罗盘或四方块来代表 OS。
+- 唯一 SVG 母版为 `design/brand/yokuli-wordmark.svg`，`yokuli-mark.svg` 由其中的 O、帆与波纹生成；`scripts/generate_brand_assets.py` 生成 `core/design/res/drawable`、运行时通知图标的实际资源及组合标识。Compose 的 `YokuliBrandMark / Wordmark / Signature` 与 Android 图标、起始窗口复用这份几何，不在页面分别画帆船、罗盘或四方块来代表 OS。
 - 安装图标用主标，不塞入不可辨的小字。自适应前景/单色层为 108dp，全部轮廓落在中央直径 66dp 区域；Android 13 主题图标保留负空间。遵循 [Android 自适应图标规范](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive)。
 - 启动页在 Android 12+ 使用系统持有的 288dp 静态标志与 200×80dp 底部字标，标志落在中央直径 192dp 区域；Android 9–11 使用同几何的起始窗口。遵循 [系统 Splash 规范](https://developer.android.com/develop/ui/views/launch/splash-screen)。不新增 SplashActivity、等待条件、假进度或持续循环。主 Activity 首帧切回实际主题，系统进出动画保持原生。
 - 桌面只在原“所有应用”页脚空位加入横向小字标；按中英文本与字号实际宽度判断空间，不够就让出入口，不挤掉磁贴行。Home 使用 24dp 单色主标，仍发送 DESKTOP，Back/长按最近任务/通知键不改含义。

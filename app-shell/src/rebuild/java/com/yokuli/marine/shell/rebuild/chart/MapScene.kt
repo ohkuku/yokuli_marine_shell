@@ -16,6 +16,7 @@ sealed interface MapSource {
     /** APK 内置全球底图，不依赖网络或 Google Play services。 */
     data object Offline : MapSource
     data object Satellite : MapSource
+    /** 空 ID 明确表示已选择自定义，但尚未选择文件夹；不能回退或自动选第一项。 */
     data class CustomLayer(val layerId: String) : MapSource
 }
 
@@ -157,13 +158,20 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     private fun restored(): MapSource = when (savedType) {
         // 从同包名应用版升级时，纯 AOSP 不能恢复到依赖 Google Play services 的卫星图。
         "satellite" -> if (BuildConfig.ROM_HOME) MapSource.Offline else MapSource.Satellite
-        "custom" -> saved?.optString("id")?.takeIf { it.isNotBlank() }?.let { MapSource.CustomLayer(it) } ?: MapSource.Offline
-        "marine" -> library.folders.firstOrNull { it.layerName != null && it.enabled }?.let { MapSource.CustomLayer(it.id) } ?: MapSource.Offline
+        "custom" -> MapSource.CustomLayer(saved?.optString("id").orEmpty())
+        // 旧 marine 只有模式，没有文件夹身份；不能猜测用户选了列表第一项。
+        "marine" -> MapSource.CustomLayer("")
         // online / standard 是升级前的普通地图选择，统一迁移到离线底图。
         "offline", "online", "standard" -> MapSource.Offline
         else -> MapSource.Offline
     }
     var source by mutableStateOf(restored())
+        private set
+    /** 与当前模式一起原子保存；切到底图或卫星不会忘记自定义文件夹。 */
+    var customLayerId by mutableStateOf(
+        (source as? MapSource.CustomLayer)?.layerId?.takeIf { it.isNotBlank() }
+            ?: saved?.optString("customId")?.takeIf { it.isNotBlank() }
+    )
         private set
     /** 背景与数据集分别选择；选择卫星或隐藏图形不改变分析数据。 */
     var selectedDatasetIds by mutableStateOf(saved?.optJSONArray("datasetIds")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.distinct() }.orEmpty())
@@ -194,16 +202,23 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     /** 随 Shell 访问实例退出释放 AIS 相机草稿，返回栈仍保留的实例不受影响。 */
     fun retainAisViews(uiStateKeys:Set<String>) { views.keys.removeAll {it.startsWith("ais:")&&it.removePrefix("ais:") !in uiStateKeys} }
     fun selectedLayer(): ChartLayer? = (source as? MapSource.CustomLayer)?.let { selected -> library.layers.firstOrNull { it.id == selected.layerId } }
-    fun sourceName(zh: Boolean): String = when (val selected = source) {
-        MapSource.Offline -> if (zh) "地图" else "map"
-        MapSource.Satellite -> if (zh) "卫星" else "satellite"
-        is MapSource.CustomLayer -> library.folders.firstOrNull { it.id == selected.layerId }?.layerName ?: if (zh) "图层不可用" else "layer unavailable"
+    fun customFolderName(zh: Boolean): String = customLayerId?.let { id ->
+        library.folders.firstOrNull { it.id == id }?.let { it.layerName ?: it.name }
+            ?: if (zh) "文件夹不可用" else "Folder unavailable"
+    } ?: if (zh) "未选择文件夹" else "No folder selected"
+    fun sourceName(zh: Boolean): String = when (source) {
+        MapSource.Offline -> if (zh) "底图" else "Basemap"
+        MapSource.Satellite -> if (zh) "卫星" else "Satellite"
+        is MapSource.CustomLayer -> (if (zh) "自定义 · " else "Custom · ") + customFolderName(zh)
     }
+    fun selectCustom() = select(MapSource.CustomLayer(customLayerId.orEmpty()))
     fun select(value: MapSource) {
         source = value
+        if (value is MapSource.CustomLayer) customLayerId = value.layerId.takeIf { it.isNotBlank() }
         val generation = ++saveGeneration
         val snapshot = JSONObject().put("type", when (value) { MapSource.Offline -> "offline"; MapSource.Satellite -> "satellite"; is MapSource.CustomLayer -> "custom" })
         if (value is MapSource.CustomLayer) snapshot.put("id", value.layerId)
+        snapshot.put("customId", customLayerId.orEmpty())
         snapshot.put("datasetIds", org.json.JSONArray(selectedDatasetIds))
         scope.launch(Dispatchers.IO) {
             mutex.withLock {
@@ -217,5 +232,10 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
             }
         }
     }
-    fun removingLayer(id: String) { if (source == MapSource.CustomLayer(id)) select(MapSource.Offline) }
+    /** 移除已选文件夹后保留自定义空状态；不偷偷改用底图或别的文件夹。 */
+    fun removingLayer(id: String) {
+        if (id.isBlank()) return
+        if (source == MapSource.CustomLayer(id)) select(MapSource.CustomLayer(""))
+        else if (customLayerId == id) { customLayerId = null; select(source) }
+    }
 }

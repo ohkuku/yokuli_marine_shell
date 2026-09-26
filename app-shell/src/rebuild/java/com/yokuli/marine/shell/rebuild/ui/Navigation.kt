@@ -44,6 +44,7 @@ internal fun cancelRouteDraft(os:OsStore) {
 }
 
 internal fun resumeOrCreateRouteDraft(os:OsStore) {
+    os.shell.hideChartRoutePreview()
     if(os.draftRoute.isEmpty())os.editingRouteId=null
     os.editingRoute=true;os.showCrosshair=true;os.ruler=emptyList()
 }
@@ -104,6 +105,7 @@ private class NavigationOperation(private val os:OsStore) {
 }
 private fun presentNavigation(os:OsStore,route:Route,index:Int,fix:Fix?,now:Long,origin:String) {
     if(os.page!=origin)return
+    os.shell.hideChartRoutePreview()
     os.maps.view("chart",os.center,os.zoom).apply {previewRoute=null;selectedPlaceId=null;selectedAisMmsi=null}
     os.displayedRouteId=route.id;os.editingRoute=false;os.ruler=emptyList();os.showCrosshair=false
     val point=fix?.takeIf {it.fresh(now)}?.point ?: route.points[index]
@@ -121,7 +123,7 @@ fun beginNavigation(os:OsStore,route:Route,index:Int,fix:Fix?,now:Long) {
 fun endNavigation(os:OsStore,arrived:Boolean=false) {
     val command=os.navigationCommand(if(arrived)NavigationAction.ARRIVE else NavigationAction.END)
     os.scope.launch {val receipt=os.commitNavigation(command)
-        if(receipt.result==NavigationResult.SAVED){os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=null;os.follow=false}
+        if(receipt.result==NavigationResult.SAVED){os.shell.hideChartRoutePreview();os.follow=false}
         else os.notify(navigationFailure(os,receipt),navigationFailure(os,receipt),app=AppId.CHART,severity=NoticeSeverity.WARNING)}
 }
 private fun advanceNavigationTarget(os:OsStore,route:Route,expectedIndex:Int,expectedSession:NavigationSession?):Boolean {
@@ -388,7 +390,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
             if(stopping) {
                 Label(if(arrival) os.t("确认已到达终点后结束导航。","Confirm arrival at the final waypoint and end navigation.")
                     else os.t("结束当前引导，保留已保存的航线。航行记录由记录按钮单独控制。","End current guidance and keep the saved route. Track recording is controlled separately."),19)
-                MetroButton(if(arrival) os.t("确认到达并结束","confirm arrival and finish") else os.t("结束导航","end navigation"),{operation.submit(command(if(arrival)NavigationAction.ARRIVE else NavigationAction.END)){os.displayedRouteId=null;onDismiss()}},primary=true,enabled=!operation.pending)
+                MetroButton(if(arrival) os.t("确认到达并结束","confirm arrival and finish") else os.t("结束导航","end navigation"),{operation.submit(command(if(arrival)NavigationAction.ARRIVE else NavigationAction.END)){os.shell.hideChartRoutePreview();onDismiss()}},primary=true,enabled=!operation.pending)
                 MetroButton(os.t("继续导航","keep navigating"),{stopping=false;arrival=false})
             } else if(choose) {
                 Label(os.t("选择后直接前往该点，再按顺序继续。","Head to the selected waypoint, then continue in order."),16,c.muted)

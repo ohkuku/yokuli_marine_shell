@@ -47,6 +47,11 @@ import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 import kotlin.math.*
 
+/** 无自定义文件夹/内容时只有空画布，不以另一份底图冒充用户选择。 */
+private fun emptyChartLayers() = JSONArray().put(JSONObject()
+    .put("id","empty-chart").put("type","background")
+    .put("paint",JSONObject().put("background-color","#DEE9E8")))
+
 interface ChartCamera {
     fun project(point: GeoPoint): PointF
     fun unproject(x: Float, y: Float): GeoPoint
@@ -178,6 +183,8 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     var error by mutableStateOf<String?>(null)
         private set
     var loading by mutableStateOf(true)
+        private set
+    var showsReferenceBackground by mutableStateOf(false)
         private set
     var onEvent: (MapEvent)->Unit={}
     init {
@@ -322,7 +329,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         }
     }
     private fun retire(old:TileGateway?) {if(old!=null) maps.scope.launch(Dispatchers.IO) {runCatching {old.close()}}}
-    private fun applyLibreStyle(sources: JSONObject, layers: JSONArray, generation: Long, ready: Boolean = false) {
+    private fun applyLibreStyle(sources: JSONObject, layers: JSONArray, generation: Long, ready: Boolean = false, referenceBackground: Boolean = true) {
         val map = libre ?: return
         // Style 接管资源前清理自有图层、source 和图钉；加载中的参考底图也重画地理内容。
         placeLabels.clear()
@@ -333,7 +340,8 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
             if (!destroyed && generation == sourceGeneration && map.style === loaded) {
                 if (ready) loading = false
                 if(error=="base"||error=="labels")error=null
-                placeLabels.attach(map,loaded,maps.chinese,
+                showsReferenceBackground=referenceBackground
+                if(referenceBackground)placeLabels.attach(map,loaded,maps.chinese,
                     beforeLayerId=(maps.source as? MapSource.CustomLayer)?.layerId)
                 nativeScene.invalidate()
                 renderViewportScene(force=true)
@@ -349,6 +357,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         if(styleRevision==revision) return
         if(googleEngine && googleMap==null || !googleEngine && libre==null) return
         styleRevision=revision;styleJob?.cancel();val generation=++sourceGeneration;error=null;loading=true
+        showsReferenceBackground=false
         if(googleEngine) {
             googleMap?.apply {
                 // 卫星影像同时显示 SDK 的地名、道路等信息，不再只有一张无标注照片。
@@ -361,8 +370,10 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         styleJob=scope.launch {
             var proposed:TileGateway?=null
             try {
-                // 一次提交完整离线样式，避免加载同一份全球几何两次造成切换闪动。
-                val sources=OfflineWorldStyle.sources();val layers=OfflineWorldStyle.layers()
+                // 已选且可读的自定义文件夹沿用原渲染；未配置/空目录不能回退到底图。
+                val referenceBackground=source==MapSource.Offline || source is MapSource.CustomLayer&&layer?.files?.isNotEmpty()==true
+                val sources=if(referenceBackground)OfflineWorldStyle.sources()else JSONObject()
+                val layers=if(referenceBackground)OfflineWorldStyle.layers()else emptyChartLayers()
                 when(source) {
                     MapSource.Offline -> Unit
                     MapSource.Satellite -> error="online"
@@ -379,14 +390,14 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 ensureActive()
                 if(generation!=sourceGeneration) {retire(proposed);return@launch}
                 val old=gateway;gateway=proposed;retire(old)
-                applyLibreStyle(sources, layers, generation, ready = true)
+                applyLibreStyle(sources, layers, generation, ready = true, referenceBackground = referenceBackground)
             } catch(e:Exception) {
                 retire(proposed)
                 if(e !is CancellationException && generation==sourceGeneration) {
                     val old=gateway;gateway=null;retire(old)
-                    // 新图层打不开时不继续显示上一张海图，回到明确的本地背景并保留错误提示。
+                    // 新文件夹打不开时清除旧海图，留空并报错，不伪装成底图模式。
                     if(source is MapSource.CustomLayer)runCatching {
-                        applyLibreStyle(OfflineWorldStyle.sources(),OfflineWorldStyle.layers(),generation,ready=true)
+                        applyLibreStyle(JSONObject(),emptyChartLayers(),generation,ready=true,referenceBackground=false)
                     }
                     error=if(source==MapSource.Offline)"base" else "read";loading=false
                 }
@@ -404,7 +415,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         val cam=camera ?: return
         state.request?.takeIf {it.id!=lastRequest}?.let {request ->
             if(width<=0 || height<=0) return@let
-            if(request.point!=null) cam.move(request.point,request.zoom) else if(request.points.isNotEmpty()) cam.fit(request.points)
+            if(request.point!=null) cam.move(request.point,request.zoom) else if(request.points.isNotEmpty())cam.fit(request.points)
             lastOrientationRequest=null
             lastRequest=request.id
             if(state.request?.id==request.id)state.request=null
@@ -591,7 +602,9 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                 host.error=="base" ->if(zh)"内置地图未能载入 · 点按重试" else "built-in map could not load · tap to retry"
                 host.error=="depthLabels" ->if(zh)"测深标签未能显示 · 点按重试" else "depth labels could not load · tap to retry"
                 host.error=="labels" ->if(zh)"地名未能载入 · 点按重试" else "place names could not load · tap to retry"
-                host.error=="empty" ->if(zh)"图层没有可用文件 · 在图册检查" else "no available files · check chart library"
+                host.error=="empty" ->if((maps.source as? MapSource.CustomLayer)?.layerId.isNullOrBlank()) {
+                    if(zh)"自定义背景为空 · 未选择海图文件夹" else "Custom background is empty · No chart folder selected"
+                }else if(zh)"自定义文件夹没有可用海图 · 在图册检查" else "Custom folder has no readable charts · Check Library"
                 host.error!=null ->if(zh)"图层读取失败 · 在图册检查" else "chart read failed · check chart library"
                 host.loading ->if(zh)"正在载入 ${maps.sourceName(true)}…" else "loading ${maps.sourceName(false)}…"
                 coverage==false ->if(zh)"当前位置无本地图块" else "no local chart tile here"
@@ -605,7 +618,7 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                 else Label(it,13,Color(0xFF19252B),statusModifier.background(Color.White.copy(alpha=.95f))
                     .then(if(host.error in setOf("base","labels"))Modifier.clickable {host.retry()}else Modifier).padding(9.dp))
             }
-            val credits=maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()+if(!google)listOf("Natural Earth")else emptyList()
+            val credits=maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()+if(!google&&host.showsReferenceBackground)listOf("Natural Earth")else emptyList()
             if(credits.isNotEmpty())Column(Modifier.align(Alignment.BottomEnd).padding(bottom=state.bottomOverlayDp.dp).widthIn(max=230.dp).background(Color.White.copy(alpha=.92f)).padding(4.dp)) {
                 Label(credits.joinToString(" · "),10,Color(0xFF19252B),maxLines=2)
             }

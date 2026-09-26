@@ -119,6 +119,7 @@ private data class LocalTileDrag(
     val insertionIndex: Int,
     val sourceDocument: StartDocument,
     val sessionId: Long,
+    val columns: Int,
     val hasMoved: Boolean = false,
     val engineObserved: Boolean = false,
     val finishing: Boolean = false,
@@ -143,7 +144,6 @@ fun YokuliStartScreen(
     val byId = remember(state.entries) { state.entries.associateBy { it.descriptor.entryId } }
     val interaction = state.interaction
     val dragging = interaction as? StartInteractionState.Dragging
-    val proposedDocument = dragging?.proposedLayout
     val selectedTile = interaction.selectedTile()
     val editing = interaction.isEditing()
     val scroll = rememberScrollState()
@@ -154,6 +154,12 @@ fun YokuliStartScreen(
     val latestAction by rememberUpdatedState(onAction)
     val revealPulse = remember { Animatable(0f) }
     var localTileDrag by remember { mutableStateOf<LocalTileDrag?>(null) }
+    // UP 后马上交还网格排布，不等待引擎回执时继续把磁贴留在手指坐标。
+    val finishingDrag = localTileDrag?.takeIf { it.finishing && it.sourceDocument == state.document }
+    val proposedDocument = remember(finishingDrag, dragging?.proposedLayout) {
+        finishingDrag?.let { AdaptiveTilePacker.place(it.sourceDocument, it.tileId, it.targetCell, it.columns) }
+            ?: dragging?.proposedLayout
+    }
     // 连续坐标只供拖动与 placement 读取；LocalTileDrag 仅发布开始、跨格和结束等离散变化。
     var pointerCoordinates by remember { mutableStateOf<TileDragCoordinates?>(null) }
     var nextDragSessionId by remember { mutableStateOf(0L) }
@@ -180,12 +186,10 @@ fun YokuliStartScreen(
     }
     LaunchedEffect(localTileDrag?.finishing) {
         val local = localTileDrag ?: return@LaunchedEffect
-        // StateFlow can conflate a no-op Begin/Drop back into the same EditIdle state.
-        // No changed document needs acknowledgement in this case; do not leave a ghost drag.
-        if (
-            local.finishing && local.targetCell == local.originCell &&
-            local.insertionIndex == AdaptiveTilePacker.insertionIndexOf(local.sourceDocument, local.tileId)
-        ) {
+        // Begin/Drop 可以合并回同一个 EditIdle。用实际排布识别所有无变化落点，
+        // 包括超出末行后被限制回原位的情况，不能只比较原始手指目标。
+        if (local.finishing && AdaptiveTilePacker.place(local.sourceDocument, local.tileId,
+                local.targetCell, local.columns) == local.sourceDocument) {
             localTileDrag = null
         }
     }
@@ -225,7 +229,7 @@ fun YokuliStartScreen(
             proposedDocument?.let { AdaptiveTilePacker.pack(it, geometry.columns) } ?: packedDocument
         }
         val renderDrag = localTileDrag?.takeIf {
-            it.sourceDocument == state.document && (dragging?.tileId == it.tileId || !it.engineObserved)
+            !it.finishing && it.sourceDocument == state.document && (dragging?.tileId == it.tileId || !it.engineObserved)
         }
         // A tighter preview cannot clamp away the scroll range under the accepted finger.
         val rows = if (renderDrag != null) max(packedDocument.documentHeightRows, visualPackedDocument.documentHeightRows)
@@ -255,7 +259,11 @@ fun YokuliStartScreen(
                 return
             }
             val offset = coordinates.contentOffset(scroll.value.toFloat())
-            val target = hysteresis.resolve(current.originCell, offset, pitchPx, current.targetCell)
+            val rawTarget = hysteresis.resolve(current.originCell, offset, pitchPx, current.targetCell)
+            val moving = packedDocument.tile(current.tileId) ?: return
+            // 边界来自开始拖动时的布局，不允许预览扩高后又把下一次边界向下推。
+            val target = GridCell(rawTarget.column.coerceIn(0, geometry.columns - moving.entry.size.columns),
+                rawTarget.row.coerceIn(0, packedDocument.documentHeightRows))
             val index = if (target == current.targetCell) current.insertionIndex
                 else AdaptiveTilePacker.insertionIndexForCell(current.sourceDocument, geometry.columns, target, current.tileId)
             if (!current.hasMoved || target != current.targetCell || index != current.insertionIndex)
@@ -331,7 +339,7 @@ fun YokuliStartScreen(
                             tileId, down.id.value,
                             TileDragCoordinates(ShellOffset(startPointer.x, startPointer.y), startScrollPx = scroll.value.toFloat()),
                             origin.cell, origin.cell, AdaptiveTilePacker.insertionIndexOf(source, tileId), source,
-                            sessionId = session, hasMoved = direct,
+                            sessionId = session, columns = geometry.columns, hasMoved = direct,
                         )
                         pointerCoordinates = localTileDrag?.coordinates
                         latestAction(LauncherUiAction.BeginTileDrag(tileId, dragStart.id.value, ShellOffset(grab.x, grab.y)))
@@ -382,7 +390,7 @@ fun YokuliStartScreen(
                     Box(Modifier.fillMaxSize().combinedNoRipple { if (editing) onAction(LauncherUiAction.ExitStartEdit) })
                     WpSpatialStartLayout(
                         document = state.document, proposedDocument = proposedDocument, geometry = geometry,
-                        floatingTileId = renderDrag?.tileId ?: dragging?.tileId,
+                        floatingTileId = renderDrag?.tileId,
                         selectedTileId = selectedTile,
                         floatingOffsetProvider = {
                             renderDrag?.let { (pointerCoordinates ?: it.coordinates).contentOffset(scroll.value.toFloat()) } ?: ShellOffset(0f, 0f)

@@ -7,17 +7,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import com.yokuli.marine.shell.rebuild.OsStore
-
-/** 显示租约只提升当前可见仪表的更新需求；常驻基础采集仍由系统所有者管理。 */
-@Composable internal fun tileInstrumentDisplayDemand(os:OsStore,active:Boolean,heading:Boolean=false) {
-    val display=os.marine?.services?.display
-    DisposableEffect(display,active,heading) {
-        val instruments=if(active)display?.acquireInstruments()else null
-        val direction=if(active&&heading)display?.acquireMapHeading()else null
-        onDispose {direction?.close();instruments?.close()}
-    }
-}
 
 /** 中文：所有可见磁贴共用时效时钟；最后一个观察者离开后立即停表，不启动业务采集。 */
 private object TileAgeClock {
