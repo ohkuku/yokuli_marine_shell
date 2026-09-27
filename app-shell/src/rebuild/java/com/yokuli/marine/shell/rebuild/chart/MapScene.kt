@@ -89,7 +89,7 @@ sealed interface MapEvent {
     /** hitPoint是本次手指点按的地理坐标；不可用时不能用对象中心冒充。 */
     data class ItemSelected(val id: String, val hitPoint: GeoPoint? = null) : MapEvent
     data class PointMoved(val id: String, val point: GeoPoint) : MapEvent
-    data class CoordinateSelected(val point: GeoPoint) : MapEvent
+    data class CoordinateSelected(val point: GeoPoint, val longPress:Boolean = false) : MapEvent
     data object GestureStarted : MapEvent
 }
 

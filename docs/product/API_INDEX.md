@@ -1669,6 +1669,13 @@
 | `fun leaveRouteDraft` | [RouteDraftState.kt:6](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L6) |
 | `fun discardRouteDraft` | [RouteDraftState.kt:10](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L10) |
 | `fun loadRouteDraft` | [RouteDraftState.kt:16](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L16) |
+| `fun routeDraftControlIndices` | [RouteDraftState.kt:27](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L27) |
+| `fun routeDraftControlPoints` | [RouteDraftState.kt:33](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L33) |
+| `fun appendRouteDraftControlPoint` | [RouteDraftState.kt:36](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L36) |
+| `fun removeLastRouteDraftControlPoint` | [RouteDraftState.kt:46](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L46) |
+| `fun moveRouteDraftPoint` | [RouteDraftState.kt:67](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L67) |
+| `fun insertRouteDraftControlPoint` | [RouteDraftState.kt:79](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L79) |
+| `fun deleteRouteDraftPoint` | [RouteDraftState.kt:94](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftState.kt#L94) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/RouteDraftSummary.kt
 

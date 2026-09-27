@@ -1,6 +1,7 @@
 package com.yokuli.marine.shell.rebuild.ui
 
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
@@ -13,6 +14,7 @@ import kotlinx.coroutines.*
 import com.yokuli.runtime.contract.chart.ChartGeometryKind
 import com.yokuli.runtime.contract.chart.NauticalFeature
 import com.yokuli.runtime.contract.chart.NauticalFeatureKind
+import kotlin.math.*
 
 /** Chart owns its route/mark editing; the renderer receives geometry and returns gestures. */
 @Composable
@@ -28,6 +30,7 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
     }
     val active = (shellState.surface as? ShellVisualSurface.Module)?.let { shellState.tasks.task(it.taskId)?.currentUiStateKey == instanceKey } == true || instanceKey == null
     val sharedView = os.maps.view("chart", os.center, os.zoom)
+    var selectedDraftPointIndex by rememberSaveable(instanceKey) {mutableStateOf<Int?>(null)}
     // 原生地图在转场期间仍会回调相机位置。每次访问用自己的相机状态，离场页不能写回新页。
     val view = remember(instanceKey) { MapViewState(os.center, os.zoom) }
     val chartData by os.maps.charts.state.collectAsState()
@@ -116,6 +119,26 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         }
     }
     var nativeHost by remember(instanceKey) { mutableStateOf<ChartHost?>(null) }
+    fun nearestDraftInsertion(point:GeoPoint):Pair<Int,GeoPoint>? {
+        val host=nativeHost?:return null
+        val camera=host.camera?:return null
+        val routePoints=os.draftRoute
+        if(routePoints.size<2)return null
+        val q=camera.project(point)
+        if(!q.x.isFinite()||!q.y.isFinite())return null
+        var bestSegment=-1;var bestDistance=Float.POSITIVE_INFINITY;var bestX=0f;var bestY=0f
+        for(index in 0 until routePoints.lastIndex) {
+            val a=camera.project(routePoints[index]);val b=camera.project(routePoints[index+1])
+            if(!a.x.isFinite()||!a.y.isFinite()||!b.x.isFinite()||!b.y.isFinite())continue
+            val dx=b.x-a.x;val dy=b.y-a.y;val length2=dx*dx+dy*dy
+            val t=if(length2<=.01f)0f else (((q.x-a.x)*dx+(q.y-a.y)*dy)/length2).coerceIn(0f,1f)
+            val x=a.x+dx*t;val y=a.y+dy*t;val d=hypot(q.x-x,q.y-y)
+            if(d<bestDistance){bestDistance=d;bestSegment=index;bestX=x;bestY=y}
+        }
+        val threshold=44f*host.resources.displayMetrics.density
+        if(bestSegment<0||bestDistance>threshold)return null
+        return (bestSegment+1) to camera.unproject(bestX,bestY)
+    }
     view.interactive = active && LocalInternalAppInputEnabled.current
     if(active) {
         view.objectPickingEnabled = !os.editingRoute&&os.ruler.isEmpty()&&datasetPreview==null
@@ -155,13 +178,16 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
     val logicalTargets=(if(os.editingRoute)os.draftNavigationTargetIndices else route?.navigationTargetIndices) ?: points.indices.toList()
     val currentTarget=os.navigationState.session?.targetIndex
     val markers = remember(points,logicalTargets,currentTarget,os.editingRoute,navigating,os.routeLeg,allPlaces,sharedView.selectedPlaceId,accent) {buildList {
-        val labels=logicalTargets.withIndex().associate {it.value to (it.index+1).toString()}
-        points.forEachIndexed {i,p ->
-            val label=labels[i]
-            if(label!=null)add(MapPoint("route:$i",p,label,if(navigating && i<os.routeLeg)0xFF7D898C else accent,
-                if(os.editingRoute)14f else if(navigating && i==currentTarget)16f else 10f,os.editingRoute))
-            // 圆弧和搜索形状点留在线几何中；仅把当前沿线引导点画成无编号的小点。
-            else if(i==0||navigating&&i==os.routeLeg)add(MapPoint("route:$i",p,"",accent,4f,false))
+        if(os.editingRoute) {
+            points.forEachIndexed {i,p->add(MapPoint("route:$i",p,(i+1).toString(),accent,14f,true))}
+        } else {
+            val labels=logicalTargets.withIndex().associate {it.value to (it.index+1).toString()}
+            points.forEachIndexed {i,p ->
+                val label=labels[i]
+                if(label!=null)add(MapPoint("route:$i",p,label,if(navigating && i<os.routeLeg)0xFF7D898C else accent,
+                    if(navigating && i==currentTarget)16f else 10f,false))
+                else if(i==0||navigating&&i==os.routeLeg)add(MapPoint("route:$i",p,"",accent,4f,false))
+            }
         }
         allPlaces.forEach {add(MapPoint("place:${it.id}",it.point,"",if(sharedView.selectedPlaceId==it.id)0xFFD74A29 else accent,if(sharedView.selectedPlaceId==it.id)12f else 5f))}
     }}
@@ -183,8 +209,16 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         onHost={host -> nativeHost=host;host.captureForTile=active;onHost(host)},onEvent={event ->if(isCurrent())when(event) {
             is MapEvent.CameraChanged -> {os.center=event.center;os.zoom=event.zoom;sharedView.center=event.center;sharedView.zoom=event.zoom}
             MapEvent.GestureStarted -> {os.follow=false;os.showCrosshair=true;sharedView.selectedPlaceId=null;sharedView.selectedAisMmsi=null}
-            is MapEvent.CoordinateSelected -> {os.follow=false;os.showCrosshair=true}
-            is MapEvent.ItemSelected -> if(event.id.startsWith("enc:")||event.id.startsWith("raster:")) {
+            is MapEvent.CoordinateSelected -> {
+                if(event.longPress&&os.editingRoute) {
+                    nearestDraftInsertion(event.point)?.let {(index,inserted)->
+                        insertRouteDraftControlPoint(os,index,inserted);selectedDraftPointIndex=null
+                    }
+                } else {os.follow=false;os.showCrosshair=true}
+            }
+            is MapEvent.ItemSelected -> if(event.id.startsWith("route:")&&os.editingRoute) {
+                selectedDraftPointIndex=event.id.substringAfter(':').toIntOrNull()?.takeIf{it in os.draftRoute.indices}
+            }else if(event.id.startsWith("enc:")||event.id.startsWith("raster:")) {
                 sharedView.selectedPlaceId=null;sharedView.selectedAisMmsi=null;os.showCrosshair=false
             }else if(event.id.startsWith("ais:")&&!os.editingRoute&&os.ruler.isEmpty()) {
                 sharedView.selectedAisMmsi=event.id.substringAfter(':');sharedView.selectedPlaceId=null;os.showCrosshair=false
@@ -196,9 +230,24 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
             }
             is MapEvent.PointMoved -> when {
                 event.id.startsWith("ruler:") -> {val index=event.id.substringAfter(':').toIntOrNull();os.ruler=os.ruler.mapIndexed {i,p ->if(i==index)event.point else p}}
-                event.id.startsWith("route:") && os.editingRoute -> {val index=event.id.substringAfter(':').toIntOrNull();os.draftRoute=os.draftRoute.mapIndexed {i,p ->if(i==index)event.point else p}}
+                event.id.startsWith("route:") && os.editingRoute -> event.id.substringAfter(':').toIntOrNull()?.let{index->moveRouteDraftPoint(os,index,event.point)}
             }
         }})
+    selectedDraftPointIndex?.let {index->
+        os.draftRoute.getOrNull(index)?.let {point->
+            val manual=index in routeDraftControlIndices(os.draftRoute,os.draftNavigationTargetIndices)
+            AppDialog(onDismissRequest={selectedDraftPointIndex=null}) {AppDialogSurface {
+                AppDialogTitle(os.t("航线点 ${index+1}","Route point ${index+1}"))
+                Label(os.formatCoordinates(point),14,LocalMetro.current.muted)
+                Label(if(manual)os.t("人工控制点 · 自动规划会保留这个位置","Manual control point · auto planning preserves this position")
+                    else os.t("自动形状点 · 拖动后会变成人工控制点","Automatic shape point · dragging it makes it a manual control point"),13,LocalMetro.current.muted)
+                MetroButton(os.t("删除这个点","Delete this point"),{
+                    deleteRouteDraftPoint(os,index);selectedDraftPointIndex=null
+                },primary=true)
+                MetroButton(os.t("关闭","Close"),{selectedDraftPointIndex=null})
+            }}
+        }
+    }
 }
 
 /** 相机只接收边界极值，不将十万测深点送到主线程取景；日期变更线使用最小经度弧。 */

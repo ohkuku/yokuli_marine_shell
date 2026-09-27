@@ -177,7 +177,7 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
 
     private fun pointIcon(point: MapPoint): Bitmap {
         // MapLibre centres the bitmap; transparent margins remain symmetrical at every zoom.
-        val label = if(point.style!=MapPointStyle.PIN)point.label else point.label.takeIf { it.length <= 3 }.orEmpty()
+        val label = if(point.style!=MapPointStyle.PIN)point.label else point.label.takeIf { it.length <= 4 }.orEmpty()
         val key = pointIconKey(point)
         icons.get(key)?.let { return it }
         if(point.style!=MapPointStyle.PIN) {
@@ -192,7 +192,7 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
         paint.color = Color.WHITE; canvas.drawCircle(center, center, radius + 2 * density, paint)
         paint.color = point.color.toInt(); canvas.drawCircle(center, center, radius, paint)
         if (label.isNotEmpty()) {
-            paint.color = Color.WHITE; paint.textSize = 13 * density; paint.textAlign = Paint.Align.CENTER
+            paint.color = Color.WHITE; paint.textSize = (if(label.length>=4)10.5f else 13f) * density; paint.textAlign = Paint.Align.CENTER
             paint.typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             canvas.drawText(label, center, center - (paint.ascent() + paint.descent()) / 2, paint)
         }

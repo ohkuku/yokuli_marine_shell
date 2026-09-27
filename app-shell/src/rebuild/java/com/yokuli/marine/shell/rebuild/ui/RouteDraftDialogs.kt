@@ -44,16 +44,17 @@ import kotlinx.coroutines.launch
 
 @Composable internal fun RouteDraftWaypoints(os:OsStore,onDismiss:()->Unit) {
     val points=os.draftRoute
-    val targets=routeDraftControlIndices(points,os.draftNavigationTargetIndices)
+    val controls=routeDraftControlIndices(points,os.draftNavigationTargetIndices).toSet()
     val c=LocalMetro.current
     var showPlaces by rememberSaveable {mutableStateOf(false)}
     var query by rememberSaveable {mutableStateOf("")}
     AppDialog(onDismissRequest=onDismiss) {AppDialogSurface {
         AppDialogTitle(os.t("当前航线航点","Waypoints in this route"))
-        Label(os.t("这里只列你选择的起点、目的地和途经点；自动规划补出的点只是航线形状，不会变成新目的地。","Only the start, destinations and via points you chose are listed here. Auto-planned points only shape the route and do not become new destinations."),13,c.muted)
+        Label(os.t("地图上的每个编号点都可拖动；拖动自动点后会把它变成人工控制点。","Every numbered point on the map can be dragged; dragging an automatic point turns it into a manual control point."),13,c.muted)
         LazyColumn(Modifier.fillMaxWidth().heightIn(max=280.dp)) {
-            itemsIndexed(targets,key={_,index->index}) {ordinal,index->
-                MenuRow(os.t("航点 ${ordinal+1}","Waypoint ${ordinal+1}"),os.formatCoordinates(points[index])) {os.fly(points[index],os.zoom.coerceAtLeast(13.0));onDismiss()}
+            itemsIndexed(points,key={index,_->index}) {index,point->
+                val kind=if(index in controls)os.t("人工控制点","manual control")else os.t("自动形状点","automatic shape point")
+                MenuRow(os.t("点 ${index+1}","Point ${index+1}"),os.formatCoordinates(point)+" · "+kind) {os.fly(point,os.zoom.coerceAtLeast(13.0));onDismiss()}
             }
         }
         if(os.draftNavigationTargetIndices==null&&points.size>=2)MetroButton(os.t("反转航点顺序","Reverse waypoint order"),{os.draftRoute=os.draftRoute.reversed()})

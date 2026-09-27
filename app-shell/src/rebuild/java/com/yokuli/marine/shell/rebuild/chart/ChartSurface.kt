@@ -73,6 +73,8 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var handle: MapPoint? = null
     private var pinOffset = PointF()
+    private var handleDown:PointF?=null
+    private var handleMoved=false
     private fun project(p: GeoPoint) = camera?.project(p) ?: PointF()
     private fun line(canvas: Canvas, points: List<GeoPoint>, color: Int, width: Float, dashed: Boolean = false) {
         if (points.isEmpty()) return
@@ -128,16 +130,30 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
             MotionEvent.ACTION_DOWN -> {
                 val handles=if(state.ruler.size==2) state.ruler.mapIndexed {i,p ->MapPoint("ruler:$i",p,draggable=true)} else scene.points.filter {it.draggable}
                 handle=handles.minByOrNull {val p=project(it.point);hypot(p.x-event.x,p.y-event.y)}?.takeIf {val p=project(it.point);hypot(p.x-event.x,p.y-event.y)<32*density}
-                handle?.let {val p=project(it.point);pinOffset=PointF(p.x-event.x,p.y-event.y);parent.requestDisallowInterceptTouchEvent(true);return true}
+                handle?.let {
+                    val p=project(it.point);pinOffset=PointF(p.x-event.x,p.y-event.y);handleDown=PointF(event.x,event.y);handleMoved=false
+                    parent.requestDisallowInterceptTouchEvent(true);return true
+                }
                 return false
             }
             MotionEvent.ACTION_MOVE -> {
-                val item=handle ?: return false;val point=cam.unproject(event.x+pinOffset.x,event.y+pinOffset.y)
+                val item=handle ?: return false
+                val down=handleDown
+                if(!handleMoved&&down!=null&&hypot(event.x-down.x,event.y-down.y)<4*density)return true
+                handleMoved=true
+                val point=cam.unproject(event.x+pinOffset.x,event.y+pinOffset.y)
                 if(item.id.startsWith("ruler:")) {val index=item.id.substringAfter(':').toInt();state.ruler=state.ruler.mapIndexed {i,p ->if(i==index) point else p}}
                 onEvent(MapEvent.PointMoved(item.id,point))
                 invalidate();return true
             }
-            MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL -> {val used=handle!=null;handle=null;parent.requestDisallowInterceptTouchEvent(false);return used}
+            MotionEvent.ACTION_UP -> {
+                val item=handle;val used=item!=null
+                if(item!=null&&!handleMoved)onEvent(MapEvent.ItemSelected(item.id,item.point))
+                handle=null;handleDown=null;handleMoved=false;parent.requestDisallowInterceptTouchEvent(false);return used
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                val used=handle!=null;handle=null;handleDown=null;handleMoved=false;parent.requestDisallowInterceptTouchEvent(false);return used
+            }
         }
         return handle!=null
     }
@@ -233,6 +249,10 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
         val touchPoint=hitPoint ?: nativeTapPoint?.takeIf{android.os.SystemClock.uptimeMillis()-nativeTapAt in 0..1000}
         onEvent(MapEvent.ItemSelected(id,touchPoint))
     }
+    private fun longPick(point:GeoPoint) {
+        if(destroyed||!state.interactive||!point.valid())return
+        onEvent(MapEvent.CoordinateSelected(point,longPress=true))
+    }
     private fun pick(point: GeoPoint) {
         if(destroyed || !state.interactive || !point.valid()) return
         val projection = camera ?: return
@@ -285,7 +305,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                     else if(id!=null) selectMarker(id)
                     true
                 }
-                map.setOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude))};map.setOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude))}
+                map.setOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude))};map.setOnMapLongClickListener {longPick(GeoPoint(it.latitude,it.longitude))}
                 updateStyle();updateCamera();renderViewportScene(force=true)
             }
         }
@@ -324,7 +344,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                     else if(id!=null) selectMarker(id)
                     true
                 }
-                map.addOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude));true};map.addOnMapLongClickListener {pick(GeoPoint(it.latitude,it.longitude));true}
+                map.addOnMapClickListener {pick(GeoPoint(it.latitude,it.longitude));true};map.addOnMapLongClickListener {longPick(GeoPoint(it.latitude,it.longitude));true}
                 updateStyle();updateCamera();renderViewportScene(force=true)
             }
         }
@@ -550,7 +570,7 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
     val handleEvent:(MapEvent)->Unit={ event ->
         if(state.interactive) {
             val markerPoint=(event as? MapEvent.ItemSelected)?.id?.takeIf {it.startsWith("enc:")}?.let {id->structured.scene.points.firstOrNull {it.id==id}?.point}
-            val queryPoint=markerPoint ?: (event as? MapEvent.CoordinateSelected)?.point
+            val queryPoint=markerPoint ?: (event as? MapEvent.CoordinateSelected)?.takeUnless{it.longPress}?.point
             val canQuery=state.objectPickingEnabled&&state.ruler.isEmpty()&&scene.points.none {it.draggable}
             val objects=when {
                 event is MapEvent.ItemSelected&&event.id.startsWith("enc:")&&canQuery&&queryPoint!=null->chartObjectsAt(structured.features,queryPoint,state.zoom)

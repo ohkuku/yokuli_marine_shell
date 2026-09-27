@@ -236,14 +236,28 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             for((dx,dy) in offsets)if(!terrainWater(Coordinate(c.x+dx,c.y+dy)))return false
             return avoidanceMargin==null||!avoidanceMargin.covers(projection.factory.createPoint(c))
         }
+        val coastPreferenceMeters=(cellMeters*1.5).coerceIn(350.0,900.0)
+        fun coastOpen(c:Coordinate,radius:Double):Boolean {
+            repeat(8){i->
+                val angle=2*Math.PI*i/8
+                if(!terrainWater(Coordinate(c.x+cos(angle)*radius,c.y+sin(angle)*radius)))return false
+            }
+            return true
+        }
+        fun coastMultiplier(c:Coordinate):Double=when {
+            coastOpen(c,coastPreferenceMeters)->1.0
+            coastOpen(c,coastPreferenceMeters*.65)->2.25
+            coastOpen(c,coastPreferenceMeters*.35)->5.0
+            else->9.0
+        }
         val sampleStep=max(25.0,min(250.0,cellMeters*.5))
-        fun clear(a:Coordinate,b:Coordinate,preferDraft:Boolean=false):Boolean {
+        fun clear(a:Coordinate,b:Coordinate,preferDraft:Boolean=false,preferCoast:Boolean=false):Boolean {
             if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(a,b)).intersects(avoidanceMargin))return false
             val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
             for(i in 0..slices) {
                 val t=i.toDouble()/slices
                 val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
-                if(!safe(at)||preferDraft&&!draftPreferred(at))return false
+                if(!safe(at)||preferDraft&&!draftPreferred(at)||preferCoast&&!coastOpen(at,coastPreferenceMeters*.65))return false
             }
             return true
         }
@@ -280,7 +294,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val rawA=projection.xy(start);val rawB=projection.xy(end)
         val a=nearestWater(rawA)?:return null
         val b=nearestWater(rawB)?:return null
-        if(clear(a,b,preferDraft=true))return preserveEndpoints(listOf(a,b))
+        if(clear(a,b,preferDraft=true,preferCoast=true))return preserveEndpoints(listOf(a,b))
 
         val extent=padding.coerceAtLeast(2_000.0)
         val minX=min(a.x,b.x)-extent;val maxX=max(a.x,b.x)+extent
@@ -322,7 +336,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 val next=ny*cols+nx;val there=coord(next)
                 if(!clear(here,there))continue
                 val edge=here.distance(there)
-                val multiplier=(depthMultiplier(here)+depthMultiplier(there))/2
+                val multiplier=(depthMultiplier(here)*coastMultiplier(here)+depthMultiplier(there)*coastMultiplier(there))/2
                 val cost=node.cost+edge*multiplier
                 if(cost>=scores[next])continue
                 scores[next]=cost;parents[next]=node.id
@@ -336,7 +350,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val reduced=mutableListOf(reverse.first());var i=0
         while(i<reverse.lastIndex) {
             var next=reverse.lastIndex
-            while(next>i+1&&!clear(reverse[i],reverse[next],preferDraft=true))next--
+            while(next>i+1&&!clear(reverse[i],reverse[next],preferDraft=true,preferCoast=true))next--
             reduced.add(reverse[next]);i=next
         }
         return preserveEndpoints(reduced)
