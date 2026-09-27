@@ -151,8 +151,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                                                 onOpenPositionSources={os.openLinked("data_center:source/POSITION")},onOpenAisSources={go("sources")},onOpenHeadingSources={os.openLinked("data_center:source/HEADING_TRUE")})
                                         }
                                     }
-                                    if(pager.settledPage==tab&&selected!=null) AisVesselSheet(os,s,selected!!,detailExpanded,
-                                        {detailExpanded=it},{detailExpanded=false;selected=null},::viewTarget,{openChart(it)},{go("sources")},Modifier.fillMaxSize())
+                                    selected?.let { selectedMmsi ->
+                                        if(pager.settledPage==tab) AisVesselSheet(os,s,selectedMmsi,detailExpanded,
+                                            {detailExpanded=it},{detailExpanded=false;selected=null},::viewTarget,{openChart(it)},{go("sources")},Modifier.fillMaxSize())
+                                    }
                                 }
                                 AisRangeZoom(os,rangeMeters,::setRange,::saveRange,enabled=active&&s.runtime.ready&&!detailExpanded)
                             }
@@ -269,10 +271,24 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     LaunchedEffect(service,mmsi,owner) {
         if(service==null||mmsi==null)return@LaunchedEffect
         try {
-            service.command(AisCommand.RetainTarget(mmsi,true,owner))
+            // Retention is only a cache/display lease. A transient Binder/Core failure must never
+            // terminate the Compose host merely because the user selected another vessel.
+            try {
+                service.command(AisCommand.RetainTarget(mmsi,true,owner))
+            } catch(cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch(error: Exception) {
+                android.util.Log.w("YokuliAIS","Could not retain selected AIS target $mmsi",error)
+            }
             awaitCancellation()
         } finally {
-            withContext(NonCancellable){service.command(AisCommand.RetainTarget(mmsi,false,owner))}
+            withContext(NonCancellable) {
+                try {
+                    service.command(AisCommand.RetainTarget(mmsi,false,owner))
+                } catch(error: Exception) {
+                    android.util.Log.w("YokuliAIS","Could not release selected AIS target $mmsi",error)
+                }
+            }
         }
     }
 }
