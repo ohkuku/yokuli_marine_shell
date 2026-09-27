@@ -2,6 +2,7 @@ package com.yokuli.runtime.marine.chart
 
 import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import com.google.gson.Gson
 import com.yokuli.runtime.contract.chart.*
 import java.text.Normalizer
@@ -11,7 +12,21 @@ import java.util.Locale
 internal object ChartFeatureIndex {
     fun create(db:SQLiteDatabase) {
         db.execSQL("CREATE TABLE features (rowid INTEGER PRIMARY KEY,feature_id TEXT NOT NULL UNIQUE,cell TEXT NOT NULL,kind TEXT NOT NULL,name TEXT NOT NULL,search TEXT NOT NULL,payload TEXT NOT NULL)")
-        db.execSQL("CREATE VIRTUAL TABLE spatial USING rtree(id,min_x,max_x,min_y,max_y)")
+        // Android vendors are not required to ship SQLite's optional RTree module. Keep the same
+        // spatial table contract and fall back to ordinary indexed bounds instead of rejecting an
+        // otherwise valid S-57 / GeoPackage / raster-only dataset.
+        try {
+            db.execSQL("CREATE VIRTUAL TABLE spatial USING rtree(id,min_x,max_x,min_y,max_y)")
+        } catch (error: SQLiteException) {
+            val message=error.message.orEmpty()
+            if(!message.contains("no such module",ignoreCase=true)||!message.contains("rtree",ignoreCase=true))throw error
+            db.execSQL("DROP TABLE IF EXISTS spatial")
+            db.execSQL("CREATE TABLE spatial (id INTEGER PRIMARY KEY,min_x REAL NOT NULL,max_x REAL NOT NULL,min_y REAL NOT NULL,max_y REAL NOT NULL)")
+            db.execSQL("CREATE INDEX spatial_min_x ON spatial(min_x)")
+            db.execSQL("CREATE INDEX spatial_max_x ON spatial(max_x)")
+            db.execSQL("CREATE INDEX spatial_min_y ON spatial(min_y)")
+            db.execSQL("CREATE INDEX spatial_max_y ON spatial(max_y)")
+        }
         db.execSQL("CREATE TABLE spatial_feature (id INTEGER PRIMARY KEY,feature_row INTEGER NOT NULL)")
         db.execSQL("CREATE INDEX spatial_feature_row ON spatial_feature(feature_row)")
         db.execSQL("CREATE INDEX feature_cell ON features(cell,feature_id)")
