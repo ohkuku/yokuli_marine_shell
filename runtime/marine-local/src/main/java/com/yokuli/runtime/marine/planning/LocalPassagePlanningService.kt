@@ -263,20 +263,48 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             return true
         }
-        // A* 用较大的软岸距来“选哪边走”；折线简化不能再拿同一个岸距当硬门槛，
-        // 否则开阔水域也会保留每个栅格拐点。这里只保留一个较小近岸底线。
-        val simplifyCoastMeters=(coastPreferenceMeters*.28).coerceIn(100.0,220.0)
-        fun simplifyClear(a:Coordinate,b:Coordinate):Boolean {
+        // 离岸距离只用于 A* 选择更好的水路；折线简化本身必须保留 A* 的绕行形状。
+        // RDP 只删除近共线点，并且每个新线段仍要落在水上。这样不会为了少点把绕半岛路径拉成穿陆地的弦。
+        val simplifyToleranceMeters=(cellMeters*.18).coerceIn(40.0,90.0)
+        fun simplifyWaterClear(a:Coordinate,b:Coordinate):Boolean {
             if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(a,b)).intersects(avoidanceMargin))return false
             val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
             for(i in 0..slices) {
                 val t=i.toDouble()/slices
                 val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
-                // 中心线必须仍在水里；吃水继续保守核对。岸距这里只防止简化后贴回岸边。
-                if(!terrainWater(at)||!outsideAvoidance(at)||required!=null&&!draftPreferred(at))return false
-                if(!coastOpen(at,simplifyCoastMeters))return false
+                if(!terrainWater(at)||!outsideAvoidance(at))return false
             }
             return true
+        }
+        fun segmentDistance(point:Coordinate,a:Coordinate,b:Coordinate):Double {
+            val dx=b.x-a.x;val dy=b.y-a.y
+            val denominator=dx*dx+dy*dy
+            if(denominator<=1e-9)return point.distance(a)
+            val t=(((point.x-a.x)*dx+(point.y-a.y)*dy)/denominator).coerceIn(0.0,1.0)
+            return hypot(point.x-(a.x+dx*t),point.y-(a.y+dy*t))
+        }
+        fun simplifyShape(path:List<Coordinate>,tolerance:Double=simplifyToleranceMeters):List<Coordinate> {
+            if(path.size<=2)return path
+            val keep=BooleanArray(path.size)
+            keep[0]=true;keep[path.lastIndex]=true
+            val stack=java.util.ArrayDeque<Pair<Int,Int>>()
+            stack.addLast(0 to path.lastIndex)
+            while(stack.isNotEmpty()) {
+                val (first,last)=stack.removeLast()
+                if(last<=first+1)continue
+                var farthest=-1;var deviation=-1.0
+                for(index in first+1 until last) {
+                    val d=segmentDistance(path[index],path[first],path[last])
+                    if(d>deviation){deviation=d;farthest=index}
+                }
+                val shortcutAllowed=deviation<=tolerance&&simplifyWaterClear(path[first],path[last])
+                if(shortcutAllowed)continue
+                // 若直线水域检查失败，即使原路径近似共线，也必须切回原母线，避免跨过粗岸线里的半岛/沙嘴。
+                val split=if(farthest in first+1 until last&&deviation>tolerance)farthest else (first+last)/2
+                keep[split]=true
+                stack.addLast(first to split);stack.addLast(split to last)
+            }
+            return path.filterIndexed{index,_->keep[index]}
         }
         /**
          * 用户明确选择的控制点只要求“点本身在水里”；不能因为 GEBCO 粗像元附近的 25 m
@@ -448,13 +476,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     val coordinates=mutableListOf<Coordinate>(a)
                     reverse.mapTo(coordinates){projection.xy(pixelPoint(it))}
                     coordinates+=b
-                    val reduced=mutableListOf(coordinates.first());var i=0
-                    while(i<coordinates.lastIndex) {
-                        var next=coordinates.lastIndex
-                        while(next>i+1&&!simplifyClear(coordinates[i],coordinates[next]))next--
-                        reduced+=coordinates[next];i=next
-                    }
-                    return preserveEndpoints(reduced)
+                    return preserveEndpoints(simplifyShape(coordinates))
                 }
                 visited++
                 if(visited%256==0)onProgress((visited/(width*height).toFloat()).coerceAtMost(.99f))
@@ -582,13 +604,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val reverse=mutableListOf<Coordinate>(b);var current=found
         while(current>=0){reverse.add(coord(current));current=parents[current]}
         reverse.add(a);reverse.reverse()
-        val reduced=mutableListOf(reverse.first());var i=0
-        while(i<reverse.lastIndex) {
-            var next=reverse.lastIndex
-            while(next>i+1&&!simplifyClear(reverse[i],reverse[next]))next--
-            reduced.add(reverse[next]);i=next
-        }
-        return preserveEndpoints(reduced)
+        return preserveEndpoints(simplifyShape(reverse))
     }
 
     /**
