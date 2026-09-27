@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.marine.core.design.YokuliBrandArrival
 import com.yokuli.marine.core.design.YokuliBrandColors
 
-/** 每次新建的 Launcher/HOME 任务只播一次；配置恢复、热返回与通知目标不重播。 */
+/** 每次新建的 Launcher/HOME 任务只播一次；配置恢复、热返回与通知目标不重播。此注释也作为启动链 CI 变更锚点。 */
 internal object BrandArrivalSession {
     fun claim(intent: Intent?, restoring: Boolean): Boolean {
         if (restoring || intent?.action != Intent.ACTION_MAIN) return false
