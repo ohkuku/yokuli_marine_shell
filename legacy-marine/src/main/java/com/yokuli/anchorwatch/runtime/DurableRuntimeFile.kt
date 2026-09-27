@@ -1,6 +1,7 @@
 package com.yokuli.anchorwatch.runtime
 
 import android.util.AtomicFile
+import com.yokuli.runtime.contract.hardware.VirtualHostServices
 import com.google.gson.Gson
 import java.io.File
 
@@ -14,6 +15,7 @@ internal class DurableRuntimeFile<T>(directory: File, name: String, private val 
     private val gson = Gson()
 
     fun read(empty: () -> T): T {
+        VirtualHostServices.beforeRead()
         if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) return empty()
         require(file.baseFile.length() <= 8L * 1024 * 1024) { "RUNTIME_DOCUMENT_TOO_LARGE" }
         return file.openRead().bufferedReader().use { gson.fromJson(it, type) }
@@ -21,14 +23,17 @@ internal class DurableRuntimeFile<T>(directory: File, name: String, private val 
     }
 
     fun write(value: T) {
+        VirtualHostServices.beforeWrite()
         val directory = requireNotNull(file.baseFile.parentFile)
         check(directory.isDirectory || directory.mkdirs()) { "RUNTIME_DIRECTORY_UNAVAILABLE" }
         val bytes = gson.toJson(value).toByteArray(Charsets.UTF_8)
         require(bytes.size <= 8 * 1024 * 1024) { "RUNTIME_DOCUMENT_TOO_LARGE" }
         val output = file.startWrite()
         try {
+            VirtualHostServices.beforeWrite()
             output.write(bytes)
             output.fd.sync()
+            VirtualHostServices.beforeWrite()
             file.finishWrite(output)
         } catch (error: Throwable) {
             file.failWrite(output)

@@ -1,10 +1,12 @@
 package com.yokuli.anchorwatch.runtime.nmea
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.yokuli.anchorwatch.runtime.storage.faultAwarePreferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -12,7 +14,7 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private val Context.nmeaManualDisconnectStore by preferencesDataStore("nmea_manual_disconnect")
+private val Context.nmeaManualDisconnectStore by faultAwarePreferencesDataStore("nmea_manual_disconnect")
 
 data class NmeaManualDisconnectState(
     val suppressed:Boolean=false,
@@ -39,7 +41,7 @@ class NmeaManualDisconnectRepository @Inject constructor(
         )
     }
     suspend fun current()=state.first()
-    suspend fun suppress(nowUtcMillis:Long=System.currentTimeMillis())=context.nmeaManualDisconnectStore.edit{values->
+    suspend fun suppress(nowUtcMillis:Long=MarineTime.nowUtcMillis())=context.nmeaManualDisconnectStore.edit{values->
         values[Keys.suppressed]=true
         values[Keys.disconnectedAt]=nowUtcMillis
     }

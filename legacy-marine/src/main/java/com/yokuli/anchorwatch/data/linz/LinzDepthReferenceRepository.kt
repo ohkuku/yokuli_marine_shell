@@ -1,6 +1,7 @@
 package com.yokuli.anchorwatch.data.linz
 
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.database.LinzDepthCacheDao
 import com.yokuli.anchorwatch.data.database.LinzDepthCacheEntity
 import com.yokuli.anchorwatch.domain.anchor.AnchorGeometry
@@ -35,7 +36,7 @@ class LinzDepthReferenceRepository @Inject constructor(private val client:LinzWf
     private val mutex=Mutex();private val throttle=LinzQueryThrottle();private val _state=MutableStateFlow(LinzDepthReference(status=if(client.configured)LinzDepthStatus.IDLE else LinzDepthStatus.NOT_CONFIGURED));val state=_state.asStateFlow()
     private val _diagnostics=MutableStateFlow(LinzDepthDiagnostics(layerIds=client.allLayerIds));val diagnostics=_diagnostics.asStateFlow()
 
-    suspend fun refresh(latitude:Double,longitude:Double,nowWall:Long=System.currentTimeMillis(),nowElapsed:Long=SystemClock.elapsedRealtime())=mutex.withLock{
+    suspend fun refresh(latitude:Double,longitude:Double,nowWall:Long=MarineTime.nowUtcMillis(),nowElapsed:Long=MarineTime.nowElapsedMillis())=mutex.withLock{
         if(!client.configured){_state.value=LinzDepthReference(latitude,longitude,nowWall,status=LinzDepthStatus.NOT_CONFIGURED);return@withLock}
         if(!throttle.shouldQuery(latitude,longitude,nowElapsed))return@withLock;throttle.record(latitude,longitude,nowElapsed);val key=cellKey(latitude,longitude);val cached=withContext(Dispatchers.IO){cache.get(key)}
         val cacheNearby=cached!=null&&LinzFinalResultCachePolicy.isNear(cached,latitude,longitude)

@@ -99,16 +99,17 @@ enum class AppId(val zh: String, val en: String, val icon: String) {
     DATA_CENTER("数据中心","Data Center","data"), NMEA("船联网","Boat Network","connect"),
     AIS("AIS","AIS","ais"),
     LOCAL_NMEA("数据共享","Data Sharing","share"), SETTINGS("设置","Settings","settings"),
+    HARDWARE_LAB("演练室","Hardware Lab","data"),
     TILES("磁贴工坊","Tile Studio","start"), APP_CENTER("应用中心","App Center","apps");
     /** 中文应用列表按当前名称的拼音首字母分组，不沿用旧品牌或英文索引。 */
     val chineseIndex:Char get()=when(this) {
         CHART,VOYAGES->'H'; LIBRARY->'T'; PLACES->'W'; INSTRUMENTS->'J'
-        APP_CENTER->'Y'; NMEA,TILES->'C'; DATA_CENTER,LOCAL_NMEA,SETTINGS,ANCHOR->'S';AIS->'A'
+        APP_CENTER,HARDWARE_LAB->'Y'; NMEA,TILES->'C'; DATA_CENTER,LOCAL_NMEA,SETTINGS,ANCHOR->'S';AIS->'A'
     }
 }
 
 @HiltAndroidApp
-class YokuliApplication : Application() {
+class YokuliApplication : com.yokuli.runtime.marine.hardware.MarineHostApplication() {
     @javax.inject.Inject lateinit var marineProvider: javax.inject.Provider<com.yokuli.runtime.marine.MarineSystem>
     @javax.inject.Inject lateinit var contentProvider: javax.inject.Provider<com.yokuli.anchorwatch.api.MarineContentService>
     @javax.inject.Inject lateinit var recoveryProvider: javax.inject.Provider<com.yokuli.anchorwatch.runtime.MarineRecoveryBarrier>
@@ -119,7 +120,12 @@ class YokuliApplication : Application() {
     lateinit var os: OsStore
     override fun onCreate() {
         super.onCreate()
-        if (com.yokuli.runtime.marine.notification.NotificationProcessRole.isNotificationProcess()) return
+        com.yokuli.runtime.contract.time.MarineTime.installHost({ android.os.SystemClock.elapsedRealtime() }, { System.currentTimeMillis() })
+        if (isMarineStorageOwner()) com.yokuli.runtime.marine.hardware.HardwareLabBoot.initialize(this)
+        if (com.yokuli.runtime.marine.notification.NotificationProcessRole.isNotificationProcess()) {
+            com.yokuli.runtime.marine.ipc.BinderMarineSystem.shared(this) // 通知时效跟随 Core 虚拟时钟。
+            return
+        }
         if (com.yokuli.runtime.marine.ipc.MarineCoreProcess.isShell()) {
             os = OsStore(this)
             os.connectSystem(marineSystem)
@@ -190,6 +196,7 @@ class OsStore(val context: Context) {
     } ?: listOf(TileSpec("CHART",4),TileSpec("PLACES"),TileSpec("LIBRARY"),TileSpec("DATA"),TileSpec("NMEA"),TileSpec("SETTINGS",4)))
     /** 扩展安装及授权唯一所有者；只驻留 Shell，不持有船舶领域写端口。 */
     val extensions by lazy { com.yokuli.marine.shell.rebuild.extensions.ExtensionPackageManager(context) }
+    val packages by lazy { com.yokuli.marine.shell.rebuild.extensions.YklPackageCatalog(context, extensions, scope) }
     val shell by lazy { WpShellRuntime(this) }
     val startBackground by lazy { StartBackgroundStore(this) }
     var page by mutableStateOf("start")
@@ -325,7 +332,7 @@ class OsStore(val context: Context) {
     }
     fun t(zh: String, en: String) = if (chinese) zh else en
     fun title(app: AppId) = t(app.zh,app.en)
-    fun title(app: ShellApp) = app.extension?.manifest?.let { t(it.name,it.nameEn) } ?: title(app.app)
+    fun title(app: ShellApp) = app.packageEntry.let { t(it.name, it.nameEn) }
     fun notify(zh: String, en: String, app: AppId? = shell.appForPage(page)?.app,
                severity: NoticeSeverity = NoticeSeverity.INFO, destination: String? = null, key: String? = null) {
         notifications.post(SystemNotice(app = app, chinese = zh, english = en, severity = severity,

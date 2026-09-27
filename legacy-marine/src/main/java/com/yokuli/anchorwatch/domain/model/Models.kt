@@ -49,6 +49,10 @@ data class NavigationFix(
     val headingEpoch: Long? = null,
     val headingSampleSequence: Long? = null,
     val windSampleSequence: Long? = null,
+    /** 中文：HAL 来源与世界代次随观测持久保存；虚拟数据不能冒充真实船位。 */
+    val hardwareBackend: String = "REAL",
+    val hardwareEpoch: Long = 0,
+    val hardwareDeviceId: String? = null,
 )
 
 enum class GpsDataSource { NONE, SYSTEM, NMEA, DEMO }

@@ -3,7 +3,7 @@ package com.yokuli.anchorwatch.data.nmea
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.yokuli.anchorwatch.runtime.storage.faultAwarePreferencesDataStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
@@ -30,6 +30,9 @@ data class NmeaConnectionSpec(
     val priority:Int=0,
     /** 此目的地允许分享的能力；空集合为全部关闭，null 兼容旧版本。 */
     val capabilities:Set<String>?=null,
+    /** 中文：虚拟连接由设备总线维护，不打开 socket，不写入真实连接配置。 */
+    val hardwareBackend:String="REAL",
+    val hardwareDeviceId:String?=null,
 ) {
     fun profile()=ConnectionProfile(name,protocol,host,port,requireChecksum,autoReconnect,stableId=id,localPort=if(receive)localPort else 0)
 }
@@ -42,6 +45,9 @@ data class NmeaRawFrame(
     val sentence:String,val receivedElapsedRealtime:Long,
     /** 含已校验 NMEA tag block 的原始封装；AIS 保留分组与来源元数据。 */
     val originalSentence:String=sentence,
+    val hardwareBackend:String="REAL",
+    val hardwareEpoch:Long=0,
+    val hardwareDeviceId:String?=null,
 )
 /** 连接实况：requested 是用户意图，state 是传输事实，writtenSentences 只计真正写出。 */
 data class NmeaConnectionSnapshot(
@@ -58,7 +64,7 @@ data class NmeaConnectionSnapshot(
     /** 正文通过校验的接收时刻；不与收到字节或本船 GPS 修正混同。 */
     val lastLegalSentenceElapsed:Long?=null,
 )
-private val Context.nmeaConnectionsStore by preferencesDataStore("os_nmea_connections")
+private val Context.nmeaConnectionsStore by faultAwarePreferencesDataStore("os_nmea_connections")
 @Singleton class NmeaConnectionStore @Inject constructor(@ApplicationContext private val context:Context){
     private val key=stringPreferencesKey("connections_v1")
     private val gson=Gson()

@@ -9,13 +9,13 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.yokuli.anchorwatch.data.nmea.NmeaFeed
 import com.yokuli.anchorwatch.data.nmea.NmeaCapability
-import androidx.datastore.preferences.preferencesDataStore
+import com.yokuli.anchorwatch.runtime.storage.faultAwarePreferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.map
 
-private val Context.localNmeaServerSettingsStore by preferencesDataStore("local_nmea_server_settings")
+private val Context.localNmeaServerSettingsStore by faultAwarePreferencesDataStore("local_nmea_server_settings")
 
 /**
  * Configuration for the NMEA service hosted by this phone.

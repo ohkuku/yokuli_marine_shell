@@ -2,8 +2,8 @@ package com.yokuli.runtime.contract.device
 
 import kotlinx.coroutines.flow.StateFlow
 
-/** 当前目录只报告已接入的真实设备；不能将未来的回放/模拟后端伪装成已支持。 */
-enum class DeviceBackend { REAL }
+/** 中文：设备后端必须贯穿目录、总线帧和数据来源，不能将模拟/回放标作真实。 */
+enum class DeviceBackend { REAL, SIMULATED, REPLAY }
 enum class DeviceKind { GNSS, IMU, PRESSURE, NMEA_CONNECTION }
 enum class DeviceAvailability { AVAILABLE, MISSING, PERMISSION_REQUIRED, DISABLED }
 

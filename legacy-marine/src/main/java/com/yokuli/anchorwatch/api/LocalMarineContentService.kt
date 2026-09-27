@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.api
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.net.Uri
 import androidx.room.withTransaction
 import com.yokuli.anchorwatch.data.anchorage.AnchorageLibraryRepository
@@ -103,11 +105,11 @@ class LocalMarineContentService @Inject constructor(
         database.anchorDao().pointsPage(sessionId, afterTimestamp, afterId, limit.coerceIn(1, 5000))
 
     override suspend fun bundle(placeId: Long) = libraryRepository.bundle(placeId)
-    override suspend fun updatePlace(value: AnchoragePlaceEntity) = placeRepository.save(value.copy(updatedAt = System.currentTimeMillis()))
-    override suspend fun updateSpot(value: AnchorageSpotEntity) = spotRepository.save(value.copy(updatedAt = System.currentTimeMillis()))
+    override suspend fun updatePlace(value: AnchoragePlaceEntity) = placeRepository.save(value.copy(updatedAt = MarineTime.nowUtcMillis()))
+    override suspend fun updateSpot(value: AnchorageSpotEntity) = spotRepository.save(value.copy(updatedAt = MarineTime.nowUtcMillis()))
 
     override suspend fun createSpot(placeId: Long, name: String, latitude: Double, longitude: Double): Long {
-        val now = System.currentTimeMillis()
+        val now = MarineTime.nowUtcMillis()
         return spotRepository.save(AnchorageSpotEntity(
             placeId = placeId, name = name, spotType = "PLANNED_REFERENCE", latitude = latitude, longitude = longitude,
             coordinateSource = "MAP_SELECTED", verificationStatus = "PLANNED", createdAt = now, updatedAt = now,
@@ -128,7 +130,7 @@ class LocalMarineContentService @Inject constructor(
 
     override suspend fun createCollection(name: String): Long = database.withTransaction {
         require(name.isNotBlank()) { "A collection needs a name" }
-        val now = System.currentTimeMillis()
+        val now = MarineTime.nowUtcMillis()
         database.anchorageCollectionDao().insert(AnchorageCollectionEntity(
             name = name.trim(), sortOrder = database.anchorageCollectionDao().allNow().size, createdAt = now, updatedAt = now,
         ))
@@ -138,7 +140,7 @@ class LocalMarineContentService @Inject constructor(
         database.withTransaction {
             val dao = database.anchorageCollectionDao()
             if (dao.forPlace(placeId).any { it.id == collectionId }) dao.removeMembership(collectionId, placeId)
-            else dao.setMembership(AnchorageCollectionPlaceCrossRef(collectionId, placeId, System.currentTimeMillis()))
+            else dao.setMembership(AnchorageCollectionPlaceCrossRef(collectionId, placeId, MarineTime.nowUtcMillis()))
         }
     }
 

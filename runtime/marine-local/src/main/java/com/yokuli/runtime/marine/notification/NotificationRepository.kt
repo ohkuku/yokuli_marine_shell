@@ -1,5 +1,6 @@
 package com.yokuli.runtime.marine.notification
 
+import com.yokuli.runtime.contract.hardware.VirtualHostServices
 import android.content.Context
 import android.util.AtomicFile
 import com.google.gson.Gson
@@ -34,6 +35,7 @@ internal class NotificationRepository(context: Context) {
     suspend fun initialize() = mutex.withLock { withContext(Dispatchers.IO) { load() } }
     private fun load() {
         try {
+            VirtualHostServices.beforeRead()
             val exists = file.baseFile.exists() || File(file.baseFile.path + ".bak").exists()
             if (exists) {
                 val text = file.openRead().use { input -> input.readBytesLimited() }
@@ -161,12 +163,13 @@ internal class NotificationRepository(context: Context) {
     private fun fingerprint(command: NoticeCommand): String = java.security.MessageDigest.getInstance("SHA-256")
         .digest(gson.toJson(command.copy(record=command.record?.copy(presentationLanguage=null))).toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     private fun persist(value: Disk) {
+        VirtualHostServices.beforeWrite()
         file.baseFile.parentFile?.let { require(it.isDirectory || it.mkdirs()) }
         val bytes = gson.toJson(value).toByteArray(Charsets.UTF_8)
         require(bytes.size <= 32_000_000) { "HISTORY_CAPACITY" }
         val stream = file.startWrite()
         try {
-            stream.write(bytes); stream.fd.sync(); file.finishWrite(stream)
+            stream.write(bytes); stream.fd.sync(); VirtualHostServices.beforeWrite(); file.finishWrite(stream)
             // ART/JVM 的反射字段顺序并不相同，revision 不保证在 JSON 前 256 字节。
             // 逐字节核对完整已提交内容，既不误判长历史，也不忽略静默 rename 失败。
             check(file.baseFile.length() == bytes.size.toLong()) { "HISTORY_COMMIT_INCOMPLETE" }

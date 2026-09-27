@@ -8,6 +8,7 @@ external object Yokuli {
     val version: Int
     val system: YokuliSystem
     val marine: YokuliMarine
+    val hardware: YokuliHardware
     val devices: YokuliDevices
     val sources: YokuliSources
     val sharing: YokuliSharing
@@ -21,6 +22,7 @@ external object Yokuli {
 external interface YokuliSystem {
     fun info(): Promise<YokuliInfo>
     fun services(): Promise<SystemServices>
+    fun apps(): Promise<PackageCatalog>
 }
 /** 以宿主实际目录为准；声明、授权和当前可用性是三个不同条件。 */
 external interface SystemServices {
@@ -90,6 +92,7 @@ external interface YokuliInfo {
     val packageFormat: String
     val language: String
     val theme: String
+    val clock: MarineClock
     val units: YokuliUnits
 }
 external interface YokuliUnits { val distance: String; val speed: String; val depth: String; val pressure: String; val temperature: String; val coordinates: String }
@@ -244,6 +247,12 @@ external interface YokuliNavigation { fun open(destination: String): Promise<dyn
 external interface YokuliError { val code: String?; val message: String; val retryAfterMillis: Double? }
 /** UI 库返回真实 DOM，文字通过 textContent 插入；不需要 HTML 字符串或内联脚本。 */
 external interface YokuliUi {
+    fun page(title: String, subtitle: String = definedExternally): dynamic
+    fun section(title: String, subtitle: String = definedExternally): dynamic
+    fun field(label: String, value: String, onChange: (String) -> Unit, options: dynamic = definedExternally): dynamic
+    fun toggle(label: String, checked: Boolean, onChange: (Boolean) -> dynamic, options: dynamic = definedExternally): dynamic
+    fun choiceGroup(label: String, items: dynamic, selected: dynamic, onChange: (dynamic) -> dynamic): dynamic
+    fun pivot(items: dynamic, options: dynamic = definedExternally): dynamic
     fun node(tag: String, className: String = definedExternally, text: String = definedExternally): dynamic
     fun metric(label: String, reading: MarineReading?, digits: Int = definedExternally): dynamic
     fun status(message: String, isError: Boolean = definedExternally): dynamic
@@ -252,3 +261,59 @@ external interface YokuliUi {
     fun quality(value: String?): String
     fun errorMessage(error: dynamic): String
 }
+
+
+/** 时间由 Core 推进；不得使用 Date.now() 驱动虚拟航行的超时。 */
+external interface MarineClock {
+    val virtual: Boolean; val paused: Boolean; val rate: Double; val epoch: Double
+    val utcMillis: Double; val elapsedMillis: Double; val hostElapsedMillis: Double
+}
+external interface YokuliHardware {
+    fun snapshot(): Promise<HardwareSnapshot>
+    fun watch(onSnapshot: (HardwareSnapshot) -> Unit, onError: (YokuliError) -> Unit): () -> Unit
+    fun control(command: HardwareCommand): Promise<HardwareResult>
+    fun readRecording(id: String, offset: Double = definedExternally, limit: Int = definedExternally): Promise<RecordingChunk>
+}
+external interface HardwareSnapshot {
+    val ready: Boolean; val mode: String; val epoch: Double; val clock: MarineClock
+    val paused: Boolean; val rate: Double; val utcMillis: Double; val elapsedMillis: Double
+    val scenario: HardwareScenario; val devices: Array<LabDevice>; val faults: Array<HardwareFault>
+    val faultCapabilities: dynamic
+    val recordings: Array<HardwareRecording>; val recordingId: String?; val replayId: String?
+    val replayPositionMillis: Double; val replayDurationMillis: Double; val eventCursor: Int
+    val power: HardwarePower; val storage: HardwareStorage; val error: String?
+}
+external interface HardwareCommand {
+    var action: String; var requestId: String; var deviceId: String?; var recordingId: String?
+    var rate: Double?; var stepMillis: Double?; var name: String?; var scenario: HardwareScenario?
+    var fault: HardwareFault?; var power: HardwarePower?; var storageFault: String?
+}
+external interface HardwareResult { val accepted: Boolean; val code: String; val message: String?; val requestId: String }
+external interface LabDevice { val id: String; val name: String; val kind: String; val attached: Boolean; val frames: Double }
+external interface HardwareScenario {
+    var version: Int; var name: String; var latitude: Double; var longitude: Double
+    var speedKnots: Double; var courseDegrees: Double; var headingDegrees: Double; var accuracyMeters: Double
+    var heelDegrees: Double; var pitchDegrees: Double; var rollPeriodSeconds: Double; var depthMeters: Double
+    var windSpeedKnots: Double; var windDirectionDegrees: Double; var pressureHpa: Double; var waterTemperatureC: Double
+    var waypoints: Array<ScenarioPoint>; var targets: Array<ScenarioAisTarget>; var events: Array<ScenarioEvent>
+}
+external interface ScenarioPoint { var latitude: Double; var longitude: Double }
+external interface ScenarioAisTarget {
+    var mmsi: Int; var name: String; var latitude: Double; var longitude: Double
+    var speedKnots: Double; var courseDegrees: Double; var headingDegrees: Double
+}
+external interface ScenarioEvent {
+    var atMillis: Double; var action: String; var deviceId: String; var value: Double
+    var fault: HardwareFault?; var target: ScenarioAisTarget?; var power: HardwarePower?; var storageFault: String?
+}
+external interface HardwareFault { var deviceId: String; var type: String; var magnitude: Double }
+external interface HardwarePower { var percent: Int; var external: Boolean; var charging: Boolean; var thermal: Int; var screenOn: Boolean; var simulated: Boolean }
+external interface HardwareStorage { val freeBytes: Double; val totalBytes: Double; val fault: String }
+external interface HardwareRecording {
+    val id: String; val name: String; val startedAtUtc: Double; val durationMillis: Double
+    val frames: Double; val bytes: Double; val complete: Boolean; val error: String?
+}
+external interface RecordingChunk { val text: String; val nextOffset: Double; val end: Boolean }
+
+external interface PackageCatalog { val apps: Array<YklPackage> }
+external interface YklPackage { val id: String; val name: String; val version: Int; val runtime: String; val system: Boolean; val removable: Boolean; val available: Boolean; val openTarget: String }

@@ -2,6 +2,7 @@ package com.yokuli.anchorwatch.runtime.health
 
 import android.content.Context
 import android.os.BatteryManager
+import com.yokuli.runtime.contract.hardware.VirtualHostServices
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,5 +23,5 @@ class BatteryHealthPolicy(private val warningAt:Int=15,private val recoverAt:Int
 class BatteryHealthMonitor @Inject constructor(@ApplicationContext context:Context){
     private val battery=context.getSystemService(BatteryManager::class.java)
     private val policy=BatteryHealthPolicy()
-    @Synchronized fun sample(runtimeActive:Boolean)=policy.update(battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),runtimeActive)
+    @Synchronized fun sample(runtimeActive:Boolean)=policy.update(if(VirtualHostServices.virtual)VirtualHostServices.power.value.percent else battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),runtimeActive)
 }

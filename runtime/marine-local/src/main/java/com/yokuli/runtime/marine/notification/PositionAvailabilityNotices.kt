@@ -1,6 +1,7 @@
 package com.yokuli.runtime.marine.notification
 
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.domain.model.GpsDataSource
 import com.yokuli.anchorwatch.domain.model.PositionHealth
 import com.yokuli.runtime.contract.RuntimeResidencyPhase
@@ -19,7 +20,7 @@ internal fun positionNeedsAttention(system: MarineSystem): Boolean {
     val neededByTask = data.active?.paused == false || system.voyage.state.value.phase == VoyagePhase.RECORDING ||
         system.navigation.state.value.session?.phase == NavigationPhase.ACTIVE || system.ais.snapshot.value.preferences.monitoringEnabled
     if(position.selectedSource == GpsDataSource.NONE && !neededByTask) return false
-    val age = position.lastAcceptedElapsedRealtime?.let { (SystemClock.elapsedRealtime() - it).coerceAtLeast(0) }
+    val age = position.lastAcceptedElapsedRealtime?.let { (MarineTime.nowElapsedMillis() - it).coerceAtLeast(0) }
     return position.acceptedFix == null || position.health == PositionHealth.GPS_LOST || age == null || age > 45_000L
 }
 
@@ -42,7 +43,7 @@ internal suspend fun watchPositionAvailability(system: MarineSystem, publish: su
         val position = data.acceptedPosition
         val neededByTask = data.active?.paused == false || system.voyage.state.value.phase == VoyagePhase.RECORDING ||
             system.navigation.state.value.session?.phase == NavigationPhase.ACTIVE || system.ais.snapshot.value.preferences.monitoringEnabled
-        val now = SystemClock.elapsedRealtime()
+        val now = MarineTime.nowElapsedMillis()
         val observationAge = position.lastAcceptedElapsedRealtime?.let { (now - it).coerceAtLeast(0) }
         val usable = position.acceptedFix != null && position.health != PositionHealth.GPS_LOST && observationAge != null && observationAge <= 45_000L
         val missing = positionNeedsAttention(system)
@@ -53,7 +54,7 @@ internal suspend fun watchPositionAvailability(system: MarineSystem, publish: su
                 val ageZh = observationAge?.let { if (it < 60_000) "${it / 1000} 秒前" else "${it / 60_000} 分钟前" } ?: "尚未收到"
                 val ageEn = observationAge?.let { if (it < 60_000) "${it / 1000}s ago" else "${it / 60_000}m ago" } ?: "not received"
                 val source = when(position.selectedSource) { GpsDataSource.SYSTEM -> "手机 GPS" to "Phone GPS"; GpsDataSource.NMEA -> "船联网" to "Boat Network"; else -> "船位来源" to "Position source" }
-                val time = System.currentTimeMillis()
+                val time = MarineTime.nowUtcMillis()
                 val record = NoticeRecord(id, "DATA_CENTER", NoticeText("需要恢复船位", "Restore vessel position",
                     "${source.first} · 上次可信船位：$ageZh。选择可用来源；仅浏览时可在数据中心关闭船位。",
                     "${source.second} · Last accepted position: $ageEn. Choose a working source, or turn position off in Data Center for browsing.",
@@ -73,6 +74,6 @@ internal suspend fun watchPositionAvailability(system: MarineSystem, publish: su
                 }
             }
         }
-        delay(5000)
+        MarineTime.sleep(5000)
     }
 }

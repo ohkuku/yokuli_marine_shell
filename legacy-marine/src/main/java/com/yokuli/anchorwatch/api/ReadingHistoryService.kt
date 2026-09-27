@@ -1,6 +1,7 @@
 package com.yokuli.anchorwatch.api
 
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.domain.vessel.VesselDataFreshness
 import com.yokuli.anchorwatch.domain.vessel.VesselDataQuality
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +19,7 @@ data class Reading(val value: Double, val unit: String, val source: String, val 
     val observedUtcMillis:Long?=null,
     /** 只属于历史采集进程的连续段；不替代原始来源/连续性身份，重启不接线。 */
     val historySessionKey:String?=null) {
-    fun fresh(now: Long=SystemClock.elapsedRealtime()) = freshness==VesselDataFreshness.FRESH&&quality!=VesselDataQuality.UNKNOWN&&now-elapsed in 0..validForMillis
+    fun fresh(now: Long=MarineTime.nowElapsedMillis()) = freshness==VesselDataFreshness.FRESH&&quality!=VesselDataQuality.UNKNOWN&&now-elapsed in 0..validForMillis
 }
 /** 读写故障保留旧文件；界面明确重试，不把未落盘的历史说成已保存。 */
 data class HistoryStorageState(

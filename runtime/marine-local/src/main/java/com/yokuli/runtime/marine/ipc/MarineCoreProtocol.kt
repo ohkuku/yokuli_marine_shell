@@ -40,6 +40,7 @@ internal data class CoreHello(val protocol: Int, val apkVersion: Long, val schem
 internal object MarineCorePorts {
     val interfaces: Map<String, Class<*>> = linkedMapOf(
         "core" to MarineSystem::class.java,
+        "hardwareLab" to com.yokuli.runtime.contract.hardware.HardwareLabService::class.java,
         "devices" to DeviceRuntimeService::class.java,
         "residency" to RuntimeResidencyService::class.java,
         "charts" to ChartDataService::class.java,
@@ -69,6 +70,7 @@ internal object MarineCorePorts {
     fun nested(type: Class<*>): String? = interfaces.entries.firstOrNull { it.value == type }?.key
     fun target(system: MarineSystem, port: String): Any = when (port) {
         "core" -> system
+        "hardwareLab" -> system.hardwareLab
         "devices" -> system.devices
         "residency" -> system.residency; "charts" -> system.charts; "navigation" -> system.navigation
         "analysis" -> system.analysis; "planning" -> system.planning; "voyage" -> system.voyage
@@ -98,6 +100,7 @@ internal object MarineCorePorts {
     fun argumentTypes(method: Method): List<Type> = method.genericParameterTypes.toList().let { if (isSuspend(method)) it.dropLast(1) else it }
     /** 只有读操作可被客户端取消；已接受的写命令归 Core，UI 死亡不取消写入。 */
     fun cancellableRead(port: String, method: Method) = when (port) {
+        "hardwareLab" -> method.name == "readRecording"
         "charts" -> method.name in setOf("acquireSnapshot", "query", "browse", "readFeature", "rasterWindows", "drawing")
         "voyage" -> method.name in setOf("receipt", "snapshot")
         "voyages" -> method.name in setOf("tripReport", "tripReplay", "tripMapData", "commandReceipt")

@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.anchorage
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.google.gson.Gson
 import com.yokuli.anchorwatch.data.database.SavedAnchorageEntity
 import java.net.URI
@@ -131,7 +133,7 @@ object AnchorageSharePayloadCodec {
         return AnchorageQrDecodeResult.Unsupported
     }
 
-    fun toEntity(payload:AnchorageSharePayloadV1,now:Long=System.currentTimeMillis())=SavedAnchorageEntity(
+    fun toEntity(payload:AnchorageSharePayloadV1,now:Long=MarineTime.nowUtcMillis())=SavedAnchorageEntity(
         id=0,name=payload.name,latitude=payload.latitude,longitude=payload.longitude,createdAt=now,updatedAt=now,
         preferredAlarmRadiusMeters=payload.preferredAlarmRadiusMeters,typicalWaterDepthMeters=payload.typicalWaterDepthMeters,
         typicalRodeLengthMeters=payload.typicalRodeLengthMeters,seabedType=payload.seabedType,customSeabedText=payload.customSeabedText,
@@ -139,7 +141,7 @@ object AnchorageSharePayloadCodec {
         coordinateUncertaintyMeters=payload.coordinateUncertaintyMeters,
     )
 
-    fun coordinateEntity(latitude:Double,longitude:Double,name:String,now:Long=System.currentTimeMillis())=SavedAnchorageEntity(
+    fun coordinateEntity(latitude:Double,longitude:Double,name:String,now:Long=MarineTime.nowUtcMillis())=SavedAnchorageEntity(
         id=0,name=name.trim(),latitude=latitude,longitude=longitude,createdAt=now,updatedAt=now,sourceSessionId=null,
         coordinateSource=AnchorageCoordinateSource.TEMPORARY_WATCH_REFERENCE.name,
     )

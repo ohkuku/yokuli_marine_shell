@@ -2,7 +2,7 @@ package com.yokuli.anchorwatch.data.nmea
 
 import com.yokuli.anchorwatch.domain.vessel.VesselMetricId
 
-enum class NmeaInvalidationReason { EXPLICIT_INVALID_STATUS }
+enum class NmeaInvalidationReason { EXPLICIT_INVALID_STATUS, DEVICE_DETACHED }
 
 /** A negative-validity sentence is evidence, not a missing update. */
 data class NmeaSourceInvalidation(

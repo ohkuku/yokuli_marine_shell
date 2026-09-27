@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.runtime.trip
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.content.Context
 import android.util.AtomicFile
 import com.yokuli.anchorwatch.data.database.TripEventEntity
@@ -68,7 +70,7 @@ data class TripMomentContent(val requestId: String, val name: String, val note: 
 
 /** 在运行时入口立即取一次不可变快照；没有新鲜、合格位置时，事件位置保持 null。 */
 internal fun captureTripMoment(id: String, sessionId: Long, name: String, paused: Boolean, snapshot: VesselDataSnapshot): TripEventEntity {
-    val timestamp = System.currentTimeMillis()
+    val timestamp = MarineTime.nowUtcMillis()
     val observation = snapshot.position
     val position = observation.value?.takeIf { observation.freshness == VesselDataFreshness.FRESH &&
         observation.quality == VesselDataQuality.GOOD && it.latitude.isFinite() && it.longitude.isFinite() &&

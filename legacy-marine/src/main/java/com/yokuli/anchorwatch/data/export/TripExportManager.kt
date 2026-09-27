@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.export
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -58,7 +60,7 @@ class TripExportManager @Inject constructor(
     suspend fun liveSnapshot(snapshot:VesselDataSnapshot,title:String="Trip Watch"):File=temp("trip-watch-live.png"){target->renderSnapshot(target,title,listOf(
         "SOG" to snapshot.sogKnots.value?.let{"%.1f kn".format(it)},"COG" to snapshot.cogTrueDegrees.value?.let{"%03.0f°T".format(it)},"Heading" to snapshot.headingTrueDegrees.value?.let{"%03.0f°T".format(it)},"Boat speed" to snapshot.speedThroughWaterKnots.value?.let{"%.1f kn".format(it)},"Depth" to snapshot.depthMeters.value?.let{"%.1f m".format(it)},"True wind" to snapshot.trueWind.speedKnots.value?.let{"%.1f kn".format(it)},"Apparent wind" to snapshot.apparentWind.speedKnots.value?.let{"%.1f kn".format(it)},"Heel" to snapshot.attitude.value?.heelDegrees?.let{"%+.1f°".format(it)},"Pressure" to snapshot.pressureHpa.value?.let{"%.1f hPa".format(it)}))}
 
-    suspend fun reportSnapshot(session:TripSessionEntity):File{val report=tripReports.generate(session.id);val maxHeel=listOfNotNull(report?.maxPortHeelDegrees?.let{kotlin.math.abs(it)},report?.maxStarboardHeelDegrees?.let{kotlin.math.abs(it)}).maxOrNull();return temp("trip-${session.id}-summary.png"){target->renderSnapshot(target,session.name,listOf("Started" to Instant.ofEpochMilli(session.startedAt).toString(),"Distance" to "%.2f NM".format(session.distanceMeters/1852.0),"Duration" to "%.1f h".format(((session.endedAt?:System.currentTimeMillis())-session.startedAt-session.accumulatedPausedMillis)/3_600_000.0),"Max SOG" to report?.maxSogKnots?.let{"%.1f kn".format(it)},"Max heel" to maxHeel?.let{"%.1f°".format(it)},"Min depth" to report?.minDepthMeters?.let{"%.1f m".format(it)},"Position coverage" to report?.positionCoveragePercent?.let{"%.0f%%".format(it)},"Quality" to report?.quality?.name))}}
+    suspend fun reportSnapshot(session:TripSessionEntity):File{val report=tripReports.generate(session.id);val maxHeel=listOfNotNull(report?.maxPortHeelDegrees?.let{kotlin.math.abs(it)},report?.maxStarboardHeelDegrees?.let{kotlin.math.abs(it)}).maxOrNull();return temp("trip-${session.id}-summary.png"){target->renderSnapshot(target,session.name,listOf("Started" to Instant.ofEpochMilli(session.startedAt).toString(),"Distance" to "%.2f NM".format(session.distanceMeters/1852.0),"Duration" to "%.1f h".format(((session.endedAt?:MarineTime.nowUtcMillis())-session.startedAt-session.accumulatedPausedMillis)/3_600_000.0),"Max SOG" to report?.maxSogKnots?.let{"%.1f kn".format(it)},"Max heel" to maxHeel?.let{"%.1f°".format(it)},"Min depth" to report?.minDepthMeters?.let{"%.1f m".format(it)},"Position coverage" to report?.positionCoveragePercent?.let{"%.0f%%".format(it)},"Quality" to report?.quality?.name))}}
 
     suspend fun aiZip(session:TripSessionEntity):File{
         val date=utcDate(session.startedAt);val report=tripReports.generate(session.id)

@@ -5,7 +5,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.SystemClock
+import com.yokuli.runtime.contract.hardware.*
+import com.yokuli.runtime.contract.device.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +33,7 @@ data class PhoneMotionState(
 @Singleton
 class PhoneMotionRepository @Inject constructor(
     @ApplicationContext context: Context,
+    private val driver:AndroidMarineSensorDriver,
 ) : SensorEventListener {
     private val manager = context.getSystemService(SensorManager::class.java)
     private val accelerometer = manager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -41,41 +43,37 @@ class PhoneMotionRepository @Inject constructor(
     private var running = false
     private var acceleration = 9.81
     private var angularVelocity = 0.0
+    private var accelerationMeasured:Long?=null
+    private var gyroMeasured:Long?=null
 
-    fun start(): Boolean {
-        if (running) return _state.value.available
-        val accelerometerStarted = accelerometer?.let {
-            manager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-        } ?: false
-        val gyroscopeStarted = gyroscope?.let {
-            manager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-        } ?: false
-        running = accelerometerStarted || gyroscopeStarted
+    private var currentDevice:String?=null
+    private val busSubscription=MarineDeviceBus.subscribe(DeviceKind.IMU,::consumeFrame){id->synchronized(this){
+        if(id==null||id==currentDevice){acceleration=9.81;angularVelocity=0.0;accelerationMeasured=null;gyroMeasured=null;currentDevice=null;_state.value=PhoneMotionState(available=isAvailable())}
+    }}
+    private fun isAvailable()=MarineDeviceBus.state.value.backend!=DeviceBackend.REAL||accelerometer!=null||gyroscope!=null
+    @Synchronized fun start():Boolean {
+        if(running)return isAvailable()
+        running=driver.request("phone.motion",setOf(DeviceKind.IMU))
         return running
     }
-
-    fun stop() {
-        if (running) manager.unregisterListener(this)
-        running = false
-        acceleration = 9.81
-        angularVelocity = 0.0
-        _state.value = PhoneMotionState(available = accelerometer != null || gyroscope != null)
-    }
-
-    override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> acceleration = magnitude(event.values)
-            Sensor.TYPE_GYROSCOPE -> angularVelocity = magnitude(event.values)
+    @Synchronized fun stop(){running=false;driver.release("phone.motion");acceleration=9.81;angularVelocity=0.0;accelerationMeasured=null;gyroMeasured=null;currentDevice=null;_state.value=PhoneMotionState(available=isAvailable())}
+    override fun onSensorChanged(event:SensorEvent)=Unit
+    @Synchronized private fun consumeFrame(frame:HardwareFrame) {
+        if(!running||!MarineDeviceBus.isCurrent(frame))return
+        if(frame.payload.sensorType !in setOf(HardwareSensorType.ACCELEROMETER,HardwareSensorType.GYROSCOPE))return
+        currentDevice=frame.deviceId
+        val magnitude=sqrt(frame.payload.values.sumOf{it*it})
+        if(frame.payload.sensorType==HardwareSensorType.ACCELEROMETER){
+            if(accelerationMeasured?.let{frame.measuredElapsedMillis<=it}==true)return
+            acceleration=magnitude;accelerationMeasured=frame.measuredElapsedMillis
+        }else{
+            if(gyroMeasured?.let{frame.measuredElapsedMillis<=it}==true)return
+            angularVelocity=magnitude;gyroMeasured=frame.measuredElapsedMillis
         }
-        val accelerationDelta = abs(acceleration - 9.81)
-        _state.value = PhoneMotionState(
-            available = true,
-            moving = angularVelocity > .7 || accelerationDelta > 3.0,
-            disturbed = angularVelocity > 1.4 || accelerationDelta > 5.0,
-            accelerationDeltaMetersPerSecondSquared = accelerationDelta,
-            angularVelocityRadPerSecond = angularVelocity,
-            updatedElapsedRealtime = SystemClock.elapsedRealtime(),
-        )
+        val at=frame.measuredElapsedMillis
+        val accelerationDelta=if(accelerationMeasured?.let{at-it in 0L..2_000L}==true)abs(acceleration-9.81)else 0.0
+        val turnRate=if(gyroMeasured?.let{at-it in 0L..2_000L}==true)angularVelocity else 0.0
+        _state.value=PhoneMotionState(true,turnRate>.7||accelerationDelta>3.0,turnRate>1.4||accelerationDelta>5.0,accelerationDelta,turnRate,at)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit

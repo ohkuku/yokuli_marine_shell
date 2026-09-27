@@ -1,0 +1,61 @@
+{
+  "format": 1,
+  "apps": [
+    {
+      "id": "com.yokuli.chart",
+      "sha256": "ce7b202e51c58cd2c036d5ba0285ce3cbf0194b77c9e393195217a3f579b51e9"
+    },
+    {
+      "id": "com.yokuli.library",
+      "sha256": "8a9fe8fee2557d1cc0b9403d1d4462f28af0433720af071a87402dc2fc972062"
+    },
+    {
+      "id": "com.yokuli.voyages",
+      "sha256": "268681dae1a37a8e42d3213459c18ae1d0f421b082061439724358d5b6fd5a4e"
+    },
+    {
+      "id": "com.yokuli.anchor",
+      "sha256": "4d19172e832842e4d12c5f2039a3b628791fc3d046bd0730238165e74a318267"
+    },
+    {
+      "id": "com.yokuli.places",
+      "sha256": "84e52bb0e1929c4c6eff3e4f236acb6c29a5df0cdbee5771498464ea68cbfe6d"
+    },
+    {
+      "id": "com.yokuli.instruments",
+      "sha256": "ceea0181a7c7d26f5563d36af37463b051dda7028f8c6175d3e39320d4bd63a9"
+    },
+    {
+      "id": "com.yokuli.data-center",
+      "sha256": "854d7871ee363fa95ea76a5b511b6e6968434b72c380665805791b80842868b0"
+    },
+    {
+      "id": "com.yokuli.nmea",
+      "sha256": "1d4f468226998a43613df1cc1110c7031d9261ffc74076ab5151740ddbf56439"
+    },
+    {
+      "id": "com.yokuli.ais",
+      "sha256": "8a84eb0269e842dfcf412633607ee50274321911d2a20e78ca110151671b1087"
+    },
+    {
+      "id": "com.yokuli.local-nmea",
+      "sha256": "f6f1c6ee72e8820b2ab16530b6a04be2d804462abc90ca9aa533988bcdf6865c"
+    },
+    {
+      "id": "com.yokuli.settings",
+      "sha256": "74e8a4e9563c1d62801ea9c562f3d6fac09c8afc35266a61ae83ce827b3b3702"
+    },
+    {
+      "id": "com.yokuli.tiles",
+      "sha256": "eff414c83d413dd5e4b5b7c377fb1a15e8263228456ffb54f674ab336a7bbdbb"
+    },
+    {
+      "id": "com.yokuli.app-center",
+      "sha256": "1cd1816fb1d30e01e66c355efd15aec9db1134dcc39d65e95a9ccdc42761e434"
+    },
+    {
+      "id": "com.yokuli.hardware-lab",
+      "sha256": "cffb27ccd08866c0525a5832fce66d53c33b1eace08713713846f960376cf736"
+    }
+  ]
+}

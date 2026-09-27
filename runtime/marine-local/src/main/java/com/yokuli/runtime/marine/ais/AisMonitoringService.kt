@@ -1,5 +1,7 @@
 package com.yokuli.runtime.marine.ais
 
+import com.yokuli.runtime.contract.hardware.MarineDeviceBus
+import com.yokuli.runtime.contract.device.DeviceBackend
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -20,7 +22,8 @@ class AisMonitoringService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if(residency.explicitlyStopped){stopSelf();return START_NOT_STICKY}
-        var location=traffic.wantsLocation()
+        val virtual=MarineDeviceBus.state.value.backend!=DeviceBackend.REAL
+        var location=traffic.wantsLocation()&&!virtual
         fun start(locationType:Boolean) {
             notifications.createAisChannels(traffic.chinese())
             ServiceCompat.startForeground(this,NotificationCoordinator.AIS_ONGOING_ID,
@@ -43,7 +46,7 @@ class AisMonitoringService : Service() {
             return START_NOT_STICKY
         }
         startFailure=null
-        traffic.foregroundChanged(true,location=location)
+        traffic.foregroundChanged(true,location=location||virtual&&traffic.wantsLocation())
         return START_STICKY
     }
 

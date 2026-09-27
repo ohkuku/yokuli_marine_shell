@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.anchorage
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -44,7 +46,7 @@ class AnchoragePhotoRepository @Inject constructor(
             val entity = AnchoragePhotoEntity(
                 placeId = placeId, relativeFileName = fullName, thumbnailRelativeFileName = thumbName,
                 mimeType = "image/jpeg", sha256 = sha256(full), width = stored.width, height = stored.height,
-                caption = caption.take(500), createdAt = System.currentTimeMillis(),
+                caption = caption.take(500), createdAt = MarineTime.nowUtcMillis(),
             )
             val id = database.anchoragePhotoDao().insert(entity)
             if (thumbnail !== stored) thumbnail.recycle(); if (stored !== decoded) stored.recycle(); decoded.recycle()

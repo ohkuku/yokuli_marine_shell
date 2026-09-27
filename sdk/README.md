@@ -4,9 +4,11 @@
 
 SDK 2 gives `.ykl` applications canonical marine data, real device discovery, permission-scoped source/connection/sharing/recording controls, the shared monochrome UI library, namespaced storage and explicit Shell navigation. SDK 1 manifests remain supported. JavaScript and Kotlin/JS compile to the same `.ykl` format. Kotlin/JS is **not** native Kotlin APK or Compose plugin execution.
 
+- `system-apps/`: authoritative built-in `.ykl` manifests and host component integration rules; system and installed apps share package identity, routing and task dispatch.
 - `web/`: authoritative JavaScript API + Yokuli UI CSS; host serves them as `/_sdk/yokuli.js` and `/_sdk/yokuli.css`.
 - `examples/departure`: real persisted pre-departure checklist.
 - `examples/watch`: SDK 1 read-only overview using source-labelled vessel readings.
+- `examples/practice`: SDK 2 hardware control using Core simulation/replay, shared clock and device attachment.
 - `examples/helm`: SDK 2 boat controls using actual device/source/connection/sharing/voyage services and persistent command receipts.
 - `templates/javascript`: no-build starter.
 - `templates/kotlin-js`: Kotlin 2.1.20 typed external declarations, executable app and `packageYokuli` build task.
@@ -36,6 +38,10 @@ Each extension must declare its permissions, preserve timestamps, units and prov
 
 The generated `docs/developers/yokuli-sdk-2.zip` is a downloadable SDK source bundle (with Gradle wrapper and pinned Kotlin/JS npm lock, without generated build caches or node_modules). App Center exports the same archive through Android document storage.
 
-Current device backends are REAL only. Virtual clock, system replay, a scenario engine, third-party drivers/HAL and arbitrary background scripts are not implemented; this is not a complete virtual machine.
+SDK 2 now exposes `hardware.snapshot/watch`, `hardware.control`, and paginated `hardware.readRecording`. Declare `lab.read` to inspect the actual operating environment and recordings; `lab.control` is a separate explicit grant for changing modes, time, devices, faults and recording. Device backends are REAL, SIMULATION and REPLAY. The runtime keeps real and practice persistence separate. Mode changes restart Core and are refused while anchor watch, voyage recording or navigation is active. A control response with accepted=true means Core accepted it; observe hardware state after reconnection, never automatically resend with a new requestId. Controls are foreground-only, namespaced by installed app ID and evaluated by Core. The public SDK does not load arbitrary third-party drivers, native APKs or background scripts.
+
+`system.info().clock` and hardware snapshots expose the same projected Core clock (UTC, monotonic elapsed, mode, speed, pause and epoch). Use measurement age from Core instead of Date.now() in accelerated or paused simulations. Host transport/rate limits remain real-time. Read recordings in chunks of 4–48,000 bytes using `nextOffset`; never assume offsets are string character counts.
 
 The static documentation is ready for GitHub Pages but publishing remains a separate repository operation. No deployed public URL is implied by this source tree.
+
+All 14 built-in apps now enter through the same package catalog and dispatcher as installed apps. Their `host-kotlin` backend is an allowlisted component compiled into the signed APK, not a dynamic native-code format. Built-in `.ykl` resources define routing and are immutable; user packages remain JS/KotlinJS with scoped system APIs. See [system package integration](system-apps/README.md). `system.apps()` enumerates the unified catalog; pass an `openTarget` to `navigation.open()`.

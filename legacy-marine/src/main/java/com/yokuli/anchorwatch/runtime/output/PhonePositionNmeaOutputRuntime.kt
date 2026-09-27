@@ -1,6 +1,7 @@
 package com.yokuli.anchorwatch.runtime.output
 
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.nmea.ConnectionProfile
 import com.yokuli.anchorwatch.data.nmea.output.NmeaDeviceOutputConnection
 import com.yokuli.anchorwatch.data.nmea.output.NmeaOutputEndpointPolicy
@@ -121,8 +122,8 @@ class AnchorWatchNmeaPublisher @Inject constructor(
         scope.launch{
             var nextWireAttemptElapsed=0L
             for(ignored in writerWake){
-                val wait=(nextWireAttemptElapsed-SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-                if(wait>0)delay(wait)
+                val wait=(nextWireAttemptElapsed-MarineTime.nowElapsedMillis()).coerceAtLeast(0L)
+                if(wait>0)MarineTime.sleep(wait)
                 // Drain only after the cadence wait, so any values accumulated
                 // during congestion are replaced in-place before encoding the
                 // next physical wire payload. There is no catch-up replay.
@@ -136,7 +137,7 @@ class AnchorWatchNmeaPublisher @Inject constructor(
                     accepted
                 }
                 if(deliverable.isEmpty())continue
-                val first=deliverable.first();val writeStarted=SystemClock.elapsedRealtime()
+                val first=deliverable.first();val writeStarted=MarineTime.nowElapsedMillis()
                 val success=outputConnection.write(
                     input=first.profile,
                     sentences=deliverable.flatMap{it.sentences},
@@ -148,12 +149,12 @@ class AnchorWatchNmeaPublisher @Inject constructor(
                     path=first.path,
                     expectedInputTransportGeneration=first.inputTransportGeneration,
                 )
-                val writeCompleted=SystemClock.elapsedRealtime()
+                val writeCompleted=MarineTime.nowElapsedMillis()
                 nextWireAttemptElapsed=NmeaWireAttemptCadence.nextAllowed(writeStarted,writeCompleted)
                 if(!success)deliverable.forEach{outputConnection.recordDropped(it.stream,"The coalesced 1 Hz socket batch was not written.")}
             }
         }
-        scope.launch{while(isActive){delay(50L);publishDue(SystemClock.elapsedRealtime())}}
+        scope.launch{while(isActive){MarineTime.sleep(50L);publishDue(MarineTime.nowElapsedMillis())}}
     }
 
     @Synchronized fun configure(

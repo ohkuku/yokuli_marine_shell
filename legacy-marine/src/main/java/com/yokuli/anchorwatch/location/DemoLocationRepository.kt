@@ -1,6 +1,7 @@
 package com.yokuli.anchorwatch.location
 
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.domain.anchor.AnchorGeometry
 import com.yokuli.anchorwatch.domain.model.AnchorPlacementMode
 import com.yokuli.anchorwatch.domain.model.DemoScenario
@@ -40,21 +41,21 @@ class DemoLocationRepository @Inject constructor(){
     private val _status=MutableStateFlow(DemoGpsStatus());val status=_status.asStateFlow()
     private var run:Run?=null
 
-    fun start(originLatitude:Double,originLongitude:Double,placement:AnchorPlacementMode,scenario:DemoScenario,alarmRadiusMeters:Double,speedMultiplier:Int,nowElapsed:Long=SystemClock.elapsedRealtime(),initialElapsedMillis:Long=0L,seed:Long=System.nanoTime()):NavigationFix?=synchronized(guard){
+    fun start(originLatitude:Double,originLongitude:Double,placement:AnchorPlacementMode,scenario:DemoScenario,alarmRadiusMeters:Double,speedMultiplier:Int,nowElapsed:Long=MarineTime.nowElapsedMillis(),initialElapsedMillis:Long=0L,seed:Long=System.nanoTime()):NavigationFix?=synchronized(guard){
         run=Run(originLatitude,originLongitude,placement,scenario,alarmRadiusMeters,speedMultiplier,nowElapsed-initialElapsedMillis.coerceAtLeast(0L),seed=seed)
         _status.value=DemoGpsStatus(running=true,scenario=scenario)
         tickLocked(nowElapsed)
     }
 
-    fun tick(nowElapsed:Long=SystemClock.elapsedRealtime()):NavigationFix?=synchronized(guard){tickLocked(nowElapsed)}
+    fun tick(nowElapsed:Long=MarineTime.nowElapsedMillis()):NavigationFix?=synchronized(guard){tickLocked(nowElapsed)}
 
-    fun pause(nowElapsed:Long=SystemClock.elapsedRealtime())=synchronized(guard){
+    fun pause(nowElapsed:Long=MarineTime.nowElapsedMillis())=synchronized(guard){
         val current=run?:return@synchronized
         if(current.pausedElapsed==null)run=current.copy(pausedElapsed=nowElapsed)
         _status.value=_status.value.copy(paused=true)
     }
 
-    fun resume(nowElapsed:Long=SystemClock.elapsedRealtime()):NavigationFix?=synchronized(guard){
+    fun resume(nowElapsed:Long=MarineTime.nowElapsedMillis()):NavigationFix?=synchronized(guard){
         val current=run?:return@synchronized null
         val pausedAt=current.pausedElapsed
         if(pausedAt!=null)run=current.copy(pausedElapsed=null,accumulatedPauseMillis=current.accumulatedPauseMillis+(nowElapsed-pausedAt).coerceAtLeast(0L))
@@ -80,6 +81,6 @@ class DemoLocationRepository @Inject constructor(){
         val distance=hypot(point.northMeters,point.eastMeters)
         val bearing=(Math.toDegrees(atan2(point.eastMeters,point.northMeters))+360.0)%360.0
         val coordinate=if(distance<.001)current.originLatitude to current.originLongitude else AnchorGeometry.project(current.originLatitude,current.originLongitude,bearing,distance)
-        return NavigationFix(latitude=coordinate.first,longitude=coordinate.second,timestampUtcMillis=System.currentTimeMillis(),receivedElapsedRealtime=nowElapsed,sogKnots=point.speedMetersPerSecond*1.943844,cogTrueDegrees=point.headingDegrees,headingTrueDegrees=point.headingToAnchorDegrees,hdop=.8,fixQuality=1,satellites=12,horizontalAccuracyMeters=2.5,positionProvider=PositionProvider.DEMO,sourceSentence="DEMO:${current.scenario.name}",valid=true,windDirectionTrueDegrees=point.trueWindDirectionDegrees,windSpeedKnots=point.windSpeedKnots,trueWindAngleDegrees=point.trueWindAngleDegrees,apparentWindAngleDegrees=point.apparentWindAngleDegrees,trueWindSpeedKnots=point.windSpeedKnots,apparentWindSpeedKnots=point.windSpeedKnots?.times(.98),headingSource=com.yokuli.anchorwatch.domain.model.HeadingSource.NMEA_PHYSICAL,headingQuality=com.yokuli.anchorwatch.domain.model.HeadingQuality.STABLE,headingSampleSequence=point.evidenceSequence,windSampleSequence=point.evidenceSequence).also{_fix.value=it}
+        return NavigationFix(latitude=coordinate.first,longitude=coordinate.second,timestampUtcMillis=MarineTime.nowUtcMillis(),receivedElapsedRealtime=nowElapsed,sogKnots=point.speedMetersPerSecond*1.943844,cogTrueDegrees=point.headingDegrees,headingTrueDegrees=point.headingToAnchorDegrees,hdop=.8,fixQuality=1,satellites=12,horizontalAccuracyMeters=2.5,positionProvider=PositionProvider.DEMO,sourceSentence="DEMO:${current.scenario.name}",valid=true,windDirectionTrueDegrees=point.trueWindDirectionDegrees,windSpeedKnots=point.windSpeedKnots,trueWindAngleDegrees=point.trueWindAngleDegrees,apparentWindAngleDegrees=point.apparentWindAngleDegrees,trueWindSpeedKnots=point.windSpeedKnots,apparentWindSpeedKnots=point.windSpeedKnots?.times(.98),headingSource=com.yokuli.anchorwatch.domain.model.HeadingSource.NMEA_PHYSICAL,headingQuality=com.yokuli.anchorwatch.domain.model.HeadingQuality.STABLE,headingSampleSequence=point.evidenceSequence,windSampleSequence=point.evidenceSequence).also{_fix.value=it}
     }
 }

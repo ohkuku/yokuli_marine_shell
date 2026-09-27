@@ -5,9 +5,12 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+import com.yokuli.runtime.contract.hardware.*
+import com.yokuli.runtime.contract.device.*
+import com.yokuli.anchorwatch.location.AndroidMarineSensorDriver
 import androidx.datastore.preferences.core.*
-import androidx.datastore.preferences.preferencesDataStore
+import com.yokuli.anchorwatch.runtime.storage.faultAwarePreferencesDataStore
 import com.yokuli.anchorwatch.domain.vessel.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -93,10 +96,10 @@ object PhoneHeadingAlignmentPolicy{
     private fun Double?.isHeading()=this!=null&&isFinite()&&this in 0.0..360.0
 }
 data class PhoneSensorCapabilities(val attitudeAvailable:Boolean=false,val gyroAvailable:Boolean=false,val magnetometerAvailable:Boolean=false,val pressureAvailable:Boolean=false,val linearAccelerationAvailable:Boolean=false)
-data class PhoneVesselAttitudeSample(val attitude:VesselAttitude?=null,val dynamicAccelerationG:Double=0.0,val mountSuspect:Boolean=false,val receivedElapsedRealtime:Long?=null)
+data class PhoneVesselAttitudeSample(val attitude:VesselAttitude?=null,val dynamicAccelerationG:Double=0.0,val mountSuspect:Boolean=false,val receivedElapsedRealtime:Long?=null,val hardwareBackend:String="REAL",val hardwareEpoch:Long=0,val hardwareDeviceId:String?=null)
 data class PhonePressureSample(val pressureHpa:Double?=null,val receivedElapsedRealtime:Long?=null,
     /** 中文：每次重新注册传感器开始新连续段，不跨停采区间连接。 */
-    val generation:Long=0)
+    val generation:Long=0,val hardwareBackend:String="REAL",val hardwareEpoch:Long=0,val hardwareDeviceId:String?=null)
 
 /** 中文：安装确认捕获当前手机姿态作为船体零点；之后在固定船体轴中解释转动。
  * 世界航向仍由磁北参考决定，不能把相对 yaw 当作船首向。 */
@@ -151,7 +154,7 @@ object PhoneVesselAttitudeFrame {
     }
 }
 
-private val Context.mountStore by preferencesDataStore("vessel_mount_calibration")
+private val Context.mountStore by faultAwarePreferencesDataStore("vessel_mount_calibration")
 
 @Singleton
 class VesselMountCalibrationRepository @Inject constructor(@ApplicationContext private val context:Context){
@@ -162,13 +165,13 @@ class VesselMountCalibrationRepository @Inject constructor(@ApplicationContext p
         VesselMountCalibration(version=version,bowAxis=p[K.axis]?.let{runCatching{DeviceBowAxis.valueOf(it)}.getOrNull()}?:DeviceBowAxis.TOP,neutralQuaternion=neutral?:SensorQuaternion(1.0,0.0,0.0,0.0),calibratedAt=at,mountState=p[K.mount]?.let{runCatching{PhoneVesselMountState.valueOf(it)}.getOrNull()}?:if(at>0)PhoneVesselMountState.HANDHELD else PhoneVesselMountState.UNCALIBRATED,headingAlignmentOffsetDegrees=p[K.headingOffset]?:0.0,automaticMountRecovery=false,headingAlignmentCompletedAt=p[K.headingAlignedAt]?:0L,mountConfirmedVersion=p[K.mountConfirmedVersion]?:0,headingAlignmentVersion=p[K.headingAlignmentVersion]?:0,attitudeInvalidatedAt=p[K.attitudeInvalidatedAt]?:0L,headingReferenceVersion=p[K.headingReferenceVersion]?:0,attitudeFrameVersion=if(neutral==null)0 else p[K.attitudeFrameVersion]?:1,heelOffsetDegrees=p[K.heelOffset]?:0.0,pitchOffsetDegrees=p[K.pitchOffset]?:0.0)
     }
     /** 中文：保存用户确认的固定安装零点；零点只在明确操作时更新。 */
-    suspend fun save(axis:DeviceBowAxis,q:SensorQuaternion){context.mountStore.edit{p->p[K.attitudeFrameVersion]=3;p[K.heelOffset]=0.0;p[K.pitchOffset]=0.0;val version=(p[K.version]?:0)+1;p[K.version]=version;p[K.axis]=axis.name;p[K.w]=q.w;p[K.x]=q.x;p[K.y]=q.y;p[K.z]=q.z;p[K.at]=System.currentTimeMillis();p[K.attitudeInvalidatedAt]=0L;p[K.mount]=PhoneVesselMountState.HANDHELD.name;p[K.mountConfirmedVersion]=0}}
+    suspend fun save(axis:DeviceBowAxis,q:SensorQuaternion){context.mountStore.edit{p->p[K.attitudeFrameVersion]=3;p[K.heelOffset]=0.0;p[K.pitchOffset]=0.0;val version=(p[K.version]?:0)+1;p[K.version]=version;p[K.axis]=axis.name;p[K.w]=q.w;p[K.x]=q.x;p[K.y]=q.y;p[K.z]=q.z;p[K.at]=MarineTime.nowUtcMillis();p[K.attitudeInvalidatedAt]=0L;p[K.mount]=PhoneVesselMountState.HANDHELD.name;p[K.mountConfirmedVersion]=0}}
     suspend fun setMountState(value:PhoneVesselMountState)=context.mountStore.edit{p->p[K.mount]=value.name;p[K.mountConfirmedVersion]=if(value==PhoneVesselMountState.VESSEL_MOUNTED)p[K.version]?:1 else 0}
-    suspend fun setHeadingAlignment(offsetDegrees:Double)=context.mountStore.edit{p->require(offsetDegrees.isFinite());p[K.headingReferenceVersion]=1;p[K.headingOffset]=((offsetDegrees+540.0)%360.0)-180.0;p[K.headingAlignedAt]=System.currentTimeMillis();p[K.headingAlignmentVersion]=maxOf(p[K.headingAlignmentVersion]?:0,p[K.version]?:1)+1}
+    suspend fun setHeadingAlignment(offsetDegrees:Double)=context.mountStore.edit{p->require(offsetDegrees.isFinite());p[K.headingReferenceVersion]=1;p[K.headingOffset]=((offsetDegrees+540.0)%360.0)-180.0;p[K.headingAlignedAt]=MarineTime.nowUtcMillis();p[K.headingAlignmentVersion]=maxOf(p[K.headingAlignmentVersion]?:0,p[K.version]?:1)+1}
     /** 中文：固定顶部朝艏时，同一笔写入提交安装和船首向；以当前固定姿态作为零点。 */
     suspend fun confirmFixedMount(q: SensorQuaternion?) = context.mountStore.edit { p ->
         val version = (p[K.version] ?: 0) + 1
-        val now = System.currentTimeMillis()
+        val now = MarineTime.nowUtcMillis()
         p[K.version] = version
         p[K.axis] = DeviceBowAxis.TOP.name
         p[K.attitudeFrameVersion] = 3
@@ -197,7 +200,7 @@ class VesselMountCalibrationRepository @Inject constructor(@ApplicationContext p
     suspend fun invalidateFixedMount() = context.mountStore.edit { p ->
         p[K.headingAlignedAt] = 0L
         p[K.headingAlignmentVersion] = (p[K.headingAlignmentVersion] ?: 0) + 1
-        p[K.attitudeInvalidatedAt] = maxOf(p[K.attitudeInvalidatedAt] ?: 0L, System.currentTimeMillis())
+        p[K.attitudeInvalidatedAt] = maxOf(p[K.attitudeInvalidatedAt] ?: 0L, MarineTime.nowUtcMillis())
         p[K.mount] = PhoneVesselMountState.MOUNT_SUSPECT.name
         p[K.mountConfirmedVersion] = 0
     }
@@ -218,33 +221,43 @@ class VesselMountCalibrationRepository @Inject constructor(@ApplicationContext p
 }
 
 @Singleton
-class PhoneVesselAttitudeRepository @Inject constructor(@ApplicationContext context:Context,private val calibrationRepository:VesselMountCalibrationRepository):SensorEventListener{
+class PhoneVesselAttitudeRepository @Inject constructor(@ApplicationContext context:Context,private val calibrationRepository:VesselMountCalibrationRepository,private val driver:AndroidMarineSensorDriver):SensorEventListener{
     private val manager=context.getSystemService(SensorManager::class.java)
     private val rotation=manager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)?:manager.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
     private val gyro=manager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
     private val linear=manager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
     private val magnetometer=manager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
-    val capabilities=PhoneSensorCapabilities(rotation!=null,gyro!=null,magnetometer!=null,manager.getDefaultSensor(Sensor.TYPE_PRESSURE)!=null,linear!=null)
+    val capabilities:PhoneSensorCapabilities get()=if(MarineDeviceBus.state.value.backend!=DeviceBackend.REAL)PhoneSensorCapabilities(true,true,true,true,true)else PhoneSensorCapabilities(rotation!=null,gyro!=null,magnetometer!=null,manager.getDefaultSensor(Sensor.TYPE_PRESSURE)!=null,linear!=null)
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
     private val _sample=MutableStateFlow(PhoneVesselAttitudeSample());val sample=_sample.asStateFlow()
     // 原始设备->磁北ENU旋转：完全独立于船体安装和调平，仅供临时观察视线读取。
-    private val _deviceOrientation=MutableStateFlow(DeviceViewOrientationSample(sensorAvailable=rotation!=null))
+    private val _deviceOrientation=MutableStateFlow(DeviceViewOrientationSample(sensorAvailable=capabilities.attitudeAvailable))
     val deviceOrientation=_deviceOrientation.asStateFlow()
     private var orientationGeneration=0L
     private var orientationStartedElapsed=0L
     private val _mountState=MutableStateFlow(PhoneVesselMountState.UNCALIBRATED);val mountState=_mountState.asStateFlow()
     @Volatile private var calibration=VesselMountCalibration();private var currentQuaternion:SensorQuaternion?=null;private var quaternionReceivedElapsed:Long?=null;private var gyroValues=DoubleArray(3);private var dynamicG=0.0;private var running=false
     init{scope.launch{calibrationRepository.calibration.collect{calibration=it;_mountState.value=when{it.calibratedAt<=0->PhoneVesselMountState.UNCALIBRATED;!it.attitudeFrameConfirmed->PhoneVesselMountState.MOUNT_SUSPECT;else->it.mountState}}}}
-    @Synchronized fun start():Boolean{if(running)return capabilities.attitudeAvailable;orientationStartedElapsed=SystemClock.elapsedRealtime();orientationGeneration++;val a=rotation?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_GAME)}?:false;if(a){gyro?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_GAME)};linear?.let{manager.registerListener(this,it,SensorManager.SENSOR_DELAY_GAME)}};running=a;return running}
-    @Synchronized fun stop(){if(running)manager.unregisterListener(this);running=false;currentQuaternion=null;quaternionReceivedElapsed=null;gyroValues=DoubleArray(3);_sample.value=PhoneVesselAttitudeSample();_deviceOrientation.value=DeviceViewOrientationSample(sensorAvailable=rotation!=null,generation=orientationGeneration)}
+    private var currentFrame:HardwareFrame?=null
+    private val busSubscription=MarineDeviceBus.subscribe(DeviceKind.IMU,::consumeFrame){id->synchronized(this){
+        if(id==null||currentFrame?.deviceId==id)clearObservation()
+    }}
+    @Synchronized fun start():Boolean {
+        if(running)return capabilities.attitudeAvailable
+        orientationStartedElapsed=MarineTime.nowElapsedMillis();orientationGeneration++
+        running=driver.request("phone.attitude",setOf(DeviceKind.IMU))
+        return running
+    }
+    private fun clearObservation(){currentQuaternion=null;quaternionReceivedElapsed=null;currentFrame=null;gyroValues=DoubleArray(3);dynamicG=0.0;_sample.value=PhoneVesselAttitudeSample();_deviceOrientation.value=DeviceViewOrientationSample(sensorAvailable=capabilities.attitudeAvailable,generation=orientationGeneration)}
+    @Synchronized fun stop(){running=false;driver.release("phone.attitude");clearObservation()}
     suspend fun calibrate(axis:DeviceBowAxis):Boolean{
         // 确認安裝方向需要正在運作的真實傳感器樣本，不能重用停止前的姿態。
-        val q=synchronized(this){currentQuaternion?.takeIf{running&&quaternionReceivedElapsed?.let{SystemClock.elapsedRealtime()-it in 0L..2_000L}==true}}?:return false
+        val q=synchronized(this){currentQuaternion?.takeIf{running&&quaternionReceivedElapsed?.let{MarineTime.nowElapsedMillis()-it in 0L..2_000L}==true}}?:return false
         calibrationRepository.save(axis,q);return true
     }
     suspend fun confirmFixedMount(): Boolean {
         val q = synchronized(this) { currentQuaternion?.takeIf {
-            running && quaternionReceivedElapsed?.let { SystemClock.elapsedRealtime() - it in 0L..2_000L } == true
+            running && quaternionReceivedElapsed?.let { MarineTime.nowElapsedMillis() - it in 0L..2_000L } == true
         } }
         if (capabilities.attitudeAvailable && q == null) return false
         calibrationRepository.confirmFixedMount(q)
@@ -254,13 +267,26 @@ class PhoneVesselAttitudeRepository @Inject constructor(@ApplicationContext cont
     suspend fun setMounted(mounted:Boolean){calibrationRepository.setMountState(if(mounted)PhoneVesselMountState.VESSEL_MOUNTED else PhoneVesselMountState.HANDHELD);_mountState.value=if(mounted)PhoneVesselMountState.VESSEL_MOUNTED else PhoneVesselMountState.HANDHELD}
     suspend fun alignHeading(offsetDegrees:Double)=calibrationRepository.setHeadingAlignment(offsetDegrees)
     suspend fun alignAttitude(heel:Double,pitch:Double)=calibrationRepository.setAttitudeOffsets(heel,pitch)
-    @Synchronized override fun onSensorChanged(event:SensorEvent){if(!running)return;when(event.sensor.type){Sensor.TYPE_GYROSCOPE->{gyroValues=doubleArrayOf(event.values[0].toDouble(),event.values[1].toDouble(),event.values[2].toDouble())};Sensor.TYPE_LINEAR_ACCELERATION->{dynamicG=sqrt(event.values.take(3).sumOf{it.toDouble()*it.toDouble()})/SensorManager.GRAVITY_EARTH};Sensor.TYPE_ROTATION_VECTOR,Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR->{val values=FloatArray(4);SensorManager.getQuaternionFromVector(values,event.values);val current=runCatching{SensorQuaternion(values[0].toDouble(),values[1].toDouble(),values[2].toDouble(),values[3].toDouble()).normalized()}.getOrNull()?:return;val measured=event.timestamp/1_000_000L
-        if(measured<orientationStartedElapsed||measured>SystemClock.elapsedRealtime()||_deviceOrientation.value.elapsedRealtimeMillis?.let{measured<=it}==true)return
-        currentQuaternion=current;quaternionReceivedElapsed=measured
-        _deviceOrientation.value=DeviceViewOrientationSample(current,measured,orientationGeneration,rotation?.name.orEmpty(),event.accuracy,event.values.getOrNull(4)?.takeIf{it.isFinite()&&it>=0f}?.let{Math.toDegrees(it.toDouble())},sensorAvailable=true)
-        publish(current)}}}
+    override fun onSensorChanged(event:SensorEvent)=Unit
+    @Synchronized private fun consumeFrame(frame:HardwareFrame) {
+        if(!running||!MarineDeviceBus.isCurrent(frame))return
+        when(frame.payload.sensorType){
+            HardwareSensorType.GYROSCOPE->gyroValues=frame.payload.values.toDoubleArray()
+            HardwareSensorType.LINEAR_ACCELERATION->dynamicG=sqrt(frame.payload.values.sumOf{it*it})/SensorManager.GRAVITY_EARTH
+            HardwareSensorType.ROTATION_QUATERNION->{
+                val values=frame.payload.values
+                val current=runCatching{SensorQuaternion(values[0],values[1],values[2],values[3]).normalized()}.getOrNull()?:return
+                val measured=frame.measuredElapsedMillis
+                if(measured<orientationStartedElapsed||measured>MarineTime.nowElapsedMillis()||_deviceOrientation.value.elapsedRealtimeMillis?.let{measured<=it}==true)return
+                currentFrame=frame;currentQuaternion=current;quaternionReceivedElapsed=measured
+                _deviceOrientation.value=DeviceViewOrientationSample(current,measured,frame.generation,"${frame.backend} · ${frame.deviceId}",frame.payload.sensorAccuracy,null,sensorAvailable=true)
+                publish(current)
+            }
+            else->Unit
+        }
+    }
     private fun publish(current:SensorQuaternion){
-        val now=SystemClock.elapsedRealtime()
+        val now=quaternionReceivedElapsed?:return
         // Keep currentQuaternion available so the user can calibrate, but never
         // expose the Android device frame as if it were a vessel frame.
         if(calibration.calibratedAt<=0L){_mountState.value=PhoneVesselMountState.UNCALIBRATED;_sample.value=PhoneVesselAttitudeSample(receivedElapsedRealtime=now);return}
@@ -270,13 +296,13 @@ class PhoneVesselAttitudeRepository @Inject constructor(@ApplicationContext cont
         if(!calibration.attitudeFrameConfirmed||calibration.mountState==PhoneVesselMountState.MOUNT_SUSPECT)_mountState.value=PhoneVesselMountState.MOUNT_SUSPECT
         else _mountState.value=if(configuredMounted)PhoneVesselMountState.VESSEL_MOUNTED else PhoneVesselMountState.HANDHELD
         val vesselFrame=_mountState.value==PhoneVesselMountState.VESSEL_MOUNTED
-        _sample.value=if(vesselFrame)PhoneVesselAttitudeSample(attitude,dynamicG,false,now)else PhoneVesselAttitudeSample(dynamicAccelerationG=dynamicG,mountSuspect=_mountState.value==PhoneVesselMountState.MOUNT_SUSPECT,receivedElapsedRealtime=now)
+        _sample.value=if(vesselFrame)PhoneVesselAttitudeSample(attitude,dynamicG,false,now,currentFrame?.backend?.name?:"REAL",currentFrame?.epoch?:0,currentFrame?.deviceId)else PhoneVesselAttitudeSample(dynamicAccelerationG=dynamicG,mountSuspect=_mountState.value==PhoneVesselMountState.MOUNT_SUSPECT,receivedElapsedRealtime=now)
     }
     override fun onAccuracyChanged(sensor:Sensor?,accuracy:Int)=Unit
 }
 
 @Singleton
-class PhonePressureRepository @Inject constructor(@ApplicationContext context:Context):SensorEventListener {
+class PhonePressureRepository @Inject constructor(@ApplicationContext context:Context,private val driver:AndroidMarineSensorDriver):SensorEventListener {
     private val manager=context.getSystemService(SensorManager::class.java)
     private val sensor=manager.getDefaultSensor(Sensor.TYPE_PRESSURE)
     private val _sample=MutableStateFlow(PhonePressureSample())
@@ -284,27 +310,30 @@ class PhonePressureRepository @Inject constructor(@ApplicationContext context:Co
     @Volatile private var running=false
     private var generation=0L
     private var startedElapsed=0L
+    private var currentDevice:String?=null
+    private val busSubscription=MarineDeviceBus.subscribe(DeviceKind.PRESSURE,::consumeFrame){id->synchronized(this){
+        if(id==null||currentDevice==id){currentDevice=null;_sample.value=PhonePressureSample(generation=generation)}
+    }}
     @Synchronized fun start():Boolean {
         if(running)return true
-        startedElapsed=SystemClock.elapsedRealtime()
-        running=sensor?.let { manager.registerListener(this,it,SensorManager.SENSOR_DELAY_NORMAL) }?:false
+        startedElapsed=MarineTime.nowElapsedMillis()
+        running=driver.request("phone.pressure",setOf(DeviceKind.PRESSURE))
         if(running)generation++
         return running
     }
     @Synchronized fun stop() {
         running=false
-        manager.unregisterListener(this)
-        _sample.value=PhonePressureSample(generation=generation)
+        driver.release("phone.pressure")
+        currentDevice=null;_sample.value=PhonePressureSample(generation=generation)
     }
-    @Synchronized override fun onSensorChanged(event:SensorEvent) {
-        if(!running||event.sensor.type!=Sensor.TYPE_PRESSURE)return
-        // Android SensorEvent 与 elapsedRealtime 使用同一开机时基；排队回调不能刷新旧数据。
-        val measured=event.timestamp/1_000_000L
-        if(measured<startedElapsed||measured>SystemClock.elapsedRealtime()||
-            _sample.value.receivedElapsedRealtime?.let {measured<=it}==true)return
-        event.values.firstOrNull()?.takeIf { it.isFinite()&&it in 800f..1_200f }?.let {
-            _sample.value=PhonePressureSample(it.toDouble(),measured,generation)
-        }
+    override fun onSensorChanged(event:SensorEvent)=Unit
+    @Synchronized private fun consumeFrame(frame:HardwareFrame) {
+        if(!running||!MarineDeviceBus.isCurrent(frame))return
+        val measured=frame.measuredElapsedMillis
+        if(measured<startedElapsed||measured>MarineTime.nowElapsedMillis()||_sample.value.receivedElapsedRealtime?.let{measured<=it}==true)return
+        val value=frame.payload.pressureHpa?:return
+        currentDevice=frame.deviceId
+        _sample.value=PhonePressureSample(value,measured,frame.generation,frame.backend.name,frame.epoch,frame.deviceId)
     }
     override fun onAccuracyChanged(sensor:Sensor?,accuracy:Int)=Unit
 }

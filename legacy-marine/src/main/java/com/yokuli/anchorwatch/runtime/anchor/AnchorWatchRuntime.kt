@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.runtime.anchor
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.AlarmUiRepository
 import com.yokuli.anchorwatch.data.NavigationRepository
 import com.yokuli.anchorwatch.data.database.AlarmEventEntity
@@ -667,7 +669,7 @@ class AnchorWatchRuntime(
                         RuntimeOwner.ANCHOR_WATCH,
                         RuntimeRequirement(needsSystemLocation=true,needsWakeLock=true,needsPhoneMotion=true),
                     )
-                    if(!host.enableSystemGps())null else withTimeoutOrNull(10_000){
+                    if(!host.enableSystemGps())null else MarineTime.withTimeoutOrNull(10_000){
                         systemLocation.fix.filterNotNull().filter{candidate->
                             candidate.valid&&candidate.positionProvider==PositionProvider.ANDROID_GNSS&&
                                 (candidate.horizontalAccuracyMeters?:Double.POSITIVE_INFINITY)<=30.0&&
@@ -752,7 +754,7 @@ class AnchorWatchRuntime(
                 nmeaRuntime.ensureSafetyConnected(settings.profile)
                 NmeaPositionAwaiter.awaitUsable(navigation.connectionState,navigation.fix,navigation.connectionStartedElapsed,resumeWaitMillis,lossMillis,monotonicClock::elapsedRealtime)
             }
-            GpsDataSource.SYSTEM->{if(!host.enableSystemGps())null else systemLocation.fix.value?.takeIf{it.valid&&it.positionProvider==PositionProvider.ANDROID_GNSS&&(it.horizontalAccuracyMeters?:Double.POSITIVE_INFINITY)<=30.0&&monotonicClock.elapsedRealtime()-it.receivedElapsedRealtime in 0L until lossMillis}?:withTimeoutOrNull(resumeWaitMillis){systemLocation.fix.filterNotNull().filter{it.valid&&it.positionProvider==PositionProvider.ANDROID_GNSS&&(it.horizontalAccuracyMeters?:Double.POSITIVE_INFINITY)<=30.0&&monotonicClock.elapsedRealtime()-it.receivedElapsedRealtime in 0L until lossMillis}.first()}}
+            GpsDataSource.SYSTEM->{if(!host.enableSystemGps())null else systemLocation.fix.value?.takeIf{it.valid&&it.positionProvider==PositionProvider.ANDROID_GNSS&&(it.horizontalAccuracyMeters?:Double.POSITIVE_INFINITY)<=30.0&&monotonicClock.elapsedRealtime()-it.receivedElapsedRealtime in 0L until lossMillis}?:MarineTime.withTimeoutOrNull(resumeWaitMillis){systemLocation.fix.filterNotNull().filter{it.valid&&it.positionProvider==PositionProvider.ANDROID_GNSS&&(it.horizontalAccuracyMeters?:Double.POSITIVE_INFINITY)<=30.0&&monotonicClock.elapsedRealtime()-it.receivedElapsedRealtime in 0L until lossMillis}.first()}}
             GpsDataSource.DEMO->{if(!host.enableSystemGps())null else demoLocation.resume()?:demoLocation.start(current.learningReferenceLatitude?:current.anchorLatitude,current.learningReferenceLongitude?:current.anchorLongitude,runCatching{AnchorPlacementMode.valueOf(current.placementMode)}.getOrDefault(AnchorPlacementMode.CENTER_DROP),settings.demoScenario,current.alarmRadiusMeters,settings.demoSpeedMultiplier,seed=demoSeed(current))}
         }
         if(fix==null){resources.release(RuntimeOwner.ANCHOR_WATCH);nmeaRuntime.releaseIfUnowned();host.notify("Anchor watch remains paused","A fresh ${when(currentGpsSource){GpsDataSource.NONE->"disabled";GpsDataSource.NMEA->"NMEA";GpsDataSource.SYSTEM->"System";GpsDataSource.DEMO->"Demo"}} GPS position did not arrive within ${resumeWaitMillis/1_000} seconds. The existing session, centre, range and track remain preserved; reconnect or switch the paused session source, then press Resume once.",true);session=current;host.releaseIfIdle();return}

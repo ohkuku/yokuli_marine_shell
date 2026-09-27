@@ -1,0 +1,381 @@
+{
+  "format": 1,
+  "apps": [
+    {
+      "id": "com.yokuli.chart",
+      "name": "海图",
+      "nameEn": "Chart",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "chart",
+      "hostApp": "CHART",
+      "entry": "chart",
+      "launcherId": "chart",
+      "rootToken": "chart.browse",
+      "icon": "chart",
+      "routes": {
+        "exact": [
+          "chart",
+          "task:navigation"
+        ],
+        "prefix": [
+          "chart:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.library",
+      "name": "图册",
+      "nameEn": "Chart Library",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "library",
+      "hostApp": "LIBRARY",
+      "entry": "library",
+      "launcherId": "chart_library",
+      "rootToken": "chart_library.browse",
+      "icon": "layers",
+      "routes": {
+        "exact": [
+          "library"
+        ],
+        "prefix": [
+          "library:",
+          "chartobjects:",
+          "chartdataset:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.voyages",
+      "name": "航海日志",
+      "nameEn": "Logbook",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "voyages",
+      "hostApp": "VOYAGES",
+      "entry": "voyages",
+      "launcherId": "voyages",
+      "rootToken": "voyages.overview",
+      "icon": "logbook",
+      "routes": {
+        "exact": [
+          "voyages",
+          "task:recording",
+          "voyage",
+          "replay",
+          "report"
+        ],
+        "prefix": [
+          "voyage:",
+          "replay:",
+          "report:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.anchor",
+      "name": "守锚",
+      "nameEn": "Anchor Watch",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "anchor",
+      "hostApp": "ANCHOR",
+      "entry": "anchor",
+      "launcherId": "anchor",
+      "rootToken": "anchor.overview",
+      "icon": "anchor",
+      "routes": {
+        "exact": [
+          "anchor",
+          "task:anchorWatch"
+        ],
+        "prefix": [
+          "anchor:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.places",
+      "name": "我的航行",
+      "nameEn": "My Sailing",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "places",
+      "hostApp": "PLACES",
+      "entry": "places",
+      "launcherId": "navigation",
+      "rootToken": "navigation.overview",
+      "icon": "route",
+      "routes": {
+        "exact": [
+          "places"
+        ],
+        "prefix": [
+          "places:",
+          "place:",
+          "route:",
+          "anchorage:",
+          "collection:",
+          "tileplace:",
+          "tileroute:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.instruments",
+      "name": "驾驶台",
+      "nameEn": "Helm",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "instruments",
+      "hostApp": "INSTRUMENTS",
+      "entry": "instruments",
+      "launcherId": "instruments",
+      "rootToken": "instruments.overview",
+      "icon": "helm",
+      "routes": {
+        "exact": [
+          "instruments"
+        ],
+        "prefix": [
+          "instruments:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.data-center",
+      "name": "数据中心",
+      "nameEn": "Data Center",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "data_center",
+      "hostApp": "DATA_CENTER",
+      "entry": "data_center",
+      "launcherId": "data_center",
+      "rootToken": "data_center.overview",
+      "icon": "data",
+      "routes": {
+        "exact": [
+          "data_center"
+        ],
+        "prefix": [
+          "data_center:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.nmea",
+      "name": "船联网",
+      "nameEn": "Boat Network",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "nmea",
+      "hostApp": "NMEA",
+      "entry": "nmea",
+      "launcherId": "nmea",
+      "rootToken": "nmea.root",
+      "icon": "connect",
+      "routes": {
+        "exact": [
+          "nmea"
+        ],
+        "prefix": [
+          "nmea:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.ais",
+      "name": "AIS",
+      "nameEn": "AIS",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "ais",
+      "hostApp": "AIS",
+      "entry": "ais",
+      "launcherId": "ais",
+      "rootToken": "ais.overview",
+      "icon": "ais",
+      "routes": {
+        "exact": [
+          "ais"
+        ],
+        "prefix": [
+          "ais:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.local-nmea",
+      "name": "数据共享",
+      "nameEn": "Data Sharing",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "local_nmea",
+      "hostApp": "LOCAL_NMEA",
+      "entry": "local_nmea",
+      "launcherId": "local_nmea",
+      "rootToken": "local_nmea.overview",
+      "icon": "share",
+      "routes": {
+        "exact": [
+          "local_nmea"
+        ],
+        "prefix": []
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.settings",
+      "name": "设置",
+      "nameEn": "Settings",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "settings",
+      "hostApp": "SETTINGS",
+      "entry": "settings",
+      "launcherId": "preferences",
+      "rootToken": "preferences.overview",
+      "icon": "settings",
+      "routes": {
+        "exact": [
+          "settings"
+        ],
+        "prefix": [
+          "settings:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.tiles",
+      "name": "磁贴工坊",
+      "nameEn": "Tile Studio",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "tiles",
+      "hostApp": "TILES",
+      "entry": "tiles",
+      "launcherId": "tile_library",
+      "rootToken": "tile_library.overview",
+      "icon": "start",
+      "routes": {
+        "exact": [
+          "tiles"
+        ],
+        "prefix": [
+          "tiles:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.app-center",
+      "name": "应用中心",
+      "nameEn": "App Center",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "app_center",
+      "hostApp": "APP_CENTER",
+      "entry": "app_center",
+      "launcherId": "app_center",
+      "rootToken": "app_center.overview",
+      "icon": "apps",
+      "routes": {
+        "exact": [
+          "app_center"
+        ],
+        "prefix": [
+          "app_center:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
+      "id": "com.yokuli.hardware-lab",
+      "name": "演练室",
+      "nameEn": "Hardware Lab",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "hardware_lab",
+      "hostApp": "HARDWARE_LAB",
+      "entry": "hardware_lab",
+      "launcherId": "hardware_lab",
+      "rootToken": "hardware_lab.overview",
+      "icon": "data",
+      "routes": {
+        "exact": [
+          "hardware_lab"
+        ],
+        "prefix": []
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    }
+  ]
+}

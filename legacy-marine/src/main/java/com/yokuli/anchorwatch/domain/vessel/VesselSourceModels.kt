@@ -27,6 +27,10 @@ data class VesselSourceIdentity(
     /** Physical-source key persisted across transport reconnect generations. */
     val stableKey:String=id,
     val transportPeer:String?=null,
+    /** 中文：持久保留 HAL 后端及世界代次，真实/模拟/回放的来源不可混淆。 */
+    val hardwareBackend:String="REAL",
+    val hardwareEpoch:Long=0,
+    val hardwareDeviceId:String?=null,
 )
 
 object VesselSourcePinPolicy{
@@ -50,7 +54,7 @@ sealed interface VesselReference{
 
 sealed interface VesselProvenance{
     data class Nmea(val source:VesselSourceIdentity):VesselProvenance
-    data class PhoneSensor(val sensor:String,val calibrationVersion:Int?=null):VesselProvenance
+    data class PhoneSensor(val sensor:String,val calibrationVersion:Int?=null,val hardwareBackend:String="REAL",val hardwareEpoch:Long=0,val hardwareDeviceId:String?=null):VesselProvenance
     data class Derived(val algorithm:String,val inputs:List<VesselSourceIdentity>):VesselProvenance
 }
 

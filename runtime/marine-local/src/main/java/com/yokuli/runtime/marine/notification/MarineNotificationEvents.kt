@@ -1,5 +1,7 @@
 package com.yokuli.runtime.marine.notification
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.content.Context
 import com.yokuli.anchorwatch.api.LocalMarineContentService
 import com.yokuli.anchorwatch.data.database.AlarmEventEntity
@@ -169,7 +171,7 @@ private fun RuntimeUserFeedback.record(epoch: String): NoticeRecord {
         listOf("anchor", "alarm", "safety", "wind", "high wind", "condition", "required nmea instrument").any(title::startsWith) -> "ANCHOR"
         else -> null
     }
-    val occurred = (System.currentTimeMillis() - (android.os.SystemClock.elapsedRealtime() - receivedElapsedRealtime).coerceAtLeast(0)).coerceAtLeast(1)
+    val occurred = (MarineTime.nowUtcMillis() - (MarineTime.nowElapsedMillis() - receivedElapsedRealtime).coerceAtLeast(0)).coerceAtLeast(1)
     return NoticeRecord("runtime:$epoch:$id", publisher,
         NoticeText(chineseTitle, englishTitle, chineseMessage, englishMessage, "runtime.${context.name}", mapOf("feedbackId" to id.toString())),
         occurred, level = if (highPriority) NoticeLevel.WARNING else NoticeLevel.INFO,
@@ -195,7 +197,7 @@ private fun VoyageCommandReceipt.record(): NoticeRecord? {
         else -> "打开航行日志查看当前状态和具体原因。" to "Open Logbook for the current state and details."
     }
     return NoticeRecord("voyage-command:${request.requestId}", "VOYAGES", NoticeText(title.first, title.second, text.first, text.second,
-        "voyage.${request.action}.${status}", mapOf("requestId" to request.requestId, "status" to status.name)), System.currentTimeMillis(),
+        "voyage.${request.action}.${status}", mapOf("requestId" to request.requestId, "status" to status.name)), MarineTime.nowUtcMillis(),
         level = if (status == VoyageRequestStatus.CONFIRMED) NoticeLevel.INFO else NoticeLevel.WARNING,
         target = NoticeTarget("voyages"), domainEventId = "${request.requestId}:$status", aggregationKey = "voyage-command:${request.requestId}", category = "voyage-command")
 }

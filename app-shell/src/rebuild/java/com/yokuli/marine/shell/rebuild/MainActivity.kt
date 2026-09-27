@@ -71,7 +71,8 @@ class MainActivity : ComponentActivity() {
     private val notifications=registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
     /** 页面只提出明确的船位请求；Android 权限属于宿主，来源选择属于数据服务。 */
     private fun requestPosition(action: PositionSourceRequest) {
-        if (action == PositionSourceRequest.ENABLE_PHONE) {
+        if (action == PositionSourceRequest.ENABLE_PHONE &&
+            os.marine?.system?.hardwareLab?.state?.value?.mode.let { it == null || it == com.yokuli.runtime.contract.hardware.HardwareMode.REAL }) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                 gpsPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                 return

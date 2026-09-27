@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.sharing
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -66,6 +68,7 @@ class NmeaSharingServer @Inject constructor(private val addresses: NetworkAddres
     val status = _status.asStateFlow()
 
     fun start(port: Int) {
+        check(!com.yokuli.runtime.contract.hardware.VirtualHostServices.virtual) { "VIRTUAL_OUTPUT_BLOCKED" }
         val safePort = port.takeIf { it in 1024..65535 } ?: 10111
         lifecycle.withLock {
             synchronized(this){if(acceptJob?.isActive==true&&_status.value.port==safePort)return}
@@ -142,19 +145,20 @@ class NmeaSharingServer @Inject constructor(private val addresses: NetworkAddres
         if(runCatching{socket.tcpNoDelay = true;socket.keepAlive = true;socket.sendBufferSize = 16 * 1024}.isFailure){runCatching{socket.close()};update(lastEvent="NMEA_CLIENT_DISCONNECTED");return}
         val id = ids.incrementAndGet()
         val queue = Channel<PendingSentence>(CLIENT_QUEUE_CAPACITY)
-        val connectedAt=System.currentTimeMillis();val address=socket.remoteSocketAddress?.toString()?.removePrefix("/")?:"unknown"
+        val connectedAt=MarineTime.nowUtcMillis();val address=socket.remoteSocketAddress?.toString()?.removePrefix("/")?:"unknown"
         val job = scope.launch {
             try {
                 socket.getOutputStream().buffered().use { output ->
                     for (pending in queue) {
                         if(!pending.stillValid())continue
                         val sentence=pending.wire
+                        check(!com.yokuli.runtime.contract.hardware.VirtualHostServices.virtual) { "VIRTUAL_OUTPUT_BLOCKED" }
                         output.write(sentence.toByteArray(Charsets.US_ASCII));output.flush()
                         clients[id]?.sent?.incrementAndGet()
                         _status.update{current->current.copy(
                             clientCount=clients.size,
                             sentSentences=current.sentSentences+1,
-                            lastOutputElapsed=System.nanoTime()/1_000_000L,
+                            lastOutputElapsed=MarineTime.nowElapsedMillis(),
                             clients=clientStatuses(),
                             recentWritten=(current.recentWritten+sentence.trim()).takeLast(40),
                         )}

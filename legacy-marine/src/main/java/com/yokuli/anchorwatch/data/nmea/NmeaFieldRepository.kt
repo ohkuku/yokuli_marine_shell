@@ -1,6 +1,7 @@
 package com.yokuli.anchorwatch.data.nmea
 
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.NavigationRepository
 import java.util.Locale
 import javax.inject.Inject
@@ -99,7 +100,7 @@ object NmeaFieldDecoder {
         return NmeaFieldHeartbeat(talker,type,!explicitlyInvalid)
     }
 
-    fun decode(line:String,elapsed:Long=SystemClock.elapsedRealtime()):List<NmeaFieldObservation>{
+    fun decode(line:String,elapsed:Long=MarineTime.nowElapsedMillis()):List<NmeaFieldObservation>{
         if(!NmeaChecksum.validate(line,required=false))return emptyList()
         val raw=line.trim();val fields=raw.removePrefix("$").substringBefore('*').split(',')
         val id=fields.firstOrNull()?.uppercase(Locale.US).orEmpty();if(id.length<3)return emptyList()
@@ -183,8 +184,8 @@ class NmeaFieldRepository @Inject constructor(navigation:NavigationRepository){
     private val _fields=MutableStateFlow<List<NmeaFieldObservation>>(emptyList());val fields=_fields.asStateFlow()
     init{
         scope.launch{navigation.frames.collect{frame->acceptFrame(frame)}}
-        scope.launch{navigation.connections.collect{connections->synchronized(this@NmeaFieldRepository){val valid=connections.filter{it.requested}.associate{it.spec.id to it.transport.connectionGeneration};identities.keys.toList().forEach{key->val identity=identities.getValue(key);if(valid[identity.first]!=identity.second){buffers.remove(key);identities.remove(key)}};publish(SystemClock.elapsedRealtime())}}}
-        scope.launch{while(isActive){delay(1_000L);synchronized(this@NmeaFieldRepository){publish(SystemClock.elapsedRealtime())}}}
+        scope.launch{navigation.connections.collect{connections->synchronized(this@NmeaFieldRepository){val valid=connections.filter{it.requested}.associate{it.spec.id to it.transport.connectionGeneration};identities.keys.toList().forEach{key->val identity=identities.getValue(key);if(valid[identity.first]!=identity.second){buffers.remove(key);identities.remove(key)}};publish(MarineTime.nowElapsedMillis())}}}
+        scope.launch{while(isActive){MarineTime.sleep(1_000L);synchronized(this@NmeaFieldRepository){publish(MarineTime.nowElapsedMillis())}}}
     }
     @Synchronized private fun acceptFrame(frame:NmeaRawFrame){
         val key="${frame.connectionId}|${frame.generation}|${frame.peer}"
@@ -193,7 +194,7 @@ class NmeaFieldRepository @Inject constructor(navigation:NavigationRepository){
         publish(frame.receivedElapsedRealtime)
     }
     private fun publish(now:Long){_fields.value=buffers.flatMap{(key,buffer)->val identity=identities.getValue(key);buffer.expire(now).map{it.copy(connectionId=identity.first,connectionGeneration=identity.second,peer=identity.third)}}}
-    fun accept(line:String,elapsed:Long=SystemClock.elapsedRealtime())=acceptFrame(NmeaRawFrame("injected",0,"",line,elapsed))
+    fun accept(line:String,elapsed:Long=MarineTime.nowElapsedMillis())=acceptFrame(NmeaRawFrame("injected",0,"",line,elapsed))
     fun semantic(value:NmeaFieldSemantic):NmeaFieldObservation?=fields.value.filter{it.key.semantic==value}.maxByOrNull{it.receivedElapsedRealtime}
     companion object{const val DISCOVERY_RETENTION_MILLIS=30_000L}
 }

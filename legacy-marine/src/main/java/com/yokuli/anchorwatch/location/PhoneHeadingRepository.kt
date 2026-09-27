@@ -6,7 +6,9 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.hardware.GeomagneticField
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+import com.yokuli.runtime.contract.hardware.*
+import com.yokuli.runtime.contract.device.*
 import com.yokuli.anchorwatch.domain.model.HeadingQuality
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +42,9 @@ data class PhoneHeadingSample(
     val liveVesselMagneticHeadingDegrees:Double?=null,
     val vesselTrueHeadingDegrees:Double?=null,
     val vesselHeadingQuality:HeadingQuality=HeadingQuality.UNAVAILABLE,
+    val hardwareBackend:String="REAL",
+    val hardwareEpoch:Long=0,
+    val hardwareDeviceId:String?=null,
 )
 
 enum class PhoneHeadingPresentationQuality { GOOD, LOW_ACCURACY, DISTURBED, UNAVAILABLE }
@@ -56,6 +61,7 @@ data class DeclinationReferenceState(
 class PhoneHeadingRepository @Inject constructor(
     @ApplicationContext context: Context,
     mountCalibration: VesselMountCalibrationRepository,
+    private val driver: AndroidMarineSensorDriver,
 ) : SensorEventListener {
     private val sensors = context.getSystemService(SensorManager::class.java)
     private val monitor = PhoneHeadingIntegrityMonitor()
@@ -78,6 +84,11 @@ class PhoneHeadingRepository @Inject constructor(
     val declinationReference=_declinationReference.asStateFlow()
 
     private var running = false
+    private var currentFrame:HardwareFrame?=null
+    private val sensorMeasuredTimes=mutableMapOf<HardwareSensorType,Long>()
+    private val busSubscription=MarineDeviceBus.subscribe(DeviceKind.IMU,::consumeFrame){id->synchronized(this){
+        if(id==null||currentFrame?.deviceId==id){monitor.reset();vesselMonitor.reset();currentFrame=null;sensorMeasuredTimes.clear();lastPublishedElapsed=0L;lastPublishedHeading=null;lastRotationVectorElapsed=0L;lastRawCompassElapsed=0L;hasAccelerometerReading=false;hasMagnetometerReading=false;_sample.value=PhoneHeadingSample()}
+    }}
     private var runtimeDemand = false
     private var displayDemand = false
     private var approachDemand = false
@@ -96,15 +107,15 @@ class PhoneHeadingRepository @Inject constructor(
     private var hasMagnetometerReading = false
     // 地磁偏角由位置参考更新；传感器每帧只读取同一值，不重复计算地磁模型。
     @Volatile private var magneticDeclination: Double? = null
-    private var sequence = System.currentTimeMillis() * 1_000L
-    private var activationEpoch = System.currentTimeMillis()
+    private var sequence = MarineTime.nowUtcMillis() * 1_000L
+    private var activationEpoch = MarineTime.nowUtcMillis()
 
-    fun isAvailable(): Boolean = rotation != null ||
+    fun isAvailable(): Boolean = MarineDeviceBus.state.value.backend!=DeviceBackend.REAL || rotation != null ||
         (accelerometer != null && magnetometer != null) || legacyOrientation != null
 
     fun setPosition(latitude: Double, longitude: Double, altitudeMeters: Double?, wallTimeMillis: Long?) {
         if(!latitude.isFinite()||!longitude.isFinite()||latitude !in -90.0..90.0||longitude !in -180.0..180.0)return
-        val wallTime = wallTimeMillis ?: System.currentTimeMillis()
+        val wallTime = wallTimeMillis ?: MarineTime.nowUtcMillis()
         magneticDeclination = GeomagneticField(latitude.toFloat(), longitude.toFloat(),
             (altitudeMeters ?: 0.0).toFloat(), wallTime).declination.toDouble()
         _declinationReference.value=DeclinationReferenceState(true,latitude,longitude,wallTime)
@@ -122,69 +133,57 @@ class PhoneHeadingRepository @Inject constructor(
     @Synchronized private fun reconcile(): Boolean {
         val wanted=runtimeDemand||displayDemand||approachDemand
         if(!wanted){
-            if(running)sensors.unregisterListener(this)
-            running=false;monitor.reset();vesselMonitor.reset();lastPublishedElapsed=0L;lastPublishedHeading=null
+            if(running)driver.release("phone.heading")
+            running=false;currentFrame=null;sensorMeasuredTimes.clear();monitor.reset();vesselMonitor.reset();lastPublishedElapsed=0L;lastPublishedHeading=null
             lastRotationVectorElapsed=0L;lastRawCompassElapsed=0L
             hasAccelerometerReading=false;hasMagnetometerReading=false;_sample.value=PhoneHeadingSample()
             return false
         }
         if (running) return isAvailable()
         if (!isAvailable()) return false
-        activationEpoch = maxOf(activationEpoch + 1L, System.currentTimeMillis())
+        activationEpoch = maxOf(activationEpoch + 1L, MarineTime.nowUtcMillis())
         monitor.reset()
-        // GAME is substantially more responsive than NORMAL while still avoiding
-        // the battery/CPU cost of FASTEST. UI publication below is capped at 20 Hz.
-        val rotationRegistered = rotation?.let {
-            sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        } ?: false
-        val accelerometerRegistered = accelerometer?.let {
-            sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        } ?: false
-        val magnetometerRegistered = magnetometer?.let {
-            sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        } ?: false
-        val legacyOrientationRegistered = legacyOrientation?.let {
-            sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
-        } ?: false
-        gyroscope?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
-        running = rotationRegistered || (accelerometerRegistered && magnetometerRegistered) || legacyOrientationRegistered
-        if (!running) {
-            sensors.unregisterListener(this)
-        }
+        running=driver.request("phone.heading",setOf(DeviceKind.IMU))
         return running
     }
 
-    override fun onSensorChanged(event: SensorEvent) {
-        when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> {
-                acceleration = magnitude(event.values)
-                event.values.copyInto(accelerometerReading, endIndex = 3)
-                hasAccelerometerReading = true
-                publishCompassFallbackIfNeeded()
+    // Android callbacks are exclusively owned by AndroidMarineSensorDriver.
+    override fun onSensorChanged(event:SensorEvent)=Unit
+
+    @Synchronized private fun consumeFrame(frame:HardwareFrame) {
+        if(!running||!MarineDeviceBus.isCurrent(frame))return
+        val type=frame.payload.sensorType?:return
+        // 同一测量的冻结/重发不构成新的稳定证据，也不能延长真实样本的新鲜度。
+        if(sensorMeasuredTimes[type]?.let{frame.measuredElapsedMillis<=it}==true)return
+        sensorMeasuredTimes[type]=frame.measuredElapsedMillis
+        currentFrame=frame
+        val values=frame.payload.values.map{it.toFloat()}.toFloatArray()
+        val sensorAccuracy=frame.payload.sensorAccuracy
+        when(frame.payload.sensorType){
+            HardwareSensorType.ACCELEROMETER->{acceleration=magnitude(values);values.copyInto(accelerometerReading,endIndex=3);hasAccelerometerReading=true;publishCompassFallbackIfNeeded()}
+            HardwareSensorType.MAGNETOMETER->{values.copyInto(magnetometerReading,endIndex=3);hasMagnetometerReading=true;magnetometerAccuracy=sensorAccuracy;publishCompassFallbackIfNeeded()}
+            HardwareSensorType.GYROSCOPE->angularVelocity=magnitude(values)
+            HardwareSensorType.LEGACY_ORIENTATION->{legacyOrientationAccuracy=sensorAccuracy;publishLegacyOrientationIfNeeded(values)}
+            HardwareSensorType.ROTATION_QUATERNION->{
+                lastRotationVectorElapsed=frame.measuredElapsedMillis
+                val matrix=FloatArray(9)
+                SensorManager.getRotationMatrixFromVector(matrix,floatArrayOf(values[1],values[2],values[3],values[0]))
+                publishMatrix(matrix,sensorAccuracy)
             }
-            Sensor.TYPE_MAGNETIC_FIELD -> {
-                event.values.copyInto(magnetometerReading, endIndex = 3)
-                hasMagnetometerReading = true
-                publishCompassFallbackIfNeeded()
-            }
-            Sensor.TYPE_GYROSCOPE -> angularVelocity = magnitude(event.values)
-            Sensor.TYPE_ORIENTATION -> publishLegacyOrientationIfNeeded(event.values)
-            Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR -> {
-                lastRotationVectorElapsed = SystemClock.elapsedRealtime()
-                val matrix = FloatArray(9)
-                SensorManager.getRotationMatrixFromVector(matrix, event.values)
-                publishMatrix(matrix, accuracy)
-            }
+            else->Unit
         }
     }
 
     private fun publishCompassFallbackIfNeeded() {
         if (!hasAccelerometerReading || !hasMagnetometerReading) return
-        val nowElapsed = SystemClock.elapsedRealtime()
+        val nowElapsed=currentFrame?.measuredElapsedMillis?:return
+        val accelerationTime=sensorMeasuredTimes[HardwareSensorType.ACCELEROMETER]?:return
+        val magneticTime=sensorMeasuredTimes[HardwareSensorType.MAGNETOMETER]?:return
+        if(nowElapsed-accelerationTime !in 0..RAW_COMPASS_TIMEOUT_MILLIS || nowElapsed-magneticTime !in 0..RAW_COMPASS_TIMEOUT_MILLIS)return
         // Prefer the OEM-fused rotation vector. A number of otherwise capable
         // phones omit it or stop publishing it, while Google Maps can still use
         // the physical accelerometer + compass path.
-        if (rotation != null && nowElapsed - lastRotationVectorElapsed <= ROTATION_VECTOR_TIMEOUT_MILLIS) return
+        if (lastRotationVectorElapsed > 0L && nowElapsed - lastRotationVectorElapsed <= ROTATION_VECTOR_TIMEOUT_MILLIS) return
         val matrix = FloatArray(9)
         if (!SensorManager.getRotationMatrix(matrix, null, accelerometerReading, magnetometerReading)) return
         lastRawCompassElapsed = nowElapsed
@@ -193,8 +192,8 @@ class PhoneHeadingRepository @Inject constructor(
 
     private fun publishLegacyOrientationIfNeeded(values: FloatArray) {
         if (values.isEmpty()) return
-        val nowElapsed = SystemClock.elapsedRealtime()
-        if (rotation != null && nowElapsed - lastRotationVectorElapsed <= ROTATION_VECTOR_TIMEOUT_MILLIS) return
+        val nowElapsed=currentFrame?.measuredElapsedMillis?:return
+        if (lastRotationVectorElapsed > 0L && nowElapsed - lastRotationVectorElapsed <= ROTATION_VECTOR_TIMEOUT_MILLIS) return
         if (nowElapsed - lastRawCompassElapsed <= RAW_COMPASS_TIMEOUT_MILLIS) return
         val magnetic = ((values[0].toDouble() % 360.0) + 360.0) % 360.0
         val pitch = values.getOrNull(1)?.toDouble() ?: 0.0
@@ -231,7 +230,7 @@ class PhoneHeadingRepository @Inject constructor(
         val referenceReady=_declinationReference.value.ready
         val declination = magneticDeclination.takeIf { referenceReady }
         val trueHeading = declination?.let{(magnetic + it + 360.0) % 360.0}
-        val nowElapsed=SystemClock.elapsedRealtime()
+        val nowElapsed=currentFrame?.measuredElapsedMillis?:return
         val observation = if (allowEstimatorEvidence&&trueHeading!=null) {
             monitor.observe(
                 nowElapsed = nowElapsed,
@@ -254,7 +253,7 @@ class PhoneHeadingRepository @Inject constructor(
         lastPublishedElapsed=nowElapsed;lastPublishedHeading=magnetic
         // Keep sequence IDs unique across service/process restarts so persisted
         // evidence from an earlier activation never deduplicates newer samples.
-        sequence = maxOf(sequence + 1L, System.currentTimeMillis() * 1_000L)
+        sequence = maxOf(sequence + 1L, MarineTime.nowUtcMillis() * 1_000L)
         // A user can disable and later re-enable phone heading after physically
         // moving the handset. Keep those activations in separate epochs so old
         // and new calibration evidence can coexist without being blended.
@@ -265,8 +264,6 @@ class PhoneHeadingRepository @Inject constructor(
         // on-screen arrow appear frozen. Keep both channels explicit: the Android
         // rotation vector drives the live UI, while only the monitor output may be
         // persisted as anchor-centre evidence.
-        // TODO(physical-device): add a sensor-injection instrumentation regression
-        // once CI has a deterministic rotation-vector source.
         _sample.value = PhoneHeadingSample(
             liveTrueHeadingDegrees = trueHeading,
             liveMagneticHeadingDegrees = magnetic,
@@ -287,6 +284,7 @@ class PhoneHeadingRepository @Inject constructor(
             liveVesselMagneticHeadingDegrees = mountedMagnetic,
             vesselTrueHeadingDegrees = vesselObservation.headingTrueDegrees,
             vesselHeadingQuality = vesselObservation.quality,
+            hardwareBackend=currentFrame?.backend?.name?:"REAL",hardwareEpoch=currentFrame?.epoch?:0,hardwareDeviceId=currentFrame?.deviceId,
         )
     }
 

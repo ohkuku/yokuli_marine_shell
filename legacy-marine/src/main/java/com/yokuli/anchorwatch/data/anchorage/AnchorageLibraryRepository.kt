@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.anchorage
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import androidx.room.withTransaction
 import com.yokuli.anchorwatch.data.database.AppDatabase
 import com.yokuli.anchorwatch.data.database.entity.*
@@ -52,8 +54,8 @@ data class AnchoragePlaceBundle(
     }
     suspend fun forPlace(placeId:Long)=database.anchorageVisitDao().forPlaceNow(placeId)
     private suspend fun refreshCounts(placeId:Long,spotId:Long?){
-        val visits=database.anchorageVisitDao().forPlaceNow(placeId);database.anchoragePlaceDao().get(placeId)?.let{database.anchoragePlaceDao().update(it.copy(visitCountCached=visits.size,lastVisitedAt=visits.maxOfOrNull(AnchorageVisitEntity::startedAt),updatedAt=System.currentTimeMillis()))}
-        spotId?.let{id->database.anchorageSpotDao().get(id)?.let{spot->val spotVisits=visits.filter{it.spotId==id};database.anchorageSpotDao().update(spot.copy(visitCountCached=spotVisits.size,lastVisitedAt=spotVisits.maxOfOrNull(AnchorageVisitEntity::startedAt),updatedAt=System.currentTimeMillis()))}}
+        val visits=database.anchorageVisitDao().forPlaceNow(placeId);database.anchoragePlaceDao().get(placeId)?.let{database.anchoragePlaceDao().update(it.copy(visitCountCached=visits.size,lastVisitedAt=visits.maxOfOrNull(AnchorageVisitEntity::startedAt),updatedAt=MarineTime.nowUtcMillis()))}
+        spotId?.let{id->database.anchorageSpotDao().get(id)?.let{spot->val spotVisits=visits.filter{it.spotId==id};database.anchorageSpotDao().update(spot.copy(visitCountCached=spotVisits.size,lastVisitedAt=spotVisits.maxOfOrNull(AnchorageVisitEntity::startedAt),updatedAt=MarineTime.nowUtcMillis()))}}
     }
 }
 

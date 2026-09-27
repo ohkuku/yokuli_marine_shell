@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.domain.report
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.database.TripDao
 import com.yokuli.anchorwatch.data.database.TripSampleEntity
 import com.yokuli.anchorwatch.data.database.TripSessionEntity
@@ -238,7 +240,7 @@ class TripReportEngine @Inject constructor(private val dao:TripDao){
             if(impactCount>0)add(TripFinding("REVIEW","Impact candidates recorded","$impactCount acceleration peaks crossed the candidate threshold. They are observations, not proof of wave slamming."))
             pressureStart?.let{first->pressureEnd?.let{last->if(abs(last-first)>=4.0)add(TripFinding("INFO","Pressure changed during the trip","Recorded pressure changed ${"%+.1f".format(last-first)} hPa; no weather conclusion is inferred."))}}
         }
-        val duration=((session.endedAt?:System.currentTimeMillis())-session.startedAt-session.accumulatedPausedMillis).coerceAtLeast(0)
+        val duration=((session.endedAt?:MarineTime.nowUtcMillis())-session.startedAt-session.accumulatedPausedMillis).coerceAtLeast(0)
         return TripReport(
             session=session,durationMillis=duration,distanceMeters=if(distance>0)distance else session.distanceMeters,movingMillis=session.movingDurationMillis,recordedSampleCount=count,
             startLatitude=startLatitude,startLongitude=startLongitude,endLatitude=endLatitude,endLongitude=endLongitude,
@@ -256,7 +258,7 @@ class TripReportEngine @Inject constructor(private val dao:TripDao){
             positionSourceChangeCount=positionSourceChangeCount,headingSourceChangeCount=headingSourceChangeCount,eventCount=totalEvents,waypointCount=waypointCount,sustainedHeelMillis=sustainedHeelMillis,
             quality=quality,findings=findings,motionAlgorithmVersion=session.motionAlgorithmVersion,averageBoatSpeedKnots=boatSpeed.mean(),p95BoatSpeedKnots=boatSpeed.quantile(.95),maxBoatSpeedKnots=boatSpeed.maximum,fastest500mAverageKnots=fastest500m,fastest500mStartedAt=fastest500mStart,fastest500mEndedAt=fastest500mEnd,
             sailingUsableSampleCount=sailingSummary.usableSampleCount,portTackMillis=sailingSummary.portTackMillis,starboardTackMillis=sailingSummary.starboardTackMillis,pointOfSailMillis=sailingSummary.pointOfSailMillis,tackCount=sailingSummary.tackCount,gybeCount=sailingSummary.gybeCount,
-            legs=legAnalytics.summaries(session.endedAt?:System.currentTimeMillis()),trueWindCoveragePercent=trueWindCoverage,apparentWindCoveragePercent=apparentWindCoverage,
+            legs=legAnalytics.summaries(session.endedAt?:MarineTime.nowUtcMillis()),trueWindCoveragePercent=trueWindCoverage,apparentWindCoveragePercent=apparentWindCoverage,
             externalTrueWindCoveragePercent=externalTrueWindCoverage,derivedWaterTrueWindCoveragePercent=derivedWaterTrueWindCoverage,derivedGroundTrueWindCoveragePercent=derivedGroundTrueWindCoverage,
             sourceTimeline=sourceTimeline,
             maximumSogWithAttitudeKnots=maximumSogWithAttitude,heelAtMaximumSogDegrees=heelAtMaximumSog,maximumSogWithAttitudeTimestamp=maximumSogWithAttitudeAt,

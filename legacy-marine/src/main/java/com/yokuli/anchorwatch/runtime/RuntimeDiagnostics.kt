@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.runtime
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.NavigationRepository
 import com.yokuli.anchorwatch.data.sharing.NmeaSharingServer
 import com.yokuli.anchorwatch.data.sonar.SonarSurveyRecorder
@@ -211,7 +213,7 @@ class RuntimeDiagnosticsRepository @Inject constructor(
             title=title,
             message=message,
             highPriority=highPriority,
-            receivedElapsedRealtime=android.os.SystemClock.elapsedRealtime(),
+            receivedElapsedRealtime=MarineTime.nowElapsedMillis(),
             context=context,chineseTitle=chineseTitle,chineseMessage=chineseMessage,englishTitle=englishTitle,englishMessage=englishMessage,
         )
         _state.update{it.copy(lastUserFeedback=feedback,pendingUserFeedback=(it.pendingUserFeedback+feedback).takeLast(64))}

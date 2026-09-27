@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.vessel
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.database.PressureHistoryDao
 import com.yokuli.anchorwatch.data.database.PressureHistoryEntity
 import com.yokuli.anchorwatch.domain.vessel.PressureTrend
@@ -120,7 +122,7 @@ class PressureHistoryRepository @Inject constructor(
             return
         }
         val value=PressureHistoryEntity(key,minute,observedUtc,pressureHpa,sourceDisplayName.ifBlank {key},
-            "$processKey|$clockEpoch|$continuityKey",measuredElapsedRealtime)
+            "$processKey|$clockEpoch|time:${MarineTime.state.value.timeEpoch}|$continuityKey",measuredElapsedRealtime)
         if(databaseWrites.trySend(value).isFailure) {
             writeIssue("Pressure history storage is waiting; the pending buffer is full")
             return
@@ -134,7 +136,7 @@ class PressureHistoryRepository @Inject constructor(
         if(!_historyLoaded.value)return null
         val point=latestStored[sourceStableKey]?:return null
         val segment=point.continuityKey?:return null
-        if(!segment.startsWith("$processKey|$clockEpoch|"))return null
+        if(!segment.startsWith("$processKey|$clockEpoch|time:${MarineTime.state.value.timeEpoch}|"))return null
         if(continuityKey!=null&&!segment.endsWith("|$continuityKey"))return null
         // 以真实末点为计算截止时间；没有新观测时不在后台滑动回归窗口。
         return estimators[sourceStableKey]?.trend(point.sampledAtUtcMillis,windowMillis)?.copy(

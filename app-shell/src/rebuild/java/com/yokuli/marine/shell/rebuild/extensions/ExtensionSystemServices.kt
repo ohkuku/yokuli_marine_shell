@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+import com.yokuli.runtime.contract.hardware.HardwareMode
 import androidx.core.content.ContextCompat
 import com.yokuli.anchorwatch.data.nmea.NmeaConnectionSnapshot
 import com.yokuli.anchorwatch.domain.model.GpsDataSource
@@ -56,7 +58,7 @@ class ExtensionSystemServices(private val os: OsStore, private val appId: String
 
     private fun sourcesSnapshot(): JSONObject {
         val state = services.state.value
-        val now = SystemClock.elapsedRealtime()
+        val now = MarineTime.nowElapsedMillis()
         val snapshotCurrent = snapshotCurrent(now)
         val connections = services.network.connections.value
         val phone = services.sources.phoneLocationStatus.value
@@ -157,10 +159,12 @@ class ExtensionSystemServices(private val os: OsStore, private val appId: String
         submit { services.sources.switchGpsDataSource(GpsDataSource.SYSTEM) }
     }
 
-    private fun hasLocationPermission(): Boolean = ContextCompat.checkSelfPermission(os.context,
+    private fun isVirtual(): Boolean = system.hardwareLab.state.value.mode != HardwareMode.REAL
+
+    private fun hasLocationPermission(): Boolean = isVirtual() || ContextCompat.checkSelfPermission(os.context,
         Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-    private fun locationEnabled(): Boolean = os.context.getSystemService(LocationManager::class.java)?.isLocationEnabled == true
+    private fun locationEnabled(): Boolean = isVirtual() || os.context.getSystemService(LocationManager::class.java)?.isLocationEnabled == true
 
     private fun inputConnection(id: String): NmeaConnectionSnapshot {
         val connection = services.network.connections.value.firstOrNull { it.spec.id == id && it.spec.receive }
@@ -193,7 +197,7 @@ class ExtensionSystemServices(private val os: OsStore, private val appId: String
         val settings = state.localNmeaServerSettings
         val runtime = state.localNmeaServerRuntime
         val transport = state.nmeaSharing
-        val now = SystemClock.elapsedRealtime()
+        val now = MarineTime.nowElapsedMillis()
         return JSONObject().put("configured", settings.configured).put("requested", settings.serverRequested)
             .put("state", transport.state.name).put("port", settings.port).put("clientCount", transport.clientCount)
             .put("feed", settings.feed.name).put("capabilities", JSONArray(settings.capabilities.sorted()))
@@ -221,7 +225,7 @@ class ExtensionSystemServices(private val os: OsStore, private val appId: String
         return JSONObject().put("sessionId", json(state.id?.toString())).put("phase", state.phase.name).put("name", state.name)
             .put("distanceMeters", state.distanceMeters.takeIf { it.isFinite() } ?: JSONObject.NULL)
             .put("startedAt", json(state.startedAt)).put("pausedAt", json(state.pausedAt))
-            .put("elapsedMillis", state.elapsedMillis(System.currentTimeMillis())).put("momentCount", state.momentCount)
+            .put("elapsedMillis", state.elapsedMillis(MarineTime.nowUtcMillis())).put("momentCount", state.momentCount)
             .put("commandPending", state.commandPending)
     }
 
@@ -303,9 +307,11 @@ class ExtensionSystemServices(private val os: OsStore, private val appId: String
     }
 
     private data class Completion(val failure: Throwable?)
-    private fun snapshotCurrent(now: Long = SystemClock.elapsedRealtime()): Boolean {
+    private fun snapshotCurrent(now: Long = MarineTime.nowElapsedMillis()): Boolean {
         val generated = services.state.value.vesselData.generatedElapsedRealtime
-        return generated > 0L && now - generated in 0L..2_000L
+        val lab = system.hardwareLab.state.value
+        return generated > 0L && if (lab.ready) SystemClock.elapsedRealtime() - lab.capturedHostElapsedMillis in 0L..2_000L
+        else now - generated in 0L..2_000L
     }
     private fun requireCurrentCandidates() {
         if (!snapshotCurrent()) fail("SOURCE_SNAPSHOT_STALE", "Wait for the current Core source catalogue before selecting a measurement")

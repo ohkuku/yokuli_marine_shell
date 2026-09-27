@@ -1,5 +1,6 @@
 package com.yokuli.runtime.marine.planning
 
+import com.yokuli.runtime.contract.hardware.VirtualHostServices
 import android.content.Context
 import android.util.AtomicFile
 import com.google.gson.Gson
@@ -34,6 +35,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     private suspend fun restore()=writes.withLock {
         try {
             val loaded=withContext(Dispatchers.IO){
+                VirtualHostServices.beforeRead()
                 if(!file.baseFile.exists()&&!File(file.baseFile.path+".bak").exists())Document()
                 else file.openRead().bufferedReader().use {reader->
                     val json=com.google.gson.JsonParser.parseReader(reader).asJsonObject
@@ -74,9 +76,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         try {
             // 已开始的原子提交不可被页面取消截断；cancel/new job等待同一写入锁。
             withContext(NonCancellable+Dispatchers.IO){
+                VirtualHostServices.beforeWrite()
                 val bytes=gson.toJson(doc).toByteArray(Charsets.UTF_8)
                 val output=file.startWrite()
-                try {output.write(bytes);output.fd.sync();file.finishWrite(output)}catch(error:Throwable){file.failWrite(output);throw error}
+                try {output.write(bytes);output.fd.sync();VirtualHostServices.beforeWrite();file.finishWrite(output)}catch(error:Throwable){file.failWrite(output);throw error}
                 // finishWrite部分IO失败只写日志；最终内容未确认时不能显示已保存或继续覆盖。
                 check(file.openRead().use{it.readBytes()}.contentEquals(bytes)){"PASSAGE_WRITE_NOT_CONFIRMED"}
                 saved=doc

@@ -1,6 +1,7 @@
 package com.yokuli.anchorwatch.runtime.sharing
 
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.NavigationRepository
 import com.yokuli.anchorwatch.data.nmea.*
 import com.yokuli.anchorwatch.data.sharing.LocalNmeaServerSettings
@@ -44,7 +45,7 @@ data class LocalNmeaServerRuntimeStatus(
     val enabled:Boolean get()=running
 
     init {
-        scope.launch { while(isActive) { delay(1_000); publishDue(SystemClock.elapsedRealtime()) } }
+        scope.launch { while(isActive) { MarineTime.sleep(1_000); publishDue(MarineTime.nowElapsedMillis()) } }
         scope.launch { navigation.frames.collect { frame -> forward(frame) } }
     }
 

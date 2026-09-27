@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.nmea
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -140,7 +142,7 @@ class NmeaConnectionManager(
   generation++;val mine=generation;transportGeneration++;onGenerationStarted();job?.cancel();closeTransportLocked();profile=p
   _diagnostics.value=NmeaTransportDiagnostics(connectionGeneration=transportGeneration,desiredConnected=true,lastOperation=operation)
   _state.value=initialState
-  job=scope.launch(Dispatchers.IO){if(delayBeforeOpenMillis>0)delay(delayBeforeOpenMillis);runConnection(p,mine)}
+  job=scope.launch(Dispatchers.IO){if(delayBeforeOpenMillis>0)MarineTime.sleep(delayBeforeOpenMillis);runConnection(p,mine)}
   return true
  }
  private suspend fun runConnection(p:ConnectionProfile,mine:Long){
@@ -166,7 +168,7 @@ class NmeaConnectionManager(
     if(!safetyRetry&&continuousFailures>=retryPolicy.maxContinuousFailures){openCircuit(mine,continuousFailures);break}
     val retryDelay=if(safetyRetry)NmeaSafetyRetryPolicy.delayMillis(continuousFailures) else if(opened)retryPolicy.peerDisconnectRetryMillis else retryPolicy.openFailureRetryMillis
     scheduleRetry(mine,retryDelay,continuousFailures);setState(mine,NmeaConnectionState.RECONNECTING)
-    delay(retryDelay);attempt++
+    MarineTime.sleep(retryDelay);attempt++
    }
   }}finally{finish(mine)}
  }
@@ -209,7 +211,7 @@ class NmeaConnectionManager(
    }
   }finally{unregister(socket);runCatching{socket.close()}}
  }
- private suspend fun noDataWatchdog(p:ConnectionProfile,mine:Long){while(currentCoroutineContext().isActive){delay(500);markNoDataIfExpired(mine,p.noDataTimeoutSeconds)}}
+ private suspend fun noDataWatchdog(p:ConnectionProfile,mine:Long){while(currentCoroutineContext().isActive){MarineTime.sleep(500);markNoDataIfExpired(mine,p.noDataTimeoutSeconds)}}
  private fun register(mine:Long,value:Closeable){synchronized(guard){if(mine!=generation){runCatching{value.close()};throw CancellationException("Superseded NMEA connection")};transport=value}}
  private fun unregister(value:Closeable){synchronized(guard){if(transport===value)transport=null}}
  private fun closeTransportLocked(){runCatching{transport?.close()};transport=null}
@@ -247,6 +249,6 @@ class NmeaConnectionManager(
   is SocketException->"SOCKET_ERROR"
   else->"TRANSPORT_ERROR"
  }
- private fun monotonicMillis()=System.nanoTime()/1_000_000L
+ private fun monotonicMillis()=MarineTime.nowElapsedMillis()
  companion object{const val STABLE_CONNECTION_RESET_MILLIS=10_000L}
 }

@@ -2,6 +2,8 @@
 
 本文区分三种状态：**现有**是仓库中的应用实现；**本轮配置**是 R0 的构建输入，尚不代表镜像已构建或设备已启动；**后续计划**是进入真机或系统服务阶段前必须落实的契约。没有实测记录的能力，一律不写成“设备支持”。
 
+当前产品已在普通 Android App 内接入 Yokuli 自己的设备 HAL、统一时间与演练环境；下方 AOSP/BSP 内容属于宿主平台方向，不是这套虚拟环境的前置条件。Yokuli HAL 与 Android vendor HAL 必须区分，实际运行拓扑以 [当前系统边界](10-INPROCESS-SYSTEM-BOUNDARIES.md#虚拟海事运行环境2026-09-27)为准。
+
 ## 1. R0 参考设备与交付边界
 
 | 项目 | R0 决定 | 状态与限制 |
@@ -36,14 +38,21 @@ flowchart TB
 | --- | --- | --- |
 | BSP / bootloader | 启动链、DDR、显示、触控、电源、无线、固件、分区和恢复方式 | 后续真机选择后由板厂资料与代码落实；当前只有 Cuttlefish 参考配置 |
 | GKI / vendor kernel modules | 通用内核与板级驱动边界，驱动 ABI、内核配置和启动模块 | 继承目标设备基线；GKI 不会自动补齐 GPU、GNSS、USB 电源或厂商驱动 |
-| HAL / VINTF | 把真实硬件能力交给 Android，声明可用接口和版本 | 本轮不新增自有 HAL；真机需逐项核对声明、服务实例与实际行为 |
+| Android HAL / VINTF | 把真实硬件能力交给 Android，声明可用接口和版本 | 不新增 vendor HAL；真机需逐项核对声明、服务实例与实际行为 |
 | Android 系统服务 | 权限、传感器事件、定位、USB 授权、窗口指标 | 保留 AOSP 服务；普通 HOME 身份不绕过授权 |
-| Yokuli 数据适配 | 连接状态、采样时间、读数质量、来源候选、安装校准 | 已有手机定位、手机传感器及网络 NMEA 路径；USB 串口适配尚未实现 |
+| Yokuli 设备 HAL / 数据适配 | 总线后端、设备代次、采样时间、读数质量、来源候选、安装校准 | GNSS、IMU、气压、NMEA 的真实/模拟/回放输入共用 MarineDeviceBus；USB 串口适配尚未实现 |
 | 业务应用 | 使用统一读数与来源，呈现各自用户故事 | 现有同一 APK 内的逻辑应用，不各自建立硬件连接和第二套来源开关 |
 
 GKI 通过通用内核和稳定 KMI 约束设备模块边界；设备 HAL 则应在 VINTF 声明中与 Framework 兼容。新 HAL 设计优先遵循稳定 AIDL 的系统/厂商边界，具体版本须服从选定 BSP，而不是仅改 XML 声称支持。[GKI 架构](https://source.android.com/docs/core/architecture/kernel/generic-kernel-image)、[内核模块](https://source.android.com/docs/core/architecture/kernel/modules)、[VINTF manifests](https://source.android.com/docs/core/architecture/vintf/objects)、[AIDL HAL](https://source.android.com/docs/core/architecture/aidl/aidl-hals)
 
 ## 3. 船位、船首向与手机安装
+
+### 当前应用内 HAL 与演练入口
+
+- `MarineSystem.hardware` / `LocalHardwareLabService` 是唯一控制入口；演练室和获授权 `.ykl` 共用同一 Core。Android 驱动、`ScenarioEngine` 与 `SystemRecordingStore` 回放均向 `MarineDeviceBus` 发布原始输入，原 repository、校准、解析与选源继续处理；不直接写 UI 读数。
+- `MarineTime` 驱动业务采样、老化、暂停、倍速与单步。真实 HAL 将 Android BOOTTIME capture 时间转换到当前业务时间；权限、IO、Binder 和显示动画保留宿主时间。模拟/回放帧保留后端、epoch、generation 与原测量时刻。
+- 场景支持航点移动、移动 AIS 目标及设备故障；系统录像保存原始帧、目录与相关事件，回放不执行审计命令。持久模拟空间复用 `last-simulation`，每份录像有稳定独立回放空间，恢复一律暂停；物理输出被封锁。
+- 电源输入与存储故障已进入实际策略/操作边界，包括 Room、七个 PreferencesDataStore 及登记的核心文件；不是 Android 内核、任意文件系统/SAF 或所有硬件的模拟。完整边界和新增设备接入规则见 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md#虚拟海事运行环境2026-09-27) 与 [02](02-DOMAIN-AND-CONTRACTS.md#虚拟设备时间与持久化接入)。
 
 ### 3.1 GNSS 与 NMEA 必须保留来源身份
 
@@ -113,6 +122,8 @@ USB Host API 提供设备枚举、授权和端点传输；它不是通用 USB �
 
 ## 7. 当前代码入口
 
+- [MarineDeviceBus](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/hardware/MarineDeviceBus.kt)、[MarineTime](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/time/MarineTime.kt)：共享原始设备输入与业务时钟。
+- [LocalHardwareLabService](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/hardware/LocalHardwareLabService.kt)、[ScenarioEngine](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/hardware/ScenarioEngine.kt)、[SystemRecordingStore](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/hardware/SystemRecordingStore.kt)：实际控制、场景与记录/回放所有者。
 - [ROM Manifest](../../app-shell/src/rom/AndroidManifest.xml)：HOME 声明；不授予平台身份。
 - [SystemLocationRepository](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/location/SystemLocationRepository.kt)：Android GNSS 适配。
 - [PhoneVesselSensors](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/location/vessel/PhoneVesselSensors.kt)：本机传感器与安装姿态。

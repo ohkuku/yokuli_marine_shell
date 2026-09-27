@@ -11,7 +11,9 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+import com.yokuli.runtime.contract.hardware.*
+import com.yokuli.runtime.contract.device.*
 import androidx.annotation.VisibleForTesting
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationCompat
@@ -51,7 +53,10 @@ class SystemLocationRepository @Inject constructor(
     private var appEnabled = false
     /** 中文：用户明确请求替换船位后的临时采集租约；未提交前不发布为全船船位。 */
     private var preparingSelection = false
-    private val preparedLocation = MutableStateFlow<Location?>(null)
+    private val preparedLocation = MutableStateFlow<NavigationFix?>(null)
+    private var realDevice: HardwareDevice? = null
+    private var realEpoch = MarineDeviceBus.state.value.epoch
+    private var realResumeRequired = false
     private var previewEnabled = false
     private var backgroundEnabled = false
     @Volatile private var sourcePermitsPhone=false
@@ -63,9 +68,20 @@ class SystemLocationRepository @Inject constructor(
         @Deprecated("Required for LocationListener compatibility on Android 9–10")
         override fun onStatusChanged(provider:String?,status:Int,extras:android.os.Bundle?)=Unit
         override fun onProviderEnabled(provider:String){if(provider==LocationManager.GPS_PROVIDER)synchronized(guard){reconcileLocked()}}
-        override fun onProviderDisabled(provider:String){if(provider==LocationManager.GPS_PROVIDER)synchronized(guard){_fix.value=null;reconcileLocked()}}
+        override fun onProviderDisabled(provider:String){if(provider==LocationManager.GPS_PROVIDER)synchronized(guard){_fix.value=null;MarineDeviceBus.detach("phone.gnss", "Android GNSS disabled");realDevice=null;reconcileLocked()}}
     }
     init{
+        MarineDeviceBus.subscribe(DeviceKind.GNSS, ::consumeFrame) { id -> synchronized(guard) {
+            if (id == null || _fix.value?.hardwareDeviceId == id) { _fix.value=null;_recentFixes.value=emptyList();preparedLocation.value=null }
+        } }
+        MarineDeviceBus.onBackendChanged { snapshot -> synchronized(guard) {
+            if(running)runCatching{locationManager.removeUpdates(listener)}
+            running=false;realDevice=null;realEpoch=snapshot.epoch
+            // 返回真实世界必须再次确认定位，不把实验室的采集意图带回 Android。
+            realResumeRequired=snapshot.backend==DeviceBackend.REAL
+            reconcileLocked()
+        } }
+
         ContextCompat.registerReceiver(context,object:BroadcastReceiver(){
             override fun onReceive(context:Context?,intent:Intent?){synchronized(guard){reconcileLocked()}}
         },IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION),ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -78,45 +94,35 @@ class SystemLocationRepository @Inject constructor(
     }
 
     private fun publish(location: Location) = synchronized(guard) {
-        // A switch away from the NMEA proxy must be backed by a real system
-        // position, never by the app's own mock location fed back to itself.
-        if (LocationCompat.isMock(location) || location.provider!=LocationManager.GPS_PROVIDER)return@synchronized
-        if(preparingSelection) {
-            val received=location.elapsedRealtimeNanos/1_000_000L
-            if(location.latitude.isFinite()&&location.longitude.isFinite()&&location.latitude in -90.0..90.0&&location.longitude in -180.0..180.0&&
-                SystemClock.elapsedRealtime()-received in 0L..10_000L&&location.hasAccuracy()&&location.accuracy<=100f) preparedLocation.value=Location(location)
-        }
-        if (!sourcePermitsPhone || !(appEnabled||backgroundEnabled))return@synchronized
-        val now=SystemClock.elapsedRealtime()
-        val received = location.elapsedRealtimeNanos.takeIf { it > 0 }?.div(1_000_000) ?: now
-        // Last-known callbacks and NETWORK fixes can arrive after newer GNSS.
-        // Never let arrival order rewind the selected observation's timestamp.
-        if(received>now||_fix.value?.receivedElapsedRealtime?.let{received<=it}==true)return@synchronized
-        val value = NavigationFix(
-            latitude = location.latitude,
-            longitude = location.longitude,
-            timestampUtcMillis = location.time,
-            receivedElapsedRealtime = received,
-            sogKnots = location.speed.takeIf { location.hasSpeed() }?.times(1.943844),
-            cogTrueDegrees = location.bearing.takeIf { location.hasBearing() }?.toDouble(),
-            // Android bearing is course over ground. It is not bow heading,
-            // especially at anchor where tiny GPS motion makes it unstable.
-            headingTrueDegrees = null,
-            altitudeMeters = location.altitude.takeIf { location.hasAltitude() },
-            horizontalAccuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }?.toDouble(),
-            positionProvider = if (location.provider == LocationManager.GPS_PROVIDER) {
-                PositionProvider.ANDROID_GNSS
-            } else {
-                PositionProvider.ANDROID_NETWORK
-            },
-            isMockLocation = LocationCompat.isMock(location),
-            hdop = null,
-            sourceSentence = "SYSTEM_GPS:${location.provider}",
-            valid = location.latitude in -90.0..90.0 && location.longitude in -180.0..180.0,
-        )
-        _fix.value = value
-        _status.value=PhoneLocationStatus(PhoneLocationPhase.LISTENING,received)
-        if (value.valid) appendRecent(value)
+        if (LocationCompat.isMock(location) || location.provider!=LocationManager.GPS_PROVIDER || MarineDeviceBus.state.value.backend!=DeviceBackend.REAL) return@synchronized
+        val device=realDevice?:return@synchronized
+        val measured=location.elapsedRealtimeNanos.takeIf{it>0}?.div(1_000_000)?.let(MarineTime::fromHostElapsedMillis)?:MarineTime.nowElapsedMillis()
+        MarineDeviceBus.publish(device.spec.id,HardwarePayload(
+            kind=DeviceKind.GNSS,latitude=location.latitude,longitude=location.longitude,
+            sogKnots=location.speed.takeIf{location.hasSpeed()}?.times(1.943844),
+            cogTrueDegrees=location.bearing.takeIf{location.hasBearing()}?.toDouble(),
+            altitudeMeters=location.altitude.takeIf{location.hasAltitude()},
+            accuracyMeters=location.accuracy.takeIf{location.hasAccuracy()}?.toDouble(),
+            satellites=location.extras?.getInt("satellites")?.takeIf{it>0},
+        ),measured,location.time,realEpoch,device.generation)
+    }
+
+    private fun consumeFrame(frame:HardwareFrame)=synchronized(guard) {
+        if(!MarineDeviceBus.isCurrent(frame))return@synchronized
+        val p=frame.payload
+        val value=NavigationFix(latitude=p.latitude?:return@synchronized,longitude=p.longitude?:return@synchronized,
+            timestampUtcMillis=frame.utcMillis,receivedElapsedRealtime=frame.measuredElapsedMillis,
+            sogKnots=p.sogKnots,cogTrueDegrees=p.cogTrueDegrees,headingTrueDegrees=null,
+            altitudeMeters=p.altitudeMeters,horizontalAccuracyMeters=p.accuracyMeters,satellites=p.satellites,
+            positionProvider=PositionProvider.ANDROID_GNSS,isMockLocation=false,
+            sourceSentence="${frame.backend}:GNSS:${frame.deviceId}",valid=true,
+            hardwareBackend=frame.backend.name,hardwareEpoch=frame.epoch,hardwareDeviceId=frame.deviceId)
+        if(preparingSelection&&MarineTime.nowElapsedMillis()-frame.measuredElapsedMillis in 0L..10_000L&&p.accuracyMeters?.let{it<=100.0}==true)preparedLocation.value=value
+        if(!sourcePermitsPhone||!(appEnabled||backgroundEnabled))return@synchronized
+        if(_fix.value?.let{it.hardwareEpoch==frame.epoch&&frame.measuredElapsedMillis<=it.receivedElapsedRealtime}==true)return@synchronized
+        _fix.value=value
+        _status.value=PhoneLocationStatus(PhoneLocationPhase.LISTENING,frame.measuredElapsedMillis,selectionPending=preparingSelection)
+        appendRecent(value)
     }
 
     /** Establishes the exact raw-provider precondition needed by black-box ARM
@@ -132,23 +138,23 @@ class SystemLocationRepository @Inject constructor(
     suspend fun preparePositionSelection():Boolean {
         synchronized(guard){
             check(hasPermission()){ "Phone position requires precise location permission." }
-            check(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){ "Turn on Android location before choosing phone position." }
-            preparedLocation.value=null;preparingSelection=true;reconcileLocked()
+            check(MarineDeviceBus.state.value.backend!=DeviceBackend.REAL||locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){ "Turn on Android location before choosing phone position." }
+            preparedLocation.value=null;preparingSelection=true;realResumeRequired=false;reconcileLocked()
             check(_status.value.phase!=PhoneLocationPhase.ERROR){ "Phone location could not start." }
         }
         return withTimeoutOrNull(20_000L){preparedLocation.first{it!=null}}!=null
     }
     fun preparedPositionIsReady():Boolean=synchronized(guard) {
-        preparedLocation.value?.let { SystemClock.elapsedRealtime()-it.elapsedRealtimeNanos/1_000_000L in 0L..10_000L }==true
+        preparedLocation.value?.let { MarineTime.nowElapsedMillis()-it.receivedElapsedRealtime in 0L..10_000L }==true
     }
     fun finishPositionSelection(adopted:Boolean)=synchronized(guard) {
         val position=preparedLocation.value
         if(adopted){sourcePermitsPhone=true;_sourceConsent.value=true;appEnabled=true}
         preparingSelection=false;preparedLocation.value=null
-        if(adopted&&position!=null)publish(position)
+        if(adopted&&position!=null){_fix.value=position;_status.value=PhoneLocationStatus(PhoneLocationPhase.LISTENING,position.receivedElapsedRealtime);appendRecent(position)}
         reconcileLocked()
     }
-    fun hasPermission(): Boolean = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    fun hasPermission(): Boolean = MarineDeviceBus.state.value.backend!=DeviceBackend.REAL || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
     fun setAppEnabled(enabled: Boolean) = synchronized(guard) { appEnabled = enabled; reconcileLocked() }
     fun setPreviewEnabled(enabled: Boolean) = synchronized(guard) { previewEnabled = enabled; reconcileLocked() }
     fun setBackgroundEnabled(enabled: Boolean) = synchronized(guard) { backgroundEnabled = enabled; reconcileLocked() }
@@ -157,11 +163,19 @@ class SystemLocationRepository @Inject constructor(
     @SuppressLint("MissingPermission")
     private fun reconcileLocked() {
         val requested=!residency.explicitlyStopped&&(preparingSelection||sourcePermitsPhone&&(appEnabled||backgroundEnabled))
+        if(MarineDeviceBus.state.value.backend!=DeviceBackend.REAL){
+            if(running)runCatching{locationManager.removeUpdates(listener)}
+            running=false;realDevice=null
+            if(!requested){_fix.value=null;_status.value=PhoneLocationStatus(PhoneLocationPhase.OFF)}
+            else _status.value=PhoneLocationStatus(PhoneLocationPhase.LISTENING,_fix.value?.receivedElapsedRealtime,selectionPending=preparingSelection)
+            return
+        }
         val permission=hasPermission()
         val providerEnabled=runCatching{locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)}.getOrDefault(false)
-        if(!requested||!permission){
+        if(!requested||!permission||realResumeRequired){
             if(running)runCatching{locationManager.removeUpdates(listener)}
             running=false;_fix.value=null
+            realDevice?.let{MarineDeviceBus.detach(it.spec.id,"GNSS collection stopped")};realDevice=null
             _status.value=PhoneLocationStatus(if(requested)PhoneLocationPhase.PERMISSION_REQUIRED else PhoneLocationPhase.OFF)
             return
         }
@@ -169,12 +183,15 @@ class SystemLocationRepository @Inject constructor(
         // provider callback resumes delivery; a stale fix never restarts it.
         if(!running){
             val error=runCatching{
+                realEpoch=MarineDeviceBus.state.value.epoch
+                realDevice=MarineDeviceBus.attach(HardwareDeviceSpec("phone.gnss","Phone GNSS",DeviceKind.GNSS,DeviceBackend.REAL,"android.location",listOf("position","sog","cog")))
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,1_000L,0f,listener,Looper.getMainLooper())
                 running=true
                 if(providerEnabled)locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let(::publish)
             }.exceptionOrNull()
             if(error!=null){_status.value=PhoneLocationStatus(PhoneLocationPhase.ERROR,error=error.message,selectionPending=preparingSelection);return}
         }
+        if(providerEnabled&&running&&realDevice==null)realDevice=MarineDeviceBus.attach(HardwareDeviceSpec("phone.gnss","Phone GNSS",DeviceKind.GNSS,DeviceBackend.REAL,"android.location",listOf("position","sog","cog")))
         if(!providerEnabled)_fix.value=null
         _status.value=PhoneLocationStatus(if(providerEnabled)PhoneLocationPhase.LISTENING else PhoneLocationPhase.PROVIDER_DISABLED,_fix.value?.receivedElapsedRealtime,selectionPending=preparingSelection)
     }

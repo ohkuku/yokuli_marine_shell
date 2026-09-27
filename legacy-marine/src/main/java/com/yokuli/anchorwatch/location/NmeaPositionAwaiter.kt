@@ -5,7 +5,7 @@ import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
+import com.yokuli.runtime.contract.time.MarineTime
 
 /** Waits on the complete NMEA-position readiness tuple. NavigationRepository
  * publishes a parsed fix before it promotes transport state to CONNECTED, so a
@@ -32,7 +32,7 @@ object NmeaPositionAwaiter {
         val current = fix.value
         if (usable(connectionState.value, current, connectionStartedElapsedRealtime.value)) return current
 
-        return withTimeoutOrNull(timeoutMillis) {
+        return MarineTime.withTimeoutOrNull(timeoutMillis) {
             combine(connectionState, fix, connectionStartedElapsedRealtime) { state, candidate, started ->
                 Triple(state, candidate, started)
             }.first { (state, candidate, started) -> usable(state, candidate, started) }.second

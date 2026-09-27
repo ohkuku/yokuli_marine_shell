@@ -1,0 +1,11 @@
+{
+  "id":"org.yokuli.practice",
+  "name":"演练控制台",
+  "nameEn":"Practice controls",
+  "version":1,
+  "description":"通过系统服务控制模拟时钟、设备与录像。切换环境前需结束真实航行任务。",
+  "descriptionEn":"Control the shared simulation clock, devices and recordings. Finish active sailing tasks before switching environments.",
+  "sdk":2,
+  "entry":"index.html",
+  "permissions":["lab.read","lab.control","navigation.open"]
+}

@@ -236,7 +236,10 @@ fun OsExperience(os: OsStore) {
             Box(Modifier.weight(1f).onSizeChanged { hostSize = it }) {
                 Column(Modifier.fillMaxSize().focusRequester(underlayFocus).focusRestorer().focusGroup()
                     .then(if (shadeBlocked) Modifier.clearAndSetSemantics { } else Modifier)) {
-                    Box(Modifier.onSizeChanged { statusHeight = it.height }) { SystemStatusBar(os, metrics) }
+                    Column(Modifier.onSizeChanged { statusHeight = it.height }) {
+                        SystemStatusBar(os, metrics)
+                        HardwareModeBanner(os)
+                    }
                     WpSurfaceTransitionHost(
                         targetState = state.motionTarget(),
                         transitionKind = when {
@@ -333,41 +336,7 @@ fun OsExperience(os: OsStore) {
 
 @Composable
 private fun ShellAppContent(os: OsStore, page: String) {
-    when {
-        page.startsWith("extension:") -> com.yokuli.marine.shell.rebuild.extensions.ExtensionScreen(os, page.substringAfter(':'))
-        page == "app_center" || page.startsWith("app_center:") -> com.yokuli.marine.shell.rebuild.extensions.AppCenterScreen(os, page.substringAfter(':', ""))
-        page == "task:navigation" -> CurrentNavigationTileDestination(os)
-        page == "task:anchorWatch" -> AnchorExperience(os, "current")
-        page == "task:recording" -> LogbookScreen(os)
-        page.startsWith("tileplace:") -> SavedTileDestination(os, TileBinding("yokuli", TileBindingKind.SAVED_PLACE, page.substringAfter(':')))
-        page.startsWith("tileroute:") -> SavedTileDestination(os, TileBinding("yokuli", TileBindingKind.SAVED_ROUTE, page.substringAfter(':')))
-        page == "chart" -> ChartAppScreen(os)
-        page.startsWith("chart:ais:") -> ChartAppScreen(os,page.substringAfterLast(':').toIntOrNull())
-        page == "library" -> LibraryScreen(os)
-        page == "library:data" -> LibraryScreen(os,initialPage=1)
-        page.startsWith("chartobjects:") -> LibraryObjectsScreen(os,page.substringAfter(':').substringBefore(':'),page.substringAfter(':').substringAfter(':',"").takeIf {it.isNotBlank()}?.let(android.net.Uri::decode))
-        page.startsWith("chartdataset:") -> LibraryDatasetScreen(os,page.substringAfter(':'))
-        page.startsWith("library:") -> LibraryFolderScreen(os, page.substringAfter(':'))
-        page == "places" || page.startsWith("places:") -> PlacesScreen(os,anchoragesOnly=page=="places:anchorages")
-        page.startsWith("place:") -> PlaceScreen(os, page.substringAfter(':'))
-        page.startsWith("route:") -> RouteScreen(os, page.substringAfter(':'))
-        page.startsWith("anchorage:") -> SavedLocationScreen(os,page.substringAfter(':').toLongOrNull())
-        page.startsWith("collection:") -> CollectionScreen(os,page.substringAfter(':').toLongOrNull())
-        page == "instruments" || page.startsWith("instruments:") -> InstrumentsScreen(os, page.substringAfter(':', ""))
-        page == "data_center" || page.startsWith("data_center:") -> DataCenterScreen(os, page.substringAfter(':', "").takeIf { it.isNotBlank() })
-        page == "voyages" -> LogbookScreen(os)
-        page.substringBefore(':') in setOf("voyage","replay","report") -> LogbookScreen(os,page.substringAfter(':').toLongOrNull())
-        page == "anchor" || page.startsWith("anchor:") -> AnchorExperience(os,page.substringAfter(':',"watch"))
-        page == "nmea" || page.startsWith("nmea:") -> NmeaScreen(os,page.substringAfter(':', ""))
-        page == "ais" || page.startsWith("ais:") -> AisScreen(os,page.substringAfter(':', ""))
-        page == "local_nmea" -> LocalNmeaScreen(os)
-        page == "tiles" || page.startsWith("tiles:") -> TileLibraryScreen(os,page.substringAfter(':', "").takeIf {it.isNotBlank()})
-        page == "settings" || page.startsWith("settings:") -> SettingsScreen(os,page.substringAfter(':',"overview"))
-        else -> Column { PageHeader(os,os.t("页面已更新","page updated"));PageBody {
-            Label(os.t("这个旧入口已不再使用。你的数据仍保留在所属应用中。","This older destination has moved. Your data remains in its app."),15)
-            MetroButton(os.t("返回应用列表","open apps"),os::home,primary=true)
-        } }
-    }
+    com.yokuli.marine.shell.rebuild.extensions.YklPackageScreen(os, page)
 }
 
 /** Original app icon paths, shared by tiles and alphabetic app rows. */

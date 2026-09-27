@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.app.Application
 import android.content.Intent
 import android.net.Uri
@@ -471,7 +473,7 @@ class LegacyMarineController @Inject constructor(
                 @Suppress("UNCHECKED_CAST") val sessions=values[4] as List<AnchorSessionEntity>
                 val active=sessions.firstOrNull{it.active}
                 val connection=values[1] as NmeaConnectionState
-                val nowElapsed=android.os.SystemClock.elapsedRealtime()
+                val nowElapsed=MarineTime.nowElapsedMillis()
                 val trustedNmeaCourse=nmeaCourseTrustGate.update(position.nmea,nowElapsed)
                 _ui.update{it.copy(nmeaFix=position.nmea,trustedNmeaCourse=trustedNmeaCourse,nmeaConnectionStartedElapsed=values[2] as Long?,systemFix=position.system,connection=connection,diagnostics=values[3] as NmeaDiagnostics,settings=position.settings,settingsReady=true,sessions=sessions,active=active,demoGps=sourceAndDemo.second)}
                 observePoints(active)
@@ -484,7 +486,7 @@ class LegacyMarineController @Inject constructor(
         // estimator still receives phone-heading evidence only with accepted positions.
         controllerScope.launch{phoneHeadingRepository.sample.collect{sample->
             _ui.update{it.copy(phoneHeading=sample)}
-            val nowElapsed=android.os.SystemClock.elapsedRealtime()
+            val nowElapsed=MarineTime.nowElapsedMillis()
             if(selectedApproachClusterId!=null&&nowElapsed-lastApproachHeadingRefreshElapsed>=100L){
                 lastApproachHeadingRefreshElapsed=nowElapsed
                 refreshAnchorageApproach(nowElapsed)
@@ -539,7 +541,7 @@ class LegacyMarineController @Inject constructor(
         controllerScope.launch{supportBundleManager.state.collect{value->_ui.update{it.copy(supportBundle=value)}}}
         controllerScope.launch{offlineMapRepository.state.collect{value->_ui.update{it.copy(offlineMap=value)}}}
         controllerScope.launch{combine(acceptedPosition.state.map{it.acceptedFix}.distinctUntilChanged(),prefs.settings.map{it.showLinzDepthReference}.distinctUntilChanged()){fix,enabled->fix to enabled}.conflate().collect{(fix,enabled)->delay(2_000);if(enabled&&fix?.valid==true)linzDepthRepository.refresh(fix.latitude,fix.longitude)}}
-        controllerScope.launch{while(true){refreshDepthUi();refreshWatchSafety();refreshAnchorageApproach();delay(1_000)}}
+        controllerScope.launch{while(true){refreshDepthUi();refreshWatchSafety();refreshAnchorageApproach();MarineTime.sleep(1_000)}}
         controllerScope.launch{while(true){refreshStorageHealth();delay(30_000)}}
         val buildIdentity=com.yokuli.anchorwatch.platform.HostBuildIdentity.read(app)
         incidentLogger.record(
@@ -569,18 +571,18 @@ class LegacyMarineController @Inject constructor(
 
     private fun refreshWatchSafety(){
         val state=_ui.value
-        val nowElapsed=android.os.SystemClock.elapsedRealtime()
+        val nowElapsed=MarineTime.nowElapsedMillis()
         val lockedSource=state.active?.positionSource?.let{runCatching{GpsDataSource.valueOf(it)}.getOrNull()}
         val effectiveSource=lockedSource?:NewAnchorPositionSourcePolicy.resolve(state.settings.gpsDataSource,state.settings.demoMode)
         val effectiveFix=when(effectiveSource){GpsDataSource.NONE->null;GpsDataSource.NMEA->state.nmeaFix;GpsDataSource.SYSTEM->state.systemFix;GpsDataSource.DEMO->if(state.active==null)state.systemFix else state.fix}
         val report=WatchPreflightEvaluator.evaluate(WatchSafetyInput(
-            nowElapsed=nowElapsed,nowWall=System.currentTimeMillis(),settings=state.settings.copy(gpsDataSource=effectiveSource),
+            nowElapsed=nowElapsed,nowWall=MarineTime.nowUtcMillis(),settings=state.settings.copy(gpsDataSource=effectiveSource),
             selectedFix=effectiveFix,nmeaConnection=state.connection,device=safetyProbe.snapshot(),sonar=state.sonarRecorder,nmeaConnectionStartedElapsedRealtime=state.nmeaConnectionStartedElapsed,
         ))
         _ui.update{it.copy(watchSafety=report)}
     }
 
-    private fun refreshAnchorageApproach(nowElapsed:Long=android.os.SystemClock.elapsedRealtime()){
+    private fun refreshAnchorageApproach(nowElapsed:Long=MarineTime.nowElapsedMillis()){
         val state=_ui.value
         if(state.active!=null&&selectedApproachClusterId!=null){selectedApproachClusterId=null;selectedApproachMemberIds=emptySet();gisApproachTarget=null;phoneHeadingRepository.setApproachDemand(false)}
         val accepted=state.fix?.takeIf{
@@ -687,7 +689,7 @@ class LegacyMarineController @Inject constructor(
 
     fun consumeSonarGridChanges(version:Long)=_ui.update{state->if(state.sonarGridVersion==version)state.copy(sonarGridChangedCells=emptySet())else state}
 
-    private fun refreshDepthUi(nowElapsed:Long=android.os.SystemClock.elapsedRealtime()){
+    private fun refreshDepthUi(nowElapsed:Long=MarineTime.nowElapsedMillis()){
         _ui.update{state->
             val recorder=state.sonarRecorder;val age=recorder.lastDepthReceivedElapsedRealtime?.let{(nowElapsed-it).coerceAtLeast(0L)};val hold=com.yokuli.anchorwatch.domain.sonar.SonarDepthHoldPolicy.evaluate(recorder.lastDepthMeters!=null,age?:Long.MAX_VALUE,recorder.depthTravelledMeters).state
             val inspection=if(state.settings.showPersonalMapReference)state.fix?.let{state.sonarGrid.inspect(it.latitude,it.longitude)}else null
@@ -892,7 +894,7 @@ class LegacyMarineController @Inject constructor(
     }
     fun refreshStorage()=refreshStorageHealth()
     fun confirmAlarmAudible(){
-        val confirmedAt = System.currentTimeMillis()
+        val confirmedAt = MarineTime.nowUtcMillis()
         controllerScope.launch {
             prefs.setAlarmAudibleConfirmedAt(confirmedAt)
             incidentLogger.record("alarm", "AUDIBLE_TEST_CONFIRMED")
@@ -1028,7 +1030,7 @@ class LegacyMarineController @Inject constructor(
     }
     fun alignPhoneHeadingToBow()=controllerScope.launch{
         val state=_ui.value
-        val now=android.os.SystemClock.elapsedRealtime()
+        val now=MarineTime.nowElapsedMillis()
         val phoneFresh=state.phoneHeading.receivedElapsedRealtime?.let{now-it in 0L..PHONE_HEADING_ALIGNMENT_FRESH_MILLIS}==true
         val phoneAvailable=state.phoneHeading.liveTrueHeadingDegrees!=null||state.phoneHeading.liveMagneticHeadingDegrees!=null
         if(!phoneFresh||!phoneAvailable){
@@ -1040,7 +1042,7 @@ class LegacyMarineController @Inject constructor(
     }
     fun alignPhoneHeadingToNmea()=controllerScope.launch{
         val state=_ui.value
-        val now=android.os.SystemClock.elapsedRealtime()
+        val now=MarineTime.nowElapsedMillis()
         val phoneFresh=state.phoneHeading.receivedElapsedRealtime?.let{now-it in 0L..PHONE_HEADING_ALIGNMENT_FRESH_MILLIS}==true
         val nmeaTrue=state.nmeaInstruments.headingTrue?.takeIf{now-it.second in 0L..NMEA_HEADING_ALIGNMENT_FRESH_MILLIS}?.first
         val nmeaMagnetic=state.nmeaInstruments.headingMagnetic?.takeIf{now-it.second in 0L..NMEA_HEADING_ALIGNMENT_FRESH_MILLIS}?.first
@@ -1127,7 +1129,7 @@ class LegacyMarineController @Inject constructor(
     }
     private fun phoneCompassReadyForAlignment(): Boolean {
         val phone = _ui.value.phoneHeading
-        return phone.receivedElapsedRealtime?.let { android.os.SystemClock.elapsedRealtime() - it in 0L..PHONE_HEADING_ALIGNMENT_FRESH_MILLIS } == true &&
+        return phone.receivedElapsedRealtime?.let { MarineTime.nowElapsedMillis() - it in 0L..PHONE_HEADING_ALIGNMENT_FRESH_MILLIS } == true &&
             (phone.liveTrueHeadingDegrees != null || phone.liveMagneticHeadingDegrees != null) &&
             phone.presentationQuality in setOf(com.yokuli.anchorwatch.location.PhoneHeadingPresentationQuality.GOOD,
                 com.yokuli.anchorwatch.location.PhoneHeadingPresentationQuality.LOW_ACCURACY)
@@ -1314,18 +1316,18 @@ class LegacyMarineController @Inject constructor(
     fun resetCentreAnalysis(session:AnchorSessionEntity)=ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.RESET_CENTRE_ANALYSIS).putExtra("sessionId",session.id))
     fun recalculateCentreFromTrack(session:AnchorSessionEntity)=controllerScope.launch{
         _ui.update{it.copy(centreRecalculation=CentreRecalculationUiState(session.id,session.active,loading=true))}
-        dao.insertEvent(AlarmEventEntity(sessionId=session.id,timestamp=System.currentTimeMillis(),type="ANCHOR_CENTRE_RECALCULATION_REQUESTED"))
+        dao.insertEvent(AlarmEventEntity(sessionId=session.id,timestamp=MarineTime.nowUtcMillis(),type="ANCHOR_CENTRE_RECALCULATION_REQUESTED"))
         val points=withContext(Dispatchers.IO){dao.points(session.id).first()}
         val result=withContext(Dispatchers.Default){AnchorCentreRecalculator.analyze(session,points)}
         val eventType=if(result.status==AnchorCentreRecalculationStatus.READY)"ANCHOR_CENTRE_RECALCULATION_READY" else "ANCHOR_CENTRE_RECALCULATION_INSUFFICIENT"
         val candidate=result.candidate
-        dao.insertEvent(AlarmEventEntity(sessionId=session.id,timestamp=System.currentTimeMillis(),type=eventType,detail="status=${result.status};oldLat=${session.anchorLatitude};oldLon=${session.anchorLongitude};newLat=${candidate?.latitude};newLon=${candidate?.longitude};shiftMeters=${result.shiftMeters};uncertainty=${candidate?.uncertaintyRadiusMeters};trackDiameter=${candidate?.trackDiameterMeters};fitRadius=${candidate?.fittedRadiusMeters};radialObservable=${candidate?.radialObservable};reason=${candidate?.observabilityReason}"))
+        dao.insertEvent(AlarmEventEntity(sessionId=session.id,timestamp=MarineTime.nowUtcMillis(),type=eventType,detail="status=${result.status};oldLat=${session.anchorLatitude};oldLon=${session.anchorLongitude};newLat=${candidate?.latitude};newLon=${candidate?.longitude};shiftMeters=${result.shiftMeters};uncertainty=${candidate?.uncertaintyRadiusMeters};trackDiameter=${candidate?.trackDiameterMeters};fitRadius=${candidate?.fittedRadiusMeters};radialObservable=${candidate?.radialObservable};reason=${candidate?.observabilityReason}"))
         _ui.update{it.copy(centreRecalculation=CentreRecalculationUiState(session.id,session.active,result=result))}
     }
     fun dismissCentreRecalculation()=_ui.update{it.copy(centreRecalculation=CentreRecalculationUiState())}
-    fun keepCurrentRecalculatedCentre(){val value=_ui.value.centreRecalculation;val id=value.sessionId?:return;controllerScope.launch{dao.insertEvent(AlarmEventEntity(sessionId=id,timestamp=System.currentTimeMillis(),type="ANCHOR_CENTRE_RECALCULATION_REJECTED",detail="USER_KEPT_CURRENT"))};dismissCentreRecalculation()}
+    fun keepCurrentRecalculatedCentre(){val value=_ui.value.centreRecalculation;val id=value.sessionId?:return;controllerScope.launch{dao.insertEvent(AlarmEventEntity(sessionId=id,timestamp=MarineTime.nowUtcMillis(),type="ANCHOR_CENTRE_RECALCULATION_REJECTED",detail="USER_KEPT_CURRENT"))};dismissCentreRecalculation()}
     fun applyRecalculatedCentre(){val value=_ui.value.centreRecalculation;val result=value.result?:return;val candidate=result.candidate?:return;if(!value.sessionActive||result.status!=AnchorCentreRecalculationStatus.READY)return;ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.APPLY_RECALCULATED_CENTRE).putExtra("sessionId",value.sessionId?:-1L).putExtra("expectedCurrentLatitude",result.currentLatitude).putExtra("expectedCurrentLongitude",result.currentLongitude).putExtra("latitude",candidate.latitude).putExtra("longitude",candidate.longitude).putExtra("uncertainty",candidate.uncertaintyRadiusMeters).putExtra("trackDiameter",candidate.trackDiameterMeters).putExtra("fitRadius",candidate.fittedRadiusMeters?:Double.NaN).putExtra("shift",result.shiftMeters?:Double.NaN));dismissCentreRecalculation()}
-    fun saveRecalculatedCentreAsAnchorage(){val value=_ui.value.centreRecalculation;val result=value.result?:return;val candidate=result.candidate?:return;val session=_ui.value.sessions.firstOrNull{it.id==value.sessionId}?:return;controllerScope.launch{val now=System.currentTimeMillis();try{anchorageApproachRepository.save(SavedAnchorageEntity(name="${if(_ui.value.settings.appLanguage.usesChinese())"轨迹估算" else "Track estimate"} · ${java.text.DateFormat.getDateInstance().format(java.util.Date(session.startedAt))}",latitude=candidate.latitude,longitude=candidate.longitude,createdAt=now,updatedAt=now,preferredAlarmRadiusMeters=session.alarmRadiusMeters,typicalWaterDepthMeters=session.waterDepthMeters?:session.minObservedDepthMeters,typicalRodeLengthMeters=session.rodeLengthMeters,sourceSessionId=session.id,coordinateSource=com.yokuli.anchorwatch.data.anchorage.AnchorageCoordinateSource.ESTIMATED_REGION_CENTRE.name,coordinateUncertaintyMeters=candidate.uncertaintyRadiusMeters));dismissCentreRecalculation()}catch(cancelled:CancellationException){throw cancelled}catch(duplicate:DuplicateAnchorageException){_ui.update{it.copy(centreRecalculation=CentreRecalculationUiState(),anchorageDuplicateExisting=duplicate.existing)}}catch(error:Throwable){_ui.update{it.copy(centreRecalculation=CentreRecalculationUiState(),anchorageOperationError="Could not save the recalculated anchorage. No data was changed.")}}}}
+    fun saveRecalculatedCentreAsAnchorage(){val value=_ui.value.centreRecalculation;val result=value.result?:return;val candidate=result.candidate?:return;val session=_ui.value.sessions.firstOrNull{it.id==value.sessionId}?:return;controllerScope.launch{val now=MarineTime.nowUtcMillis();try{anchorageApproachRepository.save(SavedAnchorageEntity(name="${if(_ui.value.settings.appLanguage.usesChinese())"轨迹估算" else "Track estimate"} · ${java.text.DateFormat.getDateInstance().format(java.util.Date(session.startedAt))}",latitude=candidate.latitude,longitude=candidate.longitude,createdAt=now,updatedAt=now,preferredAlarmRadiusMeters=session.alarmRadiusMeters,typicalWaterDepthMeters=session.waterDepthMeters?:session.minObservedDepthMeters,typicalRodeLengthMeters=session.rodeLengthMeters,sourceSessionId=session.id,coordinateSource=com.yokuli.anchorwatch.data.anchorage.AnchorageCoordinateSource.ESTIMATED_REGION_CENTRE.name,coordinateUncertaintyMeters=candidate.uncertaintyRadiusMeters));dismissCentreRecalculation()}catch(cancelled:CancellationException){throw cancelled}catch(duplicate:DuplicateAnchorageException){_ui.update{it.copy(centreRecalculation=CentreRecalculationUiState(),anchorageDuplicateExisting=duplicate.existing)}}catch(error:Throwable){_ui.update{it.copy(centreRecalculation=CentreRecalculationUiState(),anchorageOperationError="Could not save the recalculated anchorage. No data was changed.")}}}}
     fun testAlarm()=ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.TEST_ALARM))
     fun stopAlarmTest()=app.startService(Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.STOP_ALARM_TEST))
     fun startSonarSurvey(name:String,tideMode:TideMode,manualTideOffsetMeters:Double,tideStationId:String?=null){
@@ -1411,7 +1413,7 @@ class LegacyMarineController @Inject constructor(
         }}}
         shareExport(file,"text/csv")
     }
-    fun startGpsProxy(){val state=_ui.value;val availability=NmeaSourceSelectionPolicy.availability(state.connection,state.nmeaFix,state.nmeaConnectionStartedElapsed,android.os.SystemClock.elapsedRealtime(),state.settings.gpsLossSeconds*1_000L);val problem=when{state.settings.gpsDataSource!=GpsDataSource.NMEA->"Select NMEA GPS before enabling the global proxy.";availability!=NmeaSourceAvailability.AVAILABLE->"Connect the NMEA server and wait for a fresh valid position before enabling the global proxy.";!NmeaSourceSelectionPolicy.isUsablePosition(state.connection,state.nmeaFix,state.nmeaConnectionStartedElapsed,android.os.SystemClock.elapsedRealtime(),state.settings.gpsLossSeconds*1_000L)->"The current NMEA position quality is not acceptable for the global proxy.";else->null};if(problem!=null){_ui.update{it.copy(proxyFeedback=problem)};return};_ui.update{it.copy(proxyFeedback="Checking Android mock-location access…")};ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.START_PROXY))}
+    fun startGpsProxy(){val state=_ui.value;val availability=NmeaSourceSelectionPolicy.availability(state.connection,state.nmeaFix,state.nmeaConnectionStartedElapsed,MarineTime.nowElapsedMillis(),state.settings.gpsLossSeconds*1_000L);val problem=when{state.settings.gpsDataSource!=GpsDataSource.NMEA->"Select NMEA GPS before enabling the global proxy.";availability!=NmeaSourceAvailability.AVAILABLE->"Connect the NMEA server and wait for a fresh valid position before enabling the global proxy.";!NmeaSourceSelectionPolicy.isUsablePosition(state.connection,state.nmeaFix,state.nmeaConnectionStartedElapsed,MarineTime.nowElapsedMillis(),state.settings.gpsLossSeconds*1_000L)->"The current NMEA position quality is not acceptable for the global proxy.";else->null};if(problem!=null){_ui.update{it.copy(proxyFeedback=problem)};return};_ui.update{it.copy(proxyFeedback="Checking Android mock-location access…")};ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.START_PROXY))}
     fun stopGpsProxy(){_ui.update{it.copy(proxyFeedback=null)};app.startService(Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.STOP_PROXY))}
     fun openDeveloperOptions(){runCatching{app.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}.onFailure{app.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}}
     fun openAlarmNotificationSettings(){val channelReady=android.os.Build.VERSION.SDK_INT>=26&&app.getSystemService(android.app.NotificationManager::class.java).getNotificationChannel(AnchorForegroundService.ALARM_CH)!=null;val intent=when{channelReady->Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,app.packageName).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID,AnchorForegroundService.ALARM_CH);android.os.Build.VERSION.SDK_INT>=26->Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,app.packageName);else->Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:${app.packageName}"))};app.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}
@@ -1519,7 +1521,7 @@ class LegacyMarineController @Inject constructor(
     fun consumeRangeEditorRequest()=_ui.update{it.copy(rangeEditorRequested=false)}
     fun loadHistoryEvents(sessionId:Long)=controllerScope.launch{val events=dao.recentEvents(sessionId,30);_ui.update{it.copy(eventsBySession=mapOf(sessionId to events))}}
     fun saveAnchorage(value:SavedAnchorageEntity)=controllerScope.launch{
-        val proposed=value.copy(updatedAt=System.currentTimeMillis())
+        val proposed=value.copy(updatedAt=MarineTime.nowUtcMillis())
         try{anchorageApproachRepository.save(proposed)}catch(cancelled:CancellationException){throw cancelled}catch(duplicate:DuplicateAnchorageException){
             _ui.update{it.copy(anchorageDuplicateExisting=duplicate.existing)}
         }catch(error:Throwable){

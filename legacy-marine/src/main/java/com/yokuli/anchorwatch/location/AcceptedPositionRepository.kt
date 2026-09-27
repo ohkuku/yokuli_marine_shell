@@ -184,14 +184,19 @@ class AcceptedPositionRepository @Inject constructor(
             headingMagneticDegrees=rawFix.headingMagneticDegrees.takeIf{rawFix.headingMagneticReceivedElapsedRealtime.isFreshAt(now)},
         ) else rawFix
         val vesselSnapshot=vesselDataHub.snapshot.value
-        val evidence=AnchorHeadingEvidenceRouter.routeSelected(headingPreference,vesselSnapshot.headingTrueDegrees,vesselSnapshot.conflicts[com.yokuli.anchorwatch.domain.vessel.VesselMetricId.HEADING_TRUE]?:vesselSnapshot.headingTrueDegrees.conflict,headingSourceExplicitlyPinned,phone,phoneHeadingAlignment)
+        // 界面可以保留旧艏向，锚点估算证据必须来自当前新鲜的测量。
+        val headingEvidenceSample=if(phone.receivedElapsedRealtime.isFreshAt(now,2_000L))phone else phone.copy(
+            trueHeadingDegrees=null,vesselTrueHeadingDegrees=null,vesselHeadingQuality=com.yokuli.anchorwatch.domain.model.HeadingQuality.UNAVAILABLE)
+        val evidence=AnchorHeadingEvidenceRouter.routeSelected(headingPreference,vesselSnapshot.headingTrueDegrees,vesselSnapshot.conflicts[com.yokuli.anchorwatch.domain.vessel.VesselMetricId.HEADING_TRUE]?:vesselSnapshot.headingTrueDegrees.conflict,headingSourceExplicitlyPinned,headingEvidenceSample,phoneHeadingAlignment)
         val fix=safetyFix.copy(
             headingTrueDegrees=evidence.trueDegrees,
             headingReceivedElapsedRealtime=when(evidence.source){HeadingSource.PHONE->phone.receivedElapsedRealtime;HeadingSource.NMEA_PHYSICAL->safetyFix.headingReceivedElapsedRealtime;else->null},
             headingSource=evidence.source,headingQuality=evidence.quality,headingEpoch=evidence.epoch,headingSampleSequence=evidence.sequence,
         )
         val integrityStarted = System.nanoTime()
-        val result = filter.evaluate(fix, phoneMotion.state.value.takeIf { source == GpsDataSource.SYSTEM })
+        val result = filter.evaluate(fix, phoneMotion.state.value.takeIf { motion ->
+            source == GpsDataSource.SYSTEM && motion.updatedElapsedRealtime?.let { measured -> now-measured in 0L..2_000L } == true
+        })
         val integrityMicros = ((System.nanoTime() - integrityStarted) / 1_000L).coerceAtLeast(0L)
         val integrityMaxMicros = maxOf(_state.value.integrityMaxDurationMicros, integrityMicros)
         return when (result) {

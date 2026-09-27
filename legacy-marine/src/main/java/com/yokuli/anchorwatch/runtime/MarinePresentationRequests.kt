@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.runtime
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.content.Context
 import com.yokuli.anchorwatch.api.MarinePresentationRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -24,7 +26,7 @@ import kotlinx.coroutines.withContext
     val state = mutable.asStateFlow()
     suspend fun enqueue(request: MarinePresentationRequest) = withContext(Dispatchers.IO) { lock.withLock {
         loadFailure?.let { throw IllegalStateException("PRESENTATION_QUEUE_UNREADABLE", it) }
-        val current = mutable.value.filter { System.currentTimeMillis() - it.createdAtUtc in 0..900_000L }
+        val current = mutable.value.filter { MarineTime.nowUtcMillis() - it.createdAtUtc in 0..900_000L }
         check(current.size < 16) { "PRESENTATION_QUEUE_FULL" }
         val next = current + request
         disk.write(Document(next)); mutable.value = next

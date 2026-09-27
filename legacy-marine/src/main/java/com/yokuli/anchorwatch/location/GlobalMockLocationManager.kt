@@ -25,6 +25,7 @@ interface MockLocationSink{val status:kotlinx.coroutines.flow.StateFlow<MockGpsS
 class GlobalMockLocationManager @Inject constructor(@ApplicationContext private val context:Context,private val fused:FusedLocationProviderClient):MockLocationSink{
  private val locationManager=context.getSystemService(LocationManager::class.java);private val _status=MutableStateFlow(MockGpsStatus());override val status=_status.asStateFlow();private var directProviderAdded=false
  override suspend fun start(enhancedCompatibility:Boolean):MockGpsStatus{
+  if(com.yokuli.runtime.contract.hardware.VirtualHostServices.virtual)return MockGpsStatus(MockGpsState.FAILED,"VIRTUAL_OUTPUT_BLOCKED").also{_status.value=it}
   if(_status.value.state==MockGpsState.ACTIVE)return _status.value;_status.value=MockGpsStatus(MockGpsState.STARTING,"Checking Android mock-location access…")
   return try{fused.setMockMode(true).await();val direct=enhancedCompatibility&&enableDirectProvider();MockGpsStatus(MockGpsState.ACTIVE,if(direct)"NMEA is feeding Fused Location and GPS_PROVIDER." else "NMEA is feeding Fused Location. Direct GPS compatibility is unavailable.",true,direct).also{_status.value=it}}
   catch(_:SecurityException){resetSystemLocation();MockGpsStatus(MockGpsState.NOT_CONFIGURED,"GPS proxy was not enabled. Turn on Developer Options and select Boat Watch as the location override app.").also{_status.value=it}}
@@ -37,6 +38,7 @@ class GlobalMockLocationManager @Inject constructor(@ApplicationContext private 
   directProviderAdded=true;locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER,true);true
  }catch(_:Exception){cleanupProviders();false}
  override suspend fun publish(fix:NavigationFix):Result<Unit> = runCatching{
+  check(!com.yokuli.runtime.contract.hardware.VirtualHostServices.virtual){"VIRTUAL_OUTPUT_BLOCKED"}
   check(_status.value.state==MockGpsState.ACTIVE);check(fix.valid)
   val location=Location(LocationManager.GPS_PROVIDER).apply{latitude=fix.latitude;longitude=fix.longitude;accuracy=(fix.hdop?.times(3.0)?.coerceIn(5.0,50.0)?:5.0).toFloat();time=fix.timestampUtcMillis?:System.currentTimeMillis();elapsedRealtimeNanos=SystemClock.elapsedRealtimeNanos();fix.sogKnots?.let{speed=(it*0.514444).toFloat()};fix.cogTrueDegrees?.let{bearing=it.toFloat()};fix.altitudeMeters?.let{altitude=it}}
   fused.setMockLocation(location).await();if(directProviderAdded)locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER,location);val previous=_status.value;_status.value=previous.copy(publishedFixes=previous.publishedFixes+1,lastPublishedElapsed=SystemClock.elapsedRealtime())

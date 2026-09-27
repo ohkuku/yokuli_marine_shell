@@ -1,6 +1,7 @@
 package com.yokuli.anchorwatch.runtime.output
 
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.NavigationRepository
 import com.yokuli.anchorwatch.data.nmea.*
 import com.yokuli.anchorwatch.runtime.*
@@ -45,10 +46,10 @@ import javax.inject.Singleton
             }
         } }
         scope.launch { while (isActive) {
-            delay(1_000)
+            MarineTime.sleep(1_000)
             navigation.connections.value.filter { it.requested && it.spec.send && it.spec.feed != NmeaFeed.RAW }.forEach { target ->
                 val epoch=navigation.connectionEpoch(target.spec.id)?:return@forEach
-                queue(target,encoder.encodeBatch(target.spec,SystemClock.elapsedRealtime()),epoch)
+                queue(target,encoder.encodeBatch(target.spec,MarineTime.nowElapsedMillis()),epoch)
             }
         } }
     }

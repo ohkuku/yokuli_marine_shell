@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.anchorage
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.database.AnchorSessionEntity
 import com.yokuli.anchorwatch.data.database.AnchorageDao
 import com.yokuli.anchorwatch.data.database.SavedAnchorageEntity
@@ -48,7 +50,7 @@ class AnchorageRepository @Inject constructor(private val dao:AnchorageDao){
         if(value.id==0L)dao.insert(value)else{dao.update(value);value.id}
     }
     suspend fun saveFromSession(session:AnchorSessionEntity,name:String,notes:String=""):Long{
-        val position=AnchorageSavePositionPolicy.resolve(session);val now=System.currentTimeMillis()
+        val position=AnchorageSavePositionPolicy.resolve(session);val now=MarineTime.nowUtcMillis()
         return save(SavedAnchorageEntity(name=name.trim().ifBlank{"Saved anchorage"},latitude=position.latitude,longitude=position.longitude,createdAt=now,updatedAt=now,preferredAlarmRadiusMeters=session.alarmRadiusMeters,typicalWaterDepthMeters=session.waterDepthMeters?:session.minObservedDepthMeters,typicalRodeLengthMeters=session.rodeLengthMeters,notes=notes,sourceSessionId=session.id,coordinateSource=position.source.name,coordinateUncertaintyMeters=position.uncertaintyMeters))
     }
     /** Serializes delete with save so a rapid delete → re-save cannot interleave. */

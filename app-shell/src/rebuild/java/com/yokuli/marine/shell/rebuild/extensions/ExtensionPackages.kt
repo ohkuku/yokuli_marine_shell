@@ -356,6 +356,8 @@ class ExtensionPackageManager(context: Context) {
             path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }
 
         fun parseManifest(json: JSONObject): ExtensionManifest {
+            require(json.optString("runtime", "web") == "web") { "用户安装包只能使用 Web/JS 执行后端；系统组件随签名 APK 提供" }
+            require(!json.has("component") && !json.has("hostApp")) { "用户应用不能声明宿主组件" }
             val id = json.getString("id")
             require(id.length <= 120 && id.matches(Regex("[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+")) &&
                 id.split('.').all { it.length <= 40 && !it.endsWith('-') } && !id.startsWith("com.yokuli.") && id != "com.yokuli") { "应用 ID 必须是唯一的反向域名，且不能冒用系统标识" }

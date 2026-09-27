@@ -29,7 +29,7 @@ class WpShellRuntime(private val os: OsStore) {
     private data class ShadeReturn(val callerKey: String?, val callerSurface: ShellVisualSurface,
         val presentation: NotificationShadePresentation, var entered: Boolean = false)
     private var shadeReturn: ShadeReturn? = null
-    private val builtInApps = AppId.entries.map(::ShellApp)
+    private val builtInApps = os.packages.system.map { ShellApp(requireNotNull(it.hostApp), packageEntry = it) }
     var apps by mutableStateOf(builtInApps)
         private set
     val presets = tilePresets()
@@ -143,11 +143,13 @@ class WpShellRuntime(private val os: OsStore) {
             } }
         }
         os.scope.launch {
-            os.extensions.installed.collect { installed ->
-                val previous = apps.filter { it.extension != null }.map { it.id }.toSet()
-                apps = builtInApps + installed.map { ShellApp(AppId.APP_CENTER, it) }
-                val removed = previous - apps.map { it.id }.toSet()
-                engine.state.value.tasks.tasks.filter { it.appId in removed }.forEach {
+            os.packages.entries.collect { packages ->
+                val previous = apps.filter { it.extension != null }.associate { it.id to it.extension }
+                apps = packages.map { entry -> ShellApp(entry.hostApp ?: AppId.APP_CENTER, entry.installed, entry) }
+                val current = apps.associate { it.id to it.extension }
+                val invalidated = previous.filter { (id, installation) -> current[id] != installation }.keys
+                // 更新、撤权、重新安装不仅换一个图标：旧访问与截图都退出原任务图，不能从 Back 复活。
+                engine.state.value.tasks.tasks.filter { it.appId in invalidated }.forEach {
                     engine.dispatch(LauncherAction.CloseTask(it.taskId))
                 }
                 refreshTileCatalog(engine.state.value.start.document)
@@ -357,20 +359,8 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     fun appForPage(page: String): ShellApp? {
-        val canonical=canonicalPage(page)
-        if (canonical.startsWith("extension:")) return apps.firstOrNull { it.page == canonical }
-        val root = when {
-            canonical == "task:navigation" -> "chart"
-            canonical == "task:anchorWatch" -> "anchor"
-            canonical == "task:recording" -> "voyages"
-            else -> when (canonical.substringBefore(':').substringBefore('/')) {
-            "place", "route", "tileplace", "tileroute", "saved", "spot", "anchorage", "collection" -> "places"
-            "voyage", "replay", "report" -> "voyages"
-            "chartdataset", "chartobjects" -> "library"
-            else -> canonical.substringBefore(':').substringBefore('/')
-            }
-        }
-        return apps.firstOrNull { it.page == root }
+        val owner = os.packages.resolve(canonicalPage(page)) ?: return null
+        return apps.firstOrNull { it.packageEntry.id == owner.id }
     }
 
     /** 由业务对象发起的跨应用操作，返回时恢复调用页；普通应用入口仍调用 open。 */
@@ -611,22 +601,17 @@ private fun nineAppMigration(): LauncherProductMigrationPlan {
     })
 }
 
-data class ShellApp(val app: AppId, val extension: com.yokuli.marine.shell.rebuild.extensions.ExtensionInstalled? = null) {
-    val page = extension?.let { "extension:${it.manifest.id}" } ?: app.name.lowercase()
-    private val stableName = when (app.name) {
-        "LIBRARY" -> "chart_library"
-        "PLACES" -> "navigation"
-        "SETTINGS" -> "preferences"
-        "TILES" -> "tile_library"
-        else -> page
-    }
-    val id = LauncherAppId(extension?.let { "extension.${it.manifest.id}" } ?: stableName)
+data class ShellApp(
+    val app: AppId,
+    val extension: com.yokuli.marine.shell.rebuild.extensions.ExtensionInstalled? = null,
+    val packageEntry: com.yokuli.marine.shell.rebuild.extensions.YklPackageEntry = extension?.let {
+        com.yokuli.marine.shell.rebuild.extensions.YklPackageCatalog.installedEntry(it)
+    } ?: com.yokuli.marine.shell.rebuild.extensions.SystemYklApps.identity(app),
+) {
+    val page = packageEntry.rootRoute
+    val id = LauncherAppId(packageEntry.launcherId)
     val entry = LauncherEntryId(id.value)
-    val rootToken = LaunchToken(extension?.let { page } ?: when (app.name) {
-        "CHART", "LIBRARY" -> "$stableName.browse"
-        "NMEA" -> "nmea.root"
-        else -> "$stableName.overview"
-    })
+    val rootToken = LaunchToken(packageEntry.rootToken)
     val sizes = when(app) {
         AppId.SETTINGS -> listOf(MarineTileSize.ICON_1X1, MarineTileSize.STANDARD_2X2)
         AppId.CHART,AppId.INSTRUMENTS,AppId.ANCHOR,AppId.AIS,AppId.VOYAGES -> MarineTileSize.entries

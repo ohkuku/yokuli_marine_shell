@@ -19,6 +19,8 @@
 - 普通 APK 与 ROM 共用领域实现；如变更进程、权限或 IPC，更新 [生命周期](docs/os/03-LIFECYCLE-AND-RECOVERY.md)、[安全](docs/os/05-SECURITY-AND-UPDATES.md) 与 [ROM 入口](rom/README.md)。同 UID 子进程不是安全沙箱，HOME APK 不是已构建 ROM。
 - 本轮代码优先：不新增、修改或运行测试，不改 CI，不制作截图、录屏或验收报告。允许必要编译，保留现有构建保护。异常、持久化、权限、返回关系和资源释放必须完整。未有新授权不 push、发布、部署、刷机或破坏性清理；提交使用命令行。
 - 更新受影响权威文档及 [API 索引](docs/product/API_INDEX.md)，不要再造互相竞争的“最终版”。完整索引只在完整源码 checkout 生成，不用部分副本覆盖。完成状态区分：接入生产、编译状态、IPC、ROM 配置、镜像、设备运行，不能混写。
-- 可安装应用遵守 [.ykl / SDK 2 实际边界](docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md#可安装应用闭环2026-09-27sdk-1) 与 [开发者指南](docs/developers/index.html)。内置应用不可卸载；扩展只能走包管理、授权桥和原任务栈，不能直连 Core 私有 IPC/DAO 或加载 DEX。公共 SDK 改动同步 JS、Kotlin/JS、站点及 APK 离线资源；运行 `sdk/tools/package_extensions.py` 生成，禁止手改生成副本。每次授权/版本变化使旧会话失效。
+- 可安装应用遵守 [.ykl / SDK 2 实际边界](docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md#installable-apps) 与 [开发者指南](docs/developers/index.html)。内置应用不可卸载；扩展只能走包管理、授权桥和原任务栈，不能直连 Core 私有 IPC/DAO 或加载 DEX。公共 SDK 改动同步 JS、Kotlin/JS、站点及 APK 离线资源；运行 `sdk/tools/package_extensions.py` 生成，禁止手改生成副本。每次授权/版本变化使旧会话失效。
 
-- 可安装包正式扩展名 `.ykl`，JS 与 Kotlin/JS 共用协议；原生 APK 不在支持方向内。SDK 方法必须注册 `ExtensionSdkContract`，控制经原 Core 唯一所有者，记录用应用命名空间 requestId 查询完整持久账本。设备目录与内置数据中心共用 `MarineSystem.devices`；目录不等于模拟 HAL，尚未实现的虚拟时钟/回放/场景能力不得声称支持。
+- 可安装包正式扩展名 `.ykl`，JS 与 Kotlin/JS 共用协议；原生 APK 不在支持方向内。SDK 方法必须注册 `ExtensionSdkContract`，控制经原 Core 唯一所有者，记录用应用命名空间 requestId 查询完整持久账本。设备目录共用 `MarineSystem.devices`，演练控制共用 `MarineSystem.hardware`；真实/模拟/回放经 `MarineDeviceBus` 到原解析与仲裁，不在页面制造观测。内置 `.ykl` 仅引用 APK 编译的 host-kotlin 白名单，外部包只能是 JS/Kotlin/JS web。
+
+- 虚拟环境遵循[接入规则](docs/os/02-DOMAIN-AND-CONTRACTS.md#虚拟设备时间与持久化接入)与[真实边界](docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md#虚拟海事运行环境2026-09-27)：业务年龄/采样/等待用 `MarineTime`，宿主 IO/Binder/权限/动画保留真实时间；帧保留 backend/epoch/generation/原测量时刻。world 存储与通知隔离、重启暂停、物理输出封锁，录制审计命令不自动重执行。存储故障只覆盖已登记边界，禁止泛称全文件系统已虚拟化。

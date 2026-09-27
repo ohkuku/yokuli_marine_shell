@@ -2,7 +2,7 @@ package com.yokuli.anchorwatch.data.vessel
 
 import android.content.Context
 import androidx.datastore.preferences.core.*
-import androidx.datastore.preferences.preferencesDataStore
+import com.yokuli.anchorwatch.runtime.storage.faultAwarePreferencesDataStore
 import com.yokuli.anchorwatch.domain.vessel.VesselSourcePreference
 import com.yokuli.anchorwatch.domain.vessel.WatchWorkspaceMode
 import com.yokuli.anchorwatch.domain.vessel.InstrumentLayoutPolicy
@@ -22,8 +22,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 
-private val Context.vesselSettingsStore by preferencesDataStore("vessel_data_settings")
-private val Context.outputSettingsStore by preferencesDataStore("nmea_output_settings")
+private val Context.vesselSettingsStore by faultAwarePreferencesDataStore("vessel_data_settings")
+private val Context.outputSettingsStore by faultAwarePreferencesDataStore("nmea_output_settings")
 
 data class VesselDataSettings(
     val positionPreference:VesselSourcePreference=VesselSourcePreference.AUTO,

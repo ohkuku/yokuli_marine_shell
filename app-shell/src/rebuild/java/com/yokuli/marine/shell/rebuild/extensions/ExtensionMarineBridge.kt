@@ -1,6 +1,7 @@
 package com.yokuli.marine.shell.rebuild.extensions
 
 import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
 import com.yokuli.anchorwatch.domain.vessel.VesselDataFreshness
 import com.yokuli.anchorwatch.domain.vessel.VesselDataSnapshot
 import com.yokuli.anchorwatch.domain.vessel.VesselDataSource
@@ -37,6 +38,7 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
     private val requests = RateLimit(20)
     private val writes = RateLimit(5)
     private val snapshots = RateLimit(1)
+    private val hardware = ExtensionHardwareServices(os, installed.manifest.id)
     private val systemServices = ExtensionSystemServices(os, installed.manifest.id) {
         // 查询账本等挂起操作之后，写入之前再次验证，撤权不能因一次旧检查而失效。
         requireSession(); requireForeground(); requireCoreReady()
@@ -44,8 +46,7 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
 
     suspend fun request(method: String, params: JSONObject): JSONObject = withContext(Dispatchers.Main.immediate) {
         requireSession()
-        val now = SystemClock.elapsedRealtime()
-        requests.accept(now)
+        requests.accept(SystemClock.elapsedRealtime())
         val contract = ExtensionSdkContract.methods[method]
             ?: throw ExtensionBridgeException("METHOD_NOT_FOUND", "Unsupported SDK method")
         if (contract.since > installed.manifest.sdk) {
@@ -53,12 +54,16 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
         }
         contract.permission?.let(::requirePermission)
         if (contract.foregroundOnly) requireForeground()
-        if (contract.needsCore) requireCoreReady()
-        if (contract.mutation) writes.accept(now)
+        if (contract.needsCore) {
+            if (method.startsWith("hardware.")) requireHardwareReady() else requireCoreReady()
+        }
+        if (contract.mutation) writes.accept(SystemClock.elapsedRealtime())
         val result = try { when (method) {
             "system.info" -> systemInfo()
             "system.services" -> systemCatalog()
+            "system.apps" -> packageCatalog()
             "devices.snapshot" -> deviceCatalog()
+            "hardware.snapshot", "hardware.control", "hardware.readRecording" -> hardware.request(method, params)
             "storage.get" -> storageOperation {
                 JSONObject().put("value", os.extensions.readStorage(installed.manifest.id,
                     expectedDigest = installed.digest, expectedInstalledAt = installed.installedAt,
@@ -76,7 +81,7 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
             "marine.snapshot" -> {
                 requirePermission("marine.read")
                 val keys = requestedReadings(params)
-                snapshots.accept(now)
+                snapshots.accept(SystemClock.elapsedRealtime())
                 marineSnapshot(keys)
             }
             "nmea.connections" -> {
@@ -128,6 +133,18 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
         if (!isForeground()) throw ExtensionBridgeException("NOT_FOREGROUND", "Return to this application before changing system state")
     }
 
+    private fun requireHardwareReady() {
+        val system = os.marine?.system ?: throw ExtensionBridgeException("CORE_UNAVAILABLE", "Marine Core is reconnecting")
+        val state = system.hardwareLab.state.value
+        // Binder 断线会立即把 HardwareLabSnapshot.ready 清为 false。领域 recoveryProblem 也会
+        // 令通用 connection 为 UNAVAILABLE，不能据此禁止解除导致该问题的存储/设备故障。
+        if (!state.ready || SystemClock.elapsedRealtime() - state.capturedHostElapsedMillis !in 0L..2_000L) {
+            throw ExtensionBridgeException("CORE_UNAVAILABLE", "Hardware service is reconnecting")
+        }
+    }
+
+    private fun hardwareIsReady(): Boolean = runCatching { requireHardwareReady() }.isSuccess
+
     private fun requireCoreReady() {
         if (!coreIsReady()) {
             throw ExtensionBridgeException("CORE_UNAVAILABLE", "Marine Core is initializing or reconnecting")
@@ -140,7 +157,15 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
         val generated = state.vesselData.generatedElapsedRealtime
         // Binder 握手就绪与初始读模型到达是两个时刻，不能拿默认/上次进程的设置下命令。
         return system.connection.value.readiness == RuntimeReadiness.READY && state.settingsReady &&
-            generated > 0L && SystemClock.elapsedRealtime() - generated in 0L..2_000L
+            generated > 0L && systemSnapshotCurrent()
+    }
+
+    private fun systemSnapshotCurrent(): Boolean {
+        val system = os.marine?.system ?: return false
+        if (system.connection.value.readiness != RuntimeReadiness.READY) return false
+        val lab = system.hardwareLab.state.value
+        return if (lab.ready) SystemClock.elapsedRealtime() - lab.capturedHostElapsedMillis in 0L..2_000L
+        else MarineTime.nowElapsedMillis() - system.services.state.value.vesselData.generatedElapsedRealtime in 0L..2_000L
     }
 
     private suspend fun storageOperation(block: suspend () -> JSONObject): JSONObject = try {
@@ -158,6 +183,7 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
         .put("sdk", ExtensionSdkContract.VERSION)
         .put("appSdk", installed.manifest.sdk)
         .put("packageFormat", ExtensionSdkContract.PACKAGE_FORMAT)
+        .put("clock", hardware.clockJson())
         .put("language", if (os.chinese) "zh-CN" else "en")
         .put("theme", if (os.light) "light" else "dark")
         .put("units", JSONObject()
@@ -180,26 +206,34 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
             rows.put(JSONObject().put("name", method.name).put("since", method.since)
                 .put("permission", nullable(method.permission)).put("declared", declared).put("granted", granted)
                 .put("available", sdkCompatible && granted &&
-                    (!method.needsCore || coreReady) &&
+                    (!method.needsCore || if (method.name.startsWith("hardware.")) hardwareIsReady() else coreReady) &&
                     (!method.foregroundOnly || isForeground()))
                 .put("foregroundOnly", method.foregroundOnly))
         }
         return JSONObject().put("sdk", ExtensionSdkContract.VERSION).put("appSdk", installed.manifest.sdk)
             .put("packageFormat", ExtensionSdkContract.PACKAGE_FORMAT).put("connection", connectionJson(connection))
             .put("methods", rows).put("runtime", JSONObject()
-                .put("deviceBackends", JSONArray(listOf("REAL"))).put("virtualClock", false)
-                .put("systemReplay", false).put("scenarioEngine", false)
+                .put("deviceBackends", JSONArray(listOf("REAL", "SIMULATION", "REPLAY"))).put("virtualClock", true)
+                .put("systemReplay", true).put("scenarioEngine", true)
+                .put("mode", os.marine?.system?.hardwareLab?.state?.value?.mode?.name ?: "UNKNOWN")
                 .put("backgroundScripts", false).put("nativeApk", false))
     }
+
+    private fun packageCatalog(): JSONObject = JSONObject().put("apps", JSONArray().apply {
+        os.packages.entries.value.forEach { entry -> put(JSONObject().put("id", entry.id).put("name", os.t(entry.name, entry.nameEn))
+            .put("version", entry.version).put("runtime", if (entry.runtime == YklRuntime.HOST_KOTLIN) "host-kotlin" else "web")
+            .put("system", entry.origin == YklOrigin.SYSTEM_IMAGE).put("removable", entry.removable)
+            .put("available", entry.error == null).put("openTarget", entry.id)) }
+    })
 
     private fun deviceCatalog(): JSONObject {
         val system = os.marine?.system
         val connection = system?.connection?.value
         val snapshot = system?.devices?.state?.value
-        val now = SystemClock.elapsedRealtime()
+        val now = MarineTime.nowElapsedMillis()
         val snapshotAge = snapshot?.capturedElapsedRealtime?.takeIf { it > 0L }?.let { now - it }
         val ready = snapshot?.ready == true && connection?.readiness == RuntimeReadiness.READY &&
-            snapshotAge != null && snapshotAge in 0L..2_000L
+            snapshotAge != null && systemSnapshotCurrent()
         val rows = JSONArray()
         // 断线时可以保留设备身份帮助用户理解，但旧健康值绝不能变成当前运行证据。
         snapshot?.devices?.forEach { device ->
@@ -244,12 +278,12 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
         val system = os.marine?.system
         val data = system?.services?.state?.value?.vesselData ?: VesselDataSnapshot()
         val connection = system?.connection?.value
-        val now = SystemClock.elapsedRealtime()
+        val now = MarineTime.nowElapsedMillis()
         // Core 250ms 发布唯一读模型；重连前遗留的 Flow 值不能因为连接恢复就重新算作实时。
         val snapshotAge = data.generatedElapsedRealtime.takeIf { it > 0L }
             ?.let { now - it }?.takeIf { it >= 0L }
         val snapshotCurrent = connection?.readiness == RuntimeReadiness.READY &&
-            snapshotAge != null && snapshotAge <= 2_000L
+            snapshotAge != null && systemSnapshotCurrent()
         val position = data.position
         val point = position.value?.takeIf {
             it.latitude.isFinite() && it.longitude.isFinite() &&
@@ -274,7 +308,7 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
         return JSONObject().put("connection", connectionJson(connection))
             .put("snapshotAgeMillis", nullable(snapshotAge)).put("snapshotCurrent", snapshotCurrent)
             // capturedAt 只是快照组装时刻；不能作为任一观测的测量时刻。
-            .put("capturedAt", System.currentTimeMillis()).put("vessel", vessel).put("readings", readings)
+            .put("capturedAt", MarineTime.nowUtcMillis()).put("vessel", vessel).put("readings", readings)
     }
 
     private fun observationMetadata(
@@ -317,10 +351,10 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
         val system = os.marine?.system
         val connections = system?.services?.network?.connections?.value.orEmpty()
         val connection = system?.connection?.value
-        val now = SystemClock.elapsedRealtime()
+        val now = MarineTime.nowElapsedMillis()
         val devices = system?.devices?.state?.value
         val currentDevices = connection?.readiness == RuntimeReadiness.READY && devices?.ready == true &&
-            now - devices.capturedElapsedRealtime in 0L..2_000L
+            systemSnapshotCurrent()
         val rows = JSONArray()
         connections.forEach { item ->
             val receivedAt = item.lastLegalSentenceElapsed
@@ -339,8 +373,11 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
     }
 
     private fun openDestination(params: JSONObject): JSONObject {
-        val target = params.opt("target") as? String ?: invalid("target must be an application name")
-        if (target !in navigationTargets) invalid("This navigation target is not available to extensions")
+        val requested = params.opt("target") as? String ?: invalid("target must be an application ID or root name")
+        val destination = os.packages.entries.value.firstOrNull { it.id == requested || it.rootRoute == requested }
+            ?: invalid("This application is not installed")
+        if (destination.error != null) throw ExtensionBridgeException("PACKAGE_UNAVAILABLE", "This application package cannot be opened")
+        val target = destination.rootRoute
         val state = os.shell.engine.state.value
         val task = (state.surface as? ShellVisualSurface.Module)?.let { state.tasks.task(it.taskId) }
         val same = task != null && os.shell.visibleRouteForTask(task) == target
@@ -374,8 +411,6 @@ class ExtensionMarineBridge(private val os: OsStore, private val installed: Exte
     )
 
     companion object {
-        private val navigationTargets = setOf("chart", "library", "data_center", "nmea", "ais", "voyages", "anchor",
-            "places", "instruments", "local_nmea", "settings", "app_center")
         private val readingDefinitions = linkedMapOf(
             "sog" to ReadingDefinition(VesselMetricId.SOG, "kn") { it.sogKnots },
             "cog" to ReadingDefinition(VesselMetricId.COG, "degree") { it.cogTrueDegrees },

@@ -204,7 +204,7 @@ python3 scripts/check_runtime_boundaries.py
 
 1. 逐领域迁出兼容 `MainUiState`/legacy entity，不整体搬到 core 改名；新契约必须有真实消费者。
 2. 导航已迁出 Shell，但内容仍跨 Room 与 Shell JSON；尚未完成统一内容所有者及跨存储原子迁移。短历史采样/原文件写入已迁到 Core，Shell 经 `readingHistory` 取有界增量；它仍是同次设备开机的有界读投影，不是长期全量数据档案。
-3. 默认 Core 与 `:shell` 已实际分离，具备 Binder、恢复屏障与持久命令账本；独立 UID、第三方原生授权、跨 APK 协议迁移及设备持续运行保证仍未完成；网页扩展的独立能力授权见下方 SDK 1。Android 强停/断电无法保证持续保护。
+3. 默认 Core 与 `:shell` 已实际分离，具备 Binder、恢复屏障与持久命令账本；独立 UID、第三方原生授权、跨 APK 协议迁移及设备持续运行保证仍未完成；可安装应用的独立能力授权见下方 SDK 2。Android 强停/断电无法保证持续保护。
 4. 通知不读取第三方通知，不替换 Android SystemUI/Recents，不迁移航海服务到 system_server。
 5. ROM 产品输入和 HOME flavor 已有，完整镜像、Cuttlefish 启动、真机/BSP、AVB/OTA 与发行密钥仍各有外部依赖，不能以本轮消息 IPC 或必要编译推断完成。
 
@@ -243,6 +243,8 @@ python3 scripts/check_runtime_boundaries.py
 
 <a id="可安装应用闭环2026-09-27sdk-1"></a>
 
+<a id="installable-apps"></a>
+
 ## 可安装应用闭环（2026-09-27，SDK 2 / .ykl）
 
 当前 APK 新增真实的应用中心：包检查 → 用户授权 → 原子安装 → 发布 Shell 目录 → 独立任务/返回栈 → 撤销授权/卸载。它先推进 OS 的应用管理层；没有另造船舶数据中心，也没有声称 Android APK 已是 ROM。
@@ -272,14 +274,14 @@ flowchart TD
 - 读取规范值、设备目录、来源、连接、分享与记录分别授权；改变来源、连接、分享或记录需要额外控制授权及当前前台身份。连接就绪不等于收到有效数据。SDK 1 保持只读能力，SDK 2 通过显式方法表增加真实领域操作，仍不支持原始句子发送、自动驾驶、守锚控制或后台扩展脚本。
 - 静态目录随 APK 提供，文件可安装用户自己的包。已安装目录进入原 LauncherHostPort；包身份不能覆盖内置应用，内置应用没有卸载通路。新增 pin 入口继续只有应用列表和磁贴工坊。
 - 关闭扩展页面销毁其 WebView/请求，Home 不停止 Core。卸载撤销授权并关闭相应任务，已有桌面实例保留为可恢复的缺失入口；用户可在工坊移除。更换版本/授权会结束旧能力会话。
-- 这层与 Android 托管细节隔离的方向是稳定包清单、能力协议、安装事务和任务身份；未来替换 Host 时保留它们。设备目录已经贯通真实 Core Binder，并由内置数据中心和 SDK 共用；硬件虚拟化、统一可回放时钟、可替换驱动模型仍未实现，目录不能冒充完整 HAL 或 DeviceBus。
+- 包清单、能力协议、安装事务和任务身份与 Android 宿主解耦。设备目录由内置数据中心与 SDK 共用；下方虚拟环境已将真实驱动、模拟和回放接入同一总线，目录仍只承担读投影，不拥有采集器。
 
 开发者文档与模板：[SDK 指南](../developers/index.html)、[SDK 源码](../../sdk/README.md)。静态站点可直接作为 GitHub Pages 内容，APK 随包提供同一指南；站点源文件存在不代表 Pages 已发布。
 
 
 ### 公共系统调用与真实所有者
 
-`ExtensionSdkContract` 是能力发现、授权和调用版本的唯一公开方法表；`system.services` 返回每个方法的 `since / permission / declared / granted / available / foregroundOnly`。私有 Core 反射协议不直接开放给应用；`MainUiState`、Android Context、数据库实体不是 SDK 的公开接口。未实现的 `virtualClock / systemReplay / scenarioEngine / backgroundScripts` 明确为 false。
+`ExtensionSdkContract` 是能力发现、授权和调用版本的唯一公开方法表；`system.services` 返回每个方法的 `since / permission / declared / granted / available / foregroundOnly`。私有 Core 反射协议不直接开放给应用；`MainUiState`、Android Context、数据库实体不是 SDK 的公开接口。`virtualClock / systemReplay / scenarioEngine` 由实际接入的演练室提供；`backgroundScripts` 仍不支持。能力存在与调用授权分别返回，不能把方法存在理解成用户已授权。
 
 | SDK 方法 | 权限 | 唯一执行者 |
 | --- | --- | --- |
@@ -291,14 +293,56 @@ flowchart TD
 | `nmea.connections / nmea.setConnectionEnabled` | nmea.read / nmea.control | 已配置的 NetworkService 连接 |
 | `sharing.snapshot / sharing.setEnabled` | sharing.read / sharing.control | 原 SharingService 与发布策略 |
 | `voyage.snapshot / voyage.receipt / voyage.command` | voyage.read / voyage.control | 原 VoyageSessionService / 持久命令账本 |
-| `navigation.open` | navigation.open | 原 Shell 跨应用任务栈 |
+| `navigation.open` | navigation.open | 原 Shell 跨应用任务栈，可按包 ID 打开 |
+| `system.apps` | 无 | 签名内置包及已安装用户包的统一目录 |
+| `hardware.snapshot / hardware.readRecording` | lab.read | Core HardwareLabService |
+| `hardware.control` | lab.control，前台 | 同一环境所有者及持久命令回执 |
 
 控制权限初次安装默认关闭，更新保留已经授予及已经撤回的选择；扩展内不能自己提升权限。控制返回“已请求”不等于动作已完成；记录返回真实回执状态，`UNKNOWN` 不能视为失败后重新生成 ID 重发。应用产生并保存请求 ID，宿主按应用身份生成稳定 Core 命名空间，`voyage.receipt` 查询完整持久账本，不能只查最近 127 条展示投影。非开始动作必须带目标 sessionId；关闭页面不取消已经进入 Core 的业务命令。
 
-### 当前设备目录及虚拟运行时缺口
+### 设备目录与实际驱动
 
 `DeviceRuntimeService.state` 在默认 Core 中以 2 Hz 投影唯一驱动：手机 GNSS、IMU、气压及全部 NMEA 连接。字段包含设备身份、能力、硬件/权限可用性、请求/运行状态、驱动代次、来源和真实观测时间。目录没有船位或原始报文正文，读取目录不启用任何采集。GNSS 暂无驱动代次时明确采用 `catalog.lifecycle`；每个 Core 实例有新的 runtimeId，代次不能跨实例比较。NMEA 重连不沿用旧代次诊断时间。Binder 死亡使 ready=false，待新快照才恢复。
 
 内置数据中心的手机页已经读取同一个服务，区分“支持此设备”与“正在采集”，保留最近观测时间。可安装的“船上控制台”同样使用该目录及授权的领域操作，设备与命令并非只存在于文档。
 
-**尚未实现：**可替换的 GNSS/IMU/NMEA HAL、设备 attach/detach 总线、完整系统录制/回放、可暂停/倍速/单步的统一时钟与 scheduler、场景与故障引擎、虚拟电源与虚拟存储。现有航程回看及旧 Demo 轨迹不等于这些能力。后续必须让真实/回放/模拟设备进入同一解析与仲裁链，保留来源标签，不能以假数据冒充真实船位，也不能默认向真实 NMEA 输出模拟数据。
+目录现已补充总线后端与设备代次，真实、模拟和回放设备均由下述 HAL 输入链承担。旧 Demo 与航程回看继续属于各自业务，不代表或绕过系统演练室。
+
+
+## 虚拟海事运行环境（2026-09-27）
+
+实际入口是演练室与 `MarineSystem.hardware`，运行者为默认 Core 中的 `LocalHardwareLabService`。它控制 `MarineDeviceBus`、`MarineTime`、`ScenarioEngine`、`SystemRecordingStore` 与 `VirtualHostServices`；内置应用与获授权 `.ykl` 应用经同一 Binder 端口使用。以下为已接入生产的结构，不代表 Android ROM、任意硬件模拟器或原生代码虚拟机。
+
+```mermaid
+flowchart TB
+  Apps[Shell / 内置 .ykl 包 / 用户 .ykl 包] --> Services[MarineSystem / 能力授权网关]
+  Services --> Lab[HardwareLabService · 演练室]
+  Lab --> Clock[MarineTime · 暂停 / 倍速 / 单步]
+  Lab --> Scenario[ScenarioEngine · 航段 / AIS / 时序故障]
+  Lab --> Replay[SystemRecordingStore · 原始记录 / 回放]
+  Android[Android GNSS / IMU / 气压 / NMEA transport] --> Bus[MarineDeviceBus · backend / epoch / generation]
+  Scenario --> Bus
+  Replay --> Bus
+  Bus --> Drivers[同一 repository / 校准 / NMEA 与 AIS 解析]
+  Drivers --> Truth[来源注册 / 显式仲裁 / 规范船舶数据]
+  Truth --> Domains[海图 / 守锚 / 航行 / 导航 / AIS / 仪表]
+  Clock --> Drivers
+  Clock --> Domains
+  Lab --> Host[VirtualHostServices · 电源 / 存储故障]
+  Host --> Storage[世界独立 Room / 原子文件 / 历史与消息]
+  Domains --> Storage
+  Storage --> Apps
+```
+
+- **HAL 范围：** GNSS、IMU（四元数、角速度、加速度、磁场）、气压及 NMEA 连接。深度、风、水温与 AIS 通过真实 NMEA 解析链进入领域；不再复制“模拟数据中心”。每帧携带 `backend / epoch / generation / sequence / measuredElapsedMillis / receivedElapsedMillis / utcMillis`；attach/detach 与后端切换使旧代次失效，迟到帧不能复活设备。
+- **时间：** 领域采样、来源老化、守锚等待、航程记录、导航、AIS 及通知业务时间使用 `MarineTime`。协程等待随暂停、倍速和单步推进；Android 权限、Binder 超时、IO、恢复控制与显示动画继续使用宿主时间。elapsed 切换连续，UTC 与时钟纪元明确；显示缓动不修改测量时间。
+- **场景：** 起点、航点、速度/艏向、摇摆、深度/风/压力、移动 AIS 目标与有序事件由有界 DTO 描述。`ScenarioValidation` 与共享 `HardwareFaultPolicy` 拒绝无穷值、越界、过量和不适用故障。失联、冻结、陈旧、精度下降、跳点、磁干扰、丢包、延迟、断连、AIS 冲突/碎片均改变实际输入或设备连接。冻结保留原测量时刻；延迟队列保留采样时间。保存场景仅准备下一次进入模拟，不悄悄改写当前 `activeScenario`。再次进入时场景未变则恢复原位置与事件游标；场景已改则在同一模拟资料空间开始新场景并保留既有历史。
+- **录制/回放：** 有界 JSONL 保存总线原始帧、设备目录变化、演练命令审计及电源/存储事件。回放按统一时钟送回相同解析与仲裁链，保留原 UTC 与采样—接收间隔。审计命令不重放 Start、Arm、网络发送或其他副作用。截断尾行不执行，未正常结束明确标记中断；队列或文件限额失败不会假报完整。它不是任意应用内存快照，也未记录所有 UI 动作及全部领域命令。
+- **世界存储：** 真实世界、持久模拟世界和每份录像的独立回放世界分离。重复进入模拟复用 `last-simulation` 存档；回放 world ID 由 recordingId 稳定生成，重进仍可访问同一录像产生的资料。`MarineHostApplication` 仅对 Core/通知进程的 files、noBackup、数据库路径与打开入口、SharedPreferences 使用 world 命名空间。首次模拟只复制选定偏好起点，不复制真实活动会话或历史；Shell 安装目录和桌面布局保持原所有者。切换必须结束守锚、航程和导航并停止系统录像；落盘后重启 Core 与消息存储所有者，Shell 重连，不能对打开的 Room 直接换目录。
+- **电源/存储：** 电量输入已进入原低电量策略；充电、温度及亮屏状态可观察和录制，不代表 Android 电源管理器或设备屏幕已被控制。存储故障接入 Room 的 SQLite 操作、全部七个 PreferencesDataStore 的 `FaultAwareDataStore` 生产委托、核心持久账本以及导航、AIS、海图、规划、短历史、单位投影和通知的文件边界。FULL/READ_ONLY 阻止写入，CORRUPT/PERMISSION_REVOKED 阻止对应读取并抛出实际异常，不破坏原文件。尚非任意文件系统调用、外部 URI/SAF 或第三方库的全量拦截；宿主演练恢复文件和原始录像不受故障封锁，以保留退出和导出能力。
+
+进程死亡恢复虚拟世界时保持原位置/航点/目标/事件游标和冻结样本，统一暂停等待用户继续；最多可能丢失最近尚未提交的检查点。恢复不会跨世界继续真实保护。清除存储故障通过同 world 重启重建已异常结束的 Flow/数据库所有者，不能仅把界面错误文本隐藏。模式切换、物理输出限制与能力授权详见[生命周期](03-LIFECYCLE-AND-RECOVERY.md#虚拟环境生命周期与恢复)和[安全边界](05-SECURITY-AND-UPDATES.md#虚拟环境的安全与存储边界)。
+
+### 内置应用也沿包目录组织
+
+`sdk/system-apps/catalog.json` 是内置应用的清单源，打包脚本生成 `assets/ykl/system/*.ykl` 及摘要索引。`YklPackageCatalog` 统一读取系统包和用户包身份；Shell 目录、路由归属与 `YklPackageScreen` 按包分派，已有任务 ID、返回关系和磁贴身份保持稳定。内置 `host-kotlin` 仅引用 APK 内编译、白名单登记的 `SystemYklApps` 组件，签名 APK 是其信任根，包摘要只校验资源一致性。外部导入仍只能是 JS / Kotlin/JS 的 web 包，不允许申报宿主组件、加载 DEX/APK 或卸载内置应用。

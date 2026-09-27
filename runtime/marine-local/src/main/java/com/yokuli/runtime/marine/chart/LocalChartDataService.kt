@@ -1,5 +1,6 @@
 package com.yokuli.runtime.marine.chart
 
+import com.yokuli.runtime.contract.hardware.VirtualHostServices
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -32,7 +33,7 @@ import kotlin.math.*
     private data class Receipt(val requestId:String,val datasetId:String,val revision:Long)
     private data class Catalogue(val revision:Long=0,val datasets:List<Stored> = emptyList(),val receipts:List<Receipt> = emptyList())
     private data class Pending(val request:ChartImportRequest,val status:ChartImportJob)
-    private val root=File(context.noBackupFilesDir,"chart-datasets").apply {mkdirs()}
+    private val root=File(context.noBackupFilesDir,"chart-datasets")
     private val manifest=AtomicFile(File(root,"catalogue.json"))
     private val jobFile=AtomicFile(File(root,"import.json"))
     private val gson=Gson()
@@ -52,6 +53,7 @@ import kotlin.math.*
     private suspend fun restore()=mutex.withLock {
         if(importJob?.isActive==true)return@withLock
         try {
+            VirtualHostServices.beforeRead()
             catalogue=if(hasAtomicFile(manifest))manifest.openRead().bufferedReader().use {gson.fromJson(it,Catalogue::class.java)} else Catalogue()
             require(catalogue.datasets.size<=2_000&&catalogue.datasets.all {it.directory.matches(Regex("version-[0-9a-f-]{36}"))}) {"CHART_CATALOGUE_INVALID"}
             pending=if(hasAtomicFile(jobFile))jobFile.openRead().bufferedReader().use {gson.fromJson(it,Pending::class.java)}else null
@@ -103,7 +105,7 @@ import kotlin.math.*
         val stage=File(root,"stage-${UUID.randomUUID()}").apply {mkdirs()}
         try {
             val workContext=currentCoroutineContext()
-            fun check(){workContext.ensureActive();require(root.usableSpace>96_000_000L) {"CHART_STORAGE_FULL"}}
+            fun check(){workContext.ensureActive();VirtualHostServices.beforeWrite();require(root.usableSpace>96_000_000L) {"CHART_STORAGE_FULL"}}
             val original=mutex.withLock {catalogue.datasets.firstOrNull {it.dataset.id==request.replaceDatasetId}}
             val source=File(stage,"source").apply {mkdirs()}
             val incoming=copyPackage(Uri.parse(request.sourceUri),source,::check)
@@ -229,7 +231,7 @@ import kotlin.math.*
                 try {
                     input.rawQuery("SELECT rowid,length(payload) FROM features ORDER BY rowid",null).use {cursor->
                         while(cursor.moveToNext()) {
-                            check();currentCoroutineContext().ensureActive()
+                            check();currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                             val id=cursor.getLong(0);val length=cursor.getInt(1)
                             require(length in 1..8_000_000){"CHART_FEATURE_PAYLOAD_INVALID"}
                             val payload=StringBuilder(length)
@@ -274,6 +276,7 @@ import kotlin.math.*
         try {val next=catalogue.copy(revision=catalogue.revision+1,datasets=catalogue.datasets.filterNot {it.dataset.id==datasetId});writeAtomic(manifest,gson.toJson(next));catalogue=next;publish();cleanup();ChartCommandResult.Saved(datasetId,next.revision)}catch(error:Exception){ChartCommandResult.Failed(error.message ?: "Could not remove chart")}
     }}
     override suspend fun acquireSnapshot(datasetIds:List<String>):ChartDataSnapshot=mutex.withLock {
+        VirtualHostServices.beforeRead()
         require(!mutable.value.loading&&mutable.value.error==null) {"CHART_CATALOGUE_UNREADABLE"}
         require(leases.size<32) {"CHART_SNAPSHOT_LIMIT"}
         val ids=datasetIds.distinct();require(ids.size<=1){"CHART_SELECT_ONE_FOLDER"};val selected=ids.mapNotNull {id->catalogue.datasets.firstOrNull {it.dataset.id==id}}
@@ -285,6 +288,7 @@ import kotlin.math.*
 
     /** 一次读取单独保留版本：调用方离开页面释放快照时，正在关闭的 SQLite 仍不能被删掉。 */
     private suspend fun <T> withSnapshotRead(snapshotId:String,block:suspend (List<Stored>,CancellationSignal)->T):T=withContext(Dispatchers.IO) {
+        VirtualHostServices.beforeRead()
         val readLease=UUID.randomUUID().toString()
         val selected=mutex.withLock {(leases[snapshotId]?.toList() ?: error("CHART_SNAPSHOT_EXPIRED")).also {leases[readLease]=it}}
         try {
@@ -311,7 +315,7 @@ import kotlin.math.*
         val payload=StringBuilder(row.length)
         var position=1
         while(position<=row.length) {
-            currentCoroutineContext().ensureActive()
+            currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
             db.rawQuery("SELECT substr(payload,?,?) FROM features WHERE rowid=?",arrayOf(position.toString(),"128000",row.rowId.toString()),signal).use {part->
                 require(part.moveToFirst()) {"CHART_FEATURE_ROW_MISSING"}
                 val text=part.getString(0)
@@ -320,7 +324,7 @@ import kotlin.math.*
             }
             position+=128_000
         }
-        currentCoroutineContext().ensureActive()
+        currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
         val feature=requireNotNull(gson.fromJson(payload.toString(),NauticalFeature::class.java)) {"CHART_FEATURE_PAYLOAD_INVALID"}
         require(feature.id==row.id&&feature.datasetId==row.stored.dataset.id) {"CHART_FEATURE_ID_MISMATCH"}
         return feature
@@ -337,7 +341,7 @@ import kotlin.math.*
         var db:SQLiteDatabase?=null;var directory:String?=null
         try {
             for(row in ordered) {
-                currentCoroutineContext().ensureActive()
+                currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                 require(row.length in 1..8_000_000) {"CHART_FEATURE_PAYLOAD_INVALID"}
                 if(found.size>=limit||(found.isNotEmpty()&&bytes+row.length>12_000_000)) {more=true;break}
                 if(directory!=row.stored.directory) {
@@ -355,13 +359,13 @@ import kotlin.math.*
         return withSnapshotRead(snapshotId) {selected,signal->
             val rows=pageCandidates(limit)
             for(stored in selected) {
-                currentCoroutineContext().ensureActive()
+                currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                 openIndex(stored).use {db->
                     val predicate=bounds.split().joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
                     val args=mutableListOf<String>();bounds.split().forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)};args+=afterId.orEmpty();args+=(limit+1).toString()
                     db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.feature_id>? ORDER BY f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
                         while(cursor.moveToNext()) {
-                            currentCoroutineContext().ensureActive()
+                            currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                             retainCandidate(rows,IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2)),limit)
                         }
                     }
@@ -377,7 +381,7 @@ import kotlin.math.*
             val work=currentCoroutineContext()
             val result=mutableListOf<ChartRasterWindow>();var remaining=maxCells
             for(stored in selected) {
-                work.ensureActive()
+                work.ensureActive();VirtualHostServices.beforeRead()
                 if(stored.dataset.rasters.isNullOrEmpty())continue
                 RasterBathymetryStore.open(File(root,stored.directory)).use {store->
                     for(grid in store.grids) {
@@ -395,11 +399,11 @@ import kotlin.math.*
                             rectangles+=listOf(x,y,endX-x,endY-y)
                         }
                         for((x,y,width,height) in rectangles) {
-                            work.ensureActive()
+                            work.ensureActive();VirtualHostServices.beforeRead()
                             val count=width.toLong()*height
                             require(count<=remaining){"GEBCO_WINDOW_LIMIT:请缩短航段或减少重叠资料 / Shorten the passage or select fewer overlapping grids"}
                             remaining-=count.toInt()
-                            result+=ChartRasterWindow(grid,store.readWindow(grid.id,x,y,width,height){work.ensureActive()})
+                            result+=ChartRasterWindow(grid,store.readWindow(grid.id,x,y,width,height){work.ensureActive();VirtualHostServices.beforeRead()})
                         }
                     }
                 }
@@ -415,7 +419,7 @@ import kotlin.math.*
         return withSnapshotRead(snapshotId) {selected,signal->
             val rows=pageCandidates(limit)
             for(stored in selected) {
-                currentCoroutineContext().ensureActive()
+                currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                 if(filter.cellId!=null&&stored.dataset.cells.none {it.cellId==filter.cellId})continue
                 openIndex(stored).use {db->
                     val columns=mutableSetOf<String>()
@@ -434,7 +438,7 @@ import kotlin.math.*
                     var matches=0
                     db.rawQuery(sql,args.toTypedArray(),signal).use {cursor->
                         while(cursor.moveToNext()) {
-                            currentCoroutineContext().ensureActive()
+                            currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                             val row=IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2))
                             // 旧版本不可原地升级：按主键游标逐条解析，最多持有一个候选对象，不把全库装进内存。
                             if(needsLegacyFilter&&!ChartFeatureIndex.matches(readIndexedFeature(db,row,signal),filter,normalizedQuery))continue
@@ -452,7 +456,7 @@ import kotlin.math.*
         require(featureId.isNotBlank()) {"CHART_FEATURE_ID_REQUIRED"}
         return withSnapshotRead(snapshotId) {selected,signal->
             for(stored in selected) {
-                currentCoroutineContext().ensureActive()
+                currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                 openIndex(stored).use {db->
                     db.rawQuery("SELECT feature_id,rowid,length(payload) FROM features WHERE feature_id=?",arrayOf(featureId),signal).use {cursor->
                         if(cursor.moveToFirst())return@withSnapshotRead readIndexedFeature(db,IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2)),signal)
@@ -529,8 +533,10 @@ import kotlin.math.*
     }
     private fun hasAtomicFile(file:AtomicFile)=file.baseFile.exists()||File(file.baseFile.path+".bak").exists()
     private fun saveJob(){pending?.let {writeAtomic(jobFile,gson.toJson(it))}}
-    private fun writeAtomic(file:AtomicFile,text:String) {var stream:FileOutputStream?=null;try {stream=file.startWrite();stream.write(text.toByteArray(Charsets.UTF_8));stream.fd.sync();file.finishWrite(stream);stream=null;require(file.openRead().bufferedReader(Charsets.UTF_8).use {it.readText()}==text) {"CHART_STORAGE_READBACK_FAILED"}}catch(error:Exception){if(stream!=null)runCatching {file.failWrite(stream)};storageFault=error.message ?: "CHART_STORAGE_WRITE_FAILED";mutable.value=mutable.value.copy(error=storageFault);throw error}}
+    private fun writeAtomic(file:AtomicFile,text:String) {var stream:FileOutputStream?=null;try {VirtualHostServices.beforeWrite();stream=file.startWrite();stream.write(text.toByteArray(Charsets.UTF_8));stream.fd.sync();VirtualHostServices.beforeWrite();file.finishWrite(stream);stream=null;require(file.openRead().bufferedReader(Charsets.UTF_8).use {it.readText()}==text) {"CHART_STORAGE_READBACK_FAILED"}}catch(error:Exception){if(stream!=null)runCatching {file.failWrite(stream)};storageFault=error.message ?: "CHART_STORAGE_WRITE_FAILED";mutable.value=mutable.value.copy(error=storageFault);throw error}}
     private fun cleanup() {
+        // 释放快照租约不依赖磁盘；只把故障期间的旧版本回收延后。
+        if(runCatching{VirtualHostServices.beforeWrite()}.isFailure)return
         val keep=catalogue.datasets.map {it.directory}.toSet()+leases.values.flatten().map {it.directory}
         root.listFiles().orEmpty().filter {it.isDirectory&&it.name.startsWith("version-")&&it.name !in keep}.forEach {it.deleteRecursively()}
         if(importJob?.isActive!=true)root.listFiles().orEmpty().filter {it.isDirectory&&it.name.startsWith("stage-")}.forEach {it.deleteRecursively()}

@@ -6,11 +6,12 @@
 
 | 事实 / 聚合 | 当前所有者 | 目标唯一写入者 | 用户入口 / 消费者 |
 | --- | --- | --- | --- |
+| 环境、场景、时钟及原始记录 | `LocalHardwareLabService` + `MarineTime / MarineDeviceBus` | `MarineSystem.hardware` | 演练室、获授权 `.ykl`；页面不生成设备观测 |
 | 原始输入、连接身份及代次 | `NmeaConnectionStore`、连接运行时；手机 repository | Marine Core 的 InputRegistry/Transport 模块 | 船联网管理连接；数据中心查看来源 |
 | 字段选源、候选、可信读数 | `VesselSettingsRepository`、`VesselSourceRegistry / VesselDataHub`、`AcceptedPositionRepository` | Marine Core 的 SourcePolicy/DataHub 模块 | 数据中心修改；其他应用和分享只读 |
 | 手机安装、方向校准、定位意图 | `AppSettings / VesselMountCalibrationRepository` 与资源运行时 | Marine Core 的 DeviceInputPolicy 模块 | 数据中心；通知中心只导航到数据中心，不直接执行校准 |
 | 系统常驻意图与显式停止 | `RuntimeResidencyRepository` + 原 `YokuliRuntimeCoordinator` | `MarineSystem.residency` | 前台进入申请常驻，Settings/退出磁贴共用完整退出；页面关闭不释放系统采集 |
-| 仪表短历史 | 同一 `DataHub` + `ReadingHistoryCache` | 现有可信快照的有界只读投影 | 后台持续保留 15 分钟实际样本；同设备开机恢复，不能冒充当前值或接续跨进程曲线 |
+| 仪表短历史 | Core `LocalReadingHistoryService` + `ReadingHistoryCache`；Shell `DataHub` 只读 | 现有可信快照的有界只读投影 | 后台持续保留 15 分钟实际样本；同设备开机恢复，不能冒充当前值或接续跨进程曲线 |
 | 航行会话、样本、事件 | `TripRuntime` + Room | Voyage 模块 | 海图/日志/快捷项都是同一组命令 |
 | 守锚会话、锚点、范围与告警 | `AnchorWatchRuntime` + Room | Anchor 模块 | 守锚主界面；Shell/地图仅反映状态 |
 | 活动导航及冻结路线版本 | `LocalNavigationSessionService` + 原子文件 | `MarineSystem.navigation` | 海图和我的航行发命令；驾驶台、地图和磁贴读取同一会话 |
@@ -275,9 +276,20 @@ Shell 设置依旧属于 Shell；通知单位采用 `RuntimePresentationService.
 
 ### 内部应用格式接入（SDK 2 / .ykl）
 
-接入点为 `ExtensionPackageManager`（包及授权）、`ExtensionSdkContract / ExtensionMarineBridge`（版本化授权系统调用）、`ExtensionWebView`（页面生命周期）与既有 Shell task engine。详见[实际边界](10-INPROCESS-SYSTEM-BOUNDARIES.md#可安装应用闭环2026-09-27sdk-1)和[开发者指南](../developers/index.html)。
+接入点为 `ExtensionPackageManager`（包及授权）、`ExtensionSdkContract / ExtensionMarineBridge`（版本化授权系统调用）、`ExtensionWebView`（页面生命周期）与既有 Shell task engine。详见[实际边界](10-INPROCESS-SYSTEM-BOUNDARIES.md#installable-apps)和[开发者指南](../developers/index.html)。
 
 新增公共能力必须先确定唯一系统所有者、授权、输入/输出 DTO、测量时间/单位、撤销和限流；再同步 JS SDK、Kotlin/JS externals、开发者站点与应用内指南。不得直接导出私有兼容 Binder 表，不得允许页面直接写 Core 状态。当前公共包支持 JS / Kotlin/JS，不能将其描述成原生 Kotlin APK 或 Compose 插件。
 
 
-`MarineSystem.devices` 为真实设备只读目录；内置数据中心与扩展通过相同服务查看 GNSS/IMU/气压/NMEA 生命周期，不复制采集器。SDK 2 控制经 `ExtensionSystemServices` 到原 sources/network/sharing/voyage 端口；来源和会话仍只有原唯一写者。每个公共调用必须先注册到 `ExtensionSdkContract`，设备目录不代表已实现模拟 HAL。完整当前方法及未实现项见 [SDK 2 实际边界](10-INPROCESS-SYSTEM-BOUNDARIES.md#公共系统调用与真实所有者)。
+`MarineSystem.devices` 为真实设备只读目录；内置数据中心与扩展通过相同服务查看 GNSS/IMU/气压/NMEA 生命周期，不复制采集器。SDK 2 控制经 `ExtensionSystemServices` 到原 sources/network/sharing/voyage 端口；来源和会话仍只有原唯一写者。每个公共调用必须先注册到 `ExtensionSdkContract`，设备目录只读总线/驱动事实；硬件控制走独立 `MarineSystem.hardware`，不借目录 setter 绕过生命周期。完整当前方法及未实现项见 [SDK 2 实际边界](10-INPROCESS-SYSTEM-BOUNDARIES.md#公共系统调用与真实所有者)。
+
+
+### 虚拟设备、时间与持久化接入
+
+1. 新设备适配器向 `MarineDeviceBus.attach / publish / detach` 提交类型化原始输入；真实 Android capture BOOTTIME 使用 `MarineTime.fromHostElapsedMillis` 转换。Core 消费者先核对总线 epoch/generation，再进入原解析器与选源链。来源包含 REAL/SIMULATED/REPLAY；不要因来自“手机指标”而丢失其虚拟后端。
+2. 业务时间读 `MarineTime.nowElapsedMillis / nowUtcMillis`，周期及领域等待用 `sleep / sleepUntil / withTimeoutOrNull`。控制页、Binder、网络物理超时、存储重试和动画使用宿主时间，确保虚拟暂停仍可退出/恢复。固定测量时间不可换成接收时间；同一时刻重发旧帧不增加历史。
+3. 环境变更只能提交 `HardwareLabCommand`，由 Core 持久账本处理 requestId。Shell 与通知进程同步 Core 的时钟/环境快照，不运行第二套场景或录制器。`HardwareLabSnapshot` 区分当前 mode、保存场景、设备、故障、录像及错误；保存配置不意味着已切换环境。
+4. 新存储继续使用唯一领域所有者及 Application 提供的 world 路径；若需要参与故障演练，在真实操作边界接 `VirtualHostServices.beforeRead / beforeWrite`，失败走原业务错误与回执。不得向真实路径写实验记录，不把故障模拟理解为允许实际损坏文件。
+5. 新 `.ykl` 公共方法先登记 `ExtensionSdkContract`；hardware 读取和控制分离授权，控制要求当前前台会话。公开 JSON 不暴露原生对象、文件路径或任意反射。内置应用与用户应用目录共用 `YklPackageCatalog`，仅 APK 内可信清单可引用 host-kotlin 白名单组件。
+
+具体帧字段、可用故障与边界以 [HardwareLabService](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/hardware/HardwareLabService.kt)、[MarineDeviceBus](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/hardware/MarineDeviceBus.kt)、[HardwareFaultPolicy](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/hardware/HardwareFaultPolicy.kt) 与 [MarineTime](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/time/MarineTime.kt) 为准；数据拓扑见[实际虚拟环境](10-INPROCESS-SYSTEM-BOUNDARIES.md#虚拟海事运行环境2026-09-27)。

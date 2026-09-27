@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 LIMIT_FILE = 8 * 1024 * 1024
 LIMIT_TOTAL = 32 * 1024 * 1024
 SDK1_PERMISSIONS = {"marine.read", "nmea.read", "navigation.open"}
-PERMISSIONS = SDK1_PERMISSIONS | {"devices.read", "sources.read", "sources.control", "nmea.control", "sharing.read", "sharing.control", "voyage.read", "voyage.control"}
+PERMISSIONS = SDK1_PERMISSIONS | {"devices.read", "sources.read", "sources.control", "nmea.control", "sharing.read", "sharing.control", "voyage.read", "voyage.control", "lab.read", "lab.control"}
 
 
 def package(source: Path, output: Path) -> dict:
@@ -30,6 +30,8 @@ def package(source: Path, output: Path) -> dict:
         any(len(part) > 40 or part.endswith("-") for part in app_id.split(".")) or
         app_id == "com.yokuli" or app_id.startswith("com.yokuli.")):
         raise ValueError("id must be a lowercase reverse-domain name outside the reserved com.yokuli namespace")
+    if manifest.get("runtime", "web") != "web" or "component" in manifest or "hostApp" in manifest:
+        raise ValueError("User-installed packages cannot load host-kotlin components")
     entry = manifest.get("entry", "index.html")
     if type(manifest.get("sdk")) is not int or manifest.get("sdk") not in (1, 2) or not isinstance(entry, str) or not entry.endswith(".html"):
         raise ValueError("Packages require sdk=1 or sdk=2 and a local HTML entry")
@@ -83,7 +85,7 @@ def package(source: Path, output: Path) -> dict:
 def package_sdk(output: Path) -> None:
     """A self-contained source archive, usable from the website and Android SAF export."""
     sources = [ROOT / "sdk/README.md", ROOT / "sdk/tools/package_extensions.py", ROOT / "gradlew", ROOT / "gradlew.bat"]
-    for directory in ["sdk/web", "sdk/examples", "sdk/templates/javascript", "sdk/templates/kotlin-js/src", "gradle/wrapper"]:
+    for directory in ["sdk/web", "sdk/examples", "sdk/system-apps", "sdk/templates/javascript", "sdk/templates/kotlin-js/src", "gradle/wrapper"]:
         sources.extend(path for path in (ROOT / directory).rglob("*") if path.is_file())
     sources.extend(ROOT / "sdk/templates/kotlin-js" / name for name in ["settings.gradle.kts", "build.gradle.kts", "gradle.properties", "manifest.json", "kotlin-js-store/package-lock.json"])
     sources.extend(ROOT / "docs/developers" / name for name in ["index.html", "site.css", "site.js"])
@@ -98,7 +100,41 @@ def package_sdk(output: Path) -> None:
             archive.writestr(info, path.read_bytes())
 
 
+def refresh_system_packages() -> None:
+    """Only the APK build tree can supply host-kotlin components; never a user package."""
+    source = json.loads((ROOT / "sdk/system-apps/catalog.json").read_text(encoding="utf-8"))
+    target = ROOT / "app-shell/src/main/assets/ykl/system"
+    target.mkdir(parents=True, exist_ok=True)
+    packages = []
+    ids, components, routes, prefixes = set(), set(), set(), set()
+    for manifest in source["apps"]:
+        app_id = manifest["id"]
+        component = manifest["component"]
+        if (not app_id.startswith("com.yokuli.") or app_id in ids or component in components
+                or manifest["runtime"] != "host-kotlin" or manifest["removable"] is not False
+                or manifest["sdk"] != 2 or manifest["entry"] not in manifest["routes"]["exact"]):
+            raise ValueError("Invalid built-in .ykl identity")
+        ids.add(app_id); components.add(component)
+        for route in manifest["routes"]["exact"]:
+            if route in routes:
+                raise ValueError("Overlapping built-in route")
+            routes.add(route)
+        for prefix in manifest["routes"]["prefix"]:
+            if prefix in prefixes or not prefix.endswith(":"):
+                raise ValueError("Overlapping built-in route prefix")
+            prefixes.add(prefix)
+        output = target / f"{app_id}.ykl"
+        info = zipfile.ZipInfo("manifest.json", date_time=(2026, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o100644 << 16
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr(info, json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        packages.append({"id": app_id, "sha256": hashlib.sha256(output.read_bytes()).hexdigest()})
+    (target / "catalog.json").write_text(json.dumps({"format": 1, "apps": packages}, indent=2) + "\n", encoding="utf-8")
+
+
 def refresh_bundled() -> None:
+    refresh_system_packages()
     assets = ROOT / "app-shell/src/main/assets/extensions"
     (assets / "sdk").mkdir(parents=True, exist_ok=True)
     for file in (ROOT / "sdk/web").iterdir():

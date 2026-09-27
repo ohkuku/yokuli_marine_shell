@@ -1,8 +1,9 @@
 package com.yokuli.anchorwatch.data.diagnostics
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.content.Context
 import android.net.Uri
-import android.os.SystemClock
 import androidx.room.withTransaction
 import com.google.gson.Gson
 import com.yokuli.anchorwatch.BuildConfig
@@ -51,7 +52,7 @@ class IncidentLogger @Inject constructor(private val dao: IncidentLogDao) {
     private var insertsSincePrune = 0
     val recent = dao.recent()
 
-    init { scope.launch { mutex.withLock { dao.deleteOlderThan(System.currentTimeMillis() - RETENTION_MILLIS);dao.trimToRows(MAX_ROWS) } } }
+    init { scope.launch { mutex.withLock { dao.deleteOlderThan(MarineTime.nowUtcMillis() - RETENTION_MILLIS);dao.trimToRows(MAX_ROWS) } } }
 
     fun record(
         category: String,
@@ -68,11 +69,11 @@ class IncidentLogger @Inject constructor(private val dao: IncidentLogDao) {
         sessionId: Long? = null,
         details: Map<String, Any?> = emptyMap(),
     ) = mutex.withLock {
-        val now = System.currentTimeMillis()
+        val now = MarineTime.nowUtcMillis()
         dao.insert(
             IncidentLogEntity(
                 timestamp = now,
-                elapsedRealtime = SystemClock.elapsedRealtime(),
+                elapsedRealtime = MarineTime.nowElapsedMillis(),
                 severity = severity.name,
                 category = token(category),
                 event = token(event),
@@ -203,7 +204,7 @@ class SupportBundleManager @Inject constructor(
 
     suspend fun export(uri: Uri): Result<Unit> = withContext(Dispatchers.IO) { runCatching {
         _state.value = SupportBundleState(running = true, message = "Building privacy-safe diagnostics…")
-        val now = System.currentTimeMillis()
+        val now = MarineTime.nowUtcMillis()
         val recent = incidents.since(now - IncidentLogger.RETENTION_MILLIS)
         val appSettings = settings.settings.first()
         val runtimeState = runtime.state.value

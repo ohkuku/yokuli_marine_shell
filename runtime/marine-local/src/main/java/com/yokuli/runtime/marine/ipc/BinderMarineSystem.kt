@@ -36,6 +36,14 @@ import kotlin.coroutines.resumeWithException
 class BinderMarineSystem private constructor(context: Context) : MarineSystem, AutoCloseable {
     private val client = CoreClient(context)
     override val connection = client.connection
+    override val hardwareLab = client.proxy<com.yokuli.runtime.contract.hardware.HardwareLabService>("hardwareLab")
+    private val clockMirror = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope ->
+        scope.launch { hardwareLab.state.collect { if (it.ready) {
+            com.yokuli.runtime.contract.time.MarineTime.applyRemote(it.clock)
+            if (com.yokuli.runtime.marine.notification.NotificationProcessRole.isNotificationProcess())
+                com.yokuli.runtime.contract.hardware.VirtualHostServices.configure(it.mode != com.yokuli.runtime.contract.hardware.HardwareMode.REAL, it.power, it.storage.fault)
+        } } }
+    }
     override val devices = client.proxy<DeviceRuntimeService>("devices")
     override val residency = client.proxy<RuntimeResidencyService>("residency")
     override val charts = client.proxy<ChartDataService>("charts")
@@ -48,7 +56,7 @@ class BinderMarineSystem private constructor(context: Context) : MarineSystem, A
     override val presentation = client.proxy<RuntimePresentationService>("presentation")
     override val readingHistory = client.proxy<ReadingHistoryService>("readingHistory")
     override val services = client.proxy<MarineServices>("services")
-    override fun close() = client.close()
+    override fun close() { clockMirror.cancel(); client.close() }
     companion object {
         @Volatile private var instance: BinderMarineSystem? = null
         fun shared(context: Context) = instance ?: synchronized(this) { instance ?: BinderMarineSystem(context.applicationContext).also { instance = it } }
@@ -316,6 +324,11 @@ private class CoreClient(private val context: Context) {
             val call = newCall(canonicalPort, canonicalMethod, args)
             val subscription = Subscription(call, type, { mutable.value = it }, { disconnect("MARINE_CORE_SNAPSHOT_FAILED:${it.message}") }, unavailable = { reason ->
                 // 断线后保留最后目录供展示，但必须等待重连的新 Core 快照才可恢复实时标记。
+                (mutable.value as? com.yokuli.runtime.contract.hardware.HardwareLabSnapshot)?.let {
+                    val clock = com.yokuli.runtime.contract.time.MarineTime.snapshot()
+                    if (clock.virtual) com.yokuli.runtime.contract.time.MarineTime.applyRemote(clock.copy(paused = true, revision = clock.revision + 1))
+                    mutable.value = it.copy(ready = false, error = reason)
+                }
                 (mutable.value as? DeviceCatalogSnapshot)?.let { mutable.value = it.copy(ready = false, error = reason) }
             })
             streams[call.id] = subscription

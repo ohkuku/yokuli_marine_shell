@@ -1,7 +1,7 @@
 package com.yokuli.anchorwatch.data.preferences
 import android.content.Context
 import androidx.datastore.preferences.core.*
-import androidx.datastore.preferences.preferencesDataStore
+import com.yokuli.anchorwatch.runtime.storage.faultAwarePreferencesDataStore
 import com.yokuli.anchorwatch.data.nmea.*
 import com.yokuli.anchorwatch.domain.model.DemoScenario
 import com.yokuli.anchorwatch.domain.model.GpsDataSource
@@ -9,7 +9,7 @@ import com.yokuli.anchorwatch.domain.model.AppLanguage
 import com.yokuli.anchorwatch.domain.model.AlarmSound
 import com.yokuli.anchorwatch.domain.sonar.DepthReference
 import kotlinx.coroutines.flow.*
-private val Context.store by preferencesDataStore("settings")
+private val Context.store by faultAwarePreferencesDataStore("settings")
 data class AppSettings(
     // Explicitly saved settings are post-onboarding. A genuinely fresh
     // DataStore has no key and maps to false in SettingsRepository.

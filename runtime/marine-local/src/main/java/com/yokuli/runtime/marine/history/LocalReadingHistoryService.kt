@@ -1,7 +1,8 @@
 package com.yokuli.runtime.marine.history
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.content.Context
-import android.os.SystemClock
 import com.yokuli.anchorwatch.api.*
 import com.yokuli.anchorwatch.domain.vessel.*
 import com.yokuli.anchorwatch.domain.vessel.source.MetricSourceEligibility
@@ -31,7 +32,7 @@ class LocalReadingHistoryService @Inject constructor(
     override val state=mutable.asStateFlow()
     private val traces=MutableStateFlow<Map<String,List<Reading>>>(emptyMap())
     private var previousReadings:Map<String,Reading> = emptyMap()
-    private var utcOffset=System.currentTimeMillis()-SystemClock.elapsedRealtime()
+    private var utcOffset=MarineTime.nowUtcMillis()-MarineTime.nowElapsedMillis()
     private var clockEpoch=0L
     private data class Projection(val vessel:VesselDataSnapshot,val draft:Double?)
     init {
@@ -39,7 +40,7 @@ class LocalReadingHistoryService @Inject constructor(
             fun restore():Boolean {
                 mutable.update {it.copy(storage=it.storage.copy(loading=true))}
                 return try {
-                    val restored=cache.read(SystemClock.elapsedRealtime())
+                    val restored=cache.read(MarineTime.nowElapsedMillis())
                     mergeRestored(restored.readings)
                     mutable.update {it.copy(storage=it.storage.copy(loading=false,readIssue=null,lastSavedUtcMillis=restored.savedAtUtc))}
                     true
@@ -55,7 +56,7 @@ class LocalReadingHistoryService @Inject constructor(
                 var persisted=loaded
                 if(loaded&&snapshot!==saved){
                     try {
-                        val utc=System.currentTimeMillis()
+                        val utc=MarineTime.nowUtcMillis()
                         cache.write(snapshot,utc);saved=snapshot
                         mutable.update {it.copy(storage=it.storage.copy(writeIssue=null,lastSavedUtcMillis=utc,pending=traces.value!==snapshot))}
                     }catch(cancelled:CancellationException){request?.cancel(cancelled);throw cancelled}
@@ -65,11 +66,17 @@ class LocalReadingHistoryService @Inject constructor(
             }
         }
         scope.launch {
-            // 指标投影2Hz足够记录真实500ms样本；高频姿态仍由原始VesselData流供场景插值。
-            combine(marine.state,navigation.state){snapshot,guide->
-                Projection(snapshot.vesselData.withNavigation(guide).copy(candidates=emptyMap(),conflicts=emptyMap(),generatedElapsedRealtime=0),snapshot.vesselSettings.draftMeters)
-            }.sample(500L).distinctUntilChanged().collect { projection->
-                adopt(projectReadings(projection.vessel,projection.draft))
+            // 采样节奏属于 Marine Core 时间；暂停不添样本，倍速仍保留真实测量时间。
+            var previous: Projection? = null
+            while (isActive) {
+                val snapshot = marine.state.value
+                val projection = Projection(snapshot.vesselData.withNavigation(navigation.state.value)
+                    .copy(candidates=emptyMap(), conflicts=emptyMap(), generatedElapsedRealtime=0), snapshot.vesselSettings.draftMeters)
+                if (projection != previous) {
+                    adopt(projectReadings(projection.vessel, projection.draft))
+                    previous = projection
+                }
+                MarineTime.sleep(500L)
             }
         }
     }
@@ -81,7 +88,7 @@ class LocalReadingHistoryService @Inject constructor(
     }
     override suspend fun slice(metric:String,afterElapsed:Long?):ReadingHistorySlice {
         require(metric.length<=128){"INVALID_METRIC"}
-        val now=SystemClock.elapsedRealtime()
+        val now=MarineTime.nowElapsedMillis()
         val readings=traces.value[metric].orEmpty().filter {it.elapsed in (now-ReadingHistoryCache.WINDOW_MILLIS).coerceAtLeast(0)..now && (afterElapsed==null||it.elapsed>=afterElapsed)}
         return ReadingHistorySlice(metric,historySession,mutable.value.revision,readings)
     }
@@ -91,7 +98,7 @@ class LocalReadingHistoryService @Inject constructor(
         return afterElapsed.map{(metric,after)->slice(metric,after).also{points+=it.readings.size;require(points<=4000){"HISTORY_BATCH_TOO_LARGE"}}}
     }
     @Synchronized private fun mergeRestored(restored:Map<String,List<Reading>>){
-        val now=SystemClock.elapsedRealtime()
+        val now=MarineTime.nowElapsedMillis()
         traces.update {current->
             (restored.keys+current.keys).take(ReadingHistoryCache.MAX_METRICS).associateWith {key->
                 (restored[key].orEmpty()+current[key].orEmpty()).filter {it.elapsed in (now-ReadingHistoryCache.WINDOW_MILLIS).coerceAtLeast(0)..now}
@@ -101,7 +108,7 @@ class LocalReadingHistoryService @Inject constructor(
         mutable.update {it.copy(revision=it.revision+1,metrics=traces.value.keys.toList())}
     }
     @Synchronized private fun adopt(readings:Map<String,Reading>){
-        val now=SystemClock.elapsedRealtime()
+        val now=MarineTime.nowElapsedMillis()
         val before=traces.value
         traces.update {previous->
             var changed:MutableMap<String,List<Reading>>?=null
@@ -113,7 +120,7 @@ class LocalReadingHistoryService @Inject constructor(
                     val boundary=last!=null&&(last.sourceKey!=value.sourceKey||last.continuityKey!=value.continuityKey||last.historySessionKey!=historySession)
                     if(last==null||value.elapsed-last.elapsed>=500L||(boundary&&value.elapsed>=last.elapsed&&!(value.elapsed==last.elapsed&&last.sourceKey==value.sourceKey&&last.continuityKey==value.continuityKey)))
                         values=(if(values.size>=1800)values.takeLast(1799)else values)+value.copy(historySessionKey=historySession,
-                            observedUtcMillis=value.observedUtcMillis?:System.currentTimeMillis()-(now-value.elapsed))
+                            observedUtcMillis=value.observedUtcMillis?:MarineTime.nowUtcMillis()-(now-value.elapsed))
                 }
                 if(values!==original){val target=changed?:previous.toMutableMap().also {changed=it};if(values.isEmpty())target.remove(key)else target[key]=values}
             }
@@ -123,14 +130,14 @@ class LocalReadingHistoryService @Inject constructor(
             storage=if(traces.value!==before)it.storage.copy(pending=true)else it.storage)}
     }
     private fun projectReadings(vessel:VesselDataSnapshot,draft:Double?):Map<String,Reading> {
-        val offset=System.currentTimeMillis()-SystemClock.elapsedRealtime()
+        val offset=MarineTime.nowUtcMillis()-MarineTime.nowElapsedMillis()
         if(abs(offset-utcOffset)>2_000L) { utcOffset=offset;clockEpoch++ }
         val readings = buildMap {
             fun add(key:String,value:VesselObservation<Double>,unit:String,metric:VesselMetricId) {
                 val number=value.value?.takeIf{it.isFinite()}?:return
                 val time=value.receivedElapsedRealtime?:return
                 val sourceKey=value.sourceIdentity?.id?:value.provenanceDetail?.toString()?:value.source.name
-                val basis="$sourceKey|${value.reference}|${value.provenanceDetail}" + if(key=="ukc")"|draft:$draft" else ""
+                val basis="$sourceKey|${value.reference}|${value.provenanceDetail}|time:${MarineTime.state.value.timeEpoch}" + if(key=="ukc")"|draft:$draft" else ""
                 val previous=previousReadings[key]?.takeIf {
                     it.elapsed==time&&it.sourceKey==sourceKey&&it.continuityKey.substringBeforeLast("|clock:")==basis
                 }

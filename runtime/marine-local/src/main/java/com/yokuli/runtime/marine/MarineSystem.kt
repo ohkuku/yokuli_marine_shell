@@ -19,6 +19,7 @@ import javax.inject.Singleton
 
 /** 系统组合接口：应用通过窄领域端口工作，不取得本地控制器。 */
 interface MarineSystem : RuntimeEndpoint {
+    val hardwareLab: com.yokuli.runtime.contract.hardware.HardwareLabService
     val devices: com.yokuli.runtime.contract.device.DeviceRuntimeService
     val residency: RuntimeResidencyService
     val presentation: RuntimePresentationService
@@ -36,6 +37,7 @@ interface MarineSystem : RuntimeEndpoint {
 /** 默认进程唯一 Core 组合根；Shell 进程只能取得 BinderMarineSystem。 */
 @Singleton
 class InProcessMarineSystem @Inject constructor(
+    override val hardwareLab: com.yokuli.runtime.marine.hardware.LocalHardwareLabService,
     override val devices: com.yokuli.runtime.marine.device.LocalDeviceRuntimeService,
     override val residency: LocalRuntimeResidencyService,
     override val presentation: LocalRuntimePresentationService,

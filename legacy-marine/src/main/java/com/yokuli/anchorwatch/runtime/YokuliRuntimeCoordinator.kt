@@ -1,5 +1,9 @@
 package com.yokuli.anchorwatch.runtime
 
+import com.yokuli.runtime.contract.time.MarineTime
+import com.yokuli.runtime.contract.hardware.MarineDeviceBus
+import com.yokuli.runtime.contract.device.DeviceBackend
+
 import android.Manifest
 import android.app.Notification
 import android.content.Context
@@ -276,7 +280,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   scope.launch{
    startupReady.await()
    while(isActive){
-    delay(1000)
+    MarineTime.sleep(1000)
     val now=monotonicClock.elapsedRealtime()
     anchorActor.submit{watchdog();val conditions=conditionRuntime.tick(now);refreshSessionFromDatabase();setConditionAlarmSources(conditions);refreshNotification()}
     proxyActor.submit{handleProxyResult(proxyRuntime.watchdog(now))}
@@ -299,7 +303,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   }
   scope.launch {
    combine(resources.state, navigation.connections, localNmeaServer.status) { resource, connections, _ -> resource to connections }
-    .collect { (resource, connections) -> residency.resources(resource.copy(needsSystemLocation=resource.needsSystemLocation&&foregroundLocationType&&systemLocation.status.value.phase==PhoneLocationPhase.LISTENING), connections.count{it.requested&&it.spec.receive}, connections.count{it.requested&&it.spec.send}, localNmeaServer.enabled || phonePositionOutput.enabled) }
+    .collect { (resource, connections) -> residency.resources(resource.copy(needsSystemLocation=resource.needsSystemLocation&&(foregroundLocationType||MarineDeviceBus.state.value.backend!=DeviceBackend.REAL)&&systemLocation.status.value.phase==PhoneLocationPhase.LISTENING), connections.count{it.requested&&it.spec.receive}, connections.count{it.requested&&it.spec.send}, localNmeaServer.enabled || phonePositionOutput.enabled) }
   }
  }
 
@@ -895,11 +899,11 @@ class YokuliRuntimeCoordinator @Inject constructor(
   // sync with background GNSS ownership; NotificationManager.notify alone
   // cannot promote an existing connected-device service to location use.
   val currentNotification=notification(text,safetyAlert,snoozed)
-  val needsLocationType=(resources.snapshot().needsSystemLocation||systemLocation.status.value.selectionPending)&&systemLocation.hasPermission()
+  val needsLocationType=MarineDeviceBus.state.value.backend==DeviceBackend.REAL&&(resources.snapshot().needsSystemLocation||systemLocation.status.value.selectionPending)&&systemLocation.hasPermission()
   if(needsLocationType!=foregroundLocationType)promoteForeground(currentNotification,needsLocationType)
   else notificationCoordinator.publishForeground(currentNotification)
   val resource=resources.snapshot();val connections=navigation.connections.value
-  residency.resources(resource.copy(needsSystemLocation=resource.needsSystemLocation&&foregroundLocationType&&systemLocation.status.value.phase==PhoneLocationPhase.LISTENING),connections.count{it.requested&&it.spec.receive},connections.count{it.requested&&it.spec.send},localNmeaServer.enabled||phonePositionOutput.enabled)
+  residency.resources(resource.copy(needsSystemLocation=resource.needsSystemLocation&&(foregroundLocationType||MarineDeviceBus.state.value.backend!=DeviceBackend.REAL)&&systemLocation.status.value.phase==PhoneLocationPhase.LISTENING),connections.count{it.requested&&it.spec.receive},connections.count{it.requested&&it.spec.send},localNmeaServer.enabled||phonePositionOutput.enabled)
  }
  private fun notification(text:String,alarm:Boolean,silent:Boolean=false):Notification=notificationCoordinator.foregroundNotification(text,alarm,silent,if(alarm)l("Anchor Watch alarm","Anchor Watch 锚警") else if(mockGps.status.value.state==MockGpsState.ACTIVE)l("NMEA GPS Proxy","NMEA GPS 代理") else l("Yokuli OS · running","Yokuli OS · 运行中"),l("SNOOZE ${alarmSnoozeMinutes} MIN","${alarmSnoozeMinutes} 分钟后提醒"))
  fun ensureCommandForeground():Boolean{
@@ -907,8 +911,9 @@ class YokuliRuntimeCoordinator @Inject constructor(
   return started&&promoteForeground(notification(l("Processing safety action…","正在处理安全操作…"),false),location=foregroundLocationType||resources.snapshot().needsSystemLocation&&systemLocation.hasPermission())
  }
  private fun promoteForeground(value:Notification,location:Boolean):Boolean{
-  val promoted=started&&host.startForeground(value,location)
-  if(promoted)foregroundLocationType=location
+  val actualLocation=location&&MarineDeviceBus.state.value.backend==DeviceBackend.REAL
+  val promoted=started&&host.startForeground(value,actualLocation)
+  if(promoted)foregroundLocationType=actualLocation
   return promoted
  }
  private fun notifySeparate(title:String,text:String,high:Boolean,context:RuntimeFeedbackContext=RuntimeFeedbackContext.GENERAL){
@@ -928,7 +933,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
  private fun reconcileAudio():com.yokuli.anchorwatch.runtime.notification.AlarmPlayback=if(audioArbiter.snapshot(wallClock.currentTimeMillis()).shouldSound)alarmAudio.start(selectedAlarmSound,customAlarmSoundUri)else{alarmAudio.stop();com.yokuli.anchorwatch.runtime.notification.AlarmPlayback(false,0)}
  private fun setConditionAlarmSources(value:ConditionRuntimeSnapshot){val active=conditionRuntime.audibleSources(wallClock.currentTimeMillis());audioArbiter.setActive(ConditionAlarmSource.DEPTH,ConditionAlarmSource.DEPTH in active);audioArbiter.setActive(ConditionAlarmSource.WIND_SPEED,ConditionAlarmSource.WIND_SPEED in active);audioArbiter.setActive(ConditionAlarmSource.WIND_SHIFT,ConditionAlarmSource.WIND_SHIFT in active);reconcileAudio()}
  private fun clearConditionSources(){audioArbiter.clear(ConditionAlarmSource.DEPTH);audioArbiter.clear(ConditionAlarmSource.WIND_SPEED);audioArbiter.clear(ConditionAlarmSource.WIND_SHIFT);reconcileAudio()}
- private fun enableSystemGps():Boolean{if(ContextCompat.checkSelfPermission(context,Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED)return false;return promoteForeground(notification("System GPS anchor monitoring…",false),location=true)}
+ private fun enableSystemGps():Boolean{if(MarineDeviceBus.state.value.backend!=DeviceBackend.REAL)return promoteForeground(notification("Virtual GNSS monitoring",false),location=false);if(ContextCompat.checkSelfPermission(context,Manifest.permission.ACCESS_FINE_LOCATION)!=PackageManager.PERMISSION_GRANTED)return false;return promoteForeground(notification("System GPS anchor monitoring…",false),location=true)}
  private fun ensureLocationForeground(message:String)=promoteForeground(notification(message,false),location=true)
  private suspend fun handleProxyResult(result:ProxyRuntimeResult?){
  result?:return

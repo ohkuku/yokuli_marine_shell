@@ -1,8 +1,10 @@
 package com.yokuli.runtime.marine.navigation
 
+import com.yokuli.runtime.contract.hardware.VirtualHostServices
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.content.Context
 import android.content.Intent
-import android.os.SystemClock
 import android.util.AtomicFile
 import androidx.core.content.ContextCompat
 import com.google.gson.Gson
@@ -71,7 +73,7 @@ class LocalNavigationSessionService @Inject constructor(
                 val advance = guard.withLock {
                     publish()
                     val command = automaticAdvance()
-                    val now = SystemClock.elapsedRealtime()
+                    val now = MarineTime.nowElapsedMillis()
                     if (!readBlocked && saved.session?.phase == NavigationPhase.ACTIVE && now - lastCheckpoint >= 30_000) {
                         lastCheckpoint = now
                         try { persist(saved.copy(session = saved.session?.copy(lastGuidance = _state.value.guidance))) }
@@ -81,7 +83,7 @@ class LocalNavigationSessionService @Inject constructor(
                     command
                 }
                 if (advance != null) execute(advance)
-                delay(250)
+                MarineTime.sleep(250)
             }
         }
         scope.launch {
@@ -113,7 +115,7 @@ class LocalNavigationSessionService @Inject constructor(
                     val valid = route?.takeIf(::validRoute)
                     val session = if (saved.session == null && valid != null) NavigationSession(
                         "legacy-${valid.id}", 1, NavigationSource.LOCAL, valid, targetIndex.takeIf{it in valid.targetIndices}?:valid.targetIndices.first(),
-                        NavigationPhase.RECOVERY_REQUIRED, startedAtUtcMillis = System.currentTimeMillis(), updatedAtUtcMillis = System.currentTimeMillis()) else saved.session
+                        NavigationPhase.RECOVERY_REQUIRED, startedAtUtcMillis = MarineTime.nowUtcMillis(), updatedAtUtcMillis = MarineTime.nowUtcMillis()) else saved.session
                     persist(saved.copy(session = session, legacyImported = true))
                     publish()
                 }
@@ -132,6 +134,7 @@ class LocalNavigationSessionService @Inject constructor(
         try {
             recovery.ensureRecovered()
             val restored = withContext(Dispatchers.IO) {
+                VirtualHostServices.beforeRead()
                 if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) Document()
                 else gson.fromJson(file.openRead().bufferedReader().use { it.readText() }, Document::class.java)
                     ?: error("NAVIGATION_DOCUMENT_EMPTY")
@@ -167,10 +170,11 @@ class LocalNavigationSessionService @Inject constructor(
     private suspend fun persist(document: Document) {
         try {
             withContext(NonCancellable + Dispatchers.IO) {
+                VirtualHostServices.beforeWrite()
                 file.baseFile.parentFile?.let { check(it.isDirectory || it.mkdirs()) { "NAVIGATION_DIRECTORY_UNAVAILABLE" } }
                 val bytes = gson.toJson(document).toByteArray(Charsets.UTF_8)
                 val output = file.startWrite()
-                try { output.write(bytes); output.fd.sync(); file.finishWrite(output) }
+                try { output.write(bytes); output.fd.sync(); VirtualHostServices.beforeWrite(); file.finishWrite(output) }
                 catch (error: Throwable) { file.failWrite(output); throw error }
                 // AtomicFile会记录而不抛出部分同步/重命名错误；确认最终文件后才发布成功回执。
                 check(file.openRead().use { it.readBytes() }.contentEquals(bytes)) { "NAVIGATION_WRITE_NOT_CONFIRMED" }
@@ -197,9 +201,9 @@ class LocalNavigationSessionService @Inject constructor(
         }
         val settings = command.settings ?: if(command.action==NavigationAction.START)NavigationSettings(plannedSpeedMetersPerSecond=marine.state.value.vesselSettings.plannedSpeedMetersPerSecond)else current?.settings ?: NavigationSettings()
         if (!validSettings(settings)) return rememberReceipt(result(NavigationResult.REJECTED, "INVALID_NAVIGATION_SETTINGS"), saved)
-        val nowUtc = System.currentTimeMillis()
+        val nowUtc = MarineTime.nowUtcMillis()
         val fix = fix()
-        val livePosition = fix?.takeIf { it.positionAccepted && it.point.valid && SystemClock.elapsedRealtime() - it.elapsedMillis in 0..10_000 }
+        val livePosition = fix?.takeIf { it.positionAccepted && it.point.valid && MarineTime.nowElapsedMillis() - it.elapsedMillis in 0..10_000 }
         var candidate: NavigationSession? = current
         var rejection: String? = null
         when (command.action) {
@@ -249,10 +253,10 @@ class LocalNavigationSessionService @Inject constructor(
         if (rejection != null) return rememberReceipt(result(NavigationResult.REJECTED, rejection), saved)
         val receipt = result(NavigationResult.SAVED, session = candidate)
         return try {
-            val next = candidate?.let { it.copy(lastGuidance = if (it.source == NavigationSource.LOCAL) NavigationGeometry.guidance(it, fix, SystemClock.elapsedRealtime(), nowUtc) else externalGuidance(it, SystemClock.elapsedRealtime())) }
+            val next = candidate?.let { it.copy(lastGuidance = if (it.source == NavigationSource.LOCAL) NavigationGeometry.guidance(it, fix, MarineTime.nowElapsedMillis(), nowUtc) else externalGuidance(it, MarineTime.nowElapsedMillis())) }
             persist(saved.copy(session = next, receipts = (saved.receipts + receipt).takeLast(32), legacyImported = true))
             auto = null
-            if (command.action in setOf(NavigationAction.ADVANCE, NavigationAction.SELECT_TARGET)) lastAdvanceElapsed = SystemClock.elapsedRealtime()
+            if (command.action in setOf(NavigationAction.ADVANCE, NavigationAction.SELECT_TARGET)) lastAdvanceElapsed = MarineTime.nowElapsedMillis()
             publish()
             reconcileForeground()
             receipt
@@ -360,7 +364,7 @@ class LocalNavigationSessionService @Inject constructor(
         val course=own?.courseTrueDegrees?.takeIf {own.courseElapsedMillis?.let {time->now-time in 0..5_000}==true}
         val progress=if(speed!=null&&course!=null&&bearing!=null)speed*cos(Math.toRadians(course-bearing))else null
         val etaSpeed=when(session.settings.etaBasis){NavigationEtaBasis.PLAN_SPEED->session.settings.plannedSpeedMetersPerSecond;NavigationEtaBasis.CURRENT_PROGRESS->progress;NavigationEtaBasis.NONE->null}?.takeIf {it>=.25}
-        val eta=if(distance!=null&&etaSpeed!=null)(distance/etaSpeed).takeIf {it in 0.0..2_592_000.0}?.let {System.currentTimeMillis()-(now-(range?.receivedElapsedRealtime?:now))+(it*1000).roundToLong()}else null
+        val eta=if(distance!=null&&etaSpeed!=null)(distance/etaSpeed).takeIf {it in 0.0..2_592_000.0}?.let {MarineTime.nowUtcMillis()-(now-(range?.receivedElapsedRealtime?:now))+(it*1000).roundToLong()}else null
         val running = session.phase == NavigationPhase.ACTIVE
         val live = running && distance != null && bearing != null && range?.let {now-it.receivedElapsedRealtime in 0..15_000}==true
         val observation = listOfNotNull(range?.receivedElapsedRealtime, direction?.receivedElapsedRealtime).minOrNull()
@@ -376,7 +380,7 @@ class LocalNavigationSessionService @Inject constructor(
     }
 
     private fun publish() {
-        val now = SystemClock.elapsedRealtime()
+        val now = MarineTime.nowElapsedMillis()
         val sources = externalCandidates().groupBy { sourceKey(it.source) }.map { (key, values) ->
             NavigationExternalSource(key, values.first().source.displayName,
                 values.any { now - it.receivedElapsedRealtime in 0..15_000 && it.validity == CandidateValidity.ELIGIBLE })
@@ -389,7 +393,7 @@ class LocalNavigationSessionService @Inject constructor(
                 val key=GuidanceKey(it.id,it.revision,it.geometryIndex,input,input?.let {v->v.positionAccepted&&now-v.elapsedMillis in 0..10_000}==true,
                     input?.speedElapsedMillis?.let {now-it in 0..5_000}==true,input?.courseElapsedMillis?.let {now-it in 0..5_000}==true)
                 if(key!=guidanceKey){
-                    val fresh=NavigationGeometry.guidance(it,input,now,System.currentTimeMillis())
+                    val fresh=NavigationGeometry.guidance(it,input,now,MarineTime.nowUtcMillis())
                     val previous=cachedGuidance?.takeIf {g->g.sessionId==it.id&&g.sessionRevision==it.revision} ?: it.lastGuidance
                     cachedGuidance=if(!fresh.live&&previous!=null&&previous.targetId==fresh.targetId)fresh.copy(
                         distanceMeters=previous.distanceMeters,remainingMeters=previous.remainingMeters,
@@ -411,7 +415,7 @@ class LocalNavigationSessionService @Inject constructor(
         if (session.phase != NavigationPhase.ACTIVE || session.source != NavigationSource.LOCAL || session.settings.advanceMode != WaypointAdvanceMode.AUTOMATIC) { auto = null; return null }
         val guidance = _state.value.guidance ?: return null
         val fix = fix() ?: return null
-        val now = SystemClock.elapsedRealtime()
+        val now = MarineTime.nowElapsedMillis()
         if (!guidance.live || now - fix.elapsedMillis !in 0..5_000 || fix.accuracyMeters?.let { it.isFinite() && it <= min(session.settings.maximumPositionErrorMeters, session.settings.arrivalRadiusMeters / 2) } != true) { auto = null; return null }
         val key = "${session.id}:${session.revision}:${session.targetIndex}"
         val old = auto?.takeIf { it.key == key && it.source == fix.sourceId }

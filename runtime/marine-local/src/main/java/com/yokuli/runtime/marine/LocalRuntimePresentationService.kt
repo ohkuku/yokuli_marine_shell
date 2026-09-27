@@ -1,5 +1,6 @@
 package com.yokuli.runtime.marine
 
+import com.yokuli.runtime.contract.hardware.VirtualHostServices
 import android.content.Context
 import android.util.AtomicFile
 import com.google.gson.Gson
@@ -28,6 +29,7 @@ class LocalRuntimePresentationService @Inject constructor(
     private val mutex = Mutex()
     init {
         val restored = runCatching {
+            VirtualHostServices.beforeRead()
             file.openRead().bufferedReader().use { gson.fromJson(it, RuntimeUnitPreferences::class.java) }
         }.getOrNull() ?: RuntimeUnitPreferences()
         install(restored)
@@ -36,11 +38,13 @@ class LocalRuntimePresentationService @Inject constructor(
         mutex.withLock {
             // 先验证并构造同一套格式化器；未知枚举不能写入投影。
             val formats = formats(preferences)
+            VirtualHostServices.beforeWrite()
             val stream = file.startWrite()
             try {
                 val bytes = gson.toJson(preferences).toByteArray(Charsets.UTF_8)
                 stream.write(bytes)
                 stream.fd.sync()
+                VirtualHostServices.beforeWrite()
                 file.finishWrite(stream)
                 check(file.openRead().use { it.readBytes() }.contentEquals(bytes)) { "UNIT_PROJECTION_WRITE_NOT_CONFIRMED" }
             } catch (error: Exception) { file.failWrite(stream); throw error }

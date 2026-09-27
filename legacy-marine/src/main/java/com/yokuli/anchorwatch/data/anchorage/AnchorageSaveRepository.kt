@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.anchorage
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import androidx.room.withTransaction
 import com.yokuli.anchorwatch.data.database.AnchorSessionEntity
 import com.yokuli.anchorwatch.data.database.AppDatabase
@@ -53,7 +55,7 @@ object AnchorageSaveDraftFactory {
 
     suspend fun save(request:AnchorageSaveRequest):AnchorageSaveResult=database.withTransaction{
         validate(request)
-        val now=System.currentTimeMillis();val draft=request.draft
+        val now=MarineTime.nowUtcMillis();val draft=request.draft
         val existingPlace=request.place.existingPlaceId?.let{requireNotNull(database.anchoragePlaceDao().get(it)){"Selected Place no longer exists"}}
         val verification=if(draft.sessionId!=null)AnchorageVerificationStatus.VERIFIED_BY_SESSION else AnchorageVerificationStatus.PLANNED
         val placeId=existingPlace?.id?:placeRepository.save(AnchoragePlaceEntity(primaryRegionId=request.place.primaryRegionId,displayName=request.place.displayName.trim(),placeType=request.place.placeType.name,geometryType="POINT",centerLatitude=draft.proposedLatitude,centerLongitude=draft.proposedLongitude,bboxMinLatitude=draft.proposedLatitude,bboxMaxLatitude=draft.proposedLatitude,bboxMinLongitude=draft.proposedLongitude,bboxMaxLongitude=draft.proposedLongitude,description=request.place.description.trim(),personalNotes=request.place.personalNotes.trim(),verificationStatus=verification.name,planningStatus=request.place.planningStatus.name,favorite=request.place.favorite,createdAt=now,updatedAt=now))

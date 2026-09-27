@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.nmea
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.domain.model.NavigationFix
 import com.yokuli.anchorwatch.domain.sonar.DepthObservation
 import com.yokuli.anchorwatch.domain.sonar.DepthReference
@@ -157,12 +159,12 @@ class NmeaUpdateRetainer {
 }
 
 class Nmea0183Parser {
- fun parseEnvelope(line:String,requireChecksum:Boolean=true,elapsed:Long=System.nanoTime()/1_000_000):ParsedNmeaEnvelope?{
+ fun parseEnvelope(line:String,requireChecksum:Boolean=true,elapsed:Long=MarineTime.nowElapsedMillis()):ParsedNmeaEnvelope?{
   val update=parse(line,requireChecksum,elapsed)?:return null
   val full=update.sentenceId.uppercase();val type=update.type.uppercase();val talker=full.removeSuffix(type).takeIf{it.isNotBlank()}
   return ParsedNmeaEnvelope(line.trim(),talker.orEmpty(),type,full.ifBlank{type},elapsed,update)
  }
- fun parse(line:String,requireChecksum:Boolean=true,elapsed:Long=System.nanoTime()/1_000_000):NmeaUpdate? {
+ fun parse(line:String,requireChecksum:Boolean=true,elapsed:Long=MarineTime.nowElapsedMillis()):NmeaUpdate? {
   if(!NmeaChecksum.validate(line,requireChecksum)) return null
   val body=line.substring(1).substringBefore('*'); val f=body.split(','); if(f[0].length<3)return null
   val type=f[0].takeLast(3)

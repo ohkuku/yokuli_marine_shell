@@ -1,5 +1,7 @@
 package com.yokuli.runtime.marine.navigation
 
+import com.yokuli.runtime.contract.hardware.MarineDeviceBus
+import com.yokuli.runtime.contract.device.DeviceBackend
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -49,7 +51,8 @@ class NavigationTrackingService : Service() {
             .setContentTitle(session?.route?.name ?: if (chinese) "外部设备导航" else "External navigation")
             .setContentText(if (chinese) "导航正在运行 · 点按打开 Yokuli" else "Navigation is running · open Yokuli")
             .setContentIntent(launch).setOngoing(true).setOnlyAlertOnce(true).setCategory(NotificationCompat.CATEGORY_NAVIGATION).build()
-        var location = navigation.needsPhoneLocation()
+        val virtual=MarineDeviceBus.state.value.backend!=DeviceBackend.REAL
+        var location = navigation.needsPhoneLocation()&&!virtual
         fun promote() = ServiceCompat.startForeground(this, ID, notification,
             if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
                 (if (location) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0) else 0)
@@ -60,8 +63,8 @@ class NavigationTrackingService : Service() {
             navigation.foreground(false, failure, false)
             stopSelf(); return false
         }
-        failure = if (navigation.needsPhoneLocation() && !location) "BACKGROUND_LOCATION_NOT_ALLOWED" else null
-        navigation.foreground(true, failure, location)
+        failure = if (navigation.needsPhoneLocation() && !location && !virtual) "BACKGROUND_LOCATION_NOT_ALLOWED" else null
+        navigation.foreground(true, failure, location||virtual&&navigation.needsPhoneLocation())
         return true
     }
     override fun onDestroy() {

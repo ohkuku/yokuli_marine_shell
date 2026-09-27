@@ -1,11 +1,15 @@
 package com.yokuli.runtime.marine.ais
 
+import com.yokuli.runtime.contract.hardware.VirtualHostServices
+import com.yokuli.runtime.contract.time.MarineTime
+import com.yokuli.runtime.contract.hardware.MarineDeviceBus
+import com.yokuli.runtime.contract.device.DeviceBackend
+
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.SystemClock
 import android.util.AtomicFile
 import androidx.core.content.ContextCompat
 import com.google.gson.Gson
@@ -144,13 +148,13 @@ class LocalAisTrafficService @Inject constructor(
         scope.launch {
             ready.await()
             while (isActive) {
-                delay(1_000)
+                MarineTime.sleep(1_000)
                 guard.withLock {
                     refresh()
-                    val now = SystemClock.elapsedRealtime()
+                    val now = MarineTime.nowElapsedMillis()
                     if (now - lastCacheWrite >= 60_000) {
                         lastCacheWrite = now
-                        val cache = engine.exportCache().take(512).map { it.copy(savedAtUtcMillis=System.currentTimeMillis()) }
+                        val cache = engine.exportCache().take(512).map { it.copy(savedAtUtcMillis=MarineTime.nowUtcMillis()) }
                         withContext(Dispatchers.IO) {
                             runCatching { write(cacheFile, gson.toJson(cache), MAX_CACHE_BYTES) }
                                 .onFailure { persistenceError = "Last observed AIS cache could not be saved" }
@@ -199,7 +203,7 @@ class LocalAisTrafficService @Inject constructor(
                     is AisCommand.Snooze -> {
                         require(snapshot.value.events.any { it.id == command.eventId && it.active }) { "This traffic event is no longer active" }
                         require(command.durationMillis in 30_000..3_600_000) { "Reminder duration must be between 30 seconds and one hour" }
-                        next = saved.copy(snoozes = (saved.snoozes + (command.eventId to (System.currentTimeMillis() + command.durationMillis))).entries.toList().takeLast(256).associate { it.key to it.value })
+                        next = saved.copy(snoozes = (saved.snoozes + (command.eventId to (MarineTime.nowUtcMillis() + command.durationMillis))).entries.toList().takeLast(256).associate { it.key to it.value })
                     }
                     is AisCommand.RetainTarget -> {
                         require(command.mmsi in 1..999999999) { "Invalid MMSI" }
@@ -218,7 +222,7 @@ class LocalAisTrafficService @Inject constructor(
                 // input ownership, layer display and the other alarm service.
                 when (command) {
                     is AisCommand.Acknowledge -> engine.acknowledge(command.eventId)
-                    is AisCommand.Snooze -> engine.snooze(command.eventId, SystemClock.elapsedRealtime() + command.durationMillis)
+                    is AisCommand.Snooze -> engine.snooze(command.eventId, MarineTime.nowElapsedMillis() + command.durationMillis)
                     else -> Unit
                 }
                 reconcileService(retry = command is AisCommand.UpdatePreferences)
@@ -254,7 +258,7 @@ class LocalAisTrafficService @Inject constructor(
     internal fun monitoringRequested(): Boolean = saved.preferences.monitoringEnabled
 
     internal fun wantsLocation(): Boolean = marine.state.value.settings.gpsDataSource == GpsDataSource.SYSTEM &&
-        ContextCompat.checkSelfPermission(context,Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
+        (MarineDeviceBus.state.value.backend!=DeviceBackend.REAL||ContextCompat.checkSelfPermission(context,Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED)
 
     private fun reconcileService(retry: Boolean) {
         if (!residency.state.value.recoveryReady) return
@@ -267,7 +271,7 @@ class LocalAisTrafficService @Inject constructor(
         }
         if (foregroundActive && (!retry || foregroundLocation==wantsLocation()) || serviceRequested && !retry) return
         serviceRequested = true
-        lastServiceAttempt=SystemClock.elapsedRealtime()
+        lastServiceAttempt=MarineTime.hostElapsedMillis()
         requestedLocationType = wantsLocation()
         foregroundError = null
         runCatching { ContextCompat.startForegroundService(context, Intent(context, AisMonitoringService::class.java)) }
@@ -281,7 +285,7 @@ class LocalAisTrafficService @Inject constructor(
             // terminate aging forever or let one decoder stop other services.
             val old=_snapshot.value
             val message="AIS processing is interrupted: ${error.javaClass.simpleName}"
-            _snapshot.value=old.copy(generatedElapsed=SystemClock.elapsedRealtime(),
+            _snapshot.value=old.copy(generatedElapsed=MarineTime.nowElapsedMillis(),
                 targets=old.targets.map { target -> target.copy(state=AisTargetState.LOST,
                     relative=AisRelativeMetrics(AisCpaState.STALE,reason="traffic_runtime_interrupted")) },
                 events=old.events.map { event -> if(event.active)event.copy(reason="risk_cannot_be_reconfirmed") else event },
@@ -291,14 +295,14 @@ class LocalAisTrafficService @Inject constructor(
     }
 
     private fun refreshSnapshot() {
-        val now = SystemClock.elapsedRealtime()
+        val now = MarineTime.nowElapsedMillis()
         val state = marine.state.value
         val preferences = saved.preferences
-        if(preferences.monitoringEnabled && !foregroundActive && now-lastServiceAttempt>=15_000 && applicationVisible())reconcileService(retry=true)
+        if(preferences.monitoringEnabled && !foregroundActive && MarineTime.hostElapsedMillis()-lastServiceAttempt>=15_000 && applicationVisible())reconcileService(retry=true)
         val wantsLocation=wantsLocation()
-        val returningToApp=foregroundActive && wantsLocation && !foregroundLocation && now-lastLocationTypeAttempt>=5_000 && applicationVisible()
+        val returningToApp=foregroundActive && wantsLocation && !foregroundLocation && MarineTime.hostElapsedMillis()-lastLocationTypeAttempt>=5_000 && applicationVisible()
         if(foregroundActive && (requestedLocationType != wantsLocation || returningToApp)) {
-            lastLocationTypeAttempt=now
+            lastLocationTypeAttempt=MarineTime.hostElapsedMillis()
             requestedLocationType=wantsLocation()
             runCatching { ContextCompat.startForegroundService(context,Intent(context,AisMonitoringService::class.java)) }
                 .onFailure { foregroundError="Android could not update AIS background location capability" }
@@ -320,7 +324,7 @@ class LocalAisTrafficService @Inject constructor(
         // cached dynamic data is never promoted to a live event by restore.
         saved.acknowledgements.forEach(engine::acknowledge)
         saved.snoozes.forEach { (id, until) ->
-            val remaining = (until - System.currentTimeMillis()).coerceIn(0, 3_600_000)
+            val remaining = (until - MarineTime.nowUtcMillis()).coerceIn(0, 3_600_000)
             if (remaining > 0) engine.snooze(id, now + remaining)
         }
         val notificationAllowed = notifications.aisNotificationAllowed(preferences.soundEnabled)
@@ -350,7 +354,7 @@ class LocalAisTrafficService @Inject constructor(
         }
         val effectiveEvents = traffic.events.map { event -> event.copy(
             acknowledged = event.acknowledged || event.id in saved.acknowledgements,
-            snoozedUntilElapsed = maxOf(event.snoozedUntilElapsed, saved.snoozes[event.id]?.let { now + (it-System.currentTimeMillis()).coerceIn(0,3_600_000) } ?: 0L),
+            snoozedUntilElapsed = maxOf(event.snoozedUntilElapsed, saved.snoozes[event.id]?.let { now + (it-MarineTime.nowUtcMillis()).coerceIn(0,3_600_000) } ?: 0L),
         ) }
         publishRiskNotices(traffic.copy(events = effectiveEvents), now, notificationAllowed)
         _snapshot.value = traffic.copy(
@@ -393,7 +397,7 @@ class LocalAisTrafficService @Inject constructor(
             }
             val titleZh = "AIS · $name"
             val titleEn = "AIS · $name"
-            val notice = AisNotice("${event.id}:$now",event.id,event.mmsi,event.level,titleZh,titleEn,zh,en,System.currentTimeMillis())
+            val notice = AisNotice("${event.id}:$now",event.id,event.mmsi,event.level,titleZh,titleEn,zh,en,MarineTime.nowUtcMillis())
             noticeLog.addLast(notice)
             while (noticeLog.size > 80) noticeLog.removeFirst()
             if (canNotify) runCatching {
@@ -439,6 +443,7 @@ class LocalAisTrafficService @Inject constructor(
     }.getOrDefault(false)
 
     private fun read(file: AtomicFile, limit: Int): String? {
+        VirtualHostServices.beforeRead()
         if (!file.baseFile.exists() && !File(file.baseFile.path+".bak").exists()) return null
         return runCatching {
             file.openRead().use { stream ->
@@ -457,18 +462,19 @@ class LocalAisTrafficService @Inject constructor(
     }
 
     private fun write(file: AtomicFile, json: String, limit: Int) {
+        VirtualHostServices.beforeWrite()
         val bytes=json.toByteArray(Charsets.UTF_8)
         require(bytes.size<=limit) { "AIS saved data exceeds its size limit" }
         check(file.baseFile.parentFile?.let { it.isDirectory || it.mkdirs() }==true) { "AIS storage directory could not be created" }
         val stream=file.startWrite()
-        try { stream.write(bytes);file.finishWrite(stream) } catch(error:Exception) { file.failWrite(stream);throw error }
+        try { stream.write(bytes);stream.fd.sync();VirtualHostServices.beforeWrite();file.finishWrite(stream) } catch(error:Exception) { file.failWrite(stream);throw error }
     }
 
     internal fun chinese()=marine.state.value.settings.appLanguage in setOf(AppLanguage.SIMPLIFIED_CHINESE,AppLanguage.TRADITIONAL_CHINESE)
     private fun applicationVisible()=runCatching {
         ActivityManager.RunningAppProcessInfo().also { ActivityManager.getMyMemoryState(it) }.importance==ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
     }.getOrDefault(false)
-    private fun recordDroppedFrame() { droppedFrames.incrementAndGet();lastDroppedFrameElapsed.set(SystemClock.elapsedRealtime()) }
+    private fun recordDroppedFrame() { droppedFrames.incrementAndGet();lastDroppedFrameElapsed.set(MarineTime.nowElapsedMillis()) }
     private fun validPoint(point:AisPoint)=point.latitude.isFinite()&&point.longitude.isFinite()&&point.latitude in -90.0..90.0&&point.longitude in -180.0..180.0
     private fun <T> Set<T>.takeLastSet(count:Int)=toList().takeLast(count).toSet()
     private data class SavedSettings(

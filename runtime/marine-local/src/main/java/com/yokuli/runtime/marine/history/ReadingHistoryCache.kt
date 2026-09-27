@@ -1,5 +1,6 @@
 package com.yokuli.runtime.marine.history
 
+import com.yokuli.runtime.contract.hardware.VirtualHostServices
 import com.yokuli.anchorwatch.api.Reading
 
 import android.content.Context
@@ -17,6 +18,7 @@ internal class ReadingHistoryCache(context:Context) {
     data class Loaded(val readings:Map<String,List<Reading>>,val savedAtUtc:Long?)
 
     fun read(now:Long):Loaded {
+        VirtualHostServices.beforeRead()
         if(!file.baseFile.exists()&&!File(file.baseFile.path+".bak").exists())return Loaded(emptyMap(),null)
         file.openRead().use {raw->
             require(raw.channel.size()<=MAX_BYTES) {"History cache exceeds its size limit"}
@@ -54,6 +56,7 @@ internal class ReadingHistoryCache(context:Context) {
     }
 
     fun write(snapshot:Map<String,List<Reading>>,savedAt:Long) {
+        VirtualHostServices.beforeWrite()
         require(snapshot.size<=MAX_METRICS)
         val dictionary=linkedMapOf<String,Int>()
         fun declare(value:String) {if(value !in dictionary) {require(dictionary.size<MAX_STRINGS&&value.length<=16_384);dictionary[value]=dictionary.size}}
@@ -85,6 +88,7 @@ internal class ReadingHistoryCache(context:Context) {
                 }
             }
             output.flush()
+            VirtualHostServices.beforeWrite()
             stream.fd.sync()
             file.finishWrite(stream)
             // AtomicFile 的部分失败只记录日志；退出回执必须证明正式文件确实是刚写出的完整内容。

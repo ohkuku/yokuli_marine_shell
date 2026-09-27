@@ -91,6 +91,16 @@
   }
   function errorMessage(error) {
     const messages = {
+      END_ACTIVE_ANCHOR_VOYAGE_AND_NAVIGATION_FIRST:['请先结束守锚、航行记录和导航，再切换环境。','Finish anchor watch, voyage recording and navigation before switching.'],
+      STOP_RECORDING_BEFORE_SWITCH:['请先完成正在进行的系统录像。','Finish the current system recording first.'],
+      STOP_RECORDING_BEFORE_STORAGE_RECOVERY:['请先完成系统录像，再恢复存储。','Finish system recording before recovering storage.'],
+      CORE_RECOVERY_PENDING:['系统正在恢复资料，请稍后再操作。','The system is recovering data. Please wait.'],
+      SIMULATION_REQUIRED:['这项操作只适用于模拟环境。','This operation is available in simulation only.'],
+      VIRTUAL_ENVIRONMENT_REQUIRED:['请先进入模拟或回放环境。','Enter simulation or replay first.'],
+      REPLAY_FINISHED:['录像已播放完毕，请从录像列表重新开始。','Replay has finished. Start it again from Recordings.'],
+      RECORDING_HAS_NO_INPUT:['这份录像还没有可回放的设备输入。','This recording has no device input to replay.'],
+      RESTARTING:['正在切换运行环境，系统会自动重新连接。','Switching environments. The system will reconnect.'],
+      PACKAGE_UNAVAILABLE:['暂时无法打开应用包，请在应用中心查看。','This package is unavailable. Check App Center.'],
       SDK_VERSION_REQUIRED:['需要更新此应用使用的 SDK 版本。','This app needs a newer SDK declaration.'],
       VOYAGE_ALREADY_ACTIVE:['已有航行记录，已为你保留，请查看当前记录。','A voyage is already active. Review the current recording.'],
       SESSION_CHANGED:['当前航行已改变，请查看后重新选择操作。','The active voyage changed. Review it before acting.'],
@@ -151,6 +161,88 @@
     card.append(detail); return card;
   }
   function status(message, isError) { return node('p', isError ? 'yk-status yk-error' : 'yk-status', message); }
+  function page(title, subtitle) {
+    const result = node('main', 'yk-page'), header = node('header', 'yk-header');
+    header.append(node('h1', '', title));
+    if (subtitle) header.append(node('p', 'yk-subtitle', subtitle));
+    result.append(header); return result;
+  }
+  function section(title, subtitle) {
+    const result = node('section', 'yk-section');
+    result.append(node('h2', 'yk-section-title', title));
+    if (subtitle) result.append(node('p', 'yk-subtitle', subtitle));
+    return result;
+  }
+  function field(label, value, onChange, options) {
+    const result = node('label', 'yk-field');
+    result.append(node('span', 'yk-label', label));
+    const input = node(options && options.multiline ? 'textarea' : 'input');
+    input.value = value == null ? '' : String(value);
+    if (options && options.numeric) input.inputMode = 'decimal';
+    if (options && options.maxLength) input.maxLength = options.maxLength;
+    input.disabled = !!(options && options.disabled);
+    input.addEventListener('input', () => onChange(input.value));
+    result.append(input); result.control = input; return result;
+  }
+  function toggle(label, checked, onChange, options) {
+    const result = node('label', 'yk-toggle'), input = node('input');
+    input.type = 'checkbox'; input.role = 'switch'; input.checked = !!checked;
+    input.disabled = !!(options && options.disabled);
+    result.append(node('span', '', label), input);
+    input.addEventListener('change', async () => {
+      const previous = !input.checked; input.disabled = true;
+      try { await onChange(input.checked); }
+      catch (error) { input.checked = previous; result.dispatchEvent(new CustomEvent('yokulierror',{bubbles:true,detail:error})); }
+      finally { input.disabled = !!(options && options.disabled); }
+    });
+    result.control = input; return result;
+  }
+  let controlId = 0;
+  function choiceGroup(label, items, selected, onChange) {
+    const result = node('fieldset', 'yk-choices'); result.append(node('legend','yk-label',label));
+    const name = 'yk-choice-' + (++controlId); let current = selected, busy = false;
+    const inputs = [];
+    items.forEach(item => {
+      const row = node('label','yk-choice'), input = node('input');
+      input.type = 'radio'; input.name = name; input.value = String(item.value); input.checked = item.value === selected; input.disabled = !!item.disabled;
+      row.append(input,node('span','',item.label)); result.append(row); inputs.push({input,item});
+      input.addEventListener('change', async () => {
+        if (busy || !input.checked) return; busy = true;
+        inputs.forEach(value => { value.input.disabled = true; });
+        try { await onChange(item.value); current = item.value; }
+        catch(error) { result.dispatchEvent(new CustomEvent('yokulierror',{bubbles:true,detail:error})); }
+        finally { busy = false; inputs.forEach(value => { value.input.checked = value.item.value === current; value.input.disabled = !!value.item.disabled; }); }
+      });
+    });
+    return result;
+  }
+  function pivot(items, options) {
+    const result = node('div','yk-pivot'), header = node('div','yk-pivot-tabs'), pages = node('div','yk-pivot-pages');
+    header.role = 'tablist'; const group = 'yk-pivot-' + (++controlId); let current = 0, timer;
+    const tabs = items.map((item,index) => {
+      const tab = node('button','yk-pivot-tab',item.title); tab.type = 'button'; tab.role = 'tab'; tab.id = group + '-tab-' + index;
+      tab.setAttribute('aria-controls',group + '-page-' + index);
+      const panel = node('section','yk-pivot-page'); panel.role = 'tabpanel'; panel.id = group + '-page-' + index;
+      panel.setAttribute('aria-labelledby',tab.id); panel.append(item.content); pages.append(panel); header.append(tab);
+      tab.addEventListener('click', () => select(index));
+      tab.addEventListener('keydown',event => {
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); const next = Math.max(0,Math.min(items.length-1,current+(event.key === 'ArrowRight' ? 1 : -1))); select(next); tabs[next].focus(); }
+      });
+      return tab;
+    });
+    function mark(index) {
+      current = index;
+      tabs.forEach((tab,i) => { tab.setAttribute('aria-selected',String(i === index)); tab.tabIndex = i === index ? 0 : -1; });
+      const tab = tabs[index]; if (!tab) return;
+      // Header remains still while the selected title is visible; only reveal the clipped edge.
+      if (tab.offsetLeft < header.scrollLeft) header.scrollTo({left:tab.offsetLeft,behavior:'smooth'});
+      else if (tab.offsetLeft + tab.offsetWidth > header.scrollLeft + header.clientWidth) header.scrollTo({left:tab.offsetLeft + tab.offsetWidth - header.clientWidth,behavior:'smooth'});
+      if (options && options.onChange) options.onChange(index);
+    }
+    function select(index) { if (index < 0 || index >= items.length) return; mark(index); pages.scrollTo({left:index*pages.clientWidth,behavior:'smooth'}); }
+    pages.addEventListener('scroll', () => { clearTimeout(timer); timer = setTimeout(() => { if (pages.clientWidth) mark(Math.round(pages.scrollLeft/pages.clientWidth)); },100); },{passive:true});
+    result.append(header,pages); result.select = select; mark(0); return result;
+  }
   function dispose() {
     if (disposed) return; disposed = true;
     subscriptions.forEach(stop => stop());
@@ -161,9 +253,20 @@
     version:2,
     system:{info:async () => {
       return applySystemInfo(await call('system.info'));
-    }, services:() => call('system.services')},
+    }, services:() => call('system.services'), apps:() => call('system.apps')},
     marine:{snapshot:() => call('marine.snapshot'), watch:(onData,onError) => watchSnapshot('marine.snapshot',onData,onError)},
     devices:{snapshot:() => call('devices.snapshot'), watch:(onData,onError) => watchSnapshot('devices.snapshot',onData,onError)},
+    hardware:{
+      snapshot:() => call('hardware.snapshot'),
+      watch:(onData,onError) => watchSnapshot('hardware.snapshot',onData,onError),
+      readRecording:(id,offset,limit) => call('hardware.readRecording',{id,offset:offset || 0,limit:limit || 48000}),
+      control:command => {
+        if (!command || typeof command.action !== 'string' || typeof command.requestId !== 'string' || !command.requestId.trim()) {
+          return Promise.reject(failure('INVALID_ARGUMENT','Hardware commands require an action and a stable requestId'));
+        }
+        return call('hardware.control',command);
+      }
+    },
     sources:{
       snapshot:() => call('sources.snapshot'),
       watch:(onData,onError) => watchSnapshot('sources.snapshot',onData,onError),
@@ -195,7 +298,7 @@
       return call('storage.set', {value});
     }},
     navigation:{open:destination => call('navigation.open', {target:destination})},
-    ui:{node, button, metric, status, age, quality, errorMessage},
+    ui:{node, button, metric, status, age, quality, errorMessage, page, section, field, toggle, choiceGroup, pivot},
     dispose
   };
   Object.keys(sdk).forEach(key => { if (sdk[key] && typeof sdk[key] === 'object') Object.freeze(sdk[key]); });

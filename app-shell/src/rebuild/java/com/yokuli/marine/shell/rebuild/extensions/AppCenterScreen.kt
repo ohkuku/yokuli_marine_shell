@@ -21,6 +21,7 @@ import java.io.File
     if(section == "developers") { DeveloperGuide(os); return }
     val manager = os.extensions
     val installed by manager.installed.collectAsState()
+    val packages by os.packages.entries.collectAsState()
     val ready by manager.ready.collectAsState()
     val registryError by manager.errors.collectAsState()
     val scope = rememberCoroutineScope()
@@ -85,8 +86,8 @@ import java.io.File
                 if(installed.isEmpty()&&ready) Label(os.t("还没有安装扩展应用", "No extensions installed"), 16)
                 installed.forEach { app -> MenuRow(if(os.chinese)app.manifest.name else app.manifest.nameEn,os.t("版本 ${app.manifest.version} · 授权与管理", "Version ${app.manifest.version} · Access & management"),"apps") { manage=app.manifest.id } }
                 AppSection(os.t("随系统提供", "Built into Yokuli"),os.t("这些应用会一直保留", "These apps stay with the system"))
-                AppId.entries.filter { it!=AppId.APP_CENTER }.forEach { app ->
-                    MenuRow(os.title(app),os.t("内置", "Built in"),app.icon) { os.shell.openLinked(ShellApp(app).page) }
+                packages.filter { it.origin == YklOrigin.SYSTEM_IMAGE }.forEach { app ->
+                    MenuRow(os.t(app.name, app.nameEn), app.error ?: os.t("系统 .ykl · 版本 ${app.version}", "System .ykl · Version ${app.version}"), app.hostApp?.icon) { os.shell.openLinked(app.rootRoute) }
                 }
             }
             MenuRow(os.t("为 Yokuli 开发应用", "Build for Yokuli"),os.t("SDK、界面组件与离线指南", "SDK, UI components & offline guide"),"data") { os.open("app_center:developers") }
@@ -159,6 +160,8 @@ private fun permissionTitle(os:OsStore,key:String)=when(key){
     "marine.read"->os.t("读取选用的船舶数据", "Read selected vessel data")
     "nmea.read"->os.t("查看 NMEA 连接状态", "View NMEA connection status")
     "navigation.open"->os.t("打开相关系统应用", "Open related system apps")
+    "lab.read"->os.t("查看演练环境与系统录像", "Read practice environment and recordings")
+    "lab.control"->os.t("切换真实/模拟环境并控制设备和时钟", "Switch real/simulated environments and control devices and clock")
     "devices.read"->os.t("查看设备与采集状态", "View devices and collection status")
     "sources.read"->os.t("查看数据来源与选用情况", "View data sources and selections")
     "sources.control"->os.t("更改全船数据来源", "Change vessel data sources")

@@ -1,5 +1,7 @@
 package com.yokuli.anchorwatch.data.sharing
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import com.yokuli.anchorwatch.data.nmea.NmeaChecksum
 import com.yokuli.anchorwatch.domain.model.NavigationFix
 import com.yokuli.anchorwatch.domain.model.PositionProvider
@@ -25,7 +27,7 @@ class NmeaOutputMux @Inject constructor() {
         // Accepted Position gate has already validated this event. Reject only
         // an explicitly poor accuracy value here.
         if (fix.horizontalAccuracyMeters?.let { it > 30.0 } == true) return emptyList()
-        val instant = Instant.ofEpochMilli(fix.timestampUtcMillis ?: System.currentTimeMillis()).atZone(ZoneOffset.UTC)
+        val instant = Instant.ofEpochMilli(fix.timestampUtcMillis ?: MarineTime.nowUtcMillis()).atZone(ZoneOffset.UTC)
         val time = instant.format(DateTimeFormatter.ofPattern("HHmmss.SS", Locale.US))
         val date = instant.format(DateTimeFormatter.ofPattern("ddMMyy", Locale.US))
         val (lat, ns) = coordinate(fix.latitude, 2)
@@ -48,7 +50,7 @@ class NmeaOutputMux @Inject constructor() {
     fun phonePosition(fix:NavigationFix,nowElapsed:Long,maxAgeMillis:Long=3_000L):List<String>{
         val position=acceptedPosition(fix,nowElapsed,maxAgeMillis)
         if(position.isEmpty())return emptyList()
-        val instant=Instant.ofEpochMilli(fix.timestampUtcMillis?:System.currentTimeMillis()).atZone(ZoneOffset.UTC)
+        val instant=Instant.ofEpochMilli(fix.timestampUtcMillis?:MarineTime.nowUtcMillis()).atZone(ZoneOffset.UTC)
         val time=instant.format(DateTimeFormatter.ofPattern("HHmmss.SS",Locale.US))
         val date=instant.toLocalDate()
         return position+sentence("GNZDA,$time,${date.dayOfMonth.toString().padStart(2,'0')},${date.monthValue.toString().padStart(2,'0')},${date.year},00,00")

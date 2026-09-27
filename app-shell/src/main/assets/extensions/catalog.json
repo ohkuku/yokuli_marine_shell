@@ -44,6 +44,24 @@
       "asset": "catalog/org.yokuli.helm.ykl"
     },
     {
+      "id": "org.yokuli.practice",
+      "name": "演练控制台",
+      "nameEn": "Practice controls",
+      "version": 1,
+      "description": "通过系统服务控制模拟时钟、设备与录像。切换环境前需结束真实航行任务。",
+      "descriptionEn": "Control the shared simulation clock, devices and recordings. Finish active sailing tasks before switching environments.",
+      "sdk": 2,
+      "entry": "index.html",
+      "permissions": [
+        "lab.read",
+        "lab.control",
+        "navigation.open"
+      ],
+      "sha256": "2ad7ff0830e78204affa70e8ab35873cc8702fcd484301383d7590b039451f95",
+      "bytes": 2931,
+      "asset": "catalog/org.yokuli.practice.ykl"
+    },
+    {
       "id": "org.yokuli.watch",
       "name": "随航一览",
       "nameEn": "Underway",

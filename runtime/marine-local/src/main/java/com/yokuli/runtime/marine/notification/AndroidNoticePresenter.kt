@@ -1,5 +1,7 @@
 package com.yokuli.runtime.marine.notification
 
+import com.yokuli.runtime.contract.time.MarineTime
+
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -44,7 +46,7 @@ internal class AndroidNoticePresenter(private val context: Context) {
         ensureChannels()
         // 用户之后授予权限时重试呈现；历史不因通知权限被拒绝而丢失。
         check(manager.areNotificationsEnabled()) { "NOTIFICATIONS_DISABLED" }
-        val now = System.currentTimeMillis()
+        val now = MarineTime.nowUtcMillis()
         val records = snapshot.records.associateBy { it.id }
         manager.activeNotifications.filter { it.tag?.startsWith(TAG) == true }.forEach { active ->
             val tag = active.tag ?: return@forEach
@@ -66,7 +68,7 @@ internal class AndroidNoticePresenter(private val context: Context) {
     }
     private fun show(record: NoticeRecord, silent: Boolean) {
         val zh = record.presentationLanguage?.startsWith("zh") ?: (context.resources.configuration.locales[0]?.language == "zh")
-        val title = (if(zh)record.text.titleZh else record.text.titleEn).ifBlank { "Yokuli OS" }
+        val title = (if (com.yokuli.runtime.marine.hardware.HardwareLabBoot.current.mode != com.yokuli.runtime.contract.hardware.HardwareMode.REAL) { if (zh) "演练 · " else "Practice · " } else "") + (if(zh)record.text.titleZh else record.text.titleEn).ifBlank { "Yokuli OS" }
         val body = if(zh)record.text.bodyZh else record.text.bodyEn
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP

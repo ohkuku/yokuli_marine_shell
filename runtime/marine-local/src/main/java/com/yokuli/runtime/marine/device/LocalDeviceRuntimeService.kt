@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.SensorManager
 import android.location.LocationManager
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+import com.yokuli.runtime.contract.hardware.MarineDeviceBus
+import com.yokuli.runtime.contract.hardware.HardwareDevice
 import com.yokuli.anchorwatch.data.NavigationRepository
 import com.yokuli.anchorwatch.data.nmea.NmeaConnectionSnapshot
 import com.yokuli.anchorwatch.domain.model.NmeaConnectionState
@@ -31,7 +33,7 @@ import kotlinx.coroutines.launch
 /**
  * 默认进程的设备目录：读取唯一驱动与资源所有者，不注册第二套传感器或 socket。
  * 目录以 2 Hz 合并 IMU 等高频输入，既不降低真实采集频率，也不把每帧姿态推给 Shell。
- * 此处没有回放、模拟或任意驱动加载器，不能被当成已完成的虚拟硬件总线。
+ * 真实设备未采集时保留能力目录；活动设备、模拟与回放均投影同一 DeviceBus。
  */
 @Singleton
 class LocalDeviceRuntimeService @Inject constructor(
@@ -57,11 +59,12 @@ class LocalDeviceRuntimeService @Inject constructor(
         scope.launch {
             while (isActive) {
                 try {
-                    val now = SystemClock.elapsedRealtime()
+                    val now = MarineTime.nowElapsedMillis()
                     val connections = navigation.connections.value
                     connectionEpochs.keys.retainAll(connections.map { it.spec.id }.toSet())
-                    val devices = listOf(gnss(now), imu(now), barometer(now)) +
-                        connections.sortedBy { it.spec.id }.map { nmea(it, now) }
+                    val bus=MarineDeviceBus.state.value
+                    val physical=if(bus.backend==DeviceBackend.REAL)listOf(gnss(now),imu(now),barometer(now))+connections.sortedBy{it.spec.id}.map{nmea(it,now)}else emptyList()
+                    val devices=(physical.associateBy{it.id}+bus.devices.associate{it.spec.id to fromBus(it,now,physical.firstOrNull{old->old.id==it.spec.id})}).values.toList()
                     mutable.value = DeviceCatalogSnapshot(true, runtimeId, mutable.value.revision + 1, now, devices)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -72,6 +75,23 @@ class LocalDeviceRuntimeService @Inject constructor(
                 delay(500)
             }
         }
+    }
+
+    private fun fromBus(device:HardwareDevice,now:Long,physical:MarineDeviceDescriptor?):MarineDeviceDescriptor {
+        val spec=device.spec
+        val active=device.attached&&(spec.kind!=DeviceKind.NMEA_CONNECTION||spec.backend!=DeviceBackend.REAL||physical?.active==true)
+        return MarineDeviceDescriptor(
+            id=spec.id,name=if(spec.backend==DeviceBackend.REAL)spec.name else "${spec.backend.name} · ${spec.name}",kind=spec.kind,backend=spec.backend,
+            availability=if(active)DeviceAvailability.AVAILABLE else physical?.availability?:DeviceAvailability.DISABLED,
+            health=if(spec.backend==DeviceBackend.REAL&&spec.kind==DeviceKind.NMEA_CONNECTION&&physical!=null)physical.health else if(!active)DeviceHealth.OFF else observationHealth(device.lastMeasuredElapsedMillis,now,if(spec.kind==DeviceKind.IMU)5_000 else 15_000),
+            requested=if(spec.backend==DeviceBackend.REAL&&spec.kind==DeviceKind.NMEA_CONNECTION)physical?.requested?:active else active,active=active,generation=device.generation,generationOrigin="hal.bus",
+            capabilities=spec.capabilities,
+            lastMeasuredElapsedRealtime=device.lastMeasuredElapsedMillis,
+            lastReceivedElapsedRealtime=device.lastReceivedElapsedMillis,
+            lastOutputElapsedRealtime=physical?.lastOutputElapsedRealtime,
+            provenance=DeviceProvenance(spec.driver,spec.id,if(spec.kind==DeviceKind.NMEA_CONNECTION)spec.id.removePrefix("nmea:")else null),
+            reason=device.reason,
+        )
     }
 
     private fun gnss(now: Long): MarineDeviceDescriptor {

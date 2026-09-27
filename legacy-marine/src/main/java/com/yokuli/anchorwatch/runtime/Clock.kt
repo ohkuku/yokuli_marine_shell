@@ -1,18 +1,13 @@
 package com.yokuli.anchorwatch.runtime
 
-import android.os.SystemClock
+import com.yokuli.runtime.contract.time.MarineTime
+
 
 interface MonotonicClock { fun elapsedRealtime():Long }
 interface WallClock { fun currentTimeMillis():Long }
 
-/**
- * The App's authoritative Android monotonic clock.
- *
- * GPS callbacks expose timestamps in the SystemClock.elapsedRealtime domain
- * (CLOCK_BOOTTIME, including deep sleep). System.nanoTime is not a compatible
- * substitute on Android because its suspend-time/origin semantics can differ.
- * Mixing them made every fresh System and NMEA fix look newer than Anchor
- * Runtime's decision clock after the device had slept.
+/** 兼容已有注入接口，真实与虚拟运行时都使用同一个 MarineTime 时间轴。
+ * Android HAL 原始 BOOTTIME 由 fromHostElapsedMillis 转换；不得混入 uptime/nanoTime。
  */
-object SystemMonotonicClock:MonotonicClock { override fun elapsedRealtime()=SystemClock.elapsedRealtime() }
-object SystemWallClock:WallClock { override fun currentTimeMillis()=System.currentTimeMillis() }
+object SystemMonotonicClock:MonotonicClock { override fun elapsedRealtime()=MarineTime.nowElapsedMillis() }
+object SystemWallClock:WallClock { override fun currentTimeMillis()=MarineTime.nowUtcMillis() }
