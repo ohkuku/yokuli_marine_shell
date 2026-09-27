@@ -58,7 +58,7 @@ internal fun draftMatchesAnalysis(os:OsStore,result:PassageAnalysis?,data:ChartD
 internal fun draftCalculationBusy(os:OsStore):Boolean=os.marine?.system?.analysis?.state?.value?.job?.phase in
     setOf(PassageJobPhase.LOADING,PassageJobPhase.SEARCHING,PassageJobPhase.ANALYZING)
 
-/** 返回拒绝原因；成功只启动现有作业，不采用结果、不开始导航。 */
+/** 返回拒绝原因；成功只启动现有作业。自动规划完成后由当前编辑器写回草稿，但绝不因此开始导航。 */
 internal fun requestDraftCalculation(os:OsStore,plan:Boolean,leg:Int?=null):String? {
     val system=os.marine?.system?:return os.t("航行服务仍在启动","Marine services are starting")
     if(!os.editingRoute||os.draftRoute.size<2)return os.t("在地图上添加起点和终点","Add a start and destination on the map")
@@ -147,6 +147,7 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
             candidate.analysis.severity in setOf(PassageSeverity.REVIEW,PassageSeverity.NO_CONFLICT_FOUND)&&
             candidate.analysis.datasetRevisions==latest.analysis?.datasetRevisions
     }
+    val planAtOpen=remember {state.plan?.requestId}
     val previewCandidate=state.plan?.candidates?.firstOrNull()?.takeIf(::candidateUsable)
     LaunchedEffect(previewCandidate?.analysis?.key) {
         val plan=state.plan
@@ -158,6 +159,25 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
             )
             view.planningPoints=emptyList()
             os.fitRequest=(plan.original.request.route.points+candidate.route.points).map{it.geo()}
+            // 本次面板打开后新完成的自动规划就是用户刚刚明确请求的结果：直接写回同一草稿。
+            // 重新打开旧结果只用于查看，不会再次自动套用；撤销后也不会被旧 plan 反复覆盖。
+            if(plan.requestId!=planAtOpen) {
+                val proposed=candidate.route.points.map{it.geo()}
+                if(os.draftRoute!=proposed||os.draftNavigationTargetIndices!=candidate.navigationTargetIndices) {
+                    val before=os.draftRoute
+                    val beforeTargets=os.draftNavigationTargetIndices
+                    os.planningDraftUndo=PlanningDraftUndo(before,os.editingRouteId,os.editingRoute,proposed,os.editingRouteId,beforeTargets,candidate.navigationTargetIndices)
+                    os.draftRoute=proposed;os.draftNavigationTargetIndices=candidate.navigationTargetIndices;os.showCrosshair=true
+                    view.planningLines=emptyList();view.planningPoints=emptyList();os.fitRequest=proposed
+                    saving=true
+                    try {
+                        val saved=os.save().result.await()==DurableCommitResult.SAVED
+                        feedback=if(saved)os.t("自动规划已写入当前草稿","Auto plan applied to the current draft")
+                            else os.t("规划已应用，但草稿尚未保存到设备，请重试保存。","Plan applied, but the draft is not saved on this device yet. Retry saving.")
+                        if(saved)onDismiss()
+                    } finally {saving=false}
+                }
+            }
         }
     }
     fun persistDraft(message:String,close:Boolean=false) {
@@ -193,7 +213,7 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
     AppDialog(onDismissRequest={if(!saving)onDismiss()}) {AppDialogSurface {
         AppDialogTitle(os.t("航线检查与自动规划","Route check & auto planning"))
         Label(os.t("你选择了 ${controlPoints.size} 个航点；自动规划会在它们之间补必要的形状点。","You chose ${controlPoints.size} waypoints; auto plan adds only the shape points needed between them."),14,LocalMetro.current.muted)
-        Label(os.t("自动规划先快速生成可编辑粗航线；完整检查按需另行运行。","Auto planning first generates an editable coarse route; run the full check separately when needed."),13,LocalMetro.current.muted)
+        Label(os.t("自动规划完成后会直接写回当前草稿并返回地图；完整检查按需另行运行。","When auto plan finishes, it is applied to the current draft and returns to the map; run the full check separately when needed."),13,LocalMetro.current.muted)
         Label(os.t("自动使用图册启用的数据；海图背景不参与计算。","Uses data enabled in Library automatically. The chart background is not used for calculation."),13,LocalMetro.current.muted)
         if(!readiness.canRequestPlanning||data.loading||data.error!=null) {
             Label(issueText(os,readiness.message),14)

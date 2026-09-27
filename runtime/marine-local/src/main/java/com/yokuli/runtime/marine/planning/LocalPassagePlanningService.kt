@@ -191,14 +191,11 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val ns=item.grid.pixelHeightDegrees*110_540.0
             max(25.0,min(ew,ns))
         }
-        val cellDiagonal=windows.maxOf{item->
-            val ew=item.grid.pixelWidthDegrees*111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.15)
-            val ns=item.grid.pixelHeightDegrees*110_540.0
-            hypot(ew,ns)
-        }
         val vessel=request.vessel
         val configuredMargin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
-        val margin=max(25.0,configuredMargin)+cellDiagonal*.5
+        // 快速栅格路线的目标是粗略不穿陆地/明显浅区；不把 15″ 像元半径额外当成几百米硬岸距。
+        // 像元本身仍按原始数值判定，结果始终是 REVIEW。
+        val margin=max(25.0,configuredMargin)
         val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}?.let{it+(vessel.minimumUnderKeelMeters?:0.0)}
 
         fun elevation(point:ChartPoint):Float? {
@@ -218,6 +215,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val avoidance=union(request.avoidances.mapNotNull{a->
             runCatching{projection.geometry(ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(a.boundary))))}.getOrNull()
         },projection.factory)
+        val avoidanceMargin=if(avoidance.isEmpty)null else avoidance.buffer(margin)
         val diagonal=margin/sqrt(2.0)
         val offsets=arrayOf(
             0.0 to 0.0,margin to 0.0,-margin to 0.0,0.0 to margin,0.0 to -margin,
@@ -225,11 +223,11 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         )
         fun safe(c:Coordinate):Boolean {
             for((dx,dy) in offsets)if(!waterAt(Coordinate(c.x+dx,c.y+dy)))return false
-            return avoidance.isEmpty||!avoidance.buffer(margin).covers(projection.factory.createPoint(c))
+            return avoidanceMargin==null||!avoidanceMargin.covers(projection.factory.createPoint(c))
         }
         val sampleStep=max(25.0,min(250.0,cellMeters*.5))
         fun clear(a:Coordinate,b:Coordinate):Boolean {
-            if(!avoidance.isEmpty&&projection.factory.createLineString(arrayOf(a,b)).buffer(margin).intersects(avoidance))return false
+            if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(a,b)).intersects(avoidanceMargin))return false
             val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
             for(i in 0..slices) {
                 val t=i.toDouble()/slices
