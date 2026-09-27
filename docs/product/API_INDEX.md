@@ -1617,10 +1617,10 @@
 | `fun draftVerdict` | [PassagePlanningPanel.kt:110](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L110) |
 | `fun PassagePlanningPanel` | [PassagePlanningPanel.kt:113](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L113) |
 | `fun candidateUsable` | [PassagePlanningPanel.kt:141](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L141) |
-| `fun persistDraft` | [PassagePlanningPanel.kt:152](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L152) |
-| `fun locate` | [PassagePlanningPanel.kt:163](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L163) |
-| `fun x` | [PassagePlanningPanel.kt:290](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L290) |
-| `fun y` | [PassagePlanningPanel.kt:291](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L291) |
+| `fun persistDraft` | [PassagePlanningPanel.kt:165](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L165) |
+| `fun locate` | [PassagePlanningPanel.kt:176](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L176) |
+| `fun x` | [PassagePlanningPanel.kt:313](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L313) |
+| `fun y` | [PassagePlanningPanel.kt:314](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L314) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassageReviewDialog.kt
 
@@ -7416,7 +7416,7 @@
 | `fun analyze` | [LocalPassagePlanningService.kt:113](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/LocalPassagePlanningService.kt#L113) |
 | `fun plan` | [LocalPassagePlanningService.kt:114](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/LocalPassagePlanningService.kt#L114) |
 | `fun cancel` | [LocalPassagePlanningService.kt:124](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/LocalPassagePlanningService.kt#L124) |
-| `fun evaluate` | [LocalPassagePlanningService.kt:162](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/LocalPassagePlanningService.kt#L162) |
+| `fun evaluate` | [LocalPassagePlanningService.kt:178](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/LocalPassagePlanningService.kt#L178) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt
 
@@ -7437,19 +7437,19 @@
 | `class FeatureGeometry` | [PassageGeometry.kt:55](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L55) |
 | `class PassageWorld` | [PassageGeometry.kt:56](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L56) |
 | `fun world` | [PassageGeometry.kt:66](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L66) |
-| `fun touchesQuery` | [PassageGeometry.kt:84](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L84) |
-| `fun hintArea` | [PassageGeometry.kt:85](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L85) |
-| `fun coverageGeometry` | [PassageGeometry.kt:135](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L135) |
-| `fun validateRequest` | [PassageGeometry.kt:206](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L206) |
-| `fun analyze` | [PassageGeometry.kt:217](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L217) |
-| `fun issue` | [PassageGeometry.kt:220](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L220) |
-| `fun along` | [PassageGeometry.kt:240](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L240) |
-| `fun search` | [PassageGeometry.kt:311](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L311) |
-| `fun clear` | [PassageGeometry.kt:315](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L315) |
-| `fun coord` | [PassageGeometry.kt:323](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L323) |
-| `fun id` | [PassageGeometry.kt:324](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L324) |
-| `class Node` | [PassageGeometry.kt:325](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L325) |
-| `fun smooth` | [PassageGeometry.kt:349](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L349) |
+| `fun touchesQuery` | [PassageGeometry.kt:88](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L88) |
+| `fun hintArea` | [PassageGeometry.kt:89](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L89) |
+| `fun coverageGeometry` | [PassageGeometry.kt:139](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L139) |
+| `fun validateRequest` | [PassageGeometry.kt:223](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L223) |
+| `fun analyze` | [PassageGeometry.kt:234](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L234) |
+| `fun issue` | [PassageGeometry.kt:237](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L237) |
+| `fun along` | [PassageGeometry.kt:261](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L261) |
+| `fun search` | [PassageGeometry.kt:332](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L332) |
+| `fun clear` | [PassageGeometry.kt:336](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L336) |
+| `fun coord` | [PassageGeometry.kt:354](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L354) |
+| `fun id` | [PassageGeometry.kt:355](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L355) |
+| `class Node` | [PassageGeometry.kt:356](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L356) |
+| `fun smooth` | [PassageGeometry.kt:382](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageGeometry.kt#L382) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/planning/PassageRasterGeometry.kt
 
