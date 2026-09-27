@@ -31,6 +31,30 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
     // 原生地图在转场期间仍会回调相机位置。每次访问用自己的相机状态，离场页不能写回新页。
     val view = remember(instanceKey) { MapViewState(os.center, os.zoom) }
     val chartData by os.maps.charts.state.collectAsState()
+    val datasetPreview=sharedView.datasetPreview
+    val datasetPreviewDataset=chartData.datasets.firstOrNull {it.id==datasetPreview?.datasetId}
+    val datasetPreviewValid=datasetPreview!=null&&!chartData.loading&&chartData.error==null&&datasetPreviewDataset?.let {it.revision==datasetPreview.datasetRevision&&it.offlineReadable}==true
+    var datasetPreviewScene by remember(datasetPreview?.requestId) {mutableStateOf(MapScene())}
+    LaunchedEffect(active,datasetPreview?.requestId,datasetPreviewDataset?.revision,datasetPreviewDataset?.offlineReadable,chartData.loading,chartData.error,view.center,view.zoom,os.maps.unitPreferences,os.maps.portrayalPreferences,os.chinese) {
+        if(!active||datasetPreview==null) {datasetPreviewScene=MapScene();return@LaunchedEffect}
+        if(chartData.loading||chartData.error!=null)return@LaunchedEffect
+        if(!datasetPreviewValid) {
+            sharedView.datasetPreview=null;sharedView.datasetPreviewNote=null;datasetPreviewScene=MapScene();return@LaunchedEffect
+        }
+        delay(120)
+        try {
+            val drawing=datasetPreviewDrawing(os.maps.charts,datasetPreview,requireNotNull(datasetPreviewDataset),view.center,view.zoom,os.maps.unitPreferences,os.maps.portrayalPreferences,os.chinese)
+            if(sharedView.datasetPreview?.requestId!=datasetPreview.requestId)return@LaunchedEffect
+            datasetPreviewScene=drawing.scene
+            sharedView.datasetPreviewNote=drawing.note
+        } catch(cancel:CancellationException) {throw cancel}
+        catch(_:Exception) {
+            if(sharedView.datasetPreview?.requestId==datasetPreview.requestId) {
+                datasetPreviewScene=MapScene()
+                sharedView.datasetPreviewNote=os.t("数据预览暂时无法读取；原始数据仍保留在图册。","Data preview could not be read; the original data remains in Library.")
+            }
+        }
+    }
     val libraryPreview=sharedView.libraryPreview
     val previewDataset=chartData.datasets.firstOrNull {it.id==libraryPreview?.feature?.datasetId}
     val previewValid=libraryPreview!=null&&!chartData.loading&&chartData.error==null&&previewDataset?.let {it.revision==libraryPreview.datasetRevision&&it.offlineReadable}==true
@@ -94,7 +118,8 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
     var nativeHost by remember(instanceKey) { mutableStateOf<ChartHost?>(null) }
     view.interactive = active && LocalInternalAppInputEnabled.current
     if(active) {
-        view.objectPickingEnabled = !os.editingRoute&&os.ruler.isEmpty()
+        view.objectPickingEnabled = !os.editingRoute&&os.ruler.isEmpty()&&datasetPreview==null
+        view.datasetPreview = sharedView.datasetPreview
         view.orientationMode = sharedView.orientationMode
         view.planningLines = sharedView.planningLines
         view.planningPoints = sharedView.planningPoints
@@ -147,10 +172,14 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         else if(sharedView.selectedAisMmsi!=null)aisMapTargets(traffic,sharedView.selectedAisMmsi).filter {it.selected}
         else emptyList()
     }
-    MarineMap(os.maps,MapScene(fix?.let {MapVessel(it.point,it.freshCourse(now),it.fresh(now),it.freshHeading(now),it.freshSpeed(now))},markers+libraryScene.points,lines+libraryScene.lines,
+    MarineMap(os.maps,MapScene(
+        vessel=fix?.let {MapVessel(it.point,it.freshCourse(now),it.fresh(now),it.freshHeading(now),it.freshSpeed(now))},
+        points=markers+libraryScene.points+datasetPreviewScene.points,
+        lines=lines+libraryScene.lines+datasetPreviewScene.lines,
+        areas=libraryScene.areas+datasetPreviewScene.areas,
         demo=os.positionSource=="demo" || os.marine?.services?.state?.value?.settings?.demoMode==true,
         aisTargets=aisTargets,
-        aisInteractive=!os.editingRoute&&os.ruler.isEmpty()&&sharedView.previewTrack.isEmpty()),view,modifier,
+        aisInteractive=!os.editingRoute&&os.ruler.isEmpty()&&sharedView.previewTrack.isEmpty()&&datasetPreview==null),view,modifier,
         onHost={host -> nativeHost=host;host.captureForTile=active;onHost(host)},onEvent={event ->if(isCurrent())when(event) {
             is MapEvent.CameraChanged -> {os.center=event.center;os.zoom=event.zoom;sharedView.center=event.center;sharedView.zoom=event.zoom}
             MapEvent.GestureStarted -> {os.follow=false;os.showCrosshair=true;sharedView.selectedPlaceId=null;sharedView.selectedAisMmsi=null}

@@ -12,9 +12,9 @@ import kotlin.math.*
 internal data class StructuredChartViewport(val features:List<NauticalFeature> = emptyList(),val scene:MapScene=MapScene(),val issue:String?=null,val portrayal:ChartPortrayalInfo=ChartPortrayalInfo(),val notices:List<String> = emptyList())
 
 /** 原生地图只获取当前视口的有界绘制集；全航段分析使用独立快照查询，不复用屏幕裁剪结果。 */
-@Composable internal fun rememberStructuredChart(maps:MapSessionStore,view:MapViewState):StructuredChartViewport {
+@Composable internal fun rememberStructuredChart(maps:MapSessionStore,view:MapViewState,datasetIds:List<String>?=null):StructuredChartViewport {
     val data by maps.charts.state.collectAsState()
-    val datasets=maps.selectedDatasetIds
+    val datasets=datasetIds ?: maps.selectedDatasetIds
     var result by remember(maps,view,datasets,data.revision){mutableStateOf(StructuredChartViewport())}
     LaunchedEffect(datasets,data.revision) {
         view.selectedChartObjects=view.selectedChartObjects.filter {feature->

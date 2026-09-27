@@ -66,6 +66,7 @@ import kotlin.math.*
     val c=LocalMetro.current
     val density=LocalDensity.current
     val chartView=os.maps.view("chart",os.center,os.zoom)
+    val chartData by os.maps.charts.state.collectAsState()
     val savedOrientation=savedPreferences?.appPreferenceValues?.get("chart.orientation")?.removePrefix("c:")
     LaunchedEffect(savedOrientation){chartView.orientationMode=runCatching{MapOrientationMode.valueOf(savedOrientation.orEmpty())}.getOrDefault(MapOrientationMode.NORTH_UP)}
     var aisEntrySelected by rememberSaveable(initialAisMmsi){mutableStateOf(false)}
@@ -105,6 +106,7 @@ import kotlin.math.*
         externalNavigation->{externalNavigation=false;true}
         planning->{planning=false;true}
         spatialVisible->{returnToMap();true}
+        chartView.datasetPreview!=null->{chartView.datasetPreview=null;chartView.datasetPreviewNote=null;true}
         chartView.selectedAisMmsi!=null->{if(initialAisMmsi?.toString()==chartView.selectedAisMmsi)os.shell.popRoute()else chartView.selectedAisMmsi=null;true}
         chartView.selectedPlaceId!=null->{chartView.selectedPlaceId=null;true}
         os.ruler.isNotEmpty()->{os.ruler=emptyList();true}
@@ -112,7 +114,7 @@ import kotlin.math.*
         os.showCrosshair->{os.showCrosshair=false;true}
         else->false
     }
-    val toolOpen=layers||tools||manageNavigation||externalNavigation||planning||startingPlaceId!=null||editingPlaceId!=null||morePlaceId!=null||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
+    val toolOpen=layers||tools||manageNavigation||externalNavigation||planning||startingPlaceId!=null||editingPlaceId!=null||morePlaceId!=null||chartView.datasetPreview!=null||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
     if(display!=null)NavigationLiftObserver(display,active=chartInputEnabled&&os.navigationState.guidance!=null,
         inhibited=toolOpen||interactionBlocked||mapTouched||spatialInteraction,
         spatialVisible=spatialVisible,autoEnabled=liftEnabled,mounted=mounted,manuallyReturnedToMapEpoch=manualMapEpoch,
@@ -160,6 +162,23 @@ import kotlin.math.*
             }
             // 控件覆盖稳定地图视口，显示编辑器不能改变原生地图尺寸。
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().onSizeChanged {chartView.bottomOverlayDp=with(density){it.height.toDp().value}}) {
+                chartView.datasetPreview?.let {preview->
+                    val dataset=chartData.datasets.firstOrNull {it.id==preview.datasetId}
+                    Column(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                        Row(verticalAlignment=Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Label(os.t("数据预览","Data preview")+" · "+(dataset?.name ?: os.t("资料已更新","Data changed")),16,maxLines=1)
+                                Label(chartView.datasetPreviewNote ?: os.t("正在读取覆盖与内容…","Reading coverage and contents…"),12,c.muted,maxLines=3)
+                            }
+                            IconAction("close",os.t("关闭数据预览","Close data preview"),{chartView.datasetPreview=null;chartView.datasetPreviewNote=null})
+                        }
+                        if(dataset!=null)Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                            if(dataset.id !in os.maps.selectedDatasetIds)MetroButton(os.t("设为当前数据","Use as current data"),{os.maps.selectDataset(dataset.id)})
+                            else Label(os.t("当前规划数据","Current planning data"),12,c.accentText)
+                            Label(chartUseLabel(os,dataset.eligibility),12,c.muted)
+                        }
+                    }
+                }
                 chartView.libraryPreview?.let {preview->
                     Row(Modifier.fillMaxWidth().background(c.panel).padding(start=16.dp,end=8.dp,top=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {

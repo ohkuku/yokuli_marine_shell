@@ -534,7 +534,8 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
 fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Modifier=Modifier,onEvent:(MapEvent)->Unit={},onHost:(ChartHost)->Unit={}) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
-    val structured=rememberStructuredChart(maps,state)
+    val previewingDataset=state.datasetPreview!=null
+    val structured=rememberStructuredChart(maps,state,if(previewingDataset)emptyList()else null)
     var showPortrayalDetails by remember(state) { mutableStateOf(false) }
     if(showPortrayalDetails)com.yokuli.marine.shell.rebuild.ui.AppDialog(onDismissRequest={showPortrayalDetails=false}) {
         com.yokuli.marine.shell.rebuild.ui.AppDialogSurface {
@@ -556,7 +557,7 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                 event is MapEvent.CoordinateSelected&&canQuery->chartObjectsAt(structured.features,event.point,state.zoom)
                 else->emptyList()
             }
-            val rasterPoint=queryPoint?.takeIf{canQuery&&hasRasterAt(chartData.datasets,maps.selectedDatasetIds,it)}
+            val rasterPoint=queryPoint?.takeIf{canQuery&&!previewingDataset&&hasRasterAt(chartData.datasets,maps.selectedDatasetIds,it)}
             if(objects.isNotEmpty()||rasterPoint!=null) {
                 state.selectedChartObjects=objects
                 state.selectedChartCoordinate=when(event){is MapEvent.ItemSelected->event.hitPoint;is MapEvent.CoordinateSelected->event.point;else->null} ?: rasterPoint
