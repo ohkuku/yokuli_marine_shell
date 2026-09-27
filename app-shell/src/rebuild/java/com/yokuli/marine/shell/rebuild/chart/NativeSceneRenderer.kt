@@ -65,14 +65,16 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
         if (google == null && libre == null) return false
         // style 还在加载时不记录 previous，否则下一帧会误判为已经绘制。
         if (libre != null && libre.style?.isFullyLoaded != true) return false
-        // 原生几何随地图相机自行投影；拖动/缩放而业务未变时无需重新生成 AIS 线段与 GeoJSON。
-        if(!reset&&input==previousInput&&ruler==previousRuler)return true
-        previousInput=input
         val scene=input.trafficGeometry()
+        // MapLibre style layer 可能独立于业务场景被重建；即使 input 完全相同也必须让
+        // LibreSceneGeometry 做一次廉价完整性检查，否则会永久留下“marker 在、route line 不在”的状态。
         libre?.let {
             libreGeometry.render(it, scene, ruler)
             soundingLayer.render(it,scene.points.filter {point->point.style!=MapPointStyle.PIN},::pointIcon)
         }
+        // Google 原生对象以及 MapLibre 已确认完整的场景仍可走快速返回。
+        if(!reset&&input==previousInput&&ruler==previousRuler)return true
+        previousInput=input
         if (scene == previous && ruler == previousRuler) return true
         previous = scene; previousRuler = ruler.toList()
         if(reset){groups.values.forEach {group->group.remove.forEach {it()}};groups.clear();clearMarkers();reset=false}

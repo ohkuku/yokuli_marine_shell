@@ -63,7 +63,15 @@ internal class LibreSceneGeometry {
         val current = map.style?.takeIf { it.isFullyLoaded } ?: return
         if (style !== current) { clear(); style = current }
         val geometry = GeometryState(scene.areas, scene.circles, scene.lines, ruler.toList(), scene.vessel?.let(::vesselCourseVector))
-        if (geometry == previous) return
+        // MapLibre 的 style 可能在业务场景未变化时重建/丢失自有 layer/source。
+        // marker annotation 与 style layer 生命周期不同，因此会出现“点还在、线没了”。
+        // 场景相同时也要先验证自有原生对象仍存在；缺失时清理句柄并完整重建。
+        val intact=layerIds.all {current.getLayer(it)!=null}&&sources.keys.all {current.getSource(it.id)!=null}
+        if (geometry == previous && intact) return
+        if(!intact&&(layerIds.isNotEmpty()||sources.isNotEmpty())) {
+            clear()
+            style=current
+        }
         val batches = linkedMapOf<PaintKey, MutableList<Shape>>()
         fun add(stage: Int, points: List<GeoPoint>, color: Int, width: Float = 0f, dashed: Boolean = false, holes:List<List<GeoPoint>> = emptyList()) {
             if (points.size < (when(stage) {0->3;8->1;else->2}) || !width.isFinite() || width < 0f) return

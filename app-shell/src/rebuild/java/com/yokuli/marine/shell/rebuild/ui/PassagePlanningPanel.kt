@@ -75,7 +75,11 @@ internal fun requestDraftCalculation(os:OsStore,plan:Boolean,leg:Int?=null):Stri
         os.routes.firstOrNull{it.id==os.editingRouteId}?.name?:os.t("当前航线","Current route"),requestTargets)
         ?:return os.t("船舶参数尚未就绪","Boat settings are not ready")
     if(plan) {
-        os.maps.view("chart",os.center,os.zoom).autoApplyPlanningRequestId=request.requestId
+        os.maps.view("chart",os.center,os.zoom).apply {
+            autoApplyPlanningRequestId=request.requestId
+            // 规划预览是临时 overlay；新作业开始时只清它，草稿主线由 draftRoute 独立绘制。
+            planningLines=emptyList();planningPoints=emptyList()
+        }
         system.planning.plan(request,leg)
     } else system.analysis.analyze(request)
     return null
@@ -188,7 +192,11 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
         val plan=state.plan
         if(plan!=null&&plan.requestId==view.autoApplyPlanningRequestId&&state.job?.phase==PassageJobPhase.COMPLETE&&plan.candidates.isEmpty()) {
             view.autoApplyPlanningRequestId=null
+            view.planningLines=emptyList();view.planningPoints=emptyList()
             feedback=issueText(os,plan.reason?:os.t("没有生成可用的粗航线","No coarse route was generated"))
+        }
+        if(state.job?.phase in setOf(PassageJobPhase.FAILED,PassageJobPhase.INTERRUPTED,PassageJobPhase.CANCELLED)) {
+            view.planningLines=emptyList();view.planningPoints=emptyList()
         }
     }
     fun persistDraft(message:String,close:Boolean=false) {
