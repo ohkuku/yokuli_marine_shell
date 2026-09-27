@@ -325,6 +325,7 @@ class OsStore(val context: Context) {
     }
     fun t(zh: String, en: String) = if (chinese) zh else en
     fun title(app: AppId) = t(app.zh,app.en)
+    fun title(app: ShellApp) = app.extension?.manifest?.let { t(it.name,it.nameEn) } ?: title(app.app)
     fun notify(zh: String, en: String, app: AppId? = shell.appForPage(page)?.app,
                severity: NoticeSeverity = NoticeSeverity.INFO, destination: String? = null, key: String? = null) {
         notifications.post(SystemNotice(app = app, chinese = zh, english = en, severity = severity,

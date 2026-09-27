@@ -61,7 +61,7 @@ import kotlin.math.roundToInt
         Row(Modifier.padding(horizontal=32.dp),verticalAlignment=Alignment.CenterVertically,
             horizontalArrangement=Arrangement.spacedBy(14.dp)) {
             ShellAppIcon(app,LocalMetro.current.fg,Modifier.size(28.dp))
-            Label(os.title(app.app),28,weight=androidx.compose.ui.text.font.FontWeight.Medium,maxLines=2)
+            Label(os.title(app),28,weight=androidx.compose.ui.text.font.FontWeight.Medium,maxLines=2)
         }
         // 只在已有冷启动遮罩中署名；持续时间和热切换仍由原任务状态机决定。
         YokuliBrandWordmark(Modifier.align(Alignment.BottomStart)
@@ -134,18 +134,18 @@ import kotlin.math.roundToInt
                         verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                         Box(Modifier.size(28.dp).background(c.accent).padding(5.dp)) {ShellAppIcon(app,c.onAccent,Modifier.fillMaxSize())}
                         Column(Modifier.weight(1f)) {
-                            Label(os.title(app.app),18,maxLines=1)
+                            Label(os.title(app),18,maxLines=1)
                             taskPageCaption(os,task,app)?.let {Label(it,12,c.muted,maxLines=1)}
                         }
                         Box(Modifier.size(48.dp).testTag("recent-close-${task.appId.value}")
                             .background(if(closePressed)c.subtle else Color.Transparent)
                             .clickable(interactionSource=closeInteraction,indication=null,enabled=!closing,role=Role.Button,onClick={closeCard()})
-                            .semantics {contentDescription=os.t("关闭 ${os.title(app.app)} 的界面","Close ${os.title(app.app)} view")},
+                            .semantics {contentDescription=os.t("关闭 ${os.title(app)} 的界面","Close ${os.title(app)} view")},
                             contentAlignment=Alignment.Center) { Glyph("close",Modifier.size(24.dp)) }
                     }
                     Box(Modifier.height(cardHeight).aspectRatio(ratio).background(c.panel).clipToBounds()
                         .testTag("recent-task-${task.appId.value}").clickable(enabled=!closing,role=Role.Button,onClick={onActivate(task)})
-                        .semantics {contentDescription=os.t("恢复 ${os.title(app.app)}","resume ${os.title(app.app)}")}) {
+                        .semantics {contentDescription=os.t("恢复 ${os.title(app)}","resume ${os.title(app)}")}) {
                         if(preview!=null)Image(preview,null,Modifier.fillMaxSize(),
                             contentScale=ContentScale.FillBounds,filterQuality=FilterQuality.Medium)
                         else Column(Modifier.align(Alignment.Center).padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(16.dp)) {

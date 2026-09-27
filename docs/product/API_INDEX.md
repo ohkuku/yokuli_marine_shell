@@ -1,6 +1,6 @@
 # 生产接口与结构声明索引
 
-共 4879 项类型与方法声明；按源文件排序。
+共 4880 项类型与方法声明；按源文件排序。
 
 由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、共享设计/桌面、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
 
@@ -138,23 +138,24 @@
 | `fun navigationCommand` | [Model.kt:297](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L297) |
 | `fun t` | [Model.kt:326](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L326) |
 | `fun title` | [Model.kt:327](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L327) |
-| `fun notify` | [Model.kt:328](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L328) |
-| `fun open` | [Model.kt:333](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L333) |
-| `fun openLinked` | [Model.kt:335](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L335) |
-| `fun openNotification` | [Model.kt:337](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L337) |
-| `fun openSystemDestination` | [Model.kt:353](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L353) |
-| `fun home` | [Model.kt:357](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L357) |
-| `fun back` | [Model.kt:358](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L358) |
-| `fun fly` | [Model.kt:359](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L359) |
-| `fun captureChartInteraction` | [Model.kt:360](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L360) |
-| `fun restoreChartInteraction` | [Model.kt:367](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L367) |
-| `fun mark` | [Model.kt:383](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L383) |
-| `fun startRoute` | [Model.kt:388](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L388) |
-| `fun advanceRoute` | [Model.kt:389](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L389) |
-| `fun save` | [Model.kt:398](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L398) |
-| `fun retryContentRead` | [Model.kt:410](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L410) |
-| `fun exportRecoveredContent` | [Model.kt:448](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L448) |
-| `fun saveWithFeedback` | [Model.kt:472](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L472) |
+| `fun title` | [Model.kt:328](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L328) |
+| `fun notify` | [Model.kt:329](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L329) |
+| `fun open` | [Model.kt:334](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L334) |
+| `fun openLinked` | [Model.kt:336](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L336) |
+| `fun openNotification` | [Model.kt:338](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L338) |
+| `fun openSystemDestination` | [Model.kt:354](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L354) |
+| `fun home` | [Model.kt:358](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L358) |
+| `fun back` | [Model.kt:359](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L359) |
+| `fun fly` | [Model.kt:360](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L360) |
+| `fun captureChartInteraction` | [Model.kt:361](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L361) |
+| `fun restoreChartInteraction` | [Model.kt:368](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L368) |
+| `fun mark` | [Model.kt:384](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L384) |
+| `fun startRoute` | [Model.kt:389](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L389) |
+| `fun advanceRoute` | [Model.kt:390](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L390) |
+| `fun save` | [Model.kt:399](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L399) |
+| `fun retryContentRead` | [Model.kt:411](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L411) |
+| `fun exportRecoveredContent` | [Model.kt:449](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L449) |
+| `fun saveWithFeedback` | [Model.kt:473](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/Model.kt#L473) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/MySailingRepository.kt
 
