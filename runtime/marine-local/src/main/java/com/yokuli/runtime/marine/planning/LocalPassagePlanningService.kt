@@ -293,8 +293,17 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         fun id(c:Coordinate)=(((c.y-minY)/step).roundToInt().coerceIn(0,rows-1))*cols+
             ((c.x-minX)/step).roundToInt().coerceIn(0,cols-1)
         data class RasterNode(val id:Int,val cost:Double,val score:Double)
-        val first=id(a)
-        if(!clear(a,coord(first)))return null
+        fun nearestNode(origin:Coordinate):Int? {
+            val base=id(origin);val bx=base%cols;val by=base/cols
+            var best:Int?=null;var bestDistance=Double.POSITIVE_INFINITY
+            for(radius in 0..3)for(y in by-radius..by+radius)for(x in bx-radius..bx+radius) {
+                if(x !in 0 until cols||y !in 0 until rows)continue
+                val candidate=y*cols+x;val at=coord(candidate);val d=origin.distance(at)
+                if(d<bestDistance&&safe(at)&&clear(origin,at)) {best=candidate;bestDistance=d}
+            }
+            return best
+        }
+        val first=nearestNode(a)?:return null
         val scores=DoubleArray(cols*rows){Double.POSITIVE_INFINITY};val parents=IntArray(cols*rows){-1}
         val queue=PriorityQueue<RasterNode>(compareBy{it.score})
         scores[first]=a.distance(coord(first));queue.add(RasterNode(first,scores[first],scores[first]+coord(first).distance(b)))
