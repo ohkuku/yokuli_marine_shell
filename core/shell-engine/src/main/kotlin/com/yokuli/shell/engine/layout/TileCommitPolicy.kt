@@ -24,7 +24,10 @@ internal object TileCommitPolicy {
         if (!preservedUnknown && !supportedBinding(request.binding)) return failed(document, "Unsupported tile content")
         val allowedSizes = if (request.binding.kind == TileBindingKind.APP) descriptor?.supportedSizes
             ?: listOf(MarineTileSize.ICON_1X1, MarineTileSize.STANDARD_2X2, MarineTileSize.WIDE_4X2)
-            else listOf(MarineTileSize.STANDARD_2X2, MarineTileSize.WIDE_4X2)
+            else if (request.binding.kind == TileBindingKind.COMPOSITE) listOf(MarineTileSize.WIDE_4X2, MarineTileSize.LARGE_4X4)
+            else if (request.binding.kind == TileBindingKind.CURRENT_TASK && request.binding.contentId == "systemExit")
+                listOf(MarineTileSize.STANDARD_2X2, MarineTileSize.WIDE_4X2)
+            else listOf(MarineTileSize.STANDARD_2X2, MarineTileSize.WIDE_4X2, MarineTileSize.LARGE_4X4)
         if (request.size !in allowedSizes && request.size != existing?.size) return failed(document, "Unsupported tile size")
         val allowedStyles = when(request.binding.kind) {
             TileBindingKind.APP->setOf("default","summary","static")
@@ -34,6 +37,9 @@ internal object TileCommitPolicy {
         if (request.presentation.style !in allowedStyles && request.presentation != existing?.presentation) return failed(document, "Unsupported tile presentation")
         if ((request.presentation.legacyMode?.length ?: 0) > 64 || request.presentation.intervalSeconds?.let { it !in 1..120 } == true) return failed(document, "Invalid tile presentation")
         if (!TileReadingPresentationPolicy.hasValidOptions(request.presentation)) return failed(document,"Invalid tile reading options")
+        // 未来未知载荷可以原样保留；新建及任何内容修改都须通过实际可用组合/目标白名单。
+        if (!TileCompositePolicy.validPresentation(request.binding, request.presentation) &&
+            !(preservedUnknown && existing?.presentation == request.presentation)) return failed(document, "Invalid composite tile configuration")
         val columns = WpReferenceProfiles.require(document.profileId).columnCount
         val updated = existing?.copy(
             entryId = request.binding.startEntryId, binding = request.binding, presentation = request.presentation,
@@ -125,6 +131,7 @@ internal object TileCommitPolicy {
         TileBindingKind.READING -> binding.contentId in TileReadingPresentationPolicy.supportedIds
         TileBindingKind.CURRENT_TASK -> binding.contentId in setOf("navigation", "anchorWatch", "recording", "systemExit")
         TileBindingKind.OVERVIEW -> binding.contentId in setOf("aisTraffic", "navigationReadings", "windConditions", "environment", "depthClearance", "vesselAttitude")
+        TileBindingKind.COMPOSITE -> TileCompositePolicy.supportsContentId(binding.contentId)
         TileBindingKind.SAVED_PLACE, TileBindingKind.SAVED_ROUTE -> true
         TileBindingKind.UNKNOWN -> false
     }

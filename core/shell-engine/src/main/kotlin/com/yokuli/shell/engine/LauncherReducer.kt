@@ -95,6 +95,8 @@ sealed interface LauncherAction {
     data class RevealTile(val tileId: TileInstanceId) : LauncherAction
     data class TogglePin(val entryId: LauncherEntryId) : LauncherAction
     data object ResetStartDocument : LauncherAction
+    /** 中文：列数与整张桌面同一原子提交；保留实例、内容、顺序与有效格位。 */
+    data class SetStartColumns(val columns: Int) : LauncherAction
     data class PersistenceIncidentObserved(val incident: LauncherPersistenceIncident) : LauncherAction
 }
 
@@ -232,11 +234,25 @@ class DefaultLauncherReducer : LauncherReducer {
                 start = state.start.copy(reveal = StartReveal(action.tileId, "reveal-${state.nextTransactionId}"), interaction = StartInteractionState.Idle),
                 transient = null, nextTransactionId = state.nextTransactionId + 1), listOf(LauncherEffect.ScrollStartToReveal(action.tileId)))
         is LauncherAction.TogglePin -> togglePin(state, action.entryId)
+        is LauncherAction.SetStartColumns -> setStartColumns(state, action.columns)
         LauncherAction.ResetStartDocument -> applyCommitted(
             state,
             LayoutProposal(state.start.document, context.defaultDocument, LayoutChangeReason.RESET),
         )
         }
+    }
+
+    private fun setStartColumns(state: LauncherEngineState, columns: Int): LauncherReduction {
+        if (columns != 4 && columns != 6) return invalidProposal(state, "Start supports four or six columns")
+        if (state.start.activeTransaction != null || state.start.interaction is StartInteractionState.Dragging) {
+            return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.LAYOUT_UNAVAILABLE)))
+        }
+        val document = state.start.document
+        val profile = WpReferenceProfiles.withColumns(document.profileId, columns)
+        if (profile.id == document.profileId) return LauncherReduction(state)
+        val after = com.yokuli.shell.engine.layout.StartColumnLayout.change(document, profile)
+        val result = applyCommitted(state, LayoutProposal(document, after, LayoutChangeReason.COLUMNS))
+        return result.copy(state = result.state.copy(start = result.state.start.copy(interaction = StartInteractionState.Idle)))
     }
 
     private fun restorePersistedDocument(
@@ -862,6 +878,18 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun undo(state: LauncherEngineState): LauncherReduction {
         val transaction = state.start.undoStack.lastOrNull() ?: return LauncherReduction(state)
         val current = state.start.document
+        if (transaction.reason == LayoutChangeReason.COLUMNS) {
+            // 后来的内容编辑不能被整张旧快照覆盖；仍在该列数时只撤销列数及其排布。
+            val restored = if (current.profileId != transaction.after.profileId) current
+                else if (current == transaction.after) transaction.before.copy(
+                    revision = current.revision, receipts = current.receipts, removedTiles = current.removedTiles,
+                    preservedProto = current.preservedProto,
+                ) else com.yokuli.shell.engine.layout.StartColumnLayout.change(current,
+                    WpReferenceProfiles.require(transaction.before.profileId))
+            return LauncherReduction(state.copy(start = state.start.copy(document = restored,
+                undoStack = state.start.undoStack.dropLast(1), interaction = StartInteractionState.Idle), transient = null),
+                if (restored == current) emptyList() else listOf(LauncherEffect.PersistDocument(restored)))
+        }
         val beforeById = transaction.before.placements.associateBy { it.tileId }
         val afterById = transaction.after.placements.associateBy { it.tileId }
         val removed = transaction.before.placements.filter { it.tileId !in afterById }

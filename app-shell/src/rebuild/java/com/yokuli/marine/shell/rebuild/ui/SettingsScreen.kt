@@ -59,7 +59,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         "appearance" -> os.t("外观与显示", "appearance & display")
         "language" -> os.t("语言", "language")
         "units" -> os.t("单位与坐标", "units & coordinates")
-        "start" -> os.t("背景与透明磁贴", "background & transparent tiles")
+        "start" -> os.t("开始屏幕", "Start")
         "vessel" -> os.t("我的船", "my boat")
         "permissions" -> os.t("权限与后台", "permissions & background")
         "sound" -> os.t("声音与警报", "sound & alarms")
@@ -85,7 +85,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         AppSection(os.t("系统", "system"))
                         listOf("start", "appearance", "language", "units", "sound", "permissions").forEach { key ->
                             MenuRow(title(key), when(key) {
-                                "start" -> os.t("选择背景照片、调整透明度与取景", "choose a photo, adjust transparency and framing")
+                                "start" -> os.t("4 或 6 列、背景照片与透明磁贴", "4 or 6 columns, wallpaper and transparent tiles")
                                 "language" -> if(os.chinese) "简体中文" else "English"
                                 "units" -> "${os.distanceUnitLabel} · ${os.speedUnitLabel} · " + os.t("水深 ", "depth ") + os.depthUnitLabel
                                 else -> null
@@ -122,8 +122,9 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                     }
                     "units" -> UnitSettings(os)
                     "start" -> {
+                        StartColumnsSettings(os)
                         StartBackgroundSettings(os)
-                        Label(os.t("长按磁贴，拖动位置或调整尺寸。每个应用保留一块磁贴，在磁贴工坊选择它的内容样式。", "Hold a tile to move or resize it. Each app has one tile; choose its content style in Tile Studio."),15)
+                        Label(os.t("长按磁贴排列位置。在工坊选择内容、组合与点击去向。", "Hold tiles to arrange them. Choose content, combinations and destinations in Tile Studio."),15)
                         MetroButton(os.t("选择磁贴样式", "choose tile styles"),{os.openLinked("tiles")},primary=true)
                         MetroButton(os.t("恢复默认布局", "restore default layout"),{reset=true})
                     }

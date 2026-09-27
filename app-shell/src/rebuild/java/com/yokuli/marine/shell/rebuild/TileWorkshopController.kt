@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import org.json.JSONArray
 
 enum class TileEditorPhase { EDITING, ALREADY_PINNED, SAVING, FAILED, CONFLICT }
 /** 编辑器内部页面；Shell 返回和重建恢复必须知道是在挑选内容还是离开草稿。 */
@@ -117,8 +118,10 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
         if(loaded)return true
         show(TileWorkshopFeedback(os.t("正在恢复开始屏幕，请稍候。","Start is restoring. Please wait."),error=true));return false
     }
-    fun beginAdd(binding:TileBinding) {
+    fun beginAdd(requestedBinding:TileBinding) {
         if(!ready())return
+        val choice=tileContentDescriptor(os,requestedBinding)
+        val binding=canonicalBinding(requestedBinding,choice.defaultPresentation)
         current.value?.let { draft ->
             if(draft.phase==TileEditorPhase.SAVING) {resume();return}
             if(draft.binding==binding && draft.isNew) {resume();return}
@@ -129,12 +132,11 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
             }
             write(null)
         }
-        val choice=tileContentDescriptor(os,binding)
         if(!choice.supported) {show(TileWorkshopFeedback(os.t("此内容暂不支持新固定。","This content cannot be pinned yet."),error=true));return}
         val existing=find(binding)
         write(TileEditorSession(uid(),TileInstanceId("tile-"+uid()),binding,choice.defaultPresentation,choice.defaultSize,null,
             binding,choice.defaultPresentation,choice.defaultSize,origin(),
-            phase=if(existing!=null)TileEditorPhase.ALREADY_PINNED else TileEditorPhase.EDITING,existingTileId=existing?.tileId))
+            phase=if(existing!=null && requestedBinding.kind!=TileBindingKind.COMPOSITE)TileEditorPhase.ALREADY_PINNED else TileEditorPhase.EDITING,existingTileId=existing?.tileId))
     }
     fun beginEdit(tileId:TileInstanceId) {
         if(!ready())return
@@ -157,20 +159,33 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
         val draft=current.value?.takeUnless {it.phase==TileEditorPhase.SAVING}?:return
         write(draft.copy(page=TileEditorPage.CHOOSE_CONTENT,showDiscardConfirmation=false))
     }
-    fun setBinding(binding:TileBinding) {
+    fun setBinding(requestedBinding:TileBinding) {
         val previous=current.value?.takeUnless {it.phase==TileEditorPhase.SAVING}?:return
         val draft=if(previous.phase==TileEditorPhase.CONFLICT&&shell.engine.state.value.start.document.placements.none {it.tileId==previous.tileId})
             previous.copy(id=uid(),tileId=TileInstanceId("tile-"+uid()),originalRevision=null) else previous
-        val choice=tileContentDescriptor(os,binding)
+        val choice=tileContentDescriptor(os,requestedBinding)
         if(!choice.supported)return
+        val binding=canonicalBinding(requestedBinding,choice.defaultPresentation)
         val existing=find(binding)?.takeUnless {it.tileId==draft.tileId}
         write(draft.copy(id=if(draft.phase==TileEditorPhase.FAILED&&draft.binding!=binding)uid()else draft.id,binding=binding,size=draft.size.takeIf {it in choice.sizes}?:choice.defaultSize,
             presentation=if(binding==draft.binding)draft.presentation else choice.defaultPresentation,
             phase=TileEditorPhase.EDITING,page=TileEditorPage.EDITOR,showDiscardConfirmation=false,
             existingTileId=existing?.tileId,errorText=null))
     }
-    fun setSize(size:MarineTileSize) {modify {it.copy(size=size)}}
-    fun setPresentation(presentation:TilePresentation) {modify {it.copy(presentation=presentation)}}
+    fun setSize(size:MarineTileSize) {modify {draft->
+        if(size in tileContentDescriptor(os,draft.binding).sizes)draft.copy(size=size)else draft
+    }}
+    private fun canonicalBinding(binding:TileBinding,presentation:TilePresentation):TileBinding =
+        if(binding.kind==TileBindingKind.COMPOSITE)TileCompositePolicy.canonicalBinding(
+            presentation.compositePanels.ifEmpty {TileCompositePolicy.DEFAULT_PANELS})else binding
+    fun setPresentation(presentation:TilePresentation) {modify {draft->
+        val configured=if(draft.binding.kind==TileBindingKind.COMPOSITE)presentation.copy(
+            compositePanels=presentation.compositePanels.takeIf(TileCompositePolicy::validPanels) ?: TileCompositePolicy.DEFAULT_PANELS)
+            else presentation
+        val next=canonicalBinding(draft.binding,configured)
+        draft.copy(binding=next,presentation=configured,
+            existingTileId=find(next)?.takeUnless {it.tileId==draft.tileId}?.tileId)
+    }}
     fun chooseStyle(style:String) {
         val draft=current.value?:return
         if(tileContentDescriptor(os,draft.binding).styles.none {it.key==style})return
@@ -245,7 +260,7 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
         if(draft.size !in choice.sizes || (draft.presentation.legacyMode==null&&choice.styles.none {it.key==draft.presentation.style})) {
             write(draft.copy(phase=TileEditorPhase.FAILED,errorText=os.t("请选择此内容支持的尺寸和表现。","Choose a supported size and presentation.")));return
         }
-        shell.ensureTileContent(draft.binding,draft.size)
+        shell.ensureTileContent(draft.binding,draft.size,draft.presentation)
         write(draft.copy(phase=TileEditorPhase.SAVING,errorText=null,showDiscardConfirmation=false))
         saveJob=os.scope.launch {
             val result=try {shell.engine.commitTile(TileCommitRequest(draft.id,draft.tileId,draft.binding,draft.presentation,draft.size,draft.originalRevision))}
@@ -312,6 +327,7 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
     private fun presentationJson(value:TilePresentation)=JSONObject().put("style",value.style).put("legacy",value.legacyMode).put("rotate",value.rotate).put("interval",value.intervalSeconds)
         .put("historyMinutes",value.historyMinutes).put("rangeMinimum",value.rangeMinimum).put("rangeMaximum",value.rangeMaximum)
         .put("showSource",value.showSource).put("showReference",value.showReference)
+        .put("compositePanels",JSONArray(value.compositePanels)).put("tapTarget",value.tapTarget).put("title",value.title)
     private fun encode(value:TileEditorSession)=JSONObject().put("schema",1).put("id",value.id).put("tile",value.tileId.value)
         .put("binding",bindingJson(value.binding)).put("presentation",presentationJson(value.presentation)).put("size",value.size.name)
         .put("revision",value.originalRevision).put("originalBinding",bindingJson(value.originalBinding))
@@ -328,7 +344,9 @@ class TileWorkshopController(private val os:OsStore,private val shell:WpShellRun
             historyMinutes=if(p.has("historyMinutes"))p.getInt("historyMinutes")else null,
             rangeMinimum=if(p.has("rangeMinimum"))p.getDouble("rangeMinimum")else null,
             rangeMaximum=if(p.has("rangeMaximum"))p.getDouble("rangeMaximum")else null,
-            showSource=p.optBoolean("showSource",true),showReference=p.optBoolean("showReference",true))}
+            showSource=p.optBoolean("showSource",true),showReference=p.optBoolean("showReference",true),
+            compositePanels=p.optJSONArray("compositePanels")?.let {items->(0 until items.length()).map {items.getString(it)}} ?: emptyList(),
+            tapTarget=p.optString("tapTarget").takeIf {it.isNotBlank()},title=p.optString("title").takeIf {it.isNotBlank()} )}
         return TileEditorSession(json.getString("id"),TileInstanceId(json.getString("tile")),binding("binding"),presentation("presentation"),MarineTileSize.valueOf(json.getString("size")),
             if(json.has("revision"))json.getLong("revision")else null,binding("originalBinding"),presentation("originalPresentation"),MarineTileSize.valueOf(json.getString("originalSize")),
             TileEditorOrigin(json.getString("surface"),json.optString("task").takeIf {it.isNotBlank()},json.optString("page").takeIf {it.isNotBlank()}),

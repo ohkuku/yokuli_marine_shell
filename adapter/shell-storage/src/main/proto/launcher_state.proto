@@ -81,6 +81,9 @@ message TilePresentationProto {
   bool has_fixed_range = 9;
   bool hide_source = 10;
   bool hide_reference = 11;
+  repeated string composite_panels = 12;
+  string tap_target = 13;
+  string title = 14;
 }
 message TileCommitReceiptProto {
   string request_id = 1;

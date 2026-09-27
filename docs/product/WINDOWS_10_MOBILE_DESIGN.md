@@ -89,16 +89,16 @@ AIS Pager 关闭 Android 默认边缘弧光；雷达图例移入更多菜单，�
 
 ## Yokuli 品牌标记与字标（2026-09-25）
 
-2026-09-27 用户指定的帆船字标取代此前分舷 Y。原参考保存在 `design/brand/approved-reference.png`；矢量母版采用大写 **YOKULI**、包含帆与波纹的开放 O、右下较轻的 **OS**。整体签名只呈现这份字标，不再在文字旁堆第二个大图标。小尺寸 Home、安装图标与系统通知从同一 O 提取帆船标记。形状是对用户图像的矢量转绘，扁平单色去除位图纸色和渐变。
+2026-09-27 后续用户明确推翻旧大写帆船 O 字标。当前品牌为原创小写 **yokuli**、次级 **os** 与独立十六格像素帆船：平面、文字主导、黑白、轻盈。帆船是小尺寸识别符，不占据应用内容的主位。Apple 对内容优先、短启动过渡的原则，以及 Garmin 信息一眼可读的方向只作设计参考；没有复制两家的商标、字体或控件资产。新的权威母版与生产生成方法见 [品牌资产指南](../../design/brand/README.md)。本节日期锚点保留用于既有文档链接，并不表示旧方案仍有效。
 
-界面以黑白为主：默认 `MONOCHROME` 随明暗主题使用相反前景；已有装机只迁移一次，不覆盖单块磁贴显式配置。旧彩色枚举仅保留兼容读取。主要页面标题22sp、Pivot20sp、节标题18sp、正文15sp，标题用更明确的字重，少用占地巨大的图标和说明。船位/航迹、警报和风险颜色仍表达领域语义。文字继续用 Selawik 与系统中文回退；不把品牌字形当正文字体。
+界面以黑白为主：默认 `MONOCHROME` 随明暗主题使用相反前景；不重置已有壁纸、单块磁贴和用户显式配置。主要页面标题22sp、Pivot20sp、节标题18sp、正文15sp；只把真正需要扫读的航海读数放大。警报、数据质量和航海图色彩继续表达领域意义。正文仍使用 Selawik 和系统中文回退；字标轮廓不作为正文字体。
 
-- 唯一 SVG 母版为 `design/brand/yokuli-wordmark.svg`，`yokuli-mark.svg` 由其中的 O、帆与波纹生成；`scripts/generate_brand_assets.py` 生成 `core/design/res/drawable`、运行时通知图标的实际资源及组合标识。Compose 的 `YokuliBrandMark / Wordmark / Signature` 与 Android 图标、起始窗口复用这份几何，不在页面分别画帆船、罗盘或四方块来代表 OS。
-- 安装图标用主标，不塞入不可辨的小字。自适应前景/单色层为 108dp，全部轮廓落在中央直径 66dp 区域；Android 13 主题图标保留负空间。遵循 [Android 自适应图标规范](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive)。
-- 启动页在 Android 12+ 使用系统持有的 288dp 静态标志与 200×80dp 底部字标，标志落在中央直径 192dp 区域；Android 9–11 使用同几何的起始窗口。遵循 [系统 Splash 规范](https://developer.android.com/develop/ui/views/launch/splash-screen)。不新增 SplashActivity、等待条件、假进度或持续循环。主 Activity 首帧切回实际主题，系统进出动画保持原生。
-- 桌面只在原“所有应用”页脚空位加入横向小字标；按中英文本与字号实际宽度判断空间，不够就让出入口，不挤掉磁贴行。Home 使用 24dp 单色主标，仍发送 DESKTOP，Back/长按最近任务/通知键不改含义。
-- 关于页使用完整横排签名与较轻版本信息。已有内部应用冷启动遮罩底部加入小字签名，应用自己的图标和名称仍占主位；播放时机和时长继续由原任务状态机决定，热切换不追加开屏。
-- 系统通知使用主标；应用发布的通知仍用原应用图标。普通应用标题、地图、数据读数和可自定义壁纸不加品牌水印。ROM HOME 与普通 APK 共用此实现，尚未实现独立 ROM bootanimation。
+- `design/brand/yokuli-wordmark.svg` 和 `yokuli-mark.svg` 是两个原创 SVG 母版。`scripts/generate_brand_assets.py` 生成生产 VectorDrawable、通知图标与 `YokuliPixelGeometry.kt`。Compose、安装图标、通知、起始窗口使用同一几何；不另画帆船 O、分舷 Y 或罗盘当 OS 标记。Canvas 的像素帆船对齐物理像素，字标使用矢量轮廓，避免放大位图或有损滤镜。
+- 安装图标只显示像素帆船。自适应前景与主题单色层为108dp，图形保持在中心安全区；保留掩模与负空间，遵循 [Android 自适应图标规范](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive)。
+- 系统起始窗口只显示同一帆船，取消第二份底部签名；不设置 keep-on-screen、SplashActivity、假进度或数据就绪等待。实际 `MainActivity` 首帧已运行 `OsExperience` 和 Core 连接，品牌是独立绘制覆盖层。
+- `BrandArrivalHost` 仅在当前 Shell 进程首次显式 Launcher/HOME 冷启动播放760ms抵达动效：像素帆船驶向字标、轻微起伏与短尾迹、文字揭开，最后露出真正桌面。使用 Compose 帧时钟；连续状态在 DrawScope/graphicsLayer 中读取，不逐帧重组桌面。任意触摸或 Shell 键可略过；切入业务页、拉出通知、收到新 Intent、进入后台时立即移除。通知/目标入口、旋转恢复及热返回不重复播放；没有以动画完成为条件启动采集。
+- 经典 Home/应用 turnstile 与内部页面运动继续由原任务状态机负责，品牌动效不修改导航栈。内部应用的既有冷启动遮罩改为28dp识别图标和文字主导的身份行；底部只保留轻量小字标，热切换不追加品牌开屏。
+- 关于页和应用列表页脚使用小写字标。Home、通知键与 Back 保持原语义；普通页面、地图、仪表不叠加品牌水印。ROM HOME 与普通 APK 共用此实现；这不是独立 ROM bootanimation，也未取代 Android 系统启动动画。
 
 ## 实际生产入口
 

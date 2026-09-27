@@ -1,7 +1,7 @@
 package com.yokuli.shell.contract
 
 /** 中文：内容身份不包含表现、语言、单位、来源或临时任务会话。 */
-enum class TileBindingKind { APP, READING, CURRENT_TASK, OVERVIEW, SAVED_PLACE, SAVED_ROUTE, UNKNOWN }
+enum class TileBindingKind { APP, READING, CURRENT_TASK, OVERVIEW, COMPOSITE, SAVED_PLACE, SAVED_ROUTE, UNKNOWN }
 
 data class TileBinding(
     val providerId: String,
@@ -32,4 +32,10 @@ data class TilePresentation(
     /** 来源、参考系是可选补充；警报、任务阶段和数据时效始终显示，不受这两个选项隐藏。 */
     val showSource:Boolean = true,
     val showReference:Boolean = true,
+    /** 中文：复合磁贴只引用稳定情景 ID，不嵌套磁贴或复制业务状态；列表顺序即显示顺序。 */
+    val compositePanels: List<String> = emptyList(),
+    /** 中文：点击整块磁贴的目标；只接受系统已有入口/对象捷径，null 使用内容默认目标。 */
+    val tapTarget: String? = null,
+    /** 中文：用户给组合取的简短名称，不参与内容去重。 */
+    val title: String? = null,
 )

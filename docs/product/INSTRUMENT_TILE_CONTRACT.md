@@ -31,8 +31,10 @@
 | `TileBinding` | 提供者、内容种类、稳定内容 ID | `providerId / kind / contentId / unknownKind`；来源、语言、样式不参与身份 | Shell 文档 |
 | `TileBinding.contentKey` / `startEntryId` | 规范去重键 / Start-only 入口 | 长度编码避免分隔符歧义；APP 保留原入口，内容入口用规范身份编码 | 由 binding 派生 |
 | `TilePlacement.tileId` | 实例的稳定身份 | 换内容、尺寸、样式仍保留；不按应用找第一块 | Shell 文档 |
-| `TilePlacement.binding / presentation` | 此块内容与表现 | `TilePresentation(style, legacyMode, rotate, intervalSeconds)`；兼容值只迁移一次 | Shell 文档 |
-| `TilePlacement.size` | 小 / 中 / 宽 | 内容首版使用中/宽，只有应用入口可用小图标 | Shell 文档 |
+| `TilePlacement.binding / presentation` | 此块内容与表现 | `TilePresentation` 保存样式、历史/量程、来源说明和复合配置；兼容值只迁移一次 | Shell 文档 |
+| `TilePresentation.compositePanels / title / tapTarget` | 组合内容顺序、自定义名称、点按目标 | 2–4 个不同的规范面板，无嵌套；目标为内部白名单，名称最多 48 字符 | 原 Proto 字段 12–14 |
+| `StartDocument.profileId` | 桌面 4 或 6 列 | 切列按现有视觉顺序重排；保留实例、配置，可撤销；冷启动不得被默认列数覆盖 | 原 Shell 文档 |
+| `TilePlacement.size` | 小 / 中 / 宽 / 大 | 1×1 / 2×2 / 4×2 / 4×4；重要场景支持大磁贴，复合用宽/大，单读数用中/宽 | Shell 文档 |
 | `TilePlacement.rank / preferredCell` | 排序 / 用户网格位置 | 唯一布局记录，工坊不另存第二个布局 | Shell 文档 |
 | `TilePlacement.revision` | 实例最后变更版本 | 并发编辑/删除冲突使用此值 | Shell 文档 |
 | `StartDocument.revision / receipts / removedTiles` | 文档版本、近期提交回执、移除逆操作 | 同一次 Proto DataStore 更新提交；不提前发布未落盘位置 | Shell 文档 |
@@ -178,3 +180,16 @@ flowchart LR
 ### 短历史在后台与重开应用后的呈现
 
 仪表短图继续消费唯一 `DataHub.history`。显示缓存后台30秒批写、首次恢复完成后再固定本次窗口；恢复只加入历史，不给当前仪表恢复读数。各图型和累计差值的连续段额外检查 `Reading.historySessionKey`，因此重开进程不会把停采区间连成观测。缓存读写故障在真实 `ReadingTrace` 显示并可重试，来源/时间/原值不因落盘或恢复变更。缓存限制与明确退出刷批见[数据中心契约](DATA_CENTER_CONTRACT.md#2026-09-27-后台显示历史缓存)。
+
+
+## 大磁贴、自由组合与桌面密度（2026-09-27）
+
+用户故事：在工坊先选完整场景（航行、风况、船姿、余量、气象、导航、守锚、记录或交通），重要场景可选择真实 4×4；不是把一个读数放大。需要同时关注几个场景时，选择“我的航行视窗”，添加 2–4 项、上下调整顺序、命名，并指定整块磁贴的打开目标。预览与桌面调用同一生产渲染器，不嵌套小磁贴背景或独立点击区。应用／任务／收藏目的地仍由既有 Shell 访问栈处理。
+
+`TileCompositePolicy` 共用固定面板目录和内部目的地白名单。复合 `binding.contentId = panels:<排序后的成员>`，面板位置由 `presentation.compositePanels` 保存；成员相同即同一内容，不因名称、顺序、大小或点击去向创建重复磁贴。不同组合可以分别固定。更换组合遇到已固定内容会引导编辑现有实例；草稿、原版本与失败重试沿已有工坊控制器，内容未成功落盘前不显示保存成功。
+
+目标选择提供应用首页、当前任务／驾驶台页签等捷径，以及已保存地点／航线。只保存内部页面身份，不接受任意 Intent，不直接执行启停或改变来源。收藏删除后保留原目标并显示缺失页，可从该页重新编辑磁贴；不会把正在导航的副本冒充已删除的收藏。
+
+设置 → 开始屏幕提供 4／6 列，并按实际文档预览。`SetStartColumns` → `StartColumnLayout` → 原 `PersistDocument` 事务，原子提交 profile 和位置；保存失败保留原布局。同一屏幕宽度下，6 列的单元宽与高一起等比缩小，所以横向列数与纵向可见行数同时增加；不允许只缩宽不缩高。磁贴内容的字、图和内边距也按四列参考单元比率一起缩放；手势命中区域和编辑按钮不缩，App 内正文不受桌面密度影响。4 列让磁贴更大，4×4 在两者中均可用。编辑器的测量、壁纸位置和拖动均读取同一持久 profile，不另存第二份列数。
+
+大视图只显示真实记录、冻结导航、锚位偏移／警戒范围和收到的 AIS 目标。缺失时不画示范轨迹或假目标；传感器方向过期不保留活动指针。颜色、参考、来源及时间语义继续沿上文规则，展示动效不回写数据。

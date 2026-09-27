@@ -25,6 +25,7 @@ import java.util.Locale
     val choice=tileContentDescriptor(os,binding)
     val app=ShellApp(choice.owner)
     val config=placement.presentation
+    val title=config.title?.takeIf {it.isNotBlank()} ?: choice.title.text(os)
     if(binding.kind==TileBindingKind.APP&&choice.supported) {
         val preset=tilePresets().firstOrNull {it.entryId.value==binding.contentId||it.entryId==placement.entryId}
         val legacyMode=config.legacyMode
@@ -34,25 +35,31 @@ import java.util.Locale
             config.style=="summary"->"AUTO"
             else->preset?.mode ?: "STATIC"
         }
-        return LauncherEntryVisualContribution(placement.entryId,choice.title.text(os),choice.owner.chineseIndex,
-            choice.title.text(os),choice.subtitle.text(os),LauncherIconRenderer {color,modifier->ShellAppIcon(app,color,modifier)},
+        return LauncherEntryVisualContribution(placement.entryId,title,choice.owner.chineseIndex,
+            title,choice.subtitle.text(os),LauncherIconRenderer {color,modifier->ShellAppIcon(app,color,modifier)},
             (choice.sizes+placement.size).distinct().associateWith {size->LauncherTileRenderer {context->
                 key(binding.contentKey,config,size) {
                     LegacyInstanceTile(os,app,active,mode,config.rotate ?: (mode=="AUTO"),config.intervalSeconds?.toLong() ?: 6L,size,context,preset)
                 }
             }},fullBleed=choice.owner==AppId.CHART&&mode in setOf("AUTO","MAP"))
     }
-    return LauncherEntryVisualContribution(placement.entryId,choice.title.text(os),choice.owner.chineseIndex,
-        choice.title.text(os),choice.subtitle.text(os),LauncherIconRenderer {color,modifier->ShellAppIcon(app,color,modifier)},
+    return LauncherEntryVisualContribution(placement.entryId,title,choice.owner.chineseIndex,
+        title,choice.subtitle.text(os),LauncherIconRenderer {color,modifier->ShellAppIcon(app,color,modifier)},
         (choice.sizes+placement.size).distinct().associateWith {size->LauncherTileRenderer {context->
             key(binding.contentKey,config,size) {
                 val live=tilePresentationActive(active&&context.liveContentEnabled)
-                if(binding.providerId=="yokuli"&&binding.kind==TileBindingKind.READING) {
+                if(binding.providerId=="yokuli"&&binding.kind==TileBindingKind.COMPOSITE&&choice.supported) {
+                    CompositeTileFace(os,title,config,size,context,live)
+                } else if(binding.providerId=="yokuli"&&binding.kind in setOf(TileBindingKind.CURRENT_TASK,TileBindingKind.OVERVIEW)&&
+                    binding.contentId in setOf("navigation","anchorWatch","recording","aisTraffic")&&
+                    (size==MarineTileSize.LARGE_4X4||config.style=="detail")) {
+                    TaskSceneTileFace(os,title,binding.contentId,size,context,live)
+                } else if(binding.providerId=="yokuli"&&binding.kind==TileBindingKind.READING) {
                     val content=readingTileFrame(os,binding.contentId,config,live)
-                    ReadingTileFace(os,app,choice.title.text(os),content,size,context,live)
+                    ReadingTileFace(os,app,title,content,size,context,live)
                 } else {
                     val frame=contentTileFrame(os,binding,config,live)
-                    TileFace(os,app,choice.title.text(os),listOf(frame),size,context,false,false,6)
+                    TileFace(os,app,title,listOf(frame),size,context,false,false,6)
                 }
             }
         }})

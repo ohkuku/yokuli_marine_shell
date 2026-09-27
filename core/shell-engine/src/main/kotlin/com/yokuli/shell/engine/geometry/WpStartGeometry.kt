@@ -50,6 +50,18 @@ data class ResolvedStartGeometry(
 }
 
 object WpStartGeometryCalculator {
+    /**
+     * 中文：六列把一整块磁贴（文字、图形、内边距）等比缩进更密的网格。
+     * 只作用于磁贴内容密度；系统控件、外边距和手势命中区域仍使用设备原始密度。
+     * 工坊预览与真实桌面必须共用此比例，不能额外再给 renderer 缩放一次。
+     */
+    fun tileContentScale(viewport: StartViewport, profile: WpReferenceProfile): Float {
+        if (profile.columnCount == 4) return 1f
+        val current = calculate(viewport, profile)
+        val reference = calculate(viewport, WpReferenceProfiles.withColumns(profile.id, 4))
+        return current.smallCellPx.toFloat() / reference.smallCellPx
+    }
+
     fun calculate(
         viewport: StartViewport,
         profile: WpReferenceProfile = WpReferenceProfiles.forViewport(viewport),

@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
@@ -47,6 +48,7 @@ import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.shell.compose.LauncherTileRenderContext
 import com.yokuli.shell.compose.LocalInternalAppInputEnabled
 import com.yokuli.shell.contract.*
+import com.yokuli.shell.engine.geometry.WpReferenceProfiles
 import com.yokuli.shell.engine.geometry.StartViewport
 import com.yokuli.shell.engine.geometry.WpStartGeometryCalculator
 import com.yokuli.shell.engine.layout.AdaptiveTilePacker
@@ -92,7 +94,7 @@ import kotlin.math.roundToInt
     AppBackHandler(inputEnabled) { back() }
     LaunchedEffect(edit.binding.contentKey) {
         if (previewedContent != edit.binding.contentKey) {
-            editingScroll.scrollTo(0)
+            if(edit.binding.kind!=TileBindingKind.COMPOSITE)editingScroll.scrollTo(0)
             previewedContent = edit.binding.contentKey
         }
     }
@@ -107,7 +109,7 @@ import kotlin.math.roundToInt
                 }
             }
         }) {
-        TileEditorHeader(os, if (selecting) os.t("更换内容", "Choose content") else tileText(os, choice.title),
+        TileEditorHeader(os, if (selecting) os.t("更换内容", "Choose content") else edit.presentation.title?.takeIf {it.isNotBlank()} ?: tileText(os, choice.title),
             if (selecting) os.t("磁贴内容", "Tile content") else if (edit.isNew) os.t("固定到开始屏幕", "Pin to Start") else os.t("编辑磁贴", "Edit tile"), inputEnabled, back)
         if (selecting) {
             TileContentPicker(os, tileContentChoices(os), state.start.document.placements.map { tileBinding(it).contentKey }.toSet(),
@@ -134,11 +136,7 @@ import kotlin.math.roundToInt
                     MetroButton(os.t("返回", "Back"), { workshop.requestClose() })
                 } else {
                     Label(os.t("尺寸", "Size"), 15, c.muted, Modifier.semantics { heading() })
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        choice.sizes.forEach { size ->
-                            ChoiceRow(tileSizeName(os, size), edit.size == size, enabled = canConfigure, modifier = Modifier.weight(1f)) { workshop.setSize(size) }
-                        }
-                    }
+                    TileSizeChoices(os,choice.sizes,edit.size,canConfigure,workshop::setSize)
                     val iconOnly = edit.size == MarineTileSize.ICON_1X1
                     if (iconOnly) {
                         Label(os.t("小磁贴显示应用图标；放大后显示你选定的内容样式。", "Small tiles show the app icon. A larger tile uses your selected appearance."), 13, c.muted)
@@ -153,12 +151,16 @@ import kotlin.math.roundToInt
                         }
                     }
                     if (!iconOnly && canConfigure) {
-                        TileMetricConfiguration(os, choice, edit.presentation, workshop::setPresentation)
+                        if(edit.binding.kind==TileBindingKind.COMPOSITE)
+                            CompositeTileConfiguration(os,edit.presentation,workshop::setPresentation)
+                        else TileMetricConfiguration(os, choice, edit.presentation, workshop::setPresentation)
                     }
                     if (edit.presentation.legacyMode != null) {
                         Label(os.t("保留原有内容、轮换和点击去向。选择新表现或更换内容后才转换。", "Original content, rotation and destination are preserved until you choose a new appearance or content."), 13, c.muted)
                     }
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if(edit.binding.kind==TileBindingKind.COMPOSITE)
+                        CompositeTileDestination(os,edit.presentation,canConfigure,workshop::setPresentation)
+                    else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Label(os.t("点按后", "Opens"), 13, c.muted)
                         Label(tileText(os, choice.destinationLabel), 15)
                     }
@@ -229,8 +231,14 @@ import kotlin.math.roundToInt
             view.height.coerceAtLeast((480 * density.density).roundToInt()), density.density, 0, 0, density.fontScale)
     }
     val viewport = actual ?: fallback
-    val geometry = remember(viewport) { WpStartGeometryCalculator.calculate(viewport) }
     val document by os.shell.engine.state.collectAsState()
+    val geometry = remember(viewport,document.start.document.profileId) {
+        WpStartGeometryCalculator.calculate(viewport,WpReferenceProfiles.require(document.start.document.profileId))
+    }
+    val contentScale=remember(viewport,document.start.document.profileId) {
+        WpStartGeometryCalculator.tileContentScale(viewport,WpReferenceProfiles.require(document.start.document.profileId))
+    }
+    val contentDensity=remember(density,contentScale) {Density(density.density*contentScale,density.fontScale)}
     val draftDocument = remember(document.start.document, draft) {
         val current = document.start.document
         val old = current.placements.firstOrNull { it.tileId == draft.tileId }
@@ -267,7 +275,7 @@ import kotlin.math.roundToInt
         val maxWidthPx = with(density) { maxWidth.toPx() }
         val maximumPreviewHeight = minOf(viewport.heightPx * .46f, with(density) { 240.dp.toPx() }).coerceAtLeast(1f)
         val scale = minOf(1f, maxWidthPx / geometry.tileWidthPx(geometry.columns),
-            maximumPreviewHeight / geometry.tileHeightPx(MarineTileSize.STANDARD_2X2.rows))
+            maximumPreviewHeight / geometry.tileHeightPx(draft.size.rows))
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Layout(modifier = Modifier.clipToBounds().onGloballyPositioned {
                 val rect = it.boundsInWindow()
@@ -277,6 +285,7 @@ import kotlin.math.roundToInt
                     Offset(originX.toFloat(), originY.toFloat()), Modifier.fillMaxSize(), scrollFraction) {
                     val backdrop = LocalStartBackdrop.current
                     val foreground = if (backdrop.image != null && backdrop.mode != StartBackdropMode.NONE && backdrop.tileOpacity < .7f) Color.White else LocalWpTheme.current.onAccent
+                    CompositionLocalProvider(LocalDensity provides contentDensity) {
                         Box(Modifier.fillMaxSize().padding(if (visual.fullBleed && draft.size != MarineTileSize.ICON_1X1) 0.dp
                             else if (draft.size == MarineTileSize.ICON_1X1) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
                             // 配置变化立即得到新渲染实例；离屏/暂停只冻结数据，不得把旧样式的 heldFrame 带回来。
@@ -285,6 +294,7 @@ import kotlin.math.roundToInt
                                     liveContentEnabled = active && visible && resumed))
                             }
                         }
+                    }
                 }
             }) { children, constraints ->
                 val child = children.single().measure(Constraints.fixed(widthState.value.coerceAtLeast(1), heightState.value.coerceAtLeast(1)))

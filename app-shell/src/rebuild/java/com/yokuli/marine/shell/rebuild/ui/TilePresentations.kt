@@ -174,6 +174,25 @@ private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?>
         TileFace(os,app,title,listOf(TileFrame("STATIC",title,"")),size,context,false,false,interval)
         return
     }
+    if(size==MarineTileSize.LARGE_4X4) {
+        val scene=when(app.app) {
+            AppId.ANCHOR->"anchorWatch"
+            AppId.AIS->"aisTraffic"
+            AppId.VOYAGES->"recording"
+            AppId.CHART->if(mode=="NAVIGATION")"navigation"else null
+            else->null
+        }
+        if(scene!=null) {
+            TaskSceneTileFace(os,title,scene,size,context,visible)
+            return
+        }
+        if(app.app==AppId.INSTRUMENTS||app.app==AppId.CHART&&mode=="POSITION") {
+            val overview=when(mode) {"WIND"->"windConditions";"DEPTH"->"depthClearance";else->"navigationReadings"}
+            val frame=navigationOverviewTileFrame(os,overview,TilePresentation(style="detail"),visible)
+            TileFace(os,app,title,listOf(frame),size,context,false,false,interval)
+            return
+        }
+    }
     tileInstrumentDisplayDemand(os,visible&&app.app==AppId.INSTRUMENTS,heading=true)
     val dataFlow=remember(os.hub,app.app,os.positionSource) {
         if(app.app in setOf(AppId.CHART,AppId.DATA_CENTER,AppId.ANCHOR))os.hub.state.map {value->
@@ -294,7 +313,7 @@ private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?>
         }
     }
     val demo = (state?.settings?.demoMode == true || os.positionSource == "demo") && app.app.name in setOf("CHART", "INSTRUMENTS", "ANCHOR", "DATA_CENTER")
-    val selectedFrames = if (mode == "STATIC") listOf(TileFrame("STATIC", title, "")) else if (mode == "AUTO") frames else frames.filter { it.key == mode }.ifEmpty { listOf(TileFrame(mode, unavailable, "")) }
+    val selectedFrames = if(size==MarineTileSize.LARGE_4X4&&app.app==AppId.CHART&&mode=="AUTO")frames.filter {it.key=="MAP"}else if (mode == "STATIC") listOf(TileFrame("STATIC", title, "")) else if (mode == "AUTO") frames else frames.filter { it.key == mode }.ifEmpty { listOf(TileFrame(mode, unavailable, "")) }
     val permanentState=when(app.app) {
         AppId.ANCHOR->frames.firstOrNull {it.key=="WATCH"}?.headline.orEmpty()+
             if(state?.active!=null)" · "+(lastFix?.let {readingAge(os,it.elapsed,readingNow)} ?: os.t("等待船位","Waiting for position"))else ""

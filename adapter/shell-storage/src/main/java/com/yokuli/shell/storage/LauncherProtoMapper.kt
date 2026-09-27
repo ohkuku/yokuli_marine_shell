@@ -132,7 +132,9 @@ object LauncherProtoMapper {
             .setHistoryMinutes(presentation.historyMinutes ?: 0)
             .setHasFixedRange(presentation.rangeMinimum!=null&&presentation.rangeMaximum!=null)
             .setRangeMinimum(presentation.rangeMinimum ?: 0.0).setRangeMaximum(presentation.rangeMaximum ?: 0.0)
-            .setHideSource(!presentation.showSource).setHideReference(!presentation.showReference))
+            .setHideSource(!presentation.showSource).setHideReference(!presentation.showReference)
+            .clearCompositePanels().addAllCompositePanels(presentation.compositePanels)
+            .setTapTarget(presentation.tapTarget.orEmpty()).setTitle(presentation.title.orEmpty()))
         return builder.build()
     }
 
@@ -152,7 +154,9 @@ object LauncherProtoMapper {
                 placement.presentation.historyMinutes.takeIf {it in 1..15},
                 placement.presentation.rangeMinimum.takeIf {placement.presentation.hasFixedRange},
                 placement.presentation.rangeMaximum.takeIf {placement.presentation.hasFixedRange},
-                !placement.presentation.hideSource,!placement.presentation.hideReference),
+                !placement.presentation.hideSource,!placement.presentation.hideReference,
+                placement.presentation.compositePanelsList,
+                placement.presentation.tapTarget.ifBlank { null }, placement.presentation.title.ifBlank { null }),
             revision = placement.revision,
             preservedProto = Base64.getEncoder().encodeToString(placement.toByteArray()),
         )

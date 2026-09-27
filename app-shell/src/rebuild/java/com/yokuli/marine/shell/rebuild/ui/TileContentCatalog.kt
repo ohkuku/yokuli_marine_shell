@@ -23,9 +23,14 @@ data class TileContentChoice(
 ) {
     val description get()=subtitle
     val ownerTitle get()=AppPreferenceLabel(owner.zh,owner.en)
-    val defaultPresentation get()=TilePresentation(style=styles.firstOrNull()?.key ?: "simple")
+    val defaultPresentation get()=TilePresentation(style=styles.firstOrNull()?.key ?: "simple",
+        compositePanels=if(binding.kind==TileBindingKind.COMPOSITE) {
+            binding.contentId.takeIf {it.startsWith("panels:")&&TileCompositePolicy.supportsContentId(it)}
+                ?.removePrefix("panels:")?.split('+') ?: TileCompositePolicy.DEFAULT_PANELS
+        }else emptyList())
 }
 private val contentSizes=listOf(MarineTileSize.STANDARD_2X2,MarineTileSize.WIDE_4X2)
+private val sceneSizes=contentSizes+MarineTileSize.LARGE_4X4
 private fun label(zh:String,en:String)=AppPreferenceLabel(zh,en)
 private fun contentStyles(detailZh:String="详细",detailEn:String="Detail")=listOf(
     TileContentStyle("simple",label("简洁","Simple")),TileContentStyle("detail",label(detailZh,detailEn)))
@@ -71,12 +76,16 @@ private fun staticTileContentChoices():List<TileContentChoice> {
     }
     fun task(id:String,owner:AppId,zh:String,en:String,detailZh:String,detailEn:String)=TileContentChoice(
         TileBinding("yokuli",TileBindingKind.CURRENT_TASK,id),label(zh,en),label(detailZh,detailEn),owner,TileContentGroup.WATCH,
-        contentSizes,contentStyles(),MarineTileSize.WIDE_4X2,"task:$id",label("${owner.zh} · 当前任务","${owner.en} · Current task"))
+        sceneSizes,contentStyles("图形概览","Visual overview"),MarineTileSize.WIDE_4X2,"task:$id",label("${owner.zh} · 当前任务","${owner.en} · Current task"))
     fun instruments(id:String,zh:String,en:String,summaryZh:String,summaryEn:String,section:String)=TileContentChoice(
         TileBinding("yokuli",TileBindingKind.OVERVIEW,id),label(zh,en),label(summaryZh,summaryEn),AppId.INSTRUMENTS,TileContentGroup.WATCH,
-        contentSizes,listOf(TileContentStyle("detail",label("图形与读数","Visual")),TileContentStyle("simple",label("只看读数","Readings"))),
+        sceneSizes,listOf(TileContentStyle("detail",label("图形与读数","Visual")),TileContentStyle("simple",label("只看读数","Readings"))),
         MarineTileSize.WIDE_4X2,"instruments:tab:$section",label("驾驶台 · $zh","Helm · $en"))
     return listOf(
+        TileContentChoice(TileBinding("yokuli",TileBindingKind.COMPOSITE,"custom"),label("我的航行视窗","My sailing view"),
+            label("把航向、风、水深与任务组合在一起","Bring course, wind, depth and your current task together"),AppId.INSTRUMENTS,TileContentGroup.WATCH,
+            listOf(MarineTileSize.WIDE_4X2,MarineTileSize.LARGE_4X4),listOf(TileContentStyle("detail",label("组合视窗","Combined view"))),
+            MarineTileSize.LARGE_4X4,"instruments:tab:navigation",label("驾驶台 · 航行","Helm · Under way")),
         instruments("navigationReadings","航行","Under way","航速、船首向与对地航向","Speed, heading and course over ground","navigation"),
         instruments("windConditions","风况","Wind","真风、视风与相对船艏的来风方向","True and apparent wind, relative to the bow","sailing"),
         instruments("depthClearance","水深与余量","Depth & clearance","实测水深与龙骨下余量","Measured depth and under-keel clearance","navigation"),
@@ -87,7 +96,7 @@ private fun staticTileContentChoices():List<TileContentChoice> {
         task("recording",AppId.VOYAGES,"当前记录","Current recording","查看本次记录的进度和暂停状态","View the active recording and its paused state"),
         TileContentChoice(TileBinding("yokuli",TileBindingKind.OVERVIEW,"aisTraffic"),label("周围交通","Nearby traffic"),
             label("收到的 AIS 目标与交通警戒","Received AIS traffic and watch status"),AppId.AIS,TileContentGroup.WATCH,
-            contentSizes,contentStyles(),MarineTileSize.WIDE_4X2,ShellApp(AppId.AIS).rootToken.value,label("AIS · 观察","AIS · Observe")),
+            sceneSizes,listOf(TileContentStyle("detail",label("交通方位","Traffic view")),TileContentStyle("simple",label("摘要","Summary"))),MarineTileSize.WIDE_4X2,ShellApp(AppId.AIS).rootToken.value,label("AIS · 观察","AIS · Observe")),
         TileContentChoice(TileBinding("yokuli",TileBindingKind.CURRENT_TASK,"systemExit"),label("退出 Yokuli","Exit Yokuli"),
             label("确认后停止后台运行","Stop background operation after confirmation"),AppId.SETTINGS,TileContentGroup.APPS,
             contentSizes,listOf(TileContentStyle("simple",label("退出入口","Exit shortcut"))),MarineTileSize.STANDARD_2X2,
@@ -119,6 +128,9 @@ private fun savedRouteChoice(route:Route)=TileContentChoice(TileBinding("yokuli"
 /** Missing objects retain their tile identity; navigation snapshots do not revive saved routes. */
 fun tileContentDescriptor(os:OsStore,binding:TileBinding):TileContentChoice {
     declaredTileChoices.firstOrNull {it.binding.contentKey==binding.contentKey}?.let {return it}
+    if(binding.providerId=="yokuli"&&binding.kind==TileBindingKind.COMPOSITE&&TileCompositePolicy.supportsContentId(binding.contentId)) {
+        return declaredTileChoices.first {it.binding.kind==TileBindingKind.COMPOSITE}.copy(binding=binding)
+    }
     if(binding.providerId=="yokuli" && binding.kind==TileBindingKind.APP) {
         tilePresets().firstOrNull {it.entryId.value==binding.contentId}?.let {preset->
             val app=ShellApp(preset.app)
@@ -140,3 +152,11 @@ fun tileContentDescriptor(os:OsStore,binding:TileBinding):TileContentChoice {
         when(binding.kind) {TileBindingKind.SAVED_PLACE->"tileplace:${binding.contentId}";TileBindingKind.SAVED_ROUTE->"tileroute:${binding.contentId}";else->ShellApp(AppId.TILES).rootToken.value},
         label(if(saved)"我的航行 · 内容状态"else"磁贴工坊 · 编辑内容",if(saved)"My Sailing · Content status"else"Tile Studio · Edit content"),supported=saved&&binding.providerId=="yokuli")
 }
+
+/** 组合复用规范场景，不允许把已有组合套进另一块磁贴。 */
+fun tileCompositePanelChoices(os:OsStore):List<TileContentChoice> = tileContentChoices(os).filter {
+    it.binding.providerId=="yokuli"&&it.binding.kind in setOf(TileBindingKind.OVERVIEW,TileBindingKind.CURRENT_TASK)&&
+        it.binding.contentId in TileCompositePolicy.panelIds
+}
+fun tileCompositePanelIds(presentation:TilePresentation):List<String> = presentation.compositePanels
+    .filter {it in TileCompositePolicy.panelIds}.distinct().take(4).takeIf {it.size>=2} ?: TileCompositePolicy.DEFAULT_PANELS

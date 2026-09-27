@@ -57,9 +57,11 @@ import kotlin.math.roundToInt
 
 @Composable internal fun AppLaunchCover(os:OsStore,app:ShellApp) {
     Box(Modifier.fillMaxSize().background(LocalMetro.current.bg).testTag("app-launch-${app.id.value}"),contentAlignment=Alignment.Center) {
-        Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(16.dp)) {
-            ShellAppIcon(app,LocalMetro.current.accentText,Modifier.size(64.dp))
-            Label(os.title(app.app),24)
+        // 身份以名称为主，图标退为小型识别符；外层仍由原来的 turnstile 状态机推进。
+        Row(Modifier.padding(horizontal=32.dp),verticalAlignment=Alignment.CenterVertically,
+            horizontalArrangement=Arrangement.spacedBy(14.dp)) {
+            ShellAppIcon(app,LocalMetro.current.fg,Modifier.size(28.dp))
+            Label(os.title(app.app),28,weight=androidx.compose.ui.text.font.FontWeight.Medium,maxLines=2)
         }
         // 只在已有冷启动遮罩中署名；持续时间和热切换仍由原任务状态机决定。
         YokuliBrandWordmark(Modifier.align(Alignment.BottomStart)

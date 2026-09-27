@@ -75,7 +75,7 @@ data class WpReferenceProfile(
         require(referenceRevision > 0)
         require(reviewedMeasurementHash.matches(Regex("[0-9a-f]{64}")))
         require(referenceWidthPx > 0 && referenceHeightPx > 0)
-        require(columnCount == 4)
+        require(columnCount == 4 || columnCount == 6)
         require(outerInsetPx > 0 && seamPx > 0 && smallCellPx > 0)
         require(mediumTilePx == smallCellPx * 2 + seamPx)
         require(wideTileWidthPx == smallCellPx * 4 + seamPx * 3)
@@ -144,12 +144,38 @@ object WpReferenceProfiles {
         evidenceState = ReferenceEvidenceState.DERIVED_UNVERIFIED_HARDWARE,
     )
 
+    /** 中文：六列由用户选择。外边距保持安全区，格子与缝隙一起约缩至 2/3，宽高共用同一格长。 */
+    val PHONE_PORTRAIT_6COL = PHONE_PORTRAIT_4COL.copy(
+        id = ProfileId("PHONE_PORTRAIT_6COL"),
+        evidenceState = ReferenceEvidenceState.DERIVED_UNVERIFIED_HARDWARE,
+        columnCount = 6,
+        seamPx = 8,
+        smallCellPx = 65,
+        mediumTilePx = 138,
+        wideTileWidthPx = 284,
+    )
+
+    val SQUARE_6COL = PHONE_PORTRAIT_6COL.copy(id = ProfileId("SQUARE_6COL"))
+
+    fun withColumns(current: ProfileId, columns: Int): WpReferenceProfile {
+        require(columns == 4 || columns == 6)
+        val square = current == SQUARE_4COL.id || current == SQUARE_6COL.id
+        return when {
+            square && columns == 6 -> SQUARE_6COL
+            square -> SQUARE_4COL
+            columns == 6 -> PHONE_PORTRAIT_6COL
+            else -> PHONE_PORTRAIT_4COL
+        }
+    }
+
     fun forViewport(viewport: StartViewport): WpReferenceProfile =
         if (viewport.widthPx == viewport.heightPx) SQUARE_4COL else PHONE_PORTRAIT_4COL
 
     fun require(id: ProfileId): WpReferenceProfile = when (id) {
         PHONE_PORTRAIT_4COL.id -> PHONE_PORTRAIT_4COL
         SQUARE_4COL.id -> SQUARE_4COL
+        PHONE_PORTRAIT_6COL.id -> PHONE_PORTRAIT_6COL
+        SQUARE_6COL.id -> SQUARE_6COL
         else -> error("Unknown WP reference profile: ${id.value}")
     }
 }

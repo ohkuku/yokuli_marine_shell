@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yokuli.anchorwatch.domain.vessel.VesselObservation
+import com.yokuli.anchorwatch.domain.vessel.VesselReference
 import com.yokuli.marine.core.design.LocalWpTextScale
 import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.shell.rebuild.OsStore
@@ -228,13 +229,29 @@ private val ReadingHeadline = Regex("^([−+\\-]?\\d+(?:[.,]\\d+)?)(.*)$")
                     TileMetricGraphicKind.DEPTH->{
                         val surface=size.height*.12f;val bottom=size.height*.86f
                         drawLine(faint,Offset(size.width*.1f,surface),Offset(size.width*.9f,surface),thin)
-                        // 只表示实际测得的深度，不拼接未知基准/吃水成为虚构海床几何。
+                        // 只有水面基准和规范龙骨余量同时存在，才可把船体放入同一个深度剖面。
+                        // 其余情况仅画从实际测深基准到测点的量距，不臆造吃水/换能器偏移。
                         if(valid&&graphic.value!!>0.0) {
-                            val x=size.width*.68f
+                            val x=size.width*.75f
                             drawLine(color,Offset(x,surface),Offset(x,bottom),thin)
-                            drawLine(color,Offset(x-5*thin,bottom-5*thin),Offset(x,bottom),thin)
-                            drawLine(color,Offset(x+5*thin,bottom-5*thin),Offset(x,bottom),thin)
+                            drawLine(color,Offset(x-4*thin,bottom-4*thin),Offset(x,bottom),thin)
+                            drawLine(color,Offset(x+4*thin,bottom-4*thin),Offset(x,bottom),thin)
                             drawLine(faint,Offset(size.width*.1f,bottom),Offset(size.width*.9f,bottom),thin)
+                            val surfaceDatum=(graphic.observation.reference as? VesselReference.Depth)?.reference?.name=="BELOW_SURFACE"
+                            val clearance=graphic.secondary
+                            if(surfaceDatum&&secondaryValid&&clearance!=null&&clearance<=graphic.value) {
+                                val fraction=((graphic.value-clearance)/graphic.value).coerceIn(0.0,1.0).toFloat()
+                                val keel=surface+(bottom-surface)*fraction
+                                val left=size.width*.18f;val right=size.width*.52f
+                                arrow.reset();arrow.moveTo(left,surface);arrow.lineTo(right,surface)
+                                arrow.lineTo(right-(right-left)*.22f,keel);arrow.lineTo(left+(right-left)*.22f,keel);arrow.close()
+                                drawPath(arrow,color.copy(alpha=.14f))
+                                drawPath(arrow,color,style=Stroke(1.3f*thin))
+                                val clearanceX=size.width*.55f
+                                val safeInk=if(clearance<=0.0)Color(0xFFFFB46B)else color
+                                drawLine(safeInk,Offset(clearanceX,keel),Offset(clearanceX,bottom),2*thin)
+                                drawCircle(safeInk,2*thin,Offset(clearanceX,keel))
+                            }
                         }
                     }
                 }

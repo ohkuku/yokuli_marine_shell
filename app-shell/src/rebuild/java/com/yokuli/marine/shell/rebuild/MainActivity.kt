@@ -25,6 +25,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -41,6 +44,7 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private var brandArrivalVisible by mutableStateOf(false)
     private var automaticResidencySuspended = false
     /** 显式退出保存未完成时，权限返回/旋转不能重新打开已关闭的采集。 */
     fun holdAutomaticResidencyForExit(hold: Boolean) { automaticResidencySuspended = hold }
@@ -92,6 +96,7 @@ class MainActivity : ComponentActivity() {
         // Android 12+ 的系统 splash 由系统自行移除，不等待标志动画、不拦截首帧。
         setTheme(R.style.Theme_YokuliOS)
         super.onCreate(savedInstanceState)
+        brandArrivalVisible = BrandArrivalSession.claim(intent, savedInstanceState != null)
         automaticResidencySuspended = savedInstanceState?.getBoolean("yokuli.explicit_exit_pending") == true
         os.connectSystem((application as YokuliApplication).marineSystem)
         os.systemAction=serviceHandler
@@ -137,11 +142,15 @@ class MainActivity : ComponentActivity() {
                 if(keepAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
-            MetroTheme(os) { OsExperience(os) }
+            MetroTheme(os) {
+                OsExperience(os)
+                if (brandArrivalVisible) BrandArrivalHost(os) { brandArrivalVisible = false }
+            }
         }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        brandArrivalVisible = false
         setIntent(intent)
         handleSystemIntent(intent)
     }
@@ -209,6 +218,7 @@ class MainActivity : ComponentActivity() {
     private fun immersive() { WindowInsetsControllerCompat(window,window.decorView).apply { hide(WindowInsetsCompat.Type.systemBars()); systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE } }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val input = AndroidShellKeyAdapter.mapKeyCode(event.keyCode) ?: return super.dispatchKeyEvent(event)
+        if (brandArrivalVisible) brandArrivalVisible = false
         if (event.action == KeyEvent.ACTION_DOWN) {
             if (input == ShellInput.BACK && event.repeatCount > 0 && !longBackConsumed) {
                 longBackConsumed = true
@@ -222,6 +232,7 @@ class MainActivity : ComponentActivity() {
         return true
     }
     override fun onPause() {
+        brandArrivalVisible = false
         foregroundFrames = false
         displayManager?.unregisterDisplayListener(displayListener)
         val attributes = window.attributes

@@ -195,8 +195,8 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     /** 中文：只有数据身份进入目录。标题与实时值由提供者渲染，不触发目录重建。 */
-    fun ensureTileContent(binding: TileBinding, size: MarineTileSize) {
-        candidateTile = TilePlacement(TileInstanceId("editor-candidate"), binding.startEntryId, size, 0, binding = binding)
+    fun ensureTileContent(binding: TileBinding, size: MarineTileSize, presentation: TilePresentation = TilePresentation()) {
+        candidateTile = TilePlacement(TileInstanceId("editor-candidate"), binding.startEntryId, size, 0, binding = binding, presentation = presentation)
         refreshTileCatalog(engine.state.value.start.document)
     }
     fun placementForEntry(entryId: LauncherEntryId): TilePlacement? =
@@ -207,8 +207,9 @@ class WpShellRuntime(private val os: OsStore) {
         val dynamic = (document.placements + listOfNotNull(candidateTile)).groupBy { it.entryId }.map { (entryId, placements) ->
             val tile = placements.first()
             val choice = tileContentDescriptor(os, tileBinding(tile))
-            val owner = ShellApp(choice.owner)
-            LauncherEntryDescriptor(entryId, owner.id, LaunchToken(choice.launchToken),
+            val destination = tileLaunchDestination(os,tile)
+            val owner = appForPage(pageForToken(LaunchToken(destination))) ?: ShellApp(choice.owner)
+            LauncherEntryDescriptor(entryId, owner.id, LaunchToken(destination),
                 choice.defaultSize, (choice.sizes + placements.map { it.size }).distinct(), PinPolicy.PINNABLE)
         }
         val entries = (baseCatalog.entries.filter { base -> dynamic.none { it.entryId == base.entryId } } + dynamic).sortedBy { it.entryId.value }
@@ -608,6 +609,10 @@ data class ShellApp(val app: AppId) {
         "NMEA" -> "nmea.root"
         else -> "$stableName.overview"
     })
-    val sizes = if (app.name == "SETTINGS") listOf(MarineTileSize.ICON_1X1, MarineTileSize.STANDARD_2X2) else MarineTileSize.entries
+    val sizes = when(app) {
+        AppId.SETTINGS -> listOf(MarineTileSize.ICON_1X1, MarineTileSize.STANDARD_2X2)
+        AppId.CHART,AppId.INSTRUMENTS,AppId.ANCHOR,AppId.AIS,AppId.VOYAGES -> MarineTileSize.entries
+        else -> listOf(MarineTileSize.ICON_1X1, MarineTileSize.STANDARD_2X2, MarineTileSize.WIDE_4X2)
+    }
     val defaultSize = if (app.name == "CHART") MarineTileSize.WIDE_4X2 else MarineTileSize.STANDARD_2X2
 }

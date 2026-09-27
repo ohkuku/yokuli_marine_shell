@@ -65,7 +65,7 @@ data class StartDocument(
 val StartDocument.tileDocument: TileDocument
     get() = TileDocument(placements, spacers)
 
-enum class LayoutChangeReason { MOVE, RESIZE, PIN, UNPIN, RESET, REPAIR }
+enum class LayoutChangeReason { MOVE, RESIZE, PIN, UNPIN, RESET, REPAIR, COLUMNS }
 
 data class LayoutTransaction(
     val id: String,

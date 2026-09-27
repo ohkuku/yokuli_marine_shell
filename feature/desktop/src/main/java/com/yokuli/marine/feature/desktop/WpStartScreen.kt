@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
@@ -70,6 +71,7 @@ import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -217,7 +219,14 @@ fun YokuliStartScreen(
             StartViewport(availableWidthPx, availableHeightPx, density.density, 0, 0, density.fontScale)
         }
         SideEffect { onViewport(viewport) }
-        val geometry = remember(viewport) { WpStartGeometryCalculator.calculate(viewport) }
+        val geometry = remember(viewport, state.document.profileId) {
+            WpStartGeometryCalculator.calculate(viewport,
+                com.yokuli.shell.engine.geometry.WpReferenceProfiles.require(state.document.profileId))
+        }
+        val tileContentScale = remember(viewport, state.document.profileId) {
+            WpStartGeometryCalculator.tileContentScale(viewport,
+                com.yokuli.shell.engine.geometry.WpReferenceProfiles.require(state.document.profileId))
+        }
         val cell = with(density) { geometry.smallCellPx.toDp() }
         val seam = with(density) { geometry.seamPx.toDp() }
         val pitchPx = (geometry.smallCellPx + geometry.seamPx).toFloat()
@@ -411,6 +420,7 @@ fun YokuliStartScreen(
                             tileId = placement.tileId, entry = entry, tileSize = placement.size,
                             width = cell * placement.size.columns + seam * (placement.size.columns - 1),
                             height = cell * placement.size.rows + seam * (placement.size.rows - 1),
+                            contentScale = tileContentScale,
                             editing = editing, selected = selectedTile == placement.tileId, liveContentEnabled = visible && !editing,
                             canResize = entry.descriptor.supportedSizes.size > 1,
                             revealing = state.reveal?.tileId == placement.tileId,
@@ -526,13 +536,17 @@ private suspend fun AwaitPointerEventScope.awaitSelectedDragSlop(down: PointerIn
 
 @Composable
 private fun WpTile(
-    tileId: TileInstanceId, entry: LauncherEntryUiState, tileSize: MarineTileSize, width: Dp, height: Dp,
+    tileId: TileInstanceId, entry: LauncherEntryUiState, tileSize: MarineTileSize, width: Dp, height: Dp, contentScale: Float,
     editing: Boolean, selected: Boolean, canResize: Boolean, revealing: Boolean, revealProgress: () -> Float, liveContentEnabled: Boolean,
     onClick: () -> Unit, onLongClick: () -> Unit, onUnpin: () -> Unit, onResize: () -> Unit,
     onEditContent: (() -> Unit)?, editContentLabel: String,
     onMoveBy: (Int, Int) -> Unit, modifier: Modifier = Modifier,
 ) {
     val colors = LocalWpTheme.current
+    val deviceDensity = LocalDensity.current
+    val contentDensity = remember(deviceDensity.density, deviceDensity.fontScale, contentScale) {
+        Density(deviceDensity.density * contentScale, deviceDensity.fontScale)
+    }
     val interactions = remember { MutableInteractionSource() }
     val scale by animateFloatAsState(if (selected) 1.025f else 1f, spring(), label = "wp-tile-selected")
     val small = tileSize.columns == 1 && tileSize.rows == 1
@@ -562,10 +576,13 @@ private fun WpTile(
             }.wpTilt(interactions, enabled = !editing, maximumDegrees = 1.5f).clipToBounds().startTileBackground()
             .clickable(interactionSource = interactions, indication = null, onClick = onClick),
     ) {
-        Box(Modifier.fillMaxSize().padding(if (entry.visual.fullBleed && !small) 0.dp else if (small) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
-            entry.tileRenderer(tileSize).Render(
-                LauncherTileRenderContext(tileSize, if (LocalStartBackdrop.current.image != null && LocalStartBackdrop.current.mode != StartBackdropMode.NONE && LocalStartBackdrop.current.tileOpacity < .7f) androidx.compose.ui.graphics.Color.White else colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = liveContentEnabled),
-            )
+        // 只缩磁贴内容。背景、外框、点按范围及长按编辑按钮保持设备密度与真实网格。
+        CompositionLocalProvider(LocalDensity provides contentDensity) {
+            Box(Modifier.fillMaxSize().padding(if (entry.visual.fullBleed && !small) 0.dp else if (small) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
+                entry.tileRenderer(tileSize).Render(
+                    LauncherTileRenderContext(tileSize, if (LocalStartBackdrop.current.image != null && LocalStartBackdrop.current.mode != StartBackdropMode.NONE && LocalStartBackdrop.current.tileOpacity < .7f) androidx.compose.ui.graphics.Color.White else colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = liveContentEnabled),
+                )
+            }
         }
         if (revealing) Box(Modifier.fillMaxSize().graphicsLayer { alpha = revealProgress().coerceIn(0f, 1f) }
             .border(3.dp, colors.onAccent).testTag("tile-reveal-highlight"))

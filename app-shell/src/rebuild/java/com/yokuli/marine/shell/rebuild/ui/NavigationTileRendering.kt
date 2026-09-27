@@ -82,7 +82,7 @@ private fun overviewObservations(data:VesselDataSnapshot,id:String):List<VesselO
     val historyCaption=remember(history,os.chinese) {history?.takeIf {it.points.isNotEmpty()}?.let {snapshot->
         val last=snapshot.points.last().reading
         val utc=last.observedUtcMillis ?: (System.currentTimeMillis()-(android.os.SystemClock.elapsedRealtime()-last.elapsed))
-        os.t("截至 ","Through ")+DateFormat.getTimeInstance(DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH).format(Date(utc))
+        os.t("近 ${config.historyMinutes ?: 15} 分钟 · 截至 ","${config.historyMinutes ?: 15} min · through ")+DateFormat.getTimeInstance(DateFormat.SHORT,if(os.chinese)Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH).format(Date(utc))
     }.orEmpty()}
     return TileFrame(id,readings.firstOrNull()?.value ?: "—","",history=history,historyCaption=historyCaption,
         overview=TileOverviewFrame(readings,graphic,reference,values.any {it.source==VesselDataSource.DEMO}))
@@ -91,8 +91,16 @@ private fun overviewObservations(data:VesselDataSnapshot,id:String):List<VesselO
 /** 组合磁贴让多个相关观测共用一个视图；保持扁平文字层级，不再为每项套独立小磁贴。 */
 @Composable internal fun NavigationTileContent(os:OsStore,title:String,frame:TileFrame,tileSize:MarineTileSize,color:Color,active:Boolean) {
     val content=frame.overview ?: return
+    if(tileSize==MarineTileSize.LARGE_4X4) {
+        LargeNavigationTileContent(os,title,frame,color,active)
+        return
+    }
     val wide=tileSize==MarineTileSize.WIDE_4X2
     BoxWithConstraints(Modifier.fillMaxSize()) {
+        if(maxHeight<118.dp) {
+            CompactNavigationTileContent(os,title,frame,color,active)
+            return@BoxWithConstraints
+        }
         val generous=maxHeight>=132.dp
         val primary=content.readings.firstOrNull()
         val hasHistory=frame.history?.points?.isNotEmpty()==true
@@ -129,4 +137,95 @@ private fun overviewObservations(data:VesselDataSnapshot,id:String):List<VesselO
         WpText(item.value,14,color=ink,maxLines=1)
     }
     if(!item.live&&showAge)WpText(item.status,10,color=ink,maxLines=1)
+}
+
+/** 4×4 的额外面积用于关系图和变化，不把同一数字简单放大。 */
+@Composable private fun LargeNavigationTileContent(os:OsStore,title:String,frame:TileFrame,color:Color,active:Boolean) {
+    val content=frame.overview ?: return
+    Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        WpText((if(content.demo)os.t("演示 · ","DEMO · ")else "")+title,13,color=color,weight=FontWeight.SemiBold,maxLines=1)
+        if(frame.key=="environment") {
+            val history=frame.history
+            if(history!=null&&history.points.isNotEmpty()) {
+                val palette=MetroColors(Color.Transparent,color,color.copy(alpha=.45f),Color.Transparent,color)
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                    WpText(os.t("气压","Pressure"),10,color=color.copy(alpha=.65f),maxLines=1)
+                    val scale=String.format(Locale.US,"%.1f–%.1f",history.lower,history.upper)+" "+os.displayMetricUnit("pressure")
+                    WpText(scale,10,color=color.copy(alpha=.65f),maxLines=1)
+                }
+                Canvas(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {drawInstrumentHistory(history,palette,null,false)}
+                WpText(frame.historyCaption,10,color=color.copy(alpha=.7f),maxLines=1)
+            } else Box(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center) {
+                WpText(os.t("正在积累气压观测","Gathering pressure observations"),12,color=color.copy(alpha=.6f),maxLines=2)
+            }
+        } else if(content.graphic?.kind==TileMetricGraphicKind.ATTITUDE) {
+            val graphic=content.graphic
+            Row(Modifier.weight(1f).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                TileMetricGraphicView(graphic.copy(kind=TileMetricGraphicKind.HEEL,minimum=-45.0,maximum=45.0),color,active,Modifier.weight(1f).fillMaxHeight())
+                TileMetricGraphicView(graphic.copy(kind=TileMetricGraphicKind.PITCH,value=graphic.secondary,observation=graphic.secondaryObservation,minimum=-45.0,maximum=45.0),color,active,Modifier.weight(1f).fillMaxHeight())
+            }
+        } else content.graphic?.let {TileMetricGraphicView(it,color,active,Modifier.weight(1f).fillMaxWidth())}
+            ?: Spacer(Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            content.readings.forEach {item->Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                WpText(item.label,10,color=color.copy(alpha=.7f),maxLines=1)
+                WpText(item.value,if(content.readings.size>2)20 else 24,color=if(item.live)color else color.copy(alpha=.6f),weight=FontWeight.Light,maxLines=1)
+                WpText(item.status,10,color=color.copy(alpha=.6f),maxLines=2)
+            }}
+        }
+        if(content.reference.isNotBlank())WpText(content.reference,10,color=color.copy(alpha=.65f),maxLines=2)
+    }
+}
+
+/** 复合磁贴内的场景面板，共享完整磁贴的投影与图形。无第二层卡片背景。 */
+@Composable internal fun CompositeOverviewPanel(os:OsStore,id:String,config:TilePresentation,color:Color,active:Boolean,modifier:Modifier) {
+    val frame=navigationOverviewTileFrame(os,id,config.copy(style="detail"),active)
+    val content=frame.overview ?: return
+    val choice=tileCompositePanelChoices(os).firstOrNull {it.binding.contentId==id}
+    val title=choice?.title?.let {if(os.chinese)it.chinese else it.english}.orEmpty()
+    BoxWithConstraints(modifier.clipToBounds()) {
+        val roomy=maxHeight>=118.dp
+        Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+            WpText((if(content.demo)os.t("演示 · ","DEMO · ")else "")+title,11,color=color.copy(alpha=.8f),weight=FontWeight.SemiBold,maxLines=1)
+            Row(Modifier.weight(1f).fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                val graphic=content.graphic
+                if(graphic!=null)TileMetricGraphicView(graphic,color,active,Modifier.weight(1f).fillMaxHeight())
+                else if(frame.history?.points?.isNotEmpty()==true) {
+                    val history=frame.history!!
+                    val palette=MetroColors(Color.Transparent,color,color.copy(alpha=.45f),Color.Transparent,color)
+                    Canvas(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {drawInstrumentHistory(history,palette,null,false)}
+                }
+                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                    content.readings.take(if(roomy)3 else 2).forEach {item->
+                        if(roomy)WpText(item.label,9,color=color.copy(alpha=.65f),maxLines=1)
+                        WpText(item.value,if(roomy)15 else 12,color=if(item.live)color else color.copy(alpha=.6f),maxLines=1)
+                    }
+                }
+            }
+            val stale=content.readings.firstOrNull {!it.live}
+            if(stale!=null)WpText(stale.label+" · "+stale.status,9,color=color.copy(alpha=.65f),maxLines=1)
+            else if(roomy)WpText(content.reference,9,color=color.copy(alpha=.6f),maxLines=1)
+        }
+    }
+}
+
+/** 六列桌面的实际短边更小，用横向小面板保留关系，而不让原字号挤出格位。 */
+@Composable private fun CompactNavigationTileContent(os:OsStore,title:String,frame:TileFrame,color:Color,active:Boolean) {
+    val content=frame.overview ?: return
+    Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+        WpText((if(content.demo)os.t("演示 · ","DEMO · ")else "")+title,10,color=color,weight=FontWeight.SemiBold,maxLines=1)
+        Row(Modifier.fillMaxWidth().weight(1f),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically) {
+            content.graphic?.let {TileMetricGraphicView(it,color,active,Modifier.weight(.8f).fillMaxHeight())}
+            Column(Modifier.weight(1.2f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                content.readings.forEach {item->
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(3.dp)) {
+                        WpText(item.label,9,color=color.copy(alpha=.65f),maxLines=1,modifier=Modifier.weight(1f))
+                        WpText(item.value,12,color=if(item.live)color else color.copy(alpha=.6f),maxLines=1,modifier=Modifier.weight(1.1f))
+                    }
+                }
+            }
+        }
+        val stale=content.readings.firstOrNull {!it.live}
+        WpText(stale?.let {it.label+" · "+it.status} ?: content.reference,9,color=color.copy(alpha=.6f),maxLines=1)
+    }
 }

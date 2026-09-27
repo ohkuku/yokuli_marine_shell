@@ -188,7 +188,12 @@ fun OsExperience(os: OsStore) {
                     val visual = if (placement != null) instanceTilePresentation(os, placement,
                         !shadeBlocked && state.surface == ShellVisualSurface.Desktop && lifecycleState.isAtLeast(Lifecycle.State.RESUMED))
                     else shell.apps.firstOrNull { it.entry == descriptor.entryId }?.let { tilePresentation(os, it, false) }
-                        ?: presetTilePresentation(os, shell.presets.first { it.entryId == descriptor.entryId }, false)
+                        ?: shell.presets.firstOrNull { it.entryId == descriptor.entryId }?.let { presetTilePresentation(os, it, false) }
+                        // 内容身份更新/移除先提交文档，目录随后收敛。过渡帧必须保留目录的 entryId，
+                        // 同时只画真实所属应用的静态外观，不能断言它仍是一个旧 preset 或订阅旧数据。
+                        ?: tilePresentation(os, shell.apps.firstOrNull { it.id == descriptor.appId }
+                            ?: ShellApp(AppId.TILES), false, modeOverride = "STATIC", rotateOverride = false)
+                            .copy(entryId = descriptor.entryId)
                     visual.copy(tileRenderers = descriptor.supportedSizes.associateWith { size ->
                         visual.tileRenderers[size] ?: visual.tileRenderers.values.first()
                     })

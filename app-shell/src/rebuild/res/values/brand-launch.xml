@@ -1,5 +1,5 @@
 <resources>
-    <color name="yokuli_launch_background">#101214</color>
+    <color name="yokuli_launch_background">#111111</color>
     <color name="yokuli_launch_foreground">#FFFFFF</color>
     <!-- 未支持自适应图标的宿主使用完整方图；新系统由限定目录提供遮罩图标。 -->
     <item name="yokuli_launcher" type="mipmap">@drawable/yokuli_legacy_icon</item>

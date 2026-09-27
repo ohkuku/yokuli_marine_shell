@@ -155,7 +155,10 @@ class DefaultLauncherEngine(
 
     private suspend fun process(action: LauncherAction) {
         val resolution = if (action is LauncherAction.Open) hostPort.resolveLaunch(action.token) else null
-        val profile = runCatching { WpReferenceProfiles.require(mutableState.value.start.document.profileId) }
+        // 冷启动加载出的列数属于已保存文档，不能用尚未恢复的默认四列修复它。
+        val profileId = (action as? LauncherAction.RestorePersistedDocument)?.document?.profileId
+            ?: mutableState.value.start.document.profileId
+        val profile = runCatching { WpReferenceProfiles.require(profileId) }
             .getOrElse { WpReferenceProfiles.require(defaultDocument.profileId) }
         val reduction = reducer.reduce(
             state = mutableState.value,
@@ -179,7 +182,8 @@ class DefaultLauncherEngine(
                 val candidate = persist.document
                 val oldById = previous.placements.associateBy { it.tileId }
                 val columns = WpReferenceProfiles.require(candidate.profileId).columnCount
-                val oldCells = com.yokuli.shell.engine.layout.AdaptiveTilePacker.pack(previous, columns).tiles.associate { it.entry.tileId to it.cell }
+                val oldColumns = WpReferenceProfiles.require(previous.profileId).columnCount
+                val oldCells = com.yokuli.shell.engine.layout.AdaptiveTilePacker.pack(previous, oldColumns).tiles.associate { it.entry.tileId to it.cell }
                 val newCells = com.yokuli.shell.engine.layout.AdaptiveTilePacker.pack(candidate, columns).tiles.associate { it.entry.tileId to it.cell }
                 val changed = candidate.placements.map { entry ->
                     val old = oldById[entry.tileId]

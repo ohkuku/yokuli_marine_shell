@@ -11,3 +11,10 @@
 配置仍写入原 `TilePresentation` 和 Proto：历史窗口 1/5/15 分钟、适用指标的规范单位量程、来源与可选参考说明。坐标跟随系统格式；计数不提供速度量表；风速与风向独立判断可用性；压力变化仍是原系统计算的 1/3/6 小时指标。测深和方向参考必须显示，不因旧 showReference=false 被隐藏。切换全局单位时，打开的量程编辑草稿按新单位重新初始化，避免静默误读旧数字。
 
 限制：本次没有把持久化的 1/6/24 小时气压查询接成磁贴长时段图，没有增加独立来源选择、传感器、天气预报或警报阈值。现有驾驶台长时段气压回看保持原入口。完整 API 自动索引需要在完整源码 checkout 运行原 `scripts/export_api_index.py`；不能从部分工作副本重建而删掉其他声明。
+
+
+## 4×4 与复合接线
+
+`ContentTileRendering` 为真实大场景与复合内容分派到共享渲染器。复合面板没有自己的磁贴背景、点击行为或数据源；整块磁贴在 `WpShellRuntime.refreshTileCatalog` 将白名单目标解析为真正所属 App 的 launcher descriptor。标题是实例配置，目标不改变内容 owner。编辑器 `TileEditorPreview` 使用持久 profile 与真实 4×4 高度，按可用空间等比缩放；6 列不是把四列桌面统一缩小。
+
+持久化沿 `TilePresentation` → `TileCommitPolicy` → `LauncherProtoMapper`，草稿也保留新字段。`TileCompositePolicy` 负责内容数量、唯一性、规范绑定与目标合法性；页面不得添加任意 URI、假业务动作或另一份默认来源。

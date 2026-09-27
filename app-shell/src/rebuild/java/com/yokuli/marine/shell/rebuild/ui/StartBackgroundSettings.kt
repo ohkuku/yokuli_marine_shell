@@ -76,7 +76,7 @@ fun StartBackgroundSettings(os: OsStore) {
     }
     val c = LocalMetro.current
     var adjusting by remember {mutableStateOf(false)}
-    AppSection(os.t("开始屏幕预览", "Start preview"))
+    AppSection(os.t("照片与透明效果", "Wallpaper and transparency"))
     CompositionLocalProvider(LocalStartBackdrop provides current.copy(tileOpacity = opacity)) {
         StartWallpaperSurface(Modifier.fillMaxWidth().height(210.dp)) {
             Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

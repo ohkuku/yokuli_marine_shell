@@ -46,7 +46,7 @@ import com.yokuli.shell.engine.layout.TileDocumentEntry
     ReportVisibleAppRoute(os, "tiles")
     Column(Modifier.fillMaxSize()) {
         PageHeader(os, os.title(AppId.TILES), trailing = {
-            IconAction("settings", "", { os.openLinked("settings:start") }, Modifier.size(48.dp).semantics { contentDescription = os.t("背景与透明磁贴", "Background and transparent tiles") })
+            IconAction("settings", "", { os.openLinked("settings:start") }, Modifier.size(48.dp).semantics { contentDescription = os.t("开始屏幕布局与背景", "Start layout and background") })
         })
         if (session?.visible == false) {
             val insets = LocalShellHorizontalInsets.current
@@ -175,7 +175,7 @@ import com.yokuli.shell.engine.layout.TileDocumentEntry
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             TileIdentityIcon(choice, Modifier.size(44.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Label(tileText(os, choice.title), 18)
+                Label(placement.presentation.title?.takeIf {it.isNotBlank()} ?: tileText(os, choice.title), 18)
                 Label(tileSizeName(os, placement.size) + " · " + style, 13, c.muted)
             }
         }
@@ -232,6 +232,7 @@ internal fun tileSizeName(os: OsStore, size: MarineTileSize): String = when (siz
     MarineTileSize.ICON_1X1 -> os.t("小", "Small")
     MarineTileSize.STANDARD_2X2 -> os.t("中", "Medium")
     MarineTileSize.WIDE_4X2 -> os.t("宽", "Wide")
+    MarineTileSize.LARGE_4X4 -> os.t("大", "Large")
 }
 private fun tileGroupTitle(os: OsStore, group: TileContentGroup): String = when (group) {
     TileContentGroup.WATCH -> os.t("航行与值守", "On board")

@@ -51,7 +51,9 @@ import com.yokuli.shell.contract.*
         else PlaceScreen(os, binding.contentId)
         return
     }
-    val tile = shell.start.document.placements.firstOrNull { tileBinding(it).contentKey == binding.contentKey }
+    val destination=if(binding.kind==TileBindingKind.SAVED_ROUTE)"tileroute:${binding.contentId}" else "tileplace:${binding.contentId}"
+    val tile = shell.start.document.placements.firstOrNull { tileBinding(it).contentKey == binding.contentKey ||
+        tileBinding(it).kind==TileBindingKind.COMPOSITE && it.presentation.tapTarget==destination }
     Column(Modifier.fillMaxSize()) {
         PageHeader(os, os.t("收藏内容", "Saved content"), os.title(AppId.PLACES))
         PageBody {
