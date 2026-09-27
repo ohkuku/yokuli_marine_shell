@@ -66,7 +66,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
     suspend fun world(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>,padding:Double):PassageWorld {
         val projection=PassageProjection(points.first());val factory=projection.factory
         val vessel=request.vessel
-        val margin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
+        val configuredMargin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
+        // 粗略参考规划允许尚未填写横向走廊参数；至少保留 25 m 几何余量。
+        // GEBCO 另有半像元边界余量（15″ 在 NZ 约数百米），不会因为这个默认值贴着岸线走。
+        val margin=max(25.0,configuredMargin)
         val required=vessel.draftMeters?.let{draft->vessel.minimumUnderKeelMeters?.let{draft+it}}
         val rasterAllowance=snapshot.datasets.flatMap{it.rasters.orEmpty()}.maxOfOrNull { hypot(it.pixelWidthDegrees,it.pixelHeightDegrees)*111_320.0*.5 }?:0.0
         val localPadding=max(padding,rasterAllowance+margin+100.0)
@@ -225,7 +228,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         snapshot.datasets.filterNot{it.eligibility.allowsAnalysis(System.currentTimeMillis())&&it.offlineReadable&&it.issue==null}.forEach{issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"${it.name}：尚未确认分析用途 / Analysis use not confirmed")}
         val v=request.vessel
         if(v.draftMeters?.let{it.isFinite()&&it>0}!=true||v.minimumUnderKeelMeters?.let{it.isFinite()&&it>=0}!=true)issue(PassageIssueKind.VESSEL,PassageSeverity.INSUFFICIENT,"设置吃水和富余水深后可检查深度 / Set draft and under-keel margin")
-        if(v.beamMeters?.let{it.isFinite()&&it>0}!=true||v.clearanceMarginMeters?.let{it.isFinite()&&it>=0}!=true||v.corridorHalfWidthMeters?.let{it.isFinite()&&it>0}!=true)issue(PassageIssueKind.VESSEL,PassageSeverity.INSUFFICIENT,"设置船宽和避让距离后可检查航行走廊 / Set beam and clearance")
+        if(v.beamMeters?.let{it.isFinite()&&it>0}!=true||v.clearanceMarginMeters?.let{it.isFinite()&&it>=0}!=true||v.corridorHalfWidthMeters?.let{it.isFinite()&&it>0}!=true)
+            issue(PassageIssueKind.VESSEL,PassageSeverity.REVIEW,"未完整设置船宽/避让走廊；粗略建议使用最小 25 m 横向余量，并继续保留资料自身的边界余量 / Beam or corridor settings are incomplete; coarse suggestions use a minimum 25 m lateral margin plus the source-data boundary allowance",leg=0,p=request.route.points.firstOrNull())
         val required=v.draftMeters?.let{d->v.minimumUnderKeelMeters?.let{d+it}}
         request.route.points.zipWithNext().forEachIndexed{leg,(start,end)->
             val length=distance(start,end);val chunks=max(1,ceil(length/20_000).toInt())
@@ -318,9 +322,17 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         // 粗略参考规划不要求转弯半径：A* 仍可先给出避开已知陆地/浅区的折线，
         // 有转弯半径时再进行相切圆弧校验。最终结果始终需要人工核对。
         val usableTurnRadius=turnRadius?.takeIf {it.isFinite()&&it>0}
-        val extent=max(2000.0,a.distance(b)*0.75).coerceAtMost(40_000.0)
+        val extent=max(2000.0,a.distance(b)*0.75).coerceAtMost(60_000.0)
         val minX=min(a.x,b.x)-extent;val maxX=max(a.x,b.x)+extent;val minY=min(a.y,b.y)-extent;val maxY=max(a.y,b.y)+extent
-        val step=max(25.0,max(maxX-minX,maxY-minY)/140)
+        val span=max(maxX-minX,maxY-minY)
+        val rasterStep=world.rasterAreas.minOfOrNull { area ->
+            val latitude=(start.latitude+end.latitude)/2.0
+            val eastWest=area.grid.pixelWidthDegrees*111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.15)
+            val northSouth=area.grid.pixelHeightDegrees*110_540.0
+            max(25.0,min(eastWest,northSouth))
+        }
+        // 搜索分辨率不应比 15″ GEBCO 本身粗很多，否则小岛/海峡会被跳过；同时保持有界节点数。
+        val step=max(25.0,min(span/180.0,(rasterStep?:span/160.0).coerceAtMost(750.0)))
         val cols=ceil((maxX-minX)/step).toInt()+1;val rows=ceil((maxY-minY)/step).toInt()+1
         fun coord(id:Int)=Coordinate(minX+(id%cols)*step,minY+(id/cols)*step)
         fun id(c:Coordinate)=(((c.y-minY)/step).roundToInt().coerceIn(0,rows-1))*cols+((c.x-minX)/step).roundToInt().coerceIn(0,cols-1)
@@ -330,9 +342,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         if(!clear(a,coord(first)))return null
         scores[first]=a.distance(coord(first));queue.add(Node(first,scores[first],a.distance(b)))
         var found=-1;var visited=0
-        while(queue.isNotEmpty()&&visited<24_000){
+        val visitBudget=min(100_000,max(24_000,cols*rows))
+        while(queue.isNotEmpty()&&visited<visitBudget){
             currentCoroutineContext().ensureActive();val node=queue.remove();if(node.cost>scores[node.id])continue
-            visited++;if(visited%100==0)onProgress((visited/24_000f).coerceAtMost(.99f))
+            visited++;if(visited%100==0)onProgress((visited/visitBudget.toFloat()).coerceAtMost(.99f))
             val c=coord(node.id)
             if(c.distance(b)<step*2&&clear(c,b)){found=node.id;break}
             val x=node.id%cols;val y=node.id/cols

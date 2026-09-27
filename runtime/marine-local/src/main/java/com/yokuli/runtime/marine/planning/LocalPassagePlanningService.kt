@@ -141,10 +141,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 else geometry.analyze(snapshot,request){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
             val plan=if(planning){
                 val v=request.vessel
-                val missing=v.draftMeters==null||v.beamMeters==null||v.minimumUnderKeelMeters==null||v.clearanceMarginMeters==null||v.corridorHalfWidthMeters==null
+                val missingDepth=v.draftMeters?.let{it.isFinite()&&it>0}!=true||v.minimumUnderKeelMeters?.let{it.isFinite()&&it>=0}!=true
                 when {
                     readiness?.canSearch!=true->PassagePlan(request.requestId,original,emptyList(),readiness?.message)
-                    missing->PassagePlan(request.requestId,original,emptyList(),"先补齐船体和避让参数 / Complete vessel and clearance settings")
+                    missingDepth->PassagePlan(request.requestId,original,emptyList(),"先设置吃水和最小富余水深；船宽与走廊参数可稍后补充，粗略建议会保留复核提示 / Set draft and minimum under-keel clearance first; lateral vessel settings may be added later and coarse suggestions remain marked for review")
                     else->createPlan(snapshot,request,original,leg)
                 }
             }else null
@@ -208,10 +208,19 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             if(leg!=null&&leg!=index){result.add(points[index+1]);continue}
             val a=points[index];val b=points[index+1];val distance=distance(a,b)
             if(distance>80_000)return PassagePlan(request.requestId,original,emptyList(),"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg")
-            val world=geometry.world(snapshot,request,listOf(a,b),max(2000.0,distance*.75).coerceAtMost(40_000.0))
-            val path=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){progress(request.requestId,PassageJobPhase.SEARCHING,(index+it)/points.lastIndex)}
-                ?:return PassagePlan(request.requestId,original,emptyList(),"当前资料和搜索范围内未找到完整通路；可调整航点、放宽搜索或补充资料 / No complete passage found within this search; adjust waypoints, search space, or data")
-            result.addAll(path.drop(1))
+            val basePadding=max(2000.0,distance*.75).coerceAtMost(40_000.0)
+            val paddings=listOf(basePadding,max(basePadding,min(60_000.0,max(8_000.0,distance*1.25)))).distinct()
+            var path:List<ChartPoint>?=null
+            for((attempt,padding) in paddings.withIndex()) {
+                currentCoroutineContext().ensureActive()
+                val world=geometry.world(snapshot,request,listOf(a,b),padding)
+                path=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
+                    progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
+                }
+                if(path!=null)break
+            }
+            val foundPath=path ?: return PassagePlan(request.requestId,original,emptyList(),"当前资料和扩展搜索范围内未找到完整通路；请检查端点是否在可通行水域，或添加中间航点 / No complete passage was found in the available data and expanded search area; check that both endpoints are in navigable water or add an intermediate waypoint")
+            result.addAll(foundPath.drop(1))
         }
         require(result.size<=2000){"Candidate is too complex"}
         val turnRadius=request.vessel.turnRadiusMeters?.takeIf {it.isFinite()&&it>0}

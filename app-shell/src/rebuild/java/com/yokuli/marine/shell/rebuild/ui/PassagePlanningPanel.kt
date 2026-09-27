@@ -197,13 +197,13 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
         Label(os.t("当前地图中的同一条航线 · ${points.size} 个路径点","The route on your map · ${points.size} path points"),14,LocalMetro.current.muted)
         Label(os.t("自动使用图册启用的航行数据；海图背景不参与计算。","Uses navigation data enabled in Library. The chart background is not used for calculation."),13,LocalMetro.current.muted)
         if(!readiness.canRequestPlanning||data.loading||data.error!=null) {
-            Label(os.t("航行资料尚未就绪，手动编辑不受影响。","Navigation data is not ready. You can still edit manually."),14)
+            Label(issueText(os,readiness.message),14)
             MenuRow(os.t("到图册检查数据","Check data in Library"),os.t("配置一次，所有航线共用","Configure once for all routes"),"folder") {os.openLinked("library:data")}
         }
         if(points.size<2)Label(os.t("返回地图添加起点和终点。","Return to the map and add a start and destination."),15)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             MetroButton(os.t("检查当前航线","Check this route"),{feedback=requestDraftCalculation(os,false)},Modifier.weight(1f),enabled=os.editingRoute&&points.size>=2&&!busy&&state.ready)
-            MetroButton(os.t("自动生成建议","Suggest a route"),{feedback=requestDraftCalculation(os,true,leg)},Modifier.weight(1f),primary=true,enabled=os.editingRoute&&points.size>=2&&!busy&&state.ready&&readiness.canRequestPlanning&&!data.loading&&data.error==null)
+            MetroButton(os.t("自动绕行","Suggest detour"),{feedback=requestDraftCalculation(os,true,leg)},Modifier.weight(1f),primary=true,enabled=os.editingRoute&&points.size>=2&&!busy&&state.ready&&!data.loading&&data.error==null)
         }
         if(busy) {MetroProgress(os.t("正在计算…","Calculating…"));MetroButton(os.t("取消计算","Cancel calculation"),{state.job?.requestId?.let(system.analysis::cancel)})}
         state.job?.takeIf{it.phase in setOf(PassageJobPhase.FAILED,PassageJobPhase.INTERRUPTED,PassageJobPhase.CANCELLED)}?.let {job->
