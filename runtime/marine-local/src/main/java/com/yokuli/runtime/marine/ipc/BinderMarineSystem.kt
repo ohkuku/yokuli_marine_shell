@@ -32,7 +32,7 @@ import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** Shell 的真实 Marine Core 客户端；不实例化本地数据仓库或采集资源。 */
+/** Shell / 通知进程共享的 Marine Core Binder 客户端；不实例化本地数据仓库或采集资源。 */
 class BinderMarineSystem private constructor(context: Context) : MarineSystem, AutoCloseable {
     private val client = CoreClient(context)
     override val connection = client.connection
@@ -139,7 +139,9 @@ private class CoreClient(private val context: Context) {
     }
 
     init {
-        check(MarineCoreProcess.isShell()) { "Only the Shell process may create a Marine Core client" }
+        check(MarineCoreProcess.isShell() || com.yokuli.runtime.marine.notification.NotificationProcessRole.isNotificationProcess()) {
+            "Only the Shell or notification process may create a Marine Core client"
+        }
         scope.launch { for ((code, packet) in inbound) deliver(code, packet) }
         val method = MarineCorePorts.interfaces.getValue("core").getMethod("getConnection")
         val call = newCall("core", method, emptyArray())
