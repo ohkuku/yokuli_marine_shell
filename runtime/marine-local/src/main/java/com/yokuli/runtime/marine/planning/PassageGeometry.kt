@@ -70,7 +70,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         // 粗略参考规划允许尚未填写横向走廊参数；至少保留 25 m 几何余量。
         // GEBCO 另有半像元边界余量（15″ 在 NZ 约数百米），不会因为这个默认值贴着岸线走。
         val margin=max(25.0,configuredMargin)
-        val required=vessel.draftMeters?.let{draft->vessel.minimumUnderKeelMeters?.let{draft+it}}
+        // 吃水本身足够参与粗略自动规划；额外 UKC 未设置时按 0 处理并在结果里提示核对。
+        val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}?.let{draft->draft+(vessel.minimumUnderKeelMeters?:0.0)}
         val rasterAllowance=snapshot.datasets.flatMap{it.rasters.orEmpty()}.maxOfOrNull { hypot(it.pixelWidthDegrees,it.pixelHeightDegrees)*111_320.0*.5 }?:0.0
         val localPadding=max(padding,rasterAllowance+margin+100.0)
         val bounds=around(points,localPadding)
@@ -166,7 +167,20 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
                 d?.kind==DepthEvidenceKind.INTERVAL&&!d.datum.isNullOrBlank()&&low!=null&&low.isFinite()&&required!=null&&low>=required&&!feature.issues.any(::isBlockingChartIssue)
         }.map{it.geometry}
-        val blocked=projected.filter{it.feature.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,NauticalFeatureKind.ROCK,NauticalFeatureKind.RESTRICTED,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD)||it.feature.attributes["RESTRN"]?.isNotBlank()==true||it.feature.issues.any(::isBlockingChartIssue)}.map{it.geometry.buffer(max(1.0,margin))}.toMutableList()
+        // 自动出线只把“物理上不可通过/无法解释”的对象当硬障碍。
+        // 限制区和交通规则属于 REVIEW，不应把粗略航线生成本身卡死。
+        val blocked=projected.filter{it.feature.kind in setOf(
+            NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,
+            NauticalFeatureKind.WRECK,NauticalFeatureKind.ROCK
+        )||it.feature.issues.any(::isBlockingChartIssue)}.map{it.geometry.buffer(max(1.0,margin))}.toMutableList()
+        projected.filter{it.feature.kind in setOf(NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD)}.forEach {fg->
+            val clear=(fg.feature.attributes["VERCLR"]?.toDoubleOrNull()?:fg.feature.attributes["VERCCL"]?.toDoubleOrNull())
+                ?.takeIf{it.isFinite()&&it>=0}
+            val need=vessel.airDraftMeters?.takeIf{it.isFinite()&&it>0}?.let{it+(vessel.clearanceMarginMeters?:0.0)}
+            // 有明确船高、净空和垂直基准且足够时允许粗略通过；其余情况继续保守避开。
+            if(clear==null||need==null||fg.feature.source.verticalDatum==null||clear<need)
+                blocked.add(fg.geometry.buffer(max(1.0,margin)))
+        }
         // 重叠深度证据取保守交集：浅区/未知区不能被旁边的深区union盖掉。
         projected.filter{it.feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)}.forEach {fg->
             val d=fg.feature.depth
@@ -227,10 +241,13 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         if(snapshot.missingDatasetIds.isNotEmpty()||snapshot.datasets.isEmpty())issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"所选数据集尚未安装或已移除 / Selected data is missing")
         snapshot.datasets.filterNot{it.allowsPassageDrafting(System.currentTimeMillis())&&it.offlineReadable&&it.issue==null}.forEach{issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"${it.name}：资料用途不允许粗略建议 / Data use does not allow a coarse suggestion")}
         val v=request.vessel
-        if(v.draftMeters?.let{it.isFinite()&&it>0}!=true||v.minimumUnderKeelMeters?.let{it.isFinite()&&it>=0}!=true)issue(PassageIssueKind.VESSEL,PassageSeverity.INSUFFICIENT,"设置吃水和富余水深后可检查深度 / Set draft and under-keel margin")
+        if(v.draftMeters?.let{it.isFinite()&&it>0}!=true)
+            issue(PassageIssueKind.VESSEL,PassageSeverity.INSUFFICIENT,"设置吃水后可检查实际水深 / Set draft to check actual depth")
+        else if(v.minimumUnderKeelMeters?.let{it.isFinite()&&it>=0}!=true)
+            issue(PassageIssueKind.VESSEL,PassageSeverity.REVIEW,"未设置额外富余水深；当前按吃水本身检查，出航前请自行确认余量 / No extra under-keel margin is set; checks use draft itself, so confirm your desired margin before departure")
         if(v.beamMeters?.let{it.isFinite()&&it>0}!=true||v.clearanceMarginMeters?.let{it.isFinite()&&it>=0}!=true||v.corridorHalfWidthMeters?.let{it.isFinite()&&it>0}!=true)
             issue(PassageIssueKind.VESSEL,PassageSeverity.REVIEW,"未完整设置船宽/避让走廊；粗略建议使用最小 25 m 横向余量，并继续保留资料自身的边界余量 / Beam or corridor settings are incomplete; coarse suggestions use a minimum 25 m lateral margin plus the source-data boundary allowance",leg=0,p=request.route.points.firstOrNull())
-        val required=v.draftMeters?.let{d->v.minimumUnderKeelMeters?.let{d+it}}
+        val required=v.draftMeters?.takeIf{it.isFinite()&&it>0}?.let{d->d+(v.minimumUnderKeelMeters?:0.0)}
         request.route.points.zipWithNext().forEachIndexed{leg,(start,end)->
             val length=distance(start,end);val chunks=max(1,ceil(length/20_000).toInt())
             if(length<0.1)issue(PassageIssueKind.GEOMETRY,PassageSeverity.REVIEW,"相邻航点重合 / Coincident waypoints",leg,start,total)
@@ -342,7 +359,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         if(!clear(a,coord(first)))return null
         scores[first]=a.distance(coord(first));queue.add(Node(first,scores[first],a.distance(b)))
         var found=-1;var visited=0
-        val visitBudget=min(100_000,max(24_000,cols*rows))
+        // 自动规划必须有界响应；复杂区域宁可返回“未找到”并让用户加一个途经点，也不无限转圈。
+        val visitBudget=min(60_000,max(18_000,cols*rows))
         while(queue.isNotEmpty()&&visited<visitBudget){
             currentCoroutineContext().ensureActive();val node=queue.remove();if(node.cost>scores[node.id])continue
             visited++;if(visited%100==0)onProgress((visited/visitBudget.toFloat()).coerceAtMost(.99f))
