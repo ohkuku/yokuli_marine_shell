@@ -306,6 +306,47 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         fun coord(id:Int)=Coordinate(minX+(id%cols)*step,minY+(id/cols)*step)
         fun id(c:Coordinate)=(((c.y-minY)/step).roundToInt().coerceIn(0,rows-1))*cols+
             ((c.x-minX)/step).roundToInt().coerceIn(0,cols-1)
+
+        // A* 节点/半格中点按本次搜索缓存。长距离时同一个点会被许多邻边重复访问；
+        // 缓存后水陆、岸距和深度代价只计算一次，不改变最终折线的逐段复核。
+        val halfCols=cols*2-1
+        val halfRows=rows*2-1
+        val safeCache=ByteArray(halfCols*halfRows)
+        fun halfCoordinate(x2:Int,y2:Int)=Coordinate(minX+x2*step*.5,minY+y2*step*.5)
+        fun safeHalf(x2:Int,y2:Int):Boolean {
+            if(x2 !in 0 until halfCols||y2 !in 0 until halfRows)return false
+            val index=y2*halfCols+x2
+            return when(safeCache[index].toInt()) {
+                1->false
+                2->true
+                else->safe(halfCoordinate(x2,y2)).also{safeCache[index]=if(it)2 else 1}
+            }
+        }
+        fun nodeSafe(node:Int):Boolean {
+            val x=node%cols;val y=node/cols
+            return safeHalf(x*2,y*2)
+        }
+        val penaltyCache=DoubleArray(cols*rows){Double.NaN}
+        fun nodePenalty(node:Int):Double {
+            val cached=penaltyCache[node]
+            if(!cached.isNaN())return cached
+            val at=coord(node)
+            return (depthMultiplier(at)*coastMultiplier(at)).also{penaltyCache[node]=it}
+        }
+        fun edgePassable(from:Int,to:Int,dx:Int,dy:Int):Boolean {
+            if(!nodeSafe(from)||!nodeSafe(to))return false
+            val x=from%cols;val y=from/cols
+            val nx=x+dx;val ny=y+dy
+            // 对角移动不能从陆地格子的角上“切过去”。
+            if(dx!=0&&dy!=0) {
+                if(!nodeSafe(y*cols+nx)||!nodeSafe(ny*cols+x))return false
+            }
+            // step 不大于一个数值栅格像元；两端+半格中点足够做搜索阶段的连通判断。
+            if(!safeHalf(x*2+dx,y*2+dy))return false
+            if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(coord(from),coord(to))).intersects(avoidanceMargin))return false
+            return true
+        }
+
         data class RasterNode(val id:Int,val cost:Double,val score:Double)
         fun nearestNode(origin:Coordinate):Int? {
             val base=id(origin);val bx=base%cols;val by=base/cols
@@ -313,7 +354,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             for(radius in 0..3)for(y in by-radius..by+radius)for(x in bx-radius..bx+radius) {
                 if(x !in 0 until cols||y !in 0 until rows)continue
                 val candidate=y*cols+x;val at=coord(candidate);val d=origin.distance(at)
-                if(d<bestDistance&&safe(at)&&clear(origin,at)) {best=candidate;bestDistance=d}
+                if(d<bestDistance&&nodeSafe(candidate)&&clear(origin,at)) {best=candidate;bestDistance=d}
             }
             return best
         }
@@ -334,10 +375,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 val nx=x+dx;val ny=y+dy
                 if(nx !in 0 until cols||ny !in 0 until rows)continue
                 val next=ny*cols+nx;val there=coord(next)
-                if(!clear(here,there))continue
+                if(!edgePassable(node.id,next,dx,dy))continue
                 val edge=here.distance(there)
-                val multiplier=(depthMultiplier(here)*coastMultiplier(here)+depthMultiplier(there)*coastMultiplier(there))/2
-                val cost=node.cost+edge*multiplier
+                val cost=node.cost+edge*(nodePenalty(node.id)+nodePenalty(next))/2
                 if(cost>=scores[next])continue
                 scores[next]=cost;parents[next]=node.id
                 queue.add(RasterNode(next,cost,cost+there.distance(b)))
