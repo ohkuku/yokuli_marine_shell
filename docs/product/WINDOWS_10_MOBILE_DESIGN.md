@@ -95,8 +95,8 @@ AIS Pager 关闭 Android 默认边缘弧光；雷达图例移入更多菜单，�
 
 - `design/brand/yokuli-wordmark.svg` 和 `yokuli-mark.svg` 是两个原创 SVG 母版。`scripts/generate_brand_assets.py` 生成生产 VectorDrawable、通知图标与 `YokuliPixelGeometry.kt`。Compose、安装图标、通知、起始窗口使用同一几何；不另画帆船 O、分舷 Y 或罗盘当 OS 标记。Canvas 的像素帆船对齐物理像素，字标使用矢量轮廓，避免放大位图或有损滤镜。
 - 安装图标只显示像素帆船。自适应前景与主题单色层为108dp，图形保持在中心安全区；保留掩模与负空间，遵循 [Android 自适应图标规范](https://developer.android.com/develop/ui/compose/system/icon_design_adaptive)。
-- 系统起始窗口只显示同一帆船，取消第二份底部签名；不设置 keep-on-screen、SplashActivity、假进度或数据就绪等待。实际 `MainActivity` 首帧已运行 `OsExperience` 和 Core 连接，品牌是独立绘制覆盖层。
-- `BrandArrivalHost` 仅在当前 Shell 进程首次显式 Launcher/HOME 冷启动播放760ms抵达动效：像素帆船驶向字标、轻微起伏与短尾迹、文字揭开，最后露出真正桌面。使用 Compose 帧时钟；连续状态在 DrawScope/graphicsLayer 中读取，不逐帧重组桌面。任意触摸或 Shell 键可略过；切入业务页、拉出通知、收到新 Intent、进入后台时立即移除。通知/目标入口、旋转恢复及热返回不重复播放；没有以动画完成为条件启动采集。
+- 系统起始窗口只显示同一帆船，取消第二份底部签名；不设置 keep-on-screen、SplashActivity、假进度或数据就绪等待。显式 Launcher/HOME 新任务的 Compose 首帧只绘制轻量品牌层；完整 `OsExperience`、Core Binder 和领域订阅在动画完成或用户略过后一次接入，避免底层页面初始化抢占启动帧。它仍不等待 Core 数据就绪。
+- `BrandArrivalHost` 在每个新建的显式 Launcher/HOME 任务播放一次 760ms 抵达动效：像素帆船驶向字标、轻微起伏与短尾迹、文字揭开，最后进入真正桌面。同一 Activity 的热返回与 `onNewIntent` 不重播，配置恢复、通知/目标入口也不重播；显式退出后即使 Shell 进程仍被 Android 保留，再次新建任务仍会播放。使用 Compose 帧时钟；任意触摸或 Shell 键可略过。动画完成只决定何时组装完整 Shell，不代表 Core 已就绪，也不替用户启动业务任务。
 - 经典 Home/应用 turnstile 与内部页面运动继续由原任务状态机负责，品牌动效不修改导航栈。内部应用的既有冷启动遮罩改为28dp识别图标和文字主导的身份行；底部只保留轻量小字标，热切换不追加品牌开屏。
 - 关于页和应用列表页脚使用小写字标。Home、通知键与 Back 保持原语义；普通页面、地图、仪表不叠加品牌水印。ROM HOME 与普通 APK 共用此实现；这不是独立 ROM bootanimation，也未取代 Android 系统启动动画。
 
