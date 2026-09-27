@@ -149,7 +149,9 @@ import kotlin.math.*
             require(revisions.size<=2_000) {"CHART_CELL_LIMIT"}
             val database=File(stage,"features.sqlite")
             SQLiteDatabase.openOrCreateDatabase(database,null).use {db->
-                db.execSQL("PRAGMA journal_mode=DELETE")
+                db.rawQuery("PRAGMA journal_mode=DELETE",null).use { cursor ->
+                    require(cursor.moveToFirst()&&cursor.getString(0).equals("delete",true)) {"CHART_SQLITE_JOURNAL_MODE_FAILED"}
+                }
                 ChartFeatureIndex.create(db)
                 db.beginTransaction()
                 try {
@@ -177,7 +179,7 @@ import kotlin.math.*
                     }
                     db.setTransactionSuccessful()
                 }finally {db.endTransaction()}
-                db.execSQL("PRAGMA optimize")
+                db.rawQuery("PRAGMA optimize",null).use { cursor -> while(cursor.moveToNext()) Unit }
             }
             for((position,file) in geopackages.sortedBy{it.name}.withIndex()) {
                 check()

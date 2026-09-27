@@ -47,6 +47,7 @@
 - `acquireSnapshot` 固定调用方明确选择的版本；`browse` 按图幅 / 类别 / 文本筛选，以稳定对象 ID 跨包分页，`readFeature` 读取同一版本的完整详情，空间 `query` 给地图和分析使用。三种读取都有内部临时读租约与 SQLite 取消信号；调用方在离页 / 输入更换时释放快照，内部读取结束后才允许清理旧索引。不存在的对象返回空结果，失效快照和损坏索引显示错误，不伪装成空资料。
 - 数据用途由提供方与持有人确认；文件能解码不等于允许分析。界面“仅浏览”对应 `REFERENCE_ONLY`，未登记分析许可、到期或取消资料不进入自动规划。它与解析器持久标记的 `ChartCellRevision.referenceOnly` 不同：LINZ/GEBCO 即使具备分析许可，也只生成需核对的参考结论，不能升级为 ENC 无冲突结论。过期/缺失选择显式保留，不私自换数据集。
 - `rasterWindows` 与矢量读取共用快照租约；按原像元窗口读取，不插值、不从地图截图反推。GEBCO 无数据格保持未知，来源分辨率、海平面基准和不含障碍/法律通航信息的限制随证据保留。导入页默认自动识别产品；文件元数据不能明确识别时，用户可声明官方 GEBCO 2026 高程，不能把普通 TIF 或 TID 声明成可航行水深。
+- Android SQLite 初始化中会返回结果集的 `PRAGMA` 统一走查询游标并实际消费结果；纯 GEBCO GeoTIFF 导入不得在栅格解析前因 `execSQL` 查询类型失败，也不要求把有效 `.tif` 转成 ASCII。
 - 这是实用地理对象绘制，**不是完整 IHO S-52/ECDIS 制图或认证系统**。S-63 尚无获许可客户端集成、生产 OEM 设备密钥/标识、User Permit 和对应 cell permits，不能解密或宣称已支持 NZ ENC。S-101/S-100 后续可扩展，但当前没有解码器。
 
 技术依据：[GDAL S-57 官方格式说明](https://gdal.org/en/stable/drivers/vector/s57.html)、[IHO ENC 保护](https://iho.int/en/enc-data-protection-s-57)、[LINZ ENC 服务](https://encservice.linz.govt.nz/about)。通用 LINZ 参考地理数据不因为能显示就成为航行 ENC；[LINZ 用途说明](https://www.linz.govt.nz/guidance/data-service/linz-data-service-guide/questions-and-answers)。APK 随包保留 GDAL 对象/属性字典的来源与许可证。

@@ -47,7 +47,7 @@ internal object GeoPackageChartImporter {
         require(!indexFile.exists()) {"GPKG_STAGE_ALREADY_INDEXED"}
         val gson=Gson();val geometryReader=GeoPackageGeometryReader(check)
         SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {source->
-            source.execSQL("PRAGMA query_only=ON")
+            source.rawQuery("PRAGMA query_only=ON",null).use { cursor -> while(cursor.moveToNext()) Unit }
             require(source.longValue("PRAGMA application_id")==0x47504B47L) {"GPKG_APPLICATION_ID_INVALID"}
             require(source.longValue("PRAGMA user_version") in 10000..19999) {"GPKG_VERSION_UNSUPPORTED"}
             val tables=readTables(source,check)
@@ -64,7 +64,9 @@ internal object GeoPackageChartImporter {
             var uniformScale:Int?=null;var scaleInitialized=false;var scalesDiffer=false
             val classCodes=objectClasses.entries.associate{it.value.uppercase(Locale.ROOT) to it.key}
             SQLiteDatabase.openOrCreateDatabase(indexFile,null).use {target->
-                target.execSQL("PRAGMA journal_mode=DELETE")
+                target.rawQuery("PRAGMA journal_mode=DELETE",null).use { cursor ->
+                    require(cursor.moveToFirst()&&cursor.getString(0).equals("delete",true)) {"GPKG_SQLITE_JOURNAL_MODE_FAILED"}
+                }
                 ChartFeatureIndex.create(target)
                 target.beginTransaction()
                 try {
