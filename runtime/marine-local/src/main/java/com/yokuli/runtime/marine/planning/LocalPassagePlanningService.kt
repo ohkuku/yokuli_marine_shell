@@ -135,10 +135,14 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             geometry.validateRequest(request)
             require(leg==null||leg in 0 until request.route.points.lastIndex){"Choose an existing leg"}
             snapshot=charts.acquireSnapshot(request.datasetIds.distinct())
-            // 无数据/不可用数据在这里结束；不先扫完整航线，更不进入搜索或生成候选。
+            // 自动规划优先“先出粗航线”：只做轻量资料门槛，然后直接搜索。
+            // 完整深度/净空/限制证据检查保留给“检查当前航线”，不再在出线前后重复扫同一区域。
             val readiness=if(planning)planningReadiness(snapshot,request,leg)else null
-            val original=if(readiness?.canSearch==false)readinessAnalysis(snapshot,request,readiness)
-                else geometry.analyze(snapshot,request){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
+            val original=when {
+                planning&&readiness?.canSearch==true->planningPreviewAnalysis(snapshot,request)
+                planning->readinessAnalysis(snapshot,request,requireNotNull(readiness))
+                else->geometry.analyze(snapshot,request){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
+            }
             val plan=if(planning){
                 when {
                     readiness?.canSearch!=true->PassagePlan(request.requestId,original,emptyList(),readiness?.message)
@@ -154,18 +158,50 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             commit{if(it.job?.requestId==request.requestId)it.copy(job=PassageJob(request.requestId,PassageJobPhase.FAILED,detail=e.message?.take(250)?:"Unable to calculate"))else it}
         }finally{snapshot?.let{withContext(NonCancellable){runCatching{charts.releaseSnapshot(it.id)}}}}
     }
-    /** 目录检查通过后，逐个计划搜索区域读取真实对象；不把覆盖元数据当作深度支持。 */
+    /** 栅格规划先用轻量元数据确认端点落在网格范围；真实像元在搜索 world 中只读取一次。 */
+    private fun rasterContains(grid:RasterBathymetryGrid,point:ChartPoint):Boolean {
+        val south=grid.northEdge-grid.height*grid.pixelHeightDegrees
+        if(point.latitude<south-1e-9||point.latitude>grid.northEdge+1e-9)return false
+        val span=grid.width*grid.pixelWidthDegrees
+        if(span>=360.0-1e-9)return true
+        var delta=(point.longitude-grid.westEdge)%360.0
+        if(delta<0)delta+=360.0
+        return delta<=span+1e-9
+    }
+
+    /**
+     * 自动规划的门槛只回答“有没有可尝试搜索的资料”。
+     * GEBCO/数值栅格不再为了门槛先 polygonize 一遍；搜索本身会检查 NoData、陆地、浅水和端点可通行性。
+     * 纯矢量资料仍需读取局部对象来确认区域语义，因为仅靠图幅元数据无法证明存在可搜索水域。
+     */
     private suspend fun planningReadiness(snapshot:ChartDataSnapshot,request:PassageRequest,leg:Int?):PassagePlanningReadiness {
         fun evaluate(evidence:PassagePlanningEvidence?=null)=PassagePlanningEligibility.evaluate(
             request.datasetIds,snapshot.datasets,System.currentTimeMillis(),snapshot.missingDatasetIds,evidence)
         val metadata=evaluate()
         if(!metadata.canRequestPlanning)return metadata
         val legs=if(leg==null)(0 until request.route.points.lastIndex).toList()else listOf(leg)
+        legs.forEach { index ->
+            val length=distance(request.route.points[index],request.route.points[index+1])
+            require(length<=80_000){"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg"}
+        }
+
+        val rasters=snapshot.datasets.flatMap{it.rasters.orEmpty()}
+        if(rasters.isNotEmpty()) {
+            val endpoints=legs.flatMap{index->listOf(request.route.points[index],request.route.points[index+1])}.distinct()
+            val covered=endpoints.all{point->rasters.any{grid->rasterContains(grid,point)}}
+            progress(request.requestId,PassageJobPhase.LOADING,.08f)
+            return evaluate(PassagePlanningEvidence(
+                coverageConfirmed=covered,
+                depthAreasConfirmed=covered,
+                semanticsComplete=true
+            ))
+        }
+
+        // 矢量-only 资料没有数值网格可做快速范围判定；只在这种情况下保留局部语义门槛。
         for((order,index) in legs.withIndex()) {
             currentCoroutineContext().ensureActive()
             val start=request.route.points[index];val end=request.route.points[index+1]
             val length=distance(start,end)
-            require(length<=80_000){"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg"}
             val world=geometry.world(snapshot,request,listOf(start,end),max(2000.0,length*.75).coerceAtMost(40_000.0))
             val factory=world.projection.factory
             val endpoints=listOf(start,end).map{factory.createPoint(world.projection.xy(it))}
@@ -175,22 +211,18 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     feature.geometry.kind==ChartGeometryKind.POLYGON&&!feature.issues.any(::isBlockingChartIssue)&&
                     depth?.kind==DepthEvidenceKind.INTERVAL&&!depth.datum.isNullOrBlank()&&depth.lowerMeters?.isFinite()==true
             }.map{it.geometry}
-            // GEBCO 是参考高程而非海图基准“可信深度面”。粗略搜索只要求端点落在
-            // 已知数值地形（海、浅水或陆地）或正式深度面；UNKNOWN / NoData 仍阻断。
-            // 陆地只表示“有地形证据”，真正通行性仍由 world.navigable 排除。
-            val rasterTerrain=world.rasterAreas.filter {it.kind!=RasterPassageKind.UNKNOWN}.map {it.geometry}
-            val searchableEvidence=union(depths+rasterTerrain,factory)
+            val searchableEvidence=union(depths,factory)
             val result=evaluate(PassagePlanningEvidence(
                 endpoints.all{world.coverage.covers(it)},
                 endpoints.all{searchableEvidence.covers(it)},
                 world.malformed.isEmpty()
             ))
             if(!result.canSearch)return result
-            progress(request.requestId,PassageJobPhase.LOADING,(order+1f)/legs.size)
+            progress(request.requestId,PassageJobPhase.LOADING,.08f+.12f*(order+1f)/legs.size)
         }
-        // 长作业中用途许可可能刚好过期；最终进入分析/搜索前再检查冻结元数据的时间条件。
         return evaluate(PassagePlanningEvidence(coverageConfirmed=true,depthAreasConfirmed=true))
     }
+
     /** 这是门槛结果，不是全线分析；不伪造水深条带、到达时间或“未发现冲突”。 */
     private fun readinessAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest,readiness:PassagePlanningReadiness):PassageAnalysis {
         val key=passageHash(listOf(PASSAGE_RULES_VERSION,request.route,request.vessel,request.datasetIds,snapshot.datasets.map{it.id to it.revision},readiness.reason))
@@ -204,6 +236,54 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         return PassageAnalysis(request.requestId,key,request,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},System.currentTimeMillis(),
             request.route.points.zipWithNext().sumOf{distance(it.first,it.second)},null,PassageSeverity.INSUFFICIENT,listOf(issue),emptyList(),PASSAGE_RULES_VERSION,complete=false)
     }
+    /** 自动规划的原线摘要只用于绑定当前输入版本；它不是完整安全分析。 */
+    private fun planningPreviewAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest):PassageAnalysis {
+        val total=request.route.points.zipWithNext().sumOf{distance(it.first,it.second)}
+        val key=passageHash(listOf(PASSAGE_RULES_VERSION,"route-first",request.route,request.vessel,request.datasetIds,
+            snapshot.datasets.map{it.id to it.revision},request.avoidances))
+        val note=PassageIssue("$key:route-first",PassageSeverity.REVIEW,PassageIssueKind.QUALITY,0,
+            request.route.points.firstOrNull(),0.0,
+            "自动规划会先生成可编辑的粗略航线；完整深度、净空、限制与资料质量检查可在出线后按需运行 / Auto planning generates an editable coarse route first; run the full route check afterward when needed")
+        val speed=request.vessel.plannedSpeedMetersPerSecond?.takeIf{it.isFinite()&&it>.1}
+        val arrival=request.departureUtc?.let{depart->speed?.let{depart+(total/it*1000).toLong()}}
+        return PassageAnalysis(request.requestId,key,request,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},
+            System.currentTimeMillis(),total,arrival,PassageSeverity.REVIEW,listOf(note),emptyList(),PASSAGE_RULES_VERSION,complete=false)
+    }
+
+    /**
+     * 搜索已经逐边限制在 world.navigable 内。这里故意不再调用 geometry.analyze() 重扫整条候选：
+     * 自动规划的职责是快速给出可编辑路线，完整证据检查由独立“检查当前航线”承担。
+     */
+    private fun planningCandidateAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest,route:PassageRoute,turnRadius:Double?):PassageAnalysis {
+        val candidateRequest=request.copy(requestId=request.requestId+":candidate",route=route)
+        val total=route.points.zipWithNext().sumOf{distance(it.first,it.second)}
+        val key=passageHash(listOf(PASSAGE_RULES_VERSION,"route-first-candidate",route,request.vessel,request.datasetIds,
+            snapshot.datasets.map{it.id to it.revision},request.avoidances))
+        val issues=buildList {
+            add(PassageIssue("$key:coarse",PassageSeverity.REVIEW,PassageIssueKind.QUALITY,0,route.points.firstOrNull(),0.0,
+                "已按当前可搜索水域、陆地、明显浅区与已知障碍生成粗略航线；这不是完整航海安全检查 / Coarse route generated from searchable water, land, obvious shallows and known obstacles; this is not a full navigation-safety check"))
+            if(request.vessel.draftMeters==null)add(PassageIssue("$key:draft",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
+                route.points.firstOrNull(),0.0,
+                "未设置吃水；当前只按水陆地形出线，不判断实际余深 / Draft is unset; this route only uses terrain and does not assess under-keel depth"))
+            else if(request.vessel.minimumUnderKeelMeters==null)add(PassageIssue("$key:ukc",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
+                route.points.firstOrNull(),0.0,
+                "未设置额外富余水深；自动规划按吃水本身作为最低深度，完整检查时再核对余量 / No extra under-keel margin is set; auto planning uses draft itself as the minimum depth and leaves margin review to the full check"))
+            if(request.vessel.airDraftMeters==null)add(PassageIssue("$key:air",PassageSeverity.REVIEW,PassageIssueKind.CLEARANCE,0,
+                route.points.firstOrNull(),0.0,
+                "未设置船高；自动规划会保守避开已知桥梁和高空设施 / Air draft is unset; auto planning conservatively avoids known bridges and overhead structures"))
+            if(route.points.size>2)add(PassageIssue("$key:turns",PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,0,
+                route.points.getOrNull(1),0.0,
+                if(turnRadius==null)
+                    "粗略折线未设置转弯半径；请按实际操船修正 / Coarse polyline has no turn-radius constraint; adjust it for actual handling"
+                else
+                    "自动规划优先快速出线，未为转弯半径做第二次全区域重算；请在采用后按实际操船核对转向 / Auto planning prioritizes a fast route and skips a second full-area turn-radius pass; review turns after adoption"))
+        }
+        val speed=request.vessel.plannedSpeedMetersPerSecond?.takeIf{it.isFinite()&&it>.1}
+        val arrival=request.departureUtc?.let{depart->speed?.let{depart+(total/it*1000).toLong()}}
+        return PassageAnalysis(candidateRequest.requestId,key,candidateRequest,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},
+            System.currentTimeMillis(),total,arrival,PassageSeverity.REVIEW,issues,emptyList(),PASSAGE_RULES_VERSION,complete=false)
+    }
+
     private suspend fun createPlan(snapshot:ChartDataSnapshot,request:PassageRequest,original:PassageAnalysis,leg:Int?):PassagePlan {
         val points=request.route.points
         require(leg==null||leg in 0 until points.lastIndex){"Choose an existing leg"}
@@ -218,6 +298,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             var path:List<ChartPoint>?=null
             for((attempt,padding) in paddings.withIndex()) {
                 currentCoroutineContext().ensureActive()
+                progress(request.requestId,PassageJobPhase.LOADING,
+                    ((index+(attempt.toFloat()/paddings.size))/points.lastIndex).coerceIn(.08f,.9f))
                 val world=geometry.world(snapshot,request,listOf(a,b),padding)
                 path=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
                     progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
@@ -229,11 +311,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         require(result.size<=2000){"Candidate is too complex"}
         val turnRadius=request.vessel.turnRadiusMeters?.takeIf {it.isFinite()&&it>0}
-        val candidatePoints=if(leg==null&&result.size>2&&turnRadius!=null){
-            val world=geometry.world(snapshot,request,result,max(250.0,turnRadius*3))
-            geometry.smooth(world,result,turnRadius)
-                ?:return PassagePlan(request.requestId,original,emptyList(),"无法满足转弯半径，请调整中间航点 / Turning radius cannot be met; adjust intermediate waypoints")
-        }else result
+        // 全线自动规划不再为了转弯半径重新构造一次整区 world；先给粗略折线。
+        // 高级“仅绕行某一段”仍在 search 内按已设置半径做局部平滑。
+        val candidatePoints=result
         if(leg!=null&&result.size>2&&turnRadius!=null){
             // 局部绕行不可偷偷移动相邻保留航点；接头不相切时必须要求用户重做全线。
             val junctions=listOfNotNull(points.getOrNull(leg)?.takeIf{leg>0},points.getOrNull(leg+1)?.takeIf{leg+1<points.lastIndex})
@@ -255,36 +335,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         if(targetIndices.lastOrNull()!=candidatePoints.lastIndex)targetIndices.add(candidatePoints.lastIndex)
         val candidateRoute=request.route.copy(revision=passageHash(listOf(candidatePoints,targetIndices)),points=candidatePoints,navigationTargetIndices=targetIndices)
-        val checked=geometry.analyze(snapshot,request.copy(requestId=request.requestId+":candidate",route=candidateRoute)){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
-        // 缺船体参数只降低粗导航可信度，不应阻止“别穿陆地”的参考建议；资料空白和真实冲突仍阻断。
-        val vesselRelaxed=checked.issues.map { issue ->
-            if(issue.kind==PassageIssueKind.VESSEL&&issue.severity==PassageSeverity.INSUFFICIENT)
-                issue.copy(severity=PassageSeverity.REVIEW,message=
-                    "船体/净空参数未完整；当前建议只按已知水陆地形与可用资料粗略避让，请人工核对 / Vessel/clearance settings are incomplete; this suggestion only uses known terrain and available chart data for coarse avoidance and requires human review")
-            else issue
-        }
-        if(vesselRelaxed.any{it.severity==PassageSeverity.CONFLICT||it.severity==PassageSeverity.INSUFFICIENT})
-            return PassagePlan(request.requestId,original,emptyList(),"候选航线仍有冲突或资料缺口 / Candidate still has conflicts or missing evidence")
-        val notes=buildList {
-            if(turnRadius==null&&candidatePoints.size>2)add(PassageIssue(
-                passageHash(listOf(checked.key,"rough-turns")),PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,0,
-                candidatePoints.getOrNull(1),0.0,
-                "粗略折线路线未应用转弯半径；请在海图上人工核对并按实际操船修正 / Coarse polyline route does not apply a turning radius; review it on the chart and adjust for actual vessel handling"
-            ))
-            if(request.vessel.draftMeters==null||request.vessel.minimumUnderKeelMeters==null)add(PassageIssue(
-                passageHash(listOf(checked.key,"rough-depth")),PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
-                candidatePoints.firstOrNull(),0.0,
-                "未设置吃水或最小富余水深；当前只按水陆地形粗略绕行，不判断实际余深 / Draft or minimum under-keel clearance is unset; this route only avoids terrain coarsely and does not assess real under-keel clearance"
-            ))
-        }
-        val finalIssues=(vesselRelaxed+notes).distinctBy{it.id}
-        val finalSeverity=when {
-            finalIssues.any{it.severity==PassageSeverity.CONFLICT}->PassageSeverity.CONFLICT
-            finalIssues.any{it.severity==PassageSeverity.INSUFFICIENT}->PassageSeverity.INSUFFICIENT
-            finalIssues.any{it.severity==PassageSeverity.REVIEW}->PassageSeverity.REVIEW
-            else->PassageSeverity.NO_CONFLICT_FOUND
-        }
-        val final=checked.copy(severity=finalSeverity,issues=finalIssues)
-        return PassagePlan(request.requestId,original,listOf(PassageCandidate(passageHash(candidateRoute),candidateRoute,final,final.distanceMeters-original.distanceMeters,targetIndices)))
+        progress(request.requestId,PassageJobPhase.ANALYZING,.96f)
+        val final=planningCandidateAnalysis(snapshot,request,candidateRoute,turnRadius)
+        return PassagePlan(request.requestId,original,listOf(PassageCandidate(
+            passageHash(candidateRoute),candidateRoute,final,final.distanceMeters-original.distanceMeters,targetIndices)))
     }
 }
