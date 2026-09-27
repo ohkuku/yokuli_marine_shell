@@ -38,7 +38,10 @@ internal suspend fun rasterPassageGeometry(
     fun classify(value:Float):RasterPassageKind=when {
         !value.isFinite()->RasterPassageKind.UNKNOWN
         value>=0f->RasterPassageKind.LAND
-        requiredDepthMeters==null||-value.toDouble()<requiredDepthMeters->RasterPassageKind.SHALLOW
+        // 未提供吃水/UKC 时，负高程仍能证明“这里是水”，足够用于粗略水陆绕行。
+        // 给出所需水深后才进一步把不足的负高程判为浅水。
+        requiredDepthMeters==null->RasterPassageKind.DEEP
+        -value.toDouble()<requiredDepthMeters->RasterPassageKind.SHALLOW
         else->RasterPassageKind.DEEP
     }
     fun limit(){require(finished.size+active.size<=16_384){"栅格边界过于复杂，请缩短航段 / Raster boundaries exceed the local budget; shorten the leg"}}

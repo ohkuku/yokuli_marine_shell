@@ -48,7 +48,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             require(stored.schema==1&&stored.completed.size<=32&&stored.state.avoidances.size<=100&&stored.state.reviews.size<=128){"Unsupported passage workspace"}
             stored.state.avoidances.forEach(::validAvoidance)
             val analyses=listOfNotNull(stored.state.analysis,stored.state.plan?.original)+stored.state.plan?.candidates.orEmpty().map{it.analysis}
-            if(analyses.any{it.rulesVersion !in setOf(PASSAGE_RULES_VERSION,"planning-readiness-2-offline-rasters")}){
+            if(analyses.any{it.rulesVersion != PASSAGE_RULES_VERSION}){
                 // 保留用户航线/参数/避让区及批注，只失效旧计算；不得拿旧无冲突结论覆盖新数据规则。
                 val job=stored.state.job?:analyses.firstOrNull()?.let{PassageJob(it.id,PassageJobPhase.INTERRUPTED)}
                 stored=stored.copy(completed=emptyList(),state=stored.state.copy(analysis=null,plan=null,planningReadiness=null,
@@ -178,8 +178,16 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     feature.geometry.kind==ChartGeometryKind.POLYGON&&!feature.issues.any(::isBlockingChartIssue)&&
                     depth?.kind==DepthEvidenceKind.INTERVAL&&!depth.datum.isNullOrBlank()&&depth.lowerMeters?.isFinite()==true
             }.map{it.geometry}
-            val knownDepth=union(depths+world.rasterKnownDepth,factory)
-            val result=evaluate(PassagePlanningEvidence(endpoints.all{world.coverage.covers(it)},endpoints.all{knownDepth.covers(it)},world.malformed.isEmpty()))
+            // GEBCO 是参考高程而非海图基准“可信深度面”。粗略搜索只要求端点落在
+            // 已知数值地形（海、浅水或陆地）或正式深度面；UNKNOWN / NoData 仍阻断。
+            // 陆地只表示“有地形证据”，真正通行性仍由 world.navigable 排除。
+            val rasterTerrain=world.rasterAreas.filter {it.kind!=RasterPassageKind.UNKNOWN}.map {it.geometry}
+            val searchableEvidence=union(depths+rasterTerrain,factory)
+            val result=evaluate(PassagePlanningEvidence(
+                endpoints.all{world.coverage.covers(it)},
+                endpoints.all{searchableEvidence.covers(it)},
+                world.malformed.isEmpty()
+            ))
             if(!result.canSearch)return result
             progress(request.requestId,PassageJobPhase.LOADING,(order+1f)/legs.size)
         }
@@ -188,7 +196,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     }
     /** 这是门槛结果，不是全线分析；不伪造水深条带、到达时间或“未发现冲突”。 */
     private fun readinessAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest,readiness:PassagePlanningReadiness):PassageAnalysis {
-        val key=passageHash(listOf("planning-readiness-2-offline-rasters",request.route,request.vessel,request.datasetIds,snapshot.datasets.map{it.id to it.revision},readiness.reason))
+        val key=passageHash(listOf(PASSAGE_RULES_VERSION,request.route,request.vessel,request.datasetIds,snapshot.datasets.map{it.id to it.revision},readiness.reason))
         val kind=when(readiness.reason){
             PassageReadinessReason.NO_STRUCTURED_COVERAGE,PassageReadinessReason.REGION_NOT_COVERED->PassageIssueKind.COVERAGE
             PassageReadinessReason.DEPTH_NOT_SUPPORTED->PassageIssueKind.DEPTH
@@ -197,7 +205,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         val issue=PassageIssue("$key:eligibility",PassageSeverity.INSUFFICIENT,kind,0,request.route.points.firstOrNull(),0.0,readiness.message)
         return PassageAnalysis(request.requestId,key,request,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},System.currentTimeMillis(),
-            request.route.points.zipWithNext().sumOf{distance(it.first,it.second)},null,PassageSeverity.INSUFFICIENT,listOf(issue),emptyList(),"planning-readiness-2-offline-rasters",complete=false)
+            request.route.points.zipWithNext().sumOf{distance(it.first,it.second)},null,PassageSeverity.INSUFFICIENT,listOf(issue),emptyList(),PASSAGE_RULES_VERSION,complete=false)
     }
     private suspend fun createPlan(snapshot:ChartDataSnapshot,request:PassageRequest,original:PassageAnalysis,leg:Int?):PassagePlan {
         val points=request.route.points
@@ -251,16 +259,35 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         if(targetIndices.lastOrNull()!=candidatePoints.lastIndex)targetIndices.add(candidatePoints.lastIndex)
         val candidateRoute=request.route.copy(revision=passageHash(listOf(candidatePoints,targetIndices)),points=candidatePoints,navigationTargetIndices=targetIndices)
         val checked=geometry.analyze(snapshot,request.copy(requestId=request.requestId+":candidate",route=candidateRoute)){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
-        if(checked.issues.any{it.severity==PassageSeverity.CONFLICT||it.severity==PassageSeverity.INSUFFICIENT})return PassagePlan(request.requestId,original,emptyList(),"候选航线仍有冲突或资料缺口 / Candidate still has conflicts or missing evidence")
-        val rough=turnRadius==null&&candidatePoints.size>2
-        val final=if(!rough)checked else {
-            val note=PassageIssue(
+        // 缺船体参数只降低粗导航可信度，不应阻止“别穿陆地”的参考建议；资料空白和真实冲突仍阻断。
+        val vesselRelaxed=checked.issues.map { issue ->
+            if(issue.kind==PassageIssueKind.VESSEL&&issue.severity==PassageSeverity.INSUFFICIENT)
+                issue.copy(severity=PassageSeverity.REVIEW,message=
+                    "船体/净空参数未完整；当前建议只按已知水陆地形与可用资料粗略避让，请人工核对 / Vessel/clearance settings are incomplete; this suggestion only uses known terrain and available chart data for coarse avoidance and requires human review")
+            else issue
+        }
+        if(vesselRelaxed.any{it.severity==PassageSeverity.CONFLICT||it.severity==PassageSeverity.INSUFFICIENT})
+            return PassagePlan(request.requestId,original,emptyList(),"候选航线仍有冲突或资料缺口 / Candidate still has conflicts or missing evidence")
+        val notes=buildList {
+            if(turnRadius==null&&candidatePoints.size>2)add(PassageIssue(
                 passageHash(listOf(checked.key,"rough-turns")),PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,0,
                 candidatePoints.getOrNull(1),0.0,
                 "粗略折线路线未应用转弯半径；请在海图上人工核对并按实际操船修正 / Coarse polyline route does not apply a turning radius; review it on the chart and adjust for actual vessel handling"
-            )
-            checked.copy(severity=PassageSeverity.REVIEW,issues=(checked.issues+note).distinctBy{it.id})
+            ))
+            if(request.vessel.draftMeters==null||request.vessel.minimumUnderKeelMeters==null)add(PassageIssue(
+                passageHash(listOf(checked.key,"rough-depth")),PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
+                candidatePoints.firstOrNull(),0.0,
+                "未设置吃水或最小富余水深；当前只按水陆地形粗略绕行，不判断实际余深 / Draft or minimum under-keel clearance is unset; this route only avoids terrain coarsely and does not assess real under-keel clearance"
+            ))
         }
+        val finalIssues=(vesselRelaxed+notes).distinctBy{it.id}
+        val finalSeverity=when {
+            finalIssues.any{it.severity==PassageSeverity.CONFLICT}->PassageSeverity.CONFLICT
+            finalIssues.any{it.severity==PassageSeverity.INSUFFICIENT}->PassageSeverity.INSUFFICIENT
+            finalIssues.any{it.severity==PassageSeverity.REVIEW}->PassageSeverity.REVIEW
+            else->PassageSeverity.NO_CONFLICT_FOUND
+        }
+        val final=checked.copy(severity=finalSeverity,issues=finalIssues)
         return PassagePlan(request.requestId,original,listOf(PassageCandidate(passageHash(candidateRoute),candidateRoute,final,final.distanceMeters-original.distanceMeters,targetIndices)))
     }
 }

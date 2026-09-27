@@ -9,7 +9,7 @@ enum class PassageReadinessReason {
     NO_STRUCTURED_COVERAGE, UNSUPPORTED_DATA, REGION_UNCHECKED, REGION_NOT_COVERED,
     DEPTH_NOT_SUPPORTED, READY,
 }
-/** 区域证据由规划运行时查询实际对象产生。深度支持指有基准的可信深度面，孤立测深点不代替深度面。 */
+/** 区域证据由规划运行时查询实际对象产生。正式矢量资料仍要求可信深度面；数值参考栅格可作为粗略搜索的地形证据，但绝不等同海图基准水深或安全证明。 */
 data class PassagePlanningEvidence(val coverageConfirmed:Boolean,val depthAreasConfirmed:Boolean,val semanticsComplete:Boolean=true)
 data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason:PassageReadinessReason,val affectedDatasetIds:List<String> = emptyList()) {
     val canRequestPlanning:Boolean get()=status!=PassageReadinessStatus.BLOCKED
@@ -25,8 +25,8 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.UNSUPPORTED_DATA->"所选区域有未支持或不完整的数据，暂不能自动规划"
         PassageReadinessReason.REGION_UNCHECKED->"已选择航行数据；规划前将检查本区域覆盖与深度"
         PassageReadinessReason.REGION_NOT_COVERED->"规划起终点缺少选用资料的有效覆盖，可改用手动绘线"
-        PassageReadinessReason.DEPTH_NOT_SUPPORTED->"规划起终点缺少可信深度面，可改用手动绘线"
-        PassageReadinessReason.READY->"本区域有可用于搜索的覆盖与深度资料"
+        PassageReadinessReason.DEPTH_NOT_SUPPORTED->"规划起终点缺少可搜索的深度或参考高程数据；请确认航点落在已导入数据覆盖内"
+        PassageReadinessReason.READY->"本区域有可用于粗略搜索的覆盖与深度／参考高程资料"
     }
     val messageEn:String get()=when(reason) {
         PassageReadinessReason.SELECT_ONE_FOLDER->"Choose one data folder. Files inside that folder can be combined by priority."
@@ -39,8 +39,8 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.UNSUPPORTED_DATA->"The selected area has unsupported or incomplete data. Automatic planning is unavailable."
         PassageReadinessReason.REGION_UNCHECKED->"Navigation data selected. Area coverage and depth will be checked before planning."
         PassageReadinessReason.REGION_NOT_COVERED->"The planning endpoints lack coverage in selected data. You can draw a route manually."
-        PassageReadinessReason.DEPTH_NOT_SUPPORTED->"The planning endpoints lack reliable depth areas. You can draw a route manually."
-        PassageReadinessReason.READY->"Area coverage and depth evidence are available for route search."
+        PassageReadinessReason.DEPTH_NOT_SUPPORTED->"The planning endpoints lack searchable depth or reference-elevation data. Check that the waypoints are inside the imported data coverage."
+        PassageReadinessReason.READY->"Area coverage and depth/reference-elevation evidence are available for coarse route search."
     }
     val message:String get()="$messageZh / $messageEn"
 }
