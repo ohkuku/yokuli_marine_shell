@@ -30,13 +30,16 @@ class RuntimeResidencyRepository @Inject constructor(@ApplicationContext context
         explicitlyStopped = true
         mutable.update { it.copy(requested = false, explicitlyStopped = true, phase = RuntimeResidencyPhase.STOPPING, problem = null) }
     }
+    fun recoveryStarted(generation: String) { mutable.update { it.copy(recoveryGeneration = generation, recoveryReady = false, recoveryProblem = null) } }
+    fun recoveryFinished(generation: String, restarted: Boolean) { mutable.update { it.copy(recoveryGeneration = generation, recoveryReady = true, deviceRestarted = restarted, recoveryProblem = null) } }
+    fun recoveryFailed(generation: String, problem: String) { mutable.update { it.copy(recoveryGeneration = generation, recoveryReady = false, recoveryProblem = problem, phase = RuntimeResidencyPhase.BLOCKED, problem = problem) } }
     fun phase(phase: RuntimeResidencyPhase, problem: String? = null) { mutable.update {
         // 关闭中的异步能力回调不能将状态重新标成运行；失败只由实际退出路径保留为BLOCKED。
         if ((it.phase == RuntimeResidencyPhase.STOPPING || it.explicitlyStopped) && phase in setOf(RuntimeResidencyPhase.STARTING, RuntimeResidencyPhase.RUNNING)) it
         else it.copy(phase = phase, problem = problem)
     } }
     fun capabilitiesReady(problem: String?) { mutable.update {
-        if (!it.requested || it.explicitlyStopped || it.phase == RuntimeResidencyPhase.STOPPING) it
+        if (!it.requested || it.explicitlyStopped || it.phase == RuntimeResidencyPhase.STOPPING || it.recoveryProblem != null) it
         else it.copy(phase = if(problem == null) RuntimeResidencyPhase.RUNNING else RuntimeResidencyPhase.BLOCKED, problem = problem)
     } }
     fun resources(value: RuntimeResourceSnapshot, inputs: Int, outputs: Int, sharing: Boolean) {

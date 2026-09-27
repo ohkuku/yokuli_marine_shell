@@ -30,7 +30,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * 进程内迁移用的只读兼容投影。MainUiState 仍含旧实体和 UI 字段，不是公开 OS IPC schema。
+ * 同 APK 迁移用的只读兼容投影。MainUiState 经私有 Binder 字段编码传输，仍不是公开 OS schema。
  * 各端口当前观察同一事实快照；不能经此接口取得 Controller、可变 Flow 或底层 repository。
  */
 interface MarineStateReader {
@@ -71,7 +71,7 @@ interface VoyageService : MarineStateReader {
     fun endTrip(): ComponentName?
     /** 运行时固定点击时刻/会话/快照；页面离开不会取消写入。 */
     val capturedMoments: StateFlow<List<com.yokuli.anchorwatch.runtime.trip.TripMomentReceipt>>
-    fun captureMoment(sessionId: Long, defaultName: String): String
+    fun captureMoment(sessionId: Long, defaultName: String, requestId: String = java.util.UUID.randomUUID().toString()): String
     fun restoreMoment(requestId: String)
     fun retryMoment(requestId: String)
     fun editCapturedMoment(requestId: String, name: String, note: String, kind: String)
@@ -99,10 +99,10 @@ interface AnchorService : MarineStateReader {
     fun clearAnchorSetupDraft()
     fun arm(lat: Double, lon: Double, input: AnchorWatchInput)
     /** 返回请求 ID；接收 ID 不代表值守已建立，最终结果订阅系统 anchorCommands。 */
-    fun requestArm(lat: Double, lon: Double, input: AnchorWatchInput): String
-    fun requestPauseWatch(sessionId: Long): String
-    fun requestResumeWatch(sessionId: Long): String
-    fun requestLiftAnchor(sessionId: Long): String
+    fun requestArm(lat: Double, lon: Double, input: AnchorWatchInput, requestId: String = java.util.UUID.randomUUID().toString()): String
+    fun requestPauseWatch(sessionId: Long, requestId: String = java.util.UUID.randomUUID().toString()): String
+    fun requestResumeWatch(sessionId: Long, requestId: String = java.util.UUID.randomUUID().toString()): String
+    fun requestLiftAnchor(sessionId: Long, requestId: String = java.util.UUID.randomUUID().toString()): String
     fun updateAnchorSettings(input: AnchorWatchInput)
     fun updateConditionGuards(config: ConditionGuardConfig)
     fun pauseWatch(): ComponentName?
@@ -165,6 +165,9 @@ interface VesselPreferencesService : MarineStateReader {
 /** 消息消费只推进反馈游标，不能代替确认守锚告警。 */
 interface MarineFeedbackService : MarineStateReader {
     val destinations: SharedFlow<MarineDestination>
+    /** 已准备好的导出/前台系统动作；不会由后台直接打开 Activity。 */
+    val presentationRequests: StateFlow<List<MarinePresentationRequest>>
+    suspend fun acknowledgePresentation(id: String)
     fun consumeRuntimeFeedback(id: Long)
 }
 

@@ -68,6 +68,7 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
     var scene = MapScene()
     var onEvent: (MapEvent) -> Unit = {}
     var unitFormats = com.yokuli.marine.core.design.MarineUnitFormats(com.yokuli.shell.contract.MarineUnitPreferences())
+    internal var chartPalette=ChartPalette.of(com.yokuli.runtime.contract.chart.ChartColorMode.DAY)
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var handle: MapPoint? = null
@@ -96,7 +97,7 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
         // Geographic geometry is rendered by the map engine, never this screen overlay.
         if(state.showCrosshair) {
             val x=width/2f;val y=height/2f
-            for((color,w) in listOf(android.graphics.Color.WHITE to 4f,0xFF14222B.toInt() to 1.5f)) {
+            for((color,w) in listOf(chartPalette.deep.toInt() to 4f,chartPalette.ink.toInt() to 1.5f)) {
                 paint.color=color;paint.strokeWidth=w*density;paint.style=Paint.Style.STROKE;canvas.drawCircle(x,y,10*density,paint)
                 canvas.drawLine(x-22*density,y,x-5*density,y,paint);canvas.drawLine(x+5*density,y,x+22*density,y,paint)
                 canvas.drawLine(x,y-22*density,x,y-5*density,paint);canvas.drawLine(x,y+5*density,x,y+22*density,paint)
@@ -114,8 +115,8 @@ class ChartOverlay(context: Context, private val state: MapViewState) : View(con
             val fullLabelWidth=paint.measureText(scale.label)
             if(fullLabelWidth>availablePixels)paint.textSize*=availablePixels/fullLabelWidth
             val labelWidth=paint.measureText(scale.label)
-            paint.style=Paint.Style.FILL;paint.color=0xDCFFFFFF.toInt();canvas.drawRect(x-6*density,y-25*density,x+max(pixels,labelWidth)+8*density,y+6*density,paint)
-            paint.color=0xFF19252B.toInt();paint.strokeWidth=2*density
+            paint.style=Paint.Style.FILL;paint.color=chartPalette.deep.toInt();canvas.drawRect(x-6*density,y-25*density,x+max(pixels,labelWidth)+8*density,y+6*density,paint)
+            paint.color=chartPalette.ink.toInt();paint.strokeWidth=2*density
             canvas.drawLine(x,y,x+pixels,y,paint);canvas.drawLine(x,y-5*density,x,y,paint);canvas.drawLine(x+pixels,y-5*density,x+pixels,y,paint)
             paint.textAlign=Paint.Align.LEFT;canvas.drawText(scale.label,x,y-8*density,paint)
         }
@@ -353,7 +354,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     fun updateStyle() {
         val source=maps.source
         val layer=maps.selectedLayer()
-        val revision=(if(source is MapSource.CustomLayer) "${source}:${maps.library.revision}" else source.toString())+":${maps.chinese}"
+        val revision=(if(source is MapSource.CustomLayer) "${source}:${maps.library.revision}" else source.toString())+":${maps.chinese}:${maps.portrayalPreferences.colorMode}"
         if(styleRevision==revision) return
         if(googleEngine && googleMap==null || !googleEngine && libre==null) return
         styleRevision=revision;styleJob?.cancel();val generation=++sourceGeneration;error=null;loading=true
@@ -373,7 +374,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
                 // 已选且可读的自定义文件夹沿用原渲染；未配置/空目录不能回退到底图。
                 val referenceBackground=source==MapSource.Offline || source is MapSource.CustomLayer&&layer?.files?.isNotEmpty()==true
                 val sources=if(referenceBackground)OfflineWorldStyle.sources()else JSONObject()
-                val layers=if(referenceBackground)OfflineWorldStyle.layers()else emptyChartLayers()
+                val layers=if(referenceBackground)OfflineWorldStyle.applyPalette(OfflineWorldStyle.layers(),maps.portrayalPreferences.colorMode)else emptyChartLayers()
                 when(source) {
                     MapSource.Offline -> Unit
                     MapSource.Satellite -> error="online"
@@ -510,7 +511,7 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
     }
     fun update(scene:MapScene,events:(MapEvent)->Unit) {
         if(destroyed)return
-        onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.unitFormats=com.yokuli.marine.core.design.MarineUnitFormats(maps.unitPreferences);overlay.invalidate()
+        onEvent=events;overlay.onEvent=events;overlay.scene=scene;overlay.chartPalette=ChartPalette.of(maps.portrayalPreferences.colorMode);overlay.unitFormats=com.yokuli.marine.core.design.MarineUnitFormats(maps.unitPreferences);overlay.invalidate()
         renderViewportScene()
         googleMap?.uiSettings?.setAllGesturesEnabled(state.interactive)
         googleMap?.uiSettings?.apply {isRotateGesturesEnabled=false;isTiltGesturesEnabled=false}
@@ -534,6 +535,15 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
     val context=androidx.compose.ui.platform.LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
     val structured=rememberStructuredChart(maps,state)
+    var showPortrayalDetails by remember(state) { mutableStateOf(false) }
+    if(showPortrayalDetails)com.yokuli.marine.shell.rebuild.ui.AppDialog(onDismissRequest={showPortrayalDetails=false}) {
+        com.yokuli.marine.shell.rebuild.ui.AppDialogSurface {
+            com.yokuli.marine.shell.rebuild.ui.AppDialogTitle(if(maps.chinese)"海图显示" else "Chart display")
+            structured.notices.forEach {Label(it,14)}
+            Label(if(maps.chinese)"增强矢量呈现；不是经认证的 ECDIS。灯扇区表示方向，扇区长度不表示实际能见距离。" else "Enhanced vector portrayal, not a certified ECDIS. Light sectors show directions; their drawn length is not visibility range.",12,LocalMetro.current.muted)
+            com.yokuli.marine.shell.rebuild.ui.MetroButton(if(maps.chinese)"完成" else "Done",{showPortrayalDetails=false})
+        }
+    }
     val chartData by maps.charts.state.collectAsState()
     val combined=scene.copy(points=structured.scene.points+scene.points+state.planningPoints,lines=structured.scene.lines+scene.lines+state.planningLines,areas=structured.scene.areas+scene.areas+state.planningAreas)
     val handleEvent:(MapEvent)->Unit={ event ->
@@ -599,7 +609,7 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
             AndroidView(factory={host},modifier=Modifier.fillMaxSize(),update={it.update(combined,handleEvent)})
             val zh=maps.chinese
             val message=when {
-                structured.issue!=null -> structured.issue
+                structured.issue!=null -> structured.issue + if(structured.notices.size>1)" · +${structured.notices.size-1}" else ""
                 host.error=="online" ->if(zh)"卫星影像暂不可用 · 可切换内置地图" else "satellite imagery unavailable · use the built-in map"
                 host.error=="base" ->if(zh)"内置地图未能载入 · 点按重试" else "built-in map could not load · tap to retry"
                 host.error=="depthLabels" ->if(zh)"测深标签未能显示 · 点按重试" else "depth labels could not load · tap to retry"
@@ -617,8 +627,8 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                 val statusModifier=Modifier.align(if(compactViewport)Alignment.TopStart else Alignment.TopCenter)
                     .padding(top=if(compactViewport)8.dp else 166.dp,start=12.dp,end=if(compactViewport)96.dp else 12.dp).widthIn(max=290.dp)
                 if(host.loading && host.error==null)Box(statusModifier.background(LocalMetro.current.bg.copy(alpha=.94f)).padding(10.dp)){MetroProgress(it)}
-                else Label(it,13,Color(0xFF19252B),statusModifier.background(Color.White.copy(alpha=.95f))
-                    .then(if(host.error in setOf("base","labels"))Modifier.clickable {host.retry()}else Modifier).padding(9.dp))
+                else Label(it,12,LocalMetro.current.fg,statusModifier.background(LocalMetro.current.bg.copy(alpha=.95f))
+                    .then(if(structured.notices.isNotEmpty())Modifier.clickable {showPortrayalDetails=true}else if(host.error in setOf("base","labels"))Modifier.clickable {host.retry()}else Modifier).padding(8.dp),maxLines=2)
             }
             val credits=maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()+if(!google&&host.showsReferenceBackground)listOf("Natural Earth")else emptyList()
             if(credits.isNotEmpty())Column(Modifier.align(Alignment.BottomEnd).padding(bottom=state.bottomOverlayDp.dp).widthIn(max=230.dp).background(Color.White.copy(alpha=.92f)).padding(4.dp)) {

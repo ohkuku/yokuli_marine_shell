@@ -1,5 +1,7 @@
 package com.yokuli.marine.shell.rebuild.ui
 
+import kotlinx.coroutines.launch
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -164,6 +166,12 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
     fun open(intent: Intent) { runCatching { context.startActivity(intent) }.onFailure { os.notify("无法打开系统设置", "Could not open Android settings") } }
     PageBody {
         runtime?.let { status ->
+            AppSection(os.t("航行核心", "Marine Core"))
+            val coreConnection = os.marine?.system?.connection?.collectAsState()?.value
+            Label(if(coreConnection?.readiness == com.yokuli.runtime.contract.RuntimeReadiness.READY)
+                os.t("独立后台 · 已连接", "Independent background · connected") else os.t("正在恢复连接", "Restoring connection"), 17)
+            status.recoveryProblem?.let { Label(os.t("恢复被阻止，原始记录仍保留：", "Recovery is blocked; saved records are retained: ") + it, 13, LocalMetro.current.accentText) }
+            if(status.deviceRestarted) Label(os.t("设备重启后，守锚和记录保留原会话并暂停。核对船位后到对应应用继续。", "After device restart, watch and log sessions remain paused. Check position and resume in their apps."), 13, LocalMetro.current.muted)
             AppSection(os.t("系统采集", "system collection"))
             Label(when(status.phase) {
                 com.yokuli.runtime.contract.RuntimeResidencyPhase.RUNNING -> os.t("后台运行中", "running in the background")
@@ -182,7 +190,19 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
             if(status.problem == "PHONE_BACKGROUND_LOCATION_NOT_ALLOWED") Label(os.t("手机后台定位尚未获准；检查精确定位权限，并在此页重试。其他采集继续。", "Phone background position is not available. Check precise location access, then retry here. Other collection continues."), 14, LocalMetro.current.muted)
             Label(os.t("输入 ${status.inputConnections} · 输出 ${status.outputConnections} · 共享${if(status.sharing)"开启" else "关闭"}", "${status.inputConnections} inputs · ${status.outputConnections} outputs · sharing ${if(status.sharing)"on" else "off"}"), 15, LocalMetro.current.muted)
             Label(os.t("仅保留你已开启的定位、连接与共享；查看磁贴或关闭页面不会切换来源。", "Only your enabled position source, connections and sharing continue. Tiles and page changes never switch sources."), 14, LocalMetro.current.muted)
-            if(status.phase == com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED || status.problem != null) MetroButton(os.t("重试后台运行", "retry background operation"), { residency?.startFromForeground() })
+            var retrying by remember { mutableStateOf(false) }
+            if(status.recoveryProblem != null) MetroButton(os.t("重新读取恢复记录", "Retry recovery"), {
+                if (!retrying) os.scope.launch {
+                    retrying = true
+                    try {
+                        if(residency?.retryRecovery() == true) residency.startFromForeground()
+                        else os.notify("恢复仍受阻，已保留原始记录", "Recovery is still blocked; original records are retained", app=AppId.SETTINGS)
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (_: Exception) { os.notify("核心暂未连接，请稍后重试", "Core is not connected. Please retry shortly", app=AppId.SETTINGS) }
+                    finally { retrying = false }
+                }
+            }, enabled=!retrying)
+            else if(status.phase == com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED || status.problem != null) MetroButton(os.t("重试后台运行", "retry background operation"), { residency?.startFromForeground() })
             AppSection(os.t("Android 访问权限", "Android access"))
         }
         MenuRow(os.t("精确定位权限", "precise location permission"), if (locationGranted) os.t("已允许", "allowed") else os.t("未允许 · 点按请求", "not allowed · tap to request"), "locate") {

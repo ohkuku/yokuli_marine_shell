@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <service android:name="com.yokuli.runtime.marine.ipc.MarineCoreBinderService"
+            android:exported="false" android:stopWithTask="false" />
         <receiver android:name="com.yokuli.runtime.marine.notification.NoticeDismissReceiver" android:exported="false" />
         <service android:name="com.yokuli.runtime.marine.navigation.NavigationTrackingService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="connectedDevice|location" />
         <service android:name="com.yokuli.runtime.marine.notification.NotificationBinderService"

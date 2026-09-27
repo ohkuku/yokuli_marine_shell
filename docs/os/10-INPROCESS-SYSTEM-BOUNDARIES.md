@@ -1,6 +1,6 @@
 # 10 · 已接入的运行时与通知系统边界
 
-本页维护当前生产代码边界，文件名保留以兼容已有链接。海事运行时仍在默认进程，通知历史已迁到同 APK/UID 的 `:notifications` 进程，并有真实发布者、Binder 客户端和通知页面消费者。**通知 IPC 不等于完整 Marine Core 隔离或 Android 系统通知接管**。
+本页维护当前生产代码边界，文件名保留以兼容已有链接。默认进程现在是唯一 Marine Core（Room、DataStore、采集、记录、守锚、导航、AIS、数据图册与规划）；`MainActivity` 和 Shell 在 `:shell`，通过真实 Binder 接入。通知继续在 `:notifications`。三个进程仍属于同一 APK/UID，崩溃隔离不等于权限沙箱或第三方 SDK。
 
 实际入口以 `app-shell/build.gradle.kts` 的 `src/rebuild` sourceSet 与 rebuild Manifest 为准。[主实施规则](../product/YOKULI_MASTER_EXECUTION.md)、[领域接入指导](02-DOMAIN-AND-CONTRACTS.md#新功能接入路径)、[通知专项](../product/NOTIFICATION_CENTER_CONTRACT.md) 分别维护任务约束、扩展路径与通知产品决策。编译/镜像/设备状态独立陈述，不从接口存在推定能力已运行。
 
@@ -8,47 +8,35 @@
 
 ```mermaid
 flowchart TB
-    subgraph ONE[默认进程：Shell 与海事运行时]
-        APP[app-shell：Shell 与业务页面]
-        BRIDGE[MarinePresentationBridge：UI 读数与操作反馈]
-        HOST[runtime:marine-local：MarineSystem / 领域组合]
-        CORE[core:runtime-contract：纯 Kotlin 状态与回执]
-        API[legacy-marine api：MarineServices 窄端口]
-        LOCAL[LocalMarineServices / 内容服务适配]
-        CONTROLLER[LegacyMarineController：进程级业务控制器]
-        VM[MainViewModel：仅供旧 UI 兼容]
-        DOMAIN[既有领域 runtime / repository / 前台服务]
-        STORE[(Room / DataStore / 文件)]
-        APP --> BRIDGE
-        APP --> HOST
-        BRIDGE --> API
-        HOST --> NAV[NavigationSessionService / 冻结路线与回执]
-        HOST --> RESIDENT[RuntimeResidencyService / 常驻意图与彻底退出]
-        RESIDENT --> DOMAIN
-        HOST --> CHART[ChartDataService / 图幅与版本租约]
-        HOST --> PLAN[RouteAnalysis / RoutePlanning 同一工作区]
-        CHART --> PLAN
-        PLAN --> STORE
-        NAV --> STORE
-        CHART --> STORE
-        HOST --> CORE
-        HOST --> API
-        API -. 本地实现 .-> LOCAL
-        LOCAL --> CONTROLLER
-        LOCAL --> DOMAIN
-        VM --> CONTROLLER
-        CONTROLLER --> DOMAIN --> STORE
-        EVENTS[MarineNotificationEvents：领域事件发布] --> NCLIENT[NotificationClient / BinderNotificationClient]
-        APP --> NCLIENT
+    subgraph UI[同 APK 的 shell 进程]
+        SHELL[MainActivity / OsStore / 应用与磁贴]
+        READ[MarinePresentationBridge / 只读投影]
+        CLIENT[BinderMarineSystem / 窄端口代理]
+        SHELL --> READ --> CLIENT
+    end
+    subgraph CORE[默认进程：唯一 Marine Core]
+        BINDER[MarineCoreBinderService / 白名单与版本校验]
+        RECOVERY[MarineRecoveryBarrier / boot 代次与恢复屏障]
+        SYSTEM[InProcessMarineSystem / 唯一组合根]
+        DOMAIN[来源 / 连接 / 记录 / 守锚 / 导航 / AIS]
+        CHART[ChartDataService / RouteAnalysis / RoutePlanning]
+        STORE[(Room / DataStore / 原子文件与持久命令账本)]
+        EVENTS[MarineNotificationEvents]
+        BINDER --> RECOVERY --> SYSTEM
+        SYSTEM --> DOMAIN --> STORE
+        SYSTEM --> CHART --> STORE
         DOMAIN --> EVENTS
     end
-    subgraph NOTICES[同 APK / UID 的 notifications 子进程]
-        BINDER[NotificationBinderService] --> NREPO[NotificationRepository]
-        NREPO --> NFILE[(唯一消息历史文件)]
-        NREPO --> MIRROR[AndroidNoticePresenter / 已提交消息镜像]
+    subgraph NOTICE[同 APK 的 notifications 进程]
+        NB[NotificationBinderService]
+        NR[NotificationRepository / 唯一消息写者]
+        NP[AndroidNoticePresenter]
+        NB --> NR --> NP
     end
-    MIRROR --> ANDROID[Android NotificationManager / 声音与系统通知]
-    NCLIENT -->|版本 1.1 Binder| BINDER
+    CLIENT -->|同 UID Binder / 有界 PFD| BINDER
+    SHELL -->|通知 Binder| NB
+    EVENTS -->|通知 Binder| NB
+    NP --> ANDROID[Android NotificationManager]
 ```
 
 | 位置 | 当前代码职责 | 明确不承担 |
@@ -79,7 +67,7 @@ flowchart TB
 
 接口位置：[MarineServices.kt](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt)。调用者应把动作交给对应端口，而不是向一个万能字符串命令入口发送方法名。
 
-这些是同进程代码边界，不是基于调用方 UID 的安全授权。多个应用可以通过同一个端口参与完整故事，例如海图和日志都操作同一个航行；通知快捷项读取来源摘要并导航到数据中心，由数据中心明确修改同一来源策略。端口决定“哪一领域拥有状态”，不要求用户只能从某一个页面操作。
+这些是同包窄端口与唯一所有者边界；Binder 检查真实同 UID，但内部应用不是独立权限主体。多个应用可以通过同一个端口参与完整故事，例如海图和日志都操作同一个航行；通知快捷项读取来源摘要并导航到数据中心，由数据中心明确修改同一来源策略。端口决定“哪一领域拥有状态”，不要求用户只能从某一个页面操作。
 
 ### 偏好不再回写整份旧快照
 
@@ -106,7 +94,7 @@ flowchart TB
 
 本地组合层当前用设置加载完成推进运行时 `READY`。这表示兼容运行时的初始化阶段，不表示 GPS 已定位、NMEA 已连接、警报一定可响或所有硬件正常。这些能力仍需读取各领域的真实状态。
 
-`RuntimeBindings.resolve(BINDER)` 仍返回 `ROM_BINDER_NOT_IMPLEMENTED`，这里特指**完整 MarineSystem**。通知已独立接入 `NotificationClient` 的版本化 Binder，不通过这个全域占位枚举冒充所有端口已远程化。完整海事端口和第三方授权仍未完成。
+`RuntimeBindings.resolve(BINDER)` 现在标识已存在 Marine Core 传输实现；实时可用性以 `MarineSystem.connection` 为准。私有协议锁定 APK versionCode、协议主版本和端口签名 SHA-256，版本不符拒绝连接。MainUiState/Room 兼容 DTO 尚未迁为公共 OS schema，不能向第三方导出服务。
 
 ## 4. 生命周期从页面中移出什么
 
@@ -114,7 +102,7 @@ flowchart TB
 
 **系统组合：** 默认进程的 `InProcessMarineSystem` 为本地 `MarineServices` 和航行协调提供进程内宿主。具体接线见 [MarineSystem.kt](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt)。应用只取得 `MarineSystem` 接口；`MarineSystemBootstrap` 是合法宿主初始化入口，承担一次性的旧后端诊断初始化，不启动 GPS/连接/业务会话。应用不能直接引用本地系统实现、协调器、DI 绑定或 `LegacyMarineRuntime`。普通 APK 与 ROM HOME 复用这一路径，不维护两套运行时。
 
-**显示需求：** `acquireMapHeading()`、`acquireInstruments()` 各返回独立的 `DisplayLease`。第一个消费者申请才开启对应显示需求，最后一个消费者释放才关闭；`close()` 幂等，关闭一个页面不会撤销另一个页面仍持有的需求。Shell 在 `DisposableEffect` 中持有和释放句柄。这是同进程引用计数，不是 Binder 死亡通知或跨进程资源租约；显示句柄关闭也不停止全局航行/守锚。
+**显示需求：** `acquireMapHeading()`、`acquireInstruments()` 各返回独立的 `DisplayLease`。第一个消费者申请才开启对应显示需求，最后一个消费者释放才关闭；`close()` 幂等，关闭一个页面不会撤销另一个页面仍持有的需求。Shell 在 `DisposableEffect` 中持有和释放句柄。Core 按客户端持有租约；Binder death 同步回收该客户端的显示句柄、海图快照和 AIS 临时选中保留。重连只恢复仍存在的显示消费者，不重放安全命令，不停止全局航行/守锚。
 
 **系统常驻：** `MarineSystem.residency` 是已接入的纯契约入口。`LocalRuntimeResidencyService` 将启动/退出意图交给原 `YokuliRuntimeCoordinator`，`SYSTEM_RESIDENT` 资源所有者继续采集可用手机传感器和用户选中的定位；页面显示句柄释放不再撤销该需求。NMEA 输入、远端输出和本机共享仍由原所有者管理，不因常驻擅自开启。`RuntimeResidencyRepository` 持久保存显式停止闩锁，彻底退出先暂停实际任务并停止资源，再等待短历史与通知解除提交；Settings 和退出磁贴共用该流程。具体权限、恢复和失败处理见 [生命周期](03-LIFECYCLE-AND-RECOVERY.md)。
 
@@ -124,25 +112,25 @@ flowchart TB
 
 [VoyageSessionCoordinator](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt) 是航行窄客户端/投影；唯一执行账本由 legacy 运行时的 `VoyageCommandRegistry` 持有。`MarineSystem.voyage` 对应用暴露纯契约中的 `VoyageSessionService`，不暴露协调器实现类。活动会话来自服务读投影，包含 ID、名称、距离、起始/暂停时间和时刻数；Shell 再按用户单位和语言呈现。
 
-开始、暂停、继续、结束通过 `VoyageSessionService.request(VoyageRequest)` 或兼容便利方法进入同一协调器，`VoyageRequest` 保留 requestId、动作、expectedSessionId、名称和姿态记录意图。`commands: StateFlow<List<VoyageCommandReceipt>>` 直接投影 `MarineServices.voyages.commandResults`，由 `VoyageCommandRegistry` 保留有界进程内账本，状态为 QUEUED / EXECUTING / UNKNOWN / CONFIRMED / REJECTED / FAILED。Controller 投递带 requestId 的 `RuntimeCommand.Voyage`，`YokuliRuntimeCoordinator.launchTrackedVoyage` 在原 trip actor 中校验来源/目标会话、执行并读取 TripDao 的持久结果，再写终态；不再仅依据 MainUiState 的某个变化推断成功。
+开始、暂停、继续、结束通过 `VoyageSessionService.request(VoyageRequest)` 或兼容便利方法进入同一协调器，`VoyageRequest` 保留 requestId、动作、expectedSessionId、名称和姿态记录意图。`commands: StateFlow<List<VoyageCommandReceipt>>` 直接投影 `MarineServices.voyages.commandResults`，由 `VoyageCommandRegistry` 保留有界持久账本，状态为 QUEUED / EXECUTING / UNKNOWN / CONFIRMED / REJECTED / FAILED。Controller 投递带 requestId 的 `RuntimeCommand.Voyage`，`YokuliRuntimeCoordinator.launchTrackedVoyage` 在原 trip actor 中校验来源/目标会话、执行并读取 TripDao 的持久结果，再写终态；不再仅依据 MainUiState 的某个变化推断成功。
 
-18 秒未确认变为 UNKNOWN 后保留原请求，不释放并行命令锁，也不自动再发 Start/Finish。`VoyageSessionService.recheck` → `MarineServices.voyages.recheckCommand` → Controller → `RuntimeCommand.QueryVoyage` → `queryTrackedVoyage` 在原 trip actor 内只读 TripDao 并更新原回执。Start 成功先关联实际 sessionId 再核对落盘事实；若中断前尚未关联，不把其他活动会话猜成本请求结果。执行中断或执行后异常保留 UNKNOWN，尚未执行的 QUEUED 在服务关闭时明确 FAILED，实际业务拒绝为 REJECTED。用户明确 FINISH 可在旧 UNKNOWN 后排队，结束真正落盘后才替代旧请求，避免界面永久无法结束会话。
+18 秒未确认变为 UNKNOWN 后保留原请求，不释放并行命令锁，也不自动再发 Start/Finish。`VoyageSessionService.recheck` → `MarineServices.voyages.recheckCommand` → Controller → `RuntimeCommand.QueryVoyage` → `queryTrackedVoyage` 在原 trip actor 内只读 TripDao 并更新原回执。全部生命周期动作以原 `(type, requestId)` 查询同事务效果及对应 sessionId；不凭后来的暂停/结束状态推断该请求成功。执行中断或执行后异常保留 UNKNOWN，尚未执行的 QUEUED 在服务关闭时明确 FAILED，实际业务拒绝为 REJECTED。用户明确 FINISH 可在旧 UNKNOWN 后排队，结束真正落盘后才替代旧请求，避免界面永久无法结束会话。
 
 晚到的原执行及持久结果仍能完成原回执；投影本身不以旧状态完成它。关闭通知/页面不丢失等待；当前任务卡从这份账本及 `VoyageSessionState` 显示正在处理/结果未确认。`VoyageCommandFeedback` 已在记录对话框及日志入口接入原请求查询。`MarineNotificationEvents` 直接订阅 `commands`，按 requestId 更新同一通知卡；`events` 仅保留兼容反馈队列，不是请求或通知状态的唯一记录。
 
 Shell 的所有航行启停经 `MarinePresentationBridge` 转发到共享 `VoyageSessionService`。`services.voyages.startTrip/pauseTrip/resumeTrip/endTrip` 仅供运行时适配调用，页面不能直接调用或取方法引用，否则新按钮会绕过全局命令等待与确认。静态守卫明确检查这四个旧入口；历史编辑和导出等命令仍走相应领域端口。
 
-这仍是**进程内**账本，不是持久幂等航行协议。进程重启后的请求追踪、调用方身份及航行 IPC 仍未完成；通知持久回执不扩大成航行的保证。纯契约保留业务代码，Shell 决定用户反馈。
+命令账本已改为 Core 内 AtomicFile 持久化，接受后、执行前先落盘。开始、暂停、继续、结束的效果与会话在同一 Room 事务中记录，重启后可按原 ID 对账；无法确定执行结果为 UNKNOWN，禁止自动重发。纯契约保留业务代码，Shell 决定用户反馈。账本最多 32,768 条且文件最多 8 MiB，满额拒绝接受新命令，不淘汰旧请求 ID。
 
 这里的 `VoyageSessionCoordinator` 负责轨迹录制；实际路线导航由已接入的 `MarineSystem.navigation` / `LocalNavigationSessionService` 独立持有冻结路线、目标索引和引导计算。`OsStore` 保留只读兼容投影，不能把录制与导航当成同一个会话。迁移闭环见本页末节。
 
 ### 守锚回执（experience.9）
 
-`MarineSystem.anchorCommands` 暴露纯 Kotlin 的 `AnchorCommandMonitor`。`AnchorCommandSnapshot` 携带 commandId、操作类型、expectedSessionId、实际 sessionId、状态和原因代码；进程内 `AnchorCommandRegistry` 保存请求账本，执行层按相同 ID 写回结果。页面及通知快捷项只订阅，NMEA 等通用通知不参与命令确认。
+`MarineSystem.anchorCommands` 暴露纯 Kotlin 的 `AnchorCommandMonitor`。`AnchorCommandSnapshot` 携带 commandId、操作类型、expectedSessionId、实际 sessionId、状态和原因代码；默认 Core 的 `AnchorCommandRegistry` 持久保存请求账本，执行层按相同 ID 写回结果。页面及通知快捷项只订阅，NMEA 等通用通知不参与命令确认。
 
 `requestArm`、`requestPauseWatch`、`requestResumeWatch`、`requestLiftAnchor` 提交命令后返回 ID。运行时在同一个串行执行块中校验目标会话、执行并读取数据库事实；45 秒未收到终态只变为 UNKNOWN，仍允许真实回执迟到。清除通知、显示回执、关闭页面都不能解除值守。
 
-该账本仍是进程内机制，不承诺进程被杀或重启后的持久请求去重，也不是独立 Binder 运行时。
+账本现在由默认 Core 进程持久保存，Shell 通过私有 Binder 读取。接受/执行阶段先落盘，状态变化与原命令效果在 Room 同事务保存；重启只按原 `(type, requestId)` 对账，结果不明保持 UNKNOWN。达到容量时拒绝新命令，不静默清理旧请求身份。
 
 ### 点击捕获与补记（experience.19）
 
@@ -150,7 +138,7 @@ Shell 的所有航行启停经 `MarinePresentationBridge` 转发到共享 `Voyag
 
 `TripMomentJournal` 用 AtomicFile 保存未完成捕获及用户明确提交的文字草稿；`TripDao.insertCapturedMoment` 在原 Room 事务中插入 USER_MOMENT 并更新原航程计数。重启重放已写入日志的同一 ID，已在数据库存在时读取原事件，不能再次取时间与位置。尚未写到日志即遭进程终止的点击不能承诺恢复，UI 此时仍显示保存中。缺合格位置为 null，采集证据保留来源、观察 UTC、接收 elapsed、质量、时效与参考；备注只改用户字段。
 
-该能力仍是同进程 `VoyageService` 接线，使用既有 legacy 事件 DTO，并非独立 IPC 或新的 Marine Core 进程。日志、地图回看与原多格式导出已消费这份事件；页面离开不取消写入。当前仅支持文字/类型，不引入未接入的照片模型。
+该能力现在通过 `VoyageService` 的私有 Binder 接线，仍使用既有 legacy 事件 DTO；客户端提前产生 requestId，Core 捕获规范观测并持久化，同 ID 重连不重新采样。日志、地图回看与原多格式导出已消费这份事件；页面离开不取消写入。当前仅支持文字/类型，不引入未接入的照片模型。
 
 开始屏幕图片由宿主 `StartBackgroundStore` 管理：只拥有系统外观，不拥有海事状态。照片缩小解码并写入私有文件后，原 Launcher DataStore 原子更新引用；后续选项和布局继续共享原偏好所有者。普通 APK 与 ROM HOME 使用同一绘制与存储实现。
 
@@ -215,8 +203,8 @@ python3 scripts/check_runtime_boundaries.py
 ## 9. 按真实缺口继续
 
 1. 逐领域迁出兼容 `MainUiState`/legacy entity，不整体搬到 core 改名；新契约必须有真实消费者。
-2. 导航已迁出 Shell，但内容仍跨 Room 与 Shell JSON；尚未完成统一内容所有者及跨存储原子迁移。短历史缓存是同次设备开机的有界读投影，不是长期全量数据档案。
-3. 记录、守锚、AIS 和显示租约仍在默认进程，尚无完整 Marine Core Binder、独立 UID、持久幂等会话命令或统一 boot 恢复屏障。
+2. 导航已迁出 Shell，但内容仍跨 Room 与 Shell JSON；尚未完成统一内容所有者及跨存储原子迁移。短历史采样/原文件写入已迁到 Core，Shell 经 `readingHistory` 取有界增量；它仍是同次设备开机的有界读投影，不是长期全量数据档案。
+3. 默认 Core 与 `:shell` 已实际分离，具备 Binder、恢复屏障与持久命令账本；独立 UID、第三方授权、跨 APK 协议迁移及设备持续运行保证仍未完成。Android 强停/断电无法保证持续保护。
 4. 通知不读取第三方通知，不替换 Android SystemUI/Recents，不迁移航海服务到 system_server。
 5. ROM 产品输入和 HOME flavor 已有，完整镜像、Cuttlefish 启动、真机/BSP、AVB/OTA 与发行密钥仍各有外部依赖，不能以本轮消息 IPC 或必要编译推断完成。
 
@@ -235,10 +223,20 @@ python3 scripts/check_runtime_boundaries.py
 
 `MarineSystem.navigation/charts/analysis/planning` 已由 `InProcessMarineSystem` 注入真实所有者。海图的工具菜单、自动规划面板、图册数据页、驾驶台导航读数和磁贴均已接入。导航从 OsStore 活动路线 JSON 迁移为 `LocalNavigationSessionService` 的持久会话，旧字段仅一次性导入，兼容 getter 为只读；导航 FGS 持有独立 NAVIGATION_SESSION 租约，不借用页面寿命或录制状态。
 
-`LocalChartDataService` 的文档读取、解析、SQLite 版本安装和许可状态不放在页面；地图只查询选中数据集的快照。`LocalPassagePlanningService` 的检查、搜索、取消与结果持久化不随页面离开而结束。它们并未因此成为独立 UID 或 Marine Core IPC 服务；ROM HOME 与普通 APK 注入同一套本地能力。
+`LocalChartDataService` 的文档读取、解析、SQLite 版本安装和许可状态不放在页面；地图只查询选中数据集的快照。`LocalPassagePlanningService` 的检查、搜索、取消与结果持久化不随页面离开而结束。现在它们通过同一 Marine Core 私有 Binder 供 Shell 访问；ROM HOME 与普通 APK 共用唯一默认进程所有者，没有获得独立 UID 或额外后台权限。
 
 图库的资料浏览也接入上述所有者：MBTiles 仍走显示目录，S-57 与 GeoPackage 进入同一版本索引；资料包 / 图幅 / 分类搜索对象 / 对象详情只调用 `charts` 的 `browse/readFeature/query`。只读地图预览不改变当前资料选择或开始业务任务。页面的快照与一次 SQLite 读取的临时租约分别释放，包更新 / 移除不能破坏尚在读取的版本。GeoPackage 支持范围和字段映射由 [profile](../GEOPACKAGE_CHART_PROFILE.md) 维护；QGIS 等工具编辑原包后整包原子更新，App 没有官方深度编辑写端口。
 
 自动规划已接入共享 `PassagePlanningEligibility` 与实际区域证据门槛：明确选中的多个包共同提供覆盖和深度；无数据、不可读、用途不允许或缺实际支持时返回原因与零候选，不能进入搜索。规划页共享该状态禁用自动操作，并提供资料管理和不覆盖现有草稿的手动编辑入口。这个闭环不新增 S-63 / S-101 解码、潮汐或天气能力，也不把普通 GIS 参考包当成获认可的导航资料。
 
 显示用设备视线由独立 `DisplayDemandService.deviceViewOrientation` 租约提供，只观察现有旋转矢量源，不修改船艏来源或安装校准。真北转换缺乏位置/时间依据时，立体视图降级到明确的二维方向信息。显示补间不改写原始四元数、采样时间或导航指导。
+
+
+## 2026-09-27 · Core 传输与前台交接规则
+
+- `MarineSystemBindings` 用惰性本地依赖按进程选择；`:shell` 不能构造 `LocalMarineServices`、Room、DataStore 或采集控制器。`YokuliApplication` 只在默认进程执行恢复和事件发布，在 Shell 构造 OsStore。
+- 请求/订阅仅允许编译期端口表中声明的方法；真实 UID 从 Binder 读取，不接受远端类名。小于 48 KiB 的消息直接传 Parcel，其余 PFD 传输有 64 MiB 上限，客户端/订阅/并发请求均有界。初始快照、epoch、sequence、断线重绑均由传输实现，不由页面补造状态。MainUiState 按显式字段名传增量，未变化的大历史字段保留原不可变引用，避免每次姿态更新搬运整份记录。新增字段必须同步 `MainStateWire` 的具名 copy 映射，不能依赖 ART/JVM 的反射字段顺序。
+- 断线保存旧投影并显示“实时保护尚未确认”；写请求的传输 UNKNOWN 不能换 ID 自动再发。守锚/航行/导航继续读取自己的持久回执；Core 已接受的操作不随客户端取消而撤销。
+- `MarineFeedbackService.presentationRequests` 是有界持久前台交接队列：后台完成导出，前台验证私有 FileProvider URI 后才打开分享/系统设置。接手先确认请求，避免重连重复弹框；前台交接与 Android 分享完成不是同一事实。
+- `RuntimePresentationService` 接收单位标识快照，后台持久最近成功投影。`MarineUnitFormats` 已移至纯 JVM shell-contract，原 design 名称为兼容 typealias；前后台使用同一换算实现。
+- 原始采集时间、来源和质量跨进程保持，不用传输时间更新观测年龄；显示平滑仍由 UI 帧时钟承担。

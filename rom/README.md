@@ -22,7 +22,7 @@
 
 普通 APK 与 ROM HOME 共用 `app-shell/src/rebuild` 和同一海事实现。通知已通过实际 `NotificationClient` → `NotificationBinderService` 进入同包 `:notifications`，协议 1.0、非导出且检查真实同 UID，Application 按角色不在消息进程重建海事资源。消息历史只有一份写者；服务/客户端的版本、重连与持久化边界见 [10 · 系统接入](../docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md) 和 [通知契约](../docs/product/NOTIFICATION_CENTER_CONTRACT.md)。
 
-该 service 来自现有 runtime 模块 Manifest 合并，仍随同一个 APK 交付，不新增独立产品包或平台签名权限。海事核心、导航、完整 SystemUI/Recents、独立 UID、AVB/OTA 和真机/BSP 尚未迁移完成；本轮不构建/运行 AOSP 镜像，不把 APK 编译等同于设备可刷入。
+该 service 来自现有 runtime 模块 Manifest 合并，仍随同一个 APK 交付，不新增独立产品包或平台签名权限。海事核心和导航已接同 APK 私有 Binder，Shell 位于 :shell；完整 SystemUI/Recents、独立 UID、AVB/OTA 和真机/BSP 尚未完成；本轮不构建/运行 AOSP 镜像，不把 APK 编译等同于设备可刷入。
 
 ## 实际配置
 
@@ -44,4 +44,4 @@
 
 ### 当前导航与图册规划
 
-HOME flavor 与普通 APK 共用 `MarineSystem.navigation/charts/analysis/planning`。S-57 离线导入/索引、导航会话前台服务和离线候选规划位于生产 runtime；HOME 不需要 Google 服务即可使用内置地图与本地资料。S-63 客户端许可和完整 Marine Core IPC 没有因 HOME flavor 而获得；本轮仍未构建或刷入 ROM 系统镜像。生命周期和用途边界见 [系统接入现状](../docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [海图契约](../docs/product/CHART_INTERACTION_CONTRACT.md)。
+HOME flavor 与普通 APK 共用 `MarineSystem.navigation/charts/analysis/planning`。S-57 离线导入/索引、导航会话前台服务和离线候选规划位于生产 runtime；HOME 不需要 Google 服务即可使用内置地图与本地资料。S-63 客户端许可、跨 APK 公共协议与独立 UID 没有因 HOME flavor 而获得；本轮仍未构建或刷入 ROM 系统镜像。生命周期和用途边界见 [系统接入现状](../docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [海图契约](../docs/product/CHART_INTERACTION_CONTRACT.md)。

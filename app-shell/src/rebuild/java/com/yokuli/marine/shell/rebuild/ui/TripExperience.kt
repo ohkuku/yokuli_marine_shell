@@ -202,8 +202,8 @@ private data class VoyageContent(val map: TripMapData, val report: TripReport?, 
                                 }
                             }
                             AppSection(os.t("记录事件", "recorded events"))
-                            if (content.map.events.none {it.type!="USER_MOMENT"}) Label(os.t("没有记录事件。", "No recorded events."), 17, c.muted)
-                            content.map.events.filterNot {it.type=="USER_MOMENT"}.sortedBy { it.timestamp }.forEach { event ->
+                            if (content.map.events.none {it.type!="USER_MOMENT"&&!it.type.startsWith("CORE_COMMAND_")}) Label(os.t("没有记录事件。", "No recorded events."), 17, c.muted)
+                            content.map.events.filterNot {it.type=="USER_MOMENT"||it.type.startsWith("CORE_COMMAND_")}.sortedBy { it.timestamp }.forEach { event ->
                                 Label(eventName(os, event.type), 15)
                                 Label(voyageDate(event.timestamp), 14, c.muted)
                             }
@@ -353,6 +353,8 @@ private fun eventName(os: OsStore, type: String): String = when (type) {
     "ATTITUDE_FRAME_CONFIRMED", "PHONE_ATTITUDE_SEGMENT_STARTED" -> os.t("姿态零点已确认", "attitude zero confirmed")
     "PHONE_ATTITUDE_SEGMENT_PAUSED" -> os.t("姿态记录已暂停", "attitude recording paused")
     "PHONE_MOVED_OR_MOUNT_SUSPECT" -> os.t("手机可能已移动", "phone may have moved")
+    "CORE_RECOVERY_GAP" -> os.t("运行中断 · 已保留记录", "runtime interrupted · recording retained")
+    "CORE_COMMAND_START" -> os.t("开始请求已保存", "start request saved")
     "RUNTIME_RESTORED" -> os.t("记录已恢复", "recording restored")
     "RUNTIME_RESTORE_PAUSED" -> os.t("恢复记录后暂停", "recording paused after restore")
     "NMEA_DISCONNECTED_BY_USER" -> os.t("手动断开 NMEA", "NMEA disconnected by user")

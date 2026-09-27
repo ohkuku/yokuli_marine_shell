@@ -1,6 +1,13 @@
 package com.yokuli.marine.shell.rebuild
 
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
+import com.yokuli.runtime.contract.RuntimeReadiness
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -88,6 +95,35 @@ class MainActivity : ComponentActivity() {
         automaticResidencySuspended = savedInstanceState?.getBoolean("yokuli.explicit_exit_pending") == true
         os.connectSystem((application as YokuliApplication).marineSystem)
         os.systemAction=serviceHandler
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                val system = (application as YokuliApplication).marineSystem
+                system.connection.collectLatest { connection ->
+                    if (connection.readiness != RuntimeReadiness.READY) return@collectLatest
+                    system.residency.state.first { it.recoveryReady || it.recoveryProblem != null }
+                    if (!system.residency.state.value.recoveryReady) return@collectLatest
+                    val returningHomeAfterExit = BuildConfig.ROM_HOME && intent?.hasCategory(Intent.CATEGORY_HOME) == true && system.residency.state.value.explicitlyStopped
+                    if (!isFinishing && !isDestroyed && !returningHomeAfterExit && !automaticResidencySuspended)
+                        system.residency.startFromForeground()
+                    system.services.sources.onPermissionsChanged()
+                }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                val feedback = (application as YokuliApplication).marineSystem.services.feedback
+                feedback.presentationRequests.collect { requests ->
+                    for (request in requests) {
+                        try {
+                            feedback.acknowledgePresentation(request.id)
+                            if (System.currentTimeMillis() - request.createdAtUtc in 0..900_000L)
+                                presentMarineRequest(request)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (_: Exception) { os.notify("无法打开分享或系统设置，请重试", "Could not open sharing or system settings. Please retry.", app=AppId.SETTINGS) }
+                    }
+                }
+            }
+        }
         // 配置变化会重用最初的 HOME intent；旋转只恢复当前任务，不再次执行 Home。
         if(savedInstanceState == null) handleSystemIntent(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) window.attributes = window.attributes.apply {
@@ -147,14 +183,10 @@ class MainActivity : ComponentActivity() {
     }
     override fun onResume() {
         super.onResume()
-        val residency = (application as YokuliApplication).marineSystem.residency
-        val returningHomeAfterExit = BuildConfig.ROM_HOME && intent?.hasCategory(Intent.CATEGORY_HOME) == true && residency.state.value.explicitlyStopped
-        if (!isFinishing && !isDestroyed && !returningHomeAfterExit && !automaticResidencySuspended) residency.startFromForeground()
         os.scope.launch { kotlinx.coroutines.withTimeoutOrNull(10_000) { os.notifications.onAppForeground() } }
         foregroundFrames = true
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
         requestSmoothFrames()
-        (application as YokuliApplication).marineSystem.services.sources.onPermissionsChanged()
     }
     /**
      * 中文：前台窗口请求当前分辨率支持的最高刷新率，至少表达 60Hz 的渲染意图。

@@ -26,10 +26,7 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
     val services: MarineServices = system.services
     val voyage = system.voyage.state
     private data class ShellProjection(val ready:Boolean,val source:GpsDataSource,val recording:Boolean,val paused:Boolean)
-    private data class ReadingProjection(val vessel:VesselDataSnapshot,val draft:Double?)
-    private var previousReadings:Map<String,Reading> = emptyMap()
-    private var utcOffset=System.currentTimeMillis()-SystemClock.elapsedRealtime()
-    private var clockEpoch=0L
+    init { os.hub.bind(system.readingHistory,os.scope) }
     private val subscriptions=listOf(
         os.scope.launch {
             services.state.map { ShellProjection(it.settingsReady,it.settings.gpsDataSource,it.activeTrip!=null,it.activeTrip?.paused==true) }
@@ -53,15 +50,6 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
                 }.flowOn(Dispatchers.Default).collect { os.recordedSegments=it }
         },
         os.scope.launch(Dispatchers.Default) {
-            combine(services.state, system.navigation.state) { state, navigation ->
-                // 注册候选、发送计数、快照生成时间不是新观测；不能推动显示历史采样。
-                ReadingProjection(state.vesselData.withNavigation(navigation).copy(candidates=emptyMap(),conflicts=emptyMap(),generatedElapsedRealtime=0),state.vesselSettings.draftMeters)
-            }.distinctUntilChanged().collect { projection ->
-                val readings=projectReadings(projection.vessel,projection.draft)
-                os.hub.update { it.copy(readings=readings) }
-            }
-        },
-        os.scope.launch(Dispatchers.Default) {
             services.state.map(::projectTransport).distinctUntilChanged().collect { projection ->
                 os.hub.update { projection.copy(readings=it.readings,message=it.message,sentToInput=it.sentToInput) }
             }
@@ -81,63 +69,6 @@ class MarinePresentationBridge(private val os: OsStore, val system: com.yokuli.r
             selected?.headingTrueDegrees?.freshness ?: VesselDataFreshness.UNAVAILABLE,
             selected?.sogKnots?.freshness ?: VesselDataFreshness.UNAVAILABLE,
             selected?.cogTrueDegrees?.freshness ?: VesselDataFreshness.UNAVAILABLE)
-    }
-
-    private fun projectReadings(vessel:VesselDataSnapshot,draft:Double?):Map<String,Reading> {
-        val offset=System.currentTimeMillis()-SystemClock.elapsedRealtime()
-        if(abs(offset-utcOffset)>2_000L) { utcOffset=offset;clockEpoch++ }
-        val readings = buildMap {
-            fun add(key:String,value:VesselObservation<Double>,unit:String,metric:VesselMetricId) {
-                val number=value.value?.takeIf{it.isFinite()}?:return
-                val time=value.receivedElapsedRealtime?:return
-                val sourceKey=value.sourceIdentity?.id?:value.provenanceDetail?.toString()?:value.source.name
-                val basis="$sourceKey|${value.reference}|${value.provenanceDetail}" + if(key=="ukc")"|draft:$draft" else ""
-                val previous=previousReadings[key]?.takeIf {
-                    it.elapsed==time&&it.sourceKey==sourceKey&&it.continuityKey.substringBeforeLast("|clock:")==basis
-                }
-                put(key,Reading(number,unit,value.provenance?:value.source.name,time,value.freshness,value.quality,
-                    sourceKey,MetricSourceEligibility.measurementLeaseMillis(metric),
-                    previous?.continuityKey?:"$basis|clock:$clockEpoch",
-                    previous?.observedUtcMillis?:value.observedAtUtcMillis?:time+utcOffset))
-            }
-            with(vessel) {
-                add("sog",sogKnots,"kn",VesselMetricId.SOG);add("cog",cogTrueDegrees,"°T",VesselMetricId.COG)
-                add("heading",headingTrueDegrees,"°T",VesselMetricId.HEADING_TRUE)
-                add("depth",depthMeters,"m",VesselMetricId.DEPTH);add("ukc",derived.underKeelClearanceMeters,"m",VesselMetricId.DEPTH)
-                add("aws",apparentWind.speedKnots,"kn",VesselMetricId.APPARENT_WIND_SPEED)
-                add("awa",apparentWind.angleDegrees,"°",VesselMetricId.APPARENT_WIND_ANGLE)
-                add("tws",trueWind.speedKnots,"kn",VesselMetricId.TRUE_WIND_SPEED)
-                add("twa",trueWind.angleDegrees,"°",VesselMetricId.TRUE_WIND_ANGLE)
-                add("twd",trueWind.directionDegrees,"°T",VesselMetricId.TRUE_WIND_DIRECTION)
-                add("bsp",speedThroughWaterKnots,"kn",VesselMetricId.SPEED_THROUGH_WATER)
-                add("water",waterTemperatureCelsius,"°C",VesselMetricId.WATER_TEMPERATURE)
-                add("air",airTemperatureCelsius,"°C",VesselMetricId.AIR_TEMPERATURE)
-                add("pressure",pressureHpa,"hPa",VesselMetricId.PRESSURE)
-                add("pressure_1h",derived.pressureTrend1hHpa,"hPa",VesselMetricId.PRESSURE)
-                add("pressure_3h",derived.pressureTrend3hHpa,"hPa",VesselMetricId.PRESSURE)
-                add("pressure_6h",derived.pressureTrend6hHpa,"hPa",VesselMetricId.PRESSURE)
-                add("heel",heelDegrees,"°",VesselMetricId.HEEL);add("pitch",pitchDegrees,"°",VesselMetricId.PITCH)
-                add("roll_rate",rollRateDegreesPerSecond,"°/s",VesselMetricId.ROLL_RATE)
-                add("pitch_rate",pitchRateDegreesPerSecond,"°/s",VesselMetricId.PITCH_RATE)
-                add("rot",rateOfTurnDegreesPerMinute,"°/min",VesselMetricId.RATE_OF_TURN)
-                add("rudder",rudderAngleDegrees,"°",VesselMetricId.RUDDER_ANGLE)
-                add("vmg",derived.vmgToWindKnots,"kn",VesselMetricId.VMG_WIND)
-                add("vmc",derived.vmcToWaypointKnots,"kn",VesselMetricId.VMC_WAYPOINT)
-                add("current_set",currentSetTrueDegrees,"°T",VesselMetricId.CURRENT_SET)
-                add("current_drift",currentDriftKnots,"kn",VesselMetricId.CURRENT_DRIFT)
-                add("xte",crossTrackErrorNauticalMiles,"nm",VesselMetricId.XTE)
-                add("waypoint_bearing",waypointBearingTrueDegrees,"°T",VesselMetricId.WAYPOINT_BEARING)
-                add("waypoint_distance",waypointDistanceNauticalMiles,"nm",VesselMetricId.WAYPOINT_DISTANCE)
-                add("total_log",totalLogNauticalMiles,"nm",VesselMetricId.TOTAL_LOG)
-                add("trip_log",tripLogNauticalMiles,"nm",VesselMetricId.TRIP_LOG)
-                fun motionReading(value:Double?)=VesselObservation(value,motion.source,motion.observedAtUtcMillis,motion.receivedElapsedRealtime,motion.quality,motion.freshness,motion.provenance,motion.sourceIdentity,motion.sourceClass,provenanceDetail=motion.provenanceDetail)
-                add("roll_period",motionReading(motion.value?.dominantRollPeriodSeconds),"s",VesselMetricId.ROLL_PERIOD)
-                add("motion",motionReading(motion.value?.score),"",VesselMetricId.MOTION_SCORE)
-                add("impacts",motionReading(motion.value?.impactCandidateCount?.toDouble()),"",VesselMetricId.MOTION_SCORE)
-            }
-        }
-        previousReadings=readings
-        return readings
     }
 
     private fun projectTransport(state:MainUiState):VesselData {

@@ -379,6 +379,23 @@ data class IncidentLogEntity(
 @Dao
 interface AnchorDao {
     @Insert suspend fun insertSession(value: AnchorSessionEntity): Long
+    /** START 的会话与命令关联同事务提交；崩溃不能留下无法对账的新值守。 */
+    @Transaction suspend fun insertCommandSession(value:AnchorSessionEntity,event:AlarmEventEntity,commandId:String?):Long{
+        val id=insertSession(value)
+        insertEvent(event.copy(sessionId=id))
+        if(commandId!=null)insertEvent(AlarmEventEntity(sessionId=id,timestamp=value.startedAt,type="CORE_COMMAND_START",detail=commandId))
+        return id
+    }
+    @Query("SELECT EXISTS(SELECT 1 FROM alarm_events WHERE sessionId=:sessionId AND type='CORE_RECOVERY_GAP' AND detail=:marker)") suspend fun hasRecoveryMarker(sessionId:Long,marker:String):Boolean
+    @Query("SELECT sessionId FROM alarm_events WHERE type='CORE_COMMAND_START' AND detail=:commandId ORDER BY id DESC LIMIT 1") suspend fun sessionForStartCommand(commandId:String):Long?
+    @Query("SELECT sessionId FROM alarm_events WHERE type=:effectType AND detail=:commandId ORDER BY id DESC LIMIT 1") suspend fun sessionForCommandEffect(commandId:String,effectType:String):Long?
+    suspend fun insertCommandEffect(sessionId:Long,timestamp:Long,commandId:String?,action:String){
+        if(commandId!=null)insertEvent(AlarmEventEntity(sessionId=sessionId,timestamp=timestamp,type="CORE_COMMAND_$action",detail=commandId))
+    }
+    /** 状态、用户事件、命令效果同事务；重启的自动暂停不能冒充某个PAUSE命令已执行。 */
+    @Transaction suspend fun updateCommandSession(value:AnchorSessionEntity,event:AlarmEventEntity,commandId:String?,action:String){
+        updateSession(value);insertEvent(event);insertCommandEffect(value.id,event.timestamp,commandId,action)
+    }
     @Update suspend fun updateSession(value: AnchorSessionEntity)
     @Transaction suspend fun updateSessionAndInsertEvent(value:AnchorSessionEntity,event:AlarmEventEntity){updateSession(value);insertEvent(event)}
     @Query("SELECT * FROM anchor_sessions WHERE active=1 ORDER BY startedAt DESC LIMIT 1") suspend fun active(): AnchorSessionEntity?
@@ -545,7 +562,16 @@ interface TripDao{
  @Query("UPDATE trip_sessions SET name=:name WHERE id=:id AND active=0") suspend fun renameCompleted(id:Long,name:String):Int
  @Insert suspend fun insertSession(value:TripSessionEntity):Long
  @Update suspend fun updateSession(value:TripSessionEntity)
- @Transaction suspend fun insertSessionAndEvent(value:TripSessionEntity,event:TripEventEntity):Long{val id=insertSession(value);insertEvent(event.copy(tripId=id));return id}
+ @Transaction suspend fun insertSessionAndEvent(value:TripSessionEntity,event:TripEventEntity,commandId:String?=null):Long{val id=insertSession(value);insertEvent(event.copy(tripId=id));if(commandId!=null)insertEvent(TripEventEntity(tripId=id,timestamp=value.startedAt,type="CORE_COMMAND_START",severity="INFO",detailJson=commandId));return id}
+ @Query("SELECT EXISTS(SELECT 1 FROM trip_events WHERE tripId=:sessionId AND type='CORE_RECOVERY_GAP' AND detailJson=:marker)") suspend fun hasRecoveryMarker(sessionId:Long,marker:String):Boolean
+ @Query("SELECT tripId FROM trip_events WHERE type='CORE_COMMAND_START' AND detailJson=:commandId ORDER BY id DESC LIMIT 1") suspend fun sessionForStartCommand(commandId:String):Long?
+ @Query("SELECT tripId FROM trip_events WHERE type=:effectType AND detailJson=:commandId ORDER BY id DESC LIMIT 1") suspend fun sessionForCommandEffect(commandId:String,effectType:String):Long?
+ suspend fun insertCommandEffect(sessionId:Long,timestamp:Long,commandId:String?,action:String){
+  if(commandId!=null)insertEvent(TripEventEntity(tripId=sessionId,timestamp=timestamp,type="CORE_COMMAND_$action",severity="INFO",detailJson=commandId))
+ }
+ @Transaction suspend fun updateCommandSession(value:TripSessionEntity,event:TripEventEntity,commandId:String?,action:String){
+  updateSession(value);insertEvent(event);insertCommandEffect(value.id,event.timestamp,commandId,action)
+ }
  @Transaction suspend fun updateSessionAndInsertEvent(value:TripSessionEntity,event:TripEventEntity){updateSession(value);insertEvent(event)}
  @Transaction suspend fun updateSessionAndInsertEventAndWaypoint(value:TripSessionEntity,event:TripEventEntity,waypoint:TripWaypointEntity){updateSession(value);insertEvent(event);insertWaypoint(waypoint)}
  @Query("SELECT * FROM trip_sessions WHERE active=1 ORDER BY startedAt DESC LIMIT 1") suspend fun active():TripSessionEntity?
@@ -554,6 +580,23 @@ interface TripDao{
  @Query("SELECT * FROM trip_sessions ORDER BY id") suspend fun allSessionsNow():List<TripSessionEntity>
  @Query("SELECT * FROM trip_sessions WHERE id=:id LIMIT 1") suspend fun session(id:Long):TripSessionEntity?
  @Insert suspend fun insertSamples(values:List<TripSampleEntity>)
+ /** 已有(tripId,recordingSequence)唯一索引；日志落盘后崩溃重放不会插入重复点。 */
+ @Insert(onConflict=OnConflictStrategy.IGNORE) suspend fun insertRecoveredSamples(values:List<TripSampleEntity>):List<Long>
+ @Query("SELECT COUNT(*) FROM trip_events WHERE tripId=:id AND type NOT LIKE 'CORE_COMMAND_%'") suspend fun recordedEventCount(id:Long):Int
+ @Transaction suspend fun commitRecordingBatch(values:List<TripSampleEntity>,checkpoint:TripSessionEntity?) {
+  values.forEach { require(it.recordingSequence>0) { "INVALID_RECORDING_SEQUENCE" } }
+  insertRecoveredSamples(values)
+  checkpoint?.let { value -> session(value.id)?.let { actual ->
+   // 只恢复累积统计，不覆盖已落盘的暂停/结束/名称等用户意图。
+   fun greater(a:Double?,b:Double?)=listOfNotNull(a,b).maxOrNull()
+   fun smaller(a:Double?,b:Double?)=listOfNotNull(a,b).minOrNull()
+   updateSession(actual.copy(sampleCount=maxOf(actual.sampleCount,value.sampleCount),
+    distanceMeters=maxOf(actual.distanceMeters,value.distanceMeters),movingDurationMillis=maxOf(actual.movingDurationMillis,value.movingDurationMillis),
+    maxSogKnots=greater(actual.maxSogKnots,value.maxSogKnots),maxAbsHeelDegrees=greater(actual.maxAbsHeelDegrees,value.maxAbsHeelDegrees),
+    minDepthMeters=smaller(actual.minDepthMeters,value.minDepthMeters),minUkcMeters=smaller(actual.minUkcMeters,value.minUkcMeters),
+    eventCount=recordedEventCount(value.id)))
+  } }
+ }
  /** USER_MOMENT 的请求 ID 只允许规范 UUID；精确 JSON token 查询保留同 ID 幂等性。 */
  @Query("SELECT * FROM trip_events WHERE type='USER_MOMENT' AND detailJson LIKE :requestToken LIMIT 1") suspend fun capturedMoment(requestToken:String):TripEventEntity?
  @Query("UPDATE trip_events SET detailJson=:detail WHERE id=:id AND tripId=:tripId AND type='USER_MOMENT'") suspend fun updateCapturedMoment(id:Long,tripId:Long,detail:String):Int
@@ -576,6 +619,7 @@ interface TripDao{
  @Query("SELECT EXISTS(SELECT 1 FROM trip_samples WHERE tripId=:tripId AND (positionSource='BOAT_NMEA' OR headingSource='BOAT_NMEA' OR depthSource='BOAT_NMEA' OR windSource='BOAT_NMEA' OR stwSource='BOAT_NMEA') LIMIT 1)") suspend fun hasNmeaSamples(tripId:Long):Boolean
  @Query("SELECT EXISTS(SELECT 1 FROM trip_samples WHERE tripId=:tripId AND depthMeters IS NOT NULL LIMIT 1)") suspend fun hasDepthSamples(tripId:Long):Boolean
  @Query("SELECT EXISTS(SELECT 1 FROM trip_samples WHERE tripId=:tripId AND (trueWindSpeedKnots IS NOT NULL OR apparentWindSpeedKnots IS NOT NULL) LIMIT 1)") suspend fun hasWindSamples(tripId:Long):Boolean
+ @Query("SELECT timestamp FROM trip_events WHERE tripId=:tripId AND type IN ('CORE_RECOVERY_GAP','RUNTIME_RESTORED','TRIP_PAUSED','TRIP_RESUMED','POSITION_GAP_STARTED','POSITION_GAP_ENDED','SYSTEM_POSITION_SOURCE_CHANGED') ORDER BY timestamp,id") suspend fun continuityBoundaries(tripId:Long):List<Long>
  @Query("SELECT * FROM trip_events WHERE tripId=:tripId ORDER BY timestamp,id") suspend fun events(tripId:Long):List<TripEventEntity>
  @Query("SELECT * FROM trip_events WHERE tripId=:tripId AND (timestamp>:afterTimestamp OR (timestamp=:afterTimestamp AND id>:afterId)) ORDER BY timestamp,id LIMIT :limit") suspend fun eventsPage(tripId:Long,afterTimestamp:Long,afterId:Long,limit:Int):List<TripEventEntity>
  @Query("SELECT * FROM trip_waypoints WHERE tripId=:tripId ORDER BY timestamp,id") suspend fun waypoints(tripId:Long):List<TripWaypointEntity>

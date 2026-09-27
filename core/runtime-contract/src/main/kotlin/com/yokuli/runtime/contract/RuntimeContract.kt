@@ -27,7 +27,7 @@ sealed interface RuntimeBindingResult {
 object RuntimeBindings {
     fun resolve(transport: RuntimeTransport): RuntimeBindingResult = when (transport) {
         RuntimeTransport.IN_PROCESS -> RuntimeBindingResult.Available(transport)
-        RuntimeTransport.BINDER -> RuntimeBindingResult.Unavailable("ROM_BINDER_NOT_IMPLEMENTED")
+        RuntimeTransport.BINDER -> RuntimeBindingResult.Available(transport)
     }
 }
 
@@ -77,7 +77,7 @@ data class VoyageCommandReceipt(
 interface VoyageSessionService {
     val state: StateFlow<VoyageSessionState>
     val events: Flow<VoyageCommandEvent>
-    /** 有界、进程级结果账本；通知面板和业务页重新进入后读取同一请求。 */
+    /** 有界、Core 持久结果账本；通知面板和业务页重新进入后读取同一请求。 */
     val commands: StateFlow<List<VoyageCommandReceipt>>
     fun request(command: VoyageRequest): String
     /** 只查询原请求涉及的持久状态，不重新执行开始、暂停、继续或结束。 */

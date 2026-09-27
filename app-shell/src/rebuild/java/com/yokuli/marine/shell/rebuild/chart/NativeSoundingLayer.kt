@@ -14,7 +14,7 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 
-/** 有界测深标签合并为一个 GeoJSON/SymbolLayer；引擎负责地图投影与避让，不创建逐点 annotation。 */
+/** 航海符号与已避让文字共用有界 GeoJSON；危险符号不因文字碰撞消失，投影只在原生引擎发生。 */
 internal class NativeSoundingLayer(private val scope:CoroutineScope,private val failed:(Boolean)->Unit) {
     private var style:Style?=null
     private var source:GeoJsonSource?=null
@@ -26,7 +26,7 @@ internal class NativeSoundingLayer(private val scope:CoroutineScope,private val 
     fun clear() {
         generation++;job?.cancel();job=null
         style?.takeIf {it.isFullyLoaded}?.let {old->
-            old.removeLayer(LAYER);old.removeSource(SOURCE);images.values.forEach(old::removeImage)
+            old.removeLayer(SYMBOL_LAYER);old.removeLayer(LAYER);old.removeSource(SOURCE);images.values.forEach(old::removeImage)
         }
         style=null;source=null;previous=null;images.clear()
     }
@@ -39,12 +39,11 @@ internal class NativeSoundingLayer(private val scope:CoroutineScope,private val 
         fun isCurrent()=generation==version&&style===current&&map.style===current&&current.isFullyLoaded
         job=scope.launch {
             try {
-                val wanted=points.associateBy {"${it.label}/${it.color}"}
+                val wanted=points.associateBy {it.portrayalIconKey()}
                 val missing=wanted.filterKeys {it !in images}
                 // 系统字体本地栅格化在后台进行；不依赖联网 glyph endpoint。
                 val prepared=withContext(Dispatchers.Default) {missing.map {(key,point)->ensureActive();key to image(point)}}
                 if(!isCurrent())return@launch
-                (images.keys-wanted.keys).forEach {key->images.remove(key)?.let(current::removeImage)}
                 var cursor=0
                 while(cursor<prepared.size) {
                     awaitFrame()
@@ -61,26 +60,31 @@ internal class NativeSoundingLayer(private val scope:CoroutineScope,private val 
                 val names=images.toMap()
                 val data=withContext(Dispatchers.Default) {FeatureCollection.fromFeatures(points.mapIndexed {index,p->
                     Feature.fromGeometry(Point.fromLngLat(p.point.lon,p.point.lat)).apply {
-                        addStringProperty("sprite",names.getValue("${p.label}/${p.color}"));addNumberProperty("priority",index)
+                        addStringProperty("sprite",names.getValue(p.portrayalIconKey()));addNumberProperty("priority",-p.priority);addBooleanProperty("symbol",p.style==MapPointStyle.CHART_SYMBOL)
                     }
                 })}
                 if(!isCurrent())return@launch
                 if(source==null) {
                     source=GeoJsonSource(SOURCE,data).also {current.addSource(it)}
-                    val layer=SymbolLayer(LAYER,SOURCE).withProperties(
+                    fun layer(id:String,symbol:Boolean)=SymbolLayer(id,SOURCE).withFilter(Expression.eq(Expression.get("symbol"),Expression.literal(symbol))).withProperties(
                         PropertyFactory.iconImage(Expression.get("sprite")),
-                        PropertyFactory.iconAllowOverlap(false),PropertyFactory.iconIgnorePlacement(false),
-                        PropertyFactory.iconPadding(3f),PropertyFactory.iconAnchor(Property.ICON_ANCHOR_CENTER),
+                        // 文字已在共享规则阶段避让；符号永远保持真实锚点且不因标签消失。
+                        PropertyFactory.iconAllowOverlap(true),PropertyFactory.iconIgnorePlacement(true),
+                        PropertyFactory.iconPadding(0f),PropertyFactory.iconAnchor(Property.ICON_ANCHOR_CENTER),
                         PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_VIEWPORT),
                         PropertyFactory.iconPitchAlignment(Property.ICON_PITCH_ALIGNMENT_VIEWPORT),
                         PropertyFactory.symbolSortKey(Expression.get("priority")),
                     )
-                    if(current.getLayer("org.maplibre.annotations.points")!=null)current.addLayerBelow(layer,"org.maplibre.annotations.points")else current.addLayer(layer)
+                    listOf(layer(LAYER,false),layer(SYMBOL_LAYER,true)).forEach {next->
+                        if(current.getLayer("org.maplibre.annotations.points")!=null)current.addLayerBelow(next,"org.maplibre.annotations.points")else current.addLayer(next)
+                    }
                 }else source?.setGeoJson(data)
+                // 新 GeoJSON 已提交后才清理旧 sprite，避免更新中的上一帧引用已删除图片。
+                (images.keys-wanted.keys).forEach {key->images.remove(key)?.let(current::removeImage)}
                 failed(false)
             }catch(cancel:CancellationException) {throw cancel}
             catch(_:Exception) {if(isCurrent()){source?.setGeoJson(FeatureCollection.fromFeatures(emptyList<Feature>()));previous=null;failed(true)}}
         }
     }
-    private companion object {const val SOURCE="yokuli-native-depth-source";const val LAYER="yokuli-native-depth-labels"}
+    private companion object {const val SOURCE="yokuli-native-depth-source";const val LAYER="yokuli-native-depth-labels";const val SYMBOL_LAYER="yokuli-native-chart-symbols"}
 }

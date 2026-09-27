@@ -33,6 +33,7 @@ class LocalNavigationSessionService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val marine: LocalMarineServices,
     private val resources: RuntimeResourceManager,
+    private val recovery: com.yokuli.anchorwatch.runtime.MarineRecoveryBarrier,
 ) : NavigationSessionService {
     private data class Document(val schema: Int = 1, val session: NavigationSession? = null,
         val receipts: List<NavigationReceipt> = emptyList(), val legacyImported: Boolean = false)
@@ -129,6 +130,7 @@ class LocalNavigationSessionService @Inject constructor(
 
     private suspend fun read() {
         try {
+            recovery.ensureRecovered()
             val restored = withContext(Dispatchers.IO) {
                 if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) Document()
                 else gson.fromJson(file.openRead().bufferedReader().use { it.readText() }, Document::class.java)

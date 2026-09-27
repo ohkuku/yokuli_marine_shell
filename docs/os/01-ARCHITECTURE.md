@@ -1,6 +1,6 @@
 # 01 · 分层架构与迁移边界
 
-状态：当前源码边界与后续设计分开维护。真实入口是 `app-shell/src/rebuild`；默认进程持有 Shell 与海事运行时，通知历史已接入同 APK/UID 的 `:notifications` Binder 服务。HOME/AOSP 产品输入已存在，完整 Marine Core 隔离、SystemUI、第三方 SDK 和 ROM 镜像仍未完成。最新详细接线见 [10 · 系统边界](10-INPROCESS-SYSTEM-BOUNDARIES.md)，阶段路线仍见 [08](08-ROADMAP-AND-ACCEPTANCE.md)。
+状态：当前源码边界与后续设计分开维护。真实入口是 `app-shell/src/rebuild`；默认进程持有唯一 Marine Core，Shell/MainActivity 位于 `:shell` 并通过 Binder 连接，通知位于同 APK/UID 的 `:notifications`。HOME/AOSP 产品输入已存在，独立 UID、SystemUI、第三方 SDK 和 ROM 镜像仍未完成。最新详细接线见 [10 · 系统边界](10-INPROCESS-SYSTEM-BOUNDARIES.md)，阶段路线仍见 [08](08-ROADMAP-AND-ACCEPTANCE.md)。
 
 ## 产品边界
 
@@ -49,35 +49,35 @@ Android 原生架构已经提供 kernel/HAL/framework/服务与应用边界；Yo
 
 ```mermaid
 flowchart LR
-    subgraph APK[com.yokuli.marine · 一个 APK / 一个 UID]
-        subgraph MAIN[默认进程]
-            Application[YokuliApplication：按进程角色装配]
-            UI[MainActivity / WpShellRuntime / 内置应用]
-            Client[MarineSystem / MarineServices 窄端口]
-            Runtime[LegacyMarineController / 领域 runtime]
-            Events[MarineNotificationEvents]
-            NoticeClient[BinderNotificationClient]
-            DomainDB[(Room / DataStore / 领域文件)]
-            Application --> Client
-            UI --> Client --> Runtime --> DomainDB
-            Application --> Events --> NoticeClient
-            UI --> NoticeClient
+    subgraph APK[同一 APK / UID]
+        subgraph SHELL[shell 进程]
+            UI[Shell / 页面 / 地图绘制]
+            CLIENT[BinderMarineSystem]
+            UI --> CLIENT
         end
-        subgraph NOTIFY[:notifications 进程]
-            Service[NotificationBinderService]
-            Repo[NotificationRepository：唯一消息写者]
-            History[(notifications/history-v1.json)]
-            Service --> Repo --> History
+        subgraph MAIN[默认 Marine Core 进程]
+            RPC[MarineCoreBinderService]
+            RESTORE[恢复屏障 / 幂等命令账本]
+            SERVICES[唯一来源 / 导航 / 记录 / 守锚 / AIS / 规划]
+            DB[(领域存储与短历史)]
+            RPC --> RESTORE --> SERVICES --> DB
+            EVENTS[MarineNotificationEvents]
+            SERVICES --> EVENTS
         end
-        NoticeClient -->|版本化 Binder / 实际 UID 校验| Service
+        subgraph NOTIFICATIONS[notifications 进程]
+            NOTICE[NotificationBinderService]
+            STORE[(唯一消息历史)]
+            NOTICE --> STORE
+        end
+        CLIENT -->|私有版本化 Binder| RPC
+        EVENTS --> NOTICE
+        UI --> NOTICE
     end
-    Runtime --> Android[Android GNSS / Sensors / Network / Foreground Service]
-    UI --> Android
 ```
 
 通知子进程的 Application 不创建 OsStore、MarineSystem、海事 Room、传感器或网络连接。消息服务由真实客户端绑定启动；主进程的领域事件桥与通知页面共享同一 Binder 客户端。消息历史单写，旧 `system-notifications.json` 只作为保留的迁移输入；Shell 不再写该文件，也不再持有领域事件消费游标。
 
-这闭合了一个通知领域的 S1–S4 路径，不代表完整 Marine Core 已移走：来源、记录、守锚、AIS 仍在默认进程；导航冻结路线及索引仍由 OsStore 持有。主进程退出会影响这些运行时，消息进程不能替它们保持监控。两进程同 UID，不具有相互安全沙箱；普通 Binder 协议也不是 Stable AIDL 或第三方 SDK。最近任务仍是内部页面快照，不是 Android Recents 接管。
+现在 UI 崩溃不会连带销毁默认 Core；导航冻结路线和幂等回执由 Core 的 LocalNavigationSessionService 持有。Core 自己退出仍会中断实际采集，恢复屏障明确记录缺口。三个进程同 UID，不具有相互安全沙箱；同 APK 私有 Binder 协议也不是 Stable AIDL 或第三方 SDK。最近任务仍是内部页面快照，不是 Android Recents 接管。
 
 ## R0：预置 HOME，不越级接管整个平台
 
@@ -122,7 +122,7 @@ flowchart LR
 
 1. 在同进程实现 `MarineClient` 领域端口，移除页面对 `MainViewModel` 具体实现与 DAO 的直接依赖；返回不可变快照。
 2. 将恢复、资源持有与命令调度从 UI 生命周期移出，明确每个状态的唯一持久化所有者。
-3. 已以通知领域实现真实同 UID 子进程 Binder；其他领域按同样的契约/真实客户端/恢复闭环逐步迁移。独立服务 APK/UID 仍需另做授权与资料迁移。
+3. 已为通知和 MarineSystem 实现同 UID 真实 Binder；新增领域继续沿固定端口表/明确 DTO/恢复闭环接入。独立服务 APK/UID 仍需另做授权与资料迁移。
 4. 建立一次性数据迁移：旧 UID 导出带版本清单，受权新服务校验并导入，成功后写迁移标记；中断可重试，未成功前旧库不删。禁止让两个 UID 同时直接读写同一个 SQLite/DataStore 文件。
 5. 迁移成功后 UI 只读接口；服务故障只影响实时能力，Shell 留在可恢复状态。领域健康不能由“Binder 已连接”代替。
 

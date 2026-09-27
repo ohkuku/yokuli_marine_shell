@@ -47,5 +47,5 @@ internal suspend fun probeChartRaster(service:ChartDataService,selectedIds:List<
             ?:error("GEBCO_POINT_WINDOW_MISSING")
         val value=window.window.elevationAt(pixel.first-window.window.column,pixel.second-window.window.row)
         return@withContext ChartRasterProbe(grid,dataset.name,value)
-    }finally{withContext(NonCancellable){service.releaseSnapshot(snapshot.id)}}
+    }finally{withContext(NonCancellable){runCatching { kotlinx.coroutines.withTimeout(1500) { service.releaseSnapshot(snapshot.id) } }}}
 }

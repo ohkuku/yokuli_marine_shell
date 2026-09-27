@@ -1,6 +1,6 @@
 # 03 · 开机、持续运行、中断与恢复
 
-状态：长期海事生命周期契约及已接入通知生命周期；真机持续运行、全域 boot 恢复屏障和升级回滚仍有明确缺口。阶段统一见 [08 · 交付顺序与验收门槛](08-ROADMAP-AND-ACCEPTANCE.md)。R0 继承现有运行时，未因预置 HOME 就自动获得本章保证。设计依据是保留用户意图、明确中断、禁止凭保存配置重新开启功能。
+状态：Shell/Core 进程隔离、命令账本和 boot 恢复屏障已接入生产；真机持续运行、独立 UID 和升级回滚仍有明确缺口。阶段统一见 [08 · 交付顺序与验收门槛](08-ROADMAP-AND-ACCEPTANCE.md)。R0 继承现有运行时，未因预置 HOME 就自动获得本章保证。设计依据是保留用户意图、明确中断、禁止凭保存配置重新开启功能。
 
 ## 恢复的三个不同对象
 
@@ -12,7 +12,7 @@
 
 ## 当前系统常驻与完全退出（2026-09-27）
 
-`MarineSystem.residency` 是可见应用入口与设置共用的系统运行端口。`MainActivity.onResume` 在可见状态发起启动；`AnchorForegroundService` 继续承载同一个 `YokuliRuntimeCoordinator`，新增 `SYSTEM_RESIDENT` 资源 owner，持续观察设备实际提供的运动、旋转/罗盘与气压。页面租约仍可用于临时视线，但不再决定后台数据是否存在。手机 GNSS 只按数据中心已选来源及 Android 权限采集；NMEA 连接、发送和监听服务只保持用户已经开启的租约，常驻不会自动选源、连接或分享。Android 14+ 本地持续仪表会话声明 `specialUse` 及具体用途，所选手机定位取得 `location` 类型后才获得系统常驻定位租约。厂商电池限制、系统强停、权限或硬件缺失仍会限制执行，不承诺永不被回收。
+`MarineSystem.residency` 是可见应用入口与设置共用的系统运行端口。`MainActivity` 在 RESUMED、Core 已连接且恢复状态已收到时发起启动；`AnchorForegroundService` 继续承载同一个 `YokuliRuntimeCoordinator`，新增 `SYSTEM_RESIDENT` 资源 owner，持续观察设备实际提供的运动、旋转/罗盘与气压。页面租约仍可用于临时视线，但不再决定后台数据是否存在。手机 GNSS 只按数据中心已选来源及 Android 权限采集；NMEA 连接、发送和监听服务只保持用户已经开启的租约，常驻不会自动选源、连接或分享。Android 14+ 本地持续仪表会话声明 `specialUse` 及具体用途，所选手机定位取得 `location` 类型后才获得系统常驻定位租约。厂商电池限制、系统强停、权限或硬件缺失仍会限制执行，不承诺永不被回收。
 
 `RuntimeResidencyState` 将运行意图、执行阶段、定位/传感器真实注册、输入输出连接数量和分享状态分开呈现；权限与后台页读取这份状态。前台通知使用 Yokuli OS 身份。来源、导航、记录、守锚和 AIS 仍各有唯一所有者；该端口仅编排现有命令，不是另一套数据中心。
 
@@ -20,7 +20,7 @@
 
 显式退出闩锁同时约束资源管理器、系统定位、NMEA 恢复和服务 sticky/boot 入口。已开启手机数据输出现在与输入和本机监听一样保存同次开机运行租约；Android 回收后不因 `outputRunning` 内存丢失而静默停止，明确 Stop/退出或重启手机均撤销租约。源级安装姿态失效时同步撤销船首向候选和对应输出资格，原始设备罗盘、气压及定位独立保留。
 
-历史边界保持真实：压力沿原 `PressureHistoryRepository` 持久化，开启航程后的各项采样沿原记录器落盘。Application 级 `DataHub` 在后台追加规范观测，最近 15 分钟短历史每 30 秒批写私有 AtomicFile；同次设备开机重开应用可恢复历史，当前读数和来源选择不从缓存恢复。原始 UTC、值、来源和连续性标识保持不变，额外进程代次令恢复样本与新观测断线。`BOOT_COUNT` 改变或无法确认时不复用旧 elapsed；异常回收最多可能丢失尚未刷批的一段。明确退出停止采集后等待 `flushHistory()`，文件大小及完整 SHA-256 核对成功才退出，失败保留页面重试。短历史是有界显示缓存，并非新增的全传感器长期仓库；详见[数据中心历史契约](../product/DATA_CENTER_CONTRACT.md#2026-09-27-后台显示历史缓存)。
+历史边界保持真实：压力沿原 `PressureHistoryRepository` 持久化，开启航程后的各项采样沿原记录器落盘。默认 Core 的 `LocalReadingHistoryService` 在无界面时继续追加规范观测，Shell `DataHub` 仅订阅读数和有界历史切片；最近 15 分钟短历史每 5 秒批写原私有 AtomicFile；同次设备开机重开应用可恢复历史，当前读数和来源选择不从缓存恢复。原始 UTC、值、来源和连续性标识保持不变，额外进程代次令恢复样本与新观测断线。`BOOT_COUNT` 改变或无法确认时不复用旧 elapsed；异常回收最多可能丢失尚未刷批的一段。明确退出停止采集后等待 `flushHistory()`，文件大小及完整 SHA-256 核对成功才退出，失败保留页面重试。短历史是有界显示缓存，并非新增的全传感器长期仓库；详见[数据中心历史契约](../product/DATA_CENTER_CONTRACT.md#2026-09-27-后台显示历史缓存)。
 
 ## 当前通知生命周期与内容恢复
 
@@ -33,7 +33,7 @@
 - Shell 资料初始读取明确区分“没有文件”与“文件无法解析/未知版本”。后者保留原 `experience-v1.json` 并让唯一写入者 `DurableSnapshotStore` 拒绝所有覆写；不会将单条无效收藏或航线静默丢掉后保存。通知中心可真实重读，先留下完整独立恢复副本，再把原收藏/航线与本次运行改动按 ID 合并，本次改动优先，当前非空草稿优先。恢复不移动地图、不自动重启导航/记录/守锚；恢复副本保留旧草稿及导航快照并可导出。重新启动仍可找到最近恢复副本。文件仍损坏/缺失时继续保护并明确未恢复；当前临时改动在进程退出后没有持久保证。
 - 守锚地图的累计覆盖读取有互斥和异常边界，取消不当作业务失败；查询失败保留上次图层并提供重试。历史加载失败仅展示已存锚点/范围，不能假装已加载摆动区域；它不改变活动守锚和警报。
 
-以上是实际生产接入范围。海事运行时仍同默认进程，下面表格中的完整跨进程/boot 恢复和设备保证属于后续设计，不能据通知 IPC 已接通就视为全部达成。详见 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md) 与 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md)。
+以上是实际生产接入范围。Marine Core 在默认进程，Shell 在独立子进程；下面表格仍包含发行与设备层面的长期目标，不能从代码接线推定设备保证。详见 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md) 与 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md)。
 
 ## 状态模型（计划）
 
@@ -68,8 +68,8 @@ stateDiagram-v2
 | 普通切应用 / Home / 最近任务 | 恢复实际页面实例；可暂停绘图 | 依赖已授权 owner 持续，不随页面关闭 | 正在执行的会话继续 | 值守继续；关闭 UI 消息不停止声音/警报 |
 | 关闭最近任务卡片 | 关闭该 UI 会话与截图 | 不等于停止领域租约 | 持续，Shell 状态仍反映活动会话 | 持续，明确操作才暂停或起锚 |
 | 锁屏 / 熄屏 | UI 停动画/地图刷新；内容保留 | 按业务 owner 持有前台执行、必要资源；没有 owner 则释放 | 记录继续；显示关闭不切换来源 | 值守与告警按已授权状态继续；不靠屏幕常亮维持 |
-| 仅 UI 进程崩溃（R1） | HOME 可重启；页面可恢复 | 独立 Marine Core 不受 UI 生命周期控制 | 会话继续，UI 重连只读快照 | 值守继续；重新打开不重复 Arm |
-| 核心进程崩溃，同次开机 | 记录缺口和恢复事件 | 仅恢复有效且未撤销的旧租约；不得新增来源、客户端输出目标 | 当前航行分新轨迹段；导航进入 WarmingUp，缺输入不推进 | 不把缺口说成持续保护；先显示恢复/数据等待，取得新鲜固定来源后恢复旧会话 |
+| 仅 UI 进程崩溃（当前已隔离） | HOME 可重启；页面可恢复 | 独立 Marine Core 不受 UI 生命周期控制 | 会话继续，UI 重连只读快照 | 值守继续；重新打开不重复 Arm |
+| 核心进程崩溃，同次开机 | 记录缺口和恢复事件 | 仅恢复有效且未撤销的旧租约；不得新增来源、客户端输出目标 | 当前航行分新轨迹段；导航保留冻结路线并进入 RECOVERY_REQUIRED，用户确认后继续，缺输入不推进 | 不把缺口说成持续保护；先显示恢复/数据等待，取得新鲜固定来源后恢复旧会话 |
 | Android 强制停止 / 用户停止应用 | 内容保留 | 不绕过系统强停；资源由系统停止 | 下次显式打开显示中断，确认后继续 | 不承诺强停后值守；下次显示未监控缺口与恢复要求 |
 | 整机重启 / 电源中断 | 解锁后恢复内容；记录上一执行终止点未知 | 前次 bootId 租约失效；不开 GPS、不重连、不监听 | 航行暂停待确认；导航待确认，不按旧页面自动前往 | 会话锚点/范围/轨迹保留为待恢复，清除旧的消音到期假设，用户核对后继续 |
 | 系统计划升级重启 | 先保存检查点；不自动删除内容 | 不自动延续发布授权 | 先结束/暂停，升级后核对恢复 | 活动值守时拒绝自动安排重启；用户安排监控替代并显式暂停后才升级 |
@@ -128,15 +128,15 @@ R1 计划顺序：
 
 | 源码证据 | 已有行为 | 本章要求仍需落地的部分 |
 | --- | --- | --- |
-| [BootRestoreReceiver](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/service/BootRestoreReceiver.kt) | 重启后暂停活动锚警、清理 mock 开关、通知恢复；没有航行暂停事务 | 统一 boot 恢复屏障；航行/导航待确认；所有入口幂等 |
-| [AnchorWatchRuntime.restore](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/anchor/AnchorWatchRuntime.kt) | 恢复中心/轨迹/状态；未暂停会话重新申请资源和固定来源 | 用租约与 bootId 证明是否允许自动恢复；避免 Receiver 时序竞态；发布明确缺口 |
-| [TripRuntime.restore](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/trip/TripRuntime.kt) | 恢复会话和历史期待字段；未暂停则申请资源并启动 ticker；失败转暂停；姿态要求重新确认 | 区分同次开机与设备重启；统一执行授权和恢复状态 |
+| [BootRestoreReceiver](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/service/BootRestoreReceiver.kt) | 与 Application、Binder、运行时共用恢复屏障；跨开机同事务暂停守锚与记录并保存缺口 | 不能越过 Android 强制停止、解锁与前台启动限制 |
+| [AnchorWatchRuntime.restore](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/anchor/AnchorWatchRuntime.kt) | 屏障后恢复中心/轨迹；同次开机保留来源意图，跨开机待确认；原命令按持久效果对账 | 设备级长时间后台存活与警报能力仍取决于权限和实际设备 |
+| [TripRuntime.restore](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/trip/TripRuntime.kt) | 屏障后恢复会话，重放持久采样尾日志，轨迹断段；跨开机暂停，姿态要求重新确认 | 无法重建 Core 停止期间没有采集到的观测 |
 | [NmeaConnectionStore](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/data/nmea/NmeaConnections.kt) | 连接租约绑定 BOOT_COUNT，Stop 同步撤销后可防复活 | 与锚警安全连接、本机 listener、发布队列共用恢复判断 |
 | [LocalNmeaServerSettingsRepository](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/data/sharing/LocalNmeaServerSettingsRepository.kt) | 本机 listener 运行意图也按 boot count 失效 | 对外协议、客户端授权和完整恢复 UI |
-| [LocalNavigationSessionService](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/navigation/LocalNavigationSessionService.kt) | 独立持久导航会话；恢复为 RECOVERY_REQUIRED；命令修订检查和持久回执 | 独立核心进程/IPC 与设备级后台存活仍未实现 |
-| [AnchorForegroundService](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/service/AnchorForegroundService.kt) | START_STICKY、stopWithTask=false、资源协调 | UI/业务分进程、Binder death/重连、可验证后台存活 |
+| [LocalNavigationSessionService](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/navigation/LocalNavigationSessionService.kt) | 默认 Core 进程持有导航；Shell 走 Binder；恢复为 RECOVERY_REQUIRED；命令修订检查和持久回执 | 独立 UID、公开稳定协议与设备级后台存活保证 |
+| [AnchorForegroundService](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/service/AnchorForegroundService.kt) | 默认 Core 进程执行，Shell 独立；START_STICKY、stopWithTask=false、资源协调和 Binder 重连 | Android/厂商仍可能终止 Core；进程隔离不能证明海上持续可靠性 |
 
-这些缺口应作为 R1 实现工作，不在 R0 文档里改写成已经完成的事实。R0 的虚拟设备没有真实守锚能力认证。
+当前已接入的 R1 代码能力与设备级保证分开记录。R0 的虚拟设备没有真实守锚能力认证。
 
 ## 历史路线：设备阶段故事与所需证据（本轮不执行）
 
@@ -172,4 +172,19 @@ START、SELECT_TARGET、ADVANCE、ARRIVE、PAUSE、RESUME、END、REPLAN、SELEC
 
 航行记录仍由独立 `VoyageSessionService` 控制。“导航时同时记录”仅是用户明确选择的两项命令：已有/暂停记录保持原状态，开始记录失败不能伪装成导航失败或反向结束导航；停止导航、确认到达、Home 或关闭海图都不替用户停止记录。
 
-本轮不包含自动驾驶输出、潮汐/天气路由、跨设备会话复制或独立 Binder 核心进程。Android 前台容器和运行时边界已经接入生产入口，但没有设备级持续运行保证；本节不把 ROM 架构目标当成已经完成的系统权限能力。
+当前不包含自动驾驶输出、潮汐/天气路由或跨设备会话复制。独立于 Shell 的 Core 及私有 Binder 已接入；Android 前台容器没有设备级持续运行保证，本节不把 ROM 架构目标当成已经完成的系统权限能力。
+
+
+## 当前 Core 恢复屏障与幂等执行
+
+`MarineRecoveryBarrier.ensureRecovered()` 是 Application、Binder、ForegroundService 与 BootReceiver 共用的唯一入口。它先检查命令账本可读性，按 Android BOOT_COUNT 判断同次开机，再在 Room 事务中提交恢复缺口与跨开机暂停，最后原子提交本代标记。无法证明同次开机时保守暂停原守锚/航程，不假定持续保护。失败保留文件并阻止安全命令；显式重试重新读取，不清空或重建用户资料。
+
+同次开机恢复保留原会话 ID 和授权来源，历史段因恢复缺口断开；跨开机清除旧消音假设，守锚和记录待确认。导航原有冻结路线/回执继续由自己的 AtomicFile 所有者恢复为 RECOVERY_REQUIRED。AIS 历史缓存只提供最后观测，不能成为新鲜目标或触发基于旧相对运动的保护；既有监控意图仍受退出闩锁、来源租约及 Android 前台启动权限约束。
+
+守锚/航行命令在接受及执行前分别持久化 QUEUED/EXECUTING；Core 死亡后未确定的命令为 UNKNOWN。开始、暂停、继续、结束的状态与 `CORE_COMMAND_<type>` 效果标记在同一 Room 事务内完成；标记保留原 requestId 与 sessionId。因此数据库已提交而账本回执尚未落盘的窗口可按 `(type, requestId)` 精确对账。已处于目标状态的显式无操作请求同样写入自身效果，不能把开机自动暂停或另一个活动会话猜作该请求成功。UI 重连只订阅与查询，不重新发送 Start/Arm。
+
+命令账本最多保存 32,768 个请求且文件不超过 8 MiB；达到容量或不可写时拒绝接受新命令并保留原文件，不通过淘汰旧 ID 伪装无限幂等。短期仪表历史由 Core 单写，保留约 15 分钟并每 5 秒刷盘；突然断电仍可能丢失最后一次刷盘之后的短图数据，它不是航程持久采样的替代品。
+
+航程采样先进入持久尾日志再发布已保存事实，批入 Room 使用原 `(tripId, recordingSequence)` 唯一键去重，统计与样本同事务提交；重启重放未完成尾批，不重复累计距离。仍无法补回进程不运行期间的真实传感器观测，断电前尚未接受到运行时的输入也没有持久保证。
+
+Android 强制停止、撤权、厂商回收、锁定存储或关机不由应用绕过。当前没有 Direct Boot 海事数据库副本；只在解锁后的 BOOT_COMPLETED 恢复。界面进程独立只是避免 UI 崩溃连带杀掉领域运行时，不是“永不停止”的承诺。

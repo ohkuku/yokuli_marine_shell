@@ -2,6 +2,16 @@ package com.yokuli.anchorwatch.data.trip
 
 import com.yokuli.anchorwatch.data.database.TripDao
 import com.yokuli.anchorwatch.data.database.TripSampleEntity
+import com.yokuli.anchorwatch.data.database.TripSessionEntity
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import com.yokuli.anchorwatch.runtime.DurableRuntimeFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.File
 import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -42,20 +52,54 @@ internal class TripSampleBuffer(private val capacity:Int){
     }
 }
 
-/** Bounded batch buffer; database latency can never grow memory without limit. */
+/**
+ * 先写有界磁盘尾日志，再发布为实时轨迹；Room 批量提交按已有序号唯一索引去重。
+ * Core 在 Room 提交后、清尾日志前被杀也只会重复确认同一批点。满盘不静默丢数据。
+ */
 @Singleton
-class TripSampleWriter @Inject constructor(private val dao:TripDao){
-    private val buffer=TripSampleBuffer(MAX_QUEUE)
-    fun enqueue(value:TripSampleEntity)=buffer.enqueue(value)
-    fun size()=buffer.size()
-    suspend fun flush():TripWriterResult{
-        val batch=buffer.take()
-        if(batch.values.isEmpty())return TripWriterResult(dropped=batch.dropped)
-        return try{
-            dao.insertSamples(batch.values)
-            TripWriterResult(batch.values.size,batch.dropped,persistedValues=batch.values)
+class TripSampleWriter @Inject constructor(private val dao:TripDao,@ApplicationContext context:Context){
+    private data class Document(val version:Int=1,val samples:List<TripSampleEntity> = emptyList(),val checkpoint:TripSessionEntity?=null)
+    private val mutex=Mutex()
+    private val disk=DurableRuntimeFile(File(context.filesDir,"marine-core"),"recording-tail.json",Document::class.java)
+    private var readFailure:Throwable?=null
+    private fun validate(value:Document) {
+        require(value.version==1&&value.samples.size<=MAX_QUEUE){"RECORDING_TAIL_INVALID"}
+        require(value.samples.all{it.recordingSequence>0&&it.tripId>0}){"RECORDING_TAIL_SEQUENCE_INVALID"}
+        require(value.samples.map{it.tripId to it.recordingSequence}.toSet().size==value.samples.size){"RECORDING_TAIL_DUPLICATE_SEQUENCE"}
+        require(value.samples.isEmpty()||value.checkpoint!=null&&value.samples.all{it.tripId==value.checkpoint.id}){"RECORDING_TAIL_SESSION_MISMATCH"}
+    }
+    @Volatile private var document=try {
+        disk.read{Document()}.also(::validate)
+    }catch(error:Exception){readFailure=error;Document()}
+
+    suspend fun retryStorage()=mutex.withLock {
+        if(readFailure==null)return@withLock
+        val restored=withContext(Dispatchers.IO){disk.read{Document()}.also(::validate)}
+        document=restored;readFailure=null
+    }
+    suspend fun enqueue(value:TripSampleEntity,checkpoint:TripSessionEntity):Boolean=mutex.withLock {
+        readFailure?.let{throw IllegalStateException("RECORDING_TAIL_UNAVAILABLE",it)}
+        check(document.samples.size<MAX_QUEUE){"RECORDING_STORAGE_FULL"}
+        require(value.recordingSequence>0&&value.tripId==checkpoint.id){"INVALID_RECORDING_SAMPLE"}
+        val next=Document(samples=document.samples+value,checkpoint=checkpoint)
+        withContext(NonCancellable+Dispatchers.IO){disk.write(next)}
+        document=next
+        false
+    }
+    fun size()=document.samples.size
+    suspend fun flush():TripWriterResult=mutex.withLock{flushLocked()}
+    private suspend fun flushLocked():TripWriterResult {
+        if(readFailure!=null)return TripWriterResult(writeFailed=true)
+        val batch=document
+        if(batch.samples.isEmpty())return TripWriterResult()
+        return try {
+            withContext(NonCancellable+Dispatchers.IO){
+                dao.commitRecordingBatch(batch.samples,batch.checkpoint)
+                disk.write(Document())
+            }
+            document=Document()
+            TripWriterResult(written=batch.samples.size,persistedValues=batch.samples)
         }catch(failure:Exception){
-            buffer.restore(batch)
             if(failure is CancellationException)throw failure
             TripWriterResult(writeFailed=true)
         }

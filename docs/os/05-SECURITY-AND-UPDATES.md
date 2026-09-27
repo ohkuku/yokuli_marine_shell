@@ -2,7 +2,7 @@
 
 R0 的安全边界是：**把 Yokuli 作为普通 HOME APK 预置到 AOSP 产品中，保留 Android 的权限、安装、锁屏和系统服务边界。** 本轮交付产品配置与 APK，不是已签发、已启动或可刷入真机的 ROM 镜像。
 
-通知服务新增同 UID 的非导出子进程 Binder 接入；它不是平台权限、独立 UID、第三方通知访问或完整 SystemUI。
+Core 与通知服务均使用同 UID 非导出 Binder；MainActivity 位于 :shell，默认进程持有 Core。服务校验真实调用 UID、APK 版本、协议版本与端口签名；PFD/订阅/请求大小有界。它们不是平台权限、独立 UID、第三方访问或完整 SystemUI。
 
 系统常驻复用现有非导出前台服务，Android 14+ 声明 `FOREGROUND_SERVICE_SPECIAL_USE` 和持续本地海事仪表用途；所选手机定位另需既有精确定位与 `location` 前台类型，不新增后台定位授权，不从不可见页面绕过 while-in-use 限制。APK 分发到应用商店时仍需按商店要求申报该用途，Manifest 声明不是审核通过。系统完全退出先保存领域暂停与连接关闭，再持久化退出闩锁；服务恢复入口不得绕过它。详见 [常驻生命周期](03-LIFECYCLE-AND-RECOVERY.md#当前系统常驻与完全退出2026-09-27)。
 
@@ -15,7 +15,7 @@ R0 的安全边界是：**把 Yokuli 作为普通 HOME APK 预置到 AOSP 产品
 | 主体 | 当前身份 | 不随 HOME 身份获得的能力 |
 | --- | --- | --- |
 | Yokuli APK | `com.yokuli.marine`，普通预置应用，`product/app`，保留 APK 证书 | 平台 UID、任意传感器权限、静默安装、跨应用任务截图、系统通知接管 |
-| Yokuli 内部应用 | 同一 APK、UID、进程中的业务模块 | 独立 Android 沙箱或独立安全主体；模块间契约不是系统隔离 |
+| Yokuli 内部应用 | 同一 APK/UID 下，由 Shell 与唯一 Core 分工的业务模块 | 独立 Android 沙箱或独立安全主体；模块间契约不是系统隔离 |
 | Android SystemUI / Settings / 权限组件 | AOSP 系统组件，R0 保留 | 不由 Yokuli 内部开关取代其授权与设备安全策略 |
 | NMEA 对端 / 海图文件 / 外部 APK | 外部输入 | 不能因为位于船内网络或用户文件夹，就视为可信代码/可信定位 |
 

@@ -7,7 +7,7 @@ import org.locationtech.jts.geom.*
 import org.locationtech.jts.operation.union.UnaryUnionOp
 
 /** 只做绘制组合，不判断分析用途；参考数据与已登记分析用途的数据使用相同显示规则。 */
-data class ChartDrawingResult(val features:List<NauticalFeature>,val incompleteGeometry:Boolean)
+data class ChartDrawingResult(val features:List<NauticalFeature>,val incompleteGeometry:Boolean,val boundaries:Map<String,ChartGeometry> = emptyMap())
 
 object ChartDrawingClipper {
     /** 当前文件夹内部的文件次序、图幅比例尺与规划一致。栅格空值仍占据来源，不泄漏低层深区。 */
@@ -48,17 +48,24 @@ object ChartDrawingClipper {
         }
         val rank=cells.mapIndexed {index,(_,dataset,cell)->"${dataset.id}/${cell.cellId}" to index}.toMap()
         val output=ArrayList<NauticalFeature>()
+        val boundaries=mutableMapOf<String,ChartGeometry>()
         for(feature in features.sortedWith(compareByDescending<NauticalFeature> {rank["${it.datasetId}/${it.cellId}"] ?: Int.MAX_VALUE}.thenBy {it.kind!=NauticalFeatureKind.DEPTH_AREA})) {
             currentCoroutineContext().ensureActive()
             val mask=masks["${feature.datasetId}/${feature.cellId}"] ?: continue
             if(mask.isEmpty)continue
             try {
-                val geometry=projection.geometry(feature.geometry).intersection(mask)
+                val original=projection.geometry(feature.geometry)
+                val geometry=original.intersection(mask)
+                // 面在视口/图幅接缝裁开后，不能把人为剪切边当岸线或限制区边界绘出。
+                if(original.dimension==2&&feature.kind !in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.COVERAGE)) {
+                    val boundary=original.boundary.intersection(mask)
+                    boundaries[feature.id]=projection.contract(boundary,feature.geometry)
+                }
                 if(!geometry.isEmpty)output+=feature.copy(geometry=projection.contract(geometry,feature.geometry))
             }catch(cancel:kotlinx.coroutines.CancellationException) {throw cancel}
             catch(_:Exception) {incomplete=true}
         }
-        return ChartDrawingResult(output,incomplete)
+        return ChartDrawingResult(output,incomplete,boundaries)
     }
 }
 

@@ -71,7 +71,7 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
         val scene=input.trafficGeometry()
         libre?.let {
             libreGeometry.render(it, scene, ruler)
-            soundingLayer.render(it,scene.points.filter {point->point.style==MapPointStyle.SOUNDING},::pointIcon)
+            soundingLayer.render(it,scene.points.filter {point->point.style!=MapPointStyle.PIN},::pointIcon)
         }
         if (scene == previous && ruler == previousRuler) return true
         previous = scene; previousRuler = ruler.toList()
@@ -87,11 +87,11 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
             draw()
             groups[key]=Group(value,removals.toList())
         }
-        fun polygon(points: List<GeoPoint>, fill: Int, stroke: Int = Color.TRANSPARENT, width: Float = 0f, holes:List<List<GeoPoint>> = emptyList()) {
+        fun polygon(points: List<GeoPoint>, fill: Int, stroke: Int = Color.TRANSPARENT, width: Float = 0f, holes:List<List<GeoPoint>> = emptyList(),z:Float=1.5f) {
             val map = google ?: return
             if (points.size < 3) return
             map.addPolygon(GooglePolygonOptions().addAll(points.map { GoogleLatLng(it.lat, it.lon) })
-                .also { options -> holes.filter { it.size>=3 }.forEach { hole -> options.addHole(hole.map { GoogleLatLng(it.lat,it.lon) }) } }.fillColor(fill).strokeColor(stroke).strokeWidth(width * density).geodesic(true).zIndex(1f))?.let { removals.add(it::remove) }
+                .also { options -> holes.filter { it.size>=3 }.forEach { hole -> options.addHole(hole.map { GoogleLatLng(it.lat,it.lon) }) } }.fillColor(fill).strokeColor(stroke).strokeWidth(width * density).geodesic(true).zIndex(z))?.let { removals.add(it::remove) }
         }
         fun line(points: List<GeoPoint>, color: Int, width: Float, dashed: Boolean) {
             val map = google ?: return
@@ -101,7 +101,10 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
             if (dashed) option.pattern(listOf(com.google.android.gms.maps.model.Dash(9 * density), com.google.android.gms.maps.model.Gap(6 * density)))
             map.addPolyline(option).let { removals.add(it::remove) }
         }
-        scene.areas.forEach {area->item("area:${area.id}",area) {polygon(area.boundary,area.color.toInt(),holes=area.holes)}}
+        scene.areas.forEachIndexed {index,area->
+            val z=1f+index.toFloat()/(scene.areas.size+1)*.4f
+            item("area:${area.id}",area to z) {polygon(area.boundary,area.color.toInt(),holes=area.holes,z=z)}
+        }
         scene.circles.filter { it.radiusMeters.isFinite() && it.radiusMeters > 0 }.forEach { circle ->
             item("circle:${circle.id}",circle) {
                 val ring = (0..72).map { destination(circle.center, circle.radiusMeters, it * 5.0) }
@@ -110,7 +113,7 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
             }
         }
         scene.lines.forEach { path ->item("line:${path.id}",path) {
-            if (Color.alpha(path.color.toInt()) == 255) line(path.points, 0xBBFFFFFF.toInt(), path.widthDp + 1.5f, path.dashed)
+            if (path.casing && Color.alpha(path.color.toInt()) == 255) line(path.points, 0xBBFFFFFF.toInt(), path.widthDp + 1.5f, path.dashed)
             line(path.points, path.color.toInt(), path.widthDp, path.dashed)
         }}
         val points = scene.points.toMutableList()
@@ -150,7 +153,7 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
         }
         points.forEach { point ->
             // MapLibre 的测深标签已由单一 SymbolLayer 批量绘制；卫星引擎最多接收同一有界绘制集。
-            if(libre==null||point.style!=MapPointStyle.SOUNDING)marker(point.point, point.id, pointIconKey(point)) { pointIcon(point) }
+            if(libre==null||point.style==MapPointStyle.PIN)marker(point.point, point.id, pointIconKey(point)) { pointIcon(point) }
         }
         scene.aisTargets.forEach { target -> marker(target.point, "ais:${target.mmsi}", aisIconKey(target)) { aisIcon(target) } }
         scene.vessel?.let {vessel ->
@@ -165,7 +168,7 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
         return true
     }
 
-    private fun pointIconKey(point: MapPoint) = "point:${point.style}:${point.color}:${point.radiusDp}:${if(point.style==MapPointStyle.SOUNDING)point.label else point.label.takeIf { it.length <= 3 }.orEmpty()}"
+    private fun pointIconKey(point: MapPoint) = point.portrayalIconKey()
     private fun aisIconKey(target: MapAisTarget): String {
         val angle = target.heading?.takeIf { it.isFinite() && it in 0.0..360.0 }?.toInt()
         return "ais:${target.kind}:$angle:${target.stale}:${target.lost}:${target.risk}:${target.selected}:${target.distress}"
@@ -174,17 +177,11 @@ internal class NativeSceneRenderer(private val context: Context,scope:kotlinx.co
 
     private fun pointIcon(point: MapPoint): Bitmap {
         // MapLibre centres the bitmap; transparent margins remain symmetrical at every zoom.
-        val label = if(point.style==MapPointStyle.SOUNDING)point.label else point.label.takeIf { it.length <= 3 }.orEmpty()
+        val label = if(point.style!=MapPointStyle.PIN)point.label else point.label.takeIf { it.length <= 3 }.orEmpty()
         val key = pointIconKey(point)
         icons.get(key)?.let { return it }
-        if(point.style==MapPointStyle.SOUNDING) {
-            val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply {textSize=11*density;typeface=Typeface.create("sans-serif",Typeface.NORMAL);textAlign=Paint.Align.CENTER}
-            val width=(paint.measureText(label)+8*density).toInt().coerceAtLeast(8)
-            val height=(20*density).toInt().coerceAtLeast(8)
-            val bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888).apply {this.density=context.resources.displayMetrics.densityDpi}
-            val canvas=Canvas(bitmap);val x=width/2f;val y=height/2f-(paint.ascent()+paint.descent())/2
-            paint.style=Paint.Style.STROKE;paint.strokeWidth=3*density;paint.color=0xEFFFFFFF.toInt();canvas.drawText(label,x,y,paint)
-            paint.style=Paint.Style.FILL;paint.color=point.color.toInt();canvas.drawText(label,x,y,paint)
+        if(point.style!=MapPointStyle.PIN) {
+            val bitmap=ChartSymbolPainter.bitmap(point,density,context.resources.displayMetrics.densityDpi)
             icons.put(key,bitmap);return bitmap
         }
         val radius = point.radiusDp * density

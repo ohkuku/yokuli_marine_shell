@@ -321,6 +321,7 @@ data class AnchorWatchInput(val placement:AnchorPlacementMode,val rangeMode:Anch
 @Singleton
 class LegacyMarineController @Inject constructor(
     private val app:Application,
+    private val presentationRequests:com.yokuli.anchorwatch.runtime.MarinePresentationRequests,
     private val nav:NavigationRepository,
     private val multiPublisher:com.yokuli.anchorwatch.runtime.output.MultiNmeaPublisher,
     private val dao:AnchorDao,
@@ -1264,7 +1265,7 @@ class LegacyMarineController @Inject constructor(
 
     fun clearDiagnostics()=nav.clearDiagnostics()
     fun arm(lat:Double,lon:Double,input:AnchorWatchInput){ requestArm(lat,lon,input) }
-    fun requestArm(lat:Double,lon:Double,input:AnchorWatchInput):String{
+    fun requestArm(lat:Double,lon:Double,input:AnchorWatchInput,requestId:String=java.util.UUID.randomUUID().toString()):String{
         val intent=Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.ARM)
             .putExtra("lat",lat).putExtra("lon",lon).putExtra("rode",input.rodeMeters).putExtra("depth",input.depthMeters?:Double.NaN).putExtra("bowHeight",input.bowHeightMeters).putExtra("boatLength",input.boatLengthMeters?:Double.NaN)
             .putExtra("antennaOffset",if(input.positionSource==GpsDataSource.NMEA)_ui.value.settings.nmeaGpsAntennaToBowMeters else 0.0)
@@ -1273,7 +1274,7 @@ class LegacyMarineController @Inject constructor(
             .putExtra("originMode",input.originMode.name)
             .putExtra("anchoragePlaceId",input.anchoragePlaceId?:-1L).putExtra("anchorageSpotId",input.anchorageSpotId?:-1L)
             .putExtra("depthGuard",input.conditions.depthGuardEnabled).putExtra("shallowDepth",input.conditions.shallowDepthAlarmMeters?:Double.NaN).putExtra("deepDepth",input.conditions.deepDepthAlarmMeters?:Double.NaN).putExtra("windGuard",input.conditions.windGuardEnabled).putExtra("windWarning",input.conditions.windWarningKnots?:Double.NaN).putExtra("windAlarm",input.conditions.windAlarmKnots?:Double.NaN).putExtra("windShift",input.conditions.windShiftEnabled).putExtra("windShiftDegrees",input.conditions.windShiftThresholdDegrees?:Double.NaN).putExtra("apparentFallback",input.conditions.windAllowApparentFallback)
-        return dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.START,null,intent).first
+        return dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.START,null,intent,requestId).first
     }
     fun updateAnchorSettings(input:AnchorWatchInput){val intent=Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.UPDATE_RADIUS).putExtra("alarm",input.alarmRadiusMeters);ContextCompat.startForegroundService(app,intent)}
     fun updateConditionGuards(config:ConditionGuardConfig){val value=config.validated();ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.UPDATE_CONDITION_GUARDS).putExtra("depthGuard",value.depthGuardEnabled).putExtra("shallowDepth",value.shallowDepthAlarmMeters?:Double.NaN).putExtra("deepDepth",value.deepDepthAlarmMeters?:Double.NaN).putExtra("windGuard",value.windGuardEnabled).putExtra("windWarning",value.windWarningKnots?:Double.NaN).putExtra("windAlarm",value.windAlarmKnots?:Double.NaN).putExtra("windShift",value.windShiftEnabled).putExtra("windShiftDegrees",value.windShiftThresholdDegrees?:Double.NaN).putExtra("apparentFallback",value.windAllowApparentFallback))}
@@ -1281,11 +1282,14 @@ class LegacyMarineController @Inject constructor(
     fun pauseWatch()=app.startService(Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.PAUSE_WATCH))
     fun resumeWatch()=ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.RESUME_WATCH))
     fun liftAnchor()=ContextCompat.startForegroundService(app,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.LIFT_ANCHOR))
-    fun requestPauseWatch(sessionId:Long?)=dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.PAUSE,sessionId,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.PAUSE_WATCH)).first
-    fun requestResumeWatch(sessionId:Long?)=dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.RESUME,sessionId,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.RESUME_WATCH)).first
-    fun requestLiftAnchor(sessionId:Long?)=dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.LIFT,sessionId,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.LIFT_ANCHOR)).first
-    private fun dispatchAnchorCommand(type:com.yokuli.runtime.contract.AnchorCommandType,sessionId:Long?,intent:Intent):Pair<String,android.content.ComponentName?>{
-        val request=anchorCommands.create(type,sessionId)
+    fun requestPauseWatch(sessionId:Long?,requestId:String=java.util.UUID.randomUUID().toString())=dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.PAUSE,sessionId,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.PAUSE_WATCH),requestId).first
+    fun requestResumeWatch(sessionId:Long?,requestId:String=java.util.UUID.randomUUID().toString())=dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.RESUME,sessionId,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.RESUME_WATCH),requestId).first
+    fun requestLiftAnchor(sessionId:Long?,requestId:String=java.util.UUID.randomUUID().toString())=dispatchAnchorCommand(com.yokuli.runtime.contract.AnchorCommandType.LIFT,sessionId,Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.LIFT_ANCHOR),requestId).first
+    private fun dispatchAnchorCommand(type:com.yokuli.runtime.contract.AnchorCommandType,sessionId:Long?,intent:Intent,requestId:String):Pair<String,android.content.ComponentName?>{
+        val payload=com.yokuli.anchorwatch.runtime.RuntimeCommandParser.parse(intent).toString()
+        val fingerprint=java.security.MessageDigest.getInstance("SHA-256").digest(payload.toByteArray(Charsets.UTF_8)).joinToString(""){"%02x".format(it)}
+        val request=anchorCommands.create(type,sessionId,requestId,fingerprint)
+        if(request.status!=com.yokuli.runtime.contract.AnchorCommandStatus.QUEUED){anchorCommands.recheck(request.commandId);return request.commandId to null}
         intent.putExtra(com.yokuli.anchorwatch.runtime.AnchorCommandRegistry.COMMAND_ID_EXTRA,request.commandId)
         fun deliver():android.content.ComponentName? {
             val component=if(type==com.yokuli.runtime.contract.AnchorCommandType.PAUSE)app.startService(intent) else {ContextCompat.startForegroundService(app,intent);null}
@@ -1298,7 +1302,7 @@ class LegacyMarineController @Inject constructor(
             if(type==com.yokuli.runtime.contract.AnchorCommandType.PAUSE && component==null)error("ANCHOR_SERVICE_NOT_STARTED")
             return request.commandId to component
         }catch(error:Exception){
-            anchorCommands.finish(request.commandId,com.yokuli.runtime.contract.AnchorCommandStatus.FAILED,sessionId,"DISPATCH_FAILED")
+            anchorCommands.unknown(request.commandId,"DELIVERY_NOT_CONFIRMED")
             throw error
         }
     }
@@ -1409,8 +1413,12 @@ class LegacyMarineController @Inject constructor(
     fun stopGpsProxy(){_ui.update{it.copy(proxyFeedback=null)};app.startService(Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.STOP_PROXY))}
     fun openDeveloperOptions(){runCatching{app.startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}.onFailure{app.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}}
     fun openAlarmNotificationSettings(){val channelReady=android.os.Build.VERSION.SDK_INT>=26&&app.getSystemService(android.app.NotificationManager::class.java).getNotificationChannel(AnchorForegroundService.ALARM_CH)!=null;val intent=when{channelReady->Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,app.packageName).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID,AnchorForegroundService.ALARM_CH);android.os.Build.VERSION.SDK_INT>=26->Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,app.packageName);else->Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:${app.packageName}"))};app.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}
-    fun openAlarmSoundSettings(){runCatching{app.startActivity(Intent(android.provider.Settings.ACTION_SOUND_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}.onFailure{app.startActivity(Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}}
-    fun openDoNotDisturbSettings(){runCatching{app.startActivity(Intent(android.provider.Settings.ACTION_ZEN_MODE_PRIORITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}.onFailure{openAlarmSoundSettings()}}
+    fun openAlarmSoundSettings() { controllerScope.launch {
+        runCatching { presentationRequests.enqueue(com.yokuli.anchorwatch.api.MarinePresentationRequest(action = com.yokuli.anchorwatch.api.MarinePresentationAction.SOUND_SETTINGS)) }.onFailure(::exportFailed)
+    } }
+    fun openDoNotDisturbSettings() { controllerScope.launch {
+        runCatching { presentationRequests.enqueue(com.yokuli.anchorwatch.api.MarinePresentationRequest(action = com.yokuli.anchorwatch.api.MarinePresentationAction.DO_NOT_DISTURB_SETTINGS)) }.onFailure(::exportFailed)
+    } }
     fun openBatteryOptimization(){app.startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}
     fun openFullScreenAlarmSettings(){
         val intent=if(android.os.Build.VERSION.SDK_INT>=34)Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,Uri.parse("package:${app.packageName}")) else Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,app.packageName)
@@ -1479,23 +1487,19 @@ class LegacyMarineController @Inject constructor(
         anchorageNearbyTracker.dismiss(_ui.value.nearbyAnchoragePrompt.map{it.cluster.id})
         _ui.update{it.copy(nearbyAnchoragePrompt=emptyList())}
     }
-    private fun openCoordinatesInGoogleMaps(latitude:Double,longitude:Double){
-        val uri=android.net.Uri.parse(AnchorageShareContent.googleMapsUrl(latitude,longitude))
-        val google=Intent(Intent.ACTION_VIEW,uri).setPackage("com.google.android.apps.maps").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val intent=if(google.resolveActivity(app.packageManager)!=null)google else Intent(Intent.ACTION_VIEW,uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching{app.startActivity(intent)}.onFailure{_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"No map application or browser is available to open the anchor position."))}}
-    }
+    private fun openCoordinatesInGoogleMaps(latitude:Double,longitude:Double) { controllerScope.launch {
+        runCatching { presentationRequests.enqueue(com.yokuli.anchorwatch.api.MarinePresentationRequest(
+            action=com.yokuli.anchorwatch.api.MarinePresentationAction.OPEN_MAP,
+            uri=AnchorageShareContent.googleMapsUrl(latitude,longitude))) }.onFailure(::exportFailed)
+    } }
     fun shareAnchorageQr(value:SavedAnchorageEntity)=controllerScope.launch{
         runCatching{
             val file=withContext(Dispatchers.IO){anchorageQrImageGenerator.generate(value,_ui.value.settings.appLanguage.usesChinese())}
             val uri=androidx.core.content.FileProvider.getUriForFile(app,"${app.packageName}.files",file)
-            val send=Intent(Intent.ACTION_SEND).setType("image/png")
-                .putExtra(Intent.EXTRA_STREAM,uri)
-                .putExtra(Intent.EXTRA_TEXT,AnchorageShareContent.shareText(value))
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            send.clipData=android.content.ClipData.newUri(app.contentResolver,"Saved anchorage",uri)
-            val title=if(_ui.value.settings.appLanguage.usesChinese())"分享收藏锚地" else "Share saved anchorage"
-            app.startActivity(Intent.createChooser(send,title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            presentationRequests.enqueue(com.yokuli.anchorwatch.api.MarinePresentationRequest(
+                action=com.yokuli.anchorwatch.api.MarinePresentationAction.SHARE_FILE, uri=uri.toString(), mime="image/png",
+                title=if(_ui.value.settings.appLanguage.usesChinese())"分享收藏锚地" else "Share saved anchorage",
+                text=AnchorageShareContent.shareText(value)))
         }.onFailure{_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"Could not create or share the anchorage QR image."))}}
     }
     private val _shellDestinations=kotlinx.coroutines.flow.MutableSharedFlow<com.yokuli.anchorwatch.domain.model.MarineDestination>(extraBufferCapacity=8)
@@ -1554,7 +1558,12 @@ class LegacyMarineController @Inject constructor(
         })
         shareExport(file,"application/gpx+xml")
     }
-    private fun shareExport(file:java.io.File,mime:String){val uri=androidx.core.content.FileProvider.getUriForFile(app,"${app.packageName}.files",file);val intent=Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM,uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK);runCatching{app.startActivity(Intent.createChooser(intent,"Export anchor session").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))}.onFailure{_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,"No app is available to receive the export."))}}}
+    private suspend fun shareExport(file:java.io.File,mime:String) {
+        val uri=androidx.core.content.FileProvider.getUriForFile(app,"${app.packageName}.files",file)
+        presentationRequests.enqueue(com.yokuli.anchorwatch.api.MarinePresentationRequest(
+            action=com.yokuli.anchorwatch.api.MarinePresentationAction.SHARE_FILE, uri=uri.toString(), mime=mime,
+            title=if(_ui.value.settings.appLanguage.usesChinese())"导出航行资料" else "Export sailing data"))
+    }
     private fun exportFailed(error:Throwable){_ui.update{it.copy(connectionAttempt=ConnectionAttempt(ConnectionAttemptState.FAILED,error.message?:"Could not create the export."))}}
     private fun xmlEscape(value:String)=value.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;")
 }

@@ -111,7 +111,7 @@ enum class AppId(val zh: String, val en: String, val icon: String) {
 class YokuliApplication : Application() {
     @javax.inject.Inject lateinit var marineProvider: javax.inject.Provider<com.yokuli.runtime.marine.MarineSystem>
     @javax.inject.Inject lateinit var contentProvider: javax.inject.Provider<com.yokuli.anchorwatch.api.MarineContentService>
-    @javax.inject.Inject lateinit var notificationCoordinatorProvider: javax.inject.Provider<com.yokuli.anchorwatch.runtime.notification.NotificationCoordinator>
+    @javax.inject.Inject lateinit var recoveryProvider: javax.inject.Provider<com.yokuli.anchorwatch.runtime.MarineRecoveryBarrier>
     @javax.inject.Inject lateinit var noticeEventsProvider: javax.inject.Provider<com.yokuli.runtime.marine.notification.MarineNotificationEvents>
     // Lazy connection preserves boot/background behavior: observing persisted notices does not open sensors.
     val marineSystem get() = marineProvider.get()
@@ -120,11 +120,31 @@ class YokuliApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         if (com.yokuli.runtime.marine.notification.NotificationProcessRole.isNotificationProcess()) return
-        com.yokuli.runtime.marine.MarineSystemBootstrap.initialize(this)
-        os = OsStore(this)
-        os.connectSystem(marineSystem)
-        os.observeNotificationUnits(notificationCoordinatorProvider.get())
-        noticeEventsProvider.get().start()
+        if (com.yokuli.runtime.marine.ipc.MarineCoreProcess.isShell()) {
+            os = OsStore(this)
+            os.connectSystem(marineSystem)
+            os.observeNotificationUnits(marineSystem)
+        } else if (com.yokuli.runtime.marine.ipc.MarineCoreProcess.isCore(this)) {
+            com.yokuli.runtime.marine.MarineSystemBootstrap.initialize(this)
+            // 默认进程是唯一领域写入者。先恢复事务与命令账本，不能由 Activity 的创建顺序决定。
+            CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
+                var lastProblem: String? = null
+                while (true) {
+                    try {
+                        recoveryProvider.get().ensureRecovered()
+                        marineSystem.readingHistory // 后台规范历史拥有独立订阅，不依赖界面存活。
+                        marineSystem.presentation // 恢复后台通知的上次显示单位，不创建 Shell/Compose。
+                        noticeEventsProvider.get().start()
+                        break
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (error: Exception) {
+                        if (lastProblem != error.message) android.util.Log.e("MarineCore", "Core recovery blocked", error)
+                        lastProblem = error.message
+                        kotlinx.coroutines.delay(10_000)
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -30,21 +30,7 @@ data class Fix(val point: GeoPoint, val source: String, val elapsed: Long, val u
     /** 船首向绝不使用 COG 替代，过期/空字段心跳不能继续转动船形。 */
     fun freshHeading(now:Long=SystemClock.elapsedRealtime())=heading?.takeIf {headingFreshness==VesselDataFreshness.FRESH&&headingElapsed?.let{now-it in 0..15000}==true}
 }
-/** 单项读数保留内部规范单位和真实来源；显示走全局格式器，elapsed 为单调时钟毫秒。 */
-data class Reading(val value: Double, val unit: String, val source: String, val elapsed: Long,
-    val freshness:VesselDataFreshness=VesselDataFreshness.FRESH,
-    val quality:VesselDataQuality=VesselDataQuality.GOOD,
-    /** 稳定来源身份与来源显示名分开；同名设备及重连代次不连接历史曲线。 */
-    val sourceKey:String=source,
-    val validForMillis:Long=10_000,
-    /** 历史连续段还取决于测量基准、校准和推导输入，不能仅凭同一设备连接曲线。 */
-    val continuityKey:String=sourceKey,
-    /** 中文：观测发生的 UTC 时间；只在采纳该观测时转换一次，刷新页面不重盖时间。 */
-    val observedUtcMillis:Long?=null,
-    /** 只属于历史采集进程的连续段；不替代原始来源/连续性身份，重启不接线。 */
-    val historySessionKey:String?=null) {
-    fun fresh(now: Long=SystemClock.elapsedRealtime()) = freshness==VesselDataFreshness.FRESH&&quality!=VesselDataQuality.UNKNOWN&&now-elapsed in 0..validForMillis
-}
+typealias Reading = com.yokuli.anchorwatch.api.Reading
 /** 海图、磁贴、趋势共用的进程内快照；连接计数与读数分离，已连接不代表已有可信数据。 */
 data class VesselData(
     /** 不同来源的最新船位；只有显式选中的来源才能成为当前船位。 */
@@ -58,103 +44,69 @@ data class VesselData(
 ) {
     fun fix(source: String) = when(source) { "nmea" -> nmea; "phone" -> phone; "demo" -> demo; else -> null }
 }
-/** 轻量发布订阅读模型；持久航迹归航行日志，字段采纳与来源仲裁归底层业务引擎。 */
+/** Shell仅缓存Core投影，不采样、不写历史文件；IPC断线保留历史并显示错误。 */
 class DataHub(context:Context?=null,scope:CoroutineScope?=null) {
-    private val historySession=UUID.randomUUID().toString()
-    private val cache=context?.takeIf {scope!=null}?.let {ReadingHistoryCache(it.applicationContext)}
-    private val retry=Channel<CompletableDeferred<Boolean>>(Channel.UNLIMITED)
-    private val storage=MutableStateFlow(HistoryStorageState(loading=cache!=null))
-    val historyStorage=storage.asStateFlow()
     private val mutable=MutableStateFlow(VesselData())
     val state=mutable.asStateFlow()
     private val traces=MutableStateFlow<Map<String,List<Reading>>>(emptyMap())
-    /** 最近15分钟的有限显示历史；同次设备开机可恢复磁盘缓存，进程重启明确断线。 */
     val history=traces.asStateFlow()
-    init {
-        if(cache!=null&&scope!=null)scope.launch(Dispatchers.IO) {
-            fun restore():Boolean {
-                storage.update {it.copy(loading=true)}
-                return try {
-                    val restored=cache.read(SystemClock.elapsedRealtime())
-                    mergeRestored(restored.readings)
-                    storage.update {it.copy(loading=false,readIssue=null,lastSavedUtcMillis=restored.savedAtUtc)}
-                    true
-                } catch(cancelled:CancellationException) {throw cancelled}
-                catch(error:Exception) {storage.update {it.copy(loading=false,readIssue=error.message ?: "Could not read history")};false}
+    private val storage=MutableStateFlow(HistoryStorageState(loading=true))
+    val historyStorage=storage.asStateFlow()
+    private var service:com.yokuli.anchorwatch.api.ReadingHistoryService?=null
+    private var subscription:Job?=null
+    private var latestSubscription:Job?=null
+    fun bind(endpoint:com.yokuli.anchorwatch.api.ReadingHistoryService,scope:CoroutineScope) {
+        if(service===endpoint&&subscription?.isActive==true)return
+        subscription?.cancel();latestSubscription?.cancel();service=endpoint
+        // 当前数值不等待历史查询；历史每5秒合并一个批次，UI隐藏也不承担采样责任。
+        latestSubscription=scope.launch {
+            endpoint.state.collect {snapshot->
+                update {it.copy(readings=snapshot.readings)}
+                storage.value=snapshot.storage
             }
-            var loaded=restore()
-            var saved:Map<String,List<Reading>>?=null
-            while(isActive) {
-                // 常规采集每30秒最多写一次；重试及明确退出可请求立即刷批并等待真实回执。
-                val request=withTimeoutOrNull(30_000L) {retry.receive()}
-                if(!loaded)loaded=restore()
-                val snapshot=traces.value
-                var persisted=loaded
-                if(loaded&&snapshot!==saved) {
-                    try {
-                        val utc=System.currentTimeMillis()
-                        cache.write(snapshot,utc)
-                        saved=snapshot
-                        storage.update {it.copy(writeIssue=null,lastSavedUtcMillis=utc,pending=traces.value!==snapshot)}
-                    } catch(cancelled:CancellationException) {request?.cancel(cancelled);throw cancelled}
-                    catch(error:Exception) {storage.update {it.copy(writeIssue=error.message ?: "Could not save history",pending=true)};persisted=false}
-                }
-                request?.complete(persisted)
+        }
+        subscription=scope.launch(Dispatchers.Default){
+            var generation=""
+            var revision=-1L
+            endpoint.state.collect {snapshot->
+                if(snapshot.generation.isBlank())return@collect
+                val changedGeneration=generation!=snapshot.generation
+                if(snapshot.revision==revision&&!changedGeneration)return@collect
+                val now=SystemClock.elapsedRealtime()
+                val previous=traces.value
+                val updated=previous.mapValues {(_,list)->list.filter{now-it.elapsed in 0..15*60_000L}}.toMutableMap()
+                try {
+                    val requests=linkedMapOf<String,Long?>()
+                    (snapshot.metrics+snapshot.readings.keys+previous.keys).distinct().take(64).forEach {metric->
+                        val existing=if(changedGeneration)emptyList()else updated[metric].orEmpty()
+                        if(!changedGeneration&&existing.isNotEmpty()&&existing.last().elapsed==snapshot.readings[metric]?.elapsed)return@forEach
+                        requests[metric]=existing.lastOrNull()?.elapsed
+                    }
+                    val batches=mutableListOf<Map<String,Long?>>()
+                    var batch=linkedMapOf<String,Long?>();var budget=0
+                    requests.forEach{(metric,after)->
+                        // 源头最多每500ms一条。冷启动每批两字段，增量可把所有变化字段合成一批。
+                        val cost=if(after==null)1800 else ((now-after).coerceAtLeast(0)/500L+3).coerceAtMost(1800).toInt()
+                        if(budget+cost>3600&&batch.isNotEmpty()){batches+=batch;batch=linkedMapOf();budget=0}
+                        batch[metric]=after;budget+=cost
+                    }
+                    if(batch.isNotEmpty())batches+=batch
+                    for(request in batches)for(slice in endpoint.slices(request)){
+                        check(slice.generation==snapshot.generation){"CORE_HISTORY_GENERATION_CHANGED"}
+                        val existing=if(changedGeneration)emptyList()else updated[slice.metric].orEmpty()
+                        updated[slice.metric]=(existing+slice.readings).associateBy {listOf(it.elapsed,it.sourceKey,it.continuityKey,it.unit,it.value,it.historySessionKey)}
+                            .values.sortedBy{it.elapsed}.takeLast(1800)
+                    }
+                    traces.value=updated.filterValues{it.isNotEmpty()}
+                    generation=snapshot.generation;revision=snapshot.revision
+                }catch(cancelled:CancellationException){throw cancelled}
+                catch(error:Exception){storage.update {it.copy(readIssue=error.message?:"CORE_HISTORY_UNAVAILABLE")}}
+                delay(5_000L)
             }
         }
     }
-    fun retryHistoryStorage() {if(cache!=null)retry.trySend(CompletableDeferred())}
-    /** 只刷显示历史；调用者在已停止采集后等待此回执，不能把它当成航行记录保存。 */
-    suspend fun flushHistory():Boolean {
-        if(cache==null)return true
-        val receipt=CompletableDeferred<Boolean>()
-        retry.send(receipt)
-        return withTimeoutOrNull(10_000L) {receipt.await()} ?: false
-    }
-    @Synchronized private fun mergeRestored(restored:Map<String,List<Reading>>) {
-        val now=SystemClock.elapsedRealtime()
-        traces.update {current->
-            (restored.keys+current.keys).take(ReadingHistoryCache.MAX_METRICS).associateWith {key->
-                (restored[key].orEmpty()+current[key].orEmpty())
-                    .filter {it.elapsed in (now-ReadingHistoryCache.WINDOW_MILLIS).coerceAtLeast(0)..now}
-                    .associateBy {listOf(it.elapsed,it.sourceKey,it.continuityKey,it.unit,it.value)}.values
-                    .sortedBy {it.elapsed}.takeLast(ReadingHistoryCache.MAX_POINTS)
-            }.filterValues {it.isNotEmpty()}
-        }
-    }
-    @Synchronized fun update(block: (VesselData)->VesselData) {
-        val before=mutable.value
-        val snapshot=block(before)
-        mutable.value=snapshot
-        // 网络计数与服务状态不会重新采样仪表历史；调用者可在后台独立投影两者。
-        if(before.readings==snapshot.readings)return
-        val now=SystemClock.elapsedRealtime()
-        val historyBefore=traces.value
-        traces.update { previous ->
-            // 未变更的序列保持原引用；连接计数/别的传感器更新不再复制每条最多 1800 点的曲线。
-            var changed:MutableMap<String,List<Reading>>?=null
-            (previous.keys+snapshot.readings.keys).take(ReadingHistoryCache.MAX_METRICS).forEach { key ->
-                val original=previous[key].orEmpty()
-                var values=if(original.firstOrNull()?.let {now-it.elapsed>15*60_000}==true)
-                    original.dropWhile {now-it.elapsed>15*60_000} else original
-                snapshot.readings[key]?.takeIf {it.fresh(now)&&it.value.isFinite()}?.let {value->
-                    val last=values.lastOrNull()
-                    // 保存实际样本，每500ms最多一份，不平均/改写旧点；50Hz姿态不会挤掉15分钟历史。
-                    val boundary=last!=null&&(last.sourceKey!=value.sourceKey||last.continuityKey!=value.continuityKey||last.historySessionKey!=historySession)
-                    if(last==null||value.elapsed-last.elapsed>=500L||
-                        (boundary&&value.elapsed>=last.elapsed&&!(value.elapsed==last.elapsed&&last.sourceKey==value.sourceKey&&last.continuityKey==value.continuityKey)))
-                        values=(if(values.size>=1800)values.takeLast(1799)else values)+value.copy(
-                            historySessionKey=historySession,
-                            observedUtcMillis=value.observedUtcMillis ?: (System.currentTimeMillis()-(now-value.elapsed)))
-                }
-                if(values!==original) {
-                    val result=changed ?: previous.toMutableMap().also {changed=it}
-                    if(values.isEmpty())result.remove(key)else result[key]=values
-                }
-            }
-            changed ?: previous
-        }
-        if(cache!=null&&traces.value!==historyBefore)storage.update {it.copy(pending=true)}
-    }
-    fun resetNmea() = update { it.copy(nmea=null,readings=emptyMap()) }
+    fun retryHistoryStorage(){service?.retryStorage()}
+    suspend fun flushHistory():Boolean=service?.flush()?:false
+    @Synchronized fun update(block:(VesselData)->VesselData){mutable.value=block(mutable.value)}
+    fun resetNmea()=update{it.copy(nmea=null,readings=emptyMap())}
 }

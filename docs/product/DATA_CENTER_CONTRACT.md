@@ -101,7 +101,7 @@ NMEA 替换只检查用户选定的现有连接和同一代次有效船位候选
 
 | 记录 | 生产所有者与实际语义 |
 | --- | --- |
-| 驾驶台短历史 | `DataHub.history` 保留最近 15 分钟、每字段最多 1800 点。每 500ms 最多选取一份实际样本，来源/基准断点额外保留；不平均或改写旧点。私有 AtomicFile 每 30 秒批写，同次设备开机才恢复 history；不恢复 current 或来源选择，进程边界不接线。 |
+| 驾驶台短历史 | `MarineSystem.readingHistory` 在 Core 中保留最近 15 分钟、每字段最多 1800 点。每 500ms 最多选取一份实际样本，来源/基准断点额外保留；不平均或改写旧点。私有 AtomicFile 每 5 秒批写，同次设备开机才恢复 history；不恢复 current 或来源选择，进程边界不接线。 |
 | 气压长历史 | `PressureHistoryRepository` 按每个真实物理来源、每 UTC 分钟的首个数值保存，最多保留 30 天。高频同分钟后续读数继续用于当前读数，但不能覆盖已经出现的历史点。它不是每分钟平均值、插值或平滑值。 |
 | 气压趋势 | `PressureTrendEstimator` 只消费上述同段已落盘观测，以最后真实点作为回归截止时刻。没有新样本时值和采样时间保持固定；趋势窗口仍要求足够时间跨度与实际观测覆盖率，缺测不填零。 |
 | 航行日志 | `TripRuntime` 按会话采录状态快照，时间是记录时刻，各指标的 `*AgeMillis` 指明原观测年龄；不是每条快照都重新收到传感器测量。`TripTrackPipeline` 在过期船位、明确未知质量或来源切换处断开地图轨迹；旧记录缺少年龄/质量元数据时保留单点，Google 与 MapLibre 均显示离散位置，原存储快照仍保留。 |
@@ -114,12 +114,21 @@ NMEA 替换只检查用户选定的现有连接和同一代次有效船位候选
 
 数据库 22→23 只追加可空 `continuityKey` 与 `measuredElapsedRealtime`，不改旧气压值或时间。旧版本已覆盖的原始数值、重新盖过的真实测量时间无法从现有记录恢复；`continuityKey=null` 明确表示连续性证据未知，只显示独立旧点，不猜测连接或伪装修复完成。
 
-`MarinePresentationBridge` 的来源/录制状态、轨迹、读数和收发摘要独立投影。读数与轨迹计算在后台完成，网络计数不会触发历史采样；主线程只接收 Shell 状态和整理好的几何，生命周期结束统一取消订阅。
+`MarinePresentationBridge` 的来源/录制状态、轨迹和收发摘要独立投影。指标与短历史投影归 Core 的 `LocalReadingHistoryService`；主线程只接收 Shell 状态和整理好的几何。关闭 Shell 订阅不停止 Core 历史采录，网络计数不会触发历史采样。
 
 ## 2026-09-27 后台显示历史缓存
 
-`DataHub(context, scope)` 在应用级系统投影持续更新时采纳历史，页面离开不停止采样。原始值、内部单位、来源身份、连续性身份和已冻结 UTC 原样存储；采纳时才为缺少 UTC 的旧兼容输入转换一次时钟，并附加独立的进程历史代次，当前业务快照不修改。磁盘是这个读模型的可恢复缓存，不是第二个采集器或航行记录数据库。
+`LocalReadingHistoryService` 在 Marine Core 进程订阅唯一 `LocalMarineServices` 与导航读模型采纳历史；Shell 进程死亡、页面离开和取消订阅均不停止采样。`DataHub` 只缓存 IPC 查询结果，不再采样或读写历史文件。原始值、内部单位、来源身份、连续性身份和已冻结 UTC 原样存储；采纳时才为缺少 UTC 的旧兼容输入转换一次时钟，并附加独立的进程历史代次，当前业务快照不修改。磁盘是这个读模型的可恢复缓存，不是第二个采集器或航行记录数据库。
 
 缓存只保留当前短图支持的 15 分钟：64 个字段、各 1800 个真实点、32 MiB 文件硬上限，字典复用来源等重复字符串。高频观测每 500ms 选取一份真实样本，不求平均、不移动已经显示的点。原子写失败保留旧文件；读取失败禁止覆盖文件，错误和重试入口直接呈现在 `ReadingTrace`。同一次开机重开应用恢复历史；`BOOT_COUNT` 改变或无法读取时，不用旧的单调时间生成新的历史。完整跨开机航迹和长期气压仍归已有航行记录/气压内容存储。
 
-`historyStorage` 明确 loading、pending、lastSavedUtcMillis、readIssue、writeIssue；`retryHistoryStorage()` 重新读取/保存；`flushHistory()` 在明确停止采集后请求刷批并等待真实结果。常规后台每30秒批写，因此进程突然被杀时最近尚未刷批的一段可能丢失；明确退出会等待刷批，失败不得假称保存成功。
+`historyStorage` 明确 loading、pending、lastSavedUtcMillis、readIssue、writeIssue；`retryHistoryStorage()` 重新读取/保存；`flushHistory()` 在明确停止采集后请求刷批并等待真实结果。常规后台每5秒批写，因此进程突然被杀时最近尚未刷批的一段可能丢失；明确退出会等待刷批，失败不得假称保存成功。
+
+
+## Marine Core 历史端口（2026-09-27）
+
+`legacy-marine/api/ReadingHistoryService.kt` 统一 `Reading`、`HistoryStorageState` 与读模型；`MarineSystem.readingHistory.state` 发布真实当前读数、缓存指标目录、进程代次、历史修订和储存状态。`slice` / `slices` 查询原始历史，只读，不启动传感器或选择来源。单字段最多 1800 点，批次最多 4000 点。Shell 当前值与历史使用独立订阅，历史按 5 秒批取增量；冷启动分批读取，不在每帧通过 Binder 搬整份历史。
+
+旧 `instrument-history-v1.bin` 文件路径、格式和开机时间限制保持兼容；只是作者从 Shell 迁至 Core。导航派生指标复用 `NavigationReadingProjection`，不另造一套 XTE/目标距离语义。历史保存错误仍保留原文件，并通过现有 `ReadingTrace` 重试入口呈现。Core 进程被强制终止时，短图最近尚未刷入的最多约 5 秒仍可能缺失；不能将显示缓存说成逐样本航海黑匣子。
+
+航程正式采录另有 `recording-tail.json`：每条样本与累积统计先原子写入有界尾日志，再发布到地图；Room 批量提交利用既有 `(tripId, recordingSequence)` 唯一索引去重。恢复先重放尾日志、再恢复会话，保留原观测时间和质量，不将中断区间填成有效样本。轨迹在 Core 恢复、暂停/继续及来源变化处硬断段，即使缺口短于通常的 15 秒显示阈值也不能连线。该尾日志不是显示缓存，满盘不会通过丢弃旧点继续声称正在保存。

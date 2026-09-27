@@ -35,11 +35,12 @@ import javax.inject.Singleton
 /**
  * 唯一的进程内实现：窄端口委托同一个应用级 Controller，不另建来源、会话或仓库。
  * Job/同步调用表示原操作执行通道，不伪造领域确认；运行结果仍以 state 的真实状态为准。
- * 这里是旧后端适配边界，不是 Binder 服务，也不声明 APK/ROM 已有进程隔离。
+ * 这里只在默认 Core 构造；Shell 通过 runtime 模块的 Binder 适配访问，不在 UI 进程重建这些所有者。
  */
 @Singleton
 class LocalMarineServices @Inject constructor(
     private val controller: LegacyMarineController,
+    private val presentationRequests: com.yokuli.anchorwatch.runtime.MarinePresentationRequests,
     contentService: LocalMarineContentService,
     private val deviceViewOrientationProvider: com.yokuli.anchorwatch.location.vessel.DeviceViewOrientationProvider,
     private val tripRuntime: com.yokuli.anchorwatch.runtime.trip.TripRuntime,
@@ -75,7 +76,7 @@ class LocalMarineServices @Inject constructor(
         override fun pauseTripAttitude(): Job = controller.pauseTripAttitude()
         override fun endTrip(): ComponentName? = controller.endTrip()
         override val capturedMoments get() = tripRuntime.capturedMoments
-        override fun captureMoment(sessionId:Long,defaultName:String) = tripRuntime.captureMoment(sessionId,defaultName)
+        override fun captureMoment(sessionId:Long,defaultName:String,requestId:String) = tripRuntime.captureMoment(sessionId,defaultName,requestId)
         override fun restoreMoment(requestId:String) = tripRuntime.restoreMoment(requestId)
         override fun retryMoment(requestId:String) = tripRuntime.retryMoment(requestId)
         override fun editCapturedMoment(requestId:String,name:String,note:String,kind:String) = tripRuntime.editCapturedMoment(requestId,name,note,kind)
@@ -102,10 +103,10 @@ class LocalMarineServices @Inject constructor(
         override fun saveAnchorSetupDraft(value: AnchorSetupDraft): Unit = controller.saveAnchorSetupDraft(value)
         override fun clearAnchorSetupDraft(): Unit = controller.clearAnchorSetupDraft()
         override fun arm(lat: Double, lon: Double, input: AnchorWatchInput): Unit = controller.arm(lat, lon, input)
-        override fun requestArm(lat: Double, lon: Double, input: AnchorWatchInput): String = controller.requestArm(lat, lon, input)
-        override fun requestPauseWatch(sessionId: Long): String = controller.requestPauseWatch(sessionId)
-        override fun requestResumeWatch(sessionId: Long): String = controller.requestResumeWatch(sessionId)
-        override fun requestLiftAnchor(sessionId: Long): String = controller.requestLiftAnchor(sessionId)
+        override fun requestArm(lat: Double, lon: Double, input: AnchorWatchInput, requestId: String): String = controller.requestArm(lat, lon, input, requestId)
+        override fun requestPauseWatch(sessionId: Long, requestId: String): String = controller.requestPauseWatch(sessionId, requestId)
+        override fun requestResumeWatch(sessionId: Long, requestId: String): String = controller.requestResumeWatch(sessionId, requestId)
+        override fun requestLiftAnchor(sessionId: Long, requestId: String): String = controller.requestLiftAnchor(sessionId, requestId)
         override fun updateAnchorSettings(input: AnchorWatchInput): Unit = controller.updateAnchorSettings(input)
         override fun updateConditionGuards(config: ConditionGuardConfig): Unit = controller.updateConditionGuards(config)
         override fun pauseWatch(): ComponentName? = controller.pauseWatch()
@@ -166,6 +167,8 @@ class LocalMarineServices @Inject constructor(
     override val feedback: MarineFeedbackService = object : MarineFeedbackService {
         override val state: StateFlow<MainUiState> get() = controller.ui
         override val destinations: SharedFlow<MarineDestination> get() = controller.shellDestinations
+        override val presentationRequests: StateFlow<List<MarinePresentationRequest>> get() = this@LocalMarineServices.presentationRequests.state
+        override suspend fun acknowledgePresentation(id: String) { this@LocalMarineServices.presentationRequests.acknowledge(id) }
         override fun consumeRuntimeFeedback(id: Long): Unit = controller.consumeRuntimeFeedback(id)
     }
 

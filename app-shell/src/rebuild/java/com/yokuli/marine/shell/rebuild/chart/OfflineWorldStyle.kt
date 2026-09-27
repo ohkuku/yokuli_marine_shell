@@ -43,6 +43,23 @@ internal object OfflineWorldStyle {
             .put("minzoom", 5))
     }
 
+    /** 昏暗海图外的参考底图也使用相同亮度，避免夜间在覆盖边界突然出现亮白底。 */
+    fun applyPalette(layers:JSONArray,mode:com.yokuli.runtime.contract.chart.ChartColorMode):JSONArray {
+        if(mode==com.yokuli.runtime.contract.chart.ChartColorMode.DAY)return layers
+        val palette=ChartPalette.of(mode)
+        fun hex(color:Long)="#"+java.lang.Long.toHexString(color and 0xFFFFFF).padStart(6,'0')
+        for(i in 0 until layers.length()) {
+            val layer=layers.getJSONObject(i);val paint=layer.optJSONObject("paint") ?: continue
+            val id=layer.optString("id")
+            when {
+                paint.has("background-color")->paint.put("background-color",hex(palette.deep))
+                paint.has("fill-color")->paint.put("fill-color",hex(if(id.contains("lakes"))palette.deep else palette.land))
+                paint.has("line-color")->paint.put("line-color",hex(if(id.contains("coast")||id.contains("shore")||id.contains("rivers"))palette.contour else palette.faint))
+            }
+        }
+        return layers
+    }
+
     private fun layer(id: String, type: String, source: String?, paint: JSONObject) = JSONObject()
         .put("id", id).put("type", type).put("paint", paint)
         .apply { source?.let { put("source", it) } }

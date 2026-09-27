@@ -31,9 +31,20 @@ data class MapVessel(
     /** 航迹向量按一分钟航程绘制；低于 0.5 kn 时不绘制。 */
     val speedKnots: Double? = null,
 )
-enum class MapPointStyle { PIN, SOUNDING }
-data class MapPoint(val id: String, val point: GeoPoint, val label: String = "", val color: Long = 0xFF007F9B, val radiusDp: Float = 10f, val draggable: Boolean = false,val style:MapPointStyle=MapPointStyle.PIN)
-data class MapLine(val id: String, val points: List<GeoPoint>, val color: Long = 0xFF007F9B, val widthDp: Float = 3f, val dashed: Boolean = false)
+enum class MapPointStyle { PIN, SOUNDING, CHART_SYMBOL, CHART_LABEL }
+/** 原创航海符号样式；不改变对象身份，所有方位仍采用真北地理方向。 */
+enum class ChartSymbolKind { BUOY_CAN, BUOY_CONE, BUOY_SPHERE, BUOY_PILLAR, BEACON, CARDINAL, ISOLATED_DANGER, SAFE_WATER, SPECIAL_MARK, LIGHT, ROCK, WRECK, OBSTRUCTION, ANCHORAGE, CAUTION, LANDMARK, QUALITY, UNKNOWN }
+data class ChartSymbol(
+    val kind: ChartSymbolKind,
+    val secondaryColor: Long? = null,
+    val topmark: Int? = null,
+    val cardinal: Int? = null,
+    val dangerous: Boolean = false,
+    val uncertain: Boolean = false,
+    val haloColor: Long = 0xFFEFF4F2,
+)
+data class MapPoint(val id: String, val point: GeoPoint, val label: String = "", val color: Long = 0xFF007F9B, val radiusDp: Float = 10f, val draggable: Boolean = false,val style:MapPointStyle=MapPointStyle.PIN, val symbol:ChartSymbol?=null, val bold:Boolean=false, val haloColor:Long=0xEFFFFFFF, val priority:Int=100)
+data class MapLine(val id: String, val points: List<GeoPoint>, val color: Long = 0xFF007F9B, val widthDp: Float = 3f, val dashed: Boolean = false, val casing:Boolean=true)
 data class MapCircle(val id: String, val center: GeoPoint, val radiusMeters: Double, val color: Long = 0xFF007F9B, val dashed: Boolean = false)
 /** 实际观测区域，不表示水深或可安全航行范围。颜色的 alpha 表示观测密度或时间。 */
 data class MapArea(val id: String, val boundary: List<GeoPoint>, val color: Long, val holes:List<List<GeoPoint>> = emptyList())
@@ -154,6 +165,25 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     private val file = AtomicFile(File(context.filesDir, "map-source-v1.json"))
     private val mutex = Mutex()
     private val saved = runCatching { JSONObject(file.openRead().bufferedReader().use { it.readText() }) }.getOrNull()
+    /** 所有地图宿主共用一份矢量表现设置；规范水深以米保存，输入/显示遵循全局单位。 */
+    var portrayalPreferences by mutableStateOf(saved?.optJSONObject("portrayal")?.let { value ->
+        com.yokuli.runtime.contract.chart.ChartPortrayalPreferences(
+            category = com.yokuli.runtime.contract.chart.ChartDisplayCategory.entries.firstOrNull { it.name == value.optString("category") }
+                ?: com.yokuli.runtime.contract.chart.ChartDisplayCategory.STANDARD,
+            colorMode = com.yokuli.runtime.contract.chart.ChartColorMode.entries.firstOrNull { it.name == value.optString("colorMode") }
+                ?: com.yokuli.runtime.contract.chart.ChartColorMode.DAY,
+            shallowDepthMeters = value.optDouble("shallow", 2.0), safetyDepthMeters = value.optDouble("safety", 5.0),
+            deepDepthMeters = value.optDouble("deep", 30.0), fourDepthShades = value.optBoolean("fourShades", true),
+            showSoundings = value.optBoolean("soundings", true), showNames = value.optBoolean("names", true),
+            showLightSectors = value.optBoolean("lights", true), showQuality = value.optBoolean("quality", false),
+            respectScaleMinimum = value.optBoolean("scaleMinimum", true),
+        ).normalized()
+    } ?: com.yokuli.runtime.contract.chart.ChartPortrayalPreferences())
+        private set
+    fun updatePortrayal(value: com.yokuli.runtime.contract.chart.ChartPortrayalPreferences) {
+        portrayalPreferences = value.normalized()
+        select(source)
+    }
     private val savedType = saved?.optString("type") ?: legacy.optString("mapMode", "standard")
     private fun restored(): MapSource = when (savedType) {
         // 从同包名应用版升级时，纯 AOSP 不能恢复到依赖 Google Play services 的卫星图。
@@ -207,6 +237,11 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
         if (value is MapSource.CustomLayer) snapshot.put("id", value.layerId)
         snapshot.put("customId", customLayerId.orEmpty())
         snapshot.put("datasetIds", org.json.JSONArray(selectedDatasetIds))
+        val portrayal = portrayalPreferences
+        snapshot.put("portrayal", JSONObject().put("category", portrayal.category.name).put("colorMode", portrayal.colorMode.name)
+            .put("shallow", portrayal.shallowDepthMeters).put("safety", portrayal.safetyDepthMeters).put("deep", portrayal.deepDepthMeters)
+            .put("fourShades", portrayal.fourDepthShades).put("soundings", portrayal.showSoundings).put("names", portrayal.showNames)
+            .put("lights", portrayal.showLightSectors).put("quality", portrayal.showQuality).put("scaleMinimum", portrayal.respectScaleMinimum))
         scope.launch(Dispatchers.IO) {
             mutex.withLock {
                 if (generation != saveGeneration) return@withLock

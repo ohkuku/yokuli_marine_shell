@@ -57,6 +57,7 @@ sealed interface RuntimeCommand {
     data object RefreshLocalNmeaServer:RuntimeCommand
     data object StopAllNmeaSharing:RuntimeCommand
     data class Voyage(val requestId:String):RuntimeCommand
+    data class QueryAnchor(val requestId:String):RuntimeCommand
     data class QueryVoyage(val requestId:String):RuntimeCommand
     data class StartTrip(val name:String,val phoneMotionEnabled:Boolean=true,val positionPreference:VesselSourcePreference=VesselSourcePreference.AUTO):RuntimeCommand
     data object PauseTrip:RuntimeCommand
@@ -77,6 +78,7 @@ object RuntimeCommandParser {
     fun parse(intent:Intent?):RuntimeCommand{
         if(intent==null)return RuntimeCommand.RestoreOnly
         return when(intent.action){
+            AnchorCommandRegistry.QUERY_ACTION->RuntimeCommand.QueryAnchor(intent.getStringExtra(AnchorCommandRegistry.COMMAND_ID_EXTRA).orEmpty())
             VoyageCommandRegistry.ACTION->RuntimeCommand.Voyage(intent.getStringExtra(VoyageCommandRegistry.EXTRA_ID).orEmpty())
             VoyageCommandRegistry.QUERY_ACTION->RuntimeCommand.QueryVoyage(intent.getStringExtra(VoyageCommandRegistry.EXTRA_ID).orEmpty())
             "OS_RUNTIME_START"->RuntimeCommand.RefreshResidency

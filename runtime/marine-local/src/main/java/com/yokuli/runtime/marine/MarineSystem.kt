@@ -12,7 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,6 +20,8 @@ import javax.inject.Singleton
 /** 系统组合接口：应用通过窄领域端口工作，不取得本地控制器。 */
 interface MarineSystem : RuntimeEndpoint {
     val residency: RuntimeResidencyService
+    val presentation: RuntimePresentationService
+    val readingHistory: com.yokuli.anchorwatch.api.ReadingHistoryService
     val charts: com.yokuli.runtime.contract.chart.ChartDataService
     val navigation: com.yokuli.runtime.contract.navigation.NavigationSessionService
     val analysis: com.yokuli.runtime.contract.planning.RouteAnalysisService
@@ -30,10 +32,12 @@ interface MarineSystem : RuntimeEndpoint {
     val ais: com.yokuli.runtime.contract.ais.AisTrafficService
 }
 
-/** ROM 与普通 APK 共用此实现；可替换传输，但当前仍是同进程、同 UID。 */
+/** 默认进程唯一 Core 组合根；Shell 进程只能取得 BinderMarineSystem。 */
 @Singleton
 class InProcessMarineSystem @Inject constructor(
     override val residency: LocalRuntimeResidencyService,
+    override val presentation: LocalRuntimePresentationService,
+    override val readingHistory: com.yokuli.runtime.marine.history.LocalReadingHistoryService,
     override val services: LocalMarineServices,
     override val charts: com.yokuli.runtime.marine.chart.LocalChartDataService,
     override val navigation: com.yokuli.runtime.marine.navigation.LocalNavigationSessionService,
@@ -45,8 +49,12 @@ class InProcessMarineSystem @Inject constructor(
     override val planning: com.yokuli.runtime.contract.planning.RoutePlanningService get() = passages
     private val systemScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val identity = RuntimeConnection("yokuli.marine", RuntimeTransport.IN_PROCESS, RuntimeReadiness.INITIALIZING)
-    override val connection: StateFlow<RuntimeConnection> = services.state.map {
-        identity.copy(readiness = if (it.settingsReady) RuntimeReadiness.READY else RuntimeReadiness.INITIALIZING)
+    override val connection: StateFlow<RuntimeConnection> = combine(services.state, residency.state) { state, recovery ->
+        identity.copy(readiness = when {
+            recovery.recoveryProblem != null -> RuntimeReadiness.UNAVAILABLE
+            state.settingsReady && recovery.recoveryReady -> RuntimeReadiness.READY
+            else -> RuntimeReadiness.INITIALIZING
+        }, reason = recovery.recoveryProblem)
     }.stateIn(systemScope, SharingStarted.Eagerly, identity)
     override val voyage: VoyageSessionService = VoyageSessionCoordinator(services, systemScope)
 }
@@ -55,7 +63,14 @@ class InProcessMarineSystem @Inject constructor(
 @InstallIn(SingletonComponent::class)
 object MarineSystemBindings {
     @Provides @Singleton
-    fun system(local: InProcessMarineSystem): MarineSystem = local
+    fun system(
+        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
+        local: dagger.Lazy<InProcessMarineSystem>,
+    ): MarineSystem = when {
+        com.yokuli.runtime.marine.ipc.MarineCoreProcess.isShell() -> com.yokuli.runtime.marine.ipc.BinderMarineSystem.shared(context)
+        com.yokuli.runtime.marine.ipc.MarineCoreProcess.isCore(context) -> local.get()
+        else -> error("This process cannot own or instantiate Marine Core")
+    }
     @Provides @Singleton
-    fun content(local: com.yokuli.anchorwatch.api.LocalMarineContentService): com.yokuli.anchorwatch.api.MarineContentService = local
+    fun content(system: MarineSystem): com.yokuli.anchorwatch.api.MarineContentService = system.services.content
 }

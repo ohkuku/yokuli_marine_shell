@@ -61,7 +61,7 @@ internal fun selectChartFolder(os:OsStore,id:String?):Boolean {
 
 @Composable internal fun ChartSourceSaveStatus(os:OsStore) {
     if(os.maps.saveFailed) {
-        Label(os.t("背景设置尚未保存","Background settings are not saved"),13,LocalMetro.current.accentText)
+        Label(os.t("海图设置尚未保存","Chart settings are not saved"),13,LocalMetro.current.accentText)
         MetroButton(os.t("重试保存","Retry saving"),{os.maps.select(os.maps.source)})
     }
 }

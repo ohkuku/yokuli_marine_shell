@@ -1,6 +1,6 @@
 # 02 · 领域所有权、数据字典与服务协议
 
-本章同时维护**当前所有权/接入路径**与**后续全域协议设计**。通知领域已通过版本化 Binder 接入同包消息进程，完整海事运行时及第三方 SDK 仍未迁移；具体边界见 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。下方标为“计划”的通用 schema 仍是设计，不能冒充已编译声明。实际签名以 [API 索引](../product/API_INDEX.md) 和链接生产代码为准。
+本章同时维护**当前所有权/接入路径**与**后续全域协议设计**。通知领域已接入同包消息进程，MarineSystem 窄端口已通过私有 Binder 接入默认 Core，第三方 SDK 与独立 UID 仍未实现；具体边界见 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。下方标为“计划”的通用 schema 仍是设计，不能冒充已编译声明。实际签名以 [API 索引](../product/API_INDEX.md) 和链接生产代码为准。
 
 ## 一份事实对应一个所有者
 
@@ -253,7 +253,7 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 
 纯类型在 `core:runtime-contract/.../notification/NotificationContract.kt`。消息发布为 `NotificationClient.execute(NoticeCommand(...))`，读方订阅 `snapshot` 和 `connection`；`NoticeTarget(domain, objectType, objectId, section)` 传对象描述，Shell 才把它映射为已有白名单地址。请求与结果都保留 requestId；`COMPLETED` 指落盘完成，`UNKNOWN` 通过 `result(requestId)` 查询原请求，不能自动重新发布。真实消费者为 `SystemNotificationStore` 与 `NotificationCenter`，详情见 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。
 
-此模式不是要求新功能都走通知 Binder：守锚仍使用自身命令回执，AIS 仍使用唯一交通服务，导航已经迁出 Shell，由 `MarineSystem.navigation` 提供进程内唯一执行会话。它说明契约、真实执行、客户端和旧路径退出必须一起完成。
+此模式不是要求新功能都走通知 Binder：守锚仍使用自身命令回执，AIS 仍使用唯一交通服务，导航已经迁出 Shell，由 `MarineSystem.navigation` 经 Binder 访问默认 Core 的唯一执行会话。它说明契约、真实执行、客户端和旧路径退出必须一起完成。
 
 
 ## 当前导航与数据规划窄端口
@@ -264,4 +264,11 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 - 浏览端口 `browse(snapshotId, filter, limit, afterId)`、`readFeature(snapshotId, featureId)`、空间 `query` 与数值栅格 `rasterWindows` 复用同一冻结版本；前者按稳定 ID 分页，栅格按有界原像元窗口读取。对象页面持有并释放快照，运行时另保留正在读取的临时租约，取消读取不能抢删其索引；UI 不取得 SQLite / DAO。
 - `PassagePlanningEligibility` 只给资料状态及原因，目录层 `CHECK_REQUIRED` 不等于区域可搜索。服务读取实际覆盖与深度后才有 `READY`；无资料时自动规划停止于门槛，手动绘线 / 导航保持独立。选中文件夹内的多份资料按内部单元优先级和尺度合并，不混入其他文件夹或未选资料。LINZ/GEBCO 的参考来源限制由解析器保存，即使登记分析许可，也只能得到需核对的离线参考建议，不能由 UI 覆盖成 ENC。
 - `RouteAnalysisService` 与 `RoutePlanningService` 由同一个持久工作区提供。候选接受是内容/导航原有写端口的操作，规划服务没有开启导航、记录、AIS 发送或操舵的权限。
-- 当前导航、图册数据和规划均接入 `InProcessMarineSystem`。窄合同已经实际消费；仍是同进程实现，尚未提供对应 Binder 服务。完整格式、图幅语义与未知条件规则见 [海图契约](../product/CHART_INTERACTION_CONTRACT.md)。
+- 当前导航、图册数据和规划均由默认进程 `InProcessMarineSystem` 持有；`:shell` 的窄合同已经经 `BinderMarineSystem` 实际消费，不在 Shell 重新创建所有者。完整格式、图幅语义与未知条件规则见 [海图契约](../product/CHART_INTERACTION_CONTRACT.md)。
+
+
+### 新增端口的进程接入要求
+
+生产入口现在有 Core / Shell / 通知三种进程角色。新增业务端口必须在 `MarineSystem` 的默认组合根注入唯一所有者，并在 `MarineCorePorts` 固定接口表/目标映射中注册；sealed DTO 必须显式列入 `MarineCoreCodec`，不能传任意 class 名。提供真实初始读模型、断线语义和有界订阅，资源型返回值必须实现 client-death 释放。写命令持久化后才确认，重连不能自动重播。兼容 Job/Room DTO 是同 APK 过渡边界，新公共接口仍使用纯契约。
+
+Shell 设置依旧属于 Shell；通知单位采用 `RuntimePresentationService.updateUnits` 投影给 Core，而非从后台构造 OsStore。文件导出归领域生产，Android 分享/设置页面归前台宿主，通过 `MarineFeedbackService.presentationRequests/acknowledgePresentation` 交接。禁止默认 Core 直接启动新 UI 来绕过后台限制。

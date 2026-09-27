@@ -18,7 +18,28 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** A single system presentation of domain alarms. It does not own their thresholds or lifetimes. */
 @Composable fun SystemMarineAlerts(os:OsStore) {
-    val services=os.marine?.services?:return
+    val system=os.marine?.system?:return
+    val connection by system.connection.collectAsState()
+    var connectionNotice by remember { mutableStateOf(false) }
+    LaunchedEffect(connection.readiness) {
+        connectionNotice = false
+        if (connection.readiness != com.yokuli.runtime.contract.RuntimeReadiness.READY) {
+            kotlinx.coroutines.delay(800)
+            connectionNotice = true
+        }
+    }
+    if (connection.readiness != com.yokuli.runtime.contract.RuntimeReadiness.READY) {
+        if (connectionNotice) Box(Modifier.fillMaxSize()) {
+            Column(Modifier.align(Alignment.BottomCenter).padding(horizontal=20.dp,vertical=8.dp)
+                .fillMaxWidth().background(LocalMetro.current.panel)
+                .clickable { os.openSystemDestination("settings:permissions") }.padding(12.dp)) {
+                Label(os.t("正在连接航行核心", "Connecting to Marine Core"), 15)
+                Label(os.t("保留上次画面，实时保护状态尚未确认 · 查看", "Last view retained; live protection is not confirmed · details"), 12, LocalMetro.current.muted)
+            }
+        }
+        return
+    }
+    val services=system.services
     // 系统警报仍即时订阅变化；与警报无关的高频姿态/网络字段无需反复组合覆盖层。
     val state by remember(services) {services.state.distinctUntilChanged {old,new->
         old.active==new.active&&old.alarmSnapshot==new.alarmSnapshot&&old.conditions==new.conditions&&

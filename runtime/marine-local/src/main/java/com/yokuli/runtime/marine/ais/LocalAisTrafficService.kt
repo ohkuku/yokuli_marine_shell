@@ -47,6 +47,7 @@ class LocalAisTrafficService @Inject constructor(
     private val notifications: NotificationCoordinator,
     private val resources: RuntimeResourceManager,
     private val residency: com.yokuli.anchorwatch.runtime.RuntimeResidencyRepository,
+    private val recovery: com.yokuli.anchorwatch.runtime.MarineRecoveryBarrier,
 ) : AisTrafficService {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val guard = Mutex()
@@ -88,6 +89,15 @@ class LocalAisTrafficService @Inject constructor(
             }
         }
         scope.launch {
+            while (isActive) {
+                try { recovery.ensureRecovered(); break }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) {
+                    foregroundError = "MARINE_RECOVERY_BLOCKED: ${error.message}"
+                    _snapshot.value = _snapshot.value.copy(runtime = _snapshot.value.runtime.copy(ready = false, foregroundError = foregroundError))
+                    delay(10_000)
+                }
+            }
             guard.withLock {
                 runCatching { withContext(Dispatchers.IO) {
                     File(context.filesDir,"ais/background-start-error.txt").takeIf{it.isFile&&it.length()<=512}?.let {
@@ -247,6 +257,7 @@ class LocalAisTrafficService @Inject constructor(
         ContextCompat.checkSelfPermission(context,Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED
 
     private fun reconcileService(retry: Boolean) {
+        if (!residency.state.value.recoveryReady) return
         if (residency.explicitlyStopped || !saved.preferences.monitoringEnabled) {
             serviceRequested = false
             foregroundError = null

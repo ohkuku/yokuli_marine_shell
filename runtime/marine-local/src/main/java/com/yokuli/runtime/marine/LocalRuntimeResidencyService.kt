@@ -27,6 +27,7 @@ class LocalRuntimeResidencyService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: RuntimeResidencyRepository,
     private val coordinator: YokuliRuntimeCoordinator,
+    private val recovery: com.yokuli.anchorwatch.runtime.MarineRecoveryBarrier,
     private val navigation: LocalNavigationSessionService,
     private val ais: LocalAisTrafficService,
 ) : RuntimeResidencyService {
@@ -51,6 +52,13 @@ class LocalRuntimeResidencyService @Inject constructor(
             }
         } }
     }
+    override suspend fun retryRecovery(): Boolean = try {
+        recovery.retryRecovery()
+        navigation.retryRead()
+        true
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { false }
+
     override suspend fun exit(): RuntimeExitResult {
         lifecycleGeneration.incrementAndGet()
         return withContext(NonCancellable + Dispatchers.Default) { mutex.withLock {

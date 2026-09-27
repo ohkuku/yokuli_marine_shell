@@ -71,7 +71,7 @@ private fun ChartFeaturePage.forList(os:OsStore)=LibraryObjectPage(features.map 
             awaitCancellation()
         }catch(cancel:CancellationException) {throw cancel}
         catch(failure:Exception) {if(openingGeneration==generation)openingError=chartDataError(os,failure.message ?: "CHART_READ_FAILED")}
-        finally {if(openingGeneration==generation)opening=false;lease?.let {withContext(NonCancellable) {service.releaseSnapshot(it.id)}}}
+        finally {if(openingGeneration==generation)opening=false;lease?.let {withContext(NonCancellable) {runCatching { kotlinx.coroutines.withTimeout(1500) { service.releaseSnapshot(it.id) } }}}}
     }
     LaunchedEffect(snapshot?.id,filter,os.chinese) {
         val generation=++pageGeneration

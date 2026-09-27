@@ -49,18 +49,22 @@ class TripRuntime @Inject constructor(
     private val publisher:PhonePositionNmeaOutputRuntime,
     private val tripTrack:TripTrackRepository,
     private val momentJournal:TripMomentJournal,
+    private val diagnostics:RuntimeDiagnosticsRepository,
 ){
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
     private val mutex=Mutex()
     @Volatile private var active:TripSessionEntity?=null
+    @Volatile private var runtimeAttached=false
     private var ticker:Job?=null
     private var lastFlushElapsed=0L
+    private var recordingWriteBlocked=false
     private var lastPosition:VesselPosition?=null
     private var lastPositionAt:Long?=null
     private var lastRecordedPositionSource:String?=null
     private var lastRecordedHeadingSource:String?=null
     private var lastRecordedWindSource:String?=null
     private var positionGapOpen:Boolean?=null
+    private var nextTrackSegment=true
     private var lastImpactElapsed:Long?=null
     private var phoneMotionRecordingAllowed=false
     @Volatile private var systemPhoneSelected=false
@@ -77,7 +81,7 @@ class TripRuntime @Inject constructor(
     @Volatile private var selectedCustomBindings:Map<String,DashboardTileBinding> = emptyMap()
 
     init{
-        scope.launch{appSettings.settings.collect{value->systemPhoneSelected=value.gpsDataSource==com.yokuli.anchorwatch.domain.model.GpsDataSource.SYSTEM;if(active?.paused==false)setResourceRequirement(nmeaTransportOwned)}}
+        scope.launch{appSettings.settings.collect{value->systemPhoneSelected=value.gpsDataSource==com.yokuli.anchorwatch.domain.model.GpsDataSource.SYSTEM;if(runtimeAttached&&active?.paused==false)setResourceRequirement(nmeaTransportOwned)}}
         scope.launch{dashboards.decoded.collect{pages->selectedCustomBindings=TripCustomMetricRecordingPolicy.bindings(pages)}}
     }
 
@@ -97,12 +101,14 @@ class TripRuntime @Inject constructor(
     fun activeSession()=active
 
     suspend fun restore():TripSessionEntity?=mutex.withLock{
+        check(!writer.flush().writeFailed){"RECORDING_TAIL_RECOVERY_FAILED"}
         val existing=dao.active()?:run{
             // A per-trip override must never leak into a new session after a
             // clean process restore with no durable active Trip.
             hub.setTripPositionPreference(null)
             return@withLock null
         }
+        runtimeAttached=true
         hub.setTripPositionPreference(runCatching{VesselSourcePreference.valueOf(existing.positionPreference)}.getOrDefault(VesselSourcePreference.AUTO))
         val restored=existing.copy(restoredAfterProcessDeath=true,eventCount=existing.eventCount+1)
         nextRecordingSequence=dao.maxRecordingSequence(existing.id)
@@ -136,7 +142,7 @@ class TripRuntime @Inject constructor(
         active
     }
 
-    suspend fun start(name:String,nmeaState:NmeaConnectionState,phoneMotionRequested:Boolean=true,positionPreference:VesselSourcePreference=VesselSourcePreference.AUTO):TripRuntimeResult=mutex.withLock{
+    suspend fun start(name:String,nmeaState:NmeaConnectionState,phoneMotionRequested:Boolean=true,positionPreference:VesselSourcePreference=VesselSourcePreference.AUTO,commandId:String?=null):TripRuntimeResult=mutex.withLock{
         if(active!=null)return@withLock TripRuntimeResult(false,"A Trip Watch session is already open.",active)
         val app=appSettings.settings.first()
         val vessel=vesselSettings.settings.first()
@@ -172,8 +178,9 @@ class TripRuntime @Inject constructor(
             }
         }}
         if(readyPosition==null){hub.setTripPositionPreference(null);releaseOwnedResources();return@withLock TripRuntimeResult(false,"The selected ${if(safePositionPreference==VesselSourcePreference.BOAT)"Boat NMEA" else if(safePositionPreference==VesselSourcePreference.PHONE)"Phone GPS" else "automatic"} position did not become fresh within 12 seconds. No Trip session was created.")}
-        val id=try{dao.insertSessionAndEvent(value,TripEventEntity(tripId=0,timestamp=now,type="TRIP_STARTED",severity="INFO",detailJson="{\"phoneMotionRequested\":$phoneMotionRequested,\"phoneMotionEnabled\":$motionEnabled,\"mountCalibrationVersion\":${calibration.version.takeIf{motionEnabled}?:"null"}}"))}
+        val id=try{dao.insertSessionAndEvent(value,TripEventEntity(tripId=0,timestamp=now,type="TRIP_STARTED",severity="INFO",detailJson="{\"phoneMotionRequested\":$phoneMotionRequested,\"phoneMotionEnabled\":$motionEnabled,\"mountCalibrationVersion\":${calibration.version.takeIf{motionEnabled}?:"null"}}"),commandId)}
         catch(error:Exception){hub.setTripPositionPreference(null);releaseOwnedResources();throw error}
+        runtimeAttached=true
         active=value.copy(id=id,eventCount=1)
         nextRecordingSequence=0L
         tripTrack.begin(id)
@@ -187,17 +194,17 @@ class TripRuntime @Inject constructor(
         TripRuntimeResult(true,"Trip recording started.",active)
     }
 
-    suspend fun pause():TripRuntimeResult{
+    suspend fun pause(commandId:String?=null):TripRuntimeResult{
         stopTicker()
         return mutex.withLock{
             val current=active?:return@withLock TripRuntimeResult(false,"No active Trip Watch.")
-            if(current.paused)return@withLock TripRuntimeResult(true,"Trip is already paused.",current)
+            if(current.paused){dao.insertCommandEffect(current.id,System.currentTimeMillis(),commandId,"PAUSE");return@withLock TripRuntimeResult(true,"Trip is already paused.",current)}
             val flush=try{flushLocked()}catch(error:Exception){startTicker();throw error}
             if(flush.writeFailed){startTicker();return@withLock TripRuntimeResult(false,"Buffered samples could not be written. Trip recording is still running; check storage and try Pause again.",current)}
             val latest=active?:current
             val now=System.currentTimeMillis()
             val updated=latest.copy(paused=true,pausedAt=now,eventCount=latest.eventCount+1)
-            try{dao.updateSessionAndInsertEvent(updated,TripEventEntity(tripId=latest.id,timestamp=now,type="TRIP_PAUSED",severity="INFO"))}
+            try{dao.updateCommandSession(updated,TripEventEntity(tripId=latest.id,timestamp=now,type="TRIP_PAUSED",severity="INFO"),commandId,"PAUSE")}
             catch(error:Exception){startTicker();throw error}
             active=updated
             releaseOwnedResources()
@@ -206,9 +213,9 @@ class TripRuntime @Inject constructor(
         }
     }
 
-    suspend fun resume():TripRuntimeResult=mutex.withLock{
+    suspend fun resume(commandId:String?=null):TripRuntimeResult=mutex.withLock{
         val current=active?:return@withLock TripRuntimeResult(false,"No active Trip Watch.")
-        if(!current.paused)return@withLock TripRuntimeResult(true,"Trip is already recording.",current)
+        if(!current.paused){dao.insertCommandEffect(current.id,System.currentTimeMillis(),commandId,"RESUME");return@withLock TripRuntimeResult(true,"Trip is already recording.",current)}
         val now=System.currentTimeMillis()
         val updated=current.copy(
             paused=false,
@@ -217,7 +224,7 @@ class TripRuntime @Inject constructor(
             eventCount=current.eventCount+1,
         )
         hub.setTripPositionPreference(runCatching{VesselSourcePreference.valueOf(updated.positionPreference)}.getOrDefault(VesselSourcePreference.AUTO))
-        try{ownResources(updated);dao.updateSessionAndInsertEvent(updated,TripEventEntity(tripId=current.id,timestamp=now,type="TRIP_RESUMED",severity="INFO"))}
+        try{ownResources(updated);dao.updateCommandSession(updated,TripEventEntity(tripId=current.id,timestamp=now,type="TRIP_RESUMED",severity="INFO"),commandId,"RESUME")}
         catch(error:Exception){releaseOwnedResources();throw error}
         active=updated
         resetRecordingEdges()
@@ -255,7 +262,7 @@ class TripRuntime @Inject constructor(
         TripRuntimeResult(true,"Trip attitude paused; other trip data continues.",updated)
     }
 
-    suspend fun end():TripRuntimeResult{
+    suspend fun end(commandId:String?=null):TripRuntimeResult{
         stopTicker()
         return mutex.withLock{
             val current=active?:return@withLock TripRuntimeResult(false,"No active Trip Watch.")
@@ -264,7 +271,7 @@ class TripRuntime @Inject constructor(
             val latest=active?:current
             val now=System.currentTimeMillis()
             val ended=TripSessionTiming.end(latest,now)
-            try{dao.updateSessionAndInsertEvent(ended,TripEventEntity(tripId=current.id,timestamp=now,type="TRIP_ENDED",severity="INFO"))}
+            try{dao.updateCommandSession(ended,TripEventEntity(tripId=current.id,timestamp=now,type="TRIP_ENDED",severity="INFO"),commandId,"FINISH")}
             catch(error:Exception){if(!current.paused)startTicker();throw error}
             active=null
             hub.setTripPositionPreference(null)
@@ -310,8 +317,13 @@ class TripRuntime @Inject constructor(
     }
 
     /** 点击即捕获，页面不提供船位/时间；暂停只补记，不启动采集或恢复记录。 */
-    fun captureMoment(sessionId:Long, name:String):String {
-        val id = java.util.UUID.randomUUID().toString()
+    fun captureMoment(sessionId:Long, name:String,requestId:String=java.util.UUID.randomUUID().toString()):String {
+        val id=requestId
+        momentToken(id)
+        synchronized(momentLock){momentReceipts.value.firstOrNull{it.requestId==id}?.let{existing->
+            require(existing.event?.tripId==null||existing.event.tripId==sessionId){"REQUEST_ID_PAYLOAD_MISMATCH"}
+            return id
+        }}
         val current = active
         val event = captureTripMoment(id, sessionId, name, current?.takeIf { it.id == sessionId }?.paused ?: true, hub.snapshot.value)
         publishMoment(TripMomentReceipt(id, event))
@@ -335,8 +347,9 @@ class TripRuntime @Inject constructor(
         scope.launch(Dispatchers.IO) {
             try {
                 mutex.withLock {
-                    val capturedEvent = captured ?: momentJournal.read(id)
-                    if(captured!=null)momentJournal.save(id,captured)
+                    val previousCapture=momentJournal.read(id)
+                    val capturedEvent = if(captured!=null&&captured.id>0)captured else previousCapture?:captured
+                    if(capturedEvent!=null)momentJournal.save(id,capturedEvent)
                     val existing = dao.capturedMoment(momentToken(id))
                     if (existing != null) {
                         // 已接受的备注保存也有持久草稿；恢复时仅合并用户字段，保留数据库原始观测。
@@ -409,6 +422,7 @@ class TripRuntime @Inject constructor(
     }
 
     fun shutdown(){
+        runtimeAttached=false
         stopTicker()
         runBlocking(Dispatchers.IO){withTimeoutOrNull(2_000){mutex.withLock{flushLocked()}}}
         hub.setTripPositionPreference(null)
@@ -469,14 +483,20 @@ class TripRuntime @Inject constructor(
         ticker=scope.launch{
             while(isActive){
                 val started=SystemClock.elapsedRealtime()
-                try{mutex.withLock{recordLocked()}}
+                try{
+                    mutex.withLock{recordLocked()}
+                    if(recordingWriteBlocked){recordingWriteBlocked=false;diagnostics.recordUserFeedback("Recording resumed","Storage is writable again. The interrupted interval remains a gap.",false,chineseTitle="记录已恢复",chineseMessage="储存已恢复可写，中断期间保留为数据缺口。")}
+                }
                 catch(cancelled:CancellationException){throw cancelled}
-                catch(_:Exception){delay(TripSampleWriter.MIN_FLUSH_RETRY_MILLIS)}
+                catch(_:Exception){
+                    if(!recordingWriteBlocked){recordingWriteBlocked=true;diagnostics.recordUserFeedback("Recording needs attention","Storage is unavailable. Saved samples are retained; new samples cannot be saved until storage recovers.",true,chineseTitle="航行记录需要处理",chineseMessage="储存暂不可用。已保存的记录保留，恢复可写前无法保存新数据。")}
+                    delay(TripSampleWriter.MIN_FLUSH_RETRY_MILLIS)
+                }
                 delay((500-(SystemClock.elapsedRealtime()-started)).coerceAtLeast(50))
             }
         }
     }
-    private suspend fun recordLocked(){val session=active?.takeIf{!it.paused}?:return;val nowWall=System.currentTimeMillis();val now=SystemClock.elapsedRealtime();val snapshot=hub.snapshot.value;val sample=sample(session,snapshot,nowWall,now,++nextRecordingSequence);tripTrack.appendLive(sample);val overflow=writer.enqueue(sample);var newEvents=0
+    private suspend fun recordLocked(){val session=active?.takeIf{!it.paused&&runtimeAttached}?:return;if(writer.size()>=TripSampleWriter.MAX_QUEUE)check(!flushLocked().writeFailed){"RECORDING_STORAGE_FULL"};val nowWall=System.currentTimeMillis();val now=SystemClock.elapsedRealtime();val snapshot=hub.snapshot.value;val sample=sample(session,snapshot,nowWall,now,++nextRecordingSequence);var newEvents=0
         val bindings=selectedCustomBindings
         // Dashboard visibility is intentionally independent from persistence:
         // only fields explicitly marked "Record in Trips" reach Room.
@@ -507,16 +527,21 @@ class TripRuntime @Inject constructor(
         }
         var current=session.copy(eventCount=session.eventCount+newEvents)
         val position=snapshot.position.currentOrHeldValue();val previous=lastPosition;val previousAt=lastPositionAt;val currentSog=snapshot.sogKnots.currentOrHeldValue();if(position!=null&&previous!=null){val distance=AnchorGeometry.distanceMeters(previous.latitude,previous.longitude,position.latitude,position.longitude).takeIf{it<500}?:0.0;current=current.copy(distanceMeters=current.distanceMeters+distance,movingDurationMillis=current.movingDurationMillis+if((currentSog?:0.0)>=.5)(previousAt?.let{(now-it).coerceIn(0,2_000)}?:0)else 0)};if(position!=null){lastPosition=position;lastPositionAt=now}else{lastPosition=null;lastPositionAt=null}
-        current=current.copy(sampleCount=current.sampleCount+1,maxSogKnots=max(current.maxSogKnots,sample.sogKnots),maxAbsHeelDegrees=max(current.maxAbsHeelDegrees,sample.heelDegrees?.takeIf{sample.attitudeQuality==VesselDataQuality.GOOD.name&&!sample.attitudeMountSuspect}?.let(::abs)),minDepthMeters=min(current.minDepthMeters,sample.depthMeters),minUkcMeters=min(current.minUkcMeters,sample.ukcMeters));active=current
+        current=current.copy(sampleCount=current.sampleCount+1,maxSogKnots=max(current.maxSogKnots,sample.sogKnots),maxAbsHeelDegrees=max(current.maxAbsHeelDegrees,sample.heelDegrees?.takeIf{sample.attitudeQuality==VesselDataQuality.GOOD.name&&!sample.attitudeMountSuspect}?.let(::abs)),minDepthMeters=min(current.minDepthMeters,sample.depthMeters),minUkcMeters=min(current.minUkcMeters,sample.ukcMeters))
+        val overflow=writer.enqueue(sample,current)
+        active=current
+        tripTrack.appendLive(sample,nextTrackSegment)
+        nextTrackSegment=false
         if(overflow){dao.insertEvent(TripEventEntity(tripId=session.id,timestamp=nowWall,type="DATA_WRITE_BACKPRESSURE",severity="WARNING"));incrementEvent()}
         val sinceFlush=now-lastFlushElapsed
-        if(sinceFlush>=TripSampleWriter.FLUSH_MILLIS||(writer.size()>=TripSampleWriter.FLUSH_SIZE&&sinceFlush>=TripSampleWriter.MIN_FLUSH_RETRY_MILLIS))flushLocked()
+        if(sinceFlush>=TripSampleWriter.FLUSH_MILLIS||(writer.size()>=TripSampleWriter.FLUSH_SIZE&&sinceFlush>=TripSampleWriter.MIN_FLUSH_RETRY_MILLIS))check(!flushLocked().writeFailed){"RECORDING_BATCH_WRITE_FAILED"}
     }
-    private suspend fun flushLocked():com.yokuli.anchorwatch.data.trip.TripWriterResult{val current=active;val result=writer.flush();if(!result.writeFailed&&result.persistedValues.isNotEmpty())tripTrack.markPersisted(result.persistedValues);if(current!=null&&result.written+result.dropped>0){active=current.copy(droppedSampleCount=current.droppedSampleCount+result.dropped);dao.updateSession(requireNotNull(active))};lastFlushElapsed=SystemClock.elapsedRealtime();return result}
+    private suspend fun flushLocked():com.yokuli.anchorwatch.data.trip.TripWriterResult{val current=active;val result=writer.flush();if(!result.writeFailed&&result.persistedValues.isNotEmpty())tripTrack.markPersisted(result.persistedValues);if(current!=null&&result.dropped>0){active=current.copy(droppedSampleCount=current.droppedSampleCount+result.dropped);dao.updateSession(requireNotNull(active))};lastFlushElapsed=SystemClock.elapsedRealtime();return result}
     private suspend fun incrementEvent(){active?.let{current->active=current.copy(eventCount=current.eventCount+1);dao.updateSession(requireNotNull(active))}}
     private fun resetRecordingEdges(){
         lastPosition=null
         lastPositionAt=null
+        nextTrackSegment=true
         lastRecordedPositionSource=null
         lastRecordedHeadingSource=null
         lastRecordedWindSource=null

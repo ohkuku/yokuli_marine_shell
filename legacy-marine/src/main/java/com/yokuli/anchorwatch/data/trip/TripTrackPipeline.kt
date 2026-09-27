@@ -27,6 +27,8 @@ data class TripTrackPoint(
     val positionSourceKey:String?=null,
     /** 中文：旧记录缺少年龄或质量元数据时保留离散位置，不能补造连续测量。 */
     val positionContinuityKnown:Boolean=true,
+    /** Core 恢复、暂停或选源事件构成硬断点，即使时间间隔很短也不能连线。 */
+    val beginsSegment:Boolean=false,
 ){
     val stableKey:String get()="$tripId:$recordingSequence"
     val hasPosition:Boolean get()=latitude?.isFinite()==true&&longitude?.isFinite()==true&&latitude in -90.0..90.0&&longitude in -180.0..180.0
@@ -159,7 +161,7 @@ object TripTrackRenderPolicy{
             val prior=previous
             val alreadySegmented=prior?.compactedSegmentKey!=null&&prior.compactedSegmentKey==point.compactedSegmentKey
             val discontinuity=prior!=null&&!alreadySegmented&&(
-                point.timestamp-prior.timestamp !in 0L..GAP_MILLIS||
+                point.beginsSegment||point.timestamp-prior.timestamp !in 0L..GAP_MILLIS||
                     point.positionSourceKey!=prior.positionSourceKey||
                     AnchorGeometry.distanceMeters(requireNotNull(prior.latitude),requireNotNull(prior.longitude),requireNotNull(point.latitude),requireNotNull(point.longitude))>
                     maxOf(ABSOLUTE_JUMP_METERS,(point.timestamp-prior.timestamp).coerceAtLeast(1L)/1_000.0*50.0)
@@ -210,8 +212,8 @@ class TripTrackRepository @Inject constructor(private val dao:TripDao){
 
     suspend fun clear(){mutex.withLock{persisted.clear();persistedRendered=emptyList();tail.clear();revision++;_snapshot.value=TripTrackSnapshot(historicalRevision=revision)}}
 
-    suspend fun appendLive(sample:TripSampleEntity)=mutex.withLock{
-        val point=sample.trackPoint()
+    suspend fun appendLive(sample:TripSampleEntity,beginsSegment:Boolean=false)=mutex.withLock{
+        val point=sample.trackPoint().copy(beginsSegment=beginsSegment)
         if(_snapshot.value.tripId!=sample.tripId){persisted.clear();persistedRendered=emptyList();tail.clear();_snapshot.value=TripTrackSnapshot(tripId=sample.tripId,hydrated=true,historicalRevision=revision)}
         tail[point.stableKey]=point
         while(tail.size>MAX_LIVE_TAIL_POINTS)tail.remove(tail.keys.first())
@@ -222,7 +224,7 @@ class TripTrackRepository @Inject constructor(private val dao:TripDao){
         if(values.isEmpty())return@withLock
         val tripId=values.first().tripId
         if(_snapshot.value.tripId!=tripId){persisted.clear();persistedRendered=emptyList();tail.clear();_snapshot.value=TripTrackSnapshot(tripId=tripId,hydrated=true,historicalRevision=revision)}
-        values.forEach{sample->val point=sample.trackPoint();tail.remove(point.stableKey);persisted+=point}
+        values.forEach{sample->val point=sample.trackPoint();val live=tail.remove(point.stableKey);persisted+=point.copy(beginsSegment=live?.beginsSegment==true)}
         persisted=bounded(persisted).toMutableList();persistedRendered=TripTrackRenderPolicy.render(persisted,MAX_PERSISTED_RENDER_POINTS);revision++;publish(true)
     }
 
@@ -240,10 +242,15 @@ class TripTrackRepository @Inject constructor(private val dao:TripDao){
 
     private suspend fun loadCanonical(tripId:Long,limit:Int)=withContext(Dispatchers.IO){
         var afterTimestamp=Long.MIN_VALUE;var afterId=Long.MIN_VALUE;val accumulator=mutableListOf<TripTrackPoint>()
+        val boundaries=dao.continuityBoundaries(tripId);var boundaryIndex=0
         while(true){
             val page=dao.samplesPage(tripId,afterTimestamp,afterId,PAGE_SIZE)
             if(page.isEmpty())break
-            page.forEach{accumulator+=it.trackPoint()}
+            page.forEach{sample->
+                var boundary=false
+                while(boundaryIndex<boundaries.size&&boundaries[boundaryIndex]<=sample.timestamp){boundary=true;boundaryIndex++}
+                accumulator+=sample.trackPoint().copy(beginsSegment=boundary)
+            }
             if(accumulator.size>limit*2){val reduced=bounded(accumulator,limit);accumulator.clear();accumulator+=reduced}
             val last=page.last();afterTimestamp=last.timestamp;afterId=last.id
         }

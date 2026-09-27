@@ -12,6 +12,7 @@ import com.yokuli.marine.shell.rebuild.OsStore
     AppSection(os.t("当前海图背景","Chart background"))
     ChartBackgroundChoices(os)
     ChartSourceSaveStatus(os)
+    ChartPortrayalSetting(os)
     Label(os.t("点选立即切换背景，管理按钮只打开文件夹。航行数据在“数据”页配置，不随背景切换。","Selections change the background immediately; Manage only opens the folder. Navigation data stays configured in Data."),13,LocalMetro.current.muted)
     AppSection(os.t("海图文件夹","Chart folders"))
 }

@@ -80,7 +80,7 @@ internal class LibreSceneGeometry {
                 add(8,path.points,path.color.toInt(),path.widthDp.coerceAtLeast(2.5f))
                 return@forEach
             }
-            if (Color.alpha(path.color.toInt()) == 255) add(2, path.points, 0xBBFFFFFF.toInt(), path.widthDp + 1.5f, path.dashed)
+            if (path.casing && Color.alpha(path.color.toInt()) == 255) add(2, path.points, 0xBBFFFFFF.toInt(), path.widthDp + 1.5f, path.dashed)
             add(3, path.points, path.color.toInt(), path.widthDp, path.dashed)
         }
         if (ruler.size == 2) {

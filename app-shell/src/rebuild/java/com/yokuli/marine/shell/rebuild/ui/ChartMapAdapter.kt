@@ -50,8 +50,9 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
     }
     val previewAccent=os.accent
     val previewUnits=os.maps.unitPreferences
+    val previewPortrayal=os.maps.portrayalPreferences
     val soundingViewport=if(libraryPreview?.feature?.kind==NauticalFeatureKind.SOUNDING)view.center to view.zoom else null
-    LaunchedEffect(active,libraryPreview?.requestId,previewValid,soundingViewport,previewAccent,previewUnits,os.chinese) {
+    LaunchedEffect(active,libraryPreview?.requestId,previewValid,soundingViewport,previewAccent,previewUnits,previewPortrayal,os.chinese) {
         if(!active||libraryPreview==null||!previewValid) {libraryScene=MapScene();return@LaunchedEffect}
         delay(120)
         val feature=libraryPreview.feature
@@ -59,7 +60,7 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         val rendered=withContext(Dispatchers.Default) {
             when {
                 feature.kind==NauticalFeatureKind.SOUNDING-> {
-                    val drawing=structuredScene(listOf(feature),center,zoom,previewUnits)
+                    val drawing=structuredScene(listOf(feature),center,zoom,previewUnits,previewPortrayal)
                     drawing.scene.copy(points=drawing.scene.points.map {it.copy(id="library-object:${it.id}",color=previewAccent)}) to drawing.soundingsSimplified
                 }
                 feature.geometry.kind in setOf(ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT)-> {
