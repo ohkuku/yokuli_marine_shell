@@ -1,6 +1,6 @@
 # 生产接口与结构声明索引
 
-共 4880 项类型与方法声明；按源文件排序。
+共 4881 项类型与方法声明；按源文件排序。
 
 由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、共享设计/桌面、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
 
@@ -697,6 +697,7 @@
 | `fun close` | [ExtensionPackages.kt:251](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L251) |
 | `fun validResourcePath` | [ExtensionPackages.kt:340](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L340) |
 | `fun parseManifest` | [ExtensionPackages.kt:344](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L344) |
+| `fun parseExtensionJson` | [ExtensionPackages.kt:374](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L374) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionTiles.kt
 

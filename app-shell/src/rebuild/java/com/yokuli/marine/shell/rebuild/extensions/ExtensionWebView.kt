@@ -395,7 +395,7 @@ private class RestrictedExtensionSession(
         if (data == null || data.length > MAX_MESSAGE_BYTES || data.toByteArray(Charsets.UTF_8).size > MAX_MESSAGE_BYTES) return
         var id: String? = null
         try {
-            val message = JSONObject(data)
+            val message = parseExtensionJson(data)
             val requestId = message.getString("id")
             id = requestId
             require(requestId.length in 1..80 && requestId.all { it.isLetterOrDigit() || it in "-_:" }) { "请求标识无效" }

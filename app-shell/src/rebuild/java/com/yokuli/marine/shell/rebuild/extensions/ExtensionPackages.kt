@@ -150,7 +150,7 @@ class ExtensionPackageManager(context: Context) {
                 }
                 val manifestFile = File(content, "manifest.json")
                 require(manifestFile.isFile && manifestFile.length() <= MAX_MANIFEST_BYTES) { "缺少有效的 manifest.json" }
-                val manifest = parseManifest(JSONObject(manifestFile.readText()))
+                val manifest = parseManifest(parseExtensionJson(manifestFile.readText()))
                 require(File(content, manifest.entry).isFile) { "安装包没有声明的首页" }
                 check(archive.delete()) { "无法完成安装包准备" }
                 ExtensionCandidate(manifest, hash.digest().joinToString("") { "%02x".format(it) }, stage, root)
@@ -233,7 +233,7 @@ class ExtensionPackageManager(context: Context) {
             val file = AtomicFile(File(storage, "$id.json"))
             if (!exists(file)) JSONObject() else {
                 val bytes = readBounded(file, MAX_STORAGE_BYTES)
-                JSONObject(bytes.toString(Charsets.UTF_8))
+                parseExtensionJson(bytes.toString(Charsets.UTF_8))
             }
         }
     }
@@ -270,7 +270,7 @@ class ExtensionPackageManager(context: Context) {
     private fun readRegistry(): List<ExtensionInstalled> {
         if (!exists(registry)) return emptyList()
         val bytes = readBounded(registry, MAX_REGISTRY_BYTES)
-        val json = JSONObject(bytes.toString(Charsets.UTF_8))
+        val json = parseExtensionJson(bytes.toString(Charsets.UTF_8))
         require(json.getInt("schema") == 1) { "安装记录来自不兼容的系统版本" }
         val list = json.getJSONArray("apps")
         require(list.length() <= MAX_APPS) { "安装数量超出限制" }
@@ -284,7 +284,7 @@ class ExtensionPackageManager(context: Context) {
             val directory = File(File(packages, manifest.id), digest)
             val storedManifest = File(directory, "manifest.json")
             require(storedManifest.isFile && storedManifest.length() <= MAX_MANIFEST_BYTES &&
-                parseManifest(JSONObject(storedManifest.readText())) == manifest && File(directory, manifest.entry).isFile) { "应用 ${manifest.name} 的资源丢失或已损坏" }
+                parseManifest(parseExtensionJson(storedManifest.readText())) == manifest && File(directory, manifest.entry).isFile) { "应用 ${manifest.name} 的资源丢失或已损坏" }
             val grants = row.getJSONArray("grants").stringSet()
             require(grants.all { it in manifest.permissions }) { "安装权限记录已损坏" }
             ExtensionInstalled(manifest, digest, row.getLong("installedAt"), grants, directory)
@@ -368,4 +368,24 @@ class ExtensionPackageManager(context: Context) {
             .put("descriptionEn", descriptionEn)
             .put("permissions", JSONArray(permissions.sorted())).put("entry", entry).put("sdk", sdk)
     }
+}
+
+/** 外部 JSON 在递归解析前限制深度；小体积深嵌套也不能耗尽 Shell 的调用栈。 */
+internal fun parseExtensionJson(text: String): JSONObject {
+    var depth = 0
+    var quoted = false
+    var escaped = false
+    for (character in text) {
+        if (quoted) {
+            if (escaped) escaped = false
+            else if (character == '\\') escaped = true
+            else if (character == '"') quoted = false
+        } else when (character) {
+            '"' -> quoted = true
+            '{', '[' -> { depth++; require(depth <= 32) { "JSON nesting exceeds 32 levels" } }
+            '}', ']' -> { depth--; require(depth >= 0) { "Invalid JSON structure" } }
+        }
+    }
+    require(!quoted && depth == 0) { "Incomplete JSON structure" }
+    return JSONObject(text)
 }
