@@ -99,12 +99,51 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         MenuRow(title("exit"), os.t("暂停任务并停止后台采集与共享", "pause tasks and stop background collection & sharing"), "close") {section="exit"}
                     }
                     "appearance" -> {
-                        MenuRow(title("start"),os.t("自定义开始屏幕的照片与磁贴底色", "personalise Start’s photo and tile backgrounds")) {os.openLinked("settings:start")}
-                        AppSection(os.t("黑白界面", "Monochrome"))
-                        Label(os.t("文字与内容为主，颜色只用于必要提示。磁贴仍可单独设置。", "Content first. Colour is reserved for meaningful signals; tiles can be personalised."), 13, c.muted)
-                        if(os.accent != WpAccent.MONOCHROME.argb) MetroButton(os.t("使用黑白主色", "Use monochrome"), {
-                            os.shell.updateSystemPreferences { it.copy(accentName=WpAccent.MONOCHROME.name) }
-                        })
+                        MenuRow(title("start"),os.t("自定义开始屏幕的照片、透明度与磁贴底色", "personalise Start’s photo, transparency and tile background")) {os.openLinked("settings:start")}
+                        AppSection(os.t("磁贴与强调色", "Tile & accent colour"))
+                        Label(os.t(
+                            "选择 Windows Phone 风格预设。它会用于纯色磁贴、照片磁贴的染色层和系统强调控件；海图语义色与警报色不变。",
+                            "Choose a Windows Phone-style preset. It colours solid tiles, the tint over photo tiles, and system accent controls; chart semantics and alarm colours stay unchanged."
+                        ),13,c.muted)
+                        Column(Modifier.selectableGroup(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            WpAccent.entries.chunked(4).forEach { row ->
+                                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    row.forEach { accent ->
+                                        val name=os.t(when(accent) {
+                                            WpAccent.MONOCHROME->"黑白"
+                                            WpAccent.COBALT->"钴蓝"
+                                            WpAccent.CYAN->"青色"
+                                            WpAccent.EMERALD->"翡翠绿"
+                                            WpAccent.MAGENTA->"品红"
+                                            WpAccent.VIOLET->"紫色"
+                                            WpAccent.CRIMSON->"深红"
+                                            WpAccent.AMBER->"琥珀"
+                                        },accent.displayName)
+                                        val swatch=if(accent==WpAccent.MONOCHROME)c.fg else androidx.compose.ui.graphics.Color(accent.argb)
+                                        Box(Modifier.size(56.dp).background(swatch)
+                                            .then(if(os.accent==accent.argb)Modifier.border(2.dp,c.fg)else Modifier)
+                                            .semantics {contentDescription=name}
+                                            .selectable(os.accent==accent.argb,role=Role.RadioButton) {
+                                                os.shell.updateSystemPreferences {it.copy(accentName=accent.name)}
+                                            }) {
+                                            if(os.accent==accent.argb)Glyph("check",Modifier.size(24.dp).align(androidx.compose.ui.Alignment.Center),
+                                                if(accent==WpAccent.MONOCHROME)c.bg else c.onAccent)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        val selectedAccent=WpAccent.entries.firstOrNull {it.argb==os.accent} ?: WpAccent.MONOCHROME
+                        Label(os.t("当前：","Current: ")+os.t(when(selectedAccent) {
+                            WpAccent.MONOCHROME->"黑白"
+                            WpAccent.COBALT->"钴蓝"
+                            WpAccent.CYAN->"青色"
+                            WpAccent.EMERALD->"翡翠绿"
+                            WpAccent.MAGENTA->"品红"
+                            WpAccent.VIOLET->"紫色"
+                            WpAccent.CRIMSON->"深红"
+                            WpAccent.AMBER->"琥珀"
+                        },selectedAccent.displayName),13,c.muted)
                         ChoiceRow(os.t("深色背景", "dark background"), !os.light) {os.shell.updateSystemPreferences {it.copy(themeModeName="DARK")}}
                         ChoiceRow(os.t("浅色背景", "light background"), os.light) {os.shell.updateSystemPreferences {it.copy(themeModeName="LIGHT")}}
                         Toggle(os.t("保持屏幕常亮", "keep screen awake"),os.keepAwake,os.t("仅在 Yokuli OS 位于前台时", "while Yokuli OS is in front")) {enabled->
