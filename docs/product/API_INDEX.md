@@ -1614,13 +1614,13 @@
 | `fun draftCalculationBusy` | [PassagePlanningPanel.kt:54](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L54) |
 | `fun requestDraftCalculation` | [PassagePlanningPanel.kt:58](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L58) |
 | `fun DraftPassageAnalysis` | [PassagePlanningPanel.kt:74](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L74) |
-| `fun draftVerdict` | [PassagePlanningPanel.kt:110](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L110) |
-| `fun PassagePlanningPanel` | [PassagePlanningPanel.kt:113](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L113) |
-| `fun candidateUsable` | [PassagePlanningPanel.kt:141](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L141) |
-| `fun persistDraft` | [PassagePlanningPanel.kt:165](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L165) |
-| `fun locate` | [PassagePlanningPanel.kt:176](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L176) |
-| `fun x` | [PassagePlanningPanel.kt:313](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L313) |
-| `fun y` | [PassagePlanningPanel.kt:314](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L314) |
+| `fun draftVerdict` | [PassagePlanningPanel.kt:101](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L101) |
+| `fun PassagePlanningPanel` | [PassagePlanningPanel.kt:104](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L104) |
+| `fun candidateUsable` | [PassagePlanningPanel.kt:132](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L132) |
+| `fun persistDraft` | [PassagePlanningPanel.kt:156](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L156) |
+| `fun locate` | [PassagePlanningPanel.kt:167](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L167) |
+| `fun x` | [PassagePlanningPanel.kt:304](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L304) |
+| `fun y` | [PassagePlanningPanel.kt:305](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassagePlanningPanel.kt#L305) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/PassageReviewDialog.kt
 
