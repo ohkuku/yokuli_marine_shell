@@ -128,6 +128,8 @@ class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
     var libraryPreviewNote by mutableStateOf<String?>(null)
     var planningLines by mutableStateOf<List<MapLine>>(emptyList())
     var planningPoints by mutableStateOf<List<MapPoint>>(emptyList())
+    /** 仅本次用户明确点击“自动规划”的 requestId；结果消费一次后清空，旧结果不会再次覆盖草稿。 */
+    var autoApplyPlanningRequestId by mutableStateOf<String?>(null)
     var planningAreas by mutableStateOf<List<MapArea>>(emptyList())
     var selectedPlaceId by mutableStateOf<String?>(null)
     var selectedAisMmsi by mutableStateOf<String?>(null)

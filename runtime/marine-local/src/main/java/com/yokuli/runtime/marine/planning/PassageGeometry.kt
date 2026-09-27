@@ -243,10 +243,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val v=request.vessel
         if(v.draftMeters?.let{it.isFinite()&&it>0}!=true)
             issue(PassageIssueKind.VESSEL,PassageSeverity.INSUFFICIENT,"设置吃水后可检查实际水深 / Set draft to check actual depth")
-        else if(v.minimumUnderKeelMeters?.let{it.isFinite()&&it>=0}!=true)
-            issue(PassageIssueKind.VESSEL,PassageSeverity.REVIEW,"未设置额外富余水深；当前按吃水本身检查，出航前请自行确认余量 / No extra under-keel margin is set; checks use draft itself, so confirm your desired margin before departure")
-        if(v.beamMeters?.let{it.isFinite()&&it>0}!=true||v.clearanceMarginMeters?.let{it.isFinite()&&it>=0}!=true||v.corridorHalfWidthMeters?.let{it.isFinite()&&it>0}!=true)
-            issue(PassageIssueKind.VESSEL,PassageSeverity.REVIEW,"未完整设置船宽/避让走廊；粗略建议使用最小 25 m 横向余量，并继续保留资料自身的边界余量 / Beam or corridor settings are incomplete; coarse suggestions use a minimum 25 m lateral margin plus the source-data boundary allowance",leg=0,p=request.route.points.firstOrNull())
+        if(v.beamMeters?.let{it.isFinite()&&it>0}!=true)
+            issue(PassageIssueKind.VESSEL,PassageSeverity.REVIEW,"未设置船宽；检查使用内置 25 m 基础横向余量 / Beam is unset; checks use the built-in 25 m lateral margin",leg=0,p=request.route.points.firstOrNull())
         val required=v.draftMeters?.takeIf{it.isFinite()&&it>0}?.let{d->d+(v.minimumUnderKeelMeters?:0.0)}
         request.route.points.zipWithNext().forEachIndexed{leg,(start,end)->
             val length=distance(start,end);val chunks=max(1,ceil(length/20_000).toInt())

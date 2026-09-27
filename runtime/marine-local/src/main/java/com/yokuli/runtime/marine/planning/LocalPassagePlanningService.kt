@@ -192,11 +192,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             max(25.0,min(ew,ns))
         }
         val vessel=request.vessel
-        val configuredMargin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
-        // 快速栅格路线的目标是粗略不穿陆地/明显浅区；不把 15″ 像元半径额外当成几百米硬岸距。
-        // 像元本身仍按原始数值判定，结果始终是 REVIEW。
+        val configuredMargin=(vessel.beamMeters?.takeIf{it.isFinite()&&it>0}?:0.0)/2
         val margin=max(25.0,configuredMargin)
-        val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}?.let{it+(vessel.minimumUnderKeelMeters?:0.0)}
+        val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}
 
         fun elevation(point:ChartPoint):Float? {
             for(item in windows) {
@@ -206,12 +204,25 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             return null
         }
-        fun water(point:ChartPoint):Boolean {
-            val value=elevation(point)?:return false
-            if(!value.isFinite()||value>=0f)return false
-            return required==null||-value.toDouble()>=required
+        fun terrainWater(c:Coordinate):Boolean {
+            val value=elevation(projection.point(c))?:return false
+            return value.isFinite()&&value<0f
         }
-        fun waterAt(c:Coordinate)=water(projection.point(c))
+        fun draftPreferred(c:Coordinate):Boolean {
+            val need=required?:return true
+            val value=elevation(projection.point(c))?:return false
+            return value.isFinite()&&value<0f&&-value.toDouble()>=need
+        }
+        fun depthMultiplier(c:Coordinate):Double {
+            val need=required?:return 1.0
+            val value=elevation(projection.point(c))?:return 20.0
+            if(!value.isFinite()||value>=0f)return 20.0
+            val depth=-value.toDouble()
+            if(depth>=need)return 1.0
+            val deficit=((need-depth)/need.coerceAtLeast(.1)).coerceIn(0.0,1.0)
+            return 4.0+12.0*deficit
+        }
+
         val avoidance=union(request.avoidances.mapNotNull{a->
             runCatching{projection.geometry(ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(a.boundary))))}.getOrNull()
         },projection.factory)
@@ -222,22 +233,55 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             diagonal to diagonal,diagonal to -diagonal,-diagonal to diagonal,-diagonal to -diagonal
         )
         fun safe(c:Coordinate):Boolean {
-            for((dx,dy) in offsets)if(!waterAt(Coordinate(c.x+dx,c.y+dy)))return false
+            for((dx,dy) in offsets)if(!terrainWater(Coordinate(c.x+dx,c.y+dy)))return false
             return avoidanceMargin==null||!avoidanceMargin.covers(projection.factory.createPoint(c))
         }
         val sampleStep=max(25.0,min(250.0,cellMeters*.5))
-        fun clear(a:Coordinate,b:Coordinate):Boolean {
+        fun clear(a:Coordinate,b:Coordinate,preferDraft:Boolean=false):Boolean {
             if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(a,b)).intersects(avoidanceMargin))return false
             val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
             for(i in 0..slices) {
                 val t=i.toDouble()/slices
-                if(!safe(Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)))return false
+                val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
+                if(!safe(at)||preferDraft&&!draftPreferred(at))return false
             }
             return true
         }
-        val a=projection.xy(start);val b=projection.xy(end)
-        if(!safe(a)||!safe(b))return null
-        if(clear(a,b))return listOf(start,end)
+        fun nearestWater(origin:Coordinate):Coordinate? {
+            if(safe(origin))return origin
+            val radial=max(50.0,min(250.0,cellMeters*.5))
+            val maxRadius=(cellMeters*3.0).coerceIn(750.0,2_000.0)
+            var radius=radial
+            while(radius<=maxRadius+1e-6) {
+                currentCoroutineContext().ensureActive()
+                val samples=max(16,ceil(2*Math.PI*radius/radial).toInt()).coerceAtMost(96)
+                var best:Coordinate?=null
+                repeat(samples){i->
+                    val angle=2*Math.PI*i/samples
+                    val candidate=Coordinate(origin.x+cos(angle)*radius,origin.y+sin(angle)*radius)
+                    if(safe(candidate)&&(best==null||candidate.distance(origin)<best!!.distance(origin)))best=candidate
+                }
+                if(best!=null)return best
+                radius+=radial
+            }
+            return null
+        }
+        fun preserveEndpoints(coords:List<Coordinate>):List<ChartPoint> {
+            val output=mutableListOf(start)
+            val snappedStart=projection.point(coords.first())
+            if(distance(start,snappedStart)>1.0)output+=snappedStart
+            coords.drop(1).dropLast(1).mapTo(output,projection::point)
+            val snappedEnd=projection.point(coords.last())
+            if(distance(output.last(),snappedEnd)>1.0)output+=snappedEnd
+            if(distance(output.last(),end)>1.0)output+=end else output[output.lastIndex]=end
+            return output.fold(mutableListOf()){acc,p->if(acc.lastOrNull()?.let{distance(it,p)<.5}!=true)acc+=p;acc}
+        }
+
+        val rawA=projection.xy(start);val rawB=projection.xy(end)
+        val a=nearestWater(rawA)?:return null
+        val b=nearestWater(rawB)?:return null
+        if(clear(a,b,preferDraft=true))return preserveEndpoints(listOf(a,b))
+
         val extent=padding.coerceAtLeast(2_000.0)
         val minX=min(a.x,b.x)-extent;val maxX=max(a.x,b.x)+extent
         val minY=min(a.y,b.y)-extent;val maxY=max(a.y,b.y)+extent
@@ -267,8 +311,11 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 val nx=x+dx;val ny=y+dy
                 if(nx !in 0 until cols||ny !in 0 until rows)continue
                 val next=ny*cols+nx;val there=coord(next)
-                val cost=node.cost+here.distance(there)
-                if(cost>=scores[next]||!clear(here,there))continue
+                if(!clear(here,there))continue
+                val edge=here.distance(there)
+                val multiplier=(depthMultiplier(here)+depthMultiplier(there))/2
+                val cost=node.cost+edge*multiplier
+                if(cost>=scores[next])continue
                 scores[next]=cost;parents[next]=node.id
                 queue.add(RasterNode(next,cost,cost+there.distance(b)))
             }
@@ -280,10 +327,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val reduced=mutableListOf(reverse.first());var i=0
         while(i<reverse.lastIndex) {
             var next=reverse.lastIndex
-            while(next>i+1&&!clear(reverse[i],reverse[next]))next--
+            while(next>i+1&&!clear(reverse[i],reverse[next],preferDraft=true))next--
             reduced.add(reverse[next]);i=next
         }
-        return reduced.map(projection::point)
+        return preserveEndpoints(reduced)
     }
 
     /**
@@ -382,18 +429,12 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             if(request.vessel.draftMeters==null)add(PassageIssue("$key:draft",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
                 route.points.firstOrNull(),0.0,
                 "未设置吃水；当前只按水陆地形出线，不判断实际余深 / Draft is unset; this route only uses terrain and does not assess under-keel depth"))
-            else if(request.vessel.minimumUnderKeelMeters==null)add(PassageIssue("$key:ukc",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
-                route.points.firstOrNull(),0.0,
-                "未设置额外富余水深；自动规划按吃水本身作为最低深度，完整检查时再核对余量 / No extra under-keel margin is set; auto planning uses draft itself as the minimum depth and leaves margin review to the full check"))
             if(request.vessel.airDraftMeters==null)add(PassageIssue("$key:air",PassageSeverity.REVIEW,PassageIssueKind.CLEARANCE,0,
                 route.points.firstOrNull(),0.0,
                 "未设置船高；自动规划会保守避开已知桥梁和高空设施 / Air draft is unset; auto planning conservatively avoids known bridges and overhead structures"))
-            if(route.points.size>2)add(PassageIssue("$key:turns",PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,0,
+            if(route.points.size>2)add(PassageIssue("$key:shape",PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,0,
                 route.points.getOrNull(1),0.0,
-                if(turnRadius==null)
-                    "粗略折线未设置转弯半径；请按实际操船修正 / Coarse polyline has no turn-radius constraint; adjust it for actual handling"
-                else
-                    "自动规划优先快速出线，未为转弯半径做第二次全区域重算；请在采用后按实际操船核对转向 / Auto planning prioritizes a fast route and skips a second full-area turn-radius pass; review turns after adoption"))
+                "自动补出的中间点只是粗略航线形状点；请在地图上按实际操船核对 / Auto-added intermediate points only shape the coarse route; review them on the chart for actual handling"))
         }
         val speed=request.vessel.plannedSpeedMetersPerSecond?.takeIf{it.isFinite()&&it>.1}
         val arrival=request.departureUtc?.let{depart->speed?.let{depart+(total/it*1000).toLong()}}

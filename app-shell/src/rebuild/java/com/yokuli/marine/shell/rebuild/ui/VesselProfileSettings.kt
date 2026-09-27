@@ -12,7 +12,6 @@ import com.yokuli.marine.shell.rebuild.OsStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import com.yokuli.anchorwatch.data.vessel.PassageGeometry
 import com.yokuli.anchorwatch.data.vessel.passageGeometry
 
 /** 船舶资料只在显示和输入边界换单位；各应用共享的几何及吃水仍使用米。 */
@@ -32,14 +31,9 @@ import com.yokuli.anchorwatch.data.vessel.passageGeometry
     val profile=state.vesselSettings
     val beam=rememberUnitNumberDraft(profile.beamMeters,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,profile.beamMeters)
     val airDraft=rememberUnitNumberDraft(profile.airDraftMeters,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,profile.airDraftMeters)
-    val underKeel=rememberUnitNumberDraft(profile.minimumUnderKeelMeters,os.depthUnitLabel,os::depthValue,os::depthMeters,profile.minimumUnderKeelMeters)
-    val margin=rememberUnitNumberDraft(profile.clearanceMarginMeters,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,profile.clearanceMarginMeters)
-    val corridor=rememberUnitNumberDraft(profile.corridorHalfWidthMeters,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,profile.corridorHalfWidthMeters)
-    val turn=rememberUnitNumberDraft(profile.turnRadiusMeters,os.lengthUnitLabel,os::lengthValue,os::lengthMeters,profile.turnRadiusMeters)
-    val speed=rememberUnitNumberDraft(profile.plannedSpeedMetersPerSecond,os.speedUnitLabel,
-        {os.speedValue(it/.5144444444)},{os.speedKnots(it)*.5144444444},profile.plannedSpeedMetersPerSecond)
-    val passage=PassageGeometry(beam.value,airDraft.value,underKeel.value,margin.value,corridor.value,turn.value,speed.value)
-    val passageValid=listOf(beam,airDraft,underKeel,margin,corridor,turn,speed).all {it.text.isBlank()||it.value!=null} && runCatching {passage.requireValid()}.isSuccess
+    // 用户只维护会改变粗规划含义的基础船体尺寸；旧高级字段继续兼容存储，但不在这里暴露。
+    val passage=profile.passageGeometry().copy(beamMeters=beam.value,airDraftMeters=airDraft.value)
+    val passageValid=listOf(beam,airDraft).all {it.text.isBlank()||it.value!=null} && runCatching {passage.requireValid()}.isSuccess
     val passageChanged=passage!=profile.passageGeometry()
     var saving by remember { mutableStateOf(false) }
     var saveFailed by remember { mutableStateOf(false) }
@@ -69,16 +63,13 @@ import com.yokuli.anchorwatch.data.vessel.passageGeometry
         Field(os.t("固定 GPS 天线到船艏滚轮", "fixed GPS antenna to bow roller") + " · " + os.lengthUnitLabel,
             antenna.text, { edit(antenna, it) }, number = true)
         MenuRow(os.t("航线规划", "passage planning"),
-            os.t("船体净空、转弯和计划航速 · 未知留空", "clearance, turning and planned speed · leave unknown values blank")) {passageExpanded=!passageExpanded}
+            os.t("自动规划只用吃水、船宽和船高", "auto planning only needs draft, beam and air draft")) {passageExpanded=!passageExpanded}
         if(passageExpanded) {
+            Label(os.t("吃水使用上面的船舶资料；其余避障余量由系统自动处理，不需要手动配置。",
+                "Draft comes from the boat details above. Other routing margins are handled automatically."),13,LocalMetro.current.muted)
             Field(os.t("船宽","beam")+" · "+os.lengthUnitLabel,beam.text,{edit(beam,it)},number=true)
             Field(os.t("水面以上最高点","air draft")+" · "+os.lengthUnitLabel,airDraft.text,{edit(airDraft,it)},number=true)
-            Field(os.t("最小龙骨下余量","minimum under-keel clearance")+" · "+os.depthUnitLabel,underKeel.text,{edit(underKeel,it)},number=true)
-            Field(os.t("障碍附加余量","obstacle clearance margin")+" · "+os.lengthUnitLabel,margin.text,{edit(margin,it)},number=true)
-            Field(os.t("分析走廊半宽","analysis corridor half-width")+" · "+os.lengthUnitLabel,corridor.text,{edit(corridor,it)},number=true)
-            Field(os.t("最小转弯半径","minimum turning radius")+" · "+os.lengthUnitLabel,turn.text,{edit(turn,it)},number=true)
-            Field(os.t("计划航速","planned speed")+" · "+os.speedUnitLabel,speed.text,{edit(speed,it)},number=true)
-            if(!passageValid)Label(os.t("尺寸需要是有效正数，净空余量可为零。未知项目留空。","Enter positive dimensions; clearance margins may be zero. Leave unknown values blank."),13,LocalMetro.current.accentText)
+            if(!passageValid)Label(os.t("船宽应为正数；船高不能为负。未知项目可留空。","Beam must be positive; air draft cannot be negative. Leave unknown values blank."),13,LocalMetro.current.accentText)
         }
         Label(os.t("这些资料供相关应用共用。手机定位不会假定手机固定在 GPS 天线位置。",
             "These details are shared by the apps that need them. Phone positioning does not assume a fixed antenna location."), 15, LocalMetro.current.muted)

@@ -27,7 +27,9 @@ private const val LIBRARY_DATA_CONTEXT="library-navigation-data-v1"
 private fun signature(value:Any)=MessageDigest.getInstance("SHA-256").digest(value.toString().toByteArray()).take(16).joinToString(""){"%02x".format(it)}
 private fun GeoPoint.chartPoint()=ChartPoint(lat,lon)
 private fun ChartPoint.geo()=GeoPoint(latitude,longitude)
-private fun OsStore.passageVessel():PassageVessel?=marine?.services?.state?.value?.vesselSettings?.let{v->PassageVessel(v.draftMeters,v.beamMeters,v.airDraftMeters,v.minimumUnderKeelMeters,v.clearanceMarginMeters,v.corridorHalfWidthMeters,v.turnRadiusMeters,v.plannedSpeedMetersPerSecond)}
+private fun OsStore.passageVessel():PassageVessel?=marine?.services?.state?.value?.vesselSettings?.let{v->
+    PassageVessel(v.draftMeters,v.beamMeters,v.airDraftMeters,null,null,null,null,null)
+}
 
 /** 只有这一份航线草稿；检查面板不再拥有起终点或另外选择的路线。 */
 internal fun passagePlanningContext(os:OsStore):String=signature(listOf(os.editingRouteId,os.draftRoute,os.draftNavigationTargetIndices))
@@ -72,7 +74,10 @@ internal fun requestDraftCalculation(os:OsStore,plan:Boolean,leg:Int?=null):Stri
     val request=os.planningRequest(requestPoints,os.editingRouteId?:"draft",
         os.routes.firstOrNull{it.id==os.editingRouteId}?.name?:os.t("当前航线","Current route"),requestTargets)
         ?:return os.t("船舶参数尚未就绪","Boat settings are not ready")
-    if(plan)system.planning.plan(request,leg)else system.analysis.analyze(request)
+    if(plan) {
+        os.maps.view("chart",os.center,os.zoom).autoApplyPlanningRequestId=request.requestId
+        system.planning.plan(request,leg)
+    } else system.analysis.analyze(request)
     return null
 }
 
@@ -147,9 +152,8 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
             candidate.analysis.severity in setOf(PassageSeverity.REVIEW,PassageSeverity.NO_CONFLICT_FOUND)&&
             candidate.analysis.datasetRevisions==latest.analysis?.datasetRevisions
     }
-    val planAtOpen=remember {state.plan?.requestId}
     val previewCandidate=state.plan?.candidates?.firstOrNull()?.takeIf(::candidateUsable)
-    LaunchedEffect(previewCandidate?.analysis?.key) {
+    LaunchedEffect(previewCandidate?.analysis?.key,view.autoApplyPlanningRequestId) {
         val plan=state.plan
         val candidate=previewCandidate
         if(plan!=null&&candidate!=null) {
@@ -159,9 +163,9 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
             )
             view.planningPoints=emptyList()
             os.fitRequest=(plan.original.request.route.points+candidate.route.points).map{it.geo()}
-            // 本次面板打开后新完成的自动规划就是用户刚刚明确请求的结果：直接写回同一草稿。
-            // 重新打开旧结果只用于查看，不会再次自动套用；撤销后也不会被旧 plan 反复覆盖。
-            if(plan.requestId!=planAtOpen) {
+            // requestId 令牌在提交规划时就写入 MapViewState，因此即使作业先于弹窗打开完成，也能消费一次。
+            if(plan.requestId==view.autoApplyPlanningRequestId) {
+                view.autoApplyPlanningRequestId=null
                 val proposed=candidate.route.points.map{it.geo()}
                 if(os.draftRoute!=proposed||os.draftNavigationTargetIndices!=candidate.navigationTargetIndices) {
                     val before=os.draftRoute
@@ -178,6 +182,13 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
                     } finally {saving=false}
                 }
             }
+        }
+    }
+    LaunchedEffect(state.plan?.requestId,state.plan?.reason,state.job?.phase,view.autoApplyPlanningRequestId) {
+        val plan=state.plan
+        if(plan!=null&&plan.requestId==view.autoApplyPlanningRequestId&&state.job?.phase==PassageJobPhase.COMPLETE&&plan.candidates.isEmpty()) {
+            view.autoApplyPlanningRequestId=null
+            feedback=issueText(os,plan.reason?:os.t("没有生成可用的粗航线","No coarse route was generated"))
         }
     }
     fun persistDraft(message:String,close:Boolean=false) {
@@ -236,6 +247,9 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
         }
         state.job?.takeIf{it.phase in setOf(PassageJobPhase.FAILED,PassageJobPhase.INTERRUPTED,PassageJobPhase.CANCELLED)}?.let {job->
             Label(issueText(os,job.detail?:"计算未完成 / Calculation did not finish"),14)
+        }
+        state.plan?.takeIf{it.requestId==state.job?.requestId&&it.candidates.isEmpty()}?.reason?.let {
+            Label(issueText(os,it),14,LocalMetro.current.accentText)
         }
         if(current==null&&original!=null)Label(os.t("上次结果不适用于当前航线或资料，请重新检查。","The previous result does not apply to this route or its data. Recheck."),14,LocalMetro.current.muted)
         current?.let {result->
