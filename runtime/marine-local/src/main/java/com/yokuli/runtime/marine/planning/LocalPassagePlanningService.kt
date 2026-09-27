@@ -247,7 +247,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             return true
         }
-        fun nearestWater(origin:Coordinate):Coordinate? {
+        suspend fun nearestWater(origin:Coordinate):Coordinate? {
             if(safe(origin))return origin
             val radial=max(50.0,min(250.0,cellMeters*.5))
             val maxRadius=(cellMeters*3.0).coerceIn(750.0,2_000.0)
