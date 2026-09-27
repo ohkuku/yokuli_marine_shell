@@ -19,7 +19,7 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.NO_DATA_SELECTED->"先在图库选择航行数据；没有数据时可手动绘制航线"
         PassageReadinessReason.DATA_MISSING->"所选航行数据尚未安装或已移除"
         PassageReadinessReason.DATA_UNREADABLE->"所选航行数据目前无法读取，请在图库恢复"
-        PassageReadinessReason.ANALYSIS_NOT_ALLOWED->"所选资料未获准用于航线分析，请在图库核对用途"
+        PassageReadinessReason.ANALYSIS_NOT_ALLOWED->"所选资料没有可用于粗略建议的许可或参考用途，请在图册核对用途"
         PassageReadinessReason.NO_ACTIVE_CELLS->"所选资料没有有效的结构化海图单元"
         PassageReadinessReason.NO_STRUCTURED_COVERAGE->"所选资料没有有效覆盖范围，暂不能自动规划"
         PassageReadinessReason.UNSUPPORTED_DATA->"所选区域有未支持或不完整的数据，暂不能自动规划"
@@ -33,7 +33,7 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.NO_DATA_SELECTED->"Choose navigation data in Library first. Without data, draw a route manually."
         PassageReadinessReason.DATA_MISSING->"Selected navigation data is not installed or has been removed."
         PassageReadinessReason.DATA_UNREADABLE->"Selected navigation data cannot be read. Restore it in Library."
-        PassageReadinessReason.ANALYSIS_NOT_ALLOWED->"Selected data is not approved for route analysis. Review its use in Library."
+        PassageReadinessReason.ANALYSIS_NOT_ALLOWED->"Selected data has no permitted analysis or supported reference-drafting use. Review it in Library."
         PassageReadinessReason.NO_ACTIVE_CELLS->"Selected data contains no active structured chart cells."
         PassageReadinessReason.NO_STRUCTURED_COVERAGE->"Selected data has no valid coverage. Automatic planning is unavailable."
         PassageReadinessReason.UNSUPPORTED_DATA->"The selected area has unsupported or incomplete data. Automatic planning is unavailable."
@@ -43,6 +43,18 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.READY->"Area coverage and depth evidence are available for route search."
     }
     val message:String get()="$messageZh / $messageEn"
+}
+
+/**
+ * “可生成粗略参考草图”与“正式航海分析资格”分开。
+ * 仅官方 GEBCO 2026 数值网格允许在 REFERENCE_ONLY 下参与粗略地形搜索；
+ * 候选仍必须保持 REVIEW，其他来源继续要求明确的分析用途。
+ */
+fun ChartDataset.allowsPassageDrafting(nowUtcMillis:Long):Boolean {
+    if(eligibility.allowsAnalysis(nowUtcMillis))return true
+    val referenceValid=eligibility.use==ChartUse.REFERENCE_ONLY&&(eligibility.validUntilUtc==null||eligibility.validUntilUtc>nowUtcMillis)
+    val grids=rasters.orEmpty()
+    return referenceValid&&grids.isNotEmpty()&&grids.all {it.product=="GEBCO_2026_Grid"}
 }
 
 /** UI 与运行时共用入口门槛；不从底图图片、在线地图或文件名猜测可规划性。 */
@@ -58,7 +70,7 @@ object PassagePlanningEligibility {
         val sources=selected.map{id->datasets.first{it.id==id}}
         val unreadable=sources.filter{!it.offlineReadable||it.issue!=null}.map{it.id}
         if(unreadable.isNotEmpty())return blocked(PassageReadinessReason.DATA_UNREADABLE,unreadable)
-        val forbidden=sources.filterNot{it.eligibility.allowsAnalysis(nowUtcMillis)}.map{it.id}
+        val forbidden=sources.filterNot{it.allowsPassageDrafting(nowUtcMillis)}.map{it.id}
         if(forbidden.isNotEmpty())return blocked(PassageReadinessReason.ANALYSIS_NOT_ALLOWED,forbidden)
         // 更新版取消的单元不能借旧版复活。目录次序和实际搜索的覆盖优先级保持独立。
         val cells=sources.flatMap{data->data.cells.groupBy{it.cellId}.values.map{versions->versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})}.filterNot{it.cancelled}}

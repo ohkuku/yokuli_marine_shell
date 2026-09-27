@@ -281,3 +281,8 @@ GPX 导出保留所有路线点，并在 Yokuli 命名空间扩展中保存业�
 采用 [IHO S-52 6.1.1](https://docs.iho.int/iho_pubs/standard/S-52/S-52%20Edition%206.1.1%20-%20June%202015.pdf) 中的显示类别、安全等深线、分级深度与昼夜呈现原则；参考 [IHO 呈现公告](https://iho.int/s-52-portrayal-bulletins) 的等深线文字密度要求，以及 [OpenCPN 官方矢量显示说明](https://opencpn.org/wiki/dokuwiki/doku.php?id=opencpn:manual_basic:set_options:charts:vector_display) 的用户参数组织。它们是规则和交互参考，不是第三方程序或资源的导入。
 
 **这是实际接入的增强 ENC 呈现，不是完整 IHO Presentation Library 或获认证 ECDIS。** 尚未覆盖全部对象／属性 lookup table、全部条件符号程序、全部复杂线型与填充 pattern、官方 Chart 1 图例／符号精确复现、IEC 显示校色与型式认可、S-63 解密。质量区显示资料属性，不以 UI 星级替代测量质量评估。完整 S-52 一致性不能由“能读取 S-57”或“图标看起来相似”推出，后续必须在同一规则入口扩充，不能另建平行地图状态。
+
+
+### GEBCO 粗略地形草图（2026-09-27）
+
+官方 GEBCO 2026 数值网格在 `REFERENCE_ONLY` 状态下可以进入粗略地形搜索，不要求用户把它标成正式航行分析资料；该例外只适用于解析为 `GEBCO_2026_Grid` 的数值栅格，过期/取消资料和普通未知 GIS 文件不会绕过用途门槛。生成的候选继续保留参考来源与 `REVIEW`，不会自动采用、保存或开始导航。GEBCO 官方条款明确说明该 Grid 不应被用于导航或海上安全，因此界面必须持续展示这一限制，结果只能作为人工规划时的粗略地形参考。

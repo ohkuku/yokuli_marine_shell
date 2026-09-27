@@ -49,7 +49,7 @@ internal fun draftMatchesAnalysis(os:OsStore,result:PassageAnalysis?,data:ChartD
         result.request.backgroundKey==LIBRARY_DATA_CONTEXT&&result.datasetRevisions==revisions&&
         result.request.avoidances==os.marine?.system?.analysis?.state?.value?.avoidances&&
         (result.severity==PassageSeverity.INSUFFICIENT||ids.all{id->data.datasets.firstOrNull{it.id==id}?.let{
-            it.offlineReadable&&it.issue==null&&it.eligibility.allowsAnalysis(now)}==true})
+            it.offlineReadable&&it.issue==null&&it.allowsPassageDrafting(now)}==true})
 }
 internal fun draftCalculationBusy(os:OsStore):Boolean=os.marine?.system?.analysis?.state?.value?.job?.phase in
     setOf(PassageJobPhase.LOADING,PassageJobPhase.SEARCHING,PassageJobPhase.ANALYZING)

@@ -99,7 +99,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val cells=snapshot.datasets.flatMap{dataset->dataset.cells.groupBy{it.cellId}.values.map{versions->versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})}.filterNot{it.cancelled}.map{Triple(datasetOrder[dataset.id]?:Int.MAX_VALUE,dataset,it)}}.sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.thenBy{it.third.priority}.thenBy{it.third.compilationScale?:Int.MAX_VALUE}.thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId})
         for((_,dataset,cell) in cells){
             currentCoroutineContext().ensureActive()
-            if(!dataset.eligibility.allowsAnalysis(System.currentTimeMillis())||!dataset.offlineReadable||dataset.issue!=null)continue
+            if(!dataset.allowsPassageDrafting(System.currentTimeMillis())||!dataset.offlineReadable||dataset.issue!=null)continue
             val declaredBounds=cell.bounds.filter{it.valid}
             if(declaredBounds.isNotEmpty()&&declaredBounds.none(::touchesQuery))continue
             val cellKey="${dataset.id}/${cell.cellId}"
@@ -225,7 +225,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             issues.add(PassageIssue(passageHash("$kind/$leg/${f?.id}/${cellId}/$along/$message"),severity,kind,leg,p,along,message,f?.id,f?.cellId?:cellId,f?.depth?:evidence))
         }
         if(snapshot.missingDatasetIds.isNotEmpty()||snapshot.datasets.isEmpty())issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"所选数据集尚未安装或已移除 / Selected data is missing")
-        snapshot.datasets.filterNot{it.eligibility.allowsAnalysis(System.currentTimeMillis())&&it.offlineReadable&&it.issue==null}.forEach{issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"${it.name}：尚未确认分析用途 / Analysis use not confirmed")}
+        snapshot.datasets.filterNot{it.allowsPassageDrafting(System.currentTimeMillis())&&it.offlineReadable&&it.issue==null}.forEach{issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"${it.name}：资料用途不允许粗略建议 / Data use does not allow a coarse suggestion")}
         val v=request.vessel
         if(v.draftMeters?.let{it.isFinite()&&it>0}!=true||v.minimumUnderKeelMeters?.let{it.isFinite()&&it>=0}!=true)issue(PassageIssueKind.VESSEL,PassageSeverity.INSUFFICIENT,"设置吃水和富余水深后可检查深度 / Set draft and under-keel margin")
         if(v.beamMeters?.let{it.isFinite()&&it>0}!=true||v.clearanceMarginMeters?.let{it.isFinite()&&it>=0}!=true||v.corridorHalfWidthMeters?.let{it.isFinite()&&it>0}!=true)
