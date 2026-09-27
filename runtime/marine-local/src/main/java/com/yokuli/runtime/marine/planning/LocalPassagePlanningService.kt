@@ -434,7 +434,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             snapshot.datasets.map{it.id to it.revision},request.avoidances))
         val issues=buildList {
             add(PassageIssue("$key:coarse",PassageSeverity.REVIEW,PassageIssueKind.QUALITY,0,route.points.firstOrNull(),0.0,
-                "已按当前可搜索水域、陆地、明显浅区与已知障碍生成粗略航线；这不是完整航海安全检查 / Coarse route generated from searchable water, land, obvious shallows and known obstacles; this is not a full navigation-safety check"))
+                "已在当前数据的连续水域中自动绕开陆地，并优先避开明显浅区；这是一条粗略航线，不是完整航海安全检查 / Coarse route follows connected water, automatically routing around land and preferring to avoid obvious shallows; this is not a full navigation-safety check"))
             if(request.vessel.draftMeters==null)add(PassageIssue("$key:draft",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
                 route.points.firstOrNull(),0.0,
                 "未设置吃水；当前只按水陆地形出线，不判断实际余深 / Draft is unset; this route only uses terrain and does not assess under-keel depth"))
@@ -462,7 +462,14 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val a=points[index];val b=points[index+1];val distance=distance(a,b)
             if(distance>80_000)return PassagePlan(request.requestId,original,emptyList(),"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg")
             val basePadding=max(2000.0,distance*.75).coerceAtMost(40_000.0)
-            val paddings=listOf(basePadding,max(basePadding,min(60_000.0,max(8_000.0,distance*1.25)))).distinct()
+            // 岛屿/半岛在直线中间时，失败不是正确答案：自动向外扩大水域搜索，自己寻找绕行侧。
+            // 纯栅格快速规划多给一档扩展范围；仍保持有界，避免无限计算。
+            val paddings=if(fastRaster) listOf(
+                basePadding,
+                max(basePadding,min(45_000.0,max(10_000.0,distance*1.5))),
+                max(basePadding,min(60_000.0,max(18_000.0,distance*2.5)))
+            ).distinct().sorted()
+            else listOf(basePadding,max(basePadding,min(60_000.0,max(8_000.0,distance*1.25)))).distinct()
             var path:List<ChartPoint>?=null
             for((attempt,padding) in paddings.withIndex()) {
                 currentCoroutineContext().ensureActive()
@@ -480,7 +487,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 }
                 if(path!=null)break
             }
-            val foundPath=path ?: return PassagePlan(request.requestId,original,emptyList(),"当前资料和扩展搜索范围内未找到完整通路；请检查端点是否在可通行水域，或添加中间航点 / No complete passage was found in the available data and expanded search area; check that both endpoints are in navigable water or add an intermediate waypoint")
+            val foundPath=path ?: return PassagePlan(request.requestId,original,emptyList(),
+                "已自动扩大绕行范围，但当前数据中仍没有找到连接两端的连续水路；陆地只会触发绕行，只有水域不连通、端点附近无水域或资料断档才会失败 / Auto planning expanded the detour search but still found no continuous water connection in the selected data. Land triggers a detour; failure should only mean disconnected water, no usable water near an endpoint, or a data gap")
             result.addAll(foundPath.drop(1))
         }
         require(result.size<=2000){"Candidate is too complex"}
